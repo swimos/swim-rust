@@ -2364,7 +2364,7 @@ impl<T: Tag> Recognizer for TagRecognizer<T> {
 
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         let result = if let ReadEvent::TextValue(txt) = input {
-            T::try_from_str(txt.borrow()).map_err(|message| ReadError::Malformatted {
+            T::from_str(txt.borrow()).map_err(|message| ReadError::Malformatted {
                 text: txt.into(),
                 message,
             })

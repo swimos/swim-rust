@@ -34,7 +34,11 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedStructModel<'a>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let DeriveStructuralReadable(model, generics) = self;
         let mut new_generics = (*generics).clone();
-        add_bounds(*generics, &mut new_generics);
+        super::add_bounds(
+            *generics,
+            &mut new_generics,
+            parse_quote!(swim_common::form::structural::read::recognizer::RecognizerReadable),
+        );
 
         let (impl_gen, type_gen, where_clause) = new_generics.split_for_impl();
         let name = model.inner.name;
@@ -42,6 +46,7 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedStructModel<'a>> {
             let lit_name = model.inner.resolve_name();
 
             tokens.append_all(quote! {
+                #[automatically_derived]
                 impl swim_common::form::structural::read::recognizer::RecognizerReadable for #name {
                     type Rec = swim_common::form::structural::read::recognizer::UnitStructRecognizer<#name>;
                     type AttrRec = swim_common::form::structural::read::recognizer::SimpleAttrBody<
@@ -181,7 +186,11 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedEnumModel<'a>> {
         let name = inner.name;
 
         let mut new_generics = (*generics).clone();
-        add_bounds(*generics, &mut new_generics);
+        super::add_bounds(
+            *generics,
+            &mut new_generics,
+            parse_quote!(swim_common::form::structural::read::recognizer::RecognizerReadable),
+        );
 
         let (impl_gen, type_gen, where_clause) = new_generics.split_for_impl();
 
@@ -930,7 +939,7 @@ impl<'a> ToTokens for OnDoneFn<'a> {
             | FieldGroup::DelegateBody(fld)
             | FieldGroup::Attribute(fld)
             | FieldGroup::Tag(fld) => {
-                let name = &fld.name;
+                let name = &fld.selector;
                 quote!(core::option::Option::Some(#name))
             }
             FieldGroup::Header {
@@ -938,12 +947,12 @@ impl<'a> ToTokens for OnDoneFn<'a> {
                 header_fields,
             } => match tag_body {
                 Some(fld) if header_fields.is_empty() => {
-                    let name = &fld.name;
+                    let name = &fld.selector;
                     quote!(core::option::Option::Some(#name))
                 }
                 ow => {
                     let header_fields = ow.iter().chain(header_fields.iter()).map(|fld| {
-                        let name = &fld.name;
+                        let name = &fld.selector;
                         quote!(core::option::Option::Some(#name))
                     });
                     quote!(core::option::Option::Some((#(#header_fields,)*)))
@@ -961,7 +970,7 @@ impl<'a> ToTokens for OnDoneFn<'a> {
         let make_result = match inner.fields_model.type_kind {
             CompoundTypeKind::Labelled => {
                 let con_params = inner.fields_model.fields.iter().map(|fld| {
-                    let name = &fld.model.name;
+                    let name = &fld.model.selector;
                     if fld.directive == FieldKind::Skip {
                         quote!(#name: core::default::Default::default())
                     } else {
@@ -983,7 +992,7 @@ impl<'a> ToTokens for OnDoneFn<'a> {
                     .fields
                     .iter()
                     .filter(|fld| fld.directive != FieldKind::Skip)
-                    .map(|fld| (fld.model.ordinal, &fld.model.name))
+                    .map(|fld| (fld.model.ordinal, &fld.model.selector))
                     .collect::<HashMap<_, _>>();
                 let con_params = (0..num_fields).map(|i| {
                     if let Some(name) = name_map.get(&i) {
@@ -1350,17 +1359,6 @@ fn make_ccons(n: usize, expr: syn::Expr) -> syn::Expr {
     acc
 }
 
-fn add_bounds(original: &Generics, generics: &mut Generics) {
-    let bounds = original.type_params().map(|param| {
-        let id = &param.ident;
-        parse_quote!(#id: swim_common::form::structural::read::recognizer::RecognizerReadable)
-    });
-    let where_clause = generics.make_where_clause();
-    for bound in bounds.into_iter() {
-        where_clause.predicates.push(bound);
-    }
-}
-
 struct HeaderSelectIndexFn<'a> {
     tag_body: Option<&'a FieldModel<'a>>,
     header_fields: &'a [&'a FieldModel<'a>],
@@ -1471,10 +1469,10 @@ impl<'a> ToTokens for HeaderFeedFn<'a> {
     }
 }
 
-/// If the record has fields lifted into its header, as separate recognizer is required (reading
-/// the header is ambiguous as the items can be flattened into the attribute or not which requires
-/// two copies of the recognizer to be run in paralell). This subsidiary recognizer requires its
-/// own vtable. This generates the functions required to populate that table.
+/// If the record has fields lifted into its header, a separate recognizer is required (reading
+/// the header is ambiguous as the items can be flattened into the attribute, or not, which requires
+/// two copies of the recognizer to be run in parallel). This subsidiary recognizer requires its
+/// own v-table. This generates the functions required to populate that table.
 struct HeaderRecognizerFns<'a> {
     target: &'a syn::Type,
     tag_body: Option<&'a FieldModel<'a>>,

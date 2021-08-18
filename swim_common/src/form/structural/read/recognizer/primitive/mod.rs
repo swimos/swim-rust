@@ -62,6 +62,12 @@ impl Recognizer for I32Recognizer {
             ReadEvent::Number(NumericValue::UInt(n)) => {
                 Some(i32::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
             }
+            ReadEvent::Number(NumericValue::BigInt(n)) => {
+                Some(i32::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
+            }
+            ReadEvent::Number(NumericValue::BigUint(n)) => {
+                Some(i32::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
+            }
             ow => Some(Err(
                 ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::Int32))
             )),
@@ -78,6 +84,12 @@ impl Recognizer for I64Recognizer {
         match input {
             ReadEvent::Number(NumericValue::Int(n)) => Some(Ok(n)),
             ReadEvent::Number(NumericValue::UInt(n)) => {
+                Some(i64::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
+            }
+            ReadEvent::Number(NumericValue::BigInt(n)) => {
+                Some(i64::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
+            }
+            ReadEvent::Number(NumericValue::BigUint(n)) => {
                 Some(i64::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
             }
             ow => Some(Err(
@@ -100,6 +112,12 @@ impl Recognizer for U32Recognizer {
             ReadEvent::Number(NumericValue::UInt(n)) => {
                 Some(u32::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
             }
+            ReadEvent::Number(NumericValue::BigInt(n)) => {
+                Some(u32::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
+            }
+            ReadEvent::Number(NumericValue::BigUint(n)) => {
+                Some(u32::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
+            }
             ow => Some(Err(
                 ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt32))
             )),
@@ -118,6 +136,12 @@ impl Recognizer for U64Recognizer {
                 Some(u64::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
             }
             ReadEvent::Number(NumericValue::UInt(n)) => Some(Ok(n)),
+            ReadEvent::Number(NumericValue::BigInt(n)) => {
+                Some(u64::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
+            }
+            ReadEvent::Number(NumericValue::BigUint(n)) => {
+                Some(u64::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
+            }
             ow => Some(Err(
                 ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
             )),
@@ -138,11 +162,11 @@ impl Recognizer for UsizeRecognizer {
             ReadEvent::Number(NumericValue::UInt(n)) => {
                 Some(usize::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
             }
-            ReadEvent::Number(NumericValue::BigUint(n)) => {
-                Some(n.to_usize().ok_or(ReadError::NumberOutOfRange))
-            }
             ReadEvent::Number(NumericValue::BigInt(n)) => {
-                Some(n.to_usize().ok_or(ReadError::NumberOutOfRange))
+                Some(usize::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
+            }
+            ReadEvent::Number(NumericValue::BigUint(n)) => {
+                Some(usize::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
             }
             ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                 ExpectedEvent::ValueEvent(ValueKind::UInt32),
@@ -201,6 +225,14 @@ impl Recognizer for F64Recognizer {
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ReadEvent::Number(NumericValue::Float(x)) => Some(Ok(x)),
+            ReadEvent::Number(NumericValue::Int(n)) => Some(Ok(n as f64)),
+            ReadEvent::Number(NumericValue::UInt(n)) => Some(Ok(n as f64)),
+            ReadEvent::Number(NumericValue::BigInt(n)) => {
+                Some(n.to_f64().ok_or(ReadError::NumberOutOfRange))
+            }
+            ReadEvent::Number(NumericValue::BigUint(n)) => {
+                Some(n.to_f64().ok_or(ReadError::NumberOutOfRange))
+            }
             ow => Some(Err(
                 ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::Float64))
             )),

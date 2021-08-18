@@ -141,10 +141,12 @@ impl<'a, 'b> PrimitiveWriter for StructurePrinter<'a, 'b> {
 
     fn write_f64(self, value: f64) -> Result<Self::Repr, Self::Error> {
         let StructurePrinter { fmt, has_attr, .. } = self;
+        let mut buffer = ryu::Buffer::new();
+        let float_string = buffer.format(value);
         if has_attr {
-            write!(fmt, " {:e}", value)
+            write!(fmt, " {}", float_string)
         } else {
-            write!(fmt, "{:e}", value)
+            write!(fmt, "{}", float_string)
         }
     }
 

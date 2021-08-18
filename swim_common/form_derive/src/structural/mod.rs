@@ -149,3 +149,15 @@ fn enum_derive_structural_readable(
     let derive = DeriveStructuralReadable(segregated, generics);
     Ok(derive.into_token_stream())
 }
+
+/// For each type parameter in the orignal generics add a type constraint to the copy.
+fn add_bounds(original: &Generics, generics: &mut Generics, bound: syn::TraitBound) {
+    let bounds = original.type_params().map(|param| {
+        let id = &param.ident;
+        parse_quote!(#id: #bound)
+    });
+    let where_clause = generics.make_where_clause();
+    for bound in bounds.into_iter() {
+        where_clause.predicates.push(bound);
+    }
+}

@@ -28,7 +28,7 @@ use syn::{Field, Ident, Lit, Meta, NestedMeta, Type};
 use utilities::validation::Validation;
 
 /// Describes how to extract a field from a struct.
-pub enum FieldIndex<'a> {
+pub enum FieldSelector<'a> {
     ///Field in a labelled struct (identified by name).
     Named(&'a Ident),
     ///Field in a tuple struct (identified by its index).
@@ -36,20 +36,20 @@ pub enum FieldIndex<'a> {
 }
 
 // Consistently gives the same name to a given field wherever it is referred to.
-impl<'a> ToTokens for FieldIndex<'a> {
+impl<'a> ToTokens for FieldSelector<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
-            FieldIndex::Named(id) => id.to_tokens(tokens),
-            FieldIndex::Ordinal(i) => format_ident!("value_{}", *i).to_tokens(tokens),
+            FieldSelector::Named(id) => id.to_tokens(tokens),
+            FieldSelector::Ordinal(i) => format_ident!("value_{}", *i).to_tokens(tokens),
         }
     }
 }
 
 /// Description of a field within a struct.
 pub struct FieldModel<'a> {
-    /// Means to index the field from an instance of the struct.
-    pub name: FieldIndex<'a>,
-    /// Definition ordinal of the field within the struct.
+    /// Means to select the field from an instance of the struct.
+    pub selector: FieldSelector<'a>,
+    /// Ordinal of the field within the struct, in order of definition.
     pub ordinal: usize,
     /// Optional transformation for the name of the type for the tag attribute.
     pub transform: Option<NameTransform>,
@@ -74,12 +74,12 @@ impl<'a> ToTokens for ResolvedName<'a> {
                 NameTransform::Rename(name) => proc_macro2::Literal::string(&name),
             }
         } else {
-            match field.name {
-                FieldIndex::Ordinal(i) => {
+            match field.selector {
+                FieldSelector::Ordinal(i) => {
                     let string = format!("value_{}", i);
                     proc_macro2::Literal::string(&string)
                 }
-                FieldIndex::Named(id) => proc_macro2::Literal::string(&id.to_string()),
+                FieldSelector::Named(id) => proc_macro2::Literal::string(&id.to_string()),
             }
         }
         .to_tokens(tokens);
@@ -98,7 +98,7 @@ impl<'a> TaggedFieldModel<'a> {
         !matches!(
             &self.model,
             FieldModel {
-                name: FieldIndex::Ordinal(_),
+                selector: FieldSelector::Ordinal(_),
                 transform: None,
                 ..
             }
@@ -194,10 +194,10 @@ impl<'a> ValidateFrom<FieldWithIndex<'a>> for TaggedFieldModel<'a> {
              }| {
                 let model = TaggedFieldModel {
                     model: FieldModel {
-                        name: ident
+                        selector: ident
                             .as_ref()
-                            .map(FieldIndex::Named)
-                            .unwrap_or_else(|| FieldIndex::Ordinal(i)),
+                            .map(FieldSelector::Named)
+                            .unwrap_or_else(|| FieldSelector::Ordinal(i)),
                         ordinal: i,
                         transform,
                         field_ty: ty,

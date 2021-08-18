@@ -22,7 +22,7 @@ fn derive_enum_tag_empty() {
     #[derive(Tag, PartialEq, Eq, Debug)]
     enum TagEnum {}
 
-    assert_eq!(TagEnum::UNIVERSE, &EMPTY);
+    assert_eq!(TagEnum::VARIANTS, &EMPTY);
 }
 
 #[test]
@@ -32,14 +32,14 @@ fn derive_enum_tag_one_option() {
         First,
     }
 
-    assert_eq!(TagEnum::UNIVERSE, &["First"]);
+    assert_eq!(TagEnum::VARIANTS, &["First"]);
 
     let first = TagEnum::First;
     assert_eq!(first.as_ref(), "First");
-    assert_eq!(TagEnum::try_from_str("First"), Ok(TagEnum::First));
+    assert_eq!(TagEnum::from_str("First"), Ok(TagEnum::First));
 
     assert_eq!(
-        TagEnum::try_from_str("Other"),
+        TagEnum::from_str("Other"),
         Err(Text::new("Possible values are: 'First'."))
     )
 }
@@ -52,18 +52,18 @@ fn derive_enum_tag_two_options() {
         Second,
     }
 
-    assert_eq!(TagEnum::UNIVERSE, &["First", "Second"]);
+    assert_eq!(TagEnum::VARIANTS, &["First", "Second"]);
 
     let first = TagEnum::First;
     assert_eq!(first.as_ref(), "First");
-    assert_eq!(TagEnum::try_from_str("First"), Ok(TagEnum::First));
+    assert_eq!(TagEnum::from_str("First"), Ok(TagEnum::First));
 
     let second = TagEnum::Second;
     assert_eq!(second.as_ref(), "Second");
-    assert_eq!(TagEnum::try_from_str("Second"), Ok(TagEnum::Second));
+    assert_eq!(TagEnum::from_str("Second"), Ok(TagEnum::Second));
 
     assert_eq!(
-        TagEnum::try_from_str("Other"),
+        TagEnum::from_str("Other"),
         Err(Text::new("Possible values are: 'First', 'Second'."))
     )
 }

@@ -89,19 +89,25 @@ impl<'a> ToTokens for DeriveTag<UnitEnum<'a>> {
                 }
             }
 
+            impl core::str::FromStr for #name {
+                type Err = swim_common::model::text::Text;
+
+                fn from_str(txt: &str) -> Result<Self, Self::Err> {
+                    match txt {
+                        #(#str_as_var,)*
+                        _ => core::result::Result::Err(swim_common::model::text::Text::new(#err_lit)),
+                    }
+                }
+            }
+
             const _: () = {
 
                 const VARIANT_NAMES: [&str; #num_vars] = [#(#literals),*];
 
+                #[automatically_derived]
                 impl swim_common::form::structural::Tag for #name {
-                    fn try_from_str(txt: &str) -> core::result::Result<Self, swim_common::model::text::Text> {
-                        match txt {
-                            #(#str_as_var,)*
-                            _ => core::result::Result::Err(swim_common::model::text::Text::new(#err_lit)),
-                        }
-                    }
 
-                    const UNIVERSE: &'static [&'static str] = &VARIANT_NAMES;
+                    const VARIANTS: &'static [&'static str] = &VARIANT_NAMES;
                 }
 
             };

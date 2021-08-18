@@ -15,7 +15,7 @@
 use crate::quote::TokenStreamExt;
 use crate::structural::model::enumeration::{EnumModel, SegregatedEnumModel};
 use crate::structural::model::field::{
-    BodyFields, FieldIndex, FieldModel, HeaderFields, SegregatedFields,
+    BodyFields, FieldModel, FieldSelector, HeaderFields, SegregatedFields,
 };
 use crate::structural::model::record::{SegregatedStructModel, StructModel};
 use either::Either;
@@ -28,15 +28,23 @@ use utilities::CompoundTypeKind;
 /// [`SegregatedEnumModel`].
 pub struct DeriveStructuralWritable<'a, S>(pub S, pub &'a Generics);
 
-struct Destructure<'a>(&'a StructModel<'a>, bool);
+/// Context for generating a destructuring pattern for a struct or enum variant.
+enum DestructureContext {
+    /// Let binding for a struct.
+    LetBinding,
+    /// Variant match for an enum.
+    VariantMatch,
+}
+
+struct Destructure<'a>(&'a StructModel<'a>, DestructureContext);
 
 impl<'a> Destructure<'a> {
     fn assign(model: &'a StructModel<'a>) -> Self {
-        Destructure(model, false)
+        Destructure(model, DestructureContext::LetBinding)
     }
 
     fn variant_match(model: &'a StructModel<'a>) -> Self {
-        Destructure(model, true)
+        Destructure(model, DestructureContext::VariantMatch)
     }
 }
 
@@ -51,7 +59,11 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedEnumModel<'a>> {
         let writer_trait = make_writer_trait();
 
         let mut new_generics = (*generics).clone();
-        add_bounds(*generics, &mut new_generics);
+        super::add_bounds(
+            *generics,
+            &mut new_generics,
+            parse_quote!(swim_common::form::structural::write::StructuralWritable),
+        );
 
         let (impl_lst, ty_params, where_clause) = new_generics.split_for_impl();
 
@@ -147,7 +159,11 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedStructModel<'a>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let DeriveStructuralWritable(inner, generics) = self;
         let mut new_generics = (*generics).clone();
-        add_bounds(*generics, &mut new_generics);
+        super::add_bounds(
+            *generics,
+            &mut new_generics,
+            parse_quote!(swim_common::form::structural::write::StructuralWritable),
+        );
 
         let (impl_lst, ty_params, where_clause) = new_generics.split_for_impl();
 
@@ -199,7 +215,7 @@ fn make_writer_trait() -> Path {
 }
 
 fn write_attr_ref(field: &FieldModel) -> TokenStream {
-    let field_index = &field.name;
+    let field_index = &field.selector;
     let literal_name = field.resolve_name();
     quote! {
         rec_writer = rec_writer.write_attr(std::borrow::Cow::Borrowed(#literal_name), #field_index)?;
@@ -207,7 +223,7 @@ fn write_attr_ref(field: &FieldModel) -> TokenStream {
 }
 
 fn write_attr_into(field: &FieldModel) -> TokenStream {
-    let field_index = &field.name;
+    let field_index = &field.selector;
     let literal_name = field.resolve_name();
     quote! {
         rec_writer = rec_writer.write_attr_into(#literal_name, #field_index)?;
@@ -215,7 +231,7 @@ fn write_attr_into(field: &FieldModel) -> TokenStream {
 }
 
 fn write_slot_ref(field: &FieldModel) -> TokenStream {
-    let field_index = &field.name;
+    let field_index = &field.selector;
     let literal_name = field.resolve_name();
     quote! {
         body_writer = body_writer.write_slot(&#literal_name, #field_index)?;
@@ -223,21 +239,21 @@ fn write_slot_ref(field: &FieldModel) -> TokenStream {
 }
 
 fn write_value_ref(field: &FieldModel) -> TokenStream {
-    let field_index = &field.name;
+    let field_index = &field.selector;
     quote! {
         body_writer = body_writer.write_value(#field_index)?;
     }
 }
 
 fn write_value_into(field: &FieldModel) -> TokenStream {
-    let field_index = &field.name;
+    let field_index = &field.selector;
     quote! {
         body_writer = body_writer.write_value_into(#field_index)?;
     }
 }
 
 fn write_slot_into(field: &FieldModel) -> TokenStream {
-    let field_index = &field.name;
+    let field_index = &field.selector;
     let literal_name = field.resolve_name();
     quote! {
         body_writer = body_writer.write_slot_into(#literal_name, #field_index)?;
@@ -258,7 +274,7 @@ impl<'a> ToTokens for WriteWithFn<'a> {
         } = header;
 
         let tag = if let Some(fld) = header.tag_name {
-            let name = &fld.name;
+            let name = &fld.selector;
             quote! {
                 <core::convert::AsRef<str>>::as_ref(#name)
             }
@@ -268,7 +284,7 @@ impl<'a> ToTokens for WriteWithFn<'a> {
 
         let tag_statement = if header_fields.is_empty() {
             if let Some(tag_field) = tag_body.as_ref() {
-                let field_index = &tag_field.name;
+                let field_index = &tag_field.selector;
                 quote! {
                     rec_writer = rec_writer.write_attr(std::borrow::Cow::Borrowed(#tag), #field_index)?;
                 }
@@ -288,7 +304,7 @@ impl<'a> ToTokens for WriteWithFn<'a> {
 
         let body_block = match body {
             BodyFields::ReplacedBody(field) => {
-                let field_index = &field.name;
+                let field_index = &field.selector;
                 quote! {
                      rec_writer.delegate(#field_index)
                 }
@@ -340,7 +356,7 @@ fn make_header(
 
     let base_expr = quote!(swim_common::form::structural::generic::header::NoSlots);
     let header_expr = header_fields.iter().rev().fold(base_expr, |expr, field| {
-        let field_index = &field.name;
+        let field_index = &field.selector;
         let literal_name = field.resolve_name();
         quote! {
             #expr.#prepend(#literal_name, #field_index)
@@ -352,7 +368,7 @@ fn make_header(
         } else {
             quote!(with_body)
         };
-        let field_index = &body.name;
+        let field_index = &body.selector;
         quote! {
             #header_expr.#with_body(#field_index)
         }
@@ -378,7 +394,7 @@ impl<'a> ToTokens for WriteIntoFn<'a> {
 
         let tag = if let Some(fld) = header.tag_name {
             let ty = fld.field_ty;
-            let name = &fld.name;
+            let name = &fld.selector;
             quote!(<#ty as core::convert::AsRef<str>>::as_ref(&#name))
         } else {
             inner.resolve_name().to_token_stream()
@@ -386,7 +402,7 @@ impl<'a> ToTokens for WriteIntoFn<'a> {
 
         let tag_statement = if header_fields.is_empty() {
             if let Some(tag_field) = tag_body.as_ref() {
-                let field_index = &tag_field.name;
+                let field_index = &tag_field.selector;
                 quote! {
                     rec_writer = rec_writer.write_attr_into(#tag, #field_index)?;
                 }
@@ -406,7 +422,7 @@ impl<'a> ToTokens for WriteIntoFn<'a> {
 
         let body_block = match body {
             BodyFields::ReplacedBody(field) => {
-                let field_index = &field.name;
+                let field_index = &field.selector;
                 quote! {
                      rec_writer.delegate_into(#field_index)
                 }
@@ -451,12 +467,12 @@ impl<'a> ToTokens for Destructure<'a> {
             StructModel {
                 name, fields_model, ..
             },
-            is_match,
+            context,
         ) = self;
-        let indexers = fields_model.fields.iter().map(|f| &f.model.name);
+        let indexers = fields_model.fields.iter().map(|f| &f.model.selector);
         match fields_model.type_kind {
             CompoundTypeKind::Unit => {
-                if *is_match {
+                if matches!(context, DestructureContext::VariantMatch) {
                     tokens.append_all(name.to_token_stream());
                 } else {
                     let pat: Pat = parse_quote!(_);
@@ -478,9 +494,9 @@ impl<'a> ToTokens for Destructure<'a> {
 fn num_attributes<'a>(model: &'a SegregatedStructModel<'a>) -> TokenStream {
     let base_attrs = model.fields.header.attributes.len() + 1;
     if let BodyFields::ReplacedBody(fld) = model.fields.body {
-        let body_fld = match &fld.name {
-            FieldIndex::Named(id) => quote!(&self.#id),
-            FieldIndex::Ordinal(i) => {
+        let body_fld = match &fld.selector {
+            FieldSelector::Named(id) => quote!(&self.#id),
+            FieldSelector::Ordinal(i) => {
                 let idx = syn::Index::from(*i);
                 quote!(&self.#idx)
             }
@@ -494,7 +510,7 @@ fn num_attributes<'a>(model: &'a SegregatedStructModel<'a>) -> TokenStream {
 fn num_attributes_case<'a>(model: &'a SegregatedStructModel<'a>, by_ref: bool) -> TokenStream {
     let base_attrs = model.fields.header.attributes.len() + 1;
     if let BodyFields::ReplacedBody(fld) = model.fields.body {
-        let name = &fld.name;
+        let name = &fld.selector;
         let body_fld = if by_ref {
             quote!(#name)
         } else {
@@ -518,10 +534,10 @@ impl<'a> ToTokens for NumAttrsEnum<'a> {
             let var_name = v.inner.name;
             let base_attrs = v.fields.header.attributes.len() + 1;
             if let BodyFields::ReplacedBody(fld) = v.fields.body {
-                let fld_name = &fld.name;
+                let fld_name = &fld.selector;
                 let pat = match fld_name {
-                    FieldIndex::Named(id) =>  quote!(#enum_name::#var_name { #id, .. }),
-                    FieldIndex::Ordinal(i) => {
+                    FieldSelector::Named(id) =>  quote!(#enum_name::#var_name { #id, .. }),
+                    FieldSelector::Ordinal(i) => {
                         let ignore = (0..*i).map(|_| quote!(_));
                         quote!(#enum_name::#var_name(#(#ignore,)* #fld_name, ..))
                     }
@@ -541,16 +557,5 @@ impl<'a> ToTokens for NumAttrsEnum<'a> {
                 #(#cases,)*
             }
         });
-    }
-}
-
-fn add_bounds(original: &Generics, generics: &mut Generics) {
-    let bounds = original.type_params().map(|param| {
-        let id = &param.ident;
-        parse_quote!(#id: swim_common::form::structural::write::StructuralWritable)
-    });
-    let where_clause = generics.make_where_clause();
-    for bound in bounds.into_iter() {
-        where_clause.predicates.push(bound);
     }
 }

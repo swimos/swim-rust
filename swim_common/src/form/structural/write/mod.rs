@@ -103,7 +103,7 @@ pub trait PrimitiveWriter: Sized {
     fn write_blob(self, value: &[u8]) -> Result<Self::Repr, Self::Error>;
 }
 
-/// Interpreter into which the strucutre of a value can be described, producing either
+/// Interpreter into which the structure of a value can be described, producing either
 /// some some result or an error. The canonical implementation is [`ValueInterpreter`]
 /// which will realize the structure as a [`Value`] tree.
 pub trait StructuralWriter: PrimitiveWriter {
@@ -572,14 +572,14 @@ impl StructuralWritable for Url {
         &self,
         writer: W,
     ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
-        writer.write_text(self.to_string())
+        writer.write_text(self.as_str())
     }
 
     fn write_into<W: StructuralWriter>(
         self,
         writer: W,
     ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
-        writer.write_text(self.to_string())
+        writer.write_text(self.as_str())
     }
 
     fn num_attributes(&self) -> usize {

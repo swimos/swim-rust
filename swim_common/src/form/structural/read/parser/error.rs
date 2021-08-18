@@ -67,7 +67,10 @@ impl Display for ParseError {
                 "Failed to parse the input. rule = '{:?}' at ({}:{}).",
                 kind, line, column
             ),
-            ParseError::InvalidEventStream => write!(f, "Parser internal error."),
+            ParseError::InvalidEventStream => write!(
+                f,
+                "The stream of events did not constitute a valid record in the Swim model."
+            ),
         }
     }
 }

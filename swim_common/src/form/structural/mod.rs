@@ -26,6 +26,7 @@ pub mod write;
 #[doc(hidden)]
 #[allow(unused_imports)]
 pub use form_derive::Tag;
+use std::str::FromStr;
 
 /// A tag for a field in a form. When deriving the `Form` trait, a field that is annotated with
 /// `#[form(tag)]` will be converted into a string and replace the original structure's name.
@@ -75,11 +76,7 @@ pub use form_derive::Tag;
 /// ```
 ///
 /// Tags can only be derived for enumerations and no variants may contain fields.
-pub trait Tag: Sized + AsRef<str> {
-    /// Try to parse an instance of this type from its string representation. The
-    /// error case is an error message to be incorporated into other errors.
-    fn try_from_str(txt: &str) -> Result<Self, Text>;
-
+pub trait Tag: Sized + AsRef<str> + FromStr<Err = Text> {
     /// All possible string representations for this type.
-    const UNIVERSE: &'static [&'static str];
+    const VARIANTS: &'static [&'static str];
 }
