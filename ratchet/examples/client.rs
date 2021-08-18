@@ -14,6 +14,8 @@
 
 #[allow(warnings)]
 use futures::SinkExt;
+use futures::StreamExt;
+use ratchet::owned::Message;
 use ratchet::{owned::WebSocketClientBuilder, NoExtProxy};
 use tokio::net::TcpStream;
 
@@ -22,10 +24,20 @@ async fn main() {
     let builder = WebSocketClientBuilder::for_extension(NoExtProxy);
 
     let stream = TcpStream::connect("127.0.0.1:8080").await.unwrap();
-    let result = builder.subscribe(stream, "wss://echo.websocket.org").await;
+    let result = builder.subscribe(stream, "127.0.0.1:8080").await;
 
     match result {
-        Ok(_) => println!("Ok"),
+        Ok((mut socket, _)) => {
+            for i in 0..10 {
+                assert!(socket.send(Message::Text(i.to_string())).await.is_ok());
+            }
+            for i in 0..10 {
+                let rxd = socket.next().await.unwrap().unwrap();
+                assert_eq!(rxd, Message::Text(i.to_string()));
+            }
+
+            socket.send(Message::Close(None)).await.unwrap();
+        }
         Err(e) => println!("{}", e),
     }
 }

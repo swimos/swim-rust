@@ -27,7 +27,7 @@ pub use builder::{WebSocketClientBuilder, WebSocketServerBuilder};
 use crate::codec::Codec;
 use crate::errors::Error;
 use crate::handshake::{exec_client_handshake, HandshakeResult, ProtocolRegistry};
-use crate::protocol::frame::Message;
+pub use crate::protocol::frame::Message;
 use crate::{
     Deflate, Extension, ExtensionProvider, Request, Role, WebSocketConfig, WebSocketStream,
 };
