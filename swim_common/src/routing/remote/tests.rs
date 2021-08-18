@@ -15,10 +15,11 @@
 use crate::model::Value;
 use crate::request::Request;
 use crate::routing::error::{ConnectionError, IoError, ResolutionError, ResolutionErrorKind};
+use crate::routing::remote::pending::PendingRequest;
 use crate::routing::remote::state::{DeferredResult, Event, RemoteTasksState};
-use crate::routing::remote::table::{RoutingTable, SchemeHostPort};
+use crate::routing::remote::table::{BidirectionalRegistrator, RoutingTable, SchemeHostPort};
 use crate::routing::remote::{
-    ConnectionDropped, RawRoute, RemoteRoutingRequest, ResolutionRequest, Scheme, SchemeSocketAddr,
+    ConnectionDropped, RawRoute, RemoteRoutingRequest, Scheme, SchemeSocketAddr,
     SchemeSocketAddrIt, Unresolvable,
 };
 use crate::routing::{RoutingAddr, TaggedEnvelope};
@@ -64,12 +65,7 @@ impl FakeRemoteState {
 #[derive(Debug, PartialEq, Eq)]
 enum StateMutation {
     Stop,
-    Spawn(
-        SchemeSocketAddr,
-        FakeWebsocket,
-        Option<SchemeHostPort>,
-        bool,
-    ),
+    Spawn(SchemeSocketAddr, FakeWebsocket, Option<SchemeHostPort>),
     CheckAddr(SchemeHostPort, SchemeSocketAddr),
     DeferHandshake(FakeSocket, SchemeSocketAddr),
     DeferConnect(SchemeHostPort, SchemeSocketAddr, Vec<SchemeSocketAddr>),
@@ -91,11 +87,10 @@ impl RemoteTasksState for FakeRemoteState {
         sock_addr: SchemeSocketAddr,
         ws_stream: Self::WebSocket,
         host: Option<SchemeHostPort>,
-        server: bool,
     ) {
         self.recording
             .get_mut()
-            .push(StateMutation::Spawn(sock_addr, ws_stream, host, server))
+            .push(StateMutation::Spawn(sock_addr, ws_stream, host))
     }
 
     fn check_socket_addr(
@@ -133,11 +128,14 @@ impl RemoteTasksState for FakeRemoteState {
         ));
     }
 
-    fn defer_dns_lookup(&mut self, target: SchemeHostPort, request: ResolutionRequest) {
+    fn defer_dns_lookup(&mut self, target: SchemeHostPort, request: PendingRequest) {
         self.recording
             .get_mut()
             .push(StateMutation::DeferDns(target));
-        assert!(request.send_ok(RESP).is_ok());
+
+        if let PendingRequest::Resolution(resolution_request) = request {
+            assert!(resolution_request.send_ok(RESP).is_ok());
+        }
     }
 
     fn fail_connection(&mut self, host: &SchemeHostPort, error: ConnectionError) {
@@ -148,6 +146,10 @@ impl RemoteTasksState for FakeRemoteState {
 
     fn table_resolve(&self, addr: RoutingAddr) -> Option<RawRoute> {
         self.table.resolve(addr)
+    }
+
+    fn table_resolve_bidirectional(&self, addr: RoutingAddr) -> Option<BidirectionalRegistrator> {
+        self.table.resolve_bidirectional(addr)
     }
 
     fn table_try_resolve(&self, target: &SchemeHostPort) -> Option<RoutingAddr> {
@@ -205,6 +207,9 @@ fn make_env(addr: RoutingAddr) -> TaggedEnvelope {
     )
 }
 
+//Todo dm
+// bidirectional_in_table ... etc,
+
 #[tokio::test]
 async fn transition_request_endpoint_in_table() {
     let sa = sock_addr();
@@ -212,11 +217,14 @@ async fn transition_request_endpoint_in_table() {
     let envelope = make_env(addr);
     let (req_tx, req_rx) = oneshot::channel();
     let (route_tx, mut route_rx) = mpsc::channel(8);
+    let (bidirectional_tx, _bidirectional_rx) = mpsc::channel(8);
 
     let request = Request::new(req_tx);
 
     let mut state = FakeRemoteState::default();
-    state.table.insert(addr, None, sa, route_tx);
+    state
+        .table
+        .insert(addr, None, sa, route_tx, bidirectional_tx);
     let mut result = Ok(());
 
     let event = Event::Request(RemoteRoutingRequest::Endpoint { addr, request });
@@ -265,6 +273,7 @@ async fn transition_request_resolve_in_table() {
     let host = "swim://my_host:80".parse().unwrap();
     let (req_tx, req_rx) = oneshot::channel();
     let (route_tx, _route_rx) = mpsc::channel(8);
+    let (bidirectional_tx, _bidirectional_rx) = mpsc::channel(8);
 
     let request = Request::new(req_tx);
 
@@ -274,6 +283,7 @@ async fn transition_request_resolve_in_table() {
         Some(SchemeHostPort::new(Scheme::Ws, "my_host".to_string(), 80)),
         sa,
         route_tx,
+        bidirectional_tx,
     );
     let mut result = Ok(());
 
@@ -320,11 +330,14 @@ fn transition_deferred_dns_good_in_table() {
     let sa2 = sock_addr2();
     let host = SchemeHostPort::new(Scheme::Wss, "my_host".to_string(), 80);
     let (route_tx, _route_rx) = mpsc::channel(8);
+    let (bidirectional_tx, _bidirectional_rx) = mpsc::channel(8);
 
     let dns_response = Ok(vec![sa1, sa2].into_iter());
 
     let mut state = FakeRemoteState::default();
-    state.table.insert(addr, Some(host.clone()), sa1, route_tx);
+    state
+        .table
+        .insert(addr, Some(host.clone()), sa1, route_tx, bidirectional_tx);
     let mut result = Ok(());
 
     let event = Event::Deferred(DeferredResult::Dns {
@@ -427,7 +440,6 @@ fn transition_deferred_server_handshake_success() {
         sa,
         FakeWebsocket::new("ws"),
         None,
-        true,
     )]);
     assert!(result.is_ok());
 }
@@ -452,7 +464,6 @@ fn transition_deferred_client_handshake_success() {
         sa,
         FakeWebsocket::new("ws"),
         Some(host),
-        false,
     )]);
     assert!(result.is_ok());
 }

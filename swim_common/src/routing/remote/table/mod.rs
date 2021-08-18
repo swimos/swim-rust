@@ -233,6 +233,18 @@ pub struct BidirectionalRegistrator {
 }
 
 impl BidirectionalRegistrator {
+    pub fn new(
+        sender: TaggedSender,
+        receiver_request_tx: mpsc::Sender<BidirectionalReceiverRequest>,
+        on_drop: promise::Receiver<ConnectionDropped>,
+    ) -> Self {
+        BidirectionalRegistrator {
+            sender,
+            receiver_request_tx,
+            on_drop,
+        }
+    }
+
     pub async fn register(self) -> Result<BidirectionalRoute, ResolutionError> {
         let (tx, rx) = oneshot::channel();
         self.receiver_request_tx

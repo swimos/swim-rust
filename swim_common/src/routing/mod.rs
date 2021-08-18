@@ -14,10 +14,10 @@
 
 use crate::request::Request;
 use crate::routing::error::{
-    ConnectionError, HttpError, NoAgentAtRoute, ResolutionError, RouterError, RoutingError,
-    SendError, Unresolvable,
+    ConnectionError, NoAgentAtRoute, ResolutionError, RouterError, RoutingError, SendError,
+    Unresolvable,
 };
-use crate::routing::remote::{RawRoute, SchemeSocketAddr};
+use crate::routing::remote::RawRoute;
 use crate::routing::ws::WsMessage;
 use crate::sink::item::ItemSink;
 use crate::warp::envelope::{Envelope, OutgoingLinkMessage};
@@ -283,43 +283,4 @@ pub enum PlaneRoutingRequest {
     },
     /// Get all of the active routes for the plane.
     Routes(RoutesRequest),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Origin {
-    Local(RelativeUri),
-    Remote(SchemeSocketAddr),
-}
-
-impl Origin {
-    /// Returns the part of the path used as a key for retrieving the corresponding
-    /// connection manager.
-    ///
-    /// A Url is used for remote locations, and Node for local ones.
-    pub fn get_manager_key(&self) -> Result<String, ConnectionError> {
-        match self {
-            Origin::Local(relative_uri) => Ok(relative_uri.to_string()),
-
-            Origin::Remote(scheme_socket_addr) => {
-                let addr = scheme_socket_addr.to_string();
-
-                Ok(url::Url::parse(&addr)
-                    .map_err(|_| ConnectionError::Http(HttpError::invalid_url(addr, None)))?
-                    .to_string())
-            }
-        }
-    }
-}
-
-impl Display for Origin {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Origin::Local(relative_uri) => {
-                write!(f, "{}", relative_uri.to_string())
-            }
-            Origin::Remote(schema_socket_addr) => {
-                write!(f, "{}", schema_socket_addr.to_string())
-            }
-        }
-    }
 }

@@ -19,7 +19,7 @@ use crate::routing::remote::table::SchemeHostPort;
 use crate::routing::remote::{ConnectionDropped, Scheme, SchemeSocketAddr};
 use crate::routing::remote::{ExternalConnections, Listener};
 use crate::routing::ws::{CloseReason, JoinedStreamSink, WsConnections, WsMessage};
-use crate::routing::{Origin, RouterError};
+use crate::routing::RouterError;
 use crate::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender};
 use futures::future::{ready, BoxFuture};
 use futures::io::ErrorKind;
@@ -82,6 +82,13 @@ impl Router for LocalRoutes {
             Err(ResolutionError::unresolvable(addr.to_string()))
         };
         ready(result).boxed()
+    }
+
+    fn resolve_bidirectional(
+        &mut self,
+        _host: Url,
+    ) -> BoxFuture<Result<crate::routing::BidirectionalRoute, ResolutionError>> {
+        unimplemented!()
     }
 
     fn lookup(

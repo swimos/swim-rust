@@ -63,6 +63,8 @@ async fn fake_resolution(
                         .is_ok());
                 }
             }
+            //Todo dm
+            RemoteRoutingRequest::Bidirectional { .. } => {}
         }
     }
 }
@@ -92,9 +94,9 @@ async fn resolve_remote_ok() {
     let fake_resolver = fake_resolution(req_rx, url.clone(), tx, stop_rx);
 
     let task = async move {
-        let result = router.lookup(Some(url), path(), None).await;
+        let result = router.lookup(Some(url), path()).await;
         assert_eq!(result, Ok(ADDR));
-        let result = router.resolve_sender(ADDR, None).await;
+        let result = router.resolve_sender(ADDR).await;
         assert!(result.is_ok());
         let Route { mut sender, .. } = result.unwrap();
         assert!(sender.send_item(envelope("a")).await.is_ok());
@@ -120,7 +122,7 @@ async fn resolve_remote_failure() {
 
     let task = async move {
         let other_addr = RoutingAddr::remote(56);
-        let result = router.resolve_sender(other_addr, None).await;
+        let result = router.resolve_sender(other_addr).await;
         let _expected = ResolutionError::unresolvable(other_addr.to_string());
 
         assert!(matches!(result, Err(_expected)));
@@ -144,7 +146,7 @@ async fn lookup_remote_failure() {
 
     let task = async move {
         let other_url = "swim://other:80".parse().unwrap();
-        let result = router.lookup(Some(other_url), path(), None).await;
+        let result = router.lookup(Some(other_url), path()).await;
         assert_eq!(
             result,
             Err(RouterError::ConnectionFailure(ConnectionError::Io(
@@ -172,11 +174,11 @@ async fn delegate_local_ok() {
     let fake_resolver = fake_resolution(req_rx, url.clone(), tx, stop_rx);
 
     let task = async move {
-        let result = router.lookup(None, path(), None).await;
+        let result = router.lookup(None, path()).await;
         assert!(result.is_ok());
         let local_addr = result.unwrap();
 
-        let result = router.resolve_sender(local_addr, None).await;
+        let result = router.resolve_sender(local_addr).await;
         assert!(result.is_ok());
         let Route { mut sender, .. } = result.unwrap();
         assert!(sender.send_item(envelope("a")).await.is_ok());
@@ -203,7 +205,7 @@ async fn resolve_local_err() {
 
     let task = async move {
         let local_addr = RoutingAddr::plane(0);
-        let result = router.resolve_sender(local_addr, None).await;
+        let result = router.resolve_sender(local_addr).await;
         let _expected = ResolutionError::unresolvable(local_addr.to_string());
 
         assert!(matches!(result, Err(_expected)));
@@ -227,7 +229,7 @@ async fn lookup_local_err() {
     let fake_resolver = fake_resolution(req_rx, url.clone(), tx, stop_rx);
 
     let task = async move {
-        let result = router.lookup(None, path(), None).await;
+        let result = router.lookup(None, path()).await;
         assert_eq!(result, Err(RouterError::NoAgentAtRoute(path())));
         drop(stop_tx);
     };

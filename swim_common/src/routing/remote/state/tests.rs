@@ -15,16 +15,17 @@
 use crate::request::Request;
 use crate::routing::error::{ConnectionError, IoError};
 use crate::routing::remote::config::ConnectionConfig;
+use crate::routing::remote::pending::PendingRequest;
 use crate::routing::remote::state::{
     DeferredResult, Event, RemoteConnectionChannels, RemoteConnections, RemoteTasksState, State,
 };
-use crate::routing::remote::table::SchemeHostPort;
+use crate::routing::remote::table::{BidirectionalRegistrator, SchemeHostPort};
 use crate::routing::remote::test_fixture::{
     ErrorMode, FakeConnections, FakeListener, FakeSocket, FakeWebsocket, FakeWebsockets,
     LocalRoutes,
 };
 use crate::routing::remote::{ConnectionDropped, Scheme, SchemeSocketAddr};
-use crate::routing::{CloseSender, RoutingAddr};
+use crate::routing::{CloseSender, RoutingAddr, TaggedSender};
 use futures::future::BoxFuture;
 use futures::io::ErrorKind;
 use std::collections::HashMap;
@@ -154,9 +155,12 @@ async fn connections_state_spawn_task() {
 
     let (req_tx, req_rx) = oneshot::channel();
 
-    connections.pending.add(host.clone(), Request::new(req_tx));
+    connections.pending.add(
+        host.clone(),
+        PendingRequest::Resolution(Request::new(req_tx)),
+    );
 
-    connections.spawn_task(sa, web_sock, Some(host.clone()), true);
+    connections.spawn_task(sa, web_sock, Some(host.clone()));
 
     assert_eq!(connections.spawner.len(), 1);
     let table = &connections.table;
@@ -303,7 +307,17 @@ async fn connections_state_defer_dns_good() {
 
     let (req_tx, req_rx) = oneshot::channel();
 
-    connections.defer_dns_lookup(target.clone(), Request::new(req_tx));
+    let (envelope_tx, _envelope_rx) = mpsc::channel(8);
+    let (request_tx, _request_rx) = mpsc::channel(8);
+    let (_drop_tx, drop_rx) = promise::promise();
+
+    let bidirectional_registrator =
+        BidirectionalRegistrator::new(TaggedSender::new(addr, envelope_tx), request_tx, drop_rx);
+
+    connections.defer_dns_lookup(
+        target.clone(),
+        PendingRequest::Resolution(Request::new(req_tx)),
+    );
 
     assert_eq!(connections.deferred.len(), 1);
 
@@ -326,7 +340,7 @@ async fn connections_state_defer_dns_good() {
 
     connections
         .pending
-        .send_ok(&target, RoutingAddr::remote(42));
+        .send_ok(&target, RoutingAddr::remote(42), bidirectional_registrator);
 
     let result = timeout(Duration::from_secs(5), req_rx).await;
     assert!(matches!(result, Ok(Ok(Ok(a))) if a == RoutingAddr::remote(42)));
@@ -345,10 +359,19 @@ async fn connections_state_defer_dns_failed() {
     } = make_state(addr, &ws, incoming_rx);
 
     let target = SchemeHostPort::new(Scheme::Ws, "my_host".to_string(), 80);
+    let (envelope_tx, _envelope_rx) = mpsc::channel(8);
+    let (request_tx, _request_rx) = mpsc::channel(8);
+    let (_drop_tx, drop_rx) = promise::promise();
+
+    let bidirectional_registrator =
+        BidirectionalRegistrator::new(TaggedSender::new(addr, envelope_tx), request_tx, drop_rx);
 
     let (req_tx, req_rx) = oneshot::channel();
 
-    connections.defer_dns_lookup(target.clone(), Request::new(req_tx));
+    connections.defer_dns_lookup(
+        target.clone(),
+        PendingRequest::Resolution(Request::new(req_tx)),
+    );
 
     assert_eq!(connections.deferred.len(), 1);
 
@@ -371,7 +394,7 @@ async fn connections_state_defer_dns_failed() {
 
     connections
         .pending
-        .send_ok(&target, RoutingAddr::remote(42));
+        .send_ok(&target, RoutingAddr::remote(42), bidirectional_registrator);
 
     let result = timeout(Duration::from_secs(5), req_rx).await;
     assert!(matches!(result, Ok(Ok(Ok(a))) if a == RoutingAddr::remote(42)));
@@ -391,9 +414,10 @@ async fn connections_failure_triggers_pending() {
 
     let target = SchemeHostPort::new(Scheme::Ws, "my_host".to_string(), 80);
     let (req_tx, req_rx) = oneshot::channel();
-    connections
-        .pending
-        .add(target.clone(), Request::new(req_tx));
+    connections.pending.add(
+        target.clone(),
+        PendingRequest::Resolution(Request::new(req_tx)),
+    );
 
     connections.fail_connection(
         &target,
@@ -422,14 +446,23 @@ async fn connections_check_in_table_clears_pending() {
     let (req_tx, req_rx) = oneshot::channel();
     let (task_tx, _task_rx) = mpsc::channel(8);
 
-    connections.pending.add(host2.clone(), Request::new(req_tx));
+    let (bidirectional_request_tx, _bidirectional_request_rx) = mpsc::channel(8);
+
+    connections.pending.add(
+        host2.clone(),
+        PendingRequest::Resolution(Request::new(req_tx)),
+    );
 
     let entry_addr = RoutingAddr::plane(5);
     let sa = sock_addr();
 
-    connections
-        .table
-        .insert(entry_addr, Some(host1), sa, task_tx);
+    connections.table.insert(
+        entry_addr,
+        Some(host1),
+        sa,
+        task_tx,
+        bidirectional_request_tx,
+    );
 
     assert!(connections.check_socket_addr(host2, sa).is_ok());
 
@@ -461,8 +494,11 @@ async fn connections_state_shutdown_process() {
 
     let (req_tx, _req_rx) = oneshot::channel();
 
-    connections.spawn_task(sa, web_sock, Some(host1.clone()), true);
-    connections.defer_dns_lookup(host2.clone(), Request::new(req_tx));
+    connections.spawn_task(sa, web_sock, Some(host1.clone()));
+    connections.defer_dns_lookup(
+        host2.clone(),
+        PendingRequest::Resolution(Request::new(req_tx)),
+    );
 
     let (result_tx, _result_rx) = mpsc::channel(8);
     stop_trigger.provide(result_tx).unwrap();

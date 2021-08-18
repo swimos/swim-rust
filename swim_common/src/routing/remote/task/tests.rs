@@ -23,7 +23,6 @@ use parking_lot::Mutex;
 use tokio::sync::{mpsc, watch};
 
 use crate::model::Value;
-use crate::routing::Origin;
 use crate::warp::envelope::Envelope;
 use crate::warp::path::RelativePath;
 use swim_runtime::time::timeout;
@@ -38,11 +37,12 @@ use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::task::{ConnectionTask, DispatchError};
 use crate::routing::remote::test_fixture::fake_channel::TwoWayMpsc;
 use crate::routing::remote::test_fixture::LocalRoutes;
-use crate::routing::remote::{Scheme, SchemeSocketAddr};
+use crate::routing::remote::BidirectionalReceiverRequest;
 use crate::routing::ws::WsMessage;
 use crate::routing::RouterError;
 use crate::routing::{ConnectionDropped, Route, RoutingAddr, TaggedEnvelope, TaggedSender};
 use futures::io::ErrorKind;
+use slab::Slab;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 
@@ -78,7 +78,7 @@ fn dispatch_error_display() {
 
 fn envelope(path: RelativePath, body: &str) -> Envelope {
     let RelativePath { node, lane } = path;
-    Envelope::make_event(node, lane, Some(Value::text(body)))
+    Envelope::make_command(node, lane, Some(Value::text(body)))
 }
 
 #[tokio::test]
@@ -88,6 +88,7 @@ async fn try_dispatch_in_map() {
     let addr = RoutingAddr::remote(0);
     let mut router = LocalRoutes::new(addr);
     let mut resolved = HashMap::new();
+    let mut bidirectional_connections = Slab::new();
     let path = RelativePath::new("/node", "/lane");
     resolved.insert(
         path.clone(),
@@ -98,13 +99,9 @@ async fn try_dispatch_in_map() {
 
     let result = super::try_dispatch_envelope(
         &mut router,
+        &mut bidirectional_connections,
         &mut resolved,
         env.clone(),
-        Origin::Remote(SchemeSocketAddr::new(
-            Scheme::Ws,
-            "192.168.0.1:80".parse().unwrap(),
-        )),
-        true,
     )
     .await;
 
@@ -119,6 +116,7 @@ async fn try_dispatch_from_router() {
     let addr = RoutingAddr::remote(0);
     let mut router = LocalRoutes::new(addr);
     let mut resolved = HashMap::new();
+    let mut bidirectional_connections = Slab::new();
     let path = RelativePath::new("/node", "/lane");
 
     let mut rx = router.add("/node".parse().unwrap());
@@ -127,13 +125,9 @@ async fn try_dispatch_from_router() {
 
     let result = super::try_dispatch_envelope(
         &mut router,
+        &mut bidirectional_connections,
         &mut resolved,
         env.clone(),
-        Origin::Remote(SchemeSocketAddr::new(
-            Scheme::Ws,
-            "192.168.0.1:80".parse().unwrap(),
-        )),
-        true,
     )
     .await;
 
@@ -145,24 +139,25 @@ async fn try_dispatch_from_router() {
     assert!(resolved.contains_key(&path));
 }
 
+//Todo dm
+#[tokio::test]
+async fn try_dispatch_to_bidirectional() {}
+
 #[tokio::test]
 async fn try_dispatch_closed_sender() {
     let addr = RoutingAddr::remote(0);
     let mut router = LocalRoutes::new(addr);
     let mut resolved = HashMap::new();
+    let mut bidirectional_connections = Slab::new();
     let path = RelativePath::new("/node", "/lane");
 
     let env = envelope(path.clone(), "a");
 
     let result = super::try_dispatch_envelope(
         &mut router,
+        &mut bidirectional_connections,
         &mut resolved,
         env.clone(),
-        Origin::Remote(SchemeSocketAddr::new(
-            Scheme::Ws,
-            "192.168.0.1:80".parse().unwrap(),
-        )),
-        true,
     )
     .await;
 
@@ -182,6 +177,7 @@ async fn try_dispatch_fail_on_dropped() {
     let (tx, rx) = mpsc::channel(8);
     let (drop_tx, drop_rx) = promise::promise();
     let addr = RoutingAddr::remote(0);
+    let mut bidirectional_connections = Slab::new();
     let mut router = LocalRoutes::new(addr);
     let mut router_rx = router.add("/node".parse().unwrap());
 
@@ -199,13 +195,9 @@ async fn try_dispatch_fail_on_dropped() {
 
     let result = super::try_dispatch_envelope(
         &mut router,
+        &mut bidirectional_connections,
         &mut resolved,
         env.clone(),
-        Origin::Remote(SchemeSocketAddr::new(
-            Scheme::Ws,
-            "192.168.0.1:80".parse().unwrap(),
-        )),
-        true,
     )
     .await;
 
@@ -220,19 +212,16 @@ async fn try_dispatch_fail_on_no_route() {
     let addr = RoutingAddr::remote(0);
     let mut router = LocalRoutes::new(addr);
     let mut resolved = HashMap::new();
+    let mut bidirectional_connections = Slab::new();
     let path = RelativePath::new("/node", "/lane");
 
     let env = envelope(path.clone(), "a");
 
     let result = super::try_dispatch_envelope(
         &mut router,
+        &mut bidirectional_connections,
         &mut resolved,
         env.clone(),
-        Origin::Remote(SchemeSocketAddr::new(
-            Scheme::Ws,
-            "192.168.0.1:80".parse().unwrap(),
-        )),
-        true,
     )
     .await;
 
@@ -252,6 +241,7 @@ async fn dispatch_immediate_success() {
     let addr = RoutingAddr::remote(0);
     let mut router = LocalRoutes::new(addr);
     let mut resolved = HashMap::new();
+    let mut bidirectional_connections = Slab::new();
     let path = RelativePath::new("/node", "/lane");
 
     let mut rx = router.add("/node".parse().unwrap());
@@ -262,12 +252,9 @@ async fn dispatch_immediate_success() {
 
     let result = super::dispatch_envelope(
         &mut router,
+        &mut bidirectional_connections,
         &mut resolved,
         env.clone(),
-        Origin::Remote(SchemeSocketAddr::new(
-            Scheme::Ws,
-            "192.168.0.1:80".parse().unwrap(),
-        )),
         RetryStrategy::none(),
         |dur| {
             let delays_cpy = delays.clone();
@@ -275,7 +262,6 @@ async fn dispatch_immediate_success() {
                 delays_cpy.lock().push(dur);
             }
         },
-        true,
     )
     .await;
 
@@ -298,6 +284,7 @@ async fn dispatch_immediate_failure() {
     let addr = RoutingAddr::remote(0);
     let mut router = LocalRoutes::new(addr);
     let mut resolved = HashMap::new();
+    let mut bidirectional_connections = Slab::new();
     let path = RelativePath::new("/node", "/lane");
 
     let env = envelope(path.clone(), "a");
@@ -306,12 +293,9 @@ async fn dispatch_immediate_failure() {
 
     let result = super::dispatch_envelope(
         &mut router,
+        &mut bidirectional_connections,
         &mut resolved,
         env.clone(),
-        Origin::Remote(SchemeSocketAddr::new(
-            Scheme::Ws,
-            "192.168.0.1:80".parse().unwrap(),
-        )),
         RetryStrategy::interval(Duration::from_secs(1), Quantity::Finite(retries())),
         |dur| {
             let delays_cpy = delays.clone();
@@ -319,7 +303,6 @@ async fn dispatch_immediate_failure() {
                 delays_cpy.lock().push(dur);
             }
         },
-        true,
     )
     .await;
 
@@ -341,6 +324,7 @@ async fn dispatch_after_retry() {
     let addr = RoutingAddr::remote(0);
     let mut router = LocalRoutes::new(addr);
     let mut resolved = HashMap::new();
+    let mut bidirectional_connections = Slab::new();
     let path = RelativePath::new("/node", "/lane");
 
     let mut rx = router.add_with_countdown("/node".parse().unwrap(), 1);
@@ -351,12 +335,9 @@ async fn dispatch_after_retry() {
 
     let result = super::dispatch_envelope(
         &mut router,
+        &mut bidirectional_connections,
         &mut resolved,
         env.clone(),
-        Origin::Remote(SchemeSocketAddr::new(
-            Scheme::Ws,
-            "192.168.0.1:80".parse().unwrap(),
-        )),
         RetryStrategy::interval(Duration::from_secs(1), Quantity::Finite(retries())),
         |dur| {
             let delays_cpy = delays.clone();
@@ -364,7 +345,6 @@ async fn dispatch_after_retry() {
                 delays_cpy.lock().push(dur);
             }
         },
-        true,
     )
     .await;
 
@@ -383,6 +363,7 @@ async fn dispatch_after_immediate_retry() {
     let addr = RoutingAddr::remote(0);
     let mut router = LocalRoutes::new(addr);
     let mut resolved = HashMap::new();
+    let mut bidirectional_connections = Slab::new();
     let path = RelativePath::new("/node", "/lane");
 
     let mut rx = router.add_with_countdown("/node".parse().unwrap(), 1);
@@ -393,12 +374,9 @@ async fn dispatch_after_immediate_retry() {
 
     let result = super::dispatch_envelope(
         &mut router,
+        &mut bidirectional_connections,
         &mut resolved,
         env.clone(),
-        Origin::Remote(SchemeSocketAddr::new(
-            Scheme::Ws,
-            "192.168.0.1:80".parse().unwrap(),
-        )),
         RetryStrategy::immediate(retries()),
         |dur| {
             let delays_cpy = delays.clone();
@@ -406,7 +384,6 @@ async fn dispatch_after_immediate_retry() {
                 delays_cpy.lock().push(dur);
             }
         },
-        true,
     )
     .await;
 
@@ -426,6 +403,7 @@ struct TaskFixture {
     sock_in: fut_mpsc::Sender<Result<WsMessage, ConnectionError>>,
     sock_out: fut_mpsc::Receiver<WsMessage>,
     envelope_tx: mpsc::Sender<TaggedEnvelope>,
+    bidirectional_tx: mpsc::Sender<BidirectionalReceiverRequest>,
     stop_trigger: trigger::Sender,
     send_error_tx: watch::Sender<Option<ConnectionError>>,
 }
@@ -440,16 +418,18 @@ impl TaskFixture {
         let (tx_out, rx_out) = fut_mpsc::channel(BUFFER_SIZE);
 
         let (env_tx, env_rx) = mpsc::channel(BUFFER_SIZE);
+        let (bidirectional_tx, bidirectional_rx) = mpsc::channel(BUFFER_SIZE);
         let (stop_tx, stop_rx) = trigger::trigger();
         let (failure_tx, failure_rx) = watch::channel(None);
 
         let fake_socket =
             TwoWayMpsc::new(tx_out.clone(), rx_in, move |_| failure_rx.borrow().clone());
         let task = ConnectionTask::new(
-            SchemeSocketAddr::new(Scheme::Ws, "192.168.0.1:80".parse().unwrap()),
+            addr,
             fake_socket,
             router.clone(),
             (env_tx.clone(), env_rx),
+            bidirectional_rx,
             stop_rx,
             ConnectionConfig {
                 router_buffer_size: NonZeroUsize::new(10).unwrap(),
@@ -459,7 +439,6 @@ impl TaskFixture {
                 connection_retries: RetryStrategy::immediate(NonZeroUsize::new(1).unwrap()),
                 yield_after: NonZeroUsize::new(256).unwrap(),
             },
-            true,
         )
         .run()
         .boxed();
@@ -470,6 +449,7 @@ impl TaskFixture {
             sock_in: tx_in,
             sock_out: rx_out,
             envelope_tx: env_tx,
+            bidirectional_tx,
             stop_trigger: stop_tx,
             send_error_tx: failure_tx,
         }
@@ -490,6 +470,7 @@ async fn task_send_message() {
         router: _router,
         sock_in: _sock_in,
         send_error_tx: _send_error_tx,
+        bidirectional_tx: _bidirectional_tx,
     } = TaskFixture::new();
 
     let envelope = Envelope::make_event("/node", "/lane", Some(Value::text("a")));
@@ -508,6 +489,10 @@ async fn task_send_message() {
     assert!(matches!(result, Ok((ConnectionDropped::Closed, _))));
 }
 
+//Todo dm
+#[tokio::test]
+async fn task_send_message_bidirectional() {}
+
 #[tokio::test]
 async fn task_send_message_failure() {
     let TaskFixture {
@@ -518,6 +503,7 @@ async fn task_send_message_failure() {
         router: _router,
         sock_in: _sock_in,
         send_error_tx,
+        bidirectional_tx: _bidirectional_tx,
     } = TaskFixture::new();
 
     let envelope = Envelope::make_event("/node", "/lane", Some(Value::text("a")));
@@ -550,6 +536,7 @@ async fn task_receive_message_with_route() {
         router,
         mut sock_in,
         send_error_tx: _send_error_tx,
+        bidirectional_tx: _bidirectional_tx,
     } = TaskFixture::new();
 
     let mut rx = router.add("/node".parse().unwrap());
@@ -576,6 +563,7 @@ async fn task_receive_link_message_missing_node() {
         router: _router,
         mut sock_in,
         send_error_tx: _send_error_tx,
+        bidirectional_tx: _bidirectional_tx,
     } = TaskFixture::new();
 
     let envelope = Envelope::link("/missing", "/lane");
@@ -604,6 +592,7 @@ async fn task_receive_sync_message_missing_node() {
         router: _router,
         mut sock_in,
         send_error_tx: _send_error_tx,
+        bidirectional_tx: _bidirectional_tx,
     } = TaskFixture::new();
 
     let envelope = Envelope::sync("/missing", "/lane");
@@ -629,6 +618,7 @@ async fn task_receive_message_no_route() {
         router: _router,
         mut sock_in,
         send_error_tx: _send_error_tx,
+        bidirectional_tx: _bidirectional_tx,
     } = TaskFixture::new();
 
     let envelope = Envelope::make_event("/node", "/lane", Some(Value::text("a")));
@@ -653,6 +643,7 @@ async fn task_receive_error() {
         router: _router,
         mut sock_in,
         send_error_tx: _send_error_tx,
+        bidirectional_tx: _bidirectional_tx,
     } = TaskFixture::new();
 
     let test_case = async move {
@@ -680,6 +671,7 @@ async fn task_stopped_remotely() {
         router: _router,
         sock_in,
         send_error_tx: _send_error_tx,
+        bidirectional_tx: _bidirectional_tx,
     } = TaskFixture::new();
 
     let test_case = async move {
@@ -702,6 +694,7 @@ async fn task_timeout() {
         router: _router,
         sock_in: _sock_in,
         send_error_tx: _send_error_tx,
+        bidirectional_tx: _bidirectional_tx,
     } = TaskFixture::new();
 
     let envelope = Envelope::make_event("/node", "/lane", Some(Value::text("a")));
@@ -731,6 +724,7 @@ async fn task_receive_bad_message() {
         router: _router,
         mut sock_in,
         send_error_tx: _send_error_tx,
+        bidirectional_tx: _bidirectional_tx,
     } = TaskFixture::new();
 
     let test_case = async move {
@@ -781,6 +775,7 @@ async fn read_causes_write_buffer_to_fill() {
         router,
         sock_in,
         send_error_tx: _send_error_tx,
+        bidirectional_tx: _bidirectional_tx,
     } = TaskFixture::new();
 
     let n = 100;

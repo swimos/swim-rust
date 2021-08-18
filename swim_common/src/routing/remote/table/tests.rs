@@ -32,8 +32,9 @@ async fn insert_and_retrieve() {
     let hp = SchemeHostPort::new(Scheme::Ws, "host".to_string(), 45);
     let sock_addr = SchemeSocketAddr::new(Scheme::Ws, "192.168.0.1:80".parse().unwrap());
     let (tx, mut rx) = mpsc::channel(8);
+    let (bidirectional_tx, _bidirectional_rx) = mpsc::channel(8);
 
-    table.insert(addr, Some(hp.clone()), sock_addr, tx);
+    table.insert(addr, Some(hp.clone()), sock_addr, tx, bidirectional_tx);
 
     assert_eq!(table.try_resolve(&hp), Some(addr));
     assert_eq!(table.get_resolved(&sock_addr), Some(addr));
@@ -57,9 +58,10 @@ async fn add_host_to_existing() {
     let hp2 = SchemeHostPort::new(Scheme::Wss, "host2".to_string(), 45);
     let sock_addr = SchemeSocketAddr::new(Scheme::Wss, "192.168.0.1:80".parse().unwrap());
     let (tx, _rx) = mpsc::channel(8);
+    let (bidirectional_tx, _bidirectional_rx) = mpsc::channel(8);
 
     assert!(table.add_host(hp2.clone(), sock_addr).is_none());
-    table.insert(addr, Some(hp.clone()), sock_addr, tx);
+    table.insert(addr, Some(hp.clone()), sock_addr, tx, bidirectional_tx);
     assert_eq!(table.add_host(hp2.clone(), sock_addr), Some(addr));
 
     assert_eq!(table.try_resolve(&hp2), Some(addr));
@@ -72,8 +74,9 @@ async fn remove_entry() {
     let hp = SchemeHostPort::new(Scheme::Wss, "host".to_string(), 45);
     let sock_addr = SchemeSocketAddr::new(Scheme::Wss, "192.168.0.1:80".parse().unwrap());
     let (tx, _rx) = mpsc::channel(8);
+    let (bidirectional_tx, _bidirectional_rx) = mpsc::channel(8);
 
-    table.insert(addr, Some(hp.clone()), sock_addr, tx);
+    table.insert(addr, Some(hp.clone()), sock_addr, tx, bidirectional_tx);
 
     let RawRoute {
         sender: _sender,
