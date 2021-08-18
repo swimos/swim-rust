@@ -14,7 +14,7 @@
 
 #[cfg(test)]
 mod encoding {
-    use crate::protocol::frame::{ControlCode, DataCode, Frame, FrameHeader, OpCode};
+    use crate::protocol::frame::{apply_mask, ControlCode, DataCode, Frame, FrameHeader, OpCode};
     use crate::protocol::HeaderFlags;
     use bytes::BytesMut;
 
@@ -116,6 +116,20 @@ mod encoding {
             None,
             &[241, 4, 1, 2, 3, 4],
         );
+    }
+
+    #[test]
+    fn masked_text() {
+        let mut payload = "Hello".to_string();
+        let payload = unsafe { payload.as_bytes_mut() };
+
+        encode(
+            HeaderFlags::FIN,
+            OpCode::DataCode(DataCode::Text),
+            payload,
+            Some(2280436927_u32),
+            &[129, 133, 135, 236, 180, 191, 207, 137, 216, 211, 232],
+        )
     }
 }
 

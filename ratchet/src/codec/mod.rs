@@ -123,12 +123,12 @@ impl FragmentBuffer {
             max_size,
         } = self;
 
-        match op_code {
+        match op_code.take() {
             None => Err(ProtocolError::ContinuationNotStarted.into()),
             Some(data_type) => {
                 let payload = buffer.split().freeze();
                 buffer.truncate(*max_size / 2);
-                Ok((*data_type, payload.to_vec()))
+                Ok((data_type, payload.to_vec()))
             }
         }
     }
@@ -191,14 +191,13 @@ impl Encoder<Message> for Codec {
         // todo run bytes through extensions
 
         let (flags, mask) = if self.is_client() {
-            (HeaderFlags::FIN, Some(self.rand.generate()))
+            (HeaderFlags::FIN, Some(2280436927_u32))
         } else {
             (HeaderFlags::FIN, None)
         };
 
         let header = FrameHeader::new(opcode, flags, mask);
         Frame::new(header, bytes).write_into(dst);
-
         Ok(())
     }
 }
@@ -222,13 +221,14 @@ impl Decoder for Codec {
 
                 match opcode {
                     OpCode::DataCode(data_code) => {
-                        println!("{:?}", data_code);
                         on_data_frame(fragment_buffer, data_code, payload, flags)
                     }
                     OpCode::ControlCode(control_code) => on_control_frame(control_code, payload),
                 }
             }
-            None => return Ok(None),
+            None => {
+                return Ok(None);
+            }
         }
     }
 }

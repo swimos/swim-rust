@@ -14,11 +14,13 @@
 
 use crate::errors::Error;
 use bytes::{Buf, BufMut, BytesMut};
+use futures::Future;
 use http::{Request, Response, Version};
 use httparse::Status;
 use std::any::{type_name, Any};
 use std::error::Error as StdError;
 use std::fmt::Debug;
+use std::marker::PhantomData;
 use std::ops::DerefMut;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
@@ -181,6 +183,7 @@ impl AsyncRead for MockStream {
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
         let guard = self.rx_buf.lock().unwrap();
+
         let rx_buf = &(*guard);
         let cnt = cmp::min(rx_buf.remaining(), buf.remaining());
 
@@ -222,4 +225,25 @@ where
     let error = result.expect_err(&format!("Expected a {}", type_name::<T>()));
     let protocol_error = error.downcast_ref::<T>().unwrap();
     assert_eq!(protocol_error, &expected);
+}
+
+struct PollFn<F>(F);
+impl<F, R> Future for PollFn<F>
+where
+    F: Fn(&mut Context) -> Poll<R>,
+{
+    type Output = R;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        (self.0)(cx)
+    }
+}
+
+impl<F> Unpin for PollFn<F> {}
+
+pub async fn poll_fn<F, R>(f: F) -> R
+where
+    F: Fn(&mut Context) -> Poll<R>,
+{
+    PollFn(f).await
 }

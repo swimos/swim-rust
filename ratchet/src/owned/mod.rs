@@ -12,10 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod builder;
+#[cfg(test)]
+mod tests;
+
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use futures::Sink;
+use futures::{Sink, Stream};
 use tokio_util::codec::Framed;
 
 pub use builder::{WebSocketClientBuilder, WebSocketServerBuilder};
@@ -27,11 +31,22 @@ use crate::protocol::frame::Message;
 use crate::{
     Deflate, Extension, ExtensionProvider, Request, Role, WebSocketConfig, WebSocketStream,
 };
-
-mod builder;
+use std::ops::Deref;
 
 pub struct WebSocket<S, E = Deflate> {
     inner: WebSocketInner<S, E>,
+}
+
+impl<S, E> Deref for WebSocket<S, E>
+where
+    S: WebSocketStream,
+    E: Extension,
+{
+    type Target = S;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner.framed.get_ref()
+    }
 }
 
 pub struct WebSocketInner<S, E> {
@@ -108,6 +123,20 @@ where
     fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Pin::new(&mut self.inner.framed)
             .poll_close(cx)
+            .map_err(Into::into)
+    }
+}
+
+impl<S, E> Stream for WebSocket<S, E>
+where
+    S: WebSocketStream,
+    E: Extension + Unpin,
+{
+    type Item = Result<Message, Error>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        Pin::new(&mut self.inner.framed)
+            .poll_next(cx)
             .map_err(Into::into)
     }
 }

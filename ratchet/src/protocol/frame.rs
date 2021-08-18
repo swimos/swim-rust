@@ -322,6 +322,7 @@ impl FrameHeader {
 }
 
 // todo this needs tidying up / removing
+#[derive(Debug)]
 pub enum Payload<'p> {
     Owned(Vec<u8>),
     Unique(&'p mut [u8]),
@@ -357,6 +358,7 @@ impl<'p> BorrowMut<[u8]> for Payload<'p> {
     }
 }
 
+#[derive(Debug)]
 pub struct Frame<'p> {
     pub header: FrameHeader,
     pub payload: Payload<'p>,
@@ -417,7 +419,7 @@ impl<'p> Frame<'p> {
 
         if let Some(mask) = mask {
             apply_mask(mask, &mut payload);
-            dst.put_u32_le(mask as u32);
+            dst.put_u32(mask as u32);
         }
 
         dst.extend_from_slice(payload);
