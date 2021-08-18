@@ -191,7 +191,7 @@ impl Encoder<Message> for Codec {
         // todo run bytes through extensions
 
         let (flags, mask) = if self.is_client() {
-            (HeaderFlags::FIN, Some(2280436927_u32))
+            (HeaderFlags::FIN, Some(self.rand.generate()))
         } else {
             (HeaderFlags::FIN, None)
         };

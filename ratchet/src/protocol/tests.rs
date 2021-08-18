@@ -14,7 +14,7 @@
 
 #[cfg(test)]
 mod encoding {
-    use crate::protocol::frame::{apply_mask, ControlCode, DataCode, Frame, FrameHeader, OpCode};
+    use crate::protocol::frame::{ControlCode, DataCode, Frame, FrameHeader, OpCode};
     use crate::protocol::HeaderFlags;
     use bytes::BytesMut;
 

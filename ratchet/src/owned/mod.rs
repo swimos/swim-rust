@@ -31,22 +31,9 @@ use crate::protocol::frame::Message;
 use crate::{
     Deflate, Extension, ExtensionProvider, Request, Role, WebSocketConfig, WebSocketStream,
 };
-use std::ops::Deref;
 
 pub struct WebSocket<S, E = Deflate> {
     inner: WebSocketInner<S, E>,
-}
-
-impl<S, E> Deref for WebSocket<S, E>
-where
-    S: WebSocketStream,
-    E: Extension,
-{
-    type Target = S;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner.framed.get_ref()
-    }
 }
 
 pub struct WebSocketInner<S, E> {
