@@ -28,14 +28,13 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_client::configuration::downlink::ConfigHierarchy;
 use swim_client::downlink::Downlinks;
-use swim_client::interface::SwimClientBuilder;
+use swim_client::interface::InnerClient;
 use swim_common::form::{Form, FormErr};
 use swim_common::record;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
 use swim_common::routing::{
-    BidirectionalRoute, ConnectionDropped, Origin, Route, Router, RoutingAddr, TaggedEnvelope,
-    TaggedSender,
+    BidirectionalRoute, ConnectionDropped, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
 };
 use swim_common::warp::envelope::Envelope;
 use swim_runtime::time::timeout;
@@ -192,7 +191,7 @@ async fn lane_info_sync() {
         close_rx,
     );
 
-    let client = SwimClientBuilder::build_from_downlinks(downlinks);
+    let client = InnerClient::new(downlinks);
 
     let parameters = AgentParameters::new(MockAgentConfig, exec_config, uri, HashMap::new());
 

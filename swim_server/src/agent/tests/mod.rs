@@ -49,7 +49,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_client::configuration::downlink::ConfigHierarchy;
 use swim_client::downlink::Downlinks;
-use swim_client::interface::{SwimClient, SwimClientBuilder};
+use swim_client::interface::{SwimClient, SwimClientBuilder, InnerClient};
 use swim_common::routing::RoutingAddr;
 use swim_common::warp::path::Path;
 use swim_runtime::task;
@@ -67,7 +67,7 @@ mod stub_router {
     use swim_common::routing::error::ResolutionError;
     use swim_common::routing::error::RouterError;
     use swim_common::routing::{
-        BidirectionalRoute, ConnectionDropped, Origin, Route, Router, RoutingAddr, TaggedEnvelope,
+        BidirectionalRoute, ConnectionDropped, Route, Router, RoutingAddr, TaggedEnvelope,
         TaggedSender,
     };
     use tokio::sync::mpsc;
@@ -273,7 +273,8 @@ impl<Lane> AgentContext<TestAgent<Lane>> for TestContext<Lane>
 where
     Lane: LaneModel + Send + Sync + 'static,
 {
-    fn client(&self) -> SwimClient<Path> {
+    fn client(&self) -> InnerClient<Path> {
+        //Todo dm
         unimplemented!()
     }
 
@@ -782,7 +783,7 @@ pub async fn run_agent_test<Agent, Config, Lifecycle>(
         close_rx,
     );
 
-    let client = SwimClientBuilder::build_from_downlinks(downlinks);
+    let client = InnerClient::new(downlinks);
 
     // The ReportingAgent is carefully contrived such that its lifecycle events all trigger in
     // a specific order. We can then safely expect these events in that order to verify the agent

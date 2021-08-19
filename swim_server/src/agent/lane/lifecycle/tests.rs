@@ -21,7 +21,7 @@ use futures::future::BoxFuture;
 use futures::Stream;
 use std::collections::HashMap;
 use std::future::Future;
-use swim_client::interface::SwimClient;
+use swim_client::interface::InnerClient;
 use swim_common::warp::path::Path;
 use tokio::time::Duration;
 use utilities::sync::trigger::Receiver;
@@ -42,7 +42,8 @@ struct TestAgent(TestModel);
 struct TestContext;
 
 impl AgentContext<TestAgent> for TestContext {
-    fn client(&self) -> SwimClient<Path> {
+    fn client(&self) -> InnerClient<Path> {
+        //Todo dm
         unimplemented!()
     }
 

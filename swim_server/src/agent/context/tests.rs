@@ -20,12 +20,14 @@ use futures::future::BoxFuture;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::sync::Arc;
-use swim_client::configuration::downlink::ConfigHierarchy;
+use swim_client::configuration::downlink::{ClientParams, ConfigHierarchy};
+use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
-use swim_client::interface::SwimClientBuilder;
+use swim_client::interface::InnerClient;
+use swim_client::router::{ClientRouter, ClientRouterFactory};
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
-use swim_common::routing::{BidirectionalRoute, Origin, Route, Router, RoutingAddr};
+use swim_common::routing::{BidirectionalRoute, Route, Router, RoutingAddr};
 use swim_runtime::task;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
@@ -81,8 +83,7 @@ fn simple_accessors() {
         )
     });
 
-    let client = SwimClientBuilder::build_from_downlinks(downlinks);
-
+    let client = InnerClient::new(downlinks);
     let context = ContextImpl::new(
         agent.clone(),
         routing_context,
@@ -121,16 +122,25 @@ fn create_context(
         RoutingContext::new("/node".parse().unwrap(), MockRouter {}, HashMap::new());
     let schedule_context = SchedulerContext::new(tx, clock, close_trigger);
 
-    let (_close_tx, close_rx) = promise::promise();
-    let (client_conn_request_tx, _client_conn_request_rx) = mpsc::channel(8);
+    let (client_tx, client_rx) = mpsc::channel(8);
 
-    let (downlinks, _downlinks_handle) = Downlinks::new(
-        client_conn_request_tx,
-        Arc::new(ConfigHierarchy::default()),
-        close_rx,
+    //Todo dm add mock factory ?
+    let client_router_fac = ClientRouterFactory::new(client_tx.clone(), ());
+
+    //Todo dm
+    let (_close_tx, close_rx) = promise::promise();
+
+    let (conn_pool, _pool_task) = SwimConnPool::new(
+        ClientParams::default(),
+        (client_tx, client_rx),
+        client_router_fac,
+        close_rx.clone(),
     );
 
-    let client = SwimClientBuilder::build_from_downlinks(downlinks);
+    let (downlinks, _downlinks_task) =
+        Downlinks::new(conn_pool, Arc::new(ConfigHierarchy::default()), close_rx);
+
+    let client = InnerClient::new(downlinks);
     ContextImpl::new(
         agent.clone(),
         routing_context,

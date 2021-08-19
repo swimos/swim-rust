@@ -38,7 +38,7 @@ use stm::stm::Stm;
 use stm::transaction::atomically;
 use swim_client::configuration::downlink::ConfigHierarchy;
 use swim_client::downlink::Downlinks;
-use swim_client::interface::SwimClientBuilder;
+use swim_client::interface::InnerClient;
 use swim_common::routing::RoutingAddr;
 use tokio::sync::{mpsc, Mutex};
 use tokio_stream::wrappers::ReceiverStream;
@@ -546,7 +546,7 @@ async fn agent_loop() {
         close_rx,
     );
 
-    let client = SwimClientBuilder::build_from_downlinks(downlinks);
+    let client = InnerClient::new(downlinks);
 
     let (_, agent_proc) = provider.run(
         parameters,

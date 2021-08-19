@@ -23,7 +23,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use swim_client::configuration::downlink::ConfigHierarchy;
 use swim_client::downlink::Downlinks;
-use swim_client::interface::{InnerClient, SwimClientBuilder};
+use swim_client::interface::InnerClient;
 use swim_common::routing::Router;
 use swim_runtime::time::clock::Clock;
 use swim_runtime::time::timeout;

@@ -32,8 +32,8 @@ use swim_common::model::Value;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
 use swim_common::routing::{
-    ConnectionDropped, Origin, Route, Router, RoutingAddr, TaggedClientEnvelope, TaggedEnvelope,
-    TaggedSender,
+    BidirectionalRoute, ConnectionDropped, Route, Router, RoutingAddr, TaggedClientEnvelope,
+    TaggedEnvelope, TaggedSender,
 };
 use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
@@ -121,6 +121,14 @@ impl Router for MockRouter {
             Ok(route)
         }
         .boxed()
+    }
+
+    fn resolve_bidirectional(
+        &mut self,
+        _host: Url,
+    ) -> BoxFuture<Result<BidirectionalRoute, ResolutionError>> {
+        //Todo dm
+        unimplemented!()
     }
 
     fn lookup(
@@ -235,7 +243,7 @@ impl LaneIo<MockExecutionContext> for MockLane {
                         let sender = match senders.entry(addr) {
                             Entry::Occupied(entry) => entry.into_mut(),
                             Entry::Vacant(entry) => {
-                                if let Ok(sender) = router.resolve_sender(addr, None).await {
+                                if let Ok(sender) = router.resolve_sender(addr).await {
                                     entry.insert(sender.sender)
                                 } else {
                                     break Some(LaneIoError::for_uplink_errors(

@@ -32,12 +32,12 @@ use std::str::FromStr;
 use std::sync::Arc;
 use swim_client::configuration::downlink::ConfigHierarchy;
 use swim_client::downlink::Downlinks;
-use swim_client::interface::SwimClientBuilder;
+use swim_client::interface::InnerClient;
 use swim_common::form::Form;
 use swim_common::model::Value;
 use swim_common::routing::error::{ResolutionError, RouterError};
 use swim_common::routing::{
-    ConnectionDropped, Origin, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
+    BidirectionalRoute, ConnectionDropped, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
 };
 use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
@@ -125,6 +125,14 @@ impl Router for MockRouter {
         .boxed()
     }
 
+    fn resolve_bidirectional(
+        &mut self,
+        host: Url,
+    ) -> BoxFuture<Result<BidirectionalRoute, ResolutionError>> {
+        //Todo dm
+        unimplemented!()
+    }
+
     fn lookup(
         &mut self,
         _host: Option<Url>,
@@ -162,7 +170,7 @@ async fn agent_log() {
         close_rx,
     );
 
-    let client = SwimClientBuilder::build_from_downlinks(downlinks);
+    let client = InnerClient::new(downlinks);
 
     let (_a, agent_proc) = provider.run(
         parameters,

@@ -26,7 +26,7 @@ use futures::FutureExt;
 use std::time::Duration;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
-use swim_common::routing::{Origin, Route, Router, RoutingAddr, TaggedEnvelope};
+use swim_common::routing::{BidirectionalRoute, Route, Router, RoutingAddr, TaggedEnvelope};
 use swim_runtime::time::clock::Clock;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
@@ -67,6 +67,14 @@ impl Router for DummyDelegate {
         &mut self,
         _addr: RoutingAddr,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
+        unimplemented!()
+    }
+
+    fn resolve_bidirectional(
+        &mut self,
+        _host: Url,
+    ) -> BoxFuture<Result<BidirectionalRoute, ResolutionError>> {
+        //Todo dm
         unimplemented!()
     }
 
