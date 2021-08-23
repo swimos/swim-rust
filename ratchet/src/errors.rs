@@ -15,7 +15,7 @@
 use crate::extensions::ExtHandshakeErr;
 use crate::handshake::ProtocolError;
 use crate::protocol::frame::{CloseCodeParseErr, OpCodeParseErr};
-use http::header::HeaderName;
+use http::header::{HeaderName, InvalidHeaderValue};
 use http::status::InvalidStatusCode;
 use http::uri::InvalidUri;
 use http::StatusCode;
@@ -81,6 +81,15 @@ impl Error {
 
     pub fn is_encoding(&self) -> bool {
         matches!(self.inner.kind, ErrorKind::Encoding)
+    }
+
+    pub fn closed_normal(&self) -> bool {
+        match &self.downcast_ref::<CloseError>() {
+            Some(e) => {
+                matches!(e, CloseError::Normal)
+            }
+            None => false,
+        }
     }
 }
 
@@ -190,4 +199,16 @@ impl From<CloseCodeParseErr> for Error {
     fn from(e: CloseCodeParseErr) -> Self {
         Error::with_cause(ErrorKind::Protocol, e)
     }
+}
+
+impl From<InvalidHeaderValue> for Error {
+    fn from(e: InvalidHeaderValue) -> Self {
+        Error::with_cause(ErrorKind::Http, e)
+    }
+}
+
+#[derive(Error, Debug, PartialEq)]
+pub enum CloseError {
+    #[error("Closed normally (not an error)")]
+    Normal,
 }

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::codec::Codec;
-use crate::fixture::{mock, poll_fn};
+use crate::fixture::{mock,};
 use crate::owned::{WebSocket, WebSocketInner};
 use crate::protocol::frame::Message;
 use crate::{NoExt, Role};

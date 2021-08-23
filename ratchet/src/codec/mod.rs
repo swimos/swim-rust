@@ -68,7 +68,7 @@ pub enum DataType {
 }
 
 #[derive(Clone)]
-struct FragmentBuffer {
+pub struct FragmentBuffer {
     buffer: BytesMut,
     op_code: Option<DataType>,
     max_size: usize,
@@ -167,38 +167,39 @@ impl Encoder<Message> for Codec {
     type Error = Error;
 
     fn encode(&mut self, message: Message, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        let (opcode, bytes) = match message {
-            Message::Text(text) => (OpCode::DataCode(DataCode::Text), text.into_bytes()),
-            Message::Binary(data) => (OpCode::DataCode(DataCode::Binary), data),
-            Message::Ping(data) => (OpCode::ControlCode(ControlCode::Ping), data),
-            Message::Pong(data) => (OpCode::ControlCode(ControlCode::Pong), data),
-            Message::Close(reason) => {
-                let payload = match reason {
-                    Some(reason) => {
-                        let CloseReason { code, description } = reason;
-                        let mut payload = u16::from(code).to_be_bytes().to_vec();
-                        if let Some(description) = description {
-                            payload.extend_from_slice(description.as_bytes());
-                        }
-                        payload
-                    }
-                    None => Vec::new(),
-                };
-                (OpCode::ControlCode(ControlCode::Close), payload)
-            }
-        };
-
-        // todo run bytes through extensions
-
-        let (flags, mask) = if self.is_client() {
-            (HeaderFlags::FIN, Some(self.rand.generate()))
-        } else {
-            (HeaderFlags::FIN, None)
-        };
-
-        let header = FrameHeader::new(opcode, flags, mask);
-        Frame::new(header, bytes).write_into(dst);
-        Ok(())
+        // let (opcode, bytes) = match message {
+        //     Message::Text(text) => (OpCode::DataCode(DataCode::Text), text.into_bytes()),
+        //     Message::Binary(data) => (OpCode::DataCode(DataCode::Binary), data),
+        //     Message::Ping(data) => (OpCode::ControlCode(ControlCode::Ping), data),
+        //     Message::Pong(data) => (OpCode::ControlCode(ControlCode::Pong), data),
+        //     Message::Close(reason) => {
+        //         let payload = match reason {
+        //             Some(reason) => {
+        //                 let CloseReason { code, description } = reason;
+        //                 let mut payload = u16::from(code).to_be_bytes().to_vec();
+        //                 if let Some(description) = description {
+        //                     payload.extend_from_slice(description.as_bytes());
+        //                 }
+        //                 payload
+        //             }
+        //             None => Vec::new(),
+        //         };
+        //         (OpCode::ControlCode(ControlCode::Close), payload)
+        //     }
+        // };
+        //
+        // // todo run bytes through extensions
+        //
+        // let (flags, mask) = if self.is_client() {
+        //     (HeaderFlags::FIN, Some(self.rand.generate()))
+        // } else {
+        //     (HeaderFlags::FIN, None)
+        // };
+        //
+        // let header = FrameHeader::new(opcode, flags, mask);
+        // Frame::new(header, bytes).write_into(dst);
+        // Ok(())
+        unimplemented!()
     }
 }
 
@@ -214,22 +215,25 @@ impl Decoder for Codec {
             ..
         } = self;
 
-        match Frame::read_from(src, flags, *max_size)? {
-            Some(frame) => {
-                let Frame { header, payload } = frame;
-                let FrameHeader { opcode, flags, .. } = header;
-
-                match opcode {
-                    OpCode::DataCode(data_code) => {
-                        on_data_frame(fragment_buffer, data_code, payload, flags)
-                    }
-                    OpCode::ControlCode(control_code) => on_control_frame(control_code, payload),
-                }
-            }
-            None => {
-                return Ok(None);
-            }
-        }
+        // match Frame::read_from(src, flags, *max_size)? {
+        //     Some(frame) => {
+        //         // println!("Read frame: {:?}", frame.header.flags);
+        //
+        //         let Frame { header, payload } = frame;
+        //         let FrameHeader { opcode, flags, .. } = header;
+        //
+        //         match opcode {
+        //             OpCode::DataCode(data_code) => {
+        //                 on_data_frame(fragment_buffer, data_code, payload, flags)
+        //             }
+        //             OpCode::ControlCode(control_code) => on_control_frame(control_code, payload),
+        //         }
+        //     }
+        //     None => {
+        //         return Ok(None);
+        //     }
+        // }
+        unimplemented!()
     }
 }
 
@@ -239,80 +243,83 @@ fn on_data_frame(
     mut payload: Payload,
     flags: HeaderFlags,
 ) -> Result<Option<Message>, Error> {
-    let payload: &mut [u8] = payload.borrow_mut();
-    let payload = payload.to_vec();
-
-    match data_code {
-        DataCode::Continuation => {
-            buffer.on_frame(payload)?;
-            if flags.is_fin() {
-                let (data_type, payload) = buffer.finish_continuation()?;
-                let message = match data_type {
-                    DataType::Text => Message::text_from_utf8(payload)?,
-                    DataType::Binary => Message::Binary(payload),
-                };
-                Ok(Some(message))
-            } else {
-                Ok(None)
-            }
-        }
-        DataCode::Text => {
-            if flags.is_fin() {
-                Message::text_from_utf8(payload).map(Some)
-            } else {
-                buffer
-                    .start_continuation(DataType::Text, payload)
-                    .map(|_| None)
-            }
-        }
-        DataCode::Binary => {
-            if flags.is_fin() {
-                Ok(Some(Message::Binary(payload)))
-            } else {
-                buffer
-                    .start_continuation(DataType::Binary, payload)
-                    .map(|_| None)
-            }
-        }
-    }
+    // let payload: &mut [u8] = payload.borrow_mut();
+    // let payload = payload.to_vec();
+    //
+    // match data_code {
+    //     DataCode::Continuation => {
+    //         buffer.on_frame(payload)?;
+    //         if flags.is_fin() {
+    //             // let (data_type, payload) = buffer.finish_continuation()?;
+    //             // let message = match data_type {
+    //             //     DataType::Text => Message::Text(payload)?,
+    //             //     DataType::Binary => Message::Binary(payload),
+    //             // };
+    //             // Ok(Some(message))
+    //             unimplemented!()
+    //         } else {
+    //             Ok(None)
+    //         }
+    //     }
+    //     DataCode::Text => {
+    //         if flags.is_fin() {
+    //             unimplemented!()
+    //         } else {
+    //             buffer
+    //                 .start_continuation(DataType::Text, payload)
+    //                 .map(|_| None)
+    //         }
+    //     }
+    //     DataCode::Binary => {
+    //         if flags.is_fin() {
+    //             Ok(Some(Message::Binary(payload)))
+    //         } else {
+    //             buffer
+    //                 .start_continuation(DataType::Binary, payload)
+    //                 .map(|_| None)
+    //         }
+    //     }
+    // }
+    unimplemented!()
 }
 
 fn on_control_frame(
     control_code: ControlCode,
     mut payload: Payload,
 ) -> Result<Option<Message>, Error> {
-    let payload: &mut [u8] = payload.borrow_mut();
-    let payload_len = payload.len();
-    if payload_len > 125 {
-        return Err(Error::with_cause(ErrorKind::Protocol, CONTROL_FRAME_LEN));
-    }
-
-    match control_code {
-        ControlCode::Close => {
-            if payload_len < 2 {
-                Ok(Some(Message::Close(None)))
-            } else {
-                let close_reason = std::str::from_utf8(&payload[2..])?.to_string();
-                let description = if close_reason.is_empty() {
-                    None
-                } else {
-                    Some(close_reason)
-                };
-
-                let code_no = u16::from_be_bytes([payload[0], payload[1]]);
-                let close_code = CloseCode::try_from(code_no)?;
-                let reason = CloseReason::new(close_code, description);
-
-                Ok(Some(Message::Close(Some(reason))))
-            }
-        }
-        ControlCode::Ping => {
-            let payload = payload.to_vec();
-            Ok(Some(Message::Ping(payload)))
-        }
-        ControlCode::Pong => {
-            let payload = payload.to_vec();
-            Ok(Some(Message::Pong(payload)))
-        }
-    }
+    // let payload: &mut [u8] = payload.borrow_mut();
+    // let payload_len = payload.len();
+    // if payload_len > 125 {
+    //     return Err(Error::with_cause(ErrorKind::Protocol, CONTROL_FRAME_LEN));
+    // }
+    //
+    // match control_code {
+    //     ControlCode::Close => {
+    //         if payload_len < 2 {
+    //             Ok(Some(Message::Close(None)))
+    //         } else {
+    //             let close_reason = std::str::from_utf8(&payload[2..])?.to_string();
+    //             let description = if close_reason.is_empty() {
+    //                 None
+    //             } else {
+    //                 Some(close_reason)
+    //             };
+    //
+    //             let code_no = u16::from_be_bytes([payload[0], payload[1]]);
+    //             let close_code = CloseCode::try_from(code_no)?;
+    //             let reason = CloseReason::new(close_code, description);
+    //
+    //             Ok(Some(Message::Close(Some(reason))))
+    //         }
+    //     }
+    //     ControlCode::Ping => {
+    //         let payload = payload.to_vec();
+    //         Ok(Some(Message::Ping(payload)))
+    //     }
+    //     ControlCode::Pong => {
+    //         let payload = payload.to_vec();
+    //         Ok(Some(Message::Pong(payload)))
+    //     }
+    // }
+    unimplemented!()
 }

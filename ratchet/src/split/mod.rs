@@ -65,6 +65,7 @@ where
     let HandshakeResult {
         protocol,
         extension,
+        io_buf,
     } = exec_client_handshake(&mut stream, request, extension, subprotocols).await?;
 
     let (read_half, write_half) = stream.compat().split();

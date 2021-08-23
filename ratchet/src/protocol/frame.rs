@@ -20,6 +20,7 @@ use crate::Role;
 use bytes::{Buf, BufMut};
 use bytes::{Bytes, BytesMut};
 use derive_more::Display;
+use either::Either;
 use nanorand::{WyRand, RNG};
 use std::borrow::{Borrow, BorrowMut};
 use std::collections::hash_map::Entry;
@@ -27,7 +28,6 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::mem::size_of;
 use thiserror::Error;
-
 const U16_MAX: usize = u16::MAX as usize;
 
 #[derive(Debug, Display, PartialEq)]
@@ -103,7 +103,7 @@ impl TryFrom<u8> for OpCode {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CloseReason {
     pub code: CloseCode,
     pub description: Option<String>,
@@ -119,7 +119,7 @@ impl CloseReason {
 /// https://developer.mozilla.org/en-US/docs/Web/API/CloseEvent
 /// https://mailarchive.ietf.org/arch/msg/hybi/P_1vbD9uyHl63nbIIbFxKMfSwcM/
 /// https://tools.ietf.org/id/draft-ietf-hybi-thewebsocketprotocol-09.html
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum CloseCode {
     Normal,
     GoingAway,
@@ -197,20 +197,20 @@ impl From<CloseCode> for u16 {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Message {
-    Text(String),
-    Binary(Vec<u8>),
-    Ping(Vec<u8>),
-    Pong(Vec<u8>),
+    Text(Bytes),
+    Binary(Bytes),
+    Ping(Bytes),
+    Pong(Bytes),
     Close(Option<CloseReason>),
 }
 
 impl Message {
-    pub fn text_from_utf8(bytes: Vec<u8>) -> Result<Message, Error> {
-        match String::from_utf8(bytes) {
-            Ok(string) => Ok(Message::Text(string)),
-            Err(e) => Err(Error::with_cause(ErrorKind::Encoding, e)),
+    pub fn expect_text(self) -> Bytes {
+        match self {
+            Message::Text(text) => text,
+            _ => panic!(),
         }
     }
 }
@@ -229,7 +229,7 @@ pub struct FrameHeader {
 }
 
 macro_rules! try_parse_int {
-    ($source:ident, $offset:ident, $into:ty) => {{
+    ($source:ident, $offset:ident, $source_length:ident, $into:ty) => {{
         const WIDTH: usize = size_of::<$into>();
         match <[u8; WIDTH]>::try_from(&$source[$offset..$offset + WIDTH]) {
             Ok(len) => {
@@ -237,7 +237,7 @@ macro_rules! try_parse_int {
                 $offset += WIDTH;
                 len
             }
-            Err(_) => return Ok(None),
+            Err(_) => return Ok(Either::Right($offset + WIDTH - $source_length)),
         }
     }};
 }
@@ -255,10 +255,10 @@ impl FrameHeader {
         source: &[u8],
         codec_flags: &CodecFlags,
         max_size: usize,
-    ) -> Result<Option<(FrameHeader, usize, usize)>, Error> {
+    ) -> Result<Either<(FrameHeader, usize, usize), usize>, Error> {
         let source_length = source.len();
         if source_length < 2 {
-            return Ok(None);
+            return Ok(Either::Right(2 - source_length));
         }
 
         let server = codec_flags.contains(CodecFlags::ROLE);
@@ -292,9 +292,9 @@ impl FrameHeader {
         let mut offset = 2;
 
         let length: usize = if payload_length == 126 {
-            try_parse_int!(source, offset, u16) as usize
+            try_parse_int!(source, offset, source_length, u16) as usize
         } else if payload_length == 127 {
-            try_parse_int!(source, offset, u64) as usize
+            try_parse_int!(source, offset, source_length, u64) as usize
         } else {
             usize::from(payload_length)
         };
@@ -304,12 +304,12 @@ impl FrameHeader {
         }
 
         let mask = if masked {
-            Some(try_parse_int!(source, offset, u32))
+            Some(try_parse_int!(source, offset, source_length, u32))
         } else {
             None
         };
 
-        Ok(Some((
+        Ok(Either::Left((
             (FrameHeader {
                 opcode,
                 flags: received_flags,
@@ -359,20 +359,14 @@ impl<'p> BorrowMut<[u8]> for Payload<'p> {
 }
 
 #[derive(Debug)]
-pub struct Frame<'p> {
+pub struct Frame {
     pub header: FrameHeader,
-    pub payload: Payload<'p>,
+    pub payload: Bytes,
 }
 
-impl<'p> Frame<'p> {
-    pub fn new<P>(header: FrameHeader, payload: P) -> Frame<'p>
-    where
-        P: Into<Payload<'p>>,
-    {
-        Frame {
-            header,
-            payload: payload.into(),
-        }
+impl Frame {
+    pub fn new(header: FrameHeader, payload: Bytes) -> Frame {
+        Frame { header, payload }
     }
 
     pub fn write_into(self, dst: &mut BytesMut) {
@@ -386,7 +380,6 @@ impl<'p> Frame<'p> {
             mask,
         } = header;
 
-        let mut payload: &mut [u8] = payload.borrow_mut();
         let payload_len = payload.len();
         let mut masked = mask.is_some();
 
@@ -417,33 +410,35 @@ impl<'p> Frame<'p> {
             dst.put_u64(payload_len as u64);
         };
 
+        dst.extend_from_slice(&payload);
+
         if let Some(mask) = mask {
-            apply_mask(mask, &mut payload);
+            let pos = dst.len() - payload_len;
+            apply_mask(mask, &mut dst[pos..]);
             dst.put_u32(mask as u32);
         }
-
-        dst.extend_from_slice(payload);
     }
 
     pub fn read_from(
         from: &mut BytesMut,
         codec_flags: &CodecFlags,
         max_size: usize,
-    ) -> Result<Option<Frame<'p>>, Error> {
+    ) -> Result<Either<Frame, usize>, Error> {
         let (header, header_len, payload_len) =
             match FrameHeader::read_from(from.as_ref(), codec_flags, max_size)? {
-                Some(r) => r,
-                None => return Ok(None),
+                Either::Left(r) => r,
+                Either::Right(count) => return Ok(Either::Right(count)),
             };
 
         if from.len() < header_len + payload_len {
-            return Ok(None);
+            let dif = (header_len + payload_len) - from.len();
+            return Ok(Either::Right(dif));
         }
 
         from.advance(header_len);
 
         if payload_len == 0 {
-            return Ok(Some(Frame::new(header, Vec::new())));
+            return Ok(Either::Left(Frame::new(header, Bytes::default())));
         }
 
         let mut payload = from.split_to(payload_len);
@@ -452,7 +447,7 @@ impl<'p> Frame<'p> {
             apply_mask(mask, &mut payload);
         }
 
-        Ok(Some(Frame::new(header, payload.to_vec())))
+        Ok(Either::Left(Frame::new(header, payload.freeze())))
     }
 }
 

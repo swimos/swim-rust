@@ -12,13 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#![allow(warnings)]
+
 use futures::future::BoxFuture;
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use crate::errors::Error;
+pub use crate::errors::Error;
 use crate::extensions::deflate::Deflate;
 pub use crate::extensions::{deflate::*, ext::*, ExtHandshakeErr, Extension, ExtensionProvider};
 pub use crate::http_ext::TryIntoRequest;
+pub use protocol::frame::Message;
 
 #[cfg(test)]
 mod fixture;
@@ -31,6 +34,7 @@ mod http_ext;
 #[allow(warnings)]
 mod protocol;
 
+pub mod conn;
 pub mod owned;
 pub mod split;
 

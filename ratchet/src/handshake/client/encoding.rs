@@ -23,21 +23,23 @@ use base64::encode_config_slice;
 use bytes::BytesMut;
 use http::header::{AsHeaderName, HeaderName, IntoHeaderName};
 use http::{header, HeaderMap, HeaderValue, Method, Request};
+use url::Url;
 
 pub fn encode_request(dst: &mut BytesMut, request: Request<()>, nonce_buffer: &mut Nonce) {
     let (parts, _body) = request.into_parts();
 
     dst.extend_from_slice(b"GET ");
-    dst.extend_from_slice(parts.uri.to_string().as_bytes());
+    dst.extend_from_slice(parts.uri.path_and_query().unwrap().as_str().as_bytes());
     dst.extend_from_slice(b" HTTP/1.1");
     dst.extend_from_slice(b"\r\nHost: ");
     // previously checked
-    dst.extend_from_slice(parts.uri.host().unwrap().as_bytes());
+    dst.extend_from_slice(parts.uri.authority().unwrap().as_str().as_bytes());
 
     dst.extend_from_slice(format!("\r\n{}: websocket", header::UPGRADE).as_bytes());
     dst.extend_from_slice(format!("\r\n{}: Upgrade", header::CONNECTION).as_bytes());
     dst.extend_from_slice(format!("\r\n{}: ", header::SEC_WEBSOCKET_KEY).as_bytes());
 
+    // replace with wyrand
     let nonce = rand::random::<[u8; 16]>();
     encode_config_slice(&nonce, base64::STANDARD, nonce_buffer);
     dst.extend_from_slice(nonce_buffer);
@@ -76,6 +78,13 @@ where
     if request.method() != Method::GET {
         return Err(Error::with_cause(ErrorKind::Http, HttpError::InvalidMethod));
     }
+
+    let authority = request
+        .uri()
+        .authority()
+        .ok_or(Error::with_cause(ErrorKind::Http, "Missing authority"))?
+        .as_str();
+    validate_or_insert(request, header::HOST, HeaderValue::from_str(authority)?)?;
 
     validate_or_insert(
         request,

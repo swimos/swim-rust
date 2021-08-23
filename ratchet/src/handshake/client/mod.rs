@@ -12,11 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod encoding;
-#[cfg(test)]
-mod tests;
+use std::convert::TryFrom;
 
-type Nonce = [u8; 24];
+use bytes::BytesMut;
+use http::header::HeaderName;
+use http::{header, Request, StatusCode};
+use httparse::{Response, Status};
+use sha1::{Digest, Sha1};
+use tracing::{event, span, Level};
+use tracing_futures::Instrument;
 
 use crate::errors::{Error, ErrorKind, HttpError};
 use crate::extensions::ExtensionProvider;
@@ -24,14 +28,12 @@ use crate::handshake::client::encoding::{build_request, encode_request};
 use crate::handshake::io::BufferedIo;
 use crate::handshake::{ProtocolRegistry, ACCEPT_KEY, BAD_STATUS_CODE, UPGRADE_STR, WEBSOCKET_STR};
 use crate::WebSocketStream;
-use bytes::BytesMut;
-use http::header::HeaderName;
-use http::{header, Request, StatusCode};
-use httparse::{Response, Status};
-use sha1::{Digest, Sha1};
-use std::convert::TryFrom;
-use tracing::{event, span, Level};
-use tracing_futures::Instrument;
+
+mod encoding;
+#[cfg(test)]
+mod tests;
+
+type Nonce = [u8; 24];
 
 const MSG_HANDSHAKE_COMPLETED: &str = "Handshake completed";
 const MSG_HANDSHAKE_FAILED: &str = "Handshake failed";
@@ -57,6 +59,7 @@ where
             Ok(HandshakeResult {
                 protocol,
                 extension,
+                ..
             }) => {
                 event!(Level::DEBUG, MSG_HANDSHAKE_COMPLETED, ?protocol, ?extension)
             }
@@ -117,7 +120,7 @@ where
         self.buffered.clear();
     }
 
-    async fn read(&mut self) -> Result<HandshakeResult<E::Extension>, Error> {
+    async fn read(&mut self) -> Result<(Option<String>, E::Extension), Error> {
         let HandshakeMachine {
             buffered,
             nonce,
@@ -138,9 +141,9 @@ where
                 extension,
                 subprotocols,
             )? {
-                ParseResult::Complete(result, count) => {
+                ParseResult::Complete(negotiated, count) => {
                     buffered.advance(count);
-                    break Ok(result);
+                    break Ok(negotiated);
                 }
                 ParseResult::Partial => check_partial_response(&response)?,
             }
@@ -155,7 +158,13 @@ where
         self.encode(request)?;
         self.write().await?;
         self.clear_buffer();
-        self.read().await
+        self.read()
+            .await
+            .map(|(protocol, extension)| HandshakeResult {
+                protocol,
+                extension,
+                io_buf: self.buffered.buffer,
+            })
     }
 }
 
@@ -163,6 +172,7 @@ where
 pub struct HandshakeResult<E> {
     pub protocol: Option<String>,
     pub extension: E,
+    pub io_buf: BytesMut,
 }
 
 /// Quickly checks a partial response in the order of the expected HTTP response declaration to see
@@ -179,7 +189,6 @@ fn check_partial_response(response: &Response) -> Result<(), Error> {
             ))
         }
     }
-
     match response.code {
         Some(code) if code == StatusCode::SWITCHING_PROTOCOLS => Ok(()),
         Some(code) if (300..400).contains(&code) => {
@@ -196,7 +205,7 @@ fn check_partial_response(response: &Response) -> Result<(), Error> {
 }
 
 enum ParseResult<E> {
-    Complete(HandshakeResult<E>, usize),
+    Complete((Option<String>, E), usize),
     Partial,
 }
 
@@ -225,7 +234,7 @@ fn parse_response<E>(
     expected_nonce: &Nonce,
     extension: &E,
     subprotocols: &mut ProtocolRegistry,
-) -> Result<HandshakeResult<E::Extension>, Error>
+) -> Result<(Option<String>, E::Extension), Error>
 where
     E: ExtensionProvider,
 {
@@ -255,7 +264,9 @@ where
                         HttpError::Redirected(location),
                     ));
                 }
-                None => return Err(Error::with_cause(ErrorKind::Http, HttpError::Status(c))),
+                None => {
+                    return Err(Error::with_cause(ErrorKind::Http, HttpError::Status(c)));
+                }
             }
         }
         status_code => {
@@ -286,10 +297,10 @@ where
         },
     )?;
 
-    Ok(HandshakeResult {
-        protocol: subprotocols.negotiate_response(response)?,
-        extension: extension.negotiate(response)?,
-    })
+    Ok((
+        subprotocols.negotiate_response(response)?,
+        extension.negotiate(response)?,
+    ))
 }
 
 fn validate_header_value(
