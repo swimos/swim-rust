@@ -5,7 +5,7 @@ error[E0277]: the trait bound `B: Tag` is not satisfied
    |              ^^^^ the trait `Tag` is not implemented for `B`
    |
    = note: required by `as_string`
-   = note: this error originates in a derive macro (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the derive macro `Form` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `B: Tag` is not satisfied
   --> $DIR/tag_no_to_string.rs:21:14
@@ -14,4 +14,4 @@ error[E0277]: the trait bound `B: Tag` is not satisfied
    |              ^^^^ the trait `Tag` is not implemented for `B`
    |
    = note: required by `from_string`
-   = note: this error originates in a derive macro (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the derive macro `Form` (in Nightly builds, run with -Z macro-backtrace for more info)

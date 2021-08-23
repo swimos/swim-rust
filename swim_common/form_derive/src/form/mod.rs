@@ -38,26 +38,26 @@ pub fn build_derive_form(input: DeriveInput) -> Result<proc_macro2::TokenStream,
 
     let from_value_body = from_value(
         &type_contents,
-        &structure_name,
+        structure_name,
         |value| parse_quote!(swim_common::form::Form::try_from_value(#value)),
         false,
     );
 
     let try_convert_body = from_value(
         &type_contents,
-        &structure_name,
+        structure_name,
         |value| parse_quote!(swim_common::form::Form::try_convert(#value)),
         true,
     );
     let as_value_body = to_value(
         type_contents.clone(),
-        &structure_name,
+        structure_name,
         |ident| parse_quote!(#ident.as_value()),
         true,
     );
     let into_value_body = to_value(
         type_contents,
-        &structure_name,
+        structure_name,
         |ident| parse_quote!(#ident.into_value()),
         false,
     );
