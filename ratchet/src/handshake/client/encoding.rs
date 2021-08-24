@@ -23,7 +23,6 @@ use base64::encode_config_slice;
 use bytes::BytesMut;
 use http::header::{AsHeaderName, HeaderName, IntoHeaderName};
 use http::{header, HeaderMap, HeaderValue, Method, Request};
-use url::Url;
 
 pub fn encode_request(dst: &mut BytesMut, request: Request<()>, nonce_buffer: &mut Nonce) {
     let (parts, _body) = request.into_parts();
@@ -83,8 +82,13 @@ where
         .uri()
         .authority()
         .ok_or(Error::with_cause(ErrorKind::Http, "Missing authority"))?
-        .as_str();
-    validate_or_insert(request, header::HOST, HeaderValue::from_str(authority)?)?;
+        .as_str()
+        .to_string();
+    validate_or_insert(
+        request,
+        header::HOST,
+        HeaderValue::from_str(authority.as_ref())?,
+    )?;
 
     validate_or_insert(
         request,

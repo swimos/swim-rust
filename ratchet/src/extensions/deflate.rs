@@ -12,19 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::extensions::{ExtHandshakeErr, Extension, ExtensionProvider};
+use crate::extensions::{Extension, ExtensionProvider};
 use crate::Request;
 use httparse::Response;
+use thiserror::Error;
 
 pub struct DeflateHandshake;
+
+#[derive(Error, Debug)]
+#[error("Err")]
+pub struct DeflateError;
+
 impl ExtensionProvider for DeflateHandshake {
     type Extension = Deflate;
+    type Error = DeflateError;
 
     fn apply_headers(&self, _request: &mut Request) {
         todo!()
     }
 
-    fn negotiate(&self, _response: &Response) -> Result<Self::Extension, ExtHandshakeErr> {
+    fn negotiate(&self, _response: &Response) -> Result<Self::Extension, Self::Error> {
         Ok(Deflate)
     }
 }

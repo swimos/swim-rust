@@ -12,52 +12,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 mod client;
 mod io;
 #[allow(warnings)]
 mod server;
 
+use crate::errors::{Error, ProtocolError};
 use crate::errors::{ErrorKind, HttpError};
-use crate::protocol::frame::OpCodeParseErr;
 use crate::{Request, Response};
 pub use client::{exec_client_handshake, HandshakeResult};
 use fnv::FnvHashSet;
 use http::header::SEC_WEBSOCKET_PROTOCOL;
+use http::Uri;
 use http::{header, HeaderValue};
 use httparse::Header;
-use thiserror::Error;
+use url::Url;
 
 const WEBSOCKET_STR: &str = "websocket";
 const UPGRADE_STR: &str = "upgrade";
 const WEBSOCKET_VERSION_STR: &str = "13";
 const WEBSOCKET_VERSION: u8 = 13;
 const BAD_STATUS_CODE: &str = "Invalid status code";
-
 const ACCEPT_KEY: &[u8] = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-
-#[derive(Debug, PartialEq, Error)]
-pub enum ProtocolError {
-    #[error("Not valid UTF-8 encoding")]
-    Encoding,
-    #[error("Received an unknown subprotocol")]
-    UnknownProtocol,
-    #[error("Bad OpCode: `{0}`")]
-    OpCode(OpCodeParseErr),
-    #[error("Received an unexpected unmasked frame")]
-    UnmaskedFrame,
-    #[error("Received an unexpected masked frame")]
-    MaskedFrame,
-    #[error("Received a fragmented control frame")]
-    FragmentedControl,
-    #[error("A frame exceeded the maximum permitted size")]
-    FrameOverflow,
-    #[error("Attempted to use an extension that has not been negotiated")]
-    UnknownExtension,
-    #[error("Received a continuation frame before one has been started")]
-    ContinuationNotStarted,
-    #[error("Attempted to start another continuation before the previous one has completed")]
-    ContinuationAlreadyStarted,
-}
 
 #[derive(Default)]
 pub struct ProtocolRegistry {
@@ -176,96 +155,54 @@ impl SubprotocolApplicator<Response> for ProtocolRegistry {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::handshake::{ProtocolError, ProtocolRegistry};
-    use http::header::SEC_WEBSOCKET_PROTOCOL;
+pub trait TryIntoRequest {
+    fn try_into_request(self) -> Result<Request, Error>;
+}
 
-    #[test]
-    fn selects_protocol_ok() {
-        let mut headers = [httparse::Header {
-            name: SEC_WEBSOCKET_PROTOCOL.as_str(),
-            value: b"warp, warps",
-        }];
-        let request = httparse::Request::new(&mut headers);
-
-        let registry = ProtocolRegistry::new(vec!["warps", "warp"]);
-        assert_eq!(
-            registry.negotiate_request(&request),
-            Ok(Some("warp".to_string()))
-        );
+impl<'a> TryIntoRequest for &'a str {
+    fn try_into_request(self) -> Result<Request, Error> {
+        self.parse::<Uri>()?.try_into_request()
     }
+}
 
-    #[test]
-    fn multiple_headers() {
-        let mut headers = [
-            httparse::Header {
-                name: SEC_WEBSOCKET_PROTOCOL.as_str(),
-                value: b"warp",
-            },
-            httparse::Header {
-                name: SEC_WEBSOCKET_PROTOCOL.as_str(),
-                value: b"warps",
-            },
-        ];
-        let request = httparse::Request::new(&mut headers);
-
-        let registry = ProtocolRegistry::new(vec!["warps", "warp"]);
-        assert_eq!(
-            registry.negotiate_request(&request),
-            Ok(Some("warp".to_string()))
-        );
+impl<'a> TryIntoRequest for &'a String {
+    fn try_into_request(self) -> Result<Request, Error> {
+        self.as_str().try_into_request()
     }
+}
 
-    #[test]
-    fn mixed_headers() {
-        let mut headers = [
-            httparse::Header {
-                name: SEC_WEBSOCKET_PROTOCOL.as_str(),
-                value: b"warp1.0",
-            },
-            httparse::Header {
-                name: SEC_WEBSOCKET_PROTOCOL.as_str(),
-                value: b"warps2.0,warp3.0",
-            },
-            httparse::Header {
-                name: SEC_WEBSOCKET_PROTOCOL.as_str(),
-                value: b"warps4.0",
-            },
-        ];
-        let request = httparse::Request::new(&mut headers);
-
-        let registry = ProtocolRegistry::new(vec!["warps", "warp", "warps2.0"]);
-        assert_eq!(
-            registry.negotiate_request(&request),
-            Ok(Some("warps2.0".to_string()))
-        );
+impl TryIntoRequest for String {
+    fn try_into_request(self) -> Result<Request, Error> {
+        self.as_str().try_into_request()
     }
+}
 
-    #[test]
-    fn malformatted() {
-        let mut headers = [httparse::Header {
-            name: SEC_WEBSOCKET_PROTOCOL.as_str(),
-            value: &[255, 255, 255, 255],
-        }];
-        let request = httparse::Request::new(&mut headers);
-
-        let registry = ProtocolRegistry::new(vec!["warps", "warp", "warps2.0"]);
-        assert_eq!(
-            registry.negotiate_request(&request),
-            Err(ProtocolError::Encoding)
-        );
+impl<'a> TryIntoRequest for &'a Uri {
+    fn try_into_request(self) -> Result<Request, Error> {
+        self.clone().try_into_request()
     }
+}
 
-    #[test]
-    fn no_match() {
-        let mut headers = [httparse::Header {
-            name: SEC_WEBSOCKET_PROTOCOL.as_str(),
-            value: b"a,b,c",
-        }];
-        let request = httparse::Request::new(&mut headers);
+impl TryIntoRequest for Uri {
+    fn try_into_request(self) -> Result<Request, Error> {
+        Ok(Request::get(self).body(())?)
+    }
+}
 
-        let registry = ProtocolRegistry::new(vec!["d"]);
-        assert_eq!(registry.negotiate_request(&request), Ok(None));
+impl<'a> TryIntoRequest for &'a Url {
+    fn try_into_request(self) -> Result<Request, Error> {
+        self.as_str().try_into_request()
+    }
+}
+
+impl TryIntoRequest for Url {
+    fn try_into_request(self) -> Result<Request, Error> {
+        self.as_str().try_into_request()
+    }
+}
+
+impl TryIntoRequest for Request {
+    fn try_into_request(self) -> Result<Request, Error> {
+        Ok(self)
     }
 }

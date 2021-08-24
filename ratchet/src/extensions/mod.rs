@@ -12,15 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::errors::BoxError;
 use crate::Request;
+use std::error::Error;
 use std::fmt::Debug;
 
 pub mod deflate;
 pub mod ext;
-
-// todo
-pub struct ExtHandshakeErr(pub(crate) BoxError);
 
 pub trait Extension: Debug + Clone {
     fn encode(&mut self);
@@ -30,8 +27,9 @@ pub trait Extension: Debug + Clone {
 
 pub trait ExtensionProvider {
     type Extension: Extension;
+    type Error: Error + Send + Sync + 'static;
 
     fn apply_headers(&self, request: &mut Request);
 
-    fn negotiate(&self, response: &httparse::Response) -> Result<Self::Extension, ExtHandshakeErr>;
+    fn negotiate(&self, response: &httparse::Response) -> Result<Self::Extension, Self::Error>;
 }

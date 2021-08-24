@@ -12,58 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(warnings)]
-
-use futures::future::BoxFuture;
-use tokio::io::{AsyncRead, AsyncWrite};
-
-pub use crate::errors::Error;
-use crate::extensions::deflate::Deflate;
-pub use crate::extensions::{deflate::*, ext::*, ExtHandshakeErr, Extension, ExtensionProvider};
-pub use crate::http_ext::TryIntoRequest;
-pub use protocol::frame::Message;
-
 #[cfg(test)]
 mod fixture;
 
-mod codec;
 mod errors;
 mod extensions;
+mod framed;
 mod handshake;
-mod http_ext;
-#[allow(warnings)]
 mod protocol;
 
-pub mod conn;
-pub mod owned;
-pub mod split;
+pub mod ws;
+pub use crate::errors::Error;
+pub use crate::extensions::{deflate::*, ext::*, Extension, ExtensionProvider};
+pub use handshake::TryIntoRequest;
+pub use protocol::{Message, MessageType, WebSocketConfig};
+
+use tokio::io::{AsyncRead, AsyncWrite};
 
 pub(crate) type Request = http::Request<()>;
 pub(crate) type Response = http::Response<()>;
 
 pub trait WebSocketStream: AsyncRead + AsyncWrite + Unpin {}
 impl<S> WebSocketStream for S where S: AsyncRead + AsyncWrite + Unpin {}
-
-#[derive(Clone, Default)]
-pub struct WebSocketConfig {
-    // options..
-}
-
-pub trait Interceptor {
-    fn intercept(self, request: Request, response: Response) -> BoxFuture<'static, Response>;
-}
-
-impl<F> Interceptor for F
-where
-    F: Fn(Request, Response) -> BoxFuture<'static, Response>,
-{
-    fn intercept(self, request: Request, response: Response) -> BoxFuture<'static, Response> {
-        (self)(request, response)
-    }
-}
-
-#[derive(Copy, Clone, PartialEq)]
-pub enum Role {
-    Client,
-    Server,
-}

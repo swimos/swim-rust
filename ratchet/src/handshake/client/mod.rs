@@ -30,8 +30,8 @@ use crate::handshake::{ProtocolRegistry, ACCEPT_KEY, BAD_STATUS_CODE, UPGRADE_ST
 use crate::WebSocketStream;
 
 mod encoding;
-#[cfg(test)]
-mod tests;
+// #[cfg(test)]
+// mod tests;
 
 type Nonce = [u8; 24];
 
@@ -44,12 +44,13 @@ pub async fn exec_client_handshake<S, E>(
     request: Request<()>,
     extension: E,
     subprotocols: ProtocolRegistry,
+    buf: &mut BytesMut,
 ) -> Result<HandshakeResult<E::Extension>, Error>
 where
     S: WebSocketStream,
     E: ExtensionProvider,
 {
-    let machine = HandshakeMachine::new(stream, subprotocols, extension);
+    let machine = HandshakeMachine::new(stream, subprotocols, extension, buf);
     let uri = request.uri();
     let span = span!(Level::DEBUG, MSG_HANDSHAKE_START, ?uri);
 
@@ -90,9 +91,10 @@ where
         socket: &'s mut S,
         subprotocols: ProtocolRegistry,
         extension: E,
+        buf: &'s mut BytesMut,
     ) -> HandshakeMachine<'s, S, E> {
         HandshakeMachine {
-            buffered: BufferedIo::new(socket, BytesMut::new()),
+            buffered: BufferedIo::new(socket, buf),
             nonce: [0; 24],
             subprotocols,
             extension,
@@ -120,7 +122,7 @@ where
         self.buffered.clear();
     }
 
-    async fn read(&mut self) -> Result<(Option<String>, E::Extension), Error> {
+    async fn read(&mut self) -> Result<HandshakeResult<E::Extension>, Error> {
         let HandshakeMachine {
             buffered,
             nonce,
@@ -141,9 +143,12 @@ where
                 extension,
                 subprotocols,
             )? {
-                ParseResult::Complete(negotiated, count) => {
+                ParseResult::Complete((protocol, extension), count) => {
                     buffered.advance(count);
-                    break Ok(negotiated);
+                    break Ok(HandshakeResult {
+                        protocol,
+                        extension,
+                    });
                 }
                 ParseResult::Partial => check_partial_response(&response)?,
             }
@@ -158,13 +163,7 @@ where
         self.encode(request)?;
         self.write().await?;
         self.clear_buffer();
-        self.read()
-            .await
-            .map(|(protocol, extension)| HandshakeResult {
-                protocol,
-                extension,
-                io_buf: self.buffered.buffer,
-            })
+        self.read().await
     }
 }
 
@@ -172,7 +171,6 @@ where
 pub struct HandshakeResult<E> {
     pub protocol: Option<String>,
     pub extension: E,
-    pub io_buf: BytesMut,
 }
 
 /// Quickly checks a partial response in the order of the expected HTTP response declaration to see
@@ -299,7 +297,9 @@ where
 
     Ok((
         subprotocols.negotiate_response(response)?,
-        extension.negotiate(response)?,
+        extension
+            .negotiate(response)
+            .map_err(|e| Error::with_cause(ErrorKind::Extension, e))?,
     ))
 }
 

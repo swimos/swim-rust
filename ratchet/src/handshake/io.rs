@@ -19,14 +19,14 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 pub struct BufferedIo<'s, S> {
     socket: &'s mut S,
-    pub buffer: BytesMut,
+    pub buffer: &'s mut BytesMut,
 }
 
 impl<'s, S> BufferedIo<'s, S>
 where
     S: WebSocketStream,
 {
-    pub fn new(socket: &'s mut S, buffer: BytesMut) -> BufferedIo<'s, S> {
+    pub fn new(socket: &'s mut S, buffer: &'s mut BytesMut) -> BufferedIo<'s, S> {
         BufferedIo { socket, buffer }
     }
 

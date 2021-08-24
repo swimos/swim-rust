@@ -12,9 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::extensions::ExtHandshakeErr;
-use crate::handshake::ProtocolError;
-use crate::protocol::frame::{CloseCodeParseErr, OpCodeParseErr};
+use crate::protocol::{CloseCodeParseErr, OpCodeParseErr};
 use http::header::{HeaderName, InvalidHeaderValue};
 use http::status::InvalidStatusCode;
 use http::uri::InvalidUri;
@@ -71,25 +69,28 @@ impl Error {
         }
     }
 
+    pub fn is_io(&self) -> bool {
+        matches!(self.inner.kind, ErrorKind::IO)
+    }
+
     pub fn is_http(&self) -> bool {
         matches!(self.inner.kind, ErrorKind::Http)
     }
 
-    pub fn is_io(&self) -> bool {
-        matches!(self.inner.kind, ErrorKind::IO)
+    pub fn is_extension(&self) -> bool {
+        matches!(self.inner.kind, ErrorKind::Extension)
+    }
+
+    pub fn is_protocol(&self) -> bool {
+        matches!(self.inner.kind, ErrorKind::Protocol)
     }
 
     pub fn is_encoding(&self) -> bool {
         matches!(self.inner.kind, ErrorKind::Encoding)
     }
 
-    pub fn closed_normal(&self) -> bool {
-        match &self.downcast_ref::<CloseError>() {
-            Some(e) => {
-                matches!(e, CloseError::Normal)
-            }
-            None => false,
-        }
+    pub fn is_close(&self) -> bool {
+        matches!(self.inner.kind, ErrorKind::Close)
     }
 }
 
@@ -106,6 +107,7 @@ pub(crate) enum ErrorKind {
     Extension,
     Protocol,
     Encoding,
+    Close,
 }
 
 impl From<io::Error> for Error {
@@ -146,17 +148,6 @@ pub enum HttpError {
     MalformattedUri,
     #[error("A provided header was malformatted")]
     MalformattedHeader,
-}
-
-impl From<ExtHandshakeErr> for Error {
-    fn from(e: ExtHandshakeErr) -> Self {
-        Error {
-            inner: Inner {
-                kind: ErrorKind::Extension,
-                source: Some(e.0),
-            },
-        }
-    }
 }
 
 impl From<InvalidUri> for Error {
@@ -209,6 +200,30 @@ impl From<InvalidHeaderValue> for Error {
 
 #[derive(Error, Debug, PartialEq)]
 pub enum CloseError {
-    #[error("Closed normally (not an error)")]
-    Normal,
+    #[error("The channel is already closed")]
+    Closed,
+}
+
+#[derive(Debug, PartialEq, Error)]
+pub enum ProtocolError {
+    #[error("Not valid UTF-8 encoding")]
+    Encoding,
+    #[error("Received an unknown subprotocol")]
+    UnknownProtocol,
+    #[error("Bad OpCode: `{0}`")]
+    OpCode(OpCodeParseErr),
+    #[error("Received an unexpected unmasked frame")]
+    UnmaskedFrame,
+    #[error("Received an unexpected masked frame")]
+    MaskedFrame,
+    #[error("Received a fragmented control frame")]
+    FragmentedControl,
+    #[error("A frame exceeded the maximum permitted size")]
+    FrameOverflow,
+    #[error("Attempted to use an extension that has not been negotiated")]
+    UnknownExtension,
+    #[error("Received a continuation frame before one has been started")]
+    ContinuationNotStarted,
+    #[error("Attempted to start another continuation before the previous one has completed")]
+    ContinuationAlreadyStarted,
 }

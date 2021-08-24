@@ -14,7 +14,8 @@
 
 use crate::errors::Error;
 use crate::handshake::io::BufferedIo;
-use crate::{WebSocketConfig, WebSocketStream};
+use crate::protocol::WebSocketConfig;
+use crate::WebSocketStream;
 use bytes::BytesMut;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_native_tls::TlsConnector;
@@ -27,7 +28,8 @@ pub async fn exec_client_handshake<S>(
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
-    let machine = HandshakeMachine::new(stream, Vec::new(), Vec::new());
+    let mut read_buffer = BytesMut::new();
+    let machine = HandshakeMachine::new(stream, Vec::new(), Vec::new(), &mut read_buffer);
     machine.exec().await
 }
 
@@ -45,9 +47,10 @@ where
         socket: &'s mut S,
         subprotocols: Vec<&'static str>,
         extensions: Vec<&'static str>,
+        read_buffer: &'s mut BytesMut,
     ) -> HandshakeMachine<'s, S> {
         HandshakeMachine {
-            buffered: BufferedIo::new(socket, BytesMut::new()),
+            buffered: BufferedIo::new(socket, read_buffer),
             subprotocols,
             extensions,
         }

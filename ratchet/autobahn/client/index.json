@@ -1,0 +1,11 @@
+{
+   "Ratchet": {
+      "9.3.1": {
+         "behavior": "OK",
+         "behaviorClose": "OK",
+         "duration": 1300,
+         "remoteCloseCode": 1000,
+         "reportfile": "ratchet_case_9_3_1.json"
+      }
+   }
+}

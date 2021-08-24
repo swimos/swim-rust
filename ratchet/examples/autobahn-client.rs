@@ -3,11 +3,11 @@
 use log::*;
 use url::Url;
 
+use bytes::BytesMut;
 use futures::stream::{Stream, StreamExt};
 use futures::SinkExt;
-use ratchet::conn::{client, WebSocket};
-use ratchet::owned::{Message, WebSocketClientBuilder};
-use ratchet::{Error, NoExt, NoExtProxy, TryIntoRequest, WebSocketConfig};
+use ratchet::ws::{client, WebSocket};
+use ratchet::{Error, Message, MessageType, NoExt, NoExtProxy, TryIntoRequest, WebSocketConfig};
 use std::io::ErrorKind;
 use std::time::Duration;
 use tokio::net::TcpStream;
@@ -35,15 +35,20 @@ async fn get_case_count() -> Result<u32, Error> {
     let mut websocket = subscribe("ws://localhost:9001/getCaseCount").await.unwrap();
 
     println!("get_case_count Connected");
-    let msg = websocket.read().await?;
+    let mut buf = BytesMut::new();
+    let msg = websocket.read(&mut buf).await?;
     println!("get_case_count got message");
 
     // websocket.close().await;
-    // println!("get_case_count closed");
+    println!("get_case_count closed");
 
-    let byte_str = msg.expect_text();
-    let count = String::from_utf8(byte_str.to_vec()).unwrap();
-    Ok(count.parse::<u32>().unwrap())
+    match msg {
+        Message::Text => {
+            let count = String::from_utf8(buf.to_vec()).unwrap();
+            Ok(count.parse::<u32>().unwrap())
+        }
+        _ => panic!(),
+    }
 }
 
 async fn update_reports() -> Result<(), Error> {
@@ -66,13 +71,19 @@ async fn run_test(case: u32) -> Result<(), Error> {
     .await
     .unwrap();
 
+    let mut buf = BytesMut::new();
+
     loop {
-        match websocket.read().await? {
-            msg @ Message::Text(_) | msg @ Message::Binary(_) => {
-                websocket.write(msg).await?;
+        buf.clear();
+        match websocket.read(&mut buf).await? {
+            Message::Text => {
+                websocket.write(&mut buf, MessageType::Text).await?;
             }
-            Message::Ping(_) | Message::Pong(_) => {}
-            Message::Close(_) => {}
+            Message::Binary => {
+                websocket.write(&mut buf, MessageType::Binary).await?;
+            }
+            Message::Ping | Message::Pong => {}
+            Message::Close(_) => break Ok(()),
         }
     }
 }
@@ -81,15 +92,16 @@ async fn run_test(case: u32) -> Result<(), Error> {
 async fn main() {
     env_logger::init();
 
-    // let total = get_case_count().await.unwrap();
+    let total = get_case_count().await.unwrap();
 
-    // for case in 1..=total {
-    if let Err(e) = run_test(1).await {
-        // if !e.closed_normal() {
-        // panic!("test: {}", e);
-        // }
+    for case in 1..=total {
+        if let Err(e) = run_test(case).await {
+            println!("{}", e);
+            // if !e.closed_normal() {
+            // panic!("test: {}", e);
+            // }
+        }
     }
-    // }
 
     update_reports().await.unwrap();
 }
