@@ -25,6 +25,7 @@ use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::{AgentContext, AgentParameters};
 use crate::plane::provider::AgentProvider;
+use crate::routing::TopLevelServerRouterFactory;
 use crate::{
     action_lifecycle, agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent,
 };
@@ -36,9 +37,11 @@ use std::sync::Arc;
 use std::time::Duration;
 use stm::stm::Stm;
 use stm::transaction::atomically;
-use swim_client::configuration::downlink::ConfigHierarchy;
+use swim_client::configuration::downlink::{ClientParams, ConfigHierarchy};
+use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::InnerClient;
+use swim_client::router::ClientRouterFactory;
 use swim_common::routing::RoutingAddr;
 use tokio::sync::{mpsc, Mutex};
 use tokio_stream::wrappers::ReceiverStream;
@@ -537,14 +540,26 @@ async fn agent_loop() {
 
     let parameters = AgentParameters::new(config, exec_config, uri, HashMap::new());
 
+    //Todo
+    let (client_tx, client_rx) = mpsc::channel(8);
+    let (remote_tx, _remote_rx) = mpsc::channel(8);
+    let (plane_tx, _plane_rx) = mpsc::channel(8);
     let (_close_tx, close_rx) = promise::promise();
-    let (client_conn_request_tx, _client_conn_request_rx) = mpsc::channel(8);
 
-    let (downlinks, _downlinks_handle) = Downlinks::new(
-        client_conn_request_tx,
-        Arc::new(ConfigHierarchy::default()),
-        close_rx,
+    let top_level_factory =
+        TopLevelServerRouterFactory::new(plane_tx, client_tx.clone(), remote_tx);
+
+    let client_router_fac = ClientRouterFactory::new(client_tx.clone(), top_level_factory);
+
+    let (conn_pool, _pool_task) = SwimConnPool::new(
+        ClientParams::default(),
+        (client_tx, client_rx),
+        client_router_fac,
+        close_rx.clone(),
     );
+
+    let (downlinks, _downlinks_task) =
+        Downlinks::new(conn_pool, Arc::new(ConfigHierarchy::default()), close_rx);
 
     let client = InnerClient::new(downlinks);
 

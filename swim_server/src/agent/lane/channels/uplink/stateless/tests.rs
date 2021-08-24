@@ -78,7 +78,7 @@ impl Router for TestRouter {
 
     fn resolve_bidirectional(
         &mut self,
-        host: Url,
+        _host: Url,
     ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
         //Todo dm
         unimplemented!()

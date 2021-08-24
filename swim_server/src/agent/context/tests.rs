@@ -16,6 +16,7 @@ use crate::agent::context::{ContextImpl, RoutingContext, SchedulerContext};
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::AgentContext;
 use crate::meta::meta_context_sink;
+use crate::routing::TopLevelServerRouterFactory;
 use futures::future::BoxFuture;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -24,7 +25,7 @@ use swim_client::configuration::downlink::{ClientParams, ConfigHierarchy};
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::InnerClient;
-use swim_client::router::{ClientRouter, ClientRouterFactory};
+use swim_client::router::ClientRouterFactory;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
 use swim_common::routing::{BidirectionalRoute, Route, Router, RoutingAddr};
@@ -72,16 +73,26 @@ fn simple_accessors() {
         RoutingContext::new("/node".parse().unwrap(), MockRouter {}, HashMap::new());
     let schedule_context = SchedulerContext::new(tx, TestClock::default(), close_sig.clone());
 
+    //Todo
+    let (client_tx, client_rx) = mpsc::channel(8);
+    let (remote_tx, _remote_rx) = mpsc::channel(8);
+    let (plane_tx, _plane_rx) = mpsc::channel(8);
     let (_close_tx, close_rx) = promise::promise();
-    let (client_conn_request_tx, _client_conn_request_rx) = mpsc::channel(8);
 
-    let (downlinks, _downlinks_handle) = tokio_test::block_on(async {
-        Downlinks::new(
-            client_conn_request_tx,
-            Arc::new(ConfigHierarchy::default()),
-            close_rx,
-        )
-    });
+    let top_level_factory =
+        TopLevelServerRouterFactory::new(plane_tx, client_tx.clone(), remote_tx);
+
+    let client_router_fac = ClientRouterFactory::new(client_tx.clone(), top_level_factory);
+
+    let (conn_pool, _pool_task) = SwimConnPool::new(
+        ClientParams::default(),
+        (client_tx, client_rx),
+        client_router_fac,
+        close_rx.clone(),
+    );
+
+    let (downlinks, _downlinks_task) =
+        Downlinks::new(conn_pool, Arc::new(ConfigHierarchy::default()), close_rx);
 
     let client = InnerClient::new(downlinks);
     let context = ContextImpl::new(
@@ -123,12 +134,14 @@ fn create_context(
     let schedule_context = SchedulerContext::new(tx, clock, close_trigger);
 
     let (client_tx, client_rx) = mpsc::channel(8);
-
-    //Todo dm add mock factory ?
-    let client_router_fac = ClientRouterFactory::new(client_tx.clone(), ());
-
-    //Todo dm
+    let (remote_tx, _remote_rx) = mpsc::channel(8);
+    let (plane_tx, _plane_rx) = mpsc::channel(8);
     let (_close_tx, close_rx) = promise::promise();
+
+    let top_level_factory =
+        TopLevelServerRouterFactory::new(plane_tx, client_tx.clone(), remote_tx);
+
+    let client_router_fac = ClientRouterFactory::new(client_tx.clone(), top_level_factory);
 
     let (conn_pool, _pool_task) = SwimConnPool::new(
         ClientParams::default(),

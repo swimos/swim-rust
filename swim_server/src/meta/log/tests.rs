@@ -23,6 +23,7 @@ use crate::agent::{
 use crate::meta::log::config::{FlushStrategy, LogConfig};
 use crate::meta::log::{LogBuffer, LogEntry, LogLanes, LogLevel, NodeLogger};
 use crate::plane::provider::AgentProvider;
+use crate::routing::TopLevelServerRouterFactory;
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use std::collections::HashMap;
@@ -30,9 +31,11 @@ use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::sync::Arc;
-use swim_client::configuration::downlink::ConfigHierarchy;
+use swim_client::configuration::downlink::{ClientParams, ConfigHierarchy};
+use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::InnerClient;
+use swim_client::router::ClientRouterFactory;
 use swim_common::form::Form;
 use swim_common::model::Value;
 use swim_common::routing::error::{ResolutionError, RouterError};
@@ -127,7 +130,7 @@ impl Router for MockRouter {
 
     fn resolve_bidirectional(
         &mut self,
-        host: Url,
+        _host: Url,
     ) -> BoxFuture<Result<BidirectionalRoute, ResolutionError>> {
         //Todo dm
         unimplemented!()
@@ -161,14 +164,26 @@ async fn agent_log() {
 
     let parameters = AgentParameters::new(MockAgentConfig, exec_config, uri, HashMap::new());
 
+    //Todo
+    let (client_tx, client_rx) = mpsc::channel(8);
+    let (remote_tx, _remote_rx) = mpsc::channel(8);
+    let (plane_tx, _plane_rx) = mpsc::channel(8);
     let (_close_tx, close_rx) = promise::promise();
-    let (client_conn_request_tx, _client_conn_request_rx) = mpsc::channel(8);
 
-    let (downlinks, _downlinks_handle) = Downlinks::new(
-        client_conn_request_tx,
-        Arc::new(ConfigHierarchy::default()),
-        close_rx,
+    let top_level_factory =
+        TopLevelServerRouterFactory::new(plane_tx, client_tx.clone(), remote_tx);
+
+    let client_router_fac = ClientRouterFactory::new(client_tx.clone(), top_level_factory);
+
+    let (conn_pool, _pool_task) = SwimConnPool::new(
+        ClientParams::default(),
+        (client_tx, client_rx),
+        client_router_fac,
+        close_rx.clone(),
     );
+
+    let (downlinks, _downlinks_task) =
+        Downlinks::new(conn_pool, Arc::new(ConfigHierarchy::default()), close_rx);
 
     let client = InnerClient::new(downlinks);
 
