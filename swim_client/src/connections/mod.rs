@@ -278,7 +278,7 @@ impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> 
 
 type ConnectionResult = Result<(ConnectionSender, Option<ConnectionReceiver>), ConnectionError>;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectionType {
     Full,
     Outgoing,

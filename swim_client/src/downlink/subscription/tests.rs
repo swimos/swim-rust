@@ -13,7 +13,10 @@
 // limitations under the License.
 
 use super::*;
-use crate::configuration::downlink::{ConfigHierarchy, DownlinkParams, OnInvalidMessage};
+use crate::configuration::downlink::{
+    ClientParams, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
+};
+use crate::router::{ClientRouterFactory, DownlinkRoutingRequest, TopLevelClientRouterFactory};
 use futures::join;
 use swim_common::routing::remote::RawRoute;
 use swim_common::routing::CloseSender;
@@ -61,47 +64,55 @@ fn per_lane_config() -> ConfigHierarchy<AbsolutePath> {
     conf
 }
 
+//Todo dm
 async fn dl_manager(conf: ConfigHierarchy<AbsolutePath>) -> (Downlinks<AbsolutePath>, CloseSender) {
-    let (client_conn_request_tx, mut client_conn_request_rx) = mpsc::channel(32);
+    let (client_tx, client_rx) = mpsc::channel(32);
+    let (remote_tx, _remote_rx) = mpsc::channel(32);
+    let (conn_request_tx, mut conn_request_rx) = mpsc::channel(32);
     let (close_tx, close_rx) = promise::promise();
-    let (downlinks, handle) = Downlinks::new(client_conn_request_tx, Arc::new(conf), close_rx);
+
+    let delegate_fac = TopLevelClientRouterFactory::new(client_tx.clone(), remote_tx.clone());
+    let client_router_fac = ClientRouterFactory::new(conn_request_tx, delegate_fac);
+
+    let (connection_pool, pool_task) = SwimConnPool::new(
+        ClientParams::default(),
+        (client_tx, client_rx),
+        client_router_fac,
+        close_rx.clone(),
+    );
+
+    let (downlinks, downlinks_task) = Downlinks::new(connection_pool, Arc::new(conf), close_rx);
 
     tokio::spawn(async move {
-        let DownlinksHandle {
-            downlinks_task,
-            request_receiver,
-            task_manager,
-            pool_task,
-        } = handle;
-
-        join!(
-            downlinks_task.run(ReceiverStream::new(request_receiver)),
-            task_manager.run(),
-            pool_task.run()
-        )
-        .0
-        .unwrap();
+        join!(downlinks_task.run(), pool_task.run()).0.unwrap();
     });
 
+    //Todo dm
     tokio::spawn(async move {
-        while let Some(client_request) = client_conn_request_rx.recv().await {
+        while let Some(client_request) = conn_request_rx.recv().await {
             match client_request {
-                ClientRequest::Connect { request, .. } => {
-                    let (outgoing_tx, _outgoing_rx) = mpsc::channel(8);
-                    let (_on_drop_tx, on_drop_rx) = promise::promise();
-                    request
-                        .send(Ok(RawRoute::new(outgoing_tx, on_drop_rx)))
-                        .unwrap();
-                }
-                ClientRequest::Subscribe { request, .. } => {
-                    let (outgoing_tx, _outgoing_rx) = mpsc::channel(8);
-                    let (_incoming_tx, incoming_rx) = mpsc::channel(8);
-                    let (_on_drop_tx, on_drop_rx) = promise::promise();
-                    request
-                        .send(Ok((RawRoute::new(outgoing_tx, on_drop_rx), incoming_rx)))
-                        .unwrap();
-                }
+                DownlinkRoutingRequest::Connect {
+                    target,
+                    request,
+                    conn_type,
+                } => {}
+                DownlinkRoutingRequest::Endpoint { addr, request } => {}
             }
+            // ClientRequest::Connect { request, .. } => {
+            //     let (outgoing_tx, _outgoing_rx) = mpsc::channel(8);
+            //     let (_on_drop_tx, on_drop_rx) = promise::promise();
+            //     request
+            //         .send(Ok(RawRoute::new(outgoing_tx, on_drop_rx)))
+            //         .unwrap();
+            // }
+            // ClientRequest::Subscribe { request, .. } => {
+            //     let (outgoing_tx, _outgoing_rx) = mpsc::channel(8);
+            //     let (_incoming_tx, incoming_rx) = mpsc::channel(8);
+            //     let (_on_drop_tx, on_drop_rx) = promise::promise();
+            //     request
+            //         .send(Ok((RawRoute::new(outgoing_tx, on_drop_rx), incoming_rx)))
+            //         .unwrap();
+            // }
         }
     });
 
