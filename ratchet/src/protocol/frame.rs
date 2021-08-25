@@ -12,14 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::errors::{Error, ProtocolError};
-use crate::framed::CodecFlags;
+use crate::errors::ProtocolError;
+use crate::framed::{CodecFlags, ReadError};
 use crate::protocol::{HeaderFlags, OpCode};
 use either::Either;
 use std::convert::TryFrom;
 use std::mem::size_of;
-
-const U16_MAX: usize = u16::MAX as usize;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FrameHeader {
@@ -51,7 +49,7 @@ impl FrameHeader {
         source: &[u8],
         codec_flags: &CodecFlags,
         max_size: usize,
-    ) -> Result<Either<(FrameHeader, usize, usize), usize>, Error> {
+    ) -> Result<Either<(FrameHeader, usize, usize), usize>, ReadError> {
         let source_length = source.len();
         if source_length < 2 {
             return Ok(Either::Right(2 - source_length));

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::protocol::{CloseCodeParseErr, OpCodeParseErr};
+use derive_more::Display;
 use http::header::{HeaderName, InvalidHeaderValue};
 use http::status::InvalidStatusCode;
 use http::uri::InvalidUri;
@@ -202,6 +203,16 @@ impl From<InvalidHeaderValue> for Error {
 pub enum CloseError {
     #[error("The channel is already closed")]
     Closed,
+    #[error("Abnormal close: `{0}`")]
+    Abnormal(AbnormalCloseFrame),
+}
+
+#[derive(Display, Debug, PartialEq, Eq, Copy, Clone)]
+pub enum AbnormalCloseFrame {
+    #[display(fmt = "No status code received")]
+    NoStatusReceived = 1005,
+    #[display(fmt = "Abnormal closure")]
+    AbnormalClosure = 1006,
 }
 
 #[derive(Debug, PartialEq, Error)]
@@ -226,4 +237,6 @@ pub enum ProtocolError {
     ContinuationNotStarted,
     #[error("Attempted to start another continuation before the previous one has completed")]
     ContinuationAlreadyStarted,
+    #[error("Received an illegal close code: `{0}`")]
+    CloseCode(u16),
 }

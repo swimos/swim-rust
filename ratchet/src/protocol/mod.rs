@@ -192,6 +192,30 @@ pub enum CloseCode {
     Application(u16),
 }
 
+impl CloseCode {
+    pub fn code(&self) -> u16 {
+        match self {
+            CloseCode::Normal => 1000,
+            CloseCode::GoingAway => 1001,
+            CloseCode::Protocol => 1002,
+            CloseCode::Unsupported => 1003,
+            CloseCode::Status => 1005,
+            CloseCode::Abnormal => 1006,
+            CloseCode::Invalid => 1007,
+            CloseCode::Policy => 1008,
+            CloseCode::Overflow => 1009,
+            CloseCode::Extension => 1010,
+            CloseCode::Unexpected => 1011,
+            CloseCode::Restarting => 1012,
+            CloseCode::TryAgain => 1013,
+            CloseCode::Tls => 1015,
+            CloseCode::ReservedExtension(u) => *u,
+            CloseCode::Library(u) => *u,
+            CloseCode::Application(u) => *u,
+        }
+    }
+}
+
 #[derive(Error, Debug)]
 #[error("Unknown close code: `{0}`")]
 pub struct CloseCodeParseErr(u16);

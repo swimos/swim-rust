@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::errors::{Error, ErrorKind};
+use crate::errors::{CloseError, Error, ErrorKind, ProtocolError};
 use crate::protocol::{
-    apply_mask, CloseCode, CloseReason, ControlCode, DataCode, FrameHeader, Message, OpCode,
+    apply_mask, CloseCode, CloseCodeParseErr, CloseReason, ControlCode, DataCode, FrameHeader,
+    Message, OpCode, OpCodeParseErr,
 };
 use crate::protocol::{HeaderFlags, Role};
 use crate::WebSocketStream;
@@ -23,9 +24,14 @@ use bytes::{Buf, BytesMut};
 use either::Either;
 use nanorand::{WyRand, RNG};
 use std::convert::TryFrom;
+use std::str::Utf8Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 const CONTROL_FRAME_LEN: &str = "Control frame length greater than 125";
+const CONST_STARTED: &str = "Continuation already started";
+const CONST_NOT_STARTED: &str = "Continuation not started";
+const ILLEGAL_CLOSE_CODE: &str = "Received a reserved close code";
+
 const U16_MAX: usize = u16::MAX as usize;
 
 pub enum CodecItem {
@@ -69,6 +75,58 @@ impl CodecFlags {
     }
 }
 
+pub struct ReadError {
+    pub close_with: Option<CloseReason>,
+    pub error: Error,
+}
+
+macro_rules! read_err_from {
+    ($from:ident) => {
+        impl From<$from> for ReadError {
+            fn from(e: $from) -> Self {
+                let cause = format!("{}", e);
+                ReadError {
+                    close_with: Some(CloseReason {
+                        code: CloseCode::Protocol,
+                        description: Some(cause.clone()),
+                    }),
+                    error: Error::with_cause(ErrorKind::Protocol, cause),
+                }
+            }
+        }
+    };
+}
+
+read_err_from!(OpCodeParseErr);
+read_err_from!(CloseCodeParseErr);
+read_err_from!(ProtocolError);
+read_err_from!(Utf8Error);
+
+impl From<std::io::Error> for ReadError {
+    fn from(e: std::io::Error) -> Self {
+        let cause = format!("{}", e);
+        ReadError {
+            close_with: None,
+            error: Error::with_cause(ErrorKind::Protocol, cause),
+        }
+    }
+}
+
+impl ReadError {
+    fn with<E>(msg: &'static str, source: E) -> ReadError
+    where
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        ReadError {
+            close_with: Some(CloseReason {
+                code: CloseCode::Protocol,
+                description: Some(msg.to_string()),
+            }),
+            error: Error::with_cause(ErrorKind::Protocol, source),
+        }
+    }
+}
+
 pub struct FramedIo<S> {
     io: S,
     read_buffer: BytesMut,
@@ -104,7 +162,7 @@ impl<S> FramedIo<S>
 where
     S: WebSocketStream,
 {
-    pub async fn read_next(&mut self, read_into: &mut BytesMut) -> Result<CodecItem, Error> {
+    pub async fn read_next(&mut self, read_into: &mut BytesMut) -> Result<CodecItem, ReadError> {
         let FramedIo {
             io,
             read_buffer,
@@ -122,15 +180,17 @@ where
                     match d {
                         DataCode::Continuation => {
                             if header.flags.contains(HeaderFlags::FIN) {
-                                let item = if flags
-                                    .contains(CodecFlags::R_CONT | CodecFlags::CONT_TYPE)
-                                {
-                                    CodecItem::Text
-                                } else if flags.contains(CodecFlags::R_CONT | CodecFlags::CONT_TYPE)
-                                {
-                                    CodecItem::Binary
+                                let item = if flags.contains(CodecFlags::R_CONT) {
+                                    if flags.contains(CodecFlags::CONT_TYPE) {
+                                        CodecItem::Text
+                                    } else {
+                                        CodecItem::Binary
+                                    }
                                 } else {
-                                    panic!("Continuation not started")
+                                    return Err(ReadError::with(
+                                        CONST_NOT_STARTED,
+                                        ProtocolError::ContinuationNotStarted,
+                                    ));
                                 };
 
                                 flags.remove(CodecFlags::R_CONT | CodecFlags::CONT_TYPE);
@@ -139,16 +199,27 @@ where
                                 if flags.contains(CodecFlags::R_CONT) {
                                     continue;
                                 } else {
-                                    panic!("Continuation not started")
+                                    return Err(ReadError::with(
+                                        CONST_NOT_STARTED,
+                                        ProtocolError::FrameOverflow,
+                                    ));
                                 }
                             }
                         }
                         DataCode::Text => {
-                            if header.flags.contains(HeaderFlags::FIN) {
+                            if flags.contains(CodecFlags::R_CONT) {
+                                return Err(ReadError::with(
+                                    CONST_STARTED,
+                                    ProtocolError::ContinuationAlreadyStarted,
+                                ));
+                            } else if header.flags.contains(HeaderFlags::FIN) {
                                 return Ok(CodecItem::Text);
                             } else {
                                 if flags.contains(CodecFlags::R_CONT) {
-                                    panic!("Continuation already started")
+                                    return Err(ReadError::with(
+                                        CONST_STARTED,
+                                        ProtocolError::FrameOverflow,
+                                    ));
                                 } else {
                                     flags.insert(CodecFlags::R_CONT | CodecFlags::CONT_TYPE);
                                     continue;
@@ -156,11 +227,19 @@ where
                             }
                         }
                         DataCode::Binary => {
-                            if header.flags.contains(HeaderFlags::FIN) {
+                            if flags.contains(CodecFlags::R_CONT) {
+                                return Err(ReadError::with(
+                                    CONST_STARTED,
+                                    ProtocolError::ContinuationAlreadyStarted,
+                                ));
+                            } else if header.flags.contains(HeaderFlags::FIN) {
                                 return Ok(CodecItem::Binary);
                             } else {
                                 if flags.contains(CodecFlags::R_CONT) {
-                                    panic!("Continuation already started")
+                                    return Err(ReadError::with(
+                                        CONTROL_FRAME_LEN,
+                                        ProtocolError::FrameOverflow,
+                                    ));
                                 } else {
                                     debug_assert!(!flags.contains(CodecFlags::CONT_TYPE));
                                     flags.insert(CodecFlags::R_CONT);
@@ -177,22 +256,42 @@ where
                                 // todo this isn't very efficient
                                 (None, BytesMut::new())
                             } else {
-                                let close_code = CloseCode::try_from([payload[0], payload[1]])?;
-                                let close_reason = std::str::from_utf8(&payload[2..])?.to_string();
-                                let description = if close_reason.is_empty() {
-                                    None
-                                } else {
-                                    Some(close_reason)
-                                };
+                                match CloseCode::try_from([payload[0], payload[1]])? {
+                                    close_code @ CloseCode::Status
+                                    | close_code @ CloseCode::Abnormal => {
+                                        return Err(ReadError::with(
+                                            ILLEGAL_CLOSE_CODE,
+                                            ProtocolError::CloseCode(close_code.code()),
+                                        ))
+                                    }
+                                    close_code => {
+                                        let close_reason =
+                                            std::str::from_utf8(&payload[2..])?.to_string();
+                                        let description = if close_reason.is_empty() {
+                                            None
+                                        } else {
+                                            Some(close_reason)
+                                        };
 
-                                let reason = CloseReason::new(close_code, description);
+                                        let reason = CloseReason::new(close_code, description);
 
-                                (Some(reason), payload)
+                                        (Some(reason), payload)
+                                    }
+                                }
                             };
 
                             Ok(CodecItem::Close(reason))
                         }
-                        ControlCode::Ping => Ok(CodecItem::Ping(payload)),
+                        ControlCode::Ping => {
+                            if payload.len() > 125 {
+                                return Err(ReadError::with(
+                                    CONTROL_FRAME_LEN,
+                                    ProtocolError::FrameOverflow,
+                                ));
+                            } else {
+                                Ok(CodecItem::Ping(payload))
+                            }
+                        }
                         ControlCode::Pong => Ok(CodecItem::Pong),
                     };
                 }
@@ -205,7 +304,7 @@ where
         opcode: OpCode,
         header_flags: HeaderFlags,
         mut payload_ref: A,
-    ) -> Result<(), Error>
+    ) -> Result<(), std::io::Error>
     where
         A: AsMut<[u8]>,
     {
@@ -233,7 +332,7 @@ where
         write_all(io, write_buffer).await?;
         write_buffer.clear();
 
-        write_all(io, payload).await
+        write_all(io, payload).await.map_err(Into::into)
     }
 
     pub async fn write_close(&mut self, reason: CloseReason) -> Result<(), Error> {
@@ -250,6 +349,7 @@ where
             payload,
         )
         .await
+        .map_err(|e| Error::with_cause(ErrorKind::Close, e))
     }
 }
 
@@ -258,7 +358,7 @@ async fn read_header<S>(
     buf: &mut BytesMut,
     flags: &CodecFlags,
     max_size: usize,
-) -> Result<(FrameHeader, BytesMut), Error>
+) -> Result<(FrameHeader, BytesMut), ReadError>
 where
     S: WebSocketStream,
 {
@@ -294,13 +394,11 @@ where
     }
 }
 
-async fn write_all<S>(io: &mut S, write_buffer: &[u8]) -> Result<(), Error>
+async fn write_all<S>(io: &mut S, write_buffer: &[u8]) -> Result<(), std::io::Error>
 where
     S: WebSocketStream,
 {
-    io.write_all(write_buffer)
-        .await
-        .map_err(|e| Error::with_cause(ErrorKind::IO, e))
+    io.write_all(write_buffer).await
 }
 
 fn encode_header(
@@ -343,7 +441,7 @@ pub async fn read_into<S>(
     framed: &mut FramedIo<S>,
     read_buffer: &mut BytesMut,
     closed: &mut bool,
-) -> Result<Message, Error>
+) -> Result<Message, ReadError>
 where
     S: WebSocketStream,
 {
