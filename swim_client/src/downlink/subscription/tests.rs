@@ -16,10 +16,11 @@ use super::*;
 use crate::configuration::downlink::{
     ClientParams, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
 };
-use crate::router::{ClientRouterFactory, DownlinkRoutingRequest, TopLevelClientRouterFactory};
+use crate::router::{ClientRouterFactory, TopLevelClientRouterFactory};
 use futures::join;
-use swim_common::routing::remote::RawRoute;
-use swim_common::routing::CloseSender;
+use swim_common::routing::remote::table::BidirectionalRegistrator;
+use swim_common::routing::remote::RemoteRoutingRequest;
+use swim_common::routing::{CloseSender, RoutingAddr, TaggedSender};
 use swim_common::warp::path::AbsolutePath;
 use tokio::time::Duration;
 use url::Url;
@@ -64,11 +65,10 @@ fn per_lane_config() -> ConfigHierarchy<AbsolutePath> {
     conf
 }
 
-//Todo dm
 async fn dl_manager(conf: ConfigHierarchy<AbsolutePath>) -> (Downlinks<AbsolutePath>, CloseSender) {
     let (client_tx, client_rx) = mpsc::channel(32);
-    let (remote_tx, _remote_rx) = mpsc::channel(32);
-    let (conn_request_tx, mut conn_request_rx) = mpsc::channel(32);
+    let (remote_tx, mut remote_rx) = mpsc::channel(32);
+    let (conn_request_tx, _conn_request_rx) = mpsc::channel(32);
     let (close_tx, close_rx) = promise::promise();
 
     let delegate_fac = TopLevelClientRouterFactory::new(client_tx.clone(), remote_tx.clone());
@@ -87,32 +87,40 @@ async fn dl_manager(conf: ConfigHierarchy<AbsolutePath>) -> (Downlinks<AbsoluteP
         join!(downlinks_task.run(), pool_task.run()).0.unwrap();
     });
 
-    //Todo dm
     tokio::spawn(async move {
-        while let Some(client_request) = conn_request_rx.recv().await {
-            match client_request {
-                DownlinkRoutingRequest::Connect {
-                    target,
+        let mut drops = vec![];
+        let mut outgoing_rxs = vec![];
+        let mut aa_txs = vec![];
+
+        while let Some(request) = remote_rx.recv().await {
+            match request {
+                RemoteRoutingRequest::Endpoint { .. } => {}
+                RemoteRoutingRequest::ResolveUrl { .. } => {}
+                RemoteRoutingRequest::Bidirectional {
+                    host: _host,
                     request,
-                    conn_type,
-                } => {}
-                DownlinkRoutingRequest::Endpoint { addr, request } => {}
+                } => {
+                    let (sender_tx, sender_rx) = mpsc::channel(8);
+                    let (tx, mut rx) = mpsc::channel(8);
+                    let (receiver_tx, receiver_rx) = mpsc::channel(8);
+                    let (on_drop_tx, on_drop_rx) = promise::promise();
+
+                    drops.push(on_drop_tx);
+                    outgoing_rxs.push(sender_rx);
+                    aa_txs.push(receiver_tx);
+
+                    let registrator = BidirectionalRegistrator::new(
+                        TaggedSender::new(RoutingAddr::client(1), sender_tx),
+                        tx,
+                        on_drop_rx,
+                    );
+
+                    request.send(Ok(registrator)).unwrap();
+
+                    let receiver_request = rx.recv().await.unwrap();
+                    receiver_request.send(receiver_rx).unwrap();
+                }
             }
-            // ClientRequest::Connect { request, .. } => {
-            //     let (outgoing_tx, _outgoing_rx) = mpsc::channel(8);
-            //     let (_on_drop_tx, on_drop_rx) = promise::promise();
-            //     request
-            //         .send(Ok(RawRoute::new(outgoing_tx, on_drop_rx)))
-            //         .unwrap();
-            // }
-            // ClientRequest::Subscribe { request, .. } => {
-            //     let (outgoing_tx, _outgoing_rx) = mpsc::channel(8);
-            //     let (_incoming_tx, incoming_rx) = mpsc::channel(8);
-            //     let (_on_drop_tx, on_drop_rx) = promise::promise();
-            //     request
-            //         .send(Ok((RawRoute::new(outgoing_tx, on_drop_rx), incoming_rx)))
-            //         .unwrap();
-            // }
         }
     });
 

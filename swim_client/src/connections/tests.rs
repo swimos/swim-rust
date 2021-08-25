@@ -15,11 +15,9 @@
 use tokio::sync::mpsc;
 
 use super::*;
-use swim_common::routing::remote::RawRoute;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
 use url::Url;
-use utilities::sync::promise::promise;
 
 struct FakeConnections {
     outgoing_channels: HashMap<Url, TaggedSender>,
@@ -466,32 +464,40 @@ async fn create_mock_conn_request_loop(
 //     assert!(writer_rx.recv().await.is_none());
 // }
 //
-// #[tokio::test]
-// async fn test_connection_send_single_message() {
-//     // Given
-//     let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
-//     let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
-//     let buffer_size = 5;
-//
-//     let envelope = Envelope::make_command("/foo", "/bar", Some("Hello".into()));
-//
-//     let mut fake_conns = FakeConnections::new();
-//     let (_, mut writer_rx) = fake_conns.add_connection(host_url);
-//     let client_conn_request_tx = create_mock_conn_request_loop(fake_conns).await;
-//
-//     let connection = ClientConnection::new(path, buffer_size, &client_conn_request_tx)
-//         .await
-//         .unwrap();
-//
-//     // When
-//     connection.tx.send(envelope.clone()).await.unwrap();
-//
-//     // Then
-//     assert_eq!(
-//         writer_rx.recv().await.unwrap(),
-//         TaggedEnvelope(RoutingAddr::client(), envelope)
-//     );
-// }
+#[tokio::test]
+async fn test_connection_send_single_message() {
+    // Given
+    let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
+    let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
+
+    let envelope = Envelope::make_command("/foo", "/bar", Some("Hello".into()));
+
+    let mut fake_conns = FakeConnections::new();
+    let (_, mut writer_rx) = fake_conns.add_connection(RoutingAddr::client(1), host_url);
+    let client_conn_request_tx = create_mock_conn_request_loop(fake_conns).await;
+
+    let (tx, rx) = oneshot::channel();
+
+    client_conn_request_tx
+        .send(DownlinkRoutingRequest::Connect {
+            target: path,
+            request: Request::new(tx),
+            conn_type: ConnectionType::Outgoing,
+        })
+        .await
+        .unwrap();
+
+    let mut connection = rx.await.unwrap().unwrap();
+
+    // When
+    connection.0.send_item(envelope.clone()).await.unwrap();
+
+    // Then
+    assert_eq!(
+        writer_rx.recv().await.unwrap(),
+        TaggedEnvelope(RoutingAddr::client(1), envelope)
+    );
+}
 
 #[tokio::test]
 async fn test_connection_send_multiple_messages() {
@@ -520,7 +526,7 @@ async fn test_connection_send_multiple_messages() {
 
     let mut connection = rx.await.unwrap().unwrap();
 
-    let mut connection_sender = &mut connection.0;
+    let connection_sender = &mut connection.0;
     // When
     connection_sender
         .send_item(first_envelope.clone())
@@ -550,65 +556,85 @@ async fn test_connection_send_multiple_messages() {
     );
 }
 
-// #[tokio::test]
-// async fn test_connection_send_and_receive_messages() {
-//     // Given
-//     let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
-//     let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
-//     let buffer_size = 5;
-//
-//     let envelope_sent = Envelope::make_command("/foo", "/bar", Some("message_sent".into()));
-//     let envelope_received = Envelope::make_command("/foo", "/bar", Some("message_received".into()));
-//
-//     let mut fake_conns = FakeConnections::new();
-//     let (reader_tx, mut writer_rx) = fake_conns.add_connection(host_url);
-//     let client_conn_request_tx = create_mock_conn_request_loop(fake_conns).await;
-//
-//     let mut connection = ClientConnection::new(path, buffer_size, &client_conn_request_tx)
-//         .await
-//         .unwrap();
-//
-//     // When
-//     connection.tx.send(envelope_sent.clone()).await.unwrap();
-//     reader_tx.send(envelope_received.clone()).await.unwrap();
-//
-//     // Then
-//     let pool_message = connection.rx.take().unwrap().recv().await.unwrap();
-//     assert_eq!(pool_message, envelope_received);
-//
-//     assert_eq!(
-//         writer_rx.recv().await.unwrap(),
-//         TaggedEnvelope(RoutingAddr::client(), envelope_sent)
-//     );
-// }
-//
-// #[tokio::test]
-// async fn test_connection_receive_message_error() {
-//     // Given
-//     let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
-//     let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
-//     let buffer_size = 5;
-//
-//     let mut fake_conns = FakeConnections::new();
-//     let (reader_tx, _writer_rx) = fake_conns.add_connection(host_url);
-//     let client_conn_request_tx = create_mock_conn_request_loop(fake_conns).await;
-//
-//     let connection = ClientConnection::new(path, buffer_size, &client_conn_request_tx)
-//         .await
-//         .unwrap();
-//
-//     // When
-//     drop(reader_tx);
-//     let result = connection._receive_handle.await.unwrap();
-//
-//     // Then
-//     assert!(result.is_err());
-//     assert_eq!(
-//         result.err().unwrap(),
-//         ConnectionError::Closed(CloseError::unexpected())
-//     );
-// }
-//
+#[tokio::test]
+async fn test_connection_send_and_receive_messages() {
+    // Given
+    let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
+    let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
+
+    let envelope_sent = Envelope::make_event("/foo", "/bar", Some("message_sent".into()));
+    let envelope_received = Envelope::make_event("/foo", "/bar", Some("message_received".into()));
+
+    let mut fake_conns = FakeConnections::new();
+    let (reader_tx, mut writer_rx) = fake_conns.add_connection(RoutingAddr::client(1), host_url);
+    let client_conn_request_tx = create_mock_conn_request_loop(fake_conns).await;
+
+    let (tx, rx) = oneshot::channel();
+
+    client_conn_request_tx
+        .send(DownlinkRoutingRequest::Connect {
+            target: path,
+            request: Request::new(tx),
+            conn_type: ConnectionType::Full,
+        })
+        .await
+        .unwrap();
+
+    let mut connection = rx.await.unwrap().unwrap();
+
+    // When
+    connection.0.send_item(envelope_sent.clone()).await.unwrap();
+    reader_tx
+        .send(RouterEvent::Message(
+            envelope_received.clone().into_incoming().unwrap(),
+        ))
+        .await
+        .unwrap();
+
+    // Then
+    let pool_message = connection.1.take().unwrap().recv().await.unwrap();
+    assert_eq!(
+        pool_message,
+        RouterEvent::Message(envelope_received.clone().into_incoming().unwrap())
+    );
+
+    assert_eq!(
+        writer_rx.recv().await.unwrap(),
+        TaggedEnvelope(RoutingAddr::client(1), envelope_sent)
+    );
+}
+
+#[tokio::test]
+async fn test_connection_receive_message_error() {
+    // Given
+    let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
+    let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
+
+    let mut fake_conns = FakeConnections::new();
+    let (reader_tx, _writer_rx) = fake_conns.add_connection(RoutingAddr::client(1), host_url);
+    let client_conn_request_tx = create_mock_conn_request_loop(fake_conns).await;
+
+    let (tx, rx) = oneshot::channel();
+
+    client_conn_request_tx
+        .send(DownlinkRoutingRequest::Connect {
+            target: path,
+            request: Request::new(tx),
+            conn_type: ConnectionType::Full,
+        })
+        .await
+        .unwrap();
+
+    let mut connection = rx.await.unwrap().unwrap();
+
+    // When
+    drop(reader_tx);
+    let result = connection.1.take().unwrap().recv().await;
+
+    // Then
+    assert!(result.is_none());
+}
+
 // #[tokio::test]
 // async fn test_new_connection_send_message_error() {
 //     let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
