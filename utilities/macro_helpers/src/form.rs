@@ -75,7 +75,7 @@ pub struct FormField<'a> {
 
 impl<'a> SynOriginal for FormField<'a> {
     fn original(&self) -> &Field {
-        &self.original
+        self.original
     }
 }
 

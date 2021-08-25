@@ -33,7 +33,7 @@ pub fn to_value(
             ..
         }) => build_struct_as_value(
             descriptor,
-            &structure_name,
+            structure_name,
             &compound_type,
             &fields,
             fn_factory,
@@ -91,7 +91,7 @@ fn build_struct_as_value(
     requires_deref: bool,
 ) -> TokenStream2 {
     let structure_name_str = descriptor.label.to_name(requires_deref);
-    let (headers, attributes, items) = compute_as_value(&fields, &mut descriptor, fn_factory);
+    let (headers, attributes, items) = compute_as_value(fields, &mut descriptor, fn_factory);
     let field_names: Vec<_> = fields.iter().map(|f| &f.label).collect();
     let self_deconstruction = deconstruct_type(compound_type, &field_names, requires_deref);
 
@@ -114,7 +114,7 @@ fn build_variant_as_value(
 ) -> TokenStream2 {
     let variant_original_ident = variant_name.original();
     let variant_name_str = variant_name.to_name(requires_deref);
-    let (headers, attributes, items) = compute_as_value(&fields, &mut descriptor, fn_factory);
+    let (headers, attributes, items) = compute_as_value(fields, &mut descriptor, fn_factory);
     let field_names: Vec<_> = fields.iter().map(|f| &f.label).collect();
     let self_deconstruction = deconstruct_type(compound_type, &field_names, requires_deref);
 
