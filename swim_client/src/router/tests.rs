@@ -11,6 +11,99 @@
 // // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // // See the License for the specific language governing permissions and
 // // limitations under the License.
+
+use crate::router::RouterEvent;
+use crate::utilities::sync::promise;
+use crate::utilities::uri::RelativeUri;
+use futures::future::BoxFuture;
+use std::collections::HashMap;
+use swim_common::routing::error::{ResolutionError, RouterError};
+use swim_common::routing::remote::table::BidirectionalRegistrator;
+use swim_common::routing::remote::RemoteRoutingRequest;
+use swim_common::routing::{
+    BidirectionalRoute, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
+};
+use tokio::sync::mpsc;
+use url::Url;
+
+pub(crate) struct FakeConnections {
+    outgoing_channels: HashMap<Url, TaggedSender>,
+    incoming_channels: HashMap<Url, mpsc::Receiver<RouterEvent>>,
+}
+
+impl FakeConnections {
+    pub(crate) fn new() -> Self {
+        FakeConnections {
+            outgoing_channels: HashMap::new(),
+            incoming_channels: HashMap::new(),
+        }
+    }
+
+    fn add_connection(
+        &mut self,
+        tag: RoutingAddr,
+        url: Url,
+    ) -> (mpsc::Sender<RouterEvent>, mpsc::Receiver<TaggedEnvelope>) {
+        let (outgoing_tx, outgoing_rx) = mpsc::channel(8);
+        let (incoming_tx, incoming_rx) = mpsc::channel(8);
+
+        let _ = self
+            .outgoing_channels
+            .insert(url.clone(), TaggedSender::new(tag, outgoing_tx));
+        let _ = self.incoming_channels.insert(url, incoming_rx);
+
+        (incoming_tx, outgoing_rx)
+    }
+}
+
+pub(crate) struct MockRemoteRouterTask;
+
+impl MockRemoteRouterTask {
+    pub(crate) fn new(fake_conns: FakeConnections) -> mpsc::Sender<RemoteRoutingRequest> {
+        let (tx, mut rx) = mpsc::channel(32);
+
+        tokio::spawn(async move {
+            let mut drops = vec![];
+            let mut outgoing_rxs = vec![];
+            let mut aa_txs = vec![];
+
+            while let Some(request) = rx.recv().await {
+                match request {
+                    RemoteRoutingRequest::Bidirectional { host, request } => {
+
+
+
+
+
+                        let (sender_tx, sender_rx) = mpsc::channel(8);
+                        let (tx, mut rx) = mpsc::channel(8);
+                        let (receiver_tx, receiver_rx) = mpsc::channel(8);
+                        let (on_drop_tx, on_drop_rx) = promise::promise();
+
+                        drops.push(on_drop_tx);
+                        outgoing_rxs.push(sender_rx);
+                        aa_txs.push(receiver_tx);
+
+                        let registrator = BidirectionalRegistrator::new(
+                            TaggedSender::new(RoutingAddr::client(1), sender_tx),
+                            tx,
+                            on_drop_rx,
+                        );
+
+                        request.send(Ok(registrator)).unwrap();
+
+                        let receiver_request = rx.recv().await.unwrap();
+                        receiver_request.send(receiver_rx).unwrap();
+                    }
+                    _ => unreachable!(),
+                }
+            }
+        });
+
+        tx
+    }
+}
+
 //
 // use crate::router::{ClientRouterFactory, DownlinkRoutingRequest, Router};
 // use std::convert::TryFrom;

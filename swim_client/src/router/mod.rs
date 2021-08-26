@@ -34,7 +34,7 @@ use url::Url;
 use utilities::uri::RelativeUri;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 #[derive(Debug, Clone)]
 pub(crate) struct TopLevelClientRouterFactory {

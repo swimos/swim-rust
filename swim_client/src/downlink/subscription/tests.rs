@@ -16,6 +16,7 @@ use super::*;
 use crate::configuration::downlink::{
     ClientParams, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
 };
+use crate::router::tests::MockRemoteRouterTask;
 use crate::router::{ClientRouterFactory, TopLevelClientRouterFactory};
 use futures::join;
 use swim_common::routing::remote::table::BidirectionalRegistrator;
@@ -67,9 +68,10 @@ fn per_lane_config() -> ConfigHierarchy<AbsolutePath> {
 
 async fn dl_manager(conf: ConfigHierarchy<AbsolutePath>) -> (Downlinks<AbsolutePath>, CloseSender) {
     let (client_tx, client_rx) = mpsc::channel(32);
-    let (remote_tx, mut remote_rx) = mpsc::channel(32);
     let (conn_request_tx, _conn_request_rx) = mpsc::channel(32);
     let (close_tx, close_rx) = promise::promise();
+
+    let remote_tx = MockRemoteRouterTask::new();
 
     let delegate_fac = TopLevelClientRouterFactory::new(client_tx.clone(), remote_tx.clone());
     let client_router_fac = ClientRouterFactory::new(conn_request_tx, delegate_fac);
@@ -85,43 +87,6 @@ async fn dl_manager(conf: ConfigHierarchy<AbsolutePath>) -> (Downlinks<AbsoluteP
 
     tokio::spawn(async move {
         join!(downlinks_task.run(), pool_task.run()).0.unwrap();
-    });
-
-    tokio::spawn(async move {
-        let mut drops = vec![];
-        let mut outgoing_rxs = vec![];
-        let mut aa_txs = vec![];
-
-        while let Some(request) = remote_rx.recv().await {
-            match request {
-                RemoteRoutingRequest::Endpoint { .. } => {}
-                RemoteRoutingRequest::ResolveUrl { .. } => {}
-                RemoteRoutingRequest::Bidirectional {
-                    host: _host,
-                    request,
-                } => {
-                    let (sender_tx, sender_rx) = mpsc::channel(8);
-                    let (tx, mut rx) = mpsc::channel(8);
-                    let (receiver_tx, receiver_rx) = mpsc::channel(8);
-                    let (on_drop_tx, on_drop_rx) = promise::promise();
-
-                    drops.push(on_drop_tx);
-                    outgoing_rxs.push(sender_rx);
-                    aa_txs.push(receiver_tx);
-
-                    let registrator = BidirectionalRegistrator::new(
-                        TaggedSender::new(RoutingAddr::client(1), sender_tx),
-                        tx,
-                        on_drop_rx,
-                    );
-
-                    request.send(Ok(registrator)).unwrap();
-
-                    let receiver_request = rx.recv().await.unwrap();
-                    receiver_request.send(receiver_rx).unwrap();
-                }
-            }
-        }
     });
 
     (downlinks, close_tx)

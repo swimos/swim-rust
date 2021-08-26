@@ -15,6 +15,9 @@
 use tokio::sync::mpsc;
 
 use super::*;
+use crate::router::tests::MockRemoteRouterTask;
+use crate::router::TopLevelClientRouterFactory;
+use swim_common::routing::CloseSender;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
 use url::Url;
@@ -128,44 +131,60 @@ async fn create_mock_conn_request_loop(
     client_conn_request_tx
 }
 
-// async fn create_connection_pool(fake_conns: FakeConnections) -> SwimConnPool<AbsolutePath> {
-//     let client_conn_request_tx = create_mock_conn_request_loop(fake_conns).await;
-//     let (pool, task) = SwimConnPool::new(ConnectionPoolParams::default(), client_conn_request_tx);
-//     tokio::task::spawn(task.run());
-//     pool
-// }
-//
-// #[tokio::test]
-// async fn test_connection_pool_send_single_message_single_connection() {
-//     // Given
-//     let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
-//     let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
-//
-//     let envelope = Envelope::make_command("/foo", "/bar", Some("Hello".into()));
-//
-//     let mut fake_conns = FakeConnections::new();
-//     let (_, mut writer_rx) = fake_conns.add_connection(host_url);
-//     let mut connection_pool = create_connection_pool(fake_conns).await;
-//
-//     let (mut connection_sender, _connection_receiver) = connection_pool
-//         .request_connection(path, false)
-//         .await
-//         .unwrap()
-//         .unwrap();
-//
-//     // When
-//     connection_sender
-//         .send_message(envelope.clone())
-//         .await
-//         .unwrap();
-//
-//     // Then
-//     assert_eq!(
-//         writer_rx.recv().await.unwrap(),
-//         TaggedEnvelope(RoutingAddr::client(), envelope)
-//     );
-// }
-//
+async fn create_connection_pool(
+    fake_conns: FakeConnections,
+) -> (SwimConnPool<AbsolutePath>, CloseSender) {
+    let (client_tx, client_rx) = mpsc::channel(32);
+    let (conn_request_tx, _conn_request_rx) = mpsc::channel(32);
+    let (close_tx, close_rx) = promise::promise();
+
+    let remote_tx = MockRemoteRouterTask::new();
+
+    let delegate_fac = TopLevelClientRouterFactory::new(client_tx.clone(), remote_tx.clone());
+    let client_router_fac = ClientRouterFactory::new(conn_request_tx, delegate_fac);
+
+    let (connection_pool, pool_task) = SwimConnPool::new(
+        ClientParams::default(),
+        (client_tx, client_rx),
+        client_router_fac,
+        close_rx.clone(),
+    );
+
+    tokio::task::spawn(pool_task.run());
+    (connection_pool, close_tx)
+}
+
+#[tokio::test]
+async fn test_connection_pool_send_single_message_single_connection() {
+    // Given
+    let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
+    let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
+
+    let envelope = Envelope::make_command("/foo", "/bar", Some("Hello".into()));
+
+    let mut fake_conns = FakeConnections::new();
+    // let (_, mut writer_rx) = fake_conns.add_connection(host_url);
+    let (mut connection_pool, _close_tx) = create_connection_pool(fake_conns).await;
+
+    let (mut connection_sender, _connection_receiver) = connection_pool
+        .request_connection(path, ConnectionType::Outgoing)
+        .await
+        .unwrap()
+        .unwrap();
+
+    // When
+    connection_sender
+        .send_message(envelope.clone())
+        .await
+        .unwrap();
+
+    // Then
+    assert_eq!(
+        writer_rx.recv().await.unwrap(),
+        TaggedEnvelope(RoutingAddr::client(1), envelope)
+    );
+}
+
 // #[tokio::test]
 // async fn test_connection_pool_send_multiple_messages_single_connection() {
 //     // Given
