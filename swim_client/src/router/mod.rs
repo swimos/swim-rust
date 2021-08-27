@@ -195,6 +195,7 @@ pub(crate) enum RoutingPath {
     Local(Node),
 }
 
+//Todo dm test
 pub struct AddressableWrapper<T: Addressable>(pub T);
 
 impl<T: Addressable> TryFrom<AddressableWrapper<T>> for RoutingPath {

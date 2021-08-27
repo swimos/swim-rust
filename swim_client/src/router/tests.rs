@@ -12,23 +12,20 @@
 // // See the License for the specific language governing permissions and
 // // limitations under the License.
 
-use crate::router::RouterEvent;
 use crate::utilities::sync::promise;
-use crate::utilities::uri::RelativeUri;
-use futures::future::BoxFuture;
 use std::collections::HashMap;
-use swim_common::routing::error::{ResolutionError, RouterError};
+use swim_common::routing::error::ConnectionError;
+use swim_common::routing::error::ResolutionError;
 use swim_common::routing::remote::table::BidirectionalRegistrator;
 use swim_common::routing::remote::RemoteRoutingRequest;
-use swim_common::routing::{
-    BidirectionalRoute, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
-};
+use swim_common::routing::{RoutingAddr, TaggedEnvelope, TaggedSender};
 use tokio::sync::mpsc;
 use url::Url;
 
 pub(crate) struct FakeConnections {
     outgoing_channels: HashMap<Url, TaggedSender>,
-    incoming_channels: HashMap<Url, mpsc::Receiver<RouterEvent>>,
+    incoming_channels: HashMap<Url, mpsc::Receiver<TaggedEnvelope>>,
+    addr: u32,
 }
 
 impl FakeConnections {
@@ -36,64 +33,74 @@ impl FakeConnections {
         FakeConnections {
             outgoing_channels: HashMap::new(),
             incoming_channels: HashMap::new(),
+            addr: 0,
         }
     }
 
-    fn add_connection(
+    pub(crate) fn add_connection(
         &mut self,
-        tag: RoutingAddr,
         url: Url,
-    ) -> (mpsc::Sender<RouterEvent>, mpsc::Receiver<TaggedEnvelope>) {
+    ) -> (mpsc::Sender<TaggedEnvelope>, mpsc::Receiver<TaggedEnvelope>) {
         let (outgoing_tx, outgoing_rx) = mpsc::channel(8);
         let (incoming_tx, incoming_rx) = mpsc::channel(8);
 
-        let _ = self
-            .outgoing_channels
-            .insert(url.clone(), TaggedSender::new(tag, outgoing_tx));
+        let _ = self.outgoing_channels.insert(
+            url.clone(),
+            TaggedSender::new(RoutingAddr::client(self.addr), outgoing_tx),
+        );
         let _ = self.incoming_channels.insert(url, incoming_rx);
+        self.addr += 1;
 
         (incoming_tx, outgoing_rx)
+    }
+
+    fn get_connection(
+        &mut self,
+        url: &Url,
+    ) -> Option<(TaggedSender, mpsc::Receiver<TaggedEnvelope>)> {
+        if let Some(conn_sender) = self.outgoing_channels.get(url) {
+            Some((
+                conn_sender.clone(),
+                self.incoming_channels.remove(url).unwrap(),
+            ))
+        } else {
+            None
+        }
     }
 }
 
 pub(crate) struct MockRemoteRouterTask;
 
 impl MockRemoteRouterTask {
-    pub(crate) fn new(fake_conns: FakeConnections) -> mpsc::Sender<RemoteRoutingRequest> {
+    pub(crate) fn new(mut fake_conns: FakeConnections) -> mpsc::Sender<RemoteRoutingRequest> {
         let (tx, mut rx) = mpsc::channel(32);
 
         tokio::spawn(async move {
             let mut drops = vec![];
-            let mut outgoing_rxs = vec![];
-            let mut aa_txs = vec![];
 
             while let Some(request) = rx.recv().await {
                 match request {
                     RemoteRoutingRequest::Bidirectional { host, request } => {
+                        if let Some((sender_tx, receiver_rx)) = fake_conns.get_connection(&host) {
+                            let (tx, mut rx) = mpsc::channel(8);
+                            let (on_drop_tx, on_drop_rx) = promise::promise();
 
+                            drops.push(on_drop_tx);
 
+                            let registrator =
+                                BidirectionalRegistrator::new(sender_tx, tx, on_drop_rx);
 
+                            request.send(Ok(registrator)).unwrap();
 
-
-                        let (sender_tx, sender_rx) = mpsc::channel(8);
-                        let (tx, mut rx) = mpsc::channel(8);
-                        let (receiver_tx, receiver_rx) = mpsc::channel(8);
-                        let (on_drop_tx, on_drop_rx) = promise::promise();
-
-                        drops.push(on_drop_tx);
-                        outgoing_rxs.push(sender_rx);
-                        aa_txs.push(receiver_tx);
-
-                        let registrator = BidirectionalRegistrator::new(
-                            TaggedSender::new(RoutingAddr::client(1), sender_tx),
-                            tx,
-                            on_drop_rx,
-                        );
-
-                        request.send(Ok(registrator)).unwrap();
-
-                        let receiver_request = rx.recv().await.unwrap();
-                        receiver_request.send(receiver_rx).unwrap();
+                            let receiver_request = rx.recv().await.unwrap();
+                            receiver_request.send(receiver_rx).unwrap();
+                        } else {
+                            request
+                                .send(Err(ConnectionError::Resolution(
+                                    ResolutionError::unresolvable(host.to_string()),
+                                )))
+                                .unwrap();
+                        }
                     }
                     _ => unreachable!(),
                 }
