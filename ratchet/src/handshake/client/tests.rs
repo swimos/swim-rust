@@ -14,11 +14,12 @@
 
 use crate::errors::{Error, HttpError};
 use crate::extensions::ext::{NoExt, NoExtProxy};
-use crate::extensions::{ExtHandshakeErr, Extension, ExtensionProvider};
+use crate::extensions::{Extension, ExtensionProvider};
 use crate::fixture::mock;
 use crate::handshake::client::{HandshakeMachine, HandshakeResult};
 use crate::handshake::{ProtocolError, ProtocolRegistry, ACCEPT_KEY, UPGRADE_STR, WEBSOCKET_STR};
 use crate::TryIntoRequest;
+use bytes::BytesMut;
 use futures::future::join;
 use http::header::HeaderName;
 use http::{header, HeaderMap, HeaderValue, Request, Response, StatusCode, Version};
@@ -34,9 +35,13 @@ const TEST_URL: &str = "ws://127.0.0.1:9001/test";
 async fn handshake_sends_valid_request() {
     let request = TEST_URL.try_into_request().unwrap();
     let (peer, mut stream) = mock();
-
-    let mut machine =
-        HandshakeMachine::new(&mut stream, ProtocolRegistry::new(vec!["warp"]), NoExtProxy);
+    let mut buf = BytesMut::new();
+    let mut machine = HandshakeMachine::new(
+        &mut stream,
+        ProtocolRegistry::new(vec!["warp"]),
+        NoExtProxy,
+        &mut buf,
+    );
     machine.encode(request).expect("");
     machine.buffered.write().await.expect("");
 
@@ -70,9 +75,13 @@ fn assert_header(headers: &mut [Header<'_>], name: &str, expected: &str) {
 async fn handshake_invalid_requests() {
     async fn test(request: Request<()>) {
         let (peer, mut stream) = mock();
-
-        let mut machine =
-            HandshakeMachine::new(&mut stream, ProtocolRegistry::default(), NoExtProxy);
+        let mut buf = BytesMut::new();
+        let mut machine = HandshakeMachine::new(
+            &mut stream,
+            ProtocolRegistry::default(),
+            NoExtProxy,
+            &mut buf,
+        );
         machine
             .encode(request)
             .expect_err("Expected encoding to fail");
@@ -125,8 +134,13 @@ async fn expect_server_error(response: Response<()>, expected_error: HttpError) 
     let (server_tx, server_rx) = trigger::trigger();
 
     let client_task = async move {
-        let mut machine =
-            HandshakeMachine::new(&mut stream, ProtocolRegistry::default(), NoExtProxy);
+        let mut buf = BytesMut::new();
+        let mut machine = HandshakeMachine::new(
+            &mut stream,
+            ProtocolRegistry::default(),
+            NoExtProxy,
+            &mut buf,
+        );
         machine
             .encode(Request::get(TEST_URL).body(()).unwrap())
             .unwrap();
@@ -220,8 +234,13 @@ async fn ok_nonce() {
     let (server_tx, server_rx) = trigger::trigger();
 
     let client_task = async move {
-        let mut machine =
-            HandshakeMachine::new(&mut stream, ProtocolRegistry::default(), NoExtProxy);
+        let mut buf = BytesMut::new();
+        let mut machine = HandshakeMachine::new(
+            &mut stream,
+            ProtocolRegistry::default(),
+            NoExtProxy,
+            &mut buf,
+        );
         machine
             .encode(Request::get(TEST_URL).body(()).unwrap())
             .unwrap();
@@ -283,8 +302,13 @@ async fn redirection() {
     let (server_tx, server_rx) = trigger::trigger();
 
     let client_task = async move {
-        let mut machine =
-            HandshakeMachine::new(&mut stream, ProtocolRegistry::default(), NoExtProxy);
+        let mut buf = BytesMut::new();
+        let mut machine = HandshakeMachine::new(
+            &mut stream,
+            ProtocolRegistry::default(),
+            NoExtProxy,
+            &mut buf,
+        );
         machine
             .encode(Request::get(TEST_URL).body(()).unwrap())
             .unwrap();
@@ -336,8 +360,14 @@ where
     let (server_tx, server_rx) = trigger::trigger();
 
     let client_task = async move {
-        let mut machine =
-            HandshakeMachine::new(&mut stream, ProtocolRegistry::new(registry), NoExtProxy);
+        let mut buf = BytesMut::new();
+
+        let mut machine = HandshakeMachine::new(
+            &mut stream,
+            ProtocolRegistry::new(registry),
+            NoExtProxy,
+            &mut buf,
+        );
         machine
             .encode(Request::get(TEST_URL).body(()).unwrap())
             .unwrap();
@@ -417,6 +447,10 @@ async fn disjoint_protocols() {
     .await;
 }
 
+#[derive(thiserror::Error, Debug)]
+#[error("Extension error")]
+struct ExtHandshakeErr;
+
 struct MockExtensionProxy<R>(&'static [(HeaderName, &'static str)], R)
 where
     R: for<'h> Fn(&'h httparse::Response) -> Result<MockExtension, ExtHandshakeErr>;
@@ -426,6 +460,7 @@ where
     R: for<'h> Fn(&'h httparse::Response) -> Result<MockExtension, ExtHandshakeErr>,
 {
     type Extension = MockExtension;
+    type Error = ExtHandshakeErr;
 
     fn apply_headers(&self, request: &mut crate::Request) {
         let header_map = request.headers_mut();
@@ -463,7 +498,9 @@ where
     let (server_tx, server_rx) = trigger::trigger();
 
     let client_task = async move {
-        let mut machine = HandshakeMachine::new(&mut stream, ProtocolRegistry::default(), ext);
+        let mut buf = BytesMut::new();
+        let mut machine =
+            HandshakeMachine::new(&mut stream, ProtocolRegistry::default(), ext, &mut buf);
         machine
             .encode(Request::get(TEST_URL).body(()).unwrap())
             .unwrap();

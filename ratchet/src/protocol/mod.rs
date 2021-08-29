@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 mod frame;
 pub use frame::*;
-
-// #[cfg(test)]
-// mod tests;
 
 use derive_more::Display;
 use std::convert::TryFrom;
@@ -82,7 +82,7 @@ pub enum Role {
     Server,
 }
 
-#[derive(Debug, Clone, Display, PartialEq)]
+#[derive(Debug, Copy, Clone, Display, PartialEq)]
 pub enum OpCode {
     #[display(fmt = "{}", _0)]
     DataCode(DataCode),
@@ -109,7 +109,7 @@ impl From<OpCode> for u8 {
     }
 }
 
-#[derive(Debug, Clone, Display, PartialEq)]
+#[derive(Debug, Copy, Clone, Display, PartialEq)]
 pub enum DataCode {
     #[display(fmt = "Continuation")]
     Continuation = 0,
@@ -119,7 +119,7 @@ pub enum DataCode {
     Binary = 2,
 }
 
-#[derive(Debug, Clone, Display, PartialEq)]
+#[derive(Debug, Copy, Clone, Display, PartialEq)]
 pub enum ControlCode {
     #[display(fmt = "Close")]
     Close = 8,

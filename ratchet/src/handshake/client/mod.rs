@@ -12,13 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::convert::TryFrom;
+#[cfg(test)]
+mod tests;
+
+mod encoding;
 
 use bytes::BytesMut;
 use http::header::HeaderName;
 use http::{header, Request, StatusCode};
 use httparse::{Response, Status};
 use sha1::{Digest, Sha1};
+use std::convert::TryFrom;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 
@@ -28,10 +32,6 @@ use crate::handshake::client::encoding::{build_request, encode_request};
 use crate::handshake::io::BufferedIo;
 use crate::handshake::{ProtocolRegistry, ACCEPT_KEY, BAD_STATUS_CODE, UPGRADE_STR, WEBSOCKET_STR};
 use crate::WebSocketStream;
-
-mod encoding;
-// #[cfg(test)]
-// mod tests;
 
 type Nonce = [u8; 24];
 

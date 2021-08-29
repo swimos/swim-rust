@@ -1,11 +1,13 @@
 use crate::errors::{CloseError, Error, ErrorKind};
-use crate::framed::{read_into, FramedIo, ReadError};
+use crate::framed::{read_into, FramedIo, ReadError, CONTROL_FRAME_LEN};
 use crate::handshake::{exec_client_handshake, HandshakeResult, ProtocolRegistry};
 use crate::protocol::{
     CloseCode, CloseReason, ControlCode, DataCode, HeaderFlags, Message, MessageType, OpCode, Role,
 };
 use crate::{Extension, ExtensionProvider, Request, WebSocketConfig, WebSocketStream};
 use bytes::BytesMut;
+
+const CONTROL_MAX_SIZE: usize = 125;
 
 pub struct WebSocket<S, E> {
     inner: WebSocketInner<S, E>,
@@ -69,6 +71,7 @@ where
         inner: WebSocketInner {
             framed: FramedIo::new(stream, read_buffer, Role::Client, max_size),
             _extension: extension,
+            control_buffer: BytesMut::with_capacity(CONTROL_MAX_SIZE),
             closed: false,
         },
     };
@@ -77,6 +80,7 @@ where
 
 struct WebSocketInner<S, E> {
     framed: FramedIo<S>,
+    control_buffer: BytesMut,
     _extension: E,
     closed: bool,
 }
@@ -87,21 +91,21 @@ where
     E: Extension,
 {
     async fn read(&mut self, read_buffer: &mut BytesMut) -> Result<Message, Error> {
-        let WebSocketInner { framed, closed, .. } = self;
+        let WebSocketInner {
+            framed,
+            closed,
+            control_buffer,
+            ..
+        } = self;
 
         if *closed {
             return Err(Error::with_cause(ErrorKind::Close, CloseError::Closed));
         }
 
-        match read_into(framed, read_buffer, closed).await {
-            Ok(message) => {
-                println!("Received: {:?}", message);
-                Ok(message)
-            }
+        match read_into(framed, read_buffer, control_buffer, closed).await {
+            Ok(message) => Ok(message),
             Err(e) => {
                 let ReadError { close_with, error } = e;
-                println!("Closing with: {:?}", close_with);
-
                 self.closed = true;
 
                 if let Some(reason) = close_with {
@@ -122,7 +126,16 @@ where
         let op_code = match message_type {
             MessageType::Text => OpCode::DataCode(DataCode::Text),
             MessageType::Binary => OpCode::DataCode(DataCode::Binary),
-            MessageType::Ping => OpCode::ControlCode(ControlCode::Ping),
+            MessageType::Ping => {
+                if buf.len() > CONTROL_MAX_SIZE {
+                    return Err(Error::with_cause(ErrorKind::Protocol, CONTROL_FRAME_LEN));
+                } else {
+                    self.control_buffer.clear();
+                    self.control_buffer
+                        .clone_from_slice(&buf[..CONTROL_MAX_SIZE]);
+                    OpCode::ControlCode(ControlCode::Ping)
+                }
+            }
         };
 
         match self.framed.write(op_code, HeaderFlags::FIN, buf).await {

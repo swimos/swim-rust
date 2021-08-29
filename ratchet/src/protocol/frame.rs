@@ -19,7 +19,7 @@ use either::Either;
 use std::convert::TryFrom;
 use std::mem::size_of;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct FrameHeader {
     pub opcode: OpCode,
     pub flags: HeaderFlags,
@@ -47,15 +47,14 @@ macro_rules! try_parse_int {
 impl FrameHeader {
     pub fn read_from(
         source: &[u8],
-        codec_flags: &CodecFlags,
+        is_server: bool,
+        rsv_bits: u8,
         max_size: usize,
-    ) -> Result<Either<(FrameHeader, usize, usize), usize>, ReadError> {
+    ) -> Result<Either<(FrameHeader, usize, usize), usize>, ProtocolError> {
         let source_length = source.len();
         if source_length < 2 {
             return Ok(Either::Right(2 - source_length));
         }
-
-        let server = codec_flags.contains(CodecFlags::ROLE);
 
         let first = source[0];
         let received_flags = HeaderFlags::from_bits_truncate(first);
@@ -63,23 +62,23 @@ impl FrameHeader {
 
         if opcode.is_control() && !received_flags.is_fin() {
             // rfc6455 § 5.4: Control frames themselves MUST NOT be fragmented
-            return Err(ProtocolError::FragmentedControl.into());
+            return Err(ProtocolError::FragmentedControl);
         }
 
-        if (received_flags.bits() & !codec_flags.bits() & 0x70) != 0 {
+        if (received_flags.bits() & rsv_bits) != 0 {
             // Peer set a RSV bit high that hasn't been negotiated
-            return Err(ProtocolError::UnknownExtension.into());
+            return Err(ProtocolError::UnknownExtension);
         }
 
         let second = source[1];
         let masked = second & 0x80 != 0;
 
-        if !masked && server {
+        if !masked && is_server {
             // rfc6455 § 6.1: Client must send masked data
-            return Err(ProtocolError::UnmaskedFrame.into());
-        } else if masked && !server {
+            return Err(ProtocolError::UnmaskedFrame);
+        } else if masked && !is_server {
             // rfc6455 § 6.2: Server must remove masking
-            return Err(ProtocolError::MaskedFrame.into());
+            return Err(ProtocolError::MaskedFrame);
         }
 
         let payload_length = second & 0x7F;
@@ -94,7 +93,7 @@ impl FrameHeader {
         };
 
         if length > max_size {
-            return Err(ProtocolError::FrameOverflow.into());
+            return Err(ProtocolError::FrameOverflow);
         }
 
         let mask = if masked {

@@ -21,7 +21,9 @@ mod framed;
 mod handshake;
 mod protocol;
 
+mod f2;
 pub mod ws;
+
 pub use crate::errors::Error;
 pub use crate::extensions::{deflate::*, ext::*, Extension, ExtensionProvider};
 pub use handshake::TryIntoRequest;

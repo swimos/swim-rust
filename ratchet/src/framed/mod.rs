@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::errors::{CloseError, Error, ErrorKind, ProtocolError};
+#[cfg(test)]
+mod tests;
+
+use crate::errors::{Error, ErrorKind, ProtocolError};
 use crate::protocol::{
     apply_mask, CloseCode, CloseCodeParseErr, CloseReason, ControlCode, DataCode, FrameHeader,
     Message, OpCode, OpCodeParseErr,
@@ -27,18 +30,19 @@ use std::convert::TryFrom;
 use std::str::Utf8Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-const CONTROL_FRAME_LEN: &str = "Control frame length greater than 125";
-const CONST_STARTED: &str = "Continuation already started";
-const CONST_NOT_STARTED: &str = "Continuation not started";
-const ILLEGAL_CLOSE_CODE: &str = "Received a reserved close code";
-
+pub const CONTROL_FRAME_LEN: &str = "Control frame length greater than 125";
+pub(crate) const CONST_STARTED: &str = "Continuation already started";
+pub(crate) const CONST_NOT_STARTED: &str = "Continuation not started";
+pub(crate) const ILLEGAL_CLOSE_CODE: &str = "Received a reserved close code";
 const U16_MAX: usize = u16::MAX as usize;
+const CONTROL_DATA_MISMATCH: &str = "Unexpected control frame data";
 
+#[derive(Debug, PartialEq)]
 pub enum CodecItem {
     Binary,
     Text,
     Ping(BytesMut),
-    Pong,
+    Pong(BytesMut),
     Close((Option<CloseReason>, BytesMut)),
 }
 
@@ -75,6 +79,7 @@ impl CodecFlags {
     }
 }
 
+#[derive(Debug)]
 pub struct ReadError {
     pub close_with: Option<CloseReason>,
     pub error: Error,
@@ -171,7 +176,7 @@ where
         } = self;
 
         loop {
-            let (header, payload) = read_header(io, read_buffer, flags, usize::MAX).await?;
+            let (header, payload) = read_frame(io, read_buffer, flags, usize::MAX).await?;
 
             match header.opcode {
                 OpCode::DataCode(d) => {
@@ -292,7 +297,16 @@ where
                                 Ok(CodecItem::Ping(payload))
                             }
                         }
-                        ControlCode::Pong => Ok(CodecItem::Pong),
+                        ControlCode::Pong => {
+                            if payload.len() > 125 {
+                                return Err(ReadError::with(
+                                    CONTROL_FRAME_LEN,
+                                    ProtocolError::FrameOverflow,
+                                ));
+                            } else {
+                                Ok(CodecItem::Pong(payload))
+                            }
+                        }
                     };
                 }
             }
@@ -353,7 +367,7 @@ where
     }
 }
 
-async fn read_header<S>(
+async fn read_frame<S>(
     io: &mut S,
     buf: &mut BytesMut,
     flags: &CodecFlags,
@@ -440,36 +454,52 @@ fn encode_header(
 pub async fn read_into<S>(
     framed: &mut FramedIo<S>,
     read_buffer: &mut BytesMut,
+    control_buffer: &mut BytesMut,
     closed: &mut bool,
 ) -> Result<Message, ReadError>
 where
     S: WebSocketStream,
 {
-    match framed.read_next(read_buffer).await? {
-        CodecItem::Binary => Ok(Message::Binary),
-        CodecItem::Text => Ok(Message::Text),
-        CodecItem::Ping(payload) => {
-            framed
-                .write(
-                    OpCode::ControlCode(ControlCode::Pong),
-                    HeaderFlags::FIN,
-                    payload,
-                )
-                .await?;
-            Ok(Message::Ping)
-        }
-        CodecItem::Pong => Ok(Message::Pong),
-        CodecItem::Close((reason, payload)) => {
-            framed
-                .write(
-                    OpCode::ControlCode(ControlCode::Close),
-                    HeaderFlags::FIN,
-                    payload,
-                )
-                .await?;
+    loop {
+        match framed.read_next(read_buffer).await? {
+            CodecItem::Binary => return Ok(Message::Binary),
+            CodecItem::Text => return Ok(Message::Text),
+            CodecItem::Ping(payload) => {
+                framed
+                    .write(
+                        OpCode::ControlCode(ControlCode::Pong),
+                        HeaderFlags::FIN,
+                        payload,
+                    )
+                    .await?;
+                return Ok(Message::Ping);
+            }
+            CodecItem::Pong(payload) => {
+                if control_buffer.is_empty() {
+                    continue;
+                } else {
+                    return if control_buffer[..].eq(&payload[..]) {
+                        Ok(Message::Pong)
+                    } else {
+                        Err(ReadError::with(
+                            CONTROL_DATA_MISMATCH,
+                            ProtocolError::ControlDataMismatch,
+                        ))
+                    };
+                }
+            }
+            CodecItem::Close((reason, payload)) => {
+                framed
+                    .write(
+                        OpCode::ControlCode(ControlCode::Close),
+                        HeaderFlags::FIN,
+                        payload,
+                    )
+                    .await?;
 
-            *closed = true;
-            Ok(Message::Close(reason))
+                *closed = true;
+                return Ok(Message::Close(reason));
+            }
         }
     }
 }
