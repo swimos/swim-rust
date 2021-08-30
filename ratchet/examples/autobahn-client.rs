@@ -74,13 +74,15 @@ async fn run_test(case: u32) -> Result<(), Error> {
     let mut buf = BytesMut::new();
 
     loop {
-        buf.clear();
         match websocket.read(&mut buf).await? {
             Message::Text => {
+                let _s = String::from_utf8(buf.to_vec())?;
                 websocket.write(&mut buf, MessageType::Text).await?;
+                buf.clear();
             }
             Message::Binary => {
                 websocket.write(&mut buf, MessageType::Binary).await?;
+                buf.clear();
             }
             Message::Ping | Message::Pong => {}
             Message::Close(_) => break Ok(()),

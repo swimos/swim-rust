@@ -437,8 +437,7 @@ where
                                 (None, BytesMut::new())
                             } else {
                                 match CloseCode::try_from([payload[0], payload[1]])? {
-                                    close_code @ CloseCode::Status
-                                    | close_code @ CloseCode::Abnormal => {
+                                    close_code if close_code.is_illegal() => {
                                         return Err(ReadError::with(
                                             ILLEGAL_CLOSE_CODE,
                                             ProtocolError::CloseCode(close_code.code()),

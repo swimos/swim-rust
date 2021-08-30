@@ -71,9 +71,17 @@ pub enum MessageType {
     Ping,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct WebSocketConfig {
     pub max_size: usize,
+}
+
+impl Default for WebSocketConfig {
+    fn default() -> Self {
+        WebSocketConfig {
+            max_size: usize::MAX,
+        }
+    }
 }
 
 #[derive(Copy, Clone, PartialEq)]
@@ -193,6 +201,16 @@ pub enum CloseCode {
 }
 
 impl CloseCode {
+    pub fn is_illegal(&self) -> bool {
+        matches!(
+            self,
+            CloseCode::Status
+                | CloseCode::Tls
+                | CloseCode::Abnormal
+                | CloseCode::ReservedExtension(_)
+        )
+    }
+
     pub fn code(&self) -> u16 {
         match self {
             CloseCode::Normal => 1000,

@@ -22,6 +22,7 @@ use std::error::Error as StdError;
 use std::fmt::{Display, Formatter};
 use std::io;
 use std::str::Utf8Error;
+use std::string::FromUtf8Error;
 use thiserror::Error;
 
 pub(crate) type BoxError = Box<dyn StdError + Send + Sync + 'static>;
@@ -230,4 +231,10 @@ pub enum ProtocolError {
     CloseCode(u16),
     #[error("Received unexpected control frame data")]
     ControlDataMismatch,
+}
+
+impl From<FromUtf8Error> for Error {
+    fn from(e: FromUtf8Error) -> Self {
+        Error::with_cause(ErrorKind::Encoding, e)
+    }
 }
