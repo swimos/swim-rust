@@ -1,44 +1,26 @@
-// Copyright 2015-2021 SWIM.AI inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-#[cfg(test)]
-mod tests;
-
-use crate::errors::{Error, ErrorKind, ProtocolError};
 use crate::protocol::{
     apply_mask, CloseCode, CloseCodeParseErr, CloseReason, ControlCode, DataCode, FrameHeader,
-    Message, OpCode, OpCodeParseErr,
+    HeaderFlags, OpCode, OpCodeParseErr, Role,
 };
-use crate::protocol::{HeaderFlags, Role};
 use crate::WebSocketStream;
-use bytes::BufMut;
-use bytes::{Buf, BytesMut};
+use bytes::{BufMut, BytesMut};
+use std::str::Utf8Error;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+
+use crate::errors::{Error, ErrorKind, ProtocolError};
+use bytes::Buf;
 use either::Either;
 use nanorand::{WyRand, RNG};
 use std::convert::TryFrom;
-use std::str::Utf8Error;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 pub const CONTROL_FRAME_LEN: &str = "Control frame length greater than 125";
 pub(crate) const CONST_STARTED: &str = "Continuation already started";
 pub(crate) const CONST_NOT_STARTED: &str = "Continuation not started";
 pub(crate) const ILLEGAL_CLOSE_CODE: &str = "Received a reserved close code";
 const U16_MAX: usize = u16::MAX as usize;
-const CONTROL_DATA_MISMATCH: &str = "Unexpected control frame data";
 
 #[derive(Debug, PartialEq)]
-pub enum CodecItem {
+pub enum Item {
     Binary,
     Text,
     Ping(BytesMut),
@@ -64,25 +46,25 @@ bitflags::bitflags! {
     }
 }
 
-#[allow(warnings)]
-impl CodecFlags {
-    pub fn is_rsv1(&self) -> bool {
-        self.contains(CodecFlags::RSV1)
-    }
-
-    pub fn is_rsv2(&self) -> bool {
-        self.contains(CodecFlags::RSV2)
-    }
-
-    pub fn is_rsv3(&self) -> bool {
-        self.contains(CodecFlags::RSV3)
-    }
-}
-
 #[derive(Debug)]
 pub struct ReadError {
     pub close_with: Option<CloseReason>,
     pub error: Error,
+}
+
+impl ReadError {
+    fn with<E>(msg: &'static str, source: E) -> ReadError
+    where
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        ReadError {
+            close_with: Some(CloseReason {
+                code: CloseCode::Protocol,
+                description: Some(msg.to_string()),
+            }),
+            error: Error::with_cause(ErrorKind::Protocol, source),
+        }
+    }
 }
 
 macro_rules! read_err_from {
@@ -117,35 +99,208 @@ impl From<std::io::Error> for ReadError {
     }
 }
 
-impl ReadError {
-    fn with<E>(msg: &'static str, source: E) -> ReadError
-    where
-        E: std::error::Error + Send + Sync + 'static,
-    {
-        ReadError {
-            close_with: Some(CloseReason {
-                code: CloseCode::Protocol,
-                description: Some(msg.to_string()),
-            }),
-            error: Error::with_cause(ErrorKind::Protocol, source),
+pub enum FrameDecoder {
+    DecodingHeader,
+    DecodingPayload(FrameHeader, usize, usize),
+}
+
+impl Default for FrameDecoder {
+    fn default() -> Self {
+        FrameDecoder::DecodingHeader
+    }
+}
+
+pub enum DecodeResult {
+    Incomplete(usize),
+    Finished(FrameHeader, BytesMut),
+}
+
+impl FrameDecoder {
+    pub fn decode(
+        &mut self,
+        buf: &mut BytesMut,
+        is_server: bool,
+        rsv_bits: u8,
+        max_size: usize,
+    ) -> Result<DecodeResult, ReadError> {
+        loop {
+            match self {
+                FrameDecoder::DecodingHeader => {
+                    match FrameHeader::read_from(buf, is_server, rsv_bits, max_size)? {
+                        Either::Left((header, header_len, payload_len)) => {
+                            *self = FrameDecoder::DecodingPayload(header, header_len, payload_len);
+                        }
+                        Either::Right(count) => return Ok(DecodeResult::Incomplete(count)),
+                    }
+                }
+                FrameDecoder::DecodingPayload(header, header_len, payload_len) => {
+                    let frame_len = *header_len + *payload_len;
+                    let buf_len = buf.len();
+
+                    if buf_len < frame_len {
+                        let dif = frame_len - buf_len;
+                        return Ok(DecodeResult::Incomplete(dif));
+                    }
+
+                    buf.advance(*header_len);
+
+                    let mut payload = buf.split_to(*payload_len);
+                    if let Some(mask) = header.mask {
+                        apply_mask(mask, &mut payload);
+                    }
+
+                    let result = DecodeResult::Finished(*header, payload);
+                    *self = FrameDecoder::DecodingHeader;
+
+                    return Ok(result);
+                }
+            }
         }
     }
 }
 
-pub struct FramedIo<S> {
-    io: S,
+struct FramedRead {
     read_buffer: BytesMut,
+    decoder: FrameDecoder,
+}
+
+impl FramedRead {
+    fn new(read_buffer: BytesMut) -> FramedRead {
+        FramedRead {
+            read_buffer,
+            decoder: FrameDecoder::default(),
+        }
+    }
+
+    async fn read_frame<I>(
+        &mut self,
+        io: &mut I,
+        is_server: bool,
+        rsv_bits: u8,
+        max_size: usize,
+    ) -> Result<(FrameHeader, BytesMut), ReadError>
+    where
+        I: AsyncRead + Unpin,
+    {
+        let FramedRead {
+            read_buffer,
+            decoder,
+        } = self;
+
+        loop {
+            match decoder.decode(read_buffer, is_server, rsv_bits, max_size)? {
+                DecodeResult::Incomplete(count) => {
+                    let len = read_buffer.len();
+                    read_buffer.resize(len + count, 0u8);
+                    io.read_exact(&mut read_buffer[len..]).await?;
+                }
+                DecodeResult::Finished(header, payload) => return Ok((header, payload)),
+            }
+        }
+    }
+}
+
+#[derive(Default)]
+struct FramedWrite {
     write_buffer: BytesMut,
+    encoder: FrameEncoder,
+}
+
+impl FramedWrite {
+    async fn write<I, A>(
+        &mut self,
+        io: &mut I,
+        flags: &CodecFlags,
+        opcode: OpCode,
+        header_flags: HeaderFlags,
+        mut payload_ref: A,
+    ) -> Result<(), std::io::Error>
+    where
+        I: AsyncWrite + Unpin,
+        A: AsMut<[u8]>,
+    {
+        let FramedWrite {
+            write_buffer,
+            encoder,
+        } = self;
+
+        let payload = payload_ref.as_mut();
+        encoder.encode_frame(write_buffer, flags, opcode, header_flags, payload);
+
+        io.write_all(write_buffer).await?;
+        write_buffer.clear();
+
+        io.write_all(payload).await
+    }
+}
+
+#[derive(Default)]
+struct FrameEncoder {
     rand: WyRand,
+}
+
+impl FrameEncoder {
+    fn encode_frame(
+        &mut self,
+        write_buffer: &mut BytesMut,
+        flags: &CodecFlags,
+        opcode: OpCode,
+        header_flags: HeaderFlags,
+        payload: &mut [u8],
+    ) {
+        let payload_len = payload.len();
+
+        let mask = if flags.contains(CodecFlags::ROLE) {
+            None
+        } else {
+            let mask = self.rand.generate();
+            apply_mask(mask, payload);
+            Some(mask)
+        };
+
+        let masked = mask.is_some();
+        let (second, mut offset) = if masked { (0x80, 6) } else { (0x0, 2) };
+
+        if payload_len >= U16_MAX {
+            offset += 8;
+        } else if payload_len > 125 {
+            offset += 2;
+        }
+
+        let additional = if masked { payload_len + offset } else { offset };
+
+        write_buffer.reserve(additional);
+        let first = header_flags.bits() | u8::from(opcode);
+
+        if payload_len < 126 {
+            write_buffer.extend_from_slice(&[first, second | payload_len as u8]);
+        } else if payload_len <= U16_MAX {
+            write_buffer.extend_from_slice(&[first, second | 126]);
+            write_buffer.put_u16(payload_len as u16);
+        } else {
+            write_buffer.extend_from_slice(&[first, second | 127]);
+            write_buffer.put_u64(payload_len as u64);
+        };
+
+        if let Some(mask) = mask {
+            write_buffer.put_u32(mask);
+        }
+    }
+}
+
+pub struct FramedIo<I> {
+    io: I,
+    reader: FramedRead,
+    writer: FramedWrite,
     flags: CodecFlags,
     max_size: usize,
 }
 
-impl<S> FramedIo<S>
+impl<I> FramedIo<I>
 where
-    S: WebSocketStream,
+    I: WebSocketStream,
 {
-    pub fn new(io: S, read_buffer: BytesMut, role: Role, max_size: usize) -> Self {
+    pub fn new(io: I, read_buffer: BytesMut, role: Role, max_size: usize) -> Self {
         let role_flag = match role {
             Role::Client => CodecFlags::empty(),
             Role::Server => CodecFlags::ROLE,
@@ -154,42 +309,60 @@ where
 
         FramedIo {
             io,
-            read_buffer,
-            write_buffer: BytesMut::default(),
-            rand: Default::default(),
+            reader: FramedRead::new(read_buffer),
+            writer: FramedWrite::default(),
             flags,
             max_size,
         }
     }
-}
 
-impl<S> FramedIo<S>
-where
-    S: WebSocketStream,
-{
-    pub async fn read_next(&mut self, read_into: &mut BytesMut) -> Result<CodecItem, ReadError> {
+    pub async fn write<A>(
+        &mut self,
+        opcode: OpCode,
+        header_flags: HeaderFlags,
+        payload_ref: A,
+    ) -> Result<(), std::io::Error>
+    where
+        A: AsMut<[u8]>,
+    {
+        let FramedIo {
+            io, writer, flags, ..
+        } = self;
+
+        writer
+            .write(io, flags, opcode, header_flags, payload_ref)
+            .await
+    }
+
+    pub(crate) async fn read_next(&mut self, read_into: &mut BytesMut) -> Result<Item, ReadError> {
         let FramedIo {
             io,
-            read_buffer,
+            reader,
             flags,
+            max_size,
             ..
         } = self;
 
+        let rsv_bits = !flags.bits() & 0x70;
+        let is_server = flags.contains(CodecFlags::ROLE);
+
         loop {
-            let (header, payload) = read_frame(io, read_buffer, flags, usize::MAX).await?;
+            let (header, payload) = reader
+                .read_frame(io, is_server, rsv_bits, *max_size)
+                .await?;
 
             match header.opcode {
-                OpCode::DataCode(d) => {
+                OpCode::DataCode(data_code) => {
                     read_into.put(payload);
 
-                    match d {
+                    match data_code {
                         DataCode::Continuation => {
                             if header.flags.contains(HeaderFlags::FIN) {
-                                let item = if flags.contains(CodecFlags::R_CONT) {
-                                    if flags.contains(CodecFlags::CONT_TYPE) {
-                                        CodecItem::Text
+                                let item = if self.flags.contains(CodecFlags::R_CONT) {
+                                    if self.flags.contains(CodecFlags::CONT_TYPE) {
+                                        Item::Text
                                     } else {
-                                        CodecItem::Binary
+                                        Item::Binary
                                     }
                                 } else {
                                     return Err(ReadError::with(
@@ -198,10 +371,11 @@ where
                                     ));
                                 };
 
-                                flags.remove(CodecFlags::R_CONT | CodecFlags::CONT_TYPE);
+                                self.flags
+                                    .remove(CodecFlags::R_CONT | CodecFlags::CONT_TYPE);
                                 return Ok(item);
                             } else {
-                                if flags.contains(CodecFlags::R_CONT) {
+                                if self.flags.contains(CodecFlags::R_CONT) {
                                     continue;
                                 } else {
                                     return Err(ReadError::with(
@@ -212,42 +386,43 @@ where
                             }
                         }
                         DataCode::Text => {
-                            if flags.contains(CodecFlags::R_CONT) {
+                            if self.flags.contains(CodecFlags::R_CONT) {
                                 return Err(ReadError::with(
                                     CONST_STARTED,
                                     ProtocolError::ContinuationAlreadyStarted,
                                 ));
                             } else if header.flags.contains(HeaderFlags::FIN) {
-                                return Ok(CodecItem::Text);
+                                return Ok(Item::Text);
                             } else {
-                                if flags.contains(CodecFlags::R_CONT) {
+                                if self.flags.contains(CodecFlags::R_CONT) {
                                     return Err(ReadError::with(
                                         CONST_STARTED,
                                         ProtocolError::FrameOverflow,
                                     ));
                                 } else {
-                                    flags.insert(CodecFlags::R_CONT | CodecFlags::CONT_TYPE);
+                                    self.flags
+                                        .insert(CodecFlags::R_CONT | CodecFlags::CONT_TYPE);
                                     continue;
                                 }
                             }
                         }
                         DataCode::Binary => {
-                            if flags.contains(CodecFlags::R_CONT) {
+                            if self.flags.contains(CodecFlags::R_CONT) {
                                 return Err(ReadError::with(
                                     CONST_STARTED,
                                     ProtocolError::ContinuationAlreadyStarted,
                                 ));
                             } else if header.flags.contains(HeaderFlags::FIN) {
-                                return Ok(CodecItem::Binary);
+                                return Ok(Item::Binary);
                             } else {
-                                if flags.contains(CodecFlags::R_CONT) {
+                                if self.flags.contains(CodecFlags::R_CONT) {
                                     return Err(ReadError::with(
                                         CONTROL_FRAME_LEN,
                                         ProtocolError::FrameOverflow,
                                     ));
                                 } else {
-                                    debug_assert!(!flags.contains(CodecFlags::CONT_TYPE));
-                                    flags.insert(CodecFlags::R_CONT);
+                                    debug_assert!(!self.flags.contains(CodecFlags::CONT_TYPE));
+                                    self.flags.insert(CodecFlags::R_CONT);
                                     continue;
                                 }
                             }
@@ -285,7 +460,7 @@ where
                                 }
                             };
 
-                            Ok(CodecItem::Close(reason))
+                            Ok(Item::Close(reason))
                         }
                         ControlCode::Ping => {
                             if payload.len() > 125 {
@@ -294,7 +469,7 @@ where
                                     ProtocolError::FrameOverflow,
                                 ));
                             } else {
-                                Ok(CodecItem::Ping(payload))
+                                Ok(Item::Ping(payload))
                             }
                         }
                         ControlCode::Pong => {
@@ -304,49 +479,13 @@ where
                                     ProtocolError::FrameOverflow,
                                 ));
                             } else {
-                                Ok(CodecItem::Pong(payload))
+                                Ok(Item::Pong(payload))
                             }
                         }
                     };
                 }
             }
         }
-    }
-
-    pub async fn write<A>(
-        &mut self,
-        opcode: OpCode,
-        header_flags: HeaderFlags,
-        mut payload_ref: A,
-    ) -> Result<(), std::io::Error>
-    where
-        A: AsMut<[u8]>,
-    {
-        let FramedIo {
-            io,
-            write_buffer,
-            rand,
-            flags,
-            ..
-        } = self;
-
-        let payload = payload_ref.as_mut();
-        let payload_len = payload.len();
-
-        let mask = if flags.contains(CodecFlags::ROLE) {
-            None
-        } else {
-            let mask = rand.generate();
-            apply_mask(mask, payload);
-            Some(mask)
-        };
-
-        encode_header(opcode, header_flags, mask, payload_len, write_buffer);
-
-        write_all(io, write_buffer).await?;
-        write_buffer.clear();
-
-        write_all(io, payload).await.map_err(Into::into)
     }
 
     pub async fn write_close(&mut self, reason: CloseReason) -> Result<(), Error> {
@@ -364,142 +503,5 @@ where
         )
         .await
         .map_err(|e| Error::with_cause(ErrorKind::Close, e))
-    }
-}
-
-async fn read_frame<S>(
-    io: &mut S,
-    buf: &mut BytesMut,
-    flags: &CodecFlags,
-    max_size: usize,
-) -> Result<(FrameHeader, BytesMut), ReadError>
-where
-    S: WebSocketStream,
-{
-    loop {
-        let (header, header_len, payload_len) = match FrameHeader::read_from(buf, flags, max_size)?
-        {
-            Either::Left(r) => r,
-            Either::Right(count) => {
-                let len = buf.len();
-                buf.resize(len + count, 0u8);
-                io.read_exact(&mut buf[len..]).await?;
-                continue;
-            }
-        };
-
-        let frame_len = header_len + payload_len;
-        let len = buf.len();
-
-        if buf.len() < frame_len {
-            let dif = frame_len - buf.len();
-            buf.resize(len + dif, 0u8);
-            io.read_exact(&mut buf[len..]).await?;
-        }
-
-        buf.advance(header_len);
-
-        let mut payload = buf.split_to(payload_len);
-        if let Some(mask) = header.mask {
-            apply_mask(mask, &mut payload);
-        }
-
-        break Ok((header, payload));
-    }
-}
-
-async fn write_all<S>(io: &mut S, write_buffer: &[u8]) -> Result<(), std::io::Error>
-where
-    S: WebSocketStream,
-{
-    io.write_all(write_buffer).await
-}
-
-fn encode_header(
-    opcode: OpCode,
-    header_flags: HeaderFlags,
-    mask: Option<u32>,
-    payload_len: usize,
-    write_buffer: &mut BytesMut,
-) {
-    let masked = mask.is_some();
-    let (second, mut offset) = if masked { (0x80, 6) } else { (0x0, 2) };
-
-    if payload_len >= U16_MAX {
-        offset += 8;
-    } else if payload_len > 125 {
-        offset += 2;
-    }
-
-    let additional = if masked { payload_len + offset } else { offset };
-
-    write_buffer.reserve(additional);
-    let first = header_flags.bits() | u8::from(opcode);
-
-    if payload_len < 126 {
-        write_buffer.extend_from_slice(&[first, second | payload_len as u8]);
-    } else if payload_len <= U16_MAX {
-        write_buffer.extend_from_slice(&[first, second | 126]);
-        write_buffer.put_u16(payload_len as u16);
-    } else {
-        write_buffer.extend_from_slice(&[first, second | 127]);
-        write_buffer.put_u64(payload_len as u64);
-    };
-
-    if let Some(mask) = mask {
-        write_buffer.put_u32(mask);
-    }
-}
-
-pub async fn read_into<S>(
-    framed: &mut FramedIo<S>,
-    read_buffer: &mut BytesMut,
-    control_buffer: &mut BytesMut,
-    closed: &mut bool,
-) -> Result<Message, ReadError>
-where
-    S: WebSocketStream,
-{
-    loop {
-        match framed.read_next(read_buffer).await? {
-            CodecItem::Binary => return Ok(Message::Binary),
-            CodecItem::Text => return Ok(Message::Text),
-            CodecItem::Ping(payload) => {
-                framed
-                    .write(
-                        OpCode::ControlCode(ControlCode::Pong),
-                        HeaderFlags::FIN,
-                        payload,
-                    )
-                    .await?;
-                return Ok(Message::Ping);
-            }
-            CodecItem::Pong(payload) => {
-                if control_buffer.is_empty() {
-                    continue;
-                } else {
-                    return if control_buffer[..].eq(&payload[..]) {
-                        Ok(Message::Pong)
-                    } else {
-                        Err(ReadError::with(
-                            CONTROL_DATA_MISMATCH,
-                            ProtocolError::ControlDataMismatch,
-                        ))
-                    };
-                }
-            }
-            CodecItem::Close((reason, payload)) => {
-                framed
-                    .write(
-                        OpCode::ControlCode(ControlCode::Close),
-                        HeaderFlags::FIN,
-                        payload,
-                    )
-                    .await?;
-
-                *closed = true;
-                return Ok(Message::Close(reason));
-            }
-        }
     }
 }

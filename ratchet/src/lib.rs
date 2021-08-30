@@ -21,7 +21,6 @@ mod framed;
 mod handshake;
 mod protocol;
 
-mod f2;
 pub mod ws;
 
 pub use crate::errors::Error;

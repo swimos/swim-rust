@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use crate::errors::ProtocolError;
-use crate::framed::{CodecFlags, ReadError};
 use crate::protocol::{HeaderFlags, OpCode};
 use either::Either;
 use std::convert::TryFrom;

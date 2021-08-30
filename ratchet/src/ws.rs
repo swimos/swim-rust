@@ -1,5 +1,5 @@
 use crate::errors::{CloseError, Error, ErrorKind};
-use crate::framed::{read_into, FramedIo, ReadError, CONTROL_FRAME_LEN};
+use crate::framed::{FramedIo, Item, ReadError, CONTROL_FRAME_LEN};
 use crate::handshake::{exec_client_handshake, HandshakeResult, ProtocolRegistry};
 use crate::protocol::{
     CloseCode, CloseReason, ControlCode, DataCode, HeaderFlags, Message, MessageType, OpCode, Role,
@@ -8,6 +8,7 @@ use crate::{Extension, ExtensionProvider, Request, WebSocketConfig, WebSocketStr
 use bytes::BytesMut;
 
 const CONTROL_MAX_SIZE: usize = 125;
+const CONTROL_DATA_MISMATCH: &str = "Unexpected control frame data";
 
 pub struct WebSocket<S, E> {
     inner: WebSocketInner<S, E>,
@@ -102,18 +103,67 @@ where
             return Err(Error::with_cause(ErrorKind::Close, CloseError::Closed));
         }
 
-        match read_into(framed, read_buffer, control_buffer, closed).await {
-            Ok(message) => Ok(message),
-            Err(e) => {
-                let ReadError { close_with, error } = e;
-                self.closed = true;
+        loop {
+            match framed.read_next(read_buffer).await {
+                Ok(item) => match item {
+                    Item::Binary => return Ok(Message::Binary),
+                    Item::Text => return Ok(Message::Text),
+                    Item::Ping(payload) => {
+                        framed
+                            .write(
+                                OpCode::ControlCode(ControlCode::Pong),
+                                HeaderFlags::FIN,
+                                payload,
+                            )
+                            .await?;
+                        return Ok(Message::Ping);
+                    }
+                    Item::Pong(payload) => {
+                        if control_buffer.is_empty() {
+                            continue;
+                        } else {
+                            return if control_buffer[..].eq(&payload[..]) {
+                                Ok(Message::Pong)
+                            } else {
+                                self.closed = true;
+                                self.framed
+                                    .write_close(CloseReason {
+                                        code: CloseCode::Protocol,
+                                        description: Some(CONTROL_DATA_MISMATCH.to_string()),
+                                    })
+                                    .await?;
 
-                if let Some(reason) = close_with {
-                    // This will only be 'None' if an IO error was encountered and so we cannot
-                    // write a reason
-                    self.framed.write_close(reason).await?;
+                                return Err(Error::with_cause(
+                                    ErrorKind::Protocol,
+                                    CONTROL_DATA_MISMATCH.to_string(),
+                                ));
+                            };
+                        }
+                    }
+                    Item::Close((reason, payload)) => {
+                        framed
+                            .write(
+                                OpCode::ControlCode(ControlCode::Close),
+                                HeaderFlags::FIN,
+                                payload,
+                            )
+                            .await?;
+
+                        *closed = true;
+                        return Ok(Message::Close(reason));
+                    }
+                },
+                Err(e) => {
+                    let ReadError { close_with, error } = e;
+                    self.closed = true;
+
+                    if let Some(reason) = close_with {
+                        // This will only be 'None' if an IO error was encountered and so we cannot
+                        // write a reason
+                        self.framed.write_close(reason).await?;
+                    }
+                    return Err(error);
                 }
-                return Err(error);
             }
         }
     }
