@@ -440,7 +440,7 @@ where
                                     close_code if close_code.is_illegal() => {
                                         return Err(ReadError::with(
                                             ILLEGAL_CLOSE_CODE,
-                                            ProtocolError::CloseCode(close_code.code()),
+                                            ProtocolError::CloseCode(u16::from(close_code)),
                                         ))
                                     }
                                     close_code => {

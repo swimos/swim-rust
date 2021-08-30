@@ -7,7 +7,7 @@ use bytes::BytesMut;
 use futures::stream::{Stream, StreamExt};
 use futures::SinkExt;
 use ratchet::ws::{client, WebSocket};
-use ratchet::{Error, Message, MessageType, NoExt, NoExtProxy, TryIntoRequest, WebSocketConfig};
+use ratchet::{Error, Message, NoExt, NoExtProxy, PayloadType, TryIntoRequest, WebSocketConfig};
 use std::io::ErrorKind;
 use std::time::Duration;
 use tokio::net::TcpStream;
@@ -77,11 +77,11 @@ async fn run_test(case: u32) -> Result<(), Error> {
         match websocket.read(&mut buf).await? {
             Message::Text => {
                 let _s = String::from_utf8(buf.to_vec())?;
-                websocket.write(&mut buf, MessageType::Text).await?;
+                websocket.write(&mut buf, PayloadType::Text).await?;
                 buf.clear();
             }
             Message::Binary => {
-                websocket.write(&mut buf, MessageType::Binary).await?;
+                websocket.write(&mut buf, PayloadType::Binary).await?;
                 buf.clear();
             }
             Message::Ping | Message::Pong => {}

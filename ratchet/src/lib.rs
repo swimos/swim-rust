@@ -26,7 +26,7 @@ pub mod ws;
 pub use crate::errors::Error;
 pub use crate::extensions::{deflate::*, ext::*, Extension, ExtensionProvider};
 pub use handshake::TryIntoRequest;
-pub use protocol::{Message, MessageType, WebSocketConfig};
+pub use protocol::{Message, PayloadType, WebSocketConfig};
 
 use tokio::io::{AsyncRead, AsyncWrite};
 

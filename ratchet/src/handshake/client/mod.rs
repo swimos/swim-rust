@@ -252,20 +252,18 @@ where
     match status_code {
         c if c == StatusCode::SWITCHING_PROTOCOLS => {}
         c if c.is_redirection() => {
-            match response.headers.iter().find(|h| h.name == header::LOCATION) {
+            return match response.headers.iter().find(|h| h.name == header::LOCATION) {
                 Some(header) => {
                     // the value _should_ be valid UTF-8
                     let location = String::from_utf8(header.value.to_vec())
                         .map_err(|_| Error::new(ErrorKind::Http))?;
-                    return Err(Error::with_cause(
+                    Err(Error::with_cause(
                         ErrorKind::Http,
                         HttpError::Redirected(location),
-                    ));
+                    ))
                 }
-                None => {
-                    return Err(Error::with_cause(ErrorKind::Http, HttpError::Status(c)));
-                }
-            }
+                None => Err(Error::with_cause(ErrorKind::Http, HttpError::Status(c))),
+            };
         }
         status_code => {
             return Err(Error::with_cause(

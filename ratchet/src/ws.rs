@@ -2,7 +2,8 @@ use crate::errors::{CloseError, Error, ErrorKind};
 use crate::framed::{FramedIo, Item, ReadError, CONTROL_FRAME_LEN};
 use crate::handshake::{exec_client_handshake, HandshakeResult, ProtocolRegistry};
 use crate::protocol::{
-    CloseCode, CloseReason, ControlCode, DataCode, HeaderFlags, Message, MessageType, OpCode, Role,
+    CloseCode, CloseReason, ControlCode, DataCode, HeaderFlags, Message, MessageType, OpCode,
+    PayloadType, Role,
 };
 use crate::{Extension, ExtensionProvider, Request, WebSocketConfig, WebSocketStream};
 use bytes::BytesMut;
@@ -26,7 +27,7 @@ where
     pub async fn write(
         &mut self,
         buf: &mut BytesMut,
-        message_type: MessageType,
+        message_type: PayloadType,
     ) -> Result<(), Error> {
         self.inner.write(buf, message_type).await
     }
@@ -35,6 +36,17 @@ where
         self.inner
             .framed
             .write_close(CloseReason::new(CloseCode::Normal, reason))
+            .await
+    }
+
+    pub async fn send_fragmented(
+        &mut self,
+        buf: &mut BytesMut,
+        message_type: MessageType,
+        fragment_size: usize,
+    ) -> Result<(), Error> {
+        self.inner
+            .send_fragmented(buf, message_type, fragment_size)
             .await
     }
 
@@ -91,6 +103,52 @@ where
     S: WebSocketStream,
     E: Extension,
 {
+    async fn send_fragmented(
+        &mut self,
+        buf: &mut BytesMut,
+        message_type: MessageType,
+        fragment_size: usize,
+    ) -> Result<(), Error> {
+        if *self.closed {
+            return Err(Error::with_cause(ErrorKind::Close, CloseError::Closed));
+        }
+
+        let mut chunks = buf.chunks_mut(fragment_size).peekable();
+        match chunks.next() {
+            Some(payload) => {
+                let payload_type = match message_type {
+                    MessageType::Text => DataCode::Text,
+                    MessageType::Binary => DataCode::Binary,
+                };
+
+                let flags = if chunks.peek().is_none() {
+                    HeaderFlags::FIN
+                } else {
+                    HeaderFlags::empty()
+                };
+
+                self.framed
+                    .write(OpCode::DataCode(payload_type), flags, payload)
+                    .await?;
+            }
+            None => return Ok(()),
+        }
+
+        while let Some(payload) = chunks.next() {
+            let flags = if chunks.peek().is_none() {
+                HeaderFlags::FIN
+            } else {
+                HeaderFlags::empty()
+            };
+
+            self.framed
+                .write(OpCode::DataCode(DataCode::Continuation), flags, payload)
+                .await?;
+        }
+
+        Ok(())
+    }
+
     async fn read(&mut self, read_buffer: &mut BytesMut) -> Result<Message, Error> {
         let WebSocketInner {
             framed,
@@ -168,15 +226,20 @@ where
         }
     }
 
-    async fn write(&mut self, buf: &mut BytesMut, message_type: MessageType) -> Result<(), Error> {
+    async fn write<A>(&mut self, mut buf_ref: A, message_type: PayloadType) -> Result<(), Error>
+    where
+        A: AsMut<[u8]>,
+    {
         if self.closed {
             return Err(Error::with_cause(ErrorKind::Close, CloseError::Closed));
         }
 
+        let buf = buf_ref.as_mut();
+
         let op_code = match message_type {
-            MessageType::Text => OpCode::DataCode(DataCode::Text),
-            MessageType::Binary => OpCode::DataCode(DataCode::Binary),
-            MessageType::Ping => {
+            PayloadType::Text => OpCode::DataCode(DataCode::Text),
+            PayloadType::Binary => OpCode::DataCode(DataCode::Binary),
+            PayloadType::Ping => {
                 if buf.len() > CONTROL_MAX_SIZE {
                     return Err(Error::with_cause(ErrorKind::Protocol, CONTROL_FRAME_LEN));
                 } else {
