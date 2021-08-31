@@ -26,7 +26,6 @@ pub use protocol::*;
 pub use stream::*;
 pub use utils::*;
 
-#[cfg(feature = "tls")]
 pub mod tls;
 
 pub type ConnResult<Snk, Str> = Result<(Snk, Str), ConnectionError>;

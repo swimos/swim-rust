@@ -25,6 +25,7 @@ use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
 const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 const DEFAULT_CONN_REAPER_FREQUENCY: Duration = Duration::from_secs(60);
 const DEFAULT_BUFFER_SIZE: usize = 100;
+const DEFAULT_YIELD_AFTER: usize = 256;
 
 const BUFFER_SIZE_TAG: &str = "buffer_size";
 const RETRY_STRATEGY_TAG: &str = "retry_strategy";
@@ -42,6 +43,8 @@ pub struct RouterParams {
     conn_reaper_frequency: Duration,
     /// Size of the internal buffers of the router.
     buffer_size: NonZeroUsize,
+    /// Number of values to process before yielding to the runtime.
+    yield_after: NonZeroUsize,
 }
 
 impl Default for RouterParams {
@@ -51,6 +54,7 @@ impl Default for RouterParams {
             idle_timeout: DEFAULT_IDLE_TIMEOUT,
             conn_reaper_frequency: DEFAULT_CONN_REAPER_FREQUENCY,
             buffer_size: NonZeroUsize::new(DEFAULT_BUFFER_SIZE).unwrap(),
+            yield_after: NonZeroUsize::new(DEFAULT_YIELD_AFTER).unwrap(),
         }
     }
 }
@@ -61,29 +65,15 @@ impl RouterParams {
         idle_timeout: Duration,
         conn_reaper_frequency: Duration,
         buffer_size: NonZeroUsize,
+        yield_after: NonZeroUsize,
     ) -> RouterParams {
         RouterParams {
             retry_strategy,
             idle_timeout,
             conn_reaper_frequency,
             buffer_size,
+            yield_after,
         }
-    }
-
-    pub fn buffer_size(&self) -> NonZeroUsize {
-        self.buffer_size
-    }
-
-    pub fn retry_strategy(&self) -> RetryStrategy {
-        self.retry_strategy
-    }
-
-    pub fn idle_timeout(&self) -> Duration {
-        self.idle_timeout
-    }
-
-    pub fn conn_reaper_frequency(&self) -> Duration {
-        self.conn_reaper_frequency
     }
 
     pub fn connection_pool_params(&self) -> ConnectionPoolParams {
@@ -91,81 +81,83 @@ impl RouterParams {
             self.idle_timeout,
             self.conn_reaper_frequency,
             self.buffer_size,
+            self.yield_after,
         )
     }
 
-    pub fn try_from_items(items: Vec<Item>, use_defaults: bool) -> Result<Self, ConfigParseError> {
-        let mut retry_strategy: Option<RetryStrategy> = None;
-        let mut idle_timeout: Option<Duration> = None;
-        let mut conn_reaper_frequency: Option<Duration> = None;
-        let mut buffer_size: Option<NonZeroUsize> = None;
-
-        for item in items {
-            match item {
-                Item::Slot(Value::Text(name), value) => match name.as_str() {
-                    RETRY_STRATEGY_TAG => match value {
-                        Value::Record(attrs, items) if attrs.len() <= 1 => {
-                            retry_strategy =
-                                Some(try_retry_strat_from_value(attrs, items, use_defaults)?)
-                        }
-                        _ => return Err(ConfigParseError::InvalidValue(value, RETRY_STRATEGY_TAG)),
-                    },
-                    IDLE_TIMEOUT_TAG => {
-                        let timeout = u64::try_from_value(&value)
-                            .map_err(|_| ConfigParseError::InvalidValue(value, IDLE_TIMEOUT_TAG))?;
-                        idle_timeout = Some(Duration::from_secs(timeout))
-                    }
-                    CONN_REAPER_FREQ_TAG => {
-                        let freq = u64::try_from_value(&value).map_err(|_| {
-                            ConfigParseError::InvalidValue(value, CONN_REAPER_FREQ_TAG)
-                        })?;
-                        conn_reaper_frequency = Some(Duration::from_secs(freq))
-                    }
-                    BUFFER_SIZE_TAG => {
-                        let size = usize::try_from_value(&value)
-                            .map_err(|_| ConfigParseError::InvalidValue(value, BUFFER_SIZE_TAG))?;
-                        buffer_size = Some(NonZeroUsize::new(size).unwrap());
-                    }
-                    _ => {
-                        return Err(ConfigParseError::UnexpectedKey(
-                            name.to_string(),
-                            ROUTER_TAG,
-                        ))
-                    }
-                },
-                Item::Slot(value, _) => {
-                    return Err(ConfigParseError::UnexpectedValue(value, Some(ROUTER_TAG)))
-                }
-                Item::ValueItem(value) => {
-                    return Err(ConfigParseError::UnexpectedValue(value, Some(ROUTER_TAG)))
-                }
-            }
-        }
-
-        if use_defaults {
-            retry_strategy = retry_strategy.or_else(|| Some(RetryStrategy::default()));
-            idle_timeout = idle_timeout.or(Some(DEFAULT_IDLE_TIMEOUT));
-            conn_reaper_frequency = conn_reaper_frequency.or(Some(DEFAULT_CONN_REAPER_FREQUENCY));
-            buffer_size =
-                buffer_size.or_else(|| Some(NonZeroUsize::new(DEFAULT_BUFFER_SIZE).unwrap()));
-        }
-
-        Ok(RouterParams::new(
-            retry_strategy.ok_or(ConfigParseError::MissingKey(RETRY_STRATEGY_TAG, ROUTER_TAG))?,
-            idle_timeout.ok_or(ConfigParseError::MissingKey(
-                RETRY_STRATEGY_TAG,
-                IDLE_TIMEOUT_TAG,
-            ))?,
-            conn_reaper_frequency.ok_or(ConfigParseError::MissingKey(
-                RETRY_STRATEGY_TAG,
-                CONN_REAPER_FREQ_TAG,
-            ))?,
-            buffer_size.ok_or(ConfigParseError::MissingKey(
-                RETRY_STRATEGY_TAG,
-                BUFFER_SIZE_TAG,
-            ))?,
-        ))
-    }
+    //Todo dm this needs to be changed after the new client configuration is finalised.
+    //     pub fn try_from_items(items: Vec<Item>, use_defaults: bool) -> Result<Self, ConfigParseError> {
+    //         let mut retry_strategy: Option<RetryStrategy> = None;
+    //         let mut idle_timeout: Option<Duration> = None;
+    //         let mut conn_reaper_frequency: Option<Duration> = None;
+    //         let mut buffer_size: Option<NonZeroUsize> = None;
+    //
+    //         for item in items {
+    //             match item {
+    //                 Item::Slot(Value::Text(name), value) => match name.as_str() {
+    //                     RETRY_STRATEGY_TAG => match value {
+    //                         Value::Record(attrs, items) if attrs.len() <= 1 => {
+    //                             retry_strategy =
+    //                                 Some(try_retry_strat_from_value(attrs, items, use_defaults)?)
+    //                         }
+    //                         _ => return Err(ConfigParseError::InvalidValue(value, RETRY_STRATEGY_TAG)),
+    //                     },
+    //                     IDLE_TIMEOUT_TAG => {
+    //                         let timeout = u64::try_from_value(&value)
+    //                             .map_err(|_| ConfigParseError::InvalidValue(value, IDLE_TIMEOUT_TAG))?;
+    //                         idle_timeout = Some(Duration::from_secs(timeout))
+    //                     }
+    //                     CONN_REAPER_FREQ_TAG => {
+    //                         let freq = u64::try_from_value(&value).map_err(|_| {
+    //                             ConfigParseError::InvalidValue(value, CONN_REAPER_FREQ_TAG)
+    //                         })?;
+    //                         conn_reaper_frequency = Some(Duration::from_secs(freq))
+    //                     }
+    //                     BUFFER_SIZE_TAG => {
+    //                         let size = usize::try_from_value(&value)
+    //                             .map_err(|_| ConfigParseError::InvalidValue(value, BUFFER_SIZE_TAG))?;
+    //                         buffer_size = Some(NonZeroUsize::new(size).unwrap());
+    //                     }
+    //                     _ => {
+    //                         return Err(ConfigParseError::UnexpectedKey(
+    //                             name.to_string(),
+    //                             ROUTER_TAG,
+    //                         ))
+    //                     }
+    //                 },
+    //                 Item::Slot(value, _) => {
+    //                     return Err(ConfigParseError::UnexpectedValue(value, Some(ROUTER_TAG)))
+    //                 }
+    //                 Item::ValueItem(value) => {
+    //                     return Err(ConfigParseError::UnexpectedValue(value, Some(ROUTER_TAG)))
+    //                 }
+    //             }
+    //         }
+    //
+    //         if use_defaults {
+    //             retry_strategy = retry_strategy.or_else(|| Some(RetryStrategy::default()));
+    //             idle_timeout = idle_timeout.or(Some(DEFAULT_IDLE_TIMEOUT));
+    //             conn_reaper_frequency = conn_reaper_frequency.or(Some(DEFAULT_CONN_REAPER_FREQUENCY));
+    //             buffer_size =
+    //                 buffer_size.or_else(|| Some(NonZeroUsize::new(DEFAULT_BUFFER_SIZE).unwrap()));
+    //         }
+    //
+    //         Ok(RouterParams::new(
+    //             retry_strategy.ok_or(ConfigParseError::MissingKey(RETRY_STRATEGY_TAG, ROUTER_TAG))?,
+    //             idle_timeout.ok_or(ConfigParseError::MissingKey(
+    //                 RETRY_STRATEGY_TAG,
+    //                 IDLE_TIMEOUT_TAG,
+    //             ))?,
+    //             conn_reaper_frequency.ok_or(ConfigParseError::MissingKey(
+    //                 RETRY_STRATEGY_TAG,
+    //                 CONN_REAPER_FREQ_TAG,
+    //             ))?,
+    //             buffer_size.ok_or(ConfigParseError::MissingKey(
+    //                 RETRY_STRATEGY_TAG,
+    //                 BUFFER_SIZE_TAG,
+    //             ))?,
+    //         ))
+    //     }
 }
 
 const RETRY_IMMEDIATE_TAG: &str = "immediate";
@@ -421,87 +413,90 @@ fn try_exponential_strat_from_items(
     ))
 }
 
-pub struct RouterParamBuilder {
-    retry_strategy: Option<RetryStrategy>,
-    idle_timeout: Option<Duration>,
-    buffer_size: Option<NonZeroUsize>,
-    conn_reaper_frequency: Option<Duration>,
-}
-
-impl Default for RouterParamBuilder {
-    fn default() -> Self {
-        RouterParamBuilder::new()
-    }
-}
-
-impl RouterParamBuilder {
-    /// Returns a router parameter builder with empty parameters.
-    pub fn empty() -> RouterParamBuilder {
-        RouterParamBuilder {
-            retry_strategy: None,
-            idle_timeout: None,
-            buffer_size: None,
-            conn_reaper_frequency: None,
-        }
-    }
-
-    /// Returns a new router paremter builder that is initialised with the default values.
-    pub fn new() -> RouterParamBuilder {
-        RouterParamBuilder {
-            retry_strategy: Some(RetryStrategy::default()),
-            idle_timeout: Some(DEFAULT_IDLE_TIMEOUT),
-            conn_reaper_frequency: Some(DEFAULT_CONN_REAPER_FREQUENCY),
-            buffer_size: Some(NonZeroUsize::new(DEFAULT_BUFFER_SIZE).unwrap()),
-        }
-    }
-
-    pub fn build(self) -> RouterParams {
-        RouterParams {
-            retry_strategy: self
-                .retry_strategy
-                .expect("Retry strategy must be provided"),
-            idle_timeout: self.idle_timeout.expect("Idle timeout must be provided"),
-            buffer_size: self.buffer_size.expect("Buffer size must be provided"),
-            conn_reaper_frequency: self
-                .idle_timeout
-                .expect("Idle connection reaper frequency must be provided"),
-        }
-    }
-
-    pub fn with_buffer_size(mut self, buffer_size: NonZeroUsize) -> RouterParamBuilder {
-        self.buffer_size = Some(buffer_size);
-        self
-    }
-
-    pub fn with_idle_timeout(mut self, idle_timeout: Duration) -> RouterParamBuilder {
-        self.idle_timeout = Some(idle_timeout);
-        self
-    }
-
-    pub fn with_conn_reaper_frequency(
-        mut self,
-        conn_reaper_frequency: Duration,
-    ) -> RouterParamBuilder {
-        self.conn_reaper_frequency = Some(conn_reaper_frequency);
-        self
-    }
-
-    pub fn with_retry_stategy(mut self, retry_strategy: RetryStrategy) -> RouterParamBuilder {
-        self.retry_strategy = Some(retry_strategy);
-        self
-    }
-}
+//Todo dm this needs to be changed after the new client configuration is finalised.
+// pub struct RouterParamBuilder {
+//     retry_strategy: Option<RetryStrategy>,
+//     idle_timeout: Option<Duration>,
+//     buffer_size: Option<NonZeroUsize>,
+//     conn_reaper_frequency: Option<Duration>,
+// }
+//
+// impl Default for RouterParamBuilder {
+//     fn default() -> Self {
+//         RouterParamBuilder::new()
+//     }
+// }
+//
+// impl RouterParamBuilder {
+//     /// Returns a router parameter builder with empty parameters.
+//     pub fn empty() -> RouterParamBuilder {
+//         RouterParamBuilder {
+//             retry_strategy: None,
+//             idle_timeout: None,
+//             buffer_size: None,
+//             conn_reaper_frequency: None,
+//         }
+//     }
+//
+//     /// Returns a new router paremter builder that is initialised with the default values.
+//     pub fn new() -> RouterParamBuilder {
+//         RouterParamBuilder {
+//             retry_strategy: Some(RetryStrategy::default()),
+//             idle_timeout: Some(DEFAULT_IDLE_TIMEOUT),
+//             conn_reaper_frequency: Some(DEFAULT_CONN_REAPER_FREQUENCY),
+//             buffer_size: Some(NonZeroUsize::new(DEFAULT_BUFFER_SIZE).unwrap()),
+//         }
+//     }
+//
+//     pub fn build(self) -> RouterParams {
+//         RouterParams {
+//             retry_strategy: self
+//                 .retry_strategy
+//                 .expect("Retry strategy must be provided"),
+//             idle_timeout: self.idle_timeout.expect("Idle timeout must be provided"),
+//             buffer_size: self.buffer_size.expect("Buffer size must be provided"),
+//             conn_reaper_frequency: self
+//                 .idle_timeout
+//                 .expect("Idle connection reaper frequency must be provided"),
+//         }
+//     }
+//
+//     pub fn with_buffer_size(mut self, buffer_size: NonZeroUsize) -> RouterParamBuilder {
+//         self.buffer_size = Some(buffer_size);
+//         self
+//     }
+//
+//     pub fn with_idle_timeout(mut self, idle_timeout: Duration) -> RouterParamBuilder {
+//         self.idle_timeout = Some(idle_timeout);
+//         self
+//     }
+//
+//     pub fn with_conn_reaper_frequency(
+//         mut self,
+//         conn_reaper_frequency: Duration,
+//     ) -> RouterParamBuilder {
+//         self.conn_reaper_frequency = Some(conn_reaper_frequency);
+//         self
+//     }
+//
+//     pub fn with_retry_stategy(mut self, retry_strategy: RetryStrategy) -> RouterParamBuilder {
+//         self.retry_strategy = Some(retry_strategy);
+//         self
+//     }
+// }
 
 /// Connection pool parameters.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ConnectionPoolParams {
     /// How long a connection can be inactive for before it will be pruned.
-    idle_timeout: Duration,
+    pub idle_timeout: Duration,
     /// How frequently the connection pool reaper will run. Connections that have not been used for
     /// `idle_timeout` will be removed.
-    conn_reaper_frequency: Duration,
+    pub conn_reaper_frequency: Duration,
     /// The size of the connection pool request buffer.
-    buffer_size: NonZeroUsize,
+    pub buffer_size: NonZeroUsize,
+    /// Number of values to process before yielding to the runtime.
+    pub yield_after: NonZeroUsize,
 }
 
 impl Default for ConnectionPoolParams {
@@ -510,6 +505,7 @@ impl Default for ConnectionPoolParams {
             idle_timeout: Duration::from_secs(60),
             conn_reaper_frequency: Duration::from_secs(60),
             buffer_size: NonZeroUsize::new(5).unwrap(),
+            yield_after: NonZeroUsize::new(256).unwrap(),
         }
     }
 }
@@ -519,23 +515,13 @@ impl ConnectionPoolParams {
         idle_timeout: Duration,
         conn_reaper_frequency: Duration,
         buffer_size: NonZeroUsize,
+        yield_after: NonZeroUsize,
     ) -> ConnectionPoolParams {
         ConnectionPoolParams {
             idle_timeout,
             conn_reaper_frequency,
             buffer_size,
+            yield_after,
         }
-    }
-
-    pub fn idle_timeout(&self) -> Duration {
-        self.idle_timeout
-    }
-
-    pub fn conn_reaper_frequency(&self) -> Duration {
-        self.conn_reaper_frequency
-    }
-
-    pub fn buffer_size(&self) -> NonZeroUsize {
-        self.buffer_size
     }
 }

@@ -109,7 +109,6 @@ where
     ///
     /// #Arguments
     ///
-    /// * `addr` - Address of the connection.
     /// * `tag`  - The routing address of the connection.
     /// * `ws_stream` - The joined sink/stream that implements the web sockets protocol.
     /// * `router` - Router to route incoming messages to the appropriate destination.

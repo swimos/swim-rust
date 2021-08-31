@@ -23,7 +23,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use swim_client::configuration::downlink::ConfigHierarchy;
 use swim_client::downlink::Downlinks;
-use swim_client::interface::{InnerClient, SwimClientBuilder};
+use swim_client::interface::{DownlinksContext, SwimClientBuilder};
 use swim_common::routing::Router;
 use swim_runtime::time::clock::Clock;
 use swim_runtime::time::timeout;
@@ -95,7 +95,7 @@ async fn plane_event_loop() {
         close_rx,
     );
 
-    let client = InnerClient { downlinks };
+    let client = DownlinksContext { downlinks };
 
     let resolver = RouteResolver::new(
         swim_runtime::time::clock::runtime_clock(),

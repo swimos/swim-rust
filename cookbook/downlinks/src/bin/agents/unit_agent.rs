@@ -53,7 +53,7 @@ impl ShoppingCartLifecycle {
         Context: AgentContext<UnitAgent> + Sized + Send + Sync,
     {
         context
-            .client()
+            .downlinks_context()
             .send_command(
                 Path::Local(RelativePath::new("/listener", "trigger_listen")),
                 context.node_uri().to_string(),

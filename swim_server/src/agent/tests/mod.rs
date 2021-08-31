@@ -273,7 +273,7 @@ impl<Lane> AgentContext<TestAgent<Lane>> for TestContext<Lane>
 where
     Lane: LaneModel + Send + Sync + 'static,
 {
-    fn client(&self) -> SwimClient<Path> {
+    fn downlinks_context(&self) -> SwimClient<Path> {
         unimplemented!()
     }
 
