@@ -124,7 +124,7 @@ impl ToValue for AttrSchema {
 
 impl FieldSchema<Attr> for AttrSchema {
     fn matches_field(&self, field: &Attr) -> FieldMatchResult {
-        if self.name_schema.matches_str(&field.name.borrow()) {
+        if self.name_schema.matches_str(field.name.borrow()) {
             if self.value_schema.matches(&field.value) {
                 FieldMatchResult::Both
             } else {

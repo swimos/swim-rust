@@ -314,7 +314,7 @@ impl<'a, T> Deref for EntryGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        &self.value
+        self.value
     }
 }
 
