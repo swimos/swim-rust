@@ -55,7 +55,7 @@ async fn handshake_sends_valid_request() {
     assert_eq!(request.parse(&mut rx_buf), Ok(Status::Complete(buf_len)));
     assert_eq!(request.version, Some(1));
     assert_eq!(request.method, Some("GET"));
-    assert_eq!(request.path, Some(TEST_URL));
+    assert_eq!(request.path, Some("/test"));
     assert_header(
         request.headers,
         header::SEC_WEBSOCKET_PROTOCOL.as_str(),

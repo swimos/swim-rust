@@ -109,7 +109,7 @@ where
         message_type: MessageType,
         fragment_size: usize,
     ) -> Result<(), Error> {
-        if *self.closed {
+        if self.closed {
             return Err(Error::with_cause(ErrorKind::Close, CloseError::Closed));
         }
 
