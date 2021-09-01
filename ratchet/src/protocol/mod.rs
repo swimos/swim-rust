@@ -220,7 +220,7 @@ impl CloseCode {
 
 #[derive(Error, Debug)]
 #[error("Unknown close code: `{0}`")]
-pub struct CloseCodeParseErr(u16);
+pub struct CloseCodeParseErr(pub(crate) u16);
 
 impl TryFrom<[u8; 2]> for CloseCode {
     type Error = CloseCodeParseErr;

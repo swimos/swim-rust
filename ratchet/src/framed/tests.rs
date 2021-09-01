@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::errors::ProtocolError;
+use crate::errors::{Error, ProtocolError};
 use crate::fixture::{expect_err, EmptyIo, MirroredIo};
 use crate::framed::{CodecFlags, FramedIo, Item};
-use crate::protocol::{DataCode, OpCode};
+use crate::protocol::{CloseCode, CloseCodeParseErr, CloseReason, DataCode, OpCode};
 use crate::protocol::{HeaderFlags, Role};
 use bytes::BytesMut;
+use std::error::Error as StdError;
+use std::fmt::Debug;
 use std::iter::FromIterator;
 
 #[tokio::test]
@@ -166,66 +168,77 @@ async fn overflow_buffer() {
     );
 }
 
-// fn ok_eq<O>(result: Result<O, Error>, eq: O)
-// where
-//     O: PartialEq + Debug,
-// {
-//     match result {
-//         Ok(actual) => assert_eq!(actual, eq),
-//         Err(e) => panic!("Expected: `{:?}`, got: `{:?}`", eq, e),
-//     }
-// }
-//
-// #[test]
-// fn ping() {
-//     let mut buffer = BytesMut::from_iter(&[137, 4, 1, 2, 3, 4]);
-//     let mut codec = Codec::new(Role::Client, usize::MAX);
-//
-//     ok_eq(
-//         codec.decode(&mut buffer),
-//         Some(Message::Ping(vec![1, 2, 3, 4])),
-//     );
-// }
-//
-// #[test]
-// fn pong() {
-//     let mut buffer = BytesMut::from_iter(&[138, 4, 1, 2, 3, 4]);
-//     let mut codec = Codec::new(Role::Client, usize::MAX);
-//
-//     ok_eq(
-//         codec.decode(&mut buffer),
-//         Some(Message::Pong(vec![1, 2, 3, 4])),
-//     );
-// }
-//
-// #[test]
-// fn close() {
-//     let mut codec = Codec::new(Role::Client, usize::MAX);
-//
-//     ok_eq(
-//         codec.decode(&mut BytesMut::from_iter(&[136, 0])),
-//         Some(Message::Close(None)),
-//     );
-//     ok_eq(
-//         codec.decode(&mut BytesMut::from_iter(&[136, 2, 3, 232])),
-//         Some(Message::Close(Some(CloseReason::new(
-//             CloseCode::Normal,
-//             None,
-//         )))),
-//     );
-//     ok_eq(
-//         codec.decode(&mut BytesMut::from_iter(&[
-//             136, 17, 3, 240, 66, 111, 110, 115, 111, 105, 114, 44, 32, 69, 108, 108, 105, 111, 116,
-//         ])),
-//         Some(Message::Close(Some(CloseReason::new(
-//             CloseCode::Policy,
-//             Some("Bonsoir, Elliot".to_string()),
-//         )))),
-//     );
-//
-//     let mut frame = vec![136, 126, 1, 0];
-//     frame.extend_from_slice(&[0; 256]);
-//     let decode_result = codec.decode(&mut BytesMut::from_iter(frame));
-//     let error = decode_result.unwrap_err();
-//     assert_eq!(error.source().unwrap().to_string(), CONTROL_FRAME_LEN);
-// }
+fn ok_eq<O>(result: Result<O, Error>, eq: O)
+where
+    O: PartialEq + Debug,
+{
+    match result {
+        Ok(actual) => assert_eq!(actual, eq),
+        Err(e) => panic!("Expected: `{:?}`, got: `{:?}`", eq, e),
+    }
+}
+
+#[tokio::test]
+async fn ping() {
+    let buffer = BytesMut::from_iter(&[137, 4, 1, 2, 3, 4]);
+    let mut framed = FramedIo::new(EmptyIo, buffer, Role::Client, usize::MAX);
+
+    ok_eq(
+        framed.read_next(&mut BytesMut::default()).await,
+        Item::Ping(BytesMut::from_iter(vec![1, 2, 3, 4])),
+    );
+}
+
+#[tokio::test]
+async fn pong() {
+    let buffer = BytesMut::from_iter(&[138, 4, 1, 2, 3, 4]);
+    let mut framed = FramedIo::new(EmptyIo, buffer, Role::Client, usize::MAX);
+
+    ok_eq(
+        framed.read_next(&mut BytesMut::default()).await,
+        Item::Pong(BytesMut::from_iter(vec![1, 2, 3, 4])),
+    );
+}
+
+#[tokio::test]
+async fn close() {
+    async fn test(frame: Vec<u8>, eq: Option<CloseReason>) {
+        let buffer = BytesMut::from_iter(frame);
+        let mut framed = FramedIo::new(EmptyIo, buffer, Role::Client, usize::MAX);
+
+        ok_eq(
+            framed.read_next(&mut BytesMut::default()).await,
+            Item::Close(eq),
+        );
+    }
+
+    test(vec![136, 0], None).await;
+    test(
+        vec![136, 2, 3, 232],
+        Some(CloseReason::new(CloseCode::Normal, None)),
+    )
+    .await;
+    test(
+        vec![
+            136, 17, 3, 240, 66, 111, 110, 115, 111, 105, 114, 44, 32, 69, 108, 108, 105, 111, 116,
+        ],
+        Some(CloseReason::new(
+            CloseCode::Policy,
+            Some("Bonsoir, Elliot".to_string()),
+        )),
+    )
+    .await;
+
+    let mut frame = vec![136, 126, 1, 0];
+    frame.extend_from_slice(&[0; 256]);
+
+    let buffer = BytesMut::from_iter(frame);
+    let mut framed = FramedIo::new(EmptyIo, buffer, Role::Client, usize::MAX);
+
+    let decode_result = framed.read_next(&mut BytesMut::default()).await;
+    let error = decode_result.unwrap_err();
+    assert_eq!(
+        error.source().unwrap().to_string(),
+        CloseCodeParseErr(0).to_string()
+    );
+}

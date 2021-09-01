@@ -198,16 +198,14 @@ where
                             };
                         }
                     }
-                    Item::Close((reason, payload)) => {
-                        framed
-                            .write(
-                                OpCode::ControlCode(ControlCode::Close),
-                                HeaderFlags::FIN,
-                                payload,
-                            )
-                            .await?;
-
+                    Item::Close(reason) => {
                         *closed = true;
+                        framed
+                            .write_close(reason.clone().unwrap_or(CloseReason {
+                                code: CloseCode::Protocol,
+                                description: None,
+                            }))
+                            .await?;
                         return Ok(Message::Close(reason));
                     }
                 },

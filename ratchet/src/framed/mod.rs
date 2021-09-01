@@ -22,7 +22,7 @@ pub enum Item {
     Text,
     Ping(BytesMut),
     Pong(BytesMut),
-    Close((Option<CloseReason>, BytesMut)),
+    Close(Option<CloseReason>),
 }
 
 bitflags::bitflags! {
@@ -357,8 +357,7 @@ where
                     return match c {
                         ControlCode::Close => {
                             let reason = if payload.len() < 2 {
-                                // todo this isn't very efficient
-                                (None, BytesMut::new())
+                                None
                             } else {
                                 match CloseCode::try_from([payload[0], payload[1]])? {
                                     close_code if close_code.is_illegal() => {
@@ -377,7 +376,7 @@ where
 
                                         let reason = CloseReason::new(close_code, description);
 
-                                        (Some(reason), payload)
+                                        Some(reason)
                                     }
                                 }
                             };
