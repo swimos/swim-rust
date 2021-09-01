@@ -193,7 +193,7 @@ impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> 
             };
 
             if let Some(request) = request {
-                match ss {
+                match request {
                     DownlinkRoutingRequest::Connect {
                         target,
                         request,
