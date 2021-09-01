@@ -492,13 +492,8 @@ impl ServerHandle {
             return Err(ServerError::CloseError(TaskError));
         }
 
-        match rx.recv().await {
-            Some(close_result) => {
-                if let Err(routing_err) = close_result {
-                    return Err(ServerError::RoutingError(routing_err));
-                }
-            }
-            None => return Err(ServerError::CloseError(TaskError)),
+        if let Some(Err(routing_err)) = rx.recv().await {
+            return Err(ServerError::RoutingError(routing_err));
         }
 
         Ok(())
