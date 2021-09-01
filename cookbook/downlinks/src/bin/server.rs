@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 use crate::agents::{ListenerAgent, UnitAgent};
-use futures::join;
+use futures::future::join3;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
+use swim_client::downlink::SchemaViolations;
+use swim_common::warp::path::{Path, RelativePath};
 use swim_server::interface::SwimServerBuilder;
 use swim_server::plane::spec::PlaneBuilder;
 use swim_server::RoutePattern;
@@ -39,11 +41,35 @@ async fn main() {
     swim_server_builder.add_plane(plane_builder.build());
     let (swim_server, server_handle) = swim_server_builder.bind_to(address).build().unwrap();
 
+    let client = swim_server.client();
+
+    //Todo dm
+    let plane_downlink = async {
+        let event_dl = client
+            .event_downlink::<String>(
+                Path::Local(RelativePath::new("/unit/0", "add_item")),
+                SchemaViolations::Ignore,
+            )
+            .await
+            .unwrap();
+
+        eprintln!("1");
+        let mut rec = event_dl.subscribe().expect("Downlink closed unexpectedly.");
+
+        eprintln!("2");
+        while let Some(event) = rec.recv().await {
+            println!("Event downlink saw: {}", event)
+        }
+    };
+
     let stop = async {
         time::sleep(Duration::from_secs(300)).await;
         server_handle.stop().await.unwrap();
     };
 
     println!("Running basic server...");
-    join!(swim_server.run(), stop).0.unwrap();
+    join3(swim_server.run(), plane_downlink, stop)
+        .await
+        .0
+        .unwrap();
 }

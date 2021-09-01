@@ -540,7 +540,7 @@ async fn task_receive_message_with_route() {
     } = TaskFixture::new();
 
     let mut rx = router.add("/node".parse().unwrap());
-    let envelope = Envelope::make_event("/node", "/lane", Some(Value::text("a")));
+    let envelope = Envelope::make_command("/node", "/lane", Some(Value::text("a")));
     let env_cpy = envelope.clone();
 
     let test_case = async move {

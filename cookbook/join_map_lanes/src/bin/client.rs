@@ -53,7 +53,7 @@ async fn did_update(map_recv: MapDownlinkReceiver<String, i32>, default: i32) {
 #[tokio::main]
 async fn main() {
     let client = SwimClientBuilder::build_with_default().await;
-    let host_uri = url::Url::parse(&"ws://127.0.0.1:53556".to_string()).unwrap();
+    let host_uri = url::Url::parse(&"warp://127.0.0.1:53556".to_string()).unwrap();
     let node_uri = "/join/state/all";
     let lane_uri = "join";
 

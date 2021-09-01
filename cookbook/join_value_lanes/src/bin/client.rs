@@ -48,7 +48,7 @@ async fn did_update(map_recv: MapDownlinkReceiver<i32, bool>, default: bool) {
 #[tokio::main]
 async fn main() {
     let client = SwimClientBuilder::build_with_default().await;
-    let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
+    let host_uri = url::Url::parse(&"warp://127.0.0.1:9001".to_string()).unwrap();
 
     let building_node = "/building/swim";
     let first_room_node = "/swim/1";

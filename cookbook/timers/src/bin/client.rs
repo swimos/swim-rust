@@ -21,7 +21,7 @@ use tokio::time;
 #[tokio::main]
 async fn main() {
     let client = SwimClientBuilder::build_with_default().await;
-    let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
+    let host_uri = url::Url::parse(&"warp://127.0.0.1:9001".to_string()).unwrap();
     let node_uri = "/unit/foo";
     let lane_uri = "publish";
 

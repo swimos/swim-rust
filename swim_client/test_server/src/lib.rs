@@ -31,7 +31,7 @@ pub async fn build_server() -> (SwimServer, ServerHandle) {
     let mut plane_builder = PlaneBuilder::new();
 
     plane_builder
-        .add_route::<UnitAgent, (), ()>(RoutePattern::parse_str("/unit/foo").unwrap(), (), ())
+        .add_route::<UnitAgent, (), ()>(RoutePattern::parse_str("/unit/:id").unwrap(), (), ())
         .unwrap();
 
     let mut swim_server_builder = SwimServerBuilder::default();
