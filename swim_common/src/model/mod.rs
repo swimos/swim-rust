@@ -306,7 +306,7 @@ impl Value {
                         }
                     }
                 }
-                Value::BigInt(bi) => BigInt::from(*n).cmp(&bi),
+                Value::BigInt(bi) => BigInt::from(*n).cmp(bi),
                 Value::BigUint(bi) => match BigUint::try_from(*n) {
                     Ok(n) => n.cmp(bi),
                     Err(_) => Ordering::Less,
@@ -330,7 +330,7 @@ impl Value {
                         }
                     }
                 }
-                Value::BigInt(bi) => BigInt::from(*n).cmp(&bi),
+                Value::BigInt(bi) => BigInt::from(*n).cmp(bi),
                 Value::BigUint(bi) => match BigUint::try_from(*n) {
                     Ok(n) => n.cmp(bi),
                     Err(_) => Ordering::Less,
@@ -354,7 +354,7 @@ impl Value {
                         }
                     }
                 }
-                Value::BigInt(bi) => BigInt::from(*n).cmp(&bi),
+                Value::BigInt(bi) => BigInt::from(*n).cmp(bi),
                 Value::BigUint(bi) => match BigUint::try_from(*n) {
                     Ok(n) => n.cmp(bi),
                     Err(_) => unreachable!(),
@@ -378,7 +378,7 @@ impl Value {
                         }
                     }
                 }
-                Value::BigInt(bi) => BigInt::from(*n).cmp(&bi),
+                Value::BigInt(bi) => BigInt::from(*n).cmp(bi),
                 Value::BigUint(bi) => match BigUint::try_from(*n) {
                     Ok(n) => n.cmp(bi),
                     Err(_) => unreachable!(),
@@ -521,7 +521,7 @@ impl Value {
                 Value::UInt32Value(m) => bi.cmp(&BigInt::from(*m)),
                 Value::UInt64Value(m) => bi.cmp(&BigInt::from(*m)),
                 Value::Float64Value(y) => bi.cmp(&BigInt::from(*y as i64)),
-                Value::BigInt(other_bi) => bi.cmp(&other_bi),
+                Value::BigInt(other_bi) => bi.cmp(other_bi),
                 Value::BigUint(other_bi) => match other_bi.to_bigint() {
                     Some(other_bi) => bi.cmp(&other_bi),
                     None => unreachable!(),
@@ -548,7 +548,7 @@ impl Value {
                     Some(other_bi) => bi.cmp(&other_bi),
                     None => Ordering::Greater,
                 },
-                Value::BigUint(other_bi) => bi.cmp(&other_bi),
+                Value::BigUint(other_bi) => bi.cmp(other_bi),
                 _ => Ordering::Greater,
             },
         }
@@ -1124,7 +1124,10 @@ impl<K: Into<Value>, V: Into<Value>> From<(K, V)> for Item {
     }
 }
 
-fn write_string_literal(literal: &str, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+pub(crate) fn write_string_literal(
+    literal: &str,
+    f: &mut Formatter<'_>,
+) -> Result<(), std::fmt::Error> {
     if parser::is_identifier(literal) {
         f.write_str(literal)
     } else if needs_escape(literal) {

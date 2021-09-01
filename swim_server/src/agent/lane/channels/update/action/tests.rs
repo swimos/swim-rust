@@ -17,7 +17,7 @@ use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::model::action::{Action, ActionLane};
 use futures::future::join;
 use std::time::Duration;
-use swim_common::form::FormErr;
+use swim_common::form::structural::read::ReadError;
 use swim_common::routing::RoutingAddr;
 use swim_runtime::time::timeout::timeout;
 use tokio::sync::mpsc;
@@ -66,7 +66,7 @@ async fn failure_no_feedback() {
 
     let assertion_task = async move {
         assert!(msg_tx
-            .send(Err(UpdateError::BadEnvelopeBody(FormErr::Malformatted)))
+            .send(Err(UpdateError::BadEnvelopeBody(ReadError::UnexpectedItem)))
             .await
             .is_ok());
     };
@@ -74,7 +74,7 @@ async fn failure_no_feedback() {
     let (result, _) = join(update_task, assertion_task).await;
     assert!(matches!(
         result,
-        Err(UpdateError::BadEnvelopeBody(FormErr::Malformatted))
+        Err(UpdateError::BadEnvelopeBody(ReadError::UnexpectedItem))
     ));
 }
 
@@ -226,7 +226,7 @@ async fn cleanup_on_error() {
         check_feedback(&mut feedback_rx, addr1, -4).await;
 
         assert!(msg_tx
-            .send(Err(UpdateError::BadEnvelopeBody(FormErr::Malformatted)))
+            .send(Err(UpdateError::BadEnvelopeBody(ReadError::UnexpectedItem)))
             .await
             .is_ok());
 

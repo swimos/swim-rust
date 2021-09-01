@@ -46,7 +46,7 @@ pub fn parse_struct<'a>(
         syn::Fields::Named(fields) => {
             let (fields, manifest) =
                 fields_from_ast(context, &fields.named, container_label, structure_kind);
-            (CompoundTypeKind::Struct, fields, manifest)
+            (CompoundTypeKind::Labelled, fields, manifest)
         }
         syn::Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
             let (fields, manifest) =
@@ -107,7 +107,7 @@ pub fn fields_from_ast<'t>(
                             manifest.has_attr_fields = true;
                         }
                         NestedMeta::Meta(Meta::Path(path)) if path == SLOT_PATH => {
-                            set_kind(FieldKind::Slot, ctx, true);
+                            set_kind(FieldKind::Item, ctx, true);
 
                             if manifest.replaces_body {
                                 manifest.has_header_fields = true;
@@ -192,7 +192,7 @@ pub fn fields_from_ast<'t>(
                 None => Label::Anonymous(index.into()),
             });
 
-            let kind = kind_opt.unwrap_or(FieldKind::Slot);
+            let kind = kind_opt.unwrap_or(FieldKind::Item);
 
             if let (Label::Anonymous(_), FieldKind::Attr) = (&name, &kind) {
                 ctx.error_spanned_by(
@@ -204,7 +204,7 @@ pub fn fields_from_ast<'t>(
             FormField {
                 original,
                 label: name,
-                kind: kind_opt.unwrap_or(FieldKind::Slot),
+                kind: kind_opt.unwrap_or(FieldKind::Item),
             }
         })
         .collect();
@@ -230,4 +230,8 @@ pub struct FieldManifest {
     pub has_slot_fields: bool,
     /// Whether or not there are fields tha are written as headers in the record.
     pub has_header_fields: bool,
+    /// Whether one of the fields determines the tag.
+    pub has_tag_field: bool,
+    /// Whehter any of the fields are skipped.
+    pub has_skipped_fields: bool,
 }

@@ -279,28 +279,28 @@ fn cmp_bounded_and_half_bounded_range<T: Clone + PartialOrd>(
 }
 
 pub fn in_int_range(value: &Value, range: &Range<i64>) -> bool {
-    match as_i64(&value) {
+    match as_i64(value) {
         Some(n) => in_range(n, range),
         _ => false,
     }
 }
 
 pub fn in_uint_range(value: &Value, range: &Range<u64>) -> bool {
-    match as_u64(&value) {
+    match as_u64(value) {
         Some(n) => in_range(n, range),
         _ => false,
     }
 }
 
 pub fn in_float_range(value: &Value, range: &Range<f64>) -> bool {
-    match as_f64(&value) {
+    match as_f64(value) {
         Some(x) => in_range(x, range),
         _ => false,
     }
 }
 
 pub fn in_big_int_range(value: &Value, range: &Range<BigInt>) -> bool {
-    match as_big_int(&value) {
+    match as_big_int(value) {
         Some(n) => in_range(n, range),
         _ => false,
     }

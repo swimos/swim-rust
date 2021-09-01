@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::form::{Form, Tag};
+use crate::form::structural::Tag;
+use crate::form::Form;
 use crate::model::time::Timestamp;
 use crate::model::{Attr, Item, Value};
 
@@ -470,9 +471,11 @@ fn header_body_replace() {
 
 #[test]
 fn test_enum_tag() {
-    #[derive(Clone, PartialEq, Debug, Tag)]
+    #[derive(Tag, Clone, Copy, Debug, PartialEq, Eq)]
     enum Level {
+        #[form(tag = "trace")]
         Trace,
+        #[form(tag = "error")]
         Error,
     }
 
@@ -503,39 +506,6 @@ fn test_enum_tag() {
             vec![Item::Slot(Value::text("message"), Value::text("Not good"))]
         )
     )
-}
-
-#[test]
-fn test_transmute_generic_default() {
-    #[derive(Form, Debug, PartialEq, Clone)]
-    struct Valid;
-
-    #[derive(Default, Debug, PartialEq, Clone)]
-    struct Skipped;
-
-    #[derive(Form, Debug, PartialEq, Clone)]
-    struct S<A, B> {
-        a: A,
-        #[form(skip)]
-        b: B,
-    }
-
-    let s = S {
-        a: Valid,
-        b: Skipped,
-    };
-
-    let rec = Value::Record(
-        vec![Attr::of("S")],
-        vec![Item::Slot(
-            Value::text("a"),
-            Value::Record(vec![Attr::of("Valid")], vec![]),
-        )],
-    );
-    assert_eq!(s.as_value(), rec);
-    assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
-    assert_eq!(S::try_convert(rec.clone()), Ok(s.clone()));
-    assert_eq!(s.into_value(), rec);
 }
 
 #[test]

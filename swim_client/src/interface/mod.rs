@@ -400,7 +400,7 @@ impl<Path: Addressable> DownlinksContext<Path> {
         initial: T,
     ) -> Result<(TypedValueDownlink<T>, ValueDownlinkReceiver<T>), ClientError<Path>>
     where
-        T: ValidatedForm + Send + 'static,
+        T: Form + ValidatedForm + Send + 'static,
     {
         self.downlinks
             .subscribe_value(initial, path)

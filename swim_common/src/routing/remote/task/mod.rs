@@ -493,7 +493,7 @@ where
     R: Router,
 {
     let target_addr = router
-        .lookup(None, RelativeUri::from_str(&target.node.as_str())?)
+        .lookup(None, RelativeUri::from_str(target.node.as_str())?)
         .await?;
     Ok(router.resolve_sender(target_addr).await?)
 }
