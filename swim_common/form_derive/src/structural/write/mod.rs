@@ -167,7 +167,7 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedStructModel<'a>> {
 
         let (impl_lst, ty_params, where_clause) = new_generics.split_for_impl();
 
-        let destructure = Destructure::assign(&inner.inner);
+        let destructure = Destructure::assign(inner.inner);
         let name = inner.inner.name;
         let write_with = WriteWithFn(inner);
         let write_into = WriteIntoFn(inner);

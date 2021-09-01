@@ -71,7 +71,7 @@ impl<'a> ToTokens for ResolvedName<'a> {
         let ResolvedName(field) = self;
         if let Some(trans) = field.transform.as_ref() {
             match trans {
-                NameTransform::Rename(name) => proc_macro2::Literal::string(&name),
+                NameTransform::Rename(name) => proc_macro2::Literal::string(name),
             }
         } else {
             match field.selector {

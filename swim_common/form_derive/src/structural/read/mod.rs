@@ -88,7 +88,7 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedStructModel<'a>> {
                 BodyFields::StdBody(body_fields)
                     if model.inner.fields_model.body_kind == CompoundTypeKind::Labelled =>
                 {
-                    SelectIndexFnLabelled::new(model, &body_fields).into_token_stream()
+                    SelectIndexFnLabelled::new(model, body_fields).into_token_stream()
                 }
                 _ => SelectIndexFnOrdinal::new(model).into_token_stream(),
             };
@@ -234,7 +234,7 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedEnumModel<'a>> {
                         BodyFields::StdBody(body_fields)
                         if model.inner.fields_model.body_kind == CompoundTypeKind::Labelled =>
                             {
-                                SelectIndexFnLabelled::variant(model, &body_fields, i).into_token_stream()
+                                SelectIndexFnLabelled::variant(model, body_fields, i).into_token_stream()
                             }
                         _ => SelectIndexFnOrdinal::variant(model, i).into_token_stream(),
                     };

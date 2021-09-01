@@ -63,7 +63,7 @@ impl<'a> ToTokens for ResolvedName<'a> {
         let ResolvedName(def) = self;
         if let Some(trans) = def.transform.as_ref() {
             match trans {
-                NameTransform::Rename(name) => proc_macro2::Literal::string(&name),
+                NameTransform::Rename(name) => proc_macro2::Literal::string(name),
             }
         } else {
             proc_macro2::Literal::string(&def.name.to_string())
