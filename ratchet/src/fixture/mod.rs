@@ -220,7 +220,6 @@ where
     T: StdError + PartialEq + Any,
 {
     let error = result.expect_err(&format!("Expected a {}", type_name::<T>()));
-    println!("{}", error);
     let protocol_error = error.downcast_ref::<T>().unwrap();
     assert_eq!(protocol_error, &expected);
 }
@@ -275,7 +274,7 @@ impl AsyncRead for MirroredIo {
 
 impl AsyncWrite for MirroredIo {
     fn poll_write(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         _cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {

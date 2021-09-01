@@ -1,5 +1,5 @@
-use crate::errors::{CloseError, Error, ErrorKind};
-use crate::framed::{FramedIo, Item, ReadError, CONTROL_FRAME_LEN};
+use crate::errors::{CloseError, Error, ErrorKind, ProtocolError};
+use crate::framed::{FramedIo, Item};
 use crate::handshake::{exec_client_handshake, HandshakeResult, ProtocolRegistry};
 use crate::protocol::{
     CloseCode, CloseReason, ControlCode, DataCode, HeaderFlags, Message, MessageType, OpCode,
@@ -212,15 +212,14 @@ where
                     }
                 },
                 Err(e) => {
-                    let ReadError { close_with, error } = e;
                     self.closed = true;
 
-                    if let Some(reason) = close_with {
-                        // This will only be 'None' if an IO error was encountered and so we cannot
-                        // write a reason
+                    if !e.is_io() {
+                        let reason = CloseReason::new(CloseCode::Protocol, Some(e.to_string()));
                         self.framed.write_close(reason).await?;
                     }
-                    return Err(error);
+
+                    return Err(e);
                 }
             }
         }
@@ -241,7 +240,10 @@ where
             PayloadType::Binary => OpCode::DataCode(DataCode::Binary),
             PayloadType::Ping => {
                 if buf.len() > CONTROL_MAX_SIZE {
-                    return Err(Error::with_cause(ErrorKind::Protocol, CONTROL_FRAME_LEN));
+                    return Err(Error::with_cause(
+                        ErrorKind::Protocol,
+                        ProtocolError::FrameOverflow,
+                    ));
                 } else {
                     self.control_buffer.clear();
                     self.control_buffer

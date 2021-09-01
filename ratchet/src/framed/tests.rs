@@ -12,23 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::errors::{Error, ProtocolError};
-use crate::fixture::{expect_err, mock, EmptyIo, MirroredIo};
-use crate::framed::{
-    CodecFlags, DecodeResult, FrameDecoder, FrameEncoder, FramedIo, FramedRead, FramedWrite, Item,
-    ReadError,
-};
-use crate::protocol::{CloseCode, CloseReason, DataCode, FrameHeader, Message, OpCode};
+use crate::errors::ProtocolError;
+use crate::fixture::{expect_err, EmptyIo, MirroredIo};
+use crate::framed::{CodecFlags, FramedIo, Item};
+use crate::protocol::{DataCode, OpCode};
 use crate::protocol::{HeaderFlags, Role};
 use bytes::BytesMut;
-use std::error::Error as StdError;
-use std::fmt::Debug;
 use std::iter::FromIterator;
-use tokio_util::codec::Decoder;
 
 #[tokio::test]
 async fn frame_text() {
-    let mut bytes = BytesMut::from_iter(&[
+    let bytes = BytesMut::from_iter(&[
         129, 143, 0, 0, 0, 0, 66, 111, 110, 115, 111, 105, 114, 44, 32, 69, 108, 108, 105, 111, 116,
     ]);
 
@@ -118,7 +112,7 @@ async fn double_cont() {
 
     let mut rx_buf = BytesMut::default();
     expect_err(
-        framed.read_next(&mut rx_buf).await.map_err(|e| e.error),
+        framed.read_next(&mut rx_buf).await,
         ProtocolError::ContinuationAlreadyStarted,
     );
 }
@@ -145,7 +139,7 @@ async fn no_cont() {
 
     let mut rx_buf = BytesMut::default();
     expect_err(
-        framed.read_next(&mut rx_buf).await.map_err(|e| e.error),
+        framed.read_next(&mut rx_buf).await,
         ProtocolError::ContinuationNotStarted,
     );
 }
@@ -167,7 +161,7 @@ async fn overflow_buffer() {
 
     let mut rx_buf = BytesMut::default();
     expect_err(
-        framed.read_next(&mut rx_buf).await.map_err(|e| e.error),
+        framed.read_next(&mut rx_buf).await,
         ProtocolError::FrameOverflow,
     );
 }

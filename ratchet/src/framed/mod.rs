@@ -1,27 +1,19 @@
 #[cfg(test)]
 mod tests;
 
+use crate::errors::{Error, ErrorKind, ProtocolError};
 use crate::protocol::{
-    apply_mask, CloseCode, CloseCodeParseErr, CloseReason, ControlCode, DataCode, FrameHeader,
-    HeaderFlags, OpCode, OpCodeParseErr, Role,
+    apply_mask, CloseCode, CloseReason, ControlCode, DataCode, FrameHeader, HeaderFlags, OpCode,
+    Role,
 };
 use crate::WebSocketStream;
-use bytes::{BufMut, BytesMut};
-use std::str::Utf8Error;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-
-use crate::errors::ErrorKind::Protocol;
-use crate::errors::{Error, ErrorKind, ProtocolError};
 use bytes::Buf;
+use bytes::{BufMut, BytesMut};
 use either::Either;
 use nanorand::{WyRand, RNG};
 use std::convert::TryFrom;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-pub const CONTROL_FRAME_LEN: &str = "Control frame length greater than 125";
-pub const FRAME_OVERFLOW: &str = "Payload length exceeded maximum permitted size";
-pub(crate) const CONST_STARTED: &str = "Continuation already started";
-pub(crate) const CONST_NOT_STARTED: &str = "Continuation not started";
-pub(crate) const ILLEGAL_CLOSE_CODE: &str = "Received a reserved close code";
 const U16_MAX: usize = u16::MAX as usize;
 
 #[derive(Debug, PartialEq)]
@@ -51,59 +43,6 @@ bitflags::bitflags! {
     }
 }
 
-#[derive(Debug)]
-pub struct ReadError {
-    pub close_with: Option<CloseReason>,
-    pub error: Error,
-}
-
-impl ReadError {
-    fn with<E>(msg: &'static str, source: E) -> ReadError
-    where
-        E: std::error::Error + Send + Sync + 'static,
-    {
-        ReadError {
-            close_with: Some(CloseReason {
-                code: CloseCode::Protocol,
-                description: Some(msg.to_string()),
-            }),
-            error: Error::with_cause(ErrorKind::Protocol, source),
-        }
-    }
-}
-
-macro_rules! read_err_from {
-    ($from:ident) => {
-        impl From<$from> for ReadError {
-            fn from(e: $from) -> Self {
-                let cause = format!("{}", e);
-                ReadError {
-                    close_with: Some(CloseReason {
-                        code: CloseCode::Protocol,
-                        description: Some(cause.clone()),
-                    }),
-                    error: Error::with_cause(ErrorKind::Protocol, cause),
-                }
-            }
-        }
-    };
-}
-
-read_err_from!(OpCodeParseErr);
-read_err_from!(CloseCodeParseErr);
-read_err_from!(ProtocolError);
-read_err_from!(Utf8Error);
-
-impl From<std::io::Error> for ReadError {
-    fn from(e: std::io::Error) -> Self {
-        let cause = format!("{}", e);
-        ReadError {
-            close_with: None,
-            error: Error::with_cause(ErrorKind::Protocol, cause),
-        }
-    }
-}
-
 pub enum FrameDecoder {
     DecodingHeader,
     DecodingPayload(FrameHeader, usize, usize),
@@ -127,7 +66,7 @@ impl FrameDecoder {
         is_server: bool,
         rsv_bits: u8,
         max_size: usize,
-    ) -> Result<DecodeResult, ReadError> {
+    ) -> Result<DecodeResult, Error> {
         loop {
             match self {
                 FrameDecoder::DecodingHeader => {
@@ -183,7 +122,7 @@ impl FramedRead {
         is_server: bool,
         rsv_bits: u8,
         max_size: usize,
-    ) -> Result<(FrameHeader, BytesMut), ReadError>
+    ) -> Result<(FrameHeader, BytesMut), Error>
     where
         I: AsyncRead + Unpin,
     {
@@ -341,7 +280,7 @@ where
             .await
     }
 
-    pub(crate) async fn read_next(&mut self, read_into: &mut BytesMut) -> Result<Item, ReadError> {
+    pub(crate) async fn read_next(&mut self, read_into: &mut BytesMut) -> Result<Item, Error> {
         let FramedIo {
             io,
             reader,
@@ -361,10 +300,7 @@ where
             match header.opcode {
                 OpCode::DataCode(data_code) => {
                     if read_into.len() + payload.len() > *max_size {
-                        return Err(ReadError::with(
-                            FRAME_OVERFLOW,
-                            ProtocolError::FrameOverflow,
-                        ));
+                        return Err(ProtocolError::FrameOverflow.into());
                     }
 
                     read_into.put(payload);
@@ -379,10 +315,7 @@ where
                                         Item::Binary
                                     }
                                 } else {
-                                    return Err(ReadError::with(
-                                        CONST_NOT_STARTED,
-                                        ProtocolError::ContinuationNotStarted,
-                                    ));
+                                    return Err(ProtocolError::ContinuationNotStarted.into());
                                 };
 
                                 self.flags
@@ -392,19 +325,13 @@ where
                                 if self.flags.contains(CodecFlags::R_CONT) {
                                     continue;
                                 } else {
-                                    return Err(ReadError::with(
-                                        CONST_NOT_STARTED,
-                                        ProtocolError::ContinuationNotStarted,
-                                    ));
+                                    return Err(ProtocolError::ContinuationNotStarted.into());
                                 }
                             }
                         }
                         DataCode::Text => {
                             if self.flags.contains(CodecFlags::R_CONT) {
-                                return Err(ReadError::with(
-                                    CONST_STARTED,
-                                    ProtocolError::ContinuationAlreadyStarted,
-                                ));
+                                return Err(ProtocolError::ContinuationAlreadyStarted.into());
                             } else if header.flags.contains(HeaderFlags::FIN) {
                                 return Ok(Item::Text);
                             } else {
@@ -415,10 +342,7 @@ where
                         }
                         DataCode::Binary => {
                             if self.flags.contains(CodecFlags::R_CONT) {
-                                return Err(ReadError::with(
-                                    CONST_STARTED,
-                                    ProtocolError::ContinuationAlreadyStarted,
-                                ));
+                                return Err(ProtocolError::ContinuationAlreadyStarted.into());
                             } else if header.flags.contains(HeaderFlags::FIN) {
                                 return Ok(Item::Binary);
                             } else {
@@ -438,10 +362,9 @@ where
                             } else {
                                 match CloseCode::try_from([payload[0], payload[1]])? {
                                     close_code if close_code.is_illegal() => {
-                                        return Err(ReadError::with(
-                                            ILLEGAL_CLOSE_CODE,
-                                            ProtocolError::CloseCode(u16::from(close_code)),
-                                        ))
+                                        return Err(
+                                            ProtocolError::CloseCode(u16::from(close_code)).into()
+                                        )
                                     }
                                     close_code => {
                                         let close_reason =
@@ -463,20 +386,14 @@ where
                         }
                         ControlCode::Ping => {
                             if payload.len() > 125 {
-                                return Err(ReadError::with(
-                                    CONTROL_FRAME_LEN,
-                                    ProtocolError::FrameOverflow,
-                                ));
+                                return Err(ProtocolError::FrameOverflow.into());
                             } else {
                                 Ok(Item::Ping(payload))
                             }
                         }
                         ControlCode::Pong => {
                             if payload.len() > 125 {
-                                return Err(ReadError::with(
-                                    CONTROL_FRAME_LEN,
-                                    ProtocolError::FrameOverflow,
-                                ));
+                                return Err(ProtocolError::FrameOverflow.into());
                             } else {
                                 Ok(Item::Pong(payload))
                             }
