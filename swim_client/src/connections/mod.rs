@@ -192,7 +192,7 @@ impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> 
                 client_req = client_rx.next() => client_req,
             };
 
-            if let Some(ss) = request {
+            if let Some(request) = request {
                 match ss {
                     DownlinkRoutingRequest::Connect {
                         target,
