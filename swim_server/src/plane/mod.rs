@@ -29,7 +29,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::ops::Deref;
 use std::sync::{Arc, Weak};
-use swim_client::interface::InnerClient;
+use swim_client::interface::DownlinksContext;
 use swim_common::request::Request;
 use swim_common::routing::error::NoAgentAtRoute;
 use swim_common::routing::error::{ConnectionError, ProtocolError, ProtocolErrorKind};
@@ -80,7 +80,7 @@ pub(crate) trait AgentRoute<Clk, Envelopes, Router>: Debug + Send {
         parameters: HashMap<String, String>,
         execution_config: AgentExecutionConfig,
         clock: Clk,
-        client: InnerClient<Path>,
+        client: DownlinksContext<Path>,
         incoming_envelopes: Envelopes,
         router: Router,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>);
@@ -137,7 +137,7 @@ pub(crate) struct PlaneActiveRoutes {
 
 impl PlaneActiveRoutes {
     fn get_endpoint(&self, addr: &RoutingAddr) -> Option<&LocalEndpoint> {
-        self.local_endpoints.get(&addr)
+        self.local_endpoints.get(addr)
     }
 
     fn get_endpoint_for_route(&self, route: &RelativeUri) -> Option<&LocalEndpoint> {
@@ -252,7 +252,7 @@ pub(crate) struct RouteResolver<Clk, DelegateFac: RouterFactory> {
     /// Clock for scheduling tasks.
     clock: Clk,
     /// Client for opening downlinks.
-    client: InnerClient<Path>,
+    client: DownlinksContext<Path>,
     /// The configuration for the agent routes that are opened.
     execution_config: AgentExecutionConfig,
     /// The routes for the plane.
@@ -270,7 +270,7 @@ pub(crate) struct RouteResolver<Clk, DelegateFac: RouterFactory> {
 impl<Clk, DelegateFac: RouterFactory> RouteResolver<Clk, DelegateFac> {
     pub(crate) fn new(
         clock: Clk,
-        client: InnerClient<Path>,
+        client: DownlinksContext<Path>,
         execution_config: AgentExecutionConfig,
         routes: Vec<RouteSpec<Clk, EnvChannel, PlaneRouter<DelegateFac::Router>>>,
         router_fac: PlaneRouterFactory<DelegateFac>,

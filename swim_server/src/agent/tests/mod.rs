@@ -276,7 +276,7 @@ impl<Lane> AgentContext<TestAgent<Lane>> for TestContext<Lane>
 where
     Lane: LaneModel + Send + Sync + 'static,
 {
-    fn client(&self) -> InnerClient<Path> {
+    fn downlinks_context(&self) -> DownlinksContext<Path> {
         //Todo dm
         unimplemented!()
     }

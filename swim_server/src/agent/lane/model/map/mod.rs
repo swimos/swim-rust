@@ -26,7 +26,7 @@ use stm::stm::{abort, left, right, Constant, Stm, VecStm, UNIT};
 use stm::transaction::{atomically, RetryManager, TransactionError, TransactionRunner};
 use stm::var::TVar;
 use summary::{clear_summary, remove_summary, update_summary};
-use swim_common::form::{Form, FormErr};
+use swim_common::form::Form;
 use swim_common::model::Value;
 
 use crate::agent::lane::model::map::summary::TransactionSummary;
@@ -39,6 +39,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::num::NonZeroUsize;
 use stm::var::observer::{Observer, ObserverStream, ObserverSubscriber};
+use swim_common::form::structural::read::ReadError;
 use swim_warp::model::map::MapUpdate;
 use tracing::{event, Level};
 use utilities::future::{FlatmapStream, SwimStreamExt, Transform};
@@ -158,7 +159,7 @@ impl<K: Clone, V> Clone for MapLaneEvent<K, V> {
 
 impl<V> MapLaneEvent<Value, V> {
     /// Attempt to type the key of a [`MapLaneEvent`] using a form.
-    pub fn try_into_typed<K: Form>(self) -> Result<MapLaneEvent<K, V>, FormErr> {
+    pub fn try_into_typed<K: Form>(self) -> Result<MapLaneEvent<K, V>, ReadError> {
         match self {
             MapLaneEvent::Checkpoint(id) => Ok(MapLaneEvent::Checkpoint(id)),
             MapLaneEvent::Clear => Ok(MapLaneEvent::Clear),

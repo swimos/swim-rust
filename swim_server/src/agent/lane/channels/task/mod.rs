@@ -49,7 +49,8 @@ use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use stm::transaction::RetryManager;
-use swim_common::form::{Form, FormErr};
+use swim_common::form::structural::read::ReadError;
+use swim_common::form::Form;
 use swim_common::model::Value;
 use swim_common::routing::{RoutingAddr, TaggedClientEnvelope};
 use swim_common::warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
@@ -298,7 +299,6 @@ where
                         Either::Right(command) => {
                             event!(Level::TRACE, DISPATCH_COMMAND, route = ?route_cpy, ?addr, ?command);
                             action_observer.on_command();
-
                             if upd_tx
                                 .send(Form::try_convert(command).map(|cmd| (addr, cmd)))
                                 .await
@@ -877,18 +877,8 @@ where
     (failed, err_handler.take_errors())
 }
 
-#[derive(Debug)]
+#[derive(Debug, Form)]
 struct Dropping;
-
-impl Form for Dropping {
-    fn as_value(&self) -> Value {
-        Value::Extant
-    }
-
-    fn try_from_value(_value: &Value) -> Result<Self, FormErr> {
-        Ok(Dropping)
-    }
-}
 
 /// A strategy for handling `OutgoingHeader::Command` messages.
 enum OnCommandStrategy<V = Dropping> {
@@ -910,7 +900,7 @@ where
     /// Handle the message and return whether or not the operation was successful.
     async fn on_command(
         &mut self,
-        maybe_command: Result<(RoutingAddr, F), FormErr>,
+        maybe_command: Result<(RoutingAddr, F), ReadError>,
         address: RoutingAddr,
     ) -> bool {
         match self {
@@ -923,7 +913,7 @@ where
 /// A handler for `OutgoingHeader::Command` messages. Forwarding any messages received to a sender.
 struct OnCommandHandler<F> {
     /// The sender to forward messages to.
-    sender: mpsc::Sender<Result<(RoutingAddr, F), FormErr>>,
+    sender: mpsc::Sender<Result<(RoutingAddr, F), ReadError>>,
     /// The corresponding route that this handler is operating on.
     route: RelativePath,
 }
@@ -933,7 +923,7 @@ where
     F: Send + Sync + Form + Debug + 'static,
 {
     fn new(
-        sender: mpsc::Sender<Result<(RoutingAddr, F), FormErr>>,
+        sender: mpsc::Sender<Result<(RoutingAddr, F), ReadError>>,
         route: RelativePath,
     ) -> OnCommandHandler<F> {
         OnCommandHandler { sender, route }
@@ -943,7 +933,7 @@ where
     /// successful.
     async fn send(
         &mut self,
-        maybe_command: Result<(RoutingAddr, F), FormErr>,
+        maybe_command: Result<(RoutingAddr, F), ReadError>,
         address: RoutingAddr,
     ) -> bool {
         let OnCommandHandler { sender, route } = self;

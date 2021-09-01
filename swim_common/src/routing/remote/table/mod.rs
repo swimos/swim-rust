@@ -25,8 +25,8 @@ use crate::routing::{
 };
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
-use std::error::Error;
 use std::fmt::{Display, Formatter};
+use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use utilities::sync::promise;
@@ -97,16 +97,9 @@ pub struct RoutingTable {
     endpoints: HashMap<RoutingAddr, Handle>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Error)]
+#[error("Bidirectional connections do not support subscribers.")]
 pub struct BidirectionalError;
-
-impl Error for BidirectionalError {}
-
-impl Display for BidirectionalError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Bidirectional connections do not support subscribers.")
-    }
-}
 
 impl RoutingTable {
     /// Try to get the routing key in the table for a given host/port combination.
@@ -190,7 +183,7 @@ impl RoutingTable {
         if let Some(addr) = open_sockets.get(&sock_addr) {
             debug_assert!(!resolved_forward.contains_key(&host));
             resolved_forward.insert(host.clone(), *addr);
-            let handle = endpoints.get_mut(&addr).expect("Inconsistent table.");
+            let handle = endpoints.get_mut(addr).expect("Inconsistent table.");
             handle.bindings.insert(host);
             Some(*addr)
         } else {
@@ -250,7 +243,7 @@ impl BidirectionalRegistrator {
         self.receiver_request_tx
             .send(Request::new(tx))
             .await
-            .unwrap();
+            .map_err(|_| ResolutionError::router_dropped())?;
 
         match rx.await {
             Ok(receiver) => Ok(BidirectionalRoute::new(self.sender, receiver, self.on_drop)),

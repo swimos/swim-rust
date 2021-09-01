@@ -31,7 +31,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use swim_common::request::request_future::RequestError;
 use swim_common::request::Request;
-use swim_common::routing::error::{CloseError, ConnectionError, ResolutionError, Unresolvable};
+use swim_common::routing::error::{
+    CloseError, ConnectionError, ResolutionError, RouterError, Unresolvable,
+};
 use swim_common::routing::remote::RawRoute;
 use swim_common::routing::{
     BidirectionalRoute, CloseReceiver, ConnectionDropped, Route, Router, RouterFactory,
@@ -73,8 +75,7 @@ pub(crate) type ConnectionReceiver = mpsc::Receiver<RouterEvent>;
 pub(crate) type ConnectionSender = TaggedSender;
 
 /// The connection pool is responsible for opening new connections to remote hosts and managing
-/// them. It is possible to request a connection to be recreated or to return a cached connection
-/// for a given host if it already exists.
+/// them.
 #[derive(Clone)]
 pub struct SwimConnPool<Path: Addressable> {
     client_tx: mpsc::Sender<DownlinkRoutingRequest<Path>>,
@@ -90,10 +91,7 @@ impl<Path: Addressable> SwimConnPool<Path> {
     #[instrument(skip(config))]
     pub fn new<DelegateFac: RouterFactory + Debug>(
         config: ClientParams,
-        client_channel: (
-            mpsc::Sender<DownlinkRoutingRequest<Path>>,
-            mpsc::Receiver<DownlinkRoutingRequest<Path>>,
-        ),
+        client_channel: ClientChannel<Path>,
         client_router_factory: ClientRouterFactory<Path, DelegateFac>,
         stop_trigger: CloseReceiver,
     ) -> (SwimConnPool<Path>, PoolTask<Path, DelegateFac>) {
@@ -101,15 +99,25 @@ impl<Path: Addressable> SwimConnPool<Path> {
 
         (
             SwimConnPool { client_tx },
-            PoolTask::new(client_rx, client_router_factory, config, stop_trigger),
+            PoolTask::new(
+                client_rx,
+                client_router_factory,
+                config,
+                stop_trigger,
+            ),
         )
     }
 }
 
+type ClientChannel<Path> = (
+    mpsc::Sender<DownlinkRoutingRequest<Path>>,
+    mpsc::Receiver<DownlinkRoutingRequest<Path>>,
+);
+
 impl<Path: Addressable> ConnectionPool for SwimConnPool<Path> {
     type PathType = Path;
 
-    /// Sends and asynchronous request for a connection to a specific path.
+    /// Sends an asynchronous request for a connection to a specific path.
     ///
     /// # Arguments
     ///
@@ -183,6 +191,7 @@ impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> 
 
         let mut client_rx = ReceiverStream::new(client_rx).fuse();
         let mut stop_rx = stop_trigger.clone().fuse();
+        let mut iteration_count: usize = 0;
 
         loop {
             let request: Option<DownlinkRoutingRequest<Path>> = select_biased! {
@@ -207,14 +216,7 @@ impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> 
                         })?;
 
                         let registrator = match routing_table.try_resolve_addr(&routing_path) {
-                            Some(routing_addr) => {
-                                match routing_table.try_resolve_endpoint(&routing_addr) {
-                                    Some(registrator) => registrator,
-                                    None => {
-                                        unreachable!()
-                                    }
-                                }
-                            }
+                            Some((_, registrator)) => registrator,
                             None => {
                                 let routing_address = RoutingAddr::client(counter);
                                 counter += 1;
@@ -241,7 +243,7 @@ impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> 
 
                         let connection = registrator.request_connection(target, conn_type).await;
                         if request.send(connection).is_err() {
-                            event!(Level::WARN, REQUEST_ERROR);
+                            event!(Level::ERROR, REQUEST_ERROR);
                         }
                     }
                     DownlinkRoutingRequest::Endpoint { addr, request } => {
@@ -254,14 +256,14 @@ impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> 
                                 {
                                     if let RegistratorRequest::Resolve { request } = err.0 {
                                         if request.send(Err(Unresolvable(addr))).is_err() {
-                                            event!(Level::WARN, REQUEST_ERROR);
+                                            event!(Level::ERROR, REQUEST_ERROR);
                                         }
                                     }
                                 }
                             }
                             None => {
                                 if request.send(Err(Unresolvable(addr))).is_err() {
-                                    event!(Level::WARN, REQUEST_ERROR);
+                                    event!(Level::ERROR, REQUEST_ERROR);
                                 }
                             }
                         }
@@ -272,6 +274,11 @@ impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> 
 
                 return Ok(());
             }
+
+            iteration_count += 1;
+            if iteration_count % config.yield_after == 0 {
+                tokio::task::yield_now().await;
+            }
         }
     }
 }
@@ -280,7 +287,9 @@ type ConnectionResult = Result<(ConnectionSender, Option<ConnectionReceiver>), C
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectionType {
+    /// A connection type that can both send and receive messages.
     Full,
+    /// A connection type that can only send messages.
     Outgoing,
 }
 
@@ -381,21 +390,17 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
         client_router: ClientRouter<Path, DelegateRouter>,
         stop_trigger: CloseReceiver,
     ) -> Self {
-        match target.host() {
-            Some(url) => ConnectionRegistratorTask {
-                config,
-                target: RegistrationTarget::Remote(url),
-                registrator_rx,
-                client_router,
-                stop_trigger,
-            },
-            None => ConnectionRegistratorTask {
-                config,
-                target: RegistrationTarget::Local(target.node().to_string()),
-                registrator_rx,
-                client_router,
-                stop_trigger,
-            },
+        let target = match target.host() {
+            Some(url) => RegistrationTarget::Remote(url),
+            None => RegistrationTarget::Local(target.node().to_string()),
+        };
+
+        ConnectionRegistratorTask {
+            config,
+            target,
+            registrator_rx,
+            client_router,
+            stop_trigger,
         }
     }
 
@@ -433,6 +438,7 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
         let mut registrator_rx = ReceiverStream::new(registrator_rx).fuse();
         let mut remote_drop_rx = remote_drop_rx.fuse();
         let mut stop_rx = stop_trigger.clone().fuse();
+        let mut iteration_count: usize = 0;
 
         let mut subscribers: HashMap<RelativePath, Slab<mpsc::Sender<RouterEvent>>> =
             HashMap::new();
@@ -594,6 +600,11 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
 
                     return Ok(());
                 }
+            }
+
+            iteration_count += 1;
+            if iteration_count % config.yield_after == 0 {
+                tokio::task::yield_now().await;
             }
         }
     }

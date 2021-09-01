@@ -30,9 +30,10 @@ use std::sync::Arc;
 use swim_client::configuration::downlink::{ClientParams, ConfigHierarchy};
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
-use swim_client::interface::InnerClient;
+use swim_client::interface::DownlinksContext;
 use swim_client::router::ClientRouterFactory;
-use swim_common::form::{Form, FormErr};
+use swim_common::form::structural::read::ReadError;
+use swim_common::form::Form;
 use swim_common::record;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
@@ -78,7 +79,10 @@ fn lane_info_form_err() {
             ("laneType", "Meta")
         ]
     };
-    assert_eq!(LaneInfo::try_convert(value), Err(FormErr::Malformatted));
+    assert!(matches!(
+        LaneInfo::try_convert(value),
+        Err(ReadError::Malformatted { .. })
+    ));
 
     let value = record! {
         attrs => ["LaneInfoy"],
@@ -87,7 +91,11 @@ fn lane_info_form_err() {
             ("laneType", "Meta")
         ]
     };
-    assert_eq!(LaneInfo::try_convert(value), Err(FormErr::MismatchedTag));
+
+    assert!(matches!(
+        LaneInfo::try_convert(value),
+        Err(ReadError::UnexpectedAttribute(name)) if name == "LaneInfoy"
+    ));
 
     let value = record! {
         attrs => ["LaneInfo"],
@@ -96,7 +104,11 @@ fn lane_info_form_err() {
             ("laneType", "Meta")
         ]
     };
-    assert_eq!(LaneInfo::try_convert(value), Err(FormErr::Malformatted));
+
+    assert!(matches!(
+        LaneInfo::try_convert(value),
+        Err(ReadError::UnexpectedField(name)) if name == "laneUriy"
+    ));
 }
 
 #[derive(Default, Debug, Clone)]
@@ -206,7 +218,7 @@ async fn lane_info_sync() {
     let (downlinks, _downlinks_task) =
         Downlinks::new(conn_pool, Arc::new(ConfigHierarchy::default()), close_rx);
 
-    let client = InnerClient::new(downlinks);
+    let client = DownlinksContext::new(downlinks);
 
     let parameters = AgentParameters::new(MockAgentConfig, exec_config, uri, HashMap::new());
 

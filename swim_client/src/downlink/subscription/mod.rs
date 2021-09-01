@@ -40,7 +40,7 @@ use futures_util::stream::{FuturesUnordered, StreamExt};
 use pin_utils::pin_mut;
 use std::collections::HashMap;
 use std::sync::{Arc, Weak};
-use swim_common::form::ValidatedForm;
+use swim_common::form::{Form, ValidatedForm};
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::request::Request;
@@ -141,7 +141,7 @@ impl<Path: Addressable> Downlinks<Path> {
         path: Path,
     ) -> RequestResult<(TypedValueDownlink<T>, ValueDownlinkReceiver<T>), Path>
     where
-        T: ValidatedForm + Send + 'static,
+        T: Form + ValidatedForm + Send + 'static,
     {
         info!("Subscribing to typed value lane");
 

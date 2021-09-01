@@ -247,7 +247,7 @@ impl<T: ValidatedForm> ValueDownlinkSender<T> {
     }
 }
 
-impl<T: ValidatedForm + 'static> ValueDownlinkSender<T> {
+impl<T: Form + ValidatedForm + 'static> ValueDownlinkSender<T> {
     /// Get the current value of the downlink.
     pub async fn get(&self) -> Result<T, DownlinkError> {
         ValueActions::new(&self.inner).get().await
@@ -282,7 +282,7 @@ impl<T: ValidatedForm + 'static> ValueDownlinkSender<T> {
     }
 }
 
-impl<T: ValidatedForm + 'static> ValueDownlinkContraView<T> {
+impl<T: Form + ValidatedForm + 'static> ValueDownlinkContraView<T> {
     /// Set the value of the downlink, waiting until the set has completed.
     pub async fn set(&self, value: T) -> Result<(), DownlinkError> {
         ValueActions::new(&self.inner).set(value).await
@@ -294,14 +294,14 @@ impl<T: ValidatedForm + 'static> ValueDownlinkContraView<T> {
     }
 }
 
-impl<T: ValidatedForm + 'static> ValueDownlinkView<T> {
+impl<T: Form + ValidatedForm + 'static> ValueDownlinkView<T> {
     /// Get the current value of the downlink.
     pub async fn get(&self) -> Result<T, DownlinkError> {
         ValueActions::new(&self.inner).get().await
     }
 }
 
-impl<T: ValidatedForm + 'static> TypedValueDownlink<T> {
+impl<T: Form + ValidatedForm + 'static> TypedValueDownlink<T> {
     /// Get the current value of the downlink.
     pub async fn get(&self) -> Result<T, DownlinkError> {
         ValueActions::new(self.inner.sender()).get().await
@@ -358,7 +358,7 @@ impl<'a, T> ValueActions<'a, T> {
 
 impl<'a, T> ValueActions<'a, T>
 where
-    T: ValidatedForm + 'static,
+    T: Form + ValidatedForm + 'static,
 {
     async fn get(&self) -> Result<T, DownlinkError> {
         let (tx, rx) = oneshot::channel();
@@ -470,13 +470,13 @@ impl<T> ValueDownlinkSubscriber<T> {
     }
 }
 
-impl<T: ValidatedForm> ValueDownlinkSubscriber<T> {
+impl<T: Form + ValidatedForm> ValueDownlinkSubscriber<T> {
     /// Create a read-only view for a value downlink subscriberthat converts all received values
     /// to a new type. The type of the view must have an equal or greater schema than the original
     /// downlink.
     pub fn covariant_cast<U>(self) -> Result<ValueDownlinkSubscriber<U>, ValueViewError>
     where
-        U: ValidatedForm,
+        U: Form + ValidatedForm,
     {
         let schema_cmp = U::schema().partial_cmp(&T::schema());
 

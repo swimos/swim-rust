@@ -128,7 +128,7 @@ impl SwimClientBuilder {
         )
         .await;
 
-        // The connection pool handles the connections behnid the downlinks
+        // The connection pool handles the connections behind the downlinks
         let (connection_pool, pool_task) = SwimConnPool::new(
             client_params,
             (client_tx, client_rx),
@@ -150,7 +150,7 @@ impl SwimClientBuilder {
         });
 
         SwimClient {
-            inner: InnerClient { downlinks },
+            inner: DownlinksContext { downlinks },
             close_buffer_size: client_params.connections_params.router_buffer_size,
             task_handle,
             stop_trigger: close_tx,
@@ -190,7 +190,7 @@ impl SwimClientBuilder {
         )
         .await;
 
-        // The connection pool handles the connections behnid the downlinks
+        // The connection pool handles the connections behind the downlinks
         let (connection_pool, pool_task) = SwimConnPool::new(
             client_params,
             (client_tx, client_rx),
@@ -212,7 +212,7 @@ impl SwimClientBuilder {
         });
 
         SwimClient {
-            inner: InnerClient { downlinks },
+            inner: DownlinksContext { downlinks },
             close_buffer_size: client_params.connections_params.router_buffer_size,
             task_handle,
             stop_trigger: close_tx,
@@ -240,7 +240,7 @@ impl SwimClientBuilder {
 ///
 #[derive(Debug)]
 pub struct SwimClient<Path: Addressable> {
-    inner: InnerClient<Path>,
+    inner: DownlinksContext<Path>,
     close_buffer_size: NonZeroUsize,
     task_handle: TaskHandle<RequestResult<(), Path>>,
     stop_trigger: CloseSender,
@@ -263,7 +263,7 @@ impl<Path: Addressable> SwimClient<Path> {
         initial: T,
     ) -> Result<(TypedValueDownlink<T>, ValueDownlinkReceiver<T>), ClientError<Path>>
     where
-        T: ValidatedForm + Send + 'static,
+        T: Form + ValidatedForm + Send + 'static,
     {
         self.inner.value_downlink(path, initial).await
     }
@@ -366,13 +366,13 @@ impl<Path: Addressable> SwimClient<Path> {
 }
 
 #[derive(Clone, Debug)]
-pub struct InnerClient<Path: Addressable> {
+pub struct DownlinksContext<Path: Addressable> {
     downlinks: Downlinks<Path>,
 }
 
-impl<Path: Addressable> InnerClient<Path> {
+impl<Path: Addressable> DownlinksContext<Path> {
     pub fn new(downlinks: Downlinks<Path>) -> Self {
-        InnerClient { downlinks }
+        DownlinksContext { downlinks }
     }
 
     pub async fn send_command<T: Form>(
@@ -395,7 +395,7 @@ impl<Path: Addressable> InnerClient<Path> {
         initial: T,
     ) -> Result<(TypedValueDownlink<T>, ValueDownlinkReceiver<T>), ClientError<Path>>
     where
-        T: ValidatedForm + Send + 'static,
+        T: Form + ValidatedForm + Send + 'static,
     {
         self.downlinks
             .subscribe_value(initial, path)

@@ -211,7 +211,7 @@ impl<T: Addressable> TryFrom<AddressableWrapper<T>> for RoutingPath {
 
 pub(crate) struct RoutingTable<Path: Addressable> {
     addresses: HashMap<RoutingPath, RoutingAddr>,
-    pub(crate) endpoints: HashMap<RoutingAddr, ConnectionRegistrator<Path>>,
+    endpoints: HashMap<RoutingAddr, ConnectionRegistrator<Path>>,
 }
 
 impl<Path: Addressable> RoutingTable<Path> {
@@ -222,8 +222,13 @@ impl<Path: Addressable> RoutingTable<Path> {
         }
     }
 
-    pub(crate) fn try_resolve_addr(&self, routing_path: &RoutingPath) -> Option<RoutingAddr> {
-        self.addresses.get(routing_path).copied()
+    pub(crate) fn try_resolve_addr(
+        &self,
+        routing_path: &RoutingPath,
+    ) -> Option<(RoutingAddr, ConnectionRegistrator<Path>)> {
+        let routing_addr = self.addresses.get(routing_path).copied()?;
+        let endpoint = self.try_resolve_endpoint(&routing_addr)?;
+        Some((routing_addr, endpoint))
     }
 
     pub(crate) fn try_resolve_endpoint(

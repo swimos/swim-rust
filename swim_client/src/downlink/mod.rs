@@ -33,7 +33,6 @@ use crate::downlink::typed::{
     UntypedCommandDownlink, UntypedEventDownlink, UntypedEventReceiver, UntypedMapDownlink,
     UntypedMapReceiver, UntypedValueDownlink, UntypedValueReceiver,
 };
-use crate::utilities::errors::Recoverable;
 use either::Either;
 use futures::future::FusedFuture;
 use futures::select_biased;
@@ -52,6 +51,7 @@ use swim_common::sink::item::ItemSender;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
+use utilities::errors::Recoverable;
 use utilities::sync::{promise, topic};
 
 pub use crate::downlink::subscription::Downlinks;
@@ -592,7 +592,7 @@ where
     Actions: FusedStream<Item = Action> + Unpin + 'static,
     SM: DownlinkStateMachine<M, Action>,
 {
-    let next = if state_machine.handle_requests(&state) {
+    let next = if state_machine.handle_requests(state) {
         select_biased! {
             maybe_upd = message_stream.next() => Some(maybe_upd.map(Either::Left)),
             maybe_act = actions.next() => maybe_act.map(|act| Some(Either::Right(act)))

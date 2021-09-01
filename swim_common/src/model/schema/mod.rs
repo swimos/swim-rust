@@ -691,7 +691,7 @@ fn equal_cmp(this: &Value, other: &StandardSchema) -> Option<Ordering> {
 
 fn in_range_int_cmp(this: &Range<i64>, other: &StandardSchema) -> Option<Ordering> {
     match other {
-        StandardSchema::InRangeInt(other_range) => this.partial_cmp(&other_range),
+        StandardSchema::InRangeInt(other_range) => this.partial_cmp(other_range),
         StandardSchema::InRangeUint(other_range) => {
             i64_range_to_big_int_range(this).partial_cmp(&u64_range_to_big_int_range(other_range))
         }
@@ -704,7 +704,7 @@ fn in_range_int_cmp(this: &Range<i64>, other: &StandardSchema) -> Option<Orderin
 
 fn in_range_uint_cmp(this: &Range<u64>, other: &StandardSchema) -> Option<Ordering> {
     match other {
-        StandardSchema::InRangeUint(other_range) => this.partial_cmp(&other_range),
+        StandardSchema::InRangeUint(other_range) => this.partial_cmp(other_range),
         StandardSchema::InRangeBigInt(other_range) => {
             u64_range_to_big_int_range(this).partial_cmp(other_range)
         }
@@ -714,14 +714,14 @@ fn in_range_uint_cmp(this: &Range<u64>, other: &StandardSchema) -> Option<Orderi
 
 fn in_range_big_int_cmp(this: &Range<BigInt>, other: &StandardSchema) -> Option<Ordering> {
     match other {
-        StandardSchema::InRangeBigInt(other_range) => this.partial_cmp(&other_range),
+        StandardSchema::InRangeBigInt(other_range) => this.partial_cmp(other_range),
         _ => None,
     }
 }
 
 fn in_range_float_cmp(this: &Range<f64>, other: &StandardSchema) -> Option<Ordering> {
     match other {
-        StandardSchema::InRangeFloat(other_range) => this.partial_cmp(&other_range),
+        StandardSchema::InRangeFloat(other_range) => this.partial_cmp(other_range),
         StandardSchema::Finite if this.is_bounded() => Some(Ordering::Less),
         StandardSchema::NonNan if !this.is_doubly_unbounded() => Some(Ordering::Less),
         _ => None,
@@ -744,7 +744,7 @@ fn text_cmp(this: &TextSchema, other: &StandardSchema) -> Option<Ordering> {
 
 fn all_items_cmp(this: &ItemSchema, other: &StandardSchema) -> Option<Ordering> {
     match other {
-        StandardSchema::AllItems(other_schema) => this.partial_cmp(&other_schema),
+        StandardSchema::AllItems(other_schema) => this.partial_cmp(other_schema),
 
         StandardSchema::HeadAttribute {
             schema: _,

@@ -109,7 +109,6 @@ where
     ///
     /// #Arguments
     ///
-    /// * `addr` - Address of the connection.
     /// * `tag`  - The routing address of the connection.
     /// * `ws_stream` - The joined sink/stream that implements the web sockets protocol.
     /// * `router` - Router to route incoming messages to the appropriate destination.
@@ -494,7 +493,7 @@ where
     R: Router,
 {
     let target_addr = router
-        .lookup(None, RelativeUri::from_str(&target.node.as_str())?)
+        .lookup(None, RelativeUri::from_str(target.node.as_str())?)
         .await?;
     Ok(router.resolve_sender(target_addr).await?)
 }
