@@ -6,8 +6,11 @@ use url::Url;
 use bytes::BytesMut;
 use futures::stream::{Stream, StreamExt};
 use futures::SinkExt;
-use ratchet::ws::{client, WebSocket};
-use ratchet::{Error, Message, NoExt, NoExtProxy, PayloadType, TryIntoRequest, WebSocketConfig};
+use ratchet::{client, WebSocket};
+use ratchet::{
+    Error, Message, NoExt, NoExtProxy, PayloadType, ProtocolRegistry, TryIntoRequest,
+    WebSocketConfig,
+};
 use std::io::ErrorKind;
 use std::time::Duration;
 use tokio::net::TcpStream;
@@ -23,6 +26,7 @@ async fn subscribe(url: &str) -> Result<WebSocket<TcpStream, NoExt>, Error> {
         stream,
         url.try_into_request().unwrap(),
         NoExtProxy,
+        ProtocolRegistry::default(),
     )
     .await
     .map(|(l, _)| l)

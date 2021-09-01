@@ -60,6 +60,7 @@ pub async fn client<S, E>(
     mut stream: S,
     request: Request,
     extension: E,
+    subprotocols: ProtocolRegistry,
 ) -> Result<(WebSocket<S, E::Extension>, Option<String>), Error>
 where
     S: WebSocketStream,
@@ -75,7 +76,7 @@ where
         &mut stream,
         request,
         extension,
-        ProtocolRegistry::default(),
+        subprotocols,
         &mut read_buffer,
     )
     .await?;

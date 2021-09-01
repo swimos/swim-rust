@@ -21,12 +21,15 @@ mod framed;
 mod handshake;
 mod protocol;
 
-pub mod ws;
+mod builder;
+mod ws;
 
-pub use crate::errors::Error;
 pub use crate::extensions::{deflate::*, ext::*, Extension, ExtensionProvider};
-pub use handshake::TryIntoRequest;
+pub use builder::WebSocketClientBuilder;
+pub use errors::*;
+pub use handshake::{ProtocolRegistry, TryIntoRequest};
 pub use protocol::{Message, PayloadType, WebSocketConfig};
+pub use ws::{client, WebSocket};
 
 use tokio::io::{AsyncRead, AsyncWrite};
 

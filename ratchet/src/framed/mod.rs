@@ -260,8 +260,6 @@ where
         }
     }
 
-    // todo remove AsMut requirement, write the payload to the write buffer and then mask it
-    //  directly and then remove the unsafe calls when creating the mut str in the unit tests
     pub async fn write<A>(
         &mut self,
         opcode: OpCode,
