@@ -592,7 +592,7 @@ where
     Actions: FusedStream<Item = Action> + Unpin + 'static,
     SM: DownlinkStateMachine<M, Action>,
 {
-    let next = if state_machine.handle_requests(&state) {
+    let next = if state_machine.handle_requests(state) {
         select_biased! {
             maybe_upd = message_stream.next() => Some(maybe_upd.map(Either::Left)),
             maybe_act = actions.next() => maybe_act.map(|act| Some(Either::Right(act)))

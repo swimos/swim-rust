@@ -59,31 +59,6 @@ fn test_generic() {
 }
 
 #[test]
-fn test_generic_skip() {
-    #[derive(Form, Debug, PartialEq, Clone)]
-    enum S<F, G> {
-        A {
-            f: F,
-        },
-        B {
-            #[form(skip)]
-            g: G,
-            i: i32,
-        },
-    }
-
-    let s = S::B::<i32, i32> { g: 0, i: 1 };
-    let rec = Value::Record(
-        vec![Attr::of("B")],
-        vec![Item::Slot(Value::text("i"), Value::Int32Value(1))],
-    );
-
-    assert_eq!(s.as_value(), rec);
-    assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
-    assert_eq!(S::try_convert(rec), Ok(s));
-}
-
-#[test]
 fn test_skip() {
     {
         #[derive(Form, Debug, PartialEq, Clone)]
@@ -254,7 +229,6 @@ fn test_tuple() {
 fn test_rename() {
     #[derive(Form, Debug, PartialEq, Clone)]
     enum S {
-        A(#[form(name = "A::a")] i32, i64),
         B {
             #[form(name = "B::a")]
             a: i32,
@@ -262,19 +236,6 @@ fn test_rename() {
         },
     }
 
-    {
-        let s = S::A(1, 2);
-        let rec = Value::Record(
-            vec![Attr::of("A")],
-            vec![
-                Item::Slot(Value::text("A::a"), Value::Int32Value(1)),
-                Item::ValueItem(Value::Int64Value(2)),
-            ],
-        );
-        assert_eq!(s.as_value(), rec);
-        assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
-        assert_eq!(S::try_convert(rec), Ok(s));
-    }
     {
         let s = S::B { a: 1, b: 2 };
         let rec = Value::Record(
@@ -294,7 +255,7 @@ fn test_rename() {
 fn body_replaces() {
     #[derive(Debug, PartialEq, Clone, Form)]
     enum EnumBodyReplace {
-        A(i32, #[form(body)] Value),
+        A(#[form(name = "a")] i32, #[form(body)] Value),
     }
 
     let body = Value::Record(
@@ -307,10 +268,7 @@ fn body_replaces() {
 
     let rec = Value::Record(
         vec![
-            Attr::of((
-                "A",
-                Value::Record(Vec::new(), vec![Item::ValueItem(Value::Int32Value(1033))]),
-            )),
+            Attr::of(("A", Value::Record(Vec::new(), vec![Item::slot("a", 1033)]))),
             Attr::of("attr2"),
         ],
         vec![
@@ -330,27 +288,34 @@ fn body_replaces() {
 fn body_replaces2() {
     #[derive(Form, Debug, PartialEq, Clone)]
     enum BodyReplace2 {
-        A(i32, i32, i32, #[form(body)] i32),
+        A {
+            a: i32,
+            b: i32,
+            c: i32,
+            #[form(body)]
+            d: i32,
+        },
     }
 
-    let body = vec![Item::ValueItem(Value::Int32Value(4))];
+    let body = vec![Item::of(4)];
 
     let rec = Value::Record(
         vec![Attr::of((
             "A",
             Value::Record(
                 Vec::new(),
-                vec![
-                    Item::ValueItem(Value::Int32Value(1)),
-                    Item::ValueItem(Value::Int32Value(2)),
-                    Item::ValueItem(Value::Int32Value(3)),
-                ],
+                vec![Item::slot("a", 1), Item::slot("b", 2), Item::slot("c", 3)],
             ),
         ))],
         body.clone(),
     );
 
-    let br = BodyReplace2::A(1, 2, 3, 4);
+    let br = BodyReplace2::A {
+        a: 1,
+        b: 2,
+        c: 3,
+        d: 4,
+    };
 
     assert_eq!(br.as_value(), rec);
     assert_eq!(BodyReplace2::try_from_value(&rec), Ok(br.clone()));

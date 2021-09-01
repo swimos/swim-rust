@@ -465,7 +465,7 @@ where
     let target_addr = router
         .lookup(
             None,
-            RelativeUri::from_str(&target.node.as_str())?,
+            RelativeUri::from_str(target.node.as_str())?,
             origin.clone(),
         )
         .await?;

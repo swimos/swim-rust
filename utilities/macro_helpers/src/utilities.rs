@@ -61,14 +61,14 @@ pub fn deconstruct_type(
 
     if as_ref {
         match compound_type {
-            CompoundTypeKind::Struct => quote! { { #(ref #fields,)* } },
+            CompoundTypeKind::Labelled => quote! { { #(ref #fields,)* } },
             CompoundTypeKind::Tuple => quote! { ( #(ref #fields,)* ) },
             CompoundTypeKind::NewType => quote! { ( #(ref #fields,)* ) },
             CompoundTypeKind::Unit => quote!(),
         }
     } else {
         match compound_type {
-            CompoundTypeKind::Struct => quote! { { #(#fields,)* } },
+            CompoundTypeKind::Labelled => quote! { { #(#fields,)* } },
             CompoundTypeKind::Tuple => quote! { ( #(#fields,)* ) },
             CompoundTypeKind::NewType => quote! { ( #(#fields,)* ) },
             CompoundTypeKind::Unit => quote!(),

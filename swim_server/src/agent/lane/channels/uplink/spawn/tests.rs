@@ -32,7 +32,8 @@ use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_common::form::{Form, FormErr};
+use swim_common::form::structural::read::ReadError;
+use swim_common::form::Form;
 use swim_common::model::Value;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
@@ -55,18 +56,8 @@ use utilities::uri::RelativeUri;
 
 const INIT: i32 = 42;
 
-#[derive(Debug)]
+#[derive(Debug, Form)]
 struct Message(i32);
-
-impl Form for Message {
-    fn as_value(&self) -> Value {
-        Value::Int32Value(self.0)
-    }
-
-    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
-        i32::try_from_value(value).map(|n| Message(n))
-    }
-}
 
 //A minimal suite of fake uplink and router implementations which which to test the spawner.
 
@@ -155,7 +146,7 @@ impl UplinkStateMachine<i32> for TestStateMachine {
         if event >= 0 {
             Ok(Some(Message(event)))
         } else {
-            Err(UplinkError::InconsistentForm(FormErr::Malformatted))
+            Err(UplinkError::InconsistentForm(ReadError::UnexpectedItem))
         }
     }
 
@@ -692,6 +683,6 @@ async fn uplink_failure() {
 
     let (_, errs) = join(io_task, spawn_task).await;
     assert!(
-        matches!(errs.as_slice(), [UplinkErrorReport { error: UplinkError::InconsistentForm(FormErr::Malformatted), addr: a }] if *a == addr)
+        matches!(errs.as_slice(), [UplinkErrorReport { error: UplinkError::InconsistentForm(ReadError::UnexpectedItem), addr: a }] if *a == addr)
     );
 }

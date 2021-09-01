@@ -137,7 +137,7 @@ pub(crate) struct PlaneActiveRoutes {
 
 impl PlaneActiveRoutes {
     fn get_endpoint(&self, addr: &RoutingAddr) -> Option<&LocalEndpoint> {
-        self.local_endpoints.get(&addr)
+        self.local_endpoints.get(addr)
     }
 
     fn get_endpoint_for_route(&self, route: &RelativeUri) -> Option<&LocalEndpoint> {

@@ -127,7 +127,7 @@ impl RoutingTable {
         if let Some(addr) = open_sockets.get(&sock_addr) {
             debug_assert!(!resolved_forward.contains_key(&host));
             resolved_forward.insert(host.clone(), *addr);
-            let handle = endpoints.get_mut(&addr).expect("Inconsistent table.");
+            let handle = endpoints.get_mut(addr).expect("Inconsistent table.");
             handle.bindings.insert(host);
             Some(*addr)
         } else {
