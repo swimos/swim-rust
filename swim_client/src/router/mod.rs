@@ -114,8 +114,7 @@ impl Router for TopLevelClientRouter {
                     }
                 }
             } else {
-                // Remote will always route through the bidirectional connection
-                unimplemented!()
+                Err(ResolutionError::unresolvable(addr.to_string()))
             }
         }
         .boxed()
@@ -152,7 +151,7 @@ impl Router for TopLevelClientRouter {
     fn lookup(
         &mut self,
         host: Option<Url>,
-        _route: RelativeUri,
+        route: RelativeUri,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         async move {
             let TopLevelClientRouter { remote_sender, .. } = self;
@@ -177,10 +176,9 @@ impl Router for TopLevelClientRouter {
                         }
                     }
                 }
-                None => {
-                    // Remote will always route through the bidirectional connection
-                    unimplemented!()
-                }
+                None => Err(RouterError::ConnectionFailure(ConnectionError::Resolution(
+                    ResolutionError::unresolvable(route.to_string()),
+                ))),
             }
         }
         .boxed()
