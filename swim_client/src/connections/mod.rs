@@ -198,7 +198,7 @@ impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> 
                 _ = stop_rx => None
             };
 
-            if let Some(ss) = request {
+            if let Some(request) = request {
                 match ss {
                     DownlinkRoutingRequest::Connect {
                         target,
