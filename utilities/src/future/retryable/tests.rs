@@ -19,9 +19,7 @@ use futures::Future;
 use pin_project::pin_project;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
-use std::time::Duration;
 use tokio::sync::mpsc;
-use tokio::time;
 
 #[pin_project]
 struct MpscSender<F, Fut> {
@@ -88,15 +86,6 @@ where
 }
 
 async fn send(tx: mpsc::Sender<i32>, value: i32) -> Result<i32, SendErr> {
-    if tx.send(value).await.is_err() {
-        Err(SendErr::Err)
-    } else {
-        Ok(value)
-    }
-}
-
-async fn send_delayed(tx: mpsc::Sender<i32>, value: i32) -> Result<i32, SendErr> {
-    time::sleep(Duration::from_millis(10)).await;
     if tx.send(value).await.is_err() {
         Err(SendErr::Err)
     } else {

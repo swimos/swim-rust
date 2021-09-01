@@ -29,7 +29,7 @@ use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_client::interface::InnerClient;
+use swim_client::interface::DownlinksContext;
 use swim_common::routing::{Router, TaggedEnvelope};
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::Path;
@@ -109,7 +109,7 @@ impl<Clk: Clock, Delegate: Router + 'static> AgentRoute<Clk, EnvChannel, PlaneRo
         parameters: HashMap<String, String>,
         execution_config: AgentExecutionConfig,
         _clock: Clk,
-        _client: InnerClient<Path>,
+        _client: DownlinksContext<Path>,
         incoming_envelopes: EnvChannel,
         mut router: PlaneRouter<Delegate>,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
@@ -154,7 +154,7 @@ impl<Clk: Clock, Delegate> AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>>
         parameters: HashMap<String, String>,
         execution_config: AgentExecutionConfig,
         _clock: Clk,
-        _client: InnerClient<Path>,
+        _client: DownlinksContext<Path>,
         incoming_envelopes: EnvChannel,
         _router: PlaneRouter<Delegate>,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {

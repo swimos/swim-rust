@@ -12,7 +12,6 @@
 // // See the License for the specific language governing permissions and
 // // limitations under the License.
 
-use crate::utilities::sync::promise;
 use std::collections::HashMap;
 use swim_common::routing::error::ConnectionError;
 use swim_common::routing::error::ResolutionError;
@@ -21,6 +20,7 @@ use swim_common::routing::remote::RemoteRoutingRequest;
 use swim_common::routing::{RoutingAddr, TaggedEnvelope, TaggedSender};
 use tokio::sync::mpsc;
 use url::Url;
+use utilities::sync::promise;
 
 pub(crate) struct FakeConnections {
     outgoing_channels: HashMap<Url, TaggedSender>,

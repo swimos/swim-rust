@@ -42,7 +42,7 @@ struct TestAgent(TestModel);
 struct TestContext;
 
 impl AgentContext<TestAgent> for TestContext {
-    fn downlinks_context(&self) -> DownlinnksContext<Path> {
+    fn downlinks_context(&self) -> DownlinksContext<Path> {
         //Todo dm
         unimplemented!()
     }

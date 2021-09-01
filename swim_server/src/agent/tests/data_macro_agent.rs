@@ -40,7 +40,7 @@ use stm::transaction::atomically;
 use swim_client::configuration::downlink::{ClientParams, ConfigHierarchy};
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
-use swim_client::interface::InnerClient;
+use swim_client::interface::DownlinksContext;
 use swim_client::router::ClientRouterFactory;
 use swim_common::routing::RoutingAddr;
 use tokio::sync::{mpsc, Mutex};
@@ -561,7 +561,7 @@ async fn agent_loop() {
     let (downlinks, _downlinks_task) =
         Downlinks::new(conn_pool, Arc::new(ConfigHierarchy::default()), close_rx);
 
-    let client = InnerClient::new(downlinks);
+    let client = DownlinksContext::new(downlinks);
 
     let (_, agent_proc) = provider.run(
         parameters,

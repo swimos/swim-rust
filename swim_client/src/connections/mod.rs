@@ -31,9 +31,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use swim_common::request::request_future::RequestError;
 use swim_common::request::Request;
-use swim_common::routing::error::{
-    CloseError, ConnectionError, ResolutionError, RouterError, Unresolvable,
-};
+use swim_common::routing::error::{CloseError, ConnectionError, ResolutionError, Unresolvable};
 use swim_common::routing::remote::RawRoute;
 use swim_common::routing::{
     BidirectionalRoute, CloseReceiver, ConnectionDropped, Route, Router, RouterFactory,
@@ -99,12 +97,7 @@ impl<Path: Addressable> SwimConnPool<Path> {
 
         (
             SwimConnPool { client_tx },
-            PoolTask::new(
-                client_rx,
-                client_router_factory,
-                config,
-                stop_trigger,
-            ),
+            PoolTask::new(client_rx, client_router_factory, config, stop_trigger),
         )
     }
 }
@@ -276,7 +269,7 @@ impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> 
             }
 
             iteration_count += 1;
-            if iteration_count % config.yield_after == 0 {
+            if iteration_count % config.conn_pool_params.yield_after == 0 {
                 tokio::task::yield_now().await;
             }
         }
@@ -320,7 +313,7 @@ impl<Path: Addressable> ConnectionRegistrator<Path> {
         ConnectionRegistratorTask<Path, DelegateRouter>,
     ) {
         let (registrator_tx, registrator_rx) =
-            mpsc::channel(config.conn_pool_params.buffer_size().get());
+            mpsc::channel(config.conn_pool_params.buffer_size.get());
 
         (
             ConnectionRegistrator { registrator_tx },
@@ -415,7 +408,7 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
 
         let (mut sender, receiver, remote_drop_rx) = open_connection(
             target.clone(),
-            config.router_params.retry_strategy(),
+            config.router_params.retry_strategy,
             &mut client_router,
             sleep,
             stop_trigger.clone(),
@@ -427,7 +420,7 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
             None => {
                 let (local_drop_tx, local_drop_rx) = promise::promise();
                 let (envelope_sender, envelope_receiver) =
-                    mpsc::channel(config.conn_pool_params.buffer_size().get());
+                    mpsc::channel(config.conn_pool_params.buffer_size.get());
                 let raw_route = RawRoute::new(envelope_sender, local_drop_rx);
 
                 (envelope_receiver, Some(raw_route), Some(local_drop_tx))
@@ -488,14 +481,12 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
                 })) => {
                     let receiver = match subscribers.entry(path.relative_path()) {
                         Entry::Occupied(mut entry) => {
-                            let (tx, rx) =
-                                mpsc::channel(config.conn_pool_params.buffer_size().get());
+                            let (tx, rx) = mpsc::channel(config.conn_pool_params.buffer_size.get());
                             entry.get_mut().insert(tx);
                             rx
                         }
                         Entry::Vacant(vacancy) => {
-                            let (tx, rx) =
-                                mpsc::channel(config.conn_pool_params.buffer_size().get());
+                            let (tx, rx) = mpsc::channel(config.conn_pool_params.buffer_size.get());
                             let mut slab = Slab::new();
                             slab.insert(tx);
 
@@ -533,7 +524,7 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
                     if connection_dropped.is_recoverable() {
                         match open_connection(
                             target.clone(),
-                            config.router_params.retry_strategy(),
+                            config.router_params.retry_strategy,
                             &mut client_router,
                             sleep,
                             stop_trigger.clone(),
@@ -603,7 +594,7 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
             }
 
             iteration_count += 1;
-            if iteration_count % config.yield_after == 0 {
+            if iteration_count % config.conn_pool_params.yield_after == 0 {
                 tokio::task::yield_now().await;
             }
         }
