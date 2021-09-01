@@ -15,7 +15,6 @@
 mod enumeration;
 mod impls;
 mod structure;
-mod tag;
 mod validated;
 
 use trybuild::TestCases;

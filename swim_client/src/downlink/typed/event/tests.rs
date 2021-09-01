@@ -24,7 +24,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swim_common::form::FormErr;
+use swim_common::form::structural::read::ReadError;
 use swim_common::form::ValidatedForm;
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
@@ -135,7 +135,7 @@ fn typed_view_with_event_initial() {
         event: MapEvent::Initial,
     };
 
-    let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();
+    let typed: Result<TypedViewWithEvent<i32, i32>, ReadError> = raw.try_into();
 
     assert_eq!(
         typed,
@@ -153,7 +153,7 @@ fn typed_view_with_event_clear() {
         event: MapEvent::Clear,
     };
 
-    let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();
+    let typed: Result<TypedViewWithEvent<i32, i32>, ReadError> = raw.try_into();
 
     assert_eq!(
         typed,
@@ -171,7 +171,7 @@ fn typed_view_with_event_take() {
         event: MapEvent::Take(1),
     };
 
-    let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();
+    let typed: Result<TypedViewWithEvent<i32, i32>, ReadError> = raw.try_into();
 
     assert_eq!(
         typed,
@@ -189,7 +189,7 @@ fn typed_view_with_event_skip() {
         event: MapEvent::Drop(1),
     };
 
-    let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();
+    let typed: Result<TypedViewWithEvent<i32, i32>, ReadError> = raw.try_into();
 
     assert_eq!(
         typed,
@@ -207,7 +207,7 @@ fn typed_view_with_event_good_update() {
         event: MapEvent::Update(Value::Int32Value(2)),
     };
 
-    let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();
+    let typed: Result<TypedViewWithEvent<i32, i32>, ReadError> = raw.try_into();
 
     assert_eq!(
         typed,
@@ -225,7 +225,7 @@ fn typed_view_with_event_bad_update() {
         event: MapEvent::Update(Value::text("hello")),
     };
 
-    let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();
+    let typed: Result<TypedViewWithEvent<i32, i32>, ReadError> = raw.try_into();
 
     assert!(typed.is_err());
 }
@@ -237,7 +237,7 @@ fn typed_view_with_event_good_remove() {
         event: MapEvent::Remove(Value::Int32Value(2)),
     };
 
-    let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();
+    let typed: Result<TypedViewWithEvent<i32, i32>, ReadError> = raw.try_into();
 
     assert_eq!(
         typed,
@@ -255,7 +255,7 @@ fn typed_view_with_event_bad_remove() {
         event: MapEvent::Remove(Value::text("hello")),
     };
 
-    let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();
+    let typed: Result<TypedViewWithEvent<i32, i32>, ReadError> = raw.try_into();
 
     assert!(typed.is_err());
 }
