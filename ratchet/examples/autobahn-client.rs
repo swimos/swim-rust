@@ -33,16 +33,9 @@ async fn get_case_count() -> Result<u32, Error> {
     stream.set_nodelay(true).unwrap();
 
     let mut websocket = subscribe("ws://localhost:9001/getCaseCount").await.unwrap();
-
-    println!("get_case_count Connected");
     let mut buf = BytesMut::new();
-    let msg = websocket.read(&mut buf).await?;
-    println!("get_case_count got message");
 
-    // websocket.close().await;
-    println!("get_case_count closed");
-
-    match msg {
+    match websocket.read(&mut buf).await? {
         Message::Text => {
             let count = String::from_utf8(buf.to_vec()).unwrap();
             Ok(count.parse::<u32>().unwrap())
@@ -58,7 +51,6 @@ async fn update_reports() -> Result<(), Error> {
     ))
     .await
     .unwrap();
-    // websocket.close().await
     Ok(())
 }
 

@@ -200,13 +200,22 @@ where
                     }
                     Item::Close(reason) => {
                         *closed = true;
-                        framed
-                            .write_close(reason.clone().unwrap_or(CloseReason {
-                                code: CloseCode::Protocol,
-                                description: None,
-                            }))
-                            .await?;
-                        return Ok(Message::Close(reason));
+                        return match reason {
+                            Some(reason) => {
+                                framed.write_close(reason.clone()).await?;
+                                Ok(Message::Close(Some(reason)))
+                            }
+                            None => {
+                                framed
+                                    .write(
+                                        OpCode::ControlCode(ControlCode::Close),
+                                        HeaderFlags::FIN,
+                                        &mut [],
+                                    )
+                                    .await?;
+                                Ok(Message::Close(None))
+                            }
+                        };
                     }
                 },
                 Err(e) => {

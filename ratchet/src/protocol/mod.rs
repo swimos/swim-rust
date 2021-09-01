@@ -232,7 +232,7 @@ impl TryFrom<[u8; 2]> for CloseCode {
             1000 => Ok(CloseCode::Normal),
             1001 => Ok(CloseCode::GoingAway),
             1002 => Ok(CloseCode::Protocol),
-            1003 => Ok(CloseCode::Unexpected),
+            1003 => Ok(CloseCode::Unsupported),
             1005 => Ok(CloseCode::Status),
             1006 => Ok(CloseCode::Abnormal),
             1007 => Ok(CloseCode::Invalid),
