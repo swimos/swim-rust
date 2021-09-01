@@ -12,9 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::errors::Error;
-use crate::fixture::{expect_err, EmptyIo};
-use crate::framed::{read_frame, CodecFlags, CodecItem, FramedIo};
+use crate::errors::{Error, ProtocolError};
+use crate::fixture::{expect_err, mock, EmptyIo, MirroredIo};
+use crate::framed::{
+    CodecFlags, DecodeResult, FrameDecoder, FrameEncoder, FramedIo, FramedRead, FramedWrite, Item,
+    ReadError,
+};
 use crate::protocol::{CloseCode, CloseReason, DataCode, FrameHeader, Message, OpCode};
 use crate::protocol::{HeaderFlags, Role};
 use bytes::BytesMut;
@@ -34,98 +37,141 @@ async fn frame_text() {
     let mut framed = FramedIo::new(EmptyIo, bytes, Role::Server, usize::MAX);
     let item = framed.read_next(&mut out).await.unwrap();
 
-    assert_eq!(item, CodecItem::Text);
+    assert_eq!(item, Item::Text);
     assert_eq!(
         std::str::from_utf8(out.as_ref()).unwrap(),
         "Bonsoir, Elliot"
     );
 }
-//
-// #[test]
-// fn continuation_text() {
-//     let mut buffer = BytesMut::new();
-//     let mut codec = Codec::new(Role::Server, usize::MAX);
-//
-//     let input = "a bunch of characters that form a string";
-//     let mut iter = input.as_bytes().chunks(5).peekable();
-//     let first_frame = Frame::new(
-//         FrameHeader::new(
-//             OpCode::DataCode(DataCode::Text),
-//             HeaderFlags::empty(),
-//             Some(0),
-//         ),
-//         iter.next().unwrap().to_vec(),
-//     );
-//
-//     first_frame.write_into(&mut buffer);
-//
-//     while let Some(data) = iter.next() {
-//         let fin = iter.peek().is_none();
-//         let flags = HeaderFlags::from_bits_truncate(HeaderFlags::FIN.bits() & ((fin as u8) << 7));
-//         let frame = Frame::new(
-//             FrameHeader::new(OpCode::DataCode(DataCode::Continuation), flags, Some(0)),
-//             data.to_vec(),
-//         );
-//
-//         frame.write_into(&mut buffer);
-//     }
-//
-//     loop {
-//         match codec.decode(&mut buffer) {
-//             Ok(Some(message)) => {
-//                 assert_eq!(message, Message::Text(input.to_string()));
-//                 break;
-//             }
-//             Ok(None) => continue,
-//             Err(e) => panic!("{:?}", e),
-//         }
-//     }
-// }
-//
-// #[test]
-// fn double_cont() {
-//     let mut buffer = FragmentBuffer::new(usize::MAX);
-//     assert!(buffer.start_continuation(DataType::Binary, vec![1]).is_ok());
-//
-//     expect_err(
-//         buffer.start_continuation(DataType::Binary, vec![1]),
-//         ProtocolError::ContinuationAlreadyStarted,
-//     )
-// }
-//
-// #[test]
-// fn no_cont() {
-//     let mut buffer = FragmentBuffer::new(usize::MAX);
-//     expect_err(
-//         buffer.on_frame(vec![]),
-//         ProtocolError::ContinuationNotStarted,
-//     );
-// }
-//
-// #[test]
-// fn overflow_buffer() {
-//     let mut buffer = FragmentBuffer::new(5);
-//
-//     assert!(buffer
-//         .start_continuation(DataType::Binary, vec![1, 2, 3])
-//         .is_ok());
-//     assert!(buffer.on_frame(vec![4]).is_ok());
-//     expect_err(buffer.on_frame(vec![6, 7]), ProtocolError::FrameOverflow);
-// }
-//
-// // todo: move to decoder tests
-// #[test]
-// #[ignore]
-// fn invalid_utf8() {
-//     let mut buffer = FragmentBuffer::new(5);
-//
-//     assert!(buffer
-//         .start_continuation(DataType::Text, vec![0, 159, 146, 150])
-//         .is_ok());
-//     let error = buffer.finish_continuation().err().unwrap();
-//     assert!(error.is_encoding());
-// }
-//
+
+#[tokio::test]
+async fn continuation() {
+    let mut input = "a bunch of characters that form a string".to_string();
+    let mut iter = unsafe { input.as_bytes_mut() }.chunks_mut(5).peekable();
+    let mut framed = FramedIo::new(
+        MirroredIo::default(),
+        BytesMut::default(),
+        Role::Server,
+        usize::MAX,
+    );
+
+    framed
+        .write(
+            OpCode::DataCode(DataCode::Text),
+            HeaderFlags::empty(),
+            iter.next().unwrap().to_vec(),
+        )
+        .await
+        .unwrap();
+
+    while let Some(data) = iter.next() {
+        let fin = iter.peek().is_none();
+        let flags = HeaderFlags::from_bits_truncate((fin as u8) << 7);
+
+        framed
+            .write(OpCode::DataCode(DataCode::Continuation), flags, data)
+            .await
+            .unwrap();
+    }
+
+    framed.flags.set(CodecFlags::ROLE, false);
+
+    let mut rx_buf = BytesMut::default();
+    let message_type = framed.read_next(&mut rx_buf).await.unwrap();
+    match message_type {
+        Item::Text => {
+            let received = std::str::from_utf8(rx_buf.as_ref()).unwrap();
+            assert_eq!(input, received);
+        }
+        i => panic!("Unexpected message type: {:?}", i),
+    }
+}
+
+#[tokio::test]
+async fn double_cont() {
+    let mut framed = FramedIo::new(
+        MirroredIo::default(),
+        BytesMut::default(),
+        Role::Server,
+        usize::MAX,
+    );
+
+    framed
+        .write(
+            OpCode::DataCode(DataCode::Text),
+            HeaderFlags::empty(),
+            unsafe { "hello".to_string().as_bytes_mut() },
+        )
+        .await
+        .unwrap();
+
+    framed
+        .write(
+            OpCode::DataCode(DataCode::Text),
+            HeaderFlags::empty(),
+            unsafe { "hello again".to_string().as_bytes_mut() },
+        )
+        .await
+        .unwrap();
+
+    framed.flags.set(CodecFlags::ROLE, false);
+
+    let mut rx_buf = BytesMut::default();
+    expect_err(
+        framed.read_next(&mut rx_buf).await.map_err(|e| e.error),
+        ProtocolError::ContinuationAlreadyStarted,
+    );
+}
+
+#[tokio::test]
+async fn no_cont() {
+    let mut framed = FramedIo::new(
+        MirroredIo::default(),
+        BytesMut::default(),
+        Role::Server,
+        usize::MAX,
+    );
+
+    framed
+        .write(
+            OpCode::DataCode(DataCode::Continuation),
+            HeaderFlags::empty(),
+            unsafe { "hello".to_string().as_bytes_mut() },
+        )
+        .await
+        .unwrap();
+
+    framed.flags.set(CodecFlags::ROLE, false);
+
+    let mut rx_buf = BytesMut::default();
+    expect_err(
+        framed.read_next(&mut rx_buf).await.map_err(|e| e.error),
+        ProtocolError::ContinuationNotStarted,
+    );
+}
+
+#[tokio::test]
+async fn overflow_buffer() {
+    let mut framed = FramedIo::new(MirroredIo::default(), BytesMut::default(), Role::Server, 7);
+
+    framed
+        .write(
+            OpCode::DataCode(DataCode::Text),
+            HeaderFlags::empty(),
+            unsafe { "Houston, we have a problem.".to_string().as_bytes_mut() },
+        )
+        .await
+        .unwrap();
+
+    framed.flags.set(CodecFlags::ROLE, false);
+
+    let mut rx_buf = BytesMut::default();
+    expect_err(
+        framed.read_next(&mut rx_buf).await.map_err(|e| e.error),
+        ProtocolError::FrameOverflow,
+    );
+}
+
 // fn ok_eq<O>(result: Result<O, Error>, eq: O)
 // where
 //     O: PartialEq + Debug,

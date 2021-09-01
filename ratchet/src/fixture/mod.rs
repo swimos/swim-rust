@@ -220,6 +220,7 @@ where
     T: StdError + PartialEq + Any,
 {
     let error = result.expect_err(&format!("Expected a {}", type_name::<T>()));
+    println!("{}", error);
     let protocol_error = error.downcast_ref::<T>().unwrap();
     assert_eq!(protocol_error, &expected);
 }
@@ -242,6 +243,44 @@ impl AsyncWrite for EmptyIo {
         _buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
         Poll::Ready(Ok(0))
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+        Poll::Ready(Ok(()))
+    }
+}
+
+#[derive(Default)]
+pub struct MirroredIo(pub BytesMut);
+
+impl AsyncRead for MirroredIo {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        let rx_buf = &mut self.as_mut().0;
+        let cnt = std::cmp::min(rx_buf.len(), buf.remaining());
+        let (a, b) = rx_buf.split_at(cnt);
+
+        buf.put_slice(a);
+        *rx_buf = BytesMut::from(b);
+        Poll::Ready(Ok(()))
+    }
+}
+
+impl AsyncWrite for MirroredIo {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize, io::Error>> {
+        self.get_mut().0.put_slice(buf);
+        Poll::Ready(Ok(buf.len()))
     }
 
     fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {

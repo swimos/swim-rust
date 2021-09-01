@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use crate::protocol::{
     apply_mask, CloseCode, CloseCodeParseErr, CloseReason, ControlCode, DataCode, FrameHeader,
     HeaderFlags, OpCode, OpCodeParseErr, Role,
@@ -7,6 +10,7 @@ use bytes::{BufMut, BytesMut};
 use std::str::Utf8Error;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
+use crate::errors::ErrorKind::Protocol;
 use crate::errors::{Error, ErrorKind, ProtocolError};
 use bytes::Buf;
 use either::Either;
@@ -14,6 +18,7 @@ use nanorand::{WyRand, RNG};
 use std::convert::TryFrom;
 
 pub const CONTROL_FRAME_LEN: &str = "Control frame length greater than 125";
+pub const FRAME_OVERFLOW: &str = "Payload length exceeded maximum permitted size";
 pub(crate) const CONST_STARTED: &str = "Continuation already started";
 pub(crate) const CONST_NOT_STARTED: &str = "Continuation not started";
 pub(crate) const ILLEGAL_CLOSE_CODE: &str = "Received a reserved close code";
@@ -316,6 +321,8 @@ where
         }
     }
 
+    // todo remove AsMut requirement, write the payload to the write buffer and then mask it
+    //  directly and then remove the unsafe calls when creating the mut str in the unit tests
     pub async fn write<A>(
         &mut self,
         opcode: OpCode,
@@ -353,6 +360,13 @@ where
 
             match header.opcode {
                 OpCode::DataCode(data_code) => {
+                    if read_into.len() + payload.len() > *max_size {
+                        return Err(ReadError::with(
+                            FRAME_OVERFLOW,
+                            ProtocolError::FrameOverflow,
+                        ));
+                    }
+
                     read_into.put(payload);
 
                     match data_code {
@@ -380,7 +394,7 @@ where
                                 } else {
                                     return Err(ReadError::with(
                                         CONST_NOT_STARTED,
-                                        ProtocolError::FrameOverflow,
+                                        ProtocolError::ContinuationNotStarted,
                                     ));
                                 }
                             }
@@ -394,16 +408,9 @@ where
                             } else if header.flags.contains(HeaderFlags::FIN) {
                                 return Ok(Item::Text);
                             } else {
-                                if self.flags.contains(CodecFlags::R_CONT) {
-                                    return Err(ReadError::with(
-                                        CONST_STARTED,
-                                        ProtocolError::FrameOverflow,
-                                    ));
-                                } else {
-                                    self.flags
-                                        .insert(CodecFlags::R_CONT | CodecFlags::CONT_TYPE);
-                                    continue;
-                                }
+                                self.flags
+                                    .insert(CodecFlags::R_CONT | CodecFlags::CONT_TYPE);
+                                continue;
                             }
                         }
                         DataCode::Binary => {
@@ -415,16 +422,9 @@ where
                             } else if header.flags.contains(HeaderFlags::FIN) {
                                 return Ok(Item::Binary);
                             } else {
-                                if self.flags.contains(CodecFlags::R_CONT) {
-                                    return Err(ReadError::with(
-                                        CONTROL_FRAME_LEN,
-                                        ProtocolError::FrameOverflow,
-                                    ));
-                                } else {
-                                    debug_assert!(!self.flags.contains(CodecFlags::CONT_TYPE));
-                                    self.flags.insert(CodecFlags::R_CONT);
-                                    continue;
-                                }
+                                debug_assert!(!self.flags.contains(CodecFlags::CONT_TYPE));
+                                self.flags.insert(CodecFlags::R_CONT);
+                                continue;
                             }
                         }
                     }
