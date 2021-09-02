@@ -20,7 +20,7 @@ use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
 
 use swim_common::routing::remote::{RawRoute, RemoteRoutingRequest};
-use swim_common::routing::{BidirectionalRoute, PlaneRoutingRequest};
+use swim_common::routing::{BidirectionalRoute, BidirectionalRouter, PlaneRoutingRequest};
 use swim_common::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 use swim_common::warp::path::Path;
 use tokio::sync::mpsc;
@@ -158,34 +158,6 @@ impl Router for TopLevelServerRouter {
         .boxed()
     }
 
-    fn resolve_bidirectional(
-        &mut self,
-        host: Url,
-    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
-        async move {
-            let TopLevelServerRouter { remote_sender, .. } = self;
-
-            let (tx, rx) = oneshot::channel();
-            if remote_sender
-                .send(RemoteRoutingRequest::Bidirectional {
-                    host: host.clone(),
-                    request: Request::new(tx),
-                })
-                .await
-                .is_err()
-            {
-                Err(ResolutionError::router_dropped())
-            } else {
-                match rx.await {
-                    Ok(Ok(registrator)) => registrator.register().await,
-                    Ok(Err(_)) => Err(ResolutionError::unresolvable(host.to_string())),
-                    Err(_) => Err(ResolutionError::router_dropped()),
-                }
-            }
-        }
-        .boxed()
-    }
-
     fn lookup(
         &mut self,
         host: Option<Url>,
@@ -210,6 +182,36 @@ impl Router for TopLevelServerRouter {
                     Ok(Ok(addr)) => Ok(addr),
                     Ok(Err(err)) => Err(err),
                     Err(_) => Err(RouterError::RouterDropped),
+                }
+            }
+        }
+        .boxed()
+    }
+}
+
+impl BidirectionalRouter for TopLevelServerRouter {
+    fn resolve_bidirectional(
+        &mut self,
+        host: Url,
+    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
+        async move {
+            let TopLevelServerRouter { remote_sender, .. } = self;
+
+            let (tx, rx) = oneshot::channel();
+            if remote_sender
+                .send(RemoteRoutingRequest::Bidirectional {
+                    host: host.clone(),
+                    request: Request::new(tx),
+                })
+                .await
+                .is_err()
+            {
+                Err(ResolutionError::router_dropped())
+            } else {
+                match rx.await {
+                    Ok(Ok(registrator)) => registrator.register().await,
+                    Ok(Err(_)) => Err(ResolutionError::unresolvable(host.to_string())),
+                    Err(_) => Err(ResolutionError::router_dropped()),
                 }
             }
         }

@@ -156,18 +156,12 @@ impl BidirectionalRoute {
     }
 }
 
-/// Interface for interacting with the server [`Envelope`] router.
+/// Trait for routers capable of resolving addresses and returning connections to them.
+/// The connections can only be used to send [`Envelope`]s to the corresponding addresses.
 pub trait Router: Send + Sync {
     /// Given a routing address, resolve the corresponding router entry
     /// consisting of a sender that will push envelopes to the endpoint.
     fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>>;
-
-    /// Resolve a bidirectional remote connection for a given host.
-    /// This is currently NOT implemented for local connections.
-    fn resolve_bidirectional(
-        &mut self,
-        host: Url,
-    ) -> BoxFuture<Result<BidirectionalRoute, ResolutionError>>;
 
     /// Find and return the corresponding routing address of an endpoint for a given route.
     fn lookup(
@@ -175,6 +169,16 @@ pub trait Router: Send + Sync {
         host: Option<Url>,
         route: RelativeUri,
     ) -> BoxFuture<Result<RoutingAddr, RouterError>>;
+}
+
+/// Trait for routers capable of resolving addresses and returning bidirectional connections to them.
+/// The connections can be used to both send and receive [`Envelope`]s to and from the corresponding addresses.
+pub trait BidirectionalRouter: Router {
+    /// Resolve a bidirectional connection for a given host.
+    fn resolve_bidirectional(
+        &mut self,
+        host: Url,
+    ) -> BoxFuture<Result<BidirectionalRoute, ResolutionError>>;
 }
 
 /// Create router instances bound to particular routing addresses.

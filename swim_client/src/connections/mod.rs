@@ -34,8 +34,8 @@ use swim_common::request::Request;
 use swim_common::routing::error::{CloseError, ConnectionError, ResolutionError, Unresolvable};
 use swim_common::routing::remote::RawRoute;
 use swim_common::routing::{
-    BidirectionalRoute, CloseReceiver, ConnectionDropped, Route, Router, RouterFactory,
-    RoutingAddr, TaggedEnvelope, TaggedSender,
+    BidirectionalRoute, BidirectionalRouter, CloseReceiver, ConnectionDropped, Route, Router,
+    RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender,
 };
 use swim_common::warp::path::{Addressable, RelativePath};
 use swim_runtime::task::*;
@@ -92,7 +92,10 @@ impl<Path: Addressable> SwimConnPool<Path> {
         client_channel: ClientChannel<Path>,
         client_router_factory: ClientRouterFactory<Path, DelegateFac>,
         stop_trigger: CloseReceiver,
-    ) -> (SwimConnPool<Path>, PoolTask<Path, DelegateFac>) {
+    ) -> (SwimConnPool<Path>, PoolTask<Path, DelegateFac>)
+    where
+        <DelegateFac as RouterFactory>::Router: BidirectionalRouter,
+    {
         let (client_tx, client_rx) = client_channel;
 
         (
@@ -155,7 +158,10 @@ pub struct PoolTask<Path: Addressable, DelegateFac: RouterFactory> {
     stop_trigger: CloseReceiver,
 }
 
-impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> {
+impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac>
+where
+    <DelegateFac as RouterFactory>::Router: BidirectionalRouter,
+{
     fn new(
         client_rx: mpsc::Receiver<DownlinkRoutingRequest<Path>>,
         client_router_factory: ClientRouterFactory<Path, DelegateFac>,
@@ -303,7 +309,7 @@ pub(crate) struct ConnectionRegistrator<Path: Addressable> {
 }
 
 impl<Path: Addressable> ConnectionRegistrator<Path> {
-    fn new<DelegateRouter: Router>(
+    fn new<DelegateRouter: BidirectionalRouter>(
         config: ClientParams,
         target: Path,
         client_router: ClientRouter<Path, DelegateRouter>,
@@ -367,7 +373,7 @@ enum ConnectionRegistratorEvent<Path: Addressable> {
     ConnectionDropped(Arc<ConnectionDropped>),
 }
 
-struct ConnectionRegistratorTask<Path: Addressable, DelegateRouter: Router> {
+struct ConnectionRegistratorTask<Path: Addressable, DelegateRouter: BidirectionalRouter> {
     config: ClientParams,
     target: RegistrationTarget,
     registrator_rx: mpsc::Receiver<RegistratorRequest<Path>>,
@@ -375,7 +381,9 @@ struct ConnectionRegistratorTask<Path: Addressable, DelegateRouter: Router> {
     stop_trigger: CloseReceiver,
 }
 
-impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, DelegateRouter> {
+impl<Path: Addressable, DelegateRouter: BidirectionalRouter>
+    ConnectionRegistratorTask<Path, DelegateRouter>
+{
     fn new(
         config: ClientParams,
         target: Path,
@@ -643,7 +651,7 @@ async fn open_connection<Path, DelegateRouter, F, D>(
 ) -> Result<RawConnection, ConnectionError>
 where
     Path: Addressable,
-    DelegateRouter: Router,
+    DelegateRouter: BidirectionalRouter,
     F: Fn(Duration) -> D,
     D: Future<Output = ()>,
 {
@@ -691,7 +699,7 @@ async fn try_open_remote_connection<Path, DelegateRouter>(
 ) -> Result<RawConnection, ConnectionError>
 where
     Path: Addressable,
-    DelegateRouter: Router,
+    DelegateRouter: BidirectionalRouter,
 {
     let BidirectionalRoute {
         sender,
@@ -711,7 +719,7 @@ async fn try_open_local_connection<Path, DelegateRouter>(
 ) -> Result<RawConnection, ConnectionError>
 where
     Path: Addressable,
-    DelegateRouter: Router,
+    DelegateRouter: BidirectionalRouter,
 {
     let relative_uri = RelativeUri::try_from(target)
         .map_err(|e| ConnectionError::Resolution(ResolutionError::unresolvable(e.to_string())))?;

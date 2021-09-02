@@ -14,8 +14,8 @@
 
 use crate::request::Request;
 use crate::routing::remote::{RawRoute, RemoteRoutingRequest};
-use crate::routing::ResolutionError;
 use crate::routing::{BidirectionalRoute, RouterError};
+use crate::routing::{BidirectionalRouter, ResolutionError};
 use crate::routing::{Route, Router, RoutingAddr, TaggedSender};
 use futures::future::BoxFuture;
 use futures::FutureExt;
@@ -82,30 +82,6 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
         .boxed()
     }
 
-    fn resolve_bidirectional(
-        &mut self,
-        host: Url,
-    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
-        let RemoteRouter { request_tx, .. } = self;
-        async move {
-            let (tx, rx) = oneshot::channel();
-            let routing_req = RemoteRoutingRequest::Bidirectional {
-                host: host.clone(),
-                request: Request::new(tx),
-            };
-            if request_tx.send(routing_req).await.is_err() {
-                Err(ResolutionError::router_dropped())
-            } else {
-                match rx.await {
-                    Ok(Ok(registrator)) => registrator.register().await,
-                    Ok(Err(_)) => Err(ResolutionError::unresolvable(host.to_string())),
-                    Err(_) => Err(ResolutionError::router_dropped()),
-                }
-            }
-        }
-        .boxed()
-    }
-
     fn lookup(
         &mut self,
         host: Option<Url>,
@@ -132,6 +108,32 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
                 }
             } else {
                 delegate_router.lookup(host, route).await
+            }
+        }
+        .boxed()
+    }
+}
+
+impl<DelegateRouter: Router> BidirectionalRouter for RemoteRouter<DelegateRouter> {
+    fn resolve_bidirectional(
+        &mut self,
+        host: Url,
+    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
+        let RemoteRouter { request_tx, .. } = self;
+        async move {
+            let (tx, rx) = oneshot::channel();
+            let routing_req = RemoteRoutingRequest::Bidirectional {
+                host: host.clone(),
+                request: Request::new(tx),
+            };
+            if request_tx.send(routing_req).await.is_err() {
+                Err(ResolutionError::router_dropped())
+            } else {
+                match rx.await {
+                    Ok(Ok(registrator)) => registrator.register().await,
+                    Ok(Err(_)) => Err(ResolutionError::unresolvable(host.to_string())),
+                    Err(_) => Err(ResolutionError::router_dropped()),
+                }
             }
         }
         .boxed()
