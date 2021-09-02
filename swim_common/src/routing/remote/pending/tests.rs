@@ -16,13 +16,12 @@ use crate::request::Request;
 use crate::routing::error::{CloseError, CloseErrorKind, ConnectionError};
 use crate::routing::remote::pending::{PendingRequest, PendingRequests};
 use crate::routing::remote::table::{BidirectionalRegistrator, SchemeHostPort};
-use crate::routing::remote::Scheme;
+use crate::routing::remote::{BidirectionalRequest, Scheme};
 use crate::routing::{RoutingAddr, TaggedSender};
 use futures::future::join;
 use tokio::sync::{mpsc, oneshot};
 use utilities::sync::promise;
 
-//Todo dm pending request bidirectional
 #[tokio::test]
 async fn add_single_and_send_err() {
     let key = SchemeHostPort::new(Scheme::Ws, "host".to_string(), 42);
@@ -44,6 +43,29 @@ async fn add_single_and_send_err() {
             None,
         ))))
     );
+}
+
+#[tokio::test]
+async fn add_single_bidirectional_and_send_err() {
+    let key = SchemeHostPort::new(Scheme::Ws, "host".to_string(), 42);
+    let (tx, rx) = oneshot::channel();
+    let req = PendingRequest::Bidirectional(BidirectionalRequest::new(tx));
+
+    let mut pending = PendingRequests::default();
+    pending.add(key.clone(), req);
+    pending.send_err(
+        &key,
+        ConnectionError::Closed(CloseError::new(CloseErrorKind::ClosedRemotely, None)),
+    );
+
+    let result = rx.await;
+    assert!(matches!(
+        result,
+        Ok(Err(ConnectionError::Closed(err))) if err == CloseError::new(
+            CloseErrorKind::ClosedRemotely,
+            None,
+        )
+    ));
 }
 
 #[tokio::test]
@@ -79,7 +101,6 @@ async fn add_two_and_send_err() {
     );
 }
 
-//Todo dm send bidirectional
 #[tokio::test]
 async fn add_single_and_send_ok() {
     let key = SchemeHostPort::new(Scheme::Wss, "host".to_string(), 42);
@@ -100,6 +121,28 @@ async fn add_single_and_send_ok() {
 
     let result = rx.await;
     assert_eq!(result, Ok(Ok(addr)));
+}
+
+#[tokio::test]
+async fn add_single_bidirectional_and_send_ok() {
+    let key = SchemeHostPort::new(Scheme::Wss, "host".to_string(), 42);
+    let (tx, rx) = oneshot::channel();
+    let req = PendingRequest::Bidirectional(BidirectionalRequest::new(tx));
+    let addr = RoutingAddr::remote(2);
+
+    let (envelope_tx, _envelope_rx) = mpsc::channel(8);
+    let (request_tx, _request_rx) = mpsc::channel(8);
+    let (_drop_tx, drop_rx) = promise::promise();
+
+    let bidirectional_registrator =
+        BidirectionalRegistrator::new(TaggedSender::new(addr, envelope_tx), request_tx, drop_rx);
+
+    let mut pending = PendingRequests::default();
+    pending.add(key.clone(), req);
+    pending.send_ok(&key, addr, bidirectional_registrator);
+
+    let result = rx.await;
+    assert!(matches!(result, Ok(Ok(BidirectionalRegistrator { .. }))));
 }
 
 #[tokio::test]

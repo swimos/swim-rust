@@ -28,7 +28,7 @@ use swim_client::interface::DownlinksContext;
 use swim_client::router::ClientRouterFactory;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
-use swim_common::routing::{BidirectionalRoute, Route, Router, RoutingAddr};
+use swim_common::routing::{Route, Router, RoutingAddr};
 use swim_runtime::task;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
@@ -45,13 +45,6 @@ impl Router for MockRouter {
         &mut self,
         _addr: RoutingAddr,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
-        unimplemented!()
-    }
-
-    fn resolve_bidirectional(
-        &mut self,
-        _host: Url,
-    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
         unimplemented!()
     }
 

@@ -19,8 +19,8 @@ use crate::routing::remote::pending::PendingRequest;
 use crate::routing::remote::state::{DeferredResult, Event, RemoteTasksState};
 use crate::routing::remote::table::{BidirectionalRegistrator, RoutingTable, SchemeHostPort};
 use crate::routing::remote::{
-    ConnectionDropped, RawRoute, RemoteRoutingRequest, Scheme, SchemeSocketAddr,
-    SchemeSocketAddrIt, Unresolvable,
+    BidirectionalRequest, ConnectionDropped, RawRoute, RemoteRoutingRequest, Scheme,
+    SchemeSocketAddr, SchemeSocketAddrIt, Unresolvable,
 };
 use crate::routing::{RoutingAddr, TaggedEnvelope};
 use crate::warp::envelope::Envelope;
@@ -207,9 +207,6 @@ fn make_env(addr: RoutingAddr) -> TaggedEnvelope {
     )
 }
 
-//Todo dm
-// bidirectional_in_table ... etc,
-
 #[tokio::test]
 async fn transition_request_endpoint_in_table() {
     let sa = sock_addr();
@@ -295,6 +292,37 @@ async fn transition_request_resolve_in_table() {
 
     let result = req_rx.await;
     assert!(matches!(result, Ok(Ok(a)) if a == addr));
+}
+
+#[tokio::test]
+async fn transition_bidirectional_request_resolve_in_table() {
+    let sa = sock_addr();
+    let addr = RoutingAddr::remote(10);
+    let host = "swim://my_host:80".parse().unwrap();
+    let (req_tx, req_rx) = oneshot::channel();
+    let (route_tx, _route_rx) = mpsc::channel(8);
+    let (bidirectional_tx, _bidirectional_rx) = mpsc::channel(8);
+
+    let request = BidirectionalRequest::new(req_tx);
+
+    let mut state = FakeRemoteState::default();
+    state.table.insert(
+        addr,
+        Some(SchemeHostPort::new(Scheme::Ws, "my_host".to_string(), 80)),
+        sa,
+        route_tx,
+        bidirectional_tx,
+    );
+    let mut result = Ok(());
+
+    let event = Event::Request(RemoteRoutingRequest::Bidirectional { host, request });
+    super::update_state(&mut state, &mut result, event);
+
+    state.check(vec![]);
+    assert!(result.is_ok());
+
+    let result = req_rx.await;
+    assert!(matches!(result, Ok(Ok(BidirectionalRegistrator { .. }))));
 }
 
 #[tokio::test]

@@ -20,7 +20,7 @@ use futures::future::{join, join4, BoxFuture};
 use futures::{FutureExt, SinkExt, StreamExt};
 use http::Uri;
 use parking_lot::Mutex;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{mpsc, oneshot, watch};
 
 use crate::model::Value;
 use crate::warp::envelope::Envelope;
@@ -139,9 +139,38 @@ async fn try_dispatch_from_router() {
     assert!(resolved.contains_key(&path));
 }
 
-//Todo dm
 #[tokio::test]
-async fn try_dispatch_to_bidirectional() {}
+async fn try_dispatch_to_bidirectional() {
+    let addr = RoutingAddr::remote(0);
+    let mut router = LocalRoutes::new(addr);
+    let mut resolved = HashMap::new();
+    let mut bidirectional_connections = Slab::new();
+
+    let (conn_tx, mut conn_rx) = mpsc::channel(8);
+    bidirectional_connections.insert(TaggedSender::new(addr, conn_tx));
+
+    let path = RelativePath::new("/node", "/lane");
+
+    let mut rx = router.add("/node".parse().unwrap());
+
+    let env = Envelope::make_event(path.node.clone(), path.lane.clone(), Some(Value::text("a")));
+
+    let result = super::try_dispatch_envelope(
+        &mut router,
+        &mut bidirectional_connections,
+        &mut resolved,
+        env.clone(),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let received = rx.recv().now_or_never();
+    assert_eq!(received, None);
+    assert!(!resolved.contains_key(&path));
+
+    let received = conn_rx.recv().now_or_never();
+    assert_eq!(received, Some(Some(TaggedEnvelope(addr, env))));
+}
 
 #[tokio::test]
 async fn try_dispatch_closed_sender() {
@@ -489,9 +518,41 @@ async fn task_send_message() {
     assert!(matches!(result, Ok((ConnectionDropped::Closed, _))));
 }
 
-//Todo dm
 #[tokio::test]
-async fn task_send_message_bidirectional() {}
+async fn task_send_message_bidirectional() {
+    let TaskFixture {
+        task,
+        envelope_tx: _envelope_tx,
+        sock_out: _sock_out,
+        stop_trigger,
+        router: _router,
+        mut sock_in,
+        send_error_tx: _send_error_tx,
+        bidirectional_tx,
+    } = TaskFixture::new();
+
+    let envelope = Envelope::make_event("/node", "/lane", Some(Value::text("a")));
+    let env_cpy = envelope.clone();
+
+    let test_case = async move {
+        let (tx, rx) = oneshot::channel();
+        bidirectional_tx
+            .send(BidirectionalReceiverRequest::new(tx))
+            .await
+            .unwrap();
+
+        let mut bidirectional_receiver = rx.await.unwrap();
+
+        assert!(sock_in.send(Ok(message_for(env_cpy.clone()))).await.is_ok());
+        assert!(
+            matches!(bidirectional_receiver.recv().await, Some(TaggedEnvelope(_, env)) if env == env_cpy)
+        );
+        stop_trigger.trigger();
+    };
+
+    let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
+    assert!(matches!(result, Ok((ConnectionDropped::Closed, _))));
+}
 
 #[tokio::test]
 async fn task_send_message_failure() {

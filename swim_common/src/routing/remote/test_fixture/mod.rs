@@ -84,13 +84,6 @@ impl Router for LocalRoutes {
         ready(result).boxed()
     }
 
-    fn resolve_bidirectional(
-        &mut self,
-        _host: Url,
-    ) -> BoxFuture<Result<crate::routing::BidirectionalRoute, ResolutionError>> {
-        unimplemented!()
-    }
-
     fn lookup(
         &mut self,
         host: Option<Url>,

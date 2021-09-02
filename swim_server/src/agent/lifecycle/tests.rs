@@ -31,8 +31,7 @@ struct TestContext;
 
 impl AgentContext<TestAgent> for TestContext {
     fn downlinks_context(&self) -> DownlinksContext<Path> {
-        //Todo dm
-        unimplemented!()
+        panic!("Unexpected downlink context")
     }
 
     fn schedule<Effect, Str, Sch>(&self, _effects: Str, _schedule: Sch) -> BoxFuture<'_, ()>

@@ -17,7 +17,7 @@ use crate::agent::Eff;
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::{FutureExt, StreamExt};
 use swim_common::routing::{
-    BidirectionalRoute, ConnectionDropped, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
+    ConnectionDropped, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
 };
 use tokio::sync::mpsc;
 
@@ -74,14 +74,6 @@ impl Router for TestRouter {
             drop_rx.clone(),
         )))
         .boxed()
-    }
-
-    fn resolve_bidirectional(
-        &mut self,
-        _host: Url,
-    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
-        //Todo dm
-        unimplemented!()
     }
 
     fn lookup(

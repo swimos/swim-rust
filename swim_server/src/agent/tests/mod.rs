@@ -70,8 +70,7 @@ mod stub_router {
     use swim_common::routing::error::ResolutionError;
     use swim_common::routing::error::RouterError;
     use swim_common::routing::{
-        BidirectionalRoute, ConnectionDropped, Route, Router, RoutingAddr, TaggedEnvelope,
-        TaggedSender,
+        ConnectionDropped, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
     };
     use tokio::sync::mpsc;
     use url::Url;
@@ -111,13 +110,6 @@ mod stub_router {
                 Ok(route)
             }
             .boxed()
-        }
-
-        fn resolve_bidirectional(
-            &mut self,
-            _host: Url,
-        ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
-            unimplemented!()
         }
 
         fn lookup(
@@ -277,8 +269,7 @@ where
     Lane: LaneModel + Send + Sync + 'static,
 {
     fn downlinks_context(&self) -> DownlinksContext<Path> {
-        //Todo dm
-        unimplemented!()
+        panic!("Unexpected downlink context")
     }
 
     fn schedule<Effect, Str, Sch>(&self, _effects: Str, _schedule: Sch) -> BoxFuture<'_, ()>

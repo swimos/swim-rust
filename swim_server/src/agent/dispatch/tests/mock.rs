@@ -32,8 +32,8 @@ use swim_common::model::Value;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
 use swim_common::routing::{
-    BidirectionalRoute, ConnectionDropped, Route, Router, RoutingAddr, TaggedClientEnvelope,
-    TaggedEnvelope, TaggedSender,
+    ConnectionDropped, Route, Router, RoutingAddr, TaggedClientEnvelope, TaggedEnvelope,
+    TaggedSender,
 };
 use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
@@ -121,14 +121,6 @@ impl Router for MockRouter {
             Ok(route)
         }
         .boxed()
-    }
-
-    fn resolve_bidirectional(
-        &mut self,
-        _host: Url,
-    ) -> BoxFuture<Result<BidirectionalRoute, ResolutionError>> {
-        //Todo dm
-        unimplemented!()
     }
 
     fn lookup(
