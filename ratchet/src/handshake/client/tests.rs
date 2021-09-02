@@ -5,11 +5,14 @@ use crate::fixture::mock;
 use crate::handshake::client::{HandshakeMachine, HandshakeResult};
 use crate::handshake::{ProtocolError, ProtocolRegistry, ACCEPT_KEY, UPGRADE_STR, WEBSOCKET_STR};
 use crate::TryIntoRequest;
+use bytes::BytesMut;
 use futures::future::join;
+use futures::FutureExt;
 use http::header::HeaderName;
 use http::{header, HeaderMap, HeaderValue, Request, Response, StatusCode, Version};
 use httparse::{Header, Status};
 use sha1::{Digest, Sha1};
+use tokio::io::AsyncReadExt;
 use utilities::sync::trigger;
 
 const TEST_URL: &str = "ws://127.0.0.1:9001/test";
@@ -19,21 +22,21 @@ const TEST_URL: &str = "ws://127.0.0.1:9001/test";
 #[tokio::test]
 async fn handshake_sends_valid_request() {
     let request = TEST_URL.try_into_request().unwrap();
-    let (peer, mut stream) = mock();
+    let (mut peer, mut stream) = mock();
 
     let mut machine =
         HandshakeMachine::new(&mut stream, ProtocolRegistry::new(vec!["warp"]), NoExtProxy);
-    machine.encode(request).expect("");
-    machine.buffered.write().await.expect("");
+    machine.encode(request).unwrap();
+    machine.buffered.write().await.unwrap();
 
     let mut headers = [httparse::EMPTY_HEADER; 32];
     let mut request = httparse::Request::new(&mut headers);
 
-    let mut guard = peer.rx_buf.lock().unwrap();
-    let mut rx_buf = &mut (*guard);
-    let buf_len = rx_buf.len();
+    let mut buf = BytesMut::with_capacity(1024);
+    peer.read_buf(&mut buf).await.unwrap();
 
-    assert_eq!(request.parse(&mut rx_buf), Ok(Status::Complete(buf_len)));
+    assert!(matches!(request.parse(&mut buf), Ok(Status::Complete(_))));
+
     assert_eq!(request.version, Some(1));
     assert_eq!(request.method, Some("GET"));
     assert_eq!(request.path, Some(TEST_URL));
@@ -55,7 +58,7 @@ fn assert_header(headers: &mut [Header<'_>], name: &str, expected: &str) {
 #[tokio::test]
 async fn handshake_invalid_requests() {
     async fn test(request: Request<()>) {
-        let (peer, mut stream) = mock();
+        let (mut peer, mut stream) = mock();
 
         let mut machine =
             HandshakeMachine::new(&mut stream, ProtocolRegistry::default(), NoExtProxy);
@@ -64,9 +67,7 @@ async fn handshake_invalid_requests() {
             .expect_err("Expected encoding to fail");
         machine.buffered.write().await.expect("Unexpected IO error");
 
-        let mut guard = peer.rx_buf.lock().unwrap();
-        let rx_buf = &mut (*guard);
-        assert!(rx_buf.is_empty());
+        assert!(peer.read(&mut [0; 8]).now_or_never().is_none());
     }
 
     test(Request::put(TEST_URL).body(()).unwrap()).await;
@@ -105,7 +106,7 @@ async fn handshake_invalid_requests() {
 }
 
 async fn expect_server_error(response: Response<()>, expected_error: HttpError) {
-    let (server, mut stream) = mock();
+    let (mut server, mut stream) = mock();
 
     let (client_tx, client_rx) = trigger::trigger();
     let (server_tx, server_rx) = trigger::trigger();
@@ -137,7 +138,7 @@ async fn expect_server_error(response: Response<()>, expected_error: HttpError) 
 
     let server_task = async move {
         assert!(client_rx.await.is_ok());
-        server.write_response(response);
+        server.write_response(response).await.unwrap();
         assert!(server_tx.trigger());
     };
 
@@ -200,7 +201,7 @@ async fn incorrect_version() {
 
 #[tokio::test]
 async fn ok_nonce() {
-    let (server, mut stream) = mock();
+    let (mut server, mut stream) = mock();
 
     let (client_tx, client_rx) = trigger::trigger();
     let (server_tx, server_rx) = trigger::trigger();
@@ -224,8 +225,8 @@ async fn ok_nonce() {
 
         let request = server
             .read_request()
-            .expect("No server response received")
-            .unwrap();
+            .await
+            .expect("No server response received");
 
         let (parts, _body) = request.into_parts();
 
@@ -246,7 +247,7 @@ async fn ok_nonce() {
             .body(())
             .unwrap();
 
-        server.write_response(response);
+        server.write_response(response).await.unwrap();
 
         assert!(server_tx.trigger());
     };
@@ -263,7 +264,7 @@ fn expect_header(headers: &HeaderMap, name: HeaderName) -> &HeaderValue {
 async fn redirection() {
     let redirected_to = "somewhere";
 
-    let (server, mut stream) = mock();
+    let (mut server, mut stream) = mock();
 
     let (client_tx, client_rx) = trigger::trigger();
     let (server_tx, server_rx) = trigger::trigger();
@@ -288,6 +289,7 @@ async fn redirection() {
                 let r = e
                     .downcast_ref::<HttpError>()
                     .expect("Expected a HTTP error");
+
                 assert_eq!(r, &HttpError::Redirected(redirected_to.to_string()))
             }
         }
@@ -303,7 +305,7 @@ async fn redirection() {
             .body(())
             .unwrap();
 
-        server.write_response(response);
+        server.write_response(response).await.unwrap();
 
         assert!(server_tx.trigger());
     };
@@ -316,7 +318,7 @@ where
     I: IntoIterator<Item = &'static str>,
     F: Fn(Result<HandshakeResult<NoExt>, Error>),
 {
-    let (server, mut stream) = mock();
+    let (mut server, mut stream) = mock();
 
     let (client_tx, client_rx) = trigger::trigger();
     let (server_tx, server_rx) = trigger::trigger();
@@ -332,7 +334,6 @@ where
 
         assert!(client_tx.trigger());
         assert!(server_rx.await.is_ok());
-
         match_fn(machine.read().await);
     };
 
@@ -341,8 +342,8 @@ where
 
         let request = server
             .read_request()
-            .expect("No server response received")
-            .unwrap();
+            .await
+            .expect("No server response received");
 
         let (parts, _body) = request.into_parts();
 
@@ -366,9 +367,7 @@ where
         };
 
         let response = response.body(()).unwrap();
-
-        server.write_response(response);
-
+        server.write_response(response).await.unwrap();
         assert!(server_tx.trigger());
     };
 
@@ -446,7 +445,7 @@ where
     F: Fn(&mut Response<()>),
     R: Fn(Result<HandshakeResult<E::Extension>, Error>),
 {
-    let (server, mut stream) = mock();
+    let (mut server, mut stream) = mock();
 
     let (client_tx, client_rx) = trigger::trigger();
     let (server_tx, server_rx) = trigger::trigger();
@@ -471,8 +470,8 @@ where
 
         let request = server
             .read_request()
-            .expect("No server response received")
-            .unwrap();
+            .await
+            .expect("No server response received");
 
         let (parts, _body) = request.into_parts();
 
@@ -495,7 +494,7 @@ where
 
         response_fn(&mut response);
 
-        server.write_response(response);
+        server.write_response(response).await.unwrap();
 
         assert!(server_tx.trigger());
     };
