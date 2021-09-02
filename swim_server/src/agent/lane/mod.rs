@@ -19,6 +19,7 @@ use swim_common::form::FormErr;
 pub mod channels;
 pub mod lifecycle;
 pub mod model;
+pub mod store;
 
 #[cfg(test)]
 pub mod tests;

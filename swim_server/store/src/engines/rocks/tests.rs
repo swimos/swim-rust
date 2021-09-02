@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::StoreBuilder;
+use crate::engines::{RocksOpts, StoreBuilder};
 use crate::iterator::EngineIterator;
 use crate::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceDef, KeyspaceResolver, Keyspaces};
-use crate::{deserialize, serialize};
+use crate::RocksEngine;
+use crate::{deserialize, deserialize_key, serialize};
 use crate::{EngineRefIterator, StoreError};
-use crate::{RocksDatabase, RocksOpts};
 use rocksdb::{MergeOperands, Options, SliceTransform};
 use std::collections::HashMap;
 use std::mem::size_of;
@@ -25,7 +25,7 @@ use std::ops::{Deref, Range};
 use tempdir::TempDir;
 
 impl Deref for TransientDatabase {
-    type Target = RocksDatabase;
+    type Target = RocksEngine;
 
     fn deref(&self) -> &Self::Target {
         &self.delegate
@@ -34,7 +34,7 @@ impl Deref for TransientDatabase {
 
 pub struct TransientDatabase {
     _dir: TempDir,
-    delegate: RocksDatabase,
+    delegate: RocksEngine,
 }
 
 impl TransientDatabase {
@@ -49,10 +49,6 @@ impl TransientDatabase {
             delegate,
         }
     }
-}
-
-fn deserialize_key<B: AsRef<[u8]>>(bytes: B) -> Result<u64, ()> {
-    bincode::deserialize::<u64>(bytes.as_ref()).map_err(|_| ())
 }
 
 fn default_lane_opts() -> Options {

@@ -25,12 +25,14 @@ use std::{error::Error as StdError, io};
 
 use thiserror::Error;
 
-pub use engines::{RocksDatabase, RocksOpts};
-pub use rocksdb::{MergeOperands, SliceTransform};
-
-use crate::engines::ByteEngine;
-pub use crate::iterator::{EngineRefIterator, IteratorKey, OwnedEngineRefIterator};
 use crate::keyspaces::{KeyspaceByteEngine, KeyspaceResolver};
+pub use engines::{RocksEngine, RocksIterator, RocksPrefixIterator, StoreBuilder};
+
+pub use crate::iterator::{
+    EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey, KvPair,
+    OwnedEngineRefIterator,
+};
+
 use serde::{Deserialize, Serialize};
 
 /// Store errors.
@@ -88,6 +90,7 @@ impl PartialEq for StoreError {
             (StoreError::Encoding(l), StoreError::Encoding(r)) => l.eq(r),
             (StoreError::Decoding(l), StoreError::Decoding(r)) => l.eq(r),
             (StoreError::Delegate(l), StoreError::Delegate(r)) => l.to_string().eq(&r.to_string()),
+            (StoreError::DelegateMessage(l), StoreError::DelegateMessage(r)) => l.eq(r),
             (StoreError::Closing, StoreError::Closing) => true,
             (StoreError::KeyspaceNotFound, StoreError::KeyspaceNotFound) => true,
             _ => false,
@@ -99,7 +102,14 @@ impl PartialEq for StoreError {
 ///
 /// This trait only serves to compose the multiple traits that are required for a store.
 pub trait Store:
-    KeyspaceByteEngine + KeyspaceResolver + Send + Sync + Debug + OwnedEngineRefIterator + 'static
+    KeyspaceByteEngine
+    + KeyspaceResolver
+    + Send
+    + Sync
+    + Clone
+    + Debug
+    + OwnedEngineRefIterator
+    + 'static
 {
     /// Returns a reference to the path that the delegate byte engine is operating from.
     fn path(&self) -> &Path;
@@ -132,4 +142,8 @@ pub fn serialize<S: Serialize>(obj: &S) -> Result<Vec<u8>, StoreError> {
 
 pub fn deserialize<'de, D: Deserialize<'de>>(obj: &'de [u8]) -> Result<D, StoreError> {
     bincode::deserialize(obj).map_err(|e| StoreError::Decoding(e.to_string()))
+}
+
+pub fn deserialize_key<B: AsRef<[u8]>>(bytes: B) -> Result<u64, StoreError> {
+    bincode::deserialize::<u64>(bytes.as_ref()).map_err(|e| StoreError::Decoding(e.to_string()))
 }

@@ -29,6 +29,7 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::LaneModel;
 use crate::agent::lifecycle::AgentLifecycle;
+use crate::agent::store::mock::MockNodeStore;
 use crate::agent::tests::reporting_agent::TestAgentConfig;
 use crate::agent::tests::reporting_macro_agent::ReportingAgentEvent;
 use crate::agent::tests::stub_router::SingleChannelRouter;
@@ -764,6 +765,7 @@ pub async fn run_agent_test<Agent, Config, Lifecycle>(
         clock.clone(),
         ReceiverStream::new(envelope_rx),
         SingleChannelRouter::new(RoutingAddr::local(1024)),
+        MockNodeStore::mock(),
     );
 
     let agent_task = swim_runtime::task::spawn(agent_proc);

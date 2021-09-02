@@ -17,6 +17,7 @@ mod tests;
 
 mod iterator;
 
+pub use crate::engines::rocks::iterator::{RocksIterator, RocksPrefixIterator};
 use crate::engines::StoreBuilder;
 use crate::iterator::{EnginePrefixIterator, EngineRefIterator};
 use crate::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
@@ -35,20 +36,20 @@ impl From<rocksdb::Error> for StoreError {
 /// A Rocks database engine.
 ///
 /// See https://github.com/facebook/rocksdb/wiki for details about the features and limitations.
-#[derive(Debug)]
-pub struct RocksDatabase {
+#[derive(Debug, Clone)]
+pub struct RocksEngine {
     pub(crate) delegate: Arc<DB>,
 }
 
-impl RocksDatabase {
-    pub fn new(delegate: DB) -> RocksDatabase {
-        RocksDatabase {
+impl RocksEngine {
+    pub fn new(delegate: DB) -> RocksEngine {
+        RocksEngine {
             delegate: Arc::new(delegate),
         }
     }
 }
 
-impl Store for RocksDatabase {
+impl Store for RocksEngine {
     fn path(&self) -> &Path {
         &self.delegate.path()
     }
@@ -61,7 +62,7 @@ impl Store for RocksDatabase {
     }
 }
 
-impl KeyspaceResolver for RocksDatabase {
+impl KeyspaceResolver for RocksEngine {
     type ResolvedKeyspace = ColumnFamily;
 
     fn resolve_keyspace<K: Keyspace>(&self, space: &K) -> Option<&Self::ResolvedKeyspace> {
@@ -74,7 +75,7 @@ impl KeyspaceResolver for RocksDatabase {
 pub struct RocksOpts(pub Options);
 
 impl StoreBuilder for RocksOpts {
-    type Store = RocksDatabase;
+    type Store = RocksEngine;
 
     fn build<I>(self, path: I, keyspaces: &Keyspaces<Self>) -> Result<Self::Store, StoreError>
     where
@@ -83,7 +84,7 @@ impl StoreBuilder for RocksOpts {
         let Keyspaces { keyspaces } = keyspaces;
         let descriptors =
             keyspaces
-                .into_iter()
+                .iter()
                 .fold(Vec::with_capacity(keyspaces.len()), |mut vec, def| {
                     let cf_descriptor =
                         ColumnFamilyDescriptor::new(def.name.to_string(), def.opts.0.clone());
@@ -92,7 +93,7 @@ impl StoreBuilder for RocksOpts {
                 });
 
         let db = DB::open_cf_descriptors(&self.0, path, descriptors)?;
-        Ok(RocksDatabase::new(db))
+        Ok(RocksEngine::new(db))
     }
 }
 
@@ -117,7 +118,7 @@ where
     }
 }
 
-impl KeyspaceByteEngine for RocksDatabase {
+impl KeyspaceByteEngine for RocksEngine {
     fn put_keyspace<K: Keyspace>(
         &self,
         keyspace: K,

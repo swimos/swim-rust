@@ -58,11 +58,13 @@ pub trait EngineIterator {
     fn valid(&self) -> Result<bool, StoreError>;
 }
 
+pub type KvPair = Option<(Box<[u8]>, Box<[u8]>)>;
+
 /// An iterator over a range of keys in a keyspace that begin with a specified prefix.
 pub trait EnginePrefixIterator {
     /// Returns a tuple containing an optional key and value for the lexicographically following
     /// cursor. If `None` is returned, the iterator has reached the end of its range.
-    fn next(&mut self) -> Option<(Box<[u8]>, Box<[u8]>)>;
+    fn next(&mut self) -> KvPair;
 
     /// Returns `Ok(true)` if the iterator is currently valid and has not reached the end of its
     /// range. `Ok(false)` if the iterator has not encountered any errors but has reached the end of
