@@ -67,7 +67,7 @@ pub fn parse_callback(
         if let Ok(name) = name {
             Callback::Custom {
                 task_name,
-                func_name: str_to_ident(&name),
+                func_name: str_to_ident(name),
             }
         } else {
             match kind {
@@ -293,23 +293,23 @@ impl Display for InputAstType {
 
 #[derive(Debug)]
 pub enum InputAstError {
-    UnionError(InputAstType, Span),
-    EnumError(InputAstType, Span),
-    GenericError(InputAstType, Span),
+    Union(InputAstType, Span),
+    Enum(InputAstType, Span),
+    Generic(InputAstType, Span),
 }
 
 impl ToTokens for InputAstError {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         *tokens = match self {
-            InputAstError::EnumError(ty, span) => {
+            InputAstError::Enum(ty, span) => {
                 let message = format! {"{} cannot be created from Enum.", ty};
                 quote_spanned! { *span => compile_error!(#message); }
             }
-            InputAstError::UnionError(ty, span) => {
+            InputAstError::Union(ty, span) => {
                 let message = format! {"{} cannot be created from Union.", ty};
                 quote_spanned! { *span => compile_error!(#message); }
             }
-            InputAstError::GenericError(ty, span) => {
+            InputAstError::Generic(ty, span) => {
                 let message = format! {"{} cannot have generic parameters.", ty};
                 quote_spanned! { *span => compile_error!(#message); }
             }
@@ -319,11 +319,11 @@ impl ToTokens for InputAstError {
 
 pub fn validate_input_ast(input_ast: &DeriveInput, ty: InputAstType) -> Result<(), InputAstError> {
     match input_ast.data {
-        Data::Enum(_) => Err(InputAstError::EnumError(ty, input_ast.ident.span())),
-        Data::Union(_) => Err(InputAstError::UnionError(ty, input_ast.ident.span())),
+        Data::Enum(_) => Err(InputAstError::Enum(ty, input_ast.ident.span())),
+        Data::Union(_) => Err(InputAstError::Union(ty, input_ast.ident.span())),
         _ => {
             if !input_ast.generics.params.is_empty() {
-                Err(InputAstError::GenericError(ty, input_ast.ident.span()))
+                Err(InputAstError::Generic(ty, input_ast.ident.span()))
             } else {
                 Ok(())
             }

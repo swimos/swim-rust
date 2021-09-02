@@ -75,7 +75,7 @@ pub struct FormField<'a> {
 
 impl<'a> SynOriginal for FormField<'a> {
     fn original(&self) -> &Field {
-        &self.original
+        self.original
     }
 }
 
@@ -89,7 +89,7 @@ impl<'a> FormField<'a> {
     }
 
     pub fn is_slot(&self) -> bool {
-        self.kind == FieldKind::Slot
+        self.kind == FieldKind::Item
     }
 
     pub fn is_body(&self) -> bool {
@@ -113,9 +113,9 @@ pub enum FieldKind {
     Header,
     /// The field should be written as an attribute.
     Attr,
-    /// The field should be written as a slot in the main body (or the header if another field is
+    /// The field should be written as an item in the main body (or the header if another field is
     /// marked as `FieldKind::Body`
-    Slot,
+    Item,
     /// The field should be used to form the entire body of the record, all other fields that are
     /// marked as slots will be promoted to headers. At most one field may be marked with this.
     Body,
@@ -131,6 +131,6 @@ pub enum FieldKind {
 
 impl Default for FieldKind {
     fn default() -> Self {
-        FieldKind::Slot
+        FieldKind::Item
     }
 }

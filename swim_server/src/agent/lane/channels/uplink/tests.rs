@@ -32,7 +32,8 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use stm::transaction::TransactionError;
-use swim_common::form::{Form, FormErr};
+use swim_common::form::structural::read::ReadError;
+use swim_common::form::Form;
 use swim_common::model::Value;
 use swim_common::sink::item;
 use swim_warp::model::map::MapUpdate;
@@ -430,8 +431,11 @@ fn uplink_error_display() {
     assert_eq!(format!("{}", UplinkError::FailedTransaction(TransactionError::InvalidRetry)), 
                "The uplink failed to execute a transaction: Retry on transaction with no data dependencies.");
     assert_eq!(
-        format!("{}", UplinkError::InconsistentForm(FormErr::Malformatted)),
-        "A form implementation used by a lane is inconsistent: Malformatted"
+        format!(
+            "{}",
+            UplinkError::InconsistentForm(ReadError::UnexpectedItem)
+        ),
+        "A form implementation used by a lane is inconsistent: Unexpected item in record."
     );
     assert_eq!(
         format!("{}", UplinkError::ChannelDropped),
@@ -451,9 +455,9 @@ fn uplink_error_from_map_sync_error() {
         err1,
         UplinkError::FailedTransaction(TransactionError::InvalidRetry)
     ));
-    let err2: UplinkError = MapLaneSyncError::InconsistentForm(FormErr::Malformatted).into();
+    let err2: UplinkError = MapLaneSyncError::InconsistentForm(ReadError::UnexpectedItem).into();
     assert!(matches!(
         err2,
-        UplinkError::InconsistentForm(FormErr::Malformatted)
+        UplinkError::InconsistentForm(ReadError::UnexpectedItem)
     ));
 }
