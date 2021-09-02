@@ -32,13 +32,13 @@ async fn did_update(
         .filter_map(|event| async {
             match event {
                 Remote(TypedViewWithEvent {
-                           view,
-                           event: MapEvent::Update(key),
-                       }) => Some((key, view)),
+                    view,
+                    event: MapEvent::Update(key),
+                }) => Some((key, view)),
                 Remote(TypedViewWithEvent {
-                           view,
-                           event: MapEvent::Remove(key),
-                       }) => Some((key, view)),
+                    view,
+                    event: MapEvent::Remove(key),
+                }) => Some((key, view)),
                 _ => None,
             }
         })
@@ -60,7 +60,7 @@ async fn did_update(
 
 #[tokio::main]
 async fn main() {
-    let mut client = SwimClientBuilder::build_with_default().await;
+    let (client, client_handle) = SwimClientBuilder::build_with_default().await;
     let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
     let node_uri = "/unit/foo";
     let cart_lane = "shopping_cart";
@@ -104,4 +104,5 @@ async fn main() {
 
     println!("Stopping client in 2 seconds");
     time::sleep(Duration::from_secs(2)).await;
+    client_handle.stop().await.unwrap();
 }

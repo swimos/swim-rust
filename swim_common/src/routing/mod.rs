@@ -19,8 +19,10 @@ use crate::routing::error::{
 };
 use crate::routing::remote::{RawRoute, SchemeSocketAddr};
 use crate::routing::ws::WsMessage;
+use crate::sink::item::ItemSink;
 use crate::warp::envelope::{Envelope, OutgoingLinkMessage};
 use futures::future::BoxFuture;
+use futures::FutureExt;
 use std::any::Any;
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
@@ -50,11 +52,11 @@ trait RoutingRequest {}
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Location {
     /// Indicates that envelopes will be routed to a remote host.
-    RemoteEndpoint(u32),
+    Remote(u32),
     /// Indicates that envelopes will be routed to another agent on this host.
-    Local(u32),
-    /// Indicates that envelopes will be routed to the client.
-    Client,
+    Plane(u32),
+    /// Indicates that envelopes will be routed to a downlink on the client.
+    Client(u32),
 }
 
 /// An opaque routing address.
@@ -63,35 +65,36 @@ pub struct RoutingAddr(Location);
 
 impl RoutingAddr {
     pub const fn remote(id: u32) -> Self {
-        RoutingAddr(Location::RemoteEndpoint(id))
+        RoutingAddr(Location::Remote(id))
     }
 
-    pub const fn local(id: u32) -> Self {
-        RoutingAddr(Location::Local(id))
+    pub const fn plane(id: u32) -> Self {
+        RoutingAddr(Location::Plane(id))
     }
 
-    pub const fn client() -> Self {
-        RoutingAddr(Location::Client)
+    pub const fn client(id: u32) -> Self {
+        RoutingAddr(Location::Client(id))
     }
 
-    pub fn is_local(&self) -> bool {
-        matches!(self, RoutingAddr(Location::Local(_)))
-            || matches!(self, RoutingAddr(Location::Client))
+    pub fn is_plane(&self) -> bool {
+        matches!(self, RoutingAddr(Location::Plane(_)))
     }
 
     pub fn is_remote(&self) -> bool {
-        matches!(self, RoutingAddr(Location::RemoteEndpoint(_)))
+        matches!(self, RoutingAddr(Location::Remote(_)))
+    }
+
+    pub fn is_client(&self) -> bool {
+        matches!(self, RoutingAddr(Location::Client(_)))
     }
 }
 
 impl Display for RoutingAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            RoutingAddr(Location::RemoteEndpoint(id)) => write!(f, "Remote({:X})", id),
-            RoutingAddr(Location::Local(id)) => write!(f, "Local({:X})", id),
-            RoutingAddr(Location::Client) => {
-                write!(f, "Client")
-            }
+            RoutingAddr(Location::Remote(id)) => write!(f, "Remote({:X})", id),
+            RoutingAddr(Location::Plane(id)) => write!(f, "Plane({:X})", id),
+            RoutingAddr(Location::Client(id)) => write!(f, "Client({:X})", id),
         }
     }
 }
@@ -132,28 +135,55 @@ impl Route {
     }
 }
 
-/// Interface for interacting with the server [`Envelope`] router.
+#[derive(Debug)]
+pub struct BidirectionalRoute {
+    pub sender: TaggedSender,
+    pub receiver: mpsc::Receiver<TaggedEnvelope>,
+    pub on_drop: promise::Receiver<ConnectionDropped>,
+}
+
+impl BidirectionalRoute {
+    pub fn new(
+        sender: TaggedSender,
+        receiver: mpsc::Receiver<TaggedEnvelope>,
+        on_drop: promise::Receiver<ConnectionDropped>,
+    ) -> Self {
+        BidirectionalRoute {
+            sender,
+            receiver,
+            on_drop,
+        }
+    }
+}
+
+/// Trait for routers capable of resolving addresses and returning connections to them.
+/// The connections can only be used to send [`Envelope`]s to the corresponding addresses.
 pub trait Router: Send + Sync {
     /// Given a routing address, resolve the corresponding router entry
     /// consisting of a sender that will push envelopes to the endpoint.
-    fn resolve_sender(
-        &mut self,
-        addr: RoutingAddr,
-        origin: Option<Origin>,
-    ) -> BoxFuture<Result<Route, ResolutionError>>;
+    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>>;
 
     /// Find and return the corresponding routing address of an endpoint for a given route.
     fn lookup(
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
-        origin: Option<Origin>,
     ) -> BoxFuture<Result<RoutingAddr, RouterError>>;
+}
+
+/// Trait for routers capable of resolving addresses and returning bidirectional connections to them.
+/// The connections can be used to both send and receive [`Envelope`]s to and from the corresponding addresses.
+pub trait BidirectionalRouter: Router {
+    /// Resolve a bidirectional connection for a given host.
+    fn resolve_bidirectional(
+        &mut self,
+        host: Url,
+    ) -> BoxFuture<Result<BidirectionalRoute, ResolutionError>>;
 }
 
 /// Create router instances bound to particular routing addresses.
 pub trait RouterFactory: Send + Sync {
-    type Router: Router;
+    type Router: Router + 'static;
 
     /// Create a new router for a given routing address.
     fn create_for(&self, addr: RoutingAddr) -> Self::Router;
@@ -180,6 +210,15 @@ impl TaggedSender {
                 let TaggedEnvelope(_addr, env) = e.0;
                 SendError::new(RoutingError::CloseError, env)
             })?)
+    }
+}
+
+impl<'a> ItemSink<'a, Envelope> for TaggedSender {
+    type Error = SendError;
+    type SendFuture = BoxFuture<'a, Result<(), SendError>>;
+
+    fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
+        self.send_item(value).boxed()
     }
 }
 

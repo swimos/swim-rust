@@ -30,7 +30,7 @@ struct TestAgent;
 struct TestContext;
 
 impl AgentContext<TestAgent> for TestContext {
-    fn client(&self) -> SwimClient<Path> {
+    fn downlinks_context(&self) -> SwimClient<Path> {
         unimplemented!()
     }
 

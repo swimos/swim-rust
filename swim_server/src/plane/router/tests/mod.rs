@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
-use crate::routing::{TopLevelRouter, TopLevelRouterFactory};
+use crate::routing::{TopLevelServerRouter, TopLevelServerRouterFactory};
 use futures::future::join;
 use swim_common::routing::error::{ConnectionError, ProtocolError, ResolutionErrorKind};
 use swim_common::routing::error::{RouterError, Unresolvable};
@@ -27,7 +27,7 @@ use utilities::sync::promise;
 
 #[tokio::test]
 async fn plane_router_get_sender() {
-    let addr = RoutingAddr::local(5);
+    let addr = RoutingAddr::plane(5);
 
     let (req_tx, mut req_rx) = mpsc::channel(8);
     let (send_tx, mut send_rx) = mpsc::channel(8);
@@ -35,7 +35,7 @@ async fn plane_router_get_sender() {
 
     let (remote_tx, _remote_rx) = mpsc::channel(8);
     let (client_tx, _client_rx) = mpsc::channel(8);
-    let top_level_router = TopLevelRouter::new(addr, req_tx.clone(), client_tx, remote_tx);
+    let top_level_router = TopLevelServerRouter::new(addr, req_tx.clone(), client_tx, remote_tx);
 
     let mut router = PlaneRouter::new(addr, top_level_router, req_tx);
 
@@ -69,7 +69,7 @@ async fn plane_router_get_sender() {
             Some(TaggedEnvelope(addr, Envelope::linked("/node", "lane")))
         );
 
-        let result2 = router.resolve_sender(RoutingAddr::local(56), None).await;
+        let result2 = router.resolve_sender(RoutingAddr::plane(56), None).await;
 
         assert!(matches!(
             result2.err().unwrap().kind(),
@@ -86,11 +86,12 @@ async fn plane_router_factory() {
 
     let (remote_tx, _remote_rx) = mpsc::channel(8);
     let (client_tx, _client_rx) = mpsc::channel(8);
-    let top_level_router_factory = TopLevelRouterFactory::new(req_tx.clone(), client_tx, remote_tx);
+    let top_level_router_factory =
+        TopLevelServerRouterFactory::new(req_tx.clone(), client_tx, remote_tx);
 
     let fac = PlaneRouterFactory::new(req_tx, top_level_router_factory);
-    let router = fac.create_for(RoutingAddr::local(56));
-    assert_eq!(router.tag, RoutingAddr::local(56));
+    let router = fac.create_for(RoutingAddr::plane(56));
+    assert_eq!(router.tag, RoutingAddr::plane(56));
 }
 
 #[tokio::test]
@@ -102,7 +103,7 @@ async fn plane_router_resolve() {
 
     let (remote_tx, _remote_rx) = mpsc::channel(8);
     let (client_tx, _client_rx) = mpsc::channel(8);
-    let top_level_router = TopLevelRouter::new(addr, req_tx.clone(), client_tx, remote_tx);
+    let top_level_router = TopLevelServerRouter::new(addr, req_tx.clone(), client_tx, remote_tx);
 
     let mut router = PlaneRouter::new(addr, top_level_router, req_tx);
 

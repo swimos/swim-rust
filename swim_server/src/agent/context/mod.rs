@@ -23,7 +23,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use swim_client::interface::SwimClient;
+use swim_client::interface::DownlinksContext;
 use swim_common::routing::Router;
 use swim_common::warp::path::Path;
 use swim_runtime::time::clock::Clock;
@@ -48,7 +48,7 @@ pub(super) struct ContextImpl<Agent, Clk, R> {
     routing_context: RoutingContext<R>,
     schedule_context: SchedulerContext<Clk>,
     meta_context: Arc<MetaContext>,
-    client: SwimClient<Path>,
+    client: DownlinksContext<Path>,
     agent_uri: RelativeUri,
     pub(crate) uplinks_idle_since: Arc<AtomicInstant>,
 }
@@ -64,7 +64,7 @@ impl<Agent, Clk, R: Router + Clone + 'static> ContextImpl<Agent, Clk, R> {
         routing_context: RoutingContext<R>,
         schedule_context: SchedulerContext<Clk>,
         meta_context: MetaContext,
-        client: SwimClient<Path>,
+        client: DownlinksContext<Path>,
         agent_uri: RelativeUri,
     ) -> Self {
         ContextImpl {
@@ -195,7 +195,7 @@ where
     Agent: Send + Sync + 'static,
     Clk: Clock,
 {
-    fn client(&self) -> SwimClient<Path> {
+    fn downlinks_context(&self) -> DownlinksContext<Path> {
         self.client.clone()
     }
 

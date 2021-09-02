@@ -496,7 +496,7 @@ async fn task_send_message() {
     let env_cpy = envelope.clone();
 
     let test_case = async move {
-        let tagged = TaggedEnvelope(RoutingAddr::local(100), env_cpy.clone());
+        let tagged = TaggedEnvelope(RoutingAddr::plane(100), env_cpy.clone());
         assert!(envelope_tx.send(tagged).await.is_ok());
 
         let message = sock_out.next().await;
@@ -524,7 +524,7 @@ async fn task_send_message_failure() {
     let env_cpy = envelope.clone();
 
     let test_case = async move {
-        let tagged = TaggedEnvelope(RoutingAddr::local(100), env_cpy.clone());
+        let tagged = TaggedEnvelope(RoutingAddr::plane(100), env_cpy.clone());
 
         assert!(send_error_tx
             .send(Some(ConnectionError::Io(IoError::new(
@@ -708,7 +708,7 @@ async fn task_timeout() {
     let env_cpy = envelope.clone();
 
     let test_case = async move {
-        let tagged = TaggedEnvelope(RoutingAddr::local(100), env_cpy.clone());
+        let tagged = TaggedEnvelope(RoutingAddr::plane(100), env_cpy.clone());
         tokio::time::pause();
         assert!(envelope_tx.send(tagged).await.is_ok());
 
@@ -751,7 +751,7 @@ async fn generate_writes(
     stop_trigger: trigger::Sender,
     n: i32,
 ) -> Result<(), mpsc::error::SendError<TaggedEnvelope>> {
-    let addr = RoutingAddr::local(7);
+    let addr = RoutingAddr::plane(7);
 
     for i in 0..n {
         if route_rx.recv().await.is_none() {

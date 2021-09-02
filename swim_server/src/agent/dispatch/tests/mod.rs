@@ -59,7 +59,7 @@ fn make_dispatcher(
         .map(|(name, lane)| (name, lane.boxed()))
         .collect();
 
-    let context = MockExecutionContext::new(RoutingAddr::local(1024), buffer_size, spawn_tx);
+    let context = MockExecutionContext::new(RoutingAddr::plane(1024), buffer_size, spawn_tx);
 
     let config = AgentExecutionConfig::with(
         NonZeroUsize::new(8).unwrap(),

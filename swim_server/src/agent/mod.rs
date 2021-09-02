@@ -82,7 +82,7 @@ use crate::meta::open_meta_lanes;
 #[doc(hidden)]
 #[allow(unused_imports)]
 pub use agent_derive::*;
-use swim_client::interface::SwimClient;
+use swim_client::interface::DownlinksContext;
 use tokio_stream::wrappers::ReceiverStream;
 
 /// Trait that must be implemented for any agent. This is essentially just boilerplate and will
@@ -179,7 +179,7 @@ impl<Config> AgentParameters<Config> {
 pub(crate) fn run_agent<Config, Clk, Agent, L, R>(
     lifecycle: L,
     clock: Clk,
-    client: SwimClient<Path>,
+    client: DownlinksContext<Path>,
     parameters: AgentParameters<Config>,
     incoming_envelopes: impl Stream<Item = TaggedEnvelope> + Send + 'static,
     router: R,
@@ -318,8 +318,8 @@ pub type EffStream = BoxStream<'static, ()>;
 /// agent and lane life-cycle events and allows events to be scheduled within the task that
 /// is running the agent.
 pub trait AgentContext<Agent> {
-    /// Get a swim client capable of opening downlinks to other servers.
-    fn client(&self) -> SwimClient<Path>;
+    /// Get a downlinks context capable of opening downlinks to other servers.
+    fn downlinks_context(&self) -> DownlinksContext<Path>;
 
     /// Schedule events to be executed on a provided schedule. The events will be executed within
     /// the task that runs the agent and so should not block.

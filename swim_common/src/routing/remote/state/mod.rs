@@ -14,12 +14,13 @@
 
 use crate::routing::remote::addresses::RemoteRoutingAddresses;
 use crate::routing::remote::config::ConnectionConfig;
+use crate::routing::remote::pending::PendingRequest;
 use crate::routing::remote::pending::PendingRequests;
-use crate::routing::remote::table::{RoutingTable, SchemeHostPort};
+use crate::routing::remote::table::{BidirectionalRegistrator, RoutingTable, SchemeHostPort};
 use crate::routing::remote::task::TaskFactory;
 use crate::routing::remote::{ExternalConnections, Listener, SchemeSocketAddr};
 use crate::routing::remote::{
-    RawRoute, RemoteConnectionChannels, RemoteRoutingRequest, ResolutionRequest, SchemeSocketAddrIt,
+    RawRoute, RemoteConnectionChannels, RemoteRoutingRequest, SchemeSocketAddrIt,
 };
 use crate::routing::ws::WsConnections;
 use crate::routing::{CloseReceiver, ConnectionError};
@@ -56,7 +57,6 @@ pub trait RemoteTasksState {
         sock_addr: SchemeSocketAddr,
         ws_stream: Self::WebSocket,
         host: Option<SchemeHostPort>,
-        server: bool,
     );
 
     /// Check a pair of host/socket address, registering the hose with the address if a connection
@@ -79,13 +79,16 @@ pub trait RemoteTasksState {
     );
 
     /// Add a deferred DNS lookup for a host.
-    fn defer_dns_lookup(&mut self, target: SchemeHostPort, request: ResolutionRequest);
+    fn defer_dns_lookup(&mut self, target: SchemeHostPort, resolution_request: PendingRequest);
 
     /// Flush out pending state for a failed connection.
     fn fail_connection(&mut self, host: &SchemeHostPort, error: ConnectionError);
 
     /// Resolve an entry in the routing table.
     fn table_resolve(&self, addr: RoutingAddr) -> Option<RawRoute>;
+
+    /// Resolve a bidirectional route in the routing table.
+    fn table_resolve_bidirectional(&self, addr: RoutingAddr) -> Option<BidirectionalRegistrator>;
 
     /// Try to resolve a host in the routing table.
     fn table_try_resolve(&self, target: &SchemeHostPort) -> Option<RoutingAddr>;
@@ -157,7 +160,6 @@ where
         sock_addr: SchemeSocketAddr,
         ws_stream: Ws::StreamSink,
         host: Option<SchemeHostPort>,
-        server: bool,
     ) {
         let addr = self.next_address();
         let RemoteConnections {
@@ -167,10 +169,20 @@ where
             pending,
             ..
         } = self;
-        let msg_tx = tasks.spawn_connection_task(sock_addr, ws_stream, addr, spawner, server);
-        table.insert(addr, host.clone(), sock_addr, msg_tx);
+
+        let (msg_tx, bidirectional_request_tx) =
+            tasks.spawn_connection_task(ws_stream, addr, spawner);
+
+        let bidirectional_registrator = table.insert(
+            addr,
+            host.clone(),
+            sock_addr,
+            msg_tx,
+            bidirectional_request_tx,
+        );
+
         if let Some(host) = host {
-            pending.send_ok(&host, addr);
+            pending.send_ok(&host, addr, bidirectional_registrator);
         }
     }
 
@@ -180,10 +192,15 @@ where
         sock_addr: SchemeSocketAddr,
     ) -> Result<(), SchemeHostPort> {
         let RemoteConnections { table, pending, .. } = self;
+
         if let Some(addr) = table.get_resolved(&sock_addr) {
-            pending.send_ok(&host, addr);
-            table.add_host(host, sock_addr);
-            Ok(())
+            if let Some(bidirectional_registrator) = table.resolve_bidirectional(addr) {
+                pending.send_ok(&host, addr, bidirectional_registrator);
+                table.add_host(host, sock_addr);
+                Ok(())
+            } else {
+                Err(host)
+            }
         } else {
             Err(host)
         }
@@ -210,7 +227,7 @@ where
         });
     }
 
-    fn defer_dns_lookup(&mut self, target: SchemeHostPort, request: ResolutionRequest) {
+    fn defer_dns_lookup(&mut self, target: SchemeHostPort, resolution_request: PendingRequest) {
         let target_cpy = target.clone();
         let external = self.external.clone();
         self.defer(async move {
@@ -220,7 +237,7 @@ where
                 .map(|v| v.into_iter());
             DeferredResult::dns(resolved, target_cpy)
         });
-        self.pending.add(target, request);
+        self.pending.add(target, resolution_request);
     }
 
     fn fail_connection(&mut self, host: &SchemeHostPort, error: ConnectionError) {
@@ -229,6 +246,10 @@ where
 
     fn table_resolve(&self, addr: RoutingAddr) -> Option<RawRoute> {
         self.table.resolve(addr)
+    }
+
+    fn table_resolve_bidirectional(&self, addr: RoutingAddr) -> Option<BidirectionalRegistrator> {
+        self.table.resolve_bidirectional(addr)
     }
 
     fn table_try_resolve(&self, target: &SchemeHostPort) -> Option<RoutingAddr> {
@@ -497,11 +518,7 @@ where
         external,
         sock_addr.addr,
         websockets,
-        format!(
-            "{}://{}",
-            scheme_host_port.scheme(),
-            scheme_host_port.host()
-        ),
+        scheme_host_port.to_string(),
     )
     .await
     {

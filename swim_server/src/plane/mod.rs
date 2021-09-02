@@ -29,7 +29,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::ops::Deref;
 use std::sync::{Arc, Weak};
-use swim_client::interface::SwimClient;
+use swim_client::interface::DownlinksContext;
 use swim_common::request::Request;
 use swim_common::routing::error::NoAgentAtRoute;
 use swim_common::routing::error::{ConnectionError, ProtocolError, ProtocolErrorKind};
@@ -80,7 +80,7 @@ pub(crate) trait AgentRoute<Clk, Envelopes, Router>: Debug + Send {
         parameters: HashMap<String, String>,
         execution_config: AgentExecutionConfig,
         clock: Clk,
-        client: SwimClient<Path>,
+        client: DownlinksContext<Path>,
         incoming_envelopes: Envelopes,
         router: Router,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>);
@@ -252,7 +252,7 @@ pub(crate) struct RouteResolver<Clk, DelegateFac: RouterFactory> {
     /// Clock for scheduling tasks.
     clock: Clk,
     /// Client for opening downlinks.
-    client: SwimClient<Path>,
+    client: DownlinksContext<Path>,
     /// The configuration for the agent routes that are opened.
     execution_config: AgentExecutionConfig,
     /// The routes for the plane.
@@ -270,7 +270,7 @@ pub(crate) struct RouteResolver<Clk, DelegateFac: RouterFactory> {
 impl<Clk, DelegateFac: RouterFactory> RouteResolver<Clk, DelegateFac> {
     pub(crate) fn new(
         clock: Clk,
-        client: SwimClient<Path>,
+        client: DownlinksContext<Path>,
         execution_config: AgentExecutionConfig,
         routes: Vec<RouteSpec<Clk, EnvChannel, PlaneRouter<DelegateFac::Router>>>,
         router_fac: PlaneRouterFactory<DelegateFac>,
@@ -315,7 +315,7 @@ impl<Clk: Clock, DelegateFac: RouterFactory> RouteResolver<Clk, DelegateFac> {
         *counter = counter
             .checked_add(1)
             .expect("Local endpoint counter overflow.");
-        let addr = RoutingAddr::local(*counter);
+        let addr = RoutingAddr::plane(*counter);
         let (agent, task) = agent_route.run_agent(
             route.clone(),
             params,
@@ -429,7 +429,7 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: RouterFactory>(
                     }
                 }
                 Either::Left(Some(PlaneRoutingRequest::Endpoint { id, request })) => {
-                    if id.is_local() {
+                    if id.is_plane() {
                         event!(Level::TRACE, GETTING_LOCAL_ENDPOINT, ?id);
                         let result = if let Some(tx) = resolver
                             .active_routes

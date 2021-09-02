@@ -63,7 +63,7 @@ fn connection_error_display() {
 
 #[test]
 fn unresolvable_display() {
-    let err = Unresolvable(RoutingAddr::local(4));
+    let err = Unresolvable(RoutingAddr::plane(4));
 
     let string = err.to_string();
 
@@ -72,7 +72,7 @@ fn unresolvable_display() {
 
 #[test]
 fn resolution_error_display() {
-    let string = ResolutionError::unresolvable(RoutingAddr::local(4).to_string()).to_string();
+    let string = ResolutionError::unresolvable(RoutingAddr::plane(4).to_string()).to_string();
     assert_eq!(string, "Address Local(4) could not be resolved.");
 
     let string = ResolutionError::router_dropped().to_string();

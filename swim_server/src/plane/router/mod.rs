@@ -18,7 +18,7 @@ use swim_common::request::Request;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
 use swim_common::routing::remote::RawRoute;
-use swim_common::routing::{Origin, PlaneRoutingRequest};
+use swim_common::routing::PlaneRoutingRequest;
 use swim_common::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
@@ -82,11 +82,7 @@ impl<Delegate> PlaneRouter<Delegate> {
 }
 
 impl<Delegate: Router> Router for PlaneRouter<Delegate> {
-    fn resolve_sender(
-        &mut self,
-        addr: RoutingAddr,
-        origin: Option<Origin>,
-    ) -> BoxFuture<Result<Route, ResolutionError>> {
+    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let PlaneRouter {
                 tag,
@@ -94,10 +90,8 @@ impl<Delegate: Router> Router for PlaneRouter<Delegate> {
                 request_sender,
             } = self;
             let (tx, rx) = oneshot::channel();
-            if addr.is_local() {
-                if origin.is_some() {
-                    delegate_router.resolve_sender(addr, origin).await
-                } else if request_sender
+            if addr.is_plane() {
+                if request_sender
                     .send(PlaneRoutingRequest::Endpoint {
                         id: addr,
                         request: Request::new(tx),
@@ -116,7 +110,7 @@ impl<Delegate: Router> Router for PlaneRouter<Delegate> {
                     }
                 }
             } else {
-                delegate_router.resolve_sender(addr, None).await
+                delegate_router.resolve_sender(addr).await
             }
         }
         .boxed()
@@ -126,7 +120,6 @@ impl<Delegate: Router> Router for PlaneRouter<Delegate> {
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
-        _origin: Option<Origin>,
     ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
         async move {
             let PlaneRouter { request_sender, .. } = self;

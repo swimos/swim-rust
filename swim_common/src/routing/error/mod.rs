@@ -26,7 +26,6 @@ pub use io::*;
 pub use protocol::*;
 pub use resolution::*;
 pub use send::*;
-#[cfg(feature = "tls")]
 pub use tls::*;
 use utilities::errors::Recoverable;
 use utilities::sync::circular_buffer;
@@ -46,7 +45,6 @@ mod io;
 mod protocol;
 mod resolution;
 mod send;
-#[cfg(feature = "tls")]
 mod tls;
 
 #[cfg(test)]
@@ -112,13 +110,18 @@ impl<T> From<circular_buffer::error::SendError<T>> for RoutingError {
     }
 }
 
+impl From<SendError> for RoutingError {
+    fn from(err: SendError) -> Self {
+        err.split().0
+    }
+}
+
 /// An error denoting that a connection error has occurred.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ConnectionError {
     /// A HTTP detailing either a malformatted request/response or a peer error.
     Http(HttpError),
     /// A TLS error that may be produced when reading a certificate or through a connection.
-    #[cfg(feature = "tls")]
     Tls(TlsError),
     /// An error detailing that there has been a read/write buffer overflow.
     Capacity(CapacityError),
@@ -140,7 +143,6 @@ impl Recoverable for ConnectionError {
     fn is_fatal(&self) -> bool {
         match self {
             ConnectionError::Http(e) => e.is_fatal(),
-            #[cfg(feature = "tls")]
             ConnectionError::Tls(e) => e.is_fatal(),
             ConnectionError::Capacity(e) => e.is_fatal(),
             ConnectionError::Protocol(e) => e.is_fatal(),
@@ -162,7 +164,6 @@ impl Display for ConnectionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             ConnectionError::Http(e) => write!(f, "{}", e),
-            #[cfg(feature = "tls")]
             ConnectionError::Tls(e) => write!(f, "{}", e),
             ConnectionError::Capacity(e) => write!(f, "{}", e),
             ConnectionError::Protocol(e) => write!(f, "{}", e),
@@ -204,7 +205,6 @@ impl From<TungsteniteError> for ConnectionError {
             TError::Io(e) => {
                 ConnectionError::Io(IoError::new(e.kind(), e.source().map(ToString::to_string)))
             }
-            #[cfg(feature = "tls")]
             TError::Tls(e) => ConnectionError::Tls(e.into()),
             TError::Capacity(e) => ConnectionError::Capacity(CapacityError::new(
                 CapacityErrorKind::Ambiguous,

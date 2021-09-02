@@ -12,15 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::task::{Context, Poll};
-use futures::Future;
-use std::pin::Pin;
-use tokio::sync::mpsc;
-
+use crate::future::cancellable::CancellableResult;
 use crate::future::retryable::strategy::RetryStrategy;
 use crate::future::retryable::{ResettableFuture, RetryableFuture};
+use futures::task::{Context, Poll};
+use futures::Future;
 use pin_project::pin_project;
 use std::num::NonZeroUsize;
+use std::pin::Pin;
+use std::time::Duration;
+use tokio::sync::mpsc;
+use tokio::time;
 
 #[pin_project]
 struct MpscSender<F, Fut> {
@@ -94,6 +96,15 @@ async fn send(tx: mpsc::Sender<i32>, value: i32) -> Result<i32, SendErr> {
     }
 }
 
+async fn send_delayed(tx: mpsc::Sender<i32>, value: i32) -> Result<i32, SendErr> {
+    time::sleep(Duration::from_millis(10)).await;
+    if tx.send(value).await.is_err() {
+        Err(SendErr::Err)
+    } else {
+        Ok(value)
+    }
+}
+
 #[tokio::test]
 async fn test() {
     let p = 5;
@@ -109,4 +120,42 @@ async fn test() {
 
     let result = rx.recv().await;
     assert_eq!(p, result.unwrap())
+}
+
+#[tokio::test]
+async fn test_cancellable_completed() {
+    let p = 5;
+    let (tx, mut rx) = mpsc::channel(1);
+    let sender = MpscSender::new(tx, p, send);
+
+    let (cancellable_retry, _trigger_tx) = RetryableFuture::cancellable(
+        sender,
+        RetryStrategy::immediate(NonZeroUsize::new(2).unwrap()),
+    );
+
+    let retry = cancellable_retry.await;
+
+    assert!(matches!(retry, CancellableResult::Completed(Ok(result)) if result == p));
+    let result = rx.recv().await;
+    assert_eq!(p, result.unwrap())
+}
+
+#[tokio::test]
+async fn test_cancellable_cancelled() {
+    let p = 5;
+    let (tx, mut rx) = mpsc::channel(1);
+    let sender = MpscSender::new(tx, p, send_delayed);
+
+    let (cancellable_retry, trigger_tx) = RetryableFuture::cancellable(
+        sender,
+        RetryStrategy::immediate(NonZeroUsize::new(2).unwrap()),
+    );
+
+    trigger_tx.trigger();
+    let retry = cancellable_retry.await;
+
+    assert!(matches!(retry, CancellableResult::Cancelled(result) if result.is_ok()));
+
+    let result = rx.recv().await;
+    assert!(result.is_none())
 }
