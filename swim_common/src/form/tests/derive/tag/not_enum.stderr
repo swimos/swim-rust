@@ -1,5 +1,8 @@
-error: Tags can only be derived for enumerations
+error: Only enumeration types can be tags.
   --> $DIR/not_enum.rs:19:5
    |
-19 |     struct S {
-   |     ^^^^^^
+19 | /     struct S {
+20 | |         a: i32,
+21 | |         b: i32,
+22 | |     }
+   | |_____^

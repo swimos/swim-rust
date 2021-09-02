@@ -880,7 +880,7 @@ where
             pin_mut!(scan_stream);
             while let Some(event) = scan_stream.next().await {
                 lifecycle
-                    .on_event(&event, &model, &context)
+                    .on_event(&event, model, &context)
                     .instrument(span!(Level::TRACE, ON_EVENT, ?event))
                     .await
             }

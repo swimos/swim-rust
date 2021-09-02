@@ -109,7 +109,7 @@ fn derive_container_schema(
 ) -> TokenStream2 {
     match &container_schema {
         StandardSchema::AllItems(items) => match compound_type {
-            CompoundTypeKind::Struct => {
+            CompoundTypeKind::Labelled => {
                 quote! {
                     swim_common::model::schema::StandardSchema::AllItems(
                         std::boxed::Box::new(

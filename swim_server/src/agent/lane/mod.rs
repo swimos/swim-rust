@@ -14,7 +14,7 @@
 
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use swim_common::form::FormErr;
+use swim_common::form::structural::read::ReadError;
 
 pub mod channels;
 pub mod lifecycle;
@@ -37,7 +37,7 @@ pub trait LaneModel {
 /// inconsistent. Particularly, converting from the type type to [`swim_common::model::Value`] and
 /// back again results in an error.
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct InvalidForm(FormErr);
+pub struct InvalidForm(ReadError);
 
 impl Display for InvalidForm {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

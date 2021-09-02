@@ -1,5 +1,8 @@
-error: Deriving tags is not supported by enumerations. Use #[form(tag = "....")] on this variant instead
-  --> $DIR/tag_enum.rs:21:20
+error: Enum variants cannot specify a tag field
+  --> $DIR/tag_enum.rs:20:9
    |
-21 |             #[form(tag)]
-   |                    ^^^
+20 | /         B {
+21 | |             #[form(tag)]
+22 | |             tag: String,
+23 | |         },
+   | |_________^

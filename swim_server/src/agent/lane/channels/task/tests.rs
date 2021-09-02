@@ -55,7 +55,9 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use stm::transaction::TransactionError;
-use swim_common::form::{Form, FormErr};
+use swim_common::form::structural::read::ReadError;
+use swim_common::form::structural::write::StructuralWritable;
+use swim_common::form::{Form, NewTypeForm};
 use swim_common::model::Value;
 use swim_common::routing::ResolutionError;
 use swim_common::routing::RoutingError;
@@ -79,8 +81,10 @@ const METRIC_SAMPLE_RATE: Duration = Duration::from_millis(100);
 #[test]
 fn lane_io_err_display_update() {
     let route = RelativePath::new("node", "lane");
-    let err =
-        LaneIoError::for_update_err(route, UpdateError::BadEnvelopeBody(FormErr::Malformatted));
+    let err = LaneIoError::for_update_err(
+        route,
+        UpdateError::BadEnvelopeBody(ReadError::UnexpectedItem),
+    );
 
     let string = format!("{}", err);
     let lines = string.lines().collect::<Vec<_>>();
@@ -88,7 +92,7 @@ fn lane_io_err_display_update() {
         lines,
         vec![
             "IO tasks failed for lane: \"RelativePath[node, lane]\".",
-            "- update_error = The body of an incoming envelope was invalid: Malformatted"
+            "- update_error = The body of an incoming envelope was invalid: Unexpected item in record."
         ]
     );
 }
@@ -139,7 +143,7 @@ fn lane_io_err_display_both() {
     let route = RelativePath::new("node", "lane");
     let err = LaneIoError::new(
         route,
-        UpdateError::BadEnvelopeBody(FormErr::Malformatted),
+        UpdateError::BadEnvelopeBody(ReadError::UnexpectedItem),
         vec![UplinkErrorReport {
             error: UplinkError::ChannelDropped,
             addr: RoutingAddr::remote(1),
@@ -151,7 +155,7 @@ fn lane_io_err_display_both() {
         lines,
         vec![
             "IO tasks failed for lane: \"RelativePath[node, lane]\".",
-            "- update_error = The body of an incoming envelope was invalid: Malformatted",
+            "- update_error = The body of an incoming envelope was invalid: Unexpected item in record.",
             "- uplink_errors =",
             "* Uplink to Remote(1) failed: Uplink send channel was dropped."
         ]
@@ -233,19 +237,25 @@ impl LaneUplinks for TestUplinkSpawner {
 #[derive(Debug)]
 struct Message(i32);
 
-impl Form for Message {
-    fn as_value(&self) -> Value {
-        Value::Int32Value(self.0)
+impl NewTypeForm for Message {
+    type Inner = i32;
+
+    fn as_inner(&self) -> &Self::Inner {
+        &self.0
     }
 
-    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
-        i32::try_from_value(value).map(|n| Message(n))
+    fn into_inner(self) -> Self::Inner {
+        self.0
+    }
+
+    fn from_inner(inner: Self::Inner) -> Self {
+        Message(inner)
     }
 }
 
 impl From<Message> for Value {
     fn from(msg: Message) -> Self {
-        Value::Int32Value(msg.0)
+        msg.structure()
     }
 }
 
@@ -299,7 +309,7 @@ impl LaneUpdate for TestUpdater {
                     match msg {
                         Ok((_, msg)) => {
                             if msg.0 < 0 {
-                                break Err(UpdateError::BadEnvelopeBody(FormErr::Malformatted));
+                                break Err(UpdateError::BadEnvelopeBody(ReadError::UnexpectedItem));
                             } else {
                                 values.lock().await.push(msg.0);
                             }
@@ -802,7 +812,7 @@ async fn fail_on_update_error() {
             assert_eq!(route, RelativePath::new("node", "lane"));
             assert!(matches!(
                 update_error,
-                Some(UpdateError::BadEnvelopeBody(FormErr::Malformatted))
+                Some(UpdateError::BadEnvelopeBody(ReadError::UnexpectedItem))
             ));
             assert!(uplink_errors.is_empty());
         }
@@ -952,7 +962,7 @@ async fn report_uplink_failures_on_update_failure() {
             assert_eq!(route, RelativePath::new("node", "lane"));
             assert!(matches!(
                 update_error,
-                Some(UpdateError::BadEnvelopeBody(FormErr::Malformatted))
+                Some(UpdateError::BadEnvelopeBody(ReadError::UnexpectedItem))
             ));
             match uplink_errors.as_slice() {
                 [UplinkErrorReport { error, addr: a }] => {
