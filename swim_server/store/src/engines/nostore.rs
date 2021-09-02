@@ -12,17 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::StoreBuilder;
+use crate::engines::{ByteEngine, StoreBuilder};
 use crate::iterator::{
     EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey,
 };
 use crate::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
-use crate::{ByteEngine, EngineInfo, Store, StoreError};
+use crate::{EngineInfo, KvPair, Store, StoreError};
 use std::borrow::Borrow;
 use std::path::{Path, PathBuf};
 
 /// A delegate store database that does nothing.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NoStore {
     path: PathBuf,
 }
@@ -93,7 +93,7 @@ impl KeyspaceByteEngine for NoStore {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct NoStoreOpts;
 impl StoreBuilder for NoStoreOpts {
     type Store = NoStore;
@@ -148,7 +148,7 @@ impl EngineIterator for NoStoreEngineIterator {
 
 pub struct NoStoreEnginePrefixIterator;
 impl EnginePrefixIterator for NoStoreEnginePrefixIterator {
-    fn next(&mut self) -> Option<(Box<[u8]>, Box<[u8]>)> {
+    fn next(&mut self) -> KvPair {
         None
     }
 

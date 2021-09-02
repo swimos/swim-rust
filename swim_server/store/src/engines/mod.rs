@@ -15,7 +15,7 @@
 use std::path::Path;
 
 pub use nostore::{NoStore, NoStoreOpts};
-pub use rocks::{RocksDatabase, RocksOpts};
+pub use rocks::{RocksEngine, RocksIterator, RocksOpts, RocksPrefixIterator};
 
 use crate::keyspaces::Keyspaces;
 use crate::{Store, StoreError};
@@ -35,7 +35,7 @@ pub trait ByteEngine: 'static {
     fn delete(&self, key: &[u8]) -> Result<(), StoreError>;
 }
 
-pub trait StoreBuilder: Sized {
+pub trait StoreBuilder: Sized + Clone {
     type Store: Store;
 
     fn build<I>(self, path: I, keyspaces: &Keyspaces<Self>) -> Result<Self::Store, StoreError>

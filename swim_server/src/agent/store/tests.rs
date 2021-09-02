@@ -11,22 +11,3 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
-#![allow(clippy::match_wild_err_arm)]
-
-pub mod agent;
-pub mod interface;
-#[macro_use]
-pub mod macros;
-pub mod meta;
-pub mod plane;
-pub mod routing;
-pub mod store;
-
-#[allow(unused_imports)]
-pub use agent_derive::*;
-pub use utilities::future::retryable::strategy::RetryStrategy;
-pub use utilities::future::SwimStreamExt;
-pub use utilities::route_pattern::RoutePattern;
-pub use utilities::uri;
-pub use utilities::{stringify_attr, stringify_attr_raw};

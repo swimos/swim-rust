@@ -19,6 +19,7 @@ use swim_common::form::structural::read::ReadError;
 pub mod channels;
 pub mod lifecycle;
 pub mod model;
+pub mod store;
 
 #[cfg(test)]
 pub mod tests;

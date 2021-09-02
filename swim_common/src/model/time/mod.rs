@@ -23,7 +23,7 @@ use crate::form::ValidatedForm;
 use crate::model::schema::StandardSchema;
 use crate::model::ValueKind;
 use chrono::{DateTime, LocalResult, TimeZone, Utc};
-use std::fmt::Display;
+use std::fmt::{Display, Formatter};
 
 /// A structure representing the time that it was created.
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Ord, PartialOrd, Hash)]
@@ -32,6 +32,12 @@ pub struct Timestamp(DateTime<Utc>);
 impl AsRef<DateTime<Utc>> for Timestamp {
     fn as_ref(&self) -> &DateTime<Utc> {
         &self.0
+    }
+}
+
+impl Display for Timestamp {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 

@@ -14,10 +14,12 @@
 
 use crate::agent::dispatch::error::DispatcherErrors;
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::AgentResult;
+use crate::agent::store::SwimNodeStore;
+use crate::agent::{AgentResult, AgentTaskResult};
 use crate::plane::context::PlaneContext;
 use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::router::PlaneRouter;
+use crate::plane::store::mock::MockPlaneStore;
 use crate::plane::{AgentRoute, EnvChannel};
 use crate::routing::{ServerRouter, TaggedEnvelope};
 use futures::future::BoxFuture;
@@ -89,6 +91,7 @@ pub fn make_config() -> AgentExecutionConfig {
         node_log: Default::default(),
         metrics: Default::default(),
         max_idle_time: Duration::from_secs(60),
+        max_store_errors: 0,
     }
 }
 
@@ -99,7 +102,8 @@ const LANE_NAME: &str = "receiver_lane";
 const MESSAGE: &str = "ping!";
 
 impl<Clk: Clock, Delegate: ServerRouter + 'static>
-    AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>> for SendAgentRoute
+    AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>, SwimNodeStore<MockPlaneStore>>
+    for SendAgentRoute
 {
     fn run_agent(
         &self,
@@ -109,6 +113,7 @@ impl<Clk: Clock, Delegate: ServerRouter + 'static>
         _clock: Clk,
         incoming_envelopes: EnvChannel,
         mut router: PlaneRouter<Delegate>,
+        _store: SwimNodeStore<MockPlaneStore>,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
         let id = parameters[PARAM_NAME].clone();
         let target = self.0.clone();
@@ -133,8 +138,8 @@ impl<Clk: Clock, Delegate: ServerRouter + 'static>
             while incoming_envelopes.next().await.is_some() {}
             AgentResult {
                 route: uri,
-                dispatcher_errors: DispatcherErrors::default(),
-                failed: false,
+                dispatcher_task: Default::default(),
+                store_task: Default::default(),
             }
         }
         .boxed();
@@ -142,7 +147,8 @@ impl<Clk: Clock, Delegate: ServerRouter + 'static>
     }
 }
 
-impl<Clk: Clock, Delegate> AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>>
+impl<Clk: Clock, Delegate>
+    AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>, SwimNodeStore<MockPlaneStore>>
     for ReceiveAgentRoute
 {
     fn run_agent(
@@ -153,6 +159,7 @@ impl<Clk: Clock, Delegate> AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>>
         _clock: Clk,
         incoming_envelopes: EnvChannel,
         _router: PlaneRouter<Delegate>,
+        _store: SwimNodeStore<MockPlaneStore>,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
         let ReceiveAgentRoute { expected_id, done } = self;
         let mut done_sender = done.lock().take();
@@ -188,8 +195,11 @@ impl<Clk: Clock, Delegate> AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>>
             }
             AgentResult {
                 route: uri,
-                dispatcher_errors: DispatcherErrors::default(),
-                failed: times_seen != 1,
+                dispatcher_task: AgentTaskResult {
+                    errors: DispatcherErrors::default(),
+                    failed: times_seen != 1,
+                },
+                store_task: Default::default(),
             }
         }
         .boxed();

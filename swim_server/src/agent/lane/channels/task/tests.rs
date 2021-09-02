@@ -27,6 +27,8 @@ use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::lane::model::command::{Command, CommandLane};
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::model::supply::SupplyLane;
+use crate::agent::store::mock::MockNodeStore;
+use crate::agent::store::SwimNodeStore;
 use crate::agent::Eff;
 use crate::meta::accumulate_metrics;
 use crate::meta::log::make_node_logger;
@@ -36,6 +38,7 @@ use crate::meta::metric::node::NodePulse;
 use crate::meta::metric::uplink::{UplinkActionObserver, WarpUplinkPulse};
 use crate::meta::metric::{aggregator_sink, AggregatorError, NodeMetricAggregator};
 use crate::meta::pulse::PulseLanes;
+use crate::plane::store::mock::MockPlaneStore;
 use crate::routing::error::RouterError;
 use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
@@ -408,6 +411,7 @@ impl ServerRouter for TestRouter {
 
 impl AgentExecutionContext for TestContext {
     type Router = TestRouter;
+    type Store = SwimNodeStore<MockPlaneStore>;
 
     fn router_handle(&self) -> Self::Router {
         let TestContext {
@@ -429,6 +433,10 @@ impl AgentExecutionContext for TestContext {
 
     fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
         &self.uplinks_idle_since
+    }
+
+    fn store(&self) -> Self::Store {
+        MockNodeStore::mock()
     }
 }
 
@@ -1415,6 +1423,7 @@ struct MultiTestRouter(Arc<parking_lot::Mutex<MultiTestContextInner>>);
 
 impl AgentExecutionContext for MultiTestContext {
     type Router = MultiTestRouter;
+    type Store = SwimNodeStore<MockPlaneStore>;
 
     fn router_handle(&self) -> Self::Router {
         MultiTestRouter(self.0.clone())
@@ -1430,6 +1439,10 @@ impl AgentExecutionContext for MultiTestContext {
 
     fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
         &self.2
+    }
+
+    fn store(&self) -> Self::Store {
+        MockNodeStore::mock()
     }
 }
 
