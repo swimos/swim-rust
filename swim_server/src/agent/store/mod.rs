@@ -15,7 +15,7 @@
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
-use store::{StoreError, StoreInfo};
+use store::{EngineInfo, StoreError};
 use swim_common::model::text::Text;
 
 use crate::plane::store::PlaneStore;
@@ -44,11 +44,7 @@ pub trait NodeStore: StoreEngine + Send + Sync + Clone + Debug + 'static {
     type Delegate: PlaneStore;
 
     /// Returns information about the delegate store
-    fn store_info(&self) -> StoreInfo;
-
-    fn lane_id_of<I>(&self, lane: I) -> BoxFuture<KeyType>
-    where
-        I: Into<String>;
+    fn engine_info(&self) -> EngineInfo;
 }
 
 /// A node store which is used to open value and map lane data models.
@@ -96,11 +92,11 @@ impl<D: PlaneStore> SwimNodeStore<D> {
         &self,
         prefix: StoreKey,
         map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
     {
-        self.delegate.load_ranged_snapshot(prefix, map_fn)
+        self.delegate.get_prefix_range(prefix, map_fn)
     }
 }
 
@@ -121,8 +117,8 @@ impl<D: PlaneStore> StoreEngine for SwimNodeStore<D> {
 impl<D: PlaneStore> NodeStore for SwimNodeStore<D> {
     type Delegate = D;
 
-    fn store_info(&self) -> StoreInfo {
-        self.delegate.store_info()
+    fn engine_info(&self) -> EngineInfo {
+        self.delegate.engine_info()
     }
 
     fn lane_id_of<I>(&self, lane: I) -> BoxFuture<'_, u64>

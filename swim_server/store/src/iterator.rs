@@ -58,6 +58,8 @@ pub trait EngineIterator {
     fn valid(&self) -> Result<bool, StoreError>;
 }
 
+pub type KvPair = Option<(Box<[u8]>, Box<[u8]>)>;
+
 /// An iterator over a range of keys in a keyspace that begin with a specified prefix.
 pub trait EnginePrefixIterator {
     /// Returns a tuple containing an optional key and value for the lexicographically following

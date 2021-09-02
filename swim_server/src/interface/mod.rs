@@ -25,6 +25,7 @@ use crate::routing::remote::net::dns::Resolver;
 use crate::routing::remote::net::plain::TokioPlainTextNetworking;
 use crate::routing::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
 use crate::routing::{TopLevelRouter, TopLevelRouterFactory};
+use crate::store::RocksOpts;
 use crate::store::{default_keyspaces, RocksDatabase};
 use crate::store::{ServerStore, SwimStore};
 use either::Either;
@@ -33,6 +34,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::sync::Arc;
+use store::StoreError;
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
 use swim_runtime::task::TaskError;
 use swim_runtime::time::clock::RuntimeClock;
@@ -55,8 +57,15 @@ pub struct SwimServerBuilder {
             SwimPlaneStore<RocksDatabase>,
         >,
     >,
-    store: ServerStore<RocksDatabase>,
+    store: ServerStore<RocksOpts>,
 }
+
+type ServerPlaneBuilder = PlaneBuilder<
+    RuntimeClock,
+    EnvChannel,
+    PlaneRouter<TopLevelRouter>,
+    SwimPlaneStore<RocksDatabase>,
+>;
 
 impl SwimServerBuilder {
     /// Create a new server builder with custom configuration.
@@ -68,7 +77,7 @@ impl SwimServerBuilder {
             address: None,
             config,
             planes: Vec::new(),
-            store: ServerStore::new(Default::default(), default_keyspaces(), "target".into())?,
+            store: ServerStore::new(RocksOpts::default(), default_keyspaces(), "target".into())?,
         })
     }
 
@@ -120,7 +129,7 @@ impl SwimServerBuilder {
     /// }
     ///
     /// let mut swim_server_builder = SwimServerBuilder::transient_store(SwimServerConfig::default(), "test").unwrap();
-    /// let mut plane_builder = swim_server_builder.plane_builder("test");
+    /// let mut plane_builder = swim_server_builder.plane_builder("test").unwrap();
     ///
     /// plane_builder
     ///     .add_route(
@@ -142,17 +151,12 @@ impl SwimServerBuilder {
     pub fn plane_builder<I: Into<String>>(
         &mut self,
         name: I,
-    ) -> PlaneBuilder<
-        RuntimeClock,
-        EnvChannel,
-        PlaneRouter<TopLevelRouter>,
-        SwimPlaneStore<RocksDatabase>,
-    > {
+    ) -> Result<ServerPlaneBuilder, SwimServerBuilderError> {
         let store = self
             .store
             .plane_store(name.into())
-            .expect("Failed to build store");
-        PlaneBuilder::new(store)
+            .map_err(SwimServerBuilderError::StoreError)?;
+        Ok(PlaneBuilder::new(store))
     }
 
     /// Build the Swim Server.
@@ -191,7 +195,7 @@ impl SwimServerBuilder {
     /// }
     ///
     /// let mut swim_server_builder = SwimServerBuilder::transient_store(SwimServerConfig::default(), "test").unwrap();
-    /// let mut plane_builder = swim_server_builder.plane_builder("test");
+    /// let mut plane_builder = swim_server_builder.plane_builder("test").unwrap();
     ///
     /// plane_builder
     ///     .add_route(
@@ -236,8 +240,8 @@ impl SwimServerBuilder {
     pub fn transient_store(config: SwimServerConfig, prefix: &str) -> io::Result<Self> {
         Ok(SwimServerBuilder {
             address: None,
-            store: ServerStore::<RocksDatabase>::transient(
-                Default::default(),
+            store: ServerStore::<RocksOpts>::transient(
+                RocksOpts::default(),
                 default_keyspaces(),
                 prefix,
             )?,
@@ -259,7 +263,7 @@ pub struct SwimServer {
     planes: Vec<PlaneDef>,
     stop_trigger_rx: trigger::Receiver,
     address_tx: promise::Sender<SocketAddr>,
-    _store: ServerStore<RocksDatabase>,
+    _store: ServerStore<RocksOpts>,
 }
 
 impl SwimServer {
@@ -341,6 +345,8 @@ impl SwimServer {
 pub enum SwimServerBuilderError {
     /// An error that occurs when trying to create a server without providing the address first.
     MissingAddress,
+    /// An error occured when attempting to build the delegate store.
+    StoreError(StoreError),
 }
 
 impl Display for SwimServerBuilderError {
@@ -348,6 +354,9 @@ impl Display for SwimServerBuilderError {
         match self {
             SwimServerBuilderError::MissingAddress => {
                 write!(f, "Cannot create a swim server without an address")
+            }
+            SwimServerBuilderError::StoreError(e) => {
+                write!(f, "{}", e)
             }
         }
     }

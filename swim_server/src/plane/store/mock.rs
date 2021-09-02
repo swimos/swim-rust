@@ -37,25 +37,25 @@ impl PlaneStore for MockPlaneStore {
         MockNodeStore::mock()
     }
 
-    fn load_ranged_snapshot<F, K, V>(
+    fn get_prefix_range<F, K, V>(
         &self,
         _prefix: StoreKey,
         _map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
     {
         Ok(None)
     }
 
-    fn store_info(&self) -> StoreInfo {
-        StoreInfo {
+    fn engine_info(&self) -> EngineInfo {
+        EngineInfo {
             path: "".to_string(),
             kind: "Mock".to_string(),
         }
     }
 
-    fn lane_id_of<I>(&self, _lane: I) -> BoxFuture<'static, KeyType>
+    fn lane_id_of<I>(&self, _lane: I) -> BoxFuture<'static, u64>
     where
         I: Into<String>,
     {

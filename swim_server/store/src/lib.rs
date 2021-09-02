@@ -15,9 +15,7 @@
 pub mod engines;
 pub mod iterator;
 pub mod keyspaces;
-mod transient;
 
-use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt::Debug;
 use std::path::Path;
@@ -40,9 +38,6 @@ pub enum StoreError {
     /// The provided key was not found in the store.
     #[error("The specified key was not found")]
     KeyNotFound,
-    /// An error produced when attempting to execute a snapshot read.
-    #[error("An error was produced when attempting to create a snapshot: {0}")]
-    Snapshot(String),
     /// The delegate byte engine failed to initialised.
     #[error("The delegate store engine failed to initialise: {0}")]
     InitialisationFailure(String),
@@ -87,12 +82,12 @@ impl PartialEq for StoreError {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (StoreError::KeyNotFound, StoreError::KeyNotFound) => true,
-            (StoreError::Snapshot(l), StoreError::Snapshot(r)) => l.eq(r),
             (StoreError::InitialisationFailure(l), StoreError::InitialisationFailure(r)) => l.eq(r),
             (StoreError::Io(l), StoreError::Io(r)) => l.kind().eq(&r.kind()),
             (StoreError::Encoding(l), StoreError::Encoding(r)) => l.eq(r),
             (StoreError::Decoding(l), StoreError::Decoding(r)) => l.eq(r),
             (StoreError::Delegate(l), StoreError::Delegate(r)) => l.to_string().eq(&r.to_string()),
+            (StoreError::DelegateMessage(l), StoreError::DelegateMessage(r)) => l.eq(r),
             (StoreError::Closing, StoreError::Closing) => true,
             (StoreError::KeyspaceNotFound, StoreError::KeyspaceNotFound) => true,
             _ => false,
@@ -104,9 +99,7 @@ impl PartialEq for StoreError {
 ///
 /// This trait only serves to compose the multiple traits that are required for a store.
 pub trait Store:
-    FromKeyspaces
-    + RangedSnapshotLoad
-    + KeyspaceByteEngine
+    KeyspaceByteEngine
     + KeyspaceResolver
     + Send
     + Sync
@@ -118,28 +111,17 @@ pub trait Store:
     /// Returns a reference to the path that the delegate byte engine is operating from.
     fn path(&self) -> &Path;
 
-    /// Returns information about the delegate store
-    fn store_info(&self) -> StoreInfo;
+    /// Returns information about the store engine.
+    fn engine_info(&self) -> EngineInfo;
 }
 
-/// A trait for defining engine snapshots.
-pub trait Snapshot<K, V> {
-    /// The type of the snapshot. An iterator that will yield a deserialized key-value pair.
-    type Snapshot: IntoIterator<Item = (K, V)>;
-
-    /// Execute a snapshot on the store engine.
-    ///
-    /// Returns `Ok(None)` if no records matched `prefix` or `Ok(Some)` if matches were found.
-    ///
-    /// # Errors
-    /// Errors if an error is encountered when attempting to execute the snapshot on the store
-    /// engine or if deserializing a key or value fails.
-    fn snapshot(&self) -> Result<Option<Self::Snapshot>, StoreError>;
-}
-
+/// Information regarding a delegate store engine that is useful for displaying along with debug
+/// information or an error report.
 #[derive(Debug, PartialEq, Clone)]
-pub struct StoreInfo {
+pub struct EngineInfo {
+    /// The path that the store engine is operating from.
     pub path: String,
+    /// The type of store engine: RocksDB/NoStore etc.
     pub kind: String,
 }
 
@@ -159,6 +141,6 @@ pub fn deserialize<'de, D: Deserialize<'de>>(obj: &'de [u8]) -> Result<D, StoreE
     bincode::deserialize(obj).map_err(|e| StoreError::Decoding(e.to_string()))
 }
 
-pub fn deserialize_key<B: AsRef<[u8]>>(bytes: B) -> Result<KeyType, StoreError> {
-    bincode::deserialize::<KeyType>(bytes.as_ref()).map_err(|e| StoreError::Decoding(e.to_string()))
+pub fn deserialize_key<B: AsRef<[u8]>>(bytes: B) -> Result<u64, StoreError> {
+    bincode::deserialize::<u64>(bytes.as_ref()).map_err(|e| StoreError::Decoding(e.to_string()))
 }

@@ -18,37 +18,20 @@ use crate::store::{LANE_KS, MAP_LANE_KS, VALUE_LANE_KS};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use futures::Stream;
+use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, Options, SliceTransform, DB};
 use std::mem::size_of;
 use std::path::Path;
 use std::sync::Arc;
-use store::engines::{
-    FromKeyspaces, KeyedSnapshot, RangedSnapshotLoad, RocksEngine, RocksIterator, RocksOpts,
-    RocksPrefixIterator,
+use store::keyspaces::{Keyspace, KeyspaceByteEngine};
+use store::keyspaces::{KeyspaceDef, KeyspaceResolver, Keyspaces};
+use store::{
+    EngineInfo, EngineIterOpts, EngineRefIterator, RocksEngine, RocksIterator, RocksPrefixIterator,
+    Store, StoreBuilder, StoreError,
 };
-use store::iterator::{EngineIterOpts, EngineRefIterator};
-use store::keyspaces::{
-    KeyType, Keyspace, KeyspaceByteEngine, KeyspaceDef, KeyspaceResolver, Keyspaces,
-};
-use store::{ColumnFamily, Options, SliceTransform, Store, StoreError, StoreInfo};
 
 #[derive(Debug, Clone)]
 pub struct RocksDatabase {
     db: RocksEngine,
-}
-
-impl FromKeyspaces for RocksDatabase {
-    type Opts = RocksOpts;
-
-    fn from_keyspaces<I: AsRef<Path>>(
-        path: I,
-        db_opts: &Self::Opts,
-        keyspaces: Keyspaces<Self>,
-    ) -> Result<Self, StoreError> {
-        let keyspaces = Keyspaces::new(keyspaces.keyspaces);
-        let db = RocksEngine::from_keyspaces(path, db_opts, keyspaces)?;
-
-        Ok(RocksDatabase { db })
-    }
 }
 
 impl Store for RocksDatabase {
@@ -56,8 +39,8 @@ impl Store for RocksDatabase {
         self.db.path()
     }
 
-    fn store_info(&self) -> StoreInfo {
-        self.db.store_info()
+    fn engine_info(&self) -> EngineInfo {
+        self.db.engine_info()
     }
 }
 
@@ -91,6 +74,19 @@ impl KeyspaceByteEngine for RocksDatabase {
     ) -> Result<(), StoreError> {
         self.db.merge_keyspace(keyspace, key, step)
     }
+
+    fn get_prefix_range<F, K, V, S>(
+        &self,
+        keyspace: S,
+        prefix: &[u8],
+        map_fn: F,
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+        S: Keyspace,
+    {
+        self.db.get_prefix_range(keyspace, prefix, map_fn)
+    }
 }
 
 impl<'a: 'b, 'b> EngineRefIterator<'a, 'b> for RocksDatabase {
@@ -123,21 +119,6 @@ impl KeyspaceResolver for RocksDatabase {
     }
 }
 
-impl RangedSnapshotLoad for RocksDatabase {
-    fn load_ranged_snapshot<F, K, V, S>(
-        &self,
-        keyspace: S,
-        prefix: &[u8],
-        map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-        S: Keyspace,
-    {
-        self.db.load_ranged_snapshot(keyspace, prefix, map_fn)
-    }
-}
-
 impl KeystoreTask for RocksDatabase {
     fn run<DB, S>(db: Arc<DB>, events: S) -> BoxFuture<'static, Result<(), StoreError>>
     where
@@ -148,7 +129,45 @@ impl KeystoreTask for RocksDatabase {
     }
 }
 
-pub fn default_keyspaces() -> Keyspaces<RocksDatabase> {
+#[derive(Clone)]
+pub struct RocksOpts(Options);
+
+impl Default for RocksOpts {
+    fn default() -> Self {
+        let mut rock_opts = rocksdb::Options::default();
+        rock_opts.create_if_missing(true);
+        rock_opts.create_missing_column_families(true);
+
+        RocksOpts(rock_opts)
+    }
+}
+
+impl StoreBuilder for RocksOpts {
+    type Store = RocksDatabase;
+
+    fn build<I>(self, path: I, keyspaces: &Keyspaces<Self>) -> Result<Self::Store, StoreError>
+    where
+        I: AsRef<Path>,
+    {
+        let Keyspaces { keyspaces } = keyspaces;
+        let descriptors =
+            keyspaces
+                .into_iter()
+                .fold(Vec::with_capacity(keyspaces.len()), |mut vec, def| {
+                    let cf_descriptor =
+                        ColumnFamilyDescriptor::new(def.name.to_string(), def.opts.0.clone());
+                    vec.push(cf_descriptor);
+                    vec
+                });
+
+        let db = DB::open_cf_descriptors(&self.0, path, descriptors)?;
+        Ok(RocksDatabase {
+            db: RocksEngine::new(db),
+        })
+    }
+}
+
+pub fn default_keyspaces() -> Keyspaces<RocksOpts> {
     let mut lane_counter_opts = Options::default();
     lane_counter_opts.set_merge_operator_associative(COUNTER_KEY, incrementing_merge_operator);
 
@@ -156,7 +175,7 @@ pub fn default_keyspaces() -> Keyspaces<RocksDatabase> {
     let value_def = KeyspaceDef::new(VALUE_LANE_KS, RocksOpts(Options::default()));
 
     let mut map_opts = Options::default();
-    map_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(size_of::<KeyType>()));
+    map_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(size_of::<u64>()));
     map_opts.set_memtable_prefix_bloom_ratio(0.2);
 
     let map_def = KeyspaceDef::new(MAP_LANE_KS, RocksOpts(map_opts));

@@ -30,6 +30,7 @@ use std::any::Any;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use stm::transaction::{RetryManager, TransactionError};
 use swim_common::form::{Form, FormErr};
@@ -40,8 +41,10 @@ use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use swim_warp::backpressure::keyed::map::MapUpdateMessage;
 use swim_warp::model::map::MapUpdate;
+use tokio::time::Instant;
 use tracing::{event, Level};
 use utilities::errors::Recoverable;
+use utilities::instant::AtomicInstant;
 
 pub(crate) mod backpressure;
 pub mod map;
@@ -252,7 +255,11 @@ where
     Actions: FusedStream<Item = UplinkAction> + Send,
 {
     /// Run the uplink as an asynchronous task.
-    pub async fn run_uplink<Sender, SendErr>(self, mut sender: Sender) -> Result<(), UplinkError>
+    pub async fn run_uplink<Sender, SendErr>(
+        self,
+        mut sender: Sender,
+        uplinks_idle_since: Arc<AtomicInstant>,
+    ) -> Result<(), UplinkError>
     where
         Sender: ItemSender<UplinkMessage<SM::Msg>, SendErr> + Send + Sync + Clone,
         SendErr: Send,
@@ -268,7 +275,7 @@ where
         let update_stream = as_stream(&state_machine, &mut actions, &mut updates);
 
         let completion = state_machine
-            .send_message_stream(update_stream, sender.clone())
+            .send_message_stream(update_stream, sender.clone(), uplinks_idle_since)
             .await;
         let attempt_unlink = match &completion {
             Ok(_) => false,
@@ -481,19 +488,21 @@ pub trait UplinkStateMachine<Event>: Send + Sync {
         &'a self,
         message_stream: Messages,
         sender: Sender,
+        uplinks_idle_since: Arc<AtomicInstant>,
     ) -> BoxFuture<'a, Result<(), UplinkError>>
     where
         Messages: Stream<Item = Result<UplinkMessage<Self::Msg>, UplinkError>> + Send + 'a,
         Sender: ItemSender<UplinkMessage<Self::Msg>, SendErr> + Send + Sync + Clone + 'a,
         SendErr: Send + 'a,
     {
-        default_send_message_stream(message_stream, sender).boxed()
+        default_send_message_stream(message_stream, sender, uplinks_idle_since).boxed()
     }
 }
 
 async fn default_send_message_stream<Msg, Messages, Sender, SendErr>(
     message_stream: Messages,
     mut sender: Sender,
+    uplinks_idle_since: Arc<AtomicInstant>,
 ) -> Result<(), UplinkError>
 where
     Msg: Any + Send + Sync + Debug,
@@ -507,6 +516,8 @@ where
                 let result = send_msg(&mut sender, msg).await;
                 if result.is_err() {
                     break result;
+                } else {
+                    uplinks_idle_since.store(Instant::now(), Ordering::Relaxed)
                 }
             }
             Some(Err(e)) => {
@@ -622,6 +633,7 @@ where
         &'a self,
         message_stream: Messages,
         sender: Sender,
+        uplinks_idle_since: Arc<AtomicInstant>,
     ) -> BoxFuture<'a, Result<(), UplinkError>>
     where
         Messages: Stream<Item = Result<UplinkMessage<Self::Msg>, UplinkError>> + Send + 'a,
@@ -633,7 +645,7 @@ where
                 backpressure::value_uplink_release_backpressure(message_stream, sender, config)
                     .await
             } else {
-                default_send_message_stream(message_stream, sender).await
+                default_send_message_stream(message_stream, sender, uplinks_idle_since).await
             }
         }
         .boxed()
@@ -714,6 +726,7 @@ where
         &'a self,
         message_stream: Messages,
         sender: Sender,
+        uplinks_idle_since: Arc<AtomicInstant>,
     ) -> BoxFuture<'a, Result<(), UplinkError>>
     where
         Messages:
@@ -725,7 +738,7 @@ where
             if let Some(config) = self.backpressure_config {
                 backpressure::map_uplink_release_backpressure(message_stream, sender, config).await
             } else {
-                default_send_message_stream(message_stream, sender).await
+                default_send_message_stream(message_stream, sender, uplinks_idle_since).await
             }
         }
         .boxed()

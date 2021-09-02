@@ -43,7 +43,6 @@ use utilities::errors::Recoverable;
 pub type FmtResult = std::fmt::Result;
 
 use std::time::Duration;
-#[cfg(feature = "tungstenite")]
 use {std::ops::Deref, tokio_tungstenite::tungstenite};
 
 #[cfg(test)]
@@ -116,14 +115,11 @@ impl Display for ConnectionError {
     }
 }
 
-#[cfg(feature = "tungstenite")]
 pub type TError = tungstenite::error::Error;
 
-#[cfg(feature = "tungstenite")]
 #[derive(Debug)]
 pub struct TungsteniteError(pub tungstenite::error::Error);
 
-#[cfg(feature = "tungstenite")]
 impl Deref for TungsteniteError {
     type Target = TError;
 
@@ -132,7 +128,6 @@ impl Deref for TungsteniteError {
     }
 }
 
-#[cfg(feature = "tungstenite")]
 impl From<TungsteniteError> for ConnectionError {
     fn from(e: TungsteniteError) -> Self {
         match e.0 {

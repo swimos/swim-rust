@@ -13,7 +13,7 @@
 // limitations under the License.
 
 pub mod context;
-pub mod dispatch;
+pub(crate) mod dispatch;
 pub mod lane;
 pub mod lifecycle;
 pub mod store;
@@ -109,8 +109,8 @@ pub trait SwimAgent<Config>: Any + Send + Sync + Sized {
 }
 
 pub type DynamicLaneTasks<Agent, Context> = Vec<Box<dyn LaneTasks<Agent, Context>>>;
-pub type DynamicAgentIo<Context> =
-    HashMap<String, LaneIo<Box<dyn RoutingIo<Context>>, Box<dyn StoreIo>>>;
+pub type DynamicAgentIo<Context, Store> =
+    HashMap<String, IoPair<Box<dyn LaneIo<Context>>, Box<dyn StoreIo<Store>>>>;
 
 pub const COMMANDED: &str = "Command received";
 pub const ON_COMMAND: &str = "On command handler";
@@ -130,7 +130,7 @@ type DispatchTaskResult = TaskIoResult<DispatcherErrors>;
 type StoreTaskResult = TaskIoResult<NodeStoreErrors>;
 
 #[derive(Debug, Default)]
-pub struct AgentTaskResult<Err: Debug + Default> {
+pub struct AgentTaskResult<Err: Debug> {
     pub errors: Err,
     pub failed: bool,
 }
@@ -143,7 +143,10 @@ pub struct AgentResult {
 }
 
 impl AgentResult {
-    fn result_for<E: Default + Debug>(result: TaskIoResult<E>) -> AgentTaskResult<E> {
+    fn result_for<E>(result: TaskIoResult<E>) -> AgentTaskResult<E>
+    where
+        E: Default + Debug,
+    {
         match result {
             Ok(Ok(errs)) => AgentTaskResult {
                 errors: errs,
@@ -201,14 +204,14 @@ impl<Config> AgentParameters<Config> {
 }
 
 /// Lane IO pair consisting of routing IO and store IO.
-pub struct LaneIo<Routing, Store> {
+pub struct IoPair<Routing, Store> {
     routing: Option<Routing>,
-    persistence: Store,
+    persistence: Option<Store>,
 }
 
-impl<Routing, Store> LaneIo<Routing, Store> {
-    pub fn new(routing: Option<Routing>, persistence: Store) -> Self {
-        LaneIo {
+impl<Routing, Store> IoPair<Routing, Store> {
+    pub fn new(routing: Option<Routing>, persistence: Option<Store>) -> Self {
+        IoPair {
             routing,
             persistence,
         }
@@ -226,7 +229,7 @@ impl<Routing, Store> LaneIo<Routing, Store> {
 /// * `stop_trigger` - External trigger to cleanly stop the agent.
 /// * `parameters` - Parameters extracted from the agent node route pattern.
 /// * `incoming_envelopes` - The stream of envelopes routed to the agent.
-pub fn run_agent<Config, Clk, Agent, L, Router, Store>(
+pub(crate) fn run_agent<Config, Clk, Agent, L, Router, Store>(
     lifecycle: L,
     clock: Clk,
     parameters: AgentParameters<Config>,
@@ -327,7 +330,7 @@ where
         let (mut routing_io, persistence_io) = io_providers.into_iter().fold(
             (HashMap::new(), HashMap::new()),
             |(mut routing_io, mut persistence_io), (lane_uri, lane_io)| {
-                let LaneIo {
+                let IoPair {
                     routing,
                     persistence,
                 } = lane_io;
@@ -336,7 +339,9 @@ where
                     let ident = LaneIdentifier::agent(lane_uri.clone());
                     routing_io.insert(ident, routing);
                 }
-                persistence_io.insert(lane_uri, persistence);
+                if let Some(persistence) = persistence {
+                    persistence_io.insert(lane_uri, persistence);
+                }
                 (routing_io, persistence_io)
             },
         );
@@ -359,9 +364,11 @@ where
 
         let (dispatch_result_tx, dispatch_result_rx) = oneshot::channel();
 
+        let uplinks_idle_since = context.uplinks_idle_since.clone();
+
         let dispatch_task = async move {
             let tripwire = tripwire;
-            let result = dispatcher.run(incoming_envelopes).await;
+            let result = dispatcher.run(incoming_envelopes, uplinks_idle_since).await;
             tripwire.trigger();
             let _ = dispatch_result_tx.send(result);
         }
@@ -550,7 +557,7 @@ impl Display for AttachError {
 impl Error for AttachError {}
 
 /// Lazily initialized envelope IO for a lane.
-pub trait RoutingIo<Context: AgentExecutionContext + Sized + Send + Sync + 'static>:
+pub trait LaneIo<Context: AgentExecutionContext + Sized + Send + Sync + 'static>:
     Send + Sync
 {
     /// Attempt to attach the running lane to a stream of envelopes.
@@ -570,7 +577,7 @@ pub trait RoutingIo<Context: AgentExecutionContext + Sized + Send + Sync + 'stat
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError>;
 
-    fn boxed(self) -> Box<dyn RoutingIo<Context>>
+    fn boxed(self) -> Box<dyn LaneIo<Context>>
     where
         Self: Sized + 'static,
     {
@@ -593,7 +600,7 @@ where
     }
 }
 
-impl<T, Context, D> RoutingIo<Context> for ValueLaneIo<T, D>
+impl<T, Context, D> LaneIo<Context> for ValueLaneIo<T, D>
 where
     T: Any + Send + Sync + Form + Debug,
     D: DeferredSubscription<Arc<T>>,
@@ -650,7 +657,7 @@ where
     }
 }
 
-impl<K, V, Context, D> RoutingIo<Context> for MapLaneIo<K, V, D>
+impl<K, V, Context, D> LaneIo<Context> for MapLaneIo<K, V, D>
 where
     K: Any + Send + Sync + Form + Clone + Debug,
     V: Any + Send + Sync + Form + Debug,
@@ -710,7 +717,7 @@ where
     }
 }
 
-impl<Command, Response, Context> RoutingIo<Context> for ActionLaneIo<Command, Response>
+impl<Command, Response, Context> LaneIo<Context> for ActionLaneIo<Command, Response>
 where
     Command: Send + Sync + Form + Debug + 'static,
     Response: Send + Sync + Form + Debug + 'static,
@@ -759,7 +766,7 @@ where
     }
 }
 
-impl<T, Context> RoutingIo<Context> for CommandLaneIo<T>
+impl<T, Context> LaneIo<Context> for CommandLaneIo<T>
 where
     T: Send + Sync + Form + Debug + 'static,
     Context: AgentExecutionContext + Sized + Send + Sync + 'static,
@@ -919,7 +926,7 @@ pub fn make_value_lane<Agent, Context, T, L, Store, P>(
 ) -> (
     ValueLane<T>,
     impl LaneTasks<Agent, Context>,
-    LaneIo<impl RoutingIo<Context>, Box<dyn StoreIo>>,
+    IoPair<impl LaneIo<Context>, impl StoreIo<Store>>,
 )
 where
     Agent: 'static,
@@ -960,7 +967,7 @@ where
         ))
     };
 
-    let io = LaneIo {
+    let io = IoPair {
         routing: lane_io,
         persistence: store_io,
     };
@@ -1041,7 +1048,7 @@ pub fn make_map_lane<Agent, Context, K, V, L, P, Store>(
 ) -> (
     MapLane<K, V>,
     impl LaneTasks<Agent, Context>,
-    LaneIo<impl RoutingIo<Context>, Box<dyn StoreIo>>,
+    IoPair<impl LaneIo<Context>, impl StoreIo<Store>>,
 )
 where
     Agent: 'static,
@@ -1076,7 +1083,7 @@ where
         unimplemented!()
     };
 
-    let io = LaneIo {
+    let io = IoPair {
         routing: lane_io,
         persistence: store_io,
     };
@@ -1207,7 +1214,7 @@ pub fn make_action_lane<Agent, Context, Command, Response, L, S, P>(
 ) -> (
     ActionLane<Command, Response>,
     impl LaneTasks<Agent, Context>,
-    Option<impl RoutingIo<Context>>,
+    Option<impl LaneIo<Context>>,
 )
 where
     Agent: 'static,
@@ -1253,7 +1260,7 @@ pub fn make_command_lane<Agent, Context, T, L>(
 ) -> (
     CommandLane<T>,
     impl LaneTasks<Agent, Context>,
-    Option<impl RoutingIo<Context>>,
+    Option<impl LaneIo<Context>>,
 )
 where
     Agent: 'static,
@@ -1293,7 +1300,7 @@ pub fn make_supply_lane<Agent, Context, T>(
 ) -> (
     SupplyLane<T>,
     impl LaneTasks<Agent, Context>,
-    Option<impl RoutingIo<Context>>,
+    Option<impl LaneIo<Context>>,
 )
 where
     Agent: 'static,
@@ -1326,7 +1333,7 @@ impl<S> SupplyLaneIo<S> {
     }
 }
 
-impl<S, Item, Context> RoutingIo<Context> for SupplyLaneIo<S>
+impl<S, Item, Context> LaneIo<Context> for SupplyLaneIo<S>
 where
     S: Stream<Item = Item> + Send + Sync + 'static,
     Item: Send + Sync + Form + Debug + 'static,
@@ -1378,7 +1385,7 @@ pub fn make_demand_lane<Agent, Context, Event, L>(
 ) -> (
     DemandLane<Event>,
     impl LaneTasks<Agent, Context>,
-    impl RoutingIo<Context>,
+    impl LaneIo<Context>,
 )
 where
     Agent: 'static,
@@ -1415,7 +1422,7 @@ where
     }
 }
 
-impl<Event, Context> RoutingIo<Context> for DemandLaneIo<Event>
+impl<Event, Context> LaneIo<Context> for DemandLaneIo<Event>
 where
     Event: Form + Send + Sync + 'static,
     Context: AgentExecutionContext + Sized + Send + Sync + 'static,
@@ -1517,7 +1524,7 @@ pub fn make_demand_map_lane<Agent, Context, Key, Value, L>(
 ) -> (
     DemandMapLane<Key, Value>,
     impl LaneTasks<Agent, Context>,
-    Option<impl RoutingIo<Context>>,
+    Option<impl LaneIo<Context>>,
 )
 where
     Agent: 'static,
@@ -1567,7 +1574,7 @@ where
     }
 }
 
-impl<Key, Value, Context> RoutingIo<Context> for DemandMapLaneIo<Key, Value>
+impl<Key, Value, Context> LaneIo<Context> for DemandMapLaneIo<Key, Value>
 where
     Key: Any + Send + Sync + Form + Clone + Debug,
     Value: Any + Send + Sync + Form + Clone + Debug,

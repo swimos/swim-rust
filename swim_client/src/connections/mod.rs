@@ -23,20 +23,15 @@ use futures::stream;
 use futures::{FutureExt, Sink, Stream, StreamExt};
 use futures_util::future::TryFutureExt;
 use futures_util::TryStreamExt;
+use swim_common::request::request_future::RequestError;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::{SendError, TrySendError};
 use tokio::sync::oneshot;
-#[allow(unused_imports)]
-#[cfg(feature = "websocket")]
-use tokio_tungstenite::tungstenite;
 use tracing::{instrument, trace};
 use url::Host;
 
-use swim_common::request::request_future::RequestError;
-
 use crate::configuration::router::ConnectionPoolParams;
 
-#[cfg(feature = "websocket")]
 pub mod factory;
 
 #[cfg(test)]

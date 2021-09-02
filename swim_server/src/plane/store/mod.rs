@@ -22,7 +22,8 @@ use std::sync::Arc;
 use futures::future::BoxFuture;
 use futures::{FutureExt, Stream};
 
-use store::{serialize, Store, StoreError, StoreInfo};
+use store::keyspaces::{KeyspaceByteEngine, Keyspaces};
+use store::{serialize, EngineInfo, Store, StoreBuilder, StoreError};
 use swim_common::model::text::Text;
 
 use crate::agent::store::{NodeStore, SwimNodeStore};
@@ -67,18 +68,18 @@ where
     ///
     /// Returns an optional snapshot iterator if entries were found that will yield deserialized
     /// key-value pairs.
-    fn load_ranged_snapshot<F, K, V>(
+    fn get_prefix_range<F, K, V>(
         &self,
         prefix: StoreKey,
         map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>;
 
     /// Returns information about the delegate store
-    fn store_info(&self) -> StoreInfo;
+    fn engine_info(&self) -> EngineInfo;
 
-    fn lane_id_of<I>(&self, lane: I) -> BoxFuture<KeyType>
+    fn lane_id_of<I>(&self, lane: I) -> BoxFuture<u64>
     where
         I: Into<String>;
 }
@@ -136,11 +137,11 @@ where
         SwimNodeStore::new(self.clone(), node)
     }
 
-    fn load_ranged_snapshot<F, K, V>(
+    fn get_prefix_range<F, K, V>(
         &self,
         prefix: StoreKey,
         map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
     {
@@ -150,14 +151,14 @@ where
         };
 
         self.delegate
-            .load_ranged_snapshot(namespace, serialize(&prefix)?.as_slice(), map_fn)
+            .get_prefix_range(namespace, serialize(&prefix)?.as_slice(), map_fn)
     }
 
-    fn store_info(&self) -> StoreInfo {
-        self.delegate.store_info()
+    fn engine_info(&self) -> EngineInfo {
+        self.delegate.engine_info()
     }
 
-    fn lane_id_of<I>(&self, lane: I) -> BoxFuture<KeyType>
+    fn lane_id_of<I>(&self, lane: I) -> BoxFuture<u64>
     where
         I: Into<String>,
     {
@@ -196,6 +197,37 @@ impl<D: Store> StoreEngine for SwimPlaneStore<D> {
     }
 }
 
+pub(crate) fn open_plane<B, P, D>(
+    base_path: B,
+    plane_name: P,
+    builder: D,
+    keyspaces: Keyspaces<D>,
+) -> Result<SwimPlaneStore<D::Store>, StoreError>
+where
+    B: AsRef<Path>,
+    P: AsRef<Path>,
+    D: StoreBuilder,
+    D::Store: KeystoreTask,
+{
+    let path = path_for(base_path.as_ref(), plane_name.as_ref());
+    let delegate = builder.build(path, &keyspaces)?;
+    let plane_name = match plane_name.as_ref().to_str() {
+        Some(path) => path.to_string(),
+        None => {
+            return Err(StoreError::Io(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Expected a valid UTF-8 path",
+            )));
+        }
+    };
+
+    let arcd_delegate = Arc::new(delegate);
+    // todo config
+    let keystore = KeyStore::new(arcd_delegate.clone(), NonZeroUsize::new(8).unwrap());
+
+    Ok(SwimPlaneStore::new(plane_name, arcd_delegate, keystore))
+}
+
 impl<D> SwimPlaneStore<D>
 where
     D: Store + KeystoreTask,
@@ -210,34 +242,5 @@ where
             delegate,
             keystore,
         }
-    }
-
-    pub(crate) fn open<B, P>(
-        base_path: B,
-        plane_name: P,
-        db_opts: &D::Opts,
-        keyspaces: Keyspaces<D>,
-    ) -> Result<SwimPlaneStore<D>, StoreError>
-    where
-        B: AsRef<Path>,
-        P: AsRef<Path>,
-    {
-        let path = path_for(base_path.as_ref(), plane_name.as_ref());
-        let delegate = D::from_keyspaces(&path, db_opts, keyspaces)?;
-        let plane_name = match plane_name.as_ref().to_str() {
-            Some(path) => path.to_string(),
-            None => {
-                return Err(StoreError::Io(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "Expected a valid UTF-8 path",
-                )));
-            }
-        };
-
-        let arcd_delegate = Arc::new(delegate);
-        // todo config
-        let keystore = KeyStore::new(arcd_delegate.clone(), NonZeroUsize::new(8).unwrap());
-
-        Ok(Self::new(plane_name, arcd_delegate, keystore))
     }
 }

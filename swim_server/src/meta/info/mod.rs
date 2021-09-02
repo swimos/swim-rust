@@ -23,7 +23,7 @@ use crate::agent::lane::model::demand_map::{
     DemandMapLane, DemandMapLaneCommand, DemandMapLaneEvent,
 };
 use crate::agent::{
-    AgentContext, DemandMapLaneIo, DynamicLaneTasks, Lane, LaneTasks, RoutingIo, SwimAgent,
+    AgentContext, DemandMapLaneIo, DynamicLaneTasks, Lane, LaneIo, LaneTasks, SwimAgent,
 };
 use crate::meta::{IdentifiedAgentIo, MetaNodeAddressed, LANES_URI};
 use futures::future::ready;
@@ -269,7 +269,7 @@ pub fn make_meta_demand_map_lane<Agent, Context, Key, Value>(
 ) -> (
     DemandMapLane<Key, Value>,
     impl LaneTasks<Agent, Context>,
-    Option<impl RoutingIo<Context>>,
+    Option<impl LaneIo<Context>>,
 )
 where
     Agent: 'static,
