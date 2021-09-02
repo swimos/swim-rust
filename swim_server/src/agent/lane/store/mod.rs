@@ -18,6 +18,7 @@ use futures::future::{ready, BoxFuture};
 #[cfg(test)]
 mod tests;
 
+use futures::FutureExt;
 #[cfg(test)]
 pub use tests::store_err_partial_eq;
 

@@ -109,8 +109,8 @@ pub trait SwimAgent<Config>: Any + Send + Sync + Sized {
 }
 
 pub type DynamicLaneTasks<Agent, Context> = Vec<Box<dyn LaneTasks<Agent, Context>>>;
-pub type DynamicAgentIo<Context, Store> =
-    HashMap<String, IoPair<Box<dyn LaneIo<Context>>, Box<dyn StoreIo<Store>>>>;
+pub type DynamicAgentIo<Context> =
+    HashMap<String, IoPair<Box<dyn LaneIo<Context>>, Box<dyn StoreIo>>>;
 
 pub const COMMANDED: &str = "Command received";
 pub const ON_COMMAND: &str = "On command handler";
@@ -926,7 +926,7 @@ pub fn make_value_lane<Agent, Context, T, L, Store, P>(
 ) -> (
     ValueLane<T>,
     impl LaneTasks<Agent, Context>,
-    IoPair<impl LaneIo<Context>, impl StoreIo<Store>>,
+    IoPair<Box<dyn LaneIo<Context>>, Box<dyn StoreIo>>,
 )
 where
     Agent: 'static,
@@ -944,8 +944,11 @@ where
 
     let (lane, observer) = ValueLane::observable(init, exec_config.observation_buffer);
 
-    let lane_io = if is_public {
-        Some(ValueLaneIo::new(lane.clone(), observer.subscriber()))
+    let lane_io: Option<Box<dyn LaneIo<Context>>> = if is_public {
+        Some(Box::new(ValueLaneIo::new(
+            lane.clone(),
+            observer.subscriber(),
+        )))
     } else {
         None
     };
@@ -957,14 +960,14 @@ where
         projection,
     });
 
-    let store_io: Box<dyn StoreIo> = if transient {
-        Box::new(LaneNoStore)
+    let store_io: Option<Box<dyn StoreIo>> = if transient {
+        None
     } else {
-        Box::new(ValueLaneStoreIo::new(
+        Some(Box::new(ValueLaneStoreIo::new(
             store,
             lane.clone(),
             observer.into_stream(),
-        ))
+        )))
     };
 
     let io = IoPair {
@@ -1048,7 +1051,7 @@ pub fn make_map_lane<Agent, Context, K, V, L, P, Store>(
 ) -> (
     MapLane<K, V>,
     impl LaneTasks<Agent, Context>,
-    IoPair<impl LaneIo<Context>, impl StoreIo<Store>>,
+    IoPair<impl LaneIo<Context>, impl StoreIo>,
 )
 where
     Agent: 'static,
@@ -1077,8 +1080,8 @@ where
         projection,
     });
 
-    let store_io: Box<dyn StoreIo> = if transient {
-        Box::new(LaneNoStore)
+    let store_io = if transient {
+        Some(LaneNoStore)
     } else {
         unimplemented!()
     };

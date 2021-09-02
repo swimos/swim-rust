@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::store::error::StoreErrorHandler;
+use crate::agent::lane::store::error::{StoreErrorHandler, StoreTaskError};
 use crate::agent::lane::store::StoreIo;
 use crate::agent::model::value::value_store::io::ValueLaneStoreIo;
 use crate::agent::model::value::value_store::ValueDataModel;
@@ -25,7 +25,7 @@ use futures::FutureExt;
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
-use store::{serialize, StoreError, StoreInfo};
+use store::{serialize, EngineInfo, StoreError};
 use utilities::sync::trigger;
 
 #[derive(Clone, Debug)]
@@ -37,8 +37,8 @@ struct TrackingValueStore {
 impl NodeStore for TrackingValueStore {
     type Delegate = MockPlaneStore;
 
-    fn store_info(&self) -> StoreInfo {
-        StoreInfo {
+    fn engine_info(&self) -> EngineInfo {
+        EngineInfo {
             path: "tracking".to_string(),
             kind: "tracking".to_string(),
         }
@@ -137,12 +137,10 @@ async fn io() {
         load_tx: Arc::new(Mutex::new(Some(trigger_tx))),
         value: Arc::new(Mutex::new(Some(serialize(&store_initial).unwrap()))),
     };
-    let info = store.store_info();
 
     let store_io = ValueLaneStoreIo::new(store, lane.clone(), observer_stream);
 
-    let _task_handle =
-        tokio::spawn(store_io.attach("test".to_string(), StoreErrorHandler::new(0, info)));
+    let _task_handle = tokio::spawn(store_io.attach("test".to_string(), StoreErrorHandler::new(0)));
 
     assert!(trigger_rx.await.is_ok());
 
@@ -158,19 +156,18 @@ async fn load_fail() {
     let store = FailingStore {
         fail_on: FailingStoreMode::Get,
     };
-    let info = store.store_info();
 
     let store_io = ValueLaneStoreIo::new(store, lane.clone(), observer_stream);
 
     let task_result = store_io
-        .attach("test".to_string(), StoreErrorHandler::new(0, info))
+        .attach("test".to_string(), StoreErrorHandler::new(0))
         .await;
     match task_result {
         Ok(_) => {
             panic!("Expected a store error")
         }
         Err(mut r) => {
-            let (_ts, error) = r.errors.pop().unwrap();
+            let StoreTaskError { error, .. } = r.errors.pop().unwrap();
             assert_eq!(error, StoreError::KeyNotFound)
         }
     }
@@ -184,21 +181,20 @@ async fn store_fail() {
     let store = FailingStore {
         fail_on: FailingStoreMode::Put,
     };
-    let info = store.store_info();
 
     let store_io = ValueLaneStoreIo::new(store, lane.clone(), observer_stream);
 
     lane.store("avro vulcan".to_string()).await;
 
     let task_result = store_io
-        .attach("test".to_string(), StoreErrorHandler::new(0, info))
+        .attach("test".to_string(), StoreErrorHandler::new(0))
         .await;
     match task_result {
         Ok(_) => {
             panic!("Expected a store error")
         }
         Err(mut r) => {
-            let (_ts, error) = r.errors.pop().unwrap();
+            let StoreTaskError { error, .. } = r.errors.pop().unwrap();
             assert_eq!(error, StoreError::Closing)
         }
     }
@@ -218,8 +214,8 @@ enum FailingStoreMode {
 impl NodeStore for FailingStore {
     type Delegate = MockPlaneStore;
 
-    fn store_info(&self) -> StoreInfo {
-        StoreInfo {
+    fn engine_info(&self) -> EngineInfo {
+        EngineInfo {
             path: "failing".to_string(),
             kind: "failing".to_string(),
         }

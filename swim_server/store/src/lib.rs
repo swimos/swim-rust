@@ -23,12 +23,11 @@ use std::{error::Error as StdError, io};
 
 use thiserror::Error;
 
-use crate::engines::{FromKeyspaces, RangedSnapshotLoad};
 use crate::iterator::OwnedEngineRefIterator;
-use crate::keyspaces::{KeyType, KeyspaceByteEngine, KeyspaceResolver};
+use crate::keyspaces::{KeyspaceByteEngine, KeyspaceResolver};
 
 pub use rocksdb::{ColumnFamily, MergeOperands, Options, SliceTransform};
-pub use transient::TransientDatabase;
+use serde::{Deserialize, Serialize};
 
 pub type KvBytes = (Box<[u8]>, Box<[u8]>);
 

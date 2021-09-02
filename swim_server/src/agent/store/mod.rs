@@ -22,8 +22,6 @@ use crate::plane::store::PlaneStore;
 use crate::store::{StoreEngine, StoreKey};
 use futures::future::BoxFuture;
 use futures::FutureExt;
-use store::engines::KeyedSnapshot;
-use store::keyspaces::KeyType;
 
 pub mod mock;
 #[cfg(test)]
@@ -45,6 +43,10 @@ pub trait NodeStore: StoreEngine + Send + Sync + Clone + Debug + 'static {
 
     /// Returns information about the delegate store
     fn engine_info(&self) -> EngineInfo;
+
+    fn lane_id_of<I>(&self, lane: I) -> BoxFuture<u64>
+    where
+        I: Into<String>;
 }
 
 /// A node store which is used to open value and map lane data models.
@@ -121,7 +123,7 @@ impl<D: PlaneStore> NodeStore for SwimNodeStore<D> {
         self.delegate.engine_info()
     }
 
-    fn lane_id_of<I>(&self, lane: I) -> BoxFuture<'_, u64>
+    fn lane_id_of<I>(&self, lane: I) -> BoxFuture<u64>
     where
         I: Into<String>,
     {

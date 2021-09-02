@@ -21,10 +21,10 @@ use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::store::{NodeStore, SwimNodeStore};
 use crate::agent::tests::stub_router::SingleChannelRouter;
+use crate::agent::LaneTasks;
 use crate::agent::{
     AgentContext, DynamicAgentIo, DynamicLaneTasks, LaneConfig, SwimAgent, TestClock,
 };
-use crate::agent::{LaneIo, LaneTasks};
 use crate::plane::provider::AgentProvider;
 use crate::plane::store::PlaneStore;
 use crate::plane::RouteAndParameters;
@@ -33,15 +33,15 @@ use crate::store::keystore::{KeyRequest, KeystoreTask};
 use crate::store::{StoreEngine, StoreKey};
 use futures::future::ready;
 use futures::future::{BoxFuture, Ready};
-use futures::{FutureExt, Stream};
+use futures::FutureExt;
+use futures::Stream;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 use stm::stm::Stm;
 use stm::transaction::atomically;
-use store::engines::KeyedSnapshot;
 use store::keyspaces::KeyspaceByteEngine;
-use store::{StoreError, StoreInfo};
+use store::{EngineInfo, StoreError};
 use swim_common::model::text::Text;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
@@ -152,13 +152,7 @@ impl SwimAgent<AgentConfig> for StoreAgent {
 
         let agent = StoreAgent { value };
         let mut io = HashMap::new();
-        io.insert(
-            "value".to_string(),
-            LaneIo {
-                routing: None,
-                persistence: lane_io.persistence,
-            },
-        );
+        io.insert("value".to_string(), lane_io);
 
         (agent, vec![task.boxed()], io)
     }
@@ -191,25 +185,25 @@ impl PlaneStore for PlaneEventStore {
         SwimNodeStore::new(self.clone(), node_uri)
     }
 
-    fn load_ranged_snapshot<F, K, V>(
+    fn get_prefix_range<F, K, V>(
         &self,
         _prefix: StoreKey,
         _map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
     {
         panic!("Unexpected snapshot attempt");
     }
 
-    fn store_info(&self) -> StoreInfo {
-        StoreInfo {
+    fn engine_info(&self) -> EngineInfo {
+        EngineInfo {
             path: "Mock".to_string(),
             kind: "Mock".to_string(),
         }
     }
 
-    fn lane_id_of<I>(&self, _lane: I) -> BoxFuture<'_, u64>
+    fn lane_id_of<I>(&self, _lane: I) -> BoxFuture<u64>
     where
         I: Into<String>,
     {
@@ -279,7 +273,14 @@ async fn events() {
         loaded: Arc::new(Mutex::new(Some(trigger_tx))),
     };
 
-    let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1), None);
+    let exec_config = AgentExecutionConfig::with(
+        buffer_size,
+        1,
+        0,
+        Duration::from_secs(1),
+        None,
+        Duration::from_secs(1),
+    );
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
     let (_, agent_proc) = provider.run(
         RouteAndParameters::new(uri.clone(), HashMap::new()),
@@ -339,7 +340,14 @@ async fn loads_store_default() {
         loaded: Arc::new(Mutex::new(Some(trigger_tx))),
     };
 
-    let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1), None);
+    let exec_config = AgentExecutionConfig::with(
+        buffer_size,
+        1,
+        0,
+        Duration::from_secs(1),
+        None,
+        Duration::from_secs(1),
+    );
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
     let (agent, agent_proc) = provider.run(
         RouteAndParameters::new(uri.clone(), HashMap::new()),

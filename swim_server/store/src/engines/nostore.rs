@@ -17,7 +17,7 @@ use crate::iterator::{
     EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey,
 };
 use crate::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
-use crate::{EngineInfo, KvPair, Store, StoreError};
+use crate::{EngineInfo, KvBytes, Store, StoreError};
 use std::borrow::Borrow;
 use std::path::{Path, PathBuf};
 

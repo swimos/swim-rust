@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::store::error::{LaneStoreErrorReport, StoreErrorHandler};
+use crate::agent::lane::store::error::{LaneStoreErrorReport, StoreErrorHandler, StoreTaskError};
 use crate::agent::lane::store::StoreIo;
 use crate::agent::model::value::value_store::ValueDataModel;
 use crate::agent::model::value::ValueLane;
@@ -22,6 +22,7 @@ use futures::{Stream, StreamExt};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::sync::Arc;
+use swim_common::model::time::Timestamp;
 
 /// Value lane store IO task.
 ///
@@ -75,15 +76,21 @@ where
             match model.load() {
                 Ok(Some(value)) => lane.store(value).await,
                 Ok(None) => {}
-                Err(e) => {
-                    return Err(LaneStoreErrorReport::for_error(model.store_info(), e));
+                Err(error) => {
+                    return Err(LaneStoreErrorReport::for_error(StoreTaskError {
+                        timestamp: Timestamp::now(),
+                        error,
+                    }));
                 }
             };
 
             while let Some(event) = events.next().await {
                 match model.store(&event) {
                     Ok(()) => continue,
-                    Err(e) => error_handler.on_error(e)?,
+                    Err(error) => error_handler.on_error(StoreTaskError {
+                        timestamp: Timestamp::now(),
+                        error,
+                    })?,
                 }
             }
             Ok(())

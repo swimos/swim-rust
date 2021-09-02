@@ -151,13 +151,13 @@ pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream, TokenStream>
             ) -> (
                 Self,
                 Vec<Box<dyn LaneTasks<Self, Context>>>,
-                HashMap<String, IoPair<Box<dyn LaneIo<Context>>, Box<dyn StoreIo<Store>>>>
+                HashMap<String, IoPair<Box<dyn LaneIo<Context>>, Box<dyn StoreIo>>>
             )
                 where
                     Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
                     Store: swim_server::agent::store::NodeStore,
             {
-                let mut io_map: HashMap<String, IoPair<Box<dyn LaneIo<Context>>, Box<dyn StoreIo<Store>>>> = HashMap::new();
+                let mut io_map: HashMap<String, IoPair<Box<dyn LaneIo<Context>>, Box<dyn StoreIo>>> = HashMap::new();
 
                 #(#lifecycles_ast)*
 
@@ -336,7 +336,7 @@ fn create_lane(
 
                     io_map.insert (
                         #lane_name_lit.to_string(),
-                        IoPair::new(Some(Box::new(swim_server::agent::ValueLaneIo::new(#lane_name.clone(), subscriber))), Some(Box::new(LaneNoStore)))
+                        IoPair::new(Some(Box::new(swim_server::agent::ValueLaneIo::new(#lane_name.clone(), subscriber))), Some(#persistence))
                     );
                 },
                 model,

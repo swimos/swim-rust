@@ -157,7 +157,7 @@ async fn task_ok() {
 
 #[tokio::test]
 async fn task_err() {
-    let test_io: Box<dyn StoreIo<SwimNodeStore<MockPlaneStore>>> = Box::new(TestStoreIo(async {
+    let test_io: Box<dyn StoreIo> = Box::new(TestStoreIo(async {
         Err(LaneStoreErrorReport::for_error(make_error(
             StoreError::KeyNotFound,
         )))
@@ -214,7 +214,7 @@ async fn multiple_ios() {
     let ok_io: Box<dyn StoreIo> = Box::new(TestStoreIo(async { Ok(()) }));
     tasks.insert("ok_io".to_string(), ok_io);
 
-    let err_io: Box<dyn StoreIo<SwimNodeStore<MockPlaneStore>>> = Box::new(TestStoreIo(async {
+    let err_io: Box<dyn StoreIo> = Box::new(TestStoreIo(async {
         Err(LaneStoreErrorReport::for_error(make_error(
             StoreError::KeyNotFound,
         )))
