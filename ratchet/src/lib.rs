@@ -15,13 +15,12 @@
 #[cfg(test)]
 mod fixture;
 
+mod builder;
 mod errors;
 mod extensions;
 mod framed;
 mod handshake;
 mod protocol;
-
-mod builder;
 mod ws;
 
 pub use crate::extensions::{deflate::*, ext::*, Extension, ExtensionProvider};
