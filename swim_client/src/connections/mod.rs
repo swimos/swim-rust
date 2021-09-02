@@ -35,8 +35,8 @@ use swim_common::routing::error::{
 };
 use swim_common::routing::remote::RawRoute;
 use swim_common::routing::{
-    BidirectionalRoute, CloseReceiver, ConnectionDropped, Route, Router, RouterFactory,
-    RoutingAddr, TaggedEnvelope, TaggedSender,
+    BidirectionalRoute, BidirectionalRouter, CloseReceiver, ConnectionDropped, Route, Router,
+    RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender,
 };
 use swim_common::warp::path::{Addressable, RelativePath};
 use swim_runtime::task::*;
@@ -89,7 +89,10 @@ impl<Path: Addressable> SwimConnPool<Path> {
         client_channel: ClientChannel<Path>,
         client_router_factory: ClientRouterFactory<Path, DelegateFac>,
         stop_trigger: CloseReceiver,
-    ) -> (SwimConnPool<Path>, PoolTask<Path, DelegateFac>) {
+    ) -> (SwimConnPool<Path>, PoolTask<Path, DelegateFac>)
+    where
+        <DelegateFac as RouterFactory>::Router: BidirectionalRouter,
+    {
         let (client_tx, client_rx) = client_channel;
 
         (
@@ -158,7 +161,10 @@ pub struct PoolTask<Path: Addressable, DelegateFac: RouterFactory> {
     stop_trigger: CloseReceiver,
 }
 
-impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> {
+impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac>
+where
+    <DelegateFac as RouterFactory>::Router: BidirectionalRouter,
+{
     fn new(
         client_rx: mpsc::Receiver<DownlinkRoutingRequest<Path>>,
         client_router_factory: ClientRouterFactory<Path, DelegateFac>,
@@ -310,7 +316,7 @@ pub(crate) struct ConnectionRegistrator<Path: Addressable> {
 }
 
 impl<Path: Addressable> ConnectionRegistrator<Path> {
-    fn new<DelegateRouter: Router>(
+    fn new<DelegateRouter: BidirectionalRouter>(
         buffer_size: NonZeroUsize,
         yield_after: NonZeroUsize,
         target: Path,
@@ -361,7 +367,7 @@ enum ConnectionRegistratorEvent<Path: Addressable> {
     ConnectionDropped(Arc<ConnectionDropped>),
 }
 
-struct ConnectionRegistratorTask<Path: Addressable, DelegateRouter: Router> {
+struct ConnectionRegistratorTask<Path: Addressable, DelegateRouter: BidirectionalRouter> {
     buffer_size: NonZeroUsize,
     yield_after: NonZeroUsize,
     target: RegistrationTarget,
@@ -370,7 +376,9 @@ struct ConnectionRegistratorTask<Path: Addressable, DelegateRouter: Router> {
     stop_trigger: CloseReceiver,
 }
 
-impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, DelegateRouter> {
+impl<Path: Addressable, DelegateRouter: BidirectionalRouter>
+    ConnectionRegistratorTask<Path, DelegateRouter>
+{
     fn new(
         buffer_size: NonZeroUsize,
         yield_after: NonZeroUsize,

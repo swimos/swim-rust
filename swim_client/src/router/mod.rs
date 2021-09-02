@@ -24,7 +24,7 @@ use swim_common::routing::error::{ConnectionError, ResolutionError, RouterError,
 use swim_common::routing::remote::table::SchemeHostPort;
 use swim_common::routing::remote::BadUrl;
 use swim_common::routing::remote::{RawRoute, RemoteRoutingRequest};
-use swim_common::routing::BidirectionalRoute;
+use swim_common::routing::{BidirectionalRoute, BidirectionalRouter};
 use swim_common::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 use swim_common::warp::envelope::IncomingLinkMessage;
 use swim_common::warp::path::{AbsolutePath, Addressable};
@@ -120,34 +120,6 @@ impl Router for TopLevelClientRouter {
         .boxed()
     }
 
-    fn resolve_bidirectional(
-        &mut self,
-        host: Url,
-    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
-        async move {
-            let TopLevelClientRouter { remote_sender, .. } = self;
-
-            let (tx, rx) = oneshot::channel();
-            if remote_sender
-                .send(RemoteRoutingRequest::Bidirectional {
-                    host: host.clone(),
-                    request: Request::new(tx),
-                })
-                .await
-                .is_err()
-            {
-                Err(ResolutionError::router_dropped())
-            } else {
-                match rx.await {
-                    Ok(Ok(registrator)) => registrator.register().await,
-                    Ok(Err(_)) => Err(ResolutionError::unresolvable(host.to_string())),
-                    Err(_) => Err(ResolutionError::router_dropped()),
-                }
-            }
-        }
-        .boxed()
-    }
-
     fn lookup(
         &mut self,
         host: Option<Url>,
@@ -179,6 +151,36 @@ impl Router for TopLevelClientRouter {
                 None => Err(RouterError::ConnectionFailure(ConnectionError::Resolution(
                     ResolutionError::unresolvable(route.to_string()),
                 ))),
+            }
+        }
+        .boxed()
+    }
+}
+
+impl BidirectionalRouter for TopLevelClientRouter {
+    fn resolve_bidirectional(
+        &mut self,
+        host: Url,
+    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
+        async move {
+            let TopLevelClientRouter { remote_sender, .. } = self;
+
+            let (tx, rx) = oneshot::channel();
+            if remote_sender
+                .send(RemoteRoutingRequest::Bidirectional {
+                    host: host.clone(),
+                    request: Request::new(tx),
+                })
+                .await
+                .is_err()
+            {
+                Err(ResolutionError::router_dropped())
+            } else {
+                match rx.await {
+                    Ok(Ok(registrator)) => registrator.register().await,
+                    Ok(Err(_)) => Err(ResolutionError::unresolvable(host.to_string())),
+                    Err(_) => Err(ResolutionError::router_dropped()),
+                }
             }
         }
         .boxed()
@@ -266,6 +268,8 @@ impl<Path: Addressable, DelegateFac: RouterFactory> ClientRouterFactory<Path, De
 
 impl<Path: Addressable, DelegateFac: RouterFactory> RouterFactory
     for ClientRouterFactory<Path, DelegateFac>
+where
+    <DelegateFac as RouterFactory>::Router: BidirectionalRouter,
 {
     type Router = ClientRouter<Path, DelegateFac::Router>;
 
@@ -279,13 +283,15 @@ impl<Path: Addressable, DelegateFac: RouterFactory> RouterFactory
 }
 
 #[derive(Debug, Clone)]
-pub struct ClientRouter<Path: Addressable, DelegateRouter: Router> {
+pub struct ClientRouter<Path: Addressable, DelegateRouter: BidirectionalRouter> {
     tag: RoutingAddr,
     request_sender: mpsc::Sender<DownlinkRoutingRequest<Path>>,
     delegate_router: DelegateRouter,
 }
 
-impl<Path: Addressable, DelegateRouter: Router> Router for ClientRouter<Path, DelegateRouter> {
+impl<Path: Addressable, DelegateRouter: BidirectionalRouter> Router
+    for ClientRouter<Path, DelegateRouter>
+{
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
@@ -296,20 +302,6 @@ impl<Path: Addressable, DelegateRouter: Router> Router for ClientRouter<Path, De
             } = self;
 
             delegate_router.resolve_sender(addr).await
-        }
-        .boxed()
-    }
-
-    fn resolve_bidirectional(
-        &mut self,
-        host: Url,
-    ) -> BoxFuture<Result<BidirectionalRoute, ResolutionError>> {
-        async move {
-            let ClientRouter {
-                delegate_router, ..
-            } = self;
-
-            delegate_router.resolve_bidirectional(host).await
         }
         .boxed()
     }
@@ -325,6 +317,24 @@ impl<Path: Addressable, DelegateRouter: Router> Router for ClientRouter<Path, De
             } = self;
 
             delegate_router.lookup(host, route).await
+        }
+        .boxed()
+    }
+}
+
+impl<Path: Addressable, DelegateRouter: BidirectionalRouter> BidirectionalRouter
+    for ClientRouter<Path, DelegateRouter>
+{
+    fn resolve_bidirectional(
+        &mut self,
+        host: Url,
+    ) -> BoxFuture<Result<BidirectionalRoute, ResolutionError>> {
+        async move {
+            let ClientRouter {
+                delegate_router, ..
+            } = self;
+
+            delegate_router.resolve_bidirectional(host).await
         }
         .boxed()
     }

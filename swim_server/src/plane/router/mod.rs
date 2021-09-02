@@ -18,7 +18,7 @@ use swim_common::request::Request;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
 use swim_common::routing::remote::RawRoute;
-use swim_common::routing::{BidirectionalRoute, PlaneRoutingRequest};
+use swim_common::routing::PlaneRoutingRequest;
 use swim_common::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
@@ -114,13 +114,6 @@ impl<Delegate: Router> Router for PlaneRouter<Delegate> {
             }
         }
         .boxed()
-    }
-
-    fn resolve_bidirectional(
-        &mut self,
-        _host: Url,
-    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
-        unimplemented!()
     }
 
     fn lookup(
