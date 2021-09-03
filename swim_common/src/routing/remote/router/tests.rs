@@ -63,7 +63,6 @@ async fn fake_resolution(
                         .is_ok());
                 }
             }
-            //Todo dm
             RemoteRoutingRequest::Bidirectional { .. } => {}
         }
     }
