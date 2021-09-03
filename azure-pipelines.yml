@@ -1,5 +1,5 @@
-trigger: ["master", "server-prototype", "ws-move"]
-pr: ["master", "server-prototype", "ws-move"]
+trigger: ["master", "server-prototype", "ws-move", "stores"]
+pr: ["master", "server-prototype", "ws-move", "stores"]
 
 variables:
   RUSTFLAGS: -Dwarnings
