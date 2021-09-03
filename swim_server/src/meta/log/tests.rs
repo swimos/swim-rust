@@ -156,7 +156,6 @@ async fn agent_log() {
 
     let parameters = AgentParameters::new(MockAgentConfig, exec_config, uri, HashMap::new());
 
-    //Todo
     let (client_tx, client_rx) = mpsc::channel(8);
     let (remote_tx, _remote_rx) = mpsc::channel(8);
     let (plane_tx, _plane_rx) = mpsc::channel(8);

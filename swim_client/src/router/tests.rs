@@ -12,22 +12,18 @@
 // // See the License for the specific language governing permissions and
 // // limitations under the License.
 
-use crate::router::{
-    AddressableWrapper, ClientRouterFactory, DownlinkRoutingRequest, RoutingPath,
-    TopLevelClientRouterFactory,
-};
+use crate::router::{AddressableWrapper, RoutingPath};
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use swim_common::routing::error::ConnectionError;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::remote::table::{BidirectionalRegistrator, SchemeHostPort};
 use swim_common::routing::remote::{RemoteRoutingRequest, Scheme};
-use swim_common::routing::{Router, RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender};
+use swim_common::routing::{RoutingAddr, TaggedEnvelope, TaggedSender};
 use swim_common::warp::path::{AbsolutePath, Path, RelativePath};
 use tokio::sync::mpsc;
 use url::Url;
 use utilities::sync::promise;
-use utilities::uri::RelativeUri;
 
 pub(crate) struct FakeConnections {
     outgoing_channels: HashMap<Url, TaggedSender>,

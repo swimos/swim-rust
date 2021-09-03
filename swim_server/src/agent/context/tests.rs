@@ -66,7 +66,6 @@ fn simple_accessors() {
         RoutingContext::new("/node".parse().unwrap(), MockRouter {}, HashMap::new());
     let schedule_context = SchedulerContext::new(tx, TestClock::default(), close_sig.clone());
 
-    //Todo
     let (client_tx, client_rx) = mpsc::channel(8);
     let (remote_tx, _remote_rx) = mpsc::channel(8);
     let (plane_tx, _plane_rx) = mpsc::channel(8);

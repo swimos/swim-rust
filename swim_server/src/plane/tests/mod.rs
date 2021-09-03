@@ -88,7 +88,6 @@ async fn plane_event_loop() {
 
     let PlaneSpec { routes, lifecycle } = spec;
 
-    //Todo
     let (client_tx, client_rx) = mpsc::channel(8);
     let (remote_tx, _remote_rx) = mpsc::channel(8);
     let (plane_tx, _plane_rx) = mpsc::channel(8);

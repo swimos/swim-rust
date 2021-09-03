@@ -768,7 +768,6 @@ pub async fn run_agent_test<Agent, Config, Lifecycle>(
 
     let parameters = AgentParameters::new(config, exec_config, uri, HashMap::new());
 
-    //Todo
     let (client_tx, client_rx) = mpsc::channel(8);
     let (remote_tx, _remote_rx) = mpsc::channel(8);
     let (plane_tx, _plane_rx) = mpsc::channel(8);
