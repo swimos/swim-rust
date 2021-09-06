@@ -2,7 +2,7 @@ use crate::errors::Error;
 use crate::extensions::ext::NoExtProxy;
 use crate::extensions::ExtensionHandshake;
 use crate::handshake::ProtocolRegistry;
-use crate::{client, Interceptor, TryIntoRequest, WebSocket, WebSocketConfig, WebSocketStream};
+use crate::{client, Interceptor, TryIntoRequest, Upgraded, WebSocketConfig, WebSocketStream};
 use tokio_native_tls::TlsConnector;
 
 /// This gives the flexibility to build websockets in a 'friendlier' fashion as opposed to having
@@ -30,7 +30,7 @@ impl<E: ExtensionHandshake> WebSocketClientBuilder<E> {
         self,
         stream: S,
         request: I,
-    ) -> Result<(WebSocket<S, E::Extension>, Option<String>), Error>
+    ) -> Result<Upgraded<S, E::Extension>, Error>
     where
         S: WebSocketStream,
         I: TryIntoRequest,
@@ -81,7 +81,7 @@ impl<E: ExtensionHandshake> WebSocketClientBuilder<E> {
 pub struct WebSocketServerBuilder {
     config: Option<WebSocketConfig>,
     interceptor: Option<Box<dyn Interceptor>>,
-    protocols: Option<Vec<&'static str>>,
+    subprotocols: ProtocolRegistry,
 }
 
 impl WebSocketServerBuilder {
@@ -97,8 +97,11 @@ impl WebSocketServerBuilder {
         self
     }
 
-    pub fn protocols(mut self, protocols: Vec<&'static str>) -> Self {
-        self.protocols = Some(protocols);
+    pub fn subprotocols<I>(mut self, subprotocols: I) -> Self
+    where
+        I: IntoIterator<Item = &'static str>,
+    {
+        self.subprotocols = ProtocolRegistry::new(subprotocols);
         self
     }
 

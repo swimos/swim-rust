@@ -3,6 +3,8 @@ use crate::WebSocketStream;
 use bytes::{Buf, BytesMut};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+const RESIZE: usize = 8 * 1024;
+
 pub struct BufferedIo<'s, S> {
     socket: &'s mut S,
     pub buffer: BytesMut,
@@ -29,7 +31,7 @@ where
         let BufferedIo { socket, buffer } = self;
 
         let len = buffer.len();
-        buffer.resize(len + (8 * 1024), 0);
+        buffer.resize(len + RESIZE, 0);
         let read_count = socket.read(&mut buffer[len..]).await?;
         buffer.truncate(len + read_count);
 

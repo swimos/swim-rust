@@ -1,5 +1,5 @@
 use crate::extensions::{ExtHandshakeErr, Extension, ExtensionHandshake};
-use crate::Request;
+use http::HeaderMap;
 
 #[allow(dead_code)]
 #[derive(Debug, PartialEq)]
@@ -12,7 +12,7 @@ pub struct NoExtProxy;
 impl ExtensionHandshake for NoExtProxy {
     type Extension = NoExt;
 
-    fn apply_headers(&self, _request: &mut Request) {}
+    fn apply_headers(&self, _headers: &mut HeaderMap) {}
 
     fn negotiate(
         &self,

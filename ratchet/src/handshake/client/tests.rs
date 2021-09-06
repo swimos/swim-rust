@@ -2,7 +2,7 @@ use crate::errors::{Error, HttpError};
 use crate::extensions::ext::{NoExt, NoExtProxy};
 use crate::extensions::{ExtHandshakeErr, Extension, ExtensionHandshake, NegotiatedExtension};
 use crate::fixture::mock;
-use crate::handshake::client::{HandshakeMachine, HandshakeResult};
+use crate::handshake::client::{ClientHandshake, HandshakeResult};
 use crate::handshake::{ProtocolError, ProtocolRegistry, ACCEPT_KEY, UPGRADE_STR, WEBSOCKET_STR};
 use crate::TryIntoRequest;
 use bytes::BytesMut;
@@ -25,7 +25,7 @@ async fn handshake_sends_valid_request() {
     let (mut peer, mut stream) = mock();
 
     let mut machine =
-        HandshakeMachine::new(&mut stream, ProtocolRegistry::new(vec!["warp"]), NoExtProxy);
+        ClientHandshake::new(&mut stream, ProtocolRegistry::new(vec!["warp"]), NoExtProxy);
     machine.encode(request).unwrap();
     machine.buffered.write().await.unwrap();
 
@@ -61,7 +61,7 @@ async fn handshake_invalid_requests() {
         let (mut peer, mut stream) = mock();
 
         let mut machine =
-            HandshakeMachine::new(&mut stream, ProtocolRegistry::default(), NoExtProxy);
+            ClientHandshake::new(&mut stream, ProtocolRegistry::default(), NoExtProxy);
         machine
             .encode(request)
             .expect_err("Expected encoding to fail");
@@ -113,7 +113,7 @@ async fn expect_server_error(response: Response<()>, expected_error: HttpError) 
 
     let client_task = async move {
         let mut machine =
-            HandshakeMachine::new(&mut stream, ProtocolRegistry::default(), NoExtProxy);
+            ClientHandshake::new(&mut stream, ProtocolRegistry::default(), NoExtProxy);
         machine
             .encode(Request::get(TEST_URL).body(()).unwrap())
             .unwrap();
@@ -208,7 +208,7 @@ async fn ok_nonce() {
 
     let client_task = async move {
         let mut machine =
-            HandshakeMachine::new(&mut stream, ProtocolRegistry::default(), NoExtProxy);
+            ClientHandshake::new(&mut stream, ProtocolRegistry::default(), NoExtProxy);
         machine
             .encode(Request::get(TEST_URL).body(()).unwrap())
             .unwrap();
@@ -271,7 +271,7 @@ async fn redirection() {
 
     let client_task = async move {
         let mut machine =
-            HandshakeMachine::new(&mut stream, ProtocolRegistry::default(), NoExtProxy);
+            ClientHandshake::new(&mut stream, ProtocolRegistry::default(), NoExtProxy);
         machine
             .encode(Request::get(TEST_URL).body(()).unwrap())
             .unwrap();
@@ -325,7 +325,7 @@ where
 
     let client_task = async move {
         let mut machine =
-            HandshakeMachine::new(&mut stream, ProtocolRegistry::new(registry), NoExtProxy);
+            ClientHandshake::new(&mut stream, ProtocolRegistry::new(registry), NoExtProxy);
         machine
             .encode(Request::get(TEST_URL).body(()).unwrap())
             .unwrap();
@@ -377,7 +377,7 @@ where
 #[tokio::test]
 async fn selects_valid_subprotocol() {
     subprotocol_test(vec!["warp", "warps"], Some("warp".to_string()), |r| {
-        assert_eq!(r.unwrap().protocol, Some("warp".to_string()));
+        assert_eq!(r.unwrap().subprotocol, Some("warp".to_string()));
     })
     .await;
 }
@@ -397,7 +397,7 @@ async fn invalid_subprotocol() {
 #[tokio::test]
 async fn disjoint_protocols() {
     subprotocol_test(vec!["warp", "warps"], None, |r| {
-        assert_eq!(r.unwrap().protocol, None);
+        assert_eq!(r.unwrap().subprotocol, None);
     })
     .await;
 }
@@ -412,8 +412,7 @@ where
 {
     type Extension = MockExtension;
 
-    fn apply_headers(&self, request: &mut crate::Request) {
-        let header_map = request.headers_mut();
+    fn apply_headers(&self, header_map: &mut HeaderMap) {
         for (name, value) in self.0 {
             header_map.insert(name, HeaderValue::from_static(value));
         }
@@ -451,7 +450,7 @@ where
     let (server_tx, server_rx) = trigger::trigger();
 
     let client_task = async move {
-        let mut machine = HandshakeMachine::new(&mut stream, ProtocolRegistry::default(), ext);
+        let mut machine = ClientHandshake::new(&mut stream, ProtocolRegistry::default(), ext);
         machine
             .encode(Request::get(TEST_URL).body(()).unwrap())
             .unwrap();

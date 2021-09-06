@@ -82,19 +82,24 @@ where
     }
 }
 
+pub struct Upgraded<S, E> {
+    pub socket: WebSocket<S, E>,
+    pub subprotocol: Option<String>,
+}
+
 pub async fn client<S, E>(
     config: WebSocketConfig,
     mut stream: S,
     request: Request,
     extension: E,
     subprotocols: ProtocolRegistry,
-) -> Result<(WebSocket<S, E::Extension>, Option<String>), Error>
+) -> Result<Upgraded<S, E::Extension>, Error>
 where
     S: WebSocketStream,
     E: ExtensionHandshake,
 {
     let HandshakeResult {
-        protocol,
+        subprotocol,
         extension,
     } = exec_client_handshake(&mut stream, request, extension, subprotocols).await?;
     let socket = WebSocket {
@@ -103,7 +108,10 @@ where
         extension,
         config,
     };
-    Ok((socket, protocol))
+    Ok(Upgraded {
+        socket,
+        subprotocol,
+    })
 }
 
 pub trait WebSocketStream: AsyncRead + AsyncWrite + Unpin {}

@@ -1,6 +1,6 @@
 use crate::errors::BoxError;
 use crate::extensions::ext::NoExt;
-use crate::Request;
+use http::HeaderMap;
 use std::fmt::Debug;
 
 pub mod ext;
@@ -17,7 +17,7 @@ pub trait Extension: Debug {
 pub trait ExtensionHandshake {
     type Extension: Extension;
 
-    fn apply_headers(&self, request: &mut Request);
+    fn apply_headers(&self, headers: &mut HeaderMap);
 
     fn negotiate(
         &self,

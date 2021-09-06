@@ -34,7 +34,7 @@ where
     S: WebSocketStream,
     E: ExtensionHandshake,
 {
-    let machine = HandshakeMachine::new(stream, subprotocols, extension);
+    let machine = ClientHandshake::new(stream, subprotocols, extension);
     let uri = request.uri();
     let span = span!(Level::DEBUG, MSG_HANDSHAKE_START, ?uri);
 
@@ -42,10 +42,15 @@ where
         let handshake_result = machine.exec(request).await;
         match &handshake_result {
             Ok(HandshakeResult {
-                protocol,
+                subprotocol,
                 extension,
             }) => {
-                event!(Level::DEBUG, MSG_HANDSHAKE_COMPLETED, ?protocol, ?extension)
+                event!(
+                    Level::DEBUG,
+                    MSG_HANDSHAKE_COMPLETED,
+                    ?subprotocol,
+                    ?extension
+                )
             }
             Err(e) => {
                 event!(Level::ERROR, MSG_HANDSHAKE_FAILED, error = ?e)
@@ -58,14 +63,14 @@ where
     exec.instrument(span).await
 }
 
-struct HandshakeMachine<'s, S, E> {
+struct ClientHandshake<'s, S, E> {
     buffered: BufferedIo<'s, S>,
     nonce: Nonce,
     subprotocols: ProtocolRegistry,
     extension: E,
 }
 
-impl<'s, S, E> HandshakeMachine<'s, S, E>
+impl<'s, S, E> ClientHandshake<'s, S, E>
 where
     S: WebSocketStream,
     E: ExtensionHandshake,
@@ -74,8 +79,8 @@ where
         socket: &'s mut S,
         subprotocols: ProtocolRegistry,
         extension: E,
-    ) -> HandshakeMachine<'s, S, E> {
-        HandshakeMachine {
+    ) -> ClientHandshake<'s, S, E> {
+        ClientHandshake {
             buffered: BufferedIo::new(socket, BytesMut::new()),
             nonce: [0; 24],
             subprotocols,
@@ -83,16 +88,16 @@ where
         }
     }
 
-    fn encode(&mut self, mut request: Request<()>) -> Result<(), Error> {
-        let HandshakeMachine {
+    fn encode(&mut self, request: Request<()>) -> Result<(), Error> {
+        let ClientHandshake {
             buffered,
             nonce,
             extension,
             subprotocols,
         } = self;
 
-        build_request(&mut request, extension, subprotocols)?;
-        encode_request(&mut buffered.buffer, request, nonce);
+        let validated_request = build_request(request, extension, subprotocols)?;
+        encode_request(&mut buffered.buffer, validated_request, nonce);
         Ok(())
     }
 
@@ -105,7 +110,7 @@ where
     }
 
     async fn read(&mut self) -> Result<HandshakeResult<E::Extension>, Error> {
-        let HandshakeMachine {
+        let ClientHandshake {
             buffered,
             nonce,
             subprotocols,
@@ -148,7 +153,7 @@ where
 
 #[derive(Debug)]
 pub struct HandshakeResult<E> {
-    pub protocol: Option<String>,
+    pub subprotocol: Option<String>,
     pub extension: NegotiatedExtension<E>,
 }
 
@@ -280,7 +285,7 @@ where
     };
 
     Ok(HandshakeResult {
-        protocol: subprotocols.negotiate_response(response)?,
+        subprotocol: subprotocols.negotiate_response(response)?,
         extension,
     })
 }
