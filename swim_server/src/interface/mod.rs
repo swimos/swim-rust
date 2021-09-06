@@ -25,19 +25,21 @@ use crate::plane::{run_plane, EnvChannel};
 use crate::routing::{TopLevelServerRouter, TopLevelServerRouterFactory};
 use either::Either;
 use futures::{io, join};
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
-
 use std::sync::Arc;
-use swim_client::configuration::downlink::{ClientParams, ConfigHierarchy};
+use swim_client::configuration::downlink::{DownlinkConfig, DownlinksConfig};
+use swim_client::configuration::router::DownlinkConnectionsConfig;
 use swim_client::connections::{PoolTask, SwimConnPool};
 use swim_client::downlink::subscription::DownlinksTask;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::DownlinksContext;
 use swim_client::router::ClientRouterFactory;
+use swim_common::model::text::Text;
 use swim_common::routing::error::RoutingError;
-use swim_common::routing::remote::config::ConnectionConfig;
+use swim_common::routing::remote::config::RemoteConnectionsConfig;
 use swim_common::routing::remote::net::dns::Resolver;
 use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
 use swim_common::routing::remote::{
@@ -45,12 +47,12 @@ use swim_common::routing::remote::{
 };
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
 use swim_common::routing::{CloseReceiver, CloseSender, PlaneRoutingRequest};
-use swim_common::warp::path::Path;
+use swim_common::warp::path::{Addressable, Path};
 use swim_runtime::task::TaskError;
 use swim_runtime::time::clock::RuntimeClock;
 use tokio::sync::mpsc;
-
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
+use url::Url;
 use utilities::future::open_ended::OpenEndedFutures;
 use utilities::sync::promise;
 
@@ -227,15 +229,16 @@ impl SwimServerBuilder {
 
         //Todo dm this needs to be changed from default after the new configuration is finalised.
         let (connection_pool, connection_pool_task) = SwimConnPool::new(
-            ClientParams::default(),
+            DownlinkConnectionsConfig::default(),
             (client_tx, client_rx),
             client_router_factory,
             close_rx.clone(),
         );
 
         let (downlinks, downlinks_task) = Downlinks::new(
+            config.downlink_connections_config.dl_req_buffer_size,
             connection_pool,
-            Arc::new(ConfigHierarchy::default()),
+            Arc::new(config.downlinks_config.clone()),
             close_rx.clone(),
         );
 
@@ -313,6 +316,7 @@ impl SwimServer {
             websocket_config,
             agent_config,
             conn_config,
+            ..
         } = config;
 
         // Todo add support for multiple planes in the future
@@ -415,15 +419,20 @@ impl Display for ServerError {
 
 impl Error for ServerError {}
 
+//Todo dm doc
 /// Swim server configuration.
 ///
 /// * `conn_config` - Configuration parameters for remote connections.
 /// * `agent_config` - Configuration parameters controlling how agents and lanes are executed.
 /// * `websocket_config` - Configuration for WebSocket connections.
 pub struct SwimServerConfig {
-    conn_config: ConnectionConfig,
+    conn_config: RemoteConnectionsConfig,
     agent_config: AgentExecutionConfig,
     websocket_config: WebSocketConfig,
+    /// Configuration parameters for the downlink connections.
+    pub downlink_connections_config: DownlinkConnectionsConfig,
+    /// Configuration for the behaviour of downlinks.
+    pub downlinks_config: ServerDownlinksConfig,
 }
 
 impl Default for SwimServerConfig {
@@ -432,7 +441,67 @@ impl Default for SwimServerConfig {
             conn_config: Default::default(),
             agent_config: Default::default(),
             websocket_config: Default::default(),
+            downlink_connections_config: Default::default(),
+            downlinks_config: Default::default(),
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ServerDownlinksConfig {
+    default: DownlinkConfig,
+    by_host: HashMap<Url, DownlinkConfig>,
+    by_lane: HashMap<Text, DownlinkConfig>,
+}
+
+impl ServerDownlinksConfig {
+    pub fn new(default: DownlinkConfig) -> ServerDownlinksConfig {
+        ServerDownlinksConfig {
+            default,
+            by_host: HashMap::new(),
+            by_lane: HashMap::new(),
+        }
+    }
+}
+
+impl DownlinksConfig for ServerDownlinksConfig {
+    type PathType = Path;
+
+    fn config_for(&self, path: &Self::PathType) -> DownlinkConfig {
+        let ServerDownlinksConfig {
+            default,
+            by_host,
+            by_lane,
+            ..
+        } = self;
+        match by_lane.get(path.lane().as_str()) {
+            Some(config) => *config,
+            _ => {
+                let maybe_host = path.host();
+
+                match maybe_host {
+                    Some(host) => match by_host.get(&host) {
+                        Some(config) => *config,
+                        _ => *default,
+                    },
+                    None => *default,
+                }
+            }
+        }
+    }
+
+    fn for_host(&mut self, host: Url, params: DownlinkConfig) {
+        self.by_host.insert(host, params);
+    }
+
+    fn for_lane(&mut self, lane: &Text, params: DownlinkConfig) {
+        self.by_lane.insert(lane.clone(), params);
+    }
+}
+
+impl Default for ServerDownlinksConfig {
+    fn default() -> Self {
+        ServerDownlinksConfig::new(Default::default())
     }
 }
 

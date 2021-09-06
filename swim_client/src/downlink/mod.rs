@@ -20,7 +20,7 @@ pub mod subscription;
 mod tests;
 pub mod typed;
 
-use crate::configuration::downlink::{DownlinkParams, OnInvalidMessage};
+use crate::configuration::downlink::{OnInvalidMessage, DownlinkConfig};
 use crate::downlink::error::DownlinkError;
 use crate::downlink::model::map::UntypedMapModification;
 use crate::downlink::model::value::SharedValue;
@@ -40,7 +40,6 @@ use futures::stream::FusedStream;
 use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::fmt::Debug;
-use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use swim_common::model::schema::StandardSchema;
@@ -220,26 +219,26 @@ impl<Act, Ev> RawDownlink<Act, Ev> {
     }
 }
 
-/// Configuration parameters for the downlink event loop.
-#[derive(Clone, Copy, Debug)]
-struct DownlinkConfig {
-    /// Buffer size for the action and event channels.
-    pub buffer_size: NonZeroUsize,
-    /// The downlink event loop with yield to the runtime after this many iterations.
-    pub yield_after: NonZeroUsize,
-    /// Strategy for handling invalid messages.
-    pub on_invalid: OnInvalidMessage,
-}
+// /// Configuration parameters for the downlink event loop.
+// #[derive(Clone, Copy, Debug)]
+// struct DownlinkConfig {
+//     /// Buffer size for the action and event channels.
+//     pub buffer_size: NonZeroUsize,
+//     /// The downlink event loop with yield to the runtime after this many iterations.
+//     pub yield_after: NonZeroUsize,
+//     /// Strategy for handling invalid messages.
+//     pub on_invalid: OnInvalidMessage,
+// }
 
-impl From<&DownlinkParams> for DownlinkConfig {
-    fn from(conf: &DownlinkParams) -> Self {
-        DownlinkConfig {
-            buffer_size: conf.buffer_size,
-            yield_after: conf.yield_after,
-            on_invalid: conf.on_invalid,
-        }
-    }
-}
+// impl From<&DownlinkConfig> for DownlinkConfig {
+//     fn from(conf: &DownlinkConfig) -> Self {
+//         DownlinkConfig {
+//             buffer_size: conf.buffer_size,
+//             yield_after: conf.yield_after,
+//             on_invalid: conf.on_invalid,
+//         }
+//     }
+// }
 
 pub type RawReceiver<Ev> = topic::Receiver<Event<Ev>>;
 

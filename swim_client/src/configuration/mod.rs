@@ -23,16 +23,17 @@ pub mod router;
 
 pub mod downlink {
     use crate::configuration::downlink::ConfigParseError::UnexpectedValue;
-    use crate::configuration::router::{ConnectionPoolParams, RouterParams};
+    use crate::configuration::router::DownlinkConnectionsConfig;
     use std::collections::HashMap;
     use std::error::Error;
     use std::fmt::{Display, Formatter};
     use std::num::NonZeroUsize;
     use swim_common::form::Form;
     use swim_common::model::parser::ParseFailure;
+    use swim_common::model::text::Text;
     use swim_common::model::{Attr, Item, Value};
-    use swim_common::routing::remote::config::ConnectionConfig;
-    use swim_common::warp::path::{AbsolutePath, Addressable};
+    use swim_common::routing::remote::config::RemoteConnectionsConfig;
+    use swim_common::warp::path::{AbsolutePath, Addressable, Path};
     use tokio::time::Duration;
     use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
     use url::Url;
@@ -216,14 +217,18 @@ pub mod downlink {
     }
 
     /// Configuration for the creation and management of downlinks for a Warp client.
-    pub trait Config: Send + Sync {
+    pub trait DownlinksConfig: Send + Sync {
         type PathType: Addressable;
 
-        /// Get the downlink configuration for a downlink a specific path.
-        fn config_for(&self, path: &Self::PathType) -> DownlinkParams;
+        /// Get the downlink configuration for a downlink for a specific path.
+        fn config_for(&self, path: &Self::PathType) -> DownlinkConfig;
 
-        /// Get the global parameters for any downlink.
-        fn client_params(&self) -> ClientParams;
+        /// Add specific configuration for a host.
+        fn for_host(&mut self, host: Url, params: DownlinkConfig);
+
+        /// Add specific configuration for an absolute path (this will override host level
+        /// configuration).
+        fn for_lane(&mut self, lane: &Text, params: DownlinkConfig);
     }
 
     /// Instruction on how to respond when an invalid message is received for a downlink.
@@ -251,7 +256,7 @@ pub mod downlink {
 
     /// Configuration parameters for a single downlink.
     #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-    pub struct DownlinkParams {
+    pub struct DownlinkConfig {
         /// Whether the downlink propagates back-pressure.
         pub back_pressure: BackpressureMode,
 
@@ -268,14 +273,14 @@ pub mod downlink {
         pub yield_after: NonZeroUsize,
     }
 
-    impl DownlinkParams {
+    impl DownlinkConfig {
         pub fn new(
             back_pressure: BackpressureMode,
             idle_timeout: Duration,
             buffer_size: usize,
             on_invalid: OnInvalidMessage,
             yield_after: usize,
-        ) -> Result<DownlinkParams, String> {
+        ) -> Result<DownlinkConfig, String> {
             if idle_timeout == Duration::from_millis(0) {
                 Err(BAD_TIMEOUT.to_string())
             } else {
@@ -283,7 +288,7 @@ pub mod downlink {
                     NonZeroUsize::new(buffer_size),
                     NonZeroUsize::new(yield_after),
                 ) {
-                    (Some(nz), Some(ya)) => Ok(DownlinkParams {
+                    (Some(nz), Some(ya)) => Ok(DownlinkConfig {
                         back_pressure,
                         idle_timeout,
                         buffer_size: nz,
@@ -381,6 +386,18 @@ pub mod downlink {
         //     }
     }
 
+    impl From<&DownlinkConfig> for DownlinkConfig {
+        fn from(conf: &DownlinkConfig) -> Self {
+            DownlinkConfig {
+                back_pressure: conf.back_pressure,
+                idle_timeout: conf.idle_timeout,
+                buffer_size: conf.buffer_size,
+                yield_after: conf.yield_after,
+                on_invalid: conf.on_invalid,
+            }
+        }
+    }
+
     //Todo dm this needs to be changed after the new client configuration is finalised.
     // fn try_on_invalid_from_value(value: Value) -> Result<OnInvalidMessage, ConfigParseError> {
     //     let on_invalid_str = String::try_from_value(&value)
@@ -396,9 +413,9 @@ pub mod downlink {
     //     }
     // }
 
-    impl Default for DownlinkParams {
+    impl Default for DownlinkConfig {
         fn default() -> Self {
-            DownlinkParams::new(
+            DownlinkConfig::new(
                 DEFAULT_BACK_PRESSURE,
                 Duration::from_secs(DEFAULT_IDLE_TIMEOUT),
                 DEFAULT_DOWNLINK_BUFFER_SIZE,
@@ -410,334 +427,398 @@ pub mod downlink {
     }
 
     /// Configuration parameters for all downlinks.
-    #[derive(Clone, Copy, Debug)]
-    pub struct ClientParams {
-        /// Buffer size for servicing requests for new downlinks.
-        pub dl_req_buffer_size: NonZeroUsize,
-        /// Configuration parameters for the router.
-        pub router_params: RouterParams,
-        /// Configuration parameters the remote connections.
-        pub connections_params: ConnectionConfig,
-        /// Configuration parameters the WebSocket connections.
-        pub websocket_params: WebSocketConfig,
-        /// Configuration parameter for the connection pool.
-        pub conn_pool_params: ConnectionPoolParams,
-    }
+    // #[derive(Clone, Copy, Debug)]
+    // pub struct ClientParams {}
 
     const DEFAULT_CLIENT_BUFFER_SIZE: usize = 2;
-
     const BAD_BUFFER_SIZE: &str = "Buffer sizes must be positive.";
     const BAD_YIELD_AFTER: &str = "Yield after count must be positive..";
     const BAD_TIMEOUT: &str = "Timeout must be positive.";
 
-    impl ClientParams {
-        pub fn new(
-            dl_req_buffer_size: NonZeroUsize,
-            router_params: RouterParams,
-            connections_params: ConnectionConfig,
-            websocket_params: WebSocketConfig,
-            conn_pool_params: ConnectionPoolParams,
-        ) -> ClientParams {
-            ClientParams {
-                dl_req_buffer_size,
-                router_params,
-                connections_params,
-                websocket_params,
-                conn_pool_params,
-            }
-        }
+    // impl ClientParams {
+    //     pub fn new(
+    //         router_params: DownlinkConnectionsConfig,
+    //         connections_params: RemoteConnectionsConfig,
+    //         websocket_params: WebSocketConfig,
+    //     ) -> ClientParams {
+    //         ClientParams {
+    //             downlink_connections_config: router_params,
+    //             remote_connections_config: connections_params,
+    //             websocket_config: websocket_params,
+    //         }
+    //     }
 
-        //Todo dm this needs to be changed after the new client configuration is finalised.
-        //     fn try_from_items(items: Vec<Item>, use_defaults: bool) -> Result<Self, ConfigParseError> {
-        //         let mut buffer_size: Option<NonZeroUsize> = None;
-        //         let mut router_params: Option<RouterParams> = None;
-        //
-        //         for item in items {
-        //             match item {
-        //                 Item::Slot(Value::Text(name), value) => match name.as_str() {
-        //                     BUFFER_SIZE_TAG => {
-        //                         let size = usize::try_from_value(&value).map_err(|_| {
-        //                             ConfigParseError::InvalidValue(value, BUFFER_SIZE_TAG)
-        //                         })?;
-        //                         buffer_size = Some(NonZeroUsize::new(size).unwrap());
-        //                     }
-        //                     ROUTER_TAG => {
-        //                         if let Value::Record(_, items) = value {
-        //                             router_params =
-        //                                 Some(RouterParams::try_from_items(items, use_defaults)?);
-        //                         } else {
-        //                             return Err(ConfigParseError::UnexpectedValue(
-        //                                 value,
-        //                                 Some(ROUTER_TAG),
-        //                             ));
-        //                         }
-        //                     }
-        //                     _ => {
-        //                         return Err(ConfigParseError::UnexpectedKey(
-        //                             name.to_string(),
-        //                             CLIENT_TAG,
-        //                         ))
-        //                     }
-        //                 },
-        //                 Item::Slot(value, _) => {
-        //                     return Err(ConfigParseError::UnexpectedValue(value, Some(CLIENT_TAG)))
-        //                 }
-        //                 Item::ValueItem(value) => {
-        //                     return Err(ConfigParseError::UnexpectedValue(value, Some(CLIENT_TAG)))
-        //                 }
-        //             }
-        //         }
-        //
-        //         if use_defaults {
-        //             buffer_size = buffer_size
-        //                 .or_else(|| Some(NonZeroUsize::new(DEFAULT_CLIENT_BUFFER_SIZE).unwrap()));
-        //             router_params = router_params.or_else(|| Some(RouterParams::default()));
-        //         }
-        //
-        //         Ok(ClientParams::new(
-        //             buffer_size.ok_or(ConfigParseError::MissingKey(BUFFER_SIZE_TAG, CLIENT_TAG))?,
-        //             router_params.ok_or(ConfigParseError::MissingKey(ROUTER_TAG, CLIENT_TAG))?,
-        //         ))
-        //     }
-    }
+    //Todo dm this needs to be changed after the new client configuration is finalised.
+    //     fn try_from_items(items: Vec<Item>, use_defaults: bool) -> Result<Self, ConfigParseError> {
+    //         let mut buffer_size: Option<NonZeroUsize> = None;
+    //         let mut router_params: Option<RouterParams> = None;
+    //
+    //         for item in items {
+    //             match item {
+    //                 Item::Slot(Value::Text(name), value) => match name.as_str() {
+    //                     BUFFER_SIZE_TAG => {
+    //                         let size = usize::try_from_value(&value).map_err(|_| {
+    //                             ConfigParseError::InvalidValue(value, BUFFER_SIZE_TAG)
+    //                         })?;
+    //                         buffer_size = Some(NonZeroUsize::new(size).unwrap());
+    //                     }
+    //                     ROUTER_TAG => {
+    //                         if let Value::Record(_, items) = value {
+    //                             router_params =
+    //                                 Some(RouterParams::try_from_items(items, use_defaults)?);
+    //                         } else {
+    //                             return Err(ConfigParseError::UnexpectedValue(
+    //                                 value,
+    //                                 Some(ROUTER_TAG),
+    //                             ));
+    //                         }
+    //                     }
+    //                     _ => {
+    //                         return Err(ConfigParseError::UnexpectedKey(
+    //                             name.to_string(),
+    //                             CLIENT_TAG,
+    //                         ))
+    //                     }
+    //                 },
+    //                 Item::Slot(value, _) => {
+    //                     return Err(ConfigParseError::UnexpectedValue(value, Some(CLIENT_TAG)))
+    //                 }
+    //                 Item::ValueItem(value) => {
+    //                     return Err(ConfigParseError::UnexpectedValue(value, Some(CLIENT_TAG)))
+    //                 }
+    //             }
+    //         }
+    //
+    //         if use_defaults {
+    //             buffer_size = buffer_size
+    //                 .or_else(|| Some(NonZeroUsize::new(DEFAULT_CLIENT_BUFFER_SIZE).unwrap()));
+    //             router_params = router_params.or_else(|| Some(RouterParams::default()));
+    //         }
+    //
+    //         Ok(ClientParams::new(
+    //             buffer_size.ok_or(ConfigParseError::MissingKey(BUFFER_SIZE_TAG, CLIENT_TAG))?,
+    //             router_params.ok_or(ConfigParseError::MissingKey(ROUTER_TAG, CLIENT_TAG))?,
+    //         ))
+    //     }
+    // }
 
-    impl Default for ClientParams {
-        fn default() -> Self {
-            ClientParams::new(
-                NonZeroUsize::new(DEFAULT_CLIENT_BUFFER_SIZE).unwrap(),
-                Default::default(),
-                Default::default(),
-                Default::default(),
-                Default::default(),
-            )
-        }
-    }
+    // impl Default for ClientParams {
+    //     fn default() -> Self {
+    //         ClientParams::new(Default::default(), Default::default(), Default::default())
+    //     }
+    // }
 
-    /// Basic [`Config`] implementation which allows for configuration to be specified by absolute
-    /// path or host and provides a default fallback.
     #[derive(Clone, Debug)]
-    pub struct ConfigHierarchy<Path: Addressable> {
-        client_params: ClientParams,
-        default: DownlinkParams,
-        by_host: HashMap<Url, DownlinkParams>,
-        by_lane: HashMap<Path, DownlinkParams>,
+    pub struct ClientDownlinksConfig {
+        default: DownlinkConfig,
+        by_host: HashMap<Url, DownlinkConfig>,
+        by_lane: HashMap<Text, DownlinkConfig>,
     }
 
-    impl<Path: Addressable> ConfigHierarchy<Path> {
-        /// Create a new configuration store with just a default.
-        pub fn new(client_params: ClientParams, default: DownlinkParams) -> ConfigHierarchy<Path> {
-            ConfigHierarchy {
-                client_params,
+    impl ClientDownlinksConfig {
+        pub fn new(default: DownlinkConfig) -> ClientDownlinksConfig {
+            ClientDownlinksConfig {
                 default,
                 by_host: HashMap::new(),
                 by_lane: HashMap::new(),
             }
         }
+    }
 
-        /// Add specific configuration for a host.
-        pub fn for_host(&mut self, host: Url, params: DownlinkParams) {
+    impl DownlinksConfig for ClientDownlinksConfig {
+        type PathType = AbsolutePath;
+
+        fn config_for(&self, path: &Self::PathType) -> DownlinkConfig {
+            let ClientDownlinksConfig {
+                default,
+                by_host,
+                by_lane,
+                ..
+            } = self;
+            match by_lane.get(path.lane().as_str()) {
+                Some(config) => *config,
+                _ => {
+                    let maybe_host = path.host();
+
+                    match maybe_host {
+                        Some(host) => match by_host.get(&host) {
+                            Some(config) => *config,
+                            _ => *default,
+                        },
+                        None => *default,
+                    }
+                }
+            }
+        }
+
+        fn for_host(&mut self, host: Url, params: DownlinkConfig) {
             self.by_host.insert(host, params);
         }
 
-        /// Add specific configuration for an absolute path (this will override host level
-        /// configuration).
-        pub fn for_lane(&mut self, lane: &Path, params: DownlinkParams) {
+        fn for_lane(&mut self, lane: &Text, params: DownlinkConfig) {
             self.by_lane.insert(lane.clone(), params);
         }
-
-        //Todo dm this needs to be changed after the new client configuration is finalised.
-        //     pub fn try_from_value(value: Value, use_defaults: bool) -> Result<Self, ConfigParseError> {
-        //         let (mut attrs, items) = match value {
-        //             Value::Record(attrs, items) if attrs.len() <= 1 => (attrs, items),
-        //             _ => return Err(ConfigParseError::UnexpectedValue(value, None)),
-        //         };
-        //
-        //         if let Some(Attr { name, value: _ }) = attrs.pop() {
-        //             if name == CONFIG_TAG {
-        //                 ConfigHierarchy::try_from_items(items, use_defaults)
-        //             } else {
-        //                 Err(ConfigParseError::UnexpectedAttribute(
-        //                     name.to_string(),
-        //                     None,
-        //                 ))
-        //             }
-        //         } else {
-        //             Err(ConfigParseError::UnnamedRecord(
-        //                 Value::Record(attrs, items),
-        //                 None,
-        //             ))
-        //         }
-        //     }
-        //
-        //     fn try_from_items(items: Vec<Item>, use_defaults: bool) -> Result<Self, ConfigParseError> {
-        //         let mut client_params: Option<ClientParams> = None;
-        //         let mut downlink_params: Option<DownlinkParams> = None;
-        //         let mut host_params: HashMap<Url, DownlinkParams> = HashMap::new();
-        //         let mut lane_params: HashMap<AbsolutePath, DownlinkParams> = HashMap::new();
-        //
-        //         for item in items {
-        //             match item {
-        //                 Item::ValueItem(value) => {
-        //                     let (mut attrs, items) = match value {
-        //                         Value::Record(attrs, items) if attrs.len() <= 1 => (attrs, items),
-        //                         _ => {
-        //                             return Err(ConfigParseError::UnexpectedValue(
-        //                                 value,
-        //                                 Some(CONFIG_TAG),
-        //                             ))
-        //                         }
-        //                     };
-        //
-        //                     if let Some(Attr { name, value: _ }) = attrs.pop() {
-        //                         match name.as_str() {
-        //                             CLIENT_TAG => {
-        //                                 client_params =
-        //                                     Some(ClientParams::try_from_items(items, use_defaults)?);
-        //                             }
-        //                             DOWNLINKS_TAG => {
-        //                                 downlink_params =
-        //                                     Some(DownlinkParams::try_from_items(items, use_defaults)?);
-        //                             }
-        //                             HOST_TAG => {
-        //                                 for item in items {
-        //                                     let (url, params) =
-        //                                         try_host_params_from_item(item, use_defaults)?;
-        //                                     host_params.insert(url, params);
-        //                                 }
-        //                             }
-        //                             LANE_TAG => {
-        //                                 for item in items {
-        //                                     let (path, params) =
-        //                                         try_lane_params_from_item(item, use_defaults)?;
-        //                                     lane_params.insert(path, params);
-        //                                 }
-        //                             }
-        //                             _ => {
-        //                                 return Err(ConfigParseError::UnexpectedAttribute(
-        //                                     name.to_string(),
-        //                                     Some(CONFIG_TAG),
-        //                                 ))
-        //                             }
-        //                         }
-        //                     } else {
-        //                         return Err(ConfigParseError::UnnamedRecord(
-        //                             Value::Record(attrs, items),
-        //                             Some(CONFIG_TAG),
-        //                         ));
-        //                     }
-        //                 }
-        //                 _ => return Err(ConfigParseError::UnexpectedSlot(item, CONFIG_TAG)),
-        //             }
-        //         }
-        //
-        //         if use_defaults {
-        //             client_params = client_params.or_else(|| Some(ClientParams::default()));
-        //             downlink_params = downlink_params.or_else(|| Some(DownlinkParams::default()));
-        //         }
-        //
-        //         Ok(ConfigHierarchy {
-        //             client_params: client_params
-        //                 .ok_or(ConfigParseError::MissingAttribute(CLIENT_TAG, CONFIG_TAG))?,
-        //             default: downlink_params.ok_or(ConfigParseError::MissingAttribute(
-        //                 DOWNLINKS_TAG,
-        //                 CONFIG_TAG,
-        //             ))?,
-        //             by_host: host_params,
-        //             by_lane: lane_params,
-        //         })
-        //     }
-        // }
-        //
-        // fn try_host_params_from_item(
-        //     item: Item,
-        //     use_defaults: bool,
-        // ) -> Result<(Url, DownlinkParams), ConfigParseError> {
-        //     match item {
-        //         Item::Slot(Value::Text(name), Value::Record(_, items)) => {
-        //             let host = Url::parse(name.as_str())
-        //                 .map_err(|_| ConfigParseError::InvalidKey(Value::Text(name), HOST_TAG))?;
-        //             let downlink_params = DownlinkParams::try_from_items(items, use_defaults)?;
-        //             Ok((host, downlink_params))
-        //         }
-        //         Item::Slot(value, _) => Err(ConfigParseError::UnexpectedValue(value, Some(HOST_TAG))),
-        //         Item::ValueItem(value) => Err(ConfigParseError::UnexpectedValue(value, Some(HOST_TAG))),
-        //     }
-        // }
-        //
-        // fn try_lane_params_from_item(
-        //     item: Item,
-        //     use_defaults: bool,
-        // ) -> Result<(AbsolutePath, DownlinkParams), ConfigParseError> {
-        //     match item {
-        //         Item::ValueItem(Value::Record(mut attrs, items)) if attrs.len() <= 1 => {
-        //             if let Some(Attr { name, value }) = attrs.pop() {
-        //                 if name == PATH_TAG {
-        //                     let path = try_absolute_path_from_record(value)?;
-        //                     let downlink_params = DownlinkParams::try_from_items(items, use_defaults)?;
-        //                     Ok((path, downlink_params))
-        //                 } else {
-        //                     Err(ConfigParseError::UnexpectedAttribute(
-        //                         name.to_string(),
-        //                         Some(LANE_TAG),
-        //                     ))
-        //                 }
-        //             } else {
-        //                 Err(ConfigParseError::UnnamedRecord(
-        //                     Value::Record(attrs, items),
-        //                     Some(LANE_TAG),
-        //                 ))
-        //             }
-        //         }
-        //         Item::ValueItem(value) => Err(ConfigParseError::UnexpectedValue(value, Some(LANE_TAG))),
-        //         _ => Err(ConfigParseError::UnexpectedSlot(item, LANE_TAG)),
-        //     }
-        // }
-        //
-        // fn try_absolute_path_from_record(record: Value) -> Result<AbsolutePath, ConfigParseError> {
-        //     let mut host: Option<Url> = None;
-        //     let mut node: Option<String> = None;
-        //     let mut lane: Option<String> = None;
-        //
-        //     match record {
-        //         Value::Record(_, items) => {
-        //             for item in items {
-        //                 match item {
-        //                     Item::Slot(Value::Text(name), Value::Text(value)) => match name.as_str() {
-        //                         HOST_TAG => {
-        //                             host = Some(Url::parse(value.as_str()).map_err(|_| {
-        //                                 ConfigParseError::InvalidKey(Value::Text(name), HOST_TAG)
-        //                             })?)
-        //                         }
-        //                         NODE_TAG => node = Some(value.to_string()),
-        //                         LANE_TAG => lane = Some(value.to_string()),
-        //                         _ => {
-        //                             return Err(ConfigParseError::UnexpectedKey(
-        //                                 name.to_string(),
-        //                                 PATH_TAG,
-        //                             ))
-        //                         }
-        //                     },
-        //                     Item::Slot(Value::Text(_), value) => {
-        //                         return Err(ConfigParseError::UnexpectedValue(value, Some(LANE_TAG)))
-        //                     }
-        //                     Item::Slot(value, _) => {
-        //                         return Err(ConfigParseError::UnexpectedValue(value, Some(LANE_TAG)))
-        //                     }
-        //                     Item::ValueItem(value) => {
-        //                         return Err(ConfigParseError::UnexpectedValue(value, Some(LANE_TAG)))
-        //                     }
-        //                 }
-        //             }
-        //         }
-        //         _ => return Err(ConfigParseError::UnexpectedValue(record, Some(LANE_TAG))),
-        //     };
-        //
-        //     Ok(AbsolutePath::new(
-        //         host.ok_or(ConfigParseError::MissingKey(HOST_TAG, PATH_TAG))?,
-        //         &node.ok_or(ConfigParseError::MissingKey(NODE_TAG, PATH_TAG))?,
-        //         &lane.ok_or(ConfigParseError::MissingKey(LANE_TAG, PATH_TAG))?,
-        //     ))
     }
+
+    impl Default for ClientDownlinksConfig {
+        fn default() -> Self {
+            ClientDownlinksConfig::new(Default::default())
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct SwimClientConfig {
+        /// Configuration parameters for the downlink connections.
+        pub downlink_connections_config: DownlinkConnectionsConfig,
+        /// Configuration parameters the remote connections.
+        pub remote_connections_config: RemoteConnectionsConfig,
+        /// Configuration parameters the WebSocket connections.
+        pub websocket_config: WebSocketConfig,
+        /// Configuration for the behaviour of downlinks.
+        pub downlinks_config: ClientDownlinksConfig,
+    }
+
+    impl SwimClientConfig {
+        pub fn new(
+            downlink_connections_config: DownlinkConnectionsConfig,
+            remote_connections_config: RemoteConnectionsConfig,
+            websocket_config: WebSocketConfig,
+            downlinks_config: ClientDownlinksConfig,
+        ) -> SwimClientConfig {
+            SwimClientConfig {
+                downlink_connections_config,
+                remote_connections_config,
+                websocket_config,
+                downlinks_config,
+            }
+        }
+    }
+
+    // /// Basic [`Config`] implementation which allows for configuration to be specified by absolute
+    // /// path or host and provides a default fallback.
+    // #[derive(Clone, Debug)]
+    // pub struct ClientConfigHierarchy {
+    //     client_params: ClientParams,
+    //     default: DownlinkConfig,
+    //     by_host: HashMap<Url, DownlinkConfig>,
+    //     by_lane: HashMap<Text, DownlinkConfig>,
+    // }
+    //
+    // impl ClientConfigHierarchy {
+    //     /// Create a new configuration store with just a default.
+    //     pub fn new(client_params: ClientParams, default: DownlinkConfig) -> ClientConfigHierarchy {
+    //         ClientConfigHierarchy {
+    //             client_params,
+    //             default,
+    //             by_host: HashMap::new(),
+    //             by_lane: HashMap::new(),
+    //         }
+    //     }
+    //
+    //     /// Add specific configuration for a host.
+    //     pub fn for_host(&mut self, host: Url, params: DownlinkConfig) {
+    //         self.by_host.insert(host, params);
+    //     }
+    //
+    //     /// Add specific configuration for an absolute path (this will override host level
+    //     /// configuration).
+    //     pub fn for_lane(&mut self, lane: &Text, params: DownlinkConfig) {
+    //         self.by_lane.insert(lane.clone(), params);
+    //     }
+    //
+    //     //Todo dm this needs to be changed after the new client configuration is finalised.
+    //     //     pub fn try_from_value(value: Value, use_defaults: bool) -> Result<Self, ConfigParseError> {
+    //     //         let (mut attrs, items) = match value {
+    //     //             Value::Record(attrs, items) if attrs.len() <= 1 => (attrs, items),
+    //     //             _ => return Err(ConfigParseError::UnexpectedValue(value, None)),
+    //     //         };
+    //     //
+    //     //         if let Some(Attr { name, value: _ }) = attrs.pop() {
+    //     //             if name == CONFIG_TAG {
+    //     //                 ConfigHierarchy::try_from_items(items, use_defaults)
+    //     //             } else {
+    //     //                 Err(ConfigParseError::UnexpectedAttribute(
+    //     //                     name.to_string(),
+    //     //                     None,
+    //     //                 ))
+    //     //             }
+    //     //         } else {
+    //     //             Err(ConfigParseError::UnnamedRecord(
+    //     //                 Value::Record(attrs, items),
+    //     //                 None,
+    //     //             ))
+    //     //         }
+    //     //     }
+    //     //
+    //     //     fn try_from_items(items: Vec<Item>, use_defaults: bool) -> Result<Self, ConfigParseError> {
+    //     //         let mut client_params: Option<ClientParams> = None;
+    //     //         let mut downlink_params: Option<DownlinkParams> = None;
+    //     //         let mut host_params: HashMap<Url, DownlinkParams> = HashMap::new();
+    //     //         let mut lane_params: HashMap<AbsolutePath, DownlinkParams> = HashMap::new();
+    //     //
+    //     //         for item in items {
+    //     //             match item {
+    //     //                 Item::ValueItem(value) => {
+    //     //                     let (mut attrs, items) = match value {
+    //     //                         Value::Record(attrs, items) if attrs.len() <= 1 => (attrs, items),
+    //     //                         _ => {
+    //     //                             return Err(ConfigParseError::UnexpectedValue(
+    //     //                                 value,
+    //     //                                 Some(CONFIG_TAG),
+    //     //                             ))
+    //     //                         }
+    //     //                     };
+    //     //
+    //     //                     if let Some(Attr { name, value: _ }) = attrs.pop() {
+    //     //                         match name.as_str() {
+    //     //                             CLIENT_TAG => {
+    //     //                                 client_params =
+    //     //                                     Some(ClientParams::try_from_items(items, use_defaults)?);
+    //     //                             }
+    //     //                             DOWNLINKS_TAG => {
+    //     //                                 downlink_params =
+    //     //                                     Some(DownlinkParams::try_from_items(items, use_defaults)?);
+    //     //                             }
+    //     //                             HOST_TAG => {
+    //     //                                 for item in items {
+    //     //                                     let (url, params) =
+    //     //                                         try_host_params_from_item(item, use_defaults)?;
+    //     //                                     host_params.insert(url, params);
+    //     //                                 }
+    //     //                             }
+    //     //                             LANE_TAG => {
+    //     //                                 for item in items {
+    //     //                                     let (path, params) =
+    //     //                                         try_lane_params_from_item(item, use_defaults)?;
+    //     //                                     lane_params.insert(path, params);
+    //     //                                 }
+    //     //                             }
+    //     //                             _ => {
+    //     //                                 return Err(ConfigParseError::UnexpectedAttribute(
+    //     //                                     name.to_string(),
+    //     //                                     Some(CONFIG_TAG),
+    //     //                                 ))
+    //     //                             }
+    //     //                         }
+    //     //                     } else {
+    //     //                         return Err(ConfigParseError::UnnamedRecord(
+    //     //                             Value::Record(attrs, items),
+    //     //                             Some(CONFIG_TAG),
+    //     //                         ));
+    //     //                     }
+    //     //                 }
+    //     //                 _ => return Err(ConfigParseError::UnexpectedSlot(item, CONFIG_TAG)),
+    //     //             }
+    //     //         }
+    //     //
+    //     //         if use_defaults {
+    //     //             client_params = client_params.or_else(|| Some(ClientParams::default()));
+    //     //             downlink_params = downlink_params.or_else(|| Some(DownlinkParams::default()));
+    //     //         }
+    //     //
+    //     //         Ok(ConfigHierarchy {
+    //     //             client_params: client_params
+    //     //                 .ok_or(ConfigParseError::MissingAttribute(CLIENT_TAG, CONFIG_TAG))?,
+    //     //             default: downlink_params.ok_or(ConfigParseError::MissingAttribute(
+    //     //                 DOWNLINKS_TAG,
+    //     //                 CONFIG_TAG,
+    //     //             ))?,
+    //     //             by_host: host_params,
+    //     //             by_lane: lane_params,
+    //     //         })
+    //     //     }
+    //     // }
+    //     //
+    //     // fn try_host_params_from_item(
+    //     //     item: Item,
+    //     //     use_defaults: bool,
+    //     // ) -> Result<(Url, DownlinkParams), ConfigParseError> {
+    //     //     match item {
+    //     //         Item::Slot(Value::Text(name), Value::Record(_, items)) => {
+    //     //             let host = Url::parse(name.as_str())
+    //     //                 .map_err(|_| ConfigParseError::InvalidKey(Value::Text(name), HOST_TAG))?;
+    //     //             let downlink_params = DownlinkParams::try_from_items(items, use_defaults)?;
+    //     //             Ok((host, downlink_params))
+    //     //         }
+    //     //         Item::Slot(value, _) => Err(ConfigParseError::UnexpectedValue(value, Some(HOST_TAG))),
+    //     //         Item::ValueItem(value) => Err(ConfigParseError::UnexpectedValue(value, Some(HOST_TAG))),
+    //     //     }
+    //     // }
+    //     //
+    //     // fn try_lane_params_from_item(
+    //     //     item: Item,
+    //     //     use_defaults: bool,
+    //     // ) -> Result<(AbsolutePath, DownlinkParams), ConfigParseError> {
+    //     //     match item {
+    //     //         Item::ValueItem(Value::Record(mut attrs, items)) if attrs.len() <= 1 => {
+    //     //             if let Some(Attr { name, value }) = attrs.pop() {
+    //     //                 if name == PATH_TAG {
+    //     //                     let path = try_absolute_path_from_record(value)?;
+    //     //                     let downlink_params = DownlinkParams::try_from_items(items, use_defaults)?;
+    //     //                     Ok((path, downlink_params))
+    //     //                 } else {
+    //     //                     Err(ConfigParseError::UnexpectedAttribute(
+    //     //                         name.to_string(),
+    //     //                         Some(LANE_TAG),
+    //     //                     ))
+    //     //                 }
+    //     //             } else {
+    //     //                 Err(ConfigParseError::UnnamedRecord(
+    //     //                     Value::Record(attrs, items),
+    //     //                     Some(LANE_TAG),
+    //     //                 ))
+    //     //             }
+    //     //         }
+    //     //         Item::ValueItem(value) => Err(ConfigParseError::UnexpectedValue(value, Some(LANE_TAG))),
+    //     //         _ => Err(ConfigParseError::UnexpectedSlot(item, LANE_TAG)),
+    //     //     }
+    //     // }
+    //     //
+    //     // fn try_absolute_path_from_record(record: Value) -> Result<AbsolutePath, ConfigParseError> {
+    //     //     let mut host: Option<Url> = None;
+    //     //     let mut node: Option<String> = None;
+    //     //     let mut lane: Option<String> = None;
+    //     //
+    //     //     match record {
+    //     //         Value::Record(_, items) => {
+    //     //             for item in items {
+    //     //                 match item {
+    //     //                     Item::Slot(Value::Text(name), Value::Text(value)) => match name.as_str() {
+    //     //                         HOST_TAG => {
+    //     //                             host = Some(Url::parse(value.as_str()).map_err(|_| {
+    //     //                                 ConfigParseError::InvalidKey(Value::Text(name), HOST_TAG)
+    //     //                             })?)
+    //     //                         }
+    //     //                         NODE_TAG => node = Some(value.to_string()),
+    //     //                         LANE_TAG => lane = Some(value.to_string()),
+    //     //                         _ => {
+    //     //                             return Err(ConfigParseError::UnexpectedKey(
+    //     //                                 name.to_string(),
+    //     //                                 PATH_TAG,
+    //     //                             ))
+    //     //                         }
+    //     //                     },
+    //     //                     Item::Slot(Value::Text(_), value) => {
+    //     //                         return Err(ConfigParseError::UnexpectedValue(value, Some(LANE_TAG)))
+    //     //                     }
+    //     //                     Item::Slot(value, _) => {
+    //     //                         return Err(ConfigParseError::UnexpectedValue(value, Some(LANE_TAG)))
+    //     //                     }
+    //     //                     Item::ValueItem(value) => {
+    //     //                         return Err(ConfigParseError::UnexpectedValue(value, Some(LANE_TAG)))
+    //     //                     }
+    //     //                 }
+    //     //             }
+    //     //         }
+    //     //         _ => return Err(ConfigParseError::UnexpectedValue(record, Some(LANE_TAG))),
+    //     //     };
+    //     //
+    //     //     Ok(AbsolutePath::new(
+    //     //         host.ok_or(ConfigParseError::MissingKey(HOST_TAG, PATH_TAG))?,
+    //     //         &node.ok_or(ConfigParseError::MissingKey(NODE_TAG, PATH_TAG))?,
+    //     //         &lane.ok_or(ConfigParseError::MissingKey(LANE_TAG, PATH_TAG))?,
+    //     //     ))
+    // }
 
     type Key = String;
     type Tag = &'static str;
@@ -830,55 +911,30 @@ pub mod downlink {
         }
     }
 
-    impl<Path: Addressable + Sync> Config for ConfigHierarchy<Path> {
-        type PathType = Path;
-
-        fn config_for(&self, path: &Self::PathType) -> DownlinkParams {
-            let ConfigHierarchy {
-                default,
-                by_host,
-                by_lane,
-                ..
-            } = self;
-            match by_lane.get(path) {
-                Some(params) => *params,
-                _ => {
-                    let maybe_host = path.host();
-
-                    match maybe_host {
-                        Some(host) => match by_host.get(&host) {
-                            Some(params) => *params,
-                            _ => *default,
-                        },
-                        None => *default,
-                    }
-                }
-            }
-        }
-
-        fn client_params(&self) -> ClientParams {
-            self.client_params
-        }
-    }
-
-    impl<Path: Addressable> Default for ConfigHierarchy<Path> {
+    impl Default for SwimClientConfig {
         fn default() -> Self {
-            let client_params = Default::default();
-            let default_params = Default::default();
-
-            ConfigHierarchy::new(client_params, default_params)
+            SwimClientConfig::new(
+                Default::default(),
+                Default::default(),
+                Default::default(),
+                Default::default(),
+            )
         }
     }
 
-    impl<'a, Path: Addressable> Config for Box<dyn Config<PathType = Path> + 'a> {
+    impl<'a, Path: Addressable> DownlinksConfig for Box<dyn DownlinksConfig<PathType = Path> + 'a> {
         type PathType = Path;
 
-        fn config_for(&self, path: &Self::PathType) -> DownlinkParams {
+        fn config_for(&self, path: &Self::PathType) -> DownlinkConfig {
             (**self).config_for(path)
         }
 
-        fn client_params(&self) -> ClientParams {
-            (**self).client_params()
+        fn for_host(&mut self, host: Url, params: DownlinkConfig) {
+            (**self).for_host(host, params)
+        }
+
+        fn for_lane(&mut self, lane: &Text, params: DownlinkConfig) {
+            (**self).for_lane(lane, params)
         }
     }
 }

@@ -20,7 +20,7 @@ use crate::routing::error::{
     CloseError, CloseErrorKind, ConnectionError, ProtocolError, ProtocolErrorKind, ResolutionError,
     ResolutionErrorKind,
 };
-use crate::routing::remote::config::ConnectionConfig;
+use crate::routing::remote::config::RemoteConnectionsConfig;
 use crate::routing::remote::router::RemoteRouter;
 use crate::routing::remote::{BidirectionalReceiverRequest, RemoteRoutingRequest};
 use crate::routing::ws::selector::{SelectorResult, WsStreamSelector};
@@ -64,7 +64,7 @@ pub struct ConnectionTask<Str, Router> {
     router: Router,
     bidirectional_request_rx: mpsc::Receiver<BidirectionalReceiverRequest>,
     stop_signal: trigger::Receiver,
-    config: ConnectionConfig,
+    config: RemoteConnectionsConfig,
 }
 
 const ZERO: Duration = Duration::from_secs(0);
@@ -125,7 +125,7 @@ where
         (messages_tx, messages_rx): (mpsc::Sender<TaggedEnvelope>, mpsc::Receiver<TaggedEnvelope>),
         bidirectional_request_rx: mpsc::Receiver<BidirectionalReceiverRequest>,
         stop_signal: trigger::Receiver,
-        config: ConnectionConfig,
+        config: RemoteConnectionsConfig,
     ) -> Self {
         assert!(config.activity_timeout > ZERO);
         ConnectionTask {
@@ -502,7 +502,7 @@ where
 pub struct TaskFactory<DelegateRouterFac> {
     request_tx: mpsc::Sender<RemoteRoutingRequest>,
     stop_trigger: trigger::Receiver,
-    configuration: ConnectionConfig,
+    configuration: RemoteConnectionsConfig,
     delegate_router_fac: DelegateRouterFac,
 }
 
@@ -510,7 +510,7 @@ impl<DelegateRouterFac> TaskFactory<DelegateRouterFac> {
     pub fn new(
         request_tx: mpsc::Sender<RemoteRoutingRequest>,
         stop_trigger: trigger::Receiver,
-        configuration: ConnectionConfig,
+        configuration: RemoteConnectionsConfig,
         delegate_router_fac: DelegateRouterFac,
     ) -> Self {
         TaskFactory {

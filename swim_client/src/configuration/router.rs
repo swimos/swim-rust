@@ -22,9 +22,8 @@ use swim_common::form::Form;
 use swim_common::model::{Attr, Item, Value};
 use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
 
-const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
-const DEFAULT_CONN_REAPER_FREQUENCY: Duration = Duration::from_secs(60);
 const DEFAULT_BUFFER_SIZE: usize = 100;
+const DEFAULT_DL_REQUEST_BUFFER_SIZE: usize = 8;
 const DEFAULT_YIELD_AFTER: usize = 256;
 
 const BUFFER_SIZE_TAG: &str = "buffer_size";
@@ -34,58 +33,42 @@ const CONN_REAPER_FREQ_TAG: &str = "conn_reaper_frequency";
 
 /// Configuration parameters for the router.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct RouterParams {
+pub struct DownlinkConnectionsConfig {
+    /// Buffer size for servicing requests for new downlinks.
+    pub dl_req_buffer_size: NonZeroUsize,
+    /// Size of the internal buffers of the router.
+    pub buffer_size: NonZeroUsize,
+    /// Number of values to process before yielding to the runtime.
+    pub yield_after: NonZeroUsize,
     /// The retry strategy that will be used when attempting to make a request to a Web Agent.
     pub retry_strategy: RetryStrategy,
-    /// The maximum amount of time a connection can be inactive for before it will be culled.
-    idle_timeout: Duration,
-    /// How frequently inactive connections will be culled.
-    conn_reaper_frequency: Duration,
-    /// Size of the internal buffers of the router.
-    buffer_size: NonZeroUsize,
-    /// Number of values to process before yielding to the runtime.
-    yield_after: NonZeroUsize,
 }
 
-impl Default for RouterParams {
+impl Default for DownlinkConnectionsConfig {
     fn default() -> Self {
-        RouterParams {
+        DownlinkConnectionsConfig {
+            dl_req_buffer_size: NonZeroUsize::new(DEFAULT_DL_REQUEST_BUFFER_SIZE).unwrap(),
             retry_strategy: RetryStrategy::default(),
-            idle_timeout: DEFAULT_IDLE_TIMEOUT,
-            conn_reaper_frequency: DEFAULT_CONN_REAPER_FREQUENCY,
             buffer_size: NonZeroUsize::new(DEFAULT_BUFFER_SIZE).unwrap(),
             yield_after: NonZeroUsize::new(DEFAULT_YIELD_AFTER).unwrap(),
         }
     }
 }
 
-impl RouterParams {
+impl DownlinkConnectionsConfig {
     pub fn new(
-        retry_strategy: RetryStrategy,
-        idle_timeout: Duration,
-        conn_reaper_frequency: Duration,
+        dl_req_buffer_size: NonZeroUsize,
         buffer_size: NonZeroUsize,
         yield_after: NonZeroUsize,
-    ) -> RouterParams {
-        RouterParams {
-            retry_strategy,
-            idle_timeout,
-            conn_reaper_frequency,
+        retry_strategy: RetryStrategy,
+    ) -> DownlinkConnectionsConfig {
+        DownlinkConnectionsConfig {
+            dl_req_buffer_size,
             buffer_size,
             yield_after,
+            retry_strategy,
         }
     }
-
-    pub fn connection_pool_params(&self) -> ConnectionPoolParams {
-        ConnectionPoolParams::new(
-            self.idle_timeout,
-            self.conn_reaper_frequency,
-            self.buffer_size,
-            self.yield_after,
-        )
-    }
-
-    //Todo dm this needs to be changed after the new client configuration is finalised.
     //     pub fn try_from_items(items: Vec<Item>, use_defaults: bool) -> Result<Self, ConfigParseError> {
     //         let mut retry_strategy: Option<RetryStrategy> = None;
     //         let mut idle_timeout: Option<Duration> = None;
@@ -484,44 +467,3 @@ fn try_exponential_strat_from_items(
 //         self
 //     }
 // }
-
-/// Connection pool parameters.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ConnectionPoolParams {
-    /// How long a connection can be inactive for before it will be pruned.
-    pub idle_timeout: Duration,
-    /// How frequently the connection pool reaper will run. Connections that have not been used for
-    /// `idle_timeout` will be removed.
-    pub conn_reaper_frequency: Duration,
-    /// The size of the connection pool request buffer.
-    pub buffer_size: NonZeroUsize,
-    /// Number of values to process before yielding to the runtime.
-    pub yield_after: NonZeroUsize,
-}
-
-impl Default for ConnectionPoolParams {
-    fn default() -> Self {
-        ConnectionPoolParams {
-            idle_timeout: Duration::from_secs(60),
-            conn_reaper_frequency: Duration::from_secs(60),
-            buffer_size: NonZeroUsize::new(5).unwrap(),
-            yield_after: NonZeroUsize::new(256).unwrap(),
-        }
-    }
-}
-
-impl ConnectionPoolParams {
-    fn new(
-        idle_timeout: Duration,
-        conn_reaper_frequency: Duration,
-        buffer_size: NonZeroUsize,
-        yield_after: NonZeroUsize,
-    ) -> ConnectionPoolParams {
-        ConnectionPoolParams {
-            idle_timeout,
-            conn_reaper_frequency,
-            buffer_size,
-            yield_after,
-        }
-    }
-}

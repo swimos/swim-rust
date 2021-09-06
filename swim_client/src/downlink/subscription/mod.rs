@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::configuration::downlink::{BackpressureMode, Config, DownlinkKind};
+use crate::configuration::downlink::{BackpressureMode, DownlinkKind, DownlinksConfig};
 use crate::connections::{ConnectionPool, ConnectionType};
 use crate::connections::{ConnectionReceiver, ConnectionSender, SwimConnPool};
 use crate::downlink::error::SubscriptionError;
@@ -39,6 +39,7 @@ use futures_util::select_biased;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use pin_utils::pin_mut;
 use std::collections::HashMap;
+use std::num::NonZeroUsize;
 use std::sync::{Arc, Weak};
 use swim_common::form::{Form, ValidatedForm};
 use swim_common::model::schema::StandardSchema;
@@ -86,19 +87,17 @@ impl<Path: Addressable> Downlinks<Path> {
     /// Create tasks for opening remote connections and attaching them to downlinks.
     #[instrument(skip(connection_pool, config))]
     pub fn new<Cfg>(
+        buffer_size: NonZeroUsize,
         connection_pool: SwimConnPool<Path>,
         config: Arc<Cfg>,
         close_rx: CloseReceiver,
     ) -> (Downlinks<Path>, DownlinksTask<Path>)
     where
-        Cfg: Config<PathType = Path> + 'static,
+        Cfg: DownlinksConfig<PathType = Path> + 'static,
     {
         info!("Initialising downlink manager");
 
-        let client_params = config.client_params();
-
-        let (downlink_request_tx, downlink_request_rx) =
-            mpsc::channel(client_params.dl_req_buffer_size.get());
+        let (downlink_request_tx, downlink_request_rx) = mpsc::channel(buffer_size.get());
 
         (
             Downlinks {
@@ -382,7 +381,7 @@ struct EventHandle {
 }
 
 pub struct DownlinksTask<Path: Addressable> {
-    config: Arc<dyn Config<PathType = Path>>,
+    config: Arc<dyn DownlinksConfig<PathType = Path>>,
     value_downlinks: HashMap<Path, ValueHandle>,
     map_downlinks: HashMap<Path, MapHandle>,
     command_downlinks: HashMap<Path, CommandHandle>,
@@ -434,7 +433,7 @@ impl<Path: Addressable> DownlinksTask<Path> {
         close_rx: CloseReceiver,
     ) -> DownlinksTask<Path>
     where
-        C: Config<PathType = Path> + 'static,
+        C: DownlinksConfig<PathType = Path> + 'static,
     {
         DownlinksTask {
             config,

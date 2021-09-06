@@ -48,7 +48,8 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swim_client::configuration::downlink::{ClientParams, ConfigHierarchy};
+use swim_client::configuration::downlink::SwimClientConfig;
+use swim_client::configuration::router::DownlinkConnectionsConfig;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::DownlinksContext;
@@ -779,14 +780,14 @@ pub async fn run_agent_test<Agent, Config, Lifecycle>(
     let client_router_fac = ClientRouterFactory::new(client_tx.clone(), top_level_factory);
 
     let (conn_pool, _pool_task) = SwimConnPool::new(
-        ClientParams::default(),
+        DownlinkConnectionsConfig::default(),
         (client_tx, client_rx),
         client_router_fac,
         close_rx.clone(),
     );
 
     let (downlinks, _downlinks_task) =
-        Downlinks::new(conn_pool, Arc::new(ConfigHierarchy::default()), close_rx);
+        Downlinks::new(conn_pool, Arc::new(SwimClientConfig::default()), close_rx);
 
     let client = DownlinksContext::new(downlinks);
 

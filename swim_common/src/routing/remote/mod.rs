@@ -29,7 +29,7 @@ use std::net::SocketAddr;
 use crate::request::Request;
 use crate::routing::error::Unresolvable;
 use crate::routing::error::{HttpError, ResolutionErrorKind};
-use crate::routing::remote::config::ConnectionConfig;
+use crate::routing::remote::config::RemoteConnectionsConfig;
 use crate::routing::remote::pending::PendingRequest;
 use crate::routing::remote::state::{DeferredResult, Event, RemoteConnections, RemoteTasksState};
 use crate::routing::remote::table::{BidirectionalRegistrator, SchemeHostPort};
@@ -121,7 +121,7 @@ pub struct RemoteConnectionsTask<External: ExternalConnections, Ws, DelegateRout
     delegate_router_fac: DelegateRouterFac,
     stop_trigger: CloseReceiver,
     spawner: Sp,
-    configuration: ConnectionConfig,
+    configuration: RemoteConnectionsConfig,
     remote_tx: mpsc::Sender<RemoteRoutingRequest>,
     remote_rx: mpsc::Receiver<RemoteRoutingRequest>,
 }
@@ -152,7 +152,7 @@ where
     Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Send + Unpin,
 {
     pub async fn new_client_task(
-        configuration: ConnectionConfig,
+        configuration: RemoteConnectionsConfig,
         external: External,
         websockets: Ws,
         delegate_router_fac: DelegateRouterFac,
@@ -179,7 +179,7 @@ where
     }
 
     pub async fn new_server_task(
-        configuration: ConnectionConfig,
+        configuration: RemoteConnectionsConfig,
         external: External,
         bind_addr: SocketAddr,
         websockets: Ws,
@@ -244,7 +244,7 @@ where
 
     async fn run_loop(
         mut state: RemoteConnections<'_, External, Ws, Sp, DelegateRouterFac>,
-        configuration: ConnectionConfig,
+        configuration: RemoteConnectionsConfig,
     ) -> Result<(), Error> {
         let mut overall_result = Ok(());
         let mut iteration_count: usize = 0;

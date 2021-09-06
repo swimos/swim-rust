@@ -33,7 +33,7 @@ use utilities::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};
 use crate::routing::error::{
     CloseError, CloseErrorKind, ConnectionError, IoError, ProtocolError, ResolutionError,
 };
-use crate::routing::remote::config::ConnectionConfig;
+use crate::routing::remote::config::RemoteConnectionsConfig;
 use crate::routing::remote::task::{ConnectionTask, DispatchError};
 use crate::routing::remote::test_fixture::fake_channel::TwoWayMpsc;
 use crate::routing::remote::test_fixture::LocalRoutes;
@@ -460,7 +460,7 @@ impl TaskFixture {
             (env_tx.clone(), env_rx),
             bidirectional_rx,
             stop_rx,
-            ConnectionConfig {
+            RemoteConnectionsConfig {
                 router_buffer_size: NonZeroUsize::new(10).unwrap(),
                 channel_buffer_size: NonZeroUsize::new(10).unwrap(),
                 activity_timeout: Duration::from_secs(30),

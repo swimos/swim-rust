@@ -34,7 +34,7 @@ async fn create_connection_pool(
     let client_router_fac = ClientRouterFactory::new(conn_request_tx, delegate_fac);
 
     let (connection_pool, pool_task) = SwimConnPool::new(
-        ClientParams::default(),
+        DownlinkConnectionsConfig::default(),
         (client_tx, client_rx),
         client_router_fac,
         close_rx.clone(),

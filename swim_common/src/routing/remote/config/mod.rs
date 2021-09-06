@@ -18,7 +18,7 @@ use utilities::future::retryable::strategy::RetryStrategy;
 
 /// Configuration parameters for remote connection management.
 #[derive(Debug, Clone, Copy)]
-pub struct ConnectionConfig {
+pub struct RemoteConnectionsConfig {
     /// Buffer size for sending routing requests for a router instance.
     pub router_buffer_size: NonZeroUsize,
     /// Buffer size for the channel to send data to the task managing a single connection.
@@ -33,9 +33,9 @@ pub struct ConnectionConfig {
     pub yield_after: NonZeroUsize,
 }
 
-impl Default for ConnectionConfig {
+impl Default for RemoteConnectionsConfig {
     fn default() -> Self {
-        ConnectionConfig {
+        RemoteConnectionsConfig {
             router_buffer_size: NonZeroUsize::new(10).unwrap(),
             channel_buffer_size: NonZeroUsize::new(10).unwrap(),
             activity_timeout: Duration::from_secs(30),

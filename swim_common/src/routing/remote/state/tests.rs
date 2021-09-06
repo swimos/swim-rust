@@ -14,7 +14,7 @@
 
 use crate::request::Request;
 use crate::routing::error::{ConnectionError, IoError};
-use crate::routing::remote::config::ConnectionConfig;
+use crate::routing::remote::config::RemoteConnectionsConfig;
 use crate::routing::remote::pending::PendingRequest;
 use crate::routing::remote::state::{
     DeferredResult, Event, RemoteConnectionChannels, RemoteConnections, RemoteTasksState, State,
@@ -56,7 +56,7 @@ fn make_state(
 ) -> TestFixture<'_> {
     let buffer_size = NonZeroUsize::new(8).unwrap();
 
-    let config = ConnectionConfig {
+    let config = RemoteConnectionsConfig {
         router_buffer_size: buffer_size,
         channel_buffer_size: buffer_size,
         activity_timeout: Duration::from_secs(30),

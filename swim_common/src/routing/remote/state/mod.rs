@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::routing::remote::addresses::RemoteRoutingAddresses;
-use crate::routing::remote::config::ConnectionConfig;
+use crate::routing::remote::config::RemoteConnectionsConfig;
 use crate::routing::remote::pending::PendingRequest;
 use crate::routing::remote::pending::PendingRequests;
 use crate::routing::remote::table::{BidirectionalRegistrator, RoutingTable, SchemeHostPort};
@@ -284,7 +284,7 @@ where
     /// * `req_channel` - Transmitter and receiver for routing requests.
     pub fn new(
         websockets: &'a Ws,
-        configuration: ConnectionConfig,
+        configuration: RemoteConnectionsConfig,
         spawner: Sp,
         external: External,
         listener: Option<External::ListenerType>,
