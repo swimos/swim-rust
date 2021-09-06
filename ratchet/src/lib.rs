@@ -12,27 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(warnings)]
+pub mod builder;
+mod errors;
+mod extensions;
+#[cfg(test)]
+mod fixture;
+mod handshake;
+#[allow(warnings)]
+mod protocol;
 
-mod builder;
-
+use crate::errors::Error;
+use crate::extensions::{Extension, ExtensionHandshake, NegotiatedExtension};
+use crate::handshake::{exec_client_handshake, HandshakeResult, ProtocolRegistry};
 use futures::future::BoxFuture;
-use http::uri::InvalidUri;
-use http::{Request, Response, Uri};
-use std::error::Error;
+use http::Uri;
 use tokio::io::{AsyncRead, AsyncWrite};
-use tokio_native_tls::TlsConnector;
 use url::Url;
 
-pub enum ConnectionError {
-    BadRequest(RequestError),
-}
-
-impl From<RequestError> for ConnectionError {
-    fn from(e: RequestError) -> Self {
-        ConnectionError::BadRequest(e)
-    }
-}
+pub(crate) type Request = http::Request<()>;
+pub(crate) type Response = http::Response<()>;
 
 pub struct DeflateConfig;
 
@@ -41,121 +39,132 @@ pub enum CompressionConfig {
     Deflate(DeflateConfig),
 }
 
+impl Default for CompressionConfig {
+    fn default() -> Self {
+        CompressionConfig::None
+    }
+}
+
+#[derive(Default)]
 pub struct WebSocketConfig {
     // options..
     pub compression: CompressionConfig,
 }
 
 pub trait Interceptor {
-    fn intercept(
-        self,
-        request: Request<()>,
-        response: Response<()>,
-    ) -> BoxFuture<'static, Response<()>>;
+    fn intercept(self, request: Request, response: Response) -> BoxFuture<'static, Response>;
 }
 
-enum Role {
+#[derive(Copy, Clone, PartialEq)]
+pub enum Role {
     Client,
     Server,
 }
 
-pub struct WebSocket<S> {
+pub struct WebSocket<S, E> {
     stream: S,
     role: Role,
+    extension: NegotiatedExtension<E>,
     config: WebSocketConfig,
 }
 
-impl<S> WebSocket<S>
+impl<S, E> WebSocket<S, E>
 where
     S: WebSocketStream,
+    E: Extension,
 {
-    pub async fn client(
-        config: WebSocketConfig,
-        stream: S,
-        connector: TlsConnector,
-        request: Request<()>,
-    ) -> Result<WebSocket<S>, ConnectionError> {
-        // perform handshake...
-        unimplemented!()
+    pub fn role(&self) -> Role {
+        self.role
     }
 
-    pub async fn server<I>(
-        config: WebSocketConfig,
-        stream: S,
-        interceptor: I,
-    ) -> Result<WebSocket<S>, ConnectionError>
-    where
-        I: Interceptor,
-    {
-        // perform handshake...
-        unimplemented!()
+    pub fn config(&self) -> &WebSocketConfig {
+        &self.config
     }
+}
+
+pub struct Upgraded<S, E> {
+    pub socket: WebSocket<S, E>,
+    pub subprotocol: Option<String>,
+}
+
+pub async fn client<S, E>(
+    config: WebSocketConfig,
+    mut stream: S,
+    request: Request,
+    extension: E,
+    subprotocols: ProtocolRegistry,
+) -> Result<Upgraded<S, E::Extension>, Error>
+where
+    S: WebSocketStream,
+    E: ExtensionHandshake,
+{
+    let HandshakeResult {
+        subprotocol,
+        extension,
+    } = exec_client_handshake(&mut stream, request, extension, subprotocols).await?;
+    let socket = WebSocket {
+        stream,
+        role: Role::Client,
+        extension,
+        config,
+    };
+    Ok(Upgraded {
+        socket,
+        subprotocol,
+    })
 }
 
 pub trait WebSocketStream: AsyncRead + AsyncWrite + Unpin {}
-
-pub struct RequestError(Box<dyn Error>);
-
-impl From<InvalidUri> for RequestError {
-    fn from(e: InvalidUri) -> Self {
-        RequestError(Box::new(e))
-    }
-}
-
-impl From<http::Error> for RequestError {
-    fn from(e: http::Error) -> Self {
-        RequestError(Box::new(e))
-    }
-}
+impl<S> WebSocketStream for S where S: AsyncRead + AsyncWrite + Unpin {}
 
 pub trait TryIntoRequest {
-    fn try_into_request(self) -> Result<Request<()>, RequestError>;
+    fn try_into_request(self) -> Result<Request, Error>;
 }
 
 impl<'a> TryIntoRequest for &'a str {
-    fn try_into_request(self) -> Result<Request<()>, RequestError> {
+    fn try_into_request(self) -> Result<Request, Error> {
         self.parse::<Uri>()?.try_into_request()
     }
 }
 
 impl<'a> TryIntoRequest for &'a String {
-    fn try_into_request(self) -> Result<Request<()>, RequestError> {
+    fn try_into_request(self) -> Result<Request, Error> {
         self.as_str().try_into_request()
     }
 }
 
 impl TryIntoRequest for String {
-    fn try_into_request(self) -> Result<Request<()>, RequestError> {
+    fn try_into_request(self) -> Result<Request, Error> {
         self.as_str().try_into_request()
     }
 }
 
 impl<'a> TryIntoRequest for &'a Uri {
-    fn try_into_request(self) -> Result<Request<()>, RequestError> {
+    fn try_into_request(self) -> Result<Request, Error> {
         self.clone().try_into_request()
     }
 }
 
 impl TryIntoRequest for Uri {
-    fn try_into_request(self) -> Result<Request<()>, RequestError> {
+    fn try_into_request(self) -> Result<Request, Error> {
         Ok(Request::get(self).body(())?)
     }
 }
 
 impl<'a> TryIntoRequest for &'a Url {
-    fn try_into_request(self) -> Result<Request<()>, RequestError> {
+    fn try_into_request(self) -> Result<Request, Error> {
         self.as_str().try_into_request()
     }
 }
 
 impl TryIntoRequest for Url {
-    fn try_into_request(self) -> Result<Request<()>, RequestError> {
+    fn try_into_request(self) -> Result<Request, Error> {
         self.as_str().try_into_request()
     }
 }
 
-impl TryIntoRequest for Request<()> {
-    fn try_into_request(self) -> Result<Request<()>, RequestError> {
+impl TryIntoRequest for Request {
+    fn try_into_request(self) -> Result<Request, Error> {
         Ok(self)
     }
 }

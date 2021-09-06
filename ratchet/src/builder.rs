@@ -1,41 +1,59 @@
-use crate::{ConnectionError, Interceptor, TryIntoRequest, WebSocketConfig, WebSocketStream};
-use futures::future::BoxFuture;
-use http::{Request, Response};
-use tokio_native_tls::native_tls::TlsConnector;
+use crate::errors::Error;
+use crate::extensions::ext::NoExtProxy;
+use crate::extensions::ExtensionHandshake;
+use crate::handshake::ProtocolRegistry;
+use crate::{client, Interceptor, TryIntoRequest, Upgraded, WebSocketConfig, WebSocketStream};
+use tokio_native_tls::TlsConnector;
 
 /// This gives the flexibility to build websockets in a 'friendlier' fashion as opposed to having
 /// a bunch of functions like `connect_with_config_and_stream` and `connect_with_config` etc.
-#[derive(Default)]
-pub struct WebSocketClientBuilder {
+pub struct WebSocketClientBuilder<E> {
     config: Option<WebSocketConfig>,
-    stream: Option<Box<dyn WebSocketStream>>,
     connector: Option<TlsConnector>,
+    extension: E,
+    subprotocols: ProtocolRegistry,
 }
 
-impl WebSocketClientBuilder {
-    pub async fn subscribe<I>(self, request: I) -> Result<Self, ConnectionError>
+impl Default for WebSocketClientBuilder<NoExtProxy> {
+    fn default() -> Self {
+        WebSocketClientBuilder {
+            config: None,
+            connector: None,
+            extension: NoExtProxy,
+            subprotocols: ProtocolRegistry::default(),
+        }
+    }
+}
+
+impl<E: ExtensionHandshake> WebSocketClientBuilder<E> {
+    pub async fn subscribe<S, I>(
+        self,
+        stream: S,
+        request: I,
+    ) -> Result<Upgraded<S, E::Extension>, Error>
     where
+        S: WebSocketStream,
         I: TryIntoRequest,
     {
         let WebSocketClientBuilder {
             config,
-            stream,
-            connector,
+            extension,
+            subprotocols,
+            ..
         } = self;
         let request = request.try_into_request()?;
 
-        // Then it'd be built something like...
-        // initialise defaults
-        // WebSocket::client(config, stream, connector, request).await
-        unimplemented!()
+        client(
+            config.unwrap_or_default(),
+            stream,
+            request,
+            extension,
+            subprotocols,
+        )
+        .await
     }
 
     pub fn config(mut self, config: WebSocketConfig) -> Self {
-        self.config = Some(config);
-        self
-    }
-
-    pub fn stream(mut self, config: WebSocketConfig) -> Self {
         self.config = Some(config);
         self
     }
@@ -44,32 +62,46 @@ impl WebSocketClientBuilder {
         self.connector = Some(connector);
         self
     }
+
+    pub fn extension(mut self, extension: E) -> Self {
+        self.extension = extension;
+        self
+    }
+
+    pub fn subprotocols<I>(mut self, subprotocols: I) -> Self
+    where
+        I: IntoIterator<Item = &'static str>,
+    {
+        self.subprotocols = ProtocolRegistry::new(subprotocols);
+        self
+    }
 }
 
 #[derive(Default)]
-struct WebSocketServerBuilder {
+pub struct WebSocketServerBuilder {
     config: Option<WebSocketConfig>,
     interceptor: Option<Box<dyn Interceptor>>,
+    subprotocols: ProtocolRegistry,
 }
 
 impl WebSocketServerBuilder {
-    pub async fn accept<S>(self, stream: S) -> Result<Self, ConnectionError>
+    pub async fn accept<S>(self, _stream: S) -> Result<Self, Error>
     where
         S: WebSocketStream,
     {
-        let WebSocketServerBuilder {
-            config,
-            interceptor,
-        } = self;
-
-        // Then it'd be built something like...
-        // initialise defaults
-        // WebSocket::server(config, stream, interceptor).await
         unimplemented!()
     }
 
     pub fn config(mut self, config: WebSocketConfig) -> Self {
         self.config = Some(config);
+        self
+    }
+
+    pub fn subprotocols<I>(mut self, subprotocols: I) -> Self
+    where
+        I: IntoIterator<Item = &'static str>,
+    {
+        self.subprotocols = ProtocolRegistry::new(subprotocols);
         self
     }
 
