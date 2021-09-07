@@ -22,7 +22,7 @@ use base64::encode_config_slice;
 use bytes::{BufMut, BytesMut};
 use http::header::{AsHeaderName, HeaderName, IntoHeaderName};
 use http::request::Parts;
-use http::{header, HeaderMap, HeaderValue, Method, Request, Uri, Version};
+use http::{header, HeaderMap, HeaderValue, Method, Request, Version};
 
 pub fn encode_request(dst: &mut BytesMut, request: ValidatedRequest, nonce_buffer: &mut Nonce) {
     let ValidatedRequest {
