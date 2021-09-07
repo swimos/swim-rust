@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::Request;
+use http::HeaderMap;
 use std::error::Error;
 use std::fmt::Debug;
 
@@ -29,7 +29,7 @@ pub trait ExtensionProvider {
     type Extension: Extension;
     type Error: Error + Send + Sync + 'static;
 
-    fn apply_headers(&self, request: &mut Request);
+    fn apply_headers(&self, headers: &mut HeaderMap);
 
     fn negotiate(&self, response: &httparse::Response) -> Result<Self::Extension, Self::Error>;
 }

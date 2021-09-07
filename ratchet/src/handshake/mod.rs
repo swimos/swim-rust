@@ -27,14 +27,13 @@ pub use client::{exec_client_handshake, HandshakeResult};
 use fnv::FnvHashSet;
 use http::header::SEC_WEBSOCKET_PROTOCOL;
 use http::Uri;
-use http::{header, HeaderValue};
+use http::{header, HeaderMap, HeaderValue};
 use httparse::Header;
 use url::Url;
 
 const WEBSOCKET_STR: &str = "websocket";
 const UPGRADE_STR: &str = "upgrade";
 const WEBSOCKET_VERSION_STR: &str = "13";
-const WEBSOCKET_VERSION: u8 = 13;
 const BAD_STATUS_CODE: &str = "Invalid status code";
 const ACCEPT_KEY: &[u8] = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
@@ -125,8 +124,8 @@ trait SubprotocolApplicator<Target> {
     fn apply_to(&self, target: &mut Target) -> Result<(), crate::Error>;
 }
 
-impl SubprotocolApplicator<Request> for ProtocolRegistry {
-    fn apply_to(&self, target: &mut Request) -> Result<(), crate::Error> {
+impl SubprotocolApplicator<HeaderMap> for ProtocolRegistry {
+    fn apply_to(&self, target: &mut HeaderMap) -> Result<(), crate::Error> {
         if self.registrants.is_empty() {
             return Ok(());
         }
@@ -142,9 +141,7 @@ impl SubprotocolApplicator<Request> for ProtocolRegistry {
             crate::Error::with_cause(ErrorKind::Http, HttpError::MalformattedHeader)
         })?;
 
-        target
-            .headers_mut()
-            .insert(header::SEC_WEBSOCKET_PROTOCOL, header_value);
+        target.insert(header::SEC_WEBSOCKET_PROTOCOL, header_value);
         Ok(())
     }
 }

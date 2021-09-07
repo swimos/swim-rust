@@ -16,122 +16,175 @@ use crate::errors::{Error, ErrorKind, HttpError};
 use crate::extensions::ExtensionProvider;
 use crate::handshake::client::Nonce;
 use crate::handshake::{
-    ProtocolRegistry, SubprotocolApplicator, UPGRADE_STR, WEBSOCKET_STR, WEBSOCKET_VERSION,
-    WEBSOCKET_VERSION_STR,
+    ProtocolRegistry, SubprotocolApplicator, UPGRADE_STR, WEBSOCKET_STR, WEBSOCKET_VERSION_STR,
 };
 use base64::encode_config_slice;
-use bytes::BytesMut;
+use bytes::{BufMut, BytesMut};
 use http::header::{AsHeaderName, HeaderName, IntoHeaderName};
-use http::{header, HeaderMap, HeaderValue, Method, Request};
+use http::request::Parts;
+use http::{header, HeaderMap, HeaderValue, Method, Request, Version};
 
-pub fn encode_request(dst: &mut BytesMut, request: Request<()>, nonce_buffer: &mut Nonce) {
-    let (parts, _body) = request.into_parts();
+pub fn encode_request(dst: &mut BytesMut, request: ValidatedRequest, nonce_buffer: &mut Nonce) {
+    let ValidatedRequest {
+        version,
+        headers,
+        path_and_query,
+        host,
+    } = request;
 
-    dst.extend_from_slice(b"GET ");
-    dst.extend_from_slice(parts.uri.path_and_query().unwrap().as_str().as_bytes());
-    dst.extend_from_slice(b" HTTP/1.1");
-    dst.extend_from_slice(b"\r\nHost: ");
-    // previously checked
-    dst.extend_from_slice(parts.uri.authority().unwrap().as_str().as_bytes());
-
-    dst.extend_from_slice(format!("\r\n{}: websocket", header::UPGRADE).as_bytes());
-    dst.extend_from_slice(format!("\r\n{}: Upgrade", header::CONNECTION).as_bytes());
-    dst.extend_from_slice(format!("\r\n{}: ", header::SEC_WEBSOCKET_KEY).as_bytes());
-
-    // replace with wyrand
+    // todo replace with wyrand
     let nonce = rand::random::<[u8; 16]>();
     encode_config_slice(&nonce, base64::STANDARD, nonce_buffer);
-    dst.extend_from_slice(nonce_buffer);
 
-    write_header(dst, &parts.headers, header::ORIGIN);
-    write_header(dst, &parts.headers, header::SEC_WEBSOCKET_PROTOCOL);
-    write_header(dst, &parts.headers, header::SEC_WEBSOCKET_EXTENSIONS);
-
-    dst.extend_from_slice(
-        format!(
-            "\r\n{}: {}",
-            header::SEC_WEBSOCKET_VERSION,
-            WEBSOCKET_VERSION
-        )
-        .as_bytes(),
+    let request = format!(
+        "\
+GET {path} {version:?}
+Host: {host}
+Connection: Upgrade
+Upgrade: websocket
+sec-websocket-version: 13
+sec-websocket-key: ",
+        version = version,
+        path = path_and_query,
+        host = host,
     );
-    dst.extend_from_slice(b"\r\n\r\n");
+
+    // 28 = request terminator + nonce buffer len
+    let mut len = 28 + request.len();
+
+    let origin = write_header(&headers, header::ORIGIN);
+    let protocol = write_header(&headers, header::SEC_WEBSOCKET_PROTOCOL);
+    let ext = write_header(&headers, header::SEC_WEBSOCKET_EXTENSIONS);
+
+    if let Some((name, value)) = &origin {
+        len += name.len() + value.len() + 2;
+    }
+    if let Some((name, value)) = &protocol {
+        len += name.len() + value.len() + 2;
+    }
+    if let Some((name, value)) = &ext {
+        len += name.len() + value.len() + 2;
+    }
+
+    dst.reserve(len);
+    dst.put_slice(request.as_bytes());
+    dst.put_slice(nonce_buffer);
+
+    if let Some((name, value)) = origin {
+        dst.put_slice(b"\r\n");
+        dst.put_slice(name.as_bytes());
+        dst.put_slice(value);
+    }
+    if let Some((name, value)) = protocol {
+        dst.put_slice(b"\r\n");
+        dst.put_slice(name.as_bytes());
+        dst.put_slice(value);
+    }
+    if let Some((name, value)) = ext {
+        dst.put_slice(b"\r\n");
+        dst.put_slice(name.as_bytes());
+        dst.put_slice(value);
+    }
+
+    dst.put_slice(b"\r\n\r\n");
 }
 
-fn write_header(dst: &mut BytesMut, headers: &HeaderMap<HeaderValue>, name: HeaderName) {
+fn write_header(headers: &HeaderMap<HeaderValue>, name: HeaderName) -> Option<(String, &[u8])> {
     if let Some(value) = headers.get(&name) {
-        dst.extend_from_slice(format!("\r\n{}: ", name).as_bytes());
-        dst.extend_from_slice(value.as_bytes())
+        Some((format!("{}: ", name), value.as_bytes()))
+    } else {
+        None
     }
+}
+
+pub struct ValidatedRequest {
+    version: Version,
+    headers: HeaderMap,
+    path_and_query: String,
+    host: String,
 }
 
 // rfc6455 § 4.2.1
 pub fn build_request<E>(
-    request: &mut Request<()>,
+    request: Request<()>,
     extension: &E,
     subprotocols: &ProtocolRegistry,
-) -> Result<(), Error>
+) -> Result<ValidatedRequest, Error>
 where
     E: ExtensionProvider,
 {
-    if request.method() != Method::GET {
+    let (parts, _body) = request.into_parts();
+    let Parts {
+        method,
+        uri,
+        version,
+        mut headers,
+        ..
+    } = parts;
+
+    if method != Method::GET {
         return Err(Error::with_cause(ErrorKind::Http, HttpError::InvalidMethod));
     }
 
-    let authority = request
-        .uri()
+    if version < Version::HTTP_11 {
+        return Err(Error::with_cause(
+            ErrorKind::Http,
+            HttpError::HttpVersion(None),
+        ));
+    }
+
+    let authority = uri
         .authority()
         .ok_or(Error::with_cause(ErrorKind::Http, "Missing authority"))?
         .as_str()
         .to_string();
     validate_or_insert(
-        request,
+        &mut headers,
         header::HOST,
         HeaderValue::from_str(authority.as_ref())?,
     )?;
 
     validate_or_insert(
-        request,
+        &mut headers,
         header::CONNECTION,
         HeaderValue::from_static(UPGRADE_STR),
     )?;
     validate_or_insert(
-        request,
+        &mut headers,
         header::UPGRADE,
         HeaderValue::from_static(WEBSOCKET_STR),
     )?;
     validate_or_insert(
-        request,
+        &mut headers,
         header::SEC_WEBSOCKET_VERSION,
         HeaderValue::from_static(WEBSOCKET_VERSION_STR),
     )?;
 
-    if let Some(_) = request.headers().get(header::SEC_WEBSOCKET_EXTENSIONS) {
+    if let Some(_) = headers.get(header::SEC_WEBSOCKET_EXTENSIONS) {
         return Err(Error::with_cause(
             ErrorKind::Http,
             HttpError::InvalidHeader(header::SEC_WEBSOCKET_EXTENSIONS),
         ));
     }
 
-    extension.apply_headers(request);
+    extension.apply_headers(&mut headers);
 
-    if let Some(_) = request.headers().get(header::SEC_WEBSOCKET_PROTOCOL) {
+    if let Some(_) = headers.get(header::SEC_WEBSOCKET_PROTOCOL) {
         return Err(Error::with_cause(
             ErrorKind::Http,
             HttpError::InvalidHeader(header::SEC_WEBSOCKET_PROTOCOL),
         ));
     }
 
-    subprotocols.apply_to(request)?;
+    subprotocols.apply_to(&mut headers)?;
 
-    let option = request
-        .headers()
+    let option = headers
         .get(header::SEC_WEBSOCKET_KEY)
         .map(|head| head.to_str());
     match option {
         Some(Ok(version)) if version == WEBSOCKET_VERSION_STR => {}
         None => {
-            request.headers_mut().insert(
+            headers.insert(
                 header::SEC_WEBSOCKET_VERSION,
                 HeaderValue::from_static(WEBSOCKET_VERSION_STR),
             );
@@ -144,29 +197,45 @@ where
         }
     }
 
-    request.uri().host().ok_or(Error::with_cause(
-        ErrorKind::Http,
-        HttpError::MalformattedUri,
-    ))?;
+    let host = uri
+        .authority()
+        .ok_or(Error::with_cause(
+            ErrorKind::Http,
+            HttpError::MalformattedUri,
+        ))?
+        .to_string();
 
-    Ok(())
+    let path_and_query = uri
+        .path_and_query()
+        .ok_or(Error::with_cause(
+            ErrorKind::Http,
+            HttpError::MalformattedUri,
+        ))?
+        .to_string();
+
+    Ok(ValidatedRequest {
+        version,
+        headers,
+        path_and_query,
+        host,
+    })
 }
 
 fn validate_or_insert<A>(
-    request: &mut Request<()>,
+    headers: &mut HeaderMap,
     header_name: A,
     expected: HeaderValue,
 ) -> Result<(), Error>
 where
     A: AsHeaderName + IntoHeaderName + Clone,
 {
-    if let Some(header_value) = request.headers().get(header_name.clone()) {
+    if let Some(header_value) = headers.get(header_name.clone()) {
         match header_value.to_str() {
             Ok(v) if v.to_ascii_lowercase().as_bytes().eq(expected.as_bytes()) => Ok(()),
             _ => Err(Error::new(ErrorKind::Http)),
         }
     } else {
-        request.headers_mut().insert(header_name, expected);
+        headers.insert(header_name, expected);
         Ok(())
     }
 }

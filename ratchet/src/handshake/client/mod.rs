@@ -50,7 +50,7 @@ where
     S: WebSocketStream,
     E: ExtensionProvider,
 {
-    let machine = HandshakeMachine::new(stream, subprotocols, extension, buf);
+    let machine = ClientHandshake::new(stream, subprotocols, extension, buf);
     let uri = request.uri();
     let span = span!(Level::DEBUG, MSG_HANDSHAKE_START, ?uri);
 
@@ -58,11 +58,16 @@ where
         let handshake_result = machine.exec(request).await;
         match &handshake_result {
             Ok(HandshakeResult {
-                protocol,
+                subprotocol,
                 extension,
                 ..
             }) => {
-                event!(Level::DEBUG, MSG_HANDSHAKE_COMPLETED, ?protocol, ?extension)
+                event!(
+                    Level::DEBUG,
+                    MSG_HANDSHAKE_COMPLETED,
+                    ?subprotocol,
+                    ?extension
+                )
             }
             Err(e) => {
                 event!(Level::ERROR, MSG_HANDSHAKE_FAILED, error = ?e)
@@ -75,14 +80,14 @@ where
     exec.instrument(span).await
 }
 
-struct HandshakeMachine<'s, S, E> {
+struct ClientHandshake<'s, S, E> {
     buffered: BufferedIo<'s, S>,
     nonce: Nonce,
     subprotocols: ProtocolRegistry,
     extension: E,
 }
 
-impl<'s, S, E> HandshakeMachine<'s, S, E>
+impl<'s, S, E> ClientHandshake<'s, S, E>
 where
     S: WebSocketStream,
     E: ExtensionProvider,
@@ -92,8 +97,8 @@ where
         subprotocols: ProtocolRegistry,
         extension: E,
         buf: &'s mut BytesMut,
-    ) -> HandshakeMachine<'s, S, E> {
-        HandshakeMachine {
+    ) -> ClientHandshake<'s, S, E> {
+        ClientHandshake {
             buffered: BufferedIo::new(socket, buf),
             nonce: [0; 24],
             subprotocols,
@@ -101,16 +106,16 @@ where
         }
     }
 
-    fn encode(&mut self, mut request: Request<()>) -> Result<(), Error> {
-        let HandshakeMachine {
+    fn encode(&mut self, request: Request<()>) -> Result<(), Error> {
+        let ClientHandshake {
             buffered,
             nonce,
             extension,
             subprotocols,
         } = self;
 
-        build_request(&mut request, extension, subprotocols)?;
-        encode_request(&mut buffered.buffer, request, nonce);
+        let validated_request = build_request(request, extension, subprotocols)?;
+        encode_request(&mut buffered.buffer, validated_request, nonce);
         Ok(())
     }
 
@@ -123,7 +128,7 @@ where
     }
 
     async fn read(&mut self) -> Result<HandshakeResult<E::Extension>, Error> {
-        let HandshakeMachine {
+        let ClientHandshake {
             buffered,
             nonce,
             subprotocols,
@@ -143,12 +148,9 @@ where
                 extension,
                 subprotocols,
             )? {
-                ParseResult::Complete((protocol, extension), count) => {
+                ParseResult::Complete(result, count) => {
                     buffered.advance(count);
-                    break Ok(HandshakeResult {
-                        protocol,
-                        extension,
-                    });
+                    break Ok(result);
                 }
                 ParseResult::Partial => check_partial_response(&response)?,
             }
@@ -169,7 +171,7 @@ where
 
 #[derive(Debug)]
 pub struct HandshakeResult<E> {
-    pub protocol: Option<String>,
+    pub subprotocol: Option<String>,
     pub extension: E,
 }
 
@@ -203,7 +205,7 @@ fn check_partial_response(response: &Response) -> Result<(), Error> {
 }
 
 enum ParseResult<E> {
-    Complete((Option<String>, E), usize),
+    Complete(HandshakeResult<E>, usize),
     Partial,
 }
 
@@ -232,7 +234,7 @@ fn parse_response<E>(
     expected_nonce: &Nonce,
     extension: &E,
     subprotocols: &mut ProtocolRegistry,
-) -> Result<(Option<String>, E::Extension), Error>
+) -> Result<HandshakeResult<E::Extension>, Error>
 where
     E: ExtensionProvider,
 {
@@ -293,12 +295,12 @@ where
         },
     )?;
 
-    Ok((
-        subprotocols.negotiate_response(response)?,
-        extension
+    Ok(HandshakeResult {
+        subprotocol: subprotocols.negotiate_response(response)?,
+        extension: extension
             .negotiate(response)
             .map_err(|e| Error::with_cause(ErrorKind::Extension, e))?,
-    ))
+    })
 }
 
 fn validate_header_value(

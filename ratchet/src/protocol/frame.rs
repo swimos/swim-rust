@@ -14,9 +14,12 @@
 
 use crate::errors::ProtocolError;
 use crate::protocol::{HeaderFlags, OpCode};
+use bytes::{BufMut, BytesMut};
 use either::Either;
 use std::convert::TryFrom;
 use std::mem::size_of;
+
+const U16_MAX: usize = u16::MAX as usize;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct FrameHeader {
@@ -44,6 +47,42 @@ macro_rules! try_parse_int {
 }
 
 impl FrameHeader {
+    pub fn write_into(
+        dst: &mut BytesMut,
+        opcode: OpCode,
+        header_flags: HeaderFlags,
+        mask: Option<u32>,
+        payload_len: usize,
+    ) {
+        let masked = mask.is_some();
+        let (second, mut offset) = if masked { (0x80, 6) } else { (0x0, 2) };
+
+        if payload_len >= U16_MAX {
+            offset += 8;
+        } else if payload_len > 125 {
+            offset += 2;
+        }
+
+        let additional = if masked { payload_len + offset } else { offset };
+
+        dst.reserve(additional);
+        let first = header_flags.bits() | u8::from(opcode);
+
+        if payload_len < 126 {
+            dst.extend_from_slice(&[first, second | payload_len as u8]);
+        } else if payload_len <= U16_MAX {
+            dst.extend_from_slice(&[first, second | 126]);
+            dst.put_u16(payload_len as u16);
+        } else {
+            dst.extend_from_slice(&[first, second | 127]);
+            dst.put_u64(payload_len as u64);
+        };
+
+        if let Some(mask) = mask {
+            dst.put_u32(mask);
+        }
+    }
+
     pub fn read_from(
         source: &[u8],
         is_server: bool,
@@ -64,7 +103,7 @@ impl FrameHeader {
             return Err(ProtocolError::FragmentedControl);
         }
 
-        if (received_flags.bits() & rsv_bits) != 0 {
+        if (received_flags.bits() & !rsv_bits & 0x70) != 0 {
             // Peer set a RSV bit high that hasn't been negotiated
             return Err(ProtocolError::UnknownExtension);
         }

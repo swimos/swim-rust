@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::extensions::{Extension, ExtensionProvider};
-use crate::Request;
+use http::HeaderMap;
 use std::convert::Infallible;
 
 #[allow(dead_code)]
@@ -28,7 +28,7 @@ impl ExtensionProvider for NoExtProxy {
     type Extension = NoExt;
     type Error = Infallible;
 
-    fn apply_headers(&self, _request: &mut Request) {}
+    fn apply_headers(&self, _headers: &mut HeaderMap) {}
 
     fn negotiate(&self, _response: &httparse::Response) -> Result<Self::Extension, Self::Error> {
         Ok(NoExt)

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::extensions::{Extension, ExtensionProvider};
-use crate::Request;
+use http::HeaderMap;
 use httparse::Response;
 use thiserror::Error;
 
@@ -27,7 +27,7 @@ impl ExtensionProvider for DeflateHandshake {
     type Extension = Deflate;
     type Error = DeflateError;
 
-    fn apply_headers(&self, _request: &mut Request) {
+    fn apply_headers(&self, _headers: &mut HeaderMap) {
         todo!()
     }
 

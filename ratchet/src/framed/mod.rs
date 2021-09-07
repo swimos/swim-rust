@@ -14,8 +14,6 @@ use nanorand::{WyRand, RNG};
 use std::convert::TryFrom;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-const U16_MAX: usize = u16::MAX as usize;
-
 #[derive(Debug, PartialEq)]
 pub enum Item {
     Binary,
@@ -147,7 +145,7 @@ impl FramedRead {
 #[derive(Default)]
 struct FramedWrite {
     write_buffer: BytesMut,
-    encoder: FrameEncoder,
+    rand: WyRand,
 }
 
 impl FramedWrite {
@@ -163,72 +161,24 @@ impl FramedWrite {
         I: AsyncWrite + Unpin,
         A: AsMut<[u8]>,
     {
-        let FramedWrite {
-            write_buffer,
-            encoder,
-        } = self;
+        let FramedWrite { write_buffer, rand } = self;
 
         let payload = payload_ref.as_mut();
-        encoder.encode_frame(write_buffer, flags, opcode, header_flags, payload);
+
+        let mask = if flags.contains(CodecFlags::ROLE) {
+            None
+        } else {
+            let mask = rand.generate();
+            apply_mask(mask, payload);
+            Some(mask)
+        };
+
+        FrameHeader::write_into(write_buffer, opcode, header_flags, mask, payload.len());
 
         io.write_all(write_buffer).await?;
         write_buffer.clear();
 
         io.write_all(payload).await
-    }
-}
-
-#[derive(Default)]
-struct FrameEncoder {
-    rand: WyRand,
-}
-
-impl FrameEncoder {
-    fn encode_frame(
-        &mut self,
-        write_buffer: &mut BytesMut,
-        flags: &CodecFlags,
-        opcode: OpCode,
-        header_flags: HeaderFlags,
-        payload: &mut [u8],
-    ) {
-        let payload_len = payload.len();
-
-        let mask = if flags.contains(CodecFlags::ROLE) {
-            None
-        } else {
-            let mask = self.rand.generate();
-            apply_mask(mask, payload);
-            Some(mask)
-        };
-
-        let masked = mask.is_some();
-        let (second, mut offset) = if masked { (0x80, 6) } else { (0x0, 2) };
-
-        if payload_len >= U16_MAX {
-            offset += 8;
-        } else if payload_len > 125 {
-            offset += 2;
-        }
-
-        let additional = if masked { payload_len + offset } else { offset };
-
-        write_buffer.reserve(additional);
-        let first = header_flags.bits() | u8::from(opcode);
-
-        if payload_len < 126 {
-            write_buffer.extend_from_slice(&[first, second | payload_len as u8]);
-        } else if payload_len <= U16_MAX {
-            write_buffer.extend_from_slice(&[first, second | 126]);
-            write_buffer.put_u16(payload_len as u16);
-        } else {
-            write_buffer.extend_from_slice(&[first, second | 127]);
-            write_buffer.put_u64(payload_len as u64);
-        };
-
-        if let Some(mask) = mask {
-            write_buffer.put_u32(mask);
-        }
     }
 }
 
@@ -260,6 +210,10 @@ where
         }
     }
 
+    pub fn is_server(&self) -> bool {
+        self.flags.contains(CodecFlags::ROLE)
+    }
+
     pub async fn write<A>(
         &mut self,
         opcode: OpCode,
@@ -287,7 +241,7 @@ where
             ..
         } = self;
 
-        let rsv_bits = !flags.bits() & 0x70;
+        let rsv_bits = flags.bits() & 0x8F;
         let is_server = flags.contains(CodecFlags::ROLE);
 
         loop {

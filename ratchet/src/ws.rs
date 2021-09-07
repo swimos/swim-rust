@@ -20,6 +20,14 @@ where
     S: WebSocketStream,
     E: Extension,
 {
+    pub fn role(&self) -> Role {
+        if self.inner.framed.is_server() {
+            Role::Server
+        } else {
+            Role::Client
+        }
+    }
+
     pub async fn read(&mut self, read_buffer: &mut BytesMut) -> Result<Message, Error> {
         self.inner.read(read_buffer).await
     }
@@ -55,13 +63,18 @@ where
     }
 }
 
+pub struct Upgraded<S, E> {
+    pub socket: WebSocket<S, E>,
+    pub subprotocol: Option<String>,
+}
+
 pub async fn client<S, E>(
     config: WebSocketConfig,
     mut stream: S,
     request: Request,
     extension: E,
     subprotocols: ProtocolRegistry,
-) -> Result<(WebSocket<S, E::Extension>, Option<String>), Error>
+) -> Result<Upgraded<S, E::Extension>, Error>
 where
     S: WebSocketStream,
     E: ExtensionProvider,
@@ -70,7 +83,7 @@ where
     let mut read_buffer = BytesMut::new();
 
     let HandshakeResult {
-        protocol,
+        subprotocol,
         extension,
     } = exec_client_handshake(
         &mut stream,
@@ -89,7 +102,11 @@ where
             closed: false,
         },
     };
-    Ok((socket, protocol))
+
+    Ok(Upgraded {
+        socket,
+        subprotocol,
+    })
 }
 
 struct WebSocketInner<S, E> {
