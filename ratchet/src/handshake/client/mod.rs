@@ -30,7 +30,10 @@ use crate::errors::{Error, ErrorKind, HttpError};
 use crate::extensions::ExtensionProvider;
 use crate::handshake::client::encoding::{build_request, encode_request};
 use crate::handshake::io::BufferedIo;
-use crate::handshake::{ProtocolRegistry, ACCEPT_KEY, BAD_STATUS_CODE, UPGRADE_STR, WEBSOCKET_STR};
+use crate::handshake::{
+    ParseResult, Parser, ProtocolRegistry, StreamingParser, ACCEPT_KEY, BAD_STATUS_CODE,
+    UPGRADE_STR, WEBSOCKET_STR,
+};
 use crate::WebSocketStream;
 
 type Nonce = [u8; 24];
@@ -87,6 +90,38 @@ struct ClientHandshake<'s, S, E> {
     extension: E,
 }
 
+pub struct ResponseParser<'b, E> {
+    nonce: &'b Nonce,
+    extension: &'b E,
+    subprotocols: &'b mut ProtocolRegistry,
+}
+
+impl<'b, E> Parser for ResponseParser<'b, E>
+where
+    E: ExtensionProvider,
+{
+    type Output = HandshakeResult<E::Extension>;
+
+    fn parse(&mut self, buf: &[u8]) -> Result<ParseResult<Self::Output>, Error> {
+        let ResponseParser {
+            nonce,
+            extension,
+            subprotocols,
+        } = self;
+
+        let mut headers = [httparse::EMPTY_HEADER; 32];
+        let mut response = httparse::Response::new(&mut headers);
+
+        match try_parse_response(buf, &mut response, nonce, extension, subprotocols)? {
+            ParseResult::Complete(result, count) => Ok(ParseResult::Complete(result, count)),
+            ParseResult::Partial => {
+                check_partial_response(&response)?;
+                Ok(ParseResult::Partial)
+            }
+        }
+    }
+}
+
 impl<'s, S, E> ClientHandshake<'s, S, E>
 where
     S: WebSocketStream,
@@ -135,26 +170,16 @@ where
             extension,
         } = self;
 
-        loop {
-            buffered.read().await?;
-
-            let mut headers = [httparse::EMPTY_HEADER; 32];
-            let mut response = httparse::Response::new(&mut headers);
-
-            match try_parse_response(
-                &buffered.buffer,
-                &mut response,
+        let parser = StreamingParser::new(
+            buffered,
+            ResponseParser {
                 nonce,
                 extension,
                 subprotocols,
-            )? {
-                ParseResult::Complete(result, count) => {
-                    buffered.advance(count);
-                    break Ok(result);
-                }
-                ParseResult::Partial => check_partial_response(&response)?,
-            }
-        }
+            },
+        );
+
+        parser.parse().await
     }
 
     // This is split up on purpose so that the individual functions can be called in unit tests.
@@ -204,22 +229,17 @@ fn check_partial_response(response: &Response) -> Result<(), Error> {
     }
 }
 
-enum ParseResult<E> {
-    Complete(HandshakeResult<E>, usize),
-    Partial,
-}
-
 fn try_parse_response<'l, E>(
-    buffer: &'l BytesMut,
+    buffer: &'l [u8],
     response: &mut Response<'_, 'l>,
     expected_nonce: &Nonce,
-    extension: &E,
+    extension: E,
     subprotocols: &mut ProtocolRegistry,
-) -> Result<ParseResult<E::Extension>, Error>
+) -> Result<ParseResult<HandshakeResult<E::Extension>>, Error>
 where
     E: ExtensionProvider,
 {
-    match response.parse(buffer.as_ref()) {
+    match response.parse(buffer) {
         Ok(Status::Complete(count)) => {
             parse_response(response, expected_nonce, extension, subprotocols)
                 .map(|r| ParseResult::Complete(r, count))
@@ -232,7 +252,7 @@ where
 fn parse_response<E>(
     response: &Response,
     expected_nonce: &Nonce,
-    extension: &E,
+    extension: E,
     subprotocols: &mut ProtocolRegistry,
 ) -> Result<HandshakeResult<E::Extension>, Error>
 where

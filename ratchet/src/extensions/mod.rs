@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use http::HeaderMap;
+use httparse::Response;
 use std::error::Error;
 use std::fmt::Debug;
 
@@ -32,4 +33,36 @@ pub trait ExtensionProvider {
     fn apply_headers(&self, headers: &mut HeaderMap);
 
     fn negotiate(&self, response: &httparse::Response) -> Result<Self::Extension, Self::Error>;
+}
+
+impl<'r, E> ExtensionProvider for &'r mut E
+where
+    E: ExtensionProvider,
+{
+    type Extension = E::Extension;
+    type Error = E::Error;
+
+    fn apply_headers(&self, headers: &mut HeaderMap) {
+        E::apply_headers(self, headers)
+    }
+
+    fn negotiate(&self, response: &Response) -> Result<Self::Extension, Self::Error> {
+        E::negotiate(self, response)
+    }
+}
+
+impl<'r, E> ExtensionProvider for &'r E
+where
+    E: ExtensionProvider,
+{
+    type Extension = E::Extension;
+    type Error = E::Error;
+
+    fn apply_headers(&self, headers: &mut HeaderMap) {
+        E::apply_headers(self, headers)
+    }
+
+    fn negotiate(&self, response: &Response) -> Result<Self::Extension, Self::Error> {
+        E::negotiate(self, response)
+    }
 }

@@ -22,6 +22,7 @@ mod server;
 
 use crate::errors::{Error, ProtocolError};
 use crate::errors::{ErrorKind, HttpError};
+use crate::handshake::io::BufferedIo;
 use crate::{Request, Response};
 pub use client::{exec_client_handshake, HandshakeResult};
 use fnv::FnvHashSet;
@@ -29,6 +30,7 @@ use http::header::SEC_WEBSOCKET_PROTOCOL;
 use http::Uri;
 use http::{header, HeaderMap, HeaderValue};
 use httparse::Header;
+use tokio::io::AsyncRead;
 use url::Url;
 
 const WEBSOCKET_STR: &str = "websocket";
@@ -144,6 +146,49 @@ impl SubprotocolApplicator<HeaderMap> for ProtocolRegistry {
         target.insert(header::SEC_WEBSOCKET_PROTOCOL, header_value);
         Ok(())
     }
+}
+
+pub struct StreamingParser<'i, 'buf, I, P> {
+    io: &'i mut BufferedIo<'buf, I>,
+    parser: P,
+}
+
+impl<'i, 'buf, I, P> StreamingParser<'i, 'buf, I, P>
+where
+    I: AsyncRead + Unpin,
+    P: Parser,
+{
+    pub fn new(io: &'i mut BufferedIo<'buf, I>, parser: P) -> StreamingParser<'i, 'buf, I, P> {
+        StreamingParser { io, parser }
+    }
+
+    pub async fn parse(self) -> Result<P::Output, Error> {
+        let StreamingParser { io, mut parser } = self;
+
+        loop {
+            io.read().await?;
+
+            match parser.parse(io.buffer) {
+                Ok(ParseResult::Complete(out, count)) => {
+                    io.advance(count);
+                    return Ok(out);
+                }
+                Ok(ParseResult::Partial) => continue,
+                Err(e) => return Err(e),
+            }
+        }
+    }
+}
+
+pub trait Parser {
+    type Output;
+
+    fn parse(&mut self, buf: &[u8]) -> Result<ParseResult<Self::Output>, Error>;
+}
+
+pub enum ParseResult<O> {
+    Complete(O, usize),
+    Partial,
 }
 
 impl SubprotocolApplicator<Response> for ProtocolRegistry {

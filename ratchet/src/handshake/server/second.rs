@@ -1,11 +1,12 @@
 use crate::handshake::io::BufferedIo;
+use crate::handshake::{ParseResult, Parser};
 use crate::{
     Error, ExtensionProvider, ProtocolRegistry, WebSocket, WebSocketConfig, WebSocketStream,
 };
 use bytes::BytesMut;
 use futures::future::BoxFuture;
 use http::{HeaderMap, StatusCode};
-use httparse::Header;
+use httparse::{Header, Status};
 use std::marker::PhantomData;
 
 pub enum UpgradeAction {
@@ -65,8 +66,6 @@ where
 {
     let mut read_buf = BytesMut::new();
     let mut io = BufferedIo::new(&mut stream, &mut read_buf);
-
-    unimplemented!()
 }
 
 pub struct WebsocketResponse {
@@ -75,8 +74,7 @@ pub struct WebsocketResponse {
 }
 
 pub struct WebSocketUpgrader<'buf, S, E> {
-    stream: S,
-    read_buf: BytesMut,
+    io: BufferedIo<'buf, S>,
     extension: E,
     _pd: PhantomData<&'buf ()>,
 }
@@ -95,5 +93,15 @@ where
 
     pub async fn reject(self, _response: WebsocketResponse) -> Result<(), Error> {
         unimplemented!()
+    }
+}
+
+struct RequestParser {}
+
+impl Parser for RequestParser {
+    type Output = ();
+
+    fn parse(&mut self, buf: &[u8]) -> Result<ParseResult<Self::Output>, Error> {
+        todo!()
     }
 }
