@@ -1,18 +1,9 @@
-#![allow(warnings)]
-
-use log::*;
-use url::Url;
-
 use bytes::BytesMut;
-use futures::stream::{Stream, StreamExt};
-use futures::SinkExt;
-use ratchet::{client, Upgraded, WebSocket};
+use ratchet::{client, Upgraded};
 use ratchet::{
     Error, Message, NoExt, NoExtProxy, PayloadType, ProtocolRegistry, TryIntoRequest,
     WebSocketConfig,
 };
-use std::io::ErrorKind;
-use std::time::Duration;
 use tokio::net::TcpStream;
 
 const AGENT: &str = "Ratchet";
@@ -61,7 +52,6 @@ async fn update_reports() -> Result<(), Error> {
 }
 
 async fn run_test(case: u32) -> Result<(), Error> {
-    info!("Running test case {}", case);
     let mut websocket = subscribe(&format!(
         "ws://localhost:9001/runCase?case={}&agent={}",
         case, AGENT
@@ -91,16 +81,11 @@ async fn run_test(case: u32) -> Result<(), Error> {
 
 #[tokio::main]
 async fn main() {
-    env_logger::init();
-
     let total = get_case_count().await.unwrap();
 
     for case in 1..=total {
         if let Err(e) = run_test(case).await {
             println!("{}", e);
-            // if !e.closed_normal() {
-            // panic!("test: {}", e);
-            // }
         }
     }
 
