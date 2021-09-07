@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use super::ValueActions;
-use crate::configuration::downlink::OnInvalidMessage;
+use crate::configuration::OnInvalidMessage;
 use crate::downlink::model::value::{Action, SharedValue};
 use crate::downlink::typed::value::{TypedValueDownlink, ValueDownlinkReceiver, ValueViewError};
 use crate::downlink::typed::ViewMode;

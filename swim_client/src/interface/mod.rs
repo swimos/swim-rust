@@ -15,7 +15,7 @@
 //! Interface for creating and running Swim client instances.
 //!
 //! The module provides methods and structures for creating and running Swim client instances.
-use crate::configuration::downlink::SwimClientConfig;
+use crate::configuration::SwimClientConfig;
 use crate::connections::SwimConnPool;
 use crate::downlink::error::{DownlinkError, SubscriptionError};
 use crate::downlink::subscription::RequestResult;
@@ -70,7 +70,7 @@ impl SwimClientBuilder {
         SwimClientBuilder { config }
     }
 
-    //Todo dm this needs to be changed after the new client configuration is finalised.
+    //Todo dm this needs to be changed after config from file is done.
     // /// Create a new client builder with configuration from a file.
     // ///
     // /// # Arguments

@@ -30,8 +30,8 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use swim_client::configuration::downlink::{DownlinkConfig, DownlinksConfig};
-use swim_client::configuration::router::DownlinkConnectionsConfig;
+use swim_client::configuration::DownlinkConnectionsConfig;
+use swim_client::configuration::{DownlinkConfig, DownlinksConfig};
 use swim_client::connections::{PoolTask, SwimConnPool};
 use swim_client::downlink::subscription::DownlinksTask;
 use swim_client::downlink::Downlinks;
@@ -227,9 +227,8 @@ impl SwimServerBuilder {
         let client_router_factory =
             ClientRouterFactory::new(client_tx.clone(), top_level_router_fac.clone());
 
-        //Todo dm this needs to be changed from default after the new configuration is finalised.
         let (connection_pool, connection_pool_task) = SwimConnPool::new(
-            DownlinkConnectionsConfig::default(),
+            config.downlink_connections_config,
             (client_tx, client_rx),
             client_router_factory,
             close_rx.clone(),
@@ -419,19 +418,18 @@ impl Display for ServerError {
 
 impl Error for ServerError {}
 
-//Todo dm doc
 /// Swim server configuration.
 ///
 /// * `conn_config` - Configuration parameters for remote connections.
 /// * `agent_config` - Configuration parameters controlling how agents and lanes are executed.
 /// * `websocket_config` - Configuration for WebSocket connections.
+/// * `downlink_connections_config` - Configuration parameters for the downlink connections.
+/// * `downlinks_config` - CConfiguration for the behaviour of downlinks.
 pub struct SwimServerConfig {
-    conn_config: RemoteConnectionsConfig,
-    agent_config: AgentExecutionConfig,
-    websocket_config: WebSocketConfig,
-    /// Configuration parameters for the downlink connections.
+    pub conn_config: RemoteConnectionsConfig,
+    pub agent_config: AgentExecutionConfig,
+    pub websocket_config: WebSocketConfig,
     pub downlink_connections_config: DownlinkConnectionsConfig,
-    /// Configuration for the behaviour of downlinks.
     pub downlinks_config: ServerDownlinksConfig,
 }
 

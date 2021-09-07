@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::configuration::downlink::{BackpressureMode, DownlinkKind, DownlinksConfig};
+use crate::configuration::{BackpressureMode, DownlinksConfig};
 use crate::connections::{ConnectionPool, ConnectionType};
 use crate::connections::{ConnectionReceiver, ConnectionSender, SwimConnPool};
 use crate::downlink::error::SubscriptionError;
@@ -27,10 +27,7 @@ use crate::downlink::typed::{
     UntypedCommandDownlink, UntypedEventDownlink, UntypedMapDownlink, UntypedMapReceiver,
     UntypedValueDownlink, UntypedValueReceiver,
 };
-use crate::downlink::{
-    command_downlink, event_downlink, map_downlink, value_downlink, Command, Downlink,
-    DownlinkError, Message, SchemaViolations,
-};
+use crate::downlink::{command_downlink, event_downlink, map_downlink, value_downlink, Command, Downlink, DownlinkError, Message, SchemaViolations, DownlinkKind};
 use crate::router::RouterEvent;
 use either::Either;
 use futures::FutureExt;

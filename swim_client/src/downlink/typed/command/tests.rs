@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::configuration::downlink::OnInvalidMessage;
+use crate::configuration::OnInvalidMessage;
 use crate::downlink::typed::command::{CommandViewError, TypedCommandDownlink};
 use crate::downlink::Command;
 use crate::downlink::DownlinkConfig;

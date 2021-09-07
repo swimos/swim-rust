@@ -21,7 +21,7 @@ use futures::future::BoxFuture;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::sync::Arc;
-use swim_client::configuration::downlink::SwimClientConfig;
+use swim_client::configuration::SwimClientConfig;
 use swim_client::configuration::router::DownlinkConnectionsConfig;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;

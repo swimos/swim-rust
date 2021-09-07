@@ -37,7 +37,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use stm::stm::Stm;
 use stm::transaction::atomically;
-use swim_client::configuration::downlink::SwimClientConfig;
+use swim_client::configuration::SwimClientConfig;
 use swim_client::configuration::router::DownlinkConnectionsConfig;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;

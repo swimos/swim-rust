@@ -21,7 +21,7 @@ use crate::routing::TopLevelServerRouterFactory;
 use futures::future::join;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_client::configuration::downlink::SwimClientConfig;
+use swim_client::configuration::SwimClientConfig;
 use swim_client::configuration::router::DownlinkConnectionsConfig;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;

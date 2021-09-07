@@ -48,7 +48,7 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swim_client::configuration::downlink::SwimClientConfig;
+use swim_client::configuration::SwimClientConfig;
 use swim_client::configuration::router::DownlinkConnectionsConfig;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;

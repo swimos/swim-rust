@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use super::MapActions;
-use crate::configuration::downlink::OnInvalidMessage;
+use crate::configuration::OnInvalidMessage;
 use crate::downlink::model::map::{MapAction, UntypedMapModification, ValMap};
 use crate::downlink::typed::map::{
     Incompatibility, MapDownlinkReceiver, MapViewError, TypedMapDownlink,

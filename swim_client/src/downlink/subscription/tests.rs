@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use super::*;
-use crate::configuration::downlink::{SwimClientConfig, DownlinkConfig, OnInvalidMessage};
+use crate::configuration::{SwimClientConfig, DownlinkConfig, OnInvalidMessage};
 use crate::configuration::router::DownlinkConnectionsConfig;
 use crate::router::tests::{FakeConnections, MockRemoteRouterTask};
 use crate::router::{ClientRouterFactory, TopLevelClientRouterFactory};
