@@ -197,7 +197,7 @@ impl FrameEncoder {
         let mask = if flags.contains(CodecFlags::ROLE) {
             None
         } else {
-            let mask = self.rand.generate();
+            let mask = 0; //self.rand.generate();
             apply_mask(mask, payload);
             Some(mask)
         };
@@ -258,6 +258,10 @@ where
             flags,
             max_size,
         }
+    }
+
+    pub fn is_server(&self) -> bool {
+        self.flags.contains(CodecFlags::ROLE)
     }
 
     pub async fn write<A>(

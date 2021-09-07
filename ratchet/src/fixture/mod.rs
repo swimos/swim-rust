@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{Request, Response};
-use bytes::BytesMut;
+use crate::{Error, Request, Response};
+use bytes::{BufMut, BytesMut};
 use http::Version;
 use httparse::Status;
 use std::any::{type_name, Any};
@@ -21,7 +21,6 @@ use std::error::Error as StdError;
 use std::fmt::Debug;
 use std::io;
 use std::ops::Deref;
-use std::ops::DerefMut;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, DuplexStream, ReadBuf};

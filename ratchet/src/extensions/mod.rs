@@ -12,9 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::errors::BoxError;
-use crate::extensions::ext::NoExt;
-use crate::Request;
 use http::HeaderMap;
 use std::error::Error;
 use std::fmt::Debug;

@@ -90,7 +90,7 @@ impl Default for WebSocketConfig {
     }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Role {
     Client,
     Server,

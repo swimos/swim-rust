@@ -29,8 +29,9 @@ pub use builder::WebSocketClientBuilder;
 pub use errors::*;
 pub use handshake::{ProtocolRegistry, TryIntoRequest};
 pub use protocol::{Message, PayloadType, WebSocketConfig};
-pub use ws::{client, WebSocket};
+pub use ws::{client, Upgraded, WebSocket};
 
+use futures::future::BoxFuture;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 pub(crate) type Request = http::Request<()>;
@@ -38,3 +39,7 @@ pub(crate) type Response = http::Response<()>;
 
 pub trait WebSocketStream: AsyncRead + AsyncWrite + Unpin {}
 impl<S> WebSocketStream for S where S: AsyncRead + AsyncWrite + Unpin {}
+
+pub trait Interceptor {
+    fn intercept(self, request: Request, response: Response) -> BoxFuture<'static, Response>;
+}

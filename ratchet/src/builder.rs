@@ -1,9 +1,9 @@
 use crate::errors::Error;
 use crate::extensions::ext::NoExtProxy;
 use crate::handshake::ProtocolRegistry;
-use crate::ws::WebSocket;
+use crate::ws::Upgraded;
 use crate::ExtensionProvider;
-use crate::{client, Interceptor, TryIntoRequest, Upgraded, WebSocketConfig, WebSocketStream};
+use crate::{client, Interceptor, TryIntoRequest, WebSocketConfig, WebSocketStream};
 use tokio_native_tls::TlsConnector;
 
 pub struct WebSocketClientBuilder<E> {

@@ -148,12 +148,9 @@ where
                 extension,
                 subprotocols,
             )? {
-                ParseResult::Complete((protocol, extension), count) => {
+                ParseResult::Complete(result, count) => {
                     buffered.advance(count);
-                    break Ok(HandshakeResult {
-                        protocol,
-                        extension,
-                    });
+                    break Ok(result);
                 }
                 ParseResult::Partial => check_partial_response(&response)?,
             }
@@ -208,7 +205,7 @@ fn check_partial_response(response: &Response) -> Result<(), Error> {
 }
 
 enum ParseResult<E> {
-    Complete((Option<String>, E), usize),
+    Complete(HandshakeResult<E>, usize),
     Partial,
 }
 

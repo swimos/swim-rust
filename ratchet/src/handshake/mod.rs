@@ -22,7 +22,7 @@ mod server;
 
 use crate::errors::{Error, ProtocolError};
 use crate::errors::{ErrorKind, HttpError};
-use crate::Response;
+use crate::{Request, Response};
 pub use client::{exec_client_handshake, HandshakeResult};
 use fnv::FnvHashSet;
 use http::header::SEC_WEBSOCKET_PROTOCOL;

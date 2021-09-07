@@ -6,7 +6,7 @@ use url::Url;
 use bytes::BytesMut;
 use futures::stream::{Stream, StreamExt};
 use futures::SinkExt;
-use ratchet::{client, WebSocket};
+use ratchet::{client, Upgraded, WebSocket};
 use ratchet::{
     Error, Message, NoExt, NoExtProxy, PayloadType, ProtocolRegistry, TryIntoRequest,
     WebSocketConfig,
@@ -17,7 +17,7 @@ use tokio::net::TcpStream;
 
 const AGENT: &str = "Ratchet";
 
-async fn subscribe(url: &str) -> Result<WebSocket<TcpStream, NoExt>, Error> {
+async fn subscribe(url: &str) -> Result<Upgraded<TcpStream, NoExt>, Error> {
     let stream = TcpStream::connect("127.0.0.1:9001").await.unwrap();
     stream.set_nodelay(true).unwrap();
 
@@ -29,14 +29,16 @@ async fn subscribe(url: &str) -> Result<WebSocket<TcpStream, NoExt>, Error> {
         ProtocolRegistry::default(),
     )
     .await
-    .map(|(l, _)| l)
 }
 
 async fn get_case_count() -> Result<u32, Error> {
     let stream = TcpStream::connect("127.0.0.1:9001").await.unwrap();
     stream.set_nodelay(true).unwrap();
 
-    let mut websocket = subscribe("ws://localhost:9001/getCaseCount").await.unwrap();
+    let mut websocket = subscribe("ws://localhost:9001/getCaseCount")
+        .await
+        .unwrap()
+        .socket;
     let mut buf = BytesMut::new();
 
     match websocket.read(&mut buf).await? {
@@ -65,7 +67,8 @@ async fn run_test(case: u32) -> Result<(), Error> {
         case, AGENT
     ))
     .await
-    .unwrap();
+    .unwrap()
+    .socket;
 
     let mut buf = BytesMut::new();
 

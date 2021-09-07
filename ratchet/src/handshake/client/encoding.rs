@@ -28,11 +28,11 @@ pub fn encode_request(dst: &mut BytesMut, request: ValidatedRequest, nonce_buffe
     let ValidatedRequest {
         version,
         headers,
-        uri,
+        path_and_query,
         host,
     } = request;
 
-    // replace with wyrand
+    // todo replace with wyrand
     let nonce = rand::random::<[u8; 16]>();
     encode_config_slice(&nonce, base64::STANDARD, nonce_buffer);
 
@@ -45,7 +45,7 @@ Upgrade: websocket
 sec-websocket-version: 13
 sec-websocket-key: ",
         version = version,
-        path = uri.path(),
+        path = path_and_query,
         host = host,
     );
 
@@ -57,30 +57,31 @@ sec-websocket-key: ",
     let ext = write_header(&headers, header::SEC_WEBSOCKET_EXTENSIONS);
 
     if let Some((name, value)) = &origin {
-        len += name.len() + value.len();
+        len += name.len() + value.len() + 2;
     }
     if let Some((name, value)) = &protocol {
-        len += name.len() + value.len();
+        len += name.len() + value.len() + 2;
     }
     if let Some((name, value)) = &ext {
-        len += name.len() + value.len();
+        len += name.len() + value.len() + 2;
     }
 
     dst.reserve(len);
-
     dst.put_slice(request.as_bytes());
     dst.put_slice(nonce_buffer);
-    dst.put_slice(b"\r\n");
 
     if let Some((name, value)) = origin {
+        dst.put_slice(b"\r\n");
         dst.put_slice(name.as_bytes());
         dst.put_slice(value);
     }
     if let Some((name, value)) = protocol {
+        dst.put_slice(b"\r\n");
         dst.put_slice(name.as_bytes());
         dst.put_slice(value);
     }
     if let Some((name, value)) = ext {
+        dst.put_slice(b"\r\n");
         dst.put_slice(name.as_bytes());
         dst.put_slice(value);
     }
@@ -99,7 +100,7 @@ fn write_header(headers: &HeaderMap<HeaderValue>, name: HeaderName) -> Option<(S
 pub struct ValidatedRequest {
     version: Version,
     headers: HeaderMap,
-    uri: Uri,
+    path_and_query: String,
     host: String,
 }
 
@@ -132,14 +133,13 @@ where
         ));
     }
 
-    let authority = request
-        .uri()
+    let authority = uri
         .authority()
         .ok_or(Error::with_cause(ErrorKind::Http, "Missing authority"))?
         .as_str()
         .to_string();
     validate_or_insert(
-        request,
+        &mut headers,
         header::HOST,
         HeaderValue::from_str(authority.as_ref())?,
     )?;
@@ -198,7 +198,15 @@ where
     }
 
     let host = uri
-        .host()
+        .authority()
+        .ok_or(Error::with_cause(
+            ErrorKind::Http,
+            HttpError::MalformattedUri,
+        ))?
+        .to_string();
+
+    let path_and_query = uri
+        .path_and_query()
         .ok_or(Error::with_cause(
             ErrorKind::Http,
             HttpError::MalformattedUri,
@@ -208,7 +216,7 @@ where
     Ok(ValidatedRequest {
         version,
         headers,
-        uri,
+        path_and_query,
         host,
     })
 }

@@ -12,9 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::extensions::{ExtHandshakeErr, ExtensionHandshake};
 use crate::extensions::{Extension, ExtensionProvider};
-use crate::Request;
 use http::HeaderMap;
 use std::convert::Infallible;
 

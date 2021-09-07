@@ -36,7 +36,7 @@ const TEST_URL: &str = "ws://127.0.0.1:9001/test";
 #[tokio::test]
 async fn handshake_sends_valid_request() {
     let request = TEST_URL.try_into_request().unwrap();
-    let (peer, mut stream) = mock();
+    let (mut peer, mut stream) = mock();
     let mut buf = BytesMut::new();
     let mut machine = ClientHandshake::new(
         &mut stream,
@@ -52,6 +52,8 @@ async fn handshake_sends_valid_request() {
 
     let mut buf = BytesMut::with_capacity(1024);
     peer.read_buf(&mut buf).await.unwrap();
+
+    println!("{}", std::str::from_utf8(buf.as_ref()).unwrap());
 
     assert!(matches!(request.parse(&mut buf), Ok(Status::Complete(_))));
 
@@ -76,7 +78,7 @@ fn assert_header(headers: &mut [Header<'_>], name: &str, expected: &str) {
 #[tokio::test]
 async fn handshake_invalid_requests() {
     async fn test(request: Request<()>) {
-        let (peer, mut stream) = mock();
+        let (mut peer, mut stream) = mock();
         let mut buf = BytesMut::new();
         let mut machine = ClientHandshake::new(
             &mut stream,
