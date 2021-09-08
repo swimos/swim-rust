@@ -37,7 +37,6 @@ use swim_client::downlink::subscription::DownlinksTask;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::DownlinksContext;
 use swim_client::router::ClientRouterFactory;
-use swim_common::model::text::Text;
 use swim_common::routing::error::RoutingError;
 use swim_common::routing::remote::config::RemoteConnectionsConfig;
 use swim_common::routing::remote::net::dns::Resolver;
@@ -449,7 +448,7 @@ impl Default for SwimServerConfig {
 pub struct ServerDownlinksConfig {
     default: DownlinkConfig,
     by_host: HashMap<Url, DownlinkConfig>,
-    by_lane: HashMap<Text, DownlinkConfig>,
+    by_lane: HashMap<Path, DownlinkConfig>,
 }
 
 impl ServerDownlinksConfig {
@@ -472,7 +471,7 @@ impl DownlinksConfig for ServerDownlinksConfig {
             by_lane,
             ..
         } = self;
-        match by_lane.get(path.lane().as_str()) {
+        match by_lane.get(path) {
             Some(config) => *config,
             _ => {
                 let maybe_host = path.host();
@@ -492,7 +491,7 @@ impl DownlinksConfig for ServerDownlinksConfig {
         self.by_host.insert(host, params);
     }
 
-    fn for_lane(&mut self, lane: &Text, params: DownlinkConfig) {
+    fn for_lane(&mut self, lane: &Path, params: DownlinkConfig) {
         self.by_lane.insert(lane.clone(), params);
     }
 }

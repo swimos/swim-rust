@@ -20,6 +20,7 @@ use crate::agent::{
     agent_lifecycle, map_lifecycle, value_lifecycle, AgentContext, AgentParameters, SwimAgent,
     TestClock,
 };
+use crate::interface::ServerDownlinksConfig;
 use crate::meta::log::config::{FlushStrategy, LogConfig};
 use crate::meta::log::{LogBuffer, LogEntry, LogLanes, LogLevel, NodeLogger};
 use crate::plane::provider::AgentProvider;
@@ -31,8 +32,7 @@ use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::sync::Arc;
-use swim_client::configuration::SwimClientConfig;
-use swim_client::configuration::router::DownlinkConnectionsConfig;
+use swim_client::configuration::DownlinkConnectionsConfig;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::DownlinksContext;
@@ -174,8 +174,12 @@ async fn agent_log() {
         close_rx.clone(),
     );
 
-    let (downlinks, _downlinks_task) =
-        Downlinks::new(conn_pool, Arc::new(SwimClientConfig::default()), close_rx);
+    let (downlinks, _downlinks_task) = Downlinks::new(
+        NonZeroUsize::new(8).unwrap(),
+        conn_pool,
+        Arc::new(ServerDownlinksConfig::default()),
+        close_rx,
+    );
 
     let client = DownlinksContext::new(downlinks);
 

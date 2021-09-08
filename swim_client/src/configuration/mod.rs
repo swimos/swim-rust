@@ -13,7 +13,6 @@
 // limitations under the License.
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
-use swim_common::model::text::Text;
 use swim_common::routing::remote::config::RemoteConnectionsConfig;
 use swim_common::warp::path::{AbsolutePath, Addressable};
 use tokio::time::Duration;
@@ -81,7 +80,7 @@ impl Default for SwimClientConfig {
 pub struct DownlinkConnectionsConfig {
     /// Buffer size for servicing requests for new downlinks.
     pub dl_req_buffer_size: NonZeroUsize,
-    /// Size of the internal buffers of the router.
+    /// Size of the internal buffers of the downlinks connections task.
     pub buffer_size: NonZeroUsize,
     /// Number of values to process before yielding to the runtime.
     pub yield_after: NonZeroUsize,
@@ -120,7 +119,7 @@ impl Default for DownlinkConnectionsConfig {
 pub struct ClientDownlinksConfig {
     default: DownlinkConfig,
     by_host: HashMap<Url, DownlinkConfig>,
-    by_lane: HashMap<Text, DownlinkConfig>,
+    by_lane: HashMap<AbsolutePath, DownlinkConfig>,
 }
 
 impl ClientDownlinksConfig {
@@ -143,7 +142,7 @@ impl DownlinksConfig for ClientDownlinksConfig {
             by_lane,
             ..
         } = self;
-        match by_lane.get(path.lane().as_str()) {
+        match by_lane.get(path) {
             Some(config) => *config,
             _ => {
                 let maybe_host = path.host();
@@ -163,7 +162,7 @@ impl DownlinksConfig for ClientDownlinksConfig {
         self.by_host.insert(host, params);
     }
 
-    fn for_lane(&mut self, lane: &Text, params: DownlinkConfig) {
+    fn for_lane(&mut self, lane: &AbsolutePath, params: DownlinkConfig) {
         self.by_lane.insert(lane.clone(), params);
     }
 }
@@ -282,7 +281,7 @@ pub trait DownlinksConfig: Send + Sync {
 
     /// Add specific configuration for an absolute path (this will override host level
     /// configuration).
-    fn for_lane(&mut self, lane: &Text, params: DownlinkConfig);
+    fn for_lane(&mut self, lane: &Self::PathType, params: DownlinkConfig);
 }
 
 impl<'a, Path: Addressable> DownlinksConfig for Box<dyn DownlinksConfig<PathType = Path> + 'a> {
@@ -296,7 +295,7 @@ impl<'a, Path: Addressable> DownlinksConfig for Box<dyn DownlinksConfig<PathType
         (**self).for_host(host, params)
     }
 
-    fn for_lane(&mut self, lane: &Text, params: DownlinkConfig) {
+    fn for_lane(&mut self, lane: &Path, params: DownlinkConfig) {
         (**self).for_lane(lane, params)
     }
 }

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::downlink::DownlinkKind;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use swim_common::model::schema::StandardSchema;
@@ -24,7 +25,6 @@ use swim_common::warp::path::Addressable;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use utilities::errors::Recoverable;
-use crate::downlink::DownlinkKind;
 
 #[cfg(test)]
 mod tests;

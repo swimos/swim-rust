@@ -15,14 +15,15 @@
 use crate::agent::context::{ContextImpl, RoutingContext, SchedulerContext};
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::AgentContext;
+use crate::interface::ServerDownlinksConfig;
 use crate::meta::meta_context_sink;
 use crate::routing::TopLevelServerRouterFactory;
 use futures::future::BoxFuture;
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swim_client::configuration::SwimClientConfig;
-use swim_client::configuration::router::DownlinkConnectionsConfig;
+use swim_client::configuration::DownlinkConnectionsConfig;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::DownlinksContext;
@@ -84,8 +85,12 @@ fn simple_accessors() {
         close_rx.clone(),
     );
 
-    let (downlinks, _downlinks_task) =
-        Downlinks::new(conn_pool, Arc::new(SwimClientConfig::default()), close_rx);
+    let (downlinks, _downlinks_task) = Downlinks::new(
+        NonZeroUsize::new(8).unwrap(),
+        conn_pool,
+        Arc::new(ServerDownlinksConfig::default()),
+        close_rx,
+    );
 
     let client = DownlinksContext::new(downlinks);
     let context = ContextImpl::new(
@@ -143,8 +148,12 @@ fn create_context(
         close_rx.clone(),
     );
 
-    let (downlinks, _downlinks_task) =
-        Downlinks::new(conn_pool, Arc::new(SwimClientConfig::default()), close_rx);
+    let (downlinks, _downlinks_task) = Downlinks::new(
+        NonZeroUsize::new(8).unwrap(),
+        conn_pool,
+        Arc::new(ServerDownlinksConfig::default()),
+        close_rx,
+    );
 
     let client = DownlinksContext::new(downlinks);
     ContextImpl::new(

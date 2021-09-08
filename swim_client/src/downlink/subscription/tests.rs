@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use super::*;
-use crate::configuration::{SwimClientConfig, DownlinkConfig, OnInvalidMessage};
-use crate::configuration::router::DownlinkConnectionsConfig;
+use crate::configuration::{ClientDownlinksConfig, DownlinkConnectionsConfig};
+use crate::configuration::{DownlinkConfig, OnInvalidMessage};
 use crate::router::tests::{FakeConnections, MockRemoteRouterTask};
 use crate::router::{ClientRouterFactory, TopLevelClientRouterFactory};
 use futures::join;
@@ -24,7 +24,7 @@ use tokio::time::Duration;
 use url::Url;
 
 // Configuration overridden for a specific host.
-fn per_host_config() -> SwimClientConfig<AbsolutePath> {
+fn per_host_config() -> ClientDownlinksConfig {
     let timeout = Duration::from_secs(60000);
     let special_params = DownlinkConfig::new(
         BackpressureMode::Propagate,
@@ -35,13 +35,13 @@ fn per_host_config() -> SwimClientConfig<AbsolutePath> {
     )
     .unwrap();
 
-    let mut conf = SwimClientConfig::default();
+    let mut conf = ClientDownlinksConfig::default();
     conf.for_host(Url::parse("ws://127.0.0.2").unwrap(), special_params);
     conf
 }
 
 // Configuration overridden for a specific lane.
-fn per_lane_config() -> SwimClientConfig<AbsolutePath> {
+fn per_lane_config() -> ClientDownlinksConfig {
     let timeout = Duration::from_secs(60000);
     let special_params = DownlinkConfig::new(
         BackpressureMode::Propagate,
@@ -64,7 +64,7 @@ fn per_lane_config() -> SwimClientConfig<AbsolutePath> {
 }
 
 async fn dl_manager(
-    conf: SwimClientConfig<AbsolutePath>,
+    conf: ClientDownlinksConfig,
     conns: FakeConnections,
 ) -> (Downlinks<AbsolutePath>, CloseSender) {
     let (client_tx, client_rx) = mpsc::channel(32);
@@ -83,7 +83,12 @@ async fn dl_manager(
         close_rx.clone(),
     );
 
-    let (downlinks, downlinks_task) = Downlinks::new(connection_pool, Arc::new(conf), close_rx);
+    let (downlinks, downlinks_task) = Downlinks::new(
+        NonZeroUsize::new(8).unwrap(),
+        connection_pool,
+        Arc::new(conf),
+        close_rx,
+    );
 
     tokio::spawn(async move {
         join!(downlinks_task.run(), pool_task.run()).0.unwrap();

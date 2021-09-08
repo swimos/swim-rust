@@ -24,6 +24,7 @@ use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::{AgentContext, AgentParameters};
+use crate::interface::ServerDownlinksConfig;
 use crate::plane::provider::AgentProvider;
 use crate::routing::TopLevelServerRouterFactory;
 use crate::{
@@ -37,8 +38,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use stm::stm::Stm;
 use stm::transaction::atomically;
-use swim_client::configuration::SwimClientConfig;
-use swim_client::configuration::router::DownlinkConnectionsConfig;
+use swim_client::configuration::DownlinkConnectionsConfig;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::DownlinksContext;
@@ -558,8 +558,12 @@ async fn agent_loop() {
         close_rx.clone(),
     );
 
-    let (downlinks, _downlinks_task) =
-        Downlinks::new(conn_pool, Arc::new(SwimClientConfig::default()), close_rx);
+    let (downlinks, _downlinks_task) = Downlinks::new(
+        NonZeroUsize::new(8).unwrap(),
+        conn_pool,
+        Arc::new(ServerDownlinksConfig::default()),
+        close_rx,
+    );
 
     let client = DownlinksContext::new(downlinks);
 

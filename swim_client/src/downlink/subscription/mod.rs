@@ -27,7 +27,10 @@ use crate::downlink::typed::{
     UntypedCommandDownlink, UntypedEventDownlink, UntypedMapDownlink, UntypedMapReceiver,
     UntypedValueDownlink, UntypedValueReceiver,
 };
-use crate::downlink::{command_downlink, event_downlink, map_downlink, value_downlink, Command, Downlink, DownlinkError, Message, SchemaViolations, DownlinkKind};
+use crate::downlink::{
+    command_downlink, event_downlink, map_downlink, value_downlink, Command, Downlink,
+    DownlinkError, DownlinkKind, Message, SchemaViolations,
+};
 use crate::router::RouterEvent;
 use either::Either;
 use futures::FutureExt;
