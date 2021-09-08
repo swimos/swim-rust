@@ -73,6 +73,13 @@ use utilities::instant::AtomicInstant;
 use utilities::sync::{promise, topic, trigger};
 use utilities::uri::RelativeUri;
 
+// Ordinality is enforced in the metrics unit tests by first firing a number of events, waiting
+// 2 * METRIC_SAMPLE_RATE, firing another event that we know will be processed as the sample rate
+// has elapsed, and then waiting 2 * METRIC_SAMPLE_RATE. With tarpaulin, these tests can fail due to
+// the final event not being processed.
+#[cfg(tarpaulin)]
+const METRIC_SAMPLE_RATE: Duration = Duration::from_secs(5);
+#[cfg(not(tarpaulin))]
 const METRIC_SAMPLE_RATE: Duration = Duration::from_millis(100);
 
 #[test]
