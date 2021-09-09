@@ -30,6 +30,7 @@ use std::sync::Arc;
 
 #[doc(hidden)]
 pub use form_derive::StructuralWritable;
+use std::num::NonZeroUsize;
 use url::Url;
 use utilities::uri::RelativeUri;
 
@@ -446,6 +447,28 @@ impl StructuralWritable for usize {
         } else {
             writer.write_big_uint(BigUint::from(self))
         }
+    }
+}
+
+impl StructuralWritable for NonZeroUsize {
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        if let Ok(n) = u64::try_from(self.get()) {
+            writer.write_u64(n)
+        } else {
+            writer.write_big_uint(BigUint::from(self.get()))
+        }
+    }
+
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        if let Ok(n) = u64::try_from(self.get()) {
+            writer.write_u64(n)
+        } else {
+            writer.write_big_uint(BigUint::from(self.get()))
+        }
+    }
+
+    fn num_attributes(&self) -> usize {
+        0
     }
 }
 

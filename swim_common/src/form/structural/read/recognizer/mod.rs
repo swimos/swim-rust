@@ -40,6 +40,7 @@ use std::sync::Arc;
 use url::Url;
 use utilities::iteratee::Iteratee;
 use utilities::uri::RelativeUri;
+use std::num::NonZeroUsize;
 
 /// Trait for types that can be recognized by a [`Recognizer`] state machine.
 pub trait RecognizerReadable: Sized {
@@ -159,6 +160,7 @@ simple_readable!(i64, I64Recognizer);
 simple_readable!(u32, U32Recognizer);
 simple_readable!(u64, U64Recognizer);
 simple_readable!(usize, UsizeRecognizer);
+simple_readable!(NonZeroUsize, NonZeroUsizeRecognizer);
 simple_readable!(f64, F64Recognizer);
 simple_readable!(BigInt, BigIntRecognizer);
 simple_readable!(BigUint, BigUintRecognizer);

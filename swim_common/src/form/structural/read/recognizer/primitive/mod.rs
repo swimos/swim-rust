@@ -19,8 +19,9 @@ use crate::form::structural::read::ReadError;
 use crate::model::text::Text;
 use crate::model::ValueKind;
 use num_bigint::{BigInt, BigUint};
-use num_traits::ToPrimitive;
+use num_traits::{ToPrimitive, Zero};
 use std::convert::TryFrom;
+use std::num::NonZeroUsize;
 
 pub struct UnitRecognizer;
 pub struct I32Recognizer;
@@ -28,6 +29,7 @@ pub struct I64Recognizer;
 pub struct U32Recognizer;
 pub struct U64Recognizer;
 pub struct UsizeRecognizer;
+pub struct NonZeroUsizeRecognizer;
 pub struct BigIntRecognizer;
 pub struct BigUintRecognizer;
 pub struct F64Recognizer;
@@ -167,6 +169,62 @@ impl Recognizer for UsizeRecognizer {
             }
             ReadEvent::Number(NumericValue::BigUint(n)) => {
                 Some(usize::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
+            }
+            ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
+                ExpectedEvent::ValueEvent(ValueKind::UInt32),
+                ExpectedEvent::ValueEvent(ValueKind::UInt64),
+                ExpectedEvent::ValueEvent(ValueKind::BigUint),
+            ])))),
+        }
+    }
+
+    fn reset(&mut self) {}
+}
+
+impl Recognizer for NonZeroUsizeRecognizer {
+    type Target = NonZeroUsize;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        match input {
+            ReadEvent::Number(NumericValue::Int(n)) => {
+                if n == 0 {
+                    return Some(Err(ReadError::NumberOutOfRange));
+                }
+
+                match usize::try_from(n) {
+                    Ok(value) => Some(Ok(NonZeroUsize::new(value).unwrap())),
+                    Err(_) => Some(Err(ReadError::NumberOutOfRange)),
+                }
+            }
+            ReadEvent::Number(NumericValue::UInt(n)) => {
+                if n == 0 {
+                    return Some(Err(ReadError::NumberOutOfRange));
+                }
+
+                match usize::try_from(n) {
+                    Ok(value) => Some(Ok(NonZeroUsize::new(value).unwrap())),
+                    Err(_) => Some(Err(ReadError::NumberOutOfRange)),
+                }
+            }
+            ReadEvent::Number(NumericValue::BigInt(n)) => {
+                if n.is_zero() {
+                    return Some(Err(ReadError::NumberOutOfRange));
+                }
+
+                match usize::try_from(n) {
+                    Ok(value) => Some(Ok(NonZeroUsize::new(value).unwrap())),
+                    Err(_) => Some(Err(ReadError::NumberOutOfRange)),
+                }
+            }
+            ReadEvent::Number(NumericValue::BigUint(n)) => {
+                if n.is_zero() {
+                    return Some(Err(ReadError::NumberOutOfRange));
+                }
+
+                match usize::try_from(n) {
+                    Ok(value) => Some(Ok(NonZeroUsize::new(value).unwrap())),
+                    Err(_) => Some(Err(ReadError::NumberOutOfRange)),
+                }
             }
             ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                 ExpectedEvent::ValueEvent(ValueKind::UInt32),
