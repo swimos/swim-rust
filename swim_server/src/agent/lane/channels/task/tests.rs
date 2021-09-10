@@ -33,7 +33,7 @@ use crate::meta::log::make_node_logger;
 use crate::meta::metric::config::MetricAggregatorConfig;
 use crate::meta::metric::lane::LanePulse;
 use crate::meta::metric::node::NodePulse;
-use crate::meta::metric::uplink::{UplinkActionObserver, WarpUplinkPulse};
+use crate::meta::metric::uplink::{UplinkObserver, WarpUplinkPulse};
 use crate::meta::metric::{aggregator_sink, AggregatorError, NodeMetricAggregator};
 use crate::meta::pulse::PulseLanes;
 use crate::routing::error::RouterError;
@@ -64,16 +64,13 @@ use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Mutex};
-use tokio::task::JoinHandle;
+use tokio::time::timeout;
 use tokio::time::Instant;
-use tokio::time::{sleep, timeout};
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 use utilities::instant::AtomicInstant;
 use utilities::sync::{promise, topic, trigger};
 use utilities::uri::RelativeUri;
-
-const METRIC_SAMPLE_RATE: Duration = Duration::from_millis(100);
 
 #[test]
 fn lane_io_err_display_update() {
@@ -187,7 +184,7 @@ impl LaneUplinks for TestUplinkSpawner {
         channels: UplinkChannels<Top>,
         _route: RelativePath,
         _context: &Context,
-        _action_observer: UplinkActionObserver,
+        _action_observer: UplinkObserver,
     ) -> BoxFuture<'static, ()>
     where
         Handler: LaneMessageHandler + 'static,
@@ -346,7 +343,6 @@ struct TestContext {
     _drop_tx: Arc<promise::Sender<ConnectionDropped>>,
     drop_rx: promise::Receiver<ConnectionDropped>,
     aggregator: NodeMetricAggregator,
-    _metrics_jh: Arc<JoinHandle<Result<(), AggregatorError>>>,
     uplinks_idle_since: Arc<AtomicInstant>,
 }
 
@@ -587,7 +583,7 @@ fn make_aggregator(
     let uri = RelativeUri::try_from(format!("/{}/{}", node, lane)).unwrap();
 
     let config = MetricAggregatorConfig {
-        sample_rate: METRIC_SAMPLE_RATE,
+        sample_rate: Duration::from_secs(u64::MAX),
         buffer_size: NonZeroUsize::new(10).unwrap(),
         yield_after: NonZeroUsize::new(256).unwrap(),
         backpressure_config: KeyedBackpressureConfig {
@@ -615,6 +611,7 @@ fn make_context() -> (
     mpsc::Receiver<TaggedEnvelope>,
     BoxFuture<'static, ()>,
     MetricReceivers,
+    impl Future<Output = Result<(), AggregatorError>>,
 ) {
     let (spawn_tx, spawn_rx) = mpsc::channel(5);
     let (router_tx, router_rx) = mpsc::channel(5);
@@ -630,7 +627,6 @@ fn make_context() -> (
         _drop_tx: Arc::new(drop_tx),
         drop_rx,
         aggregator,
-        _metrics_jh: Arc::new(tokio::spawn(aggregator_task)),
         uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now())),
     };
     let spawn_task = ReceiverStream::new(spawn_rx)
@@ -638,12 +634,12 @@ fn make_context() -> (
         .for_each_concurrent(None, |t| t)
         .boxed();
 
-    (context, router_rx, spawn_task, receivers)
+    (context, router_rx, spawn_task, receivers, aggregator_task)
 }
 
 #[tokio::test]
 async fn handle_link_request() {
-    let (context, _envelope_rx, spawn_task, _) = make_context();
+    let (context, _envelope_rx, spawn_task, _, _) = make_context();
     let config = make_config();
     let (mut inputs, mut outputs, main_task) = make_task(vec![], false, config, context.clone());
 
@@ -670,7 +666,7 @@ async fn handle_link_request() {
 
 #[tokio::test]
 async fn handle_sync_request() {
-    let (context, _envelope_rx, spawn_task, _) = make_context();
+    let (context, _envelope_rx, spawn_task, _, _) = make_context();
     let config = make_config();
     let (mut inputs, mut outputs, main_task) = make_task(vec![], false, config, context.clone());
 
@@ -697,7 +693,7 @@ async fn handle_sync_request() {
 
 #[tokio::test]
 async fn handle_unlink_request() {
-    let (context, _envelope_rx, spawn_task, _) = make_context();
+    let (context, _envelope_rx, spawn_task, _, _) = make_context();
     let config = make_config();
     let (mut inputs, mut outputs, main_task) = make_task(vec![], false, config, context.clone());
 
@@ -726,7 +722,7 @@ async fn handle_unlink_request() {
 
 #[tokio::test]
 async fn handle_command() {
-    let (context, _envelope_rx, spawn_task, _) = make_context();
+    let (context, _envelope_rx, spawn_task, _, _) = make_context();
     let config = make_config();
     let (mut inputs, outputs, main_task) = make_task(vec![], false, config, context.clone());
 
@@ -747,7 +743,7 @@ async fn handle_command() {
 
 #[tokio::test]
 async fn handle_multiple() {
-    let (context, _envelope_rx, spawn_task, _) = make_context();
+    let (context, _envelope_rx, spawn_task, _, _) = make_context();
     let config = make_config();
     let (mut inputs, mut outputs, main_task) = make_task(vec![], false, config, context.clone());
 
@@ -780,7 +776,7 @@ async fn handle_multiple() {
 
 #[tokio::test]
 async fn fail_on_update_error() {
-    let (context, _envelope_rx, spawn_task, _) = make_context();
+    let (context, _envelope_rx, spawn_task, _, _) = make_context();
     let config = make_config();
     let (mut inputs, outputs, main_task) = make_task(vec![], false, config, context.clone());
 
@@ -818,7 +814,7 @@ async fn fail_on_update_error() {
 
 #[tokio::test]
 async fn continue_after_non_fatal_uplink_err() {
-    let (context, _envelope_rx, spawn_task, _) = make_context();
+    let (context, _envelope_rx, spawn_task, _, _) = make_context();
     let config = make_config();
 
     let bad_addr = RoutingAddr::remote(7);
@@ -862,7 +858,7 @@ async fn continue_after_non_fatal_uplink_err() {
 
 #[tokio::test]
 async fn fail_after_too_many_fatal_uplink_errors() {
-    let (context, _envelope_rx, spawn_task, _) = make_context();
+    let (context, _envelope_rx, spawn_task, _, _) = make_context();
     let config = make_config();
 
     let bad_addr1 = RoutingAddr::remote(7);
@@ -917,7 +913,7 @@ async fn fail_after_too_many_fatal_uplink_errors() {
 
 #[tokio::test]
 async fn report_uplink_failures_on_update_failure() {
-    let (context, _envelope_rx, spawn_task, _) = make_context();
+    let (context, _envelope_rx, spawn_task, _, _) = make_context();
     let config = make_config();
 
     let bad_addr = RoutingAddr::remote(22);
@@ -1081,7 +1077,7 @@ async fn expect_envelope(
 async fn handle_action_lane_link_request() {
     let route = route();
 
-    let (context, mut router_rx, spawn_task, _) = make_context();
+    let (context, mut router_rx, spawn_task, _, _) = make_context();
     let config = make_config();
 
     let (task, mut input) = make_action_lane_task(config, context);
@@ -1116,7 +1112,7 @@ async fn handle_action_lane_link_request() {
 async fn handle_action_lane_sync_request() {
     let route = route();
 
-    let (context, mut router_rx, spawn_task, _) = make_context();
+    let (context, mut router_rx, spawn_task, _, _) = make_context();
     let config = make_config();
 
     let (task, mut input) = make_action_lane_task(config, context);
@@ -1157,7 +1153,7 @@ async fn handle_action_lane_sync_request() {
 async fn handle_action_lane_immediate_unlink_request() {
     let route = route();
 
-    let (context, mut router_rx, spawn_task, _) = make_context();
+    let (context, mut router_rx, spawn_task, _, _) = make_context();
     let config = make_config();
 
     let (task, mut input) = make_action_lane_task(config, context);
@@ -1189,7 +1185,7 @@ async fn handle_action_lane_immediate_unlink_request() {
 async fn action_lane_responses_when_linked() {
     let route = route();
 
-    let (context, mut router_rx, spawn_task, _) = make_context();
+    let (context, mut router_rx, spawn_task, _, _) = make_context();
     let config = make_config();
 
     let (task, mut input) = make_action_lane_task(config, context);
@@ -1233,7 +1229,7 @@ async fn action_lane_responses_when_linked() {
 async fn action_lane_multiple_links() {
     let route = route();
 
-    let (context, mut router_rx, spawn_task, _) = make_context();
+    let (context, mut router_rx, spawn_task, _, _) = make_context();
     let config = make_config();
 
     let (task, mut input) = make_action_lane_task(config, context);
@@ -1297,7 +1293,7 @@ async fn action_lane_multiple_links() {
 
 #[tokio::test]
 async fn handle_action_lane_update_failure() {
-    let (context, _router_rx, spawn_task, _) = make_context();
+    let (context, _router_rx, spawn_task, _, _) = make_context();
     let config = make_config();
 
     let (task, mut input) = make_action_lane_task(config, context);
@@ -1316,7 +1312,7 @@ async fn handle_action_lane_update_failure() {
 
 #[tokio::test]
 async fn handle_command_lane_update_failure() {
-    let (context, _router_rx, spawn_task, _) = make_context();
+    let (context, _router_rx, spawn_task, _, _) = make_context();
     let config = make_config();
 
     let (task, mut input) = make_command_lane_task(config, context);
@@ -1530,7 +1526,7 @@ async fn handle_action_lane_non_fatal_uplink_error() {
 #[tokio::test]
 async fn handle_command_lane_link_request() {
     let route = route();
-    let (context, mut router_rx, spawn_task, _) = make_context();
+    let (context, mut router_rx, spawn_task, _, _) = make_context();
     let config = make_config();
     let (task, mut input) = make_command_lane_task(config, context);
 
@@ -1564,7 +1560,7 @@ async fn handle_command_lane_link_request() {
 async fn command_lane_multiple_links() {
     let route = route();
 
-    let (context, mut router_rx, spawn_task, _) = make_context();
+    let (context, mut router_rx, spawn_task, _, _) = make_context();
     let config = make_config();
 
     let (task, mut input) = make_command_lane_task(config, context);
@@ -1646,10 +1642,10 @@ async fn expect_envelopes<I>(
 async fn stateless_lane_metrics() {
     let route = route();
 
-    let (context, mut router_rx, spawn_task, metrics) = make_context();
+    let (context, mut router_rx, spawn_task, metrics, metric_task) = make_context();
     let config = make_config();
 
-    let (task, mut input) = make_action_lane_task(config, context);
+    let (main_task, mut input) = make_action_lane_task(config, context.clone());
 
     let addr1 = RoutingAddr::remote(5);
     let addr2 = RoutingAddr::remote(10);
@@ -1688,9 +1684,6 @@ async fn stateless_lane_metrics() {
             .await;
         }
 
-        // sleep for long enough that the next message will force the metrics to be flushed.
-        sleep(METRIC_SAMPLE_RATE * 2).await;
-
         input.send_command(addr1, 6).await;
         input.send_command(addr2, 6).await;
 
@@ -1715,34 +1708,43 @@ async fn stateless_lane_metrics() {
         assert_eq!(env, expected_unlink);
     };
 
-    let (_, result, _) = join3(spawn_task, task, io_task).await;
     let MetricReceivers { uplink, lane, node } = metrics;
-
     let uplink_task = accumulate_metrics(uplink);
     let lane_task = accumulate_metrics(lane);
     let node_task = accumulate_metrics(node);
 
-    sleep(METRIC_SAMPLE_RATE).await;
-    let (uplink, lane, node) = join3(uplink_task, lane_task, node_task).await;
+    let spawn_handle = tokio::spawn(spawn_task);
+    let metric_handle = tokio::spawn(metric_task);
+    let main_handle = tokio::spawn(main_task);
+
+    let (uplink, lane, node) = io_task
+        .then(|_| async move {
+            let task_result = main_handle.await.unwrap();
+            assert!(matches!(task_result, Ok(errs) if errs.is_empty()));
+
+            context.stop().await;
+            assert!(spawn_handle.await.is_ok());
+            assert!(metric_handle.await.is_ok());
+            join3(uplink_task, lane_task, node_task).await
+        })
+        .await;
 
     assert_eq!(uplink.link_count, 2);
-    assert_eq!(uplink.event_count, 10);
-    assert_eq!(uplink.command_count, 11);
+    assert_eq!(uplink.event_count, 12);
+    assert_eq!(uplink.command_count, 12);
 
     assert_eq!(lane.uplink_pulse.link_count, 2);
-    assert_eq!(lane.uplink_pulse.event_count, 10);
-    assert_eq!(lane.uplink_pulse.command_count, 11);
+    assert_eq!(lane.uplink_pulse.event_count, 12);
+    assert_eq!(lane.uplink_pulse.command_count, 12);
 
     assert_eq!(node.uplinks.link_count, 2);
-    assert_eq!(node.uplinks.event_count, 10);
-    assert_eq!(node.uplinks.command_count, 11);
-
-    assert!(matches!(result, Ok(errs) if errs.is_empty()));
+    assert_eq!(node.uplinks.event_count, 12);
+    assert_eq!(node.uplinks.command_count, 12);
 }
 
 #[tokio::test]
 async fn stateful_lane_metrics() {
-    let (context, _envelope_rx, spawn_task, metrics) = make_context();
+    let (context, _envelope_rx, spawn_task, metrics, metric_task) = make_context();
     let config = make_config();
     let (mut inputs, _outputs, main_task) = make_task(vec![], false, config, context.clone());
 
@@ -1753,16 +1755,9 @@ async fn stateful_lane_metrics() {
         inputs.send_command(addr, 87).await;
         inputs.send_unlink(addr).await;
         inputs.send_command(addr, 65).await;
-
-        // sleep for long enough that the next message will force the metrics to be flushed.
-        sleep(METRIC_SAMPLE_RATE * 2).await;
-
         inputs.send_command(addr, 6).await;
 
-        sleep(METRIC_SAMPLE_RATE * 2).await;
-
         drop(inputs);
-        context.stop().await;
     };
 
     let MetricReceivers { uplink, lane, node } = metrics;
@@ -1770,16 +1765,25 @@ async fn stateful_lane_metrics() {
     let lane_task = accumulate_metrics(lane);
     let node_task = accumulate_metrics(node);
 
-    let left = join3(spawn_task, main_task, io_task);
-    let right = join3(uplink_task, lane_task, node_task);
-    let (_, (uplink, lane, node)) = join(left, right).await;
+    let spawn_handle = tokio::spawn(spawn_task);
+    let metric_handle = tokio::spawn(metric_task);
 
-    assert_eq!(uplink.event_count, 2);
+    let (uplink, lane, node) = io_task
+        .then(|_| async move {
+            assert!(main_task.await.is_ok());
+            context.stop().await;
+            assert!(spawn_handle.await.is_ok());
+            assert!(metric_handle.await.is_ok());
+            join3(uplink_task, lane_task, node_task).await
+        })
+        .await;
+
+    assert_eq!(uplink.event_count, 3);
     assert_eq!(uplink.command_count, 3);
 
-    assert_eq!(lane.uplink_pulse.event_count, 2);
+    assert_eq!(lane.uplink_pulse.event_count, 3);
     assert_eq!(lane.uplink_pulse.command_count, 3);
 
-    assert_eq!(node.uplinks.event_count, 2);
+    assert_eq!(node.uplinks.event_count, 3);
     assert_eq!(node.uplinks.command_count, 3);
 }

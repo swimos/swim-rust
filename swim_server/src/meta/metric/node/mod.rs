@@ -17,9 +17,9 @@ use crate::meta::metric::lane::WarpLaneProfile;
 use crate::meta::metric::uplink::WarpUplinkPulse;
 use crate::meta::metric::{AggregatorError, AggregatorErrorKind, MetricReporter, MetricStage};
 use crate::meta::metric::{STOP_CLOSED, STOP_OK};
-use futures::select;
 use futures::FutureExt;
 use futures::StreamExt;
+use futures::{select, Stream};
 use std::num::NonZeroUsize;
 use std::ops::Add;
 use std::time::{Duration, Instant};
@@ -158,6 +158,8 @@ impl NodeAggregatorTask {
             let event: Option<(RelativePath, WarpLaneProfile)> = select! {
                 _ = fused_trigger => {
                     event!(Level::WARN, STOP_OK);
+                    drain(&mut fused_metric_rx, lane, profile, reporter)?;
+
                     return Ok(MetricStage::Node);
                 },
                 metric = fused_metric_rx.next() => metric,
@@ -165,13 +167,16 @@ impl NodeAggregatorTask {
             match event {
                 None => {
                     event!(Level::WARN, STOP_CLOSED);
+                    drain(&mut fused_metric_rx, lane, profile, reporter)?;
+
                     break AggregatorErrorKind::AbnormalStop;
                 }
                 Some((_path, new_profile)) => {
                     profile = profile.add(new_profile);
-                    let (pulse, _) = reporter.report(profile);
 
                     if last_report.elapsed() > sample_rate {
+                        let (pulse, _) = reporter.report(profile);
+
                         if let Err(TrySendError::Closed(_)) = lane.try_send(pulse) {
                             break AggregatorErrorKind::ForwardChannelClosed;
                         } else {
@@ -194,5 +199,29 @@ impl NodeAggregatorTask {
             aggregator: MetricStage::Node,
             error,
         })
+    }
+}
+
+/// Drains all the pending messages from `stream` and flushes any pending pulses and profiles.
+fn drain<S>(
+    stream: &mut S,
+    lane: SupplyLane<NodePulse>,
+    mut profile: WarpLaneProfile,
+    mut reporter: ModeMetricReporter,
+) -> Result<(), AggregatorError>
+where
+    S: Stream<Item = (RelativePath, WarpLaneProfile)> + Unpin,
+{
+    while let Some((_, part)) = stream.next().now_or_never().flatten() {
+        profile = profile.add(part);
+    }
+
+    let (pulse, _) = reporter.report(profile);
+    match lane.try_send(pulse) {
+        Err(TrySendError::Closed(_)) => Err(AggregatorError {
+            aggregator: MetricStage::Node,
+            error: AggregatorErrorKind::ForwardChannelClosed,
+        }),
+        _ => Ok(()),
     }
 }
