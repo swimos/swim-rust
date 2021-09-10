@@ -313,6 +313,7 @@ where
 
     while let Some(item) = stream.next().await {
         accumulated = accumulated.add(item);
+        println!("Accumulated: {:?}", accumulated);
     }
 
     accumulated
