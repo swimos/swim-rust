@@ -18,7 +18,6 @@ mod tests;
 mod encoding;
 
 use bytes::BytesMut;
-use http::header::HeaderName;
 use http::{header, Request, StatusCode};
 use httparse::{Response, Status};
 use sha1::{Digest, Sha1};
@@ -31,8 +30,8 @@ use crate::extensions::ExtensionProvider;
 use crate::handshake::client::encoding::{build_request, encode_request};
 use crate::handshake::io::BufferedIo;
 use crate::handshake::{
-    ParseResult, Parser, ProtocolRegistry, StreamingParser, ACCEPT_KEY, BAD_STATUS_CODE,
-    UPGRADE_STR, WEBSOCKET_STR,
+    validate_header, validate_header_value, ParseResult, Parser, ProtocolRegistry, StreamingParser,
+    ACCEPT_KEY, BAD_STATUS_CODE, UPGRADE_STR, WEBSOCKET_STR,
 };
 use crate::WebSocketStream;
 
@@ -214,6 +213,7 @@ fn check_partial_response(response: &Response) -> Result<(), Error> {
             ))
         }
     }
+
     match response.code {
         Some(code) if code == StatusCode::SWITCHING_PROTOCOLS => Ok(()),
         Some(code) if (300..400).contains(&code) => {
@@ -269,7 +269,7 @@ where
         }
     }
 
-    let raw_status_code = response.code.ok_or(Error::new(ErrorKind::Http))?;
+    let raw_status_code = response.code.ok_or_else(|| Error::new(ErrorKind::Http))?;
     let status_code = StatusCode::from_u16(raw_status_code)?;
     match status_code {
         c if c == StatusCode::SWITCHING_PROTOCOLS => {}
@@ -308,7 +308,7 @@ where
 
             let expected = base64::encode(&digest.finalize());
             if expected.as_bytes() != actual {
-                return Err(Error::with_cause(ErrorKind::Http, HttpError::KeyMismatch));
+                Err(Error::with_cause(ErrorKind::Http, HttpError::KeyMismatch))
             } else {
                 Ok(())
             }
@@ -318,43 +318,7 @@ where
     Ok(HandshakeResult {
         subprotocol: subprotocols.negotiate_response(response)?,
         extension: extension
-            .negotiate(response)
-            .map_err(|e| Error::with_cause(ErrorKind::Extension, e))?,
+            .negotiate_client(response.headers)
+            .map_err(Into::into)?,
     })
-}
-
-fn validate_header_value(
-    headers: &[httparse::Header],
-    name: HeaderName,
-    expected: &str,
-) -> Result<(), Error> {
-    validate_header(headers, name, |name, actual| {
-        let actual =
-            std::str::from_utf8(actual).map_err(|e| Error::with_cause(ErrorKind::IO, e))?;
-
-        if actual.eq_ignore_ascii_case(expected) {
-            Ok(())
-        } else {
-            Err(Error::with_cause(
-                ErrorKind::Http,
-                HttpError::InvalidHeader(name),
-            ))
-        }
-    })
-}
-
-fn validate_header<F>(headers: &[httparse::Header], name: HeaderName, f: F) -> Result<(), Error>
-where
-    F: Fn(HeaderName, &[u8]) -> Result<(), Error>,
-{
-    match headers
-        .iter()
-        .find(|h| h.name.eq_ignore_ascii_case(name.as_str()))
-    {
-        Some(header) => f(name, header.value),
-        None => Err(Error::with_cause(
-            ErrorKind::Http,
-            HttpError::MissingHeader(name),
-        )),
-    }
 }

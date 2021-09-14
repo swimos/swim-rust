@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{Error, Request, Response};
+use crate::{Error, Request};
 use bytes::{BufMut, BytesMut};
-use http::Version;
+use http::{Response, Version};
 use httparse::Status;
 use std::any::{type_name, Any};
 use std::error::Error as StdError;
@@ -83,7 +83,7 @@ pub trait ByteWriter {
     fn write(&self, buf: &mut BytesMut) -> Result<Option<Self::Out>, Self::Error>;
 }
 
-struct ReadableResponse(Response);
+struct ReadableResponse(Response<()>);
 
 impl ByteReader for ReadableResponse {
     fn read(&self, buf: &mut BytesMut) {
@@ -92,6 +92,32 @@ impl ByteReader for ReadableResponse {
         buf.extend_from_slice(format!("{:?} {}", response.version(), response.status()).as_bytes());
 
         for (name, value) in response.headers() {
+            buf.extend_from_slice(b"\r\n");
+            buf.extend_from_slice(name.as_str().as_bytes());
+            buf.extend_from_slice(b": ");
+            buf.extend_from_slice(value.as_bytes());
+        }
+
+        buf.extend_from_slice(b"\r\n\r\n");
+    }
+}
+
+struct ReadableRequest(Request);
+impl ByteReader for ReadableRequest {
+    fn read(&self, buf: &mut BytesMut) {
+        let ReadableRequest(request) = self;
+
+        buf.extend_from_slice(
+            format!(
+                "{} {} {:?}",
+                request.method(),
+                request.uri().path_and_query().unwrap(),
+                request.version()
+            )
+            .as_bytes(),
+        );
+
+        for (name, value) in request.headers() {
             buf.extend_from_slice(b"\r\n");
             buf.extend_from_slice(name.as_str().as_bytes());
             buf.extend_from_slice(b": ");
@@ -145,9 +171,52 @@ impl ByteWriter for WritableRequest {
     }
 }
 
-#[derive(Debug)]
+struct WritableResponse;
+impl ByteWriter for WritableResponse {
+    type Out = Response<()>;
+    type Error = httparse::Error;
+
+    fn write(&self, buf: &mut BytesMut) -> Result<Option<Self::Out>, httparse::Error> {
+        let mut headers = [httparse::EMPTY_HEADER; 32];
+        let mut httparse_response = httparse::Response::new(&mut headers);
+
+        match httparse_response.parse(buf.as_ref()) {
+            Ok(Status::Partial) => Ok(None),
+            Ok(Status::Complete(_)) => {
+                let mut http_response = http::Response::builder();
+
+                if let Some(version) = httparse_response.version {
+                    http_response = match version {
+                        0 => http_response.version(Version::HTTP_10),
+                        1 => http_response.version(Version::HTTP_11),
+                        v => unreachable!("{}", v),
+                    };
+                }
+
+                if let Some(code) = httparse_response.code {
+                    http_response = http_response.status(code);
+                }
+
+                for header in httparse_response.headers {
+                    http_response = http_response.header(header.name, header.value);
+                }
+
+                Ok(Some(
+                    http_response
+                        .body(())
+                        .expect("Failed to parse HTTP response"),
+                ))
+            }
+            Err(e) => Err(e),
+        }
+    }
+}
+
+#[derive(thiserror::Error, Debug)]
 pub enum ReadError<R> {
+    #[error("Read error: `{0}`")]
     Reader(R),
+    #[error("IO error: `{0}`")]
     Io(io::Error),
 }
 
@@ -164,8 +233,14 @@ impl MockPeer {
 
     /// Write `response` in to this peer's output buffer. This will **not** write the `extensions`
     /// field in the struct. If this is required then you will need to write it manually.
-    pub async fn write_response(&mut self, response: Response) -> io::Result<()> {
+    pub async fn write_response(&mut self, response: Response<()>) -> io::Result<()> {
         self.copy(&mut ReadableResponse(response)).await
+    }
+
+    /// Write `request` in to this peer's output buffer. This will **not** write the `extensions`
+    /// field in the struct. If this is required then you will need to write it manually.
+    pub async fn write_request(&mut self, response: Request) -> io::Result<()> {
+        self.copy(&mut ReadableRequest(response)).await
     }
 
     pub async fn read_into<W>(&mut self, writer: W) -> Result<W::Out, ReadError<W::Error>>
@@ -188,6 +263,10 @@ impl MockPeer {
 
     pub async fn read_request(&mut self) -> Result<Request, ReadError<httparse::Error>> {
         self.read_into(WritableRequest).await
+    }
+
+    pub async fn read_response(&mut self) -> Result<Response<()>, ReadError<httparse::Error>> {
+        self.read_into(WritableResponse).await
     }
 }
 

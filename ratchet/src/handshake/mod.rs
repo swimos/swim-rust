@@ -17,19 +17,21 @@ mod tests;
 
 mod client;
 mod io;
-#[allow(warnings)]
 mod server;
 
 use crate::errors::{Error, ProtocolError};
 use crate::errors::{ErrorKind, HttpError};
 use crate::handshake::io::BufferedIo;
-use crate::{Request, Response};
+use crate::{InvalidHeader, Request};
+use bytes::Bytes;
 pub use client::{exec_client_handshake, HandshakeResult};
 use fnv::FnvHashSet;
-use http::header::SEC_WEBSOCKET_PROTOCOL;
+use http::header::{HeaderName, SEC_WEBSOCKET_PROTOCOL};
 use http::Uri;
 use http::{header, HeaderMap, HeaderValue};
 use httparse::Header;
+pub use server::{accept, WebSocketResponse, WebSocketUpgrader};
+use std::str::FromStr;
 use tokio::io::AsyncRead;
 use url::Url;
 
@@ -38,6 +40,7 @@ const UPGRADE_STR: &str = "upgrade";
 const WEBSOCKET_VERSION_STR: &str = "13";
 const BAD_STATUS_CODE: &str = "Invalid status code";
 const ACCEPT_KEY: &[u8] = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+const METHOD_GET: &str = "get";
 
 #[derive(Default)]
 pub struct ProtocolRegistry {
@@ -59,11 +62,11 @@ impl ProtocolRegistry {
         }
     }
 
-    fn negotiate<'h, I>(&self, mut headers: I, bias: Bias) -> Result<Option<String>, ProtocolError>
+    fn negotiate<'h, I>(&self, headers: I, bias: Bias) -> Result<Option<String>, ProtocolError>
     where
         I: Iterator<Item = &'h Header<'h>>,
     {
-        while let Some(header) = headers.next() {
+        for header in headers {
             let value =
                 String::from_utf8(header.value.to_vec()).map_err(|_| ProtocolError::Encoding)?;
             let protocols = value
@@ -120,14 +123,8 @@ impl ProtocolRegistry {
 
         self.negotiate(it, Bias::Right)
     }
-}
 
-trait SubprotocolApplicator<Target> {
-    fn apply_to(&self, target: &mut Target) -> Result<(), crate::Error>;
-}
-
-impl SubprotocolApplicator<HeaderMap> for ProtocolRegistry {
-    fn apply_to(&self, target: &mut HeaderMap) -> Result<(), crate::Error> {
+    pub fn apply_to(&self, target: &mut HeaderMap) -> Result<(), crate::Error> {
         if self.registrants.is_empty() {
             return Ok(());
         }
@@ -140,7 +137,7 @@ impl SubprotocolApplicator<HeaderMap> for ProtocolRegistry {
             .join(", ");
 
         let header_value = HeaderValue::from_str(&out).map_err(|_| {
-            crate::Error::with_cause(ErrorKind::Http, HttpError::MalformattedHeader)
+            crate::Error::with_cause(ErrorKind::Http, HttpError::MalformattedHeader(out))
         })?;
 
         target.insert(header::SEC_WEBSOCKET_PROTOCOL, header_value);
@@ -189,12 +186,6 @@ pub trait Parser {
 pub enum ParseResult<O> {
     Complete(O, usize),
     Partial,
-}
-
-impl SubprotocolApplicator<Response> for ProtocolRegistry {
-    fn apply_to(&self, _target: &mut Response) -> Result<(), crate::Error> {
-        todo!()
-    }
 }
 
 pub trait TryIntoRequest {
@@ -246,5 +237,100 @@ impl TryIntoRequest for Url {
 impl TryIntoRequest for Request {
     fn try_into_request(self) -> Result<Request, Error> {
         Ok(self)
+    }
+}
+
+fn validate_header_value(
+    headers: &[httparse::Header],
+    name: HeaderName,
+    expected: &str,
+) -> Result<(), Error> {
+    validate_header(headers, name, |name, actual| {
+        let actual =
+            std::str::from_utf8(actual).map_err(|e| Error::with_cause(ErrorKind::IO, e))?;
+
+        if actual.eq_ignore_ascii_case(expected) {
+            Ok(())
+        } else {
+            Err(Error::with_cause(
+                ErrorKind::Http,
+                HttpError::InvalidHeader(name),
+            ))
+        }
+    })
+}
+
+fn validate_header<F>(headers: &[httparse::Header], name: HeaderName, f: F) -> Result<(), Error>
+where
+    F: Fn(HeaderName, &[u8]) -> Result<(), Error>,
+{
+    match headers
+        .iter()
+        .find(|h| h.name.eq_ignore_ascii_case(name.as_str()))
+    {
+        Some(header) => f(name, header.value),
+        None => Err(Error::with_cause(
+            ErrorKind::Http,
+            HttpError::MissingHeader(name),
+        )),
+    }
+}
+
+fn get_header(headers: &[httparse::Header], name: HeaderName) -> Result<Bytes, Error> {
+    match headers
+        .iter()
+        .find(|h| h.name.eq_ignore_ascii_case(name.as_str()))
+    {
+        Some(header) => Ok(Bytes::from(header.value.to_vec())),
+        None => Err(Error::with_cause(
+            ErrorKind::Http,
+            HttpError::MissingHeader(name),
+        )),
+    }
+}
+
+pub trait TryMap<Target> {
+    type Error: Into<Error>;
+
+    fn try_map(self) -> Result<Target, Self::Error>;
+}
+
+impl<'h> TryMap<HeaderMap> for &'h [httparse::Header<'h>] {
+    type Error = InvalidHeader;
+
+    fn try_map(self) -> Result<HeaderMap, Self::Error> {
+        let mut header_map = HeaderMap::with_capacity(self.len());
+        for header in self {
+            let header_string = || {
+                let value = String::from_utf8_lossy(header.value);
+                format!("{}: {}", header.name, value)
+            };
+
+            let name =
+                HeaderName::from_str(header.name).map_err(|_| InvalidHeader(header_string()))?;
+            let value = HeaderValue::from_bytes(header.value)
+                .map_err(|_| InvalidHeader(header_string()))?;
+            header_map.insert(name, value);
+        }
+
+        Ok(header_map)
+    }
+}
+
+impl<'l, 'h, 'buf: 'h> TryMap<Request> for &'l httparse::Request<'h, 'buf> {
+    type Error = HttpError;
+
+    fn try_map(self) -> Result<Request, Self::Error> {
+        let mut request = Request::new(());
+        let path = match self.path {
+            Some(path) => path.parse()?,
+            None => return Err(HttpError::MalformattedUri(None)),
+        };
+        let headers = &self.headers;
+
+        *request.headers_mut() = headers.try_map()?;
+        *request.uri_mut() = path;
+
+        Ok(request)
     }
 }

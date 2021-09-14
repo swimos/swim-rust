@@ -34,7 +34,7 @@ impl<'s, S> BufferedIo<'s, S> {
     {
         let BufferedIo { socket, buffer } = self;
 
-        socket.write_all(&buffer).await?;
+        socket.write_all(buffer).await?;
         socket.flush().await?;
 
         Ok(())

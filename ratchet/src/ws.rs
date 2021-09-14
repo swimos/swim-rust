@@ -68,6 +68,28 @@ pub struct Upgraded<S, E> {
     pub subprotocol: Option<String>,
 }
 
+pub fn socket<S, E>(
+    config: WebSocketConfig,
+    stream: S,
+    extension: E,
+    read_buffer: BytesMut,
+    role: Role,
+) -> WebSocket<S, E>
+where
+    S: WebSocketStream,
+    E: Extension,
+{
+    let WebSocketConfig { max_size } = config;
+    WebSocket {
+        inner: WebSocketInner {
+            framed: FramedIo::new(stream, read_buffer, role, max_size),
+            _extension: extension,
+            control_buffer: BytesMut::with_capacity(CONTROL_MAX_SIZE),
+            closed: false,
+        },
+    }
+}
+
 pub async fn client<S, E>(
     config: WebSocketConfig,
     mut stream: S,

@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use http::HeaderMap;
-use httparse::Response;
-use std::error::Error;
+use crate::Error;
+use http::{HeaderMap, HeaderValue};
+use httparse::Header;
 use std::fmt::Debug;
 
 pub mod deflate;
 pub mod ext;
 
-pub trait Extension: Debug + Clone {
+pub trait Extension: Debug {
     fn encode(&mut self);
 
     fn decode(&mut self);
@@ -28,11 +28,16 @@ pub trait Extension: Debug + Clone {
 
 pub trait ExtensionProvider {
     type Extension: Extension;
-    type Error: Error + Send + Sync + 'static;
+    type Error: Into<Error> + Send + Sync + 'static;
 
     fn apply_headers(&self, headers: &mut HeaderMap);
 
-    fn negotiate(&self, response: &httparse::Response) -> Result<Self::Extension, Self::Error>;
+    fn negotiate_client(&self, headers: &[Header]) -> Result<Self::Extension, Self::Error>;
+
+    fn negotiate_server(
+        &self,
+        headers: &[Header],
+    ) -> Result<(Self::Extension, Option<HeaderValue>), Self::Error>;
 }
 
 impl<'r, E> ExtensionProvider for &'r mut E
@@ -46,8 +51,15 @@ where
         E::apply_headers(self, headers)
     }
 
-    fn negotiate(&self, response: &Response) -> Result<Self::Extension, Self::Error> {
-        E::negotiate(self, response)
+    fn negotiate_client(&self, headers: &[Header]) -> Result<Self::Extension, Self::Error> {
+        E::negotiate_client(self, headers)
+    }
+
+    fn negotiate_server(
+        &self,
+        headers: &[Header],
+    ) -> Result<(Self::Extension, Option<HeaderValue>), Self::Error> {
+        E::negotiate_server(self, headers)
     }
 }
 
@@ -62,7 +74,14 @@ where
         E::apply_headers(self, headers)
     }
 
-    fn negotiate(&self, response: &Response) -> Result<Self::Extension, Self::Error> {
-        E::negotiate(self, response)
+    fn negotiate_client(&self, headers: &[Header]) -> Result<Self::Extension, Self::Error> {
+        E::negotiate_client(self, headers)
+    }
+
+    fn negotiate_server(
+        &self,
+        headers: &[Header],
+    ) -> Result<(Self::Extension, Option<HeaderValue>), Self::Error> {
+        E::negotiate_server(self, headers)
     }
 }

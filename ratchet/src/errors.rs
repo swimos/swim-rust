@@ -131,6 +131,8 @@ impl From<InvalidStatusCode> for Error {
 
 #[derive(Error, Debug, PartialEq)]
 pub enum HttpError {
+    #[error("Invalid HTTP method: `{0:?}`")]
+    HttpMethod(Option<String>),
     #[error("Redirected: `{0}`")]
     Redirected(String),
     #[error("Status code: `{0}`")]
@@ -146,14 +148,40 @@ pub enum HttpError {
     #[error("Invalid HTTP method")]
     InvalidMethod,
     #[error("The provided URI was malformatted")]
-    MalformattedUri,
+    MalformattedUri(Option<String>),
     #[error("A provided header was malformatted")]
-    MalformattedHeader,
+    MalformattedHeader(String),
+}
+
+impl From<HttpError> for Error {
+    fn from(e: HttpError) -> Self {
+        Error::with_cause(ErrorKind::Http, e)
+    }
+}
+
+pub struct InvalidHeader(pub String);
+
+impl From<InvalidHeader> for HttpError {
+    fn from(e: InvalidHeader) -> Self {
+        HttpError::MalformattedHeader(e.0)
+    }
+}
+
+impl From<InvalidHeader> for Error {
+    fn from(e: InvalidHeader) -> Self {
+        Error::with_cause::<HttpError>(ErrorKind::Http, e.into())
+    }
 }
 
 impl From<InvalidUri> for Error {
     fn from(e: InvalidUri) -> Self {
         Error::with_cause(ErrorKind::Http, e)
+    }
+}
+
+impl From<InvalidUri> for HttpError {
+    fn from(e: InvalidUri) -> Self {
+        HttpError::MalformattedUri(Some(format!("{:?}", e)))
     }
 }
 

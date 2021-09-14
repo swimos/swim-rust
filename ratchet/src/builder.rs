@@ -3,12 +3,10 @@ use crate::extensions::ext::NoExtProxy;
 use crate::handshake::ProtocolRegistry;
 use crate::ws::Upgraded;
 use crate::ExtensionProvider;
-use crate::{client, Interceptor, TryIntoRequest, WebSocketConfig, WebSocketStream};
-use tokio_native_tls::TlsConnector;
+use crate::{client, TryIntoRequest, WebSocketConfig, WebSocketStream};
 
 pub struct WebSocketClientBuilder<E> {
     config: Option<WebSocketConfig>,
-    connector: Option<TlsConnector>,
     extension: E,
     subprotocols: ProtocolRegistry,
 }
@@ -17,7 +15,6 @@ impl Default for WebSocketClientBuilder<NoExtProxy> {
     fn default() -> Self {
         WebSocketClientBuilder {
             config: None,
-            connector: None,
             extension: NoExtProxy,
             subprotocols: ProtocolRegistry::default(),
         }
@@ -60,11 +57,6 @@ where
         self
     }
 
-    pub fn tls_connector(mut self, connector: TlsConnector) -> Self {
-        self.connector = Some(connector);
-        self
-    }
-
     pub fn extension(mut self, extension: E) -> Self {
         self.extension = extension;
         self
@@ -79,23 +71,47 @@ where
     }
 }
 
-#[derive(Default)]
-pub struct WebSocketServerBuilder {
+pub struct WebSocketServerBuilder<E> {
     config: Option<WebSocketConfig>,
-    interceptor: Option<Box<dyn Interceptor>>,
     subprotocols: ProtocolRegistry,
+    extension: E,
 }
 
-impl WebSocketServerBuilder {
-    pub async fn accept<S>(self, _stream: S) -> Result<Self, Error>
+impl Default for WebSocketServerBuilder<NoExtProxy> {
+    fn default() -> Self {
+        WebSocketServerBuilder {
+            config: None,
+            extension: NoExtProxy,
+            subprotocols: ProtocolRegistry::default(),
+        }
+    }
+}
+
+impl<E> WebSocketServerBuilder<E>
+where
+    E: ExtensionProvider,
+{
+    pub async fn accept<S>(self, stream: S) -> Result<Upgraded<S, E::Extension>, Error>
     where
         S: WebSocketStream,
     {
-        unimplemented!()
+        let WebSocketServerBuilder {
+            config,
+            subprotocols,
+            extension,
+        } = self;
+        let upgrader =
+            crate::accept(stream, config.unwrap_or_default(), extension, subprotocols).await?;
+        upgrader.upgrade().await
     }
 
     pub fn config(mut self, config: WebSocketConfig) -> Self {
         self.config = Some(config);
+        self
+    }
+
+    pub fn extension(mut self, extension: E) -> Self {
+        self.extension = extension;
         self
     }
 
@@ -104,14 +120,6 @@ impl WebSocketServerBuilder {
         I: IntoIterator<Item = &'static str>,
     {
         self.subprotocols = ProtocolRegistry::new(subprotocols);
-        self
-    }
-
-    pub fn interceptor<I>(mut self, interceptor: I) -> Self
-    where
-        I: Interceptor + 'static,
-    {
-        self.interceptor = Some(Box::new(interceptor));
         self
     }
 }
