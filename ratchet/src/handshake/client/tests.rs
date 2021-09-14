@@ -53,8 +53,6 @@ async fn handshake_sends_valid_request() {
     let mut buf = BytesMut::with_capacity(1024);
     peer.read_buf(&mut buf).await.unwrap();
 
-    println!("{}", std::str::from_utf8(buf.as_ref()).unwrap());
-
     assert!(matches!(request.parse(&mut buf), Ok(Status::Complete(_))));
 
     assert_eq!(request.version, Some(1));

@@ -188,10 +188,10 @@ mod decode {
         let mut bytes = BytesMut::from_iter(&[161, 4, 1, 2, 3, 4]);
         let r = FrameHeader::read_from(&mut bytes, false, 1 << 6 & 1 << 4, usize::MAX);
         expect_protocol_error(r, ProtocolError::UnknownExtension);
-        println!("{:#010b}", 1 << 6);
+
         let mut bytes = BytesMut::from_iter(&[193, 4, 1, 2, 3, 4]);
         let result = FrameHeader::read_from(&mut bytes, false, 1 << 6, usize::MAX);
-        println!("{:?}", result);
+
         let _expected = FrameHeader {
             opcode: OpCode::DataCode(DataCode::Text),
             flags: HeaderFlags::FIN | HeaderFlags::RSV_1,
