@@ -5,6 +5,7 @@ use crate::protocol::{
     CloseCode, CloseReason, ControlCode, DataCode, HeaderFlags, Message, MessageType, OpCode,
     PayloadType, Role,
 };
+use crate::split::{split, Receiver, Sender};
 use crate::{Extension, ExtensionProvider, Request, WebSocketConfig, WebSocketStream};
 use bytes::BytesMut;
 
@@ -76,8 +77,25 @@ where
             .await
     }
 
-    pub fn split(self) -> ((), ()) {
-        unimplemented!()
+    pub fn is_closed(&self) -> bool {
+        self.inner.closed
+    }
+
+    // todo add docs about:
+    //  - https://github.com/tokio-rs/tokio/issues/3200
+    //  - https://github.com/tokio-rs/tls/issues/40
+    pub fn split(self) -> Result<(Sender<S, E>, Receiver<S, E>), Error> {
+        if self.is_closed() {
+            return Err(Error::with_cause(ErrorKind::Close, CloseError::Closed));
+        } else {
+            let WebSocketInner {
+                framed,
+                control_buffer,
+                _extension,
+                ..
+            } = self.inner;
+            Ok(split(framed, control_buffer, _extension))
+        }
     }
 }
 

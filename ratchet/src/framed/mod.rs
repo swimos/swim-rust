@@ -101,13 +101,13 @@ impl FrameDecoder {
     }
 }
 
-struct FramedRead {
+pub struct FramedRead {
     read_buffer: BytesMut,
     decoder: FrameDecoder,
 }
 
 impl FramedRead {
-    fn new(read_buffer: BytesMut) -> FramedRead {
+    pub fn new(read_buffer: BytesMut) -> FramedRead {
         FramedRead {
             read_buffer,
             decoder: FrameDecoder::default(),
@@ -143,12 +143,19 @@ impl FramedRead {
 }
 
 #[derive(Default)]
-struct FramedWrite {
+pub struct FramedWrite {
     write_buffer: BytesMut,
     rand: WyRand,
 }
 
 impl FramedWrite {
+    pub fn new(write_buffer: BytesMut) -> FramedWrite {
+        FramedWrite {
+            write_buffer,
+            rand: WyRand::new(),
+        }
+    }
+
     async fn write<I, A>(
         &mut self,
         io: &mut I,
@@ -182,6 +189,14 @@ impl FramedWrite {
     }
 }
 
+pub struct FramedIoParts<I> {
+    pub io: I,
+    pub read_buffer: BytesMut,
+    pub write_buffer: BytesMut,
+    pub flags: CodecFlags,
+    pub max_size: usize,
+}
+
 pub struct FramedIo<I> {
     io: I,
     reader: FramedRead,
@@ -194,6 +209,23 @@ impl<I> FramedIo<I>
 where
     I: WebSocketStream,
 {
+    pub fn into_parts(self) -> FramedIoParts<I> {
+        let FramedIo {
+            io,
+            reader,
+            writer,
+            flags,
+            max_size,
+        } = self;
+        FramedIoParts {
+            io,
+            read_buffer: reader.read_buffer,
+            write_buffer: writer.write_buffer,
+            flags,
+            max_size,
+        }
+    }
+
     pub fn new(io: I, read_buffer: BytesMut, role: Role, max_size: usize) -> Self {
         let flags = match role {
             Role::Client => CodecFlags::empty(),
