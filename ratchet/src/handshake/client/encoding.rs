@@ -221,7 +221,7 @@ where
 {
     if let Some(header_value) = headers.get(header_name.clone()) {
         match header_value.to_str() {
-            Ok(v) if v.to_ascii_lowercase().as_bytes().eq(expected.as_bytes()) => Ok(()),
+            Ok(v) if v.as_bytes().eq_ignore_ascii_case(expected.as_bytes()) => Ok(()),
             _ => Err(Error::new(ErrorKind::Http)),
         }
     } else {

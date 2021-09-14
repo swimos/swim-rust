@@ -30,7 +30,7 @@ pub use handshake::{
     accept, ProtocolRegistry, TryIntoRequest, WebSocketResponse, WebSocketUpgrader,
 };
 pub use protocol::{Message, PayloadType, Role, WebSocketConfig};
-pub use ws::{client, socket, Upgraded, WebSocket};
+pub use ws::{client, Upgraded, WebSocket};
 
 use tokio::io::{AsyncRead, AsyncWrite};
 

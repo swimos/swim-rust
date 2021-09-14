@@ -8,10 +8,9 @@ use crate::handshake::{
 };
 use crate::handshake::{TryMap, UPGRADE_STR, WEBSOCKET_STR};
 use crate::protocol::Role;
-use crate::ws::socket;
 use crate::{
     Error, ErrorKind, Extension, ExtensionProvider, HttpError, ProtocolRegistry, Request, Upgraded,
-    WebSocketConfig, WebSocketStream,
+    WebSocket, WebSocketConfig, WebSocketStream,
 };
 use bytes::{Bytes, BytesMut};
 use http::status::InvalidStatusCode;
@@ -186,7 +185,7 @@ where
         buf.clear();
 
         Ok(Upgraded {
-            socket: socket(config, stream, extension, buf, Role::Server),
+            socket: WebSocket::from_upgraded(config, stream, extension, buf, Role::Server),
             subprotocol,
         })
     }

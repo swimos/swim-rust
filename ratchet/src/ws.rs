@@ -20,6 +20,24 @@ where
     S: WebSocketStream,
     E: Extension,
 {
+    pub fn from_upgraded(
+        config: WebSocketConfig,
+        stream: S,
+        extension: E,
+        read_buffer: BytesMut,
+        role: Role,
+    ) -> WebSocket<S, E> {
+        let WebSocketConfig { max_size } = config;
+        WebSocket {
+            inner: WebSocketInner {
+                framed: FramedIo::new(stream, read_buffer, role, max_size),
+                _extension: extension,
+                control_buffer: BytesMut::with_capacity(CONTROL_MAX_SIZE),
+                closed: false,
+            },
+        }
+    }
+
     pub fn role(&self) -> Role {
         if self.inner.framed.is_server() {
             Role::Server
@@ -68,28 +86,6 @@ pub struct Upgraded<S, E> {
     pub subprotocol: Option<String>,
 }
 
-pub fn socket<S, E>(
-    config: WebSocketConfig,
-    stream: S,
-    extension: E,
-    read_buffer: BytesMut,
-    role: Role,
-) -> WebSocket<S, E>
-where
-    S: WebSocketStream,
-    E: Extension,
-{
-    let WebSocketConfig { max_size } = config;
-    WebSocket {
-        inner: WebSocketInner {
-            framed: FramedIo::new(stream, read_buffer, role, max_size),
-            _extension: extension,
-            control_buffer: BytesMut::with_capacity(CONTROL_MAX_SIZE),
-            closed: false,
-        },
-    }
-}
-
 pub async fn client<S, E>(
     config: WebSocketConfig,
     mut stream: S,
@@ -101,9 +97,7 @@ where
     S: WebSocketStream,
     E: ExtensionProvider,
 {
-    let WebSocketConfig { max_size } = config;
     let mut read_buffer = BytesMut::new();
-
     let HandshakeResult {
         subprotocol,
         extension,
@@ -116,17 +110,8 @@ where
     )
     .await?;
 
-    let socket = WebSocket {
-        inner: WebSocketInner {
-            framed: FramedIo::new(stream, read_buffer, Role::Client, max_size),
-            _extension: extension,
-            control_buffer: BytesMut::with_capacity(CONTROL_MAX_SIZE),
-            closed: false,
-        },
-    };
-
     Ok(Upgraded {
-        socket,
+        socket: WebSocket::from_upgraded(config, stream, extension, read_buffer, Role::Client),
         subprotocol,
     })
 }
