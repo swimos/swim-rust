@@ -246,10 +246,7 @@ fn validate_header_value(
     expected: &str,
 ) -> Result<(), Error> {
     validate_header(headers, name, |name, actual| {
-        let actual =
-            std::str::from_utf8(actual).map_err(|e| Error::with_cause(ErrorKind::IO, e))?;
-
-        if actual.eq_ignore_ascii_case(expected) {
+        if actual.eq_ignore_ascii_case(expected.as_bytes()) {
             Ok(())
         } else {
             Err(Error::with_cause(
