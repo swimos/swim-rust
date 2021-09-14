@@ -12,7 +12,7 @@ use crate::{
     Error, ErrorKind, Extension, ExtensionProvider, HttpError, ProtocolRegistry, Request, Upgraded,
     WebSocket, WebSocketConfig, WebSocketStream,
 };
-use bytes::{Bytes, BytesMut};
+use bytes::{BufMut, Bytes, BytesMut};
 use http::status::InvalidStatusCode;
 use http::{HeaderMap, HeaderValue, StatusCode, Uri};
 use httparse::Status;
@@ -201,7 +201,6 @@ where
     }
 }
 
-// todo pre-allocate buffer size
 async fn write_response<S>(
     stream: &mut S,
     buf: &mut BytesMut,
@@ -214,28 +213,41 @@ where
 {
     buf.clear();
 
-    buf.extend_from_slice(b"HTTP/1.1 ");
-    buf.extend_from_slice(status.as_str().as_bytes());
+    let version_count = 9;
+    let status_bytes = status.as_str().as_bytes();
+    let reason_len = status.canonical_reason().map(|r| r.len() + 4).unwrap_or(2);
+    let headers_len = headers.iter().fold(0, |count, (name, value)| {
+        name.as_str().len() + value.len() + 2 + count
+    });
+    let terminator_len = if headers.is_empty() { 4 } else { 2 };
+    let len = buf.len();
+
+    buf.reserve(
+        version_count + status_bytes.len() + reason_len + headers_len + terminator_len - len,
+    );
+
+    buf.put_slice(b"HTTP/1.1 ");
+    buf.put_slice(status.as_str().as_bytes());
 
     match status.canonical_reason() {
-        Some(reason) => buf.extend_from_slice(format!(" {} \r\n", reason).as_bytes()),
-        None => buf.extend_from_slice(b"\r\n"),
+        Some(reason) => buf.put_slice(format!(" {} \r\n", reason).as_bytes()),
+        None => buf.put_slice(b"\r\n"),
     }
 
     for (name, value) in &headers {
-        buf.extend_from_slice(format!("{}: ", name).as_bytes());
-        buf.extend_from_slice(value.as_bytes());
-        buf.extend_from_slice(b"\r\n");
+        buf.put_slice(format!("{}: ", name).as_bytes());
+        buf.put_slice(value.as_bytes());
+        buf.put_slice(b"\r\n");
     }
 
     if let Some(body) = body {
-        buf.extend_from_slice(body.as_bytes());
+        buf.put_slice(body.as_bytes());
     }
 
     if headers.is_empty() {
-        buf.extend_from_slice(b"\r\n\r\n");
+        buf.put_slice(b"\r\n\r\n");
     } else {
-        buf.extend_from_slice(b"\r\n");
+        buf.put_slice(b"\r\n");
     }
 
     let mut buffered = BufferedIo::new(stream, buf);
