@@ -36,20 +36,20 @@ pub enum RetryStrategy {
 /// strategies are backed by this.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct IntervalStrategy {
-    retry: Quantity<usize>,
-    delay: Option<Duration>,
+    pub retry: Quantity<usize>,
+    pub delay: Option<Duration>,
 }
 
 /// Truncated exponential retry strategy parameters.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ExponentialStrategy {
-    /// The time that the first request was attempted.
-    start: Option<std::time::Instant>,
     /// The maximum interval between a retry, generated intervals will be truncated to this duration
     /// if they exceed it.
-    max_interval: Duration,
+    pub max_interval: Duration,
     /// The maximum backoff time that the strategy will run for. Typically 32 or 64 seconds.
-    max_backoff: Quantity<Duration>,
+    pub max_backoff: Quantity<Duration>,
+    /// The time that the first request was attempted.
+    start: Option<std::time::Instant>,
     /// The current retry number.
     retry_no: u64,
 }
@@ -112,7 +112,7 @@ impl RetryStrategy {
 
     /// No retry strategy. Only the initial request is attempted.
     pub fn none() -> RetryStrategy {
-        RetryStrategy::Interval(IntervalStrategy {
+        RetryStrategy::None(IntervalStrategy {
             retry: Quantity::Finite(0),
             delay: None,
         })

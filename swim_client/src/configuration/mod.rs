@@ -13,12 +13,21 @@
 // limitations under the License.
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
+use swim_common::form::structural::read::event::ReadEvent;
+use swim_common::form::structural::read::recognizer::{
+    Recognizer, RecognizerReadable, SimpleAttrBody, SimpleRecBody,
+};
+use swim_common::form::structural::read::ReadError;
+use swim_common::form::structural::write::{
+    BodyWriter, HeaderWriter, RecordBodyKind, StructuralWritable, StructuralWriter,
+};
+use swim_common::form::Form;
 use swim_common::routing::remote::config::RemoteConnectionsConfig;
 use swim_common::warp::path::{AbsolutePath, Addressable};
 use tokio::time::Duration;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use url::Url;
-use utilities::future::retryable::strategy::RetryStrategy;
+use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
 
 //Todo dm this needs to be changed after config from file is done.
 // #[cfg(test)]
@@ -46,6 +55,73 @@ pub struct SwimClientConfig {
     pub websocket_config: WebSocketConfig,
     /// Configuration for the behaviour of downlinks.
     pub downlinks_config: ClientDownlinksConfig,
+}
+
+impl StructuralWritable for SwimClientConfig {
+    fn num_attributes(&self) -> usize {
+        1
+    }
+
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        let header_writer = writer.record(1)?;
+        let mut body_writer = header_writer
+            .write_extant_attr("config")?
+            .complete_header(RecordBodyKind::ArrayLike, 4)?;
+
+        body_writer = body_writer.write_value(&self.downlink_connections_config)?;
+        body_writer = body_writer.write_value(&self.remote_connections_config)?;
+        body_writer = body_writer.write_value(&self.websocket_config)?;
+        body_writer = body_writer.write_value(&self.downlinks_config)?;
+
+        body_writer.done()
+    }
+
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        //Todo dm
+        unimplemented!()
+    }
+}
+
+//Todo dm
+impl RecognizerReadable for SwimClientConfig {
+    type Rec = SwimClientConfigRecognizer;
+    type AttrRec = SimpleAttrBody<SwimClientConfigRecognizer>;
+    type BodyRec = SimpleRecBody<SwimClientConfigRecognizer>;
+
+    fn make_recognizer() -> Self::Rec {
+        SwimClientConfigRecognizer
+    }
+
+    fn make_attr_recognizer() -> Self::AttrRec {
+        SimpleAttrBody::new(SwimClientConfigRecognizer)
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        SimpleRecBody::new(SwimClientConfigRecognizer)
+    }
+
+    fn is_simple() -> bool {
+        true
+    }
+}
+
+//Todo dm
+pub struct SwimClientConfigRecognizer;
+
+impl Recognizer for SwimClientConfigRecognizer {
+    type Target = SwimClientConfig;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        unimplemented!()
+    }
+
+    fn reset(&mut self) {}
+}
+
+#[test]
+fn test_foo() {
+    let config = SwimClientConfig::default();
+    println!("{}", config.as_value());
 }
 
 impl SwimClientConfig {
@@ -76,7 +152,8 @@ impl Default for SwimClientConfig {
 }
 
 /// Configuration parameters for the router.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Form, Clone, Copy, Debug, Eq, PartialEq)]
+#[form(tag = "downlink_connections")]
 pub struct DownlinkConnectionsConfig {
     /// Buffer size for servicing requests for new downlinks.
     pub dl_req_buffer_size: NonZeroUsize,
@@ -173,6 +250,72 @@ impl Default for ClientDownlinksConfig {
     }
 }
 
+//Todo dm
+impl StructuralWritable for ClientDownlinksConfig {
+    fn num_attributes(&self) -> usize {
+        //Todo dm
+        1
+    }
+
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        let header_writer = writer.record(1)?;
+        let mut body_writer = header_writer
+            .write_extant_attr("downlinks")?
+            .complete_header(RecordBodyKind::ArrayLike, 5)?;
+
+        body_writer = body_writer.write_slot(&"back_pressure", &self.default.back_pressure)?;
+        body_writer = body_writer.write_slot(&"idle_timeout", &self.default.idle_timeout)?;
+        body_writer = body_writer.write_slot(&"buffer_size", &self.default.buffer_size)?;
+        body_writer = body_writer.write_slot(&"on_invalid", &self.default.on_invalid)?;
+        body_writer = body_writer.write_slot(&"yield_after", &self.default.yield_after)?;
+
+        //Todo dm add per host and per lane config
+
+        body_writer.done()
+    }
+
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        //Todo dm
+        unimplemented!()
+    }
+}
+
+//Todo dm
+impl RecognizerReadable for ClientDownlinksConfig {
+    type Rec = ClientDownlinksConfigRecognizer;
+    type AttrRec = SimpleAttrBody<ClientDownlinksConfigRecognizer>;
+    type BodyRec = SimpleRecBody<ClientDownlinksConfigRecognizer>;
+
+    fn make_recognizer() -> Self::Rec {
+        ClientDownlinksConfigRecognizer
+    }
+
+    fn make_attr_recognizer() -> Self::AttrRec {
+        SimpleAttrBody::new(ClientDownlinksConfigRecognizer)
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        SimpleRecBody::new(ClientDownlinksConfigRecognizer)
+    }
+
+    fn is_simple() -> bool {
+        true
+    }
+}
+
+//Todo dm
+pub struct ClientDownlinksConfigRecognizer;
+
+impl Recognizer for ClientDownlinksConfigRecognizer {
+    type Target = ClientDownlinksConfig;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        unimplemented!()
+    }
+
+    fn reset(&mut self) {}
+}
+
 /// Configuration parameters for a single downlink.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct DownlinkConfig {
@@ -260,6 +403,47 @@ pub enum BackpressureMode {
     },
 }
 
+impl StructuralWritable for BackpressureMode {
+    fn num_attributes(&self) -> usize {
+        1
+    }
+
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        match self {
+            BackpressureMode::Propagate => {
+                let header_writer = writer.record(1)?;
+                header_writer
+                    .write_extant_attr("propagate")?
+                    .complete_header(RecordBodyKind::Mixed, 0)?
+                    .done()
+            }
+            BackpressureMode::Release {
+                input_buffer_size,
+                bridge_buffer_size,
+                max_active_keys,
+                yield_after,
+            } => {
+                let header_writer = writer.record(1)?;
+                let mut body_writer = header_writer
+                    .write_extant_attr("propagate")?
+                    .complete_header(RecordBodyKind::Mixed, 0)?;
+
+                body_writer = body_writer.write_slot(&"input_buffer_size", input_buffer_size)?;
+                body_writer = body_writer.write_slot(&"bridge_buffer_size", bridge_buffer_size)?;
+                body_writer = body_writer.write_slot(&"max_active_keys", max_active_keys)?;
+                body_writer = body_writer.write_slot(&"yield_after", yield_after)?;
+
+                body_writer.done()
+            }
+        }
+    }
+
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        //Todo dm
+        unimplemented!()
+    }
+}
+
 /// Instruction on how to respond when an invalid message is received for a downlink.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum OnInvalidMessage {
@@ -267,6 +451,26 @@ pub enum OnInvalidMessage {
     Ignore,
     /// Terminate the downlink.
     Terminate,
+}
+
+impl StructuralWritable for OnInvalidMessage {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        match self {
+            OnInvalidMessage::Ignore => writer.write_text("ignore"),
+            OnInvalidMessage::Terminate => writer.write_text("terminate"),
+        }
+    }
+
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        match self {
+            OnInvalidMessage::Ignore => writer.write_text("ignore"),
+            OnInvalidMessage::Terminate => writer.write_text("terminate"),
+        }
+    }
 }
 
 /// Configuration for the creation and management of downlinks for a Warp client.

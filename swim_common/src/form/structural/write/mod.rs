@@ -28,25 +28,33 @@ use std::convert::TryFrom;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use crate::form::Form;
+use crate::routing::remote::config::RemoteConnectionsConfig;
 #[doc(hidden)]
 pub use form_derive::StructuralWritable;
 use std::num::NonZeroUsize;
+use std::time::Duration;
+use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
+use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use url::Url;
+use utilities::future::retryable::strategy::{
+    ExponentialStrategy, IntervalStrategy, Quantity, RetryStrategy,
+};
 use utilities::uri::RelativeUri;
 
 /// Trait for types that can describe their structure using a [`StructuralWriter`].
 /// Each writer is an interpreter which could, for example, realize the structure
 /// as a [`Value`] or format it is a Recon string.
 pub trait StructuralWritable: Sized {
-    /// Write he strucutre of this value using the provided interpreter.
-    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error>;
-
-    /// Write he strucutre of this value using the provided interpreter, allowing
-    /// the interpreter to consume this value if needed.
-    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error>;
-
     /// The number of attributes that will be written by this instance.
     fn num_attributes(&self) -> usize;
+
+    /// Write he structure of this value using the provided interpreter.
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error>;
+
+    /// Write he structure of this value using the provided interpreter, allowing
+    /// the interpreter to consume this value if needed.
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error>;
 
     /// Write the structure of this value with an interpreter that cannnot generate an error.
     fn write_with_infallible<W: StructuralWriter<Error = Infallible>>(&self, writer: W) -> W::Repr {
@@ -451,6 +459,10 @@ impl StructuralWritable for usize {
 }
 
 impl StructuralWritable for NonZeroUsize {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         if let Ok(n) = u64::try_from(self.get()) {
             writer.write_u64(n)
@@ -465,10 +477,6 @@ impl StructuralWritable for NonZeroUsize {
         } else {
             writer.write_big_uint(BigUint::from(self.get()))
         }
-    }
-
-    fn num_attributes(&self) -> usize {
-        0
     }
 }
 
@@ -571,6 +579,10 @@ impl StructuralWritable for Text {
 }
 
 impl StructuralWritable for RelativeUri {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(
         &self,
         writer: W,
@@ -583,14 +595,14 @@ impl StructuralWritable for RelativeUri {
         writer: W,
     ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
         writer.write_text(self.to_string())
-    }
-
-    fn num_attributes(&self) -> usize {
-        0
     }
 }
 
 impl StructuralWritable for Url {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(
         &self,
         writer: W,
@@ -603,10 +615,6 @@ impl StructuralWritable for Url {
         writer: W,
     ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
         writer.write_text(self.as_str())
-    }
-
-    fn num_attributes(&self) -> usize {
-        0
     }
 }
 
@@ -878,6 +886,236 @@ where
                 |record_writer, (key, value)| record_writer.write_slot_into(key, value),
             )?
             .done()
+    }
+}
+
+impl StructuralWritable for RetryStrategy {
+    fn num_attributes(&self) -> usize {
+        1
+    }
+
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        match self {
+            RetryStrategy::Immediate(strat) => {
+                let header_writer = writer.record(1)?;
+                let mut body_writer = header_writer
+                    .write_extant_attr("immediate")?
+                    .complete_header(RecordBodyKind::MapLike, 1)?;
+                body_writer = body_writer.write_slot(&"retries", &strat.retry)?;
+                body_writer.done()
+            }
+            RetryStrategy::Interval(strat) => {
+                let header_writer = writer.record(1)?;
+                let mut body_writer = header_writer
+                    .write_extant_attr("interval")?
+                    .complete_header(RecordBodyKind::MapLike, 2)?;
+                body_writer = body_writer.write_slot(&"delay", &strat.delay)?;
+                body_writer = body_writer.write_slot(&"retries", &strat.retry)?;
+                body_writer.done()
+            }
+            RetryStrategy::Exponential(strat) => {
+                let header_writer = writer.record(1)?;
+                let mut body_writer = header_writer
+                    .write_extant_attr("exponential")?
+                    .complete_header(RecordBodyKind::MapLike, 2)?;
+                body_writer = body_writer.write_slot(&"max_interval", &strat.max_interval)?;
+                body_writer = body_writer.write_slot(&"max_backoff", &strat.max_backoff)?;
+                body_writer.done()
+            }
+            RetryStrategy::None(_) => writer
+                .record(1)?
+                .write_extant_attr("none")?
+                .complete_header(RecordBodyKind::Mixed, 0)?
+                .done(),
+        }
+    }
+
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        match self {
+            RetryStrategy::Immediate(strat) => {
+                let header_writer = writer.record(1)?;
+                let mut body_writer = header_writer
+                    .write_extant_attr("immediate")?
+                    .complete_header(RecordBodyKind::MapLike, 1)?;
+                body_writer = body_writer.write_slot_into("retries", strat.retry)?;
+                body_writer.done()
+            }
+            RetryStrategy::Interval(strat) => {
+                let header_writer = writer.record(1)?;
+                let mut body_writer = header_writer
+                    .write_extant_attr("interval")?
+                    .complete_header(RecordBodyKind::MapLike, 2)?;
+                body_writer = body_writer.write_slot_into("delay", strat.delay)?;
+                body_writer = body_writer.write_slot_into("retries", strat.retry)?;
+                body_writer.done()
+            }
+            RetryStrategy::Exponential(strat) => {
+                let header_writer = writer.record(1)?;
+                let mut body_writer = header_writer
+                    .write_extant_attr("exponential")?
+                    .complete_header(RecordBodyKind::MapLike, 2)?;
+                body_writer = body_writer.write_slot_into("max_interval", strat.max_interval)?;
+                body_writer = body_writer.write_slot_into("max_backoff", strat.max_backoff)?;
+                body_writer.done()
+            }
+            RetryStrategy::None(_) => writer
+                .record(1)?
+                .write_extant_attr("none")?
+                .complete_header(RecordBodyKind::Mixed, 0)?
+                .done(),
+        }
+    }
+}
+
+impl<T: StructuralWritable> StructuralWritable for Quantity<T> {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        match self {
+            Quantity::Finite(val) => val.write_with(writer),
+            Quantity::Infinite => writer.write_text("infinite"),
+        }
+    }
+
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        match self {
+            Quantity::Finite(val) => val.write_into(writer),
+            Quantity::Infinite => writer.write_text("infinite"),
+        }
+    }
+}
+
+impl StructuralWritable for Duration {
+    fn num_attributes(&self) -> usize {
+        1
+    }
+
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        let header_writer = writer.record(1)?;
+        let mut body_writer = header_writer
+            .write_extant_attr("duration")?
+            .complete_header(RecordBodyKind::MapLike, 2)?;
+        body_writer = body_writer.write_u64_slot("secs", self.as_secs())?;
+        body_writer = body_writer.write_u32_slot("nanos", self.subsec_nanos())?;
+
+        body_writer.done()
+    }
+
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        let header_writer = writer.record(1)?;
+        let mut body_writer = header_writer
+            .write_extant_attr("duration")?
+            .complete_header(RecordBodyKind::MapLike, 2)?;
+        body_writer = body_writer.write_u64_slot("secs", self.as_secs())?;
+        body_writer = body_writer.write_u32_slot("nanos", self.subsec_nanos())?;
+
+        body_writer.done()
+    }
+}
+
+impl StructuralWritable for WebSocketConfig {
+    fn num_attributes(&self) -> usize {
+        1
+    }
+
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        let header_writer = writer.record(1)?;
+        let mut body_writer = header_writer
+            .write_extant_attr("websocket_connections")?
+            .complete_header(RecordBodyKind::MapLike, 5)?;
+
+        if let Some(val) = &self.max_send_queue {
+            body_writer = body_writer.write_slot(&"max_send_queue", val)?
+        }
+        if let Some(val) = &self.max_message_size {
+            body_writer = body_writer.write_slot(&"max_message_size", val)?
+        }
+        if let Some(val) = &self.max_frame_size {
+            body_writer = body_writer.write_slot(&"max_frame_size", val)?
+        }
+        body_writer =
+            body_writer.write_slot(&"accept_unmasked_frames", &self.accept_unmasked_frames)?;
+
+        body_writer = body_writer.write_slot(&"compression", &self.compression)?;
+
+        body_writer.done()
+    }
+
+    //Todo dm
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        unimplemented!()
+    }
+}
+
+impl StructuralWritable for WsCompression {
+    fn num_attributes(&self) -> usize {
+        1
+    }
+
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        match self {
+            WsCompression::None(Some(val)) => {
+                let header_writer = writer.record(1)?;
+
+                let mut body_writer = header_writer
+                    .write_extant_attr("none")?
+                    .complete_header(RecordBodyKind::ArrayLike, 1)?;
+
+                body_writer = body_writer.write_value(val)?;
+                body_writer.done()
+            }
+            WsCompression::None(None) => {
+                let header_writer = writer.record(1)?;
+
+                header_writer
+                    .write_extant_attr("none")?
+                    .complete_header(RecordBodyKind::Mixed, 0)?
+                    .done()
+            }
+            WsCompression::Deflate(deflate) => {
+                let header_writer = writer.record(1)?;
+
+                let mut body_writer = header_writer
+                    .write_extant_attr("deflate")?
+                    .complete_header(RecordBodyKind::ArrayLike, 1)?;
+
+                if let Some(val) = deflate.max_message_size() {
+                    body_writer = body_writer.write_slot(&"max_message_size", &val)?;
+                };
+                body_writer = body_writer.write_slot(
+                    &"server_max_window_bits",
+                    &u32::from(deflate.server_max_window_bits()),
+                )?;
+                body_writer = body_writer.write_slot(
+                    &"client_max_window_bits",
+                    &u32::from(deflate.client_max_window_bits()),
+                )?;
+                body_writer = body_writer.write_slot(
+                    &"request_no_context_takeover",
+                    &deflate.request_no_context_takeover(),
+                )?;
+                body_writer = body_writer.write_slot(
+                    &"accept_no_context_takeover",
+                    &deflate.accept_no_context_takeover(),
+                )?;
+                body_writer =
+                    body_writer.write_slot(&"compress_reset", &deflate.compress_reset())?;
+                body_writer =
+                    body_writer.write_slot(&"decompress_reset", &deflate.decompress_reset())?;
+
+                body_writer = body_writer
+                    .write_slot(&"compression_level", &deflate.compression_level().level())?;
+
+                body_writer.done()
+            }
+        }
+    }
+
+    //Todo dm
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        unimplemented!()
     }
 }
 
