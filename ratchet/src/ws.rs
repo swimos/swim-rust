@@ -1,4 +1,5 @@
 use crate::errors::{CloseError, Error, ErrorKind, ProtocolError};
+use crate::extensions::SplittableExtension;
 use crate::framed::{FramedIo, Item};
 use crate::handshake::{exec_client_handshake, HandshakeResult, ProtocolRegistry};
 use crate::protocol::{
@@ -210,7 +211,10 @@ where
     // todo add docs about:
     //  - https://github.com/tokio-rs/tokio/issues/3200
     //  - https://github.com/tokio-rs/tls/issues/40
-    pub fn split(self) -> Result<(Sender<S, E>, Receiver<S, E>), Error> {
+    pub fn split(self) -> Result<(Sender<S, E::Encoder>, Receiver<S, E::Decoder>), Error>
+    where
+        E: SplittableExtension,
+    {
         if self.is_closed() {
             return Err(Error::with_cause(ErrorKind::Close, CloseError::Closed));
         } else {

@@ -1,3 +1,4 @@
+use crate::extensions::{ExtensionDecoder, ExtensionEncoder, SplittableExtension};
 use crate::framed::{
     read_next, write_close, write_fragmented, CodecFlags, FramedIoParts, FramedRead, FramedWrite,
     Item,
@@ -7,8 +8,8 @@ use crate::protocol::{
 };
 use crate::ws::{CONTROL_DATA_MISMATCH, CONTROL_MAX_SIZE};
 use crate::{
-    framed, CloseError, Error, ErrorKind, Extension, Message, PayloadType, ProtocolError, Role,
-    WebSocket, WebSocketStream,
+    framed, CloseError, Error, ErrorKind, Message, PayloadType, ProtocolError, Role, WebSocket,
+    WebSocketStream,
 };
 use bitflags::_core::sync::atomic::Ordering;
 use bytes::BytesMut;
@@ -29,10 +30,10 @@ pub fn split<S, E>(
     framed: framed::FramedIo<S>,
     control_buffer: BytesMut,
     extension: E,
-) -> (Sender<S, E>, Receiver<S, E>)
+) -> (Sender<S, E::Encoder>, Receiver<S, E::Decoder>)
 where
     S: WebSocketStream,
-    E: Extension,
+    E: SplittableExtension,
 {
     let FramedIoParts {
         io,
@@ -43,13 +44,14 @@ where
     } = framed.into_parts();
 
     let closed = Arc::new(AtomicBool::new(false));
-    let control_buffer = Arc::new(Mutex::new(control_buffer));
     let (read_half, write_half) = tokio::io::split(io);
     let split_writer = Arc::new(Mutex::new(WriteHalf {
-        control_buffer: control_buffer.clone(),
+        control_buffer,
         split_writer: write_half,
         writer,
     }));
+
+    let (ext_encoder, ext_decoder) = extension.split();
 
     let role = if flags.contains(CodecFlags::ROLE) {
         Role::Server
@@ -57,17 +59,15 @@ where
         Role::Client
     };
 
-    let extension = Arc::new(Mutex::new(extension));
     let sender = Sender {
         role,
         closed: closed.clone(),
         split_writer: split_writer.clone(),
-        _extension: extension.clone(),
+        extension: ext_encoder,
     };
     let receiver = Receiver {
         role,
         closed,
-        control_buffer,
         framed: FramedIo {
             flags,
             max_size,
@@ -75,17 +75,10 @@ where
             reader,
             split_writer,
         },
-        _extension: extension,
+        extension: ext_decoder,
     };
 
     (sender, receiver)
-}
-
-#[derive(Debug)]
-struct WriteHalf<S> {
-    split_writer: TokioWriteHalf<S>,
-    writer: FramedWrite,
-    control_buffer: Arc<Mutex<BytesMut>>,
 }
 
 impl<S> WriteHalf<S>
@@ -118,7 +111,6 @@ where
                         ProtocolError::FrameOverflow,
                     ));
                 } else {
-                    let control_buffer = &mut *control_buffer.lock().await;
                     control_buffer.clear();
                     control_buffer.clone_from_slice(&buf[..CONTROL_MAX_SIZE]);
                     OpCode::ControlCode(ControlCode::Ping)
@@ -133,6 +125,13 @@ where
     }
 }
 
+#[derive(Debug)]
+struct WriteHalf<S> {
+    split_writer: TokioWriteHalf<S>,
+    writer: FramedWrite,
+    control_buffer: BytesMut,
+}
+
 struct FramedIo<S> {
     flags: CodecFlags,
     max_size: usize,
@@ -145,19 +144,30 @@ pub struct Sender<S, E> {
     role: Role,
     closed: Arc<AtomicBool>,
     split_writer: Arc<Mutex<WriteHalf<S>>>,
-    _extension: Arc<Mutex<E>>,
+    extension: E,
+}
+
+pub struct Receiver<S, E> {
+    role: Role,
+    closed: Arc<AtomicBool>,
+    framed: FramedIo<S>,
+    extension: E,
 }
 
 impl<S, E> Sender<S, E>
 where
     S: WebSocketStream,
-    E: Extension,
+    E: ExtensionEncoder,
 {
-    pub fn reunite(self, receiver: Receiver<S, E>) -> Result<WebSocket<S, E>, ReuniteError<S, E>>
+    pub fn reunite<Ext>(
+        self,
+        receiver: Receiver<S, Ext::Decoder>,
+    ) -> Result<WebSocket<S, Ext>, ReuniteError<S, Ext::Encoder, Ext::Decoder>>
     where
         S: Debug,
+        Ext: SplittableExtension<Encoder = E>,
     {
-        reunite(self, receiver)
+        reunite::<S, Ext>(self, receiver)
     }
 
     pub fn role(&self) -> Role {
@@ -238,24 +248,20 @@ where
     }
 }
 
-pub struct Receiver<S, E> {
-    role: Role,
-    closed: Arc<AtomicBool>,
-    control_buffer: Arc<Mutex<BytesMut>>,
-    framed: FramedIo<S>,
-    _extension: Arc<Mutex<E>>,
-}
-
 impl<S, E> Receiver<S, E>
 where
     S: WebSocketStream,
-    E: Extension,
+    E: ExtensionDecoder,
 {
-    pub fn reunite(self, sender: Sender<S, E>) -> Result<WebSocket<S, E>, ReuniteError<S, E>>
+    pub fn reunite<Ext>(
+        self,
+        sender: Sender<S, Ext::Encoder>,
+    ) -> Result<WebSocket<S, Ext>, ReuniteError<S, Ext::Encoder, Ext::Decoder>>
     where
         S: Debug,
+        Ext: SplittableExtension<Decoder = E>,
     {
-        reunite(sender, self)
+        reunite::<S, Ext>(sender, self)
     }
 
     pub fn role(&self) -> Role {
@@ -266,7 +272,6 @@ where
         let Receiver {
             role,
             closed,
-            control_buffer,
             framed,
             ..
         } = self;
@@ -303,7 +308,12 @@ where
                         return Ok(Message::Ping);
                     }
                     Item::Pong(payload) => {
-                        let control_buffer = &mut *control_buffer.lock().await;
+                        let WriteHalf {
+                            split_writer,
+                            writer,
+                            control_buffer,
+                            ..
+                        } = &mut *split_writer.lock().await;
 
                         if control_buffer.is_empty() {
                             continue;
@@ -313,11 +323,6 @@ where
                                 Ok(Message::Pong)
                             } else {
                                 closed.store(true, Ordering::Relaxed);
-                                let WriteHalf {
-                                    split_writer,
-                                    writer,
-                                    ..
-                                } = &mut *split_writer.lock().await;
                                 write_close(
                                     split_writer,
                                     writer,
@@ -408,36 +413,42 @@ where
     }
 }
 
-pub struct ReuniteError<S, E> {
+pub struct ReuniteError<S, E, D> {
     pub sender: Sender<S, E>,
-    pub receiver: Receiver<S, E>,
+    pub receiver: Receiver<S, D>,
 }
 
 fn reunite<S, E>(
-    sender: Sender<S, E>,
-    receiver: Receiver<S, E>,
-) -> Result<WebSocket<S, E>, ReuniteError<S, E>>
+    sender: Sender<S, E::Encoder>,
+    receiver: Receiver<S, E::Decoder>,
+) -> Result<WebSocket<S, E>, ReuniteError<S, E::Encoder, E::Decoder>>
 where
     S: WebSocketStream + Debug,
-    E: Extension,
+    E: SplittableExtension,
 {
     if Arc::ptr_eq(&sender.split_writer, &receiver.framed.split_writer) {
-        let Sender { split_writer, .. } = sender;
+        let Sender {
+            split_writer,
+            extension: ext_encoder,
+            ..
+        } = sender;
         let Receiver {
             closed,
-            control_buffer,
             framed,
-            _extension,
+            extension: ext_decoder,
             ..
         } = receiver;
 
-        let control_buffer = Arc::try_unwrap(control_buffer).unwrap().into_inner();
+        let extension = E::reunite(ext_encoder, ext_decoder);
+
         let closed = closed.load(Ordering::Relaxed);
         let WriteHalf {
             split_writer,
             writer,
+            control_buffer,
             ..
         } = Arc::try_unwrap(split_writer).unwrap().into_inner();
+
         let FramedIo {
             flags,
             max_size,
@@ -447,7 +458,6 @@ where
         } = framed;
 
         let io = read_half.unsplit(split_writer);
-        let extension = Arc::try_unwrap(_extension).unwrap().into_inner();
 
         let framed = framed::FramedIo::from_parts(FramedIoParts {
             io,

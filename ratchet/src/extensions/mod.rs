@@ -26,6 +26,23 @@ pub trait Extension: Debug {
     fn decode(&mut self);
 }
 
+pub trait SplittableExtension: Extension {
+    type Encoder: ExtensionEncoder;
+    type Decoder: ExtensionDecoder;
+
+    fn split(self) -> (Self::Encoder, Self::Decoder);
+
+    fn reunite(encoder: Self::Encoder, decoder: Self::Decoder) -> Self;
+}
+
+pub trait ExtensionEncoder {
+    fn encode(&mut self);
+}
+
+pub trait ExtensionDecoder {
+    fn decode(&mut self);
+}
+
 pub trait ExtensionProvider {
     type Extension: Extension;
     type Error: Into<Error> + Send + Sync + 'static;
