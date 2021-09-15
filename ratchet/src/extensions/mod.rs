@@ -36,6 +36,7 @@ pub trait SplittableExtension: Extension {
 }
 
 pub trait ExtensionEncoder {
+    type United: SplittableExtension;
     fn encode(&mut self);
 }
 

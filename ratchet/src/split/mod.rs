@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use crate::extensions::{ExtensionDecoder, ExtensionEncoder, SplittableExtension};
 use crate::framed::{
     read_next, write_close, write_fragmented, CodecFlags, FramedIoParts, FramedRead, FramedWrite,
@@ -132,6 +135,7 @@ struct WriteHalf<S> {
     control_buffer: BytesMut,
 }
 
+#[derive(Debug)]
 struct FramedIo<S> {
     flags: CodecFlags,
     max_size: usize,
@@ -140,6 +144,7 @@ struct FramedIo<S> {
     split_writer: Arc<Mutex<WriteHalf<S>>>,
 }
 
+#[derive(Debug)]
 pub struct Sender<S, E> {
     role: Role,
     closed: Arc<AtomicBool>,
@@ -147,6 +152,7 @@ pub struct Sender<S, E> {
     extension: E,
 }
 
+#[derive(Debug)]
 pub struct Receiver<S, E> {
     role: Role,
     closed: Arc<AtomicBool>,
@@ -165,6 +171,7 @@ where
     ) -> Result<WebSocket<S, Ext>, ReuniteError<S, Ext::Encoder, Ext::Decoder>>
     where
         S: Debug,
+        E: ExtensionEncoder<United = Ext>,
         Ext: SplittableExtension<Encoder = E>,
     {
         reunite::<S, Ext>(self, receiver)
@@ -253,17 +260,6 @@ where
     S: WebSocketStream,
     E: ExtensionDecoder,
 {
-    pub fn reunite<Ext>(
-        self,
-        sender: Sender<S, Ext::Encoder>,
-    ) -> Result<WebSocket<S, Ext>, ReuniteError<S, Ext::Encoder, Ext::Decoder>>
-    where
-        S: Debug,
-        Ext: SplittableExtension<Decoder = E>,
-    {
-        reunite::<S, Ext>(sender, self)
-    }
-
     pub fn role(&self) -> Role {
         self.role
     }
@@ -413,6 +409,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct ReuniteError<S, E, D> {
     pub sender: Sender<S, E>,
     pub receiver: Receiver<S, D>,
@@ -438,10 +435,15 @@ where
             extension: ext_decoder,
             ..
         } = receiver;
+        let FramedIo {
+            flags,
+            max_size,
+            read_half,
+            reader,
+            split_writer: io_split_writer,
+        } = framed;
+        drop(io_split_writer);
 
-        let extension = E::reunite(ext_encoder, ext_decoder);
-
-        let closed = closed.load(Ordering::Relaxed);
         let WriteHalf {
             split_writer,
             writer,
@@ -449,18 +451,8 @@ where
             ..
         } = Arc::try_unwrap(split_writer).unwrap().into_inner();
 
-        let FramedIo {
-            flags,
-            max_size,
-            read_half,
-            reader,
-            ..
-        } = framed;
-
-        let io = read_half.unsplit(split_writer);
-
         let framed = framed::FramedIo::from_parts(FramedIoParts {
-            io,
+            io: read_half.unsplit(split_writer),
             reader,
             writer,
             flags,
@@ -470,8 +462,8 @@ where
         Ok(WebSocket::from_parts(
             framed,
             control_buffer,
-            extension,
-            closed,
+            E::reunite(ext_encoder, ext_decoder),
+            closed.load(Ordering::Relaxed),
         ))
     } else {
         return Err(ReuniteError { sender, receiver });

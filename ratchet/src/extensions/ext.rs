@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::extensions::{Extension, ExtensionProvider};
+use crate::extensions::{
+    Extension, ExtensionDecoder, ExtensionEncoder, ExtensionProvider, SplittableExtension,
+};
 use crate::{Error, ErrorKind};
 use http::{HeaderMap, HeaderValue};
 use httparse::Header;
@@ -55,5 +57,31 @@ pub struct NoExt;
 impl Extension for NoExt {
     fn encode(&mut self) {}
 
+    fn decode(&mut self) {}
+}
+
+impl SplittableExtension for NoExt {
+    type Encoder = NoExtEncoder;
+    type Decoder = NoExtDecoder;
+
+    fn split(self) -> (Self::Encoder, Self::Decoder) {
+        (NoExtEncoder, NoExtDecoder)
+    }
+
+    fn reunite(_encoder: Self::Encoder, _decoder: Self::Decoder) -> Self {
+        NoExt
+    }
+}
+
+#[derive(Debug)]
+pub struct NoExtEncoder;
+impl ExtensionEncoder for NoExtEncoder {
+    type United = NoExt;
+    fn encode(&mut self) {}
+}
+
+#[derive(Debug)]
+pub struct NoExtDecoder;
+impl ExtensionDecoder for NoExtDecoder {
     fn decode(&mut self) {}
 }

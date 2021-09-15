@@ -41,6 +41,8 @@ bitflags::bitflags! {
     }
 }
 
+// todo: this could be reworked to save space as it's 64 bytes
+#[derive(Debug)]
 pub enum FrameDecoder {
     DecodingHeader,
     DecodingPayload(FrameHeader, usize, usize),
@@ -101,6 +103,7 @@ impl FrameDecoder {
     }
 }
 
+#[derive(Debug)]
 pub struct FramedRead {
     read_buffer: BytesMut,
     decoder: FrameDecoder,
