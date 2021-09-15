@@ -9,11 +9,14 @@ use crate::split::{split, Receiver, Sender};
 use crate::{Extension, ExtensionProvider, Request, WebSocketConfig, WebSocketStream};
 use bytes::BytesMut;
 
-const CONTROL_MAX_SIZE: usize = 125;
-const CONTROL_DATA_MISMATCH: &str = "Unexpected control frame data";
+pub const CONTROL_MAX_SIZE: usize = 125;
+pub const CONTROL_DATA_MISMATCH: &str = "Unexpected control frame data";
 
 pub struct WebSocket<S, E> {
-    inner: WebSocketInner<S, E>,
+    framed: FramedIo<S>,
+    control_buffer: BytesMut,
+    _extension: E,
+    closed: bool,
 }
 
 impl<S, E> WebSocket<S, E>
@@ -21,6 +24,20 @@ where
     S: WebSocketStream,
     E: Extension,
 {
+    pub(crate) fn from_parts(
+        framed: FramedIo<S>,
+        control_buffer: BytesMut,
+        _extension: E,
+        closed: bool,
+    ) -> WebSocket<S, E> {
+        WebSocket {
+            framed,
+            control_buffer,
+            _extension,
+            closed,
+        }
+    }
+
     pub fn from_upgraded(
         config: WebSocketConfig,
         stream: S,
@@ -30,17 +47,15 @@ where
     ) -> WebSocket<S, E> {
         let WebSocketConfig { max_size } = config;
         WebSocket {
-            inner: WebSocketInner {
-                framed: FramedIo::new(stream, read_buffer, role, max_size),
-                _extension: extension,
-                control_buffer: BytesMut::with_capacity(CONTROL_MAX_SIZE),
-                closed: false,
-            },
+            framed: FramedIo::new(stream, read_buffer, role, max_size),
+            _extension: extension,
+            control_buffer: BytesMut::with_capacity(CONTROL_MAX_SIZE),
+            closed: false,
         }
     }
 
     pub fn role(&self) -> Role {
-        if self.inner.framed.is_server() {
+        if self.framed.is_server() {
             Role::Server
         } else {
             Role::Client
@@ -48,152 +63,7 @@ where
     }
 
     pub async fn read(&mut self, read_buffer: &mut BytesMut) -> Result<Message, Error> {
-        self.inner.read(read_buffer).await
-    }
-
-    pub async fn write(
-        &mut self,
-        buf: &mut BytesMut,
-        message_type: PayloadType,
-    ) -> Result<(), Error> {
-        self.inner.write(buf, message_type).await
-    }
-
-    pub async fn close(mut self, reason: Option<String>) -> Result<(), Error> {
-        self.inner
-            .framed
-            .write_close(CloseReason::new(CloseCode::Normal, reason))
-            .await
-    }
-
-    pub async fn send_fragmented(
-        &mut self,
-        buf: &mut BytesMut,
-        message_type: MessageType,
-        fragment_size: usize,
-    ) -> Result<(), Error> {
-        self.inner
-            .send_fragmented(buf, message_type, fragment_size)
-            .await
-    }
-
-    pub fn is_closed(&self) -> bool {
-        self.inner.closed
-    }
-
-    // todo add docs about:
-    //  - https://github.com/tokio-rs/tokio/issues/3200
-    //  - https://github.com/tokio-rs/tls/issues/40
-    pub fn split(self) -> Result<(Sender<S, E>, Receiver<S, E>), Error> {
-        if self.is_closed() {
-            return Err(Error::with_cause(ErrorKind::Close, CloseError::Closed));
-        } else {
-            let WebSocketInner {
-                framed,
-                control_buffer,
-                _extension,
-                ..
-            } = self.inner;
-            Ok(split(framed, control_buffer, _extension))
-        }
-    }
-}
-
-pub struct Upgraded<S, E> {
-    pub socket: WebSocket<S, E>,
-    pub subprotocol: Option<String>,
-}
-
-pub async fn client<S, E>(
-    config: WebSocketConfig,
-    mut stream: S,
-    request: Request,
-    extension: E,
-    subprotocols: ProtocolRegistry,
-) -> Result<Upgraded<S, E::Extension>, Error>
-where
-    S: WebSocketStream,
-    E: ExtensionProvider,
-{
-    let mut read_buffer = BytesMut::new();
-    let HandshakeResult {
-        subprotocol,
-        extension,
-    } = exec_client_handshake(
-        &mut stream,
-        request,
-        extension,
-        subprotocols,
-        &mut read_buffer,
-    )
-    .await?;
-
-    Ok(Upgraded {
-        socket: WebSocket::from_upgraded(config, stream, extension, read_buffer, Role::Client),
-        subprotocol,
-    })
-}
-
-struct WebSocketInner<S, E> {
-    framed: FramedIo<S>,
-    control_buffer: BytesMut,
-    _extension: E,
-    closed: bool,
-}
-
-impl<S, E> WebSocketInner<S, E>
-where
-    S: WebSocketStream,
-    E: Extension,
-{
-    async fn send_fragmented(
-        &mut self,
-        buf: &mut BytesMut,
-        message_type: MessageType,
-        fragment_size: usize,
-    ) -> Result<(), Error> {
-        if self.closed {
-            return Err(Error::with_cause(ErrorKind::Close, CloseError::Closed));
-        }
-
-        let mut chunks = buf.chunks_mut(fragment_size).peekable();
-        match chunks.next() {
-            Some(payload) => {
-                let payload_type = match message_type {
-                    MessageType::Text => DataCode::Text,
-                    MessageType::Binary => DataCode::Binary,
-                };
-
-                let flags = if chunks.peek().is_none() {
-                    HeaderFlags::FIN
-                } else {
-                    HeaderFlags::empty()
-                };
-
-                self.framed
-                    .write(OpCode::DataCode(payload_type), flags, payload)
-                    .await?;
-            }
-            None => return Ok(()),
-        }
-
-        while let Some(payload) = chunks.next() {
-            let flags = if chunks.peek().is_none() {
-                HeaderFlags::FIN
-            } else {
-                HeaderFlags::empty()
-            };
-
-            self.framed
-                .write(OpCode::DataCode(DataCode::Continuation), flags, payload)
-                .await?;
-        }
-
-        Ok(())
-    }
-
-    async fn read(&mut self, read_buffer: &mut BytesMut) -> Result<Message, Error> {
-        let WebSocketInner {
+        let WebSocket {
             framed,
             closed,
             control_buffer,
@@ -224,6 +94,7 @@ where
                             continue;
                         } else {
                             return if control_buffer[..].eq(&payload[..]) {
+                                control_buffer.clear();
                                 Ok(Message::Pong)
                             } else {
                                 self.closed = true;
@@ -275,15 +146,14 @@ where
         }
     }
 
-    async fn write<A>(&mut self, mut buf_ref: A, message_type: PayloadType) -> Result<(), Error>
-    where
-        A: AsMut<[u8]>,
-    {
+    pub async fn write(
+        &mut self,
+        buf: &mut BytesMut,
+        message_type: PayloadType,
+    ) -> Result<(), Error> {
         if self.closed {
             return Err(Error::with_cause(ErrorKind::Close, CloseError::Closed));
         }
-
-        let buf = buf_ref.as_mut();
 
         let op_code = match message_type {
             PayloadType::Text => OpCode::DataCode(DataCode::Text),
@@ -311,4 +181,81 @@ where
             }
         }
     }
+
+    pub async fn close(mut self, reason: Option<String>) -> Result<(), Error> {
+        self.framed
+            .write_close(CloseReason::new(CloseCode::Normal, reason))
+            .await
+    }
+
+    pub async fn write_fragmented(
+        &mut self,
+        buf: &mut BytesMut,
+        message_type: MessageType,
+        fragment_size: usize,
+    ) -> Result<(), Error> {
+        if self.closed {
+            return Err(Error::with_cause(ErrorKind::Close, CloseError::Closed));
+        }
+
+        self.framed
+            .write_fragmented(buf, message_type, fragment_size)
+            .await
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.closed
+    }
+
+    // todo add docs about:
+    //  - https://github.com/tokio-rs/tokio/issues/3200
+    //  - https://github.com/tokio-rs/tls/issues/40
+    pub fn split(self) -> Result<(Sender<S, E>, Receiver<S, E>), Error> {
+        if self.is_closed() {
+            return Err(Error::with_cause(ErrorKind::Close, CloseError::Closed));
+        } else {
+            let WebSocket {
+                framed,
+                control_buffer,
+                _extension,
+                ..
+            } = self;
+            Ok(split(framed, control_buffer, _extension))
+        }
+    }
+}
+
+pub struct Upgraded<S, E> {
+    pub socket: WebSocket<S, E>,
+    pub subprotocol: Option<String>,
+}
+
+pub async fn client<S, E>(
+    config: WebSocketConfig,
+    mut stream: S,
+    request: Request,
+    extension: E,
+    subprotocols: ProtocolRegistry,
+) -> Result<Upgraded<S, E::Extension>, Error>
+where
+    S: WebSocketStream,
+    E: ExtensionProvider,
+{
+    let mut read_buffer = BytesMut::new();
+    let HandshakeResult {
+        subprotocol,
+        extension,
+    } = exec_client_handshake(
+        &mut stream,
+        request,
+        extension,
+        subprotocols,
+        &mut read_buffer,
+    )
+    .await?;
+
+    Ok(Upgraded {
+        socket: WebSocket::from_upgraded(config, stream, extension, read_buffer, Role::Client),
+        subprotocol,
+    })
 }

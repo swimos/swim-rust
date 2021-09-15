@@ -3,8 +3,8 @@ mod tests;
 
 use crate::errors::{Error, ErrorKind, ProtocolError};
 use crate::protocol::{
-    apply_mask, CloseCode, CloseReason, ControlCode, DataCode, FrameHeader, HeaderFlags, OpCode,
-    Role,
+    apply_mask, CloseCode, CloseReason, ControlCode, DataCode, FrameHeader, HeaderFlags,
+    MessageType, OpCode, Role,
 };
 use crate::WebSocketStream;
 use bytes::Buf;
@@ -12,6 +12,7 @@ use bytes::{BufMut, BytesMut};
 use either::Either;
 use nanorand::{WyRand, RNG};
 use std::convert::TryFrom;
+use std::fmt::{Debug, Formatter};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 #[derive(Debug, PartialEq)]
@@ -26,7 +27,6 @@ pub enum Item {
 bitflags::bitflags! {
     pub struct CodecFlags: u8 {
         const R_CONT    = 0b0000_0001;
-        const W_CONT    = 0b0000_0010;
         // If high 'text' else 'binary
         const CONT_TYPE = 0b0000_1000;
 
@@ -140,149 +140,25 @@ impl FramedRead {
             }
         }
     }
-}
 
-#[derive(Default)]
-pub struct FramedWrite {
-    write_buffer: BytesMut,
-    rand: WyRand,
-}
-
-impl FramedWrite {
-    pub fn new(write_buffer: BytesMut) -> FramedWrite {
-        FramedWrite {
-            write_buffer,
-            rand: WyRand::new(),
-        }
-    }
-
-    async fn write<I, A>(
+    pub async fn read<I>(
         &mut self,
         io: &mut I,
-        flags: &CodecFlags,
-        opcode: OpCode,
-        header_flags: HeaderFlags,
-        mut payload_ref: A,
-    ) -> Result<(), std::io::Error>
+        flags: &mut CodecFlags,
+        read_into: &mut BytesMut,
+        is_server: bool,
+        rsv_bits: u8,
+        max_size: usize,
+    ) -> Result<Item, Error>
     where
-        I: AsyncWrite + Unpin,
-        A: AsMut<[u8]>,
+        I: AsyncRead + Unpin,
     {
-        let FramedWrite { write_buffer, rand } = self;
-
-        let payload = payload_ref.as_mut();
-
-        let mask = if flags.contains(CodecFlags::ROLE) {
-            None
-        } else {
-            let mask = rand.generate();
-            apply_mask(mask, payload);
-            Some(mask)
-        };
-
-        FrameHeader::write_into(write_buffer, opcode, header_flags, mask, payload.len());
-
-        io.write_all(write_buffer).await?;
-        write_buffer.clear();
-
-        io.write_all(payload).await
-    }
-}
-
-pub struct FramedIoParts<I> {
-    pub io: I,
-    pub read_buffer: BytesMut,
-    pub write_buffer: BytesMut,
-    pub flags: CodecFlags,
-    pub max_size: usize,
-}
-
-pub struct FramedIo<I> {
-    io: I,
-    reader: FramedRead,
-    writer: FramedWrite,
-    flags: CodecFlags,
-    max_size: usize,
-}
-
-impl<I> FramedIo<I>
-where
-    I: WebSocketStream,
-{
-    pub fn into_parts(self) -> FramedIoParts<I> {
-        let FramedIo {
-            io,
-            reader,
-            writer,
-            flags,
-            max_size,
-        } = self;
-        FramedIoParts {
-            io,
-            read_buffer: reader.read_buffer,
-            write_buffer: writer.write_buffer,
-            flags,
-            max_size,
-        }
-    }
-
-    pub fn new(io: I, read_buffer: BytesMut, role: Role, max_size: usize) -> Self {
-        let flags = match role {
-            Role::Client => CodecFlags::empty(),
-            Role::Server => CodecFlags::ROLE,
-        };
-
-        FramedIo {
-            io,
-            reader: FramedRead::new(read_buffer),
-            writer: FramedWrite::default(),
-            flags,
-            max_size,
-        }
-    }
-
-    pub fn is_server(&self) -> bool {
-        self.flags.contains(CodecFlags::ROLE)
-    }
-
-    pub async fn write<A>(
-        &mut self,
-        opcode: OpCode,
-        header_flags: HeaderFlags,
-        payload_ref: A,
-    ) -> Result<(), std::io::Error>
-    where
-        A: AsMut<[u8]>,
-    {
-        let FramedIo {
-            io, writer, flags, ..
-        } = self;
-
-        writer
-            .write(io, flags, opcode, header_flags, payload_ref)
-            .await
-    }
-
-    pub(crate) async fn read_next(&mut self, read_into: &mut BytesMut) -> Result<Item, Error> {
-        let FramedIo {
-            io,
-            reader,
-            flags,
-            max_size,
-            ..
-        } = self;
-
-        let rsv_bits = flags.bits() & 0x8F;
-        let is_server = flags.contains(CodecFlags::ROLE);
-
         loop {
-            let (header, payload) = reader
-                .read_frame(io, is_server, rsv_bits, *max_size)
-                .await?;
+            let (header, payload) = self.read_frame(io, is_server, rsv_bits, max_size).await?;
 
             match header.opcode {
                 OpCode::DataCode(data_code) => {
-                    if read_into.len() + payload.len() > *max_size {
+                    if read_into.len() + payload.len() > max_size {
                         return Err(ProtocolError::FrameOverflow.into());
                     }
 
@@ -291,8 +167,8 @@ where
                     match data_code {
                         DataCode::Continuation => {
                             if header.flags.contains(HeaderFlags::FIN) {
-                                let item = if self.flags.contains(CodecFlags::R_CONT) {
-                                    if self.flags.contains(CodecFlags::CONT_TYPE) {
+                                let item = if flags.contains(CodecFlags::R_CONT) {
+                                    if flags.contains(CodecFlags::CONT_TYPE) {
                                         Item::Text
                                     } else {
                                         Item::Binary
@@ -301,34 +177,32 @@ where
                                     return Err(ProtocolError::ContinuationNotStarted.into());
                                 };
 
-                                self.flags
-                                    .remove(CodecFlags::R_CONT | CodecFlags::CONT_TYPE);
+                                flags.remove(CodecFlags::R_CONT | CodecFlags::CONT_TYPE);
                                 return Ok(item);
-                            } else if self.flags.contains(CodecFlags::R_CONT) {
+                            } else if flags.contains(CodecFlags::R_CONT) {
                                 continue;
                             } else {
                                 return Err(ProtocolError::ContinuationNotStarted.into());
                             }
                         }
                         DataCode::Text => {
-                            if self.flags.contains(CodecFlags::R_CONT) {
+                            if flags.contains(CodecFlags::R_CONT) {
                                 return Err(ProtocolError::ContinuationAlreadyStarted.into());
                             } else if header.flags.contains(HeaderFlags::FIN) {
                                 return Ok(Item::Text);
                             } else {
-                                self.flags
-                                    .insert(CodecFlags::R_CONT | CodecFlags::CONT_TYPE);
+                                flags.insert(CodecFlags::R_CONT | CodecFlags::CONT_TYPE);
                                 continue;
                             }
                         }
                         DataCode::Binary => {
-                            if self.flags.contains(CodecFlags::R_CONT) {
+                            if flags.contains(CodecFlags::R_CONT) {
                                 return Err(ProtocolError::ContinuationAlreadyStarted.into());
                             } else if header.flags.contains(HeaderFlags::FIN) {
                                 return Ok(Item::Binary);
                             } else {
-                                debug_assert!(!self.flags.contains(CodecFlags::CONT_TYPE));
-                                self.flags.insert(CodecFlags::R_CONT);
+                                debug_assert!(!flags.contains(CodecFlags::CONT_TYPE));
+                                flags.insert(CodecFlags::R_CONT);
                                 continue;
                             }
                         }
@@ -383,21 +257,291 @@ where
             }
         }
     }
+}
+
+#[derive(Default)]
+pub struct FramedWrite {
+    write_buffer: BytesMut,
+    rand: WyRand,
+}
+
+impl Debug for FramedWrite {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FramedWrite")
+            .field("write_buffer", &self.write_buffer)
+            .finish()
+    }
+}
+
+impl FramedWrite {
+    pub async fn write<I, A>(
+        &mut self,
+        io: &mut I,
+        is_server: bool,
+        opcode: OpCode,
+        header_flags: HeaderFlags,
+        mut payload_ref: A,
+    ) -> Result<(), std::io::Error>
+    where
+        I: AsyncWrite + Unpin,
+        A: AsMut<[u8]>,
+    {
+        let FramedWrite { write_buffer, rand } = self;
+        let payload = payload_ref.as_mut();
+
+        let mask = if is_server {
+            None
+        } else {
+            let mask = rand.generate();
+            apply_mask(mask, payload);
+            Some(mask)
+        };
+
+        FrameHeader::write_into(write_buffer, opcode, header_flags, mask, payload.len());
+
+        io.write_all(write_buffer).await?;
+        write_buffer.clear();
+
+        io.write_all(payload).await
+    }
+}
+
+pub struct FramedIoParts<I> {
+    pub io: I,
+    pub reader: FramedRead,
+    pub writer: FramedWrite,
+    pub flags: CodecFlags,
+    pub max_size: usize,
+}
+
+pub struct FramedIo<I> {
+    io: I,
+    reader: FramedRead,
+    writer: FramedWrite,
+    flags: CodecFlags,
+    max_size: usize,
+}
+
+impl<I> FramedIo<I>
+where
+    I: WebSocketStream,
+{
+    pub fn from_parts(parts: FramedIoParts<I>) -> FramedIo<I> {
+        let FramedIoParts {
+            io,
+            reader,
+            writer,
+            flags,
+            max_size,
+        } = parts;
+        FramedIo {
+            io,
+            reader,
+            writer,
+            flags,
+            max_size,
+        }
+    }
+
+    pub fn into_parts(self) -> FramedIoParts<I> {
+        let FramedIo {
+            io,
+            reader,
+            writer,
+            flags,
+            max_size,
+        } = self;
+        FramedIoParts {
+            io,
+            reader,
+            writer,
+            flags,
+            max_size,
+        }
+    }
+
+    pub fn new(io: I, read_buffer: BytesMut, role: Role, max_size: usize) -> Self {
+        let flags = match role {
+            Role::Client => CodecFlags::empty(),
+            Role::Server => CodecFlags::ROLE,
+        };
+
+        FramedIo {
+            io,
+            reader: FramedRead::new(read_buffer),
+            writer: FramedWrite::default(),
+            flags,
+            max_size,
+        }
+    }
+
+    pub fn is_server(&self) -> bool {
+        self.flags.contains(CodecFlags::ROLE)
+    }
+
+    pub async fn write<A>(
+        &mut self,
+        opcode: OpCode,
+        header_flags: HeaderFlags,
+        payload_ref: A,
+    ) -> Result<(), std::io::Error>
+    where
+        A: AsMut<[u8]>,
+    {
+        let FramedIo {
+            io, writer, flags, ..
+        } = self;
+        writer
+            .write(
+                io,
+                flags.contains(CodecFlags::ROLE),
+                opcode,
+                header_flags,
+                payload_ref,
+            )
+            .await
+    }
+
+    pub(crate) async fn read_next(&mut self, read_into: &mut BytesMut) -> Result<Item, Error> {
+        let FramedIo {
+            io,
+            reader,
+            flags,
+            max_size,
+            ..
+        } = self;
+        read_next(io, reader, flags, *max_size, read_into).await
+    }
 
     pub async fn write_close(&mut self, reason: CloseReason) -> Result<(), Error> {
-        let CloseReason { code, description } = reason;
-        let mut payload = u16::from(code).to_be_bytes().to_vec();
+        let FramedIo {
+            io, writer, flags, ..
+        } = self;
+        write_close(io, writer, reason, flags.contains(CodecFlags::ROLE)).await
+    }
 
-        if let Some(description) = description {
-            payload.extend_from_slice(description.as_bytes());
-        }
+    pub async fn write_fragmented(
+        &mut self,
+        buf: &mut BytesMut,
+        message_type: MessageType,
+        fragment_size: usize,
+    ) -> Result<(), Error> {
+        let FramedIo {
+            io, writer, flags, ..
+        } = self;
+        write_fragmented(
+            io,
+            writer,
+            buf,
+            message_type,
+            fragment_size,
+            flags.contains(CodecFlags::ROLE),
+        )
+        .await
+    }
+}
 
-        self.write(
+pub async fn read_next<I>(
+    io: &mut I,
+    reader: &mut FramedRead,
+    flags: &mut CodecFlags,
+    max_size: usize,
+    read_into: &mut BytesMut,
+) -> Result<Item, Error>
+where
+    I: AsyncRead + Unpin,
+{
+    let rsv_bits = flags.bits() & 0x8F;
+    let is_server = flags.contains(CodecFlags::ROLE);
+
+    reader
+        .read(io, flags, read_into, is_server, rsv_bits, max_size)
+        .await
+}
+
+pub async fn write_close<I>(
+    io: &mut I,
+    writer: &mut FramedWrite,
+    reason: CloseReason,
+    is_server: bool,
+) -> Result<(), Error>
+where
+    I: AsyncWrite + Unpin,
+{
+    let CloseReason { code, description } = reason;
+    let mut payload = u16::from(code).to_be_bytes().to_vec();
+
+    if let Some(description) = description {
+        payload.extend_from_slice(description.as_bytes());
+    }
+
+    writer
+        .write(
+            io,
+            is_server,
             OpCode::ControlCode(ControlCode::Close),
             HeaderFlags::FIN,
             payload,
         )
         .await
         .map_err(|e| Error::with_cause(ErrorKind::Close, e))
+}
+
+pub async fn write_fragmented<I>(
+    io: &mut I,
+    framed: &mut FramedWrite,
+    buf: &mut BytesMut,
+    message_type: MessageType,
+    fragment_size: usize,
+    is_server: bool,
+) -> Result<(), Error>
+where
+    I: AsyncWrite + Unpin,
+{
+    let mut chunks = buf.chunks_mut(fragment_size).peekable();
+    match chunks.next() {
+        Some(payload) => {
+            let payload_type = match message_type {
+                MessageType::Text => DataCode::Text,
+                MessageType::Binary => DataCode::Binary,
+            };
+
+            let flags = if chunks.peek().is_none() {
+                HeaderFlags::FIN
+            } else {
+                HeaderFlags::empty()
+            };
+
+            framed
+                .write(
+                    io,
+                    is_server,
+                    OpCode::DataCode(payload_type),
+                    flags,
+                    payload,
+                )
+                .await?;
+        }
+        None => return Ok(()),
     }
+
+    while let Some(payload) = chunks.next() {
+        let flags = if chunks.peek().is_none() {
+            HeaderFlags::FIN
+        } else {
+            HeaderFlags::empty()
+        };
+
+        framed
+            .write(
+                io,
+                is_server,
+                OpCode::DataCode(DataCode::Continuation),
+                flags,
+                payload,
+            )
+            .await?;
+    }
+
+    Ok(())
 }
