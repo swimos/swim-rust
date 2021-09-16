@@ -252,7 +252,7 @@ pub async fn client<S, E>(
     config: WebSocketConfig,
     mut stream: S,
     request: Request,
-    extension: E,
+    extension: &E,
     subprotocols: ProtocolRegistry,
 ) -> Result<Upgraded<S, E::Extension>, Error>
 where

@@ -52,7 +52,7 @@ where
     S: WebSocketStream,
     E: ExtensionProvider,
 {
-    let machine = ClientHandshake::new(stream, subprotocols, extension, buf);
+    let machine = ClientHandshake::new(stream, subprotocols, &extension, buf);
     let uri = request.uri();
     let span = span!(Level::DEBUG, MSG_HANDSHAKE_START, ?uri);
 
@@ -86,7 +86,7 @@ struct ClientHandshake<'s, S, E> {
     buffered: BufferedIo<'s, S>,
     nonce: Nonce,
     subprotocols: ProtocolRegistry,
-    extension: E,
+    extension: &'s E,
 }
 
 pub struct ResponseParser<'b, E> {
@@ -129,7 +129,7 @@ where
     pub fn new(
         socket: &'s mut S,
         subprotocols: ProtocolRegistry,
-        extension: E,
+        extension: &'s E,
         buf: &'s mut BytesMut,
     ) -> ClientHandshake<'s, S, E> {
         ClientHandshake {

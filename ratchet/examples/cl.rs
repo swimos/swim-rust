@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use ratchet::{client, NoExtProxy, ProtocolRegistry, TryIntoRequest, WebSocketConfig};
+use ratchet::{client, NoExtProvider, ProtocolRegistry, TryIntoRequest, WebSocketConfig};
 use tokio::net::TcpStream;
 
 #[tokio::main]
@@ -24,7 +24,7 @@ async fn main() {
         WebSocketConfig::default(),
         stream,
         "ws://127.0.0.1/hello".try_into_request().unwrap(),
-        NoExtProxy,
+        &NoExtProvider,
         ProtocolRegistry::default(),
     )
     .await

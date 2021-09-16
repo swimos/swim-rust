@@ -27,8 +27,8 @@ impl Extension for NoExt {
     fn decode(&mut self) {}
 }
 
-pub struct NoExtProxy;
-impl ExtensionProvider for NoExtProxy {
+pub struct NoExtProvider;
+impl ExtensionProvider for NoExtProvider {
     type Extension = NoExt;
     type Error = Infallible;
 

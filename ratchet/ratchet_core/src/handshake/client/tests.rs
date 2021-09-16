@@ -13,18 +13,17 @@
 // limitations under the License.
 
 use crate::errors::{Error, HttpError};
-use crate::extensions::ext::{NoExt, NoExtProxy};
-use crate::extensions::{Extension, ExtensionProvider};
 use crate::fixture::mock;
 use crate::handshake::client::{ClientHandshake, HandshakeResult};
 use crate::handshake::{ProtocolError, ProtocolRegistry, ACCEPT_KEY, UPGRADE_STR, WEBSOCKET_STR};
-use crate::{ErrorKind, TryIntoRequest};
+use crate::{ErrorKind, NoExt, NoExtProvider, TryIntoRequest};
 use bytes::BytesMut;
 use futures::future::join;
 use futures::FutureExt;
 use http::header::HeaderName;
 use http::{header, HeaderMap, HeaderValue, Request, Response, StatusCode, Version};
 use httparse::{Header, Status};
+use ratchet_ext::{Extension, ExtensionProvider};
 use sha1::{Digest, Sha1};
 use tokio::io::AsyncReadExt;
 use utilities::sync::trigger;
@@ -41,7 +40,7 @@ async fn handshake_sends_valid_request() {
     let mut machine = ClientHandshake::new(
         &mut stream,
         ProtocolRegistry::new(vec!["warp"]),
-        NoExtProxy,
+        &NoExtProvider,
         &mut buf,
     );
     machine.encode(request).expect("");
@@ -81,7 +80,7 @@ async fn handshake_invalid_requests() {
         let mut machine = ClientHandshake::new(
             &mut stream,
             ProtocolRegistry::default(),
-            NoExtProxy,
+            &NoExtProvider,
             &mut buf,
         );
         machine
@@ -138,7 +137,7 @@ async fn expect_server_error(response: Response<()>, expected_error: HttpError) 
         let mut machine = ClientHandshake::new(
             &mut stream,
             ProtocolRegistry::default(),
-            NoExtProxy,
+            &NoExtProvider,
             &mut buf,
         );
         machine
@@ -238,7 +237,7 @@ async fn ok_nonce() {
         let mut machine = ClientHandshake::new(
             &mut stream,
             ProtocolRegistry::default(),
-            NoExtProxy,
+            &NoExtProvider,
             &mut buf,
         );
         machine
@@ -306,7 +305,7 @@ async fn redirection() {
         let mut machine = ClientHandshake::new(
             &mut stream,
             ProtocolRegistry::default(),
-            NoExtProxy,
+            &NoExtProvider,
             &mut buf,
         );
         machine
@@ -366,7 +365,7 @@ where
         let mut machine = ClientHandshake::new(
             &mut stream,
             ProtocolRegistry::new(registry),
-            NoExtProxy,
+            &NoExtProvider,
             &mut buf,
         );
         machine
@@ -510,7 +509,7 @@ where
     let client_task = async move {
         let mut buf = BytesMut::new();
         let mut machine =
-            ClientHandshake::new(&mut stream, ProtocolRegistry::default(), ext, &mut buf);
+            ClientHandshake::new(&mut stream, ProtocolRegistry::default(), &ext, &mut buf);
         machine
             .encode(Request::get(TEST_URL).body(()).unwrap())
             .unwrap();

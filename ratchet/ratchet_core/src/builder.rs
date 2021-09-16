@@ -14,7 +14,7 @@
 
 use crate::errors::Error;
 use crate::handshake::ProtocolRegistry;
-use crate::noext::NoExtProxy;
+use crate::noext::NoExtProvider;
 use crate::ws::Upgraded;
 use crate::{client, TryIntoRequest, WebSocketConfig, WebSocketStream};
 use ratchet_ext::ExtensionProvider;
@@ -25,11 +25,11 @@ pub struct WebSocketClientBuilder<E> {
     subprotocols: ProtocolRegistry,
 }
 
-impl Default for WebSocketClientBuilder<NoExtProxy> {
+impl Default for WebSocketClientBuilder<NoExtProvider> {
     fn default() -> Self {
         WebSocketClientBuilder {
             config: None,
-            extension: NoExtProxy,
+            extension: NoExtProvider,
             subprotocols: ProtocolRegistry::default(),
         }
     }
@@ -60,7 +60,7 @@ where
             config.unwrap_or_default(),
             stream,
             request,
-            extension,
+            &extension,
             subprotocols,
         )
         .await
@@ -91,11 +91,11 @@ pub struct WebSocketServerBuilder<E> {
     extension: E,
 }
 
-impl Default for WebSocketServerBuilder<NoExtProxy> {
+impl Default for WebSocketServerBuilder<NoExtProvider> {
     fn default() -> Self {
         WebSocketServerBuilder {
             config: None,
-            extension: NoExtProxy,
+            extension: NoExtProvider,
             subprotocols: ProtocolRegistry::default(),
         }
     }

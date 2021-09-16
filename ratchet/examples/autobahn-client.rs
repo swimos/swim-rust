@@ -15,7 +15,7 @@
 use bytes::BytesMut;
 use ratchet::{client, Upgraded};
 use ratchet::{
-    Error, Message, NoExt, NoExtProxy, PayloadType, ProtocolRegistry, TryIntoRequest,
+    Error, Message, NoExt, NoExtProvider, PayloadType, ProtocolRegistry, TryIntoRequest,
     WebSocketConfig,
 };
 use tokio::net::TcpStream;
@@ -30,7 +30,7 @@ async fn subscribe(url: &str) -> Result<Upgraded<TcpStream, NoExt>, Error> {
         WebSocketConfig::default(),
         stream,
         url.try_into_request().unwrap(),
-        NoExtProxy,
+        &NoExtProvider,
         ProtocolRegistry::default(),
     )
     .await

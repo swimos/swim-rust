@@ -15,12 +15,12 @@
 use crate::fixture::{mock, ReadError};
 use crate::handshake::{UPGRADE_STR, WEBSOCKET_STR, WEBSOCKET_VERSION_STR};
 use crate::{
-    accept, Error, ErrorKind, Extension, ExtensionProvider, HttpError, NoExtProxy,
-    ProtocolRegistry, WebSocketConfig,
+    accept, Error, ErrorKind, HttpError, NoExtProvider, ProtocolRegistry, WebSocketConfig,
 };
 use http::header::HeaderName;
 use http::{HeaderMap, HeaderValue, Request, Response, Version};
 use httparse::Header;
+use ratchet_ext::{Extension, ExtensionProvider};
 
 impl From<ReadError<httparse::Error>> for Error {
     fn from(e: ReadError<httparse::Error>) -> Self {
@@ -36,7 +36,7 @@ async fn exec_request(request: Request<()>) -> Result<Response<()>, Error> {
     let upgrader = accept(
         server,
         WebSocketConfig::default(),
-        NoExtProxy,
+        NoExtProvider,
         ProtocolRegistry::default(),
     )
     .await?;
