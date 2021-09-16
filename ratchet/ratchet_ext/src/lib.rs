@@ -17,6 +17,20 @@ use httparse::Header;
 use std::error::Error;
 use std::fmt::Debug;
 
+pub trait ExtensionProvider {
+    type Extension: Extension;
+    type Error: Error + Send + Sync + 'static;
+
+    fn apply_headers(&self, headers: &mut HeaderMap);
+
+    fn negotiate_client(&self, headers: &[Header]) -> Result<Self::Extension, Self::Error>;
+
+    fn negotiate_server(
+        &self,
+        headers: &[Header],
+    ) -> Result<(Self::Extension, Option<HeaderValue>), Self::Error>;
+}
+
 pub trait Extension: Debug {
     fn encode(&mut self);
 
@@ -39,20 +53,6 @@ pub trait ExtensionEncoder {
 
 pub trait ExtensionDecoder {
     fn decode(&mut self);
-}
-
-pub trait ExtensionProvider {
-    type Extension: Extension;
-    type Error: Error + Send + Sync + 'static;
-
-    fn apply_headers(&self, headers: &mut HeaderMap);
-
-    fn negotiate_client(&self, headers: &[Header]) -> Result<Self::Extension, Self::Error>;
-
-    fn negotiate_server(
-        &self,
-        headers: &[Header],
-    ) -> Result<(Self::Extension, Option<HeaderValue>), Self::Error>;
 }
 
 impl<'r, E> ExtensionProvider for &'r mut E

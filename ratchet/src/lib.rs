@@ -13,3 +13,8 @@
 // limitations under the License.
 
 pub use ratchet_core::{self, *};
+
+#[cfg(feature = "deflate")]
+pub mod deflate {
+    pub use ratchet_deflate::{self, *};
+}

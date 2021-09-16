@@ -4,10 +4,14 @@ version = "0.1.0"
 authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
+[features]
+default = []
+deflate = ["ratchet_deflate"]
+
 [dependencies]
 ratchet_core = { path = "ratchet_core" }
-ratchet_deflate = { path = "ratchet_deflate" }
 ratchet_ext = { path = "ratchet_ext" }
+ratchet_deflate = { path = "ratchet_deflate", optional = true }
 
 [dev-dependencies]
 utilities = { path = "../utilities" }
