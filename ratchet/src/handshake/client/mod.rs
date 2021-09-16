@@ -1,16 +1,22 @@
-mod encoding;
+// Copyright 2015-2021 SWIM.AI inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #[cfg(test)]
 mod tests;
 
-type Nonce = [u8; 24];
+mod encoding;
 
-use crate::errors::{Error, ErrorKind, HttpError};
-use crate::extensions::ext::NoExt;
-use crate::extensions::{ExtensionHandshake, NegotiatedExtension};
-use crate::handshake::client::encoding::{build_request, encode_request};
-use crate::handshake::io::BufferedIo;
-use crate::handshake::{ProtocolRegistry, ACCEPT_KEY, BAD_STATUS_CODE, UPGRADE_STR, WEBSOCKET_STR};
-use crate::WebSocketStream;
 use bytes::BytesMut;
 use http::header::HeaderName;
 use http::{header, Request, StatusCode};
@@ -19,6 +25,15 @@ use sha1::{Digest, Sha1};
 use std::convert::TryFrom;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
+
+use crate::errors::{Error, ErrorKind, HttpError};
+use crate::extensions::ExtensionProvider;
+use crate::handshake::client::encoding::{build_request, encode_request};
+use crate::handshake::io::BufferedIo;
+use crate::handshake::{ProtocolRegistry, ACCEPT_KEY, BAD_STATUS_CODE, UPGRADE_STR, WEBSOCKET_STR};
+use crate::WebSocketStream;
+
+type Nonce = [u8; 24];
 
 const MSG_HANDSHAKE_COMPLETED: &str = "Handshake completed";
 const MSG_HANDSHAKE_FAILED: &str = "Handshake failed";
@@ -29,12 +44,13 @@ pub async fn exec_client_handshake<S, E>(
     request: Request<()>,
     extension: E,
     subprotocols: ProtocolRegistry,
+    buf: &mut BytesMut,
 ) -> Result<HandshakeResult<E::Extension>, Error>
 where
     S: WebSocketStream,
-    E: ExtensionHandshake,
+    E: ExtensionProvider,
 {
-    let machine = ClientHandshake::new(stream, subprotocols, extension);
+    let machine = ClientHandshake::new(stream, subprotocols, extension, buf);
     let uri = request.uri();
     let span = span!(Level::DEBUG, MSG_HANDSHAKE_START, ?uri);
 
@@ -44,6 +60,7 @@ where
             Ok(HandshakeResult {
                 subprotocol,
                 extension,
+                ..
             }) => {
                 event!(
                     Level::DEBUG,
@@ -73,15 +90,16 @@ struct ClientHandshake<'s, S, E> {
 impl<'s, S, E> ClientHandshake<'s, S, E>
 where
     S: WebSocketStream,
-    E: ExtensionHandshake,
+    E: ExtensionProvider,
 {
     pub fn new(
         socket: &'s mut S,
         subprotocols: ProtocolRegistry,
         extension: E,
+        buf: &'s mut BytesMut,
     ) -> ClientHandshake<'s, S, E> {
         ClientHandshake {
-            buffered: BufferedIo::new(socket, BytesMut::new()),
+            buffered: BufferedIo::new(socket, buf),
             nonce: [0; 24],
             subprotocols,
             extension,
@@ -154,7 +172,7 @@ where
 #[derive(Debug)]
 pub struct HandshakeResult<E> {
     pub subprotocol: Option<String>,
-    pub extension: NegotiatedExtension<E>,
+    pub extension: E,
 }
 
 /// Quickly checks a partial response in the order of the expected HTTP response declaration to see
@@ -171,7 +189,6 @@ fn check_partial_response(response: &Response) -> Result<(), Error> {
             ))
         }
     }
-
     match response.code {
         Some(code) if code == StatusCode::SWITCHING_PROTOCOLS => Ok(()),
         Some(code) if (300..400).contains(&code) => {
@@ -200,7 +217,7 @@ fn try_parse_response<'l, E>(
     subprotocols: &mut ProtocolRegistry,
 ) -> Result<ParseResult<E::Extension>, Error>
 where
-    E: ExtensionHandshake,
+    E: ExtensionProvider,
 {
     match response.parse(buffer.as_ref()) {
         Ok(Status::Complete(count)) => {
@@ -219,7 +236,7 @@ fn parse_response<E>(
     subprotocols: &mut ProtocolRegistry,
 ) -> Result<HandshakeResult<E::Extension>, Error>
 where
-    E: ExtensionHandshake,
+    E: ExtensionProvider,
 {
     match response.version {
         // rfc6455 § 4.2.1.1: must be HTTP/1.1 or higher
@@ -237,18 +254,18 @@ where
     match status_code {
         c if c == StatusCode::SWITCHING_PROTOCOLS => {}
         c if c.is_redirection() => {
-            match response.headers.iter().find(|h| h.name == header::LOCATION) {
+            return match response.headers.iter().find(|h| h.name == header::LOCATION) {
                 Some(header) => {
                     // the value _should_ be valid UTF-8
                     let location = String::from_utf8(header.value.to_vec())
                         .map_err(|_| Error::new(ErrorKind::Http))?;
-                    return Err(Error::with_cause(
+                    Err(Error::with_cause(
                         ErrorKind::Http,
                         HttpError::Redirected(location),
-                    ));
+                    ))
                 }
-                None => return Err(Error::with_cause(ErrorKind::Http, HttpError::Status(c))),
-            }
+                None => Err(Error::with_cause(ErrorKind::Http, HttpError::Status(c))),
+            };
         }
         status_code => {
             return Err(Error::with_cause(
@@ -258,8 +275,8 @@ where
         }
     }
 
-    validate_header_value(response.headers, header::UPGRADE, WEBSOCKET_STR.as_bytes())?;
-    validate_header_value(response.headers, header::CONNECTION, UPGRADE_STR.as_bytes())?;
+    validate_header_value(response.headers, header::UPGRADE, WEBSOCKET_STR)?;
+    validate_header_value(response.headers, header::CONNECTION, UPGRADE_STR)?;
 
     validate_header(
         response.headers,
@@ -278,25 +295,24 @@ where
         },
     )?;
 
-    let extension = extension.negotiate(response)?;
-    let extension = match extension {
-        Some(ext) => NegotiatedExtension::Negotiated(ext),
-        None => NegotiatedExtension::None(NoExt::default()),
-    };
-
     Ok(HandshakeResult {
         subprotocol: subprotocols.negotiate_response(response)?,
-        extension,
+        extension: extension
+            .negotiate(response)
+            .map_err(|e| Error::with_cause(ErrorKind::Extension, e))?,
     })
 }
 
 fn validate_header_value(
     headers: &[httparse::Header],
     name: HeaderName,
-    expected: &[u8],
+    expected: &str,
 ) -> Result<(), Error> {
     validate_header(headers, name, |name, actual| {
-        if actual == expected {
+        let actual =
+            std::str::from_utf8(actual).map_err(|e| Error::with_cause(ErrorKind::IO, e))?;
+
+        if actual.eq_ignore_ascii_case(expected) {
             Ok(())
         } else {
             Err(Error::with_cause(

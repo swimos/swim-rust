@@ -5,13 +5,10 @@ authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
 [dependencies]
-utilities = { path = "../utilities" }
 url = "2.1.1"
 http = "0.2.3"
-pin-project = "1.0.5"
-pin-utils = "0.1.0"
 tokio = { version = "1.1.1", features = ["rt", "net", "io-util"] }
-tokio-stream = { version = "0.1.2", features = ["sync"] }
+tokio-util = { version = "0.6.7", features = ["codec"] }
 tokio-native-tls = "0.3"
 futures = "0.3.4"
 futures-util = "0.3.4"
@@ -25,6 +22,10 @@ httparse = "1.4.1"
 tracing = "0.1.16"
 tracing-futures = "0.2.4"
 fnv = "1.0.3"
+bitflags = "1.2"
+nanorand = { version = "0.5", default-features = false, features = ["std", "wyrand"] }
+either = "1.5.3"
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["rt-multi-thread", "macros", "test-util"] }
+utilities = { path = "../utilities" }

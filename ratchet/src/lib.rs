@@ -12,159 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod builder;
-mod errors;
-mod extensions;
 #[cfg(test)]
 mod fixture;
+
+mod errors;
+mod extensions;
+mod framed;
 mod handshake;
-#[allow(warnings)]
 mod protocol;
 
-use crate::errors::Error;
-use crate::extensions::{Extension, ExtensionHandshake, NegotiatedExtension};
-use crate::handshake::{exec_client_handshake, HandshakeResult, ProtocolRegistry};
+mod builder;
+mod ws;
+
+pub use crate::extensions::{deflate::*, ext::*, Extension, ExtensionProvider};
+pub use builder::WebSocketClientBuilder;
+pub use errors::*;
+pub use handshake::{ProtocolRegistry, TryIntoRequest};
+pub use protocol::{Message, PayloadType, WebSocketConfig};
+pub use ws::{client, Upgraded, WebSocket};
+
 use futures::future::BoxFuture;
-use http::Uri;
 use tokio::io::{AsyncRead, AsyncWrite};
-use url::Url;
 
 pub(crate) type Request = http::Request<()>;
 pub(crate) type Response = http::Response<()>;
 
-pub struct DeflateConfig;
-
-pub enum CompressionConfig {
-    None,
-    Deflate(DeflateConfig),
-}
-
-impl Default for CompressionConfig {
-    fn default() -> Self {
-        CompressionConfig::None
-    }
-}
-
-#[derive(Default)]
-pub struct WebSocketConfig {
-    // options..
-    pub compression: CompressionConfig,
-}
-
-pub trait Interceptor {
-    fn intercept(self, request: Request, response: Response) -> BoxFuture<'static, Response>;
-}
-
-#[derive(Copy, Clone, PartialEq)]
-pub enum Role {
-    Client,
-    Server,
-}
-
-pub struct WebSocket<S, E> {
-    stream: S,
-    role: Role,
-    extension: NegotiatedExtension<E>,
-    config: WebSocketConfig,
-}
-
-impl<S, E> WebSocket<S, E>
-where
-    S: WebSocketStream,
-    E: Extension,
-{
-    pub fn role(&self) -> Role {
-        self.role
-    }
-
-    pub fn config(&self) -> &WebSocketConfig {
-        &self.config
-    }
-}
-
-pub struct Upgraded<S, E> {
-    pub socket: WebSocket<S, E>,
-    pub subprotocol: Option<String>,
-}
-
-pub async fn client<S, E>(
-    config: WebSocketConfig,
-    mut stream: S,
-    request: Request,
-    extension: E,
-    subprotocols: ProtocolRegistry,
-) -> Result<Upgraded<S, E::Extension>, Error>
-where
-    S: WebSocketStream,
-    E: ExtensionHandshake,
-{
-    let HandshakeResult {
-        subprotocol,
-        extension,
-    } = exec_client_handshake(&mut stream, request, extension, subprotocols).await?;
-    let socket = WebSocket {
-        stream,
-        role: Role::Client,
-        extension,
-        config,
-    };
-    Ok(Upgraded {
-        socket,
-        subprotocol,
-    })
-}
-
 pub trait WebSocketStream: AsyncRead + AsyncWrite + Unpin {}
 impl<S> WebSocketStream for S where S: AsyncRead + AsyncWrite + Unpin {}
 
-pub trait TryIntoRequest {
-    fn try_into_request(self) -> Result<Request, Error>;
-}
-
-impl<'a> TryIntoRequest for &'a str {
-    fn try_into_request(self) -> Result<Request, Error> {
-        self.parse::<Uri>()?.try_into_request()
-    }
-}
-
-impl<'a> TryIntoRequest for &'a String {
-    fn try_into_request(self) -> Result<Request, Error> {
-        self.as_str().try_into_request()
-    }
-}
-
-impl TryIntoRequest for String {
-    fn try_into_request(self) -> Result<Request, Error> {
-        self.as_str().try_into_request()
-    }
-}
-
-impl<'a> TryIntoRequest for &'a Uri {
-    fn try_into_request(self) -> Result<Request, Error> {
-        self.clone().try_into_request()
-    }
-}
-
-impl TryIntoRequest for Uri {
-    fn try_into_request(self) -> Result<Request, Error> {
-        Ok(Request::get(self).body(())?)
-    }
-}
-
-impl<'a> TryIntoRequest for &'a Url {
-    fn try_into_request(self) -> Result<Request, Error> {
-        self.as_str().try_into_request()
-    }
-}
-
-impl TryIntoRequest for Url {
-    fn try_into_request(self) -> Result<Request, Error> {
-        self.as_str().try_into_request()
-    }
-}
-
-impl TryIntoRequest for Request {
-    fn try_into_request(self) -> Result<Request, Error> {
-        Ok(self)
-    }
+pub trait Interceptor {
+    fn intercept(self, request: Request, response: Response) -> BoxFuture<'static, Response>;
 }

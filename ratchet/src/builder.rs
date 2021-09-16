@@ -1,12 +1,11 @@
 use crate::errors::Error;
 use crate::extensions::ext::NoExtProxy;
-use crate::extensions::ExtensionHandshake;
 use crate::handshake::ProtocolRegistry;
-use crate::{client, Interceptor, TryIntoRequest, Upgraded, WebSocketConfig, WebSocketStream};
+use crate::ws::Upgraded;
+use crate::ExtensionProvider;
+use crate::{client, Interceptor, TryIntoRequest, WebSocketConfig, WebSocketStream};
 use tokio_native_tls::TlsConnector;
 
-/// This gives the flexibility to build websockets in a 'friendlier' fashion as opposed to having
-/// a bunch of functions like `connect_with_config_and_stream` and `connect_with_config` etc.
 pub struct WebSocketClientBuilder<E> {
     config: Option<WebSocketConfig>,
     connector: Option<TlsConnector>,
@@ -25,7 +24,10 @@ impl Default for WebSocketClientBuilder<NoExtProxy> {
     }
 }
 
-impl<E: ExtensionHandshake> WebSocketClientBuilder<E> {
+impl<E> WebSocketClientBuilder<E>
+where
+    E: ExtensionProvider,
+{
     pub async fn subscribe<S, I>(
         self,
         stream: S,

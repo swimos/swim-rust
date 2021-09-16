@@ -1,7 +1,24 @@
-use crate::{Request, Response};
-use bytes::BytesMut;
+// Copyright 2015-2021 SWIM.AI inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use crate::{Error, Request, Response};
+use bytes::{BufMut, BytesMut};
 use http::Version;
 use httparse::Status;
+use std::any::{type_name, Any};
+use std::error::Error as StdError;
+use std::fmt::Debug;
 use std::io;
 use std::ops::Deref;
 use std::pin::Pin;
@@ -171,5 +188,82 @@ impl MockPeer {
 
     pub async fn read_request(&mut self) -> Result<Request, ReadError<httparse::Error>> {
         self.read_into(WritableRequest).await
+    }
+}
+
+pub fn expect_err<O, T>(result: Result<O, Error>, expected: T)
+where
+    O: Debug,
+    T: StdError + PartialEq + Any,
+{
+    let error = result.expect_err(&format!("Expected a {}", type_name::<T>()));
+    let protocol_error = error.downcast_ref::<T>().unwrap();
+    assert_eq!(protocol_error, &expected);
+}
+
+pub struct EmptyIo;
+impl AsyncRead for EmptyIo {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        _buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        Poll::Ready(Ok(()))
+    }
+}
+
+impl AsyncWrite for EmptyIo {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        _buf: &[u8],
+    ) -> Poll<Result<usize, io::Error>> {
+        Poll::Ready(Ok(0))
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+        Poll::Ready(Ok(()))
+    }
+}
+
+#[derive(Default)]
+pub struct MirroredIo(pub BytesMut);
+
+impl AsyncRead for MirroredIo {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        let rx_buf = &mut self.as_mut().0;
+        let cnt = std::cmp::min(rx_buf.len(), buf.remaining());
+        let (a, b) = rx_buf.split_at(cnt);
+
+        buf.put_slice(a);
+        *rx_buf = BytesMut::from(b);
+        Poll::Ready(Ok(()))
+    }
+}
+
+impl AsyncWrite for MirroredIo {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize, io::Error>> {
+        self.get_mut().0.put_slice(buf);
+        Poll::Ready(Ok(buf.len()))
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+        Poll::Ready(Ok(()))
     }
 }

@@ -14,31 +14,36 @@
 
 use crate::extensions::{Extension, ExtensionProvider};
 use http::HeaderMap;
-use std::convert::Infallible;
+use httparse::Response;
+use thiserror::Error;
 
-#[allow(dead_code)]
-#[derive(Debug, PartialEq)]
-pub enum WebsocketExtension {
-    None,
-    Deflate,
-}
+pub struct DeflateHandshake;
 
-pub struct NoExtProxy;
-impl ExtensionProvider for NoExtProxy {
-    type Extension = NoExt;
-    type Error = Infallible;
+#[derive(Error, Debug)]
+#[error("Err")]
+pub struct DeflateError;
 
-    fn apply_headers(&self, _headers: &mut HeaderMap) {}
+impl ExtensionProvider for DeflateHandshake {
+    type Extension = Deflate;
+    type Error = DeflateError;
 
-    fn negotiate(&self, _response: &httparse::Response) -> Result<Self::Extension, Self::Error> {
-        Ok(NoExt)
+    fn apply_headers(&self, _headers: &mut HeaderMap) {
+        todo!()
+    }
+
+    fn negotiate(&self, _response: &Response) -> Result<Self::Extension, Self::Error> {
+        Ok(Deflate)
     }
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct NoExt;
-impl Extension for NoExt {
-    fn encode(&mut self) {}
+#[derive(Debug, Clone)]
+pub struct Deflate;
+impl Extension for Deflate {
+    fn encode(&mut self) {
+        todo!()
+    }
 
-    fn decode(&mut self) {}
+    fn decode(&mut self) {
+        todo!()
+    }
 }

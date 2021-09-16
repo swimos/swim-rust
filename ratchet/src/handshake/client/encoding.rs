@@ -1,5 +1,19 @@
+// Copyright 2015-2021 SWIM.AI inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 use crate::errors::{Error, ErrorKind, HttpError};
-use crate::extensions::ExtensionHandshake;
+use crate::extensions::ExtensionProvider;
 use crate::handshake::client::Nonce;
 use crate::handshake::{
     ProtocolRegistry, SubprotocolApplicator, UPGRADE_STR, WEBSOCKET_STR, WEBSOCKET_VERSION_STR,
@@ -8,16 +22,17 @@ use base64::encode_config_slice;
 use bytes::{BufMut, BytesMut};
 use http::header::{AsHeaderName, HeaderName, IntoHeaderName};
 use http::request::Parts;
-use http::{header, HeaderMap, HeaderValue, Method, Request, Uri, Version};
+use http::{header, HeaderMap, HeaderValue, Method, Request, Version};
 
 pub fn encode_request(dst: &mut BytesMut, request: ValidatedRequest, nonce_buffer: &mut Nonce) {
     let ValidatedRequest {
         version,
         headers,
-        uri,
+        path_and_query,
         host,
     } = request;
 
+    // todo replace with wyrand
     let nonce = rand::random::<[u8; 16]>();
     encode_config_slice(&nonce, base64::STANDARD, nonce_buffer);
 
@@ -30,7 +45,7 @@ Upgrade: websocket
 sec-websocket-version: 13
 sec-websocket-key: ",
         version = version,
-        path = uri.path(),
+        path = path_and_query,
         host = host,
     );
 
@@ -42,30 +57,31 @@ sec-websocket-key: ",
     let ext = write_header(&headers, header::SEC_WEBSOCKET_EXTENSIONS);
 
     if let Some((name, value)) = &origin {
-        len += name.len() + value.len();
+        len += name.len() + value.len() + 2;
     }
     if let Some((name, value)) = &protocol {
-        len += name.len() + value.len();
+        len += name.len() + value.len() + 2;
     }
     if let Some((name, value)) = &ext {
-        len += name.len() + value.len();
+        len += name.len() + value.len() + 2;
     }
 
     dst.reserve(len);
-
     dst.put_slice(request.as_bytes());
     dst.put_slice(nonce_buffer);
-    dst.put_slice(b"\r\n");
 
     if let Some((name, value)) = origin {
+        dst.put_slice(b"\r\n");
         dst.put_slice(name.as_bytes());
         dst.put_slice(value);
     }
     if let Some((name, value)) = protocol {
+        dst.put_slice(b"\r\n");
         dst.put_slice(name.as_bytes());
         dst.put_slice(value);
     }
     if let Some((name, value)) = ext {
+        dst.put_slice(b"\r\n");
         dst.put_slice(name.as_bytes());
         dst.put_slice(value);
     }
@@ -84,7 +100,7 @@ fn write_header(headers: &HeaderMap<HeaderValue>, name: HeaderName) -> Option<(S
 pub struct ValidatedRequest {
     version: Version,
     headers: HeaderMap,
-    uri: Uri,
+    path_and_query: String,
     host: String,
 }
 
@@ -95,7 +111,7 @@ pub fn build_request<E>(
     subprotocols: &ProtocolRegistry,
 ) -> Result<ValidatedRequest, Error>
 where
-    E: ExtensionHandshake,
+    E: ExtensionProvider,
 {
     let (parts, _body) = request.into_parts();
     let Parts {
@@ -116,6 +132,17 @@ where
             HttpError::HttpVersion(None),
         ));
     }
+
+    let authority = uri
+        .authority()
+        .ok_or(Error::with_cause(ErrorKind::Http, "Missing authority"))?
+        .as_str()
+        .to_string();
+    validate_or_insert(
+        &mut headers,
+        header::HOST,
+        HeaderValue::from_str(authority.as_ref())?,
+    )?;
 
     validate_or_insert(
         &mut headers,
@@ -171,7 +198,15 @@ where
     }
 
     let host = uri
-        .host()
+        .authority()
+        .ok_or(Error::with_cause(
+            ErrorKind::Http,
+            HttpError::MalformattedUri,
+        ))?
+        .to_string();
+
+    let path_and_query = uri
+        .path_and_query()
         .ok_or(Error::with_cause(
             ErrorKind::Http,
             HttpError::MalformattedUri,
@@ -181,7 +216,7 @@ where
     Ok(ValidatedRequest {
         version,
         headers,
-        uri,
+        path_and_query,
         host,
     })
 }

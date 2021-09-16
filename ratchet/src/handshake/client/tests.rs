@@ -1,6 +1,20 @@
+// Copyright 2015-2021 SWIM.AI inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 use crate::errors::{Error, HttpError};
 use crate::extensions::ext::{NoExt, NoExtProxy};
-use crate::extensions::{ExtHandshakeErr, Extension, ExtensionHandshake, NegotiatedExtension};
+use crate::extensions::{Extension, ExtensionProvider};
 use crate::fixture::mock;
 use crate::handshake::client::{ClientHandshake, HandshakeResult};
 use crate::handshake::{ProtocolError, ProtocolRegistry, ACCEPT_KEY, UPGRADE_STR, WEBSOCKET_STR};
@@ -23,17 +37,23 @@ const TEST_URL: &str = "ws://127.0.0.1:9001/test";
 async fn handshake_sends_valid_request() {
     let request = TEST_URL.try_into_request().unwrap();
     let (mut peer, mut stream) = mock();
-
-    let mut machine =
-        ClientHandshake::new(&mut stream, ProtocolRegistry::new(vec!["warp"]), NoExtProxy);
-    machine.encode(request).unwrap();
-    machine.buffered.write().await.unwrap();
+    let mut buf = BytesMut::new();
+    let mut machine = ClientHandshake::new(
+        &mut stream,
+        ProtocolRegistry::new(vec!["warp"]),
+        NoExtProxy,
+        &mut buf,
+    );
+    machine.encode(request).expect("");
+    machine.buffered.write().await.expect("");
 
     let mut headers = [httparse::EMPTY_HEADER; 32];
     let mut request = httparse::Request::new(&mut headers);
 
     let mut buf = BytesMut::with_capacity(1024);
     peer.read_buf(&mut buf).await.unwrap();
+
+    println!("{}", std::str::from_utf8(buf.as_ref()).unwrap());
 
     assert!(matches!(request.parse(&mut buf), Ok(Status::Complete(_))));
 
@@ -59,9 +79,13 @@ fn assert_header(headers: &mut [Header<'_>], name: &str, expected: &str) {
 async fn handshake_invalid_requests() {
     async fn test(request: Request<()>) {
         let (mut peer, mut stream) = mock();
-
-        let mut machine =
-            ClientHandshake::new(&mut stream, ProtocolRegistry::default(), NoExtProxy);
+        let mut buf = BytesMut::new();
+        let mut machine = ClientHandshake::new(
+            &mut stream,
+            ProtocolRegistry::default(),
+            NoExtProxy,
+            &mut buf,
+        );
         machine
             .encode(request)
             .expect_err("Expected encoding to fail");
@@ -112,8 +136,13 @@ async fn expect_server_error(response: Response<()>, expected_error: HttpError) 
     let (server_tx, server_rx) = trigger::trigger();
 
     let client_task = async move {
-        let mut machine =
-            ClientHandshake::new(&mut stream, ProtocolRegistry::default(), NoExtProxy);
+        let mut buf = BytesMut::new();
+        let mut machine = ClientHandshake::new(
+            &mut stream,
+            ProtocolRegistry::default(),
+            NoExtProxy,
+            &mut buf,
+        );
         machine
             .encode(Request::get(TEST_URL).body(()).unwrap())
             .unwrap();
@@ -207,8 +236,13 @@ async fn ok_nonce() {
     let (server_tx, server_rx) = trigger::trigger();
 
     let client_task = async move {
-        let mut machine =
-            ClientHandshake::new(&mut stream, ProtocolRegistry::default(), NoExtProxy);
+        let mut buf = BytesMut::new();
+        let mut machine = ClientHandshake::new(
+            &mut stream,
+            ProtocolRegistry::default(),
+            NoExtProxy,
+            &mut buf,
+        );
         machine
             .encode(Request::get(TEST_URL).body(()).unwrap())
             .unwrap();
@@ -270,8 +304,13 @@ async fn redirection() {
     let (server_tx, server_rx) = trigger::trigger();
 
     let client_task = async move {
-        let mut machine =
-            ClientHandshake::new(&mut stream, ProtocolRegistry::default(), NoExtProxy);
+        let mut buf = BytesMut::new();
+        let mut machine = ClientHandshake::new(
+            &mut stream,
+            ProtocolRegistry::default(),
+            NoExtProxy,
+            &mut buf,
+        );
         machine
             .encode(Request::get(TEST_URL).body(()).unwrap())
             .unwrap();
@@ -324,8 +363,14 @@ where
     let (server_tx, server_rx) = trigger::trigger();
 
     let client_task = async move {
-        let mut machine =
-            ClientHandshake::new(&mut stream, ProtocolRegistry::new(registry), NoExtProxy);
+        let mut buf = BytesMut::new();
+
+        let mut machine = ClientHandshake::new(
+            &mut stream,
+            ProtocolRegistry::new(registry),
+            NoExtProxy,
+            &mut buf,
+        );
         machine
             .encode(Request::get(TEST_URL).body(()).unwrap())
             .unwrap();
@@ -402,15 +447,20 @@ async fn disjoint_protocols() {
     .await;
 }
 
+#[derive(thiserror::Error, Debug)]
+#[error("Extension error")]
+struct ExtHandshakeErr;
+
 struct MockExtensionProxy<R>(&'static [(HeaderName, &'static str)], R)
 where
-    R: for<'h> Fn(&'h httparse::Response) -> Result<Option<MockExtension>, ExtHandshakeErr>;
+    R: for<'h> Fn(&'h httparse::Response) -> Result<MockExtension, ExtHandshakeErr>;
 
-impl<R> ExtensionHandshake for MockExtensionProxy<R>
+impl<R> ExtensionProvider for MockExtensionProxy<R>
 where
-    R: for<'h> Fn(&'h httparse::Response) -> Result<Option<MockExtension>, ExtHandshakeErr>,
+    R: for<'h> Fn(&'h httparse::Response) -> Result<MockExtension, ExtHandshakeErr>,
 {
     type Extension = MockExtension;
+    type Error = ExtHandshakeErr;
 
     fn apply_headers(&self, header_map: &mut HeaderMap) {
         for (name, value) in self.0 {
@@ -418,16 +468,13 @@ where
         }
     }
 
-    fn negotiate(
-        &self,
-        response: &httparse::Response,
-    ) -> Result<Option<Self::Extension>, ExtHandshakeErr> {
+    fn negotiate(&self, response: &httparse::Response) -> Result<Self::Extension, ExtHandshakeErr> {
         (self.1)(response)
     }
 }
 
-#[derive(Debug, PartialEq)]
-struct MockExtension;
+#[derive(Clone, Debug, PartialEq)]
+struct MockExtension(bool);
 impl Extension for MockExtension {
     fn encode(&mut self) {
         panic!("Unexpected encode invocation")
@@ -440,7 +487,7 @@ impl Extension for MockExtension {
 
 async fn extension_test<E, F, R>(ext: E, response_fn: F, result_fn: R)
 where
-    E: ExtensionHandshake,
+    E: ExtensionProvider,
     F: Fn(&mut Response<()>),
     R: Fn(Result<HandshakeResult<E::Extension>, Error>),
 {
@@ -450,7 +497,9 @@ where
     let (server_tx, server_rx) = trigger::trigger();
 
     let client_task = async move {
-        let mut machine = ClientHandshake::new(&mut stream, ProtocolRegistry::default(), ext);
+        let mut buf = BytesMut::new();
+        let mut machine =
+            ClientHandshake::new(&mut stream, ProtocolRegistry::default(), ext, &mut buf);
         machine
             .encode(Request::get(TEST_URL).body(()).unwrap())
             .unwrap();
@@ -521,7 +570,7 @@ async fn negotiates_extension() {
                 let value = String::from_utf8(header.value.to_vec())
                     .expect("Server returned invalid UTF-8");
                 if value == EXT {
-                    Ok(Some(MockExtension))
+                    Ok(MockExtension(true))
                 } else {
                     panic!(
                         "Server returned an invalid sec-websocket-extensions header: `{:?}`",
@@ -544,11 +593,7 @@ async fn negotiates_extension() {
             );
         },
         |result| match result {
-            Ok(handshake_result) => {
-                if let NegotiatedExtension::None(_) = handshake_result.extension {
-                    panic!("No extension negotiated")
-                }
-            }
+            Ok(handshake_result) => assert!(handshake_result.extension.0),
             Err(e) => {
                 panic!("Expected a valid upgrade: {:?}", e)
             }
@@ -560,17 +605,13 @@ async fn negotiates_extension() {
 #[tokio::test]
 async fn negotiates_no_extension() {
     const HEADERS: &'static [(HeaderName, &'static str)] = &[];
-    let extension_proxy = MockExtensionProxy(&HEADERS, |_| Ok(None));
+    let extension_proxy = MockExtensionProxy(&HEADERS, |_| Ok(MockExtension(false)));
 
     extension_test(
         extension_proxy,
         |_| {},
         |result| match result {
-            Ok(handshake_result) => {
-                if let NegotiatedExtension::Negotiated(_) = handshake_result.extension {
-                    panic!("Unexpected extension negotiated")
-                }
-            }
+            Ok(handshake_result) => assert!(!handshake_result.extension.0),
             Err(e) => {
                 panic!("Expected a valid upgrade: {:?}", e)
             }
