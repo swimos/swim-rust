@@ -23,6 +23,7 @@ use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, Tag
 use crate::agent::store::mock::MockNodeStore;
 use crate::agent::store::SwimNodeStore;
 use crate::agent::Eff;
+use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
 use crate::plane::store::mock::MockPlaneStore;
 use crate::routing::error::RouterError;
 use crate::routing::{
@@ -37,7 +38,8 @@ use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_common::form::{Form, FormErr};
+use swim_common::form::structural::read::ReadError;
+use swim_common::form::Form;
 use swim_common::model::Value;
 use swim_common::routing::ResolutionError;
 use swim_common::routing::RoutingError;
@@ -47,25 +49,17 @@ use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Barrier};
+use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
+use utilities::instant::AtomicInstant;
 use utilities::sync::{promise, topic};
 use utilities::uri::RelativeUri;
 
 const INIT: i32 = 42;
 
-#[derive(Debug)]
+#[derive(Debug, Form)]
 struct Message(i32);
-
-impl Form for Message {
-    fn as_value(&self) -> Value {
-        Value::Int32Value(self.0)
-    }
-
-    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
-        i32::try_from_value(value).map(|n| Message(n))
-    }
-}
 
 //A minimal suite of fake uplink and router implementations which which to test the spawner.
 
@@ -146,7 +140,7 @@ impl UplinkStateMachine<i32> for TestStateMachine {
         if event >= 0 {
             Ok(Some(Message(event)))
         } else {
-            Err(UplinkError::InconsistentForm(FormErr::Malformatted))
+            Err(UplinkError::InconsistentForm(ReadError::UnexpectedItem))
         }
     }
 
@@ -296,7 +290,14 @@ impl UplinkSpawnerSplitOutputs {
 }
 
 fn make_config() -> AgentExecutionConfig {
-    AgentExecutionConfig::with(default_buffer(), 1, 1, Duration::from_secs(5), None)
+    AgentExecutionConfig::with(
+        default_buffer(),
+        1,
+        1,
+        Duration::from_secs(5),
+        None,
+        Duration::from_secs(60),
+    )
 }
 
 struct TestContext {
@@ -304,6 +305,7 @@ struct TestContext {
     messages: mpsc::Sender<TaggedEnvelope>,
     _drop_tx: promise::Sender<ConnectionDropped>,
     drop_rx: promise::Receiver<ConnectionDropped>,
+    uplinks_idle_since: Arc<AtomicInstant>,
 }
 
 impl TestContext {
@@ -314,6 +316,7 @@ impl TestContext {
             messages,
             _drop_tx: drop_tx,
             drop_rx,
+            uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now())),
         }
     }
 }
@@ -334,6 +337,14 @@ impl AgentExecutionContext for TestContext {
 
     fn spawner(&self) -> Sender<Eff> {
         self.spawner.clone()
+    }
+
+    fn metrics(&self) -> NodeMetricAggregator {
+        aggregator_sink()
+    }
+
+    fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
+        &self.uplinks_idle_since
     }
 
     fn store(&self) -> Self::Store {
@@ -365,8 +376,9 @@ fn make_test_harness() -> (
     let channels = UplinkChannels::new(rx_event.subscriber(), rx_act, error_tx);
 
     let context = TestContext::new(spawn_tx, tx_router);
+    let observer = context.metrics().uplink_observer_for_path(route().clone());
 
-    let spawner_task = factory.make_task(handler, channels, route(), &context);
+    let spawner_task = factory.make_task(handler, channels, route(), &context, observer);
 
     let errs = join3(spawn_task, spawner_task, error_task)
         .map(|(_, _, errs)| errs)
@@ -663,6 +675,6 @@ async fn uplink_failure() {
 
     let (_, errs) = join(io_task, spawn_task).await;
     assert!(
-        matches!(errs.as_slice(), [UplinkErrorReport { error: UplinkError::InconsistentForm(FormErr::Malformatted), addr: a }] if *a == addr)
+        matches!(errs.as_slice(), [UplinkErrorReport { error: UplinkError::InconsistentForm(ReadError::UnexpectedItem), addr: a }] if *a == addr)
     );
 }

@@ -19,13 +19,20 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use store::{serialize, Store, StoreError, StoreInfo};
+use futures::future::BoxFuture;
+use futures::FutureExt;
+
+use store::keyspaces::Keyspaces;
+use store::{serialize, EngineInfo, Store, StoreError};
 use swim_common::model::text::Text;
 
 use crate::agent::store::{NodeStore, SwimNodeStore};
 use crate::store::keystore::KeyStore;
+use crate::store::keystore::{KeyStore, KeystoreTask};
 use crate::store::{KeyspaceName, StoreEngine, StoreKey};
 use store::engines::KeyedSnapshot;
 use store::keyspaces::{Keyspace, KeyspaceRangedSnapshotLoad, KeyspaceResolver, Keyspaces};
+use store::engines::StoreBuilder;
 
 pub mod mock;
 
@@ -48,15 +55,7 @@ where
 /// A trait for defining plane stores which will create node stores.
 pub trait PlaneStore
 where
-    Self: StoreEngine
-        + KeyspaceResolver
-        + KeyspaceRangedSnapshotLoad
-        + Sized
-        + Debug
-        + Send
-        + Sync
-        + Clone
-        + 'static,
+    Self: StoreEngine + Sized + KeyspaceRangedSnapshotLoad+Debug + Send + Sync + Clone + 'static,
 {
     /// The type of node stores which are created.
     type NodeStore: NodeStore;
@@ -66,8 +65,21 @@ where
     where
         I: Into<Text>;
 
+    /// Executes a ranged snapshot read prefixed by a lane key and deserialize each key-value pair
+    /// using `map_fn`.
+    ///
+    /// Returns an optional snapshot iterator if entries were found that will yield deserialized
+    /// key-value pairs.
+    fn get_prefix_range<F, K, V>(
+        &self,
+        prefix: StoreKey,
+        map_fn: F,
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>;
+
     /// Returns information about the delegate store
-    fn store_info(&self) -> StoreInfo;
+    fn engine_info(&self) -> EngineInfo;
 
     fn node_id_of<I>(&self, node: I) -> Result<u64, StoreError>
     where
@@ -75,9 +87,6 @@ where
 }
 
 /// A store engine for planes.
-///
-/// Backed by a value store and a map store, any operations on this store have their key variant
-/// checked and the operation is delegated to the corresponding store.
 pub struct SwimPlaneStore<D> {
     /// The name of the plane.
     plane_name: Text,
@@ -127,42 +136,42 @@ where
         SwimNodeStore::new(self.clone(), node)
     }
 
+    fn get_prefix_range<F, K, V>(
+        &self,
+        prefix: StoreKey,
+        map_fn: F,
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+    {
+        let namespace = match &prefix {
+            StoreKey::Map { .. } => KeyspaceName::Map,
+            StoreKey::Value { .. } => KeyspaceName::Value,
+        };
+
+        self.delegate
+            .get_prefix_range(namespace, serialize(&prefix)?.as_slice(), map_fn)
+    }
+
     fn store_info(&self) -> StoreInfo {
         self.delegate.store_info()
     }
 
-    fn node_id_of<I>(&self, node: I) -> Result<u64, StoreError>
+    fn lane_id_of<I>(&self, lane: I) -> BoxFuture<KeyType>
     where
         I: Into<String>,
     {
-        self.keystore.id_for(node.into())
+        self.keystore.id_for(lane.into()).boxed()
     }
 }
 
-impl<D: Store> KeyspaceResolver for SwimPlaneStore<D> {
-    type ResolvedKeyspace = D::ResolvedKeyspace;
-
-    fn resolve_keyspace<K: Keyspace>(&self, space: &K) -> Option<&Self::ResolvedKeyspace> {
-        self.delegate.resolve_keyspace(space)
-    }
-}
-
-impl<D> KeyspaceRangedSnapshotLoad for SwimPlaneStore<D>
-where
-    D: Store,
-{
-    fn keyspace_load_ranged_snapshot<F, K, V, S>(
-        &self,
-        keyspace: &S,
-        prefix: &[u8],
-        map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
+impl<D: Store> KeystoreTask for SwimPlaneStore<D> {
+    fn run<DB, S>(_db: Arc<DB>, _events: S) -> BoxFuture<'static, Result<(), StoreError>>
     where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-        S: Keyspace,
+        DB: KeyspaceByteEngine,
+        S: Stream<Item = KeyRequest> + Unpin + Send + 'static,
     {
-        self.delegate
-            .keyspace_load_ranged_snapshot(keyspace, prefix, map_fn)
+        unimplemented!()
     }
 }
 
@@ -187,47 +196,50 @@ impl<D: Store> StoreEngine for SwimPlaneStore<D> {
     }
 }
 
+pub(crate) fn open_plane<B, P, D>(
+    base_path: B,
+    plane_name: P,
+    builder: D,
+    keyspaces: Keyspaces<D>,
+) -> Result<SwimPlaneStore<D::Store>, StoreError>
+where
+    B: AsRef<Path>,
+    P: AsRef<Path>,
+    D: StoreBuilder,
+    D::Store: KeystoreTask,
+{
+    let path = path_for(base_path.as_ref(), plane_name.as_ref());
+    let delegate = builder.build(path, &keyspaces)?;
+    let plane_name = match plane_name.as_ref().to_str() {
+        Some(path) => path.to_string(),
+        None => {
+            return Err(StoreError::Io(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Expected a valid UTF-8 path",
+            )));
+        }
+    };
+
+    let arcd_delegate = Arc::new(delegate);
+    // todo config
+    let keystore = KeyStore::new(arcd_delegate.clone(), NonZeroUsize::new(8).unwrap());
+
+    Ok(SwimPlaneStore::new(plane_name, arcd_delegate, keystore))
+}
+
 impl<D> SwimPlaneStore<D>
 where
-    D: Store,
+    D: Store + KeystoreTask,
 {
     pub(crate) fn new<I: Into<Text>>(
         plane_name: I,
         delegate: Arc<D>,
-        keystore: KeyStore<D>,
+        keystore: KeyStore,
     ) -> SwimPlaneStore<D> {
         SwimPlaneStore {
             plane_name: plane_name.into(),
             delegate,
             keystore,
         }
-    }
-
-    pub(crate) fn open<B, P>(
-        base_path: B,
-        plane_name: P,
-        db_opts: &D::Opts,
-        keyspaces: Keyspaces<D>,
-    ) -> Result<SwimPlaneStore<D>, StoreError>
-    where
-        B: AsRef<Path>,
-        P: AsRef<Path>,
-    {
-        let path = path_for(base_path.as_ref(), plane_name.as_ref());
-        let delegate = D::from_keyspaces(&path, db_opts, keyspaces)?;
-        let plane_name = match plane_name.as_ref().to_str() {
-            Some(path) => path.to_string(),
-            None => {
-                return Err(StoreError::Io(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "Expected a valid UTF-8 path",
-                )));
-            }
-        };
-
-        let arcd_delegate = Arc::new(delegate);
-        let keystore = KeyStore::initialise_with(arcd_delegate.clone());
-
-        Ok(Self::new(plane_name, arcd_delegate, keystore))
     }
 }

@@ -19,7 +19,7 @@ pub use nostore::{NoStore, NoStoreOpts};
 pub use rocks::{RocksEngine, RocksIterator, RocksOpts, RocksPrefixIterator};
 
 use crate::keyspaces::Keyspaces;
-use crate::StoreError;
+use crate::{Store, StoreError};
 
 mod nostore;
 mod rocks;
@@ -36,25 +36,14 @@ pub trait ByteEngine: 'static {
     fn delete(&self, key: &[u8]) -> Result<(), StoreError>;
 }
 
-/// A trait for building stores from their keyspace definitions..
-pub trait FromKeyspaces: Sized {
-    /// Store environment open options. For some delegates, this may not be used - such as libmdbx.
-    type Opts: Default + Clone;
+pub trait StoreBuilder: Sized + Clone {
+    type Store: Store;
 
-    /// Build a store from options.
-    ///
-    /// Errors if there was an issue opening the store.
-    ///
-    /// # Arguments:
-    /// `path`: the path that this store should open in.
-    /// `opts`: the options.
-    /// `keyspaces`: a set of keyspaces to open.
-    fn from_keyspaces<I: AsRef<Path>>(
-        path: I,
-        db_opts: &Self::Opts,
-        keyspaces: Keyspaces<Self>,
-    ) -> Result<Self, StoreError>;
+    fn build<I>(self, path: I, keyspaces: &Keyspaces<Self>) -> Result<Self::Store, StoreError>
+    where
+        I: AsRef<Path>;
 }
+
 
 /// An owned snapshot of deserialized keys and values produced by `RangedSnapshot`.
 #[derive(Debug)]

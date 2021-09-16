@@ -14,55 +14,22 @@
 
 #![allow(clippy::match_wild_err_arm)]
 
-use core::fmt::Display;
-use std::error::Error;
-use std::fmt::Formatter;
-
 #[doc(hidden)]
 #[allow(unused_imports)]
-pub use form_derive::*;
+pub use form_derive::{Form, ValidatedForm};
 
+use crate::form::structural::read::recognizer::{MappedRecognizer, RecognizerReadable};
+use crate::form::structural::read::{ReadError, StructuralReadable};
+use crate::form::structural::write::{StructuralWritable, StructuralWriter};
 use crate::model::schema::StandardSchema;
 use crate::model::Value;
 
 pub mod impls;
 pub mod macros;
+pub mod structural;
 
 #[cfg(test)]
 mod tests;
-
-#[derive(Debug, Clone, PartialOrd, PartialEq, Eq)]
-pub enum FormErr {
-    MismatchedTag,
-    IncorrectType(String),
-    Malformatted,
-    Message(String),
-    DuplicateField(String),
-}
-
-impl FormErr {
-    pub fn incorrect_type(expected: &'static str, actual: &Value) -> FormErr {
-        FormErr::IncorrectType(format!("Expected: {}, found: {}", expected, actual.kind()))
-    }
-
-    pub fn message<I: Into<String>>(msg: I) -> FormErr {
-        FormErr::Message(msg.into())
-    }
-}
-
-impl Error for FormErr {}
-
-impl Display for FormErr {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            FormErr::IncorrectType(s) => write!(f, "Incorrect type: {}", s),
-            FormErr::Malformatted => write!(f, "Malformatted"),
-            FormErr::Message(msg) => write!(f, "{}", msg),
-            FormErr::MismatchedTag => write!(f, "Incorrect tag"),
-            FormErr::DuplicateField(field) => write!(f, "Duplicate field {}", field),
-        }
-    }
-}
 
 /// A `Form` transforms between a Rust object and a structurally typed `Value`. Swim forms
 /// provide a derive macro to generate an implementation of `Form` for a structure providing all
@@ -328,23 +295,29 @@ impl Display for FormErr {
 /// );
 /// assert_eq!(structure.as_value(), rec);
 /// ```
-pub trait Form: Sized {
+pub trait Form: StructuralReadable + StructuralWritable {
     /// Returns this object represented as a value.
-    fn as_value(&self) -> Value;
+    fn as_value(&self) -> Value {
+        self.structure()
+    }
 
     /// Consume this object and return it represented as a value.
     fn into_value(self) -> Value {
-        self.as_value()
+        self.into_structure()
     }
 
     /// Attempt to create a new instance of this object from the provided `Value` instance.
-    fn try_from_value(value: &Value) -> Result<Self, FormErr>;
+    fn try_from_value(value: &Value) -> Result<Self, ReadError> {
+        Self::try_read_from(value)
+    }
 
     /// Consume the `Value` and attempt to create a new instance of this object from it.
-    fn try_convert(value: Value) -> Result<Self, FormErr> {
-        Form::try_from_value(&value)
+    fn try_convert(value: Value) -> Result<Self, ReadError> {
+        Self::try_transform(value)
     }
 }
+
+impl<T: StructuralReadable + StructuralWritable> Form for T {}
 
 /// A `Form` with an associated schema that can validate `Value` instances without attempting
 /// to convert them.
@@ -757,28 +730,10 @@ pub trait Form: Sized {
 /// ```
 /// Negates the result of a schema.
 ///
-pub trait ValidatedForm: Form {
+pub trait ValidatedForm {
     /// A schema for the form. If the schema returns true for a `Value` the form should be able
     /// to create an instance of the type from the `Value` without generating an error.
     fn schema() -> StandardSchema;
-}
-
-impl Form for Value {
-    fn as_value(&self) -> Value {
-        self.clone()
-    }
-
-    fn into_value(self) -> Value {
-        self
-    }
-
-    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
-        Ok(value.clone())
-    }
-
-    fn try_convert(value: Value) -> Result<Self, FormErr> {
-        Ok(value)
-    }
 }
 
 impl ValidatedForm for Value {
@@ -787,124 +742,70 @@ impl ValidatedForm for Value {
     }
 }
 
-/// A tag for a field in a form. When deriving the `Form` trait, a field that is annotated with
-/// `#[form(tag)]` will be converted into a string and replace the original structure's name.
-///
-/// ```
-/// use swim_common::form::{Form, Tag};
-/// use swim_common::model::{Value, Item, Attr};
-/// use swim_common::model::time::Timestamp;
-///
-/// #[derive(Tag, Clone)]
-/// enum Level {
-///     Info,
-///     Warn
-/// }
-///
-/// #[derive(Form)]
-/// struct LogEntry {
-///     #[form(tag)]
-///     level: Level,
-///     #[form(header)]
-///     time: Timestamp,
-///     message: String,
-/// }
-///
-/// let now = Timestamp::now();
-///
-/// let entry = LogEntry {
-///     level: Level::Info,
-///     time: now,
-///     message: String::from("message"),
-/// };
-///
-/// assert_eq!(
-///     entry.as_value(),
-///     Value::Record(
-///         vec![Attr::of((
-///             "info",
-///             Value::from_vec(vec![Item::Slot(Value::text("time"), now.as_value())])
-///         ))],
-///         vec![Item::Slot(Value::text("message"), Value::text("message"))]
-///     )
-/// )
-///
-/// ```
-///
-/// Tags can only be derived for enumerations and no variants may contain fields. The tagged
-/// structure must also implement `Clone`.
-pub trait Tag: Sized {
-    /// Produces an instance of this structure from the provided string.
-    fn from_string(tag: String) -> Result<Self, TagConversionError>;
+/// Trait for types that simply wrap another type to allow for a trivial implementation of
+/// [`Form`].
+pub trait NewTypeForm: Sized {
+    type Inner: Form;
 
-    /// Converts this instance into a string.
-    fn as_string(&self) -> String;
+    fn as_inner(&self) -> &Self::Inner;
+    fn into_inner(self) -> Self::Inner;
 
-    /// Returns an enumeration representing all of tag's variants.  
-    fn enumerated() -> Vec<Self>;
+    fn from_inner(inner: Self::Inner) -> Self;
 }
 
-/// An error produced when attempting to build a structure's tag or variant from a provided String
-/// fails.
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
-pub struct TagConversionError(pub String);
+impl<T> StructuralWritable for T
+where
+    T: NewTypeForm,
+{
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        self.as_inner().write_with(writer)
+    }
 
-impl Display for TagConversionError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "TagConversionError: {}", self.0)
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        self.into_inner().write_into(writer)
+    }
+
+    fn num_attributes(&self) -> usize {
+        self.as_inner().num_attributes()
     }
 }
 
-/// Maps an option to a Form error variant and returns if it is an error. This is useful when
-/// manually deriving Value -> T implementations.
-///
-/// ```
-/// use swim_common::model::{Value, Item};
-/// use swim_common::form::{FormErr, Form};
-/// use swim_common::ok;
-///
-/// struct Person {
-///    name: String,
-///    age: i32
-/// }
-///
-/// impl Form for Person {
-///     fn as_value(&self) -> Value {
-///         unimplemented!()
-///     }
-///
-///     fn try_from_value(value: &Value) -> Result<Self, FormErr> {
-///         match value {
-///             Value::Record(_attrs, items) => {
-///                 let mut item_iter = items.iter();
-///                 let mut name_opt= None;
-///                 let mut age_opt = None;
-///                     
-///                 while let Some(item) = item_iter.next() {
-///                     match item {
-///                         Item::Slot(Value::Text(id), Value::Text(name))=> if id == "name" {
-///                             name_opt = Some(name.to_string());
-///                         }
-///                         Item::Slot(Value::Text(id), Value::Int32Value(age))=> if id =="age" {
-///                             age_opt = Some(*age);                     
-///                         }
-///                         _ => panic!()          
-///                     }
-///                 }       
-///                 
-///                 Ok(Person {
-///                     name: ok!(name_opt),
-///                     age: ok!(age_opt),
-///                 })
-///             }
-///             _ => panic!()
-///         }
-///     }   
-/// }
-/// ```
-#[macro_export]
-macro_rules! ok {
-    ($e:expr) => {
-        $e.ok_or(FormErr::Malformatted)?
-    };
+pub type WrapNewType<T> = fn(<T as NewTypeForm>::Inner) -> T;
+
+impl<T> RecognizerReadable for T
+where
+    T: NewTypeForm,
+{
+    type Rec = MappedRecognizer<<T::Inner as RecognizerReadable>::Rec, WrapNewType<T>>;
+    type AttrRec = MappedRecognizer<<T::Inner as RecognizerReadable>::AttrRec, WrapNewType<T>>;
+    type BodyRec = MappedRecognizer<<T::Inner as RecognizerReadable>::BodyRec, WrapNewType<T>>;
+
+    fn make_recognizer() -> Self::Rec {
+        MappedRecognizer::new(
+            <T::Inner as RecognizerReadable>::make_recognizer(),
+            <T as NewTypeForm>::from_inner,
+        )
+    }
+
+    fn make_attr_recognizer() -> Self::AttrRec {
+        MappedRecognizer::new(
+            <T::Inner as RecognizerReadable>::make_attr_recognizer(),
+            <T as NewTypeForm>::from_inner,
+        )
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        MappedRecognizer::new(
+            <T::Inner as RecognizerReadable>::make_body_recognizer(),
+            <T as NewTypeForm>::from_inner,
+        )
+    }
+
+    fn on_absent() -> Option<Self> {
+        <T::Inner as RecognizerReadable>::on_absent().map(<T as NewTypeForm>::from_inner)
+    }
+
+    fn is_simple() -> bool {
+        <T::Inner as RecognizerReadable>::is_simple()
+    }
 }

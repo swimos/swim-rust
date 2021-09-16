@@ -15,8 +15,9 @@
 use num_bigint::BigInt;
 use num_traits::Float;
 
+use crate::form::structural::Tag;
+use crate::form::Form;
 use crate::form::ValidatedForm;
-use crate::form::{Form, Tag};
 use crate::model::schema::attr::AttrSchema;
 use crate::model::schema::slot::SlotSchema;
 use crate::model::schema::text::TextSchema;
@@ -26,7 +27,7 @@ use crate::model::schema::{FieldSpec, ItemSchema};
 use crate::model::Item;
 use crate::model::ValueKind;
 use crate::model::{Attr, Value};
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 mod swim_common {
@@ -1680,12 +1681,12 @@ fn test_vector() {
 fn test_hash_map() {
     #[derive(Form, ValidatedForm)]
     struct S {
-        v: BTreeMap<String, i32>,
+        v: HashMap<String, i32>,
     }
 
     let value = S {
         v: {
-            let mut map = BTreeMap::new();
+            let mut map = HashMap::new();
             map.insert("a".into(), 1);
             map.insert("b".into(), 2);
             map.insert("c".into(), 3);
@@ -1704,7 +1705,7 @@ fn test_hash_map() {
             items: vec![(
                 ItemSchema::Field(SlotSchema::new(
                     StandardSchema::text("v"),
-                    <BTreeMap<String, i32> as ValidatedForm>::schema(),
+                    <HashMap<String, i32> as ValidatedForm>::schema(),
                 )),
                 true,
             )],
@@ -1811,9 +1812,11 @@ fn test_nested() {
 
 #[test]
 fn tagged() {
-    #[derive(Clone, Tag)]
+    #[derive(Tag, Clone)]
     enum Level {
+        #[form(tag = "info")]
         Info,
+        #[form(tag = "trace")]
         Trace,
     }
 

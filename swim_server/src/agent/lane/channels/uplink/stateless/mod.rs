@@ -18,6 +18,7 @@ use crate::agent::lane::channels::uplink::{
     UplinkMessageSender,
 };
 use crate::agent::lane::channels::TaggedAction;
+use crate::meta::metric::uplink::UplinkObserver;
 use crate::routing::{RoutingAddr, ServerRouter, TaggedSender};
 use either::Either;
 use futures::{select_biased, Stream, StreamExt};
@@ -50,6 +51,7 @@ pub struct StatelessUplinks<S> {
     producer: S,
     route: RelativePath,
     uplink_kind: UplinkKind,
+    observer: UplinkObserver,
 }
 
 impl<S, F> StatelessUplinks<S>
@@ -57,11 +59,17 @@ where
     S: Stream<Item = AddressedUplinkMessage<F>>,
     F: Send + Sync + Form + 'static,
 {
-    pub fn new(producer: S, route: RelativePath, uplink_kind: UplinkKind) -> Self {
+    pub fn new(
+        producer: S,
+        route: RelativePath,
+        uplink_kind: UplinkKind,
+        observer: UplinkObserver,
+    ) -> Self {
         StatelessUplinks {
             producer,
             route,
             uplink_kind,
+            observer,
         }
     }
 }
@@ -84,6 +92,7 @@ where
             route,
             producer,
             uplink_kind,
+            observer,
         } = self;
         let mut uplinks: Uplinks<F, Router> = Uplinks::new(router, err_tx, route);
 
@@ -155,11 +164,13 @@ where
                             }
                         }
 
+                        observer.did_open();
                         if uplinks.insert(addr).await.is_err() {
                             break;
                         }
                     }
                     UplinkAction::Unlink => {
+                        observer.did_close();
                         format_debug_event(uplink_kind, UNLINKING);
                         if uplinks.unlink(addr).await.is_err() {
                             break;

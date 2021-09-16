@@ -16,7 +16,7 @@
 mod tests;
 
 use http::uri::{InvalidUri, Uri};
-use std::borrow::{Borrow, BorrowMut};
+use std::borrow::{Borrow, BorrowMut, Cow};
 use std::cmp::Ordering;
 use std::convert::{Infallible, TryFrom};
 use std::fmt::{Debug, Display, Formatter};
@@ -240,6 +240,15 @@ impl From<Box<str>> for Text {
 impl From<Box<Text>> for Text {
     fn from(boxed: Box<Text>) -> Self {
         *boxed
+    }
+}
+
+impl<'a> From<Cow<'a, str>> for Text {
+    fn from(cow: Cow<'a, str>) -> Self {
+        match cow {
+            Cow::Borrowed(str) => Text::from(str),
+            Cow::Owned(str) => Text::from_string(str),
+        }
     }
 }
 

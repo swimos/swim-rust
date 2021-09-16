@@ -13,11 +13,12 @@
 // limitations under the License.
 
 use crate::agent::lane::store::error::{LaneStoreErrorReport, StoreErrorHandler};
-use futures::future::BoxFuture;
+use futures::future::{ready, BoxFuture};
 
 #[cfg(test)]
 mod tests;
 
+use futures::FutureExt;
 #[cfg(test)]
 pub use tests::store_err_partial_eq;
 
@@ -51,7 +52,7 @@ impl StoreIo for LaneNoStore {
         self,
         _error_handler: StoreErrorHandler,
     ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>> {
-        Box::pin(async move { Ok(()) })
+        ready(Ok(())).boxed()
     }
 
     fn attach_boxed(

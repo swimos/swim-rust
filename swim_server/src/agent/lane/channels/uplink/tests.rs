@@ -32,14 +32,16 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use stm::transaction::TransactionError;
-use swim_common::form::{Form, FormErr};
+use swim_common::form::structural::read::ReadError;
+use swim_common::form::Form;
 use swim_common::model::Value;
 use swim_common::sink::item;
 use swim_warp::model::map::MapUpdate;
 use tokio::sync::mpsc;
-use tokio::time::timeout;
+use tokio::time::{timeout, Instant};
 use tokio_stream::wrappers::ReceiverStream;
 use utilities::future::SwimStreamExt;
+use utilities::instant::AtomicInstant;
 use utilities::sync::trigger;
 
 fn buffer_size() -> NonZeroUsize {
@@ -108,7 +110,8 @@ async fn uplink_not_linked() {
 
     let (tx_event, rx_event) = mpsc::channel(5);
 
-    let uplink_task = uplink.run_uplink(item::for_mpsc_sender(tx_event));
+    let uplinks_idle_since = Arc::new(AtomicInstant::new(Instant::now()));
+    let uplink_task = uplink.run_uplink(item::for_mpsc_sender(tx_event), uplinks_idle_since);
 
     let send_task = async move {
         lane.store(12).await;
@@ -152,7 +155,8 @@ async fn uplink_open_to_linked() {
 
     let (tx_event, rx_event) = mpsc::channel(5);
 
-    let uplink_task = uplink.run_uplink(item::for_mpsc_sender(tx_event));
+    let uplinks_idle_since = Arc::new(AtomicInstant::new(Instant::now()));
+    let uplink_task = uplink.run_uplink(item::for_mpsc_sender(tx_event), uplinks_idle_since);
 
     let send_task = async move {
         lane.store(12).await;
@@ -202,7 +206,8 @@ async fn uplink_open_to_synced() {
 
     let (tx_event, rx_event) = mpsc::channel(5);
 
-    let uplink_task = uplink.run_uplink(item::for_mpsc_sender(tx_event));
+    let uplinks_idle_since = Arc::new(AtomicInstant::new(Instant::now()));
+    let uplink_task = uplink.run_uplink(item::for_mpsc_sender(tx_event), uplinks_idle_since);
 
     let send_task = async move {
         lane.store(12).await;
@@ -426,8 +431,11 @@ fn uplink_error_display() {
     assert_eq!(format!("{}", UplinkError::FailedTransaction(TransactionError::InvalidRetry)), 
                "The uplink failed to execute a transaction: Retry on transaction with no data dependencies.");
     assert_eq!(
-        format!("{}", UplinkError::InconsistentForm(FormErr::Malformatted)),
-        "A form implementation used by a lane is inconsistent: Malformatted"
+        format!(
+            "{}",
+            UplinkError::InconsistentForm(ReadError::UnexpectedItem)
+        ),
+        "A form implementation used by a lane is inconsistent: Unexpected item in record."
     );
     assert_eq!(
         format!("{}", UplinkError::ChannelDropped),
@@ -447,9 +455,9 @@ fn uplink_error_from_map_sync_error() {
         err1,
         UplinkError::FailedTransaction(TransactionError::InvalidRetry)
     ));
-    let err2: UplinkError = MapLaneSyncError::InconsistentForm(FormErr::Malformatted).into();
+    let err2: UplinkError = MapLaneSyncError::InconsistentForm(ReadError::UnexpectedItem).into();
     assert!(matches!(
         err2,
-        UplinkError::InconsistentForm(FormErr::Malformatted)
+        UplinkError::InconsistentForm(ReadError::UnexpectedItem)
     ));
 }

@@ -18,9 +18,11 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use store::keyspaces::{Keyspace, Keyspaces};
+use store::StoreError;
 use utilities::fs::Dir;
 
-use crate::plane::store::{PlaneStore, SwimPlaneStore};
+use crate::plane::store::{open_plane, PlaneStore, SwimPlaneStore};
 
 #[cfg(test)]
 pub mod mock;
@@ -29,6 +31,9 @@ pub mod keystore;
 mod nostore;
 mod rocks;
 
+use crate::store::keystore::KeystoreTask;
+pub use rocks::{default_db_opts, default_keyspaces, RocksDatabase, RocksOpts};
+use store::engines::StoreBuilder;
 pub use rocks::{default_db_opts, default_keyspaces, RocksDatabase};
 use store::keyspaces::{Keyspace, Keyspaces};
 use store::{Store, StoreError};
@@ -79,18 +84,21 @@ pub trait SwimStore {
 }
 
 /// A Swim server store that will open plane stores on request.
-pub struct ServerStore<D: Store> {
+pub struct ServerStore<D>
+where
+    D: StoreBuilder,
+{
     /// The directory that this store is operating from.
     dir: Dir,
     /// Database environment open options
-    db_opts: D::Opts,
+    builder: D,
     /// The keyspaces that all stores will be opened with.
     keyspaces: Keyspaces<D>,
 }
 
 impl<D> Debug for ServerStore<D>
 where
-    D: Store,
+    D: StoreBuilder,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ServerStore")
@@ -101,7 +109,7 @@ where
 
 impl<D> ServerStore<D>
 where
-    D: Store,
+    D: StoreBuilder,
 {
     /// Constructs a new server store that will open stores using `opts` and will use the directory
     /// `base_path` for opening all new stores.
@@ -109,13 +117,13 @@ where
     /// # Panics
     /// Panics if the directory cannot be created.
     pub fn new(
-        db_opts: D::Opts,
+        builder: D,
         keyspaces: Keyspaces<D>,
         base_path: PathBuf,
     ) -> io::Result<ServerStore<D>> {
         Ok(ServerStore {
             dir: Dir::persistent(base_path)?,
-            db_opts,
+            builder,
             keyspaces,
         })
     }
@@ -126,20 +134,20 @@ where
     /// # Panics
     /// Panics if the directory cannot be created.
     pub fn transient(
-        db_opts: D::Opts,
+        builder: D,
         keyspaces: Keyspaces<D>,
         prefix: &str,
     ) -> io::Result<ServerStore<D>> {
         Ok(ServerStore {
             dir: Dir::transient(prefix)?,
-            db_opts,
+            builder,
             keyspaces,
         })
     }
 }
 
-impl ServerStore<RocksDatabase> {
-    pub fn transient_default(prefix: &str) -> io::Result<ServerStore<RocksDatabase>> {
+impl ServerStore<RocksOpts> {
+    pub fn transient_default(prefix: &str) -> io::Result<ServerStore<RocksOpts>> {
         let db_opts = default_db_opts();
         let keyspaces = default_keyspaces();
 
@@ -149,20 +157,21 @@ impl ServerStore<RocksDatabase> {
 
 impl<D> SwimStore for ServerStore<D>
 where
-    D: Store,
+    D: StoreBuilder,
+    D::Store: KeystoreTask,
 {
-    type PlaneStore = SwimPlaneStore<D>;
+    type PlaneStore = SwimPlaneStore<D::Store>;
 
     fn plane_store<I: ToString>(&mut self, plane_name: I) -> Result<Self::PlaneStore, StoreError> {
         let ServerStore {
-            db_opts,
+            builder,
             keyspaces,
             dir,
             ..
         } = self;
         let plane_name = plane_name.to_string();
 
-        SwimPlaneStore::open(dir.path(), &plane_name, db_opts, keyspaces.clone())
+        open_plane(dir.path(), &plane_name, builder.clone(), keyspaces.clone())
     }
 }
 

@@ -61,7 +61,7 @@ where
         }
     }
 
-    pub fn run<Clk, Envelopes, Router, Store>(
+    pub(crate) fn run<Clk, Envelopes, Router, Store>(
         &self,
         route: RouteAndParameters,
         execution_config: AgentExecutionConfig,

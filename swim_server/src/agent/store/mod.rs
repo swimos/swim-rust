@@ -15,7 +15,7 @@
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
-use store::{StoreError, StoreInfo};
+use store::{EngineInfo, StoreError};
 use swim_common::model::text::Text;
 
 use crate::plane::store::PlaneStore;
@@ -41,7 +41,7 @@ pub trait NodeStore:
     type Delegate: PlaneStore;
 
     /// Returns information about the delegate store
-    fn store_info(&self) -> StoreInfo;
+    fn engine_info(&self) -> EngineInfo;
 
     fn lane_id_of(&self, lane: &str) -> Result<u64, StoreError>;
 }
@@ -89,13 +89,13 @@ impl<D: PlaneStore> KeyspaceRangedSnapshotLoad for SwimNodeStore<D> {
         keyspace: &S,
         prefix: &[u8],
         map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
         S: Keyspace,
     {
         self.delegate
-            .keyspace_load_ranged_snapshot(keyspace, prefix, map_fn)
+            .get_prefix_range(keyspace, prefix, map_fn)
     }
 }
 
@@ -116,8 +116,8 @@ impl<D: PlaneStore> StoreEngine for SwimNodeStore<D> {
 impl<D: PlaneStore> NodeStore for SwimNodeStore<D> {
     type Delegate = D;
 
-    fn store_info(&self) -> StoreInfo {
-        self.delegate.store_info()
+    fn engine_info(&self) -> EngineInfo {
+        self.delegate.engine_info()
     }
 
     fn lane_id_of(&self, lane: &str) -> Result<u64, StoreError> {

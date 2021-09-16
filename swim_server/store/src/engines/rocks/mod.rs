@@ -19,11 +19,14 @@ mod iterator;
 
 pub use crate::engines::rocks::iterator::{RocksIterator, RocksPrefixIterator};
 use crate::engines::KeyedSnapshot;
+use crate::engines::StoreBuilder;
 use crate::iterator::{EnginePrefixIterator, EngineRefIterator};
 use crate::keyspaces::{
     Keyspace, KeyspaceByteEngine, KeyspaceRangedSnapshotLoad, KeyspaceResolver, Keyspaces,
 };
 use crate::{serialize, FromKeyspaces, Store, StoreError, StoreInfo};
+use crate::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
+use crate::{serialize, EngineInfo, Store, StoreError};
 use rocksdb::{ColumnFamily, ColumnFamilyDescriptor};
 use rocksdb::{Error, Options, DB};
 use std::path::Path;
@@ -56,8 +59,8 @@ impl Store for RocksEngine {
         &self.delegate.path()
     }
 
-    fn store_info(&self) -> StoreInfo {
-        StoreInfo {
+    fn engine_info(&self) -> EngineInfo {
+        EngineInfo {
             path: self.path().to_string_lossy().to_string(),
             kind: "RocksDB".to_string(),
         }
@@ -72,29 +75,32 @@ impl KeyspaceResolver for RocksEngine {
     }
 }
 
-impl FromKeyspaces for RocksEngine {
-    type Opts = RocksOpts;
-
-    fn from_keyspaces<I: AsRef<Path>>(
-        path: I,
-        db_opts: &Self::Opts,
-        keyspaces: Keyspaces<Self>,
-    ) -> Result<Self, StoreError> {
-        let Keyspaces { keyspaces } = keyspaces;
-        let descriptors = keyspaces.into_iter().fold(Vec::new(), |mut vec, def| {
-            let cf_descriptor = ColumnFamilyDescriptor::new(def.name.to_string(), def.opts.0);
-            vec.push(cf_descriptor);
-            vec
-        });
-
-        let db = DB::open_cf_descriptors(&db_opts.0, path, descriptors)?;
-        Ok(RocksEngine::new(db))
-    }
-}
-
 /// Configuration wrapper for a Rocks database used by `FromOpts`.
 #[derive(Clone)]
 pub struct RocksOpts(pub Options);
+
+impl StoreBuilder for RocksOpts {
+    type Store = RocksEngine;
+
+    fn build<I>(self, path: I, keyspaces: &Keyspaces<Self>) -> Result<Self::Store, StoreError>
+    where
+        I: AsRef<Path>,
+    {
+        let Keyspaces { keyspaces } = keyspaces;
+        let descriptors =
+            keyspaces
+                .iter()
+                .fold(Vec::with_capacity(keyspaces.len()), |mut vec, def| {
+                    let cf_descriptor =
+                        ColumnFamilyDescriptor::new(def.name.to_string(), def.opts.0.clone());
+                    vec.push(cf_descriptor);
+                    vec
+                });
+
+        let db = DB::open_cf_descriptors(&self.0, path, descriptors)?;
+        Ok(RocksEngine::new(db))
+    }
+}
 
 impl Default for RocksOpts {
     fn default() -> Self {
@@ -194,5 +200,42 @@ impl KeyspaceByteEngine for RocksEngine {
         exec_keyspace(&self.delegate, keyspace, move |delegate, keyspace| {
             delegate.merge_cf(keyspace, key, value.as_slice())
         })
+    }
+
+    fn get_prefix_range<F, K, V, S>(
+        &self,
+        keyspace: S,
+        prefix: &[u8],
+        map_fn: F,
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+        S: Keyspace,
+    {
+        let resolved = self
+            .resolve_keyspace(&keyspace)
+            .ok_or(StoreError::KeyspaceNotFound)?;
+        let mut it = self.prefix_iterator(resolved, prefix)?;
+        let mut data = Vec::new();
+
+        loop {
+            match it.valid() {
+                Ok(true) => match it.next() {
+                    Some((key, value)) => {
+                        let mapped = map_fn(key.as_ref(), value.as_ref())?;
+                        data.push(mapped);
+                    }
+                    None => break,
+                },
+                Ok(false) => break,
+                Err(e) => return Err(e),
+            }
+        }
+
+        if data.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(data))
+        }
     }
 }

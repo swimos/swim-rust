@@ -23,9 +23,8 @@ use im::HashSet;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use swim_common::form::{Form, FormErr};
-use swim_common::model::{Attr, Item, Value};
-use swim_common::ok;
+use swim_common::form::Form;
+use swim_common::model::{Value, ValueKind};
 
 use crate::googleid::store::{
     GoogleKeyStore, GoogleKeyStoreError, DEFAULT_CERT_SKEW, GOOGLE_JWK_CERTS_URL,
@@ -34,7 +33,19 @@ use crate::policy::{IssuedPolicy, PolicyDirective};
 use crate::token::Token;
 use crate::{AuthenticationError, Authenticator};
 use biscuit::jwa::SignatureAlgorithm;
-use std::ops::Deref;
+use std::borrow::Borrow;
+use std::convert::TryFrom;
+use swim_common::form::structural::read::error::ExpectedEvent;
+use swim_common::form::structural::read::event::{NumericValue, ReadEvent};
+use swim_common::form::structural::read::recognizer::primitive::StringRecognizer;
+use swim_common::form::structural::read::recognizer::{
+    Recognizer, RecognizerReadable, SimpleAttrBody, VecRecognizer,
+};
+use swim_common::form::structural::read::ReadError;
+use swim_common::form::structural::write::{
+    BodyWriter, HeaderWriter, PrimitiveWriter, RecordBodyKind, StructuralWritable, StructuralWriter,
+};
+use swim_common::model::text::Text;
 
 mod store;
 #[cfg(test)]
@@ -46,7 +57,7 @@ const GOOGLE_ISS2: &str = "https://accounts.google.com";
 const DEFAULT_TOKEN_SKEW: i64 = 5;
 
 /// An authenticator for validating Google ID tokens.
-/// See https://developers.google.com/identity/sign-in/web/ for more information
+/// See <https://developers.google.com/identity/sign-in/web/> for more information
 #[derive(Debug, PartialEq)]
 pub struct GoogleIdAuthenticator {
     /// Number of seconds beyond the token's expiry time that are permitted.
@@ -56,75 +67,332 @@ pub struct GoogleIdAuthenticator {
     audiences: HashSet<String>,
 }
 
-impl Form for GoogleIdAuthenticator {
-    fn as_value(&self) -> Value {
-        Value::Record(
-            vec![Attr::of(GOOGLE_AUTH_TAG)],
-            vec![
-                Item::Slot("token_skew".into(), Value::Int64Value(self.token_skew)),
-                Item::Slot(
-                    "cert_skew".into(),
-                    Value::Int64Value(self.key_store.cert_skew()),
-                ),
-                Item::Slot("publicKeyUri".into(), self.key_store.key_url().as_value()),
-                Item::Slot("emails".into(), self.emails.as_value()),
-                Item::Slot("audiences".into(), self.audiences.as_value()),
-            ],
-        )
+impl StructuralWritable for GoogleIdAuthenticator {
+    fn write_with<W: StructuralWriter>(
+        &self,
+        writer: W,
+    ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
+        let header_writer = writer.record(1)?;
+        let mut body_writer = header_writer
+            .write_extant_attr(GOOGLE_AUTH_TAG)?
+            .complete_header(RecordBodyKind::MapLike, 5)?;
+        body_writer = body_writer.write_i64_slot("token_skew", self.token_skew)?;
+        body_writer = body_writer.write_i64_slot("cert_skew", self.key_store.cert_skew())?;
+        body_writer = body_writer.write_slot_into("publicKeyUri", self.key_store.key_url())?;
+        let emails = self.emails.iter().cloned().collect::<Vec<_>>();
+        body_writer = body_writer.write_slot_into("emails", emails)?;
+        let audiences = self.audiences.iter().cloned().collect::<Vec<_>>();
+        body_writer = body_writer.write_slot_into("audiences", audiences)?;
+        body_writer.done()
     }
 
-    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
-        match value {
-            Value::Record(attrs, items) => {
-                if attrs.len() > 1 {
-                    return Err(FormErr::Malformatted);
+    fn write_into<W: StructuralWriter>(
+        self,
+        writer: W,
+    ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
+        let header_writer = writer.record(1)?;
+        let mut body_writer = header_writer
+            .write_extant_attr(GOOGLE_AUTH_TAG)?
+            .complete_header(RecordBodyKind::MapLike, 5)?;
+        body_writer = body_writer.write_i64_slot("token_skew", self.token_skew)?;
+        body_writer = body_writer.write_i64_slot("cert_skew", self.key_store.cert_skew())?;
+        body_writer = body_writer.write_slot_into("publicKeyUri", self.key_store.key_url())?;
+        let emails = self.emails.into_iter().collect::<Vec<_>>();
+        body_writer = body_writer.write_slot_into("emails", emails)?;
+        let audiences = self.audiences.into_iter().collect::<Vec<_>>();
+        body_writer = body_writer.write_slot_into("audiences", audiences)?;
+        body_writer.done()
+    }
+
+    fn num_attributes(&self) -> usize {
+        1
+    }
+}
+
+#[derive(Clone, Copy)]
+enum AuthRecogField {
+    TokenSkew,
+    CertSkew,
+    PublicKeyUri,
+    Emails,
+    Audiences,
+}
+
+enum AuthRecogState {
+    Init,
+    Tag,
+    AfterTag,
+    InBody,
+    Slot(AuthRecogField),
+    Field(AuthRecogField),
+}
+
+pub struct GoogleIdAuthenticatorRecognizer {
+    state: AuthRecogState,
+    token_skew: Option<i64>,
+    cert_skew: Option<i64>,
+    public_key_uri: Option<Url>,
+    emails: Option<Vec<String>>,
+    audiences: Option<Vec<String>>,
+    emails_recognizer: VecRecognizer<String, StringRecognizer>,
+    audiences_recognizer: VecRecognizer<String, StringRecognizer>,
+}
+
+impl GoogleIdAuthenticatorRecognizer {
+    fn try_done(&mut self) -> Result<GoogleIdAuthenticator, ReadError> {
+        let GoogleIdAuthenticatorRecognizer {
+            token_skew,
+            cert_skew,
+            public_key_uri,
+            emails,
+            audiences,
+            ..
+        } = self;
+        let mut missing = vec![];
+        if token_skew.is_none() {
+            missing.push(Text::new("token_skew"));
+        }
+        if cert_skew.is_none() {
+            missing.push(Text::new("cert_skew"));
+        }
+        if public_key_uri.is_none() {
+            missing.push(Text::new("publicKeyUri"));
+        }
+        if emails.is_none() {
+            missing.push(Text::new("emails"));
+        }
+        if audiences.is_none() {
+            missing.push(Text::new("audiences"));
+        }
+        if let (
+            Some(token_skew),
+            Some(cert_skew),
+            Some(public_key_uri),
+            Some(emails),
+            Some(audiences),
+        ) = (
+            token_skew.take(),
+            cert_skew.take(),
+            public_key_uri.take(),
+            emails.take(),
+            audiences.take(),
+        ) {
+            Ok(GoogleIdAuthenticator {
+                token_skew,
+                key_store: GoogleKeyStore::new(public_key_uri, cert_skew),
+                emails: emails.into_iter().collect(),
+                audiences: audiences.into_iter().collect(),
+            })
+        } else {
+            Err(ReadError::MissingFields(missing))
+        }
+    }
+}
+
+impl Default for GoogleIdAuthenticatorRecognizer {
+    fn default() -> Self {
+        GoogleIdAuthenticatorRecognizer {
+            state: AuthRecogState::Init,
+            token_skew: None,
+            cert_skew: None,
+            public_key_uri: None,
+            emails: None,
+            audiences: None,
+            emails_recognizer: <Vec<String>>::make_recognizer(),
+            audiences_recognizer: <Vec<String>>::make_recognizer(),
+        }
+    }
+}
+
+impl Recognizer for GoogleIdAuthenticatorRecognizer {
+    type Target = GoogleIdAuthenticator;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        match &self.state {
+            AuthRecogState::Init => {
+                if let ReadEvent::StartAttribute(name) = input {
+                    if name == GOOGLE_AUTH_TAG {
+                        self.state = AuthRecogState::Tag;
+                        None
+                    } else {
+                        Some(Err(ReadError::MissingTag))
+                    }
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Attribute(Some(
+                        Text::new(GOOGLE_AUTH_TAG),
+                    )))))
                 }
-
-                match attrs.iter().next() {
-                    Some(Attr { name, .. }) if name == GOOGLE_AUTH_TAG => {}
-                    _ => return Err(FormErr::MismatchedTag),
+            }
+            AuthRecogState::Tag => match input {
+                ReadEvent::Extant => None,
+                ReadEvent::EndAttribute => {
+                    self.state = AuthRecogState::AfterTag;
+                    None
                 }
-
-                let mut opt_token_skew = None;
-                let mut opt_cert_skew = None;
-                let mut opt_public_key_uri = None;
-                let mut opt_emails = None;
-                let mut opt_audiences = None;
-
-                for item in items {
-                    match item {
-                        Item::Slot(Value::Text(name), Value::Int64Value(skew))
-                            if name == "token_skew" =>
-                        {
-                            opt_token_skew = Some(*skew);
-                        }
-                        Item::Slot(Value::Text(name), Value::Int64Value(skew))
-                            if name == "cert_skew" =>
-                        {
-                            opt_cert_skew = Some(*skew);
-                        }
-                        Item::Slot(Value::Text(name), url) if name == "publicKeyUri" => {
-                            opt_public_key_uri = Some(Url::try_from_value(url)?);
-                        }
-                        Item::Slot(Value::Text(name), emails) if name == "emails" => {
-                            opt_emails = Some(Form::try_from_value(emails)?);
-                        }
-                        Item::Slot(Value::Text(name), audiences) if name == "audiences" => {
-                            opt_audiences = Some(Form::try_from_value(audiences)?);
-                        }
-                        i => return Err(FormErr::Message(format!("Unexpected item: {:?}", i))),
+                ow => Some(Err(ow.kind_error(ExpectedEvent::EndOfAttribute))),
+            },
+            AuthRecogState::AfterTag => {
+                if matches!(&input, ReadEvent::StartBody) {
+                    self.state = AuthRecogState::InBody;
+                    None
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::RecordBody)))
+                }
+            }
+            AuthRecogState::InBody => match input {
+                ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
+                    "token_skew" => {
+                        self.state = AuthRecogState::Slot(AuthRecogField::TokenSkew);
+                        None
+                    }
+                    "cert_skew" => {
+                        self.state = AuthRecogState::Slot(AuthRecogField::CertSkew);
+                        None
+                    }
+                    "publicKeyUri" => {
+                        self.state = AuthRecogState::Slot(AuthRecogField::PublicKeyUri);
+                        None
+                    }
+                    "emails" => {
+                        self.state = AuthRecogState::Slot(AuthRecogField::Emails);
+                        None
+                    }
+                    "audiences" => {
+                        self.state = AuthRecogState::Slot(AuthRecogField::Audiences);
+                        None
+                    }
+                    ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
+                },
+                ReadEvent::EndRecord => Some(self.try_done()),
+                ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
+                    ExpectedEvent::ValueEvent(ValueKind::Text),
+                    ExpectedEvent::EndOfRecord,
+                ])))),
+            },
+            AuthRecogState::Slot(fld) => {
+                if matches!(&input, ReadEvent::Slot) {
+                    self.state = AuthRecogState::Field(*fld);
+                    None
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Slot)))
+                }
+            }
+            AuthRecogState::Field(AuthRecogField::TokenSkew) => match input {
+                ReadEvent::Number(NumericValue::Int(n)) => {
+                    self.token_skew = Some(n);
+                    self.state = AuthRecogState::InBody;
+                    None
+                }
+                ReadEvent::Number(NumericValue::UInt(n)) => {
+                    if let Ok(m) = i64::try_from(n) {
+                        self.token_skew = Some(m);
+                        self.state = AuthRecogState::InBody;
+                        None
+                    } else {
+                        Some(Err(ReadError::NumberOutOfRange))
                     }
                 }
-
-                Ok(GoogleIdAuthenticator {
-                    token_skew: ok!(opt_token_skew),
-                    key_store: GoogleKeyStore::new(ok!(opt_public_key_uri), ok!(opt_cert_skew)),
-                    emails: ok!(opt_emails),
-                    audiences: ok!(opt_audiences),
-                })
+                ow => Some(Err(
+                    ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
+                )),
+            },
+            AuthRecogState::Field(AuthRecogField::CertSkew) => match input {
+                ReadEvent::Number(NumericValue::Int(n)) => {
+                    self.cert_skew = Some(n);
+                    self.state = AuthRecogState::InBody;
+                    None
+                }
+                ReadEvent::Number(NumericValue::UInt(n)) => {
+                    if let Ok(m) = i64::try_from(n) {
+                        self.cert_skew = Some(m);
+                        self.state = AuthRecogState::InBody;
+                        None
+                    } else {
+                        Some(Err(ReadError::NumberOutOfRange))
+                    }
+                }
+                ow => Some(Err(
+                    ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
+                )),
+            },
+            AuthRecogState::Field(AuthRecogField::PublicKeyUri) => {
+                if let ReadEvent::TextValue(text) = input {
+                    if let Ok(url) = Url::parse(text.borrow()) {
+                        self.public_key_uri = Some(url);
+                        self.state = AuthRecogState::InBody;
+                        None
+                    } else {
+                        Some(Err(ReadError::Malformatted {
+                            text: text.into(),
+                            message: Text::new("No a valid URL."),
+                        }))
+                    }
+                } else {
+                    Some(Err(
+                        input.kind_error(ExpectedEvent::ValueEvent(ValueKind::Text))
+                    ))
+                }
             }
-            v => Err(FormErr::incorrect_type("Value::Record", v)),
+            AuthRecogState::Field(AuthRecogField::Emails) => {
+                match self.emails_recognizer.feed_event(input)? {
+                    Ok(v) => {
+                        self.emails = Some(v);
+                        self.state = AuthRecogState::InBody;
+                        None
+                    }
+                    Err(e) => Some(Err(e)),
+                }
+            }
+            AuthRecogState::Field(AuthRecogField::Audiences) => {
+                match self.audiences_recognizer.feed_event(input)? {
+                    Ok(v) => {
+                        self.audiences = Some(v);
+                        self.state = AuthRecogState::InBody;
+                        None
+                    }
+                    Err(e) => Some(Err(e)),
+                }
+            }
         }
+    }
+
+    fn reset(&mut self) {
+        let GoogleIdAuthenticatorRecognizer {
+            state,
+            token_skew,
+            cert_skew,
+            public_key_uri,
+            emails,
+            audiences,
+            emails_recognizer,
+            audiences_recognizer,
+        } = self;
+        *state = AuthRecogState::Init;
+        *token_skew = None;
+        *cert_skew = None;
+        *public_key_uri = None;
+        *emails = None;
+        *audiences = None;
+        emails_recognizer.reset();
+        audiences_recognizer.reset();
+    }
+}
+
+impl RecognizerReadable for GoogleIdAuthenticator {
+    type Rec = GoogleIdAuthenticatorRecognizer;
+    type AttrRec = SimpleAttrBody<GoogleIdAuthenticatorRecognizer>;
+    type BodyRec = Self::Rec;
+
+    fn make_recognizer() -> Self::Rec {
+        GoogleIdAuthenticatorRecognizer::default()
+    }
+
+    fn make_attr_recognizer() -> Self::AttrRec {
+        SimpleAttrBody::new(Self::make_recognizer())
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        Self::make_recognizer()
     }
 }
 
@@ -195,8 +463,7 @@ impl<'s> Authenticator<'s> for GoogleIdAuthenticator {
                             if expiry_time.lt(&(Utc::now() + Duration::seconds(self.token_skew))) {
                                 return Ok(IssuedPolicy::deny(Value::Extant));
                             } else {
-                                let expiry_timestamp = expiry_time.deref().clone().into();
-                                expiry_timestamp
+                                (**expiry_time).into()
                             }
                         }
                         None => return Ok(IssuedPolicy::deny(Value::Extant)),

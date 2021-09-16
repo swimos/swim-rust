@@ -132,7 +132,7 @@ struct PlaneActiveRoutes {
 
 impl PlaneActiveRoutes {
     fn get_endpoint(&self, addr: &RoutingAddr) -> Option<&LocalEndpoint> {
-        self.local_endpoints.get(&addr)
+        self.local_endpoints.get(addr)
     }
 
     fn get_endpoint_for_route(&self, route: &RelativeUri) -> Option<&LocalEndpoint> {
@@ -553,6 +553,8 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac, Store>(
                     }
                     if store_task.failed {
                         event!(Level::ERROR, AGENT_TASK_FAILED, ?route, ?store_task);
+                    } else {
+                        event!(Level::DEBUG, AGENT_TASK_COMPLETE, ?route, ?dispatcher_task);
                     }
                 }
                 Either::Left(None) => {

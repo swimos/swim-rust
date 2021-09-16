@@ -20,7 +20,8 @@ use crate::agent::lane::channels::uplink::UplinkError;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::store::mock::MockNodeStore;
 use crate::agent::store::SwimNodeStore;
-use crate::agent::{AttachError, Eff, RoutingIo};
+use crate::agent::{AttachError, Eff, LaneIo};
+use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
 use crate::plane::store::mock::MockPlaneStore;
 use crate::routing::error::RouterError;
 use crate::routing::{
@@ -40,7 +41,9 @@ use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage}
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::time::Instant;
 use url::Url;
+use utilities::instant::AtomicInstant;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
 
@@ -135,6 +138,7 @@ impl ServerRouter for MockRouter {
 pub struct MockExecutionContext {
     router: Arc<Mutex<MockRouterInner>>,
     spawner: mpsc::Sender<Eff>,
+    uplinks_idle_since: Arc<AtomicInstant>,
 }
 
 impl AgentExecutionContext for MockExecutionContext {
@@ -152,6 +156,14 @@ impl AgentExecutionContext for MockExecutionContext {
     fn store(&self) -> Self::Store {
         MockNodeStore::mock()
     }
+
+    fn metrics(&self) -> NodeMetricAggregator {
+        aggregator_sink()
+    }
+
+    fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
+        &self.uplinks_idle_since
+    }
 }
 
 impl MockExecutionContext {
@@ -159,6 +171,7 @@ impl MockExecutionContext {
         MockExecutionContext {
             router: Arc::new(Mutex::new(MockRouterInner::new(router_addr, buffer_size))),
             spawner,
+            uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now())),
         }
     }
 
@@ -186,7 +199,7 @@ impl MockExecutionContext {
 
 pub const POISON_PILL: &str = "FAIL";
 
-impl RoutingIo<MockExecutionContext> for MockLane {
+impl LaneIo<MockExecutionContext> for MockLane {
     fn attach(
         self,
         route: RelativePath,

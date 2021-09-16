@@ -87,6 +87,8 @@ pub fn make_config() -> AgentExecutionConfig {
         value_lane_backpressure: None,
         map_lane_backpressure: None,
         node_log: Default::default(),
+        metrics: Default::default(),
+        max_idle_time: Duration::from_secs(60),
         max_store_errors: 0,
     }
 }

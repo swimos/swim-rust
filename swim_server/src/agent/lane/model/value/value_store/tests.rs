@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::store::error::StoreErrorHandler;
+use crate::agent::lane::store::error::{StoreErrorHandler, StoreTaskError};
 use crate::agent::lane::store::StoreIo;
 use crate::agent::model::value::value_store::io::ValueLaneStoreIo;
 use crate::agent::model::value::value_store::ValueDataModel;
@@ -26,6 +26,8 @@ use std::sync::{Arc, Mutex};
 use store::engines::KeyedSnapshot;
 use store::keyspaces::{Keyspace, KeyspaceRangedSnapshotLoad};
 use store::{serialize, StoreError, StoreInfo};
+use store::{serialize, EngineInfo, StoreError};
+use utilities::sync::trigger;
 
 #[derive(Clone, Debug)]
 struct TrackingValueStore {
@@ -35,8 +37,8 @@ struct TrackingValueStore {
 impl NodeStore for TrackingValueStore {
     type Delegate = MockPlaneStore;
 
-    fn store_info(&self) -> StoreInfo {
-        StoreInfo {
+    fn engine_info(&self) -> EngineInfo {
+        EngineInfo {
             path: "tracking".to_string(),
             kind: "tracking".to_string(),
         }
@@ -131,7 +133,6 @@ async fn io() {
     let store = TrackingValueStore {
         value: Arc::new(Mutex::new(Some(serialize(&store_initial).unwrap()))),
     };
-    let info = store.store_info();
 
     let model = ValueDataModel::<TrackingValueStore, String>::new(store, 0);
     let (lane, observer) = ValueLane::<String>::store_observable(
@@ -155,6 +156,9 @@ async fn store_fail() {
     let observer_stream = observer.into_stream();
     let store = FailingStore;
     let info = store.store_info();
+    let store = FailingStore {
+        fail_on: FailingStoreMode::Put,
+    };
 
     let model = ValueDataModel::new(store, 0);
     let store_io = ValueLaneStoreIo::new(observer_stream, model);
@@ -162,12 +166,15 @@ async fn store_fail() {
     lane.store("avro vulcan".to_string()).await;
 
     let task_result = store_io.attach(StoreErrorHandler::new(0, info)).await;
+    let task_result = store_io
+        .attach("test".to_string(), StoreErrorHandler::new(0))
+        .await;
     match task_result {
         Ok(_) => {
             panic!("Expected a store error")
         }
         Err(mut r) => {
-            let (_ts, error) = r.errors.pop().unwrap();
+            let StoreTaskError { error, .. } = r.errors.pop().unwrap();
             assert_eq!(error, StoreError::Closing)
         }
     }
@@ -179,8 +186,8 @@ struct FailingStore;
 impl NodeStore for FailingStore {
     type Delegate = MockPlaneStore;
 
-    fn store_info(&self) -> StoreInfo {
-        StoreInfo {
+    fn engine_info(&self) -> EngineInfo {
+        EngineInfo {
             path: "failing".to_string(),
             kind: "failing".to_string(),
         }

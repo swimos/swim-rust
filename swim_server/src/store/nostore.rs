@@ -14,6 +14,8 @@
 
 use std::path::{Path, PathBuf};
 use store::engines::{FromKeyspaces, KeyedSnapshot};
+use std::sync::Arc;
+use store::engines::StoreBuilder;
 use store::iterator::{
     EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey,
 };
@@ -21,6 +23,8 @@ use store::keyspaces::{
     Keyspace, KeyspaceByteEngine, KeyspaceRangedSnapshotLoad, KeyspaceResolver, Keyspaces,
 };
 use store::{KvBytes, Store, StoreError, StoreInfo};
+use store::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
+use store::{EngineInfo, KvBytes, Store, StoreError};
 
 /// A store which will persist no data and exists purely to uphold the minimum contract required
 /// between a lane and its store.
@@ -35,26 +39,11 @@ impl Store for NoStore {
         &self.path
     }
 
-    fn store_info(&self) -> StoreInfo {
-        StoreInfo {
+    fn engine_info(&self) -> EngineInfo {
+        EngineInfo {
             path: "no store".to_string(),
             kind: "no store".to_string(),
         }
-    }
-}
-
-impl KeyspaceRangedSnapshotLoad for NoStore {
-    fn keyspace_load_ranged_snapshot<F, K, V, S>(
-        &self,
-        _keyspace: &S,
-        _prefix: &[u8],
-        _map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-        S: Keyspace,
-    {
-        Ok(None)
     }
 }
 
@@ -111,16 +100,17 @@ impl<'a: 'b, 'b> EngineRefIterator<'a, 'b> for NoStore {
     }
 }
 
-impl FromKeyspaces for NoStore {
-    type Opts = ();
+#[derive(Default, Clone)]
+pub struct NoStoreOpts;
+impl StoreBuilder for NoStoreOpts {
+    type Store = NoStore;
 
-    fn from_keyspaces<I: AsRef<Path>>(
-        path: I,
-        _db_opts: &Self::Opts,
-        _keyspaces: Keyspaces<Self>,
-    ) -> Result<Self, StoreError> {
+    fn build<I>(self, _path: I, _keyspaces: &Keyspaces<Self>) -> Result<Self::Store, StoreError>
+    where
+        I: AsRef<Path>,
+    {
         Ok(NoStore {
-            path: path.as_ref().to_path_buf(),
+            path: PathBuf::from("Transient".to_string()),
             ks: (),
         })
     }
@@ -156,6 +146,19 @@ impl KeyspaceByteEngine for NoStore {
     ) -> Result<(), StoreError> {
         Ok(())
     }
+
+    fn get_prefix_range<F, K, V, S>(
+        &self,
+        _keyspace: S,
+        _prefix: &[u8],
+        _map_fn: F,
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+        S: Keyspace,
+    {
+        Ok(None)
+    }
 }
 
 impl KeyspaceResolver for NoStore {
@@ -163,5 +166,20 @@ impl KeyspaceResolver for NoStore {
 
     fn resolve_keyspace<K: Keyspace>(&self, _space: &K) -> Option<&Self::ResolvedKeyspace> {
         Some(&self.ks)
+    }
+}
+
+impl KeystoreTask for NoStore {
+    fn run<DB, S>(_: Arc<DB>, events: S) -> BoxFuture<'static, Result<(), StoreError>>
+    where
+        DB: KeyspaceByteEngine,
+        S: Stream<Item = KeyRequest> + Unpin + Send + 'static,
+    {
+        Box::pin(async move {
+            let _ = events.for_each(|(_, responder)| async {
+                let _ = responder.send(0);
+            });
+            Ok(())
+        })
     }
 }

@@ -17,12 +17,16 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+pub mod algebra;
 pub mod errors;
 pub mod fs;
 pub mod future;
+pub mod instant;
 pub mod iteratee;
 pub mod lru_cache;
+pub mod never;
 pub mod num;
+pub mod print;
 pub mod ptr;
 pub mod route_pattern;
 pub mod rtree;
@@ -30,6 +34,7 @@ pub mod sync;
 pub mod task;
 pub mod trace;
 pub mod uri;
+pub mod validation;
 
 #[allow(unused_imports)]
 #[macro_use]

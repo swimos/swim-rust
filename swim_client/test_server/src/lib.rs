@@ -30,7 +30,7 @@ pub async fn build_server() -> (SwimServer, ServerHandle) {
     let mut swim_server_builder =
         SwimServerBuilder::transient_store(SwimServerConfig::default(), "test")
             .expect("Failed to build transient store");
-    let mut plane_builder = swim_server_builder.plane_builder("test");
+    let mut plane_builder = swim_server_builder.plane_builder("test").unwrap();
 
     plane_builder
         .add_route::<UnitAgent, (), ()>(RoutePattern::parse_str("/unit/foo").unwrap(), (), ())

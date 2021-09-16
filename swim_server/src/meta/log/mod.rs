@@ -22,7 +22,7 @@ use crate::agent::dispatch::LaneIdentifier;
 use crate::agent::lane::model::supply::SupplyLane;
 use crate::agent::LaneTasks;
 use crate::agent::{make_supply_lane, AgentContext, DynamicLaneTasks, SwimAgent};
-use crate::agent::{Eff, RoutingIo};
+use crate::agent::{Eff, LaneIo};
 use crate::meta::log::config::{FlushStrategy, LogConfig};
 use crate::meta::{IdentifiedAgentIo, MetaNodeAddressed};
 use either::Either;
@@ -33,7 +33,7 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::{Debug, Display, Formatter};
 use std::num::NonZeroUsize;
-use swim_common::form::{Form, Tag};
+use swim_common::form::Form;
 use swim_common::model::time::Timestamp;
 use swim_common::model::Value;
 use tokio::sync::mpsc;
@@ -43,6 +43,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
 use tracing_futures::{Instrument, Instrumented};
 
+use swim_common::form::structural::Tag;
 use swim_runtime::time::interval::interval;
 use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
@@ -58,7 +59,7 @@ const LOG_TASK: &str = "Node logger";
 const LOG_FAIL: &str = "Failed to send log message";
 
 /// A corresponding level associated with a `LogEntry`.
-#[derive(Copy, Clone, Debug, Tag, Eq, PartialEq, PartialOrd, Hash)]
+#[derive(Tag, Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Hash)]
 pub enum LogLevel {
     /// Fine-grained informational events.
     Trace,
@@ -76,14 +77,8 @@ pub enum LogLevel {
 
 impl Display for LogLevel {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            LogLevel::Trace => write!(f, "Trace"),
-            LogLevel::Debug => write!(f, "Debug"),
-            LogLevel::Info => write!(f, "Info"),
-            LogLevel::Warn => write!(f, "Warn"),
-            LogLevel::Error => write!(f, "Error"),
-            LogLevel::Fail => write!(f, "Fail"),
-        }
+        let as_str: &str = self.as_ref();
+        write!(f, "{}", as_str)
     }
 }
 
@@ -187,7 +182,7 @@ impl Debug for NodeLogger {
     }
 }
 
-struct LogLanes {
+pub(crate) struct LogLanes {
     /// Lane for fine-grained informational events.
     trace_lane: SupplyLane<LogEntry>,
     /// Lane for information that is useful in debugging an application.
@@ -275,6 +270,10 @@ impl NodeLogger {
 
         sender.send(entry).await
     }
+
+    pub async fn log_entry(&self, entry: LogEntry) -> Result<(), SendError<LogEntry>> {
+        self.sender.send(entry).await
+    }
 }
 
 /// An internal task for a `NodeLogger` which forwards all messages from its receive stream to the
@@ -292,7 +291,7 @@ struct LogTask {
 }
 
 /// An optional internal buffer for log entries.
-enum LogBuffer {
+pub(crate) enum LogBuffer {
     /// No entries are buffered and any entries pushed into the buffer will be returned immediately.
     None,
     /// A buffer with a fixed capacity. Once this limit has been reached all buffered entries will

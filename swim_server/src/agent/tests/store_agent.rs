@@ -23,10 +23,10 @@ use crate::agent::model::map::MapLane;
 use crate::agent::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::store::NodeStore;
 use crate::agent::tests::stub_router::SingleChannelRouter;
+use crate::agent::LaneTasks;
 use crate::agent::{
     AgentContext, DynamicAgentIo, DynamicLaneTasks, LaneConfig, SwimAgent, TestClock,
 };
-use crate::agent::{LaneIo, LaneTasks};
 use crate::plane::provider::AgentProvider;
 use crate::plane::store::{PlaneStore, SwimPlaneStore};
 use crate::plane::RouteAndParameters;
@@ -35,6 +35,8 @@ use crate::store::keystore::{KeyStore, COUNTER_BYTES};
 use crate::store::{default_keyspaces, KeyspaceName, RocksDatabase, StoreEngine, StoreKey};
 use futures::future::ready;
 use futures::future::{BoxFuture, Ready};
+use futures::FutureExt;
+use futures::Stream;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -43,6 +45,9 @@ use stm::transaction::atomically;
 use store::engines::{FromKeyspaces, RocksOpts};
 use store::keyspaces::{KeyspaceByteEngine, KeyspaceRangedSnapshotLoad};
 use store::{deserialize, serialize, StoreError};
+use store::keyspaces::KeyspaceByteEngine;
+use store::{EngineInfo, StoreError};
+use swim_common::model::text::Text;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
@@ -203,7 +208,77 @@ impl SwimAgent<AgentConfig> for StoreAgent {
             },
         );
 
-        (agent, vec![value_task.boxed(), map_task.boxed()], io)
+impl KeystoreTask for PlaneEventStore {
+    fn run<DB, S>(_db: Arc<DB>, _events: S) -> BoxFuture<'static, Result<(), StoreError>>
+    where
+        DB: KeyspaceByteEngine,
+        S: Stream<Item = KeyRequest> + Unpin + Send + 'static,
+    {
+        Box::pin(async { Ok(()) })
+    }
+}
+
+impl PlaneStore for PlaneEventStore {
+    type NodeStore = SwimNodeStore<Self>;
+
+    fn node_store<I>(&self, node_uri: I) -> Self::NodeStore
+    where
+        I: Into<Text>,
+    {
+        SwimNodeStore::new(self.clone(), node_uri)
+    }
+
+    fn get_prefix_range<F, K, V>(
+        &self,
+        _prefix: StoreKey,
+        _map_fn: F,
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+    {
+        panic!("Unexpected snapshot attempt");
+    }
+
+    fn engine_info(&self) -> EngineInfo {
+        EngineInfo {
+            path: "Mock".to_string(),
+            kind: "Mock".to_string(),
+        }
+    }
+
+    fn lane_id_of<I>(&self, _lane: I) -> BoxFuture<u64>
+    where
+        I: Into<String>,
+    {
+        ready(1).boxed()
+    }
+}
+
+impl StoreEngine for PlaneEventStore {
+    fn put(&self, _key: StoreKey, value: &[u8]) -> Result<(), StoreError> {
+        let mut guard = self.events.lock().unwrap();
+        let events = &mut *guard;
+        events.push(value.to_vec());
+        Ok(())
+    }
+
+    fn get(&self, _key: StoreKey) -> Result<Option<Vec<u8>>, StoreError> {
+        let mut lock = self.loaded.lock().unwrap();
+        if let Some(trigger) = lock.take() {
+            trigger.trigger();
+        }
+
+        match &self.default_value {
+            Some(default) => {
+                let value = bincode::serialize(default).expect("Failed to serialize default value");
+                Ok(Some(value))
+            }
+            None => Ok(None),
+        }
+    }
+
+    fn delete(&self, _key: StoreKey) -> Result<(), StoreError> {
+        Ok(())
     }
 }
 
@@ -275,7 +350,14 @@ async fn store_loads() {
     let buffer_size = NonZeroUsize::new(10).unwrap();
     let clock = TestClock::default();
 
-    let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1), None);
+    let exec_config = AgentExecutionConfig::with(
+        buffer_size,
+        1,
+        0,
+        Duration::from_secs(1),
+        None,
+        Duration::from_secs(1),
+    );
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
     let (agent, agent_proc) = provider.run(
         RouteAndParameters::new(uri.clone(), HashMap::new()),
@@ -317,7 +399,14 @@ async fn events() {
 
     let store = TestStore::default();
 
-    let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1), None);
+    let exec_config = AgentExecutionConfig::with(
+        buffer_size,
+        1,
+        0,
+        Duration::from_secs(1),
+        None,
+        Duration::from_secs(1),
+    );
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
     let (_, agent_proc) = provider.run(
         RouteAndParameters::new(uri.clone(), HashMap::new()),

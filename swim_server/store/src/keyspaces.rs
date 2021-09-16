@@ -29,9 +29,9 @@ pub trait Keyspace {
 #[derive(Debug, Clone)]
 pub struct KeyspaceDef<O> {
     /// The name of the keyspace.
-    pub(crate) name: &'static str,
+    pub name: &'static str,
     /// The configuration options that will be used to open the keyspace.
-    pub(crate) opts: O,
+    pub opts: O,
 }
 
 impl<O> KeyspaceDef<O> {
@@ -41,16 +41,13 @@ impl<O> KeyspaceDef<O> {
 }
 
 /// A list of keyspace definitions to initialise a store with.
-#[derive(Debug, Clone)]
-pub struct Keyspaces<O>
-where
-    O: FromKeyspaces,
-{
-    pub keyspaces: Vec<KeyspaceDef<O::Opts>>,
+#[derive(Clone)]
+pub struct Keyspaces<O> {
+    pub keyspaces: Vec<KeyspaceDef<O>>,
 }
 
-impl<O: FromKeyspaces> Keyspaces<O> {
-    pub fn new(keyspaces: Vec<KeyspaceDef<O::Opts>>) -> Self {
+impl<O> Keyspaces<O> {
+    pub fn new(keyspaces: Vec<KeyspaceDef<O>>) -> Self {
         Keyspaces { keyspaces }
     }
 }
@@ -82,6 +79,30 @@ pub trait KeyspaceByteEngine: Send + Sync + 'static {
         key: &[u8],
         step: u64,
     ) -> Result<(), StoreError>;
+
+    /// Execute a ranged read on the store, seeking by `prefix` and deserializing results with
+    /// `map_fn`.
+    ///
+    /// Returns `Ok(None)` if no records matched `prefix` or `Ok(Some)` if matches were found.
+    ///
+    /// # Example:
+    /// Given a store engine that stores records for map lanes where the format of
+    /// `/node_uri/lane_uri/key` is used as the key. One could execute a ranged read on the store
+    /// engine with a prefix of `/node_1/lane_1/` to load all of the keys and values for that
+    /// lane.
+    ///
+    /// # Errors
+    /// Errors if an error is encountered when attempting to execute the ranged read on the
+    /// store engine or if the `map_fn` fails to deserialize a key or value.
+    fn get_prefix_range<F, K, V, S>(
+        &self,
+        _keyspace: S,
+        _prefix: &[u8],
+        _map_fn: F,
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+        S: Keyspace;
 }
 
 /// A trait for converting an abstract keyspace name to a reference to a handle of one in a delegate

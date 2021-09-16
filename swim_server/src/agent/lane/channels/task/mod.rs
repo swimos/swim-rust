@@ -37,6 +37,7 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::Eff;
+use crate::meta::metric::uplink::UplinkObserver;
 use crate::routing::{RoutingAddr, TaggedClientEnvelope};
 use either::Either;
 use futures::future::{join, join3, ready, BoxFuture};
@@ -49,7 +50,8 @@ use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use stm::transaction::RetryManager;
-use swim_common::form::{Form, FormErr};
+use swim_common::form::structural::read::ReadError;
+use swim_common::form::Form;
 use swim_common::model::Value;
 use swim_common::warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
@@ -155,6 +157,7 @@ pub trait LaneUplinks {
     /// * `channels` - The inputs and outputs for the uplink spawner.
     /// * `route` - The route to the lane for creating envelopes.
     /// * `context` - Agent execution context for scheduling tasks and routing envelopes.
+    /// * `action_observer` - An observer for uplinks being opened and closed.
     ///
     /// #Type Parameters
     ///
@@ -167,6 +170,7 @@ pub trait LaneUplinks {
         channels: UplinkChannels<Top>,
         route: RelativePath,
         context: &Context,
+        observer: UplinkObserver,
     ) -> Eff
     where
         Handler: LaneMessageHandler + 'static,
@@ -228,13 +232,15 @@ where
     let (act_tx, act_rx) = mpsc::channel(action_buffer.get());
     let (upd_tx, upd_rx) = mpsc::channel(update_buffer.get());
     let (err_tx, err_rx) = mpsc::channel(uplink_err_buffer.get());
+    let observer = context.metrics().uplink_observer_for_path(route.clone());
+    let event_stream_observer = observer.clone();
 
     let spawner_channels = UplinkChannels::new(events, act_rx, err_tx);
+    let message_stream =
+        ReceiverStream::new(upd_rx).inspect(move |_| event_stream_observer.on_event());
 
     let (upd_done_tx, upd_done_rx) = trigger::trigger();
-    let updater = arc_handler
-        .make_update()
-        .run_update(ReceiverStream::new(upd_rx));
+    let updater = arc_handler.make_update().run_update(message_stream);
     let update_task = async move {
         let result = updater.await;
         upd_done_tx.trigger();
@@ -243,7 +249,13 @@ where
     .instrument(span!(Level::INFO, UPDATE_TASK, ?route));
 
     let uplink_spawn_task = lane_uplinks
-        .make_task(arc_handler, spawner_channels, route.clone(), &context)
+        .make_task(
+            arc_handler,
+            spawner_channels,
+            route.clone(),
+            &context,
+            observer.clone(),
+        )
         .instrument(span!(Level::INFO, UPLINK_SPAWN_TASK, ?route));
 
     let mut err_rx = ReceiverStream::new(err_rx).take_until(upd_done_rx).fuse();
@@ -287,6 +299,7 @@ where
                         }
                         Either::Right(command) => {
                             event!(Level::TRACE, DISPATCH_COMMAND, route = ?route_cpy, ?addr, ?command);
+                            observer.on_command();
                             if upd_tx
                                 .send(Form::try_convert(command).map(|cmd| (addr, cmd)))
                                 .await
@@ -424,6 +437,7 @@ async fn run_stateless_lane_io<Upd, S, Msg, Ev>(
     route: RelativePath,
     updater: Upd,
     uplinks: StatelessUplinks<S>,
+    observer: UplinkObserver,
 ) -> Result<Vec<UplinkErrorReport>, LaneIoError>
 where
     Upd: LaneUpdate<Msg = Msg>,
@@ -458,15 +472,19 @@ where
 
     let error_handler =
         UplinkErrorHandler::collector(route.clone(), config.max_fatal_uplink_errors);
+    let error_reporter = UplinkErrorReporter {
+        err_rx,
+        err_handler: error_handler,
+    };
 
     let envelope_task = action_envelope_task_with_uplinks(
         route.clone(),
         envelopes,
         uplink_tx,
-        err_rx,
-        error_handler,
+        error_reporter,
         OnCommandStrategy::Send(OnCommandHandler::new(update_tx, route.clone())),
         yield_after,
+        observer,
     );
 
     let (upd_result, _, (uplink_fatal, uplink_errs)) =
@@ -496,15 +514,27 @@ where
     let span = span!(Level::INFO, LANE_IO_TASK, ?route);
     let _enter = span.enter();
 
+    let observer = context.metrics().uplink_observer_for_path(route.clone());
+    let event_observer = observer.clone();
+
     let (feedback_tx, feedback_rx) = mpsc::channel(config.feedback_buffer.get());
     let feedback_rx = ReceiverStream::new(feedback_rx)
-        .map(|(_, message)| AddressedUplinkMessage::Broadcast(message));
+        .map(|(_, message)| AddressedUplinkMessage::Broadcast(message))
+        .inspect(|_| event_observer.on_event());
 
     let updater =
         CommandLaneUpdateTask::new(lane.clone(), Some(feedback_tx), config.cleanup_timeout);
-    let uplinks = StatelessUplinks::new(feedback_rx, route.clone(), UplinkKind::Command);
+    let uplinks = StatelessUplinks::new(
+        feedback_rx,
+        route.clone(),
+        UplinkKind::Command,
+        observer.clone(),
+    );
 
-    run_stateless_lane_io(envelopes, config, context, route, updater, uplinks).await
+    run_stateless_lane_io(
+        envelopes, config, context, route, updater, uplinks, observer,
+    )
+    .await
 }
 
 /// Run the [`swim_common::warp::envelope::Envelope`] IO for an action lane. This is different to
@@ -532,15 +562,27 @@ where
     let span = span!(Level::INFO, LANE_IO_TASK, ?route);
     let _enter = span.enter();
 
+    let observer = context.metrics().uplink_observer_for_path(route.clone());
+    let event_observer = observer.clone();
+
     let (feedback_tx, feedback_rx) = mpsc::channel(config.feedback_buffer.get());
     let feedback_rx = ReceiverStream::new(feedback_rx)
-        .map(|(address, message)| AddressedUplinkMessage::Addressed { message, address });
+        .map(|(address, message)| AddressedUplinkMessage::Addressed { message, address })
+        .inspect(|_| event_observer.on_event());
 
     let updater =
         ActionLaneUpdateTask::new(lane.clone(), Some(feedback_tx), config.cleanup_timeout);
-    let uplinks = StatelessUplinks::new(feedback_rx, route.clone(), UplinkKind::Action);
+    let uplinks = StatelessUplinks::new(
+        feedback_rx,
+        route.clone(),
+        UplinkKind::Action,
+        observer.clone(),
+    );
 
-    run_stateless_lane_io(envelopes, config, context, route, updater, uplinks).await
+    run_stateless_lane_io(
+        envelopes, config, context, route, updater, uplinks, observer,
+    )
+    .await
 }
 
 fn combine_results(
@@ -664,20 +706,30 @@ where
 
     let (uplink_tx, uplink_rx) = mpsc::channel(config.action_buffer.get());
     let (err_tx, err_rx) = mpsc::channel(config.uplink_err_buffer.get());
-    let stream = stream.map(AddressedUplinkMessage::broadcast);
-    let uplinks = StatelessUplinks::new(stream, route.clone(), uplink_kind);
+    let observer = context.metrics().uplink_observer_for_path(route.clone());
+    let event_observer = observer.clone();
+
+    let stream = stream
+        .map(AddressedUplinkMessage::broadcast)
+        .inspect(|_| event_observer.on_event());
+    let uplinks = StatelessUplinks::new(stream, route.clone(), uplink_kind, observer.clone());
 
     let on_command_strategy = OnCommandStrategy::<Dropping>::dropping();
     let yield_after = config.yield_after.get();
+
+    let error_reporter = UplinkErrorReporter {
+        err_rx,
+        err_handler: UplinkErrorHandler::discard(),
+    };
 
     let envelope_task = action_envelope_task_with_uplinks(
         route.clone(),
         envelopes,
         uplink_tx,
-        err_rx,
-        UplinkErrorHandler::discard(),
+        error_reporter,
         on_command_strategy,
         yield_after,
+        observer,
     );
 
     let uplink_task = uplinks
@@ -720,18 +772,28 @@ where
     .await
 }
 
+struct UplinkErrorReporter {
+    err_rx: mpsc::Receiver<UplinkErrorReport>,
+    err_handler: UplinkErrorHandler,
+}
+
 async fn action_envelope_task_with_uplinks<Cmd>(
     route: RelativePath,
     envelopes: impl Stream<Item = TaggedClientEnvelope>,
     mut actions: mpsc::Sender<TaggedAction>,
-    err_rx: mpsc::Receiver<UplinkErrorReport>,
-    mut err_handler: UplinkErrorHandler,
+    err_reporter: UplinkErrorReporter,
     mut on_command_handler: OnCommandStrategy<Cmd>,
     yield_mod: usize,
+    observer: UplinkObserver,
 ) -> (bool, Vec<UplinkErrorReport>)
 where
     Cmd: Send + Sync + Form + Debug + 'static,
 {
+    let UplinkErrorReporter {
+        err_rx,
+        mut err_handler,
+    } = err_reporter;
+
     let envelopes = envelopes.fuse();
     pin_mut!(envelopes);
 
@@ -760,6 +822,8 @@ where
                     }
                     OutgoingHeader::Command => match body {
                         Some(value) => {
+                            observer.on_command();
+
                             let maybe_command = Cmd::try_convert(value).map(|cmd| (addr, cmd));
                             on_command_handler.on_command(maybe_command, addr).await
                         }
@@ -801,18 +865,8 @@ where
     (failed, err_handler.take_errors())
 }
 
-#[derive(Debug)]
+#[derive(Debug, Form)]
 struct Dropping;
-
-impl Form for Dropping {
-    fn as_value(&self) -> Value {
-        Value::Extant
-    }
-
-    fn try_from_value(_value: &Value) -> Result<Self, FormErr> {
-        Ok(Dropping)
-    }
-}
 
 /// A strategy for handling `OutgoingHeader::Command` messages.
 enum OnCommandStrategy<V = Dropping> {
@@ -834,7 +888,7 @@ where
     /// Handle the message and return whether or not the operation was successful.
     async fn on_command(
         &mut self,
-        maybe_command: Result<(RoutingAddr, F), FormErr>,
+        maybe_command: Result<(RoutingAddr, F), ReadError>,
         address: RoutingAddr,
     ) -> bool {
         match self {
@@ -847,7 +901,7 @@ where
 /// A handler for `OutgoingHeader::Command` messages. Forwarding any messages received to a sender.
 struct OnCommandHandler<F> {
     /// The sender to forward messages to.
-    sender: mpsc::Sender<Result<(RoutingAddr, F), FormErr>>,
+    sender: mpsc::Sender<Result<(RoutingAddr, F), ReadError>>,
     /// The corresponding route that this handler is operating on.
     route: RelativePath,
 }
@@ -857,7 +911,7 @@ where
     F: Send + Sync + Form + Debug + 'static,
 {
     fn new(
-        sender: mpsc::Sender<Result<(RoutingAddr, F), FormErr>>,
+        sender: mpsc::Sender<Result<(RoutingAddr, F), ReadError>>,
         route: RelativePath,
     ) -> OnCommandHandler<F> {
         OnCommandHandler { sender, route }
@@ -867,7 +921,7 @@ where
     /// successful.
     async fn send(
         &mut self,
-        maybe_command: Result<(RoutingAddr, F), FormErr>,
+        maybe_command: Result<(RoutingAddr, F), ReadError>,
         address: RoutingAddr,
     ) -> bool {
         let OnCommandHandler { sender, route } = self;

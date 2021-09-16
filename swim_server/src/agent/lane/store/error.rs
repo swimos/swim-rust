@@ -13,44 +13,46 @@
 // limitations under the License.
 
 use std::fmt::{Display, Formatter};
-use store::{StoreError, StoreInfo};
+use store::StoreError;
 use swim_common::model::time::Timestamp;
+
+#[derive(Debug)]
+pub struct StoreTaskError {
+    pub timestamp: Timestamp,
+    pub error: StoreError,
+}
 
 /// A lane store error report.
 #[derive(Debug)]
 pub struct LaneStoreErrorReport {
-    /// Details about the store that generated this error report.
-    pub(crate) store_info: StoreInfo,
     /// A vector of the store errors and the time at which they were generated.
-    pub(crate) errors: Vec<(Timestamp, StoreError)>,
+    pub(crate) errors: Vec<StoreTaskError>,
 }
 
 impl LaneStoreErrorReport {
-    pub fn new(store_info: StoreInfo, errors: Vec<(Timestamp, StoreError)>) -> Self {
-        LaneStoreErrorReport { store_info, errors }
+    pub fn new(errors: Vec<StoreTaskError>) -> Self {
+        LaneStoreErrorReport { errors }
     }
 
-    pub fn for_error(store_info: StoreInfo, error: StoreError) -> Self {
+    pub fn for_error(error: StoreTaskError) -> LaneStoreErrorReport {
         LaneStoreErrorReport {
-            store_info,
-            errors: vec![(Timestamp::now(), error)],
+            errors: vec![error],
         }
     }
 }
 
 impl Display for LaneStoreErrorReport {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let LaneStoreErrorReport { store_info, errors } = self;
+        let LaneStoreErrorReport { errors } = self;
 
         writeln!(f, "Lane store error report: ")?;
-        writeln!(f, "\t- Delegate store:")?;
-        writeln!(f, "\t\tPath: `{}`", store_info.path)?;
-        writeln!(f, "\t\tKind: `{}`", store_info.kind)?;
+
         writeln!(f, "\t- Errors: ")?;
 
-        for (ts, error) in errors.iter() {
+        for e in errors.iter() {
+            let StoreTaskError { timestamp, error } = e;
             // todo display for store error
-            writeln!(f, "\t\t{}: `{:?}`", ts, error)?;
+            writeln!(f, "\t\t{}: `{:?}`", timestamp, error)?;
         }
 
         Ok(())
@@ -62,56 +64,43 @@ impl Display for LaneStoreErrorReport {
 pub struct StoreErrorHandler {
     /// The maximum number of errors to aggregate before returning a report.
     max_errors: usize,
-    /// Details about the store generating the errors.
-    store_info: StoreInfo,
     /// A vector of the store errors and the time at which they were generated.
-    errors: Vec<(Timestamp, StoreError)>,
+    errors: Vec<StoreTaskError>,
 }
 
-fn is_operational(error: &StoreError) -> bool {
+fn is_operational(task_error: &StoreTaskError) -> bool {
     matches!(
-        error,
+        task_error.error,
         StoreError::InitialisationFailure(_) | StoreError::Io(_) | StoreError::Closing
     )
 }
 
 impl StoreErrorHandler {
-    pub fn new(max_errors: usize, store_info: StoreInfo) -> StoreErrorHandler {
+    pub fn new(max_errors: usize) -> StoreErrorHandler {
         StoreErrorHandler {
             max_errors,
-            store_info,
             errors: Vec::new(),
         }
     }
 
-    pub fn on_error(&mut self, error: StoreError) -> Result<(), LaneStoreErrorReport> {
-        let StoreErrorHandler {
-            max_errors,
-            errors,
-            store_info,
-        } = self;
+    pub fn on_error(&mut self, error: StoreTaskError) -> Result<(), LaneStoreErrorReport> {
+        let StoreErrorHandler { max_errors, errors } = self;
 
         if is_operational(&error) {
-            errors.push((Timestamp::now(), error));
+            errors.push(error);
 
             let len = errors.len();
-            let errors: Vec<(Timestamp, StoreError)> = errors.drain(0..len).collect();
+            let errors: Vec<StoreTaskError> = errors.drain(0..len).collect();
 
-            Err(LaneStoreErrorReport {
-                errors,
-                store_info: store_info.clone(),
-            })
+            Err(LaneStoreErrorReport { errors })
         } else {
-            errors.push((Timestamp::now(), error));
+            errors.push(error);
 
             let len = errors.len();
 
             if len >= *max_errors {
-                let errors: Vec<(Timestamp, StoreError)> = errors.drain(0..len).collect();
-                Err(LaneStoreErrorReport {
-                    errors,
-                    store_info: store_info.to_owned(),
-                })
+                let errors: Vec<StoreTaskError> = errors.drain(0..len).collect();
+                Err(LaneStoreErrorReport { errors })
             } else {
                 Ok(())
             }

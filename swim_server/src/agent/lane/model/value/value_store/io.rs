@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::store::error::{LaneStoreErrorReport, StoreErrorHandler};
+use crate::agent::lane::store::error::{LaneStoreErrorReport, StoreErrorHandler, StoreTaskError};
 use crate::agent::lane::store::StoreIo;
 use crate::agent::model::value::value_store::ValueDataModel;
 use crate::agent::store::NodeStore;
