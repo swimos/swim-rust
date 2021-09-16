@@ -131,7 +131,7 @@ impl IncomingHostTask {
                 IncomingRequest::Message(message) => {
                     let value = {
                         match &message {
-                            WsMessage::Text(s) => parse_single(&s),
+                            WsMessage::Text(s) => parse_single(s),
                             m => {
                                 error!("Unimplemented message type received: {:?}", m);
                                 continue;

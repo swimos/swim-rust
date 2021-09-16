@@ -29,10 +29,11 @@ use std::sync::Arc;
 use stm::transaction;
 use stm::transaction::{RetryManager, TransactionError};
 use stm::var::TVar;
-use swim_common::form::{Form, FormErr};
+use swim_common::form::Form;
 use swim_common::model::Value;
 
 use crate::agent::lane::channels::uplink::PeelResult;
+use swim_common::form::structural::read::ReadError;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 use utilities::sync::trigger;
@@ -40,7 +41,7 @@ use utilities::sync::trigger;
 #[derive(Debug)]
 pub enum MapLaneSyncError {
     FailedTransaction(TransactionError),
-    InconsistentForm(FormErr),
+    InconsistentForm(ReadError),
 }
 
 type EventResult<K, V> = Result<MapLaneEvent<K, V>, MapLaneSyncError>;

@@ -80,20 +80,6 @@ impl<M: MetricReporter> MetricState<M> {
         profile
     }
 
-    /// Flush the pulse.
-    fn flush_pulse(&mut self) {
-        let MetricState {
-            reporter,
-            lane,
-            accumulated,
-            ..
-        } = self;
-
-        let (pulse, _) = reporter.report(*accumulated);
-        let _ = lane.try_send(pulse);
-        *accumulated = Default::default();
-    }
-
     /// Accumulate `profile`, flush the pulse if the last report time is greater than `sample_rate`.
     /// Returns a result with an optional profile if the report time is greater than `sample_rate`,
     /// or an error if the pulse lane is closed.
@@ -174,7 +160,11 @@ where
     }
 
     /// Runs the aggregator and yields executing back to the runtime every `yield_after`.
-    pub async fn run(self, yield_after: NonZeroUsize) -> Result<MetricStage, AggregatorError> {
+    pub async fn run(
+        self,
+        yield_after: NonZeroUsize,
+        stop_notify: trigger::Sender,
+    ) -> Result<MetricStage, AggregatorError> {
         let AggregatorTask {
             stop_rx,
             sample_rate,
@@ -188,26 +178,27 @@ where
         let mut fused_metric_rx = input.fuse();
         let mut fused_trigger = stop_rx.fuse();
         let mut iteration_count: usize = 0;
-
         let yield_mod = yield_after.get();
 
-        let error = loop {
+        let stop_result = loop {
             let event: Option<(RelativePath, M::Input)> = select_biased! {
                 _ = fused_trigger => {
                     event!(Level::DEBUG, STOP_OK);
-
                     drain(&mut fused_metric_rx, &mut metrics, &output);
 
-                    return Ok(M::METRIC_STAGE);
+                    break Ok(M::METRIC_STAGE);
                 },
                 metric = fused_metric_rx.next() => metric,
             };
             match event {
                 None => {
                     drain(&mut fused_metric_rx, &mut metrics, &output);
-
                     event!(Level::WARN, STOP_CLOSED);
-                    break AggregatorErrorKind::AbnormalStop;
+
+                    break Err(AggregatorError {
+                        aggregator: M::METRIC_STAGE,
+                        error: AggregatorErrorKind::AbnormalStop,
+                    });
                 }
                 Some((path, payload)) => {
                     let did_error = match metrics.get_mut(&path) {
@@ -216,7 +207,12 @@ where
                                 if let Err(TrySendError::Closed(_)) =
                                     output.try_send((path.clone(), profile))
                                 {
-                                    break AggregatorErrorKind::ForwardChannelClosed;
+                                    let error = AggregatorError {
+                                        aggregator: M::METRIC_STAGE,
+                                        error: AggregatorErrorKind::ForwardChannelClosed,
+                                    };
+                                    event!(Level::ERROR, %error, STOP_CLOSED);
+                                    break Err(error);
                                 }
                                 false
                             }
@@ -246,12 +242,8 @@ where
             }
         };
 
-        event!(Level::ERROR, %error, STOP_CLOSED);
-
-        Err(AggregatorError {
-            aggregator: M::METRIC_STAGE,
-            error,
-        })
+        stop_notify.trigger();
+        stop_result
     }
 }
 
@@ -274,7 +266,15 @@ fn drain<M, S>(
     metrics
         .iter_mut()
         .filter(|(_k, v)| v.requires_flush)
-        .for_each(|(_k, item)| {
-            item.flush_pulse();
+        .for_each(|(k, item)| {
+            let MetricState {
+                accumulated,
+                reporter,
+                lane,
+                ..
+            } = item;
+            let (pulse, profile) = reporter.report(*accumulated);
+            let _ = output.try_send((k.clone(), profile));
+            let _ = lane.try_send(pulse);
         });
 }

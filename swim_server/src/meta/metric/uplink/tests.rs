@@ -18,9 +18,8 @@ use crate::agent::model::supply::make_lane_model;
 use crate::meta::metric::config::MetricAggregatorConfig;
 use crate::meta::metric::tests::{backpressure_config, DEFAULT_BUFFER, DEFAULT_YIELD};
 use crate::meta::metric::uplink::{
-    uplink_aggregator, uplink_observer, TaggedWarpUplinkProfile, TrySendError,
-    UplinkActionObserver, UplinkEventObserver, UplinkProfileSender, WarpUplinkProfile,
-    WarpUplinkPulse,
+    uplink_aggregator, uplink_observer, AggregatorConfig, TaggedWarpUplinkProfile, TrySendError,
+    UplinkObserver, UplinkProfileSender, WarpUplinkProfile, WarpUplinkPulse,
 };
 use crate::meta::metric::MetricStage;
 use futures::future::{join, join3};
@@ -59,7 +58,7 @@ impl UplinkMetricObserver {
         }
     }
 
-    fn uplink_observer(&self, lane_uri: String) -> (UplinkEventObserver, UplinkActionObserver) {
+    fn uplink_observer(&self, lane_uri: String) -> UplinkObserver {
         let UplinkMetricObserver {
             sample_rate,
             node_uri,
@@ -103,18 +102,12 @@ async fn receive() {
     let (tx, mut rx) = mpsc::channel(1);
     let sender = UplinkProfileSender::new(path.clone(), tx);
 
-    let (event_observer, action_observer) = uplink_observer(Duration::from_nanos(1), sender);
+    let observer = uplink_observer(Duration::from_nanos(1), sender);
 
-    event_observer
-        .inner
-        .command_delta
-        .fetch_add(2, Ordering::Acquire);
-    action_observer
-        .inner
-        .event_delta
-        .fetch_add(2, Ordering::Acquire);
+    observer.inner.command_delta.fetch_add(2, Ordering::Acquire);
+    observer.inner.event_delta.fetch_add(2, Ordering::Acquire);
 
-    event_observer.inner.flush();
+    observer.inner.flush();
 
     let tagged = rx.recv().await.unwrap();
 
@@ -129,25 +122,25 @@ async fn receive_threaded() {
     let sender = UplinkProfileSender::new(path.clone(), tx);
 
     let sample_rate = Duration::from_secs(1);
-    let (event_observer, action_observer) = uplink_observer(sample_rate, sender);
+    let observer = uplink_observer(sample_rate, sender);
 
-    let make_task = |event_observer: UplinkEventObserver, action_observer: UplinkActionObserver| async move {
+    let make_task = |observer: UplinkObserver| async move {
         for i in 0..100 {
-            event_observer.on_event();
-            action_observer.on_command();
-            action_observer.did_open();
-            action_observer.did_close();
+            observer.on_event();
+            observer.on_command();
+            observer.did_open();
+            observer.did_close();
 
             if i % 10 == 0 {
                 sleep(Duration::from_millis(100)).await;
             }
         }
 
-        action_observer.inner.accumulate_and_send();
+        observer.inner.accumulate_and_send();
     };
 
-    let task_left = make_task(event_observer.clone(), action_observer.clone());
-    let task_right = make_task(event_observer, action_observer);
+    let task_left = make_task(observer.clone());
+    let task_right = make_task(observer);
 
     let _r = join(task_left, task_right).await;
 
@@ -205,15 +198,19 @@ async fn task_backpressure() {
     });
 
     let (lane_profile_tx, _lane_profile_rx) = mpsc::channel(4096);
-
-    let (uplink_task, uplink_tx) = uplink_aggregator(
-        stop_rx,
+    let (finish_tx, finish_rx) = trigger::trigger();
+    let aggregator_config = AggregatorConfig {
         sample_rate,
-        NonZeroUsize::new(buffer_size).unwrap(),
-        DEFAULT_YIELD,
-        config.backpressure_config,
+        buffer_size: NonZeroUsize::new(buffer_size).unwrap(),
+        yield_after: DEFAULT_YIELD,
+        backpressure_config: config.backpressure_config,
+    };
+    let (uplink_task, uplink_tx) = uplink_aggregator(
+        aggregator_config,
+        stop_rx,
         lanes,
         lane_profile_tx,
+        finish_tx,
     );
 
     let observer = UplinkMetricObserver::new(
@@ -226,28 +223,18 @@ async fn task_backpressure() {
 
     iter(0..count)
         .fold(observer, |observer, lane_id| async move {
-            let (event_observer, action_observer) = observer.uplink_observer(format_lane(lane_id));
+            let inner_observer = observer.uplink_observer(format_lane(lane_id));
 
             iter(0..message_count)
-                .fold(
-                    (event_observer, action_observer),
-                    |(event_observer, action_observer), _message_id| async {
-                        delay_for(sample_rate).await;
+                .fold(inner_observer, |observer, _message_id| async {
+                    delay_for(sample_rate).await;
 
-                        event_observer
-                            .inner
-                            .event_delta
-                            .fetch_add(1, Ordering::Acquire);
-                        event_observer
-                            .inner
-                            .command_delta
-                            .fetch_add(1, Ordering::Acquire);
+                    observer.inner.event_delta.fetch_add(1, Ordering::Acquire);
+                    observer.inner.command_delta.fetch_add(1, Ordering::Acquire);
+                    observer.inner.flush();
 
-                        event_observer.inner.flush();
-
-                        (event_observer, action_observer)
-                    },
-                )
+                    observer
+                })
                 .await;
 
             observer
@@ -281,6 +268,7 @@ async fn task_backpressure() {
     assert!(lane_set.is_empty());
 
     let _ = task_jh.await.unwrap();
+    assert!(finish_rx.await.is_ok());
 }
 
 #[tokio::test]
@@ -309,16 +297,14 @@ async fn with_observer() {
         assert_eq!(profile.open_delta, 1);
         assert_eq!(profile.close_delta, 1);
     };
-
-    let (uplink_task, uplink_tx) = uplink_aggregator(
-        stop_rx,
+    let (finish_tx, finish_rx) = trigger::trigger();
+    let config = AggregatorConfig {
         sample_rate,
-        DEFAULT_BUFFER,
-        DEFAULT_YIELD,
-        backpressure_config(),
-        lane_map,
-        lane_tx,
-    );
+        buffer_size: DEFAULT_BUFFER,
+        yield_after: DEFAULT_YIELD,
+        backpressure_config: backpressure_config(),
+    };
+    let (uplink_task, uplink_tx) = uplink_aggregator(config, stop_rx, lane_map, lane_tx, finish_tx);
 
     let task = tokio::spawn(join3(uplink_task, lane_rcv_task, supply_rcv_task));
 
@@ -328,24 +314,15 @@ async fn with_observer() {
         uplink_tx,
     );
 
-    let (event_observer, action_observer) = observer.uplink_observer("lane".to_string());
+    let observer = observer.uplink_observer("lane".to_string());
 
-    event_observer
-        .inner
-        .event_delta
-        .fetch_add(1, Ordering::Relaxed);
-    action_observer
-        .inner
-        .open_delta
-        .fetch_add(1, Ordering::Relaxed);
-    action_observer
-        .inner
-        .close_delta
-        .fetch_add(1, Ordering::Relaxed);
+    observer.inner.event_delta.fetch_add(1, Ordering::Relaxed);
+    observer.inner.open_delta.fetch_add(1, Ordering::Relaxed);
+    observer.inner.close_delta.fetch_add(1, Ordering::Relaxed);
 
     sleep(sample_rate).await;
 
-    event_observer.inner.flush();
+    observer.inner.flush();
 
     sleep(sample_rate).await;
 
@@ -354,4 +331,5 @@ async fn with_observer() {
     let (task_result, _, _) = task.await.unwrap();
 
     assert_eq!(task_result, Ok(MetricStage::Uplink));
+    assert!(finish_rx.await.is_ok());
 }
