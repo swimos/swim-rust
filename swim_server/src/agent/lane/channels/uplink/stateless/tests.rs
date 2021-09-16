@@ -31,8 +31,8 @@ use crate::agent::lane::channels::TaggedAction;
 use crate::agent::store::mock::MockNodeStore;
 use crate::agent::store::SwimNodeStore;
 use crate::meta::metric::uplink::{
-    uplink_observer, TaggedWarpUplinkProfile, UplinkActionObserver, UplinkEventObserver,
-    UplinkProfileSender, WarpUplinkProfile,
+    uplink_observer, TaggedWarpUplinkProfile, UplinkObserver, UplinkProfileSender,
+    WarpUplinkProfile,
 };
 use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
 use crate::plane::store::mock::MockPlaneStore;
@@ -167,11 +167,11 @@ async fn immediate_unlink_stateless_uplinks() {
     join(uplinks_task, assertion_task).await;
 }
 
-fn stub_action_observer() -> UplinkActionObserver {
+fn stub_action_observer() -> UplinkObserver {
     let (tx, _rx) = mpsc::channel(48);
     let sender = UplinkProfileSender::new(RelativePath::new("node", "lane"), tx);
 
-    uplink_observer(Duration::from_secs(1), sender).1
+    uplink_observer(Duration::from_secs(1), sender)
 }
 
 #[tokio::test]
@@ -719,16 +719,12 @@ async fn send_no_uplink_stateless_uplinks() {
     join(uplinks_task, assertion_task).await;
 }
 
-fn tracking_observer() -> (
-    UplinkEventObserver,
-    UplinkActionObserver,
-    Receiver<TaggedWarpUplinkProfile>,
-) {
+fn tracking_observer() -> (UplinkObserver, Receiver<TaggedWarpUplinkProfile>) {
     let (tx, rx) = mpsc::channel(48);
     let sender = UplinkProfileSender::new(RelativePath::new("node", "lane"), tx);
 
-    let (event, action) = uplink_observer(Duration::from_secs(1), sender);
-    (event, action, rx)
+    let observer = uplink_observer(Duration::from_secs(1), sender);
+    (observer, rx)
 }
 
 #[tokio::test]
@@ -739,13 +735,13 @@ async fn metrics() {
     let (router_tx, mut router_rx) = mpsc::channel(10);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
-    let (event_observer, action_observer, metric_rx) = tracking_observer();
+    let (observer, metric_rx) = tracking_observer();
 
     let uplinks = StatelessUplinks::new(
         ReceiverStream::new(producer_rx),
         route.clone(),
         UplinkKind::Supply,
-        action_observer,
+        observer,
     );
 
     let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
@@ -795,8 +791,6 @@ async fn metrics() {
 
         drop(action_tx);
         drop(producer_tx);
-
-        event_observer.force_flush();
     };
 
     let receive_task = async move {
