@@ -16,7 +16,7 @@ use crate::agent::lane::InvalidForm;
 use futures::future::{ready, Ready};
 use futures::stream::{empty, Empty};
 use stm::transaction::RetryManager;
-use swim_common::form::FormErr;
+use swim_common::form::structural::read::ReadError;
 
 #[derive(Clone, Debug)]
 pub struct ExactlyOnce;
@@ -36,10 +36,10 @@ impl RetryManager for ExactlyOnce {
 
 #[test]
 fn format_invalid_form() {
-    let err = InvalidForm(FormErr::Malformatted);
+    let err = InvalidForm(ReadError::UnexpectedItem);
     let str = format!("{}", err);
     assert_eq!(
         str,
-        "Lane form implementation is inconsistent: Malformatted"
+        "Lane form implementation is inconsistent: Unexpected item in record."
     );
 }

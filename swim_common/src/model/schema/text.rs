@@ -63,7 +63,7 @@ impl PartialOrd for TextSchema {
                 (TextSchema::Exact(val), TextSchema::NonEmpty) if !val.is_empty() => {
                     Some(Ordering::Less)
                 }
-                (TextSchema::Exact(val), TextSchema::Matches(regex)) if regex.is_match(&val) => {
+                (TextSchema::Exact(val), TextSchema::Matches(regex)) if regex.is_match(val) => {
                     Some(Ordering::Less)
                 }
                 (TextSchema::Matches(regex), TextSchema::NonEmpty) if !regex.is_match("") => {

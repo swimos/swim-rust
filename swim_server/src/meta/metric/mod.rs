@@ -18,8 +18,8 @@ use crate::meta::metric::config::MetricAggregatorConfig;
 use crate::meta::metric::lane::LaneMetricReporter;
 use crate::meta::metric::node::NodeAggregatorTask;
 use crate::meta::metric::uplink::{
-    uplink_aggregator, uplink_observer, TaggedWarpUplinkProfile, UplinkActionObserver,
-    UplinkEventObserver, UplinkProfileSender,
+    uplink_aggregator, uplink_observer, AggregatorConfig, TaggedWarpUplinkProfile, UplinkObserver,
+    UplinkProfileSender,
 };
 use crate::meta::pulse::PulseLanes;
 use futures::future::try_join3;
@@ -207,9 +207,12 @@ impl NodeMetricAggregator {
             node,
         } = lanes;
 
+        let (uplink_to_lane_tx, uplink_to_lane_rx) = trigger::trigger();
+        let (lane_to_node_tx, lane_to_node_rx) = trigger::trigger();
+
         let (node_tx, node_rx) = mpsc::channel(buffer_size.get());
         let node_aggregator = NodeAggregatorTask::new(
-            stop_rx.clone(),
+            lane_to_node_rx,
             sample_rate,
             node,
             ReceiverStream::new(node_rx),
@@ -227,27 +230,27 @@ impl NodeMetricAggregator {
         let lane_aggregator = AggregatorTask::new(
             lane_pulse_lanes,
             sample_rate,
-            stop_rx.clone(),
+            uplink_to_lane_rx,
             ReceiverStream::new(lane_rx),
             node_tx,
         );
 
-        let (uplink_task, uplink_tx) = uplink_aggregator(
-            stop_rx,
+        let uplink_config = AggregatorConfig {
+            backpressure_config,
             sample_rate,
             buffer_size,
             yield_after,
-            backpressure_config,
-            uplinks,
-            lane_tx,
-        );
+        };
+
+        let (uplink_task, uplink_tx) =
+            uplink_aggregator(uplink_config, stop_rx, uplinks, lane_tx, uplink_to_lane_tx);
 
         let task_node_uri = node_uri.clone();
 
         let task = async move {
             let result = try_join3(
                 node_aggregator.run(yield_after),
-                lane_aggregator.run(yield_after),
+                lane_aggregator.run(yield_after, lane_to_node_tx),
                 uplink_task,
             )
             .instrument(span!(Level::DEBUG, AGGREGATOR_TASK, ?task_node_uri))
@@ -291,7 +294,7 @@ impl NodeMetricAggregator {
     }
 
     /// Returns a new event and action observer pair for the provided `lane_uri`.
-    pub fn uplink_observer(&self, lane_uri: String) -> (UplinkEventObserver, UplinkActionObserver) {
+    pub fn uplink_observer(&self, lane_uri: String) -> UplinkObserver {
         let NodeMetricAggregator {
             sample_rate,
             node_uri,
@@ -303,10 +306,7 @@ impl NodeMetricAggregator {
         uplink_observer(*sample_rate, profile_sender)
     }
 
-    pub fn uplink_observer_for_path(
-        &self,
-        uri: RelativePath,
-    ) -> (UplinkEventObserver, UplinkActionObserver) {
+    pub fn uplink_observer_for_path(&self, uri: RelativePath) -> UplinkObserver {
         let NodeMetricAggregator {
             sample_rate,
             metric_tx,
