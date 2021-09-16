@@ -279,7 +279,7 @@ impl<T: Any + Send + Sync> TransactionFuture for WriteFuture<T> {
     ) -> Poll<ExecResult<Self::Output>> {
         let WriteFuture { inner, value } = self.get_mut();
         if let Some(value) = value.take() {
-            transaction.apply_set(&inner, value);
+            transaction.apply_set(inner, value);
         } else {
             panic!("Write future polled twice.");
         }

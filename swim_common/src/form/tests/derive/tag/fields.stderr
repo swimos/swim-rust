@@ -1,5 +1,8 @@
-error: Tagged variants cannot contain fields
-  --> $DIR/fields.rs:21:9
+error: Only enumerations with no fields can be tags.
+  --> $DIR/fields.rs:19:5
    |
-21 |         B(i32),
-   |         ^
+19 | /     enum E {
+20 | |         A,
+21 | |         B(i32),
+22 | |     }
+   | |_____^

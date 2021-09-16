@@ -743,7 +743,7 @@ impl<'a> Future for AwaitChanged<'a> {
             return Poll::Ready(());
         }
         let waker = cx.waker();
-        if transaction.register_waker(&waker) {
+        if transaction.register_waker(waker) {
             Poll::Ready(())
         } else {
             Poll::Pending

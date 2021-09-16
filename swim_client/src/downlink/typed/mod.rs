@@ -60,7 +60,7 @@ where
     }
 }
 
-async fn await_fallible<T: ValidatedForm>(
+async fn await_fallible<T: Form + ValidatedForm>(
     rx: oneshot::Receiver<Result<UpdateResult<SharedValue>, DownlinkError>>,
 ) -> Result<T, DownlinkError> {
     let value = rx
@@ -73,7 +73,7 @@ async fn await_fallible<T: ValidatedForm>(
     })
 }
 
-async fn await_value<T: ValidatedForm>(
+async fn await_value<T: Form + ValidatedForm>(
     rx: oneshot::Receiver<Result<SharedValue, DownlinkError>>,
 ) -> Result<T, DownlinkError> {
     let value = rx.await.map_err(|_| DownlinkError::DroppedChannel)??;
@@ -83,7 +83,7 @@ async fn await_value<T: ValidatedForm>(
     })
 }
 
-async fn await_optional<T: ValidatedForm>(
+async fn await_optional<T: Form + ValidatedForm>(
     rx: oneshot::Receiver<Result<Option<SharedValue>, DownlinkError>>,
 ) -> Result<Option<T>, DownlinkError> {
     let maybe_value = rx.await.map_err(|_| DownlinkError::DroppedChannel)??;

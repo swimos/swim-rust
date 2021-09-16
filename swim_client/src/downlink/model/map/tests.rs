@@ -15,7 +15,8 @@
 use num_bigint::{BigInt, BigUint};
 
 use super::*;
-use swim_common::form::{Form, FormErr, ValidatedForm};
+use swim_common::form::structural::read::ReadError;
+use swim_common::form::{Form, ValidatedForm};
 use swim_common::model::schema::Schema;
 use swim_common::model::{Attr, Item};
 
@@ -32,7 +33,7 @@ pub fn clear_to_value() {
     );
 }
 
-type MapModResult = Result<UntypedMapModification<Value>, FormErr>;
+type MapModResult = Result<UntypedMapModification<Value>, ReadError>;
 
 #[test]
 pub fn clear_from_value() {

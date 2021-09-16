@@ -146,7 +146,7 @@ pub struct ValidatedField<'f> {
 
 impl<'f> SynOriginal for ValidatedField<'f> {
     fn original(&self) -> &Field {
-        &self.form_field.original
+        self.form_field.original
     }
 }
 
