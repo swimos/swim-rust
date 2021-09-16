@@ -24,6 +24,8 @@ use store::keyspaces::{KeyspaceDef, KeyspaceResolver, Keyspaces};
 use store::{ColumnFamily, Options, SliceTransform};
 use store::{EngineInfo, Store, StoreError};
 
+const PREFIX_BLOOM_RATIO: f64 = 0.2;
+
 #[derive(Debug, Clone)]
 pub struct RocksDatabase {
     db: RocksEngine,
@@ -161,7 +163,7 @@ pub fn default_keyspaces() -> Keyspaces<RocksOpts> {
 
     let mut map_opts = Options::default();
     map_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(size_of::<u64>()));
-    map_opts.set_memtable_prefix_bloom_ratio(0.2);
+    map_opts.set_memtable_prefix_bloom_ratio(PREFIX_BLOOM_RATIO);
 
     let map_def = KeyspaceDef::new(MAP_LANE_KS, RocksOpts(map_opts));
 
