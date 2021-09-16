@@ -13,11 +13,11 @@
 // limitations under the License.
 
 use crate::errors::Error;
-use crate::extensions::ext::NoExtProxy;
 use crate::handshake::ProtocolRegistry;
+use crate::noext::NoExtProxy;
 use crate::ws::Upgraded;
-use crate::ExtensionProvider;
 use crate::{client, TryIntoRequest, WebSocketConfig, WebSocketStream};
+use ratchet_ext::ExtensionProvider;
 
 pub struct WebSocketClientBuilder<E> {
     config: Option<WebSocketConfig>,

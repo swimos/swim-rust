@@ -12,19 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::extensions::{
-    Extension, ExtensionDecoder, ExtensionEncoder, ExtensionProvider, SplittableExtension,
-};
-use crate::{Error, ErrorKind};
 use http::{HeaderMap, HeaderValue};
 use httparse::Header;
+use ratchet_ext::{
+    Extension, ExtensionDecoder, ExtensionEncoder, ExtensionProvider, SplittableExtension,
+};
 use std::convert::Infallible;
 
-#[allow(dead_code)]
-#[derive(Debug, PartialEq)]
-pub enum WebsocketExtension {
-    None,
-    Deflate,
+#[derive(Debug, Default, Clone)]
+pub struct NoExt;
+impl Extension for NoExt {
+    fn encode(&mut self) {}
+
+    fn decode(&mut self) {}
 }
 
 pub struct NoExtProxy;
@@ -44,20 +44,6 @@ impl ExtensionProvider for NoExtProxy {
     ) -> Result<(Self::Extension, Option<HeaderValue>), Self::Error> {
         Ok((NoExt, None))
     }
-}
-
-impl From<Infallible> for Error {
-    fn from(e: Infallible) -> Self {
-        Error::with_cause(ErrorKind::Extension, e)
-    }
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct NoExt;
-impl Extension for NoExt {
-    fn encode(&mut self) {}
-
-    fn decode(&mut self) {}
 }
 
 impl SplittableExtension for NoExt {

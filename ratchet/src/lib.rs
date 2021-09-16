@@ -12,30 +12,4 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(test)]
-mod fixture;
-
-mod builder;
-mod errors;
-mod extensions;
-mod framed;
-mod handshake;
-mod protocol;
-mod split;
-mod ws;
-
-pub use crate::extensions::{deflate::*, ext::*, Extension, ExtensionProvider};
-pub use builder::{WebSocketClientBuilder, WebSocketServerBuilder};
-pub use errors::*;
-pub use handshake::{
-    accept, ProtocolRegistry, TryIntoRequest, WebSocketResponse, WebSocketUpgrader,
-};
-pub use protocol::{Message, PayloadType, Role, WebSocketConfig};
-pub use ws::{client, Upgraded, WebSocket};
-
-use tokio::io::{AsyncRead, AsyncWrite};
-
-pub(crate) type Request = http::Request<()>;
-
-pub trait WebSocketStream: AsyncRead + AsyncWrite + Unpin + 'static {}
-impl<S> WebSocketStream for S where S: AsyncRead + AsyncWrite + Unpin + 'static {}
+pub use ratchet_core::{self, *};

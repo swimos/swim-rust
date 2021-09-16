@@ -1,0 +1,10 @@
+[package]
+name = "ratchet_ext"
+version = "0.1.0"
+authors = ["Swim.AI developers info@swim.ai"]
+edition = "2018"
+
+
+[dependencies]
+http = "0.2.3"
+httparse = "1.4.1"

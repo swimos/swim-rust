@@ -12,10 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::extensions::{Extension, ExtensionProvider};
-use crate::{Error, ErrorKind};
 use http::{HeaderMap, HeaderValue};
 use httparse::Header;
+use ratchet_ext::{Extension, ExtensionProvider};
 use thiserror::Error;
 
 pub struct DeflateHandshake;
@@ -23,12 +22,6 @@ pub struct DeflateHandshake;
 #[derive(Error, Debug)]
 #[error("Err")]
 pub struct DeflateError;
-
-impl From<DeflateError> for Error {
-    fn from(e: DeflateError) -> Self {
-        Error::with_cause(ErrorKind::Extension, e)
-    }
-}
 
 impl ExtensionProvider for DeflateHandshake {
     type Extension = Deflate;

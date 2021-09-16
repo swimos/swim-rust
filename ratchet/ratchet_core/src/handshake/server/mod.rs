@@ -23,13 +23,14 @@ use crate::handshake::{
 use crate::handshake::{TryMap, UPGRADE_STR, WEBSOCKET_STR};
 use crate::protocol::Role;
 use crate::{
-    Error, ErrorKind, Extension, ExtensionProvider, HttpError, ProtocolRegistry, Request, Upgraded,
-    WebSocket, WebSocketConfig, WebSocketStream,
+    Error, ErrorKind, HttpError, ProtocolRegistry, Request, Upgraded, WebSocket, WebSocketConfig,
+    WebSocketStream,
 };
 use bytes::{BufMut, Bytes, BytesMut};
 use http::status::InvalidStatusCode;
 use http::{HeaderMap, HeaderValue, StatusCode, Uri};
 use httparse::Status;
+use ratchet_ext::{Extension, ExtensionProvider};
 use sha1::{Digest, Sha1};
 use std::convert::TryFrom;
 use std::iter::FromIterator;
@@ -391,7 +392,7 @@ where
     let key = get_header(headers, http::header::SEC_WEBSOCKET_KEY)?;
     let (extension, extension_header) = extension
         .negotiate_server(request.headers)
-        .map_err(Into::into)?;
+        .map_err(|e| Error::with_cause(ErrorKind::Extension, e))?;
     let subprotocol = subprotocols.negotiate_request(request)?;
 
     Ok(HandshakeResult {

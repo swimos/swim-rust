@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use crate::errors::{CloseError, Error, ErrorKind, ProtocolError};
-use crate::extensions::SplittableExtension;
 use crate::framed::{FramedIo, Item};
 use crate::handshake::{exec_client_handshake, HandshakeResult, ProtocolRegistry};
 use crate::protocol::{
@@ -21,8 +20,9 @@ use crate::protocol::{
     PayloadType, Role,
 };
 use crate::split::{split, Receiver, Sender};
-use crate::{Extension, ExtensionProvider, Request, WebSocketConfig, WebSocketStream};
+use crate::{Request, WebSocketConfig, WebSocketStream};
 use bytes::BytesMut;
+use ratchet_ext::{Extension, ExtensionProvider, SplittableExtension};
 
 pub const CONTROL_MAX_SIZE: usize = 125;
 pub const CONTROL_DATA_MISMATCH: &str = "Unexpected control frame data";

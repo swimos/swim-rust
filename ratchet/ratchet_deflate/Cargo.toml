@@ -1,0 +1,11 @@
+[package]
+name = "ratchet_deflate"
+version = "0.1.0"
+authors = ["Swim.AI developers info@swim.ai"]
+edition = "2018"
+
+[dependencies]
+ratchet_ext = { path = "../ratchet_ext" }
+thiserror = "1.0"
+http = "0.2.3"
+httparse = "1.4.1"

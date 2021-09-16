@@ -12,13 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::Error;
 use http::{HeaderMap, HeaderValue};
 use httparse::Header;
+use std::error::Error;
 use std::fmt::Debug;
-
-pub mod deflate;
-pub mod ext;
 
 pub trait Extension: Debug {
     fn encode(&mut self);
@@ -46,7 +43,7 @@ pub trait ExtensionDecoder {
 
 pub trait ExtensionProvider {
     type Extension: Extension;
-    type Error: Into<Error> + Send + Sync + 'static;
+    type Error: Error + Send + Sync + 'static;
 
     fn apply_headers(&self, headers: &mut HeaderMap);
 

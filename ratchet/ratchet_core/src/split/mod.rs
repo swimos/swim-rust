@@ -15,7 +15,6 @@
 #[cfg(test)]
 mod tests;
 
-use crate::extensions::{ExtensionDecoder, ExtensionEncoder, SplittableExtension};
 use crate::framed::{
     read_next, write_close, write_fragmented, CodecFlags, FramedIoParts, FramedRead, FramedWrite,
     Item,
@@ -30,6 +29,7 @@ use crate::{
 };
 use bitflags::_core::sync::atomic::Ordering;
 use bytes::BytesMut;
+use ratchet_ext::{ExtensionDecoder, ExtensionEncoder, SplittableExtension};
 use std::fmt::Debug;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;

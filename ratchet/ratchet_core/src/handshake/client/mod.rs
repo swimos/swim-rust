@@ -26,7 +26,6 @@ use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 
 use crate::errors::{Error, ErrorKind, HttpError};
-use crate::extensions::ExtensionProvider;
 use crate::handshake::client::encoding::{build_request, encode_request};
 use crate::handshake::io::BufferedIo;
 use crate::handshake::{
@@ -34,6 +33,7 @@ use crate::handshake::{
     ACCEPT_KEY, BAD_STATUS_CODE, UPGRADE_STR, WEBSOCKET_STR,
 };
 use crate::WebSocketStream;
+use ratchet_ext::ExtensionProvider;
 
 type Nonce = [u8; 24];
 
@@ -319,6 +319,6 @@ where
         subprotocol: subprotocols.negotiate_response(response)?,
         extension: extension
             .negotiate_client(response.headers)
-            .map_err(Into::into)?,
+            .map_err(|e| Error::with_cause(ErrorKind::Extension, e))?,
     })
 }
