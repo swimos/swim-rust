@@ -1,5 +1,11 @@
 error: At most one field can replace the tag attribute body.
-  --> $DIR/double_header_body_attr.rs:22:16
+  --> $DIR/double_header_body_attr.rs:19:14
    |
-22 |         #[form(header_body)]
-   |                ^^^^^^^^^^^
+19 |       struct S {
+   |  ______________^
+20 | |         #[form(header_body)]
+21 | |         a: i32,
+22 | |         #[form(header_body)]
+23 | |         b: i32,
+24 | |     }
+   | |_____^

@@ -40,7 +40,7 @@ use pin_utils::pin_mut;
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::{Arc, Weak};
-use swim_common::form::ValidatedForm;
+use swim_common::form::{Form, ValidatedForm};
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::request::Request;
@@ -150,7 +150,7 @@ impl Downlinks {
         path: AbsolutePath,
     ) -> RequestResult<(TypedValueDownlink<T>, ValueDownlinkReceiver<T>)>
     where
-        T: ValidatedForm + Send + 'static,
+        T: Form + ValidatedForm + Send + 'static,
     {
         info!("Subscribing to typed value lane");
 

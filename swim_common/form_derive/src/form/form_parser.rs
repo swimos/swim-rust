@@ -148,8 +148,4 @@ impl FormDescriptor {
             manifest,
         }
     }
-
-    pub fn has_body_replaced(&self) -> bool {
-        self.body_replaced
-    }
 }

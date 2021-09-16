@@ -98,7 +98,6 @@ impl ServerRouter for TopLevelRouter {
 
             let (tx, rx) = oneshot::channel();
             let request = Request::new(tx);
-
             if addr.is_remote() {
                 if remote_sender
                     .send(RoutingRequest::Endpoint { addr, request })
