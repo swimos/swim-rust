@@ -12,12 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::form::Form;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 use utilities::future::retryable::strategy::RetryStrategy;
 
+mod swim_common {
+    pub use crate::*;
+}
+
 /// Configuration parameters for remote connection management.
-#[derive(Debug, Clone, Copy)]
+#[derive(Form, Debug, Clone, Copy)]
+#[form(tag = "remote_connections")]
 pub struct RemoteConnectionsConfig {
     /// Buffer size for sending routing requests for a router instance.
     pub router_buffer_size: NonZeroUsize,

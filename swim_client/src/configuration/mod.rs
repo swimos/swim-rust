@@ -27,7 +27,7 @@ use swim_common::warp::path::{AbsolutePath, Addressable};
 use tokio::time::Duration;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use url::Url;
-use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
+use utilities::future::retryable::strategy::RetryStrategy;
 
 //Todo dm this needs to be changed after config from file is done.
 // #[cfg(test)]
@@ -77,8 +77,17 @@ impl StructuralWritable for SwimClientConfig {
     }
 
     fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
-        //Todo dm
-        unimplemented!()
+        let header_writer = writer.record(1)?;
+        let mut body_writer = header_writer
+            .write_extant_attr("config")?
+            .complete_header(RecordBodyKind::ArrayLike, 4)?;
+
+        body_writer = body_writer.write_value_into(self.downlink_connections_config)?;
+        body_writer = body_writer.write_value_into(self.remote_connections_config)?;
+        body_writer = body_writer.write_value_into(self.websocket_config)?;
+        body_writer = body_writer.write_value_into(self.downlinks_config)?;
+
+        body_writer.done()
     }
 }
 
@@ -118,9 +127,21 @@ impl Recognizer for SwimClientConfigRecognizer {
     fn reset(&mut self) {}
 }
 
+//Todo dm
 #[test]
 fn test_foo() {
-    let config = SwimClientConfig::default();
+    let mut downlinks = ClientDownlinksConfig::default();
+    downlinks.for_host(
+        url::Url::parse(&"warp://127.0.0.1:9001".to_string()).unwrap(),
+        Default::default(),
+    );
+
+    let config = SwimClientConfig::new(
+        Default::default(),
+        Default::default(),
+        Default::default(),
+        downlinks,
+    );
     println!("{}", config.as_value());
 }
 
@@ -250,33 +271,67 @@ impl Default for ClientDownlinksConfig {
     }
 }
 
-//Todo dm
 impl StructuralWritable for ClientDownlinksConfig {
     fn num_attributes(&self) -> usize {
-        //Todo dm
         1
     }
 
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         let header_writer = writer.record(1)?;
+
+        let mut num_attr = 1;
+        if !self.by_host.is_empty() {
+            num_attr += 1;
+        }
+
+        if !self.by_lane.is_empty() {
+            num_attr += 1;
+        }
+
         let mut body_writer = header_writer
             .write_extant_attr("downlinks")?
-            .complete_header(RecordBodyKind::ArrayLike, 5)?;
+            .complete_header(RecordBodyKind::MapLike, num_attr)?;
 
-        body_writer = body_writer.write_slot(&"back_pressure", &self.default.back_pressure)?;
-        body_writer = body_writer.write_slot(&"idle_timeout", &self.default.idle_timeout)?;
-        body_writer = body_writer.write_slot(&"buffer_size", &self.default.buffer_size)?;
-        body_writer = body_writer.write_slot(&"on_invalid", &self.default.on_invalid)?;
-        body_writer = body_writer.write_slot(&"yield_after", &self.default.yield_after)?;
+        body_writer = body_writer.write_slot(&"default", &self.default)?;
 
-        //Todo dm add per host and per lane config
+        if !self.by_host.is_empty() {
+            body_writer = body_writer.write_slot(&"host", &self.by_host)?;
+        }
+
+        if !self.by_lane.is_empty() {
+            body_writer = body_writer.write_slot(&"lane", &self.by_lane)?;
+        }
 
         body_writer.done()
     }
 
     fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
-        //Todo dm
-        unimplemented!()
+        let header_writer = writer.record(1)?;
+
+        let mut num_attr = 1;
+        if !self.by_host.is_empty() {
+            num_attr += 1;
+        }
+
+        if !self.by_lane.is_empty() {
+            num_attr += 1;
+        }
+
+        let mut body_writer = header_writer
+            .write_extant_attr("downlinks")?
+            .complete_header(RecordBodyKind::MapLike, num_attr)?;
+
+        body_writer = body_writer.write_slot_into("default", self.default)?;
+
+        if !self.by_host.is_empty() {
+            body_writer = body_writer.write_slot_into("host", self.by_host)?;
+        }
+
+        if !self.by_lane.is_empty() {
+            body_writer = body_writer.write_slot_into("lane", self.by_lane)?;
+        }
+
+        body_writer.done()
     }
 }
 
@@ -385,6 +440,40 @@ impl Default for DownlinkConfig {
     }
 }
 
+impl StructuralWritable for DownlinkConfig {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        let mut body_writer = writer
+            .record(0)?
+            .complete_header(RecordBodyKind::ArrayLike, 5)?;
+
+        body_writer = body_writer.write_slot(&"back_pressure", &self.back_pressure)?;
+        body_writer = body_writer.write_slot(&"idle_timeout", &self.idle_timeout)?;
+        body_writer = body_writer.write_slot(&"buffer_size", &self.buffer_size)?;
+        body_writer = body_writer.write_slot(&"on_invalid", &self.on_invalid)?;
+        body_writer = body_writer.write_slot(&"yield_after", &self.yield_after)?;
+
+        body_writer.done()
+    }
+
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        let mut body_writer = writer
+            .record(0)?
+            .complete_header(RecordBodyKind::ArrayLike, 5)?;
+
+        body_writer = body_writer.write_slot_into("back_pressure", self.back_pressure)?;
+        body_writer = body_writer.write_slot_into("idle_timeout", self.idle_timeout)?;
+        body_writer = body_writer.write_slot_into("buffer_size", self.buffer_size)?;
+        body_writer = body_writer.write_slot_into("on_invalid", self.on_invalid)?;
+        body_writer = body_writer.write_slot_into("yield_after", self.yield_after)?;
+
+        body_writer.done()
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BackpressureMode {
     /// Propagate back-pressure through the downlink.
@@ -425,8 +514,8 @@ impl StructuralWritable for BackpressureMode {
             } => {
                 let header_writer = writer.record(1)?;
                 let mut body_writer = header_writer
-                    .write_extant_attr("propagate")?
-                    .complete_header(RecordBodyKind::Mixed, 0)?;
+                    .write_extant_attr("release")?
+                    .complete_header(RecordBodyKind::MapLike, 4)?;
 
                 body_writer = body_writer.write_slot(&"input_buffer_size", input_buffer_size)?;
                 body_writer = body_writer.write_slot(&"bridge_buffer_size", bridge_buffer_size)?;
@@ -439,8 +528,35 @@ impl StructuralWritable for BackpressureMode {
     }
 
     fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
-        //Todo dm
-        unimplemented!()
+        match self {
+            BackpressureMode::Propagate => {
+                let header_writer = writer.record(1)?;
+                header_writer
+                    .write_extant_attr("propagate")?
+                    .complete_header(RecordBodyKind::Mixed, 0)?
+                    .done()
+            }
+            BackpressureMode::Release {
+                input_buffer_size,
+                bridge_buffer_size,
+                max_active_keys,
+                yield_after,
+            } => {
+                let header_writer = writer.record(1)?;
+                let mut body_writer = header_writer
+                    .write_extant_attr("release")?
+                    .complete_header(RecordBodyKind::MapLike, 4)?;
+
+                body_writer =
+                    body_writer.write_slot_into("input_buffer_size", input_buffer_size)?;
+                body_writer =
+                    body_writer.write_slot_into("bridge_buffer_size", bridge_buffer_size)?;
+                body_writer = body_writer.write_slot_into("max_active_keys", max_active_keys)?;
+                body_writer = body_writer.write_slot_into("yield_after", yield_after)?;
+
+                body_writer.done()
+            }
+        }
     }
 }
 

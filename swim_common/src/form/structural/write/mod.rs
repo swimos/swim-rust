@@ -30,6 +30,7 @@ use std::sync::Arc;
 
 use crate::form::Form;
 use crate::routing::remote::config::RemoteConnectionsConfig;
+use crate::warp::path::AbsolutePath;
 #[doc(hidden)]
 pub use form_derive::StructuralWritable;
 use std::num::NonZeroUsize;
@@ -174,7 +175,7 @@ pub trait HeaderWriter: Sized {
     /// Delegate the remainder of the process to another value (its attributes will be appended
     /// to those already described), consuming it.
     /// #Arguments
-    /// * `value` - The value whose strucuture will be used for the remainder of the process.
+    /// * `value` - The value whose structure will be used for the remainder of the process.
     fn delegate_into<V: StructuralWritable>(self, value: V) -> Result<Self::Repr, Self::Error>;
 
     fn write_extant_attr<L: Label>(self, name: L) -> Result<Self, Self::Error> {
@@ -1022,9 +1023,24 @@ impl StructuralWritable for WebSocketConfig {
 
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         let header_writer = writer.record(1)?;
+
+        let mut num_attr = 2;
+
+        if let Some(_) = &self.max_send_queue {
+            num_attr += 1
+        }
+
+        if let Some(_) = &self.max_message_size {
+            num_attr += 1
+        }
+
+        if let Some(_) = &self.max_frame_size {
+            num_attr += 1
+        }
+
         let mut body_writer = header_writer
             .write_extant_attr("websocket_connections")?
-            .complete_header(RecordBodyKind::MapLike, 5)?;
+            .complete_header(RecordBodyKind::MapLike, num_attr)?;
 
         if let Some(val) = &self.max_send_queue {
             body_writer = body_writer.write_slot(&"max_send_queue", val)?
@@ -1043,9 +1059,42 @@ impl StructuralWritable for WebSocketConfig {
         body_writer.done()
     }
 
-    //Todo dm
     fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
-        unimplemented!()
+        let header_writer = writer.record(1)?;
+
+        let mut num_attr = 2;
+
+        if let Some(_) = &self.max_send_queue {
+            num_attr += 1
+        }
+
+        if let Some(_) = &self.max_message_size {
+            num_attr += 1
+        }
+
+        if let Some(_) = &self.max_frame_size {
+            num_attr += 1
+        }
+
+        let mut body_writer = header_writer
+            .write_extant_attr("websocket_connections")?
+            .complete_header(RecordBodyKind::MapLike, num_attr)?;
+
+        if let Some(val) = self.max_send_queue {
+            body_writer = body_writer.write_slot_into("max_send_queue", val)?
+        }
+        if let Some(val) = self.max_message_size {
+            body_writer = body_writer.write_slot_into("max_message_size", val)?
+        }
+        if let Some(val) = self.max_frame_size {
+            body_writer = body_writer.write_slot_into("max_frame_size", val)?
+        }
+        body_writer =
+            body_writer.write_slot_into("accept_unmasked_frames", self.accept_unmasked_frames)?;
+
+        body_writer = body_writer.write_slot_into("compression", self.compression)?;
+
+        body_writer.done()
     }
 }
 
@@ -1077,9 +1126,15 @@ impl StructuralWritable for WsCompression {
             WsCompression::Deflate(deflate) => {
                 let header_writer = writer.record(1)?;
 
+                let mut num_attr = 7;
+
+                if let Some(_) = deflate.max_message_size() {
+                    num_attr += 1
+                }
+
                 let mut body_writer = header_writer
                     .write_extant_attr("deflate")?
-                    .complete_header(RecordBodyKind::ArrayLike, 1)?;
+                    .complete_header(RecordBodyKind::MapLike, num_attr)?;
 
                 if let Some(val) = deflate.max_message_size() {
                     body_writer = body_writer.write_slot(&"max_message_size", &val)?;
@@ -1113,9 +1168,103 @@ impl StructuralWritable for WsCompression {
         }
     }
 
-    //Todo dm
     fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
-        unimplemented!()
+        match self {
+            WsCompression::None(Some(val)) => {
+                let header_writer = writer.record(1)?;
+
+                let mut body_writer = header_writer
+                    .write_extant_attr("none")?
+                    .complete_header(RecordBodyKind::ArrayLike, 1)?;
+
+                body_writer = body_writer.write_value_into(val)?;
+                body_writer.done()
+            }
+            WsCompression::None(None) => {
+                let header_writer = writer.record(1)?;
+
+                header_writer
+                    .write_extant_attr("none")?
+                    .complete_header(RecordBodyKind::Mixed, 0)?
+                    .done()
+            }
+            WsCompression::Deflate(deflate) => {
+                let header_writer = writer.record(1)?;
+
+                let mut num_attr = 7;
+
+                if let Some(_) = deflate.max_message_size() {
+                    num_attr += 1
+                }
+
+                let mut body_writer = header_writer
+                    .write_extant_attr("deflate")?
+                    .complete_header(RecordBodyKind::MapLike, num_attr)?;
+
+                if let Some(val) = deflate.max_message_size() {
+                    body_writer = body_writer.write_slot_into("max_message_size", val)?;
+                };
+                body_writer = body_writer.write_slot_into(
+                    "server_max_window_bits",
+                    u32::from(deflate.server_max_window_bits()),
+                )?;
+                body_writer = body_writer.write_slot_into(
+                    "client_max_window_bits",
+                    u32::from(deflate.client_max_window_bits()),
+                )?;
+                body_writer = body_writer.write_slot_into(
+                    "request_no_context_takeover",
+                    deflate.request_no_context_takeover(),
+                )?;
+                body_writer = body_writer.write_slot_into(
+                    "accept_no_context_takeover",
+                    deflate.accept_no_context_takeover(),
+                )?;
+                body_writer =
+                    body_writer.write_slot_into("compress_reset", deflate.compress_reset())?;
+                body_writer =
+                    body_writer.write_slot_into("decompress_reset", deflate.decompress_reset())?;
+
+                body_writer = body_writer
+                    .write_slot_into("compression_level", deflate.compression_level().level())?;
+
+                body_writer.done()
+            }
+        }
+    }
+}
+
+impl StructuralWritable for AbsolutePath {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        let header_writer = writer.record(1)?;
+
+        let mut body_writer = header_writer
+            .write_extant_attr("path")?
+            .complete_header(RecordBodyKind::MapLike, 3)?;
+
+        body_writer = body_writer.write_slot(&"host", &self.host)?;
+        body_writer = body_writer.write_slot(&"node", &self.node)?;
+        body_writer = body_writer.write_slot(&"lane", &self.lane)?;
+
+        body_writer.done()
+    }
+
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        let header_writer = writer.record(1)?;
+
+        let mut body_writer = header_writer
+            .write_extant_attr("path")?
+            .complete_header(RecordBodyKind::MapLike, 3)?;
+
+        body_writer = body_writer.write_slot_into("host", self.host)?;
+        body_writer = body_writer.write_slot_into("node", self.node)?;
+        body_writer = body_writer.write_slot_into("lane", self.lane)?;
+
+        body_writer.done()
     }
 }
 
