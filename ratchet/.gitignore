@@ -1,2 +1,2 @@
-ratchet_core/autobahn/client
-ratchet_core/autobahn/server
+autobahn/client
+autobahn/server
