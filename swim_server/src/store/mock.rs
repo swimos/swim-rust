@@ -100,4 +100,17 @@ impl KeyspaceByteEngine for MockStore {
             }
         }
     }
+
+    fn get_prefix_range<F, K, V, S>(
+        &self,
+        _keyspace: S,
+        _prefix: &[u8],
+        _map_fn: F,
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+        S: Keyspace,
+    {
+        todo!()
+    }
 }

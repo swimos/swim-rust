@@ -20,10 +20,9 @@ use swim_common::model::text::Text;
 
 use crate::plane::store::PlaneStore;
 use crate::store::{StoreEngine, StoreKey};
-use store::engines::KeyedSnapshot;
-use store::keyspaces::{Keyspace, KeyspaceRangedSnapshotLoad};
 
 pub mod mock;
+
 /// A trait for defining store engines which open stores for nodes.
 ///
 /// Node stores are responsible for ensuring that the data models that they open for their lanes
@@ -35,15 +34,26 @@ pub mod mock;
 /// the store; providing that the top-level server store is also persistent.
 ///
 /// Transient data models will live in memory for the duration that a handle to the model exists.
-pub trait NodeStore:
-    StoreEngine + KeyspaceRangedSnapshotLoad + Send + Sync + Clone + Debug + 'static
-{
+pub trait NodeStore: StoreEngine + Send + Sync + Clone + Debug + 'static {
     type Delegate: PlaneStore;
 
     /// Returns information about the delegate store
     fn engine_info(&self) -> EngineInfo;
 
     fn lane_id_of(&self, lane: &str) -> Result<u64, StoreError>;
+
+    /// Executes a ranged snapshot read prefixed by a lane key and deserialize each key-value pair
+    /// using `map_fn`.
+    ///
+    /// Returns an optional snapshot iterator if entries were found that will yield deserialized
+    /// key-value pairs.
+    fn load_ranged_snapshot<F, K, V>(
+        &self,
+        prefix: StoreKey,
+        map_fn: F,
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>;
 }
 
 /// A node store which is used to open value and map lane data models.
@@ -83,22 +93,6 @@ impl<D: PlaneStore> SwimNodeStore<D> {
     }
 }
 
-impl<D: PlaneStore> KeyspaceRangedSnapshotLoad for SwimNodeStore<D> {
-    fn keyspace_load_ranged_snapshot<F, K, V, S>(
-        &self,
-        keyspace: &S,
-        prefix: &[u8],
-        map_fn: F,
-    ) -> Result<Option<Vec<(K, V)>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-        S: Keyspace,
-    {
-        self.delegate
-            .get_prefix_range(keyspace, prefix, map_fn)
-    }
-}
-
 impl<D: PlaneStore> StoreEngine for SwimNodeStore<D> {
     fn put(&self, key: StoreKey, value: &[u8]) -> Result<(), StoreError> {
         self.delegate.put(key, value)
@@ -123,5 +117,16 @@ impl<D: PlaneStore> NodeStore for SwimNodeStore<D> {
     fn lane_id_of(&self, lane: &str) -> Result<u64, StoreError> {
         let node_id = format!("{}/{}", self.node_uri, lane);
         self.delegate.node_id_of(node_id)
+    }
+
+    fn load_ranged_snapshot<F, K, V>(
+        &self,
+        prefix: StoreKey,
+        map_fn: F,
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+    {
+        self.delegate.get_prefix_range(prefix, map_fn)
     }
 }

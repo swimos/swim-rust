@@ -14,26 +14,15 @@
 
 use crate::store::keystore::{incrementing_merge_operator, COUNTER_KEY};
 use crate::store::{LANE_KS, MAP_LANE_KS, VALUE_LANE_KS};
-use futures::future::BoxFuture;
-use futures::FutureExt;
-use futures::Stream;
-use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, Options, SliceTransform, DB};
+use rocksdb::{ColumnFamilyDescriptor, DB};
 use std::mem::size_of;
 use std::path::Path;
-use std::sync::Arc;
 use store::engines::{RocksEngine, RocksIterator, RocksPrefixIterator, StoreBuilder};
-use store::engines::{
-    FromKeyspaces, KeyedSnapshot, RocksEngine, RocksIterator, RocksOpts, RocksPrefixIterator,
-};
 use store::iterator::{EngineIterOpts, EngineRefIterator};
 use store::keyspaces::{Keyspace, KeyspaceByteEngine};
 use store::keyspaces::{KeyspaceDef, KeyspaceResolver, Keyspaces};
+use store::{ColumnFamily, Options, SliceTransform};
 use store::{EngineInfo, Store, StoreError};
-use store::keyspaces::{
-    Keyspace, KeyspaceByteEngine, KeyspaceDef, KeyspaceRangedSnapshotLoad, KeyspaceResolver,
-    Keyspaces,
-};
-use store::{ColumnFamily, Options, SliceTransform, Store, StoreError, StoreInfo};
 
 #[derive(Debug, Clone)]
 pub struct RocksDatabase {
@@ -122,16 +111,6 @@ impl KeyspaceResolver for RocksDatabase {
 
     fn resolve_keyspace<K: Keyspace>(&self, space: &K) -> Option<&Self::ResolvedKeyspace> {
         self.db.resolve_keyspace(space)
-    }
-}
-
-impl KeystoreTask for RocksDatabase {
-    fn run<DB, S>(db: Arc<DB>, events: S) -> BoxFuture<'static, Result<(), StoreError>>
-    where
-        DB: KeyspaceByteEngine,
-        S: Stream<Item = KeyRequest> + Unpin + Send + 'static,
-    {
-        lane_key_task(db, events).boxed()
     }
 }
 

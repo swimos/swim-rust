@@ -13,16 +13,10 @@
 // limitations under the License.
 
 use std::path::{Path, PathBuf};
-use store::engines::{FromKeyspaces, KeyedSnapshot};
-use std::sync::Arc;
 use store::engines::StoreBuilder;
 use store::iterator::{
     EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey,
 };
-use store::keyspaces::{
-    Keyspace, KeyspaceByteEngine, KeyspaceRangedSnapshotLoad, KeyspaceResolver, Keyspaces,
-};
-use store::{KvBytes, Store, StoreError, StoreInfo};
 use store::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
 use store::{EngineInfo, KvBytes, Store, StoreError};
 
@@ -166,20 +160,5 @@ impl KeyspaceResolver for NoStore {
 
     fn resolve_keyspace<K: Keyspace>(&self, _space: &K) -> Option<&Self::ResolvedKeyspace> {
         Some(&self.ks)
-    }
-}
-
-impl KeystoreTask for NoStore {
-    fn run<DB, S>(_: Arc<DB>, events: S) -> BoxFuture<'static, Result<(), StoreError>>
-    where
-        DB: KeyspaceByteEngine,
-        S: Stream<Item = KeyRequest> + Unpin + Send + 'static,
-    {
-        Box::pin(async move {
-            let _ = events.for_each(|(_, responder)| async {
-                let _ = responder.send(0);
-            });
-            Ok(())
-        })
     }
 }

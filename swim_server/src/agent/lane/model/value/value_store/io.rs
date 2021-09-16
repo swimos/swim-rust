@@ -21,6 +21,7 @@ use futures::{Stream, StreamExt};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::sync::Arc;
+use swim_common::model::time::Timestamp;
 
 /// Value lane store IO task.
 ///
@@ -61,7 +62,10 @@ where
             while let Some(event) = events.next().await {
                 match model.store(&event) {
                     Ok(()) => continue,
-                    Err(e) => error_handler.on_error(e)?,
+                    Err(error) => error_handler.on_error(StoreTaskError {
+                        timestamp: Timestamp::now(),
+                        error,
+                    })?,
                 }
             }
             Ok(())

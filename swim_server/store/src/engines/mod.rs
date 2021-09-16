@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use std::path::Path;
-use std::vec::IntoIter;
 
 pub use nostore::{NoStore, NoStoreOpts};
 pub use rocks::{RocksEngine, RocksIterator, RocksOpts, RocksPrefixIterator};
@@ -42,25 +41,4 @@ pub trait StoreBuilder: Sized + Clone {
     fn build<I>(self, path: I, keyspaces: &Keyspaces<Self>) -> Result<Self::Store, StoreError>
     where
         I: AsRef<Path>;
-}
-
-
-/// An owned snapshot of deserialized keys and values produced by `RangedSnapshot`.
-#[derive(Debug)]
-pub struct KeyedSnapshot<K, V> {
-    data: IntoIter<(K, V)>,
-}
-
-impl<K, V> KeyedSnapshot<K, V> {
-    pub fn new(data: IntoIter<(K, V)>) -> Self {
-        KeyedSnapshot { data }
-    }
-}
-
-impl<K, V> Iterator for KeyedSnapshot<K, V> {
-    type Item = (K, V);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.data.next()
-    }
 }

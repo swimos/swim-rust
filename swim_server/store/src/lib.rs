@@ -23,9 +23,8 @@ use std::{error::Error as StdError, io};
 
 use thiserror::Error;
 
-use crate::engines::FromKeyspaces;
 use crate::iterator::OwnedEngineRefIterator;
-use crate::keyspaces::{KeyspaceByteEngine, KeyspaceRangedSnapshotLoad, KeyspaceResolver};
+use crate::keyspaces::{KeyspaceByteEngine, KeyspaceResolver};
 
 pub use rocksdb::{ColumnFamily, MergeOperands, Options, SliceTransform};
 use serde::{Deserialize, Serialize};
@@ -100,7 +99,6 @@ impl PartialEq for StoreError {
 /// This trait only serves to compose the multiple traits that are required for a store.
 pub trait Store:
     KeyspaceByteEngine
-    + KeyspaceRangedSnapshotLoad
     + KeyspaceByteEngine
     + KeyspaceResolver
     + Send

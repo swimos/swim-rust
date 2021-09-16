@@ -23,31 +23,29 @@ use crate::agent::model::map::MapLane;
 use crate::agent::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::store::NodeStore;
 use crate::agent::tests::stub_router::SingleChannelRouter;
-use crate::agent::LaneTasks;
 use crate::agent::{
     AgentContext, DynamicAgentIo, DynamicLaneTasks, LaneConfig, SwimAgent, TestClock,
 };
+use crate::agent::{IoPair, LaneTasks};
 use crate::plane::provider::AgentProvider;
 use crate::plane::store::{PlaneStore, SwimPlaneStore};
 use crate::plane::RouteAndParameters;
 use crate::routing::RoutingAddr;
 use crate::store::keystore::{KeyStore, COUNTER_BYTES};
-use crate::store::{default_keyspaces, KeyspaceName, RocksDatabase, StoreEngine, StoreKey};
+use crate::store::{
+    default_keyspaces, KeyspaceName, RocksDatabase, RocksOpts, StoreEngine, StoreKey,
+};
 use futures::future::ready;
 use futures::future::{BoxFuture, Ready};
-use futures::FutureExt;
-use futures::Stream;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use stm::stm::Stm;
 use stm::transaction::atomically;
-use store::engines::{FromKeyspaces, RocksOpts};
-use store::keyspaces::{KeyspaceByteEngine, KeyspaceRangedSnapshotLoad};
-use store::{deserialize, serialize, StoreError};
+use store::engines::StoreBuilder;
 use store::keyspaces::KeyspaceByteEngine;
-use store::{EngineInfo, StoreError};
-use swim_common::model::text::Text;
+use store::StoreError;
+use store::{deserialize, serialize};
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
@@ -55,7 +53,7 @@ use utilities::fs::Dir;
 use utilities::uri::RelativeUri;
 
 const INTERVAL: Duration = Duration::from_millis(1);
-const MAX_PERIODS: usize = 10;
+const MAX_PERIODS: i32 = 10;
 
 macro_rules! ser {
     ($($it:tt)*) => {
@@ -92,7 +90,7 @@ impl AgentLifecycle<StoreAgent> for StoreAgentLifecycle {
                         })
                     },
                     INTERVAL,
-                    Some(MAX_PERIODS),
+                    Some(MAX_PERIODS as usize),
                 )
                 .await;
         })
@@ -195,90 +193,20 @@ impl SwimAgent<AgentConfig> for StoreAgent {
         let mut io = HashMap::new();
         io.insert(
             "value".to_string(),
-            LaneIo {
+            IoPair {
                 routing: None,
                 persistence: value_lane_io.persistence,
             },
         );
         io.insert(
             "map".to_string(),
-            LaneIo {
+            IoPair {
                 routing: None,
                 persistence: map_lane_io.persistence,
             },
         );
 
-impl KeystoreTask for PlaneEventStore {
-    fn run<DB, S>(_db: Arc<DB>, _events: S) -> BoxFuture<'static, Result<(), StoreError>>
-    where
-        DB: KeyspaceByteEngine,
-        S: Stream<Item = KeyRequest> + Unpin + Send + 'static,
-    {
-        Box::pin(async { Ok(()) })
-    }
-}
-
-impl PlaneStore for PlaneEventStore {
-    type NodeStore = SwimNodeStore<Self>;
-
-    fn node_store<I>(&self, node_uri: I) -> Self::NodeStore
-    where
-        I: Into<Text>,
-    {
-        SwimNodeStore::new(self.clone(), node_uri)
-    }
-
-    fn get_prefix_range<F, K, V>(
-        &self,
-        _prefix: StoreKey,
-        _map_fn: F,
-    ) -> Result<Option<Vec<(K, V)>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-    {
-        panic!("Unexpected snapshot attempt");
-    }
-
-    fn engine_info(&self) -> EngineInfo {
-        EngineInfo {
-            path: "Mock".to_string(),
-            kind: "Mock".to_string(),
-        }
-    }
-
-    fn lane_id_of<I>(&self, _lane: I) -> BoxFuture<u64>
-    where
-        I: Into<String>,
-    {
-        ready(1).boxed()
-    }
-}
-
-impl StoreEngine for PlaneEventStore {
-    fn put(&self, _key: StoreKey, value: &[u8]) -> Result<(), StoreError> {
-        let mut guard = self.events.lock().unwrap();
-        let events = &mut *guard;
-        events.push(value.to_vec());
-        Ok(())
-    }
-
-    fn get(&self, _key: StoreKey) -> Result<Option<Vec<u8>>, StoreError> {
-        let mut lock = self.loaded.lock().unwrap();
-        if let Some(trigger) = lock.take() {
-            trigger.trigger();
-        }
-
-        match &self.default_value {
-            Some(default) => {
-                let value = bincode::serialize(default).expect("Failed to serialize default value");
-                Ok(Some(value))
-            }
-            None => Ok(None),
-        }
-    }
-
-    fn delete(&self, _key: StoreKey) -> Result<(), StoreError> {
-        Ok(())
+        (agent, vec![value_task.boxed(), map_task.boxed()], io)
     }
 }
 
@@ -294,12 +222,9 @@ struct TestStore {
 impl Default for TestStore {
     fn default() -> Self {
         let temp_dir = Dir::transient("store_agent").unwrap();
-        let db = RocksDatabase::from_keyspaces(
-            temp_dir.path(),
-            &RocksOpts::default(),
-            default_keyspaces(),
-        )
-        .unwrap();
+        let db = RocksOpts::default()
+            .build(temp_dir.path(), &default_keyspaces())
+            .unwrap();
         let arcd_db = Arc::new(db);
         let store = SwimPlaneStore::new(
             "test",
@@ -445,7 +370,7 @@ async fn events() {
         };
 
         let snapshot_opt = delegate
-            .keyspace_load_ranged_snapshot(&KeyspaceName::Map, ser!(prefix), |key, value| {
+            .get_prefix_range(prefix, |key, value| {
                 let store_key = deserialize::<StoreKey>(&key)?;
 
                 match store_key {
@@ -482,8 +407,8 @@ async fn events() {
 
     for i in 1..MAX_PERIODS {
         clock.advance_when_blocked(INTERVAL).await;
-        check_value_lane(&store, i as i32);
-        check_map_lane(&store, i as i32);
+        check_value_lane(&store, i);
+        check_map_lane(&store, i);
     }
 
     let counter = store

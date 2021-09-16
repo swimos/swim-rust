@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::store::error::{StoreErrorHandler, StoreTaskError};
+use crate::agent::lane::store::error::StoreErrorHandler;
 use crate::agent::lane::store::StoreIo;
 use crate::agent::model::value::value_store::io::ValueLaneStoreIo;
 use crate::agent::model::value::value_store::ValueDataModel;
@@ -23,11 +23,7 @@ use crate::store::{StoreEngine, StoreKey};
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
-use store::engines::KeyedSnapshot;
-use store::keyspaces::{Keyspace, KeyspaceRangedSnapshotLoad};
-use store::{serialize, StoreError, StoreInfo};
 use store::{serialize, EngineInfo, StoreError};
-use utilities::sync::trigger;
 
 #[derive(Clone, Debug)]
 struct TrackingValueStore {
@@ -47,18 +43,14 @@ impl NodeStore for TrackingValueStore {
     fn lane_id_of(&self, _lane: &str) -> Result<u64, StoreError> {
         Ok(0)
     }
-}
 
-impl KeyspaceRangedSnapshotLoad for TrackingValueStore {
-    fn keyspace_load_ranged_snapshot<F, K, V, S>(
+    fn load_ranged_snapshot<F, K, V>(
         &self,
-        _keyspace: &S,
-        _prefix: &[u8],
+        _prefix: StoreKey,
         _map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-        S: Keyspace,
     {
         panic!("Unexpected snapshot request")
     }
@@ -143,86 +135,8 @@ async fn io() {
     let observer_stream = observer.into_stream();
 
     let store_io = ValueLaneStoreIo::new(observer_stream, model);
-    let _task_handle = tokio::spawn(store_io.attach(StoreErrorHandler::new(0, info)));
+    let _task_handle = tokio::spawn(store_io.attach(StoreErrorHandler::new(0)));
 
     let lane_value = lane.load().await;
     assert_eq!(*lane_value, store_initial);
-}
-
-#[tokio::test]
-async fn store_fail() {
-    let (lane, observer) =
-        ValueLane::observable("initial".to_string(), NonZeroUsize::new(8).unwrap());
-    let observer_stream = observer.into_stream();
-    let store = FailingStore;
-    let info = store.store_info();
-    let store = FailingStore {
-        fail_on: FailingStoreMode::Put,
-    };
-
-    let model = ValueDataModel::new(store, 0);
-    let store_io = ValueLaneStoreIo::new(observer_stream, model);
-
-    lane.store("avro vulcan".to_string()).await;
-
-    let task_result = store_io.attach(StoreErrorHandler::new(0, info)).await;
-    let task_result = store_io
-        .attach("test".to_string(), StoreErrorHandler::new(0))
-        .await;
-    match task_result {
-        Ok(_) => {
-            panic!("Expected a store error")
-        }
-        Err(mut r) => {
-            let StoreTaskError { error, .. } = r.errors.pop().unwrap();
-            assert_eq!(error, StoreError::Closing)
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct FailingStore;
-
-impl NodeStore for FailingStore {
-    type Delegate = MockPlaneStore;
-
-    fn engine_info(&self) -> EngineInfo {
-        EngineInfo {
-            path: "failing".to_string(),
-            kind: "failing".to_string(),
-        }
-    }
-
-    fn lane_id_of(&self, _lane: &str) -> Result<u64, StoreError> {
-        Ok(0)
-    }
-}
-
-impl KeyspaceRangedSnapshotLoad for FailingStore {
-    fn keyspace_load_ranged_snapshot<F, K, V, S>(
-        &self,
-        _keyspace: &S,
-        _prefix: &[u8],
-        _map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-        S: Keyspace,
-    {
-        panic!("Unexpected snapshot request")
-    }
-}
-
-impl StoreEngine for FailingStore {
-    fn put(&self, _: StoreKey, _: &[u8]) -> Result<(), StoreError> {
-        Err(StoreError::Closing)
-    }
-
-    fn get(&self, _: StoreKey) -> Result<Option<Vec<u8>>, StoreError> {
-        Err(StoreError::Closing)
-    }
-
-    fn delete(&self, _: StoreKey) -> Result<(), StoreError> {
-        Err(StoreError::Closing)
-    }
 }

@@ -27,9 +27,7 @@ use std::num::NonZeroUsize;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 use stm::transaction::{atomically, RetryManager};
-use store::engines::KeyedSnapshot;
-use store::keyspaces::{Keyspace, KeyspaceRangedSnapshotLoad};
-use store::{serialize, Snapshot, StoreError, StoreInfo};
+use store::{serialize, EngineInfo, StoreError};
 
 struct ExactlyOnce;
 
@@ -54,8 +52,8 @@ struct TrackingMapStore {
 impl NodeStore for TrackingMapStore {
     type Delegate = MockPlaneStore;
 
-    fn store_info(&self) -> StoreInfo {
-        StoreInfo {
+    fn engine_info(&self) -> EngineInfo {
+        EngineInfo {
             path: "tracking".to_string(),
             kind: "tracking".to_string(),
         }
@@ -64,23 +62,20 @@ impl NodeStore for TrackingMapStore {
     fn lane_id_of(&self, _lane: &str) -> Result<u64, StoreError> {
         Ok(0)
     }
-}
 
-impl KeyspaceRangedSnapshotLoad for TrackingMapStore {
-    fn keyspace_load_ranged_snapshot<F, K, V, S>(
+    fn load_ranged_snapshot<F, K, V>(
         &self,
-        _keyspace: &S,
-        prefix: &[u8],
+        prefix: StoreKey,
         map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-        S: Keyspace,
     {
+        let prefix = serialize(&prefix)?;
         let guard = self.values.lock().unwrap();
         let mut entries = guard.deref().clone().into_iter();
         let mapped = entries.try_fold(Vec::new(), |mut entries, (k, v)| {
-            if k.starts_with(prefix) {
+            if k.starts_with(&prefix) {
                 match map_fn(k.as_ref(), v.as_ref()) {
                     Ok((k, v)) => {
                         entries.push((k, v));
@@ -96,7 +91,7 @@ impl KeyspaceRangedSnapshotLoad for TrackingMapStore {
         if mapped.is_empty() {
             Ok(None)
         } else {
-            Ok(Some(KeyedSnapshot::new(mapped.into_iter())))
+            Ok(Some(mapped))
         }
     }
 }
@@ -320,14 +315,13 @@ async fn io_load_some() {
         values: values.clone(),
     };
 
-    let info = store.store_info();
     let model = MapDataModel::new(store, 0);
     let (lane, observer) =
         MapLane::<String, i32>::store_observable(&model, NonZeroUsize::new(8).unwrap());
     let events = summaries_to_events::<String, i32>(observer.clone());
     let store_io = MapLaneStoreIo::new(events, model);
 
-    let _task_handle = tokio::spawn(store_io.attach(StoreErrorHandler::new(0, info)));
+    let _task_handle = tokio::spawn(store_io.attach(StoreErrorHandler::new(0)));
 
     let lane_snapshot: HashMap<String, Arc<i32>> =
         atomically(&lane.snapshot(), ExactlyOnce).await.unwrap();
@@ -357,7 +351,6 @@ async fn io_crud() {
         values: values.clone(),
     };
 
-    let info = store.store_info();
     let model = MapDataModel::new(store, 0);
 
     let (lane, observer) =
@@ -366,7 +359,7 @@ async fn io_crud() {
 
     let store_io = MapLaneStoreIo::new(events, model);
 
-    let _task_handle = tokio::spawn(store_io.attach(StoreErrorHandler::new(0, info)));
+    let _task_handle = tokio::spawn(store_io.attach(StoreErrorHandler::new(0)));
 
     let update_stm = lane.update("b".to_string(), Arc::new(13));
     assert!(atomically(&update_stm, ExactlyOnce).await.is_ok());

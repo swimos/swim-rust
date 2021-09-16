@@ -14,7 +14,7 @@
 
 use crate::agent::lane::model::map::map_store::MapDataModel;
 use crate::agent::lane::model::map::MapLaneEvent;
-use crate::agent::lane::store::error::{LaneStoreErrorReport, StoreErrorHandler};
+use crate::agent::lane::store::error::{LaneStoreErrorReport, StoreErrorHandler, StoreTaskError};
 use crate::agent::lane::store::StoreIo;
 use crate::agent::store::NodeStore;
 use futures::future::BoxFuture;
@@ -24,6 +24,7 @@ use serde::Serialize;
 use std::fmt::Debug;
 use store::StoreError;
 use swim_common::form::Form;
+use swim_common::model::time::Timestamp;
 
 /// Map lane store IO task.
 ///
@@ -94,6 +95,9 @@ where
 {
     match f() {
         Ok(()) => Ok(()),
-        Err(e) => handler.on_error(e),
+        Err(error) => handler.on_error(StoreTaskError {
+            timestamp: Timestamp::now(),
+            error,
+        }),
     }
 }

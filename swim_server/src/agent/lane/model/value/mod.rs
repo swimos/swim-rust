@@ -25,7 +25,7 @@ mod tests;
 mod value_store;
 
 use crate::agent::store::NodeStore;
-use crate::agent::{LaneNoStore, StoreIo};
+use crate::agent::StoreIo;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 pub use value_store::{ValueDataModel, ValueLaneStoreIo};
@@ -124,7 +124,7 @@ pub fn streamed_value_lane<T, Store>(
     buffer_size: NonZeroUsize,
     transient: bool,
     store: Store,
-) -> (ValueLane<T>, Observer<T>, Box<dyn StoreIo>)
+) -> (ValueLane<T>, Observer<T>, Option<Box<dyn StoreIo>>)
 where
     Store: NodeStore,
     T: Default + Send + Sync + Serialize + DeserializeOwned + 'static,
@@ -136,10 +136,13 @@ where
 
     let (lane, observer) = ValueLane::store_observable(&model, buffer_size, Default::default());
 
-    let store_io: Box<dyn StoreIo> = if transient {
-        Box::new(LaneNoStore)
+    let store_io: Option<Box<dyn StoreIo>> = if transient {
+        None
     } else {
-        Box::new(ValueLaneStoreIo::new(observer.clone().into_stream(), model))
+        Some(Box::new(ValueLaneStoreIo::new(
+            observer.clone().into_stream(),
+            model,
+        )))
     };
 
     (lane, observer, store_io)

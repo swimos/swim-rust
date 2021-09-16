@@ -35,7 +35,7 @@ use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lane::{InvalidForm, LaneModel};
 use crate::agent::model::map::map_store::MapDataModel;
 use crate::agent::store::NodeStore;
-use crate::agent::{LaneNoStore, StoreIo};
+use crate::agent::StoreIo;
 use futures::stream::{iter, Iter};
 use futures::Stream;
 use serde::de::DeserializeOwned;
@@ -46,7 +46,6 @@ use std::hash::Hash;
 use std::num::NonZeroUsize;
 use stm::var::observer::{Observer, ObserverStream, ObserverSubscriber};
 use swim_common::form::structural::read::ReadError;
-use store::Snapshot;
 use swim_warp::model::map::MapUpdate;
 use tracing::{event, Level};
 use utilities::future::{FlatmapStream, SwimStreamExt, Transform};
@@ -874,7 +873,7 @@ pub fn streamed_map_lane<K, V, Store>(
     MapLane<K, V>,
     MapSubscriber<K, V>,
     impl Stream<Item = MapLaneEvent<K, V>>,
-    Box<dyn StoreIo>,
+    Option<Box<dyn StoreIo>>,
 )
 where
     K: Form + Send + Sync + Serialize + DeserializeOwned + Debug + 'static,
@@ -885,15 +884,18 @@ where
     let subscriber = MapSubscriber::new(observer.subscriber());
     let stream = summaries_to_events::<K, V>(observer.clone());
 
-    let store_io: Box<dyn StoreIo> = if transient {
-        Box::new(LaneNoStore)
+    let store_io: Option<Box<dyn StoreIo>> = if transient {
+        None
     } else {
         let lane_id = store
             .lane_id_of(&name.into())
             .expect("Failed to fetch lane id");
         let model = MapDataModel::<Store, K, V>::new(store, lane_id);
 
-        Box::new(MapLaneStoreIo::new(summaries_to_events(observer), model))
+        Some(Box::new(MapLaneStoreIo::new(
+            summaries_to_events(observer),
+            model,
+        )))
     };
 
     (lane, subscriber, stream, store_io)

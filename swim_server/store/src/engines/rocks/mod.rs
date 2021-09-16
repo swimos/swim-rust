@@ -18,13 +18,8 @@ mod tests;
 mod iterator;
 
 pub use crate::engines::rocks::iterator::{RocksIterator, RocksPrefixIterator};
-use crate::engines::KeyedSnapshot;
 use crate::engines::StoreBuilder;
 use crate::iterator::{EnginePrefixIterator, EngineRefIterator};
-use crate::keyspaces::{
-    Keyspace, KeyspaceByteEngine, KeyspaceRangedSnapshotLoad, KeyspaceResolver, Keyspaces,
-};
-use crate::{serialize, FromKeyspaces, Store, StoreError, StoreInfo};
 use crate::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
 use crate::{serialize, EngineInfo, Store, StoreError};
 use rocksdb::{ColumnFamily, ColumnFamilyDescriptor};
@@ -109,45 +104,6 @@ impl Default for RocksOpts {
         rock_opts.create_missing_column_families(true);
 
         RocksOpts(rock_opts)
-    }
-}
-
-impl KeyspaceRangedSnapshotLoad for RocksEngine {
-    fn keyspace_load_ranged_snapshot<F, K, V, S>(
-        &self,
-        keyspace: &S,
-        prefix: &[u8],
-        map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-        S: Keyspace,
-    {
-        let resolved = self
-            .resolve_keyspace(keyspace)
-            .ok_or(StoreError::KeyspaceNotFound)?;
-        let mut it = self.prefix_iterator(resolved, prefix)?;
-        let mut data = Vec::new();
-
-        loop {
-            match it.valid() {
-                Ok(true) => match it.next() {
-                    Some((key, value)) => {
-                        let mapped = map_fn(key.as_ref(), value.as_ref())?;
-                        data.push(mapped);
-                    }
-                    None => break,
-                },
-                Ok(false) => break,
-                Err(e) => return Err(e),
-            }
-        }
-
-        if data.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(KeyedSnapshot::new(data.into_iter())))
-        }
     }
 }
 

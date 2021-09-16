@@ -18,21 +18,14 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use store::{serialize, Store, StoreError, StoreInfo};
-use futures::future::BoxFuture;
-use futures::FutureExt;
-
-use store::keyspaces::Keyspaces;
 use store::{serialize, EngineInfo, Store, StoreError};
 use swim_common::model::text::Text;
 
 use crate::agent::store::{NodeStore, SwimNodeStore};
 use crate::store::keystore::KeyStore;
-use crate::store::keystore::{KeyStore, KeystoreTask};
 use crate::store::{KeyspaceName, StoreEngine, StoreKey};
-use store::engines::KeyedSnapshot;
-use store::keyspaces::{Keyspace, KeyspaceRangedSnapshotLoad, KeyspaceResolver, Keyspaces};
 use store::engines::StoreBuilder;
+use store::keyspaces::Keyspaces;
 
 pub mod mock;
 
@@ -55,7 +48,7 @@ where
 /// A trait for defining plane stores which will create node stores.
 pub trait PlaneStore
 where
-    Self: StoreEngine + Sized + KeyspaceRangedSnapshotLoad+Debug + Send + Sync + Clone + 'static,
+    Self: StoreEngine + Sized + Debug + Send + Sync + Clone + 'static,
 {
     /// The type of node stores which are created.
     type NodeStore: NodeStore;
@@ -153,25 +146,15 @@ where
             .get_prefix_range(namespace, serialize(&prefix)?.as_slice(), map_fn)
     }
 
-    fn store_info(&self) -> StoreInfo {
-        self.delegate.store_info()
+    fn engine_info(&self) -> EngineInfo {
+        self.delegate.engine_info()
     }
 
-    fn lane_id_of<I>(&self, lane: I) -> BoxFuture<KeyType>
+    fn node_id_of<I>(&self, lane: I) -> Result<u64, StoreError>
     where
         I: Into<String>,
     {
-        self.keystore.id_for(lane.into()).boxed()
-    }
-}
-
-impl<D: Store> KeystoreTask for SwimPlaneStore<D> {
-    fn run<DB, S>(_db: Arc<DB>, _events: S) -> BoxFuture<'static, Result<(), StoreError>>
-    where
-        DB: KeyspaceByteEngine,
-        S: Stream<Item = KeyRequest> + Unpin + Send + 'static,
-    {
-        unimplemented!()
+        self.keystore.id_for(lane.into())
     }
 }
 
@@ -206,7 +189,6 @@ where
     B: AsRef<Path>,
     P: AsRef<Path>,
     D: StoreBuilder,
-    D::Store: KeystoreTask,
 {
     let path = path_for(base_path.as_ref(), plane_name.as_ref());
     let delegate = builder.build(path, &keyspaces)?;
@@ -221,20 +203,19 @@ where
     };
 
     let arcd_delegate = Arc::new(delegate);
-    // todo config
-    let keystore = KeyStore::new(arcd_delegate.clone(), NonZeroUsize::new(8).unwrap());
+    let keystore = KeyStore::initialise_with(arcd_delegate.clone());
 
     Ok(SwimPlaneStore::new(plane_name, arcd_delegate, keystore))
 }
 
 impl<D> SwimPlaneStore<D>
 where
-    D: Store + KeystoreTask,
+    D: Store,
 {
     pub(crate) fn new<I: Into<Text>>(
         plane_name: I,
         delegate: Arc<D>,
-        keystore: KeyStore,
+        keystore: KeyStore<D>,
     ) -> SwimPlaneStore<D> {
         SwimPlaneStore {
             plane_name: plane_name.into(),

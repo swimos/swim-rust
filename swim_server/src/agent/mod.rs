@@ -973,7 +973,10 @@ where
     let store_io: Option<Box<dyn StoreIo>> = if transient {
         None
     } else {
-        Box::new(ValueLaneStoreIo::new(observer.into_stream(), model))
+        Some(Box::new(ValueLaneStoreIo::new(
+            observer.into_stream(),
+            model,
+        )))
     };
 
     let io = IoPair {
@@ -1057,7 +1060,7 @@ pub fn make_map_lane<Agent, Context, K, V, L, P, Store>(
 ) -> (
     MapLane<K, V>,
     impl LaneTasks<Agent, Context>,
-    IoPair<impl LaneIo<Context>, impl StoreIo>,
+    IoPair<Box<dyn LaneIo<Context>>, Box<dyn StoreIo>>,
 )
 where
     Agent: 'static,
@@ -1073,11 +1076,11 @@ where
     let model = MapDataModel::new(store, lane_id);
     let (lane, observer) = MapLane::store_observable(&model, config.observation_buffer);
 
-    let lane_io = if is_public {
-        Some(MapLaneIo::new(
+    let lane_io: Option<Box<dyn LaneIo<Context>>> = if is_public {
+        Some(Box::new(MapLaneIo::new(
             lane.clone(),
             MapSubscriber::new(observer.subscriber()),
-        ))
+        )))
     } else {
         None
     };
@@ -1089,10 +1092,13 @@ where
         projection,
     });
 
-    let store_io = if transient {
-        Some(LaneNoStore)
+    let store_io: Option<Box<dyn StoreIo>> = if transient {
+        None
     } else {
-        Box::new(MapLaneStoreIo::new(summaries_to_events(observer), model))
+        Some(Box::new(MapLaneStoreIo::new(
+            summaries_to_events(observer),
+            model,
+        )))
     };
 
     let io = IoPair {

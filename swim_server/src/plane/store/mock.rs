@@ -16,9 +16,8 @@ use crate::agent::store::mock::MockNodeStore;
 use crate::agent::store::SwimNodeStore;
 use crate::plane::store::PlaneStore;
 use crate::store::{StoreEngine, StoreKey};
-use store::engines::KeyedSnapshot;
-use store::keyspaces::{Keyspace, KeyspaceRangedSnapshotLoad, KeyspaceResolver};
-use store::{StoreError, StoreInfo};
+use store::keyspaces::{Keyspace, KeyspaceResolver};
+use store::{EngineInfo, StoreError};
 use swim_common::model::text::Text;
 
 #[derive(Clone, Debug)]
@@ -33,6 +32,17 @@ impl PlaneStore for MockPlaneStore {
         MockNodeStore::mock()
     }
 
+    fn get_prefix_range<F, K, V>(
+        &self,
+        _prefix: StoreKey,
+        _map_fn: F,
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+    {
+        Ok(None)
+    }
+
     fn engine_info(&self) -> EngineInfo {
         EngineInfo {
             path: "".to_string(),
@@ -45,19 +55,6 @@ impl PlaneStore for MockPlaneStore {
         I: Into<String>,
     {
         Ok(0)
-    }
-}
-
-impl KeyspaceRangedSnapshotLoad for MockPlaneStore {
-    fn get_prefix_range<F, K, V>(
-        &self,
-        _prefix: StoreKey,
-        _map_fn: F,
-    ) -> Result<Option<Vec<(K, V)>>, StoreError>
-        where
-            F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-    {
-        Ok(None)
     }
 }
 

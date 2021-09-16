@@ -12,17 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::{ByteEngine, KeyedSnapshot};
-use crate::engines::{ByteEngine, StoreBuilder};
+use crate::engines::ByteEngine;
+use crate::engines::StoreBuilder;
 use crate::iterator::{
     EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey,
 };
-use crate::keyspaces::{
-    Keyspace, KeyspaceByteEngine, KeyspaceRangedSnapshotLoad, KeyspaceResolver, Keyspaces,
-};
-use crate::{FromKeyspaces, KvBytes, Store, StoreError, StoreInfo};
 use crate::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
-use crate::{EngineInfo, KvBytes, Store, StoreError};
+use crate::EngineInfo;
+use crate::{KvBytes, Store, StoreError};
 use std::borrow::Borrow;
 use std::path::{Path, PathBuf};
 
@@ -42,21 +39,6 @@ impl Store for NoStore {
             path: "Transient".to_string(),
             kind: "NoStore".to_string(),
         }
-    }
-}
-
-impl KeyspaceRangedSnapshotLoad for NoStore {
-    fn keyspace_load_ranged_snapshot<F, K, V, S>(
-        &self,
-        _keyspace: &S,
-        _prefix: &[u8],
-        _map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-        S: Keyspace,
-    {
-        Ok(None)
     }
 }
 
