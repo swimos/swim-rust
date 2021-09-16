@@ -93,7 +93,7 @@ impl SwimAgent<DummyConfig> for DummyAgent {
     ) -> (
         Self,
         DynamicLaneTasks<Self, Context>,
-        DynamicAgentIo<Context, Store>,
+        DynamicAgentIo<Context>,
     )
     where
         Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,

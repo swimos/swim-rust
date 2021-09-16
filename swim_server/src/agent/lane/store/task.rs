@@ -117,7 +117,7 @@ impl<Store: NodeStore> NodeStoreTask<Store> {
     /// failed IO tasks.
     pub async fn run(
         self,
-        tasks: HashMap<String, Box<dyn StoreIo<Store>>>,
+        tasks: HashMap<String, Box<dyn StoreIo>>,
         max_store_errors: usize,
     ) -> Result<NodeStoreErrors, NodeStoreErrors> {
         let NodeStoreTask {
@@ -130,12 +130,8 @@ impl<Store: NodeStore> NodeStoreTask<Store> {
         for (lane_uri, io) in tasks {
             let store_error_handler = StoreErrorHandler::new(max_store_errors);
 
-            let node_store = node_store.clone();
-
             let task = async move {
-                let result = io
-                    .attach_boxed(node_store, lane_uri.clone(), store_error_handler)
-                    .await;
+                let result = io.attach_boxed(lane_uri.clone(), store_error_handler).await;
                 (lane_uri.clone(), result)
             };
             pending.push(task.boxed());

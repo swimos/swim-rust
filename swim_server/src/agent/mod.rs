@@ -48,7 +48,7 @@ use crate::agent::lane::model::demand_map::{
 use crate::agent::lane::model::map::MapLane;
 use crate::agent::lane::model::map::{summaries_to_events, MapLaneEvent, MapSubscriber};
 use crate::agent::lane::model::supply::{make_lane_model, SupplyLane};
-use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
+use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent, ValueLaneStoreIo};
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::routing::{ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
@@ -101,7 +101,7 @@ pub trait SwimAgent<Config>: Any + Send + Sync + Sized {
     ) -> (
         Self,
         DynamicLaneTasks<Self, Context>,
-        DynamicAgentIo<Context, Store>,
+        DynamicAgentIo<Context>,
     )
     where
         Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
@@ -109,8 +109,8 @@ pub trait SwimAgent<Config>: Any + Send + Sync + Sized {
 }
 
 pub type DynamicLaneTasks<Agent, Context> = Vec<Box<dyn LaneTasks<Agent, Context>>>;
-pub type DynamicAgentIo<Context, Store> =
-    HashMap<String, IoPair<Box<dyn LaneIo<Context>>, Box<dyn StoreIo<Store>>>>;
+pub type DynamicAgentIo<Context> =
+    HashMap<String, IoPair<Box<dyn LaneIo<Context>>, Box<dyn StoreIo>>>;
 
 pub const COMMANDED: &str = "Command received";
 pub const ON_COMMAND: &str = "On command handler";
@@ -889,6 +889,22 @@ where
     }
 }
 
+pub struct LaneConfig {
+    name: String,
+    is_public: bool,
+    transient: bool,
+}
+
+impl LaneConfig {
+    pub fn new(name: String, is_public: bool, transient: bool) -> Self {
+        LaneConfig {
+            name,
+            is_public,
+            transient,
+        }
+    }
+}
+
 /// Create a value lane instance along with its life-cycle.
 ///
 /// #Arguments
@@ -901,18 +917,16 @@ where
 /// * `projection` - A projection from the agent type to this lane.
 /// * `transient` - Whether to persist the lane's state
 pub fn make_value_lane<Agent, Context, T, L, Store, P>(
-    name: impl Into<String>,
-    is_public: bool,
-    config: &AgentExecutionConfig,
+    lane_config: LaneConfig,
+    exec_config: &AgentExecutionConfig,
     init: T,
     lifecycle: L,
     projection: P,
-    transient: bool,
-    _store: Store,
+    store: Store,
 ) -> (
     ValueLane<T>,
     impl LaneTasks<Agent, Context>,
-    IoPair<impl LaneIo<Context>, impl StoreIo<Store>>,
+    IoPair<Box<dyn LaneIo<Context>>, Box<dyn StoreIo>>,
 )
 where
     Agent: 'static,
@@ -922,26 +936,38 @@ where
     Store: NodeStore,
     P: Fn(&Agent) -> &ValueLane<T> + Send + Sync + 'static,
 {
-    let (lane, observer) = ValueLane::observable(init, config.observation_buffer);
+    let LaneConfig {
+        name,
+        is_public,
+        transient,
+    } = lane_config;
 
-    let lane_io = if is_public {
-        Some(ValueLaneIo::new(lane.clone(), observer.subscriber()))
+    let (lane, observer) = ValueLane::observable(init, exec_config.observation_buffer);
+
+    let lane_io: Option<Box<dyn LaneIo<Context>>> = if is_public {
+        Some(Box::new(ValueLaneIo::new(
+            lane.clone(),
+            observer.subscriber(),
+        )))
     } else {
         None
     };
 
     let tasks = ValueLifecycleTasks(LifecycleTasks {
-        name: name.into(),
+        name,
         lifecycle,
-        event_stream: observer.into_stream(),
+        event_stream: observer.clone().into_stream(),
         projection,
     });
 
-    // todo tk: this block will be removed in the next PRs. LaneNoStore is used just so the type isn't opaque
-    let store_io = if transient {
-        Some(LaneNoStore)
+    let store_io: Option<Box<dyn StoreIo>> = if transient {
+        None
     } else {
-        unimplemented!()
+        Some(Box::new(ValueLaneStoreIo::new(
+            store,
+            lane.clone(),
+            observer.into_stream(),
+        )))
     };
 
     let io = IoPair {
@@ -1025,7 +1051,7 @@ pub fn make_map_lane<Agent, Context, K, V, L, P, Store>(
 ) -> (
     MapLane<K, V>,
     impl LaneTasks<Agent, Context>,
-    IoPair<impl LaneIo<Context>, impl StoreIo<Store>>,
+    IoPair<impl LaneIo<Context>, impl StoreIo>,
 )
 where
     Agent: 'static,
@@ -1054,7 +1080,6 @@ where
         projection,
     });
 
-    // todo tk: this block will be removed in the next PRs. LaneNoStore is used just so the type isn't opaque
     let store_io = if transient {
         Some(LaneNoStore)
     } else {

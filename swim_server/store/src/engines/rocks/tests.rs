@@ -12,12 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::{RocksOpts, StoreBuilder};
-use crate::iterator::EngineIterator;
+use crate::engines::{RocksEngine, RocksOpts, StoreBuilder};
+use crate::iterator::{EngineIterator, EngineRefIterator};
 use crate::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceDef, KeyspaceResolver, Keyspaces};
-use crate::RocksEngine;
+use crate::StoreError;
 use crate::{deserialize, deserialize_key, serialize};
-use crate::{EngineRefIterator, StoreError};
 use rocksdb::{MergeOperands, Options, SliceTransform};
 use std::collections::HashMap;
 use std::mem::size_of;

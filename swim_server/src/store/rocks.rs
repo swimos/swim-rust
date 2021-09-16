@@ -22,12 +22,11 @@ use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, Options, SliceTransform, DB}
 use std::mem::size_of;
 use std::path::Path;
 use std::sync::Arc;
+use store::engines::{RocksEngine, RocksIterator, RocksPrefixIterator, StoreBuilder};
+use store::iterator::{EngineIterOpts, EngineRefIterator};
 use store::keyspaces::{Keyspace, KeyspaceByteEngine};
 use store::keyspaces::{KeyspaceDef, KeyspaceResolver, Keyspaces};
-use store::{
-    EngineInfo, EngineIterOpts, EngineRefIterator, RocksEngine, RocksIterator, RocksPrefixIterator,
-    Store, StoreBuilder, StoreError,
-};
+use store::{EngineInfo, Store, StoreError};
 
 #[derive(Debug, Clone)]
 pub struct RocksDatabase {

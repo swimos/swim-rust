@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::keyspaces::KeyspaceResolver;
-use crate::StoreError;
+use crate::{KvBytes, StoreError};
 
 pub trait OwnedEngineRefIterator: for<'t> EngineRefIterator<'t, 't> {}
 impl<D> OwnedEngineRefIterator for D where D: for<'t> EngineRefIterator<'t, 't> {}
@@ -64,7 +64,7 @@ pub type KvPair = Option<(Box<[u8]>, Box<[u8]>)>;
 pub trait EnginePrefixIterator {
     /// Returns a tuple containing an optional key and value for the lexicographically following
     /// cursor. If `None` is returned, the iterator has reached the end of its range.
-    fn next(&mut self) -> KvPair;
+    fn next(&mut self) -> Option<KvBytes>;
 
     /// Returns `Ok(true)` if the iterator is currently valid and has not reached the end of its
     /// range. `Ok(false)` if the iterator has not encountered any errors but has reached the end of

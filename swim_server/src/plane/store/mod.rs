@@ -20,15 +20,16 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use futures::future::BoxFuture;
-use futures::{FutureExt, Stream};
+use futures::FutureExt;
 
-use store::keyspaces::{KeyspaceByteEngine, Keyspaces};
-use store::{serialize, EngineInfo, Store, StoreBuilder, StoreError};
+use store::keyspaces::Keyspaces;
+use store::{serialize, EngineInfo, Store, StoreError};
 use swim_common::model::text::Text;
 
 use crate::agent::store::{NodeStore, SwimNodeStore};
-use crate::store::keystore::{KeyRequest, KeyStore, KeystoreTask};
+use crate::store::keystore::{KeyStore, KeystoreTask};
 use crate::store::{KeyspaceName, StoreEngine, StoreKey};
+use store::engines::StoreBuilder;
 
 pub mod mock;
 
@@ -51,7 +52,7 @@ where
 /// A trait for defining plane stores which will create node stores.
 pub trait PlaneStore
 where
-    Self: StoreEngine + KeystoreTask + Sized + Debug + Send + Sync + Clone + 'static,
+    Self: StoreEngine + Sized + Debug + Send + Sync + Clone + 'static,
 {
     /// The type of node stores which are created.
     type NodeStore: NodeStore;
@@ -83,9 +84,6 @@ where
 }
 
 /// A store engine for planes.
-///
-/// Backed by a value store and a map store, any operations on this store have their key variant
-/// checked and the operation is delegated to the corresponding store.
 pub struct SwimPlaneStore<D> {
     /// The name of the plane.
     plane_name: Text,
@@ -161,16 +159,6 @@ where
         I: Into<String>,
     {
         self.keystore.id_for(lane.into()).boxed()
-    }
-}
-
-impl<D: Store> KeystoreTask for SwimPlaneStore<D> {
-    fn run<DB, S>(_db: Arc<DB>, _events: S) -> BoxFuture<'static, Result<(), StoreError>>
-    where
-        DB: KeyspaceByteEngine,
-        S: Stream<Item = KeyRequest> + Unpin + Send + 'static,
-    {
-        unimplemented!()
     }
 }
 

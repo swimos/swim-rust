@@ -17,11 +17,12 @@ use futures::future::BoxFuture;
 use futures::{Stream, StreamExt};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use store::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
-use store::{
-    EngineInfo, EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator,
-    IteratorKey, KvPair, Store, StoreBuilder, StoreError,
+use store::engines::StoreBuilder;
+use store::iterator::{
+    EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey,
 };
+use store::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
+use store::{EngineInfo, KvBytes, Store, StoreError};
 
 /// A store which will persist no data and exists purely to uphold the minimum contract required
 /// between a lane and its store.
@@ -66,7 +67,7 @@ impl EngineIterator for NoStoreIterator {
 }
 
 impl EnginePrefixIterator for NoStoreIterator {
-    fn next(&mut self) -> KvPair {
+    fn next(&mut self) -> Option<KvBytes> {
         None
     }
 

@@ -12,10 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(clippy::unnecessary_wraps)]
-
-mod engines;
-mod iterator;
+pub mod engines;
+pub mod iterator;
 pub mod keyspaces;
 
 use std::error::Error;
@@ -25,15 +23,13 @@ use std::{error::Error as StdError, io};
 
 use thiserror::Error;
 
+use crate::iterator::OwnedEngineRefIterator;
 use crate::keyspaces::{KeyspaceByteEngine, KeyspaceResolver};
-pub use engines::{RocksEngine, RocksIterator, RocksPrefixIterator, StoreBuilder};
 
-pub use crate::iterator::{
-    EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey, KvPair,
-    OwnedEngineRefIterator,
-};
-
+pub use rocksdb::{ColumnFamily, MergeOperands, Options, SliceTransform};
 use serde::{Deserialize, Serialize};
+
+pub type KvBytes = (Box<[u8]>, Box<[u8]>);
 
 /// Store errors.
 #[derive(Debug, Error)]
