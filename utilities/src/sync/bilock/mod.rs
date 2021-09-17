@@ -15,7 +15,6 @@
 #[cfg(test)]
 mod tests;
 
-use atomic::Atomic;
 use core::fmt;
 use futures::task::AtomicWaker;
 use futures::{ready, Future};
@@ -24,7 +23,7 @@ use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
@@ -34,9 +33,9 @@ use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 /// For situations where there will only ever be two owners this is much cheaper than a mutex.
 pub fn bilock<T>(val: T) -> (BiLock<T>, BiLock<T>) {
     let inner = Arc::new(Inner {
-        state: Atomic::new(State::Unlocked),
-        waker: Arc::new(AtomicWaker::default()),
-        value: Some(UnsafeCell::new(val)),
+        state: AtomicBool::new(false),
+        waker: AtomicWaker::default(),
+        value: UnsafeCell::new(val),
     });
     (
         BiLock {
@@ -46,24 +45,19 @@ pub fn bilock<T>(val: T) -> (BiLock<T>, BiLock<T>) {
     )
 }
 
+#[derive(Debug)]
 pub struct BiLock<T> {
     inner: Arc<Inner<T>>,
 }
-
+#[derive(Debug)]
 struct Inner<T> {
-    state: Atomic<State>,
-    waker: Arc<AtomicWaker>,
-    value: Option<UnsafeCell<T>>,
+    state: AtomicBool,
+    waker: AtomicWaker,
+    value: UnsafeCell<T>,
 }
 
 unsafe impl<T: Send> Send for Inner<T> {}
 unsafe impl<T: Send> Sync for Inner<T> {}
-
-#[derive(Copy, Clone)]
-enum State {
-    Locked,
-    Unlocked,
-}
 
 impl<T> BiLock<T> {
     /// Returns a future that resolves to a `BiLockGuard` once the value is available.
@@ -73,23 +67,31 @@ impl<T> BiLock<T> {
 
     /// Polls access to the value and returns a `BiLockGuard` if it is available.
     pub fn poll_lock(&self, cx: &mut Context<'_>) -> Poll<BiLockGuard<'_, T>> {
-        match self.inner.state.swap(State::Locked, Ordering::SeqCst) {
-            State::Locked => {
+        loop {
+            return if self.inner.state.swap(true, Ordering::SeqCst) {
                 self.inner.waker.register(cx.waker());
+
+                if let Err(false) = self.inner.state.compare_exchange(
+                    true,
+                    true,
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                ) {
+                    continue;
+                }
+
                 Poll::Pending
-            }
-            State::Unlocked => Poll::Ready(BiLockGuard { bilock: self }),
+            } else {
+                Poll::Ready(BiLockGuard { bilock: self })
+            };
         }
     }
 
     fn unlock(&self) {
-        match self.inner.state.swap(State::Unlocked, Ordering::SeqCst) {
-            State::Locked => {
-                self.inner.waker.wake();
-            }
-            State::Unlocked => {
-                // Nobody is waiting
-            }
+        if self.inner.state.swap(false, Ordering::SeqCst) {
+            self.inner.waker.wake();
+        } else {
+            // Nobody is waiting
         }
     }
 
@@ -102,10 +104,10 @@ impl<T> BiLock<T> {
         if Arc::ptr_eq(&self.inner, &other.inner) {
             drop(other);
 
-            let mut inner = Arc::try_unwrap(self.inner)
+            let inner = Arc::try_unwrap(self.inner)
                 .ok()
                 .expect("Failed to unwrap Arc");
-            Ok(inner.value.take().unwrap().into_inner())
+            Ok(inner.value.into_inner())
         } else {
             Err(ReuniteError(self, other))
         }
@@ -140,13 +142,13 @@ impl<'l, T> Drop for BiLockGuard<'l, T> {
 impl<T> Deref for BiLockGuard<'_, T> {
     type Target = T;
     fn deref(&self) -> &T {
-        unsafe { &*self.bilock.inner.value.as_ref().unwrap().get() }
+        unsafe { &*self.bilock.inner.value.get() }
     }
 }
 
 impl<T: Unpin> DerefMut for BiLockGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut T {
-        unsafe { &mut *self.bilock.inner.value.as_ref().unwrap().get() }
+        unsafe { &mut *self.bilock.inner.value.get() }
     }
 }
 
