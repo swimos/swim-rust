@@ -209,8 +209,8 @@ impl<Config> AgentParameters<Config> {
 
 /// Lane IO pair consisting of routing IO and store IO.
 pub struct IoPair<Routing, Store> {
-    routing: Option<Routing>,
-    persistence: Option<Store>,
+    pub routing: Option<Routing>,
+    pub persistence: Option<Store>,
 }
 
 impl<Routing, Store> IoPair<Routing, Store> {
@@ -929,11 +929,7 @@ pub fn make_value_lane<Agent, Context, T, L, Store, P>(
     lifecycle: L,
     projection: P,
     store: Store,
-) -> (
-    ValueLane<T>,
-    impl LaneTasks<Agent, Context>,
-    IoPair<Box<dyn LaneIo<Context>>, Box<dyn StoreIo>>,
-)
+) -> LaneParts<ValueLane<T>, impl LaneTasks<Agent, Context>, Context>
 where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
@@ -984,7 +980,7 @@ where
         persistence: store_io,
     };
 
-    (lane, tasks, io)
+    LaneParts { lane, tasks, io }
 }
 
 impl<L, S, P> Lane for MapLifecycleTasks<L, S, P> {
@@ -1057,11 +1053,7 @@ pub fn make_map_lane<Agent, Context, K, V, L, P, Store>(
     projection: P,
     transient: bool,
     store: Store,
-) -> (
-    MapLane<K, V>,
-    impl LaneTasks<Agent, Context>,
-    IoPair<Box<dyn LaneIo<Context>>, Box<dyn StoreIo>>,
-)
+) -> LaneParts<MapLane<K, V>, impl LaneTasks<Agent, Context>, Context>
 where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
@@ -1106,7 +1098,7 @@ where
         persistence: store_io,
     };
 
-    (lane, tasks, io)
+    LaneParts { lane, tasks, io }
 }
 
 impl<L, S, P> Lane for ActionLifecycleTasks<L, S, P> {
@@ -1229,11 +1221,7 @@ pub fn make_action_lane<Agent, Context, Command, Response, L, S, P>(
     lifecycle: L,
     projection: impl Fn(&Agent) -> &ActionLane<Command, Response> + Send + Sync + 'static,
     buffer_size: NonZeroUsize,
-) -> (
-    ActionLane<Command, Response>,
-    impl LaneTasks<Agent, Context>,
-    Option<impl LaneIo<Context>>,
-)
+) -> LaneParts<ActionLane<Command, Response>, impl LaneTasks<Agent, Context>, Context>
 where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
@@ -1252,12 +1240,20 @@ where
         projection,
     });
 
-    let lane_io = if is_public {
-        Some(ActionLaneIo::new(lane.clone()))
+    let lane_io: Option<Box<dyn LaneIo<Context>>> = if is_public {
+        Some(Box::new(ActionLaneIo::new(lane.clone())))
     } else {
         None
     };
-    (lane, tasks, lane_io)
+
+    LaneParts {
+        lane,
+        tasks,
+        io: IoPair {
+            routing: lane_io,
+            persistence: None,
+        },
+    }
 }
 
 /// Create a command lane from a lifecycle.
@@ -1275,11 +1271,7 @@ pub fn make_command_lane<Agent, Context, T, L>(
     lifecycle: L,
     projection: impl Fn(&Agent) -> &CommandLane<T> + Send + Sync + 'static,
     buffer_size: NonZeroUsize,
-) -> (
-    CommandLane<T>,
-    impl LaneTasks<Agent, Context>,
-    Option<impl LaneIo<Context>>,
-)
+) -> LaneParts<CommandLane<T>, impl LaneTasks<Agent, Context>, Context>
 where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
@@ -1295,13 +1287,20 @@ where
         projection,
     });
 
-    let lane_io = if is_public {
-        Some(CommandLaneIo::new(lane.clone()))
+    let lane_io: Option<Box<dyn LaneIo<Context>>> = if is_public {
+        Some(Box::new(CommandLaneIo::new(lane.clone())))
     } else {
         None
     };
 
-    (lane, tasks, lane_io)
+    LaneParts {
+        lane,
+        tasks,
+        io: IoPair {
+            routing: lane_io,
+            persistence: None,
+        },
+    }
 }
 
 /// Create a new supply lane.
@@ -1315,11 +1314,7 @@ pub fn make_supply_lane<Agent, Context, T>(
     name: impl Into<String>,
     is_public: bool,
     buffer_size: NonZeroUsize,
-) -> (
-    SupplyLane<T>,
-    impl LaneTasks<Agent, Context>,
-    Option<impl LaneIo<Context>>,
-)
+) -> LaneParts<SupplyLane<T>, impl LaneTasks<Agent, Context>, Context>
 where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
@@ -1332,13 +1327,20 @@ where
         kind: LaneKind::Supply,
     };
 
-    let lane_io = if is_public {
-        Some(SupplyLaneIo::new(view))
+    let lane_io: Option<Box<dyn LaneIo<Context>>> = if is_public {
+        Some(Box::new(SupplyLaneIo::new(view)))
     } else {
         None
     };
 
-    (lane, tasks, lane_io)
+    LaneParts {
+        lane,
+        tasks,
+        io: IoPair {
+            routing: lane_io,
+            persistence: None,
+        },
+    }
 }
 
 struct SupplyLaneIo<S> {
@@ -1387,6 +1389,12 @@ where
     }
 }
 
+pub struct LaneParts<L, T, C> {
+    pub lane: L,
+    pub tasks: T,
+    pub io: IoPair<Box<dyn LaneIo<C>>, Box<dyn StoreIo>>,
+}
+
 /// Create a new demand lane.
 ///
 /// # Arguments
@@ -1400,11 +1408,7 @@ pub fn make_demand_lane<Agent, Context, Event, L>(
     lifecycle: L,
     projection: impl Fn(&Agent) -> &DemandLane<Event> + Send + Sync + 'static,
     buffer_size: NonZeroUsize,
-) -> (
-    DemandLane<Event>,
-    impl LaneTasks<Agent, Context>,
-    impl LaneIo<Context>,
-)
+) -> LaneParts<DemandLane<Event>, impl LaneTasks<Agent, Context>, Context>
 where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
@@ -1422,9 +1426,16 @@ where
         response_tx,
     };
 
-    let lane_io = DemandLaneIo::new(response_rx);
+    let lane_io: Box<dyn LaneIo<Context>> = Box::new(DemandLaneIo::new(response_rx));
 
-    (lane, tasks, lane_io)
+    LaneParts {
+        lane,
+        tasks,
+        io: IoPair {
+            routing: Some(lane_io),
+            persistence: None,
+        },
+    }
 }
 
 pub struct DemandLaneIo<Event> {
@@ -1539,11 +1550,7 @@ pub fn make_demand_map_lane<Agent, Context, Key, Value, L>(
     lifecycle: L,
     projection: impl Fn(&Agent) -> &DemandMapLane<Key, Value> + Send + Sync + 'static,
     buffer_size: NonZeroUsize,
-) -> (
-    DemandMapLane<Key, Value>,
-    impl LaneTasks<Agent, Context>,
-    Option<impl LaneIo<Context>>,
-)
+) -> LaneParts<DemandMapLane<Key, Value>, impl LaneTasks<Agent, Context>, Context>
 where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
@@ -1561,13 +1568,20 @@ where
         projection,
     });
 
-    let lane_io = if is_public {
-        Some(DemandMapLaneIo::new(lane.clone(), topic))
+    let lane_io: Option<Box<dyn LaneIo<Context>>> = if is_public {
+        Some(Box::new(DemandMapLaneIo::new(lane.clone(), topic)))
     } else {
         None
     };
 
-    (lane, tasks, lane_io)
+    LaneParts {
+        lane,
+        tasks,
+        io: IoPair {
+            routing: lane_io,
+            persistence: None,
+        },
+    }
 }
 
 pub struct DemandMapLaneIo<Key, Value>

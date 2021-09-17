@@ -67,7 +67,7 @@ impl StoreError {
     pub fn downcast_ref<E: StdError + 'static>(&self) -> Option<&E> {
         match self {
             StoreError::Delegate(d) => {
-                if let Some(ref downcasted) = d.downcast_ref() {
+                if let Some(downcasted) = d.downcast_ref() {
                     return Some(downcasted);
                 }
                 None

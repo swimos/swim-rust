@@ -53,6 +53,13 @@ use utilities::future::{FlatmapStream, SwimStreamExt, Transform};
 pub mod map_store;
 mod summary;
 
+pub type StreamedMapLane<K, V, S> = (
+    MapLane<K, V>,
+    MapSubscriber<K, V>,
+    S,
+    Option<Box<dyn StoreIo>>,
+);
+
 /// A lane consisting of a map from keys to values.
 #[derive(Debug)]
 pub struct MapLane<K, V> {
@@ -869,12 +876,7 @@ pub fn streamed_map_lane<K, V, Store>(
     buffer_size: NonZeroUsize,
     transient: bool,
     store: Store,
-) -> (
-    MapLane<K, V>,
-    MapSubscriber<K, V>,
-    impl Stream<Item = MapLaneEvent<K, V>>,
-    Option<Box<dyn StoreIo>>,
-)
+) -> StreamedMapLane<K, V, impl Stream<Item = MapLaneEvent<K, V>>>
 where
     K: Form + Send + Sync + Serialize + DeserializeOwned + Debug + 'static,
     V: Send + Sync + Debug + Serialize + DeserializeOwned + 'static,

@@ -35,7 +35,7 @@ impl From<rocksdb::Error> for StoreError {
 
 /// A Rocks database engine.
 ///
-/// See https://github.com/facebook/rocksdb/wiki for details about the features and limitations.
+/// See <https://github.com/facebook/rocksdb/wiki> for details about the features and limitations.
 #[derive(Debug, Clone)]
 pub struct RocksEngine {
     pub(crate) delegate: Arc<DB>,
@@ -51,7 +51,7 @@ impl RocksEngine {
 
 impl Store for RocksEngine {
     fn path(&self) -> &Path {
-        &self.delegate.path()
+        self.delegate.path()
     }
 
     fn engine_info(&self) -> EngineInfo {

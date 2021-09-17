@@ -24,7 +24,7 @@ use crate::agent::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::store::NodeStore;
 use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::{
-    AgentContext, DynamicAgentIo, DynamicLaneTasks, LaneConfig, SwimAgent, TestClock,
+    AgentContext, DynamicAgentIo, DynamicLaneTasks, LaneConfig, LaneParts, SwimAgent, TestClock,
 };
 use crate::agent::{IoPair, LaneTasks};
 use crate::plane::provider::AgentProvider;
@@ -170,7 +170,11 @@ impl SwimAgent<AgentConfig> for StoreAgent {
         Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
         Store: NodeStore,
     {
-        let (value, value_task, value_lane_io) = agent::make_value_lane(
+        let LaneParts {
+            lane: value,
+            tasks: value_task,
+            io: value_lane_io,
+        } = agent::make_value_lane(
             LaneConfig::new("value".to_string(), false, false),
             exec_conf,
             Default::default(),
@@ -179,7 +183,11 @@ impl SwimAgent<AgentConfig> for StoreAgent {
             store.clone(),
         );
 
-        let (map, map_task, map_lane_io) = agent::make_map_lane(
+        let LaneParts {
+            lane: map,
+            tasks: map_task,
+            io: map_lane_io,
+        } = agent::make_map_lane(
             "map",
             false,
             exec_conf,

@@ -16,7 +16,7 @@ use crate::agent::context::AgentExecutionContext;
 use crate::agent::dispatch::LaneIdentifier;
 use crate::agent::lane::model::supply::SupplyLane;
 use crate::agent::{
-    make_supply_lane, AgentContext, DynamicLaneTasks, LaneIo, LaneTasks, SwimAgent,
+    make_supply_lane, AgentContext, DynamicLaneTasks, LaneIo, LaneParts, LaneTasks, SwimAgent,
 };
 use crate::meta::metric::lane::LanePulse;
 use crate::meta::metric::node::NodePulse;
@@ -58,11 +58,11 @@ where
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
     V: Any + Clone + Send + Sync + Form + Debug + Unpin,
 {
-    let (lane, task, io) = make_supply_lane(lane_uri, true, buffer_size);
+    let LaneParts { lane, tasks, io } = make_supply_lane(lane_uri, true, buffer_size);
     (
         lane,
-        task.boxed(),
-        io.expect("Lane returned private IO").boxed(),
+        tasks.boxed(),
+        io.routing.expect("Lane returned private IO"),
     )
 }
 

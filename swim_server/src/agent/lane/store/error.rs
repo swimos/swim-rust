@@ -85,25 +85,16 @@ impl StoreErrorHandler {
 
     pub fn on_error(&mut self, error: StoreTaskError) -> Result<(), LaneStoreErrorReport> {
         let StoreErrorHandler { max_errors, errors } = self;
+        let is_operational_error = is_operational(&error);
+        errors.push(error);
 
-        if is_operational(&error) {
-            errors.push(error);
+        let len = errors.len();
 
-            let len = errors.len();
+        if is_operational_error || len >= *max_errors {
             let errors: Vec<StoreTaskError> = errors.drain(0..len).collect();
-
             Err(LaneStoreErrorReport { errors })
         } else {
-            errors.push(error);
-
-            let len = errors.len();
-
-            if len >= *max_errors {
-                let errors: Vec<StoreTaskError> = errors.drain(0..len).collect();
-                Err(LaneStoreErrorReport { errors })
-            } else {
-                Ok(())
-            }
+            Ok(())
         }
     }
 }

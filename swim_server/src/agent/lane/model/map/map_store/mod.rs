@@ -107,12 +107,12 @@ where
         };
 
         self.delegate.load_ranged_snapshot(store_key, |key, value| {
-            let store_key = deserialize::<StoreKey>(&key)?;
+            let store_key = deserialize::<StoreKey>(key)?;
 
             match store_key {
                 StoreKey::Map { key, .. } => {
                     let key = deserialize::<K>(&key.ok_or(StoreError::KeyNotFound)?)?;
-                    let value = deserialize::<V>(&value)?;
+                    let value = deserialize::<V>(value)?;
 
                     Ok((key, value))
                 }
