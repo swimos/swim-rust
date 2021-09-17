@@ -66,10 +66,12 @@ enum State {
 }
 
 impl<T> BiLock<T> {
+    /// Returns a future that resolves to a `BiLockGuard` once the value is available.
     pub fn lock(&self) -> LockFuture<'_, T> {
         LockFuture { bilock: self }
     }
 
+    /// Polls access to the value and returns a `BiLockGuard` if it is available.
     pub fn poll_lock(&self, cx: &mut Context<'_>) -> Poll<BiLockGuard<'_, T>> {
         match self.inner.state.swap(State::Locked, Ordering::SeqCst) {
             State::Locked => {
@@ -91,6 +93,8 @@ impl<T> BiLock<T> {
         }
     }
 
+    /// Reunites two `BiLock`s that form a pair or returns an error if they do not guard the same
+    /// value.
     pub fn reunite(self, other: BiLock<T>) -> Result<T, ReuniteError<T>>
     where
         T: Unpin,
