@@ -19,30 +19,19 @@ jobs:
         - RUST_BACKTRACE=1
       script:
         - cargo test --workspace
-    - name: "Clippy"
+    - name: "Clippy, formatting and documentation"
       os: linux
       arch: amd64
       env:
         - RUST_BACKTRACE=1
       script:
+        # This can all be run on one machine to save time
         - rustup component add clippy
         - cargo clippy --version
-        - cargo clippy --all-features -- -D warnings
-    - name: "Test documentation"
-      os: linux
-      arch: amd64
-      env:
-        - RUST_BACKTRACE=1
-      script:
-        - RUSTDOCFLAGS="--cfg docsrs -Dwarnings" cargo doc --lib --no-deps --all-features
-    - name: "Check formatting"
-      os: linux
-      arch: amd64
-      env:
-        - RUST_BACKTRACE=1
-      script:
         - rustup component add rustfmt
         - cargo fmt --version
+        - cargo clippy --all-features -- -D warnings
+        - RUSTDOCFLAGS="--cfg docsrs -Dwarnings" cargo doc --lib --no-deps --all-features
         - cargo fmt -- --check
 
 rust:
