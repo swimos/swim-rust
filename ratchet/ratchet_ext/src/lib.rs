@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use http::{HeaderMap, HeaderValue};
-use httparse::Header;
+pub use http::{HeaderMap, HeaderValue};
+pub use httparse::Header;
 use std::error::Error;
 use std::fmt::Debug;
 

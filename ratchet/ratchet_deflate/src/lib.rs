@@ -12,18 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use http::{HeaderMap, HeaderValue};
-use httparse::Header;
-use ratchet_ext::{Extension, ExtensionProvider};
+use flate2::{Compress, Decompress};
+use ratchet_ext::{
+    Extension, ExtensionDecoder, ExtensionEncoder, ExtensionProvider, Header, HeaderMap,
+    HeaderValue, SplittableExtension,
+};
 use thiserror::Error;
 
-pub struct DeflateHandshake;
+pub struct DeflateExtProvider {}
 
 #[derive(Error, Debug)]
 #[error("Err")]
 pub struct DeflateError;
 
-impl ExtensionProvider for DeflateHandshake {
+impl ExtensionProvider for DeflateExtProvider {
     type Extension = Deflate;
     type Error = DeflateError;
 
@@ -32,24 +34,66 @@ impl ExtensionProvider for DeflateHandshake {
     }
 
     fn negotiate_client(&self, _headers: &[Header]) -> Result<Self::Extension, Self::Error> {
-        Ok(Deflate)
+        unimplemented!()
     }
 
     fn negotiate_server(
         &self,
         _headers: &[Header],
     ) -> Result<(Self::Extension, Option<HeaderValue>), Self::Error> {
-        Ok((Deflate, None))
+        unimplemented!()
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Deflate;
+#[derive(Debug)]
+pub struct Deflate {
+    encoder: DeflateEncoder,
+    decoder: DeflateDecoder,
+}
+
 impl Extension for Deflate {
+    fn encode(&mut self) {
+        self.encoder.encode()
+    }
+
+    fn decode(&mut self) {
+        self.decoder.decode()
+    }
+}
+
+impl SplittableExtension for Deflate {
+    type Encoder = DeflateEncoder;
+    type Decoder = DeflateDecoder;
+
+    fn split(self) -> (Self::Encoder, Self::Decoder) {
+        let Deflate { encoder, decoder } = self;
+        (encoder, decoder)
+    }
+
+    fn reunite(encoder: Self::Encoder, decoder: Self::Decoder) -> Self {
+        Deflate { encoder, decoder }
+    }
+}
+
+#[derive(Debug)]
+pub struct DeflateEncoder {
+    compress: Compress,
+}
+
+impl ExtensionEncoder for DeflateEncoder {
+    type United = Deflate;
+
     fn encode(&mut self) {
         todo!()
     }
+}
 
+#[derive(Debug)]
+pub struct DeflateDecoder {
+    decompress: Decompress,
+}
+
+impl ExtensionDecoder for DeflateDecoder {
     fn decode(&mut self) {
         todo!()
     }

@@ -8,4 +8,4 @@ edition = "2018"
 ratchet_ext = { path = "../ratchet_ext" }
 thiserror = "1.0"
 http = "0.2.3"
-httparse = "1.4.1"
+flate2 = { version = "1.0", default-features = false, features = ["zlib"] }
