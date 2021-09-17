@@ -11,13 +11,39 @@ branches:
 
 jobs:
   include:
-    - os: linux
+    - name: "Test ARM"
+      os: linux
       arch: arm64
       env:
         - ARCH=arm64
         - RUST_BACKTRACE=1
       script:
         - cargo test --workspace
+    - name: "Clippy"
+      os: linux
+      arch: amd64
+      env:
+        - RUST_BACKTRACE=1
+      script:
+        - rustup component add clippy
+        - cargo clippy --version
+        - cargo clippy --all-features -- -D warnings
+    - name: "Test documentation"
+      os: linux
+      arch: amd64
+      env:
+        - RUST_BACKTRACE=1
+      script:
+        - RUSTDOCFLAGS="--cfg docsrs -Dwarnings" cargo doc --lib --no-deps --all-features
+    - name: "Check formatting"
+      os: linux
+      arch: amd64
+      env:
+        - RUST_BACKTRACE=1
+      script:
+        - rustup component add rustfmt
+        - cargo fmt --version
+        - cargo fmt -- --check
 
 rust:
   - 1.55.0
