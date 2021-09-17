@@ -28,7 +28,7 @@ pub use crate::extensions::{deflate::*, ext::*, Extension, ExtensionProvider};
 pub use builder::{WebSocketClientBuilder, WebSocketServerBuilder};
 pub use errors::*;
 pub use handshake::{
-    accept, ProtocolRegistry, TryIntoRequest, WebSocketResponse, WebSocketUpgrader,
+    accept, accept_with, ProtocolRegistry, TryIntoRequest, WebSocketResponse, WebSocketUpgrader,
 };
 pub use protocol::{Message, PayloadType, Role, WebSocketConfig};
 pub use ws::{client, Upgraded, WebSocket};

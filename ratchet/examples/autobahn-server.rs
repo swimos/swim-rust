@@ -33,7 +33,7 @@ async fn accept(stream: TcpStream) {
 }
 
 async fn run(stream: TcpStream) -> Result<(), Error> {
-    let mut websocket = ratchet::accept(
+    let mut websocket = ratchet::accept_with(
         stream,
         WebSocketConfig::default(),
         NoExtProxy,

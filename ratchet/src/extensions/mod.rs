@@ -46,7 +46,7 @@ pub trait ExtensionDecoder {
 
 pub trait ExtensionProvider {
     type Extension: Extension;
-    type Error: Into<Error> + Send + Sync + 'static;
+    type Error: Into<Error> + 'static;
 
     fn apply_headers(&self, headers: &mut HeaderMap);
 

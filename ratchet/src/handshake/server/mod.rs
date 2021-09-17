@@ -23,8 +23,8 @@ use crate::handshake::{
 use crate::handshake::{TryMap, UPGRADE_STR, WEBSOCKET_STR};
 use crate::protocol::Role;
 use crate::{
-    Error, ErrorKind, Extension, ExtensionProvider, HttpError, ProtocolRegistry, Request, Upgraded,
-    WebSocket, WebSocketConfig, WebSocketStream,
+    Error, ErrorKind, Extension, ExtensionProvider, HttpError, NoExt, NoExtProxy, ProtocolRegistry,
+    Request, Upgraded, WebSocket, WebSocketConfig, WebSocketStream,
 };
 use bytes::{BufMut, Bytes, BytesMut};
 use http::status::InvalidStatusCode;
@@ -35,7 +35,17 @@ use std::convert::TryFrom;
 use std::iter::FromIterator;
 use tokio::io::AsyncWrite;
 
-pub async fn accept<S, E>(
+pub async fn accept<S>(
+    stream: S,
+    config: WebSocketConfig,
+) -> Result<WebSocketUpgrader<S, NoExt>, Error>
+where
+    S: WebSocketStream,
+{
+    accept_with(stream, config, NoExtProxy, ProtocolRegistry::default()).await
+}
+
+pub async fn accept_with<S, E>(
     mut stream: S,
     config: WebSocketConfig,
     extension: E,

@@ -35,10 +35,7 @@ impl Default for WebSocketClientBuilder<NoExtProxy> {
     }
 }
 
-impl<E> WebSocketClientBuilder<E>
-where
-    E: ExtensionProvider,
-{
+impl<E> WebSocketClientBuilder<E> {
     pub async fn subscribe<S, I>(
         self,
         stream: S,
@@ -47,6 +44,7 @@ where
     where
         S: WebSocketStream,
         I: TryIntoRequest,
+        E: ExtensionProvider,
     {
         let WebSocketClientBuilder {
             config,
@@ -71,7 +69,10 @@ where
         self
     }
 
-    pub fn extension(mut self, extension: E) -> Self {
+    pub fn extension(mut self, extension: E) -> Self
+    where
+        E: ExtensionProvider,
+    {
         self.extension = extension;
         self
     }
@@ -115,7 +116,7 @@ where
             extension,
         } = self;
         let upgrader =
-            crate::accept(stream, config.unwrap_or_default(), extension, subprotocols).await?;
+            crate::accept_with(stream, config.unwrap_or_default(), extension, subprotocols).await?;
         upgrader.upgrade().await
     }
 
