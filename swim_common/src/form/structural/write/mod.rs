@@ -20,27 +20,22 @@ use crate::form::structural::write::interpreters::value::ValueInterpreter;
 use crate::model::blob::Blob;
 use crate::model::text::Text;
 use crate::model::{Attr, Item, Value};
+use crate::warp::path::AbsolutePath;
+#[doc(hidden)]
+pub use form_derive::StructuralWritable;
 use num_bigint::{BigInt, BigUint};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::convert::TryFrom;
+use std::num::NonZeroUsize;
 use std::rc::Rc;
 use std::sync::Arc;
-
-use crate::form::Form;
-use crate::routing::remote::config::RemoteConnectionsConfig;
-use crate::warp::path::AbsolutePath;
-#[doc(hidden)]
-pub use form_derive::StructuralWritable;
-use std::num::NonZeroUsize;
 use std::time::Duration;
 use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use url::Url;
-use utilities::future::retryable::strategy::{
-    ExponentialStrategy, IntervalStrategy, Quantity, RetryStrategy,
-};
+use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
 use utilities::uri::RelativeUri;
 
 /// Trait for types that can describe their structure using a [`StructuralWriter`].

@@ -19,7 +19,7 @@ mod tests;
 
 use crate::form::structural::generic::coproduct::{CCons, CNil, Unify};
 use crate::form::structural::read::error::ExpectedEvent;
-use crate::form::structural::read::event::ReadEvent;
+use crate::form::structural::read::event::{NumericValue, ReadEvent};
 use crate::form::structural::read::materializers::value::{
     AttrBodyMaterializer, DelegateBodyMaterializer, ValueMaterializer,
 };
@@ -29,18 +29,23 @@ use crate::form::structural::Tag;
 use crate::model::blob::Blob;
 use crate::model::text::Text;
 use crate::model::{Value, ValueKind};
+use nom::combinator::recognize;
 use num_bigint::{BigInt, BigUint};
 use std::borrow::Borrow;
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::hash::Hash;
 use std::marker::PhantomData;
+use std::num::NonZeroUsize;
 use std::option::Option::None;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Duration;
+use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use url::Url;
+use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
 use utilities::iteratee::Iteratee;
 use utilities::uri::RelativeUri;
-use std::num::NonZeroUsize;
 
 /// Trait for types that can be recognized by a [`Recognizer`] state machine.
 pub trait RecognizerReadable: Sized {
@@ -2707,4 +2712,274 @@ impl<R: Recognizer> Recognizer for SimpleRecBody<R> {
         self.value = None;
         self.delegate.reset();
     }
+}
+
+const DURATION_TAG: &str = "duration";
+
+enum RecognizerStage<T> {
+    Init,
+    Tag,
+    AfterTag,
+    InBody,
+    Slot(T),
+    Field(T),
+}
+
+//Todo dm
+impl RecognizerReadable for RetryStrategy {
+    type Rec = RetryStrategyRecognizer;
+    type AttrRec = SimpleAttrBody<RetryStrategyRecognizer>;
+    type BodyRec = SimpleRecBody<RetryStrategyRecognizer>;
+
+    fn make_recognizer() -> Self::Rec {
+        RetryStrategyRecognizer
+    }
+
+    fn make_attr_recognizer() -> Self::AttrRec {
+        SimpleAttrBody::new(RetryStrategyRecognizer)
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        SimpleRecBody::new(RetryStrategyRecognizer)
+    }
+
+    fn is_simple() -> bool {
+        true
+    }
+}
+
+pub struct RetryStrategyRecognizer;
+
+impl Recognizer for RetryStrategyRecognizer {
+    type Target = RetryStrategy;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        unimplemented!()
+    }
+
+    fn reset(&mut self) {}
+}
+
+impl<T: RecognizerReadable> RecognizerReadable for Quantity<T> {
+    type Rec = QuantityRecognizer<T>;
+    type AttrRec = SimpleAttrBody<QuantityRecognizer<T>>;
+    type BodyRec = SimpleRecBody<QuantityRecognizer<T>>;
+
+    fn make_recognizer() -> Self::Rec {
+        QuantityRecognizer {
+            recognizer: T::make_recognizer(),
+        }
+    }
+
+    fn make_attr_recognizer() -> Self::AttrRec {
+        SimpleAttrBody::new(QuantityRecognizer {
+            recognizer: T::make_recognizer(),
+        })
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        SimpleRecBody::new(QuantityRecognizer {
+            recognizer: T::make_recognizer(),
+        })
+    }
+
+    fn is_simple() -> bool {
+        true
+    }
+}
+
+pub struct QuantityRecognizer<T: RecognizerReadable> {
+    recognizer: T::Rec,
+}
+
+impl<T: RecognizerReadable> Recognizer for QuantityRecognizer<T> {
+    type Target = Quantity<T>;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        match input {
+            ReadEvent::TextValue(value) if value == "infinite" => Some(Ok(Quantity::Infinite)),
+            _ => match self.recognizer.feed_event(input)? {
+                Ok(val) => Some(Ok(Quantity::Finite(val))),
+                Err(err) => Some(Err(err)),
+            },
+        }
+    }
+
+    fn reset(&mut self) {}
+}
+
+pub struct DurationRecognizer {
+    stage: RecognizerStage<DurationField>,
+    secs: Option<u64>,
+    nanos: Option<u32>,
+}
+
+#[derive(Clone, Copy)]
+enum DurationField {
+    Secs,
+    Nanos,
+}
+
+impl RecognizerReadable for Duration {
+    type Rec = DurationRecognizer;
+    type AttrRec = SimpleAttrBody<DurationRecognizer>;
+    type BodyRec = SimpleRecBody<DurationRecognizer>;
+
+    fn make_recognizer() -> Self::Rec {
+        DurationRecognizer {
+            stage: RecognizerStage::Init,
+            secs: None,
+            nanos: None,
+        }
+    }
+
+    fn make_attr_recognizer() -> Self::AttrRec {
+        SimpleAttrBody::new(DurationRecognizer {
+            stage: RecognizerStage::Init,
+            secs: None,
+            nanos: None,
+        })
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        SimpleRecBody::new(DurationRecognizer {
+            stage: RecognizerStage::Init,
+            secs: None,
+            nanos: None,
+        })
+    }
+}
+
+impl Recognizer for DurationRecognizer {
+    type Target = Duration;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        match &self.stage {
+            RecognizerStage::Init => {
+                if let ReadEvent::StartAttribute(name) = input {
+                    if name == DURATION_TAG {
+                        self.stage = RecognizerStage::Tag;
+                        None
+                    } else {
+                        Some(Err(ReadError::UnexpectedAttribute(name.into())))
+                    }
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Attribute(Some(
+                        Text::new(DURATION_TAG),
+                    )))))
+                }
+            }
+            RecognizerStage::Tag => match input {
+                ReadEvent::Extant => None,
+                ReadEvent::EndAttribute => {
+                    self.stage = RecognizerStage::AfterTag;
+                    None
+                }
+                ow => Some(Err(ow.kind_error(ExpectedEvent::EndOfAttribute))),
+            },
+            RecognizerStage::AfterTag => {
+                if matches!(&input, ReadEvent::StartBody) {
+                    self.stage = RecognizerStage::InBody;
+                    None
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::RecordBody)))
+                }
+            }
+            RecognizerStage::InBody => match input {
+                ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
+                    "secs" => {
+                        self.stage = RecognizerStage::Slot(DurationField::Secs);
+                        None
+                    }
+                    "nanos" => {
+                        self.stage = RecognizerStage::Slot(DurationField::Nanos);
+                        None
+                    }
+                    ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
+                },
+                ReadEvent::EndRecord => Some(Ok(Duration::new(
+                    self.secs.unwrap_or_default(),
+                    self.nanos.unwrap_or_default(),
+                ))),
+                ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
+                    ExpectedEvent::ValueEvent(ValueKind::Text),
+                    ExpectedEvent::EndOfRecord,
+                ])))),
+            },
+            RecognizerStage::Slot(fld) => {
+                if matches!(&input, ReadEvent::Slot) {
+                    self.stage = RecognizerStage::Field(*fld);
+                    None
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Slot)))
+                }
+            }
+            RecognizerStage::Field(DurationField::Secs) => match input {
+                ReadEvent::Number(NumericValue::UInt(n)) => {
+                    self.secs = Some(n);
+                    self.stage = RecognizerStage::InBody;
+                    None
+                }
+                ow => Some(Err(
+                    ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
+                )),
+            },
+            RecognizerStage::Field(DurationField::Nanos) => match input {
+                ReadEvent::Number(NumericValue::UInt(n)) => {
+                    if let Ok(m) = u32::try_from(n) {
+                        self.nanos = Some(m);
+                        self.stage = RecognizerStage::InBody;
+                        None
+                    } else {
+                        Some(Err(ReadError::NumberOutOfRange))
+                    }
+                }
+                ow => Some(Err(
+                    ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
+                )),
+            },
+        }
+    }
+
+    fn reset(&mut self) {
+        let DurationRecognizer { stage, secs, nanos } = self;
+        *stage = RecognizerStage::Init;
+        *secs = None;
+        *nanos = None;
+    }
+}
+
+//Todo dm
+impl RecognizerReadable for WebSocketConfig {
+    type Rec = WebSocketConfigRecognizer;
+    type AttrRec = SimpleAttrBody<WebSocketConfigRecognizer>;
+    type BodyRec = SimpleRecBody<WebSocketConfigRecognizer>;
+
+    fn make_recognizer() -> Self::Rec {
+        WebSocketConfigRecognizer
+    }
+
+    fn make_attr_recognizer() -> Self::AttrRec {
+        SimpleAttrBody::new(WebSocketConfigRecognizer)
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        SimpleRecBody::new(WebSocketConfigRecognizer)
+    }
+
+    fn is_simple() -> bool {
+        true
+    }
+}
+
+pub struct WebSocketConfigRecognizer;
+
+impl Recognizer for WebSocketConfigRecognizer {
+    type Target = WebSocketConfig;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        unimplemented!()
+    }
+
+    fn reset(&mut self) {}
 }

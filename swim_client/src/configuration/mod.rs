@@ -27,7 +27,7 @@ use swim_common::warp::path::{AbsolutePath, Addressable};
 use tokio::time::Duration;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use url::Url;
-use utilities::future::retryable::strategy::RetryStrategy;
+use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
 
 //Todo dm this needs to be changed after config from file is done.
 // #[cfg(test)]
@@ -130,19 +130,28 @@ impl Recognizer for SwimClientConfigRecognizer {
 //Todo dm
 #[test]
 fn test_foo() {
-    let mut downlinks = ClientDownlinksConfig::default();
-    downlinks.for_host(
-        url::Url::parse(&"warp://127.0.0.1:9001".to_string()).unwrap(),
-        Default::default(),
-    );
+    let object = Quantity::Finite(Duration::from_nanos(1324));
+    eprintln!("object.as_value() = {}", object.as_value());
+    let new_object = Quantity::<Duration>::try_from_value(&object.as_value()).unwrap();
+    eprintln!("new_object.as_value() = {}", new_object.as_value());
 
-    let config = SwimClientConfig::new(
-        Default::default(),
-        Default::default(),
-        Default::default(),
-        downlinks,
-    );
-    println!("{}", config.as_value());
+    // let mut downlinks = ClientDownlinksConfig::default();
+    // downlinks.for_host(
+    //     url::Url::parse(&"warp://127.0.0.1:9001".to_string()).unwrap(),
+    //     Default::default(),
+    // );
+    //
+    // let config = SwimClientConfig::new(
+    //     Default::default(),
+    //     Default::default(),
+    //     Default::default(),
+    //     downlinks,
+    // );
+    // println!("{}", config.as_value());
+    //
+    // let value = config.as_value();
+    //
+    // let config_restored = ClientDownlinksConfig::try_from_value(&value).unwrap();
 }
 
 impl SwimClientConfig {
