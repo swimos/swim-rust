@@ -131,8 +131,8 @@ impl<Store: NodeStore> NodeStoreTask<Store> {
             let store_error_handler = StoreErrorHandler::new(max_store_errors);
 
             let task = async move {
-                let result = io.attach_boxed(lane_uri.clone(), store_error_handler).await;
-                (lane_uri.clone(), result)
+                let result = io.attach_boxed(store_error_handler).await;
+                (lane_uri, result)
             };
             pending.push(task.boxed());
         }

@@ -48,7 +48,9 @@ use crate::agent::lane::model::demand_map::{
 use crate::agent::lane::model::map::MapLane;
 use crate::agent::lane::model::map::{summaries_to_events, MapLaneEvent, MapSubscriber};
 use crate::agent::lane::model::supply::{make_lane_model, SupplyLane};
-use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent, ValueLaneStoreIo};
+use crate::agent::lane::model::value::{
+    ValueDataModel, ValueLane, ValueLaneEvent, ValueLaneStoreIo,
+};
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::routing::{ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
@@ -77,8 +79,10 @@ use utilities::future::SwimStreamExt;
 use utilities::sync::{topic, trigger};
 use utilities::uri::RelativeUri;
 
+use crate::agent::lane::model::map::map_store::MapDataModel;
 use crate::agent::lane::store::task::{NodeStoreErrors, NodeStoreTask};
 pub use crate::agent::lane::store::{LaneNoStore, StoreIo};
+use crate::agent::model::map::map_store::MapLaneStoreIo;
 use crate::agent::store::NodeStore;
 use crate::meta::info::{LaneInfo, LaneKind};
 use crate::meta::log::NodeLogger;
@@ -303,30 +307,6 @@ where
             .instrument(span!(Level::DEBUG, AGENT_START))
             .await;
 
-        for lane_task in tasks.iter() {
-            let lane_name = lane_task.name();
-            (**lane_task)
-                .start(&context)
-                .instrument(span!(Level::DEBUG, LANE_START, name = lane_name))
-                .await;
-        }
-
-        let scheduler_task = ReceiverStream::new(rx)
-            .take_until(stop_trigger.clone())
-            .for_each_concurrent(None, |eff| eff)
-            .boxed()
-            .instrument(span!(Level::TRACE, SCHEDULER_TASK));
-        task_manager.push(scheduler_task);
-
-        for lane_task in tasks.into_iter() {
-            let lane_name = lane_task.name().to_string();
-            task_manager.push(
-                lane_task
-                    .events(context.clone())
-                    .instrument(span!(Level::DEBUG, LANE_EVENTS, name = %lane_name)),
-            );
-        }
-
         let (mut routing_io, persistence_io) = io_providers.into_iter().fold(
             (HashMap::new(), HashMap::new()),
             |(mut routing_io, mut persistence_io), (lane_uri, lane_io)| {
@@ -350,14 +330,40 @@ where
 
         let (store_result_tx, store_result_rx) = oneshot::channel();
         let max_store_errors = execution_config.max_store_errors;
+
+        let store_trigger = stop_trigger.clone();
         let store_task = async move {
-            let task = NodeStoreTask::new(stop_trigger.clone(), store);
+            let task = NodeStoreTask::new(store_trigger, store);
             let result = task.run(persistence_io, max_store_errors).await;
             let _ = store_result_tx.send(result);
         }
         .boxed()
         .instrument(span!(Level::INFO, STORE_TASK));
         task_manager.push(store_task);
+
+        for lane_task in tasks.iter() {
+            let lane_name = lane_task.name();
+            (**lane_task)
+                .start(&context)
+                .instrument(span!(Level::DEBUG, LANE_START, name = lane_name))
+                .await;
+        }
+
+        let scheduler_task = ReceiverStream::new(rx)
+            .take_until(stop_trigger.clone())
+            .for_each_concurrent(None, |eff| eff)
+            .boxed()
+            .instrument(span!(Level::TRACE, SCHEDULER_TASK));
+        task_manager.push(scheduler_task);
+
+        for lane_task in tasks.into_iter() {
+            let lane_name = lane_task.name().to_string();
+            task_manager.push(
+                lane_task
+                    .events(context.clone())
+                    .instrument(span!(Level::DEBUG, LANE_EVENTS, name = %lane_name)),
+            );
+        }
 
         let dispatcher =
             AgentDispatcher::new(uri.clone(), execution_config, context.clone(), routing_io);
@@ -942,7 +948,11 @@ where
         transient,
     } = lane_config;
 
-    let (lane, observer) = ValueLane::observable(init, exec_config.observation_buffer);
+    let lane_id = store.lane_id_of(&name).expect("Failed to fetch lane id");
+    let model = ValueDataModel::new(store, lane_id);
+
+    let (lane, observer) =
+        ValueLane::store_observable(&model, exec_config.observation_buffer, init);
 
     let lane_io: Option<Box<dyn LaneIo<Context>>> = if is_public {
         Some(Box::new(ValueLaneIo::new(
@@ -964,9 +974,8 @@ where
         None
     } else {
         Some(Box::new(ValueLaneStoreIo::new(
-            store,
-            lane.clone(),
             observer.into_stream(),
+            model,
         )))
     };
 
@@ -1047,11 +1056,11 @@ pub fn make_map_lane<Agent, Context, K, V, L, P, Store>(
     lifecycle: L,
     projection: P,
     transient: bool,
-    _store: Store,
+    store: Store,
 ) -> (
     MapLane<K, V>,
     impl LaneTasks<Agent, Context>,
-    IoPair<impl LaneIo<Context>, impl StoreIo>,
+    IoPair<Box<dyn LaneIo<Context>>, Box<dyn StoreIo>>,
 )
 where
     Agent: 'static,
@@ -1062,28 +1071,34 @@ where
     Store: NodeStore,
     P: Fn(&Agent) -> &MapLane<K, V> + Send + Sync + 'static,
 {
-    let (lane, observer) = MapLane::observable(config.observation_buffer);
+    let name = name.into();
+    let lane_id = store.lane_id_of(&name).expect("Failed to fetch lane id");
+    let model = MapDataModel::new(store, lane_id);
+    let (lane, observer) = MapLane::store_observable(&model, config.observation_buffer);
 
-    let lane_io = if is_public {
-        Some(MapLaneIo::new(
+    let lane_io: Option<Box<dyn LaneIo<Context>>> = if is_public {
+        Some(Box::new(MapLaneIo::new(
             lane.clone(),
             MapSubscriber::new(observer.subscriber()),
-        ))
+        )))
     } else {
         None
     };
 
     let tasks = MapLifecycleTasks(LifecycleTasks {
-        name: name.into(),
+        name,
         lifecycle,
-        event_stream: summaries_to_events(observer),
+        event_stream: summaries_to_events(observer.clone()),
         projection,
     });
 
-    let store_io = if transient {
-        Some(LaneNoStore)
+    let store_io: Option<Box<dyn StoreIo>> = if transient {
+        None
     } else {
-        unimplemented!()
+        Some(Box::new(MapLaneStoreIo::new(
+            summaries_to_events(observer),
+            model,
+        )))
     };
 
     let io = IoPair {

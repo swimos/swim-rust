@@ -15,8 +15,6 @@
 use crate::agent::store::{NodeStore, SwimNodeStore};
 use crate::plane::store::mock::MockPlaneStore;
 use crate::store::{StoreEngine, StoreKey};
-use futures::future::{ready, BoxFuture};
-use futures::FutureExt;
 use store::{EngineInfo, StoreError};
 
 #[derive(Clone, Debug)]
@@ -41,11 +39,19 @@ impl NodeStore for MockNodeStore {
         }
     }
 
-    fn lane_id_of<I>(&self, _lane: I) -> BoxFuture<u64>
+    fn lane_id_of(&self, _lane: &str) -> Result<u64, StoreError> {
+        Ok(0)
+    }
+
+    fn load_ranged_snapshot<F, K, V>(
+        &self,
+        _prefix: StoreKey,
+        _map_fn: F,
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
     where
-        I: Into<String>,
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
     {
-        ready(0).boxed()
+        Ok(None)
     }
 }
 

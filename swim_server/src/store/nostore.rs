@@ -12,11 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::store::keystore::{KeyRequest, KeystoreTask};
-use futures::future::BoxFuture;
-use futures::{Stream, StreamExt};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use store::engines::StoreBuilder;
 use store::iterator::{
     EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey,
@@ -164,20 +160,5 @@ impl KeyspaceResolver for NoStore {
 
     fn resolve_keyspace<K: Keyspace>(&self, _space: &K) -> Option<&Self::ResolvedKeyspace> {
         Some(&self.ks)
-    }
-}
-
-impl KeystoreTask for NoStore {
-    fn run<DB, S>(_: Arc<DB>, events: S) -> BoxFuture<'static, Result<(), StoreError>>
-    where
-        DB: KeyspaceByteEngine,
-        S: Stream<Item = KeyRequest> + Unpin + Send + 'static,
-    {
-        Box::pin(async move {
-            let _ = events.for_each(|(_, responder)| async {
-                let _ = responder.send(0);
-            });
-            Ok(())
-        })
     }
 }

@@ -15,12 +15,8 @@
 use crate::agent::store::mock::MockNodeStore;
 use crate::agent::store::SwimNodeStore;
 use crate::plane::store::PlaneStore;
-use crate::store::keystore::{KeyRequest, KeystoreTask};
 use crate::store::{StoreEngine, StoreKey};
-use futures::future::BoxFuture;
-use futures::{FutureExt, Stream};
-use std::sync::Arc;
-use store::keyspaces::KeyspaceByteEngine;
+use store::keyspaces::{Keyspace, KeyspaceResolver};
 use store::{EngineInfo, StoreError};
 use swim_common::model::text::Text;
 
@@ -54,21 +50,19 @@ impl PlaneStore for MockPlaneStore {
         }
     }
 
-    fn lane_id_of<I>(&self, _lane: I) -> BoxFuture<'static, u64>
+    fn node_id_of<I>(&self, _lane: I) -> Result<u64, StoreError>
     where
         I: Into<String>,
     {
-        async { 0 }.boxed()
+        Ok(0)
     }
 }
 
-impl KeystoreTask for MockPlaneStore {
-    fn run<DB, S>(_db: Arc<DB>, _events: S) -> BoxFuture<'static, Result<(), StoreError>>
-    where
-        DB: KeyspaceByteEngine,
-        S: Stream<Item = KeyRequest> + Unpin + Send + 'static,
-    {
-        Box::pin(async { Ok(()) })
+impl KeyspaceResolver for MockPlaneStore {
+    type ResolvedKeyspace = ();
+
+    fn resolve_keyspace<K: Keyspace>(&self, _space: &K) -> Option<&Self::ResolvedKeyspace> {
+        None
     }
 }
 

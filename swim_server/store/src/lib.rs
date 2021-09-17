@@ -99,6 +99,7 @@ impl PartialEq for StoreError {
 /// This trait only serves to compose the multiple traits that are required for a store.
 pub trait Store:
     KeyspaceByteEngine
+    + KeyspaceByteEngine
     + KeyspaceResolver
     + Send
     + Sync

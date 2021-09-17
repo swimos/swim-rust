@@ -128,7 +128,6 @@ where
 {
     fn attach(
         self,
-        _lane_uri: String,
         _error_handler: StoreErrorHandler,
     ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>> {
         Box::pin(async move { self.0.await })
@@ -136,10 +135,9 @@ where
 
     fn attach_boxed(
         self: Box<Self>,
-        lane_uri: String,
         error_handler: StoreErrorHandler,
     ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>> {
-        (*self).attach(lane_uri, error_handler)
+        (*self).attach(error_handler)
     }
 }
 

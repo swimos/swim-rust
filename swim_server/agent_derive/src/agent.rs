@@ -317,16 +317,13 @@ fn create_lane(
             )
         }
         LaneType::Value => {
+            let is_transient = *transient;
+            let transient = quote!(#is_transient);
+
             let model = quote! {
-                let (#lane_name, observer) = swim_server::agent::lane::model::value::ValueLane::observable(Default::default(), exec_conf.observation_buffer);
+                let (#lane_name, observer, store_io) = swim_server::agent::lane::model::value::streamed_value_lane(#lane_name_lit, exec_conf.observation_buffer, #transient, store.clone());
                 let subscriber = observer.subscriber();
                 let event_stream = observer.clone().into_stream();
-            };
-
-            let persistence = if *transient {
-                quote!(Box::new(LaneNoStore))
-            } else {
-                quote!(Box::new(swim_server::ValueLaneStoreIo::new(store.clone(), #lane_name.clone(), observer.into_stream())))
             };
 
             build_lane_io(
@@ -336,15 +333,18 @@ fn create_lane(
 
                     io_map.insert (
                         #lane_name_lit.to_string(),
-                        IoPair::new(Some(Box::new(swim_server::agent::ValueLaneIo::new(#lane_name.clone(), subscriber))), Some(#persistence))
+                        IoPair::new(Some(Box::new(swim_server::agent::ValueLaneIo::new(#lane_name.clone(), subscriber))), store_io)
                     );
                 },
                 model,
             )
         }
         LaneType::Map => {
+            let is_transient = *transient;
+            let transient = quote!(#is_transient);
+
             let model = quote! {
-                let (#lane_name, subscriber, event_stream) = swim_server::agent::lane::model::map::streamed_map_lane(exec_conf.observation_buffer);
+                let (#lane_name, subscriber, event_stream, store_io) = swim_server::agent::lane::model::map::streamed_map_lane(#lane_name_lit, exec_conf.observation_buffer, #transient, store.clone());
             };
 
             build_lane_io(
@@ -354,7 +354,7 @@ fn create_lane(
 
                     io_map.insert (
                         #lane_name_lit.to_string(),
-                        IoPair::new(Some(Box::new(swim_server::agent::MapLaneIo::new(#lane_name.clone(), subscriber))), Some(Box::new(LaneNoStore)))
+                        IoPair::new(Some(Box::new(swim_server::agent::MapLaneIo::new(#lane_name.clone(), subscriber))), store_io)
                     );
                 },
                 model,

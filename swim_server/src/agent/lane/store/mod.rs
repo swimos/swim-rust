@@ -31,18 +31,15 @@ pub trait StoreIo: Send + 'static {
     ///
     /// # Arguments:
     /// `store`: the node store that can be used to request a value or map lane store.
-    /// `lane_uri`: the URI of the lane.
     /// `error_handler`: a store error handler for reporting store error events to. The handler
     /// is already initialised with an error handling strategy.
     fn attach(
         self,
-        lane_uri: String,
         error_handler: StoreErrorHandler,
     ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>>;
 
     fn attach_boxed(
         self: Box<Self>,
-        lane_uri: String,
         error_handler: StoreErrorHandler,
     ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>>;
 }
@@ -53,7 +50,6 @@ pub struct LaneNoStore;
 impl StoreIo for LaneNoStore {
     fn attach(
         self,
-        _lane_uri: String,
         _error_handler: StoreErrorHandler,
     ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>> {
         ready(Ok(())).boxed()
@@ -61,9 +57,8 @@ impl StoreIo for LaneNoStore {
 
     fn attach_boxed(
         self: Box<Self>,
-        lane_uri: String,
         error_handler: StoreErrorHandler,
     ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>> {
-        (*self).attach(lane_uri, error_handler)
+        (*self).attach(error_handler)
     }
 }

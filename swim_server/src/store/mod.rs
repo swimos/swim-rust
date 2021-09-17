@@ -12,18 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt::{Debug, Formatter};
-use std::io;
-use std::path::PathBuf;
-
-use serde::{Deserialize, Serialize};
-
-use store::keyspaces::{Keyspace, Keyspaces};
-use store::StoreError;
-use utilities::fs::Dir;
-
-use crate::plane::store::{open_plane, PlaneStore, SwimPlaneStore};
-
 #[cfg(test)]
 pub mod mock;
 
@@ -31,9 +19,19 @@ pub mod keystore;
 mod nostore;
 mod rocks;
 
-use crate::store::keystore::KeystoreTask;
 pub use rocks::{default_db_opts, default_keyspaces, RocksDatabase, RocksOpts};
+use std::fmt::{Debug, Formatter};
+use std::io;
+use std::path::PathBuf;
 use store::engines::StoreBuilder;
+use store::StoreError;
+
+use serde::{Deserialize, Serialize};
+
+use store::keyspaces::{Keyspace, Keyspaces};
+use utilities::fs::Dir;
+
+use crate::plane::store::{open_plane, PlaneStore, SwimPlaneStore};
 
 /// Unique lane identifier keyspace. The name is `default` as either the Rust RocksDB crate or
 /// Rocks DB itself has an issue in using merge operators under a non-default column family.
@@ -155,7 +153,6 @@ impl ServerStore<RocksOpts> {
 impl<D> SwimStore for ServerStore<D>
 where
     D: StoreBuilder,
-    D::Store: KeystoreTask,
 {
     type PlaneStore = SwimPlaneStore<D::Store>;
 
@@ -192,6 +189,15 @@ pub enum StoreKey {
         /// The lane ID.
         lane_id: u64,
     },
+}
+
+impl StoreKey {
+    pub fn keyspace_name(&self) -> KeyspaceName {
+        match self {
+            StoreKey::Map { .. } => KeyspaceName::Map,
+            StoreKey::Value { .. } => KeyspaceName::Value,
+        }
+    }
 }
 
 pub trait StoreEngine {

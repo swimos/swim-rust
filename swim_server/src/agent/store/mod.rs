@@ -20,12 +20,8 @@ use swim_common::model::text::Text;
 
 use crate::plane::store::PlaneStore;
 use crate::store::{StoreEngine, StoreKey};
-use futures::future::BoxFuture;
-use futures::FutureExt;
 
 pub mod mock;
-#[cfg(test)]
-mod tests;
 
 /// A trait for defining store engines which open stores for nodes.
 ///
@@ -44,9 +40,20 @@ pub trait NodeStore: StoreEngine + Send + Sync + Clone + Debug + 'static {
     /// Returns information about the delegate store
     fn engine_info(&self) -> EngineInfo;
 
-    fn lane_id_of<I>(&self, lane: I) -> BoxFuture<u64>
+    fn lane_id_of(&self, lane: &str) -> Result<u64, StoreError>;
+
+    /// Executes a ranged snapshot read prefixed by a lane key and deserialize each key-value pair
+    /// using `map_fn`.
+    ///
+    /// Returns an optional snapshot iterator if entries were found that will yield deserialized
+    /// key-value pairs.
+    fn load_ranged_snapshot<F, K, V>(
+        &self,
+        prefix: StoreKey,
+        map_fn: F,
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
     where
-        I: Into<String>;
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>;
 }
 
 /// A node store which is used to open value and map lane data models.
@@ -84,22 +91,6 @@ impl<D: PlaneStore> SwimNodeStore<D> {
             node_uri: node_uri.into(),
         }
     }
-
-    /// Executes a ranged snapshot read prefixed by a lane key and deserialize each key-value pair
-    /// using `map_fn`.
-    ///
-    /// Returns an optional snapshot iterator if entries were found that will yield deserialized
-    /// key-value pairs.
-    pub fn load_ranged_snapshot<F, K, V>(
-        &self,
-        prefix: StoreKey,
-        map_fn: F,
-    ) -> Result<Option<Vec<(K, V)>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-    {
-        self.delegate.get_prefix_range(prefix, map_fn)
-    }
 }
 
 impl<D: PlaneStore> StoreEngine for SwimNodeStore<D> {
@@ -123,10 +114,19 @@ impl<D: PlaneStore> NodeStore for SwimNodeStore<D> {
         self.delegate.engine_info()
     }
 
-    fn lane_id_of<I>(&self, lane: I) -> BoxFuture<u64>
+    fn lane_id_of(&self, lane: &str) -> Result<u64, StoreError> {
+        let node_id = format!("{}/{}", self.node_uri, lane);
+        self.delegate.node_id_of(node_id)
+    }
+
+    fn load_ranged_snapshot<F, K, V>(
+        &self,
+        prefix: StoreKey,
+        map_fn: F,
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
     where
-        I: Into<String>,
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
     {
-        self.delegate.lane_id_of(lane).boxed()
+        self.delegate.get_prefix_range(prefix, map_fn)
     }
 }

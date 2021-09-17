@@ -13,20 +13,18 @@
 // limitations under the License.
 
 use crate::store::keystore::{incrementing_merge_operator, COUNTER_KEY};
-use crate::store::keystore::{lane_key_task, KeyRequest, KeystoreTask};
 use crate::store::{LANE_KS, MAP_LANE_KS, VALUE_LANE_KS};
-use futures::future::BoxFuture;
-use futures::FutureExt;
-use futures::Stream;
-use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, Options, SliceTransform, DB};
+use rocksdb::{ColumnFamilyDescriptor, DB};
 use std::mem::size_of;
 use std::path::Path;
-use std::sync::Arc;
 use store::engines::{RocksEngine, RocksIterator, RocksPrefixIterator, StoreBuilder};
 use store::iterator::{EngineIterOpts, EngineRefIterator};
 use store::keyspaces::{Keyspace, KeyspaceByteEngine};
 use store::keyspaces::{KeyspaceDef, KeyspaceResolver, Keyspaces};
+use store::{ColumnFamily, Options, SliceTransform};
 use store::{EngineInfo, Store, StoreError};
+
+const PREFIX_BLOOM_RATIO: f64 = 0.2;
 
 #[derive(Debug, Clone)]
 pub struct RocksDatabase {
@@ -118,16 +116,6 @@ impl KeyspaceResolver for RocksDatabase {
     }
 }
 
-impl KeystoreTask for RocksDatabase {
-    fn run<DB, S>(db: Arc<DB>, events: S) -> BoxFuture<'static, Result<(), StoreError>>
-    where
-        DB: KeyspaceByteEngine,
-        S: Stream<Item = KeyRequest> + Unpin + Send + 'static,
-    {
-        lane_key_task(db, events).boxed()
-    }
-}
-
 #[derive(Clone)]
 pub struct RocksOpts(Options);
 
@@ -175,7 +163,7 @@ pub fn default_keyspaces() -> Keyspaces<RocksOpts> {
 
     let mut map_opts = Options::default();
     map_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(size_of::<u64>()));
-    map_opts.set_memtable_prefix_bloom_ratio(0.2);
+    map_opts.set_memtable_prefix_bloom_ratio(PREFIX_BLOOM_RATIO);
 
     let map_def = KeyspaceDef::new(MAP_LANE_KS, RocksOpts(map_opts));
 

@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::{ByteEngine, StoreBuilder};
+use crate::engines::ByteEngine;
+use crate::engines::StoreBuilder;
 use crate::iterator::{
     EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey,
 };
 use crate::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
-use crate::{EngineInfo, KvBytes, Store, StoreError};
+use crate::EngineInfo;
+use crate::{KvBytes, Store, StoreError};
 use std::borrow::Borrow;
 use std::path::{Path, PathBuf};
 
