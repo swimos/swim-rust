@@ -30,7 +30,7 @@ use http::header::{HeaderName, SEC_WEBSOCKET_PROTOCOL};
 use http::Uri;
 use http::{header, HeaderMap, HeaderValue};
 use httparse::Header;
-pub use server::{accept, WebSocketResponse, WebSocketUpgrader};
+pub use server::{accept, accept_with, WebSocketResponse, WebSocketUpgrader};
 use std::str::FromStr;
 use tokio::io::AsyncRead;
 use url::Url;

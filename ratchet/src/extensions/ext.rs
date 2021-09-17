@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::extensions::{Extension, ExtensionProvider};
-use crate::{Error, ErrorKind};
+use crate::Error;
 use http::{HeaderMap, HeaderValue};
 use httparse::Header;
 use std::convert::Infallible;
@@ -46,7 +46,7 @@ impl ExtensionProvider for NoExtProxy {
 
 impl From<Infallible> for Error {
     fn from(e: Infallible) -> Self {
-        Error::with_cause(ErrorKind::Extension, e)
+        match e {}
     }
 }
 
