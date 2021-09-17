@@ -8,7 +8,6 @@ branches:
     - master
     - server-prototype
     - ws-move
-    - ci
 
 jobs:
   include:
