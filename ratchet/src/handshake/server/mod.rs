@@ -32,7 +32,7 @@ use sha1::{Digest, Sha1};
 use std::convert::TryFrom;
 use std::iter::FromIterator;
 
-pub async fn accept<S>(
+pub async fn accept<S, E>(
     stream: S,
     config: WebSocketConfig,
 ) -> Result<WebSocketUpgrader<S, NoExt>, Error>

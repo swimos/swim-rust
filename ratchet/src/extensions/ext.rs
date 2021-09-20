@@ -12,9 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::extensions::{
-    Extension, ExtensionDecoder, ExtensionEncoder, ExtensionProvider, SplittableExtension,
-};
+use crate::extensions::{Extension, ExtensionProvider};
 use crate::Error;
 use http::{HeaderMap, HeaderValue};
 use httparse::Header;

@@ -102,13 +102,11 @@ impl Default for WebSocketServerBuilder<NoExtProxy> {
     }
 }
 
-impl<E> WebSocketServerBuilder<E>
-where
-    E: ExtensionProvider,
-{
+impl<E> WebSocketServerBuilder<E> {
     pub async fn accept<S>(self, stream: S) -> Result<Upgraded<S, E::Extension>, Error>
     where
         S: WebSocketStream,
+        E: ExtensionProvider,
     {
         let WebSocketServerBuilder {
             config,
@@ -125,7 +123,10 @@ where
         self
     }
 
-    pub fn extension(mut self, extension: E) -> Self {
+    pub fn extension(mut self, extension: E) -> Self
+    where
+        E: ExtensionProvider,
+    {
         self.extension = extension;
         self
     }
