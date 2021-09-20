@@ -27,5 +27,6 @@ num = "0.3.0"
 tempdir = "0.3.7"
 
 [dev-dependencies]
+test_util = { path = "test_util" }
 tokio = { version = "1.1.1", features = [ "rt-multi-thread", "macros"] }
 tokio-stream = "0.1.2"
