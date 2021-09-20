@@ -27,7 +27,7 @@ mod ws;
 pub use builder::{WebSocketClientBuilder, WebSocketServerBuilder};
 pub use errors::*;
 pub use handshake::{
-    accept, ProtocolRegistry, TryIntoRequest, WebSocketResponse, WebSocketUpgrader,
+    accept, accept_with, ProtocolRegistry, TryIntoRequest, WebSocketResponse, WebSocketUpgrader,
 };
 pub use noext::*;
 pub use protocol::{Message, PayloadType, Role, WebSocketConfig};

@@ -19,7 +19,7 @@ use std::fmt::Debug;
 
 pub trait ExtensionProvider {
     type Extension: Extension;
-    type Error: Error + 'static;
+    type Error: Error + Sync + Send + 'static;
 
     fn apply_headers(&self, headers: &mut HeaderMap);
 

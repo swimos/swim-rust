@@ -22,13 +22,12 @@ use crate::handshake::{StreamingParser, ACCEPT_KEY};
 use crate::handshake::{UPGRADE_STR, WEBSOCKET_STR};
 use crate::protocol::Role;
 use crate::{
-    Error, ErrorKind, Extension, ExtensionProvider, HttpError, NoExt, NoExtProxy, ProtocolRegistry,
-    Request, Upgraded, WebSocket, WebSocketConfig, WebSocketStream,
+    Error, HttpError, NoExt, NoExtProvider, ProtocolRegistry, Request, Upgraded, WebSocket,
+    WebSocketConfig, WebSocketStream,
 };
 use bytes::{Bytes, BytesMut};
 use http::status::InvalidStatusCode;
 use http::{HeaderMap, HeaderValue, StatusCode, Uri};
-use httparse::Status;
 use ratchet_ext::{Extension, ExtensionProvider};
 use sha1::{Digest, Sha1};
 use std::convert::TryFrom;
@@ -41,7 +40,7 @@ pub async fn accept<S, E>(
 where
     S: WebSocketStream,
 {
-    accept_with(stream, config, NoExtProxy, ProtocolRegistry::default()).await
+    accept_with(stream, config, NoExtProvider, ProtocolRegistry::default()).await
 }
 
 pub async fn accept_with<S, E>(

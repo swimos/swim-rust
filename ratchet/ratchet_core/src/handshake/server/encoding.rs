@@ -19,10 +19,11 @@ use crate::handshake::{
     get_header, validate_header, validate_header_value, ParseResult, Parser, METHOD_GET,
     UPGRADE_STR, WEBSOCKET_STR, WEBSOCKET_VERSION_STR,
 };
-use crate::{Error, ErrorKind, ExtensionProvider, HttpError, ProtocolRegistry};
+use crate::{Error, ErrorKind, HttpError, ProtocolRegistry};
 use bytes::{BufMut, BytesMut};
 use http::{HeaderMap, StatusCode};
 use httparse::Status;
+use ratchet_ext::ExtensionProvider;
 use tokio::io::AsyncWrite;
 
 pub struct RequestParser<E> {
@@ -192,7 +193,7 @@ where
     let key = get_header(headers, http::header::SEC_WEBSOCKET_KEY)?;
     let (extension, extension_header) = extension
         .negotiate_server(request.headers)
-        .map_err(Into::into)?;
+        .map_err(|e| Error::with_cause(ErrorKind::Extension, e))?;
     let subprotocol = subprotocols.negotiate_request(request)?;
 
     Ok(HandshakeResult {

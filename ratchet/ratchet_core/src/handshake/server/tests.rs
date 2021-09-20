@@ -15,8 +15,7 @@
 use crate::fixture::{mock, ReadError};
 use crate::handshake::{UPGRADE_STR, WEBSOCKET_STR, WEBSOCKET_VERSION_STR};
 use crate::{
-    accept, accept_with, Error, ErrorKind, Extension, ExtensionProvider, HttpError, NoExtProvider,
-    NoExtProxy, ProtocolRegistry, WebSocketConfig,
+    accept_with, Error, ErrorKind, HttpError, NoExtProvider, ProtocolRegistry, WebSocketConfig,
 };
 use http::header::HeaderName;
 use http::{HeaderMap, HeaderValue, Request, Response, Version};
