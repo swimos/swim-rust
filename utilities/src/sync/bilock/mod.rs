@@ -67,23 +67,15 @@ impl<T> BiLock<T> {
 
     /// Polls access to the value and returns a `BiLockGuard` if it is available.
     pub fn poll_lock(&self, cx: &mut Context<'_>) -> Poll<BiLockGuard<'_, T>> {
-        loop {
-            return if self.inner.state.swap(true, Ordering::SeqCst) {
-                self.inner.waker.register(cx.waker());
-
-                if let Err(false) = self.inner.state.compare_exchange(
-                    true,
-                    true,
-                    Ordering::SeqCst,
-                    Ordering::SeqCst,
-                ) {
-                    continue;
-                }
-
+        if self.inner.state.swap(true, Ordering::SeqCst) {
+            self.inner.waker.register(cx.waker());
+            if self.inner.state.swap(true, Ordering::SeqCst) {
                 Poll::Pending
             } else {
                 Poll::Ready(BiLockGuard { bilock: self })
-            };
+            }
+        } else {
+            Poll::Ready(BiLockGuard { bilock: self })
         }
     }
 
