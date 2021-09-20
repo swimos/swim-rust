@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use http::{HeaderMap, HeaderValue};
-use httparse::Header;
-use ratchet_ext::{
+use crate::extensions::{
     Extension, ExtensionDecoder, ExtensionEncoder, ExtensionProvider, SplittableExtension,
 };
+use crate::Error;
+use http::{HeaderMap, HeaderValue};
+use httparse::Header;
 use std::convert::Infallible;
 
 #[derive(Debug, Default, Clone)]
@@ -43,6 +44,12 @@ impl ExtensionProvider for NoExtProvider {
         _headers: &[Header],
     ) -> Result<(Self::Extension, Option<HeaderValue>), Self::Error> {
         Ok((NoExt, None))
+    }
+}
+
+impl From<Infallible> for Error {
+    fn from(e: Infallible) -> Self {
+        match e {}
     }
 }
 

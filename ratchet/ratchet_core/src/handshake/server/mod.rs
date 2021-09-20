@@ -12,21 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod encoding;
 #[cfg(test)]
 mod tests;
 
 use crate::handshake::io::BufferedIo;
-use crate::handshake::{
-    get_header, validate_header, validate_header_value, ParseResult, Parser, StreamingParser,
-    ACCEPT_KEY, METHOD_GET, WEBSOCKET_VERSION_STR,
-};
-use crate::handshake::{TryMap, UPGRADE_STR, WEBSOCKET_STR};
+use crate::handshake::server::encoding::{write_response, RequestParser};
+use crate::handshake::{StreamingParser, ACCEPT_KEY};
+use crate::handshake::{UPGRADE_STR, WEBSOCKET_STR};
 use crate::protocol::Role;
 use crate::{
-    Error, ErrorKind, HttpError, ProtocolRegistry, Request, Upgraded, WebSocket, WebSocketConfig,
-    WebSocketStream,
+    Error, ErrorKind, Extension, ExtensionProvider, HttpError, NoExt, NoExtProxy, ProtocolRegistry,
+    Request, Upgraded, WebSocket, WebSocketConfig, WebSocketStream,
 };
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::{Bytes, BytesMut};
 use http::status::InvalidStatusCode;
 use http::{HeaderMap, HeaderValue, StatusCode, Uri};
 use httparse::Status;
@@ -34,9 +33,18 @@ use ratchet_ext::{Extension, ExtensionProvider};
 use sha1::{Digest, Sha1};
 use std::convert::TryFrom;
 use std::iter::FromIterator;
-use tokio::io::AsyncWrite;
 
 pub async fn accept<S, E>(
+    stream: S,
+    config: WebSocketConfig,
+) -> Result<WebSocketUpgrader<S, NoExt>, Error>
+where
+    S: WebSocketStream,
+{
+    accept_with(stream, config, NoExtProxy, ProtocolRegistry::default()).await
+}
+
+pub async fn accept_with<S, E>(
     mut stream: S,
     config: WebSocketConfig,
     extension: E,
@@ -216,59 +224,6 @@ where
     }
 }
 
-async fn write_response<S>(
-    stream: &mut S,
-    buf: &mut BytesMut,
-    status: StatusCode,
-    headers: HeaderMap,
-    body: Option<String>,
-) -> Result<(), Error>
-where
-    S: AsyncWrite + Unpin,
-{
-    buf.clear();
-
-    let version_count = 9;
-    let status_bytes = status.as_str().as_bytes();
-    let reason_len = status.canonical_reason().map(|r| r.len() + 4).unwrap_or(2);
-    let headers_len = headers.iter().fold(0, |count, (name, value)| {
-        name.as_str().len() + value.len() + 2 + count
-    });
-    let terminator_len = if headers.is_empty() { 4 } else { 2 };
-    let len = buf.len();
-
-    buf.reserve(
-        version_count + status_bytes.len() + reason_len + headers_len + terminator_len - len,
-    );
-
-    buf.put_slice(b"HTTP/1.1 ");
-    buf.put_slice(status.as_str().as_bytes());
-
-    match status.canonical_reason() {
-        Some(reason) => buf.put_slice(format!(" {} \r\n", reason).as_bytes()),
-        None => buf.put_slice(b"\r\n"),
-    }
-
-    for (name, value) in &headers {
-        buf.put_slice(format!("{}: ", name).as_bytes());
-        buf.put_slice(value.as_bytes());
-        buf.put_slice(b"\r\n");
-    }
-
-    if let Some(body) = body {
-        buf.put_slice(body.as_bytes());
-    }
-
-    if headers.is_empty() {
-        buf.put_slice(b"\r\n\r\n");
-    } else {
-        buf.put_slice(b"\r\n");
-    }
-
-    let mut buffered = BufferedIo::new(stream, buf);
-    buffered.write().await
-}
-
 #[derive(Debug)]
 pub struct HandshakeResult<E> {
     key: Bytes,
@@ -276,130 +231,4 @@ pub struct HandshakeResult<E> {
     extension: E,
     request: Request,
     extension_header: Option<HeaderValue>,
-}
-
-struct RequestParser<E> {
-    subprotocols: ProtocolRegistry,
-    extension: E,
-}
-
-impl<E> Parser for RequestParser<E>
-where
-    E: ExtensionProvider,
-{
-    type Output = HandshakeResult<E::Extension>;
-
-    fn parse(&mut self, buf: &[u8]) -> Result<ParseResult<Self::Output>, Error> {
-        let RequestParser {
-            subprotocols,
-            extension,
-        } = self;
-        let mut headers = [httparse::EMPTY_HEADER; 32];
-        let mut request = httparse::Request::new(&mut headers);
-
-        match try_parse_request(buf, &mut request, extension, subprotocols)? {
-            ParseResult::Complete(result, count) => Ok(ParseResult::Complete(result, count)),
-            ParseResult::Partial => {
-                check_partial_request(&request)?;
-                Ok(ParseResult::Partial)
-            }
-        }
-    }
-}
-
-fn try_parse_request<'l, E>(
-    buffer: &'l [u8],
-    request: &mut httparse::Request<'_, 'l>,
-    extension: E,
-    subprotocols: &mut ProtocolRegistry,
-) -> Result<ParseResult<HandshakeResult<E::Extension>>, Error>
-where
-    E: ExtensionProvider,
-{
-    match request.parse(buffer) {
-        Ok(Status::Complete(count)) => {
-            parse_request(request, extension, subprotocols).map(|r| ParseResult::Complete(r, count))
-        }
-        Ok(Status::Partial) => Ok(ParseResult::Partial),
-        Err(e) => Err(e.into()),
-    }
-}
-
-fn check_partial_request(request: &httparse::Request) -> Result<(), Error> {
-    match request.version {
-        Some(1) | None => {}
-        Some(v) => {
-            return Err(Error::with_cause(
-                ErrorKind::Http,
-                HttpError::HttpVersion(Some(v)),
-            ))
-        }
-    }
-
-    match request.method {
-        Some(m) if m.eq_ignore_ascii_case(METHOD_GET) => {}
-        None => {}
-        m => {
-            return Err(Error::with_cause(
-                ErrorKind::Http,
-                HttpError::HttpMethod(m.map(ToString::to_string)),
-            ));
-        }
-    }
-
-    Ok(())
-}
-
-fn parse_request<E>(
-    request: &mut httparse::Request<'_, '_>,
-    extension: E,
-    subprotocols: &mut ProtocolRegistry,
-) -> Result<HandshakeResult<E::Extension>, Error>
-where
-    E: ExtensionProvider,
-{
-    match request.version {
-        Some(1) => {}
-        v => {
-            return Err(Error::with_cause(
-                ErrorKind::Http,
-                HttpError::HttpVersion(v),
-            ))
-        }
-    }
-
-    match request.method {
-        Some(m) if m.eq_ignore_ascii_case(METHOD_GET) => {}
-        m => {
-            return Err(Error::with_cause(
-                ErrorKind::Http,
-                HttpError::HttpMethod(m.map(ToString::to_string)),
-            ));
-        }
-    }
-
-    let headers = &request.headers;
-    validate_header_value(headers, http::header::CONNECTION, UPGRADE_STR)?;
-    validate_header_value(headers, http::header::UPGRADE, WEBSOCKET_STR)?;
-    validate_header_value(
-        headers,
-        http::header::SEC_WEBSOCKET_VERSION,
-        WEBSOCKET_VERSION_STR,
-    )?;
-
-    validate_header(headers, http::header::HOST, |_, _| Ok(()))?;
-
-    let key = get_header(headers, http::header::SEC_WEBSOCKET_KEY)?;
-    let (extension, extension_header) = extension
-        .negotiate_server(request.headers)
-        .map_err(|e| Error::with_cause(ErrorKind::Extension, e))?;
-    let subprotocol = subprotocols.negotiate_request(request)?;
-
-    Ok(HandshakeResult {
-        key,
-        request: request.try_map()?,
-        extension,
-        subprotocol,
-        extension_header,
-    })
 }

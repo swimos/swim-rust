@@ -25,7 +25,7 @@ async fn main() {
     while let Some(socket) = incoming.next().await {
         let socket = socket.unwrap();
 
-        let upgrader = ratchet::accept(
+        let upgrader = ratchet::accept_with(
             socket,
             WebSocketConfig::default(),
             NoExtProvider,

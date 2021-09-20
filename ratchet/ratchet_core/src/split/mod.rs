@@ -27,22 +27,15 @@ use crate::{
     framed, CloseError, Error, ErrorKind, Message, PayloadType, ProtocolError, Role, WebSocket,
     WebSocketStream,
 };
+use bilock::{bilock, BiLock};
 use bitflags::_core::sync::atomic::Ordering;
 use bytes::BytesMut;
 use ratchet_ext::{ExtensionDecoder, ExtensionEncoder, SplittableExtension};
 use std::fmt::Debug;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use tokio::io::{ReadHalf, WriteHalf as TokioWriteHalf};
-use tokio::sync::Mutex;
-
-// Replace Mutexes with Future's BiLock when it's been stabilised
-// See:
-//      https://github.com/rust-lang/futures-rs/issues/2289
-//      https://github.com/rust-lang/futures-rs/pull/2384
 
 // todo sink and stream implementations
-// todo split extension
 pub fn split<S, E>(
     framed: framed::FramedIo<S>,
     control_buffer: BytesMut,
@@ -61,12 +54,12 @@ where
     } = framed.into_parts();
 
     let closed = Arc::new(AtomicBool::new(false));
-    let (read_half, write_half) = tokio::io::split(io);
-    let split_writer = Arc::new(Mutex::new(WriteHalf {
+    let (read_half, write_half) = bilock(io);
+    let (sender_writer, reader_writer) = bilock(WriteHalf {
         control_buffer,
         split_writer: write_half,
         writer,
-    }));
+    });
 
     let (ext_encoder, ext_decoder) = extension.split();
 
@@ -79,7 +72,7 @@ where
     let sender = Sender {
         role,
         closed: closed.clone(),
-        split_writer: split_writer.clone(),
+        split_writer: sender_writer,
         extension: ext_encoder,
     };
     let receiver = Receiver {
@@ -90,7 +83,7 @@ where
             max_size,
             read_half,
             reader,
-            split_writer,
+            split_writer: reader_writer,
         },
         extension: ext_decoder,
     };
@@ -144,7 +137,7 @@ where
 
 #[derive(Debug)]
 struct WriteHalf<S> {
-    split_writer: TokioWriteHalf<S>,
+    split_writer: BiLock<S>,
     writer: FramedWrite,
     control_buffer: BytesMut,
 }
@@ -153,16 +146,16 @@ struct WriteHalf<S> {
 struct FramedIo<S> {
     flags: CodecFlags,
     max_size: usize,
-    read_half: ReadHalf<S>,
+    read_half: BiLock<S>,
     reader: FramedRead,
-    split_writer: Arc<Mutex<WriteHalf<S>>>,
+    split_writer: BiLock<WriteHalf<S>>,
 }
 
 #[derive(Debug)]
 pub struct Sender<S, E> {
     role: Role,
     closed: Arc<AtomicBool>,
-    split_writer: Arc<Mutex<WriteHalf<S>>>,
+    split_writer: BiLock<WriteHalf<S>>,
     extension: E,
 }
 
@@ -437,9 +430,12 @@ where
     S: WebSocketStream + Debug,
     E: SplittableExtension,
 {
-    if Arc::ptr_eq(&sender.split_writer, &receiver.framed.split_writer) {
+    if sender
+        .split_writer
+        .same_bilock(&receiver.framed.split_writer)
+    {
         let Sender {
-            split_writer,
+            split_writer: sender_writer,
             extension: ext_encoder,
             ..
         } = sender;
@@ -454,19 +450,24 @@ where
             max_size,
             read_half,
             reader,
-            split_writer: io_split_writer,
+            split_writer: reader_writer,
         } = framed;
-        drop(io_split_writer);
 
         let WriteHalf {
             split_writer,
             writer,
             control_buffer,
             ..
-        } = Arc::try_unwrap(split_writer).unwrap().into_inner();
+        } = sender_writer
+            .reunite(reader_writer)
+            // This is safe as we have checked the pointers
+            .expect("Failed to reunite writer");
 
         let framed = framed::FramedIo::from_parts(FramedIoParts {
-            io: read_half.unsplit(split_writer),
+            // This is safe as we have checked the pointers
+            io: read_half
+                .reunite(split_writer)
+                .expect("Failed to reunite IO"),
             reader,
             writer,
             flags,

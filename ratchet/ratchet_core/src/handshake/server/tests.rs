@@ -15,7 +15,8 @@
 use crate::fixture::{mock, ReadError};
 use crate::handshake::{UPGRADE_STR, WEBSOCKET_STR, WEBSOCKET_VERSION_STR};
 use crate::{
-    accept, Error, ErrorKind, HttpError, NoExtProvider, ProtocolRegistry, WebSocketConfig,
+    accept, accept_with, Error, ErrorKind, Extension, ExtensionProvider, HttpError, NoExtProvider,
+    NoExtProxy, ProtocolRegistry, WebSocketConfig,
 };
 use http::header::HeaderName;
 use http::{HeaderMap, HeaderValue, Request, Response, Version};
@@ -33,7 +34,7 @@ async fn exec_request(request: Request<()>) -> Result<Response<()>, Error> {
 
     client.write_request(request).await?;
 
-    let upgrader = accept(
+    let upgrader = accept_with(
         server,
         WebSocketConfig::default(),
         NoExtProvider,
@@ -248,7 +249,7 @@ async fn bad_extension() {
     let (mut client, server) = mock();
     client.write_request(valid_request()).await.unwrap();
 
-    let result = accept(
+    let result = accept_with(
         server,
         WebSocketConfig::default(),
         BadExtProvider,
