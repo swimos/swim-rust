@@ -26,8 +26,6 @@ steps:
 
   # All platforms.
   - script: |
-      rustup component add rust-src
-      rustup component list --installed
       rustup toolchain list
       rustc -Vv
       cargo -V
