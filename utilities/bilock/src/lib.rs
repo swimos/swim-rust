@@ -49,6 +49,7 @@ pub fn bilock<T>(val: T) -> (BiLock<T>, BiLock<T>) {
 pub struct BiLock<T> {
     inner: Arc<Inner<T>>,
 }
+
 #[derive(Debug)]
 struct Inner<T> {
     state: AtomicBool,

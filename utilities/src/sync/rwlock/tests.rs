@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::sync::fixture::make_waker;
 use crate::sync::rwlock::{RwLock, WriterQueue};
 use futures::future::{join, join_all};
 use futures::FutureExt;
 use std::sync::Arc;
 use std::task::Context;
+use test_util::make_waker;
 use tokio::sync::{oneshot, Barrier};
 
 const REPEATS: usize = 1000;

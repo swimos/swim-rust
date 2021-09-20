@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::sync::bilock::{bilock, BiLock};
-use crate::sync::fixture::TestWaker;
+use crate::{bilock, BiLock};
 use futures::future::join;
 use futures::task::waker;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use std::task::Context;
+use test_util::TestWaker;
 
 #[test]
 fn bounds() {
