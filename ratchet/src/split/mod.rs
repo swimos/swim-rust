@@ -28,12 +28,12 @@ use crate::{
     framed, CloseError, Error, ErrorKind, Message, PayloadType, ProtocolError, Role, WebSocket,
     WebSocketStream,
 };
+use bilock::{bilock, BiLock};
 use bitflags::_core::sync::atomic::Ordering;
 use bytes::BytesMut;
 use std::fmt::Debug;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use tokio::io::{ReadHalf, WriteHalf as TokioWriteHalf};
 use tokio::sync::Mutex;
 
 // Replace Mutexes with Future's BiLock when it's been stabilised
@@ -61,7 +61,7 @@ where
     } = framed.into_parts();
 
     let closed = Arc::new(AtomicBool::new(false));
-    let (read_half, write_half) = tokio::io::split(io);
+    let (read_half, write_half) = bilock(io);
     let split_writer = Arc::new(Mutex::new(WriteHalf {
         control_buffer,
         split_writer: write_half,
@@ -144,7 +144,7 @@ where
 
 #[derive(Debug)]
 struct WriteHalf<S> {
-    split_writer: TokioWriteHalf<S>,
+    split_writer: BiLock<S>,
     writer: FramedWrite,
     control_buffer: BytesMut,
 }
@@ -153,7 +153,7 @@ struct WriteHalf<S> {
 struct FramedIo<S> {
     flags: CodecFlags,
     max_size: usize,
-    read_half: ReadHalf<S>,
+    read_half: BiLock<S>,
     reader: FramedRead,
     split_writer: Arc<Mutex<WriteHalf<S>>>,
 }
@@ -466,7 +466,10 @@ where
         } = Arc::try_unwrap(split_writer).unwrap().into_inner();
 
         let framed = framed::FramedIo::from_parts(FramedIoParts {
-            io: read_half.unsplit(split_writer),
+            // This is safe as we have checked the pointers
+            io: read_half
+                .reunite(split_writer)
+                .expect("Failed to reunite IO"),
             reader,
             writer,
             flags,
