@@ -14,7 +14,7 @@
 
 use crate::models::Preprocessed;
 use crate::util::{check_opt, list_to_str, pop_list, try_with_context};
-use macro_helpers::{get_lit_str, Context, Symbol};
+use macro_utilities::{get_lit_str, Context, Symbol};
 use quote::quote;
 use quote::ToTokens;
 use syn::{parse_quote, Attribute, Meta, MetaList, NestedMeta, Path};

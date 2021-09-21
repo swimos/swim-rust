@@ -14,7 +14,7 @@
 
 use syn::{DeriveInput, Generics};
 
-use macro_helpers::{CompoundTypeKind, Context};
+use macro_utilities::{CompoundTypeKind, Context};
 
 use crate::form::form_parser::build_type_contents;
 use crate::parser::FieldManifest;
@@ -22,9 +22,9 @@ use crate::validated_form::attrs::{build_attrs, build_head_attribute};
 use crate::validated_form::vf_parser::{
     type_contents_to_validated, StandardSchema, ValidatedField, ValidatedFormDescriptor,
 };
-use macro_helpers::add_bound;
-use macro_helpers::Label;
-use macro_helpers::{EnumRepr, TypeContents};
+use macro_utilities::add_bound;
+use macro_utilities::Label;
+use macro_utilities::{EnumRepr, TypeContents};
 use proc_macro2::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 

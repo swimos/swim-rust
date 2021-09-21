@@ -18,14 +18,14 @@ use proc_macro2::TokenStream as TokenStream2;
 use quote::ToTokens;
 use syn::{ExprPath, Field, Meta, NestedMeta, Type};
 
-use macro_helpers::{Attributes, CompoundTypeKind, Context, Symbol, SynOriginal};
+use macro_utilities::{Attributes, CompoundTypeKind, Context, Symbol, SynOriginal};
 
 use crate::form::form_parser::FormDescriptor;
 use crate::parser::{FORM_PATH, SCHEMA_PATH, TAG_PATH};
 use crate::validated_form::meta_parse::parse_schema_meta;
 use crate::validated_form::range::Range;
-use macro_helpers::Label;
-use macro_helpers::{EnumRepr, EnumVariant, FormField, StructRepr, TypeContents};
+use macro_utilities::Label;
+use macro_utilities::{EnumRepr, EnumVariant, FormField, StructRepr, TypeContents};
 
 pub const ANYTHING_PATH: Symbol = Symbol("anything");
 pub const NOTHING_PATH: Symbol = Symbol("nothing");

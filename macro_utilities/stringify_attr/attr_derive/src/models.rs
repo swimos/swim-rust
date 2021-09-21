@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::parse::{parse_attr_input, stringify_attributes};
-use macro_helpers::Context;
+use macro_utilities::Context;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use quote::ToTokens;

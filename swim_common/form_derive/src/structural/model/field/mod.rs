@@ -19,7 +19,7 @@ use crate::parser::{
     SKIP_PATH, SLOT_PATH, TAG_PATH,
 };
 use crate::SynValidation;
-use macro_helpers::{FieldKind, Symbol};
+use macro_utilities::{FieldKind, Symbol};
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use std::convert::TryFrom;
