@@ -35,7 +35,7 @@ jobs:
         - cargo fmt -- --check
 
 rust:
-  - 1.55.0
+  - 1.54.0
 
 cache:
   directories:
