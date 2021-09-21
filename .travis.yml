@@ -6,8 +6,6 @@ language: rust
 branches:
   only:
     - master
-    - server-prototype
-    - ws-move
 
 jobs:
   include:
@@ -27,7 +25,6 @@ jobs:
       script:
         # This can all be run on one machine to save time
         - rustup component add clippy
-        - rustup component add rust-src
         - rustup component list --installed
         - cargo clippy --version
         - rustup component add rustfmt
