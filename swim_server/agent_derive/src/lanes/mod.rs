@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::utils::LaneTasksImpl;
-use macro_helpers::as_const;
+use macro_utilities::as_const;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{DeriveInput, Ident};

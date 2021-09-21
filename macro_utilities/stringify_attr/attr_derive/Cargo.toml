@@ -8,7 +8,7 @@ edition = "2018"
 proc-macro = true
 
 [dependencies]
-macro_helpers = { path  = "../../macro_helpers" }
+macro_utilities = { path  = "../.." }
 syn = { version = "1.0.39", features = ["full", "visit-mut"] }
 quote = "1.0.7"
 proc-macro2 = "1.0.19"
