@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_common::form::{Form, ValidatedForm};
+use swim_common::form::{Form, ValueSchema};
 use swim_common::model::ValueKind;
 
 fn main() {
     struct Invalid;
 
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     #[form(schema(all_items(of_kind(ValueKind::Int32))))]
     struct S<F> {
         a: i32,
