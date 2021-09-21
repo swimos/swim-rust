@@ -23,7 +23,7 @@ use proc_macro::TokenStream;
 
 use syn::DeriveInput;
 
-use macro_helpers::to_compile_errors;
+use macro_utilities::to_compile_errors;
 
 use crate::structural::{
     build_derive_structural_form, build_derive_structural_readable,

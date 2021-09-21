@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::parse::{EXPECTED_LIST, UNEXPECTED_ATTR, UNEXPECTED_LIT};
-use macro_helpers::Context;
+use macro_utilities::Context;
 use quote::ToTokens;
 use std::fmt::Display;
 use syn::punctuated::Punctuated;
