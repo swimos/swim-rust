@@ -14,11 +14,10 @@
 
 use crate::sync::rwlock::{RwLock, WriterQueue};
 use futures::future::{join, join_all};
-use futures::task::{self, ArcWake};
 use futures::FutureExt;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::task::{Context, Waker};
+use std::task::Context;
+use test_util::make_waker;
 use tokio::sync::{oneshot, Barrier};
 
 const REPEATS: usize = 1000;
@@ -56,27 +55,6 @@ fn check_consistency(queue: &WriterQueue, expected_detached: usize) {
     assert_eq!(*len, n);
     let detached = wakers.len() - n;
     assert_eq!(detached, expected_detached);
-}
-
-#[derive(Default, Debug)]
-struct TestWaker(AtomicBool);
-
-impl TestWaker {
-    fn woken(&self) -> bool {
-        self.0.load(Ordering::SeqCst)
-    }
-}
-
-impl ArcWake for TestWaker {
-    fn wake_by_ref(arc_self: &Arc<Self>) {
-        arc_self.0.store(true, Ordering::SeqCst);
-    }
-}
-
-fn make_waker() -> (Arc<TestWaker>, Waker) {
-    let test_waker = Arc::new(TestWaker::default());
-    let waker = task::waker(test_waker.clone());
-    (test_waker, waker)
 }
 
 #[test]

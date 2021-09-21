@@ -1,0 +1,8 @@
+[package]
+name = "test_util"
+version = "0.1.0"
+authors = ["Swim.AI developers info@swim.ai"]
+edition = "2018"
+
+[dependencies]
+futures = "0.3.4"

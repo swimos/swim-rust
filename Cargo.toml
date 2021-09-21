@@ -8,6 +8,8 @@ members = [
     "swim_warp",
     "stm",
     "utilities",
+    "utilities/bilock",
+    "utilities/test_util"
 ]
 
 exclude = [
