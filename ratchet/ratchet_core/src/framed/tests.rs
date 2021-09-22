@@ -17,6 +17,7 @@ use crate::fixture::{expect_err, EmptyIo, MirroredIo};
 use crate::framed::{CodecFlags, FramedIo, Item};
 use crate::protocol::{CloseCode, CloseCodeParseErr, CloseReason, DataCode, OpCode};
 use crate::protocol::{HeaderFlags, Role};
+use crate::NoExt;
 use bytes::BytesMut;
 use std::error::Error as StdError;
 use std::fmt::Debug;
@@ -31,7 +32,7 @@ async fn frame_text() {
     let mut out = BytesMut::new();
 
     let mut framed = FramedIo::new(EmptyIo, bytes, Role::Server, usize::MAX);
-    let item = framed.read_next(&mut out).await.unwrap();
+    let item = framed.read_next(&mut out, &mut NoExt).await.unwrap();
 
     assert_eq!(item, Item::Text);
     assert_eq!(
@@ -73,7 +74,7 @@ async fn continuation() {
     framed.flags.set(CodecFlags::ROLE, false);
 
     let mut rx_buf = BytesMut::default();
-    let message_type = framed.read_next(&mut rx_buf).await.unwrap();
+    let message_type = framed.read_next(&mut rx_buf, &mut NoExt).await.unwrap();
     match message_type {
         Item::Text => {
             let received = std::str::from_utf8(rx_buf.as_ref()).unwrap();
@@ -114,7 +115,7 @@ async fn double_cont() {
 
     let mut rx_buf = BytesMut::default();
     expect_err(
-        framed.read_next(&mut rx_buf).await,
+        framed.read_next(&mut rx_buf, &mut NoExt).await,
         ProtocolError::ContinuationAlreadyStarted,
     );
 }
@@ -141,7 +142,7 @@ async fn no_cont() {
 
     let mut rx_buf = BytesMut::default();
     expect_err(
-        framed.read_next(&mut rx_buf).await,
+        framed.read_next(&mut rx_buf, &mut NoExt).await,
         ProtocolError::ContinuationNotStarted,
     );
 }
@@ -163,7 +164,7 @@ async fn overflow_buffer() {
 
     let mut rx_buf = BytesMut::default();
     expect_err(
-        framed.read_next(&mut rx_buf).await,
+        framed.read_next(&mut rx_buf, &mut NoExt).await,
         ProtocolError::FrameOverflow,
     );
 }
@@ -184,7 +185,7 @@ async fn ping() {
     let mut framed = FramedIo::new(EmptyIo, buffer, Role::Client, usize::MAX);
 
     ok_eq(
-        framed.read_next(&mut BytesMut::default()).await,
+        framed.read_next(&mut BytesMut::default(), &mut NoExt).await,
         Item::Ping(BytesMut::from_iter(vec![1, 2, 3, 4])),
     );
 }
@@ -195,7 +196,7 @@ async fn pong() {
     let mut framed = FramedIo::new(EmptyIo, buffer, Role::Client, usize::MAX);
 
     ok_eq(
-        framed.read_next(&mut BytesMut::default()).await,
+        framed.read_next(&mut BytesMut::default(), &mut NoExt).await,
         Item::Pong(BytesMut::from_iter(vec![1, 2, 3, 4])),
     );
 }
@@ -207,7 +208,7 @@ async fn close() {
         let mut framed = FramedIo::new(EmptyIo, buffer, Role::Client, usize::MAX);
 
         ok_eq(
-            framed.read_next(&mut BytesMut::default()).await,
+            framed.read_next(&mut BytesMut::default(), &mut NoExt).await,
             Item::Close(eq),
         );
     }
@@ -235,7 +236,7 @@ async fn close() {
     let buffer = BytesMut::from_iter(frame);
     let mut framed = FramedIo::new(EmptyIo, buffer, Role::Client, usize::MAX);
 
-    let decode_result = framed.read_next(&mut BytesMut::default()).await;
+    let decode_result = framed.read_next(&mut BytesMut::default(), &mut NoExt).await;
     let error = decode_result.unwrap_err();
     assert_eq!(
         error.source().unwrap().to_string(),

@@ -16,24 +16,46 @@ use crate::Error;
 use http::{HeaderMap, HeaderValue};
 use httparse::Header;
 use ratchet_ext::{
-    Extension, ExtensionDecoder, ExtensionEncoder, ExtensionProvider, ReunitableExtension,
-    SplittableExtension,
+    Extension, ExtensionDecoder, ExtensionEncoder, ExtensionProvider, FrameHeader,
+    ReunitableExtension, SplittableExtension,
 };
 use std::convert::Infallible;
 
 #[derive(Debug, Default, Clone)]
 pub struct NoExt;
 impl Extension for NoExt {
-    fn encode<A>(&mut self, _payload: A)
-    where
-        A: AsMut<[u8]>,
-    {
+    type Encoder = Self;
+    type Decoder = Self;
+
+    fn encoder(&mut self) -> &mut Self::Encoder {
+        self
     }
 
-    fn decode<A>(&mut self, _payload: A)
+    fn decoder(&mut self) -> &mut Self::Decoder {
+        self
+    }
+}
+
+impl ExtensionEncoder for NoExt {
+    type United = NoExt;
+    type Error = Infallible;
+
+    fn encode<A>(&mut self, _payload: A, _header: FrameHeader) -> Result<(), Self::Error>
     where
         A: AsMut<[u8]>,
     {
+        Ok(())
+    }
+}
+
+impl ExtensionDecoder for NoExt {
+    type Error = Infallible;
+
+    fn decode<A>(&mut self, _payload: A, _header: FrameHeader) -> Result<(), Self::Error>
+    where
+        A: AsMut<[u8]>,
+    {
+        Ok(())
     }
 }
 
@@ -63,10 +85,10 @@ impl From<Infallible> for Error {
 }
 
 impl SplittableExtension for NoExt {
-    type Encoder = NoExtEncoder;
-    type Decoder = NoExtDecoder;
+    type SplitEncoder = NoExtEncoder;
+    type SplitDecoder = NoExtDecoder;
 
-    fn split(self) -> (Self::Encoder, Self::Decoder) {
+    fn split(self) -> (Self::SplitEncoder, Self::SplitDecoder) {
         (NoExtEncoder, NoExtDecoder)
     }
 }
@@ -81,19 +103,25 @@ impl ReunitableExtension for NoExt {
 pub struct NoExtEncoder;
 impl ExtensionEncoder for NoExtEncoder {
     type United = NoExt;
-    fn encode<A>(&mut self, _payload: A)
+    type Error = Infallible;
+
+    fn encode<A>(&mut self, _payload: A, _header: FrameHeader) -> Result<(), Self::Error>
     where
         A: AsMut<[u8]>,
     {
+        Ok(())
     }
 }
 
 #[derive(Debug)]
 pub struct NoExtDecoder;
 impl ExtensionDecoder for NoExtDecoder {
-    fn decode<A>(&mut self, _payload: A)
+    type Error = Infallible;
+
+    fn decode<A>(&mut self, _payload: A, _header: FrameHeader) -> Result<(), Self::Error>
     where
         A: AsMut<[u8]>,
     {
+        Ok(())
     }
 }

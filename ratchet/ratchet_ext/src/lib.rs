@@ -31,21 +31,36 @@ pub trait ExtensionProvider {
     ) -> Result<(Self::Extension, Option<HeaderValue>), Self::Error>;
 }
 
-pub trait Extension: Debug {
-    fn encode<A>(&mut self, payload: A)
-    where
-        A: AsMut<[u8]>;
-
-    fn decode<A>(&mut self, payload: A)
-    where
-        A: AsMut<[u8]>;
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum OpCode {
+    Continuation,
+    Text,
+    Binary,
 }
 
-pub trait SplittableExtension: Extension {
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct FrameHeader {
+    pub fin: bool,
+    pub rsv1: bool,
+    pub rsv2: bool,
+    pub rsv3: bool,
+    pub opcode: OpCode,
+}
+
+pub trait Extension: Debug {
     type Encoder: ExtensionEncoder;
     type Decoder: ExtensionDecoder;
 
-    fn split(self) -> (Self::Encoder, Self::Decoder);
+    fn encoder(&mut self) -> &mut Self::Encoder;
+
+    fn decoder(&mut self) -> &mut Self::Decoder;
+}
+
+pub trait SplittableExtension: Extension {
+    type SplitEncoder: ExtensionEncoder;
+    type SplitDecoder: ExtensionDecoder;
+
+    fn split(self) -> (Self::SplitEncoder, Self::SplitDecoder);
 }
 
 pub trait ReunitableExtension: SplittableExtension {
@@ -54,14 +69,17 @@ pub trait ReunitableExtension: SplittableExtension {
 
 pub trait ExtensionEncoder {
     type United: ReunitableExtension;
+    type Error: Error + Send + Sync + 'static;
 
-    fn encode<A>(&mut self, payload: A)
+    fn encode<A>(&mut self, payload: A, header: FrameHeader) -> Result<(), Self::Error>
     where
         A: AsMut<[u8]>;
 }
 
 pub trait ExtensionDecoder {
-    fn decode<A>(&mut self, payload: A)
+    type Error: Error + Send + Sync + 'static;
+
+    fn decode<A>(&mut self, payload: A, header: FrameHeader) -> Result<(), Self::Error>
     where
         A: AsMut<[u8]>;
 }

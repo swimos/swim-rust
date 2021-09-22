@@ -30,6 +30,7 @@ bitflags::bitflags! {
         const RSV_2     = 0b0010_0000;
         const RSV_3     = 0b0001_0000;
 
+        // The extension bits that *may* be high. Anything outside this range is illegal.
         const RESERVED  = Self::RSV_1.bits | Self::RSV_2.bits | Self::RSV_3.bits;
 
         // no new flags should be added
@@ -131,21 +132,15 @@ impl From<OpCode> for u8 {
 
 #[derive(Debug, Copy, Clone, Display, PartialEq)]
 pub enum DataCode {
-    #[display(fmt = "Continuation")]
     Continuation = 0,
-    #[display(fmt = "Text")]
     Text = 1,
-    #[display(fmt = "Binary")]
     Binary = 2,
 }
 
 #[derive(Debug, Copy, Clone, Display, PartialEq)]
 pub enum ControlCode {
-    #[display(fmt = "Close")]
     Close = 8,
-    #[display(fmt = "Ping")]
     Ping = 9,
-    #[display(fmt = "Pong")]
     Pong = 10,
 }
 

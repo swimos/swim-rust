@@ -30,7 +30,7 @@ pub const CONTROL_DATA_MISMATCH: &str = "Unexpected control frame data";
 pub struct WebSocket<S, E> {
     framed: FramedIo<S>,
     control_buffer: BytesMut,
-    _extension: E,
+    extension: E,
     closed: bool,
 }
 
@@ -42,13 +42,13 @@ where
     pub(crate) fn from_parts(
         framed: FramedIo<S>,
         control_buffer: BytesMut,
-        _extension: E,
+        extension: E,
         closed: bool,
     ) -> WebSocket<S, E> {
         WebSocket {
             framed,
             control_buffer,
-            _extension,
+            extension,
             closed,
         }
     }
@@ -63,7 +63,7 @@ where
         let WebSocketConfig { max_size } = config;
         WebSocket {
             framed: FramedIo::new(stream, read_buffer, role, max_size),
-            _extension: extension,
+            extension,
             control_buffer: BytesMut::with_capacity(CONTROL_MAX_SIZE),
             closed: false,
         }
@@ -82,6 +82,7 @@ where
             framed,
             closed,
             control_buffer,
+            extension,
             ..
         } = self;
 
@@ -90,7 +91,7 @@ where
         }
 
         loop {
-            match framed.read_next(read_buffer).await {
+            match framed.read_next(read_buffer, extension.decoder()).await {
                 Ok(item) => match item {
                     Item::Binary => return Ok(Message::Binary),
                     Item::Text => return Ok(Message::Text),
@@ -225,7 +226,7 @@ where
     // todo add docs about:
     //  - https://github.com/tokio-rs/tokio/issues/3200
     //  - https://github.com/tokio-rs/tls/issues/40
-    pub fn split(self) -> Result<(Sender<S, E::Encoder>, Receiver<S, E::Decoder>), Error>
+    pub fn split(self) -> Result<(Sender<S, E::SplitEncoder>, Receiver<S, E::SplitDecoder>), Error>
     where
         E: SplittableExtension,
     {
@@ -235,10 +236,10 @@ where
             let WebSocket {
                 framed,
                 control_buffer,
-                _extension,
+                extension,
                 ..
             } = self;
-            Ok(split(framed, control_buffer, _extension))
+            Ok(split(framed, control_buffer, extension))
         }
     }
 }

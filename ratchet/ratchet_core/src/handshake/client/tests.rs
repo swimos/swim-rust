@@ -23,8 +23,12 @@ use futures::FutureExt;
 use http::header::HeaderName;
 use http::{header, HeaderMap, HeaderValue, Request, Response, StatusCode, Version};
 use httparse::{Header, Status};
-use ratchet_ext::{Extension, ExtensionProvider};
+use ratchet_ext::{
+    Extension, ExtensionDecoder, ExtensionEncoder, ExtensionProvider, FrameHeader,
+    ReunitableExtension, SplittableExtension,
+};
 use sha1::{Digest, Sha1};
+use std::convert::Infallible;
 use tokio::io::AsyncReadExt;
 use utilities::sync::trigger;
 
@@ -483,21 +487,56 @@ where
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 struct MockExtension(bool);
 impl Extension for MockExtension {
-    fn encode<A>(&mut self, _payload: A)
-    where
-        A: AsMut<[u8]>,
-    {
-        panic!("Unexpected encode invocation")
+    type Encoder = Self;
+    type Decoder = Self;
+
+    fn encoder(&mut self) -> &mut Self::Encoder {
+        panic!("Unexpected encoder invocation")
     }
 
-    fn decode<A>(&mut self, _payload: A)
+    fn decoder(&mut self) -> &mut Self::Decoder {
+        panic!("Unexpected decoder invocation")
+    }
+}
+
+impl ExtensionEncoder for MockExtension {
+    type United = Self;
+    type Error = Infallible;
+
+    fn encode<A>(&mut self, _payload: A, _header: FrameHeader) -> Result<(), Self::Error>
     where
         A: AsMut<[u8]>,
     {
-        panic!("Unexpected decode invocation")
+        Ok(())
+    }
+}
+
+impl ExtensionDecoder for MockExtension {
+    type Error = Infallible;
+
+    fn decode<A>(&mut self, _payload: A, _header: FrameHeader) -> Result<(), Self::Error>
+    where
+        A: AsMut<[u8]>,
+    {
+        Ok(())
+    }
+}
+
+impl ReunitableExtension for MockExtension {
+    fn reunite(encoder: Self::Encoder, _decoder: Self::Decoder) -> Self {
+        encoder
+    }
+}
+
+impl SplittableExtension for MockExtension {
+    type SplitEncoder = Self;
+    type SplitDecoder = Self;
+
+    fn split(self) -> (Self::SplitEncoder, Self::SplitDecoder) {
+        (self, self)
     }
 }
 

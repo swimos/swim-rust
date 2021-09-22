@@ -25,6 +25,7 @@ use bytes::Buf;
 use bytes::{BufMut, BytesMut};
 use either::Either;
 use nanorand::{WyRand, RNG};
+use ratchet_ext::{ExtensionDecoder, FrameHeader as ExtFrameHeader, OpCode as ExtOpCode};
 use std::convert::TryFrom;
 use std::fmt::{Debug, Formatter};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -158,7 +159,7 @@ impl FramedRead {
         }
     }
 
-    pub async fn read<I>(
+    pub async fn read<I, E>(
         &mut self,
         io: &mut I,
         flags: &mut CodecFlags,
@@ -166,12 +167,14 @@ impl FramedRead {
         is_server: bool,
         rsv_bits: u8,
         max_size: usize,
+        extension: &mut E,
     ) -> Result<Item, Error>
     where
         I: AsyncRead + Unpin,
+        E: ExtensionDecoder,
     {
         loop {
-            let (header, payload) = self.read_frame(io, is_server, rsv_bits, max_size).await?;
+            let (header, mut payload) = self.read_frame(io, is_server, rsv_bits, max_size).await?;
 
             match header.opcode {
                 OpCode::DataCode(data_code) => {
@@ -179,12 +182,18 @@ impl FramedRead {
                         return Err(ProtocolError::FrameOverflow.into());
                     }
 
-                    read_into.put(payload);
-
                     match data_code {
                         DataCode::Continuation => {
                             if header.flags.contains(HeaderFlags::FIN) {
                                 let item = if flags.contains(CodecFlags::R_CONT) {
+                                    extension_decode(
+                                        payload.as_mut(),
+                                        extension,
+                                        &header.flags,
+                                        ExtOpCode::Continuation,
+                                    )?;
+                                    read_into.put(payload);
+
                                     if flags.contains(CodecFlags::CONT_TYPE) {
                                         Item::Text
                                     } else {
@@ -197,6 +206,13 @@ impl FramedRead {
                                 flags.remove(CodecFlags::R_CONT | CodecFlags::CONT_TYPE);
                                 return Ok(item);
                             } else if flags.contains(CodecFlags::R_CONT) {
+                                extension_decode(
+                                    payload.as_mut(),
+                                    extension,
+                                    &header.flags,
+                                    ExtOpCode::Continuation,
+                                )?;
+                                read_into.put(payload);
                                 continue;
                             } else {
                                 return Err(ProtocolError::ContinuationNotStarted.into());
@@ -206,9 +222,23 @@ impl FramedRead {
                             if flags.contains(CodecFlags::R_CONT) {
                                 return Err(ProtocolError::ContinuationAlreadyStarted.into());
                             } else if header.flags.contains(HeaderFlags::FIN) {
+                                extension_decode(
+                                    payload.as_mut(),
+                                    extension,
+                                    &header.flags,
+                                    ExtOpCode::Text,
+                                )?;
+                                read_into.put(payload);
                                 return Ok(Item::Text);
                             } else {
                                 flags.insert(CodecFlags::R_CONT | CodecFlags::CONT_TYPE);
+                                extension_decode(
+                                    payload.as_mut(),
+                                    extension,
+                                    &header.flags,
+                                    ExtOpCode::Text,
+                                )?;
+                                read_into.put(payload);
                                 continue;
                             }
                         }
@@ -216,10 +246,24 @@ impl FramedRead {
                             if flags.contains(CodecFlags::R_CONT) {
                                 return Err(ProtocolError::ContinuationAlreadyStarted.into());
                             } else if header.flags.contains(HeaderFlags::FIN) {
+                                extension_decode(
+                                    payload.as_mut(),
+                                    extension,
+                                    &header.flags,
+                                    ExtOpCode::Binary,
+                                )?;
+                                read_into.put(payload);
                                 return Ok(Item::Binary);
                             } else {
                                 debug_assert!(!flags.contains(CodecFlags::CONT_TYPE));
                                 flags.insert(CodecFlags::R_CONT);
+                                extension_decode(
+                                    payload.as_mut(),
+                                    extension,
+                                    &header.flags,
+                                    ExtOpCode::Binary,
+                                )?;
+                                read_into.put(payload);
                                 continue;
                             }
                         }
@@ -419,7 +463,14 @@ where
             .await
     }
 
-    pub(crate) async fn read_next(&mut self, read_into: &mut BytesMut) -> Result<Item, Error> {
+    pub(crate) async fn read_next<E>(
+        &mut self,
+        read_into: &mut BytesMut,
+        extension: &mut E,
+    ) -> Result<Item, Error>
+    where
+        E: ExtensionDecoder,
+    {
         let FramedIo {
             io,
             reader,
@@ -427,7 +478,7 @@ where
             max_size,
             ..
         } = self;
-        read_next(io, reader, flags, *max_size, read_into).await
+        read_next(io, reader, flags, *max_size, read_into, extension).await
     }
 
     pub async fn write_close(&mut self, reason: CloseReason) -> Result<(), Error> {
@@ -458,21 +509,25 @@ where
     }
 }
 
-pub async fn read_next<I>(
+pub async fn read_next<I, E>(
     io: &mut I,
     reader: &mut FramedRead,
     flags: &mut CodecFlags,
     max_size: usize,
     read_into: &mut BytesMut,
+    extension: &mut E,
 ) -> Result<Item, Error>
 where
     I: AsyncRead + Unpin,
+    E: ExtensionDecoder,
 {
     let rsv_bits = flags.bits() & 0x8F;
     let is_server = flags.contains(CodecFlags::ROLE);
 
     reader
-        .read(io, flags, read_into, is_server, rsv_bits, max_size)
+        .read(
+            io, flags, read_into, is_server, rsv_bits, max_size, extension,
+        )
         .await
 }
 
@@ -561,4 +616,27 @@ where
     }
 
     Ok(())
+}
+
+#[inline]
+fn extension_decode<E, A>(
+    payload: A,
+    extension: &mut E,
+    header: &HeaderFlags,
+    opcode: ExtOpCode,
+) -> Result<(), Error>
+where
+    E: ExtensionDecoder,
+    A: AsMut<[u8]>,
+{
+    let frame_header = ExtFrameHeader {
+        fin: header.is_fin(),
+        rsv1: header.is_rsv1(),
+        rsv2: header.is_rsv2(),
+        rsv3: header.is_rsv3(),
+        opcode,
+    };
+    extension
+        .decode(payload, frame_header)
+        .map_err(|e| Error::with_cause(ErrorKind::Extension, e))
 }

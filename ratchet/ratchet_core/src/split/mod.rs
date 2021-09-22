@@ -40,7 +40,7 @@ pub fn split<S, E>(
     framed: framed::FramedIo<S>,
     control_buffer: BytesMut,
     extension: E,
-) -> (Sender<S, E::Encoder>, Receiver<S, E::Decoder>)
+) -> (Sender<S, E::SplitEncoder>, Receiver<S, E::SplitDecoder>)
 where
     S: WebSocketStream,
     E: SplittableExtension,
@@ -73,7 +73,7 @@ where
         role,
         closed: closed.clone(),
         split_writer: sender_writer,
-        extension: ext_encoder,
+        ext_encoder,
     };
     let receiver = Receiver {
         role,
@@ -84,8 +84,8 @@ where
             read_half,
             reader,
             split_writer: reader_writer,
+            ext_decoder,
         },
-        extension: ext_decoder,
     };
 
     (sender, receiver)
@@ -143,12 +143,13 @@ struct WriteHalf<S> {
 }
 
 #[derive(Debug)]
-struct FramedIo<S> {
+struct FramedIo<S, E> {
     flags: CodecFlags,
     max_size: usize,
     read_half: BiLock<S>,
     reader: FramedRead,
     split_writer: BiLock<WriteHalf<S>>,
+    ext_decoder: E,
 }
 
 #[derive(Debug)]
@@ -156,15 +157,14 @@ pub struct Sender<S, E> {
     role: Role,
     closed: Arc<AtomicBool>,
     split_writer: BiLock<WriteHalf<S>>,
-    extension: E,
+    ext_encoder: E,
 }
 
 #[derive(Debug)]
 pub struct Receiver<S, E> {
     role: Role,
     closed: Arc<AtomicBool>,
-    framed: FramedIo<S>,
-    extension: E,
+    framed: FramedIo<S, E>,
 }
 
 impl<S, E> Sender<S, E>
@@ -284,11 +284,21 @@ where
             read_half,
             reader,
             split_writer,
+            ext_decoder,
         } = framed;
         let is_server = role.is_server();
 
         loop {
-            match read_next(read_half, reader, flags, *max_size, read_buffer).await {
+            match read_next(
+                read_half,
+                reader,
+                flags,
+                *max_size,
+                read_buffer,
+                ext_decoder,
+            )
+            .await
+            {
                 Ok(item) => match item {
                     Item::Binary => return Ok(Message::Binary),
                     Item::Text => return Ok(Message::Text),
@@ -436,20 +446,16 @@ where
     {
         let Sender {
             split_writer: sender_writer,
-            extension: ext_encoder,
+            ext_encoder,
             ..
         } = sender;
-        let Receiver {
-            closed,
-            framed,
-            extension: ext_decoder,
-            ..
-        } = receiver;
+        let Receiver { closed, framed, .. } = receiver;
         let FramedIo {
             flags,
             max_size,
             read_half,
             reader,
+            ext_decoder,
             split_writer: reader_writer,
         } = framed;
 

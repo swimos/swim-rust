@@ -17,10 +17,14 @@ use crate::handshake::{UPGRADE_STR, WEBSOCKET_STR, WEBSOCKET_VERSION_STR};
 use crate::{
     accept_with, Error, ErrorKind, HttpError, NoExtProvider, ProtocolRegistry, WebSocketConfig,
 };
+use bitflags::_core::convert::Infallible;
 use http::header::HeaderName;
 use http::{HeaderMap, HeaderValue, Request, Response, Version};
 use httparse::Header;
-use ratchet_ext::{Extension, ExtensionProvider};
+use ratchet_ext::{
+    Extension, ExtensionDecoder, ExtensionEncoder, ExtensionProvider, FrameHeader,
+    ReunitableExtension, SplittableExtension,
+};
 
 impl From<ReadError<httparse::Error>> for Error {
     fn from(e: ReadError<httparse::Error>) -> Self {
@@ -223,19 +227,56 @@ impl ExtensionProvider for BadExtProvider {
     }
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 struct Ext;
 impl Extension for Ext {
-    fn encode<A>(&mut self, _payload: A)
-    where
-        A: AsMut<[u8]>,
-    {
+    type Encoder = Self;
+    type Decoder = Self;
+
+    fn encoder(&mut self) -> &mut Self::Encoder {
+        panic!("Unexpected encoder invocation")
     }
 
-    fn decode<A>(&mut self, _payload: A)
+    fn decoder(&mut self) -> &mut Self::Decoder {
+        panic!("Unexpected decoder invocation")
+    }
+}
+
+impl ExtensionEncoder for Ext {
+    type United = Self;
+    type Error = Infallible;
+
+    fn encode<A>(&mut self, _payload: A, _header: FrameHeader) -> Result<(), Self::Error>
     where
         A: AsMut<[u8]>,
     {
+        Ok(())
+    }
+}
+
+impl ExtensionDecoder for Ext {
+    type Error = Infallible;
+
+    fn decode<A>(&mut self, _payload: A, _header: FrameHeader) -> Result<(), Self::Error>
+    where
+        A: AsMut<[u8]>,
+    {
+        Ok(())
+    }
+}
+
+impl SplittableExtension for Ext {
+    type SplitEncoder = Self;
+    type SplitDecoder = Self;
+
+    fn split(self) -> (Self::SplitEncoder, Self::SplitDecoder) {
+        (self, self)
+    }
+}
+
+impl ReunitableExtension for Ext {
+    fn reunite(encoder: Self::Encoder, _decoder: Self::Decoder) -> Self {
+        encoder
     }
 }
 
