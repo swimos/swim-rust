@@ -23,13 +23,14 @@ use crate::form::structural::read::event::{NumericValue, ReadEvent};
 use crate::form::structural::read::materializers::value::{
     AttrBodyMaterializer, DelegateBodyMaterializer, ValueMaterializer,
 };
-use crate::form::structural::read::recognizer::primitive::DataRecognizer;
+use crate::form::structural::read::recognizer::primitive::{
+    DataRecognizer, NonZeroUsizeRecognizer,
+};
 use crate::form::structural::read::ReadError;
 use crate::form::structural::Tag;
 use crate::model::blob::Blob;
 use crate::model::text::Text;
 use crate::model::{Value, ValueKind};
-use nom::combinator::recognize;
 use num_bigint::{BigInt, BigUint};
 use std::borrow::Borrow;
 use std::collections::HashMap;
@@ -43,7 +44,10 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use url::Url;
-use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
+use utilities::future::retryable::strategy::{
+    Quantity, RetryStrategy, DEFAULT_EXPONENTIAL_MAX_BACKOFF, DEFAULT_EXPONENTIAL_MAX_INTERVAL,
+    DEFAULT_IMMEDIATE_RETRIES, DEFAULT_INTERVAL_DELAY, DEFAULT_INTERVAL_RETRIES,
+};
 use utilities::iteratee::Iteratee;
 use utilities::uri::RelativeUri;
 
@@ -2714,15 +2718,28 @@ impl<R: Recognizer> Recognizer for SimpleRecBody<R> {
     }
 }
 
+const RETRY_IMMEDIATE_TAG: &str = "immediate";
+const RETRY_INTERVAL_TAG: &str = "interval";
+const RETRY_EXPONENTIAL_TAG: &str = "exponential";
+const RETRY_NONE_TAG: &str = "none";
 const DURATION_TAG: &str = "duration";
 
-enum RecognizerStage<T> {
+enum RetryStrategyStage {
     Init,
     Tag,
     AfterTag,
     InBody,
-    Slot(T),
-    Field(T),
+    Slot(RetryStrategyField),
+    Field(RetryStrategyField),
+}
+
+#[derive(Clone, Copy, Debug)]
+enum RetryStrategyField {
+    ImmediateRetries,
+    IntervalDelay,
+    IntervalRetries,
+    ExponentialMaxInterval,
+    ExponentialMaxBackoff,
 }
 
 //Todo dm
@@ -2732,32 +2749,428 @@ impl RecognizerReadable for RetryStrategy {
     type BodyRec = SimpleRecBody<RetryStrategyRecognizer>;
 
     fn make_recognizer() -> Self::Rec {
-        RetryStrategyRecognizer
+        RetryStrategyRecognizer {
+            stage: RetryStrategyStage::Init,
+            fields: None,
+        }
     }
 
     fn make_attr_recognizer() -> Self::AttrRec {
-        SimpleAttrBody::new(RetryStrategyRecognizer)
+        SimpleAttrBody::new(RetryStrategyRecognizer {
+            stage: RetryStrategyStage::Init,
+            fields: None,
+        })
     }
 
     fn make_body_recognizer() -> Self::BodyRec {
-        SimpleRecBody::new(RetryStrategyRecognizer)
-    }
-
-    fn is_simple() -> bool {
-        true
+        SimpleRecBody::new(RetryStrategyRecognizer {
+            stage: RetryStrategyStage::Init,
+            fields: None,
+        })
     }
 }
 
-pub struct RetryStrategyRecognizer;
+pub struct RetryStrategyRecognizer {
+    stage: RetryStrategyStage,
+    fields: Option<RetryStrategyFields>,
+}
+
+pub enum RetryStrategyFields {
+    Immediate {
+        retries: Option<NonZeroUsize>,
+        retries_recognizer: Option<NonZeroUsizeRecognizer>,
+    },
+    Interval {
+        retries: Option<Quantity<NonZeroUsize>>,
+        delay: Option<Duration>,
+        retries_recognizer: Option<QuantityRecognizer<NonZeroUsize>>,
+        delay_recognizer: Option<DurationRecognizer>,
+    },
+    Exponential {
+        max_interval: Option<Duration>,
+        max_backoff: Option<Quantity<Duration>>,
+        max_interval_recognizer: Option<DurationRecognizer>,
+        max_backoff_recognizer: Option<QuantityRecognizer<Duration>>,
+    },
+}
 
 impl Recognizer for RetryStrategyRecognizer {
     type Target = RetryStrategy;
 
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
-        unimplemented!()
+        eprintln!("input = {:#?}", input);
+        eprintln!("-------");
+        match &self.stage {
+            RetryStrategyStage::Init => {
+                if let ReadEvent::StartAttribute(name) = input {
+                    match name.borrow() {
+                        RETRY_IMMEDIATE_TAG => {
+                            self.stage = RetryStrategyStage::Tag;
+                            self.fields = Some(RetryStrategyFields::Immediate {
+                                retries: None,
+                                retries_recognizer: None,
+                            });
+                            None
+                        }
+                        RETRY_INTERVAL_TAG => {
+                            self.stage = RetryStrategyStage::Tag;
+                            self.fields = Some(RetryStrategyFields::Interval {
+                                retries: None,
+                                delay: None,
+                                retries_recognizer: None,
+                                delay_recognizer: None,
+                            });
+                            None
+                        }
+                        RETRY_EXPONENTIAL_TAG => {
+                            self.stage = RetryStrategyStage::Tag;
+                            self.fields = Some(RetryStrategyFields::Exponential {
+                                max_interval: None,
+                                max_backoff: None,
+                                max_interval_recognizer: None,
+                                max_backoff_recognizer: None,
+                            });
+                            None
+                        }
+                        RETRY_NONE_TAG => {
+                            self.stage = RetryStrategyStage::Tag;
+                            None
+                        }
+                        _ => Some(Err(ReadError::UnexpectedAttribute(name.into()))),
+                    }
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Attribute(Some(
+                        Text::new(DURATION_TAG),
+                    )))))
+                }
+            }
+            RetryStrategyStage::Tag => match input {
+                ReadEvent::Extant => None,
+                ReadEvent::EndAttribute => {
+                    self.stage = RetryStrategyStage::AfterTag;
+                    None
+                }
+                ow => Some(Err(ow.kind_error(ExpectedEvent::EndOfAttribute))),
+            },
+            RetryStrategyStage::AfterTag => {
+                if matches!(&input, ReadEvent::StartBody) {
+                    self.stage = RetryStrategyStage::InBody;
+                    None
+                } else if matches!(&input, ReadEvent::EndRecord) {
+                    match self.fields {
+                        Some(RetryStrategyFields::Immediate { .. }) => {
+                            Some(Ok(RetryStrategy::default_immediate()))
+                        }
+                        Some(RetryStrategyFields::Interval { .. }) => {
+                            Some(Ok(RetryStrategy::default_interval()))
+                        }
+                        Some(RetryStrategyFields::Exponential { .. }) => {
+                            Some(Ok(RetryStrategy::default_exponential()))
+                        }
+                        None => Some(Ok(RetryStrategy::none())),
+                    }
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Or(vec![
+                        ExpectedEvent::RecordBody,
+                        ExpectedEvent::EndOfRecord,
+                    ]))))
+                }
+            }
+            RetryStrategyStage::InBody => match self.fields {
+                Some(RetryStrategyFields::Immediate {
+                    retries,
+                    ref mut retries_recognizer,
+                }) => match input {
+                    ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
+                        "retries" => {
+                            self.stage =
+                                RetryStrategyStage::Slot(RetryStrategyField::ImmediateRetries);
+                            *retries_recognizer = Some(NonZeroUsize::make_recognizer());
+                            None
+                        }
+                        ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
+                    },
+                    ReadEvent::EndRecord => Some(Ok(RetryStrategy::immediate(
+                        retries.unwrap_or(NonZeroUsize::new(DEFAULT_IMMEDIATE_RETRIES).unwrap()),
+                    ))),
+                    ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
+                        ExpectedEvent::ValueEvent(ValueKind::Text),
+                        ExpectedEvent::EndOfRecord,
+                    ])))),
+                },
+                Some(RetryStrategyFields::Interval {
+                    delay,
+                    retries,
+                    ref mut delay_recognizer,
+                    ref mut retries_recognizer,
+                }) => match input {
+                    ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
+                        "delay" => {
+                            self.stage =
+                                RetryStrategyStage::Slot(RetryStrategyField::IntervalDelay);
+                            *delay_recognizer = Some(Duration::make_recognizer());
+                            None
+                        }
+                        "retries" => {
+                            self.stage =
+                                RetryStrategyStage::Slot(RetryStrategyField::IntervalRetries);
+                            *retries_recognizer = Some(Quantity::<NonZeroUsize>::make_recognizer());
+                            None
+                        }
+                        ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
+                    },
+                    ReadEvent::EndRecord => Some(Ok(RetryStrategy::interval(
+                        delay.unwrap_or(Duration::from_secs(DEFAULT_INTERVAL_DELAY)),
+                        retries.unwrap_or(Quantity::Finite(
+                            NonZeroUsize::new(DEFAULT_INTERVAL_RETRIES).unwrap(),
+                        )),
+                    ))),
+                    ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
+                        ExpectedEvent::ValueEvent(ValueKind::Text),
+                        ExpectedEvent::EndOfRecord,
+                    ])))),
+                },
+                Some(RetryStrategyFields::Exponential {
+                    max_interval,
+                    max_backoff,
+                    ref mut max_interval_recognizer,
+                    ref mut max_backoff_recognizer,
+                }) => match input {
+                    ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
+                        "max_interval" => {
+                            self.stage = RetryStrategyStage::Slot(
+                                RetryStrategyField::ExponentialMaxInterval,
+                            );
+                            *max_interval_recognizer = Some(Duration::make_recognizer());
+                            None
+                        }
+                        "max_backoff" => {
+                            self.stage =
+                                RetryStrategyStage::Slot(RetryStrategyField::ExponentialMaxBackoff);
+                            *max_backoff_recognizer = Some(Quantity::<Duration>::make_recognizer());
+                            None
+                        }
+                        ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
+                    },
+                    ReadEvent::EndRecord => Some(Ok(RetryStrategy::exponential(
+                        max_interval
+                            .unwrap_or(Duration::from_secs(DEFAULT_EXPONENTIAL_MAX_INTERVAL)),
+                        max_backoff.unwrap_or(Quantity::Finite(Duration::from_secs(
+                            DEFAULT_EXPONENTIAL_MAX_BACKOFF,
+                        ))),
+                    ))),
+                    ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
+                        ExpectedEvent::ValueEvent(ValueKind::Text),
+                        ExpectedEvent::EndOfRecord,
+                    ])))),
+                },
+                None => match input {
+                    ReadEvent::EndRecord => Some(Ok(RetryStrategy::none())),
+                    ow => Some(Err(ow.kind_error(ExpectedEvent::EndOfRecord))),
+                },
+            },
+            RetryStrategyStage::Slot(fld) => {
+                if matches!(&input, ReadEvent::Slot) {
+                    self.stage = RetryStrategyStage::Field(*fld);
+                    None
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Slot)))
+                }
+            }
+            RetryStrategyStage::Field(field) => match &mut self.fields{
+                Some(RetryStrategyFields::Immediate {retries, retries_recognizer: Some(retries_recognizer)}) => {
+                    match field{
+                        RetryStrategyField::ImmediateRetries => {
+                            match retries_recognizer.feed_event(input)?{
+                                Ok(value) => {
+                                    *retries = Some(value);
+                                    self.stage = RetryStrategyStage::InBody;
+                                    None
+                                }
+                                Err(err) => {Some(Err(err))}
+                            }
+                        }
+                        _ => {
+                            unimplemented!()
+                        }
+                    }
+                }
+                Some(RetryStrategyFields::Interval {retries, retries_recognizer: Some(retries_recognizer), ..}) => {
+                    match field{
+                        RetryStrategyField::IntervalRetries => {
+                            match retries_recognizer.feed_event(input)?{
+                                Ok(value) => {
+                                    *retries = Some(value);
+                                    self.stage = RetryStrategyStage::InBody;
+                                    None
+                                }
+                                Err(err) => {Some(Err(err))}
+                            }
+                        }
+                        _ => {
+                            unimplemented!()
+                        }
+                    }
+                }
+                Some(RetryStrategyFields::Interval {delay, delay_recognizer: Some(delay_recognizer), ..}) => {
+                    match field{
+                        RetryStrategyField::IntervalDelay => {
+                            match delay_recognizer.feed_event(input)?{
+                                Ok(value) => {
+                                    *delay = Some(value);
+                                    self.stage = RetryStrategyStage::InBody;
+                                    None
+                                }
+                                Err(err) => {Some(Err(err))}
+                            }
+                        }
+                        _ => {
+                            unimplemented!()
+                        }
+                    }
+                }
+                Some(RetryStrategyFields::Exponential {max_interval, max_interval_recognizer: Some(max_interval_recognizer),..}) => {
+                    eprintln!("field = {:#?}", field);
+                    match field{
+                        RetryStrategyField::ExponentialMaxInterval => {
+                            match max_interval_recognizer.feed_event(input)?{
+                                Ok(value) => {
+                                    *max_interval = Some(value);
+                                    self.stage = RetryStrategyStage::InBody;
+                                    None
+                                }
+                                Err(err) => {Some(Err(err))}
+                            }
+                        }
+                        _ => {
+                            unimplemented!()
+                        }
+                    }
+                }
+                Some(RetryStrategyFields::Exponential {max_backoff, max_backoff_recognizer: Some(max_backoff_recognizer),..}) => {
+                    match field{
+                        RetryStrategyField::ExponentialMaxBackoff => {
+                            match max_backoff_recognizer.feed_event(input)?{
+                                Ok(value) => {
+                                    *max_backoff = Some(value);
+                                    self.stage = RetryStrategyStage::InBody;
+                                    None
+                                }
+                                Err(err) => {Some(Err(err))}
+                            }
+                        }
+                        _ => {
+                            unimplemented!()
+                        }
+                    }
+                }
+                _ => {
+                    unimplemented!()
+                }
+            }
+
+
+
+
+
+            //     match field {
+            //     RetryStrategyField::ImmediateRetries => {
+            //         if let Some(RetryStrategyFields::Immediate {
+            //             retries,
+            //             retries_recognizer,
+            //         }) = &mut self.fields
+            //         {
+            //             match retries_recognizer.unwrap().feed_event(input)? {
+            //                 Ok(value) => {
+            //                     *retries = Some(value);
+            //                     self.stage = RetryStrategyStage::InBody;
+            //                     None
+            //                 }
+            //                 Err(err) => Some(Err(err)),
+            //             }
+            //         } else {
+            //             self.stage = RetryStrategyStage::InBody;
+            //             None
+            //         }
+            //     }
+            //     RetryStrategyField::IntervalDelay => {
+            //         match Duration::make_recognizer().feed_event(input)? {
+            //             Ok(value) => {
+            //                 if let Some(RetryStrategyFields::Interval { delay, .. }) =
+            //                     &mut self.fields
+            //                 {
+            //                     *delay = Some(value);
+            //                     self.stage = RetryStrategyStage::InBody;
+            //                     None
+            //                 } else {
+            //                     None
+            //                 }
+            //             }
+            //             Err(err) => Some(Err(err)),
+            //         }
+            //     }
+            //     RetryStrategyField::IntervalRetries => {
+            //         match Quantity::<NonZeroUsize>::make_recognizer().feed_event(input)? {
+            //             Ok(value) => {
+            //                 if let Some(RetryStrategyFields::Interval { retries, .. }) =
+            //                     &mut self.fields
+            //                 {
+            //                     *retries = Some(value);
+            //                     self.stage = RetryStrategyStage::InBody;
+            //                     None
+            //                 } else {
+            //                     None
+            //                 }
+            //             }
+            //             Err(err) => Some(Err(err)),
+            //         }
+            //     }
+            //     RetryStrategyField::ExponentialMaxInterval => {
+            //         //Todo feed event works only for a simple types that can be parsed in one go.
+            //         //Extract the recognizer in the fields
+            //         match Duration::make_recognizer().feed_event(input)? {
+            //             Ok(value) => {
+            //                 eprintln!("test");
+            //                 if let Some(RetryStrategyFields::Exponential { max_interval, .. }) =
+            //                     &mut self.fields
+            //                 {
+            //                     *max_interval = Some(value);
+            //                     self.stage = RetryStrategyStage::InBody;
+            //                     None
+            //                 } else {
+            //                     None
+            //                 }
+            //             }
+            //             Err(err) => {
+            //                 eprintln!("err = {:#?}", err);
+            //                 Some(Err(err))
+            //             }
+            //         }
+            //     }
+            //     RetryStrategyField::ExponentialMaxBackoff => {
+            //         match Quantity::<Duration>::make_recognizer().feed_event(input)? {
+            //             Ok(value) => {
+            //                 if let Some(RetryStrategyFields::Exponential { max_backoff, .. }) =
+            //                     &mut self.fields
+            //                 {
+            //                     *max_backoff = Some(value);
+            //                     self.stage = RetryStrategyStage::InBody;
+            //                     None
+            //                 } else {
+            //                     None
+            //                 }
+            //             }
+            //             Err(err) => Some(Err(err)),
+            //         }
+            //     }
+            // },
+        }
     }
 
-    fn reset(&mut self) {}
+    fn reset(&mut self) {
+        self.stage = RetryStrategyStage::Init;
+        self.fields = None;
+    }
 }
 
 impl<T: RecognizerReadable> RecognizerReadable for Quantity<T> {
@@ -2809,9 +3222,18 @@ impl<T: RecognizerReadable> Recognizer for QuantityRecognizer<T> {
 }
 
 pub struct DurationRecognizer {
-    stage: RecognizerStage<DurationField>,
+    stage: DurationStage,
     secs: Option<u64>,
     nanos: Option<u32>,
+}
+
+enum DurationStage {
+    Init,
+    Tag,
+    AfterTag,
+    InBody,
+    Slot(DurationField),
+    Field(DurationField),
 }
 
 #[derive(Clone, Copy)]
@@ -2827,7 +3249,7 @@ impl RecognizerReadable for Duration {
 
     fn make_recognizer() -> Self::Rec {
         DurationRecognizer {
-            stage: RecognizerStage::Init,
+            stage: DurationStage::Init,
             secs: None,
             nanos: None,
         }
@@ -2835,7 +3257,7 @@ impl RecognizerReadable for Duration {
 
     fn make_attr_recognizer() -> Self::AttrRec {
         SimpleAttrBody::new(DurationRecognizer {
-            stage: RecognizerStage::Init,
+            stage: DurationStage::Init,
             secs: None,
             nanos: None,
         })
@@ -2843,7 +3265,7 @@ impl RecognizerReadable for Duration {
 
     fn make_body_recognizer() -> Self::BodyRec {
         SimpleRecBody::new(DurationRecognizer {
-            stage: RecognizerStage::Init,
+            stage: DurationStage::Init,
             secs: None,
             nanos: None,
         })
@@ -2855,10 +3277,10 @@ impl Recognizer for DurationRecognizer {
 
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         match &self.stage {
-            RecognizerStage::Init => {
+            DurationStage::Init => {
                 if let ReadEvent::StartAttribute(name) = input {
                     if name == DURATION_TAG {
-                        self.stage = RecognizerStage::Tag;
+                        self.stage = DurationStage::Tag;
                         None
                     } else {
                         Some(Err(ReadError::UnexpectedAttribute(name.into())))
@@ -2869,30 +3291,30 @@ impl Recognizer for DurationRecognizer {
                     )))))
                 }
             }
-            RecognizerStage::Tag => match input {
+            DurationStage::Tag => match input {
                 ReadEvent::Extant => None,
                 ReadEvent::EndAttribute => {
-                    self.stage = RecognizerStage::AfterTag;
+                    self.stage = DurationStage::AfterTag;
                     None
                 }
                 ow => Some(Err(ow.kind_error(ExpectedEvent::EndOfAttribute))),
             },
-            RecognizerStage::AfterTag => {
+            DurationStage::AfterTag => {
                 if matches!(&input, ReadEvent::StartBody) {
-                    self.stage = RecognizerStage::InBody;
+                    self.stage = DurationStage::InBody;
                     None
                 } else {
                     Some(Err(input.kind_error(ExpectedEvent::RecordBody)))
                 }
             }
-            RecognizerStage::InBody => match input {
+            DurationStage::InBody => match input {
                 ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
                     "secs" => {
-                        self.stage = RecognizerStage::Slot(DurationField::Secs);
+                        self.stage = DurationStage::Slot(DurationField::Secs);
                         None
                     }
                     "nanos" => {
-                        self.stage = RecognizerStage::Slot(DurationField::Nanos);
+                        self.stage = DurationStage::Slot(DurationField::Nanos);
                         None
                     }
                     ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
@@ -2906,29 +3328,29 @@ impl Recognizer for DurationRecognizer {
                     ExpectedEvent::EndOfRecord,
                 ])))),
             },
-            RecognizerStage::Slot(fld) => {
+            DurationStage::Slot(fld) => {
                 if matches!(&input, ReadEvent::Slot) {
-                    self.stage = RecognizerStage::Field(*fld);
+                    self.stage = DurationStage::Field(*fld);
                     None
                 } else {
                     Some(Err(input.kind_error(ExpectedEvent::Slot)))
                 }
             }
-            RecognizerStage::Field(DurationField::Secs) => match input {
+            DurationStage::Field(DurationField::Secs) => match input {
                 ReadEvent::Number(NumericValue::UInt(n)) => {
                     self.secs = Some(n);
-                    self.stage = RecognizerStage::InBody;
+                    self.stage = DurationStage::InBody;
                     None
                 }
                 ow => Some(Err(
                     ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
                 )),
             },
-            RecognizerStage::Field(DurationField::Nanos) => match input {
+            DurationStage::Field(DurationField::Nanos) => match input {
                 ReadEvent::Number(NumericValue::UInt(n)) => {
                     if let Ok(m) = u32::try_from(n) {
                         self.nanos = Some(m);
-                        self.stage = RecognizerStage::InBody;
+                        self.stage = DurationStage::InBody;
                         None
                     } else {
                         Some(Err(ReadError::NumberOutOfRange))
@@ -2943,7 +3365,7 @@ impl Recognizer for DurationRecognizer {
 
     fn reset(&mut self) {
         let DurationRecognizer { stage, secs, nanos } = self;
-        *stage = RecognizerStage::Init;
+        *stage = DurationStage::Init;
         *secs = None;
         *nanos = None;
     }

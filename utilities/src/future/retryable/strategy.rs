@@ -17,6 +17,12 @@ use std::time::Duration;
 use rand::Rng;
 use std::num::NonZeroUsize;
 
+pub const DEFAULT_EXPONENTIAL_MAX_INTERVAL: u64 = 16;
+pub const DEFAULT_EXPONENTIAL_MAX_BACKOFF: u64 = 300;
+pub const DEFAULT_IMMEDIATE_RETRIES: usize = 16;
+pub const DEFAULT_INTERVAL_RETRIES: usize = 8;
+pub const DEFAULT_INTERVAL_DELAY: u64 = 10;
+
 /// The retry strategy that a ['RetryableRequest`] uses to determine when to perform the next
 /// request.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -65,8 +71,8 @@ impl Default for RetryStrategy {
     fn default() -> Self {
         RetryStrategy::Exponential(ExponentialStrategy {
             start: None,
-            max_interval: Duration::from_secs(16),
-            max_backoff: Quantity::Finite(Duration::from_secs(300)),
+            max_interval: Duration::from_secs(DEFAULT_EXPONENTIAL_MAX_INTERVAL),
+            max_backoff: Quantity::Finite(Duration::from_secs(DEFAULT_EXPONENTIAL_MAX_BACKOFF)),
             retry_no: 0,
         })
     }
@@ -84,11 +90,27 @@ impl RetryStrategy {
         })
     }
 
+    pub fn default_exponential() -> RetryStrategy {
+        RetryStrategy::Exponential(ExponentialStrategy {
+            start: None,
+            max_interval: Duration::from_secs(DEFAULT_EXPONENTIAL_MAX_INTERVAL),
+            max_backoff: Quantity::Finite(Duration::from_secs(DEFAULT_EXPONENTIAL_MAX_BACKOFF)),
+            retry_no: 0,
+        })
+    }
+
     /// Builds an immediate retry strategy that will attempt (`retries`) requests with no delay
     /// in between the requests.
     pub fn immediate(retries: NonZeroUsize) -> RetryStrategy {
         RetryStrategy::Immediate(IntervalStrategy {
             retry: Quantity::Finite(retries.get()),
+            delay: None,
+        })
+    }
+
+    pub fn default_immediate() -> RetryStrategy {
+        RetryStrategy::Immediate(IntervalStrategy {
+            retry: Quantity::Finite(DEFAULT_IMMEDIATE_RETRIES),
             delay: None,
         })
     }
@@ -107,6 +129,13 @@ impl RetryStrategy {
         RetryStrategy::Interval(IntervalStrategy {
             retry: retries,
             delay: Some(delay),
+        })
+    }
+
+    pub fn default_interval() -> RetryStrategy {
+        RetryStrategy::Immediate(IntervalStrategy {
+            retry: Quantity::Finite(DEFAULT_INTERVAL_RETRIES),
+            delay: Some(Duration::from_secs(DEFAULT_INTERVAL_DELAY)),
         })
     }
 
