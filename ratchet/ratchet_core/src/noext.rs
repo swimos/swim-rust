@@ -40,7 +40,7 @@ impl ExtensionEncoder for NoExt {
     type United = NoExt;
     type Error = Infallible;
 
-    fn encode<A>(&mut self, _payload: A, _header: FrameHeader) -> Result<(), Self::Error>
+    fn encode<A>(&mut self, _payload: A, _header: &mut FrameHeader) -> Result<(), Self::Error>
     where
         A: AsMut<[u8]>,
     {
@@ -51,7 +51,7 @@ impl ExtensionEncoder for NoExt {
 impl ExtensionDecoder for NoExt {
     type Error = Infallible;
 
-    fn decode<A>(&mut self, _payload: A, _header: FrameHeader) -> Result<(), Self::Error>
+    fn decode<A>(&mut self, _payload: A, _header: &mut FrameHeader) -> Result<(), Self::Error>
     where
         A: AsMut<[u8]>,
     {
@@ -105,7 +105,7 @@ impl ExtensionEncoder for NoExtEncoder {
     type United = NoExt;
     type Error = Infallible;
 
-    fn encode<A>(&mut self, _payload: A, _header: FrameHeader) -> Result<(), Self::Error>
+    fn encode<A>(&mut self, _payload: A, _header: &mut FrameHeader) -> Result<(), Self::Error>
     where
         A: AsMut<[u8]>,
     {
@@ -118,7 +118,7 @@ pub struct NoExtDecoder;
 impl ExtensionDecoder for NoExtDecoder {
     type Error = Infallible;
 
-    fn decode<A>(&mut self, _payload: A, _header: FrameHeader) -> Result<(), Self::Error>
+    fn decode<A>(&mut self, _payload: A, _header: &mut FrameHeader) -> Result<(), Self::Error>
     where
         A: AsMut<[u8]>,
     {

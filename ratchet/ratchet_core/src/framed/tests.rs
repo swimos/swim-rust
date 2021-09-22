@@ -57,6 +57,7 @@ async fn continuation() {
             OpCode::DataCode(DataCode::Text),
             HeaderFlags::empty(),
             iter.next().unwrap().to_vec(),
+            |_, _| Ok(()),
         )
         .await
         .unwrap();
@@ -66,7 +67,12 @@ async fn continuation() {
         let flags = HeaderFlags::from_bits_truncate((fin as u8) << 7);
 
         framed
-            .write(OpCode::DataCode(DataCode::Continuation), flags, data)
+            .write(
+                OpCode::DataCode(DataCode::Continuation),
+                flags,
+                data,
+                |_, _| Ok(()),
+            )
             .await
             .unwrap();
     }
@@ -98,6 +104,7 @@ async fn double_cont() {
             OpCode::DataCode(DataCode::Text),
             HeaderFlags::empty(),
             unsafe { "hello".to_string().as_bytes_mut() },
+            |_, _| Ok(()),
         )
         .await
         .unwrap();
@@ -107,6 +114,7 @@ async fn double_cont() {
             OpCode::DataCode(DataCode::Text),
             HeaderFlags::empty(),
             unsafe { "hello again".to_string().as_bytes_mut() },
+            |_, _| Ok(()),
         )
         .await
         .unwrap();
@@ -134,6 +142,7 @@ async fn no_cont() {
             OpCode::DataCode(DataCode::Continuation),
             HeaderFlags::empty(),
             unsafe { "hello".to_string().as_bytes_mut() },
+            |_, _| Ok(()),
         )
         .await
         .unwrap();
@@ -156,6 +165,7 @@ async fn overflow_buffer() {
             OpCode::DataCode(DataCode::Text),
             HeaderFlags::empty(),
             unsafe { "Houston, we have a problem.".to_string().as_bytes_mut() },
+            |_, _| Ok(()),
         )
         .await
         .unwrap();

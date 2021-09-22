@@ -246,7 +246,7 @@ impl ExtensionEncoder for Ext {
     type United = Self;
     type Error = Infallible;
 
-    fn encode<A>(&mut self, _payload: A, _header: FrameHeader) -> Result<(), Self::Error>
+    fn encode<A>(&mut self, _payload: A, _header: &mut FrameHeader) -> Result<(), Self::Error>
     where
         A: AsMut<[u8]>,
     {
@@ -257,7 +257,7 @@ impl ExtensionEncoder for Ext {
 impl ExtensionDecoder for Ext {
     type Error = Infallible;
 
-    fn decode<A>(&mut self, _payload: A, _header: FrameHeader) -> Result<(), Self::Error>
+    fn decode<A>(&mut self, _payload: A, _header: &mut FrameHeader) -> Result<(), Self::Error>
     where
         A: AsMut<[u8]>,
     {

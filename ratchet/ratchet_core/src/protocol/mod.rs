@@ -137,6 +137,16 @@ pub enum DataCode {
     Binary = 2,
 }
 
+impl From<DataCode> for ratchet_ext::OpCode {
+    fn from(e: DataCode) -> Self {
+        match e {
+            DataCode::Continuation => ratchet_ext::OpCode::Continuation,
+            DataCode::Text => ratchet_ext::OpCode::Text,
+            DataCode::Binary => ratchet_ext::OpCode::Binary,
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone, Display, PartialEq)]
 pub enum ControlCode {
     Close = 8,

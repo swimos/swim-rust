@@ -71,7 +71,7 @@ pub trait ExtensionEncoder {
     type United: ReunitableExtension;
     type Error: Error + Send + Sync + 'static;
 
-    fn encode<A>(&mut self, payload: A, header: FrameHeader) -> Result<(), Self::Error>
+    fn encode<A>(&mut self, payload: A, header: &mut FrameHeader) -> Result<(), Self::Error>
     where
         A: AsMut<[u8]>;
 }
@@ -79,7 +79,7 @@ pub trait ExtensionEncoder {
 pub trait ExtensionDecoder {
     type Error: Error + Send + Sync + 'static;
 
-    fn decode<A>(&mut self, payload: A, header: FrameHeader) -> Result<(), Self::Error>
+    fn decode<A>(&mut self, payload: A, header: &mut FrameHeader) -> Result<(), Self::Error>
     where
         A: AsMut<[u8]>;
 }

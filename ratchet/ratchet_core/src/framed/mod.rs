@@ -335,20 +335,26 @@ impl Debug for FramedWrite {
 }
 
 impl FramedWrite {
-    pub async fn write<I, A>(
+    pub async fn write<I, A, F>(
         &mut self,
         io: &mut I,
         is_server: bool,
         opcode: OpCode,
-        header_flags: HeaderFlags,
+        mut header_flags: HeaderFlags,
         mut payload_ref: A,
-    ) -> Result<(), std::io::Error>
+        extension: F,
+    ) -> Result<(), Error>
     where
         I: AsyncWrite + Unpin,
         A: AsMut<[u8]>,
+        F: FnMut(&mut [u8], &mut ExtFrameHeader) -> Result<(), Error>,
     {
         let FramedWrite { write_buffer, rand } = self;
         let payload = payload_ref.as_mut();
+
+        if let OpCode::DataCode(data_code) = opcode {
+            extension_encode(payload, extension, &mut header_flags, data_code.into())?;
+        }
 
         let mask = if is_server {
             None
@@ -363,7 +369,7 @@ impl FramedWrite {
         io.write_all(write_buffer).await?;
         write_buffer.clear();
 
-        io.write_all(payload).await
+        io.write_all(payload).await.map_err(Into::into)
     }
 }
 
@@ -440,14 +446,16 @@ where
         self.flags.contains(CodecFlags::ROLE)
     }
 
-    pub async fn write<A>(
+    pub async fn write<A, F>(
         &mut self,
         opcode: OpCode,
         header_flags: HeaderFlags,
         payload_ref: A,
-    ) -> Result<(), std::io::Error>
+        extension: F,
+    ) -> Result<(), Error>
     where
         A: AsMut<[u8]>,
+        F: FnMut(&mut [u8], &mut ExtFrameHeader) -> Result<(), Error>,
     {
         let FramedIo {
             io, writer, flags, ..
@@ -459,6 +467,7 @@ where
                 opcode,
                 header_flags,
                 payload_ref,
+                extension,
             )
             .await
     }
@@ -488,12 +497,17 @@ where
         write_close(io, writer, reason, flags.contains(CodecFlags::ROLE)).await
     }
 
-    pub async fn write_fragmented(
+    pub async fn write_fragmented<A, F>(
         &mut self,
-        buf: &mut BytesMut,
+        buf: A,
         message_type: MessageType,
         fragment_size: usize,
-    ) -> Result<(), Error> {
+        extension: F,
+    ) -> Result<(), Error>
+    where
+        A: AsMut<[u8]>,
+        F: FnMut(&mut [u8], &mut ExtFrameHeader) -> Result<(), Error>,
+    {
         let FramedIo {
             io, writer, flags, ..
         } = self;
@@ -504,6 +518,7 @@ where
             message_type,
             fragment_size,
             flags.contains(CodecFlags::ROLE),
+            extension,
         )
         .await
     }
@@ -554,22 +569,27 @@ where
             OpCode::ControlCode(ControlCode::Close),
             HeaderFlags::FIN,
             payload,
+            |_, _| Ok(()),
         )
         .await
         .map_err(|e| Error::with_cause(ErrorKind::Close, e))
 }
 
-pub async fn write_fragmented<I>(
+pub async fn write_fragmented<A, I, F>(
     io: &mut I,
     framed: &mut FramedWrite,
-    buf: &mut BytesMut,
+    mut buf_ref: A,
     message_type: MessageType,
     fragment_size: usize,
     is_server: bool,
+    mut extension: F,
 ) -> Result<(), Error>
 where
+    A: AsMut<[u8]>,
     I: AsyncWrite + Unpin,
+    F: FnMut(&mut [u8], &mut ExtFrameHeader) -> Result<(), Error>,
 {
+    let buf = buf_ref.as_mut();
     let mut chunks = buf.chunks_mut(fragment_size).peekable();
     match chunks.next() {
         Some(payload) => {
@@ -591,6 +611,7 @@ where
                     OpCode::DataCode(payload_type),
                     flags,
                     payload,
+                    &mut extension,
                 )
                 .await?;
         }
@@ -611,6 +632,7 @@ where
                 OpCode::DataCode(DataCode::Continuation),
                 flags,
                 payload,
+                &mut extension,
             )
             .await?;
     }
@@ -629,7 +651,7 @@ where
     E: ExtensionDecoder,
     A: AsMut<[u8]>,
 {
-    let frame_header = ExtFrameHeader {
+    let mut frame_header = ExtFrameHeader {
         fin: header.is_fin(),
         rsv1: header.is_rsv1(),
         rsv2: header.is_rsv2(),
@@ -637,6 +659,33 @@ where
         opcode,
     };
     extension
-        .decode(payload, frame_header)
+        .decode(payload, &mut frame_header)
         .map_err(|e| Error::with_cause(ErrorKind::Extension, e))
+}
+
+#[inline]
+fn extension_encode<C>(
+    payload: &mut [u8],
+    mut extension: C,
+    header: &mut HeaderFlags,
+    opcode: ExtOpCode,
+) -> Result<(), Error>
+where
+    C: FnMut(&mut [u8], &mut ExtFrameHeader) -> Result<(), Error>,
+{
+    let mut frame_header = ExtFrameHeader {
+        fin: header.is_fin(),
+        rsv1: header.is_rsv1(),
+        rsv2: header.is_rsv2(),
+        rsv3: header.is_rsv3(),
+        opcode,
+    };
+
+    extension(payload, &mut frame_header)?;
+
+    header.set(HeaderFlags::RSV_1, frame_header.rsv1);
+    header.set(HeaderFlags::RSV_2, frame_header.rsv2);
+    header.set(HeaderFlags::RSV_3, frame_header.rsv3);
+
+    Ok(())
 }

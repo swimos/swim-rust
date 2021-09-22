@@ -22,7 +22,7 @@ use crate::framed::{
 use crate::protocol::{
     CloseCode, CloseReason, ControlCode, DataCode, HeaderFlags, MessageType, OpCode,
 };
-use crate::ws::{CONTROL_DATA_MISMATCH, CONTROL_MAX_SIZE};
+use crate::ws::{extension_encode, CONTROL_DATA_MISMATCH, CONTROL_MAX_SIZE};
 use crate::{
     framed, CloseError, Error, ErrorKind, Message, PayloadType, ProtocolError, Role, WebSocket,
     WebSocketStream,
@@ -95,14 +95,16 @@ impl<S> WriteHalf<S>
 where
     S: WebSocketStream,
 {
-    async fn write<A>(
+    async fn write<A, E>(
         &mut self,
         mut buf_ref: A,
         message_type: PayloadType,
         is_server: bool,
+        extension: &mut E,
     ) -> Result<(), Error>
     where
         A: AsMut<[u8]>,
+        E: ExtensionEncoder,
     {
         let WriteHalf {
             split_writer,
@@ -111,9 +113,29 @@ where
         } = self;
         let buf = buf_ref.as_mut();
 
-        let op_code = match message_type {
-            PayloadType::Text => OpCode::DataCode(DataCode::Text),
-            PayloadType::Binary => OpCode::DataCode(DataCode::Binary),
+        match message_type {
+            PayloadType::Text => writer
+                .write(
+                    split_writer,
+                    is_server,
+                    OpCode::DataCode(DataCode::Text),
+                    HeaderFlags::FIN,
+                    buf,
+                    |payload, header| extension_encode(extension, payload, header),
+                )
+                .await
+                .map_err(Into::into),
+            PayloadType::Binary => writer
+                .write(
+                    split_writer,
+                    is_server,
+                    OpCode::DataCode(DataCode::Binary),
+                    HeaderFlags::FIN,
+                    buf,
+                    |payload, header| extension_encode(extension, payload, header),
+                )
+                .await
+                .map_err(Into::into),
             PayloadType::Ping => {
                 if buf.len() > CONTROL_MAX_SIZE {
                     return Err(Error::with_cause(
@@ -123,15 +145,21 @@ where
                 } else {
                     control_buffer.clear();
                     control_buffer.clone_from_slice(&buf[..CONTROL_MAX_SIZE]);
-                    OpCode::ControlCode(ControlCode::Ping)
+
+                    writer
+                        .write(
+                            split_writer,
+                            is_server,
+                            OpCode::ControlCode(ControlCode::Ping),
+                            HeaderFlags::FIN,
+                            buf,
+                            |payload, header| extension_encode(extension, payload, header),
+                        )
+                        .await
+                        .map_err(Into::into)
                 }
             }
-        };
-
-        writer
-            .write(split_writer, is_server, op_code, HeaderFlags::FIN, buf)
-            .await
-            .map_err(Into::into)
+        }
     }
 }
 
@@ -202,7 +230,15 @@ where
         }
 
         let writer = &mut *self.split_writer.lock().await;
-        match writer.write(buf, message_type, self.role.is_server()).await {
+        match writer
+            .write(
+                buf,
+                message_type,
+                self.role.is_server(),
+                &mut self.ext_encoder,
+            )
+            .await
+        {
             Ok(()) => Ok(()),
             Err(e) => {
                 self.closed.store(true, Ordering::Relaxed);
@@ -225,6 +261,7 @@ where
             writer,
             ..
         } = &mut *self.split_writer.lock().await;
+        let ext_encoder = &mut self.ext_encoder;
         let write_result = write_fragmented(
             split_writer,
             writer,
@@ -232,6 +269,7 @@ where
             message_type,
             fragment_size,
             self.role.is_server(),
+            |payload, header| extension_encode(ext_encoder, payload, header),
         )
         .await;
 
@@ -316,6 +354,7 @@ where
                                 OpCode::ControlCode(ControlCode::Pong),
                                 HeaderFlags::FIN,
                                 payload,
+                                |_, _| Ok(()),
                             )
                             .await?;
                         return Ok(Message::Ping);
@@ -376,6 +415,7 @@ where
                                         OpCode::ControlCode(ControlCode::Close),
                                         HeaderFlags::FIN,
                                         &mut [],
+                                        |_, _| Ok(()),
                                     )
                                     .await?;
                                 Ok(Message::Close(None))

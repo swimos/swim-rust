@@ -22,7 +22,10 @@ use crate::protocol::{
 use crate::split::{split, Receiver, Sender};
 use crate::{Request, WebSocketConfig, WebSocketStream};
 use bytes::BytesMut;
-use ratchet_ext::{Extension, ExtensionProvider, SplittableExtension};
+use ratchet_ext::{
+    Extension, ExtensionEncoder, ExtensionProvider, FrameHeader as ExtFrameHeader,
+    SplittableExtension,
+};
 
 pub const CONTROL_MAX_SIZE: usize = 125;
 pub const CONTROL_DATA_MISMATCH: &str = "Unexpected control frame data";
@@ -101,6 +104,7 @@ where
                                 OpCode::ControlCode(ControlCode::Pong),
                                 HeaderFlags::FIN,
                                 payload,
+                                |_, _| Ok(()),
                             )
                             .await?;
                         return Ok(Message::Ping);
@@ -141,6 +145,7 @@ where
                                         OpCode::ControlCode(ControlCode::Close),
                                         HeaderFlags::FIN,
                                         &mut [],
+                                        |_, _| Ok(()),
                                     )
                                     .await?;
                                 Ok(Message::Close(None))
@@ -189,7 +194,14 @@ where
             }
         };
 
-        match self.framed.write(op_code, HeaderFlags::FIN, buf).await {
+        let encoder = self.extension.encoder();
+        match self
+            .framed
+            .write(op_code, HeaderFlags::FIN, buf, |payload, header| {
+                extension_encode(encoder, payload, header)
+            })
+            .await
+        {
             Ok(()) => Ok(()),
             Err(e) => {
                 self.closed = true;
@@ -213,9 +225,11 @@ where
         if self.closed {
             return Err(Error::with_cause(ErrorKind::Close, CloseError::Closed));
         }
-
+        let encoder = self.extension.encoder();
         self.framed
-            .write_fragmented(buf, message_type, fragment_size)
+            .write_fragmented(buf, message_type, fragment_size, |payload, header| {
+                extension_encode(encoder, payload, header)
+            })
             .await
     }
 
@@ -277,4 +291,18 @@ where
         socket: WebSocket::from_upgraded(config, stream, extension, read_buffer, Role::Client),
         subprotocol,
     })
+}
+
+pub fn extension_encode<E, A>(
+    extension: &mut E,
+    buf: A,
+    header: &mut ExtFrameHeader,
+) -> Result<(), Error>
+where
+    A: AsMut<[u8]>,
+    E: ExtensionEncoder,
+{
+    extension
+        .encode(buf, header)
+        .map_err(|e| Error::with_cause(ErrorKind::Extension, e))
 }
