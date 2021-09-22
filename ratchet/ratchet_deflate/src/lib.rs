@@ -15,7 +15,7 @@
 use flate2::{Compress, Decompress};
 use ratchet_ext::{
     Extension, ExtensionDecoder, ExtensionEncoder, ExtensionProvider, Header, HeaderMap,
-    HeaderValue, SplittableExtension,
+    HeaderValue, ReunitableExtension, SplittableExtension,
 };
 use thiserror::Error;
 
@@ -69,7 +69,9 @@ impl SplittableExtension for Deflate {
         let Deflate { encoder, decoder } = self;
         (encoder, decoder)
     }
+}
 
+impl ReunitableExtension for Deflate {
     fn reunite(encoder: Self::Encoder, decoder: Self::Decoder) -> Self {
         Deflate { encoder, decoder }
     }

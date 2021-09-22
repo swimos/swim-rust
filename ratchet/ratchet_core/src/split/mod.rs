@@ -30,7 +30,7 @@ use crate::{
 use bilock::{bilock, BiLock};
 use bitflags::_core::sync::atomic::Ordering;
 use bytes::BytesMut;
-use ratchet_ext::{ExtensionDecoder, ExtensionEncoder, SplittableExtension};
+use ratchet_ext::{ExtensionDecoder, ExtensionEncoder, ReunitableExtension, SplittableExtension};
 use std::fmt::Debug;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;

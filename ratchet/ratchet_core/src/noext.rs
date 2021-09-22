@@ -16,16 +16,25 @@ use crate::Error;
 use http::{HeaderMap, HeaderValue};
 use httparse::Header;
 use ratchet_ext::{
-    Extension, ExtensionDecoder, ExtensionEncoder, ExtensionProvider, SplittableExtension, SplittableExtension
+    Extension, ExtensionDecoder, ExtensionEncoder, ExtensionProvider, ReunitableExtension,
+    SplittableExtension,
 };
 use std::convert::Infallible;
 
 #[derive(Debug, Default, Clone)]
 pub struct NoExt;
 impl Extension for NoExt {
-    fn encode(&mut self) {}
+    fn encode<A>(&mut self, _payload: A)
+    where
+        A: AsMut<[u8]>,
+    {
+    }
 
-    fn decode(&mut self) {}
+    fn decode<A>(&mut self, _payload: A)
+    where
+        A: AsMut<[u8]>,
+    {
+    }
 }
 
 pub struct NoExtProvider;
@@ -60,6 +69,7 @@ impl SplittableExtension for NoExt {
     fn split(self) -> (Self::Encoder, Self::Decoder) {
         (NoExtEncoder, NoExtDecoder)
     }
+}
 
 impl ReunitableExtension for NoExt {
     fn reunite(_encoder: Self::Encoder, _decoder: Self::Decoder) -> Self {
@@ -71,11 +81,19 @@ impl ReunitableExtension for NoExt {
 pub struct NoExtEncoder;
 impl ExtensionEncoder for NoExtEncoder {
     type United = NoExt;
-    fn encode(&mut self) {}
+    fn encode<A>(&mut self, _payload: A)
+    where
+        A: AsMut<[u8]>,
+    {
+    }
 }
 
 #[derive(Debug)]
 pub struct NoExtDecoder;
 impl ExtensionDecoder for NoExtDecoder {
-    fn decode(&mut self) {}
+    fn decode<A>(&mut self, _payload: A)
+    where
+        A: AsMut<[u8]>,
+    {
+    }
 }

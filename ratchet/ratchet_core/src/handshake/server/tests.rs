@@ -226,9 +226,17 @@ impl ExtensionProvider for BadExtProvider {
 #[derive(Debug)]
 struct Ext;
 impl Extension for Ext {
-    fn encode(&mut self) {}
+    fn encode<A>(&mut self, _payload: A)
+    where
+        A: AsMut<[u8]>,
+    {
+    }
 
-    fn decode(&mut self) {}
+    fn decode<A>(&mut self, _payload: A)
+    where
+        A: AsMut<[u8]>,
+    {
+    }
 }
 
 fn valid_request() -> Request<()> {

@@ -486,11 +486,17 @@ where
 #[derive(Clone, Debug, PartialEq)]
 struct MockExtension(bool);
 impl Extension for MockExtension {
-    fn encode(&mut self) {
+    fn encode<A>(&mut self, _payload: A)
+    where
+        A: AsMut<[u8]>,
+    {
         panic!("Unexpected encode invocation")
     }
 
-    fn decode(&mut self) {
+    fn decode<A>(&mut self, _payload: A)
+    where
+        A: AsMut<[u8]>,
+    {
         panic!("Unexpected decode invocation")
     }
 }

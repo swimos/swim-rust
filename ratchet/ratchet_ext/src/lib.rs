@@ -32,9 +32,13 @@ pub trait ExtensionProvider {
 }
 
 pub trait Extension: Debug {
-    fn encode(&mut self);
+    fn encode<A>(&mut self, payload: A)
+    where
+        A: AsMut<[u8]>;
 
-    fn decode(&mut self);
+    fn decode<A>(&mut self, payload: A)
+    where
+        A: AsMut<[u8]>;
 }
 
 pub trait SplittableExtension: Extension {
@@ -50,11 +54,16 @@ pub trait ReunitableExtension: SplittableExtension {
 
 pub trait ExtensionEncoder {
     type United: ReunitableExtension;
-    fn encode(&mut self);
+
+    fn encode<A>(&mut self, payload: A)
+    where
+        A: AsMut<[u8]>;
 }
 
 pub trait ExtensionDecoder {
-    fn decode(&mut self);
+    fn decode<A>(&mut self, payload: A)
+    where
+        A: AsMut<[u8]>;
 }
 
 impl<'r, E> ExtensionProvider for &'r mut E
