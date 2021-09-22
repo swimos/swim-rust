@@ -22,7 +22,7 @@ use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
-use swim_common::form::{Form, ValidatedForm};
+use swim_common::form::{Form, ValueSchema};
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use utilities::sync::{promise, topic};
@@ -30,7 +30,7 @@ use utilities::sync::{promise, topic};
 #[cfg(test)]
 mod tests;
 
-/// A downlink to a remote lane producing events that are compatible with the [`ValidatedForm`]
+/// A downlink to a remote lane producing events that are compatible with the [`ValueSchema`]
 /// implementation for `T`.
 pub struct TypedEventDownlink<T> {
     inner: Arc<UntypedEventDownlink>,
@@ -171,10 +171,10 @@ impl Display for EventViewError {
 
 impl Error for EventViewError {}
 
-impl<T: ValidatedForm> EventDownlinkSubscriber<T> {
+impl<T: ValueSchema> EventDownlinkSubscriber<T> {
     /// Create a read-only view for a value downlink that converts all received values to a new type.
     /// The type of the view must have an equal or greater schema than the original downlink.
-    pub fn covariant_cast<U: ValidatedForm>(
+    pub fn covariant_cast<U: ValueSchema>(
         self,
     ) -> Result<EventDownlinkSubscriber<U>, EventViewError> {
         let schema_cmp = U::schema().partial_cmp(&T::schema());

@@ -25,11 +25,11 @@ pub mod store;
 
 #[allow(unused_imports)]
 pub use agent_derive::*;
+pub use stringify_attr::{stringify_attr, stringify_attr_raw};
 pub use utilities::future::retryable::strategy::RetryStrategy;
 pub use utilities::future::SwimStreamExt;
 pub use utilities::route_pattern::RoutePattern;
 pub use utilities::uri;
-pub use utilities::{stringify_attr, stringify_attr_raw};
 
 #[doc(hidden)]
 pub use agent::model::value::ValueLaneStoreIo;

@@ -21,7 +21,7 @@ mod util;
 
 use crate::models::Visitor;
 use crate::parse::{stringify_container_attrs, stringify_container_attrs_raw};
-use macro_helpers::Context;
+use macro_utilities::Context;
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;

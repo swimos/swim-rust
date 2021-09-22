@@ -16,7 +16,7 @@ use proc_macro2::TokenStream as TokenStream2;
 
 use crate::parser::FieldManifest;
 use crate::validated_form::vf_parser::{StandardSchema, ValidatedField};
-use macro_helpers::Label;
+use macro_utilities::Label;
 
 /// Builds a `StandardSchema::HeadAttribute` schema for the compound type.
 ///

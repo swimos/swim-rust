@@ -29,7 +29,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use swim_common::form::structural::read::ReadError;
-use swim_common::form::{Form, ValidatedForm};
+use swim_common::form::{Form, ValueSchema};
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::request::Request;
@@ -39,7 +39,7 @@ use utilities::sync::{promise, topic};
 type MapDlVariance<K, V> = fn(K, V) -> (K, V);
 
 /// A downlink to a remote map lane containing values that are compatible with the
-/// [`ValidatedForm`] implementations for `K` and `V`.
+/// [`ValueSchema`] implementations for `K` and `V`.
 pub struct TypedMapDownlink<K, V> {
     inner: Arc<UntypedMapDownlink>,
     _type: PhantomData<MapDlVariance<K, V>>,
@@ -105,7 +105,7 @@ impl<K: Form, V: Form> TypedMapDownlink<K, V> {
     }
 }
 
-impl<K: Form + ValidatedForm + 'static, V: Form + ValidatedForm + 'static> TypedMapDownlink<K, V> {
+impl<K: Form + ValueSchema + 'static, V: Form + ValueSchema + 'static> TypedMapDownlink<K, V> {
     /// Get the value associated with a specific key.
     pub async fn get(&self, key: K) -> Result<Option<V>, DownlinkError> {
         actions::<K, V>(self.inner.sender()).get(key).await
@@ -298,14 +298,14 @@ fn actions<K, V>(sender: &mpsc::Sender<MapAction>) -> MapActions<K, V> {
     MapActions::new(sender)
 }
 
-impl<K: Form + ValidatedForm, V: Form + ValidatedForm> MapDownlinkSender<K, V> {
-    /// Create a sender for more refined key and value types (the [`ValidatedForm`] implementations
+impl<K: Form + ValueSchema, V: Form + ValueSchema> MapDownlinkSender<K, V> {
+    /// Create a sender for more refined key and value types (the [`ValueSchema`] implementations
     /// for `K2` and `V2` will always produce [`Value`]s that are acceptable to the
-    /// [`ValidatedForm`] implementations for `K` and `V`) to the downlink.
+    /// [`ValueSchema`] implementations for `K` and `V`) to the downlink.
     pub fn contravariant_view<K2, V2>(&self) -> Result<MapDownlinkContraView<K2, V2>, MapViewError>
     where
-        K2: Form + ValidatedForm,
-        V2: Form + ValidatedForm,
+        K2: Form + ValueSchema,
+        V2: Form + ValueSchema,
     {
         let key_schema_good = K2::schema()
             .partial_cmp(&K::schema())
@@ -337,13 +337,13 @@ impl<K: Form + ValidatedForm, V: Form + ValidatedForm> MapDownlinkSender<K, V> {
         }
     }
 
-    /// Create a sender for more general key and value types (the [`ValidatedForm`] implementations
+    /// Create a sender for more general key and value types (the [`ValueSchema`] implementations
     /// for `K` and `V` will always produce [`Value`]s that are acceptable to the
-    /// [`ValidatedForm`] implementations for `K2` and `Vv`) to the downlink.
+    /// [`ValueSchema`] implementations for `K2` and `Vv`) to the downlink.
     pub fn covariant_view<K2, V2>(&self) -> Result<MapDownlinkView<K2, V2>, MapViewError>
     where
-        K2: Form + ValidatedForm,
-        V2: Form + ValidatedForm,
+        K2: Form + ValueSchema,
+        V2: Form + ValueSchema,
     {
         let key_schema_good = K2::schema()
             .partial_cmp(&K::schema())
@@ -378,8 +378,8 @@ impl<K: Form + ValidatedForm, V: Form + ValidatedForm> MapDownlinkSender<K, V> {
 
 impl<K, V> MapDownlinkSender<K, V>
 where
-    K: Form + ValidatedForm + 'static,
-    V: Form + ValidatedForm + 'static,
+    K: Form + ValueSchema + 'static,
+    V: Form + ValueSchema + 'static,
 {
     /// Get the value associated with a specific key.
     pub async fn get(&self, key: K) -> Result<Option<V>, DownlinkError> {
@@ -470,8 +470,8 @@ where
 
 impl<K, V> MapDownlinkView<K, V>
 where
-    K: Form + ValidatedForm + 'static,
-    V: Form + ValidatedForm + 'static,
+    K: Form + ValueSchema + 'static,
+    V: Form + ValueSchema + 'static,
 {
     /// Get the value associated with a specific key.
     pub async fn get(&self, key: K) -> Result<Option<V>, DownlinkError> {
@@ -526,8 +526,8 @@ where
 
 impl<K, V> MapDownlinkContraView<K, V>
 where
-    K: Form + ValidatedForm + 'static,
-    V: Form + ValidatedForm + 'static,
+    K: Form + ValueSchema + 'static,
+    V: Form + ValueSchema + 'static,
 {
     /// Update an entry into the map returning any existing value associated with the key.
     pub async fn update(&self, key: K, value: V) -> Result<(), DownlinkError> {
@@ -720,8 +720,8 @@ impl<'a, K, V> MapActions<'a, K, V> {
 
 impl<'a, K, V> MapActions<'a, K, V>
 where
-    K: Form + ValidatedForm + 'static,
-    V: Form + ValidatedForm + 'static,
+    K: Form + ValueSchema + 'static,
+    V: Form + ValueSchema + 'static,
 {
     /// Get the value associated with a specific key.
     pub async fn get(&self, key: K) -> Result<Option<V>, DownlinkError> {
@@ -938,13 +938,13 @@ impl Display for MapViewError {
 
 impl Error for MapViewError {}
 
-impl<K: Form + ValidatedForm, V: Form + ValidatedForm> MapDownlinkSubscriber<K, V> {
+impl<K: Form + ValueSchema, V: Form + ValueSchema> MapDownlinkSubscriber<K, V> {
     /// Create a read-only view for a value downlink that converts all received values to a new type.
     /// The type of the view must have an equal or greater schema than the original downlink.
     pub fn covariant_cast<K2, V2>(self) -> Result<MapDownlinkSubscriber<K2, V2>, MapViewError>
     where
-        K2: Form + ValidatedForm,
-        V2: Form + ValidatedForm,
+        K2: Form + ValueSchema,
+        V2: Form + ValueSchema,
     {
         let key_schema_good = K2::schema()
             .partial_cmp(&K::schema())

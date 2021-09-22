@@ -19,7 +19,7 @@ use crate::form::structural::read::recognizer::{
 };
 use crate::form::structural::read::ReadError;
 use crate::form::structural::write::{PrimitiveWriter, StructuralWritable, StructuralWriter};
-use crate::form::ValidatedForm;
+use crate::form::ValueSchema;
 use crate::model::schema::StandardSchema;
 use crate::model::ValueKind;
 use chrono::{DateTime, LocalResult, TimeZone, Utc};
@@ -153,7 +153,7 @@ impl Recognizer for TimestampRecognizer {
     fn reset(&mut self) {}
 }
 
-impl ValidatedForm for Timestamp {
+impl ValueSchema for Timestamp {
     fn schema() -> StandardSchema {
         StandardSchema::Or(vec![
             StandardSchema::OfKind(ValueKind::Int64),

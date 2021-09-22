@@ -17,7 +17,7 @@ use crate::utils::{parse_callback, CallbackKind};
 use darling::ast::Data;
 use darling::util::SpannedValue;
 use darling::{ast, FromDeriveInput, FromField, FromMeta};
-use macro_helpers::{as_const, string_to_ident, ungroup};
+use macro_utilities::{as_const, string_to_ident, ungroup};
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use proc_macro2::{Delimiter, Group, Ident, Literal, Span};

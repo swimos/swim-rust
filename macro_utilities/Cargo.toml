@@ -1,5 +1,5 @@
 [package]
-name = "macro_helpers"
+name = "macro_utilities"
 version = "0.1.0"
 authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"

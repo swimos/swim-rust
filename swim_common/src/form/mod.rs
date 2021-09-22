@@ -16,7 +16,7 @@
 
 #[doc(hidden)]
 #[allow(unused_imports)]
-pub use form_derive::{Form, ValidatedForm};
+pub use form_derive::{Form, ValueSchema};
 
 use crate::form::structural::read::recognizer::{MappedRecognizer, RecognizerReadable};
 use crate::form::structural::read::{ReadError, StructuralReadable};
@@ -324,7 +324,7 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 ///
 /// See `StandardSchema` for details of schema variants.
 ///
-/// # How can I implement `ValidatedForm`?
+/// # How can I implement `ValueSchema`?
 /// # Structures
 /// Given the following `struct` and its expected value:
 ///
@@ -352,7 +352,7 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 /// is:
 /// ```
 /// use swim_common::model::{Attr, Item, Value, ValueKind};
-/// use swim_common::form::{Form, ValidatedForm};
+/// use swim_common::form::{Form, ValueSchema};
 /// use swim_common::model::schema::{StandardSchema, ItemSchema, Schema};
 /// use swim_common::model::schema::attr::AttrSchema;
 /// use swim_common::model::schema::slot::SlotSchema;
@@ -362,7 +362,7 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 ///     name: String,
 /// }
 ///
-/// impl ValidatedForm for Cat {
+/// impl ValueSchema for Cat {
 ///     fn schema() -> StandardSchema {
 ///        StandardSchema::HeadAttribute {
 ///            schema: Box::new(AttrSchema::named(
@@ -393,11 +393,11 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 /// ```
 ///
 /// # Enumerations
-/// Implementing `ValidatedForm` for enumerations works the same way as structures except that the
+/// Implementing `ValueSchema` for enumerations works the same way as structures except that the
 /// variants are logically OR'd together as a schema.
 /// ```
 /// use swim_common::model::{Attr, Item, Value, ValueKind};
-/// use swim_common::form::{Form, ValidatedForm};
+/// use swim_common::form::{Form, ValueSchema};
 /// use swim_common::model::schema::{StandardSchema, ItemSchema, Schema};
 /// use swim_common::model::schema::attr::AttrSchema;
 /// use swim_common::model::schema::slot::SlotSchema;
@@ -409,7 +409,7 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 ///     Pasta,
 /// }
 ///
-/// impl ValidatedForm for Food {
+/// impl ValueSchema for Food {
 ///     fn schema() -> StandardSchema {
 ///         StandardSchema::Or(vec![
 ///             StandardSchema::HeadAttribute {
@@ -453,9 +453,9 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 /// assert!(Food::schema().matches(&food));
 /// ```
 ///
-/// # Deriving `ValidatedForm`
-/// The `ValidatedForm` trait can also be used with `#[derive]` if all of the fields implement
-/// `ValidatedForm` and the implementor also implements `Form` (as required by the `ValidatedForm`
+/// # Deriving `ValueSchema`
+/// The `ValueSchema` trait can also be used with `#[derive]` if all of the fields implement
+/// `ValueSchema` and the implementor also implements `Form` (as required by the `ValueSchema`
 /// trait).
 ///
 /// The derive macro supports all of the `StandardSchema` variants in a Snake Case format except
@@ -465,18 +465,18 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 /// Derived schemas mandate that all fields are present and exhaustive validation is performed.
 ///
 /// ## Usage
-/// Any `struct` or `enum` annotated with `#[derive(ValidatedForm)]` will have a schema derived for
+/// Any `struct` or `enum` annotated with `#[derive(ValueSchema)]` will have a schema derived for
 /// it based on its fields. Fields not attributed with `#[form(schema(..)]` will use the type's
-/// implementation of `ValidatedForm`.
+/// implementation of `ValueSchema`.
 ///
 /// ```
 /// use swim_common::model::{Attr, Item, Value, ValueKind};
-/// use swim_common::form::{Form, ValidatedForm};
+/// use swim_common::form::{Form, ValueSchema};
 /// use swim_common::model::schema::{StandardSchema, ItemSchema, Schema};
 /// use swim_common::model::schema::attr::AttrSchema;
 /// use swim_common::model::schema::slot::SlotSchema;
 ///
-/// #[derive(Form, ValidatedForm)]
+/// #[derive(Form, ValueSchema)]
 /// #[form(tag = "Structure")]
 /// struct S {
 ///     a: i32,
@@ -508,19 +508,19 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 /// ```
 ///
 /// ## Attributes
-/// The `ValidatedForm` macro supports attributes in the path of `#[form(schema(..))]`.
+/// The `ValueSchema` macro supports attributes in the path of `#[form(schema(..))]`.
 ///
 /// The derive macro supports all the attributes that the `Form` derive macro supports. With the
 /// exception of any field marked as `#[form(skip)]` may not also contain a schema.
 ///
-/// Similar to the `Form` derive, `ValidatedForm` derivation supports attributes at `struct`,
+/// Similar to the `Form` derive, `ValueSchema` derivation supports attributes at `struct`,
 /// variant, and field level placement. Detail on attributes that support this is listed below.
 ///
 /// ### anything
 /// ```
-/// use swim_common::form::{Form, ValidatedForm};
+/// use swim_common::form::{Form, ValueSchema};
 ///
-/// #[derive(Form, ValidatedForm)]
+/// #[derive(Form, ValueSchema)]
 /// #[form(schema(anything))]
 /// struct S {
 ///     a: i32,
@@ -533,9 +533,9 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 ///
 /// ### nothing
 /// ```
-/// use swim_common::form::{Form, ValidatedForm};
+/// use swim_common::form::{Form, ValueSchema};
 ///
-/// #[derive(Form, ValidatedForm)]
+/// #[derive(Form, ValueSchema)]
 /// #[form(schema(nothing))]
 /// struct S {
 ///     a: i32,
@@ -548,10 +548,10 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 ///
 /// ### num_attrs
 /// ```
-/// use swim_common::form::{Form, ValidatedForm};
+/// use swim_common::form::{Form, ValueSchema};
 /// use swim_common::model::Value;
 ///
-/// #[derive(Form, ValidatedForm)]
+/// #[derive(Form, ValueSchema)]
 /// struct S {
 ///     #[form(schema(num_attrs = 5))]
 ///     value: Value
@@ -561,10 +561,10 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 ///
 /// ### num_items
 /// ```
-/// use swim_common::form::{Form, ValidatedForm};
+/// use swim_common::form::{Form, ValueSchema};
 /// use swim_common::model::Value;
 ///
-/// #[derive(Form, ValidatedForm)]
+/// #[derive(Form, ValueSchema)]
 /// struct S {
 ///     #[form(schema(num_items = 5))]
 ///     value: Value
@@ -574,10 +574,10 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 ///
 /// ### of_kind
 /// ```
-/// use swim_common::form::{Form, ValidatedForm};
+/// use swim_common::form::{Form, ValueSchema};
 /// use swim_common::model::{Value, ValueKind};
 ///
-/// #[derive(Form, ValidatedForm)]
+/// #[derive(Form, ValueSchema)]
 /// struct S {
 ///     #[form(schema(of_kind(ValueKind::Int32)))]
 ///     value: Value
@@ -587,14 +587,14 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 ///
 /// ### equal
 /// ```
-/// use swim_common::form::{Form, ValidatedForm};
+/// use swim_common::form::{Form, ValueSchema};
 /// use swim_common::model::Value;
 ///
 /// fn equals_i32_max() -> Value {
 ///     Value::Int32Value(i32::max_value())
 /// }
 ///
-/// #[derive(Form, ValidatedForm)]
+/// #[derive(Form, ValueSchema)]
 /// struct S {
 ///     #[form(schema(equal = "equals_i32_max"))]
 ///     value: i32
@@ -605,9 +605,9 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 ///
 /// ### text
 /// ```
-/// use swim_common::form::{Form, ValidatedForm};
+/// use swim_common::form::{Form, ValueSchema};
 ///
-/// #[derive(Form, ValidatedForm)]
+/// #[derive(Form, ValueSchema)]
 /// struct S {
 ///     #[form(schema(text = "Swim"))]
 ///     string: String
@@ -617,9 +617,9 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 ///
 /// ### non_nan
 /// ```
-/// use swim_common::form::{Form, ValidatedForm};
+/// use swim_common::form::{Form, ValueSchema};
 ///
-/// #[derive(Form, ValidatedForm)]
+/// #[derive(Form, ValueSchema)]
 /// struct S {
 ///     #[form(schema(non_nan))]
 ///     f: f64
@@ -629,9 +629,9 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 ///
 /// ### finite
 /// ```
-/// use swim_common::form::{Form, ValidatedForm};
+/// use swim_common::form::{Form, ValueSchema};
 ///
-/// #[derive(Form, ValidatedForm)]
+/// #[derive(Form, ValueSchema)]
 /// struct S {
 ///     #[form(schema(finite))]
 ///     f: f64
@@ -651,9 +651,9 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 /// for deriving ranges.
 ///
 /// ```
-/// use swim_common::form::{Form, ValidatedForm};
+/// use swim_common::form::{Form, ValueSchema};
 ///
-/// #[derive(Form, ValidatedForm)]
+/// #[derive(Form, ValueSchema)]
 /// struct S {
 ///     #[form(schema(int_range = "0..=10"))]
 ///     range: i32,
@@ -665,10 +665,10 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 /// writes the argument as a layout
 ///
 /// ```
-/// use swim_common::form::{Form, ValidatedForm};
+/// use swim_common::form::{Form, ValueSchema};
 /// use swim_common::model::ValueKind;
 ///
-/// #[derive(Form, ValidatedForm)]
+/// #[derive(Form, ValueSchema)]
 /// #[form(schema(all_items(of_kind(ValueKind::Int32))))]
 /// struct S {
 ///     a: i32,
@@ -678,10 +678,10 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 /// ```
 /// Is equivalent to:
 /// ```
-/// use swim_common::form::{Form, ValidatedForm};
+/// use swim_common::form::{Form, ValueSchema};
 /// use swim_common::model::ValueKind;
 ///
-/// #[derive(Form, ValidatedForm)]
+/// #[derive(Form, ValueSchema)]
 /// struct S {
 ///     #[form(schema(of_kind(ValueKind::Int32)))]
 ///     a: i32,
@@ -694,10 +694,10 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 ///
 /// ### and
 /// ```
-/// use swim_common::form::{Form, ValidatedForm};
+/// use swim_common::form::{Form, ValueSchema};
 /// use swim_common::model::ValueKind;
 ///
-/// #[derive(Form, ValidatedForm)]
+/// #[derive(Form, ValueSchema)]
 /// struct S {
 ///     #[form(schema(and(of_kind(ValueKind::Text), text = "swim")))]
 ///     company: String
@@ -707,10 +707,10 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 ///
 /// ### or
 /// ```
-/// use swim_common::form::{Form, ValidatedForm};
+/// use swim_common::form::{Form, ValueSchema};
 /// use swim_common::model::{Value, ValueKind};
 ///
-/// #[derive(Form, ValidatedForm)]
+/// #[derive(Form, ValueSchema)]
 /// struct S {
 ///     #[form(schema(or(of_kind(ValueKind::Int32), of_kind(ValueKind::Int64))))]
 ///     value: Value
@@ -720,9 +720,9 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 ///
 /// ### not
 /// ```
-/// use swim_common::form::{Form, ValidatedForm};
+/// use swim_common::form::{Form, ValueSchema};
 ///
-/// #[derive(Form, ValidatedForm)]
+/// #[derive(Form, ValueSchema)]
 /// struct S {
 ///     #[form(schema(not(int_range = "0..=10")))]
 ///     range: i32,
@@ -730,13 +730,13 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 /// ```
 /// Negates the result of a schema.
 ///
-pub trait ValidatedForm {
+pub trait ValueSchema {
     /// A schema for the form. If the schema returns true for a `Value` the form should be able
     /// to create an instance of the type from the `Value` without generating an error.
     fn schema() -> StandardSchema;
 }
 
-impl ValidatedForm for Value {
+impl ValueSchema for Value {
     fn schema() -> StandardSchema {
         StandardSchema::Anything
     }

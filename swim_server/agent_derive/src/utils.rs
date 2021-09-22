@@ -14,7 +14,7 @@
 
 use crate::lanes::{action, command, demand, demand_map, map, value};
 use core::fmt;
-use macro_helpers::str_to_ident;
+use macro_utilities::str_to_ident;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::ToTokens;
 use quote::{quote, quote_spanned};
