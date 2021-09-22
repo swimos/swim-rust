@@ -21,10 +21,12 @@ use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::model::{action, command};
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
+use crate::agent::store::mock::MockNodeStore;
 use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::AgentContext;
 use crate::plane::provider::AgentProvider;
+use crate::plane::RouteAndParameters;
 use crate::routing::RoutingAddr;
 use crate::{
     action_lifecycle, agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent,
@@ -532,12 +534,12 @@ async fn agent_loop() {
     let provider = AgentProvider::new(config, agent_lifecycle);
 
     let (_, agent_proc) = provider.run(
-        uri,
-        HashMap::new(),
+        RouteAndParameters::new(uri, HashMap::new()),
         exec_config,
         clock.clone(),
         ReceiverStream::new(envelope_rx),
         SingleChannelRouter::new(RoutingAddr::local(1024)),
+        MockNodeStore::mock(),
     );
 
     let agent_task = swim_runtime::task::spawn(agent_proc);

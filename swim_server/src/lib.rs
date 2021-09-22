@@ -21,6 +21,7 @@ pub mod macros;
 pub mod meta;
 pub mod plane;
 pub mod routing;
+pub mod store;
 
 #[allow(unused_imports)]
 pub use agent_derive::*;
@@ -29,3 +30,6 @@ pub use utilities::future::retryable::strategy::RetryStrategy;
 pub use utilities::future::SwimStreamExt;
 pub use utilities::route_pattern::RoutePattern;
 pub use utilities::uri;
+
+#[doc(hidden)]
+pub use agent::model::value::ValueLaneStoreIo;

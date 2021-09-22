@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::store::NodeStore;
 use crate::agent::{AgentContext, Eff};
 use crate::meta::log::NodeLogger;
 use crate::meta::metric::NodeMetricAggregator;
@@ -41,12 +42,13 @@ mod tests;
 /// [`AgentContext`] implementation that dispatches effects to the scheduler through an MPSC
 /// channel.
 #[derive(Debug)]
-pub(super) struct ContextImpl<Agent, Clk, Router> {
+pub(super) struct ContextImpl<Agent, Clk, Router, Store> {
     agent_ref: Arc<Agent>,
     routing_context: RoutingContext<Router>,
     schedule_context: SchedulerContext<Clk>,
     meta_context: Arc<MetaContext>,
     pub(crate) uplinks_idle_since: Arc<AtomicInstant>,
+    store: Store,
 }
 
 const SCHEDULE: &str = "Schedule";
@@ -54,12 +56,13 @@ const SCHED_TRIGGERED: &str = "Schedule triggered";
 const SCHED_STOPPED: &str = "Scheduler unexpectedly stopped";
 const WAITING: &str = "Schedule waiting";
 
-impl<Agent, Clk, Router> ContextImpl<Agent, Clk, Router> {
+impl<Agent, Clk, Router, Store> ContextImpl<Agent, Clk, Router, Store> {
     pub(super) fn new(
         agent_ref: Arc<Agent>,
         routing_context: RoutingContext<Router>,
         schedule_context: SchedulerContext<Clk>,
         meta_context: MetaContext,
+        store: Store,
     ) -> Self {
         ContextImpl {
             agent_ref,
@@ -67,14 +70,16 @@ impl<Agent, Clk, Router> ContextImpl<Agent, Clk, Router> {
             schedule_context,
             meta_context: Arc::new(meta_context),
             uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now())),
+            store,
         }
     }
 }
 
-impl<Agent, Clk, Router> Clone for ContextImpl<Agent, Clk, Router>
+impl<Agent, Clk, Router, Store> Clone for ContextImpl<Agent, Clk, Router, Store>
 where
     Clk: Clone,
     Router: Clone,
+    Store: Clone,
 {
     fn clone(&self) -> Self {
         ContextImpl {
@@ -83,6 +88,7 @@ where
             schedule_context: self.schedule_context.clone(),
             meta_context: self.meta_context.clone(),
             uplinks_idle_since: self.uplinks_idle_since.clone(),
+            store: self.store.clone(),
         }
     }
 }
@@ -184,10 +190,11 @@ impl<Clk: Clone> Clone for SchedulerContext<Clk> {
     }
 }
 
-impl<Agent, Clk, Router> AgentContext<Agent> for ContextImpl<Agent, Clk, Router>
+impl<Agent, Clk, Router, Store> AgentContext<Agent> for ContextImpl<Agent, Clk, Router, Store>
 where
     Agent: Send + Sync + 'static,
     Clk: Clock,
+    Store: NodeStore,
 {
     fn schedule<Effect, Str, Sch>(&self, effects: Str, schedule: Sch) -> BoxFuture<()>
     where
@@ -226,6 +233,7 @@ where
 /// A context, scoped to an agent, to provide shared functionality to each of its lanes.
 pub trait AgentExecutionContext {
     type Router: ServerRouter + 'static;
+    type Store: NodeStore;
 
     /// Create a handle to the envelope router for the agent.
     fn router_handle(&self) -> Self::Router;
@@ -239,13 +247,19 @@ pub trait AgentExecutionContext {
 
     /// Return the time since the last outgoing message.
     fn uplinks_idle_since(&self) -> &Arc<AtomicInstant>;
+
+    /// Provides a handle to the store engine for this node.
+    fn store(&self) -> Self::Store;
 }
 
-impl<Agent, Clk, RouterInner> AgentExecutionContext for ContextImpl<Agent, Clk, RouterInner>
+impl<Agent, Clk, RouterInner, Store> AgentExecutionContext
+    for ContextImpl<Agent, Clk, RouterInner, Store>
 where
     RouterInner: ServerRouter + Clone + 'static,
+    Store: NodeStore,
 {
     type Router = RouterInner;
+    type Store = Store;
 
     fn router_handle(&self) -> Self::Router {
         self.routing_context.router.clone()
@@ -261,5 +275,9 @@ where
 
     fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
         &self.uplinks_idle_since
+    }
+
+    fn store(&self) -> Store {
+        self.store.clone()
     }
 }

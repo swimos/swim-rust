@@ -29,11 +29,17 @@ use summary::{clear_summary, remove_summary, update_summary};
 use swim_common::form::Form;
 use swim_common::model::Value;
 
+use crate::agent::lane::model::map::map_store::MapLaneStoreIo;
 use crate::agent::lane::model::map::summary::TransactionSummary;
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lane::{InvalidForm, LaneModel};
+use crate::agent::model::map::map_store::MapDataModel;
+use crate::agent::store::NodeStore;
+use crate::agent::StoreIo;
 use futures::stream::{iter, Iter};
 use futures::Stream;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -44,7 +50,15 @@ use swim_warp::model::map::MapUpdate;
 use tracing::{event, Level};
 use utilities::future::{FlatmapStream, SwimStreamExt, Transform};
 
+pub mod map_store;
 mod summary;
+
+pub type StreamedMapLane<K, V, S> = (
+    MapLane<K, V>,
+    MapSubscriber<K, V>,
+    S,
+    Option<Box<dyn StoreIo>>,
+);
 
 /// A lane consisting of a map from keys to values.
 #[derive(Debug)]
@@ -87,6 +101,39 @@ where
             },
             observer,
         )
+    }
+}
+
+impl<K, V> MapLane<K, V>
+where
+    K: Debug + Form + Send + Sync + Serialize + DeserializeOwned + 'static,
+    V: Debug + Send + Sync + Serialize + DeserializeOwned + 'static,
+{
+    pub fn store_observable<Store: NodeStore>(
+        model: &MapDataModel<Store, K, V>,
+        buffer_size: NonZeroUsize,
+    ) -> (Self, Observer<TransactionSummary<Value, V>>) {
+        let snapshot = model.snapshot().expect("Failed to load map lane state");
+        match snapshot {
+            Some(values) => {
+                let map_state: OrdMap<Value, TVar<V>> = values
+                    .into_iter()
+                    .map(|(k, v)| (k.into_value(), TVar::new(v)))
+                    .collect();
+
+                let (summary, observer) = TVar::new_with_observer(Default::default(), buffer_size);
+                (
+                    MapLane {
+                        map_state: TVar::new(map_state),
+                        summary,
+                        transaction_started: TLocal::new(false),
+                        _key_type: PhantomData,
+                    },
+                    observer,
+                )
+            }
+            None => Self::observable(buffer_size),
+        }
     }
 }
 
@@ -822,19 +869,36 @@ where
 /// # Arguments
 ///
 /// * `buffer_size` - The size of the buffer for the observer.
-pub fn streamed_map_lane<K, V>(
+/// * `transient` - Whether to persist the lane's state
+/// * `store` - A node store which for persisting data, if the lane is not transient.
+pub fn streamed_map_lane<K, V, Store>(
+    name: impl Into<String>,
     buffer_size: NonZeroUsize,
-) -> (
-    MapLane<K, V>,
-    MapSubscriber<K, V>,
-    impl Stream<Item = MapLaneEvent<K, V>>,
-)
+    transient: bool,
+    store: Store,
+) -> StreamedMapLane<K, V, impl Stream<Item = MapLaneEvent<K, V>>>
 where
-    K: Form + Send + Sync + 'static,
-    V: Send + Sync + 'static,
+    K: Form + Send + Sync + Serialize + DeserializeOwned + Debug + 'static,
+    V: Send + Sync + Debug + Serialize + DeserializeOwned + 'static,
+    Store: NodeStore,
 {
     let (lane, observer) = MapLane::observable(buffer_size);
     let subscriber = MapSubscriber::new(observer.subscriber());
-    let stream = summaries_to_events::<K, V>(observer);
-    (lane, subscriber, stream)
+    let stream = summaries_to_events::<K, V>(observer.clone());
+
+    let store_io: Option<Box<dyn StoreIo>> = if transient {
+        None
+    } else {
+        let lane_id = store
+            .lane_id_of(&name.into())
+            .expect("Failed to fetch lane id");
+        let model = MapDataModel::<Store, K, V>::new(store, lane_id);
+
+        Some(Box::new(MapLaneStoreIo::new(
+            summaries_to_events(observer),
+            model,
+        )))
+    };
+
+    (lane, subscriber, stream, store_io)
 }
