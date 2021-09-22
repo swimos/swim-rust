@@ -46,22 +46,22 @@ pub const OR_PATH: Symbol = Symbol("or");
 pub const NOT_PATH: Symbol = Symbol("not");
 
 #[derive(Debug)]
-pub struct ValidatedFormDescriptor {
+pub struct ValueSchemaDescriptor {
     pub label: Label,
     pub schema: StandardSchema,
     pub all_items: bool,
     pub form_descriptor: FormDescriptor,
 }
 
-impl ValidatedFormDescriptor {
-    /// Builds a [`ValidatedFormDescriptor`] for the provided [`DeriveInput`]. An errors encountered
+impl ValueSchemaDescriptor {
+    /// Builds a [`ValueSchemaDescriptor`] for the provided [`DeriveInput`]. An errors encountered
     /// while parsing the [`DeriveInput`] will be added to the [`Context`].
     pub fn from(
         context: &mut Context,
         attributes: Vec<NestedMeta>,
         kind: CompoundTypeKind,
         form_descriptor: FormDescriptor,
-    ) -> ValidatedFormDescriptor {
+    ) -> ValueSchemaDescriptor {
         let mut schema_opt = None;
         let mut all_items = false;
 
@@ -130,7 +130,7 @@ impl ValidatedFormDescriptor {
             _ => context.error_spanned_by(meta, "Unknown schema container attribute"),
         });
 
-        ValidatedFormDescriptor {
+        ValueSchemaDescriptor {
             label: form_descriptor.label.clone(),
             schema: schema_opt.unwrap_or(StandardSchema::None),
             all_items,
@@ -352,17 +352,17 @@ impl ToTokens for StandardSchema {
 }
 
 /// Converts between `TypeContents<'f, FormDescriptor, FormField<'f>>` and
-/// `TypeContents<'f, ValidatedFormDescriptor, ValidatedField<'f>>`. Parsing any attributes of the
+/// `TypeContents<'f, ValueSchemaDescriptor, ValidatedField<'f>>`. Parsing any attributes of the
 /// path `#[form(schema(..))]`.
 pub fn type_contents_to_validated<'f>(
     ctx: &mut Context,
     type_contents: TypeContents<'f, FormDescriptor, FormField<'f>>,
-) -> TypeContents<'f, ValidatedFormDescriptor, ValidatedField<'f>> {
+) -> TypeContents<'f, ValueSchemaDescriptor, ValidatedField<'f>> {
     match type_contents {
         TypeContents::Struct(repr) => TypeContents::Struct({
             let attrs = repr.input.attrs.get_attributes(ctx, FORM_PATH);
             let descriptor =
-                ValidatedFormDescriptor::from(ctx, attrs, repr.compound_type, repr.descriptor);
+                ValueSchemaDescriptor::from(ctx, attrs, repr.compound_type, repr.descriptor);
 
             StructRepr {
                 input: repr.input,
@@ -376,7 +376,7 @@ pub fn type_contents_to_validated<'f>(
                 .into_iter()
                 .map(|variant| {
                     let attrs = variant.syn_variant.attrs.get_attributes(ctx, FORM_PATH);
-                    let descriptor = ValidatedFormDescriptor::from(
+                    let descriptor = ValueSchemaDescriptor::from(
                         ctx,
                         attrs,
                         variant.compound_type,
@@ -409,7 +409,7 @@ fn map_fields_to_validated<'f, T>(
     loc: &T,
     context: &mut Context,
     fields: Vec<FormField<'f>>,
-    descriptor: &ValidatedFormDescriptor,
+    descriptor: &ValueSchemaDescriptor,
 ) -> Vec<ValidatedField<'f>>
 where
     T: ToTokens,
@@ -427,7 +427,7 @@ where
             let initial_schema = match &form_field.original.ty {
                 Type::Path(path) => {
                     let path = quote! {
-                        <#path as swim_common::form::ValidatedForm>
+                        <#path as swim_common::form::ValueSchema>
                     };
 
                     StandardSchema::Type(path)

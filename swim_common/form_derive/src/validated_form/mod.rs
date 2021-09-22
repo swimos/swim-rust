@@ -20,7 +20,7 @@ use crate::form::form_parser::build_type_contents;
 use crate::parser::FieldManifest;
 use crate::validated_form::attrs::{build_attrs, build_head_attribute};
 use crate::validated_form::vf_parser::{
-    type_contents_to_validated, StandardSchema, ValidatedField, ValidatedFormDescriptor,
+    type_contents_to_validated, StandardSchema, ValidatedField, ValueSchemaDescriptor,
 };
 use macro_utilities::add_bound;
 use macro_utilities::Label;
@@ -34,7 +34,7 @@ mod vf_parser;
 
 mod range;
 
-// Builds the ValidatedForm implementation from the DeriveInput.
+// Builds the ValueSchema implementation from the DeriveInput.
 pub fn build_validated_form(
     input: DeriveInput,
 ) -> Result<proc_macro2::TokenStream, Vec<syn::Error>> {
@@ -53,7 +53,7 @@ pub fn build_validated_form(
     let type_contents = type_contents_to_tokens(&type_contents);
 
     let ts = quote! {
-        impl #impl_generics swim_common::form::ValidatedForm for #structure_name #ty_generics #where_clause
+        impl #impl_generics swim_common::form::ValueSchema for #structure_name #ty_generics #where_clause
         {
             fn schema() -> swim_common::model::schema::StandardSchema {
                 #type_contents
@@ -65,7 +65,7 @@ pub fn build_validated_form(
 }
 
 fn type_contents_to_tokens(
-    type_contents: &TypeContents<'_, ValidatedFormDescriptor, ValidatedField>,
+    type_contents: &TypeContents<'_, ValueSchemaDescriptor, ValidatedField>,
 ) -> TokenStream {
     match type_contents {
         TypeContents::Struct(repr) => {
@@ -157,7 +157,7 @@ fn derive_items(fields: &[ValidatedField], descriptor: &FieldManifest) -> TokenS
         let field = fields.iter().find(|f| f.form_field.is_body()).unwrap();
         let ty = &field.form_field.original.ty;
 
-        return quote!(<#ty as swim_common::form::ValidatedForm>::schema());
+        return quote!(<#ty as swim_common::form::ValueSchema>::schema());
     }
 
     let mut schemas = fields.iter().fold(TokenStream2::new(), |ts, field| {
@@ -192,7 +192,7 @@ fn derive_items(fields: &[ValidatedField], descriptor: &FieldManifest) -> TokenS
 fn derive_compound_schema(
     fields: &[ValidatedField],
     compound_type: &CompoundTypeKind,
-    descriptor: &ValidatedFormDescriptor,
+    descriptor: &ValueSchemaDescriptor,
     ident: &Label,
 ) -> TokenStream2 {
     let manifest = &descriptor.form_descriptor.manifest;
@@ -230,14 +230,14 @@ fn derive_compound_schema(
 }
 
 fn build_generics(
-    type_contents: &TypeContents<ValidatedFormDescriptor, ValidatedField>,
+    type_contents: &TypeContents<ValueSchemaDescriptor, ValidatedField>,
     generics: &Generics,
 ) -> Generics {
     let generics = add_bound(
         type_contents,
         generics,
         |f| !f.form_field.is_skipped(),
-        &parse_quote!(swim_common::form::ValidatedForm),
+        &parse_quote!(swim_common::form::ValueSchema),
     );
 
     add_bound(

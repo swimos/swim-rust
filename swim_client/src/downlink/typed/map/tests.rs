@@ -25,7 +25,7 @@ use futures::future::join;
 use im::OrdMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swim_common::form::ValidatedForm;
+use swim_common::form::ValueSchema;
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::routing::RoutingError;
@@ -524,7 +524,7 @@ struct Components<K, V> {
     command_rx: mpsc::Receiver<Command<UntypedMapModification<Value>>>,
 }
 
-fn make_map_downlink<K: ValidatedForm, V: ValidatedForm>() -> Components<K, V> {
+fn make_map_downlink<K: ValueSchema, V: ValueSchema>() -> Components<K, V> {
     let (update_tx, update_rx) = mpsc::channel(8);
     let (command_tx, command_rx) = mpsc::channel(8);
     let sender = swim_common::sink::item::for_mpsc_sender(command_tx).map_err_into();

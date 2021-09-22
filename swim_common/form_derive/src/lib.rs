@@ -57,7 +57,7 @@ pub fn derive_tag(input: TokenStream) -> TokenStream {
         .into()
 }
 
-#[proc_macro_derive(ValidatedForm, attributes(form))]
+#[proc_macro_derive(ValueSchema, attributes(form))]
 pub fn derive_validated_form(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     build_validated_form(input)

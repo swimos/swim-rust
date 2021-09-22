@@ -16,7 +16,7 @@ use form_derive::*;
 use swim_common::model::Value;
 
 fn main() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S {
         #[form(schema(num_items = 2, num_attrs = 3))]
         a: Value,
