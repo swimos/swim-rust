@@ -28,7 +28,7 @@ use swim_server::RoutePattern;
 pub async fn build_server() -> (SwimServer, ServerHandle) {
     let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0);
     let mut swim_server_builder =
-        SwimServerBuilder::transient_store(SwimServerConfig::default(), "test")
+        SwimServerBuilder::temporary_store(SwimServerConfig::default(), "test")
             .expect("Failed to build transient store");
     let mut plane_builder = swim_server_builder.plane_builder("test").unwrap();
 

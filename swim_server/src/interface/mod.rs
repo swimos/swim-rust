@@ -128,7 +128,7 @@ impl SwimServerBuilder {
     ///     }
     /// }
     ///
-    /// let mut swim_server_builder = SwimServerBuilder::transient_store(SwimServerConfig::default(), "test").unwrap();
+    /// let mut swim_server_builder = SwimServerBuilder::temporary_store(SwimServerConfig::default(), "test").unwrap();
     /// let mut plane_builder = swim_server_builder.plane_builder("test").unwrap();
     ///
     /// plane_builder
@@ -194,7 +194,7 @@ impl SwimServerBuilder {
     ///     }
     /// }
     ///
-    /// let mut swim_server_builder = SwimServerBuilder::transient_store(SwimServerConfig::default(), "test").unwrap();
+    /// let mut swim_server_builder = SwimServerBuilder::temporary_store(SwimServerConfig::default(), "test").unwrap();
     /// let mut plane_builder = swim_server_builder.plane_builder("test").unwrap();
     ///
     /// plane_builder
@@ -237,7 +237,15 @@ impl SwimServerBuilder {
         ))
     }
 
-    pub fn transient_store(config: SwimServerConfig, prefix: &str) -> io::Result<Self> {
+    /// Constructs a new `SwimServerBuilder` with the default configuration and is backed by a
+    /// temporary store.
+    ///
+    /// A temporary store uses a RocksDB engine that operates out of a temporary directory which is
+    /// deleted when the application terminates.
+    ///
+    /// # Panics
+    /// Panics if the directory cannot be created.
+    pub fn temporary_store(config: SwimServerConfig, prefix: &str) -> io::Result<Self> {
         Ok(SwimServerBuilder {
             address: None,
             store: ServerStore::<RocksOpts>::transient(

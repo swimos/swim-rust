@@ -895,9 +895,13 @@ where
     }
 }
 
+/// Configuration options used when constructing a new lane.
 pub struct LaneConfig {
+    /// The lane URI/name.
     name: String,
+    /// Whether the lane is public (with respect to external message routing).
     is_public: bool,
+    /// Whether the lane will persist its data.
     transient: bool,
 }
 
