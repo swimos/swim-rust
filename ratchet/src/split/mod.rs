@@ -15,7 +15,9 @@
 #[cfg(test)]
 mod tests;
 
-use crate::extensions::{ExtensionDecoder, ExtensionEncoder, SplittableExtension};
+use crate::extensions::{
+    ExtensionDecoder, ExtensionEncoder, ReunitableExtension, SplittableExtension,
+};
 use crate::framed::{
     read_next, write_close, write_fragmented, CodecFlags, FramedIoParts, FramedRead, FramedWrite,
     Item,
@@ -179,7 +181,7 @@ where
     where
         S: Debug,
         E: ExtensionEncoder<United = Ext>,
-        Ext: SplittableExtension<Encoder = E>,
+        Ext: ReunitableExtension<Encoder = E>,
     {
         reunite::<S, Ext>(self, receiver)
     }
@@ -428,7 +430,7 @@ fn reunite<S, E>(
 ) -> Result<WebSocket<S, E>, ReuniteError<S, E::Encoder, E::Decoder>>
 where
     S: WebSocketStream + Debug,
-    E: SplittableExtension,
+    E: ReunitableExtension,
 {
     if sender
         .split_writer

@@ -31,12 +31,14 @@ pub trait SplittableExtension: Extension {
     type Decoder: ExtensionDecoder;
 
     fn split(self) -> (Self::Encoder, Self::Decoder);
+}
 
+pub trait ReunitableExtension: SplittableExtension {
     fn reunite(encoder: Self::Encoder, decoder: Self::Decoder) -> Self;
 }
 
 pub trait ExtensionEncoder {
-    type United: SplittableExtension;
+    type United: ReunitableExtension;
     fn encode(&mut self);
 }
 

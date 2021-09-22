@@ -13,7 +13,8 @@
 // limitations under the License.
 
 use crate::extensions::{
-    Extension, ExtensionDecoder, ExtensionEncoder, ExtensionProvider, SplittableExtension,
+    Extension, ExtensionDecoder, ExtensionEncoder, ExtensionProvider, ReunitableExtension,
+    SplittableExtension,
 };
 use crate::Error;
 use http::{HeaderMap, HeaderValue};
@@ -67,7 +68,9 @@ impl SplittableExtension for NoExt {
     fn split(self) -> (Self::Encoder, Self::Decoder) {
         (NoExtEncoder, NoExtDecoder)
     }
+}
 
+impl ReunitableExtension for NoExt {
     fn reunite(_encoder: Self::Encoder, _decoder: Self::Decoder) -> Self {
         NoExt
     }
