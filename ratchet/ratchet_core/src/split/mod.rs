@@ -179,7 +179,7 @@ where
     where
         S: Debug,
         E: ExtensionEncoder<United = Ext>,
-        Ext: SplittableExtension<Encoder = E>,
+        Ext: ReunitableExtension<Encoder = E>,
     {
         reunite::<S, Ext>(self, receiver)
     }
@@ -428,7 +428,7 @@ fn reunite<S, E>(
 ) -> Result<WebSocket<S, E>, ReuniteError<S, E::Encoder, E::Decoder>>
 where
     S: WebSocketStream + Debug,
-    E: SplittableExtension,
+    E: ReunitableExtension,
 {
     if sender
         .split_writer

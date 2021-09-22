@@ -16,7 +16,7 @@ use crate::Error;
 use http::{HeaderMap, HeaderValue};
 use httparse::Header;
 use ratchet_ext::{
-    Extension, ExtensionDecoder, ExtensionEncoder, ExtensionProvider, SplittableExtension,
+    Extension, ExtensionDecoder, ExtensionEncoder, ExtensionProvider, SplittableExtension, SplittableExtension
 };
 use std::convert::Infallible;
 
@@ -61,6 +61,7 @@ impl SplittableExtension for NoExt {
         (NoExtEncoder, NoExtDecoder)
     }
 
+impl ReunitableExtension for NoExt {
     fn reunite(_encoder: Self::Encoder, _decoder: Self::Decoder) -> Self {
         NoExt
     }
