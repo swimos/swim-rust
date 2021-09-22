@@ -4,6 +4,7 @@ use crate::handshake::ProtocolRegistry;
 use crate::ws::Upgraded;
 use crate::ExtensionProvider;
 use crate::{client, TryIntoRequest, WebSocketConfig, WebSocketStream};
+use std::borrow::Cow;
 
 pub struct WebSocketClientBuilder<E> {
     config: Option<WebSocketConfig>,
@@ -64,7 +65,8 @@ where
 
     pub fn subprotocols<I>(mut self, subprotocols: I) -> Self
     where
-        I: IntoIterator<Item = &'static str>,
+        I: IntoIterator,
+        I::Item: Into<Cow<'static, str>>,
     {
         self.subprotocols = ProtocolRegistry::new(subprotocols);
         self

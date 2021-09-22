@@ -31,6 +31,7 @@ use http::Uri;
 use http::{header, HeaderMap, HeaderValue};
 use httparse::Header;
 pub use server::{accept, accept_with, WebSocketResponse, WebSocketUpgrader};
+use std::borrow::Cow;
 use std::str::FromStr;
 use tokio::io::AsyncRead;
 use url::Url;
@@ -44,7 +45,7 @@ const METHOD_GET: &str = "get";
 
 #[derive(Default)]
 pub struct ProtocolRegistry {
-    registrants: FnvHashSet<&'static str>,
+    registrants: FnvHashSet<Cow<'static, str>>,
 }
 
 enum Bias {
@@ -55,10 +56,11 @@ enum Bias {
 impl ProtocolRegistry {
     pub fn new<I>(i: I) -> ProtocolRegistry
     where
-        I: IntoIterator<Item = &'static str>,
+        I: IntoIterator,
+        I::Item: Into<Cow<'static, str>>,
     {
         ProtocolRegistry {
-            registrants: i.into_iter().collect(),
+            registrants: i.into_iter().map(Into::into).collect(),
         }
     }
 
@@ -71,7 +73,7 @@ impl ProtocolRegistry {
                 String::from_utf8(header.value.to_vec()).map_err(|_| ProtocolError::Encoding)?;
             let protocols = value
                 .split(',')
-                .map(|s| s.trim())
+                .map(|s| s.trim().into())
                 .collect::<FnvHashSet<_>>();
 
             let selected = match bias {
