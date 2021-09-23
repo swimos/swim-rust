@@ -23,10 +23,10 @@ const EXT_IDENT: &str = "permessage-deflate";
 pub fn negotiate_client(
     headers: &[Header],
     config: &DeflateConfig,
-) -> Result<Deflate, DeflateExtensionError> {
+) -> Result<Option<Deflate>, DeflateExtensionError> {
     match on_response(headers, config)? {
-        Some(initialised_config) => Ok(Deflate::initialise_from(initialised_config)),
-        None => Ok(Deflate::disabled()),
+        Some(initialised_config) => Ok(Some(Deflate::initialise_from(initialised_config))),
+        None => Ok(None),
     }
 }
 

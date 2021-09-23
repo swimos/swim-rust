@@ -17,19 +17,19 @@ mod fixture;
 
 mod builder;
 mod errors;
+mod ext;
 mod framed;
 mod handshake;
-mod noext;
 mod protocol;
 mod split;
 mod ws;
 
 pub use builder::{WebSocketClientBuilder, WebSocketServerBuilder};
 pub use errors::*;
+pub use ext::NoExtProvider;
 pub use handshake::{
     accept, accept_with, ProtocolRegistry, TryIntoRequest, WebSocketResponse, WebSocketUpgrader,
 };
-pub use noext::*;
 pub use protocol::{Message, PayloadType, Role, WebSocketConfig};
 pub use ws::{client, Upgraded, WebSocket};
 

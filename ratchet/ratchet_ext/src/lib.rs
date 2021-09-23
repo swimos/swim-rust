@@ -23,12 +23,12 @@ pub trait ExtensionProvider {
 
     fn apply_headers(&self, headers: &mut HeaderMap);
 
-    fn negotiate_client(&self, headers: &[Header]) -> Result<Self::Extension, Self::Error>;
+    fn negotiate_client(&self, headers: &[Header]) -> Result<Option<Self::Extension>, Self::Error>;
 
     fn negotiate_server(
         &self,
         headers: &[Header],
-    ) -> Result<(Self::Extension, Option<HeaderValue>), Self::Error>;
+    ) -> Result<Option<(Self::Extension, Option<HeaderValue>)>, Self::Error>;
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -47,14 +47,8 @@ pub struct FrameHeader {
     pub opcode: OpCode,
 }
 
-pub trait Extension: Debug {
-    type Encoder: ExtensionEncoder;
-    type Decoder: ExtensionDecoder;
-
-    fn encoder(&mut self) -> &mut Self::Encoder;
-
-    fn decoder(&mut self) -> &mut Self::Decoder;
-}
+pub trait Extension: ExtensionEncoder + ExtensionDecoder + Debug {}
+impl<E> Extension for E where E: ExtensionEncoder + ExtensionDecoder + Debug {}
 
 pub trait SplittableExtension: Extension {
     type SplitEncoder: ExtensionEncoder;
@@ -64,7 +58,7 @@ pub trait SplittableExtension: Extension {
 }
 
 pub trait ReunitableExtension: SplittableExtension {
-    fn reunite(encoder: Self::Encoder, decoder: Self::Decoder) -> Self;
+    fn reunite(encoder: Self::SplitEncoder, decoder: Self::SplitDecoder) -> Self;
 }
 
 pub trait ExtensionEncoder {
@@ -94,14 +88,14 @@ where
         E::apply_headers(self, headers)
     }
 
-    fn negotiate_client(&self, headers: &[Header]) -> Result<Self::Extension, Self::Error> {
+    fn negotiate_client(&self, headers: &[Header]) -> Result<Option<Self::Extension>, Self::Error> {
         E::negotiate_client(self, headers)
     }
 
     fn negotiate_server(
         &self,
         headers: &[Header],
-    ) -> Result<(Self::Extension, Option<HeaderValue>), Self::Error> {
+    ) -> Result<Option<(Self::Extension, Option<HeaderValue>)>, Self::Error> {
         E::negotiate_server(self, headers)
     }
 }
@@ -117,14 +111,14 @@ where
         E::apply_headers(self, headers)
     }
 
-    fn negotiate_client(&self, headers: &[Header]) -> Result<Self::Extension, Self::Error> {
+    fn negotiate_client(&self, headers: &[Header]) -> Result<Option<Self::Extension>, Self::Error> {
         E::negotiate_client(self, headers)
     }
 
     fn negotiate_server(
         &self,
         headers: &[Header],
-    ) -> Result<(Self::Extension, Option<HeaderValue>), Self::Error> {
+    ) -> Result<Option<(Self::Extension, Option<HeaderValue>)>, Self::Error> {
         E::negotiate_server(self, headers)
     }
 }

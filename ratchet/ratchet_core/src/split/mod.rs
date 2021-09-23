@@ -15,6 +15,7 @@
 #[cfg(test)]
 mod tests;
 
+use crate::ext::NegotiatedExtension;
 use crate::framed::{
     read_next, write_close, write_fragmented, CodecFlags, FramedIoParts, FramedRead, FramedWrite,
     Item,
@@ -39,7 +40,7 @@ use std::sync::Arc;
 pub fn split<S, E>(
     framed: framed::FramedIo<S>,
     control_buffer: BytesMut,
-    extension: E,
+    extension: NegotiatedExtension<E>,
 ) -> (Sender<S, E::SplitEncoder>, Receiver<S, E::SplitDecoder>)
 where
     S: WebSocketStream,
@@ -177,7 +178,7 @@ struct FramedIo<S, E> {
     read_half: BiLock<S>,
     reader: FramedRead,
     split_writer: BiLock<WriteHalf<S>>,
-    ext_decoder: E,
+    ext_decoder: NegotiatedExtension<E>,
 }
 
 #[derive(Debug)]
@@ -185,7 +186,7 @@ pub struct Sender<S, E> {
     role: Role,
     closed: Arc<AtomicBool>,
     split_writer: BiLock<WriteHalf<S>>,
-    ext_encoder: E,
+    ext_encoder: NegotiatedExtension<E>,
 }
 
 #[derive(Debug)]
@@ -202,11 +203,11 @@ where
 {
     pub fn reunite<Ext>(
         self,
-        receiver: Receiver<S, Ext::Decoder>,
-    ) -> Result<WebSocket<S, Ext>, ReuniteError<S, Ext::Encoder, Ext::Decoder>>
+        receiver: Receiver<S, Ext::SplitDecoder>,
+    ) -> Result<WebSocket<S, Ext>, ReuniteError<S, Ext::SplitEncoder, Ext::SplitDecoder>>
     where
         S: Debug,
-        Ext: ReunitableExtension<Encoder = E>,
+        Ext: ReunitableExtension<SplitEncoder = E>,
     {
         reunite::<S, Ext>(self, receiver)
     }
@@ -472,9 +473,9 @@ pub struct ReuniteError<S, E, D> {
 }
 
 fn reunite<S, E>(
-    sender: Sender<S, E::Encoder>,
-    receiver: Receiver<S, E::Decoder>,
-) -> Result<WebSocket<S, E>, ReuniteError<S, E::Encoder, E::Decoder>>
+    sender: Sender<S, E::SplitEncoder>,
+    receiver: Receiver<S, E::SplitDecoder>,
+) -> Result<WebSocket<S, E>, ReuniteError<S, E::SplitEncoder, E::SplitDecoder>>
 where
     S: WebSocketStream + Debug,
     E: ReunitableExtension,
@@ -522,7 +523,7 @@ where
         Ok(WebSocket::from_parts(
             framed,
             control_buffer,
-            E::reunite(ext_encoder, ext_decoder),
+            NegotiatedExtension::reunite(ext_encoder, ext_decoder),
             closed.load(Ordering::Relaxed),
         ))
     } else {

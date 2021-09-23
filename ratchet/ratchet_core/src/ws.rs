@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::errors::{CloseError, Error, ErrorKind, ProtocolError};
+use crate::ext::NegotiatedExtension;
 use crate::framed::{FramedIo, Item};
 use crate::handshake::{exec_client_handshake, HandshakeResult, ProtocolRegistry};
 use crate::protocol::{
@@ -33,7 +34,7 @@ pub const CONTROL_DATA_MISMATCH: &str = "Unexpected control frame data";
 pub struct WebSocket<S, E> {
     framed: FramedIo<S>,
     control_buffer: BytesMut,
-    extension: E,
+    extension: NegotiatedExtension<E>,
     closed: bool,
 }
 
@@ -45,7 +46,7 @@ where
     pub(crate) fn from_parts(
         framed: FramedIo<S>,
         control_buffer: BytesMut,
-        extension: E,
+        extension: NegotiatedExtension<E>,
         closed: bool,
     ) -> WebSocket<S, E> {
         WebSocket {
@@ -59,7 +60,7 @@ where
     pub fn from_upgraded(
         config: WebSocketConfig,
         stream: S,
-        extension: E,
+        extension: NegotiatedExtension<E>,
         read_buffer: BytesMut,
         role: Role,
     ) -> WebSocket<S, E> {
@@ -94,7 +95,7 @@ where
         }
 
         loop {
-            match framed.read_next(read_buffer, extension.decoder()).await {
+            match framed.read_next(read_buffer, extension).await {
                 Ok(item) => match item {
                     Item::Binary => return Ok(Message::Binary),
                     Item::Text => return Ok(Message::Text),
@@ -194,7 +195,7 @@ where
             }
         };
 
-        let encoder = self.extension.encoder();
+        let encoder = &mut self.extension;
         match self
             .framed
             .write(op_code, HeaderFlags::FIN, buf, |payload, header| {
@@ -225,7 +226,7 @@ where
         if self.closed {
             return Err(Error::with_cause(ErrorKind::Close, CloseError::Closed));
         }
-        let encoder = self.extension.encoder();
+        let encoder = &mut self.extension;
         self.framed
             .write_fragmented(buf, message_type, fragment_size, |payload, header| {
                 extension_encode(encoder, payload, header)
@@ -269,7 +270,7 @@ pub async fn client<S, E>(
     request: Request,
     extension: &E,
     subprotocols: ProtocolRegistry,
-) -> Result<Upgraded<S, E::Extension>, Error>
+) -> Result<Upgraded<S, impl Extension>, Error>
 where
     S: WebSocketStream,
     E: ExtensionProvider,

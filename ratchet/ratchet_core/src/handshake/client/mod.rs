@@ -26,6 +26,7 @@ use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 
 use crate::errors::{Error, ErrorKind, HttpError};
+use crate::ext::NegotiatedExtension;
 use crate::handshake::client::encoding::{build_request, encode_request};
 use crate::handshake::io::BufferedIo;
 use crate::handshake::{
@@ -196,7 +197,7 @@ where
 #[derive(Debug)]
 pub struct HandshakeResult<E> {
     pub subprotocol: Option<String>,
-    pub extension: E,
+    pub extension: NegotiatedExtension<E>,
 }
 
 /// Quickly checks a partial response in the order of the expected HTTP response declaration to see
@@ -319,6 +320,7 @@ where
         subprotocol: subprotocols.negotiate_response(response)?,
         extension: extension
             .negotiate_client(response.headers)
-            .map_err(|e| Error::with_cause(ErrorKind::Extension, e))?,
+            .map_err(|e| Error::with_cause(ErrorKind::Extension, e))?
+            .into(),
     })
 }

@@ -50,14 +50,14 @@ impl ExtensionProvider for DeflateExtProvider {
         todo!()
     }
 
-    fn negotiate_client(&self, headers: &[Header]) -> Result<Self::Extension, Self::Error> {
+    fn negotiate_client(&self, headers: &[Header]) -> Result<Option<Self::Extension>, Self::Error> {
         negotiate_client(headers, &self.config)
     }
 
     fn negotiate_server(
         &self,
         _headers: &[Header],
-    ) -> Result<(Self::Extension, Option<HeaderValue>), Self::Error> {
+    ) -> Result<Option<(Self::Extension, Option<HeaderValue>)>, Self::Error> {
         unimplemented!()
     }
 }
@@ -82,16 +82,6 @@ pub struct DeflateConfig {
     compression_level: Compression,
 }
 
-/// A permessage-deflate configuration.
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct InitialisedDeflateConfig {
-    server_max_window_bits: u8,
-    client_max_window_bits: u8,
-    compress_reset: bool,
-    decompress_reset: bool,
-    compression_level: Compression,
-}
-
 impl Default for DeflateConfig {
     fn default() -> Self {
         DeflateConfig {
@@ -104,25 +94,28 @@ impl Default for DeflateConfig {
     }
 }
 
+/// A permessage-deflate configuration.
+#[derive(Debug, PartialEq)]
+struct InitialisedDeflateConfig {
+    server_max_window_bits: u8,
+    client_max_window_bits: u8,
+    compress_reset: bool,
+    decompress_reset: bool,
+    compression_level: Compression,
+}
+
 #[derive(Debug)]
-pub enum Deflate {
-    Enabled {
-        encoder: DeflateEncoder,
-        decoder: DeflateDecoder,
-    },
-    Disabled,
+pub struct Deflate {
+    encoder: DeflateEncoder,
+    decoder: DeflateDecoder,
 }
 
 impl Deflate {
     fn initialise_from(config: InitialisedDeflateConfig) -> Deflate {
-        Deflate::Enabled {
+        Deflate {
             decoder: DeflateDecoder::new(config.server_max_window_bits),
             encoder: DeflateEncoder::new(config.compression_level, config.client_max_window_bits),
         }
-    }
-
-    fn disabled() -> Deflate {
-        Deflate::Disabled
     }
 }
 
@@ -131,13 +124,11 @@ impl Extension for Deflate {
     type Decoder = DeflateDecoder;
 
     fn encoder(&mut self) -> &mut Self::Encoder {
-        // &mut self.encoder
-        unimplemented!()
+        &mut self.encoder
     }
 
     fn decoder(&mut self) -> &mut Self::Decoder {
-        // &mut self.decoder
-        unimplemented!()
+        &mut self.decoder
     }
 }
 
@@ -146,16 +137,14 @@ impl SplittableExtension for Deflate {
     type SplitDecoder = DeflateDecoder;
 
     fn split(self) -> (Self::Encoder, Self::Decoder) {
-        // let Deflate { encoder, decoder } = self;
-        // (encoder, decoder)
-        unimplemented!()
+        let Deflate { encoder, decoder } = self;
+        (encoder, decoder)
     }
 }
 
 impl ReunitableExtension for Deflate {
     fn reunite(encoder: Self::Encoder, decoder: Self::Decoder) -> Self {
-        // Deflate { encoder, decoder }
-        unimplemented!()
+        Deflate { encoder, decoder }
     }
 }
 

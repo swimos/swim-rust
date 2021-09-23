@@ -13,10 +13,11 @@
 // limitations under the License.
 
 use crate::errors::{Error, HttpError};
+use crate::ext::NoExt;
 use crate::fixture::mock;
 use crate::handshake::client::{ClientHandshake, HandshakeResult};
 use crate::handshake::{ProtocolError, ProtocolRegistry, ACCEPT_KEY, UPGRADE_STR, WEBSOCKET_STR};
-use crate::{ErrorKind, NoExt, NoExtProvider, TryIntoRequest};
+use crate::{ErrorKind, NoExtProvider, TryIntoRequest};
 use bytes::BytesMut;
 use futures::future::join;
 use futures::FutureExt;
@@ -24,8 +25,8 @@ use http::header::HeaderName;
 use http::{header, HeaderMap, HeaderValue, Request, Response, StatusCode, Version};
 use httparse::{Header, Status};
 use ratchet_ext::{
-    Extension, ExtensionDecoder, ExtensionEncoder, ExtensionProvider, FrameHeader,
-    ReunitableExtension, SplittableExtension,
+    ExtensionDecoder, ExtensionEncoder, ExtensionProvider, FrameHeader, ReunitableExtension,
+    SplittableExtension,
 };
 use sha1::{Digest, Sha1};
 use std::convert::Infallible;
@@ -460,11 +461,11 @@ impl From<ExtHandshakeErr> for Error {
 
 struct MockExtensionProxy<R>(&'static [(HeaderName, &'static str)], R)
 where
-    R: for<'h> Fn(&'h [Header]) -> Result<MockExtension, ExtHandshakeErr>;
+    R: for<'h> Fn(&'h [Header]) -> Result<Option<MockExtension>, ExtHandshakeErr>;
 
 impl<R> ExtensionProvider for MockExtensionProxy<R>
 where
-    R: for<'h> Fn(&'h [Header]) -> Result<MockExtension, ExtHandshakeErr>,
+    R: for<'h> Fn(&'h [Header]) -> Result<Option<MockExtension>, ExtHandshakeErr>,
 {
     type Extension = MockExtension;
     type Error = ExtHandshakeErr;
@@ -475,32 +476,20 @@ where
         }
     }
 
-    fn negotiate_client(&self, headers: &[Header]) -> Result<Self::Extension, Self::Error> {
+    fn negotiate_client(&self, headers: &[Header]) -> Result<Option<Self::Extension>, Self::Error> {
         (self.1)(headers)
     }
 
     fn negotiate_server(
         &self,
         _headers: &[Header],
-    ) -> Result<(Self::Extension, Option<HeaderValue>), ExtHandshakeErr> {
+    ) -> Result<Option<(Self::Extension, Option<HeaderValue>)>, ExtHandshakeErr> {
         panic!("Unexpected server-side extension negotiation")
     }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 struct MockExtension(bool);
-impl Extension for MockExtension {
-    type Encoder = Self;
-    type Decoder = Self;
-
-    fn encoder(&mut self) -> &mut Self::Encoder {
-        panic!("Unexpected encoder invocation")
-    }
-
-    fn decoder(&mut self) -> &mut Self::Decoder {
-        panic!("Unexpected decoder invocation")
-    }
-}
 
 impl ExtensionEncoder for MockExtension {
     type Error = Infallible;
@@ -525,7 +514,7 @@ impl ExtensionDecoder for MockExtension {
 }
 
 impl ReunitableExtension for MockExtension {
-    fn reunite(encoder: Self::Encoder, _decoder: Self::Decoder) -> Self {
+    fn reunite(encoder: Self::SplitEncoder, _decoder: Self::SplitDecoder) -> Self {
         encoder
     }
 }
@@ -623,7 +612,7 @@ async fn negotiates_extension() {
                 let value = String::from_utf8(header.value.to_vec())
                     .expect("Server returned invalid UTF-8");
                 if value == EXT {
-                    Ok(MockExtension(true))
+                    Ok(Some(MockExtension(true)))
                 } else {
                     panic!(
                         "Server returned an invalid sec-websocket-extensions header: `{:?}`",
@@ -646,7 +635,7 @@ async fn negotiates_extension() {
             );
         },
         |result| match result {
-            Ok(handshake_result) => assert!(handshake_result.extension.0),
+            Ok(handshake_result) => assert!(handshake_result.extension.take().unwrap().0),
             Err(e) => {
                 panic!("Expected a valid upgrade: {:?}", e)
             }
@@ -658,13 +647,13 @@ async fn negotiates_extension() {
 #[tokio::test]
 async fn negotiates_no_extension() {
     const HEADERS: &'static [(HeaderName, &'static str)] = &[];
-    let extension_proxy = MockExtensionProxy(&HEADERS, |_| Ok(MockExtension(false)));
+    let extension_proxy = MockExtensionProxy(&HEADERS, |_| Ok(Some(MockExtension(false))));
 
     extension_test(
         extension_proxy,
         |_| {},
         |result| match result {
-            Ok(handshake_result) => assert!(!handshake_result.extension.0),
+            Ok(handshake_result) => assert!(!handshake_result.extension.take().unwrap().0),
             Err(e) => {
                 panic!("Expected a valid upgrade: {:?}", e)
             }

@@ -22,8 +22,8 @@ use http::header::HeaderName;
 use http::{HeaderMap, HeaderValue, Request, Response, Version};
 use httparse::Header;
 use ratchet_ext::{
-    Extension, ExtensionDecoder, ExtensionEncoder, ExtensionProvider, FrameHeader,
-    ReunitableExtension, SplittableExtension,
+    ExtensionDecoder, ExtensionEncoder, ExtensionProvider, FrameHeader, ReunitableExtension,
+    SplittableExtension,
 };
 
 impl From<ReadError<httparse::Error>> for Error {
@@ -215,32 +215,23 @@ impl ExtensionProvider for BadExtProvider {
 
     fn apply_headers(&self, _headers: &mut HeaderMap) {}
 
-    fn negotiate_client(&self, _headers: &[Header]) -> Result<Self::Extension, Self::Error> {
+    fn negotiate_client(
+        &self,
+        _headers: &[Header],
+    ) -> Result<Option<Self::Extension>, Self::Error> {
         panic!("Unexpected client negotitation request")
     }
 
     fn negotiate_server(
         &self,
         _headers: &[Header],
-    ) -> Result<(Self::Extension, Option<HeaderValue>), Self::Error> {
+    ) -> Result<Option<(Self::Extension, Option<HeaderValue>)>, Self::Error> {
         Err(ExtErr)
     }
 }
 
 #[derive(Copy, Clone, Debug)]
 struct Ext;
-impl Extension for Ext {
-    type Encoder = Self;
-    type Decoder = Self;
-
-    fn encoder(&mut self) -> &mut Self::Encoder {
-        panic!("Unexpected encoder invocation")
-    }
-
-    fn decoder(&mut self) -> &mut Self::Decoder {
-        panic!("Unexpected decoder invocation")
-    }
-}
 
 impl ExtensionEncoder for Ext {
     type Error = Infallible;
@@ -274,7 +265,7 @@ impl SplittableExtension for Ext {
 }
 
 impl ReunitableExtension for Ext {
-    fn reunite(encoder: Self::Encoder, _decoder: Self::Decoder) -> Self {
+    fn reunite(encoder: Self::SplitEncoder, _decoder: Self::SplitDecoder) -> Self {
         encoder
     }
 }
