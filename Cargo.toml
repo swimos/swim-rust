@@ -11,6 +11,8 @@ members = [
     "utilities/bilock",
     "utilities/swim_algebra",
     "utilities/swim_errors",
+    "utilities/swim_future",
+    "utilities/swim_trigger",
     "utilities/test_util"
 ]
 

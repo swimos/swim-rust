@@ -16,7 +16,7 @@ use futures::task::{Context, Poll};
 use futures::Future;
 use pin_project::pin_project;
 
-use crate::future::retryable::ResettableFuture;
+use crate::retryable::ResettableFuture;
 use std::pin::Pin;
 
 /// A [`ResettableFuture`] which uses the provided factory for resets.
@@ -83,8 +83,8 @@ mod tests {
         use futures::task::{Context, Poll};
         use futures::Future;
 
-        use crate::future::retryable::factory::{FutureFactory, ResetabbleFutureFactory};
-        use crate::future::retryable::RetryableFuture;
+        use crate::retryable::factory::{FutureFactory, ResetabbleFutureFactory};
+        use crate::retryable::RetryableFuture;
         use std::pin::Pin;
 
         struct ReadyFactory;
@@ -128,9 +128,9 @@ mod tests {
     }
 
     mod tokio {
-        use crate::future::retryable::factory::{FutureFactory, ResetabbleFutureFactory};
+        use crate::retryable::factory::{FutureFactory, ResetabbleFutureFactory};
 
-        use crate::future::retryable::RetryableFuture;
+        use crate::retryable::RetryableFuture;
         use futures::future::BoxFuture;
         use futures::FutureExt;
         use tokio::sync::mpsc;

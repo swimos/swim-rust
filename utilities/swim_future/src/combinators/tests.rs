@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use super::{SwimFutureExt, SwimStreamExt, SwimTryFutureExt, TransformMut};
-use crate::sync::trigger;
 use futures::executor::block_on;
 use futures::future::{self, join, ready, select, Either, Ready};
 use futures::stream::{self, iter, FusedStream, Iter};
@@ -22,6 +21,7 @@ use pin_utils::pin_mut;
 use std::iter::{repeat, Repeat, Take};
 use std::sync::Arc;
 use std::time::Duration;
+use swim_trigger::trigger;
 use tokio::sync::{mpsc, Notify};
 use tokio::time::timeout;
 use tokio_stream::wrappers::ReceiverStream;
@@ -227,7 +227,7 @@ async fn owning_scan_done() {
 
 #[tokio::test]
 async fn future_notify_on_blocked() {
-    let (tx, rx) = trigger::trigger();
+    let (tx, rx) = trigger();
     let notify = Arc::new(Notify::new());
     let notify_cpy = notify.clone();
 
@@ -247,7 +247,7 @@ async fn future_notify_on_blocked() {
 
 #[tokio::test]
 async fn stream_notify_on_blocked() {
-    let (tx, rx) = trigger::trigger();
+    let (tx, rx) = trigger();
     let notify = Arc::new(Notify::new());
     let notify_cpy = notify.clone();
 

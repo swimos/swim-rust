@@ -23,9 +23,9 @@ use std::io::Read;
 use std::num::NonZeroUsize;
 use swim_common::model::parser::parse_single;
 use swim_common::warp::path::AbsolutePath;
+use swim_future::retryable::strategy::{Quantity, RetryStrategy};
 use tokio::time::Duration;
 use url::Url;
-use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
 
 #[test]
 fn test_conf_from_file_default_manual() {

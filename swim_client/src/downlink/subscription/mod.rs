@@ -50,12 +50,12 @@ use swim_common::sink::item::either::SplitSink;
 use swim_common::sink::item::ItemSender;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
+use swim_future::{SwimFutureExt, TransformOnce, TransformedFuture};
 use swim_runtime::task::{spawn, TaskError, TaskHandle};
 use swim_warp::backpressure;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{error, info, instrument, trace_span};
-use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture};
 use utilities::sync::promise::PromiseError;
 use utilities::sync::{circular_buffer, promise};
 

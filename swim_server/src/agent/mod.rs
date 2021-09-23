@@ -70,12 +70,12 @@ use std::sync::Arc;
 use std::time::Duration;
 use swim_common::form::Form;
 use swim_common::warp::path::RelativePath;
+use swim_future::SwimStreamExt;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{event, span, Level};
 use tracing_futures::{Instrument, Instrumented};
-use utilities::future::SwimStreamExt;
 use utilities::sync::{topic, trigger};
 use utilities::uri::RelativeUri;
 

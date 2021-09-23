@@ -12,24 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(clippy::match_wild_err_arm)]
+mod combinators;
+pub mod open_ended;
+pub mod retryable;
 
-pub mod agent;
-pub mod interface;
-#[macro_use]
-pub mod macros;
-pub mod meta;
-pub mod plane;
-pub mod routing;
-pub mod store;
-
-#[allow(unused_imports)]
-pub use agent_derive::*;
-pub use stringify_attr::{stringify_attr, stringify_attr_raw};
-pub use swim_future::retryable::strategy::RetryStrategy;
-pub use swim_future::SwimStreamExt;
-pub use utilities::route_pattern::RoutePattern;
-pub use utilities::uri;
-
-#[doc(hidden)]
-pub use agent::model::value::ValueLaneStoreIo;
+pub use combinators::{
+    FlatmapStream, NotifyOnBlocked, SwimFutureExt, SwimStreamExt, SwimTryFutureExt, Transform,
+    TransformMut, TransformOnce, TransformedFuture, TransformedSink, TransformedStream,
+    TransformedStreamFut,
+};

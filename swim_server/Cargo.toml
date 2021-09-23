@@ -32,6 +32,7 @@ swim_common = { path = "../swim_common", features = ["tls"] }
 swim_warp = { path = "../swim_warp" }
 utilities = { path = "../utilities" }
 swim_errors = { path = "../utilities/swim_errors" }
+swim_future = { path = "../utilities/swim_future" }
 stringify_attr = { path = "../macro_utilities/stringify_attr" }
 swim_runtime = { path = "../swim_runtime" }
 stm = { path = "../stm" }

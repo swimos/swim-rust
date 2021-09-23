@@ -173,7 +173,7 @@ impl Iterator for RetryStrategy {
 
 #[cfg(test)]
 mod tests {
-    use crate::future::retryable::strategy::{Quantity, RetryStrategy};
+    use crate::retryable::strategy::{Quantity, RetryStrategy};
     use std::num::NonZeroUsize;
     use std::time::Duration;
 

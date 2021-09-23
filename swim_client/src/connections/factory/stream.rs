@@ -19,10 +19,10 @@ use swim_common::routing::ws::{Protocol, WsMessage};
 use swim_common::routing::{
     ConnectionError, InvalidUriError, InvalidUriErrorKind, TError, TungsteniteError,
 };
+use swim_future::TransformMut;
 use tokio::net::TcpStream;
 use tokio_tungstenite::stream::Stream as StreamSwitcher;
 use tokio_tungstenite::tungstenite::Message;
-use utilities::future::TransformMut;
 
 pub fn get_stream_type<T>(
     request: &Request<T>,

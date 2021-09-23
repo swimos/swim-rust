@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::future::open_ended::OpenEndedFutures;
+use crate::open_ended::OpenEndedFutures;
 use futures::future::ready;
 use futures::stream::iter;
 use futures::{select_biased, StreamExt};

@@ -18,7 +18,7 @@ use futures::task::{Context, Poll};
 use futures::Future;
 use futures::{ready, TryFuture};
 
-use crate::future::retryable::strategy::RetryStrategy;
+use crate::retryable::strategy::RetryStrategy;
 
 #[cfg(test)]
 mod tests;

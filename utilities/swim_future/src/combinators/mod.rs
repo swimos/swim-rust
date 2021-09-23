@@ -12,9 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod open_ended;
-pub mod retryable;
-
 #[cfg(test)]
 mod tests;
 
@@ -962,15 +959,6 @@ pub trait SwimSinkExt<Item>: Sink<Item> {
 }
 
 impl<S> SwimStreamExt for S where S: Stream {}
-
-pub type SyncBoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send + Sync + 'static>>;
-
-pub fn sync_boxed<Str, T>(stream: Str) -> SyncBoxStream<T>
-where
-    Str: Stream<Item = T> + Send + Sync + 'static,
-{
-    Box::pin(stream)
-}
 
 #[pin_project]
 pub struct NotifyOnBlocked<F> {

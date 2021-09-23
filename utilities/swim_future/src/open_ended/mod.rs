@@ -12,10 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::stream::FusedStream;
+use futures::stream::{FusedStream, FuturesUnordered};
 use futures::task::{AtomicWaker, Context, Poll};
 use futures::{Stream, StreamExt};
-use futures_util::stream::FuturesUnordered;
 use std::future::Future;
 use std::pin::Pin;
 

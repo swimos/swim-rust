@@ -43,11 +43,11 @@ use swim_common::routing::{
 use swim_common::warp::envelope::{Envelope, EnvelopeHeader, EnvelopeParseErr, OutgoingHeader};
 use swim_common::warp::path::RelativePath;
 use swim_errors::Recoverable;
+use swim_future::retryable::strategy::RetryStrategy;
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Instant};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, Level};
-use utilities::future::retryable::strategy::RetryStrategy;
 use utilities::sync::trigger;
 use utilities::task::Spawner;
 use utilities::uri::{BadRelativeUri, RelativeUri};

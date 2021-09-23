@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 swim_common = { path = "../../swim_common" }
+swim_future = { path = "../../utilities/swim_future" }
 utilities = { path = "../../utilities" }
 swim_runtime = { path = "../../swim_runtime" }
 

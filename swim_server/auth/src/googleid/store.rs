@@ -18,9 +18,9 @@ use chrono::{DateTime, FixedOffset, Utc};
 use http::header::{CACHE_CONTROL, EXPIRES};
 use http::HeaderMap;
 use std::fmt::{Display, Formatter};
+use swim_future::retryable::strategy::RetryStrategy;
 use swim_runtime::time::delay::delay_for;
 use url::Url;
-use utilities::future::retryable::strategy::RetryStrategy;
 
 const MAX_AGE_DIRECTIVE: &str = "max-age";
 const NO_STORE_CACHEABILITY: &str = "no-store";

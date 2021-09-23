@@ -18,7 +18,7 @@ use std::task::{Context, Poll};
 use futures::ready;
 use futures::Future;
 
-use crate::future::retryable::ResettableFuture;
+use crate::retryable::ResettableFuture;
 use pin_project::pin_project;
 
 pub type SendResult<Sender, T, Err> = Result<(T, Option<Sender>), (Err, Option<Sender>)>;

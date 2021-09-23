@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use super::{TryRecvError, TrySendError};
-use crate::future::SwimFutureExt;
 use crate::sync::topic::{Receiver, SendError, Sender};
 use crate::sync::trigger;
 use futures::future::{join, join3};
@@ -23,6 +22,7 @@ use std::num::NonZeroUsize;
 use std::ops::Range;
 use std::sync::Arc;
 use std::time::Duration;
+use swim_future::SwimFutureExt;
 use tokio::sync::mpsc;
 use tokio::sync::Notify;
 

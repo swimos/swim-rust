@@ -36,11 +36,11 @@ use swim_common::form::structural::read::ReadError;
 use swim_common::form::Form;
 use swim_common::model::Value;
 use swim_common::sink::item;
+use swim_future::SwimStreamExt;
 use swim_warp::model::map::MapUpdate;
 use tokio::sync::mpsc;
 use tokio::time::{timeout, Instant};
 use tokio_stream::wrappers::ReceiverStream;
-use utilities::future::SwimStreamExt;
 use utilities::instant::AtomicInstant;
 use utilities::sync::trigger;
 

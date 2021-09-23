@@ -35,11 +35,11 @@ use swim_common::routing::{
     ConnectionError, HttpError, HttpErrorKind, InvalidUriError, InvalidUriErrorKind,
     TungsteniteError,
 };
+use swim_future::{TransformedSink, TransformedStream};
 use tokio_native_tls::TlsStream;
 use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tokio_tungstenite::tungstenite::Message;
-use utilities::future::{TransformedSink, TransformedStream};
 
 type TungSink = TransformedSink<SplitSink<WsConnection, Message>, SinkTransformer>;
 type TungStream = TransformedStream<SplitStream<WsConnection>, StreamTransformer>;

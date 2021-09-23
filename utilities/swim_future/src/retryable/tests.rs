@@ -17,8 +17,8 @@ use futures::Future;
 use std::pin::Pin;
 use tokio::sync::mpsc;
 
-use crate::future::retryable::strategy::RetryStrategy;
-use crate::future::retryable::{ResettableFuture, RetryableFuture};
+use crate::retryable::strategy::RetryStrategy;
+use crate::retryable::{ResettableFuture, RetryableFuture};
 use pin_project::pin_project;
 use std::num::NonZeroUsize;
 
