@@ -19,9 +19,9 @@ use crate::structural::model::ValidateFrom;
 use crate::SynValidation;
 use quote::ToTokens;
 use std::collections::HashSet;
+use swim_errors::validation::{validate2, Validation, ValidationItExt};
+use swim_errors::Errors;
 use syn::{Attribute, DataEnum, Ident};
-use utilities::errors::Errors;
-use utilities::validation::{validate2, Validation, ValidationItExt};
 
 /// Preprocessed description of an enum type.
 pub struct EnumModel<'a> {

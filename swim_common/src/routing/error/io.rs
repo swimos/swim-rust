@@ -18,7 +18,7 @@ use crate::routing::{format_cause, ConnectionError};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::io::ErrorKind;
-use utilities::errors::Recoverable;
+use swim_errors::Recoverable;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct IoError {

@@ -25,10 +25,10 @@ use swim_common::routing::RoutingError;
 use swim_common::routing::SendError;
 use swim_common::routing::{ConnectionError, ResolutionError};
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
+use swim_errors::Recoverable;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use url::Url;
-use utilities::errors::Recoverable;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
 

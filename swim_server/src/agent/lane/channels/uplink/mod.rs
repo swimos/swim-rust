@@ -40,11 +40,11 @@ use swim_common::routing::SendError;
 use swim_common::sink::item::{FnMutSender, ItemSender};
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
+use swim_errors::Recoverable;
 use swim_warp::backpressure::keyed::map::MapUpdateMessage;
 use swim_warp::model::map::MapUpdate;
 use tokio::time::Instant;
 use tracing::{event, Level};
-use utilities::errors::Recoverable;
 use utilities::instant::AtomicInstant;
 
 pub(crate) mod backpressure;

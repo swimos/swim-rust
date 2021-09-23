@@ -34,7 +34,7 @@ use tracing_futures::Instrument;
 
 use swim_common::warp::envelope::{Envelope, OutgoingHeader};
 use swim_common::warp::path::RelativePath;
-use utilities::errors::Recoverable;
+use swim_errors::Recoverable;
 use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
 

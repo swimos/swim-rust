@@ -21,8 +21,8 @@ use pin_utils::core_reexport::fmt::Formatter;
 use std::convert::TryFrom;
 use std::fmt::Display;
 use swim_common::model::text::Text;
+use swim_errors::Recoverable;
 use thiserror::Error;
-use utilities::errors::Recoverable;
 
 use crate::meta::{LANES_URI, LANE_URI, PULSE_URI, UPLINK_URI};
 use utilities::uri::{BadRelativeUri, PathSegmentIterator, RelativeUri};

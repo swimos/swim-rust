@@ -22,6 +22,7 @@ tracing = "0.1.16"
 
 [dependencies]
 utilities = { path = "../utilities" }
+swim_errors = { path = "../utilities/swim_errors" }
 swim_runtime = { path = "../swim_runtime" }
 swim_warp = { path = "../swim_warp" }
 swim_common = { path = "../swim_common" }

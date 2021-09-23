@@ -15,6 +15,7 @@
 #[cfg(test)]
 pub mod mock;
 
+pub(crate) mod fs;
 pub mod keystore;
 mod nostore;
 mod rocks;
@@ -28,8 +29,8 @@ use store::StoreError;
 
 use serde::{Deserialize, Serialize};
 
+use crate::store::fs::Dir;
 use store::keyspaces::{Keyspace, Keyspaces};
-use utilities::fs::Dir;
 
 use crate::plane::store::{open_plane, PlaneStore, SwimPlaneStore};
 

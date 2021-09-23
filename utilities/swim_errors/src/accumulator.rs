@@ -12,18 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::error::Error;
 use std::iter::FromIterator;
 use swim_algebra::{Semigroup, Zero};
-
-/// A trait from errors for which it is potentially possible to recover.
-pub trait Recoverable: Error {
-    fn is_fatal(&self) -> bool;
-
-    fn is_transient(&self) -> bool {
-        !self.is_fatal()
-    }
-}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 enum ErrorsInner<E> {

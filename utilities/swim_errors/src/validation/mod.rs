@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::errors::Errors;
+use crate::Errors;
 use std::iter::FromIterator;
 use swim_algebra::{Monoid, Semigroup, Zero};
 

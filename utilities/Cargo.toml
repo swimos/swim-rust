@@ -22,7 +22,7 @@ swim_runtime = { path = "../swim_runtime" }
 slab = "0.4.2"
 url = "2.1.1"
 num = "0.3.0"
-tempdir = "0.3.7"
+
 swim_algebra = {path = "./swim_algebra"}
 
 [dev-dependencies]

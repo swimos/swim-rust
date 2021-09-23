@@ -10,6 +10,7 @@ members = [
     "utilities",
     "utilities/bilock",
     "utilities/swim_algebra",
+    "utilities/swim_errors",
     "utilities/test_util"
 ]
 

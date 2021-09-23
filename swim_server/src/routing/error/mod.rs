@@ -16,7 +16,7 @@ use crate::routing::RoutingAddr;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use swim_common::routing::ConnectionError;
-use utilities::errors::Recoverable;
+use swim_errors::Recoverable;
 use utilities::uri::RelativeUri;
 
 #[cfg(test)]

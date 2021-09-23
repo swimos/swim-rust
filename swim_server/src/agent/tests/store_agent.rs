@@ -31,6 +31,7 @@ use crate::plane::provider::AgentProvider;
 use crate::plane::store::{PlaneStore, SwimPlaneStore};
 use crate::plane::RouteAndParameters;
 use crate::routing::RoutingAddr;
+use crate::store::fs::Dir;
 use crate::store::keystore::{KeyStore, COUNTER_BYTES};
 use crate::store::{
     default_keyspaces, KeyspaceName, RocksDatabase, RocksOpts, StoreEngine, StoreKey,
@@ -49,7 +50,6 @@ use store::{deserialize, serialize};
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
-use utilities::fs::Dir;
 use utilities::uri::RelativeUri;
 
 const INTERVAL: Duration = Duration::from_millis(1);

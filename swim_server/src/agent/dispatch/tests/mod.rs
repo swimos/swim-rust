@@ -33,12 +33,12 @@ use std::time::Duration;
 use stm::transaction::TransactionError;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
+use swim_errors::Recoverable;
 use swim_runtime::time::timeout;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
-use utilities::errors::Recoverable;
 use utilities::instant::AtomicInstant;
 
 mod mock;
