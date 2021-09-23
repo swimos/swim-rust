@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::Error;
+use bytes::BytesMut;
 use http::{HeaderMap, HeaderValue};
 use httparse::Header;
 use ratchet_ext::{
@@ -27,10 +28,11 @@ pub struct NoExt;
 impl ExtensionEncoder for NoExt {
     type Error = Infallible;
 
-    fn encode<A>(&mut self, _payload: A, _header: &mut FrameHeader) -> Result<(), Self::Error>
-    where
-        A: AsMut<[u8]>,
-    {
+    fn encode(
+        &mut self,
+        _payload: &mut BytesMut,
+        _header: &mut FrameHeader,
+    ) -> Result<(), Self::Error> {
         Ok(())
     }
 }
@@ -38,10 +40,11 @@ impl ExtensionEncoder for NoExt {
 impl ExtensionDecoder for NoExt {
     type Error = Infallible;
 
-    fn decode<A>(&mut self, _payload: A, _header: &mut FrameHeader) -> Result<(), Self::Error>
-    where
-        A: AsMut<[u8]>,
-    {
+    fn decode(
+        &mut self,
+        _payload: &mut BytesMut,
+        _header: &mut FrameHeader,
+    ) -> Result<(), Self::Error> {
         Ok(())
     }
 }
@@ -94,10 +97,11 @@ pub struct NoExtEncoder;
 impl ExtensionEncoder for NoExtEncoder {
     type Error = Infallible;
 
-    fn encode<A>(&mut self, _payload: A, _header: &mut FrameHeader) -> Result<(), Self::Error>
-    where
-        A: AsMut<[u8]>,
-    {
+    fn encode(
+        &mut self,
+        _payload: &mut BytesMut,
+        _header: &mut FrameHeader,
+    ) -> Result<(), Self::Error> {
         Ok(())
     }
 }
@@ -107,10 +111,11 @@ pub struct NoExtDecoder;
 impl ExtensionDecoder for NoExtDecoder {
     type Error = Infallible;
 
-    fn decode<A>(&mut self, _payload: A, _header: &mut FrameHeader) -> Result<(), Self::Error>
-    where
-        A: AsMut<[u8]>,
-    {
+    fn decode(
+        &mut self,
+        _payload: &mut BytesMut,
+        _header: &mut FrameHeader,
+    ) -> Result<(), Self::Error> {
         Ok(())
     }
 }
@@ -150,10 +155,11 @@ where
 {
     type Error = E::Error;
 
-    fn encode<A>(&mut self, payload: A, header: &mut FrameHeader) -> Result<(), Self::Error>
-    where
-        A: AsMut<[u8]>,
-    {
+    fn encode(
+        &mut self,
+        payload: &mut BytesMut,
+        header: &mut FrameHeader,
+    ) -> Result<(), Self::Error> {
         match &mut self.0 {
             Some(ext) => ext.encode(payload, header),
             None => Ok(()),
@@ -167,10 +173,11 @@ where
 {
     type Error = E::Error;
 
-    fn decode<A>(&mut self, payload: A, header: &mut FrameHeader) -> Result<(), Self::Error>
-    where
-        A: AsMut<[u8]>,
-    {
+    fn decode(
+        &mut self,
+        payload: &mut BytesMut,
+        header: &mut FrameHeader,
+    ) -> Result<(), Self::Error> {
         match &mut self.0 {
             Some(ext) => ext.decode(payload, header),
             None => Ok(()),

@@ -14,12 +14,34 @@
 
 use crate::error::DeflateExtensionError;
 use crate::{Deflate, DeflateConfig, InitialisedDeflateConfig, LZ77_MIN_WINDOW_SIZE};
+use bytes::BytesMut;
 use http::header::SEC_WEBSOCKET_EXTENSIONS;
-use http::HeaderValue;
+use http::{HeaderMap, HeaderValue};
 use ratchet_ext::Header;
 
 /// The WebSocket Extension Identifier as per the IANA registry.
 const EXT_IDENT: &str = "permessage-deflate";
+
+pub fn apply_headers(header_map: &mut HeaderMap, config: &DeflateConfig) {
+    let DeflateConfig {
+        server_max_window_bits,
+        client_max_window_bits,
+        request_no_context_takeover,
+        accept_no_context_takeover,
+        compression_level,
+    } = config;
+
+    let mut bytes = BytesMut::new();
+    bytes.extend_from_slice(format!("\r\n{}: ", SEC_WEBSOCKET_EXTENSIONS).as_bytes());
+    bytes.extend_from_slice(
+        format!("server_max_window_bits={},", server_max_window_bits).as_bytes(),
+    );
+
+    bytes
+        .extend_from_slice(format!("client_max_window_bits={}", client_max_window_bits).as_bytes());
+    bytes.extend_from_slice(b"client_no_context_takeover,");
+    bytes.extend_from_slice(b"server_no_context_takeover");
+}
 
 pub fn negotiate_client(
     headers: &[Header],
@@ -72,7 +94,91 @@ fn validate_request_header(
     header: &str,
     config: &DeflateConfig,
 ) -> Result<Option<(InitialisedDeflateConfig, HeaderValue)>, DeflateExtensionError> {
-    unimplemented!()
+    let mut response_str = String::with_capacity(header.len());
+    let mut param_iter = header.split(';');
+
+    match param_iter.next() {
+        Some(name) if name.trim().eq_ignore_ascii_case(EXT_IDENT) => {
+            response_str.push_str(EXT_IDENT);
+        }
+        _ => {
+            return Ok(None);
+        }
+    }
+
+    let mut seen_server_takeover = false;
+    let mut seen_client_takeover = false;
+    let mut seen_server_max_bits = false;
+    let mut seen_client_max_bits = false;
+    let mut initialised_config = InitialisedDeflateConfig::from_config(config);
+
+    for param in param_iter {
+        match param.trim().to_lowercase().as_str() {
+            n @ "server_no_context_takeover" => {
+                check_param(n, &mut seen_server_takeover, || {
+                    if config.accept_no_context_takeover {
+                        initialised_config.compress_reset = true;
+                        response_str.push_str("; server_no_context_takeover");
+                    }
+                    Ok(())
+                })?;
+            }
+            n @ "client_no_context_takeover" => {
+                check_param(n, &mut seen_client_takeover, || {
+                    initialised_config.decompress_reset = true;
+                    response_str.push_str("; client_no_context_takeover");
+                    Ok(())
+                })?;
+            }
+            param if param.starts_with("server_max_window_bits") => {
+                check_param("server_max_window_bits", &mut seen_server_max_bits, || {
+                    let mut window_param = param.split("=").skip(1);
+                    match window_param.next() {
+                        Some(window_param) => {
+                            initialised_config.server_max_window_bits = parse_window_parameter(
+                                window_param,
+                                config.server_max_window_bits,
+                            )?;
+                            Ok(())
+                        }
+                        None => {
+                            // If the client specifies 'server_max_window_bits' then a value must
+                            // be provided.
+                            Err(DeflateExtensionError::InvalidMaxWindowBits)
+                        }
+                    }
+                })?;
+            }
+            param if param.starts_with("client_max_window_bits") => {
+                check_param("client_max_window_bits", &mut seen_client_max_bits, || {
+                    let mut window_param = param.split("=").skip(1);
+                    if let Some(window_param) = window_param.next() {
+                        // Absence of this parameter in an extension negotiation offer indicates
+                        // that the client can receive messages compressed using an LZ77 sliding
+                        // window of up to 32,768 bytes.
+                        initialised_config.client_max_window_bits =
+                            parse_window_parameter(window_param, config.client_max_window_bits)?;
+                    }
+
+                    response_str.push_str(&format!(
+                        "; client_max_window_bits={}",
+                        initialised_config.client_max_window_bits
+                    ));
+                    Ok(())
+                })?;
+            }
+            p => {
+                return Err(DeflateExtensionError::NegotiationError(
+                    format!("Unknown permessage-deflate parameter: {}", p).into(),
+                ))
+            }
+        }
+    }
+
+    Ok(Some((
+        initialised_config,
+        HeaderValue::from_str(response_str.as_str())?,
+    )))
 }
 
 fn on_response(

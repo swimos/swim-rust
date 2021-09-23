@@ -294,13 +294,12 @@ where
     })
 }
 
-pub fn extension_encode<E, A>(
+pub fn extension_encode<E>(
     extension: &mut E,
-    buf: A,
+    buf: &mut BytesMut,
     header: &mut ExtFrameHeader,
 ) -> Result<(), Error>
 where
-    A: AsMut<[u8]>,
     E: ExtensionEncoder,
 {
     extension

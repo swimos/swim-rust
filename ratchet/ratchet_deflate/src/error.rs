@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use flate2::{CompressError, DecompressError};
+use http::header::InvalidHeaderValue;
 use std::str::Utf8Error;
 use thiserror::Error;
 
@@ -19,13 +21,25 @@ use thiserror::Error;
 #[error("Err")]
 pub enum DeflateExtensionError {
     /// An error produced when deflating a message.
-    DeflateError(String),
+    DeflateError(CompressError),
     /// An error produced when inflating a message.
-    InflateError(String),
+    InflateError(DecompressError),
     /// An error produced during the WebSocket negotiation.
     NegotiationError(String),
     /// An invalid LZ77 window size was provided.
     InvalidMaxWindowBits,
+}
+
+impl From<CompressError> for DeflateExtensionError {
+    fn from(e: CompressError) -> Self {
+        DeflateExtensionError::DeflateError(e)
+    }
+}
+
+impl From<DecompressError> for DeflateExtensionError {
+    fn from(e: DecompressError) -> Self {
+        DeflateExtensionError::InflateError(e)
+    }
 }
 
 impl From<Utf8Error> for DeflateExtensionError {
@@ -34,5 +48,11 @@ impl From<Utf8Error> for DeflateExtensionError {
             "Failed to parse extension parameter: {}",
             e
         ))
+    }
+}
+
+impl From<InvalidHeaderValue> for DeflateExtensionError {
+    fn from(e: InvalidHeaderValue) -> Self {
+        DeflateExtensionError::NegotiationError(format!("Failed to write response header: {}", e))
     }
 }

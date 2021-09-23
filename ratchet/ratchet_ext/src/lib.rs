@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use bytes::BytesMut;
 pub use http::{HeaderMap, HeaderValue};
 pub use httparse::Header;
 use std::error::Error;
@@ -64,17 +65,21 @@ pub trait ReunitableExtension: SplittableExtension {
 pub trait ExtensionEncoder {
     type Error: Error + Send + Sync + 'static;
 
-    fn encode<A>(&mut self, payload: A, header: &mut FrameHeader) -> Result<(), Self::Error>
-    where
-        A: AsMut<[u8]>;
+    fn encode(
+        &mut self,
+        payload: &mut BytesMut,
+        header: &mut FrameHeader,
+    ) -> Result<(), Self::Error>;
 }
 
 pub trait ExtensionDecoder {
     type Error: Error + Send + Sync + 'static;
 
-    fn decode<A>(&mut self, payload: A, header: &mut FrameHeader) -> Result<(), Self::Error>
-    where
-        A: AsMut<[u8]>;
+    fn decode(
+        &mut self,
+        payload: &mut BytesMut,
+        header: &mut FrameHeader,
+    ) -> Result<(), Self::Error>;
 }
 
 impl<'r, E> ExtensionProvider for &'r mut E

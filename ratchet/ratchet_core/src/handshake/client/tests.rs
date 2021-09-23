@@ -494,10 +494,11 @@ struct MockExtension(bool);
 impl ExtensionEncoder for MockExtension {
     type Error = Infallible;
 
-    fn encode<A>(&mut self, _payload: A, _header: &mut FrameHeader) -> Result<(), Self::Error>
-    where
-        A: AsMut<[u8]>,
-    {
+    fn encode(
+        &mut self,
+        _payload: &mut BytesMut,
+        _header: &mut FrameHeader,
+    ) -> Result<(), Self::Error> {
         Ok(())
     }
 }
@@ -505,10 +506,11 @@ impl ExtensionEncoder for MockExtension {
 impl ExtensionDecoder for MockExtension {
     type Error = Infallible;
 
-    fn decode<A>(&mut self, _payload: A, _header: &mut FrameHeader) -> Result<(), Self::Error>
-    where
-        A: AsMut<[u8]>,
-    {
+    fn decode(
+        &mut self,
+        _payload: &mut BytesMut,
+        _header: &mut FrameHeader,
+    ) -> Result<(), Self::Error> {
         Ok(())
     }
 }

@@ -7,3 +7,4 @@ edition = "2018"
 [dependencies]
 http = "0.2.3"
 httparse = "1.4.1"
+bytes = "1.0"

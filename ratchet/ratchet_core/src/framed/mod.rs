@@ -28,6 +28,7 @@ use nanorand::{WyRand, RNG};
 use ratchet_ext::{ExtensionDecoder, FrameHeader as ExtFrameHeader, OpCode as ExtOpCode};
 use std::convert::TryFrom;
 use std::fmt::{Debug, Formatter};
+use std::iter::FromIterator;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 #[derive(Debug, PartialEq)]
@@ -187,7 +188,7 @@ impl FramedRead {
                             if header.flags.contains(HeaderFlags::FIN) {
                                 let item = if flags.contains(CodecFlags::R_CONT) {
                                     extension_decode(
-                                        payload.as_mut(),
+                                        &mut payload,
                                         extension,
                                         &header.flags,
                                         ExtOpCode::Continuation,
@@ -207,7 +208,7 @@ impl FramedRead {
                                 return Ok(item);
                             } else if flags.contains(CodecFlags::R_CONT) {
                                 extension_decode(
-                                    payload.as_mut(),
+                                    &mut payload,
                                     extension,
                                     &header.flags,
                                     ExtOpCode::Continuation,
@@ -223,7 +224,7 @@ impl FramedRead {
                                 return Err(ProtocolError::ContinuationAlreadyStarted.into());
                             } else if header.flags.contains(HeaderFlags::FIN) {
                                 extension_decode(
-                                    payload.as_mut(),
+                                    &mut payload,
                                     extension,
                                     &header.flags,
                                     ExtOpCode::Text,
@@ -233,7 +234,7 @@ impl FramedRead {
                             } else {
                                 flags.insert(CodecFlags::R_CONT | CodecFlags::CONT_TYPE);
                                 extension_decode(
-                                    payload.as_mut(),
+                                    &mut payload,
                                     extension,
                                     &header.flags,
                                     ExtOpCode::Text,
@@ -247,7 +248,7 @@ impl FramedRead {
                                 return Err(ProtocolError::ContinuationAlreadyStarted.into());
                             } else if header.flags.contains(HeaderFlags::FIN) {
                                 extension_decode(
-                                    payload.as_mut(),
+                                    &mut payload,
                                     extension,
                                     &header.flags,
                                     ExtOpCode::Binary,
@@ -258,7 +259,7 @@ impl FramedRead {
                                 debug_assert!(!flags.contains(CodecFlags::CONT_TYPE));
                                 flags.insert(CodecFlags::R_CONT);
                                 extension_decode(
-                                    payload.as_mut(),
+                                    &mut payload,
                                     extension,
                                     &header.flags,
                                     ExtOpCode::Binary,
@@ -347,13 +348,21 @@ impl FramedWrite {
     where
         I: AsyncWrite + Unpin,
         A: AsMut<[u8]>,
-        F: FnMut(&mut [u8], &mut ExtFrameHeader) -> Result<(), Error>,
+        F: FnMut(&mut BytesMut, &mut ExtFrameHeader) -> Result<(), Error>,
     {
         let FramedWrite { write_buffer, rand } = self;
         let payload = payload_ref.as_mut();
 
+        let mut payload_bytes = BytesMut::with_capacity(payload.len());
+        payload_bytes.extend_from_slice(payload);
+
         if let OpCode::DataCode(data_code) = opcode {
-            extension_encode(payload, extension, &mut header_flags, data_code.into())?;
+            extension_encode(
+                &mut payload_bytes,
+                extension,
+                &mut header_flags,
+                data_code.into(),
+            )?;
         }
 
         let mask = if is_server {
@@ -455,7 +464,7 @@ where
     ) -> Result<(), Error>
     where
         A: AsMut<[u8]>,
-        F: FnMut(&mut [u8], &mut ExtFrameHeader) -> Result<(), Error>,
+        F: FnMut(&mut BytesMut, &mut ExtFrameHeader) -> Result<(), Error>,
     {
         let FramedIo {
             io, writer, flags, ..
@@ -506,7 +515,7 @@ where
     ) -> Result<(), Error>
     where
         A: AsMut<[u8]>,
-        F: FnMut(&mut [u8], &mut ExtFrameHeader) -> Result<(), Error>,
+        F: FnMut(&mut BytesMut, &mut ExtFrameHeader) -> Result<(), Error>,
     {
         let FramedIo {
             io, writer, flags, ..
@@ -587,7 +596,7 @@ pub async fn write_fragmented<A, I, F>(
 where
     A: AsMut<[u8]>,
     I: AsyncWrite + Unpin,
-    F: FnMut(&mut [u8], &mut ExtFrameHeader) -> Result<(), Error>,
+    F: FnMut(&mut BytesMut, &mut ExtFrameHeader) -> Result<(), Error>,
 {
     let buf = buf_ref.as_mut();
     let mut chunks = buf.chunks_mut(fragment_size).peekable();
@@ -641,15 +650,14 @@ where
 }
 
 #[inline]
-fn extension_decode<E, A>(
-    payload: A,
+fn extension_decode<E>(
+    payload: &mut BytesMut,
     extension: &mut E,
     header: &HeaderFlags,
     opcode: ExtOpCode,
 ) -> Result<(), Error>
 where
     E: ExtensionDecoder,
-    A: AsMut<[u8]>,
 {
     let mut frame_header = ExtFrameHeader {
         fin: header.is_fin(),
@@ -665,13 +673,13 @@ where
 
 #[inline]
 fn extension_encode<C>(
-    payload: &mut [u8],
+    payload: &mut BytesMut,
     mut extension: C,
     header: &mut HeaderFlags,
     opcode: ExtOpCode,
 ) -> Result<(), Error>
 where
-    C: FnMut(&mut [u8], &mut ExtFrameHeader) -> Result<(), Error>,
+    C: FnMut(&mut BytesMut, &mut ExtFrameHeader) -> Result<(), Error>,
 {
     let mut frame_header = ExtFrameHeader {
         fin: header.is_fin(),

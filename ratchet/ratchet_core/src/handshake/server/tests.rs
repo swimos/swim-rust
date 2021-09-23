@@ -18,6 +18,7 @@ use crate::{
     accept_with, Error, ErrorKind, HttpError, NoExtProvider, ProtocolRegistry, WebSocketConfig,
 };
 use bitflags::_core::convert::Infallible;
+use bytes::BytesMut;
 use http::header::HeaderName;
 use http::{HeaderMap, HeaderValue, Request, Response, Version};
 use httparse::Header;
@@ -236,10 +237,11 @@ struct Ext;
 impl ExtensionEncoder for Ext {
     type Error = Infallible;
 
-    fn encode<A>(&mut self, _payload: A, _header: &mut FrameHeader) -> Result<(), Self::Error>
-    where
-        A: AsMut<[u8]>,
-    {
+    fn encode(
+        &mut self,
+        _payload: &mut BytesMut,
+        _header: &mut FrameHeader,
+    ) -> Result<(), Self::Error> {
         Ok(())
     }
 }
@@ -247,10 +249,11 @@ impl ExtensionEncoder for Ext {
 impl ExtensionDecoder for Ext {
     type Error = Infallible;
 
-    fn decode<A>(&mut self, _payload: A, _header: &mut FrameHeader) -> Result<(), Self::Error>
-    where
-        A: AsMut<[u8]>,
-    {
+    fn decode(
+        &mut self,
+        _payload: &mut BytesMut,
+        _header: &mut FrameHeader,
+    ) -> Result<(), Self::Error> {
         Ok(())
     }
 }

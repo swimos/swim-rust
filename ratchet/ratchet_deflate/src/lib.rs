@@ -16,12 +16,14 @@ mod error;
 mod handshake;
 
 use crate::error::DeflateExtensionError;
-use crate::handshake::{negotiate_client, negotiate_server};
-use flate2::{Compress, Compression, Decompress};
+use crate::handshake::{apply_headers, negotiate_client, negotiate_server};
+use bytes::BytesMut;
+use flate2::{Compress, Compression, Decompress, FlushCompress, FlushDecompress, Status};
 use ratchet_ext::{
     ExtensionDecoder, ExtensionEncoder, ExtensionProvider, FrameHeader, Header, HeaderMap,
     HeaderValue, ReunitableExtension, SplittableExtension,
 };
+use std::slice;
 
 /// The minimum size of the LZ77 sliding window size.
 const LZ77_MIN_WINDOW_SIZE: u8 = 8;
@@ -46,8 +48,8 @@ impl ExtensionProvider for DeflateExtProvider {
     type Extension = Deflate;
     type Error = DeflateExtensionError;
 
-    fn apply_headers(&self, _headers: &mut HeaderMap) {
-        todo!()
+    fn apply_headers(&self, headers: &mut HeaderMap) {
+        apply_headers(headers, &self.config);
     }
 
     fn negotiate_client(&self, headers: &[Header]) -> Result<Option<Self::Extension>, Self::Error> {
@@ -125,8 +127,12 @@ pub struct Deflate {
 impl Deflate {
     fn initialise_from(config: InitialisedDeflateConfig) -> Deflate {
         Deflate {
-            decoder: DeflateDecoder::new(config.server_max_window_bits),
-            encoder: DeflateEncoder::new(config.compression_level, config.client_max_window_bits),
+            decoder: DeflateDecoder::new(config.server_max_window_bits, config.decompress_reset),
+            encoder: DeflateEncoder::new(
+                config.compression_level,
+                config.client_max_window_bits,
+                config.compress_reset,
+            ),
         }
     }
 }
@@ -149,18 +155,22 @@ impl ReunitableExtension for Deflate {
 
 #[derive(Debug)]
 pub struct DeflateEncoder {
+    buf: BytesMut,
     compress: Compress,
+    compress_reset: bool,
 }
 
 impl DeflateEncoder {
-    fn new(compression: Compression, mut window_size: u8) -> DeflateEncoder {
+    fn new(compression: Compression, mut window_size: u8, compress_reset: bool) -> DeflateEncoder {
         // https://github.com/madler/zlib/blob/cacf7f1d4e3d44d871b605da3b647f07d718623f/deflate.c#L303
         if window_size == 8 {
             window_size = 9;
         }
 
         DeflateEncoder {
+            buf: BytesMut::default(),
             compress: Compress::new_with_window_bits(compression, false, window_size),
+            compress_reset,
         }
     }
 }
@@ -168,10 +178,11 @@ impl DeflateEncoder {
 impl ExtensionEncoder for Deflate {
     type Error = DeflateExtensionError;
 
-    fn encode<A>(&mut self, payload: A, header: &mut FrameHeader) -> Result<(), Self::Error>
-    where
-        A: AsMut<[u8]>,
-    {
+    fn encode(
+        &mut self,
+        payload: &mut BytesMut,
+        header: &mut FrameHeader,
+    ) -> Result<(), Self::Error> {
         self.encoder.encode(payload, header)
     }
 }
@@ -179,28 +190,75 @@ impl ExtensionEncoder for Deflate {
 impl ExtensionEncoder for DeflateEncoder {
     type Error = DeflateExtensionError;
 
-    fn encode<A>(&mut self, _payload: A, _header: &mut FrameHeader) -> Result<(), Self::Error>
-    where
-        A: AsMut<[u8]>,
-    {
-        todo!()
+    fn encode(
+        &mut self,
+        payload: &mut BytesMut,
+        header: &mut FrameHeader,
+    ) -> Result<(), Self::Error> {
+        let DeflateEncoder {
+            buf,
+            compress,
+            compress_reset,
+        } = self;
+
+        buf.clear();
+        buf.reserve(payload.len());
+
+        while compress.total_in() < payload.len() as u64 {
+            let at = compress.total_in() as usize;
+
+            let cap = buf.capacity();
+            let len = buf.len();
+
+            let compress_result = unsafe {
+                let before = compress.total_out();
+                let ret = {
+                    let ptr = buf.as_mut_ptr().offset(len as isize);
+                    let out = slice::from_raw_parts_mut(ptr, cap - len);
+                    compress.compress(&payload[at..], out, FlushCompress::None)
+                };
+                buf.set_len((compress.total_out() - before) as usize + len);
+                ret
+            }?;
+
+            match compress_result {
+                Status::BufError => buf.reserve(2048),
+                Status::Ok => continue,
+                Status::StreamEnd => break,
+            }
+        }
+
+        buf.truncate(buf.len() - 4);
+        std::mem::swap(payload, buf);
+
+        if *compress_reset {
+            compress.reset();
+        }
+
+        header.rsv1 = true;
+
+        Ok(())
     }
 }
 
 #[derive(Debug)]
 pub struct DeflateDecoder {
+    buf: BytesMut,
     decompress: Decompress,
+    decompress_reset: bool,
 }
 
 impl DeflateDecoder {
-    fn new(mut window_size: u8) -> DeflateDecoder {
+    fn new(mut window_size: u8, decompress_reset: bool) -> DeflateDecoder {
         // https://github.com/madler/zlib/blob/cacf7f1d4e3d44d871b605da3b647f07d718623f/deflate.c#L303
         if window_size == 8 {
             window_size = 9;
         }
 
         DeflateDecoder {
+            buf: BytesMut::default(),
             decompress: Decompress::new_with_window_bits(false, window_size),
+            decompress_reset,
         }
     }
 }
@@ -208,10 +266,11 @@ impl DeflateDecoder {
 impl ExtensionDecoder for Deflate {
     type Error = DeflateExtensionError;
 
-    fn decode<A>(&mut self, payload: A, header: &mut FrameHeader) -> Result<(), Self::Error>
-    where
-        A: AsMut<[u8]>,
-    {
+    fn decode(
+        &mut self,
+        payload: &mut BytesMut,
+        header: &mut FrameHeader,
+    ) -> Result<(), Self::Error> {
         self.decoder.decode(payload, header)
     }
 }
@@ -219,11 +278,53 @@ impl ExtensionDecoder for Deflate {
 impl ExtensionDecoder for DeflateDecoder {
     type Error = DeflateExtensionError;
 
-    fn decode<A>(&mut self, _payload: A, _header: &mut FrameHeader) -> Result<(), Self::Error>
-    where
-        A: AsMut<[u8]>,
-    {
-        todo!()
+    fn decode(
+        &mut self,
+        payload: &mut BytesMut,
+        header: &mut FrameHeader,
+    ) -> Result<(), Self::Error> {
+        let DeflateDecoder {
+            buf,
+            decompress,
+            decompress_reset,
+        } = self;
+        payload.extend_from_slice(&[0, 0, 0xFF, 0xFF]);
+
+        buf.clear();
+        buf.reserve(payload.len());
+
+        while decompress.total_in() < payload.len() as u64 {
+            let at = decompress.total_in() as usize;
+
+            let cap = buf.capacity();
+            let len = buf.len();
+
+            let decompress_result = unsafe {
+                let before = decompress.total_out();
+                let ret = {
+                    let ptr = buf.as_mut_ptr().offset(len as isize);
+                    let out = slice::from_raw_parts_mut(ptr, cap - len);
+                    decompress.decompress(&payload[at..], out, FlushDecompress::None)
+                };
+                buf.set_len((decompress.total_out() - before) as usize + len);
+                ret
+            }?;
+
+            match decompress_result {
+                Status::BufError => buf.reserve(2048),
+                Status::Ok => continue,
+                Status::StreamEnd => break,
+            }
+        }
+
+        std::mem::swap(payload, buf);
+
+        if *decompress_reset {
+            decompress.reset(true);
+        }
+
+        header.rsv1 = true;
+        Ok(())
     }
 }
 
