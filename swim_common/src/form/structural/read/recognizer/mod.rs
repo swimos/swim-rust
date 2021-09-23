@@ -42,6 +42,7 @@ use std::option::Option::None;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use url::Url;
 use utilities::future::retryable::strategy::{
@@ -2723,6 +2724,9 @@ const RETRY_INTERVAL_TAG: &str = "interval";
 const RETRY_EXPONENTIAL_TAG: &str = "exponential";
 const RETRY_NONE_TAG: &str = "none";
 const DURATION_TAG: &str = "duration";
+const WEB_SOCKET_CONFIG_TAG: &str = "websocket_connections";
+const WS_COMPRESSION_NONE_TAG: &str = "none";
+const WS_COMPRESSION_DEFLATE_TAG: &str = "deflate";
 
 enum RetryStrategyStage {
     Init,
@@ -2733,7 +2737,7 @@ enum RetryStrategyStage {
     Field(RetryStrategyField),
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 enum RetryStrategyField {
     ImmediateRetries,
     IntervalDelay,
@@ -2742,7 +2746,6 @@ enum RetryStrategyField {
     ExponentialMaxBackoff,
 }
 
-//Todo dm
 impl RecognizerReadable for RetryStrategy {
     type Rec = RetryStrategyRecognizer;
     type AttrRec = SimpleAttrBody<RetryStrategyRecognizer>;
@@ -2798,8 +2801,6 @@ impl Recognizer for RetryStrategyRecognizer {
     type Target = RetryStrategy;
 
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
-        eprintln!("input = {:#?}", input);
-        eprintln!("-------");
         match &self.stage {
             RetryStrategyStage::Init => {
                 if let ReadEvent::StartAttribute(name) = input {
@@ -2839,9 +2840,12 @@ impl Recognizer for RetryStrategyRecognizer {
                         _ => Some(Err(ReadError::UnexpectedAttribute(name.into()))),
                     }
                 } else {
-                    Some(Err(input.kind_error(ExpectedEvent::Attribute(Some(
-                        Text::new(DURATION_TAG),
-                    )))))
+                    Some(Err(input.kind_error(ExpectedEvent::Or(vec![
+                        ExpectedEvent::Attribute(Some(Text::new(RETRY_IMMEDIATE_TAG))),
+                        ExpectedEvent::Attribute(Some(Text::new(RETRY_INTERVAL_TAG))),
+                        ExpectedEvent::Attribute(Some(Text::new(RETRY_EXPONENTIAL_TAG))),
+                        ExpectedEvent::Attribute(Some(Text::new(RETRY_NONE_TAG))),
+                    ]))))
                 }
             }
             RetryStrategyStage::Tag => match input {
@@ -2977,193 +2981,81 @@ impl Recognizer for RetryStrategyRecognizer {
                     Some(Err(input.kind_error(ExpectedEvent::Slot)))
                 }
             }
-            RetryStrategyStage::Field(field) => match &mut self.fields{
-                Some(RetryStrategyFields::Immediate {retries, retries_recognizer: Some(retries_recognizer)}) => {
-                    match field{
-                        RetryStrategyField::ImmediateRetries => {
-                            match retries_recognizer.feed_event(input)?{
-                                Ok(value) => {
-                                    *retries = Some(value);
-                                    self.stage = RetryStrategyStage::InBody;
-                                    None
-                                }
-                                Err(err) => {Some(Err(err))}
+            RetryStrategyStage::Field(field) => match &mut self.fields {
+                Some(RetryStrategyFields::Immediate {
+                    retries,
+                    retries_recognizer,
+                }) => match field {
+                    RetryStrategyField::ImmediateRetries => {
+                        match retries_recognizer.as_mut()?.feed_event(input)? {
+                            Ok(value) => {
+                                *retries = Some(value);
+                                self.stage = RetryStrategyStage::InBody;
+                                None
                             }
-                        }
-                        _ => {
-                            unimplemented!()
+                            Err(err) => Some(Err(err)),
                         }
                     }
-                }
-                Some(RetryStrategyFields::Interval {retries, retries_recognizer: Some(retries_recognizer), ..}) => {
-                    match field{
-                        RetryStrategyField::IntervalRetries => {
-                            match retries_recognizer.feed_event(input)?{
-                                Ok(value) => {
-                                    *retries = Some(value);
-                                    self.stage = RetryStrategyStage::InBody;
-                                    None
-                                }
-                                Err(err) => {Some(Err(err))}
+                    _ => None,
+                },
+                Some(RetryStrategyFields::Interval {
+                    retries,
+                    retries_recognizer,
+                    delay,
+                    delay_recognizer,
+                }) => match field {
+                    RetryStrategyField::IntervalRetries => {
+                        match retries_recognizer.as_mut()?.feed_event(input)? {
+                            Ok(value) => {
+                                *retries = Some(value);
+                                self.stage = RetryStrategyStage::InBody;
+                                None
                             }
-                        }
-                        _ => {
-                            unimplemented!()
+                            Err(err) => Some(Err(err)),
                         }
                     }
-                }
-                Some(RetryStrategyFields::Interval {delay, delay_recognizer: Some(delay_recognizer), ..}) => {
-                    match field{
-                        RetryStrategyField::IntervalDelay => {
-                            match delay_recognizer.feed_event(input)?{
-                                Ok(value) => {
-                                    *delay = Some(value);
-                                    self.stage = RetryStrategyStage::InBody;
-                                    None
-                                }
-                                Err(err) => {Some(Err(err))}
+                    RetryStrategyField::IntervalDelay => {
+                        match delay_recognizer.as_mut()?.feed_event(input)? {
+                            Ok(value) => {
+                                *delay = Some(value);
+                                self.stage = RetryStrategyStage::InBody;
+                                None
                             }
-                        }
-                        _ => {
-                            unimplemented!()
+                            Err(err) => Some(Err(err)),
                         }
                     }
-                }
-                Some(RetryStrategyFields::Exponential {max_interval, max_interval_recognizer: Some(max_interval_recognizer),..}) => {
-                    eprintln!("field = {:#?}", field);
-                    match field{
-                        RetryStrategyField::ExponentialMaxInterval => {
-                            match max_interval_recognizer.feed_event(input)?{
-                                Ok(value) => {
-                                    *max_interval = Some(value);
-                                    self.stage = RetryStrategyStage::InBody;
-                                    None
-                                }
-                                Err(err) => {Some(Err(err))}
+                    _ => None,
+                },
+                Some(RetryStrategyFields::Exponential {
+                    max_interval,
+                    max_interval_recognizer,
+                    max_backoff,
+                    max_backoff_recognizer,
+                }) => match field {
+                    RetryStrategyField::ExponentialMaxInterval => {
+                        match max_interval_recognizer.as_mut()?.feed_event(input)? {
+                            Ok(value) => {
+                                *max_interval = Some(value);
+                                self.stage = RetryStrategyStage::InBody;
+                                None
                             }
-                        }
-                        _ => {
-                            unimplemented!()
+                            Err(err) => Some(Err(err)),
                         }
                     }
-                }
-                Some(RetryStrategyFields::Exponential {max_backoff, max_backoff_recognizer: Some(max_backoff_recognizer),..}) => {
-                    match field{
-                        RetryStrategyField::ExponentialMaxBackoff => {
-                            match max_backoff_recognizer.feed_event(input)?{
-                                Ok(value) => {
-                                    *max_backoff = Some(value);
-                                    self.stage = RetryStrategyStage::InBody;
-                                    None
-                                }
-                                Err(err) => {Some(Err(err))}
+                    RetryStrategyField::ExponentialMaxBackoff => {
+                        match max_backoff_recognizer.as_mut()?.feed_event(input)? {
+                            Ok(value) => {
+                                *max_backoff = Some(value);
+                                self.stage = RetryStrategyStage::InBody;
+                                None
                             }
-                        }
-                        _ => {
-                            unimplemented!()
+                            Err(err) => Some(Err(err)),
                         }
                     }
-                }
-                _ => {
-                    unimplemented!()
-                }
-            }
-
-
-
-
-
-            //     match field {
-            //     RetryStrategyField::ImmediateRetries => {
-            //         if let Some(RetryStrategyFields::Immediate {
-            //             retries,
-            //             retries_recognizer,
-            //         }) = &mut self.fields
-            //         {
-            //             match retries_recognizer.unwrap().feed_event(input)? {
-            //                 Ok(value) => {
-            //                     *retries = Some(value);
-            //                     self.stage = RetryStrategyStage::InBody;
-            //                     None
-            //                 }
-            //                 Err(err) => Some(Err(err)),
-            //             }
-            //         } else {
-            //             self.stage = RetryStrategyStage::InBody;
-            //             None
-            //         }
-            //     }
-            //     RetryStrategyField::IntervalDelay => {
-            //         match Duration::make_recognizer().feed_event(input)? {
-            //             Ok(value) => {
-            //                 if let Some(RetryStrategyFields::Interval { delay, .. }) =
-            //                     &mut self.fields
-            //                 {
-            //                     *delay = Some(value);
-            //                     self.stage = RetryStrategyStage::InBody;
-            //                     None
-            //                 } else {
-            //                     None
-            //                 }
-            //             }
-            //             Err(err) => Some(Err(err)),
-            //         }
-            //     }
-            //     RetryStrategyField::IntervalRetries => {
-            //         match Quantity::<NonZeroUsize>::make_recognizer().feed_event(input)? {
-            //             Ok(value) => {
-            //                 if let Some(RetryStrategyFields::Interval { retries, .. }) =
-            //                     &mut self.fields
-            //                 {
-            //                     *retries = Some(value);
-            //                     self.stage = RetryStrategyStage::InBody;
-            //                     None
-            //                 } else {
-            //                     None
-            //                 }
-            //             }
-            //             Err(err) => Some(Err(err)),
-            //         }
-            //     }
-            //     RetryStrategyField::ExponentialMaxInterval => {
-            //         //Todo feed event works only for a simple types that can be parsed in one go.
-            //         //Extract the recognizer in the fields
-            //         match Duration::make_recognizer().feed_event(input)? {
-            //             Ok(value) => {
-            //                 eprintln!("test");
-            //                 if let Some(RetryStrategyFields::Exponential { max_interval, .. }) =
-            //                     &mut self.fields
-            //                 {
-            //                     *max_interval = Some(value);
-            //                     self.stage = RetryStrategyStage::InBody;
-            //                     None
-            //                 } else {
-            //                     None
-            //                 }
-            //             }
-            //             Err(err) => {
-            //                 eprintln!("err = {:#?}", err);
-            //                 Some(Err(err))
-            //             }
-            //         }
-            //     }
-            //     RetryStrategyField::ExponentialMaxBackoff => {
-            //         match Quantity::<Duration>::make_recognizer().feed_event(input)? {
-            //             Ok(value) => {
-            //                 if let Some(RetryStrategyFields::Exponential { max_backoff, .. }) =
-            //                     &mut self.fields
-            //                 {
-            //                     *max_backoff = Some(value);
-            //                     self.stage = RetryStrategyStage::InBody;
-            //                     None
-            //                 } else {
-            //                     None
-            //                 }
-            //             }
-            //             Err(err) => Some(Err(err)),
-            //         }
-            //     }
-            // },
+                    _ => None,
+                },
+                None => None,
+            },
         }
     }
 
@@ -3195,10 +3087,6 @@ impl<T: RecognizerReadable> RecognizerReadable for Quantity<T> {
             recognizer: T::make_recognizer(),
         })
     }
-
-    fn is_simple() -> bool {
-        true
-    }
 }
 
 pub struct QuantityRecognizer<T: RecognizerReadable> {
@@ -3218,7 +3106,9 @@ impl<T: RecognizerReadable> Recognizer for QuantityRecognizer<T> {
         }
     }
 
-    fn reset(&mut self) {}
+    fn reset(&mut self) {
+        self.recognizer.reset()
+    }
 }
 
 pub struct DurationRecognizer {
@@ -3371,37 +3261,473 @@ impl Recognizer for DurationRecognizer {
     }
 }
 
-//Todo dm
 impl RecognizerReadable for WebSocketConfig {
     type Rec = WebSocketConfigRecognizer;
     type AttrRec = SimpleAttrBody<WebSocketConfigRecognizer>;
     type BodyRec = SimpleRecBody<WebSocketConfigRecognizer>;
 
     fn make_recognizer() -> Self::Rec {
-        WebSocketConfigRecognizer
+        WebSocketConfigRecognizer {
+            stage: WebSocketConfigStage::Init,
+            max_send_queue: None,
+            max_message_size: None,
+            max_frame_size: None,
+            accept_unmasked_frames: None,
+            compression: None,
+        }
     }
 
     fn make_attr_recognizer() -> Self::AttrRec {
-        SimpleAttrBody::new(WebSocketConfigRecognizer)
+        SimpleAttrBody::new(WebSocketConfigRecognizer {
+            stage: WebSocketConfigStage::Init,
+            max_send_queue: None,
+            max_message_size: None,
+            max_frame_size: None,
+            accept_unmasked_frames: None,
+            compression: None,
+        })
     }
 
     fn make_body_recognizer() -> Self::BodyRec {
-        SimpleRecBody::new(WebSocketConfigRecognizer)
-    }
-
-    fn is_simple() -> bool {
-        true
+        SimpleRecBody::new(WebSocketConfigRecognizer {
+            stage: WebSocketConfigStage::Init,
+            max_send_queue: None,
+            max_message_size: None,
+            max_frame_size: None,
+            accept_unmasked_frames: None,
+            compression: None,
+        })
     }
 }
 
-pub struct WebSocketConfigRecognizer;
+pub struct WebSocketConfigRecognizer {
+    stage: WebSocketConfigStage,
+    max_send_queue: Option<usize>,
+    max_message_size: Option<usize>,
+    max_frame_size: Option<usize>,
+    accept_unmasked_frames: Option<bool>,
+    compression: Option<WsCompression>,
+}
+
+enum WebSocketConfigStage {
+    Init,
+    Tag,
+    AfterTag,
+    InBody,
+    Slot(WebSocketConfigField),
+    Field(WebSocketConfigField),
+}
+
+#[derive(Clone, Copy)]
+enum WebSocketConfigField {
+    MaxSendQueue,
+    MaxMessageSize,
+    MaxFrameSize,
+    AcceptUnmaskedFrames,
+    Compression,
+}
 
 impl Recognizer for WebSocketConfigRecognizer {
     type Target = WebSocketConfig;
 
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
-        unimplemented!()
+        match &self.stage {
+            WebSocketConfigStage::Init => {
+                if let ReadEvent::StartAttribute(name) = input {
+                    if name == WEB_SOCKET_CONFIG_TAG {
+                        self.stage = WebSocketConfigStage::Tag;
+                        None
+                    } else {
+                        Some(Err(ReadError::UnexpectedAttribute(name.into())))
+                    }
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Attribute(Some(
+                        Text::new(WEB_SOCKET_CONFIG_TAG),
+                    )))))
+                }
+            }
+            WebSocketConfigStage::Tag => match input {
+                ReadEvent::Extant => None,
+                ReadEvent::EndAttribute => {
+                    self.stage = WebSocketConfigStage::AfterTag;
+                    None
+                }
+                ow => Some(Err(ow.kind_error(ExpectedEvent::EndOfAttribute))),
+            },
+            WebSocketConfigStage::AfterTag => {
+                if matches!(&input, ReadEvent::StartBody) {
+                    self.stage = WebSocketConfigStage::InBody;
+                    None
+                } else if matches!(&input, ReadEvent::EndRecord) {
+                    Some(Ok(WebSocketConfig {
+                        max_send_queue: None,
+                        max_message_size: None,
+                        max_frame_size: None,
+                        accept_unmasked_frames: false,
+                        compression: WsCompression::None(None),
+                    }))
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Or(vec![
+                        ExpectedEvent::RecordBody,
+                        ExpectedEvent::EndOfRecord,
+                    ]))))
+                }
+            }
+            WebSocketConfigStage::InBody => match input {
+                ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
+                    "max_send_queue" => {
+                        self.stage = WebSocketConfigStage::Slot(WebSocketConfigField::MaxSendQueue);
+                        None
+                    }
+                    "max_message_size" => {
+                        self.stage =
+                            WebSocketConfigStage::Slot(WebSocketConfigField::MaxMessageSize);
+                        None
+                    }
+                    "max_frame_size" => {
+                        self.stage = WebSocketConfigStage::Slot(WebSocketConfigField::MaxFrameSize);
+                        None
+                    }
+                    "accept_unmasked_frames" => {
+                        self.stage =
+                            WebSocketConfigStage::Slot(WebSocketConfigField::AcceptUnmaskedFrames);
+                        None
+                    }
+                    "compression" => {
+                        self.stage = WebSocketConfigStage::Slot(WebSocketConfigField::Compression);
+                        None
+                    }
+                    ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
+                },
+                ReadEvent::EndRecord => Some(Ok(WebSocketConfig {
+                    max_send_queue: self.max_send_queue,
+                    max_message_size: self.max_message_size,
+                    max_frame_size: self.max_frame_size,
+                    accept_unmasked_frames: self.accept_unmasked_frames.unwrap_or(false),
+                    compression: self.compression.unwrap_or(WsCompression::None(None)),
+                })),
+                ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
+                    ExpectedEvent::ValueEvent(ValueKind::Text),
+                    ExpectedEvent::EndOfRecord,
+                ])))),
+            },
+            WebSocketConfigStage::Slot(fld) => {
+                if matches!(&input, ReadEvent::Slot) {
+                    self.stage = WebSocketConfigStage::Field(*fld);
+                    None
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Slot)))
+                }
+            }
+            WebSocketConfigStage::Field(WebSocketConfigField::MaxSendQueue) => match input {
+                ReadEvent::Number(NumericValue::UInt(n)) => {
+                    if let Ok(m) = usize::try_from(n) {
+                        self.max_send_queue = Some(m);
+                        self.stage = WebSocketConfigStage::InBody;
+                        None
+                    } else {
+                        Some(Err(ReadError::NumberOutOfRange))
+                    }
+                }
+                ow => Some(Err(
+                    ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
+                )),
+            },
+            WebSocketConfigStage::Field(WebSocketConfigField::MaxMessageSize) => match input {
+                ReadEvent::Number(NumericValue::UInt(n)) => {
+                    if let Ok(m) = usize::try_from(n) {
+                        self.max_message_size = Some(m);
+                        self.stage = WebSocketConfigStage::InBody;
+                        None
+                    } else {
+                        Some(Err(ReadError::NumberOutOfRange))
+                    }
+                }
+                ow => Some(Err(
+                    ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
+                )),
+            },
+            WebSocketConfigStage::Field(WebSocketConfigField::MaxFrameSize) => match input {
+                ReadEvent::Number(NumericValue::UInt(n)) => {
+                    if let Ok(m) = usize::try_from(n) {
+                        self.max_frame_size = Some(m);
+                        self.stage = WebSocketConfigStage::InBody;
+                        None
+                    } else {
+                        Some(Err(ReadError::NumberOutOfRange))
+                    }
+                }
+                ow => Some(Err(
+                    ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
+                )),
+            },
+            WebSocketConfigStage::Field(WebSocketConfigField::AcceptUnmaskedFrames) => {
+                match input {
+                    ReadEvent::Boolean(value) => {
+                        self.accept_unmasked_frames = Some(value);
+                        self.stage = WebSocketConfigStage::InBody;
+                        None
+                    }
+                    ow => Some(Err(
+                        ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::Boolean))
+                    )),
+                }
+            }
+            WebSocketConfigStage::Field(WebSocketConfigField::Compression) => {
+                unimplemented!()
+            }
+        }
     }
 
-    fn reset(&mut self) {}
+    fn reset(&mut self) {
+        let WebSocketConfigRecognizer {
+            stage,
+            max_send_queue,
+            max_message_size,
+            max_frame_size,
+            accept_unmasked_frames,
+            compression,
+        } = self;
+
+        *stage = WebSocketConfigStage::Init;
+        *max_send_queue = None;
+        *max_message_size = None;
+        *max_frame_size = None;
+        *accept_unmasked_frames = None;
+        *compression = None;
+    }
+}
+
+//todo dm
+impl RecognizerReadable for WsCompression {
+    type Rec = WsCompressionRecognizer;
+    type AttrRec = SimpleAttrBody<WsCompressionRecognizer>;
+    type BodyRec = SimpleRecBody<WsCompressionRecognizer>;
+
+    fn make_recognizer() -> Self::Rec {
+        WsCompressionRecognizer {
+            stage: WsCompressionRecognizerStage::Init,
+            fields: None,
+        }
+    }
+
+    fn make_attr_recognizer() -> Self::AttrRec {
+        SimpleAttrBody::new(WsCompressionRecognizer {
+            stage: WsCompressionRecognizerStage::Init,
+            fields: None,
+        })
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        SimpleRecBody::new(WsCompressionRecognizer {
+            stage: WsCompressionRecognizerStage::Init,
+            fields: None,
+        })
+    }
+}
+
+pub struct WsCompressionRecognizer {
+    stage: WsCompressionRecognizerStage,
+    fields: Option<WsCompressionFields>,
+}
+
+pub enum WsCompressionFields {
+    None(Option<usize>),
+    Deflate {
+    // max_message_size: Option<usize>,
+    // server_max_window_bits: u8,
+    // client_max_window_bits: u8,
+    // request_no_context_takeover: bool,
+    // accept_no_context_takeover: bool,
+    // compress_reset: bool,
+    // decompress_reset: bool,
+    // compression_level: Compression,
+    },
+}
+
+enum WsCompressionRecognizerStage {
+    Init,
+    Tag,
+    AfterTag,
+    InBody,
+    Slot(WebSocketConfigField),
+    Field(WebSocketConfigField),
+}
+
+#[derive(Clone, Copy)]
+enum WsCompressionField {
+    MaxSendQueue,
+    MaxMessageSize,
+    MaxFrameSize,
+    AcceptUnmaskedFrames,
+    Compression,
+}
+
+impl Recognizer for WsCompressionRecognizer {
+    type Target = WsCompression;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        match &self.stage {
+            WsCompressionRecognizerStage::Init => {
+                if let ReadEvent::StartAttribute(name) = input {
+                    match name.borrow() {
+                        WS_COMPRESSION_NONE_TAG => {
+                            self.stage = WsCompressionRecognizerStage::Tag;
+                            self.fields = Some(WsCompressionFields::None(None));
+                            None
+                        }
+                        WS_COMPRESSION_DEFLATE_TAG => {
+                            self.stage = WsCompressionRecognizerStage::Tag;
+                            self.fields = Some(WsCompressionFields::Deflate {});
+                            None
+                        }
+                        _ => Some(Err(ReadError::UnexpectedAttribute(name.into()))),
+                    }
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Or(vec![
+                        ExpectedEvent::Attribute(Some(Text::new(WS_COMPRESSION_NONE_TAG))),
+                        ExpectedEvent::Attribute(Some(Text::new(WS_COMPRESSION_DEFLATE_TAG))),
+                    ]))))
+                }
+            }
+            _ => unimplemented!(),
+        }
+        //     WebSocketConfigStage::Tag => match input {
+        //         ReadEvent::Extant => None,
+        //         ReadEvent::EndAttribute => {
+        //             self.stage = WebSocketConfigStage::AfterTag;
+        //             None
+        //         }
+        //         ow => Some(Err(ow.kind_error(ExpectedEvent::EndOfAttribute))),
+        //     },
+        //     WebSocketConfigStage::AfterTag => {
+        //         if matches!(&input, ReadEvent::StartBody) {
+        //             self.stage = WebSocketConfigStage::InBody;
+        //             None
+        //         } else if matches!(&input, ReadEvent::EndRecord) {
+        //             Some(Ok(WebSocketConfig {
+        //                 max_send_queue: None,
+        //                 max_message_size: None,
+        //                 max_frame_size: None,
+        //                 accept_unmasked_frames: false,
+        //                 compression: WsCompression::None(None),
+        //             }))
+        //         } else {
+        //             Some(Err(input.kind_error(ExpectedEvent::Or(vec![
+        //                 ExpectedEvent::RecordBody,
+        //                 ExpectedEvent::EndOfRecord,
+        //             ]))))
+        //         }
+        //     }
+        //     WebSocketConfigStage::InBody => match input {
+        //         ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
+        //             "max_send_queue" => {
+        //                 self.stage = WebSocketConfigStage::Slot(WebSocketConfigField::MaxSendQueue);
+        //                 None
+        //             }
+        //             "max_message_size" => {
+        //                 self.stage =
+        //                     WebSocketConfigStage::Slot(WebSocketConfigField::MaxMessageSize);
+        //                 None
+        //             }
+        //             "max_frame_size" => {
+        //                 self.stage = WebSocketConfigStage::Slot(WebSocketConfigField::MaxFrameSize);
+        //                 None
+        //             }
+        //             "accept_unmasked_frames" => {
+        //                 self.stage =
+        //                     WebSocketConfigStage::Slot(WebSocketConfigField::AcceptUnmaskedFrames);
+        //                 None
+        //             }
+        //             "compression" => {
+        //                 self.stage = WebSocketConfigStage::Slot(WebSocketConfigField::Compression);
+        //                 None
+        //             }
+        //             ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
+        //         },
+        //         ReadEvent::EndRecord => Some(Ok(WebSocketConfig {
+        //             max_send_queue: self.max_send_queue,
+        //             max_message_size: self.max_message_size,
+        //             max_frame_size: self.max_frame_size,
+        //             accept_unmasked_frames: self.accept_unmasked_frames.unwrap_or(false),
+        //             compression: self.compression.unwrap_or(WsCompression::None(None)),
+        //         })),
+        //         ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
+        //             ExpectedEvent::ValueEvent(ValueKind::Text),
+        //             ExpectedEvent::EndOfRecord,
+        //         ])))),
+        //     },
+        //     WebSocketConfigStage::Slot(fld) => {
+        //         if matches!(&input, ReadEvent::Slot) {
+        //             self.stage = WebSocketConfigStage::Field(*fld);
+        //             None
+        //         } else {
+        //             Some(Err(input.kind_error(ExpectedEvent::Slot)))
+        //         }
+        //     }
+        //     WebSocketConfigStage::Field(WebSocketConfigField::MaxSendQueue) => match input {
+        //         ReadEvent::Number(NumericValue::UInt(n)) => {
+        //             if let Ok(m) = usize::try_from(n) {
+        //                 self.max_send_queue = Some(m);
+        //                 self.stage = WebSocketConfigStage::InBody;
+        //                 None
+        //             } else {
+        //                 Some(Err(ReadError::NumberOutOfRange))
+        //             }
+        //         }
+        //         ow => Some(Err(
+        //             ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
+        //         )),
+        //     },
+        //     WebSocketConfigStage::Field(WebSocketConfigField::MaxMessageSize) => match input {
+        //         ReadEvent::Number(NumericValue::UInt(n)) => {
+        //             if let Ok(m) = usize::try_from(n) {
+        //                 self.max_message_size = Some(m);
+        //                 self.stage = WebSocketConfigStage::InBody;
+        //                 None
+        //             } else {
+        //                 Some(Err(ReadError::NumberOutOfRange))
+        //             }
+        //         }
+        //         ow => Some(Err(
+        //             ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
+        //         )),
+        //     },
+        //     WebSocketConfigStage::Field(WebSocketConfigField::MaxFrameSize) => match input {
+        //         ReadEvent::Number(NumericValue::UInt(n)) => {
+        //             if let Ok(m) = usize::try_from(n) {
+        //                 self.max_frame_size = Some(m);
+        //                 self.stage = WebSocketConfigStage::InBody;
+        //                 None
+        //             } else {
+        //                 Some(Err(ReadError::NumberOutOfRange))
+        //             }
+        //         }
+        //         ow => Some(Err(
+        //             ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
+        //         )),
+        //     },
+        //     WebSocketConfigStage::Field(WebSocketConfigField::AcceptUnmaskedFrames) => {
+        //         match input {
+        //             ReadEvent::Boolean(value) => {
+        //                 self.accept_unmasked_frames = Some(value);
+        //                 self.stage = WebSocketConfigStage::InBody;
+        //                 None
+        //             }
+        //             ow => Some(Err(
+        //                 ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::Boolean))
+        //             )),
+        //         }
+        //     }
+        //     WebSocketConfigStage::Field(WebSocketConfigField::Compression) => {
+        //         unimplemented!()
+        //     }
+        // }
+    }
+
+    fn reset(&mut self) {
+        let WsCompressionRecognizer { stage, fields } = self;
+        *stage = WsCompressionRecognizerStage::Init;
+        *fields = None
+    }
 }
