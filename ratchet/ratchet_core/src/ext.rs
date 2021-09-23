@@ -18,7 +18,7 @@ use http::{HeaderMap, HeaderValue};
 use httparse::Header;
 use ratchet_ext::{
     Extension, ExtensionDecoder, ExtensionEncoder, ExtensionProvider, FrameHeader,
-    ReunitableExtension, SplittableExtension,
+    ReunitableExtension, RsvBits, SplittableExtension,
 };
 use std::convert::Infallible;
 
@@ -74,6 +74,16 @@ impl ExtensionProvider for NoExtProvider {
 impl From<Infallible> for Error {
     fn from(e: Infallible) -> Self {
         match e {}
+    }
+}
+
+impl Extension for NoExt {
+    fn bits(&self) -> RsvBits {
+        RsvBits {
+            rsv1: false,
+            rsv2: false,
+            rsv3: false,
+        }
     }
 }
 
@@ -181,6 +191,22 @@ where
         match &mut self.0 {
             Some(ext) => ext.decode(payload, header),
             None => Ok(()),
+        }
+    }
+}
+
+impl<E> Extension for NegotiatedExtension<E>
+where
+    E: Extension,
+{
+    fn bits(&self) -> RsvBits {
+        match &self.0 {
+            Some(ext) => ext.bits(),
+            None => RsvBits {
+                rsv1: false,
+                rsv2: false,
+                rsv3: false,
+            },
         }
     }
 }

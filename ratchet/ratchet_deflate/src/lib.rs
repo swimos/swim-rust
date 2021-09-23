@@ -20,8 +20,8 @@ use crate::handshake::{apply_headers, negotiate_client, negotiate_server};
 use bytes::BytesMut;
 use flate2::{Compress, Compression, Decompress, FlushCompress, FlushDecompress, Status};
 use ratchet_ext::{
-    ExtensionDecoder, ExtensionEncoder, ExtensionProvider, FrameHeader, Header, HeaderMap,
-    HeaderValue, ReunitableExtension, SplittableExtension,
+    Extension, ExtensionDecoder, ExtensionEncoder, ExtensionProvider, FrameHeader, Header,
+    HeaderMap, HeaderValue, ReunitableExtension, RsvBits, SplittableExtension,
 };
 use std::slice;
 
@@ -133,6 +133,16 @@ impl Deflate {
                 config.client_max_window_bits,
                 config.compress_reset,
             ),
+        }
+    }
+}
+
+impl Extension for Deflate {
+    fn bits(&self) -> RsvBits {
+        RsvBits {
+            rsv1: true,
+            rsv2: false,
+            rsv3: false,
         }
     }
 }

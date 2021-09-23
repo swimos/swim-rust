@@ -26,7 +26,7 @@ mod ws;
 
 pub use builder::{WebSocketClientBuilder, WebSocketServerBuilder};
 pub use errors::*;
-pub use ext::NoExtProvider;
+pub use ext::{NoExt, NoExtProvider};
 pub use handshake::{
     accept, accept_with, ProtocolRegistry, TryIntoRequest, WebSocketResponse, WebSocketUpgrader,
 };

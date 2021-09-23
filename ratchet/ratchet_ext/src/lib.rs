@@ -48,8 +48,22 @@ pub struct FrameHeader {
     pub opcode: OpCode,
 }
 
-pub trait Extension: ExtensionEncoder + ExtensionDecoder + Debug {}
-impl<E> Extension for E where E: ExtensionEncoder + ExtensionDecoder + Debug {}
+pub struct RsvBits {
+    pub rsv1: bool,
+    pub rsv2: bool,
+    pub rsv3: bool,
+}
+
+impl From<RsvBits> for u8 {
+    fn from(bits: RsvBits) -> Self {
+        let RsvBits { rsv1, rsv2, rsv3 } = bits;
+        (rsv1 as u8) << 6 | (rsv2 as u8) << 5 | (rsv3 as u8) << 4
+    }
+}
+
+pub trait Extension: ExtensionEncoder + ExtensionDecoder + Debug {
+    fn bits(&self) -> RsvBits;
+}
 
 pub trait SplittableExtension: Extension {
     type SplitEncoder: ExtensionEncoder;

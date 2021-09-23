@@ -28,7 +28,6 @@ use nanorand::{WyRand, RNG};
 use ratchet_ext::{ExtensionDecoder, FrameHeader as ExtFrameHeader, OpCode as ExtOpCode};
 use std::convert::TryFrom;
 use std::fmt::{Debug, Formatter};
-use std::iter::FromIterator;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 #[derive(Debug, PartialEq)]
@@ -436,11 +435,13 @@ where
         }
     }
 
-    pub fn new(io: I, read_buffer: BytesMut, role: Role, max_size: usize) -> Self {
+    pub fn new(io: I, read_buffer: BytesMut, role: Role, max_size: usize, ext_bits: u8) -> Self {
         let flags = match role {
-            Role::Client => CodecFlags::empty(),
-            Role::Server => CodecFlags::ROLE,
+            Role::Client => CodecFlags::from_bits_truncate(ext_bits),
+            Role::Server => CodecFlags::from_bits_truncate(CodecFlags::ROLE.bits() | ext_bits),
         };
+
+        println!("{:?}", flags);
 
         FramedIo {
             io,

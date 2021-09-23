@@ -26,21 +26,26 @@ pub fn apply_headers(header_map: &mut HeaderMap, config: &DeflateConfig) {
     let DeflateConfig {
         server_max_window_bits,
         client_max_window_bits,
-        request_no_context_takeover,
-        accept_no_context_takeover,
-        compression_level,
+        ..
     } = config;
 
     let mut bytes = BytesMut::new();
-    bytes.extend_from_slice(format!("\r\n{}: ", SEC_WEBSOCKET_EXTENSIONS).as_bytes());
+    bytes.extend_from_slice(format!("{};", EXT_IDENT).as_bytes());
     bytes.extend_from_slice(
-        format!("server_max_window_bits={},", server_max_window_bits).as_bytes(),
+        format!("server_max_window_bits={};", server_max_window_bits).as_bytes(),
     );
 
-    bytes
-        .extend_from_slice(format!("client_max_window_bits={}", client_max_window_bits).as_bytes());
-    bytes.extend_from_slice(b"client_no_context_takeover,");
+    bytes.extend_from_slice(
+        format!("client_max_window_bits={};", client_max_window_bits).as_bytes(),
+    );
+    bytes.extend_from_slice(b"client_no_context_takeover;");
     bytes.extend_from_slice(b"server_no_context_takeover");
+
+    // todo
+    header_map.insert(
+        SEC_WEBSOCKET_EXTENSIONS,
+        HeaderValue::from_bytes(bytes.as_ref()).unwrap(),
+    );
 }
 
 pub fn negotiate_client(

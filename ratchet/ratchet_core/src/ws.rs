@@ -66,7 +66,7 @@ where
     ) -> WebSocket<S, E> {
         let WebSocketConfig { max_size } = config;
         WebSocket {
-            framed: FramedIo::new(stream, read_buffer, role, max_size),
+            framed: FramedIo::new(stream, read_buffer, role, max_size, extension.bits().into()),
             extension,
             control_buffer: BytesMut::with_capacity(CONTROL_MAX_SIZE),
             closed: false,
@@ -270,7 +270,7 @@ pub async fn client<S, E>(
     request: Request,
     extension: &E,
     subprotocols: ProtocolRegistry,
-) -> Result<Upgraded<S, impl Extension>, Error>
+) -> Result<Upgraded<S, E::Extension>, Error>
 where
     S: WebSocketStream,
     E: ExtensionProvider,
