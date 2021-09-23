@@ -21,7 +21,7 @@ use crate::structural::write::DeriveStructuralWritable;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use syn::{Data, DeriveInput, Generics};
-use utilities::algebra::Errors;
+use utilities::errors::Errors;
 
 pub mod model;
 pub mod read;

@@ -17,7 +17,6 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-pub mod algebra;
 pub mod errors;
 pub mod fs;
 pub mod future;

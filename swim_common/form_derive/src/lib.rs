@@ -31,7 +31,7 @@ use crate::structural::{
 };
 use crate::tag::build_derive_tag;
 use crate::validated_form::build_validated_form;
-use utilities::algebra::Errors;
+use utilities::errors::Errors;
 use utilities::validation::Validation;
 
 mod form;

@@ -12,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::algebra::{Errors, Monoid, Semigroup, Zero};
+use crate::errors::Errors;
 use std::iter::FromIterator;
+use swim_algebra::{Monoid, Semigroup, Zero};
 
 /// An alternative to [`Result`] where errors are not necessarily fatal. The type `E` represents
 /// a (possibly empty) collection of errors.

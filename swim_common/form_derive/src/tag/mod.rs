@@ -18,7 +18,7 @@ use crate::quote::TokenStreamExt;
 use proc_macro2::{Span, TokenStream};
 use quote::ToTokens;
 use std::fmt::{Display, Formatter};
-use utilities::algebra::Errors;
+use utilities::errors::Errors;
 use utilities::validation::ValidationItExt;
 
 /// Model for an enumeration where all variants have no fields.

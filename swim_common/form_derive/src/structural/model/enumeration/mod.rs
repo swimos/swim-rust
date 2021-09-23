@@ -20,7 +20,7 @@ use crate::SynValidation;
 use quote::ToTokens;
 use std::collections::HashSet;
 use syn::{Attribute, DataEnum, Ident};
-use utilities::algebra::Errors;
+use utilities::errors::Errors;
 use utilities::validation::{validate2, Validation, ValidationItExt};
 
 /// Preprocessed description of an enum type.
