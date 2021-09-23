@@ -23,9 +23,9 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::io;
 use std::str::Utf8Error;
+use swim_iteratee::{coenumerate, Iteratee};
 use tokio::io::AsyncRead;
 use tokio_util::codec::FramedRead;
-use utilities::iteratee::{coenumerate, Iteratee};
 
 /// Error type for reading a configuration document.
 #[derive(Debug)]

@@ -102,7 +102,7 @@ pub trait Iteratee<In> {
     ///         Some(i.to_string())
     ///     } else {
     ///         None
-    ///     }   
+    ///     }
     /// });
     ///
     /// assert!(iteratee.feed(1).is_none());

@@ -37,8 +37,8 @@ use std::marker::PhantomData;
 use std::option::Option::None;
 use std::str::FromStr;
 use std::sync::Arc;
+use swim_iteratee::Iteratee;
 use url::Url;
-use utilities::iteratee::Iteratee;
 use utilities::uri::RelativeUri;
 
 /// Trait for types that can be recognized by a [`Recognizer`] state machine.
