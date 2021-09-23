@@ -503,7 +503,6 @@ impl Extension for MockExtension {
 }
 
 impl ExtensionEncoder for MockExtension {
-    type United = Self;
     type Error = Infallible;
 
     fn encode<A>(&mut self, _payload: A, _header: &mut FrameHeader) -> Result<(), Self::Error>

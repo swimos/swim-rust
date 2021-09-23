@@ -37,7 +37,6 @@ impl Extension for NoExt {
 }
 
 impl ExtensionEncoder for NoExt {
-    type United = NoExt;
     type Error = Infallible;
 
     fn encode<A>(&mut self, _payload: A, _header: &mut FrameHeader) -> Result<(), Self::Error>
@@ -102,7 +101,6 @@ impl ReunitableExtension for NoExt {
 #[derive(Debug)]
 pub struct NoExtEncoder;
 impl ExtensionEncoder for NoExtEncoder {
-    type United = NoExt;
     type Error = Infallible;
 
     fn encode<A>(&mut self, _payload: A, _header: &mut FrameHeader) -> Result<(), Self::Error>

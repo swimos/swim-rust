@@ -68,7 +68,6 @@ pub trait ReunitableExtension: SplittableExtension {
 }
 
 pub trait ExtensionEncoder {
-    type United: ReunitableExtension;
     type Error: Error + Send + Sync + 'static;
 
     fn encode<A>(&mut self, payload: A, header: &mut FrameHeader) -> Result<(), Self::Error>

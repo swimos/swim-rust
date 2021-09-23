@@ -206,7 +206,6 @@ where
     ) -> Result<WebSocket<S, Ext>, ReuniteError<S, Ext::Encoder, Ext::Decoder>>
     where
         S: Debug,
-        E: ExtensionEncoder<United = Ext>,
         Ext: ReunitableExtension<Encoder = E>,
     {
         reunite::<S, Ext>(self, receiver)
