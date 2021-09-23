@@ -27,12 +27,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use swim_future::SwimStreamExt;
 use swim_runtime::time::clock::Clock;
+use swim_time::AtomicInstant;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::time::{Duration, Instant};
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
-use utilities::instant::AtomicInstant;
 use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
 
@@ -69,7 +69,7 @@ impl<Agent, Clk, Router, Store> ContextImpl<Agent, Clk, Router, Store> {
             routing_context,
             schedule_context,
             meta_context: Arc::new(meta_context),
-            uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now())),
+            uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
             store,
         }
     }

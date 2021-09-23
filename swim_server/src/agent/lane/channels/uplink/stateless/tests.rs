@@ -39,11 +39,11 @@ use crate::plane::store::mock::MockPlaneStore;
 use crate::routing::error::RouterError;
 use std::ops::Add;
 use swim_common::routing::ResolutionError;
+use swim_time::AtomicInstant;
 use tokio::sync::mpsc::Receiver;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
-use utilities::instant::AtomicInstant;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
 

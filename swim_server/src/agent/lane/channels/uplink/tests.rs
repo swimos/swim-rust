@@ -37,11 +37,11 @@ use swim_common::form::Form;
 use swim_common::model::Value;
 use swim_common::sink::item;
 use swim_future::SwimStreamExt;
+use swim_time::AtomicInstant;
 use swim_warp::model::map::MapUpdate;
 use tokio::sync::mpsc;
 use tokio::time::{timeout, Instant};
 use tokio_stream::wrappers::ReceiverStream;
-use utilities::instant::AtomicInstant;
 use utilities::sync::trigger;
 
 fn buffer_size() -> NonZeroUsize {
@@ -110,7 +110,7 @@ async fn uplink_not_linked() {
 
     let (tx_event, rx_event) = mpsc::channel(5);
 
-    let uplinks_idle_since = Arc::new(AtomicInstant::new(Instant::now()));
+    let uplinks_idle_since = Arc::new(AtomicInstant::new(Instant::now().into_std()));
     let uplink_task = uplink.run_uplink(item::for_mpsc_sender(tx_event), uplinks_idle_since);
 
     let send_task = async move {
@@ -155,7 +155,7 @@ async fn uplink_open_to_linked() {
 
     let (tx_event, rx_event) = mpsc::channel(5);
 
-    let uplinks_idle_since = Arc::new(AtomicInstant::new(Instant::now()));
+    let uplinks_idle_since = Arc::new(AtomicInstant::new(Instant::now().into_std()));
     let uplink_task = uplink.run_uplink(item::for_mpsc_sender(tx_event), uplinks_idle_since);
 
     let send_task = async move {
@@ -206,7 +206,7 @@ async fn uplink_open_to_synced() {
 
     let (tx_event, rx_event) = mpsc::channel(5);
 
-    let uplinks_idle_since = Arc::new(AtomicInstant::new(Instant::now()));
+    let uplinks_idle_since = Arc::new(AtomicInstant::new(Instant::now().into_std()));
     let uplink_task = uplink.run_uplink(item::for_mpsc_sender(tx_event), uplinks_idle_since);
 
     let send_task = async move {

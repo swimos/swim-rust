@@ -35,11 +35,11 @@ use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
 use swim_errors::Recoverable;
 use swim_runtime::time::timeout;
+use swim_time::AtomicInstant;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
-use utilities::instant::AtomicInstant;
 
 mod mock;
 
@@ -79,7 +79,7 @@ fn make_dispatcher(
 
     let spawn_task = ReceiverStream::new(spawn_rx).for_each_concurrent(None, |eff| eff);
 
-    let uplinks_idle_since = Arc::new(AtomicInstant::new(Instant::now()));
+    let uplinks_idle_since = Arc::new(AtomicInstant::new(Instant::now().into_std()));
     let dispatch_task = dispatcher.run(envelopes, uplinks_idle_since);
 
     (

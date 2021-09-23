@@ -65,13 +65,13 @@ use swim_common::routing::SendError;
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
+use swim_time::AtomicInstant;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::timeout;
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
-use utilities::instant::AtomicInstant;
 use utilities::sync::{promise, topic, trigger};
 use utilities::uri::RelativeUri;
 
@@ -635,7 +635,7 @@ fn make_context() -> (
         _drop_tx: Arc::new(drop_tx),
         drop_rx,
         aggregator,
-        uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now())),
+        uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
     };
     let spawn_task = ReceiverStream::new(spawn_rx)
         .take_until(stop_rx)
@@ -1393,7 +1393,7 @@ impl MultiTestContext {
                 router_addr,
             ))),
             spawner,
-            Arc::new(AtomicInstant::new(Instant::now())),
+            Arc::new(AtomicInstant::new(Instant::now().into_std())),
         )
     }
 

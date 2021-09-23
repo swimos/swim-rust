@@ -13,6 +13,7 @@ members = [
     "utilities/swim_errors",
     "utilities/swim_future",
     "utilities/swim_trigger",
+    "utilities/swim_time",
     "utilities/test_util"
 ]
 

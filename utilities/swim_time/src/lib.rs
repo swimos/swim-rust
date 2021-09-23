@@ -12,32 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(clippy::match_wild_err_arm)]
+mod instant;
 
-use std::error::Error;
-use std::fmt::{Display, Formatter};
-
-pub mod iteratee;
-pub mod lru_cache;
-pub mod never;
-pub mod num;
-pub mod print;
-pub mod ptr;
-pub mod route_pattern;
-pub mod rtree;
-pub mod sync;
-pub mod task;
-pub mod trace;
-pub mod uri;
-
-/// Error thrown by methods that required a usize to be positive.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct ZeroUsize;
-
-impl Display for ZeroUsize {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Zero Usize")
-    }
-}
-
-impl Error for ZeroUsize {}
+pub use instant::AtomicInstant;

@@ -41,11 +41,11 @@ use swim_common::sink::item::{FnMutSender, ItemSender};
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use swim_errors::Recoverable;
+use swim_time::AtomicInstant;
 use swim_warp::backpressure::keyed::map::MapUpdateMessage;
 use swim_warp::model::map::MapUpdate;
 use tokio::time::Instant;
 use tracing::{event, Level};
-use utilities::instant::AtomicInstant;
 
 pub(crate) mod backpressure;
 pub mod map;
@@ -518,7 +518,7 @@ where
                 if result.is_err() {
                     break result;
                 } else {
-                    uplinks_idle_since.store(Instant::now(), Ordering::Relaxed)
+                    uplinks_idle_since.store(Instant::now().into_std(), Ordering::Relaxed)
                 }
             }
             Some(Err(e)) => {

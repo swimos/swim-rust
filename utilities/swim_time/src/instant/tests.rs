@@ -14,8 +14,8 @@
 
 use crate::instant::AtomicInstant;
 use std::sync::atomic::Ordering::Relaxed;
+use std::time::Instant;
 use std::{thread, time};
-use tokio::time::Instant;
 
 #[test]
 fn atomic_instant_create() {

@@ -51,8 +51,8 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_runtime::time::timeout::timeout;
+use swim_time::AtomicInstant;
 use tokio::time::Instant;
-use utilities::instant::AtomicInstant;
 
 pub mod error;
 #[cfg(test)]
@@ -593,8 +593,9 @@ where
                 match maybe_next {
                     Ok(next) => break next,
                     Err(_) => {
-                        let output_idle_dur = &Instant::now()
-                            .duration_since(uplinks_idle_since.load(Ordering::Relaxed));
+                        let output_idle_dur = &Instant::now().duration_since(Instant::from_std(
+                            uplinks_idle_since.load(Ordering::Relaxed),
+                        ));
 
                         if output_idle_dur > max_idle_time {
                             break 'outer Err(DispatcherError::AgentTimedOut(*max_idle_time));

@@ -13,8 +13,7 @@
 // limitations under the License.
 
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
-use tokio::time::Instant;
+use std::time::{Duration, Instant};
 
 #[cfg(test)]
 mod tests;
