@@ -483,7 +483,7 @@ where
     fn negotiate_server(
         &self,
         _headers: &[Header],
-    ) -> Result<Option<(Self::Extension, Option<HeaderValue>)>, ExtHandshakeErr> {
+    ) -> Result<Option<(Self::Extension, HeaderValue)>, ExtHandshakeErr> {
         panic!("Unexpected server-side extension negotiation")
     }
 }

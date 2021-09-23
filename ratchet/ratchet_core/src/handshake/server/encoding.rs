@@ -197,7 +197,7 @@ where
         .negotiate_server(request.headers)
         .map_err(|e| Error::with_cause(ErrorKind::Extension, e))?;
     let (extension, extension_header) = match extension_opt {
-        Some((extension, header_opt)) => (NegotiatedExtension::from(Some(extension)), header_opt),
+        Some((extension, header)) => (NegotiatedExtension::from(Some(extension)), Some(header)),
         None => (NegotiatedExtension::from(None), None),
     };
 

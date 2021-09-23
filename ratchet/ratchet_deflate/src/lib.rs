@@ -16,11 +16,11 @@ mod error;
 mod handshake;
 
 use crate::error::DeflateExtensionError;
-use crate::handshake::negotiate_client;
+use crate::handshake::{negotiate_client, negotiate_server};
 use flate2::{Compress, Compression, Decompress};
 use ratchet_ext::{
-    Extension, ExtensionDecoder, ExtensionEncoder, ExtensionProvider, FrameHeader, Header,
-    HeaderMap, HeaderValue, ReunitableExtension, SplittableExtension,
+    ExtensionDecoder, ExtensionEncoder, ExtensionProvider, FrameHeader, Header, HeaderMap,
+    HeaderValue, ReunitableExtension, SplittableExtension,
 };
 
 /// The minimum size of the LZ77 sliding window size.
@@ -56,9 +56,9 @@ impl ExtensionProvider for DeflateExtProvider {
 
     fn negotiate_server(
         &self,
-        _headers: &[Header],
-    ) -> Result<Option<(Self::Extension, Option<HeaderValue>)>, Self::Error> {
-        unimplemented!()
+        headers: &[Header],
+    ) -> Result<Option<(Self::Extension, HeaderValue)>, Self::Error> {
+        negotiate_server(headers, &self.config)
     }
 }
 
@@ -104,6 +104,18 @@ struct InitialisedDeflateConfig {
     compression_level: Compression,
 }
 
+impl InitialisedDeflateConfig {
+    fn from_config(config: &DeflateConfig) -> InitialisedDeflateConfig {
+        InitialisedDeflateConfig {
+            server_max_window_bits: config.server_max_window_bits,
+            client_max_window_bits: config.client_max_window_bits,
+            compress_reset: false,
+            decompress_reset: false,
+            compression_level: config.compression_level,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Deflate {
     encoder: DeflateEncoder,
@@ -119,31 +131,18 @@ impl Deflate {
     }
 }
 
-impl Extension for Deflate {
-    type Encoder = DeflateEncoder;
-    type Decoder = DeflateDecoder;
-
-    fn encoder(&mut self) -> &mut Self::Encoder {
-        &mut self.encoder
-    }
-
-    fn decoder(&mut self) -> &mut Self::Decoder {
-        &mut self.decoder
-    }
-}
-
 impl SplittableExtension for Deflate {
     type SplitEncoder = DeflateEncoder;
     type SplitDecoder = DeflateDecoder;
 
-    fn split(self) -> (Self::Encoder, Self::Decoder) {
+    fn split(self) -> (Self::SplitEncoder, Self::SplitDecoder) {
         let Deflate { encoder, decoder } = self;
         (encoder, decoder)
     }
 }
 
 impl ReunitableExtension for Deflate {
-    fn reunite(encoder: Self::Encoder, decoder: Self::Decoder) -> Self {
+    fn reunite(encoder: Self::SplitEncoder, decoder: Self::SplitDecoder) -> Self {
         Deflate { encoder, decoder }
     }
 }
@@ -163,6 +162,17 @@ impl DeflateEncoder {
         DeflateEncoder {
             compress: Compress::new_with_window_bits(compression, false, window_size),
         }
+    }
+}
+
+impl ExtensionEncoder for Deflate {
+    type Error = DeflateExtensionError;
+
+    fn encode<A>(&mut self, payload: A, header: &mut FrameHeader) -> Result<(), Self::Error>
+    where
+        A: AsMut<[u8]>,
+    {
+        self.encoder.encode(payload, header)
     }
 }
 
@@ -192,6 +202,17 @@ impl DeflateDecoder {
         DeflateDecoder {
             decompress: Decompress::new_with_window_bits(false, window_size),
         }
+    }
+}
+
+impl ExtensionDecoder for Deflate {
+    type Error = DeflateExtensionError;
+
+    fn decode<A>(&mut self, payload: A, header: &mut FrameHeader) -> Result<(), Self::Error>
+    where
+        A: AsMut<[u8]>,
+    {
+        self.decoder.decode(payload, header)
     }
 }
 

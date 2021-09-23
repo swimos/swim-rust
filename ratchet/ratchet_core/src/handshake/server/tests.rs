@@ -225,7 +225,7 @@ impl ExtensionProvider for BadExtProvider {
     fn negotiate_server(
         &self,
         _headers: &[Header],
-    ) -> Result<Option<(Self::Extension, Option<HeaderValue>)>, Self::Error> {
+    ) -> Result<Option<(Self::Extension, HeaderValue)>, Self::Error> {
         Err(ExtErr)
     }
 }

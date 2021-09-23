@@ -28,7 +28,7 @@ pub trait ExtensionProvider {
     fn negotiate_server(
         &self,
         headers: &[Header],
-    ) -> Result<Option<(Self::Extension, Option<HeaderValue>)>, Self::Error>;
+    ) -> Result<Option<(Self::Extension, HeaderValue)>, Self::Error>;
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -95,7 +95,7 @@ where
     fn negotiate_server(
         &self,
         headers: &[Header],
-    ) -> Result<Option<(Self::Extension, Option<HeaderValue>)>, Self::Error> {
+    ) -> Result<Option<(Self::Extension, HeaderValue)>, Self::Error> {
         E::negotiate_server(self, headers)
     }
 }
@@ -118,7 +118,7 @@ where
     fn negotiate_server(
         &self,
         headers: &[Header],
-    ) -> Result<Option<(Self::Extension, Option<HeaderValue>)>, Self::Error> {
+    ) -> Result<Option<(Self::Extension, HeaderValue)>, Self::Error> {
         E::negotiate_server(self, headers)
     }
 }

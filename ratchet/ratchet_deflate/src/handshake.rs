@@ -15,6 +15,7 @@
 use crate::error::DeflateExtensionError;
 use crate::{Deflate, DeflateConfig, InitialisedDeflateConfig, LZ77_MIN_WINDOW_SIZE};
 use http::header::SEC_WEBSOCKET_EXTENSIONS;
+use http::HeaderValue;
 use ratchet_ext::Header;
 
 /// The WebSocket Extension Identifier as per the IANA registry.
@@ -28,6 +29,50 @@ pub fn negotiate_client(
         Some(initialised_config) => Ok(Some(Deflate::initialise_from(initialised_config))),
         None => Ok(None),
     }
+}
+
+pub fn negotiate_server(
+    headers: &[Header],
+    config: &DeflateConfig,
+) -> Result<Option<(Deflate, HeaderValue)>, DeflateExtensionError> {
+    match on_request(headers, config)? {
+        Some((initialised_config, header)) => {
+            Ok(Some((Deflate::initialise_from(initialised_config), header)))
+        }
+        None => Ok(None),
+    }
+}
+
+fn on_request(
+    headers: &[Header],
+    config: &DeflateConfig,
+) -> Result<Option<(InitialisedDeflateConfig, HeaderValue)>, DeflateExtensionError> {
+    let header_iter = headers.iter().filter(|h| {
+        h.name
+            .eq_ignore_ascii_case(SEC_WEBSOCKET_EXTENSIONS.as_str())
+    });
+
+    for header in header_iter {
+        let header_value = std::str::from_utf8(header.value)?;
+
+        for part in header_value.split(',') {
+            match validate_request_header(part, config)? {
+                Some((initialised_config, header)) => {
+                    return Ok(Some((initialised_config, header)))
+                }
+                None => continue,
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+fn validate_request_header(
+    header: &str,
+    config: &DeflateConfig,
+) -> Result<Option<(InitialisedDeflateConfig, HeaderValue)>, DeflateExtensionError> {
+    unimplemented!()
 }
 
 fn on_response(

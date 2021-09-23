@@ -63,7 +63,7 @@ impl ExtensionProvider for NoExtProvider {
     fn negotiate_server(
         &self,
         _headers: &[Header],
-    ) -> Result<Option<(Self::Extension, Option<HeaderValue>)>, Self::Error> {
+    ) -> Result<Option<(Self::Extension, HeaderValue)>, Self::Error> {
         Ok(None)
     }
 }
