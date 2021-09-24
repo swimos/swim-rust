@@ -15,6 +15,7 @@ members = [
     "utilities/swim_trigger",
     "utilities/swim_time",
     "utilities/swim_iteratee",
+    "utilities/swim_lrucache",
     "utilities/test_util"
 ]
 

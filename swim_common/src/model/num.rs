@@ -61,7 +61,7 @@ pub fn cmp_u32_i32(lhs: u32, rhs: i32) -> Ordering {
 #[cfg(test)]
 mod tests {
     mod test_32 {
-        use crate::num::{cmp_i32_u32, cmp_u32_i32};
+        use super::super::{cmp_i32_u32, cmp_u32_i32};
         use std::cmp::Ordering;
 
         #[test]
@@ -102,7 +102,7 @@ mod tests {
     }
 
     mod test_64 {
-        use crate::num::{cmp_i64_u64, cmp_u64_i64};
+        use super::super::{cmp_i64_u64, cmp_u64_i64};
         use std::cmp::Ordering;
 
         #[test]

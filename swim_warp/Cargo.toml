@@ -21,6 +21,7 @@ futures = "0.3.4"
 pin-utils = "0.1.0"
 swim_common = { path = "../swim_common", default-features = false }
 utilities = { path = "../utilities" }
+swim_lrucache = { path = "../utilities/swim_lrucache" }
 swim_runtime = { path = "../swim_runtime" }
 tokio = { version = "1.1.1", features = ["sync"] }
 tokio-stream = "0.1.2"
