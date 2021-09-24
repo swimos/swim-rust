@@ -19,7 +19,7 @@ use crate::model::text::Text;
 use crate::model::ValueKind;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use utilities::print;
+use swim_format as print;
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum ExpectedEvent {
