@@ -15,6 +15,7 @@
 mod combinators;
 pub mod open_ended;
 pub mod retryable;
+pub mod task;
 
 pub use combinators::{
     FlatmapStream, NotifyOnBlocked, SwimFutureExt, SwimStreamExt, SwimTryFutureExt, Transform,

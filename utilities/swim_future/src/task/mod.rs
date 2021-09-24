@@ -15,12 +15,12 @@
 #[cfg(test)]
 mod tests;
 
+use crate::open_ended::OpenEndedFutures;
 use futures::stream::FusedStream;
 use futures::task::{Context, Poll};
 use futures::{ready, Stream, StreamExt};
 use std::future::Future;
 use std::pin::Pin;
-use swim_future::open_ended::OpenEndedFutures;
 use tokio::task::JoinHandle;
 
 /// Trait for task spawners that will concurrently execute futures passed to them.

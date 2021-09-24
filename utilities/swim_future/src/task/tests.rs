@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::open_ended::OpenEndedFutures;
 use crate::task::{Spawner, TokioSpawner};
 use futures::future::ready;
 use futures::StreamExt;
 use std::collections::HashSet;
-use swim_future::open_ended::OpenEndedFutures;
 
 #[tokio::test]
 async fn open_ended_futures_spawner() {
