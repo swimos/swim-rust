@@ -246,24 +246,21 @@ impl ExtensionEncoder for DeflateEncoder {
 
         while compress.total_in() - before_in < payload.as_ref().len() as u64 {
             let i = compress.total_in() as usize - before_in as usize;
-            let ret = unsafe {
-                let cap = buf.capacity();
-                let len = buf.len();
+            let cap = buf.capacity();
+            let len = buf.len();
+            let before = compress.total_out();
 
-                unsafe {
-                    let before = compress.total_out();
-                    let ret = {
-                        let ptr = buf.as_mut_ptr().offset(len as isize);
-                        let out = slice::from_raw_parts_mut(ptr, cap - len);
-                        compress.compress(&payload[i..], out, FlushCompress::None)
-                    };
-                    buf.set_len((compress.total_out() - before) as usize + len);
-                    ret
-                }
+            let ret = unsafe {
+                let ptr = buf.as_mut_ptr().offset(len as isize);
+                let out = slice::from_raw_parts_mut(ptr, cap - len);
+                let ret = compress.compress(&payload[i..], out, FlushCompress::None);
+
+                buf.set_len((compress.total_out() - before) as usize + len);
+                ret
             };
 
             match ret? {
-                Status::BufError => buf.reserve(4096),
+                Status::BufError => buf.reserve(256),
                 Status::Ok => continue,
                 Status::StreamEnd => break,
             }
@@ -272,20 +269,17 @@ impl ExtensionEncoder for DeflateEncoder {
         while !buf.ends_with(&[0, 0, 0xFF, 0xFF]) {
             buf.reserve(5);
 
-            let ret = unsafe {
-                let cap = buf.capacity();
-                let len = buf.len();
+            let cap = buf.capacity();
+            let len = buf.len();
+            let before = compress.total_out();
 
-                unsafe {
-                    let before = compress.total_out();
-                    let ret = {
-                        let ptr = buf.as_mut_ptr().offset(len as isize);
-                        let out = slice::from_raw_parts_mut(ptr, cap - len);
-                        compress.compress(&[], out, FlushCompress::Sync)
-                    };
-                    buf.set_len((compress.total_out() - before) as usize + len);
-                    ret
-                }
+            let ret = unsafe {
+                let ptr = buf.as_mut_ptr().offset(len as isize);
+                let out = slice::from_raw_parts_mut(ptr, cap - len);
+                let ret = compress.compress(&[], out, FlushCompress::Sync);
+
+                buf.set_len((compress.total_out() - before) as usize + len);
+                ret
             };
 
             match ret? {
@@ -387,19 +381,15 @@ impl ExtensionDecoder for DeflateDecoder {
             let before = decompress.total_out();
 
             let ret = unsafe {
-                unsafe {
-                    let ret = {
-                        let ptr = buf.as_mut_ptr().offset(len as isize);
-                        let out = slice::from_raw_parts_mut(ptr, cap - len);
-                        decompress.decompress(&payload[i..], out, FlushDecompress::None)
-                    };
-                    buf.set_len((decompress.total_out() - before) as usize + len);
-                    ret
-                }
+                let ptr = buf.as_mut_ptr().offset(len as isize);
+                let out = slice::from_raw_parts_mut(ptr, cap - len);
+                let ret = decompress.decompress(&payload[i..], out, FlushDecompress::None);
+                buf.set_len((decompress.total_out() - before) as usize + len);
+                ret
             };
 
             match ret? {
-                Status::Ok => buf.reserve(2048),
+                Status::Ok => buf.reserve(256),
                 Status::BufError | Status::StreamEnd => break,
             }
         }
@@ -435,7 +425,7 @@ fn compress_bytes(compress: &mut Compress, buf: &mut BytesMut, payload: &mut Byt
         .unwrap();
 
         match compress_result {
-            Status::BufError => buf.reserve(2048),
+            Status::BufError => buf.reserve(256),
             Status::Ok => continue,
             Status::StreamEnd => break,
         }
