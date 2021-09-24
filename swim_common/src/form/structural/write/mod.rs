@@ -1019,23 +1019,23 @@ impl StructuralWritable for WebSocketConfig {
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         let header_writer = writer.record(1)?;
 
-        let mut num_attr = 2;
+        let mut num_items = 2;
 
         if let Some(_) = &self.max_send_queue {
-            num_attr += 1
+            num_items += 1
         }
 
         if let Some(_) = &self.max_message_size {
-            num_attr += 1
+            num_items += 1
         }
 
         if let Some(_) = &self.max_frame_size {
-            num_attr += 1
+            num_items += 1
         }
 
         let mut body_writer = header_writer
             .write_extant_attr("websocket_connections")?
-            .complete_header(RecordBodyKind::MapLike, num_attr)?;
+            .complete_header(RecordBodyKind::MapLike, num_items)?;
 
         if let Some(val) = &self.max_send_queue {
             body_writer = body_writer.write_slot(&"max_send_queue", val)?
@@ -1057,23 +1057,23 @@ impl StructuralWritable for WebSocketConfig {
     fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
         let header_writer = writer.record(1)?;
 
-        let mut num_attr = 2;
+        let mut num_items = 2;
 
         if let Some(_) = &self.max_send_queue {
-            num_attr += 1
+            num_items += 1
         }
 
         if let Some(_) = &self.max_message_size {
-            num_attr += 1
+            num_items += 1
         }
 
         if let Some(_) = &self.max_frame_size {
-            num_attr += 1
+            num_items += 1
         }
 
         let mut body_writer = header_writer
             .write_extant_attr("websocket_connections")?
-            .complete_header(RecordBodyKind::MapLike, num_attr)?;
+            .complete_header(RecordBodyKind::MapLike, num_items)?;
 
         if let Some(val) = self.max_send_queue {
             body_writer = body_writer.write_slot_into("max_send_queue", val)?
@@ -1121,43 +1121,11 @@ impl StructuralWritable for WsCompression {
             WsCompression::Deflate(deflate) => {
                 let header_writer = writer.record(1)?;
 
-                let mut num_attr = 7;
-
-                if let Some(_) = deflate.max_message_size() {
-                    num_attr += 1
-                }
-
                 let mut body_writer = header_writer
                     .write_extant_attr("deflate")?
-                    .complete_header(RecordBodyKind::MapLike, num_attr)?;
+                    .complete_header(RecordBodyKind::ArrayLike, 1)?;
 
-                if let Some(val) = deflate.max_message_size() {
-                    body_writer = body_writer.write_slot(&"max_message_size", &val)?;
-                };
-                body_writer = body_writer.write_slot(
-                    &"server_max_window_bits",
-                    &u32::from(deflate.server_max_window_bits()),
-                )?;
-                body_writer = body_writer.write_slot(
-                    &"client_max_window_bits",
-                    &u32::from(deflate.client_max_window_bits()),
-                )?;
-                body_writer = body_writer.write_slot(
-                    &"request_no_context_takeover",
-                    &deflate.request_no_context_takeover(),
-                )?;
-                body_writer = body_writer.write_slot(
-                    &"accept_no_context_takeover",
-                    &deflate.accept_no_context_takeover(),
-                )?;
-                body_writer =
-                    body_writer.write_slot(&"compress_reset", &deflate.compress_reset())?;
-                body_writer =
-                    body_writer.write_slot(&"decompress_reset", &deflate.decompress_reset())?;
-
-                body_writer = body_writer
-                    .write_slot(&"compression_level", &deflate.compression_level().level())?;
-
+                body_writer = body_writer.write_value(&deflate.compression_level().level())?;
                 body_writer.done()
             }
         }
@@ -1186,43 +1154,11 @@ impl StructuralWritable for WsCompression {
             WsCompression::Deflate(deflate) => {
                 let header_writer = writer.record(1)?;
 
-                let mut num_attr = 7;
-
-                if let Some(_) = deflate.max_message_size() {
-                    num_attr += 1
-                }
-
                 let mut body_writer = header_writer
                     .write_extant_attr("deflate")?
-                    .complete_header(RecordBodyKind::MapLike, num_attr)?;
+                    .complete_header(RecordBodyKind::ArrayLike, 1)?;
 
-                if let Some(val) = deflate.max_message_size() {
-                    body_writer = body_writer.write_slot_into("max_message_size", val)?;
-                };
-                body_writer = body_writer.write_slot_into(
-                    "server_max_window_bits",
-                    u32::from(deflate.server_max_window_bits()),
-                )?;
-                body_writer = body_writer.write_slot_into(
-                    "client_max_window_bits",
-                    u32::from(deflate.client_max_window_bits()),
-                )?;
-                body_writer = body_writer.write_slot_into(
-                    "request_no_context_takeover",
-                    deflate.request_no_context_takeover(),
-                )?;
-                body_writer = body_writer.write_slot_into(
-                    "accept_no_context_takeover",
-                    deflate.accept_no_context_takeover(),
-                )?;
-                body_writer =
-                    body_writer.write_slot_into("compress_reset", deflate.compress_reset())?;
-                body_writer =
-                    body_writer.write_slot_into("decompress_reset", deflate.decompress_reset())?;
-
-                body_writer = body_writer
-                    .write_slot_into("compression_level", deflate.compression_level().level())?;
-
+                body_writer = body_writer.write_value_into(deflate.compression_level().level())?;
                 body_writer.done()
             }
         }
@@ -1231,7 +1167,7 @@ impl StructuralWritable for WsCompression {
 
 impl StructuralWritable for AbsolutePath {
     fn num_attributes(&self) -> usize {
-        0
+        1
     }
 
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {

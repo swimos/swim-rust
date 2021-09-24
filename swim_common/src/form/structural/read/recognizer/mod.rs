@@ -31,6 +31,8 @@ use crate::form::structural::Tag;
 use crate::model::blob::Blob;
 use crate::model::text::Text;
 use crate::model::{Value, ValueKind};
+use crate::warp::path::AbsolutePath;
+use flate2::Compression;
 use num_bigint::{BigInt, BigUint};
 use std::borrow::Borrow;
 use std::collections::HashMap;
@@ -42,6 +44,7 @@ use std::option::Option::None;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio_tungstenite::tungstenite::extensions::compression::deflate::DeflateConfig;
 use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use url::Url;
@@ -2727,6 +2730,7 @@ const DURATION_TAG: &str = "duration";
 const WEB_SOCKET_CONFIG_TAG: &str = "websocket_connections";
 const WS_COMPRESSION_NONE_TAG: &str = "none";
 const WS_COMPRESSION_DEFLATE_TAG: &str = "deflate";
+const ABSOLUTE_PATH_TAG: &str = "path";
 
 enum RetryStrategyStage {
     Init,
@@ -3274,6 +3278,7 @@ impl RecognizerReadable for WebSocketConfig {
             max_frame_size: None,
             accept_unmasked_frames: None,
             compression: None,
+            compression_recognizer: WsCompression::make_recognizer(),
         }
     }
 
@@ -3285,6 +3290,7 @@ impl RecognizerReadable for WebSocketConfig {
             max_frame_size: None,
             accept_unmasked_frames: None,
             compression: None,
+            compression_recognizer: WsCompression::make_recognizer(),
         })
     }
 
@@ -3296,6 +3302,7 @@ impl RecognizerReadable for WebSocketConfig {
             max_frame_size: None,
             accept_unmasked_frames: None,
             compression: None,
+            compression_recognizer: WsCompression::make_recognizer(),
         })
     }
 }
@@ -3307,6 +3314,7 @@ pub struct WebSocketConfigRecognizer {
     max_frame_size: Option<usize>,
     accept_unmasked_frames: Option<bool>,
     compression: Option<WsCompression>,
+    compression_recognizer: WsCompressionRecognizer,
 }
 
 enum WebSocketConfigStage {
@@ -3474,7 +3482,14 @@ impl Recognizer for WebSocketConfigRecognizer {
                 }
             }
             WebSocketConfigStage::Field(WebSocketConfigField::Compression) => {
-                unimplemented!()
+                match self.compression_recognizer.feed_event(input)? {
+                    Ok(compression) => {
+                        self.compression = Some(compression);
+                        self.stage = WebSocketConfigStage::InBody;
+                        None
+                    }
+                    Err(err) => Some(Err(err)),
+                }
             }
         }
     }
@@ -3487,6 +3502,7 @@ impl Recognizer for WebSocketConfigRecognizer {
             max_frame_size,
             accept_unmasked_frames,
             compression,
+            compression_recognizer,
         } = self;
 
         *stage = WebSocketConfigStage::Init;
@@ -3495,10 +3511,10 @@ impl Recognizer for WebSocketConfigRecognizer {
         *max_frame_size = None;
         *accept_unmasked_frames = None;
         *compression = None;
+        *compression_recognizer = WsCompression::make_recognizer();
     }
 }
 
-//todo dm
 impl RecognizerReadable for WsCompression {
     type Rec = WsCompressionRecognizer;
     type AttrRec = SimpleAttrBody<WsCompressionRecognizer>;
@@ -3507,42 +3523,33 @@ impl RecognizerReadable for WsCompression {
     fn make_recognizer() -> Self::Rec {
         WsCompressionRecognizer {
             stage: WsCompressionRecognizerStage::Init,
-            fields: None,
+            fields: WsCompressionFields::None(None),
         }
     }
 
     fn make_attr_recognizer() -> Self::AttrRec {
         SimpleAttrBody::new(WsCompressionRecognizer {
             stage: WsCompressionRecognizerStage::Init,
-            fields: None,
+            fields: WsCompressionFields::None(None),
         })
     }
 
     fn make_body_recognizer() -> Self::BodyRec {
         SimpleRecBody::new(WsCompressionRecognizer {
             stage: WsCompressionRecognizerStage::Init,
-            fields: None,
+            fields: WsCompressionFields::None(None),
         })
     }
 }
 
 pub struct WsCompressionRecognizer {
     stage: WsCompressionRecognizerStage,
-    fields: Option<WsCompressionFields>,
+    fields: WsCompressionFields,
 }
 
 pub enum WsCompressionFields {
     None(Option<usize>),
-    Deflate {
-    // max_message_size: Option<usize>,
-    // server_max_window_bits: u8,
-    // client_max_window_bits: u8,
-    // request_no_context_takeover: bool,
-    // accept_no_context_takeover: bool,
-    // compress_reset: bool,
-    // decompress_reset: bool,
-    // compression_level: Compression,
-    },
+    Deflate(Option<u32>),
 }
 
 enum WsCompressionRecognizerStage {
@@ -3550,17 +3557,6 @@ enum WsCompressionRecognizerStage {
     Tag,
     AfterTag,
     InBody,
-    Slot(WebSocketConfigField),
-    Field(WebSocketConfigField),
-}
-
-#[derive(Clone, Copy)]
-enum WsCompressionField {
-    MaxSendQueue,
-    MaxMessageSize,
-    MaxFrameSize,
-    AcceptUnmaskedFrames,
-    Compression,
 }
 
 impl Recognizer for WsCompressionRecognizer {
@@ -3573,12 +3569,12 @@ impl Recognizer for WsCompressionRecognizer {
                     match name.borrow() {
                         WS_COMPRESSION_NONE_TAG => {
                             self.stage = WsCompressionRecognizerStage::Tag;
-                            self.fields = Some(WsCompressionFields::None(None));
+                            self.fields = WsCompressionFields::None(None);
                             None
                         }
                         WS_COMPRESSION_DEFLATE_TAG => {
                             self.stage = WsCompressionRecognizerStage::Tag;
-                            self.fields = Some(WsCompressionFields::Deflate {});
+                            self.fields = WsCompressionFields::Deflate(None);
                             None
                         }
                         _ => Some(Err(ReadError::UnexpectedAttribute(name.into()))),
@@ -3590,144 +3586,247 @@ impl Recognizer for WsCompressionRecognizer {
                     ]))))
                 }
             }
-            _ => unimplemented!(),
+            WsCompressionRecognizerStage::Tag => match input {
+                ReadEvent::Extant => None,
+                ReadEvent::EndAttribute => {
+                    self.stage = WsCompressionRecognizerStage::AfterTag;
+                    None
+                }
+                ow => Some(Err(ow.kind_error(ExpectedEvent::EndOfAttribute))),
+            },
+            WsCompressionRecognizerStage::AfterTag => {
+                if matches!(&input, ReadEvent::StartBody) {
+                    self.stage = WsCompressionRecognizerStage::InBody;
+                    None
+                } else if matches!(&input, ReadEvent::EndRecord) {
+                    match self.fields {
+                        WsCompressionFields::None(_) => Some(Ok(WsCompression::None(None))),
+                        WsCompressionFields::Deflate { .. } => {
+                            Some(Ok(WsCompression::Deflate(DeflateConfig::default())))
+                        }
+                    }
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Or(vec![
+                        ExpectedEvent::RecordBody,
+                        ExpectedEvent::EndOfRecord,
+                    ]))))
+                }
+            }
+            WsCompressionRecognizerStage::InBody => match &mut self.fields {
+                WsCompressionFields::None(value) => match input {
+                    ReadEvent::Number(NumericValue::UInt(n)) => {
+                        if let Ok(m) = usize::try_from(n) {
+                            *value = Some(m);
+                            self.stage = WsCompressionRecognizerStage::InBody;
+                            None
+                        } else {
+                            Some(Err(ReadError::NumberOutOfRange))
+                        }
+                    }
+                    ReadEvent::EndRecord => Some(Ok(WsCompression::None(*value))),
+                    ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
+                        ExpectedEvent::ValueEvent(ValueKind::UInt64),
+                        ExpectedEvent::EndOfRecord,
+                    ])))),
+                },
+                WsCompressionFields::Deflate(value) => match input {
+                    ReadEvent::Number(NumericValue::UInt(n)) => {
+                        if let Ok(m) = u32::try_from(n) {
+                            *value = Some(m);
+                            self.stage = WsCompressionRecognizerStage::InBody;
+                            None
+                        } else {
+                            Some(Err(ReadError::NumberOutOfRange))
+                        }
+                    }
+                    ReadEvent::EndRecord => match value {
+                        None => Some(Ok(WsCompression::Deflate(DeflateConfig::default()))),
+                        Some(value) => Some(Ok(WsCompression::Deflate(
+                            DeflateConfig::with_compression_level(Compression::new(*value)),
+                        ))),
+                    },
+                    ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
+                        ExpectedEvent::ValueEvent(ValueKind::UInt32),
+                        ExpectedEvent::EndOfRecord,
+                    ])))),
+                },
+            },
         }
-        //     WebSocketConfigStage::Tag => match input {
-        //         ReadEvent::Extant => None,
-        //         ReadEvent::EndAttribute => {
-        //             self.stage = WebSocketConfigStage::AfterTag;
-        //             None
-        //         }
-        //         ow => Some(Err(ow.kind_error(ExpectedEvent::EndOfAttribute))),
-        //     },
-        //     WebSocketConfigStage::AfterTag => {
-        //         if matches!(&input, ReadEvent::StartBody) {
-        //             self.stage = WebSocketConfigStage::InBody;
-        //             None
-        //         } else if matches!(&input, ReadEvent::EndRecord) {
-        //             Some(Ok(WebSocketConfig {
-        //                 max_send_queue: None,
-        //                 max_message_size: None,
-        //                 max_frame_size: None,
-        //                 accept_unmasked_frames: false,
-        //                 compression: WsCompression::None(None),
-        //             }))
-        //         } else {
-        //             Some(Err(input.kind_error(ExpectedEvent::Or(vec![
-        //                 ExpectedEvent::RecordBody,
-        //                 ExpectedEvent::EndOfRecord,
-        //             ]))))
-        //         }
-        //     }
-        //     WebSocketConfigStage::InBody => match input {
-        //         ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
-        //             "max_send_queue" => {
-        //                 self.stage = WebSocketConfigStage::Slot(WebSocketConfigField::MaxSendQueue);
-        //                 None
-        //             }
-        //             "max_message_size" => {
-        //                 self.stage =
-        //                     WebSocketConfigStage::Slot(WebSocketConfigField::MaxMessageSize);
-        //                 None
-        //             }
-        //             "max_frame_size" => {
-        //                 self.stage = WebSocketConfigStage::Slot(WebSocketConfigField::MaxFrameSize);
-        //                 None
-        //             }
-        //             "accept_unmasked_frames" => {
-        //                 self.stage =
-        //                     WebSocketConfigStage::Slot(WebSocketConfigField::AcceptUnmaskedFrames);
-        //                 None
-        //             }
-        //             "compression" => {
-        //                 self.stage = WebSocketConfigStage::Slot(WebSocketConfigField::Compression);
-        //                 None
-        //             }
-        //             ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
-        //         },
-        //         ReadEvent::EndRecord => Some(Ok(WebSocketConfig {
-        //             max_send_queue: self.max_send_queue,
-        //             max_message_size: self.max_message_size,
-        //             max_frame_size: self.max_frame_size,
-        //             accept_unmasked_frames: self.accept_unmasked_frames.unwrap_or(false),
-        //             compression: self.compression.unwrap_or(WsCompression::None(None)),
-        //         })),
-        //         ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
-        //             ExpectedEvent::ValueEvent(ValueKind::Text),
-        //             ExpectedEvent::EndOfRecord,
-        //         ])))),
-        //     },
-        //     WebSocketConfigStage::Slot(fld) => {
-        //         if matches!(&input, ReadEvent::Slot) {
-        //             self.stage = WebSocketConfigStage::Field(*fld);
-        //             None
-        //         } else {
-        //             Some(Err(input.kind_error(ExpectedEvent::Slot)))
-        //         }
-        //     }
-        //     WebSocketConfigStage::Field(WebSocketConfigField::MaxSendQueue) => match input {
-        //         ReadEvent::Number(NumericValue::UInt(n)) => {
-        //             if let Ok(m) = usize::try_from(n) {
-        //                 self.max_send_queue = Some(m);
-        //                 self.stage = WebSocketConfigStage::InBody;
-        //                 None
-        //             } else {
-        //                 Some(Err(ReadError::NumberOutOfRange))
-        //             }
-        //         }
-        //         ow => Some(Err(
-        //             ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
-        //         )),
-        //     },
-        //     WebSocketConfigStage::Field(WebSocketConfigField::MaxMessageSize) => match input {
-        //         ReadEvent::Number(NumericValue::UInt(n)) => {
-        //             if let Ok(m) = usize::try_from(n) {
-        //                 self.max_message_size = Some(m);
-        //                 self.stage = WebSocketConfigStage::InBody;
-        //                 None
-        //             } else {
-        //                 Some(Err(ReadError::NumberOutOfRange))
-        //             }
-        //         }
-        //         ow => Some(Err(
-        //             ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
-        //         )),
-        //     },
-        //     WebSocketConfigStage::Field(WebSocketConfigField::MaxFrameSize) => match input {
-        //         ReadEvent::Number(NumericValue::UInt(n)) => {
-        //             if let Ok(m) = usize::try_from(n) {
-        //                 self.max_frame_size = Some(m);
-        //                 self.stage = WebSocketConfigStage::InBody;
-        //                 None
-        //             } else {
-        //                 Some(Err(ReadError::NumberOutOfRange))
-        //             }
-        //         }
-        //         ow => Some(Err(
-        //             ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
-        //         )),
-        //     },
-        //     WebSocketConfigStage::Field(WebSocketConfigField::AcceptUnmaskedFrames) => {
-        //         match input {
-        //             ReadEvent::Boolean(value) => {
-        //                 self.accept_unmasked_frames = Some(value);
-        //                 self.stage = WebSocketConfigStage::InBody;
-        //                 None
-        //             }
-        //             ow => Some(Err(
-        //                 ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::Boolean))
-        //             )),
-        //         }
-        //     }
-        //     WebSocketConfigStage::Field(WebSocketConfigField::Compression) => {
-        //         unimplemented!()
-        //     }
-        // }
     }
 
     fn reset(&mut self) {
         let WsCompressionRecognizer { stage, fields } = self;
         *stage = WsCompressionRecognizerStage::Init;
-        *fields = None
+        *fields = WsCompressionFields::None(None);
+    }
+}
+
+pub struct AbsolutePathRecognizer {
+    stage: AbsolutePathStage,
+    host: Option<Url>,
+    node: Option<Text>,
+    lane: Option<Text>,
+}
+
+enum AbsolutePathStage {
+    Init,
+    Tag,
+    AfterTag,
+    InBody,
+    Slot(AbsolutePathField),
+    Field(AbsolutePathField),
+}
+
+enum AbsolutePathField {
+    Host,
+    Node,
+    Lane,
+}
+
+impl RecognizerReadable for AbsolutePath {
+    type Rec = AbsolutePathRecognizer;
+    type AttrRec = SimpleAttrBody<AbsolutePathRecognizer>;
+    type BodyRec = SimpleRecBody<AbsolutePathRecognizer>;
+
+    fn make_recognizer() -> Self::Rec {
+        AbsolutePathRecognizer {
+            stage: AbsolutePathStage::Init,
+            host: None,
+            node: None,
+            lane: None,
+        }
+    }
+
+    fn make_attr_recognizer() -> Self::AttrRec {
+        SimpleAttrBody::new(AbsolutePathRecognizer {
+            stage: AbsolutePathStage::Init,
+            host: None,
+            node: None,
+            lane: None,
+        })
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        SimpleRecBody::new(AbsolutePathRecognizer {
+            stage: AbsolutePathStage::Init,
+            host: None,
+            node: None,
+            lane: None,
+        })
+    }
+}
+
+impl Recognizer for AbsolutePathRecognizer {
+    type Target = AbsolutePath;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        match &self.stage {
+            AbsolutePathStage::Init => {
+                if let ReadEvent::StartAttribute(name) = input {
+                    if name == ABSOLUTE_PATH_TAG {
+                        self.stage = AbsolutePathStage::Tag;
+                        None
+                    } else {
+                        Some(Err(ReadError::UnexpectedAttribute(name.into())))
+                    }
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Attribute(Some(
+                        Text::new(ABSOLUTE_PATH_TAG),
+                    )))))
+                }
+            }
+            AbsolutePathStage::Tag => match input {
+                ReadEvent::Extant => None,
+                ReadEvent::EndAttribute => {
+                    self.stage = AbsolutePathStage::AfterTag;
+                    None
+                }
+                ow => Some(Err(ow.kind_error(ExpectedEvent::EndOfAttribute))),
+            },
+            AbsolutePathStage::AfterTag => {
+                if matches!(&input, ReadEvent::StartBody) {
+                    self.stage = AbsolutePathStage::InBody;
+                    None
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::RecordBody)))
+                }
+            }
+            AbsolutePathStage::InBody => match input {
+                ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
+                    "host" => {
+                        self.stage = AbsolutePathStage::Slot(AbsolutePathField::Host);
+                        None
+                    }
+                    "node" => {
+                        self.stage = AbsolutePathStage::Slot(AbsolutePathField::Node);
+                        None
+                    }
+                    "lane" => {
+                        self.stage = AbsolutePathStage::Slot(AbsolutePathField::Lane);
+                        None
+                    }
+                    ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
+                },
+                ReadEvent::EndRecord => {
+                    //Todo dm fail on missing values
+                    unimplemented!()
+                    // Some(Ok(Duration::new(
+                    //     self.secs.unwrap_or_default(),
+                    //     self.nanos.unwrap_or_default(),
+                    // )))
+                    // }
+                }
+                ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
+                    ExpectedEvent::ValueEvent(ValueKind::Text),
+                    ExpectedEvent::EndOfRecord,
+                ])))),
+            },
+            // DurationStage::Slot(fld) => {
+            //     if matches!(&input, ReadEvent::Slot) {
+            //         self.stage = DurationStage::Field(*fld);
+            //         None
+            //     } else {
+            //         Some(Err(input.kind_error(ExpectedEvent::Slot)))
+            //     }
+            // }
+            // DurationStage::Field(DurationField::Secs) => match input {
+            //     ReadEvent::Number(NumericValue::UInt(n)) => {
+            //         self.secs = Some(n);
+            //         self.stage = DurationStage::InBody;
+            //         None
+            //     }
+            //     ow => Some(Err(
+            //         ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
+            //     )),
+            // },
+            // DurationStage::Field(DurationField::Nanos) => match input {
+            //     ReadEvent::Number(NumericValue::UInt(n)) => {
+            //         if let Ok(m) = u32::try_from(n) {
+            //             self.nanos = Some(m);
+            //             self.stage = DurationStage::InBody;
+            //             None
+            //         } else {
+            //             Some(Err(ReadError::NumberOutOfRange))
+            //         }
+            //     }
+            //     ow => Some(Err(
+            //         ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
+            //     )),
+            // },
+            _ => unimplemented!(),
+        }
+    }
+
+    fn reset(&mut self) {
+        let AbsolutePathRecognizer {
+            stage,
+            host,
+            node,
+            lane,
+        } = self;
+        *stage = AbsolutePathStage::Init;
+        *host = None;
+        *node = None;
+        *lane = None;
     }
 }
