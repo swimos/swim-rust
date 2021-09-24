@@ -17,8 +17,8 @@ use futures::future::BoxFuture;
 use std::any::Any;
 use std::collections::HashSet;
 use std::sync::Arc;
-use utilities::route_pattern::RoutePattern;
-use utilities::uri::RelativeUri;
+use swim_route::route_pattern::RoutePattern;
+use swim_route::uri::RelativeUri;
 
 /// The context that is available in [`crate::plane::lifecycle::PlaneLifecycle`] event handlers.
 pub trait PlaneContext: Send + Sync {

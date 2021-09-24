@@ -33,7 +33,7 @@ use url::Url;
 use utilities::sync::promise;
 
 use swim_common::routing::{ConnectionError, HttpError, ResolutionError, ResolutionErrorKind};
-use utilities::sync::trigger;
+use swim_trigger as trigger;
 use utilities::task::Spawner;
 
 use crate::routing::error::Unresolvable;

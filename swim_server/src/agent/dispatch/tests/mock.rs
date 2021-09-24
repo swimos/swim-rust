@@ -39,13 +39,13 @@ use swim_common::model::Value;
 use swim_common::routing::ResolutionError;
 use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
+use swim_route::uri::RelativeUri;
 use swim_time::AtomicInstant;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::Instant;
 use url::Url;
 use utilities::sync::promise;
-use utilities::uri::RelativeUri;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MockLane;

@@ -32,9 +32,10 @@ use std::net::SocketAddr;
 use swim_common::routing::ws::WsConnections;
 use swim_common::routing::ConnectionError;
 use swim_future::open_ended::OpenEndedFutures;
+use swim_trigger as trigger;
 use tokio_stream::wrappers::ReceiverStream;
+use utilities::sync::promise;
 use utilities::sync::promise::Sender;
-use utilities::sync::{promise, trigger};
 use utilities::task::Spawner;
 
 #[cfg(test)]

@@ -26,15 +26,15 @@ use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use swim_future::SwimStreamExt;
+use swim_route::uri::RelativeUri;
 use swim_runtime::time::clock::Clock;
 use swim_time::AtomicInstant;
+use swim_trigger as trigger;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::time::{Duration, Instant};
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
-use utilities::sync::trigger;
-use utilities::uri::RelativeUri;
 
 #[cfg(test)]
 mod tests;

@@ -65,15 +65,16 @@ use swim_common::routing::SendError;
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
+use swim_route::uri::RelativeUri;
 use swim_time::AtomicInstant;
+use swim_trigger as trigger;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::timeout;
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
-use utilities::sync::{promise, topic, trigger};
-use utilities::uri::RelativeUri;
+use utilities::sync::{promise, topic};
 
 #[test]
 fn lane_io_err_display_update() {

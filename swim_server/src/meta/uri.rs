@@ -25,7 +25,7 @@ use swim_errors::Recoverable;
 use thiserror::Error;
 
 use crate::meta::{LANES_URI, LANE_URI, PULSE_URI, UPLINK_URI};
-use utilities::uri::{BadRelativeUri, PathSegmentIterator, RelativeUri};
+use swim_route::uri::{BadRelativeUri, PathSegmentIterator, RelativeUri};
 
 /// Errors that are produced when parsing an invalid node or lane URI.
 #[derive(Debug, PartialEq, Error)]

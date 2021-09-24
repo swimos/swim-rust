@@ -34,11 +34,11 @@ use std::sync::Arc;
 use swim_common::model::Value;
 use swim_common::warp::path::RelativePath;
 use swim_time::AtomicInstant;
+use swim_trigger as trigger;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
-use utilities::sync::trigger;
 
 #[cfg(test)]
 mod tests;

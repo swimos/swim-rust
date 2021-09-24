@@ -38,15 +38,15 @@ use swim_common::form::structural::Tag;
 use swim_common::form::Form;
 use swim_common::model::time::Timestamp;
 use swim_common::model::Value;
+use swim_route::uri::RelativeUri;
 use swim_runtime::time::interval::interval;
+use swim_trigger as trigger;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::SendError;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
 use tracing_futures::{Instrument, Instrumented};
-use utilities::sync::trigger;
-use utilities::uri::RelativeUri;
 
 pub const TRACE_URI: &str = "traceLog";
 pub const DEBUG_URI: &str = "debugLog";

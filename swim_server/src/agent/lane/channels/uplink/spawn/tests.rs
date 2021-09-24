@@ -47,6 +47,7 @@ use swim_common::routing::SendError;
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
+use swim_route::uri::RelativeUri;
 use swim_time::AtomicInstant;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Barrier};
@@ -54,7 +55,6 @@ use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 use utilities::sync::{promise, topic};
-use utilities::uri::RelativeUri;
 
 const INIT: i32 = 42;
 

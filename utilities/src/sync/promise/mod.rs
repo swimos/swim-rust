@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::sync::trigger;
 use futures::ready;
 use futures::task::{Context, Poll};
 use futures::FutureExt;
@@ -22,6 +21,7 @@ use std::fmt::{Display, Formatter};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use swim_trigger as trigger;
 
 #[cfg(test)]
 mod tests;

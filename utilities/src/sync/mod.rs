@@ -19,7 +19,6 @@ pub mod circular_buffer;
 pub mod promise;
 pub mod rwlock;
 pub mod topic;
-pub mod trigger;
 
 /// Maintains a bag of readers waiting to obtain the lock.
 #[derive(Debug, Default)]

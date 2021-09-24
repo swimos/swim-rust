@@ -24,7 +24,7 @@ use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
 use std::str;
 use std::str::FromStr;
-use utilities::uri::{BadRelativeUri, RelativeUri};
+use swim_route::uri::{BadRelativeUri, RelativeUri};
 
 const SMALL_SIZE: usize = 3 * std::mem::size_of::<usize>();
 

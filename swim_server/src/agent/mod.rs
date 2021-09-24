@@ -71,13 +71,14 @@ use std::time::Duration;
 use swim_common::form::Form;
 use swim_common::warp::path::RelativePath;
 use swim_future::SwimStreamExt;
+use swim_route::uri::RelativeUri;
 use swim_runtime::time::clock::Clock;
+use swim_trigger as trigger;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{event, span, Level};
 use tracing_futures::{Instrument, Instrumented};
-use utilities::sync::{topic, trigger};
-use utilities::uri::RelativeUri;
+use utilities::sync::topic;
 
 use crate::agent::lane::model::map::map_store::MapDataModel;
 use crate::agent::lane::store::task::{NodeStoreErrors, NodeStoreTask};

@@ -28,8 +28,8 @@ pub use agent_derive::*;
 pub use stringify_attr::{stringify_attr, stringify_attr_raw};
 pub use swim_future::retryable::strategy::RetryStrategy;
 pub use swim_future::SwimStreamExt;
-pub use utilities::route_pattern::RoutePattern;
-pub use utilities::uri;
+pub use swim_route::route_pattern::RoutePattern;
+pub use swim_route::uri;
 
 #[doc(hidden)]
 pub use agent::model::value::ValueLaneStoreIo;

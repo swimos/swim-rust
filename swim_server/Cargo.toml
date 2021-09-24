@@ -34,6 +34,8 @@ utilities = { path = "../utilities" }
 swim_errors = { path = "../utilities/swim_errors" }
 swim_future = { path = "../utilities/swim_future" }
 swim_time = { path = "../utilities/swim_time" }
+swim_route = { path = "../utilities/swim_route" }
+swim_trigger = { path = "../utilities/swim_trigger" }
 stringify_attr = { path = "../macro_utilities/stringify_attr" }
 swim_runtime = { path = "../swim_runtime" }
 stm = { path = "../stm" }

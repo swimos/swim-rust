@@ -34,8 +34,8 @@ use swim_common::routing::{ConnectionError, IoError};
 use swim_future::open_ended::OpenEndedFutures;
 use swim_future::retryable::strategy::RetryStrategy;
 use swim_runtime::time::timeout::timeout;
+use swim_trigger as trigger;
 use tokio::sync::{mpsc, oneshot};
-use utilities::sync::trigger;
 
 type TestSpawner = OpenEndedFutures<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>>;
 type TestConnections<'a> =

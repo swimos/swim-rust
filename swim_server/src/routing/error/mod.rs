@@ -17,7 +17,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use swim_common::routing::ConnectionError;
 use swim_errors::Recoverable;
-use utilities::uri::RelativeUri;
+use swim_route::uri::RelativeUri;
 
 #[cfg(test)]
 mod tests;

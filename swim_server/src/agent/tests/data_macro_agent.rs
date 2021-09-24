@@ -39,9 +39,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use stm::stm::Stm;
 use stm::transaction::atomically;
+use swim_route::uri::RelativeUri;
 use tokio::sync::{mpsc, Mutex};
 use tokio_stream::wrappers::ReceiverStream;
-use utilities::uri::RelativeUri;
 
 mod swim_server {
     pub use crate::*;

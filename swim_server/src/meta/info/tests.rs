@@ -35,13 +35,13 @@ use swim_common::form::Form;
 use swim_common::record;
 use swim_common::routing::ResolutionError;
 use swim_common::warp::envelope::Envelope;
+use swim_route::uri::RelativeUri;
 use swim_runtime::time::timeout;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 use utilities::sync::promise;
-use utilities::uri::RelativeUri;
 
 mod swim_server {
     pub use crate::*;

@@ -38,8 +38,8 @@ use std::option::Option::None;
 use std::str::FromStr;
 use std::sync::Arc;
 use swim_iteratee::Iteratee;
+use swim_route::uri::RelativeUri;
 use url::Url;
-use utilities::uri::RelativeUri;
 
 /// Trait for types that can be recognized by a [`Recognizer`] state machine.
 pub trait RecognizerReadable: Sized {

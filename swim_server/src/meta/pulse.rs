@@ -28,7 +28,7 @@ use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use swim_common::form::Form;
 use swim_common::warp::path::RelativePath;
-use utilities::uri::RelativeUri;
+use swim_route::uri::RelativeUri;
 
 pub type PulseLaneOpenResult<Agent, Context> = (
     PulseLanes,

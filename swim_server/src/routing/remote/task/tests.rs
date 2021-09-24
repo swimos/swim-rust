@@ -26,9 +26,10 @@ use swim_common::model::Value;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use swim_future::retryable::strategy::{Quantity, RetryStrategy};
+use swim_route::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};
 use swim_runtime::time::timeout;
-use utilities::sync::{promise, trigger};
-use utilities::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};
+use swim_trigger as trigger;
+use utilities::sync::promise;
 
 use crate::routing::error::RouterError;
 use crate::routing::remote::config::ConnectionConfig;

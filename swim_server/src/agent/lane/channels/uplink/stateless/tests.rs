@@ -39,13 +39,13 @@ use crate::plane::store::mock::MockPlaneStore;
 use crate::routing::error::RouterError;
 use std::ops::Add;
 use swim_common::routing::ResolutionError;
+use swim_route::uri::RelativeUri;
 use swim_time::AtomicInstant;
 use tokio::sync::mpsc::Receiver;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 use utilities::sync::promise;
-use utilities::uri::RelativeUri;
 
 #[derive(Clone, Debug)]
 struct TestRouter {

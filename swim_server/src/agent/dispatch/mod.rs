@@ -35,8 +35,8 @@ use tracing_futures::Instrument;
 use swim_common::warp::envelope::{Envelope, OutgoingHeader};
 use swim_common::warp::path::RelativePath;
 use swim_errors::Recoverable;
-use utilities::sync::trigger;
-use utilities::uri::RelativeUri;
+use swim_route::uri::RelativeUri;
+use swim_trigger as trigger;
 
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::dispatch::error::{DispatcherError, DispatcherErrors};

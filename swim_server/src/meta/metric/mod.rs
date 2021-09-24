@@ -27,6 +27,8 @@ use futures::Future;
 use std::fmt::{Display, Formatter};
 use std::ops::Add;
 use swim_common::warp::path::RelativePath;
+use swim_route::uri::RelativeUri;
+use swim_trigger as trigger;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::SendError as TokioSendError;
 use tokio::sync::mpsc::Sender;
@@ -34,8 +36,6 @@ use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{span, Level};
 use tracing_futures::Instrument;
-use utilities::sync::trigger;
-use utilities::uri::RelativeUri;
 
 pub mod aggregator;
 pub mod config;

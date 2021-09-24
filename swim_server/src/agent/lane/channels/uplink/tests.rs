@@ -38,11 +38,11 @@ use swim_common::model::Value;
 use swim_common::sink::item;
 use swim_future::SwimStreamExt;
 use swim_time::AtomicInstant;
+use swim_trigger as trigger;
 use swim_warp::model::map::MapUpdate;
 use tokio::sync::mpsc;
 use tokio::time::{timeout, Instant};
 use tokio_stream::wrappers::ReceiverStream;
-use utilities::sync::trigger;
 
 fn buffer_size() -> NonZeroUsize {
     NonZeroUsize::new(16).unwrap()

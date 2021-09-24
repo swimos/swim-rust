@@ -44,13 +44,13 @@ use swim_common::warp::envelope::{Envelope, EnvelopeHeader, EnvelopeParseErr, Ou
 use swim_common::warp::path::RelativePath;
 use swim_errors::Recoverable;
 use swim_future::retryable::strategy::RetryStrategy;
+use swim_route::uri::{BadRelativeUri, RelativeUri};
+use swim_trigger as trigger;
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Instant};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, Level};
-use utilities::sync::trigger;
 use utilities::task::Spawner;
-use utilities::uri::{BadRelativeUri, RelativeUri};
 
 /// A task that manages reading from and writing to a web-sockets channel.
 pub struct ConnectionTask<Str, Router> {
