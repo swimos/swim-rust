@@ -346,6 +346,7 @@ impl FramedWrite {
     {
         let FramedWrite { write_buffer, rand } = self;
         let payload = payload_ref.as_mut();
+
         let mut payload_bytes = BytesMut::with_capacity(payload.len());
         payload_bytes.extend_from_slice(payload);
 
@@ -357,6 +358,8 @@ impl FramedWrite {
                 data_code.into(),
             )?;
         }
+
+        // println!("Writing payload {:?}", payload_bytes.as_ref());
 
         let mask = if is_server {
             None
@@ -667,7 +670,6 @@ where
         rsv3: header.is_rsv3(),
         opcode,
     };
-    println!("Frame header: {:?}", frame_header);
 
     extension
         .decode(payload, &mut frame_header)

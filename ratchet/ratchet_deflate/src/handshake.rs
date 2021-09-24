@@ -30,16 +30,14 @@ pub fn apply_headers(header_map: &mut HeaderMap, config: &DeflateConfig) {
     } = config;
 
     let mut bytes = BytesMut::new();
-    bytes.extend_from_slice(format!("{};", EXT_IDENT).as_bytes());
-    bytes.extend_from_slice(
-        format!("server_max_window_bits={};", server_max_window_bits).as_bytes(),
-    );
+    bytes.extend_from_slice(format!("{}; ", EXT_IDENT).as_bytes());
+    // bytes.extend_from_slice(
+    //     format!("server_max_window_bits={}; ", server_max_window_bits).as_bytes(),
+    // );
 
-    bytes.extend_from_slice(
-        format!("client_max_window_bits={};", client_max_window_bits).as_bytes(),
-    );
-    bytes.extend_from_slice(b"client_no_context_takeover;");
-    bytes.extend_from_slice(b"server_no_context_takeover");
+    bytes.extend_from_slice(format!("client_max_window_bits").as_bytes());
+    // bytes.extend_from_slice(b"client_no_context_takeover;");
+    // bytes.extend_from_slice(b"server_no_context_takeover");
 
     // todo
     header_map.insert(

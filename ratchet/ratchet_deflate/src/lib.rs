@@ -33,6 +33,8 @@ const LZ77_MIN_WINDOW_SIZE: u8 = 8;
 /// 32,768 bytes. RFC 7692 7.1.2.1.
 const LZ77_MAX_WINDOW_SIZE: u8 = 15;
 
+// todo maximum size for decoding to prevent attacks
+
 #[derive(Default)]
 pub struct DeflateExtProvider {
     config: DeflateConfig,
@@ -126,8 +128,6 @@ pub struct Deflate {
 
 impl Deflate {
     fn initialise_from(config: InitialisedDeflateConfig) -> Deflate {
-        println!("initialising deflate with: {:?}", config);
-
         let client = true;
         if client {
             Deflate {
@@ -230,13 +230,8 @@ impl ExtensionEncoder for DeflateEncoder {
         header: &mut FrameHeader,
     ) -> Result<(), Self::Error> {
         if payload.is_empty() {
-            println!("Payload empty: {:?}", payload.as_ref());
             return Ok(());
         }
-
-        // if !header.rsv1 || !header.fin {
-        //     return Ok(());
-        // }
 
         let DeflateEncoder {
             buf,
@@ -247,8 +242,10 @@ impl ExtensionEncoder for DeflateEncoder {
         buf.clear();
         buf.reserve(payload.len());
 
-        while compress.total_in() < payload.as_ref().len() as u64 {
-            let i = compress.total_in() as usize;
+        let before_in = compress.total_in();
+
+        while compress.total_in() - before_in < payload.as_ref().len() as u64 {
+            let i = compress.total_in() as usize - before_in as usize;
             let ret = unsafe {
                 let cap = buf.capacity();
                 let len = buf.len();
@@ -300,13 +297,13 @@ impl ExtensionEncoder for DeflateEncoder {
         buf.truncate(buf.len() - 4);
         std::mem::swap(payload, buf);
 
-        println!("{:?}", payload.as_ref());
-
         // if *compress_reset {
         //     compress.reset();
         // }
 
-        header.rsv1 = true;
+        if !matches!(header.opcode, OpCode::Continuation) {
+            header.rsv1 = true;
+        }
 
         Ok(())
     }
@@ -381,14 +378,16 @@ impl ExtensionDecoder for DeflateDecoder {
         buf.clear();
         buf.reserve(payload.len());
 
-        while decompress.total_in() < payload.as_ref().len() as u64 {
-            let i = decompress.total_in() as usize;
-            let ret = unsafe {
-                let cap = buf.capacity();
-                let len = buf.len();
+        let before_in = decompress.total_in() as usize;
 
+        loop {
+            let i = decompress.total_in() as usize - before_in;
+            let cap = buf.capacity();
+            let len = buf.len();
+            let before = decompress.total_out();
+
+            let ret = unsafe {
                 unsafe {
-                    let before = decompress.total_out();
                     let ret = {
                         let ptr = buf.as_mut_ptr().offset(len as isize);
                         let out = slice::from_raw_parts_mut(ptr, cap - len);
@@ -400,9 +399,8 @@ impl ExtensionDecoder for DeflateDecoder {
             };
 
             match ret? {
-                Status::BufError => buf.reserve(4096),
-                Status::Ok => continue,
-                Status::StreamEnd => break,
+                Status::Ok => buf.reserve(2048),
+                Status::BufError | Status::StreamEnd => break,
             }
         }
 
