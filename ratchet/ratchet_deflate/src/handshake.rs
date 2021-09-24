@@ -13,7 +13,9 @@
 // limitations under the License.
 
 use crate::error::DeflateExtensionError;
-use crate::{Deflate, DeflateConfig, InitialisedDeflateConfig, LZ77_MIN_WINDOW_SIZE};
+use crate::{
+    Deflate, DeflateConfig, InitialisedDeflateConfig, LZ77_MAX_WINDOW_SIZE, LZ77_MIN_WINDOW_SIZE,
+};
 use bytes::BytesMut;
 use http::header::SEC_WEBSOCKET_EXTENSIONS;
 use http::{HeaderMap, HeaderValue};
@@ -26,18 +28,32 @@ pub fn apply_headers(header_map: &mut HeaderMap, config: &DeflateConfig) {
     let DeflateConfig {
         server_max_window_bits,
         client_max_window_bits,
+        request_server_no_context_takeover,
+        request_client_no_context_takeover,
         ..
     } = config;
 
     let mut bytes = BytesMut::new();
     bytes.extend_from_slice(format!("{}; ", EXT_IDENT).as_bytes());
-    // bytes.extend_from_slice(
-    //     format!("server_max_window_bits={}; ", server_max_window_bits).as_bytes(),
-    // );
 
-    bytes.extend_from_slice(format!("client_max_window_bits").as_bytes());
-    // bytes.extend_from_slice(b"client_no_context_takeover;");
-    // bytes.extend_from_slice(b"server_no_context_takeover");
+    if *client_max_window_bits < LZ77_MAX_WINDOW_SIZE {
+        bytes.extend_from_slice(
+            format!(
+                "client_max_window_bits={}; server_max_window_bits={}",
+                client_max_window_bits, server_max_window_bits
+            )
+            .as_bytes(),
+        );
+    } else {
+        bytes.extend_from_slice(b"client_max_window_bits")
+    }
+
+    if *request_server_no_context_takeover {
+        bytes.extend_from_slice(b"; server_no_context_takeover")
+    }
+    if *request_client_no_context_takeover {
+        bytes.extend_from_slice(b"; client_no_context_takeover")
+    }
 
     // todo
     header_map.insert(

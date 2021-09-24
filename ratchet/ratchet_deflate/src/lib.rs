@@ -12,9 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
+mod codec;
 mod error;
 mod handshake;
 
+use crate::codec::{BufCompress, BufDecompress};
 use crate::error::DeflateExtensionError;
 use crate::handshake::{apply_headers, negotiate_client, negotiate_server};
 use bytes::BytesMut;
@@ -23,7 +28,8 @@ use ratchet_ext::{
     Extension, ExtensionDecoder, ExtensionEncoder, ExtensionProvider, FrameHeader, Header,
     HeaderMap, HeaderValue, OpCode, ReunitableExtension, RsvBits, SplittableExtension,
 };
-use std::slice;
+
+const ADDITIONAL_CAPACITY: usize = 256;
 
 /// The minimum size of the LZ77 sliding window size.
 const LZ77_MIN_WINDOW_SIZE: u8 = 8;
@@ -78,7 +84,9 @@ pub struct DeflateConfig {
     /// be in range 8..15 inclusive.
     client_max_window_bits: u8,
     /// Request that the server resets the LZ77 sliding window between messages - RFC 7692 7.1.1.1.
-    request_no_context_takeover: bool,
+    request_server_no_context_takeover: bool,
+    /// Request that the server resets the LZ77 sliding window between messages - RFC 7692 7.1.1.1.
+    request_client_no_context_takeover: bool,
     /// Whether to accept `no_context_takeover`.
     accept_no_context_takeover: bool,
     /// The active compression level. The integer here is typically on a scale of 0-9 where 0 means
@@ -91,7 +99,8 @@ impl Default for DeflateConfig {
         DeflateConfig {
             server_max_window_bits: LZ77_MAX_WINDOW_SIZE,
             client_max_window_bits: LZ77_MAX_WINDOW_SIZE,
-            request_no_context_takeover: false,
+            request_server_no_context_takeover: true,
+            request_client_no_context_takeover: true,
             accept_no_context_takeover: true,
             compression_level: Compression::fast(),
         }
@@ -246,21 +255,8 @@ impl ExtensionEncoder for DeflateEncoder {
 
         while compress.total_in() - before_in < payload.as_ref().len() as u64 {
             let i = compress.total_in() as usize - before_in as usize;
-            let cap = buf.capacity();
-            let len = buf.len();
-            let before = compress.total_out();
-
-            let ret = unsafe {
-                let ptr = buf.as_mut_ptr().offset(len as isize);
-                let out = slice::from_raw_parts_mut(ptr, cap - len);
-                let ret = compress.compress(&payload[i..], out, FlushCompress::None);
-
-                buf.set_len((compress.total_out() - before) as usize + len);
-                ret
-            };
-
-            match ret? {
-                Status::BufError => buf.reserve(256),
+            match compress.buf_compress(&payload[i..], buf, FlushCompress::Sync)? {
+                Status::BufError => buf.reserve(ADDITIONAL_CAPACITY),
                 Status::Ok => continue,
                 Status::StreamEnd => break,
             }
@@ -268,21 +264,7 @@ impl ExtensionEncoder for DeflateEncoder {
 
         while !buf.ends_with(&[0, 0, 0xFF, 0xFF]) {
             buf.reserve(5);
-
-            let cap = buf.capacity();
-            let len = buf.len();
-            let before = compress.total_out();
-
-            let ret = unsafe {
-                let ptr = buf.as_mut_ptr().offset(len as isize);
-                let out = slice::from_raw_parts_mut(ptr, cap - len);
-                let ret = compress.compress(&[], out, FlushCompress::Sync);
-
-                buf.set_len((compress.total_out() - before) as usize + len);
-                ret
-            };
-
-            match ret? {
+            match compress.buf_compress(&[], buf, FlushCompress::Sync)? {
                 Status::Ok | Status::BufError => continue,
                 Status::StreamEnd => break,
             }
@@ -291,9 +273,9 @@ impl ExtensionEncoder for DeflateEncoder {
         buf.truncate(buf.len() - 4);
         std::mem::swap(payload, buf);
 
-        // if *compress_reset {
-        //     compress.reset();
-        // }
+        if *compress_reset {
+            compress.reset();
+        }
 
         if !matches!(header.opcode, OpCode::Continuation) {
             header.rsv1 = true;
@@ -376,63 +358,21 @@ impl ExtensionDecoder for DeflateDecoder {
 
         loop {
             let i = decompress.total_in() as usize - before_in;
-            let cap = buf.capacity();
-            let len = buf.len();
-            let before = decompress.total_out();
-
-            let ret = unsafe {
-                let ptr = buf.as_mut_ptr().offset(len as isize);
-                let out = slice::from_raw_parts_mut(ptr, cap - len);
-                let ret = decompress.decompress(&payload[i..], out, FlushDecompress::None);
-                buf.set_len((decompress.total_out() - before) as usize + len);
-                ret
-            };
-
-            match ret? {
-                Status::Ok => buf.reserve(256),
+            match decompress.buf_decompress(&payload[i..], buf, FlushDecompress::None)? {
+                Status::Ok => buf.reserve(ADDITIONAL_CAPACITY),
                 Status::BufError | Status::StreamEnd => break,
             }
         }
 
         std::mem::swap(payload, buf);
 
-        // if *decompress_reset {
-        //     decompress.reset(false);
-        // }
+        if *decompress_reset {
+            decompress.reset(false);
+        }
 
         header.rsv1 = true;
         Ok(())
     }
-}
-
-fn compress_bytes(compress: &mut Compress, buf: &mut BytesMut, payload: &mut BytesMut) {
-    while compress.total_in() < payload.len() as u64 {
-        let at = compress.total_in() as usize;
-
-        let cap = buf.capacity();
-        let len = buf.len();
-
-        let compress_result = unsafe {
-            let before = compress.total_out();
-            let ret = {
-                let ptr = buf.as_mut_ptr().offset(len as isize);
-                let out = slice::from_raw_parts_mut(ptr, cap - len);
-                compress.compress(&payload[at..], out, FlushCompress::None)
-            };
-            buf.set_len((compress.total_out() - before) as usize + len);
-            ret
-        }
-        .unwrap();
-
-        match compress_result {
-            Status::BufError => buf.reserve(256),
-            Status::Ok => continue,
-            Status::StreamEnd => break,
-        }
-    }
-
-    buf.truncate(buf.len() - 4);
-    std::mem::swap(payload, buf);
 }
 
 #[test]
