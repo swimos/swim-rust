@@ -23,7 +23,7 @@ mod tests;
 /// # Examples
 /// ```
 /// use std::num::NonZeroUsize;
-/// use utilities::iteratee::*;
+/// use swim_iteratee::*;
 ///
 /// let size = NonZeroUsize::new(2).unwrap();
 /// let mut iteratee = collect_vec_with_rem(size);
@@ -76,7 +76,7 @@ pub trait Iteratee<In> {
     /// # Examples
     ///
     /// ```
-    /// use utilities::iteratee::*;
+    /// use swim_iteratee::*;
     ///
     /// let mut iteratee = identity().comap(|i: i32| i.to_string());
     ///
@@ -95,7 +95,7 @@ pub trait Iteratee<In> {
     /// # Examples
     ///
     /// ```
-    /// use utilities::iteratee::*;
+    /// use swim_iteratee::*;
     ///
     /// let mut iteratee = identity().maybe_comap(|i: i32| {
     ///     if i % 2 == 0 {
@@ -121,7 +121,7 @@ pub trait Iteratee<In> {
     /// # Examples
     ///
     /// ```
-    /// use utilities::iteratee::*;
+    /// use swim_iteratee::*;
     ///
     /// let mut iteratee = identity().map(|i: i32| i.to_string());
     ///
@@ -141,7 +141,7 @@ pub trait Iteratee<In> {
     /// # Examples
     ///
     /// ```
-    /// use utilities::iteratee::*;
+    /// use swim_iteratee::*;
     ///
     /// let mut iteratee = identity().maybe_map(|i: i32| {
     ///     if i % 2 == 0 {
@@ -168,7 +168,7 @@ pub trait Iteratee<In> {
     /// # Examples
     ///
     /// ```
-    /// use utilities::iteratee::*;
+    /// use swim_iteratee::*;
     ///
     /// //Stores the largest values that has been seen in the state an only produces an output
     /// //when a new largest value is seen.
@@ -202,7 +202,7 @@ pub trait Iteratee<In> {
     /// # Examples
     ///
     /// ```
-    /// use utilities::iteratee::*;
+    /// use swim_iteratee::*;
     ///
     /// //Stores the previously seen value in the state and returns it on each input. Outputs
     /// //the value of the state on flush.
@@ -246,7 +246,7 @@ pub trait Iteratee<In> {
     /// # Examples
     ///
     /// ```
-    /// use utilities::iteratee::*;
+    /// use swim_iteratee::*;
     ///
     /// let mut iteratee = identity::<i32>().filter(|i| i % 2 == 0);
     ///
@@ -268,7 +268,7 @@ pub trait Iteratee<In> {
     ///
     /// ```
     /// use std::num::NonZeroUsize;
-    /// use utilities::iteratee::*;
+    /// use swim_iteratee::*;
     ///
     /// let size = NonZeroUsize::new(2).unwrap();
     ///
@@ -298,7 +298,7 @@ pub trait Iteratee<In> {
     /// # Examples
     ///
     /// ```
-    /// use utilities::iteratee::*;
+    /// use swim_iteratee::*;
     ///
     /// let div_two = identity::<i32>().map(|i| {
     ///     if i % 2 == 0 {
@@ -342,7 +342,7 @@ pub trait Iteratee<In> {
     ///
     /// ```
     /// use std::num::NonZeroUsize;
-    /// use utilities::iteratee::*;
+    /// use swim_iteratee::*;
     ///
     /// //Assembles a vector the length of which is determined by the first value.
     /// let mut iteratee = identity::<usize>()
@@ -393,7 +393,7 @@ pub trait Iteratee<In> {
     /// # Examples
     ///
     /// ```
-    /// use utilities::iteratee::*;
+    /// use swim_iteratee::*;
     ///
     /// let mut iteratee = identity::<i32>().fold(0, |sum, i| *sum = *sum + i);
     ///
@@ -420,7 +420,7 @@ pub trait Iteratee<In> {
     ///
     /// ```
     /// use std::num::NonZeroUsize;
-    /// use utilities::iteratee::*;
+    /// use swim_iteratee::*;
     ///
     /// let size = NonZeroUsize::new(2).unwrap();
     ///
@@ -448,7 +448,7 @@ pub trait Iteratee<In> {
     ///
     /// ```
     /// use std::num::NonZeroUsize;
-    /// use utilities::iteratee::*;
+    /// use swim_iteratee::*;
     ///
     /// let size = NonZeroUsize::new(2).unwrap();
     ///
@@ -474,7 +474,7 @@ pub trait Iteratee<In> {
     ///
     /// ```
     /// use std::num::NonZeroUsize;
-    /// use utilities::iteratee::*;
+    /// use swim_iteratee::*;
     ///
     /// let size = NonZeroUsize::new(2).unwrap();
     ///
@@ -502,7 +502,7 @@ pub trait Iteratee<In> {
     /// # Examples
     ///
     /// ```
-    /// use utilities::iteratee::*;
+    /// use swim_iteratee::*;
     ///
     /// let mut iteratee = identity::<&str>().map(|s| {
     ///     if s.is_empty() { Err(()) } else { Ok(s) }
@@ -528,7 +528,7 @@ pub trait Iteratee<In> {
 ///
 /// # Examples
 /// ```
-/// use utilities::iteratee::*;
+/// use swim_iteratee::*;
 ///
 /// let collector = identity::<(usize, i32)>();
 /// let mut it = coenumerate(collector);
@@ -556,7 +556,7 @@ pub fn coenumerate<In, It: Iteratee<(usize, In)>>(
 /// # Examples
 ///
 /// ```
-/// use utilities::iteratee::*;
+/// use swim_iteratee::*;
 ///
 /// //Emits every fourth value.
 /// let mut iteratee = unfold(0, |count: &mut u32, i: i32| {
@@ -605,7 +605,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use utilities::iteratee::*;
+/// use swim_iteratee::*;
 ///
 /// let mut iteratee = unfold_with_flush(None, |prev, i| {
 ///     prev.replace(i)
@@ -667,7 +667,7 @@ where
 ///
 /// ```
 /// use std::num::NonZeroUsize;
-/// use utilities::iteratee::*;
+/// use swim_iteratee::*;
 ///
 /// let size = NonZeroUsize::new(3).unwrap();
 ///
@@ -691,7 +691,7 @@ pub fn collect_vec<T>(num: NonZeroUsize) -> impl Iteratee<T, Item = Vec<T>> {
 ///
 /// ```
 /// use std::num::NonZeroUsize;
-/// use utilities::iteratee::*;
+/// use swim_iteratee::*;
 ///
 /// let size = NonZeroUsize::new(3).unwrap();
 ///
@@ -737,7 +737,7 @@ pub fn copy_into_vec_with_rem<'a, T: Copy + 'a>(
 /// # Examples
 ///
 /// ```
-/// use utilities::iteratee::*;
+/// use swim_iteratee::*;
 ///
 /// let mut iteratee = collect_all_vec::<i32>();
 ///
@@ -773,7 +773,7 @@ pub fn never<T>() -> impl Iteratee<T, Item = T> {
 /// # Examples
 ///
 /// ```
-/// use utilities::iteratee::*;
+/// use swim_iteratee::*;
 ///
 /// let mut iteratee = look_ahead::<char>();
 ///
@@ -798,7 +798,7 @@ pub fn look_ahead<T: Clone>() -> impl Iteratee<T, Item = (T, Option<T>)> {
 /// # Examples
 ///
 /// ```
-/// use utilities::iteratee::*;
+/// use swim_iteratee::*;
 /// let mut iteratee = utf8_byte_offsets();
 ///
 /// assert_eq!(iteratee.feed('a'), Some((0, 'a')));

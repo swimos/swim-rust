@@ -16,7 +16,6 @@
 
 pub mod never;
 pub mod ptr;
-pub mod rtree;
 pub mod sync;
 pub mod task;
 pub mod trace;

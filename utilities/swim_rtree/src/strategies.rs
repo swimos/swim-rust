@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::rtree::{BoxBounded, EntryPtr, Label, Point, Rect};
+use crate::{BoxBounded, EntryPtr, Label, Point, Rect};
 use num::Float;
 use std::cmp::Ordering;
 use std::fmt::Debug;

@@ -15,9 +15,8 @@
 //! Immutable R-tree implementation.
 //!
 //! The module provides traits for implementing custom 2D and 3D objects that can be stored in the R-tree.
-pub use super::rect;
-pub use crate::rtree::rectangles::*;
-pub use crate::rtree::strategies::*;
+pub use crate::rectangles::*;
+pub use crate::strategies::*;
 use num::traits::Pow;
 use std::borrow::Borrow;
 use std::collections::hash_map;
@@ -72,7 +71,7 @@ where
     ///
     /// # Example:
     /// ```
-    /// use utilities::rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
+    /// use swim_rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
     /// use std::num::NonZeroUsize;
     /// let mut rtree = RTree::new(NonZeroUsize::new(5).unwrap(), NonZeroUsize::new(10).unwrap(), SplitStrategy::Linear).unwrap();
     ///
@@ -98,7 +97,7 @@ where
     ///
     /// # Example:
     /// ```
-    /// use utilities::rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
+    /// use swim_rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
     /// use std::num::NonZeroUsize;
     /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), SplitStrategy::Linear).unwrap();
     ///
@@ -116,7 +115,7 @@ where
     ///
     /// # Example:
     /// ```
-    /// use utilities::rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
+    /// use swim_rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
     /// use std::num::NonZeroUsize;
     /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), SplitStrategy::Linear).unwrap();
     ///
@@ -135,7 +134,7 @@ where
     ///
     /// # Example:
     /// ```
-    /// use utilities::rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
+    /// use swim_rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
     /// use std::num::NonZeroUsize;
     /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), SplitStrategy::Linear).unwrap();
     ///
@@ -163,7 +162,7 @@ where
     ///
     /// # Example:
     /// ```
-    /// use utilities::rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
+    /// use swim_rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
     /// use std::num::NonZeroUsize;
     /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), SplitStrategy::Linear).unwrap();
     ///
@@ -199,7 +198,7 @@ where
     ///
     /// # Example:
     /// ```
-    /// use utilities::rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
+    /// use swim_rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
     /// use std::num::NonZeroUsize;
     /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), SplitStrategy::Linear).unwrap();
     ///
@@ -281,7 +280,7 @@ where
     ///
     /// # Example:
     /// ```
-    /// use utilities::rtree::{Point2D, Rect, RTree, SplitStrategy, rect};          
+    /// use swim_rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
     /// use std::num::NonZeroUsize;
     ///
     /// let items = vec![
@@ -358,7 +357,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use utilities::rtree::{Point2D, Rect, RTree, SplitStrategy, rect};          
+    /// use swim_rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
     /// use std::num::NonZeroUsize;
     ///
     /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), SplitStrategy::Linear).unwrap();
@@ -561,7 +560,7 @@ impl<L: Label> From<DuplicateLabelError<L>> for RTreeError<L> {
 /// # Example
 ///
 /// ```
-/// use utilities::rtree::{Point2D, Rect, RTree, SplitStrategy, rect};          
+/// use swim_rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
 /// use std::num::NonZeroUsize;
 ///
 /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), SplitStrategy::Linear).unwrap();

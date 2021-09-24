@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::rtree::rectangles::{Point2D, Point3D};
-use crate::rtree::{
+use crate::rectangles::{Point2D, Point3D};
+use crate::{
     BoxBounded, ChildrenSizeError, DuplicateLabelError, Label, RTree, RTreeError, Rect,
     SplitStrategy,
 };
