@@ -69,9 +69,9 @@ mod stub_router {
     use std::sync::Arc;
     use swim_common::routing::ResolutionError;
     use swim_route::uri::RelativeUri;
+    use swim_trigger::promise;
     use tokio::sync::mpsc;
     use url::Url;
-    use utilities::sync::promise;
 
     #[derive(Clone)]
     pub struct SingleChannelRouter {

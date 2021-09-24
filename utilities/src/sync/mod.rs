@@ -16,7 +16,6 @@ use slab::Slab;
 use std::task::Waker;
 
 pub mod circular_buffer;
-pub mod promise;
 pub mod rwlock;
 pub mod topic;
 

@@ -27,10 +27,10 @@ use swim_common::routing::{ConnectionError, ResolutionError};
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_errors::Recoverable;
 use swim_route::uri::RelativeUri;
+use swim_trigger::promise;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use url::Url;
-use utilities::sync::promise;
 
 pub mod error;
 pub mod remote;

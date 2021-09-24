@@ -37,11 +37,11 @@ use swim_common::routing::ResolutionError;
 use swim_common::warp::envelope::Envelope;
 use swim_route::uri::RelativeUri;
 use swim_runtime::time::timeout;
+use swim_trigger::promise;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
-use utilities::sync::promise;
 
 mod swim_server {
     pub use crate::*;

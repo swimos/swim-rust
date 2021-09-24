@@ -49,12 +49,12 @@ use swim_route::route_pattern::RoutePattern;
 use swim_route::uri::RelativeUri;
 use swim_runtime::time::clock::Clock;
 use swim_trigger as trigger;
+use swim_trigger::promise;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 use url::Url;
-use utilities::sync::promise;
 use utilities::task::Spawner;
 
 /// Trait for agent routes. An agent route can construct and run any number of instances of a

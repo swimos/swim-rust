@@ -36,7 +36,7 @@ use crate::router::outgoing::OutgoingHostTask;
 use futures::future::BoxFuture;
 use swim_common::routing::RoutingError;
 use swim_errors::Recoverable;
-use utilities::sync::promise;
+use swim_trigger::promise;
 
 pub mod incoming;
 pub mod outgoing;

@@ -28,6 +28,7 @@ swim_warp = { path = "../swim_warp" }
 swim_common = { path = "../swim_common" }
 swim_future = { path = "../utilities/swim_future" }
 swim_lrucache = { path = "../utilities/swim_lrucache" }
+swim_trigger = { path = "../utilities/swim_trigger" }
 
 http = "0.2"
 tokio-native-tls = "0.3"

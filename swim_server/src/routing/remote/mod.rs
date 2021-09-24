@@ -27,10 +27,10 @@ use std::net::SocketAddr;
 
 use futures::future::BoxFuture;
 use swim_common::request::Request;
+use swim_trigger::promise;
 use tokio::sync::mpsc;
 use tracing::{event, Level};
 use url::Url;
-use utilities::sync::promise;
 
 use swim_common::routing::{ConnectionError, HttpError, ResolutionError, ResolutionErrorKind};
 use swim_trigger as trigger;

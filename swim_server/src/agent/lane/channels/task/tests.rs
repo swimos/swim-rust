@@ -68,13 +68,14 @@ use swim_common::warp::path::RelativePath;
 use swim_route::uri::RelativeUri;
 use swim_time::AtomicInstant;
 use swim_trigger as trigger;
+use swim_trigger::promise;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::timeout;
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
-use utilities::sync::{promise, topic};
+use utilities::sync::topic;
 
 #[test]
 fn lane_io_err_display_update() {

@@ -21,7 +21,6 @@ use std::fmt::{Display, Formatter};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use swim_trigger as trigger;
 
 #[cfg(test)]
 mod tests;
@@ -35,14 +34,14 @@ unsafe impl<T: Sync> Sync for PromiseInner<T> {}
 /// Send half of a promise that can provide the value.
 #[derive(Debug)]
 pub struct Sender<T> {
-    trigger: trigger::Sender,
+    trigger: crate::Sender,
     data: PromiseInner<T>,
 }
 
 /// Receive half of the promise that can await the completion promise and provide access to the value.
 #[derive(Debug)]
 pub struct Receiver<T> {
-    trigger: trigger::Receiver,
+    trigger: crate::Receiver,
     data: PromiseInner<T>,
 }
 
@@ -58,7 +57,7 @@ impl<T> Clone for Receiver<T> {
 /// A promise allows a value to be provided, exactly once, at some time in the future.
 pub fn promise<T: Send + Sync>() -> (Sender<T>, Receiver<T>) {
     let data = Arc::new(UnsafeCell::new(None));
-    let (tx, rx) = trigger::trigger();
+    let (tx, rx) = crate::trigger();
     (
         Sender {
             trigger: tx,
@@ -103,7 +102,7 @@ impl Display for PromiseError {
 
 impl<T> Receiver<T> {
     pub fn same_promise(left: &Self, right: &Self) -> bool {
-        trigger::Receiver::same_receiver(&left.trigger, &right.trigger)
+        crate::Receiver::same_receiver(&left.trigger, &right.trigger)
     }
 }
 

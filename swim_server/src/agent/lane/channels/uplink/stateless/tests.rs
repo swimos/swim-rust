@@ -41,11 +41,11 @@ use std::ops::Add;
 use swim_common::routing::ResolutionError;
 use swim_route::uri::RelativeUri;
 use swim_time::AtomicInstant;
+use swim_trigger::promise;
 use tokio::sync::mpsc::Receiver;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
-use utilities::sync::promise;
 
 #[derive(Clone, Debug)]
 struct TestRouter {

@@ -127,7 +127,7 @@ mod route_tests {
 
     use crate::configuration::router::RouterParamBuilder;
     use crate::connections::ConnectionSender;
-    use utilities::sync::promise;
+    use swim_trigger::promise;
 
     fn router_config(strategy: RetryStrategy) -> RouterParams {
         RouterParamBuilder::new()

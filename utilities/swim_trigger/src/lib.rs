@@ -24,6 +24,8 @@ use std::sync::{Arc, Weak};
 use std::task::Waker;
 use std::task::{Context, Poll};
 
+pub mod promise;
+
 #[cfg(test)]
 mod tests;
 

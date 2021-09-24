@@ -49,12 +49,13 @@ use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use swim_route::uri::RelativeUri;
 use swim_time::AtomicInstant;
+use swim_trigger::promise;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Barrier};
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
-use utilities::sync::{promise, topic};
+use utilities::sync::topic;
 
 const INIT: i32 = 42;
 

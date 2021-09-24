@@ -36,10 +36,10 @@ use swim_common::routing::{
     CloseError, ConnectionError, HttpError, HttpErrorKind, ResolutionError, ResolutionErrorKind,
 };
 use swim_route::uri::RelativeUri;
+use swim_trigger::promise;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
-use utilities::sync::promise;
 
 #[derive(Debug)]
 struct Entry {

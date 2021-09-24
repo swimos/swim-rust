@@ -42,12 +42,12 @@ use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage}
 use swim_common::warp::path::RelativePath;
 use swim_route::uri::RelativeUri;
 use swim_trigger as trigger;
+use swim_trigger::promise;
 use swim_warp::model::map::MapUpdate;
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration};
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
-use utilities::sync::promise;
 
 const TEST_MSG: &str = "Map lifecycle on event";
 

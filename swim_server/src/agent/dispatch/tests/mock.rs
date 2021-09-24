@@ -41,11 +41,11 @@ use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage}
 use swim_common::warp::path::RelativePath;
 use swim_route::uri::RelativeUri;
 use swim_time::AtomicInstant;
+use swim_trigger::promise;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::Instant;
 use url::Url;
-use utilities::sync::promise;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MockLane;

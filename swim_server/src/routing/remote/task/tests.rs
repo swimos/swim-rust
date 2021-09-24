@@ -29,7 +29,7 @@ use swim_future::retryable::strategy::{Quantity, RetryStrategy};
 use swim_route::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};
 use swim_runtime::time::timeout;
 use swim_trigger as trigger;
-use utilities::sync::promise;
+use swim_trigger::promise;
 
 use crate::routing::error::RouterError;
 use crate::routing::remote::config::ConnectionConfig;

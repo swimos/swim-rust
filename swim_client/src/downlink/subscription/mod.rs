@@ -52,12 +52,12 @@ use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
 use swim_future::{SwimFutureExt, TransformOnce, TransformedFuture};
 use swim_runtime::task::{spawn, TaskError, TaskHandle};
+use swim_trigger::promise::{self, PromiseError};
 use swim_warp::backpressure;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{error, info, instrument, trace_span};
-use utilities::sync::promise::PromiseError;
-use utilities::sync::{circular_buffer, promise};
+use utilities::sync::circular_buffer;
 
 pub mod envelopes;
 #[cfg(test)]
