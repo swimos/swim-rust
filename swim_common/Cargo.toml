@@ -28,6 +28,7 @@ swim_future = { path = "../utilities/swim_future" }
 swim_iteratee = { path = "../utilities/swim_iteratee" }
 swim_format = { path = "../utilities/swim_format" }
 swim_route = { path = "../utilities/swim_route" }
+swim_sync = { path = "../utilities/swim_sync" }
 url = "2.1.1"
 tracing = { version = "0.1.13"}
 tracing-subscriber = "0.2.11"

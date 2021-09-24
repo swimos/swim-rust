@@ -27,9 +27,9 @@ use swim_common::sink::item;
 use swim_common::sink::item::ItemSender;
 use swim_lrucache::LruCache;
 use swim_runtime::task::{spawn, TaskHandle};
+use swim_sync::circular_buffer;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
-use utilities::sync::circular_buffer;
 
 /// Stream adapter that removes per-key back-pressure from modifications over a map downlink. If
 /// the produces pushes in changes, sequentially, to the same key the consumer will only observe

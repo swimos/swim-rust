@@ -36,6 +36,7 @@ swim_future = { path = "../utilities/swim_future" }
 swim_time = { path = "../utilities/swim_time" }
 swim_route = { path = "../utilities/swim_route" }
 swim_trigger = { path = "../utilities/swim_trigger" }
+swim_sync = { path = "../utilities/swim_sync" }
 stringify_attr = { path = "../macro_utilities/stringify_attr" }
 swim_runtime = { path = "../swim_runtime" }
 stm = { path = "../stm" }

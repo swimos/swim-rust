@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::sync::ReadWaiters;
+use crate::waiters::ReadWaiters;
 use parking_lot::Mutex;
 use parking_lot_core::SpinWait;
 use slab::Slab;

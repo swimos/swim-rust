@@ -28,7 +28,7 @@ use futures_util::task::AtomicWaker;
 use pin_project::pin_project;
 use std::num::NonZeroUsize;
 
-use crate::sync::ReadWaiters;
+use crate::waiters::ReadWaiters;
 
 /// Create a single producer, multiple observer channel. The channel consists of a circular buffer
 /// into which each of the entries is written. All observers will observe a reference to an entry

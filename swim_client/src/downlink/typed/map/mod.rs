@@ -33,9 +33,9 @@ use swim_common::form::{Form, ValueSchema};
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::request::Request;
+use swim_sync::topic;
 use swim_trigger::promise;
 use tokio::sync::{mpsc, oneshot};
-use utilities::sync::topic;
 
 type MapDlVariance<K, V> = fn(K, V) -> (K, V);
 

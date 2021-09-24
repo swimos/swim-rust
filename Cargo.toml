@@ -19,6 +19,7 @@ members = [
     "utilities/swim_format",
     "utilities/swim_route",
     "utilities/swim_rtree",
+    "utilities/swim_sync",
     "utilities/test_util"
 ]
 

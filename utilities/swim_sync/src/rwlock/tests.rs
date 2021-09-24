@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::sync::rwlock::{RwLock, WriterQueue};
+use crate::rwlock::{RwLock, WriterQueue};
 use futures::future::{join, join_all};
 use futures::FutureExt;
 use std::sync::Arc;

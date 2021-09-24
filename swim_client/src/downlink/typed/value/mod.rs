@@ -29,9 +29,9 @@ use std::sync::Arc;
 use swim_common::form::{Form, ValueSchema};
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
+use swim_sync::topic;
 use swim_trigger::promise;
 use tokio::sync::{mpsc, oneshot};
-use utilities::sync::topic;
 
 /// A downlink to a remote value lane containing values that are compatible with the
 /// [`ValueSchema`] implementation for `T`.

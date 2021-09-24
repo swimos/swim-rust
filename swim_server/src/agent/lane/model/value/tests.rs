@@ -18,9 +18,9 @@ use futures::future::join;
 use std::time::Duration;
 use stm::transaction::atomically;
 use stm::var::observer::ObserverSubscriber;
+use swim_sync::topic::TryRecvError;
 use swim_trigger as trigger;
 use tokio::sync::mpsc;
-use utilities::sync::topic::TryRecvError;
 
 fn buffer_size() -> NonZeroUsize {
     NonZeroUsize::new(16).unwrap()

@@ -18,9 +18,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use swim_common::sink::item::for_mpsc_sender;
 use swim_runtime::time::timeout::timeout;
+use swim_sync::circular_buffer;
 use tokio::sync::{mpsc, Barrier};
 use tokio_stream::wrappers::ReceiverStream;
-use utilities::sync::circular_buffer;
 
 const TIMEOUT: Duration = Duration::from_secs(30);
 

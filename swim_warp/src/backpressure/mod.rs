@@ -15,8 +15,8 @@
 use std::num::NonZeroUsize;
 
 use swim_common::sink::item::ItemSender;
+use swim_sync::circular_buffer;
 use swim_trigger as trigger;
-use utilities::sync::circular_buffer;
 
 pub mod keyed;
 

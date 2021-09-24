@@ -49,11 +49,11 @@ use swim_common::request::TryRequest;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
 use swim_errors::Recoverable;
+use swim_sync::topic;
 use swim_trigger::promise;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
-use utilities::sync::topic;
 
 pub use crate::downlink::subscription::Downlinks;
 use tracing_futures::Instrument;

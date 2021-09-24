@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::{TryRecvError, TrySendError};
-use crate::sync::topic::{Receiver, SendError, Sender};
+use crate::topic::{Receiver, SendError, Sender, TryRecvError, TrySendError};
 use futures::future::{join, join3};
 use futures::StreamExt;
 use std::future::Future;

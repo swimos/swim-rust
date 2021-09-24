@@ -1,0 +1,21 @@
+[package]
+name = "swim_sync"
+version = "0.1.0"
+authors = ["Swim.AI developers info@swim.ai"]
+edition = "2018"
+
+[dependencies]
+slab = "0.4.2"
+crossbeam-queue = "0.3"
+futures = "0.3.4"
+parking_lot = "0.11.0"
+parking_lot_core = "0.8.0"
+futures-util = "0.3.4"
+pin-project = "1.0.5"
+
+[dev-dependencies]
+tokio = { version = "1.1.1", features = ["rt"] }
+test_util = { path = "../test_util" }
+swim_trigger = { path = "../swim_trigger"}
+swim_future = { path = "../swim_future"}
+

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::sync::circular_buffer::error::{RecvError, SendError};
-use crate::sync::circular_buffer::{InternalQueue, OneItemQueue, LARGE_BOUNDARY};
+use crate::circular_buffer::error::{RecvError, SendError};
+use crate::circular_buffer::{InternalQueue, OneItemQueue, LARGE_BOUNDARY};
 use futures::task::ArcWake;
 use futures::StreamExt;
 use std::future::Future;

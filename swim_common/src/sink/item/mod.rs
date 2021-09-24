@@ -17,9 +17,8 @@ use std::future::Future;
 use futures::future::{ready, BoxFuture, Ready};
 use futures::FutureExt;
 use std::convert::Infallible;
+use swim_sync::{circular_buffer, topic};
 use tokio::sync::{broadcast, mpsc, watch};
-use utilities::sync::circular_buffer;
-use utilities::sync::topic;
 
 pub mod comap;
 pub mod drop_all;

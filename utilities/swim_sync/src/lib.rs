@@ -12,9 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(clippy::match_wild_err_arm)]
-
-pub mod never;
-pub mod ptr;
-pub mod task;
-pub mod trace;
+pub mod circular_buffer;
+pub mod rwlock;
+pub mod topic;
+mod waiters;

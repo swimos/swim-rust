@@ -19,8 +19,8 @@ use std::any::{type_name, Any};
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
+use swim_sync::topic::{self, SubscribeError, TryRecvError};
 use tokio::macros::support::{Pin, Poll};
-use utilities::sync::topic::{self, SubscribeError, TryRecvError};
 
 /// An [`Observer`] allows changes to the state of a [`crate::var::TVar`] to be observed as a stream.
 pub struct Observer<T> {
