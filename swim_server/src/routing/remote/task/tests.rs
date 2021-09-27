@@ -25,11 +25,11 @@ use tokio::sync::{mpsc, watch};
 use swim_common::model::Value;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
-use swim_future::retryable::strategy::{Quantity, RetryStrategy};
-use swim_route::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};
 use swim_runtime::time::timeout;
-use swim_trigger as trigger;
-use swim_trigger::promise;
+use swim_utilities::future::retryable::strategy::{Quantity, RetryStrategy};
+use swim_utilities::routing::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};
+use swim_utilities::trigger;
+use swim_utilities::trigger::promise;
 
 use crate::routing::error::RouterError;
 use crate::routing::remote::config::ConnectionConfig;

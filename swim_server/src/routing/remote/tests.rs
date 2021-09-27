@@ -26,7 +26,7 @@ use swim_common::model::Value;
 use swim_common::request::Request;
 use swim_common::routing::{ConnectionError, IoError, ResolutionError, ResolutionErrorKind};
 use swim_common::warp::envelope::Envelope;
-use swim_trigger::promise::Sender;
+use swim_utilities::trigger::promise::Sender;
 use tokio::sync::{mpsc, oneshot};
 
 #[derive(Debug, Clone, PartialEq, Eq)]

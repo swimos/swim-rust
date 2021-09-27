@@ -36,11 +36,11 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use store::StoreError;
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
-use swim_future::open_ended::OpenEndedFutures;
 use swim_runtime::task::TaskError;
 use swim_runtime::time::clock::RuntimeClock;
-use swim_trigger as trigger;
-use swim_trigger::promise;
+use swim_utilities::future::open_ended::OpenEndedFutures;
+use swim_utilities::trigger;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 

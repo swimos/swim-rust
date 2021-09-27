@@ -24,7 +24,7 @@ use proc_macro2::TokenStream;
 use quote::ToTokens;
 use std::convert::TryFrom;
 use std::ops::Add;
-use swim_errors::validation::Validation;
+use swim_utilities::errors::validation::Validation;
 use syn::{Field, Ident, Lit, Meta, NestedMeta, Type};
 
 /// Describes how to extract a field from a struct.

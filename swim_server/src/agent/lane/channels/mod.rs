@@ -22,7 +22,7 @@ use crate::meta::metric::config::MetricAggregatorConfig;
 use crate::routing::RoutingAddr;
 use std::num::NonZeroUsize;
 use std::time::Duration;
-use swim_future::retryable::strategy::RetryStrategy;
+use swim_utilities::future::retryable::strategy::RetryStrategy;
 
 pub mod task;
 pub mod update;

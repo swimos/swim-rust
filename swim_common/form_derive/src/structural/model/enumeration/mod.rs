@@ -19,8 +19,8 @@ use crate::structural::model::ValidateFrom;
 use crate::SynValidation;
 use quote::ToTokens;
 use std::collections::HashSet;
-use swim_errors::validation::{validate2, Validation, ValidationItExt};
-use swim_errors::Errors;
+use swim_utilities::errors::validation::{validate2, Validation, ValidationItExt};
+use swim_utilities::errors::Errors;
 use syn::{Attribute, DataEnum, Ident};
 
 /// Preprocessed description of an enum type.

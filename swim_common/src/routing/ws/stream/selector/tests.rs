@@ -23,7 +23,7 @@ use std::ops::Add;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_future::NotifyOnBlocked;
+use swim_utilities::future::NotifyOnBlocked;
 use tokio::sync::{mpsc, Notify};
 use tokio_stream::wrappers::ReceiverStream;
 

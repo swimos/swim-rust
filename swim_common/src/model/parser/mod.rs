@@ -28,7 +28,7 @@ use core::iter;
 use std::convert::TryFrom;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
-use swim_iteratee::{look_ahead, unfold_with_flush, Iteratee};
+use swim_utilities::iteratee::{look_ahead, unfold_with_flush, Iteratee};
 
 #[cfg(test)]
 mod tests;

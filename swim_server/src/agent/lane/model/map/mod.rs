@@ -46,7 +46,7 @@ use std::hash::Hash;
 use std::num::NonZeroUsize;
 use stm::var::observer::{Observer, ObserverStream, ObserverSubscriber};
 use swim_common::form::structural::read::ReadError;
-use swim_future::{FlatmapStream, SwimStreamExt, Transform};
+use swim_utilities::future::{FlatmapStream, SwimStreamExt, Transform};
 use swim_warp::model::map::MapUpdate;
 use tracing::{event, Level};
 

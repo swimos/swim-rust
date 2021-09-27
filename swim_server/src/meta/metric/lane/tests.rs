@@ -23,7 +23,7 @@ use futures::future::join;
 use std::collections::HashMap;
 use std::time::Duration;
 use swim_common::warp::path::RelativePath;
-use swim_trigger as trigger;
+use swim_utilities::trigger;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
 use tokio_stream::wrappers::ReceiverStream;

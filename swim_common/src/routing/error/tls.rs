@@ -15,7 +15,7 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use swim_errors::Recoverable;
+use swim_utilities::errors::Recoverable;
 
 use crate::routing::error::FmtResult;
 use crate::routing::{format_cause, ConnectionError};

@@ -1,11 +1,34 @@
 [package]
-name = "utilities"
+name = "swim_utilities"
 version = "0.1.0"
 authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
+[features]
+all = ["future", "errors", "sync", "iteratee", "collections", "time", "text", "lrucache", "rtree"]
+errors = []
+future = []
+iteratee = []
+lrucache = []
+rtree = []
+collections = ["lrucache", "rtree"]
+trigger = []
+sync = ["trigger", "future"]
+time = []
+text = []
+
 [dependencies]
 
+swim_errors = { path = "./swim_errors"}
+swim_format = { path = "./swim_format"}
 swim_trigger = { path = "./swim_trigger"}
 swim_future = { path = "./swim_future"}
+swim_iteratee = { path = "./swim_iteratee"}
+swim_lrucache = { path = "./swim_lrucache"}
+swim_route = { path = "./swim_route"}
+swim_rtree = { path = "./swim_rtree"}
+swim_sync = { path = "./swim_sync"}
+swim_time = { path = "./swim_time"}
+
+
 

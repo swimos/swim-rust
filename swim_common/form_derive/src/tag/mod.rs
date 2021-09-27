@@ -18,8 +18,8 @@ use crate::quote::TokenStreamExt;
 use proc_macro2::{Span, TokenStream};
 use quote::ToTokens;
 use std::fmt::{Display, Formatter};
-use swim_errors::validation::ValidationItExt;
-use swim_errors::Errors;
+use swim_utilities::errors::validation::ValidationItExt;
+use swim_utilities::errors::Errors;
 
 /// Model for an enumeration where all variants have no fields.
 pub struct UnitEnum<'a> {

@@ -20,7 +20,7 @@ use crate::routing::{ConnectionDropped, RoutingAddr, TaggedEnvelope};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
-use swim_trigger::promise;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 
 /// A combination of host name and port to be used as a key into the routing table.

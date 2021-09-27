@@ -27,14 +27,14 @@ use std::net::SocketAddr;
 
 use futures::future::BoxFuture;
 use swim_common::request::Request;
-use swim_trigger::promise;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use tracing::{event, Level};
 use url::Url;
 
 use swim_common::routing::{ConnectionError, HttpError, ResolutionError, ResolutionErrorKind};
-use swim_future::task::Spawner;
-use swim_trigger as trigger;
+use swim_utilities::future::task::Spawner;
+use swim_utilities::trigger;
 
 use crate::routing::error::Unresolvable;
 use crate::routing::remote::config::ConnectionConfig;

@@ -25,9 +25,9 @@ use swim_common::model::Value;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item;
 use swim_common::sink::item::ItemSender;
-use swim_lrucache::LruCache;
 use swim_runtime::task::{spawn, TaskHandle};
-use swim_sync::circular_buffer;
+use swim_utilities::collections::lrucache::LruCache;
+use swim_utilities::sync::circular_buffer;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 

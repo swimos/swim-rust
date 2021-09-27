@@ -29,9 +29,9 @@ use futures::future::{ready, BoxFuture, Ready};
 use futures::FutureExt;
 use std::time::Duration;
 use swim_common::routing::ResolutionError;
-use swim_route::route_pattern::RoutePattern;
-use swim_route::uri::RelativeUri;
 use swim_runtime::time::clock::Clock;
+use swim_utilities::routing::route_pattern::RoutePattern;
+use swim_utilities::routing::uri::RelativeUri;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 

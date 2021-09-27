@@ -34,7 +34,7 @@ use swim_common::model::Value;
 
 use crate::agent::lane::channels::uplink::PeelResult;
 use swim_common::form::structural::read::ReadError;
-use swim_trigger as trigger;
+use swim_utilities::trigger;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 

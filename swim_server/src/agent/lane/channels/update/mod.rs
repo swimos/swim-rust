@@ -26,11 +26,11 @@ use std::fmt::{Debug, Display, Formatter};
 use std::time::Duration;
 use stm::transaction::{RetryManager, TransactionError};
 use swim_common::form::structural::read::ReadError;
-use swim_future::retryable::strategy::RetryStrategy;
-use swim_future::{
+use swim_runtime::time::delay::{delay_for, Delay};
+use swim_utilities::future::retryable::strategy::RetryStrategy;
+use swim_utilities::future::{
     SwimFutureExt, SwimStreamExt, Transform, TransformedFuture, TransformedStreamFut,
 };
-use swim_runtime::time::delay::{delay_for, Delay};
 
 #[cfg(test)]
 mod tests;

@@ -23,7 +23,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use swim_runtime::task;
 use swim_runtime::time::clock::Clock;
-use swim_trigger as trigger;
+use swim_utilities::trigger;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 

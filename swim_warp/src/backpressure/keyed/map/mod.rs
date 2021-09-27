@@ -23,9 +23,9 @@ use pin_utils::pin_mut;
 use tokio::sync::mpsc;
 
 use swim_common::sink::item::ItemSender;
-use swim_lrucache::LruCache;
-use swim_sync::circular_buffer;
-use swim_trigger as trigger;
+use swim_utilities::collections::lrucache::LruCache;
+use swim_utilities::sync::circular_buffer;
+use swim_utilities::trigger;
 
 use crate::backpressure::keyed::common::{consume_buffers, transmit, Action, SpecialActionResult};
 use crate::model::map::MapUpdate;

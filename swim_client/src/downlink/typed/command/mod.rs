@@ -25,7 +25,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use swim_common::form::{Form, ValueSchema};
 use swim_common::model::schema::StandardSchema;
-use swim_trigger::promise;
+use swim_utilities::trigger::promise;
 
 /// A downlink that sends commands to a remote downlink and does not link to the remote lane.
 pub struct TypedCommandDownlink<T> {

@@ -21,7 +21,7 @@ use tokio::sync::mpsc;
 use tracing::{error, info, span, trace, Level};
 
 use crate::router::retry::new_request;
-use swim_future::retryable::RetryableFuture;
+use swim_utilities::future::retryable::RetryableFuture;
 use tokio_stream::wrappers::ReceiverStream;
 
 //----------------------------------Downlink to Connection Pool---------------------------------
@@ -121,13 +121,13 @@ impl OutgoingHostTask {
 mod route_tests {
     use std::num::NonZeroUsize;
 
-    use swim_future::retryable::strategy::RetryStrategy;
+    use swim_utilities::future::retryable::strategy::RetryStrategy;
 
     use super::*;
 
     use crate::configuration::router::RouterParamBuilder;
     use crate::connections::ConnectionSender;
-    use swim_trigger::promise;
+    use swim_utilities::trigger::promise;
 
     fn router_config(strategy: RetryStrategy) -> RouterParams {
         RouterParamBuilder::new()

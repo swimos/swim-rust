@@ -41,8 +41,8 @@ use std::str::FromStr;
 use swim_common::model::text::Text;
 use swim_common::warp::path::RelativePath;
 
-use swim_route::uri::RelativeUri;
-use swim_trigger as trigger;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger;
 use tracing::{span, Level};
 use tracing_futures::{Instrument, Instrumented};
 

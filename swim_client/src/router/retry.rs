@@ -15,7 +15,7 @@
 use futures_util::FutureExt;
 use tokio::sync::{mpsc, oneshot};
 
-use swim_future::retryable::ResettableFuture;
+use swim_utilities::future::retryable::ResettableFuture;
 
 use crate::connections::ConnectionSender;
 use crate::router::ConnectionRequest;
@@ -24,10 +24,10 @@ use futures::Future;
 use pin_project::pin_project;
 use std::pin::Pin;
 use swim_common::routing::RoutingError;
-use swim_future::retryable::request::{RetrySendError, RetryableRequest, SendResult};
+use swim_utilities::future::retryable::request::{RetrySendError, RetryableRequest, SendResult};
 
 use swim_common::routing::ws::WsMessage;
-use swim_errors::Recoverable;
+use swim_utilities::errors::Recoverable;
 use tracing::trace;
 
 #[pin_project]
@@ -176,14 +176,14 @@ impl RetrySendError for MpscRetryErr {
 mod tests {
     use std::num::NonZeroUsize;
 
-    use swim_future::retryable::strategy::RetryStrategy;
-    use swim_future::retryable::RetryableFuture;
+    use swim_utilities::future::retryable::strategy::RetryStrategy;
+    use swim_utilities::future::retryable::RetryableFuture;
 
     use crate::router::retry::MpscRetryErr;
     use crate::router::RoutingError;
     use futures::Future;
     use swim_common::routing::ws::WsMessage;
-    use swim_future::retryable::request::{RetryableRequest, SendResult};
+    use swim_utilities::future::retryable::request::{RetryableRequest, SendResult};
     use tokio::sync::mpsc;
 
     #[tokio::test]

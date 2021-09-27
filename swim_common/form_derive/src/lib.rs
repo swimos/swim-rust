@@ -31,8 +31,8 @@ use crate::structural::{
 };
 use crate::tag::build_derive_tag;
 use crate::validated_form::build_validated_form;
-use swim_errors::validation::Validation;
-use swim_errors::Errors;
+use swim_utilities::errors::validation::Validation;
+use swim_utilities::errors::Errors;
 
 mod form;
 mod modifiers;

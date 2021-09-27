@@ -23,7 +23,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::io;
 use std::str::Utf8Error;
-use swim_iteratee::{coenumerate, Iteratee};
+use swim_utilities::iteratee::{coenumerate, Iteratee};
 use tokio::io::AsyncRead;
 use tokio_util::codec::FramedRead;
 

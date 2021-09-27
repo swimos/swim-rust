@@ -34,9 +34,9 @@ use tracing_futures::Instrument;
 
 use swim_common::warp::envelope::{Envelope, OutgoingHeader};
 use swim_common::warp::path::RelativePath;
-use swim_errors::Recoverable;
-use swim_route::uri::RelativeUri;
-use swim_trigger as trigger;
+use swim_utilities::errors::Recoverable;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger;
 
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::dispatch::error::{DispatcherError, DispatcherErrors};
@@ -51,7 +51,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_runtime::time::timeout::timeout;
-use swim_time::AtomicInstant;
+use swim_utilities::time::AtomicInstant;
 use tokio::time::Instant;
 
 pub mod error;

@@ -23,7 +23,7 @@ use std::num::NonZeroUsize;
 use std::ops::Add;
 use std::time::{Duration, Instant};
 use swim_common::warp::path::RelativePath;
-use swim_trigger as trigger;
+use swim_utilities::trigger;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
 use tracing::{event, Level};

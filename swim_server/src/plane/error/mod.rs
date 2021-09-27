@@ -17,8 +17,8 @@ mod tests;
 
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use swim_route::route_pattern::RoutePattern;
-use swim_route::uri::RelativeUri;
+use swim_utilities::routing::route_pattern::RoutePattern;
+use swim_utilities::routing::uri::RelativeUri;
 
 /// Error indicating that request to route to a plane-local agent failed.
 #[derive(Debug, Clone, PartialEq, Eq)]

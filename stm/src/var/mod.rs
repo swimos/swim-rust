@@ -30,9 +30,9 @@ use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
-use swim_sync::rwlock::{ReadFuture, ReadGuard, RwLock, WriteGuard};
-use swim_sync::topic;
-use utilities::ptr::data_ptr_eq;
+use swim_utilities::ptr::data_ptr_eq;
+use swim_utilities::sync::rwlock::{ReadFuture, ReadGuard, RwLock, WriteGuard};
+use swim_utilities::sync::topic;
 
 pub mod observer;
 

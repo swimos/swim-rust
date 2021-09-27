@@ -13,8 +13,7 @@ pin-utils = "0.1.0"
 tokio = { version = "1.1.1", features = ["sync"] }
 slab = "0.4.2"
 
-utilities = { path = "../utilities" }
-swim_sync = { path = "../utilities/swim_sync" }
+swim_utilities = { path = "../utilities", features = ["sync"] }
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["rt-multi-thread", "macros", "time"] }

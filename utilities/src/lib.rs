@@ -16,3 +16,39 @@
 
 pub mod never;
 pub mod ptr;
+
+#[cfg(feature = "errors")]
+pub use swim_errors as errors;
+
+#[cfg(feature = "future")]
+pub use swim_future as future;
+
+#[cfg(feature = "iteratee")]
+pub use swim_iteratee as iteratee;
+
+#[cfg(any(feature = "lrucache", feature = "rtree"))]
+pub mod collections {
+    #[cfg(feature = "lrucache")]
+    pub use swim_lrucache as lrucache;
+    #[cfg(feature = "rtree")]
+    pub use swim_rtree as rtree;
+}
+
+#[cfg(feature = "time")]
+pub use swim_time as time;
+
+#[cfg(feature = "text")]
+pub use swim_route as routing;
+
+#[cfg(feature = "text")]
+pub use swim_format as format;
+
+#[cfg(feature = "trigger")]
+pub use swim_trigger as trigger;
+
+#[cfg(feature = "sync")]
+pub mod sync {
+    pub use swim_sync::circular_buffer;
+    pub use swim_sync::rwlock;
+    pub use swim_sync::topic;
+}

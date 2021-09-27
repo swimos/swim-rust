@@ -51,9 +51,9 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swim_route::uri::RelativeUri;
 use swim_runtime::task;
-use swim_trigger as trigger;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::{timeout, Duration};
 use tokio_stream::wrappers::ReceiverStream;
@@ -68,8 +68,8 @@ mod stub_router {
     use futures::FutureExt;
     use std::sync::Arc;
     use swim_common::routing::ResolutionError;
-    use swim_route::uri::RelativeUri;
-    use swim_trigger::promise;
+    use swim_utilities::routing::uri::RelativeUri;
+    use swim_utilities::trigger::promise;
     use tokio::sync::mpsc;
     use url::Url;
 

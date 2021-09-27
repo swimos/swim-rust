@@ -17,7 +17,7 @@ use crate::routing::error::FmtResult;
 use crate::routing::{format_cause, ConnectionError};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use swim_errors::Recoverable;
+use swim_utilities::errors::Recoverable;
 
 use tokio::sync::mpsc::error::SendError as MpscSendError;
 use tokio::sync::mpsc::error::TrySendError as MpscTrySendError;

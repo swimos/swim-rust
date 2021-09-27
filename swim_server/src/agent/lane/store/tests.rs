@@ -23,7 +23,7 @@ use std::collections::HashMap;
 use store::StoreError;
 use swim_common::model::time::Timestamp;
 use swim_runtime::time::timeout::timeout;
-use swim_trigger as trigger;
+use swim_utilities::trigger;
 use tokio::time::{sleep, Duration};
 
 pub fn store_err_partial_eq(expected: Vec<StoreError>, actual: Vec<StoreTaskError>) {

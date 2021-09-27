@@ -21,11 +21,11 @@ use pin_utils::core_reexport::fmt::Formatter;
 use std::convert::TryFrom;
 use std::fmt::Display;
 use swim_common::model::text::Text;
-use swim_errors::Recoverable;
+use swim_utilities::errors::Recoverable;
 use thiserror::Error;
 
 use crate::meta::{LANES_URI, LANE_URI, PULSE_URI, UPLINK_URI};
-use swim_route::uri::{BadRelativeUri, PathSegmentIterator, RelativeUri};
+use swim_utilities::routing::uri::{BadRelativeUri, PathSegmentIterator, RelativeUri};
 
 /// Errors that are produced when parsing an invalid node or lane URI.
 #[derive(Debug, PartialEq, Error)]

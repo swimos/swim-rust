@@ -35,7 +35,7 @@ use swim_common::routing::{
     ConnectionError, HttpError, HttpErrorKind, InvalidUriError, InvalidUriErrorKind,
     TungsteniteError,
 };
-use swim_future::{TransformedSink, TransformedStream};
+use swim_utilities::future::{TransformedSink, TransformedStream};
 use tokio_native_tls::TlsStream;
 use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;

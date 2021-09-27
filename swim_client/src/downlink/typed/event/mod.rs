@@ -25,8 +25,8 @@ use std::sync::Arc;
 use swim_common::form::{Form, ValueSchema};
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
-use swim_sync::topic;
-use swim_trigger::promise;
+use swim_utilities::sync::topic;
+use swim_utilities::trigger::promise;
 
 #[cfg(test)]
 mod tests;

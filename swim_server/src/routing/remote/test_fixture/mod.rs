@@ -35,8 +35,8 @@ use swim_common::routing::ws::{CloseReason, JoinedStreamSink, WsConnections, WsM
 use swim_common::routing::{
     CloseError, ConnectionError, HttpError, HttpErrorKind, ResolutionError, ResolutionErrorKind,
 };
-use swim_route::uri::RelativeUri;
-use swim_trigger::promise;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;

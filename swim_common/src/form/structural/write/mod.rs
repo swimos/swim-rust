@@ -30,7 +30,7 @@ use std::sync::Arc;
 
 #[doc(hidden)]
 pub use form_derive::StructuralWritable;
-use swim_route::uri::RelativeUri;
+use swim_utilities::routing::uri::RelativeUri;
 use url::Url;
 
 /// Trait for types that can describe their structure using a [`StructuralWriter`].

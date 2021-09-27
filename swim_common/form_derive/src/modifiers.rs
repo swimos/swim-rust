@@ -17,7 +17,7 @@ use crate::SynValidation;
 use macro_utilities::Symbol;
 use quote::ToTokens;
 use std::convert::TryFrom;
-use swim_errors::validation::{Validation, ValidationItExt};
+use swim_utilities::errors::validation::{Validation, ValidationItExt};
 
 /// Description of how a type or field should be renamed in its serialized form.
 pub enum NameTransform {

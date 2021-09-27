@@ -26,10 +26,10 @@ pub mod store;
 #[allow(unused_imports)]
 pub use agent_derive::*;
 pub use stringify_attr::{stringify_attr, stringify_attr_raw};
-pub use swim_future::retryable::strategy::RetryStrategy;
-pub use swim_future::SwimStreamExt;
-pub use swim_route::route_pattern::RoutePattern;
-pub use swim_route::uri;
+pub use swim_utilities::future::retryable::strategy::RetryStrategy;
+pub use swim_utilities::future::SwimStreamExt;
+pub use swim_utilities::routing::route_pattern::RoutePattern;
+pub use swim_utilities::routing::uri;
 
 #[doc(hidden)]
 pub use agent::model::value::ValueLaneStoreIo;

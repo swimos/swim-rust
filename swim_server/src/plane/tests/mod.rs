@@ -21,11 +21,11 @@ use crate::plane::{AgentRoute, EnvChannel};
 use crate::routing::{ServerRouter, TopLevelRouterFactory};
 use futures::future::join;
 use std::time::Duration;
-use swim_future::open_ended::OpenEndedFutures;
-use swim_route::route_pattern::RoutePattern;
 use swim_runtime::time::clock::Clock;
 use swim_runtime::time::timeout;
-use swim_trigger as trigger;
+use swim_utilities::future::open_ended::OpenEndedFutures;
+use swim_utilities::routing::route_pattern::RoutePattern;
+use swim_utilities::trigger;
 use tokio::sync::mpsc;
 
 mod fixture;

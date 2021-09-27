@@ -47,7 +47,7 @@ use store::engines::StoreBuilder;
 use store::keyspaces::KeyspaceByteEngine;
 use store::StoreError;
 use store::{deserialize, serialize};
-use swim_route::uri::RelativeUri;
+use swim_utilities::routing::uri::RelativeUri;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;

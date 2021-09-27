@@ -32,10 +32,10 @@ use std::str::FromStr;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 use swim_common::warp::path::RelativePath;
-use swim_route::uri::RelativeUri;
 use swim_runtime::time::delay::delay_for;
 use swim_runtime::time::timeout::timeout;
-use swim_trigger as trigger;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
 

@@ -18,7 +18,7 @@
 /// Example:
 /// ```
 /// use std::sync::Arc;
-/// use utilities::ptr::data_ptr_eq;
+/// use swim_utilities::ptr::data_ptr_eq;
 ///
 /// trait TestTrait {}
 ///

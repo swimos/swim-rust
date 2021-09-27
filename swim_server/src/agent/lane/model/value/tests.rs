@@ -18,8 +18,8 @@ use futures::future::join;
 use std::time::Duration;
 use stm::transaction::atomically;
 use stm::var::observer::ObserverSubscriber;
-use swim_sync::topic::TryRecvError;
-use swim_trigger as trigger;
+use swim_utilities::sync::topic::TryRecvError;
+use swim_utilities::trigger;
 use tokio::sync::mpsc;
 
 fn buffer_size() -> NonZeroUsize {
