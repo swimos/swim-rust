@@ -84,7 +84,7 @@ pub fn negotiate_server(
     }
 }
 
-fn on_request(
+pub(crate) fn on_request(
     headers: &[Header],
     config: &DeflateConfig,
 ) -> Result<Option<(InitialisedDeflateConfig, HeaderValue)>, DeflateExtensionError> {
@@ -93,20 +93,30 @@ fn on_request(
             .eq_ignore_ascii_case(SEC_WEBSOCKET_EXTENSIONS.as_str())
     });
 
+    let mut last_error = None;
+
     for header in header_iter {
         let header_value = std::str::from_utf8(header.value)?;
 
         for part in header_value.split(',') {
-            match validate_request_header(part, config)? {
-                Some((initialised_config, header)) => {
+            match validate_request_header(part, config) {
+                Ok(Some((initialised_config, header))) => {
                     return Ok(Some((initialised_config, header)))
                 }
-                None => continue,
+                Ok(None) => continue,
+                Err(DeflateExtensionError::InvalidMaxWindowBits) => {
+                    last_error = Some(DeflateExtensionError::InvalidMaxWindowBits);
+                    continue;
+                }
+                Err(e) => return Err(e),
             }
         }
     }
 
-    Ok(None)
+    match last_error {
+        Some(e) => Err(e),
+        None => Ok(None),
+    }
 }
 
 fn validate_request_header(
@@ -177,12 +187,11 @@ fn validate_request_header(
                         // window of up to 32,768 bytes.
                         initialised_config.client_max_window_bits =
                             parse_window_parameter(window_param, config.client_max_window_bits)?;
+                        response_str.push_str(&format!(
+                            "; client_max_window_bits={}",
+                            initialised_config.client_max_window_bits
+                        ));
                     }
-
-                    response_str.push_str(&format!(
-                        "; client_max_window_bits={}",
-                        initialised_config.client_max_window_bits
-                    ));
                     Ok(())
                 })?;
             }
@@ -200,7 +209,7 @@ fn validate_request_header(
     )))
 }
 
-fn on_response(
+pub(crate) fn on_response(
     headers: &[Header],
     config: &DeflateConfig,
 ) -> Result<Option<InitialisedDeflateConfig>, DeflateExtensionError> {

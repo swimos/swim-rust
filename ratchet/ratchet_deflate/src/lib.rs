@@ -109,7 +109,7 @@ impl Default for DeflateConfig {
 
 /// A permessage-deflate configuration.
 #[derive(Debug, PartialEq)]
-struct InitialisedDeflateConfig {
+pub(crate) struct InitialisedDeflateConfig {
     server_max_window_bits: u8,
     client_max_window_bits: u8,
     compress_reset: bool,
@@ -137,21 +137,21 @@ pub struct Deflate {
 
 impl Deflate {
     fn initialise_from(config: InitialisedDeflateConfig) -> Deflate {
+        println!("Initialising deflate with: {:?}", config);
+        // todo
         let client = true;
         if client {
             Deflate {
                 // decompress // inflator
                 decoder: DeflateDecoder::new(
                     config.server_max_window_bits,
-                    // config.decompress_reset,
-                    false,
+                    config.decompress_reset,
                 ),
                 // compress // deflator
                 encoder: DeflateEncoder::new(
                     config.compression_level,
                     config.client_max_window_bits,
-                    // config.compress_reset,
-                    false,
+                    config.compress_reset,
                 ),
             }
         } else {
@@ -249,7 +249,7 @@ impl ExtensionEncoder for DeflateEncoder {
         } = self;
 
         buf.clear();
-        buf.reserve(payload.len());
+        buf.reserve(payload.len() * 2);
 
         let before_in = compress.total_in();
 
@@ -352,7 +352,7 @@ impl ExtensionDecoder for DeflateDecoder {
         payload.extend_from_slice(&[0, 0, 255, 255]);
 
         buf.clear();
-        buf.reserve(payload.len());
+        buf.reserve(payload.len() * 2);
 
         let before_in = decompress.total_in() as usize;
 

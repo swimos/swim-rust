@@ -18,16 +18,21 @@ use std::str::Utf8Error;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-#[error("Err")]
 pub enum DeflateExtensionError {
     /// An error produced when deflating a message.
+    #[error("Error when deflating: `{0}`")]
     DeflateError(CompressError),
     /// An error produced when inflating a message.
+    #[error("Error when inflating: `{0}`")]
     InflateError(DecompressError),
     /// An error produced during the WebSocket negotiation.
+    #[error("Failed to negotiate: `{0}`")]
     NegotiationError(String),
     /// An invalid LZ77 window size was provided.
+    #[error("Peer sent an invalid maximum window bits parameter")]
     InvalidMaxWindowBits,
+    #[error("Peer sent a malformatted header")]
+    Malformatted,
 }
 
 impl From<CompressError> for DeflateExtensionError {
