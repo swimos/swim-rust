@@ -164,7 +164,7 @@ fn rtree_2d_linear_test() {
     )
     .unwrap();
 
-    test_tree(tree, items, String::from("src/rtree/resources/2d/linear"));
+    test_tree(tree, items, String::from("src/resources/2d/linear"));
 }
 
 #[test]
@@ -227,7 +227,7 @@ fn rtree_3d_linear_test() {
     )
     .unwrap();
 
-    test_tree(tree, items, String::from("src/rtree/resources/3d/linear"));
+    test_tree(tree, items, String::from("src/resources/3d/linear"));
 }
 
 #[test]
@@ -257,7 +257,7 @@ fn rtree_2d_quadratic_test() {
     test_tree(
         tree,
         items,
-        String::from("src/rtree/resources/2d/quadratic/"),
+        String::from("src/resources/2d/quadratic/"),
     );
 }
 
@@ -324,7 +324,7 @@ fn rtree_3d_quadratic_test() {
     test_tree(
         tree,
         items,
-        String::from("src/rtree/resources/3d/quadratic/"),
+        String::from("src/resources/3d/quadratic/"),
     );
 }
 
@@ -346,7 +346,7 @@ fn bulk_load_3_node_2d_test() {
 
     assert_eq!(
         format!("{:#?}", rtree.root),
-        fs::read_to_string("src/rtree/resources/bulk_load/3-node-2d.txt").unwrap()
+        fs::read_to_string("src/resources/bulk_load/3-node-2d.txt").unwrap()
     );
 }
 
@@ -370,7 +370,7 @@ fn bulk_load_5_node_2d_test() {
 
     assert_eq!(
         format!("{:#?}", rtree.root),
-        fs::read_to_string("src/rtree/resources/bulk_load/5-node-2d.txt").unwrap()
+        fs::read_to_string("src/resources/bulk_load/5-node-2d.txt").unwrap()
     );
 }
 
@@ -401,7 +401,7 @@ fn bulk_load_12_node_2d_test() {
 
     assert_eq!(
         format!("{:#?}", rtree.root),
-        fs::read_to_string("src/rtree/resources/bulk_load/12-node-2d.txt").unwrap()
+        fs::read_to_string("src/resources/bulk_load/12-node-2d.txt").unwrap()
     );
 }
 
@@ -513,7 +513,7 @@ fn bulk_load_24_node_3d_test() {
 
     assert_eq!(
         format!("{:#?}", rtree.root),
-        fs::read_to_string("src/rtree/resources/bulk_load/24-node-3d.txt").unwrap()
+        fs::read_to_string("src/resources/bulk_load/24-node-3d.txt").unwrap()
     );
 }
 
