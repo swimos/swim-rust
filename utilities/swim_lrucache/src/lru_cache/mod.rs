@@ -137,7 +137,7 @@ impl<K, V> Node<K, V> {
 ///
 /// # Examples
 /// ```
-/// use utilities::lru_cache::LruCache;
+/// use swim_lrucache::LruCache;
 ///
 /// let mut cache: LruCache<i32, String> = LruCache::with_capacity(3).unwrap();
 ///

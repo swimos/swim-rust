@@ -267,7 +267,7 @@ pub trait SwimFutureExt: Future {
     /// ```
     /// use futures::executor::block_on;
     /// use futures::future::ready;
-    /// use utilities::future::*;
+    /// use swim_future::*;
     ///
     /// let n: i64 = block_on(ready(7).output_into());
     /// assert_eq!(n, 7);
@@ -288,9 +288,9 @@ pub trait SwimFutureExt: Future {
     /// ```
     /// use futures::executor::block_on;
     /// use futures::future::ready;
-    /// use utilities::future::*;
+    /// use swim_future::*;
     /// use std::ops::Add;
-    /// use utilities::future::SwimFutureExt;
+    /// use swim_future::SwimFutureExt;
     /// struct Plus(i32);
     ///
     /// impl TransformOnce<i32> for Plus {
@@ -319,9 +319,9 @@ pub trait SwimFutureExt: Future {
     /// ```
     /// use futures::executor::block_on;
     /// use futures::future::{ready, Ready};
-    /// use utilities::future::*;
+    /// use swim_future::*;
     /// use std::ops::Add;
-    /// use utilities::future::SwimFutureExt;
+    /// use swim_future::SwimFutureExt;
     /// struct Plus(i32);
     ///
     /// impl TransformOnce<i32> for Plus {
@@ -371,7 +371,7 @@ pub trait SwimTryFutureExt: TryFuture {
     /// ```
     /// use futures::executor::block_on;
     /// use futures::future::ready;
-    /// use utilities::future::*;
+    /// use swim_future::*;
     ///
     /// let n: Result<i64, String> = block_on(ready(Ok(7)).output_into());
     /// assert_eq!(n, Ok(7));
@@ -707,9 +707,9 @@ pub trait SwimStreamExt: Stream {
     /// use futures::executor::block_on;
     /// use futures::StreamExt;
     /// use futures::stream::iter;
-    /// use utilities::future::*;
+    /// use swim_future::*;
     /// use std::ops::Add;
-    /// use utilities::future::{SwimFutureExt, SwimStreamExt};
+    /// use swim_future::{SwimFutureExt, SwimStreamExt};
     ///
     /// struct Plus(i32);
     ///
@@ -743,9 +743,9 @@ pub trait SwimStreamExt: Stream {
     /// use futures::StreamExt;
     /// use futures::future::{ready, Ready};
     /// use futures::stream::iter;
-    /// use utilities::future::*;
+    /// use swim_future::*;
     /// use std::ops::Add;
-    /// use utilities::future::{SwimFutureExt, SwimStreamExt};
+    /// use swim_future::{SwimFutureExt, SwimStreamExt};
     ///
     /// struct Plus(i32);
     ///
@@ -780,9 +780,9 @@ pub trait SwimStreamExt: Stream {
     /// use futures::StreamExt;
     /// use futures::future::{ready, Ready};
     /// use futures::stream::{iter, Iter};
-    /// use utilities::future::*;
+    /// use swim_future::*;
     /// use std::ops::Add;
-    /// use utilities::future::{SwimFutureExt, SwimStreamExt};
+    /// use swim_future::{SwimFutureExt, SwimStreamExt};
     /// use std::iter::{Repeat, Take, repeat};
     ///
     /// struct RepeatItems(usize);
@@ -815,9 +815,9 @@ pub trait SwimStreamExt: Stream {
     /// use futures::executor::block_on;
     /// use futures::StreamExt;
     /// use futures::stream::iter;
-    /// use utilities::future::*;
+    /// use swim_future::*;
     /// use std::ops::Add;
-    /// use utilities::future::{SwimFutureExt, SwimStreamExt};
+    /// use swim_future::{SwimFutureExt, SwimStreamExt};
     /// struct PlusIfNonNeg(i32);
     ///
     /// impl TransformMut<i32> for PlusIfNonNeg {
@@ -863,8 +863,8 @@ pub trait SwimStreamExt: Stream {
     /// use futures::StreamExt;
     /// use futures::future::ready;
     /// use futures::stream::iter;
-    /// use utilities::future::*;
-    /// use utilities::future::SwimStreamExt;
+    /// use swim_future::*;
+    /// use swim_future::SwimStreamExt;
     ///
     /// let inputs = iter(vec![1, 2, 3, 4].into_iter());
     /// let outputs: Vec<(i32, i32)> = block_on(inputs.owning_scan(0, |state, i| {

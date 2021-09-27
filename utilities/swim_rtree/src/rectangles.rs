@@ -50,7 +50,7 @@ where
     /// subject to the same restrictions described above.
     /// # Examples:
     /// ```
-    /// use utilities::rtree::{Rect, Point2D, rect, Point3D};
+    /// use swim_rtree::{Rect, Point2D, rect, Point3D};
     ///
     /// let rect_2d = Rect::new(Point2D::new(0.0, 0.0), Point2D::new(1.0, 1.0));
     /// let rect_3d = Rect::new(Point3D::new(0.0, 0.0, 0.0), Point3D::new(1.0, 1.0, 1.0));
@@ -65,21 +65,21 @@ where
     /// # Panics:
     /// If the high point is not strictly higher than the low in all dimensions, the code will panic.
     /// ```should_panic
-    /// # use utilities::rtree::{Rect, Point2D};
+    /// # use swim_rtree::{Rect, Point2D};
     /// #
     /// // The low point has higher x coordinate
     /// Rect::new(Point2D::new(2.0, 0.0), Point2D::new(1.0, 1.0));
     /// ```
     ///
     /// ```should_panic
-    /// # use utilities::rtree::{Rect, Point2D, Point3D};
+    /// # use swim_rtree::{Rect, Point2D, Point3D};
     /// #
     /// // The low and high points have equal z coordinate
     /// Rect::new(Point3D::new(0.0, 0.0, 10.0), Point3D::new(1.0, 1.0, 10.0));
     /// ```
     ///
     /// ```should_panic
-    /// # use utilities::rtree::{Rect, rect, Point2D};
+    /// # use swim_rtree::{Rect, rect, Point2D};
     /// #
     /// // The low point has higher y coordinate
     /// rect!((0.0, 5.0), (1.0, 1.0));
@@ -175,7 +175,7 @@ impl<T: Float> Point2D<T> {
     ///
     /// # Example:
     /// ```
-    /// use utilities::rtree::Point2D;
+    /// use swim_rtree::Point2D;
     /// Point2D::new(0.0, 10.0);
     /// ```
     pub fn new(x: T, y: T) -> Self {
@@ -276,7 +276,7 @@ impl<T: Float> Point3D<T> {
     ///
     /// # Example:
     /// ```
-    /// use utilities::rtree::Point3D;
+    /// use swim_rtree::Point3D;
     /// Point3D::new(3.5, 1.5, 15.5);
     /// ```
     pub fn new(x: T, y: T, z: T) -> Self {
@@ -426,7 +426,7 @@ impl<T: Hash + Eq + Debug + Clone> Label for T {}
 ///
 /// # Example:
 /// ```
-/// use utilities::rtree::{Rect, Point2D, rect, Point3D};
+/// use swim_rtree::{Rect, Point2D, rect, Point3D};
 ///
 /// let rect_2d = Rect::new(Point2D::new(0.0, 10.0), Point2D::new(1.0, 11.0));
 /// let rect_3d = Rect::new(Point3D::new(10.0, 2.0, 15.0), Point3D::new(11.0, 3.0, 16.0));
