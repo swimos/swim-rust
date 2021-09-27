@@ -15,7 +15,7 @@ pin-project = "1.0.5"
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["rt"] }
-test_util = { path = "../test_util" }
+swim_test_util = { path = "../swim_test_util" }
 swim_trigger = { path = "../swim_trigger"}
 swim_future = { path = "../swim_future"}
 

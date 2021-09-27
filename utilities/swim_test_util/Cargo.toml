@@ -1,5 +1,5 @@
 [package]
-name = "test_util"
+name = "swim_test_util"
 version = "0.1.0"
 authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"

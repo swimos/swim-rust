@@ -18,7 +18,7 @@ use futures::task::waker;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use std::task::Context;
-use test_util::TestWaker;
+use swim_test_util::TestWaker;
 
 #[test]
 fn bounds() {

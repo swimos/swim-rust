@@ -46,9 +46,18 @@ pub use swim_format as format;
 #[cfg(feature = "trigger")]
 pub use swim_trigger as trigger;
 
-#[cfg(feature = "sync")]
+#[cfg(any(feature = "bilock", feature = "sync"))]
 pub mod sync {
+    #[cfg(feature = "bilock")]
+    pub use swim_bilock as bilock;
+
+    #[cfg(feature = "sync")]
     pub use swim_sync::circular_buffer;
+    #[cfg(feature = "sync")]
     pub use swim_sync::rwlock;
+    #[cfg(feature = "sync")]
     pub use swim_sync::topic;
 }
+
+#[cfg(feature = "test-util")]
+pub use swim_test_util as test_util;

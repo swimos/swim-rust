@@ -17,7 +17,7 @@ use futures::future::{join, join_all};
 use futures::FutureExt;
 use std::sync::Arc;
 use std::task::Context;
-use test_util::make_waker;
+use swim_test_util::make_waker;
 use tokio::sync::{oneshot, Barrier};
 
 const REPEATS: usize = 1000;

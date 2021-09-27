@@ -6,6 +6,7 @@ edition = "2018"
 
 [features]
 all = ["future", "errors", "sync", "iteratee", "collections", "time", "text", "lrucache", "rtree"]
+bilock = []
 errors = []
 future = []
 iteratee = []
@@ -13,12 +14,14 @@ lrucache = []
 rtree = []
 collections = ["lrucache", "rtree"]
 trigger = []
-sync = ["trigger", "future"]
+sync = ["bilock", "trigger", "future"]
 time = []
 text = []
+test-util = []
 
 [dependencies]
 
+swim_bilock = { path = "./swim_bilock" }
 swim_errors = { path = "./swim_errors"}
 swim_format = { path = "./swim_format"}
 swim_trigger = { path = "./swim_trigger"}
@@ -29,6 +32,7 @@ swim_route = { path = "./swim_route"}
 swim_rtree = { path = "./swim_rtree"}
 swim_sync = { path = "./swim_sync"}
 swim_time = { path = "./swim_time"}
+swim_test_util = { path = "./swim_test_util"}
 
 
 
