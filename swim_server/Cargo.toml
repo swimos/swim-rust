@@ -30,7 +30,7 @@ tokio-stream = { version = "0.1.2", features = ["sync"] }
 url = "2.1.1"
 swim_common = { path = "../swim_common", features = ["tls"] }
 swim_warp = { path = "../swim_warp" }
-swim_utilities = { path = "../utilities", features = ["errors", "sync", "time", "text"] }
+swim_utilities = { path = "../swim_utilities", features = ["errors", "sync", "time", "text"] }
 stringify_attr = { path = "../macro_utilities/stringify_attr" }
 swim_runtime = { path = "../swim_runtime" }
 stm = { path = "../stm" }
