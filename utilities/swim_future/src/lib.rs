@@ -18,7 +18,7 @@ pub mod retryable;
 pub mod task;
 
 pub use combinators::{
-    FlatmapStream, NotifyOnBlocked, SwimFutureExt, SwimStreamExt, SwimTryFutureExt, Transform,
-    TransformMut, TransformOnce, TransformedFuture, TransformedSink, TransformedStream,
-    TransformedStreamFut,
+    FlatmapStream, NeverErrorStream, NotifyOnBlocked, SwimFutureExt, SwimStreamExt,
+    SwimTryFutureExt, Transform, TransformMut, TransformOnce, TransformedFuture, TransformedSink,
+    TransformedStream, TransformedStreamFut,
 };

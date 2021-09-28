@@ -35,7 +35,7 @@ where
     F: FutureFactory<O, E>,
 {
     /// Wraps the given [`FutureFactory`] with a [`ResettableFuture`] implementation. Allowing it to
-    /// be used with a [`crate::future::retryable::RetryableFuture`].
+    /// be used with a [`crate::retryable::RetryableFuture`].
     pub fn wrap(mut factory: F) -> Self {
         let current = factory.future();
 

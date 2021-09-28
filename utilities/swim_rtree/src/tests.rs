@@ -254,11 +254,7 @@ fn rtree_2d_quadratic_test() {
     )
     .unwrap();
 
-    test_tree(
-        tree,
-        items,
-        String::from("src/resources/2d/quadratic/"),
-    );
+    test_tree(tree, items, String::from("src/resources/2d/quadratic/"));
 }
 
 #[test]
@@ -321,11 +317,7 @@ fn rtree_3d_quadratic_test() {
     )
     .unwrap();
 
-    test_tree(
-        tree,
-        items,
-        String::from("src/resources/3d/quadratic/"),
-    );
+    test_tree(tree, items, String::from("src/resources/3d/quadratic/"));
 }
 
 #[test]
