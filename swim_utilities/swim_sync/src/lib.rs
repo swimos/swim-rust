@@ -12,7 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(feature = "circular_buffer")]
 pub mod circular_buffer;
+#[cfg(feature = "rwlock")]
 pub mod rwlock;
+#[cfg(feature = "topic")]
 pub mod topic;
+#[cfg(any(feature = "rwlock", feature = "topic"))]
 mod waiters;

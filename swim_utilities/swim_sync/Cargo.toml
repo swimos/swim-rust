@@ -4,6 +4,12 @@ version = "0.1.0"
 authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
+[features]
+default = ["rwlock", "topic", "circular_buffer"]
+rwlock = []
+topic = []
+circular_buffer = []
+
 [dependencies]
 slab = "0.4.2"
 crossbeam-queue = "0.3"
