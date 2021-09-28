@@ -3677,6 +3677,7 @@ enum AbsolutePathStage {
     Field(AbsolutePathField),
 }
 
+#[derive(Clone, Copy)]
 enum AbsolutePathField {
     Host,
     Node,
@@ -3713,6 +3714,30 @@ impl RecognizerReadable for AbsolutePath {
             node: None,
             lane: None,
         })
+    }
+}
+
+impl AbsolutePathRecognizer {
+    fn try_done(&mut self) -> Result<AbsolutePath, ReadError> {
+        let AbsolutePathRecognizer {
+            host, node, lane, ..
+        } = self;
+
+        let mut missing = vec![];
+        if host.is_none() {
+            missing.push(Text::new("host"));
+        }
+        if node.is_none() {
+            missing.push(Text::new("node"));
+        }
+        if lane.is_none() {
+            missing.push(Text::new("lane"));
+        }
+        if let (Some(host), Some(node), Some(lane)) = (host.take(), node.take(), lane.take()) {
+            Ok(AbsolutePath { host, node, lane })
+        } else {
+            Err(ReadError::MissingFields(missing))
+        }
     }
 }
 
@@ -3767,53 +3792,50 @@ impl Recognizer for AbsolutePathRecognizer {
                     }
                     ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
                 },
-                ReadEvent::EndRecord => {
-                    //Todo dm fail on missing values
-                    unimplemented!()
-                    // Some(Ok(Duration::new(
-                    //     self.secs.unwrap_or_default(),
-                    //     self.nanos.unwrap_or_default(),
-                    // )))
-                    // }
-                }
+                ReadEvent::EndRecord => Some(self.try_done()),
                 ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                     ExpectedEvent::ValueEvent(ValueKind::Text),
                     ExpectedEvent::EndOfRecord,
                 ])))),
             },
-            // DurationStage::Slot(fld) => {
-            //     if matches!(&input, ReadEvent::Slot) {
-            //         self.stage = DurationStage::Field(*fld);
-            //         None
-            //     } else {
-            //         Some(Err(input.kind_error(ExpectedEvent::Slot)))
-            //     }
-            // }
-            // DurationStage::Field(DurationField::Secs) => match input {
-            //     ReadEvent::Number(NumericValue::UInt(n)) => {
-            //         self.secs = Some(n);
-            //         self.stage = DurationStage::InBody;
-            //         None
-            //     }
-            //     ow => Some(Err(
-            //         ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
-            //     )),
-            // },
-            // DurationStage::Field(DurationField::Nanos) => match input {
-            //     ReadEvent::Number(NumericValue::UInt(n)) => {
-            //         if let Ok(m) = u32::try_from(n) {
-            //             self.nanos = Some(m);
-            //             self.stage = DurationStage::InBody;
-            //             None
-            //         } else {
-            //             Some(Err(ReadError::NumberOutOfRange))
-            //         }
-            //     }
-            //     ow => Some(Err(
-            //         ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
-            //     )),
-            // },
-            _ => unimplemented!(),
+            AbsolutePathStage::Slot(fld) => {
+                if matches!(&input, ReadEvent::Slot) {
+                    self.stage = AbsolutePathStage::Field(*fld);
+                    None
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Slot)))
+                }
+            }
+            AbsolutePathStage::Field(AbsolutePathField::Host) => {
+                match Url::make_recognizer().feed_event(input)? {
+                    Ok(value) => {
+                        self.host = Some(value);
+                        self.stage = AbsolutePathStage::InBody;
+                        None
+                    }
+                    Err(err) => Some(Err(err)),
+                }
+            }
+            AbsolutePathStage::Field(AbsolutePathField::Lane) => {
+                match Text::make_recognizer().feed_event(input)? {
+                    Ok(value) => {
+                        self.lane = Some(value);
+                        self.stage = AbsolutePathStage::InBody;
+                        None
+                    }
+                    Err(err) => Some(Err(err)),
+                }
+            }
+            AbsolutePathStage::Field(AbsolutePathField::Node) => {
+                match Text::make_recognizer().feed_event(input)? {
+                    Ok(value) => {
+                        self.node = Some(value);
+                        self.stage = AbsolutePathStage::InBody;
+                        None
+                    }
+                    Err(err) => Some(Err(err)),
+                }
+            }
         }
     }
 

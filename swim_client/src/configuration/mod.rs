@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 // Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +14,7 @@
 // limitations under the License.
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
+use swim_common::form::structural::read::error::ExpectedEvent;
 use swim_common::form::structural::read::event::ReadEvent;
 use swim_common::form::structural::read::recognizer::{
     Recognizer, RecognizerReadable, SimpleAttrBody, SimpleRecBody,
@@ -22,9 +24,13 @@ use swim_common::form::structural::write::{
     BodyWriter, HeaderWriter, RecordBodyKind, StructuralWritable, StructuralWriter,
 };
 use swim_common::form::Form;
+use swim_common::model::text::Text;
+use swim_common::model::ValueKind;
 use swim_common::routing::remote::config::RemoteConnectionsConfig;
 use swim_common::warp::path::{AbsolutePath, Addressable};
 use tokio::time::Duration;
+use tokio_tungstenite::tungstenite::extensions::compression::deflate::DeflateConfig;
+use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use url::Url;
 use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
@@ -37,13 +43,15 @@ const BAD_BUFFER_SIZE: &str = "Buffer sizes must be positive.";
 const BAD_YIELD_AFTER: &str = "Yield after count must be positive..";
 const BAD_TIMEOUT: &str = "Timeout must be positive.";
 
-const DEFAULT_BACK_PRESSURE: BackpressureMode = BackpressureMode::Propagate;
 const DEFAULT_IDLE_TIMEOUT: u64 = 60000;
 const DEFAULT_DOWNLINK_BUFFER_SIZE: usize = 5;
-const DEFAULT_ON_INVALID: OnInvalidMessage = OnInvalidMessage::Terminate;
 const DEFAULT_YIELD_AFTER: usize = 256;
 const DEFAULT_BUFFER_SIZE: usize = 100;
 const DEFAULT_DL_REQUEST_BUFFER_SIZE: usize = 8;
+const DEFAULT_BACK_PRESSURE_INPUT_BUFFER_SIZE: usize = 32;
+const DEFAULT_BACK_PRESSURE_BRIDGE_BUFFER_SIZE: usize = 16;
+const DEFAULT_BACK_PRESSURE_MAX_ACTIVE_KEYS: usize = 16;
+const DEFAULT_BACK_PRESSURE_YIELD_AFTER: usize = 256;
 
 #[derive(Clone, Debug)]
 pub struct SwimClientConfig {
@@ -130,17 +138,27 @@ impl Recognizer for SwimClientConfigRecognizer {
 //Todo dm
 #[test]
 fn test_foo() {
-    let object = Quantity::Finite(Duration::from_nanos(1324));
-    eprintln!("object.as_value() = {}", object.as_value());
-    let new_object = Quantity::<Duration>::try_from_value(&object.as_value()).unwrap();
-    eprintln!("new_object.as_value() = {}", new_object.as_value());
-
-    // let mut downlinks = ClientDownlinksConfig::default();
-    // downlinks.for_host(
+    // let mut object = ClientDownlinksConfig::default();
+    // object.for_host(
     //     url::Url::parse(&"warp://127.0.0.1:9001".to_string()).unwrap(),
     //     Default::default(),
     // );
     //
+    // object.for_lane(
+    //     &AbsolutePath::new(
+    //         url::Url::parse(&"warp://127.0.0.2:9001".to_string()).unwrap(),
+    //         "foo",
+    //         "bar",
+    //     ),
+    //     Default::default(),
+    // );
+
+    let object = DownlinkConfig::default();
+
+    eprintln!("object.as_value() = {}", object.as_value());
+    let new_object = BackpressureMode::try_from_value(&object.as_value()).unwrap();
+    eprintln!("new_object.as_value() = {}", new_object.as_value());
+
     // let config = SwimClientConfig::new(
     //     Default::default(),
     //     Default::default(),
@@ -152,6 +170,47 @@ fn test_foo() {
     // let value = config.as_value();
     //
     // let config_restored = ClientDownlinksConfig::try_from_value(&value).unwrap();
+
+    // @downlinks{
+    //     default:{
+    //         back_pressure:@propagate,
+    //         idle_timeout:@duration{
+    //             secs:60000,
+    //             nanos:0
+    //         },
+    //         buffer_size:5,
+    //         on_invalid:terminate,
+    //         yield_after:256
+    //     },
+    //     host:{
+    //         "warp://127.0.0.1:9001":{
+    //             back_pressure:@propagate,
+    //             idle_timeout:@duration{
+    //                 secs:60000,
+    //                 nanos:0
+    //             },
+    //             buffer_size:5,
+    //             on_invalid:terminate,
+    //             yield_after:256
+    //         }
+    //     },
+    //     lane:{
+    //         @path{
+    //             host:"warp://127.0.0.2:9001",
+    //             node:foo,
+    //             lane:bar
+    //         }:{
+    //             back_pressure:@propagate,
+    //             idle_timeout:@duration{
+    //                 secs:60000,
+    //                 nanos:0
+    //             },
+    //             buffer_size:5,
+    //             on_invalid:terminate,
+    //             yield_after:256
+    //         }
+    //     }
+    // }
 }
 
 impl SwimClientConfig {
@@ -288,18 +347,18 @@ impl StructuralWritable for ClientDownlinksConfig {
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         let header_writer = writer.record(1)?;
 
-        let mut num_attr = 1;
+        let mut num_items = 1;
         if !self.by_host.is_empty() {
-            num_attr += 1;
+            num_items += 1;
         }
 
         if !self.by_lane.is_empty() {
-            num_attr += 1;
+            num_items += 1;
         }
 
         let mut body_writer = header_writer
             .write_extant_attr("downlinks")?
-            .complete_header(RecordBodyKind::MapLike, num_attr)?;
+            .complete_header(RecordBodyKind::MapLike, num_items)?;
 
         body_writer = body_writer.write_slot(&"default", &self.default)?;
 
@@ -317,18 +376,18 @@ impl StructuralWritable for ClientDownlinksConfig {
     fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
         let header_writer = writer.record(1)?;
 
-        let mut num_attr = 1;
+        let mut num_items = 1;
         if !self.by_host.is_empty() {
-            num_attr += 1;
+            num_items += 1;
         }
 
         if !self.by_lane.is_empty() {
-            num_attr += 1;
+            num_items += 1;
         }
 
         let mut body_writer = header_writer
             .write_extant_attr("downlinks")?
-            .complete_header(RecordBodyKind::MapLike, num_attr)?;
+            .complete_header(RecordBodyKind::MapLike, num_items)?;
 
         body_writer = body_writer.write_slot_into("default", self.default)?;
 
@@ -439,10 +498,10 @@ impl From<&DownlinkConfig> for DownlinkConfig {
 impl Default for DownlinkConfig {
     fn default() -> Self {
         DownlinkConfig::new(
-            DEFAULT_BACK_PRESSURE,
+            BackpressureMode::default(),
             Duration::from_secs(DEFAULT_IDLE_TIMEOUT),
             DEFAULT_DOWNLINK_BUFFER_SIZE,
-            DEFAULT_ON_INVALID,
+            OnInvalidMessage::default(),
             DEFAULT_YIELD_AFTER,
         )
         .unwrap()
@@ -483,6 +542,54 @@ impl StructuralWritable for DownlinkConfig {
     }
 }
 
+impl RecognizerReadable for DownlinkConfig {
+    type Rec = DownlinkConfigRecognizer;
+    type AttrRec = SimpleAttrBody<DownlinkConfigRecognizer>;
+    type BodyRec = SimpleRecBody<DownlinkConfigRecognizer>;
+
+    fn make_recognizer() -> Self::Rec {
+        DownlinkConfigRecognizer {
+            stage: DownlinkConfigStage::Init,
+        }
+    }
+
+    fn make_attr_recognizer() -> Self::AttrRec {
+        SimpleAttrBody::new(DownlinkConfigRecognizer {
+            stage: DownlinkConfigStage::Init,
+        })
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        SimpleRecBody::new(DownlinkConfigRecognizer {
+            stage: DownlinkConfigStage::Init,
+        })
+    }
+}
+
+//Todo dm
+pub struct DownlinkConfigRecognizer {
+    stage: DownlinkConfigStage,
+}
+
+enum DownlinkConfigStage {
+    Init,
+    Tag,
+    AfterTag,
+    InBody,
+    Slot(BackpressureModeField),
+    Field(BackpressureModeField),
+}
+
+impl Recognizer for DownlinkConfigRecognizer {
+    type Target = DownlinkConfig;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        unimplemented!()
+    }
+
+    fn reset(&mut self) {}
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BackpressureMode {
     /// Propagate back-pressure through the downlink.
@@ -499,6 +606,12 @@ pub enum BackpressureMode {
         /// Number of values to process before yielding to the runtime.
         yield_after: NonZeroUsize,
     },
+}
+
+impl Default for BackpressureMode {
+    fn default() -> Self {
+        BackpressureMode::Propagate
+    }
 }
 
 impl StructuralWritable for BackpressureMode {
@@ -569,6 +682,262 @@ impl StructuralWritable for BackpressureMode {
     }
 }
 
+impl RecognizerReadable for BackpressureMode {
+    type Rec = BackpressureModeRecognizer;
+    type AttrRec = SimpleAttrBody<BackpressureModeRecognizer>;
+    type BodyRec = SimpleRecBody<BackpressureModeRecognizer>;
+
+    fn make_recognizer() -> Self::Rec {
+        BackpressureModeRecognizer {
+            stage: BackpressureModeStage::Init,
+            fields: None,
+        }
+    }
+
+    fn make_attr_recognizer() -> Self::AttrRec {
+        SimpleAttrBody::new(BackpressureModeRecognizer {
+            stage: BackpressureModeStage::Init,
+            fields: None,
+        })
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        SimpleRecBody::new(BackpressureModeRecognizer {
+            stage: BackpressureModeStage::Init,
+            fields: None,
+        })
+    }
+}
+
+const PROPAGATE_TAG: &str = "propagate";
+const RELEASE_TAG: &str = "release";
+
+enum BackpressureModeStage {
+    Init,
+    Tag,
+    AfterTag,
+    InBody,
+    Slot(BackpressureModeField),
+    Field(BackpressureModeField),
+}
+
+#[derive(Clone, Copy)]
+enum BackpressureModeField {
+    InputBufferSize,
+    BridgeBufferSize,
+    MaxActiveKeys,
+    YieldAfter,
+}
+
+pub struct BackpressureModeRecognizer {
+    stage: BackpressureModeStage,
+    fields: Option<BackpressureModeFields>,
+}
+
+struct BackpressureModeFields {
+    input_buffer_size: Option<NonZeroUsize>,
+    bridge_buffer_size: Option<NonZeroUsize>,
+    max_active_keys: Option<NonZeroUsize>,
+    yield_after: Option<NonZeroUsize>,
+}
+
+impl Recognizer for BackpressureModeRecognizer {
+    type Target = BackpressureMode;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        match self.stage {
+            BackpressureModeStage::Init => {
+                if let ReadEvent::StartAttribute(name) = input {
+                    match name.borrow() {
+                        PROPAGATE_TAG => {
+                            self.stage = BackpressureModeStage::Tag;
+                            None
+                        }
+
+                        RELEASE_TAG => {
+                            self.stage = BackpressureModeStage::Tag;
+                            self.fields = Some(BackpressureModeFields {
+                                input_buffer_size: None,
+                                bridge_buffer_size: None,
+                                max_active_keys: None,
+                                yield_after: None,
+                            });
+                            None
+                        }
+
+                        _ => Some(Err(ReadError::UnexpectedAttribute(name.into()))),
+                    }
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Or(vec![
+                        ExpectedEvent::Attribute(Some(Text::new(PROPAGATE_TAG))),
+                        ExpectedEvent::Attribute(Some(Text::new(RELEASE_TAG))),
+                    ]))))
+                }
+            }
+            BackpressureModeStage::Tag => match input {
+                ReadEvent::Extant => None,
+                ReadEvent::EndAttribute => {
+                    self.stage = BackpressureModeStage::AfterTag;
+                    None
+                }
+                ow => Some(Err(ow.kind_error(ExpectedEvent::EndOfAttribute))),
+            },
+
+            BackpressureModeStage::AfterTag => {
+                if matches!(&input, ReadEvent::StartBody) {
+                    self.stage = BackpressureModeStage::InBody;
+                    None
+                } else if matches!(&input, ReadEvent::EndRecord) {
+                    match self.fields {
+                        Some(BackpressureModeFields { .. }) => {
+                            Some(Ok(BackpressureMode::Release {
+                                input_buffer_size: NonZeroUsize::new(
+                                    DEFAULT_BACK_PRESSURE_INPUT_BUFFER_SIZE,
+                                )
+                                .unwrap(),
+                                bridge_buffer_size: NonZeroUsize::new(
+                                    DEFAULT_BACK_PRESSURE_BRIDGE_BUFFER_SIZE,
+                                )
+                                .unwrap(),
+                                max_active_keys: NonZeroUsize::new(
+                                    DEFAULT_BACK_PRESSURE_MAX_ACTIVE_KEYS,
+                                )
+                                .unwrap(),
+                                yield_after: NonZeroUsize::new(DEFAULT_BACK_PRESSURE_YIELD_AFTER)
+                                    .unwrap(),
+                            }))
+                        }
+                        None => Some(Ok(BackpressureMode::Propagate)),
+                    }
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Or(vec![
+                        ExpectedEvent::RecordBody,
+                        ExpectedEvent::EndOfRecord,
+                    ]))))
+                }
+            }
+            BackpressureModeStage::InBody => match self.fields {
+                Some(BackpressureModeFields {
+                    input_buffer_size,
+                    bridge_buffer_size,
+                    max_active_keys,
+                    yield_after,
+                }) => match input {
+                    ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
+                        "input_buffer_size" => {
+                            self.stage =
+                                BackpressureModeStage::Slot(BackpressureModeField::InputBufferSize);
+                            None
+                        }
+                        "bridge_buffer_size" => {
+                            self.stage = BackpressureModeStage::Slot(
+                                BackpressureModeField::BridgeBufferSize,
+                            );
+                            None
+                        }
+                        "max_active_keys" => {
+                            self.stage =
+                                BackpressureModeStage::Slot(BackpressureModeField::MaxActiveKeys);
+                            None
+                        }
+                        "yield_after" => {
+                            self.stage =
+                                BackpressureModeStage::Slot(BackpressureModeField::YieldAfter);
+                            None
+                        }
+                        ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
+                    },
+                    ReadEvent::EndRecord => Some(Ok(BackpressureMode::Release {
+                        input_buffer_size: input_buffer_size.unwrap_or(
+                            NonZeroUsize::new(DEFAULT_BACK_PRESSURE_INPUT_BUFFER_SIZE).unwrap(),
+                        ),
+                        bridge_buffer_size: bridge_buffer_size.unwrap_or(
+                            NonZeroUsize::new(DEFAULT_BACK_PRESSURE_BRIDGE_BUFFER_SIZE).unwrap(),
+                        ),
+                        max_active_keys: max_active_keys.unwrap_or(
+                            NonZeroUsize::new(DEFAULT_BACK_PRESSURE_MAX_ACTIVE_KEYS).unwrap(),
+                        ),
+                        yield_after: yield_after.unwrap_or(
+                            NonZeroUsize::new(DEFAULT_BACK_PRESSURE_YIELD_AFTER).unwrap(),
+                        ),
+                    })),
+                    ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
+                        ExpectedEvent::ValueEvent(ValueKind::Text),
+                        ExpectedEvent::EndOfRecord,
+                    ])))),
+                },
+                None => match input {
+                    ReadEvent::EndRecord => Some(Ok(BackpressureMode::Propagate)),
+                    ow => Some(Err(ow.kind_error(ExpectedEvent::EndOfRecord))),
+                },
+            },
+            BackpressureModeStage::Slot(fld) => {
+                if matches!(&input, ReadEvent::Slot) {
+                    self.stage = BackpressureModeStage::Field(fld);
+                    None
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Slot)))
+                }
+            }
+            BackpressureModeStage::Field(field) => match &mut self.fields {
+                None => None,
+                Some(BackpressureModeFields {
+                    input_buffer_size,
+                    bridge_buffer_size,
+                    max_active_keys,
+                    yield_after,
+                }) => match field {
+                    BackpressureModeField::InputBufferSize => {
+                        match NonZeroUsize::make_recognizer().feed_event(input)? {
+                            Ok(value) => {
+                                *input_buffer_size = Some(value);
+                                self.stage = BackpressureModeStage::InBody;
+                                None
+                            }
+                            Err(err) => Some(Err(err)),
+                        }
+                    }
+                    BackpressureModeField::BridgeBufferSize => {
+                        match NonZeroUsize::make_recognizer().feed_event(input)? {
+                            Ok(value) => {
+                                *bridge_buffer_size = Some(value);
+                                self.stage = BackpressureModeStage::InBody;
+                                None
+                            }
+                            Err(err) => Some(Err(err)),
+                        }
+                    }
+                    BackpressureModeField::MaxActiveKeys => {
+                        match NonZeroUsize::make_recognizer().feed_event(input)? {
+                            Ok(value) => {
+                                *max_active_keys = Some(value);
+                                self.stage = BackpressureModeStage::InBody;
+                                None
+                            }
+                            Err(err) => Some(Err(err)),
+                        }
+                    }
+                    BackpressureModeField::YieldAfter => {
+                        match NonZeroUsize::make_recognizer().feed_event(input)? {
+                            Ok(value) => {
+                                *yield_after = Some(value);
+                                self.stage = BackpressureModeStage::InBody;
+                                None
+                            }
+                            Err(err) => Some(Err(err)),
+                        }
+                    }
+                },
+            },
+        }
+    }
+
+    fn reset(&mut self) {
+        self.stage = BackpressureModeStage::Init;
+        self.fields = None;
+    }
+}
+
 /// Instruction on how to respond when an invalid message is received for a downlink.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum OnInvalidMessage {
@@ -576,6 +945,12 @@ pub enum OnInvalidMessage {
     Ignore,
     /// Terminate the downlink.
     Terminate,
+}
+
+impl Default for OnInvalidMessage {
+    fn default() -> Self {
+        OnInvalidMessage::Terminate
+    }
 }
 
 impl StructuralWritable for OnInvalidMessage {
@@ -596,6 +971,55 @@ impl StructuralWritable for OnInvalidMessage {
             OnInvalidMessage::Terminate => writer.write_text("terminate"),
         }
     }
+}
+
+impl RecognizerReadable for OnInvalidMessage {
+    type Rec = OnInvalidMessageRecognizer;
+    type AttrRec = SimpleAttrBody<OnInvalidMessageRecognizer>;
+    type BodyRec = SimpleRecBody<OnInvalidMessageRecognizer>;
+
+    fn make_recognizer() -> Self::Rec {
+        OnInvalidMessageRecognizer
+    }
+
+    fn make_attr_recognizer() -> Self::AttrRec {
+        SimpleAttrBody::new(OnInvalidMessageRecognizer)
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        SimpleRecBody::new(OnInvalidMessageRecognizer)
+    }
+
+    fn is_simple() -> bool {
+        true
+    }
+}
+
+const ON_INVALID_IGNORE_TAG: &str = "ignore";
+const ON_INVALID_TERMINATE_TAG: &str = "terminate";
+
+pub struct OnInvalidMessageRecognizer;
+
+impl Recognizer for OnInvalidMessageRecognizer {
+    type Target = OnInvalidMessage;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        match input {
+            ReadEvent::TextValue(ref value) => match value.borrow() {
+                ON_INVALID_IGNORE_TAG => Some(Ok(OnInvalidMessage::Ignore)),
+                ON_INVALID_TERMINATE_TAG => Some(Ok(OnInvalidMessage::Terminate)),
+                _ => Some(Err(input.kind_error(ExpectedEvent::Or(vec![
+                    ExpectedEvent::Attribute(Some(Text::new(ON_INVALID_IGNORE_TAG))),
+                    ExpectedEvent::Attribute(Some(Text::new(ON_INVALID_TERMINATE_TAG))),
+                ])))),
+            },
+            _ => Some(Err(
+                input.kind_error(ExpectedEvent::ValueEvent(ValueKind::Text))
+            )),
+        }
+    }
+
+    fn reset(&mut self) {}
 }
 
 /// Configuration for the creation and management of downlinks for a Warp client.
