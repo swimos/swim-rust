@@ -24,7 +24,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use futures::Stream;
-use futures_util::task::AtomicWaker;
+use futures::task::AtomicWaker;
 use pin_project::pin_project;
 use std::num::NonZeroUsize;
 
