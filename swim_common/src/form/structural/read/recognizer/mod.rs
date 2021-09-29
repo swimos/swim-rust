@@ -3511,7 +3511,7 @@ impl Recognizer for WebSocketConfigRecognizer {
         *max_frame_size = None;
         *accept_unmasked_frames = None;
         *compression = None;
-        *compression_recognizer = WsCompression::make_recognizer();
+        compression_recognizer.reset();
     }
 }
 

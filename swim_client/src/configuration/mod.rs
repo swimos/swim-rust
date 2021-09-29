@@ -12,21 +12,27 @@ use std::borrow::Borrow;
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+use crate::configuration::DownlinkConfigField::OnInvalid;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use swim_common::form::structural::read::error::ExpectedEvent;
 use swim_common::form::structural::read::event::ReadEvent;
 use swim_common::form::structural::read::recognizer::{
-    Recognizer, RecognizerReadable, SimpleAttrBody, SimpleRecBody,
+    AbsolutePathRecognizer, DurationRecognizer, HashMapRecognizer, Recognizer, RecognizerReadable,
+    RetryStrategyRecognizer, SimpleAttrBody, SimpleRecBody, UrlRecognizer,
+    WebSocketConfigRecognizer,
 };
 use swim_common::form::structural::read::ReadError;
 use swim_common::form::structural::write::{
     BodyWriter, HeaderWriter, RecordBodyKind, StructuralWritable, StructuralWriter,
 };
 use swim_common::form::Form;
+use swim_common::model::parser::parse_single;
 use swim_common::model::text::Text;
 use swim_common::model::ValueKind;
-use swim_common::routing::remote::config::RemoteConnectionsConfig;
+use swim_common::routing::remote::config::{
+    RemoteConnectionsConfig, RemoteConnectionsConfigRecognizer,
+};
 use swim_common::warp::path::{AbsolutePath, Addressable};
 use tokio::time::Duration;
 use tokio_tungstenite::tungstenite::extensions::compression::deflate::DeflateConfig;
@@ -99,64 +105,267 @@ impl StructuralWritable for SwimClientConfig {
     }
 }
 
-//Todo dm
 impl RecognizerReadable for SwimClientConfig {
     type Rec = SwimClientConfigRecognizer;
     type AttrRec = SimpleAttrBody<SwimClientConfigRecognizer>;
     type BodyRec = SimpleRecBody<SwimClientConfigRecognizer>;
 
     fn make_recognizer() -> Self::Rec {
-        SwimClientConfigRecognizer
+        SwimClientConfigRecognizer {
+            stage: SwimClientConfigStage::Init,
+            downlink_connections: None,
+            downlink_connections_recognizer: DownlinkConnectionsConfig::make_recognizer(),
+            remote_connections: None,
+            remote_connections_recognizer: RemoteConnectionsConfig::make_recognizer(),
+            websocket_connections: None,
+            websocket_connections_recognizer: WebSocketConfig::make_recognizer(),
+            downlinks: None,
+            downlinks_recognizer: ClientDownlinksConfig::make_recognizer(),
+        }
     }
 
     fn make_attr_recognizer() -> Self::AttrRec {
-        SimpleAttrBody::new(SwimClientConfigRecognizer)
+        SimpleAttrBody::new(SwimClientConfigRecognizer {
+            stage: SwimClientConfigStage::Init,
+            downlink_connections: None,
+            downlink_connections_recognizer: DownlinkConnectionsConfig::make_recognizer(),
+            remote_connections: None,
+            remote_connections_recognizer: RemoteConnectionsConfig::make_recognizer(),
+            websocket_connections: None,
+            websocket_connections_recognizer: WebSocketConfig::make_recognizer(),
+            downlinks: None,
+            downlinks_recognizer: ClientDownlinksConfig::make_recognizer(),
+        })
     }
 
     fn make_body_recognizer() -> Self::BodyRec {
-        SimpleRecBody::new(SwimClientConfigRecognizer)
-    }
-
-    fn is_simple() -> bool {
-        true
+        SimpleRecBody::new(SwimClientConfigRecognizer {
+            stage: SwimClientConfigStage::Init,
+            downlink_connections: None,
+            downlink_connections_recognizer: DownlinkConnectionsConfig::make_recognizer(),
+            remote_connections: None,
+            remote_connections_recognizer: RemoteConnectionsConfig::make_recognizer(),
+            websocket_connections: None,
+            websocket_connections_recognizer: WebSocketConfig::make_recognizer(),
+            downlinks: None,
+            downlinks_recognizer: ClientDownlinksConfig::make_recognizer(),
+        })
     }
 }
 
-//Todo dm
-pub struct SwimClientConfigRecognizer;
+const SWIM_CLIENT_CONFIG_TAG: &str = "config";
+
+enum SwimClientConfigStage {
+    Init,
+    Tag,
+    AfterTag,
+    InBody,
+    Slot(SwimClientConfigField),
+    Field(SwimClientConfigField),
+}
+
+#[derive(Clone, Copy)]
+enum SwimClientConfigField {
+    DownlinkConnections,
+    RemoteConnections,
+    WebsocketConnections,
+    Downlinks,
+}
+
+pub struct SwimClientConfigRecognizer {
+    stage: SwimClientConfigStage,
+    downlink_connections: Option<DownlinkConnectionsConfig>,
+    downlink_connections_recognizer: DownlinkConnectionsConfigRecognizer,
+    remote_connections: Option<RemoteConnectionsConfig>,
+    remote_connections_recognizer: RemoteConnectionsConfigRecognizer,
+    websocket_connections: Option<WebSocketConfig>,
+    websocket_connections_recognizer: WebSocketConfigRecognizer,
+    downlinks: Option<ClientDownlinksConfig>,
+    downlinks_recognizer: ClientDownlinksConfigRecognizer,
+}
 
 impl Recognizer for SwimClientConfigRecognizer {
     type Target = SwimClientConfig;
 
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
-        unimplemented!()
+        match &self.stage {
+            SwimClientConfigStage::Init => {
+                if let ReadEvent::StartAttribute(name) = input {
+                    if name == SWIM_CLIENT_CONFIG_TAG {
+                        self.stage = SwimClientConfigStage::Tag;
+                        None
+                    } else {
+                        Some(Err(ReadError::UnexpectedAttribute(name.into())))
+                    }
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Attribute(Some(
+                        Text::new(SWIM_CLIENT_CONFIG_TAG),
+                    )))))
+                }
+            }
+            SwimClientConfigStage::Tag => match input {
+                ReadEvent::Extant => None,
+                ReadEvent::EndAttribute => {
+                    self.stage = SwimClientConfigStage::AfterTag;
+                    None
+                }
+                ow => Some(Err(ow.kind_error(ExpectedEvent::EndOfAttribute))),
+            },
+            SwimClientConfigStage::AfterTag => {
+                if matches!(&input, ReadEvent::StartBody) {
+                    self.stage = SwimClientConfigStage::InBody;
+                    None
+                } else if matches!(&input, ReadEvent::EndRecord) {
+                    Some(Ok(SwimClientConfig::default()))
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Or(vec![
+                        ExpectedEvent::RecordBody,
+                        ExpectedEvent::EndOfRecord,
+                    ]))))
+                }
+            }
+            SwimClientConfigStage::InBody => match input {
+                ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
+                    "downlink_connections" => {
+                        self.stage =
+                            SwimClientConfigStage::Slot(SwimClientConfigField::DownlinkConnections);
+                        None
+                    }
+                    "remote_connections" => {
+                        self.stage =
+                            SwimClientConfigStage::Slot(SwimClientConfigField::RemoteConnections);
+                        None
+                    }
+                    "websocket_connections" => {
+                        self.stage = SwimClientConfigStage::Slot(
+                            SwimClientConfigField::WebsocketConnections,
+                        );
+                        None
+                    }
+                    "downlinks" => {
+                        self.stage = SwimClientConfigStage::Slot(SwimClientConfigField::Downlinks);
+                        None
+                    }
+                    ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
+                },
+                ReadEvent::EndRecord => Some(Ok(SwimClientConfig {
+                    downlink_connections_config: self.downlink_connections.unwrap_or_default(),
+                    remote_connections_config: self.remote_connections.unwrap_or_default(),
+                    websocket_config: self.websocket_connections.unwrap_or_default(),
+                    downlinks_config: self.downlinks.clone().unwrap_or_default(),
+                })),
+                ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
+                    ExpectedEvent::ValueEvent(ValueKind::Text),
+                    ExpectedEvent::EndOfRecord,
+                ])))),
+            },
+            SwimClientConfigStage::Slot(fld) => {
+                if matches!(&input, ReadEvent::Slot) {
+                    self.stage = SwimClientConfigStage::Field(*fld);
+                    None
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Slot)))
+                }
+            }
+            SwimClientConfigStage::Field(SwimClientConfigField::DownlinkConnections) => {
+                match self.downlink_connections_recognizer.feed_event(input)? {
+                    Ok(value) => {
+                        self.downlink_connections = Some(value);
+                        self.stage = SwimClientConfigStage::InBody;
+                        None
+                    }
+                    Err(err) => Some(Err(err)),
+                }
+            }
+            SwimClientConfigStage::Field(SwimClientConfigField::RemoteConnections) => {
+                match self.remote_connections_recognizer.feed_event(input)? {
+                    Ok(value) => {
+                        self.remote_connections = Some(value);
+                        self.stage = SwimClientConfigStage::InBody;
+                        None
+                    }
+                    Err(err) => Some(Err(err)),
+                }
+            }
+            SwimClientConfigStage::Field(SwimClientConfigField::WebsocketConnections) => {
+                match self.websocket_connections_recognizer.feed_event(input)? {
+                    Ok(value) => {
+                        self.websocket_connections = Some(value);
+                        self.stage = SwimClientConfigStage::InBody;
+                        None
+                    }
+                    Err(err) => Some(Err(err)),
+                }
+            }
+            SwimClientConfigStage::Field(SwimClientConfigField::Downlinks) => {
+                match self.downlinks_recognizer.feed_event(input)? {
+                    Ok(value) => {
+                        self.downlinks = Some(value);
+                        self.stage = SwimClientConfigStage::InBody;
+                        None
+                    }
+                    Err(err) => Some(Err(err)),
+                }
+            }
+        }
     }
 
-    fn reset(&mut self) {}
+    fn reset(&mut self) {
+        let SwimClientConfigRecognizer {
+            stage,
+            downlink_connections,
+            downlink_connections_recognizer,
+            remote_connections,
+            remote_connections_recognizer,
+            websocket_connections,
+            websocket_connections_recognizer,
+            downlinks,
+            downlinks_recognizer,
+        } = self;
+
+        *stage = SwimClientConfigStage::Init;
+        *downlink_connections = None;
+        *remote_connections = None;
+        *websocket_connections = None;
+        *downlinks = None;
+
+        downlink_connections_recognizer.reset();
+        remote_connections_recognizer.reset();
+        websocket_connections_recognizer.reset();
+        downlinks_recognizer.reset();
+    }
 }
 
 //Todo dm
 #[test]
 fn test_foo() {
-    // let mut object = ClientDownlinksConfig::default();
-    // object.for_host(
-    //     url::Url::parse(&"warp://127.0.0.1:9001".to_string()).unwrap(),
-    //     Default::default(),
-    // );
-    //
-    // object.for_lane(
-    //     &AbsolutePath::new(
-    //         url::Url::parse(&"warp://127.0.0.2:9001".to_string()).unwrap(),
-    //         "foo",
-    //         "bar",
-    //     ),
-    //     Default::default(),
-    // );
+    let mut downlinks = ClientDownlinksConfig::default();
+    downlinks.for_host(
+        url::Url::parse(&"warp://127.0.0.1:9001".to_string()).unwrap(),
+        Default::default(),
+    );
 
-    let object = DownlinkConfig::default();
+    downlinks.for_lane(
+        &AbsolutePath::new(
+            url::Url::parse(&"warp://127.0.0.2:9001".to_string()).unwrap(),
+            "foo",
+            "bar",
+        ),
+        Default::default(),
+    );
 
-    eprintln!("object.as_value() = {}", object.as_value());
-    let new_object = BackpressureMode::try_from_value(&object.as_value()).unwrap();
+    let config = SwimClientConfig::new(
+        Default::default(),
+        Default::default(),
+        Default::default(),
+        downlinks,
+    );
+
+    // let raw = r#"@downlinks{default:@downlink_config{idle_timeout:@duration{secs:60000,nanos:0},buffer_size:5,on_invalid:terminate,yield_after:256},by_host:{"warp://127.0.0.1:9001":@downlink_config{back_pressure:@propagate,idle_timeout:@duration{secs:60000,nanos:0},buffer_size:5,on_invalid:terminate,yield_after:256}},by_lane:{@path{host:"warp://127.0.0.2:9001",node:foo,lane:bar}:@downlink_config{back_pressure:@propagate,idle_timeout:@duration{secs:60000,nanos:0},buffer_size:5,on_invalid:terminate,yield_after:256}}}"#;
+    // let value = parse_single(raw).unwrap();
+
+    eprintln!("object.as_value() = {}", config.as_value());
+    let new_object = SwimClientConfig::try_from_value(&config.as_value()).unwrap();
     eprintln!("new_object.as_value() = {}", new_object.as_value());
 
     // let config = SwimClientConfig::new(
@@ -241,8 +450,7 @@ impl Default for SwimClientConfig {
 }
 
 /// Configuration parameters for the router.
-#[derive(Form, Clone, Copy, Debug, Eq, PartialEq)]
-#[form(tag = "downlink_connections")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DownlinkConnectionsConfig {
     /// Buffer size for servicing requests for new downlinks.
     pub dl_req_buffer_size: NonZeroUsize,
@@ -278,6 +486,263 @@ impl Default for DownlinkConnectionsConfig {
             buffer_size: NonZeroUsize::new(DEFAULT_BUFFER_SIZE).unwrap(),
             yield_after: NonZeroUsize::new(DEFAULT_YIELD_AFTER).unwrap(),
         }
+    }
+}
+
+impl StructuralWritable for DownlinkConnectionsConfig {
+    fn num_attributes(&self) -> usize {
+        1
+    }
+
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        let header_writer = writer.record(1)?;
+        let mut body_writer = header_writer
+            .write_extant_attr("downlink_connections")?
+            .complete_header(RecordBodyKind::MapLike, 4)?;
+
+        body_writer = body_writer.write_slot(&"dl_req_buffer_size", &self.dl_req_buffer_size)?;
+        body_writer = body_writer.write_slot(&"buffer_size", &self.buffer_size)?;
+        body_writer = body_writer.write_slot(&"yield_after", &self.yield_after)?;
+        body_writer = body_writer.write_slot(&"retry_strategy", &self.retry_strategy)?;
+
+        body_writer.done()
+    }
+
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        let header_writer = writer.record(1)?;
+        let mut body_writer = header_writer
+            .write_extant_attr("downlink_connections")?
+            .complete_header(RecordBodyKind::MapLike, 4)?;
+
+        body_writer = body_writer.write_slot_into("dl_req_buffer_size", self.dl_req_buffer_size)?;
+        body_writer = body_writer.write_slot_into("buffer_size", self.buffer_size)?;
+        body_writer = body_writer.write_slot_into("yield_after", self.yield_after)?;
+        body_writer = body_writer.write_slot_into("retry_strategy", self.retry_strategy)?;
+
+        body_writer.done()
+    }
+}
+
+impl RecognizerReadable for DownlinkConnectionsConfig {
+    type Rec = DownlinkConnectionsConfigRecognizer;
+    type AttrRec = SimpleAttrBody<DownlinkConnectionsConfigRecognizer>;
+    type BodyRec = SimpleRecBody<DownlinkConnectionsConfigRecognizer>;
+
+    fn make_recognizer() -> Self::Rec {
+        DownlinkConnectionsConfigRecognizer {
+            stage: DownlinkConnectionsConfigStage::Init,
+            dl_buffer_size: None,
+            buffer_size: None,
+            yield_after: None,
+            retry_strategy: None,
+            retry_strategy_recognizer: RetryStrategy::make_recognizer(),
+        }
+    }
+
+    fn make_attr_recognizer() -> Self::AttrRec {
+        SimpleAttrBody::new(DownlinkConnectionsConfigRecognizer {
+            stage: DownlinkConnectionsConfigStage::Init,
+            dl_buffer_size: None,
+            buffer_size: None,
+            yield_after: None,
+            retry_strategy: None,
+            retry_strategy_recognizer: RetryStrategy::make_recognizer(),
+        })
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        SimpleRecBody::new(DownlinkConnectionsConfigRecognizer {
+            stage: DownlinkConnectionsConfigStage::Init,
+            dl_buffer_size: None,
+            buffer_size: None,
+            yield_after: None,
+            retry_strategy: None,
+            retry_strategy_recognizer: RetryStrategy::make_recognizer(),
+        })
+    }
+}
+
+const DOWNLINK_CONNECTIONS_TAG: &str = "downlink_connections";
+
+enum DownlinkConnectionsConfigStage {
+    Init,
+    Tag,
+    AfterTag,
+    InBody,
+    Slot(DownlinkConnectionsConfigField),
+    Field(DownlinkConnectionsConfigField),
+}
+
+#[derive(Clone, Copy)]
+enum DownlinkConnectionsConfigField {
+    DlBufferSize,
+    BufferSize,
+    YieldAfter,
+    RetryStrategy,
+}
+
+pub struct DownlinkConnectionsConfigRecognizer {
+    stage: DownlinkConnectionsConfigStage,
+    dl_buffer_size: Option<NonZeroUsize>,
+    buffer_size: Option<NonZeroUsize>,
+    yield_after: Option<NonZeroUsize>,
+    retry_strategy: Option<RetryStrategy>,
+    retry_strategy_recognizer: RetryStrategyRecognizer,
+}
+
+impl Recognizer for DownlinkConnectionsConfigRecognizer {
+    type Target = DownlinkConnectionsConfig;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        match &self.stage {
+            DownlinkConnectionsConfigStage::Init => {
+                if let ReadEvent::StartAttribute(name) = input {
+                    if name == DOWNLINK_CONNECTIONS_TAG {
+                        self.stage = DownlinkConnectionsConfigStage::Tag;
+                        None
+                    } else {
+                        Some(Err(ReadError::UnexpectedAttribute(name.into())))
+                    }
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Attribute(Some(
+                        Text::new(DOWNLINK_CONNECTIONS_TAG),
+                    )))))
+                }
+            }
+            DownlinkConnectionsConfigStage::Tag => match input {
+                ReadEvent::Extant => None,
+                ReadEvent::EndAttribute => {
+                    self.stage = DownlinkConnectionsConfigStage::AfterTag;
+                    None
+                }
+                ow => Some(Err(ow.kind_error(ExpectedEvent::EndOfAttribute))),
+            },
+            DownlinkConnectionsConfigStage::AfterTag => {
+                if matches!(&input, ReadEvent::StartBody) {
+                    self.stage = DownlinkConnectionsConfigStage::InBody;
+                    None
+                } else if matches!(&input, ReadEvent::EndRecord) {
+                    Some(Ok(DownlinkConnectionsConfig::default()))
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Or(vec![
+                        ExpectedEvent::RecordBody,
+                        ExpectedEvent::EndOfRecord,
+                    ]))))
+                }
+            }
+            DownlinkConnectionsConfigStage::InBody => match input {
+                ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
+                    "dl_req_buffer_size" => {
+                        self.stage = DownlinkConnectionsConfigStage::Slot(
+                            DownlinkConnectionsConfigField::DlBufferSize,
+                        );
+                        None
+                    }
+                    "buffer_size" => {
+                        self.stage = DownlinkConnectionsConfigStage::Slot(
+                            DownlinkConnectionsConfigField::BufferSize,
+                        );
+                        None
+                    }
+                    "yield_after" => {
+                        self.stage = DownlinkConnectionsConfigStage::Slot(
+                            DownlinkConnectionsConfigField::YieldAfter,
+                        );
+                        None
+                    }
+                    "retry_strategy" => {
+                        self.stage = DownlinkConnectionsConfigStage::Slot(
+                            DownlinkConnectionsConfigField::RetryStrategy,
+                        );
+                        None
+                    }
+                    ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
+                },
+                ReadEvent::EndRecord => Some(Ok(DownlinkConnectionsConfig {
+                    dl_req_buffer_size: self
+                        .dl_buffer_size
+                        .unwrap_or(NonZeroUsize::new(DEFAULT_DL_REQUEST_BUFFER_SIZE).unwrap()),
+                    buffer_size: self
+                        .buffer_size
+                        .unwrap_or(NonZeroUsize::new(DEFAULT_BUFFER_SIZE).unwrap()),
+                    yield_after: self
+                        .yield_after
+                        .unwrap_or(NonZeroUsize::new(DEFAULT_YIELD_AFTER).unwrap()),
+                    retry_strategy: self.retry_strategy.unwrap_or_default(),
+                })),
+                ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
+                    ExpectedEvent::ValueEvent(ValueKind::Text),
+                    ExpectedEvent::EndOfRecord,
+                ])))),
+            },
+            DownlinkConnectionsConfigStage::Slot(fld) => {
+                if matches!(&input, ReadEvent::Slot) {
+                    self.stage = DownlinkConnectionsConfigStage::Field(*fld);
+                    None
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Slot)))
+                }
+            }
+            DownlinkConnectionsConfigStage::Field(DownlinkConnectionsConfigField::DlBufferSize) => {
+                match NonZeroUsize::make_recognizer().feed_event(input)? {
+                    Ok(value) => {
+                        self.dl_buffer_size = Some(value);
+                        self.stage = DownlinkConnectionsConfigStage::InBody;
+                        None
+                    }
+                    Err(err) => Some(Err(err)),
+                }
+            }
+            DownlinkConnectionsConfigStage::Field(DownlinkConnectionsConfigField::BufferSize) => {
+                match NonZeroUsize::make_recognizer().feed_event(input)? {
+                    Ok(value) => {
+                        self.buffer_size = Some(value);
+                        self.stage = DownlinkConnectionsConfigStage::InBody;
+                        None
+                    }
+                    Err(err) => Some(Err(err)),
+                }
+            }
+            DownlinkConnectionsConfigStage::Field(DownlinkConnectionsConfigField::YieldAfter) => {
+                match NonZeroUsize::make_recognizer().feed_event(input)? {
+                    Ok(value) => {
+                        self.yield_after = Some(value);
+                        self.stage = DownlinkConnectionsConfigStage::InBody;
+                        None
+                    }
+                    Err(err) => Some(Err(err)),
+                }
+            }
+            DownlinkConnectionsConfigStage::Field(
+                DownlinkConnectionsConfigField::RetryStrategy,
+            ) => match self.retry_strategy_recognizer.feed_event(input)? {
+                Ok(value) => {
+                    self.retry_strategy = Some(value);
+                    self.stage = DownlinkConnectionsConfigStage::InBody;
+                    None
+                }
+                Err(err) => Some(Err(err)),
+            },
+        }
+    }
+
+    fn reset(&mut self) {
+        let DownlinkConnectionsConfigRecognizer {
+            stage,
+            dl_buffer_size,
+            buffer_size,
+            yield_after,
+            retry_strategy,
+            retry_strategy_recognizer,
+        } = self;
+
+        *stage = DownlinkConnectionsConfigStage::Init;
+        *dl_buffer_size = None;
+        *buffer_size = None;
+        *yield_after = None;
+        *retry_strategy = None;
+
+        retry_strategy_recognizer.reset();
     }
 }
 
@@ -403,40 +868,212 @@ impl StructuralWritable for ClientDownlinksConfig {
     }
 }
 
-//Todo dm
 impl RecognizerReadable for ClientDownlinksConfig {
     type Rec = ClientDownlinksConfigRecognizer;
     type AttrRec = SimpleAttrBody<ClientDownlinksConfigRecognizer>;
     type BodyRec = SimpleRecBody<ClientDownlinksConfigRecognizer>;
 
     fn make_recognizer() -> Self::Rec {
-        ClientDownlinksConfigRecognizer
+        ClientDownlinksConfigRecognizer {
+            stage: ClientDownlinksConfigStage::Init,
+            default: None,
+            default_recognizer: DownlinkConfig::make_recognizer(),
+            host: None,
+            host_recognizer: HashMap::<Url, DownlinkConfig>::make_recognizer(),
+            lane: None,
+            lane_recognizer: HashMap::<AbsolutePath, DownlinkConfig>::make_recognizer(),
+            absolute_path_recognizer: AbsolutePath::make_recognizer(),
+        }
     }
 
     fn make_attr_recognizer() -> Self::AttrRec {
-        SimpleAttrBody::new(ClientDownlinksConfigRecognizer)
+        SimpleAttrBody::new(ClientDownlinksConfigRecognizer {
+            stage: ClientDownlinksConfigStage::Init,
+            default: None,
+            default_recognizer: DownlinkConfig::make_recognizer(),
+            host: None,
+            host_recognizer: HashMap::<Url, DownlinkConfig>::make_recognizer(),
+            lane: None,
+            lane_recognizer: HashMap::<AbsolutePath, DownlinkConfig>::make_recognizer(),
+            absolute_path_recognizer: AbsolutePath::make_recognizer(),
+        })
     }
 
     fn make_body_recognizer() -> Self::BodyRec {
-        SimpleRecBody::new(ClientDownlinksConfigRecognizer)
-    }
-
-    fn is_simple() -> bool {
-        true
+        SimpleRecBody::new(ClientDownlinksConfigRecognizer {
+            stage: ClientDownlinksConfigStage::Init,
+            default: None,
+            default_recognizer: DownlinkConfig::make_recognizer(),
+            host: None,
+            host_recognizer: HashMap::<Url, DownlinkConfig>::make_recognizer(),
+            lane: None,
+            lane_recognizer: HashMap::<AbsolutePath, DownlinkConfig>::make_recognizer(),
+            absolute_path_recognizer: AbsolutePath::make_recognizer(),
+        })
     }
 }
 
-//Todo dm
-pub struct ClientDownlinksConfigRecognizer;
+const CLIENT_DOWNLINKS_CONFIG_TAG: &str = "downlinks";
+
+pub struct ClientDownlinksConfigRecognizer {
+    stage: ClientDownlinksConfigStage,
+    default: Option<DownlinkConfig>,
+    default_recognizer: DownlinkConfigRecognizer,
+    host: Option<HashMap<Url, DownlinkConfig>>,
+    host_recognizer: HashMapRecognizer<UrlRecognizer, DownlinkConfigRecognizer>,
+    lane: Option<HashMap<AbsolutePath, DownlinkConfig>>,
+    lane_recognizer: HashMapRecognizer<AbsolutePathRecognizer, DownlinkConfigRecognizer>,
+    absolute_path_recognizer: AbsolutePathRecognizer,
+}
+
+enum ClientDownlinksConfigStage {
+    Init,
+    Tag,
+    AfterTag,
+    InBody,
+    Slot(ClientDownlinksConfigField),
+    Field(ClientDownlinksConfigField),
+}
+
+#[derive(Clone, Copy)]
+enum ClientDownlinksConfigField {
+    Default,
+    Host,
+    Lane,
+}
 
 impl Recognizer for ClientDownlinksConfigRecognizer {
     type Target = ClientDownlinksConfig;
 
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
-        unimplemented!()
+        match &self.stage {
+            ClientDownlinksConfigStage::Init => {
+                if let ReadEvent::StartAttribute(name) = input {
+                    if name == CLIENT_DOWNLINKS_CONFIG_TAG {
+                        self.stage = ClientDownlinksConfigStage::Tag;
+                        None
+                    } else {
+                        Some(Err(ReadError::UnexpectedAttribute(name.into())))
+                    }
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Attribute(Some(
+                        Text::new(CLIENT_DOWNLINKS_CONFIG_TAG),
+                    )))))
+                }
+            }
+            ClientDownlinksConfigStage::Tag => match input {
+                ReadEvent::Extant => None,
+                ReadEvent::EndAttribute => {
+                    self.stage = ClientDownlinksConfigStage::AfterTag;
+                    None
+                }
+                ow => Some(Err(ow.kind_error(ExpectedEvent::EndOfAttribute))),
+            },
+            ClientDownlinksConfigStage::AfterTag => {
+                if matches!(&input, ReadEvent::StartBody) {
+                    self.stage = ClientDownlinksConfigStage::InBody;
+                    None
+                } else if matches!(&input, ReadEvent::EndRecord) {
+                    Some(Ok(ClientDownlinksConfig::default()))
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Or(vec![
+                        ExpectedEvent::RecordBody,
+                        ExpectedEvent::EndOfRecord,
+                    ]))))
+                }
+            }
+            ClientDownlinksConfigStage::InBody => match input {
+                ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
+                    "default" => {
+                        self.stage =
+                            ClientDownlinksConfigStage::Slot(ClientDownlinksConfigField::Default);
+                        None
+                    }
+                    "host" => {
+                        self.stage =
+                            ClientDownlinksConfigStage::Slot(ClientDownlinksConfigField::Host);
+                        None
+                    }
+                    "lane" => {
+                        self.stage =
+                            ClientDownlinksConfigStage::Slot(ClientDownlinksConfigField::Lane);
+                        None
+                    }
+                    ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
+                },
+                ReadEvent::EndRecord => Some(Ok(ClientDownlinksConfig {
+                    default: self.default.unwrap_or_default(),
+                    by_host: self.host.clone().unwrap_or(HashMap::new()),
+                    by_lane: self.lane.clone().unwrap_or(HashMap::new()),
+                })),
+                ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
+                    ExpectedEvent::ValueEvent(ValueKind::Text),
+                    ExpectedEvent::EndOfRecord,
+                ])))),
+            },
+            ClientDownlinksConfigStage::Slot(fld) => {
+                if matches!(&input, ReadEvent::Slot) {
+                    self.stage = ClientDownlinksConfigStage::Field(*fld);
+                    None
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Slot)))
+                }
+            }
+            ClientDownlinksConfigStage::Field(ClientDownlinksConfigField::Default) => {
+                match self.default_recognizer.feed_event(input)? {
+                    Ok(value) => {
+                        self.default = Some(value);
+                        self.stage = ClientDownlinksConfigStage::InBody;
+                        None
+                    }
+                    Err(err) => Some(Err(err)),
+                }
+            }
+            ClientDownlinksConfigStage::Field(ClientDownlinksConfigField::Host) => {
+                match self.host_recognizer.feed_event(input)? {
+                    Ok(value) => {
+                        self.host = Some(value);
+                        self.stage = ClientDownlinksConfigStage::InBody;
+                        None
+                    }
+                    Err(err) => Some(Err(err)),
+                }
+            }
+            ClientDownlinksConfigStage::Field(ClientDownlinksConfigField::Lane) => {
+                match self.lane_recognizer.feed_event(input)? {
+                    Ok(value) => {
+                        self.lane = Some(value);
+                        self.stage = ClientDownlinksConfigStage::InBody;
+                        None
+                    }
+                    Err(err) => Some(Err(err)),
+                }
+            }
+        }
     }
 
-    fn reset(&mut self) {}
+    fn reset(&mut self) {
+        let ClientDownlinksConfigRecognizer {
+            stage,
+            default,
+            default_recognizer,
+            host,
+            host_recognizer,
+            lane,
+            lane_recognizer,
+            absolute_path_recognizer,
+        } = self;
+
+        *stage = ClientDownlinksConfigStage::Init;
+        *default = None;
+        *host = None;
+        *lane = None;
+
+        default_recognizer.reset();
+        host_recognizer.reset();
+        lane_recognizer.reset();
+        absolute_path_recognizer.reset();
+    }
 }
 
 /// Configuration parameters for a single downlink.
@@ -510,13 +1147,15 @@ impl Default for DownlinkConfig {
 
 impl StructuralWritable for DownlinkConfig {
     fn num_attributes(&self) -> usize {
-        0
+        1
     }
 
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
-        let mut body_writer = writer
-            .record(0)?
-            .complete_header(RecordBodyKind::ArrayLike, 5)?;
+        let header_writer = writer.record(1)?;
+
+        let mut body_writer = header_writer
+            .write_extant_attr("downlink_config")?
+            .complete_header(RecordBodyKind::MapLike, 5)?;
 
         body_writer = body_writer.write_slot(&"back_pressure", &self.back_pressure)?;
         body_writer = body_writer.write_slot(&"idle_timeout", &self.idle_timeout)?;
@@ -528,9 +1167,11 @@ impl StructuralWritable for DownlinkConfig {
     }
 
     fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
-        let mut body_writer = writer
-            .record(0)?
-            .complete_header(RecordBodyKind::ArrayLike, 5)?;
+        let header_writer = writer.record(1)?;
+
+        let mut body_writer = header_writer
+            .write_extant_attr("downlink_config")?
+            .complete_header(RecordBodyKind::MapLike, 5)?;
 
         body_writer = body_writer.write_slot_into("back_pressure", self.back_pressure)?;
         body_writer = body_writer.write_slot_into("idle_timeout", self.idle_timeout)?;
@@ -550,44 +1191,245 @@ impl RecognizerReadable for DownlinkConfig {
     fn make_recognizer() -> Self::Rec {
         DownlinkConfigRecognizer {
             stage: DownlinkConfigStage::Init,
+            back_pressure: None,
+            back_pressure_recognizer: BackpressureMode::make_recognizer(),
+            idle_timeout: None,
+            idle_timeout_recognizer: Duration::make_recognizer(),
+            buffer_size: None,
+            on_invalid: None,
+            on_invalid_recognizer: OnInvalidMessage::make_recognizer(),
+            yield_after: None,
         }
     }
 
     fn make_attr_recognizer() -> Self::AttrRec {
         SimpleAttrBody::new(DownlinkConfigRecognizer {
             stage: DownlinkConfigStage::Init,
+            back_pressure: None,
+            back_pressure_recognizer: BackpressureMode::make_recognizer(),
+            idle_timeout: None,
+            idle_timeout_recognizer: Duration::make_recognizer(),
+            buffer_size: None,
+            on_invalid: None,
+            on_invalid_recognizer: OnInvalidMessage::make_recognizer(),
+            yield_after: None,
         })
     }
 
     fn make_body_recognizer() -> Self::BodyRec {
         SimpleRecBody::new(DownlinkConfigRecognizer {
             stage: DownlinkConfigStage::Init,
+            back_pressure: None,
+            back_pressure_recognizer: BackpressureMode::make_recognizer(),
+            idle_timeout: None,
+            idle_timeout_recognizer: Duration::make_recognizer(),
+            buffer_size: None,
+            on_invalid: None,
+            on_invalid_recognizer: OnInvalidMessage::make_recognizer(),
+            yield_after: None,
         })
     }
 }
 
-//Todo dm
 pub struct DownlinkConfigRecognizer {
     stage: DownlinkConfigStage,
+    back_pressure: Option<BackpressureMode>,
+    back_pressure_recognizer: BackpressureModeRecognizer,
+    idle_timeout: Option<Duration>,
+    idle_timeout_recognizer: DurationRecognizer,
+    buffer_size: Option<NonZeroUsize>,
+    on_invalid: Option<OnInvalidMessage>,
+    on_invalid_recognizer: OnInvalidMessageRecognizer,
+    yield_after: Option<NonZeroUsize>,
 }
+
+const DOWNLINK_CONFIG_TAG: &str = "downlink_config";
 
 enum DownlinkConfigStage {
     Init,
     Tag,
     AfterTag,
     InBody,
-    Slot(BackpressureModeField),
-    Field(BackpressureModeField),
+    Slot(DownlinkConfigField),
+    Field(DownlinkConfigField),
+}
+
+#[derive(Clone, Copy)]
+enum DownlinkConfigField {
+    BackPressure,
+    IdleTimeout,
+    BufferSize,
+    OnInvalid,
+    YieldAfter,
 }
 
 impl Recognizer for DownlinkConfigRecognizer {
     type Target = DownlinkConfig;
 
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
-        unimplemented!()
+        match &self.stage {
+            DownlinkConfigStage::Init => {
+                if let ReadEvent::StartAttribute(name) = input {
+                    if name == DOWNLINK_CONFIG_TAG {
+                        self.stage = DownlinkConfigStage::Tag;
+                        None
+                    } else {
+                        Some(Err(ReadError::UnexpectedAttribute(name.into())))
+                    }
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Attribute(Some(
+                        Text::new(DOWNLINK_CONFIG_TAG),
+                    )))))
+                }
+            }
+            DownlinkConfigStage::Tag => match input {
+                ReadEvent::Extant => None,
+                ReadEvent::EndAttribute => {
+                    self.stage = DownlinkConfigStage::AfterTag;
+                    None
+                }
+                ow => Some(Err(ow.kind_error(ExpectedEvent::EndOfAttribute))),
+            },
+            DownlinkConfigStage::AfterTag => {
+                if matches!(&input, ReadEvent::StartBody) {
+                    self.stage = DownlinkConfigStage::InBody;
+                    None
+                } else if matches!(&input, ReadEvent::EndRecord) {
+                    Some(Ok(DownlinkConfig::default()))
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Or(vec![
+                        ExpectedEvent::RecordBody,
+                        ExpectedEvent::EndOfRecord,
+                    ]))))
+                }
+            }
+            DownlinkConfigStage::InBody => match input {
+                ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
+                    "back_pressure" => {
+                        self.stage = DownlinkConfigStage::Slot(DownlinkConfigField::BackPressure);
+                        None
+                    }
+                    "idle_timeout" => {
+                        self.stage = DownlinkConfigStage::Slot(DownlinkConfigField::IdleTimeout);
+                        None
+                    }
+                    "buffer_size" => {
+                        self.stage = DownlinkConfigStage::Slot(DownlinkConfigField::BufferSize);
+                        None
+                    }
+                    "on_invalid" => {
+                        self.stage = DownlinkConfigStage::Slot(DownlinkConfigField::OnInvalid);
+                        None
+                    }
+                    "yield_after" => {
+                        self.stage = DownlinkConfigStage::Slot(DownlinkConfigField::YieldAfter);
+                        None
+                    }
+                    ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
+                },
+                ReadEvent::EndRecord => Some(Ok(DownlinkConfig {
+                    back_pressure: self.back_pressure.unwrap_or_default(),
+                    idle_timeout: self
+                        .idle_timeout
+                        .unwrap_or(Duration::from_secs(DEFAULT_IDLE_TIMEOUT)),
+                    buffer_size: self
+                        .buffer_size
+                        .unwrap_or(NonZeroUsize::new(DEFAULT_DOWNLINK_BUFFER_SIZE).unwrap()),
+                    on_invalid: self.on_invalid.unwrap_or_default(),
+                    yield_after: self
+                        .yield_after
+                        .unwrap_or(NonZeroUsize::new(DEFAULT_YIELD_AFTER).unwrap()),
+                })),
+                ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
+                    ExpectedEvent::ValueEvent(ValueKind::Text),
+                    ExpectedEvent::EndOfRecord,
+                ])))),
+            },
+            DownlinkConfigStage::Slot(fld) => {
+                if matches!(&input, ReadEvent::Slot) {
+                    self.stage = DownlinkConfigStage::Field(*fld);
+                    None
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::Slot)))
+                }
+            }
+            DownlinkConfigStage::Field(DownlinkConfigField::BackPressure) => {
+                match self.back_pressure_recognizer.feed_event(input)? {
+                    Ok(value) => {
+                        self.back_pressure = Some(value);
+                        self.stage = DownlinkConfigStage::InBody;
+                        None
+                    }
+                    Err(err) => Some(Err(err)),
+                }
+            }
+            DownlinkConfigStage::Field(DownlinkConfigField::IdleTimeout) => {
+                match self.idle_timeout_recognizer.feed_event(input)? {
+                    Ok(value) => {
+                        self.idle_timeout = Some(value);
+                        self.stage = DownlinkConfigStage::InBody;
+                        None
+                    }
+                    Err(err) => Some(Err(err)),
+                }
+            }
+            DownlinkConfigStage::Field(DownlinkConfigField::BufferSize) => {
+                match NonZeroUsize::make_recognizer().feed_event(input)? {
+                    Ok(value) => {
+                        self.buffer_size = Some(value);
+                        self.stage = DownlinkConfigStage::InBody;
+                        None
+                    }
+                    Err(err) => Some(Err(err)),
+                }
+            }
+            DownlinkConfigStage::Field(DownlinkConfigField::OnInvalid) => {
+                match self.on_invalid_recognizer.feed_event(input)? {
+                    Ok(value) => {
+                        self.on_invalid = Some(value);
+                        self.stage = DownlinkConfigStage::InBody;
+                        None
+                    }
+                    Err(err) => Some(Err(err)),
+                }
+            }
+            DownlinkConfigStage::Field(DownlinkConfigField::YieldAfter) => {
+                match NonZeroUsize::make_recognizer().feed_event(input)? {
+                    Ok(value) => {
+                        self.yield_after = Some(value);
+                        self.stage = DownlinkConfigStage::InBody;
+                        None
+                    }
+                    Err(err) => Some(Err(err)),
+                }
+            }
+        }
     }
 
-    fn reset(&mut self) {}
+    fn reset(&mut self) {
+        let DownlinkConfigRecognizer {
+            stage,
+            back_pressure,
+            back_pressure_recognizer,
+            idle_timeout,
+            idle_timeout_recognizer,
+            buffer_size,
+            on_invalid,
+            on_invalid_recognizer,
+            yield_after,
+        } = self;
+
+        *stage = DownlinkConfigStage::Init;
+        *back_pressure = None;
+        *idle_timeout = None;
+        *buffer_size = None;
+        *on_invalid = None;
+        *yield_after = None;
+
+        back_pressure_recognizer.reset();
+        idle_timeout_recognizer.reset();
+        on_invalid_recognizer.reset();
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
