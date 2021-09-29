@@ -29,8 +29,6 @@ use ratchet_ext::{
     HeaderMap, HeaderValue, OpCode, ReunitableExtension, RsvBits, SplittableExtension,
 };
 
-const ADDITIONAL_CAPACITY: usize = 256;
-
 /// The minimum size of the LZ77 sliding window size.
 const LZ77_MIN_WINDOW_SIZE: u8 = 8;
 
@@ -107,7 +105,6 @@ impl Default for DeflateConfig {
     }
 }
 
-/// A permessage-deflate configuration.
 #[derive(Debug, PartialEq)]
 pub(crate) struct InitialisedDeflateConfig {
     server_max_window_bits: u8,
@@ -256,7 +253,7 @@ impl ExtensionEncoder for DeflateEncoder {
         while compress.total_in() - before_in < payload.as_ref().len() as u64 {
             let i = compress.total_in() as usize - before_in as usize;
             match compress.buf_compress(&payload[i..], buf, FlushCompress::Sync)? {
-                Status::BufError => buf.reserve(ADDITIONAL_CAPACITY),
+                Status::BufError => buf.reserve((buf.len() as f64 * 1.5) as usize),
                 Status::Ok => continue,
                 Status::StreamEnd => break,
             }
@@ -359,7 +356,7 @@ impl ExtensionDecoder for DeflateDecoder {
         loop {
             let i = decompress.total_in() as usize - before_in;
             match decompress.buf_decompress(&payload[i..], buf, FlushDecompress::None)? {
-                Status::Ok => buf.reserve(ADDITIONAL_CAPACITY),
+                Status::Ok => buf.reserve((buf.len() as f64 * 1.5) as usize),
                 Status::BufError | Status::StreamEnd => break,
             }
         }

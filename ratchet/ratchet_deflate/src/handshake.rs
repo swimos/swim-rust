@@ -66,9 +66,10 @@ pub fn negotiate_client(
     headers: &[Header],
     config: &DeflateConfig,
 ) -> Result<Option<Deflate>, DeflateExtensionError> {
-    match on_response(headers, config)? {
-        Some(initialised_config) => Ok(Some(Deflate::initialise_from(initialised_config))),
-        None => Ok(None),
+    match on_response(headers, config) {
+        Ok(initialised_config) => Ok(Some(Deflate::initialise_from(initialised_config))),
+        Err(NegotiationErr::Failed) => Ok(None),
+        Err(NegotiationErr::Err(e)) => Err(e),
     }
 }
 
@@ -76,53 +77,44 @@ pub fn negotiate_server(
     headers: &[Header],
     config: &DeflateConfig,
 ) -> Result<Option<(Deflate, HeaderValue)>, DeflateExtensionError> {
-    match on_request(headers, config)? {
-        Some((initialised_config, header)) => {
+    match on_request(headers, config) {
+        Ok((initialised_config, header)) => {
             Ok(Some((Deflate::initialise_from(initialised_config), header)))
         }
-        None => Ok(None),
+        Err(NegotiationErr::Failed) => Ok(None),
+        Err(NegotiationErr::Err(e)) => Err(e),
     }
 }
 
 pub(crate) fn on_request(
     headers: &[Header],
     config: &DeflateConfig,
-) -> Result<Option<(InitialisedDeflateConfig, HeaderValue)>, DeflateExtensionError> {
+) -> Result<(InitialisedDeflateConfig, HeaderValue), NegotiationErr> {
     let header_iter = headers.iter().filter(|h| {
         h.name
             .eq_ignore_ascii_case(SEC_WEBSOCKET_EXTENSIONS.as_str())
     });
 
-    let mut last_error = None;
-
     for header in header_iter {
-        let header_value = std::str::from_utf8(header.value)?;
+        let header_value =
+            std::str::from_utf8(header.value).map_err(|e| DeflateExtensionError::from(e))?;
 
         for part in header_value.split(',') {
             match validate_request_header(part, config) {
-                Ok(Some((initialised_config, header))) => {
-                    return Ok(Some((initialised_config, header)))
-                }
-                Ok(None) => continue,
-                Err(DeflateExtensionError::InvalidMaxWindowBits) => {
-                    last_error = Some(DeflateExtensionError::InvalidMaxWindowBits);
-                    continue;
-                }
-                Err(e) => return Err(e),
+                Ok((initialised_config, header)) => return Ok((initialised_config, header)),
+                Err(NegotiationErr::Failed) => continue,
+                Err(NegotiationErr::Err(e)) => return Err(NegotiationErr::Err(e)),
             }
         }
     }
 
-    match last_error {
-        Some(e) => Err(e),
-        None => Ok(None),
-    }
+    Err(NegotiationErr::Failed)
 }
 
 fn validate_request_header(
     header: &str,
     config: &DeflateConfig,
-) -> Result<Option<(InitialisedDeflateConfig, HeaderValue)>, DeflateExtensionError> {
+) -> Result<(InitialisedDeflateConfig, HeaderValue), NegotiationErr> {
     let mut response_str = String::with_capacity(header.len());
     let mut param_iter = header.split(';');
 
@@ -131,7 +123,7 @@ fn validate_request_header(
             response_str.push_str(EXT_IDENT);
         }
         _ => {
-            return Ok(None);
+            return Err(NegotiationErr::Failed);
         }
     }
 
@@ -173,7 +165,7 @@ fn validate_request_header(
                         None => {
                             // If the client specifies 'server_max_window_bits' then a value must
                             // be provided.
-                            Err(DeflateExtensionError::InvalidMaxWindowBits)
+                            Err(DeflateExtensionError::InvalidMaxWindowBits.into())
                         }
                     }
                 })?;
@@ -198,21 +190,36 @@ fn validate_request_header(
             p => {
                 return Err(DeflateExtensionError::NegotiationError(
                     format!("Unknown permessage-deflate parameter: {}", p).into(),
-                ))
+                )
+                .into())
             }
         }
     }
 
-    Ok(Some((
+    Ok((
         initialised_config,
-        HeaderValue::from_str(response_str.as_str())?,
-    )))
+        HeaderValue::from_str(response_str.as_str()).map_err(|e| DeflateExtensionError::from(e))?,
+    ))
+}
+
+#[derive(Debug)]
+pub enum NegotiationErr {
+    /// This is not an error but means that it was not possible to negotiate the extension and so it
+    /// will not be used.
+    Failed,
+    Err(DeflateExtensionError),
+}
+
+impl From<DeflateExtensionError> for NegotiationErr {
+    fn from(e: DeflateExtensionError) -> Self {
+        NegotiationErr::Err(e)
+    }
 }
 
 pub(crate) fn on_response(
     headers: &[Header],
     config: &DeflateConfig,
-) -> Result<Option<InitialisedDeflateConfig>, DeflateExtensionError> {
+) -> Result<InitialisedDeflateConfig, NegotiationErr> {
     let mut seen_extension_name = false;
     let mut seen_server_takeover = false;
     let mut seen_client_takeover = false;
@@ -232,7 +239,8 @@ pub(crate) fn on_response(
     });
 
     for header in header_iter {
-        let header_value = std::str::from_utf8(header.value)?;
+        let header_value =
+            std::str::from_utf8(header.value).map_err(|e| DeflateExtensionError::from(e))?;
 
         for param in header_value.split(';') {
             match param.trim().to_lowercase().as_str() {
@@ -254,7 +262,8 @@ pub(crate) fn on_response(
                         } else {
                             Err(DeflateExtensionError::NegotiationError(format!(
                                 "The client requires context takeover."
-                            )))
+                            ))
+                            .into())
                         }
                     })?;
                 }
@@ -272,7 +281,7 @@ pub(crate) fn on_response(
                                     )?;
                                     Ok(())
                                 }
-                                None => Err(DeflateExtensionError::InvalidMaxWindowBits),
+                                None => Err(DeflateExtensionError::InvalidMaxWindowBits.into()),
                             }
                         },
                     )?;
@@ -295,34 +304,37 @@ pub(crate) fn on_response(
                     return Err(DeflateExtensionError::NegotiationError(format!(
                         "Unknown permessage-deflate parameter: {}",
                         p
-                    )));
+                    ))
+                    .into());
                 }
             }
         }
     }
 
     if enabled {
-        Ok(Some(InitialisedDeflateConfig {
+        Ok(InitialisedDeflateConfig {
             server_max_window_bits,
             client_max_window_bits,
             compress_reset,
             decompress_reset,
             compression_level: config.compression_level,
-        }))
+        })
     } else {
-        Ok(None)
+        Err(NegotiationErr::Failed)
     }
 }
 
-fn check_param<F>(name: &str, seen: &mut bool, mut then: F) -> Result<(), DeflateExtensionError>
+fn check_param<F>(name: &str, seen: &mut bool, mut then: F) -> Result<(), NegotiationErr>
 where
-    F: FnMut() -> Result<(), DeflateExtensionError>,
+    F: FnMut() -> Result<(), NegotiationErr>,
 {
     if *seen {
-        Err(DeflateExtensionError::NegotiationError(format!(
-            "Duplicate extension parameter: {}",
-            name
-        )))
+        Err(NegotiationErr::Err(
+            DeflateExtensionError::NegotiationError(format!(
+                "Duplicate extension parameter: {}",
+                name
+            )),
+        ))
     } else {
         then()?;
         *seen = true;
@@ -330,19 +342,16 @@ where
     }
 }
 
-fn parse_window_parameter(
-    window_param: &str,
-    max_window_bits: u8,
-) -> Result<u8, DeflateExtensionError> {
+fn parse_window_parameter(window_param: &str, max_window_bits: u8) -> Result<u8, NegotiationErr> {
     let window_param = window_param.replace("\"", "");
     match window_param.trim().parse() {
         Ok(window_bits) => {
             if (LZ77_MIN_WINDOW_SIZE..=max_window_bits).contains(&window_bits) {
                 Ok(window_bits)
             } else {
-                Err(DeflateExtensionError::InvalidMaxWindowBits)
+                Err(NegotiationErr::Failed)
             }
         }
-        Err(_) => Err(DeflateExtensionError::InvalidMaxWindowBits),
+        Err(_) => Err(DeflateExtensionError::InvalidMaxWindowBits.into()),
     }
 }

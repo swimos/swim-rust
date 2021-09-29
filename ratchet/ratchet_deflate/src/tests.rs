@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::error::DeflateExtensionError;
-use crate::handshake::{apply_headers, on_request};
+use crate::handshake::{apply_headers, on_request, on_response, NegotiationErr};
 use crate::{DeflateConfig, InitialisedDeflateConfig};
 use flate2::Compression;
 use http::header::SEC_WEBSOCKET_EXTENSIONS;
@@ -97,14 +97,14 @@ fn applies_headers() {
 #[test]
 fn request_negotiates_nothing() {
     match on_request(&[], &DeflateConfig::default()) {
-        Ok(None) => {}
+        Err(NegotiationErr::Failed) => {}
         _ => panic!("Expected no extension"),
     }
 }
 
 fn request_test_valid_default(headers: &[Header]) {
     match on_request(headers, &DeflateConfig::default()) {
-        Ok(Some((config, header))) => {
+        Ok((config, header)) => {
             let value = header.to_str().expect("Malformatted header produced");
             assert_eq!(
                 value,
@@ -160,7 +160,7 @@ fn request_unknown_header() {
         }],
         &DeflateConfig::default(),
     ) {
-        Ok(None) => {}
+        Err(NegotiationErr::Failed) => {}
         _ => panic!("Expected no extension"),
     }
 }
@@ -226,7 +226,7 @@ fn request_no_accept_no_context_takeover() {
     };
 
     match on_request(&[header], &config) {
-        Ok(Some((config, header))) => {
+        Ok((config, header)) => {
             let value = header.to_str().expect("Malformatted header produced");
             assert_eq!(value, "permessage-deflate; client_no_context_takeover");
             assert_eq!(
@@ -246,7 +246,7 @@ fn request_no_accept_no_context_takeover() {
 
 fn request_test_malformatted_default(headers: &[Header], expected: DeflateExtensionError) {
     match on_request(headers, &DeflateConfig::default()) {
-        Err(e) => assert_eq!(e.to_string(), expected.to_string()),
+        Err(NegotiationErr::Err(e)) => assert_eq!(e.to_string(), expected.to_string()),
         e => panic!("Expected: `{:?}`. Got: {:?}", expected, e),
     }
 }
@@ -283,3 +283,22 @@ fn request_unknown_parameter() {
         ),
     )
 }
+
+#[test]
+fn response_no_ext() {
+    match on_response(&[], &DeflateConfig::default()) {
+        Err(NegotiationErr::Failed) => {}
+        _ => panic!("Expected no extension"),
+    }
+}
+
+#[test]
+fn response_unknown_ext() {
+    match on_response(&[Header{
+        name:SEC_WEBSOCKET_EXTENSIONS,
+        value: b"permessage-bzip"
+    }])
+}
+
+#[test]
+fn response_default_ok() {}
