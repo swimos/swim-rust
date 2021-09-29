@@ -14,7 +14,7 @@
 
 use std::num::NonZeroUsize;
 use std::time::Duration;
-use swim_utilities::future::retryable::strategy::RetryStrategy;
+use swim_utilities::future::retryable::RetryStrategy;
 
 /// Configuration parameters for remote connection management.
 #[derive(Debug, Clone, Copy)]

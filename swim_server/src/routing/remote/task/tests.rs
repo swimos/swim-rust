@@ -26,7 +26,7 @@ use swim_common::model::Value;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use swim_runtime::time::timeout;
-use swim_utilities::future::retryable::strategy::{Quantity, RetryStrategy};
+use swim_utilities::future::retryable::{Quantity, RetryStrategy};
 use swim_utilities::routing::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;

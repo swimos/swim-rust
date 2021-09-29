@@ -18,14 +18,14 @@ use futures::task::{Context, Poll};
 use futures::Future;
 use futures::{ready, TryFuture};
 
-use crate::retryable::strategy::RetryStrategy;
+pub use strategy::{ExponentialStrategy, IntervalStrategy, Quantity, RetryStrategy};
 
 #[cfg(test)]
 mod tests;
 
 pub mod factory;
 pub mod request;
-pub mod strategy;
+mod strategy;
 use pin_project::pin_project;
 use swim_runtime::time::delay::{delay_for, Delay};
 

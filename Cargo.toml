@@ -8,20 +8,7 @@ members = [
     "swim_warp",
     "stm",
     "swim_utilities",
-    "swim_utilities/swim_bilock",
-    "swim_utilities/swim_algebra",
-    "swim_utilities/swim_errors",
-    "swim_utilities/swim_future",
-    "swim_utilities/swim_trigger",
-    "swim_utilities/swim_time",
-    "swim_utilities/swim_iteratee",
-    "swim_utilities/swim_lrucache",
-    "swim_utilities/swim_format",
-    "swim_utilities/swim_route",
-    "swim_utilities/swim_rtree",
-    "swim_utilities/swim_sync",
-    "swim_utilities/swim_tracing",
-    "swim_utilities/swim_test_util"
+    "swim_utilities/swim_*",
 ]
 
 exclude = [

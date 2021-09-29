@@ -33,7 +33,7 @@ use swim_common::request::Request;
 use swim_common::routing::{ConnectionError, IoError};
 use swim_runtime::time::timeout::timeout;
 use swim_utilities::future::open_ended::OpenEndedFutures;
-use swim_utilities::future::retryable::strategy::RetryStrategy;
+use swim_utilities::future::retryable::RetryStrategy;
 use swim_utilities::trigger;
 use tokio::sync::{mpsc, oneshot};
 

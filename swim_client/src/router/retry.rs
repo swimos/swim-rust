@@ -176,8 +176,7 @@ impl RetrySendError for MpscRetryErr {
 mod tests {
     use std::num::NonZeroUsize;
 
-    use swim_utilities::future::retryable::strategy::RetryStrategy;
-    use swim_utilities::future::retryable::RetryableFuture;
+    use swim_utilities::future::retryable::{RetryStrategy, RetryableFuture};
 
     use crate::router::retry::MpscRetryErr;
     use crate::router::RoutingError;

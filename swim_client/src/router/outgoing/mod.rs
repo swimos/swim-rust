@@ -121,7 +121,7 @@ impl OutgoingHostTask {
 mod route_tests {
     use std::num::NonZeroUsize;
 
-    use swim_utilities::future::retryable::strategy::RetryStrategy;
+    use swim_utilities::future::retryable::RetryStrategy;
 
     use super::*;
 
