@@ -1,0 +1,15 @@
+[package]
+name = "swim_schema"
+version = "0.1.0"
+authors = ["Swim.AI developers info@swim.ai"]
+edition = "2018"
+
+[dependencies]
+swim_model = { path = "../swim_model" }
+swim_form_derive = { path = "../swim_form_derive" }
+num-traits = "0.2.12"
+regex = "1.3.6"
+
+[dev-dependencies]
+swim_form = { path = "../swim_form" }
+base64 = "0.13.0"

@@ -1,0 +1,9 @@
+error: All items schema not valid when all fields are skipped
+  --> $DIR/all_items_skipped.rs:19:5
+   |
+19 | /     #[form(schema(all_items(of_kind(ValueKind::Int32))))]
+20 | |     struct S {
+21 | |         #[form(skip)]
+22 | |         f: i32,
+23 | |     }
+   | |_____^

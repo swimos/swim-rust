@@ -1,0 +1,5 @@
+error: Expected a string literal
+  --> $DIR/incorrect_tag_type_enum.rs:20:22
+   |
+20 |         #[form(tag = 13)]
+   |                      ^^

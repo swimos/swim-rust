@@ -1,0 +1,8 @@
+error: A tag name cannot be specified for an enum type, only its variants.
+  --> $DIR/invalid_tag_placement_enum.rs:19:5
+   |
+19 | /     #[form(tag = "Enumeration")]
+20 | |     enum E {
+21 | |         A,
+22 | |     }
+   | |_____^

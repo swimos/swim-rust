@@ -1,0 +1,5 @@
+error: New tag cannot be empty
+  --> $DIR/empty_tag.rs:19:18
+   |
+19 |     #[form(tag = "")]
+   |                  ^^

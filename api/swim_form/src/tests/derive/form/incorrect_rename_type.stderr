@@ -1,0 +1,5 @@
+error: Expected a string literal
+  --> $DIR/incorrect_rename_type.rs:20:23
+   |
+20 |         #[form(name = 13)]
+   |                       ^^

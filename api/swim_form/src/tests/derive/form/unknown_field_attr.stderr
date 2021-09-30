@@ -1,0 +1,6 @@
+error: Unknown container attribute
+  --> $DIR/unknown_field_attr.rs:20:9
+   |
+20 | /         #[form(swim)]
+21 | |         a: i32,
+   | |______________^

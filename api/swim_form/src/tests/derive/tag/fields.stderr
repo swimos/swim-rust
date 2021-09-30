@@ -1,0 +1,8 @@
+error: Only enumerations with no fields can be tags.
+  --> $DIR/fields.rs:19:5
+   |
+19 | /     enum E {
+20 | |         A,
+21 | |         B(i32),
+22 | |     }
+   | |_____^

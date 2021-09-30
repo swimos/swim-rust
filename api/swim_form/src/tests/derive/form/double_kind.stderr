@@ -1,0 +1,6 @@
+error: Field has multiple kind tags
+  --> $DIR/double_kind.rs:20:9
+   |
+20 | /         #[form(skip, body)]
+21 | |         a: i32,
+   | |______________^

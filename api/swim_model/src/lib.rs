@@ -24,6 +24,7 @@ mod num;
 mod tests;
 mod text;
 mod value;
+pub mod time;
 
 pub use attr::Attr;
 pub use blob::Blob;

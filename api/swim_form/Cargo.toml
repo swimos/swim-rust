@@ -1,0 +1,24 @@
+[package]
+name = "swim_form"
+version = "0.1.0"
+authors = ["Swim.AI developers info@swim.ai"]
+edition = "2018"
+
+[dependencies]
+swim_utilities = { path = "../../swim_utilities", features = ["text", "iteratee"] }
+swim_form_derive = { path = "../swim_form_derive" }
+swim_model = { path = "../swim_model" }
+bytes = "^1.0.0"
+byteorder = "1.4"
+chrono = "0.4"
+either = "1.5.3"
+nom = "7.0"
+nom_locate = "4.0"
+rmp = "0.8"
+base64 = "0.13.0"
+num-traits = "0.2.12"
+url = "2.1.1"
+ryu = "1.0"
+
+[dev-dependencies]
+trybuild = "1.0.37"
