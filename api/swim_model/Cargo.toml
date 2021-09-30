@@ -1,0 +1,15 @@
+[package]
+name = "swim_model"
+version = "0.1.0"
+authors = ["Swim.AI developers info@swim.ai"]
+edition = "2018"
+
+[dependencies]
+either = "1.5.3"
+num-bigint = "0.3"
+base64 = "0.13.0"
+http = "0.2.3"
+swim_utilities = { path = "../../swim_utilities", features = ["text"] }
+num-traits = "0.2.12"
+
+[dev-dependencies]

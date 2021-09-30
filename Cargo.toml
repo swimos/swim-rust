@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "api/swim_*",
     "macro_utilities",
     "swim_client",
     "swim_runtime",
