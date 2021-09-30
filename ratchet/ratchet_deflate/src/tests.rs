@@ -322,8 +322,6 @@ fn response_duplicate_param() {
     }
 }
 
-// unknown param
-
 #[test]
 fn response_invalid_max_bits() {
     match on_response(

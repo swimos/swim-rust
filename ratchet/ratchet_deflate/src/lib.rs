@@ -39,8 +39,6 @@ const LZ77_MIN_WINDOW_SIZE: u8 = 8;
 /// 32,768 bytes. RFC 7692 7.1.2.1.
 const LZ77_MAX_WINDOW_SIZE: u8 = 15;
 
-// todo maximum size for decoding to prevent attacks
-
 #[derive(Default)]
 pub struct DeflateExtProvider {
     config: DeflateConfig,

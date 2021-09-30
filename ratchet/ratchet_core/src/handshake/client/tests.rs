@@ -35,8 +35,6 @@ use utilities::sync::trigger;
 
 const TEST_URL: &str = "ws://127.0.0.1:9001/test";
 
-// todo: some parts in this test file can be refactored once the server handshake has been done
-
 #[tokio::test]
 async fn handshake_sends_valid_request() {
     let request = TEST_URL.try_into_request().unwrap();
