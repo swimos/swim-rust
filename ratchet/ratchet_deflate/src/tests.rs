@@ -307,4 +307,67 @@ fn response_unknown_ext() {
 }
 
 #[test]
-fn response_default_ok() {}
+fn response_duplicate_param() {
+    match on_response(
+        &[Header {
+            name: SEC_WEBSOCKET_EXTENSIONS.as_str(),
+            value: b"permessage-deflate;server_no_context_takeover;server_no_context_takeover",
+        }],
+        &DeflateConfig::default(),
+    ) {
+        Err(NegotiationErr::Err(DeflateExtensionError::NegotiationError(s)))
+            if s.to_string()
+                .eq("Duplicate permessage-deflate parameter: server_no_context_takeover") => {}
+        r => panic!("Expected an error. Got: {:?}", r),
+    }
+}
+
+// unknown param
+
+#[test]
+fn response_invalid_max_bits() {
+    match on_response(
+        &[Header {
+            name: SEC_WEBSOCKET_EXTENSIONS.as_str(),
+            value: b"permessage-deflate;server_max_window_bits=666",
+        }],
+        &DeflateConfig::default(),
+    ) {
+        Err(NegotiationErr::Err(DeflateExtensionError::InvalidMaxWindowBits)) => {}
+        r => panic!("Expected an error. Got: {:?}", r),
+    }
+}
+
+#[test]
+fn response_unknown_param() {
+    match on_response(
+        &[Header {
+            name: SEC_WEBSOCKET_EXTENSIONS.as_str(),
+            value: b"permessage-deflate;invalid=param",
+        }],
+        &DeflateConfig::default(),
+    ) {
+        Err(NegotiationErr::Err(DeflateExtensionError::NegotiationError(s)))
+            if s.to_string()
+                .eq("Unknown permessage-deflate parameter: invalid=param") => {}
+        r => panic!("Expected an error. Got: {:?}", r),
+    }
+}
+
+#[test]
+fn response_no_context_takeover() {
+    let mut config = DeflateConfig::default();
+    config.accept_no_context_takeover = false;
+
+    match on_response(
+        &[Header {
+            name: SEC_WEBSOCKET_EXTENSIONS.as_str(),
+            value: b"permessage-deflate;client_no_context_takeover",
+        }],
+        &config,
+    ) {
+        Err(NegotiationErr::Err(DeflateExtensionError::NegotiationError(s)))
+            if s.to_string().eq("The client requires context takeover") => {}
+        r => panic!("Expected an error. Got: {:?}", r),
+    }
+}
