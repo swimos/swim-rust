@@ -351,16 +351,18 @@ impl ExtensionDecoder for DeflateDecoder {
         buf.clear();
         buf.reserve(payload.len() * 2);
 
-        let before_in = decompress.total_in() as usize;
+        let before_in = decompress.total_in();
 
-        loop {
-            let i = decompress.total_in() as usize - before_in;
-            match decompress.buf_decompress(&payload[i..], buf, FlushDecompress::None)? {
-                Status::Ok => buf.reserve((buf.len() as f64 * 1.5) as usize),
-                Status::BufError | Status::StreamEnd => break,
+        while decompress.total_in() - before_in < payload.as_ref().len() as u64 {
+            let i = decompress.total_in() as usize - before_in as usize;
+            match decompress.buf_decompress(&payload[i..], buf, FlushDecompress::Sync)? {
+                Status::BufError => buf.reserve((buf.len() as f64 * 1.5) as usize),
+                Status::Ok => continue,
+                Status::StreamEnd => break,
             }
         }
 
+        buf.truncate(buf.len());
         std::mem::swap(payload, buf);
 
         if *decompress_reset {

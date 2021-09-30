@@ -241,13 +241,21 @@ pub(crate) fn on_response(
     for header in header_iter {
         let header_value =
             std::str::from_utf8(header.value).map_err(|e| DeflateExtensionError::from(e))?;
+        let mut param_iter = header_value.split(';');
 
-        for param in header_value.split(';') {
-            match param.trim().to_lowercase().as_str() {
-                EXT_IDENT => check_param(EXT_IDENT, &mut seen_extension_name, || {
+        if let Some(param) = param_iter.next() {
+            if param.trim().eq_ignore_ascii_case(EXT_IDENT) {
+                check_param(EXT_IDENT, &mut seen_extension_name, || {
                     enabled = true;
                     Ok(())
-                })?,
+                })?
+            } else {
+                return Err(NegotiationErr::Failed);
+            }
+        }
+
+        for param in param_iter {
+            match param.trim().to_lowercase().as_str() {
                 n @ "server_no_context_takeover" => {
                     check_param(n, &mut seen_server_takeover, || {
                         decompress_reset = true;

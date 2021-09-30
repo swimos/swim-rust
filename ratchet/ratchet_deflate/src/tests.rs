@@ -294,10 +294,16 @@ fn response_no_ext() {
 
 #[test]
 fn response_unknown_ext() {
-    match on_response(&[Header{
-        name:SEC_WEBSOCKET_EXTENSIONS,
-        value: b"permessage-bzip"
-    }])
+    match on_response(
+        &[Header {
+            name: SEC_WEBSOCKET_EXTENSIONS.as_str(),
+            value: b"permessage-bzip",
+        }],
+        &DeflateConfig::default(),
+    ) {
+        Err(NegotiationErr::Failed) => {}
+        r => panic!("Expected no extension. Got: {:?}", r),
+    }
 }
 
 #[test]
