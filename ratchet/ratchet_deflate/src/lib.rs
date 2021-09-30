@@ -139,24 +139,24 @@ impl Deflate {
         if is_server {
             Deflate {
                 decoder: DeflateDecoder::new(
-                    config.server_max_window_bits,
+                    config.client_max_window_bits,
                     config.decompress_reset,
                 ),
                 encoder: DeflateEncoder::new(
                     config.compression_level,
-                    config.client_max_window_bits,
+                    config.server_max_window_bits,
                     config.compress_reset,
                 ),
             }
         } else {
             Deflate {
                 decoder: DeflateDecoder::new(
-                    config.client_max_window_bits,
+                    config.server_max_window_bits,
                     config.decompress_reset,
                 ),
                 encoder: DeflateEncoder::new(
                     config.compression_level,
-                    config.server_max_window_bits,
+                    config.client_max_window_bits,
                     config.compress_reset,
                 ),
             }
