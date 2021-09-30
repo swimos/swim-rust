@@ -21,7 +21,7 @@ use std::hash::Hash;
 use std::marker::PhantomData;
 use swim_common::form::structural::read::ReadError;
 use swim_common::form::Form;
-use swim_common::model::Value;
+use swim_model::Value;
 
 /// Event representing a change of the state of a map downlink with type information applied using
 /// a [`Form`] for the keys and values.

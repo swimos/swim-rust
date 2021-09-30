@@ -21,7 +21,7 @@ use crate::downlink::state_machine::{Response, ResponseResult, SyncStateMachine}
 use crate::downlink::DownlinkRequest;
 use swim_common::model::schema::Schema;
 use swim_common::model::schema::StandardSchema;
-use swim_common::model::Value;
+use swim_model::Value;
 
 /// State machine for value downlinks.
 pub struct ValueStateMachine {

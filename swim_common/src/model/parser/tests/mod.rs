@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use super::*;
-use num_bigint::RandBigInt;
+use swim_model::bigint::RandBigInt;
 use num_traits::Signed;
 use std::ops::Neg;
 

@@ -22,7 +22,7 @@ use http::Uri;
 use parking_lot::Mutex;
 use tokio::sync::{mpsc, watch};
 
-use swim_common::model::Value;
+use swim_model::Value;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use swim_runtime::time::timeout;

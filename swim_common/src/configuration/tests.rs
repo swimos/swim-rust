@@ -15,7 +15,7 @@
 use tokio::fs::File;
 
 use super::ConfigurationError;
-use crate::model::{Attr, Item, Value};
+use swim_model::{Attr, Item, Value};
 use std::path::PathBuf;
 
 fn test_data_path() -> PathBuf {

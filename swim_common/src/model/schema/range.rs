@@ -16,8 +16,8 @@ use crate::model::schema::{
     as_big_int, as_f64, as_i64, as_u64, combine_orderings, float_endpoint_to_slot,
     int_endpoint_to_slot,
 };
-use crate::model::{Attr, Value};
-use num_bigint::{BigInt, ToBigInt};
+use swim_model::{Attr, Value};
+use swim_model::bigint::{BigInt, ToBigInt};
 use std::cmp::Ordering;
 
 #[derive(Clone, Copy, Debug, PartialEq)]

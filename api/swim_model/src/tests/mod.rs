@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use super::*;
-use num_bigint::{BigInt, BigUint};
+use crate::bigint::{BigInt, BigUint};
 use std::cmp::Ordering;
 use std::collections::hash_map::DefaultHasher;
 use std::convert::TryFrom;

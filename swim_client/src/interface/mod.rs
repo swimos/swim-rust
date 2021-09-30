@@ -40,7 +40,7 @@ use std::io::Read;
 use std::sync::Arc;
 use swim_common::form::{Form, ValueSchema};
 use swim_common::model::parser::parse_single;
-use swim_common::model::Value;
+use swim_model::Value;
 use swim_common::routing::ws::WebsocketFactory;
 use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;

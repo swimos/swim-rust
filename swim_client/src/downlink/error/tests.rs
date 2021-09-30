@@ -14,7 +14,7 @@
 
 use crate::downlink::error::{DownlinkError, TransitionError};
 use swim_common::model::schema::StandardSchema;
-use swim_common::model::Value;
+use swim_model::Value;
 use swim_common::routing::{CloseError, ConnectionError, RoutingError};
 
 #[test]

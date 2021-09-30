@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use num_bigint::BigInt;
+use swim_model::bigint::BigInt;
 use num_traits::Float;
 
 use crate::form::structural::Tag;
@@ -24,9 +24,9 @@ use crate::model::schema::text::TextSchema;
 use crate::model::schema::Schema;
 use crate::model::schema::StandardSchema;
 use crate::model::schema::{FieldSpec, ItemSchema};
-use crate::model::Item;
-use crate::model::ValueKind;
-use crate::model::{Attr, Value};
+use swim_model::Item;
+use swim_model::ValueKind;
+use swim_model::{Attr, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 

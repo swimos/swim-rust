@@ -15,14 +15,14 @@
 use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 
-use num_bigint::{BigInt, BigUint};
+use swim_model::bigint::{BigInt, BigUint};
 
 use crate::form::ValueSchema;
-use crate::model::blob::Blob;
+use swim_model::Blob;
 use crate::model::schema::slot::SlotSchema;
 use crate::model::schema::{ItemSchema, StandardSchema};
-use crate::model::text::Text;
-use crate::model::ValueKind;
+use swim_model::Text;
+use swim_model::ValueKind;
 use std::collections::{BTreeMap, HashMap};
 use std::hash::Hash;
 use std::mem::size_of;

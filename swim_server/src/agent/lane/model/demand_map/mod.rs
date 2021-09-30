@@ -19,7 +19,7 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 
 use swim_common::form::Form;
-use swim_common::model::Value;
+use swim_model::Value;
 
 use crate::agent::lane::LaneModel;
 

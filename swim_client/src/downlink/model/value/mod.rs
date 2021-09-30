@@ -16,7 +16,7 @@ use crate::downlink::{error::UpdateFailure, DownlinkRequest, Message};
 use std::fmt;
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
-use swim_common::model::Value;
+use swim_model::Value;
 use swim_common::routing::RoutingError;
 
 pub type SharedValue = Arc<Value>;

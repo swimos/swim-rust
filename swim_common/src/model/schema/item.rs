@@ -14,7 +14,7 @@
 
 use crate::model::schema::slot::SlotSchema;
 use crate::model::schema::{Schema, StandardSchema};
-use crate::model::{Item, ToValue, Value};
+use swim_model::{Item, ToValue, Value};
 use std::cmp::Ordering;
 
 /// Schema for Recon [`Item`]s.

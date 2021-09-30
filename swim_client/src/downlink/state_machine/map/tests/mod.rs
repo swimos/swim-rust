@@ -18,7 +18,7 @@ use super::*;
 use crate::downlink::model::map::{MapEvent, UntypedMapModification};
 use crate::downlink::state_machine::{DownlinkStateMachine, EventResult};
 use crate::downlink::{Command, DownlinkState, Message};
-use swim_common::model::ValueKind;
+use swim_model::ValueKind;
 use swim_common::request::Request;
 
 fn make_model_with(key: i32, value: String) -> ValMap {

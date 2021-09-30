@@ -13,10 +13,8 @@
 // limitations under the License.
 
 use crate::form::structural::write::{RecordBodyKind, StructuralWritable};
-use crate::model::blob::Blob;
-use crate::model::text::Text;
-use crate::model::{Item, Value};
-use num_bigint::{BigInt, BigUint};
+use swim_model::{Blob, Item, Text, Value};
+use swim_model::bigint::{BigInt, BigUint};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;

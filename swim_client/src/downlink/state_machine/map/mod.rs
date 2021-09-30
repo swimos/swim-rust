@@ -21,7 +21,7 @@ use crate::downlink::state_machine::{Response, ResponseResult, SyncStateMachine}
 use crate::downlink::DownlinkRequest;
 use std::sync::Arc;
 use swim_common::model::schema::{Schema, StandardSchema};
-use swim_common::model::Value;
+use swim_model::Value;
 
 /// State machine for map downlinks.
 pub struct MapStateMachine {

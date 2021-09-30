@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use form_derive::*;
-use swim_common::model::Value;
+use swim_model::Value;
 
 fn main() {
     #[derive(Form, ValueSchema)]

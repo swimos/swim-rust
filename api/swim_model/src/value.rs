@@ -14,8 +14,8 @@
 
 use crate::Blob;
 use crate::Text;
+use crate::bigint::{BigInt, BigUint, ToBigInt};
 use either::Either;
-use num_bigint::{BigInt, BigUint, ToBigInt};
 use num_traits::Signed;
 use num_traits::ToPrimitive;
 use std::cmp::Ordering;

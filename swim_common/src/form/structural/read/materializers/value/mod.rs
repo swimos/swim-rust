@@ -18,9 +18,7 @@ mod tests;
 use crate::form::structural::read::event::{NumericValue, ReadEvent};
 use crate::form::structural::read::recognizer::Recognizer;
 use crate::form::structural::read::ReadError;
-use crate::model::blob::Blob;
-use crate::model::text::Text;
-use crate::model::{Attr, Item, Value};
+use swim_model::{Attr, Blob, Item, Text, Value};
 use std::convert::TryFrom;
 use std::option::Option::None;
 

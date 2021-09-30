@@ -26,10 +26,8 @@ use crate::form::structural::read::materializers::value::{
 use crate::form::structural::read::recognizer::primitive::DataRecognizer;
 use crate::form::structural::read::ReadError;
 use crate::form::structural::Tag;
-use crate::model::blob::Blob;
-use crate::model::text::Text;
-use crate::model::{Value, ValueKind};
-use num_bigint::{BigInt, BigUint};
+use swim_model::{Blob, Text, Value, ValueKind};
+use swim_model::bigint::{BigInt, BigUint};
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::hash::Hash;

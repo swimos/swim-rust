@@ -35,7 +35,7 @@ use std::sync::Arc;
 use stm::transaction::{RetryManager, TransactionError};
 use swim_common::form::structural::read::ReadError;
 use swim_common::form::Form;
-use swim_common::model::Value;
+use swim_model::Value;
 use swim_common::routing::SendError;
 use swim_common::sink::item::{FnMutSender, ItemSender};
 use swim_common::warp::envelope::Envelope;

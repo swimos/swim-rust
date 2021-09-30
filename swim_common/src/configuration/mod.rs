@@ -16,7 +16,7 @@
 mod tests;
 
 use crate::model::parser::{parse_document_iteratee, IterateeDecoder, ParseFailure};
-use crate::model::Item;
+use swim_model::Item;
 use futures::StreamExt;
 use pin_utils::pin_mut;
 use std::error::Error;

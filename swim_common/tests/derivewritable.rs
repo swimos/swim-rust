@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use num_bigint::{BigInt, BigUint};
+use swim_model::bigint::{BigInt, BigUint};
 use std::borrow::Cow;
 use swim_common::form::structural::write::{
     BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
     StructuralWriter,
 };
-use swim_common::model::{Attr, Item, Value};
+use swim_model::{Attr, Item, Value};
 
 #[derive(Default, Debug, PartialEq, Eq)]
 struct Validator {

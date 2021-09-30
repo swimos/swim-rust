@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::form::Form;
-use crate::model::{Attr, Item, Value};
+use swim_model::{Attr, Item, Value};
 
 mod swim_common {
     pub use crate::*;

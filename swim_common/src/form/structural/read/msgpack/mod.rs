@@ -21,7 +21,7 @@ use crate::form::structural::read::{ReadError, StructuralReadable};
 use crate::form::structural::write::interpreters::msgpack::{BIG_INT_EXT, BIG_UINT_EXT};
 use bytes::{Buf, BufMut, BytesMut};
 use either::Either;
-use num_bigint::{BigInt, BigUint, Sign};
+use swim_model::bigint::{BigInt, BigUint, Sign};
 use rmp::decode::{read_str_len, ValueReadError};
 use rmp::Marker;
 use std::borrow::Cow;

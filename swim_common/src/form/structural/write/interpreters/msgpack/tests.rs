@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::form::structural::write::interpreters::msgpack::MsgPackWriteError;
-use num_bigint::{BigInt, BigUint};
+use swim_model::bigint::{BigInt, BigUint};
 use std::io::ErrorKind;
 
 #[test]

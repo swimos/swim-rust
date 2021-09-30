@@ -30,7 +30,7 @@ use stm::transaction;
 use stm::transaction::{RetryManager, TransactionError};
 use stm::var::TVar;
 use swim_common::form::Form;
-use swim_common::model::Value;
+use swim_model::Value;
 
 use crate::agent::lane::channels::uplink::PeelResult;
 use swim_common::form::structural::read::ReadError;

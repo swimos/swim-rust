@@ -14,8 +14,8 @@
 
 use std::convert::TryFrom;
 
-use crate::model::text::Text;
-use crate::model::{Attr, Item, Value};
+use swim_model::Text;
+use swim_model::{Attr, Item, Value};
 use crate::routing::ws::WsMessage;
 use crate::warp::path::RelativePath;
 use either::Either;
@@ -736,7 +736,7 @@ impl Error for EnvelopeParseErr {}
 /// # Examples
 /// ```
 /// use std::convert::TryFrom;
-/// use swim_common::model::{Value, Attr, Item};
+/// use swim_model::{Attr, Item, Value};
 /// use swim_common::warp::envelope::Envelope;
 ///
 /// let record = Value::Record(

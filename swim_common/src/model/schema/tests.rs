@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use super::*;
-use crate::model::blob::Blob;
-use num_bigint::{BigInt, BigUint};
+use swim_model::Blob;
+use swim_model::bigint::{BigInt, BigUint};
 use regex::Regex;
 use std::collections::HashMap;
 

@@ -34,7 +34,7 @@ use std::time::Duration;
 use stm::transaction::TransactionError;
 use swim_common::form::structural::read::ReadError;
 use swim_common::form::Form;
-use swim_common::model::Value;
+use swim_model::Value;
 use swim_common::sink::item;
 use swim_utilities::future::SwimStreamExt;
 use swim_utilities::time::AtomicInstant;

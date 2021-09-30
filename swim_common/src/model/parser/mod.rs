@@ -18,12 +18,11 @@ use std::str::FromStr;
 use std::str::{from_utf8, from_utf8_unchecked, Utf8Error};
 
 use bytes::{Buf, BytesMut};
-use num_bigint::{BigInt, BigUint};
+use swim_model::bigint::{BigInt, BigUint};
 
 use token_buffer::*;
 
-use crate::model::text::Text;
-use crate::model::{Attr, Item, Value};
+use swim_model::{Attr, Item, Text, Value};
 use core::iter;
 use std::convert::TryFrom;
 use std::error::Error;

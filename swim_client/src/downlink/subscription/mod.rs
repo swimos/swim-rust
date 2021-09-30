@@ -42,7 +42,7 @@ use std::pin::Pin;
 use std::sync::{Arc, Weak};
 use swim_common::form::{Form, ValueSchema};
 use swim_common::model::schema::StandardSchema;
-use swim_common::model::Value;
+use swim_model::Value;
 use swim_common::request::Request;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item;

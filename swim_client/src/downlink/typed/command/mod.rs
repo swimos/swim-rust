@@ -101,7 +101,7 @@ impl Error for CommandViewError {}
 
 impl<T: ValueSchema> TypedCommandDownlink<T> {
     /// Create a sender for a more refined type (the [`ValueSchema`] implementation for `U`
-    /// will always produce a [`swim_common::model::Value`] that is acceptable to the [`ValueSchema`] implementation
+    /// will always produce a [`swim_model::Value`] that is acceptable to the [`ValueSchema`] implementation
     /// for `T`) to the downlink.
     pub fn contravariant_view<U: ValueSchema>(
         &self,

@@ -26,7 +26,7 @@ pub mod downlink {
     use std::num::NonZeroUsize;
     use swim_common::form::Form;
     use swim_common::model::parser::ParseFailure;
-    use swim_common::model::{Attr, Item, Value};
+    use swim_model::{Attr, Item, Value};
     use swim_common::warp::path::AbsolutePath;
     use tokio::time::Duration;
     use url::Url;

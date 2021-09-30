@@ -883,7 +883,7 @@ impl<'a> ToTokens for OnDoneFn<'a> {
                     let name = fld.resolve_name();
                     quote! {
                         if fields.#idx.is_none() {
-                            missing.push(swim_common::model::text::Text::new(#name));
+                            missing.push(swim_model::Text::new(#name));
                         }
                     }
                 }
@@ -897,7 +897,7 @@ impl<'a> ToTokens for OnDoneFn<'a> {
                                 if fields.#idx.is_none() {
                                     fields.#idx = <#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::on_absent();
                                     if fields.#idx.is_none() {
-                                        missing.push(swim_common::model::text::Text::new(#name));
+                                        missing.push(swim_model::Text::new(#name));
                                     }
                                 }
                             }
@@ -909,7 +909,7 @@ impl<'a> ToTokens for OnDoneFn<'a> {
 
                                 out.append_all(quote! {
                                 if fields.#idx.as_ref().and_then(|f| f.#inner_idx.as_ref()).is_none() {
-                                    missing.push(swim_common::model::text::Text::new(#name));
+                                    missing.push(swim_model::Text::new(#name));
                                 }
                             });
                                 out
@@ -925,7 +925,7 @@ impl<'a> ToTokens for OnDoneFn<'a> {
                         if fields.#idx.is_none() {
                             fields.#idx = <#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::on_absent();
                             if fields.#idx.is_none() {
-                                missing.push(swim_common::model::text::Text::new(#name));
+                                missing.push(swim_model::Text::new(#name));
                             }
                         }
                     }

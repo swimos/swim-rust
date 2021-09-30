@@ -15,7 +15,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::model::text::Text;
+use swim_model::Text;
 
 mod bridge;
 pub mod generic;
@@ -34,7 +34,7 @@ use std::str::FromStr;
 /// ```
 /// use swim_common::form::Form;
 /// use swim_common::form::structural::Tag;
-/// use swim_common::model::{Value, Item, Attr};
+/// use swim_model::{Attr, Item, Value};
 /// use swim_common::model::time::Timestamp;
 ///
 /// #[derive(Tag, Clone)]

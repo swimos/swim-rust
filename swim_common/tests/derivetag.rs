@@ -14,7 +14,7 @@
 
 use std::str::FromStr;
 use swim_common::form::structural::Tag;
-use swim_common::model::text::Text;
+use swim_model::Text;
 
 const EMPTY: [&'static str; 0] = [];
 

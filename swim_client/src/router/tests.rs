@@ -19,7 +19,7 @@ use futures::{FutureExt, StreamExt};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use swim_common::model::Value;
+use swim_model::Value;
 use swim_common::request::request_future::RequestError;
 use swim_common::routing::ws::WsMessage;
 use swim_common::routing::{ConnectionError, HttpError};

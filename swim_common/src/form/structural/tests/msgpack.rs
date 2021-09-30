@@ -15,7 +15,7 @@
 use crate::form::structural::read::msgpack::{read_from_msg_pack, MsgPackReadError};
 use crate::form::structural::write::interpreters::msgpack::MsgPackInterpreter;
 use crate::form::Form;
-use crate::model::{Attr, Item, Value};
+use swim_model::{Attr, Item, Value};
 use bytes::{BufMut, BytesMut};
 use std::collections::HashMap;
 use std::fmt::Debug;

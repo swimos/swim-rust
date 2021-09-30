@@ -23,7 +23,7 @@ use crate::form::structural::write::{BodyWriter, HeaderWriter};
 use crate::form::structural::write::{
     PrimitiveWriter, RecordBodyKind, StructuralWritable, StructuralWriter,
 };
-use crate::model::text::Text;
+use swim_model::Text;
 use std::borrow::Cow;
 use std::prelude::v1::Result::Err;
 

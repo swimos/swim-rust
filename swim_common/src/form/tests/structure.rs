@@ -15,7 +15,7 @@
 use crate::form::structural::Tag;
 use crate::form::Form;
 use crate::model::time::Timestamp;
-use crate::model::{Attr, Item, Value};
+use swim_model::{Attr, Item, Value};
 
 mod swim_common {
     pub use crate::*;

@@ -37,7 +37,7 @@ use std::num::NonZeroUsize;
 use swim_common::form::structural::Tag;
 use swim_common::form::Form;
 use swim_common::model::time::Timestamp;
-use swim_common::model::Value;
+use swim_model::Value;
 use swim_runtime::time::interval::interval;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;

@@ -20,7 +20,7 @@ use biscuit::{ClaimsSet, Empty, RegisteredClaims, SingleOrMultiple};
 use im::HashSet;
 use std::str::FromStr;
 use swim_common::form::Form;
-use swim_common::model::{Attr, Item, Value};
+use swim_model::{Attr, Item, Value};
 use url::Url;
 
 fn expected_biscuit() -> Compact<ClaimsSet<GoogleId>, Empty> {

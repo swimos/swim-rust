@@ -20,7 +20,7 @@ use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
 use futures::future::join;
 use futures::io::ErrorKind;
 use futures::{FutureExt, StreamExt};
-use swim_common::model::Value;
+use swim_model::Value;
 use swim_common::routing::{ConnectionError, IoError, ResolutionError};
 use swim_common::warp::envelope::Envelope;
 use swim_utilities::routing::uri::RelativeUri;

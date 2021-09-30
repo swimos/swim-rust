@@ -15,14 +15,14 @@
 use crate::form::structural::read::event::NumericValue;
 use crate::form::structural::read::parser::Span;
 use crate::model::parser::{is_identifier_char, is_identifier_start, unescape};
-use crate::model::text::Text;
+use swim_model::Text;
 use either::Either;
 use nom::branch::alt;
 use nom::combinator::{map, map_res, opt, peek, recognize};
 use nom::multi::{many0_count, many1_count};
 use nom::sequence::{delimited, pair, preceded, tuple};
 use nom::IResult;
-use num_bigint::{BigInt, BigUint, ParseBigIntError, Sign};
+use swim_model::bigint::{BigInt, BigUint, ParseBigIntError, Sign};
 use num_traits::Num;
 use std::borrow::Cow;
 use std::convert::TryFrom;

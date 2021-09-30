@@ -19,7 +19,7 @@ use tokio::time::Duration;
 use crate::configuration::downlink::ConfigParseError;
 use crate::configuration::downlink::ROUTER_TAG;
 use swim_common::form::Form;
-use swim_common::model::{Attr, Item, Value};
+use swim_model::{Attr, Item, Value};
 use swim_utilities::future::retryable::{Quantity, RetryStrategy};
 
 const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(60);

@@ -15,6 +15,7 @@
 use std::fmt::Formatter;
 
 mod attr;
+pub use num_bigint as bigint;
 mod blob;
 pub mod identifier;
 mod item;
@@ -30,7 +31,7 @@ pub use item::Item;
 pub use text::Text;
 pub use value::{ReconstructFromValue, ToValue, Value, ValueKind};
 
-fn write_string_literal(literal: &str, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+pub fn write_string_literal(literal: &str, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
     if identifier::is_identifier(literal) {
         f.write_str(literal)
     } else if needs_escape(literal) {

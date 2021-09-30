@@ -17,11 +17,10 @@ use super::Span;
 use crate::form::structural::read::event::{NumericValue, ReadEvent};
 use crate::form::structural::read::parser::record::ParseIterator;
 use crate::form::structural::read::parser::ParseError;
-use crate::model::text::Text;
-use crate::model::{Attr, Item, Value};
+use swim_model::{Attr, Item, Text, Value};
 use either::Either;
 use nom::IResult;
-use num_bigint::{BigInt, BigUint};
+use swim_model::bigint::{BigInt, BigUint};
 use std::borrow::Cow;
 use std::ops::{Add, Neg, Sub};
 

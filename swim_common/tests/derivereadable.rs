@@ -16,7 +16,7 @@ use std::sync::Arc;
 use swim_common::form::structural::read::parser::{parse_recognize, Span};
 use swim_common::form::structural::read::StructuralReadable;
 use swim_common::form::structural::Tag;
-use swim_common::model::Value;
+use swim_model::Value;
 
 fn run_recognizer<T: StructuralReadable>(rep: &str) -> T {
     let span = Span::new(rep);

@@ -15,7 +15,7 @@
 use crate::model::schema::{
     combine_orderings, FieldMatchResult, FieldSchema, Schema, StandardSchema,
 };
-use crate::model::{Item, ToValue, Value};
+use swim_model::{Item, ToValue, Value};
 use std::cmp::Ordering;
 
 /// Schema for Recon slots.

@@ -20,7 +20,7 @@ use crate::form::structural::write::{
     StructuralWriter,
 };
 use byteorder::WriteBytesExt;
-use num_bigint::{BigInt, BigUint, Sign};
+use swim_model::bigint::{BigInt, BigUint, Sign};
 use rmp::encode::{
     write_array_len, write_bin, write_bool, write_ext_meta, write_f64, write_map_len, write_nil,
     write_sint, write_str, write_u64, ValueWriteError,

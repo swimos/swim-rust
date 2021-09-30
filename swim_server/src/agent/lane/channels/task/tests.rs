@@ -58,7 +58,7 @@ use stm::transaction::TransactionError;
 use swim_common::form::structural::read::ReadError;
 use swim_common::form::structural::write::StructuralWritable;
 use swim_common::form::{Form, NewTypeForm};
-use swim_common::model::Value;
+use swim_model::Value;
 use swim_common::routing::ResolutionError;
 use swim_common::routing::RoutingError;
 use swim_common::routing::SendError;

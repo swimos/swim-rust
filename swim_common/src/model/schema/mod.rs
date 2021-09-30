@@ -23,8 +23,8 @@ use crate::model::schema::range::{
 };
 use crate::model::schema::slot::SlotSchema;
 use crate::model::schema::text::TextSchema;
-use crate::model::{Attr, Item, ToValue, Value, ValueKind};
-use num_bigint::{BigInt, ToBigInt};
+use swim_model::{Attr, Item, ToValue, Value, ValueKind};
+use swim_model::bigint::{BigInt, ToBigInt};
 use num_traits::{Signed, ToPrimitive};
 use std::cmp::Ordering;
 use std::collections::HashSet;

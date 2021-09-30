@@ -19,7 +19,7 @@ pub mod parser;
 pub mod recognizer;
 
 use crate::form::structural::write::StructuralWritable;
-use num_bigint::{BigInt, BigUint};
+use swim_model::bigint::{BigInt, BigUint};
 use std::borrow::Cow;
 
 pub mod error;

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::model::schema::Schema;
-use crate::model::{Attr, ToValue, Value};
+use swim_model::{Attr, ToValue, Value};
 use regex::{Error as RegexError, Regex};
 use std::borrow::Borrow;
 use std::cmp::Ordering;

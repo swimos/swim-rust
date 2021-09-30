@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use swim_common::form::Form;
-use swim_common::model::{Value, ValueKind};
+use swim_model::{Value, ValueKind};
 
 use crate::googleid::store::{
     GoogleKeyStore, GoogleKeyStoreError, DEFAULT_CERT_SKEW, GOOGLE_JWK_CERTS_URL,
@@ -45,7 +45,7 @@ use swim_common::form::structural::read::ReadError;
 use swim_common::form::structural::write::{
     BodyWriter, HeaderWriter, PrimitiveWriter, RecordBodyKind, StructuralWritable, StructuralWriter,
 };
-use swim_common::model::text::Text;
+use swim_model::Text;
 
 mod store;
 #[cfg(test)]

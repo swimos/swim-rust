@@ -16,7 +16,7 @@ use crate::model::schema::text::TextSchema;
 use crate::model::schema::{
     combine_orderings, FieldMatchResult, FieldSchema, Schema, StandardSchema,
 };
-use crate::model::{Attr, Item, ToValue, Value, ValueKind};
+use swim_model::{Attr, Item, ToValue, Value, ValueKind};
 use std::borrow::Borrow;
 use std::cmp::Ordering;
 

@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use num_bigint::{BigInt, BigUint};
+use swim_model::bigint::{BigInt, BigUint};
 use std::fmt::Debug;
 use std::sync::Arc;
 
 use crate::form::Form;
-use crate::model::blob::Blob;
-use crate::model::{Attr, Item, Value};
+use swim_model::{Attr, Blob, Item, Value};
 
 mod swim_common {
     pub use crate::*;

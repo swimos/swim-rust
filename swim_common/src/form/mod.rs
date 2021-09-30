@@ -22,7 +22,7 @@ use crate::form::structural::read::recognizer::{MappedRecognizer, RecognizerRead
 use crate::form::structural::read::{ReadError, StructuralReadable};
 use crate::form::structural::write::{StructuralWritable, StructuralWriter};
 use crate::model::schema::StandardSchema;
-use crate::model::Value;
+use swim_model::Value;
 
 pub mod impls;
 pub mod macros;
@@ -45,7 +45,7 @@ mod tests;
 /// provided tag name.
 ///
 /// ```
-/// use swim_common::model::{Attr, Item, Value};
+/// use swim_model::{Attr, Item, Value};
 /// use swim_common::form::Form;
 ///
 /// #[derive(Form)]
@@ -70,7 +70,7 @@ mod tests;
 /// with the provided tag name.
 ///
 /// ```
-/// use swim_common::model::{Attr, Item, Value};
+/// use swim_model::{Attr, Item, Value};
 /// use swim_common::form::Form;
 ///
 /// #[derive(Form)]
@@ -94,7 +94,7 @@ mod tests;
 /// `Default`.
 ///
 /// ```
-/// use swim_common::model::{Attr, Item, Value};
+/// use swim_model::{Attr, Item, Value};
 /// use swim_common::form::Form;
 ///
 /// #[derive(Form, PartialEq, Debug)]
@@ -122,7 +122,7 @@ mod tests;
 /// and are renamed will be written as `Item::Slot` in the output record.
 ///
 /// ```
-/// use swim_common::model::{Attr, Item, Value};
+/// use swim_model::{Attr, Item, Value};
 /// use swim_common::form::Form;
 ///
 /// #[derive(Form, PartialEq, Debug)]
@@ -150,7 +150,7 @@ mod tests;
 /// structures and enumerations or renamed fields.
 ///
 /// ```
-/// use swim_common::model::{Attr, Item, Value};
+/// use swim_model::{Attr, Item, Value};
 /// use swim_common::form::Form;
 ///
 /// #[derive(Form)]
@@ -179,7 +179,7 @@ mod tests;
 /// slot in the output record.
 ///
 /// ```
-/// use swim_common::model::{Attr, Item, Value};
+/// use swim_model::{Attr, Item, Value};
 /// use swim_common::form::Form;
 ///
 /// #[derive(Form)]
@@ -207,7 +207,7 @@ mod tests;
 /// as slots will be promoted to headers. At most one field may be marked with this.
 ///
 /// ```
-/// use swim_common::model::{Attr, Item, Value};
+/// use swim_model::{Attr, Item, Value};
 /// use swim_common::form::Form;
 ///
 /// #[derive(Form)]
@@ -238,7 +238,7 @@ mod tests;
 /// The field should be written as a slot in the tag attribute.
 ///
 /// ```
-/// use swim_common::model::{Attr, Item, Value};
+/// use swim_model::{Attr, Item, Value};
 /// use swim_common::form::Form;
 ///
 /// #[derive(Form)]
@@ -276,7 +276,7 @@ mod tests;
 /// the tag body. At most one field may be marked with this.
 ///
 /// ```
-/// use swim_common::model::{Attr, Item, Value};
+/// use swim_model::{Attr, Item, Value};
 /// use swim_common::form::Form;
 ///
 /// #[derive(Form)]
@@ -329,7 +329,7 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 /// Given the following `struct` and its expected value:
 ///
 /// ```
-/// use swim_common::model::{Attr, Item, Value};
+/// use swim_model::{Attr, Item, Value};
 /// use swim_common::form::Form;
 ///
 /// #[derive(Form)]
@@ -351,7 +351,7 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 /// and a single `Slot` with a key of "name" and a String value The expected schema for this
 /// is:
 /// ```
-/// use swim_common::model::{Attr, Item, Value, ValueKind};
+/// use swim_model::{Attr, Item, Value, ValueKind};
 /// use swim_common::form::{Form, ValueSchema};
 /// use swim_common::model::schema::{StandardSchema, ItemSchema, Schema};
 /// use swim_common::model::schema::attr::AttrSchema;
@@ -396,7 +396,7 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 /// Implementing `ValueSchema` for enumerations works the same way as structures except that the
 /// variants are logically OR'd together as a schema.
 /// ```
-/// use swim_common::model::{Attr, Item, Value, ValueKind};
+/// use swim_model::{Attr, Item, Value, ValueKind};
 /// use swim_common::form::{Form, ValueSchema};
 /// use swim_common::model::schema::{StandardSchema, ItemSchema, Schema};
 /// use swim_common::model::schema::attr::AttrSchema;
@@ -470,7 +470,7 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 /// implementation of `ValueSchema`.
 ///
 /// ```
-/// use swim_common::model::{Attr, Item, Value, ValueKind};
+/// use swim_model::{Attr, Item, Value, ValueKind};
 /// use swim_common::form::{Form, ValueSchema};
 /// use swim_common::model::schema::{StandardSchema, ItemSchema, Schema};
 /// use swim_common::model::schema::attr::AttrSchema;
@@ -549,7 +549,7 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 /// ### num_attrs
 /// ```
 /// use swim_common::form::{Form, ValueSchema};
-/// use swim_common::model::Value;
+/// use swim_model::Value;
 ///
 /// #[derive(Form, ValueSchema)]
 /// struct S {
@@ -562,7 +562,7 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 /// ### num_items
 /// ```
 /// use swim_common::form::{Form, ValueSchema};
-/// use swim_common::model::Value;
+/// use swim_model::Value;
 ///
 /// #[derive(Form, ValueSchema)]
 /// struct S {
@@ -575,7 +575,7 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 /// ### of_kind
 /// ```
 /// use swim_common::form::{Form, ValueSchema};
-/// use swim_common::model::{Value, ValueKind};
+/// use swim_model::{Value, ValueKind};
 ///
 /// #[derive(Form, ValueSchema)]
 /// struct S {
@@ -588,7 +588,7 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 /// ### equal
 /// ```
 /// use swim_common::form::{Form, ValueSchema};
-/// use swim_common::model::Value;
+/// use swim_model::Value;
 ///
 /// fn equals_i32_max() -> Value {
 ///     Value::Int32Value(i32::max_value())
@@ -666,7 +666,7 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 ///
 /// ```
 /// use swim_common::form::{Form, ValueSchema};
-/// use swim_common::model::ValueKind;
+/// use swim_model::ValueKind;
 ///
 /// #[derive(Form, ValueSchema)]
 /// #[form(schema(all_items(of_kind(ValueKind::Int32))))]
@@ -679,7 +679,7 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 /// Is equivalent to:
 /// ```
 /// use swim_common::form::{Form, ValueSchema};
-/// use swim_common::model::ValueKind;
+/// use swim_model::ValueKind;
 ///
 /// #[derive(Form, ValueSchema)]
 /// struct S {
@@ -695,7 +695,7 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 /// ### and
 /// ```
 /// use swim_common::form::{Form, ValueSchema};
-/// use swim_common::model::ValueKind;
+/// use swim_model::ValueKind;
 ///
 /// #[derive(Form, ValueSchema)]
 /// struct S {
@@ -708,7 +708,7 @@ impl<T: StructuralReadable + StructuralWritable> Form for T {}
 /// ### or
 /// ```
 /// use swim_common::form::{Form, ValueSchema};
-/// use swim_common::model::{Value, ValueKind};
+/// use swim_model::{Value, ValueKind};
 ///
 /// #[derive(Form, ValueSchema)]
 /// struct S {

@@ -22,7 +22,7 @@ use crate::form::structural::write::{
     BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
     StructuralWriter,
 };
-use num_bigint::{BigInt, BigUint};
+use swim_model::bigint::{BigInt, BigUint};
 use std::borrow::Cow;
 
 /// Bridge to forward writes to a [`StructuralWriter`] instance to the builder methods

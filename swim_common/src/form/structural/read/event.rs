@@ -14,9 +14,9 @@
 
 use crate::form::structural::read::error::ExpectedEvent;
 use crate::form::structural::read::ReadError;
-use crate::model::text::Text;
-use crate::model::ValueKind;
-use num_bigint::{BigInt, BigUint};
+use swim_model::Text;
+use swim_model::ValueKind;
+use swim_model::bigint::{BigInt, BigUint};
 use std::borrow::Cow;
 
 /// Reading a serialized representation of a record in the Swim data model produces

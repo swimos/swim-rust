@@ -15,8 +15,8 @@
 #[cfg(test)]
 mod tests;
 
-use crate::model::text::Text;
-use crate::model::ValueKind;
+use swim_model::Text;
+use swim_model::ValueKind;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use swim_utilities::format as print;

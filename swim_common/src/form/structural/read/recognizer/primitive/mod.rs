@@ -16,9 +16,9 @@ use super::Recognizer;
 use crate::form::structural::read::error::ExpectedEvent;
 use crate::form::structural::read::event::{NumericValue, ReadEvent};
 use crate::form::structural::read::ReadError;
-use crate::model::text::Text;
-use crate::model::ValueKind;
-use num_bigint::{BigInt, BigUint};
+use swim_model::Text;
+use swim_model::ValueKind;
+use swim_model::bigint::{BigInt, BigUint};
 use num_traits::ToPrimitive;
 use std::convert::TryFrom;
 

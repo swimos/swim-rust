@@ -16,7 +16,7 @@ use super::*;
 use crate::downlink::Message;
 use std::sync::Arc;
 use swim_common::form::Form;
-use swim_common::model::Value::Int32Value;
+use swim_model::Value::Int32Value;
 use swim_common::warp::envelope::LinkMessage;
 
 fn path() -> AbsolutePath {

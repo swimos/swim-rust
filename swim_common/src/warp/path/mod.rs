@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::model::text::Text;
+use swim_model::Text;
 use std::fmt::{Display, Formatter};
 
 /// Absolute path to an agent lane, on a specific host.

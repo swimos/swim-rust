@@ -77,7 +77,7 @@ pub fn build_head_attribute(
                     }
                 }
             } else {
-                let schema = StandardSchema::OfKind(quote!(swim_common::model::ValueKind::Extant));
+                let schema = StandardSchema::OfKind(quote!(swim_model::ValueKind::Extant));
                 quote!(#schema)
             }
         }

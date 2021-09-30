@@ -20,7 +20,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_common::form::ValueSchema;
 use swim_common::model::schema::StandardSchema;
-use swim_common::model::Value;
+use swim_model::Value;
 use swim_common::sink::item::ItemSender;
 use tokio::sync::mpsc;
 

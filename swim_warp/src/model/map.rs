@@ -15,7 +15,7 @@
 use std::sync::Arc;
 use swim_common::form::Form;
 use swim_common::form::ValueSchema;
-use swim_common::model::Value;
+use swim_model::Value;
 
 /// Updates that can be applied to a map lane.
 #[derive(Debug, PartialEq, Eq, Form, ValueSchema, Clone)]

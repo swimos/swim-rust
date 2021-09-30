@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use swim_common::form::{Form, ValueSchema};
-use swim_common::model::ValueKind;
+use swim_model::ValueKind;
 
 fn main() {
     struct Invalid;

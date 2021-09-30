@@ -14,8 +14,8 @@
 
 use crate::form::structural::read::error::ExpectedEvent;
 use crate::form::structural::read::ReadError;
-use crate::model::text::Text;
-use crate::model::ValueKind;
+use swim_model::Text;
+use swim_model::ValueKind;
 
 #[test]
 fn expected_event_display() {

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::model::{Attr, Item, Value};
+use swim_model::{Attr, Item, Value};
 
 fn print_value(v: &Value) -> String {
     format!("{}", super::print_recon(v))

@@ -21,7 +21,7 @@ use crate::form::structural::read::ReadError;
 use crate::form::structural::write::{PrimitiveWriter, StructuralWritable, StructuralWriter};
 use crate::form::ValueSchema;
 use crate::model::schema::StandardSchema;
-use crate::model::ValueKind;
+use swim_model::ValueKind;
 use chrono::{DateTime, LocalResult, TimeZone, Utc};
 use std::fmt::{Display, Formatter};
 
@@ -166,7 +166,7 @@ impl ValueSchema for Timestamp {
 mod tests {
     use super::*;
     use crate::form::Form;
-    use crate::model::Value;
+    use swim_model::Value;
 
     #[test]
     fn test_local_time() {

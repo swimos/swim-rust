@@ -19,9 +19,9 @@ use crate::form::structural::write::{
     BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
     StructuralWriter,
 };
-use crate::model::write_string_literal;
+use swim_model::write_string_literal;
 use base64::display::Base64Display;
-use num_bigint::{BigInt, BigUint};
+use swim_model::bigint::{BigInt, BigUint};
 use std::borrow::Cow;
 use std::fmt::{Display, Formatter};
 

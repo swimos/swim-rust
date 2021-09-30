@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use store::{serialize, EngineInfo, Store, StoreError};
-use swim_common::model::text::Text;
+use swim_model::Text;
 
 use crate::agent::store::{NodeStore, SwimNodeStore};
 use crate::store::keystore::KeyStore;

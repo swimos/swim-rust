@@ -14,8 +14,8 @@
 
 use std::convert::TryFrom;
 
-use crate::model::Item::ValueItem;
-use crate::model::{Attr, Item, Value};
+use swim_model::Item::ValueItem;
+use swim_model::{Attr, Item, Value};
 use crate::warp::envelope::{
     Envelope, EnvelopeParseErr, AUTHED_TAG, AUTH_TAG, CMD_TAG, DEAUTHED_TAG, DEAUTH_TAG, EVENT_TAG,
     LINKED_TAG, LINK_TAG, SYNCED_TAG, SYNC_TAG, UNLINKED_TAG, UNLINK_TAG,

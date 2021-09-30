@@ -90,12 +90,12 @@ impl<'a> ToTokens for DeriveTag<UnitEnum<'a>> {
             }
 
             impl core::str::FromStr for #name {
-                type Err = swim_common::model::text::Text;
+                type Err = swim_model::Text;
 
                 fn from_str(txt: &str) -> Result<Self, Self::Err> {
                     match txt {
                         #(#str_as_var,)*
-                        _ => core::result::Result::Err(swim_common::model::text::Text::new(#err_lit)),
+                        _ => core::result::Result::Err(swim_model::Text::new(#err_lit)),
                     }
                 }
             }

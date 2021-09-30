@@ -19,10 +19,8 @@ use crate::form::structural::write::{
     BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
     StructuralWriter,
 };
-use crate::model::blob::Blob;
-use crate::model::text::Text;
-use crate::model::{Attr, Item, Value};
-use num_bigint::{BigInt, BigUint};
+use swim_model::{Attr, Blob, Item, Text, Value};
+use swim_model::bigint::{BigInt, BigUint};
 use std::borrow::Cow;
 use std::convert::Infallible;
 

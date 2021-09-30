@@ -19,7 +19,7 @@ use swim_client::downlink::typed::map::events::TypedViewWithEvent;
 use swim_client::downlink::typed::map::MapDownlinkReceiver;
 use swim_client::downlink::Event::Remote;
 use swim_client::interface::SwimClientBuilder;
-use swim_common::model::Value;
+use swim_model::Value;
 use swim_common::warp::path::AbsolutePath;
 use tokio::{task, time};
 

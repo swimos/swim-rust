@@ -15,7 +15,7 @@
 use crate::downlink::model::map::UntypedMapModification;
 use crate::downlink::model::value::SharedValue;
 use crate::downlink::Command;
-use swim_common::model::Value;
+use swim_model::Value;
 use swim_common::warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
 use swim_common::warp::path::AbsolutePath;
 
@@ -94,7 +94,7 @@ pub fn dummy_envelope(
 pub(in crate::downlink) mod value {
     use crate::downlink::model::value::SharedValue;
     use crate::downlink::Message;
-    use swim_common::model::Value;
+    use swim_model::Value;
     use swim_common::warp::envelope::{IncomingHeader, IncomingLinkMessage};
 
     pub(in crate::downlink) fn envelope_body(v: SharedValue) -> Value {
@@ -129,7 +129,7 @@ pub(in crate::downlink) mod map {
     use crate::downlink::model::map::UntypedMapModification;
     use crate::downlink::Message;
     use swim_common::form::Form;
-    use swim_common::model::Value;
+    use swim_model::Value;
     use swim_common::warp::envelope::{IncomingHeader, IncomingLinkMessage};
     use tracing::warn;
 

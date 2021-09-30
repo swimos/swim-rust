@@ -27,7 +27,7 @@ use stm::transaction::{atomically, RetryManager, TransactionError, TransactionRu
 use stm::var::TVar;
 use summary::{clear_summary, remove_summary, update_summary};
 use swim_common::form::Form;
-use swim_common::model::Value;
+use swim_model::Value;
 
 use crate::agent::lane::model::map::map_store::MapLaneStoreIo;
 use crate::agent::lane::model::map::summary::TransactionSummary;

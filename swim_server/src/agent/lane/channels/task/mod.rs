@@ -52,7 +52,7 @@ use std::sync::Arc;
 use stm::transaction::RetryManager;
 use swim_common::form::structural::read::ReadError;
 use swim_common::form::Form;
-use swim_common::model::Value;
+use swim_model::Value;
 use swim_common::warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
 use swim_utilities::errors::Recoverable;

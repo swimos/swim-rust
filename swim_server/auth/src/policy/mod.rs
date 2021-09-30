@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::token::{Expired, Token};
-use swim_common::model::Value;
+use swim_model::Value;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PolicyDirective {
