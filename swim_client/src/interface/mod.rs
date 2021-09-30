@@ -15,6 +15,7 @@
 //! Interface for creating and running Swim client instances.
 //!
 //! The module provides methods and structures for creating and running Swim client instances.
+use crate::configuration::ConfigError;
 use crate::configuration::SwimClientConfig;
 use crate::connections::SwimConnPool;
 use crate::downlink::error::{DownlinkError, SubscriptionError};
@@ -35,9 +36,12 @@ use futures::join;
 use std::error::Error;
 use std::fmt;
 use std::fmt::{Display, Formatter};
+use std::fs::File;
+use std::io::Read;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_common::form::{Form, ValidatedForm};
+use swim_common::model::parser::parse_single;
 use swim_common::model::Value;
 use swim_common::routing::error::RoutingError;
 use swim_common::routing::remote::net::dns::Resolver;
@@ -70,28 +74,23 @@ impl SwimClientBuilder {
         SwimClientBuilder { config }
     }
 
-    //Todo dm this needs to be changed after config from file is done.
-    // /// Create a new client builder with configuration from a file.
-    // ///
-    // /// # Arguments
-    // /// * `config_file` - Configuration file for the client.
-    // /// * `use_defaults` - Whether or not missing values should be replaced with default ones.
-    // pub fn new_from_file(
-    //     mut config_file: File,
-    //     use_defaults: bool,
-    // ) -> Result<Self, ConfigParseError> {
-    //     let mut contents = String::new();
-    //     config_file
-    //         .read_to_string(&mut contents)
-    //         .map_err(ConfigParseError::FileError)?;
-    //
-    //     let config = ConfigHierarchy::try_from_value(
-    //         parse_single(&contents).map_err(ConfigParseError::ReconError)?,
-    //         use_defaults,
-    //     )?;
-    //
-    //     Ok(SwimClientBuilder { config })
-    // }
+    /// Create a new client builder with configuration from a file.
+    ///
+    /// # Arguments
+    /// * `config_file` - Configuration file for the client.
+    pub fn new_from_file(mut config_file: File) -> Result<Self, ConfigError> {
+        let mut contents = String::new();
+        config_file
+            .read_to_string(&mut contents)
+            .map_err(ConfigError::FileError)?;
+
+        let config = SwimClientConfig::try_from_value(
+            &parse_single(&contents).map_err(ConfigError::ParseError)?,
+        )
+        .map_err(ConfigError::RecognizerError)?;
+
+        Ok(SwimClientBuilder { config })
+    }
 
     /// Build the Swim client.
     pub async fn build(self) -> SwimClient<AbsolutePath> {

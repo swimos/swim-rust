@@ -22,7 +22,6 @@ use crate::form::structural::read::ReadError;
 use crate::form::structural::write::{
     BodyWriter, HeaderWriter, RecordBodyKind, StructuralWritable, StructuralWriter,
 };
-use crate::form::Form;
 use crate::model::text::Text;
 use crate::model::ValueKind;
 use std::borrow::Borrow;

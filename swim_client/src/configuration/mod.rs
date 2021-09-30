@@ -12,7 +12,6 @@ use std::borrow::Borrow;
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-use crate::configuration::DownlinkConfigField::OnInvalid;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use swim_common::form::structural::read::error::ExpectedEvent;
@@ -26,20 +25,18 @@ use swim_common::form::structural::read::ReadError;
 use swim_common::form::structural::write::{
     BodyWriter, HeaderWriter, RecordBodyKind, StructuralWritable, StructuralWriter,
 };
-use swim_common::form::Form;
-use swim_common::model::parser::parse_single;
+use swim_common::model::parser::ParseFailure;
 use swim_common::model::text::Text;
 use swim_common::model::ValueKind;
 use swim_common::routing::remote::config::{
     RemoteConnectionsConfig, RemoteConnectionsConfigRecognizer,
 };
 use swim_common::warp::path::{AbsolutePath, Addressable};
+use thiserror::Error;
 use tokio::time::Duration;
-use tokio_tungstenite::tungstenite::extensions::compression::deflate::DeflateConfig;
-use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use url::Url;
-use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
+use utilities::future::retryable::strategy::RetryStrategy;
 
 //Todo dm this needs to be changed after config from file is done.
 // #[cfg(test)]
@@ -160,7 +157,6 @@ enum SwimClientConfigStage {
     Tag,
     AfterTag,
     InBody,
-    Slot(SwimClientConfigField),
     Field(SwimClientConfigField),
 }
 
@@ -225,25 +221,30 @@ impl Recognizer for SwimClientConfigRecognizer {
                 }
             }
             SwimClientConfigStage::InBody => match input {
-                ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
+                ReadEvent::StartAttribute(ref attr_name) => match attr_name.borrow() {
                     "downlink_connections" => {
-                        self.stage =
-                            SwimClientConfigStage::Slot(SwimClientConfigField::DownlinkConnections);
+                        self.stage = SwimClientConfigStage::Field(
+                            SwimClientConfigField::DownlinkConnections,
+                        );
+                        self.downlink_connections_recognizer.feed_event(input);
                         None
                     }
                     "remote_connections" => {
                         self.stage =
-                            SwimClientConfigStage::Slot(SwimClientConfigField::RemoteConnections);
+                            SwimClientConfigStage::Field(SwimClientConfigField::RemoteConnections);
+                        self.remote_connections_recognizer.feed_event(input);
                         None
                     }
                     "websocket_connections" => {
-                        self.stage = SwimClientConfigStage::Slot(
+                        self.stage = SwimClientConfigStage::Field(
                             SwimClientConfigField::WebsocketConnections,
                         );
+                        self.websocket_connections_recognizer.feed_event(input);
                         None
                     }
                     "downlinks" => {
-                        self.stage = SwimClientConfigStage::Slot(SwimClientConfigField::Downlinks);
+                        self.stage = SwimClientConfigStage::Field(SwimClientConfigField::Downlinks);
+                        self.downlinks_recognizer.feed_event(input);
                         None
                     }
                     ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
@@ -259,14 +260,6 @@ impl Recognizer for SwimClientConfigRecognizer {
                     ExpectedEvent::EndOfRecord,
                 ])))),
             },
-            SwimClientConfigStage::Slot(fld) => {
-                if matches!(&input, ReadEvent::Slot) {
-                    self.stage = SwimClientConfigStage::Field(*fld);
-                    None
-                } else {
-                    Some(Err(input.kind_error(ExpectedEvent::Slot)))
-                }
-            }
             SwimClientConfigStage::Field(SwimClientConfigField::DownlinkConnections) => {
                 match self.downlink_connections_recognizer.feed_event(input)? {
                     Ok(value) => {
@@ -336,91 +329,91 @@ impl Recognizer for SwimClientConfigRecognizer {
     }
 }
 
-//Todo dm
-#[test]
-fn test_foo() {
-    let mut downlinks = ClientDownlinksConfig::default();
-    downlinks.for_host(
-        url::Url::parse(&"warp://127.0.0.1:9001".to_string()).unwrap(),
-        Default::default(),
-    );
-
-    downlinks.for_lane(
-        &AbsolutePath::new(
-            url::Url::parse(&"warp://127.0.0.2:9001".to_string()).unwrap(),
-            "foo",
-            "bar",
-        ),
-        Default::default(),
-    );
-
-    let config = SwimClientConfig::new(
-        Default::default(),
-        Default::default(),
-        Default::default(),
-        downlinks,
-    );
-
-    // let raw = r#"@downlinks{default:@downlink_config{idle_timeout:@duration{secs:60000,nanos:0},buffer_size:5,on_invalid:terminate,yield_after:256},by_host:{"warp://127.0.0.1:9001":@downlink_config{back_pressure:@propagate,idle_timeout:@duration{secs:60000,nanos:0},buffer_size:5,on_invalid:terminate,yield_after:256}},by_lane:{@path{host:"warp://127.0.0.2:9001",node:foo,lane:bar}:@downlink_config{back_pressure:@propagate,idle_timeout:@duration{secs:60000,nanos:0},buffer_size:5,on_invalid:terminate,yield_after:256}}}"#;
-    // let value = parse_single(raw).unwrap();
-
-    eprintln!("object.as_value() = {}", config.as_value());
-    let new_object = SwimClientConfig::try_from_value(&config.as_value()).unwrap();
-    eprintln!("new_object.as_value() = {}", new_object.as_value());
-
-    // let config = SwimClientConfig::new(
-    //     Default::default(),
-    //     Default::default(),
-    //     Default::default(),
-    //     downlinks,
-    // );
-    // println!("{}", config.as_value());
-    //
-    // let value = config.as_value();
-    //
-    // let config_restored = ClientDownlinksConfig::try_from_value(&value).unwrap();
-
-    // @downlinks{
-    //     default:{
-    //         back_pressure:@propagate,
-    //         idle_timeout:@duration{
-    //             secs:60000,
-    //             nanos:0
-    //         },
-    //         buffer_size:5,
-    //         on_invalid:terminate,
-    //         yield_after:256
-    //     },
-    //     host:{
-    //         "warp://127.0.0.1:9001":{
-    //             back_pressure:@propagate,
-    //             idle_timeout:@duration{
-    //                 secs:60000,
-    //                 nanos:0
-    //             },
-    //             buffer_size:5,
-    //             on_invalid:terminate,
-    //             yield_after:256
-    //         }
-    //     },
-    //     lane:{
-    //         @path{
-    //             host:"warp://127.0.0.2:9001",
-    //             node:foo,
-    //             lane:bar
-    //         }:{
-    //             back_pressure:@propagate,
-    //             idle_timeout:@duration{
-    //                 secs:60000,
-    //                 nanos:0
-    //             },
-    //             buffer_size:5,
-    //             on_invalid:terminate,
-    //             yield_after:256
-    //         }
-    //     }
-    // }
-}
+// //Todo dm
+// #[test]
+// fn test_foo() {
+//     let mut downlinks = ClientDownlinksConfig::default();
+//     downlinks.for_host(
+//         url::Url::parse(&"warp://127.0.0.1:9001".to_string()).unwrap(),
+//         Default::default(),
+//     );
+//
+//     downlinks.for_lane(
+//         &AbsolutePath::new(
+//             url::Url::parse(&"warp://127.0.0.2:9001".to_string()).unwrap(),
+//             "foo",
+//             "bar",
+//         ),
+//         Default::default(),
+//     );
+//
+//     let config = SwimClientConfig::new(
+//         Default::default(),
+//         Default::default(),
+//         Default::default(),
+//         downlinks,
+//     );
+//
+//     // let raw = r#"@downlinks{default:@downlink_config{idle_timeout:@duration{secs:60000,nanos:0},buffer_size:5,on_invalid:terminate,yield_after:256},by_host:{"warp://127.0.0.1:9001":@downlink_config{back_pressure:@propagate,idle_timeout:@duration{secs:60000,nanos:0},buffer_size:5,on_invalid:terminate,yield_after:256}},by_lane:{@path{host:"warp://127.0.0.2:9001",node:foo,lane:bar}:@downlink_config{back_pressure:@propagate,idle_timeout:@duration{secs:60000,nanos:0},buffer_size:5,on_invalid:terminate,yield_after:256}}}"#;
+//     // let value = parse_single(raw).unwrap();
+//
+//     eprintln!("object.as_value() = {}", config.as_value());
+//     let new_object = SwimClientConfig::try_from_value(&config.as_value()).unwrap();
+//     eprintln!("new_object.as_value() = {}", new_object.as_value());
+//
+//     // let config = SwimClientConfig::new(
+//     //     Default::default(),
+//     //     Default::default(),
+//     //     Default::default(),
+//     //     downlinks,
+//     // );
+//     // println!("{}", config.as_value());
+//     //
+//     // let value = config.as_value();
+//     //
+//     // let config_restored = ClientDownlinksConfig::try_from_value(&value).unwrap();
+//
+//     // @downlinks{
+//     //     default:{
+//     //         back_pressure:@propagate,
+//     //         idle_timeout:@duration{
+//     //             secs:60000,
+//     //             nanos:0
+//     //         },
+//     //         buffer_size:5,
+//     //         on_invalid:terminate,
+//     //         yield_after:256
+//     //     },
+//     //     host:{
+//     //         "warp://127.0.0.1:9001":{
+//     //             back_pressure:@propagate,
+//     //             idle_timeout:@duration{
+//     //                 secs:60000,
+//     //                 nanos:0
+//     //             },
+//     //             buffer_size:5,
+//     //             on_invalid:terminate,
+//     //             yield_after:256
+//     //         }
+//     //     },
+//     //     lane:{
+//     //         @path{
+//     //             host:"warp://127.0.0.2:9001",
+//     //             node:foo,
+//     //             lane:bar
+//     //         }:{
+//     //             back_pressure:@propagate,
+//     //             idle_timeout:@duration{
+//     //                 secs:60000,
+//     //                 nanos:0
+//     //             },
+//     //             buffer_size:5,
+//     //             on_invalid:terminate,
+//     //             yield_after:256
+//     //         }
+//     //     }
+//     // }
+// }
 
 impl SwimClientConfig {
     pub fn new(
@@ -1893,4 +1886,12 @@ impl<'a, Path: Addressable> DownlinksConfig for Box<dyn DownlinksConfig<PathType
     fn for_lane(&mut self, lane: &Path, params: DownlinkConfig) {
         (**self).for_lane(lane, params)
     }
+}
+
+#[derive(Debug, Error)]
+#[error("Could not process client configuration.")]
+pub enum ConfigError {
+    FileError(std::io::Error),
+    ParseError(ParseFailure),
+    RecognizerError(ReadError),
 }
