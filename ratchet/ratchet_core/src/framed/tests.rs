@@ -31,7 +31,7 @@ async fn frame_text() {
 
     let mut out = BytesMut::new();
 
-    let mut framed = FramedIo::new(EmptyIo, bytes, Role::Server, usize::MAX);
+    let mut framed = FramedIo::new(EmptyIo, bytes, Role::Server, usize::MAX, 0);
     let item = framed.read_next(&mut out, &mut NoExt).await.unwrap();
 
     assert_eq!(item, Item::Text);
@@ -50,6 +50,7 @@ async fn continuation() {
         BytesMut::default(),
         Role::Server,
         usize::MAX,
+        0,
     );
 
     framed
@@ -97,6 +98,7 @@ async fn double_cont() {
         BytesMut::default(),
         Role::Server,
         usize::MAX,
+        0,
     );
 
     framed
@@ -135,6 +137,7 @@ async fn no_cont() {
         BytesMut::default(),
         Role::Server,
         usize::MAX,
+        0,
     );
 
     framed
@@ -158,7 +161,13 @@ async fn no_cont() {
 
 #[tokio::test]
 async fn overflow_buffer() {
-    let mut framed = FramedIo::new(MirroredIo::default(), BytesMut::default(), Role::Server, 7);
+    let mut framed = FramedIo::new(
+        MirroredIo::default(),
+        BytesMut::default(),
+        Role::Server,
+        7,
+        0,
+    );
 
     framed
         .write(
@@ -192,7 +201,7 @@ where
 #[tokio::test]
 async fn ping() {
     let buffer = BytesMut::from_iter(&[137, 4, 1, 2, 3, 4]);
-    let mut framed = FramedIo::new(EmptyIo, buffer, Role::Client, usize::MAX);
+    let mut framed = FramedIo::new(EmptyIo, buffer, Role::Client, usize::MAX, 0);
 
     ok_eq(
         framed.read_next(&mut BytesMut::default(), &mut NoExt).await,
@@ -203,7 +212,7 @@ async fn ping() {
 #[tokio::test]
 async fn pong() {
     let buffer = BytesMut::from_iter(&[138, 4, 1, 2, 3, 4]);
-    let mut framed = FramedIo::new(EmptyIo, buffer, Role::Client, usize::MAX);
+    let mut framed = FramedIo::new(EmptyIo, buffer, Role::Client, usize::MAX, 0);
 
     ok_eq(
         framed.read_next(&mut BytesMut::default(), &mut NoExt).await,
@@ -215,7 +224,7 @@ async fn pong() {
 async fn close() {
     async fn test(frame: Vec<u8>, eq: Option<CloseReason>) {
         let buffer = BytesMut::from_iter(frame);
-        let mut framed = FramedIo::new(EmptyIo, buffer, Role::Client, usize::MAX);
+        let mut framed = FramedIo::new(EmptyIo, buffer, Role::Client, usize::MAX, 0);
 
         ok_eq(
             framed.read_next(&mut BytesMut::default(), &mut NoExt).await,
@@ -244,7 +253,7 @@ async fn close() {
     frame.extend_from_slice(&[0; 256]);
 
     let buffer = BytesMut::from_iter(frame);
-    let mut framed = FramedIo::new(EmptyIo, buffer, Role::Client, usize::MAX);
+    let mut framed = FramedIo::new(EmptyIo, buffer, Role::Client, usize::MAX, 0);
 
     let decode_result = framed.read_next(&mut BytesMut::default(), &mut NoExt).await;
     let error = decode_result.unwrap_err();

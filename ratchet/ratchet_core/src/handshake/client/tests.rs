@@ -25,8 +25,8 @@ use http::header::HeaderName;
 use http::{header, HeaderMap, HeaderValue, Request, Response, StatusCode, Version};
 use httparse::{Header, Status};
 use ratchet_ext::{
-    ExtensionDecoder, ExtensionEncoder, ExtensionProvider, FrameHeader, ReunitableExtension,
-    SplittableExtension,
+    Extension, ExtensionDecoder, ExtensionEncoder, ExtensionProvider, FrameHeader,
+    ReunitableExtension, RsvBits, SplittableExtension,
 };
 use sha1::{Digest, Sha1};
 use std::convert::Infallible;
@@ -512,6 +512,16 @@ impl ExtensionDecoder for MockExtension {
         _header: &mut FrameHeader,
     ) -> Result<(), Self::Error> {
         Ok(())
+    }
+}
+
+impl Extension for MockExtension {
+    fn bits(&self) -> RsvBits {
+        RsvBits {
+            rsv1: false,
+            rsv2: false,
+            rsv3: false,
+        }
     }
 }
 

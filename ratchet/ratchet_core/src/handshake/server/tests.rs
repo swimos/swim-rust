@@ -23,8 +23,8 @@ use http::header::HeaderName;
 use http::{HeaderMap, HeaderValue, Request, Response, Version};
 use httparse::Header;
 use ratchet_ext::{
-    ExtensionDecoder, ExtensionEncoder, ExtensionProvider, FrameHeader, ReunitableExtension,
-    SplittableExtension,
+    Extension, ExtensionDecoder, ExtensionEncoder, ExtensionProvider, FrameHeader,
+    ReunitableExtension, RsvBits, SplittableExtension,
 };
 
 impl From<ReadError<httparse::Error>> for Error {
@@ -255,6 +255,16 @@ impl ExtensionDecoder for Ext {
         _header: &mut FrameHeader,
     ) -> Result<(), Self::Error> {
         Ok(())
+    }
+}
+
+impl Extension for Ext {
+    fn bits(&self) -> RsvBits {
+        RsvBits {
+            rsv1: true,
+            rsv2: false,
+            rsv3: false,
+        }
     }
 }
 

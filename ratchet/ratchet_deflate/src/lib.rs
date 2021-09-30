@@ -29,6 +29,8 @@ use ratchet_ext::{
     HeaderMap, HeaderValue, OpCode, ReunitableExtension, RsvBits, SplittableExtension,
 };
 
+const DEFLATE_TRAILER: &[u8] = &[0, 0, 255, 255];
+
 /// The minimum size of the LZ77 sliding window size.
 const LZ77_MIN_WINDOW_SIZE: u8 = 8;
 
@@ -119,7 +121,7 @@ impl InitialisedDeflateConfig {
         InitialisedDeflateConfig {
             server_max_window_bits: config.server_max_window_bits,
             client_max_window_bits: config.client_max_window_bits,
-            compress_reset: false,
+            compress_reset: config.accept_no_context_takeover,
             decompress_reset: false,
             compression_level: config.compression_level,
         }
@@ -133,18 +135,13 @@ pub struct Deflate {
 }
 
 impl Deflate {
-    fn initialise_from(config: InitialisedDeflateConfig) -> Deflate {
-        println!("Initialising deflate with: {:?}", config);
-        // todo
-        let client = true;
-        if client {
+    fn initialise_from(config: InitialisedDeflateConfig, is_server: bool) -> Deflate {
+        if is_server {
             Deflate {
-                // decompress // inflator
                 decoder: DeflateDecoder::new(
                     config.server_max_window_bits,
                     config.decompress_reset,
                 ),
-                // compress // deflator
                 encoder: DeflateEncoder::new(
                     config.compression_level,
                     config.client_max_window_bits,
@@ -154,12 +151,12 @@ impl Deflate {
         } else {
             Deflate {
                 decoder: DeflateDecoder::new(
-                    config.server_max_window_bits,
+                    config.client_max_window_bits,
                     config.decompress_reset,
                 ),
                 encoder: DeflateEncoder::new(
                     config.compression_level,
-                    config.client_max_window_bits,
+                    config.server_max_window_bits,
                     config.compress_reset,
                 ),
             }
@@ -267,7 +264,7 @@ impl ExtensionEncoder for DeflateEncoder {
             }
         }
 
-        buf.truncate(buf.len() - 4);
+        buf.truncate(buf.len() - DEFLATE_TRAILER.len());
         std::mem::swap(payload, buf);
 
         if *compress_reset {
@@ -346,7 +343,7 @@ impl ExtensionDecoder for DeflateDecoder {
             _ => return Ok(()),
         }
 
-        payload.extend_from_slice(&[0, 0, 255, 255]);
+        payload.extend_from_slice(DEFLATE_TRAILER);
 
         buf.clear();
         buf.reserve(payload.len() * 2);
@@ -373,6 +370,3 @@ impl ExtensionDecoder for DeflateDecoder {
         Ok(())
     }
 }
-
-#[test]
-fn t() {}
