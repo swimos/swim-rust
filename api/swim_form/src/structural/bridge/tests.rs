@@ -14,7 +14,7 @@
 
 use crate::structural::read::StructuralReadable;
 use crate::structural::tests::GeneralType;
-use swim_model::{Blob, Item, Value, Text};
+use swim_model::{Blob, Item, Text, Value};
 
 #[test]
 fn bridge_numeric_and_logical() {

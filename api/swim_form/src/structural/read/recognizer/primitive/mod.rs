@@ -16,11 +16,11 @@ use super::Recognizer;
 use crate::structural::read::error::ExpectedEvent;
 use crate::structural::read::event::{NumericValue, ReadEvent};
 use crate::structural::read::ReadError;
-use swim_model::Text;
-use swim_model::ValueKind;
-use swim_model::bigint::{BigInt, BigUint};
 use num_traits::ToPrimitive;
 use std::convert::TryFrom;
+use swim_model::bigint::{BigInt, BigUint};
+use swim_model::Text;
+use swim_model::ValueKind;
 
 pub struct UnitRecognizer;
 pub struct I32Recognizer;

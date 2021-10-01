@@ -15,10 +15,10 @@
 #[cfg(test)]
 mod tests;
 
-use swim_model::Text;
-use swim_model::ValueKind;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use swim_model::Text;
+use swim_model::ValueKind;
 use swim_utilities::format as print;
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]

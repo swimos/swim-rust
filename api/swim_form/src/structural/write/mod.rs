@@ -17,20 +17,20 @@ pub mod interpreters;
 mod tests;
 
 use crate::structural::write::interpreters::value::ValueInterpreter;
-use swim_model::{Attr, Blob, Item, Text, Value};
-use swim_model::bigint::{BigInt, BigUint};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::convert::TryFrom;
 use std::rc::Rc;
 use std::sync::Arc;
+use swim_model::bigint::{BigInt, BigUint};
+use swim_model::{Attr, Blob, Item, Text, Value};
 
 #[doc(hidden)]
 pub use swim_form_derive::StructuralWritable;
+use swim_model::time::Timestamp;
 use swim_utilities::routing::uri::RelativeUri;
 use url::Url;
-use swim_model::time::Timestamp;
 
 /// Trait for types that can describe their structure using a [`StructuralWriter`].
 /// Each writer is an interpreter which could, for example, realize the structure

@@ -22,8 +22,8 @@ use crate::structural::write::{
     BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
     StructuralWriter,
 };
-use swim_model::bigint::{BigInt, BigUint};
 use std::borrow::Cow;
+use swim_model::bigint::{BigInt, BigUint};
 
 /// Bridge to forward writes to a [`StructuralWriter`] instance to the builder methods
 /// on a [`StructuralReadable`] type.

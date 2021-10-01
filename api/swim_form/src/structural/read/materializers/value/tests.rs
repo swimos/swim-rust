@@ -16,8 +16,8 @@ use crate::structural::read::parser::{parse_recognize, parse_recognize_with, Spa
 use crate::structural::read::recognizer::Recognizer;
 use crate::structural::read::recognizer::RecognizerReadable;
 use crate::structural::read::StructuralReadable;
-use swim_model::{Attr, Blob, Item, Text, Value};
 use swim_model::bigint::{BigInt, BigUint};
+use swim_model::{Attr, Blob, Item, Text, Value};
 
 mod swim_form {
     pub use crate::*;

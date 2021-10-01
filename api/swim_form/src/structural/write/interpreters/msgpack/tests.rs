@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use crate::structural::write::interpreters::msgpack::MsgPackWriteError;
-use swim_model::bigint::{BigInt, BigUint};
 use std::io::ErrorKind;
+use swim_model::bigint::{BigInt, BigUint};
 
 #[test]
 fn msgpack_write_err_display() {

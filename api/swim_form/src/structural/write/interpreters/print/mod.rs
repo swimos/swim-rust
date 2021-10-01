@@ -19,11 +19,11 @@ use crate::structural::write::{
     BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
     StructuralWriter,
 };
-use swim_model::write_string_literal;
 use base64::display::Base64Display;
-use swim_model::bigint::{BigInt, BigUint};
 use std::borrow::Cow;
 use std::fmt::{Display, Formatter};
+use swim_model::bigint::{BigInt, BigUint};
+use swim_model::write_string_literal;
 
 /// Print a compact Recon representation of [`StructuralWritable`] value.
 /// TODO Add pretty prining options.

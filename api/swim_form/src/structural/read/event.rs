@@ -14,10 +14,10 @@
 
 use crate::structural::read::error::ExpectedEvent;
 use crate::structural::read::ReadError;
+use std::borrow::Cow;
+use swim_model::bigint::{BigInt, BigUint};
 use swim_model::Text;
 use swim_model::ValueKind;
-use swim_model::bigint::{BigInt, BigUint};
-use std::borrow::Cow;
 
 /// Reading a serialized representation of a record in the Swim data model produces
 /// a stream of these events. An event is either a token, a notification that an

@@ -18,9 +18,9 @@ mod tests;
 use crate::structural::read::event::{NumericValue, ReadEvent};
 use crate::structural::read::recognizer::Recognizer;
 use crate::structural::read::ReadError;
-use swim_model::{Attr, Blob, Item, Text, Value};
 use std::convert::TryFrom;
 use std::option::Option::None;
+use swim_model::{Attr, Blob, Item, Text, Value};
 
 #[derive(Debug)]
 enum RecordKey {

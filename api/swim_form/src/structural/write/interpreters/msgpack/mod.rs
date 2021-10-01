@@ -20,7 +20,6 @@ use crate::structural::write::{
     StructuralWriter,
 };
 use byteorder::WriteBytesExt;
-use swim_model::bigint::{BigInt, BigUint, Sign};
 use rmp::encode::{
     write_array_len, write_bin, write_bool, write_ext_meta, write_f64, write_map_len, write_nil,
     write_sint, write_str, write_u64, ValueWriteError,
@@ -29,6 +28,7 @@ use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::io::{Error, Write};
+use swim_model::bigint::{BigInt, BigUint, Sign};
 
 /// [`StructuralWriter`] implementation that uses the MessagePack format. Primitive values are
 /// written with the corresponding MessagePack types. Big integers are written as MessagePack

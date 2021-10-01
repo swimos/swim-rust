@@ -19,28 +19,28 @@ mod tests;
 
 use crate::structural::generic::coproduct::{CCons, CNil, Unify};
 use crate::structural::read::error::ExpectedEvent;
-use crate::structural::read::event::{ReadEvent, NumericValue};
+use crate::structural::read::event::{NumericValue, ReadEvent};
 use crate::structural::read::materializers::value::{
     AttrBodyMaterializer, DelegateBodyMaterializer, ValueMaterializer,
 };
 use crate::structural::read::recognizer::primitive::DataRecognizer;
 use crate::structural::read::ReadError;
 use crate::structural::Tag;
-use swim_model::{Blob, Text, Value, ValueKind};
-use swim_model::bigint::{BigInt, BigUint};
+use chrono::{LocalResult, TimeZone, Utc};
 use std::borrow::Borrow;
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::option::Option::None;
 use std::str::FromStr;
 use std::sync::Arc;
+use swim_model::bigint::{BigInt, BigUint};
+use swim_model::time::Timestamp;
+use swim_model::{Blob, Text, Value, ValueKind};
 use swim_utilities::iteratee::Iteratee;
 use swim_utilities::routing::uri::RelativeUri;
 use url::Url;
-use swim_model::time::Timestamp;
-use std::fmt::Display;
-use chrono::{LocalResult, TimeZone, Utc};
 
 /// Trait for types that can be recognized by a [`Recognizer`] state machine.
 pub trait RecognizerReadable: Sized {
@@ -307,8 +307,8 @@ impl Recognizer for UrlRecognizer {
 }
 
 fn check_parse_time_result<T, V>(me: LocalResult<T>, ts: &V) -> Result<T, ReadError>
-    where
-        V: Display,
+where
+    V: Display,
 {
     match me {
         LocalResult::Single(val) => Ok(val),
@@ -348,8 +348,8 @@ impl Recognizer for TimestampRecognizer {
                     Utc.timestamp_opt(n / 1_000_000_000, (n % 1_000_000_000) as u32),
                     &n,
                 )
-                    .map(|t| Timestamp::from(t))
-                    .map_err(|_| ReadError::NumberOutOfRange);
+                .map(|t| Timestamp::from(t))
+                .map_err(|_| ReadError::NumberOutOfRange);
 
                 Some(result)
             }
@@ -358,8 +358,8 @@ impl Recognizer for TimestampRecognizer {
                     Utc.timestamp_opt((n / 1_000_000_000) as i64, (n % 1_000_000_000) as u32),
                     &n,
                 )
-                    .map(|t| Timestamp::from(t))
-                    .map_err(|_| ReadError::NumberOutOfRange);
+                .map(|t| Timestamp::from(t))
+                .map_err(|_| ReadError::NumberOutOfRange);
                 Some(result)
             }
             ow => Some(Err(

@@ -15,10 +15,10 @@
 use crate::structural::read::msgpack::{read_from_msg_pack, MsgPackReadError};
 use crate::structural::write::interpreters::msgpack::MsgPackInterpreter;
 use crate::Form;
-use swim_model::{Attr, Item, Value};
 use bytes::{BufMut, BytesMut};
 use std::collections::HashMap;
 use std::fmt::Debug;
+use swim_model::{Attr, Item, Value};
 
 fn validate<T: Form + PartialEq + Debug>(value: &T) {
     let mut buffer = BytesMut::new();

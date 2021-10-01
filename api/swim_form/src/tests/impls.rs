@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_model::bigint::{BigInt, BigUint};
 use std::fmt::Debug;
 use std::sync::Arc;
+use swim_model::bigint::{BigInt, BigUint};
 
 use crate::Form;
 use swim_model::{Attr, Blob, Item, Value};

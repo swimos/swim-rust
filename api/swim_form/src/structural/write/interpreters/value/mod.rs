@@ -19,10 +19,10 @@ use crate::structural::write::{
     BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
     StructuralWriter,
 };
-use swim_model::{Attr, Blob, Item, Text, Value};
-use swim_model::bigint::{BigInt, BigUint};
 use std::borrow::Cow;
 use std::convert::Infallible;
+use swim_model::bigint::{BigInt, BigUint};
+use swim_model::{Attr, Blob, Item, Text, Value};
 
 /// [`StructuralWriter`] that constructs [`Value`] instances representing the
 /// strucuture that is described.

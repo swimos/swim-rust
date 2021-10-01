@@ -14,20 +14,20 @@
 
 use crate::structural::read::event::NumericValue;
 use crate::structural::read::parser::Span;
-use swim_model::identifier::{is_identifier_char, is_identifier_start};
-use swim_model::Text;
 use either::Either;
 use nom::branch::alt;
 use nom::combinator::{map, map_res, opt, peek, recognize};
 use nom::multi::{many0_count, many1_count};
 use nom::sequence::{delimited, pair, preceded, tuple};
 use nom::IResult;
-use swim_model::bigint::{BigInt, BigUint, ParseBigIntError, Sign};
 use num_traits::Num;
 use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::ops::Neg;
+use swim_model::bigint::{BigInt, BigUint, ParseBigIntError, Sign};
+use swim_model::identifier::{is_identifier_char, is_identifier_start};
+use swim_model::Text;
 
 fn unwrap_span(span: Span<'_>) -> &str {
     *span
@@ -100,7 +100,7 @@ fn unescape(literal: &str) -> Result<Text, Text> {
                     let uc: char = char::try_from(
                         (*d1 << 12) | (*d2 << 8) | (*d3 << 4) | c.to_digit(16).unwrap(),
                     )
-                        .unwrap();
+                    .unwrap();
                     *state = EscapeState::None;
                     Some(uc)
                 }

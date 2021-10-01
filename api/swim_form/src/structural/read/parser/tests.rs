@@ -17,12 +17,12 @@ use super::Span;
 use crate::structural::read::event::{NumericValue, ReadEvent};
 use crate::structural::read::parser::record::ParseIterator;
 use crate::structural::read::parser::ParseError;
-use swim_model::{Attr, Item, Text, Value};
 use either::Either;
 use nom::IResult;
-use swim_model::bigint::{BigInt, BigUint};
 use std::borrow::Cow;
 use std::ops::{Add, Neg, Sub};
+use swim_model::bigint::{BigInt, BigUint};
+use swim_model::{Attr, Item, Text, Value};
 
 fn span(input: &str) -> Span<'_> {
     Span::new(input)

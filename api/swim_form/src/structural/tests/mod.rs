@@ -23,9 +23,9 @@ use crate::structural::write::{BodyWriter, HeaderWriter};
 use crate::structural::write::{
     PrimitiveWriter, RecordBodyKind, StructuralWritable, StructuralWriter,
 };
-use swim_model::Text;
 use std::borrow::Cow;
 use std::result::Result::Err;
+use swim_model::Text;
 
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct GeneralType<S, T> {

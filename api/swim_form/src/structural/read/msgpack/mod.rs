@@ -21,13 +21,13 @@ use crate::structural::read::{ReadError, StructuralReadable};
 use crate::structural::write::interpreters::msgpack::{BIG_INT_EXT, BIG_UINT_EXT};
 use bytes::{Buf, BufMut, BytesMut};
 use either::Either;
-use swim_model::bigint::{BigInt, BigUint, Sign};
 use rmp::decode::{read_str_len, ValueReadError};
 use rmp::Marker;
 use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::str::Utf8Error;
+use swim_model::bigint::{BigInt, BigUint, Sign};
 
 macro_rules! feed {
     ($e:expr) => {

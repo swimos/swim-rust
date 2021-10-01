@@ -13,11 +13,11 @@
 // limitations under the License.
 
 use crate::structural::write::{RecordBodyKind, StructuralWritable};
-use swim_model::{Blob, Item, Text, Value};
-use swim_model::bigint::{BigInt, BigUint};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
+use swim_model::bigint::{BigInt, BigUint};
+use swim_model::{Blob, Item, Text, Value};
 
 #[test]
 fn unit_structure() {
