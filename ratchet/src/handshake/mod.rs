@@ -283,9 +283,12 @@ fn get_header(headers: &[httparse::Header], name: HeaderName) -> Result<Bytes, E
     }
 }
 
+/// Local replacement for TryInto that can be implemented for httparse::Header and httparse::Request
 pub trait TryMap<Target> {
+    /// Error type returned if the mapping fails
     type Error: Into<Error>;
 
+    /// Try and map this into `Target`
     fn try_map(self) -> Result<Target, Self::Error>;
 }
 
