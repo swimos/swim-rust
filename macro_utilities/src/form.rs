@@ -17,6 +17,22 @@ use crate::{CompoundTypeKind, SynOriginal};
 use syn::Variant;
 use syn::{DeriveInput, Field};
 
+pub mod attr_names {
+
+    use crate::Symbol;
+
+    pub const FORM_PATH: Symbol = Symbol("form");
+    pub const HEADER_PATH: Symbol = Symbol("header");
+    pub const ATTR_PATH: Symbol = Symbol("attr");
+    pub const SLOT_PATH: Symbol = Symbol("slot");
+    pub const BODY_PATH: Symbol = Symbol("body");
+    pub const HEADER_BODY_PATH: Symbol = Symbol("header_body");
+    pub const NAME_PATH: Symbol = Symbol("name");
+    pub const TAG_PATH: Symbol = Symbol("tag");
+    pub const SKIP_PATH: Symbol = Symbol("skip");
+    pub const SCHEMA_PATH: Symbol = Symbol("schema");
+}
+
 /// An enumeration representing the contents of an input.
 #[derive(Clone)]
 pub enum TypeContents<'t, D, F> {

@@ -16,7 +16,7 @@
 
 #[doc(hidden)]
 #[allow(unused_imports)]
-pub use swim_form_derive::{Form, ValueSchema};
+pub use swim_form_derive::Form;
 
 use crate::structural::read::recognizer::{MappedRecognizer, RecognizerReadable};
 use crate::structural::read::{ReadError, StructuralReadable};

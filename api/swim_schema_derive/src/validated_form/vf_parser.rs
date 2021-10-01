@@ -45,7 +45,6 @@ pub const AND_PATH: Symbol = Symbol("and");
 pub const OR_PATH: Symbol = Symbol("or");
 pub const NOT_PATH: Symbol = Symbol("not");
 
-//#[derive(Debug)]
 pub struct ValueSchemaDescriptor {
     pub label: Label,
     pub schema: StandardSchema,

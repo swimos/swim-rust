@@ -16,7 +16,7 @@
 
 #[doc(hidden)]
 #[allow(unused_imports)]
-pub use swim_form_derive::ValueSchema;
+pub use swim_schema_derive::ValueSchema;
 
 use crate::schema::StandardSchema;
 use swim_model::Value;

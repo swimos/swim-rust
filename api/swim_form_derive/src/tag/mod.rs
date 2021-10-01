@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::modifiers::NameTransform;
-use crate::parser::FORM_PATH;
+use macro_utilities::attr_names::FORM_PATH;
 use crate::quote::TokenStreamExt;
 use proc_macro2::{Span, TokenStream};
 use quote::ToTokens;

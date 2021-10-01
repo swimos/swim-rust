@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 swim_model = { path = "../swim_model" }
-swim_form_derive = { path = "../swim_form_derive" }
+swim_schema_derive = { path = "../swim_schema_derive" }
 num-traits = "0.2.12"
 regex = "1.3.6"
 

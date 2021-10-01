@@ -13,25 +13,13 @@
 // limitations under the License.
 
 use proc_macro2::Ident;
+use quote::ToTokens;
+use syn::{Lit, Meta, NestedMeta};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::{Lit, Meta, NestedMeta};
 
-use macro_utilities::Label;
-use macro_utilities::{Attributes, CompoundTypeKind, Context, StructureKind, Symbol};
-use macro_utilities::{FieldKind, FormField};
-use quote::ToTokens;
-
-pub const FORM_PATH: Symbol = Symbol("form");
-pub const HEADER_PATH: Symbol = Symbol("header");
-pub const ATTR_PATH: Symbol = Symbol("attr");
-pub const SLOT_PATH: Symbol = Symbol("slot");
-pub const BODY_PATH: Symbol = Symbol("body");
-pub const HEADER_BODY_PATH: Symbol = Symbol("header_body");
-pub const NAME_PATH: Symbol = Symbol("name");
-pub const TAG_PATH: Symbol = Symbol("tag");
-pub const SKIP_PATH: Symbol = Symbol("skip");
-pub const SCHEMA_PATH: Symbol = Symbol("schema");
+use macro_utilities::{Attributes, CompoundTypeKind, Context, FieldKind, FormField, Label, StructureKind};
+pub use macro_utilities::attr_names::*;
 
 /// Parse a structure's fields from the [`DeriveInput`]'s fields. Returns the type of the fields,
 /// parsed fields that contain a name and kind, and a derived [`FieldManifest]`. Any errors

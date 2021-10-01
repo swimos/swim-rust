@@ -12,16 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod value_schema;
-pub mod schema;
+extern crate proc_macro;
+extern crate proc_macro2;
 #[macro_use]
-mod impls;
-
-#[cfg(test)]
-mod tests;
-
-pub use value_schema::ValueSchema;
-
-#[allow(unused_imports)]
+extern crate quote;
 #[macro_use]
-extern crate swim_schema_derive;
+extern crate syn;
+
+use proc_macro::TokenStream;
+
+use syn::DeriveInput;
+
+use macro_utilities::to_compile_errors;
+
+use crate::validated_form::build_validated_form;
+
+mod form;
+mod parser;
+mod validated_form;
+
+#[proc_macro_derive(ValueSchema, attributes(form))]
+pub fn derive_validated_form(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    build_validated_form(input)
+        .unwrap_or_else(to_compile_errors)
+        .into()
+}

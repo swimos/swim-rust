@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::parser::{SCHEMA_PATH, TAG_PATH};
+use macro_utilities::attr_names::{SCHEMA_PATH, TAG_PATH};
 use crate::SynValidation;
 use macro_utilities::Symbol;
 use quote::ToTokens;

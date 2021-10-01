@@ -14,7 +14,7 @@
 
 use super::ValidateFrom;
 use crate::modifiers::NameTransform;
-use crate::parser::{FieldManifest, FORM_PATH};
+use macro_utilities::attr_names::FORM_PATH;
 use crate::structural::model::field::{FieldWithIndex, SegregatedFields, TaggedFieldModel};
 use crate::structural::model::StructLike;
 use crate::SynValidation;
@@ -33,10 +33,16 @@ pub struct FieldsModel<'a> {
     pub type_kind: CompoundTypeKind,
     /// Kind of the body of generated record (after attributes and renaming have been applied).
     pub body_kind: CompoundTypeKind,
-    /// Describes which kinds of fields are present in the type.
-    pub manifest: FieldManifest,
     /// Descriptors for each field, with attributes applied.
     pub fields: Vec<TaggedFieldModel<'a>>,
+}
+
+impl<'a> FieldsModel<'a> {
+
+    pub fn has_tag_field(&self) -> bool {
+        self.fields.iter().find(|model| model.directive == FieldKind::Tagged).is_some()
+    }
+
 }
 
 /// Preprocessed description of a struct type.
@@ -141,7 +147,7 @@ where
 
         validate2(fields_model, rename).and_then(|(model, transform)| {
             let struct_model = StructModel { name, fields_model: model, transform };
-            if struct_model.fields_model.manifest.has_tag_field && struct_model.transform.is_some() {
+            if struct_model.fields_model.has_tag_field() && struct_model.transform.is_some() {
                 let err = syn::Error::new_spanned(top, "Cannot apply a tag to a field when one has already been applied at the container level");
                 Validation::Validated(struct_model, err.into())
             } else {
@@ -176,15 +182,13 @@ impl<'a> ValidateFrom<&'a Fields> for FieldsModel<'a> {
         };
 
         field_models.and_then(move |flds| {
-            let manifest = derive_manifest(definition, flds.iter());
-
             let kind = assess_kind(definition, flds.iter());
-
-            manifest.join(kind).map(move |(man, kind)| FieldsModel {
-                type_kind,
-                body_kind: kind,
-                manifest: man,
-                fields: flds,
+            kind.map(move |kind| {
+                FieldsModel {
+                    type_kind,
+                    body_kind: kind,
+                    fields: flds,
+                }
             })
         })
     }
@@ -250,75 +254,4 @@ where
         }
     }
     Validation::valid(kind.unwrap_or(CompoundTypeKind::Unit))
-}
-
-fn derive_manifest<'a, It>(definition: &'a Fields, fields: It) -> SynValidation<FieldManifest>
-where
-    It: Iterator<Item = &'a TaggedFieldModel<'a>> + 'a,
-{
-    fields.validate_fold(
-        Validation::valid(FieldManifest::default()),
-        false,
-        |mut manifest, field| {
-            let FieldManifest {
-                replaces_body,
-                header_body,
-                has_attr_fields,
-                has_slot_fields,
-                has_header_fields,
-                has_tag_field,
-                has_skipped_fields,
-            } = &mut manifest;
-
-            let err = match &field.directive {
-                FieldKind::Item => {
-                    *has_slot_fields = true;
-                    None
-                }
-                FieldKind::HeaderBody => {
-                    if *header_body {
-                        Some(syn::Error::new_spanned(
-                            definition,
-                            "At most one field can replace the tag attribute body.",
-                        ))
-                    } else {
-                        *header_body = true;
-                        None
-                    }
-                }
-                FieldKind::Header => {
-                    *has_header_fields = true;
-                    None
-                }
-                FieldKind::Body => {
-                    if *replaces_body {
-                        Some(syn::Error::new_spanned(
-                            definition,
-                            "At most one field can replace the body.",
-                        ))
-                    } else {
-                        *replaces_body = true;
-                        None
-                    }
-                }
-                FieldKind::Attr => {
-                    *has_attr_fields = true;
-                    None
-                }
-                FieldKind::Tagged => {
-                    if *has_tag_field {
-                        Some(syn::Error::new_spanned(definition, "Duplicate tag"))
-                    } else {
-                        *has_tag_field = true;
-                        None
-                    }
-                }
-                FieldKind::Skip => {
-                    *has_skipped_fields = true;
-                    None
-                }
-            };
-            Validation::Validated(manifest, err.into())
-        },
-    )
 }

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::modifiers::NameTransform;
-use crate::parser::FORM_PATH;
+use macro_utilities::attr_names::FORM_PATH;
 use crate::structural::model::record::{SegregatedStructModel, StructDef, StructModel};
 use crate::structural::model::ValidateFrom;
 use crate::SynValidation;
@@ -96,7 +96,7 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
                     let struct_def =
                         StructDef::new(&variant.ident, variant, &variant.attrs, variant);
                     let model = StructModel::validate(struct_def).and_then(|model| {
-                        if model.fields_model.manifest.has_tag_field {
+                        if model.fields_model.has_tag_field() {
                             let err = syn::Error::new_spanned(variant, VARIANT_WITH_TAG);
                             Validation::Validated(model, err.into())
                         } else {
