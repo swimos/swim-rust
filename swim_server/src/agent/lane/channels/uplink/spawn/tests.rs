@@ -47,14 +47,15 @@ use swim_common::routing::SendError;
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::sync::topic;
+use swim_utilities::time::AtomicInstant;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Barrier};
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
-use utilities::instant::AtomicInstant;
-use utilities::sync::{promise, topic};
-use utilities::uri::RelativeUri;
 
 const INIT: i32 = 42;
 
@@ -316,7 +317,7 @@ impl TestContext {
             messages,
             _drop_tx: drop_tx,
             drop_rx,
-            uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now())),
+            uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
         }
     }
 }

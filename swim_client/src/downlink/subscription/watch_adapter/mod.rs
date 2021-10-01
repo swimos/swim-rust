@@ -26,10 +26,10 @@ use swim_common::routing::RoutingError;
 use swim_common::sink::item;
 use swim_common::sink::item::ItemSender;
 use swim_runtime::task::{spawn, TaskHandle};
+use swim_utilities::collections::lrucache::LruCache;
+use swim_utilities::sync::circular_buffer;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
-use utilities::lru_cache::LruCache;
-use utilities::sync::circular_buffer;
 
 /// Stream adapter that removes per-key back-pressure from modifications over a map downlink. If
 /// the produces pushes in changes, sequentially, to the same key the consumer will only observe

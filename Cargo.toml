@@ -7,9 +7,8 @@ members = [
     "swim_server",
     "swim_warp",
     "stm",
-    "utilities",
-    "utilities/bilock",
-    "utilities/test_util"
+    "swim_utilities",
+    "swim_utilities/swim_*",
 ]
 
 exclude = [

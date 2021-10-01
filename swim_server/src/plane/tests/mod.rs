@@ -23,10 +23,10 @@ use futures::future::join;
 use std::time::Duration;
 use swim_runtime::time::clock::Clock;
 use swim_runtime::time::timeout;
+use swim_utilities::future::open_ended::OpenEndedFutures;
+use swim_utilities::routing::route_pattern::RoutePattern;
+use swim_utilities::trigger;
 use tokio::sync::mpsc;
-use utilities::future::open_ended::OpenEndedFutures;
-use utilities::route_pattern::RoutePattern;
-use utilities::sync::trigger;
 
 mod fixture;
 

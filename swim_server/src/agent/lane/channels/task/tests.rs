@@ -65,15 +65,16 @@ use swim_common::routing::SendError;
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::sync::topic;
+use swim_utilities::time::AtomicInstant;
+use swim_utilities::trigger::{self, promise};
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::timeout;
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
-use utilities::instant::AtomicInstant;
-use utilities::sync::{promise, topic, trigger};
-use utilities::uri::RelativeUri;
 
 #[test]
 fn lane_io_err_display_update() {
@@ -635,7 +636,7 @@ fn make_context() -> (
         _drop_tx: Arc::new(drop_tx),
         drop_rx,
         aggregator,
-        uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now())),
+        uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
     };
     let spawn_task = ReceiverStream::new(spawn_rx)
         .take_until(stop_rx)
@@ -1393,7 +1394,7 @@ impl MultiTestContext {
                 router_addr,
             ))),
             spawner,
-            Arc::new(AtomicInstant::new(Instant::now())),
+            Arc::new(AtomicInstant::new(Instant::now().into_std())),
         )
     }
 

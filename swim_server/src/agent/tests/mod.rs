@@ -52,12 +52,12 @@ use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_runtime::task;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::{timeout, Duration};
 use tokio_stream::wrappers::ReceiverStream;
-use utilities::sync::trigger;
-use utilities::sync::trigger::Receiver;
-use utilities::uri::RelativeUri;
+use trigger::Receiver;
 
 mod stub_router {
     use crate::routing::error::RouterError;
@@ -68,10 +68,10 @@ mod stub_router {
     use futures::FutureExt;
     use std::sync::Arc;
     use swim_common::routing::ResolutionError;
+    use swim_utilities::routing::uri::RelativeUri;
+    use swim_utilities::trigger::promise;
     use tokio::sync::mpsc;
     use url::Url;
-    use utilities::sync::promise;
-    use utilities::uri::RelativeUri;
 
     #[derive(Clone)]
     pub struct SingleChannelRouter {

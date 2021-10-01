@@ -39,13 +39,13 @@ use swim_common::model::Value;
 use swim_common::routing::ResolutionError;
 use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::time::AtomicInstant;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::Instant;
 use url::Url;
-use utilities::instant::AtomicInstant;
-use utilities::sync::promise;
-use utilities::uri::RelativeUri;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MockLane;
@@ -171,7 +171,7 @@ impl MockExecutionContext {
         MockExecutionContext {
             router: Arc::new(Mutex::new(MockRouterInner::new(router_addr, buffer_size))),
             spawner,
-            uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now())),
+            uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
         }
     }
 

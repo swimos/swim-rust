@@ -23,8 +23,8 @@ use macro_utilities::FieldKind;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use std::ops::Add;
+use swim_utilities::errors::validation::{validate2, Validation, ValidationItExt};
 use syn::{Attribute, Fields, Ident};
-use utilities::validation::{validate2, Validation, ValidationItExt};
 
 /// Description of the fields, taken from the derive input, preprocessed with any modifcations
 /// present in attributes on the fields.

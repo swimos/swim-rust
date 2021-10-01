@@ -30,10 +30,10 @@ use futures::FutureExt;
 use std::time::Duration;
 use swim_common::routing::ResolutionError;
 use swim_runtime::time::clock::Clock;
+use swim_utilities::routing::route_pattern::RoutePattern;
+use swim_utilities::routing::uri::RelativeUri;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
-use utilities::route_pattern::RoutePattern;
-use utilities::uri::RelativeUri;
 
 #[derive(Default, Clone, Debug)]
 struct DummyClock;

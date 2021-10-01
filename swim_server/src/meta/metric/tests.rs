@@ -32,12 +32,12 @@ use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::time::Duration;
 use swim_common::warp::path::RelativePath;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Receiver;
 use tokio::time::sleep;
 use tokio_stream::wrappers::ReceiverStream;
-use utilities::sync::trigger;
-use utilities::uri::RelativeUri;
 
 pub const DEFAULT_YIELD: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(256) };
 pub const DEFAULT_BUFFER: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(8) };

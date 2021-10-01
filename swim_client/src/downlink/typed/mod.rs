@@ -18,8 +18,8 @@ use crate::downlink::{error::DownlinkError, error::UpdateFailure, Event, RawDown
 use std::fmt::{Display, Formatter};
 use swim_common::form::{Form, ValueSchema};
 use swim_common::model::Value;
+use swim_utilities::sync::topic;
 use tokio::sync::oneshot;
-use utilities::sync::topic;
 
 pub mod command;
 pub mod event;

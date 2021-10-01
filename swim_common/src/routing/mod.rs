@@ -19,9 +19,9 @@ pub mod ws;
 use crate::request::request_future::RequestError;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use swim_utilities::errors::Recoverable;
+use swim_utilities::sync::circular_buffer;
 use tokio::sync::mpsc::error::SendError as MpscSendError;
-use utilities::errors::Recoverable;
-use utilities::sync::circular_buffer;
 
 // An error returned by the router
 #[derive(Clone, Debug, PartialEq)]

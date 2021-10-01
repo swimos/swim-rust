@@ -25,10 +25,10 @@ use swim_common::routing::ws::WsMessage;
 use swim_common::routing::{ConnectionError, HttpError};
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 use tokio_stream::wrappers::ReceiverStream;
-use utilities::sync::promise;
 
 async fn get_message(
     pool_handlers: &mut HashMap<url::Url, PoolHandler>,
