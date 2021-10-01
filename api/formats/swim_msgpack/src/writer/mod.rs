@@ -15,7 +15,8 @@
 #[cfg(test)]
 mod tests;
 
-use crate::structural::write::{
+use crate::{BIG_INT_EXT, BIG_UINT_EXT};
+use swim_form::structural::write::{
     BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
     StructuralWriter,
 };
@@ -146,9 +147,6 @@ impl From<ValueWriteError> for MsgPackWriteError {
         MsgPackWriteError::IoError(err.into())
     }
 }
-
-pub(in crate::structural) const BIG_INT_EXT: i8 = 0;
-pub(in crate::structural) const BIG_UINT_EXT: i8 = 1;
 
 impl Display for MsgPackWriteError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

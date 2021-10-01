@@ -15,7 +15,7 @@
 use super::tokens::streaming::*;
 use super::tokens::*;
 use super::Span;
-use crate::structural::read::event::ReadEvent;
+use swim_form::structural::read::event::ReadEvent;
 use either::Either;
 use nom::branch::alt;
 use nom::character::complete as char_comp;
@@ -84,7 +84,16 @@ impl StateChange {
     }
 }
 
-impl<'a> ReadEvent<'a> {
+trait ReadEventExt<'a>: Sized {
+
+    fn single(self) -> ParseEvents<'a>;
+
+    fn followed_by(self, other: ReadEvent<'a>) -> ParseEvents<'a>;
+
+    fn singleton_body(self) -> ParseEvents<'a>;
+}
+
+impl<'a> ReadEventExt<'a> for ReadEvent<'a> {
     fn single(self) -> ParseEvents<'a> {
         ParseEvents::SingleEvent(self)
     }

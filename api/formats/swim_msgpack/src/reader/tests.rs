@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::structural::read::msgpack::MsgPackReadError;
-use crate::structural::read::ReadError;
+use crate::reader::MsgPackReadError;
+use swim_form::structural::read::ReadError;
 use rmp::Marker;
 
 const INVALID_UTF8: [u8; 2] = [0xc3, 0x28];

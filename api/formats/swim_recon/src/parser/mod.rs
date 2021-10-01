@@ -18,10 +18,10 @@ mod record;
 mod tests;
 mod tokens;
 
-use crate::structural::read::event::ReadEvent;
-pub use crate::structural::read::parser::error::ParseError;
-use crate::structural::read::recognizer::{Recognizer, RecognizerReadable};
-use crate::structural::read::ReadError;
+use swim_form::structural::read::event::ReadEvent;
+pub use crate::parser::error::ParseError;
+use swim_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
+use swim_form::structural::read::ReadError;
 use nom_locate::LocatedSpan;
 
 /// Wraps a string in a strucutre that keeps track of the line and column

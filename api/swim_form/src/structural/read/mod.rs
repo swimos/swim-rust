@@ -14,8 +14,6 @@
 
 pub mod event;
 pub mod materializers;
-pub mod msgpack;
-pub mod parser;
 pub mod recognizer;
 
 use crate::structural::write::StructuralWritable;

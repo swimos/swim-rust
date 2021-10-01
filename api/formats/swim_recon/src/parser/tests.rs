@@ -14,9 +14,9 @@
 
 use super::tokens::{complete, streaming, string_literal};
 use super::Span;
-use crate::structural::read::event::{NumericValue, ReadEvent};
-use crate::structural::read::parser::record::ParseIterator;
-use crate::structural::read::parser::ParseError;
+use swim_form::structural::read::event::{NumericValue, ReadEvent};
+use crate::parser::record::ParseIterator;
+use crate::parser::ParseError;
 use either::Either;
 use nom::IResult;
 use std::borrow::Cow;
@@ -150,7 +150,7 @@ fn parse_decimal_int() {
         NumericValue::Int(-5677),
     );
 
-    let big = BigUint::from(u64::max_value()).add(1u64);
+    let big = BigUint::from(u64::MAX).add(1u64);
     let big_str = format!("{} ", big);
     let input = span(big_str.as_str());
     check_output(
@@ -159,7 +159,7 @@ fn parse_decimal_int() {
         NumericValue::BigUint(big),
     );
 
-    let big_neg = BigInt::from(i64::min_value()).sub(1);
+    let big_neg = BigInt::from(i64::MIN).sub(1);
     let big_neg_str = format!("{} ", big_neg);
     let input = span(big_neg_str.as_str());
     check_output(
@@ -190,7 +190,7 @@ fn parse_decimal_int_final() {
         NumericValue::Int(-5677),
     );
 
-    let big = BigUint::from(u64::max_value()).add(1u64);
+    let big = BigUint::from(u64::MAX).add(1u64);
     let big_str = format!("{}", big);
     let input = span(big_str.as_str());
     check_output(
@@ -199,7 +199,7 @@ fn parse_decimal_int_final() {
         NumericValue::BigUint(big),
     );
 
-    let big_neg = BigInt::from(i64::min_value()).sub(1);
+    let big_neg = BigInt::from(i64::MIN).sub(1);
     let big_neg_str = format!("{}", big_neg);
     let input = span(big_neg_str.as_str());
     check_output(
@@ -244,7 +244,7 @@ fn parse_hex_int() {
         NumericValue::Int(-0xAB00),
     );
 
-    let big = BigUint::from(u64::max_value()).add(1u64);
+    let big = BigUint::from(u64::MAX).add(1u64);
     let big_str = format!("0x{} ", big.to_str_radix(16));
     let input = span(big_str.as_str());
     check_output(
@@ -288,7 +288,7 @@ fn parse_hex_int_final() {
         NumericValue::Int(-0xAB00),
     );
 
-    let big = BigUint::from(u64::max_value()).add(1u64);
+    let big = BigUint::from(u64::MAX).add(1u64);
     let big_str = format!("0x{}", big.to_str_radix(16));
     let input = span(big_str.as_str());
     check_output(
@@ -342,7 +342,7 @@ fn parse_big_int() {
         NumericValue::Int(-0b1100),
     );
 
-    let big = BigUint::from(u64::max_value()).add(1u64);
+    let big = BigUint::from(u64::MAX).add(1u64);
     let big_str = format!("0b{} ", big.to_str_radix(2));
     let input = span(big_str.as_str());
     check_output(
@@ -386,7 +386,7 @@ fn parse_big_int_final() {
         NumericValue::Int(-0b1100),
     );
 
-    let big = BigUint::from(u64::max_value()).add(1u64);
+    let big = BigUint::from(u64::MAX).add(1u64);
     let big_str = format!("0b{}", big.to_str_radix(2));
     let input = span(big_str.as_str());
     check_output(
@@ -1240,7 +1240,7 @@ fn primitive_values_from_string() {
         value_from_string("4000000000").unwrap(),
         Value::Int64Value(4000000000i64)
     ));
-    let n = u64::max_value() - 1;
+    let n = u64::MAX - 1;
     let n_str = n.to_string();
     assert!(matches!(value_from_string(n_str.as_str()).unwrap(), Value::UInt64Value(m) if m == n));
     assert_eq!(

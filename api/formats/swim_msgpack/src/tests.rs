@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::structural::read::msgpack::{read_from_msg_pack, MsgPackReadError};
-use crate::structural::write::interpreters::msgpack::MsgPackInterpreter;
-use crate::Form;
+use crate::{read_from_msg_pack, MsgPackReadError};
+use crate::MsgPackInterpreter;
+use swim_form::Form;
 use bytes::{BufMut, BytesMut};
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -37,7 +37,7 @@ fn validate<T: Form + PartialEq + Debug>(value: &T) {
 }
 
 const I32VALUES: [i32; 4] = [1, -100, 1234, -87657];
-const U32VALUES: [u32; 5] = [1u32, 100u32, 1234u32, 87657u32, u32::max_value()];
+const U32VALUES: [u32; 5] = [1u32, 100u32, 1234u32, 87657u32, u32::MAX];
 const I64VALUES: [i64; 5] = [1i64, -100i64, 1234i64, -87657i64, 105678750199i64];
 const U64VALUES: [u64; 6] = [
     1u64,
@@ -45,7 +45,7 @@ const U64VALUES: [u64; 6] = [
     1234u64,
     87657u64,
     105678750199u64,
-    u64::max_value(),
+    u64::MAX,
 ];
 
 #[test]
@@ -87,7 +87,7 @@ const SIMPLE_STRINGS: [&str; 3] = [
     "a moderately long sentence with quite a few words in it",
 ];
 
-const DATA_LENGTHS: [usize; 2] = [u8::max_value() as usize + 1, u16::max_value() as usize + 1];
+const DATA_LENGTHS: [usize; 2] = [u8::MAX as usize + 1, u16::MAX as usize + 1];
 
 #[test]
 fn msgpack_string() {

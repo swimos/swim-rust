@@ -1,0 +1,18 @@
+[package]
+name = "swim_recon"
+version = "0.1.0"
+authors = ["Swim.AI developers info@swim.ai"]
+edition = "2018"
+
+[dependencies]
+base64 = "0.13.0"
+either = "1.5.3"
+swim_form = { path = "../../swim_form" }
+swim_model = { path = "../../swim_model" }
+nom = "7.0"
+nom_locate = "4.0"
+num-traits = "0.2.12"
+ryu = "1.0"
+
+[dev-dependencies]
+

@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod msgpack;
-
 use crate::structural::read::event::ReadEvent;
 use crate::structural::read::recognizer::{
     FirstOf, NamedFieldsRecognizer, Recognizer, RecognizerReadable, SimpleAttrBody,

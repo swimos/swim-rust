@@ -15,7 +15,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::structural::write::{
+use swim_form::structural::write::{
     BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
     StructuralWriter,
 };

@@ -12,25 +12,52 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::structural::read::parser::{parse_recognize, parse_recognize_with, Span};
 use crate::structural::read::recognizer::Recognizer;
 use crate::structural::read::recognizer::RecognizerReadable;
 use crate::structural::read::StructuralReadable;
 use swim_model::bigint::{BigInt, BigUint};
 use swim_model::{Attr, Blob, Item, Text, Value};
+use crate::structural::read::event::{ReadEvent, NumericValue};
+use std::borrow::Cow;
 
 mod swim_form {
     pub use crate::*;
 }
 
-fn run_recognizer<T: StructuralReadable>(rep: &str) -> T {
-    let span = Span::new(rep);
-    parse_recognize(span).unwrap()
+fn run_recognizer<'a, T, I>(rep: I) -> T
+where
+    T: RecognizerReadable,
+    I: Iterator<Item = ReadEvent<'a>>,
+{
+    let mut sm = T::make_recognizer();
+    run_specific_recognizer(rep, &mut sm)
 }
 
-fn run_specific_recognizer<R: Recognizer>(rep: &str, recognizer: &mut R) -> R::Target {
-    let span = Span::new(rep);
-    parse_recognize_with(span, recognizer).unwrap()
+fn run_specific_recognizer<'a, R, I>(rep: I, sm: &mut R) -> R::Target
+where
+    R: Recognizer,
+    I: Iterator<Item = ReadEvent<'a>>
+{
+    for event in rep {
+        match sm.feed_event(event) {
+            Some(Err(e)) => {
+                panic!("Recognizer failed: {}", e);
+            }
+            Some(Ok(t)) => {
+                return t;
+            }
+            _ => {}
+        }
+    }
+    match sm.try_flush() {
+        Some(Ok(t)) => t,
+        Some(Err(e)) => {
+            panic!("Recognizer failed: {}", e);
+        }
+        _ => {
+            panic!("Recognizer did not complete.");
+        }
+    }
 }
 
 fn round_trip(value: Value) {
@@ -121,9 +148,21 @@ struct AttrWrapper {
     inner: Value,
 }
 
+pub fn attr(name: &'static str) -> ReadEvent<'static> {
+    ReadEvent::StartAttribute(Cow::Borrowed(name))
+}
+
 #[test]
 fn value_from_empty_attr_body() {
-    let wrapper = run_recognizer::<AttrWrapper>("@AttrWrapper @inner");
+    let events = vec![
+        attr("AttrWrapper"),
+        ReadEvent::EndAttribute,
+        attr("inner"),
+        ReadEvent::EndAttribute,
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
+    ];
+    let wrapper = run_recognizer::<AttrWrapper, _>(events.into_iter());
     assert_eq!(
         wrapper,
         AttrWrapper {
@@ -134,7 +173,16 @@ fn value_from_empty_attr_body() {
 
 #[test]
 fn value_from_simple_attr_body() {
-    let wrapper = run_recognizer::<AttrWrapper>("@AttrWrapper @inner(2)");
+    let events = vec![
+        attr("AttrWrapper"),
+        ReadEvent::EndAttribute,
+        attr("inner"),
+        ReadEvent::Number(NumericValue::UInt(2)),
+        ReadEvent::EndAttribute,
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
+    ];
+    let wrapper = run_recognizer::<AttrWrapper, _>(events.into_iter());
     assert_eq!(
         wrapper,
         AttrWrapper {
@@ -145,7 +193,18 @@ fn value_from_simple_attr_body() {
 
 #[test]
 fn value_from_slot_attr_body() {
-    let wrapper = run_recognizer::<AttrWrapper>("@AttrWrapper @inner(a:2)");
+    let events = vec![
+        attr("AttrWrapper"),
+        ReadEvent::EndAttribute,
+        attr("inner"),
+        ReadEvent::TextValue(Cow::Borrowed("a")),
+        ReadEvent::Slot,
+        ReadEvent::Number(NumericValue::UInt(2)),
+        ReadEvent::EndAttribute,
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
+    ];
+    let wrapper = run_recognizer::<AttrWrapper, _>(events.into_iter());
     assert_eq!(
         wrapper,
         AttrWrapper {
@@ -156,7 +215,18 @@ fn value_from_slot_attr_body() {
 
 #[test]
 fn value_from_complex_attr_body() {
-    let wrapper = run_recognizer::<AttrWrapper>("@AttrWrapper @inner(1, 2, 3)");
+    let events = vec![
+        attr("AttrWrapper"),
+        ReadEvent::EndAttribute,
+        attr("inner"),
+        ReadEvent::Number(NumericValue::UInt(1)),
+        ReadEvent::Number(NumericValue::UInt(2)),
+        ReadEvent::Number(NumericValue::UInt(3)),
+        ReadEvent::EndAttribute,
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
+    ];
+    let wrapper = run_recognizer::<AttrWrapper, _>(events.into_iter());
     assert_eq!(
         wrapper,
         AttrWrapper {
@@ -167,7 +237,17 @@ fn value_from_complex_attr_body() {
 
 #[test]
 fn value_from_nested_attr_body() {
-    let wrapper = run_recognizer::<AttrWrapper>("@AttrWrapper @inner({})");
+    let events = vec![
+        attr("AttrWrapper"),
+        ReadEvent::EndAttribute,
+        attr("inner"),
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
+        ReadEvent::EndAttribute,
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
+    ];
+    let wrapper = run_recognizer::<AttrWrapper, _>(events.into_iter());
     assert_eq!(
         wrapper,
         AttrWrapper {
@@ -178,19 +258,47 @@ fn value_from_nested_attr_body() {
 
 #[test]
 fn value_delegate_body() {
+    let events = vec![
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
+    ];
     let mut recog = Value::make_body_recognizer();
-    let value = run_specific_recognizer("{}", &mut recog);
+    let value = run_specific_recognizer(events.into_iter(), &mut recog);
     assert_eq!(value, Value::Extant);
 
-    let value = run_specific_recognizer("{ 2 }", &mut recog);
+    let events = vec![
+        ReadEvent::StartBody,
+        ReadEvent::Number(NumericValue::UInt(2)),
+        ReadEvent::EndRecord,
+    ];
+    let value = run_specific_recognizer(events.into_iter(), &mut recog);
     assert_eq!(value, Value::Int32Value(2));
 
-    let value = run_specific_recognizer("{ a: 2 }", &mut recog);
+    let events = vec![
+        ReadEvent::StartBody,
+        ReadEvent::TextValue(Cow::Borrowed("a")),
+        ReadEvent::Slot,
+        ReadEvent::Number(NumericValue::UInt(2)),
+        ReadEvent::EndRecord,
+    ];
+    let value = run_specific_recognizer(events.into_iter(), &mut recog);
     assert_eq!(value, Value::record(vec![Item::slot("a", 2)]));
 
-    let value = run_specific_recognizer("{ {} }", &mut recog);
+    let events = vec![
+        ReadEvent::StartBody,
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
+        ReadEvent::EndRecord,
+    ];
+    let value = run_specific_recognizer(events.into_iter(), &mut recog);
     assert_eq!(value, Value::empty_record());
 
-    let value = run_specific_recognizer("{ 1, 2 }", &mut recog);
+    let events = vec![
+        ReadEvent::StartBody,
+        ReadEvent::Number(NumericValue::UInt(1)),
+        ReadEvent::Number(NumericValue::UInt(2)),
+        ReadEvent::EndRecord,
+    ];
+    let value = run_specific_recognizer(events.into_iter(), &mut recog);
     assert_eq!(value, Value::record(vec![Item::of(1), Item::of(2)]));
 }

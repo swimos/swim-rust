@@ -12,4 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod value;
+mod reader;
+mod writer;
+#[cfg(test)]
+mod tests;
+
+pub use reader::{read_from_msg_pack, MsgPackReadError};
+pub use writer::{MsgPackInterpreter, MsgPackBodyInterpreter, MsgPackWriteError};
+
+const BIG_INT_EXT: i8 = 0;
+const BIG_UINT_EXT: i8 = 1;

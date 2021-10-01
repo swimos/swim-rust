@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::structural::read::event::NumericValue;
-use crate::structural::read::parser::Span;
+use swim_form::structural::read::event::NumericValue;
+use crate::parser::Span;
 use either::Either;
 use nom::branch::alt;
 use nom::combinator::{map, map_res, opt, peek, recognize};

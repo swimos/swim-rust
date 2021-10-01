@@ -15,10 +15,10 @@
 #[cfg(test)]
 mod tests;
 
-use crate::structural::read::event::ReadEvent;
-use crate::structural::read::recognizer::Recognizer;
-use crate::structural::read::{ReadError, StructuralReadable};
-use crate::structural::write::interpreters::msgpack::{BIG_INT_EXT, BIG_UINT_EXT};
+use swim_form::structural::read::event::ReadEvent;
+use swim_form::structural::read::recognizer::Recognizer;
+use swim_form::structural::read::{ReadError, StructuralReadable};
+use crate::{BIG_INT_EXT, BIG_UINT_EXT};
 use bytes::{Buf, BufMut, BytesMut};
 use either::Either;
 use rmp::decode::{read_str_len, ValueReadError};

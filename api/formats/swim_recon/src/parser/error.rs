@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use super::Span;
-use crate::structural::read::ReadError;
+use swim_form::structural::read::ReadError;
 use nom::error::ErrorKind;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
@@ -81,7 +81,7 @@ impl Error for ParseError {}
 mod tests {
 
     use super::ParseError;
-    use crate::structural::read::ReadError;
+    use swim_form::structural::read::ReadError;
     use nom::error::ErrorKind;
 
     #[test]
