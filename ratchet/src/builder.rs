@@ -137,7 +137,8 @@ impl<E> WebSocketServerBuilder<E> {
 
     pub fn subprotocols<I>(mut self, subprotocols: I) -> Self
     where
-        I: IntoIterator<Item = &'static str>,
+        I: IntoIterator,
+        I::Item: Into<Cow<'static, str>>,
     {
         self.subprotocols = ProtocolRegistry::new(subprotocols);
         self
