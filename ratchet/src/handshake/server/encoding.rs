@@ -32,6 +32,7 @@ const HTTP_VERSION: &[u8] = b"HTTP/1.1 ";
 const STATUS_TERMINATOR_LEN: usize = 2;
 const TERMINATOR_NO_HEADERS: &[u8] = b"\r\n\r\n";
 const TERMINATOR_WITH_HEADER: &[u8] = b"\r\n";
+const HTTP_VERSION_INT: u8 = 1;
 
 pub struct RequestParser<E> {
     pub subprotocols: ProtocolRegistry,
@@ -77,7 +78,10 @@ where
 
     let version_count = HTTP_VERSION.len();
     let status_bytes = status.as_str().as_bytes();
-    let reason_len = status.canonical_reason().map(|r| r.len() + 4).unwrap_or(2);
+    let reason_len = status
+        .canonical_reason()
+        .map(|r| r.len() + TERMINATOR_NO_HEADERS.len())
+        .unwrap_or(TERMINATOR_WITH_HEADER.len());
     let headers_len = headers.iter().fold(0, |count, (name, value)| {
         name.as_str().len() + value.len() + STATUS_TERMINATOR_LEN + count
     });
@@ -138,7 +142,7 @@ where
 
 pub fn check_partial_request(request: &httparse::Request) -> Result<(), Error> {
     match request.version {
-        Some(1) | None => {}
+        Some(HTTP_VERSION_INT) | None => {}
         Some(v) => {
             return Err(Error::with_cause(
                 ErrorKind::Http,
@@ -170,7 +174,7 @@ where
     E: ExtensionProvider,
 {
     match request.version {
-        Some(1) => {}
+        Some(HTTP_VERSION_INT) => {}
         v => {
             return Err(Error::with_cause(
                 ErrorKind::Http,
