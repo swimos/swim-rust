@@ -128,7 +128,7 @@ pub(in crate::downlink) mod value {
 pub(in crate::downlink) mod map {
     use crate::downlink::model::map::UntypedMapModification;
     use crate::downlink::Message;
-    use swim_common::form::Form;
+    use swim_form::Form;
     use swim_model::Value;
     use swim_common::warp::envelope::{IncomingHeader, IncomingLinkMessage};
     use tracing::warn;

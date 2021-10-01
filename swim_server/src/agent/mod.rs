@@ -68,7 +68,7 @@ use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_common::form::Form;
+use swim_form::Form;
 use swim_common::warp::path::RelativePath;
 use swim_runtime::time::clock::Clock;
 use swim_utilities::future::SwimStreamExt;

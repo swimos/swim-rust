@@ -23,7 +23,7 @@ use pin_utils::pin_mut;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::num::NonZeroUsize;
-use swim_common::form::Form;
+use swim_form::Form;
 use swim_common::sink::item::ItemSender;
 use swim_utilities::sync::circular_buffer;
 use swim_utilities::trigger;

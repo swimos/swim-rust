@@ -23,7 +23,7 @@ use im::HashSet;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use swim_common::form::Form;
+use swim_form::Form;
 use swim_model::{Value, ValueKind};
 
 use crate::googleid::store::{
@@ -35,14 +35,14 @@ use crate::{AuthenticationError, Authenticator};
 use biscuit::jwa::SignatureAlgorithm;
 use std::borrow::Borrow;
 use std::convert::TryFrom;
-use swim_common::form::structural::read::error::ExpectedEvent;
-use swim_common::form::structural::read::event::{NumericValue, ReadEvent};
-use swim_common::form::structural::read::recognizer::primitive::StringRecognizer;
-use swim_common::form::structural::read::recognizer::{
+use swim_form::structural::read::error::ExpectedEvent;
+use swim_form::structural::read::event::{NumericValue, ReadEvent};
+use swim_form::structural::read::recognizer::primitive::StringRecognizer;
+use swim_form::structural::read::recognizer::{
     Recognizer, RecognizerReadable, SimpleAttrBody, VecRecognizer,
 };
-use swim_common::form::structural::read::ReadError;
-use swim_common::form::structural::write::{
+use swim_form::structural::read::ReadError;
+use swim_form::structural::write::{
     BodyWriter, HeaderWriter, PrimitiveWriter, RecordBodyKind, StructuralWritable, StructuralWriter,
 };
 use swim_model::Text;

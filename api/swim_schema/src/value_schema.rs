@@ -365,7 +365,8 @@ use swim_model::Value;
 /// for deriving ranges.
 ///
 /// ```
-/// use swim_form::{Form, ValueSchema};
+/// use swim_form::Form;
+/// use swim_schema::ValueSchema;
 ///
 /// #[derive(Form, ValueSchema)]
 /// struct S {
@@ -379,7 +380,8 @@ use swim_model::Value;
 /// writes the argument as a layout
 ///
 /// ```
-/// use swim_form::{Form, ValueSchema};
+/// use swim_form::Form;
+/// use swim_schema::ValueSchema;
 /// use swim_model::ValueKind;
 ///
 /// #[derive(Form, ValueSchema)]
@@ -392,7 +394,8 @@ use swim_model::Value;
 /// ```
 /// Is equivalent to:
 /// ```
-/// use swim_form::{Form, ValueSchema};
+/// use use swim_form::Form;
+/// use swim_schema::ValueSchema;
 /// use swim_model::ValueKind;
 ///
 /// #[derive(Form, ValueSchema)]
@@ -408,7 +411,8 @@ use swim_model::Value;
 ///
 /// ### and
 /// ```
-/// use swim_form::{Form, ValueSchema};
+/// use swim_form::Form;
+/// use swim_schema::ValueSchema;
 /// use swim_model::ValueKind;
 ///
 /// #[derive(Form, ValueSchema)]
@@ -421,7 +425,8 @@ use swim_model::Value;
 ///
 /// ### or
 /// ```
-/// use swim_form::{Form, ValueSchema};
+/// use swim_form::Form;
+/// use swim_schema::ValueSchema;
 /// use swim_model::{Value, ValueKind};
 ///
 /// #[derive(Form, ValueSchema)]
@@ -434,7 +439,8 @@ use swim_model::Value;
 ///
 /// ### not
 /// ```
-/// use swim_form::{Form, ValueSchema};
+/// use swim_form::Form;
+/// use swim_schema::ValueSchema;
 ///
 /// #[derive(Form, ValueSchema)]
 /// struct S {

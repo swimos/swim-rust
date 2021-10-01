@@ -23,8 +23,9 @@ use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
-use swim_common::form::{Form, ValueSchema};
-use swim_common::model::schema::StandardSchema;
+use swim_form::Form;
+use swim_schema::ValueSchema;
+use swim_schema::schema::StandardSchema;
 use swim_utilities::trigger::promise;
 
 /// A downlink that sends commands to a remote downlink and does not link to the remote lane.

@@ -20,7 +20,7 @@ use crate::downlink::model::map::{MapAction, UntypedMapModification, ValMap, Vie
 use crate::downlink::state_machine::{Response, ResponseResult, SyncStateMachine};
 use crate::downlink::DownlinkRequest;
 use std::sync::Arc;
-use swim_common::model::schema::{Schema, StandardSchema};
+use swim_schema::schema::{Schema, StandardSchema};
 use swim_model::Value;
 
 /// State machine for map downlinks.

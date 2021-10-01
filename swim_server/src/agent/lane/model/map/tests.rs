@@ -21,7 +21,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use stm::stm::Stm;
 use stm::transaction::{atomically, TransactionRunner};
-use swim_common::form::Form;
+use swim_form::Form;
 use swim_model::{Attr, Item, Value};
 
 fn buffer_size() -> NonZeroUsize {

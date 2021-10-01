@@ -26,6 +26,8 @@ swim_runtime = { path = "../swim_runtime" }
 swim_warp = { path = "../swim_warp" }
 swim_common = { path = "../swim_common" }
 swim_model = { path = "../api/swim_model" }
+swim_form = { path = "../api/swim_form" }
+swim_schema = { path = "../api/swim_schema" }
 
 http = "0.2"
 tokio-native-tls = "0.3"

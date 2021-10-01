@@ -53,9 +53,9 @@ pub fn build_validated_form(
     let type_contents = type_contents_to_tokens(&type_contents);
 
     let ts = quote! {
-        impl #impl_generics swim_common::form::ValueSchema for #structure_name #ty_generics #where_clause
+        impl #impl_generics swim_form::ValueSchema for #structure_name #ty_generics #where_clause
         {
-            fn schema() -> swim_common::model::schema::StandardSchema {
+            fn schema() -> swim_schema::schema::StandardSchema {
                 #type_contents
             }
         }
@@ -94,7 +94,7 @@ fn type_contents_to_tokens(
             });
 
             quote! {
-                swim_common::model::schema::StandardSchema::Or(vec![
+                swim_schema::schema::StandardSchema::Or(vec![
                     #schemas
                 ])
             }
@@ -111,11 +111,11 @@ fn derive_container_schema(
         StandardSchema::AllItems(items) => match compound_type {
             CompoundTypeKind::Labelled => {
                 quote! {
-                    swim_common::model::schema::StandardSchema::AllItems(
+                    swim_schema::schema::StandardSchema::AllItems(
                         std::boxed::Box::new(
-                            swim_common::model::schema::ItemSchema::Field(
-                                swim_common::model::schema::slot::SlotSchema::new(
-                                    swim_common::model::schema::StandardSchema::Anything,
+                            swim_schema::schema::ItemSchema::Field(
+                                swim_schema::schema::slot::SlotSchema::new(
+                                    swim_schema::schema::StandardSchema::Anything,
                                     #items,
                                 )
                             )
@@ -125,9 +125,9 @@ fn derive_container_schema(
             }
             CompoundTypeKind::Tuple | CompoundTypeKind::NewType => {
                 quote! {
-                    swim_common::model::schema::StandardSchema::AllItems(
+                    swim_schema::schema::StandardSchema::AllItems(
                         std::boxed::Box::new(
-                            swim_common::model::schema::ItemSchema::ValueItem(#items)
+                            swim_schema::schema::ItemSchema::ValueItem(#items)
                         )
                     ),
                 }
@@ -157,7 +157,7 @@ fn derive_items(fields: &[ValidatedField], descriptor: &FieldManifest) -> TokenS
         let field = fields.iter().find(|f| f.form_field.is_body()).unwrap();
         let ty = &field.form_field.original.ty;
 
-        return quote!(<#ty as swim_common::form::ValueSchema>::schema());
+        return quote!(<#ty as swim_form::ValueSchema>::schema());
     }
 
     let mut schemas = fields.iter().fold(TokenStream2::new(), |ts, field| {
@@ -170,7 +170,7 @@ fn derive_items(fields: &[ValidatedField], descriptor: &FieldManifest) -> TokenS
     });
 
     schemas = quote! {
-        swim_common::model::schema::StandardSchema::Layout {
+        swim_schema::schema::StandardSchema::Layout {
             items: vec![
                 #schemas
             ],
@@ -206,7 +206,7 @@ fn derive_compound_schema(
                 let item_schema = derive_items(fields, manifest);
 
                 quote! {
-                    swim_common::model::schema::StandardSchema::And(vec![
+                    swim_schema::schema::StandardSchema::And(vec![
                         #container_schema
                         #item_schema
                     ])
@@ -219,7 +219,7 @@ fn derive_compound_schema(
         item_schemas
     } else {
         quote! {
-            swim_common::model::schema::StandardSchema::And(vec![
+            swim_schema::schema::StandardSchema::And(vec![
                 #attr_schemas,
                 #item_schemas
             ])
@@ -237,7 +237,7 @@ fn build_generics(
         type_contents,
         generics,
         |f| !f.form_field.is_skipped(),
-        &parse_quote!(swim_common::form::ValueSchema),
+        &parse_quote!(swim_form::ValueSchema),
     );
 
     add_bound(

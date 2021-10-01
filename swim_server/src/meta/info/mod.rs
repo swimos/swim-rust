@@ -37,15 +37,15 @@ use std::convert::TryFrom;
 use std::fmt::{Debug, Display, Formatter};
 use std::hash::Hash;
 use std::num::NonZeroUsize;
-use swim_common::form::structural::read::error::ExpectedEvent;
-use swim_common::form::structural::read::event::ReadEvent;
-use swim_common::form::structural::read::recognizer::{
+use swim_form::structural::read::error::ExpectedEvent;
+use swim_form::structural::read::event::ReadEvent;
+use swim_form::structural::read::recognizer::{
     Recognizer, RecognizerReadable, SimpleAttrBody, SimpleRecBody,
 };
-use swim_common::form::structural::read::ReadError;
-use swim_common::form::structural::write::{PrimitiveWriter, StructuralWritable, StructuralWriter};
-use swim_common::form::structural::Tag;
-use swim_common::form::Form;
+use swim_form::structural::read::ReadError;
+use swim_form::structural::write::{PrimitiveWriter, StructuralWritable, StructuralWriter};
+use swim_form::structural::Tag;
+use swim_form::Form;
 use swim_model::Text;
 use swim_model::ValueKind;
 use tokio::sync::mpsc;

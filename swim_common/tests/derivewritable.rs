@@ -14,7 +14,7 @@
 
 use swim_model::bigint::{BigInt, BigUint};
 use std::borrow::Cow;
-use swim_common::form::structural::write::{
+use swim_form::structural::write::{
     BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
     StructuralWriter,
 };

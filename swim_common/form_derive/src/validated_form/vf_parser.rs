@@ -169,8 +169,8 @@ impl<'f> ValidatedField<'f> {
             }
         };
         quote! {
-            swim_common::model::schema::FieldSpec::default(
-                swim_common::model::schema::attr::AttrSchema::named(
+            swim_schema::schema::FieldSpec::default(
+                swim_schema::schema::attr::AttrSchema::named(
                     #ident,
                     #field_schema,
                 )
@@ -189,9 +189,9 @@ impl<'f> ValidatedField<'f> {
         let field_schema = field_schema.to_token_stream();
         let build_named = |name| {
             quote! {
-                swim_common::model::schema::ItemSchema::Field(
-                    swim_common::model::schema::slot::SlotSchema::new(
-                        swim_common::model::schema::StandardSchema::text(#name),
+                swim_schema::schema::ItemSchema::Field(
+                    swim_schema::schema::slot::SlotSchema::new(
+                        swim_schema::schema::StandardSchema::text(#name),
                         #field_schema,
                     )
                 )
@@ -202,14 +202,14 @@ impl<'f> ValidatedField<'f> {
             Label::Unmodified(ident) => build_named(ident.to_string()),
             Label::Renamed { new_label, .. } => build_named(new_label.to_string()),
             Label::Anonymous(_) => quote!(
-                swim_common::model::schema::ItemSchema::ValueItem(#field_schema)
+                swim_schema::schema::ItemSchema::ValueItem(#field_schema)
             ),
             Label::Foreign(..) => unreachable!("Attempted to derive a tag as an item"),
         }
     }
 }
 
-/// A representation used derive to `swim_common::model::schema::StandardSchema`. Where fields are
+/// A representation used derive to `swim_schema::schema::StandardSchema`. Where fields are
 /// their AST representation.
 #[allow(warnings)]
 #[derive(Clone, Debug)]
@@ -249,10 +249,10 @@ impl ToTokens for StandardSchema {
         let quote = match self {
             StandardSchema::Type(ty) => quote!(#ty::schema()),
             StandardSchema::Equal(path) => quote!(
-                    swim_common::model::schema::StandardSchema::Equal(#path())
+                    swim_schema::schema::StandardSchema::Equal(#path())
             ),
             StandardSchema::OfKind(kind) => {
-                quote!(swim_common::model::schema::StandardSchema::OfKind(#kind))
+                quote!(swim_schema::schema::StandardSchema::OfKind(#kind))
             }
             StandardSchema::IntRange(Range {
                 lower,
@@ -260,9 +260,9 @@ impl ToTokens for StandardSchema {
                 inclusive,
             }) => {
                 if *inclusive {
-                    quote!(swim_common::model::schema::StandardSchema::inclusive_int_range(#lower, #upper))
+                    quote!(swim_schema::schema::StandardSchema::inclusive_int_range(#lower, #upper))
                 } else {
-                    quote!(swim_common::model::schema::StandardSchema::int_range(#lower, #upper))
+                    quote!(swim_schema::schema::StandardSchema::int_range(#lower, #upper))
                 }
             }
             StandardSchema::UintRange(Range {
@@ -271,9 +271,9 @@ impl ToTokens for StandardSchema {
                 inclusive,
             }) => {
                 if *inclusive {
-                    quote!(swim_common::model::schema::StandardSchema::inclusive_uint_range(#lower, #upper))
+                    quote!(swim_schema::schema::StandardSchema::inclusive_uint_range(#lower, #upper))
                 } else {
-                    quote!(swim_common::model::schema::StandardSchema::uint_range(#lower, #upper))
+                    quote!(swim_schema::schema::StandardSchema::uint_range(#lower, #upper))
                 }
             }
             StandardSchema::FloatRange(Range {
@@ -282,9 +282,9 @@ impl ToTokens for StandardSchema {
                 inclusive,
             }) => {
                 if *inclusive {
-                    quote!(swim_common::model::schema::StandardSchema::inclusive_float_range(#lower, #upper))
+                    quote!(swim_schema::schema::StandardSchema::inclusive_float_range(#lower, #upper))
                 } else {
-                    quote!(swim_common::model::schema::StandardSchema::float_range(#lower, #upper))
+                    quote!(swim_schema::schema::StandardSchema::float_range(#lower, #upper))
                 }
             }
             StandardSchema::BigIntRange(Range {
@@ -306,40 +306,40 @@ impl ToTokens for StandardSchema {
                 };
 
                 if *inclusive {
-                    quote!(swim_common::model::schema::StandardSchema::inclusive_big_int_range(#lower, #upper))
+                    quote!(swim_schema::schema::StandardSchema::inclusive_big_int_range(#lower, #upper))
                 } else {
-                    quote!(swim_common::model::schema::StandardSchema::big_int_range(#lower, #upper))
+                    quote!(swim_schema::schema::StandardSchema::big_int_range(#lower, #upper))
                 }
             }
-            StandardSchema::NonNan => quote!(swim_common::model::schema::StandardSchema::NonNan),
-            StandardSchema::Finite => quote!(swim_common::model::schema::StandardSchema::Finite),
+            StandardSchema::NonNan => quote!(swim_schema::schema::StandardSchema::NonNan),
+            StandardSchema::Finite => quote!(swim_schema::schema::StandardSchema::Finite),
             StandardSchema::Text(text) => {
-                quote!(swim_common::model::schema::StandardSchema::text(&#text))
+                quote!(swim_schema::schema::StandardSchema::text(&#text))
             }
             StandardSchema::Anything => {
-                quote!(swim_common::model::schema::StandardSchema::Anything)
+                quote!(swim_schema::schema::StandardSchema::Anything)
             }
-            StandardSchema::Nothing => quote!(swim_common::model::schema::StandardSchema::Nothing),
+            StandardSchema::Nothing => quote!(swim_schema::schema::StandardSchema::Nothing),
             StandardSchema::DataLength(len) => {
-                quote!(swim_common::model::schema::StandardSchema::binary_length(#len))
+                quote!(swim_schema::schema::StandardSchema::binary_length(#len))
             }
             StandardSchema::NumAttrs(num) => {
-                quote!(swim_common::model::schema::StandardSchema::NumAttrs(#num))
+                quote!(swim_schema::schema::StandardSchema::NumAttrs(#num))
             }
             StandardSchema::NumItems(num) => {
-                quote!(swim_common::model::schema::StandardSchema::NumItems(#num))
+                quote!(swim_schema::schema::StandardSchema::NumItems(#num))
             }
             StandardSchema::And(and_schema) => quote!(
-                swim_common::model::schema::StandardSchema::And(vec![#(#and_schema,)*])
+                swim_schema::schema::StandardSchema::And(vec![#(#and_schema,)*])
             ),
             StandardSchema::Or(or_schema) => quote!(
-                swim_common::model::schema::StandardSchema::Or(vec![#(#or_schema,)*])
+                swim_schema::schema::StandardSchema::Or(vec![#(#or_schema,)*])
             ),
             StandardSchema::Not(not_schema) => quote!(
-                swim_common::model::schema::StandardSchema::Not(std::boxed::Box::new(#not_schema))
+                swim_schema::schema::StandardSchema::Not(std::boxed::Box::new(#not_schema))
             ),
             StandardSchema::AllItems(ts) => {
-                quote!(swim_common::model::schema::StandardSchema::AllItems(std::boxed::Box::new(#ts)))
+                quote!(swim_schema::schema::StandardSchema::AllItems(std::boxed::Box::new(#ts)))
             }
             StandardSchema::None => {
                 // no-op as this will be a container schema
@@ -427,7 +427,7 @@ where
             let initial_schema = match &form_field.original.ty {
                 Type::Path(path) => {
                     let path = quote! {
-                        <#path as swim_common::form::ValueSchema>
+                        <#path as swim_form::ValueSchema>
                     };
 
                     StandardSchema::Type(path)

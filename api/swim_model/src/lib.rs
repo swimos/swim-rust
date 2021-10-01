@@ -19,6 +19,8 @@ pub use num_bigint as bigint;
 mod blob;
 pub mod identifier;
 mod item;
+#[macro_use]
+pub mod macros;
 mod num;
 #[cfg(test)]
 mod tests;

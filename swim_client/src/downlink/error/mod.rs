@@ -15,7 +15,7 @@
 use crate::configuration::downlink::DownlinkKind;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use swim_common::model::schema::StandardSchema;
+use swim_schema::schema::StandardSchema;
 use swim_model::Value;
 use swim_common::request::request_future::RequestError;
 use swim_common::routing::{ConnectionError, RoutingError};

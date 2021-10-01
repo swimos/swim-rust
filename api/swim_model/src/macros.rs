@@ -12,10 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[doc(hidden)]
-pub use swim_model as model_rexport;
-
-/// Creates a value from the provided items.  
+/// Creates a value from the provided items.
 ///
 /// For example:
 /// ```
@@ -28,8 +25,7 @@ pub use swim_model as model_rexport;
 ///
 /// ## Extant value:
 /// ```
-/// use swim_model::Value;
-/// use swim_common::value;
+/// use swim_model::{Value, value};
 ///
 /// let value = value!();
 /// assert_eq!(value, Value::Extant);
@@ -40,10 +36,10 @@ pub use swim_model as model_rexport;
 #[macro_export]
 macro_rules! value {
     () => {
-        $crate::macros::model_rexport::Value::Extant
+        $crate::Value::Extant
     };
     ($x:expr) => {
-        $crate::macros::model_rexport::Value::from($x)
+        $crate::Value::from($x)
     };
     ($($items:expr),+ $(,)?) => (
         $crate::record!($($items),*)
@@ -63,8 +59,7 @@ macro_rules! value {
 ///
 /// ## An empty record:
 /// ```
-/// use swim_model::Value;
-/// use swim_common::record;
+/// use swim_model::{Value, record};
 ///
 /// let value = record!();
 /// assert_eq!(value, Value::Record(vec![], vec![]));
@@ -72,16 +67,14 @@ macro_rules! value {
 /// ## From multiple items:
 ///
 /// ```
-/// use swim_model::Value;
-/// use swim_common::record;
+/// use swim_model::{Value, record};
 ///
 /// let value = record!(1i32, 2i32, 3i32);
 /// assert_eq!(value, Value::from_vec(vec![1, 2, 3]));
 /// ```
 ///
 /// ```
-/// use swim_model::Value;
-/// use swim_common::record;
+/// use swim_model::{Value, record};
 ///
 /// let value = record!(items => [1i32, 2i32, 3i32]);
 /// assert_eq!(value, Value::from_vec(vec![1, 2, 3]));
@@ -90,8 +83,7 @@ macro_rules! value {
 /// ## From multiple attributes:
 ///
 /// ```
-/// use swim_model::{Attr, Value};
-/// use swim_common::record;
+/// use swim_model::{Attr, Value, record};
 ///
 /// let value = record!(attrs => [("first", 1), ("second", 2)]);
 /// assert_eq!(value, Value::of_attrs(vec![Attr::of(("first", 1)), Attr::of(("second", 2))]));
@@ -99,8 +91,7 @@ macro_rules! value {
 ///
 /// ## From attributes and items
 /// ```
-/// use swim_model::{Attr, Item, Value};
-/// use swim_common::record;
+/// use swim_model::{Attr, Item, Value, record};
 ///
 /// let value = record! {
 ///     attrs => [("first", 1), ("second", 2)],
@@ -119,25 +110,25 @@ macro_rules! value {
 #[macro_export]
 macro_rules! record {
     () => {
-        $crate::macros::model_rexport::Value::Record(vec![], vec![])
+        $crate::Value::Record(vec![], vec![])
     };
     ($($items:expr),+ $(,)?) => (
-        $crate::macros::model_rexport::Value::Record(Vec::new(), vec![$($items.into()),+])
+        $crate::Value::Record(Vec::new(), vec![$($items.into()),+])
     );
     (items => [$($items:expr),+ $(,)?]) => (
-        $crate::macros::model_rexport::Value::Record(Vec::new(), vec![$($items.into()),+])
+        $crate::Value::Record(Vec::new(), vec![$($items.into()),+])
     );
     (attrs => [$($attrs:expr),+ $(,)?]) => (
-        $crate::macros::model_rexport::Value::of_attrs(vec![$($attrs.into()),+])
+        $crate::Value::of_attrs(vec![$($attrs.into()),+])
     );
     (attrs => [$($attrs:expr),+ $(,)?], items => [$($items:expr),+ $(,)?]) => (
-        $crate::macros::model_rexport::Value::Record(vec![$($attrs.into()),+], vec![$($items.into()),+])
+        $crate::Value::Record(vec![$($attrs.into()),+], vec![$($items.into()),+])
     );
 }
 
 #[cfg(test)]
 mod tests {
-    use swim_model::{Attr, Item, Value};
+    use crate::{Attr, Item, Value};
 
     #[test]
     fn test_extant() {

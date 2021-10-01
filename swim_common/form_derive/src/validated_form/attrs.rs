@@ -54,9 +54,9 @@ pub fn build_head_attribute(
             let schema = &field.field_schema;
             if !header_schemas.is_empty() {
                 quote! {
-                    swim_common::model::schema::StandardSchema::Layout {
+                    swim_schema::schema::StandardSchema::Layout {
                         items: vec![
-                            (swim_common::model::schema::ItemSchema::ValueItem(#schema), true),
+                            (swim_schema::schema::ItemSchema::ValueItem(#schema), true),
                             #header_schemas
                         ],
                         exhaustive: true
@@ -69,7 +69,7 @@ pub fn build_head_attribute(
         None => {
             if !header_schemas.is_empty() {
                 quote! {
-                    swim_common::model::schema::StandardSchema::Layout {
+                    swim_schema::schema::StandardSchema::Layout {
                         items: vec![
                             #header_schemas
                         ],
@@ -87,16 +87,16 @@ pub fn build_head_attribute(
         Label::Foreign(_new_ident, ty, _old_ident) => {
             quote! {
                 {
-                    let enumerated = <#ty as swim_common::form::structural::Tag>::VARIANTS;
+                    let enumerated = <#ty as swim_form::structural::Tag>::VARIANTS;
                     let len = enumerated.len();
 
                     let attr_schemas = enumerated.into_iter().fold(Vec::with_capacity(len), |mut vec, variant| {
-                        let schema = swim_common::model::schema::text::TextSchema::exact(variant);
+                        let schema = swim_schema::schema::text::TextSchema::exact(variant);
                         vec.push(schema);
                         vec
                     });
 
-                    swim_common::model::schema::attr::AttrSchema::new(swim_common::model::schema::text::TextSchema::Or(attr_schemas), #tag_value_schema)
+                    swim_schema::schema::attr::AttrSchema::new(swim_schema::schema::text::TextSchema::Or(attr_schemas), #tag_value_schema)
                 }
             }
         }
@@ -104,7 +104,7 @@ pub fn build_head_attribute(
             let name = l.to_name(false);
 
             quote! {
-                swim_common::model::schema::attr::AttrSchema::named(
+                swim_schema::schema::attr::AttrSchema::named(
                     #name,
                     #tag_value_schema,
                 )
@@ -113,7 +113,7 @@ pub fn build_head_attribute(
     };
 
     quote! {
-        swim_common::model::schema::StandardSchema::HeadAttribute {
+        swim_schema::schema::StandardSchema::HeadAttribute {
             schema: std::boxed::Box::new(#attr_schema),
             required: true,
             remainder: std::boxed::Box::new(#remainder),
@@ -137,7 +137,7 @@ pub fn build_attrs(fields: &[ValidatedField]) -> TokenStream2 {
 
     if !attrs.is_empty() {
         attrs = quote! {
-            swim_common::model::schema::StandardSchema::HasAttributes {
+            swim_schema::schema::StandardSchema::HasAttributes {
                 attributes: vec![
                     #attrs
                 ],

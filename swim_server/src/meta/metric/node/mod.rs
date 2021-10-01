@@ -23,7 +23,7 @@ use futures::{select, Stream};
 use std::num::NonZeroUsize;
 use std::ops::Add;
 use std::time::{Duration, Instant};
-use swim_common::form::Form;
+use swim_form::Form;
 use swim_common::warp::path::RelativePath;
 use swim_utilities::trigger;
 use tokio::sync::mpsc::error::TrySendError;

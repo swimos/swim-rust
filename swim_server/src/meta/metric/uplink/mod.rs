@@ -21,7 +21,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
-use swim_common::form::Form;
+use swim_form::Form;
 use swim_common::warp::path::RelativePath;
 use tracing::{event, Level};
 

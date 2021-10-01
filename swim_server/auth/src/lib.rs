@@ -19,7 +19,7 @@ use futures::future::ready;
 use futures::Future;
 use futures_util::future::Ready;
 use std::fmt::Display;
-use swim_common::form::Form;
+use swim_form::Form;
 use swim_model::Value;
 
 pub mod googleid;

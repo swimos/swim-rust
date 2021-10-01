@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::str::FromStr;
-use swim_common::form::structural::Tag;
+use swim_form::structural::Tag;
 use swim_model::Text;
 
 const EMPTY: [&'static str; 0] = [];

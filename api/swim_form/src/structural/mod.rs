@@ -23,19 +23,19 @@ pub mod read;
 #[macro_use]
 pub mod write;
 
+use std::str::FromStr;
 #[doc(hidden)]
 #[allow(unused_imports)]
 pub use swim_form_derive::Tag;
-use std::str::FromStr;
 
 /// A tag for a field in a form. When deriving the `Form` trait, a field that is annotated with
 /// `#[form(tag)]` will be converted into a string and replace the original structure's name.
 ///
 /// ```
-/// use swim_common::form::Form;
-/// use swim_common::form::structural::Tag;
+/// use swim_form::Form;
+/// use swim_form::structural::Tag;
 /// use swim_model::{Attr, Item, Value};
-/// use swim_common::model::time::Timestamp;
+/// use swim_model::time::Timestamp;
 ///
 /// #[derive(Tag, Clone)]
 /// enum Level {

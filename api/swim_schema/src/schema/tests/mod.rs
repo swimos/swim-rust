@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod derive;
+
 use super::*;
 use swim_model::Blob;
 use swim_model::bigint::{BigInt, BigUint};
@@ -2408,7 +2410,7 @@ fn test_vec_schemas_compare() {
         non_empty_vec.is_empty(),
         non_empty_vec.is_empty()
     )
-    .is_none());
+        .is_none());
     assert!(vec_schemas_cmp(true, true, empty_vec.is_empty(), empty_vec.is_empty()).is_none());
     assert!(vec_schemas_cmp(
         true,
@@ -2416,7 +2418,7 @@ fn test_vec_schemas_compare() {
         non_empty_vec.is_empty(),
         non_empty_vec.is_empty()
     )
-    .is_none());
+        .is_none());
 }
 
 #[test]
@@ -2719,7 +2721,7 @@ fn combine_ordering_equal() {
             Ordering::Equal,
             combine_orderings(Ordering::Equal, Ordering::Equal).unwrap()
         )
-        .unwrap(),
+            .unwrap(),
         Ordering::Equal
     );
 }
@@ -2735,7 +2737,7 @@ fn combine_ordering_greater() {
             Ordering::Equal,
             combine_orderings(Ordering::Equal, Ordering::Greater).unwrap()
         )
-        .unwrap(),
+            .unwrap(),
         Ordering::Greater
     );
 
@@ -2744,7 +2746,7 @@ fn combine_ordering_greater() {
             Ordering::Greater,
             combine_orderings(Ordering::Equal, Ordering::Equal).unwrap()
         )
-        .unwrap(),
+            .unwrap(),
         Ordering::Greater
     );
 
@@ -2753,7 +2755,7 @@ fn combine_ordering_greater() {
             Ordering::Equal,
             combine_orderings(Ordering::Greater, Ordering::Equal).unwrap()
         )
-        .unwrap(),
+            .unwrap(),
         Ordering::Greater
     );
 
@@ -2762,7 +2764,7 @@ fn combine_ordering_greater() {
             Ordering::Greater,
             combine_orderings(Ordering::Greater, Ordering::Equal).unwrap()
         )
-        .unwrap(),
+            .unwrap(),
         Ordering::Greater
     );
 }
@@ -2778,7 +2780,7 @@ fn combine_ordering_less() {
             Ordering::Equal,
             combine_orderings(Ordering::Equal, Ordering::Less).unwrap()
         )
-        .unwrap(),
+            .unwrap(),
         Ordering::Less
     );
 
@@ -2787,7 +2789,7 @@ fn combine_ordering_less() {
             Ordering::Less,
             combine_orderings(Ordering::Equal, Ordering::Equal).unwrap()
         )
-        .unwrap(),
+            .unwrap(),
         Ordering::Less
     );
 
@@ -2796,7 +2798,7 @@ fn combine_ordering_less() {
             Ordering::Equal,
             combine_orderings(Ordering::Less, Ordering::Equal).unwrap()
         )
-        .unwrap(),
+            .unwrap(),
         Ordering::Less
     );
 
@@ -2805,7 +2807,7 @@ fn combine_ordering_less() {
             Ordering::Less,
             combine_orderings(Ordering::Less, Ordering::Equal).unwrap()
         )
-        .unwrap(),
+            .unwrap(),
         Ordering::Less
     );
 }

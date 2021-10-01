@@ -14,7 +14,7 @@
 
 use std::fmt::{Display, Formatter};
 use store::StoreError;
-use swim_common::model::time::Timestamp;
+use swim_model::time::Timestamp;
 
 #[derive(Debug)]
 pub struct StoreTaskError {

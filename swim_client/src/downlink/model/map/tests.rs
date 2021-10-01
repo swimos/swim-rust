@@ -15,9 +15,10 @@
 use swim_model::bigint::{BigInt, BigUint};
 
 use super::*;
-use swim_common::form::structural::read::ReadError;
-use swim_common::form::{Form, ValueSchema};
-use swim_common::model::schema::Schema;
+use swim_form::structural::read::ReadError;
+use swim_form::Form;
+use swim_schema::ValueSchema;
+use swim_schema::schema::Schema;
 use swim_model::{Attr, Item};
 
 #[test]

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use chrono::{Duration, Utc};
-use swim_common::model::time::Timestamp;
+use swim_model::time::Timestamp;
 
 #[derive(Clone, PartialEq, Eq, Debug, Ord, PartialOrd, Hash)]
 pub struct Token {

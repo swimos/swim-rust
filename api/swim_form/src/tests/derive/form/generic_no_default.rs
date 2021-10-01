@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_common::form::Form;
+use swim_form::Form;
 
 fn main() {
     #[derive(Form)]

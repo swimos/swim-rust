@@ -26,7 +26,7 @@ use stm::stm::{abort, left, right, Constant, Stm, VecStm, UNIT};
 use stm::transaction::{atomically, RetryManager, TransactionError, TransactionRunner};
 use stm::var::TVar;
 use summary::{clear_summary, remove_summary, update_summary};
-use swim_common::form::Form;
+use swim_form::Form;
 use swim_model::Value;
 
 use crate::agent::lane::model::map::map_store::MapLaneStoreIo;
@@ -45,7 +45,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::num::NonZeroUsize;
 use stm::var::observer::{Observer, ObserverStream, ObserverSubscriber};
-use swim_common::form::structural::read::ReadError;
+use swim_form::structural::read::ReadError;
 use swim_utilities::future::{FlatmapStream, SwimStreamExt, Transform};
 use swim_warp::model::map::MapUpdate;
 use tracing::{event, Level};

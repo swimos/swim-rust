@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::downlink::error::{DownlinkError, TransitionError};
-use swim_common::model::schema::StandardSchema;
+use swim_schema::schema::StandardSchema;
 use swim_model::Value;
 use swim_common::routing::{CloseError, ConnectionError, RoutingError};
 

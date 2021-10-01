@@ -105,7 +105,7 @@ impl<'a> ToTokens for DeriveTag<UnitEnum<'a>> {
                 const VARIANT_NAMES: [&str; #num_vars] = [#(#literals),*];
 
                 #[automatically_derived]
-                impl swim_common::form::structural::Tag for #name {
+                impl swim_form::structural::Tag for #name {
 
                     const VARIANTS: &'static [&'static str] = &VARIANT_NAMES;
                 }

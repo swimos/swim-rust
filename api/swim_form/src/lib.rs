@@ -23,8 +23,6 @@ use crate::structural::read::{ReadError, StructuralReadable};
 use crate::structural::write::{StructuralWritable, StructuralWriter};
 use swim_model::Value;
 
-#[macro_use]
-pub mod macros;
 pub mod structural;
 
 #[cfg(test)]
@@ -49,7 +47,7 @@ extern crate swim_form_derive;
 ///
 /// ```
 /// use swim_model::{Attr, Item, Value};
-/// use swim_common::form::Form;
+/// use swim_form::Form;
 ///
 /// #[derive(Form)]
 /// #[form(tag = "User")]
@@ -74,7 +72,7 @@ extern crate swim_form_derive;
 ///
 /// ```
 /// use swim_model::{Attr, Item, Value};
-/// use swim_common::form::Form;
+/// use swim_form::Form;
 ///
 /// #[derive(Form)]
 /// enum Manufacturer {
@@ -98,7 +96,7 @@ extern crate swim_form_derive;
 ///
 /// ```
 /// use swim_model::{Attr, Item, Value};
-/// use swim_common::form::Form;
+/// use swim_form::Form;
 ///
 /// #[derive(Form, PartialEq, Debug)]
 /// struct Food {
@@ -126,7 +124,7 @@ extern crate swim_form_derive;
 ///
 /// ```
 /// use swim_model::{Attr, Item, Value};
-/// use swim_common::form::Form;
+/// use swim_form::Form;
 ///
 /// #[derive(Form, PartialEq, Debug)]
 /// struct Food {
@@ -154,7 +152,7 @@ extern crate swim_form_derive;
 ///
 /// ```
 /// use swim_model::{Attr, Item, Value};
-/// use swim_common::form::Form;
+/// use swim_form::Form;
 ///
 /// #[derive(Form)]
 /// struct Structure {
@@ -183,7 +181,7 @@ extern crate swim_form_derive;
 ///
 /// ```
 /// use swim_model::{Attr, Item, Value};
-/// use swim_common::form::Form;
+/// use swim_form::Form;
 ///
 /// #[derive(Form)]
 /// struct Structure {
@@ -211,7 +209,7 @@ extern crate swim_form_derive;
 ///
 /// ```
 /// use swim_model::{Attr, Item, Value};
-/// use swim_common::form::Form;
+/// use swim_form::Form;
 ///
 /// #[derive(Form)]
 /// struct Structure {
@@ -242,7 +240,7 @@ extern crate swim_form_derive;
 ///
 /// ```
 /// use swim_model::{Attr, Item, Value};
-/// use swim_common::form::Form;
+/// use swim_form::Form;
 ///
 /// #[derive(Form)]
 /// struct Structure {
@@ -280,7 +278,7 @@ extern crate swim_form_derive;
 ///
 /// ```
 /// use swim_model::{Attr, Item, Value};
-/// use swim_common::form::Form;
+/// use swim_form::Form;
 ///
 /// #[derive(Form)]
 /// struct Structure {

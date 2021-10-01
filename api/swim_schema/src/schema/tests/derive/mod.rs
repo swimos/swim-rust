@@ -12,12 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use form_derive::*;
+use trybuild::TestCases;
 
-fn main() {
-    #[derive(Form, ValueSchema)]
-    struct S {
-        #[form(schema(not(num_items = 5, num_attrs = 100)))]
-        a: i32,
-    }
+#[test]
+fn test_derive() {
+    let t = TestCases::new();
+    t.compile_fail("src/schema/tests/derive/validated_form/*.rs");
 }

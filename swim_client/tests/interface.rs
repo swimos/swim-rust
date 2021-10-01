@@ -18,7 +18,7 @@ mod tests {
     use swim_client::downlink::typed::map::events::TypedViewWithEvent;
     use swim_client::downlink::Event;
     use swim_client::interface::SwimClientBuilder;
-    use swim_common::form::Form;
+    use swim_form::Form;
     use swim_model::{Attr, Item, Value};
     use swim_common::warp::path::AbsolutePath;
     use test_server::build_server;

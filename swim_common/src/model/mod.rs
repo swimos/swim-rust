@@ -13,5 +13,3 @@
 // limitations under the License.
 
 pub mod parser;
-pub mod schema;
-pub mod time;

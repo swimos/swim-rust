@@ -1,5 +1,0 @@
-error: Only one argument is permitted in a NOT operator
-  --> $DIR/not_op_arg_count.rs:20:23
-   |
-20 |         #[form(schema(not(num_items = 5, num_attrs = 100)))]
-   |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

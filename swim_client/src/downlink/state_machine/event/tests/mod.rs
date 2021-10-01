@@ -14,7 +14,7 @@
 
 use super::*;
 use crate::downlink::{Command, Message};
-use swim_common::model::schema::StandardSchema;
+use swim_schema::schema::StandardSchema;
 use swim_model::{Value, ValueKind};
 
 #[test]

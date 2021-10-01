@@ -62,7 +62,7 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedEnumModel<'a>> {
         super::add_bounds(
             *generics,
             &mut new_generics,
-            parse_quote!(swim_common::form::structural::write::StructuralWritable),
+            parse_quote!(swim_form::structural::write::StructuralWritable),
         );
 
         let (impl_lst, ty_params, where_clause) = new_generics.split_for_impl();
@@ -71,7 +71,7 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedEnumModel<'a>> {
             quote! {
 
                 #[automatically_derived]
-                impl #impl_lst swim_common::form::structural::write::StructuralWritable for #name #ty_params #where_clause {
+                impl #impl_lst swim_form::structural::write::StructuralWritable for #name #ty_params #where_clause {
 
                     #[inline]
                     fn num_attributes(&self) -> usize {
@@ -122,7 +122,7 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedEnumModel<'a>> {
             quote! {
 
                 #[automatically_derived]
-                impl #impl_lst swim_common::form::structural::write::StructuralWritable for #name #ty_params #where_clause {
+                impl #impl_lst swim_form::structural::write::StructuralWritable for #name #ty_params #where_clause {
 
                     #[inline]
                     fn num_attributes(&self) -> usize {
@@ -132,8 +132,8 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedEnumModel<'a>> {
                     #[allow(non_snake_case, unused_variables)]
                     #[inline]
                     fn write_with<__W: #writer_trait>(&self, writer: __W) -> core::result::Result<__W::Repr, __W::Error> {
-                        use swim_common::form::structural::write::HeaderWriter;
-                        use swim_common::form::structural::write::BodyWriter;
+                        use swim_form::structural::write::HeaderWriter;
+                        use swim_form::structural::write::BodyWriter;
                         match self {
                             #(#write_with_cases)*
                         }
@@ -142,8 +142,8 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedEnumModel<'a>> {
                     #[allow(non_snake_case, unused_variables)]
                     #[inline]
                     fn write_into<__W: #writer_trait>(self, writer: __W) -> core::result::Result<__W::Repr, __W::Error> {
-                        use swim_common::form::structural::write::HeaderWriter;
-                        use swim_common::form::structural::write::BodyWriter;
+                        use swim_form::structural::write::HeaderWriter;
+                        use swim_form::structural::write::BodyWriter;
                         match self {
                             #(#write_into_cases)*
                         }
@@ -162,7 +162,7 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedStructModel<'a>> {
         super::add_bounds(
             *generics,
             &mut new_generics,
-            parse_quote!(swim_common::form::structural::write::StructuralWritable),
+            parse_quote!(swim_form::structural::write::StructuralWritable),
         );
 
         let (impl_lst, ty_params, where_clause) = new_generics.split_for_impl();
@@ -177,7 +177,7 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedStructModel<'a>> {
         let writable_impl = quote! {
 
             #[automatically_derived]
-            impl #impl_lst swim_common::form::structural::write::StructuralWritable for #name #ty_params #where_clause {
+            impl #impl_lst swim_form::structural::write::StructuralWritable for #name #ty_params #where_clause {
 
                 #[inline]
                 fn num_attributes(&self) -> usize {
@@ -187,9 +187,9 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedStructModel<'a>> {
                 #[allow(non_snake_case, unused_variables)]
                 #[inline]
                 fn write_with<__W: #writer_trait>(&self, writer: __W) -> core::result::Result<__W::Repr, __W::Error> {
-                    use swim_common::form::structural::write::HeaderWriter;
-                    use swim_common::form::structural::write::BodyWriter;
-                    let num_attrs = swim_common::form::structural::write::StructuralWritable::num_attributes(self);
+                    use swim_form::structural::write::HeaderWriter;
+                    use swim_form::structural::write::BodyWriter;
+                    let num_attrs = swim_form::structural::write::StructuralWritable::num_attributes(self);
                     let #destructure = self;
                     #write_with
                 }
@@ -197,9 +197,9 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedStructModel<'a>> {
                 #[allow(non_snake_case, unused_variables)]
                 #[inline]
                 fn write_into<__W: #writer_trait>(self, writer: __W) -> core::result::Result<__W::Repr, __W::Error> {
-                    use swim_common::form::structural::write::HeaderWriter;
-                    use swim_common::form::structural::write::BodyWriter;
-                    let num_attrs = swim_common::form::structural::write::StructuralWritable::num_attributes(&self);
+                    use swim_form::structural::write::HeaderWriter;
+                    use swim_form::structural::write::BodyWriter;
+                    let num_attrs = swim_form::structural::write::StructuralWritable::num_attributes(&self);
                     let #destructure = self;
                     #write_into
                 }
@@ -211,7 +211,7 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedStructModel<'a>> {
 }
 
 fn make_writer_trait() -> Path {
-    parse_quote!(swim_common::form::structural::write::StructuralWriter)
+    parse_quote!(swim_form::structural::write::StructuralWriter)
 }
 
 fn write_attr_ref(field: &FieldModel) -> TokenStream {
@@ -315,12 +315,12 @@ impl<'a> ToTokens for WriteWithFn<'a> {
                 let (body_kind, statements) =
                     if fields_model.body_kind == CompoundTypeKind::Labelled {
                         (
-                            quote!(swim_common::form::structural::write::RecordBodyKind::MapLike),
+                            quote!(swim_form::structural::write::RecordBodyKind::MapLike),
                             Either::Left(fields.iter().map(|f| write_slot_ref(*f))),
                         )
                     } else {
                         (
-                            quote!(swim_common::form::structural::write::RecordBodyKind::ArrayLike),
+                            quote!(swim_form::structural::write::RecordBodyKind::ArrayLike),
                             Either::Right(fields.iter().map(|f| write_value_ref(*f))),
                         )
                     };
@@ -354,7 +354,7 @@ fn make_header(
         quote!(prepend)
     };
 
-    let base_expr = quote!(swim_common::form::structural::generic::header::NoSlots);
+    let base_expr = quote!(swim_form::structural::generic::header::NoSlots);
     let header_expr = header_fields.iter().rev().fold(base_expr, |expr, field| {
         let field_index = &field.selector;
         let literal_name = field.resolve_name();
@@ -433,12 +433,12 @@ impl<'a> ToTokens for WriteIntoFn<'a> {
                 let (body_kind, statements) =
                     if fields_model.body_kind == CompoundTypeKind::Labelled {
                         (
-                            quote!(swim_common::form::structural::write::RecordBodyKind::MapLike),
+                            quote!(swim_form::structural::write::RecordBodyKind::MapLike),
                             Either::Left(fields.iter().map(|f| write_slot_into(*f))),
                         )
                     } else {
                         (
-                            quote!(swim_common::form::structural::write::RecordBodyKind::ArrayLike),
+                            quote!(swim_form::structural::write::RecordBodyKind::ArrayLike),
                             Either::Right(fields.iter().map(|f| write_value_into(*f))),
                         )
                     };
@@ -501,7 +501,7 @@ fn num_attributes<'a>(model: &'a SegregatedStructModel<'a>) -> TokenStream {
                 quote!(&self.#idx)
             }
         };
-        quote!(#base_attrs + swim_common::form::structural::write::StructuralWritable::num_attributes(#body_fld))
+        quote!(#base_attrs + swim_form::structural::write::StructuralWritable::num_attributes(#body_fld))
     } else {
         quote!(#base_attrs)
     }
@@ -516,7 +516,7 @@ fn num_attributes_case<'a>(model: &'a SegregatedStructModel<'a>, by_ref: bool) -
         } else {
             quote!(&#name)
         };
-        quote!(#base_attrs + swim_common::form::structural::write::StructuralWritable::num_attributes(#body_fld))
+        quote!(#base_attrs + swim_form::structural::write::StructuralWritable::num_attributes(#body_fld))
     } else {
         quote!(#base_attrs)
     }
@@ -542,7 +542,7 @@ impl<'a> ToTokens for NumAttrsEnum<'a> {
                         quote!(#enum_name::#var_name(#(#ignore,)* #fld_name, ..))
                     }
                 };
-                quote!(#pat => #base_attrs + swim_common::form::structural::write::StructuralWritable::num_attributes(#fld_name))
+                quote!(#pat => #base_attrs + swim_form::structural::write::StructuralWritable::num_attributes(#fld_name))
             } else {
                 let pat = match v.inner.fields_model.type_kind {
                     CompoundTypeKind::Unit => quote!(#enum_name::#var_name),

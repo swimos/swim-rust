@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use std::sync::Arc;
-use swim_common::form::Form;
-use swim_common::form::ValueSchema;
+use swim_form::Form;
+use swim_schema::ValueSchema;
 use swim_model::Value;
 
 /// Updates that can be applied to a map lane.

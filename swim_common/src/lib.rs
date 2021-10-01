@@ -15,14 +15,9 @@
 #![allow(clippy::match_wild_err_arm)]
 
 pub mod configuration;
-#[macro_use]
-pub mod form;
 pub mod model;
 pub mod request;
 pub mod routing;
 pub mod sink;
 pub mod warp;
 
-#[allow(unused_imports)]
-#[macro_use]
-extern crate form_derive;
