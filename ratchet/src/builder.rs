@@ -22,10 +22,7 @@ impl Default for WebSocketClientBuilder<NoExtProxy> {
     }
 }
 
-impl<E> WebSocketClientBuilder<E>
-where
-    E: ExtensionProvider,
-{
+impl<E> WebSocketClientBuilder<E> {
     pub async fn subscribe<S, I>(
         self,
         stream: S,
@@ -34,6 +31,7 @@ where
     where
         S: WebSocketStream,
         I: TryIntoRequest,
+        E: ExtensionProvider,
     {
         let WebSocketClientBuilder {
             config,
@@ -58,9 +56,20 @@ where
         self
     }
 
-    pub fn extension(mut self, extension: E) -> Self {
-        self.extension = extension;
-        self
+    pub fn extension<T>(self, extension: T) -> WebSocketClientBuilder<T>
+    where
+        T: ExtensionProvider,
+    {
+        let WebSocketClientBuilder {
+            config,
+            subprotocols,
+            ..
+        } = self;
+        WebSocketClientBuilder {
+            config,
+            extension,
+            subprotocols,
+        }
     }
 
     pub fn subprotocols<I>(mut self, subprotocols: I) -> Self
@@ -110,12 +119,20 @@ impl<E> WebSocketServerBuilder<E> {
         self
     }
 
-    pub fn extension(mut self, extension: E) -> Self
+    pub fn extension<T>(self, extension: T) -> WebSocketServerBuilder<T>
     where
-        E: ExtensionProvider,
+        T: ExtensionProvider,
     {
-        self.extension = extension;
-        self
+        let WebSocketServerBuilder {
+            config,
+            subprotocols,
+            ..
+        } = self;
+        WebSocketServerBuilder {
+            config,
+            extension,
+            subprotocols,
+        }
     }
 
     pub fn subprotocols<I>(mut self, subprotocols: I) -> Self
