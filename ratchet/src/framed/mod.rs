@@ -195,11 +195,10 @@ where
     I: WebSocketStream,
 {
     pub fn new(io: I, read_buffer: BytesMut, role: Role, max_size: usize) -> Self {
-        let role_flag = match role {
+        let flags = match role {
             Role::Client => CodecFlags::empty(),
             Role::Server => CodecFlags::ROLE,
         };
-        let flags = CodecFlags::from(role_flag);
 
         FramedIo {
             io,
@@ -273,12 +272,10 @@ where
                                 self.flags
                                     .remove(CodecFlags::R_CONT | CodecFlags::CONT_TYPE);
                                 return Ok(item);
+                            } else if self.flags.contains(CodecFlags::R_CONT) {
+                                continue;
                             } else {
-                                if self.flags.contains(CodecFlags::R_CONT) {
-                                    continue;
-                                } else {
-                                    return Err(ProtocolError::ContinuationNotStarted.into());
-                                }
+                                return Err(ProtocolError::ContinuationNotStarted.into());
                             }
                         }
                         DataCode::Text => {

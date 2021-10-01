@@ -13,8 +13,9 @@
 // limitations under the License.
 
 use crate::extensions::{Extension, ExtensionProvider};
-use http::HeaderMap;
-use httparse::Response;
+use crate::{Error, ErrorKind};
+use http::{HeaderMap, HeaderValue};
+use httparse::Header;
 use thiserror::Error;
 
 pub struct DeflateHandshake;
@@ -22,6 +23,12 @@ pub struct DeflateHandshake;
 #[derive(Error, Debug)]
 #[error("Err")]
 pub struct DeflateError;
+
+impl From<DeflateError> for Error {
+    fn from(e: DeflateError) -> Self {
+        Error::with_cause(ErrorKind::Extension, e)
+    }
+}
 
 impl ExtensionProvider for DeflateHandshake {
     type Extension = Deflate;
@@ -31,8 +38,15 @@ impl ExtensionProvider for DeflateHandshake {
         todo!()
     }
 
-    fn negotiate(&self, _response: &Response) -> Result<Self::Extension, Self::Error> {
+    fn negotiate_client(&self, _headers: &[Header]) -> Result<Self::Extension, Self::Error> {
         Ok(Deflate)
+    }
+
+    fn negotiate_server(
+        &self,
+        _headers: &[Header],
+    ) -> Result<(Self::Extension, Option<HeaderValue>), Self::Error> {
+        Ok((Deflate, None))
     }
 }
 

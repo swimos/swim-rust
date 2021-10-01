@@ -6,7 +6,7 @@
 			"url": "ws://127.0.0.1:9002"
 		}
 	],
-	"cases": ["12.*"],
+	"cases": ["*"],
 	"exclude-cases": [],
 	"exclude-agent-cases": {}
 }

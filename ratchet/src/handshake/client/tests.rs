@@ -18,7 +18,7 @@ use crate::extensions::{Extension, ExtensionProvider};
 use crate::fixture::mock;
 use crate::handshake::client::{ClientHandshake, HandshakeResult};
 use crate::handshake::{ProtocolError, ProtocolRegistry, ACCEPT_KEY, UPGRADE_STR, WEBSOCKET_STR};
-use crate::TryIntoRequest;
+use crate::{ErrorKind, TryIntoRequest};
 use bytes::BytesMut;
 use futures::future::join;
 use futures::FutureExt;
@@ -52,8 +52,6 @@ async fn handshake_sends_valid_request() {
 
     let mut buf = BytesMut::with_capacity(1024);
     peer.read_buf(&mut buf).await.unwrap();
-
-    println!("{}", std::str::from_utf8(buf.as_ref()).unwrap());
 
     assert!(matches!(request.parse(&mut buf), Ok(Status::Complete(_))));
 
@@ -451,13 +449,19 @@ async fn disjoint_protocols() {
 #[error("Extension error")]
 struct ExtHandshakeErr;
 
+impl From<ExtHandshakeErr> for Error {
+    fn from(e: ExtHandshakeErr) -> Self {
+        Error::with_cause(ErrorKind::Extension, e)
+    }
+}
+
 struct MockExtensionProxy<R>(&'static [(HeaderName, &'static str)], R)
 where
-    R: for<'h> Fn(&'h httparse::Response) -> Result<MockExtension, ExtHandshakeErr>;
+    R: for<'h> Fn(&'h [Header]) -> Result<MockExtension, ExtHandshakeErr>;
 
 impl<R> ExtensionProvider for MockExtensionProxy<R>
 where
-    R: for<'h> Fn(&'h httparse::Response) -> Result<MockExtension, ExtHandshakeErr>,
+    R: for<'h> Fn(&'h [Header]) -> Result<MockExtension, ExtHandshakeErr>,
 {
     type Extension = MockExtension;
     type Error = ExtHandshakeErr;
@@ -468,8 +472,15 @@ where
         }
     }
 
-    fn negotiate(&self, response: &httparse::Response) -> Result<Self::Extension, ExtHandshakeErr> {
-        (self.1)(response)
+    fn negotiate_client(&self, headers: &[Header]) -> Result<Self::Extension, Self::Error> {
+        (self.1)(headers)
+    }
+
+    fn negotiate_server(
+        &self,
+        _headers: &[Header],
+    ) -> Result<(Self::Extension, Option<HeaderValue>), ExtHandshakeErr> {
+        panic!("Unexpected server-side extension negotiation")
     }
 }
 
@@ -556,9 +567,8 @@ async fn negotiates_extension() {
     const HEADERS: &'static [(HeaderName, &'static str)] =
         &[(header::SEC_WEBSOCKET_EXTENSIONS, EXT)];
 
-    let extension_proxy = MockExtensionProxy(&HEADERS, |response| {
-        let ext = response
-            .headers
+    let extension_proxy = MockExtensionProxy(&HEADERS, |headers| {
+        let ext = headers
             .iter()
             .filter(|h| {
                 h.name

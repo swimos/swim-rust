@@ -9,7 +9,6 @@ url = "2.1.1"
 http = "0.2.3"
 tokio = { version = "1.1.1", features = ["rt", "net", "io-util"] }
 tokio-util = { version = "0.6.7", features = ["codec"] }
-tokio-native-tls = "0.3"
 futures = "0.3.4"
 futures-util = "0.3.4"
 derive_more = "0.99.14"
@@ -28,4 +27,5 @@ either = "1.5.3"
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["rt-multi-thread", "macros", "test-util"] }
+tokio-stream = { version = "0.1.2", features = ["net"] }
 utilities = { path = "../utilities" }
