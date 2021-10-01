@@ -122,7 +122,7 @@ where
         return Err(Error::with_cause(ErrorKind::Http, HttpError::InvalidMethod));
     }
 
-    if version < Version::HTTP_11 {
+    if version != Version::HTTP_11 {
         return Err(Error::with_cause(
             ErrorKind::Http,
             HttpError::HttpVersion(None),

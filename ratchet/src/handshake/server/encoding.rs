@@ -25,6 +25,8 @@ use http::{HeaderMap, StatusCode};
 use httparse::Status;
 use tokio::io::AsyncWrite;
 
+const HTTP_VERSION: &[u8] = b"HTTP/1.1 ";
+
 pub struct RequestParser<E> {
     pub subprotocols: ProtocolRegistry,
     pub extension: E,
@@ -66,20 +68,17 @@ where
 {
     buf.clear();
 
-    let version_count = 9;
+    let version_count = HTTP_VERSION.len();
     let status_bytes = status.as_str().as_bytes();
     let reason_len = status.canonical_reason().map(|r| r.len() + 4).unwrap_or(2);
     let headers_len = headers.iter().fold(0, |count, (name, value)| {
         name.as_str().len() + value.len() + 2 + count
     });
     let terminator_len = if headers.is_empty() { 4 } else { 2 };
-    let len = buf.len();
 
-    buf.reserve(
-        version_count + status_bytes.len() + reason_len + headers_len + terminator_len - len,
-    );
+    buf.reserve(version_count + status_bytes.len() + reason_len + headers_len + terminator_len);
 
-    buf.put_slice(b"HTTP/1.1 ");
+    buf.put_slice(HTTP_VERSION);
     buf.put_slice(status.as_str().as_bytes());
 
     match status.canonical_reason() {
