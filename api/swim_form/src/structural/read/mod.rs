@@ -13,7 +13,7 @@
 // limitations under the License.
 
 pub mod event;
-pub mod materializers;
+pub mod from_model;
 pub mod recognizer;
 
 use crate::structural::write::StructuralWritable;

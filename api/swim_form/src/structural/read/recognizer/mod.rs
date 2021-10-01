@@ -20,7 +20,7 @@ mod tests;
 use crate::structural::generic::coproduct::{CCons, CNil, Unify};
 use crate::structural::read::error::ExpectedEvent;
 use crate::structural::read::event::{NumericValue, ReadEvent};
-use crate::structural::read::materializers::value::{
+use crate::structural::read::from_model::{
     AttrBodyMaterializer, DelegateBodyMaterializer, ValueMaterializer,
 };
 use crate::structural::read::recognizer::primitive::DataRecognizer;

@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod interpreters;
 #[cfg(test)]
 mod tests;
+pub mod to_model;
 
-use crate::structural::write::interpreters::value::ValueInterpreter;
+use crate::structural::write::to_model::ValueInterpreter;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::convert::Infallible;

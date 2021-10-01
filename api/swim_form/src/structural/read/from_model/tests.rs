@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::structural::read::event::{NumericValue, ReadEvent};
 use crate::structural::read::recognizer::Recognizer;
 use crate::structural::read::recognizer::RecognizerReadable;
 use crate::structural::read::StructuralReadable;
+use std::borrow::Cow;
 use swim_model::bigint::{BigInt, BigUint};
 use swim_model::{Attr, Blob, Item, Text, Value};
-use crate::structural::read::event::{ReadEvent, NumericValue};
-use std::borrow::Cow;
 
 mod swim_form {
     pub use crate::*;
@@ -36,7 +36,7 @@ where
 fn run_specific_recognizer<'a, R, I>(rep: I, sm: &mut R) -> R::Target
 where
     R: Recognizer,
-    I: Iterator<Item = ReadEvent<'a>>
+    I: Iterator<Item = ReadEvent<'a>>,
 {
     for event in rep {
         match sm.feed_event(event) {
@@ -258,10 +258,7 @@ fn value_from_nested_attr_body() {
 
 #[test]
 fn value_delegate_body() {
-    let events = vec![
-        ReadEvent::StartBody,
-        ReadEvent::EndRecord,
-    ];
+    let events = vec![ReadEvent::StartBody, ReadEvent::EndRecord];
     let mut recog = Value::make_body_recognizer();
     let value = run_specific_recognizer(events.into_iter(), &mut recog);
     assert_eq!(value, Value::Extant);

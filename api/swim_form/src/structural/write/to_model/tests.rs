@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::structural::write::interpreters::value::ValueInterpreter;
+use crate::structural::write::to_model::ValueInterpreter;
 use crate::structural::write::StructuralWritable;
 use swim_model::bigint::{BigInt, BigUint};
 use swim_model::{Attr, Blob, Item, Value};
