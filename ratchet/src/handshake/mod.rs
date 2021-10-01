@@ -34,6 +34,7 @@ pub use server::{accept, accept_with, WebSocketResponse, WebSocketUpgrader};
 use std::borrow::Cow;
 use std::str::FromStr;
 use tokio::io::AsyncRead;
+use tokio_util::codec::Decoder;
 use url::Url;
 
 const WEBSOCKET_STR: &str = "websocket";
@@ -152,37 +153,31 @@ pub struct StreamingParser<'i, 'buf, I, P> {
     parser: P,
 }
 
-impl<'i, 'buf, I, P> StreamingParser<'i, 'buf, I, P>
+impl<'i, 'buf, I, P, O> StreamingParser<'i, 'buf, I, P>
 where
     I: AsyncRead + Unpin,
-    P: Parser,
+    P: Decoder<Item = (O, usize), Error = Error>,
 {
     pub fn new(io: &'i mut BufferedIo<'buf, I>, parser: P) -> StreamingParser<'i, 'buf, I, P> {
         StreamingParser { io, parser }
     }
 
-    pub async fn parse(self) -> Result<P::Output, Error> {
+    pub async fn parse(self) -> Result<O, Error> {
         let StreamingParser { io, mut parser } = self;
 
         loop {
             io.read().await?;
 
-            match parser.parse(io.buffer) {
-                Ok(ParseResult::Complete(out, count)) => {
+            match parser.decode(io.buffer) {
+                Ok(Some((out, count))) => {
                     io.advance(count);
                     return Ok(out);
                 }
-                Ok(ParseResult::Partial) => continue,
+                Ok(None) => continue,
                 Err(e) => return Err(e),
             }
         }
     }
-}
-
-pub trait Parser {
-    type Output;
-
-    fn parse(&mut self, buf: &[u8]) -> Result<ParseResult<Self::Output>, Error>;
 }
 
 pub enum ParseResult<O> {
