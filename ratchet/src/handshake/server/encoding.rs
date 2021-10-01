@@ -26,7 +26,12 @@ use httparse::Status;
 use tokio::io::AsyncWrite;
 use tokio_util::codec::Decoder;
 
+/// The maximum number of headers that will be parsed.
+const MAX_HEADERS: usize = 32;
 const HTTP_VERSION: &[u8] = b"HTTP/1.1 ";
+const STATUS_TERMINATOR_LEN: usize = 2;
+const TERMINATOR_NO_HEADERS: &[u8] = b"\r\n\r\n";
+const TERMINATOR_WITH_HEADER: &[u8] = b"\r\n";
 
 pub struct RequestParser<E> {
     pub subprotocols: ProtocolRegistry,
@@ -45,7 +50,7 @@ where
             subprotocols,
             extension,
         } = self;
-        let mut headers = [httparse::EMPTY_HEADER; 32];
+        let mut headers = [httparse::EMPTY_HEADER; MAX_HEADERS];
         let mut request = httparse::Request::new(&mut headers);
 
         match try_parse_request(buf, &mut request, extension, subprotocols)? {
@@ -74,9 +79,14 @@ where
     let status_bytes = status.as_str().as_bytes();
     let reason_len = status.canonical_reason().map(|r| r.len() + 4).unwrap_or(2);
     let headers_len = headers.iter().fold(0, |count, (name, value)| {
-        name.as_str().len() + value.len() + 2 + count
+        name.as_str().len() + value.len() + STATUS_TERMINATOR_LEN + count
     });
-    let terminator_len = if headers.is_empty() { 4 } else { 2 };
+
+    let terminator_len = if headers.is_empty() {
+        TERMINATOR_NO_HEADERS.len()
+    } else {
+        TERMINATOR_WITH_HEADER.len()
+    };
 
     buf.reserve(version_count + status_bytes.len() + reason_len + headers_len + terminator_len);
 
@@ -99,9 +109,9 @@ where
     }
 
     if headers.is_empty() {
-        buf.put_slice(b"\r\n\r\n");
+        buf.put_slice(TERMINATOR_NO_HEADERS);
     } else {
-        buf.put_slice(b"\r\n");
+        buf.put_slice(TERMINATOR_WITH_HEADER);
     }
 
     let mut buffered = BufferedIo::new(stream, buf);
