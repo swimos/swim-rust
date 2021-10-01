@@ -31,8 +31,10 @@ use http::Uri;
 use http::{header, HeaderMap, HeaderValue};
 use httparse::Header;
 pub use server::{accept, accept_with, WebSocketResponse, WebSocketUpgrader};
+use std::borrow::Cow;
 use std::str::FromStr;
 use tokio::io::AsyncRead;
+use tokio_util::codec::Decoder;
 use url::Url;
 
 const WEBSOCKET_STR: &str = "websocket";
@@ -44,7 +46,7 @@ const METHOD_GET: &str = "get";
 
 #[derive(Default)]
 pub struct ProtocolRegistry {
-    registrants: FnvHashSet<&'static str>,
+    registrants: FnvHashSet<Cow<'static, str>>,
 }
 
 enum Bias {
@@ -55,10 +57,11 @@ enum Bias {
 impl ProtocolRegistry {
     pub fn new<I>(i: I) -> ProtocolRegistry
     where
-        I: IntoIterator<Item = &'static str>,
+        I: IntoIterator,
+        I::Item: Into<Cow<'static, str>>,
     {
         ProtocolRegistry {
-            registrants: i.into_iter().collect(),
+            registrants: i.into_iter().map(Into::into).collect(),
         }
     }
 
@@ -71,7 +74,7 @@ impl ProtocolRegistry {
                 String::from_utf8(header.value.to_vec()).map_err(|_| ProtocolError::Encoding)?;
             let protocols = value
                 .split(',')
-                .map(|s| s.trim())
+                .map(|s| s.trim().into())
                 .collect::<FnvHashSet<_>>();
 
             let selected = match bias {
@@ -150,37 +153,31 @@ pub struct StreamingParser<'i, 'buf, I, P> {
     parser: P,
 }
 
-impl<'i, 'buf, I, P> StreamingParser<'i, 'buf, I, P>
+impl<'i, 'buf, I, P, O> StreamingParser<'i, 'buf, I, P>
 where
     I: AsyncRead + Unpin,
-    P: Parser,
+    P: Decoder<Item = (O, usize), Error = Error>,
 {
     pub fn new(io: &'i mut BufferedIo<'buf, I>, parser: P) -> StreamingParser<'i, 'buf, I, P> {
         StreamingParser { io, parser }
     }
 
-    pub async fn parse(self) -> Result<P::Output, Error> {
+    pub async fn parse(self) -> Result<O, Error> {
         let StreamingParser { io, mut parser } = self;
 
         loop {
             io.read().await?;
 
-            match parser.parse(io.buffer) {
-                Ok(ParseResult::Complete(out, count)) => {
+            match parser.decode(io.buffer) {
+                Ok(Some((out, count))) => {
                     io.advance(count);
                     return Ok(out);
                 }
-                Ok(ParseResult::Partial) => continue,
+                Ok(None) => continue,
                 Err(e) => return Err(e),
             }
         }
     }
-}
-
-pub trait Parser {
-    type Output;
-
-    fn parse(&mut self, buf: &[u8]) -> Result<ParseResult<Self::Output>, Error>;
 }
 
 pub enum ParseResult<O> {
@@ -286,9 +283,12 @@ fn get_header(headers: &[httparse::Header], name: HeaderName) -> Result<Bytes, E
     }
 }
 
+/// Local replacement for TryInto that can be implemented for httparse::Header and httparse::Request
 pub trait TryMap<Target> {
+    /// Error type returned if the mapping fails
     type Error: Into<Error>;
 
+    /// Try and map this into `Target`
     fn try_map(self) -> Result<Target, Self::Error>;
 }
 
