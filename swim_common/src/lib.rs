@@ -16,7 +16,6 @@
 
 pub mod configuration;
 pub mod model;
-pub mod request;
 pub mod routing;
 pub mod sink;
 pub mod warp;

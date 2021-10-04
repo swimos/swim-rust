@@ -43,7 +43,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::ops::Deref;
 use std::sync::{Arc, Weak};
-use swim_common::request::Request;
+use swim_utilities::future::request::Request;
 use swim_common::routing::{ConnectionError, ProtocolError, ProtocolErrorKind};
 use swim_runtime::time::clock::Clock;
 use swim_utilities::future::task::Spawner;

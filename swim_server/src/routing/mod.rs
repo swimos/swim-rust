@@ -19,7 +19,7 @@ use futures::future::BoxFuture;
 use futures::FutureExt;
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
-use swim_common::request::Request;
+use swim_utilities::future::request::Request;
 use swim_common::routing::ws::WsMessage;
 use swim_common::routing::RoutingError;
 use swim_common::routing::SendError;

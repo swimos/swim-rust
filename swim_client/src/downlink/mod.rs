@@ -45,7 +45,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use swim_schema::schema::StandardSchema;
 use swim_model::Value;
-use swim_common::request::TryRequest;
+use swim_utilities::future::request::TryRequest;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
 use swim_utilities::errors::Recoverable;

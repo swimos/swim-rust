@@ -34,6 +34,7 @@ swim_form = { path = "../api/swim_form" }
 swim_schema = { path = "../api/swim_schema" }
 swim_warp = { path = "../swim_warp" }
 swim_utilities = { path = "../swim_utilities", features = ["errors", "sync", "time", "text"] }
+swim_tracing = { path = "../swim_utilities/swim_tracing", features = ["future"] }
 stringify_attr = { path = "../macro_utilities/stringify_attr" }
 swim_runtime = { path = "../swim_runtime" }
 stm = { path = "../stm" }

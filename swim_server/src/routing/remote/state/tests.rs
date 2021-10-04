@@ -29,7 +29,7 @@ use std::io;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::time::Duration;
-use swim_common::request::Request;
+use swim_utilities::future::request::Request;
 use swim_common::routing::{ConnectionError, IoError};
 use swim_runtime::time::timeout::timeout;
 use swim_utilities::future::open_ended::OpenEndedFutures;

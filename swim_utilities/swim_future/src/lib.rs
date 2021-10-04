@@ -14,6 +14,7 @@
 
 mod combinators;
 pub mod open_ended;
+pub mod request;
 pub mod retryable;
 pub mod task;
 

@@ -20,7 +20,7 @@ use crate::downlink::state_machine::{DownlinkStateMachine, EventResult};
 use crate::downlink::{Command, DownlinkState, Message};
 use std::sync::Arc;
 use swim_model::ValueKind;
-use swim_common::request::Request;
+use swim_utilities::future::request::Request;
 
 const STATES: [DownlinkState; 3] = [
     DownlinkState::Unlinked,

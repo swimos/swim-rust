@@ -17,7 +17,7 @@ use crate::routing::remote::{RawRoute, RoutingRequest};
 use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedSender};
 use futures::future::BoxFuture;
 use futures::FutureExt;
-use swim_common::request::Request;
+use swim_utilities::future::request::Request;
 use swim_common::routing::ResolutionError;
 use swim_utilities::routing::uri::RelativeUri;
 use tokio::sync::{mpsc, oneshot};

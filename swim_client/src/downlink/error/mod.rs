@@ -17,7 +17,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use swim_schema::schema::StandardSchema;
 use swim_model::Value;
-use swim_common::request::request_future::RequestError;
+use swim_utilities::future::request::request_future::RequestError;
 use swim_common::routing::{ConnectionError, RoutingError};
 use swim_common::sink::item;
 use swim_common::warp::path::AbsolutePath;

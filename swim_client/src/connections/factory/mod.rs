@@ -22,7 +22,7 @@ pub mod async_factory {
     use futures::{Future, Sink, Stream};
     use tokio::sync::{mpsc, oneshot};
 
-    use swim_common::request::Request;
+    use swim_utilities::future::request::Request;
 
     use crate::connections::factory::tungstenite::HostConfig;
     use swim_common::routing::ws::WsMessage;

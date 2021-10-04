@@ -16,7 +16,7 @@ use crate::routing::remote::pending::PendingRequests;
 use crate::routing::remote::table::HostAndPort;
 use crate::routing::RoutingAddr;
 use futures::future::join;
-use swim_common::request::Request;
+use swim_utilities::future::request::Request;
 use swim_common::routing::{CloseError, CloseErrorKind, ConnectionError};
 use tokio::sync::oneshot;
 

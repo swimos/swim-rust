@@ -33,7 +33,7 @@ use swim_form::Form;
 use swim_schema::ValueSchema;
 use swim_schema::schema::StandardSchema;
 use swim_model::Value;
-use swim_common::request::Request;
+use swim_utilities::future::request::Request;
 use swim_utilities::sync::topic;
 use swim_utilities::trigger::promise;
 use tokio::sync::{mpsc, oneshot};

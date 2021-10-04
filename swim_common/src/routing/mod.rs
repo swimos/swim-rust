@@ -16,7 +16,7 @@ mod error;
 pub use error::*;
 pub mod ws;
 
-use crate::request::request_future::RequestError;
+use swim_utilities::future::request::request_future::RequestError;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use swim_utilities::errors::Recoverable;

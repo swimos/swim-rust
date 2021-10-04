@@ -24,7 +24,7 @@ use tracing::trace_span;
 use tracing::{span, Level};
 use tracing_futures::Instrument;
 
-use swim_common::request::request_future::RequestError;
+use swim_utilities::future::request::request_future::RequestError;
 use swim_common::warp::envelope::{Envelope, IncomingLinkMessage};
 use swim_common::warp::path::{AbsolutePath, RelativePath};
 use swim_runtime::task::*;

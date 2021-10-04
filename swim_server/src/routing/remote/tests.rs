@@ -23,7 +23,7 @@ use std::cell::RefCell;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
 use swim_model::Value;
-use swim_common::request::Request;
+use swim_utilities::future::request::Request;
 use swim_common::routing::{ConnectionError, IoError, ResolutionError, ResolutionErrorKind};
 use swim_common::warp::envelope::Envelope;
 use swim_utilities::trigger::promise::Sender;

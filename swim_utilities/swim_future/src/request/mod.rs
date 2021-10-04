@@ -14,7 +14,7 @@
 
 use std::fmt::Debug;
 use tokio::sync::oneshot;
-use tracing::{event, Level};
+//use tracing::{event, Level};
 
 pub mod request_future;
 
@@ -42,7 +42,7 @@ impl<T> Request<T> {
         }
     }
 
-    pub fn send_debug<M: tracing::Value + Debug>(self, data: T, message: M) {
+    /*pub fn send_debug<M: tracing::Value + Debug>(self, data: T, message: M) {
         if self.satisfy.send(data).is_err() {
             event!(Level::DEBUG, message);
         }
@@ -52,7 +52,7 @@ impl<T> Request<T> {
         if self.satisfy.send(data).is_err() {
             event!(Level::WARN, message);
         }
-    }
+    }*/
 }
 
 impl<T, E> Request<Result<T, E>> {
@@ -60,23 +60,23 @@ impl<T, E> Request<Result<T, E>> {
         self.send(Ok(data))
     }
 
-    pub fn send_ok_debug<M: tracing::Value + Debug>(self, data: T, message: M) {
+    /*pub fn send_ok_debug<M: tracing::Value + Debug>(self, data: T, message: M) {
         self.send_debug(Ok(data), message)
     }
 
     pub fn send_ok_warn<M: tracing::Value + Debug>(self, data: T, message: M) {
         self.send_warn(Ok(data), message)
-    }
+    }*/
 
     pub fn send_err(self, err: E) -> Result<(), RequestErr> {
         self.send(Err(err))
     }
 
-    pub fn send_err_debug<M: tracing::Value + Debug>(self, err: E, message: M) {
+    /*pub fn send_err_debug<M: tracing::Value + Debug>(self, err: E, message: M) {
         self.send_debug(Err(err), message)
     }
 
     pub fn send_err_warn<M: tracing::Value + Debug>(self, err: E, message: M) {
         self.send_warn(Err(err), message)
-    }
+    }*/
 }

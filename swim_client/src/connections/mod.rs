@@ -23,7 +23,7 @@ use futures::stream;
 use futures::{FutureExt, Sink, Stream, StreamExt};
 use futures_util::future::TryFutureExt;
 use futures_util::TryStreamExt;
-use swim_common::request::request_future::RequestError;
+use swim_utilities::future::request::request_future::RequestError;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::{SendError, TrySendError};
 use tokio::sync::oneshot;
