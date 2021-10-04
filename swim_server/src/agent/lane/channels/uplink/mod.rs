@@ -37,7 +37,7 @@ use swim_form::structural::read::ReadError;
 use swim_form::Form;
 use swim_model::Value;
 use swim_common::routing::SendError;
-use swim_common::sink::item::{FnMutSender, ItemSender};
+use swim_utilities::future::item_sink::{FnMutSender, ItemSender};
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use swim_utilities::errors::Recoverable;

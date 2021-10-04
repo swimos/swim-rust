@@ -35,7 +35,7 @@ use stm::transaction::TransactionError;
 use swim_form::structural::read::ReadError;
 use swim_form::Form;
 use swim_model::Value;
-use swim_common::sink::item;
+use swim_utilities::future::item_sink;
 use swim_utilities::future::SwimStreamExt;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger;
@@ -111,7 +111,7 @@ async fn uplink_not_linked() {
     let (tx_event, rx_event) = mpsc::channel(5);
 
     let uplinks_idle_since = Arc::new(AtomicInstant::new(Instant::now().into_std()));
-    let uplink_task = uplink.run_uplink(item::for_mpsc_sender(tx_event), uplinks_idle_since);
+    let uplink_task = uplink.run_uplink(item_sink::for_mpsc_sender(tx_event), uplinks_idle_since);
 
     let send_task = async move {
         lane.store(12).await;
@@ -156,7 +156,7 @@ async fn uplink_open_to_linked() {
     let (tx_event, rx_event) = mpsc::channel(5);
 
     let uplinks_idle_since = Arc::new(AtomicInstant::new(Instant::now().into_std()));
-    let uplink_task = uplink.run_uplink(item::for_mpsc_sender(tx_event), uplinks_idle_since);
+    let uplink_task = uplink.run_uplink(item_sink::for_mpsc_sender(tx_event), uplinks_idle_since);
 
     let send_task = async move {
         lane.store(12).await;
@@ -207,7 +207,7 @@ async fn uplink_open_to_synced() {
     let (tx_event, rx_event) = mpsc::channel(5);
 
     let uplinks_idle_since = Arc::new(AtomicInstant::new(Instant::now().into_std()));
-    let uplink_task = uplink.run_uplink(item::for_mpsc_sender(tx_event), uplinks_idle_since);
+    let uplink_task = uplink.run_uplink(item_sink::for_mpsc_sender(tx_event), uplinks_idle_since);
 
     let send_task = async move {
         lane.store(12).await;

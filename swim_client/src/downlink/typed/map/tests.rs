@@ -29,7 +29,7 @@ use swim_schema::ValueSchema;
 use swim_schema::schema::StandardSchema;
 use swim_model::Value;
 use swim_common::routing::RoutingError;
-use swim_common::sink::item::ItemSender;
+use swim_utilities::future::item_sink::ItemSender;
 use swim_warp::model::map::MapUpdate;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -527,7 +527,7 @@ struct Components<K, V> {
 fn make_map_downlink<K: ValueSchema, V: ValueSchema>() -> Components<K, V> {
     let (update_tx, update_rx) = mpsc::channel(8);
     let (command_tx, command_rx) = mpsc::channel(8);
-    let sender = swim_common::sink::item::for_mpsc_sender(command_tx).map_err_into();
+    let sender = swim_utilities::future::item_sink::for_mpsc_sender(command_tx).map_err_into();
 
     let (dl, rx) = crate::downlink::map_downlink(
         Some(K::schema()),

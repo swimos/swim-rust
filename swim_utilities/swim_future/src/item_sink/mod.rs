@@ -17,13 +17,36 @@ use std::future::Future;
 use futures::future::{ready, BoxFuture, Ready};
 use futures::FutureExt;
 use std::convert::Infallible;
-use swim_utilities::sync::{circular_buffer, topic};
 use tokio::sync::{broadcast, mpsc, watch};
 
 pub mod comap;
 pub mod drop_all;
 pub mod either;
 pub mod fail_all;
+
+pub mod error {
+
+    use std::error::Error;
+    use std::fmt::{Debug, Display, Formatter};
+
+    #[derive(Debug, Clone, Eq, PartialEq)]
+    pub enum SinkSendError<T> {
+        Closed,
+        ClosedOnSend(T),
+    }
+
+    impl<T> Display for SinkSendError<T> {
+        fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+            match self {
+                SinkSendError::Closed => f.write_str("Sink is closed."),
+                SinkSendError::ClosedOnSend(_) => f.write_str("Sink closed while sending."),
+            }
+        }
+    }
+
+    impl<T: Debug> Error for SinkSendError<T> {}
+
+}
 
 /// An alternative to the [`futures::Sink`] trait for sinks that can consume their inputs in a
 /// single operation. This can simplify operations where one can guarantee that the target sink
@@ -77,9 +100,9 @@ pub type WatchErr<T> = watch::error::SendError<T>;
 pub type BroadcastErr<T> = broadcast::error::SendError<T>;
 
 pub mod map_err {
-    use crate::sink::item::ItemSink;
+    use crate::item_sink::ItemSink;
     use futures::future::ErrInto;
-    use futures_util::future::TryFutureExt;
+    use futures::TryFutureExt;
     use std::marker::PhantomData;
 
     #[derive(Debug)]
@@ -232,42 +255,4 @@ pub fn for_broadcast_sender<T: Send + 'static>(
     FnMutSender::new(tx, broadcast_send_op)
 }
 
-impl<'a, T> ItemSink<'a, T> for topic::Sender<T>
-where
-    T: Send + Sync + 'a,
-{
-    type Error = topic::SendError<T>;
-    type SendFuture = topic::TopicSend<'a, T>;
 
-    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
-        self.send(value)
-    }
-}
-
-/// Wraps a [`topic::Sender`] for a sink implementation that uses the discarding send function.
-pub struct Discarding<T>(pub topic::Sender<T>);
-
-impl<'a, T> ItemSink<'a, T> for Discarding<T>
-where
-    T: Send + Sync + 'a,
-{
-    type Error = topic::SendError<T>;
-    type SendFuture = topic::TopicSend<'a, T>;
-
-    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
-        let Discarding(sender) = self;
-        sender.discarding_send(value)
-    }
-}
-
-impl<'a, T: 'a> ItemSink<'a, T> for circular_buffer::Sender<T>
-where
-    T: Send + Sync,
-{
-    type Error = circular_buffer::error::SendError<T>;
-    type SendFuture = Ready<Result<(), Self::Error>>;
-
-    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
-        ready(self.try_send(value))
-    }
-}

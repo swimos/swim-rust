@@ -15,11 +15,13 @@
 use crossbeam_queue::{ArrayQueue, SegQueue};
 use futures::task::{AtomicWaker, Context, Poll};
 use futures::Stream;
+use futures::future::{Ready, ready};
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
+use swim_future::item_sink::ItemSink;
 
 #[cfg(test)]
 mod tests;
@@ -307,5 +309,17 @@ impl<T: Send + Sync> InternalQueue<T> for OneItemQueue<T> {
     fn pop_value(&self) -> Option<T> {
         let mut lock = self.0.lock();
         lock.take()
+    }
+}
+
+impl<'a, T: 'a> ItemSink<'a, T> for Sender<T>
+    where
+        T: Send + Sync,
+{
+    type Error = error::SendError<T>;
+    type SendFuture = Ready<Result<(), Self::Error>>;
+
+    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
+        ready(self.try_send(value))
     }
 }

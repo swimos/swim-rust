@@ -44,7 +44,7 @@ use swim_model::Value;
 use swim_common::routing::ResolutionError;
 use swim_common::routing::RoutingError;
 use swim_common::routing::SendError;
-use swim_common::sink::item::ItemSink;
+use swim_utilities::future::item_sink::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use swim_utilities::routing::uri::RelativeUri;

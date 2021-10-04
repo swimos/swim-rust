@@ -19,7 +19,7 @@ use swim_schema::schema::StandardSchema;
 use swim_model::Value;
 use swim_utilities::future::request::request_future::RequestError;
 use swim_common::routing::{ConnectionError, RoutingError};
-use swim_common::sink::item;
+use swim_utilities::future::item_sink;
 use swim_common::warp::path::AbsolutePath;
 use swim_utilities::errors::Recoverable;
 use tokio::sync::mpsc;
@@ -117,8 +117,8 @@ impl<T> From<mpsc::error::TrySendError<T>> for DownlinkError {
     }
 }
 
-impl From<item::SendError> for DownlinkError {
-    fn from(_: item::SendError) -> Self {
+impl From<item_sink::SendError> for DownlinkError {
+    fn from(_: item_sink::SendError) -> Self {
         DownlinkError::DroppedChannel
     }
 }
@@ -173,8 +173,8 @@ impl<T> From<mpsc::error::SendError<T>> for DroppedError {
     }
 }
 
-impl From<swim_common::sink::item::SendError> for DroppedError {
-    fn from(_: swim_common::sink::item::SendError) -> Self {
+impl From<swim_utilities::future::item_sink::SendError> for DroppedError {
+    fn from(_: swim_utilities::future::item_sink::SendError) -> Self {
         DroppedError
     }
 }

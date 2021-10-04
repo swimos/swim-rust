@@ -18,10 +18,10 @@ parking_lot = "0.11.0"
 parking_lot_core = "0.8.0"
 futures-util = "0.3.4"
 pin-project = "1.0.5"
+swim_future = { path = "../swim_future" }
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["rt"] }
 swim_test_util = { path = "../swim_test_util" }
 swim_trigger = { path = "../swim_trigger"}
-swim_future = { path = "../swim_future"}
 

@@ -27,7 +27,7 @@ use swim_schema::ValueSchema;
 use swim_schema::schema::StandardSchema;
 use swim_model::Value;
 use swim_common::routing::RoutingError;
-use swim_common::sink::item::ItemSender;
+use swim_utilities::future::item_sink::ItemSender;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
@@ -214,7 +214,7 @@ fn make_value_downlink<T: Form + ValueSchema>(init: T) -> Components<T> {
 
     let (update_tx, update_rx) = mpsc::channel(8);
     let (command_tx, command_rx) = mpsc::channel(8);
-    let sender = swim_common::sink::item::for_mpsc_sender(command_tx).map_err_into();
+    let sender = swim_utilities::future::item_sink::for_mpsc_sender(command_tx).map_err_into();
 
     let (dl, rx) = crate::downlink::value_downlink(
         init_value,

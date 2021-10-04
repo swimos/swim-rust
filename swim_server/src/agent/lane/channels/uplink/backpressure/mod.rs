@@ -24,7 +24,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::num::NonZeroUsize;
 use swim_form::Form;
-use swim_common::sink::item::ItemSender;
+use swim_utilities::future::item_sink::ItemSender;
 use swim_utilities::sync::circular_buffer;
 use swim_utilities::trigger;
 use swim_warp::backpressure::keyed::map::release_pressure as release_pressure_map;

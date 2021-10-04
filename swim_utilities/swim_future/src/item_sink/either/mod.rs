@@ -17,7 +17,7 @@ mod tests;
 
 use super::ItemSink;
 use either::Either;
-use futures_util::future::Either as EitherFuture;
+use futures::future::Either as EitherFuture;
 
 /// An item sink that delegates to one of two other sinks.
 #[derive(Clone, Debug)]

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::sink::item::ItemSink;
+use crate::item_sink::ItemSink;
 use futures::future::{ready, Ready};
 use std::marker::PhantomData;
 

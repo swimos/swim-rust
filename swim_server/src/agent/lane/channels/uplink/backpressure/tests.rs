@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_common::sink::item;
+use swim_utilities::future::item_sink;
 use swim_runtime::time::timeout::timeout;
 use swim_warp::model::map::MapUpdate;
 use tokio::sync::mpsc;
@@ -55,7 +55,7 @@ async fn value_uplink_backpressure_release_events() {
 
     let relief_task = super::value_uplink_release_backpressure(
         ReceiverStream::new(in_rx),
-        item::for_mpsc_sender(out_tx),
+        item_sink::for_mpsc_sender(out_tx),
         simple_config(),
     );
 
@@ -94,7 +94,7 @@ async fn value_uplink_backpressure_release_special() {
 
     let relief_task = super::value_uplink_release_backpressure(
         ReceiverStream::new(in_rx),
-        item::for_mpsc_sender(out_tx),
+        item_sink::for_mpsc_sender(out_tx),
         simple_config(),
     );
 
@@ -147,7 +147,7 @@ async fn value_uplink_backpressure_release_failure() {
 
     let relief_task = super::value_uplink_release_backpressure(
         ReceiverStream::new(in_rx),
-        item::for_mpsc_sender(out_tx),
+        item_sink::for_mpsc_sender(out_tx),
         simple_config(),
     );
 
@@ -196,7 +196,7 @@ async fn map_uplink_backpressure_release_events() {
 
     let relief_task = super::map_uplink_release_backpressure(
         ReceiverStream::new(in_rx),
-        item::for_mpsc_sender(out_tx),
+        item_sink::for_mpsc_sender(out_tx),
         keyed_config(),
     );
 
@@ -244,7 +244,7 @@ async fn map_uplink_backpressure_release_special() {
 
     let relief_task = super::map_uplink_release_backpressure(
         ReceiverStream::new(in_rx),
-        item::for_mpsc_sender(out_tx),
+        item_sink::for_mpsc_sender(out_tx),
         keyed_config(),
     );
 
@@ -315,7 +315,7 @@ async fn map_uplink_backpressure_release_failure() {
 
     let relief_task = super::map_uplink_release_backpressure(
         ReceiverStream::new(in_rx),
-        item::for_mpsc_sender(out_tx),
+        item_sink::for_mpsc_sender(out_tx),
         keyed_config(),
     );
 

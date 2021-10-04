@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::ItemSink;
+use crate::item_sink::ItemSink;
 
 #[derive(Clone, Debug)]
 pub struct ItemSenderComap<Sender, F> {

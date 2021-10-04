@@ -16,7 +16,7 @@ use futures::StreamExt;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_common::sink::item::for_mpsc_sender;
+use swim_utilities::future::item_sink::for_mpsc_sender;
 use swim_runtime::time::timeout::timeout;
 use swim_utilities::sync::circular_buffer;
 use tokio::sync::{mpsc, Barrier};

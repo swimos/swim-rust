@@ -22,7 +22,7 @@ use futures::{Stream, StreamExt};
 use pin_utils::pin_mut;
 use tokio::sync::mpsc;
 
-use swim_common::sink::item::ItemSender;
+use swim_utilities::future::item_sink::ItemSender;
 use swim_utilities::collections::lrucache::LruCache;
 use swim_utilities::sync::circular_buffer;
 use swim_utilities::trigger;

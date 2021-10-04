@@ -23,8 +23,8 @@ use futures::{FutureExt, StreamExt};
 use std::num::NonZeroUsize;
 use swim_model::Value;
 use swim_common::routing::RoutingError;
-use swim_common::sink::item;
-use swim_common::sink::item::ItemSender;
+use swim_utilities::future::item_sink;
+use swim_utilities::future::item_sink::ItemSender;
 use swim_runtime::task::{spawn, TaskHandle};
 use swim_utilities::collections::lrucache::LruCache;
 use swim_utilities::sync::circular_buffer;
@@ -78,7 +78,7 @@ impl KeyedWatch {
 
     pub fn into_item_sender(self) -> impl ItemSender<UntypedMapModification<Value>, RoutingError> {
         let KeyedWatch { sender, .. } = self;
-        item::for_mpsc_sender(sender).map_err_into()
+        item_sink::for_mpsc_sender(sender).map_err_into()
     }
 }
 

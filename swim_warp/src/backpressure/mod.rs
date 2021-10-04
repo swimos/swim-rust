@@ -14,7 +14,7 @@
 
 use std::num::NonZeroUsize;
 
-use swim_common::sink::item::ItemSender;
+use swim_utilities::future::item_sink::ItemSender;
 use swim_utilities::sync::circular_buffer;
 use swim_utilities::trigger;
 

@@ -18,7 +18,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
 use std::num::NonZeroUsize;
 use std::ops::Range;
-use swim_common::sink::item::for_mpsc_sender;
+use swim_utilities::future::item_sink::for_mpsc_sender;
 use swim_runtime::time::timeout::timeout;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
