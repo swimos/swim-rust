@@ -170,11 +170,12 @@ where
         }
     }
 
-    pub async fn write(
-        &mut self,
-        buf: &mut BytesMut,
-        message_type: PayloadType,
-    ) -> Result<(), Error> {
+    pub async fn write<A>(&mut self, mut buf_ref: A, message_type: PayloadType) -> Result<(), Error>
+    where
+        A: AsMut<[u8]>,
+    {
+        let buf = buf_ref.as_mut();
+
         if self.closed {
             return Err(Error::with_cause(ErrorKind::Close, CloseError::Closed));
         }
@@ -219,12 +220,15 @@ where
             .await
     }
 
-    pub async fn write_fragmented(
+    pub async fn write_fragmented<A>(
         &mut self,
-        buf: &mut BytesMut,
+        buf: A,
         message_type: MessageType,
         fragment_size: usize,
-    ) -> Result<(), Error> {
+    ) -> Result<(), Error>
+    where
+        A: AsMut<[u8]>,
+    {
         if self.closed {
             return Err(Error::with_cause(ErrorKind::Close, CloseError::Closed));
         }
