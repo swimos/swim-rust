@@ -50,13 +50,13 @@ use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use stm::transaction::RetryManager;
-use swim_common::warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
 use swim_form::structural::read::ReadError;
 use swim_form::Form;
 use swim_model::path::RelativePath;
 use swim_model::Value;
 use swim_utilities::errors::Recoverable;
 use swim_utilities::trigger;
+use swim_warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
@@ -188,7 +188,7 @@ const UPLINK_FAILED: &str = "An uplink failed with a non-fatal error.";
 const UPLINK_FATAL: &str = "An uplink failed with a fatal error.";
 const TOO_MANY_FAILURES: &str = "Terminating after too many failed uplinks.";
 
-/// Run the [`swim_common::warp::envelope::Envelope`] IO for a lane, updating the state of the lane
+/// Run the [`swim_warp::envelope::Envelope`] IO for a lane, updating the state of the lane
 /// and creating uplinks to remote subscribers.
 ///
 /// #Arguments
@@ -492,7 +492,7 @@ where
     combine_results(route, upd_result.err(), uplink_fatal, uplink_errs)
 }
 
-/// Run the [`swim_common::warp::envelope::Envelope`] IO for a command lane.
+/// Run the [`swim_warp::envelope::Envelope`] IO for a command lane.
 ///
 /// #Arguments
 /// * `lane` - The command lane.
@@ -537,7 +537,7 @@ where
     .await
 }
 
-/// Run the [`swim_common::warp::envelope::Envelope`] IO for an action lane. This is different to
+/// Run the [`swim_warp::envelope::Envelope`] IO for an action lane. This is different to
 /// the standard `run_lane_io` as the update and uplink components of an action lane are interleaved
 /// and different uplinks will receive entirely different messages.
 ///

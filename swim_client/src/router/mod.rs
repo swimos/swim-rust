@@ -25,9 +25,9 @@ use tracing::{span, Level};
 use tracing_futures::Instrument;
 
 use swim_async_runtime::task::*;
-use swim_common::warp::envelope::{Envelope, IncomingLinkMessage};
 use swim_model::path::{AbsolutePath, RelativePath};
 use swim_utilities::future::request::request_future::RequestError;
+use swim_warp::envelope::{Envelope, IncomingLinkMessage};
 
 use crate::configuration::router::RouterParams;
 use crate::connections::{ConnectionPool, ConnectionSender};

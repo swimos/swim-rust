@@ -23,13 +23,13 @@ use parking_lot::Mutex;
 use tokio::sync::{mpsc, watch};
 
 use swim_async_runtime::time::timeout;
-use swim_common::warp::envelope::Envelope;
 use swim_model::path::RelativePath;
 use swim_model::Value;
 use swim_utilities::future::retryable::{Quantity, RetryStrategy};
 use swim_utilities::routing::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
+use swim_warp::envelope::Envelope;
 
 use crate::routing::error::RouterError;
 use crate::routing::remote::config::ConnectionConfig;
@@ -517,7 +517,9 @@ async fn task_receive_sync_message_missing_node() {
     let test_case = async move {
         assert!(sock_in.send(Ok(message_for(envelope))).await.is_ok());
         let message = sock_out.next().await.unwrap();
-        let expected: WsMessage = Envelope::node_not_found("/missing", "/lane").into();
+        let envelope = Envelope::node_not_found("/missing", "/lane");
+        let expected = WsMessage::Text(envelope.into_value().to_string());
+
         assert_eq!(message, expected);
     };
 

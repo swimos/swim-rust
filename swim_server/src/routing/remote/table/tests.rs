@@ -16,7 +16,7 @@ use crate::routing::remote::table::{HostAndPort, RoutingTable};
 use crate::routing::remote::RawRoute;
 use crate::routing::{ConnectionDropped, RoutingAddr, TaggedEnvelope};
 use std::time::Duration;
-use swim_common::warp::envelope::Envelope;
+use swim_warp::envelope::Envelope;
 use tokio::sync::mpsc;
 
 #[test]

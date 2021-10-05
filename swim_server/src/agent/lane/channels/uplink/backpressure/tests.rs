@@ -23,7 +23,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use swim_async_runtime::time::timeout::timeout;
 use swim_utilities::future::item_sink;
-use swim_warp::model::map::MapUpdate;
+use swim_warp::map::MapUpdate;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 

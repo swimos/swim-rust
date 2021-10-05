@@ -15,11 +15,11 @@
 use crate::routing::RoutingAddr;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use swim_common::warp::envelope::Envelope;
 use swim_runtime::error::ConnectionError;
 use swim_runtime::error::RoutingError;
 use swim_utilities::errors::Recoverable;
 use swim_utilities::routing::uri::RelativeUri;
+use swim_warp::envelope::Envelope;
 use tokio::sync::mpsc;
 
 #[cfg(test)]

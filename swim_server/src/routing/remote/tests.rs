@@ -22,11 +22,11 @@ use futures::FutureExt;
 use std::cell::RefCell;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
-use swim_common::warp::envelope::Envelope;
 use swim_model::Value;
 use swim_runtime::error::{ConnectionError, IoError, ResolutionError, ResolutionErrorKind};
 use swim_utilities::future::request::Request;
 use swim_utilities::trigger::promise::Sender;
+use swim_warp::envelope::Envelope;
 use tokio::sync::{mpsc, oneshot};
 
 #[derive(Debug, Clone, PartialEq, Eq)]

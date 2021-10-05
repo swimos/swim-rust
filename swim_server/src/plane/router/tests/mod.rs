@@ -21,9 +21,9 @@ use crate::routing::{
     TopLevelRouterFactory,
 };
 use futures::future::join;
-use swim_common::warp::envelope::Envelope;
 use swim_runtime::error::{ConnectionError, ProtocolError, ResolutionErrorKind};
 use swim_utilities::trigger::promise;
+use swim_warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use url::Url;
 

@@ -31,9 +31,9 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_async_runtime::time::clock::Clock;
-use swim_common::warp::envelope::Envelope;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
+use swim_warp::envelope::Envelope;
 
 #[derive(Debug)]
 pub struct SendAgent(String);

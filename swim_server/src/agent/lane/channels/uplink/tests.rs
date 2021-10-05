@@ -39,7 +39,7 @@ use swim_utilities::future::item_sink;
 use swim_utilities::future::SwimStreamExt;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger;
-use swim_warp::model::map::MapUpdate;
+use swim_warp::map::MapUpdate;
 use tokio::sync::mpsc;
 use tokio::time::{timeout, Instant};
 use tokio_stream::wrappers::ReceiverStream;

@@ -13,5 +13,3 @@
 // limitations under the License.
 
 #![allow(clippy::match_wild_err_arm)]
-
-pub mod warp;

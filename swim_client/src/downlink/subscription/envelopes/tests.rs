@@ -15,9 +15,9 @@
 use super::*;
 use crate::downlink::Message;
 use std::sync::Arc;
-use swim_common::warp::envelope::LinkMessage;
 use swim_form::Form;
 use swim_model::Value::Int32Value;
+use swim_warp::envelope::LinkMessage;
 
 fn path() -> AbsolutePath {
     AbsolutePath::new(url::Url::parse("ws://127.0.0.1/").unwrap(), "node", "lane")

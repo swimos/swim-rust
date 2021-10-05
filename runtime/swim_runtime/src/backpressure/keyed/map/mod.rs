@@ -28,7 +28,7 @@ use swim_utilities::sync::circular_buffer;
 use swim_utilities::trigger;
 
 use crate::backpressure::keyed::common::{consume_buffers, transmit, Action, SpecialActionResult};
-use crate::model::map::MapUpdate;
+use swim_warp::map::MapUpdate;
 
 #[cfg(test)]
 mod tests;

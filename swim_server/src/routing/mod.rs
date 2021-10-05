@@ -20,7 +20,6 @@ use futures::future::BoxFuture;
 use futures::FutureExt;
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
-use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_runtime::error::RoutingError;
 use swim_runtime::error::{ConnectionError, ResolutionError};
 use swim_runtime::ws::WsMessage;
@@ -28,6 +27,7 @@ use swim_utilities::errors::Recoverable;
 use swim_utilities::future::request::Request;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger::promise;
+use swim_warp::envelope::{Envelope, OutgoingLinkMessage};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use url::Url;
@@ -213,7 +213,7 @@ pub struct TaggedEnvelope(pub RoutingAddr, pub Envelope);
 impl From<TaggedEnvelope> for WsMessage {
     fn from(env: TaggedEnvelope) -> Self {
         let TaggedEnvelope(_, envelope) = env;
-        envelope.into()
+        WsMessage::Text(envelope.into_value().to_string())
     }
 }
 

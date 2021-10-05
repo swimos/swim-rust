@@ -20,7 +20,6 @@ use std::fmt::{Display, Formatter};
 use swim_model::path::RelativePath;
 use swim_model::Text;
 use swim_model::{Attr, Item, Value};
-use swim_runtime::ws::WsMessage;
 
 #[cfg(test)]
 mod tests;
@@ -737,7 +736,7 @@ impl Error for EnvelopeParseErr {}
 /// ```
 /// use std::convert::TryFrom;
 /// use swim_model::{Attr, Item, Value};
-/// use swim_common::warp::envelope::Envelope;
+/// use swim_warp::envelope::Envelope;
 ///
 /// let record = Value::Record(
 ///         vec![
@@ -1050,12 +1049,6 @@ impl From<Envelope> for Value {
             _ => vec![],
         };
         Value::Record(attrs, envelope)
-    }
-}
-
-impl From<Envelope> for WsMessage {
-    fn from(env: Envelope) -> Self {
-        WsMessage::Text(env.into_value().to_string())
     }
 }
 

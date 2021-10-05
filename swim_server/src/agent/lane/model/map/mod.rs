@@ -47,7 +47,7 @@ use std::num::NonZeroUsize;
 use stm::var::observer::{Observer, ObserverStream, ObserverSubscriber};
 use swim_form::structural::read::ReadError;
 use swim_utilities::future::{FlatmapStream, SwimStreamExt, Transform};
-use swim_warp::model::map::MapUpdate;
+use swim_warp::map::MapUpdate;
 use tracing::{event, Level};
 
 pub mod map_store;

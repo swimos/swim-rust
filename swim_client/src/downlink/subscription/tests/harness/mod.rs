@@ -14,9 +14,9 @@
 
 use crate::router::{Router, RouterEvent};
 use futures::future::{ready, Ready};
-use swim_common::warp::envelope::Envelope;
 use swim_model::path::AbsolutePath;
 use swim_utilities::future::request::request_future::RequestError;
+use swim_warp::envelope::Envelope;
 use tokio::sync::mpsc;
 
 /// A mock [`Router`] where connections produce no data and all outputs are silently dropped.

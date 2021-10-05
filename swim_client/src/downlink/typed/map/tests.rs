@@ -30,7 +30,7 @@ use swim_runtime::error::RoutingError;
 use swim_schema::schema::StandardSchema;
 use swim_schema::ValueSchema;
 use swim_utilities::future::item_sink::ItemSender;
-use swim_warp::model::map::MapUpdate;
+use swim_warp::map::MapUpdate;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 

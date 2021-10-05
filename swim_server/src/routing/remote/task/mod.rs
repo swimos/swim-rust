@@ -33,7 +33,6 @@ use std::fmt::{Display, Formatter};
 use std::future::Future;
 use std::str::FromStr;
 use std::time::Duration;
-use swim_common::warp::envelope::{Envelope, EnvelopeHeader, EnvelopeParseErr, OutgoingHeader};
 use swim_model::path::RelativePath;
 use swim_recon::parser::{parse_value, ParseError};
 use swim_runtime::error::{
@@ -47,6 +46,7 @@ use swim_utilities::future::retryable::RetryStrategy;
 use swim_utilities::future::task::Spawner;
 use swim_utilities::routing::uri::{BadRelativeUri, RelativeUri};
 use swim_utilities::trigger;
+use swim_warp::envelope::{Envelope, EnvelopeHeader, EnvelopeParseErr, OutgoingHeader};
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Instant};
 use tokio_stream::wrappers::ReceiverStream;
