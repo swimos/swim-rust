@@ -15,3 +15,6 @@ members = [
 exclude = [
     "cookbook"
 ]
+
+[profile.release]
+opt-level = 3
