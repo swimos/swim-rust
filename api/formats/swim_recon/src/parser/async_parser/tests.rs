@@ -14,9 +14,9 @@
 
 use tokio::fs::File;
 
-use super::ConfigurationError;
 use swim_model::{Attr, Item, Value};
 use std::path::PathBuf;
+use crate::parser::async_parser::AsyncParseError;
 
 fn test_data_path() -> PathBuf {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -31,7 +31,7 @@ async fn read_configuration_from_file() {
 
     let file = File::open(path).await;
     assert!(file.is_ok());
-    let result = super::read_config_from(file.unwrap()).await;
+    let result = super::parse_recon_document(file.unwrap()).await;
     assert!(result.is_ok());
     let items = result.unwrap();
     let complex = Value::Record(
@@ -56,6 +56,6 @@ async fn read_invalid_file() {
 
     let file = File::open(path).await;
     assert!(file.is_ok());
-    let result = super::read_config_from(file.unwrap()).await;
-    assert!(matches!(result, Err(ConfigurationError::Parser(_))));
+    let result = super::parse_recon_document(file.unwrap()).await;
+    assert!(matches!(result, Err(AsyncParseError::Parser(_))));
 }

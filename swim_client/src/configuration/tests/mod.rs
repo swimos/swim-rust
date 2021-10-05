@@ -21,7 +21,7 @@ use std::fs;
 use std::fs::File;
 use std::io::Read;
 use std::num::NonZeroUsize;
-use swim_common::model::parser::parse_single;
+use swim_recon::parser::parse_value as parse_single;
 use swim_common::warp::path::AbsolutePath;
 use swim_utilities::future::retryable::{Quantity, RetryStrategy};
 use tokio::time::Duration;

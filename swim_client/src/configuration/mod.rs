@@ -25,8 +25,8 @@ pub mod downlink {
     use std::fmt::{Display, Formatter};
     use std::num::NonZeroUsize;
     use swim_form::Form;
-    use swim_common::model::parser::ParseFailure;
     use swim_model::{Attr, Item, Value};
+    use swim_recon::parser::ParseError;
     use swim_common::warp::path::AbsolutePath;
     use tokio::time::Duration;
     use url::Url;
@@ -718,7 +718,7 @@ pub mod downlink {
         //Error that occurs when trying to read the file.
         FileError(std::io::Error),
         // Error that occurs when parsing the file to Recon.
-        ReconError(ParseFailure),
+        ReconError(ParseError),
         //Error that occurs when creating downlink parameters.
         DownlinkError(String),
         // Error that occurs when a required attribute is missing in the

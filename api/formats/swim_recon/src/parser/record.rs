@@ -163,7 +163,7 @@ pub enum FinalAttrStage<'a> {
 /// an iterator to consume them in turn. Note that in the cases with multiple
 /// events, the events are stored as a stack so are in reverse order.
 #[derive(Debug)]
-enum ParseEvents<'a> {
+pub(crate) enum ParseEvents<'a> {
     NoEvent,
     SingleEvent(ReadEvent<'a>),
     TwoEvents(ReadEvent<'a>, ReadEvent<'a>),
@@ -207,6 +207,11 @@ impl<'a> ParseEvents<'a> {
             ParseEvents::End => Some(EventOrEnd::End),
             _ => None,
         }
+    }
+
+    #[cfg(feature = "async_parser")]
+    pub fn is_empty(&self) -> bool {
+        matches!(self, ParseEvents::NoEvent | ParseEvents::End)
     }
 }
 
@@ -336,11 +341,11 @@ enum FinalState {
 /// could change the final result (to allow it be used in cases where the whole string
 /// may not be available all at once). When the end of the data is reached, it should
 /// be converted into the final segment parser which can read the final events.
-struct FinalSegmentParser(FinalState);
+pub struct FinalSegmentParser(FinalState);
 
 impl IncrementalReconParser {
     /// Convert to the final segment parser to handle the end of the input.
-    fn into_final_parser(self) -> Option<FinalSegmentParser> {
+    pub fn into_final_parser(self) -> Option<FinalSegmentParser> {
         let IncrementalReconParser { mut state } = self;
         let top = state.pop();
         if state.is_empty() {
@@ -834,4 +839,40 @@ fn parse_after_slot<K: ItemsKind>(input: Span<'_>) -> IResult<Span<'_>, Option<P
         map(seperator, |_| Some(K::after_sep())),
         map(char_str::char(K::end_delim()), |_| None),
     ))(input)
+}
+
+impl<'a> Iterator for ParseEvents<'a> {
+    type Item = Option<ReadEvent<'a>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match std::mem::take(self) {
+            ParseEvents::ThreeEvents(e1, e2, e3) => {
+                *self = ParseEvents::TwoEvents(e2, e3);
+               Some(Some(e1))
+            }
+            ParseEvents::TwoEvents(e1, e2) => {
+                *self = ParseEvents::SingleEvent(e2);
+                Some(Some(e1))
+            }
+            ParseEvents::SingleEvent(e1) => {
+                *self = ParseEvents::NoEvent;
+                Some(Some(e1))
+            }
+            ParseEvents::NoEvent => {
+                None
+            }
+            ParseEvents::TerminateWithAttr(attr) => {
+                *self = ParseEvents::NoEvent;
+                match attr {
+                    FinalAttrStage::Start(name) => Some(Some(ReadEvent::StartAttribute(name))),
+                    FinalAttrStage::EndAttr => Some(Some(ReadEvent::EndAttribute)),
+                    FinalAttrStage::StartBody => Some(Some(ReadEvent::StartBody)),
+                    FinalAttrStage::EndBody => Some(Some(ReadEvent::EndRecord)),
+                }
+            }
+            ParseEvents::End => {
+                Some(None)
+            }
+        }
+    }
 }

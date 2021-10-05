@@ -33,7 +33,7 @@ use std::fmt::{Display, Formatter};
 use std::future::Future;
 use std::str::FromStr;
 use std::time::Duration;
-use swim_common::model::parser::{self, ParseFailure};
+use swim_recon::parser::{parse_value, ParseError};
 use swim_common::routing::ws::selector::{SelectorResult, WsStreamSelector};
 use swim_common::routing::ws::{CloseCode, CloseReason, JoinedStreamSink, WsMessage};
 use swim_common::routing::{
@@ -73,8 +73,8 @@ enum Completion {
     StoppedLocally,
 }
 
-impl From<ParseFailure> for Completion {
-    fn from(err: ParseFailure) -> Self {
+impl From<ParseError> for Completion {
+    fn from(err: ParseError) -> Self {
         Completion::Failed(ConnectionError::Protocol(ProtocolError::new(
             ProtocolErrorKind::Warp,
             Some(err.to_string()),
@@ -264,7 +264,7 @@ where
 }
 
 fn read_envelope(msg: &str) -> Result<Envelope, Completion> {
-    Ok(Envelope::try_from(parser::parse_single(msg)?)?)
+    Ok(Envelope::try_from(parse_value(msg)?)?)
 }
 
 /// Error type indicating a failure to route an incoming message.

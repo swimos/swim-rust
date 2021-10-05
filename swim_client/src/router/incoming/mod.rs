@@ -19,7 +19,7 @@ use futures::future::ready;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use std::convert::TryFrom;
-use swim_common::model::parser::parse_single;
+use swim_recon::parser::parse_value;
 use swim_common::routing::ws::WsMessage;
 use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
@@ -131,7 +131,7 @@ impl IncomingHostTask {
                 IncomingRequest::Message(message) => {
                     let value = {
                         match &message {
-                            WsMessage::Text(s) => parse_single(s),
+                            WsMessage::Text(s) => parse_value(s),
                             m => {
                                 error!("Unimplemented message type received: {:?}", m);
                                 continue;

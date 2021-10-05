@@ -27,6 +27,7 @@ swim_warp = { path = "../swim_warp" }
 swim_common = { path = "../swim_common" }
 swim_model = { path = "../api/swim_model" }
 swim_form = { path = "../api/swim_form" }
+swim_recon = { path = "../api/formats/swim_recon" }
 swim_schema = { path = "../api/swim_schema" }
 
 http = "0.2"

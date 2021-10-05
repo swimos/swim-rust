@@ -14,8 +14,6 @@
 
 #![allow(clippy::match_wild_err_arm)]
 
-pub mod configuration;
-pub mod model;
 pub mod routing;
 pub mod warp;
 

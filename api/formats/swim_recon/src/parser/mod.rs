@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(feature = "async_parser")]
+mod async_parser;
 mod error;
 mod record;
 #[cfg(test)]
@@ -23,12 +25,13 @@ pub use crate::parser::error::ParseError;
 use swim_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
 use swim_form::structural::read::ReadError;
 use nom_locate::LocatedSpan;
+use swim_model::Value;
 
 /// Wraps a string in a strucutre that keeps track of the line and column
 /// as the input is parsed.
 pub type Span<'a> = LocatedSpan<&'a str>;
 
-/// Create an itearator that will parse a sequence of events from a complete string.
+/// Create an iterator that will parse a sequence of events from a complete string.
 pub fn parse_iterator(
     input: Span<'_>,
 ) -> impl Iterator<Item = Result<ReadEvent<'_>, nom::error::Error<Span<'_>>>> + '_ {
@@ -61,3 +64,12 @@ pub fn parse_recognize<T: RecognizerReadable>(input: Span<'_>) -> Result<T, Pars
     let mut recognizer = T::make_recognizer();
     parse_recognize_with(input, &mut recognizer)
 }
+
+/// Parse exactly one ['Value'] from the input, returning an error if the string does not contain
+/// the representation of exactly one.
+pub fn parse_value(repr: &str) -> Result<Value, ParseError> {
+    parse_recognize(Span::new(repr))
+}
+
+#[cfg(feature = "async_parser")]
+pub use async_parser::{parse_recon_document, parse_recognize_with as async_parse_recognize_with};
