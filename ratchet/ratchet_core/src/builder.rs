@@ -20,6 +20,7 @@ use crate::{client, TryIntoRequest, WebSocketConfig, WebSocketStream};
 use ratchet_ext::{Extension, ExtensionProvider};
 use std::borrow::Cow;
 
+#[derive(Debug)]
 pub struct WebSocketClientBuilder<E> {
     config: Option<WebSocketConfig>,
     extension: E,
@@ -96,6 +97,7 @@ impl<E> WebSocketClientBuilder<E> {
     }
 }
 
+#[derive(Debug)]
 pub struct WebSocketServerBuilder<E> {
     config: Option<WebSocketConfig>,
     subprotocols: ProtocolRegistry,

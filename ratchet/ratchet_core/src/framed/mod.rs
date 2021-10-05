@@ -403,6 +403,7 @@ pub struct FramedIoParts<I> {
     pub max_size: usize,
 }
 
+#[derive(Debug)]
 pub struct FramedIo<I> {
     io: I,
     reader: FramedRead,

@@ -12,6 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! An implementation of permessage-deflate ([RFC 7692](https://datatracker.ietf.org/doc/html/rfc7692))
+//! as an extension for [Ratchet](../ratchet).
+//!
+//! See the documentation in [Ratchet](../ratchet) for more details on using this extension.
+
+#![deny(missing_docs, missing_debug_implementations)]
+
 #[cfg(test)]
 mod tests;
 
@@ -39,12 +46,14 @@ const LZ77_MIN_WINDOW_SIZE: u8 = 8;
 /// 32,768 bytes. RFC 7692 7.1.2.1.
 const LZ77_MAX_WINDOW_SIZE: u8 = 15;
 
-#[derive(Default)]
+/// An [ExtensionProvider] for negotiating permessage-deflate during a WebSocket handshake.
+#[derive(Copy, Clone, Debug, Default)]
 pub struct DeflateExtProvider {
     config: DeflateConfig,
 }
 
 impl DeflateExtProvider {
+    /// Initialise a [DeflateExtProvider] with `config`.
     pub fn with_config(config: DeflateConfig) -> DeflateExtProvider {
         DeflateExtProvider { config }
     }
@@ -126,6 +135,8 @@ impl InitialisedDeflateConfig {
     }
 }
 
+/// A negotiated permessage-deflate extension. Used by a WebSocket session for compressing and
+/// decompressing data.
 #[derive(Debug)]
 pub struct Deflate {
     encoder: DeflateEncoder,
@@ -188,6 +199,8 @@ impl ReunitableExtension for Deflate {
     }
 }
 
+/// A permessage-deflate compressor. Only producible by the `SplittableExtension` implementation on
+/// [Deflate].
 #[derive(Debug)]
 pub struct DeflateEncoder {
     buf: BytesMut,
@@ -277,6 +290,8 @@ impl ExtensionEncoder for DeflateEncoder {
     }
 }
 
+/// A permessage-deflate decompressor. Only producible by the `SplittableExtension` implementation
+/// on [Deflate].
 #[derive(Debug)]
 pub struct DeflateDecoder {
     buf: BytesMut,

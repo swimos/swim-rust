@@ -12,6 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#![deny(
+    missing_docs,
+    missing_debug_implementations,
+    unused_imports,
+    unused_import_braces
+)]
+
 use bytes::BytesMut;
 pub use http::{HeaderMap, HeaderValue};
 pub use httparse::Header;
@@ -39,7 +46,7 @@ pub enum OpCode {
     Binary,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct FrameHeader {
     pub fin: bool,
     pub rsv1: bool,
@@ -48,6 +55,7 @@ pub struct FrameHeader {
     pub opcode: OpCode,
 }
 
+#[derive(Debug)]
 pub struct RsvBits {
     pub rsv1: bool,
     pub rsv2: bool,

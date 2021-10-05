@@ -38,6 +38,7 @@ type SplitSocket<S, E> = (
     Receiver<S, <E as SplittableExtension>::SplitDecoder>,
 );
 
+#[derive(Debug)]
 pub struct WebSocket<S, E> {
     framed: FramedIo<S>,
     control_buffer: BytesMut,
@@ -272,6 +273,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct Upgraded<S, E> {
     pub socket: WebSocket<S, E>,
     pub subprotocol: Option<String>,

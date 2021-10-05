@@ -44,7 +44,7 @@ const BAD_STATUS_CODE: &str = "Invalid status code";
 const ACCEPT_KEY: &[u8] = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const METHOD_GET: &str = "get";
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct ProtocolRegistry {
     registrants: FnvHashSet<Cow<'static, str>>,
 }

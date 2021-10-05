@@ -101,6 +101,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct WebSocketResponse {
     status: StatusCode,
     headers: HeaderMap,
@@ -125,6 +126,7 @@ impl WebSocketResponse {
     }
 }
 
+#[derive(Debug)]
 pub struct WebSocketUpgrader<S, E> {
     request: Request,
     key: Bytes,

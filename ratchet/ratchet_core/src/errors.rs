@@ -159,6 +159,7 @@ impl From<HttpError> for Error {
     }
 }
 
+#[derive(Debug)]
 pub struct InvalidHeader(pub String);
 
 impl From<InvalidHeader> for HttpError {
@@ -227,13 +228,13 @@ impl From<InvalidHeaderValue> for Error {
     }
 }
 
-#[derive(Error, Debug, PartialEq)]
+#[derive(Clone, Copy, Error, Debug, PartialEq)]
 pub enum CloseError {
     #[error("The channel is already closed")]
     Closed,
 }
 
-#[derive(Debug, PartialEq, Error)]
+#[derive(Copy, Clone, Debug, PartialEq, Error)]
 pub enum ProtocolError {
     #[error("Not valid UTF-8 encoding")]
     Encoding,

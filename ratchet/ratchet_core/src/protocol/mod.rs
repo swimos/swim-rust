@@ -90,20 +90,20 @@ impl Message {
     }
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum PayloadType {
     Text,
     Binary,
     Ping,
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum MessageType {
     Text,
     Binary,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct WebSocketConfig {
     pub max_size: usize,
 }
@@ -179,7 +179,7 @@ pub enum ControlCode {
     Pong = 10,
 }
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Copy, Clone, Debug, Error, PartialEq)]
 pub enum OpCodeParseErr {
     #[error("Reserved OpCode: `{0}`")]
     Reserved(u8),
@@ -221,7 +221,7 @@ impl CloseReason {
 /// https://developer.mozilla.org/en-US/docs/Web/API/CloseEvent
 /// https://mailarchive.ietf.org/arch/msg/hybi/P_1vbD9uyHl63nbIIbFxKMfSwcM/
 /// https://tools.ietf.org/id/draft-ietf-hybi-thewebsocketprotocol-09.html
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum CloseCode {
     Normal,
     GoingAway,
@@ -254,7 +254,7 @@ impl CloseCode {
     }
 }
 
-#[derive(Error, Debug)]
+#[derive(Copy, Clone, Error, Debug)]
 #[error("Unknown close code: `{0}`")]
 pub struct CloseCodeParseErr(pub(crate) u16);
 
