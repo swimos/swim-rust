@@ -4,6 +4,10 @@ version = "0.1.0"
 authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
+[features]
+default = []
+split = []
+
 [dependencies]
 ratchet_ext = { path = "../ratchet_ext" }
 url = "2.1.1"

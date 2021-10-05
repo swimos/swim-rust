@@ -384,6 +384,7 @@ impl FramedWrite {
     }
 }
 
+#[cfg(feature = "split")]
 pub struct FramedIoParts<I> {
     pub io: I,
     pub reader: FramedRead,
@@ -404,6 +405,7 @@ impl<I> FramedIo<I>
 where
     I: WebSocketStream,
 {
+    #[cfg(feature = "split")]
     pub fn from_parts(parts: FramedIoParts<I>) -> FramedIo<I> {
         let FramedIoParts {
             io,
@@ -421,6 +423,7 @@ where
         }
     }
 
+    #[cfg(feature = "split")]
     pub fn into_parts(self) -> FramedIoParts<I> {
         let FramedIo {
             io,

@@ -21,8 +21,10 @@ mod ext;
 mod framed;
 mod handshake;
 mod protocol;
-mod split;
 mod ws;
+
+#[cfg(feature = "split")]
+mod split;
 
 pub use builder::{WebSocketClientBuilder, WebSocketServerBuilder};
 pub use errors::*;

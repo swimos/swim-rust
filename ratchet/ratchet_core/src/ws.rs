@@ -20,13 +20,14 @@ use crate::protocol::{
     CloseCode, CloseReason, ControlCode, DataCode, HeaderFlags, Message, MessageType, OpCode,
     PayloadType, Role,
 };
-use crate::split::{split, Receiver, Sender};
 use crate::{Request, WebSocketConfig, WebSocketStream};
 use bytes::BytesMut;
-use ratchet_ext::{
-    Extension, ExtensionEncoder, ExtensionProvider, FrameHeader as ExtFrameHeader,
-    SplittableExtension,
-};
+use ratchet_ext::{Extension, ExtensionEncoder, ExtensionProvider, FrameHeader as ExtFrameHeader};
+
+#[cfg(feature = "split")]
+use crate::split::{split, Receiver, Sender};
+#[cfg(feature = "split")]
+use ratchet_ext::SplittableExtension;
 
 pub const CONTROL_MAX_SIZE: usize = 125;
 pub const CONTROL_DATA_MISMATCH: &str = "Unexpected control frame data";
@@ -43,6 +44,7 @@ where
     S: WebSocketStream,
     E: Extension,
 {
+    #[cfg(feature = "split")]
     pub(crate) fn from_parts(
         framed: FramedIo<S>,
         control_buffer: BytesMut,
@@ -241,6 +243,7 @@ where
     // todo add docs about:
     //  - https://github.com/tokio-rs/tokio/issues/3200
     //  - https://github.com/tokio-rs/tls/issues/40
+    #[cfg(feature = "split")]
     pub fn split(self) -> Result<(Sender<S, E::SplitEncoder>, Receiver<S, E::SplitDecoder>), Error>
     where
         E: SplittableExtension,

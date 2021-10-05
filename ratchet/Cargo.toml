@@ -7,6 +7,7 @@ edition = "2018"
 [features]
 default = []
 deflate = ["ratchet_deflate"]
+split = ["ratchet_core/split"]
 
 [dependencies]
 ratchet_core = { path = "ratchet_core" }
