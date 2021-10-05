@@ -359,8 +359,6 @@ impl FramedWrite {
             )?;
         }
 
-        // println!("Writing payload {:?}", payload_bytes.as_ref());
-
         let mask = if is_server {
             None
         } else {
