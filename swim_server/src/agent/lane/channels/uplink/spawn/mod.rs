@@ -31,7 +31,7 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swim_common::warp::path::RelativePath;
+use swim_model::path::RelativePath;
 use swim_model::Value;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger;

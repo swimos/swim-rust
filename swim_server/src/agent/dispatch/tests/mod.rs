@@ -33,7 +33,7 @@ use std::time::Duration;
 use stm::transaction::TransactionError;
 use swim_async_runtime::time::timeout;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
-use swim_common::warp::path::RelativePath;
+use swim_model::path::RelativePath;
 use swim_utilities::errors::Recoverable;
 use swim_utilities::time::AtomicInstant;
 use tokio::sync::mpsc;

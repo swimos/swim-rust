@@ -22,7 +22,7 @@ use crate::meta::metric::uplink::{WarpUplinkProfile, WarpUplinkPulse};
 use futures::future::join;
 use std::collections::HashMap;
 use std::time::Duration;
-use swim_common::warp::path::RelativePath;
+use swim_model::path::RelativePath;
 use swim_utilities::trigger;
 use tokio::sync::mpsc;
 use tokio::time::sleep;

@@ -22,6 +22,7 @@ mod item;
 #[macro_use]
 pub mod macros;
 mod num;
+pub mod path;
 #[cfg(test)]
 mod tests;
 mod text;

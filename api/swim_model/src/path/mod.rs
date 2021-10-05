@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::Text;
 use std::fmt::{Display, Formatter};
-use swim_model::Text;
 
 /// Absolute path to an agent lane, on a specific host.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
@@ -36,7 +36,7 @@ impl AbsolutePath {
     ///
     /// # Examples
     /// ```
-    /// use swim_common::warp::path::*;
+    /// use swim_model::path::*;
     ///
     /// let abs = AbsolutePath::new(url::Url::parse("ws://127.0.0.1").unwrap(), "node", "lane");
     ///
@@ -88,7 +88,7 @@ impl RelativePath {
     ///
     /// # Examples
     /// ```
-    /// use swim_common::warp::path::*;
+    /// use swim_model::path::*;
     ///
     /// let rel = RelativePath::new("node", "lane");
     ///

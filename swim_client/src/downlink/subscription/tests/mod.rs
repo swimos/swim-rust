@@ -14,7 +14,7 @@
 
 use super::*;
 use crate::configuration::downlink::{ConfigHierarchy, DownlinkParams, OnInvalidMessage};
-use swim_common::warp::path::AbsolutePath;
+use swim_model::path::AbsolutePath;
 use tokio::time::Duration;
 use url::Url;
 

@@ -31,7 +31,7 @@ use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::time::Duration;
-use swim_common::warp::path::RelativePath;
+use swim_model::path::RelativePath;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
 use tokio::sync::mpsc;

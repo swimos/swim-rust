@@ -24,7 +24,7 @@ use tokio::sync::{mpsc, watch};
 
 use swim_async_runtime::time::timeout;
 use swim_common::warp::envelope::Envelope;
-use swim_common::warp::path::RelativePath;
+use swim_model::path::RelativePath;
 use swim_model::Value;
 use swim_utilities::future::retryable::{Quantity, RetryStrategy};
 use swim_utilities::routing::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};

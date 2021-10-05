@@ -20,7 +20,7 @@ use swim_client::downlink::typed::map::MapDownlinkReceiver;
 use swim_client::downlink::Event::Remote;
 use swim_client::interface::SwimClientBuilder;
 use swim_model::Value;
-use swim_common::warp::path::AbsolutePath;
+use swim_model::path::AbsolutePath;
 use tokio::{task, time};
 
 async fn did_update(map_recv: MapDownlinkReceiver<i32, bool>, default: bool) {

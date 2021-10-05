@@ -15,7 +15,7 @@
 use crate::router::{Router, RouterEvent};
 use futures::future::{ready, Ready};
 use swim_common::warp::envelope::Envelope;
-use swim_common::warp::path::AbsolutePath;
+use swim_model::path::AbsolutePath;
 use swim_utilities::future::request::request_future::RequestError;
 use tokio::sync::mpsc;
 

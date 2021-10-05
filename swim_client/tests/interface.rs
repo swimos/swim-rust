@@ -18,8 +18,8 @@ mod tests {
     use swim_client::downlink::typed::map::events::TypedViewWithEvent;
     use swim_client::downlink::Event;
     use swim_client::interface::SwimClientBuilder;
-    use swim_common::warp::path::AbsolutePath;
     use swim_form::Form;
+    use swim_model::path::AbsolutePath;
     use swim_model::{Attr, Item, Value};
     use test_server::build_server;
     use tokio::time::Duration;

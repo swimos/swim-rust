@@ -26,8 +26,8 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
-use swim_common::warp::path::RelativePath;
 use swim_form::Form;
+use swim_model::path::RelativePath;
 use swim_utilities::routing::uri::RelativeUri;
 
 pub type PulseLaneOpenResult<Agent, Context> = (

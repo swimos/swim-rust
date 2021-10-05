@@ -15,7 +15,7 @@
 use std::time::Duration;
 use swim_client::downlink::SchemaViolations;
 use swim_client::interface::SwimClientBuilder;
-use swim_common::warp::path::AbsolutePath;
+use swim_model::path::AbsolutePath;
 use tokio::{task, time};
 
 #[tokio::main]

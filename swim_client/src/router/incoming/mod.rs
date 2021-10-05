@@ -20,7 +20,7 @@ use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use std::convert::TryFrom;
 use swim_common::warp::envelope::Envelope;
-use swim_common::warp::path::RelativePath;
+use swim_model::path::RelativePath;
 use swim_recon::parser::parse_value;
 use swim_runtime::error::RoutingError;
 use swim_runtime::ws::WsMessage;

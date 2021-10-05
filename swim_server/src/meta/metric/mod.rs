@@ -26,7 +26,7 @@ use futures::future::try_join3;
 use futures::Future;
 use std::fmt::{Display, Formatter};
 use std::ops::Add;
-use swim_common::warp::path::RelativePath;
+use swim_model::path::RelativePath;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
 use tokio::sync::mpsc;

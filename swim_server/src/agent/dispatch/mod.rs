@@ -33,7 +33,7 @@ use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 
 use swim_common::warp::envelope::{Envelope, OutgoingHeader};
-use swim_common::warp::path::RelativePath;
+use swim_model::path::RelativePath;
 use swim_utilities::errors::Recoverable;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;

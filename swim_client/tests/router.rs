@@ -19,7 +19,7 @@ mod tests {
     use swim_client::connections::SwimConnPool;
     use swim_client::router::{Router, RouterEvent, SwimRouter};
     use swim_common::warp::envelope::Envelope;
-    use swim_common::warp::path::AbsolutePath;
+    use swim_model::path::AbsolutePath;
     use swim_model::Value;
     use test_server::build_server;
     use tokio::time::Duration;

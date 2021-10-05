@@ -38,7 +38,7 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::str::FromStr;
-use swim_common::warp::path::RelativePath;
+use swim_model::path::RelativePath;
 use swim_model::Text;
 
 use swim_utilities::routing::uri::RelativeUri;

@@ -34,7 +34,7 @@ use std::future::Future;
 use std::str::FromStr;
 use std::time::Duration;
 use swim_common::warp::envelope::{Envelope, EnvelopeHeader, EnvelopeParseErr, OutgoingHeader};
-use swim_common::warp::path::RelativePath;
+use swim_model::path::RelativePath;
 use swim_recon::parser::{parse_value, ParseError};
 use swim_runtime::error::{
     CloseError, CloseErrorKind, ConnectionError, ProtocolError, ProtocolErrorKind, ResolutionError,

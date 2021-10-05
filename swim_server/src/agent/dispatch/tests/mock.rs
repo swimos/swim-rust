@@ -36,7 +36,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use stm::transaction::TransactionError;
 use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
-use swim_common::warp::path::RelativePath;
+use swim_model::path::RelativePath;
 use swim_model::Value;
 use swim_runtime::error::ResolutionError;
 use swim_utilities::routing::uri::RelativeUri;

@@ -23,7 +23,7 @@ use tokio::sync::mpsc;
 
 use std::sync::Arc;
 use swim_common::warp::envelope::Envelope;
-use swim_common::warp::path::RelativePath;
+use swim_model::path::RelativePath;
 
 use crate::agent::lane::channels::uplink::stateless::StatelessUplinks;
 use crate::agent::lane::channels::uplink::{AddressedUplinkMessage, UplinkAction, UplinkKind};

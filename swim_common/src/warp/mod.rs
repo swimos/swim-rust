@@ -13,4 +13,3 @@
 // limitations under the License.
 
 pub mod envelope;
-pub mod path;

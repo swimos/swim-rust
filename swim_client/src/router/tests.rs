@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use swim_common::warp::envelope::Envelope;
-use swim_common::warp::path::AbsolutePath;
+use swim_model::path::AbsolutePath;
 use swim_model::Value;
 use swim_runtime::error::{ConnectionError, HttpError};
 use swim_runtime::ws::WsMessage;
