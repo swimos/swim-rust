@@ -22,10 +22,10 @@ use http::Uri;
 use parking_lot::Mutex;
 use tokio::sync::{mpsc, watch};
 
-use swim_model::Value;
+use swim_async_runtime::time::timeout;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
-use swim_runtime::time::timeout;
+use swim_model::Value;
 use swim_utilities::future::retryable::{Quantity, RetryStrategy};
 use swim_utilities::routing::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};
 use swim_utilities::trigger;
@@ -40,10 +40,10 @@ use crate::routing::{ConnectionDropped, Route, RoutingAddr, TaggedEnvelope, Tagg
 use futures::io::ErrorKind;
 use std::num::NonZeroUsize;
 use std::time::Duration;
-use swim_common::routing::ws::WsMessage;
-use swim_common::routing::{
+use swim_runtime::error::{
     CloseError, CloseErrorKind, ConnectionError, IoError, ProtocolError, ResolutionError,
 };
+use swim_runtime::ws::WsMessage;
 
 #[test]
 fn dispatch_error_display() {

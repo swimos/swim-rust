@@ -14,13 +14,13 @@
 
 use super::tokens::{complete, streaming, string_literal};
 use super::Span;
-use swim_form::structural::read::event::{NumericValue, ReadEvent};
 use crate::parser::record::ParseIterator;
 use crate::parser::ParseError;
 use either::Either;
 use nom::IResult;
 use std::borrow::Cow;
 use std::ops::{Add, Neg, Sub};
+use swim_form::structural::read::event::{NumericValue, ReadEvent};
 use swim_model::bigint::{BigInt, BigUint};
 use swim_model::{Attr, Item, Text, Value};
 

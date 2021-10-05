@@ -12,11 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::schema::{
-    combine_orderings, FieldMatchResult, FieldSchema, Schema, StandardSchema,
-};
-use swim_model::{Item, ToValue, Value};
+use crate::schema::{combine_orderings, FieldMatchResult, FieldSchema, Schema, StandardSchema};
 use std::cmp::Ordering;
+use swim_model::{Item, ToValue, Value};
 
 /// Schema for Recon slots.
 #[derive(Clone, Debug, PartialEq)]

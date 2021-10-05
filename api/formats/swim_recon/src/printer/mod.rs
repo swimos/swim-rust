@@ -15,13 +15,13 @@
 #[cfg(test)]
 mod tests;
 
+use base64::display::Base64Display;
+use std::borrow::Cow;
+use std::fmt::{Display, Formatter};
 use swim_form::structural::write::{
     BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
     StructuralWriter,
 };
-use base64::display::Base64Display;
-use std::borrow::Cow;
-use std::fmt::{Display, Formatter};
 use swim_model::bigint::{BigInt, BigUint};
 use swim_model::write_string_literal;
 

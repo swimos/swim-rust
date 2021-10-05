@@ -19,7 +19,7 @@ mod http;
 mod io;
 mod protocol;
 mod resolution;
-mod send;
+mod routing;
 #[cfg(feature = "tls")]
 mod tls;
 
@@ -30,7 +30,7 @@ pub use encoding::*;
 pub use io::*;
 pub use protocol::*;
 pub use resolution::*;
-pub use send::*;
+pub use routing::*;
 #[cfg(feature = "tls")]
 pub use tls::*;
 

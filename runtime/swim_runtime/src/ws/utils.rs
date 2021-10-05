@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::{InvalidUriError, InvalidUriErrorKind};
+use crate::error::{InvalidUriError, InvalidUriErrorKind};
 use http::uri::Scheme;
 use http::{Request, Uri};
 use std::str::FromStr;

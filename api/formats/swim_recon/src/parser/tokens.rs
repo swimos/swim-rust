@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_form::structural::read::event::NumericValue;
 use crate::parser::Span;
 use either::Either;
 use nom::branch::alt;
@@ -25,6 +24,7 @@ use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::ops::Neg;
+use swim_form::structural::read::event::NumericValue;
 use swim_model::bigint::{BigInt, BigUint, ParseBigIntError, Sign};
 use swim_model::identifier::{is_identifier_char, is_identifier_start};
 use swim_model::Text;

@@ -24,17 +24,17 @@ use tracing::trace_span;
 use tracing::{span, Level};
 use tracing_futures::Instrument;
 
-use swim_utilities::future::request::request_future::RequestError;
+use swim_async_runtime::task::*;
 use swim_common::warp::envelope::{Envelope, IncomingLinkMessage};
 use swim_common::warp::path::{AbsolutePath, RelativePath};
-use swim_runtime::task::*;
+use swim_utilities::future::request::request_future::RequestError;
 
 use crate::configuration::router::RouterParams;
 use crate::connections::{ConnectionPool, ConnectionSender};
 use crate::router::incoming::{IncomingHostTask, IncomingRequest};
 use crate::router::outgoing::OutgoingHostTask;
 use futures::future::BoxFuture;
-use swim_common::routing::RoutingError;
+use swim_runtime::error::RoutingError;
 use swim_utilities::errors::Recoverable;
 use swim_utilities::trigger::promise;
 

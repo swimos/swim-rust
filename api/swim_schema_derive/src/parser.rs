@@ -14,12 +14,14 @@
 
 use proc_macro2::Ident;
 use quote::ToTokens;
-use syn::{Lit, Meta, NestedMeta};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
+use syn::{Lit, Meta, NestedMeta};
 
-use macro_utilities::{Attributes, CompoundTypeKind, Context, FieldKind, FormField, Label, StructureKind};
 pub use macro_utilities::attr_names::*;
+use macro_utilities::{
+    Attributes, CompoundTypeKind, Context, FieldKind, FormField, Label, StructureKind,
+};
 
 /// Parse a structure's fields from the [`DeriveInput`]'s fields. Returns the type of the fields,
 /// parsed fields that contain a name and kind, and a derived [`FieldManifest]`. Any errors

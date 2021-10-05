@@ -542,7 +542,7 @@ async fn agent_loop() {
         MockNodeStore::mock(),
     );
 
-    let agent_task = swim_runtime::task::spawn(agent_proc);
+    let agent_task = swim_async_runtime::task::spawn(agent_proc);
 
     async fn expect(rx: &mut mpsc::Receiver<DataAgentEvent>, expected: DataAgentEvent) {
         let result = rx.recv().await;

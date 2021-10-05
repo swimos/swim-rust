@@ -15,7 +15,6 @@
 use super::tokens::streaming::*;
 use super::tokens::*;
 use super::Span;
-use swim_form::structural::read::event::ReadEvent;
 use either::Either;
 use nom::branch::alt;
 use nom::character::complete as char_comp;
@@ -25,6 +24,7 @@ use nom::error::ErrorKind;
 use nom::sequence::{pair, preceded};
 use nom::{Finish, IResult, Parser};
 use std::borrow::Cow;
+use swim_form::structural::read::event::ReadEvent;
 
 /// Change the state of the parser after producing an event.
 #[derive(Debug)]
@@ -85,7 +85,6 @@ impl StateChange {
 }
 
 trait ReadEventExt<'a>: Sized {
-
     fn single(self) -> ParseEvents<'a>;
 
     fn followed_by(self, other: ReadEvent<'a>) -> ParseEvents<'a>;
@@ -848,7 +847,7 @@ impl<'a> Iterator for ParseEvents<'a> {
         match std::mem::take(self) {
             ParseEvents::ThreeEvents(e1, e2, e3) => {
                 *self = ParseEvents::TwoEvents(e2, e3);
-               Some(Some(e1))
+                Some(Some(e1))
             }
             ParseEvents::TwoEvents(e1, e2) => {
                 *self = ParseEvents::SingleEvent(e2);
@@ -858,9 +857,7 @@ impl<'a> Iterator for ParseEvents<'a> {
                 *self = ParseEvents::NoEvent;
                 Some(Some(e1))
             }
-            ParseEvents::NoEvent => {
-                None
-            }
+            ParseEvents::NoEvent => None,
             ParseEvents::TerminateWithAttr(attr) => {
                 *self = ParseEvents::NoEvent;
                 match attr {
@@ -870,9 +867,7 @@ impl<'a> Iterator for ParseEvents<'a> {
                     FinalAttrStage::EndBody => Some(Some(ReadEvent::EndRecord)),
                 }
             }
-            ParseEvents::End => {
-                Some(None)
-            }
+            ParseEvents::End => Some(None),
         }
     }
 }

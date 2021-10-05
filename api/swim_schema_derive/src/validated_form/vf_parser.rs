@@ -328,12 +328,12 @@ impl ToTokens for StandardSchema {
             StandardSchema::NumItems(num) => {
                 quote!(swim_schema::schema::StandardSchema::NumItems(#num))
             }
-            StandardSchema::And(and_schema) => quote!(
-                swim_schema::schema::StandardSchema::And(vec![#(#and_schema,)*])
-            ),
-            StandardSchema::Or(or_schema) => quote!(
-                swim_schema::schema::StandardSchema::Or(vec![#(#or_schema,)*])
-            ),
+            StandardSchema::And(and_schema) => quote!(swim_schema::schema::StandardSchema::And(
+                vec![#(#and_schema,)*]
+            )),
+            StandardSchema::Or(or_schema) => quote!(swim_schema::schema::StandardSchema::Or(
+                vec![#(#or_schema,)*]
+            )),
             StandardSchema::Not(not_schema) => quote!(
                 swim_schema::schema::StandardSchema::Not(std::boxed::Box::new(#not_schema))
             ),

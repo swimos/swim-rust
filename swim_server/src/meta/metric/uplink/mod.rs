@@ -21,8 +21,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
-use swim_form::Form;
 use swim_common::warp::path::RelativePath;
+use swim_form::Form;
 use tracing::{event, Level};
 
 use crate::agent::lane::channels::uplink::backpressure::KeyedBackpressureConfig;

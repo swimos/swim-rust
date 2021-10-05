@@ -17,14 +17,12 @@ use swim_future::request::Request;
 use tracing::{event, Level};
 
 pub trait RequestExt<T> {
-
     fn send_debug<M: tracing::Value + Debug>(self, data: T, message: M);
 
     fn send_warn<M: tracing::Value + Debug>(self, data: T, message: M);
 }
 
 pub trait TryRequestExt<T, E> {
-
     fn send_ok_debug<M: tracing::Value + Debug>(self, data: T, message: M);
 
     fn send_ok_warn<M: tracing::Value + Debug>(self, data: T, message: M);
@@ -35,7 +33,6 @@ pub trait TryRequestExt<T, E> {
 }
 
 impl<T> RequestExt<T> for Request<T> {
-
     fn send_debug<M: tracing::Value + Debug>(self, data: T, message: M) {
         if self.send(data).is_err() {
             event!(Level::DEBUG, message);
@@ -46,11 +43,9 @@ impl<T> RequestExt<T> for Request<T> {
             event!(Level::WARN, message);
         }
     }
-
 }
 
 impl<T, E> TryRequestExt<T, E> for Request<Result<T, E>> {
-
     fn send_ok_debug<M: tracing::Value + Debug>(self, data: T, message: M) {
         self.send_debug(Ok(data), message)
     }
@@ -66,5 +61,4 @@ impl<T, E> TryRequestExt<T, E> for Request<Result<T, E>> {
     fn send_err_warn<M: tracing::Value + Debug>(self, err: E, message: M) {
         self.send_warn(Err(err), message)
     }
-
 }

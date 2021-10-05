@@ -14,7 +14,7 @@
 
 use crate::routing::error::{RouterError, Unresolvable};
 use crate::routing::RoutingAddr;
-use swim_common::routing::{CloseError, CloseErrorKind, ConnectionError, ResolutionError};
+use swim_runtime::error::{CloseError, CloseErrorKind, ConnectionError, ResolutionError};
 use swim_utilities::routing::uri::RelativeUri;
 
 #[test]

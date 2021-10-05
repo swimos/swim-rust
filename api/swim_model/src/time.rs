@@ -32,8 +32,8 @@ impl Display for Timestamp {
 }
 
 impl<TZ> From<DateTime<TZ>> for Timestamp
-    where
-        TZ: TimeZone,
+where
+    TZ: TimeZone,
 {
     fn from(dt: DateTime<TZ>) -> Self {
         Timestamp(dt.with_timezone(&Utc))

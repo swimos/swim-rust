@@ -14,10 +14,10 @@
 
 use super::ValidateFrom;
 use crate::modifiers::NameTransform;
-use macro_utilities::attr_names::FORM_PATH;
 use crate::structural::model::field::{FieldWithIndex, SegregatedFields, TaggedFieldModel};
 use crate::structural::model::StructLike;
 use crate::SynValidation;
+use macro_utilities::attr_names::FORM_PATH;
 use macro_utilities::CompoundTypeKind;
 use macro_utilities::FieldKind;
 use proc_macro2::TokenStream;
@@ -38,11 +38,12 @@ pub struct FieldsModel<'a> {
 }
 
 impl<'a> FieldsModel<'a> {
-
     pub fn has_tag_field(&self) -> bool {
-        self.fields.iter().find(|model| model.directive == FieldKind::Tagged).is_some()
+        self.fields
+            .iter()
+            .find(|model| model.directive == FieldKind::Tagged)
+            .is_some()
     }
-
 }
 
 /// Preprocessed description of a struct type.
@@ -183,12 +184,10 @@ impl<'a> ValidateFrom<&'a Fields> for FieldsModel<'a> {
 
         field_models.and_then(move |flds| {
             let kind = assess_kind(definition, flds.iter());
-            kind.map(move |kind| {
-                FieldsModel {
-                    type_kind,
-                    body_kind: kind,
-                    fields: flds,
-                }
+            kind.map(move |kind| FieldsModel {
+                type_kind,
+                body_kind: kind,
+                fields: flds,
             })
         })
     }

@@ -18,9 +18,9 @@ use crate::downlink::Command;
 use crate::downlink::DownlinkConfig;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swim_schema::ValueSchema;
-use swim_schema::schema::StandardSchema;
 use swim_model::Value;
+use swim_schema::schema::StandardSchema;
+use swim_schema::ValueSchema;
 use swim_utilities::future::item_sink::ItemSender;
 use tokio::sync::mpsc;
 

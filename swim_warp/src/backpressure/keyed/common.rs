@@ -24,8 +24,8 @@ use futures::Future;
 use futures::StreamExt;
 use tokio::sync::mpsc;
 
-use swim_utilities::future::item_sink::ItemSender;
 use swim_utilities::collections::lrucache::LruCache;
+use swim_utilities::future::item_sink::ItemSender;
 use swim_utilities::sync::circular_buffer;
 use swim_utilities::trigger;
 use tokio_stream::wrappers::ReceiverStream;

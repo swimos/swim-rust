@@ -14,9 +14,9 @@
 
 use tokio::fs::File;
 
-use swim_model::{Attr, Item, Value};
-use std::path::PathBuf;
 use crate::parser::async_parser::AsyncParseError;
+use std::path::PathBuf;
+use swim_model::{Attr, Item, Value};
 
 fn test_data_path() -> PathBuf {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));

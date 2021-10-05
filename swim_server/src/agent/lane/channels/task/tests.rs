@@ -40,6 +40,7 @@ use crate::meta::metric::{aggregator_sink, AggregatorError, NodeMetricAggregator
 use crate::meta::pulse::PulseLanes;
 use crate::plane::store::mock::MockPlaneStore;
 use crate::routing::error::RouterError;
+use crate::routing::error::SendError;
 use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
     TaggedSender,
@@ -55,16 +56,15 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use stm::transaction::TransactionError;
+use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
+use swim_common::warp::path::RelativePath;
 use swim_form::structural::read::ReadError;
 use swim_form::structural::write::StructuralWritable;
 use swim_form::{Form, NewTypeForm};
 use swim_model::Value;
-use swim_common::routing::ResolutionError;
-use swim_common::routing::RoutingError;
-use swim_common::routing::SendError;
+use swim_runtime::error::ResolutionError;
+use swim_runtime::error::RoutingError;
 use swim_utilities::future::item_sink::ItemSink;
-use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
-use swim_common::warp::path::RelativePath;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::sync::topic;
 use swim_utilities::time::AtomicInstant;

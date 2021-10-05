@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_model::bigint::{BigInt, BigUint};
 use std::borrow::Cow;
 use swim_form::structural::write::{
     BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
     StructuralWriter,
 };
+use swim_model::bigint::{BigInt, BigUint};
 use swim_model::{Attr, Item, Value};
 
 #[derive(Default, Debug, PartialEq, Eq)]

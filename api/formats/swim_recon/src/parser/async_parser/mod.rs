@@ -15,20 +15,20 @@
 #[cfg(test)]
 mod tests;
 
-use std::str::Utf8Error;
-use std::fmt::{Display, Formatter};
-use std::error::Error;
+use crate::parser::record::IncrementalReconParser;
+use crate::parser::ParseError;
+use crate::parser::Span;
 use bytes::{Buf, BytesMut};
 use nom::error::ErrorKind;
 use nom::Parser;
-use tokio::io::{AsyncRead, AsyncReadExt};
+use std::error::Error;
+use std::fmt::{Display, Formatter};
+use std::str::Utf8Error;
 use swim_form::structural::read::event::ReadEvent;
-use swim_form::structural::read::ReadError;
 use swim_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
+use swim_form::structural::read::ReadError;
 use swim_model::{Item, Value};
-use crate::parser::Span;
-use crate::parser::ParseError;
-use crate::parser::record::{IncrementalReconParser};
+use tokio::io::{AsyncRead, AsyncReadExt};
 
 /// Error type for reading a configuration document.
 #[derive(Debug)]
@@ -68,7 +68,6 @@ impl From<tokio::io::Error> for AsyncParseError {
     }
 }
 
-
 async fn run_parser<In, R>(
     mut input: In,
     recognizer: &mut R,
@@ -76,9 +75,9 @@ async fn run_parser<In, R>(
     parser: &mut IncrementalReconParser,
     tracker: &mut LocationTracker,
 ) -> Result<Option<R::Target>, AsyncParseError>
-    where
-        In: AsyncRead + Unpin,
-        R: Recognizer,
+where
+    In: AsyncRead + Unpin,
+    R: Recognizer,
 {
     'read: loop {
         if input.read(buffer).await? == 0 {
@@ -89,10 +88,8 @@ async fn run_parser<In, R>(
             Ok(s) => s,
             Err(e) if e.error_len().is_some() => {
                 return Err(AsyncParseError::BadUtf8(e));
-            },
-            Err(e) => {
-                unsafe { core::str::from_utf8_unchecked(&bytes[..e.valid_up_to()]) }
             }
+            Err(e) => unsafe { core::str::from_utf8_unchecked(&bytes[..e.valid_up_to()]) },
         };
         let mut span = Span::new(string);
         'token: loop {
@@ -101,21 +98,19 @@ async fn run_parser<In, R>(
                     span = remainder;
                     'feed: loop {
                         match events.next() {
-                            Some(Some(event)) => {
-                                match recognizer.feed_event(event) {
-                                    Some(Ok(t)) => {
-                                        if events.is_empty() {
-                                            return Ok(Some(t));
-                                        } else {
-                                            return Err(AsyncParseError::UnconsumedTokens);
-                                        }
+                            Some(Some(event)) => match recognizer.feed_event(event) {
+                                Some(Ok(t)) => {
+                                    if events.is_empty() {
+                                        return Ok(Some(t));
+                                    } else {
+                                        return Err(AsyncParseError::UnconsumedTokens);
                                     }
-                                    Some(Err(e)) => {
-                                        return Err(AsyncParseError::Parser(ParseError::from(e)));
-                                    }
-                                    _ => {}
                                 }
-                            }
+                                Some(Err(e)) => {
+                                    return Err(AsyncParseError::Parser(ParseError::from(e)));
+                                }
+                                _ => {}
+                            },
                             Some(None) => {
                                 break 'read;
                             }
@@ -124,7 +119,7 @@ async fn run_parser<In, R>(
                             }
                         }
                     }
-                },
+                }
                 Err(nom::Err::Incomplete(_)) => {
                     break 'token;
                 }
@@ -141,9 +136,7 @@ async fn run_parser<In, R>(
 }
 
 /// Attempt to read a Recon document from an asyncronous input.
-pub async fn parse_recon_document<In>(
-    input: In,
-) -> Result<Vec<Item>, AsyncParseError>
+pub async fn parse_recon_document<In>(input: In) -> Result<Vec<Item>, AsyncParseError>
 where
     In: AsyncRead + Unpin,
 {
@@ -154,21 +147,28 @@ where
     let mut parser = IncrementalReconParser::default();
     let mut tracker = LocationTracker::default();
 
-    if run_parser(input, &mut recognizer, &mut buffer, &mut parser, &mut tracker).await?.is_some() {
+    if run_parser(
+        input,
+        &mut recognizer,
+        &mut buffer,
+        &mut parser,
+        &mut tracker,
+    )
+    .await?
+    .is_some()
+    {
         Err(AsyncParseError::UnconsumedTokens)
     } else {
         match recognizer.feed_event(ReadEvent::EndRecord) {
             Some(Ok(Value::Record(_, items))) => Ok(items),
             Some(Err(e)) => Err(AsyncParseError::Parser(ParseError::from(e))),
-            _ => {
-                match recognizer.try_flush() {
-                    Some(Ok(Value::Record(_, items))) => Ok(items),
-                    Some(Err(e)) => Err(AsyncParseError::Parser(ParseError::from(e))),
-                    _ => {
-                        Err(AsyncParseError::Parser(ParseError::Structure(ReadError::IncompleteRecord)))
-                    }
-                }
-            }
+            _ => match recognizer.try_flush() {
+                Some(Ok(Value::Record(_, items))) => Ok(items),
+                Some(Err(e)) => Err(AsyncParseError::Parser(ParseError::from(e))),
+                _ => Err(AsyncParseError::Parser(ParseError::Structure(
+                    ReadError::IncompleteRecord,
+                ))),
+            },
         }
     }
 }
@@ -197,7 +197,7 @@ where
                 Ok(s) => s,
                 Err(e) => {
                     return Err(AsyncParseError::BadUtf8(e));
-                },
+                }
             };
             let span = Span::new(string);
             match terminal_parser.parse(span) {
@@ -219,7 +219,9 @@ where
                     }
                 }
                 Err(nom::Err::Incomplete(_)) => {
-                    return Err(AsyncParseError::Parser(ParseError::Structure(ReadError::IncompleteRecord)));
+                    return Err(AsyncParseError::Parser(ParseError::Structure(
+                        ReadError::IncompleteRecord,
+                    )));
                 }
                 Err(nom::Err::Error(e) | nom::Err::Failure(e)) => {
                     return Err(tracker.relativize_error(e));
@@ -230,9 +232,9 @@ where
     match recognizer.try_flush() {
         Some(Ok(t)) => Ok(t),
         Some(Err(e)) => Err(AsyncParseError::Parser(ParseError::from(e))),
-        _ => {
-            Err(AsyncParseError::Parser(ParseError::Structure(ReadError::IncompleteRecord)))
-        }
+        _ => Err(AsyncParseError::Parser(ParseError::Structure(
+            ReadError::IncompleteRecord,
+        ))),
     }
 }
 
@@ -253,12 +255,11 @@ impl Default for LocationTracker {
 }
 
 impl LocationTracker {
-
-    fn update(&mut self, span: &Span<'_>)  {
+    fn update(&mut self, span: &Span<'_>) {
         let LocationTracker {
             offset,
             line,
-            column
+            column,
         } = self;
         *offset += span.location_offset();
         let span_line = span.location_line();
@@ -287,7 +288,4 @@ impl LocationTracker {
             column,
         })
     }
-
-
-
 }

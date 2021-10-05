@@ -25,8 +25,8 @@ mod num;
 #[cfg(test)]
 mod tests;
 mod text;
-mod value;
 pub mod time;
+mod value;
 
 pub use attr::Attr;
 pub use blob::Blob;

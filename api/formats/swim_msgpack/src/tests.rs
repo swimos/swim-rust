@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{read_from_msg_pack, MsgPackReadError};
 use crate::MsgPackInterpreter;
-use swim_form::Form;
+use crate::{read_from_msg_pack, MsgPackReadError};
 use bytes::{BufMut, BytesMut};
 use std::collections::HashMap;
 use std::fmt::Debug;
+use swim_form::Form;
 use swim_model::{Attr, Item, Value};
 
 fn validate<T: Form + PartialEq + Debug>(value: &T) {
@@ -39,14 +39,7 @@ fn validate<T: Form + PartialEq + Debug>(value: &T) {
 const I32VALUES: [i32; 4] = [1, -100, 1234, -87657];
 const U32VALUES: [u32; 5] = [1u32, 100u32, 1234u32, 87657u32, u32::MAX];
 const I64VALUES: [i64; 5] = [1i64, -100i64, 1234i64, -87657i64, 105678750199i64];
-const U64VALUES: [u64; 6] = [
-    1u64,
-    100u64,
-    1234u64,
-    87657u64,
-    105678750199u64,
-    u64::MAX,
-];
+const U64VALUES: [u64; 6] = [1u64, 100u64, 1234u64, 87657u64, 105678750199u64, u64::MAX];
 
 #[test]
 fn msgpack_small_numbers() {

@@ -15,8 +15,8 @@
 use super::*;
 use crate::downlink::Command;
 use swim_form::Form;
-use swim_schema::ValueSchema;
 use swim_model::ValueKind;
+use swim_schema::ValueSchema;
 
 #[test]
 fn test_init() {

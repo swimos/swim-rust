@@ -33,15 +33,15 @@ use std::fmt::{Display, Formatter};
 use std::future::Future;
 use std::str::FromStr;
 use std::time::Duration;
+use swim_common::warp::envelope::{Envelope, EnvelopeHeader, EnvelopeParseErr, OutgoingHeader};
+use swim_common::warp::path::RelativePath;
 use swim_recon::parser::{parse_value, ParseError};
-use swim_common::routing::ws::selector::{SelectorResult, WsStreamSelector};
-use swim_common::routing::ws::{CloseCode, CloseReason, JoinedStreamSink, WsMessage};
-use swim_common::routing::{
+use swim_runtime::error::{
     CloseError, CloseErrorKind, ConnectionError, ProtocolError, ProtocolErrorKind, ResolutionError,
     ResolutionErrorKind,
 };
-use swim_common::warp::envelope::{Envelope, EnvelopeHeader, EnvelopeParseErr, OutgoingHeader};
-use swim_common::warp::path::RelativePath;
+use swim_runtime::ws::selector::{SelectorResult, WsStreamSelector};
+use swim_runtime::ws::{CloseCode, CloseReason, JoinedStreamSink, WsMessage};
 use swim_utilities::errors::Recoverable;
 use swim_utilities::future::retryable::RetryStrategy;
 use swim_utilities::future::task::Spawner;

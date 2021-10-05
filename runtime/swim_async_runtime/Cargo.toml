@@ -1,5 +1,5 @@
 [package]
-name = "swim_runtime"
+name = "swim_async_runtime"
 version = "0.1.0"
 authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"

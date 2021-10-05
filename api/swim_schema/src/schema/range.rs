@@ -16,9 +16,9 @@ use crate::schema::{
     as_big_int, as_f64, as_i64, as_u64, combine_orderings, float_endpoint_to_slot,
     int_endpoint_to_slot,
 };
-use swim_model::{Attr, Value};
-use swim_model::bigint::{BigInt, ToBigInt};
 use std::cmp::Ordering;
+use swim_model::bigint::{BigInt, ToBigInt};
+use swim_model::{Attr, Value};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Bound<T> {

@@ -457,11 +457,11 @@ impl SwimConnection {
     }
 }
 
-use swim_common::routing::ws::{WebsocketFactory, WsMessage};
-use swim_common::routing::{CloseError, ConnectionError, ResolutionError, ResolutionErrorKind};
-use swim_runtime::task::*;
-use swim_runtime::time::instant::Instant;
-use swim_runtime::time::interval::interval;
+use swim_async_runtime::task::*;
+use swim_async_runtime::time::instant::Instant;
+use swim_async_runtime::time::interval::interval;
+use swim_runtime::error::{CloseError, ConnectionError, ResolutionError, ResolutionErrorKind};
+use swim_runtime::ws::{WebsocketFactory, WsMessage};
 use tokio_stream::wrappers::ReceiverStream;
 
 pub type ConnectionChannel = (ConnectionSender, Option<ConnectionReceiver>);

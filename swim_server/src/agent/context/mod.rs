@@ -25,7 +25,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use swim_runtime::time::clock::Clock;
+use swim_async_runtime::time::clock::Clock;
 use swim_utilities::future::SwimStreamExt;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::time::AtomicInstant;

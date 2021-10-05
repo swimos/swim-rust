@@ -24,7 +24,7 @@ swim_model = { path = "../api/swim_model" }
 swim_form = { path = "../api/swim_form" }
 swim_schema = { path = "../api/swim_schema" }
 swim_utilities = { path = "../swim_utilities", features = ["lrucache", "sync"] }
-swim_runtime = { path = "../swim_runtime" }
+swim_async_runtime = { path = "../runtime/swim_async_runtime" }
 tokio = { version = "1.1.1", features = ["sync"] }
 tokio-stream = "0.1.2"
 

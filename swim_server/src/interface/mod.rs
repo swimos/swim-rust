@@ -35,9 +35,9 @@ use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use store::StoreError;
-use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
-use swim_runtime::task::TaskError;
-use swim_runtime::time::clock::RuntimeClock;
+use swim_async_runtime::task::TaskError;
+use swim_async_runtime::time::clock::RuntimeClock;
+use swim_runtime::ws::tungstenite::TungsteniteWsConnections;
 use swim_utilities::future::open_ended::OpenEndedFutures;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
@@ -308,7 +308,7 @@ impl SwimServer {
         let (remote_tx, remote_rx) = mpsc::channel(conn_config.router_buffer_size.get());
         let top_level_router_fac = TopLevelRouterFactory::new(plane_tx.clone(), remote_tx.clone());
 
-        let clock = swim_runtime::time::clock::runtime_clock();
+        let clock = swim_async_runtime::time::clock::runtime_clock();
 
         let plane_future = run_plane(
             agent_config.clone(),

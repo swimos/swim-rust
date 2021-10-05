@@ -12,14 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod error;
-pub use error::*;
-pub mod ws;
-
-use swim_utilities::future::request::request_future::RequestError;
+use crate::error::ConnectionError;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use swim_utilities::errors::Recoverable;
+use swim_utilities::future::request::request_future::RequestError;
 use swim_utilities::sync::circular_buffer;
 use tokio::sync::mpsc::error::SendError as MpscSendError;
 

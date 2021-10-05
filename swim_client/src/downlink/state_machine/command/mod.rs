@@ -17,8 +17,8 @@ mod tests;
 
 use crate::downlink::state_machine::{DownlinkStateMachine, EventResult, Response, ResponseResult};
 use crate::downlink::{Command, Message};
-use swim_schema::schema::{Schema, StandardSchema};
 use swim_model::Value;
+use swim_schema::schema::{Schema, StandardSchema};
 
 /// State machine for command downlinks.
 pub struct CommandStateMachine {

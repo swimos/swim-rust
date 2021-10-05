@@ -24,7 +24,7 @@ use std::any::Any;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
-use swim_runtime::time::clock::Clock;
+use swim_async_runtime::time::clock::Clock;
 
 /// [`AgentRoute`] implementation that spawns agents with a fixed configuration.
 pub struct AgentProvider<Agent, Config, Lifecycle> {

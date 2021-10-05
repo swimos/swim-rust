@@ -38,14 +38,14 @@ use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::Read;
 use std::sync::Arc;
-use swim_form::Form;
-use swim_schema::ValueSchema;
-use swim_recon::parser::parse_value as parse_single;
-use swim_model::Value;
-use swim_common::routing::ws::WebsocketFactory;
-use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
+use swim_form::Form;
+use swim_model::Value;
+use swim_recon::parser::parse_value as parse_single;
+use swim_runtime::error::RoutingError;
+use swim_runtime::ws::WebsocketFactory;
+use swim_schema::ValueSchema;
 use tracing::info;
 
 /// Builder to create Swim client instance.

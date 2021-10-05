@@ -13,10 +13,10 @@
 // limitations under the License.
 
 /// A runtime for writing Swim applications that may be used on WebAssembly (WASM) and non-WASM platforms.
-/// `swim_runtime` provides two components:
+/// `swim_async_runtime` provides two components:
 ///
 /// - `task`: a runtime for executing futures on. WASM futures are spawned on the current thread
-/// and are expected to be of type `Future<Output = ()>`, `swim_runtime` wraps any future to the expected type
+/// and are expected to be of type `Future<Output = ()>`, `swim_async_runtime` wraps any future to the expected type
 /// for WASM and still allows for a future of type `Future<Output = R>` to be executed. Non-WASM futures
 /// are executed by Tokio.
 ///

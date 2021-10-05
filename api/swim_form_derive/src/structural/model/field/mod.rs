@@ -14,11 +14,11 @@
 
 use super::ValidateFrom;
 use crate::modifiers::NameTransform;
+use crate::SynValidation;
 use macro_utilities::attr_names::{
     ATTR_PATH, BODY_PATH, FORM_PATH, HEADER_BODY_PATH, HEADER_PATH, NAME_PATH, SCHEMA_PATH,
     SKIP_PATH, SLOT_PATH, TAG_PATH,
 };
-use crate::SynValidation;
 use macro_utilities::{FieldKind, Symbol};
 use proc_macro2::TokenStream;
 use quote::ToTokens;

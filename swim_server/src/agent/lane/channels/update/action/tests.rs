@@ -18,8 +18,8 @@ use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::routing::RoutingAddr;
 use futures::future::join;
 use std::time::Duration;
+use swim_async_runtime::time::timeout::timeout;
 use swim_form::structural::read::ReadError;
-use swim_runtime::time::timeout::timeout;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 

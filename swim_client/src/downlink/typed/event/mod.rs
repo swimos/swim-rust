@@ -23,9 +23,9 @@ use std::fmt::{Debug, Display, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use swim_form::Form;
-use swim_schema::ValueSchema;
-use swim_schema::schema::StandardSchema;
 use swim_model::Value;
+use swim_schema::schema::StandardSchema;
+use swim_schema::ValueSchema;
 use swim_utilities::sync::topic;
 use swim_utilities::trigger::promise;
 

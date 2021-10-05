@@ -301,7 +301,7 @@ async fn store_loads() {
         store.delegate.node_store(uri.to_string()),
     );
 
-    let agent_task = swim_runtime::task::spawn(agent_proc);
+    let agent_task = swim_async_runtime::task::spawn(agent_proc);
 
     match agent.downcast_ref::<StoreAgent>() {
         Some(agent) => {
@@ -350,7 +350,7 @@ async fn events() {
         store.delegate.node_store(uri.to_string()),
     );
 
-    let agent_task = swim_runtime::task::spawn(agent_proc);
+    let agent_task = swim_async_runtime::task::spawn(agent_proc);
 
     fn check_value_lane(store: &TestStore, i: i32) {
         let delegate = &store.delegate;

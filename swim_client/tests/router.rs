@@ -13,14 +13,14 @@
 // limitations under the License.
 
 mod tests {
+    use swim_async_runtime::time::timeout::timeout;
     use swim_client::configuration::router::{ConnectionPoolParams, RouterParamBuilder};
     use swim_client::connections::factory::tungstenite::TungsteniteWsFactory;
     use swim_client::connections::SwimConnPool;
     use swim_client::router::{Router, RouterEvent, SwimRouter};
-    use swim_model::Value;
     use swim_common::warp::envelope::Envelope;
     use swim_common::warp::path::AbsolutePath;
-    use swim_runtime::time::timeout::timeout;
+    use swim_model::Value;
     use test_server::build_server;
     use tokio::time::Duration;
 

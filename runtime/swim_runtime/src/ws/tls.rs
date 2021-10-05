@@ -17,7 +17,7 @@ use std::io::{BufReader, Read};
 use std::path::Path;
 use tokio_native_tls::{native_tls::Certificate, TlsConnector as TokioTlsConnector, TlsStream};
 
-use crate::routing::{TlsError, TlsErrorKind};
+use crate::error::{TlsError, TlsErrorKind};
 use tokio::net::TcpStream;
 use tokio_native_tls::native_tls::TlsConnector;
 

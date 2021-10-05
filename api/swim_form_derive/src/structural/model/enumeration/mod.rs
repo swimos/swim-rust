@@ -13,10 +13,10 @@
 // limitations under the License.
 
 use crate::modifiers::NameTransform;
-use macro_utilities::attr_names::FORM_PATH;
 use crate::structural::model::record::{SegregatedStructModel, StructDef, StructModel};
 use crate::structural::model::ValidateFrom;
 use crate::SynValidation;
+use macro_utilities::attr_names::FORM_PATH;
 use quote::ToTokens;
 use std::collections::HashSet;
 use swim_utilities::errors::validation::{validate2, Validation, ValidationItExt};

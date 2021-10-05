@@ -21,8 +21,8 @@ use futures::future::BoxFuture;
 use futures::Future;
 use std::collections::HashMap;
 use store::StoreError;
+use swim_async_runtime::time::timeout::timeout;
 use swim_model::time::Timestamp;
-use swim_runtime::time::timeout::timeout;
 use swim_utilities::trigger;
 use tokio::time::{sleep, Duration};
 

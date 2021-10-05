@@ -26,11 +26,11 @@ use crate::connections::factory::async_factory::AsyncFactory;
 
 use super::*;
 use crate::connections::factory::tungstenite::HostConfig;
-use swim_common::routing::ws::ConnFuture;
-use swim_common::routing::ws::Protocol;
-use swim_common::routing::{
+use swim_runtime::error::{
     CapacityError, CapacityErrorKind, CloseErrorKind, ProtocolError, ProtocolErrorKind,
 };
+use swim_runtime::ws::ConnFuture;
+use swim_runtime::ws::Protocol;
 use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 
 #[tokio::test]

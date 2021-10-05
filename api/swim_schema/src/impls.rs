@@ -17,16 +17,16 @@ use std::sync::Arc;
 
 use swim_model::bigint::{BigInt, BigUint};
 
-use crate::ValueSchema;
-use swim_model::Blob;
 use crate::schema::slot::SlotSchema;
 use crate::schema::{ItemSchema, StandardSchema};
-use swim_model::Text;
-use swim_model::ValueKind;
+use crate::ValueSchema;
 use std::collections::{BTreeMap, HashMap};
 use std::hash::Hash;
 use std::mem::size_of;
 use swim_model::time::Timestamp;
+use swim_model::Blob;
+use swim_model::Text;
+use swim_model::ValueKind;
 
 impl ValueSchema for Blob {
     fn schema() -> StandardSchema {

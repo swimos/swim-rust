@@ -17,7 +17,7 @@ use crate::routing::remote::{ResolutionRequest, REQUEST_DROPPED};
 use crate::routing::RoutingAddr;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use swim_common::routing::ConnectionError;
+use swim_runtime::error::ConnectionError;
 use swim_tracing::request::TryRequestExt;
 
 #[cfg(test)]

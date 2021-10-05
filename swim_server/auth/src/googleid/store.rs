@@ -18,7 +18,7 @@ use chrono::{DateTime, FixedOffset, Utc};
 use http::header::{CACHE_CONTROL, EXPIRES};
 use http::HeaderMap;
 use std::fmt::{Display, Formatter};
-use swim_runtime::time::delay::delay_for;
+use swim_async_runtime::time::delay::delay_for;
 use swim_utilities::future::retryable::RetryStrategy;
 use url::Url;
 

@@ -15,9 +15,12 @@
 use crate::routing::RoutingAddr;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use swim_common::routing::ConnectionError;
+use swim_common::warp::envelope::Envelope;
+use swim_runtime::error::ConnectionError;
+use swim_runtime::error::RoutingError;
 use swim_utilities::errors::Recoverable;
 use swim_utilities::routing::uri::RelativeUri;
+use tokio::sync::mpsc;
 
 #[cfg(test)]
 mod tests;
@@ -69,3 +72,38 @@ impl Display for Unresolvable {
 }
 
 impl Error for Unresolvable {}
+
+/// Error type for the routers that will return the envelope in the event that routing it fails.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SendError {
+    error: RoutingError,
+    envelope: Envelope,
+}
+
+impl SendError {
+    pub fn new(error: RoutingError, envelope: Envelope) -> Self {
+        SendError { error, envelope }
+    }
+
+    pub fn split(self) -> (RoutingError, Envelope) {
+        let SendError { error, envelope } = self;
+        (error, envelope)
+    }
+}
+
+impl Display for SendError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.error.fmt(f)
+    }
+}
+
+impl Error for SendError {}
+
+impl From<mpsc::error::SendError<Envelope>> for SendError {
+    fn from(err: mpsc::error::SendError<Envelope>) -> Self {
+        SendError {
+            error: RoutingError::RouterDropped,
+            envelope: err.0,
+        }
+    }
+}

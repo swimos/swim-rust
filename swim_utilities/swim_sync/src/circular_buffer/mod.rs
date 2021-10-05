@@ -13,9 +13,9 @@
 // limitations under the License.
 
 use crossbeam_queue::{ArrayQueue, SegQueue};
+use futures::future::{ready, Ready};
 use futures::task::{AtomicWaker, Context, Poll};
 use futures::Stream;
-use futures::future::{Ready, ready};
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
@@ -313,8 +313,8 @@ impl<T: Send + Sync> InternalQueue<T> for OneItemQueue<T> {
 }
 
 impl<'a, T: 'a> ItemSink<'a, T> for Sender<T>
-    where
-        T: Send + Sync,
+where
+    T: Send + Sync,
 {
     type Error = error::SendError<T>;
     type SendFuture = Ready<Result<(), Self::Error>>;

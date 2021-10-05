@@ -14,13 +14,13 @@
 
 use std::convert::TryFrom;
 
-use swim_model::Text;
-use swim_model::{Attr, Item, Value};
-use crate::routing::ws::WsMessage;
 use crate::warp::path::RelativePath;
 use either::Either;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use swim_model::Text;
+use swim_model::{Attr, Item, Value};
+use swim_runtime::ws::WsMessage;
 
 #[cfg(test)]
 mod tests;

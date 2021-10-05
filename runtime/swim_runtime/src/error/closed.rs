@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::error::FmtResult;
+use crate::error::FmtResult;
 
-use crate::routing::{format_cause, ConnectionError};
+use crate::error::{format_cause, ConnectionError};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use swim_utilities::errors::Recoverable;
@@ -162,111 +162,118 @@ impl From<OneshotTryRecvError> for ConnectionError {
     }
 }
 
-#[test]
-fn test_recoverable() {
-    assert!(CloseError::new(CloseErrorKind::Closed, None).is_fatal());
-    assert!(CloseError::new(CloseErrorKind::Unexpected, None).is_fatal());
-    assert!(CloseError::new(CloseErrorKind::InvalidCloseCode, None).is_fatal());
-    assert!(CloseError::new(CloseErrorKind::AlreadyClosed, None).is_fatal());
-    assert!(CloseError::new(CloseErrorKind::Normal, None).is_fatal());
-    assert!(CloseError::new(CloseErrorKind::ClosedRemotely, None).is_fatal());
-}
+#[cfg(test)]
+mod tests {
+    use crate::error::{CloseError, CloseErrorKind};
+    use swim_utilities::errors::Recoverable;
 
-#[test]
-fn test_display() {
-    assert_eq!(
-        CloseError::unexpected().to_string(),
-        "Unexpected close event."
-    );
-    assert_eq!(
-        CloseError::already_closed().to_string(),
-        "Channel already closed."
-    );
-    assert_eq!(CloseError::closed().to_string(), "Channel closed.");
+    #[test]
+    fn test_recoverable() {
+        assert!(CloseError::new(CloseErrorKind::Closed, None).is_fatal());
+        assert!(CloseError::new(CloseErrorKind::Unexpected, None).is_fatal());
+        assert!(CloseError::new(CloseErrorKind::InvalidCloseCode, None).is_fatal());
+        assert!(CloseError::new(CloseErrorKind::AlreadyClosed, None).is_fatal());
+        assert!(CloseError::new(CloseErrorKind::Normal, None).is_fatal());
+        assert!(CloseError::new(CloseErrorKind::ClosedRemotely, None).is_fatal());
+    }
 
-    assert_eq!(
-        CloseError::new(CloseErrorKind::Closed, None).to_string(),
-        "Channel closed."
-    );
-    assert_eq!(
-        CloseError::new(CloseErrorKind::Unexpected, None).to_string(),
-        "Unexpected close event."
-    );
-    assert_eq!(
-        CloseError::new(CloseErrorKind::InvalidCloseCode, None).to_string(),
-        "Invalid close code."
-    );
-    assert_eq!(
-        CloseError::new(CloseErrorKind::AlreadyClosed, None).to_string(),
-        "Channel already closed."
-    );
-    assert_eq!(
-        CloseError::new(CloseErrorKind::Normal, None).to_string(),
-        "The connection has been closed."
-    );
-    assert_eq!(
-        CloseError::new(CloseErrorKind::ClosedRemotely, None).to_string(),
-        "The connection was closed remotely."
-    );
+    #[test]
+    fn test_display() {
+        assert_eq!(
+            CloseError::unexpected().to_string(),
+            "Unexpected close event."
+        );
+        assert_eq!(
+            CloseError::already_closed().to_string(),
+            "Channel already closed."
+        );
+        assert_eq!(CloseError::closed().to_string(), "Channel closed.");
 
-    assert_eq!(
-        CloseError::new(CloseErrorKind::Closed, Some("Closed normally.".to_string())).to_string(),
-        "Channel closed. Closed normally."
-    );
-    assert_eq!(
-        CloseError::new(
-            CloseErrorKind::Unexpected,
-            Some("That wasn't supposed to happen.".to_string())
-        )
-        .to_string(),
-        "Unexpected close event. That wasn't supposed to happen."
-    );
-    assert_eq!(
-        CloseError::new(
-            CloseErrorKind::InvalidCloseCode,
-            Some(format!("Received closed code 0xf"))
-        )
-        .to_string(),
-        "Invalid close code. Received closed code 0xf"
-    );
-    assert_eq!(
-        CloseError::new(
-            CloseErrorKind::AlreadyClosed,
-            Some("Closed by another process".to_string())
-        )
-        .to_string(),
-        "Channel already closed. Closed by another process"
-    );
-    assert_eq!(
-        CloseError::new(CloseErrorKind::Normal, Some("No error".to_string())).to_string(),
-        "The connection has been closed. No error"
-    );
-    assert_eq!(
-        CloseError::new(
-            CloseErrorKind::ClosedRemotely,
-            Some("Closed by peer".to_string())
-        )
-        .to_string(),
-        "The connection was closed remotely. Closed by peer"
-    );
-}
+        assert_eq!(
+            CloseError::new(CloseErrorKind::Closed, None).to_string(),
+            "Channel closed."
+        );
+        assert_eq!(
+            CloseError::new(CloseErrorKind::Unexpected, None).to_string(),
+            "Unexpected close event."
+        );
+        assert_eq!(
+            CloseError::new(CloseErrorKind::InvalidCloseCode, None).to_string(),
+            "Invalid close code."
+        );
+        assert_eq!(
+            CloseError::new(CloseErrorKind::AlreadyClosed, None).to_string(),
+            "Channel already closed."
+        );
+        assert_eq!(
+            CloseError::new(CloseErrorKind::Normal, None).to_string(),
+            "The connection has been closed."
+        );
+        assert_eq!(
+            CloseError::new(CloseErrorKind::ClosedRemotely, None).to_string(),
+            "The connection was closed remotely."
+        );
 
-#[tokio::test]
-async fn test_from() {
-    use tokio::sync::mpsc;
+        assert_eq!(
+            CloseError::new(CloseErrorKind::Closed, Some("Closed normally.".to_string()))
+                .to_string(),
+            "Channel closed. Closed normally."
+        );
+        assert_eq!(
+            CloseError::new(
+                CloseErrorKind::Unexpected,
+                Some("That wasn't supposed to happen.".to_string())
+            )
+            .to_string(),
+            "Unexpected close event. That wasn't supposed to happen."
+        );
+        assert_eq!(
+            CloseError::new(
+                CloseErrorKind::InvalidCloseCode,
+                Some(format!("Received closed code 0xf"))
+            )
+            .to_string(),
+            "Invalid close code. Received closed code 0xf"
+        );
+        assert_eq!(
+            CloseError::new(
+                CloseErrorKind::AlreadyClosed,
+                Some("Closed by another process".to_string())
+            )
+            .to_string(),
+            "Channel already closed. Closed by another process"
+        );
+        assert_eq!(
+            CloseError::new(CloseErrorKind::Normal, Some("No error".to_string())).to_string(),
+            "The connection has been closed. No error"
+        );
+        assert_eq!(
+            CloseError::new(
+                CloseErrorKind::ClosedRemotely,
+                Some("Closed by peer".to_string())
+            )
+            .to_string(),
+            "The connection was closed remotely. Closed by peer"
+        );
+    }
 
-    {
-        let (tx, rx): (mpsc::Sender<i32>, mpsc::Receiver<i32>) = mpsc::channel(1);
-        drop(rx);
+    #[tokio::test]
+    async fn test_from() {
+        use tokio::sync::mpsc;
 
-        let next = tx.send(1).await;
-        let err: CloseError = next.unwrap_err().into();
+        {
+            let (tx, rx): (mpsc::Sender<i32>, mpsc::Receiver<i32>) = mpsc::channel(1);
+            drop(rx);
 
-        assert_eq!(err, CloseError::unexpected());
+            let next = tx.send(1).await;
+            let err: CloseError = next.unwrap_err().into();
 
-        let next = tx.try_send(1);
-        let err: CloseError = next.unwrap_err().into();
+            assert_eq!(err, CloseError::unexpected());
 
-        assert_eq!(err, CloseError::unexpected());
+            let next = tx.try_send(1);
+            let err: CloseError = next.unwrap_err().into();
+
+            assert_eq!(err, CloseError::unexpected());
+        }
     }
 }

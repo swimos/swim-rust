@@ -30,12 +30,12 @@ use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use swim_async_runtime::time::timeout;
+use swim_common::warp::envelope::Envelope;
 use swim_form::structural::read::ReadError;
 use swim_form::Form;
 use swim_model::record;
-use swim_common::routing::ResolutionError;
-use swim_common::warp::envelope::Envelope;
-use swim_runtime::time::timeout;
+use swim_runtime::error::ResolutionError;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
@@ -192,7 +192,7 @@ async fn lane_info_sync() {
         MockNodeStore::mock(),
     );
 
-    let _agent_task = swim_runtime::task::spawn(agent_proc);
+    let _agent_task = swim_async_runtime::task::spawn(agent_proc);
 
     assert!(envelope_tx
         .send(TaggedEnvelope(

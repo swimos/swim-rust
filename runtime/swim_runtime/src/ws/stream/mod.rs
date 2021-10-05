@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::ws::protocol::CloseReason;
+use crate::ws::protocol::CloseReason;
 use futures::future::ErrInto;
 use futures::task::{Context, Poll};
 use futures::{ready, Sink, Stream, TryFutureExt};

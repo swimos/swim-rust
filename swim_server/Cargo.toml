@@ -29,6 +29,7 @@ tokio = { version = "1.1.1", features = ["rt", "net"] }
 tokio-stream = { version = "0.1.2", features = ["sync"] }
 url = "2.1.1"
 swim_common = { path = "../swim_common", features = ["tls"] }
+swim_runtime = { path = "../runtime/swim_runtime", features = ["tls"] }
 swim_model = { path = "../api/swim_model" }
 swim_form = { path = "../api/swim_form" }
 swim_recon = { path = "../api/formats/swim_recon" }
@@ -37,7 +38,7 @@ swim_warp = { path = "../swim_warp" }
 swim_utilities = { path = "../swim_utilities", features = ["errors", "sync", "time", "text"] }
 swim_tracing = { path = "../swim_utilities/swim_tracing", features = ["future"] }
 stringify_attr = { path = "../macro_utilities/stringify_attr" }
-swim_runtime = { path = "../swim_runtime" }
+swim_async_runtime = { path = "../runtime/swim_async_runtime" }
 stm = { path = "../stm" }
 tracing-futures = "0.2.4"
 agent_derive = { path = "agent_derive" }

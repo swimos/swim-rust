@@ -15,8 +15,8 @@
 use crate::configuration::router::RouterParams;
 use crate::router::{CloseReceiver, CloseResponseSender, ConnectionRequest};
 use futures::{select, FutureExt, StreamExt};
-use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
+use swim_runtime::error::RoutingError;
 use tokio::sync::mpsc;
 use tracing::{error, info, span, trace, Level};
 

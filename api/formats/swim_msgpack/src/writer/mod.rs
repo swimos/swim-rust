@@ -16,10 +16,6 @@
 mod tests;
 
 use crate::{BIG_INT_EXT, BIG_UINT_EXT};
-use swim_form::structural::write::{
-    BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
-    StructuralWriter,
-};
 use byteorder::WriteBytesExt;
 use rmp::encode::{
     write_array_len, write_bin, write_bool, write_ext_meta, write_f64, write_map_len, write_nil,
@@ -29,6 +25,10 @@ use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::io::{Error, Write};
+use swim_form::structural::write::{
+    BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
+    StructuralWriter,
+};
 use swim_model::bigint::{BigInt, BigUint, Sign};
 
 /// [`StructuralWriter`] implementation that uses the MessagePack format. Primitive values are

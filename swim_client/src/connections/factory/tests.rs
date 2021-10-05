@@ -17,8 +17,8 @@ use crate::connections::factory::tungstenite::HostConfig;
 use futures::task::{Context, Poll};
 use futures::{Sink, Stream};
 use std::pin::Pin;
-use swim_common::routing::ws::{Protocol, WsMessage};
-use swim_common::routing::{ConnectionError, HttpError};
+use swim_runtime::error::{ConnectionError, HttpError};
+use swim_runtime::ws::{Protocol, WsMessage};
 use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 
 #[derive(Debug, PartialEq, Eq)]

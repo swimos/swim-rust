@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::bigint::{BigInt, BigUint, ToBigInt};
 use crate::Blob;
 use crate::Text;
-use crate::bigint::{BigInt, BigUint, ToBigInt};
 use either::Either;
 use num_traits::Signed;
 use num_traits::ToPrimitive;

@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::error::FmtResult;
+use crate::error::FmtResult;
 pub use http::{self, StatusCode};
 
-use crate::routing::{format_cause, ConnectionError};
+use crate::error::{format_cause, ConnectionError};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use swim_utilities::errors::Recoverable;

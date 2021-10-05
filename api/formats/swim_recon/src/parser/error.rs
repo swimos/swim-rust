@@ -13,10 +13,10 @@
 // limitations under the License.
 
 use super::Span;
-use swim_form::structural::read::ReadError;
 use nom::error::ErrorKind;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use swim_form::structural::read::ReadError;
 
 /// Error that can occur when parsing into a structurally readable type.
 #[derive(Debug, PartialEq, Eq)]
@@ -81,8 +81,8 @@ impl Error for ParseError {}
 mod tests {
 
     use super::ParseError;
-    use swim_form::structural::read::ReadError;
     use nom::error::ErrorKind;
+    use swim_form::structural::read::ReadError;
 
     #[test]
     fn parse_error_display() {

@@ -17,7 +17,7 @@ use std::fmt::{Debug, Formatter};
 
 #[cfg(feature = "tls")]
 use {
-    crate::routing::ws::tls::build_x509_certificate, crate::routing::TlsError, std::path::Path,
+    crate::error::TlsError, crate::ws::tls::build_x509_certificate, std::path::Path,
     tokio_native_tls::native_tls::Certificate,
 };
 use {

@@ -51,7 +51,7 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swim_runtime::task;
+use swim_async_runtime::task;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
 use tokio::sync::{mpsc, Mutex};
@@ -67,7 +67,7 @@ mod stub_router {
     use futures::future::BoxFuture;
     use futures::FutureExt;
     use std::sync::Arc;
-    use swim_common::routing::ResolutionError;
+    use swim_runtime::error::ResolutionError;
     use swim_utilities::routing::uri::RelativeUri;
     use swim_utilities::trigger::promise;
     use tokio::sync::mpsc;
@@ -769,7 +769,7 @@ pub async fn run_agent_test<Agent, Config, Lifecycle>(
         MockNodeStore::mock(),
     );
 
-    let agent_task = swim_runtime::task::spawn(agent_proc);
+    let agent_task = swim_async_runtime::task::spawn(agent_proc);
 
     async fn expect(rx: &mut mpsc::Receiver<ReportingAgentEvent>, expected: ReportingAgentEvent) {
         let result = rx.recv().await;

@@ -21,7 +21,7 @@ mod stream;
 pub mod tungstenite;
 pub mod utils;
 
-use crate::routing::ConnectionError;
+use crate::error::ConnectionError;
 pub use protocol::*;
 pub use stream::*;
 pub use utils::*;

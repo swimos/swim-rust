@@ -20,11 +20,11 @@ mod record;
 mod tests;
 mod tokens;
 
-use swim_form::structural::read::event::ReadEvent;
 pub use crate::parser::error::ParseError;
+use nom_locate::LocatedSpan;
+use swim_form::structural::read::event::ReadEvent;
 use swim_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
 use swim_form::structural::read::ReadError;
-use nom_locate::LocatedSpan;
 use swim_model::Value;
 
 /// Wraps a string in a strucutre that keeps track of the line and column
@@ -72,4 +72,4 @@ pub fn parse_value(repr: &str) -> Result<Value, ParseError> {
 }
 
 #[cfg(feature = "async_parser")]
-pub use async_parser::{parse_recon_document, parse_recognize_with as async_parse_recognize_with};
+pub use async_parser::{parse_recognize_with as async_parse_recognize_with, parse_recon_document};

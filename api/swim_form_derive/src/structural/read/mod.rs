@@ -1165,8 +1165,10 @@ fn compound_recognizer(
             syn::Ident::new(v, Span::call_site()),
         )
     };
-    let recog_ty = parse_quote!(swim_form::structural::read::recognizer::#recog_ty_name<#target, #builder>);
-    let vtable_ty = parse_quote!(swim_form::structural::read::recognizer::#v_table_name<#target, #builder>);
+    let recog_ty =
+        parse_quote!(swim_form::structural::read::recognizer::#recog_ty_name<#target, #builder>);
+    let vtable_ty =
+        parse_quote!(swim_form::structural::read::recognizer::#v_table_name<#target, #builder>);
     (recog_ty, vtable_ty)
 }
 
@@ -1351,8 +1353,7 @@ impl<'a> ToTokens for EnumState<'a> {
 }
 
 fn make_ccons(n: usize, expr: syn::Expr) -> syn::Expr {
-    let mut acc =
-        parse_quote!(swim_form::structural::generic::coproduct::CCons::Head(#expr));
+    let mut acc = parse_quote!(swim_form::structural::generic::coproduct::CCons::Head(#expr));
     for _ in 0..n {
         acc = parse_quote!(swim_form::structural::generic::coproduct::CCons::Tail(#acc));
     }

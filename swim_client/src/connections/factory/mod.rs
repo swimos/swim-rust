@@ -25,9 +25,9 @@ pub mod async_factory {
     use swim_utilities::future::request::Request;
 
     use crate::connections::factory::tungstenite::HostConfig;
-    use swim_common::routing::ws::WsMessage;
-    use swim_common::routing::ConnectionError;
-    use swim_runtime::task::{spawn, TaskHandle};
+    use swim_async_runtime::task::{spawn, TaskHandle};
+    use swim_runtime::error::ConnectionError;
+    use swim_runtime::ws::WsMessage;
 
     /// A request for a new connection.
     pub struct ConnReq<Snk, Str> {

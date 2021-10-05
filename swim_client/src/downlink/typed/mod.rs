@@ -17,8 +17,8 @@ use crate::downlink::model::value::{Action, SharedValue, UpdateResult};
 use crate::downlink::{error::DownlinkError, error::UpdateFailure, Event, RawDownlink};
 use std::fmt::{Display, Formatter};
 use swim_form::Form;
-use swim_schema::ValueSchema;
 use swim_model::Value;
+use swim_schema::ValueSchema;
 use swim_utilities::sync::topic;
 use tokio::sync::oneshot;
 

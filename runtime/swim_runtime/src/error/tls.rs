@@ -17,8 +17,8 @@ use std::fmt::{Display, Formatter};
 
 use swim_utilities::errors::Recoverable;
 
-use crate::routing::error::FmtResult;
-use crate::routing::{format_cause, ConnectionError};
+use crate::error::FmtResult;
+use crate::error::{format_cause, ConnectionError};
 
 type NativeTlsError = tokio_native_tls::native_tls::Error;
 

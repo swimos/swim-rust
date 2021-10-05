@@ -12,23 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_model::bigint::BigInt;
 use num_traits::Float;
+use swim_model::bigint::BigInt;
 
-use swim_form::structural::Tag;
-use swim_form::Form;
-use crate::ValueSchema;
 use crate::schema::attr::AttrSchema;
 use crate::schema::slot::SlotSchema;
 use crate::schema::text::TextSchema;
 use crate::schema::Schema;
 use crate::schema::StandardSchema;
 use crate::schema::{FieldSpec, ItemSchema};
+use crate::ValueSchema;
+use std::collections::HashMap;
+use std::sync::Arc;
+use swim_form::structural::Tag;
+use swim_form::Form;
 use swim_model::Item;
 use swim_model::ValueKind;
 use swim_model::{Attr, Value};
-use std::collections::HashMap;
-use std::sync::Arc;
 
 mod swim_schema {
     pub use crate::*;

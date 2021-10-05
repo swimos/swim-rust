@@ -17,9 +17,9 @@ use swim_model::bigint::{BigInt, BigUint};
 use super::*;
 use swim_form::structural::read::ReadError;
 use swim_form::Form;
-use swim_schema::ValueSchema;
-use swim_schema::schema::Schema;
 use swim_model::{Attr, Item};
+use swim_schema::schema::Schema;
+use swim_schema::ValueSchema;
 
 #[test]
 pub fn clear_to_value() {

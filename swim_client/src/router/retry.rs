@@ -23,10 +23,10 @@ use futures::task::{Context, Poll};
 use futures::Future;
 use pin_project::pin_project;
 use std::pin::Pin;
-use swim_common::routing::RoutingError;
+use swim_runtime::error::RoutingError;
 use swim_utilities::future::retryable::request::{RetrySendError, RetryableRequest, SendResult};
 
-use swim_common::routing::ws::WsMessage;
+use swim_runtime::ws::WsMessage;
 use swim_utilities::errors::Recoverable;
 use tracing::trace;
 
@@ -181,7 +181,7 @@ mod tests {
     use crate::router::retry::MpscRetryErr;
     use crate::router::RoutingError;
     use futures::Future;
-    use swim_common::routing::ws::WsMessage;
+    use swim_runtime::ws::WsMessage;
     use swim_utilities::future::retryable::request::{RetryableRequest, SendResult};
     use tokio::sync::mpsc;
 

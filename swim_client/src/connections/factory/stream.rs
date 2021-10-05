@@ -14,11 +14,11 @@
 
 use crate::connections::factory::tungstenite::MaybeTlsStream;
 use http::Request;
-use swim_common::routing::ws::tls::connect_tls;
-use swim_common::routing::ws::{Protocol, WsMessage};
-use swim_common::routing::{
+use swim_runtime::error::{
     ConnectionError, InvalidUriError, InvalidUriErrorKind, TError, TungsteniteError,
 };
+use swim_runtime::ws::tls::connect_tls;
+use swim_runtime::ws::{Protocol, WsMessage};
 use swim_utilities::future::TransformMut;
 use tokio::net::TcpStream;
 use tokio_tungstenite::stream::Stream as StreamSwitcher;

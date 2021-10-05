@@ -10,7 +10,7 @@ swim_model = { path = "../../api/swim_model" }
 swim_form = { path = "../../api/swim_form" }
 swim_future = { path = "../../swim_utilities/swim_future" }
 swim_utilities = { path = "../../swim_utilities" }
-swim_runtime = { path = "../../swim_runtime" }
+swim_async_runtime = { path = "../../runtime/swim_async_runtime" }
 
 tokio = "1.1.1"
 jwt = "0.12.0"

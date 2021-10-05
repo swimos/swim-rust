@@ -50,7 +50,7 @@ use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnve
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_runtime::time::timeout::timeout;
+use swim_async_runtime::time::timeout::timeout;
 use swim_utilities::time::AtomicInstant;
 use tokio::time::Instant;
 

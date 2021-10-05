@@ -40,18 +40,18 @@ use pin_utils::pin_mut;
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::{Arc, Weak};
+use swim_async_runtime::task::{spawn, TaskError, TaskHandle};
+use swim_common::warp::envelope::Envelope;
+use swim_common::warp::path::AbsolutePath;
 use swim_form::Form;
-use swim_schema::ValueSchema;
-use swim_schema::schema::StandardSchema;
 use swim_model::Value;
-use swim_utilities::future::request::Request;
-use swim_common::routing::RoutingError;
+use swim_runtime::error::RoutingError;
+use swim_schema::schema::StandardSchema;
+use swim_schema::ValueSchema;
 use swim_utilities::future::item_sink;
 use swim_utilities::future::item_sink::either::SplitSink;
 use swim_utilities::future::item_sink::ItemSender;
-use swim_common::warp::envelope::Envelope;
-use swim_common::warp::path::AbsolutePath;
-use swim_runtime::task::{spawn, TaskError, TaskHandle};
+use swim_utilities::future::request::Request;
 use swim_utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture};
 use swim_utilities::sync::circular_buffer;
 use swim_utilities::trigger::promise::{self, PromiseError};
@@ -467,12 +467,9 @@ where
         let updates = ReceiverStream::new(incoming).map(map_router_events);
 
         let sink_path = path.clone();
-        let cmd_sink =
-            item_sink::for_mpsc_sender(sink)
-                .map_err_into()
-                .comap(move |cmd: Command<SharedValue>| {
-                    envelopes::value_envelope(&sink_path, cmd).1.into()
-                });
+        let cmd_sink = item_sink::for_mpsc_sender(sink).map_err_into().comap(
+            move |cmd: Command<SharedValue>| envelopes::value_envelope(&sink_path, cmd).1.into(),
+        );
 
         let (raw_dl, rec) = match config.back_pressure {
             BackpressureMode::Propagate => {
@@ -488,7 +485,7 @@ where
                 let release_task =
                     backpressure::release_pressure(release_rx, cmd_sink.clone(), yield_after);
                 //TODO Use a Spawner instead.
-                swim_runtime::task::spawn(release_task);
+                swim_async_runtime::task::spawn(release_task);
 
                 let pressure_release = release_tx.map_err_into();
 
@@ -561,11 +558,11 @@ where
                 yield_after,
             } => {
                 let sink_path_duplicate = sink_path.clone();
-                let direct_sink = item_sink::for_mpsc_sender(sink.clone()).map_err_into().comap(
-                    move |cmd: Command<UntypedMapModification<Value>>| {
+                let direct_sink = item_sink::for_mpsc_sender(sink.clone())
+                    .map_err_into()
+                    .comap(move |cmd: Command<UntypedMapModification<Value>>| {
                         envelopes::map_envelope(&sink_path_duplicate, cmd).1.into()
-                    },
-                );
+                    });
                 let action_sink = item_sink::for_mpsc_sender(sink).map_err_into().comap(
                     move |act: UntypedMapModification<Value>| {
                         envelopes::map_envelope(&sink_path, Command::Action(act))
@@ -646,7 +643,7 @@ where
                 let release_task =
                     backpressure::release_pressure(release_rx, cmd_sink.clone(), yield_after);
                 //TODO Use a Spawner instead.
-                swim_runtime::task::spawn(release_task);
+                swim_async_runtime::task::spawn(release_task);
                 let pressure_release = release_tx.map_err_into();
                 let either_sink =
                     SplitSink::new(cmd_sink, pressure_release).comap(move |cmd: Command<Value>| {

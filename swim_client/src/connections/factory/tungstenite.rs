@@ -28,13 +28,13 @@ use http::header::SEC_WEBSOCKET_PROTOCOL;
 use http::uri::InvalidUri;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use swim_common::routing::ws::maybe_resolve_scheme;
-use swim_common::routing::ws::Protocol;
-use swim_common::routing::ws::{ConnFuture, WebsocketFactory};
-use swim_common::routing::{
+use swim_runtime::error::{
     ConnectionError, HttpError, HttpErrorKind, InvalidUriError, InvalidUriErrorKind,
     TungsteniteError,
 };
+use swim_runtime::ws::maybe_resolve_scheme;
+use swim_runtime::ws::Protocol;
+use swim_runtime::ws::{ConnFuture, WebsocketFactory};
 use swim_utilities::future::{TransformedSink, TransformedStream};
 use tokio_native_tls::TlsStream;
 use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
@@ -195,7 +195,7 @@ mod tests {
     use crate::connections::factory::tungstenite::TungsteniteWsFactory;
     use crate::connections::{ConnectionPool, SwimConnPool};
 
-    use swim_common::routing::{
+    use swim_runtime::error::{
         ConnectionError, HttpError, HttpErrorKind, InvalidUriError, InvalidUriErrorKind,
     };
 

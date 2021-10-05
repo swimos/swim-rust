@@ -13,12 +13,10 @@
 // limitations under the License.
 
 use crate::schema::text::TextSchema;
-use crate::schema::{
-    combine_orderings, FieldMatchResult, FieldSchema, Schema, StandardSchema,
-};
-use swim_model::{Attr, Item, ToValue, Value, ValueKind};
+use crate::schema::{combine_orderings, FieldMatchResult, FieldSchema, Schema, StandardSchema};
 use std::borrow::Borrow;
 use std::cmp::Ordering;
+use swim_model::{Attr, Item, ToValue, Value, ValueKind};
 
 /// Schema for Recon [`Attr`]s.
 #[derive(Clone, Debug, PartialEq)]

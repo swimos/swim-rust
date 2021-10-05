@@ -18,8 +18,8 @@ mod tests;
 use crate::downlink::error::DownlinkError;
 use crate::downlink::state_machine::{DownlinkStateMachine, EventResult, Response, ResponseResult};
 use crate::downlink::{Command, Message, SchemaViolations};
-use swim_schema::schema::{Schema, StandardSchema};
 use swim_model::Value;
+use swim_schema::schema::{Schema, StandardSchema};
 use tracing::trace;
 
 /// State machine for event downlinks.

@@ -13,10 +13,10 @@
 // limitations under the License.
 
 use std::sync::Arc;
-use swim_recon::parser::{parse_recognize, Span};
 use swim_form::structural::read::StructuralReadable;
 use swim_form::structural::Tag;
 use swim_model::Value;
+use swim_recon::parser::{parse_recognize, Span};
 
 fn run_recognizer<T: StructuralReadable>(rep: &str) -> T {
     let span = Span::new(rep);

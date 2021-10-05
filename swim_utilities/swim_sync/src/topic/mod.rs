@@ -550,8 +550,8 @@ impl<T> Drop for ReceiverStream<T> {
 }
 
 impl<'a, T> ItemSink<'a, T> for Sender<T>
-    where
-        T: Send + Sync + 'a,
+where
+    T: Send + Sync + 'a,
 {
     type Error = SendError<T>;
     type SendFuture = TopicSend<'a, T>;
@@ -561,7 +561,6 @@ impl<'a, T> ItemSink<'a, T> for Sender<T>
     }
 }
 
-
 pub mod discarding {
 
     use swim_future::item_sink::ItemSink;
@@ -570,8 +569,8 @@ pub mod discarding {
     pub struct Discarding<T>(pub super::Sender<T>);
 
     impl<'a, T> ItemSink<'a, T> for Discarding<T>
-        where
-            T: Send + Sync + 'a,
+    where
+        T: Send + Sync + 'a,
     {
         type Error = super::SendError<T>;
         type SendFuture = super::TopicSend<'a, T>;

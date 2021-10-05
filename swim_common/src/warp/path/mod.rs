@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_model::Text;
 use std::fmt::{Display, Formatter};
+use swim_model::Text;
 
 /// Absolute path to an agent lane, on a specific host.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]

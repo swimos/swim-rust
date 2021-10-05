@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::{
+use crate::error::{
     CloseError, CloseErrorKind, ConnectionError, IoError, ProtocolError, ProtocolErrorKind,
     ResolutionError,
 };

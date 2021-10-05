@@ -35,11 +35,11 @@ use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::sync::Arc;
-use swim_form::Form;
-use swim_model::Value;
-use swim_common::routing::ResolutionError;
 use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
+use swim_form::Form;
+use swim_model::Value;
+use swim_runtime::error::ResolutionError;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
@@ -160,7 +160,7 @@ async fn agent_log() {
         MockNodeStore::mock(),
     );
 
-    let _agent_task = swim_runtime::task::spawn(agent_proc);
+    let _agent_task = swim_async_runtime::task::spawn(agent_proc);
 
     assert!(envelope_tx
         .send(TaggedEnvelope(

@@ -14,8 +14,8 @@
 
 use super::*;
 use crate::downlink::{Command, Message};
-use swim_schema::schema::StandardSchema;
 use swim_model::{Value, ValueKind};
+use swim_schema::schema::StandardSchema;
 
 #[test]
 fn event_dl_init() {

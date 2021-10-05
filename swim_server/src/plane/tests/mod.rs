@@ -21,8 +21,8 @@ use crate::plane::{AgentRoute, EnvChannel};
 use crate::routing::{ServerRouter, TopLevelRouterFactory};
 use futures::future::join;
 use std::time::Duration;
-use swim_runtime::time::clock::Clock;
-use swim_runtime::time::timeout;
+use swim_async_runtime::time::clock::Clock;
+use swim_async_runtime::time::timeout;
 use swim_utilities::future::open_ended::OpenEndedFutures;
 use swim_utilities::routing::route_pattern::RoutePattern;
 use swim_utilities::trigger;
@@ -79,7 +79,7 @@ async fn plane_event_loop() {
 
     let plane_task = super::run_plane(
         config,
-        swim_runtime::time::clock::runtime_clock(),
+        swim_async_runtime::time::clock::runtime_clock(),
         spec,
         stop_rx,
         OpenEndedFutures::new(),

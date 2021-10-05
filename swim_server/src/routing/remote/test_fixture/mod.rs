@@ -31,10 +31,10 @@ use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
-use swim_common::routing::ws::{CloseReason, JoinedStreamSink, WsConnections, WsMessage};
-use swim_common::routing::{
+use swim_runtime::error::{
     CloseError, ConnectionError, HttpError, HttpErrorKind, ResolutionError, ResolutionErrorKind,
 };
+use swim_runtime::ws::{CloseReason, JoinedStreamSink, WsConnections, WsMessage};
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
@@ -199,7 +199,7 @@ pub mod fake_channel {
     use futures::{ready, FutureExt, Sink, SinkExt, Stream, StreamExt};
     use std::pin::Pin;
     use std::task::{Context, Poll};
-    use swim_common::routing::ws::{CloseReason, JoinedStreamSink};
+    use swim_runtime::ws::{CloseReason, JoinedStreamSink};
 
     pub struct TwoWayMpsc<T, E> {
         tx: mpsc::Sender<T>,

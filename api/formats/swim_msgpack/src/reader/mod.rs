@@ -15,9 +15,6 @@
 #[cfg(test)]
 mod tests;
 
-use swim_form::structural::read::event::ReadEvent;
-use swim_form::structural::read::recognizer::Recognizer;
-use swim_form::structural::read::{ReadError, StructuralReadable};
 use crate::{BIG_INT_EXT, BIG_UINT_EXT};
 use bytes::{Buf, BufMut, BytesMut};
 use either::Either;
@@ -27,6 +24,9 @@ use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::str::Utf8Error;
+use swim_form::structural::read::event::ReadEvent;
+use swim_form::structural::read::recognizer::Recognizer;
+use swim_form::structural::read::{ReadError, StructuralReadable};
 use swim_model::bigint::{BigInt, BigUint, Sign};
 
 macro_rules! feed {

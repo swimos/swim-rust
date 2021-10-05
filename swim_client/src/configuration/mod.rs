@@ -24,10 +24,10 @@ pub mod downlink {
     use std::error::Error;
     use std::fmt::{Display, Formatter};
     use std::num::NonZeroUsize;
+    use swim_common::warp::path::AbsolutePath;
     use swim_form::Form;
     use swim_model::{Attr, Item, Value};
     use swim_recon::parser::ParseError;
-    use swim_common::warp::path::AbsolutePath;
     use tokio::time::Duration;
     use url::Url;
 

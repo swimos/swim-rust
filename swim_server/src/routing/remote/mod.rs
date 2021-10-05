@@ -32,10 +32,10 @@ use tokio::sync::mpsc;
 use tracing::{event, Level};
 use url::Url;
 
-use swim_common::routing::{ConnectionError, HttpError, ResolutionError, ResolutionErrorKind};
+use swim_runtime::error::{ConnectionError, HttpError, ResolutionError, ResolutionErrorKind};
+use swim_tracing::request::{RequestExt, TryRequestExt};
 use swim_utilities::future::task::Spawner;
 use swim_utilities::trigger;
-use swim_tracing::request::{RequestExt, TryRequestExt};
 
 use crate::routing::error::Unresolvable;
 use crate::routing::remote::config::ConnectionConfig;
@@ -44,7 +44,7 @@ use crate::routing::remote::state::{DeferredResult, Event, RemoteConnections, Re
 use crate::routing::remote::table::HostAndPort;
 use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
 use std::io;
-use swim_common::routing::ws::WsConnections;
+use swim_runtime::ws::WsConnections;
 
 #[cfg(test)]
 pub mod test_fixture;

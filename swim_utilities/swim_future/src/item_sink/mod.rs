@@ -45,7 +45,6 @@ pub mod error {
     }
 
     impl<T: Debug> Error for SinkSendError<T> {}
-
 }
 
 /// An alternative to the [`futures::Sink`] trait for sinks that can consume their inputs in a
@@ -254,5 +253,3 @@ pub fn for_broadcast_sender<T: Send + 'static>(
 ) -> impl ItemSender<T, broadcast::error::SendError<T>> {
     FnMutSender::new(tx, broadcast_send_op)
 }
-
-

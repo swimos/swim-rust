@@ -38,7 +38,7 @@ use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
 use crate::plane::store::mock::MockPlaneStore;
 use crate::routing::error::RouterError;
 use std::ops::Add;
-use swim_common::routing::ResolutionError;
+use swim_runtime::error::ResolutionError;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger::promise;
