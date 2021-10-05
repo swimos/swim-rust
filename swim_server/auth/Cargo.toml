@@ -5,7 +5,6 @@ authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
 [dependencies]
-swim_common = { path = "../../swim_common" }
 swim_model = { path = "../../api/swim_model" }
 swim_form = { path = "../../api/swim_form" }
 swim_future = { path = "../../swim_utilities/swim_future" }

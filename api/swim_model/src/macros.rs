@@ -17,7 +17,7 @@
 /// For example:
 /// ```
 /// use swim_model::Value;
-/// use swim_common::value;
+/// use swim_model::value;
 ///
 /// let value = value!(1i32);
 /// assert_eq!(value, Value::Int32Value(1));
