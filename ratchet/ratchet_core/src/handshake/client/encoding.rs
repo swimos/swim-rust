@@ -30,7 +30,6 @@ pub fn encode_request(dst: &mut BytesMut, request: ValidatedRequest, nonce_buffe
         host,
     } = request;
 
-    // todo replace with wyrand
     let nonce = rand::random::<[u8; 16]>();
     encode_config_slice(&nonce, base64::STANDARD, nonce_buffer);
 

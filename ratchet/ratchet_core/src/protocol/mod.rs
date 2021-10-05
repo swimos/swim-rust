@@ -68,6 +68,28 @@ pub enum Message {
     Close(Option<CloseReason>),
 }
 
+impl Message {
+    pub fn is_text(&self) -> bool {
+        matches!(self, Message::Text)
+    }
+
+    pub fn is_binary(&self) -> bool {
+        matches!(self, Message::Binary)
+    }
+
+    pub fn is_ping(&self) -> bool {
+        matches!(self, Message::Ping)
+    }
+
+    pub fn is_pong(&self) -> bool {
+        matches!(self, Message::Pong)
+    }
+
+    pub fn is_close(&self) -> bool {
+        matches!(self, Message::Close(_))
+    }
+}
+
 #[derive(Debug)]
 pub enum PayloadType {
     Text,
