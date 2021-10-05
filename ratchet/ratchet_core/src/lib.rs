@@ -13,7 +13,7 @@
 // limitations under the License.
 
 #![deny(
-    // missing_docs,
+    missing_docs,
     missing_copy_implementations,
     missing_debug_implementations,
     trivial_numeric_casts,
@@ -51,5 +51,6 @@ use tokio::io::{AsyncRead, AsyncWrite};
 
 pub(crate) type Request = http::Request<()>;
 
+/// A stream representing a WebSocket connection.
 pub trait WebSocketStream: AsyncRead + AsyncWrite + Unpin + 'static {}
 impl<S> WebSocketStream for S where S: AsyncRead + AsyncWrite + Unpin + 'static {}

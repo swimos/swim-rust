@@ -66,6 +66,15 @@ where
         }
     }
 
+    /// Initialise a new `WebSocket` from a stream that has already executed a handshake.
+    ///
+    /// # Arguments
+    /// `config` - The configuration to initialise the WebSocket with.
+    /// `stream` - The stream that the handshake was executed on.
+    /// `extension` - A negotiated extension that will be used for the session.
+    /// `read_buffer` - The read buffer which will be used for the session. This *may* contain any
+    /// unread data received after performing the handshake that was not required.
+    /// `role` - The role that this WebSocket will take.
     pub fn from_upgraded(
         config: WebSocketConfig,
         stream: S,
@@ -82,6 +91,7 @@ where
         }
     }
 
+    /// Returns the role of this WebSocket.
     pub fn role(&self) -> Role {
         if self.framed.is_server() {
             Role::Server
@@ -90,6 +100,20 @@ where
         }
     }
 
+    /// Attempt to read some data from the WebSocket. Returning either the type of the message
+    /// received or the error that was produced.
+    ///
+    /// # Errors
+    /// If an error is produced during a read operation the contents of `read_buffer` must be
+    /// considered to be dirty.
+    ///
+    /// # Note
+    /// Ratchet transparently handles ping messages received from the peer by returning a pong frame
+    /// and this function will return `Message::Pong` if one has been received. As per [RFC6455](https://datatracker.ietf.org/doc/html/rfc6455)
+    /// these may be interleaved between data frames. In the event of one being received while
+    /// reading a continuation, this function will then yield `Message::Ping` and the `read_buffer`
+    /// will contain the data received up to that point. The callee must ensure that the contents
+    /// of `read_buffer` are *not* then modified before calling `read` again.
     pub async fn read(&mut self, read_buffer: &mut BytesMut) -> Result<Message, Error> {
         let WebSocket {
             framed,
@@ -221,6 +245,7 @@ where
         }
     }
 
+    /// Close this WebSocket with the reason provided.
     pub async fn close(mut self, reason: Option<String>) -> Result<(), Error> {
         self.framed
             .write_close(CloseReason::new(CloseCode::Normal, reason))
@@ -247,6 +272,7 @@ where
             .await
     }
 
+    /// Returns whether this WebSocket is closed.
     pub fn is_closed(&self) -> bool {
         self.closed
     }
@@ -273,9 +299,13 @@ where
     }
 }
 
+/// A structure representing an upgraded WebSocket session and an optional subprotocol that was
+/// negotiated during the upgrade.
 #[derive(Debug)]
 pub struct Upgraded<S, E> {
+    /// The WebSocket connection.
     pub socket: WebSocket<S, E>,
+    /// An optional subprotocol that was negotiated during the upgrade.
     pub subprotocol: Option<String>,
 }
 
