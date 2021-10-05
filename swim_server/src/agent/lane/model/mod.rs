@@ -18,8 +18,7 @@ use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use stm::var::observer::{Observer, ObserverStream, ObserverSubscriber};
-use utilities::sync::topic;
-use utilities::sync::topic::ReceiverStream;
+use swim_utilities::sync::topic::{self, ReceiverStream};
 
 pub mod action;
 pub mod command;

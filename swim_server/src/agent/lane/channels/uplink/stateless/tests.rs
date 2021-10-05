@@ -28,21 +28,24 @@ use swim_common::warp::path::RelativePath;
 use crate::agent::lane::channels::uplink::stateless::StatelessUplinks;
 use crate::agent::lane::channels::uplink::{AddressedUplinkMessage, UplinkAction, UplinkKind};
 use crate::agent::lane::channels::TaggedAction;
+use crate::agent::store::mock::MockNodeStore;
+use crate::agent::store::SwimNodeStore;
 use crate::meta::metric::uplink::{
     uplink_observer, TaggedWarpUplinkProfile, UplinkObserver, UplinkProfileSender,
     WarpUplinkProfile,
 };
 use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
+use crate::plane::store::mock::MockPlaneStore;
 use crate::routing::error::RouterError;
 use std::ops::Add;
 use swim_common::routing::ResolutionError;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::time::AtomicInstant;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc::Receiver;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
-use utilities::instant::AtomicInstant;
-use utilities::sync::promise;
-use utilities::uri::RelativeUri;
 
 #[derive(Clone, Debug)]
 struct TestRouter {
@@ -89,6 +92,7 @@ struct TestContext(TestRouter, mpsc::Sender<Eff>, Arc<AtomicInstant>);
 
 impl AgentExecutionContext for TestContext {
     type Router = TestRouter;
+    type Store = SwimNodeStore<MockPlaneStore>;
 
     fn router_handle(&self) -> Self::Router {
         self.0.clone()
@@ -104,6 +108,10 @@ impl AgentExecutionContext for TestContext {
 
     fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
         &self.2
+    }
+
+    fn store(&self) -> Self::Store {
+        MockNodeStore::mock()
     }
 }
 

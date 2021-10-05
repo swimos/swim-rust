@@ -20,9 +20,9 @@ use futures::future::BoxFuture;
 use futures::FutureExt;
 use swim_common::request::Request;
 use swim_common::routing::ResolutionError;
+use swim_utilities::routing::uri::RelativeUri;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
-use utilities::uri::RelativeUri;
 
 #[cfg(test)]
 mod tests;

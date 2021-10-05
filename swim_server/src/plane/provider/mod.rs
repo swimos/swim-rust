@@ -14,18 +14,17 @@
 
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lifecycle::AgentLifecycle;
+use crate::agent::store::NodeStore;
 use crate::agent::{AgentParameters, AgentResult, SwimAgent};
-use crate::plane::AgentRoute;
+use crate::plane::{AgentRoute, RouteAndParameters};
 use crate::routing::{ServerRouter, TaggedEnvelope};
 use futures::future::BoxFuture;
 use futures::{FutureExt, Stream};
 use std::any::Any;
-use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use swim_runtime::time::clock::Clock;
-use utilities::uri::RelativeUri;
 
 /// [`AgentRoute`] implementation that spawns agents with a fixed configuration.
 pub struct AgentProvider<Agent, Config, Lifecycle> {
@@ -62,19 +61,20 @@ where
         }
     }
 
-    pub(crate) fn run<Clk, Envelopes, Router>(
+    pub(crate) fn run<Clk, Envelopes, Router, Store>(
         &self,
-        uri: RelativeUri,
-        parameters: HashMap<String, String>,
+        route: RouteAndParameters,
         execution_config: AgentExecutionConfig,
         clock: Clk,
         incoming_envelopes: Envelopes,
         router: Router,
+        store: Store,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>)
     where
         Clk: Clock,
         Envelopes: Stream<Item = TaggedEnvelope> + Send + 'static,
         Router: ServerRouter + Clone + 'static,
+        Store: NodeStore,
     {
         let AgentProvider {
             configuration,
@@ -82,8 +82,9 @@ where
             ..
         } = self;
 
+        let RouteAndParameters { route, parameters } = route;
         let parameters =
-            AgentParameters::new(configuration.clone(), execution_config, uri, parameters);
+            AgentParameters::new(configuration.clone(), execution_config, route, parameters);
 
         let (agent, task) = crate::agent::run_agent(
             lifecycle.clone(),
@@ -91,13 +92,14 @@ where
             parameters,
             incoming_envelopes,
             router,
+            store,
         );
         (agent, task.boxed())
     }
 }
 
-impl<Clk, Envelopes, Router, Agent, Config, Lifecycle> AgentRoute<Clk, Envelopes, Router>
-    for AgentProvider<Agent, Config, Lifecycle>
+impl<Clk, Envelopes, Router, Agent, Config, Lifecycle, Store>
+    AgentRoute<Clk, Envelopes, Router, Store> for AgentProvider<Agent, Config, Lifecycle>
 where
     Clk: Clock,
     Envelopes: Stream<Item = TaggedEnvelope> + Send + 'static,
@@ -105,23 +107,24 @@ where
     Agent: SwimAgent<Config> + Send + Sync + Debug + 'static,
     Config: Send + Sync + Clone + Debug + 'static,
     Lifecycle: AgentLifecycle<Agent> + Send + Sync + Clone + Debug + 'static,
+    Store: NodeStore,
 {
     fn run_agent(
         &self,
-        uri: RelativeUri,
-        parameters: HashMap<String, String>,
+        route: RouteAndParameters,
         execution_config: AgentExecutionConfig,
         clock: Clk,
         incoming_envelopes: Envelopes,
         router: Router,
+        store: Store,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
         self.run(
-            uri,
-            parameters,
+            route,
             execution_config,
             clock,
             incoming_envelopes,
             router,
+            store,
         )
     }
 }

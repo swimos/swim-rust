@@ -20,9 +20,10 @@ pub mod config;
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::dispatch::LaneIdentifier;
 use crate::agent::lane::model::supply::SupplyLane;
+use crate::agent::Eff;
+use crate::agent::LaneParts;
 use crate::agent::LaneTasks;
 use crate::agent::{make_supply_lane, AgentContext, DynamicLaneTasks, SwimAgent};
-use crate::agent::{Eff, LaneIo};
 use crate::meta::log::config::{FlushStrategy, LogConfig};
 use crate::meta::{IdentifiedAgentIo, MetaNodeAddressed};
 use either::Either;
@@ -33,20 +34,19 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::{Debug, Display, Formatter};
 use std::num::NonZeroUsize;
+use swim_common::form::structural::Tag;
 use swim_common::form::Form;
 use swim_common::model::time::Timestamp;
 use swim_common::model::Value;
+use swim_runtime::time::interval::interval;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::SendError;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
 use tracing_futures::{Instrument, Instrumented};
-
-use swim_common::form::structural::Tag;
-use swim_runtime::time::interval::interval;
-use utilities::sync::trigger;
-use utilities::uri::RelativeUri;
 
 pub const TRACE_URI: &str = "traceLog";
 pub const DEBUG_URI: &str = "debugLog";
@@ -450,12 +450,13 @@ where
     let mut lane_ios = HashMap::with_capacity(lane_count);
 
     let mut make_log_lane = |level: LogLevel| {
-        let (lane, task, io) = make_supply_lane(level.uri_ref(), true, config.lane_buffer);
+        let LaneParts { lane, tasks, io } =
+            make_supply_lane(level.uri_ref(), true, config.lane_buffer);
 
-        lane_tasks.push(task.boxed());
+        lane_tasks.push(tasks.boxed());
         lane_ios.insert(
             LaneIdentifier::meta(MetaNodeAddressed::NodeLog(level)),
-            io.expect("Public lane didn't return any lane IO").boxed(),
+            io.routing.expect("Public lane didn't return any lane IO"),
         );
 
         lane

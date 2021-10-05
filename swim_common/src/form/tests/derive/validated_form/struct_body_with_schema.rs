@@ -15,6 +15,6 @@
 use form_derive::*;
 
 fn main() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S(#[form(body, schema(equal = "i64_eq"))] i64);
 }

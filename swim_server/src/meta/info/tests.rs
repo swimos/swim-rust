@@ -15,9 +15,11 @@
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::model::map::MapLane;
 use crate::agent::lane::model::value::ValueLane;
+use crate::agent::store::mock::MockNodeStore;
 use crate::agent::{agent_lifecycle, map_lifecycle, value_lifecycle, SwimAgent, TestClock};
 use crate::meta::info::{LaneInfo, LaneKind};
 use crate::plane::provider::AgentProvider;
+use crate::plane::RouteAndParameters;
 use crate::routing::error::RouterError;
 use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
@@ -34,12 +36,12 @@ use swim_common::record;
 use swim_common::routing::ResolutionError;
 use swim_common::warp::envelope::Envelope;
 use swim_runtime::time::timeout;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
-use utilities::sync::promise;
-use utilities::uri::RelativeUri;
 
 mod swim_server {
     pub use crate::*;
@@ -182,12 +184,12 @@ async fn lane_info_sync() {
     let provider = AgentProvider::new(MockAgentConfig, MockAgentLifecycle);
 
     let (_a, agent_proc) = provider.run(
-        uri,
-        HashMap::new(),
+        RouteAndParameters::new(uri, HashMap::new()),
         exec_config,
         clock.clone(),
         ReceiverStream::new(envelope_rx),
         MockRouter::new(RoutingAddr::local(1024), tx),
+        MockNodeStore::mock(),
     );
 
     let _agent_task = swim_runtime::task::spawn(agent_proc);

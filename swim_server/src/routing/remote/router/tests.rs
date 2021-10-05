@@ -23,11 +23,12 @@ use futures::{FutureExt, StreamExt};
 use swim_common::model::Value;
 use swim_common::routing::{ConnectionError, IoError, ResolutionError};
 use swim_common::warp::envelope::Envelope;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
-use utilities::sync::{promise, trigger};
-use utilities::uri::RelativeUri;
 
 const ADDR: RoutingAddr = RoutingAddr::remote(4);
 

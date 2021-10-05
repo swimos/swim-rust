@@ -17,7 +17,7 @@ use crate::agent::AttachError;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
-use utilities::errors::Recoverable;
+use swim_utilities::errors::Recoverable;
 
 #[derive(Debug)]
 pub enum DispatcherError {

@@ -22,8 +22,8 @@ use tokio::sync::mpsc;
 
 use crate::backpressure::keyed::common::{consume_buffers, transmit, Action, SpecialActionResult};
 use swim_common::sink::item::ItemSender;
-use utilities::lru_cache::LruCache;
-use utilities::sync::circular_buffer;
+use swim_utilities::collections::lrucache::LruCache;
+use swim_utilities::sync::circular_buffer;
 
 #[cfg(test)]
 mod tests;

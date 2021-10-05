@@ -19,9 +19,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use swim_runtime::task;
 use swim_runtime::time::clock::Clock;
+use swim_utilities::trigger;
 use tokio::sync::{oneshot, Mutex};
 use tokio::time::{timeout, Duration};
-use utilities::sync::trigger;
 
 /// A test clock where the passage of time can be manipulated monotonically.
 #[derive(Debug, Clone, Default)]

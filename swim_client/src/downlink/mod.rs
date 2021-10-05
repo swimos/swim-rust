@@ -48,11 +48,12 @@ use swim_common::model::Value;
 use swim_common::request::TryRequest;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
+use swim_utilities::errors::Recoverable;
+use swim_utilities::sync::topic;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
-use utilities::errors::Recoverable;
-use utilities::sync::{promise, topic};
 
 pub use crate::downlink::subscription::Downlinks;
 use tracing_futures::Instrument;

@@ -14,8 +14,13 @@
 
 #[cfg(test)]
 mod tests;
+mod bilock;
 
 use crate::ext::NegotiatedExtension;
+
+use crate::extensions::{
+    ExtensionDecoder, ExtensionEncoder, ReunitableExtension, SplittableExtension,
+};
 use crate::framed::{
     read_next, write_close, write_fragmented, CodecFlags, FramedIoParts, FramedRead, FramedWrite,
     Item,

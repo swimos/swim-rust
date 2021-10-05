@@ -13,16 +13,19 @@
 // limitations under the License.
 
 use crate::agent::context::{ContextImpl, RoutingContext, SchedulerContext};
+use crate::agent::store::mock::MockNodeStore;
+use crate::agent::store::SwimNodeStore;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::AgentContext;
 use crate::meta::meta_context_sink;
+use crate::plane::store::mock::MockPlaneStore;
 use std::collections::HashMap;
 use std::sync::Arc;
 use swim_runtime::task;
 use swim_runtime::time::clock::Clock;
+use swim_utilities::trigger;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
-use utilities::sync::trigger;
 
 #[test]
 fn simple_accessors() {
@@ -36,6 +39,7 @@ fn simple_accessors() {
         routing_context,
         schedule_context,
         meta_context_sink(),
+        MockNodeStore::mock(),
     );
 
     assert!(std::ptr::eq(context.agent(), agent.as_ref()));
@@ -50,7 +54,7 @@ fn create_context(
     n: usize,
     clock: TestClock,
     close_trigger: trigger::Receiver,
-) -> ContextImpl<&'static str, impl Clock, ()> {
+) -> ContextImpl<&'static str, impl Clock, (), SwimNodeStore<MockPlaneStore>> {
     let (tx, mut rx) = mpsc::channel(n);
 
     //Run any tasks that get scheduled.
@@ -71,6 +75,7 @@ fn create_context(
         routing_context,
         schedule_context,
         meta_context_sink(),
+        MockNodeStore::mock(),
     )
 }
 
