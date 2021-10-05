@@ -48,7 +48,7 @@ impl BufCompress for Compress {
         let before = self.total_out();
 
         unsafe {
-            let ptr = output.as_mut_ptr().offset(len as isize);
+            let ptr = output.as_mut_ptr().add(len);
             let out = slice::from_raw_parts_mut(ptr, cap - len);
             let ret = self.compress(input, out, flush);
             output.set_len((self.total_out() - before) as usize + len);
@@ -69,7 +69,7 @@ impl BufDecompress for Decompress {
         let before = self.total_out();
 
         unsafe {
-            let ptr = output.as_mut_ptr().offset(len as isize);
+            let ptr = output.as_mut_ptr().add(len);
             let out = slice::from_raw_parts_mut(ptr, cap - len);
             let ret = self.decompress(input, out, flush);
             output.set_len((self.total_out() - before) as usize + len);

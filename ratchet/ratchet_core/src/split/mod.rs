@@ -38,6 +38,12 @@ use std::fmt::Debug;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
+type ReuniteFailure<S, E> = ReuniteError<
+    S,
+    <E as SplittableExtension>::SplitEncoder,
+    <E as SplittableExtension>::SplitDecoder,
+>;
+
 // todo sink and stream implementations
 pub fn split<S, E>(
     framed: framed::FramedIo<S>,
@@ -141,10 +147,10 @@ where
                 .map_err(Into::into),
             PayloadType::Ping => {
                 if buf.len() > CONTROL_MAX_SIZE {
-                    return Err(Error::with_cause(
+                    Err(Error::with_cause(
                         ErrorKind::Protocol,
                         ProtocolError::FrameOverflow,
-                    ));
+                    ))
                 } else {
                     control_buffer.clear();
                     control_buffer.clone_from_slice(&buf[..CONTROL_MAX_SIZE]);
@@ -206,7 +212,7 @@ where
     pub fn reunite<Ext>(
         self,
         receiver: Receiver<S, Ext::SplitDecoder>,
-    ) -> Result<WebSocket<S, Ext>, ReuniteError<S, Ext::SplitEncoder, Ext::SplitDecoder>>
+    ) -> Result<WebSocket<S, Ext>, ReuniteFailure<S, Ext>>
     where
         S: Debug,
         Ext: ReunitableExtension<SplitEncoder = E>,
@@ -244,7 +250,7 @@ where
             Ok(()) => Ok(()),
             Err(e) => {
                 self.closed.store(true, Ordering::Relaxed);
-                Err(e.into())
+                Err(e)
             }
         }
     }
@@ -477,7 +483,7 @@ pub struct ReuniteError<S, E, D> {
 fn reunite<S, E>(
     sender: Sender<S, E::SplitEncoder>,
     receiver: Receiver<S, E::SplitDecoder>,
-) -> Result<WebSocket<S, E>, ReuniteError<S, E::SplitEncoder, E::SplitDecoder>>
+) -> Result<WebSocket<S, E>, ReuniteFailure<S, E>>
 where
     S: WebSocketStream + Debug,
     E: ReunitableExtension,
@@ -529,6 +535,6 @@ where
             closed.load(Ordering::Relaxed),
         ))
     } else {
-        return Err(ReuniteError { sender, receiver });
+        Err(ReuniteError { sender, receiver })
     }
 }

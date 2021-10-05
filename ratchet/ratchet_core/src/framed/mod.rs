@@ -118,6 +118,12 @@ impl FrameDecoder {
     }
 }
 
+pub struct ReadProps {
+    pub is_server: bool,
+    pub rsv_bits: u8,
+    pub max_size: usize,
+}
+
 #[derive(Debug)]
 pub struct FramedRead {
     read_buffer: BytesMut,
@@ -164,15 +170,19 @@ impl FramedRead {
         io: &mut I,
         flags: &mut CodecFlags,
         read_into: &mut BytesMut,
-        is_server: bool,
-        rsv_bits: u8,
-        max_size: usize,
         extension: &mut E,
+        props: ReadProps,
     ) -> Result<Item, Error>
     where
         I: AsyncRead + Unpin,
         E: ExtensionDecoder,
     {
+        let ReadProps {
+            is_server,
+            rsv_bits,
+            max_size,
+        } = props;
+
         loop {
             let (header, payload) = self.read_frame(io, is_server, rsv_bits, max_size).await?;
 
@@ -553,11 +563,13 @@ where
     let rsv_bits = flags.bits() & 0x70;
     let is_server = flags.contains(CodecFlags::ROLE);
 
-    reader
-        .read(
-            io, flags, read_into, is_server, rsv_bits, max_size, extension,
-        )
-        .await
+    let props = ReadProps {
+        is_server,
+        rsv_bits,
+        max_size,
+    };
+
+    reader.read(io, flags, read_into, extension, props).await
 }
 
 pub async fn write_close<I>(

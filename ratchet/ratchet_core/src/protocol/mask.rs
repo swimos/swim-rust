@@ -51,7 +51,7 @@ pub fn apply_mask_fast(bytes: &mut [u8], mask: [u8; 4]) {
         *word ^= mask_u32;
     }
 
-    if suffix.len() > 0 {
+    if !suffix.is_empty() {
         apply_mask_unoptimised(&mut suffix, mask_u32.to_ne_bytes());
     }
 }

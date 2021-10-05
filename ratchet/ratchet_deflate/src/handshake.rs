@@ -106,7 +106,7 @@ pub(crate) fn on_request(
 
     for header in header_iter {
         let header_value =
-            std::str::from_utf8(header.value).map_err(|e| DeflateExtensionError::from(e))?;
+            std::str::from_utf8(header.value).map_err(DeflateExtensionError::from)?;
 
         for part in header_value.split(',') {
             match validate_request_header(part, config) {
@@ -162,7 +162,7 @@ fn validate_request_header(
             }
             param if param.starts_with(SERVER_MAX_BITS) => {
                 check_param(SERVER_MAX_BITS, &mut seen_server_max_bits, || {
-                    let mut window_param = param.split("=").skip(1);
+                    let mut window_param = param.split('=').skip(1);
                     match window_param.next() {
                         Some(window_param) => {
                             initialised_config.server_max_window_bits = parse_window_parameter(
@@ -181,7 +181,7 @@ fn validate_request_header(
             }
             param if param.starts_with(CLIENT_MAX_BITS) => {
                 check_param(CLIENT_MAX_BITS, &mut seen_client_max_bits, || {
-                    let mut window_param = param.split("=").skip(1);
+                    let mut window_param = param.split('=').skip(1);
                     if let Some(window_param) = window_param.next() {
                         // Absence of this parameter in an extension negotiation offer indicates
                         // that the client can receive messages compressed using an LZ77 sliding
@@ -197,9 +197,10 @@ fn validate_request_header(
                 })?;
             }
             p => {
-                return Err(DeflateExtensionError::NegotiationError(
-                    format!("{}: {}", UNKNOWN_PARAM, p).into(),
-                )
+                return Err(DeflateExtensionError::NegotiationError(format!(
+                    "{}: {}",
+                    UNKNOWN_PARAM, p
+                ))
                 .into())
             }
         }
@@ -207,7 +208,7 @@ fn validate_request_header(
 
     Ok((
         initialised_config,
-        HeaderValue::from_str(response_str.as_str()).map_err(|e| DeflateExtensionError::from(e))?,
+        HeaderValue::from_str(response_str.as_str()).map_err(DeflateExtensionError::from)?,
     ))
 }
 
@@ -289,7 +290,7 @@ pub(crate) fn on_response(
                 }
                 param if param.starts_with(SERVER_MAX_BITS) => {
                     check_param(SERVER_MAX_BITS, &mut seen_server_max_window_bits, || {
-                        let mut window_param = param.split("=").skip(1);
+                        let mut window_param = param.split('=').skip(1);
                         match window_param.next() {
                             Some(window_param) => {
                                 server_max_window_bits =
@@ -302,7 +303,7 @@ pub(crate) fn on_response(
                 }
                 param if param.starts_with(CLIENT_MAX_BITS) => {
                     check_param(CLIENT_MAX_BITS, &mut seen_client_max_window_bits, || {
-                        let mut window_param = param.split("=").skip(1);
+                        let mut window_param = param.split('=').skip(1);
                         if let Some(window_param) = window_param.next() {
                             client_max_window_bits =
                                 parse_window_parameter(window_param, client_max_window_bits)?;
