@@ -15,6 +15,8 @@
 #[cfg(test)]
 mod tests;
 
+mod bilock;
+
 use crate::extensions::{
     ExtensionDecoder, ExtensionEncoder, ReunitableExtension, SplittableExtension,
 };

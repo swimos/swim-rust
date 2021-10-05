@@ -5,7 +5,6 @@ authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
 [dependencies]
-bilock = { path = "../utilities/bilock" }
 url = "2.1.1"
 http = "0.2.3"
 tokio = { version = "1.1.1", features = ["rt", "net", "io-util"] }
@@ -28,5 +27,5 @@ either = "1.5.3"
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["rt-multi-thread", "macros", "test-util"] }
-swim_utilities = { path = "../swim_utilities", features = ["trigger"] }
+swim_utilities = { path = "../swim_utilities", features = ["trigger", "test-util"] }
 tokio-stream = { version = "0.1.2", features = ["net"] }
