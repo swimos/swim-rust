@@ -16,7 +16,10 @@
 mod tests;
 
 mod frame;
+mod mask;
+
 pub use frame::*;
+pub use mask::apply_mask;
 
 use derive_more::Display;
 use std::convert::TryFrom;

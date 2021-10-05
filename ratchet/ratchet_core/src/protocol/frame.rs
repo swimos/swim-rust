@@ -151,12 +151,3 @@ impl FrameHeader {
         )))
     }
 }
-
-// todo speed up with an XOR lookup table
-pub fn apply_mask(mask: u32, bytes: &mut [u8]) {
-    let mask: [u8; 4] = mask.to_be_bytes();
-
-    for i in 0..bytes.len() {
-        bytes[i] ^= mask[i & 0x3]
-    }
-}

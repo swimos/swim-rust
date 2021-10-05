@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use ratchet::{NoExtProvider, ProtocolRegistry, WebSocketConfig, WebSocketResponse};
+use bytes::BytesMut;
+use ratchet::{Message, NoExtProvider, PayloadType, ProtocolRegistry, WebSocketConfig};
 use tokio::net::TcpListener;
 use tokio_stream::wrappers::TcpListenerStream;
 use tokio_stream::StreamExt;
@@ -25,18 +26,40 @@ async fn main() {
     while let Some(socket) = incoming.next().await {
         let socket = socket.unwrap();
 
-        let upgrader = ratchet::accept_with(
+        let mut websocket = ratchet::accept_with(
             socket,
             WebSocketConfig::default(),
             NoExtProvider,
             ProtocolRegistry::default(),
         )
         .await
-        .unwrap();
+        .unwrap()
+        .upgrade()
+        .await
+        .unwrap()
+        .socket;
 
-        upgrader
-            .reject(WebSocketResponse::new(500).unwrap())
-            .await
-            .unwrap();
+        println!("Accepted connection");
+
+        let mut buf = BytesMut::new();
+
+        loop {
+            match websocket.read(&mut buf).await.unwrap() {
+                Message::Text => {
+                    let _s = String::from_utf8(buf.to_vec()).unwrap();
+                    websocket.write(&mut buf, PayloadType::Text).await.unwrap();
+                    buf.clear();
+                }
+                Message::Binary => {
+                    websocket
+                        .write(&mut buf, PayloadType::Binary)
+                        .await
+                        .unwrap();
+                    buf.clear();
+                }
+                Message::Ping | Message::Pong => {}
+                Message::Close(_) => break,
+            }
+        }
     }
 }
