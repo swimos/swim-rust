@@ -15,7 +15,7 @@
 use crate::model::parser::ParseFailure;
 use crate::model::parser::{parse_document, parse_document_iteratee};
 use crate::model::{Attr, Item, Value};
-use utilities::iteratee::Iteratee;
+use swim_utilities::iteratee::Iteratee;
 
 type ReadDocument = fn(&str) -> Result<Vec<Item>, ParseFailure>;
 

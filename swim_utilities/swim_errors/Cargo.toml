@@ -1,0 +1,10 @@
+[package]
+name = "swim_errors"
+version = "0.1.0"
+authors = ["Swim.AI developers info@swim.ai"]
+edition = "2018"
+
+[dependencies]
+swim_algebra = { path = "../swim_algebra"}
+
+[dev-dependencies]

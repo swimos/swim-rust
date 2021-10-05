@@ -19,13 +19,13 @@ use crate::parser::{
     SKIP_PATH, SLOT_PATH, TAG_PATH,
 };
 use crate::SynValidation;
-use macro_helpers::{FieldKind, Symbol};
+use macro_utilities::{FieldKind, Symbol};
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use std::convert::TryFrom;
 use std::ops::Add;
+use swim_utilities::errors::validation::Validation;
 use syn::{Field, Ident, Lit, Meta, NestedMeta, Type};
-use utilities::validation::Validation;
 
 /// Describes how to extract a field from a struct.
 pub enum FieldSelector<'a> {

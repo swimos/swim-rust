@@ -16,7 +16,7 @@ use num_bigint::{BigInt, BigUint};
 
 use super::*;
 use swim_common::form::structural::read::ReadError;
-use swim_common::form::{Form, ValidatedForm};
+use swim_common::form::{Form, ValueSchema};
 use swim_common::model::schema::Schema;
 use swim_common::model::{Attr, Item};
 
@@ -239,7 +239,7 @@ pub fn map_modification_schema() {
         vec![Item::slot("a", true)],
     );
 
-    let schema = <UntypedMapModification<Value> as ValidatedForm>::schema();
+    let schema = <UntypedMapModification<Value> as ValueSchema>::schema();
 
     assert!(schema.matches(&clear));
     assert!(schema.matches(&take));

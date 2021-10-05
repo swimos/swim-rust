@@ -15,7 +15,7 @@
 use form_derive::*;
 
 fn main() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     #[form(schema(all_items(of_kind(ValueKind::Int32))))]
     struct S {
         #[form(skip)]

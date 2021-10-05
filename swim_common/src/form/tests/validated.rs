@@ -17,7 +17,7 @@ use num_traits::Float;
 
 use crate::form::structural::Tag;
 use crate::form::Form;
-use crate::form::ValidatedForm;
+use crate::form::ValueSchema;
 use crate::model::schema::attr::AttrSchema;
 use crate::model::schema::slot::SlotSchema;
 use crate::model::schema::text::TextSchema;
@@ -36,7 +36,7 @@ mod swim_common {
 
 #[test]
 fn test_tag() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S;
 
     let expected_schema = StandardSchema::HeadAttribute {
@@ -59,7 +59,7 @@ fn test_tag() {
 
 #[test]
 fn all_items_named() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     #[form(schema(all_items(of_kind(ValueKind::Int32))))]
     struct S {
         a: i32,
@@ -116,7 +116,7 @@ fn all_items_named() {
 
 #[test]
 fn all_items_tuple() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     #[form(schema(all_items(of_kind(ValueKind::Int32))))]
     struct S(i32, i64);
 
@@ -157,7 +157,7 @@ fn all_items_tuple() {
 
 #[test]
 fn all_items_new_type() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     #[form(schema(all_items(of_kind(ValueKind::Int32))))]
     struct S(i32);
 
@@ -192,7 +192,7 @@ fn all_items_new_type() {
 
 #[test]
 fn text() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S {
         #[form(schema(text = "swim"))]
         a: String,
@@ -228,7 +228,7 @@ fn text() {
 
 #[test]
 fn num_items_attrs() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S {
         #[form(schema(and(num_items = 2, num_attrs = 3)))]
         a: Value,
@@ -273,7 +273,7 @@ fn num_items_attrs() {
 
 #[test]
 fn num_items() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S {
         #[form(schema(num_items = 2))]
         a: Value,
@@ -315,7 +315,7 @@ fn num_items() {
 
 #[test]
 fn num_attrs() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S {
         #[form(schema(num_attrs = 3))]
         a: Value,
@@ -355,7 +355,7 @@ fn and() {
         Value::text("text")
     }
 
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S {
         #[form(schema(and(of_kind(ValueKind::Text), equal = "s_value")))]
         a: String,
@@ -398,7 +398,7 @@ fn field_equal() {
         Value::Int32Value(1)
     }
 
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S {
         #[form(schema(equal = "field_expected"))]
         a: Value,
@@ -443,7 +443,7 @@ fn field_equal() {
 
 #[test]
 fn not() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S {
         #[form(schema(not(of_kind(ValueKind::Text))))]
         a: Value,
@@ -489,7 +489,7 @@ fn or() {
         Value::text("text")
     }
 
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S {
         #[form(schema(or(of_kind(ValueKind::Int32), equal = "s_value")))]
         a: String,
@@ -540,7 +540,7 @@ fn generic_value() {
         Value::Int32Value(i32::max_value())
     }
 
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S<F> {
         #[form(schema(equal = "expected"))]
         f: F,
@@ -583,7 +583,7 @@ fn generic_value() {
 
 #[test]
 fn tuple_struct() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S(i32, i64, String);
 
     let expected_schema = StandardSchema::HeadAttribute {
@@ -611,7 +611,7 @@ fn tuple_struct_attrs() {
         Value::Int64Value(i64::max_value())
     }
 
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S(
         #[form(schema(of_kind(ValueKind::Int32)))] i32,
         #[form(schema(equal = "int_eq"))] i64,
@@ -642,7 +642,7 @@ fn tuple_struct_attrs() {
 
 #[test]
 fn unit_struct() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S;
 
     let expected_schema = StandardSchema::HeadAttribute {
@@ -662,7 +662,7 @@ fn unit_struct() {
 
 #[test]
 fn field_anything() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S {
         a: i32,
         #[form(schema(anything))]
@@ -707,7 +707,7 @@ fn field_anything() {
 
 #[test]
 fn field_non_nan() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S {
         #[form(schema(non_nan))]
         f: f64,
@@ -752,7 +752,7 @@ fn field_non_nan() {
 
 #[test]
 fn field_finite() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S {
         #[form(schema(finite))]
         f: f64,
@@ -797,7 +797,7 @@ fn field_finite() {
 
 #[test]
 fn complex() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S {
         #[form(schema(or(
             and(of_kind(ValueKind::Record), num_attrs = 1, num_items = 2),
@@ -862,7 +862,7 @@ fn complex() {
 
 #[test]
 fn int_range_inclusive() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S {
         #[form(schema(int_range = "0..=10"))]
         f: i64,
@@ -897,7 +897,7 @@ fn int_range_inclusive() {
 
 #[test]
 fn uint_range_inclusive() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S {
         #[form(schema(uint_range = "0..=10"))]
         f: u64,
@@ -931,7 +931,7 @@ fn uint_range_inclusive() {
 
 #[test]
 fn int_range() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S {
         #[form(schema(int_range = "0..10"))]
         f: i64,
@@ -967,7 +967,7 @@ fn int_range() {
 
 #[test]
 fn float_range_inclusive() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S {
         #[form(schema(float_range = "0.0..=10.1"))]
         f: f64,
@@ -1001,7 +1001,7 @@ fn float_range_inclusive() {
 
 #[test]
 fn float_range() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S {
         #[form(schema(float_range = "0..10"))]
         f: f64,
@@ -1037,7 +1037,7 @@ fn float_range() {
 
 #[test]
 fn uint_range() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S {
         #[form(schema(uint_range = "0..10"))]
         f: u64,
@@ -1072,7 +1072,7 @@ fn uint_range() {
 
 #[test]
 fn big_int_range_inclusive() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S {
         #[form(schema(big_int_range = "123456..=789101112"))]
         f: BigInt,
@@ -1130,7 +1130,7 @@ fn big_int_range_inclusive() {
 
 #[test]
 fn big_int_range() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S {
         #[form(schema(big_int_range = "100..300"))]
         f: BigInt,
@@ -1191,7 +1191,7 @@ fn big_int_range() {
 
 #[test]
 fn container_anything() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     #[form(schema(anything))]
     struct S {
         a: i32,
@@ -1237,7 +1237,7 @@ fn container_anything() {
 
 #[test]
 fn container_nothing() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     #[form(schema(nothing))]
     struct S {
         a: i32,
@@ -1287,7 +1287,7 @@ fn form_header_body() {
         Value::Int32Value(i32::max_value())
     }
 
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S {
         a: i32,
         #[form(header_body, schema(equal = "eq"))]
@@ -1318,7 +1318,7 @@ fn form_header_body() {
 
 #[test]
 fn form_attr() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S {
         a: i32,
         #[form(attr, schema(int_range = "0..=11"))]
@@ -1358,7 +1358,7 @@ fn form_attr() {
 
 #[test]
 fn form_header() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S {
         #[form(header_body)]
         a: i32,
@@ -1398,7 +1398,7 @@ fn form_header() {
 
 #[test]
 fn form_body() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S {
         a: i32,
         #[form(body)]
@@ -1429,7 +1429,7 @@ fn form_body() {
 
 #[test]
 fn form_single_enum() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     enum E {
         A,
     }
@@ -1455,7 +1455,7 @@ fn form_single_enum() {
 
 #[test]
 fn form_enum_tag() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     enum E {
         #[form(tag = "Enumeration")]
         A,
@@ -1482,7 +1482,7 @@ fn form_enum_tag() {
 
 #[test]
 fn form_enum_variants() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     enum E {
         UnitEnum,
         NewTypeEnum(i32),
@@ -1587,7 +1587,7 @@ fn form_enum_variants() {
 
 #[test]
 fn form_enum_attrs() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     enum E {
         #[form(tag = "Enumeration")]
         A {
@@ -1644,7 +1644,7 @@ fn form_enum_attrs() {
 
 #[test]
 fn test_vector() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S {
         v: Vec<i32>,
     }
@@ -1664,7 +1664,7 @@ fn test_vector() {
             items: vec![(
                 ItemSchema::Field(SlotSchema::new(
                     StandardSchema::text("v"),
-                    <Vec<i32> as ValidatedForm>::schema(),
+                    <Vec<i32> as ValueSchema>::schema(),
                 )),
                 true,
             )],
@@ -1679,7 +1679,7 @@ fn test_vector() {
 
 #[test]
 fn test_hash_map() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct S {
         v: HashMap<String, i32>,
     }
@@ -1705,7 +1705,7 @@ fn test_hash_map() {
             items: vec![(
                 ItemSchema::Field(SlotSchema::new(
                     StandardSchema::text("v"),
-                    <HashMap<String, i32> as ValidatedForm>::schema(),
+                    <HashMap<String, i32> as ValueSchema>::schema(),
                 )),
                 true,
             )],
@@ -1720,7 +1720,7 @@ fn test_hash_map() {
 
 #[test]
 fn test_nested() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     struct Parent {
         a: i32,
         b: Child,
@@ -1728,7 +1728,7 @@ fn test_nested() {
         e: f64,
     }
 
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     enum Child {
         ChildA,
         ChildB { c: i32, d: f64 },
@@ -1820,7 +1820,7 @@ fn tagged() {
         Trace,
     }
 
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     #[form(schema(all_items(of_kind(ValueKind::Int32))))]
     struct S {
         #[form(tag)]
@@ -1884,7 +1884,7 @@ fn tagged() {
 
 #[test]
 pub fn map_modification_schema() {
-    #[derive(Debug, PartialEq, Eq, Form, ValidatedForm, Clone)]
+    #[derive(Debug, PartialEq, Eq, Form, ValueSchema, Clone)]
     pub enum ValidatedMapUpdate<K, V> {
         #[form(tag = "update")]
         Update(#[form(header, name = "key")] K, #[form(body)] Arc<V>),

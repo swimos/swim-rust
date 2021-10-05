@@ -21,9 +21,9 @@ use futures::future::BoxFuture;
 use futures::Stream;
 use std::collections::HashMap;
 use std::future::Future;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger::Receiver;
 use tokio::time::Duration;
-use utilities::sync::trigger::Receiver;
-use utilities::uri::RelativeUri;
 
 struct TestModel;
 

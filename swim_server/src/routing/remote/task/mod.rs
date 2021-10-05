@@ -42,15 +42,15 @@ use swim_common::routing::{
 };
 use swim_common::warp::envelope::{Envelope, EnvelopeHeader, EnvelopeParseErr, OutgoingHeader};
 use swim_common::warp::path::RelativePath;
+use swim_utilities::errors::Recoverable;
+use swim_utilities::future::retryable::RetryStrategy;
+use swim_utilities::future::task::Spawner;
+use swim_utilities::routing::uri::{BadRelativeUri, RelativeUri};
+use swim_utilities::trigger;
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Instant};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, Level};
-use utilities::errors::Recoverable;
-use utilities::future::retryable::strategy::RetryStrategy;
-use utilities::sync::trigger;
-use utilities::task::Spawner;
-use utilities::uri::{BadRelativeUri, RelativeUri};
 
 /// A task that manages reading from and writing to a web-sockets channel.
 pub struct ConnectionTask<Str, Router> {

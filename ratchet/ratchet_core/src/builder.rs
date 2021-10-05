@@ -18,6 +18,7 @@ use crate::handshake::ProtocolRegistry;
 use crate::ws::Upgraded;
 use crate::{client, TryIntoRequest, WebSocketConfig, WebSocketStream};
 use ratchet_ext::{Extension, ExtensionProvider};
+use std::borrow::Cow;
 
 pub struct WebSocketClientBuilder<E> {
     config: Option<WebSocketConfig>,
@@ -69,17 +70,26 @@ impl<E> WebSocketClientBuilder<E> {
         self
     }
 
-    pub fn extension(mut self, extension: E) -> Self
+    pub fn extension<T>(self, extension: T) -> WebSocketClientBuilder<T>
     where
-        E: ExtensionProvider,
+        T: ExtensionProvider,
     {
-        self.extension = extension;
-        self
+        let WebSocketClientBuilder {
+            config,
+            subprotocols,
+            ..
+        } = self;
+        WebSocketClientBuilder {
+            config,
+            extension,
+            subprotocols,
+        }
     }
 
     pub fn subprotocols<I>(mut self, subprotocols: I) -> Self
     where
-        I: IntoIterator<Item = &'static str>,
+        I: IntoIterator,
+        I::Item: Into<Cow<'static, str>>,
     {
         self.subprotocols = ProtocolRegistry::new(subprotocols);
         self
@@ -123,17 +133,26 @@ impl<E> WebSocketServerBuilder<E> {
         self
     }
 
-    pub fn extension(mut self, extension: E) -> Self
+    pub fn extension<T>(self, extension: T) -> WebSocketServerBuilder<T>
     where
-        E: ExtensionProvider,
+        T: ExtensionProvider,
     {
-        self.extension = extension;
-        self
+        let WebSocketServerBuilder {
+            config,
+            subprotocols,
+            ..
+        } = self;
+        WebSocketServerBuilder {
+            config,
+            extension,
+            subprotocols,
+        }
     }
 
     pub fn subprotocols<I>(mut self, subprotocols: I) -> Self
     where
-        I: IntoIterator<Item = &'static str>,
+        I: IntoIterator,
+        I::Item: Into<Cow<'static, str>>,
     {
         self.subprotocols = ProtocolRegistry::new(subprotocols);
         self

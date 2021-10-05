@@ -6,7 +6,6 @@ edition = "2018"
 
 [dependencies]
 ratchet_ext = { path = "../ratchet_ext" }
-bilock = { path = "../../utilities/bilock" }
 url = "2.1.1"
 http = "0.2.3"
 tokio = { version = "1.1.1", features = ["rt", "net", "io-util"] }
@@ -28,5 +27,5 @@ nanorand = { version = "0.5", default-features = false, features = ["std", "wyra
 either = "1.5.3"
 
 [dev-dependencies]
-utilities = { path = "../../utilities" }
+swim_utilities = { path = "../../swim_utilities", features = ["trigger", "test-util"] }
 tokio = { version = "1.1.1", features = ["rt-multi-thread", "macros", "test-util"] }

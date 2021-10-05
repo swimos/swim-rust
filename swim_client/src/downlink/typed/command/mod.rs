@@ -23,9 +23,9 @@ use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
-use swim_common::form::{Form, ValidatedForm};
+use swim_common::form::{Form, ValueSchema};
 use swim_common::model::schema::StandardSchema;
-use utilities::sync::promise;
+use swim_utilities::trigger::promise;
 
 /// A downlink that sends commands to a remote downlink and does not link to the remote lane.
 pub struct TypedCommandDownlink<T> {
@@ -99,11 +99,11 @@ impl Display for CommandViewError {
 
 impl Error for CommandViewError {}
 
-impl<T: ValidatedForm> TypedCommandDownlink<T> {
-    /// Create a sender for a more refined type (the [`ValidatedForm`] implementation for `U`
-    /// will always produce a [`swim_common::model::Value`] that is acceptable to the [`ValidatedForm`] implementation
+impl<T: ValueSchema> TypedCommandDownlink<T> {
+    /// Create a sender for a more refined type (the [`ValueSchema`] implementation for `U`
+    /// will always produce a [`swim_common::model::Value`] that is acceptable to the [`ValueSchema`] implementation
     /// for `T`) to the downlink.
-    pub fn contravariant_view<U: ValidatedForm>(
+    pub fn contravariant_view<U: ValueSchema>(
         &self,
     ) -> Result<TypedCommandDownlink<U>, CommandViewError> {
         let schema_cmp = U::schema().partial_cmp(&T::schema());

@@ -23,9 +23,9 @@ use std::ops::Add;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
+use swim_utilities::future::NotifyOnBlocked;
 use tokio::sync::{mpsc, Notify};
 use tokio_stream::wrappers::ReceiverStream;
-use utilities::future::NotifyOnBlocked;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TestError(String);

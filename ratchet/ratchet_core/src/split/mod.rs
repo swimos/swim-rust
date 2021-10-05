@@ -12,10 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod bilock;
 #[cfg(test)]
 mod tests;
 
 use crate::ext::NegotiatedExtension;
+
 use crate::framed::{
     read_next, write_close, write_fragmented, CodecFlags, FramedIoParts, FramedRead, FramedWrite,
     Item,

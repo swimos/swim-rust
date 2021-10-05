@@ -6,7 +6,8 @@ edition = "2018"
 
 [dependencies]
 swim_common = { path = "../../swim_common" }
-utilities = { path = "../../utilities" }
+swim_future = { path = "../../swim_utilities/swim_future" }
+swim_utilities = { path = "../../swim_utilities" }
 swim_runtime = { path = "../../swim_runtime" }
 
 tokio = "1.1.1"

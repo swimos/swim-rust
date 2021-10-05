@@ -30,11 +30,12 @@ use crate::ext::NegotiatedExtension;
 use crate::handshake::client::encoding::{build_request, encode_request};
 use crate::handshake::io::BufferedIo;
 use crate::handshake::{
-    validate_header, validate_header_value, ParseResult, Parser, ProtocolRegistry, StreamingParser,
+    validate_header, validate_header_value, ParseResult, ProtocolRegistry, StreamingParser,
     ACCEPT_KEY, BAD_STATUS_CODE, UPGRADE_STR, WEBSOCKET_STR,
 };
 use crate::WebSocketStream;
 use ratchet_ext::ExtensionProvider;
+use tokio_util::codec::Decoder;
 
 type Nonce = [u8; 24];
 
@@ -96,13 +97,14 @@ pub struct ResponseParser<'b, E> {
     subprotocols: &'b mut ProtocolRegistry,
 }
 
-impl<'b, E> Parser for ResponseParser<'b, E>
+impl<'b, E> Decoder for ResponseParser<'b, E>
 where
     E: ExtensionProvider,
 {
-    type Output = HandshakeResult<E::Extension>;
+    type Item = (HandshakeResult<E::Extension>, usize);
+    type Error = Error;
 
-    fn parse(&mut self, buf: &[u8]) -> Result<ParseResult<Self::Output>, Error> {
+    fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         let ResponseParser {
             nonce,
             extension,
@@ -113,10 +115,10 @@ where
         let mut response = httparse::Response::new(&mut headers);
 
         match try_parse_response(buf, &mut response, nonce, extension, subprotocols)? {
-            ParseResult::Complete(result, count) => Ok(ParseResult::Complete(result, count)),
+            ParseResult::Complete(result, count) => Ok(Some((result, count))),
             ParseResult::Partial => {
                 check_partial_response(&response)?;
-                Ok(ParseResult::Partial)
+                Ok(None)
             }
         }
     }

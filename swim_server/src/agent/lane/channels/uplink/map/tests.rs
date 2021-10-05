@@ -26,11 +26,11 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use stm::transaction::RetryManager;
+use swim_utilities::future::SwimStreamExt;
+use swim_utilities::trigger;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 use tokio_stream::wrappers::ReceiverStream;
-use utilities::future::SwimStreamExt;
-use utilities::sync::trigger;
 
 fn buffer_size() -> NonZeroUsize {
     NonZeroUsize::new(16).unwrap()

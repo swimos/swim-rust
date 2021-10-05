@@ -16,6 +16,7 @@ pub mod context;
 pub(crate) mod dispatch;
 pub mod lane;
 pub mod lifecycle;
+pub mod store;
 
 #[cfg(test)]
 mod tests;
@@ -47,7 +48,9 @@ use crate::agent::lane::model::demand_map::{
 use crate::agent::lane::model::map::MapLane;
 use crate::agent::lane::model::map::{summaries_to_events, MapLaneEvent, MapSubscriber};
 use crate::agent::lane::model::supply::{make_lane_model, SupplyLane};
-use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
+use crate::agent::lane::model::value::{
+    ValueDataModel, ValueLane, ValueLaneEvent, ValueLaneStoreIo,
+};
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::routing::{ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
@@ -68,40 +71,51 @@ use std::time::Duration;
 use swim_common::form::Form;
 use swim_common::warp::path::RelativePath;
 use swim_runtime::time::clock::Clock;
+use swim_utilities::future::SwimStreamExt;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::sync::topic;
+use swim_utilities::trigger;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{event, span, Level};
 use tracing_futures::{Instrument, Instrumented};
-use utilities::future::SwimStreamExt;
-use utilities::sync::{topic, trigger};
-use utilities::uri::RelativeUri;
 
+use crate::agent::lane::model::map::map_store::MapDataModel;
+use crate::agent::lane::store::task::{NodeStoreErrors, NodeStoreTask};
+pub use crate::agent::lane::store::{LaneNoStore, StoreIo};
+use crate::agent::model::map::map_store::MapLaneStoreIo;
+use crate::agent::store::NodeStore;
 use crate::meta::info::{LaneInfo, LaneKind};
 use crate::meta::log::NodeLogger;
 use crate::meta::open_meta_lanes;
 #[doc(hidden)]
 #[allow(unused_imports)]
 pub use agent_derive::*;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use tokio_stream::wrappers::ReceiverStream;
 
 /// Trait that must be implemented for any agent. This is essentially just boilerplate and will
 /// eventually be implemented using a derive macro.
 pub trait SwimAgent<Config>: Any + Send + Sync + Sized {
     /// Create an instance of the agent and life-cycle handles for each of its lanes.
-    fn instantiate<Context>(
+    fn instantiate<Context, Store>(
         configuration: &Config,
         exec_conf: &AgentExecutionConfig,
+        store: Store,
     ) -> (
         Self,
         DynamicLaneTasks<Self, Context>,
         DynamicAgentIo<Context>,
     )
     where
-        Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static;
+        Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
+        Store: NodeStore;
 }
 
 pub type DynamicLaneTasks<Agent, Context> = Vec<Box<dyn LaneTasks<Agent, Context>>>;
-pub type DynamicAgentIo<Context> = HashMap<String, Box<dyn LaneIo<Context>>>;
+pub type DynamicAgentIo<Context> =
+    HashMap<String, IoPair<Box<dyn LaneIo<Context>>, Box<dyn StoreIo>>>;
 
 pub const COMMANDED: &str = "Command received";
 pub const ON_COMMAND: &str = "On command handler";
@@ -114,28 +128,58 @@ const LANE_START: &str = "Lane start";
 const SCHEDULER_TASK: &str = "Agent scheduler";
 const ROOT_DISPATCHER_TASK: &str = "Agent envelope dispatcher.";
 const LANE_EVENTS: &str = "Lane events";
+const STORE_TASK: &str = "Lane store task.";
+
+type TaskIoResult<Err> = Result<Result<Err, Err>, oneshot::error::RecvError>;
+type DispatchTaskResult = TaskIoResult<DispatcherErrors>;
+type StoreTaskResult = TaskIoResult<NodeStoreErrors>;
+
+#[derive(Debug, Default)]
+pub struct AgentTaskResult<Err: Debug> {
+    pub errors: Err,
+    pub failed: bool,
+}
 
 #[derive(Debug)]
 pub struct AgentResult {
     pub route: RelativeUri,
-    pub dispatcher_errors: DispatcherErrors,
-    pub failed: bool,
+    pub dispatcher_task: AgentTaskResult<DispatcherErrors>,
+    pub store_task: AgentTaskResult<NodeStoreErrors>,
 }
 
 impl AgentResult {
+    fn result_for<E>(result: TaskIoResult<E>) -> AgentTaskResult<E>
+    where
+        E: Default + Debug,
+    {
+        match result {
+            Ok(Ok(errs)) => AgentTaskResult {
+                errors: errs,
+                failed: false,
+            },
+            Ok(Err(errs)) => AgentTaskResult {
+                errors: errs,
+                failed: true,
+            },
+            _ => AgentTaskResult {
+                errors: E::default(),
+                failed: true,
+            },
+        }
+    }
+
     fn from(
         route: RelativeUri,
-        result: Result<Result<DispatcherErrors, DispatcherErrors>, oneshot::error::RecvError>,
+        dispatcher_result: DispatchTaskResult,
+        store_result: StoreTaskResult,
     ) -> Self {
-        let (errs, failed) = match result {
-            Ok(Ok(errs)) => (errs, false),
-            Ok(Err(errs)) => (errs, true),
-            _ => (Default::default(), true),
-        };
+        let dispatcher_task = Self::result_for(dispatcher_result);
+        let store_task = Self::result_for(store_result);
+
         AgentResult {
             route,
-            dispatcher_errors: errs,
-            failed,
+            dispatcher_task,
+            store_task,
         }
     }
 }
@@ -164,6 +208,21 @@ impl<Config> AgentParameters<Config> {
     }
 }
 
+/// Lane IO pair consisting of routing IO and store IO.
+pub struct IoPair<Routing, Store> {
+    pub routing: Option<Routing>,
+    pub persistence: Option<Store>,
+}
+
+impl<Routing, Store> IoPair<Routing, Store> {
+    pub fn new(routing: Option<Routing>, persistence: Option<Store>) -> Self {
+        IoPair {
+            routing,
+            persistence,
+        }
+    }
+}
+
 /// Creates a single, asynchronous task that manages the lifecycle of an agent, all of its lanes
 /// and any events that are scheduled within it.
 ///
@@ -175,12 +234,13 @@ impl<Config> AgentParameters<Config> {
 /// * `stop_trigger` - External trigger to cleanly stop the agent.
 /// * `parameters` - Parameters extracted from the agent node route pattern.
 /// * `incoming_envelopes` - The stream of envelopes routed to the agent.
-pub(crate) fn run_agent<Config, Clk, Agent, L, Router>(
+pub(crate) fn run_agent<Config, Clk, Agent, L, Router, Store>(
     lifecycle: L,
     clock: Clk,
     parameters: AgentParameters<Config>,
     incoming_envelopes: impl Stream<Item = TaggedEnvelope> + Send + 'static,
     router: Router,
+    store: Store,
 ) -> (
     Arc<Agent>,
     impl Future<Output = AgentResult> + Send + 'static,
@@ -190,6 +250,7 @@ where
     Agent: SwimAgent<Config> + Send + Sync + 'static,
     L: AgentLifecycle<Agent> + Send + Sync + 'static,
     Router: ServerRouter + Clone + 'static,
+    Store: NodeStore,
 {
     let AgentParameters {
         agent_config,
@@ -200,8 +261,10 @@ where
 
     let span = span!(Level::INFO, AGENT_TASK, %uri);
     let (tripwire, stop_trigger) = trigger::trigger();
-    let (agent, mut tasks, io_providers) =
-        Agent::instantiate::<ContextImpl<Agent, Clk, Router>>(&agent_config, &execution_config);
+    let (agent, mut tasks, io_providers) = Agent::instantiate::<
+        ContextImpl<Agent, Clk, Router, Store>,
+        Store,
+    >(&agent_config, &execution_config, store.clone());
     let agent_ref = Arc::new(agent);
     let agent_cpy = agent_ref.clone();
 
@@ -219,7 +282,7 @@ where
         let task_manager: FuturesUnordered<Instrumented<Eff>> = FuturesUnordered::new();
 
         let (meta_context, mut meta_tasks, meta_io) =
-            open_meta_lanes::<Config, Agent, ContextImpl<Agent, Clk, Router>>(
+            open_meta_lanes::<Config, Agent, ContextImpl<Agent, Clk, Router, Store>>(
                 uri.clone(),
                 &execution_config,
                 lane_summary,
@@ -232,12 +295,52 @@ where
         let (tx, rx) = mpsc::channel(execution_config.scheduler_buffer.get());
         let routing_context = RoutingContext::new(uri.clone(), router, parameters);
         let schedule_context = SchedulerContext::new(tx, clock, stop_trigger.clone());
-        let context = ContextImpl::new(agent_ref, routing_context, schedule_context, meta_context);
+        let context = ContextImpl::new(
+            agent_ref,
+            routing_context,
+            schedule_context,
+            meta_context,
+            store.clone(),
+        );
 
         lifecycle
             .starting(&context)
             .instrument(span!(Level::DEBUG, AGENT_START))
             .await;
+
+        let (mut routing_io, persistence_io) = io_providers.into_iter().fold(
+            (HashMap::new(), HashMap::new()),
+            |(mut routing_io, mut persistence_io), (lane_uri, lane_io)| {
+                let IoPair {
+                    routing,
+                    persistence,
+                } = lane_io;
+
+                if let Some(routing) = routing {
+                    let ident = LaneIdentifier::agent(lane_uri.clone());
+                    routing_io.insert(ident, routing);
+                }
+                if let Some(persistence) = persistence {
+                    persistence_io.insert(lane_uri, persistence);
+                }
+                (routing_io, persistence_io)
+            },
+        );
+
+        routing_io.extend(meta_io);
+
+        let (store_result_tx, store_result_rx) = oneshot::channel();
+        let max_store_errors = execution_config.max_store_errors;
+
+        let store_trigger = stop_trigger.clone();
+        let store_task = async move {
+            let task = NodeStoreTask::new(store_trigger, store);
+            let result = task.run(persistence_io, max_store_errors).await;
+            let _ = store_result_tx.send(result);
+        }
+        .boxed()
+        .instrument(span!(Level::INFO, STORE_TASK));
+        task_manager.push(store_task);
 
         for lane_task in tasks.iter() {
             let lane_name = lane_task.name();
@@ -248,7 +351,7 @@ where
         }
 
         let scheduler_task = ReceiverStream::new(rx)
-            .take_until(stop_trigger)
+            .take_until(stop_trigger.clone())
             .for_each_concurrent(None, |eff| eff)
             .boxed()
             .instrument(span!(Level::TRACE, SCHEDULER_TASK));
@@ -263,17 +366,10 @@ where
             );
         }
 
-        let mut io_providers = io_providers
-            .into_iter()
-            .map(|(k, v)| (LaneIdentifier::agent(k), v))
-            .collect::<HashMap<_, _>>();
-
-        io_providers.extend(meta_io);
-
         let dispatcher =
-            AgentDispatcher::new(uri.clone(), execution_config, context.clone(), io_providers);
+            AgentDispatcher::new(uri.clone(), execution_config, context.clone(), routing_io);
 
-        let (result_tx, result_rx) = oneshot::channel();
+        let (dispatch_result_tx, dispatch_result_rx) = oneshot::channel();
 
         let uplinks_idle_since = context.uplinks_idle_since.clone();
 
@@ -281,7 +377,7 @@ where
             let tripwire = tripwire;
             let result = dispatcher.run(incoming_envelopes, uplinks_idle_since).await;
             tripwire.trigger();
-            let _ = result_tx.send(result);
+            let _ = dispatch_result_tx.send(result);
         }
         .boxed()
         .instrument(span!(Level::INFO, ROOT_DISPATCHER_TASK));
@@ -295,7 +391,10 @@ where
             .map(|_| ()) //Never is an empty type so we can discard the errors.
             .await;
 
-        AgentResult::from(uri, result_rx.await)
+        let dispatch_result = dispatch_result_rx.await;
+        let store_result = store_result_rx.await;
+
+        AgentResult::from(uri, dispatch_result, store_result)
     }
     .instrument(span);
     (agent_cpy, task)
@@ -797,6 +896,26 @@ where
     }
 }
 
+/// Configuration options used when constructing a new lane.
+pub struct LaneConfig {
+    /// The lane URI/name.
+    name: String,
+    /// Whether the lane is public (with respect to external message routing).
+    is_public: bool,
+    /// Whether the lane will persist its data.
+    transient: bool,
+}
+
+impl LaneConfig {
+    pub fn new(name: String, is_public: bool, transient: bool) -> Self {
+        LaneConfig {
+            name,
+            is_public,
+            transient,
+        }
+    }
+}
+
 /// Create a value lane instance along with its life-cycle.
 ///
 /// #Arguments
@@ -807,40 +926,66 @@ where
 /// * `init` - The initial value of the lane.
 /// * `lifecycle` - Life-cycle event handler for the lane.
 /// * `projection` - A projection from the agent type to this lane.
-pub fn make_value_lane<Agent, Context, T, L>(
-    name: impl Into<String>,
-    is_public: bool,
-    config: &AgentExecutionConfig,
+/// * `transient` - Whether to persist the lane's state
+pub fn make_value_lane<Agent, Context, T, L, Store, P>(
+    lane_config: LaneConfig,
+    exec_config: &AgentExecutionConfig,
     init: T,
     lifecycle: L,
-    projection: impl Fn(&Agent) -> &ValueLane<T> + Send + Sync + 'static,
-) -> (
-    ValueLane<T>,
-    impl LaneTasks<Agent, Context>,
-    Option<impl LaneIo<Context>>,
-)
+    projection: P,
+    store: Store,
+) -> LaneParts<ValueLane<T>, impl LaneTasks<Agent, Context>, Context>
 where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
-    T: Any + Send + Sync + Form + Debug + Default,
+    T: Any + Send + Sync + Form + Default + Serialize + DeserializeOwned + Debug,
     L: for<'l> StatefulLaneLifecycle<'l, ValueLane<T>, Agent>,
+    Store: NodeStore,
+    P: Fn(&Agent) -> &ValueLane<T> + Send + Sync + 'static,
 {
-    let (lane, observer) = ValueLane::observable(init, config.observation_buffer);
+    let LaneConfig {
+        name,
+        is_public,
+        transient,
+    } = lane_config;
 
-    let lane_io = if is_public {
-        Some(ValueLaneIo::new(lane.clone(), observer.subscriber()))
+    let lane_id = store.lane_id_of(&name).expect("Failed to fetch lane id");
+    let model = ValueDataModel::new(store, lane_id);
+
+    let (lane, observer) =
+        ValueLane::store_observable(&model, exec_config.observation_buffer, init);
+
+    let lane_io: Option<Box<dyn LaneIo<Context>>> = if is_public {
+        Some(Box::new(ValueLaneIo::new(
+            lane.clone(),
+            observer.subscriber(),
+        )))
     } else {
         None
     };
 
     let tasks = ValueLifecycleTasks(LifecycleTasks {
-        name: name.into(),
+        name,
         lifecycle,
-        event_stream: observer.into_stream(),
+        event_stream: observer.clone().into_stream(),
         projection,
     });
 
-    (lane, tasks, lane_io)
+    let store_io: Option<Box<dyn StoreIo>> = if transient {
+        None
+    } else {
+        Some(Box::new(ValueLaneStoreIo::new(
+            observer.into_stream(),
+            model,
+        )))
+    };
+
+    let io = IoPair {
+        routing: lane_io,
+        persistence: store_io,
+    };
+
+    LaneParts { lane, tasks, io }
 }
 
 impl<L, S, P> Lane for MapLifecycleTasks<L, S, P> {
@@ -904,43 +1049,61 @@ where
 /// * `config` - Configuration parameters.
 /// * `lifecycle` - Life-cycle event handler for the lane.
 /// * `projection` - A projection from the agent type to this lane.
-pub fn make_map_lane<Agent, Context, K, V, L>(
+/// * `transient` - Whether to persist the lane's state
+pub fn make_map_lane<Agent, Context, K, V, L, P, Store>(
     name: impl Into<String>,
     is_public: bool,
     config: &AgentExecutionConfig,
     lifecycle: L,
-    projection: impl Fn(&Agent) -> &MapLane<K, V> + Send + Sync + 'static,
-) -> (
-    MapLane<K, V>,
-    impl LaneTasks<Agent, Context>,
-    Option<impl LaneIo<Context>>,
-)
+    projection: P,
+    transient: bool,
+    store: Store,
+) -> LaneParts<MapLane<K, V>, impl LaneTasks<Agent, Context>, Context>
 where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
-    K: Any + Form + Send + Sync + Clone + Debug,
-    V: Any + Form + Send + Sync + Debug,
+    K: Any + Form + Send + Sync + Clone + Debug + Serialize + DeserializeOwned,
+    V: Any + Form + Send + Sync + Debug + Serialize + DeserializeOwned,
     L: for<'l> StatefulLaneLifecycle<'l, MapLane<K, V>, Agent>,
+    Store: NodeStore,
+    P: Fn(&Agent) -> &MapLane<K, V> + Send + Sync + 'static,
 {
-    let (lane, observer) = MapLane::observable(config.observation_buffer);
+    let name = name.into();
+    let lane_id = store.lane_id_of(&name).expect("Failed to fetch lane id");
+    let model = MapDataModel::new(store, lane_id);
+    let (lane, observer) = MapLane::store_observable(&model, config.observation_buffer);
 
-    let lane_io = if is_public {
-        Some(MapLaneIo::new(
+    let lane_io: Option<Box<dyn LaneIo<Context>>> = if is_public {
+        Some(Box::new(MapLaneIo::new(
             lane.clone(),
             MapSubscriber::new(observer.subscriber()),
-        ))
+        )))
     } else {
         None
     };
 
     let tasks = MapLifecycleTasks(LifecycleTasks {
-        name: name.into(),
+        name,
         lifecycle,
-        event_stream: summaries_to_events(observer),
+        event_stream: summaries_to_events(observer.clone()),
         projection,
     });
 
-    (lane, tasks, lane_io)
+    let store_io: Option<Box<dyn StoreIo>> = if transient {
+        None
+    } else {
+        Some(Box::new(MapLaneStoreIo::new(
+            summaries_to_events(observer),
+            model,
+        )))
+    };
+
+    let io = IoPair {
+        routing: lane_io,
+        persistence: store_io,
+    };
+
+    LaneParts { lane, tasks, io }
 }
 
 impl<L, S, P> Lane for ActionLifecycleTasks<L, S, P> {
@@ -1063,11 +1226,7 @@ pub fn make_action_lane<Agent, Context, Command, Response, L, S, P>(
     lifecycle: L,
     projection: impl Fn(&Agent) -> &ActionLane<Command, Response> + Send + Sync + 'static,
     buffer_size: NonZeroUsize,
-) -> (
-    ActionLane<Command, Response>,
-    impl LaneTasks<Agent, Context>,
-    Option<impl LaneIo<Context>>,
-)
+) -> LaneParts<ActionLane<Command, Response>, impl LaneTasks<Agent, Context>, Context>
 where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
@@ -1086,12 +1245,20 @@ where
         projection,
     });
 
-    let lane_io = if is_public {
-        Some(ActionLaneIo::new(lane.clone()))
+    let lane_io: Option<Box<dyn LaneIo<Context>>> = if is_public {
+        Some(Box::new(ActionLaneIo::new(lane.clone())))
     } else {
         None
     };
-    (lane, tasks, lane_io)
+
+    LaneParts {
+        lane,
+        tasks,
+        io: IoPair {
+            routing: lane_io,
+            persistence: None,
+        },
+    }
 }
 
 /// Create a command lane from a lifecycle.
@@ -1109,11 +1276,7 @@ pub fn make_command_lane<Agent, Context, T, L>(
     lifecycle: L,
     projection: impl Fn(&Agent) -> &CommandLane<T> + Send + Sync + 'static,
     buffer_size: NonZeroUsize,
-) -> (
-    CommandLane<T>,
-    impl LaneTasks<Agent, Context>,
-    Option<impl LaneIo<Context>>,
-)
+) -> LaneParts<CommandLane<T>, impl LaneTasks<Agent, Context>, Context>
 where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
@@ -1129,13 +1292,20 @@ where
         projection,
     });
 
-    let lane_io = if is_public {
-        Some(CommandLaneIo::new(lane.clone()))
+    let lane_io: Option<Box<dyn LaneIo<Context>>> = if is_public {
+        Some(Box::new(CommandLaneIo::new(lane.clone())))
     } else {
         None
     };
 
-    (lane, tasks, lane_io)
+    LaneParts {
+        lane,
+        tasks,
+        io: IoPair {
+            routing: lane_io,
+            persistence: None,
+        },
+    }
 }
 
 /// Create a new supply lane.
@@ -1149,11 +1319,7 @@ pub fn make_supply_lane<Agent, Context, T>(
     name: impl Into<String>,
     is_public: bool,
     buffer_size: NonZeroUsize,
-) -> (
-    SupplyLane<T>,
-    impl LaneTasks<Agent, Context>,
-    Option<impl LaneIo<Context>>,
-)
+) -> LaneParts<SupplyLane<T>, impl LaneTasks<Agent, Context>, Context>
 where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
@@ -1166,13 +1332,20 @@ where
         kind: LaneKind::Supply,
     };
 
-    let lane_io = if is_public {
-        Some(SupplyLaneIo::new(view))
+    let lane_io: Option<Box<dyn LaneIo<Context>>> = if is_public {
+        Some(Box::new(SupplyLaneIo::new(view)))
     } else {
         None
     };
 
-    (lane, tasks, lane_io)
+    LaneParts {
+        lane,
+        tasks,
+        io: IoPair {
+            routing: lane_io,
+            persistence: None,
+        },
+    }
 }
 
 struct SupplyLaneIo<S> {
@@ -1221,6 +1394,12 @@ where
     }
 }
 
+pub struct LaneParts<L, T, C> {
+    pub lane: L,
+    pub tasks: T,
+    pub io: IoPair<Box<dyn LaneIo<C>>, Box<dyn StoreIo>>,
+}
+
 /// Create a new demand lane.
 ///
 /// # Arguments
@@ -1234,11 +1413,7 @@ pub fn make_demand_lane<Agent, Context, Event, L>(
     lifecycle: L,
     projection: impl Fn(&Agent) -> &DemandLane<Event> + Send + Sync + 'static,
     buffer_size: NonZeroUsize,
-) -> (
-    DemandLane<Event>,
-    impl LaneTasks<Agent, Context>,
-    impl LaneIo<Context>,
-)
+) -> LaneParts<DemandLane<Event>, impl LaneTasks<Agent, Context>, Context>
 where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
@@ -1256,9 +1431,16 @@ where
         response_tx,
     };
 
-    let lane_io = DemandLaneIo::new(response_rx);
+    let lane_io: Box<dyn LaneIo<Context>> = Box::new(DemandLaneIo::new(response_rx));
 
-    (lane, tasks, lane_io)
+    LaneParts {
+        lane,
+        tasks,
+        io: IoPair {
+            routing: Some(lane_io),
+            persistence: None,
+        },
+    }
 }
 
 pub struct DemandLaneIo<Event> {
@@ -1373,11 +1555,7 @@ pub fn make_demand_map_lane<Agent, Context, Key, Value, L>(
     lifecycle: L,
     projection: impl Fn(&Agent) -> &DemandMapLane<Key, Value> + Send + Sync + 'static,
     buffer_size: NonZeroUsize,
-) -> (
-    DemandMapLane<Key, Value>,
-    impl LaneTasks<Agent, Context>,
-    Option<impl LaneIo<Context>>,
-)
+) -> LaneParts<DemandMapLane<Key, Value>, impl LaneTasks<Agent, Context>, Context>
 where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
@@ -1395,13 +1573,20 @@ where
         projection,
     });
 
-    let lane_io = if is_public {
-        Some(DemandMapLaneIo::new(lane.clone(), topic))
+    let lane_io: Option<Box<dyn LaneIo<Context>>> = if is_public {
+        Some(Box::new(DemandMapLaneIo::new(lane.clone(), topic)))
     } else {
         None
     };
 
-    (lane, tasks, lane_io)
+    LaneParts {
+        lane,
+        tasks,
+        io: IoPair {
+            routing: lane_io,
+            persistence: None,
+        },
+    }
 }
 
 pub struct DemandMapLaneIo<Key, Value>

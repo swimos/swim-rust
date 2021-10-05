@@ -38,7 +38,7 @@ use futures::channel::mpsc::SendError as FutSendError;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::io::ErrorKind;
-use utilities::errors::Recoverable;
+use swim_utilities::errors::Recoverable;
 
 pub type FmtResult = std::fmt::Result;
 

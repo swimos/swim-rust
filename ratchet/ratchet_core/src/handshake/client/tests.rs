@@ -30,8 +30,8 @@ use ratchet_ext::{
 };
 use sha1::{Digest, Sha1};
 use std::convert::Infallible;
+use swim_utilities::trigger;
 use tokio::io::AsyncReadExt;
-use utilities::sync::trigger;
 
 const TEST_URL: &str = "ws://127.0.0.1:9001/test";
 

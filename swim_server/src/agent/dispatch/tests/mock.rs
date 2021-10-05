@@ -18,8 +18,11 @@ use crate::agent::lane::channels::update::UpdateError;
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::UplinkError;
 use crate::agent::lane::channels::AgentExecutionConfig;
+use crate::agent::store::mock::MockNodeStore;
+use crate::agent::store::SwimNodeStore;
 use crate::agent::{AttachError, Eff, LaneIo};
 use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
+use crate::plane::store::mock::MockPlaneStore;
 use crate::routing::error::RouterError;
 use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
@@ -36,13 +39,13 @@ use swim_common::model::Value;
 use swim_common::routing::ResolutionError;
 use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::time::AtomicInstant;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::Instant;
 use url::Url;
-use utilities::instant::AtomicInstant;
-use utilities::sync::promise;
-use utilities::uri::RelativeUri;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MockLane;
@@ -140,6 +143,7 @@ pub struct MockExecutionContext {
 
 impl AgentExecutionContext for MockExecutionContext {
     type Router = MockRouter;
+    type Store = SwimNodeStore<MockPlaneStore>;
 
     fn router_handle(&self) -> Self::Router {
         MockRouter(self.router.clone())
@@ -147,6 +151,10 @@ impl AgentExecutionContext for MockExecutionContext {
 
     fn spawner(&self) -> Sender<Eff> {
         self.spawner.clone()
+    }
+
+    fn store(&self) -> Self::Store {
+        MockNodeStore::mock()
     }
 
     fn metrics(&self) -> NodeMetricAggregator {
@@ -163,7 +171,7 @@ impl MockExecutionContext {
         MockExecutionContext {
             router: Arc::new(Mutex::new(MockRouterInner::new(router_addr, buffer_size))),
             spawner,
-            uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now())),
+            uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
         }
     }
 
