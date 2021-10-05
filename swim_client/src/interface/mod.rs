@@ -38,7 +38,7 @@ use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::Read;
 use std::sync::Arc;
-use swim_common::form::{Form, ValidatedForm};
+use swim_common::form::{Form, ValueSchema};
 use swim_common::model::parser::parse_single;
 use swim_common::model::Value;
 use swim_common::routing::ws::WebsocketFactory;
@@ -182,7 +182,7 @@ impl SwimClient {
         initial: T,
     ) -> Result<(TypedValueDownlink<T>, ValueDownlinkReceiver<T>), ClientError>
     where
-        T: Form + ValidatedForm + Send + 'static,
+        T: Form + ValueSchema + Send + 'static,
     {
         self.downlinks
             .subscribe_value(initial, path)
@@ -196,8 +196,8 @@ impl SwimClient {
         path: AbsolutePath,
     ) -> Result<(TypedMapDownlink<K, V>, MapDownlinkReceiver<K, V>), ClientError>
     where
-        K: ValidatedForm + Send + 'static,
-        V: ValidatedForm + Send + 'static,
+        K: ValueSchema + Send + 'static,
+        V: ValueSchema + Send + 'static,
     {
         self.downlinks
             .subscribe_map(path)
@@ -211,7 +211,7 @@ impl SwimClient {
         path: AbsolutePath,
     ) -> Result<TypedCommandDownlink<T>, ClientError>
     where
-        T: ValidatedForm + Send + 'static,
+        T: ValueSchema + Send + 'static,
     {
         self.downlinks
             .subscribe_command(path)
@@ -226,7 +226,7 @@ impl SwimClient {
         violations: SchemaViolations,
     ) -> Result<TypedEventDownlink<T>, ClientError>
     where
-        T: ValidatedForm + Send + 'static,
+        T: ValueSchema + Send + 'static,
     {
         self.downlinks
             .subscribe_event(path, violations)

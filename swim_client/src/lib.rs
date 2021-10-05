@@ -28,4 +28,4 @@ pub mod interface;
 pub mod router;
 pub use swim_runtime as runtime;
 
-extern crate utilities;
+extern crate swim_utilities;

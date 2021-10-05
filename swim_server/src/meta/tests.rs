@@ -17,7 +17,7 @@ use crate::meta::uri::{parse, MetaParseErr};
 use crate::meta::{get_route, LaneAddressedKind, MetaNodeAddressed};
 use std::convert::TryFrom;
 use std::str::FromStr;
-use utilities::uri::RelativeUri;
+use swim_utilities::routing::uri::RelativeUri;
 
 #[test]
 fn test_parse_paths() {

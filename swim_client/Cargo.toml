@@ -21,7 +21,7 @@ tracing = { version = "0.1.13", features = ["max_level_debug"] }
 tracing = "0.1.16"
 
 [dependencies]
-utilities = { path = "../utilities" }
+swim_utilities = { path = "../swim_utilities", features = ["errors", "sync", "lrucache"] }
 swim_runtime = { path = "../swim_runtime" }
 swim_warp = { path = "../swim_warp" }
 swim_common = { path = "../swim_common" }

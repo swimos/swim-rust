@@ -25,8 +25,11 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
+use crate::agent::store::NodeStore;
 use crate::agent::tests::reporting_macro_agent::ReportingAgentEvent;
-use crate::agent::{AgentContext, LaneIo, LaneTasks, SwimAgent};
+use crate::agent::{
+    AgentContext, DynamicAgentIo, DynamicLaneTasks, LaneConfig, LaneParts, LaneTasks, SwimAgent,
+};
 use futures::future::{ready, BoxFuture, Ready};
 use futures::FutureExt;
 use std::collections::HashMap;
@@ -343,43 +346,59 @@ impl TestAgentConfig {
 }
 
 impl SwimAgent<TestAgentConfig> for ReportingAgent {
-    fn instantiate<Context: AgentContext<Self> + AgentExecutionContext>(
+    fn instantiate<Context, Store>(
         configuration: &TestAgentConfig,
         exec_conf: &AgentExecutionConfig,
+        store: Store,
     ) -> (
         Self,
-        Vec<Box<dyn LaneTasks<Self, Context>>>,
-        HashMap<String, Box<dyn LaneIo<Context>>>,
+        DynamicLaneTasks<Self, Context>,
+        DynamicAgentIo<Context>,
     )
     where
-        Context: AgentContext<Self> + Send + Sync + 'static,
+        Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
+        Store: NodeStore,
     {
         let TestAgentConfig { collector } = configuration;
 
         let inner = ReportingLifecycleInner(collector.clone());
 
-        let (data, data_tasks, _) = agent::make_map_lane(
-            "data",
+        let LaneParts {
+            lane: data,
+            tasks: data_tasks,
+            io: _,
+        } = agent::make_map_lane(
+            "data".to_string(),
             false,
             exec_conf,
             DataLifecycle {
                 inner: inner.clone(),
             },
             |agent: &ReportingAgent| &agent.data,
+            true,
+            store.clone(),
         );
 
-        let (total, total_tasks, _) = agent::make_value_lane(
-            "total",
-            false,
+        let LaneParts {
+            lane: total,
+            tasks: total_tasks,
+            io: _,
+        } = agent::make_value_lane(
+            LaneConfig::new("total".to_string(), false, true),
             exec_conf,
             0,
             TotalLifecycle {
                 inner: inner.clone(),
             },
             |agent: &ReportingAgent| &agent.total,
+            store,
         );
 
-        let (action, action_tasks, _) = agent::make_command_lane(
+        let LaneParts {
+            lane: action,
+            tasks: action_tasks,
+            io: _,
+        } = agent::make_command_lane(
             "action",
             false,
             ActionLifecycle {
@@ -389,7 +408,11 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
             exec_conf.action_buffer.clone(),
         );
 
-        let (demand, demand_tasks, _) = agent::make_demand_lane(
+        let LaneParts {
+            lane: demand,
+            tasks: demand_tasks,
+            io: _,
+        } = agent::make_demand_lane(
             "demand",
             DemandLifecycle {
                 inner: inner.clone(),
@@ -398,7 +421,11 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
             exec_conf.action_buffer.clone(),
         );
 
-        let (demand_map, demand_map_tasks, _) = agent::make_demand_map_lane(
+        let LaneParts {
+            lane: demand_map,
+            tasks: demand_map_tasks,
+            io: _,
+        } = agent::make_demand_map_lane(
             "demand_map",
             false,
             DemandMapLifecycle {

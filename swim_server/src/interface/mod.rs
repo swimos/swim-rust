@@ -17,26 +17,32 @@
 //! The module provides methods and structures for creating and running Swim server instances.
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::plane::router::PlaneRouter;
-use crate::plane::spec::PlaneSpec;
+use crate::plane::spec::{PlaneBuilder, PlaneSpec};
+use crate::plane::store::SwimPlaneStore;
 use crate::plane::{run_plane, EnvChannel};
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::net::dns::Resolver;
 use crate::routing::remote::net::plain::TokioPlainTextNetworking;
 use crate::routing::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
 use crate::routing::{TopLevelRouter, TopLevelRouterFactory};
+use crate::store::RocksOpts;
+use crate::store::{default_keyspaces, RocksDatabase};
+use crate::store::{ServerStore, SwimStore};
 use either::Either;
 use futures::{io, join};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::sync::Arc;
+use store::StoreError;
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
 use swim_runtime::task::TaskError;
 use swim_runtime::time::clock::RuntimeClock;
+use swim_utilities::future::open_ended::OpenEndedFutures;
+use swim_utilities::trigger;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
-use utilities::future::open_ended::OpenEndedFutures;
-use utilities::sync::{promise, trigger};
 
 /// Builder to create Swim server instance.
 ///
@@ -44,30 +50,36 @@ use utilities::sync::{promise, trigger};
 pub struct SwimServerBuilder {
     address: Option<SocketAddr>,
     config: SwimServerConfig,
-    planes: Vec<PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>>>,
+    planes: Vec<
+        PlaneSpec<
+            RuntimeClock,
+            EnvChannel,
+            PlaneRouter<TopLevelRouter>,
+            SwimPlaneStore<RocksDatabase>,
+        >,
+    >,
+    store: ServerStore<RocksOpts>,
 }
 
-impl Default for SwimServerBuilder {
-    fn default() -> Self {
-        SwimServerBuilder {
-            address: None,
-            config: SwimServerConfig::default(),
-            planes: Vec::new(),
-        }
-    }
-}
+type ServerPlaneBuilder = PlaneBuilder<
+    RuntimeClock,
+    EnvChannel,
+    PlaneRouter<TopLevelRouter>,
+    SwimPlaneStore<RocksDatabase>,
+>;
 
 impl SwimServerBuilder {
     /// Create a new server builder with custom configuration.
     ///
     /// # Arguments
     /// * `config` - The custom configuration for the server.
-    pub fn new(config: SwimServerConfig) -> Self {
-        SwimServerBuilder {
+    pub fn new(config: SwimServerConfig) -> io::Result<Self> {
+        Ok(SwimServerBuilder {
             address: None,
             config,
             planes: Vec::new(),
-        }
+            store: ServerStore::new(RocksOpts::default(), default_keyspaces(), "target".into())?,
+        })
     }
 
     /// Set the address of the server.
@@ -89,13 +101,15 @@ impl SwimServerBuilder {
     /// # Example
     /// ```
     /// use std::net::{SocketAddr, IpAddr, Ipv4Addr};
-    /// use swim_server::interface::{SwimServer, SwimServerBuilder};
+    /// use swim_server::interface::{SwimServer, SwimServerBuilder, SwimServerConfig};
     /// use swim_server::RoutePattern;
     /// use swim_server::agent_lifecycle;
     /// use swim_server::agent::SwimAgent;
     /// use swim_server::agent::AgentContext;
     /// use swim_server::plane::spec::PlaneBuilder;
     ///
+    /// # #[tokio::main]
+    /// # async fn main() {
     /// #[derive(Debug, SwimAgent)]
     /// #[agent(config = "RustAgentConfig")]
     /// pub struct RustAgent;
@@ -115,9 +129,9 @@ impl SwimServerBuilder {
     ///     }
     /// }
     ///
-    /// let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+    /// let mut swim_server_builder = SwimServerBuilder::temporary_store(SwimServerConfig::default(), "test").unwrap();
+    /// let mut plane_builder = swim_server_builder.plane_builder("test").unwrap();
     ///
-    /// let mut plane_builder = PlaneBuilder::new();
     /// plane_builder
     ///     .add_route(
     ///          RoutePattern::parse_str("/rust").unwrap(),
@@ -125,17 +139,25 @@ impl SwimServerBuilder {
     ///          RustAgentLifecycle {},
     ///     ).unwrap();
     ///
-    /// let mut swim_server_builder = SwimServerBuilder::default();
     /// swim_server_builder.add_plane(plane_builder.build());
+    /// # }
     /// ```
-    pub fn add_plane(
-        &mut self,
-        plane: PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>>,
-    ) {
+    pub fn add_plane(&mut self, plane: PlaneDef) {
         if !self.planes.is_empty() {
             panic!("Multiple planes are not supported yet")
         }
         self.planes.push(plane)
+    }
+
+    pub fn plane_builder<I: Into<String>>(
+        &mut self,
+        name: I,
+    ) -> Result<ServerPlaneBuilder, SwimServerBuilderError> {
+        let store = self
+            .store
+            .plane_store(name.into())
+            .map_err(SwimServerBuilderError::StoreError)?;
+        Ok(PlaneBuilder::new(store))
     }
 
     /// Build the Swim Server.
@@ -145,13 +167,15 @@ impl SwimServerBuilder {
     /// # Example
     /// ```
     /// use std::net::{SocketAddr, IpAddr, Ipv4Addr};
-    /// use swim_server::interface::{SwimServer, SwimServerBuilder};
+    /// use swim_server::interface::{SwimServer, SwimServerBuilder, SwimServerConfig};
     /// use swim_server::RoutePattern;
     /// use swim_server::agent_lifecycle;
     /// use swim_server::agent::SwimAgent;
     /// use swim_server::agent::AgentContext;
     /// use swim_server::plane::spec::PlaneBuilder;
     ///
+    /// # #[tokio::main]
+    /// # async fn main() {
     /// #[derive(Debug, SwimAgent)]
     /// #[agent(config = "RustAgentConfig")]
     /// pub struct RustAgent;
@@ -171,9 +195,9 @@ impl SwimServerBuilder {
     ///     }
     /// }
     ///
-    /// let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+    /// let mut swim_server_builder = SwimServerBuilder::temporary_store(SwimServerConfig::default(), "test").unwrap();
+    /// let mut plane_builder = swim_server_builder.plane_builder("test").unwrap();
     ///
-    /// let mut plane_builder = PlaneBuilder::new();
     /// plane_builder
     ///     .add_route(
     ///          RoutePattern::parse_str("/rust").unwrap(),
@@ -181,16 +205,18 @@ impl SwimServerBuilder {
     ///          RustAgentLifecycle {},
     ///     ).unwrap();
     ///
-    /// let mut swim_server_builder = SwimServerBuilder::default();
     /// swim_server_builder.add_plane(plane_builder.build());
     ///
+    /// let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
     /// let (swim_server, server_handle) = swim_server_builder.bind_to(address).build().unwrap();
+    /// # }
     /// ```
     pub fn build(self) -> Result<(SwimServer, ServerHandle), SwimServerBuilderError> {
         let SwimServerBuilder {
             address,
             planes,
             config,
+            store,
         } = self;
 
         let (stop_trigger_tx, stop_trigger_rx) = trigger::trigger();
@@ -203,6 +229,7 @@ impl SwimServerBuilder {
                 address: address.ok_or(SwimServerBuilderError::MissingAddress)?,
                 stop_trigger_rx,
                 address_tx,
+                _store: store,
             },
             ServerHandle {
                 either_address: Either::Left(address_rx),
@@ -210,7 +237,31 @@ impl SwimServerBuilder {
             },
         ))
     }
+
+    /// Constructs a new `SwimServerBuilder` with the default configuration and is backed by a
+    /// temporary store.
+    ///
+    /// A temporary store uses a RocksDB engine that operates out of a temporary directory which is
+    /// deleted when the application terminates.
+    ///
+    /// # Panics
+    /// Panics if the directory cannot be created.
+    pub fn temporary_store(config: SwimServerConfig, prefix: &str) -> io::Result<Self> {
+        Ok(SwimServerBuilder {
+            address: None,
+            store: ServerStore::<RocksOpts>::transient(
+                RocksOpts::default(),
+                default_keyspaces(),
+                prefix,
+            )?,
+            config,
+            planes: vec![],
+        })
+    }
 }
+
+type PlaneDef =
+    PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>, SwimPlaneStore<RocksDatabase>>;
 
 /// Swim server instance.
 ///
@@ -218,9 +269,10 @@ impl SwimServerBuilder {
 pub struct SwimServer {
     address: SocketAddr,
     config: SwimServerConfig,
-    planes: Vec<PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>>>,
+    planes: Vec<PlaneDef>,
     stop_trigger_rx: trigger::Receiver,
     address_tx: promise::Sender<SocketAddr>,
+    _store: ServerStore<RocksOpts>,
 }
 
 impl SwimServer {
@@ -238,6 +290,7 @@ impl SwimServer {
             mut planes,
             stop_trigger_rx,
             address_tx,
+            _store,
         } = self;
 
         let SwimServerConfig {
@@ -301,6 +354,8 @@ impl SwimServer {
 pub enum SwimServerBuilderError {
     /// An error that occurs when trying to create a server without providing the address first.
     MissingAddress,
+    /// An error occured when attempting to build the delegate store.
+    StoreError(StoreError),
 }
 
 impl Display for SwimServerBuilderError {
@@ -308,6 +363,9 @@ impl Display for SwimServerBuilderError {
         match self {
             SwimServerBuilderError::MissingAddress => {
                 write!(f, "Cannot create a swim server without an address")
+            }
+            SwimServerBuilderError::StoreError(e) => {
+                write!(f, "{}", e)
             }
         }
     }
@@ -400,7 +458,7 @@ impl ServerHandle {
     /// use swim_server::interface::{SwimServer, SwimServerBuilder};
     ///
     /// let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-    /// let (mut swim_server, server_handle) = SwimServerBuilder::default().bind_to(address).build().unwrap();
+    /// let (mut swim_server, server_handle) = SwimServerBuilder::new(Default::default()).unwrap().bind_to(address).build().unwrap();
     ///
     /// let success = server_handle.stop();
     ///

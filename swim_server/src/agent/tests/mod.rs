@@ -17,6 +17,7 @@ mod declarive_macro_agent;
 mod derive;
 mod reporting_agent;
 mod reporting_macro_agent;
+mod store_agent;
 pub(crate) mod test_clock;
 
 use crate::agent::lane::channels::AgentExecutionConfig;
@@ -29,6 +30,7 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::LaneModel;
 use crate::agent::lifecycle::AgentLifecycle;
+use crate::agent::store::mock::MockNodeStore;
 use crate::agent::tests::reporting_agent::TestAgentConfig;
 use crate::agent::tests::reporting_macro_agent::ReportingAgentEvent;
 use crate::agent::tests::stub_router::SingleChannelRouter;
@@ -40,6 +42,7 @@ use crate::agent::{
 use crate::meta::info::LaneKind;
 use crate::meta::log::NodeLogger;
 use crate::plane::provider::AgentProvider;
+use crate::plane::RouteAndParameters;
 use crate::routing::RoutingAddr;
 use futures::future::{join, BoxFuture};
 use futures::Stream;
@@ -49,12 +52,12 @@ use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_runtime::task;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::{timeout, Duration};
 use tokio_stream::wrappers::ReceiverStream;
-use utilities::sync::trigger;
-use utilities::sync::trigger::Receiver;
-use utilities::uri::RelativeUri;
+use trigger::Receiver;
 
 mod stub_router {
     use crate::routing::error::RouterError;
@@ -65,10 +68,10 @@ mod stub_router {
     use futures::FutureExt;
     use std::sync::Arc;
     use swim_common::routing::ResolutionError;
+    use swim_utilities::routing::uri::RelativeUri;
+    use swim_utilities::trigger::promise;
     use tokio::sync::mpsc;
     use url::Url;
-    use utilities::sync::promise;
-    use utilities::uri::RelativeUri;
 
     #[derive(Clone)]
     pub struct SingleChannelRouter {
@@ -758,12 +761,12 @@ pub async fn run_agent_test<Agent, Config, Lifecycle>(
     // a specific order. We can then safely expect these events in that order to verify the agent
     // loop.
     let (_, agent_proc) = provider.run(
-        uri,
-        HashMap::new(),
+        RouteAndParameters::new(uri, HashMap::new()),
         exec_config,
         clock.clone(),
         ReceiverStream::new(envelope_rx),
         SingleChannelRouter::new(RoutingAddr::local(1024)),
+        MockNodeStore::mock(),
     );
 
     let agent_task = swim_runtime::task::spawn(agent_proc);

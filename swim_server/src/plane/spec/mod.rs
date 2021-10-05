@@ -17,12 +17,13 @@ use crate::agent::SwimAgent;
 use crate::plane::error::AmbiguousRoutes;
 use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::provider::AgentProvider;
+use crate::plane::store::PlaneStore;
 use crate::plane::{AgentRoute, BoxAgentRoute};
 use crate::routing::{ServerRouter, TaggedEnvelope};
 use futures::Stream;
 use std::fmt::Debug;
 use swim_runtime::time::clock::Clock;
-use utilities::route_pattern::RoutePattern;
+use swim_utilities::routing::route_pattern::RoutePattern;
 
 #[cfg(test)]
 mod tests;
@@ -30,15 +31,15 @@ mod tests;
 /// Specification of an agent route in a plane. The route pattern describes a parameterized
 /// family of agents, all of which share an implementation.
 #[derive(Debug)]
-pub(super) struct RouteSpec<Clk, Envelopes, Router> {
+pub(super) struct RouteSpec<Clk, Envelopes, Router, Store> {
     pub pattern: RoutePattern,
-    pub agent_route: BoxAgentRoute<Clk, Envelopes, Router>,
+    pub agent_route: BoxAgentRoute<Clk, Envelopes, Router, Store>,
 }
 
-impl<Clk, Envelopes, Router> RouteSpec<Clk, Envelopes, Router> {
+impl<Clk, Envelopes, Router, Store> RouteSpec<Clk, Envelopes, Router, Store> {
     pub(super) fn new(
         pattern: RoutePattern,
-        agent_route: BoxAgentRoute<Clk, Envelopes, Router>,
+        agent_route: BoxAgentRoute<Clk, Envelopes, Router, Store>,
     ) -> Self {
         RouteSpec {
             pattern,
@@ -50,12 +51,19 @@ impl<Clk, Envelopes, Router> RouteSpec<Clk, Envelopes, Router> {
 /// A specification of a plane, consisting of the defined routes and an optional custom lifecycle
 /// for the plane.
 #[derive(Debug)]
-pub struct PlaneSpec<Clk, Envelopes, Router> {
-    pub(super) routes: Vec<RouteSpec<Clk, Envelopes, Router>>,
+pub struct PlaneSpec<Clk, Envelopes, Router, Store>
+where
+    Store: PlaneStore,
+{
+    pub(super) routes: Vec<RouteSpec<Clk, Envelopes, Router, Store::NodeStore>>,
     pub(super) lifecycle: Option<Box<dyn PlaneLifecycle>>,
+    pub(super) store: Store,
 }
 
-impl<Clk, Envelopes, Router> PlaneSpec<Clk, Envelopes, Router> {
+impl<Clk, Envelopes, Router, Store> PlaneSpec<Clk, Envelopes, Router, Store>
+where
+    Store: PlaneStore,
+{
     pub fn routes(&self) -> Vec<RoutePattern> {
         self.routes
             .iter()
@@ -68,29 +76,25 @@ impl<Clk, Envelopes, Router> PlaneSpec<Clk, Envelopes, Router> {
 /// ambiguous routes generating an error. The specification can then be constructed with or
 /// without a place lifecycle.
 #[derive(Debug)]
-pub struct PlaneBuilder<Clk, Envelopes, Router>(PlaneSpec<Clk, Envelopes, Router>);
+pub struct PlaneBuilder<Clk, Envelopes, Router, Store>(PlaneSpec<Clk, Envelopes, Router, Store>)
+where
+    Store: PlaneStore;
 
-impl<Clk, Envelopes, Router> PlaneBuilder<Clk, Envelopes, Router> {
-    pub fn new() -> Self {
-        Default::default()
-    }
-}
-
-impl<Clk, Envelopes, Router> Default for PlaneBuilder<Clk, Envelopes, Router> {
-    fn default() -> Self {
-        PlaneBuilder(PlaneSpec {
-            routes: vec![],
-            lifecycle: None,
-        })
-    }
-}
-
-impl<Clk, Envelopes, Router> PlaneBuilder<Clk, Envelopes, Router>
+impl<Clk, Envelopes, Router, Store> PlaneBuilder<Clk, Envelopes, Router, Store>
 where
     Clk: Clock,
     Envelopes: Stream<Item = TaggedEnvelope> + Send + 'static,
     Router: ServerRouter + Clone + 'static,
+    Store: PlaneStore,
 {
+    pub fn new(store: Store) -> Self {
+        PlaneBuilder(PlaneSpec {
+            routes: vec![],
+            lifecycle: None,
+            store,
+        })
+    }
+
     /// Attempt to add a new agent route to the plane.
     ///
     /// #Arguments
@@ -127,7 +131,7 @@ where
     }
 
     /// Construct the specification without adding a plane lifecycle.
-    pub fn build(self) -> PlaneSpec<Clk, Envelopes, Router> {
+    pub fn build(self) -> PlaneSpec<Clk, Envelopes, Router, Store> {
         self.0
     }
 
@@ -135,7 +139,7 @@ where
     pub fn build_with_lifecycle(
         mut self,
         custom_lc: Box<dyn PlaneLifecycle>,
-    ) -> PlaneSpec<Clk, Envelopes, Router> {
+    ) -> PlaneSpec<Clk, Envelopes, Router, Store> {
         self.0.lifecycle = Some(custom_lc);
         self.0
     }

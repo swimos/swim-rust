@@ -20,8 +20,8 @@ use futures::Stream;
 use std::collections::HashMap;
 use std::future::Future;
 use std::time::Duration;
-use utilities::sync::trigger::Receiver;
-use utilities::uri::RelativeUri;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger::Receiver;
 
 struct TestAgent;
 

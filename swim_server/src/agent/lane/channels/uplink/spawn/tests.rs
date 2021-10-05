@@ -20,8 +20,11 @@ use crate::agent::lane::channels::uplink::{
     PeelResult, UplinkAction, UplinkError, UplinkStateMachine,
 };
 use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, TaggedAction};
+use crate::agent::store::mock::MockNodeStore;
+use crate::agent::store::SwimNodeStore;
 use crate::agent::Eff;
 use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
+use crate::plane::store::mock::MockPlaneStore;
 use crate::routing::error::RouterError;
 use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
@@ -44,14 +47,15 @@ use swim_common::routing::SendError;
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::sync::topic;
+use swim_utilities::time::AtomicInstant;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Barrier};
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
-use utilities::instant::AtomicInstant;
-use utilities::sync::{promise, topic};
-use utilities::uri::RelativeUri;
 
 const INIT: i32 = 42;
 
@@ -313,13 +317,14 @@ impl TestContext {
             messages,
             _drop_tx: drop_tx,
             drop_rx,
-            uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now())),
+            uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
         }
     }
 }
 
 impl AgentExecutionContext for TestContext {
     type Router = TestRouter;
+    type Store = SwimNodeStore<MockPlaneStore>;
 
     fn router_handle(&self) -> Self::Router {
         let TestContext {
@@ -341,6 +346,10 @@ impl AgentExecutionContext for TestContext {
 
     fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
         &self.uplinks_idle_since
+    }
+
+    fn store(&self) -> Self::Store {
+        MockNodeStore::mock()
     }
 }
 

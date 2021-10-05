@@ -15,7 +15,7 @@
 use crate::routing::error::{RouterError, Unresolvable};
 use crate::routing::RoutingAddr;
 use swim_common::routing::{CloseError, CloseErrorKind, ConnectionError, ResolutionError};
-use utilities::uri::RelativeUri;
+use swim_utilities::routing::uri::RelativeUri;
 
 #[test]
 fn unresolvable_display() {

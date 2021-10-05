@@ -26,8 +26,8 @@ use http::header::HeaderName;
 use http::{header, HeaderMap, HeaderValue, Request, Response, StatusCode, Version};
 use httparse::{Header, Status};
 use sha1::{Digest, Sha1};
+use swim_utilities::trigger;
 use tokio::io::AsyncReadExt;
-use utilities::sync::trigger;
 
 const TEST_URL: &str = "ws://127.0.0.1:9001/test";
 

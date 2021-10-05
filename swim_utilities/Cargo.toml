@@ -1,0 +1,42 @@
+[package]
+name = "swim_utilities"
+version = "0.1.0"
+authors = ["Swim.AI developers info@swim.ai"]
+edition = "2018"
+
+[features]
+default = []
+all = ["future", "errors", "sync", "iteratee", "collections", "time", "text", "lrucache", "rtree"]
+bilock = ["swim_bilock"]
+circular_buffer = ["swim_sync", "swim_sync/circular_buffer"]
+collections = ["lrucache", "rtree"]
+errors = ["swim_errors"]
+future = ["swim_future"]
+iteratee = ["swim_iteratee"]
+lrucache = ["swim_lrucache"]
+rtree = ["swim_rtree"]
+rwlock = ["swim_sync", "swim_sync/rwlock"]
+sync = ["bilock", "circular_buffer", "future", "rwlock", "trigger", "topic"]
+text = ["swim_route", "swim_format"]
+test-util = ["swim_test_util"]
+time = ["swim_time"]
+topic = ["swim_sync", "swim_sync/topic"]
+trigger = ["swim_trigger"]
+
+[dependencies]
+
+swim_bilock = { path = "./swim_bilock", optional = true }
+swim_errors = { path = "./swim_errors", optional = true }
+swim_format = { path = "./swim_format", optional = true }
+swim_trigger = { path = "./swim_trigger", optional = true }
+swim_future = { path = "./swim_future", optional = true }
+swim_iteratee = { path = "./swim_iteratee", optional = true }
+swim_lrucache = { path = "./swim_lrucache", optional = true }
+swim_route = { path = "./swim_route", optional = true }
+swim_rtree = { path = "./swim_rtree", optional = true }
+swim_sync = { path = "./swim_sync", optional = true, default-features = false }
+swim_time = { path = "./swim_time", optional = true }
+swim_test_util = { path = "./swim_test_util", optional = true }
+
+
+

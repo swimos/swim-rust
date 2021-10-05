@@ -73,7 +73,7 @@ use crate::lanes::value::derive_value_lifecycle;
 use crate::lanes::demand::derive_demand_lifecycle;
 use crate::lanes::demand_map::derive_demand_map_lifecycle;
 use crate::utils::derive;
-use macro_helpers::as_const;
+use macro_utilities::as_const;
 use proc_macro::TokenStream;
 use syn::{parse_macro_input, DeriveInput};
 
