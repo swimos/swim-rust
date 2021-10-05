@@ -15,31 +15,26 @@
 #[cfg(test)]
 mod fixture;
 
+mod builder;
 mod errors;
 mod extensions;
 mod framed;
 mod handshake;
 mod protocol;
-
-mod builder;
 mod ws;
 
 pub use crate::extensions::{deflate::*, ext::*, Extension, ExtensionProvider};
-pub use builder::WebSocketClientBuilder;
+pub use builder::{WebSocketClientBuilder, WebSocketServerBuilder};
 pub use errors::*;
-pub use handshake::{ProtocolRegistry, TryIntoRequest};
-pub use protocol::{Message, PayloadType, WebSocketConfig};
+pub use handshake::{
+    accept, accept_with, ProtocolRegistry, TryIntoRequest, WebSocketResponse, WebSocketUpgrader,
+};
+pub use protocol::{Message, PayloadType, Role, WebSocketConfig};
 pub use ws::{client, Upgraded, WebSocket};
 
-use futures::future::BoxFuture;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 pub(crate) type Request = http::Request<()>;
-pub(crate) type Response = http::Response<()>;
 
-pub trait WebSocketStream: AsyncRead + AsyncWrite + Unpin {}
-impl<S> WebSocketStream for S where S: AsyncRead + AsyncWrite + Unpin {}
-
-pub trait Interceptor {
-    fn intercept(self, request: Request, response: Response) -> BoxFuture<'static, Response>;
-}
+pub trait WebSocketStream: AsyncRead + AsyncWrite + Unpin + 'static {}
+impl<S> WebSocketStream for S where S: AsyncRead + AsyncWrite + Unpin + 'static {}

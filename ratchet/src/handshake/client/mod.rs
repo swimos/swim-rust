@@ -18,7 +18,6 @@ mod tests;
 mod encoding;
 
 use bytes::BytesMut;
-use http::header::HeaderName;
 use http::{header, Request, StatusCode};
 use httparse::{Response, Status};
 use sha1::{Digest, Sha1};
@@ -30,8 +29,12 @@ use crate::errors::{Error, ErrorKind, HttpError};
 use crate::extensions::ExtensionProvider;
 use crate::handshake::client::encoding::{build_request, encode_request};
 use crate::handshake::io::BufferedIo;
-use crate::handshake::{ProtocolRegistry, ACCEPT_KEY, BAD_STATUS_CODE, UPGRADE_STR, WEBSOCKET_STR};
+use crate::handshake::{
+    validate_header, validate_header_value, ParseResult, ProtocolRegistry, StreamingParser,
+    ACCEPT_KEY, BAD_STATUS_CODE, UPGRADE_STR, WEBSOCKET_STR,
+};
 use crate::WebSocketStream;
+use tokio_util::codec::Decoder;
 
 type Nonce = [u8; 24];
 
@@ -87,6 +90,39 @@ struct ClientHandshake<'s, S, E> {
     extension: E,
 }
 
+pub struct ResponseParser<'b, E> {
+    nonce: &'b Nonce,
+    extension: &'b E,
+    subprotocols: &'b mut ProtocolRegistry,
+}
+
+impl<'b, E> Decoder for ResponseParser<'b, E>
+where
+    E: ExtensionProvider,
+{
+    type Item = (HandshakeResult<E::Extension>, usize);
+    type Error = Error;
+
+    fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        let ResponseParser {
+            nonce,
+            extension,
+            subprotocols,
+        } = self;
+
+        let mut headers = [httparse::EMPTY_HEADER; 32];
+        let mut response = httparse::Response::new(&mut headers);
+
+        match try_parse_response(buf, &mut response, nonce, extension, subprotocols)? {
+            ParseResult::Complete(result, count) => Ok(Some((result, count))),
+            ParseResult::Partial => {
+                check_partial_response(&response)?;
+                Ok(None)
+            }
+        }
+    }
+}
+
 impl<'s, S, E> ClientHandshake<'s, S, E>
 where
     S: WebSocketStream,
@@ -135,26 +171,16 @@ where
             extension,
         } = self;
 
-        loop {
-            buffered.read().await?;
-
-            let mut headers = [httparse::EMPTY_HEADER; 32];
-            let mut response = httparse::Response::new(&mut headers);
-
-            match try_parse_response(
-                &buffered.buffer,
-                &mut response,
+        let parser = StreamingParser::new(
+            buffered,
+            ResponseParser {
                 nonce,
                 extension,
                 subprotocols,
-            )? {
-                ParseResult::Complete(result, count) => {
-                    buffered.advance(count);
-                    break Ok(result);
-                }
-                ParseResult::Partial => check_partial_response(&response)?,
-            }
-        }
+            },
+        );
+
+        parser.parse().await
     }
 
     // This is split up on purpose so that the individual functions can be called in unit tests.
@@ -189,6 +215,7 @@ fn check_partial_response(response: &Response) -> Result<(), Error> {
             ))
         }
     }
+
     match response.code {
         Some(code) if code == StatusCode::SWITCHING_PROTOCOLS => Ok(()),
         Some(code) if (300..400).contains(&code) => {
@@ -204,22 +231,17 @@ fn check_partial_response(response: &Response) -> Result<(), Error> {
     }
 }
 
-enum ParseResult<E> {
-    Complete(HandshakeResult<E>, usize),
-    Partial,
-}
-
 fn try_parse_response<'l, E>(
-    buffer: &'l BytesMut,
+    buffer: &'l [u8],
     response: &mut Response<'_, 'l>,
     expected_nonce: &Nonce,
-    extension: &E,
+    extension: E,
     subprotocols: &mut ProtocolRegistry,
-) -> Result<ParseResult<E::Extension>, Error>
+) -> Result<ParseResult<HandshakeResult<E::Extension>>, Error>
 where
     E: ExtensionProvider,
 {
-    match response.parse(buffer.as_ref()) {
+    match response.parse(buffer) {
         Ok(Status::Complete(count)) => {
             parse_response(response, expected_nonce, extension, subprotocols)
                 .map(|r| ParseResult::Complete(r, count))
@@ -232,7 +254,7 @@ where
 fn parse_response<E>(
     response: &Response,
     expected_nonce: &Nonce,
-    extension: &E,
+    extension: E,
     subprotocols: &mut ProtocolRegistry,
 ) -> Result<HandshakeResult<E::Extension>, Error>
 where
@@ -249,7 +271,7 @@ where
         }
     }
 
-    let raw_status_code = response.code.ok_or(Error::new(ErrorKind::Http))?;
+    let raw_status_code = response.code.ok_or_else(|| Error::new(ErrorKind::Http))?;
     let status_code = StatusCode::from_u16(raw_status_code)?;
     match status_code {
         c if c == StatusCode::SWITCHING_PROTOCOLS => {}
@@ -288,7 +310,7 @@ where
 
             let expected = base64::encode(&digest.finalize());
             if expected.as_bytes() != actual {
-                return Err(Error::with_cause(ErrorKind::Http, HttpError::KeyMismatch));
+                Err(Error::with_cause(ErrorKind::Http, HttpError::KeyMismatch))
             } else {
                 Ok(())
             }
@@ -298,43 +320,7 @@ where
     Ok(HandshakeResult {
         subprotocol: subprotocols.negotiate_response(response)?,
         extension: extension
-            .negotiate(response)
-            .map_err(|e| Error::with_cause(ErrorKind::Extension, e))?,
+            .negotiate_client(response.headers)
+            .map_err(Into::into)?,
     })
-}
-
-fn validate_header_value(
-    headers: &[httparse::Header],
-    name: HeaderName,
-    expected: &str,
-) -> Result<(), Error> {
-    validate_header(headers, name, |name, actual| {
-        let actual =
-            std::str::from_utf8(actual).map_err(|e| Error::with_cause(ErrorKind::IO, e))?;
-
-        if actual.eq_ignore_ascii_case(expected) {
-            Ok(())
-        } else {
-            Err(Error::with_cause(
-                ErrorKind::Http,
-                HttpError::InvalidHeader(name),
-            ))
-        }
-    })
-}
-
-fn validate_header<F>(headers: &[httparse::Header], name: HeaderName, f: F) -> Result<(), Error>
-where
-    F: Fn(HeaderName, &[u8]) -> Result<(), Error>,
-{
-    match headers
-        .iter()
-        .find(|h| h.name.eq_ignore_ascii_case(name.as_str()))
-    {
-        Some(header) => f(name, header.value),
-        None => Err(Error::with_cause(
-            ErrorKind::Http,
-            HttpError::MissingHeader(name),
-        )),
-    }
 }

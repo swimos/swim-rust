@@ -15,9 +15,7 @@
 use crate::errors::{Error, ErrorKind, HttpError};
 use crate::extensions::ExtensionProvider;
 use crate::handshake::client::Nonce;
-use crate::handshake::{
-    ProtocolRegistry, SubprotocolApplicator, UPGRADE_STR, WEBSOCKET_STR, WEBSOCKET_VERSION_STR,
-};
+use crate::handshake::{ProtocolRegistry, UPGRADE_STR, WEBSOCKET_STR, WEBSOCKET_VERSION_STR};
 use base64::encode_config_slice;
 use bytes::{BufMut, BytesMut};
 use http::header::{AsHeaderName, HeaderName, IntoHeaderName};
@@ -90,11 +88,9 @@ sec-websocket-key: ",
 }
 
 fn write_header(headers: &HeaderMap<HeaderValue>, name: HeaderName) -> Option<(String, &[u8])> {
-    if let Some(value) = headers.get(&name) {
-        Some((format!("{}: ", name), value.as_bytes()))
-    } else {
-        None
-    }
+    headers
+        .get(&name)
+        .map(|value| (format!("{}: ", name), value.as_bytes()))
 }
 
 pub struct ValidatedRequest {
@@ -126,7 +122,7 @@ where
         return Err(Error::with_cause(ErrorKind::Http, HttpError::InvalidMethod));
     }
 
-    if version < Version::HTTP_11 {
+    if version != Version::HTTP_11 {
         return Err(Error::with_cause(
             ErrorKind::Http,
             HttpError::HttpVersion(None),
@@ -135,7 +131,7 @@ where
 
     let authority = uri
         .authority()
-        .ok_or(Error::with_cause(ErrorKind::Http, "Missing authority"))?
+        .ok_or_else(|| Error::with_cause(ErrorKind::Http, "Missing authority"))?
         .as_str()
         .to_string();
     validate_or_insert(
@@ -160,7 +156,7 @@ where
         HeaderValue::from_static(WEBSOCKET_VERSION_STR),
     )?;
 
-    if let Some(_) = headers.get(header::SEC_WEBSOCKET_EXTENSIONS) {
+    if headers.get(header::SEC_WEBSOCKET_EXTENSIONS).is_some() {
         return Err(Error::with_cause(
             ErrorKind::Http,
             HttpError::InvalidHeader(header::SEC_WEBSOCKET_EXTENSIONS),
@@ -169,7 +165,7 @@ where
 
     extension.apply_headers(&mut headers);
 
-    if let Some(_) = headers.get(header::SEC_WEBSOCKET_PROTOCOL) {
+    if headers.get(header::SEC_WEBSOCKET_PROTOCOL).is_some() {
         return Err(Error::with_cause(
             ErrorKind::Http,
             HttpError::InvalidHeader(header::SEC_WEBSOCKET_PROTOCOL),
@@ -199,18 +195,12 @@ where
 
     let host = uri
         .authority()
-        .ok_or(Error::with_cause(
-            ErrorKind::Http,
-            HttpError::MalformattedUri,
-        ))?
+        .ok_or_else(|| Error::with_cause(ErrorKind::Http, HttpError::MalformattedUri(None)))?
         .to_string();
 
     let path_and_query = uri
         .path_and_query()
-        .ok_or(Error::with_cause(
-            ErrorKind::Http,
-            HttpError::MalformattedUri,
-        ))?
+        .ok_or_else(|| Error::with_cause(ErrorKind::Http, HttpError::MalformattedUri(None)))?
         .to_string();
 
     Ok(ValidatedRequest {
@@ -231,7 +221,7 @@ where
 {
     if let Some(header_value) = headers.get(header_name.clone()) {
         match header_value.to_str() {
-            Ok(v) if v.to_ascii_lowercase().as_bytes().eq(expected.as_bytes()) => Ok(()),
+            Ok(v) if v.as_bytes().eq_ignore_ascii_case(expected.as_bytes()) => Ok(()),
             _ => Err(Error::new(ErrorKind::Http)),
         }
     } else {

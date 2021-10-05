@@ -218,8 +218,7 @@ impl From<http::Error> for HttpError {
                 )),
                 None,
             ),
-
-            _ => unreachable!(),
+            e => unreachable!("{:?}", e),
         }
     }
 }

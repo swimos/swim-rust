@@ -3,12 +3,11 @@ use crate::extensions::ext::NoExtProxy;
 use crate::handshake::ProtocolRegistry;
 use crate::ws::Upgraded;
 use crate::ExtensionProvider;
-use crate::{client, Interceptor, TryIntoRequest, WebSocketConfig, WebSocketStream};
-use tokio_native_tls::TlsConnector;
+use crate::{client, TryIntoRequest, WebSocketConfig, WebSocketStream};
+use std::borrow::Cow;
 
 pub struct WebSocketClientBuilder<E> {
     config: Option<WebSocketConfig>,
-    connector: Option<TlsConnector>,
     extension: E,
     subprotocols: ProtocolRegistry,
 }
@@ -17,17 +16,13 @@ impl Default for WebSocketClientBuilder<NoExtProxy> {
     fn default() -> Self {
         WebSocketClientBuilder {
             config: None,
-            connector: None,
             extension: NoExtProxy,
             subprotocols: ProtocolRegistry::default(),
         }
     }
 }
 
-impl<E> WebSocketClientBuilder<E>
-where
-    E: ExtensionProvider,
-{
+impl<E> WebSocketClientBuilder<E> {
     pub async fn subscribe<S, I>(
         self,
         stream: S,
@@ -36,6 +31,7 @@ where
     where
         S: WebSocketStream,
         I: TryIntoRequest,
+        E: ExtensionProvider,
     {
         let WebSocketClientBuilder {
             config,
@@ -60,38 +56,62 @@ where
         self
     }
 
-    pub fn tls_connector(mut self, connector: TlsConnector) -> Self {
-        self.connector = Some(connector);
-        self
-    }
-
-    pub fn extension(mut self, extension: E) -> Self {
-        self.extension = extension;
-        self
+    pub fn extension<T>(self, extension: T) -> WebSocketClientBuilder<T>
+    where
+        T: ExtensionProvider,
+    {
+        let WebSocketClientBuilder {
+            config,
+            subprotocols,
+            ..
+        } = self;
+        WebSocketClientBuilder {
+            config,
+            extension,
+            subprotocols,
+        }
     }
 
     pub fn subprotocols<I>(mut self, subprotocols: I) -> Self
     where
-        I: IntoIterator<Item = &'static str>,
+        I: IntoIterator,
+        I::Item: Into<Cow<'static, str>>,
     {
         self.subprotocols = ProtocolRegistry::new(subprotocols);
         self
     }
 }
 
-#[derive(Default)]
-pub struct WebSocketServerBuilder {
+pub struct WebSocketServerBuilder<E> {
     config: Option<WebSocketConfig>,
-    interceptor: Option<Box<dyn Interceptor>>,
     subprotocols: ProtocolRegistry,
+    extension: E,
 }
 
-impl WebSocketServerBuilder {
-    pub async fn accept<S>(self, _stream: S) -> Result<Self, Error>
+impl Default for WebSocketServerBuilder<NoExtProxy> {
+    fn default() -> Self {
+        WebSocketServerBuilder {
+            config: None,
+            extension: NoExtProxy,
+            subprotocols: ProtocolRegistry::default(),
+        }
+    }
+}
+
+impl<E> WebSocketServerBuilder<E> {
+    pub async fn accept<S>(self, stream: S) -> Result<Upgraded<S, E::Extension>, Error>
     where
         S: WebSocketStream,
+        E: ExtensionProvider,
     {
-        unimplemented!()
+        let WebSocketServerBuilder {
+            config,
+            subprotocols,
+            extension,
+        } = self;
+        let upgrader =
+            crate::accept_with(stream, config.unwrap_or_default(), extension, subprotocols).await?;
+        upgrader.upgrade().await
     }
 
     pub fn config(mut self, config: WebSocketConfig) -> Self {
@@ -99,19 +119,28 @@ impl WebSocketServerBuilder {
         self
     }
 
-    pub fn subprotocols<I>(mut self, subprotocols: I) -> Self
+    pub fn extension<T>(self, extension: T) -> WebSocketServerBuilder<T>
     where
-        I: IntoIterator<Item = &'static str>,
+        T: ExtensionProvider,
     {
-        self.subprotocols = ProtocolRegistry::new(subprotocols);
-        self
+        let WebSocketServerBuilder {
+            config,
+            subprotocols,
+            ..
+        } = self;
+        WebSocketServerBuilder {
+            config,
+            extension,
+            subprotocols,
+        }
     }
 
-    pub fn interceptor<I>(mut self, interceptor: I) -> Self
+    pub fn subprotocols<I>(mut self, subprotocols: I) -> Self
     where
-        I: Interceptor + 'static,
+        I: IntoIterator,
+        I::Item: Into<Cow<'static, str>>,
     {
-        self.interceptor = Some(Box::new(interceptor));
+        self.subprotocols = ProtocolRegistry::new(subprotocols);
         self
     }
 }

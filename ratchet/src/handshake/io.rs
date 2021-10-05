@@ -13,9 +13,8 @@
 // limitations under the License.
 
 use crate::errors::Error;
-use crate::WebSocketStream;
 use bytes::{Buf, BytesMut};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 const RESIZE: usize = 8 * 1024;
 
@@ -24,24 +23,27 @@ pub struct BufferedIo<'s, S> {
     pub buffer: &'s mut BytesMut,
 }
 
-impl<'s, S> BufferedIo<'s, S>
-where
-    S: WebSocketStream,
-{
+impl<'s, S> BufferedIo<'s, S> {
     pub fn new(socket: &'s mut S, buffer: &'s mut BytesMut) -> BufferedIo<'s, S> {
         BufferedIo { socket, buffer }
     }
 
-    pub async fn write(&mut self) -> Result<(), Error> {
+    pub async fn write(&mut self) -> Result<(), Error>
+    where
+        S: AsyncWrite + Unpin,
+    {
         let BufferedIo { socket, buffer } = self;
 
-        socket.write_all(&buffer).await?;
+        socket.write_all(buffer).await?;
         socket.flush().await?;
 
         Ok(())
     }
 
-    pub async fn read(&mut self) -> Result<(), Error> {
+    pub async fn read(&mut self) -> Result<(), Error>
+    where
+        S: AsyncRead + Unpin,
+    {
         let BufferedIo { socket, buffer } = self;
 
         let len = buffer.len();
