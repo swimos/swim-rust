@@ -53,7 +53,7 @@ pub struct DeflateExtProvider {
 }
 
 impl DeflateExtProvider {
-    /// Initialise a [DeflateExtProvider] with `config`.
+    /// Initialise a `DeflateExtProvider` with `config`.
     pub fn with_config(config: DeflateConfig) -> DeflateExtProvider {
         DeflateExtProvider { config }
     }
@@ -200,7 +200,7 @@ impl ReunitableExtension for Deflate {
 }
 
 /// A permessage-deflate compressor. Only producible by the `SplittableExtension` implementation on
-/// [Deflate].
+/// `Deflate`.
 #[derive(Debug)]
 pub struct DeflateEncoder {
     buf: BytesMut,
@@ -291,7 +291,7 @@ impl ExtensionEncoder for DeflateEncoder {
 }
 
 /// A permessage-deflate decompressor. Only producible by the `SplittableExtension` implementation
-/// on [Deflate].
+/// on `Deflate`.
 #[derive(Debug)]
 pub struct DeflateDecoder {
     buf: BytesMut,

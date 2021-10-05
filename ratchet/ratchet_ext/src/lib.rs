@@ -17,7 +17,7 @@
 //! # Implementations:
 //! [ratchet_deflate](../ratchet_deflate)
 //!
-//! # Usage:
+//! # Usage
 //! Implementing an extension requires two traits to be implemented: [ExtensionProvider] for
 //! negotiating the extension during the WebSocket handshake, and [Extension] (along with its
 //! bounds) for using the extension during the session.
@@ -34,13 +34,16 @@
     unused_import_braces
 )]
 
-use bytes::BytesMut;
 pub use http::{HeaderMap, HeaderValue};
 pub use httparse::Header;
+
+use bytes::BytesMut;
 use std::error::Error;
 use std::fmt::Debug;
 
 /// A trait for negotiating an extension during a WebSocket handshake.
+///
+/// Extension providers allow for a single configuration to be used to negotiate multiple peers.
 pub trait ExtensionProvider {
     /// The extension produced by this provider if the negotiation was successful.
     type Extension: Extension;
@@ -137,10 +140,33 @@ pub enum OpCode {
     Binary,
 }
 
+impl OpCode {
+    /// Returns whether this `OpCode` is a continuation.
+    pub fn is_continuation(&self) -> bool {
+        matches!(self, OpCode::Continuation)
+    }
+
+    /// Returns whether this `OpCode` is text.
+    pub fn is_text(&self) -> bool {
+        matches!(self, OpCode::Text)
+    }
+
+    /// Returns whether this `OpCode` is binary.
+    pub fn is_binary(&self) -> bool {
+        matches!(self, OpCode::Binary)
+    }
+}
+
 /// A frame's header.
+///
+/// This is passed to both `ExtensionEncoder::encode` and `ExtensionDecoder::decode` when a frame
+/// has been received. Changes to the reserved bits on a decode call will be sent to the peer.
+/// Any other changes or changes made when decoding will have no effect.
 #[derive(Debug, PartialEq)]
 pub struct FrameHeader {
     /// Whether this is the final frame.
+    ///
+    /// Changing this field has no effect.
     pub fin: bool,
     /// Whether `rsv1` was high.
     pub rsv1: bool,
@@ -149,6 +175,8 @@ pub struct FrameHeader {
     /// Whether `rsv3` was high.
     pub rsv3: bool,
     /// The frame's data code.
+    ///
+    /// Changing this field has no effect.
     pub opcode: OpCode,
 }
 
@@ -187,11 +215,11 @@ pub trait ExtensionEncoder {
     /// Invoked when a frame has been received.
     ///
     /// # Continuation frames
-    /// If this frame is a not final or a continuation frame then `payload` will contain all of the
+    /// If this frame is not final or a continuation frame then `payload` will contain all of the
     /// data received up to and including this frame.
     ///
     /// # Note
-    /// An implementation may opt to not encode this frame if some condition is not met. Such as the
+    /// If a condition is not met an implementation may opt to not encode this frame; such as the
     /// payload length not being large enough to require encoding.
     fn encode(
         &mut self,
@@ -208,11 +236,11 @@ pub trait ExtensionDecoder {
     /// Invoked when a frame has been received.
     ///
     /// # Continuation frames
-    /// If this frame is a not final or a continuation frame then `payload` will contain all of the
+    /// If this frame is not final or a continuation frame then `payload` will contain all of the
     /// data received up to and including this frame.
     ///
     /// # Note
-    /// An implementation may opt to not decode this frame if some condition is not met. Such as the
+    /// If a condition is not met an implementation may opt to not decode this frame; such as the
     /// payload length not being large enough to require decoding.
     fn decode(
         &mut self,
@@ -221,7 +249,7 @@ pub trait ExtensionDecoder {
     ) -> Result<(), Self::Error>;
 }
 
-/// A trait for permitting an extension to be split in to its encoder and decoder halves. Allowing
+/// A trait for permitting an extension to be split into its encoder and decoder halves. Allowing
 /// for a WebSocket to be split into its sender and receiver halves.
 pub trait SplittableExtension: Extension {
     /// The type of the encoder.
@@ -235,6 +263,6 @@ pub trait SplittableExtension: Extension {
 
 /// A trait for permitting a matched encoder and decoder to be reunited into an extension.
 pub trait ReunitableExtension: SplittableExtension {
-    /// Reunite this encoder and decoder back in to a single extension.
+    /// Reunite this encoder and decoder back into a single extension.
     fn reunite(encoder: Self::SplitEncoder, decoder: Self::SplitDecoder) -> Self;
 }
