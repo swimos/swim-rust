@@ -14,11 +14,11 @@
 
 use std::sync::Arc;
 use swim_common::form::Form;
-use swim_common::form::ValidatedForm;
+use swim_common::form::ValueSchema;
 use swim_common::model::Value;
 
 /// Updates that can be applied to a map lane.
-#[derive(Debug, PartialEq, Eq, Form, ValidatedForm, Clone)]
+#[derive(Debug, PartialEq, Eq, Form, ValueSchema, Clone)]
 pub enum MapUpdate<K, V> {
     #[form(tag = "update")]
     Update(#[form(header, name = "key")] K, #[form(body)] Arc<V>),

@@ -1,15 +1,15 @@
 [workspace]
 members = [
     "ratchet",
+    "macro_utilities",
     "swim_client",
     "swim_runtime",
     "swim_common",
     "swim_server",
     "swim_warp",
     "stm",
-    "utilities",
-    "utilities/bilock",
-    "utilities/test_util"
+    "swim_utilities",
+    "swim_utilities/swim_*",
 ]
 
 exclude = [

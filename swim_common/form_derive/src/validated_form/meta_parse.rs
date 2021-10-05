@@ -18,7 +18,7 @@ use crate::validated_form::vf_parser::{
     FINITE_PATH, FLOAT_RANGE_PATH, INT_RANGE_PATH, NON_NAN_PATH, NOTHING_PATH, NOT_PATH,
     NUM_ATTRS_PATH, NUM_ITEMS_PATH, OF_KIND_PATH, OR_PATH, TEXT_PATH, UINT_RANGE_PATH,
 };
-use macro_helpers::{lit_str_to_expr_path, Context};
+use macro_utilities::{lit_str_to_expr_path, Context};
 use quote::ToTokens;
 use std::fmt::Display;
 use std::str::FromStr;

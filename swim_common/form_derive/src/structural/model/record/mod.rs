@@ -18,13 +18,13 @@ use crate::parser::{FieldManifest, FORM_PATH};
 use crate::structural::model::field::{FieldWithIndex, SegregatedFields, TaggedFieldModel};
 use crate::structural::model::StructLike;
 use crate::SynValidation;
-use macro_helpers::CompoundTypeKind;
+use macro_utilities::CompoundTypeKind;
+use macro_utilities::FieldKind;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use std::ops::Add;
+use swim_utilities::errors::validation::{validate2, Validation, ValidationItExt};
 use syn::{Attribute, Fields, Ident};
-use utilities::validation::{validate2, Validation, ValidationItExt};
-use utilities::FieldKind;
 
 /// Description of the fields, taken from the derive input, preprocessed with any modifcations
 /// present in attributes on the fields.

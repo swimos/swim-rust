@@ -19,11 +19,11 @@ use crate::form::structural::read::recognizer::{
 };
 use crate::form::structural::read::ReadError;
 use crate::form::structural::write::{PrimitiveWriter, StructuralWritable, StructuralWriter};
-use crate::form::ValidatedForm;
+use crate::form::ValueSchema;
 use crate::model::schema::StandardSchema;
 use crate::model::ValueKind;
 use chrono::{DateTime, LocalResult, TimeZone, Utc};
-use std::fmt::Display;
+use std::fmt::{Display, Formatter};
 
 /// A structure representing the time that it was created.
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Ord, PartialOrd, Hash)]
@@ -32,6 +32,12 @@ pub struct Timestamp(DateTime<Utc>);
 impl AsRef<DateTime<Utc>> for Timestamp {
     fn as_ref(&self) -> &DateTime<Utc> {
         &self.0
+    }
+}
+
+impl Display for Timestamp {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -147,7 +153,7 @@ impl Recognizer for TimestampRecognizer {
     fn reset(&mut self) {}
 }
 
-impl ValidatedForm for Timestamp {
+impl ValueSchema for Timestamp {
     fn schema() -> StandardSchema {
         StandardSchema::Or(vec![
             StandardSchema::OfKind(ValueKind::Int64),

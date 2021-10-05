@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use utilities::never::Never;
+use swim_utilities::never::Never;
 
 mod private {
     pub trait Sealed {}

@@ -27,6 +27,8 @@ use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::lane::model::command::{Command, CommandLane};
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::model::supply::SupplyLane;
+use crate::agent::store::mock::MockNodeStore;
+use crate::agent::store::SwimNodeStore;
 use crate::agent::Eff;
 use crate::meta::accumulate_metrics;
 use crate::meta::log::make_node_logger;
@@ -36,6 +38,7 @@ use crate::meta::metric::node::NodePulse;
 use crate::meta::metric::uplink::{UplinkObserver, WarpUplinkPulse};
 use crate::meta::metric::{aggregator_sink, AggregatorError, NodeMetricAggregator};
 use crate::meta::pulse::PulseLanes;
+use crate::plane::store::mock::MockPlaneStore;
 use crate::routing::error::RouterError;
 use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
@@ -62,15 +65,16 @@ use swim_common::routing::SendError;
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::sync::topic;
+use swim_utilities::time::AtomicInstant;
+use swim_utilities::trigger::{self, promise};
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::timeout;
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
-use utilities::instant::AtomicInstant;
-use utilities::sync::{promise, topic, trigger};
-use utilities::uri::RelativeUri;
 
 #[test]
 fn lane_io_err_display_update() {
@@ -404,6 +408,7 @@ impl ServerRouter for TestRouter {
 
 impl AgentExecutionContext for TestContext {
     type Router = TestRouter;
+    type Store = SwimNodeStore<MockPlaneStore>;
 
     fn router_handle(&self) -> Self::Router {
         let TestContext {
@@ -425,6 +430,10 @@ impl AgentExecutionContext for TestContext {
 
     fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
         &self.uplinks_idle_since
+    }
+
+    fn store(&self) -> Self::Store {
+        MockNodeStore::mock()
     }
 }
 
@@ -627,7 +636,7 @@ fn make_context() -> (
         _drop_tx: Arc::new(drop_tx),
         drop_rx,
         aggregator,
-        uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now())),
+        uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
     };
     let spawn_task = ReceiverStream::new(spawn_rx)
         .take_until(stop_rx)
@@ -1385,7 +1394,7 @@ impl MultiTestContext {
                 router_addr,
             ))),
             spawner,
-            Arc::new(AtomicInstant::new(Instant::now())),
+            Arc::new(AtomicInstant::new(Instant::now().into_std())),
         )
     }
 
@@ -1411,6 +1420,7 @@ struct MultiTestRouter(Arc<parking_lot::Mutex<MultiTestContextInner>>);
 
 impl AgentExecutionContext for MultiTestContext {
     type Router = MultiTestRouter;
+    type Store = SwimNodeStore<MockPlaneStore>;
 
     fn router_handle(&self) -> Self::Router {
         MultiTestRouter(self.0.clone())
@@ -1426,6 +1436,10 @@ impl AgentExecutionContext for MultiTestContext {
 
     fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
         &self.2
+    }
+
+    fn store(&self) -> Self::Store {
+        MockNodeStore::mock()
     }
 }
 

@@ -14,8 +14,10 @@
 
 use crate::utils::{get_task_struct_name, validate_input_ast, Callback, InputAstType};
 use crate::utils::{parse_callback, CallbackKind};
+use darling::ast::Data;
+use darling::util::SpannedValue;
 use darling::{ast, FromDeriveInput, FromField, FromMeta};
-use macro_helpers::{as_const, string_to_ident, ungroup};
+use macro_utilities::{as_const, string_to_ident, ungroup};
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use proc_macro2::{Delimiter, Group, Ident, Literal, Span};
@@ -24,6 +26,7 @@ use std::ops::Deref;
 use syn::{AttributeArgs, DeriveInput, Path, PathSegment, Type, TypePath, Visibility};
 
 type AgentName = Ident;
+type IdentifiedTokens = (proc_macro2::TokenStream, Ident);
 
 const COMMAND_LANE: &str = "CommandLane";
 const ACTION_LANE: &str = "ActionLane";
@@ -43,6 +46,8 @@ pub struct AgentAttrs {
 #[derive(Debug, FromField)]
 #[darling(attributes(lifecycle))]
 pub struct LifecycleAttrs {
+    #[darling(default)]
+    pub transient: SpannedValue<Option<bool>>,
     pub ident: Option<syn::Ident>,
     pub ty: syn::Type,
     pub vis: syn::Visibility,
@@ -83,7 +88,7 @@ impl LifecycleAttrs {
     }
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum LaneType {
     Command,
     Action,
@@ -115,7 +120,7 @@ pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream, TokenStream>
         }
     };
 
-    let (agent_name, config_type, agent_fields) = get_agent_data(args);
+    let (agent_name, config_type, agent_fields) = get_agent_data(args)?;
 
     let lanes = agent_fields
         .iter()
@@ -131,25 +136,28 @@ pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream, TokenStream>
         use std::collections::HashMap;
         use std::boxed::Box;
 
-        use swim_server::agent::{LaneTasks, SwimAgent, AgentContext, LaneIo};
+        use swim_server::agent::{LaneTasks, SwimAgent, AgentContext, IoPair, StoreIo, LaneIo};
         use swim_server::agent::lane::channels::AgentExecutionConfig;
         use swim_server::agent::context::AgentExecutionContext;
         use swim_server::agent::lane::lifecycle::LaneLifecycle;
+        use swim_server::agent::LaneNoStore;
 
         #[automatically_derived]
         impl SwimAgent<#config_type> for #agent_name {
-            fn instantiate<Context: AgentContext<Self> + AgentExecutionContext>(
+            fn instantiate<Context, Store>(
                 configuration: &#config_type,
                 exec_conf: &AgentExecutionConfig,
+                store: Store
             ) -> (
                 Self,
                 Vec<Box<dyn LaneTasks<Self, Context>>>,
-                HashMap<String, Box<dyn LaneIo<Context>>>,
+                HashMap<String, IoPair<Box<dyn LaneIo<Context>>, Box<dyn StoreIo>>>
             )
                 where
                     Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
+                    Store: swim_server::agent::store::NodeStore,
             {
-                let mut io_map: HashMap<String, Box<dyn LaneIo<Context>>> = HashMap::new();
+                let mut io_map: HashMap<String, IoPair<Box<dyn LaneIo<Context>>, Box<dyn StoreIo>>> = HashMap::new();
 
                 #(#lifecycles_ast)*
 
@@ -236,13 +244,30 @@ pub struct AgentField {
     pub lifecycle_ast: proc_macro2::TokenStream,
 }
 
+fn check_lane_persistence(
+    lane_type: LaneType,
+    transient: &SpannedValue<bool>,
+) -> Result<(), TokenStream> {
+    if !matches!(lane_type, LaneType::Map | LaneType::Value) && **transient {
+        Err(syn::Error::new(
+            transient.span(),
+            "Stateless lanes cannot persist their data",
+        )
+        .to_compile_error()
+        .into())
+    } else {
+        Ok(())
+    }
+}
+
 fn create_lane(
     lane_type: &LaneType,
     is_public: bool,
     agent_name: &Ident,
     lifecycle: &Ident,
     lane_name: &Ident,
-) -> (proc_macro2::TokenStream, Ident) {
+    transient: SpannedValue<bool>,
+) -> Result<IdentifiedTokens, TokenStream> {
     let lane_name_str = lane_name.to_string();
     let task_variable = get_task_var_name(&lane_name_str);
     let task_structure = get_task_struct_name(&lifecycle.to_string());
@@ -258,10 +283,11 @@ fn create_lane(
         lane_name_lit: &lane_name_lit,
     };
 
+    check_lane_persistence(*lane_type, &transient)?;
+
     let ts = match lane_type {
         LaneType::Command => {
             let model = quote!(let (#lane_name, event_stream) = swim_server::agent::lane::model::command::make_lane_model(exec_conf.action_buffer.clone()););
-
             build_lane_io(
                 lane_data,
                 quote! {
@@ -269,7 +295,7 @@ fn create_lane(
 
                     io_map.insert (
                         #lane_name_lit.to_string(),
-                        Box::new(swim_server::agent::CommandLaneIo::new(#lane_name.clone()))
+                        IoPair::new(Some(Box::new(swim_server::agent::CommandLaneIo::new(#lane_name.clone()))), Some(Box::new(LaneNoStore)))
                     );
                 },
                 model,
@@ -277,7 +303,6 @@ fn create_lane(
         }
         LaneType::Action => {
             let model = quote!(let (#lane_name, event_stream) = swim_server::agent::lane::model::action::make_lane_model(exec_conf.action_buffer.clone()););
-
             build_lane_io(
                 lane_data,
                 quote! {
@@ -285,17 +310,20 @@ fn create_lane(
 
                     io_map.insert (
                         #lane_name_lit.to_string(),
-                        Box::new(swim_server::agent::ActionLaneIo::new(#lane_name.clone()))
+                        IoPair::new(Some(Box::new(swim_server::agent::ActionLaneIo::new(#lane_name.clone()))), Some(Box::new(LaneNoStore)))
                     );
                 },
                 model,
             )
         }
         LaneType::Value => {
+            let is_transient = *transient;
+            let transient = quote!(#is_transient);
+
             let model = quote! {
-                let (#lane_name, observer) = swim_server::agent::lane::model::value::ValueLane::observable(Default::default(), exec_conf.observation_buffer);
+                let (#lane_name, observer, store_io) = swim_server::agent::lane::model::value::streamed_value_lane(#lane_name_lit, exec_conf.observation_buffer, #transient, store.clone());
                 let subscriber = observer.subscriber();
-                let event_stream = observer.into_stream();
+                let event_stream = observer.clone().into_stream();
             };
 
             build_lane_io(
@@ -305,15 +333,18 @@ fn create_lane(
 
                     io_map.insert (
                         #lane_name_lit.to_string(),
-                        Box::new(swim_server::agent::ValueLaneIo::new(#lane_name.clone(), subscriber))
+                        IoPair::new(Some(Box::new(swim_server::agent::ValueLaneIo::new(#lane_name.clone(), subscriber))), store_io)
                     );
                 },
                 model,
             )
         }
         LaneType::Map => {
+            let is_transient = *transient;
+            let transient = quote!(#is_transient);
+
             let model = quote! {
-                let (#lane_name, subscriber, event_stream) = swim_server::agent::lane::model::map::streamed_map_lane(exec_conf.observation_buffer);
+                let (#lane_name, subscriber, event_stream, store_io) = swim_server::agent::lane::model::map::streamed_map_lane(#lane_name_lit, exec_conf.observation_buffer, #transient, store.clone());
             };
 
             build_lane_io(
@@ -322,7 +353,8 @@ fn create_lane(
                     #model
 
                     io_map.insert (
-                        #lane_name_lit.to_string(), Box::new(swim_server::agent::MapLaneIo::new(#lane_name.clone(), subscriber))
+                        #lane_name_lit.to_string(),
+                        IoPair::new(Some(Box::new(swim_server::agent::MapLaneIo::new(#lane_name.clone(), subscriber))), store_io)
                     );
                 },
                 model,
@@ -332,10 +364,12 @@ fn create_lane(
         LaneType::DemandMap => build_demand_map_lane_io(lane_data),
     };
 
-    (ts, task_variable)
+    Ok((ts, task_variable))
 }
 
-pub fn get_agent_data(args: SwimAgentAttrs) -> (AgentName, ConfigType, Vec<AgentField>) {
+pub fn get_agent_data(
+    args: SwimAgentAttrs,
+) -> Result<(AgentName, ConfigType, Vec<AgentField>), TokenStream> {
     let SwimAgentAttrs {
         ident: agent_name,
         data: fields,
@@ -345,30 +379,43 @@ pub fn get_agent_data(args: SwimAgentAttrs) -> (AgentName, ConfigType, Vec<Agent
 
     let mut agent_fields = Vec::new();
 
-    fields.map_struct_fields(|field| {
-        if let (Some(lane_type), Some(lane_name), Some(lifecycle_name)) =
-            (field.get_lane_type(), field.ident, field.name)
-        {
-            let lifecycle_name = Ident::new(&lifecycle_name, Span::call_site());
-            let is_public = matches!(field.vis, Visibility::Public(_));
-
-            let (lifecycle_ast, task_name) = create_lane(
-                &lane_type,
-                is_public,
-                &agent_name,
-                &lifecycle_name,
-                &lane_name,
-            );
-
-            agent_fields.push(AgentField {
-                lane_name,
-                task_name,
-                lifecycle_ast,
-            });
+    match fields {
+        Data::Enum(_) => {
+            unimplemented!()
         }
-    });
+        Data::Struct(fields) => {
+            for field in fields {
+                if let (Some(lane_type), Some(lane_name), Some(lifecycle_name)) =
+                    (field.get_lane_type(), field.ident, field.name)
+                {
+                    let lifecycle_name = Ident::new(&lifecycle_name, Span::call_site());
+                    let is_public = matches!(field.vis, Visibility::Public(_));
 
-    (agent_name, config_type, agent_fields)
+                    let span = field.transient.span();
+                    let is_transient = field.transient.unwrap_or_default();
+
+                    let create_result = create_lane(
+                        &lane_type,
+                        is_public,
+                        &agent_name,
+                        &lifecycle_name,
+                        &lane_name,
+                        SpannedValue::new(is_transient, span),
+                    );
+                    match create_result {
+                        Ok((lifecycle_ast, task_name)) => agent_fields.push(AgentField {
+                            lane_name,
+                            task_name,
+                            lifecycle_ast,
+                        }),
+                        Err(e) => return Err(e),
+                    }
+                }
+            }
+        }
+    }
+
+    Ok((agent_name, config_type, agent_fields))
 }
 
 pub struct LaneData<'a> {
@@ -438,7 +485,7 @@ fn build_demand_lane_io(lane_data: LaneData) -> proc_macro2::TokenStream {
         };
 
         io_map.insert (
-            #lane_name_lit.to_string(), Box::new(swim_server::agent::DemandLaneIo::new(response_rx))
+            #lane_name_lit.to_string(), IoPair::new(Some(Box::new(swim_server::agent::DemandLaneIo::new(response_rx))), Some(Box::new(LaneNoStore)))
         );
     }
 }
@@ -471,7 +518,7 @@ fn build_demand_map_lane_io(lane_data: LaneData) -> proc_macro2::TokenStream {
 
         if #is_public {
             io_map.insert (
-                #lane_name_lit.to_string(), Box::new(swim_server::agent::DemandMapLaneIo::new(#lane_name.clone(), topic))
+                #lane_name_lit.to_string(), IoPair::new(Some(Box::new(swim_server::agent::DemandMapLaneIo::new(#lane_name.clone(), topic))), Some(Box::new(LaneNoStore)))
             );
         }
     }

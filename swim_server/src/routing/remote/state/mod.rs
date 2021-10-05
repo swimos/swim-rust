@@ -31,11 +31,11 @@ use std::io;
 use std::net::SocketAddr;
 use swim_common::routing::ws::WsConnections;
 use swim_common::routing::ConnectionError;
+use swim_utilities::future::open_ended::OpenEndedFutures;
+use swim_utilities::future::task::Spawner;
+use swim_utilities::trigger;
+use swim_utilities::trigger::promise::{self, Sender};
 use tokio_stream::wrappers::ReceiverStream;
-use utilities::future::open_ended::OpenEndedFutures;
-use utilities::sync::promise::Sender;
-use utilities::sync::{promise, trigger};
-use utilities::task::Spawner;
 
 #[cfg(test)]
 mod tests;
