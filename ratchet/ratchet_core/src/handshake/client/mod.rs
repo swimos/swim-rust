@@ -34,8 +34,8 @@ use crate::handshake::{
     ACCEPT_KEY, BAD_STATUS_CODE, UPGRADE_STR, WEBSOCKET_STR,
 };
 use crate::WebSocketStream;
-use tokio_util::codec::Decoder;
 use ratchet_ext::ExtensionProvider;
+use tokio_util::codec::Decoder;
 
 type Nonce = [u8; 24];
 

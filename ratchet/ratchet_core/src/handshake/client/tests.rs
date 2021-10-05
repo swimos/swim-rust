@@ -29,8 +29,8 @@ use ratchet_ext::{
     ReunitableExtension, RsvBits, SplittableExtension,
 };
 use sha1::{Digest, Sha1};
-use swim_utilities::trigger;
 use std::convert::Infallible;
+use swim_utilities::trigger;
 use tokio::io::AsyncReadExt;
 
 const TEST_URL: &str = "ws://127.0.0.1:9001/test";
