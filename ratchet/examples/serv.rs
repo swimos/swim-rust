@@ -13,18 +13,21 @@
 // limitations under the License.
 
 use bytes::BytesMut;
-use ratchet::{Message, NoExtProvider, PayloadType, ProtocolRegistry, WebSocketConfig};
+use ratchet::{
+    Error, Message, NoExtProvider, PayloadType, ProtocolRegistry, UpgradedServer, WebSocketConfig,
+    WebSocketResponse,
+};
 use tokio::net::TcpListener;
 use tokio_stream::wrappers::TcpListenerStream;
 use tokio_stream::StreamExt;
 
 #[tokio::main]
-async fn main() {
-    let listener = TcpListener::bind("127.0.0.1:9001").await.unwrap();
+async fn main() -> Result<(), Error> {
+    let listener = TcpListener::bind("127.0.0.1:9001").await?;
     let mut incoming = TcpListenerStream::new(listener);
 
     while let Some(socket) = incoming.next().await {
-        let socket = socket.unwrap();
+        let socket = socket?;
 
         let mut websocket = ratchet::accept_with(
             socket,
@@ -32,29 +35,30 @@ async fn main() {
             NoExtProvider,
             ProtocolRegistry::default(),
         )
-        .await
-        .unwrap()
-        .upgrade()
-        .await
-        .unwrap()
-        .socket;
+        .await?;
 
-        println!("Accepted connection");
+        // You could opt to reject the connection
+        // websocket.reject(WebSocketResponse::new(404)?).await?;
+
+        // Or you could opt to reject the connection with headers
+        // websocket.reject(WebSocketResponse::with_headers(404, headers)?).await;
+
+        let UpgradedServer {
+            request,
+            mut websocket,
+            subprotocol,
+        } = websocket.upgrade().await?;
 
         let mut buf = BytesMut::new();
 
         loop {
-            match websocket.read(&mut buf).await.unwrap() {
+            match websocket.read(&mut buf).await? {
                 Message::Text => {
-                    let _s = String::from_utf8(buf.to_vec()).unwrap();
-                    websocket.write(&mut buf, PayloadType::Text).await.unwrap();
+                    websocket.write(&mut buf, PayloadType::Text).await?;
                     buf.clear();
                 }
                 Message::Binary => {
-                    websocket
-                        .write(&mut buf, PayloadType::Binary)
-                        .await
-                        .unwrap();
+                    websocket.write(&mut buf, PayloadType::Binary).await?;
                     buf.clear();
                 }
                 Message::Ping | Message::Pong => {}
@@ -62,4 +66,6 @@ async fn main() {
             }
         }
     }
+
+    Ok(())
 }

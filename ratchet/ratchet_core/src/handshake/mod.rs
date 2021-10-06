@@ -24,18 +24,19 @@ use crate::errors::{ErrorKind, HttpError};
 use crate::handshake::io::BufferedIo;
 use crate::{InvalidHeader, Request};
 use bytes::Bytes;
-pub use client::{exec_client_handshake, HandshakeResult};
 use fnv::FnvHashSet;
 use http::header::{HeaderName, SEC_WEBSOCKET_PROTOCOL};
 use http::Uri;
 use http::{header, HeaderMap, HeaderValue};
 use httparse::Header;
-pub use server::{accept, accept_with, WebSocketResponse, WebSocketUpgrader};
 use std::borrow::Cow;
 use std::str::FromStr;
 use tokio::io::AsyncRead;
 use tokio_util::codec::Decoder;
 use url::Url;
+
+pub use client::{subscribe, subscribe_with, HandshakeResult, UpgradedClient};
+pub use server::{accept, accept_with, UpgradedServer, WebSocketResponse, WebSocketUpgrader};
 
 const WEBSOCKET_STR: &str = "websocket";
 const UPGRADE_STR: &str = "upgrade";
@@ -44,6 +45,8 @@ const BAD_STATUS_CODE: &str = "Invalid status code";
 const ACCEPT_KEY: &[u8] = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const METHOD_GET: &str = "get";
 
+/// A subprotocol registry that is used for negotiating a possible subprotocol to use for a
+/// connection.
 #[derive(Default, Debug)]
 pub struct ProtocolRegistry {
     registrants: FnvHashSet<Cow<'static, str>>,
@@ -55,6 +58,7 @@ enum Bias {
 }
 
 impl ProtocolRegistry {
+    /// Construct a new protocol registry that will allow the provided items.
     pub fn new<I>(i: I) -> ProtocolRegistry
     where
         I: IntoIterator,
@@ -103,7 +107,7 @@ impl ProtocolRegistry {
         Ok(None)
     }
 
-    pub fn negotiate_response(
+    pub(crate) fn negotiate_response(
         &self,
         response: &httparse::Response,
     ) -> Result<Option<String>, ProtocolError> {
@@ -115,7 +119,7 @@ impl ProtocolRegistry {
         self.negotiate(it, Bias::Left)
     }
 
-    pub fn negotiate_request(
+    pub(crate) fn negotiate_request(
         &self,
         request: &httparse::Request,
     ) -> Result<Option<String>, ProtocolError> {
@@ -127,7 +131,7 @@ impl ProtocolRegistry {
         self.negotiate(it, Bias::Right)
     }
 
-    pub fn apply_to(&self, target: &mut HeaderMap) -> Result<(), crate::Error> {
+    pub(crate) fn apply_to(&self, target: &mut HeaderMap) -> Result<(), crate::Error> {
         if self.registrants.is_empty() {
             return Ok(());
         }
@@ -185,7 +189,9 @@ pub enum ParseResult<O> {
     Partial,
 }
 
+/// A trait for creating a request from a type.
 pub trait TryIntoRequest {
+    /// Attempt to convert this type into a `Request`.
     fn try_into_request(self) -> Result<Request, Error>;
 }
 

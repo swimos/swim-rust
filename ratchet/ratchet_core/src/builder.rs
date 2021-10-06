@@ -14,12 +14,16 @@
 
 use crate::errors::Error;
 use crate::ext::NoExtProvider;
-use crate::handshake::ProtocolRegistry;
-use crate::ws::Upgraded;
-use crate::{client, TryIntoRequest, WebSocketConfig, WebSocketStream};
-use ratchet_ext::{Extension, ExtensionProvider};
+use crate::handshake::{ProtocolRegistry, UpgradedServer};
+use crate::{subscribe_with, TryIntoRequest, UpgradedClient, WebSocketConfig, WebSocketStream};
+use ratchet_ext::ExtensionProvider;
 use std::borrow::Cow;
 
+/// A builder to construct WebSocket clients.
+///
+/// If a lot of connections will be negotiated it is more efficient to directly use `subscribe_with`
+/// than this builder as it is possible for `subscribe_with` to borrow the extension provider and
+/// protocol registry.
 #[derive(Debug)]
 pub struct WebSocketClientBuilder<E> {
     config: Option<WebSocketConfig>,
@@ -38,11 +42,12 @@ impl Default for WebSocketClientBuilder<NoExtProvider> {
 }
 
 impl<E> WebSocketClientBuilder<E> {
+    /// Attempt to execute a client handshake
     pub async fn subscribe<S, I>(
         self,
         stream: S,
         request: I,
-    ) -> Result<Upgraded<S, impl Extension>, Error>
+    ) -> Result<UpgradedClient<S, E::Extension>, Error>
     where
         S: WebSocketStream,
         I: TryIntoRequest,
@@ -56,7 +61,7 @@ impl<E> WebSocketClientBuilder<E> {
         } = self;
         let request = request.try_into_request()?;
 
-        client(
+        subscribe_with(
             config.unwrap_or_default(),
             stream,
             request,
@@ -66,11 +71,13 @@ impl<E> WebSocketClientBuilder<E> {
         .await
     }
 
+    /// Sets the configuration that will be used for the connection.
     pub fn config(mut self, config: WebSocketConfig) -> Self {
         self.config = Some(config);
         self
     }
 
+    /// Sets the extension that will be used for the connection.
     pub fn extension<T>(self, extension: T) -> WebSocketClientBuilder<T>
     where
         T: ExtensionProvider,
@@ -87,6 +94,7 @@ impl<E> WebSocketClientBuilder<E> {
         }
     }
 
+    /// Sets the subprotocols that will be used for the connection.
     pub fn subprotocols<I>(mut self, subprotocols: I) -> Self
     where
         I: IntoIterator,
@@ -97,6 +105,11 @@ impl<E> WebSocketClientBuilder<E> {
     }
 }
 
+/// A builder to construct WebSocket servers.
+///
+/// If a lot of connections will be negotiated it is more efficient to directly use `accept_with`
+/// than this builder as it is possible for `accept_with` to borrow the extension provider and
+/// protocol registry.
 #[derive(Debug)]
 pub struct WebSocketServerBuilder<E> {
     config: Option<WebSocketConfig>,
@@ -115,7 +128,8 @@ impl Default for WebSocketServerBuilder<NoExtProvider> {
 }
 
 impl<E> WebSocketServerBuilder<E> {
-    pub async fn accept<S>(self, stream: S) -> Result<Upgraded<S, E::Extension>, Error>
+    /// Accept `stream` and perform a server WebSocket handshake.
+    pub async fn accept<S>(self, stream: S) -> Result<UpgradedServer<S, E::Extension>, Error>
     where
         S: WebSocketStream,
         E: ExtensionProvider,
@@ -130,11 +144,13 @@ impl<E> WebSocketServerBuilder<E> {
         upgrader.upgrade().await
     }
 
+    /// Sets the configuration that will be used for the connection.
     pub fn config(mut self, config: WebSocketConfig) -> Self {
         self.config = Some(config);
         self
     }
 
+    /// Sets the extension that will be used for the connection.
     pub fn extension<T>(self, extension: T) -> WebSocketServerBuilder<T>
     where
         T: ExtensionProvider,
@@ -151,6 +167,7 @@ impl<E> WebSocketServerBuilder<E> {
         }
     }
 
+    /// Sets the subprotocols that will be used for the connection.
     pub fn subprotocols<I>(mut self, subprotocols: I) -> Self
     where
         I: IntoIterator,

@@ -23,8 +23,8 @@ use crate::handshake::{StreamingParser, ACCEPT_KEY};
 use crate::handshake::{UPGRADE_STR, WEBSOCKET_STR};
 use crate::protocol::Role;
 use crate::{
-    Error, HttpError, NoExtProvider, ProtocolRegistry, Request, Upgraded, WebSocket,
-    WebSocketConfig, WebSocketStream,
+    Error, HttpError, NoExtProvider, ProtocolRegistry, Request, WebSocket, WebSocketConfig,
+    WebSocketStream,
 };
 use bytes::{Bytes, BytesMut};
 use http::status::InvalidStatusCode;
@@ -34,6 +34,23 @@ use sha1::{Digest, Sha1};
 use std::convert::TryFrom;
 use std::iter::FromIterator;
 
+/// A structure representing an upgraded WebSocket session and an optional subprotocol that was
+/// negotiated during the upgrade.
+#[derive(Debug)]
+pub struct UpgradedServer<S, E> {
+    /// The original request that the peer sent.
+    pub request: Request,
+    /// The WebSocket connection.
+    pub websocket: WebSocket<S, E>,
+    /// An optional subprotocol that was negotiated during the upgrade.
+    pub subprotocol: Option<String>,
+}
+
+/// Execute a server handshake on the provided stream.
+///
+/// Returns either a `WebSocketUpgrader` that may be used to either accept or reject the peer or an
+/// error if the peer's request is malformatted or if an IO error occurs. If the peer is accepted,
+/// then `config` will be used for building the `WebSocket`.
 pub async fn accept<S, E>(
     stream: S,
     config: WebSocketConfig,
@@ -44,6 +61,12 @@ where
     accept_with(stream, config, NoExtProvider, ProtocolRegistry::default()).await
 }
 
+/// Execute a server handshake on the provided stream. An attempt will be made to negotiate the
+/// extension and subprotocols provided.
+///
+/// Returns either a `WebSocketUpgrader` that may be used to either accept or reject the peer or an
+/// error if the peer's request is malformatted or if an IO error occurs. If the peer is accepted,
+/// then `config`, `extension` and `subprotocols` will be used for building the `WebSocket`.
 pub async fn accept_with<S, E>(
     mut stream: S,
     config: WebSocketConfig,
@@ -101,6 +124,7 @@ where
     }
 }
 
+/// A response to send to a client if the connection will not be upgraded.
 #[derive(Debug)]
 pub struct WebSocketResponse {
     status: StatusCode,
@@ -108,6 +132,10 @@ pub struct WebSocketResponse {
 }
 
 impl WebSocketResponse {
+    /// Attempt to construct a new `WebSocketResponse` from `code`.
+    ///
+    /// # Errors
+    /// Errors if the status code is invalid.
     pub fn new(code: u16) -> Result<WebSocketResponse, InvalidStatusCode> {
         StatusCode::from_u16(code).map(|status| WebSocketResponse {
             status,
@@ -115,6 +143,10 @@ impl WebSocketResponse {
         })
     }
 
+    /// Attempt to construct a new `WebSocketResponse` from `code` and `headers.
+    ///
+    /// # Errors
+    /// Errors if the status code is invalid.
     pub fn with_headers<I>(code: u16, headers: I) -> Result<WebSocketResponse, InvalidStatusCode>
     where
         I: IntoIterator<Item = (http::header::HeaderName, http::header::HeaderValue)>,
@@ -126,6 +158,9 @@ impl WebSocketResponse {
     }
 }
 
+/// Represents a client connection that has been accepted and the upgrade request validated. This
+/// may be used to validate the request by a user and opt to either continue the upgrade or reject
+/// the connection - such as if the target path does not exist.
 #[derive(Debug)]
 pub struct WebSocketUpgrader<S, E> {
     request: Request,
@@ -143,24 +178,37 @@ where
     S: WebSocketStream,
     E: Extension,
 {
+    /// The subprotocol that the client has requested.
     pub fn subprotocol(&self) -> Option<&String> {
         self.subprotocol.as_ref()
     }
 
+    /// The URI that the client has requested.
     pub fn uri(&self) -> &Uri {
         self.request.uri()
     }
 
+    /// The original request that the client sent.
     pub fn request(&self) -> &Request {
         &self.request
     }
 
-    pub async fn upgrade(self) -> Result<Upgraded<S, E>, Error> {
+    /// Attempt to upgrade this to a fully negotiated WebSocket connection.
+    ///
+    /// # Errors
+    /// Errors if there is an IO error.
+    pub async fn upgrade(self) -> Result<UpgradedServer<S, E>, Error> {
         self.upgrade_with(HeaderMap::default()).await
     }
 
-    pub async fn upgrade_with(self, mut headers: HeaderMap) -> Result<Upgraded<S, E>, Error> {
+    /// Insert `headers` into the response and attempt to upgrade this to a fully negotiated
+    /// WebSocket connection.
+    ///
+    /// # Errors
+    /// Errors if there is an IO error.
+    pub async fn upgrade_with(self, mut headers: HeaderMap) -> Result<UpgradedServer<S, E>, Error> {
         let WebSocketUpgrader {
+            request,
             key,
             subprotocol,
             mut buf,
@@ -168,7 +216,6 @@ where
             extension,
             extension_header,
             config,
-            ..
         } = self;
 
         let mut digest = Sha1::new();
@@ -209,12 +256,17 @@ where
 
         buf.clear();
 
-        Ok(Upgraded {
-            socket: WebSocket::from_upgraded(config, stream, extension, buf, Role::Server),
+        Ok(UpgradedServer {
+            request,
+            websocket: WebSocket::from_upgraded(config, stream, extension, buf, Role::Server),
             subprotocol,
         })
     }
 
+    /// Reject this connection with the response provided.
+    ///
+    /// # Errors
+    /// Errors if there is an IO error.
     pub async fn reject(self, response: WebSocketResponse) -> Result<(), Error> {
         let WebSocketResponse { status, headers } = response;
         let WebSocketUpgrader {

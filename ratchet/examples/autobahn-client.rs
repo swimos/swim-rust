@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use bytes::BytesMut;
-use ratchet::{client, Upgraded};
+use ratchet::{subscribe, subscribe_with, Upgraded};
 use ratchet::{Error, Message, PayloadType, ProtocolRegistry, TryIntoRequest, WebSocketConfig};
 use ratchet_deflate::{Deflate, DeflateExtProvider};
 use tokio::net::TcpStream;
@@ -24,7 +24,7 @@ async fn subscribe(url: &str) -> Result<Upgraded<TcpStream, Deflate>, Error> {
     let stream = TcpStream::connect("127.0.0.1:9001").await.unwrap();
     stream.set_nodelay(true).unwrap();
 
-    client(
+    subscribe_with(
         WebSocketConfig::default(),
         stream,
         url.try_into_request().unwrap(),

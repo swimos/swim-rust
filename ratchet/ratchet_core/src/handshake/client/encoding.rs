@@ -118,7 +118,10 @@ where
     } = parts;
 
     if method != Method::GET {
-        return Err(Error::with_cause(ErrorKind::Http, HttpError::InvalidMethod));
+        return Err(Error::with_cause(
+            ErrorKind::Http,
+            HttpError::HttpMethod(Some(method.to_string())),
+        ));
     }
 
     if version != Version::HTTP_11 {

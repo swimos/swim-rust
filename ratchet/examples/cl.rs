@@ -12,7 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use ratchet::{client, NoExtProvider, ProtocolRegistry, TryIntoRequest, WebSocketConfig};
+use bytes::BytesMut;
+use ratchet::{
+    subscribe, Message, NoExtProvider, PayloadType, ProtocolRegistry, TryIntoRequest,
+    UpgradedClient, WebSocketConfig,
+};
 use tokio::net::TcpStream;
 
 #[tokio::main]
@@ -20,13 +24,34 @@ async fn main() {
     let stream = TcpStream::connect("127.0.0.1:9001").await.unwrap();
     stream.set_nodelay(true).unwrap();
 
-    client(
+    let upgraded = subscribe(
         WebSocketConfig::default(),
         stream,
         "ws://127.0.0.1/hello".try_into_request().unwrap(),
-        &NoExtProvider,
-        ProtocolRegistry::default(),
     )
     .await
     .unwrap();
+
+    let UpgradedClient {
+        mut websocket,
+        subprotocol,
+    } = upgraded;
+    let mut buf = BytesMut::new();
+
+    let (mut sender, mut receiver) = websocket.split()?;
+
+    loop {
+        match receiver.read(&mut buf).await? {
+            Message::Text => {
+                sender.write(&mut buf, PayloadType::Text).await?;
+                buf.clear();
+            }
+            Message::Binary => {
+                sender.write(&mut buf, PayloadType::Binary).await?;
+                buf.clear();
+            }
+            Message::Ping | Message::Pong => {}
+            Message::Close(_) => break Ok(()),
+        }
+    }
 }

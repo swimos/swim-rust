@@ -234,7 +234,7 @@ where
         message_type: PayloadType,
     ) -> Result<(), Error> {
         if self.is_closed() {
-            return Err(Error::with_cause(ErrorKind::Close, CloseError::Closed));
+            return Err(Error::with_cause(ErrorKind::Close, CloseError));
         }
 
         let writer = &mut *self.split_writer.lock().await;
@@ -262,7 +262,7 @@ where
         fragment_size: usize,
     ) -> Result<(), Error> {
         if self.is_closed() {
-            return Err(Error::with_cause(ErrorKind::Close, CloseError::Closed));
+            return Err(Error::with_cause(ErrorKind::Close, CloseError));
         }
         let WriteHalf {
             split_writer,

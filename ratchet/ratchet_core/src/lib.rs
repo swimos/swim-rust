@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! Ratchet's core implementation. See the Ratchet crate for usage.
+
 #![deny(
     missing_docs,
     missing_copy_implementations,
@@ -42,10 +44,11 @@ pub use builder::{WebSocketClientBuilder, WebSocketServerBuilder};
 pub use errors::*;
 pub use ext::{NoExt, NoExtProvider};
 pub use handshake::{
-    accept, accept_with, ProtocolRegistry, TryIntoRequest, WebSocketResponse, WebSocketUpgrader,
+    accept, accept_with, subscribe, subscribe_with, ProtocolRegistry, TryIntoRequest,
+    UpgradedClient, UpgradedServer, WebSocketResponse, WebSocketUpgrader,
 };
 pub use protocol::{Message, PayloadType, Role, WebSocketConfig};
-pub use ws::{client, Upgraded, WebSocket};
+pub use ws::WebSocket;
 
 use tokio::io::{AsyncRead, AsyncWrite};
 

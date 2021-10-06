@@ -33,7 +33,7 @@ use crate::handshake::{
     validate_header, validate_header_value, ParseResult, ProtocolRegistry, StreamingParser,
     ACCEPT_KEY, BAD_STATUS_CODE, UPGRADE_STR, WEBSOCKET_STR,
 };
-use crate::WebSocketStream;
+use crate::{NoExt, NoExtProvider, Role, WebSocket, WebSocketConfig, WebSocketStream};
 use ratchet_ext::ExtensionProvider;
 use tokio_util::codec::Decoder;
 
@@ -43,7 +43,78 @@ const MSG_HANDSHAKE_COMPLETED: &str = "Handshake completed";
 const MSG_HANDSHAKE_FAILED: &str = "Handshake failed";
 const MSG_HANDSHAKE_START: &str = "Executing client handshake";
 
-pub async fn exec_client_handshake<S, E>(
+/// A structure representing an upgraded WebSocket session and an optional subprotocol that was
+/// negotiated during the upgrade.
+#[derive(Debug)]
+pub struct UpgradedClient<S, E> {
+    /// The WebSocket connection.
+    pub websocket: WebSocket<S, E>,
+    /// An optional subprotocol that was negotiated during the upgrade.
+    pub subprotocol: Option<String>,
+}
+
+/// Execute a WebSocket client handshake on `stream`, opting for no compression on messages and no
+/// subprotocol.
+pub async fn subscribe<S>(
+    config: WebSocketConfig,
+    mut stream: S,
+    request: Request<()>,
+) -> Result<UpgradedClient<S, NoExt>, Error>
+where
+    S: WebSocketStream,
+{
+    let mut read_buffer = BytesMut::new();
+    let HandshakeResult {
+        subprotocol,
+        extension,
+    } = exec_client_handshake(
+        &mut stream,
+        request,
+        NoExtProvider,
+        ProtocolRegistry::default(),
+        &mut read_buffer,
+    )
+    .await?;
+
+    Ok(UpgradedClient {
+        websocket: WebSocket::from_upgraded(config, stream, extension, read_buffer, Role::Client),
+        subprotocol,
+    })
+}
+
+/// Execute a WebSocket client handshake on `stream`, attempting to negotiate the extension and a
+/// subprotocol.
+pub async fn subscribe_with<S, E>(
+    config: WebSocketConfig,
+    mut stream: S,
+    request: Request<()>,
+    extension: &E,
+    subprotocols: ProtocolRegistry,
+) -> Result<UpgradedClient<S, E::Extension>, Error>
+where
+    S: WebSocketStream,
+    E: ExtensionProvider,
+{
+    let mut read_buffer = BytesMut::new();
+    let HandshakeResult {
+        subprotocol,
+        extension,
+    } = exec_client_handshake(
+        &mut stream,
+        request,
+        extension,
+        subprotocols,
+        &mut read_buffer,
+    )
+    .await?;
+
+    Ok(UpgradedClient {
+        websocket: WebSocket::from_upgraded(config, stream, extension, read_buffer, Role::Client),
+        subprotocol,
+    })
+}
+
+async fn exec_client_handshake<S, E>(
     stream: &mut S,
     request: Request<()>,
     extension: E,

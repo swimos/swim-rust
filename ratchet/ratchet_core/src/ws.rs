@@ -15,14 +15,13 @@
 use crate::errors::{CloseError, Error, ErrorKind, ProtocolError};
 use crate::ext::NegotiatedExtension;
 use crate::framed::{FramedIo, Item};
-use crate::handshake::{exec_client_handshake, HandshakeResult, ProtocolRegistry};
 use crate::protocol::{
     CloseCode, CloseReason, ControlCode, DataCode, HeaderFlags, Message, MessageType, OpCode,
     PayloadType, Role,
 };
-use crate::{Request, WebSocketConfig, WebSocketStream};
+use crate::{WebSocketConfig, WebSocketStream};
 use bytes::BytesMut;
-use ratchet_ext::{Extension, ExtensionEncoder, ExtensionProvider, FrameHeader as ExtFrameHeader};
+use ratchet_ext::{Extension, ExtensionEncoder, FrameHeader as ExtFrameHeader};
 
 #[cfg(feature = "split")]
 use crate::split::{split, Receiver, Sender};
@@ -38,6 +37,7 @@ type SplitSocket<S, E> = (
     Receiver<S, <E as SplittableExtension>::SplitDecoder>,
 );
 
+/// A WebSocket stream.
 #[derive(Debug)]
 pub struct WebSocket<S, E> {
     framed: FramedIo<S>,
@@ -72,7 +72,7 @@ where
     /// `config` - The configuration to initialise the WebSocket with.
     /// `stream` - The stream that the handshake was executed on.
     /// `extension` - A negotiated extension that will be used for the session.
-    /// `read_buffer` - The read buffer which will be used for the session. This *may* contain any
+    /// `read_buffer` - The read buffer which will be used for the session. This **may** contain any
     /// unread data received after performing the handshake that was not required.
     /// `role` - The role that this WebSocket will take.
     pub fn from_upgraded(
@@ -113,7 +113,7 @@ where
     /// these may be interleaved between data frames. In the event of one being received while
     /// reading a continuation, this function will then yield `Message::Ping` and the `read_buffer`
     /// will contain the data received up to that point. The callee must ensure that the contents
-    /// of `read_buffer` are *not* then modified before calling `read` again.
+    /// of `read_buffer` are **not** then modified before calling `read` again.
     pub async fn read(&mut self, read_buffer: &mut BytesMut) -> Result<Message, Error> {
         let WebSocket {
             framed,
@@ -124,7 +124,7 @@ where
         } = self;
 
         if *closed {
-            return Err(Error::with_cause(ErrorKind::Close, CloseError::Closed));
+            return Err(Error::with_cause(ErrorKind::Close, CloseError));
         }
 
         loop {
@@ -201,6 +201,7 @@ where
         }
     }
 
+    /// Constructs a new WebSocket message of `message_type` and with a payload of `buf_ref.
     pub async fn write<A>(&mut self, mut buf_ref: A, message_type: PayloadType) -> Result<(), Error>
     where
         A: AsMut<[u8]>,
@@ -208,7 +209,7 @@ where
         let buf = buf_ref.as_mut();
 
         if self.closed {
-            return Err(Error::with_cause(ErrorKind::Close, CloseError::Closed));
+            return Err(Error::with_cause(ErrorKind::Close, CloseError));
         }
 
         let op_code = match message_type {
@@ -252,6 +253,9 @@ where
             .await
     }
 
+    /// Constructs a new WebSocket message of `message_type` and with a payload of `buf_ref` and
+    /// chunked by `fragment_size`. If the length of the buffer is less than the chunk size then
+    /// only a single message is sent.
     pub async fn write_fragmented<A>(
         &mut self,
         buf: A,
@@ -262,7 +266,7 @@ where
         A: AsMut<[u8]>,
     {
         if self.closed {
-            return Err(Error::with_cause(ErrorKind::Close, CloseError::Closed));
+            return Err(Error::with_cause(ErrorKind::Close, CloseError));
         }
         let encoder = &mut self.extension;
         self.framed
@@ -277,16 +281,26 @@ where
         self.closed
     }
 
-    // todo add docs about:
-    //  - https://github.com/tokio-rs/tokio/issues/3200
-    //  - https://github.com/tokio-rs/tls/issues/40
+    /// Attempt to split the `WebSocket` into its sender and receiver halves.
+    ///
+    /// # Note
+    /// This function does **not** split the IO. It, instead, places the IO into a `BiLock` and
+    /// requires exclusive access to it in order to perform any read or write operations.
+    ///
+    /// In addition to this, the internal framed writer is placed into a `BiLock` so
+    /// the receiver half can transparently handle control frames that may be received.
+    ///
+    /// See: [Tokio#3200](https://github.com/tokio-rs/tokio/issues/3200) and [Tokio#40](https://github.com/tokio-rs/tls/issues/40)
+    ///
+    /// # Errors
+    /// This function will only error if the `WebSocket` is already closed.
     #[cfg(feature = "split")]
     pub fn split(self) -> Result<SplitSocket<S, E>, Error>
     where
         E: SplittableExtension,
     {
         if self.is_closed() {
-            Err(Error::with_cause(ErrorKind::Close, CloseError::Closed))
+            Err(Error::with_cause(ErrorKind::Close, CloseError))
         } else {
             let WebSocket {
                 framed,
@@ -297,46 +311,6 @@ where
             Ok(split(framed, control_buffer, extension))
         }
     }
-}
-
-/// A structure representing an upgraded WebSocket session and an optional subprotocol that was
-/// negotiated during the upgrade.
-#[derive(Debug)]
-pub struct Upgraded<S, E> {
-    /// The WebSocket connection.
-    pub socket: WebSocket<S, E>,
-    /// An optional subprotocol that was negotiated during the upgrade.
-    pub subprotocol: Option<String>,
-}
-
-pub async fn client<S, E>(
-    config: WebSocketConfig,
-    mut stream: S,
-    request: Request,
-    extension: &E,
-    subprotocols: ProtocolRegistry,
-) -> Result<Upgraded<S, E::Extension>, Error>
-where
-    S: WebSocketStream,
-    E: ExtensionProvider,
-{
-    let mut read_buffer = BytesMut::new();
-    let HandshakeResult {
-        subprotocol,
-        extension,
-    } = exec_client_handshake(
-        &mut stream,
-        request,
-        extension,
-        subprotocols,
-        &mut read_buffer,
-    )
-    .await?;
-
-    Ok(Upgraded {
-        socket: WebSocket::from_upgraded(config, stream, extension, read_buffer, Role::Client),
-        subprotocol,
-    })
 }
 
 pub fn extension_encode<E>(
