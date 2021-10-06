@@ -4,8 +4,6 @@
 # Ratchet
 Ratchet is a fast, robust, lightweight and fully asynchronous implementation of [RFC6455](https://datatracker.ietf.org/doc/html/rfc6455) (The WebSocket protocol). Complete with an optional implementation of [RFC7692](https://datatracker.ietf.org/doc/html/rfc7692) (Compression Extensions For WebSocket).
 
-Ratchet is fast, robust and lightweight and the WebSocket is capable of being split into its sender and receiver halves.
-
 # Features
 - Implement your own extensions using [ratchet_ext](/ratchet_ext).
 - Per-message deflate with [ratchet_deflate](/ratchet_deflate) or enable with the `deflate`

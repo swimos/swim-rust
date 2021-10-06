@@ -15,7 +15,6 @@
 use bytes::BytesMut;
 use ratchet::{
     Error, Message, NoExtProvider, PayloadType, ProtocolRegistry, UpgradedServer, WebSocketConfig,
-    WebSocketResponse,
 };
 use tokio::net::TcpListener;
 use tokio_stream::wrappers::TcpListenerStream;
@@ -29,7 +28,7 @@ async fn main() -> Result<(), Error> {
     while let Some(socket) = incoming.next().await {
         let socket = socket?;
 
-        let mut websocket = ratchet::accept_with(
+        let upgrader = ratchet::accept_with(
             socket,
             WebSocketConfig::default(),
             NoExtProvider,
@@ -43,12 +42,7 @@ async fn main() -> Result<(), Error> {
         // Or you could opt to reject the connection with headers
         // websocket.reject(WebSocketResponse::with_headers(404, headers)?).await;
 
-        let UpgradedServer {
-            request,
-            mut websocket,
-            subprotocol,
-        } = websocket.upgrade().await?;
-
+        let UpgradedServer { mut websocket, .. } = upgrader.upgrade().await?;
         let mut buf = BytesMut::new();
 
         loop {

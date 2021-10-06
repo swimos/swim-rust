@@ -57,10 +57,7 @@ impl<E> WebSocketClientBuilder<E> {
             config,
             extension,
             subprotocols,
-            ..
         } = self;
-        let request = request.try_into_request()?;
-
         subscribe_with(
             config.unwrap_or_default(),
             stream,
