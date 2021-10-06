@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::ValidateFrom;
 use crate::modifiers::NameTransform;
 use crate::SynValidation;
 use macro_utilities::attr_names::{
@@ -105,11 +104,11 @@ impl<'a> TaggedFieldModel<'a> {
         )
     }
 
-    /// Determine if the serialization directive applied to the field is valid (header and attribute
-    /// fields must be labelled).
+    /// Determine if the serialization directive applied to the field is valid (header, tag and
+    /// attribute fields must be labelled).
     pub fn is_valid(&self) -> bool {
         match self.directive {
-            FieldKind::Header | FieldKind::Attr => self.is_labelled(),
+            FieldKind::Header | FieldKind::Attr | FieldKind::Tagged => self.is_labelled(),
             _ => true,
         }
     }
@@ -169,24 +168,84 @@ impl FieldAttributes {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct FieldWithIndex<'a>(pub &'a Field, pub usize);
 
-impl<'a> ValidateFrom<FieldWithIndex<'a>> for TaggedFieldModel<'a> {
-    fn validate(input: FieldWithIndex<'a>) -> SynValidation<Self> {
+/// Keeps track of unique kinds of fields in a type.
+#[derive(Default)]
+pub struct Manifest {
+    has_header_body: bool,
+    has_body: bool,
+    has_tag: bool,
+}
+
+impl Manifest {
+    pub fn validate_field<'a>(
+        &mut self,
+        input: FieldWithIndex<'a>,
+    ) -> SynValidation<TaggedFieldModel<'a>> {
+        let Manifest {
+            has_header_body,
+            has_body,
+            has_tag,
+        } = self;
         let FieldWithIndex(field, i) = input;
         let Field {
             attrs, ident, ty, ..
         } = field;
+
         let field_attrs = crate::modifiers::fold_attr_meta(
             FORM_PATH,
             attrs.iter(),
             FieldAttributes::default(),
-            |attrs, nested| match FieldAttr::try_from(nested) {
-                Ok(field_attr) => attrs.add(field, field_attr),
+            |attrs, nested| match FieldAttr::try_from(&nested) {
+                Ok(field_attr) => {
+                    let agg_err = match &field_attr {
+                        FieldAttr::Kind(FieldKind::Body) => {
+                            if *has_body {
+                                let err = syn::Error::new_spanned(
+                                    nested,
+                                    "At most one field can replace the body.",
+                                );
+                                Some(err)
+                            } else {
+                                *has_body = true;
+                                None
+                            }
+                        }
+                        FieldAttr::Kind(FieldKind::Tagged) => {
+                            if *has_tag {
+                                let err = syn::Error::new_spanned(nested, "Duplicate tag.");
+                                Some(err)
+                            } else {
+                                *has_tag = true;
+                                None
+                            }
+                        }
+                        FieldAttr::Kind(FieldKind::HeaderBody) => {
+                            if *has_header_body {
+                                let err = syn::Error::new_spanned(
+                                    nested,
+                                    "At most one field can replace the tag attribute body.",
+                                );
+                                Some(err)
+                            } else {
+                                *has_header_body = true;
+                                None
+                            }
+                        }
+                        _ => None,
+                    };
+                    let fld_result = attrs.add(field, field_attr);
+                    if let Some(err) = agg_err {
+                        fld_result.append_error(err)
+                    } else {
+                        fld_result
+                    }
+                }
                 Err(e) => Validation::Validated(attrs, e.into()),
             },
         );
-
         field_attrs.and_then(
             |FieldAttributes {
                  transform,
@@ -209,7 +268,7 @@ impl<'a> ValidateFrom<FieldWithIndex<'a>> for TaggedFieldModel<'a> {
                 } else {
                     let err = syn::Error::new_spanned(
                         field,
-                        "Header and attribute fields must be labelled",
+                        "Header, tag and attribute fields must be labelled",
                     );
                     Validation::Validated(model, err.into())
                 }
@@ -229,11 +288,11 @@ const KIND_MAPPING: [(&Symbol, FieldKind); 7] = [
     (&TAG_PATH, FieldKind::Tagged),
 ];
 
-impl TryFrom<NestedMeta> for FieldAttr {
+impl<'a> TryFrom<&'a NestedMeta> for FieldAttr {
     type Error = syn::Error;
 
-    fn try_from(input: NestedMeta) -> Result<Self, Self::Error> {
-        match &input {
+    fn try_from(input: &'a NestedMeta) -> Result<Self, Self::Error> {
+        match input {
             NestedMeta::Meta(Meta::Path(path)) => {
                 for (path_name, kind) in &KIND_MAPPING {
                     if path == *path_name {

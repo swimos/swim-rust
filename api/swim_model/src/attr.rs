@@ -35,7 +35,7 @@ impl Attr {
     ///
     /// ```
     /// use swim_model::{Attr, Value};
-    /// use swim_model::text::Text;
+    /// use swim_model::Text;
     ///
     /// assert_eq!(Attr::of("name"), Attr { name: Text::from("name"), value: Value::Extant, });
     /// assert_eq!(Attr::of(("key", 1)), Attr { name: Text::from("key"), value: Value::Int32Value(1), });
@@ -50,7 +50,7 @@ impl Attr {
     ///
     /// ```
     /// use swim_model::{Attr, Value};
-    /// use swim_model::text::Text;
+    /// use swim_model::Text;
     ///
     /// assert_eq!(Attr::with_value("name", 1), Attr { name: Text::from("name"), value: Value::Int32Value(1), });
     ///
@@ -65,7 +65,7 @@ impl Attr {
     ///
     /// ```
     /// use swim_model::{Attr, Value, Item};
-    /// use swim_model::text::Text;
+    /// use swim_model::Text;
     ///
     /// assert_eq!(
     ///     Attr::with_field("name", "inner", 1),
@@ -86,7 +86,7 @@ impl Attr {
     ///
     /// ```
     /// use swim_model::{Attr, Value, Item};
-    /// use swim_model::text::Text;
+    /// use swim_model::Text;
     ///
     /// assert_eq!(
     ///     Attr::with_item("name", 1),
@@ -107,7 +107,7 @@ impl Attr {
     ///
     /// ```
     /// use swim_model::{Attr, Value, Item};
-    /// use swim_model::text::Text;
+    /// use swim_model::Text;
     ///
     /// assert_eq!(
     ///     Attr::with_items("name", vec![0, 1]),

@@ -14,7 +14,9 @@
 
 use super::ValidateFrom;
 use crate::modifiers::NameTransform;
-use crate::structural::model::field::{FieldWithIndex, SegregatedFields, TaggedFieldModel};
+use crate::structural::model::field::{
+    FieldWithIndex, Manifest, SegregatedFields, TaggedFieldModel,
+};
 use crate::structural::model::StructLike;
 use crate::SynValidation;
 use macro_utilities::attr_names::FORM_PATH;
@@ -172,11 +174,13 @@ impl<'a> ValidateFrom<&'a Fields> for FieldsModel<'a> {
             _ => (CompoundTypeKind::Unit, None),
         };
 
+        let mut manifest = Manifest::default();
+
         let field_models = if let Some(field_it) = fields {
             field_it
                 .enumerate()
                 .map(|(i, fld)| FieldWithIndex(fld, i))
-                .validate_collect(true, TaggedFieldModel::validate)
+                .validate_collect(true, |fld| manifest.validate_field(fld))
         } else {
             Validation::valid(vec![])
         };

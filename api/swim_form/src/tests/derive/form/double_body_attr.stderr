@@ -1,11 +1,5 @@
 error: At most one field can replace the body.
-  --> $DIR/double_body_attr.rs:19:14
+  --> $DIR/double_body_attr.rs:22:16
    |
-19 |       struct S {
-   |  ______________^
-20 | |         #[form(body)]
-21 | |         a: i32,
-22 | |         #[form(body)]
-23 | |         b: i32,
-24 | |     }
-   | |_____^
+22 |         #[form(body)]
+   |                ^^^^

@@ -394,7 +394,7 @@ use swim_model::Value;
 /// ```
 /// Is equivalent to:
 /// ```
-/// use use swim_form::Form;
+/// use swim_form::Form;
 /// use swim_schema::ValueSchema;
 /// use swim_model::ValueKind;
 ///
