@@ -348,7 +348,7 @@ impl Recognizer for TimestampRecognizer {
                     Utc.timestamp_opt(n / 1_000_000_000, (n % 1_000_000_000) as u32),
                     &n,
                 )
-                .map(|t| Timestamp::from(t))
+                .map(Timestamp::from)
                 .map_err(|_| ReadError::NumberOutOfRange);
 
                 Some(result)
@@ -358,7 +358,7 @@ impl Recognizer for TimestampRecognizer {
                     Utc.timestamp_opt((n / 1_000_000_000) as i64, (n % 1_000_000_000) as u32),
                     &n,
                 )
-                .map(|t| Timestamp::from(t))
+                .map(Timestamp::from)
                 .map_err(|_| ReadError::NumberOutOfRange);
                 Some(result)
             }

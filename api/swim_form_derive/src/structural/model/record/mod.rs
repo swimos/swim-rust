@@ -41,8 +41,7 @@ impl<'a> FieldsModel<'a> {
     pub fn has_tag_field(&self) -> bool {
         self.fields
             .iter()
-            .find(|model| model.directive == FieldKind::Tagged)
-            .is_some()
+            .any(|model| model.directive == FieldKind::Tagged)
     }
 }
 
