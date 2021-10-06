@@ -44,7 +44,6 @@ type ReuniteFailure<S, E> = ReuniteError<
     <E as SplittableExtension>::SplitDecoder,
 >;
 
-// todo sink and stream implementations
 pub fn split<S, E>(
     framed: framed::FramedIo<S>,
     control_buffer: BytesMut,

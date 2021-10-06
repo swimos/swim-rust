@@ -138,6 +138,9 @@ loop {
     }
 }
 ```
+# Planned features
+- `futures-rs` `Sink` and `Stream` implementations.
+- `tokio` `AsyncRead` and `AsyncWrite` implementations.
 
 # License
 Ratchet is licensed under the [Apache License 2.0](LICENSE)

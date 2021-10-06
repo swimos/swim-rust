@@ -202,6 +202,8 @@ where
     }
 
     /// Constructs a new WebSocket message of `message_type` and with a payload of `buf_ref.
+    ///
+    /// `buf_ref` must be a mutable byte slice as it will be mutated if masking is required.
     pub async fn write<A>(&mut self, mut buf_ref: A, message_type: PayloadType) -> Result<(), Error>
     where
         A: AsMut<[u8]>,
@@ -255,7 +257,8 @@ where
 
     /// Constructs a new WebSocket message of `message_type` and with a payload of `buf_ref` and
     /// chunked by `fragment_size`. If the length of the buffer is less than the chunk size then
-    /// only a single message is sent.
+    /// only a single message is sent. The buffer must be a mutable byte slice as it will be
+    /// mutated if masking is required.
     pub async fn write_fragmented<A>(
         &mut self,
         buf: A,
