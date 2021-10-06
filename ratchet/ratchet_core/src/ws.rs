@@ -27,6 +27,8 @@ use ratchet_ext::{Extension, ExtensionEncoder, FrameHeader as ExtFrameHeader};
 use crate::split::{split, Receiver, Sender};
 #[cfg(feature = "split")]
 use ratchet_ext::SplittableExtension;
+use std::ops::Index;
+use std::slice::SliceIndex;
 
 pub const CONTROL_MAX_SIZE: usize = 125;
 pub const CONTROL_DATA_MISMATCH: &str = "Unexpected control frame data";
@@ -36,6 +38,66 @@ type SplitSocket<S, E> = (
     Sender<S, <E as SplittableExtension>::SplitEncoder>,
     Receiver<S, <E as SplittableExtension>::SplitDecoder>,
 );
+
+pub enum Data<'l> {
+    Owned(BytesMut),
+    Mutable(&'l mut [u8]),
+    Borrowed(&'l [u8]),
+}
+
+impl<'l, I> Index<I> for Data<'l>
+where
+    I: SliceIndex<[u8], Output = [u8]>,
+{
+    type Output = I::Output;
+
+    #[inline]
+    fn index(&self, index: I) -> &Self::Output {
+        match self {
+            Data::Owned(data) => &data[index],
+            Data::Mutable(data) => &data[index],
+            Data::Borrowed(data) => &data[index],
+        }
+    }
+}
+
+impl<'l> Data<'l> {
+    fn len(&self) -> usize {
+        match self {
+            Data::Owned(data) => data.len(),
+            Data::Mutable(data) => data.len(),
+            Data::Borrowed(data) => data.len(),
+        }
+    }
+}
+
+impl<'l> AsRef<[u8]> for Data<'l> {
+    fn as_ref(&self) -> &[u8] {
+        match self {
+            Data::Owned(data) => data.as_ref(),
+            Data::Mutable(data) => data,
+            Data::Borrowed(data) => data,
+        }
+    }
+}
+
+impl<'l> From<&'l [u8]> for Data<'l> {
+    fn from(slice: &'l [u8]) -> Self {
+        Data::Borrowed(slice)
+    }
+}
+
+impl<'l> From<&'l mut [u8]> for Data<'l> {
+    fn from(slice: &'l mut [u8]) -> Self {
+        Data::Mutable(slice)
+    }
+}
+
+impl<'l> From<BytesMut> for Data<'l> {
+    fn from(bytes: BytesMut) -> Self {
+        Data::Owned(bytes)
+    }
+}
 
 /// A WebSocket stream.
 #[derive(Debug)]
@@ -204,12 +266,7 @@ where
     /// Constructs a new WebSocket message of `message_type` and with a payload of `buf_ref.
     ///
     /// `buf_ref` must be a mutable byte slice as it will be mutated if masking is required.
-    pub async fn write<A>(&mut self, mut buf_ref: A, message_type: PayloadType) -> Result<(), Error>
-    where
-        A: AsMut<[u8]>,
-    {
-        let buf = buf_ref.as_mut();
-
+    pub async fn write(&mut self, buf: Data<'_>, message_type: PayloadType) -> Result<(), Error> {
         if self.closed {
             return Err(Error::with_cause(ErrorKind::Close, CloseError));
         }
