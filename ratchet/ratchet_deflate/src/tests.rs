@@ -14,7 +14,7 @@
 
 use crate::error::DeflateExtensionError;
 use crate::handshake::{apply_headers, on_request, on_response, NegotiationErr};
-use crate::{DeflateConfig, InitialisedDeflateConfig};
+use crate::{DeflateConfig, InitialisedDeflateConfig, WindowBits};
 use flate2::Compression;
 use http::header::SEC_WEBSOCKET_EXTENSIONS;
 use http::HeaderMap;
@@ -39,8 +39,8 @@ fn test_headers(config: DeflateConfig, expected: &str) {
 fn applies_headers() {
     test_headers(
         DeflateConfig {
-            server_max_window_bits: 15,
-            client_max_window_bits: 15,
+            server_max_window_bits: WindowBits::fifteen(),
+            client_max_window_bits: WindowBits::fifteen(),
             request_server_no_context_takeover: false,
             request_client_no_context_takeover: false,
             accept_no_context_takeover: false,
@@ -50,30 +50,30 @@ fn applies_headers() {
     );
     test_headers(
         DeflateConfig {
-            server_max_window_bits: 15,
-            client_max_window_bits: 7,
+            server_max_window_bits: WindowBits::fifteen(),
+            client_max_window_bits: WindowBits::eight(),
             request_server_no_context_takeover: false,
             request_client_no_context_takeover: false,
             accept_no_context_takeover: false,
             compression_level: Default::default(),
         },
-        "permessage-deflate; client_max_window_bits=7; server_max_window_bits=15",
+        "permessage-deflate; client_max_window_bits=8; server_max_window_bits=15",
     );
     test_headers(
         DeflateConfig {
-            server_max_window_bits: 15,
-            client_max_window_bits: 7,
+            server_max_window_bits: WindowBits::fifteen(),
+            client_max_window_bits: WindowBits::eight(),
             request_server_no_context_takeover: true,
             request_client_no_context_takeover: true,
             accept_no_context_takeover: false,
             compression_level: Default::default(),
         },
-        "permessage-deflate; client_max_window_bits=7; server_max_window_bits=15; server_no_context_takeover; client_no_context_takeover",
+        "permessage-deflate; client_max_window_bits=8; server_max_window_bits=15; server_no_context_takeover; client_no_context_takeover",
     );
     test_headers(
         DeflateConfig {
-            server_max_window_bits: 15,
-            client_max_window_bits: 15,
+            server_max_window_bits: WindowBits::fifteen(),
+            client_max_window_bits: WindowBits::fifteen(),
             request_server_no_context_takeover: true,
             request_client_no_context_takeover: true,
             accept_no_context_takeover: false,
@@ -83,8 +83,8 @@ fn applies_headers() {
     );
     test_headers(
         DeflateConfig {
-            server_max_window_bits: 15,
-            client_max_window_bits: 15,
+            server_max_window_bits: WindowBits::fifteen(),
+            client_max_window_bits: WindowBits::fifteen(),
             request_server_no_context_takeover: false,
             request_client_no_context_takeover: true,
             accept_no_context_takeover: false,
@@ -113,8 +113,8 @@ fn request_test_valid_default(headers: &[Header]) {
             assert_eq!(
                 config,
                 InitialisedDeflateConfig {
-                    server_max_window_bits: 15,
-                    client_max_window_bits: 15,
+                    server_max_window_bits: WindowBits::fifteen(),
+                    client_max_window_bits: WindowBits::fifteen(),
                     compress_reset: true,
                     decompress_reset: true,
                     compression_level: Compression::fast()
@@ -217,8 +217,8 @@ fn request_no_accept_no_context_takeover() {
         value: b"permessage-deflate; client_max_window_bits=7; server_max_window_bits=8; server_no_context_takeover; client_no_context_takeover,                   permessage-deflate; client_max_window_bits; server_no_context_takeover; client_no_context_takeover",
     };
     let config = DeflateConfig {
-        server_max_window_bits: 15,
-        client_max_window_bits: 15,
+        server_max_window_bits: WindowBits::fifteen(),
+        client_max_window_bits: WindowBits::fifteen(),
         request_server_no_context_takeover: true,
         request_client_no_context_takeover: true,
         accept_no_context_takeover: false,
@@ -232,8 +232,8 @@ fn request_no_accept_no_context_takeover() {
             assert_eq!(
                 config,
                 InitialisedDeflateConfig {
-                    server_max_window_bits: 15,
-                    client_max_window_bits: 15,
+                    server_max_window_bits: WindowBits::fifteen(),
+                    client_max_window_bits: WindowBits::fifteen(),
                     compress_reset: false,
                     decompress_reset: true,
                     compression_level: Compression::fast()

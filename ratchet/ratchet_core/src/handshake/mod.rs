@@ -23,7 +23,7 @@ use crate::errors::{Error, ProtocolError};
 use crate::errors::{ErrorKind, HttpError};
 use crate::handshake::io::BufferedIo;
 use crate::{InvalidHeader, Request};
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 pub use client::{exec_client_handshake, HandshakeResult};
 use fnv::FnvHashSet;
 use http::header::{HeaderName, SEC_WEBSOCKET_PROTOCOL};
@@ -32,6 +32,7 @@ use http::{header, HeaderMap, HeaderValue};
 use httparse::Header;
 pub use server::{accept, accept_with, WebSocketResponse, WebSocketUpgrader};
 use std::borrow::Cow;
+use std::error::Error as StdError;
 use std::str::FromStr;
 use tokio::io::AsyncRead;
 use tokio_util::codec::Decoder;
@@ -43,6 +44,28 @@ const WEBSOCKET_VERSION_STR: &str = "13";
 const BAD_STATUS_CODE: &str = "Invalid status code";
 const ACCEPT_KEY: &[u8] = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const METHOD_GET: &str = "get";
+
+pub trait H1PartEncoder {
+    type Error: StdError;
+
+    fn encode(self, into: &mut BytesMut) -> Result<(), Self::Error>
+    where
+        Self: Sized,
+    {
+        into.reserve(self.size_hint());
+        self.encode_into(into)
+    }
+
+    fn encode_into(self, into: &mut BytesMut) -> Result<(), Self::Error>;
+
+    fn size_hint(&self) -> usize;
+}
+
+pub trait H1PartDecoder: Sized {
+    type Error: StdError;
+
+    fn decode(from: &mut BytesMut) -> Result<Self, Self::Error>;
+}
 
 #[derive(Default)]
 pub struct ProtocolRegistry {

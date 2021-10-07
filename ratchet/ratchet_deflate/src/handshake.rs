@@ -14,14 +14,13 @@
 
 use crate::error::DeflateExtensionError;
 use crate::{
-    Deflate, DeflateConfig, InitialisedDeflateConfig, LZ77_MAX_WINDOW_SIZE, LZ77_MIN_WINDOW_SIZE,
+    Deflate, DeflateConfig, InitialisedDeflateConfig, WindowBits, LZ77_MAX_WINDOW_SIZE,
+    LZ77_MIN_WINDOW_SIZE,
 };
 use bytes::BytesMut;
 use http::header::SEC_WEBSOCKET_EXTENSIONS;
 use http::{HeaderMap, HeaderValue};
 use ratchet_ext::Header;
-use ratchet_proto::H1PartEncoder;
-use std::convert::Infallible;
 use std::fmt::Write;
 use std::str::Utf8Error;
 
@@ -36,23 +35,16 @@ const UNKNOWN_PARAM: &str = "Unknown permessage-deflate parameter";
 const DUPLICATE_PARAM: &str = "Duplicate permessage-deflate parameter";
 const HEADER_ERR: &str = "Failed to produce header";
 
-const BIT_LUT: [str; 8] = [
-    ['8', ' '],
-    ['9', ' '],
-    ['1', '0'],
-    ['1', '1'],
-    ['1', '2'],
-    ['1', '3'],
-    ['1', '4'],
-    ['1', '5'],
-];
-
 struct DeflateHeaderEncoder<'c>(&'c DeflateConfig);
-impl<'c> H1PartEncoder for DeflateHeaderEncoder<'c> {
-    type Error = Infallible;
+impl<'c> DeflateHeaderEncoder<'c> {
+    #[inline]
+    fn encode(self, into: &mut BytesMut) {
+        into.reserve(self.size_hint());
+        self.encode_into(into)
+    }
 
     #[inline]
-    fn encode_into(self, into: &mut BytesMut) -> Result<(), Self::Error> {
+    fn encode_into(self, into: &mut BytesMut) {
         let DeflateConfig {
             server_max_window_bits,
             client_max_window_bits,
@@ -67,25 +59,21 @@ impl<'c> H1PartEncoder for DeflateHeaderEncoder<'c> {
         if *client_max_window_bits < LZ77_MAX_WINDOW_SIZE {
             write(into, CLIENT_MAX_BITS);
             write(into, "=");
-            write(into, BIT_LUT[client_max_window_bits]);
-
-            let _ = write!(
-                into,
-                "{}={}; {}={}",
-                CLIENT_MAX_BITS, client_max_window_bits, SERVER_MAX_BITS, server_max_window_bits
-            );
+            write(into, client_max_window_bits.as_str());
+            write(into, "; ");
+            write(into, SERVER_MAX_BITS);
+            write(into, "=");
+            write(into, server_max_window_bits.as_str());
         } else {
-            let _ = write!(into, "client_max_window_bits");
+            write(into, CLIENT_MAX_BITS);
         }
 
         if *request_server_no_context_takeover {
-            let _ = write!(into, "; server_no_context_takeover");
+            write(into, "; server_no_context_takeover");
         }
         if *request_client_no_context_takeover {
-            let _ = write!(into, "; client_no_context_takeover");
+            write(into, "; client_no_context_takeover");
         }
-
-        Ok(())
     }
 
     #[inline]
@@ -136,6 +124,7 @@ fn extend_and_write(into: &mut BytesMut, data: &str) {
 pub fn apply_headers(header_map: &mut HeaderMap, config: &DeflateConfig) {
     let encoder = DeflateHeaderEncoder(config);
     let mut bytes = BytesMut::new();
+    bytes.truncate(bytes.len());
     let _ = encoder.encode(&mut bytes);
 
     header_map.insert(
@@ -264,7 +253,8 @@ fn validate_request_header(
                             parse_window_parameter(window_param, config.client_max_window_bits)?;
                         response_str.push_str(&format!(
                             "; {}={}",
-                            CLIENT_MAX_BITS, initialised_config.client_max_window_bits
+                            CLIENT_MAX_BITS,
+                            initialised_config.client_max_window_bits.as_str()
                         ));
                     }
                     Ok(())
@@ -423,12 +413,15 @@ where
     }
 }
 
-fn parse_window_parameter(window_param: &str, max_window_bits: u8) -> Result<u8, NegotiationErr> {
+fn parse_window_parameter(
+    window_param: &str,
+    max_window_bits: WindowBits,
+) -> Result<WindowBits, NegotiationErr> {
     let window_param = window_param.replace("\"", "");
     match window_param.trim().parse() {
         Ok(window_bits) => {
-            if (LZ77_MIN_WINDOW_SIZE..=max_window_bits).contains(&window_bits) {
-                Ok(window_bits)
+            if (LZ77_MIN_WINDOW_SIZE..=max_window_bits.0).contains(&window_bits) {
+                Ok(WindowBits(window_bits))
             } else {
                 Err(NegotiationErr::Failed)
             }
