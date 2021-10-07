@@ -35,8 +35,11 @@ use ratchet_ext::{
     Extension, ExtensionDecoder, ExtensionEncoder, ExtensionProvider, FrameHeader, Header,
     HeaderMap, HeaderValue, OpCode, ReunitableExtension, RsvBits, SplittableExtension,
 };
+use std::cmp::Ordering;
+use std::convert::TryFrom;
+use thiserror::Error;
 
-const DEFLATE_TRAILER: &[u8] = &[0, 0, 255, 255];
+const DEFLATE_TRAILER: [u8; 4] = [0, 0, 255, 255];
 
 /// The minimum size of the LZ77 sliding window size.
 const LZ77_MIN_WINDOW_SIZE: u8 = 8;
@@ -79,17 +82,104 @@ impl ExtensionProvider for DeflateExtProvider {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
+pub struct WindowBits(u8);
+
+impl WindowBits {
+    pub fn as_str(&self) -> &'static str {
+        match self.0 {
+            8 => "8",
+            9 => "9",
+            10 => "10",
+            11 => "11",
+            12 => "12",
+            13 => "13",
+            14 => "14",
+            15 => "15",
+            _ => {
+                // it's not possible to create a window bits from a raw u8 outside of this crate
+                unreachable!()
+            }
+        }
+    }
+
+    pub const fn eight() -> WindowBits {
+        WindowBits(8)
+    }
+
+    pub const fn nine() -> WindowBits {
+        WindowBits(9)
+    }
+
+    pub const fn ten() -> WindowBits {
+        WindowBits(10)
+    }
+
+    pub const fn eleven() -> WindowBits {
+        WindowBits(11)
+    }
+
+    pub const fn twelve() -> WindowBits {
+        WindowBits(12)
+    }
+
+    pub const fn thirteen() -> WindowBits {
+        WindowBits(13)
+    }
+
+    pub const fn fourteen() -> WindowBits {
+        WindowBits(14)
+    }
+
+    pub const fn fifteen() -> WindowBits {
+        WindowBits(15)
+    }
+}
+
+#[derive(Error, Copy, Clone, Debug, PartialEq, PartialOrd)]
+#[error("Invalid window bits: `{0}`")]
+pub struct WindowBitsParseErr(u8);
+
+impl TryFrom<u8> for WindowBits {
+    type Error = WindowBitsParseErr;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            n @ 8..=15 => Ok(WindowBits(n)),
+            n => Err(WindowBitsParseErr(n)),
+        }
+    }
+}
+
+impl PartialOrd<u8> for WindowBits {
+    fn partial_cmp(&self, other: &u8) -> Option<Ordering> {
+        self.0.partial_cmp(other)
+    }
+}
+
+impl PartialEq<u8> for WindowBits {
+    fn eq(&self, other: &u8) -> bool {
+        self.0.eq(other)
+    }
+}
+
+impl Into<u8> for WindowBits {
+    fn into(self) -> u8 {
+        self.0
+    }
+}
+
 /// A permessage-deflate configuration.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DeflateConfig {
     /// The client's LZ77 sliding window size. Negotiated during the HTTP upgrade. In client mode,
     /// this conforms to RFC 7692 7.1.2.1. In server mode, this conforms to RFC 7692 7.1.2.2. Must
     /// be in range 8..15 inclusive.
-    server_max_window_bits: u8,
+    server_max_window_bits: WindowBits,
     /// The client's LZ77 sliding window size. Negotiated during the HTTP upgrade. In client mode,
     /// this conforms to RFC 7692 7.1.2.2. In server mode, this conforms to RFC 7692 7.1.2.2. Must
     /// be in range 8..15 inclusive.
-    client_max_window_bits: u8,
+    client_max_window_bits: WindowBits,
     /// Request that the server resets the LZ77 sliding window between messages - RFC 7692 7.1.1.1.
     request_server_no_context_takeover: bool,
     /// Request that the server resets the LZ77 sliding window between messages - RFC 7692 7.1.1.1.
@@ -104,8 +194,8 @@ pub struct DeflateConfig {
 impl Default for DeflateConfig {
     fn default() -> Self {
         DeflateConfig {
-            server_max_window_bits: LZ77_MAX_WINDOW_SIZE,
-            client_max_window_bits: LZ77_MAX_WINDOW_SIZE,
+            server_max_window_bits: WindowBits(LZ77_MAX_WINDOW_SIZE),
+            client_max_window_bits: WindowBits(LZ77_MAX_WINDOW_SIZE),
             request_server_no_context_takeover: true,
             request_client_no_context_takeover: true,
             accept_no_context_takeover: true,
@@ -116,8 +206,8 @@ impl Default for DeflateConfig {
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct InitialisedDeflateConfig {
-    server_max_window_bits: u8,
-    client_max_window_bits: u8,
+    server_max_window_bits: WindowBits,
+    client_max_window_bits: WindowBits,
     compress_reset: bool,
     decompress_reset: bool,
     compression_level: Compression,
@@ -148,24 +238,24 @@ impl Deflate {
         if is_server {
             Deflate {
                 decoder: DeflateDecoder::new(
-                    config.client_max_window_bits,
+                    config.client_max_window_bits.0,
                     config.decompress_reset,
                 ),
                 encoder: DeflateEncoder::new(
                     config.compression_level,
-                    config.server_max_window_bits,
+                    config.server_max_window_bits.0,
                     config.compress_reset,
                 ),
             }
         } else {
             Deflate {
                 decoder: DeflateDecoder::new(
-                    config.server_max_window_bits,
+                    config.server_max_window_bits.0,
                     config.decompress_reset,
                 ),
                 encoder: DeflateEncoder::new(
                     config.compression_level,
-                    config.client_max_window_bits,
+                    config.client_max_window_bits.0,
                     config.compress_reset,
                 ),
             }
@@ -297,7 +387,8 @@ pub struct DeflateDecoder {
     buf: BytesMut,
     decompress: Decompress,
     decompress_reset: bool,
-    requires_decode: bool,
+    // Whether we're reading a compressed message
+    compressed: bool,
 }
 
 impl DeflateDecoder {
@@ -311,7 +402,7 @@ impl DeflateDecoder {
             buf: BytesMut::default(),
             decompress: Decompress::new_with_window_bits(false, window_size),
             decompress_reset,
-            requires_decode: false,
+            compressed: false,
         }
     }
 }
@@ -340,23 +431,21 @@ impl ExtensionDecoder for DeflateDecoder {
             buf,
             decompress,
             decompress_reset,
-            requires_decode,
+            compressed,
         } = self;
 
         match header.opcode {
-            OpCode::Binary | OpCode::Text if header.rsv1 => {
+            OpCode::Binary | OpCode::Text => {
+                *compressed = header.rsv1;
                 if !header.fin {
-                    *requires_decode = true;
                     return Ok(());
                 }
             }
-            OpCode::Continuation if header.fin && *requires_decode => {
-                *requires_decode = false;
-            }
+            OpCode::Continuation if header.fin && *compressed => {}
             _ => return Ok(()),
         }
 
-        payload.extend_from_slice(DEFLATE_TRAILER);
+        payload.extend_from_slice(&DEFLATE_TRAILER);
 
         buf.clear();
         buf.reserve(payload.len() * 2);
