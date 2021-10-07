@@ -324,7 +324,7 @@ fn test_client_file_conf_recon_error() {
     let result = SwimClientBuilder::new_from_file(file, false);
 
     if let Err(err) = result {
-        assert_eq!(err.to_string(), "Recon error: Bad token at: 4:17")
+        assert_eq!(err.to_string(), "Recon error: Failed to parse the input. rule = 'Char' at (4:17).")
     } else {
         panic!("Expected file error!")
     }
