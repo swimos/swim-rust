@@ -96,6 +96,12 @@ pub enum Role {
     Server,
 }
 
+impl Role {
+    pub fn is_server(&self) -> bool {
+        matches!(self, Role::Server)
+    }
+}
+
 #[derive(Debug, Copy, Clone, Display, PartialEq)]
 pub enum OpCode {
     #[display(fmt = "{}", _0)]

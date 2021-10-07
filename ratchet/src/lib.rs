@@ -21,6 +21,7 @@ mod extensions;
 mod framed;
 mod handshake;
 mod protocol;
+mod split;
 mod ws;
 
 pub use crate::extensions::{deflate::*, ext::*, Extension, ExtensionProvider};

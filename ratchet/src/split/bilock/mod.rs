@@ -61,6 +61,11 @@ unsafe impl<T: Send> Send for Inner<T> {}
 unsafe impl<T: Send> Sync for Inner<T> {}
 
 impl<T> BiLock<T> {
+    /// Returns true if the two BiLock point to the same allocation
+    pub fn same_bilock(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.inner, &other.inner)
+    }
+
     /// Returns a future that resolves to a `BiLockGuard` once the value is available.
     pub fn lock(&self) -> LockFuture<'_, T> {
         LockFuture { bilock: self }
