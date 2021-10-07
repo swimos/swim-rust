@@ -26,6 +26,7 @@ use std::str::Utf8Error;
 
 /// The WebSocket Extension Identifier as per the IANA registry.
 const EXT_IDENT: &str = "permessage-deflate";
+
 const SERVER_MAX_BITS: &str = "server_max_window_bits";
 const CLIENT_MAX_BITS: &str = "client_max_window_bits";
 const SERVER_NO_TAKEOVER: &str = "server_no_context_takeover";

@@ -29,6 +29,8 @@ use ratchet_ext::{
     HeaderMap, HeaderValue, OpCode, ReunitableExtension, RsvBits, SplittableExtension,
 };
 use std::cmp::Ordering;
+use std::convert::TryFrom;
+use thiserror::Error;
 
 const DEFLATE_TRAILER: [u8; 4] = [0, 0, 255, 255];
 
@@ -74,18 +76,6 @@ impl ExtensionProvider for DeflateExtProvider {
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
 pub struct WindowBits(u8);
 
-impl PartialOrd<u8> for WindowBits {
-    fn partial_cmp(&self, other: &u8) -> Option<Ordering> {
-        self.0.partial_cmp(other)
-    }
-}
-
-impl PartialEq<u8> for WindowBits {
-    fn eq(&self, other: &u8) -> bool {
-        self.0.eq(other)
-    }
-}
-
 impl WindowBits {
     pub fn as_str(&self) -> &'static str {
         match self.0 {
@@ -98,7 +88,6 @@ impl WindowBits {
             14 => "14",
             15 => "15",
             _ => {
-                // safety:
                 // it's not possible to create a window bits from a raw u8 outside of this crate
                 unreachable!()
             }
@@ -135,6 +124,33 @@ impl WindowBits {
 
     pub const fn fifteen() -> WindowBits {
         WindowBits(15)
+    }
+}
+
+#[derive(Error, Copy, Clone, Debug, PartialEq, PartialOrd)]
+#[error("Invalid window bits: `{0}`")]
+pub struct WindowBitsParseErr(u8);
+
+impl TryFrom<u8> for WindowBits {
+    type Error = WindowBitsParseErr;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            n @ 8..=15 => Ok(WindowBits(n)),
+            n => Err(WindowBitsParseErr(n)),
+        }
+    }
+}
+
+impl PartialOrd<u8> for WindowBits {
+    fn partial_cmp(&self, other: &u8) -> Option<Ordering> {
+        self.0.partial_cmp(other)
+    }
+}
+
+impl PartialEq<u8> for WindowBits {
+    fn eq(&self, other: &u8) -> bool {
+        self.0.eq(other)
     }
 }
 
