@@ -23,8 +23,8 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
+use futures::task::AtomicWaker;
 use futures::Stream;
-use futures_util::task::AtomicWaker;
 use pin_project::pin_project;
 use std::num::NonZeroUsize;
 
