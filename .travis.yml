@@ -29,12 +29,12 @@ jobs:
         - cargo clippy --version
         - rustup component add rustfmt
         - cargo fmt --version
-        - cargo clippy --all-features -- -D warnings
-        - RUSTDOCFLAGS="--cfg docsrs -Dwarnings" cargo doc --lib --no-deps --all-features
+        - cargo clippy --all-features --all -- -D warnings
+        - RUSTDOCFLAGS="--cfg docsrs -Dwarnings" cargo doc --lib --no-deps --all-features --all
         - cargo fmt -- --check
 
 rust:
-  - 1.54.0
+  - 1.55.0
 
 cache:
   directories:
