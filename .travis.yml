@@ -16,6 +16,7 @@ jobs:
         - ARCH=arm64
         - RUST_BACKTRACE=1
       script:
+        - rustup component add rust-src
         - cargo test --workspace
     - name: "Clippy, formatting and documentation"
       os: linux
