@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_form_derive::*;
+use swim_schema::ValueSchema;
 use swim_model::ValueKind;
 
 fn main() {
-    #[derive(Form, ValueSchema)]
+    #[derive(ValueSchema)]
     #[form(schema(all_items(of_kind(ValueKind::ThisIsntValid))))]
     struct S {
         a: i32,

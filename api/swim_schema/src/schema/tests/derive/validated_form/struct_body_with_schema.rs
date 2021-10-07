@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_form_derive::*;
+use swim_schema::ValueSchema;
 
 fn main() {
-    #[derive(Form, ValueSchema)]
+    #[derive(ValueSchema)]
     struct S(#[form(body, schema(equal = "i64_eq"))] i64);
 }

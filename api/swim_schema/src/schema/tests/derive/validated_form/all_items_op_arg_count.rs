@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_form_derive::*;
+use swim_schema::ValueSchema;
 
 fn main() {
-    #[derive(Form, ValueSchema)]
+    #[derive(ValueSchema)]
     struct S {
         #[form(schema(all_items(num_items = 5, num_attrs = 5)))]
         a: i32,

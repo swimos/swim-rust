@@ -19,7 +19,7 @@ use swim_model::ValueKind;
 fn main() {
     struct Invalid;
 
-    #[derive(Form, ValueSchema)]
+    #[derive(ValueSchema)]
     #[form(schema(all_items(of_kind(ValueKind::Int32))))]
     struct S<F> {
         a: i32,
