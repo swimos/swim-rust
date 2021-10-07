@@ -174,7 +174,7 @@ where
         ));
     }
 
-    subprotocols.apply_to(&mut headers)?;
+    subprotocols.apply_to(&mut headers);
 
     let option = headers
         .get(header::SEC_WEBSOCKET_KEY)

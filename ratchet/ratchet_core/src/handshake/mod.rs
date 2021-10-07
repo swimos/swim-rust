@@ -50,6 +50,7 @@ const METHOD_GET: &str = "get";
 #[derive(Default, Debug)]
 pub struct ProtocolRegistry {
     registrants: FnvHashSet<Cow<'static, str>>,
+    header: Option<HeaderValue>,
 }
 
 enum Bias {
@@ -59,14 +60,28 @@ enum Bias {
 
 impl ProtocolRegistry {
     /// Construct a new protocol registry that will allow the provided items.
-    pub fn new<I>(i: I) -> ProtocolRegistry
+    pub fn new<I>(i: I) -> Result<ProtocolRegistry, Error>
     where
         I: IntoIterator,
         I::Item: Into<Cow<'static, str>>,
     {
-        ProtocolRegistry {
-            registrants: i.into_iter().map(Into::into).collect(),
-        }
+        let registrants = i
+            .into_iter()
+            .map(Into::into)
+            .collect::<FnvHashSet<Cow<'static, str>>>();
+        let header_str = registrants
+            .clone()
+            .into_iter()
+            .collect::<Vec<_>>()
+            .join(", ");
+        let header = HeaderValue::from_str(&header_str).map_err(|_| {
+            crate::Error::with_cause(ErrorKind::Http, HttpError::MalformattedHeader(header_str))
+        })?;
+
+        Ok(ProtocolRegistry {
+            registrants,
+            header: Some(header),
+        })
     }
 
     fn negotiate<'h, I>(&self, headers: I, bias: Bias) -> Result<Option<String>, ProtocolError>
@@ -131,24 +146,10 @@ impl ProtocolRegistry {
         self.negotiate(it, Bias::Right)
     }
 
-    pub(crate) fn apply_to(&self, target: &mut HeaderMap) -> Result<(), crate::Error> {
-        if self.registrants.is_empty() {
-            return Ok(());
+    pub(crate) fn apply_to(&self, target: &mut HeaderMap) {
+        if let Some(header) = &self.header {
+            target.insert(header::SEC_WEBSOCKET_PROTOCOL, header.clone());
         }
-
-        let out = self
-            .registrants
-            .clone()
-            .into_iter()
-            .collect::<Vec<_>>()
-            .join(", ");
-
-        let header_value = HeaderValue::from_str(&out).map_err(|_| {
-            crate::Error::with_cause(ErrorKind::Http, HttpError::MalformattedHeader(out))
-        })?;
-
-        target.insert(header::SEC_WEBSOCKET_PROTOCOL, header_value);
-        Ok(())
     }
 }
 

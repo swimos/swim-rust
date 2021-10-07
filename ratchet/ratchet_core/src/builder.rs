@@ -92,13 +92,13 @@ impl<E> WebSocketClientBuilder<E> {
     }
 
     /// Sets the subprotocols that will be used for the connection.
-    pub fn subprotocols<I>(mut self, subprotocols: I) -> Self
+    pub fn subprotocols<I>(mut self, subprotocols: I) -> Result<Self, Error>
     where
         I: IntoIterator,
         I::Item: Into<Cow<'static, str>>,
     {
-        self.subprotocols = ProtocolRegistry::new(subprotocols);
-        self
+        self.subprotocols = ProtocolRegistry::new(subprotocols)?;
+        Ok(self)
     }
 }
 
@@ -165,12 +165,12 @@ impl<E> WebSocketServerBuilder<E> {
     }
 
     /// Sets the subprotocols that will be used for the connection.
-    pub fn subprotocols<I>(mut self, subprotocols: I) -> Self
+    pub fn subprotocols<I>(mut self, subprotocols: I) -> Result<Self, Error>
     where
         I: IntoIterator,
         I::Item: Into<Cow<'static, str>>,
     {
-        self.subprotocols = ProtocolRegistry::new(subprotocols);
-        self
+        self.subprotocols = ProtocolRegistry::new(subprotocols)?;
+        Ok(self)
     }
 }
