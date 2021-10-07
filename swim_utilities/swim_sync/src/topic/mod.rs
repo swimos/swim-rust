@@ -565,7 +565,7 @@ pub mod discarding {
 
     use swim_future::item_sink::ItemSink;
 
-    /// Wraps a [`topic::Sender`] for a sink implementation that uses the discarding send function.
+    /// Wraps a [`super::Sender`] for a sink implementation that uses the discarding send function.
     pub struct Discarding<T>(pub super::Sender<T>);
 
     impl<'a, T> ItemSink<'a, T> for Discarding<T>
