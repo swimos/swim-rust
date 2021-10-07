@@ -43,7 +43,7 @@ async fn handshake_sends_valid_request() {
     let mut buf = BytesMut::new();
     let mut machine = ClientHandshake::new(
         &mut stream,
-        ProtocolRegistry::new(vec!["warp"]),
+        ProtocolRegistry::new(vec!["warp"]).unwrap(),
         &NoExtProvider,
         &mut buf,
     );
@@ -384,7 +384,7 @@ where
 
         let mut machine = ClientHandshake::new(
             &mut stream,
-            ProtocolRegistry::new(registry),
+            ProtocolRegistry::new(registry).unwrap(),
             &NoExtProvider,
             &mut buf,
         );
