@@ -82,9 +82,11 @@ impl ExtensionProvider for DeflateExtProvider {
     }
 }
 
+/// Client or server maximum window bits. Wrapping a `u8` with a value in the range of 8..=15.
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
 pub struct WindowBits(u8);
 
+#[allow(missing_docs)]
 impl WindowBits {
     pub fn as_str(&self) -> &'static str {
         match self.0 {
@@ -136,6 +138,7 @@ impl WindowBits {
     }
 }
 
+/// An error produced by `TryFrom<u8>` on `WindowBits` when the value is not in the range of 8..=15.
 #[derive(Error, Copy, Clone, Debug, PartialEq, PartialOrd)]
 #[error("Invalid window bits: `{0}`")]
 pub struct WindowBitsParseErr(u8);

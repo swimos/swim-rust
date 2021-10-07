@@ -37,8 +37,11 @@ mod handshake;
 mod protocol;
 mod ws;
 
+/// Split WebSocket implementation.
 #[cfg(feature = "split")]
 mod split;
+#[cfg(feature = "split")]
+pub use split::{Receiver, ReuniteError, Sender};
 
 pub use builder::{WebSocketClientBuilder, WebSocketServerBuilder};
 pub use errors::*;

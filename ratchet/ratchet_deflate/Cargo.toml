@@ -16,3 +16,4 @@ thiserror = "1.0"
 http = "0.2.3"
 bytes = "1.0"
 flate2 = { version = "1.0", default-features = false, features = ["cloudflare_zlib"] }
+log = "0.4.14"

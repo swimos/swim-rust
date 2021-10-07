@@ -21,14 +21,13 @@ use crate::protocol::{
 };
 use crate::{WebSocketConfig, WebSocketStream};
 use bytes::BytesMut;
+use log::{error, trace};
 use ratchet_ext::{Extension, ExtensionEncoder, FrameHeader as ExtFrameHeader};
 
 #[cfg(feature = "split")]
 use crate::split::{split, Receiver, Sender};
 #[cfg(feature = "split")]
 use ratchet_ext::SplittableExtension;
-use std::ops::Index;
-use std::slice::SliceIndex;
 
 pub const CONTROL_MAX_SIZE: usize = 125;
 pub const CONTROL_DATA_MISMATCH: &str = "Unexpected control frame data";
@@ -38,66 +37,6 @@ type SplitSocket<S, E> = (
     Sender<S, <E as SplittableExtension>::SplitEncoder>,
     Receiver<S, <E as SplittableExtension>::SplitDecoder>,
 );
-
-pub enum Data<'l> {
-    Owned(BytesMut),
-    Mutable(&'l mut [u8]),
-    Borrowed(&'l [u8]),
-}
-
-impl<'l, I> Index<I> for Data<'l>
-where
-    I: SliceIndex<[u8], Output = [u8]>,
-{
-    type Output = I::Output;
-
-    #[inline]
-    fn index(&self, index: I) -> &Self::Output {
-        match self {
-            Data::Owned(data) => &data[index],
-            Data::Mutable(data) => &data[index],
-            Data::Borrowed(data) => &data[index],
-        }
-    }
-}
-
-impl<'l> Data<'l> {
-    fn len(&self) -> usize {
-        match self {
-            Data::Owned(data) => data.len(),
-            Data::Mutable(data) => data.len(),
-            Data::Borrowed(data) => data.len(),
-        }
-    }
-}
-
-impl<'l> AsRef<[u8]> for Data<'l> {
-    fn as_ref(&self) -> &[u8] {
-        match self {
-            Data::Owned(data) => data.as_ref(),
-            Data::Mutable(data) => data,
-            Data::Borrowed(data) => data,
-        }
-    }
-}
-
-impl<'l> From<&'l [u8]> for Data<'l> {
-    fn from(slice: &'l [u8]) -> Self {
-        Data::Borrowed(slice)
-    }
-}
-
-impl<'l> From<&'l mut [u8]> for Data<'l> {
-    fn from(slice: &'l mut [u8]) -> Self {
-        Data::Mutable(slice)
-    }
-}
-
-impl<'l> From<BytesMut> for Data<'l> {
-    fn from(bytes: BytesMut) -> Self {
-        Data::Owned(bytes)
-    }
-}
 
 /// A WebSocket stream.
 #[derive(Debug)]
@@ -195,6 +134,7 @@ where
                     Item::Binary => return Ok(Message::Binary),
                     Item::Text => return Ok(Message::Text),
                     Item::Ping(payload) => {
+                        trace!("Received a ping frame. Responding with pong");
                         framed
                             .write(
                                 OpCode::ControlCode(ControlCode::Pong),
@@ -207,12 +147,15 @@ where
                     }
                     Item::Pong(payload) => {
                         if control_buffer.is_empty() {
+                            trace!("Received an unsolicited pong frame. Ignoring");
                             continue;
                         } else {
                             return if control_buffer[..].eq(&payload[..]) {
                                 control_buffer.clear();
+                                trace!("Received pong frame");
                                 Ok(Message::Pong)
                             } else {
+                                trace!("Received a pong frame with an incorrect payload. Closing the connection");
                                 self.closed = true;
                                 self.framed
                                     .write_close(CloseReason {
@@ -250,6 +193,7 @@ where
                     }
                 },
                 Err(e) => {
+                    error!("WebSocket read failure: {:?}", e);
                     self.closed = true;
 
                     if !e.is_io() {
@@ -263,10 +207,36 @@ where
         }
     }
 
-    /// Constructs a new WebSocket message of `message_type` and with a payload of `buf_ref.
-    ///
-    /// `buf_ref` must be a mutable byte slice as it will be mutated if masking is required.
-    pub async fn write(&mut self, buf: Data<'_>, message_type: PayloadType) -> Result<(), Error> {
+    /// Constructs a new text WebSocket message with a payload of `data`.
+    pub async fn write_text<I>(&mut self, data: I) -> Result<(), Error>
+    where
+        I: AsRef<str>,
+    {
+        self.write(data.as_ref(), PayloadType::Text).await
+    }
+
+    /// Constructs a new binary WebSocket message with a payload of `data`.
+    pub async fn write_binary<I>(&mut self, data: I) -> Result<(), Error>
+    where
+        I: AsRef<[u8]>,
+    {
+        self.write(data.as_ref(), PayloadType::Binary).await
+    }
+
+    /// Constructs a new ping WebSocket message with a payload of `data`.
+    pub async fn write_ping<I>(&mut self, data: I) -> Result<(), Error>
+    where
+        I: AsRef<[u8]>,
+    {
+        self.write(data.as_ref(), PayloadType::Ping).await
+    }
+
+    /// Constructs a new WebSocket message of `message_type` and with a payload of `buf.
+    pub async fn write<A>(&mut self, buf: A, message_type: PayloadType) -> Result<(), Error>
+    where
+        A: AsRef<[u8]>,
+    {
+        let buf = buf.as_ref();
         if self.closed {
             return Err(Error::with_cause(ErrorKind::Close, CloseError));
         }
@@ -314,8 +284,7 @@ where
 
     /// Constructs a new WebSocket message of `message_type` and with a payload of `buf_ref` and
     /// chunked by `fragment_size`. If the length of the buffer is less than the chunk size then
-    /// only a single message is sent. The buffer must be a mutable byte slice as it will be
-    /// mutated if masking is required.
+    /// only a single message is sent.
     pub async fn write_fragmented<A>(
         &mut self,
         buf: A,
@@ -323,7 +292,7 @@ where
         fragment_size: usize,
     ) -> Result<(), Error>
     where
-        A: AsMut<[u8]>,
+        A: AsRef<[u8]>,
     {
         if self.closed {
             return Err(Error::with_cause(ErrorKind::Close, CloseError));

@@ -24,6 +24,7 @@ ratchet_deflate = { path = "ratchet_deflate", optional = true }
 tokio = { version = "1.1.1", features = ["rt-multi-thread", "macros", "test-util"] }
 tokio-stream = { version = "0.1.2", features = ["net"] }
 bytes = "1.0"
+env_logger = "0.8.4"
 
 [[example]]
 name = "autobahn-client"

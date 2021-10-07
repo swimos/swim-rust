@@ -29,10 +29,16 @@ use crate::{
 use bytes::{Bytes, BytesMut};
 use http::status::InvalidStatusCode;
 use http::{HeaderMap, HeaderValue, StatusCode, Uri};
+use log::{error, trace};
 use ratchet_ext::{Extension, ExtensionProvider};
 use sha1::{Digest, Sha1};
 use std::convert::TryFrom;
 use std::iter::FromIterator;
+
+const MSG_HANDSHAKE_COMPLETED: &str = "Server handshake completed";
+const MSG_HANDSHAKE_FAILED: &str = "Server handshake failed";
+const UPGRADED_MSG: &str = "Upgraded connection";
+const REJECT_MSG: &str = "Rejected connection";
 
 /// A structure representing an upgraded WebSocket session and an optional subprotocol that was
 /// negotiated during the upgrade.
@@ -96,6 +102,15 @@ where
                 request,
                 extension_header,
             } = result;
+
+            trace!(
+                "{}for: {}. Selected subprotocol: {:?} and extension: {:?}",
+                request.uri(),
+                MSG_HANDSHAKE_COMPLETED,
+                subprotocol,
+                extension
+            );
+
             Ok(WebSocketUpgrader {
                 key,
                 buf,
@@ -107,20 +122,24 @@ where
                 config,
             })
         }
-        Err(e) => match e.downcast_ref::<HttpError>() {
-            Some(http_err) => {
-                write_response(
-                    &mut stream,
-                    &mut buf,
-                    StatusCode::BAD_REQUEST,
-                    HeaderMap::default(),
-                    Some(http_err.to_string()),
-                )
-                .await?;
-                Err(e)
+        Err(e) => {
+            error!("{}. Error: {:?}", MSG_HANDSHAKE_FAILED, e);
+
+            match e.downcast_ref::<HttpError>() {
+                Some(http_err) => {
+                    write_response(
+                        &mut stream,
+                        &mut buf,
+                        StatusCode::BAD_REQUEST,
+                        HeaderMap::default(),
+                        Some(http_err.to_string()),
+                    )
+                    .await?;
+                    Err(e)
+                }
+                None => Err(e),
             }
-            None => Err(e),
-        },
+        }
     }
 }
 
@@ -256,6 +275,8 @@ where
 
         buf.clear();
 
+        trace!("{} from {}", UPGRADED_MSG, request.uri());
+
         Ok(UpgradedServer {
             request,
             websocket: WebSocket::from_upgraded(config, stream, extension, buf, Role::Server),
@@ -272,8 +293,12 @@ where
         let WebSocketUpgrader {
             mut stream,
             mut buf,
+            request,
             ..
         } = self;
+
+        trace!("{} from {}", REJECT_MSG, request.uri());
+
         write_response(&mut stream, &mut buf, status, headers, None).await
     }
 }

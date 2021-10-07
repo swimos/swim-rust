@@ -20,10 +20,12 @@ use crate::protocol::{
     apply_mask, CloseCode, CloseReason, ControlCode, DataCode, FrameHeader, HeaderFlags,
     MessageType, OpCode, Role,
 };
+use crate::protocol::{BorrowedFramePrinter, FramePrinter};
 use crate::WebSocketStream;
 use bytes::Buf;
 use bytes::{BufMut, BytesMut};
 use either::Either;
+use log::trace;
 use nanorand::{WyRand, RNG};
 use ratchet_ext::{ExtensionDecoder, FrameHeader as ExtFrameHeader, OpCode as ExtOpCode};
 use std::convert::TryFrom;
@@ -185,6 +187,7 @@ impl FramedRead {
 
         loop {
             let (header, payload) = self.read_frame(io, is_server, rsv_bits, max_size).await?;
+            trace!("Read frame: {}", FramePrinter(&header));
 
             match header.opcode {
                 OpCode::DataCode(data_code) => {
@@ -346,16 +349,16 @@ impl FramedWrite {
         is_server: bool,
         opcode: OpCode,
         mut header_flags: HeaderFlags,
-        mut payload_ref: A,
+        payload_ref: A,
         extension: F,
     ) -> Result<(), Error>
     where
         I: AsyncWrite + Unpin,
-        A: AsMut<[u8]>,
+        A: AsRef<[u8]>,
         F: FnMut(&mut BytesMut, &mut ExtFrameHeader) -> Result<(), Error>,
     {
         let FramedWrite { write_buffer, rand } = self;
-        let payload = payload_ref.as_mut();
+        let payload = payload_ref.as_ref();
 
         let mut payload_bytes = BytesMut::with_capacity(payload.len());
         payload_bytes.extend_from_slice(payload);
@@ -377,6 +380,11 @@ impl FramedWrite {
             Some(mask)
         };
 
+        trace!(
+            "Writing frame: {}",
+            BorrowedFramePrinter::new(&opcode, &header_flags, &mask),
+        );
+
         FrameHeader::write_into(
             write_buffer,
             opcode,
@@ -388,7 +396,7 @@ impl FramedWrite {
         io.write_all(write_buffer).await?;
         write_buffer.clear();
 
-        io.write_all(payload_bytes.as_mut())
+        io.write_all(payload_bytes.as_ref())
             .await
             .map_err(Into::into)
     }
@@ -479,7 +487,7 @@ where
         extension: F,
     ) -> Result<(), Error>
     where
-        A: AsMut<[u8]>,
+        A: AsRef<[u8]>,
         F: FnMut(&mut BytesMut, &mut ExtFrameHeader) -> Result<(), Error>,
     {
         let FramedIo {
@@ -530,7 +538,7 @@ where
         extension: F,
     ) -> Result<(), Error>
     where
-        A: AsMut<[u8]>,
+        A: AsRef<[u8]>,
         F: FnMut(&mut BytesMut, &mut ExtFrameHeader) -> Result<(), Error>,
     {
         let FramedIo {
@@ -605,19 +613,19 @@ where
 pub async fn write_fragmented<A, I, F>(
     io: &mut I,
     framed: &mut FramedWrite,
-    mut buf_ref: A,
+    buf_ref: A,
     message_type: MessageType,
     fragment_size: usize,
     is_server: bool,
     mut extension: F,
 ) -> Result<(), Error>
 where
-    A: AsMut<[u8]>,
+    A: AsRef<[u8]>,
     I: AsyncWrite + Unpin,
     F: FnMut(&mut BytesMut, &mut ExtFrameHeader) -> Result<(), Error>,
 {
-    let buf = buf_ref.as_mut();
-    let mut chunks = buf.chunks_mut(fragment_size).peekable();
+    let buf = buf_ref.as_ref();
+    let mut chunks = buf.chunks(fragment_size).peekable();
     match chunks.next() {
         Some(payload) => {
             let payload_type = match message_type {

@@ -25,7 +25,8 @@
 //! # Splitting an extension
 //! If a WebSocket is to be split into its sending and receiving halves then the extension must
 //! implement the `SplittableExtension` trait and if it is to be reunited then it must implement the
-//! `ReunitableExtension`. This allows more fine-grained control over the mutex within the receiver.
+//! `ReunitableExtension`. This allows more fine-grained control over the BiLock within the
+//! receiver.
 
 #![deny(
     missing_docs,

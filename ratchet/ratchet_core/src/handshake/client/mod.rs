@@ -20,10 +20,9 @@ mod encoding;
 use bytes::BytesMut;
 use http::{header, Request, StatusCode};
 use httparse::{Response, Status};
+use log::{error, trace};
 use sha1::{Digest, Sha1};
 use std::convert::TryFrom;
-use tracing::{event, span, Level};
-use tracing_futures::Instrument;
 
 use crate::errors::{Error, ErrorKind, HttpError};
 use crate::ext::NegotiatedExtension;
@@ -41,9 +40,8 @@ use tokio_util::codec::Decoder;
 
 type Nonce = [u8; 24];
 
-const MSG_HANDSHAKE_COMPLETED: &str = "Handshake completed";
-const MSG_HANDSHAKE_FAILED: &str = "Handshake failed";
-const MSG_HANDSHAKE_START: &str = "Executing client handshake";
+const MSG_HANDSHAKE_COMPLETED: &str = "Client handshake completed";
+const MSG_HANDSHAKE_FAILED: &str = "Client handshake failed";
 
 /// A structure representing an upgraded WebSocket session and an optional subprotocol that was
 /// negotiated during the upgrade.
@@ -130,33 +128,28 @@ where
     E: ExtensionProvider,
 {
     let machine = ClientHandshake::new(stream, subprotocols, &extension, buf);
-    let uri = request.uri();
-    let span = span!(Level::DEBUG, MSG_HANDSHAKE_START, ?uri);
-
-    let exec = async move {
-        let handshake_result = machine.exec(request).await;
-        match &handshake_result {
-            Ok(HandshakeResult {
+    let uri = request.uri().to_string();
+    let handshake_result = machine.exec(request).await;
+    match &handshake_result {
+        Ok(HandshakeResult {
+            subprotocol,
+            extension,
+            ..
+        }) => {
+            trace!(
+                "{} for: {}. Selected subprotocol: {:?} and extension: {:?}",
+                MSG_HANDSHAKE_COMPLETED,
+                uri,
                 subprotocol,
-                extension,
-                ..
-            }) => {
-                event!(
-                    Level::DEBUG,
-                    MSG_HANDSHAKE_COMPLETED,
-                    ?subprotocol,
-                    ?extension
-                )
-            }
-            Err(e) => {
-                event!(Level::ERROR, MSG_HANDSHAKE_FAILED, error = ?e)
-            }
+                extension
+            )
         }
+        Err(e) => {
+            error!("{} for {}. Error: {:?}", MSG_HANDSHAKE_FAILED, uri, e)
+        }
+    }
 
-        handshake_result
-    };
-
-    exec.instrument(span).await
+    handshake_result
 }
 
 struct ClientHandshake<'s, S, E> {
