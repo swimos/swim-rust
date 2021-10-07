@@ -14,4 +14,4 @@ num-traits = "0.2.12"
 url = "2.1.1"
 
 [dev-dependencies]
-trybuild = "1.0.37"
+trybuild = "1.0.48"
