@@ -29,7 +29,7 @@ use ratchet_ext::{
     HeaderMap, HeaderValue, OpCode, ReunitableExtension, RsvBits, SplittableExtension,
 };
 
-const DEFLATE_TRAILER: &[u8] = &[0, 0, 255, 255];
+const DEFLATE_TRAILER: [u8; 4] = [0, 0, 255, 255];
 
 /// The minimum size of the LZ77 sliding window size.
 const LZ77_MIN_WINDOW_SIZE: u8 = 8;
@@ -341,7 +341,7 @@ impl ExtensionDecoder for DeflateDecoder {
             _ => return Ok(()),
         }
 
-        payload.extend_from_slice(DEFLATE_TRAILER);
+        payload.extend_from_slice(&DEFLATE_TRAILER);
 
         buf.clear();
         buf.reserve(payload.len() * 2);

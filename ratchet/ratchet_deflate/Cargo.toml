@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 ratchet_ext = { path = "../ratchet_ext" }
+ratchet_proto = { path = "../ratchet_proto" }
 thiserror = "1.0"
 http = "0.2.3"
 bytes = "1.0"

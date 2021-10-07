@@ -20,6 +20,9 @@ use bytes::BytesMut;
 use http::header::SEC_WEBSOCKET_EXTENSIONS;
 use http::{HeaderMap, HeaderValue};
 use ratchet_ext::Header;
+use ratchet_proto::H1PartEncoder;
+use std::convert::Infallible;
+use std::fmt::Write;
 use std::str::Utf8Error;
 
 /// The WebSocket Extension Identifier as per the IANA registry.
@@ -33,36 +36,107 @@ const UNKNOWN_PARAM: &str = "Unknown permessage-deflate parameter";
 const DUPLICATE_PARAM: &str = "Duplicate permessage-deflate parameter";
 const HEADER_ERR: &str = "Failed to produce header";
 
-pub fn apply_headers(header_map: &mut HeaderMap, config: &DeflateConfig) {
-    let DeflateConfig {
-        server_max_window_bits,
-        client_max_window_bits,
-        request_server_no_context_takeover,
-        request_client_no_context_takeover,
-        ..
-    } = config;
+const BIT_LUT: [str; 8] = [
+    ['8', ' '],
+    ['9', ' '],
+    ['1', '0'],
+    ['1', '1'],
+    ['1', '2'],
+    ['1', '3'],
+    ['1', '4'],
+    ['1', '5'],
+];
 
-    let mut bytes = BytesMut::new();
-    bytes.extend_from_slice(format!("{}; ", EXT_IDENT).as_bytes());
+struct DeflateHeaderEncoder<'c>(&'c DeflateConfig);
+impl<'c> H1PartEncoder for DeflateHeaderEncoder<'c> {
+    type Error = Infallible;
 
-    if *client_max_window_bits < LZ77_MAX_WINDOW_SIZE {
-        bytes.extend_from_slice(
-            format!(
+    #[inline]
+    fn encode_into(self, into: &mut BytesMut) -> Result<(), Self::Error> {
+        let DeflateConfig {
+            server_max_window_bits,
+            client_max_window_bits,
+            request_server_no_context_takeover,
+            request_client_no_context_takeover,
+            ..
+        } = self.0;
+
+        write(into, EXT_IDENT);
+        write(into, "; ");
+
+        if *client_max_window_bits < LZ77_MAX_WINDOW_SIZE {
+            write(into, CLIENT_MAX_BITS);
+            write(into, "=");
+            write(into, BIT_LUT[client_max_window_bits]);
+
+            let _ = write!(
+                into,
                 "{}={}; {}={}",
                 CLIENT_MAX_BITS, client_max_window_bits, SERVER_MAX_BITS, server_max_window_bits
-            )
-            .as_bytes(),
-        );
-    } else {
-        bytes.extend_from_slice(b"client_max_window_bits")
+            );
+        } else {
+            let _ = write!(into, "client_max_window_bits");
+        }
+
+        if *request_server_no_context_takeover {
+            let _ = write!(into, "; server_no_context_takeover");
+        }
+        if *request_client_no_context_takeover {
+            let _ = write!(into, "; client_no_context_takeover");
+        }
+
+        Ok(())
     }
 
-    if *request_server_no_context_takeover {
-        bytes.extend_from_slice(b"; server_no_context_takeover")
+    #[inline]
+    fn size_hint(&self) -> usize {
+        let DeflateConfig {
+            client_max_window_bits,
+            request_server_no_context_takeover,
+            request_client_no_context_takeover,
+            ..
+        } = self.0;
+
+        let mut len = EXT_IDENT.len();
+
+        if *client_max_window_bits < LZ77_MAX_WINDOW_SIZE {
+            // 4 for pairs & 2 for bits
+            len += 4 + CLIENT_MAX_BITS.len() + SERVER_MAX_BITS.len() + 2;
+        } else {
+            len += CLIENT_MAX_BITS.len();
+        }
+
+        if *request_server_no_context_takeover {
+            // 2 for colon and space
+            len += SERVER_NO_TAKEOVER.len() + 2;
+        }
+        if *request_client_no_context_takeover {
+            // 2 for colon and space
+            len += CLIENT_NO_TAKEOVER.len() + 2;
+        }
+
+        len
     }
-    if *request_client_no_context_takeover {
-        bytes.extend_from_slice(b"; client_no_context_takeover")
+}
+
+#[inline]
+fn write(into: &mut BytesMut, data: &str) {
+    if let Err(_) = into.write_str(data) {
+        extend_and_write(into, data);
     }
+}
+
+#[cold]
+#[inline(never)]
+fn extend_and_write(into: &mut BytesMut, data: &str) {
+    into.reserve(data.len());
+    let _ = into.write_str(data);
+}
+
+pub fn apply_headers(header_map: &mut HeaderMap, config: &DeflateConfig) {
+    let encoder = DeflateHeaderEncoder(config);
+    let mut bytes = BytesMut::new();
+    let _ = encoder.encode(&mut bytes);
 
     header_map.insert(
         SEC_WEBSOCKET_EXTENSIONS,
