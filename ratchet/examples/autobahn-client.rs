@@ -93,8 +93,6 @@ async fn run_test(case: u32) -> Result<(), Error> {
 
 #[tokio::main]
 async fn main() {
-    env_logger::init();
-
     let total = get_case_count().await.unwrap();
 
     for case in 1..=total {

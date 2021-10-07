@@ -56,17 +56,15 @@ impl<'c> DeflateHeaderEncoder<'c> {
 
         write(into, EXT_IDENT);
         write(into, "; ");
+        write(into, CLIENT_MAX_BITS);
 
         if *client_max_window_bits < LZ77_MAX_WINDOW_SIZE {
-            write(into, CLIENT_MAX_BITS);
             write(into, "=");
             write(into, client_max_window_bits.as_str());
             write(into, "; ");
             write(into, SERVER_MAX_BITS);
             write(into, "=");
             write(into, server_max_window_bits.as_str());
-        } else {
-            write(into, CLIENT_MAX_BITS);
         }
 
         if *request_server_no_context_takeover {
@@ -110,7 +108,7 @@ impl<'c> DeflateHeaderEncoder<'c> {
 
 #[inline]
 fn write(into: &mut BytesMut, data: &str) {
-    if let Err(_) = into.write_str(data) {
+    if into.write_str(data).is_err() {
         extend_and_write(into, data);
     }
 }

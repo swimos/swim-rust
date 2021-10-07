@@ -166,9 +166,9 @@ impl PartialEq<u8> for WindowBits {
     }
 }
 
-impl Into<u8> for WindowBits {
-    fn into(self) -> u8 {
-        self.0
+impl From<WindowBits> for u8 {
+    fn from(bits: WindowBits) -> Self {
+        bits.0
     }
 }
 
