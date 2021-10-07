@@ -19,12 +19,10 @@ use crate::parser::record::IncrementalReconParser;
 use crate::parser::ParseError;
 use crate::parser::Span;
 use bytes::{Buf, BytesMut};
-use nom::error::ErrorKind;
 use nom::Parser;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::str::Utf8Error;
-use swim_form::structural::read::event::ReadEvent;
 use swim_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
 use swim_form::structural::read::ReadError;
 use swim_model::{Item, Value};
@@ -39,8 +37,8 @@ pub enum AsyncParseError {
     BadUtf8(Utf8Error),
     /// An error occurred attempting to parse the valid UTF8 input.
     Parser(ParseError),
-    /// Some input tokens were not consumed by the parser.
-    UnconsumedTokens,
+    /// Some of the input string was not consumed by the parser.
+    UnconsumedInput,
 }
 
 impl Display for AsyncParseError {
@@ -53,8 +51,11 @@ impl Display for AsyncParseError {
             AsyncParseError::Parser(err) => {
                 write!(f, "Error parsing recon data: {}", err)
             }
-            AsyncParseError::UnconsumedTokens => {
-                write!(f, "Some input tokens were not consumed.")
+            AsyncParseError::UnconsumedInput => {
+                write!(
+                    f,
+                    " Some of the input string was not consumed by the parser."
+                )
             }
         }
     }
@@ -65,6 +66,43 @@ impl Error for AsyncParseError {}
 impl From<tokio::io::Error> for AsyncParseError {
     fn from(err: tokio::io::Error) -> Self {
         AsyncParseError::Io(err)
+    }
+}
+
+async fn read_to_buffer<In>(
+    mut input: In,
+    buffer: &mut BytesMut,
+    cap: &mut usize,
+) -> Result<bool, AsyncParseError>
+where
+    In: AsyncRead + Unpin,
+{
+    if buffer.capacity() == 0 {
+        *cap = (*cap).min(buffer.len() * 2);
+        buffer.reserve(*cap);
+    }
+    Ok(input.read_buf(buffer).await? > 0)
+}
+
+async fn consume_remainder<In>(mut input: In, buffer: &mut BytesMut) -> Result<(), AsyncParseError>
+where
+    In: AsyncRead + Unpin,
+{
+    buffer.clear();
+    while input.read_buf(buffer).await? > 0 {
+        let content = read_utf8(buffer.as_ref())?;
+        if !content.chars().all(char::is_whitespace) {
+            return Err(AsyncParseError::UnconsumedInput);
+        }
+    }
+    Ok(())
+}
+
+fn read_utf8(content: &[u8]) -> Result<&str, AsyncParseError> {
+    match core::str::from_utf8(content) {
+        Ok(s) => Ok(s),
+        Err(e) if e.error_len().is_some() => Err(AsyncParseError::BadUtf8(e)),
+        Err(e) => Ok(unsafe { core::str::from_utf8_unchecked(&content[..e.valid_up_to()]) }),
     }
 }
 
@@ -79,23 +117,18 @@ where
     In: AsyncRead + Unpin,
     R: Recognizer,
 {
+    let mut cap = buffer.capacity();
     'read: loop {
-        if input.read(buffer).await? == 0 {
+        if !read_to_buffer(&mut input, buffer, &mut cap).await? {
             break 'read;
         }
-        let bytes = buffer.as_ref();
-        let string = match core::str::from_utf8(bytes) {
-            Ok(s) => s,
-            Err(e) if e.error_len().is_some() => {
-                return Err(AsyncParseError::BadUtf8(e));
-            }
-            Err(e) => unsafe { core::str::from_utf8_unchecked(&bytes[..e.valid_up_to()]) },
-        };
+        let string = read_utf8(buffer.as_ref())?;
         let mut span = Span::new(string);
         'token: loop {
             match parser.parse(span) {
                 Ok((remainder, mut events)) => {
                     span = remainder;
+
                     'feed: loop {
                         match events.next() {
                             Some(Some(event)) => match recognizer.feed_event(event) {
@@ -103,7 +136,7 @@ where
                                     if events.is_empty() {
                                         return Ok(Some(t));
                                     } else {
-                                        return Err(AsyncParseError::UnconsumedTokens);
+                                        return Err(AsyncParseError::UnconsumedInput);
                                     }
                                 }
                                 Some(Err(e)) => {
@@ -135,41 +168,40 @@ where
     Ok(None)
 }
 
+const DEFAULT_BUFFER: usize = 4096;
+const HEADER: &[u8] = b"{";
+const TRAILER: &[u8] = b"}";
+
 /// Attempt to read a Recon document from an asyncronous input.
 pub async fn parse_recon_document<In>(input: In) -> Result<Vec<Item>, AsyncParseError>
 where
     In: AsyncRead + Unpin,
 {
     let mut recognizer = Value::make_recognizer();
-    recognizer.feed_event(ReadEvent::StartBody);
 
-    let mut buffer = BytesMut::new();
+    let mut buffer = BytesMut::with_capacity(DEFAULT_BUFFER);
     let mut parser = IncrementalReconParser::default();
     let mut tracker = LocationTracker::default();
 
-    if run_parser(
-        input,
+    let mut wrapped = AsyncReadExt::chain(AsyncReadExt::chain(HEADER, input), TRAILER);
+
+    let result = run_parser(
+        &mut wrapped,
         &mut recognizer,
         &mut buffer,
         &mut parser,
         &mut tracker,
     )
-    .await?
-    .is_some()
-    {
-        Err(AsyncParseError::UnconsumedTokens)
-    } else {
-        match recognizer.feed_event(ReadEvent::EndRecord) {
-            Some(Ok(Value::Record(_, items))) => Ok(items),
-            Some(Err(e)) => Err(AsyncParseError::Parser(ParseError::from(e))),
-            _ => match recognizer.try_flush() {
-                Some(Ok(Value::Record(_, items))) => Ok(items),
-                Some(Err(e)) => Err(AsyncParseError::Parser(ParseError::from(e))),
-                _ => Err(AsyncParseError::Parser(ParseError::Structure(
-                    ReadError::IncompleteRecord,
-                ))),
-            },
+    .await?;
+
+    match result {
+        Some(Value::Record(_, items)) => {
+            consume_remainder(&mut wrapped, &mut buffer).await?;
+            Ok(items)
         }
+        _ => Err(AsyncParseError::Parser(ParseError::Structure(
+            ReadError::IncompleteRecord,
+        ))),
     }
 }
 
@@ -208,7 +240,7 @@ where
                                 if events.is_empty() {
                                     return Ok(t);
                                 } else {
-                                    return Err(AsyncParseError::UnconsumedTokens);
+                                    return Err(AsyncParseError::UnconsumedInput);
                                 }
                             }
                             Some(Err(e)) => {

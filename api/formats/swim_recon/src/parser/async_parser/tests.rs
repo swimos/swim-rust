@@ -57,5 +57,5 @@ async fn read_invalid_file() {
     let file = File::open(path).await;
     assert!(file.is_ok());
     let result = super::parse_recon_document(file.unwrap()).await;
-    assert!(matches!(result, Err(AsyncParseError::Parser(_))));
+    assert!(matches!(result, Err(AsyncParseError::UnconsumedInput)));
 }
