@@ -8,6 +8,6 @@ edition = "2018"
 attr_derive = { path = "attr_derive" }
 
 [dev-dependencies]
-trybuild = "1.0.37"
+trybuild = "1.0.48"
 serde = { version = "1.0.124", features = ["derive"] }
 serde_json = "1.0"
