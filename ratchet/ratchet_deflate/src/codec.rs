@@ -43,17 +43,10 @@ impl BufCompress for Compress {
         output: &mut BytesMut,
         flush: FlushCompress,
     ) -> Result<Status, CompressError> {
-        let cap = output.capacity();
-        let len = output.len();
-        let before = self.total_out();
-
-        unsafe {
-            let ptr = output.as_mut_ptr().offset(len as isize);
-            let out = slice::from_raw_parts_mut(ptr, cap - len);
+        op_buf(input, output, self.total_out(), |input, out| {
             let ret = self.compress(input, out, flush);
-            output.set_len((self.total_out() - before) as usize + len);
-            ret
-        }
+            (ret, self.total_out())
+        })
     }
 }
 
@@ -64,16 +57,27 @@ impl BufDecompress for Decompress {
         output: &mut BytesMut,
         flush: FlushDecompress,
     ) -> Result<Status, DecompressError> {
-        let cap = output.capacity();
-        let len = output.len();
-        let before = self.total_out();
-
-        unsafe {
-            let ptr = output.as_mut_ptr().offset(len as isize);
-            let out = slice::from_raw_parts_mut(ptr, cap - len);
+        op_buf(input, output, self.total_out(), |input, out| {
             let ret = self.decompress(input, out, flush);
-            output.set_len((self.total_out() - before) as usize + len);
-            ret
-        }
+            (ret, self.total_out())
+        })
+    }
+}
+
+// This function's body is a copy of the Compress::compress_vec and Decompress::decompress_vec
+// functions to work with a BytesMut.
+fn op_buf<Fn, E>(input: &[u8], output: &mut BytesMut, before: u64, op: Fn) -> Result<Status, E>
+where
+    Fn: FnOnce(&[u8], &mut [u8]) -> (Result<Status, E>, u64),
+{
+    let cap = output.capacity();
+    let len = output.len();
+
+    unsafe {
+        let ptr = output.as_mut_ptr().offset(len as isize);
+        let out = slice::from_raw_parts_mut(ptr, cap - len);
+        let (ret, total_out) = op(input, out);
+        output.set_len((total_out - before) as usize + len);
+        ret
     }
 }

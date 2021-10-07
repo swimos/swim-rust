@@ -372,7 +372,8 @@ pub struct DeflateDecoder {
     buf: BytesMut,
     decompress: Decompress,
     decompress_reset: bool,
-    requires_decode: bool,
+    // Whether we're reading a compressed message
+    compressed: bool,
 }
 
 impl DeflateDecoder {
@@ -386,7 +387,7 @@ impl DeflateDecoder {
             buf: BytesMut::default(),
             decompress: Decompress::new_with_window_bits(false, window_size),
             decompress_reset,
-            requires_decode: false,
+            compressed: false,
         }
     }
 }
@@ -415,19 +416,17 @@ impl ExtensionDecoder for DeflateDecoder {
             buf,
             decompress,
             decompress_reset,
-            requires_decode,
+            compressed,
         } = self;
 
         match header.opcode {
-            OpCode::Binary | OpCode::Text if header.rsv1 => {
+            OpCode::Binary | OpCode::Text => {
+                *compressed = header.rsv1;
                 if !header.fin {
-                    *requires_decode = true;
                     return Ok(());
                 }
             }
-            OpCode::Continuation if header.fin && *requires_decode => {
-                *requires_decode = false;
-            }
+            OpCode::Continuation if header.fin && *compressed => {}
             _ => return Ok(()),
         }
 
