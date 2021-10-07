@@ -192,16 +192,35 @@ where
         &mut parser,
         &mut tracker,
     )
-    .await?;
+    .await;
 
     match result {
-        Some(Value::Record(_, items)) => {
+        Ok(Some(Value::Record(_, items))) => {
             consume_remainder(&mut wrapped, &mut buffer).await?;
             Ok(items)
         }
-        _ => Err(AsyncParseError::Parser(ParseError::Structure(
+        Ok(_) => Err(AsyncParseError::Parser(ParseError::Structure(
             ReadError::IncompleteRecord,
         ))),
+        Err(AsyncParseError::Parser(ParseError::Syntax {
+            kind,
+            mut offset,
+            line,
+            mut column,
+        })) => {
+            //Correct offset and column for the implicit starting '{'.
+            if line == 1 {
+                offset -= 1;
+                column -= 1;
+            }
+            Err(AsyncParseError::Parser(ParseError::Syntax {
+                kind,
+                offset,
+                line,
+                column,
+            }))
+        }
+        Err(e) => Err(e),
     }
 }
 
