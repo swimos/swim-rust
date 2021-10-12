@@ -2898,9 +2898,11 @@ impl Recognizer for RetryStrategyRecognizer {
                         }
                         ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
                     },
-                    ReadEvent::EndRecord => Some(Ok(RetryStrategy::immediate(
-                        retries.unwrap_or(NonZeroUsize::new(DEFAULT_IMMEDIATE_RETRIES).unwrap()),
-                    ))),
+                    ReadEvent::EndRecord => {
+                        Some(Ok(RetryStrategy::immediate(retries.unwrap_or_else(|| {
+                            NonZeroUsize::new(DEFAULT_IMMEDIATE_RETRIES).unwrap()
+                        }))))
+                    }
                     ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                         ExpectedEvent::ValueEvent(ValueKind::Text),
                         ExpectedEvent::EndOfRecord,
@@ -2928,10 +2930,10 @@ impl Recognizer for RetryStrategyRecognizer {
                         ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
                     },
                     ReadEvent::EndRecord => Some(Ok(RetryStrategy::interval(
-                        delay.unwrap_or(Duration::from_secs(DEFAULT_INTERVAL_DELAY)),
-                        retries.unwrap_or(Quantity::Finite(
-                            NonZeroUsize::new(DEFAULT_INTERVAL_RETRIES).unwrap(),
-                        )),
+                        delay.unwrap_or_else(|| Duration::from_secs(DEFAULT_INTERVAL_DELAY)),
+                        retries.unwrap_or_else(|| {
+                            Quantity::Finite(NonZeroUsize::new(DEFAULT_INTERVAL_RETRIES).unwrap())
+                        }),
                     ))),
                     ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                         ExpectedEvent::ValueEvent(ValueKind::Text),
@@ -2961,11 +2963,12 @@ impl Recognizer for RetryStrategyRecognizer {
                         ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
                     },
                     ReadEvent::EndRecord => Some(Ok(RetryStrategy::exponential(
-                        max_interval
-                            .unwrap_or(Duration::from_secs(DEFAULT_EXPONENTIAL_MAX_INTERVAL)),
-                        max_backoff.unwrap_or(Quantity::Finite(Duration::from_secs(
-                            DEFAULT_EXPONENTIAL_MAX_BACKOFF,
-                        ))),
+                        max_interval.unwrap_or_else(|| {
+                            Duration::from_secs(DEFAULT_EXPONENTIAL_MAX_INTERVAL)
+                        }),
+                        max_backoff.unwrap_or_else(|| {
+                            Quantity::Finite(Duration::from_secs(DEFAULT_EXPONENTIAL_MAX_BACKOFF))
+                        }),
                     ))),
                     ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                         ExpectedEvent::ValueEvent(ValueKind::Text),

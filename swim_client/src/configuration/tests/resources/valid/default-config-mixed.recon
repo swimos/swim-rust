@@ -1,11 +1,37 @@
 @config {
-    @client {
-        router: {
-            retry_strategy: @exponential(max_interval: 16, max_backoff: 300)
-            buffer_size: 100
+    @downlink_connections {
+        dl_req_buffer_size: 8,
+        buffer_size: 100,
+        yield_after: 256,
+        retry_strategy: @exponential
+    },
+    @remote_connections {
+        activity_timeout: @duration {
+            secs: 30,
+            nanos: 0
+        },
+        write_timeout: @duration {
+            secs: 20,
+            nanos: 0
+        },
+        connection_retries: @exponential {
+            max_interval: @duration {
+                secs: 16,
+                nanos: 0
+            },
+            max_backoff: @duration {
+                secs: 300,
+                nanos: 0
+            }
+        },
+        yield_after: 256
+    },
+    @websocket_connections {
+        max_message_size: 67108864,
+        max_frame_size: 16777216,
+        accept_unmasked_frames: false,
+        compression: @none {
+            67108864
         }
-    }
-    @downlinks {
-        back_pressure: @propagate()
     }
 }

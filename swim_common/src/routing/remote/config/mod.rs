@@ -40,7 +40,7 @@ const DEFAULT_WRITE_TIMEOUT: u64 = 20;
 const DEFAULT_YIELD_AFTER: usize = 256;
 
 /// Configuration parameters for remote connection management.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RemoteConnectionsConfig {
     /// Buffer size for sending routing requests for a router instance.
     pub router_buffer_size: NonZeroUsize,
@@ -54,6 +54,26 @@ pub struct RemoteConnectionsConfig {
     pub connection_retries: RetryStrategy,
     /// The number of events to process before yielding execution back to the runtime.
     pub yield_after: NonZeroUsize,
+}
+
+impl RemoteConnectionsConfig {
+    pub fn new(
+        router_buffer_size: NonZeroUsize,
+        channel_buffer_size: NonZeroUsize,
+        activity_timeout: Duration,
+        write_timeout: Duration,
+        connection_retries: RetryStrategy,
+        yield_after: NonZeroUsize,
+    ) -> Self {
+        RemoteConnectionsConfig {
+            router_buffer_size,
+            channel_buffer_size,
+            activity_timeout,
+            write_timeout,
+            connection_retries,
+            yield_after,
+        }
+    }
 }
 
 impl Default for RemoteConnectionsConfig {
@@ -276,20 +296,20 @@ impl Recognizer for RemoteConnectionsConfigRecognizer {
                 ReadEvent::EndRecord => Some(Ok(RemoteConnectionsConfig {
                     router_buffer_size: self
                         .router_buffer_size
-                        .unwrap_or(NonZeroUsize::new(DEFAULT_ROUTER_BUFFER_SIZE).unwrap()),
+                        .unwrap_or_else(|| NonZeroUsize::new(DEFAULT_ROUTER_BUFFER_SIZE).unwrap()),
                     channel_buffer_size: self
                         .channel_buffer_size
-                        .unwrap_or(NonZeroUsize::new(DEFAULT_CHANNEL_BUFFER_SIZE).unwrap()),
+                        .unwrap_or_else(|| NonZeroUsize::new(DEFAULT_CHANNEL_BUFFER_SIZE).unwrap()),
                     activity_timeout: self
                         .activity_timeout
-                        .unwrap_or(Duration::from_secs(DEFAULT_ACTIVITY_TIMEOUT)),
+                        .unwrap_or_else(|| Duration::from_secs(DEFAULT_ACTIVITY_TIMEOUT)),
                     write_timeout: self
                         .write_timeout
-                        .unwrap_or(Duration::from_secs(DEFAULT_WRITE_TIMEOUT)),
+                        .unwrap_or_else(|| Duration::from_secs(DEFAULT_WRITE_TIMEOUT)),
                     connection_retries: self.connection_retries.unwrap_or_default(),
                     yield_after: self
                         .yield_after
-                        .unwrap_or(NonZeroUsize::new(DEFAULT_YIELD_AFTER).unwrap()),
+                        .unwrap_or_else(|| NonZeroUsize::new(DEFAULT_YIELD_AFTER).unwrap()),
                 })),
                 ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                     ExpectedEvent::ValueEvent(ValueKind::Text),

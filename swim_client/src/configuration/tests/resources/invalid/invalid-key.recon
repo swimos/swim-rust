@@ -1,27 +1,16 @@
 @config {
-    @client {
-        buffer_size: 2
-        router: {
-            retry_strategy: @exponential(max_interval: 16, max_backoff: 300)
-            idle_timeout: 60
-            conn_reaper_frequency: 60
-            buffer_size: 100
-        }
-    }
     @downlinks {
-        back_pressure: @propagate()
-        idle_timeout: 60000
-        buffer_size: 5
-        on_invalid: "terminate"
-        yield_after: 256
-    }
-    @host {
-        "foo-url": {
-            back_pressure: @propagate()
-            idle_timeout: 60000
-            buffer_size: 5
-            on_invalid: "terminate"
-            yield_after: 256
+        host: {
+            "foo-url": @downlink_config {
+                back_pressure: @propagate,
+                idle_timeout: @duration {
+                    secs: 40000,
+                    nanos: 0
+                },
+                buffer_size: 15,
+                on_invalid: ignore,
+                yield_after: 200
+            }
         }
     }
 }

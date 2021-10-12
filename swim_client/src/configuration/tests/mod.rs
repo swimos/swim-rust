@@ -13,17 +13,21 @@
 // limitations under the License.
 
 use crate::configuration::{
-    BackpressureMode, ClientParams, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
+    BackpressureMode, ClientDownlinksConfig, DownlinkConfig, DownlinkConnectionsConfig,
+    DownlinksConfig, OnInvalidMessage, SwimClientConfig,
 };
-use crate::configuration::router::RouterParams;
 use crate::interface::SwimClientBuilder;
 use std::fs;
 use std::fs::File;
 use std::io::Read;
 use std::num::NonZeroUsize;
+use swim_common::form::Form;
 use swim_common::model::parser::parse_single;
+use swim_common::routing::remote::config::RemoteConnectionsConfig;
 use swim_common::warp::path::AbsolutePath;
 use tokio::time::Duration;
+use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
+use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use url::Url;
 use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
 
@@ -36,9 +40,9 @@ fn test_conf_from_file_default_manual() {
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
     let config = parse_single(&contents).unwrap();
-    let config = ConfigHierarchy::try_from_value(config, false).unwrap();
+    let config = SwimClientConfig::try_from_value(&config).unwrap();
 
-    let expected = ConfigHierarchy::default();
+    let expected = SwimClientConfig::default();
 
     assert_eq!(config, expected)
 }
@@ -46,15 +50,15 @@ fn test_conf_from_file_default_manual() {
 #[test]
 fn test_conf_from_file_default_automatic() {
     let mut file =
-        fs::File::open("src/configuration/tests/resources/valid/default-config-manual.recon")
+        fs::File::open("src/configuration/tests/resources/valid/default-config-automatic.recon")
             .unwrap();
 
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
     let config = parse_single(&contents).unwrap();
-    let config = ConfigHierarchy::try_from_value(config, true).unwrap();
+    let config = SwimClientConfig::try_from_value(&config).unwrap();
 
-    let expected = ConfigHierarchy::default();
+    let expected = SwimClientConfig::default();
 
     assert_eq!(config, expected)
 }
@@ -62,15 +66,15 @@ fn test_conf_from_file_default_automatic() {
 #[test]
 fn test_conf_from_file_default_mixed() {
     let mut file =
-        fs::File::open("src/configuration/tests/resources/valid/default-config-manual.recon")
+        fs::File::open("src/configuration/tests/resources/valid/default-config-mixed.recon")
             .unwrap();
 
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
     let config = parse_single(&contents).unwrap();
-    let config = ConfigHierarchy::try_from_value(config, true).unwrap();
+    let config = SwimClientConfig::try_from_value(&config).unwrap();
 
-    let expected = ConfigHierarchy::default();
+    let expected = SwimClientConfig::default();
 
     assert_eq!(config, expected)
 }
@@ -80,23 +84,22 @@ fn test_conf_from_file_retry_exponential() {
     let mut file = fs::File::open(
         "src/configuration/tests/resources/valid/client-config-retry-exponential.recon",
     )
-    .unwrap();
+        .unwrap();
 
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
     let config = parse_single(&contents).unwrap();
-    let config = ConfigHierarchy::try_from_value(config, true).unwrap();
+    let config = SwimClientConfig::try_from_value(&config).unwrap();
 
-    let expected = ConfigHierarchy::new(
-        ClientParams::new(
-            NonZeroUsize::new(2).unwrap(),
-            RouterParams::new(
-                RetryStrategy::exponential(Duration::from_secs(30), Quantity::Infinite),
-                Duration::from_secs(100),
-                Duration::from_secs(6000),
-                NonZeroUsize::new(15).unwrap(),
-            ),
+    let expected = SwimClientConfig::new(
+        DownlinkConnectionsConfig::new(
+            NonZeroUsize::new(8).unwrap(),
+            NonZeroUsize::new(100).unwrap(),
+            NonZeroUsize::new(256).unwrap(),
+            RetryStrategy::exponential(Duration::from_secs(30), Quantity::Infinite),
         ),
+        Default::default(),
+        Default::default(),
         Default::default(),
     );
 
@@ -108,23 +111,22 @@ fn test_conf_from_file_retry_immediate() {
     let mut file = fs::File::open(
         "src/configuration/tests/resources/valid/client-config-retry-immediate.recon",
     )
-    .unwrap();
+        .unwrap();
 
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
     let config = parse_single(&contents).unwrap();
-    let config = ConfigHierarchy::try_from_value(config, true).unwrap();
+    let config = SwimClientConfig::try_from_value(&config).unwrap();
 
-    let expected = ConfigHierarchy::new(
-        ClientParams::new(
-            NonZeroUsize::new(2).unwrap(),
-            RouterParams::new(
-                RetryStrategy::immediate(NonZeroUsize::new(10).unwrap()),
-                Duration::from_secs(100),
-                Duration::from_secs(6000),
-                NonZeroUsize::new(15).unwrap(),
-            ),
+    let expected = SwimClientConfig::new(
+        DownlinkConnectionsConfig::new(
+            NonZeroUsize::new(8).unwrap(),
+            NonZeroUsize::new(100).unwrap(),
+            NonZeroUsize::new(256).unwrap(),
+            RetryStrategy::immediate(NonZeroUsize::new(10).unwrap()),
         ),
+        Default::default(),
+        Default::default(),
         Default::default(),
     );
 
@@ -136,23 +138,22 @@ fn test_conf_from_file_retry_interval() {
     let mut file = fs::File::open(
         "src/configuration/tests/resources/valid/client-config-retry-interval.recon",
     )
-    .unwrap();
+        .unwrap();
 
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
     let config = parse_single(&contents).unwrap();
-    let config = ConfigHierarchy::try_from_value(config, true).unwrap();
+    let config = SwimClientConfig::try_from_value(&config).unwrap();
 
-    let expected = ConfigHierarchy::new(
-        ClientParams::new(
-            NonZeroUsize::new(2).unwrap(),
-            RouterParams::new(
-                RetryStrategy::interval(Duration::from_secs(5), Quantity::Infinite),
-                Duration::from_secs(100),
-                Duration::from_secs(6000),
-                NonZeroUsize::new(15).unwrap(),
-            ),
+    let expected = SwimClientConfig::new(
+        DownlinkConnectionsConfig::new(
+            NonZeroUsize::new(8).unwrap(),
+            NonZeroUsize::new(100).unwrap(),
+            NonZeroUsize::new(256).unwrap(),
+            RetryStrategy::interval(Duration::from_secs(5), Quantity::Infinite),
         ),
+        Default::default(),
+        Default::default(),
         Default::default(),
     );
 
@@ -168,89 +169,79 @@ fn test_conf_from_file_retry_none() {
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
     let config = parse_single(&contents).unwrap();
-    let config = ConfigHierarchy::try_from_value(config, true).unwrap();
+    let config = SwimClientConfig::try_from_value(&config).unwrap();
 
-    let expected = ConfigHierarchy::new(
-        ClientParams::new(
-            NonZeroUsize::new(2).unwrap(),
-            RouterParams::new(
-                RetryStrategy::none(),
-                Duration::from_secs(100),
-                Duration::from_secs(6000),
-                NonZeroUsize::new(15).unwrap(),
-            ),
+    let expected = SwimClientConfig::new(
+        DownlinkConnectionsConfig::new(
+            NonZeroUsize::new(8).unwrap(),
+            NonZeroUsize::new(100).unwrap(),
+            NonZeroUsize::new(256).unwrap(),
+            RetryStrategy::none(),
         ),
+        Default::default(),
+        Default::default(),
         Default::default(),
     );
 
     assert_eq!(config, expected)
 }
 
-fn create_full_config() -> ConfigHierarchy<AbsolutePath> {
-    let mut config = ConfigHierarchy::new(
-        ClientParams::new(
-            NonZeroUsize::new(5).unwrap(),
-            RouterParams::new(
-                RetryStrategy::immediate(NonZeroUsize::new(10).unwrap()),
-                Duration::from_secs(15),
-                Duration::from_secs(22),
-                NonZeroUsize::new(50).unwrap(),
-            ),
-        ),
-        DownlinkParams::new(
+fn create_full_config() -> SwimClientConfig {
+    let mut dl_config = ClientDownlinksConfig::new(
+        DownlinkConfig::new(
             BackpressureMode::Release {
-                input_buffer_size: NonZeroUsize::new(15).unwrap(),
-                bridge_buffer_size: NonZeroUsize::new(15).unwrap(),
-                max_active_keys: NonZeroUsize::new(15).unwrap(),
-                yield_after: NonZeroUsize::new(15).unwrap(),
+                input_buffer_size: NonZeroUsize::new(512).unwrap(),
+                bridge_buffer_size: NonZeroUsize::new(512).unwrap(),
+                max_active_keys: NonZeroUsize::new(512).unwrap(),
+                yield_after: NonZeroUsize::new(512).unwrap(),
             },
-            Duration::from_secs(30000),
+            Duration::from_nanos(6666666),
             10,
             OnInvalidMessage::Ignore,
             512,
         )
-        .unwrap(),
+            .unwrap(),
     );
 
-    config.for_host(
+    dl_config.for_host(
         Url::parse("ws://127.0.0.1").unwrap(),
-        DownlinkParams::new(
+        DownlinkConfig::new(
             BackpressureMode::Propagate,
             Duration::from_secs(40000),
             15,
             OnInvalidMessage::Ignore,
             200,
         )
-        .unwrap(),
+            .unwrap(),
     );
 
-    config.for_host(
+    dl_config.for_host(
         Url::parse("ws://127.0.0.2").unwrap(),
-        DownlinkParams::new(
+        DownlinkConfig::new(
             BackpressureMode::Propagate,
             Duration::from_secs(50000),
             25,
             OnInvalidMessage::Terminate,
             300,
         )
-        .unwrap(),
+            .unwrap(),
     );
 
-    config.for_lane(
+    dl_config.for_lane(
         &AbsolutePath::new(Url::parse("ws://192.168.0.1").unwrap(), "bar", "baz"),
-        DownlinkParams::new(
+        DownlinkConfig::new(
             BackpressureMode::Propagate,
             Duration::from_secs(90000),
             40,
             OnInvalidMessage::Ignore,
             100,
         )
-        .unwrap(),
+            .unwrap(),
     );
 
-    config.for_lane(
+    dl_config.for_lane(
         &AbsolutePath::new(Url::parse("ws://192.168.0.2").unwrap(), "qux", "quz"),
-        DownlinkParams::new(
+        DownlinkConfig::new(
             BackpressureMode::Release {
                 input_buffer_size: NonZeroUsize::new(20).unwrap(),
                 bridge_buffer_size: NonZeroUsize::new(20).unwrap(),
@@ -262,7 +253,35 @@ fn create_full_config() -> ConfigHierarchy<AbsolutePath> {
             OnInvalidMessage::Terminate,
             600,
         )
-        .unwrap(),
+            .unwrap(),
+    );
+
+    let config = SwimClientConfig::new(
+        DownlinkConnectionsConfig::new(
+            NonZeroUsize::new(8).unwrap(),
+            NonZeroUsize::new(32).unwrap(),
+            NonZeroUsize::new(200).unwrap(),
+            RetryStrategy::interval(
+                Duration::from_secs(54),
+                Quantity::Finite(NonZeroUsize::new(13).unwrap()),
+            ),
+        ),
+        RemoteConnectionsConfig::new(
+            NonZeroUsize::new(20).unwrap(),
+            NonZeroUsize::new(20).unwrap(),
+            Duration::from_secs(60),
+            Duration::from_secs(40),
+            RetryStrategy::none(),
+            NonZeroUsize::new(512).unwrap(),
+        ),
+        WebSocketConfig {
+            max_send_queue: Some(15),
+            max_message_size: Some(60000000),
+            max_frame_size: Some(16000000),
+            accept_unmasked_frames: true,
+            compression: WsCompression::Deflate(Default::default()),
+        },
+        dl_config,
     );
 
     config
@@ -277,7 +296,7 @@ fn test_conf_from_file_full_ordered() {
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
     let config = parse_single(&contents).unwrap();
-    let config = ConfigHierarchy::try_from_value(config, false).unwrap();
+    let config = SwimClientConfig::try_from_value(&config).unwrap();
 
     let expected = create_full_config();
 
@@ -289,12 +308,12 @@ fn test_conf_from_file_full_unordered() {
     let mut file = fs::File::open(
         "src/configuration/tests/resources/valid/client-config-full-unordered.recon",
     )
-    .unwrap();
+        .unwrap();
 
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
     let config = parse_single(&contents).unwrap();
-    let config = ConfigHierarchy::try_from_value(config, false).unwrap();
+    let config = SwimClientConfig::try_from_value(&config).unwrap();
 
     let expected = create_full_config();
 
@@ -305,12 +324,12 @@ fn test_conf_from_file_full_unordered() {
 fn test_client_file_conf_non_utf8_error() {
     let file =
         File::open("src/configuration/tests/resources/invalid/non-utf-8-config.recon").unwrap();
-    let result = SwimClientBuilder::new_from_file(file, false);
+    let result = SwimClientBuilder::new_from_file(file);
 
     if let Err(err) = result {
         assert_eq!(
             err.to_string(),
-            "File error: stream did not contain valid UTF-8"
+            "Could not process client configuration: stream did not contain valid UTF-8"
         )
     } else {
         panic!("Expected file error!")
@@ -321,81 +340,24 @@ fn test_client_file_conf_non_utf8_error() {
 fn test_client_file_conf_recon_error() {
     let file =
         File::open("src/configuration/tests/resources/invalid/parse-err-config.recon").unwrap();
-    let result = SwimClientBuilder::new_from_file(file, false);
+    let result = SwimClientBuilder::new_from_file(file);
 
     if let Err(err) = result {
-        assert_eq!(err.to_string(), "Recon error: Bad token at: 4:17")
+        assert_eq!(err.to_string(), "Could not process client configuration: Bad token at: 4:17")
     } else {
         panic!("Expected file error!")
     }
 }
 
 #[test]
-fn test_conf_from_file_downlink_error() {
-    let mut file =
-        fs::File::open("src/configuration/tests/resources/invalid/downlink-error.recon").unwrap();
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    let config = parse_single(&contents).unwrap();
-
-    let result = ConfigHierarchy::try_from_value(config, false);
-
-    if let Err(err) = result {
-        assert_eq!(err.to_string(), "Downlink error: Timeout must be positive.")
-    } else {
-        panic!("Expected configuration parsing error!")
-    }
-}
-
-#[test]
-fn test_conf_from_file_missing_attribute() {
-    let mut file =
-        fs::File::open("src/configuration/tests/resources/invalid/missing-attr.recon").unwrap();
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    let config = parse_single(&contents).unwrap();
-
-    let result = ConfigHierarchy::try_from_value(config, false);
-
-    if let Err(err) = result {
-        assert_eq!(
-            err.to_string(),
-            "Missing \"@downlinks\" attribute in \"@config\"."
-        )
-    } else {
-        panic!("Expected configuration parsing error!")
-    }
-}
-
-#[test]
-fn test_conf_from_file_missing_key() {
-    let mut file =
-        fs::File::open("src/configuration/tests/resources/invalid/missing-key.recon").unwrap();
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    let config = parse_single(&contents).unwrap();
-
-    let result = ConfigHierarchy::try_from_value(config, false);
-
-    if let Err(err) = result {
-        assert_eq!(err.to_string(), "Missing \"router\" key in \"@client\".")
-    } else {
-        panic!("Expected configuration parsing error!")
-    }
-}
-
-#[test]
 fn test_conf_from_file_invalid_key() {
-    let mut file =
+    let file =
         fs::File::open("src/configuration/tests/resources/invalid/invalid-key.recon").unwrap();
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    let config = parse_single(&contents).unwrap();
 
-    let result = ConfigHierarchy::try_from_value(config, false);
+    let result = SwimClientBuilder::new_from_file(file);
 
     if let Err(err) = result {
-        assert_eq!(err.to_string(), "Invalid key \"foo-url\" in \"host\".")
+        assert_eq!(err.to_string(), "Could not process client configuration: Text value 'foo-url' is invalid: Not a valid URL.")
     } else {
         panic!("Expected configuration parsing error!")
     }
@@ -403,18 +365,15 @@ fn test_conf_from_file_invalid_key() {
 
 #[test]
 fn test_conf_from_file_invalid_value() {
-    let mut file =
+    let file =
         fs::File::open("src/configuration/tests/resources/invalid/invalid-value.recon").unwrap();
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    let config = parse_single(&contents).unwrap();
 
-    let result = ConfigHierarchy::try_from_value(config, false);
+    let result = SwimClientBuilder::new_from_file(file);
 
     if let Err(err) = result {
         assert_eq!(
             err.to_string(),
-            "Invalid value \"test\" in \"buffer_size\"."
+            "Could not process client configuration: Unexpected value kind: Text, expected: One of: [A value of kind UInt32, A value of kind UInt64, A value of kind BigUint]."
         )
     } else {
         panic!("Expected configuration parsing error!")
@@ -423,17 +382,17 @@ fn test_conf_from_file_invalid_value() {
 
 #[test]
 fn test_conf_from_file_unexpected_attr_top() {
-    let mut file =
+    let file =
         fs::File::open("src/configuration/tests/resources/invalid/unexpected-attr-top.recon")
             .unwrap();
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    let config = parse_single(&contents).unwrap();
 
-    let result = ConfigHierarchy::try_from_value(config, false);
+    let result = SwimClientBuilder::new_from_file(file);
 
     if let Err(err) = result {
-        assert_eq!(err.to_string(), "Unexpected attribute \"@configuration\".")
+        assert_eq!(
+            err.to_string(),
+            "Could not process client configuration: Unexpected attribute: 'configuration'"
+        )
     } else {
         panic!("Expected configuration parsing error!")
     }
@@ -441,19 +400,16 @@ fn test_conf_from_file_unexpected_attr_top() {
 
 #[test]
 fn test_conf_from_file_unexpected_attr_nested() {
-    let mut file =
+    let file =
         fs::File::open("src/configuration/tests/resources/invalid/unexpected-attr-nested.recon")
             .unwrap();
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    let config = parse_single(&contents).unwrap();
 
-    let result = ConfigHierarchy::try_from_value(config, false);
+    let result = SwimClientBuilder::new_from_file(file);
 
     if let Err(err) = result {
         assert_eq!(
             err.to_string(),
-            "Unexpected attribute \"@hello\" in \"config\"."
+            "Could not process client configuration: Unexpected field: 'hello'"
         )
     } else {
         panic!("Expected configuration parsing error!")
@@ -462,18 +418,15 @@ fn test_conf_from_file_unexpected_attr_nested() {
 
 #[test]
 fn test_conf_from_file_unexpected_slot() {
-    let mut file =
+    let file =
         fs::File::open("src/configuration/tests/resources/invalid/unexpected-slot.recon").unwrap();
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    let config = parse_single(&contents).unwrap();
 
-    let result = ConfigHierarchy::try_from_value(config, false);
+    let result = SwimClientBuilder::new_from_file(file);
 
     if let Err(err) = result {
         assert_eq!(
             err.to_string(),
-            "Unexpected slot \"\"@client\":{\"32\"}\" in \"config\"."
+            "Could not process client configuration: Unexpected value kind: Text, expected: One of: [A value of kind Text, The end of the record body]."
         )
     } else {
         panic!("Expected configuration parsing error!")
@@ -482,16 +435,13 @@ fn test_conf_from_file_unexpected_slot() {
 
 #[test]
 fn test_conf_from_file_unexpected_key() {
-    let mut file =
+    let file =
         fs::File::open("src/configuration/tests/resources/invalid/unexpected-key.recon").unwrap();
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    let config = parse_single(&contents).unwrap();
 
-    let result = ConfigHierarchy::try_from_value(config, false);
+    let result = SwimClientBuilder::new_from_file(file);
 
     if let Err(err) = result {
-        assert_eq!(err.to_string(), "Unexpected key \"hello\" in \"client\".")
+        assert_eq!(err.to_string(), "Could not process client configuration: Unexpected field: 'hello'")
     } else {
         panic!("Expected configuration parsing error!")
     }
@@ -499,17 +449,14 @@ fn test_conf_from_file_unexpected_key() {
 
 #[test]
 fn test_conf_from_file_unexpected_value_top() {
-    let mut file =
+    let file =
         fs::File::open("src/configuration/tests/resources/invalid/unexpected-value-top.recon")
             .unwrap();
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    let config = parse_single(&contents).unwrap();
 
-    let result = ConfigHierarchy::try_from_value(config, false);
+    let result = SwimClientBuilder::new_from_file(file);
 
     if let Err(err) = result {
-        assert_eq!(err.to_string(), "Unexpected value \"2\".")
+        assert_eq!(err.to_string(), "Could not process client configuration: Unexpected value kind: UInt64, expected: An attribute named 'config'.")
     } else {
         panic!("Expected configuration parsing error!")
     }
@@ -517,17 +464,14 @@ fn test_conf_from_file_unexpected_value_top() {
 
 #[test]
 fn test_conf_from_file_unexpected_value_nested() {
-    let mut file =
+    let file =
         fs::File::open("src/configuration/tests/resources/invalid/unexpected-value-nested.recon")
             .unwrap();
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    let config = parse_single(&contents).unwrap();
 
-    let result = ConfigHierarchy::try_from_value(config, false);
+    let result = SwimClientBuilder::new_from_file(file);
 
     if let Err(err) = result {
-        assert_eq!(err.to_string(), "Unexpected value \"2\" in \"client\".")
+        assert_eq!(err.to_string(), "Could not process client configuration: Unexpected value kind: UInt64, expected: One of: [A value of kind Text, The end of the record body].")
     } else {
         panic!("Expected configuration parsing error!")
     }
@@ -535,19 +479,16 @@ fn test_conf_from_file_unexpected_value_nested() {
 
 #[test]
 fn test_conf_from_file_unnamed_record_top() {
-    let mut file =
+    let file =
         fs::File::open("src/configuration/tests/resources/invalid/unnamed-record-top.recon")
             .unwrap();
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    let config = parse_single(&contents).unwrap();
 
-    let result = ConfigHierarchy::try_from_value(config, false);
+    let result = SwimClientBuilder::new_from_file(file);
 
     if let Err(err) = result {
         assert_eq!(
             err.to_string(),
-            "Unnamed record \"{@client{buffer_size:2}}\"."
+            "Could not process client configuration: Unexpected value kind: Record, expected: An attribute named 'config'."
         )
     } else {
         panic!("Expected configuration parsing error!")
@@ -556,19 +497,16 @@ fn test_conf_from_file_unnamed_record_top() {
 
 #[test]
 fn test_conf_from_file_unnamed_record_nested() {
-    let mut file =
+    let file =
         fs::File::open("src/configuration/tests/resources/invalid/unnamed-record-nested.recon")
             .unwrap();
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    let config = parse_single(&contents).unwrap();
 
-    let result = ConfigHierarchy::try_from_value(config, false);
+    let result = SwimClientBuilder::new_from_file(file);
 
     if let Err(err) = result {
         assert_eq!(
             err.to_string(),
-            "Unnamed record \"{back_pressure:@propagate,idle_timeout:60000,buffer_size:5,on_invalid:terminate,yield_after:256}\" in \"config\"."
+            "Could not process client configuration: Unexpected value kind: Record, expected: One of: [A value of kind Text, The end of the record body]."
         )
     } else {
         panic!("Expected configuration parsing error!")
@@ -577,18 +515,16 @@ fn test_conf_from_file_unnamed_record_nested() {
 
 #[test]
 fn test_conf_from_file_double_attr() {
-    let mut file =
-        fs::File::open("src/configuration/tests/resources/invalid/double-attr.recon").unwrap();
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    let config = parse_single(&contents).unwrap();
+    let file =
+        fs::File::open("src/configuration/tests/resources/invalid/double-attr.recon")
+            .unwrap();
 
-    let result = ConfigHierarchy::try_from_value(config, false);
+    let result = SwimClientBuilder::new_from_file(file);
 
     if let Err(err) = result {
         assert_eq!(
             err.to_string(),
-            "Unexpected value \"@attribute@client{buffer_size:2,router:{retry_strategy:@exponential(max_interval:16,max_backoff:300),idle_timeout:60,conn_reaper_frequency:60,buffer_size:100}}\" in \"config\"."
+            "Could not process client configuration: Unexpected field: 'attribute'"
         )
     } else {
         panic!("Expected configuration parsing error!")

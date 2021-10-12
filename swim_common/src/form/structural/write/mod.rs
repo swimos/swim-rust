@@ -1021,15 +1021,15 @@ impl StructuralWritable for WebSocketConfig {
 
         let mut num_items = 2;
 
-        if let Some(_) = &self.max_send_queue {
+        if self.max_send_queue.is_some() {
             num_items += 1
         }
 
-        if let Some(_) = &self.max_message_size {
+        if self.max_message_size.is_some() {
             num_items += 1
         }
 
-        if let Some(_) = &self.max_frame_size {
+        if self.max_frame_size.is_some() {
             num_items += 1
         }
 
@@ -1059,15 +1059,15 @@ impl StructuralWritable for WebSocketConfig {
 
         let mut num_items = 2;
 
-        if let Some(_) = &self.max_send_queue {
+        if self.max_send_queue.is_some() {
             num_items += 1
         }
 
-        if let Some(_) = &self.max_message_size {
+        if self.max_message_size.is_some() {
             num_items += 1
         }
 
-        if let Some(_) = &self.max_frame_size {
+        if self.max_frame_size.is_some() {
             num_items += 1
         }
 

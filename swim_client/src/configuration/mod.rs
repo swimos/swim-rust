@@ -34,13 +34,13 @@ use swim_common::routing::remote::config::{
 use swim_common::warp::path::{AbsolutePath, Addressable};
 use thiserror::Error;
 use tokio::time::Duration;
+use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use url::Url;
 use utilities::future::retryable::strategy::RetryStrategy;
 
-//Todo dm this needs to be changed after config from file is done.
-// #[cfg(test)]
-// mod tests;
+#[cfg(test)]
+mod tests;
 
 const BAD_BUFFER_SIZE: &str = "Buffer sizes must be positive.";
 const BAD_YIELD_AFTER: &str = "Yield after count must be positive..";
@@ -66,6 +66,31 @@ pub struct SwimClientConfig {
     pub websocket_config: WebSocketConfig,
     /// Configuration for the behaviour of downlinks.
     pub downlinks_config: ClientDownlinksConfig,
+}
+
+impl PartialEq<Self> for SwimClientConfig {
+    fn eq(&self, other: &Self) -> bool {
+        self.downlink_connections_config == other.downlink_connections_config
+            && self.remote_connections_config == other.remote_connections_config
+            && self.websocket_config.max_send_queue == other.websocket_config.max_send_queue
+            && self.websocket_config.max_message_size == other.websocket_config.max_message_size
+            && self.websocket_config.max_frame_size == other.websocket_config.max_frame_size
+            && self.websocket_config.accept_unmasked_frames
+                == other.websocket_config.accept_unmasked_frames
+            && match (
+                self.websocket_config.compression,
+                other.websocket_config.compression,
+            ) {
+                (WsCompression::None(self_val), WsCompression::None(other_val)) => {
+                    self_val == other_val
+                }
+                (WsCompression::Deflate(self_deflate), WsCompression::Deflate(other_deflate)) => {
+                    self_deflate == other_deflate
+                }
+                _ => false,
+            }
+            && self.downlinks_config == other.downlinks_config
+    }
 }
 
 impl StructuralWritable for SwimClientConfig {
@@ -329,92 +354,6 @@ impl Recognizer for SwimClientConfigRecognizer {
     }
 }
 
-// //Todo dm
-// #[test]
-// fn test_foo() {
-//     let mut downlinks = ClientDownlinksConfig::default();
-//     downlinks.for_host(
-//         url::Url::parse(&"warp://127.0.0.1:9001".to_string()).unwrap(),
-//         Default::default(),
-//     );
-//
-//     downlinks.for_lane(
-//         &AbsolutePath::new(
-//             url::Url::parse(&"warp://127.0.0.2:9001".to_string()).unwrap(),
-//             "foo",
-//             "bar",
-//         ),
-//         Default::default(),
-//     );
-//
-//     let config = SwimClientConfig::new(
-//         Default::default(),
-//         Default::default(),
-//         Default::default(),
-//         downlinks,
-//     );
-//
-//     // let raw = r#"@downlinks{default:@downlink_config{idle_timeout:@duration{secs:60000,nanos:0},buffer_size:5,on_invalid:terminate,yield_after:256},by_host:{"warp://127.0.0.1:9001":@downlink_config{back_pressure:@propagate,idle_timeout:@duration{secs:60000,nanos:0},buffer_size:5,on_invalid:terminate,yield_after:256}},by_lane:{@path{host:"warp://127.0.0.2:9001",node:foo,lane:bar}:@downlink_config{back_pressure:@propagate,idle_timeout:@duration{secs:60000,nanos:0},buffer_size:5,on_invalid:terminate,yield_after:256}}}"#;
-//     // let value = parse_single(raw).unwrap();
-//
-//     eprintln!("object.as_value() = {}", config.as_value());
-//     let new_object = SwimClientConfig::try_from_value(&config.as_value()).unwrap();
-//     eprintln!("new_object.as_value() = {}", new_object.as_value());
-//
-//     // let config = SwimClientConfig::new(
-//     //     Default::default(),
-//     //     Default::default(),
-//     //     Default::default(),
-//     //     downlinks,
-//     // );
-//     // println!("{}", config.as_value());
-//     //
-//     // let value = config.as_value();
-//     //
-//     // let config_restored = ClientDownlinksConfig::try_from_value(&value).unwrap();
-//
-//     // @downlinks{
-//     //     default:{
-//     //         back_pressure:@propagate,
-//     //         idle_timeout:@duration{
-//     //             secs:60000,
-//     //             nanos:0
-//     //         },
-//     //         buffer_size:5,
-//     //         on_invalid:terminate,
-//     //         yield_after:256
-//     //     },
-//     //     host:{
-//     //         "warp://127.0.0.1:9001":{
-//     //             back_pressure:@propagate,
-//     //             idle_timeout:@duration{
-//     //                 secs:60000,
-//     //                 nanos:0
-//     //             },
-//     //             buffer_size:5,
-//     //             on_invalid:terminate,
-//     //             yield_after:256
-//     //         }
-//     //     },
-//     //     lane:{
-//     //         @path{
-//     //             host:"warp://127.0.0.2:9001",
-//     //             node:foo,
-//     //             lane:bar
-//     //         }:{
-//     //             back_pressure:@propagate,
-//     //             idle_timeout:@duration{
-//     //                 secs:60000,
-//     //                 nanos:0
-//     //             },
-//     //             buffer_size:5,
-//     //             on_invalid:terminate,
-//     //             yield_after:256
-//     //         }
-//     //     }
-//     // }
-// }
-
 impl SwimClientConfig {
     pub fn new(
         downlink_connections_config: DownlinkConnectionsConfig,
@@ -652,15 +591,15 @@ impl Recognizer for DownlinkConnectionsConfigRecognizer {
                     ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
                 },
                 ReadEvent::EndRecord => Some(Ok(DownlinkConnectionsConfig {
-                    dl_req_buffer_size: self
-                        .dl_buffer_size
-                        .unwrap_or(NonZeroUsize::new(DEFAULT_DL_REQUEST_BUFFER_SIZE).unwrap()),
+                    dl_req_buffer_size: self.dl_buffer_size.unwrap_or_else(|| {
+                        NonZeroUsize::new(DEFAULT_DL_REQUEST_BUFFER_SIZE).unwrap()
+                    }),
                     buffer_size: self
                         .buffer_size
-                        .unwrap_or(NonZeroUsize::new(DEFAULT_BUFFER_SIZE).unwrap()),
+                        .unwrap_or_else(|| NonZeroUsize::new(DEFAULT_BUFFER_SIZE).unwrap()),
                     yield_after: self
                         .yield_after
-                        .unwrap_or(NonZeroUsize::new(DEFAULT_YIELD_AFTER).unwrap()),
+                        .unwrap_or_else(|| NonZeroUsize::new(DEFAULT_YIELD_AFTER).unwrap()),
                     retry_strategy: self.retry_strategy.unwrap_or_default(),
                 })),
                 ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
@@ -739,7 +678,7 @@ impl Recognizer for DownlinkConnectionsConfigRecognizer {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ClientDownlinksConfig {
     default: DownlinkConfig,
     by_host: HashMap<Url, DownlinkConfig>,
@@ -996,8 +935,8 @@ impl Recognizer for ClientDownlinksConfigRecognizer {
                 },
                 ReadEvent::EndRecord => Some(Ok(ClientDownlinksConfig {
                     default: self.default.unwrap_or_default(),
-                    by_host: self.host.clone().unwrap_or(HashMap::new()),
-                    by_lane: self.lane.clone().unwrap_or(HashMap::new()),
+                    by_host: self.host.clone().unwrap_or_default(),
+                    by_lane: self.lane.clone().unwrap_or_default(),
                 })),
                 ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                     ExpectedEvent::ValueEvent(ValueKind::Text),
@@ -1324,14 +1263,14 @@ impl Recognizer for DownlinkConfigRecognizer {
                     back_pressure: self.back_pressure.unwrap_or_default(),
                     idle_timeout: self
                         .idle_timeout
-                        .unwrap_or(Duration::from_secs(DEFAULT_IDLE_TIMEOUT)),
-                    buffer_size: self
-                        .buffer_size
-                        .unwrap_or(NonZeroUsize::new(DEFAULT_DOWNLINK_BUFFER_SIZE).unwrap()),
+                        .unwrap_or_else(|| Duration::from_secs(DEFAULT_IDLE_TIMEOUT)),
+                    buffer_size: self.buffer_size.unwrap_or_else(|| {
+                        NonZeroUsize::new(DEFAULT_DOWNLINK_BUFFER_SIZE).unwrap()
+                    }),
                     on_invalid: self.on_invalid.unwrap_or_default(),
                     yield_after: self
                         .yield_after
-                        .unwrap_or(NonZeroUsize::new(DEFAULT_YIELD_AFTER).unwrap()),
+                        .unwrap_or_else(|| NonZeroUsize::new(DEFAULT_YIELD_AFTER).unwrap()),
                 })),
                 ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                     ExpectedEvent::ValueEvent(ValueKind::Text),
@@ -1683,18 +1622,18 @@ impl Recognizer for BackpressureModeRecognizer {
                         ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
                     },
                     ReadEvent::EndRecord => Some(Ok(BackpressureMode::Release {
-                        input_buffer_size: input_buffer_size.unwrap_or(
-                            NonZeroUsize::new(DEFAULT_BACK_PRESSURE_INPUT_BUFFER_SIZE).unwrap(),
-                        ),
-                        bridge_buffer_size: bridge_buffer_size.unwrap_or(
-                            NonZeroUsize::new(DEFAULT_BACK_PRESSURE_BRIDGE_BUFFER_SIZE).unwrap(),
-                        ),
-                        max_active_keys: max_active_keys.unwrap_or(
-                            NonZeroUsize::new(DEFAULT_BACK_PRESSURE_MAX_ACTIVE_KEYS).unwrap(),
-                        ),
-                        yield_after: yield_after.unwrap_or(
-                            NonZeroUsize::new(DEFAULT_BACK_PRESSURE_YIELD_AFTER).unwrap(),
-                        ),
+                        input_buffer_size: input_buffer_size.unwrap_or_else(|| {
+                            NonZeroUsize::new(DEFAULT_BACK_PRESSURE_INPUT_BUFFER_SIZE).unwrap()
+                        }),
+                        bridge_buffer_size: bridge_buffer_size.unwrap_or_else(|| {
+                            NonZeroUsize::new(DEFAULT_BACK_PRESSURE_BRIDGE_BUFFER_SIZE).unwrap()
+                        }),
+                        max_active_keys: max_active_keys.unwrap_or_else(|| {
+                            NonZeroUsize::new(DEFAULT_BACK_PRESSURE_MAX_ACTIVE_KEYS).unwrap()
+                        }),
+                        yield_after: yield_after.unwrap_or_else(|| {
+                            NonZeroUsize::new(DEFAULT_BACK_PRESSURE_YIELD_AFTER).unwrap()
+                        }),
                     })),
                     ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                         ExpectedEvent::ValueEvent(ValueKind::Text),
@@ -1889,7 +1828,7 @@ impl<'a, Path: Addressable> DownlinksConfig for Box<dyn DownlinksConfig<PathType
 }
 
 #[derive(Debug, Error)]
-#[error("Could not process client configuration.")]
+#[error("Could not process client configuration: {0}")]
 pub enum ConfigError {
     FileError(std::io::Error),
     ParseError(ParseFailure),
