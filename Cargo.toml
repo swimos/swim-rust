@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "api/swim_*",
     "api/formats/swim_*",
+    "ratchet",
     "macro_utilities",
     "swim_client",
     "runtime/swim_*",
@@ -16,3 +17,6 @@ members = [
 exclude = [
     "cookbook"
 ]
+
+[profile.release]
+opt-level = 3
