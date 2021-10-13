@@ -25,9 +25,10 @@ use futures::StreamExt;
 use tokio::sync::mpsc;
 
 use swim_common::sink::item::ItemSender;
+use swim_utilities::collections::lrucache::LruCache;
+use swim_utilities::sync::circular_buffer;
+use swim_utilities::trigger;
 use tokio_stream::wrappers::ReceiverStream;
-use utilities::lru_cache::LruCache;
-use utilities::sync::{circular_buffer, trigger};
 
 type InternalSender<V> = circular_buffer::Sender<V>;
 

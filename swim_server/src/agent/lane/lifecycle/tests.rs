@@ -23,9 +23,9 @@ use std::collections::HashMap;
 use std::future::Future;
 use swim_client::interface::DownlinksContext;
 use swim_common::warp::path::Path;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger::Receiver;
 use tokio::time::Duration;
-use utilities::sync::trigger::Receiver;
-use utilities::uri::RelativeUri;
 
 struct TestModel;
 

@@ -20,7 +20,7 @@ use crate::routing::error::{RouterError, Unresolvable};
 use crate::routing::RoutingAddr;
 use std::io::ErrorKind;
 use std::time::Duration;
-use utilities::uri::RelativeUri;
+use swim_utilities::routing::uri::RelativeUri;
 
 #[test]
 fn connection_error_display() {

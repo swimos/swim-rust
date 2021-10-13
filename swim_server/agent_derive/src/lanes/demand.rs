@@ -18,7 +18,7 @@ use crate::utils::{
     LaneTasksImpl,
 };
 use darling::FromMeta;
-use macro_helpers::{has_fields, string_to_ident};
+use macro_utilities::{has_fields, string_to_ident};
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{AttributeArgs, DeriveInput, Ident};

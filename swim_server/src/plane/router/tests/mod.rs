@@ -21,9 +21,9 @@ use swim_common::routing::remote::RawRoute;
 use swim_common::routing::PlaneRoutingRequest;
 use swim_common::routing::{Router, RouterFactory, RoutingAddr, TaggedEnvelope};
 use swim_common::warp::envelope::Envelope;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use url::Url;
-use utilities::sync::promise;
 
 #[tokio::test]
 async fn plane_router_get_sender() {

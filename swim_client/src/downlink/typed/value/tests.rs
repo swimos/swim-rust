@@ -20,7 +20,7 @@ use crate::downlink::{Command, Message};
 use crate::downlink::{DownlinkConfig, DownlinkError};
 use futures::future::join;
 use std::sync::Arc;
-use swim_common::form::{Form, ValidatedForm};
+use swim_common::form::{Form, ValueSchema};
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::routing::error::RoutingError;
@@ -206,7 +206,7 @@ struct Components<T> {
     command_rx: mpsc::Receiver<Command<SharedValue>>,
 }
 
-fn make_value_downlink<T: Form + ValidatedForm>(init: T) -> Components<T> {
+fn make_value_downlink<T: Form + ValueSchema>(init: T) -> Components<T> {
     let init_value = init.into_value();
 
     let (update_tx, update_rx) = mpsc::channel(8);

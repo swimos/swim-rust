@@ -23,7 +23,7 @@ use proc_macro::TokenStream;
 
 use syn::DeriveInput;
 
-use macro_helpers::to_compile_errors;
+use macro_utilities::to_compile_errors;
 
 use crate::structural::{
     build_derive_structural_form, build_derive_structural_readable,
@@ -31,8 +31,8 @@ use crate::structural::{
 };
 use crate::tag::build_derive_tag;
 use crate::validated_form::build_validated_form;
-use utilities::algebra::Errors;
-use utilities::validation::Validation;
+use swim_utilities::errors::validation::Validation;
+use swim_utilities::errors::Errors;
 
 mod form;
 mod modifiers;
@@ -57,7 +57,7 @@ pub fn derive_tag(input: TokenStream) -> TokenStream {
         .into()
 }
 
-#[proc_macro_derive(ValidatedForm, attributes(form))]
+#[proc_macro_derive(ValueSchema, attributes(form))]
 pub fn derive_validated_form(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     build_validated_form(input)

@@ -40,7 +40,7 @@ use std::fs::File;
 use std::io::Read;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swim_common::form::{Form, ValidatedForm};
+use swim_common::form::{Form, ValueSchema};
 use swim_common::model::parser::parse_single;
 use swim_common::model::Value;
 use swim_common::routing::error::RoutingError;
@@ -52,10 +52,10 @@ use swim_common::routing::CloseSender;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::{AbsolutePath, Addressable};
 use swim_runtime::task::spawn;
+use swim_utilities::future::open_ended::OpenEndedFutures;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use tracing::info;
-use utilities::future::open_ended::OpenEndedFutures;
-use utilities::sync::promise;
 
 /// Builder to create Swim client instance.
 ///
@@ -264,7 +264,7 @@ impl<Path: Addressable> SwimClient<Path> {
         initial: T,
     ) -> Result<(TypedValueDownlink<T>, ValueDownlinkReceiver<T>), ClientError<Path>>
     where
-        T: Form + ValidatedForm + Send + 'static,
+        T: Form + ValueSchema + Send + 'static,
     {
         self.inner.value_downlink(path, initial).await
     }
@@ -275,8 +275,8 @@ impl<Path: Addressable> SwimClient<Path> {
         path: Path,
     ) -> Result<(TypedMapDownlink<K, V>, MapDownlinkReceiver<K, V>), ClientError<Path>>
     where
-        K: ValidatedForm + Send + 'static,
-        V: ValidatedForm + Send + 'static,
+        K: ValueSchema + Send + 'static,
+        V: ValueSchema + Send + 'static,
     {
         self.inner.map_downlink(path).await
     }
@@ -287,7 +287,7 @@ impl<Path: Addressable> SwimClient<Path> {
         path: Path,
     ) -> Result<TypedCommandDownlink<T>, ClientError<Path>>
     where
-        T: ValidatedForm + Send + 'static,
+        T: ValueSchema + Send + 'static,
     {
         self.inner.command_downlink(path).await
     }
@@ -299,7 +299,7 @@ impl<Path: Addressable> SwimClient<Path> {
         violations: SchemaViolations,
     ) -> Result<TypedEventDownlink<T>, ClientError<Path>>
     where
-        T: ValidatedForm + Send + 'static,
+        T: ValueSchema + Send + 'static,
     {
         self.inner.event_downlink(path, violations).await
     }
@@ -396,7 +396,7 @@ impl<Path: Addressable> DownlinksContext<Path> {
         initial: T,
     ) -> Result<(TypedValueDownlink<T>, ValueDownlinkReceiver<T>), ClientError<Path>>
     where
-        T: Form + ValidatedForm + Send + 'static,
+        T: Form + ValueSchema + Send + 'static,
     {
         self.downlinks
             .subscribe_value(initial, path)
@@ -409,8 +409,8 @@ impl<Path: Addressable> DownlinksContext<Path> {
         path: Path,
     ) -> Result<(TypedMapDownlink<K, V>, MapDownlinkReceiver<K, V>), ClientError<Path>>
     where
-        K: ValidatedForm + Send + 'static,
-        V: ValidatedForm + Send + 'static,
+        K: ValueSchema + Send + 'static,
+        V: ValueSchema + Send + 'static,
     {
         self.downlinks
             .subscribe_map(path)
@@ -423,7 +423,7 @@ impl<Path: Addressable> DownlinksContext<Path> {
         path: Path,
     ) -> Result<TypedCommandDownlink<T>, ClientError<Path>>
     where
-        T: ValidatedForm + Send + 'static,
+        T: ValueSchema + Send + 'static,
     {
         self.downlinks
             .subscribe_command(path)
@@ -437,7 +437,7 @@ impl<Path: Addressable> DownlinksContext<Path> {
         violations: SchemaViolations,
     ) -> Result<TypedEventDownlink<T>, ClientError<Path>>
     where
-        T: ValidatedForm + Send + 'static,
+        T: ValueSchema + Send + 'static,
     {
         self.downlinks
             .subscribe_event(path, violations)

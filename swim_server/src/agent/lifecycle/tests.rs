@@ -22,8 +22,8 @@ use std::future::Future;
 use std::time::Duration;
 use swim_client::interface::DownlinksContext;
 use swim_common::warp::path::Path;
-use utilities::sync::trigger::Receiver;
-use utilities::uri::RelativeUri;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger::Receiver;
 
 struct TestAgent;
 

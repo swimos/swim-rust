@@ -33,10 +33,10 @@ use std::io;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 use swim_runtime::time::timeout::timeout;
+use swim_utilities::future::open_ended::OpenEndedFutures;
+use swim_utilities::future::retryable::RetryStrategy;
+use swim_utilities::trigger::promise;
 use tokio::sync::{mpsc, oneshot};
-use utilities::future::open_ended::OpenEndedFutures;
-use utilities::future::retryable::strategy::RetryStrategy;
-use utilities::sync::promise;
 
 type TestSpawner = OpenEndedFutures<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>>;
 type TestConnections<'a> =

@@ -34,9 +34,9 @@ use tracing_futures::Instrument;
 
 use swim_common::warp::envelope::{Envelope, OutgoingHeader};
 use swim_common::warp::path::RelativePath;
-use utilities::errors::Recoverable;
-use utilities::sync::trigger;
-use utilities::uri::RelativeUri;
+use swim_utilities::errors::Recoverable;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger;
 
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::dispatch::error::{DispatcherError, DispatcherErrors};
@@ -51,8 +51,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use swim_common::routing::{Router, RoutingAddr, TaggedClientEnvelope, TaggedEnvelope};
 use swim_runtime::time::timeout::timeout;
+use swim_utilities::time::AtomicInstant;
 use tokio::time::Instant;
-use utilities::instant::AtomicInstant;
 
 pub mod error;
 #[cfg(test)]
@@ -593,8 +593,9 @@ where
                 match maybe_next {
                     Ok(next) => break next,
                     Err(_) => {
-                        let output_idle_dur = &Instant::now()
-                            .duration_since(uplinks_idle_since.load(Ordering::Relaxed));
+                        let output_idle_dur = &Instant::now().duration_since(Instant::from_std(
+                            uplinks_idle_since.load(Ordering::Relaxed),
+                        ));
 
                         if output_idle_dur > max_idle_time {
                             break 'outer Err(DispatcherError::AgentTimedOut(*max_idle_time));

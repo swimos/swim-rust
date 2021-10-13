@@ -23,11 +23,12 @@ use crate::warp::envelope::Envelope;
 use futures::future::join;
 use futures::io::ErrorKind;
 use futures::{FutureExt, StreamExt};
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
-use utilities::sync::{promise, trigger};
-use utilities::uri::RelativeUri;
 
 const ADDR: RoutingAddr = RoutingAddr::remote(4);
 

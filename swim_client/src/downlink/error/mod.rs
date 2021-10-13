@@ -22,9 +22,9 @@ use swim_common::routing::error::ConnectionError;
 use swim_common::routing::error::RoutingError;
 use swim_common::sink::item;
 use swim_common::warp::path::Addressable;
+use swim_utilities::errors::Recoverable;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
-use utilities::errors::Recoverable;
 
 #[cfg(test)]
 mod tests;

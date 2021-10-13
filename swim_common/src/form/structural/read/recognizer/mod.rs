@@ -44,16 +44,16 @@ use std::option::Option::None;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
+use swim_utilities::future::retryable::strategy::{
+    Quantity, RetryStrategy, DEFAULT_EXPONENTIAL_MAX_BACKOFF, DEFAULT_EXPONENTIAL_MAX_INTERVAL,
+    DEFAULT_IMMEDIATE_RETRIES, DEFAULT_INTERVAL_DELAY, DEFAULT_INTERVAL_RETRIES,
+};
+use swim_utilities::iteratee::Iteratee;
+use swim_utilities::routing::uri::RelativeUri;
 use tokio_tungstenite::tungstenite::extensions::compression::deflate::DeflateConfig;
 use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use url::Url;
-use utilities::future::retryable::strategy::{
-    Quantity, RetryStrategy, DEFAULT_EXPONENTIAL_MAX_BACKOFF, DEFAULT_EXPONENTIAL_MAX_INTERVAL,
-    DEFAULT_IMMEDIATE_RETRIES, DEFAULT_INTERVAL_DELAY, DEFAULT_INTERVAL_RETRIES,
-};
-use utilities::iteratee::Iteratee;
-use utilities::uri::RelativeUri;
 
 /// Trait for types that can be recognized by a [`Recognizer`] state machine.
 pub trait RecognizerReadable: Sized {

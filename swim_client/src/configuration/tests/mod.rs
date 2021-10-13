@@ -25,11 +25,11 @@ use swim_common::form::Form;
 use swim_common::model::parser::parse_single;
 use swim_common::routing::remote::config::RemoteConnectionsConfig;
 use swim_common::warp::path::AbsolutePath;
+use swim_utilities::future::retryable::{Quantity, RetryStrategy};
 use tokio::time::Duration;
 use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use url::Url;
-use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
 
 #[test]
 fn test_conf_from_file_default_manual() {
@@ -84,7 +84,7 @@ fn test_conf_from_file_retry_exponential() {
     let mut file = fs::File::open(
         "src/configuration/tests/resources/valid/client-config-retry-exponential.recon",
     )
-        .unwrap();
+    .unwrap();
 
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
@@ -111,7 +111,7 @@ fn test_conf_from_file_retry_immediate() {
     let mut file = fs::File::open(
         "src/configuration/tests/resources/valid/client-config-retry-immediate.recon",
     )
-        .unwrap();
+    .unwrap();
 
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
@@ -138,7 +138,7 @@ fn test_conf_from_file_retry_interval() {
     let mut file = fs::File::open(
         "src/configuration/tests/resources/valid/client-config-retry-interval.recon",
     )
-        .unwrap();
+    .unwrap();
 
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
@@ -200,7 +200,7 @@ fn create_full_config() -> SwimClientConfig {
             OnInvalidMessage::Ignore,
             512,
         )
-            .unwrap(),
+        .unwrap(),
     );
 
     dl_config.for_host(
@@ -212,7 +212,7 @@ fn create_full_config() -> SwimClientConfig {
             OnInvalidMessage::Ignore,
             200,
         )
-            .unwrap(),
+        .unwrap(),
     );
 
     dl_config.for_host(
@@ -224,7 +224,7 @@ fn create_full_config() -> SwimClientConfig {
             OnInvalidMessage::Terminate,
             300,
         )
-            .unwrap(),
+        .unwrap(),
     );
 
     dl_config.for_lane(
@@ -236,7 +236,7 @@ fn create_full_config() -> SwimClientConfig {
             OnInvalidMessage::Ignore,
             100,
         )
-            .unwrap(),
+        .unwrap(),
     );
 
     dl_config.for_lane(
@@ -253,7 +253,7 @@ fn create_full_config() -> SwimClientConfig {
             OnInvalidMessage::Terminate,
             600,
         )
-            .unwrap(),
+        .unwrap(),
     );
 
     let config = SwimClientConfig::new(
@@ -308,7 +308,7 @@ fn test_conf_from_file_full_unordered() {
     let mut file = fs::File::open(
         "src/configuration/tests/resources/valid/client-config-full-unordered.recon",
     )
-        .unwrap();
+    .unwrap();
 
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
@@ -343,7 +343,10 @@ fn test_client_file_conf_recon_error() {
     let result = SwimClientBuilder::new_from_file(file);
 
     if let Err(err) = result {
-        assert_eq!(err.to_string(), "Could not process client configuration: Bad token at: 4:17")
+        assert_eq!(
+            err.to_string(),
+            "Could not process client configuration: Bad token at: 4:17"
+        )
     } else {
         panic!("Expected file error!")
     }
@@ -441,7 +444,10 @@ fn test_conf_from_file_unexpected_key() {
     let result = SwimClientBuilder::new_from_file(file);
 
     if let Err(err) = result {
-        assert_eq!(err.to_string(), "Could not process client configuration: Unexpected field: 'hello'")
+        assert_eq!(
+            err.to_string(),
+            "Could not process client configuration: Unexpected field: 'hello'"
+        )
     } else {
         panic!("Expected configuration parsing error!")
     }
@@ -479,9 +485,8 @@ fn test_conf_from_file_unexpected_value_nested() {
 
 #[test]
 fn test_conf_from_file_unnamed_record_top() {
-    let file =
-        fs::File::open("src/configuration/tests/resources/invalid/unnamed-record-top.recon")
-            .unwrap();
+    let file = fs::File::open("src/configuration/tests/resources/invalid/unnamed-record-top.recon")
+        .unwrap();
 
     let result = SwimClientBuilder::new_from_file(file);
 
@@ -516,8 +521,7 @@ fn test_conf_from_file_unnamed_record_nested() {
 #[test]
 fn test_conf_from_file_double_attr() {
     let file =
-        fs::File::open("src/configuration/tests/resources/invalid/double-attr.recon")
-            .unwrap();
+        fs::File::open("src/configuration/tests/resources/invalid/double-attr.recon").unwrap();
 
     let result = SwimClientBuilder::new_from_file(file);
 

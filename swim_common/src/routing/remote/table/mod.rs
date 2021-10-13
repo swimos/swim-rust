@@ -26,10 +26,10 @@ use crate::routing::{
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
+use swim_utilities::trigger::promise;
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
-use utilities::sync::promise;
 
 /// A combination of host name and port to be used as a key into the routing table.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

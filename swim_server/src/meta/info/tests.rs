@@ -15,6 +15,7 @@
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::model::map::MapLane;
 use crate::agent::lane::model::value::ValueLane;
+use crate::agent::store::mock::MockNodeStore;
 use crate::agent::{
     agent_lifecycle, map_lifecycle, value_lifecycle, AgentParameters, SwimAgent, TestClock,
 };
@@ -43,12 +44,12 @@ use swim_common::routing::{
 };
 use swim_common::warp::envelope::Envelope;
 use swim_runtime::time::timeout;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
-use utilities::sync::promise;
-use utilities::uri::RelativeUri;
 
 mod swim_server {
     pub use crate::*;
@@ -224,6 +225,7 @@ async fn lane_info_sync() {
         client,
         ReceiverStream::new(envelope_rx),
         MockRouter::new(RoutingAddr::plane(1024), tx),
+        MockNodeStore::mock(),
     );
 
     let _agent_task = swim_runtime::task::spawn(agent_proc);

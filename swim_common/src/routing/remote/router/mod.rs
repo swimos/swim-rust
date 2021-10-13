@@ -19,9 +19,9 @@ use crate::routing::{BidirectionalRouter, ResolutionError};
 use crate::routing::{Route, Router, RoutingAddr, TaggedSender};
 use futures::future::BoxFuture;
 use futures::FutureExt;
+use swim_utilities::routing::uri::RelativeUri;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
-use utilities::uri::RelativeUri;
 
 #[cfg(test)]
 mod tests;

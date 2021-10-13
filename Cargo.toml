@@ -1,12 +1,14 @@
 [workspace]
 members = [
+    "macro_utilities",
     "swim_client",
     "swim_runtime",
     "swim_common",
     "swim_server",
     "swim_warp",
     "stm",
-    "utilities",
+    "swim_utilities",
+    "swim_utilities/swim_*",
 ]
 
 exclude = [

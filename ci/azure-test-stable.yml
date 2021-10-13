@@ -15,11 +15,19 @@ jobs:
       vmImage: $(vmImage)
 
     steps:
+      - task: PowerShell@2
+        inputs:
+          targetType: 'inline'
+          script: |
+            Remove-Item -LiteralPath "C:\msys64\" -Force -Recurse
+            choco install llvm
+            refreshenv
+        condition: eq( variables['Agent.OS'], 'Windows_NT' )
       - template: azure-install-rust.yml
         parameters:
           rust_version: ${{ parameters.rust }}
       - template: azure-install-sccache.yml
-      - script: cargo test --verbose
+      - script: cargo test --verbose --all-features --all
         env:
           RUST_BACKTRACE: 1
         displayName: cargo test --all-targets

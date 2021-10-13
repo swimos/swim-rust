@@ -16,6 +16,7 @@ use crate::interface::ServerDownlinksConfig;
 use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::spec::{PlaneSpec, RouteSpec};
+use crate::plane::store::mock::MockPlaneStore;
 use crate::plane::tests::fixture::{ReceiveAgentRoute, SendAgentRoute, TestLifecycle};
 use crate::plane::{AgentRoute, ContextImpl, EnvChannel, PlaneActiveRoutes, RouteResolver};
 use crate::routing::TopLevelServerRouterFactory;
@@ -31,15 +32,16 @@ use swim_client::router::ClientRouterFactory;
 use swim_common::routing::Router;
 use swim_runtime::time::clock::Clock;
 use swim_runtime::time::timeout;
+use swim_utilities::future::open_ended::OpenEndedFutures;
+use swim_utilities::routing::route_pattern::RoutePattern;
+use swim_utilities::trigger;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
-use utilities::future::open_ended::OpenEndedFutures;
-use utilities::route_pattern::RoutePattern;
-use utilities::sync::{promise, trigger};
 
 mod fixture;
 
 fn make_spec<Clk: Clock, Delegate: Router + 'static>() -> (
-    PlaneSpec<Clk, EnvChannel, PlaneRouter<Delegate>>,
+    PlaneSpec<Clk, EnvChannel, PlaneRouter<Delegate>, MockPlaneStore>,
     trigger::Receiver,
 ) {
     let send_pattern = RoutePattern::parse(
@@ -68,6 +70,7 @@ fn make_spec<Clk: Clock, Delegate: Router + 'static>() -> (
         PlaneSpec {
             routes: vec![sender, reciever],
             lifecycle: Some(lifecycle.boxed()),
+            store: MockPlaneStore,
         },
         rx,
     )
@@ -88,7 +91,11 @@ async fn plane_event_loop() {
 
     let context = ContextImpl::new(context_tx.clone(), spec.routes());
 
-    let PlaneSpec { routes, lifecycle } = spec;
+    let PlaneSpec {
+        routes,
+        lifecycle,
+        store,
+    } = spec;
 
     let (client_tx, client_rx) = mpsc::channel(8);
     let (remote_tx, _remote_rx) = mpsc::channel(8);
@@ -121,6 +128,7 @@ async fn plane_event_loop() {
         client,
         config,
         routes,
+        store,
         PlaneRouterFactory::new(context_tx, top_level_router_fac.clone()),
         stop_rx.clone(),
         PlaneActiveRoutes::default(),

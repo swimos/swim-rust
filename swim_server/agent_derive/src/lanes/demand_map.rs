@@ -18,7 +18,7 @@ use crate::utils::{
 };
 use crate::utils::{parse_callback, Callback};
 use darling::FromMeta;
-use macro_helpers::{has_fields, string_to_ident};
+use macro_utilities::{has_fields, string_to_ident};
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;

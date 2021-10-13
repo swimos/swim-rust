@@ -19,10 +19,10 @@ use crate::structural::model::field::{
 };
 use crate::structural::model::record::{SegregatedStructModel, StructModel};
 use either::Either;
+use macro_utilities::CompoundTypeKind;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use syn::{Generics, Pat, Path};
-use utilities::CompoundTypeKind;
 
 /// Implements the StructuralWritable trait for either of [`SegregatedStructModel`] or
 /// [`SegregatedEnumModel`].

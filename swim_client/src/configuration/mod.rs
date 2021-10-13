@@ -32,12 +32,12 @@ use swim_common::routing::remote::config::{
     RemoteConnectionsConfig, RemoteConnectionsConfigRecognizer,
 };
 use swim_common::warp::path::{AbsolutePath, Addressable};
+use swim_utilities::future::retryable::strategy::RetryStrategy;
 use thiserror::Error;
 use tokio::time::Duration;
 use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use url::Url;
-use utilities::future::retryable::strategy::RetryStrategy;
 
 #[cfg(test)]
 mod tests;

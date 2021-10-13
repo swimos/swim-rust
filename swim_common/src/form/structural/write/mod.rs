@@ -32,11 +32,11 @@ use std::num::NonZeroUsize;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
+use swim_utilities::future::retryable::strategy::{Quantity, RetryStrategy};
+use swim_utilities::routing::uri::RelativeUri;
 use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use url::Url;
-use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
-use utilities::uri::RelativeUri;
 
 /// Trait for types that can describe their structure using a [`StructuralWriter`].
 /// Each writer is an interpreter which could, for example, realize the structure

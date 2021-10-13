@@ -20,8 +20,11 @@ use crate::agent::lane::channels::uplink::{
     PeelResult, UplinkAction, UplinkError, UplinkStateMachine,
 };
 use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, TaggedAction};
+use crate::agent::store::mock::MockNodeStore;
+use crate::agent::store::SwimNodeStore;
 use crate::agent::Eff;
 use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
+use crate::plane::store::mock::MockPlaneStore;
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::iter;
 use futures::stream::{BoxStream, FusedStream};
@@ -45,14 +48,15 @@ use swim_common::routing::{
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::sync::topic;
+use swim_utilities::time::AtomicInstant;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Barrier};
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
-use utilities::instant::AtomicInstant;
-use utilities::sync::{promise, topic};
-use utilities::uri::RelativeUri;
 
 const INIT: i32 = 42;
 
@@ -319,13 +323,14 @@ impl TestContext {
             _drop_tx: drop_tx,
             drop_rx,
             uri: RelativeUri::try_from("/mock/router".to_string()).unwrap(),
-            uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now())),
+            uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
         }
     }
 }
 
 impl AgentExecutionContext for TestContext {
     type Router = TestRouter;
+    type Store = SwimNodeStore<MockPlaneStore>;
 
     fn router_handle(&self) -> Self::Router {
         let TestContext {
@@ -351,6 +356,10 @@ impl AgentExecutionContext for TestContext {
 
     fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
         &self.uplinks_idle_since
+    }
+
+    fn store(&self) -> Self::Store {
+        MockNodeStore::mock()
     }
 }
 
@@ -378,10 +387,9 @@ fn make_test_harness() -> (
     let channels = UplinkChannels::new(rx_event.subscriber(), rx_act, error_tx);
 
     let context = TestContext::new(spawn_tx, tx_router);
-    let (_event_observer, action_observer) =
-        context.metrics().uplink_observer_for_path(route().clone());
+    let observer = context.metrics().uplink_observer_for_path(route().clone());
 
-    let spawner_task = factory.make_task(handler, channels, route(), &context, action_observer);
+    let spawner_task = factory.make_task(handler, channels, route(), &context, observer);
 
     let errs = join3(spawn_task, spawner_task, error_task)
         .map(|(_, _, errs)| errs)

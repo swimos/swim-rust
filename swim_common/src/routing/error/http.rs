@@ -18,7 +18,7 @@ pub use http::{self, StatusCode};
 use crate::routing::error::{format_cause, ConnectionError};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use utilities::errors::Recoverable;
+use swim_utilities::errors::Recoverable;
 
 /// A HTTP error produced when attempting to execute a request or read a response.
 #[derive(Debug, PartialEq, Eq, Clone)]

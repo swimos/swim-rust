@@ -27,7 +27,7 @@ use crate::model::ValueKind;
 use std::borrow::Borrow;
 use std::num::NonZeroUsize;
 use std::time::Duration;
-use utilities::future::retryable::strategy::RetryStrategy;
+use swim_utilities::future::retryable::RetryStrategy;
 
 mod swim_common {
     pub use crate::*;
