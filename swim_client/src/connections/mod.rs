@@ -39,6 +39,10 @@ use swim_common::routing::{
 };
 use swim_common::warp::path::{Addressable, RelativePath};
 use swim_runtime::task::*;
+use swim_utilities::errors::Recoverable;
+use swim_utilities::future::retryable::RetryStrategy;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
@@ -47,10 +51,6 @@ use tokio_stream::wrappers::ReceiverStream;
 use tracing::instrument;
 use tracing::{event, Level};
 use url::Url;
-use utilities::errors::Recoverable;
-use utilities::future::retryable::strategy::RetryStrategy;
-use utilities::sync::promise;
-use utilities::uri::RelativeUri;
 
 #[cfg(test)]
 mod tests;

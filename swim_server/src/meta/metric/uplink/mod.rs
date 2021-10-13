@@ -15,9 +15,8 @@
 #[cfg(test)]
 mod tests;
 
-use futures::future::try_join;
 use std::cell::UnsafeCell;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
@@ -36,9 +35,9 @@ use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::ops::Add;
 use swim_common::sink::item::{for_mpsc_sender, ItemSender};
+use swim_utilities::trigger;
 use swim_warp::backpressure::keyed::{release_pressure, Keyed};
 use tokio_stream::wrappers::ReceiverStream;
-use utilities::sync::trigger;
 
 impl Add<WarpUplinkProfile> for WarpUplinkProfile {
     type Output = WarpUplinkProfile;
@@ -192,21 +191,18 @@ pub struct WarpUplinkProfile {
     pub close_delta: u32,
 }
 
-unsafe impl Send for InnerObserver {}
-unsafe impl Sync for InnerObserver {}
-
 /// An inner observer for event and action observers to allow for interior mutability and for
 /// channels observers to be cloned.
-#[derive(Clone, Debug)]
 pub struct InnerObserver {
-    sending: Arc<AtomicBool>,
-    event_delta: Arc<AtomicU32>,
-    command_delta: Arc<AtomicU32>,
-    open_delta: Arc<AtomicU32>,
-    close_delta: Arc<AtomicU32>,
-    last_report: Arc<UnsafeCell<Instant>>,
+    sending: AtomicBool,
+    event_delta: AtomicU32,
+    command_delta: AtomicU32,
+    open_delta: AtomicU32,
+    close_delta: AtomicU32,
+    last_report: UnsafeCell<Instant>,
     report_interval: Duration,
     sender: UplinkProfileSender,
+    count: AtomicUsize,
 }
 
 impl InnerObserver {
@@ -288,65 +284,43 @@ impl InnerObserver {
     }
 }
 
-/// Creates a new event and action observer pair that will send profiles when new events occur at
+unsafe impl Send for InnerObserver {}
+unsafe impl Sync for InnerObserver {}
+
+/// Creates a new uplink observer pair that will send profiles when new events occur at
 /// `report_interval` to `sender`.
-pub fn uplink_observer(
-    report_interval: Duration,
-    sender: UplinkProfileSender,
-) -> (UplinkEventObserver, UplinkActionObserver) {
+pub fn uplink_observer(report_interval: Duration, sender: UplinkProfileSender) -> UplinkObserver {
     let inner = InnerObserver {
-        sending: Arc::new(AtomicBool::new(false)),
-        event_delta: Arc::new(AtomicU32::new(0)),
-        command_delta: Arc::new(AtomicU32::new(0)),
-        open_delta: Arc::new(AtomicU32::new(0)),
-        close_delta: Arc::new(AtomicU32::new(0)),
-        last_report: Arc::new(UnsafeCell::new(Instant::now())),
+        sending: AtomicBool::new(false),
+        event_delta: AtomicU32::new(0),
+        command_delta: AtomicU32::new(0),
+        open_delta: AtomicU32::new(0),
+        close_delta: AtomicU32::new(0),
+        last_report: UnsafeCell::new(Instant::now()),
         report_interval,
         sender,
+        count: AtomicUsize::new(1),
     };
 
-    let arc = Arc::new(inner);
-    (
-        UplinkEventObserver::new(arc.clone()),
-        UplinkActionObserver::new(arc),
-    )
+    UplinkObserver::from_inner(Arc::new(inner))
 }
 
-#[derive(Clone)]
-pub struct UplinkEventObserver {
+pub struct UplinkObserver {
     inner: Arc<InnerObserver>,
 }
 
-impl UplinkEventObserver {
-    fn new(inner: Arc<InnerObserver>) -> UplinkEventObserver {
-        UplinkEventObserver { inner }
+impl UplinkObserver {
+    fn from_inner(inner: Arc<InnerObserver>) -> UplinkObserver {
+        UplinkObserver { inner }
     }
 }
 
-impl UplinkEventObserver {
+impl UplinkObserver {
     pub fn on_event(&self) {
         let _old = self.inner.event_delta.fetch_add(1, Ordering::Acquire);
         self.inner.flush();
     }
 
-    #[cfg(test)]
-    pub(crate) fn force_flush(&self) {
-        self.inner.accumulate_and_send();
-    }
-}
-
-#[derive(Clone)]
-pub struct UplinkActionObserver {
-    inner: Arc<InnerObserver>,
-}
-
-impl UplinkActionObserver {
-    pub fn new(inner: Arc<InnerObserver>) -> Self {
-        UplinkActionObserver { inner }
-    }
-}
-
-impl UplinkActionObserver {
     /// Report that a new command message has been dispatched and send a new profile if the
     /// report interval has elapsed.
     pub fn on_command(&self) {
@@ -394,31 +368,60 @@ impl UplinkActionObserver {
     }
 
     #[cfg(test)]
-    pub(crate) fn force_flush(&self) {
+    pub fn flush(&self) {
         self.inner.accumulate_and_send();
     }
 }
 
+impl Clone for UplinkObserver {
+    fn clone(&self) -> Self {
+        self.inner.count.fetch_add(1, Ordering::Relaxed);
+        UplinkObserver::from_inner(self.inner.clone())
+    }
+}
+
+impl Drop for UplinkObserver {
+    fn drop(&mut self) {
+        if self.inner.count.fetch_sub(1, Ordering::Release) != 1 {
+            return;
+        }
+
+        // Force flush any remaining metrics
+        self.inner.accumulate_and_send();
+    }
+}
+
+pub struct AggregatorConfig {
+    pub sample_rate: Duration,
+    pub buffer_size: NonZeroUsize,
+    pub yield_after: NonZeroUsize,
+    pub backpressure_config: KeyedBackpressureConfig,
+}
+
 pub fn uplink_aggregator(
+    config: AggregatorConfig,
     stop_rx: trigger::Receiver,
-    sample_rate: Duration,
-    buffer_size: NonZeroUsize,
-    yield_after: NonZeroUsize,
-    backpressure_config: KeyedBackpressureConfig,
     uplink_pulse_lanes: HashMap<RelativePath, SupplyLane<WarpUplinkPulse>>,
     lane_tx: mpsc::Sender<(RelativePath, WarpUplinkProfile)>,
+    uplink_to_lane_tx: trigger::Sender,
 ) -> (
     impl Future<Output = Result<MetricStage, AggregatorError>>,
     mpsc::Sender<TaggedWarpUplinkProfile>,
 ) {
-    let (uplink_tx, uplink_rx) = mpsc::channel(buffer_size.get());
+    let AggregatorConfig {
+        sample_rate,
+        buffer_size,
+        yield_after,
+        backpressure_config,
+    } = config;
 
+    let (uplink_tx, uplink_rx) = mpsc::channel(buffer_size.get());
     let metric_stream = ReceiverStream::new(uplink_rx);
     let (sink, bp_stream) = mpsc::channel(buffer_size.get());
     let sink = for_mpsc_sender(sink).map_err_into::<AggregatorError>();
-
+    let (flush_tx, flush_rx) = trigger::trigger();
     let release_task = metrics_release_backpressure(
-        metric_stream.take_until(stop_rx.clone()),
+        metric_stream.take_until(flush_rx),
         sink,
         backpressure_config,
     );
@@ -440,9 +443,16 @@ pub fn uplink_aggregator(
         AggregatorTask::new(uplink_pulse_lanes, sample_rate, stop_rx, bp_stream, lane_tx);
 
     let task = async move {
-        try_join(uplink_aggregator.run(yield_after), release_task)
-            .await
-            .map(|(stage, _)| stage)
+        // Once `stop_rx` has been triggered, the uplink aggregator will initiate a shutdown process
+        // that will drain the stream of incoming metrics. This stream is driven by uplink envelope
+        // events that will also terminate as the stop trigger has been triggered. Once the
+        // aggregator has finished draining the stream, the aggregator will produce one final metric
+        // and feed it forward to the lane aggregator where the same process will happen and the
+        // staged shutdown of the metrics system will finish.
+        let _jh = tokio::spawn(release_task);
+        let aggregator_result = uplink_aggregator.run(yield_after, uplink_to_lane_tx).await;
+        flush_tx.trigger();
+        aggregator_result
     };
     (task, uplink_tx)
 }

@@ -21,9 +21,9 @@ use swim_common::routing::remote::table::{BidirectionalRegistrator, SchemeHostPo
 use swim_common::routing::remote::{RemoteRoutingRequest, Scheme};
 use swim_common::routing::{RoutingAddr, TaggedEnvelope, TaggedSender};
 use swim_common::warp::path::{AbsolutePath, Path, RelativePath};
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use url::Url;
-use utilities::sync::promise;
 
 pub(crate) struct FakeConnections {
     outgoing_channels: HashMap<Url, TaggedSender>,

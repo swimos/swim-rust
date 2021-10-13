@@ -28,11 +28,11 @@ use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use std::time::Duration;
+use swim_utilities::errors::Recoverable;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use url::Url;
-use utilities::errors::Recoverable;
-use utilities::sync::promise;
-use utilities::uri::RelativeUri;
 
 pub mod error;
 pub mod remote;

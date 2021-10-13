@@ -19,8 +19,8 @@ use crate::routing::remote::table::{BidirectionalRegistrator, SchemeHostPort};
 use crate::routing::remote::{BidirectionalRequest, Scheme};
 use crate::routing::{RoutingAddr, TaggedSender};
 use futures::future::join;
+use swim_utilities::trigger::promise;
 use tokio::sync::{mpsc, oneshot};
-use utilities::sync::promise;
 
 #[tokio::test]
 async fn add_single_and_send_err() {

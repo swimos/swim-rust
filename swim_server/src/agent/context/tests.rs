@@ -13,9 +13,12 @@
 // limitations under the License.
 
 use crate::agent::context::{ContextImpl, RoutingContext, SchedulerContext};
+use crate::agent::store::mock::MockNodeStore;
+use crate::agent::store::SwimNodeStore;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::AgentContext;
 use crate::meta::meta_context_sink;
+use crate::plane::store::mock::MockPlaneStore;
 use crate::routing::TopLevelServerRouterFactory;
 use futures::future::BoxFuture;
 use std::collections::HashMap;
@@ -31,11 +34,12 @@ use swim_common::routing::error::RouterError;
 use swim_common::routing::{Route, Router, RoutingAddr};
 use swim_runtime::task;
 use swim_runtime::time::clock::Clock;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 use url::Url;
-use utilities::sync::{promise, trigger};
-use utilities::uri::RelativeUri;
 
 #[derive(Clone)]
 struct MockRouter {}
@@ -94,6 +98,7 @@ fn simple_accessors() {
         meta_context_sink(),
         client,
         RelativeUri::try_from("/mock/router".to_string()).unwrap(),
+        MockNodeStore::mock(),
     );
 
     assert!(std::ptr::eq(context.agent(), agent.as_ref()));
@@ -108,7 +113,7 @@ fn create_context(
     n: usize,
     clock: TestClock,
     close_trigger: trigger::Receiver,
-) -> ContextImpl<&'static str, impl Clock, MockRouter> {
+) -> ContextImpl<&'static str, impl Clock, MockRouter, SwimNodeStore<MockPlaneStore>> {
     let (tx, mut rx) = mpsc::channel(n);
 
     //Run any tasks that get scheduled.
@@ -153,6 +158,7 @@ fn create_context(
         meta_context_sink(),
         client,
         RelativeUri::try_from("/mock/router".to_string()).unwrap(),
+        MockNodeStore::mock(),
     )
 }
 

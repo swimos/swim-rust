@@ -18,7 +18,7 @@ use crate::downlink::Command;
 use crate::downlink::DownlinkConfig;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swim_common::form::ValidatedForm;
+use swim_common::form::ValueSchema;
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::sink::item::ItemSender;
@@ -29,7 +29,7 @@ struct Components<T> {
     command_rx: mpsc::Receiver<Command<Value>>,
 }
 
-fn make_command_downlink<T: ValidatedForm>() -> Components<T> {
+fn make_command_downlink<T: ValueSchema>() -> Components<T> {
     let (command_tx, command_rx) = mpsc::channel(8);
     let sender = swim_common::sink::item::for_mpsc_sender(command_tx).map_err_into();
 

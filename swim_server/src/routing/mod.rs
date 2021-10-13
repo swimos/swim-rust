@@ -23,10 +23,10 @@ use swim_common::routing::remote::{RawRoute, RemoteRoutingRequest};
 use swim_common::routing::{BidirectionalRoute, BidirectionalRouter, PlaneRoutingRequest};
 use swim_common::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 use swim_common::warp::path::Path;
+use swim_utilities::routing::uri::RelativeUri;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use url::Url;
-use utilities::uri::RelativeUri;
 
 #[derive(Debug, Clone)]
 pub(crate) struct TopLevelServerRouterFactory {

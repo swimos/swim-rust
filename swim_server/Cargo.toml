@@ -30,12 +30,13 @@ url = "2.1.1"
 swim_client = { path = "../swim_client" }
 swim_common = { path = "../swim_common" }
 swim_warp = { path = "../swim_warp" }
-utilities = { path = "../utilities" }
+swim_utilities = { path = "../swim_utilities", features = ["errors", "sync", "time", "text"] }
+stringify_attr = { path = "../macro_utilities/stringify_attr" }
 swim_runtime = { path = "../swim_runtime" }
 stm = { path = "../stm" }
 tracing-futures = "0.2.4"
 agent_derive = { path = "agent_derive" }
-trybuild = "1.0.17"
+trybuild = "1.0.48"
 tokio-tungstenite = { version = "0.13.0", git = "https://github.com/swimos/tokio-tungstenite/", branch = "deflate-v13", features = ["tls", "deflate"] }
 tokio-native-tls = "0.3"
 auth = { path = "auth" }
@@ -44,6 +45,11 @@ lazy_static = "1.4.0"
 percent-encoding = "2.1.0"
 thiserror = "1.0"
 crossbeam-queue = "0.3"
+store = { path = "store" }
+serde = { version = "1.0.124", features = ["derive", "rc"] }
+bincode = "1.3.2"
+rocksdb = "0.16.0"
+tempdir = "0.3.7"
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["rt-multi-thread", "macros", "test-util"] }

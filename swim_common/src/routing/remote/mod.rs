@@ -44,11 +44,11 @@ use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::io;
 use std::io::Error;
+use swim_utilities::future::task::Spawner;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use tracing::{event, Level};
 use url::Url;
-use utilities::sync::promise;
-use utilities::task::Spawner;
 
 #[cfg(test)]
 pub mod test_fixture;

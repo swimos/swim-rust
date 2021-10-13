@@ -40,7 +40,7 @@ use futures_util::stream::{FuturesUnordered, StreamExt};
 use pin_utils::pin_mut;
 use std::collections::HashMap;
 use std::sync::{Arc, Weak};
-use swim_common::form::{Form, ValidatedForm};
+use swim_common::form::{Form, ValueSchema};
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::request::Request;
@@ -50,13 +50,13 @@ use swim_common::sink::item::either::SplitSink;
 use swim_common::sink::item::ItemSender;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::Addressable;
+use swim_utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture};
+use swim_utilities::sync::circular_buffer;
+use swim_utilities::trigger::promise::{self, PromiseError};
 use swim_warp::backpressure;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{error, info, instrument, trace_span};
-use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture};
-use utilities::sync::promise::PromiseError;
-use utilities::sync::{circular_buffer, promise};
 
 pub mod envelopes;
 #[cfg(test)]
@@ -132,7 +132,7 @@ impl<Path: Addressable> Downlinks<Path> {
     }
 
     /// Attempt to subscribe to a remote value lane where the type of the values is described by a
-    /// [`ValidatedForm`]. The downlink is returned with a single active
+    /// [`ValueSchema`]. The downlink is returned with a single active
     /// subscription to its events.
     #[instrument(skip(self, init), level = "info")]
     pub async fn subscribe_value<T>(
@@ -141,7 +141,7 @@ impl<Path: Addressable> Downlinks<Path> {
         path: Path,
     ) -> RequestResult<(TypedValueDownlink<T>, ValueDownlinkReceiver<T>), Path>
     where
-        T: Form + ValidatedForm + Send + 'static,
+        T: Form + ValueSchema + Send + 'static,
     {
         info!("Subscribing to typed value lane");
 
@@ -186,7 +186,7 @@ impl<Path: Addressable> Downlinks<Path> {
     }
 
     /// Attempt to subscribe to a remote map lane where the types of the keys and values are
-    /// described by  [`ValidatedForm`]s. The downlink is returned with a single active
+    /// described by  [`ValueSchema`]s. The downlink is returned with a single active
     /// subscription to its events.
     #[instrument(skip(self), level = "info")]
     pub async fn subscribe_map<K, V>(
@@ -194,8 +194,8 @@ impl<Path: Addressable> Downlinks<Path> {
         path: Path,
     ) -> RequestResult<(TypedMapDownlink<K, V>, MapDownlinkReceiver<K, V>), Path>
     where
-        K: ValidatedForm + Send + 'static,
-        V: ValidatedForm + Send + 'static,
+        K: ValueSchema + Send + 'static,
+        V: ValueSchema + Send + 'static,
     {
         info!("Subscribing to typed map lane");
 
@@ -238,7 +238,7 @@ impl<Path: Addressable> Downlinks<Path> {
         path: Path,
     ) -> RequestResult<TypedCommandDownlink<T>, Path>
     where
-        T: ValidatedForm + Send + 'static,
+        T: ValueSchema + Send + 'static,
     {
         Ok(TypedCommandDownlink::new(
             self.subscribe_command_inner(T::schema(), path).await?,
@@ -278,7 +278,7 @@ impl<Path: Addressable> Downlinks<Path> {
         violations: SchemaViolations,
     ) -> RequestResult<TypedEventDownlink<T>, Path>
     where
-        T: ValidatedForm + Send + 'static,
+        T: ValueSchema + Send + 'static,
     {
         Ok(TypedEventDownlink::new(
             self.subscribe_event_inner(T::schema(), path, violations)

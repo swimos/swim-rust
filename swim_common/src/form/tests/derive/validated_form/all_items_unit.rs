@@ -15,7 +15,7 @@
 use form_derive::*;
 
 fn main() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     #[form(schema(all_items(num_items = 5)))]
     struct S;
 }

@@ -19,6 +19,9 @@ use std::io::ErrorKind;
 use std::time::Duration;
 use tokio::sync::mpsc::error::SendError as MpscSendError;
 
+use crate::request::request_future::RequestError;
+use crate::routing::RelativeUri;
+use crate::routing::RoutingAddr;
 pub use capacity::*;
 pub use closed::*;
 pub use encoding::*;
@@ -26,14 +29,10 @@ pub use io::*;
 pub use protocol::*;
 pub use resolution::*;
 pub use send::*;
+use swim_utilities::errors::Recoverable;
+use swim_utilities::sync::circular_buffer;
 pub use tls::*;
-use utilities::errors::Recoverable;
-use utilities::sync::circular_buffer;
-use utilities::uri::RelativeUri;
 use {std::ops::Deref, tokio_tungstenite::tungstenite};
-
-use crate::request::request_future::RequestError;
-use crate::routing::RoutingAddr;
 
 pub use self::http::*;
 

@@ -14,7 +14,7 @@
 
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use utilities::route_pattern::RoutePattern;
+use swim_utilities::routing::route_pattern::RoutePattern;
 
 #[cfg(test)]
 mod tests;

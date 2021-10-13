@@ -30,6 +30,7 @@ use std::str::FromStr;
 use tokio_util::codec::Encoder;
 
 pub mod blob;
+mod num;
 pub mod parser;
 pub mod schema;
 pub mod time;
@@ -293,8 +294,8 @@ impl Value {
                 Value::Extant | Value::BooleanValue(_) => Ordering::Less,
                 Value::Int32Value(m) => n.cmp(m),
                 Value::Int64Value(m) => (*n as i64).cmp(m),
-                Value::UInt32Value(x) => utilities::num::cmp_i32_u32(*n, *x),
-                Value::UInt64Value(x) => utilities::num::cmp_i64_u64(*n as i64, *x),
+                Value::UInt32Value(x) => num::cmp_i32_u32(*n, *x),
+                Value::UInt64Value(x) => num::cmp_i64_u64(*n as i64, *x),
                 Value::Float64Value(y) => {
                     if y.is_nan() {
                         Ordering::Greater
@@ -317,8 +318,8 @@ impl Value {
                 Value::Extant | Value::BooleanValue(_) => Ordering::Less,
                 Value::Int32Value(m) => n.cmp(&(*m as i64)),
                 Value::Int64Value(m) => n.cmp(m),
-                Value::UInt32Value(x) => utilities::num::cmp_i64_u64(*n, *x as u64),
-                Value::UInt64Value(x) => utilities::num::cmp_i64_u64(*n, *x),
+                Value::UInt32Value(x) => num::cmp_i64_u64(*n, *x as u64),
+                Value::UInt64Value(x) => num::cmp_i64_u64(*n, *x),
                 Value::Float64Value(y) => {
                     if y.is_nan() {
                         Ordering::Greater
@@ -341,8 +342,8 @@ impl Value {
                 Value::Extant | Value::BooleanValue(_) => Ordering::Less,
                 Value::UInt32Value(u) => n.cmp(u),
                 Value::UInt64Value(u) => (*n as u64).cmp(u),
-                Value::Int32Value(x) => utilities::num::cmp_u32_i32(*n, *x),
-                Value::Int64Value(x) => utilities::num::cmp_u64_i64(*n as u64, *x),
+                Value::Int32Value(x) => num::cmp_u32_i32(*n, *x),
+                Value::Int64Value(x) => num::cmp_u64_i64(*n as u64, *x),
                 Value::Float64Value(f) => {
                     if f.is_nan() {
                         Ordering::Greater
@@ -363,8 +364,8 @@ impl Value {
             },
             Value::UInt64Value(n) => match other {
                 Value::Extant | Value::BooleanValue(_) => Ordering::Less,
-                Value::Int32Value(m) => utilities::num::cmp_u64_i64(*n, *m as i64),
-                Value::Int64Value(m) => utilities::num::cmp_u64_i64(*n, *m),
+                Value::Int32Value(m) => num::cmp_u64_i64(*n, *m as i64),
+                Value::Int64Value(m) => num::cmp_u64_i64(*n, *m),
                 Value::UInt32Value(x) => n.cmp(&(*x as u64)),
                 Value::UInt64Value(x) => n.cmp(x),
                 Value::Float64Value(y) => {

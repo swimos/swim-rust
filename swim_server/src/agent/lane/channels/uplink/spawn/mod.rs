@@ -22,7 +22,7 @@ use crate::agent::lane::channels::{
 };
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::Eff;
-use crate::meta::metric::uplink::UplinkActionObserver;
+use crate::meta::metric::uplink::UplinkObserver;
 use futures::future::join_all;
 use futures::{FutureExt, StreamExt};
 use std::collections::hash_map::Entry;
@@ -33,12 +33,12 @@ use std::sync::Arc;
 use swim_common::model::Value;
 use swim_common::routing::{Router, RoutingAddr};
 use swim_common::warp::path::RelativePath;
+use swim_utilities::time::AtomicInstant;
+use swim_utilities::trigger;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
-use utilities::instant::AtomicInstant;
-use utilities::sync::trigger;
 
 #[cfg(test)]
 mod tests;
@@ -126,7 +126,7 @@ where
         mut spawn_tx: mpsc::Sender<Eff>,
         uplinks_idle_since: Arc<AtomicInstant>,
         error_collector: mpsc::Sender<UplinkErrorReport>,
-        action_observer: UplinkActionObserver,
+        observer: UplinkObserver,
     ) where
         R: Router,
     {
@@ -161,7 +161,7 @@ where
                             if !handle.cleanup().await {
                                 event!(Level::ERROR, message = UPLINK_TERMINATED, route = ?&self.route, ?addr);
                             }
-                            action_observer.did_close();
+                            observer.did_close();
                         }
                         action = act;
                         attempts += 1;
@@ -178,7 +178,7 @@ where
                             break false;
                         }
                     } else {
-                        action_observer.did_open();
+                        observer.did_open();
                         // We successfully dispatched to the uplink so can continue.
                         break false;
                     }
@@ -197,7 +197,7 @@ where
             }
         }
         join_all(uplink_senders.into_iter().map(|(_, h)| {
-            action_observer.did_close();
+            observer.did_close();
             h.cleanup()
         }))
         .instrument(span!(Level::DEBUG, UPLINK_CLEANUP))
@@ -332,7 +332,7 @@ impl LaneUplinks for SpawnerUplinkFactory {
         channels: UplinkChannels<Top>,
         route: RelativePath,
         context: &Context,
-        action_observer: UplinkActionObserver,
+        observer: UplinkObserver,
     ) -> Eff
     where
         Handler: LaneMessageHandler + 'static,
@@ -369,7 +369,7 @@ impl LaneUplinks for SpawnerUplinkFactory {
                 context.spawner(),
                 context.uplinks_idle_since().clone(),
                 error_collector,
-                action_observer,
+                observer,
             )
             .boxed()
     }

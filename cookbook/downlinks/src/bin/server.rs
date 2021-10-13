@@ -16,7 +16,6 @@ use futures::join;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 use swim_server::interface::SwimServerBuilder;
-use swim_server::plane::spec::PlaneBuilder;
 use swim_server::RoutePattern;
 use tokio::time;
 
@@ -25,7 +24,10 @@ mod agents;
 #[tokio::main]
 async fn main() {
     let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9001);
-    let mut plane_builder = PlaneBuilder::new();
+
+    let mut swim_server_builder = SwimServerBuilder::new(Default::default()).unwrap();
+
+    let mut plane_builder = swim_server_builder.plane_builder("example").unwrap();
 
     plane_builder
         .add_route::<UnitAgent, (), ()>(RoutePattern::parse_str("/unit/:id").unwrap(), (), ())
@@ -35,7 +37,6 @@ async fn main() {
         .add_route::<ListenerAgent, (), ()>(RoutePattern::parse_str("/listener").unwrap(), (), ())
         .unwrap();
 
-    let mut swim_server_builder = SwimServerBuilder::default();
     swim_server_builder.add_plane(plane_builder.build());
     let (swim_server, server_handle) = swim_server_builder.bind_to(address).build().unwrap();
 

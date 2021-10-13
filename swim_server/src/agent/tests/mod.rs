@@ -17,6 +17,7 @@ mod declarive_macro_agent;
 mod derive;
 mod reporting_agent;
 mod reporting_macro_agent;
+mod store_agent;
 pub(crate) mod test_clock;
 
 use crate::agent::lane::channels::AgentExecutionConfig;
@@ -29,6 +30,7 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::LaneModel;
 use crate::agent::lifecycle::AgentLifecycle;
+use crate::agent::store::mock::MockNodeStore;
 use crate::agent::tests::reporting_agent::TestAgentConfig;
 use crate::agent::tests::reporting_macro_agent::ReportingAgentEvent;
 use crate::agent::tests::stub_router::SingleChannelRouter;
@@ -56,12 +58,13 @@ use swim_client::router::ClientRouterFactory;
 use swim_common::routing::RoutingAddr;
 use swim_common::warp::path::Path;
 use swim_runtime::task;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger;
+use swim_utilities::trigger::promise;
+use swim_utilities::trigger::Receiver;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::{timeout, Duration};
 use tokio_stream::wrappers::ReceiverStream;
-use utilities::sync::trigger::Receiver;
-use utilities::sync::{promise, trigger};
-use utilities::uri::RelativeUri;
 
 mod stub_router {
     use futures::future::BoxFuture;
@@ -72,10 +75,10 @@ mod stub_router {
     use swim_common::routing::{
         ConnectionDropped, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
     };
+    use swim_utilities::routing::uri::RelativeUri;
+    use swim_utilities::trigger::promise;
     use tokio::sync::mpsc;
     use url::Url;
-    use utilities::sync::promise;
-    use utilities::uri::RelativeUri;
 
     #[derive(Clone)]
     pub struct SingleChannelRouter {
@@ -799,6 +802,7 @@ pub async fn run_agent_test<Agent, Config, Lifecycle>(
         client,
         ReceiverStream::new(envelope_rx),
         SingleChannelRouter::new(RoutingAddr::plane(1024)),
+        MockNodeStore::mock(),
     );
 
     let agent_task = swim_runtime::task::spawn(agent_proc);

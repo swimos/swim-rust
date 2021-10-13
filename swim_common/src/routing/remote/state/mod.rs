@@ -32,11 +32,11 @@ use futures_util::stream::TakeUntil;
 use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
+use swim_utilities::future::open_ended::OpenEndedFutures;
+use swim_utilities::future::task::Spawner;
+use swim_utilities::trigger;
+use swim_utilities::trigger::promise::{self, Sender};
 use tokio_stream::wrappers::ReceiverStream;
-use utilities::future::open_ended::OpenEndedFutures;
-use utilities::sync::promise::Sender;
-use utilities::sync::{promise, trigger};
-use utilities::task::Spawner;
 
 #[cfg(test)]
 mod tests;

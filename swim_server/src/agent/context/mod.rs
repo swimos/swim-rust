@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::store::NodeStore;
 use crate::agent::{AgentContext, Eff};
 use crate::meta::log::NodeLogger;
 use crate::meta::metric::NodeMetricAggregator;
@@ -27,15 +28,15 @@ use swim_client::interface::DownlinksContext;
 use swim_common::routing::Router;
 use swim_common::warp::path::Path;
 use swim_runtime::time::clock::Clock;
+use swim_utilities::future::SwimStreamExt;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::time::AtomicInstant;
+use swim_utilities::trigger;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::time::{Duration, Instant};
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
-use utilities::future::SwimStreamExt;
-use utilities::instant::AtomicInstant;
-use utilities::sync::trigger;
-use utilities::uri::RelativeUri;
 
 #[cfg(test)]
 mod tests;
@@ -43,14 +44,15 @@ mod tests;
 /// [`AgentContext`] implementation that dispatches effects to the scheduler through an MPSC
 /// channel.
 #[derive(Debug)]
-pub(super) struct ContextImpl<Agent, Clk, R> {
+pub(super) struct ContextImpl<Agent, Clk, R, Store> {
     agent_ref: Arc<Agent>,
     routing_context: RoutingContext<R>,
     schedule_context: SchedulerContext<Clk>,
     meta_context: Arc<MetaContext>,
-    client: DownlinksContext<Path>,
+    downlinks_context: DownlinksContext<Path>,
     agent_uri: RelativeUri,
     pub(crate) uplinks_idle_since: Arc<AtomicInstant>,
+    store: Store,
 }
 
 const SCHEDULE: &str = "Schedule";
@@ -58,41 +60,45 @@ const SCHED_TRIGGERED: &str = "Schedule triggered";
 const SCHED_STOPPED: &str = "Scheduler unexpectedly stopped";
 const WAITING: &str = "Schedule waiting";
 
-impl<Agent, Clk, R: Router + Clone + 'static> ContextImpl<Agent, Clk, R> {
+impl<Agent, Clk, R: Router + Clone + 'static, Store> ContextImpl<Agent, Clk, R, Store> {
     pub(super) fn new(
         agent_ref: Arc<Agent>,
         routing_context: RoutingContext<R>,
         schedule_context: SchedulerContext<Clk>,
         meta_context: MetaContext,
-        client: DownlinksContext<Path>,
+        downlinks_context: DownlinksContext<Path>,
         agent_uri: RelativeUri,
+        store: Store,
     ) -> Self {
         ContextImpl {
             agent_ref,
             routing_context,
             schedule_context,
             meta_context: Arc::new(meta_context),
-            client,
+            downlinks_context,
             agent_uri,
-            uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now())),
+            uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
+            store,
         }
     }
 }
 
-impl<Agent, Clk, R: Router + Clone + 'static> Clone for ContextImpl<Agent, Clk, R>
+impl<Agent, Clk, R: Router + Clone + 'static, Store> Clone for ContextImpl<Agent, Clk, R, Store>
 where
     Clk: Clone,
     R: Clone,
+    Store: Clone,
 {
     fn clone(&self) -> Self {
         ContextImpl {
             agent_ref: self.agent_ref.clone(),
             routing_context: self.routing_context.clone(),
             schedule_context: self.schedule_context.clone(),
-            client: self.client.clone(),
+            downlinks_context: self.downlinks_context.clone(),
             meta_context: self.meta_context.clone(),
             agent_uri: self.agent_uri.clone(),
             uplinks_idle_since: self.uplinks_idle_since.clone(),
+            store: self.store.clone(),
         }
     }
 }
@@ -190,13 +196,15 @@ impl<Clk: Clone> Clone for SchedulerContext<Clk> {
     }
 }
 
-impl<Agent, Clk, R: Router + Clone + 'static> AgentContext<Agent> for ContextImpl<Agent, Clk, R>
+impl<Agent, Clk, R: Router + Clone + 'static, Store> AgentContext<Agent>
+    for ContextImpl<Agent, Clk, R, Store>
 where
     Agent: Send + Sync + 'static,
     Clk: Clock,
+    Store: NodeStore,
 {
     fn downlinks_context(&self) -> DownlinksContext<Path> {
-        self.client.clone()
+        self.downlinks_context.clone()
     }
 
     fn schedule<Effect, Str, Sch>(&self, effects: Str, schedule: Sch) -> BoxFuture<()>
@@ -236,6 +244,7 @@ where
 /// A context, scoped to an agent, to provide shared functionality to each of its lanes.
 pub trait AgentExecutionContext {
     type Router: Router + 'static;
+    type Store: NodeStore;
 
     /// Create a handle to the envelope router for the agent.
     fn router_handle(&self) -> Self::Router;
@@ -252,13 +261,19 @@ pub trait AgentExecutionContext {
 
     /// Return the time since the last outgoing message.
     fn uplinks_idle_since(&self) -> &Arc<AtomicInstant>;
+
+    /// Provides a handle to the store engine for this node.
+    fn store(&self) -> Self::Store;
 }
 
-impl<Agent, Clk, RouterInner> AgentExecutionContext for ContextImpl<Agent, Clk, RouterInner>
+impl<Agent, Clk, RouterInner, Store> AgentExecutionContext
+    for ContextImpl<Agent, Clk, RouterInner, Store>
 where
     RouterInner: Router + Clone + 'static,
+    Store: NodeStore,
 {
     type Router = RouterInner;
+    type Store = Store;
 
     fn router_handle(&self) -> Self::Router {
         self.routing_context.router.clone()
@@ -278,5 +293,9 @@ where
 
     fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
         &self.uplinks_idle_since
+    }
+
+    fn store(&self) -> Store {
+        self.store.clone()
     }
 }

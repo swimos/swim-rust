@@ -16,7 +16,7 @@ use form_derive::*;
 use swim_common::model::ValueKind;
 
 fn main() {
-    #[derive(Form, ValidatedForm)]
+    #[derive(Form, ValueSchema)]
     #[form(schema(all_items(of_kind(ValueKind::ThisIsntValid))))]
     struct S {
         a: i32,

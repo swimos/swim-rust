@@ -28,10 +28,10 @@ use swim_common::routing::{BidirectionalRoute, BidirectionalRouter};
 use swim_common::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 use swim_common::warp::envelope::IncomingLinkMessage;
 use swim_common::warp::path::{AbsolutePath, Addressable};
+use swim_utilities::routing::uri::RelativeUri;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use url::Url;
-use utilities::uri::RelativeUri;
 
 #[cfg(test)]
 pub(crate) mod tests;

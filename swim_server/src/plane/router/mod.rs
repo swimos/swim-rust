@@ -20,9 +20,9 @@ use swim_common::routing::error::RouterError;
 use swim_common::routing::remote::RawRoute;
 use swim_common::routing::PlaneRoutingRequest;
 use swim_common::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
+use swim_utilities::routing::uri::RelativeUri;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
-use utilities::uri::RelativeUri;
 
 #[cfg(test)]
 mod tests;

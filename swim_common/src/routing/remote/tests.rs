@@ -27,8 +27,8 @@ use crate::warp::envelope::Envelope;
 use futures::FutureExt;
 use std::cell::RefCell;
 use std::io::ErrorKind;
+use swim_utilities::trigger::promise::Sender;
 use tokio::sync::{mpsc, oneshot};
-use utilities::sync::promise::Sender;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct FakeSocket(String);
