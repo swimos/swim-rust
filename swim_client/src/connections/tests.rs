@@ -25,13 +25,13 @@ use swim_common::warp::path::AbsolutePath;
 use swim_utilities::future::retryable::Quantity;
 
 async fn create_connection_pool(
-    fake_conns: FakeConnections,
+    fake_connections: FakeConnections,
 ) -> (SwimConnPool<AbsolutePath>, CloseSender) {
     let (client_tx, client_rx) = mpsc::channel(32);
     let (conn_request_tx, _conn_request_rx) = mpsc::channel(32);
     let (close_tx, close_rx) = promise::promise();
 
-    let remote_tx = MockRemoteRouterTask::new(fake_conns);
+    let remote_tx = MockRemoteRouterTask::new(fake_connections);
 
     let delegate_fac = TopLevelClientRouterFactory::new(client_tx.clone(), remote_tx.clone());
     let client_router_fac = ClientRouterFactory::new(conn_request_tx, delegate_fac);
