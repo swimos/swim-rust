@@ -47,7 +47,7 @@ const METHOD_GET: &str = "get";
 
 /// A subprotocol registry that is used for negotiating a possible subprotocol to use for a
 /// connection.
-#[derive(Default, Debug)]
+#[derive(Clone, Default, Debug)]
 pub struct ProtocolRegistry {
     registrants: FnvHashSet<Cow<'static, str>>,
     header: Option<HeaderValue>,

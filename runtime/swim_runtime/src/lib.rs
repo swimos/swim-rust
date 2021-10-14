@@ -15,5 +15,3 @@
 pub mod backpressure;
 pub mod error;
 pub mod ws;
-
-pub mod ws2;

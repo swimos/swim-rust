@@ -14,15 +14,11 @@
 
 use crate::connections::factory::tungstenite::MaybeTlsStream;
 use http::Request;
-use swim_runtime::error::{
-    ConnectionError, InvalidUriError, InvalidUriErrorKind, TError, TungsteniteError,
-};
+use swim_runtime::error::{ConnectionError, InvalidUriError, InvalidUriErrorKind};
 use swim_runtime::ws::tls::connect_tls;
-use swim_runtime::ws::{Protocol, WsMessage};
+use swim_runtime::ws::Protocol;
 use swim_utilities::future::TransformMut;
 use tokio::net::TcpStream;
-use tokio_tungstenite::stream::Stream as StreamSwitcher;
-use tokio_tungstenite::tungstenite::Message;
 
 pub fn get_stream_type<T>(
     request: &Request<T>,
@@ -64,28 +60,5 @@ pub async fn build_stream(
             Ok(s) => Ok(StreamSwitcher::Tls(s)),
             Err(e) => Err(e.into()),
         },
-    }
-}
-
-pub struct SinkTransformer;
-
-impl TransformMut<WsMessage> for SinkTransformer {
-    type Out = Message;
-
-    fn transform(&mut self, input: WsMessage) -> Self::Out {
-        input.into()
-    }
-}
-
-pub struct StreamTransformer;
-
-impl TransformMut<Result<Message, TError>> for StreamTransformer {
-    type Out = Result<WsMessage, ConnectionError>;
-
-    fn transform(&mut self, input: Result<Message, TError>) -> Self::Out {
-        match input {
-            Ok(r) => Ok(r.into()),
-            Err(e) => Err(TungsteniteError(e).into()),
-        }
     }
 }
