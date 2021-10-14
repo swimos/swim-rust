@@ -236,13 +236,17 @@ impl TryFrom<u8> for OpCode {
     }
 }
 
+/// A reason for closing the WebSocket connection.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CloseReason {
+    /// The code to close the connection with.
     pub code: CloseCode,
+    /// An optional message to close the connection with.
     pub description: Option<String>,
 }
 
 impl CloseReason {
+    #[allow(missing_docs)]
     pub fn new(code: CloseCode, description: Option<String>) -> Self {
         CloseReason { code, description }
     }

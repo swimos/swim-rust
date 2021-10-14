@@ -72,6 +72,12 @@ pub enum ConnectionError {
     WriteTimeout(Duration),
 }
 
+impl From<ratchet::Error> for ConnectionError {
+    fn from(_: ratchet::Error) -> Self {
+        todo!()
+    }
+}
+
 impl Recoverable for ConnectionError {
     fn is_fatal(&self) -> bool {
         match self {

@@ -52,6 +52,13 @@ pub struct UpgradedServer<S, E> {
     pub subprotocol: Option<String>,
 }
 
+impl<S, E> UpgradedServer<S, E> {
+    /// Consume self and take the websocket
+    pub fn into_websocket(self) -> WebSocket<S, E> {
+        self.websocket
+    }
+}
+
 /// Execute a server handshake on the provided stream.
 ///
 /// Returns either a `WebSocketUpgrader` that may be used to either accept or reject the peer or an

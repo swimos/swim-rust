@@ -53,6 +53,13 @@ pub struct UpgradedClient<S, E> {
     pub subprotocol: Option<String>,
 }
 
+impl<S, E> UpgradedClient<S, E> {
+    /// Consume self and take the websocket
+    pub fn into_websocket(self) -> WebSocket<S, E> {
+        self.websocket
+    }
+}
+
 /// Execute a WebSocket client handshake on `stream`, opting for no compression on messages and no
 /// subprotocol.
 pub async fn subscribe<S, R>(
@@ -89,7 +96,7 @@ pub async fn subscribe_with<S, E, R>(
     config: WebSocketConfig,
     mut stream: S,
     request: R,
-    extension: &E,
+    extension: E,
     subprotocols: ProtocolRegistry,
 ) -> Result<UpgradedClient<S, E::Extension>, Error>
 where

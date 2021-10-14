@@ -106,6 +106,7 @@ impl ReunitableExtension for NoExt {
 }
 
 #[derive(Copy, Clone, Debug)]
+#[allow(missing_docs)]
 pub struct NoExtEncoder;
 impl ExtensionEncoder for NoExtEncoder {
     type Error = Infallible;
@@ -120,6 +121,7 @@ impl ExtensionEncoder for NoExtEncoder {
 }
 
 #[derive(Copy, Clone, Debug)]
+#[allow(missing_docs)]
 pub struct NoExtDecoder;
 impl ExtensionDecoder for NoExtDecoder {
     type Error = Infallible;
