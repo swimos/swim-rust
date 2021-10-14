@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt::Debug;
+use std::fmt::{Debug, Display, Formatter};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
@@ -22,7 +22,6 @@ use swim_common::form::Form;
 use swim_common::model::Value;
 
 use crate::agent::lane::LaneModel;
-use utilities::errors::SwimResultExt;
 
 #[cfg(test)]
 mod tests;
@@ -79,13 +78,24 @@ where
     Key: Form,
     Value: Form;
 
+#[derive(Debug)]
+pub struct ControllerError;
+
+impl Display for ControllerError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "The controller lifecycle stopped responding.")
+    }
+}
+
+impl std::error::Error for ControllerError {}
+
 impl<Key, Value> DemandMapLaneController<Key, Value>
 where
     Key: Clone + Form,
     Value: Form,
 {
     /// Syncs this lane. Called by the uplink.
-    pub(crate) async fn sync(self) -> Result<Vec<DemandMapLaneEvent<Key, Value>>, ()> {
+    pub(crate) async fn sync(self) -> Result<Vec<DemandMapLaneEvent<Key, Value>>, ControllerError> {
         let (tx, rx) = oneshot::channel();
 
         if self
@@ -95,10 +105,10 @@ where
             .await
             .is_err()
         {
-            return Err(());
+            return Err(ControllerError);
         }
 
-        rx.await.discard_err()
+        rx.await.map_err(|_| ControllerError)
     }
 
     /// Cues a value. Returns `Ok(true)` if the key mapped successfully to a value or `Ok(false)`
@@ -130,7 +140,7 @@ where
     }
 
     /// Removes a value from the map.
-    pub async fn remove(&mut self, key: Key) -> Result<(), ()> {
+    pub async fn remove(&mut self, key: Key) -> Result<(), ControllerError> {
         if self
             .0
             .lifecycle_sender
@@ -138,14 +148,14 @@ where
             .await
             .is_err()
         {
-            return Err(());
+            return Err(ControllerError);
         }
 
         self.0
             .uplink_sender
             .send(DemandMapLaneEvent::remove(key))
             .await
-            .discard_err()
+            .map_err(|_| ControllerError)
     }
 }
 

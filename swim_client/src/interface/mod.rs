@@ -15,10 +15,12 @@
 //! Interface for creating and running Swim client instances.
 //!
 //! The module provides methods and structures for creating and running Swim client instances.
-use crate::configuration::downlink::{Config, ConfigHierarchy};
+use crate::configuration::downlink::Config;
+use crate::configuration::downlink::ConfigHierarchy;
+use crate::configuration::downlink::ConfigParseError;
+use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::SwimConnPool;
 use crate::downlink::error::{DownlinkError, SubscriptionError};
-use crate::downlink::subscription::RequestResult;
 use crate::downlink::typed::command::TypedCommandDownlink;
 use crate::downlink::typed::event::TypedEventDownlink;
 use crate::downlink::typed::map::{MapDownlinkReceiver, TypedMapDownlink};
@@ -29,36 +31,28 @@ use crate::downlink::typed::{
 };
 use crate::downlink::Downlinks;
 use crate::downlink::SchemaViolations;
-use crate::router::{ClientRouterFactory, TopLevelClientRouterFactory};
-use crate::runtime::task::TaskHandle;
-use futures::join;
+use crate::router::SwimRouter;
 use std::error::Error;
 use std::fmt;
 use std::fmt::{Display, Formatter};
-use std::num::NonZeroUsize;
+use std::fs::File;
+use std::io::Read;
 use std::sync::Arc;
-use swim_common::form::{Form, ValidatedForm};
+use swim_common::form::{Form, ValueSchema};
+use swim_common::model::parser::parse_single;
 use swim_common::model::Value;
-use swim_common::routing::error::RoutingError;
-use swim_common::routing::remote::net::dns::Resolver;
-use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
-use swim_common::routing::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
-use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
-use swim_common::routing::CloseSender;
+use swim_common::routing::ws::WebsocketFactory;
+use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
-use swim_common::warp::path::{AbsolutePath, Addressable};
-use swim_runtime::task::spawn;
-use tokio::sync::mpsc;
+use swim_common::warp::path::AbsolutePath;
 use tracing::info;
-use utilities::future::open_ended::OpenEndedFutures;
-use utilities::sync::promise;
 
 /// Builder to create Swim client instance.
 ///
 /// The builder can be created with default or custom configuration.
 /// The custom configuration can be read from a file.
 pub struct SwimClientBuilder {
-    config: ConfigHierarchy<AbsolutePath>,
+    config: ConfigHierarchy,
 }
 
 impl SwimClientBuilder {
@@ -66,156 +60,65 @@ impl SwimClientBuilder {
     ///
     /// # Arguments
     /// * `config` - The custom configuration for the client.
-    pub fn new(config: ConfigHierarchy<AbsolutePath>) -> Self {
+    pub fn new(config: ConfigHierarchy) -> Self {
         SwimClientBuilder { config }
     }
 
-    //Todo dm this needs to be changed after the new client configuration is finalised.
-    // /// Create a new client builder with configuration from a file.
-    // ///
-    // /// # Arguments
-    // /// * `config_file` - Configuration file for the client.
-    // /// * `use_defaults` - Whether or not missing values should be replaced with default ones.
-    // pub fn new_from_file(
-    //     mut config_file: File,
-    //     use_defaults: bool,
-    // ) -> Result<Self, ConfigParseError> {
-    //     let mut contents = String::new();
-    //     config_file
-    //         .read_to_string(&mut contents)
-    //         .map_err(ConfigParseError::FileError)?;
-    //
-    //     let config = ConfigHierarchy::try_from_value(
-    //         parse_single(&contents).map_err(ConfigParseError::ReconError)?,
-    //         use_defaults,
-    //     )?;
-    //
-    //     Ok(SwimClientBuilder { config })
-    // }
+    /// Create a new client builder with configuration from a file.
+    ///
+    /// # Arguments
+    /// * `config_file` - Configuration file for the client.
+    /// * `use_defaults` - Whether or not missing values should be replaced with default ones.
+    pub fn new_from_file(
+        mut config_file: File,
+        use_defaults: bool,
+    ) -> Result<Self, ConfigParseError> {
+        let mut contents = String::new();
+        config_file
+            .read_to_string(&mut contents)
+            .map_err(ConfigParseError::FileError)?;
+
+        let config = ConfigHierarchy::try_from_value(
+            parse_single(&contents).map_err(ConfigParseError::ReconError)?,
+            use_defaults,
+        )?;
+
+        Ok(SwimClientBuilder { config })
+    }
 
     /// Build the Swim client.
-    pub async fn build(self) -> SwimClient<AbsolutePath> {
+    ///
+    /// # Arguments
+    /// * `ws_factory` - Websocket factory for the client.
+    pub async fn build<WsFac: WebsocketFactory + 'static>(self, ws_factory: WsFac) -> SwimClient {
         let SwimClientBuilder {
             config: downlinks_config,
         } = self;
 
         info!("Initialising Swim Client");
 
-        let client_params = downlinks_config.client_params();
-
-        let (remote_tx, remote_rx) =
-            mpsc::channel(client_params.connections_params.router_buffer_size.get());
-
-        let (client_tx, client_rx) =
-            mpsc::channel(client_params.connections_params.router_buffer_size.get());
-
-        let top_level_router_fac =
-            TopLevelClientRouterFactory::new(client_tx.clone(), remote_tx.clone());
-
-        let client_router_factory =
-            ClientRouterFactory::new(client_tx.clone(), top_level_router_fac.clone());
-        let (close_tx, close_rx) = promise::promise();
-
-        let remote_connections_task = RemoteConnectionsTask::new_client_task(
-            client_params.connections_params,
-            TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
-            TungsteniteWsConnections {
-                config: client_params.websocket_params,
-            },
-            top_level_router_fac.clone(),
-            OpenEndedFutures::new(),
-            RemoteConnectionChannels::new(remote_tx, remote_rx, close_rx.clone()),
-        )
-        .await;
-
-        // The connection pool handles the connections behind the downlinks
-        let (connection_pool, pool_task) = SwimConnPool::new(
-            client_params.conn_pool_params,
-            (client_tx, client_rx),
-            client_router_factory,
-            close_rx.clone(),
-        );
-
-        // The downlinks are state machines and request connections from the pool
-        let (downlinks, downlinks_task) =
-            Downlinks::new(connection_pool, Arc::new(downlinks_config), close_rx);
-
-        let task_handle = spawn(async {
-            join!(
-                downlinks_task.run(),
-                remote_connections_task.run(),
-                pool_task.run(),
-            )
-            .0
-        });
+        let router_params = downlinks_config.client_params().router_params;
+        let pool = SwimConnPool::new(router_params.connection_pool_params(), ws_factory);
+        let router = SwimRouter::new(router_params, pool);
 
         SwimClient {
-            inner: DownlinksContext { downlinks },
-            close_buffer_size: client_params.connections_params.router_buffer_size,
-            task_handle,
-            stop_trigger: close_tx,
+            downlinks: Downlinks::new(Arc::new(downlinks_config), router).await,
         }
     }
 
     /// Build the Swim client with default WS factory and configuration.
-    pub async fn build_with_default() -> SwimClient<AbsolutePath> {
+    pub async fn build_with_default() -> SwimClient {
         info!("Initialising Swim Client");
 
-        let downlinks_config: ConfigHierarchy<AbsolutePath> = ConfigHierarchy::default();
-
-        let client_params = downlinks_config.client_params();
-
-        let (remote_tx, remote_rx) =
-            mpsc::channel(client_params.connections_params.router_buffer_size.get());
-
-        let (client_tx, client_rx) =
-            mpsc::channel(client_params.connections_params.router_buffer_size.get());
-
-        let top_level_router_fac =
-            TopLevelClientRouterFactory::new(client_tx.clone(), remote_tx.clone());
-
-        let client_router_factory =
-            ClientRouterFactory::new(client_tx.clone(), top_level_router_fac.clone());
-        let (close_tx, close_rx) = promise::promise();
-
-        let remote_connections_task = RemoteConnectionsTask::new_client_task(
-            client_params.connections_params,
-            TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
-            TungsteniteWsConnections {
-                config: client_params.websocket_params,
-            },
-            top_level_router_fac.clone(),
-            OpenEndedFutures::new(),
-            RemoteConnectionChannels::new(remote_tx, remote_rx, close_rx.clone()),
-        )
-        .await;
-
-        // The connection pool handles the connections behind the downlinks
-        let (connection_pool, pool_task) = SwimConnPool::new(
-            client_params.conn_pool_params,
-            (client_tx, client_rx),
-            client_router_factory,
-            close_rx.clone(),
-        );
-
-        // The downlinks are state machines and request connections from the pool
-        let (downlinks, downlinks_task) =
-            Downlinks::new(connection_pool, Arc::new(downlinks_config), close_rx);
-
-        let task_handle = spawn(async {
-            join!(
-                downlinks_task.run(),
-                remote_connections_task.run(),
-                pool_task.run(),
-            )
-            .0
-        });
+        let config = ConfigHierarchy::default();
+        let buffer_size = config.client_params().dl_req_buffer_size.get();
+        let connection_factory = TungsteniteWsFactory::new(buffer_size).await;
+        let router_params = config.client_params().router_params;
+        let pool = SwimConnPool::new(router_params.connection_pool_params(), connection_factory);
+        let router = SwimRouter::new(router_params, pool);
 
         SwimClient {
-            inner: DownlinksContext { downlinks },
-            close_buffer_size: client_params.connections_params.router_buffer_size,
-            task_handle,
-            stop_trigger: close_tx,
+            downlinks: Downlinks::new(Arc::new(config), router).await,
         }
     }
 }
@@ -238,155 +141,33 @@ impl SwimClientBuilder {
 /// conform to a contract that is imposed by a `Form` implementation and all actions are verified
 /// against the provided schema to ensure that its views are consistent.
 ///
-#[derive(Debug)]
-pub struct SwimClient<Path: Addressable> {
-    inner: DownlinksContext<Path>,
-    close_buffer_size: NonZeroUsize,
-    task_handle: TaskHandle<RequestResult<(), Path>>,
-    stop_trigger: CloseSender,
+pub struct SwimClient {
+    /// The downlink manager attached to this Swim Client.
+    downlinks: Downlinks,
 }
 
-impl<Path: Addressable> SwimClient<Path> {
-    /// Sends a command directly to the provided `target` lane.
-    pub async fn send_command<T: Form>(
-        &self,
-        target: Path,
-        message: T,
-    ) -> Result<(), ClientError<Path>> {
-        self.inner.send_command(target, message).await
-    }
-
-    /// Opens a new typed value downlink at the provided path and initialises it with `initial`.
-    pub async fn value_downlink<T>(
-        &self,
-        path: Path,
-        initial: T,
-    ) -> Result<(TypedValueDownlink<T>, ValueDownlinkReceiver<T>), ClientError<Path>>
-    where
-        T: Form + ValidatedForm + Send + 'static,
-    {
-        self.inner.value_downlink(path, initial).await
-    }
-
-    /// Opens a new typed map downlink at the provided path.
-    pub async fn map_downlink<K, V>(
-        &self,
-        path: Path,
-    ) -> Result<(TypedMapDownlink<K, V>, MapDownlinkReceiver<K, V>), ClientError<Path>>
-    where
-        K: ValidatedForm + Send + 'static,
-        V: ValidatedForm + Send + 'static,
-    {
-        self.inner.map_downlink(path).await
-    }
-
-    /// Opens a new command downlink at the provided path.
-    pub async fn command_downlink<T>(
-        &self,
-        path: Path,
-    ) -> Result<TypedCommandDownlink<T>, ClientError<Path>>
-    where
-        T: ValidatedForm + Send + 'static,
-    {
-        self.inner.command_downlink(path).await
-    }
-
-    /// Opens a new event downlink at the provided path.
-    pub async fn event_downlink<T>(
-        &self,
-        path: Path,
-        violations: SchemaViolations,
-    ) -> Result<TypedEventDownlink<T>, ClientError<Path>>
-    where
-        T: ValidatedForm + Send + 'static,
-    {
-        self.inner.event_downlink(path, violations).await
-    }
-
-    /// Opens a new untyped value downlink at the provided path and initialises it with `initial`
-    /// value.
-    pub async fn untyped_value_downlink(
-        &self,
-        path: Path,
-        initial: Value,
-    ) -> Result<(Arc<UntypedValueDownlink>, UntypedValueReceiver), ClientError<Path>> {
-        self.inner.untyped_value_downlink(path, initial).await
-    }
-
-    /// Opens a new untyped value downlink at the provided path.
-    pub async fn untyped_map_downlink(
-        &self,
-        path: Path,
-    ) -> Result<(Arc<UntypedMapDownlink>, UntypedMapReceiver), ClientError<Path>> {
-        self.inner.untyped_map_downlink(path).await
-    }
-
-    /// Opens a new untyped command downlink at the provided path.
-    pub async fn untyped_command_downlink(
-        &self,
-        path: Path,
-    ) -> Result<Arc<UntypedCommandDownlink>, ClientError<Path>> {
-        self.inner.untyped_command_downlink(path).await
-    }
-
-    /// Opens a new untyped event downlink at the provided path.
-    pub async fn untyped_event_downlink(
-        &self,
-        path: Path,
-    ) -> Result<Arc<UntypedEventDownlink>, ClientError<Path>> {
-        self.inner.untyped_event_downlink(path).await
-    }
-
+impl SwimClient {
     /// Shut down the client and wait for all tasks to finish running.
-    pub async fn stop(self) -> Result<(), ClientError<Path>> {
-        let SwimClient {
-            close_buffer_size,
-            task_handle,
-            stop_trigger,
-            ..
-        } = self;
-
-        let (tx, mut rx) = mpsc::channel(close_buffer_size.get());
-
-        if stop_trigger.provide(tx).is_err() {
-            return Err(ClientError::CloseError);
-        }
-
-        match rx.recv().await {
-            Some(close_result) => {
-                if let Err(routing_err) = close_result {
-                    return Err(ClientError::RoutingError(routing_err));
-                }
-            }
-            None => return Err(ClientError::CloseError),
-        }
-
-        let result = task_handle.await;
+    pub async fn close(self) -> Result<(), ClientError> {
+        let result = self.downlinks.close().await;
 
         match result {
             Ok(r) => r.map_err(ClientError::SubscriptionError),
             Err(_) => Err(ClientError::CloseError),
         }
     }
-}
 
-#[derive(Clone, Debug)]
-pub struct DownlinksContext<Path: Addressable> {
-    downlinks: Downlinks<Path>,
-}
-
-impl<Path: Addressable> DownlinksContext<Path> {
-    pub fn new(downlinks: Downlinks<Path>) -> Self {
-        DownlinksContext { downlinks }
-    }
-
+    /// Sends a command directly to the provided `target` lane.
     pub async fn send_command<T: Form>(
-        &self,
-        target: Path,
+        &mut self,
+        target: AbsolutePath,
         message: T,
-    ) -> Result<(), ClientError<Path>> {
-        let envelope =
-            Envelope::make_command(target.node(), target.lane(), Some(message.into_value()));
+    ) -> Result<(), ClientError> {
+        let envelope = Envelope::make_command(
+            target.node.clone(),
+            target.lane.clone(),
+            Some(message.into_value()),
+        );
 
         self.downlinks
             .send_command(target, envelope)
@@ -394,13 +175,14 @@ impl<Path: Addressable> DownlinksContext<Path> {
             .map_err(ClientError::SubscriptionError)
     }
 
+    /// Opens a new typed value downlink at the provided path and initialises it with `initial`.
     pub async fn value_downlink<T>(
-        &self,
-        path: Path,
+        &mut self,
+        path: AbsolutePath,
         initial: T,
-    ) -> Result<(TypedValueDownlink<T>, ValueDownlinkReceiver<T>), ClientError<Path>>
+    ) -> Result<(TypedValueDownlink<T>, ValueDownlinkReceiver<T>), ClientError>
     where
-        T: Form + ValidatedForm + Send + 'static,
+        T: Form + ValueSchema + Send + 'static,
     {
         self.downlinks
             .subscribe_value(initial, path)
@@ -408,13 +190,14 @@ impl<Path: Addressable> DownlinksContext<Path> {
             .map_err(ClientError::SubscriptionError)
     }
 
+    /// Opens a new typed map downlink at the provided path.
     pub async fn map_downlink<K, V>(
-        &self,
-        path: Path,
-    ) -> Result<(TypedMapDownlink<K, V>, MapDownlinkReceiver<K, V>), ClientError<Path>>
+        &mut self,
+        path: AbsolutePath,
+    ) -> Result<(TypedMapDownlink<K, V>, MapDownlinkReceiver<K, V>), ClientError>
     where
-        K: ValidatedForm + Send + 'static,
-        V: ValidatedForm + Send + 'static,
+        K: ValueSchema + Send + 'static,
+        V: ValueSchema + Send + 'static,
     {
         self.downlinks
             .subscribe_map(path)
@@ -422,12 +205,13 @@ impl<Path: Addressable> DownlinksContext<Path> {
             .map_err(ClientError::SubscriptionError)
     }
 
+    /// Opens a new command downlink at the provided path.
     pub async fn command_downlink<T>(
-        &self,
-        path: Path,
-    ) -> Result<TypedCommandDownlink<T>, ClientError<Path>>
+        &mut self,
+        path: AbsolutePath,
+    ) -> Result<TypedCommandDownlink<T>, ClientError>
     where
-        T: ValidatedForm + Send + 'static,
+        T: ValueSchema + Send + 'static,
     {
         self.downlinks
             .subscribe_command(path)
@@ -435,13 +219,14 @@ impl<Path: Addressable> DownlinksContext<Path> {
             .map_err(ClientError::SubscriptionError)
     }
 
+    /// Opens a new event downlink at the provided path.
     pub async fn event_downlink<T>(
-        &self,
-        path: Path,
+        &mut self,
+        path: AbsolutePath,
         violations: SchemaViolations,
-    ) -> Result<TypedEventDownlink<T>, ClientError<Path>>
+    ) -> Result<TypedEventDownlink<T>, ClientError>
     where
-        T: ValidatedForm + Send + 'static,
+        T: ValueSchema + Send + 'static,
     {
         self.downlinks
             .subscribe_event(path, violations)
@@ -449,41 +234,46 @@ impl<Path: Addressable> DownlinksContext<Path> {
             .map_err(ClientError::SubscriptionError)
     }
 
+    /// Opens a new untyped value downlink at the provided path and initialises it with `initial`
+    /// value.
     pub async fn untyped_value_downlink(
-        &self,
-        path: Path,
+        &mut self,
+        path: AbsolutePath,
         initial: Value,
-    ) -> Result<(Arc<UntypedValueDownlink>, UntypedValueReceiver), ClientError<Path>> {
+    ) -> Result<(Arc<UntypedValueDownlink>, UntypedValueReceiver), ClientError> {
         self.downlinks
             .subscribe_value_untyped(initial, path)
             .await
             .map_err(ClientError::SubscriptionError)
     }
 
+    /// Opens a new untyped value downlink at the provided path.
     pub async fn untyped_map_downlink(
-        &self,
-        path: Path,
-    ) -> Result<(Arc<UntypedMapDownlink>, UntypedMapReceiver), ClientError<Path>> {
+        &mut self,
+        path: AbsolutePath,
+    ) -> Result<(Arc<UntypedMapDownlink>, UntypedMapReceiver), ClientError> {
         self.downlinks
             .subscribe_map_untyped(path)
             .await
             .map_err(ClientError::SubscriptionError)
     }
 
+    /// Opens a new untyped command downlink at the provided path.
     pub async fn untyped_command_downlink(
-        &self,
-        path: Path,
-    ) -> Result<Arc<UntypedCommandDownlink>, ClientError<Path>> {
+        &mut self,
+        path: AbsolutePath,
+    ) -> Result<Arc<UntypedCommandDownlink>, ClientError> {
         self.downlinks
             .subscribe_command_untyped(path)
             .await
             .map_err(ClientError::SubscriptionError)
     }
 
+    /// Opens a new untyped event downlink at the provided path.
     pub async fn untyped_event_downlink(
-        &self,
-        path: Path,
-    ) -> Result<Arc<UntypedEventDownlink>, ClientError<Path>> {
+        &mut self,
+        path: AbsolutePath,
+    ) -> Result<Arc<UntypedEventDownlink>, ClientError> {
         self.downlinks
             .subscribe_event_untyped(path)
             .await
@@ -493,9 +283,9 @@ impl<Path: Addressable> DownlinksContext<Path> {
 
 /// Represents errors that can occur in the client.
 #[derive(Debug)]
-pub enum ClientError<Path: Addressable> {
+pub enum ClientError {
     /// An error that occurred when subscribing to a downlink.
-    SubscriptionError(SubscriptionError<Path>),
+    SubscriptionError(SubscriptionError),
     /// An error that occurred in the router.
     RoutingError(RoutingError),
     /// An error that occurred in a downlink.
@@ -504,7 +294,7 @@ pub enum ClientError<Path: Addressable> {
     CloseError,
 }
 
-impl<Path: Addressable + 'static> Display for ClientError<Path> {
+impl Display for ClientError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self.source() {
             Some(e) => write!(f, "Client error. Caused by: {}", e),
@@ -513,7 +303,7 @@ impl<Path: Addressable + 'static> Display for ClientError<Path> {
     }
 }
 
-impl<Path: Addressable + 'static> Error for ClientError<Path> {
+impl Error for ClientError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match &self {
             ClientError::SubscriptionError(e) => Some(e),

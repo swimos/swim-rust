@@ -25,7 +25,7 @@ use std::convert::TryInto;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_common::form::structural::read::ReadError;
-use swim_common::form::ValidatedForm;
+use swim_common::form::ValueSchema;
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::routing::error::RoutingError;
@@ -267,7 +267,7 @@ struct Components<T> {
     command_rx: mpsc::Receiver<Command<()>>,
 }
 
-fn make_event_downlink<T: ValidatedForm>() -> Components<T> {
+fn make_event_downlink<T: ValueSchema>() -> Components<T> {
     let (update_tx, update_rx) = mpsc::channel(8);
     let (command_tx, command_rx) = mpsc::channel(8);
     let sender = swim_common::sink::item::for_mpsc_sender(command_tx).map_err_into();

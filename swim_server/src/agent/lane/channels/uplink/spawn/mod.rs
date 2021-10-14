@@ -22,7 +22,8 @@ use crate::agent::lane::channels::{
 };
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::Eff;
-use crate::meta::metric::uplink::UplinkActionObserver;
+use crate::meta::metric::uplink::UplinkObserver;
+use crate::routing::{RoutingAddr, ServerRouter};
 use futures::future::join_all;
 use futures::{FutureExt, StreamExt};
 use std::collections::hash_map::Entry;
@@ -31,14 +32,13 @@ use std::fmt::{Display, Formatter};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_common::model::Value;
-use swim_common::routing::{Router, RoutingAddr};
 use swim_common::warp::path::RelativePath;
+use swim_utilities::time::AtomicInstant;
+use swim_utilities::trigger;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
-use utilities::instant::AtomicInstant;
-use utilities::sync::trigger;
 
 #[cfg(test)]
 mod tests;
@@ -114,21 +114,20 @@ where
     /// * `router` - Produces channels on which outgoing envelopes can be sent.
     /// * `spawn_tx` - Channel to an asynchronous tasks spawner (used to run the uplink state
     /// machines.
-    /// * `uri` - The relative uri of the agent to which this uplink belongs.
     /// * `error_collector` - Collects errors whenever an uplink fails.
     ///
-    /// # Type Parameters
+    /// #Type Parameters
     ///
     /// * `Router` - The type of the server router.
-    pub async fn run<R>(
+    pub async fn run<Router>(
         mut self,
-        mut router: R,
+        mut router: Router,
         mut spawn_tx: mpsc::Sender<Eff>,
         uplinks_idle_since: Arc<AtomicInstant>,
         error_collector: mpsc::Sender<UplinkErrorReport>,
-        action_observer: UplinkActionObserver,
+        observer: UplinkObserver,
     ) where
-        R: Router,
+        Router: ServerRouter,
     {
         let mut uplink_senders: HashMap<RoutingAddr, UplinkHandle> = HashMap::new();
         let mut iteration_count: usize = 0;
@@ -161,7 +160,7 @@ where
                             if !handle.cleanup().await {
                                 event!(Level::ERROR, message = UPLINK_TERMINATED, route = ?&self.route, ?addr);
                             }
-                            action_observer.did_close();
+                            observer.did_close();
                         }
                         action = act;
                         attempts += 1;
@@ -178,7 +177,7 @@ where
                             break false;
                         }
                     } else {
-                        action_observer.did_open();
+                        observer.did_open();
                         // We successfully dispatched to the uplink so can continue.
                         break false;
                     }
@@ -197,7 +196,7 @@ where
             }
         }
         join_all(uplink_senders.into_iter().map(|(_, h)| {
-            action_observer.did_close();
+            observer.did_close();
             h.cleanup()
         }))
         .instrument(span!(Level::DEBUG, UPLINK_CLEANUP))
@@ -205,16 +204,16 @@ where
     }
 
     //Create a new uplink state machine and attach it to the router
-    async fn make_uplink<R>(
+    async fn make_uplink<Router>(
         &mut self,
         addr: RoutingAddr,
         err_tx: mpsc::Sender<UplinkErrorReport>,
         spawn_tx: &mut mpsc::Sender<Eff>,
-        router: &mut R,
+        router: &mut Router,
         uplinks_idle_since: Arc<AtomicInstant>,
     ) -> Option<UplinkHandle>
     where
-        R: Router,
+        Router: ServerRouter,
     {
         let UplinkSpawner {
             handler,
@@ -332,7 +331,7 @@ impl LaneUplinks for SpawnerUplinkFactory {
         channels: UplinkChannels<Top>,
         route: RelativePath,
         context: &Context,
-        action_observer: UplinkActionObserver,
+        observer: UplinkObserver,
     ) -> Eff
     where
         Handler: LaneMessageHandler + 'static,
@@ -369,7 +368,7 @@ impl LaneUplinks for SpawnerUplinkFactory {
                 context.spawner(),
                 context.uplinks_idle_since().clone(),
                 error_collector,
-                action_observer,
+                observer,
             )
             .boxed()
     }

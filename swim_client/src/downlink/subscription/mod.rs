@@ -13,8 +13,6 @@
 // limitations under the License.
 
 use crate::configuration::downlink::{BackpressureMode, Config, DownlinkKind};
-use crate::connections::{ConnectionPool, ConnectionType};
-use crate::connections::{ConnectionReceiver, ConnectionSender, SwimConnPool};
 use crate::downlink::error::SubscriptionError;
 use crate::downlink::model::map::UntypedMapModification;
 use crate::downlink::model::value::SharedValue;
@@ -31,85 +29,89 @@ use crate::downlink::{
     command_downlink, event_downlink, map_downlink, value_downlink, Command, Downlink,
     DownlinkError, Message, SchemaViolations,
 };
-use crate::router::RouterEvent;
+use crate::router::{Router, RouterEvent};
 use either::Either;
-use futures::FutureExt;
+use futures::stream::Fuse;
+use futures::Stream;
 use futures_util::future::TryFutureExt;
 use futures_util::select_biased;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use pin_utils::pin_mut;
 use std::collections::HashMap;
+use std::pin::Pin;
 use std::sync::{Arc, Weak};
-use swim_common::form::{Form, ValidatedForm};
+use swim_common::form::{Form, ValueSchema};
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::request::Request;
-use swim_common::routing::error::RoutingError;
-use swim_common::routing::CloseReceiver;
+use swim_common::routing::RoutingError;
+use swim_common::sink::item;
 use swim_common::sink::item::either::SplitSink;
 use swim_common::sink::item::ItemSender;
 use swim_common::warp::envelope::Envelope;
-use swim_common::warp::path::Addressable;
+use swim_common::warp::path::AbsolutePath;
+use swim_runtime::task::{spawn, TaskError, TaskHandle};
+use swim_utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture};
+use swim_utilities::sync::circular_buffer;
+use swim_utilities::trigger::promise::{self, PromiseError};
 use swim_warp::backpressure;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{error, info, instrument, trace_span};
-use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture};
-use utilities::sync::promise::PromiseError;
-use utilities::sync::{circular_buffer, promise};
 
 pub mod envelopes;
 #[cfg(test)]
 mod tests;
 mod watch_adapter;
 
-#[derive(Clone, Debug)]
-pub struct Downlinks<Path: Addressable> {
-    downlink_request_tx: mpsc::Sender<DownlinkRequest<Path>>,
+pub struct Downlinks {
+    sender: mpsc::Sender<DownlinkRequest>,
+    task: TaskHandle<RequestResult<()>>,
 }
 
-pub enum DownlinkRequest<Path: Addressable> {
-    Subscription(DownlinkSpecifier<Path>),
-    DirectCommand { path: Path, envelope: Envelope },
+enum DownlinkRequest {
+    Subscription(DownlinkSpecifier),
+    DirectCommand {
+        path: AbsolutePath,
+        envelope: Envelope,
+    },
 }
 
-impl<Path: Addressable> From<mpsc::error::SendError<DownlinkRequest<Path>>>
-    for SubscriptionError<Path>
-{
-    fn from(_: mpsc::error::SendError<DownlinkRequest<Path>>) -> Self {
+impl From<mpsc::error::SendError<DownlinkRequest>> for SubscriptionError {
+    fn from(_: mpsc::error::SendError<DownlinkRequest>) -> Self {
         SubscriptionError::DownlinkTaskStopped
     }
 }
 
 /// Contains all running WARP downlinks and allows requests for downlink subscriptions.
-impl<Path: Addressable> Downlinks<Path> {
-    /// Create tasks for opening remote connections and attaching them to downlinks.
-    #[instrument(skip(connection_pool, config))]
-    pub fn new<Cfg>(
-        connection_pool: SwimConnPool<Path>,
-        config: Arc<Cfg>,
-        close_rx: CloseReceiver,
-    ) -> (Downlinks<Path>, DownlinksTask<Path>)
+impl Downlinks {
+    /// Create a new downlink manager, using the specified configuration, which will attach all
+    /// create downlinks to the provided router.
+    #[instrument(skip(config, router))]
+    pub async fn new<C, R>(config: Arc<C>, router: R) -> Downlinks
     where
-        Cfg: Config<PathType = Path> + 'static,
+        C: Config + 'static,
+        R: Router + 'static,
     {
         info!("Initialising downlink manager");
 
         let client_params = config.client_params();
+        let task = DownlinkTask::new(config, router);
+        let (tx, rx) = mpsc::channel(client_params.dl_req_buffer_size.get());
+        let task_handle = spawn(task.run(ReceiverStream::new(rx)));
 
-        let (downlink_request_tx, downlink_request_rx) =
-            mpsc::channel(client_params.dl_req_buffer_size.get());
-
-        (
-            Downlinks {
-                downlink_request_tx,
-            },
-            DownlinksTask::new(config, downlink_request_rx, connection_pool, close_rx),
-        )
+        Downlinks {
+            sender: tx,
+            task: task_handle,
+        }
     }
 
-    pub async fn send_command(&self, path: Path, envelope: Envelope) -> RequestResult<(), Path> {
-        self.downlink_request_tx
+    pub async fn send_command(
+        &mut self,
+        path: AbsolutePath,
+        envelope: Envelope,
+    ) -> RequestResult<()> {
+        self.sender
             .send(DownlinkRequest::DirectCommand { path, envelope })
             .map_err(|_| SubscriptionError::ConnectionError)
             .await?;
@@ -117,14 +119,21 @@ impl<Path: Addressable> Downlinks<Path> {
         Ok(())
     }
 
+    pub async fn close(self) -> Result<RequestResult<()>, TaskError> {
+        let Downlinks { sender, task } = self;
+        drop(sender);
+
+        task.await
+    }
+
     /// Attempt to subscribe to a value lane. The downlink is returned with a single active
     /// subscription to its events.
     #[instrument(skip(self), level = "info")]
     pub async fn subscribe_value_untyped(
-        &self,
+        &mut self,
         init: Value,
-        path: Path,
-    ) -> RequestResult<(Arc<UntypedValueDownlink>, UntypedValueReceiver), Path> {
+        path: AbsolutePath,
+    ) -> RequestResult<(Arc<UntypedValueDownlink>, UntypedValueReceiver)> {
         info!("Subscribing to untyped value lane");
 
         self.subscribe_value_inner(init, StandardSchema::Anything, path)
@@ -132,16 +141,16 @@ impl<Path: Addressable> Downlinks<Path> {
     }
 
     /// Attempt to subscribe to a remote value lane where the type of the values is described by a
-    /// [`ValidatedForm`]. The downlink is returned with a single active
+    /// [`ValueSchema`]. The downlink is returned with a single active
     /// subscription to its events.
     #[instrument(skip(self, init), level = "info")]
     pub async fn subscribe_value<T>(
-        &self,
+        &mut self,
         init: T,
-        path: Path,
-    ) -> RequestResult<(TypedValueDownlink<T>, ValueDownlinkReceiver<T>), Path>
+        path: AbsolutePath,
+    ) -> RequestResult<(TypedValueDownlink<T>, ValueDownlinkReceiver<T>)>
     where
-        T: Form + ValidatedForm + Send + 'static,
+        T: Form + ValueSchema + Send + 'static,
     {
         info!("Subscribing to typed value lane");
 
@@ -154,20 +163,20 @@ impl<Path: Addressable> Downlinks<Path> {
     }
 
     async fn subscribe_value_inner(
-        &self,
+        &mut self,
         init: Value,
         schema: StandardSchema,
-        path: Path,
-    ) -> RequestResult<(Arc<UntypedValueDownlink>, UntypedValueReceiver), Path> {
+        path: AbsolutePath,
+    ) -> RequestResult<(Arc<UntypedValueDownlink>, UntypedValueReceiver)> {
         let (tx, rx) = oneshot::channel();
-        self.downlink_request_tx
+        self.sender
             .send(DownlinkRequest::Subscription(DownlinkSpecifier::Value {
                 init,
                 path,
                 schema,
                 request: Request::new(tx),
             }))
-            .err_into::<SubscriptionError<Path>>()
+            .err_into::<SubscriptionError>()
             .await?;
         rx.await.map_err(Into::into).and_then(|r| r)
     }
@@ -176,9 +185,9 @@ impl<Path: Addressable> Downlinks<Path> {
     /// subscription to its events.
     #[instrument(skip(self), level = "info")]
     pub async fn subscribe_map_untyped(
-        &self,
-        path: Path,
-    ) -> RequestResult<(Arc<UntypedMapDownlink>, UntypedMapReceiver), Path> {
+        &mut self,
+        path: AbsolutePath,
+    ) -> RequestResult<(Arc<UntypedMapDownlink>, UntypedMapReceiver)> {
         info!("Subscribing to untyped map lane");
 
         self.subscribe_map_inner(StandardSchema::Anything, StandardSchema::Anything, path)
@@ -186,16 +195,16 @@ impl<Path: Addressable> Downlinks<Path> {
     }
 
     /// Attempt to subscribe to a remote map lane where the types of the keys and values are
-    /// described by  [`ValidatedForm`]s. The downlink is returned with a single active
+    /// described by  [`ValueSchema`]s. The downlink is returned with a single active
     /// subscription to its events.
     #[instrument(skip(self), level = "info")]
     pub async fn subscribe_map<K, V>(
-        &self,
-        path: Path,
-    ) -> RequestResult<(TypedMapDownlink<K, V>, MapDownlinkReceiver<K, V>), Path>
+        &mut self,
+        path: AbsolutePath,
+    ) -> RequestResult<(TypedMapDownlink<K, V>, MapDownlinkReceiver<K, V>)>
     where
-        K: ValidatedForm + Send + 'static,
-        V: ValidatedForm + Send + 'static,
+        K: ValueSchema + Send + 'static,
+        V: ValueSchema + Send + 'static,
     {
         info!("Subscribing to typed map lane");
 
@@ -207,38 +216,38 @@ impl<Path: Addressable> Downlinks<Path> {
     }
 
     async fn subscribe_map_inner(
-        &self,
+        &mut self,
         key_schema: StandardSchema,
         value_schema: StandardSchema,
-        path: Path,
-    ) -> RequestResult<(Arc<UntypedMapDownlink>, UntypedMapReceiver), Path> {
+        path: AbsolutePath,
+    ) -> RequestResult<(Arc<UntypedMapDownlink>, UntypedMapReceiver)> {
         let (tx, rx) = oneshot::channel();
-        self.downlink_request_tx
+        self.sender
             .send(DownlinkRequest::Subscription(DownlinkSpecifier::Map {
                 path,
                 key_schema,
                 value_schema,
                 request: Request::new(tx),
             }))
-            .err_into::<SubscriptionError<Path>>()
+            .err_into::<SubscriptionError>()
             .await?;
         rx.await.map_err(Into::into).and_then(|r| r)
     }
 
     pub async fn subscribe_command_untyped(
-        &self,
-        path: Path,
-    ) -> RequestResult<Arc<UntypedCommandDownlink>, Path> {
+        &mut self,
+        path: AbsolutePath,
+    ) -> RequestResult<Arc<UntypedCommandDownlink>> {
         self.subscribe_command_inner(StandardSchema::Anything, path)
             .await
     }
 
     pub async fn subscribe_command<T>(
-        &self,
-        path: Path,
-    ) -> RequestResult<TypedCommandDownlink<T>, Path>
+        &mut self,
+        path: AbsolutePath,
+    ) -> RequestResult<TypedCommandDownlink<T>>
     where
-        T: ValidatedForm + Send + 'static,
+        T: ValueSchema + Send + 'static,
     {
         Ok(TypedCommandDownlink::new(
             self.subscribe_command_inner(T::schema(), path).await?,
@@ -246,39 +255,39 @@ impl<Path: Addressable> Downlinks<Path> {
     }
 
     async fn subscribe_command_inner(
-        &self,
+        &mut self,
         schema: StandardSchema,
-        path: Path,
-    ) -> RequestResult<Arc<UntypedCommandDownlink>, Path> {
+        path: AbsolutePath,
+    ) -> RequestResult<Arc<UntypedCommandDownlink>> {
         let (tx, rx) = oneshot::channel();
 
-        self.downlink_request_tx
+        self.sender
             .send(DownlinkRequest::Subscription(DownlinkSpecifier::Command {
                 schema,
                 path,
                 request: Request::new(tx),
             }))
-            .err_into::<SubscriptionError<Path>>()
+            .err_into::<SubscriptionError>()
             .await?;
 
         rx.await.map_err(Into::into).and_then(|r| r)
     }
 
     pub async fn subscribe_event_untyped(
-        &self,
-        path: Path,
-    ) -> RequestResult<Arc<UntypedEventDownlink>, Path> {
+        &mut self,
+        path: AbsolutePath,
+    ) -> RequestResult<Arc<UntypedEventDownlink>> {
         self.subscribe_event_inner(StandardSchema::Anything, path, SchemaViolations::Ignore)
             .await
     }
 
     pub async fn subscribe_event<T>(
-        &self,
-        path: Path,
+        &mut self,
+        path: AbsolutePath,
         violations: SchemaViolations,
-    ) -> RequestResult<TypedEventDownlink<T>, Path>
+    ) -> RequestResult<TypedEventDownlink<T>>
     where
-        T: ValidatedForm + Send + 'static,
+        T: ValueSchema + Send + 'static,
     {
         Ok(TypedEventDownlink::new(
             self.subscribe_event_inner(T::schema(), path, violations)
@@ -287,57 +296,57 @@ impl<Path: Addressable> Downlinks<Path> {
     }
 
     async fn subscribe_event_inner(
-        &self,
+        &mut self,
         schema: StandardSchema,
-        path: Path,
+        path: AbsolutePath,
         violations: SchemaViolations,
-    ) -> RequestResult<Arc<UntypedEventDownlink>, Path> {
+    ) -> RequestResult<Arc<UntypedEventDownlink>> {
         let (tx, rx) = oneshot::channel();
 
-        self.downlink_request_tx
+        self.sender
             .send(DownlinkRequest::Subscription(DownlinkSpecifier::Event {
                 schema,
                 path,
                 request: Request::new(tx),
                 violations,
             }))
-            .err_into::<SubscriptionError<Path>>()
+            .err_into::<SubscriptionError>()
             .await?;
 
         rx.await.map_err(Into::into).and_then(|r| r)
     }
 }
 
-pub type RequestResult<T, Path> = Result<T, SubscriptionError<Path>>;
+pub type RequestResult<T> = Result<T, SubscriptionError>;
 
-pub enum DownlinkSpecifier<Path: Addressable> {
+pub enum DownlinkSpecifier {
     Value {
         init: Value,
-        path: Path,
+        path: AbsolutePath,
         schema: StandardSchema,
-        request: Request<RequestResult<(Arc<UntypedValueDownlink>, UntypedValueReceiver), Path>>,
+        request: Request<RequestResult<(Arc<UntypedValueDownlink>, UntypedValueReceiver)>>,
     },
     Map {
-        path: Path,
+        path: AbsolutePath,
         key_schema: StandardSchema,
         value_schema: StandardSchema,
-        request: Request<RequestResult<(Arc<UntypedMapDownlink>, UntypedMapReceiver), Path>>,
+        request: Request<RequestResult<(Arc<UntypedMapDownlink>, UntypedMapReceiver)>>,
     },
     Command {
-        path: Path,
+        path: AbsolutePath,
         schema: StandardSchema,
-        request: Request<RequestResult<Arc<UntypedCommandDownlink>, Path>>,
+        request: Request<RequestResult<Arc<UntypedCommandDownlink>>>,
     },
     Event {
-        path: Path,
+        path: AbsolutePath,
         schema: StandardSchema,
-        request: Request<RequestResult<Arc<UntypedEventDownlink>, Path>>,
+        request: Request<RequestResult<Arc<UntypedEventDownlink>>>,
         violations: SchemaViolations,
     },
 }
 
-type StopEvents<Path> = FuturesUnordered<
-    TransformedFuture<promise::Receiver<Result<(), DownlinkError>>, MakeStopEvent<Path>>,
+type StopEvents = FuturesUnordered<
+    TransformedFuture<promise::Receiver<Result<(), DownlinkError>>, MakeStopEvent>,
 >;
 
 struct ValueHandle {
@@ -381,40 +390,36 @@ struct EventHandle {
     schema: StandardSchema,
 }
 
-pub struct DownlinksTask<Path: Addressable> {
-    config: Arc<dyn Config<PathType = Path>>,
-    value_downlinks: HashMap<Path, ValueHandle>,
-    map_downlinks: HashMap<Path, MapHandle>,
-    command_downlinks: HashMap<Path, CommandHandle>,
-    event_downlinks: HashMap<(Path, SchemaViolations), EventHandle>,
-    stopped_watch: StopEvents<Path>,
-    downlink_request_rx: Option<mpsc::Receiver<DownlinkRequest<Path>>>,
-    connection_pool: SwimConnPool<Path>,
-    close_rx: CloseReceiver,
+struct DownlinkTask<R> {
+    config: Arc<dyn Config>,
+    value_downlinks: HashMap<AbsolutePath, ValueHandle>,
+    map_downlinks: HashMap<AbsolutePath, MapHandle>,
+    command_downlinks: HashMap<AbsolutePath, CommandHandle>,
+    event_downlinks: HashMap<(AbsolutePath, SchemaViolations), EventHandle>,
+    stopped_watch: StopEvents,
+    router: R,
 }
 
 /// Event that is generated after a downlink stops to allow it to be cleaned up.
-struct DownlinkStoppedEvent<Path: Addressable> {
+struct DownlinkStoppedEvent {
     kind: DownlinkKind,
-    path: Path,
+    path: AbsolutePath,
     error: Option<DownlinkError>,
 }
 
-struct MakeStopEvent<Path: Addressable> {
+struct MakeStopEvent {
     kind: DownlinkKind,
-    path: Path,
+    path: AbsolutePath,
 }
 
-impl<Path: Addressable> MakeStopEvent<Path> {
-    fn new(kind: DownlinkKind, path: Path) -> Self {
+impl MakeStopEvent {
+    fn new(kind: DownlinkKind, path: AbsolutePath) -> Self {
         MakeStopEvent { kind, path }
     }
 }
 
-impl<Path: Addressable> TransformOnce<Result<Arc<Result<(), DownlinkError>>, PromiseError>>
-    for MakeStopEvent<Path>
-{
-    type Out = DownlinkStoppedEvent<Path>;
+impl TransformOnce<Result<Arc<Result<(), DownlinkError>>, PromiseError>> for MakeStopEvent {
+    type Out = DownlinkStoppedEvent;
 
     fn transform(self, input: Result<Arc<Result<(), DownlinkError>>, PromiseError>) -> Self::Out {
         let MakeStopEvent { kind, path } = self;
@@ -426,149 +431,47 @@ impl<Path: Addressable> TransformOnce<Result<Arc<Result<(), DownlinkError>>, Pro
     }
 }
 
-impl<Path: Addressable> DownlinksTask<Path> {
-    pub(crate) fn new<C>(
-        config: Arc<C>,
-        downlink_request_rx: mpsc::Receiver<DownlinkRequest<Path>>,
-        connection_pool: SwimConnPool<Path>,
-        close_rx: CloseReceiver,
-    ) -> DownlinksTask<Path>
+impl<R> DownlinkTask<R>
+where
+    R: Router,
+{
+    fn new<C>(config: Arc<C>, router: R) -> DownlinkTask<R>
     where
-        C: Config<PathType = Path> + 'static,
+        C: Config + 'static,
     {
-        DownlinksTask {
+        DownlinkTask {
             config,
             value_downlinks: HashMap::new(),
             map_downlinks: HashMap::new(),
             command_downlinks: HashMap::new(),
             event_downlinks: HashMap::new(),
             stopped_watch: StopEvents::new(),
-            downlink_request_rx: Some(downlink_request_rx),
-            connection_pool,
-            close_rx,
+            router,
         }
-    }
-
-    pub async fn run(mut self) -> RequestResult<(), Path> {
-        let requests = ReceiverStream::new(self.downlink_request_rx.take().unwrap());
-        pin_mut!(requests);
-
-        let mut pinned_requests = requests.fuse();
-        let mut close_trigger = self.close_rx.clone().fuse();
-
-        loop {
-            let item: Option<Either<DownlinkRequest<Path>, DownlinkStoppedEvent<Path>>> =
-                if self.stopped_watch.is_empty() {
-                    select_biased! {
-                        _stop = close_trigger => None,
-                        maybe_req = pinned_requests.next() => maybe_req.map(Either::Left),
-                    }
-                } else {
-                    select_biased! {
-                         _stop = close_trigger => None,
-                        maybe_req = pinned_requests.next() => maybe_req.map(Either::Left),
-                        maybe_closed = self.stopped_watch.next() => maybe_closed.map(Either::Right),
-                    }
-                };
-
-            match item {
-                Some(Either::Left(left)) => match left {
-                    DownlinkRequest::Subscription(DownlinkSpecifier::Value {
-                        init,
-                        path,
-                        schema,
-                        request,
-                    }) => {
-                        self.handle_value_request(init, path, schema, request)
-                            .await?;
-                    }
-
-                    DownlinkRequest::Subscription(DownlinkSpecifier::Map {
-                        path,
-                        key_schema,
-                        value_schema,
-                        request,
-                    }) => {
-                        self.handle_map_request(path, key_schema, value_schema, request)
-                            .await?;
-                    }
-
-                    DownlinkRequest::Subscription(DownlinkSpecifier::Command {
-                        path,
-                        schema,
-                        request,
-                    }) => {
-                        self.handle_command_request(path, schema, request).await?;
-                    }
-
-                    DownlinkRequest::Subscription(DownlinkSpecifier::Event {
-                        path,
-                        schema,
-                        request,
-                        violations,
-                    }) => {
-                        self.handle_event_request(path, schema, request, violations)
-                            .await?;
-                    }
-
-                    DownlinkRequest::DirectCommand { path, envelope } => {
-                        self.handle_command_message(path, envelope).await?;
-                    }
-                },
-                Some(Either::Right(stop_event)) => {
-                    self.handle_stop(stop_event).await;
-                }
-                None => {
-                    break Ok(());
-                }
-            }
-        }
-    }
-
-    pub async fn connection_for(
-        &mut self,
-        path: Path,
-    ) -> RequestResult<(ConnectionSender, ConnectionReceiver), Path> {
-        let (sender, receiver) = self
-            .connection_pool
-            .request_connection(path, ConnectionType::Full)
-            .await
-            .map_err(|_| SubscriptionError::ConnectionError)?
-            .map_err(|_| SubscriptionError::ConnectionError)?;
-
-        Ok((sender, receiver.ok_or(SubscriptionError::ConnectionError)?))
-    }
-
-    pub async fn sink_for(&mut self, path: Path) -> RequestResult<ConnectionSender, Path> {
-        let (sender, _) = self
-            .connection_pool
-            .request_connection(path, ConnectionType::Outgoing)
-            .await
-            .map_err(|_| SubscriptionError::ConnectionError)?
-            .map_err(|_| SubscriptionError::ConnectionError)?;
-
-        Ok(sender)
     }
 
     async fn create_new_value_downlink(
         &mut self,
         init: Value,
         schema: StandardSchema,
-        path: Path,
-    ) -> RequestResult<(Arc<UntypedValueDownlink>, UntypedValueReceiver), Path> {
+        path: AbsolutePath,
+    ) -> RequestResult<(Arc<UntypedValueDownlink>, UntypedValueReceiver)> {
         let span = trace_span!("value downlink", path = ?path);
         let _g = span.enter();
 
         let config = self.config.config_for(&path);
-        let (sink, incoming) = self.connection_for(path.clone()).await?;
+        let (sink, incoming) = self.router.connection_for(&path).await?;
         let schema_cpy = schema.clone();
 
         let updates = ReceiverStream::new(incoming).map(map_router_events);
 
         let sink_path = path.clone();
-        let cmd_sink = sink.map_err_into().comap(move |cmd: Command<SharedValue>| {
-            envelopes::value_envelope(&sink_path, cmd).into()
-        });
+        let cmd_sink =
+            item::for_mpsc_sender(sink)
+                .map_err_into()
+                .comap(move |cmd: Command<SharedValue>| {
+                    envelopes::value_envelope(&sink_path, cmd).1.into()
+                });
 
         let (raw_dl, rec) = match config.back_pressure {
             BackpressureMode::Propagate => {
@@ -614,15 +517,15 @@ impl<Path: Addressable> DownlinksTask<Path> {
 
     async fn create_new_map_downlink(
         &mut self,
-        path: Path,
+        path: AbsolutePath,
         key_schema: StandardSchema,
         value_schema: StandardSchema,
-    ) -> RequestResult<(Arc<UntypedMapDownlink>, UntypedMapReceiver), Path> {
+    ) -> RequestResult<(Arc<UntypedMapDownlink>, UntypedMapReceiver)> {
         let span = trace_span!("map downlink", path = ?path);
         let _g = span.enter();
 
         let config = self.config.config_for(&path);
-        let (sink, incoming) = self.connection_for(path.clone()).await?;
+        let (sink, incoming) = self.router.connection_for(&path).await?;
         let key_schema_cpy = key_schema.clone();
         let value_schema_cpy = value_schema.clone();
 
@@ -637,9 +540,11 @@ impl<Path: Addressable> DownlinksTask<Path> {
 
         let (raw_dl, rec) = match config.back_pressure {
             BackpressureMode::Propagate => {
-                let cmd_sink = sink.comap(move |cmd: Command<UntypedMapModification<Value>>| {
-                    envelopes::map_envelope(&sink_path, cmd).into()
-                });
+                let cmd_sink = item::for_mpsc_sender(sink).comap(
+                    move |cmd: Command<UntypedMapModification<Value>>| {
+                        envelopes::map_envelope(&sink_path, cmd).1.into()
+                    },
+                );
                 map_downlink(
                     Some(key_schema),
                     Some(value_schema),
@@ -655,16 +560,18 @@ impl<Path: Addressable> DownlinksTask<Path> {
                 yield_after,
             } => {
                 let sink_path_duplicate = sink_path.clone();
-                let direct_sink = sink.clone().map_err_into().comap(
+                let direct_sink = item::for_mpsc_sender(sink.clone()).map_err_into().comap(
                     move |cmd: Command<UntypedMapModification<Value>>| {
-                        envelopes::map_envelope(&sink_path_duplicate, cmd).into()
+                        envelopes::map_envelope(&sink_path_duplicate, cmd).1.into()
                     },
                 );
-                let action_sink =
-                    sink.map_err_into()
-                        .comap(move |act: UntypedMapModification<Value>| {
-                            envelopes::map_envelope(&sink_path, Command::Action(act)).into()
-                        });
+                let action_sink = item::for_mpsc_sender(sink).map_err_into().comap(
+                    move |act: UntypedMapModification<Value>| {
+                        envelopes::map_envelope(&sink_path, Command::Action(act))
+                            .1
+                            .into()
+                    },
+                );
 
                 let pressure_release = KeyedWatch::new(
                     action_sink,
@@ -707,17 +614,21 @@ impl<Path: Addressable> DownlinksTask<Path> {
 
     async fn create_new_command_downlink(
         &mut self,
-        path: Path,
+        path: AbsolutePath,
         schema: StandardSchema,
-    ) -> RequestResult<Arc<UntypedCommandDownlink>, Path> {
-        let sink = self.sink_for(path.clone()).await?;
+    ) -> RequestResult<Arc<UntypedCommandDownlink>> {
+        let (sink, _) = self.router.connection_for(&path).await?;
 
         let config = self.config.config_for(&path);
+
         let sink_path = path.clone();
 
-        let cmd_sink = sink
-            .map_err_into()
-            .comap(move |cmd: Command<Value>| envelopes::command_envelope(&sink_path, cmd).into());
+        let cmd_sink =
+            item::for_mpsc_sender(sink)
+                .map_err_into()
+                .comap(move |cmd: Command<Value>| {
+                    envelopes::command_envelope(&sink_path, cmd).1.into()
+                });
 
         let dl = match config.back_pressure {
             BackpressureMode::Propagate => {
@@ -765,20 +676,20 @@ impl<Path: Addressable> DownlinksTask<Path> {
 
     async fn create_new_event_downlink(
         &mut self,
-        path: Path,
+        path: AbsolutePath,
         schema: StandardSchema,
         violations: SchemaViolations,
-    ) -> RequestResult<Arc<UntypedEventDownlink>, Path> {
-        let (sink, incoming) = self.connection_for(path.clone()).await?;
+    ) -> RequestResult<Arc<UntypedEventDownlink>> {
+        let (sink, incoming) = self.router.connection_for(&path).await?;
 
         let updates = ReceiverStream::new(incoming).map(map_router_events);
 
         let config = self.config.config_for(&path);
 
         let path_cpy = path.clone();
-        let cmd_sink = sink
+        let cmd_sink = item::for_mpsc_sender(sink)
             .map_err_into()
-            .comap(move |cmd: Command<()>| envelopes::dummy_envelope(&path_cpy, cmd).into());
+            .comap(move |cmd: Command<()>| envelopes::dummy_envelope(&path_cpy, cmd).1.into());
 
         let (raw_dl, _) = event_downlink(
             schema.clone(),
@@ -804,10 +715,10 @@ impl<Path: Addressable> DownlinksTask<Path> {
     async fn handle_value_request(
         &mut self,
         init: Value,
-        path: Path,
+        path: AbsolutePath,
         schema: StandardSchema,
-        value_req: Request<RequestResult<(Arc<UntypedValueDownlink>, UntypedValueReceiver), Path>>,
-    ) -> RequestResult<(), Path> {
+        value_req: Request<RequestResult<(Arc<UntypedValueDownlink>, UntypedValueReceiver)>>,
+    ) -> RequestResult<()> {
         let dl = match self.value_downlinks.get(&path) {
             Some(ValueHandle {
                 ptr: dl,
@@ -857,11 +768,11 @@ impl<Path: Addressable> DownlinksTask<Path> {
 
     async fn handle_map_request(
         &mut self,
-        path: Path,
+        path: AbsolutePath,
         key_schema: StandardSchema,
         value_schema: StandardSchema,
-        map_req: Request<RequestResult<(Arc<UntypedMapDownlink>, UntypedMapReceiver), Path>>,
-    ) -> RequestResult<(), Path> {
+        map_req: Request<RequestResult<(Arc<UntypedMapDownlink>, UntypedMapReceiver)>>,
+    ) -> RequestResult<()> {
         let dl = match self.map_downlinks.get(&path) {
             Some(MapHandle {
                 ptr: dl,
@@ -918,10 +829,10 @@ impl<Path: Addressable> DownlinksTask<Path> {
 
     async fn handle_command_request(
         &mut self,
-        path: Path,
+        path: AbsolutePath,
         schema: StandardSchema,
-        value_req: Request<RequestResult<Arc<UntypedCommandDownlink>, Path>>,
-    ) -> RequestResult<(), Path> {
+        value_req: Request<RequestResult<Arc<UntypedCommandDownlink>>>,
+    ) -> RequestResult<()> {
         let downlink = match self.command_downlinks.get(&path) {
             Some(CommandHandle {
                 dl,
@@ -957,11 +868,11 @@ impl<Path: Addressable> DownlinksTask<Path> {
 
     async fn handle_event_request(
         &mut self,
-        path: Path,
+        path: AbsolutePath,
         schema: StandardSchema,
-        value_req: Request<RequestResult<Arc<UntypedEventDownlink>, Path>>,
+        value_req: Request<RequestResult<Arc<UntypedEventDownlink>>>,
         violations: SchemaViolations,
-    ) -> RequestResult<(), Path> {
+    ) -> RequestResult<()> {
         let dl = match self.event_downlinks.get(&(path.clone(), violations)) {
             Some(EventHandle {
                 dl,
@@ -998,7 +909,7 @@ impl<Path: Addressable> DownlinksTask<Path> {
     }
 
     #[instrument(skip(self, stop_event))]
-    async fn handle_stop(&mut self, stop_event: DownlinkStoppedEvent<Path>) {
+    async fn handle_stop(&mut self, stop_event: DownlinkStoppedEvent) {
         match &stop_event.error {
             Some(e) => error!("Downlink {} failed with: \"{}\"", stop_event.path, e),
             None => info!("Downlink {} stopped successfully", stop_event.path),
@@ -1038,15 +949,87 @@ impl<Path: Addressable> DownlinksTask<Path> {
         }
     }
 
+    async fn run<Req>(mut self, requests: Req) -> RequestResult<()>
+    where
+        Req: Stream<Item = DownlinkRequest>,
+    {
+        pin_mut!(requests);
+
+        let mut pinned_requests: Fuse<Pin<&mut Req>> = requests.fuse();
+
+        loop {
+            let item: Option<Either<DownlinkRequest, DownlinkStoppedEvent>> =
+                if self.stopped_watch.is_empty() {
+                    pinned_requests.next().await.map(Either::Left)
+                } else {
+                    select_biased! {
+                        maybe_req = pinned_requests.next() => maybe_req.map(Either::Left),
+                        maybe_closed = self.stopped_watch.next() => maybe_closed.map(Either::Right),
+                    }
+                };
+
+            match item {
+                Some(Either::Left(left)) => match left {
+                    DownlinkRequest::Subscription(DownlinkSpecifier::Value {
+                        init,
+                        path,
+                        schema,
+                        request,
+                    }) => {
+                        self.handle_value_request(init, path, schema, request)
+                            .await?;
+                    }
+
+                    DownlinkRequest::Subscription(DownlinkSpecifier::Map {
+                        path,
+                        key_schema,
+                        value_schema,
+                        request,
+                    }) => {
+                        self.handle_map_request(path, key_schema, value_schema, request)
+                            .await?;
+                    }
+
+                    DownlinkRequest::Subscription(DownlinkSpecifier::Command {
+                        path,
+                        schema,
+                        request,
+                    }) => {
+                        self.handle_command_request(path, schema, request).await?;
+                    }
+
+                    DownlinkRequest::Subscription(DownlinkSpecifier::Event {
+                        path,
+                        schema,
+                        request,
+                        violations,
+                    }) => {
+                        self.handle_event_request(path, schema, request, violations)
+                            .await?;
+                    }
+
+                    DownlinkRequest::DirectCommand { path, envelope } => {
+                        self.handle_command_message(path, envelope).await?;
+                    }
+                },
+                Some(Either::Right(stop_event)) => {
+                    self.handle_stop(stop_event).await;
+                }
+                None => break Ok(()),
+            }
+        }
+    }
+
     async fn handle_command_message(
         &mut self,
-        path: Path,
+        path: AbsolutePath,
         envelope: Envelope,
-    ) -> RequestResult<(), Path> {
-        let mut sink = self.sink_for(path).await?;
-        sink.send_item(envelope)
-            .await
-            .map_err(|_| SubscriptionError::ConnectionError)?;
+    ) -> RequestResult<()> {
+        self.router
+            .general_sink()
+            .send((path.host, envelope))
+            .map_err(|_| SubscriptionError::ConnectionError)
+            .await?;
         Ok(())
     }
 }

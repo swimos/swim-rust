@@ -18,32 +18,34 @@ use crate::agent::lane::channels::update::UpdateError;
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::UplinkError;
 use crate::agent::lane::channels::AgentExecutionConfig;
+use crate::agent::store::mock::MockNodeStore;
+use crate::agent::store::SwimNodeStore;
 use crate::agent::{AttachError, Eff, LaneIo};
 use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
+use crate::plane::store::mock::MockPlaneStore;
+use crate::routing::error::RouterError;
+use crate::routing::{
+    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
+    TaggedSender,
+};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use parking_lot::Mutex;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::convert::TryFrom;
 use std::sync::Arc;
 use stm::transaction::TransactionError;
 use swim_common::model::Value;
-use swim_common::routing::error::ResolutionError;
-use swim_common::routing::error::RouterError;
-use swim_common::routing::{
-    ConnectionDropped, Origin, Route, Router, RoutingAddr, TaggedClientEnvelope, TaggedEnvelope,
-    TaggedSender,
-};
+use swim_common::routing::ResolutionError;
 use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::time::AtomicInstant;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::Instant;
 use url::Url;
-use utilities::instant::AtomicInstant;
-use utilities::sync::promise;
-use utilities::uri::RelativeUri;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MockLane;
@@ -95,7 +97,7 @@ impl MockRouterInner {
 #[derive(Debug, Clone)]
 pub struct MockRouter(Arc<Mutex<MockRouterInner>>);
 
-impl Router for MockRouter {
+impl ServerRouter for MockRouter {
     fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let mut lock = self.0.lock();
@@ -136,12 +138,12 @@ impl Router for MockRouter {
 pub struct MockExecutionContext {
     router: Arc<Mutex<MockRouterInner>>,
     spawner: mpsc::Sender<Eff>,
-    uri: RelativeUri,
     uplinks_idle_since: Arc<AtomicInstant>,
 }
 
 impl AgentExecutionContext for MockExecutionContext {
     type Router = MockRouter;
+    type Store = SwimNodeStore<MockPlaneStore>;
 
     fn router_handle(&self) -> Self::Router {
         MockRouter(self.router.clone())
@@ -151,8 +153,8 @@ impl AgentExecutionContext for MockExecutionContext {
         self.spawner.clone()
     }
 
-    fn uri(&self) -> &RelativeUri {
-        &self.uri
+    fn store(&self) -> Self::Store {
+        MockNodeStore::mock()
     }
 
     fn metrics(&self) -> NodeMetricAggregator {
@@ -169,8 +171,7 @@ impl MockExecutionContext {
         MockExecutionContext {
             router: Arc::new(Mutex::new(MockRouterInner::new(router_addr, buffer_size))),
             spawner,
-            uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now())),
-            uri: RelativeUri::try_from("/mock/router".to_string()).unwrap(),
+            uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
         }
     }
 
@@ -235,7 +236,7 @@ impl LaneIo<MockExecutionContext> for MockLane {
                         let sender = match senders.entry(addr) {
                             Entry::Occupied(entry) => entry.into_mut(),
                             Entry::Vacant(entry) => {
-                                if let Ok(sender) = router.resolve_sender(addr, None).await {
+                                if let Ok(sender) = router.resolve_sender(addr).await {
                                     entry.insert(sender.sender)
                                 } else {
                                     break Some(LaneIoError::for_uplink_errors(

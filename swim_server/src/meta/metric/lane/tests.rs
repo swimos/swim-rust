@@ -23,10 +23,10 @@ use futures::future::join;
 use std::collections::HashMap;
 use std::time::Duration;
 use swim_common::warp::path::RelativePath;
+use swim_utilities::trigger;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
 use tokio_stream::wrappers::ReceiverStream;
-use utilities::sync::trigger;
 
 #[tokio::test]
 async fn single() {
@@ -51,7 +51,8 @@ async fn single() {
         node_tx,
     );
 
-    let aggregator_task = tokio::spawn(lane_aggregator.run(DEFAULT_YIELD));
+    let (finish_tx, finish_rx) = trigger::trigger();
+    let aggregator_task = tokio::spawn(lane_aggregator.run(DEFAULT_YIELD, finish_tx));
 
     let receive_task = async move {
         let received = lane_rx.recv().await.expect("Expected a LanePulse");
@@ -101,6 +102,7 @@ async fn single() {
     assert!(receive_task.await.is_ok());
     stop_tx.trigger();
     assert!(aggregator_task.await.is_ok());
+    assert!(finish_rx.await.is_ok());
 }
 
 #[tokio::test]
@@ -155,10 +157,18 @@ async fn multiple_lanes() {
         }
     };
 
-    match join(lane_aggregator.run(DEFAULT_YIELD), assertion_task).await {
+    let (finish_tx, finish_rx) = trigger::trigger();
+    match join(
+        lane_aggregator.run(DEFAULT_YIELD, finish_tx),
+        assertion_task,
+    )
+    .await
+    {
         (Ok(_), _) => {}
         (Err(e), _) => {
             panic!("{}", e)
         }
     }
+
+    assert!(finish_rx.await.is_ok());
 }

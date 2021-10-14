@@ -19,10 +19,10 @@ use crate::agent::lane::channels::uplink::backpressure::{
 use crate::agent::lane::channels::uplink::{UplinkAction, UplinkStateMachine};
 use crate::meta::log::config::LogConfig;
 use crate::meta::metric::config::MetricAggregatorConfig;
+use crate::routing::RoutingAddr;
 use std::num::NonZeroUsize;
 use std::time::Duration;
-use swim_common::routing::RoutingAddr;
-use utilities::future::retryable::strategy::RetryStrategy;
+use swim_utilities::future::retryable::RetryStrategy;
 
 pub mod task;
 pub mod update;
@@ -69,6 +69,8 @@ pub struct AgentExecutionConfig {
     pub metrics: MetricAggregatorConfig,
     /// The maximum idle time before the agent is terminated.
     pub max_idle_time: Duration,
+    /// Maximum number of fatal store errors before the task running a lane will stop.
+    pub max_store_errors: usize,
 }
 
 const DEFAULT_YIELD_COUNT: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(2048) };
@@ -105,6 +107,7 @@ impl AgentExecutionConfig {
             node_log: LogConfig::default(),
             max_idle_time,
             metrics: Default::default(),
+            max_store_errors: error_threshold,
         }
     }
 }
@@ -133,6 +136,7 @@ impl Default for AgentExecutionConfig {
             node_log: LogConfig::default(),
             metrics: Default::default(),
             max_idle_time: Duration::from_secs(300),
+            max_store_errors: 0,
         }
     }
 }

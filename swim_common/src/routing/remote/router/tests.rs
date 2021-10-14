@@ -12,27 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::model::Value;
-use crate::routing::error::{ConnectionError, IoError, ResolutionError};
 use crate::routing::error::{RouterError, Unresolvable};
 use crate::routing::remote::router::RemoteRouter;
 use crate::routing::remote::test_fixture::LocalRoutes;
-use crate::routing::remote::{RawRoute, RemoteRoutingRequest};
-use crate::routing::{Route, Router, RoutingAddr, TaggedEnvelope};
-use crate::warp::envelope::Envelope;
+use crate::routing::remote::{RawRoute, RoutingRequest};
+use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
 use futures::future::join;
 use futures::io::ErrorKind;
 use futures::{FutureExt, StreamExt};
+use swim_common::model::Value;
+use swim_common::routing::{ConnectionError, IoError, ResolutionError};
+use swim_common::warp::envelope::Envelope;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
-use utilities::sync::{promise, trigger};
-use utilities::uri::RelativeUri;
 
 const ADDR: RoutingAddr = RoutingAddr::remote(4);
 
 async fn fake_resolution(
-    rx: mpsc::Receiver<RemoteRoutingRequest>,
+    rx: mpsc::Receiver<RoutingRequest>,
     url: Url,
     sender: mpsc::Sender<TaggedEnvelope>,
     stop_trigger: trigger::Receiver,
@@ -44,7 +45,7 @@ async fn fake_resolution(
 
     while let Some(request) = rx.next().await {
         match request {
-            RemoteRoutingRequest::Endpoint { addr, request } => {
+            RoutingRequest::Endpoint { addr, request } => {
                 if resolved && addr == ADDR {
                     assert!(request
                         .send_ok(RawRoute::new(sender.clone(), drop_rx.clone()))
@@ -53,7 +54,7 @@ async fn fake_resolution(
                     assert!(request.send_err(Unresolvable(addr)).is_ok());
                 }
             }
-            RemoteRoutingRequest::ResolveUrl { host, request } => {
+            RoutingRequest::ResolveUrl { host, request } => {
                 if host == url {
                     resolved = true;
                     assert!(request.send_ok(ADDR).is_ok());
@@ -92,9 +93,9 @@ async fn resolve_remote_ok() {
     let fake_resolver = fake_resolution(req_rx, url.clone(), tx, stop_rx);
 
     let task = async move {
-        let result = router.lookup(Some(url), path(), None).await;
+        let result = router.lookup(Some(url), path()).await;
         assert_eq!(result, Ok(ADDR));
-        let result = router.resolve_sender(ADDR, None).await;
+        let result = router.resolve_sender(ADDR).await;
         assert!(result.is_ok());
         let Route { mut sender, .. } = result.unwrap();
         assert!(sender.send_item(envelope("a")).await.is_ok());
@@ -120,7 +121,7 @@ async fn resolve_remote_failure() {
 
     let task = async move {
         let other_addr = RoutingAddr::remote(56);
-        let result = router.resolve_sender(other_addr, None).await;
+        let result = router.resolve_sender(other_addr).await;
         let _expected = ResolutionError::unresolvable(other_addr.to_string());
 
         assert!(matches!(result, Err(_expected)));
@@ -144,7 +145,7 @@ async fn lookup_remote_failure() {
 
     let task = async move {
         let other_url = "swim://other:80".parse().unwrap();
-        let result = router.lookup(Some(other_url), path(), None).await;
+        let result = router.lookup(Some(other_url), path()).await;
         assert_eq!(
             result,
             Err(RouterError::ConnectionFailure(ConnectionError::Io(
@@ -172,11 +173,11 @@ async fn delegate_local_ok() {
     let fake_resolver = fake_resolution(req_rx, url.clone(), tx, stop_rx);
 
     let task = async move {
-        let result = router.lookup(None, path(), None).await;
+        let result = router.lookup(None, path()).await;
         assert!(result.is_ok());
         let local_addr = result.unwrap();
 
-        let result = router.resolve_sender(local_addr, None).await;
+        let result = router.resolve_sender(local_addr).await;
         assert!(result.is_ok());
         let Route { mut sender, .. } = result.unwrap();
         assert!(sender.send_item(envelope("a")).await.is_ok());
@@ -202,8 +203,8 @@ async fn resolve_local_err() {
     let fake_resolver = fake_resolution(req_rx, url.clone(), tx, stop_rx);
 
     let task = async move {
-        let local_addr = RoutingAddr::plane(0);
-        let result = router.resolve_sender(local_addr, None).await;
+        let local_addr = RoutingAddr::local(0);
+        let result = router.resolve_sender(local_addr).await;
         let _expected = ResolutionError::unresolvable(local_addr.to_string());
 
         assert!(matches!(result, Err(_expected)));
@@ -227,7 +228,7 @@ async fn lookup_local_err() {
     let fake_resolver = fake_resolution(req_rx, url.clone(), tx, stop_rx);
 
     let task = async move {
-        let result = router.lookup(None, path(), None).await;
+        let result = router.lookup(None, path()).await;
         assert_eq!(result, Err(RouterError::NoAgentAtRoute(path())));
         drop(stop_tx);
     };

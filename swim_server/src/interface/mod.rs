@@ -16,44 +16,33 @@
 //!
 //! The module provides methods and structures for creating and running Swim server instances.
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
-use crate::plane::spec::PlaneSpec;
-use crate::plane::ContextImpl;
-use crate::plane::PlaneActiveRoutes;
-use crate::plane::RouteResolver;
+use crate::plane::router::PlaneRouter;
+use crate::plane::spec::{PlaneBuilder, PlaneSpec};
+use crate::plane::store::SwimPlaneStore;
 use crate::plane::{run_plane, EnvChannel};
-use crate::routing::{TopLevelServerRouter, TopLevelServerRouterFactory};
+use crate::routing::remote::config::ConnectionConfig;
+use crate::routing::remote::net::dns::Resolver;
+use crate::routing::remote::net::plain::TokioPlainTextNetworking;
+use crate::routing::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
+use crate::routing::{TopLevelRouter, TopLevelRouterFactory};
+use crate::store::RocksOpts;
+use crate::store::{default_keyspaces, RocksDatabase};
+use crate::store::{ServerStore, SwimStore};
 use either::Either;
 use futures::{io, join};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
-
 use std::sync::Arc;
-use swim_client::configuration::downlink::ConfigHierarchy;
-use swim_client::configuration::router::ConnectionPoolParams;
-use swim_client::connections::{PoolTask, SwimConnPool};
-use swim_client::downlink::subscription::DownlinksTask;
-use swim_client::downlink::Downlinks;
-use swim_client::interface::DownlinksContext;
-use swim_client::router::ClientRouterFactory;
-use swim_common::routing::error::RoutingError;
-use swim_common::routing::remote::config::ConnectionConfig;
-use swim_common::routing::remote::net::dns::Resolver;
-use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
-use swim_common::routing::remote::{
-    RemoteConnectionChannels, RemoteConnectionsTask, RemoteRoutingRequest,
-};
+use store::StoreError;
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
-use swim_common::routing::{CloseReceiver, CloseSender, PlaneRoutingRequest};
-use swim_common::warp::path::Path;
 use swim_runtime::task::TaskError;
 use swim_runtime::time::clock::RuntimeClock;
+use swim_utilities::future::open_ended::OpenEndedFutures;
+use swim_utilities::trigger;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
-
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
-use utilities::future::open_ended::OpenEndedFutures;
-use utilities::sync::promise;
 
 /// Builder to create Swim server instance.
 ///
@@ -61,30 +50,36 @@ use utilities::sync::promise;
 pub struct SwimServerBuilder {
     address: Option<SocketAddr>,
     config: SwimServerConfig,
-    planes: Vec<PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelServerRouter>>>,
+    planes: Vec<
+        PlaneSpec<
+            RuntimeClock,
+            EnvChannel,
+            PlaneRouter<TopLevelRouter>,
+            SwimPlaneStore<RocksDatabase>,
+        >,
+    >,
+    store: ServerStore<RocksOpts>,
 }
 
-impl Default for SwimServerBuilder {
-    fn default() -> Self {
-        SwimServerBuilder {
-            address: None,
-            config: SwimServerConfig::default(),
-            planes: Vec::new(),
-        }
-    }
-}
+type ServerPlaneBuilder = PlaneBuilder<
+    RuntimeClock,
+    EnvChannel,
+    PlaneRouter<TopLevelRouter>,
+    SwimPlaneStore<RocksDatabase>,
+>;
 
 impl SwimServerBuilder {
     /// Create a new server builder with custom configuration.
     ///
     /// # Arguments
     /// * `config` - The custom configuration for the server.
-    pub fn new(config: SwimServerConfig) -> Self {
-        SwimServerBuilder {
+    pub fn new(config: SwimServerConfig) -> io::Result<Self> {
+        Ok(SwimServerBuilder {
             address: None,
             config,
             planes: Vec::new(),
-        }
+            store: ServerStore::new(RocksOpts::default(), default_keyspaces(), "target".into())?,
+        })
     }
 
     /// Set the address of the server.
@@ -106,13 +101,15 @@ impl SwimServerBuilder {
     /// # Example
     /// ```
     /// use std::net::{SocketAddr, IpAddr, Ipv4Addr};
-    /// use swim_server::interface::{SwimServer, SwimServerBuilder};
+    /// use swim_server::interface::{SwimServer, SwimServerBuilder, SwimServerConfig};
     /// use swim_server::RoutePattern;
     /// use swim_server::agent_lifecycle;
     /// use swim_server::agent::SwimAgent;
     /// use swim_server::agent::AgentContext;
     /// use swim_server::plane::spec::PlaneBuilder;
     ///
+    /// # #[tokio::main]
+    /// # async fn main() {
     /// #[derive(Debug, SwimAgent)]
     /// #[agent(config = "RustAgentConfig")]
     /// pub struct RustAgent;
@@ -132,9 +129,9 @@ impl SwimServerBuilder {
     ///     }
     /// }
     ///
-    /// let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+    /// let mut swim_server_builder = SwimServerBuilder::temporary_store(SwimServerConfig::default(), "test").unwrap();
+    /// let mut plane_builder = swim_server_builder.plane_builder("test").unwrap();
     ///
-    /// let mut plane_builder = PlaneBuilder::new();
     /// plane_builder
     ///     .add_route(
     ///          RoutePattern::parse_str("/rust").unwrap(),
@@ -142,17 +139,25 @@ impl SwimServerBuilder {
     ///          RustAgentLifecycle {},
     ///     ).unwrap();
     ///
-    /// let mut swim_server_builder = SwimServerBuilder::default();
     /// swim_server_builder.add_plane(plane_builder.build());
+    /// # }
     /// ```
-    pub fn add_plane(
-        &mut self,
-        plane: PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelServerRouter>>,
-    ) {
+    pub fn add_plane(&mut self, plane: PlaneDef) {
         if !self.planes.is_empty() {
             panic!("Multiple planes are not supported yet")
         }
         self.planes.push(plane)
+    }
+
+    pub fn plane_builder<I: Into<String>>(
+        &mut self,
+        name: I,
+    ) -> Result<ServerPlaneBuilder, SwimServerBuilderError> {
+        let store = self
+            .store
+            .plane_store(name.into())
+            .map_err(SwimServerBuilderError::StoreError)?;
+        Ok(PlaneBuilder::new(store))
     }
 
     /// Build the Swim Server.
@@ -162,13 +167,15 @@ impl SwimServerBuilder {
     /// # Example
     /// ```
     /// use std::net::{SocketAddr, IpAddr, Ipv4Addr};
-    /// use swim_server::interface::{SwimServer, SwimServerBuilder};
+    /// use swim_server::interface::{SwimServer, SwimServerBuilder, SwimServerConfig};
     /// use swim_server::RoutePattern;
     /// use swim_server::agent_lifecycle;
     /// use swim_server::agent::SwimAgent;
     /// use swim_server::agent::AgentContext;
     /// use swim_server::plane::spec::PlaneBuilder;
     ///
+    /// # #[tokio::main]
+    /// # async fn main() {
     /// #[derive(Debug, SwimAgent)]
     /// #[agent(config = "RustAgentConfig")]
     /// pub struct RustAgent;
@@ -188,9 +195,9 @@ impl SwimServerBuilder {
     ///     }
     /// }
     ///
-    /// let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+    /// let mut swim_server_builder = SwimServerBuilder::temporary_store(SwimServerConfig::default(), "test").unwrap();
+    /// let mut plane_builder = swim_server_builder.plane_builder("test").unwrap();
     ///
-    /// let mut plane_builder = PlaneBuilder::new();
     /// plane_builder
     ///     .add_route(
     ///          RoutePattern::parse_str("/rust").unwrap(),
@@ -198,71 +205,63 @@ impl SwimServerBuilder {
     ///          RustAgentLifecycle {},
     ///     ).unwrap();
     ///
-    /// let mut swim_server_builder = SwimServerBuilder::default();
     /// swim_server_builder.add_plane(plane_builder.build());
     ///
+    /// let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
     /// let (swim_server, server_handle) = swim_server_builder.bind_to(address).build().unwrap();
+    /// # }
     /// ```
     pub fn build(self) -> Result<(SwimServer, ServerHandle), SwimServerBuilderError> {
         let SwimServerBuilder {
             address,
             planes,
             config,
+            store,
         } = self;
 
-        let (close_tx, close_rx) = promise::promise();
+        let (stop_trigger_tx, stop_trigger_rx) = trigger::trigger();
         let (address_tx, address_rx) = promise::promise();
-
-        let (client_tx, client_rx) = mpsc::channel(config.conn_config.channel_buffer_size.get());
-        let (remote_tx, remote_rx) = mpsc::channel(config.conn_config.channel_buffer_size.get());
-        let (plane_tx, plane_rx) = mpsc::channel(config.conn_config.channel_buffer_size.get());
-
-        let top_level_router_fac = TopLevelServerRouterFactory::new(
-            plane_tx.clone(),
-            client_tx.clone(),
-            remote_tx.clone(),
-        );
-
-        let client_router_factory =
-            ClientRouterFactory::new(client_tx.clone(), top_level_router_fac.clone());
-
-        //Todo dm this needs to be changed from default after the new configuration is finalised.
-        let (connection_pool, connection_pool_task) = SwimConnPool::new(
-            ConnectionPoolParams::default(),
-            (client_tx, client_rx),
-            client_router_factory,
-            close_rx.clone(),
-        );
-
-        let (downlinks, downlinks_task) = Downlinks::new(
-            connection_pool,
-            Arc::new(ConfigHierarchy::default()),
-            close_rx.clone(),
-        );
-
-        let client = DownlinksContext::new(downlinks);
 
         Ok((
             SwimServer {
                 config,
                 planes,
-                stop_trigger_rx: close_rx,
                 address: address.ok_or(SwimServerBuilderError::MissingAddress)?,
+                stop_trigger_rx,
                 address_tx,
-                top_level_router_fac,
-                remote_channel: (remote_tx, remote_rx),
-                plane_channel: (plane_tx, plane_rx),
-                client,
-                connection_pool_task,
-                downlinks_task,
+                _store: store,
             },
             ServerHandle {
                 either_address: Either::Left(address_rx),
-                stop_trigger_tx: close_tx,
+                stop_trigger_tx,
             },
         ))
     }
+
+    /// Constructs a new `SwimServerBuilder` with the default configuration and is backed by a
+    /// temporary store.
+    ///
+    /// A temporary store uses a RocksDB engine that operates out of a temporary directory which is
+    /// deleted when the application terminates.
+    ///
+    /// # Panics
+    /// Panics if the directory cannot be created.
+    pub fn temporary_store(config: SwimServerConfig, prefix: &str) -> io::Result<Self> {
+        Ok(SwimServerBuilder {
+            address: None,
+            store: ServerStore::<RocksOpts>::transient(
+                RocksOpts::default(),
+                default_keyspaces(),
+                prefix,
+            )?,
+            config,
+            planes: vec![],
+        })
+    }
 }
+
+type PlaneDef =
+    PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>, SwimPlaneStore<RocksDatabase>>;
 
 /// Swim server instance.
 ///
@@ -270,21 +269,10 @@ impl SwimServerBuilder {
 pub struct SwimServer {
     address: SocketAddr,
     config: SwimServerConfig,
-    planes: Vec<PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelServerRouter>>>,
-    stop_trigger_rx: CloseReceiver,
+    planes: Vec<PlaneDef>,
+    stop_trigger_rx: trigger::Receiver,
     address_tx: promise::Sender<SocketAddr>,
-    top_level_router_fac: TopLevelServerRouterFactory,
-    remote_channel: (
-        mpsc::Sender<RemoteRoutingRequest>,
-        mpsc::Receiver<RemoteRoutingRequest>,
-    ),
-    plane_channel: (
-        mpsc::Sender<PlaneRoutingRequest>,
-        mpsc::Receiver<PlaneRoutingRequest>,
-    ),
-    client: DownlinksContext<Path>,
-    connection_pool_task: PoolTask<Path, TopLevelServerRouterFactory>,
-    downlinks_task: DownlinksTask<Path>,
+    _store: ServerStore<RocksOpts>,
 }
 
 impl SwimServer {
@@ -302,12 +290,7 @@ impl SwimServer {
             mut planes,
             stop_trigger_rx,
             address_tx,
-            top_level_router_fac,
-            remote_channel: (remote_tx, remote_rx),
-            plane_channel: (plane_tx, plane_rx),
-            client,
-            connection_pool_task,
-            downlinks_task,
+            _store,
         } = self;
 
         let SwimServerConfig {
@@ -321,31 +304,23 @@ impl SwimServer {
             .pop()
             .expect("The server cannot be started without a plane");
 
+        let (plane_tx, plane_rx) = mpsc::channel(agent_config.lane_attachment_buffer.get());
+        let (remote_tx, remote_rx) = mpsc::channel(conn_config.router_buffer_size.get());
+        let top_level_router_fac = TopLevelRouterFactory::new(plane_tx.clone(), remote_tx.clone());
+
         let clock = swim_runtime::time::clock::runtime_clock();
 
-        let context = ContextImpl::new(plane_tx.clone(), spec.routes());
-        let PlaneSpec { routes, lifecycle } = spec;
-
-        let resolver = RouteResolver::new(
-            clock,
-            client,
-            agent_config,
-            routes,
-            PlaneRouterFactory::new(plane_tx, top_level_router_fac.clone()),
-            stop_trigger_rx.clone(),
-            PlaneActiveRoutes::default(),
-        );
-
         let plane_future = run_plane(
-            resolver,
-            lifecycle,
-            context,
+            agent_config.clone(),
+            clock,
+            spec,
             stop_trigger_rx.clone(),
             OpenEndedFutures::new(),
-            plane_rx,
+            (plane_tx, plane_rx),
+            top_level_router_fac.clone(),
         );
 
-        let connections_task = RemoteConnectionsTask::new_server_task(
+        let connections_task = RemoteConnectionsTask::new(
             conn_config,
             TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
             address,
@@ -354,23 +329,23 @@ impl SwimServer {
             },
             top_level_router_fac,
             OpenEndedFutures::new(),
-            RemoteConnectionChannels::new(remote_tx, remote_rx, stop_trigger_rx),
+            RemoteConnectionChannels {
+                request_tx: remote_tx,
+                request_rx: remote_rx,
+                stop_trigger: stop_trigger_rx,
+            },
         )
         .await
         .unwrap_or_else(|err| panic!("Could not connect to \"{}\": {}", address, err));
 
-        let _ = match connections_task.listener().unwrap().local_addr() {
+        let _ = match connections_task.listener.local_addr() {
             Ok(local_addr) => address_tx.provide(local_addr),
             Err(err) => panic!("Could not resolve server address: {}", err),
         };
 
-        join!(
-            connections_task.run(),
-            plane_future,
-            connection_pool_task.run(),
-            downlinks_task.run(),
-        )
-        .0
+        let connections_future = connections_task.run();
+
+        join!(connections_future, plane_future).0
     }
 }
 
@@ -379,6 +354,8 @@ impl SwimServer {
 pub enum SwimServerBuilderError {
     /// An error that occurs when trying to create a server without providing the address first.
     MissingAddress,
+    /// An error occured when attempting to build the delegate store.
+    StoreError(StoreError),
 }
 
 impl Display for SwimServerBuilderError {
@@ -386,6 +363,9 @@ impl Display for SwimServerBuilderError {
         match self {
             SwimServerBuilderError::MissingAddress => {
                 write!(f, "Cannot create a swim server without an address")
+            }
+            SwimServerBuilderError::StoreError(e) => {
+                write!(f, "{}", e)
             }
         }
     }
@@ -398,8 +378,6 @@ impl Error for SwimServerBuilderError {}
 pub enum ServerError {
     /// An error that occurred when the server was running.
     RuntimeError(io::Error),
-    /// An error that occurred in the client router.
-    RoutingError(RoutingError),
     /// An error that occurred when closing the server.
     CloseError(TaskError),
 }
@@ -409,7 +387,6 @@ impl Display for ServerError {
         match self {
             ServerError::RuntimeError(err) => err.fmt(f),
             ServerError::CloseError(err) => err.fmt(f),
-            ServerError::RoutingError(err) => err.fmt(f),
         }
     }
 }
@@ -443,7 +420,7 @@ impl Default for SwimServerConfig {
 /// the server or obtaining its address.
 pub struct ServerHandle {
     either_address: Either<promise::Receiver<SocketAddr>, Option<SocketAddr>>,
-    stop_trigger_tx: CloseSender,
+    stop_trigger_tx: trigger::Sender,
 }
 
 impl ServerHandle {
@@ -452,7 +429,10 @@ impl ServerHandle {
     /// This can be useful, for example, when binding to port 0 to figure out
     /// which port was actually bound.
     pub async fn address(&mut self) -> Option<&SocketAddr> {
-        let ServerHandle { either_address, .. } = self;
+        let ServerHandle {
+            either_address,
+            stop_trigger_tx: _,
+        } = self;
 
         if either_address.is_left() {
             if let Either::Left(promise) = std::mem::replace(either_address, Either::Right(None)) {
@@ -469,8 +449,8 @@ impl ServerHandle {
 
     /// Terminates the associated server instance.
     ///
-    /// Returns `Ok` if all sever tasks have been successfully notified to terminate
-    /// and `ServerError` otherwise.
+    /// Returns `true` if all sever tasks have been successfully notified to terminate
+    /// and `false` otherwise.
     ///
     /// # Example:
     /// ```
@@ -478,30 +458,13 @@ impl ServerHandle {
     /// use swim_server::interface::{SwimServer, SwimServerBuilder};
     ///
     /// let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-    /// let (mut swim_server, server_handle) = SwimServerBuilder::default().bind_to(address).build().unwrap();
+    /// let (mut swim_server, server_handle) = SwimServerBuilder::new(Default::default()).unwrap().bind_to(address).build().unwrap();
     ///
-    /// let future = server_handle.stop();
+    /// let success = server_handle.stop();
+    ///
+    /// assert!(success);
     /// ```
-    pub async fn stop(self) -> Result<(), ServerError> {
-        let ServerHandle {
-            stop_trigger_tx, ..
-        } = self;
-
-        let (tx, mut rx) = mpsc::channel(8);
-
-        if stop_trigger_tx.provide(tx).is_err() {
-            return Err(ServerError::CloseError(TaskError));
-        }
-
-        match rx.recv().await {
-            Some(close_result) => {
-                if let Err(routing_err) = close_result {
-                    return Err(ServerError::RoutingError(routing_err));
-                }
-            }
-            None => return Err(ServerError::CloseError(TaskError)),
-        }
-
-        Ok(())
+    pub fn stop(self) -> bool {
+        self.stop_trigger_tx.trigger()
     }
 }

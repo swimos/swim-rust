@@ -1,0 +1,18 @@
+[package]
+name = "swim_future"
+version = "0.1.0"
+authors = ["Swim.AI developers info@swim.ai"]
+edition = "2018"
+
+[dependencies]
+futures = "0.3.4"
+tokio = { version = "1.1.1", features = ["sync"] }
+pin-project = "1.0.5"
+swim_trigger = { path = "../swim_trigger" }
+swim_runtime = { path = "../../swim_runtime" }
+rand = "0.7.3"
+
+[dev-dependencies]
+tokio = { version = "1.1.1", features = ["sync", "rt", "macros"] }
+tokio-stream = "0.1.2"
+pin-utils = "0.1.0"

@@ -13,83 +13,33 @@
 // limitations under the License.
 
 use crate::agent::context::{ContextImpl, RoutingContext, SchedulerContext};
+use crate::agent::store::mock::MockNodeStore;
+use crate::agent::store::SwimNodeStore;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::AgentContext;
 use crate::meta::meta_context_sink;
-use futures::future::BoxFuture;
+use crate::plane::store::mock::MockPlaneStore;
 use std::collections::HashMap;
-use std::convert::TryFrom;
 use std::sync::Arc;
-use swim_client::configuration::downlink::ConfigHierarchy;
-use swim_client::downlink::Downlinks;
-use swim_client::interface::SwimClientBuilder;
-use swim_common::routing::error::ResolutionError;
-use swim_common::routing::error::RouterError;
-use swim_common::routing::{BidirectionalRoute, Origin, Route, Router, RoutingAddr};
 use swim_runtime::task;
 use swim_runtime::time::clock::Clock;
+use swim_utilities::trigger;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
-use url::Url;
-use utilities::sync::{promise, trigger};
-use utilities::uri::RelativeUri;
-
-#[derive(Clone)]
-struct MockRouter {}
-
-impl Router for MockRouter {
-    fn resolve_sender(
-        &mut self,
-        _addr: RoutingAddr,
-    ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
-        unimplemented!()
-    }
-
-    fn resolve_bidirectional(
-        &mut self,
-        _host: Url,
-    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
-        unimplemented!()
-    }
-
-    fn lookup(
-        &mut self,
-        _host: Option<Url>,
-        _route: RelativeUri,
-    ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
-        unimplemented!()
-    }
-}
 
 #[test]
 fn simple_accessors() {
     let (tx, _rx) = mpsc::channel(1);
     let (_close, close_sig) = trigger::trigger();
     let agent = Arc::new("agent");
-    let routing_context =
-        RoutingContext::new("/node".parse().unwrap(), MockRouter {}, HashMap::new());
+    let routing_context = RoutingContext::new("/node".parse().unwrap(), (), HashMap::new());
     let schedule_context = SchedulerContext::new(tx, TestClock::default(), close_sig.clone());
-
-    let (_close_tx, close_rx) = promise::promise();
-    let (client_conn_request_tx, _client_conn_request_rx) = mpsc::channel(8);
-
-    let (downlinks, _downlinks_handle) = tokio_test::block_on(async {
-        Downlinks::new(
-            client_conn_request_tx,
-            Arc::new(ConfigHierarchy::default()),
-            close_rx,
-        )
-    });
-
-    let client = SwimClientBuilder::build_from_downlinks(downlinks);
-
     let context = ContextImpl::new(
         agent.clone(),
         routing_context,
         schedule_context,
         meta_context_sink(),
-        client,
-        RelativeUri::try_from("/mock/router".to_string()).unwrap(),
+        MockNodeStore::mock(),
     );
 
     assert!(std::ptr::eq(context.agent(), agent.as_ref()));
@@ -104,7 +54,7 @@ fn create_context(
     n: usize,
     clock: TestClock,
     close_trigger: trigger::Receiver,
-) -> ContextImpl<&'static str, impl Clock, MockRouter> {
+) -> ContextImpl<&'static str, impl Clock, (), SwimNodeStore<MockPlaneStore>> {
     let (tx, mut rx) = mpsc::channel(n);
 
     //Run any tasks that get scheduled.
@@ -117,27 +67,15 @@ fn create_context(
     });
 
     let agent = Arc::new("agent");
-    let routing_context =
-        RoutingContext::new("/node".parse().unwrap(), MockRouter {}, HashMap::new());
+    let routing_context = RoutingContext::new("/node".parse().unwrap(), (), HashMap::new());
     let schedule_context = SchedulerContext::new(tx, clock, close_trigger);
 
-    let (_close_tx, close_rx) = promise::promise();
-    let (client_conn_request_tx, _client_conn_request_rx) = mpsc::channel(8);
-
-    let (downlinks, _downlinks_handle) = Downlinks::new(
-        client_conn_request_tx,
-        Arc::new(ConfigHierarchy::default()),
-        close_rx,
-    );
-
-    let client = SwimClientBuilder::build_from_downlinks(downlinks);
     ContextImpl::new(
         agent.clone(),
         routing_context,
         schedule_context,
         meta_context_sink(),
-        client,
-        RelativeUri::try_from("/mock/router".to_string()).unwrap(),
+        MockNodeStore::mock(),
     )
 }
 

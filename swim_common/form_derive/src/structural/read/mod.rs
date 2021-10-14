@@ -19,7 +19,7 @@ use proc_macro2::{Span, TokenStream};
 use quote::ToTokens;
 use syn::{Generics, TypeGenerics};
 
-use macro_helpers::{CompoundTypeKind, FieldKind};
+use macro_utilities::{CompoundTypeKind, FieldKind};
 
 use crate::quote::TokenStreamExt;
 use crate::structural::model::enumeration::SegregatedEnumModel;

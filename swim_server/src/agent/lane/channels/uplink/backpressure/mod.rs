@@ -25,11 +25,12 @@ use std::hash::Hash;
 use std::num::NonZeroUsize;
 use swim_common::form::Form;
 use swim_common::sink::item::ItemSender;
+use swim_utilities::sync::circular_buffer;
+use swim_utilities::trigger;
 use swim_warp::backpressure::keyed::map::release_pressure as release_pressure_map;
 use swim_warp::backpressure::{release_pressure, Flushable};
 use swim_warp::model::map::MapUpdate;
 use tokio::sync::oneshot;
-use utilities::sync::{circular_buffer, trigger};
 
 /// Configuration for the value lane back-pressure release.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

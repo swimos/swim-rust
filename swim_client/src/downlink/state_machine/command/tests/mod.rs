@@ -14,7 +14,7 @@
 
 use super::*;
 use crate::downlink::Command;
-use swim_common::form::{Form, ValidatedForm};
+use swim_common::form::{Form, ValueSchema};
 use swim_common::model::ValueKind;
 
 #[test]

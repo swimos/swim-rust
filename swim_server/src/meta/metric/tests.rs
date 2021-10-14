@@ -32,12 +32,12 @@ use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::time::Duration;
 use swim_common::warp::path::RelativePath;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Receiver;
 use tokio::time::sleep;
 use tokio_stream::wrappers::ReceiverStream;
-use utilities::sync::trigger;
-use utilities::uri::RelativeUri;
 
 pub const DEFAULT_YIELD: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(256) };
 pub const DEFAULT_BUFFER: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(8) };
@@ -172,13 +172,15 @@ async fn drain() {
     };
 
     let task = async move {
-        let result = join(aggregator.run(DEFAULT_YIELD), assert_task).await;
+        let (finish_tx, finish_rx) = trigger::trigger();
+        let result = join(aggregator.run(DEFAULT_YIELD, finish_tx), assert_task).await;
         match result {
             (Ok(_), _) => {}
             (Err(e), _) => {
                 panic!("{}", e)
             }
         }
+        assert!(finish_rx.await.is_ok());
     };
 
     let handle = tokio::time::timeout(Duration::from_secs(15), task).await;
@@ -211,7 +213,8 @@ async fn abnormal() {
     );
 
     let task = async move {
-        let result = aggregator.run(DEFAULT_YIELD).await;
+        let (finish_tx, finish_rx) = trigger::trigger();
+        let result = aggregator.run(DEFAULT_YIELD, finish_tx).await;
         match result {
             Ok(_) => {
                 panic!("Expected abnormal stop code")
@@ -219,6 +222,7 @@ async fn abnormal() {
             Err(AggregatorError { aggregator, error }) => {
                 assert_eq!(aggregator, MetricStage::Lane);
                 assert_eq!(error, AggregatorErrorKind::AbnormalStop);
+                assert!(finish_rx.await.is_ok());
             }
         }
     };
@@ -317,7 +321,7 @@ async fn full_pipeline() {
         make_node_logger(node_uri),
     );
 
-    let aggregator_jh = tokio::spawn(aggregator_task);
+    let _aggregator_jh = tokio::spawn(aggregator_task);
 
     let test_lanes = test_lanes
         .into_iter()
@@ -370,7 +374,7 @@ async fn full_pipeline() {
 
     let task_jh = tokio::spawn(join3(uplink_task, lane_task, node_task));
 
-    let (_event_observer, action_observer) = aggregator.uplink_observer("test".to_string());
+    let observer = aggregator.uplink_observer("test".to_string());
 
     let profile = WarpUplinkProfile {
         event_delta: event_count,
@@ -378,14 +382,12 @@ async fn full_pipeline() {
         ..Default::default()
     };
 
-    action_observer.set_inner_values(profile);
-    action_observer.force_flush();
+    observer.set_inner_values(profile);
+    observer.flush();
 
     assert!(task_jh.await.is_ok());
 
     stop_tx.trigger();
-
-    assert!(aggregator_jh.await.unwrap().is_ok());
 }
 
 #[tokio::test]
@@ -428,7 +430,7 @@ async fn full_pipeline_multiple_observers() {
         make_node_logger(node_uri),
     );
 
-    let aggregator_jh = tokio::spawn(aggregator_task);
+    let _aggregator_jh = tokio::spawn(aggregator_task);
 
     let test_lanes = test_lanes
         .into_iter()
@@ -504,7 +506,7 @@ async fn full_pipeline_multiple_observers() {
 
     let task_jh = tokio::spawn(join3(uplink_task, lane_task, node_task));
 
-    let (_event_observer1, action_observer1) = aggregator.uplink_observer("test".to_string());
+    let observer1 = aggregator.uplink_observer("test".to_string());
 
     let first = WarpUplinkProfile {
         event_delta: 10,
@@ -512,12 +514,12 @@ async fn full_pipeline_multiple_observers() {
         ..Default::default()
     };
 
-    action_observer1.set_inner_values(first);
-    action_observer1.force_flush();
+    observer1.set_inner_values(first);
+    observer1.flush();
 
     sleep(sample_rate).await;
 
-    let (_event_observer2, action_observer2) = aggregator.uplink_observer("test".to_string());
+    let observer2 = aggregator.uplink_observer("test".to_string());
 
     let second = WarpUplinkProfile {
         event_delta: 5,
@@ -525,12 +527,10 @@ async fn full_pipeline_multiple_observers() {
         ..Default::default()
     };
 
-    action_observer2.set_inner_values(second);
-    action_observer2.force_flush();
+    observer2.set_inner_values(second);
+    observer2.flush();
 
     assert!(task_jh.await.is_ok());
 
     stop_tx.trigger();
-
-    assert!(aggregator_jh.await.unwrap().is_ok());
 }

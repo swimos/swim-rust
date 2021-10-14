@@ -12,16 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::request::Request;
-use crate::routing::remote::{RawRoute, RemoteRoutingRequest};
-use crate::routing::{BidirectionalRoute, RouterError};
-use crate::routing::{BidirectionalRouter, ResolutionError};
-use crate::routing::{Route, Router, RoutingAddr, TaggedSender};
+use crate::routing::error::RouterError;
+use crate::routing::remote::{RawRoute, RoutingRequest};
+use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedSender};
 use futures::future::BoxFuture;
 use futures::FutureExt;
+use swim_common::request::Request;
+use swim_common::routing::ResolutionError;
+use swim_utilities::routing::uri::RelativeUri;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
-use utilities::uri::RelativeUri;
 
 #[cfg(test)]
 mod tests;
@@ -29,17 +29,17 @@ mod tests;
 /// Router implementation that will route to running [`ConnectionTask`]s for remote addresses and
 /// will delegate to another router instance for local addresses.
 #[derive(Debug)]
-pub struct RemoteRouter<DelegateRouter> {
+pub struct RemoteRouter<Delegate> {
     tag: RoutingAddr,
-    delegate_router: DelegateRouter,
-    request_tx: mpsc::Sender<RemoteRoutingRequest>,
+    delegate_router: Delegate,
+    request_tx: mpsc::Sender<RoutingRequest>,
 }
 
-impl<DelegateRouter> RemoteRouter<DelegateRouter> {
+impl<Delegate> RemoteRouter<Delegate> {
     pub fn new(
         tag: RoutingAddr,
-        delegate_router: DelegateRouter,
-        request_tx: mpsc::Sender<RemoteRoutingRequest>,
+        delegate_router: Delegate,
+        request_tx: mpsc::Sender<RoutingRequest>,
     ) -> Self {
         RemoteRouter {
             tag,
@@ -49,7 +49,7 @@ impl<DelegateRouter> RemoteRouter<DelegateRouter> {
     }
 }
 
-impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
+impl<Delegate: ServerRouter> ServerRouter for RemoteRouter<Delegate> {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
@@ -63,7 +63,7 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
             if addr.is_remote() {
                 let (tx, rx) = oneshot::channel();
                 let request = Request::new(tx);
-                let routing_req = RemoteRoutingRequest::Endpoint { addr, request };
+                let routing_req = RoutingRequest::Endpoint { addr, request };
                 if request_tx.send(routing_req).await.is_err() {
                     Err(ResolutionError::router_dropped())
                 } else {
@@ -96,7 +96,7 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
             if let Some(url) = host {
                 let (tx, rx) = oneshot::channel();
                 let request = Request::new(tx);
-                let routing_req = RemoteRoutingRequest::ResolveUrl { host: url, request };
+                let routing_req = RoutingRequest::ResolveUrl { host: url, request };
                 if request_tx.send(routing_req).await.is_err() {
                     Err(RouterError::RouterDropped)
                 } else {
@@ -108,32 +108,6 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
                 }
             } else {
                 delegate_router.lookup(host, route).await
-            }
-        }
-        .boxed()
-    }
-}
-
-impl<DelegateRouter: Router> BidirectionalRouter for RemoteRouter<DelegateRouter> {
-    fn resolve_bidirectional(
-        &mut self,
-        host: Url,
-    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
-        let RemoteRouter { request_tx, .. } = self;
-        async move {
-            let (tx, rx) = oneshot::channel();
-            let routing_req = RemoteRoutingRequest::Bidirectional {
-                host: host.clone(),
-                request: Request::new(tx),
-            };
-            if request_tx.send(routing_req).await.is_err() {
-                Err(ResolutionError::router_dropped())
-            } else {
-                match rx.await {
-                    Ok(Ok(registrator)) => registrator.register().await,
-                    Ok(Err(_)) => Err(ResolutionError::unresolvable(host.to_string())),
-                    Err(_) => Err(ResolutionError::router_dropped()),
-                }
             }
         }
         .boxed()

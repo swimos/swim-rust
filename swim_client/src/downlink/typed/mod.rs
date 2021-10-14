@@ -16,10 +16,10 @@ use crate::downlink::model::map::{MapAction, ViewWithEvent};
 use crate::downlink::model::value::{Action, SharedValue, UpdateResult};
 use crate::downlink::{error::DownlinkError, error::UpdateFailure, Event, RawDownlink};
 use std::fmt::{Display, Formatter};
-use swim_common::form::{Form, ValidatedForm};
+use swim_common::form::{Form, ValueSchema};
 use swim_common::model::Value;
+use swim_utilities::sync::topic;
 use tokio::sync::oneshot;
-use utilities::sync::topic;
 
 pub mod command;
 pub mod event;
@@ -60,7 +60,7 @@ where
     }
 }
 
-async fn await_fallible<T: Form + ValidatedForm>(
+async fn await_fallible<T: Form + ValueSchema>(
     rx: oneshot::Receiver<Result<UpdateResult<SharedValue>, DownlinkError>>,
 ) -> Result<T, DownlinkError> {
     let value = rx
@@ -73,7 +73,7 @@ async fn await_fallible<T: Form + ValidatedForm>(
     })
 }
 
-async fn await_value<T: Form + ValidatedForm>(
+async fn await_value<T: Form + ValueSchema>(
     rx: oneshot::Receiver<Result<SharedValue, DownlinkError>>,
 ) -> Result<T, DownlinkError> {
     let value = rx.await.map_err(|_| DownlinkError::DroppedChannel)??;
@@ -83,14 +83,14 @@ async fn await_value<T: Form + ValidatedForm>(
     })
 }
 
-async fn await_optional<T: Form + ValidatedForm>(
+async fn await_optional<T: Form + ValueSchema>(
     rx: oneshot::Receiver<Result<Option<SharedValue>, DownlinkError>>,
 ) -> Result<Option<T>, DownlinkError> {
     let maybe_value = rx.await.map_err(|_| DownlinkError::DroppedChannel)??;
     match maybe_value {
         Some(value) => Form::try_from_value(value.as_ref())
             .map_err(|_| {
-                let schema = <T as ValidatedForm>::schema();
+                let schema = <T as ValueSchema>::schema();
                 DownlinkError::SchemaViolation((*value).clone(), schema)
             })
             .map(Some),

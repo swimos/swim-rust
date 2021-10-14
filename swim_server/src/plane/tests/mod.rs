@@ -13,29 +13,25 @@
 // limitations under the License.
 
 use crate::plane::lifecycle::PlaneLifecycle;
-use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
+use crate::plane::router::PlaneRouter;
 use crate::plane::spec::{PlaneSpec, RouteSpec};
+use crate::plane::store::mock::MockPlaneStore;
 use crate::plane::tests::fixture::{ReceiveAgentRoute, SendAgentRoute, TestLifecycle};
-use crate::plane::{AgentRoute, ContextImpl, EnvChannel, PlaneActiveRoutes, RouteResolver};
-use crate::routing::TopLevelServerRouterFactory;
+use crate::plane::{AgentRoute, EnvChannel};
+use crate::routing::{ServerRouter, TopLevelRouterFactory};
 use futures::future::join;
-use std::sync::Arc;
 use std::time::Duration;
-use swim_client::configuration::downlink::ConfigHierarchy;
-use swim_client::downlink::Downlinks;
-use swim_client::interface::{DownlinksContext, SwimClientBuilder};
-use swim_common::routing::Router;
 use swim_runtime::time::clock::Clock;
 use swim_runtime::time::timeout;
+use swim_utilities::future::open_ended::OpenEndedFutures;
+use swim_utilities::routing::route_pattern::RoutePattern;
+use swim_utilities::trigger;
 use tokio::sync::mpsc;
-use utilities::future::open_ended::OpenEndedFutures;
-use utilities::route_pattern::RoutePattern;
-use utilities::sync::{promise, trigger};
 
 mod fixture;
 
-fn make_spec<Clk: Clock, Delegate: Router + 'static>() -> (
-    PlaneSpec<Clk, EnvChannel, PlaneRouter<Delegate>>,
+fn make_spec<Clk: Clock, Delegate: ServerRouter + 'static>() -> (
+    PlaneSpec<Clk, EnvChannel, PlaneRouter<Delegate>, MockPlaneStore>,
     trigger::Receiver,
 ) {
     let send_pattern = RoutePattern::parse(
@@ -64,6 +60,7 @@ fn make_spec<Clk: Clock, Delegate: Router + 'static>() -> (
         PlaneSpec {
             routes: vec![sender, reciever],
             lifecycle: Some(lifecycle.boxed()),
+            store: MockPlaneStore,
         },
         rx,
     )
@@ -74,46 +71,20 @@ async fn plane_event_loop() {
     let (spec, done_rx) = make_spec();
     let (context_tx, context_rx) = mpsc::channel(8);
 
-    let (stop_tx, stop_rx) = promise::promise();
+    let (stop_tx, stop_rx) = trigger::trigger();
     let config = fixture::make_config();
 
     let (remote_tx, _remote_rx) = mpsc::channel(8);
-    let (client_tx, _client_rx) = mpsc::channel(8);
-    let top_level_router_fac =
-        TopLevelServerRouterFactory::new(context_tx.clone(), client_tx, remote_tx);
-
-    let context = ContextImpl::new(context_tx.clone(), spec.routes());
-
-    let PlaneSpec { routes, lifecycle } = spec;
-
-    let (_close_tx, close_rx) = promise::promise();
-    let (client_conn_request_tx, _client_conn_request_rx) = mpsc::channel(8);
-
-    let (downlinks, _downlinks_handle) = Downlinks::new(
-        client_conn_request_tx,
-        Arc::new(ConfigHierarchy::default()),
-        close_rx,
-    );
-
-    let client = DownlinksContext { downlinks };
-
-    let resolver = RouteResolver::new(
-        swim_runtime::time::clock::runtime_clock(),
-        client,
-        config,
-        routes,
-        PlaneRouterFactory::new(context_tx, top_level_router_fac.clone()),
-        stop_rx.clone(),
-        PlaneActiveRoutes::default(),
-    );
+    let top_level_router_fac = TopLevelRouterFactory::new(context_tx.clone(), remote_tx);
 
     let plane_task = super::run_plane(
-        resolver,
-        lifecycle,
-        context,
+        config,
+        swim_runtime::time::clock::runtime_clock(),
+        spec,
         stop_rx,
         OpenEndedFutures::new(),
-        context_rx,
+        (context_tx, context_rx),
+        top_level_router_fac,
     );
 
     let completion_task = async move {
@@ -123,9 +94,7 @@ async fn plane_event_loop() {
             Err(_) => panic!("Plane timeout out."),
             _ => {}
         }
-
-        let (result_tx, _result_rx) = mpsc::channel(8);
-        stop_tx.provide(result_tx).unwrap();
+        stop_tx.trigger();
     };
 
     join(plane_task, completion_task).await;

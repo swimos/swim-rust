@@ -21,11 +21,9 @@ use futures::future::BoxFuture;
 use futures::Stream;
 use std::collections::HashMap;
 use std::future::Future;
-use swim_client::interface::SwimClient;
-use swim_common::warp::path::Path;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger::Receiver;
 use tokio::time::Duration;
-use utilities::sync::trigger::Receiver;
-use utilities::uri::RelativeUri;
 
 struct TestModel;
 
@@ -42,10 +40,6 @@ struct TestAgent(TestModel);
 struct TestContext;
 
 impl AgentContext<TestAgent> for TestContext {
-    fn downlinks_context(&self) -> SwimClient<Path> {
-        unimplemented!()
-    }
-
     fn schedule<Effect, Str, Sch>(&self, _effects: Str, _schedule: Sch) -> BoxFuture<'_, ()>
     where
         Effect: Future<Output = ()> + Send + 'static,

@@ -1,0 +1,13 @@
+[package]
+name = "stringify_attr"
+version = "0.1.0"
+authors = ["Swim.AI developers info@swim.ai"]
+edition = "2018"
+
+[dependencies]
+attr_derive = { path = "attr_derive" }
+
+[dev-dependencies]
+trybuild = "1.0.48"
+serde = { version = "1.0.124", features = ["derive"] }
+serde_json = "1.0"

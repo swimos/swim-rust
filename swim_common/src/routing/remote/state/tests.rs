@@ -12,30 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::request::Request;
-use crate::routing::error::{ConnectionError, IoError};
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::state::{
     DeferredResult, Event, RemoteConnectionChannels, RemoteConnections, RemoteTasksState, State,
 };
-use crate::routing::remote::table::SchemeHostPort;
+use crate::routing::remote::table::HostAndPort;
 use crate::routing::remote::test_fixture::{
-    ErrorMode, FakeConnections, FakeListener, FakeSocket, FakeWebsocket, FakeWebsockets,
-    LocalRoutes,
+    FakeConnections, FakeListener, FakeSocket, FakeWebsocket, FakeWebsockets, LocalRoutes,
 };
-use crate::routing::remote::{ConnectionDropped, Scheme, SchemeSocketAddr};
-use crate::routing::{CloseSender, RoutingAddr};
+use crate::routing::remote::ConnectionDropped;
+use crate::routing::RoutingAddr;
 use futures::future::BoxFuture;
 use futures::io::ErrorKind;
 use std::collections::HashMap;
 use std::io;
+use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::time::Duration;
+use swim_common::request::Request;
+use swim_common::routing::{ConnectionError, IoError};
 use swim_runtime::time::timeout::timeout;
+use swim_utilities::future::open_ended::OpenEndedFutures;
+use swim_utilities::future::retryable::RetryStrategy;
+use swim_utilities::trigger;
 use tokio::sync::{mpsc, oneshot};
-use utilities::future::open_ended::OpenEndedFutures;
-use utilities::future::retryable::strategy::RetryStrategy;
-use utilities::sync::promise;
 
 type TestSpawner = OpenEndedFutures<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>>;
 type TestConnections<'a> =
@@ -45,13 +45,13 @@ struct TestFixture<'a> {
     connections: TestConnections<'a>,
     fake_connections: FakeConnections,
     local: LocalRoutes,
-    stop_trigger: CloseSender,
+    stop_trigger: trigger::Sender,
 }
 
 fn make_state(
     addr: RoutingAddr,
     ws: &FakeWebsockets,
-    incoming: mpsc::Receiver<io::Result<(FakeSocket, SchemeSocketAddr)>>,
+    incoming: mpsc::Receiver<io::Result<(FakeSocket, SocketAddr)>>,
 ) -> TestFixture<'_> {
     let buffer_size = NonZeroUsize::new(8).unwrap();
 
@@ -64,10 +64,10 @@ fn make_state(
         yield_after: NonZeroUsize::new(256).unwrap(),
     };
 
-    let fake_connections = FakeConnections::new(HashMap::new(), HashMap::new(), None, 0);
+    let fake_connections = FakeConnections::new(HashMap::new(), HashMap::new(), None);
     let router = LocalRoutes::new(addr);
 
-    let (stop_tx, stop_rx) = promise::promise();
+    let (stop_tx, stop_rx) = trigger::trigger();
     let (remote_tx, remote_rx) = mpsc::channel(8);
 
     let connections = RemoteConnections::new(
@@ -75,7 +75,7 @@ fn make_state(
         config,
         OpenEndedFutures::new(),
         fake_connections.clone(),
-        Some(FakeListener::new(incoming)),
+        FakeListener::new(incoming),
         router.clone(),
         RemoteConnectionChannels {
             request_tx: remote_tx,
@@ -131,8 +131,8 @@ fn connections_state_next_addr() {
     assert_ne!(addr1, addr2);
 }
 
-fn sock_addr() -> SchemeSocketAddr {
-    SchemeSocketAddr::new(Scheme::Ws, "192.168.0.1:80".parse().unwrap())
+fn sock_addr() -> SocketAddr {
+    "192.168.0.1:80".parse().unwrap()
 }
 
 #[tokio::test]
@@ -150,13 +150,13 @@ async fn connections_state_spawn_task() {
     let sa = sock_addr();
 
     let web_sock = FakeWebsocket::new(FakeSocket::trivial());
-    let host = SchemeHostPort::new(Scheme::Ws, "my_host".to_string(), 80);
+    let host = HostAndPort::new("my_host".to_string(), 80);
 
     let (req_tx, req_rx) = oneshot::channel();
 
     connections.pending.add(host.clone(), Request::new(req_tx));
 
-    connections.spawn_task(sa, web_sock, Some(host.clone()), true);
+    connections.spawn_task(sa, web_sock, Some(host.clone()));
 
     assert_eq!(connections.spawner.len(), 1);
     let table = &connections.table;
@@ -216,7 +216,7 @@ async fn connections_state_defer_connect_good() {
         stop_trigger: _stop_trigger,
     } = make_state(addr, &ws, incoming_rx);
 
-    let target = SchemeHostPort::new(Scheme::Ws, "my_host".to_string(), 80);
+    let target = HostAndPort::new("my_host".to_string(), 80);
     let sa = sock_addr();
     let socket = FakeSocket::trivial();
     fake_connections.add_dns(target.to_string(), sa);
@@ -251,7 +251,7 @@ async fn connections_state_defer_connect_failed() {
         stop_trigger: _stop_trigger,
     } = make_state(addr, &ws, incoming_rx);
 
-    let target = SchemeHostPort::new(Scheme::Ws, "my_host".to_string(), 80);
+    let target = HostAndPort::new("my_host".to_string(), 80);
     let sa = sock_addr();
 
     fake_connections.add_dns(target.to_string(), sa);
@@ -297,7 +297,7 @@ async fn connections_state_defer_dns_good() {
         stop_trigger: _stop_trigger,
     } = make_state(addr, &ws, incoming_rx);
 
-    let target = SchemeHostPort::new(Scheme::Ws, "my_host".to_string(), 80);
+    let target = HostAndPort::new("my_host".to_string(), 80);
     let sa = sock_addr();
     fake_connections.add_dns(target.to_string(), sa);
 
@@ -344,7 +344,7 @@ async fn connections_state_defer_dns_failed() {
         stop_trigger: _stop_trigger,
     } = make_state(addr, &ws, incoming_rx);
 
-    let target = SchemeHostPort::new(Scheme::Ws, "my_host".to_string(), 80);
+    let target = HostAndPort::new("my_host".to_string(), 80);
 
     let (req_tx, req_rx) = oneshot::channel();
 
@@ -389,7 +389,7 @@ async fn connections_failure_triggers_pending() {
         stop_trigger: _stop_trigger,
     } = make_state(addr, &ws, incoming_rx);
 
-    let target = SchemeHostPort::new(Scheme::Ws, "my_host".to_string(), 80);
+    let target = HostAndPort::new("my_host".to_string(), 80);
     let (req_tx, req_rx) = oneshot::channel();
     connections
         .pending
@@ -417,14 +417,14 @@ async fn connections_check_in_table_clears_pending() {
         stop_trigger: _stop_trigger,
     } = make_state(addr, &ws, incoming_rx);
 
-    let host1 = SchemeHostPort::new(Scheme::Ws, "my_host".to_string(), 80);
-    let host2 = SchemeHostPort::new(Scheme::Ws, "other_host".to_string(), 80);
+    let host1 = HostAndPort::new("my_host".to_string(), 80);
+    let host2 = HostAndPort::new("other_host".to_string(), 80);
     let (req_tx, req_rx) = oneshot::channel();
     let (task_tx, _task_rx) = mpsc::channel(8);
 
     connections.pending.add(host2.clone(), Request::new(req_tx));
 
-    let entry_addr = RoutingAddr::plane(5);
+    let entry_addr = RoutingAddr::local(5);
     let sa = sock_addr();
 
     connections
@@ -455,17 +455,15 @@ async fn connections_state_shutdown_process() {
 
     let sa = sock_addr();
 
-    let web_sock = FakeWebsocket::new(FakeSocket::new(vec![], false, None, ErrorMode::None));
-    let host1 = SchemeHostPort::new(Scheme::Ws, "my_host".to_string(), 80);
-    let host2 = SchemeHostPort::new(Scheme::Ws, "other".to_string(), 80);
+    let web_sock = FakeWebsocket::new(FakeSocket::new(vec![], 0, false));
+    let host1 = HostAndPort::new("my_host".to_string(), 80);
+    let host2 = HostAndPort::new("other".to_string(), 80);
 
     let (req_tx, _req_rx) = oneshot::channel();
 
-    connections.spawn_task(sa, web_sock, Some(host1.clone()), true);
+    connections.spawn_task(sa, web_sock, Some(host1.clone()));
     connections.defer_dns_lookup(host2.clone(), Request::new(req_tx));
-
-    let (result_tx, _result_rx) = mpsc::channel(8);
-    stop_trigger.provide(result_tx).unwrap();
+    stop_trigger.trigger();
 
     let first = timeout(Duration::from_secs(5), connections.select_next()).await;
     assert!(matches!(first, Ok(Some(_))));

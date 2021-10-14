@@ -20,40 +20,42 @@ use crate::agent::lane::channels::uplink::{
     PeelResult, UplinkAction, UplinkError, UplinkStateMachine,
 };
 use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, TaggedAction};
+use crate::agent::store::mock::MockNodeStore;
+use crate::agent::store::SwimNodeStore;
 use crate::agent::Eff;
 use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
+use crate::plane::store::mock::MockPlaneStore;
+use crate::routing::error::RouterError;
+use crate::routing::{
+    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
+};
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::iter;
 use futures::stream::{BoxStream, FusedStream};
 use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::collections::{HashMap, HashSet};
-use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_common::form::structural::read::ReadError;
 use swim_common::form::Form;
 use swim_common::model::Value;
-use swim_common::routing::error::ResolutionError;
-use swim_common::routing::error::RouterError;
-use swim_common::routing::error::RoutingError;
-use swim_common::routing::error::SendError;
-use swim_common::routing::{
-    BidirectionalRoute, ConnectionDropped, Origin, Route, Router, RoutingAddr, TaggedEnvelope,
-    TaggedSender,
-};
+use swim_common::routing::ResolutionError;
+use swim_common::routing::RoutingError;
+use swim_common::routing::SendError;
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::sync::topic;
+use swim_utilities::time::AtomicInstant;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Barrier};
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
-use utilities::instant::AtomicInstant;
-use utilities::sync::{promise, topic};
-use utilities::uri::RelativeUri;
 
 const INIT: i32 = 42;
 
@@ -63,11 +65,8 @@ struct Message(i32);
 //A minimal suite of fake uplink and router implementations which which to test the spawner.
 
 struct TestHandler(mpsc::Sender<i32>, i32);
-
 struct TestStateMachine(i32);
-
 struct TestUpdater(mpsc::Sender<i32>);
-
 struct TestRouter {
     sender: mpsc::Sender<TaggedEnvelope>,
     drop_rx: promise::Receiver<ConnectionDropped>,
@@ -94,7 +93,7 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
     }
 }
 
-impl Router for TestRouter {
+impl ServerRouter for TestRouter {
     fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         let TestRouter {
             sender, drop_rx, ..
@@ -104,14 +103,6 @@ impl Router for TestRouter {
             drop_rx.clone(),
         )))
         .boxed()
-    }
-
-    fn resolve_bidirectional(
-        &mut self,
-        host: Url,
-    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
-        //Todo dm
-        unimplemented!()
     }
 
     fn lookup(
@@ -315,7 +306,6 @@ struct TestContext {
     messages: mpsc::Sender<TaggedEnvelope>,
     _drop_tx: promise::Sender<ConnectionDropped>,
     drop_rx: promise::Receiver<ConnectionDropped>,
-    uri: RelativeUri,
     uplinks_idle_since: Arc<AtomicInstant>,
 }
 
@@ -327,14 +317,14 @@ impl TestContext {
             messages,
             _drop_tx: drop_tx,
             drop_rx,
-            uri: RelativeUri::try_from("/mock/router".to_string()).unwrap(),
-            uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now())),
+            uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
         }
     }
 }
 
 impl AgentExecutionContext for TestContext {
     type Router = TestRouter;
+    type Store = SwimNodeStore<MockPlaneStore>;
 
     fn router_handle(&self) -> Self::Router {
         let TestContext {
@@ -350,16 +340,16 @@ impl AgentExecutionContext for TestContext {
         self.spawner.clone()
     }
 
-    fn uri(&self) -> &RelativeUri {
-        &self.uri
-    }
-
     fn metrics(&self) -> NodeMetricAggregator {
         aggregator_sink()
     }
 
     fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
         &self.uplinks_idle_since
+    }
+
+    fn store(&self) -> Self::Store {
+        MockNodeStore::mock()
     }
 }
 
@@ -387,10 +377,9 @@ fn make_test_harness() -> (
     let channels = UplinkChannels::new(rx_event.subscriber(), rx_act, error_tx);
 
     let context = TestContext::new(spawn_tx, tx_router);
-    let (_event_observer, action_observer) =
-        context.metrics().uplink_observer_for_path(route().clone());
+    let observer = context.metrics().uplink_observer_for_path(route().clone());
 
-    let spawner_task = factory.make_task(handler, channels, route(), &context, action_observer);
+    let spawner_task = factory.make_task(handler, channels, route(), &context, observer);
 
     let errs = join3(spawn_task, spawner_task, error_task)
         .map(|(_, _, errs)| errs)
