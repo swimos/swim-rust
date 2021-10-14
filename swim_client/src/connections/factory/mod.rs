@@ -12,22 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
+
+use swim_runtime::ws::Protocol;
+
 #[cfg(test)]
 mod tests;
 
 pub mod stream;
-pub mod tungstenite;
+mod swim_ratchet;
+
+#[derive(Clone)]
+pub struct HostConfig {
+    pub protocol: Protocol,
+    pub compression_level: WsCompression,
+}
 
 pub mod async_factory {
     use futures::{Future, Sink, Stream};
     use tokio::sync::{mpsc, oneshot};
 
-    use swim_utilities::future::request::Request;
-
-    use crate::connections::factory::tungstenite::HostConfig;
     use swim_async_runtime::task::{spawn, TaskHandle};
     use swim_runtime::error::ConnectionError;
-    use swim_runtime::ws::WsMessage;
+    use swim_runtime::ws::Message;
+    use swim_utilities::future::request::Request;
+
+    use crate::connections::factory::HostConfig;
 
     /// A request for a new connection.
     pub struct ConnReq<Snk, Str> {

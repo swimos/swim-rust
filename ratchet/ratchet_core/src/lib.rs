@@ -45,12 +45,12 @@ pub use split::{Receiver, ReuniteError, Sender};
 
 pub use builder::{WebSocketClientBuilder, WebSocketServerBuilder};
 pub use errors::*;
-pub use ext::{NoExt, NoExtDecoder, NoExtEncoder, NoExtProvider};
+pub use ext::{NegotiatedExtension, NoExt, NoExtDecoder, NoExtEncoder, NoExtProvider};
 pub use handshake::{
     accept, accept_with, subscribe, subscribe_with, ProtocolRegistry, TryIntoRequest,
     UpgradedClient, UpgradedServer, WebSocketResponse, WebSocketUpgrader,
 };
-pub use protocol::{CloseReason, Message, PayloadType, Role, WebSocketConfig};
+pub use protocol::{CloseCode, CloseReason, Message, PayloadType, Role, WebSocketConfig};
 pub use ws::WebSocket;
 
 use tokio::io::{AsyncRead, AsyncWrite};

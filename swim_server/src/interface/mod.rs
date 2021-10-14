@@ -30,6 +30,7 @@ use crate::store::{default_keyspaces, RocksDatabase};
 use crate::store::{ServerStore, SwimStore};
 use either::Either;
 use futures::{io, join};
+use ratchet::{NoExtProvider, ProtocolRegistry, WebSocketConfig};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
@@ -37,12 +38,11 @@ use std::sync::Arc;
 use store::StoreError;
 use swim_async_runtime::task::TaskError;
 use swim_async_runtime::time::clock::RuntimeClock;
-use swim_runtime::ws::tungstenite::TungsteniteWsConnections;
+use swim_runtime::ws::ext::RatchetNetworking;
 use swim_utilities::future::open_ended::OpenEndedFutures;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
-use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 
 /// Builder to create Swim server instance.
 ///
@@ -324,8 +324,10 @@ impl SwimServer {
             conn_config,
             TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
             address,
-            TungsteniteWsConnections {
+            RatchetNetworking {
                 config: websocket_config,
+                provider: NoExtProvider,
+                subprotocols: ProtocolRegistry::new(vec!["warp"]).unwrap(),
             },
             top_level_router_fac,
             OpenEndedFutures::new(),

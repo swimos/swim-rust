@@ -18,7 +18,6 @@
 use crate::configuration::downlink::Config;
 use crate::configuration::downlink::ConfigHierarchy;
 use crate::configuration::downlink::ConfigParseError;
-use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::SwimConnPool;
 use crate::downlink::error::{DownlinkError, SubscriptionError};
 use crate::downlink::typed::command::TypedCommandDownlink;

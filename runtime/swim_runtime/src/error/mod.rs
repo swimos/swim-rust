@@ -43,7 +43,6 @@ use swim_utilities::errors::Recoverable;
 pub type FmtResult = std::fmt::Result;
 
 use std::time::Duration;
-use {std::ops::Deref, tokio_tungstenite::tungstenite};
 
 #[cfg(test)]
 mod tests;
@@ -117,73 +116,6 @@ impl Display for ConnectionError {
                 "Writing to the connection failed to complete within {:?}.",
                 dur
             ),
-        }
-    }
-}
-
-pub type TError = tungstenite::error::Error;
-
-#[derive(Debug)]
-pub struct TungsteniteError(pub tungstenite::error::Error);
-
-impl Deref for TungsteniteError {
-    type Target = TError;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl From<TungsteniteError> for ConnectionError {
-    fn from(e: TungsteniteError) -> Self {
-        match e.0 {
-            TError::ConnectionClosed => {
-                ConnectionError::Closed(CloseError::new(CloseErrorKind::Normal, None))
-            }
-            TError::AlreadyClosed => {
-                ConnectionError::Closed(CloseError::new(CloseErrorKind::AlreadyClosed, None))
-            }
-            TError::Io(e) => {
-                ConnectionError::Io(IoError::new(e.kind(), e.source().map(ToString::to_string)))
-            }
-            #[cfg(feature = "tls")]
-            TError::Tls(e) => ConnectionError::Tls(e.into()),
-            TError::Capacity(e) => ConnectionError::Capacity(CapacityError::new(
-                CapacityErrorKind::Ambiguous,
-                Some(e.to_string()),
-            )),
-            TError::Protocol(e) => ConnectionError::Protocol(ProtocolError::new(
-                ProtocolErrorKind::WebSocket,
-                Some(e.to_string()),
-            )),
-            TError::SendQueueFull(e) => {
-                ConnectionError::Capacity(CapacityError::new(CapacityErrorKind::Full(e), None))
-            }
-            TError::Utf8 => {
-                ConnectionError::Encoding(EncodingError::new(EncodingErrorKind::Invalid, None))
-            }
-            TError::Url(e) => ConnectionError::Http(HttpError::new(
-                HttpErrorKind::InvalidUri(InvalidUriError::new(
-                    InvalidUriErrorKind::Malformatted,
-                    Some(e.to_string()),
-                )),
-                None,
-            )),
-            TError::Http(e) => ConnectionError::Http(HttpError::new(
-                HttpErrorKind::StatusCode(Some(e.status())),
-                None,
-            )),
-            TError::HttpFormat(e) => ConnectionError::Http(HttpError::new(
-                HttpErrorKind::InvalidUri(InvalidUriError::new(
-                    InvalidUriErrorKind::Malformatted,
-                    Some(e.to_string()),
-                )),
-                None,
-            )),
-            TError::ExtensionError(_) => {
-                // todo: remove once deflate PR has bene merged
-                unreachable!()
-            }
         }
     }
 }

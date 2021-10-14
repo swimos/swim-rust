@@ -26,6 +26,7 @@ use futures::task::{AtomicWaker, Context, Poll};
 use futures::{FutureExt, Sink, Stream, StreamExt};
 use http::StatusCode;
 use parking_lot::Mutex;
+use ratchet::{NoExt, WebSocket};
 use std::collections::HashMap;
 use std::io;
 use std::net::SocketAddr;
@@ -34,7 +35,7 @@ use std::sync::Arc;
 use swim_runtime::error::{
     CloseError, ConnectionError, HttpError, HttpErrorKind, ResolutionError, ResolutionErrorKind,
 };
-use swim_runtime::ws::{CloseReason, JoinedStreamSink, WsConnections, WsMessage};
+use swim_runtime::ws::{WsConnections, WsMessage};
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
@@ -194,12 +195,9 @@ impl ServerRouterFactory for LocalRoutes {
 pub mod fake_channel {
 
     use futures::channel::mpsc;
-    use futures::future::ready;
-    use futures::future::BoxFuture;
-    use futures::{ready, FutureExt, Sink, SinkExt, Stream, StreamExt};
+    use futures::{ready, Sink, SinkExt, Stream, StreamExt};
     use std::pin::Pin;
     use std::task::{Context, Poll};
-    use swim_runtime::ws::{CloseReason, JoinedStreamSink};
 
     pub struct TwoWayMpsc<T, E> {
         tx: mpsc::Sender<T>,
@@ -264,19 +262,6 @@ pub mod fake_channel {
 
         fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
             self.get_mut().rx.poll_next_unpin(cx)
-        }
-    }
-
-    impl<T, E> JoinedStreamSink<T, E> for TwoWayMpsc<T, E>
-    where
-        T: Send + Sync + 'static,
-        E: Send + Sync + 'static,
-        E: From<mpsc::SendError>,
-    {
-        type CloseFut = BoxFuture<'static, Result<(), E>>;
-
-        fn close(self, _reason: Option<CloseReason>) -> Self::CloseFut {
-            ready(Ok(())).boxed()
         }
     }
 }
@@ -421,15 +406,47 @@ impl Listener for FakeListener {
 pub(crate) struct FakeWebsockets;
 
 impl WsConnections<FakeSocket> for FakeWebsockets {
-    type StreamSink = FakeWebsocket;
-    type Fut = BoxFuture<'static, Result<Self::StreamSink, ConnectionError>>;
+    type Ext = NoExt;
+    type Error = FakeErr;
 
-    fn open_connection(&self, socket: FakeSocket, _host: String) -> Self::Fut {
-        ready(Ok(FakeWebsocket::new(socket))).boxed()
+    fn open_connection(
+        &self,
+        socket: FakeSocket,
+        _host: String,
+    ) -> BoxFuture<Result<WebSocket<FakeSocket, Self::Ext>, Self::Error>> {
+        unimplemented!()
+        // let ws = WebSocket::from_upgraded(
+        //     WebSocketConfig::default(),
+        //     socket,
+        //     NegotiatedExtension::from(Some(NoExt)),
+        //     BytesMut::default(),
+        //     Role::Client,
+        // );
+        //
+        // ready(Ok(ws)).boxed()
     }
 
-    fn accept_connection(&self, socket: FakeSocket) -> Self::Fut {
-        ready(Ok(FakeWebsocket::new(socket))).boxed()
+    fn accept_connection(
+        &self,
+        socket: FakeSocket,
+    ) -> BoxFuture<Result<WebSocket<FakeSocket, Self::Ext>, Self::Error>> {
+        unimplemented!()
+        // let ws = WebSocket::from_upgraded(
+        //     WebSocketConfig::default(),
+        //     socket,
+        //     NegotiatedExtension::from(Some(NoExt)),
+        //     BytesMut::default(),
+        //     Role::Server,
+        // );
+        //
+        // ready(Ok(ws)).boxed()
+    }
+}
+
+pub struct FakeErr;
+impl From<FakeErr> for ConnectionError {
+    fn from(_: FakeErr) -> Self {
+        panic!("Unexpected error")
     }
 }
 
@@ -514,16 +531,5 @@ impl Sink<WsMessage> for FakeWebsocket {
         *closed = true;
         waker.wake();
         Poll::Ready(Ok(()))
-    }
-}
-
-impl JoinedStreamSink<WsMessage, ConnectionError> for FakeWebsocket {
-    type CloseFut = BoxFuture<'static, Result<(), ConnectionError>>;
-
-    fn close(self, _reason: Option<CloseReason>) -> Self::CloseFut {
-        let FakeWebsocket { waker, .. } = self;
-
-        waker.wake();
-        ready(Ok(())).boxed()
     }
 }

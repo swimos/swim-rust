@@ -17,17 +17,7 @@ tracing = { version = "0.1.13", features = ["max_level_debug"] }
 tracing = "0.1.16"
 
 [dependencies]
-either = "1.5.3"
-futures = "0.3.4"
-futures-util = "0.3.4"
-http = "0.2.3"
-im = "15.0.0"
-parking_lot = "0.11.0"
-pin-project = "1.0.5"
-pin-utils = "0.1.0"
-tokio = { version = "1.1.1", features = ["rt", "net"] }
-tokio-stream = { version = "0.1.2", features = ["sync"] }
-url = "2.1.1"
+ratchet = {  path = "../ratchet", features = ["deflate", "split"] }
 swim_runtime = { path = "../runtime/swim_runtime", features = ["tls"] }
 swim_model = { path = "../api/swim_model" }
 swim_form = { path = "../api/swim_form" }
@@ -39,10 +29,22 @@ swim_tracing = { path = "../swim_utilities/swim_tracing", features = ["future"] 
 stringify_attr = { path = "../macro_utilities/stringify_attr" }
 swim_async_runtime = { path = "../runtime/swim_async_runtime" }
 stm = { path = "../stm" }
-tracing-futures = "0.2.4"
 agent_derive = { path = "agent_derive" }
+
+bytes = "1.0"
+either = "1.5.3"
+futures = "0.3.4"
+futures-util = "0.3.4"
+http = "0.2.3"
+im = "15.0.0"
+parking_lot = "0.11.0"
+pin-project = "1.0.5"
+pin-utils = "0.1.0"
+tokio = { version = "1.1.1", features = ["rt", "net"] }
+tokio-stream = { version = "0.1.2", features = ["sync"] }
+url = "2.1.1"
+tracing-futures = "0.2.4"
 trybuild = "1.0.48"
-tokio-tungstenite = { version = "0.13.0", git = "https://github.com/swimos/tokio-tungstenite/", branch = "deflate-v13", features = ["tls", "deflate"] }
 tokio-native-tls = "0.3"
 trust-dns-resolver = { version = "0.20", optional = true, features = ["tokio-runtime"] }
 auth = { path = "auth" }

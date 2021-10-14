@@ -1,42 +1,62 @@
 use bytes::{Bytes, BytesMut};
-use ratchet::{CloseReason, Error, ExtensionDecoder, Message as MessageType, WebSocketStream};
+use futures::stream::unfold;
+use futures::Stream;
+pub use ratchet::Message as WsMessageType;
+use ratchet::{CloseReason, Error, ExtensionDecoder, WebSocketStream};
+use std::borrow::Cow;
 
-pub struct Message {
+#[derive(Debug, Clone, PartialEq)]
+pub struct WsMessage {
     pub payload: Bytes,
-    pub kind: MessageType,
+    pub kind: WsMessageType,
 }
 
-impl Message {
-    /// Attempt to convert this message into a valid UTF-8 String. If this message is not text or it
-    /// contains invalid UTF-8 then the original message is returned.
-    pub fn try_into_text(self) -> Result<String, Message> {
-        let Message { payload, kind } = self;
-        match kind {
-            MessageType::Text => match String::from_utf8(payload.to_vec()) {
-                Ok(string) => Ok(string),
-                Err(_) => Err(Message { payload, kind }),
-            },
-            kind => Err(Message { payload, kind }),
+impl WsMessage {
+    pub fn new(payload: Bytes, kind: WsMessageType) -> WsMessage {
+        WsMessage { payload, kind }
+    }
+
+    pub fn text<A>(a: A) -> WsMessage
+    where
+        A: Into<Cow<'static, str>>,
+    {
+        let str = a.into().to_string();
+        WsMessage {
+            payload: Bytes::from(str),
+            kind: WsMessageType::Text,
         }
     }
 
-    /// Attempt to convert this message into a its binary contents if it is of `MessageType::Binary`.
-    /// If this message is not binary then the original message is returned.
-    pub fn try_into_binary(self) -> Result<Bytes, Message> {
-        let Message { payload, kind } = self;
+    /// Attempt to convert this message into a valid UTF-8 String. If this message is not text or it
+    /// contains invalid UTF-8 then the original message is returned.
+    pub fn try_into_text(self) -> Result<String, WsMessage> {
+        let WsMessage { payload, kind } = self;
         match kind {
-            MessageType::Binary => Ok(payload),
-            kind => Err(Message { payload, kind }),
+            WsMessageType::Text => match String::from_utf8(payload.to_vec()) {
+                Ok(string) => Ok(string),
+                Err(_) => Err(WsMessage { payload, kind }),
+            },
+            kind => Err(WsMessage { payload, kind }),
+        }
+    }
+
+    /// Attempt to convert this message into a its binary contents if it is of `WsMessageType::Binary`.
+    /// If this message is not binary then the original message is returned.
+    pub fn try_into_binary(self) -> Result<Bytes, WsMessage> {
+        let WsMessage { payload, kind } = self;
+        match kind {
+            WsMessageType::Binary => Ok(payload),
+            kind => Err(WsMessage { payload, kind }),
         }
     }
 
     /// Attempt to convert this message into an optional close reason if it is of
-    /// `MessageType::Close`. If this is not a close reason then the original message is returned.
-    pub fn try_into_close(self) -> Result<Option<CloseReason>, Message> {
-        let Message { payload, kind } = self;
+    /// `WsMessageType::Close`. If this is not a close reason then the original message is returned.
+    pub fn try_into_close(self) -> Result<Option<CloseReason>, WsMessage> {
+        let WsMessage { payload, kind } = self;
         match kind {
-            MessageType::Close(reason) => Ok(reason),
-            kind => Err(Message { payload, kind }),
+            WsMessageType::Close(reason) => Ok(reason),
+            kind => Err(WsMessage { payload, kind }),
         }
     }
 }
@@ -58,26 +78,42 @@ where
         }
     }
 
-    pub async fn read(&mut self) -> Result<Message, Error> {
+    pub async fn read(&mut self) -> Result<WsMessage, Error> {
         let Receiver { inner, buf } = self;
 
         match inner.read(buf).await? {
-            MessageType::Text => Ok(Message {
+            WsMessageType::Text => Ok(WsMessage {
                 payload: buf.split().freeze(),
-                kind: MessageType::Text,
+                kind: WsMessageType::Text,
             }),
-            MessageType::Binary => Ok(Message {
+            WsMessageType::Binary => Ok(WsMessage {
                 payload: buf.split().freeze(),
-                kind: MessageType::Text,
+                kind: WsMessageType::Text,
             }),
-            t @ MessageType::Ping | t @ MessageType::Pong => Ok(Message {
+            t @ WsMessageType::Ping | t @ WsMessageType::Pong => Ok(WsMessage {
                 payload: Bytes::default(),
                 kind: t,
             }),
-            MessageType::Close(reason) => Ok(Message {
+            WsMessageType::Close(reason) => Ok(WsMessage {
                 payload: Bytes::default(),
-                kind: MessageType::Close(reason),
+                kind: WsMessageType::Close(reason),
             }),
         }
     }
+}
+
+pub fn into_stream<S, E>(
+    rx: ratchet::Receiver<S, E>,
+) -> impl Stream<Item = Result<WsMessage, Error>>
+where
+    S: WebSocketStream,
+    E: ExtensionDecoder,
+{
+    unfold(Receiver::new(rx), |mut rx| async move {
+        // todo: this should terminate after an error
+        match rx.read().await {
+            Ok(item) => Some((Ok(item), rx)),
+            Err(e) => Some((Err(e), rx)),
+        }
+    })
 }

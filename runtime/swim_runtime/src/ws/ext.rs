@@ -1,19 +1,19 @@
 use crate::ws::WsConnections;
 use futures::future::BoxFuture;
-use ratchet::{Error, ExtensionProvider, ProtocolRegistry, WebSocket};
+use ratchet::{Error, ExtensionProvider, ProtocolRegistry, SplittableExtension, WebSocket};
 use tokio::io::{AsyncRead, AsyncWrite};
 
 pub struct RatchetNetworking<E> {
-    config: ratchet::WebSocketConfig,
-    provider: E,
-    subprotocols: ProtocolRegistry,
+    pub config: ratchet::WebSocketConfig,
+    pub provider: E,
+    pub subprotocols: ProtocolRegistry,
 }
 
 impl<'c, Socket, E> WsConnections<Socket> for RatchetNetworking<E>
 where
     Socket: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     E: ExtensionProvider + Send + Sync,
-    E::Extension: Send + Sync,
+    E::Extension: SplittableExtension + Send + Sync + 'static,
 {
     type Ext = E::Extension;
     type Error = Error;

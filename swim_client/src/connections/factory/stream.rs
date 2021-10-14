@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::connections::factory::tungstenite::MaybeTlsStream;
 use http::Request;
 use swim_runtime::error::{ConnectionError, InvalidUriError, InvalidUriErrorKind};
 use swim_runtime::ws::tls::connect_tls;
-use swim_runtime::ws::Protocol;
+use swim_runtime::ws::{Protocol, StreamSwitcher};
 use swim_utilities::future::TransformMut;
 use tokio::net::TcpStream;
+use tokio_native_tls::TlsStream;
+use tokio_tungstenite::MaybeTlsStream;
 
 pub fn get_stream_type<T>(
     request: &Request<T>,
@@ -49,7 +50,7 @@ pub fn get_stream_type<T>(
 pub async fn build_stream(
     host: &str,
     stream_type: Protocol,
-) -> Result<MaybeTlsStream<TcpStream>, ConnectionError> {
+) -> Result<StreamSwitcher<TcpStream, TlsStream<TcpStream>>, ConnectionError> {
     let socket = TcpStream::connect(host)
         .await
         .map_err(|e| ConnectionError::Io(e.into()))?;

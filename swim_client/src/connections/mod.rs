@@ -30,6 +30,12 @@ use tokio::sync::oneshot;
 use tracing::{instrument, trace};
 use url::Host;
 
+use swim_async_runtime::task::*;
+use swim_async_runtime::time::instant::Instant;
+use swim_async_runtime::time::interval::interval;
+use swim_runtime::error::{CloseError, ConnectionError, ResolutionError, ResolutionErrorKind};
+use tokio_stream::wrappers::ReceiverStream;
+
 use crate::configuration::router::ConnectionPoolParams;
 
 pub mod factory;
@@ -456,13 +462,6 @@ impl SwimConnection {
         })
     }
 }
-
-use swim_async_runtime::task::*;
-use swim_async_runtime::time::instant::Instant;
-use swim_async_runtime::time::interval::interval;
-use swim_runtime::error::{CloseError, ConnectionError, ResolutionError, ResolutionErrorKind};
-use swim_runtime::ws::{WebsocketFactory, WsMessage};
-use tokio_stream::wrappers::ReceiverStream;
 
 pub type ConnectionChannel = (ConnectionSender, Option<ConnectionReceiver>);
 

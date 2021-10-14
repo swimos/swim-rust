@@ -254,9 +254,9 @@ pub trait ExtensionDecoder {
 /// for a WebSocket to be split into its sender and receiver halves.
 pub trait SplittableExtension: Extension {
     /// The type of the encoder.
-    type SplitEncoder: ExtensionEncoder;
+    type SplitEncoder: ExtensionEncoder + Send + Sync + 'static;
     /// The type of the decoder.
-    type SplitDecoder: ExtensionDecoder;
+    type SplitDecoder: ExtensionDecoder + Send + Sync + 'static;
 
     /// Split this extension into its encoder and decoder halves.
     fn split(self) -> (Self::SplitEncoder, Self::SplitDecoder);

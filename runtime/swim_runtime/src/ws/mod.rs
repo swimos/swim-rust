@@ -1,27 +1,37 @@
-pub mod ext;
-pub mod swim_ratchet;
-pub mod utils;
-
-#[cfg(feature = "tls")]
-pub mod tls;
+use std::fmt::{Debug, Formatter};
 
 use futures::future::BoxFuture;
-use ratchet::{Extension, WebSocket};
-use std::error::Error;
+use tokio::net::TcpStream;
+use tokio_native_tls::TlsStream;
 
-use std::fmt::{Debug, Formatter};
+use ratchet::{NoExt, SplittableExtension, WebSocket};
+pub use swim_ratchet::*;
+pub use switcher::StreamSwitcher;
 #[cfg(feature = "tls")]
 use {
     crate::error::TlsError, crate::ws::tls::build_x509_certificate, std::fmt, std::path::Path,
     tokio_native_tls::native_tls::Certificate,
 };
 
+use crate::error::ConnectionError;
+
+pub mod ext;
+mod swim_ratchet;
+pub mod utils;
+
+mod switcher;
+
+#[cfg(feature = "tls")]
+pub mod tls;
+
+pub type WebSocketDef = WebSocket<StreamSwitcher<TcpStream, TlsStream<TcpStream>>, NoExt>;
+
 pub trait WsConnections<Socket>
 where
     Socket: Send + Sync + Unpin,
 {
-    type Ext: Extension;
-    type Error: Error;
+    type Ext: SplittableExtension + Send + 'static;
+    type Error: Into<ConnectionError>;
 
     /// Negotiate a new client connection.
     fn open_connection(
@@ -35,6 +45,13 @@ where
         &self,
         socket: Socket,
     ) -> BoxFuture<Result<WebSocket<Socket, Self::Ext>, Self::Error>>;
+}
+
+/// Trait for factories that asynchronously create web socket connections. This exists primarily
+/// to allow for alternative implementations to be provided during testing.
+pub trait WebsocketFactory: Send + Sync {
+    /// Open a connection to the provided remote URL.
+    fn connect(&mut self, url: url::Url) -> BoxFuture<Result<WebSocketDef, ConnectionError>>;
 }
 
 #[derive(Clone)]

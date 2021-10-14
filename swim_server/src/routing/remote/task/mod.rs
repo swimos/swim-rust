@@ -22,9 +22,11 @@ use crate::routing::remote::RoutingRequest;
 use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope,
 };
-use futures::future::{join, BoxFuture};
-use futures::{select_biased, stream, FutureExt, Sink, Stream, StreamExt};
+use futures::future::BoxFuture;
+use futures::select_biased;
+use futures::{FutureExt, StreamExt};
 use pin_utils::pin_mut;
+use ratchet::{CloseCode, CloseReason, SplittableExtension, WebSocket, WebSocketStream};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -36,11 +38,10 @@ use std::time::Duration;
 use swim_model::path::RelativePath;
 use swim_recon::parser::{parse_value, ParseError};
 use swim_runtime::error::{
-    CloseError, CloseErrorKind, ConnectionError, ProtocolError, ProtocolErrorKind, ResolutionError,
-    ResolutionErrorKind,
+    CloseError, CloseErrorKind, ConnectionError, EncodingError, ProtocolError, ProtocolErrorKind,
+    ResolutionError, ResolutionErrorKind,
 };
-use swim_runtime::ws::selector::{SelectorResult, WsStreamSelector};
-use swim_runtime::ws::{CloseCode, CloseReason, JoinedStreamSink, WsMessage};
+use swim_runtime::ws::{into_stream, WsMessage, WsMessageType};
 use swim_utilities::errors::Recoverable;
 use swim_utilities::future::retryable::RetryStrategy;
 use swim_utilities::future::task::Spawner;
@@ -52,17 +53,19 @@ use tokio::time::{sleep, Instant};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, Level};
 
+const ZERO: Duration = Duration::from_secs(0);
+const IGNORING_MESSAGE: &str = "Ignoring unexpected message.";
+const ERROR_ON_CLOSE: &str = "Error whilst closing connection.";
+
 /// A task that manages reading from and writing to a web-sockets channel.
-pub struct ConnectionTask<Str, Router> {
-    ws_stream: Str,
+pub struct ConnectionTask<Sock, Ext, Router> {
+    ws_stream: WebSocket<Sock, Ext>,
     messages: mpsc::Receiver<TaggedEnvelope>,
     message_injector: mpsc::Sender<TaggedEnvelope>,
     router: Router,
     stop_signal: trigger::Receiver,
     config: ConnectionConfig,
 }
-
-const ZERO: Duration = Duration::from_secs(0);
 
 /// Possible ways in which the task can end.
 #[derive(Debug)]
@@ -91,12 +94,15 @@ impl From<EnvelopeParseErr> for Completion {
     }
 }
 
-const IGNORING_MESSAGE: &str = "Ignoring unexpected message.";
-const ERROR_ON_CLOSE: &str = "Error whilst closing connection.";
+enum WsEvent {
+    Read(Result<WsMessage, ratchet::Error>),
+    Write(TaggedEnvelope),
+}
 
-impl<Str, Router> ConnectionTask<Str, Router>
+impl<Sock, Ext, Router> ConnectionTask<Sock, Ext, Router>
 where
-    Str: JoinedStreamSink<WsMessage, ConnectionError> + Unpin,
+    Sock: WebSocketStream,
+    Ext: SplittableExtension,
     Router: ServerRouter,
 {
     /// Create a new task.
@@ -111,7 +117,7 @@ where
     /// * `config` - Configuration for the connectino task.
     /// runtime.
     pub fn new(
-        ws_stream: Str,
+        ws_stream: WebSocket<Sock, Ext>,
         router: Router,
         messages: mpsc::Receiver<TaggedEnvelope>,
         message_injector: mpsc::Sender<TaggedEnvelope>,
@@ -131,7 +137,7 @@ where
 
     pub async fn run(self) -> ConnectionDropped {
         let ConnectionTask {
-            mut ws_stream,
+            ws_stream,
             messages,
             message_injector,
             mut router,
@@ -139,14 +145,15 @@ where
             config,
         } = self;
 
-        let outgoing_payloads = ReceiverStream::new(messages).map(Into::into);
+        let mut outgoing_payloads = ReceiverStream::new(messages).fuse();
 
-        let mut selector = WsStreamSelector::new(
-            &mut ws_stream,
-            outgoing_payloads,
-            config.write_timeout,
-            |dur| ConnectionError::WriteTimeout(*dur),
-        );
+        let (mut ws_tx, ws_rx) = match ws_stream.split() {
+            Ok((tx, rx)) => (tx, rx),
+            Err(_) => return ConnectionDropped::Closed,
+        };
+
+        let envelopes = into_stream(ws_rx).fuse();
+        pin_mut!(envelopes);
 
         let mut stop_fused = stop_signal.fuse();
         let timeout = sleep(config.activity_timeout);
@@ -162,65 +169,67 @@ where
                     .checked_add(config.activity_timeout)
                     .expect("Timer overflow."),
             );
-            let next: Option<Result<SelectorResult<WsMessage>, ConnectionError>> = select_biased! {
+            let next: Option<WsEvent> = select_biased! {
                 _ = stop_fused => {
                     break Completion::StoppedLocally;
                 },
                 _ = (&mut timeout).fuse() => {
                     break Completion::TimedOut;
                 }
-                event = selector.select_rw() => event,
+                envelope = envelopes.next() => envelope.map(WsEvent::Read),
+                payload  = outgoing_payloads.next() => payload.map(WsEvent::Write)
             };
 
             if let Some(event) = next {
-                // disable the linter here as there are to-dos
-                #[allow(clippy::collapsible_if)]
                 match event {
-                    Ok(SelectorResult::Read(msg)) => match msg {
-                        WsMessage::Text(msg) => match read_envelope(&msg) {
-                            Ok(envelope) => {
-                                let (done_tx, done_rx) = trigger::trigger();
+                    WsEvent::Read(msg) => match msg {
+                        Ok(msg) => match &msg.kind {
+                            WsMessageType::Text => {
+                                let message = match msg.try_into_text() {
+                                    Ok(message) => message,
+                                    Err(_) => {
+                                        // Todo this should be avoided by Ratchet only returning valid UTF-8
+                                        break Completion::Failed(ConnectionError::Encoding(
+                                            EncodingError::invalid(),
+                                        ));
+                                    }
+                                };
 
-                                let dispatch_task = async {
-                                    let dispatch_result = dispatch_envelope(
-                                        &mut router,
-                                        &mut resolved,
-                                        envelope,
-                                        config.connection_retries,
-                                        sleep,
-                                    )
-                                    .await;
-                                    if let Err((env, _)) = dispatch_result {
-                                        handle_not_found(env, &message_injector).await;
+                                match read_envelope(&message) {
+                                    Ok(envelope) => {
+                                        let dispatch_result = dispatch_envelope(
+                                            &mut router,
+                                            &mut resolved,
+                                            envelope,
+                                            config.connection_retries,
+                                            sleep,
+                                        )
+                                        .await;
+
+                                        // Todo add router to ratchet's upgrade function to avoid this
+                                        if let Err((env, _)) = dispatch_result {
+                                            handle_not_found(env, &message_injector).await;
+                                        }
+                                    }
+                                    Err(e) => {
+                                        break e;
                                     }
                                 }
-                                .then(move |_| async {
-                                    done_tx.trigger();
-                                });
-
-                                let write_task = write_to_socket_only(
-                                    &mut selector,
-                                    done_rx,
-                                    yield_mod,
-                                    &mut iteration_count,
-                                );
-                                let (_, write_result) = join(dispatch_task, write_task).await;
-                                if let Err(err) = write_result {
-                                    break Completion::Failed(err);
-                                }
                             }
-                            Err(c) => {
-                                break c;
+                            message => {
+                                event!(Level::WARN, IGNORING_MESSAGE, ?message);
                             }
                         },
-                        message => {
-                            event!(Level::WARN, IGNORING_MESSAGE, ?message);
+                        Err(err) => {
+                            break Completion::Failed(err.into());
                         }
                     },
-                    Err(err) => {
-                        break Completion::Failed(err);
+                    WsEvent::Write(envelope) => {
+                        let TaggedEnvelope(_, envelope) = env;
+                        if let Err(e) = ws_tx.write_text(envelope.into_value().to_string()).await {
+                            break Completion::Failed(e.into());
+                        }
                     }
-                    _ => {}
                 }
 
                 iteration_count += 1;
@@ -235,19 +244,16 @@ where
         if let Some(reason) = match &completion {
             Completion::StoppedLocally => Some(CloseReason::new(
                 CloseCode::GoingAway,
-                "Stopped locally".to_string(),
+                Some("Stopped locally".to_string()),
             )),
             Completion::Failed(ConnectionError::Protocol(e))
                 if e.kind() == ProtocolErrorKind::Warp =>
             {
-                Some(CloseReason::new(
-                    CloseCode::ProtocolError,
-                    e.cause().clone().unwrap_or_else(|| "WARP error".into()),
-                ))
+                Some(CloseReason::new(CloseCode::Protocol, e.cause().clone()))
             }
             _ => None,
         } {
-            if let Err(error) = ws_stream.close(Some(reason)).await {
+            if let Err(error) = ws_tx.close_with(reason).await {
                 event!(Level::ERROR, ERROR_ON_CLOSE, ?error);
             }
         }
@@ -470,14 +476,15 @@ impl<RouterFac> TaskFactory<RouterFac>
 where
     RouterFac: ServerRouterFactory + 'static,
 {
-    pub fn spawn_connection_task<Str, Sp>(
+    pub fn spawn_connection_task<Sock, Ext, Sp>(
         &self,
-        ws_stream: Str,
+        ws_stream: WebSocket<Sock, Ext>,
         tag: RoutingAddr,
         spawner: &Sp,
     ) -> mpsc::Sender<TaggedEnvelope>
     where
-        Str: JoinedStreamSink<WsMessage, ConnectionError> + Send + Unpin + 'static,
+        Ext: SplittableExtension + Send + 'static,
+        Sock: WebSocketStream + Send + 'static,
         Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>>,
     {
         let TaskFactory {
@@ -527,47 +534,4 @@ async fn handle_not_found(env: Envelope, sender: &mpsc::Sender<TaggedEnvelope>) 
         //the next time it is polled so it is fine to discard this error.
         let _ = sender.send(TaggedEnvelope(NOT_FOUND_ADDR, not_found)).await;
     }
-}
-
-// Continue polling the selector but only to write messsages. This ensures that the task cannot
-// block whilst waiting to dispatch an incoming message. (Where an imcoming message generates
-// one or more outgoing messages on the same socket this can lead to a deadlock).
-async fn write_to_socket_only<S, M, T, E>(
-    selector: &mut WsStreamSelector<S, M, T, E>,
-    done: trigger::Receiver,
-    yield_mod: usize,
-    iteration_count: &mut usize,
-) -> Result<(), E>
-where
-    M: Stream<Item = T> + Unpin,
-    S: Sink<T, Error = E>,
-    S: Stream<Item = Result<T, E>> + Unpin,
-{
-    let write_stream = stream::unfold(
-        (selector, iteration_count),
-        |(selector, iteration_count)| async {
-            let write_result = selector.select_w().await;
-            match write_result {
-                Some(Ok(_)) => {
-                    *iteration_count += 1;
-                    if *iteration_count % yield_mod == 0 {
-                        tokio::task::yield_now().await;
-                    }
-                    Some((Ok(()), (selector, iteration_count)))
-                }
-                Some(Err(e)) => Some((Err(e), (selector, iteration_count))),
-                _ => None,
-            }
-        },
-    )
-    .take_until(done);
-
-    pin_mut!(write_stream);
-
-    while let Some(result) = write_stream.next().await {
-        if result.is_err() {
-            return result;
-        }
-    }
-    Ok(())
 }

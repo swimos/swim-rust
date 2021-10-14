@@ -60,7 +60,7 @@ impl HeaderFlags {
 }
 
 /// A received WebSocket frame.
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Message {
     /// A text message.
     ///
@@ -256,6 +256,7 @@ impl CloseReason {
 /// https://developer.mozilla.org/en-US/docs/Web/API/CloseEvent
 /// https://mailarchive.ietf.org/arch/msg/hybi/P_1vbD9uyHl63nbIIbFxKMfSwcM/
 /// https://tools.ietf.org/id/draft-ietf-hybi-thewebsocketprotocol-09.html
+#[allow(missing_docs)]
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum CloseCode {
     Normal,
@@ -278,7 +279,7 @@ pub enum CloseCode {
 }
 
 impl CloseCode {
-    pub fn is_illegal(&self) -> bool {
+    pub(crate) fn is_illegal(&self) -> bool {
         matches!(
             self,
             CloseCode::Status

@@ -6,7 +6,7 @@ edition = "2018"
 
 [features]
 default = []
-tls = ["tokio-native-tls", "tokio-tungstenite/tls", "tungstenite/tls"]
+tls = ["tokio-native-tls", "tungstenite/tls"]
 
 [dependencies]
 ratchet = {  path = "../../ratchet", features = ["deflate", "split"] }

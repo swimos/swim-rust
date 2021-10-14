@@ -8,12 +8,6 @@ edition = "2018"
 debug = ["log_verbose"]
 log_verbose = []
 
-[dependencies.tokio-tungstenite]
-version = "0.13.0"
-git = "https://github.com/swimos/tokio-tungstenite/"
-branch = "deflate-v13"
-features = ["tls", "deflate"]
-
 [target.'cfg(log_verbose)'.dependencies]
 tracing = { version = "0.1.13", features = ["max_level_debug"] }
 
@@ -29,6 +23,7 @@ swim_model = { path = "../api/swim_model" }
 swim_form = { path = "../api/swim_form" }
 swim_recon = { path = "../api/formats/swim_recon" }
 swim_schema = { path = "../api/swim_schema" }
+ratchet = {  path = "../ratchet", features = ["deflate", "split"] }
 
 http = "0.2"
 tokio-native-tls = "0.3"

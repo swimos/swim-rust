@@ -43,6 +43,7 @@ use crate::routing::remote::net::ExternalConnections;
 use crate::routing::remote::state::{DeferredResult, Event, RemoteConnections, RemoteTasksState};
 use crate::routing::remote::table::HostAndPort;
 use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
+use ratchet::WebSocketStream;
 use std::io;
 use swim_runtime::ws::WsConnections;
 
@@ -121,6 +122,7 @@ const CLOSED_NO_HANDLES: &str = "A connection closed with no handles remaining."
 impl<External, Ws, RouterFac, Sp> RemoteConnectionsTask<External, Ws, RouterFac, Sp>
 where
     External: ExternalConnections,
+    External::Socket: WebSocketStream,
     Ws: WsConnections<External::Socket> + Send + Sync + 'static,
     RouterFac: ServerRouterFactory + 'static,
     Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Send + Unpin,

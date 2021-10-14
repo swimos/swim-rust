@@ -282,6 +282,11 @@ where
             .await
     }
 
+    /// Close this WebSocket with the reason provided.
+    pub async fn close_with(mut self, reason: CloseReason) -> Result<(), Error> {
+        self.framed.write_close(reason).await
+    }
+
     /// Constructs a new WebSocket message of `message_type` and with a payload of `buf_ref` and
     /// chunked by `fragment_size`. If the length of the buffer is less than the chunk size then
     /// only a single message is sent.

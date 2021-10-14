@@ -37,13 +37,14 @@ use crate::routing::remote::task::{ConnectionTask, DispatchError};
 use crate::routing::remote::test_fixture::fake_channel::TwoWayMpsc;
 use crate::routing::remote::test_fixture::LocalRoutes;
 use crate::routing::{ConnectionDropped, Route, RoutingAddr, TaggedEnvelope, TaggedSender};
+use bytes::Bytes;
 use futures::io::ErrorKind;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 use swim_runtime::error::{
     CloseError, CloseErrorKind, ConnectionError, IoError, ProtocolError, ResolutionError,
 };
-use swim_runtime::ws::WsMessage;
+use swim_runtime::ws::{WsMessage, WsMessageType};
 
 #[test]
 fn dispatch_error_display() {
@@ -383,7 +384,10 @@ impl TaskFixture {
 }
 
 fn message_for(env: Envelope) -> WsMessage {
-    WsMessage::Text(env.into_value().to_string())
+    WsMessage::new(
+        Bytes::from(env.into_value().to_string()),
+        WsMessageType::Text,
+    )
 }
 
 #[tokio::test]
@@ -518,7 +522,7 @@ async fn task_receive_sync_message_missing_node() {
         assert!(sock_in.send(Ok(message_for(envelope))).await.is_ok());
         let message = sock_out.next().await.unwrap();
         let envelope = Envelope::node_not_found("/missing", "/lane");
-        let expected = WsMessage::Text(envelope.into_value().to_string());
+        let expected = WsMessage::text(envelope.into_value().to_string());
 
         assert_eq!(message, expected);
     };
@@ -642,10 +646,7 @@ async fn task_receive_bad_message() {
     } = TaskFixture::new();
 
     let test_case = async move {
-        assert!(sock_in
-            .send(Ok(WsMessage::Text("Boom!".to_string())))
-            .await
-            .is_ok());
+        assert!(sock_in.send(Ok(WsMessage::text("Boom!"))).await.is_ok());
     };
 
     let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;

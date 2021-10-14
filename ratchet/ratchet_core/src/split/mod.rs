@@ -342,6 +342,21 @@ where
         }
         write_result
     }
+
+    /// Close this WebSocket with the reason provided.
+    pub async fn close_with(self, reason: CloseReason) -> Result<(), Error> {
+        let WriteHalf {
+            split_writer,
+            writer,
+            ..
+        } = &mut *self.split_writer.lock().await;
+        let write_result = write_close(split_writer, writer, reason, self.role.is_server()).await;
+
+        if write_result.is_err() {
+            self.closed.store(true, Ordering::Relaxed);
+        }
+        write_result
+    }
 }
 
 impl<S, E> Receiver<S, E>
