@@ -353,7 +353,7 @@ impl<Path: Addressable> SwimClient<Path> {
         }
 
         if let Some(Err(routing_err)) = rx.recv().await {
-            return Err(ClientError::RoutingError(routing_err));
+            return Err(routing_err.into());
         }
 
         let result = task_handle.await;
@@ -520,5 +520,11 @@ impl<Path: Addressable + 'static> Error for ClientError<Path> {
 
     fn cause(&self) -> Option<&dyn Error> {
         self.source()
+    }
+}
+
+impl<Path: Addressable> From<RoutingError> for ClientError<Path> {
+    fn from(err: RoutingError) -> Self {
+        ClientError::RoutingError(err)
     }
 }
