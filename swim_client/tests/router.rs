@@ -74,7 +74,7 @@ mod tests {
         let (sink, mut stream) = router.connection_for(&path).await.unwrap();
 
         let sync = Envelope::sync()
-            .node_uri("unit/foo")
+            .node_uri("/unit/foo")
             .lane_uri("info")
             .done();
 
@@ -82,7 +82,7 @@ mod tests {
 
         let expected = RouterEvent::Message(
             Envelope::linked()
-                .node_uri("unit/foo")
+                .node_uri("/unit/foo")
                 .lane_uri("info")
                 .done()
                 .into_response()
@@ -92,8 +92,8 @@ mod tests {
 
         let expected = RouterEvent::Message(
             Envelope::event()
-                .lane_uri("/unit/foo")
-                .node_uri("info")
+                .node_uri("/unit/foo")
+                .lane_uri("info")
                 .body("")
                 .done()
                 .into_response()
@@ -103,7 +103,7 @@ mod tests {
 
         let expected = RouterEvent::Message(
             Envelope::synced()
-                .node_uri("unit/foo")
+                .node_uri("/unit/foo")
                 .lane_uri("info")
                 .done()
                 .into_response()

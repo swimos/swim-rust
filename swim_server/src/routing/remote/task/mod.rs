@@ -45,7 +45,7 @@ use swim_utilities::future::retryable::RetryStrategy;
 use swim_utilities::future::task::Spawner;
 use swim_utilities::routing::uri::{BadRelativeUri, RelativeUri};
 use swim_utilities::trigger;
-use swim_warp::envelope::{DiscriminatedEnvelope, Envelope};
+use swim_warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Instant};
 use tokio_stream::wrappers::ReceiverStream;
@@ -495,9 +495,8 @@ where
 
 //Get the target path only for link and sync messages (for creating the "not found" response).
 fn link_or_sync(env: Envelope) -> Option<RelativePath> {
-    match env.discriminate() {
-        DiscriminatedEnvelope::Request(r) => Some(r.into_path()),
-        DiscriminatedEnvelope::Response(r) => Some(r.into_path()),
+    match env {
+        Envelope::Link { node_uri, lane_uri, ..} | Envelope::Sync { node_uri, lane_uri, ..} => Some(RelativePath::new(node_uri, lane_uri)),
         _ => None,
     }
 }
