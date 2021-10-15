@@ -33,7 +33,7 @@ use swim_warp::envelope::Envelope;
 use crate::routing::error::RouterError;
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::task::{ConnectionTask, DispatchError};
-use crate::routing::remote::test_fixture::ratchet_ext_tx_fail::FailingExt;
+use crate::routing::remote::test_fixture::ratchet_failing_ext::FailingExt;
 use crate::routing::remote::test_fixture::ratchet_fixture::websocket_pair;
 use crate::routing::remote::test_fixture::LocalRoutes;
 use crate::routing::{ConnectionDropped, Route, RoutingAddr, TaggedEnvelope, TaggedSender};

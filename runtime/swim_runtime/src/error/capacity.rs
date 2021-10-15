@@ -88,54 +88,32 @@ impl From<CapacityError> for ConnectionError {
         ConnectionError::Capacity(e)
     }
 }
-//
-// #[test]
-// fn tests() {
-//     assert_eq!(CapacityError::read().to_string(), "Read buffer full.");
-//     assert_eq!(CapacityError::write().to_string(), "Write buffer full.");
-//
-//     {
-//         use tokio_tungstenite::tungstenite::Message;
-//
-//         assert_eq!(
-//             CapacityError::new(CapacityErrorKind::Full(Message::Pong(vec![])), None).to_string(),
-//             "Read buffer full or message greater than write buffer capacity."
-//         );
-//
-//         assert_eq!(
-//             CapacityError::new(
-//                 CapacityErrorKind::Full(Message::Pong(vec![])),
-//                 Some("Bad message.".to_string())
-//             )
-//             .to_string(),
-//             "Read buffer full or message greater than write buffer capacity. Bad message."
-//         );
-//
-//         assert!(
-//             !CapacityError::new(CapacityErrorKind::Full(Message::Pong(vec![])), None).is_fatal()
-//         );
-//     }
-//
-//     assert!(CapacityError::new(CapacityErrorKind::Ambiguous, None).is_fatal());
-//     assert!(!CapacityError::new(CapacityErrorKind::ReadFull, None).is_fatal());
-//     assert!(!CapacityError::new(CapacityErrorKind::WriteFull, None).is_fatal());
-//
-//     assert_eq!(
-//         CapacityError::new(
-//             CapacityErrorKind::Ambiguous,
-//             Some("Unknown cause".to_string())
-//         )
-//         .to_string(),
-//         "Buffer overflow. Unknown cause"
-//     );
-//
-//     assert_eq!(
-//         CapacityError::new(CapacityErrorKind::ReadFull, Some("Failed".to_string())).to_string(),
-//         "Read buffer full. Failed"
-//     );
-//
-//     assert_eq!(
-//         CapacityError::new(CapacityErrorKind::WriteFull, Some("Failed".to_string())).to_string(),
-//         "Write buffer full. Failed"
-//     );
-// }
+
+#[test]
+fn tests() {
+    assert_eq!(CapacityError::read().to_string(), "Read buffer full.");
+    assert_eq!(CapacityError::write().to_string(), "Write buffer full.");
+
+    assert!(CapacityError::new(CapacityErrorKind::Ambiguous, None).is_fatal());
+    assert!(!CapacityError::new(CapacityErrorKind::ReadFull, None).is_fatal());
+    assert!(!CapacityError::new(CapacityErrorKind::WriteFull, None).is_fatal());
+
+    assert_eq!(
+        CapacityError::new(
+            CapacityErrorKind::Ambiguous,
+            Some("Unknown cause".to_string())
+        )
+        .to_string(),
+        "Buffer overflow. Unknown cause"
+    );
+
+    assert_eq!(
+        CapacityError::new(CapacityErrorKind::ReadFull, Some("Failed".to_string())).to_string(),
+        "Read buffer full. Failed"
+    );
+
+    assert_eq!(
+        CapacityError::new(CapacityErrorKind::WriteFull, Some("Failed".to_string())).to_string(),
+        "Write buffer full. Failed"
+    );
+}

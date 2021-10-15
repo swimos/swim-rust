@@ -2,15 +2,14 @@ use std::fmt::{Debug, Formatter};
 
 use futures::future::BoxFuture;
 use tokio::net::TcpStream;
-use tokio_native_tls::TlsStream;
 
 use ratchet::{NoExt, SplittableExtension, WebSocket};
 pub use swim_ratchet::*;
 pub use switcher::StreamSwitcher;
 #[cfg(feature = "tls")]
 use {
-    crate::error::TlsError, crate::ws::tls::build_x509_certificate, std::fmt, std::path::Path,
-    tokio_native_tls::native_tls::Certificate,
+    crate::error::TlsError, crate::ws::tls::build_x509_certificate, std::path::Path,
+    tokio_native_tls::native_tls::Certificate, tokio_native_tls::TlsStream,
 };
 
 use crate::error::ConnectionError;
@@ -24,7 +23,11 @@ mod switcher;
 #[cfg(feature = "tls")]
 pub mod tls;
 
+// todo extension bound
+#[cfg(feature = "tls")]
 pub type WebSocketDef = WebSocket<StreamSwitcher<TcpStream, TlsStream<TcpStream>>, NoExt>;
+#[cfg(not(feature = "tls"))]
+pub type WebSocketDef = WebSocket<TcpStream, NoExt>;
 
 pub trait WsConnections<Socket>
 where
@@ -83,7 +86,7 @@ impl Protocol {
 }
 
 impl Debug for Protocol {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::PlainText => write!(f, "PlainText"),
             #[cfg(feature = "tls")]
