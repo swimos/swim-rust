@@ -265,7 +265,7 @@ impl SwimServerBuilder {
             close_rx.clone(),
         );
 
-        let client = DownlinksContext::new(downlinks);
+        let downlinks_context = DownlinksContext::new(downlinks);
 
         Ok((
             SwimServer {
@@ -277,7 +277,7 @@ impl SwimServerBuilder {
                 top_level_router_fac,
                 remote_channel: (remote_tx, remote_rx),
                 plane_channel: (plane_tx, plane_rx),
-                downlinks_context: client,
+                downlinks_context,
                 connection_pool_task,
                 downlinks_task,
                 _store: store,
@@ -360,7 +360,7 @@ impl SwimServer {
             top_level_router_fac,
             remote_channel: (remote_tx, remote_rx),
             plane_channel: (plane_tx, plane_rx),
-            downlinks_context: client,
+            downlinks_context,
             connection_pool_task,
             downlinks_task,
             _store,
@@ -389,7 +389,7 @@ impl SwimServer {
 
         let resolver = RouteResolver::new(
             clock,
-            client,
+            downlinks_context,
             agent_config,
             routes,
             store,
@@ -433,6 +433,11 @@ impl SwimServer {
             downlinks_task.run(),
         )
         .0
+    }
+
+    /// Get a downlinks context capable of opening downlinks to other servers.
+    pub fn downlinks_context(&self) -> DownlinksContext<Path> {
+        self.downlinks_context.clone()
     }
 }
 
