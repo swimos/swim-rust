@@ -20,6 +20,7 @@ use swim_model::{Attr, Text, Value};
 const NODE_NOT_FOUND_TAG: &str = "nodeNotFound";
 const LANE_NOT_FOUND_TAG: &str = "laneNotFound";
 
+/// Model for Warp protocol envelopes.
 #[derive(Clone, Debug, PartialEq, Form)]
 pub enum Envelope {
     #[form(tag = "auth")]
