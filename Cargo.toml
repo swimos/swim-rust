@@ -5,7 +5,7 @@ members = [
     "api/formats/swim_*",
     "ratchet",
     "macro_utilities",
-#    "swim_client",
+    "swim_client",
     "runtime/swim_*",
     "swim_server",
     "swim_warp",

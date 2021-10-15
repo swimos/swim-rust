@@ -34,6 +34,7 @@ use swim_async_runtime::task::*;
 use swim_async_runtime::time::instant::Instant;
 use swim_async_runtime::time::interval::interval;
 use swim_runtime::error::{CloseError, ConnectionError, ResolutionError, ResolutionErrorKind};
+use swim_runtime::ws::{WebsocketFactory, WsMessage};
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::configuration::router::ConnectionPoolParams;
@@ -443,12 +444,12 @@ impl SwimConnection {
         let (sender_tx, sender_rx) = mpsc::channel(buffer_size);
         let (receiver_tx, receiver_rx) = mpsc::channel(buffer_size);
 
-        let (write_sink, read_stream) = websocket_factory.connect(host_url).await?;
+        let (socket_tx, socket_rx) = websocket_factory.connect(host_url).await?.split()?;
 
         let stopped = Arc::new(AtomicBool::new(false));
 
-        let receive = ReceiveTask::new(read_stream, receiver_tx, stopped.clone());
-        let send = SendTask::new(write_sink, sender_rx, stopped.clone());
+        let receive = ReceiveTask::new(socket_rx, receiver_tx, stopped.clone());
+        let send = SendTask::new(socket_tx, sender_rx, stopped.clone());
 
         let send_handler = spawn(send.run());
         let receive_handler = spawn(receive.run());

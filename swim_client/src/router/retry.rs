@@ -26,6 +26,7 @@ use std::pin::Pin;
 use swim_runtime::error::RoutingError;
 use swim_utilities::future::retryable::request::{RetrySendError, RetryableRequest, SendResult};
 
+use swim_runtime::ws::WsMessage;
 use swim_utilities::errors::Recoverable;
 use tracing::trace;
 

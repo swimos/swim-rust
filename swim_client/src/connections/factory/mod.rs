@@ -12,9 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
-
-use swim_runtime::ws::Protocol;
+use swim_runtime::ws::{CompressionSwitcherProvider, Protocol};
 
 #[cfg(test)]
 mod tests;
@@ -22,40 +20,42 @@ mod tests;
 pub mod stream;
 mod swim_ratchet;
 
+pub use swim_ratchet::RatchetWebSocketFactory;
+
 #[derive(Clone)]
 pub struct HostConfig {
     pub protocol: Protocol,
-    pub compression_level: WsCompression,
+    pub compression_level: CompressionSwitcherProvider,
 }
 
 pub mod async_factory {
-    use futures::{Future, Sink, Stream};
+    use futures::Future;
+    use ratchet::{Extension, WebSocket};
     use tokio::sync::{mpsc, oneshot};
 
     use swim_async_runtime::task::{spawn, TaskHandle};
     use swim_runtime::error::ConnectionError;
-    use swim_runtime::ws::Message;
     use swim_utilities::future::request::Request;
 
     use crate::connections::factory::HostConfig;
 
     /// A request for a new connection.
-    pub struct ConnReq<Snk, Str> {
-        pub(crate) request: Request<Result<(Snk, Str), ConnectionError>>,
+    pub struct ConnReq<Sock, Ext> {
+        pub(crate) request: Request<Result<WebSocket<Sock, Ext>, ConnectionError>>,
         url: url::Url,
         config: HostConfig,
     }
 
     /// Abstract asynchronous factory where requests are serviced by an independent task.
-    pub struct AsyncFactory<Snk, Str> {
-        pub(in crate::connections::factory) sender: mpsc::Sender<ConnReq<Snk, Str>>,
+    pub struct AsyncFactory<Sock, Ext> {
+        pub(in crate::connections::factory) sender: mpsc::Sender<ConnReq<Sock, Ext>>,
         _task: TaskHandle<()>,
     }
 
-    impl<Snk, Str> AsyncFactory<Snk, Str>
+    impl<Sock, Ext> AsyncFactory<Sock, Ext>
     where
-        Str: Send + 'static,
-        Snk: Send + 'static,
+        Sock: Send + Sync + 'static,
+        Ext: Extension + Send + Sync + 'static,
     {
         /// Create a new factory where the task operates off a queue with [`buffer_size`] entries
         /// and uses [`connect_async`] to service the requests.
@@ -66,7 +66,7 @@ pub mod async_factory {
         ) -> Self
         where
             Fac: FnMut(url::Url, HostConfig) -> Fut + Send + 'static,
-            Fut: Future<Output = Result<(Snk, Str), ConnectionError>> + Send + 'static,
+            Fut: Future<Output = Result<WebSocket<Sock, Ext>, ConnectionError>> + Send + 'static,
         {
             let (tx, rx) = mpsc::channel(buffer_size);
             let task = spawn(factory_task(rx, connect_async));
@@ -78,14 +78,14 @@ pub mod async_factory {
     }
 
     #[allow(dead_code)]
-    async fn factory_task<Snk, Str, Fac, Fut>(
-        mut receiver: mpsc::Receiver<ConnReq<Snk, Str>>,
+    async fn factory_task<Sock, Ext, Fac, Fut>(
+        mut receiver: mpsc::Receiver<ConnReq<Sock, Ext>>,
         mut connect_async: Fac,
     ) where
-        Str: Send + 'static,
-        Snk: Send + 'static,
+        Sock: Send + Sync + 'static,
+        Ext: Extension + Send + Sync + 'static,
         Fac: FnMut(url::Url, HostConfig) -> Fut + Send + 'static,
-        Fut: Future<Output = Result<(Snk, Str), ConnectionError>> + Send + 'static,
+        Fut: Future<Output = Result<WebSocket<Sock, Ext>, ConnectionError>> + Send + 'static,
     {
         while let Some(ConnReq {
             request,
@@ -93,21 +93,22 @@ pub mod async_factory {
             config,
         }) = receiver.recv().await
         {
-            let conn: Result<(Snk, Str), ConnectionError> = connect_async(url, config).await;
+            let conn: Result<WebSocket<Sock, Ext>, ConnectionError> =
+                connect_async(url, config).await;
             let _ = request.send(conn);
         }
     }
 
-    impl<Snk, Str> AsyncFactory<Snk, Str>
+    impl<Sock, Ext> AsyncFactory<Sock, Ext>
     where
-        Str: Stream<Item = Result<WsMessage, ConnectionError>> + Unpin + Send + 'static,
-        Snk: Sink<WsMessage> + Unpin + Send + 'static,
+        Sock: Send + Sync + 'static,
+        Ext: Extension + Send + Sync + 'static,
     {
         pub async fn connect_using(
             &mut self,
             url: url::Url,
             config: HostConfig,
-        ) -> Result<(Snk, Str), ConnectionError> {
+        ) -> Result<WebSocket<Sock, Ext>, ConnectionError> {
             let (tx, rx) = oneshot::channel();
             let req = ConnReq {
                 request: Request::new(tx),

@@ -22,6 +22,7 @@ use std::convert::TryFrom;
 use swim_model::path::RelativePath;
 use swim_recon::parser::parse_value;
 use swim_runtime::error::RoutingError;
+use swim_runtime::ws::WsMessage;
 use swim_warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use tracing::level_filters::STATIC_MAX_LEVEL;

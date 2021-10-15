@@ -17,6 +17,7 @@ use http::header::InvalidHeaderValue;
 use std::str::Utf8Error;
 use thiserror::Error;
 
+/// Errors produced by the deflate extension.
 #[derive(Error, Debug)]
 pub enum DeflateExtensionError {
     /// An error produced when deflating a message.
@@ -31,6 +32,7 @@ pub enum DeflateExtensionError {
     /// An invalid LZ77 window size was provided.
     #[error("Peer sent an invalid maximum window bits parameter")]
     InvalidMaxWindowBits,
+    /// A p.er sent a malformatted header
     #[error("Peer sent a malformatted header")]
     Malformatted,
 }

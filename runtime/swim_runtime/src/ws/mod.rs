@@ -3,7 +3,8 @@ use std::fmt::{Debug, Formatter};
 use futures::future::BoxFuture;
 use tokio::net::TcpStream;
 
-use ratchet::{NoExt, SplittableExtension, WebSocket};
+use ratchet::deflate::Deflate;
+use ratchet::{SplittableExtension, WebSocket};
 pub use swim_ratchet::*;
 pub use switcher::StreamSwitcher;
 #[cfg(feature = "tls")]
@@ -23,11 +24,15 @@ mod switcher;
 #[cfg(feature = "tls")]
 pub mod tls;
 
-// todo extension bound
 #[cfg(feature = "tls")]
-pub type WebSocketDef = WebSocket<StreamSwitcher<TcpStream, TlsStream<TcpStream>>, NoExt>;
+pub type WebSocketDef<E> = WebSocket<StreamSwitcher<TcpStream, TlsStream<TcpStream>>, E>;
 #[cfg(not(feature = "tls"))]
-pub type WebSocketDef = WebSocket<TcpStream, NoExt>;
+pub type WebSocketDef<E> = WebSocket<TcpStream, E>;
+
+#[cfg(feature = "tls")]
+pub type StreamDef = StreamSwitcher<TcpStream, TlsStream<TcpStream>>;
+#[cfg(not(feature = "tls"))]
+pub type StreamDef = TcpStream;
 
 pub trait WsConnections<Socket>
 where
@@ -54,7 +59,10 @@ where
 /// to allow for alternative implementations to be provided during testing.
 pub trait WebsocketFactory: Send + Sync {
     /// Open a connection to the provided remote URL.
-    fn connect(&mut self, url: url::Url) -> BoxFuture<Result<WebSocketDef, ConnectionError>>;
+    fn connect(
+        &mut self,
+        url: url::Url,
+    ) -> BoxFuture<Result<WebSocketDef<Deflate>, ConnectionError>>;
 }
 
 #[derive(Clone)]

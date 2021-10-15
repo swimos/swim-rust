@@ -18,6 +18,7 @@
 use crate::configuration::downlink::Config;
 use crate::configuration::downlink::ConfigHierarchy;
 use crate::configuration::downlink::ConfigParseError;
+use crate::connections::factory::RatchetWebSocketFactory;
 use crate::connections::SwimConnPool;
 use crate::downlink::error::{DownlinkError, SubscriptionError};
 use crate::downlink::typed::command::TypedCommandDownlink;
@@ -112,7 +113,7 @@ impl SwimClientBuilder {
 
         let config = ConfigHierarchy::default();
         let buffer_size = config.client_params().dl_req_buffer_size.get();
-        let connection_factory = TungsteniteWsFactory::new(buffer_size).await;
+        let connection_factory = RatchetWebSocketFactory::new(buffer_size).await;
         let router_params = config.client_params().router_params;
         let pool = SwimConnPool::new(router_params.connection_pool_params(), connection_factory);
         let router = SwimRouter::new(router_params, pool);

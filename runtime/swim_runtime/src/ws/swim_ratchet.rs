@@ -1,8 +1,13 @@
 use bytes::{Bytes, BytesMut};
 use futures::stream::unfold;
 use futures::Stream;
-use ratchet::{CloseCode, ErrorKind, Extension, Message};
+use ratchet::deflate::{Deflate, DeflateExtProvider, DeflateExtensionError};
+use ratchet::{
+    CloseCode, ErrorKind, Extension, ExtensionProvider, Header, HeaderMap, HeaderValue, Message,
+};
 use ratchet::{CloseReason, Error, ExtensionDecoder, WebSocketStream};
+use std::borrow::Cow;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum WsMessage {
@@ -11,6 +16,16 @@ pub enum WsMessage {
     Ping,
     Pong,
     Close(Option<CloseReason>),
+}
+
+impl<I> From<I> for WsMessage
+where
+    I: Into<Cow<'static, str>>,
+{
+    fn from(f: I) -> Self {
+        let str = f.into();
+        WsMessage::Text(str.to_string())
+    }
 }
 
 pub struct AutoWebSocket<S, E> {
@@ -117,10 +132,43 @@ where
     E: ExtensionDecoder,
 {
     unfold(WebSocketReceiver::new(rx), |mut rx| async move {
-        // todo: this should terminate after an error
         match rx.read().await {
             Ok(item) => Some((Ok(item), rx)),
             Err(e) => Some((Err(e), rx)),
         }
     })
+}
+
+#[derive(Debug, Clone)]
+pub enum CompressionSwitcherProvider {
+    On(Arc<DeflateExtProvider>),
+    Off,
+}
+
+impl ExtensionProvider for CompressionSwitcherProvider {
+    type Extension = Deflate;
+    type Error = DeflateExtensionError;
+
+    fn apply_headers(&self, headers: &mut HeaderMap) {
+        if let CompressionSwitcherProvider::On(e) = self {
+            e.apply_headers(headers);
+        }
+    }
+
+    fn negotiate_client(&self, headers: &[Header]) -> Result<Option<Self::Extension>, Self::Error> {
+        match self {
+            CompressionSwitcherProvider::On(ext) => ext.negotiate_client(headers),
+            CompressionSwitcherProvider::Off => Ok(None),
+        }
+    }
+
+    fn negotiate_server(
+        &self,
+        headers: &[Header],
+    ) -> Result<Option<(Self::Extension, HeaderValue)>, Self::Error> {
+        match self {
+            CompressionSwitcherProvider::On(ext) => ext.negotiate_server(headers),
+            CompressionSwitcherProvider::Off => Ok(None),
+        }
+    }
 }

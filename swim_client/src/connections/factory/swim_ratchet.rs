@@ -6,32 +6,53 @@ use http::header::SEC_WEBSOCKET_PROTOCOL;
 use http::uri::InvalidUri;
 use http::Request;
 use http::{HeaderValue, Uri};
-use ratchet::WebSocketConfig;
+use ratchet::deflate::Deflate;
+use ratchet::{ProtocolRegistry, WebSocketConfig};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use swim_runtime::error::{
     ConnectionError, HttpError, HttpErrorKind, InvalidUriError, InvalidUriErrorKind,
 };
 use swim_runtime::ws::utils::maybe_resolve_scheme;
-use swim_runtime::ws::{Protocol, WebSocketDef, WebsocketFactory};
+use swim_runtime::ws::{
+    CompressionSwitcherProvider, Protocol, StreamDef, WebSocketDef, WebsocketFactory,
+};
 use url::Url;
 
 const WARP0_PROTO: &str = "warp0";
 const MAX_MESSAGE_SIZE: usize = 64 << 20;
 
 pub struct RatchetWebSocketFactory {
-    inner: async_factory::AsyncFactory<TungSink, TungStream>,
+    inner: async_factory::AsyncFactory<StreamDef, Deflate>,
     host_configurations: HashMap<Url, HostConfig>,
 }
 
+impl RatchetWebSocketFactory {
+    pub async fn with(
+        buffer_size: usize,
+        host_configurations: HashMap<Url, HostConfig>,
+    ) -> RatchetWebSocketFactory {
+        let inner = async_factory::AsyncFactory::new(buffer_size, connect).await;
+
+        RatchetWebSocketFactory {
+            inner,
+            host_configurations,
+        }
+    }
+
+    pub async fn new(buffer_size: usize) -> RatchetWebSocketFactory {
+        RatchetWebSocketFactory::with(buffer_size, Default::default()).await
+    }
+}
+
 impl WebsocketFactory for RatchetWebSocketFactory {
-    fn connect(&mut self, url: Url) -> BoxFuture<Result<WebSocketDef, ConnectionError>> {
+    fn connect(&mut self, url: Url) -> BoxFuture<Result<WebSocketDef<Deflate>, ConnectionError>> {
         let config = match self.host_configurations.entry(url.clone()) {
             Entry::Occupied(o) => o.get().clone(),
             Entry::Vacant(v) => v
                 .insert(HostConfig {
                     protocol: Protocol::PlainText,
-                    compression_level: WsCompression::None(Some(MAX_MESSAGE_SIZE)),
+                    compression_level: CompressionSwitcherProvider::Off,
                 })
                 .clone(),
         };
@@ -40,7 +61,12 @@ impl WebsocketFactory for RatchetWebSocketFactory {
     }
 }
 
-async fn connect(url: Url, config: &mut HostConfig) -> Result<WebSocketDef, ConnectionError> {
+async fn connect(url: Url, config: HostConfig) -> Result<WebSocketDef<Deflate>, ConnectionError> {
+    let HostConfig {
+        protocol,
+        compression_level,
+    } = config;
+
     let url = url.as_str();
     let uri: Uri = url.parse().map_err(|e: InvalidUri| {
         ConnectionError::Http(HttpError::new(
@@ -61,7 +87,7 @@ async fn connect(url: Url, config: &mut HostConfig) -> Result<WebSocketDef, Conn
     );
 
     let request = maybe_resolve_scheme(request)?;
-    let stream_type = get_stream_type(&request, &config.protocol)?;
+    let stream_type = get_stream_type(&request, &protocol)?;
 
     let port = request
         .uri()
@@ -86,7 +112,15 @@ async fn connect(url: Url, config: &mut HostConfig) -> Result<WebSocketDef, Conn
     let host = format!("{}:{}", domain, port);
     let stream = build_stream(&host, stream_type).await?;
 
-    match ratchet::subscribe(WebSocketConfig::default(), stream, request).await {
+    match ratchet::subscribe_with(
+        WebSocketConfig::default(),
+        stream,
+        request,
+        compression_level,
+        ProtocolRegistry::default(),
+    )
+    .await
+    {
         Ok(sock) => Ok(sock.into_websocket()),
         Err(_) => {
             unimplemented!()

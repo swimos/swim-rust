@@ -27,7 +27,6 @@ mod error;
 mod handshake;
 
 use crate::codec::{BufCompress, BufDecompress};
-use crate::error::DeflateExtensionError;
 use crate::handshake::{apply_headers, negotiate_client, negotiate_server};
 use bytes::BytesMut;
 use flate2::{Compress, Compression, Decompress, FlushCompress, FlushDecompress, Status};
@@ -38,6 +37,8 @@ use ratchet_ext::{
 use std::cmp::Ordering;
 use std::convert::TryFrom;
 use thiserror::Error;
+
+pub use error::DeflateExtensionError;
 
 const DEFLATE_TRAILER: [u8; 4] = [0, 0, 255, 255];
 

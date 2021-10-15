@@ -51,7 +51,7 @@ async fn send_message(
     host_url: &url::Url,
     message: &str,
 ) {
-    let message = message.into();
+    let message = message.clone().into();
 
     if let Some((sender, _)) = pool_handlers.get_mut(host_url) {
         timeout(Duration::from_secs(1), sender.send(message))

@@ -16,10 +16,8 @@ use http::Request;
 use swim_runtime::error::{ConnectionError, InvalidUriError, InvalidUriErrorKind};
 use swim_runtime::ws::tls::connect_tls;
 use swim_runtime::ws::{Protocol, StreamSwitcher};
-use swim_utilities::future::TransformMut;
 use tokio::net::TcpStream;
 use tokio_native_tls::TlsStream;
-use tokio_tungstenite::MaybeTlsStream;
 
 pub fn get_stream_type<T>(
     request: &Request<T>,
