@@ -15,6 +15,7 @@
 use crate::structural::write::{
     BodyWriter, HeaderWriter, PrimitiveWriter, RecordBodyKind, StructuralWritable, StructuralWriter,
 };
+use swim_model::Value;
 
 pub struct WritableRef<'a, T>(&'a T);
 
@@ -29,6 +30,18 @@ impl<'a, T: StructuralWritable> StructuralWritable for WritableRef<'a, T> {
 
     fn num_attributes(&self) -> usize {
         self.0.num_attributes()
+    }
+
+    fn structure(&self) -> Value {
+        self.0.structure()
+    }
+
+    fn into_structure(self) -> Value {
+        self.structure()
+    }
+
+    fn omit_as_field(&self) -> bool {
+        self.0.omit_as_field()
     }
 }
 
@@ -159,13 +172,17 @@ where
 
     fn append<B: BodyWriter>(&self, mut writer: B) -> Result<B, <B as BodyWriter>::Error> {
         let HeaderSlots { key, value, tail } = self;
-        writer = writer.write_slot(key, value)?;
+        if !value.omit_as_field() {
+            writer = writer.write_slot(key, value)?;
+        }
         tail.append(writer)
     }
 
     fn append_into<B: BodyWriter>(self, mut writer: B) -> Result<B, <B as BodyWriter>::Error> {
         let HeaderSlots { key, value, tail } = self;
-        writer = writer.write_slot_into(key, value)?;
+        if !value.omit_as_field() {
+            writer = writer.write_slot_into(key, value)?;
+        }
         tail.append_into(writer)
     }
 }

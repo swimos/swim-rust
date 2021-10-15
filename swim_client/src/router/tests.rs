@@ -162,11 +162,11 @@ async fn test_route_single_outgoing_message_to_multiple_downlinks_same_host() {
     assert_eq!(pool.connections.lock().unwrap().len(), 1);
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@event(node:oof,lane:rab){bye}".into()
+        "@event(node:oof,lane:rab) bye".into()
     );
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@event(node:oof,lane:rab){bye}".into()
+        "@event(node:oof,lane:rab) bye".into()
     );
 }
 
@@ -207,11 +207,11 @@ async fn test_route_single_outgoing_message_to_multiple_downlinks_different_host
     assert_eq!(pool.connections.lock().unwrap().len(), 2);
     assert_eq!(
         get_message(&mut pool_handlers, &first_url).await.unwrap(),
-        "@event(node:foo,lane:bar){hello}".into()
+        "@event(node:foo,lane:bar) hello".into()
     );
     assert_eq!(
         get_message(&mut pool_handlers, &second_url).await.unwrap(),
-        "@event(node:foo,lane:bar){hello}".into()
+        "@event(node:foo,lane:bar) hello".into()
     );
 }
 
@@ -255,11 +255,11 @@ async fn test_route_multiple_outgoing_messages_to_single_downlink() {
 
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@event(node:foo,lane:bar){First_Downlink}".into()
+        "@event(node:foo,lane:bar) First_Downlink".into()
     );
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@event(node:foo,lane:bar){Second_Downlink}".into()
+        "@event(node:foo,lane:bar) Second_Downlink".into()
     );
 }
 
@@ -311,15 +311,15 @@ async fn test_route_multiple_outgoing_messages_to_multiple_downlinks_same_host()
     assert_eq!(pool.connections.lock().unwrap().len(), 1);
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@event(node:first_foo,lane:first_bar){first_body}".into()
+        "@event(node:first_foo,lane:first_bar) first_body".into()
     );
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@event(node:second_foo,lane:second_bar){second_body}".into()
+        "@event(node:second_foo,lane:second_bar) second_body".into()
     );
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@event(node:third_foo,lane:third_bar){third_body}".into()
+        "@event(node:third_foo,lane:third_bar) third_body".into()
     );
 }
 
@@ -373,15 +373,15 @@ async fn test_route_multiple_outgoing_messages_to_multiple_downlinks_different_h
     assert_eq!(pool.connections.lock().unwrap().len(), 2);
     assert_eq!(
         get_message(&mut pool_handlers, &first_url).await.unwrap(),
-        "@event(node:first_foo,lane:first_bar){first_body}".into()
+        "@event(node:first_foo,lane:first_bar) first_body".into()
     );
     assert_eq!(
         get_message(&mut pool_handlers, &first_url).await.unwrap(),
-        "@event(node:second_foo,lane:second_bar){second_body}".into()
+        "@event(node:second_foo,lane:second_bar) second_body".into()
     );
     assert_eq!(
         get_message(&mut pool_handlers, &second_url).await.unwrap(),
-        "@event(node:third_foo,lane:third_bar){third_body}".into()
+        "@event(node:third_foo,lane:third_bar) third_body".into()
     );
 }
 
@@ -403,7 +403,7 @@ async fn test_route_single_incoming_message_to_single_downlink() {
         .collect()
         .await;
 
-    send_message(&mut pool_handlers, &url, "@event(node:foo,lane:bar){Hello}").await;
+    send_message(&mut pool_handlers, &url, "@event(node:foo,lane:bar) Hello").await;
 
     let expected_env = Envelope::event()
         .node_uri("foo")
@@ -450,12 +450,12 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_same_host_same
     send_message(
         &mut pool_handlers,
         &url,
-        "@event(node:foo,lane:bar){Goodbye}",
+        "@event(node:foo,lane:bar) Goodbye",
     )
     .await;
 
     let expected_env = Envelope::event()
-        .node_uri("food")
+        .node_uri("foo")
         .lane_uri("bar")
         .body("Goodbye")
         .done();
@@ -502,7 +502,7 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_same_host_diff
         .collect()
         .await;
 
-    send_message(&mut pool_handlers, &url, "@event(node:foo,lane:bar){tseT}").await;
+    send_message(&mut pool_handlers, &url, "@event(node:foo,lane:bar) tseT").await;
 
     let expected_env = Envelope::event()
         .node_uri("foo")
@@ -557,14 +557,14 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_different_host
     send_message(
         &mut pool_handlers,
         &first_url,
-        "@event(node:foo,lane:bar){\"First Hello\"}",
+        "@event(node:foo,lane:bar) \"First Hello\"",
     )
     .await;
 
     send_message(
         &mut pool_handlers,
         &second_url,
-        "@event(node:foo,lane:bar){\"Second Hello\"}",
+        "@event(node:foo,lane:bar) \"Second Hello\"",
     )
     .await;
 
@@ -577,7 +577,7 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_different_host
     let second_env = Envelope::event()
         .node_uri("foo")
         .lane_uri("bar")
-        .body("Second Hellp")
+        .body("Second Hello")
         .done();
 
     assert_eq!(
@@ -636,21 +636,21 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_different_host
     send_message(
         &mut pool_handlers,
         &first_url,
-        "@event(node:foo,lane:bar){\"Hello First\"}",
+        "@event(node:foo,lane:bar) \"Hello First\"",
     )
     .await;
 
     send_message(
         &mut pool_handlers,
         &second_url,
-        "@event(node:oof,lane:rab){\"Hello Second\"}",
+        "@event(node:oof,lane:rab) \"Hello Second\"",
     )
     .await;
 
     send_message(
         &mut pool_handlers,
         &third_url,
-        "@event(node:ofo,lane:abr){\"Hello Third\"}",
+        "@event(node:ofo,lane:abr) \"Hello Third\"",
     )
     .await;
 
@@ -669,7 +669,7 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_different_host
     let third_env = Envelope::event()
         .node_uri("ofo")
         .lane_uri("abr")
-        .body("Hellp Third")
+        .body("Hello Third")
         .done();
 
     assert_eq!(
@@ -723,13 +723,13 @@ async fn test_route_multiple_incoming_messages_to_single_downlink() {
     send_message(
         &mut pool_handlers,
         &url,
-        "@event(node:foo,lane:bar){\"First!\"}",
+        "@event(node:foo,lane:bar) \"First!\"",
     )
     .await;
     send_message(
         &mut pool_handlers,
         &url,
-        "@event(node:foo,lane:bar){\"Second!\"}",
+        "@event(node:foo,lane:bar) \"Second!\"",
     )
     .await;
 
@@ -788,13 +788,13 @@ async fn test_route_multiple_incoming_messages_to_multiple_downlinks_same_host_s
     send_message(
         &mut pool_handlers,
         &url,
-        "@event(node:room,lane:five){\"John Doe\"}",
+        "@event(node:room,lane:five) \"John Doe\"",
     )
     .await;
     send_message(
         &mut pool_handlers,
         &url,
-        "@event(node:room,lane:five){\"Jane Doe\"}",
+        "@event(node:room,lane:five) \"Jane Doe\"",
     )
     .await;
 
@@ -865,14 +865,14 @@ async fn test_route_multiple_incoming_messages_to_multiple_downlinks_same_host_d
     send_message(
         &mut pool_handlers,
         &url,
-        "@event(node:room,lane:five){\"John Doe\"}",
+        "@event(node:room,lane:five) \"John Doe\"",
     )
     .await;
 
     send_message(
         &mut pool_handlers,
         &url,
-        "@event(node:room,lane:six){\"Jane Doe\"}",
+        "@event(node:room,lane:six) \"Jane Doe\"",
     )
     .await;
 
@@ -945,28 +945,28 @@ async fn test_route_multiple_incoming_message_to_multiple_downlinks_different_ho
     send_message(
         &mut pool_handlers,
         &first_url,
-        "@event(node:building,lane:\"1\"){\"Room 101\"}",
+        "@event(node:building,lane:\"1\") \"Room 101\"",
     )
     .await;
 
     send_message(
         &mut pool_handlers,
         &first_url,
-        "@event(node:building,lane:\"1\"){\"Room 102\"}",
+        "@event(node:building,lane:\"1\") \"Room 102\"",
     )
     .await;
 
     send_message(
         &mut pool_handlers,
         &second_url,
-        "@event(node:building,lane:\"1\"){\"Room 201\"}",
+        "@event(node:building,lane:\"1\") \"Room 201\"",
     )
     .await;
 
     send_message(
         &mut pool_handlers,
         &second_url,
-        "@event(node:building,lane:\"1\"){\"Room 202\"}",
+        "@event(node:building,lane:\"1\") \"Room 202\"",
     )
     .await;
 
@@ -1060,49 +1060,49 @@ async fn test_route_multiple_incoming_message_to_multiple_downlinks_different_ho
     send_message(
         &mut pool_handlers,
         &first_url,
-        "@event(node:building,lane:\"1\"){\"Building 101\"}",
+        "@event(node:building,lane:\"1\") \"Building 101\"",
     )
     .await;
 
     send_message(
         &mut pool_handlers,
         &first_url,
-        "@event(node:building,lane:\"1\"){\"Building 102\"}",
+        "@event(node:building,lane:\"1\") \"Building 102\"",
     )
     .await;
 
     send_message(
         &mut pool_handlers,
         &second_url,
-        "@event(node:room,lane:\"2\"){\"Room 201\"}",
+        "@event(node:room,lane:\"2\") \"Room 201\"",
     )
     .await;
 
     send_message(
         &mut pool_handlers,
         &second_url,
-        "@event(node:room,lane:\"2\"){\"Room 202\"}",
+        "@event(node:room,lane:\"2\") \"Room 202\"",
     )
     .await;
 
     send_message(
         &mut pool_handlers,
         &second_url,
-        "@event(node:room,lane:\"2\"){\"Room 203\"}",
+        "@event(node:room,lane:\"2\") \"Room 203\"",
     )
     .await;
 
     send_message(
         &mut pool_handlers,
         &third_url,
-        "@event(node:building,lane:\"3\"){\"Building 301\"}",
+        "@event(node:building,lane:\"3\") \"Building 301\"",
     )
     .await;
 
     send_message(
         &mut pool_handlers,
         &third_url,
-        "@event(node:building,lane:\"3\"){\"Building 302\"}",
+        "@event(node:building,lane:\"3\") \"Building 302\"",
     )
     .await;
 
@@ -1222,7 +1222,7 @@ async fn test_route_incoming_unsopported_message() {
         .await
         .is_err());
 
-    send_message(&mut pool_handlers, &url, "@event(node:foo,lane:bar){Hello}").await;
+    send_message(&mut pool_handlers, &url, "@event(node:foo,lane:bar) Hello").await;
 
     let expected_env = Envelope::event()
         .node_uri("foo")
@@ -1267,7 +1267,7 @@ async fn test_route_incoming_message_of_no_interest() {
     send_message(
         &mut pool_handlers,
         &url,
-        "@event(node:building,lane:swim){Second}",
+        "@event(node:building,lane:swim) Second",
     )
     .await;
 
@@ -1275,7 +1275,7 @@ async fn test_route_incoming_message_of_no_interest() {
         .await
         .is_err());
 
-    send_message(&mut pool_handlers, &url, "@event(node:foo,lane:bar){Hello}").await;
+    send_message(&mut pool_handlers, &url, "@event(node:foo,lane:bar) Hello").await;
 
     let expected_env = Envelope::event()
         .node_uri("foo")
@@ -1342,7 +1342,7 @@ async fn test_single_direct_message_existing_connection() {
 
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@event(node:room,lane:seven){\"Test Command\"}".into()
+        "@event(node:room,lane:seven) \"Test Command\"".into()
     );
 }
 
@@ -1377,7 +1377,7 @@ async fn test_single_direct_message_new_connection() {
     assert_eq!(get_requests(&pool), expected_requests);
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@event(node:room,lane:seven){\"Test Command\"}".into()
+        "@event(node:room,lane:seven) \"Test Command\"".into()
     );
 }
 
@@ -1434,12 +1434,12 @@ async fn test_multiple_direct_messages_existing_connection() {
 
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@event(node:building,lane:swim){First}".into()
+        "@event(node:building,lane:swim) First".into()
     );
 
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@event(node:building,lane:swim){Second}".into()
+        "@event(node:building,lane:swim) Second".into()
     );
 }
 
@@ -1491,17 +1491,17 @@ async fn test_multiple_direct_messages_new_connection() {
 
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@event(node:building,lane:swim){First}".into()
+        "@event(node:building,lane:swim) First".into()
     );
 
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@event(node:building,lane:swim){Second}".into()
+        "@event(node:building,lane:swim) Second".into()
     );
 
     assert_eq!(
         get_message(&mut pool_handlers, &url).await.unwrap(),
-        "@event(node:building,lane:swim){Third}".into()
+        "@event(node:building,lane:swim) Third".into()
     );
 }
 
@@ -1564,17 +1564,17 @@ async fn test_multiple_direct_messages_different_connections() {
 
     assert_eq!(
         get_message(&mut pool_handlers, &first_url).await.unwrap(),
-        "@event(node:building,lane:swim){First}".into()
+        "@event(node:building,lane:swim) First".into()
     );
 
     assert_eq!(
         get_message(&mut pool_handlers, &second_url).await.unwrap(),
-        "@event(node:building,lane:swim){Second}".into()
+        "@event(node:building,lane:swim) Second".into()
     );
 
     assert_eq!(
         get_message(&mut pool_handlers, &&first_url).await.unwrap(),
-        "@event(node:building,lane:swim){Third}".into()
+        "@event(node:building,lane:swim) Third".into()
     );
 }
 
@@ -1639,7 +1639,7 @@ async fn test_route_incoming_parse_message_error() {
         .await
         .is_err());
 
-    send_message(&mut pool_handlers, &url, "@event(node:foo,lane:bar){Hello}").await;
+    send_message(&mut pool_handlers, &url, "@event(node:foo,lane:bar) Hello").await;
 
     let expected_env = Envelope::event()
         .node_uri("foo")
@@ -1681,7 +1681,7 @@ async fn test_route_incoming_parse_envelope_error() {
         .collect()
         .await;
 
-    send_message(&mut pool_handlers, &url, "@invalid(node:oof,lane:rab){bye}").await;
+    send_message(&mut pool_handlers, &url, "@invalid(node:oof,lane:rab) bye").await;
 
     assert!(timeout(Duration::from_secs(1), stream.recv())
         .await

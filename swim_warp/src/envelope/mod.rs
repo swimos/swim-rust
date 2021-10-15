@@ -34,9 +34,9 @@ pub enum Envelope {
     },
     #[form(tag = "link")]
     Link {
-        #[form(name = "nodeUri")]
+        #[form(name = "node")]
         node_uri: Text,
-        #[form(name = "laneUri")]
+        #[form(name = "lane")]
         lane_uri: Text,
         rate: Option<f64>,
         prio: Option<f64>,
@@ -45,9 +45,9 @@ pub enum Envelope {
     },
     #[form(tag = "sync")]
     Sync {
-        #[form(name = "nodeUri")]
+        #[form(name = "node")]
         node_uri: Text,
-        #[form(name = "laneUri")]
+        #[form(name = "lane")]
         lane_uri: Text,
         rate: Option<f64>,
         prio: Option<f64>,
@@ -56,27 +56,27 @@ pub enum Envelope {
     },
     #[form(tag = "unlink")]
     Unlink {
-        #[form(name = "nodeUri")]
+        #[form(name = "node")]
         node_uri: Text,
-        #[form(name = "laneUri")]
+        #[form(name = "lane")]
         lane_uri: Text,
         #[form(body)]
         body: Option<Value>,
     },
     #[form(tag = "command")]
     Command {
-        #[form(name = "nodeUri")]
+        #[form(name = "node")]
         node_uri: Text,
-        #[form(name = "laneUri")]
+        #[form(name = "lane")]
         lane_uri: Text,
         #[form(body)]
         body: Option<Value>,
     },
     #[form(tag = "linked")]
     Linked {
-        #[form(name = "nodeUri")]
+        #[form(name = "node")]
         node_uri: Text,
-        #[form(name = "laneUri")]
+        #[form(name = "lane")]
         lane_uri: Text,
         rate: Option<f64>,
         prio: Option<f64>,
@@ -85,27 +85,27 @@ pub enum Envelope {
     },
     #[form(tag = "synced")]
     Synced {
-        #[form(name = "nodeUri")]
+        #[form(name = "node")]
         node_uri: Text,
-        #[form(name = "laneUri")]
+        #[form(name = "lane")]
         lane_uri: Text,
         #[form(body)]
         body: Option<Value>,
     },
     #[form(tag = "unlinked")]
     Unlinked {
-        #[form(name = "nodeUri")]
+        #[form(name = "node")]
         node_uri: Text,
-        #[form(name = "laneUri")]
+        #[form(name = "lane")]
         lane_uri: Text,
         #[form(body)]
         body: Option<Value>,
     },
     #[form(tag = "event")]
     Event {
-        #[form(name = "nodeUri")]
+        #[form(name = "node")]
         node_uri: Text,
-        #[form(name = "laneUri")]
+        #[form(name = "lane")]
         lane_uri: Text,
         #[form(body)]
         body: Option<Value>,

@@ -234,7 +234,9 @@ fn write_slot_ref(field: &FieldModel) -> TokenStream {
     let field_index = &field.selector;
     let literal_name = field.resolve_name();
     quote! {
-        body_writer = body_writer.write_slot(&#literal_name, #field_index)?;
+        if !swim_form::structural::write::StructuralWritable::omit_as_field(#field_index) {
+            body_writer = body_writer.write_slot(&#literal_name, #field_index)?;
+        }
     }
 }
 
@@ -256,7 +258,9 @@ fn write_slot_into(field: &FieldModel) -> TokenStream {
     let field_index = &field.selector;
     let literal_name = field.resolve_name();
     quote! {
-        body_writer = body_writer.write_slot_into(#literal_name, #field_index)?;
+        if !swim_form::structural::write::StructuralWritable::omit_as_field(&#field_index) {
+            body_writer = body_writer.write_slot_into(#literal_name, #field_index)?;
+        }
     }
 }
 
