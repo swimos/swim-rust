@@ -257,6 +257,9 @@ impl AddressedBuilder {
             lane_uri,
             body,
         } = self;
+        if node_uri.is_empty() || lane_uri.is_empty() {
+            panic!("Boom!");
+        }
         match kind {
             AddressedKind::Command => Envelope::Command {
                 node_uri,

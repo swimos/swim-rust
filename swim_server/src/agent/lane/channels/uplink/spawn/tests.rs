@@ -524,7 +524,7 @@ async fn sync_with_lane() {
                 TaggedEnvelope(addr, event_envelope(INIT)),
                 TaggedEnvelope(
                     addr,
-                    Envelope::synced().lane_uri("node").lane_uri("lane").done()
+                    Envelope::synced().node_uri("node").lane_uri("lane").done()
                 )
             ]
         );

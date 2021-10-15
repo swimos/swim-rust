@@ -510,13 +510,17 @@ async fn task_receive_link_message_missing_node() {
         assert!(sock_in.send(Ok(message_for(envelope))).await.is_ok());
 
         let message = sock_out.next().await;
-        assert_eq!(message, Some(message_for(response)));
 
         stop_trigger.trigger();
+        message
     };
 
     let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
-    assert!(matches!(result, Ok((ConnectionDropped::Closed, _))));
+    assert!(result.is_ok());
+    let (result, message) = result.unwrap();
+
+    assert!(matches!(result, ConnectionDropped::Closed));
+    assert_eq!(message, Some(message_for(response)));
 }
 
 #[tokio::test]
