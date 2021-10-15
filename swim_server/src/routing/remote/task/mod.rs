@@ -38,10 +38,10 @@ use std::time::Duration;
 use swim_model::path::RelativePath;
 use swim_recon::parser::{parse_value, ParseError};
 use swim_runtime::error::{
-    CloseError, CloseErrorKind, ConnectionError, EncodingError, ProtocolError, ProtocolErrorKind,
-    ResolutionError, ResolutionErrorKind,
+    CloseError, CloseErrorKind, ConnectionError, ProtocolError, ProtocolErrorKind, ResolutionError,
+    ResolutionErrorKind,
 };
-use swim_runtime::ws::{into_stream, WsMessage, WsMessageType};
+use swim_runtime::ws::{into_stream, WsMessage};
 use swim_utilities::errors::Recoverable;
 use swim_utilities::future::retryable::RetryStrategy;
 use swim_utilities::future::task::Spawner;
@@ -183,18 +183,8 @@ where
             if let Some(event) = next {
                 match event {
                     WsEvent::Read(msg) => match msg {
-                        Ok(msg) => match &msg.kind {
-                            WsMessageType::Text => {
-                                let message = match msg.try_into_text() {
-                                    Ok(message) => message,
-                                    Err(_) => {
-                                        // Todo this should be avoided by Ratchet only returning valid UTF-8
-                                        break Completion::Failed(ConnectionError::Encoding(
-                                            EncodingError::invalid(),
-                                        ));
-                                    }
-                                };
-
+                        Ok(msg) => match msg {
+                            WsMessage::Text(message) => {
                                 match read_envelope(&message) {
                                     Ok(envelope) => {
                                         let dispatch_result = dispatch_envelope(
@@ -225,7 +215,7 @@ where
                         }
                     },
                     WsEvent::Write(envelope) => {
-                        let TaggedEnvelope(_, envelope) = env;
+                        let TaggedEnvelope(_, envelope) = envelope;
                         if let Err(e) = ws_tx.write_text(envelope.into_value().to_string()).await {
                             break Completion::Failed(e.into());
                         }

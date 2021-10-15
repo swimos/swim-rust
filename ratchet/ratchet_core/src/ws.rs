@@ -276,14 +276,16 @@ where
     }
 
     /// Close this WebSocket with the reason provided.
-    pub async fn close(mut self, reason: Option<String>) -> Result<(), Error> {
+    pub async fn close(&mut self, reason: Option<String>) -> Result<(), Error> {
+        self.closed = true;
         self.framed
             .write_close(CloseReason::new(CloseCode::Normal, reason))
             .await
     }
 
     /// Close this WebSocket with the reason provided.
-    pub async fn close_with(mut self, reason: CloseReason) -> Result<(), Error> {
+    pub async fn close_with(&mut self, reason: CloseReason) -> Result<(), Error> {
+        self.closed = true;
         self.framed.write_close(reason).await
     }
 

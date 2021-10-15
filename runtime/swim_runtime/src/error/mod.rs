@@ -72,8 +72,9 @@ pub enum ConnectionError {
 }
 
 impl From<ratchet::Error> for ConnectionError {
-    fn from(_: ratchet::Error) -> Self {
-        todo!()
+    fn from(e: ratchet::Error) -> Self {
+        // todo
+        ConnectionError::Protocol(ProtocolError::websocket(Some(e.to_string())))
     }
 }
 

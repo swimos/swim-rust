@@ -1,103 +1,110 @@
 use bytes::{Bytes, BytesMut};
 use futures::stream::unfold;
 use futures::Stream;
-pub use ratchet::Message as WsMessageType;
+use ratchet::{CloseCode, ErrorKind, Extension, Message};
 use ratchet::{CloseReason, Error, ExtensionDecoder, WebSocketStream};
-use std::borrow::Cow;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct WsMessage {
-    pub payload: Bytes,
-    pub kind: WsMessageType,
+pub enum WsMessage {
+    Text(String),
+    Binary(Bytes),
+    Ping,
+    Pong,
+    Close(Option<CloseReason>),
 }
 
-impl WsMessage {
-    pub fn new(payload: Bytes, kind: WsMessageType) -> WsMessage {
-        WsMessage { payload, kind }
-    }
+pub struct AutoWebSocket<S, E> {
+    inner: ratchet::WebSocket<S, E>,
+    buf: BytesMut,
+}
 
-    pub fn text<A>(a: A) -> WsMessage
-    where
-        A: Into<Cow<'static, str>>,
-    {
-        let str = a.into().to_string();
-        WsMessage {
-            payload: Bytes::from(str),
-            kind: WsMessageType::Text,
+impl<S, E> AutoWebSocket<S, E>
+where
+    S: WebSocketStream,
+    E: Extension,
+{
+    pub fn new(inner: ratchet::WebSocket<S, E>) -> AutoWebSocket<S, E> {
+        AutoWebSocket {
+            inner,
+            buf: BytesMut::default(),
         }
     }
 
-    /// Attempt to convert this message into a valid UTF-8 String. If this message is not text or it
-    /// contains invalid UTF-8 then the original message is returned.
-    pub fn try_into_text(self) -> Result<String, WsMessage> {
-        let WsMessage { payload, kind } = self;
-        match kind {
-            WsMessageType::Text => match String::from_utf8(payload.to_vec()) {
-                Ok(string) => Ok(string),
-                Err(_) => Err(WsMessage { payload, kind }),
+    pub fn into_inner(self) -> ratchet::WebSocket<S, E> {
+        self.inner
+    }
+
+    pub async fn write_text<I: AsRef<str>>(&mut self, buf: I) -> Result<(), Error> {
+        self.inner.write_text(buf).await
+    }
+
+    pub async fn read(&mut self) -> Result<WsMessage, Error> {
+        let AutoWebSocket { inner, buf } = self;
+
+        match inner.read(buf).await? {
+            Message::Text => match String::from_utf8(buf.to_vec()) {
+                Ok(value) => {
+                    buf.clear();
+                    Ok(WsMessage::Text(value))
+                }
+                Err(e) => {
+                    inner
+                        .close_with(CloseReason::new(
+                            CloseCode::Protocol,
+                            Some("Invalid encoding".to_string()),
+                        ))
+                        .await?;
+                    Err(Error::with_cause(ErrorKind::Encoding, e))
+                }
             },
-            kind => Err(WsMessage { payload, kind }),
-        }
-    }
-
-    /// Attempt to convert this message into a its binary contents if it is of `WsMessageType::Binary`.
-    /// If this message is not binary then the original message is returned.
-    pub fn try_into_binary(self) -> Result<Bytes, WsMessage> {
-        let WsMessage { payload, kind } = self;
-        match kind {
-            WsMessageType::Binary => Ok(payload),
-            kind => Err(WsMessage { payload, kind }),
-        }
-    }
-
-    /// Attempt to convert this message into an optional close reason if it is of
-    /// `WsMessageType::Close`. If this is not a close reason then the original message is returned.
-    pub fn try_into_close(self) -> Result<Option<CloseReason>, WsMessage> {
-        let WsMessage { payload, kind } = self;
-        match kind {
-            WsMessageType::Close(reason) => Ok(reason),
-            kind => Err(WsMessage { payload, kind }),
+            Message::Binary => Ok(WsMessage::Binary(buf.split().freeze())),
+            Message::Ping => Ok(WsMessage::Ping),
+            Message::Pong => Ok(WsMessage::Pong),
+            Message::Close(reason) => Ok(WsMessage::Close(reason)),
         }
     }
 }
 
-pub struct Receiver<S, E> {
+pub struct WebSocketReceiver<S, E> {
     inner: ratchet::Receiver<S, E>,
     buf: BytesMut,
 }
 
-impl<S, E> Receiver<S, E>
+impl<S, E> WebSocketReceiver<S, E>
 where
     S: WebSocketStream,
     E: ExtensionDecoder,
 {
-    pub fn new(inner: ratchet::Receiver<S, E>) -> Receiver<S, E> {
-        Receiver {
+    pub fn new(inner: ratchet::Receiver<S, E>) -> WebSocketReceiver<S, E> {
+        WebSocketReceiver {
             inner,
             buf: BytesMut::default(),
         }
     }
 
     pub async fn read(&mut self) -> Result<WsMessage, Error> {
-        let Receiver { inner, buf } = self;
+        let WebSocketReceiver { inner, buf } = self;
 
         match inner.read(buf).await? {
-            WsMessageType::Text => Ok(WsMessage {
-                payload: buf.split().freeze(),
-                kind: WsMessageType::Text,
-            }),
-            WsMessageType::Binary => Ok(WsMessage {
-                payload: buf.split().freeze(),
-                kind: WsMessageType::Text,
-            }),
-            t @ WsMessageType::Ping | t @ WsMessageType::Pong => Ok(WsMessage {
-                payload: Bytes::default(),
-                kind: t,
-            }),
-            WsMessageType::Close(reason) => Ok(WsMessage {
-                payload: Bytes::default(),
-                kind: WsMessageType::Close(reason),
-            }),
+            Message::Text => match String::from_utf8(buf.to_vec()) {
+                Ok(value) => {
+                    buf.clear();
+                    Ok(WsMessage::Text(value))
+                }
+                Err(e) => {
+                    inner
+                        .close_with(CloseReason::new(
+                            CloseCode::Protocol,
+                            Some("Invalid encoding".to_string()),
+                        ))
+                        .await?;
+                    Err(Error::with_cause(ErrorKind::Encoding, e))
+                }
+            },
+            Message::Binary => Ok(WsMessage::Binary(buf.split().freeze())),
+            Message::Ping => Ok(WsMessage::Ping),
+            Message::Pong => Ok(WsMessage::Pong),
+            Message::Close(reason) => Ok(WsMessage::Close(reason)),
         }
     }
 }
@@ -109,7 +116,7 @@ where
     S: WebSocketStream,
     E: ExtensionDecoder,
 {
-    unfold(Receiver::new(rx), |mut rx| async move {
+    unfold(WebSocketReceiver::new(rx), |mut rx| async move {
         // todo: this should terminate after an error
         match rx.read().await {
             Ok(item) => Some((Ok(item), rx)),

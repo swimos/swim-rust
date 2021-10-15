@@ -106,6 +106,7 @@ impl FrameDecoder {
                     buf.advance(*header_len);
 
                     let mut payload = buf.split_to(*payload_len);
+
                     if let Some(mask) = header.mask {
                         apply_mask(mask, &mut payload);
                     }
@@ -396,9 +397,8 @@ impl FramedWrite {
         io.write_all(write_buffer).await?;
         write_buffer.clear();
 
-        io.write_all(payload_bytes.as_ref())
-            .await
-            .map_err(Into::into)
+        io.write_all(payload_bytes.as_ref()).await?;
+        io.flush().await.map_err(Into::into)
     }
 }
 

@@ -133,7 +133,7 @@ impl FrameHeader {
         };
 
         if let Some(mask) = mask {
-            dst.put_u32_le(mask);
+            dst.put_u32(mask);
         }
     }
 

@@ -16,14 +16,13 @@ use crate::plane::PlaneRequest;
 use crate::routing::error::RouterError;
 use crate::routing::error::SendError;
 use crate::routing::remote::{RawRoute, RoutingRequest};
-use bytes::Bytes;
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
 use swim_runtime::error::RoutingError;
 use swim_runtime::error::{ConnectionError, ResolutionError};
-use swim_runtime::ws::{WsMessage, WsMessageType};
+use swim_runtime::ws::WsMessage;
 use swim_utilities::errors::Recoverable;
 use swim_utilities::future::request::Request;
 use swim_utilities::routing::uri::RelativeUri;
@@ -214,11 +213,7 @@ pub struct TaggedEnvelope(pub RoutingAddr, pub Envelope);
 impl From<TaggedEnvelope> for WsMessage {
     fn from(env: TaggedEnvelope) -> Self {
         let TaggedEnvelope(_, envelope) = env;
-
-        WsMessage::new(
-            Bytes::from(envelope.into_value().to_string()),
-            WsMessageType::Text,
-        )
+        WsMessage::Text(envelope.into_value().to_string())
     }
 }
 
