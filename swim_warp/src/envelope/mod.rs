@@ -989,7 +989,7 @@ mod tests {
 
         let recon = format!("{}", print_recon_compact(&env));
 
-        assert_eq!(recon, "@link(nodeUri:node,laneUri:lane,rate:0.5,prio:1.0)");
+        assert_eq!(recon, "@link(node:node,lane:lane,rate:0.5,prio:1.0)");
     }
 
     #[test]
@@ -1003,7 +1003,7 @@ mod tests {
 
         let recon = format!("{}", print_recon_compact(&env));
 
-        assert_eq!(recon, "@sync(nodeUri:node,laneUri:lane,rate:0.5,prio:1.0)");
+        assert_eq!(recon, "@sync(node:node,lane:lane,rate:0.5,prio:1.0)");
     }
 
     #[test]
@@ -1012,7 +1012,7 @@ mod tests {
 
         let recon = format!("{}", print_recon_compact(&env));
 
-        assert_eq!(recon, "@unlink(nodeUri:node,laneUri:lane)");
+        assert_eq!(recon, "@unlink(node:node,lane:lane)");
     }
 
     #[test]
@@ -1026,7 +1026,7 @@ mod tests {
 
         let recon = format!("{}", print_recon_compact(&env));
 
-        assert_eq!(recon, "@command(nodeUri:node,laneUri:lane)@clear");
+        assert_eq!(recon, "@command(node:node,lane:lane)@clear");
     }
 
     #[test]
@@ -1040,10 +1040,13 @@ mod tests {
 
         let recon = format!("{}", print_recon_compact(&env));
 
-        assert_eq!(
-            recon,
-            "@linked(nodeUri:node,laneUri:lane,rate:0.5,prio:1.0)"
-        );
+        assert_eq!(recon, "@linked(node:node,lane:lane,rate:0.5,prio:1.0)");
+
+        let env = Envelope::linked().node_uri("node").lane_uri("lane").done();
+
+        let recon = format!("{}", print_recon_compact(&env));
+
+        assert_eq!(recon, "@linked(node:node,lane:lane)");
     }
 
     #[test]
@@ -1052,7 +1055,7 @@ mod tests {
 
         let recon = format!("{}", print_recon_compact(&env));
 
-        assert_eq!(recon, "@synced(nodeUri:node,laneUri:lane)");
+        assert_eq!(recon, "@synced(node:node,lane:lane)");
     }
 
     #[test]
@@ -1064,7 +1067,7 @@ mod tests {
 
         let recon = format!("{}", print_recon_compact(&env));
 
-        assert_eq!(recon, "@unlinked(nodeUri:node,laneUri:lane)");
+        assert_eq!(recon, "@unlinked(node:node,lane:lane)");
     }
 
     #[test]
@@ -1073,6 +1076,6 @@ mod tests {
 
         let recon = format!("{}", print_recon_compact(&env));
 
-        assert_eq!(recon, "@event(nodeUri:node,laneUri:lane)");
+        assert_eq!(recon, "@event(node:node,lane:lane)");
     }
 }

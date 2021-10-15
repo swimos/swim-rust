@@ -496,7 +496,12 @@ where
 //Get the target path only for link and sync messages (for creating the "not found" response).
 fn link_or_sync(env: Envelope) -> Option<RelativePath> {
     match env {
-        Envelope::Link { node_uri, lane_uri, ..} | Envelope::Sync { node_uri, lane_uri, ..} => Some(RelativePath::new(node_uri, lane_uri)),
+        Envelope::Link {
+            node_uri, lane_uri, ..
+        }
+        | Envelope::Sync {
+            node_uri, lane_uri, ..
+        } => Some(RelativePath::new(node_uri, lane_uri)),
         _ => None,
     }
 }

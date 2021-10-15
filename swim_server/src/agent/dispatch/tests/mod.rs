@@ -97,7 +97,7 @@ fn lanes(names: Vec<&str>) -> HashMap<LaneIdentifier, MockLane> {
     map
 }
 
-async fn expect_echo(rx: &mut mpsc::Receiver<TaggedEnvelope>, lane: &str, envelope: Envelope) {
+async fn expect_echo(rx: &mut mpsc::Receiver<TaggedEnvelope>, envelope: Envelope) {
     let maybe_envelope = rx.recv().await;
     assert!(maybe_envelope.is_some());
     let rec_envelope = maybe_envelope.unwrap();
@@ -142,7 +142,7 @@ async fn dispatch_single() {
             .is_ok());
 
         let mut rx = context.take_receiver(&addr).unwrap();
-        expect_echo(&mut rx, "lane", link).await;
+        expect_echo(&mut rx, link).await;
 
         drop(envelope_tx);
         drop(context);
@@ -180,10 +180,10 @@ async fn dispatch_two_lanes() {
             .is_ok());
 
         let mut rx1 = context.take_receiver(&addr1).unwrap();
-        expect_echo(&mut rx1, "lane_a", link).await;
+        expect_echo(&mut rx1, link).await;
 
         let mut rx2 = context.take_receiver(&addr2).unwrap();
-        expect_echo(&mut rx2, "lane_b", sync).await;
+        expect_echo(&mut rx2, sync).await;
 
         drop(envelope_tx);
         drop(context);
@@ -226,14 +226,14 @@ async fn dispatch_multiple_same_lane() {
             .is_ok());
 
         let mut rx = context.take_receiver(&addr).unwrap();
-        expect_echo(&mut rx, "lane", link).await;
-        expect_echo(&mut rx, "lane", cmd1).await;
+        expect_echo(&mut rx, link).await;
+        expect_echo(&mut rx, cmd1).await;
 
         assert!(envelope_tx
             .send(TaggedEnvelope(addr, cmd2.clone()))
             .await
             .is_ok());
-        expect_echo(&mut rx, "lane", cmd2).await;
+        expect_echo(&mut rx, cmd2).await;
         drop(envelope_tx);
         drop(context);
     };
@@ -285,7 +285,7 @@ async fn blocked_lane() {
             .await
             .is_ok());
         let mut rx1 = context.take_receiver(&addr1).unwrap();
-        expect_echo(&mut rx1, "lane_a", cmd1).await;
+        expect_echo(&mut rx1, cmd1).await;
         //Lane A is now attached.
 
         assert!(envelope_tx
@@ -309,12 +309,12 @@ async fn blocked_lane() {
         //Wait until we receive the message for lane B indicating that lane A is definitely blocked
         //and the remaining messages must be pending.
         let mut rx2 = context.take_receiver(&addr2).unwrap();
-        expect_echo(&mut rx2, "lane_b", link).await;
+        expect_echo(&mut rx2, link).await;
 
         //Unblock lane A and wait for both messages.
-        expect_echo(&mut rx1, "lane_a", cmd2).await;
-        expect_echo(&mut rx1, "lane_a", cmd3).await;
-        expect_echo(&mut rx1, "lane_a", cmd4).await;
+        expect_echo(&mut rx1, cmd2).await;
+        expect_echo(&mut rx1, cmd3).await;
+        expect_echo(&mut rx1, cmd4).await;
 
         drop(envelope_tx);
         drop(context);
@@ -355,7 +355,7 @@ async fn flush_pending() {
             .await
             .is_ok());
         let mut rx1 = context.take_receiver(&addr1).unwrap();
-        expect_echo(&mut rx1, "lane_a", cmd0).await;
+        expect_echo(&mut rx1, cmd0).await;
 
         //Lane A is now attached.
 
@@ -379,7 +379,7 @@ async fn flush_pending() {
         //Wait until we receive the message for lane B indicating that lane A is definitely blocked
         //and the remaining messages must be pending.
         let mut rx2 = context.take_receiver(&addr2).unwrap();
-        expect_echo(&mut rx2, "lane_b", link).await;
+        expect_echo(&mut rx2, link).await;
 
         //Drop the envelope sender to begin the shutdown process for the dispatcher.
         drop(envelope_tx);
@@ -391,7 +391,7 @@ async fn flush_pending() {
                 .body(i + 1)
                 .done();
 
-            expect_echo(&mut rx1, "lane_a", cmd).await;
+            expect_echo(&mut rx1, cmd).await;
         }
 
         drop(context);
@@ -594,7 +594,6 @@ async fn dispatch_meta() {
             envelope_tx: &Sender<TaggedEnvelope>,
             context: &MockExecutionContext,
             env: Envelope,
-            lane: &str,
             addr: RoutingAddr,
         ) {
             assert!(envelope_tx
@@ -603,7 +602,7 @@ async fn dispatch_meta() {
                 .is_ok());
 
             let mut rx = context.take_receiver(&addr).unwrap();
-            expect_echo(&mut rx, lane, env).await;
+            expect_echo(&mut rx, env).await;
         }
 
         assert(
@@ -613,7 +612,6 @@ async fn dispatch_meta() {
                 .node_uri("/swim:meta:node/unit%2Ffoo/")
                 .lane_uri("pulse")
                 .done(),
-            "pulse",
             make_addr(),
         )
         .await;
@@ -625,7 +623,6 @@ async fn dispatch_meta() {
                 .node_uri("/swim:meta:node/unit%2Ffoo/lane/bar")
                 .lane_uri("uplink")
                 .done(),
-            "uplink",
             make_addr(),
         )
         .await;
@@ -637,7 +634,6 @@ async fn dispatch_meta() {
                 .node_uri("/swim:meta:node/unit%2Ffoo/lane/bar")
                 .lane_uri("traceLog")
                 .done(),
-            "traceLog",
             make_addr(),
         )
         .await;
@@ -649,7 +645,6 @@ async fn dispatch_meta() {
                 .node_uri("/swim:meta:node/unit%2Ffoo/")
                 .lane_uri("lanes")
                 .done(),
-            "lanes",
             make_addr(),
         )
         .await;
@@ -662,7 +657,6 @@ async fn dispatch_meta() {
                     .node_uri("/swim:meta:node/unit%2Ffoo")
                     .lane_uri(level.uri_ref())
                     .done(),
-                level.uri_ref(),
                 make_addr(),
             )
             .await;

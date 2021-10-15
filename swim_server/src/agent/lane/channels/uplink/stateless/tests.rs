@@ -677,7 +677,7 @@ async fn no_messages_after_unlink_from_stateless_uplinks() {
         check_receive(
             &mut router_rx,
             addr2,
-            Envelope::linked()
+            Envelope::unlinked()
                 .node_uri(&route.node)
                 .lane_uri(&route.lane)
                 .done(),
