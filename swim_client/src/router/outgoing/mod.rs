@@ -15,6 +15,7 @@
 use crate::configuration::router::RouterParams;
 use crate::router::{CloseReceiver, CloseResponseSender, ConnectionRequest};
 use futures::{select, FutureExt, StreamExt};
+use swim_recon::printer::print_recon_compact;
 use swim_runtime::error::RoutingError;
 use swim_warp::envelope::Envelope;
 use tokio::sync::mpsc;
@@ -93,7 +94,7 @@ impl OutgoingHostTask {
 
             match task {
                 OutgoingRequest::Message(envelope) => {
-                    let message = envelope.into_value().to_string();
+                    let message = format!("{}", print_recon_compact(&envelope));
                     let request = new_request(connection_request_tx.clone(), message.into());
 
                     RetryableFuture::new(request, config.retry_strategy())
@@ -146,7 +147,9 @@ mod route_tests {
         let outgoing_task = OutgoingHostTask::new(envelope_rx, task_request_tx, close_rx, config);
         let handle = tokio::spawn(outgoing_task.run());
 
-        let _ = envelope_tx.send(Envelope::sync("node", "lane")).await;
+        let _ = envelope_tx
+            .send(Envelope::sync().node_uri("node").lane_uri("lane").done())
+            .await;
 
         let connection_request = task_request_rx.recv().await.unwrap();
         let _ = connection_request
@@ -169,7 +172,9 @@ mod route_tests {
         let outgoing_task = OutgoingHostTask::new(envelope_rx, task_request_tx, close_rx, config);
 
         let handle = tokio::spawn(outgoing_task.run());
-        let _ = envelope_tx.send(Envelope::sync("node", "lane")).await;
+        let _ = envelope_tx
+            .send(Envelope::sync().node_uri("node").lane_uri("lane").done())
+            .await;
 
         let connection_request = task_request_rx.recv().await.unwrap();
         let _ = connection_request

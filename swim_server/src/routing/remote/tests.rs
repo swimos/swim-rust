@@ -22,7 +22,6 @@ use futures::FutureExt;
 use std::cell::RefCell;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
-use swim_model::Value;
 use swim_runtime::error::{ConnectionError, IoError, ResolutionError, ResolutionErrorKind};
 use swim_utilities::future::request::Request;
 use swim_utilities::trigger::promise::Sender;
@@ -195,7 +194,11 @@ fn transition_incoming_err() {
 fn make_env(addr: RoutingAddr) -> TaggedEnvelope {
     TaggedEnvelope(
         addr,
-        Envelope::make_event("/node", "lane", Some(Value::text("body"))),
+        Envelope::event()
+            .node_uri("/node")
+            .lane_uri("lane")
+            .body("body")
+            .done(),
     )
 }
 

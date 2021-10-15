@@ -18,7 +18,7 @@ use crate::router::{CloseReceiver, CloseResponseSender, RouterEvent, SubscriberR
 use futures::future::ready;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
-use std::convert::TryFrom;
+use swim_form::Form;
 use swim_model::path::RelativePath;
 use swim_recon::parser::parse_value;
 use swim_runtime::error::RoutingError;
@@ -141,16 +141,16 @@ impl IncomingHostTask {
 
                     match value {
                         Ok(val) => {
-                            let envelope = Envelope::try_from(val);
+                            let envelope = Envelope::try_convert(val);
 
                             match envelope {
                                 Ok(env) => {
-                                    let message = env.into_incoming();
+                                    let message = env.into_response();
 
-                                    if let Ok(incoming) = message {
+                                    if let Some(incoming) = message {
                                         broadcast_destination(
                                             &mut subscribers,
-                                            incoming.path.clone(),
+                                            incoming.path().clone(),
                                             RouterEvent::Message(incoming),
                                         )
                                         .await?;

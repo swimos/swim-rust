@@ -19,7 +19,6 @@ mod tests {
     use swim_client::connections::SwimConnPool;
     use swim_client::router::{Router, RouterEvent, SwimRouter};
     use swim_model::path::AbsolutePath;
-    use swim_model::Value;
     use swim_warp::envelope::Envelope;
     use test_server::build_server;
     use tokio::time::Duration;
@@ -43,7 +42,10 @@ mod tests {
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
         let (sink, mut stream) = router.connection_for(&path).await.unwrap();
 
-        let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
+        let sync = Envelope::sync()
+            .node_uri("/unit/foo")
+            .lane_uri("info")
+            .done();
 
         sink.send(sync).await.unwrap();
 
@@ -71,26 +73,40 @@ mod tests {
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
         let (sink, mut stream) = router.connection_for(&path).await.unwrap();
 
-        let sync = Envelope::sync("/unit/foo", "info");
+        let sync = Envelope::sync()
+            .node_uri("unit/foo")
+            .lane_uri("info")
+            .done();
+
         sink.send(sync).await.unwrap();
 
         let expected = RouterEvent::Message(
-            Envelope::linked("/unit/foo", "info")
-                .into_incoming()
+            Envelope::linked()
+                .node_uri("unit/foo")
+                .lane_uri("info")
+                .done()
+                .into_response()
                 .unwrap(),
         );
         assert_eq!(stream.recv().await.unwrap(), expected);
 
         let expected = RouterEvent::Message(
-            Envelope::make_event("/unit/foo", "info", Some("".into()))
-                .into_incoming()
+            Envelope::event()
+                .lane_uri("/unit/foo")
+                .node_uri("info")
+                .body("")
+                .done()
+                .into_response()
                 .unwrap(),
         );
         assert_eq!(stream.recv().await.unwrap(), expected);
 
         let expected = RouterEvent::Message(
-            Envelope::synced("/unit/foo", "info")
-                .into_incoming()
+            Envelope::synced()
+                .node_uri("unit/foo")
+                .lane_uri("info")
+                .done()
+                .into_response()
                 .unwrap(),
         );
         assert_eq!(stream.recv().await.unwrap(), expected);
@@ -120,13 +136,16 @@ mod tests {
         );
         let (sink, mut stream) = router.connection_for(&path).await.unwrap();
 
-        let sync = Envelope::link(String::from("non_existent"), String::from("non_existent"));
+        let sync = Envelope::link()
+            .node_uri("non_existent")
+            .lane_uri("non_existent")
+            .done();
 
         sink.send(sync).await.unwrap();
 
         let expected = RouterEvent::Message(
             Envelope::node_not_found("non_existent", "non_existent")
-                .into_incoming()
+                .into_response()
                 .unwrap(),
         );
         assert_eq!(stream.recv().await.unwrap(), expected);
@@ -152,13 +171,16 @@ mod tests {
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "non_existent");
         let (sink, mut stream) = router.connection_for(&path).await.unwrap();
 
-        let sync = Envelope::link(String::from("/unit/foo"), String::from("non_existent"));
+        let sync = Envelope::link()
+            .node_uri("/unit/foo")
+            .lane_uri("non_existent")
+            .done();
 
         sink.send(sync).await.unwrap();
 
         let expected = RouterEvent::Message(
             Envelope::lane_not_found("/unit/foo", "non_existent")
-                .into_incoming()
+                .into_response()
                 .unwrap(),
         );
         assert_eq!(stream.recv().await.unwrap(), expected);
@@ -184,7 +206,11 @@ mod tests {
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "foo", "bar");
         let (sink, mut stream) = router.connection_for(&path).await.unwrap();
 
-        let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
+        let sync = Envelope::sync()
+            .node_uri("/unit/foo")
+            .lane_uri("info")
+            .done();
+
         sink.send(sync).await.unwrap();
 
         let result = timeout(Duration::from_secs(5), stream.recv()).await;
@@ -215,11 +241,10 @@ mod tests {
         );
         let (sink, mut stream) = router.connection_for(&path).await.unwrap();
 
-        let command = Envelope::make_command(
-            String::from("non_existent"),
-            String::from("non_existent"),
-            None,
-        );
+        let command = Envelope::command()
+            .node_uri("non_existent")
+            .lane_uri("non_existent")
+            .done();
 
         sink.send(command).await.unwrap();
 
@@ -246,23 +271,23 @@ mod tests {
 
         let url = url::Url::parse(&host).unwrap();
 
-        let first_message = Envelope::make_command(
-            String::from("/unit/foo"),
-            String::from("publishInfo"),
-            Some(Value::text("Hello, World!")),
-        );
+        let first_message = Envelope::command()
+            .node_uri("/unit/foo")
+            .lane_uri("publishInfo")
+            .body("Hello, World!")
+            .done();
 
-        let second_message = Envelope::make_command(
-            String::from("/unit/foo"),
-            String::from("publishInfo"),
-            Some(Value::text("Test message")),
-        );
+        let second_message = Envelope::command()
+            .node_uri("/unit/foo")
+            .lane_uri("publishInfo")
+            .body("Test message")
+            .done();
 
-        let third_message = Envelope::make_command(
-            String::from("/unit/foo"),
-            String::from("publishInfo"),
-            Some(Value::text("Bye, World!")),
-        );
+        let third_message = Envelope::command()
+            .node_uri("/unit/foo")
+            .lane_uri("publishInfo")
+            .body("Bye, World!")
+            .done();
 
         let router_sink = router.general_sink();
 

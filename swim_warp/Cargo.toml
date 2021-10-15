@@ -11,3 +11,4 @@ swim_form = { path = "../api/swim_form" }
 swim_schema = { path = "../api/swim_schema" }
 
 [dev-dependencies]
+swim_recon = { path = "../api/formats/swim_recon" }

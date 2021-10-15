@@ -62,12 +62,15 @@ async fn plane_router_get_sender() {
         let mut sender = result1.unwrap();
         assert!(sender
             .sender
-            .send_item(Envelope::linked("/node", "lane"))
+            .send_item(Envelope::linked().node_uri("/node").lane_uri("lane").done())
             .await
             .is_ok());
         assert_eq!(
             send_rx.recv().await,
-            Some(TaggedEnvelope(addr, Envelope::linked("/node", "lane")))
+            Some(TaggedEnvelope(
+                addr,
+                Envelope::linked().node_uri("/node").lane_uri("lane").done()
+            ))
         );
 
         let result2 = router.resolve_sender(RoutingAddr::local(56)).await;

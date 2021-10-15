@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use std::collections::HashMap;
-use std::ops::Deref;
 
 use futures::stream::FuturesUnordered;
 use futures::{select_biased, Future, FutureExt, StreamExt};
@@ -27,7 +26,7 @@ use tracing_futures::Instrument;
 use swim_async_runtime::task::*;
 use swim_model::path::{AbsolutePath, RelativePath};
 use swim_utilities::future::request::request_future::RequestError;
-use swim_warp::envelope::{Envelope, IncomingLinkMessage};
+use swim_warp::envelope::{Envelope, EnvelopeKind, ResponseEnvelope};
 
 use crate::configuration::router::RouterParams;
 use crate::connections::{ConnectionPool, ConnectionSender};
@@ -69,7 +68,7 @@ type CloseReceiver = promise::Receiver<mpsc::Sender<Result<(), RoutingError>>>;
 #[derive(Debug, Clone, PartialEq)]
 pub enum RouterEvent {
     // Incoming message from a remote host.
-    Message(IncomingLinkMessage),
+    Message(ResponseEnvelope),
     // There was an error in the connection. If a retry strategy exists this will trigger it.
     ConnectionClosed,
     /// The remote host is unreachable. This will not trigger the retry system.
@@ -244,17 +243,16 @@ impl<Pool: ConnectionPool> TaskManager<Pool> {
                 }
 
                 RouterTask::SendMessage(payload) => {
-                    let (host, message) = payload.deref();
+                    let (host, message) = *payload;
 
-                    let target = message
-                        .header
-                        .relative_path()
-                        .ok_or(RoutingError::ConnectionError)?
-                        .for_host(host.clone());
+                    let kind = message.kind();
+                    if kind == EnvelopeKind::Auth || kind == EnvelopeKind::DeAuth {
+                        return Err(RoutingError::ConnectionError);
+                    }
 
                     let (sink, _, _) = get_host_manager(
                         &mut host_managers,
-                        target.host.clone(),
+                        host,
                         connection_pool.clone(),
                         close_rx.clone(),
                         config,

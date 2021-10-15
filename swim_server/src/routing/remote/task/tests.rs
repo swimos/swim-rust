@@ -24,7 +24,6 @@ use tokio::sync::{mpsc, watch};
 
 use swim_async_runtime::time::timeout;
 use swim_model::path::RelativePath;
-use swim_model::Value;
 use swim_utilities::future::retryable::{Quantity, RetryStrategy};
 use swim_utilities::routing::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};
 use swim_utilities::trigger;
@@ -40,6 +39,7 @@ use crate::routing::{ConnectionDropped, Route, RoutingAddr, TaggedEnvelope, Tagg
 use futures::io::ErrorKind;
 use std::num::NonZeroUsize;
 use std::time::Duration;
+use swim_recon::printer::print_recon_compact;
 use swim_runtime::error::{
     CloseError, CloseErrorKind, ConnectionError, IoError, ProtocolError, ResolutionError,
 };
@@ -77,7 +77,11 @@ fn dispatch_error_display() {
 
 fn envelope(path: RelativePath, body: &str) -> Envelope {
     let RelativePath { node, lane } = path;
-    Envelope::make_event(node, lane, Some(Value::text(body)))
+    Envelope::event()
+        .node_uri(node)
+        .lane_uri(lane)
+        .body(body)
+        .done()
 }
 
 #[tokio::test]
@@ -383,7 +387,7 @@ impl TaskFixture {
 }
 
 fn message_for(env: Envelope) -> WsMessage {
-    WsMessage::Text(env.into_value().to_string())
+    WsMessage::Text(format!("{}", print_recon_compact(&env)))
 }
 
 #[tokio::test]
@@ -398,7 +402,11 @@ async fn task_send_message() {
         send_error_tx: _send_error_tx,
     } = TaskFixture::new();
 
-    let envelope = Envelope::make_event("/node", "/lane", Some(Value::text("a")));
+    let envelope = Envelope::event()
+        .node_uri("/node")
+        .lane_uri("/lane")
+        .body("a")
+        .done();
     let env_cpy = envelope.clone();
 
     let test_case = async move {
@@ -426,7 +434,11 @@ async fn task_send_message_failure() {
         send_error_tx,
     } = TaskFixture::new();
 
-    let envelope = Envelope::make_event("/node", "/lane", Some(Value::text("a")));
+    let envelope = Envelope::event()
+        .node_uri("/node")
+        .lane_uri("/lane")
+        .body("a")
+        .done();
     let env_cpy = envelope.clone();
 
     let test_case = async move {
@@ -459,7 +471,11 @@ async fn task_receive_message_with_route() {
     } = TaskFixture::new();
 
     let mut rx = router.add("/node".parse().unwrap());
-    let envelope = Envelope::make_event("/node", "/lane", Some(Value::text("a")));
+    let envelope = Envelope::event()
+        .node_uri("/node")
+        .lane_uri("/lane")
+        .body("a")
+        .done();
     let env_cpy = envelope.clone();
 
     let test_case = async move {
@@ -484,7 +500,10 @@ async fn task_receive_link_message_missing_node() {
         send_error_tx: _send_error_tx,
     } = TaskFixture::new();
 
-    let envelope = Envelope::link("/missing", "/lane");
+    let envelope = Envelope::link()
+        .node_uri("/missing")
+        .lane_uri("/lane")
+        .done();
     let response = Envelope::node_not_found("/missing", "/lane");
 
     let test_case = async move {
@@ -512,13 +531,16 @@ async fn task_receive_sync_message_missing_node() {
         send_error_tx: _send_error_tx,
     } = TaskFixture::new();
 
-    let envelope = Envelope::sync("/missing", "/lane");
+    let envelope = Envelope::sync()
+        .node_uri("/missing")
+        .lane_uri("/lane")
+        .done();
 
     let test_case = async move {
         assert!(sock_in.send(Ok(message_for(envelope))).await.is_ok());
         let message = sock_out.next().await.unwrap();
         let envelope = Envelope::node_not_found("/missing", "/lane");
-        let expected = WsMessage::Text(envelope.into_value().to_string());
+        let expected = WsMessage::Text(format!("{}", print_recon_compact(&envelope)));
 
         assert_eq!(message, expected);
     };
@@ -539,7 +561,11 @@ async fn task_receive_message_no_route() {
         send_error_tx: _send_error_tx,
     } = TaskFixture::new();
 
-    let envelope = Envelope::make_event("/node", "/lane", Some(Value::text("a")));
+    let envelope = Envelope::event()
+        .node_uri("/node")
+        .lane_uri("/lane")
+        .body("a")
+        .done();
     let env_cpy = envelope.clone();
 
     let test_case = async move {
@@ -612,7 +638,11 @@ async fn task_timeout() {
         send_error_tx: _send_error_tx,
     } = TaskFixture::new();
 
-    let envelope = Envelope::make_event("/node", "/lane", Some(Value::text("a")));
+    let envelope = Envelope::event()
+        .node_uri("/node")
+        .lane_uri("/lane")
+        .body("a")
+        .done();
     let env_cpy = envelope.clone();
 
     let test_case = async move {
@@ -666,11 +696,11 @@ async fn generate_writes(
             return Ok(());
         }
         for j in 0..(BUFFER_SIZE * 3) {
-            let envelope = Envelope::make_command(
-                "/remote_node",
-                "/remote_lane",
-                Some(Value::text(format!("{}.{}", i, j))),
-            );
+            let envelope = Envelope::command()
+                .node_uri("/remote_node")
+                .lane_uri("/remote_lane")
+                .body(format!("{}.{}", i, j))
+                .done();
             let tagged = TaggedEnvelope(addr, envelope);
             outgoing.send(tagged).await?;
         }
@@ -713,8 +743,11 @@ async fn read_causes_write_buffer_to_fill() {
 
     let generate_inputs = async move {
         for i in 0..n {
-            let envelope =
-                Envelope::make_command("/node", "/lane", Some(Value::text(i.to_string())));
+            let envelope = Envelope::command()
+                .node_uri("/node")
+                .lane_uri("/lane")
+                .body(i.to_string())
+                .done();
             let message = Ok(message_for(envelope));
             if input.send(message).await.is_err() {
                 break;

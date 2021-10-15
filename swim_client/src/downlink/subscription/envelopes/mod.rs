@@ -17,7 +17,7 @@ use crate::downlink::model::value::SharedValue;
 use crate::downlink::Command;
 use swim_model::path::AbsolutePath;
 use swim_model::Value;
-use swim_warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
+use swim_warp::envelope::RequestEnvelope;
 
 #[cfg(test)]
 mod tests;
@@ -27,7 +27,7 @@ fn envelope_for<T, F>(
     to_body: F,
     path: &AbsolutePath,
     command: Command<T>,
-) -> (url::Url, OutgoingLinkMessage)
+) -> (url::Url, RequestEnvelope)
 where
     F: Fn(T) -> Value,
 {
@@ -35,26 +35,10 @@ where
     (
         host,
         match command {
-            Command::Sync => OutgoingLinkMessage {
-                header: OutgoingHeader::Sync(Default::default()),
-                path,
-                body: None,
-            },
-            Command::Link => OutgoingLinkMessage {
-                header: OutgoingHeader::Link(Default::default()),
-                path,
-                body: None,
-            },
-            Command::Action(v) => OutgoingLinkMessage {
-                header: OutgoingHeader::Command,
-                path,
-                body: Some(to_body(v)),
-            },
-            Command::Unlink => OutgoingLinkMessage {
-                header: OutgoingHeader::Unlink,
-                path,
-                body: None,
-            },
+            Command::Sync => RequestEnvelope::Sync(path, Default::default(), None),
+            Command::Link => RequestEnvelope::Link(path, Default::default(), None),
+            Command::Action(v) => RequestEnvelope::Command(path, Some(to_body(v))),
+            Command::Unlink => RequestEnvelope::Unlink(path, None),
         },
     )
 }
@@ -63,7 +47,7 @@ where
 pub fn value_envelope(
     path: &AbsolutePath,
     command: Command<SharedValue>,
-) -> (url::Url, OutgoingLinkMessage) {
+) -> (url::Url, RequestEnvelope) {
     envelope_for(value::envelope_body, path, command)
 }
 
@@ -71,7 +55,7 @@ pub fn value_envelope(
 pub fn map_envelope(
     path: &AbsolutePath,
     command: Command<UntypedMapModification<Value>>,
-) -> (url::Url, OutgoingLinkMessage) {
+) -> (url::Url, RequestEnvelope) {
     envelope_for(map::envelope_body, path, command)
 }
 
@@ -79,15 +63,12 @@ pub fn map_envelope(
 pub fn command_envelope(
     path: &AbsolutePath,
     command: Command<Value>,
-) -> (url::Url, OutgoingLinkMessage) {
+) -> (url::Url, RequestEnvelope) {
     envelope_for(|v| v, path, command)
 }
 
 /// Convert a downlink [`Command`], from a event downlink, into a Warp [`OutgoingLinkMessage`].
-pub fn dummy_envelope(
-    path: &AbsolutePath,
-    command: Command<()>,
-) -> (url::Url, OutgoingLinkMessage) {
+pub fn dummy_envelope(path: &AbsolutePath, command: Command<()>) -> (url::Url, RequestEnvelope) {
     envelope_for(|_| Value::Extant, path, command)
 }
 
@@ -95,31 +76,18 @@ pub(in crate::downlink) mod value {
     use crate::downlink::model::value::SharedValue;
     use crate::downlink::Message;
     use swim_model::Value;
-    use swim_warp::envelope::{IncomingHeader, IncomingLinkMessage};
+    use swim_warp::envelope::ResponseEnvelope;
 
     pub(in crate::downlink) fn envelope_body(v: SharedValue) -> Value {
         (*v).clone()
     }
 
-    pub(in crate::downlink) fn from_envelope(incoming: IncomingLinkMessage) -> Message<Value> {
+    pub(in crate::downlink) fn from_envelope(incoming: ResponseEnvelope) -> Message<Value> {
         match incoming {
-            IncomingLinkMessage {
-                header: IncomingHeader::Linked(_),
-                ..
-            } => Message::Linked,
-            IncomingLinkMessage {
-                header: IncomingHeader::Synced,
-                ..
-            } => Message::Synced,
-            IncomingLinkMessage {
-                header: IncomingHeader::Unlinked,
-                ..
-            } => Message::Unlinked,
-            IncomingLinkMessage {
-                header: IncomingHeader::Event,
-                body: Some(body),
-                ..
-            } => Message::Action(body),
+            ResponseEnvelope::Linked(..) => Message::Linked,
+            ResponseEnvelope::Synced(..) => Message::Synced,
+            ResponseEnvelope::Unlinked(..) => Message::Unlinked,
+            ResponseEnvelope::Event(_, Some(body)) => Message::Action(body),
             _ => Message::Action(Value::Extant),
         }
     }
@@ -130,7 +98,7 @@ pub(in crate::downlink) mod map {
     use crate::downlink::Message;
     use swim_form::Form;
     use swim_model::Value;
-    use swim_warp::envelope::{IncomingHeader, IncomingLinkMessage};
+    use swim_warp::envelope::ResponseEnvelope;
     use tracing::warn;
 
     pub(super) fn envelope_body(cmd: UntypedMapModification<Value>) -> Value {
@@ -138,26 +106,13 @@ pub(in crate::downlink) mod map {
     }
 
     pub(in crate::downlink) fn from_envelope(
-        incoming: IncomingLinkMessage,
+        incoming: ResponseEnvelope,
     ) -> Message<UntypedMapModification<Value>> {
         match incoming {
-            IncomingLinkMessage {
-                header: IncomingHeader::Linked(_),
-                ..
-            } => Message::Linked,
-            IncomingLinkMessage {
-                header: IncomingHeader::Synced,
-                ..
-            } => Message::Synced,
-            IncomingLinkMessage {
-                header: IncomingHeader::Unlinked,
-                ..
-            } => Message::Unlinked,
-            IncomingLinkMessage {
-                header: IncomingHeader::Event,
-                body: Some(body),
-                ..
-            } => match Form::try_convert(body) {
+            ResponseEnvelope::Linked(..) => Message::Linked,
+            ResponseEnvelope::Synced(..) => Message::Synced,
+            ResponseEnvelope::Unlinked(..) => Message::Unlinked,
+            ResponseEnvelope::Event(_, Some(body)) => match Form::try_convert(body) {
                 Ok(modification) => Message::Action(modification),
                 Err(e) => Message::BadEnvelope(format!("{}", e)),
             },

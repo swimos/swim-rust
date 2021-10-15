@@ -20,7 +20,6 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use swim_model::path::AbsolutePath;
-use swim_model::Value;
 use swim_runtime::error::{ConnectionError, HttpError};
 use swim_runtime::ws::WsMessage;
 use swim_utilities::future::request::request_future::RequestError;
@@ -107,7 +106,7 @@ async fn test_route_single_outgoing_message_to_single_downlink() {
 
     let (sink, _) = open_connection(&mut router, &url, "foo", "bar").await;
 
-    let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
+    let envelope = Envelope::sync().node_uri("foo").lane_uri("bar").done();
     let _ = sink.send(envelope).await.unwrap();
 
     let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
@@ -139,11 +138,11 @@ async fn test_route_single_outgoing_message_to_multiple_downlinks_same_host() {
     let (first_sink, _) = open_connection(&mut router, &url, "foo_node", "foo_lane").await;
     let (second_sink, _) = open_connection(&mut router, &url, "foo_node", "foo_lane").await;
 
-    let env = Envelope::make_event(
-        String::from("oof"),
-        String::from("rab"),
-        Some(Value::text("bye")),
-    );
+    let env = Envelope::event()
+        .node_uri("oof")
+        .lane_uri("rab")
+        .body("bye")
+        .done();
 
     let _ = first_sink.send(env.clone()).await.unwrap();
     let _ = second_sink.send(env).await.unwrap();
@@ -183,11 +182,11 @@ async fn test_route_single_outgoing_message_to_multiple_downlinks_different_host
     let (second_sink, _) =
         open_connection(&mut router, &second_url, "second_foo", "second_bar").await;
 
-    let env = Envelope::make_event(
-        String::from("foo"),
-        String::from("bar"),
-        Some(Value::text("hello")),
-    );
+    let env = Envelope::event()
+        .node_uri("foo")
+        .lane_uri("bar")
+        .body("hello")
+        .done();
 
     let _ = first_sink.send(env.clone()).await.unwrap();
     let _ = second_sink.send(env).await.unwrap();
@@ -225,18 +224,19 @@ async fn test_route_multiple_outgoing_messages_to_single_downlink() {
 
     let (sink, _) = open_connection(&mut router, &url, "foo", "bar").await;
 
-    let first_env = Envelope::make_event(
-        String::from("foo"),
-        String::from("bar"),
-        Some(Value::text("First_Downlink")),
-    );
+    let first_env = Envelope::event()
+        .node_uri("foo")
+        .lane_uri("bar")
+        .body("First_Downlink")
+        .done();
+
     let _ = sink.send(first_env).await.unwrap();
 
-    let second_env = Envelope::make_event(
-        String::from("foo"),
-        String::from("bar"),
-        Some(Value::text("Second_Downlink")),
-    );
+    let second_env = Envelope::event()
+        .node_uri("foo")
+        .lane_uri("bar")
+        .body("Second_Downlink")
+        .done();
     let _ = sink.send(second_env).await.unwrap();
 
     let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
@@ -273,23 +273,23 @@ async fn test_route_multiple_outgoing_messages_to_multiple_downlinks_same_host()
     let (first_sink, _) = open_connection(&mut router, &url, "foo_node", "foo_lane").await;
     let (second_sink, _) = open_connection(&mut router, &url, "foo_node", "foo_lane").await;
 
-    let first_env = Envelope::make_event(
-        String::from("first_foo"),
-        String::from("first_bar"),
-        Some(Value::text("first_body")),
-    );
+    let first_env = Envelope::event()
+        .node_uri("first_foo")
+        .lane_uri("first_bar")
+        .body("first_body")
+        .done();
 
-    let second_env = Envelope::make_event(
-        String::from("second_foo"),
-        String::from("second_bar"),
-        Some(Value::text("second_body")),
-    );
+    let second_env = Envelope::event()
+        .node_uri("second_foo")
+        .lane_uri("second_bar")
+        .body("second_body")
+        .done();
 
-    let third_env = Envelope::make_event(
-        String::from("third_foo"),
-        String::from("third_bar"),
-        Some(Value::text("third_body")),
-    );
+    let third_env = Envelope::event()
+        .node_uri("third_foo")
+        .lane_uri("third_bar")
+        .body("third_body")
+        .done();
 
     let _ = first_sink.send(first_env).await.unwrap();
     let _ = first_sink.send(second_env).await.unwrap();
@@ -334,23 +334,23 @@ async fn test_route_multiple_outgoing_messages_to_multiple_downlinks_different_h
     let (first_sink, _) = open_connection(&mut router, &first_url, "foo_node", "foo_lane").await;
     let (second_sink, _) = open_connection(&mut router, &second_url, "foo_node", "foo_lane").await;
 
-    let first_env = Envelope::make_event(
-        String::from("first_foo"),
-        String::from("first_bar"),
-        Some(Value::text("first_body")),
-    );
+    let first_env = Envelope::event()
+        .node_uri("first_foo")
+        .lane_uri("first_bar")
+        .body("first_body")
+        .done();
 
-    let second_env = Envelope::make_event(
-        String::from("second_foo"),
-        String::from("second_bar"),
-        Some(Value::text("second_body")),
-    );
+    let second_env = Envelope::event()
+        .node_uri("second_foo")
+        .lane_uri("second_bar")
+        .body("second_body")
+        .done();
 
-    let third_env = Envelope::make_event(
-        String::from("third_foo"),
-        String::from("third_bar"),
-        Some(Value::text("third_body")),
-    );
+    let third_env = Envelope::event()
+        .node_uri("third_foo")
+        .lane_uri("third_bar")
+        .body("third_body")
+        .done();
 
     let _ = first_sink.send(first_env).await.unwrap();
     let _ = first_sink.send(second_env).await.unwrap();
@@ -394,7 +394,7 @@ async fn test_route_single_incoming_message_to_single_downlink() {
 
     let (sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
 
-    let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
+    let envelope = Envelope::sync().node_uri("foo").lane_uri("bar").done();
 
     let _ = sink.send(envelope.clone()).await.unwrap();
 
@@ -405,15 +405,15 @@ async fn test_route_single_incoming_message_to_single_downlink() {
 
     send_message(&mut pool_handlers, &url, "@event(node:foo,lane:bar){Hello}").await;
 
-    let expected_env = Envelope::make_event(
-        String::from("foo"),
-        String::from("bar"),
-        Some(Value::text("Hello")),
-    );
+    let expected_env = Envelope::event()
+        .node_uri("foo")
+        .lane_uri("bar")
+        .body("Hello")
+        .done();
 
     assert_eq!(
         stream.recv().await.unwrap(),
-        RouterEvent::Message(expected_env.into_incoming().unwrap())
+        RouterEvent::Message(expected_env.into_response().unwrap())
     );
 
     assert!(router.close().await.is_ok());
@@ -438,7 +438,8 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_same_host_same
     let (first_sink, mut first_stream) = open_connection(&mut router, &url, "foo", "bar").await;
     let (_, mut second_stream) = open_connection(&mut router, &url, "foo", "bar").await;
 
-    let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
+    let envelope = Envelope::sync().node_uri("foo").lane_uri("bar").done();
+
     let _ = first_sink.send(envelope).await.unwrap();
 
     let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
@@ -453,20 +454,20 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_same_host_same
     )
     .await;
 
-    let expected_env = Envelope::make_event(
-        String::from("foo"),
-        String::from("bar"),
-        Some(Value::text("Goodbye")),
-    );
+    let expected_env = Envelope::event()
+        .node_uri("food")
+        .lane_uri("bar")
+        .body("Goodbye")
+        .done();
 
     assert_eq!(
         first_stream.recv().await.unwrap(),
-        RouterEvent::Message(expected_env.clone().into_incoming().unwrap())
+        RouterEvent::Message(expected_env.clone().into_response().unwrap())
     );
 
     assert_eq!(
         second_stream.recv().await.unwrap(),
-        RouterEvent::Message(expected_env.into_incoming().unwrap())
+        RouterEvent::Message(expected_env.into_response().unwrap())
     );
 
     assert!(router.close().await.is_ok());
@@ -492,7 +493,8 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_same_host_diff
     let (first_sink, mut first_stream) = open_connection(&mut router, &url, "oof", "rab").await;
     let (_, mut second_stream) = open_connection(&mut router, &url, "foo", "bar").await;
 
-    let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
+    let envelope = Envelope::sync().node_uri("foo").lane_uri("bar").done();
+
     let _ = first_sink.send(envelope.clone()).await.unwrap();
 
     let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
@@ -502,11 +504,11 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_same_host_diff
 
     send_message(&mut pool_handlers, &url, "@event(node:foo,lane:bar){tseT}").await;
 
-    let expected_env = Envelope::make_event(
-        String::from("foo"),
-        String::from("bar"),
-        Some(Value::text("tseT")),
-    );
+    let expected_env = Envelope::event()
+        .node_uri("foo")
+        .lane_uri("bar")
+        .body("tseT")
+        .done();
 
     assert!(timeout(Duration::from_secs(1), first_stream.recv())
         .await
@@ -514,7 +516,7 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_same_host_diff
 
     assert_eq!(
         second_stream.recv().await.unwrap(),
-        RouterEvent::Message(expected_env.into_incoming().unwrap())
+        RouterEvent::Message(expected_env.into_response().unwrap())
     );
 
     assert!(router.close().await.is_ok());
@@ -543,7 +545,7 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_different_host
     let (second_sink, mut second_stream) =
         open_connection(&mut router, &second_url, "foo", "bar").await;
 
-    let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
+    let envelope = Envelope::sync().node_uri("foo").lane_uri("bar").done();
     let _ = first_sink.send(envelope.clone()).await.unwrap();
     let _ = second_sink.send(envelope).await.unwrap();
 
@@ -566,26 +568,26 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_different_host
     )
     .await;
 
-    let first_env = Envelope::make_event(
-        String::from("foo"),
-        String::from("bar"),
-        Some(Value::text("First Hello")),
-    );
+    let first_env = Envelope::event()
+        .node_uri("foo")
+        .lane_uri("bar")
+        .body("First Hello")
+        .done();
 
-    let second_env = Envelope::make_event(
-        String::from("foo"),
-        String::from("bar"),
-        Some(Value::text("Second Hello")),
-    );
+    let second_env = Envelope::event()
+        .node_uri("foo")
+        .lane_uri("bar")
+        .body("Second Hellp")
+        .done();
 
     assert_eq!(
         first_stream.recv().await.unwrap(),
-        RouterEvent::Message(first_env.into_incoming().unwrap())
+        RouterEvent::Message(first_env.into_response().unwrap())
     );
 
     assert_eq!(
         second_stream.recv().await.unwrap(),
-        RouterEvent::Message(second_env.into_incoming().unwrap())
+        RouterEvent::Message(second_env.into_response().unwrap())
     );
 
     assert!(router.close().await.is_ok());
@@ -621,7 +623,7 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_different_host
     let (third_sink, mut third_stream) =
         open_connection(&mut router, &third_url, "ofo", "abr").await;
 
-    let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
+    let envelope = Envelope::sync().node_uri("foo").lane_uri("bar").done();
     let _ = first_sink.send(envelope.clone()).await.unwrap();
     let _ = second_sink.send(envelope.clone()).await.unwrap();
     let _ = third_sink.send(envelope).await.unwrap();
@@ -652,37 +654,37 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_different_host
     )
     .await;
 
-    let first_env = Envelope::make_event(
-        String::from("foo"),
-        String::from("bar"),
-        Some(Value::text("Hello First")),
-    );
+    let first_env = Envelope::event()
+        .node_uri("foo")
+        .lane_uri("bar")
+        .body("Hello First")
+        .done();
 
-    let second_env = Envelope::make_event(
-        String::from("oof"),
-        String::from("rab"),
-        Some(Value::text("Hello Second")),
-    );
+    let second_env = Envelope::event()
+        .node_uri("oof")
+        .lane_uri("rab")
+        .body("Hello Second")
+        .done();
 
-    let third_env = Envelope::make_event(
-        String::from("ofo"),
-        String::from("abr"),
-        Some(Value::text("Hello Third")),
-    );
+    let third_env = Envelope::event()
+        .node_uri("ofo")
+        .lane_uri("abr")
+        .body("Hellp Third")
+        .done();
 
     assert_eq!(
         first_stream.recv().await.unwrap(),
-        RouterEvent::Message(first_env.into_incoming().unwrap())
+        RouterEvent::Message(first_env.into_response().unwrap())
     );
 
     assert_eq!(
         second_stream.recv().await.unwrap(),
-        RouterEvent::Message(second_env.into_incoming().unwrap())
+        RouterEvent::Message(second_env.into_response().unwrap())
     );
 
     assert_eq!(
         third_stream.recv().await.unwrap(),
-        RouterEvent::Message(third_env.into_incoming().unwrap())
+        RouterEvent::Message(third_env.into_response().unwrap())
     );
 
     assert!(router.close().await.is_ok());
@@ -710,7 +712,7 @@ async fn test_route_multiple_incoming_messages_to_single_downlink() {
 
     let (sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
 
-    let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
+    let envelope = Envelope::sync().node_uri("foo").lane_uri("bar").done();
     let _ = sink.send(envelope.clone()).await.unwrap();
 
     let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
@@ -731,26 +733,26 @@ async fn test_route_multiple_incoming_messages_to_single_downlink() {
     )
     .await;
 
-    let first_env = Envelope::make_event(
-        String::from("foo"),
-        String::from("bar"),
-        Some(Value::text("First!")),
-    );
+    let first_env = Envelope::event()
+        .node_uri("foo")
+        .lane_uri("bar")
+        .body("First!")
+        .done();
 
-    let second_env = Envelope::make_event(
-        String::from("foo"),
-        String::from("bar"),
-        Some(Value::text("Second!")),
+    let second_env = Envelope::event()
+        .node_uri("foo")
+        .lane_uri("bar")
+        .body("Second!")
+        .done();
+
+    assert_eq!(
+        stream.recv().await.unwrap(),
+        RouterEvent::Message(first_env.into_response().unwrap())
     );
 
     assert_eq!(
         stream.recv().await.unwrap(),
-        RouterEvent::Message(first_env.into_incoming().unwrap())
-    );
-
-    assert_eq!(
-        stream.recv().await.unwrap(),
-        RouterEvent::Message(second_env.into_incoming().unwrap())
+        RouterEvent::Message(second_env.into_response().unwrap())
     );
 
     assert!(router.close().await.is_ok());
@@ -775,7 +777,7 @@ async fn test_route_multiple_incoming_messages_to_multiple_downlinks_same_host_s
     let (first_sink, mut first_stream) = open_connection(&mut router, &url, "room", "five").await;
     let (_, mut second_stream) = open_connection(&mut router, &url, "room", "five").await;
 
-    let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
+    let envelope = Envelope::sync().node_uri("foo").lane_uri("bar").done();
     let _ = first_sink.send(envelope).await.unwrap();
 
     let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
@@ -796,36 +798,36 @@ async fn test_route_multiple_incoming_messages_to_multiple_downlinks_same_host_s
     )
     .await;
 
-    let first_env = Envelope::make_event(
-        String::from("room"),
-        String::from("five"),
-        Some(Value::text("John Doe")),
-    );
+    let first_env = Envelope::event()
+        .node_uri("room")
+        .lane_uri("five")
+        .body("John Doe")
+        .done();
 
-    let second_env = Envelope::make_event(
-        String::from("room"),
-        String::from("five"),
-        Some(Value::text("Jane Doe")),
+    let second_env = Envelope::event()
+        .node_uri("room")
+        .lane_uri("five")
+        .body("Jane Doe")
+        .done();
+
+    assert_eq!(
+        first_stream.recv().await.unwrap(),
+        RouterEvent::Message(first_env.clone().into_response().unwrap())
     );
 
     assert_eq!(
         first_stream.recv().await.unwrap(),
-        RouterEvent::Message(first_env.clone().into_incoming().unwrap())
-    );
-
-    assert_eq!(
-        first_stream.recv().await.unwrap(),
-        RouterEvent::Message(second_env.clone().into_incoming().unwrap())
+        RouterEvent::Message(second_env.clone().into_response().unwrap())
     );
 
     assert_eq!(
         second_stream.recv().await.unwrap(),
-        RouterEvent::Message(first_env.into_incoming().unwrap())
+        RouterEvent::Message(first_env.into_response().unwrap())
     );
 
     assert_eq!(
         second_stream.recv().await.unwrap(),
-        RouterEvent::Message(second_env.into_incoming().unwrap())
+        RouterEvent::Message(second_env.into_response().unwrap())
     );
 
     assert!(router.close().await.is_ok());
@@ -851,7 +853,8 @@ async fn test_route_multiple_incoming_messages_to_multiple_downlinks_same_host_d
     let (first_sink, mut first_stream) = open_connection(&mut router, &url, "room", "five").await;
     let (_, mut second_stream) = open_connection(&mut router, &url, "room", "six").await;
 
-    let envelope = Envelope::sync(String::from("room"), String::from("seven"));
+    let envelope = Envelope::sync().node_uri("room").lane_uri("seven").done();
+
     let _ = first_sink.send(envelope.clone()).await.unwrap();
 
     let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
@@ -873,21 +876,21 @@ async fn test_route_multiple_incoming_messages_to_multiple_downlinks_same_host_d
     )
     .await;
 
-    let first_env = Envelope::make_event(
-        String::from("room"),
-        String::from("five"),
-        Some(Value::text("John Doe")),
-    );
+    let first_env = Envelope::event()
+        .node_uri("room")
+        .lane_uri("five")
+        .body("John Doe")
+        .done();
 
-    let second_env = Envelope::make_event(
-        String::from("room"),
-        String::from("six"),
-        Some(Value::text("Jane Doe")),
-    );
+    let second_env = Envelope::event()
+        .node_uri("room")
+        .lane_uri("six")
+        .body("Jane Doe")
+        .done();
 
     assert_eq!(
         first_stream.recv().await.unwrap(),
-        RouterEvent::Message(first_env.into_incoming().unwrap())
+        RouterEvent::Message(first_env.into_response().unwrap())
     );
 
     assert!(timeout(Duration::from_secs(1), first_stream.recv())
@@ -896,7 +899,7 @@ async fn test_route_multiple_incoming_messages_to_multiple_downlinks_same_host_d
 
     assert_eq!(
         second_stream.recv().await.unwrap(),
-        RouterEvent::Message(second_env.into_incoming().unwrap())
+        RouterEvent::Message(second_env.into_response().unwrap())
     );
 
     assert!(timeout(Duration::from_secs(1), second_stream.recv())
@@ -930,7 +933,7 @@ async fn test_route_multiple_incoming_message_to_multiple_downlinks_different_ho
     let (second_sink, mut second_stream) =
         open_connection(&mut router, &second_url, "building", "1").await;
 
-    let envelope = Envelope::sync(String::from("building"), String::from("1"));
+    let envelope = Envelope::sync().node_uri("building").lane_uri("1").done();
     let _ = first_sink.send(envelope.clone()).await.unwrap();
     let _ = second_sink.send(envelope).await.unwrap();
 
@@ -967,48 +970,48 @@ async fn test_route_multiple_incoming_message_to_multiple_downlinks_different_ho
     )
     .await;
 
-    let env_101 = Envelope::make_event(
-        String::from("building"),
-        String::from("1"),
-        Some(Value::text("Room 101")),
-    );
+    let env_101 = Envelope::event()
+        .node_uri("building")
+        .lane_uri("1")
+        .body("Room 101")
+        .done();
 
-    let env_102 = Envelope::make_event(
-        String::from("building"),
-        String::from("1"),
-        Some(Value::text("Room 102")),
-    );
+    let env_102 = Envelope::event()
+        .node_uri("building")
+        .lane_uri("1")
+        .body("Room 102")
+        .done();
 
-    let env_201 = Envelope::make_event(
-        String::from("building"),
-        String::from("1"),
-        Some(Value::text("Room 201")),
-    );
+    let env_201 = Envelope::event()
+        .node_uri("building")
+        .lane_uri("1")
+        .body("Room 201")
+        .done();
 
-    let env_202 = Envelope::make_event(
-        String::from("building"),
-        String::from("1"),
-        Some(Value::text("Room 202")),
+    let env_202 = Envelope::event()
+        .node_uri("building")
+        .lane_uri("1")
+        .body("Room 202")
+        .done();
+
+    assert_eq!(
+        first_stream.recv().await.unwrap(),
+        RouterEvent::Message(env_101.into_response().unwrap())
     );
 
     assert_eq!(
         first_stream.recv().await.unwrap(),
-        RouterEvent::Message(env_101.into_incoming().unwrap())
-    );
-
-    assert_eq!(
-        first_stream.recv().await.unwrap(),
-        RouterEvent::Message(env_102.into_incoming().unwrap())
+        RouterEvent::Message(env_102.into_response().unwrap())
     );
 
     assert_eq!(
         second_stream.recv().await.unwrap(),
-        RouterEvent::Message(env_201.into_incoming().unwrap())
+        RouterEvent::Message(env_201.into_response().unwrap())
     );
 
     assert_eq!(
         second_stream.recv().await.unwrap(),
-        RouterEvent::Message(env_202.into_incoming().unwrap())
+        RouterEvent::Message(env_202.into_response().unwrap())
     );
 
     assert!(router.close().await.is_ok());
@@ -1044,7 +1047,7 @@ async fn test_route_multiple_incoming_message_to_multiple_downlinks_different_ho
     let (third_sink, mut third_stream) =
         open_connection(&mut router, &third_url, "building", "3").await;
 
-    let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
+    let envelope = Envelope::sync().node_uri("foo").lane_uri("bar").done();
     let _ = first_sink.send(envelope.clone()).await.unwrap();
     let _ = second_sink.send(envelope.clone()).await.unwrap();
     let _ = third_sink.send(envelope).await.unwrap();
@@ -1103,81 +1106,81 @@ async fn test_route_multiple_incoming_message_to_multiple_downlinks_different_ho
     )
     .await;
 
-    let building_101 = Envelope::make_event(
-        String::from("building"),
-        String::from("1"),
-        Some(Value::text("Building 101")),
-    );
+    let building_101 = Envelope::event()
+        .node_uri("building")
+        .lane_uri("1")
+        .body("Building 101")
+        .done();
 
-    let building_102 = Envelope::make_event(
-        String::from("building"),
-        String::from("1"),
-        Some(Value::text("Building 102")),
-    );
+    let building_102 = Envelope::event()
+        .node_uri("building")
+        .lane_uri("1")
+        .body("Building 102")
+        .done();
 
-    let room_201 = Envelope::make_event(
-        String::from("room"),
-        String::from("2"),
-        Some(Value::text("Room 201")),
-    );
+    let room_201 = Envelope::event()
+        .node_uri("room")
+        .lane_uri("2")
+        .body("Room 201")
+        .done();
 
-    let room_202 = Envelope::make_event(
-        String::from("room"),
-        String::from("2"),
-        Some(Value::text("Room 202")),
-    );
+    let room_202 = Envelope::event()
+        .node_uri("room")
+        .lane_uri("2")
+        .body("Room 202")
+        .done();
 
-    let room_203 = Envelope::make_event(
-        String::from("room"),
-        String::from("2"),
-        Some(Value::text("Room 203")),
-    );
+    let room_203 = Envelope::event()
+        .node_uri("room")
+        .lane_uri("2")
+        .body("Room 203")
+        .done();
 
-    let building_301 = Envelope::make_event(
-        String::from("building"),
-        String::from("3"),
-        Some(Value::text("Building 301")),
-    );
+    let building_301 = Envelope::event()
+        .node_uri("building")
+        .lane_uri("3")
+        .body("Building 301")
+        .done();
 
-    let building_302 = Envelope::make_event(
-        String::from("building"),
-        String::from("3"),
-        Some(Value::text("Building 302")),
+    let building_302 = Envelope::event()
+        .node_uri("building")
+        .lane_uri("3")
+        .body("Building 302")
+        .done();
+
+    assert_eq!(
+        first_stream.recv().await.unwrap(),
+        RouterEvent::Message(building_101.into_response().unwrap())
     );
 
     assert_eq!(
         first_stream.recv().await.unwrap(),
-        RouterEvent::Message(building_101.into_incoming().unwrap())
-    );
-
-    assert_eq!(
-        first_stream.recv().await.unwrap(),
-        RouterEvent::Message(building_102.into_incoming().unwrap())
+        RouterEvent::Message(building_102.into_response().unwrap())
     );
 
     assert_eq!(
         second_stream.recv().await.unwrap(),
-        RouterEvent::Message(room_201.into_incoming().unwrap())
+        RouterEvent::Message(room_201.into_response().unwrap())
     );
 
     assert_eq!(
         second_stream.recv().await.unwrap(),
-        RouterEvent::Message(room_202.into_incoming().unwrap())
+        RouterEvent::Message(room_202.into_response().unwrap())
     );
 
     assert_eq!(
         second_stream.recv().await.unwrap(),
-        RouterEvent::Message(room_203.into_incoming().unwrap())
+        RouterEvent::Message(room_203.into_response().unwrap())
     );
 
     assert_eq!(
         third_stream.recv().await.unwrap(),
-        RouterEvent::Message(building_301.into_incoming().unwrap())
+        RouterEvent::Message(building_301.into_response().unwrap())
     );
 
     assert_eq!(
         third_stream.recv().await.unwrap(),
-        RouterEvent::Message(building_302.into_incoming().unwrap())
+        RouterEvent::Message(building_302.into_response().unwrap())
     );
 
     assert!(router.close().await.is_ok());
@@ -1205,7 +1208,7 @@ async fn test_route_incoming_unsopported_message() {
 
     let (sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
 
-    let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
+    let envelope = Envelope::sync().node_uri("foo").lane_uri("bar").done();
     let _ = sink.send(envelope.clone()).await.unwrap();
 
     let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
@@ -1221,15 +1224,15 @@ async fn test_route_incoming_unsopported_message() {
 
     send_message(&mut pool_handlers, &url, "@event(node:foo,lane:bar){Hello}").await;
 
-    let expected_env = Envelope::make_event(
-        String::from("foo"),
-        String::from("bar"),
-        Some(Value::text("Hello")),
-    );
+    let expected_env = Envelope::event()
+        .node_uri("foo")
+        .lane_uri("bar")
+        .body("Hello")
+        .done();
 
     assert_eq!(
         stream.recv().await.unwrap(),
-        RouterEvent::Message(expected_env.into_incoming().unwrap())
+        RouterEvent::Message(expected_env.into_response().unwrap())
     );
 
     assert!(router.close().await.is_ok());
@@ -1253,7 +1256,7 @@ async fn test_route_incoming_message_of_no_interest() {
 
     let (sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
 
-    let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
+    let envelope = Envelope::sync().node_uri("foo").lane_uri("bar").done();
     let _ = sink.send(envelope.clone()).await.unwrap();
 
     let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
@@ -1274,15 +1277,15 @@ async fn test_route_incoming_message_of_no_interest() {
 
     send_message(&mut pool_handlers, &url, "@event(node:foo,lane:bar){Hello}").await;
 
-    let expected_env = Envelope::make_event(
-        String::from("foo"),
-        String::from("bar"),
-        Some(Value::text("Hello")),
-    );
+    let expected_env = Envelope::event()
+        .node_uri("foo")
+        .lane_uri("bar")
+        .body("Hello")
+        .done();
 
     assert_eq!(
         stream.recv().await.unwrap(),
-        RouterEvent::Message(expected_env.into_incoming().unwrap())
+        RouterEvent::Message(expected_env.into_response().unwrap())
     );
 
     assert!(router.close().await.is_ok());
@@ -1306,14 +1309,14 @@ async fn test_single_direct_message_existing_connection() {
 
     let (sink, _) = open_connection(&mut router, &url, "foo", "bar").await;
 
-    let sync_env = Envelope::sync(String::from("room"), String::from("seven"));
+    let sync_env = Envelope::sync().node_uri("room").lane_uri("seven").done();
     let _ = sink.send(sync_env).await.unwrap();
 
-    let command_env = Envelope::make_event(
-        String::from("room"),
-        String::from("seven"),
-        Some(Value::text("Test Command")),
-    );
+    let command_env = Envelope::event()
+        .node_uri("room")
+        .lane_uri("seven")
+        .body("Test Command")
+        .done();
 
     let general_sink = router.general_sink();
 
@@ -1350,11 +1353,11 @@ async fn test_single_direct_message_new_connection() {
     let (pool, pool_handlers_rx) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let command_env = Envelope::make_event(
-        String::from("room"),
-        String::from("seven"),
-        Some(Value::text("Test Command")),
-    );
+    let command_env = Envelope::event()
+        .node_uri("room")
+        .lane_uri("seven")
+        .body("Test Command")
+        .done();
 
     let general_sink = router.general_sink();
 
@@ -1387,20 +1390,23 @@ async fn test_multiple_direct_messages_existing_connection() {
 
     let (sink, _) = open_connection(&mut router, &url, "building", "swim").await;
 
-    let sync_env = Envelope::sync(String::from("building"), String::from("swim"));
+    let sync_env = Envelope::sync()
+        .node_uri("building")
+        .lane_uri("swim")
+        .done();
     let _ = sink.send(sync_env).await.unwrap();
 
-    let first_env = Envelope::make_event(
-        String::from("building"),
-        String::from("swim"),
-        Some(Value::text("First")),
-    );
+    let first_env = Envelope::event()
+        .node_uri("building")
+        .lane_uri("swim")
+        .body("First")
+        .done();
 
-    let second_env = Envelope::make_event(
-        String::from("building"),
-        String::from("swim"),
-        Some(Value::text("Second")),
-    );
+    let second_env = Envelope::event()
+        .node_uri("building")
+        .lane_uri("swim")
+        .body("Second")
+        .done();
 
     let general_sink = router.general_sink();
 
@@ -1444,23 +1450,23 @@ async fn test_multiple_direct_messages_new_connection() {
     let (pool, pool_handlers_rx) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let first_env = Envelope::make_event(
-        String::from("building"),
-        String::from("swim"),
-        Some(Value::text("First")),
-    );
+    let first_env = Envelope::event()
+        .node_uri("building")
+        .lane_uri("swim")
+        .body("First")
+        .done();
 
-    let second_env = Envelope::make_event(
-        String::from("building"),
-        String::from("swim"),
-        Some(Value::text("Second")),
-    );
+    let second_env = Envelope::event()
+        .node_uri("building")
+        .lane_uri("swim")
+        .body("Second")
+        .done();
 
-    let third_env = Envelope::make_event(
-        String::from("building"),
-        String::from("swim"),
-        Some(Value::text("Third")),
-    );
+    let third_env = Envelope::event()
+        .node_uri("building")
+        .lane_uri("swim")
+        .body("Third")
+        .done();
 
     let general_sink = router.general_sink();
 
@@ -1507,23 +1513,23 @@ async fn test_multiple_direct_messages_different_connections() {
     let (pool, pool_handlers_rx) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let first_env = Envelope::make_event(
-        String::from("building"),
-        String::from("swim"),
-        Some(Value::text("First")),
-    );
+    let first_env = Envelope::event()
+        .node_uri("building")
+        .lane_uri("swim")
+        .body("First")
+        .done();
 
-    let second_env = Envelope::make_event(
-        String::from("building"),
-        String::from("swim"),
-        Some(Value::text("Second")),
-    );
+    let second_env = Envelope::event()
+        .node_uri("building")
+        .lane_uri("swim")
+        .body("Second")
+        .done();
 
-    let third_env = Envelope::make_event(
-        String::from("building"),
-        String::from("swim"),
-        Some(Value::text("Third")),
-    );
+    let third_env = Envelope::event()
+        .node_uri("building")
+        .lane_uri("swim")
+        .body("Third")
+        .done();
 
     let general_sink = router.general_sink();
 
@@ -1619,7 +1625,7 @@ async fn test_route_incoming_parse_message_error() {
 
     let (sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
 
-    let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
+    let envelope = Envelope::sync().node_uri("foo").lane_uri("bar").done();
     let _ = sink.send(envelope.clone()).await.unwrap();
 
     let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
@@ -1635,15 +1641,15 @@ async fn test_route_incoming_parse_message_error() {
 
     send_message(&mut pool_handlers, &url, "@event(node:foo,lane:bar){Hello}").await;
 
-    let expected_env = Envelope::make_event(
-        String::from("foo"),
-        String::from("bar"),
-        Some(Value::text("Hello")),
-    );
+    let expected_env = Envelope::event()
+        .node_uri("foo")
+        .lane_uri("bar")
+        .body("Hello")
+        .done();
 
     assert_eq!(
         stream.recv().await.unwrap(),
-        RouterEvent::Message(expected_env.into_incoming().unwrap())
+        RouterEvent::Message(expected_env.into_response().unwrap())
     );
 
     assert!(router.close().await.is_ok());
@@ -1667,7 +1673,7 @@ async fn test_route_incoming_parse_envelope_error() {
 
     let (sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
 
-    let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
+    let envelope = Envelope::sync().node_uri("foo").lane_uri("bar").done();
     let _ = sink.send(envelope.clone()).await.unwrap();
 
     let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
@@ -1702,7 +1708,7 @@ async fn test_route_incoming_unreachable_host() {
 
     let (sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
 
-    let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
+    let envelope = Envelope::sync().node_uri("foo").lane_uri("bar").done();
     let _ = sink.send(envelope.clone()).await.unwrap();
 
     assert_eq!(
@@ -1725,7 +1731,7 @@ async fn test_route_incoming_connection_closed_single() {
 
     let (sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
 
-    let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
+    let envelope = Envelope::sync().node_uri("foo").lane_uri("bar").done();
     let _ = sink.send(envelope.clone()).await.unwrap();
 
     let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
@@ -1759,7 +1765,7 @@ async fn test_route_incoming_connection_closed_multiple_same_host() {
     let (first_sink, mut first_stream) = open_connection(&mut router, &url, "foo", "bar").await;
     let (_, mut second_stream) = open_connection(&mut router, &url, "oof", "rab").await;
 
-    let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
+    let envelope = Envelope::sync().node_uri("foo").lane_uri("bar").done();
     let _ = first_sink.send(envelope.clone()).await.unwrap();
 
     let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
@@ -1804,7 +1810,7 @@ async fn test_route_incoming_connection_closed_multiple_different_hosts() {
     let (second_sink, mut second_stream) =
         open_connection(&mut router, &second_url, "foo", "bar").await;
 
-    let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
+    let envelope = Envelope::sync().node_uri("foo").lane_uri("bar").done();
     let _ = first_sink.send(envelope.clone()).await.unwrap();
     let _ = second_sink.send(envelope.clone()).await.unwrap();
 

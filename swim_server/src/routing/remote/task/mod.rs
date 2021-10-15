@@ -27,14 +27,13 @@ use futures::{select_biased, stream, FutureExt, Sink, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::convert::TryFrom;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::future::Future;
 use std::str::FromStr;
 use std::time::Duration;
 use swim_model::path::RelativePath;
-use swim_recon::parser::{parse_value, ParseError};
+use swim_recon::parser::{parse_recognize, ParseError, Span};
 use swim_runtime::error::{
     CloseError, CloseErrorKind, ConnectionError, ProtocolError, ProtocolErrorKind, ResolutionError,
     ResolutionErrorKind,
@@ -46,7 +45,7 @@ use swim_utilities::future::retryable::RetryStrategy;
 use swim_utilities::future::task::Spawner;
 use swim_utilities::routing::uri::{BadRelativeUri, RelativeUri};
 use swim_utilities::trigger;
-use swim_warp::envelope::{Envelope, EnvelopeHeader, EnvelopeParseErr, OutgoingHeader};
+use swim_warp::envelope::{DiscriminatedEnvelope, Envelope};
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Instant};
 use tokio_stream::wrappers::ReceiverStream;
@@ -75,15 +74,6 @@ enum Completion {
 
 impl From<ParseError> for Completion {
     fn from(err: ParseError) -> Self {
-        Completion::Failed(ConnectionError::Protocol(ProtocolError::new(
-            ProtocolErrorKind::Warp,
-            Some(err.to_string()),
-        )))
-    }
-}
-
-impl From<EnvelopeParseErr> for Completion {
-    fn from(err: EnvelopeParseErr) -> Self {
         Completion::Failed(ConnectionError::Protocol(ProtocolError::new(
             ProtocolErrorKind::Warp,
             Some(err.to_string()),
@@ -177,7 +167,7 @@ where
                 #[allow(clippy::collapsible_if)]
                 match event {
                     Ok(SelectorResult::Read(msg)) => match msg {
-                        WsMessage::Text(msg) => match read_envelope(&msg) {
+                        WsMessage::Text(msg) => match parse_recognize(Span::new(msg.as_str())) {
                             Ok(envelope) => {
                                 let (done_tx, done_rx) = trigger::trigger();
 
@@ -209,8 +199,8 @@ where
                                     break Completion::Failed(err);
                                 }
                             }
-                            Err(c) => {
-                                break c;
+                            Err(err) => {
+                                break err.into();
                             }
                         },
                         message => {
@@ -261,10 +251,6 @@ where
             _ => ConnectionDropped::Closed,
         }
     }
-}
-
-fn read_envelope(msg: &str) -> Result<Envelope, Completion> {
-    Ok(Envelope::try_from(parse_value(msg)?)?)
 }
 
 /// Error type indicating a failure to route an incoming message.
@@ -378,11 +364,11 @@ async fn try_dispatch_envelope<Router>(
 where
     Router: ServerRouter,
 {
-    if let Some(target) = envelope.header.relative_path().as_ref() {
-        let Route { sender, .. } = if let Some(route) = resolved.get_mut(target) {
+    if let Some(target) = envelope.path() {
+        let Route { sender, .. } = if let Some(route) = resolved.get_mut(&target) {
             if route.sender.inner.is_closed() {
-                resolved.remove(target);
-                match insert_new_route(router, resolved, target).await {
+                resolved.remove(&target);
+                match insert_new_route(router, resolved, &target).await {
                     Ok(route) => route,
                     Err(err) => return Err((envelope, err)),
                 }
@@ -390,13 +376,13 @@ where
                 route
             }
         } else {
-            match insert_new_route(router, resolved, target).await {
+            match insert_new_route(router, resolved, &target).await {
                 Ok(route) => route,
                 Err(err) => return Err((envelope, err)),
             }
         };
         if let Err(err) = sender.send_item(envelope).await {
-            if let Some(Route { on_drop, .. }) = resolved.remove(target) {
+            if let Some(Route { on_drop, .. }) = resolved.remove(&target) {
                 let reason = on_drop
                     .await
                     .map(|reason| (*reason).clone())
@@ -509,9 +495,9 @@ where
 
 //Get the target path only for link and sync messages (for creating the "not found" response).
 fn link_or_sync(env: Envelope) -> Option<RelativePath> {
-    match env.header {
-        EnvelopeHeader::OutgoingLink(OutgoingHeader::Link(_), path) => Some(path),
-        EnvelopeHeader::OutgoingLink(OutgoingHeader::Sync(_), path) => Some(path),
+    match env.discriminate() {
+        DiscriminatedEnvelope::Request(r) => Some(r.into_path()),
+        DiscriminatedEnvelope::Response(r) => Some(r.into_path()),
         _ => None,
     }
 }

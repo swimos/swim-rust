@@ -58,7 +58,7 @@ use std::time::Duration;
 use stm::transaction::TransactionError;
 use swim_form::structural::read::ReadError;
 use swim_form::structural::write::StructuralWritable;
-use swim_form::{Form, NewTypeForm};
+use swim_form::NewTypeForm;
 use swim_model::path::RelativePath;
 use swim_model::Value;
 use swim_runtime::error::ResolutionError;
@@ -68,7 +68,7 @@ use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::sync::topic;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger::{self, promise};
-use swim_warp::envelope::{Envelope, OutgoingLinkMessage};
+use swim_warp::envelope::{Envelope, RequestEnvelope};
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::timeout;
@@ -463,33 +463,27 @@ struct TaskInput {
 
 impl TaskInput {
     async fn send_link(&mut self, addr: RoutingAddr) {
-        let env = TaggedClientEnvelope(addr, OutgoingLinkMessage::link("node", "lane"));
+        let env = TaggedClientEnvelope(addr, RequestEnvelope::link("node", "lane"));
         assert!(self.envelope_tx.send(env).await.is_ok())
     }
 
     async fn send_sync(&mut self, addr: RoutingAddr) {
-        let env = TaggedClientEnvelope(addr, OutgoingLinkMessage::sync("node", "lane"));
+        let env = TaggedClientEnvelope(addr, RequestEnvelope::sync("node", "lane"));
         assert!(self.envelope_tx.send(env).await.is_ok())
     }
 
     async fn send_unlink(&mut self, addr: RoutingAddr) {
-        let env = TaggedClientEnvelope(addr, OutgoingLinkMessage::unlink("node", "lane"));
+        let env = TaggedClientEnvelope(addr, RequestEnvelope::unlink("node", "lane"));
         assert!(self.envelope_tx.send(env).await.is_ok())
     }
 
     async fn send_command(&mut self, addr: RoutingAddr, value: i32) {
-        let env = TaggedClientEnvelope(
-            addr,
-            OutgoingLinkMessage::make_command("node", "lane", Some(value.into_value())),
-        );
+        let env = TaggedClientEnvelope(addr, RequestEnvelope::command("node", "lane", value));
         assert!(self.envelope_tx.send(env).await.is_ok())
     }
 
     async fn send_raw(&mut self, addr: RoutingAddr, value: Value) {
-        let env = TaggedClientEnvelope(
-            addr,
-            OutgoingLinkMessage::make_command("node", "lane", Some(value)),
-        );
+        let env = TaggedClientEnvelope(addr, RequestEnvelope::command("node", "lane", value));
         assert!(self.envelope_tx.send(env).await.is_ok())
     }
 
@@ -1098,7 +1092,10 @@ async fn handle_action_lane_link_request() {
         expect_envelope(
             &mut router_rx,
             addr,
-            Envelope::linked(&route.node, &route.lane),
+            Envelope::linked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
 
@@ -1107,7 +1104,10 @@ async fn handle_action_lane_link_request() {
         expect_envelope(
             &mut router_rx,
             addr,
-            Envelope::unlinked(&route.node, &route.lane),
+            Envelope::unlinked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
     };
@@ -1133,13 +1133,19 @@ async fn handle_action_lane_sync_request() {
         expect_envelope(
             &mut router_rx,
             addr,
-            Envelope::linked(&route.node, &route.lane),
+            Envelope::linked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
         expect_envelope(
             &mut router_rx,
             addr,
-            Envelope::synced(&route.node, &route.lane),
+            Envelope::synced()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
 
@@ -1148,7 +1154,10 @@ async fn handle_action_lane_sync_request() {
         expect_envelope(
             &mut router_rx,
             addr,
-            Envelope::unlinked(&route.node, &route.lane),
+            Envelope::unlinked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
     };
@@ -1174,7 +1183,10 @@ async fn handle_action_lane_immediate_unlink_request() {
         expect_envelope(
             &mut router_rx,
             addr,
-            Envelope::unlinked(&route.node, &route.lane),
+            Envelope::unlinked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
 
@@ -1206,7 +1218,10 @@ async fn action_lane_responses_when_linked() {
         expect_envelope(
             &mut router_rx,
             addr,
-            Envelope::linked(&route.node, &route.lane),
+            Envelope::linked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
 
@@ -1215,7 +1230,11 @@ async fn action_lane_responses_when_linked() {
         expect_envelope(
             &mut router_rx,
             addr,
-            Envelope::make_event(&route.node, &route.lane, Some(4.into())),
+            Envelope::event()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .body(4)
+                .done(),
         )
         .await;
 
@@ -1224,7 +1243,10 @@ async fn action_lane_responses_when_linked() {
         expect_envelope(
             &mut router_rx,
             addr,
-            Envelope::unlinked(&route.node, &route.lane),
+            Envelope::unlinked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
     };
@@ -1251,7 +1273,10 @@ async fn action_lane_multiple_links() {
         expect_envelope(
             &mut router_rx,
             addr1,
-            Envelope::linked(&route.node, &route.lane),
+            Envelope::linked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
 
@@ -1259,7 +1284,10 @@ async fn action_lane_multiple_links() {
         expect_envelope(
             &mut router_rx,
             addr2,
-            Envelope::linked(&route.node, &route.lane),
+            Envelope::linked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
 
@@ -1268,7 +1296,11 @@ async fn action_lane_multiple_links() {
         expect_envelope(
             &mut router_rx,
             addr1,
-            Envelope::make_event(&route.node, &route.lane, Some(4.into())),
+            Envelope::event()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .body(4)
+                .done(),
         )
         .await;
 
@@ -1277,13 +1309,20 @@ async fn action_lane_multiple_links() {
         expect_envelope(
             &mut router_rx,
             addr2,
-            Envelope::make_event(&route.node, &route.lane, Some(6.into())),
+            Envelope::event()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .body(6)
+                .done(),
         )
         .await;
 
         drop(input);
 
-        let expected_unlink = Envelope::unlinked(&route.node, &route.lane);
+        let expected_unlink = Envelope::unlinked()
+            .node_uri(&route.node)
+            .lane_uri(&route.lane)
+            .done();
 
         let TaggedEnvelope(rec_addr1, env) = router_rx.recv().await.expect("Channel closed");
         assert!(rec_addr1 == addr1 || rec_addr1 == addr2);
@@ -1505,7 +1544,10 @@ async fn handle_action_lane_non_fatal_uplink_error() {
         expect_envelope(
             &mut router_rx1,
             addr1,
-            Envelope::linked(&route.node, &route.lane),
+            Envelope::linked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
 
@@ -1516,7 +1558,10 @@ async fn handle_action_lane_non_fatal_uplink_error() {
         expect_envelope(
             router_rx2_ref,
             addr2,
-            Envelope::linked(&route.node, &route.lane),
+            Envelope::linked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
 
@@ -1551,7 +1596,10 @@ async fn handle_command_lane_link_request() {
         expect_envelope(
             &mut router_rx,
             addr,
-            Envelope::linked(&route.node, &route.lane),
+            Envelope::linked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
 
@@ -1560,7 +1608,10 @@ async fn handle_command_lane_link_request() {
         expect_envelope(
             &mut router_rx,
             addr,
-            Envelope::unlinked(&route.node, &route.lane),
+            Envelope::unlinked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
     };
@@ -1587,7 +1638,10 @@ async fn command_lane_multiple_links() {
         expect_envelope(
             &mut router_rx,
             addr1,
-            Envelope::linked(&route.node, &route.lane),
+            Envelope::linked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
 
@@ -1595,7 +1649,10 @@ async fn command_lane_multiple_links() {
         expect_envelope(
             &mut router_rx,
             addr2,
-            Envelope::linked(&route.node, &route.lane),
+            Envelope::linked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
 
@@ -1607,7 +1664,11 @@ async fn command_lane_multiple_links() {
             2,
             &mut router_rx,
             &expected_addr,
-            Envelope::make_event(&route.node, &route.lane, Some(4.into())),
+            Envelope::event()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .body(4)
+                .done(),
         )
         .await;
 
@@ -1617,13 +1678,20 @@ async fn command_lane_multiple_links() {
             2,
             &mut router_rx,
             &expected_addr,
-            Envelope::make_event(&route.node, &route.lane, Some(6.into())),
+            Envelope::event()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .body(6)
+                .done(),
         )
         .await;
 
         drop(input);
 
-        let expected_unlink = Envelope::unlinked(&route.node, &route.lane);
+        let expected_unlink = Envelope::unlinked()
+            .node_uri(&route.node)
+            .lane_uri(&route.lane)
+            .done();
 
         let TaggedEnvelope(rec_addr1, env) = router_rx.recv().await.expect("Channel closed");
         assert!(rec_addr1 == addr1 || rec_addr1 == addr2);
@@ -1671,7 +1739,10 @@ async fn stateless_lane_metrics() {
         expect_envelopes(
             vec![addr1, addr2],
             &mut router_rx,
-            Envelope::linked(&route.node, &route.lane),
+            Envelope::linked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
 
@@ -1681,7 +1752,10 @@ async fn stateless_lane_metrics() {
         expect_envelopes(
             vec![addr1, addr2],
             &mut router_rx,
-            Envelope::synced(&route.node, &route.lane),
+            Envelope::synced()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
 
@@ -1693,7 +1767,11 @@ async fn stateless_lane_metrics() {
             expect_envelopes(
                 vec![addr1, addr2],
                 &mut router_rx,
-                Envelope::make_event(&route.node, &route.lane, Some(expected.into())),
+                Envelope::event()
+                    .node_uri(&route.node)
+                    .lane_uri(&route.lane)
+                    .body(expected)
+                    .done(),
             )
             .await;
         }
@@ -1704,13 +1782,20 @@ async fn stateless_lane_metrics() {
         expect_envelopes(
             vec![addr1, addr2],
             &mut router_rx,
-            Envelope::make_event(&route.node, &route.lane, Some(12.into())),
+            Envelope::event()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .body(12)
+                .done(),
         )
         .await;
 
         drop(input);
 
-        let expected_unlink = Envelope::unlinked(&route.node, &route.lane);
+        let expected_unlink = Envelope::unlinked()
+            .node_uri(&route.node)
+            .lane_uri(&route.lane)
+            .done();
 
         let TaggedEnvelope(rec_addr1, env) = router_rx.recv().await.expect("Channel closed");
         assert!(rec_addr1 == addr1 || rec_addr1 == addr2);

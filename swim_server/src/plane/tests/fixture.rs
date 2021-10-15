@@ -120,17 +120,20 @@ impl<Clk: Clock, Delegate: ServerRouter + 'static>
         let expected_route: RelativeUri = format!("/{}/{}", SENDER_PREFIX, id).parse().unwrap();
         assert_eq!(route, expected_route);
         assert_eq!(execution_config, make_config());
+
         let task = async move {
             let target_node: RelativeUri =
                 format!("/{}/{}", RECEIVER_PREFIX, target).parse().unwrap();
             let addr = router.lookup(None, target_node.clone()).await.unwrap();
             let mut tx = router.resolve_sender(addr).await.unwrap().sender;
             assert!(tx
-                .send_item(Envelope::make_event(
-                    target_node.to_string(),
-                    LANE_NAME.to_string(),
-                    Some(MESSAGE.into())
-                ))
+                .send_item(
+                    Envelope::event()
+                        .node_uri(target_node.to_string())
+                        .lane_uri(LANE_NAME)
+                        .body(MESSAGE)
+                        .done()
+                )
                 .await
                 .is_ok());
             pin_mut!(incoming_envelopes);
@@ -175,11 +178,11 @@ impl<Clk: Clock, Delegate>
         let task = async move {
             pin_mut!(incoming_envelopes);
 
-            let expected_envelope = Envelope::make_event(
-                expected_route.to_string(),
-                LANE_NAME.to_string(),
-                Some(MESSAGE.into()),
-            );
+            let expected_envelope = Envelope::event()
+                .node_uri(expected_route.to_string())
+                .lane_uri(LANE_NAME)
+                .body(MESSAGE)
+                .done();
 
             let mut times_seen = 0;
 

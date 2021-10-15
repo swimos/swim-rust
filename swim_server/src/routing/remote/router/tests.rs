@@ -20,7 +20,6 @@ use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
 use futures::future::join;
 use futures::io::ErrorKind;
 use futures::{FutureExt, StreamExt};
-use swim_model::Value;
 use swim_runtime::error::{ConnectionError, IoError, ResolutionError};
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
@@ -77,7 +76,11 @@ fn path() -> RelativeUri {
 }
 
 fn envelope(body: &str) -> Envelope {
-    Envelope::make_event("node", "lane", Some(Value::text(body)))
+    Envelope::event()
+        .node_uri("node")
+        .lane_uri("lane")
+        .body(body)
+        .done()
 }
 
 #[tokio::test]

@@ -36,13 +36,12 @@ use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::sync::Arc;
 use swim_form::Form;
-use swim_model::path::RelativePath;
 use swim_model::Value;
 use swim_runtime::error::ResolutionError;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
-use swim_warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
+use swim_warp::envelope::Envelope;
 use swim_warp::map::MapUpdate;
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration};
@@ -165,7 +164,7 @@ async fn agent_log() {
     assert!(envelope_tx
         .send(TaggedEnvelope(
             RoutingAddr::remote(1),
-            Envelope::sync("/test", "map"),
+            Envelope::sync().node_uri("/test").lane_uri("map").done(),
         ))
         .await
         .is_ok());
@@ -173,18 +172,21 @@ async fn agent_log() {
     assert!(envelope_tx
         .send(TaggedEnvelope(
             RoutingAddr::remote(1),
-            Envelope::sync("/swim:meta:node/test", "infoLog"),
+            Envelope::sync()
+                .node_uri("/swim:meta:node/test")
+                .lane_uri("infoLog")
+                .done(),
         ))
         .await
         .is_ok());
 
     let action = MapUpdate::Update(Value::text("key"), Arc::new(Value::Int32Value(1)));
 
-    let map_update = OutgoingLinkMessage {
-        header: OutgoingHeader::Command,
-        path: RelativePath::new("/test", "map"),
-        body: Some(action.as_value()),
-    };
+    let map_update = Envelope::command()
+        .node_uri("/test")
+        .lane_uri("map")
+        .body(action.clone())
+        .done();
 
     let map_update = Envelope::from(map_update);
 
@@ -194,32 +196,58 @@ async fn agent_log() {
         .is_ok());
 
     let link = rx.recv().await.expect("Missing linked envelope");
-    assert_eq!(link.1, Envelope::linked("/test", "infoLog"));
+    assert_eq!(
+        link.1,
+        Envelope::linked()
+            .node_uri("/test")
+            .lane_uri("infoLog")
+            .done()
+    );
 
     let sync = rx.recv().await.expect("Missing synced envelope");
-    assert_eq!(sync.1, Envelope::synced("/test", "infoLog"));
+    assert_eq!(
+        sync.1,
+        Envelope::synced()
+            .node_uri("/test")
+            .lane_uri("infoLog")
+            .done()
+    );
 
     let link = rx.recv().await.expect("Missing linked envelope");
-    assert_eq!(link.1, Envelope::linked("/test", "map"));
+    assert_eq!(
+        link.1,
+        Envelope::linked().node_uri("/test").lane_uri("map").done()
+    );
 
     let event = rx.recv().await.expect("Missing event envelope");
     assert_eq!(
         event.1,
-        Envelope::make_event("/test", "map", Some(action.as_value()))
+        Envelope::event()
+            .node_uri("/test")
+            .lane_uri("map")
+            .body(action.clone())
+            .done()
     );
     let event = rx.recv().await.expect("Missing event envelope");
     assert_eq!(
         event.1,
-        Envelope::make_event("/test", "map", Some(action.as_value()))
+        Envelope::event()
+            .node_uri("/test")
+            .lane_uri("map")
+            .body(action.clone())
+            .done()
     );
 
     let sync = rx.recv().await.expect("Missing synced envelope");
-    assert_eq!(sync.1, Envelope::synced("/test", "map"));
+    assert_eq!(
+        sync.1,
+        Envelope::synced().node_uri("/test").lane_uri("map").done()
+    );
 
     let event = rx.recv().await.expect("Missing event envelope");
-    let body = event.1.body.expect("Missing event body");
+    let body = event.1.body().expect("Missing event body");
 
-    let log_entry = LogEntry::try_convert(body).expect("Failed to convert log entry");
+    let log_entry = LogEntry::try_from_value(body).expect("Failed to convert log entry");
     assert_eq!(
         log_entry,
         LogEntry::make(

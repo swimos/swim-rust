@@ -164,11 +164,11 @@ impl SwimClient {
         target: AbsolutePath,
         message: T,
     ) -> Result<(), ClientError> {
-        let envelope = Envelope::make_command(
-            target.node.clone(),
-            target.lane.clone(),
-            Some(message.into_value()),
-        );
+        let envelope = Envelope::command()
+            .node_uri(&target.node)
+            .lane_uri(&target.lane)
+            .body(message)
+            .done();
 
         self.downlinks
             .send_command(target, envelope)
