@@ -1,12 +1,13 @@
 use std::fmt::{Debug, Formatter};
 
 use futures::future::BoxFuture;
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 
-use ratchet::deflate::Deflate;
 use ratchet::{SplittableExtension, WebSocket};
 pub use swim_ratchet::*;
 pub use switcher::StreamSwitcher;
+
 #[cfg(feature = "tls")]
 use {
     crate::error::TlsError, crate::ws::tls::build_x509_certificate, std::path::Path,
@@ -58,11 +59,14 @@ where
 /// Trait for factories that asynchronously create web socket connections. This exists primarily
 /// to allow for alternative implementations to be provided during testing.
 pub trait WebsocketFactory: Send + Sync {
+    type Sock: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static;
+    type Ext: SplittableExtension + Send + 'static;
+
     /// Open a connection to the provided remote URL.
     fn connect(
         &mut self,
         url: url::Url,
-    ) -> BoxFuture<Result<WebSocketDef<Deflate>, ConnectionError>>;
+    ) -> BoxFuture<Result<WebSocket<Self::Sock, Self::Ext>, ConnectionError>>;
 }
 
 #[derive(Clone)]

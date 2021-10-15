@@ -33,12 +33,12 @@ use swim_warp::envelope::Envelope;
 use crate::routing::error::RouterError;
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::task::{ConnectionTask, DispatchError};
-use crate::routing::remote::test_fixture::ratchet_failing_ext::FailingExt;
-use crate::routing::remote::test_fixture::ratchet_fixture::websocket_pair;
 use crate::routing::remote::test_fixture::LocalRoutes;
 use crate::routing::{ConnectionDropped, Route, RoutingAddr, TaggedEnvelope, TaggedSender};
 use futures::io::ErrorKind;
 use ratchet::{NoExt, SplittableExtension};
+use ratchet_fixture::duplex::websocket_pair;
+use ratchet_fixture::ratchet_failing_ext::FailingExt;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 use swim_runtime::error::{

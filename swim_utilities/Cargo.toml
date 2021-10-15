@@ -11,6 +11,7 @@ circular_buffer = ["swim_sync", "swim_sync/circular_buffer"]
 collections = ["lrucache", "rtree"]
 errors = ["swim_errors"]
 future = ["swim_future"]
+io = ["swim_io"]
 iteratee = ["swim_iteratee"]
 lrucache = ["swim_lrucache"]
 rtree = ["swim_rtree"]
@@ -27,6 +28,7 @@ swim_errors = { path = "./swim_errors", optional = true }
 swim_format = { path = "./swim_format", optional = true }
 swim_trigger = { path = "./swim_trigger", optional = true }
 swim_future = { path = "./swim_future", optional = true }
+swim_io = { path = "./swim_io", optional = true }
 swim_iteratee = { path = "./swim_iteratee", optional = true }
 swim_lrucache = { path = "./swim_lrucache", optional = true }
 swim_route = { path = "./swim_route", optional = true }

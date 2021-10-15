@@ -12,26 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::collections::HashMap;
 use std::sync::Arc;
 
-use futures::task::{Context, Poll};
-use futures::Sink;
-use futures_util::stream::Stream;
-use std::pin::Pin;
+use futures::future::BoxFuture;
+use futures::FutureExt;
+use ratchet::WebSocket;
+use ratchet_fixture::duplex::MockWebSocket;
+use tokio::io::DuplexStream;
 use tokio::sync::mpsc;
 use url::Url;
 
 use crate::connections::factory::async_factory::AsyncFactory;
 
-use super::*;
-use crate::connections::factory::tungstenite::HostConfig;
+use crate::configuration::router::ConnectionPoolParams;
+use crate::connections::factory::HostConfig;
+use crate::connections::tests::failing_ext::{FailOn, FailingExt};
+use crate::connections::{ConnectionPool, SwimConnPool, SwimConnection};
 use swim_runtime::error::{
-    CapacityError, CapacityErrorKind, CloseErrorKind, ProtocolError, ProtocolErrorKind,
+    CapacityError, CapacityErrorKind, CloseError, ConnectionError, ProtocolError,
 };
-use swim_runtime::ws::ConnFuture;
-use swim_runtime::ws::Protocol;
-use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
+use swim_runtime::ws::{CompressionSwitcherProvider, Protocol, WebsocketFactory, WsMessage};
+use tokio::sync::Mutex;
 
 #[tokio::test]
 async fn test_connection_pool_send_single_message_single_connection() {
@@ -196,7 +198,7 @@ async fn test_connection_pool_receive_single_message_single_connection() {
     // Given
     let host_url = url::Url::parse("ws://127.0.0.1/").unwrap();
     let mut items = Vec::new();
-    items.push("new_message".to_string().into());
+    items.push("new_message".to_string());
     let (writer_tx, _writer_rx) = mpsc::channel(5);
 
     let test_data = TestData::new(items, writer_tx);
@@ -222,9 +224,9 @@ async fn test_connection_pool_receive_multiple_messages_single_connection() {
     // Given
     let host_url = url::Url::parse("ws://127.0.0.1/").unwrap();
     let mut items = Vec::new();
-    items.push("first_message".to_string().into());
-    items.push("second_message".to_string().into());
-    items.push("third_message".to_string().into());
+    items.push("first_message".to_string());
+    items.push("second_message".to_string());
+    items.push("third_message".to_string());
     let (writer_tx, _writer_rx) = mpsc::channel(5);
 
     let test_data = TestData::new(items, writer_tx);
@@ -268,9 +270,9 @@ async fn test_connection_pool_receive_multiple_messages_multiple_connections() {
     let mut second_items = Vec::new();
     let mut third_items = Vec::new();
 
-    first_items.push("first_message".to_string().into());
-    second_items.push("second_message".to_string().into());
-    third_items.push("third_message".to_string().into());
+    first_items.push("first_message".to_string());
+    second_items.push("second_message".to_string());
+    third_items.push("third_message".to_string());
 
     let first_host_url = url::Url::parse("ws://127.0.0.1/").unwrap();
     let second_host_url = url::Url::parse("ws://127.0.0.2/").unwrap();
@@ -334,7 +336,7 @@ async fn test_connection_pool_send_and_receive_messages() {
     // Given
     let host_url = url::Url::parse("ws://127.0.0.1/").unwrap();
     let mut items = Vec::new();
-    items.push("recv_baz".to_string().into());
+    items.push("recv_baz".to_string());
     let (writer_tx, mut writer_rx) = mpsc::channel(5);
 
     let test_data = TestData::new(items, writer_tx);
@@ -519,7 +521,7 @@ async fn test_connection_send_and_receive_messages() {
     let host = url::Url::parse("ws://127.0.0.1:9999/").unwrap();
     let buffer_size = 5;
     let mut items = Vec::new();
-    items.push("message_received".to_string().into());
+    items.push("message_received".to_string());
     let (writer_tx, mut writer_rx) = mpsc::channel(buffer_size);
 
     let test_data = TestData::new(items, writer_tx);
@@ -599,86 +601,152 @@ async fn test_new_connection_send_message_error() {
     );
 }
 
-#[derive(Clone)]
-struct TestReadStream {
-    items: Vec<WsMessage>,
-    error: bool,
-}
+pub mod failing_ext {
+    use bytes::BytesMut;
+    use ratchet::{
+        Extension, ExtensionDecoder, ExtensionEncoder, FrameHeader, RsvBits, SplittableExtension,
+    };
+    use std::error::Error;
 
-impl Stream for TestReadStream {
-    type Item = Result<WsMessage, ConnectionError>;
-
-    fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        if self.error {
-            Poll::Ready(Some(Err(ConnectionError::Protocol(ProtocolError::new(
-                ProtocolErrorKind::WebSocket,
-                None,
-            )))))
-        } else {
-            let message = self.items.drain(0..1).next();
-            Poll::Ready(Some(message.ok_or(ConnectionError::Closed(
-                CloseError::new(CloseErrorKind::Normal, None),
-            ))))
-        }
+    #[derive(Debug, Clone)]
+    pub enum FailOn<E> {
+        Read(E),
+        Write(E),
+        Rw(E),
+        Nothing,
     }
-}
 
-#[derive(Clone)]
-struct TestWriteStream {
-    tx: mpsc::Sender<WsMessage>,
-    error: bool,
-}
+    #[derive(Clone, Debug)]
+    pub struct FailingExt<E>(pub FailOn<E>)
+    where
+        E: Error + Clone + Send + Sync + 'static;
 
-impl Sink<WsMessage> for TestWriteStream {
-    type Error = ();
-
-    fn poll_ready(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        if self.error {
-            Poll::Ready(Err(()))
-        } else {
-            Poll::Ready(Ok(()))
+    impl<E> Extension for FailingExt<E>
+    where
+        E: Error + Clone + Send + Sync + 'static,
+    {
+        fn bits(&self) -> RsvBits {
+            RsvBits {
+                rsv1: false,
+                rsv2: false,
+                rsv3: false,
+            }
         }
     }
 
-    fn start_send(self: Pin<&mut Self>, item: WsMessage) -> Result<(), Self::Error> {
-        if self.error {
-            Err(())
-        } else {
-            self.tx.try_send(item).unwrap();
-            Ok(())
+    impl<E> ExtensionEncoder for FailingExt<E>
+    where
+        E: Error + Clone + Send + Sync + 'static,
+    {
+        type Error = E;
+
+        fn encode(
+            &mut self,
+            _payload: &mut BytesMut,
+            _header: &mut FrameHeader,
+        ) -> Result<(), Self::Error> {
+            match &self.0 {
+                FailOn::Write(e) => Err(e.clone()),
+                FailOn::Rw(e) => Err(e.clone()),
+                _ => Ok(()),
+            }
         }
     }
 
-    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        if self.error {
-            Poll::Ready(Err(()))
-        } else {
-            Poll::Ready(Ok(()))
+    impl<E> ExtensionDecoder for FailingExt<E>
+    where
+        E: Error + Clone + Send + Sync + 'static,
+    {
+        type Error = E;
+
+        fn decode(
+            &mut self,
+            _payload: &mut BytesMut,
+            _header: &mut FrameHeader,
+        ) -> Result<(), Self::Error> {
+            match &self.0 {
+                FailOn::Read(e) => Err(e.clone()),
+                FailOn::Rw(e) => Err(e.clone()),
+                _ => Ok(()),
+            }
         }
     }
 
-    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        if self.error {
-            Poll::Ready(Err(()))
-        } else {
-            Poll::Ready(Ok(()))
+    impl<E> SplittableExtension for FailingExt<E>
+    where
+        E: Error + Clone + Send + Sync + 'static,
+    {
+        type SplitEncoder = FailingExtEnc<E>;
+        type SplitDecoder = FailingExtDec<E>;
+
+        fn split(self) -> (Self::SplitEncoder, Self::SplitDecoder) {
+            let FailingExt(e) = self;
+            (FailingExtEnc(e.clone()), FailingExtDec(e))
+        }
+    }
+
+    pub struct FailingExtEnc<E>(pub FailOn<E>)
+    where
+        E: Error + Clone + Send + Sync + 'static;
+
+    impl<E> ExtensionEncoder for FailingExtEnc<E>
+    where
+        E: Error + Clone + Send + Sync + 'static,
+    {
+        type Error = E;
+
+        fn encode(
+            &mut self,
+            _payload: &mut BytesMut,
+            _header: &mut FrameHeader,
+        ) -> Result<(), Self::Error> {
+            match &self.0 {
+                FailOn::Write(e) => Err(e.clone()),
+                FailOn::Rw(e) => Err(e.clone()),
+                _ => Ok(()),
+            }
+        }
+    }
+
+    pub struct FailingExtDec<E>(pub FailOn<E>)
+    where
+        E: Error + Clone + Send + Sync + 'static;
+
+    impl<E> ExtensionDecoder for FailingExtDec<E>
+    where
+        E: Error + Clone + Send + Sync + 'static,
+    {
+        type Error = E;
+
+        fn decode(
+            &mut self,
+            _payload: &mut BytesMut,
+            _header: &mut FrameHeader,
+        ) -> Result<(), Self::Error> {
+            match &self.0 {
+                FailOn::Read(e) => Err(e.clone()),
+                FailOn::Rw(e) => Err(e.clone()),
+                _ => Ok(()),
+            }
         }
     }
 }
 
 struct TestConnectionFactory {
-    inner: AsyncFactory<TestWriteStream, TestReadStream>,
+    inner: AsyncFactory<DuplexStream, FailingExt<ConnectionError>>,
+    shared_data: Arc<TestFixture>,
 }
 
 impl TestConnectionFactory {
     async fn new(test_data: TestData) -> Self {
-        let shared_data = Arc::new(test_data);
+        let shared_data = Arc::new(TestFixture::new(TestDataRepr::Single(test_data)));
+        let inner_shared_data = shared_data.clone();
         let inner = AsyncFactory::new(5, move |url, _config| {
-            let shared_data = shared_data.clone();
+            let shared_data = inner_shared_data.clone();
             async { shared_data.open_conn(url).await }
         })
         .await;
-        TestConnectionFactory { inner }
+        TestConnectionFactory { inner, shared_data }
     }
 
     async fn new_multiple(test_data: Vec<TestData>) -> Self {
@@ -687,122 +755,214 @@ impl TestConnectionFactory {
     }
 
     async fn new_multiple_with_errs(test_data: Vec<Option<TestData>>) -> Self {
-        let shared_data = Arc::new(MultipleTestData::new(test_data));
+        let shared_data = Arc::new(TestFixture::new(TestDataRepr::Multiple(Mutex::new(
+            MultipleTestData::new(test_data),
+        ))));
+        let inner_shared_data = shared_data.clone();
+
         let inner = AsyncFactory::new(5, move |url, _config| {
-            let shared_data = shared_data.clone();
+            let shared_data = inner_shared_data.clone();
             async { shared_data.open_conn(url).await }
         })
         .await;
-        TestConnectionFactory { inner }
+        TestConnectionFactory { inner, shared_data }
     }
 }
 
 impl WebsocketFactory for TestConnectionFactory {
-    type WsStream = TestReadStream;
-    type WsSink = TestWriteStream;
+    type Sock = DuplexStream;
+    type Ext = FailingExt<ConnectionError>;
 
-    fn connect(&mut self, url: Url) -> ConnFuture<Self::WsSink, Self::WsStream> {
+    fn connect(
+        &mut self,
+        url: Url,
+    ) -> BoxFuture<Result<WebSocket<Self::Sock, Self::Ext>, ConnectionError>> {
         self.inner
             .connect_using(
                 url,
                 HostConfig {
                     protocol: Protocol::PlainText,
-                    compression_level: WsCompression::None(None),
+                    compression_level: CompressionSwitcherProvider::Off,
                 },
             )
             .boxed()
     }
 }
 
-struct TestData {
-    inputs: Vec<WsMessage>,
-    outputs: mpsc::Sender<WsMessage>,
-    input_error: bool,
-    output_error: bool,
+struct TestFixture {
+    repr: TestDataRepr,
+    connections: Arc<Mutex<HashMap<Url, AutoWebSocket>>>,
 }
 
-struct MultipleTestData {
-    connections: Vec<Option<TestData>>,
-    n: AtomicUsize,
-}
-
-impl MultipleTestData {
-    fn new(data: Vec<Option<TestData>>) -> Self {
-        MultipleTestData {
-            connections: data,
-            n: AtomicUsize::new(0),
+impl TestFixture {
+    pub fn new(repr: TestDataRepr) -> Self {
+        TestFixture {
+            repr,
+            connections: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
     async fn open_conn(
         self: Arc<Self>,
-        _url: url::Url,
-    ) -> Result<(TestWriteStream, TestReadStream), ConnectionError> {
-        let i = self.n.fetch_add(1, Ordering::AcqRel);
-        if i >= self.connections.len() {
-            Err(ConnectionError::Capacity(CapacityError::new(
-                CapacityErrorKind::Ambiguous,
-                None,
-            )))
-        } else {
-            let maybe_conn = &self.connections[i];
-            match maybe_conn {
-                Some(conn) => {
-                    let data = conn.inputs.clone();
-                    let sender = conn.outputs.clone();
-                    let output = TestWriteStream {
-                        tx: sender,
-                        error: conn.output_error,
-                    };
-                    let input = TestReadStream {
-                        items: data,
-                        error: conn.input_error,
-                    };
-                    Ok((output, input))
-                }
-                _ => Err(ConnectionError::Capacity(CapacityError::new(
-                    CapacityErrorKind::Ambiguous,
-                    None,
-                ))),
+        url: url::Url,
+    ) -> Result<MockWebSocket<FailingExt<ConnectionError>>, ConnectionError> {
+        let TestFixture { repr, connections } = self.as_ref();
+
+        match repr {
+            TestDataRepr::Single(data) => {
+                let (local, auto) = data.open_conn(url.clone()).await?;
+                let connections = &mut *(connections.lock().await);
+                connections.insert(url, auto);
+
+                Ok(local)
+            }
+            TestDataRepr::Multiple(data) => {
+                let data = &mut *(data.lock().await);
+                let (local, auto) = data.open_conn(url.clone()).await?;
+                let connections = &mut *(connections.lock().await);
+                connections.insert(url, auto);
+
+                Ok(local)
             }
         }
     }
 }
 
+enum TestDataRepr {
+    Single(TestData),
+    Multiple(Mutex<MultipleTestData>),
+}
+
+struct MultipleTestData {
+    connections: Vec<Option<TestData>>,
+}
+
+impl MultipleTestData {
+    fn new(data: Vec<Option<TestData>>) -> Self {
+        MultipleTestData { connections: data }
+    }
+
+    async fn open_conn(
+        &mut self,
+        _url: url::Url,
+    ) -> Result<(MockWebSocket<FailingExt<ConnectionError>>, AutoWebSocket), ConnectionError> {
+        match self.connections.pop() {
+            Some(Some(data)) => {
+                let TestData {
+                    inputs,
+                    outputs,
+                    fail_on,
+                } = data;
+
+                let (local, peer) =
+                    ratchet_fixture::duplex::websocket_pair(FailingExt(fail_on.clone()));
+                let auto = AutoWebSocket {
+                    inputs: inputs.clone(),
+                    inner: peer,
+                };
+
+                Ok((local, auto))
+            }
+            _ => Err(ConnectionError::Capacity(CapacityError::new(
+                CapacityErrorKind::Ambiguous,
+                None,
+            ))),
+        }
+    }
+}
+
+struct AutoWebSocket {
+    inputs: Vec<String>,
+    inner: MockWebSocket<FailingExt<ConnectionError>>,
+}
+
+impl AutoWebSocket {
+    async fn send_all(&mut self) -> Result<(), ConnectionError> {
+        let AutoWebSocket { inputs, inner } = self;
+
+        while let Some(msg) = inputs.pop() {
+            match inner.write_text(msg).await {
+                Ok(()) => continue,
+                Err(e) => return Err(e.into()),
+            }
+        }
+
+        Ok(())
+    }
+}
+
+struct TestData {
+    inputs: Vec<String>,
+    outputs: mpsc::Sender<WsMessage>,
+    fail_on: FailOn<ConnectionError>,
+}
+
 impl TestData {
-    fn new(inputs: Vec<WsMessage>, outputs: mpsc::Sender<WsMessage>) -> Self {
+    fn new(inputs: Vec<String>, outputs: mpsc::Sender<WsMessage>) -> Self {
         TestData {
             inputs,
             outputs,
-            input_error: false,
-            output_error: false,
+            fail_on: FailOn::Nothing,
         }
     }
 
     async fn open_conn(
-        self: Arc<Self>,
+        &self,
         _url: url::Url,
-    ) -> Result<(TestWriteStream, TestReadStream), ConnectionError> {
-        let data = self.inputs.clone();
-        let sender = self.outputs.clone();
-        let output = TestWriteStream {
-            tx: sender,
-            error: self.output_error,
+    ) -> Result<(MockWebSocket<FailingExt<ConnectionError>>, AutoWebSocket), ConnectionError> {
+        let (local, peer) =
+            ratchet_fixture::duplex::websocket_pair(FailingExt(self.fail_on.clone()));
+        let auto = AutoWebSocket {
+            inputs: self.inputs.clone(),
+            inner: peer,
         };
-        let input = TestReadStream {
-            items: data,
-            error: self.input_error,
-        };
-        Ok((output, input))
+
+        Ok((local, auto))
     }
 
-    fn fail_on_input(mut self) -> Self {
-        self.input_error = true;
-        self
+    fn fail_on_input(self) -> Self {
+        let TestData {
+            inputs,
+            outputs,
+            fail_on,
+        } = self;
+
+        let fail_on = match fail_on {
+            FailOn::Read(on) => FailOn::Read(on),
+            FailOn::Write(on) => FailOn::Read(on),
+            FailOn::Rw(on) => FailOn::Rw(on),
+            FailOn::Nothing => {
+                FailOn::Read(ConnectionError::Protocol(ProtocolError::websocket(None)))
+            }
+        };
+
+        TestData {
+            inputs,
+            outputs,
+            fail_on,
+        }
     }
 
-    fn fail_on_output(mut self) -> Self {
-        self.output_error = true;
-        self
+    fn fail_on_output(self) -> Self {
+        let TestData {
+            inputs,
+            outputs,
+            fail_on,
+        } = self;
+
+        let fail_on = match fail_on {
+            FailOn::Read(on) => FailOn::Rw(on),
+            FailOn::Write(on) => FailOn::Write(on),
+            FailOn::Rw(on) => FailOn::Rw(on),
+            FailOn::Nothing => {
+                FailOn::Read(ConnectionError::Protocol(ProtocolError::websocket(None)))
+            }
+        };
+
+        TestData {
+            inputs,
+            outputs,
+            fail_on,
+        }
     }
 }

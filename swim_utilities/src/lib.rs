@@ -58,3 +58,8 @@ pub mod sync {
 
 #[cfg(feature = "test-util")]
 pub use swim_test_util as test_util;
+
+#[cfg(feature = "io")]
+pub mod io {
+    pub use swim_io::*;
+}

@@ -6,7 +6,6 @@ use ratchet::{
     CloseCode, ErrorKind, Extension, ExtensionProvider, Header, HeaderMap, HeaderValue, Message,
 };
 use ratchet::{CloseReason, Error, ExtensionDecoder, WebSocketStream};
-use std::borrow::Cow;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -18,13 +17,15 @@ pub enum WsMessage {
     Close(Option<CloseReason>),
 }
 
-impl<I> From<I> for WsMessage
-where
-    I: Into<Cow<'static, str>>,
-{
-    fn from(f: I) -> Self {
-        let str = f.into();
-        WsMessage::Text(str.to_string())
+impl From<String> for WsMessage {
+    fn from(f: String) -> Self {
+        WsMessage::Text(f)
+    }
+}
+
+impl From<&str> for WsMessage {
+    fn from(f: &str) -> Self {
+        WsMessage::Text(f.to_string())
     }
 }
 

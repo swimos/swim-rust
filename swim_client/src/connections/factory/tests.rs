@@ -13,63 +13,34 @@
 // limitations under the License.
 
 use super::async_factory::*;
-use crate::connections::factory::tungstenite::HostConfig;
-use futures::task::{Context, Poll};
-use futures::{Sink, Stream};
-use std::pin::Pin;
+use crate::connections::factory::HostConfig;
+use bytes::BytesMut;
+use ratchet::{NegotiatedExtension, NoExt, Role, WebSocket, WebSocketConfig};
 use swim_runtime::error::{ConnectionError, HttpError};
-use swim_runtime::ws::{Protocol, WsMessage};
-use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
-
-#[derive(Debug, PartialEq, Eq)]
-struct TestSink(url::Url);
-
-#[derive(Debug, PartialEq, Eq)]
-struct TestStream(url::Url);
-
-impl Stream for TestStream {
-    type Item = Result<WsMessage, ConnectionError>;
-
-    fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        Poll::Ready(None)
-    }
-}
-
-impl Sink<WsMessage> for TestSink {
-    type Error = ConnectionError;
-
-    fn poll_ready(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn start_send(self: Pin<&mut Self>, _item: WsMessage) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
-    }
-}
+use swim_runtime::ws::{CompressionSwitcherProvider, Protocol};
+use swim_utilities::io::void::{void, Void};
 
 async fn open_conn(
     url: url::Url,
     _config: HostConfig,
-) -> Result<(TestSink, TestStream), ConnectionError> {
+) -> Result<WebSocket<Void, NoExt>, ConnectionError> {
     if url.scheme() == "fail" {
         Err(ConnectionError::Http(HttpError::invalid_url(
             url.to_string(),
             None,
         )))
     } else {
-        Ok((TestSink(url.clone()), TestStream(url)))
+        Ok(ratchet::WebSocket::from_upgraded(
+            WebSocketConfig::default(),
+            void(),
+            NegotiatedExtension::from(None),
+            BytesMut::default(),
+            Role::Client,
+        ))
     }
 }
 
-async fn make_fac() -> AsyncFactory<TestSink, TestStream> {
+async fn make_fac() -> AsyncFactory<Void, NoExt> {
     AsyncFactory::new(5, open_conn).await
 }
 
@@ -90,14 +61,11 @@ async fn successfully_open() {
             url.clone(),
             HostConfig {
                 protocol: Protocol::PlainText,
-                compression_level: WsCompression::None(None),
+                compression_level: CompressionSwitcherProvider::Off,
             },
         )
         .await;
     assert!(result.is_ok());
-    let (snk, stream) = result.unwrap();
-    assert_eq!(snk.0, url);
-    assert_eq!(stream.0, url);
 }
 
 #[tokio::test]
@@ -109,7 +77,7 @@ async fn fail_to_open() {
             url.clone(),
             HostConfig {
                 protocol: Protocol::PlainText,
-                compression_level: WsCompression::None(None),
+                compression_level: CompressionSwitcherProvider::Off,
             },
         )
         .await;

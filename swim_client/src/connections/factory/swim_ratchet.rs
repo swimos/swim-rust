@@ -15,12 +15,14 @@ use swim_runtime::error::{
 };
 use swim_runtime::ws::utils::maybe_resolve_scheme;
 use swim_runtime::ws::{
-    CompressionSwitcherProvider, Protocol, StreamDef, WebSocketDef, WebsocketFactory,
+    CompressionSwitcherProvider, Protocol, StreamDef, StreamSwitcher, WebSocketDef,
+    WebsocketFactory,
 };
+use tokio::net::TcpStream;
+use tokio_native_tls::TlsStream;
 use url::Url;
 
 const WARP0_PROTO: &str = "warp0";
-const MAX_MESSAGE_SIZE: usize = 64 << 20;
 
 pub struct RatchetWebSocketFactory {
     inner: async_factory::AsyncFactory<StreamDef, Deflate>,
@@ -46,6 +48,9 @@ impl RatchetWebSocketFactory {
 }
 
 impl WebsocketFactory for RatchetWebSocketFactory {
+    type Sock = StreamSwitcher<TcpStream, TlsStream<TcpStream>>;
+    type Ext = Deflate;
+
     fn connect(&mut self, url: Url) -> BoxFuture<Result<WebSocketDef<Deflate>, ConnectionError>> {
         let config = match self.host_configurations.entry(url.clone()) {
             Entry::Occupied(o) => o.get().clone(),

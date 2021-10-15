@@ -20,9 +20,7 @@ use std::sync::{Arc, Mutex};
 use futures::future::BoxFuture;
 use futures::select;
 use futures::stream;
-use futures::{FutureExt, Sink, Stream, StreamExt};
-use futures_util::future::TryFutureExt;
-use futures_util::TryStreamExt;
+use futures::{FutureExt, StreamExt};
 use swim_utilities::future::request::request_future::RequestError;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::{SendError, TrySendError};
@@ -306,20 +304,18 @@ fn combine_connection_streams(
     stream::select(connection_requests, close_request)
 }
 
-struct SendTask<S>
-where
-    S: Sink<WsMessage> + Send + 'static + Unpin,
-{
+struct SendTask<Sock, Ext> {
     stopped: Arc<AtomicBool>,
-    write_sink: S,
+    write_sink: ratchet::Sender<Sock, Ext>,
     rx: mpsc::Receiver<WsMessage>,
 }
 
-impl<S> SendTask<S>
-where
-    S: Sink<WsMessage> + Send + 'static + Unpin,
-{
-    fn new(write_sink: S, rx: mpsc::Receiver<WsMessage>, stopped: Arc<AtomicBool>) -> Self {
+impl<Sock, Ext> SendTask<Sock, Ext> {
+    fn new(
+        write_sink: ratchet::Sender<Sock, Ext>,
+        rx: mpsc::Receiver<WsMessage>,
+        stopped: Arc<AtomicBool>,
+    ) -> Self {
         SendTask {
             stopped,
             write_sink,
@@ -328,38 +324,22 @@ where
     }
 
     async fn run(self) -> Result<(), ConnectionError> {
-        let SendTask {
-            stopped,
-            write_sink,
-            rx,
-        } = self;
-
-        ReceiverStream::new(rx)
-            .map(Ok)
-            .forward(write_sink)
-            .map_err(|_| {
-                stopped.store(true, Ordering::Release);
-                ConnectionError::Closed(CloseError::unexpected())
-            })
-            .await
-            .map_err(|_| ConnectionError::Closed(CloseError::unexpected()))
+        unimplemented!()
     }
 }
 
-struct ReceiveTask<S>
-where
-    S: Stream<Item = Result<WsMessage, ConnectionError>> + Send + Unpin + 'static,
-{
+struct ReceiveTask<Sock, Ext> {
     stopped: Arc<AtomicBool>,
-    read_stream: S,
+    read_stream: ratchet::Receiver<Sock, Ext>,
     tx: mpsc::Sender<WsMessage>,
 }
 
-impl<S> ReceiveTask<S>
-where
-    S: Stream<Item = Result<WsMessage, ConnectionError>> + Send + Unpin + 'static,
-{
-    fn new(read_stream: S, tx: mpsc::Sender<WsMessage>, stopped: Arc<AtomicBool>) -> Self {
+impl<Sock, Ext> ReceiveTask<Sock, Ext> {
+    fn new(
+        read_stream: ratchet::Receiver<Sock, Ext>,
+        tx: mpsc::Sender<WsMessage>,
+        stopped: Arc<AtomicBool>,
+    ) -> Self {
         ReceiveTask {
             stopped,
             read_stream,
@@ -368,26 +348,22 @@ where
     }
 
     async fn run(self) -> Result<(), ConnectionError> {
-        let ReceiveTask {
-            stopped,
-            mut read_stream,
-            tx,
-        } = self;
+        // loop {
+        //     let message = read_stream
+        //         .try_next()
+        //         .await
+        //         .map_err(|_| {
+        //             stopped.store(true, Ordering::Release);
+        //             ConnectionError::Closed(CloseError::unexpected())
+        //         })?
+        //         .ok_or_else(|| ConnectionError::Closed(CloseError::unexpected()))?;
+        //
+        //     tx.send(message)
+        //         .await
+        //         .map_err(|_| ConnectionError::Closed(CloseError::unexpected()))?;
+        // }
 
-        loop {
-            let message = read_stream
-                .try_next()
-                .await
-                .map_err(|_| {
-                    stopped.store(true, Ordering::Release);
-                    ConnectionError::Closed(CloseError::unexpected())
-                })?
-                .ok_or_else(|| ConnectionError::Closed(CloseError::unexpected()))?;
-
-            tx.send(message)
-                .await
-                .map_err(|_| ConnectionError::Closed(CloseError::unexpected()))?;
-        }
+        unimplemented!()
     }
 }
 

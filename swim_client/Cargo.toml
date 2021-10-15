@@ -15,7 +15,7 @@ tracing = { version = "0.1.13", features = ["max_level_debug"] }
 tracing = "0.1.16"
 
 [dependencies]
-swim_utilities = { path = "../swim_utilities", features = ["errors", "sync", "lrucache"] }
+swim_utilities = { path = "../swim_utilities", features = ["errors", "sync", "lrucache", "io"] }
 swim_async_runtime = { path = "../runtime/swim_async_runtime" }
 swim_warp = { path = "../swim_warp" }
 swim_runtime = { path = "../runtime/swim_runtime", features = ["tls"] }
@@ -24,7 +24,6 @@ swim_form = { path = "../api/swim_form" }
 swim_recon = { path = "../api/formats/swim_recon" }
 swim_schema = { path = "../api/swim_schema" }
 ratchet = {  path = "../ratchet", features = ["deflate", "split"] }
-
 http = "0.2"
 tokio-native-tls = "0.3"
 pin-utils = "0.1.0"
@@ -43,3 +42,5 @@ tokio-stream = "0.1.2"
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["rt-multi-thread"] }
 test_server = { path = "test_server" }
+bytes = "1.0"
+ratchet_fixture = { path = "../ratchet/ratchet_fixture" }

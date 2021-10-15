@@ -15,7 +15,7 @@
 mod tests {
     use swim_async_runtime::time::timeout::timeout;
     use swim_client::configuration::router::{ConnectionPoolParams, RouterParamBuilder};
-    use swim_client::connections::factory::tungstenite::TungsteniteWsFactory;
+    use swim_client::connections::factory::RatchetWebSocketFactory;
     use swim_client::connections::SwimConnPool;
     use swim_client::router::{Router, RouterEvent, SwimRouter};
     use swim_model::path::AbsolutePath;
@@ -35,7 +35,7 @@ mod tests {
         let config = RouterParamBuilder::default().build();
         let pool = SwimConnPool::new(
             ConnectionPoolParams::default(),
-            TungsteniteWsFactory::new(5).await,
+            RatchetWebSocketFactory::new(5).await,
         );
 
         let mut router = SwimRouter::new(config, pool);
@@ -63,7 +63,7 @@ mod tests {
         let config = RouterParamBuilder::default().build();
         let pool = SwimConnPool::new(
             ConnectionPoolParams::default(),
-            TungsteniteWsFactory::new(5).await,
+            RatchetWebSocketFactory::new(5).await,
         );
 
         let mut router = SwimRouter::new(config, pool);
@@ -109,7 +109,7 @@ mod tests {
         let config = RouterParamBuilder::default().build();
         let pool = SwimConnPool::new(
             ConnectionPoolParams::default(),
-            TungsteniteWsFactory::new(5).await,
+            RatchetWebSocketFactory::new(5).await,
         );
         let mut router = SwimRouter::new(config, pool);
 
@@ -145,7 +145,7 @@ mod tests {
         let config = RouterParamBuilder::default().build();
         let pool = SwimConnPool::new(
             ConnectionPoolParams::default(),
-            TungsteniteWsFactory::new(5).await,
+            RatchetWebSocketFactory::new(5).await,
         );
         let mut router = SwimRouter::new(config, pool);
 
@@ -177,7 +177,7 @@ mod tests {
         let config = RouterParamBuilder::default().build();
         let pool = SwimConnPool::new(
             ConnectionPoolParams::default(),
-            TungsteniteWsFactory::new(5).await,
+            RatchetWebSocketFactory::new(5).await,
         );
         let mut router = SwimRouter::new(config, pool);
 
@@ -204,7 +204,7 @@ mod tests {
         let config = RouterParamBuilder::default().build();
         let pool = SwimConnPool::new(
             ConnectionPoolParams::default(),
-            TungsteniteWsFactory::new(5).await,
+            RatchetWebSocketFactory::new(5).await,
         );
         let mut router = SwimRouter::new(config, pool);
 
@@ -240,7 +240,7 @@ mod tests {
         let config = RouterParamBuilder::default().build();
         let pool = SwimConnPool::new(
             ConnectionPoolParams::default(),
-            TungsteniteWsFactory::new(5).await,
+            RatchetWebSocketFactory::new(5).await,
         );
         let mut router = SwimRouter::new(config, pool);
 
