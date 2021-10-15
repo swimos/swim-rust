@@ -17,6 +17,7 @@ use crate::router::{
     AddressableWrapper, ClientRouter, ClientRouterFactory, DownlinkRoutingRequest, RouterEvent,
     RoutingPath, RoutingTable,
 };
+use futures::future::join_all;
 use futures::future::BoxFuture;
 use futures::select_biased;
 use futures::stream::FuturesUnordered;
@@ -26,12 +27,12 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::{Debug, Display, Formatter};
-use std::future::Future;
 use std::sync::Arc;
-use std::time::Duration;
 use swim_common::request::request_future::RequestError;
 use swim_common::request::Request;
-use swim_common::routing::error::{CloseError, ConnectionError, ResolutionError, Unresolvable};
+use swim_common::routing::error::{
+    CloseError, ConnectionError, HttpError, ResolutionError, Unresolvable,
+};
 use swim_common::routing::remote::RawRoute;
 use swim_common::routing::{
     BidirectionalRoute, BidirectionalRouter, CloseReceiver, ConnectionDropped, Route, Router,
@@ -417,7 +418,6 @@ impl<Path: Addressable, DelegateRouter: BidirectionalRouter>
             target.clone(),
             config.retry_strategy,
             &mut client_router,
-            sleep,
             stop_trigger.clone(),
         )
         .await?;
@@ -459,7 +459,7 @@ impl<Path: Addressable, DelegateRouter: BidirectionalRouter>
                 Some(ConnectionRegistratorEvent::Message(envelope)) => {
                     if let Ok(incoming_message) = envelope.1.clone().into_incoming() {
                         if let Some(subscribers) = subscribers.get_mut(&incoming_message.path) {
-                            let futures = FuturesUnordered::new();
+                            let mut futures = vec![];
 
                             for (idx, sub) in subscribers.iter() {
                                 let msg = incoming_message.clone();
@@ -470,7 +470,7 @@ impl<Path: Addressable, DelegateRouter: BidirectionalRouter>
                                 });
                             }
 
-                            let results = futures.collect::<Vec<_>>().await;
+                            let results = join_all(futures).await;
 
                             for result in results {
                                 if let (idx, Err(_)) = result {
@@ -527,12 +527,12 @@ impl<Path: Addressable, DelegateRouter: BidirectionalRouter>
                 Some(ConnectionRegistratorEvent::ConnectionDropped(connection_dropped)) => {
                     broadcast(&mut subscribers, RouterEvent::ConnectionClosed).await;
 
+                    let mut maybe_err = None;
                     if connection_dropped.is_recoverable() {
                         match open_connection(
                             target.clone(),
                             config.retry_strategy,
                             &mut client_router,
-                            sleep,
                             stop_trigger.clone(),
                         )
                         .await
@@ -545,22 +545,14 @@ impl<Path: Addressable, DelegateRouter: BidirectionalRouter>
                                 remote_drop_rx = new_remote_drop_rx.fuse();
                             }
                             Err(err) => {
-                                broadcast(
-                                    &mut subscribers,
-                                    RouterEvent::Unreachable(target.to_string()),
-                                )
-                                .await;
-
-                                if let Some(local_drop_tx) = maybe_local_drop_tx {
-                                    local_drop_tx.provide(ConnectionDropped::Closed).map_err(
-                                        |_| ConnectionError::Closed(CloseError::closed()),
-                                    )?;
-                                }
-
-                                return Err(err);
+                                maybe_err = Some(err);
                             }
                         };
                     } else {
+                        maybe_err = Some(ConnectionError::Closed(CloseError::closed()));
+                    }
+
+                    if let Some(err) = maybe_err {
                         broadcast(
                             &mut subscribers,
                             RouterEvent::Unreachable(target.to_string()),
@@ -568,12 +560,10 @@ impl<Path: Addressable, DelegateRouter: BidirectionalRouter>
                         .await;
 
                         if let Some(local_drop_tx) = maybe_local_drop_tx {
-                            local_drop_tx
-                                .provide(ConnectionDropped::Closed)
-                                .map_err(|_| ConnectionError::Closed(CloseError::closed()))?;
+                            local_drop_tx.provide(ConnectionDropped::Closed)?;
                         }
 
-                        return Err(ConnectionError::Closed(CloseError::closed()));
+                        return Err(err);
                     }
                 }
                 _ => {
@@ -611,9 +601,9 @@ async fn broadcast(
     subscribers: &mut HashMap<RelativePath, Slab<Sender<RouterEvent>>>,
     event: RouterEvent,
 ) {
-    let futures = FuturesUnordered::new();
+    let mut futures = vec![];
 
-    for (path, subs) in subscribers.iter() {
+    for (path, subs) in &*subscribers {
         for (idx, sub) in subs {
             let event_clone = event.clone();
             futures.push(async move {
@@ -623,7 +613,7 @@ async fn broadcast(
         }
     }
 
-    let results = futures.collect::<Vec<_>>().await;
+    let results = join_all(futures).await;
 
     for result in results {
         if let (path, idx, Err(_)) = result {
@@ -640,18 +630,15 @@ type RawConnection = (
     promise::Receiver<ConnectionDropped>,
 );
 
-async fn open_connection<Path, DelegateRouter, F, D>(
+async fn open_connection<Path, DelegateRouter>(
     target: RegistrationTarget,
     mut retry_strategy: RetryStrategy,
     client_router: &mut ClientRouter<Path, DelegateRouter>,
-    delay_fn: F,
     stop_trigger: CloseReceiver,
 ) -> Result<RawConnection, ConnectionError>
 where
     Path: Addressable,
     DelegateRouter: BidirectionalRouter,
-    F: Fn(Duration) -> D,
-    D: Future<Output = ()>,
 {
     let mut stop_rx = stop_trigger.fuse();
     loop {
@@ -672,11 +659,11 @@ where
                 Some(Some(dur)) => {
                     let cancelled: Option<()> = select_biased! {
                         _ = stop_rx => Some(()),
-                        _ = delay_fn(dur).fuse() => None,
+                        _ = sleep(dur).fuse() => None,
                     };
 
                     if cancelled.is_some() {
-                        unimplemented!()
+                        break Err(err);
                     }
                 }
                 None => {
@@ -703,10 +690,7 @@ where
         sender,
         receiver,
         on_drop,
-    } = client_router
-        .resolve_bidirectional(target)
-        .await
-        .map_err(ConnectionError::Resolution)?;
+    } = client_router.resolve_bidirectional(target).await?;
 
     Ok((sender, Some(receiver), on_drop))
 }
@@ -719,15 +703,10 @@ where
     Path: Addressable,
     DelegateRouter: BidirectionalRouter,
 {
-    let relative_uri = RelativeUri::try_from(target)
-        .map_err(|e| ConnectionError::Resolution(ResolutionError::unresolvable(e.to_string())))?;
+    let relative_uri = RelativeUri::try_from(target.clone())
+        .map_err(|e| ConnectionError::Http(HttpError::invalid_url(target, Some(e.to_string()))))?;
 
-    let routing_addr = client_router
-        .lookup(None, relative_uri.clone())
-        .await
-        .map_err(|_| {
-            ConnectionError::Resolution(ResolutionError::unresolvable(relative_uri.to_string()))
-        })?;
+    let routing_addr = client_router.lookup(None, relative_uri.clone()).await?;
 
     let Route { sender, on_drop } = client_router
         .resolve_sender(routing_addr)

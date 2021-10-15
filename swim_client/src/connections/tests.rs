@@ -12,23 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::time::Duration;
 use tokio::sync::mpsc;
 
 use super::*;
 use crate::router::tests::{FakeConnections, MockRemoteRouterTask};
 use crate::router::TopLevelClientRouterFactory;
+use swim_common::routing::error::RouterError;
 use swim_common::routing::CloseSender;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
+use swim_utilities::future::retryable::Quantity;
 
 async fn create_connection_pool(
-    fake_conns: FakeConnections,
+    fake_connections: FakeConnections,
 ) -> (SwimConnPool<AbsolutePath>, CloseSender) {
     let (client_tx, client_rx) = mpsc::channel(32);
     let (conn_request_tx, _conn_request_rx) = mpsc::channel(32);
     let (close_tx, close_rx) = promise::promise();
 
-    let remote_tx = MockRemoteRouterTask::new(fake_conns);
+    let remote_tx = MockRemoteRouterTask::new(fake_connections);
 
     let delegate_fac = TopLevelClientRouterFactory::new(client_tx.clone(), remote_tx.clone());
     let client_router_fac = ClientRouterFactory::new(conn_request_tx, delegate_fac);
@@ -437,4 +440,62 @@ async fn test_connection_pool_close() {
     assert!(response_rx.recv().await.is_none());
     assert!(remote_rx.recv().await.is_none());
     assert!(remote_tx.is_closed());
+}
+
+#[tokio::test]
+async fn test_retry_open_connection_cancel() {
+    // Given
+    let target = RegistrationTarget::Local(String::from("/foo"));
+    let retry_strategy = RetryStrategy::interval(Duration::from_secs(10), Quantity::Infinite);
+    let (request_tx, _request_rx) = mpsc::channel(8);
+    let client_router_fac = ClientRouterFactory::new(request_tx, MockRouterFactory);
+    let mut client_router: ClientRouter<AbsolutePath, MockRouter> =
+        client_router_fac.create_for(RoutingAddr::client(0));
+
+    let (close_tx, close_rx) = promise::promise();
+    let (response_tx, _response_rx) = mpsc::channel(8);
+    // When
+    close_tx.provide(response_tx).unwrap();
+    let result = open_connection(target, retry_strategy, &mut client_router, close_rx).await;
+    // Then
+    assert!(result.is_err());
+}
+
+struct MockRouterFactory;
+impl RouterFactory for MockRouterFactory {
+    type Router = MockRouter;
+
+    fn create_for(&self, _addr: RoutingAddr) -> Self::Router {
+        MockRouter
+    }
+}
+
+struct MockRouter;
+
+impl Router for MockRouter {
+    fn resolve_sender(&mut self, _addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
+        unimplemented!()
+    }
+
+    fn lookup(
+        &mut self,
+        _host: Option<Url>,
+        _route: RelativeUri,
+    ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
+        async {
+            Err(RouterError::ConnectionFailure(
+                ConnectionError::WriteTimeout(Duration::from_secs(10)),
+            ))
+        }
+        .boxed()
+    }
+}
+
+impl BidirectionalRouter for MockRouter {
+    fn resolve_bidirectional(
+        &mut self,
+        _host: Url,
+    ) -> BoxFuture<Result<BidirectionalRoute, ResolutionError>> {
+        unimplemented!()
+    }
 }

@@ -20,8 +20,8 @@ use std::time::Duration;
 use tokio::sync::mpsc::error::SendError as MpscSendError;
 
 use crate::request::request_future::RequestError;
-use crate::routing::RelativeUri;
 use crate::routing::RoutingAddr;
+use crate::routing::{ConnectionDropped, RelativeUri};
 pub use capacity::*;
 pub use closed::*;
 pub use encoding::*;
@@ -254,6 +254,26 @@ impl From<FutSendError> for ConnectionError {
         } else {
             // There are only two variants and no kind function to pattern match on
             unreachable!()
+        }
+    }
+}
+
+impl From<ConnectionDropped> for ConnectionError {
+    fn from(_: ConnectionDropped) -> Self {
+        ConnectionError::Closed(CloseError::closed())
+    }
+}
+
+impl From<RouterError> for ConnectionError {
+    fn from(err: RouterError) -> Self {
+        match err {
+            RouterError::NoAgentAtRoute(err) => {
+                ConnectionError::Resolution(ResolutionError::unresolvable(err.to_string()))
+            }
+            RouterError::ConnectionFailure(err) => err,
+            RouterError::RouterDropped => {
+                ConnectionError::Resolution(ResolutionError::router_dropped())
+            }
         }
     }
 }
