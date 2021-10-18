@@ -264,11 +264,16 @@ fn write_slot_into(field: &FieldModel) -> TokenStream {
     }
 }
 
-fn compute_num_slots(fields: &[&FieldModel]) -> TokenStream {
+fn compute_num_slots(fields: &[&FieldModel], by_ref: bool) -> TokenStream {
     let increments = fields.iter().map(|field| {
         let field_index = &field.selector;
+        let fld = if by_ref {
+            quote!(&#field_index)
+        } else {
+            field_index.to_token_stream()
+        };
         quote! {
-            if !swim_form::structural::write::StructuralWritable::omit_as_field(#field_index) {
+            if !swim_form::structural::write::StructuralWritable::omit_as_field(#fld) {
                 num_slots += 1;
             }
         }
@@ -329,7 +334,7 @@ impl<'a> ToTokens for WriteWithFn<'a> {
                 }
             }
             BodyFields::StdBody(fields) => {
-                let num_slots = compute_num_slots(fields);
+                let num_slots = compute_num_slots(fields, false);
 
                 let (body_kind, statements) =
                     if fields_model.body_kind == CompoundTypeKind::Labelled {
@@ -448,7 +453,7 @@ impl<'a> ToTokens for WriteIntoFn<'a> {
                 }
             }
             BodyFields::StdBody(fields) => {
-                let num_slots = fields.len();
+                let num_slots = compute_num_slots(fields, true);
 
                 let (body_kind, statements) =
                     if fields_model.body_kind == CompoundTypeKind::Labelled {
@@ -464,7 +469,8 @@ impl<'a> ToTokens for WriteIntoFn<'a> {
                     };
 
                 quote! {
-                    let mut body_writer = rec_writer.complete_header(#body_kind, #num_slots)?;
+                    #num_slots
+                    let mut body_writer = rec_writer.complete_header(#body_kind, num_slots)?;
                     #(#statements)*
                     body_writer.done()
                 }
