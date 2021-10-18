@@ -45,28 +45,6 @@ const BAD_STATUS_CODE: &str = "Invalid status code";
 const ACCEPT_KEY: &[u8] = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const METHOD_GET: &str = "get";
 
-pub trait H1PartEncoder {
-    type Error: StdError;
-
-    fn encode(self, into: &mut BytesMut) -> Result<(), Self::Error>
-    where
-        Self: Sized,
-    {
-        into.reserve(self.size_hint());
-        self.encode_into(into)
-    }
-
-    fn encode_into(self, into: &mut BytesMut) -> Result<(), Self::Error>;
-
-    fn size_hint(&self) -> usize;
-}
-
-pub trait H1PartDecoder: Sized {
-    type Error: StdError;
-
-    fn decode(from: &mut BytesMut) -> Result<Self, Self::Error>;
-}
-
 #[derive(Default)]
 pub struct ProtocolRegistry {
     registrants: FnvHashSet<Cow<'static, str>>,
