@@ -969,11 +969,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_server_dl_from_server_to_lane_remote() {
-        let (server, _server_handle) = build_server().await;
-        let downlink_context = server.downlinks_context();
-        tokio::spawn(server.run());
-
         let (server, mut server_handle) = build_server().await;
+        let downlink_context = server.downlinks_context();
         tokio::spawn(server.run());
         let second_port = server_handle.address().await.unwrap().port();
         let second_host = format!("warp://127.0.0.1:{}", second_port);
