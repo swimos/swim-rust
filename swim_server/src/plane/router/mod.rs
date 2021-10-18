@@ -36,7 +36,7 @@ pub struct PlaneRouterFactory<DelegateFac: RouterFactory> {
 
 impl<DelegateFac: RouterFactory> PlaneRouterFactory<DelegateFac> {
     /// Create a factory from a channel back to the owning plane.
-    pub(in crate) fn new(
+    pub fn new(
         request_sender: mpsc::Sender<PlaneRoutingRequest>,
         delegate_fac: DelegateFac,
     ) -> Self {
@@ -68,7 +68,7 @@ pub struct PlaneRouter<Delegate> {
 }
 
 impl<Delegate> PlaneRouter<Delegate> {
-    pub(in crate) fn new(
+    pub fn new(
         tag: RoutingAddr,
         delegate_router: Delegate,
         request_sender: mpsc::Sender<PlaneRoutingRequest>,

@@ -54,8 +54,8 @@ use tracing_futures::Instrument;
 pub mod context;
 pub mod error;
 pub mod lifecycle;
-pub(crate) mod provider;
-pub(crate) mod router;
+pub mod provider;
+pub mod router;
 pub mod spec;
 pub mod store;
 #[cfg(test)]
@@ -63,7 +63,7 @@ mod tests;
 
 /// Trait for agent routes. An agent route can construct and run any number of instances of a
 /// [`SwimAgent`] type.
-pub(crate) trait AgentRoute<Clk, Envelopes, Router, Store>: Debug + Send {
+pub trait AgentRoute<Clk, Envelopes, Router, Store>: Debug + Send {
     /// Run an instance of the agent.
     ///
     /// # Arguments
@@ -129,7 +129,7 @@ impl LocalEndpoint {
     }
 }
 
-pub(crate) type EnvChannel = TakeUntil<ReceiverStream<TaggedEnvelope>, CloseReceiver>;
+pub type EnvChannel = TakeUntil<ReceiverStream<TaggedEnvelope>, CloseReceiver>;
 
 /// A specification of a plane, consisting of the defined routes, store and an optional custom lifecycle
 /// for the plane.
@@ -161,7 +161,7 @@ where
 
 /// Container for the running routes within a plane.
 #[derive(Debug, Default)]
-pub(crate) struct PlaneActiveRoutes {
+pub struct PlaneActiveRoutes {
     local_endpoints: HashMap<RoutingAddr, LocalEndpoint>,
     local_routes: HashMap<RelativeUri, RoutingAddr>,
 }
@@ -214,16 +214,13 @@ impl PlaneActiveRoutes {
 }
 
 /// Plane context implementation.
-pub(crate) struct ContextImpl {
+pub struct ContextImpl {
     request_tx: mpsc::Sender<PlaneRoutingRequest>,
     routes: Vec<RoutePattern>,
 }
 
 impl ContextImpl {
-    pub(crate) fn new(
-        request_tx: mpsc::Sender<PlaneRoutingRequest>,
-        routes: Vec<RoutePattern>,
-    ) -> Self {
+    pub fn new(request_tx: mpsc::Sender<PlaneRoutingRequest>, routes: Vec<RoutePattern>) -> Self {
         ContextImpl { request_tx, routes }
     }
 }
@@ -280,7 +277,7 @@ impl PlaneContext for ContextImpl {
 
 /// Contains the specifications of all routes that are within a plane and maintains the map of
 /// currently active routes.
-pub(crate) struct RouteResolver<Clk, DelegateFac, Store>
+pub struct RouteResolver<Clk, DelegateFac, Store>
 where
     DelegateFac: RouterFactory,
     Store: PlaneStore,
@@ -304,7 +301,7 @@ where
 }
 
 impl<Clk, DelegateFac: RouterFactory, Store: PlaneStore> RouteResolver<Clk, DelegateFac, Store> {
-    pub(crate) fn new(
+    pub fn new(
         clock: Clk,
         downlinks_context: DownlinksContext<Path>,
         execution_config: AgentExecutionConfig,
@@ -405,7 +402,7 @@ const PLANE_STOPPED: &str = "The plane has stopped.";
 /// * `stop_trigger` - Trigger to fire externally when the plane should stop.
 /// * `spawner` - Tasks spawner.
 /// * `context_rx` - Receiver for plane requests.
-pub(crate) async fn run_plane<Clk, S, DelegateFac: RouterFactory, Store>(
+pub async fn run_plane<Clk, S, DelegateFac: RouterFactory, Store>(
     mut resolver: RouteResolver<Clk, DelegateFac, Store>,
     mut lifecycle: Option<Box<dyn PlaneLifecycle>>,
     mut context: ContextImpl,
