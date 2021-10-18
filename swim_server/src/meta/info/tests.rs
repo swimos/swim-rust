@@ -16,24 +16,31 @@ use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::model::map::MapLane;
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::store::mock::MockNodeStore;
-use crate::agent::{agent_lifecycle, map_lifecycle, value_lifecycle, SwimAgent, TestClock};
+use crate::agent::{
+    agent_lifecycle, map_lifecycle, value_lifecycle, AgentParameters, SwimAgent, TestClock,
+};
 use crate::meta::info::{LaneInfo, LaneKind};
 use crate::plane::provider::AgentProvider;
-use crate::plane::RouteAndParameters;
-use crate::routing::error::RouterError;
-use crate::routing::{
-    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
-};
+use crate::routing::TopLevelServerRouterFactory;
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use swim_client::configuration::downlink::{ClientParams, ConfigHierarchy};
+use swim_client::connections::SwimConnPool;
+use swim_client::downlink::Downlinks;
+use swim_client::interface::DownlinksContext;
+use swim_client::router::ClientRouterFactory;
 use swim_common::form::structural::read::ReadError;
 use swim_common::form::Form;
 use swim_common::record;
-use swim_common::routing::ResolutionError;
+use swim_common::routing::error::ResolutionError;
+use swim_common::routing::error::RouterError;
+use swim_common::routing::{
+    ConnectionDropped, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
+};
 use swim_common::warp::envelope::Envelope;
 use swim_runtime::time::timeout;
 use swim_utilities::routing::uri::RelativeUri;
@@ -147,7 +154,7 @@ impl MockRouter {
     }
 }
 
-impl ServerRouter for MockRouter {
+impl Router for MockRouter {
     fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let MockRouter { inner, drop_rx, .. } = self;
@@ -183,12 +190,36 @@ async fn lane_info_sync() {
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
     let provider = AgentProvider::new(MockAgentConfig, MockAgentLifecycle);
 
+    let (client_tx, client_rx) = mpsc::channel(8);
+    let (remote_tx, _remote_rx) = mpsc::channel(8);
+    let (plane_tx, _plane_rx) = mpsc::channel(8);
+    let (_close_tx, close_rx) = promise::promise();
+
+    let top_level_factory =
+        TopLevelServerRouterFactory::new(plane_tx, client_tx.clone(), remote_tx);
+
+    let client_router_fac = ClientRouterFactory::new(client_tx.clone(), top_level_factory);
+
+    let (conn_pool, _pool_task) = SwimConnPool::new(
+        ClientParams::default(),
+        (client_tx, client_rx),
+        client_router_fac,
+        close_rx.clone(),
+    );
+
+    let (downlinks, _downlinks_task) =
+        Downlinks::new(conn_pool, Arc::new(ConfigHierarchy::default()), close_rx);
+
+    let client = DownlinksContext::new(downlinks);
+
+    let parameters = AgentParameters::new(MockAgentConfig, exec_config, uri, HashMap::new());
+
     let (_a, agent_proc) = provider.run(
-        RouteAndParameters::new(uri, HashMap::new()),
-        exec_config,
+        parameters,
         clock.clone(),
+        client,
         ReceiverStream::new(envelope_rx),
-        MockRouter::new(RoutingAddr::local(1024), tx),
+        MockRouter::new(RoutingAddr::plane(1024), tx),
         MockNodeStore::mock(),
     );
 

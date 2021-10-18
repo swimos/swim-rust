@@ -20,7 +20,6 @@ use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::router::PlaneRouter;
 use crate::plane::store::mock::MockPlaneStore;
 use crate::plane::{AgentRoute, EnvChannel, RouteAndParameters};
-use crate::routing::{ServerRouter, TaggedEnvelope};
 use futures::future::BoxFuture;
 use futures::{FutureExt, StreamExt};
 use http::Uri;
@@ -30,7 +29,10 @@ use std::any::Any;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
+use swim_client::interface::DownlinksContext;
+use swim_common::routing::{Router, TaggedEnvelope};
 use swim_common::warp::envelope::Envelope;
+use swim_common::warp::path::Path;
 use swim_runtime::time::clock::Clock;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
@@ -99,7 +101,7 @@ pub const RECEIVER_PREFIX: &str = "receiver";
 const LANE_NAME: &str = "receiver_lane";
 const MESSAGE: &str = "ping!";
 
-impl<Clk: Clock, Delegate: ServerRouter + 'static>
+impl<Clk: Clock, Delegate: Router + 'static>
     AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>, SwimNodeStore<MockPlaneStore>>
     for SendAgentRoute
 {
@@ -108,6 +110,7 @@ impl<Clk: Clock, Delegate: ServerRouter + 'static>
         route: RouteAndParameters,
         execution_config: AgentExecutionConfig,
         _clock: Clk,
+        _downlinks_context: DownlinksContext<Path>,
         incoming_envelopes: EnvChannel,
         mut router: PlaneRouter<Delegate>,
         _store: SwimNodeStore<MockPlaneStore>,
@@ -155,6 +158,7 @@ impl<Clk: Clock, Delegate>
         route: RouteAndParameters,
         execution_config: AgentExecutionConfig,
         _clock: Clk,
+        _downlinks_context: DownlinksContext<Path>,
         incoming_envelopes: EnvChannel,
         _router: PlaneRouter<Delegate>,
         _store: SwimNodeStore<MockPlaneStore>,

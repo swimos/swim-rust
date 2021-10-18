@@ -18,9 +18,10 @@ use std::fmt::{Display, Formatter};
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::request::request_future::RequestError;
-use swim_common::routing::{ConnectionError, RoutingError};
+use swim_common::routing::error::ConnectionError;
+use swim_common::routing::error::RoutingError;
 use swim_common::sink::item;
-use swim_common::warp::path::AbsolutePath;
+use swim_common::warp::path::Addressable;
 use swim_utilities::errors::Recoverable;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -180,29 +181,29 @@ impl From<swim_common::sink::item::SendError> for DroppedError {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum SubscriptionError {
+pub enum SubscriptionError<Path: Addressable> {
     BadKind {
         expected: DownlinkKind,
         actual: DownlinkKind,
     },
     DownlinkTaskStopped,
     IncompatibleValueSchema {
-        path: AbsolutePath,
+        path: Path,
         existing: Box<StandardSchema>,
         requested: Box<StandardSchema>,
     },
     IncompatibleMapSchema {
         is_key: bool,
-        path: AbsolutePath,
+        path: Path,
         existing: Box<StandardSchema>,
         requested: Box<StandardSchema>,
     },
     ConnectionError,
 }
 
-impl SubscriptionError {
+impl<Path: Addressable> SubscriptionError<Path> {
     pub fn incompatible_value(
-        path: AbsolutePath,
+        path: Path,
         existing: StandardSchema,
         requested: StandardSchema,
     ) -> Self {
@@ -214,7 +215,7 @@ impl SubscriptionError {
     }
 
     pub fn incompatible_map_key(
-        path: AbsolutePath,
+        path: Path,
         existing: StandardSchema,
         requested: StandardSchema,
     ) -> Self {
@@ -227,7 +228,7 @@ impl SubscriptionError {
     }
 
     pub fn incompatible_map_value(
-        path: AbsolutePath,
+        path: Path,
         existing: StandardSchema,
         requested: StandardSchema,
     ) -> Self {
@@ -240,19 +241,19 @@ impl SubscriptionError {
     }
 }
 
-impl From<oneshot::error::RecvError> for SubscriptionError {
+impl<Path: Addressable> From<oneshot::error::RecvError> for SubscriptionError<Path> {
     fn from(_: oneshot::error::RecvError) -> Self {
         SubscriptionError::DownlinkTaskStopped
     }
 }
 
-impl From<RequestError> for SubscriptionError {
+impl<Path: Addressable> From<RequestError> for SubscriptionError<Path> {
     fn from(_: RequestError) -> Self {
         SubscriptionError::ConnectionError
     }
 }
 
-impl Display for SubscriptionError {
+impl<Path: Addressable> Display for SubscriptionError<Path> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             SubscriptionError::BadKind { expected, actual } => write!(
@@ -288,10 +289,10 @@ impl Display for SubscriptionError {
     }
 }
 
-impl std::error::Error for SubscriptionError {}
+impl<Path: Addressable> std::error::Error for SubscriptionError<Path> {}
 
-impl SubscriptionError {
-    pub fn bad_kind(expected: DownlinkKind, actual: DownlinkKind) -> SubscriptionError {
+impl<Path: Addressable> SubscriptionError<Path> {
+    pub fn bad_kind(expected: DownlinkKind, actual: DownlinkKind) -> SubscriptionError<Path> {
         SubscriptionError::BadKind { expected, actual }
     }
 }

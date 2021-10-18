@@ -19,9 +19,10 @@ pub mod interface;
 #[macro_use]
 pub mod macros;
 pub mod meta;
-pub mod plane;
 pub mod routing;
 pub mod store;
+
+mod plane;
 
 #[allow(unused_imports)]
 pub use agent_derive::*;

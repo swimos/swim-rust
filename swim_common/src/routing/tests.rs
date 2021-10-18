@@ -42,5 +42,5 @@ fn routing_addr_display() {
     assert_eq!(string, "Remote(1)");
 
     let string = format!("{}", RoutingAddr::plane(0x1a));
-    assert_eq!(string, "Local(1A)");
+    assert_eq!(string, "Plane(1A)");
 }

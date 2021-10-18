@@ -39,11 +39,6 @@ use crate::meta::metric::uplink::{UplinkObserver, WarpUplinkPulse};
 use crate::meta::metric::{aggregator_sink, AggregatorError, NodeMetricAggregator};
 use crate::meta::pulse::PulseLanes;
 use crate::plane::store::mock::MockPlaneStore;
-use crate::routing::error::RouterError;
-use crate::routing::{
-    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
-    TaggedSender,
-};
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::{once, BoxStream, FusedStream};
 use futures::{Future, FutureExt, Stream, StreamExt};
@@ -59,9 +54,14 @@ use swim_common::form::structural::read::ReadError;
 use swim_common::form::structural::write::StructuralWritable;
 use swim_common::form::{Form, NewTypeForm};
 use swim_common::model::Value;
-use swim_common::routing::ResolutionError;
-use swim_common::routing::RoutingError;
-use swim_common::routing::SendError;
+use swim_common::routing::error::ResolutionError;
+use swim_common::routing::error::RouterError;
+use swim_common::routing::error::RoutingError;
+use swim_common::routing::error::SendError;
+use swim_common::routing::{
+    ConnectionDropped, Route, Router, RoutingAddr, TaggedClientEnvelope, TaggedEnvelope,
+    TaggedSender,
+};
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
@@ -264,6 +264,7 @@ impl TestHandler {
         TestHandler(Default::default())
     }
 }
+
 struct DummyUplink;
 
 impl UplinkStateMachine<i32> for DummyUplink {
@@ -346,6 +347,7 @@ struct TestContext {
     trigger: Arc<Mutex<Option<trigger::Sender>>>,
     _drop_tx: Arc<promise::Sender<ConnectionDropped>>,
     drop_rx: promise::Receiver<ConnectionDropped>,
+    uri: RelativeUri,
     aggregator: NodeMetricAggregator,
     uplinks_idle_since: Arc<AtomicInstant>,
 }
@@ -385,7 +387,7 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
     }
 }
 
-impl ServerRouter for TestRouter {
+impl Router for TestRouter {
     fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         let TestRouter {
             sender, drop_rx, ..
@@ -422,6 +424,10 @@ impl AgentExecutionContext for TestContext {
 
     fn spawner(&self) -> Sender<Eff> {
         self.scheduler.clone()
+    }
+
+    fn uri(&self) -> &RelativeUri {
+        &self.uri
     }
 
     fn metrics(&self) -> NodeMetricAggregator {
@@ -635,6 +641,7 @@ fn make_context() -> (
         trigger: Arc::new(Mutex::new(Some(stop_tx))),
         _drop_tx: Arc::new(drop_tx),
         drop_rx,
+        uri: RelativeUri::try_from("/mock/router".to_string()).unwrap(),
         aggregator,
         uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
     };
@@ -1384,6 +1391,7 @@ impl MultiTestContextInner {
 struct MultiTestContext(
     Arc<parking_lot::Mutex<MultiTestContextInner>>,
     mpsc::Sender<Eff>,
+    RelativeUri,
     Arc<AtomicInstant>,
 );
 
@@ -1394,6 +1402,7 @@ impl MultiTestContext {
                 router_addr,
             ))),
             spawner,
+            RelativeUri::try_from("/mock/router".to_string()).unwrap(),
             Arc::new(AtomicInstant::new(Instant::now().into_std())),
         )
     }
@@ -1430,12 +1439,16 @@ impl AgentExecutionContext for MultiTestContext {
         self.1.clone()
     }
 
+    fn uri(&self) -> &RelativeUri {
+        &self.2
+    }
+
     fn metrics(&self) -> NodeMetricAggregator {
         aggregator_sink()
     }
 
     fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
-        &self.2
+        &self.3
     }
 
     fn store(&self) -> Self::Store {
@@ -1443,7 +1456,7 @@ impl AgentExecutionContext for MultiTestContext {
     }
 }
 
-impl ServerRouter for MultiTestRouter {
+impl Router for MultiTestRouter {
     fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let mut lock = self.0.lock();
@@ -1473,7 +1486,7 @@ impl ServerRouter for MultiTestRouter {
 fn make_multi_context() -> (MultiTestContext, BoxFuture<'static, ()>) {
     let (spawn_tx, spawn_rx) = mpsc::channel(5);
 
-    let context = MultiTestContext::new(RoutingAddr::local(1024), spawn_tx);
+    let context = MultiTestContext::new(RoutingAddr::plane(1024), spawn_tx);
     let spawn_task = ReceiverStream::new(spawn_rx)
         .for_each_concurrent(None, |t| t)
         .boxed();

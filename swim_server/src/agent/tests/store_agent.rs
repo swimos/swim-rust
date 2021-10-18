@@ -24,13 +24,13 @@ use crate::agent::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::store::NodeStore;
 use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::{
-    AgentContext, DynamicAgentIo, DynamicLaneTasks, LaneConfig, LaneParts, SwimAgent, TestClock,
+    AgentContext, AgentParameters, DynamicAgentIo, DynamicLaneTasks, LaneConfig, LaneParts,
+    SwimAgent, TestClock,
 };
 use crate::agent::{IoPair, LaneTasks};
 use crate::plane::provider::AgentProvider;
 use crate::plane::store::{PlaneStore, SwimPlaneStore};
-use crate::plane::RouteAndParameters;
-use crate::routing::RoutingAddr;
+use crate::routing::TopLevelServerRouterFactory;
 use crate::store::fs::Dir;
 use crate::store::keystore::{KeyStore, COUNTER_BYTES};
 use crate::store::{
@@ -47,7 +47,15 @@ use store::engines::StoreBuilder;
 use store::keyspaces::KeyspaceByteEngine;
 use store::StoreError;
 use store::{deserialize, serialize};
+use swim_client::configuration::downlink::{ClientParams, ConfigHierarchy};
+use swim_client::connections::SwimConnPool;
+use swim_client::downlink::Downlinks;
+use swim_client::interface::DownlinksContext;
+use swim_client::router::ClientRouterFactory;
+use swim_common::routing::RoutingAddr;
+use swim_common::warp::path::Path;
 use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
@@ -69,6 +77,7 @@ pub struct StoreAgent {
 
 #[derive(Debug, Clone)]
 struct StoreAgentLifecycle;
+
 impl AgentLifecycle<StoreAgent> for StoreAgentLifecycle {
     fn starting<'a, C>(&'a self, context: &'a C) -> BoxFuture<'a, ()>
     where
@@ -248,6 +257,30 @@ impl Default for TestStore {
     }
 }
 
+fn make_dl_context() -> DownlinksContext<Path> {
+    let (client_tx, client_rx) = mpsc::channel(8);
+    let (remote_tx, _remote_rx) = mpsc::channel(8);
+    let (plane_tx, _plane_rx) = mpsc::channel(8);
+    let (_close_tx, close_rx) = promise::promise();
+
+    let top_level_factory =
+        TopLevelServerRouterFactory::new(plane_tx, client_tx.clone(), remote_tx);
+
+    let client_router_fac = ClientRouterFactory::new(client_tx.clone(), top_level_factory);
+
+    let (conn_pool, _pool_task) = SwimConnPool::new(
+        ClientParams::default(),
+        (client_tx, client_rx),
+        client_router_fac,
+        close_rx.clone(),
+    );
+
+    let (downlinks, _downlinks_task) =
+        Downlinks::new(conn_pool, Arc::new(ConfigHierarchy::default()), close_rx);
+
+    DownlinksContext::new(downlinks)
+}
+
 #[tokio::test]
 async fn store_loads() {
     let node_uri = "/test";
@@ -293,11 +326,11 @@ async fn store_loads() {
     );
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
     let (agent, agent_proc) = provider.run(
-        RouteAndParameters::new(uri.clone(), HashMap::new()),
-        exec_config,
+        AgentParameters::new(AgentConfig, exec_config, uri.clone(), HashMap::new()),
         clock.clone(),
+        make_dl_context(),
         ReceiverStream::new(envelope_rx),
-        SingleChannelRouter::new(RoutingAddr::local(1024)),
+        SingleChannelRouter::new(RoutingAddr::plane(1024)),
         store.delegate.node_store(uri.to_string()),
     );
 
@@ -342,11 +375,11 @@ async fn events() {
     );
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
     let (_, agent_proc) = provider.run(
-        RouteAndParameters::new(uri.clone(), HashMap::new()),
-        exec_config,
+        AgentParameters::new(AgentConfig, exec_config, uri.clone(), HashMap::new()),
         clock.clone(),
+        make_dl_context(),
         ReceiverStream::new(envelope_rx),
-        SingleChannelRouter::new(RoutingAddr::local(1024)),
+        SingleChannelRouter::new(RoutingAddr::plane(1024)),
         store.delegate.node_store(uri.to_string()),
     );
 

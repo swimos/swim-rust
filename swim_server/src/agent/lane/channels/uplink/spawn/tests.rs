@@ -25,25 +25,26 @@ use crate::agent::store::SwimNodeStore;
 use crate::agent::Eff;
 use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
 use crate::plane::store::mock::MockPlaneStore;
-use crate::routing::error::RouterError;
-use crate::routing::{
-    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
-};
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::iter;
 use futures::stream::{BoxStream, FusedStream};
 use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::collections::{HashMap, HashSet};
+use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_common::form::structural::read::ReadError;
 use swim_common::form::Form;
 use swim_common::model::Value;
-use swim_common::routing::ResolutionError;
-use swim_common::routing::RoutingError;
-use swim_common::routing::SendError;
+use swim_common::routing::error::ResolutionError;
+use swim_common::routing::error::RouterError;
+use swim_common::routing::error::RoutingError;
+use swim_common::routing::error::SendError;
+use swim_common::routing::{
+    ConnectionDropped, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
+};
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
@@ -65,8 +66,11 @@ struct Message(i32);
 //A minimal suite of fake uplink and router implementations which which to test the spawner.
 
 struct TestHandler(mpsc::Sender<i32>, i32);
+
 struct TestStateMachine(i32);
+
 struct TestUpdater(mpsc::Sender<i32>);
+
 struct TestRouter {
     sender: mpsc::Sender<TaggedEnvelope>,
     drop_rx: promise::Receiver<ConnectionDropped>,
@@ -93,7 +97,7 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
     }
 }
 
-impl ServerRouter for TestRouter {
+impl Router for TestRouter {
     fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         let TestRouter {
             sender, drop_rx, ..
@@ -306,6 +310,7 @@ struct TestContext {
     messages: mpsc::Sender<TaggedEnvelope>,
     _drop_tx: promise::Sender<ConnectionDropped>,
     drop_rx: promise::Receiver<ConnectionDropped>,
+    uri: RelativeUri,
     uplinks_idle_since: Arc<AtomicInstant>,
 }
 
@@ -317,6 +322,7 @@ impl TestContext {
             messages,
             _drop_tx: drop_tx,
             drop_rx,
+            uri: RelativeUri::try_from("/mock/router".to_string()).unwrap(),
             uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
         }
     }
@@ -338,6 +344,10 @@ impl AgentExecutionContext for TestContext {
 
     fn spawner(&self) -> Sender<Eff> {
         self.spawner.clone()
+    }
+
+    fn uri(&self) -> &RelativeUri {
+        &self.uri
     }
 
     fn metrics(&self) -> NodeMetricAggregator {

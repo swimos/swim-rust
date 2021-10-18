@@ -20,7 +20,7 @@ use crate::routing::error::{RouterError, Unresolvable};
 use crate::routing::RoutingAddr;
 use std::io::ErrorKind;
 use std::time::Duration;
-use utilities::uri::RelativeUri;
+use swim_utilities::routing::uri::RelativeUri;
 
 #[test]
 fn connection_error_display() {
@@ -67,13 +67,13 @@ fn unresolvable_display() {
 
     let string = err.to_string();
 
-    assert_eq!(string, "No active endpoint with ID: Local(4)");
+    assert_eq!(string, "No active endpoint with ID: Plane(4)");
 }
 
 #[test]
 fn resolution_error_display() {
     let string = ResolutionError::unresolvable(RoutingAddr::plane(4).to_string()).to_string();
-    assert_eq!(string, "Address Local(4) could not be resolved.");
+    assert_eq!(string, "Address Plane(4) could not be resolved.");
 
     let string = ResolutionError::router_dropped().to_string();
     assert_eq!(string, "The router channel was dropped.");

@@ -36,7 +36,7 @@ const CONN_REAPER_FREQ_TAG: &str = "conn_reaper_frequency";
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RouterParams {
     /// The retry strategy that will be used when attempting to make a request to a Web Agent.
-    retry_strategy: RetryStrategy,
+    pub retry_strategy: RetryStrategy,
     /// The maximum amount of time a connection can be inactive for before it will be culled.
     idle_timeout: Duration,
     /// How frequently inactive connections will be culled.

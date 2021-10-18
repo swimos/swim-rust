@@ -19,8 +19,8 @@ use tokio::time;
 
 #[tokio::main]
 async fn main() {
-    let (client, client_handle) = SwimClientBuilder::build_with_default().await;
-    let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
+    let client = SwimClientBuilder::build_with_default().await;
+    let host_uri = url::Url::parse(&"warp://127.0.0.1:9001".to_string()).unwrap();
     let node_uri_prefix = "/unit/";
 
     let path = AbsolutePath::new(
@@ -67,5 +67,5 @@ async fn main() {
 
     println!("Stopping client in 2 seconds");
     time::sleep(Duration::from_secs(2)).await;
-    client_handle.stop().await.unwrap();
+    client.stop().await.unwrap();
 }

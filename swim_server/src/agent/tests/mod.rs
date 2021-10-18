@@ -36,14 +36,13 @@ use crate::agent::tests::reporting_macro_agent::ReportingAgentEvent;
 use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::{
-    ActionLifecycleTasks, AgentContext, CommandLifecycleTasks, Lane, LaneTasks, LifecycleTasks,
-    MapLifecycleTasks, SwimAgent, ValueLifecycleTasks,
+    ActionLifecycleTasks, AgentContext, AgentParameters, CommandLifecycleTasks, Lane, LaneTasks,
+    LifecycleTasks, MapLifecycleTasks, SwimAgent, ValueLifecycleTasks,
 };
 use crate::meta::info::LaneKind;
 use crate::meta::log::NodeLogger;
 use crate::plane::provider::AgentProvider;
-use crate::plane::RouteAndParameters;
-use crate::routing::RoutingAddr;
+use crate::routing::TopLevelServerRouterFactory;
 use futures::future::{join, BoxFuture};
 use futures::Stream;
 use std::collections::HashMap;
@@ -51,23 +50,31 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use swim_client::configuration::downlink::{ClientParams, ConfigHierarchy};
+use swim_client::connections::SwimConnPool;
+use swim_client::downlink::Downlinks;
+use swim_client::interface::DownlinksContext;
+use swim_client::router::ClientRouterFactory;
+use swim_common::routing::RoutingAddr;
+use swim_common::warp::path::Path;
 use swim_runtime::task;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
+use swim_utilities::trigger::promise;
+use swim_utilities::trigger::Receiver;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::{timeout, Duration};
 use tokio_stream::wrappers::ReceiverStream;
-use trigger::Receiver;
 
 mod stub_router {
-    use crate::routing::error::RouterError;
-    use crate::routing::{
-        ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
-    };
     use futures::future::BoxFuture;
     use futures::FutureExt;
     use std::sync::Arc;
-    use swim_common::routing::ResolutionError;
+    use swim_common::routing::error::ResolutionError;
+    use swim_common::routing::error::RouterError;
+    use swim_common::routing::{
+        ConnectionDropped, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
+    };
     use swim_utilities::routing::uri::RelativeUri;
     use swim_utilities::trigger::promise;
     use tokio::sync::mpsc;
@@ -95,7 +102,7 @@ mod stub_router {
         }
     }
 
-    impl ServerRouter for SingleChannelRouter {
+    impl Router for SingleChannelRouter {
         fn resolve_sender(
             &mut self,
             addr: RoutingAddr,
@@ -264,6 +271,10 @@ impl<Lane> AgentContext<TestAgent<Lane>> for TestContext<Lane>
 where
     Lane: LaneModel + Send + Sync + 'static,
 {
+    fn downlinks_context(&self) -> DownlinksContext<Path> {
+        panic!("Unexpected downlink context")
+    }
+
     fn schedule<Effect, Str, Sch>(&self, _effects: Str, _schedule: Sch) -> BoxFuture<'_, ()>
     where
         Effect: Future<Output = ()> + Send + 'static,
@@ -730,12 +741,13 @@ async fn agent_loop() {
     let config = TestAgentConfig::new(tx);
     let agent_lifecycle = config.agent_lifecycle();
 
-    let provider = AgentProvider::new(config, agent_lifecycle);
-    run_agent_test(provider, rx).await;
+    let provider = AgentProvider::new(config.clone(), agent_lifecycle);
+    run_agent_test(provider, config, rx).await;
 }
 
 pub async fn run_agent_test<Agent, Config, Lifecycle>(
     provider: AgentProvider<Agent, Config, Lifecycle>,
+    config: Config,
     mut rx: mpsc::Receiver<ReportingAgentEvent>,
 ) where
     Agent: SwimAgent<Config> + Debug,
@@ -757,15 +769,39 @@ pub async fn run_agent_test<Agent, Config, Lifecycle>(
 
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
 
+    let parameters = AgentParameters::new(config, exec_config, uri, HashMap::new());
+
+    let (client_tx, client_rx) = mpsc::channel(8);
+    let (remote_tx, _remote_rx) = mpsc::channel(8);
+    let (plane_tx, _plane_rx) = mpsc::channel(8);
+    let (_close_tx, close_rx) = promise::promise();
+
+    let top_level_factory =
+        TopLevelServerRouterFactory::new(plane_tx, client_tx.clone(), remote_tx);
+
+    let client_router_fac = ClientRouterFactory::new(client_tx.clone(), top_level_factory);
+
+    let (conn_pool, _pool_task) = SwimConnPool::new(
+        ClientParams::default(),
+        (client_tx, client_rx),
+        client_router_fac,
+        close_rx.clone(),
+    );
+
+    let (downlinks, _downlinks_task) =
+        Downlinks::new(conn_pool, Arc::new(ConfigHierarchy::default()), close_rx);
+
+    let client = DownlinksContext::new(downlinks);
+
     // The ReportingAgent is carefully contrived such that its lifecycle events all trigger in
     // a specific order. We can then safely expect these events in that order to verify the agent
     // loop.
     let (_, agent_proc) = provider.run(
-        RouteAndParameters::new(uri, HashMap::new()),
-        exec_config,
+        parameters,
         clock.clone(),
+        client,
         ReceiverStream::new(envelope_rx),
-        SingleChannelRouter::new(RoutingAddr::local(1024)),
+        SingleChannelRouter::new(RoutingAddr::plane(1024)),
         MockNodeStore::mock(),
     );
 

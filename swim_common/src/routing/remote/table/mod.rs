@@ -15,41 +15,75 @@
 #[cfg(test)]
 mod tests;
 
-use crate::routing::remote::RawRoute;
-use crate::routing::{ConnectionDropped, RoutingAddr, TaggedEnvelope};
+use crate::request::Request;
+use crate::routing::error::ResolutionError;
+use crate::routing::remote::{
+    BadUrl, BidirectionalReceiverRequest, RawRoute, Scheme, SchemeSocketAddr,
+};
+use crate::routing::{
+    BidirectionalRoute, ConnectionDropped, RoutingAddr, TaggedEnvelope, TaggedSender,
+};
 use std::collections::{HashMap, HashSet};
+use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
-use std::net::SocketAddr;
 use swim_utilities::trigger::promise;
-use tokio::sync::mpsc;
+use thiserror::Error;
+use tokio::sync::{mpsc, oneshot};
+use url::Url;
 
 /// A combination of host name and port to be used as a key into the routing table.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct HostAndPort(String, u16);
+pub struct SchemeHostPort(Scheme, String, u16);
 
-impl HostAndPort {
-    pub fn new(host: String, port: u16) -> Self {
-        HostAndPort(host, port)
+impl SchemeHostPort {
+    pub fn new(scheme: Scheme, host: String, port: u16) -> Self {
+        SchemeHostPort(scheme, host, port)
     }
 
-    pub fn host(&self) -> &String {
+    pub fn scheme(&self) -> &Scheme {
         &self.0
     }
 
-    pub fn port(&self) -> u16 {
-        self.1
+    pub fn host(&self) -> &String {
+        &self.1
     }
 
-    pub fn split(self) -> (String, u16) {
-        let HostAndPort(host, port) = self;
-        (host, port)
+    pub fn port(&self) -> u16 {
+        self.2
+    }
+
+    pub fn split(self) -> (Scheme, String, u16) {
+        let SchemeHostPort(scheme, host, port) = self;
+        (scheme, host, port)
     }
 }
 
-impl Display for HostAndPort {
+impl Display for SchemeHostPort {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let HostAndPort(host, port) = self;
-        write!(f, "{}:{}", host, port)
+        let SchemeHostPort(scheme, host, port) = self;
+        write!(f, "{}://{}:{}", scheme, host, port)
+    }
+}
+
+impl TryFrom<Url> for SchemeHostPort {
+    type Error = BadUrl;
+
+    fn try_from(url: Url) -> Result<Self, Self::Error> {
+        let scheme = Scheme::try_from(url.scheme())?;
+        match (url.host_str(), url.port()) {
+            (Some(host_str), Some(port)) => {
+                Ok(SchemeHostPort::new(scheme, host_str.to_owned(), port))
+            }
+            (Some(host_str), _) => {
+                let default_port = scheme.get_default_port();
+                Ok(SchemeHostPort::new(
+                    scheme,
+                    host_str.to_owned(),
+                    default_port,
+                ))
+            }
+            _ => Err(BadUrl::NoHost),
+        }
     }
 }
 
@@ -58,41 +92,56 @@ impl Display for HostAndPort {
 /// be satisfied when the task stops running.
 #[derive(Debug, Default)]
 pub struct RoutingTable {
-    open_sockets: HashMap<SocketAddr, RoutingAddr>,
-    resolved_forward: HashMap<HostAndPort, RoutingAddr>,
+    open_sockets: HashMap<SchemeSocketAddr, RoutingAddr>,
+    resolved_forward: HashMap<SchemeHostPort, RoutingAddr>,
     endpoints: HashMap<RoutingAddr, Handle>,
 }
 
+#[derive(Debug, Clone, Copy, Error)]
+#[error("Bidirectional connections do not support subscribers.")]
+pub struct BidirectionalError;
+
 impl RoutingTable {
     /// Try to get the routing key in the table for a given host/port combination.
-    pub fn try_resolve(&self, target: &HostAndPort) -> Option<RoutingAddr> {
+    pub fn try_resolve(&self, target: &SchemeHostPort) -> Option<RoutingAddr> {
         self.resolved_forward.get(target).copied()
     }
 
     /// Try to get a routing key in the table for a resolved socket address.
-    pub fn get_resolved(&self, target: &SocketAddr) -> Option<RoutingAddr> {
+    pub fn get_resolved(&self, target: &SchemeSocketAddr) -> Option<RoutingAddr> {
         self.open_sockets.get(target).copied()
     }
 
-    /// Get the entry in the table associated with a routing key, if it exsits.
+    /// Get the entry in the table associated with a routing key, if it exists.
     pub fn resolve(&self, addr: RoutingAddr) -> Option<RawRoute> {
         self.endpoints
             .get(&addr)
             .map(|h| RawRoute::new(h.tx.clone(), h.drop_rx.clone()))
     }
 
+    /// Get a bidirectional connection to the routing address, if it exists.
+    pub fn resolve_bidirectional(&self, addr: RoutingAddr) -> Option<BidirectionalRegistrator> {
+        self.endpoints.get(&addr).map(|h| BidirectionalRegistrator {
+            sender: TaggedSender::new(addr, h.tx.clone()),
+            receiver_request_tx: h.bidirectional_request_tx.clone(),
+            on_drop: h.drop_rx.clone(),
+        })
+    }
+
     /// Insert an entry into the table.
     pub fn insert(
         &mut self,
         addr: RoutingAddr,
-        host: Option<HostAndPort>,
-        sock_addr: SocketAddr,
+        host: Option<SchemeHostPort>,
+        sock_addr: SchemeSocketAddr,
         tx: mpsc::Sender<TaggedEnvelope>,
-    ) {
+        bidirectional_request_tx: mpsc::Sender<BidirectionalReceiverRequest>,
+    ) -> BidirectionalRegistrator {
         let RoutingTable {
             open_sockets,
             resolved_forward,
             endpoints,
+            ..
         } = self;
         debug_assert!(!open_sockets.contains_key(&sock_addr));
 
@@ -103,13 +152,27 @@ impl RoutingTable {
             hosts.insert(host);
         }
 
-        endpoints.insert(addr, Handle::new(tx, sock_addr, hosts));
+        let handle = Handle::new(tx, bidirectional_request_tx, sock_addr, hosts);
+
+        let bidirectional_registrator = BidirectionalRegistrator {
+            sender: TaggedSender::new(addr, handle.tx.clone()),
+            receiver_request_tx: handle.bidirectional_request_tx.clone(),
+            on_drop: handle.drop_rx.clone(),
+        };
+
+        endpoints.insert(addr, handle);
+
+        bidirectional_registrator
     }
 
     /// Associate another hose/port combination with a socket address that already has an entry in
     /// the table. This will return [`Some`] if and only if there is already an entry for that
     /// address.
-    pub fn add_host(&mut self, host: HostAndPort, sock_addr: SocketAddr) -> Option<RoutingAddr> {
+    pub fn add_host(
+        &mut self,
+        host: SchemeHostPort,
+        sock_addr: SchemeSocketAddr,
+    ) -> Option<RoutingAddr> {
         let RoutingTable {
             open_sockets,
             resolved_forward,
@@ -155,24 +218,61 @@ impl RoutingTable {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct BidirectionalRegistrator {
+    sender: TaggedSender,
+    receiver_request_tx: mpsc::Sender<BidirectionalReceiverRequest>,
+    on_drop: promise::Receiver<ConnectionDropped>,
+}
+
+impl BidirectionalRegistrator {
+    pub fn new(
+        sender: TaggedSender,
+        receiver_request_tx: mpsc::Sender<BidirectionalReceiverRequest>,
+        on_drop: promise::Receiver<ConnectionDropped>,
+    ) -> Self {
+        BidirectionalRegistrator {
+            sender,
+            receiver_request_tx,
+            on_drop,
+        }
+    }
+
+    pub async fn register(self) -> Result<BidirectionalRoute, ResolutionError> {
+        let (tx, rx) = oneshot::channel();
+        self.receiver_request_tx
+            .send(Request::new(tx))
+            .await
+            .map_err(|_| ResolutionError::router_dropped())?;
+
+        match rx.await {
+            Ok(receiver) => Ok(BidirectionalRoute::new(self.sender, receiver, self.on_drop)),
+            Err(_) => Err(ResolutionError::router_dropped()),
+        }
+    }
+}
+
 #[derive(Debug)]
 struct Handle {
     tx: mpsc::Sender<TaggedEnvelope>,
+    bidirectional_request_tx: mpsc::Sender<BidirectionalReceiverRequest>,
     drop_tx: promise::Sender<ConnectionDropped>,
     drop_rx: promise::Receiver<ConnectionDropped>,
-    peer: SocketAddr,
-    bindings: HashSet<HostAndPort>,
+    peer: SchemeSocketAddr,
+    bindings: HashSet<SchemeHostPort>,
 }
 
 impl Handle {
     fn new(
         tx: mpsc::Sender<TaggedEnvelope>,
-        peer: SocketAddr,
-        bindings: HashSet<HostAndPort>,
+        bidirectional_request_tx: mpsc::Sender<BidirectionalReceiverRequest>,
+        peer: SchemeSocketAddr,
+        bindings: HashSet<SchemeHostPort>,
     ) -> Self {
         let (drop_tx, drop_rx) = promise::promise();
         Handle {
             tx,
+            bidirectional_request_tx,
             drop_tx,
             drop_rx,
             peer,

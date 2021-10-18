@@ -23,12 +23,12 @@ use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::router::PlaneRouter;
 use crate::plane::spec::{PlaneBuilder, PlaneSpec, RouteSpec};
 use crate::plane::store::mock::MockPlaneStore;
-use crate::routing::error::RouterError;
-use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
 use futures::future::{ready, BoxFuture, Ready};
 use futures::FutureExt;
 use std::time::Duration;
-use swim_common::routing::ResolutionError;
+use swim_common::routing::error::ResolutionError;
+use swim_common::routing::error::RouterError;
+use swim_common::routing::{Route, Router, RoutingAddr, TaggedEnvelope};
 use swim_runtime::time::clock::Clock;
 use swim_utilities::routing::route_pattern::RoutePattern;
 use swim_utilities::routing::uri::RelativeUri;
@@ -68,7 +68,7 @@ struct DummyPlaneLifecycle(i32);
 #[derive(Clone, Debug)]
 struct DummyDelegate;
 
-impl ServerRouter for DummyDelegate {
+impl Router for DummyDelegate {
     fn resolve_sender(
         &mut self,
         _addr: RoutingAddr,

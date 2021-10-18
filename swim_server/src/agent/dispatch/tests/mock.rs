@@ -23,20 +23,21 @@ use crate::agent::store::SwimNodeStore;
 use crate::agent::{AttachError, Eff, LaneIo};
 use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
 use crate::plane::store::mock::MockPlaneStore;
-use crate::routing::error::RouterError;
-use crate::routing::{
-    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
-    TaggedSender,
-};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use parking_lot::Mutex;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::sync::Arc;
 use stm::transaction::TransactionError;
 use swim_common::model::Value;
-use swim_common::routing::ResolutionError;
+use swim_common::routing::error::ResolutionError;
+use swim_common::routing::error::RouterError;
+use swim_common::routing::{
+    ConnectionDropped, Route, Router, RoutingAddr, TaggedClientEnvelope, TaggedEnvelope,
+    TaggedSender,
+};
 use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
 use swim_utilities::routing::uri::RelativeUri;
@@ -97,7 +98,7 @@ impl MockRouterInner {
 #[derive(Debug, Clone)]
 pub struct MockRouter(Arc<Mutex<MockRouterInner>>);
 
-impl ServerRouter for MockRouter {
+impl Router for MockRouter {
     fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let mut lock = self.0.lock();
@@ -138,6 +139,7 @@ impl ServerRouter for MockRouter {
 pub struct MockExecutionContext {
     router: Arc<Mutex<MockRouterInner>>,
     spawner: mpsc::Sender<Eff>,
+    uri: RelativeUri,
     uplinks_idle_since: Arc<AtomicInstant>,
 }
 
@@ -151,6 +153,10 @@ impl AgentExecutionContext for MockExecutionContext {
 
     fn spawner(&self) -> Sender<Eff> {
         self.spawner.clone()
+    }
+
+    fn uri(&self) -> &RelativeUri {
+        &self.uri
     }
 
     fn store(&self) -> Self::Store {
@@ -172,6 +178,7 @@ impl MockExecutionContext {
             router: Arc::new(Mutex::new(MockRouterInner::new(router_addr, buffer_size))),
             spawner,
             uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
+            uri: RelativeUri::try_from("/mock/router".to_string()).unwrap(),
         }
     }
 
