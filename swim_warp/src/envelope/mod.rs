@@ -126,12 +126,14 @@ impl LinkParams {
     }
 }
 
+/// Envelopes for negotiating a connection (auth/deauth).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NegotiationEnvelope {
     kind: NegotiationKind,
     body: Option<Value>,
 }
 
+/// Envelopes directed to an agent.
 #[derive(Clone, Debug, PartialEq)]
 pub enum RequestEnvelope {
     Link(RelativePath, LinkParams, Option<Value>),
@@ -140,6 +142,7 @@ pub enum RequestEnvelope {
     Command(RelativePath, Option<Value>),
 }
 
+/// Agents produced by an agent.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ResponseEnvelope {
     Linked(RelativePath, LinkParams, Option<Value>),
@@ -148,6 +151,7 @@ pub enum ResponseEnvelope {
     Event(RelativePath, Option<Value>),
 }
 
+/// Specializes an [`Envelope`] into one of three different sub-types.
 #[derive(Clone, Debug, PartialEq)]
 pub enum DiscriminatedEnvelope {
     Negotation(NegotiationEnvelope),
@@ -199,6 +203,7 @@ enum AddressedKind {
     Unlinked,
 }
 
+/// Builder type for envelopes corresponding to a lane but without link parameters.
 pub struct AddressedBuilder {
     kind: AddressedKind,
     node_uri: Text,
@@ -212,6 +217,7 @@ enum LinkEnvKind {
     Linked,
 }
 
+/// Builder type for envelopes corresponding to a lane with link parameters.
 pub struct LinkEnvelopeBuilder {
     kind: LinkEnvKind,
     node_uri: Text,
@@ -251,6 +257,7 @@ impl AddressedBuilder {
         self
     }
 
+    /// Build the completed envelope.
     pub fn done(self) -> Envelope {
         let AddressedBuilder {
             kind,
@@ -340,6 +347,7 @@ impl LinkEnvelopeBuilder {
         self
     }
 
+    /// Build the completed envelope.
     pub fn done(self) -> Envelope {
         let LinkEnvelopeBuilder {
             kind,
@@ -376,58 +384,72 @@ impl LinkEnvelopeBuilder {
 }
 
 impl Envelope {
+
+    /// Create an authorizaton envelope with no body.
     pub fn auth_empty() -> Envelope {
         Envelope::Auth { body: None }
     }
 
+    /// Create an authorizaton envelope with a body.
     pub fn auth<T: StructuralWritable>(body: T) -> Envelope {
         Envelope::Auth {
             body: Some(body.into_structure()),
         }
     }
 
+    /// Create an deauthorizaton envelope with no body.
     pub fn deauth_empty() -> Envelope {
         Envelope::DeAuth { body: None }
     }
 
+    /// Create an deauthorizaton envelope with a body.
     pub fn deauth<T: StructuralWritable>(body: T) -> Envelope {
         Envelope::DeAuth {
             body: Some(body.into_structure()),
         }
     }
 
+    /// Get a builder for link envelopes.
     pub fn link() -> LinkEnvelopeBuilder {
         LinkEnvelopeBuilder::new(LinkEnvKind::Link)
     }
 
+    /// Get a builder for sync envelopes.
     pub fn sync() -> LinkEnvelopeBuilder {
         LinkEnvelopeBuilder::new(LinkEnvKind::Sync)
     }
 
+    /// Get a builder for unlink envelopes.
     pub fn unlink() -> AddressedBuilder {
         AddressedBuilder::new(AddressedKind::Unlink)
     }
 
+    /// Get a builder for command envelopes.
     pub fn command() -> AddressedBuilder {
         AddressedBuilder::new(AddressedKind::Command)
     }
 
+    /// Get a builder for linked envelopes.
     pub fn linked() -> LinkEnvelopeBuilder {
         LinkEnvelopeBuilder::new(LinkEnvKind::Linked)
     }
 
+    /// Get a builder for synced envelopes.
     pub fn synced() -> AddressedBuilder {
         AddressedBuilder::new(AddressedKind::Synced)
     }
 
+    /// Get a builder for unlinked envelopes.
     pub fn unlinked() -> AddressedBuilder {
         AddressedBuilder::new(AddressedKind::Unlinked)
     }
 
+    /// Get a builder for event envelopes.
     pub fn event() -> AddressedBuilder {
         AddressedBuilder::new(AddressedKind::Event)
     }
 
+    /// Convenience method to create a node not found response.
     pub fn node_not_found<N, L>(node: N, lane: L) -> Self
     where
         N: Into<Text>,
@@ -440,6 +462,7 @@ impl Envelope {
         }
     }
 
+    /// Convenience method to create a lane not found response.
     pub fn lane_not_found<N, L>(node: N, lane: L) -> Self
     where
         N: Into<Text>,
@@ -612,6 +635,7 @@ impl Envelope {
         }
     }
 
+    /// Split into one of the three specialized envelope types.
     pub fn discriminate(self) -> DiscriminatedEnvelope {
         match self {
             Envelope::Auth { body } => DiscriminatedEnvelope::Negotation(NegotiationEnvelope {
