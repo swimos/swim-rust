@@ -6,7 +6,7 @@ edition = "2018"
 
 [features]
 default = []
-tls = ["tokio-native-tls", "tungstenite/tls"]
+tls = ["tokio-native-tls"]
 
 [dependencies]
 ratchet = {  path = "../../ratchet", features = ["deflate", "split"] }
@@ -28,10 +28,6 @@ thiserror = "1.0"
 [dependencies.tokio-native-tls]
 version = "0.3"
 optional = true
-
-[dependencies.tungstenite]
-git = "https://github.com/swimos/tungstenite-rs"
-default-features = false
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["macros", "test-util"] }
