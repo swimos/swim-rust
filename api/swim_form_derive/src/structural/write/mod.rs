@@ -489,7 +489,7 @@ impl<'a> ToTokens for Destructure<'a> {
             },
             context,
         ) = self;
-        let indexers = fields_model.fields.iter().map(|f| &f.model.selector);
+        let indexers = fields_model.fields.iter().map(|f| f.model.selector.binder());
         match fields_model.type_kind {
             CompoundTypeKind::Unit => {
                 if matches!(context, DestructureContext::VariantMatch) {
@@ -555,11 +555,12 @@ impl<'a> ToTokens for NumAttrsEnum<'a> {
             let base_attrs = v.fields.header.attributes.len() + 1;
             if let BodyFields::ReplacedBody(fld) = v.fields.body {
                 let fld_name = &fld.selector;
+                let binder = fld_name.binder();
                 let pat = match fld_name {
-                    FieldSelector::Named(id) =>  quote!(#enum_name::#var_name { #id, .. }),
+                    FieldSelector::Named(_) =>  quote!(#enum_name::#var_name { #binder, .. }),
                     FieldSelector::Ordinal(i) => {
                         let ignore = (0..*i).map(|_| quote!(_));
-                        quote!(#enum_name::#var_name(#(#ignore,)* #fld_name, ..))
+                        quote!(#enum_name::#var_name(#(#ignore,)* #binder, ..))
                     }
                 };
                 quote!(#pat => #base_attrs + swim_form::structural::write::StructuralWritable::num_attributes(#fld_name))

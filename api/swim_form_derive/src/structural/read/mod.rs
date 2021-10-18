@@ -978,12 +978,12 @@ impl<'a> ToTokens for OnDoneFn<'a> {
         let make_result = match inner.fields_model.type_kind {
             CompoundTypeKind::Labelled => {
                 let con_params = inner.fields_model.fields.iter().map(|fld| {
-                    let name = &fld.model.selector;
-                    if fld.directive == FieldKind::Skip {
-                        quote!(#name: core::default::Default::default())
+                    let bind = if fld.directive == FieldKind::Skip {
+                        fld.model.selector.default_binder()
                     } else {
-                        quote!(#name)
-                    }
+                        fld.model.selector.binder()
+                    };
+                    quote!(#bind)
                 });
                 quote! {
                     #constructor {

@@ -20,13 +20,14 @@ use macro_utilities::attr_names::{
 };
 use macro_utilities::{FieldKind, Symbol};
 use proc_macro2::TokenStream;
-use quote::ToTokens;
+use quote::{ToTokens, TokenStreamExt};
 use std::convert::TryFrom;
 use std::ops::Add;
 use swim_utilities::errors::validation::Validation;
 use syn::{Field, Ident, Lit, Meta, NestedMeta, Type};
 
 /// Describes how to extract a field from a struct.
+#[derive(Clone, Copy)]
 pub enum FieldSelector<'a> {
     ///Field in a labelled struct (identified by name).
     Named(&'a Ident),
@@ -34,12 +35,64 @@ pub enum FieldSelector<'a> {
     Ordinal(usize),
 }
 
+impl<'a> FieldSelector<'a> {
+
+    pub fn binder(self) -> Binder<'a> {
+        Binder {
+            field: self,
+            is_default: false
+        }
+    }
+
+    pub fn default_binder(self) -> Binder<'a> {
+        Binder {
+            field: self,
+            is_default: true,
+        }
+    }
+}
+
+pub struct Binder<'a> {
+    field: FieldSelector<'a>,
+    is_default: bool,
+}
+
 // Consistently gives the same name to a given field wherever it is referred to.
 impl<'a> ToTokens for FieldSelector<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
-            FieldSelector::Named(id) => id.to_tokens(tokens),
+            FieldSelector::Named(id) => format_ident!("_{}", *id).to_tokens(tokens),
             FieldSelector::Ordinal(i) => format_ident!("value_{}", *i).to_tokens(tokens),
+        }
+    }
+}
+
+impl<'a> ToTokens for Binder<'a> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let Binder { field, is_default } = self;
+        if *is_default {
+            match field {
+                FieldSelector::Named(id) => {
+                    tokens.append_all(quote! {
+                        #id: core::default::Default::default()
+                    })
+                },
+                FieldSelector::Ordinal(_) => {
+                    tokens.append_all(quote! {
+                        core::default::Default::default()
+                    })
+                },
+            }
+        } else {
+            match field {
+                FieldSelector::Named(id) => {
+                    let bind_name = format_ident!("_{}", *id);
+                    tokens.append_all(quote! {
+                        #id: #bind_name
+                    })
+                },
+                FieldSelector::Ordinal(i) => format_ident!("value_{}", *i).to_tokens(tokens),
+            }
         }
     }
 }
