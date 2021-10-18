@@ -21,14 +21,16 @@ use std::time::Duration;
 use swim_common::model::Value;
 use swim_common::warp::path::{Path, RelativePath};
 use swim_server::interface::SwimServerBuilder;
-use swim_server::plane::spec::PlaneBuilder;
 use swim_server::RoutePattern;
 use tokio::time;
 
 #[tokio::main]
 async fn main() {
     let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9001);
-    let mut plane_builder = PlaneBuilder::new();
+
+    let mut swim_server_builder = SwimServerBuilder::new(Default::default()).unwrap();
+
+    let mut plane_builder = swim_server_builder.plane_builder("example").unwrap();
 
     plane_builder
         .add_route::<UnitAgent, (), UnitAgentLifecycle>(
@@ -38,28 +40,27 @@ async fn main() {
         )
         .unwrap();
 
-    let mut swim_server_builder = SwimServerBuilder::default();
     swim_server_builder.add_plane(plane_builder.build());
     let (swim_server, server_handle) = swim_server_builder.bind_to(address).build().unwrap();
 
-    let client = swim_server.client();
+    let downlinks_context = swim_server.downlinks_context();
 
     let stop = async {
-        client
+        downlinks_context
             .send_command(
                 Path::Local(RelativePath::new("/unit/1", "unused")),
                 Value::Extant,
             )
             .await
             .unwrap();
-        client
+        downlinks_context
             .send_command(
                 Path::Local(RelativePath::new("/unit/foo", "unused")),
                 Value::Extant,
             )
             .await
             .unwrap();
-        client
+        downlinks_context
             .send_command(
                 Path::Local(RelativePath::new("/unit/foo_1", "unused")),
                 Value::Extant,

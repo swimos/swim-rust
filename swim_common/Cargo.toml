@@ -25,7 +25,7 @@ url = "2.1.1"
 tracing = { version = "0.1.13"}
 tracing-subscriber = "0.2.11"
 tracing-futures = "0.2.4"
-num-bigint = "0.3"
+num-bigint = { version = "0.3", features = ["serde"] }
 num-traits = "0.2.12"
 base64 = "0.13.0"
 form_derive = { path = "form_derive" }
@@ -38,6 +38,7 @@ thiserror = "1.0.28"
 nom = "7.0"
 nom_locate = "4.0"
 rmp = "0.8"
+serde = { version = "1.0.124", features = ["derive", "rc"] }
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["fs", "macros", "test-util"] }
