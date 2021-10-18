@@ -17,12 +17,12 @@
 //! The module provides methods and structures for creating and running Swim server instances.
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
-use crate::plane::spec::{PlaneBuilder, PlaneSpec};
+use crate::plane::spec::PlaneBuilder;
 use crate::plane::store::SwimPlaneStore;
-use crate::plane::ContextImpl;
 use crate::plane::PlaneActiveRoutes;
 use crate::plane::RouteResolver;
 use crate::plane::{run_plane, EnvChannel};
+use crate::plane::{ContextImpl, PlaneSpec};
 use crate::routing::{TopLevelServerRouter, TopLevelServerRouterFactory};
 use crate::store::RocksOpts;
 use crate::store::{default_keyspaces, RocksDatabase};
@@ -374,25 +374,21 @@ impl SwimServer {
         } = config;
 
         // Todo add support for multiple planes in the future
-        let spec = planes
+        let mut spec = planes
             .pop()
             .expect("The server cannot be started without a plane");
 
         let clock = swim_runtime::time::clock::runtime_clock();
 
         let context = ContextImpl::new(plane_tx.clone(), spec.routes());
-        let PlaneSpec {
-            routes,
-            lifecycle,
-            store,
-        } = spec;
+
+        let lifecycle = spec.take_lifecycle();
 
         let resolver = RouteResolver::new(
             clock,
             downlinks_context,
             agent_config,
-            routes,
-            store,
+            spec,
             PlaneRouterFactory::new(plane_tx, top_level_router_fac.clone()),
             stop_trigger_rx.clone(),
             PlaneActiveRoutes::default(),

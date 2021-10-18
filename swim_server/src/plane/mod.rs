@@ -131,6 +131,34 @@ impl LocalEndpoint {
 
 pub(crate) type EnvChannel = TakeUntil<ReceiverStream<TaggedEnvelope>, CloseReceiver>;
 
+/// A specification of a plane, consisting of the defined routes, store and an optional custom lifecycle
+/// for the plane.
+#[derive(Debug)]
+pub struct PlaneSpec<Clk, Envelopes, Router, Store>
+where
+    Store: PlaneStore,
+{
+    routes: Vec<RouteSpec<Clk, Envelopes, Router, Store::NodeStore>>,
+    lifecycle: Option<Box<dyn PlaneLifecycle>>,
+    store: Store,
+}
+
+impl<Clk, Envelopes, Router, Store> PlaneSpec<Clk, Envelopes, Router, Store>
+where
+    Store: PlaneStore,
+{
+    pub fn routes(&self) -> Vec<RoutePattern> {
+        self.routes
+            .iter()
+            .map(|RouteSpec { pattern, .. }| pattern.clone())
+            .collect()
+    }
+
+    pub fn take_lifecycle(&mut self) -> Option<Box<dyn PlaneLifecycle>> {
+        self.lifecycle.take()
+    }
+}
+
 /// Container for the running routes within a plane.
 #[derive(Debug, Default)]
 pub(crate) struct PlaneActiveRoutes {
@@ -263,10 +291,8 @@ where
     downlinks_context: DownlinksContext<Path>,
     /// The configuration for the agent routes that are opened.
     execution_config: AgentExecutionConfig,
-    /// The routes for the plane.
-    routes: Vec<PlaneRouteSpec<Clk, DelegateFac, Store>>,
-    /// The store that this plane uses to create node stores.
-    store: Store,
+    // The routes and store for for the plane
+    plane_spec: PlaneSpec<Clk, EnvChannel, PlaneRouter<DelegateFac::Router>, Store>,
     /// Factory to create handles to the plane router when an agent is opened.
     router_fac: PlaneRouterFactory<DelegateFac>,
     /// External trigger that is fired when the plane should stop.
@@ -278,13 +304,11 @@ where
 }
 
 impl<Clk, DelegateFac: RouterFactory, Store: PlaneStore> RouteResolver<Clk, DelegateFac, Store> {
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         clock: Clk,
         downlinks_context: DownlinksContext<Path>,
         execution_config: AgentExecutionConfig,
-        routes: Vec<PlaneRouteSpec<Clk, DelegateFac, Store>>,
-        store: Store,
+        plane_spec: PlaneSpec<Clk, EnvChannel, PlaneRouter<DelegateFac::Router>, Store>,
         router_fac: PlaneRouterFactory<DelegateFac>,
         stop_trigger: CloseReceiver,
         active_routes: PlaneActiveRoutes,
@@ -293,8 +317,7 @@ impl<Clk, DelegateFac: RouterFactory, Store: PlaneStore> RouteResolver<Clk, Dele
             clock,
             downlinks_context,
             execution_config,
-            store,
-            routes,
+            plane_spec,
             router_fac,
             stop_trigger,
             active_routes,
@@ -302,13 +325,6 @@ impl<Clk, DelegateFac: RouterFactory, Store: PlaneStore> RouteResolver<Clk, Dele
         }
     }
 }
-
-type PlaneRouteSpec<Clk, DelegateFac, Store> = RouteSpec<
-    Clk,
-    EnvChannel,
-    PlaneRouter<<DelegateFac as RouterFactory>::Router>,
-    <Store as PlaneStore>::NodeStore,
->;
 
 impl<Clk, DelegateFac, Store> RouteResolver<Clk, DelegateFac, Store>
 where
@@ -329,14 +345,16 @@ where
             clock,
             downlinks_context: client,
             execution_config,
-            routes,
-            store,
+            plane_spec,
             router_fac,
             stop_trigger,
             active_routes,
             counter,
         } = self;
-        let (agent_route, params) = route_for(&route, routes)?;
+
+        let PlaneSpec { routes, store, .. } = plane_spec;
+
+        let (agent_route, params) = route_for(&route, routes.as_slice())?;
         let (tx, rx) = mpsc::channel::<TaggedEnvelope>(8);
         *counter = counter
             .checked_add(1)
