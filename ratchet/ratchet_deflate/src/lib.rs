@@ -196,7 +196,7 @@ impl Default for DeflateConfig {
 }
 
 #[derive(Debug, PartialEq)]
-pub(crate) struct InitialisedDeflateConfig {
+pub struct InitialisedDeflateConfig {
     server_max_window_bits: WindowBits,
     client_max_window_bits: WindowBits,
     compress_reset: bool,

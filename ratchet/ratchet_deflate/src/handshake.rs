@@ -159,7 +159,7 @@ pub fn negotiate_server(
     }
 }
 
-pub(crate) fn on_request(
+pub fn on_request(
     headers: &[Header],
     config: &DeflateConfig,
 ) -> Result<(InitialisedDeflateConfig, HeaderValue), NegotiationErr> {
@@ -297,7 +297,7 @@ impl From<Utf8Error> for NegotiationErr {
     }
 }
 
-pub(crate) fn on_response(
+pub fn on_response(
     headers: &[Header],
     config: &DeflateConfig,
 ) -> Result<InitialisedDeflateConfig, NegotiationErr> {
