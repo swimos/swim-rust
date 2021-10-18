@@ -83,7 +83,7 @@ pub struct FrameHeader {
 }
 
 macro_rules! try_parse_int {
-    ($source:ident, $offset:ident, $source_length:ident, $into:ty) => {{
+    ($source:ident, $offset:ident, $source_length:ident, $into:ty, $call:tt) => {{
         const WIDTH: usize = size_of::<$into>();
         if $source_length < WIDTH + $offset {
             return Ok(Either::Right($offset + WIDTH - $source_length));
@@ -91,7 +91,7 @@ macro_rules! try_parse_int {
 
         match <[u8; WIDTH]>::try_from(&$source[$offset..$offset + WIDTH]) {
             Ok(len) => {
-                let len = <$into>::from_be_bytes(len);
+                let len = <$into>::$call(len);
                 $offset += WIDTH;
                 len
             }
@@ -133,7 +133,7 @@ impl FrameHeader {
         };
 
         if let Some(mask) = mask {
-            dst.put_u32(mask);
+            dst.put_u32_le(mask);
         }
     }
 
@@ -177,9 +177,9 @@ impl FrameHeader {
         let mut offset = 2;
 
         let length: usize = if payload_length == 126 {
-            try_parse_int!(source, offset, source_length, u16) as usize
+            try_parse_int!(source, offset, source_length, u16, from_be_bytes) as usize
         } else if payload_length == 127 {
-            try_parse_int!(source, offset, source_length, u64) as usize
+            try_parse_int!(source, offset, source_length, u64, from_be_bytes) as usize
         } else {
             usize::from(payload_length)
         };
@@ -189,7 +189,13 @@ impl FrameHeader {
         }
 
         let mask = if masked {
-            Some(try_parse_int!(source, offset, source_length, u32))
+            Some(try_parse_int!(
+                source,
+                offset,
+                source_length,
+                u32,
+                from_le_bytes
+            ))
         } else {
             None
         };

@@ -168,6 +168,7 @@ where
     extension.apply_headers(&mut headers);
 
     if headers.get(header::SEC_WEBSOCKET_PROTOCOL).is_some() {
+        // WebSocket protocols can only be applied using a ProtocolRegistry
         return Err(Error::with_cause(
             ErrorKind::Http,
             HttpError::InvalidHeader(header::SEC_WEBSOCKET_PROTOCOL),

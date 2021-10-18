@@ -2,10 +2,9 @@ use crate::connections::factory::stream::{build_stream, get_stream_type};
 use crate::connections::factory::{async_factory, HostConfig};
 use futures::future::BoxFuture;
 use futures::FutureExt;
-use http::header::SEC_WEBSOCKET_PROTOCOL;
 use http::uri::InvalidUri;
 use http::Request;
-use http::{HeaderValue, Uri};
+use http::Uri;
 use ratchet::deflate::Deflate;
 use ratchet::{ProtocolRegistry, WebSocketConfig};
 use std::collections::hash_map::Entry;
@@ -82,14 +81,9 @@ async fn connect(url: Url, config: HostConfig) -> Result<WebSocketDef<Deflate>, 
             Some(e.to_string()),
         ))
     })?;
-    let mut request = Request::get(uri)
+    let request = Request::get(uri)
         .body(())
         .map_err(|e| ConnectionError::Http(HttpError::from(e)))?;
-
-    request.headers_mut().insert(
-        SEC_WEBSOCKET_PROTOCOL,
-        HeaderValue::from_static(WARP0_PROTO),
-    );
 
     let request = maybe_resolve_scheme(request)?;
     let stream_type = get_stream_type(&request, &protocol)?;
@@ -122,13 +116,14 @@ async fn connect(url: Url, config: HostConfig) -> Result<WebSocketDef<Deflate>, 
         stream,
         request,
         compression_level,
-        ProtocolRegistry::default(),
+        ProtocolRegistry::new(vec![WARP0_PROTO])
+            .expect("Failed to build WebSocket protocol registry"),
     )
     .await
     {
         Ok(sock) => Ok(sock.into_websocket()),
-        Err(_) => {
-            unimplemented!()
+        Err(e) => {
+            unimplemented!("{:?}", e)
         }
     }
 }

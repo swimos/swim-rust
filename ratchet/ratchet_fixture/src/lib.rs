@@ -18,14 +18,15 @@ pub mod duplex {
         )
     }
 
-    pub fn websocket_pair<E>(ext: E) -> (MockWebSocket<E>, MockWebSocket<E>)
+    pub fn websocket_pair<L, R>(left_ext: L, right_ext: R) -> (MockWebSocket<L>, MockWebSocket<R>)
     where
-        E: Extension + Clone,
+        L: Extension,
+        R: Extension,
     {
-        let (tx, rx) = tokio::io::duplex(256);
+        let (tx, rx) = tokio::io::duplex(1024);
         (
-            make_websocket(tx, Role::Client, ext.clone()),
-            make_websocket(rx, Role::Server, ext),
+            make_websocket(tx, Role::Client, left_ext),
+            make_websocket(rx, Role::Server, right_ext),
         )
     }
 }

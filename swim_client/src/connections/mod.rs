@@ -28,11 +28,12 @@ use tokio::sync::oneshot;
 use tracing::{instrument, trace};
 use url::Host;
 
+use ratchet::{ExtensionDecoder, ExtensionEncoder, WebSocketStream};
 use swim_async_runtime::task::*;
 use swim_async_runtime::time::instant::Instant;
 use swim_async_runtime::time::interval::interval;
 use swim_runtime::error::{CloseError, ConnectionError, ResolutionError, ResolutionErrorKind};
-use swim_runtime::ws::{WebsocketFactory, WsMessage};
+use swim_runtime::ws::{into_stream, WebsocketFactory, WsMessage};
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::configuration::router::ConnectionPoolParams;
@@ -269,7 +270,7 @@ where
                         })?;
                         inner_connection.last_accessed = Instant::now();
 
-                        Ok(((inner_connection.as_conenction_sender()), None))
+                        Ok(((inner_connection.as_connection_sender()), None))
                     };
 
                     request_tx
@@ -310,7 +311,11 @@ struct SendTask<Sock, Ext> {
     rx: mpsc::Receiver<WsMessage>,
 }
 
-impl<Sock, Ext> SendTask<Sock, Ext> {
+impl<Sock, Ext> SendTask<Sock, Ext>
+where
+    Sock: WebSocketStream,
+    Ext: ExtensionEncoder,
+{
     fn new(
         write_sink: ratchet::Sender<Sock, Ext>,
         rx: mpsc::Receiver<WsMessage>,
@@ -324,7 +329,26 @@ impl<Sock, Ext> SendTask<Sock, Ext> {
     }
 
     async fn run(self) -> Result<(), ConnectionError> {
-        unimplemented!()
+        let SendTask {
+            stopped,
+            write_sink: mut sender,
+            rx,
+        } = self;
+        let mut requests = ReceiverStream::new(rx);
+
+        while let Some(request) = requests.next().await {
+            match request {
+                WsMessage::Text(payload) => sender.write_text(payload).await?,
+                WsMessage::Binary(payload) => sender.write_binary(payload).await?,
+                m => {
+                    unimplemented!("{:?}", m)
+                }
+            }
+        }
+
+        stopped.store(true, Ordering::Release);
+
+        Ok(())
     }
 }
 
@@ -334,7 +358,11 @@ struct ReceiveTask<Sock, Ext> {
     tx: mpsc::Sender<WsMessage>,
 }
 
-impl<Sock, Ext> ReceiveTask<Sock, Ext> {
+impl<Sock, Ext> ReceiveTask<Sock, Ext>
+where
+    Sock: WebSocketStream,
+    Ext: ExtensionDecoder,
+{
     fn new(
         read_stream: ratchet::Receiver<Sock, Ext>,
         tx: mpsc::Sender<WsMessage>,
@@ -348,22 +376,31 @@ impl<Sock, Ext> ReceiveTask<Sock, Ext> {
     }
 
     async fn run(self) -> Result<(), ConnectionError> {
-        // loop {
-        //     let message = read_stream
-        //         .try_next()
-        //         .await
-        //         .map_err(|_| {
-        //             stopped.store(true, Ordering::Release);
-        //             ConnectionError::Closed(CloseError::unexpected())
-        //         })?
-        //         .ok_or_else(|| ConnectionError::Closed(CloseError::unexpected()))?;
-        //
-        //     tx.send(message)
-        //         .await
-        //         .map_err(|_| ConnectionError::Closed(CloseError::unexpected()))?;
-        // }
+        let ReceiveTask {
+            stopped,
+            read_stream,
+            tx,
+        } = self;
 
-        unimplemented!()
+        let receiver_stream = into_stream(read_stream);
+        pin_utils::pin_mut!(receiver_stream);
+
+        while let Some(event) = receiver_stream.next().await {
+            match event {
+                Ok(message) => {
+                    tx.send(message)
+                        .await
+                        .map_err(|_| ConnectionError::Closed(CloseError::unexpected()))?;
+                }
+                Err(e) => {
+                    stopped.store(true, Ordering::Release);
+                    return Err(e.into());
+                }
+            }
+        }
+        stopped.store(true, Ordering::Release);
+
+        Ok(())
     }
 }
 
@@ -373,7 +410,7 @@ struct InnerConnection {
 }
 
 impl InnerConnection {
-    pub fn as_conenction_sender(&self) -> ConnectionSender {
+    pub fn as_connection_sender(&self) -> ConnectionSender {
         ConnectionSender {
             tx: self.conn.tx.clone(),
         }

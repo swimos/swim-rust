@@ -348,7 +348,7 @@ where
         let addr = RoutingAddr::remote(0);
         let router = LocalRoutes::new(addr);
 
-        let (local_websocket, websocket_peer) = websocket_pair(ext);
+        let (local_websocket, websocket_peer) = websocket_pair(ext.clone(), ext);
         let (env_tx, env_rx) = mpsc::channel(BUFFER_SIZE);
         let (stop_tx, stop_rx) = trigger::trigger();
 
