@@ -179,7 +179,7 @@ impl<D: Store> StoreEngine for SwimPlaneStore<D> {
     }
 }
 
-pub(crate) fn open_plane<B, P, D>(
+pub fn open_plane<B, P, D>(
     base_path: B,
     plane_name: P,
     builder: D,
@@ -212,7 +212,7 @@ impl<D> SwimPlaneStore<D>
 where
     D: Store,
 {
-    pub(crate) fn new<I: Into<Text>>(
+    pub fn new<I: Into<Text>>(
         plane_name: I,
         delegate: Arc<D>,
         keystore: KeyStore<D>,

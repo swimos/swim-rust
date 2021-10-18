@@ -31,13 +31,13 @@ mod tests;
 /// Specification of an agent route in a plane. The route pattern describes a parameterized
 /// family of agents, all of which share an implementation.
 #[derive(Debug)]
-pub(crate) struct RouteSpec<Clk, Envelopes, Router, Store> {
+pub struct RouteSpec<Clk, Envelopes, Router, Store> {
     pub pattern: RoutePattern,
     pub agent_route: BoxAgentRoute<Clk, Envelopes, Router, Store>,
 }
 
 impl<Clk, Envelopes, Router, Store> RouteSpec<Clk, Envelopes, Router, Store> {
-    pub(crate) fn new(
+    pub fn new(
         pattern: RoutePattern,
         agent_route: BoxAgentRoute<Clk, Envelopes, Router, Store>,
     ) -> Self {
