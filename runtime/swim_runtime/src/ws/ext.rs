@@ -1,6 +1,5 @@
-use crate::ws::WsConnections;
-use futures::future::BoxFuture;
-use ratchet::{Error, ExtensionProvider, ProtocolRegistry, SplittableExtension, WebSocket};
+use crate::ws::{WsConnections, WsOpenFuture};
+use ratchet::{Error, ExtensionProvider, ProtocolRegistry, SplittableExtension};
 use tokio::io::{AsyncRead, AsyncWrite};
 
 pub struct RatchetNetworking<E> {
@@ -22,7 +21,7 @@ where
         &self,
         socket: Socket,
         addr: String,
-    ) -> BoxFuture<Result<WebSocket<Socket, Self::Ext>, Self::Error>> {
+    ) -> WsOpenFuture<Socket, Self::Ext, Self::Error> {
         let RatchetNetworking {
             config,
             provider,
@@ -41,10 +40,7 @@ where
         })
     }
 
-    fn accept_connection(
-        &self,
-        socket: Socket,
-    ) -> BoxFuture<Result<WebSocket<Socket, Self::Ext>, Self::Error>> {
+    fn accept_connection(&self, socket: Socket) -> WsOpenFuture<Socket, Self::Ext, Self::Error> {
         let RatchetNetworking {
             config,
             provider,

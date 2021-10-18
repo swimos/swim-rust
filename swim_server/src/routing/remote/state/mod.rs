@@ -41,6 +41,9 @@ use tokio_stream::wrappers::ReceiverStream;
 #[cfg(test)]
 mod tests;
 
+type DeferredConnections<'l, Sock, Ext> =
+    OpenEndedFutures<BoxFuture<'l, DeferredResult<WebSocket<Sock, Ext>>>>;
+
 /// Trait detailing the operations permissible on the state of the remote connections management
 /// task. This is to allow the state to be decoupled from the state transition function so
 /// the two can be tested separately.
@@ -119,7 +122,7 @@ where
     pending: PendingRequests,
     addresses: RemoteRoutingAddresses,
     tasks: TaskFactory<RouterFac>,
-    deferred: OpenEndedFutures<BoxFuture<'a, DeferredResult<WebSocket<External::Socket, Ws::Ext>>>>,
+    deferred: DeferredConnections<'a, External::Socket, Ws::Ext>,
     state: State,
     external_stop: Fuse<trigger::Receiver>,
     internal_stop: Option<trigger::Sender>,

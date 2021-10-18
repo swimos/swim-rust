@@ -253,9 +253,9 @@ impl CloseReason {
 }
 
 /// # Additional implementation sources:
-/// https://developer.mozilla.org/en-US/docs/Web/API/CloseEvent
-/// https://mailarchive.ietf.org/arch/msg/hybi/P_1vbD9uyHl63nbIIbFxKMfSwcM/
-/// https://tools.ietf.org/id/draft-ietf-hybi-thewebsocketprotocol-09.html
+/// <https://developer.mozilla.org/en-US/docs/Web/API/CloseEvent>
+/// <https://mailarchive.ietf.org/arch/msg/hybi/P_1vbD9uyHl63nbIIbFxKMfSwcM/>
+/// <https://tools.ietf.org/id/draft-ietf-hybi-thewebsocketprotocol-09.html>
 #[allow(missing_docs)]
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum CloseCode {

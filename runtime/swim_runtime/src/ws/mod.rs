@@ -35,6 +35,8 @@ pub type StreamDef = StreamSwitcher<TcpStream, TlsStream<TcpStream>>;
 #[cfg(not(feature = "tls"))]
 pub type StreamDef = TcpStream;
 
+pub type WsOpenFuture<'l, Sock, Ext, Error> = BoxFuture<'l, Result<WebSocket<Sock, Ext>, Error>>;
+
 pub trait WsConnections<Socket>
 where
     Socket: Send + Sync + Unpin,
@@ -47,13 +49,10 @@ where
         &self,
         socket: Socket,
         addr: String,
-    ) -> BoxFuture<Result<WebSocket<Socket, Self::Ext>, Self::Error>>;
+    ) -> WsOpenFuture<Socket, Self::Ext, Self::Error>;
 
     /// Negotiate a new server connection.
-    fn accept_connection(
-        &self,
-        socket: Socket,
-    ) -> BoxFuture<Result<WebSocket<Socket, Self::Ext>, Self::Error>>;
+    fn accept_connection(&self, socket: Socket) -> WsOpenFuture<Socket, Self::Ext, Self::Error>;
 }
 
 /// Trait for factories that asynchronously create web socket connections. This exists primarily
@@ -63,10 +62,7 @@ pub trait WebsocketFactory: Send + Sync {
     type Ext: SplittableExtension + Send + 'static;
 
     /// Open a connection to the provided remote URL.
-    fn connect(
-        &mut self,
-        url: url::Url,
-    ) -> BoxFuture<Result<WebSocket<Self::Sock, Self::Ext>, ConnectionError>>;
+    fn connect(&mut self, url: url::Url) -> WsOpenFuture<Self::Sock, Self::Ext, ConnectionError>;
 }
 
 #[derive(Clone)]
