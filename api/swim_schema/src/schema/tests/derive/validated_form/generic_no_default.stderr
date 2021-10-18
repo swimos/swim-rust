@@ -1,27 +1,8 @@
-error[E0599]: the method `as_value` exists for struct `S<Invalid>`, but its trait bounds were not satisfied
-  --> $DIR/generic_no_default.rs:30:37
+error[E0599]: no method named `as_value` found for struct `S` in the current scope
+  --> $DIR/src/schema/tests/derive/validated_form/generic_no_default.rs:29:37
    |
-24 |     struct S<F> {
-   |     -----------
-   |     |
-   |     method `as_value` not found for this
-   |     doesn't satisfy `S<Invalid>: Form`
-   |     doesn't satisfy `S<Invalid>: StructuralReadable`
-   |     doesn't satisfy `S<Invalid>: StructuralWritable`
+23 |     struct S<F> {
+   |     ----------- method `as_value` not found for this
 ...
-30 |     let _s = S { a: 1, f: Invalid }.as_value();
-   |                                     ^^^^^^^^ method cannot be called on `S<Invalid>` due to unsatisfied trait bounds
-   |
-   = note: the following trait bounds were not satisfied:
-           `S<Invalid>: StructuralReadable`
-           which is required by `S<Invalid>: Form`
-           `S<Invalid>: StructuralWritable`
-           which is required by `S<Invalid>: Form`
-
-warning: unused import: `swim_form::Form`
-  --> $DIR/generic_no_default.rs:15:5
-   |
-15 | use swim_form::Form;
-   |     ^^^^^^^^^^^^^^^
-   |
-   = note: `#[warn(unused_imports)]` on by default
+29 |     let _s = S { a: 1, f: Invalid }.as_value();
+   |                                     ^^^^^^^^ method not found in `S<Invalid>`
