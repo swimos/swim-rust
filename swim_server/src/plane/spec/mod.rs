@@ -18,7 +18,7 @@ use crate::plane::error::AmbiguousRoutes;
 use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::provider::AgentProvider;
 use crate::plane::store::PlaneStore;
-use crate::plane::{AgentRoute, BoxAgentRoute};
+use crate::plane::{AgentRoute, BoxAgentRoute, PlaneSpec};
 use futures::Stream;
 use std::fmt::Debug;
 use swim_common::routing::{Router, TaggedEnvelope};
@@ -45,30 +45,6 @@ impl<Clk, Envelopes, Router, Store> RouteSpec<Clk, Envelopes, Router, Store> {
             pattern,
             agent_route,
         }
-    }
-}
-
-/// A specification of a plane, consisting of the defined routes and an optional custom lifecycle
-/// for the plane.
-#[derive(Debug)]
-pub struct PlaneSpec<Clk, Envelopes, Router, Store>
-where
-    Store: PlaneStore,
-{
-    pub(crate) routes: Vec<RouteSpec<Clk, Envelopes, Router, Store::NodeStore>>,
-    pub(crate) lifecycle: Option<Box<dyn PlaneLifecycle>>,
-    pub(crate) store: Store,
-}
-
-impl<Clk, Envelopes, Router, Store> PlaneSpec<Clk, Envelopes, Router, Store>
-where
-    Store: PlaneStore,
-{
-    pub fn routes(&self) -> Vec<RoutePattern> {
-        self.routes
-            .iter()
-            .map(|RouteSpec { pattern, .. }| pattern.clone())
-            .collect()
     }
 }
 

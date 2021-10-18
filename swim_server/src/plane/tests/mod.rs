@@ -14,10 +14,12 @@
 
 use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
-use crate::plane::spec::{PlaneSpec, RouteSpec};
+use crate::plane::spec::RouteSpec;
 use crate::plane::store::mock::MockPlaneStore;
 use crate::plane::tests::fixture::{ReceiveAgentRoute, SendAgentRoute, TestLifecycle};
-use crate::plane::{AgentRoute, ContextImpl, EnvChannel, PlaneActiveRoutes, RouteResolver};
+use crate::plane::{
+    AgentRoute, ContextImpl, EnvChannel, PlaneActiveRoutes, PlaneSpec, RouteResolver,
+};
 use crate::routing::TopLevelServerRouterFactory;
 use futures::future::join;
 use std::sync::Arc;
@@ -76,7 +78,7 @@ fn make_spec<Clk: Clock, Delegate: Router + 'static>() -> (
 
 #[tokio::test]
 async fn plane_event_loop() {
-    let (spec, done_rx) = make_spec();
+    let (mut spec, done_rx) = make_spec();
     let (context_tx, context_rx) = mpsc::channel(8);
 
     let (stop_tx, stop_rx) = promise::promise();
@@ -89,11 +91,7 @@ async fn plane_event_loop() {
 
     let context = ContextImpl::new(context_tx.clone(), spec.routes());
 
-    let PlaneSpec {
-        routes,
-        lifecycle,
-        store,
-    } = spec;
+    let lifecycle = spec.take_lifecycle();
 
     let (client_tx, client_rx) = mpsc::channel(8);
     let (remote_tx, _remote_rx) = mpsc::channel(8);
@@ -121,8 +119,7 @@ async fn plane_event_loop() {
         swim_runtime::time::clock::runtime_clock(),
         client,
         config,
-        routes,
-        store,
+        spec,
         PlaneRouterFactory::new(context_tx, top_level_router_fac.clone()),
         stop_rx.clone(),
         PlaneActiveRoutes::default(),
