@@ -285,7 +285,7 @@ impl TaggedSender {
 }
 
 /// Reasons for a router connection to be dropped.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ConnectionDropped {
     /// The connection was explicitly closed.
     Closed,

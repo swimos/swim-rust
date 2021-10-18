@@ -38,17 +38,23 @@ use futures::channel::mpsc::SendError as FutSendError;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::io::ErrorKind;
+use std::sync::Arc;
+use std::time::Duration;
 use swim_utilities::errors::Recoverable;
+use thiserror::Error as ThisError;
+
+type BoxRecoverableError = Box<dyn RecoverableError>;
+
+pub trait RecoverableError: std::error::Error + Send + Sync + Recoverable + 'static {}
+impl<T> RecoverableError for T where T: std::error::Error + Send + Sync + Recoverable + 'static {}
 
 pub type FmtResult = std::fmt::Result;
-
-use std::time::Duration;
 
 #[cfg(test)]
 mod tests;
 
 /// An error denoting that a connection error has occurred.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, Clone)]
 pub enum ConnectionError {
     /// A HTTP detailing either a malformatted request/response or a peer error.
     Http(HttpError),
@@ -69,12 +75,42 @@ pub enum ConnectionError {
     Resolution(ResolutionError),
     /// A pending write did not complete within the specified duration.
     WriteTimeout(Duration),
+    /// An error was produced at the transport layer.
+    Transport(Arc<BoxRecoverableError>),
+}
+
+impl PartialEq for ConnectionError {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (ConnectionError::Http(l), ConnectionError::Http(r)) => l.eq(r),
+            (ConnectionError::Tls(l), ConnectionError::Tls(r)) => l.eq(r),
+            (ConnectionError::Capacity(l), ConnectionError::Capacity(r)) => l.eq(r),
+            (ConnectionError::Protocol(l), ConnectionError::Protocol(r)) => l.eq(r),
+            (ConnectionError::Closed(l), ConnectionError::Closed(r)) => l.eq(r),
+            (ConnectionError::Io(l), ConnectionError::Io(r)) => l.eq(r),
+            (ConnectionError::Encoding(l), ConnectionError::Encoding(r)) => l.eq(r),
+            (ConnectionError::Resolution(l), ConnectionError::Resolution(r)) => l.eq(r),
+            (ConnectionError::WriteTimeout(l), ConnectionError::WriteTimeout(r)) => l.eq(r),
+            (ConnectionError::Transport(l), ConnectionError::Transport(r)) => {
+                l.to_string().eq(&r.to_string())
+            }
+            _ => false,
+        }
+    }
+}
+
+#[derive(Debug, ThisError)]
+#[error("{0}")]
+struct RatchetError(ratchet::Error);
+impl Recoverable for RatchetError {
+    fn is_fatal(&self) -> bool {
+        true
+    }
 }
 
 impl From<ratchet::Error> for ConnectionError {
     fn from(e: ratchet::Error) -> Self {
-        // todo
-        ConnectionError::Protocol(ProtocolError::websocket(Some(e.to_string())))
+        ConnectionError::Transport(Arc::new(Box::new(RatchetError(e))))
     }
 }
 
@@ -94,6 +130,7 @@ impl Recoverable for ConnectionError {
             ConnectionError::Encoding(e) => e.is_fatal(),
             ConnectionError::Resolution(e) => e.is_fatal(),
             ConnectionError::WriteTimeout(_) => false,
+            ConnectionError::Transport(e) => e.is_fatal(),
         }
     }
 }
@@ -117,6 +154,9 @@ impl Display for ConnectionError {
                 "Writing to the connection failed to complete within {:?}.",
                 dur
             ),
+            ConnectionError::Transport(e) => {
+                write!(f, "{}", e)
+            }
         }
     }
 }

@@ -23,6 +23,7 @@ pin-utils = "0.1.0"
 tokio = { version = "1.1.1", features = ["sync", "rt"] }
 tokio-stream = { version = "0.1.2", features = ["net"] }
 url = "2.1.1"
+thiserror = "1.0"
 
 [dependencies.tokio-native-tls]
 version = "0.3"

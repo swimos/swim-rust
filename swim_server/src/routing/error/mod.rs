@@ -26,7 +26,7 @@ use tokio::sync::mpsc;
 mod tests;
 
 /// Ways in which the router can fail to provide a route.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub enum RouterError {
     /// For a local endpoint it can be determined that no agent exists.
     NoAgentAtRoute(RelativeUri),

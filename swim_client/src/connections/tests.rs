@@ -29,9 +29,7 @@ use crate::connections::factory::HostConfig;
 use crate::connections::tests::failing_ext::{FailOn, FailingExt};
 use crate::connections::{ConnectionPool, SwimConnPool, SwimConnection};
 use futures::future::join;
-use swim_runtime::error::{
-    CapacityError, CapacityErrorKind, ConnectionError, ProtocolError, ProtocolErrorKind,
-};
+use swim_runtime::error::{CapacityError, CapacityErrorKind, ConnectionError, ProtocolError};
 use swim_runtime::ws::{
     into_stream, CompressionSwitcherProvider, Protocol, WebsocketFactory, WsMessage,
 };
@@ -575,7 +573,11 @@ async fn test_connection_receive_message_error() {
     assert!(result.is_err());
     assert_eq!(
         result.err().unwrap(),
-        ConnectionError::Protocol(ProtocolError::new(ProtocolErrorKind::WebSocket, Some("Inner { kind: Extension, source: Some(Protocol(ProtocolError { kind: WebSocket, cause: None })) }".to_string())))
+        ratchet::Error::with_cause(
+            ratchet::ErrorKind::Extension,
+            ConnectionError::Protocol(ProtocolError::websocket(None))
+        )
+        .into()
     );
 }
 
@@ -607,7 +609,11 @@ async fn test_new_connection_send_message_error() {
     assert!(result.is_err());
     assert_eq!(
         result.err().unwrap(),
-        ConnectionError::Protocol(ProtocolError::new(ProtocolErrorKind::WebSocket, Some("Inner { kind: Extension, source: Some(Protocol(ProtocolError { kind: WebSocket, cause: None })) }".to_string())))
+        ratchet::Error::with_cause(
+            ratchet::ErrorKind::Extension,
+            ConnectionError::Protocol(ProtocolError::websocket(None))
+        )
+        .into()
     );
 }
 

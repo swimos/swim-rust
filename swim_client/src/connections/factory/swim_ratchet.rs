@@ -122,8 +122,6 @@ async fn connect(url: Url, config: HostConfig) -> Result<WebSocketDef<Deflate>, 
     .await
     {
         Ok(sock) => Ok(sock.into_websocket()),
-        Err(e) => {
-            unimplemented!("{:?}", e)
-        }
+        Err(e) => Err(e.into()),
     }
 }

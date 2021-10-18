@@ -327,7 +327,7 @@ impl SwimServer {
             RatchetNetworking {
                 config: websocket_config,
                 provider: NoExtProvider,
-                subprotocols: ProtocolRegistry::new(vec!["warp"]).unwrap(),
+                subprotocols: ProtocolRegistry::new(vec!["warp0"]).unwrap(),
             },
             top_level_router_fac,
             OpenEndedFutures::new(),
