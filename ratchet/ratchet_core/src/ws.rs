@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::errors::{CloseError, Error, ErrorKind, ProtocolError};
-use crate::extensions::SplittableExtension;
+use crate::ext::NegotiatedExtension;
 use crate::framed::{FramedIo, Item};
 use crate::handshake::{exec_client_handshake, HandshakeResult, ProtocolRegistry};
 use crate::protocol::{
@@ -21,8 +21,12 @@ use crate::protocol::{
     PayloadType, Role,
 };
 use crate::split::{split, Receiver, Sender};
-use crate::{Extension, ExtensionProvider, Request, WebSocketConfig, WebSocketStream};
+use crate::{Request, WebSocketConfig, WebSocketStream};
 use bytes::BytesMut;
+use ratchet_ext::{
+    Extension, ExtensionEncoder, ExtensionProvider, FrameHeader as ExtFrameHeader,
+    SplittableExtension,
+};
 
 pub const CONTROL_MAX_SIZE: usize = 125;
 pub const CONTROL_DATA_MISMATCH: &str = "Unexpected control frame data";
@@ -30,7 +34,7 @@ pub const CONTROL_DATA_MISMATCH: &str = "Unexpected control frame data";
 pub struct WebSocket<S, E> {
     framed: FramedIo<S>,
     control_buffer: BytesMut,
-    _extension: E,
+    extension: NegotiatedExtension<E>,
     closed: bool,
 }
 
@@ -42,13 +46,13 @@ where
     pub(crate) fn from_parts(
         framed: FramedIo<S>,
         control_buffer: BytesMut,
-        _extension: E,
+        extension: NegotiatedExtension<E>,
         closed: bool,
     ) -> WebSocket<S, E> {
         WebSocket {
             framed,
             control_buffer,
-            _extension,
+            extension,
             closed,
         }
     }
@@ -56,14 +60,14 @@ where
     pub fn from_upgraded(
         config: WebSocketConfig,
         stream: S,
-        extension: E,
+        extension: NegotiatedExtension<E>,
         read_buffer: BytesMut,
         role: Role,
     ) -> WebSocket<S, E> {
         let WebSocketConfig { max_size } = config;
         WebSocket {
-            framed: FramedIo::new(stream, read_buffer, role, max_size),
-            _extension: extension,
+            framed: FramedIo::new(stream, read_buffer, role, max_size, extension.bits().into()),
+            extension,
             control_buffer: BytesMut::with_capacity(CONTROL_MAX_SIZE),
             closed: false,
         }
@@ -82,6 +86,7 @@ where
             framed,
             closed,
             control_buffer,
+            extension,
             ..
         } = self;
 
@@ -90,7 +95,7 @@ where
         }
 
         loop {
-            match framed.read_next(read_buffer).await {
+            match framed.read_next(read_buffer, extension).await {
                 Ok(item) => match item {
                     Item::Binary => return Ok(Message::Binary),
                     Item::Text => return Ok(Message::Text),
@@ -100,6 +105,7 @@ where
                                 OpCode::ControlCode(ControlCode::Pong),
                                 HeaderFlags::FIN,
                                 payload,
+                                |_, _| Ok(()),
                             )
                             .await?;
                         return Ok(Message::Ping);
@@ -140,6 +146,7 @@ where
                                         OpCode::ControlCode(ControlCode::Close),
                                         HeaderFlags::FIN,
                                         &mut [],
+                                        |_, _| Ok(()),
                                     )
                                     .await?;
                                 Ok(Message::Close(None))
@@ -188,7 +195,14 @@ where
             }
         };
 
-        match self.framed.write(op_code, HeaderFlags::FIN, buf).await {
+        let encoder = &mut self.extension;
+        match self
+            .framed
+            .write(op_code, HeaderFlags::FIN, buf, |payload, header| {
+                extension_encode(encoder, payload, header)
+            })
+            .await
+        {
             Ok(()) => Ok(()),
             Err(e) => {
                 self.closed = true;
@@ -212,9 +226,11 @@ where
         if self.closed {
             return Err(Error::with_cause(ErrorKind::Close, CloseError::Closed));
         }
-
+        let encoder = &mut self.extension;
         self.framed
-            .write_fragmented(buf, message_type, fragment_size)
+            .write_fragmented(buf, message_type, fragment_size, |payload, header| {
+                extension_encode(encoder, payload, header)
+            })
             .await
     }
 
@@ -225,7 +241,7 @@ where
     // todo add docs about:
     //  - https://github.com/tokio-rs/tokio/issues/3200
     //  - https://github.com/tokio-rs/tls/issues/40
-    pub fn split(self) -> Result<(Sender<S, E::Encoder>, Receiver<S, E::Decoder>), Error>
+    pub fn split(self) -> Result<(Sender<S, E::SplitEncoder>, Receiver<S, E::SplitDecoder>), Error>
     where
         E: SplittableExtension,
     {
@@ -235,10 +251,10 @@ where
             let WebSocket {
                 framed,
                 control_buffer,
-                _extension,
+                extension,
                 ..
             } = self;
-            Ok(split(framed, control_buffer, _extension))
+            Ok(split(framed, control_buffer, extension))
         }
     }
 }
@@ -252,7 +268,7 @@ pub async fn client<S, E>(
     config: WebSocketConfig,
     mut stream: S,
     request: Request,
-    extension: E,
+    extension: &E,
     subprotocols: ProtocolRegistry,
 ) -> Result<Upgraded<S, E::Extension>, Error>
 where
@@ -276,4 +292,17 @@ where
         socket: WebSocket::from_upgraded(config, stream, extension, read_buffer, Role::Client),
         subprotocol,
     })
+}
+
+pub fn extension_encode<E>(
+    extension: &mut E,
+    buf: &mut BytesMut,
+    header: &mut ExtFrameHeader,
+) -> Result<(), Error>
+where
+    E: ExtensionEncoder,
+{
+    extension
+        .encode(buf, header)
+        .map_err(|e| Error::with_cause(ErrorKind::Extension, e))
 }

@@ -26,7 +26,7 @@ use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 
 use crate::errors::{Error, ErrorKind, HttpError};
-use crate::extensions::ExtensionProvider;
+use crate::ext::NegotiatedExtension;
 use crate::handshake::client::encoding::{build_request, encode_request};
 use crate::handshake::io::BufferedIo;
 use crate::handshake::{
@@ -34,6 +34,7 @@ use crate::handshake::{
     ACCEPT_KEY, BAD_STATUS_CODE, UPGRADE_STR, WEBSOCKET_STR,
 };
 use crate::WebSocketStream;
+use ratchet_ext::ExtensionProvider;
 use tokio_util::codec::Decoder;
 
 type Nonce = [u8; 24];
@@ -53,7 +54,7 @@ where
     S: WebSocketStream,
     E: ExtensionProvider,
 {
-    let machine = ClientHandshake::new(stream, subprotocols, extension, buf);
+    let machine = ClientHandshake::new(stream, subprotocols, &extension, buf);
     let uri = request.uri();
     let span = span!(Level::DEBUG, MSG_HANDSHAKE_START, ?uri);
 
@@ -87,7 +88,7 @@ struct ClientHandshake<'s, S, E> {
     buffered: BufferedIo<'s, S>,
     nonce: Nonce,
     subprotocols: ProtocolRegistry,
-    extension: E,
+    extension: &'s E,
 }
 
 pub struct ResponseParser<'b, E> {
@@ -131,7 +132,7 @@ where
     pub fn new(
         socket: &'s mut S,
         subprotocols: ProtocolRegistry,
-        extension: E,
+        extension: &'s E,
         buf: &'s mut BytesMut,
     ) -> ClientHandshake<'s, S, E> {
         ClientHandshake {
@@ -198,7 +199,7 @@ where
 #[derive(Debug)]
 pub struct HandshakeResult<E> {
     pub subprotocol: Option<String>,
-    pub extension: E,
+    pub extension: NegotiatedExtension<E>,
 }
 
 /// Quickly checks a partial response in the order of the expected HTTP response declaration to see
@@ -321,6 +322,7 @@ where
         subprotocol: subprotocols.negotiate_response(response)?,
         extension: extension
             .negotiate_client(response.headers)
-            .map_err(Into::into)?,
+            .map_err(|e| Error::with_cause(ErrorKind::Extension, e))?
+            .into(),
     })
 }

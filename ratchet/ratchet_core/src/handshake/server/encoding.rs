@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::ext::NegotiatedExtension;
 use crate::handshake::io::BufferedIo;
 use crate::handshake::server::HandshakeResult;
 use crate::handshake::TryMap;
@@ -19,10 +20,11 @@ use crate::handshake::{
     get_header, validate_header, validate_header_value, ParseResult, METHOD_GET, UPGRADE_STR,
     WEBSOCKET_STR, WEBSOCKET_VERSION_STR,
 };
-use crate::{Error, ErrorKind, ExtensionProvider, HttpError, ProtocolRegistry};
+use crate::{Error, ErrorKind, HttpError, ProtocolRegistry};
 use bytes::{BufMut, BytesMut};
 use http::{HeaderMap, StatusCode};
 use httparse::Status;
+use ratchet_ext::ExtensionProvider;
 use tokio::io::AsyncWrite;
 use tokio_util::codec::Decoder;
 
@@ -205,10 +207,14 @@ where
     validate_header(headers, http::header::HOST, |_, _| Ok(()))?;
 
     let key = get_header(headers, http::header::SEC_WEBSOCKET_KEY)?;
-    let (extension, extension_header) = extension
-        .negotiate_server(request.headers)
-        .map_err(Into::into)?;
     let subprotocol = subprotocols.negotiate_request(request)?;
+    let extension_opt = extension
+        .negotiate_server(request.headers)
+        .map_err(|e| Error::with_cause(ErrorKind::Extension, e))?;
+    let (extension, extension_header) = match extension_opt {
+        Some((extension, header)) => (NegotiatedExtension::from(Some(extension)), Some(header)),
+        None => (NegotiatedExtension::from(None), None),
+    };
 
     Ok(HandshakeResult {
         key,

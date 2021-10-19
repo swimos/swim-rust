@@ -15,12 +15,17 @@
 use crate::fixture::{mock, ReadError};
 use crate::handshake::{UPGRADE_STR, WEBSOCKET_STR, WEBSOCKET_VERSION_STR};
 use crate::{
-    accept_with, Error, ErrorKind, Extension, ExtensionProvider, HttpError, NoExtProxy,
-    ProtocolRegistry, WebSocketConfig,
+    accept_with, Error, ErrorKind, HttpError, NoExtProvider, ProtocolRegistry, WebSocketConfig,
 };
+use bitflags::_core::convert::Infallible;
+use bytes::BytesMut;
 use http::header::HeaderName;
 use http::{HeaderMap, HeaderValue, Request, Response, Version};
 use httparse::Header;
+use ratchet_ext::{
+    Extension, ExtensionDecoder, ExtensionEncoder, ExtensionProvider, FrameHeader,
+    ReunitableExtension, RsvBits, SplittableExtension,
+};
 
 impl From<ReadError<httparse::Error>> for Error {
     fn from(e: ReadError<httparse::Error>) -> Self {
@@ -36,7 +41,7 @@ async fn exec_request(request: Request<()>) -> Result<Response<()>, Error> {
     let upgrader = accept_with(
         server,
         WebSocketConfig::default(),
-        NoExtProxy,
+        NoExtProvider,
         ProtocolRegistry::default(),
     )
     .await?;
@@ -211,24 +216,71 @@ impl ExtensionProvider for BadExtProvider {
 
     fn apply_headers(&self, _headers: &mut HeaderMap) {}
 
-    fn negotiate_client(&self, _headers: &[Header]) -> Result<Self::Extension, Self::Error> {
+    fn negotiate_client(
+        &self,
+        _headers: &[Header],
+    ) -> Result<Option<Self::Extension>, Self::Error> {
         panic!("Unexpected client negotitation request")
     }
 
     fn negotiate_server(
         &self,
         _headers: &[Header],
-    ) -> Result<(Self::Extension, Option<HeaderValue>), Self::Error> {
+    ) -> Result<Option<(Self::Extension, HeaderValue)>, Self::Error> {
         Err(ExtErr)
     }
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 struct Ext;
-impl Extension for Ext {
-    fn encode(&mut self) {}
 
-    fn decode(&mut self) {}
+impl ExtensionEncoder for Ext {
+    type Error = Infallible;
+
+    fn encode(
+        &mut self,
+        _payload: &mut BytesMut,
+        _header: &mut FrameHeader,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+impl ExtensionDecoder for Ext {
+    type Error = Infallible;
+
+    fn decode(
+        &mut self,
+        _payload: &mut BytesMut,
+        _header: &mut FrameHeader,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+impl Extension for Ext {
+    fn bits(&self) -> RsvBits {
+        RsvBits {
+            rsv1: true,
+            rsv2: false,
+            rsv3: false,
+        }
+    }
+}
+
+impl SplittableExtension for Ext {
+    type SplitEncoder = Self;
+    type SplitDecoder = Self;
+
+    fn split(self) -> (Self::SplitEncoder, Self::SplitDecoder) {
+        (self, self)
+    }
+}
+
+impl ReunitableExtension for Ext {
+    fn reunite(encoder: Self::SplitEncoder, _decoder: Self::SplitDecoder) -> Self {
+        encoder
+    }
 }
 
 fn valid_request() -> Request<()> {

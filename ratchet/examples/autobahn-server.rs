@@ -13,7 +13,8 @@
 // limitations under the License.
 
 use bytes::BytesMut;
-use ratchet::{Error, Message, NoExtProxy, PayloadType, ProtocolRegistry, WebSocketConfig};
+use ratchet::deflate::DeflateExtProvider;
+use ratchet::{Error, Message, PayloadType, ProtocolRegistry, WebSocketConfig};
 use tokio::net::{TcpListener, TcpStream};
 
 #[tokio::main]
@@ -36,7 +37,7 @@ async fn run(stream: TcpStream) -> Result<(), Error> {
     let mut websocket = ratchet::accept_with(
         stream,
         WebSocketConfig::default(),
-        NoExtProxy,
+        DeflateExtProvider::default(),
         ProtocolRegistry::default(),
     )
     .await

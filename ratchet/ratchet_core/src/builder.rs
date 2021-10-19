@@ -13,11 +13,11 @@
 // limitations under the License.
 
 use crate::errors::Error;
-use crate::extensions::ext::NoExtProxy;
+use crate::ext::NoExtProvider;
 use crate::handshake::ProtocolRegistry;
 use crate::ws::Upgraded;
-use crate::ExtensionProvider;
 use crate::{client, TryIntoRequest, WebSocketConfig, WebSocketStream};
+use ratchet_ext::{Extension, ExtensionProvider};
 use std::borrow::Cow;
 
 pub struct WebSocketClientBuilder<E> {
@@ -26,11 +26,11 @@ pub struct WebSocketClientBuilder<E> {
     subprotocols: ProtocolRegistry,
 }
 
-impl Default for WebSocketClientBuilder<NoExtProxy> {
+impl Default for WebSocketClientBuilder<NoExtProvider> {
     fn default() -> Self {
         WebSocketClientBuilder {
             config: None,
-            extension: NoExtProxy,
+            extension: NoExtProvider,
             subprotocols: ProtocolRegistry::default(),
         }
     }
@@ -41,7 +41,7 @@ impl<E> WebSocketClientBuilder<E> {
         self,
         stream: S,
         request: I,
-    ) -> Result<Upgraded<S, E::Extension>, Error>
+    ) -> Result<Upgraded<S, impl Extension>, Error>
     where
         S: WebSocketStream,
         I: TryIntoRequest,
@@ -59,7 +59,7 @@ impl<E> WebSocketClientBuilder<E> {
             config.unwrap_or_default(),
             stream,
             request,
-            extension,
+            &extension,
             subprotocols,
         )
         .await
@@ -102,11 +102,11 @@ pub struct WebSocketServerBuilder<E> {
     extension: E,
 }
 
-impl Default for WebSocketServerBuilder<NoExtProxy> {
+impl Default for WebSocketServerBuilder<NoExtProvider> {
     fn default() -> Self {
         WebSocketServerBuilder {
             config: None,
-            extension: NoExtProxy,
+            extension: NoExtProvider,
             subprotocols: ProtocolRegistry::default(),
         }
     }

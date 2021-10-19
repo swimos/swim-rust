@@ -16,18 +16,20 @@ mod encoding;
 #[cfg(test)]
 mod tests;
 
+use crate::ext::{NegotiatedExtension, NoExt};
 use crate::handshake::io::BufferedIo;
 use crate::handshake::server::encoding::{write_response, RequestParser};
 use crate::handshake::{StreamingParser, ACCEPT_KEY};
 use crate::handshake::{UPGRADE_STR, WEBSOCKET_STR};
 use crate::protocol::Role;
 use crate::{
-    Error, Extension, ExtensionProvider, HttpError, NoExt, NoExtProxy, ProtocolRegistry, Request,
-    Upgraded, WebSocket, WebSocketConfig, WebSocketStream,
+    Error, HttpError, NoExtProvider, ProtocolRegistry, Request, Upgraded, WebSocket,
+    WebSocketConfig, WebSocketStream,
 };
 use bytes::{Bytes, BytesMut};
 use http::status::InvalidStatusCode;
 use http::{HeaderMap, HeaderValue, StatusCode, Uri};
+use ratchet_ext::{Extension, ExtensionProvider};
 use sha1::{Digest, Sha1};
 use std::convert::TryFrom;
 use std::iter::FromIterator;
@@ -39,7 +41,7 @@ pub async fn accept<S, E>(
 where
     S: WebSocketStream,
 {
-    accept_with(stream, config, NoExtProxy, ProtocolRegistry::default()).await
+    accept_with(stream, config, NoExtProvider, ProtocolRegistry::default()).await
 }
 
 pub async fn accept_with<S, E>(
@@ -129,7 +131,7 @@ pub struct WebSocketUpgrader<S, E> {
     subprotocol: Option<String>,
     buf: BytesMut,
     stream: S,
-    extension: E,
+    extension: NegotiatedExtension<E>,
     extension_header: Option<HeaderValue>,
     config: WebSocketConfig,
 }
@@ -226,7 +228,7 @@ where
 pub struct HandshakeResult<E> {
     key: Bytes,
     subprotocol: Option<String>,
-    extension: E,
+    extension: NegotiatedExtension<E>,
     request: Request,
     extension_header: Option<HeaderValue>,
 }

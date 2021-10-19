@@ -12,30 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(test)]
-mod fixture;
+pub use ratchet_core::{self, *};
+pub use ratchet_ext::{self, *};
 
-mod builder;
-mod errors;
-mod extensions;
-mod framed;
-mod handshake;
-mod protocol;
-mod split;
-mod ws;
-
-pub use crate::extensions::{deflate::*, ext::*, Extension, ExtensionProvider};
-pub use builder::{WebSocketClientBuilder, WebSocketServerBuilder};
-pub use errors::*;
-pub use handshake::{
-    accept, accept_with, ProtocolRegistry, TryIntoRequest, WebSocketResponse, WebSocketUpgrader,
-};
-pub use protocol::{Message, PayloadType, Role, WebSocketConfig};
-pub use ws::{client, Upgraded, WebSocket};
-
-use tokio::io::{AsyncRead, AsyncWrite};
-
-pub(crate) type Request = http::Request<()>;
-
-pub trait WebSocketStream: AsyncRead + AsyncWrite + Unpin + 'static {}
-impl<S> WebSocketStream for S where S: AsyncRead + AsyncWrite + Unpin + 'static {}
+#[cfg(feature = "deflate")]
+pub mod deflate {
+    pub use ratchet_deflate::{self, *};
+}

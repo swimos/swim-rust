@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use ratchet::{NoExtProxy, ProtocolRegistry, WebSocketConfig, WebSocketResponse};
+use ratchet::{NoExtProvider, ProtocolRegistry, WebSocketConfig, WebSocketResponse};
 use tokio::net::TcpListener;
 use tokio_stream::wrappers::TcpListenerStream;
 use tokio_stream::StreamExt;
@@ -28,7 +28,7 @@ async fn main() {
         let upgrader = ratchet::accept_with(
             socket,
             WebSocketConfig::default(),
-            NoExtProxy,
+            NoExtProvider,
             ProtocolRegistry::default(),
         )
         .await

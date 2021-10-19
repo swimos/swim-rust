@@ -12,14 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod bilock;
 #[cfg(test)]
 mod tests;
 
-mod bilock;
+use crate::ext::NegotiatedExtension;
 
-use crate::extensions::{
-    ExtensionDecoder, ExtensionEncoder, ReunitableExtension, SplittableExtension,
-};
 use crate::framed::{
     read_next, write_close, write_fragmented, CodecFlags, FramedIoParts, FramedRead, FramedWrite,
     Item,
@@ -27,7 +25,7 @@ use crate::framed::{
 use crate::protocol::{
     CloseCode, CloseReason, ControlCode, DataCode, HeaderFlags, MessageType, OpCode,
 };
-use crate::ws::{CONTROL_DATA_MISMATCH, CONTROL_MAX_SIZE};
+use crate::ws::{extension_encode, CONTROL_DATA_MISMATCH, CONTROL_MAX_SIZE};
 use crate::{
     framed, CloseError, Error, ErrorKind, Message, PayloadType, ProtocolError, Role, WebSocket,
     WebSocketStream,
@@ -35,6 +33,7 @@ use crate::{
 use bilock::{bilock, BiLock};
 use bitflags::_core::sync::atomic::Ordering;
 use bytes::BytesMut;
+use ratchet_ext::{ExtensionDecoder, ExtensionEncoder, ReunitableExtension, SplittableExtension};
 use std::fmt::Debug;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -43,8 +42,8 @@ use std::sync::Arc;
 pub fn split<S, E>(
     framed: framed::FramedIo<S>,
     control_buffer: BytesMut,
-    extension: E,
-) -> (Sender<S, E::Encoder>, Receiver<S, E::Decoder>)
+    extension: NegotiatedExtension<E>,
+) -> (Sender<S, E::SplitEncoder>, Receiver<S, E::SplitDecoder>)
 where
     S: WebSocketStream,
     E: SplittableExtension,
@@ -77,7 +76,7 @@ where
         role,
         closed: closed.clone(),
         split_writer: sender_writer,
-        extension: ext_encoder,
+        ext_encoder,
     };
     let receiver = Receiver {
         role,
@@ -88,8 +87,8 @@ where
             read_half,
             reader,
             split_writer: reader_writer,
+            ext_decoder,
         },
-        extension: ext_decoder,
     };
 
     (sender, receiver)
@@ -99,14 +98,16 @@ impl<S> WriteHalf<S>
 where
     S: WebSocketStream,
 {
-    async fn write<A>(
+    async fn write<A, E>(
         &mut self,
         mut buf_ref: A,
         message_type: PayloadType,
         is_server: bool,
+        extension: &mut E,
     ) -> Result<(), Error>
     where
         A: AsMut<[u8]>,
+        E: ExtensionEncoder,
     {
         let WriteHalf {
             split_writer,
@@ -115,9 +116,29 @@ where
         } = self;
         let buf = buf_ref.as_mut();
 
-        let op_code = match message_type {
-            PayloadType::Text => OpCode::DataCode(DataCode::Text),
-            PayloadType::Binary => OpCode::DataCode(DataCode::Binary),
+        match message_type {
+            PayloadType::Text => writer
+                .write(
+                    split_writer,
+                    is_server,
+                    OpCode::DataCode(DataCode::Text),
+                    HeaderFlags::FIN,
+                    buf,
+                    |payload, header| extension_encode(extension, payload, header),
+                )
+                .await
+                .map_err(Into::into),
+            PayloadType::Binary => writer
+                .write(
+                    split_writer,
+                    is_server,
+                    OpCode::DataCode(DataCode::Binary),
+                    HeaderFlags::FIN,
+                    buf,
+                    |payload, header| extension_encode(extension, payload, header),
+                )
+                .await
+                .map_err(Into::into),
             PayloadType::Ping => {
                 if buf.len() > CONTROL_MAX_SIZE {
                     return Err(Error::with_cause(
@@ -127,15 +148,21 @@ where
                 } else {
                     control_buffer.clear();
                     control_buffer.clone_from_slice(&buf[..CONTROL_MAX_SIZE]);
-                    OpCode::ControlCode(ControlCode::Ping)
+
+                    writer
+                        .write(
+                            split_writer,
+                            is_server,
+                            OpCode::ControlCode(ControlCode::Ping),
+                            HeaderFlags::FIN,
+                            buf,
+                            |payload, header| extension_encode(extension, payload, header),
+                        )
+                        .await
+                        .map_err(Into::into)
                 }
             }
-        };
-
-        writer
-            .write(split_writer, is_server, op_code, HeaderFlags::FIN, buf)
-            .await
-            .map_err(Into::into)
+        }
     }
 }
 
@@ -147,12 +174,13 @@ struct WriteHalf<S> {
 }
 
 #[derive(Debug)]
-struct FramedIo<S> {
+struct FramedIo<S, E> {
     flags: CodecFlags,
     max_size: usize,
     read_half: BiLock<S>,
     reader: FramedRead,
     split_writer: BiLock<WriteHalf<S>>,
+    ext_decoder: NegotiatedExtension<E>,
 }
 
 #[derive(Debug)]
@@ -160,15 +188,14 @@ pub struct Sender<S, E> {
     role: Role,
     closed: Arc<AtomicBool>,
     split_writer: BiLock<WriteHalf<S>>,
-    extension: E,
+    ext_encoder: NegotiatedExtension<E>,
 }
 
 #[derive(Debug)]
 pub struct Receiver<S, E> {
     role: Role,
     closed: Arc<AtomicBool>,
-    framed: FramedIo<S>,
-    extension: E,
+    framed: FramedIo<S, E>,
 }
 
 impl<S, E> Sender<S, E>
@@ -178,12 +205,11 @@ where
 {
     pub fn reunite<Ext>(
         self,
-        receiver: Receiver<S, Ext::Decoder>,
-    ) -> Result<WebSocket<S, Ext>, ReuniteError<S, Ext::Encoder, Ext::Decoder>>
+        receiver: Receiver<S, Ext::SplitDecoder>,
+    ) -> Result<WebSocket<S, Ext>, ReuniteError<S, Ext::SplitEncoder, Ext::SplitDecoder>>
     where
         S: Debug,
-        E: ExtensionEncoder<United = Ext>,
-        Ext: ReunitableExtension<Encoder = E>,
+        Ext: ReunitableExtension<SplitEncoder = E>,
     {
         reunite::<S, Ext>(self, receiver)
     }
@@ -206,7 +232,15 @@ where
         }
 
         let writer = &mut *self.split_writer.lock().await;
-        match writer.write(buf, message_type, self.role.is_server()).await {
+        match writer
+            .write(
+                buf,
+                message_type,
+                self.role.is_server(),
+                &mut self.ext_encoder,
+            )
+            .await
+        {
             Ok(()) => Ok(()),
             Err(e) => {
                 self.closed.store(true, Ordering::Relaxed);
@@ -229,6 +263,7 @@ where
             writer,
             ..
         } = &mut *self.split_writer.lock().await;
+        let ext_encoder = &mut self.ext_encoder;
         let write_result = write_fragmented(
             split_writer,
             writer,
@@ -236,6 +271,7 @@ where
             message_type,
             fragment_size,
             self.role.is_server(),
+            |payload, header| extension_encode(ext_encoder, payload, header),
         )
         .await;
 
@@ -288,11 +324,21 @@ where
             read_half,
             reader,
             split_writer,
+            ext_decoder,
         } = framed;
         let is_server = role.is_server();
 
         loop {
-            match read_next(read_half, reader, flags, *max_size, read_buffer).await {
+            match read_next(
+                read_half,
+                reader,
+                flags,
+                *max_size,
+                read_buffer,
+                ext_decoder,
+            )
+            .await
+            {
                 Ok(item) => match item {
                     Item::Binary => return Ok(Message::Binary),
                     Item::Text => return Ok(Message::Text),
@@ -310,6 +356,7 @@ where
                                 OpCode::ControlCode(ControlCode::Pong),
                                 HeaderFlags::FIN,
                                 payload,
+                                |_, _| Ok(()),
                             )
                             .await?;
                         return Ok(Message::Ping);
@@ -370,6 +417,7 @@ where
                                         OpCode::ControlCode(ControlCode::Close),
                                         HeaderFlags::FIN,
                                         &mut [],
+                                        |_, _| Ok(()),
                                     )
                                     .await?;
                                 Ok(Message::Close(None))
@@ -427,9 +475,9 @@ pub struct ReuniteError<S, E, D> {
 }
 
 fn reunite<S, E>(
-    sender: Sender<S, E::Encoder>,
-    receiver: Receiver<S, E::Decoder>,
-) -> Result<WebSocket<S, E>, ReuniteError<S, E::Encoder, E::Decoder>>
+    sender: Sender<S, E::SplitEncoder>,
+    receiver: Receiver<S, E::SplitDecoder>,
+) -> Result<WebSocket<S, E>, ReuniteError<S, E::SplitEncoder, E::SplitDecoder>>
 where
     S: WebSocketStream + Debug,
     E: ReunitableExtension,
@@ -440,20 +488,16 @@ where
     {
         let Sender {
             split_writer: sender_writer,
-            extension: ext_encoder,
+            ext_encoder,
             ..
         } = sender;
-        let Receiver {
-            closed,
-            framed,
-            extension: ext_decoder,
-            ..
-        } = receiver;
+        let Receiver { closed, framed, .. } = receiver;
         let FramedIo {
             flags,
             max_size,
             read_half,
             reader,
+            ext_decoder,
             split_writer: reader_writer,
         } = framed;
 
@@ -481,7 +525,7 @@ where
         Ok(WebSocket::from_parts(
             framed,
             control_buffer,
-            E::reunite(ext_encoder, ext_decoder),
+            NegotiatedExtension::reunite(ext_encoder, ext_decoder),
             closed.load(Ordering::Relaxed),
         ))
     } else {

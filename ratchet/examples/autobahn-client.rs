@@ -14,15 +14,13 @@
 
 use bytes::BytesMut;
 use ratchet::{client, Upgraded};
-use ratchet::{
-    Error, Message, NoExt, NoExtProxy, PayloadType, ProtocolRegistry, TryIntoRequest,
-    WebSocketConfig,
-};
+use ratchet::{Error, Message, PayloadType, ProtocolRegistry, TryIntoRequest, WebSocketConfig};
+use ratchet_deflate::{Deflate, DeflateExtProvider};
 use tokio::net::TcpStream;
 
 const AGENT: &str = "Ratchet";
 
-async fn subscribe(url: &str) -> Result<Upgraded<TcpStream, NoExt>, Error> {
+async fn subscribe(url: &str) -> Result<Upgraded<TcpStream, Deflate>, Error> {
     let stream = TcpStream::connect("127.0.0.1:9001").await.unwrap();
     stream.set_nodelay(true).unwrap();
 
@@ -30,7 +28,7 @@ async fn subscribe(url: &str) -> Result<Upgraded<TcpStream, NoExt>, Error> {
         WebSocketConfig::default(),
         stream,
         url.try_into_request().unwrap(),
-        NoExtProxy,
+        &DeflateExtProvider::default(),
         ProtocolRegistry::default(),
     )
     .await
