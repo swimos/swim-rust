@@ -384,7 +384,6 @@ impl LinkEnvelopeBuilder {
 }
 
 impl Envelope {
-
     /// Create an authorizaton envelope with no body.
     pub fn auth_empty() -> Envelope {
         Envelope::Auth { body: None }

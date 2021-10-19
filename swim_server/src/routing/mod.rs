@@ -219,7 +219,7 @@ impl From<TaggedEnvelope> for WsMessage {
     }
 }
 
-/// An [`OutgoingLinkMessage`] tagged with the key of the endpoint into routing table from which it
+/// A request envelope tagged with the key of the endpoint into routing table from which it
 /// originated.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TaggedClientEnvelope(pub RoutingAddr, pub RequestEnvelope);

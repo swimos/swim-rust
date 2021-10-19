@@ -495,7 +495,10 @@ impl<'a> ToTokens for Destructure<'a> {
             },
             context,
         ) = self;
-        let indexers = fields_model.fields.iter().map(|f| f.model.selector.binder());
+        let indexers = fields_model
+            .fields
+            .iter()
+            .map(|f| f.model.selector.binder());
         match fields_model.type_kind {
             CompoundTypeKind::Unit => {
                 if matches!(context, DestructureContext::VariantMatch) {

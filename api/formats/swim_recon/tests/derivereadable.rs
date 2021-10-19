@@ -664,7 +664,6 @@ fn derive_map_update() {
 
 #[test]
 fn optional_slot() {
-
     #[derive(StructuralReadable, Debug, PartialEq, Eq)]
     struct MyStruct {
         first: Option<i32>,
@@ -672,18 +671,35 @@ fn optional_slot() {
     }
 
     let instance = run_recognizer::<MyStruct>("@MyStruct { first:, second: Hello }");
-    assert_eq!(instance, MyStruct { first: None, second: "Hello".to_string() });
+    assert_eq!(
+        instance,
+        MyStruct {
+            first: None,
+            second: "Hello".to_string()
+        }
+    );
 
     let instance = run_recognizer::<MyStruct>("@MyStruct { second: Hello }");
-    assert_eq!(instance, MyStruct { first: None, second: "Hello".to_string() });
+    assert_eq!(
+        instance,
+        MyStruct {
+            first: None,
+            second: "Hello".to_string()
+        }
+    );
 
     let instance = run_recognizer::<MyStruct>("@MyStruct { first: 2, second: Hello }");
-    assert_eq!(instance, MyStruct { first: Some(2), second: "Hello".to_string() });
+    assert_eq!(
+        instance,
+        MyStruct {
+            first: Some(2),
+            second: "Hello".to_string()
+        }
+    );
 }
 
 #[test]
 fn optional_slot_in_header() {
-
     #[derive(StructuralReadable, Debug, PartialEq, Eq)]
     struct MyStruct {
         #[form(header)]
@@ -693,11 +709,29 @@ fn optional_slot_in_header() {
     }
 
     let instance = run_recognizer::<MyStruct>("@MyStruct(first:, second: Hello)");
-    assert_eq!(instance, MyStruct { first: None, second: "Hello".to_string() });
+    assert_eq!(
+        instance,
+        MyStruct {
+            first: None,
+            second: "Hello".to_string()
+        }
+    );
 
     let instance = run_recognizer::<MyStruct>("@MyStruct(second: Hello)");
-    assert_eq!(instance, MyStruct { first: None, second: "Hello".to_string() });
+    assert_eq!(
+        instance,
+        MyStruct {
+            first: None,
+            second: "Hello".to_string()
+        }
+    );
 
     let instance = run_recognizer::<MyStruct>("@MyStruct(first: 2, second: Hello)");
-    assert_eq!(instance, MyStruct { first: Some(2), second: "Hello".to_string() });
+    assert_eq!(
+        instance,
+        MyStruct {
+            first: Some(2),
+            second: "Hello".to_string()
+        }
+    );
 }

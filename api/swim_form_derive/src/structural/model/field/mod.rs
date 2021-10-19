@@ -36,11 +36,10 @@ pub enum FieldSelector<'a> {
 }
 
 impl<'a> FieldSelector<'a> {
-
     pub fn binder(self) -> Binder<'a> {
         Binder {
             field: self,
-            is_default: false
+            is_default: false,
         }
     }
 
@@ -72,16 +71,12 @@ impl<'a> ToTokens for Binder<'a> {
         let Binder { field, is_default } = self;
         if *is_default {
             match field {
-                FieldSelector::Named(id) => {
-                    tokens.append_all(quote! {
-                        #id: core::default::Default::default()
-                    })
-                },
-                FieldSelector::Ordinal(_) => {
-                    tokens.append_all(quote! {
-                        core::default::Default::default()
-                    })
-                },
+                FieldSelector::Named(id) => tokens.append_all(quote! {
+                    #id: core::default::Default::default()
+                }),
+                FieldSelector::Ordinal(_) => tokens.append_all(quote! {
+                    core::default::Default::default()
+                }),
             }
         } else {
             match field {
@@ -90,7 +85,7 @@ impl<'a> ToTokens for Binder<'a> {
                     tokens.append_all(quote! {
                         #id: #bind_name
                     })
-                },
+                }
                 FieldSelector::Ordinal(i) => format_ident!("value_{}", *i).to_tokens(tokens),
             }
         }
