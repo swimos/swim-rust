@@ -13,11 +13,9 @@
 // limitations under the License.
 
 use crate::error::DeflateExtensionError;
-use crate::{
-    Deflate, DeflateConfig, InitialisedDeflateConfig, WindowBits, LZ77_MAX_WINDOW_SIZE,
-    LZ77_MIN_WINDOW_SIZE,
-};
+use crate::{Deflate, DeflateConfig, WindowBits, LZ77_MAX_WINDOW_SIZE, LZ77_MIN_WINDOW_SIZE};
 use bytes::BytesMut;
+use flate2::Compression;
 use http::header::SEC_WEBSOCKET_EXTENSIONS;
 use http::{HeaderMap, HeaderValue};
 use ratchet_ext::Header;
@@ -35,6 +33,27 @@ const ERR_TAKEOVER: &str = "The client requires context takeover";
 const UNKNOWN_PARAM: &str = "Unknown permessage-deflate parameter";
 const DUPLICATE_PARAM: &str = "Duplicate permessage-deflate parameter";
 const HEADER_ERR: &str = "Failed to produce header";
+
+#[derive(Debug, PartialEq)]
+pub struct InitialisedDeflateConfig {
+    pub server_max_window_bits: WindowBits,
+    pub client_max_window_bits: WindowBits,
+    pub compress_reset: bool,
+    pub decompress_reset: bool,
+    pub compression_level: Compression,
+}
+
+impl InitialisedDeflateConfig {
+    fn from_config(config: &DeflateConfig) -> InitialisedDeflateConfig {
+        InitialisedDeflateConfig {
+            server_max_window_bits: config.server_max_window_bits,
+            client_max_window_bits: config.client_max_window_bits,
+            compress_reset: config.accept_no_context_takeover,
+            decompress_reset: false,
+            compression_level: config.compression_level,
+        }
+    }
+}
 
 struct DeflateHeaderEncoder<'c>(&'c DeflateConfig);
 impl<'c> DeflateHeaderEncoder<'c> {

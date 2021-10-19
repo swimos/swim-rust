@@ -28,7 +28,9 @@ mod handshake;
 
 use crate::codec::{BufCompress, BufDecompress};
 use crate::error::DeflateExtensionError;
-use crate::handshake::{apply_headers, negotiate_client, negotiate_server};
+use crate::handshake::{
+    apply_headers, negotiate_client, negotiate_server, InitialisedDeflateConfig,
+};
 use bytes::BytesMut;
 use flate2::{Compress, Compression, Decompress, FlushCompress, FlushDecompress, Status};
 use ratchet_ext::{
@@ -203,27 +205,6 @@ impl Default for DeflateConfig {
             request_client_no_context_takeover: true,
             accept_no_context_takeover: true,
             compression_level: Compression::fast(),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub struct InitialisedDeflateConfig {
-    server_max_window_bits: WindowBits,
-    client_max_window_bits: WindowBits,
-    compress_reset: bool,
-    decompress_reset: bool,
-    compression_level: Compression,
-}
-
-impl InitialisedDeflateConfig {
-    fn from_config(config: &DeflateConfig) -> InitialisedDeflateConfig {
-        InitialisedDeflateConfig {
-            server_max_window_bits: config.server_max_window_bits,
-            client_max_window_bits: config.client_max_window_bits,
-            compress_reset: config.accept_no_context_takeover,
-            decompress_reset: false,
-            compression_level: config.compression_level,
         }
     }
 }
