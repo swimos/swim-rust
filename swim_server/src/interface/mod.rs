@@ -122,7 +122,7 @@ impl SwimServerBuilder {
     /// use swim_server::agent_lifecycle;
     /// use swim_server::agent::SwimAgent;
     /// use swim_server::agent::AgentContext;
-    /// use swim_server::plane::spec::PlaneBuilder;
+    /// use swim_server::PlaneBuilder;
     ///
     /// # #[tokio::main]
     /// # async fn main() {
@@ -188,7 +188,7 @@ impl SwimServerBuilder {
     /// use swim_server::agent_lifecycle;
     /// use swim_server::agent::SwimAgent;
     /// use swim_server::agent::AgentContext;
-    /// use swim_server::plane::spec::PlaneBuilder;
+    /// use swim_server::PlaneBuilder;
     ///
     /// # #[tokio::main]
     /// # async fn main() {

@@ -2963,12 +2963,8 @@ impl Recognizer for RetryStrategyRecognizer {
                         ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
                     },
                     ReadEvent::EndRecord => Some(Ok(RetryStrategy::exponential(
-                        max_interval.unwrap_or_else(|| {
-                            Duration::from_secs(DEFAULT_EXPONENTIAL_MAX_INTERVAL)
-                        }),
-                        max_backoff.unwrap_or_else(|| {
-                            Quantity::Finite(Duration::from_secs(DEFAULT_EXPONENTIAL_MAX_BACKOFF))
-                        }),
+                        max_interval.unwrap_or(DEFAULT_EXPONENTIAL_MAX_INTERVAL),
+                        max_backoff.unwrap_or(Quantity::Finite(DEFAULT_EXPONENTIAL_MAX_BACKOFF)),
                     ))),
                     ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                         ExpectedEvent::ValueEvent(ValueKind::Text),
@@ -3286,27 +3282,11 @@ impl RecognizerReadable for WebSocketConfig {
     }
 
     fn make_attr_recognizer() -> Self::AttrRec {
-        SimpleAttrBody::new(WebSocketConfigRecognizer {
-            stage: WebSocketConfigStage::Init,
-            max_send_queue: None,
-            max_message_size: None,
-            max_frame_size: None,
-            accept_unmasked_frames: None,
-            compression: None,
-            compression_recognizer: WsCompression::make_recognizer(),
-        })
+        SimpleAttrBody::new(Self::make_recognizer())
     }
 
     fn make_body_recognizer() -> Self::BodyRec {
-        SimpleRecBody::new(WebSocketConfigRecognizer {
-            stage: WebSocketConfigStage::Init,
-            max_send_queue: None,
-            max_message_size: None,
-            max_frame_size: None,
-            accept_unmasked_frames: None,
-            compression: None,
-            compression_recognizer: WsCompression::make_recognizer(),
-        })
+        SimpleRecBody::new(Self::make_recognizer())
     }
 }
 

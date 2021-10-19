@@ -1,7 +1,7 @@
 @config {
     @downlink_connections {
         dl_req_buffer_size: 8,
-        buffer_size: 100,
+        buffer_size: 128,
         yield_after: 256,
         retry_strategy: @exponential
     },

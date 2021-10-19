@@ -2,8 +2,7 @@
     @downlink_connections {
         dl_req_buffer_size: 8,
         buffer_size: 100,
-        retry_strategy: @none {
-        },
+        retry_strategy: @none,
         yield_after: 256
     }
 }

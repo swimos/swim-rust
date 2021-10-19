@@ -149,33 +149,11 @@ impl RecognizerReadable for RemoteConnectionsConfig {
     }
 
     fn make_attr_recognizer() -> Self::AttrRec {
-        SimpleAttrBody::new(RemoteConnectionsConfigRecognizer {
-            stage: RemoteConnectionsConfigStage::Init,
-            router_buffer_size: None,
-            channel_buffer_size: None,
-            activity_timeout: None,
-            activity_timeout_recognizer: Duration::make_recognizer(),
-            write_timeout: None,
-            write_timeout_recognizer: Duration::make_recognizer(),
-            connection_retries: None,
-            connection_retries_recognizer: RetryStrategy::make_recognizer(),
-            yield_after: None,
-        })
+        SimpleAttrBody::new(Self::make_recognizer())
     }
 
     fn make_body_recognizer() -> Self::BodyRec {
-        SimpleRecBody::new(RemoteConnectionsConfigRecognizer {
-            stage: RemoteConnectionsConfigStage::Init,
-            router_buffer_size: None,
-            channel_buffer_size: None,
-            activity_timeout: None,
-            activity_timeout_recognizer: Duration::make_recognizer(),
-            write_timeout: None,
-            write_timeout_recognizer: Duration::make_recognizer(),
-            connection_retries: None,
-            connection_retries_recognizer: RetryStrategy::make_recognizer(),
-            yield_after: None,
-        })
+        SimpleRecBody::new(Self::make_recognizer())
     }
 }
 

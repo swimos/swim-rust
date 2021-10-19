@@ -19,7 +19,6 @@ use crate::configuration::{
 use crate::interface::SwimClientBuilder;
 use std::fs;
 use std::fs::File;
-use std::io::Read;
 use std::num::NonZeroUsize;
 use swim_common::form::Form;
 use swim_common::model::parser::parse_single;
@@ -33,13 +32,9 @@ use url::Url;
 
 #[test]
 fn test_conf_from_file_default_manual() {
-    let mut file =
-        fs::File::open("src/configuration/tests/resources/valid/default-config-manual.recon")
-            .unwrap();
+    let contents = include_str!("resources/valid/default-config-manual.recon");
 
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    let config = parse_single(&contents).unwrap();
+    let config = parse_single(contents).unwrap();
     let config = SwimClientConfig::try_from_value(&config).unwrap();
 
     let expected = SwimClientConfig::default();
@@ -49,13 +44,9 @@ fn test_conf_from_file_default_manual() {
 
 #[test]
 fn test_conf_from_file_default_automatic() {
-    let mut file =
-        fs::File::open("src/configuration/tests/resources/valid/default-config-automatic.recon")
-            .unwrap();
+    let contents = include_str!("resources/valid/default-config-automatic.recon");
 
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    let config = parse_single(&contents).unwrap();
+    let config = parse_single(contents).unwrap();
     let config = SwimClientConfig::try_from_value(&config).unwrap();
 
     let expected = SwimClientConfig::default();
@@ -65,13 +56,9 @@ fn test_conf_from_file_default_automatic() {
 
 #[test]
 fn test_conf_from_file_default_mixed() {
-    let mut file =
-        fs::File::open("src/configuration/tests/resources/valid/default-config-mixed.recon")
-            .unwrap();
+    let contents = include_str!("resources/valid/default-config-mixed.recon");
 
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    let config = parse_single(&contents).unwrap();
+    let config = parse_single(contents).unwrap();
     let config = SwimClientConfig::try_from_value(&config).unwrap();
 
     let expected = SwimClientConfig::default();
@@ -81,14 +68,9 @@ fn test_conf_from_file_default_mixed() {
 
 #[test]
 fn test_conf_from_file_retry_exponential() {
-    let mut file = fs::File::open(
-        "src/configuration/tests/resources/valid/client-config-retry-exponential.recon",
-    )
-    .unwrap();
+    let contents = include_str!("resources/valid/client-config-retry-exponential.recon");
 
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    let config = parse_single(&contents).unwrap();
+    let config = parse_single(contents).unwrap();
     let config = SwimClientConfig::try_from_value(&config).unwrap();
 
     let expected = SwimClientConfig::new(
@@ -108,14 +90,9 @@ fn test_conf_from_file_retry_exponential() {
 
 #[test]
 fn test_conf_from_file_retry_immediate() {
-    let mut file = fs::File::open(
-        "src/configuration/tests/resources/valid/client-config-retry-immediate.recon",
-    )
-    .unwrap();
+    let contents = include_str!("resources/valid/client-config-retry-immediate.recon");
 
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    let config = parse_single(&contents).unwrap();
+    let config = parse_single(contents).unwrap();
     let config = SwimClientConfig::try_from_value(&config).unwrap();
 
     let expected = SwimClientConfig::new(
@@ -135,14 +112,9 @@ fn test_conf_from_file_retry_immediate() {
 
 #[test]
 fn test_conf_from_file_retry_interval() {
-    let mut file = fs::File::open(
-        "src/configuration/tests/resources/valid/client-config-retry-interval.recon",
-    )
-    .unwrap();
+    let contents = include_str!("resources/valid/client-config-retry-interval.recon");
 
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    let config = parse_single(&contents).unwrap();
+    let config = parse_single(contents).unwrap();
     let config = SwimClientConfig::try_from_value(&config).unwrap();
 
     let expected = SwimClientConfig::new(
@@ -162,13 +134,9 @@ fn test_conf_from_file_retry_interval() {
 
 #[test]
 fn test_conf_from_file_retry_none() {
-    let mut file =
-        fs::File::open("src/configuration/tests/resources/valid/client-config-retry-none.recon")
-            .unwrap();
+    let contents = include_str!("resources/valid/client-config-retry-none.recon");
 
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    let config = parse_single(&contents).unwrap();
+    let config = parse_single(contents).unwrap();
     let config = SwimClientConfig::try_from_value(&config).unwrap();
 
     let expected = SwimClientConfig::new(
@@ -289,13 +257,9 @@ fn create_full_config() -> SwimClientConfig {
 
 #[test]
 fn test_conf_from_file_full_ordered() {
-    let mut file =
-        fs::File::open("src/configuration/tests/resources/valid/client-config-full-ordered.recon")
-            .unwrap();
+    let contents = include_str!("resources/valid/client-config-full-ordered.recon");
 
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    let config = parse_single(&contents).unwrap();
+    let config = parse_single(contents).unwrap();
     let config = SwimClientConfig::try_from_value(&config).unwrap();
 
     let expected = create_full_config();
@@ -305,14 +269,9 @@ fn test_conf_from_file_full_ordered() {
 
 #[test]
 fn test_conf_from_file_full_unordered() {
-    let mut file = fs::File::open(
-        "src/configuration/tests/resources/valid/client-config-full-unordered.recon",
-    )
-    .unwrap();
+    let contents = include_str!("resources/valid/client-config-full-unordered.recon");
 
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    let config = parse_single(&contents).unwrap();
+    let config = parse_single(contents).unwrap();
     let config = SwimClientConfig::try_from_value(&config).unwrap();
 
     let expected = create_full_config();

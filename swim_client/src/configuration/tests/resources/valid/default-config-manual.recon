@@ -1,7 +1,7 @@
 @config {
     @downlink_connections {
         dl_req_buffer_size: 8,
-        buffer_size: 100,
+        buffer_size: 128,
         yield_after: 256,
         retry_strategy: @exponential {
             max_interval: @duration {
@@ -52,7 +52,7 @@
                 secs: 60000,
                 nanos: 0
             },
-            buffer_size: 5,
+            buffer_size: 32,
             on_invalid: "terminate",
             yield_after: 256
         }

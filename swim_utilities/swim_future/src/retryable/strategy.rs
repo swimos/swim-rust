@@ -17,8 +17,8 @@ use std::time::Duration;
 use rand::Rng;
 use std::num::NonZeroUsize;
 
-pub const DEFAULT_EXPONENTIAL_MAX_INTERVAL: u64 = 16;
-pub const DEFAULT_EXPONENTIAL_MAX_BACKOFF: u64 = 300;
+pub const DEFAULT_EXPONENTIAL_MAX_INTERVAL: Duration = Duration::from_secs(16);
+pub const DEFAULT_EXPONENTIAL_MAX_BACKOFF: Duration = Duration::from_secs(300);
 pub const DEFAULT_IMMEDIATE_RETRIES: usize = 16;
 pub const DEFAULT_INTERVAL_RETRIES: usize = 8;
 pub const DEFAULT_INTERVAL_DELAY: u64 = 10;
@@ -71,8 +71,8 @@ impl Default for RetryStrategy {
     fn default() -> Self {
         RetryStrategy::Exponential(ExponentialStrategy {
             start: None,
-            max_interval: Duration::from_secs(DEFAULT_EXPONENTIAL_MAX_INTERVAL),
-            max_backoff: Quantity::Finite(Duration::from_secs(DEFAULT_EXPONENTIAL_MAX_BACKOFF)),
+            max_interval: DEFAULT_EXPONENTIAL_MAX_INTERVAL,
+            max_backoff: Quantity::Finite(DEFAULT_EXPONENTIAL_MAX_BACKOFF),
             retry_no: 0,
         })
     }
@@ -93,8 +93,8 @@ impl RetryStrategy {
     pub fn default_exponential() -> RetryStrategy {
         RetryStrategy::Exponential(ExponentialStrategy {
             start: None,
-            max_interval: Duration::from_secs(DEFAULT_EXPONENTIAL_MAX_INTERVAL),
-            max_backoff: Quantity::Finite(Duration::from_secs(DEFAULT_EXPONENTIAL_MAX_BACKOFF)),
+            max_interval: DEFAULT_EXPONENTIAL_MAX_INTERVAL,
+            max_backoff: Quantity::Finite(DEFAULT_EXPONENTIAL_MAX_BACKOFF),
             retry_no: 0,
         })
     }

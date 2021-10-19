@@ -43,20 +43,20 @@ use url::Url;
 mod tests;
 
 const BAD_BUFFER_SIZE: &str = "Buffer sizes must be positive.";
-const BAD_YIELD_AFTER: &str = "Yield after count must be positive..";
+const BAD_YIELD_AFTER: &str = "Yield after count must be positive.";
 const BAD_TIMEOUT: &str = "Timeout must be positive.";
 
-const DEFAULT_IDLE_TIMEOUT: u64 = 60000;
-const DEFAULT_DOWNLINK_BUFFER_SIZE: usize = 5;
+const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(60000);
+const DEFAULT_DOWNLINK_BUFFER_SIZE: usize = 32;
 const DEFAULT_YIELD_AFTER: usize = 256;
-const DEFAULT_BUFFER_SIZE: usize = 100;
+const DEFAULT_BUFFER_SIZE: usize = 128;
 const DEFAULT_DL_REQUEST_BUFFER_SIZE: usize = 8;
 const DEFAULT_BACK_PRESSURE_INPUT_BUFFER_SIZE: usize = 32;
 const DEFAULT_BACK_PRESSURE_BRIDGE_BUFFER_SIZE: usize = 16;
 const DEFAULT_BACK_PRESSURE_MAX_ACTIVE_KEYS: usize = 16;
 const DEFAULT_BACK_PRESSURE_YIELD_AFTER: usize = 256;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct SwimClientConfig {
     /// Configuration parameters for the downlink connections.
     pub downlink_connections_config: DownlinkConnectionsConfig,
@@ -147,31 +147,11 @@ impl RecognizerReadable for SwimClientConfig {
     }
 
     fn make_attr_recognizer() -> Self::AttrRec {
-        SimpleAttrBody::new(SwimClientConfigRecognizer {
-            stage: SwimClientConfigStage::Init,
-            downlink_connections: None,
-            downlink_connections_recognizer: DownlinkConnectionsConfig::make_recognizer(),
-            remote_connections: None,
-            remote_connections_recognizer: RemoteConnectionsConfig::make_recognizer(),
-            websocket_connections: None,
-            websocket_connections_recognizer: WebSocketConfig::make_recognizer(),
-            downlinks: None,
-            downlinks_recognizer: ClientDownlinksConfig::make_recognizer(),
-        })
+        SimpleAttrBody::new(Self::make_recognizer())
     }
 
     fn make_body_recognizer() -> Self::BodyRec {
-        SimpleRecBody::new(SwimClientConfigRecognizer {
-            stage: SwimClientConfigStage::Init,
-            downlink_connections: None,
-            downlink_connections_recognizer: DownlinkConnectionsConfig::make_recognizer(),
-            remote_connections: None,
-            remote_connections_recognizer: RemoteConnectionsConfig::make_recognizer(),
-            websocket_connections: None,
-            websocket_connections_recognizer: WebSocketConfig::make_recognizer(),
-            downlinks: None,
-            downlinks_recognizer: ClientDownlinksConfig::make_recognizer(),
-        })
+        SimpleRecBody::new(Self::make_recognizer())
     }
 }
 
@@ -370,17 +350,6 @@ impl SwimClientConfig {
     }
 }
 
-impl Default for SwimClientConfig {
-    fn default() -> Self {
-        SwimClientConfig::new(
-            Default::default(),
-            Default::default(),
-            Default::default(),
-            Default::default(),
-        )
-    }
-}
-
 /// Configuration parameters for the router.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DownlinkConnectionsConfig {
@@ -472,25 +441,11 @@ impl RecognizerReadable for DownlinkConnectionsConfig {
     }
 
     fn make_attr_recognizer() -> Self::AttrRec {
-        SimpleAttrBody::new(DownlinkConnectionsConfigRecognizer {
-            stage: DownlinkConnectionsConfigStage::Init,
-            dl_buffer_size: None,
-            buffer_size: None,
-            yield_after: None,
-            retry_strategy: None,
-            retry_strategy_recognizer: RetryStrategy::make_recognizer(),
-        })
+        SimpleAttrBody::new(Self::make_recognizer())
     }
 
     fn make_body_recognizer() -> Self::BodyRec {
-        SimpleRecBody::new(DownlinkConnectionsConfigRecognizer {
-            stage: DownlinkConnectionsConfigStage::Init,
-            dl_buffer_size: None,
-            buffer_size: None,
-            yield_after: None,
-            retry_strategy: None,
-            retry_strategy_recognizer: RetryStrategy::make_recognizer(),
-        })
+        SimpleRecBody::new(Self::make_recognizer())
     }
 }
 
@@ -678,7 +633,7 @@ impl Recognizer for DownlinkConnectionsConfigRecognizer {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct ClientDownlinksConfig {
     default: DownlinkConfig,
     by_host: HashMap<Url, DownlinkConfig>,
@@ -727,12 +682,6 @@ impl DownlinksConfig for ClientDownlinksConfig {
 
     fn for_lane(&mut self, lane: &AbsolutePath, params: DownlinkConfig) {
         self.by_lane.insert(lane.clone(), params);
-    }
-}
-
-impl Default for ClientDownlinksConfig {
-    fn default() -> Self {
-        ClientDownlinksConfig::new(Default::default())
     }
 }
 
@@ -819,29 +768,11 @@ impl RecognizerReadable for ClientDownlinksConfig {
     }
 
     fn make_attr_recognizer() -> Self::AttrRec {
-        SimpleAttrBody::new(ClientDownlinksConfigRecognizer {
-            stage: ClientDownlinksConfigStage::Init,
-            default: None,
-            default_recognizer: DownlinkConfig::make_recognizer(),
-            host: None,
-            host_recognizer: HashMap::<Url, DownlinkConfig>::make_recognizer(),
-            lane: None,
-            lane_recognizer: HashMap::<AbsolutePath, DownlinkConfig>::make_recognizer(),
-            absolute_path_recognizer: AbsolutePath::make_recognizer(),
-        })
+        SimpleAttrBody::new(Self::make_recognizer())
     }
 
     fn make_body_recognizer() -> Self::BodyRec {
-        SimpleRecBody::new(ClientDownlinksConfigRecognizer {
-            stage: ClientDownlinksConfigStage::Init,
-            default: None,
-            default_recognizer: DownlinkConfig::make_recognizer(),
-            host: None,
-            host_recognizer: HashMap::<Url, DownlinkConfig>::make_recognizer(),
-            lane: None,
-            lane_recognizer: HashMap::<AbsolutePath, DownlinkConfig>::make_recognizer(),
-            absolute_path_recognizer: AbsolutePath::make_recognizer(),
-        })
+        SimpleRecBody::new(Self::make_recognizer())
     }
 }
 
@@ -1031,7 +962,7 @@ impl DownlinkConfig {
         on_invalid: OnInvalidMessage,
         yield_after: usize,
     ) -> Result<DownlinkConfig, String> {
-        if idle_timeout == Duration::from_millis(0) {
+        if idle_timeout.is_zero() {
             Err(BAD_TIMEOUT.to_string())
         } else {
             match (
@@ -1054,13 +985,7 @@ impl DownlinkConfig {
 
 impl From<&DownlinkConfig> for DownlinkConfig {
     fn from(conf: &DownlinkConfig) -> Self {
-        DownlinkConfig {
-            back_pressure: conf.back_pressure,
-            idle_timeout: conf.idle_timeout,
-            buffer_size: conf.buffer_size,
-            yield_after: conf.yield_after,
-            on_invalid: conf.on_invalid,
-        }
+        *conf
     }
 }
 
@@ -1068,7 +993,7 @@ impl Default for DownlinkConfig {
     fn default() -> Self {
         DownlinkConfig::new(
             BackpressureMode::default(),
-            Duration::from_secs(DEFAULT_IDLE_TIMEOUT),
+            DEFAULT_IDLE_TIMEOUT,
             DEFAULT_DOWNLINK_BUFFER_SIZE,
             OnInvalidMessage::default(),
             DEFAULT_YIELD_AFTER,
@@ -1135,31 +1060,11 @@ impl RecognizerReadable for DownlinkConfig {
     }
 
     fn make_attr_recognizer() -> Self::AttrRec {
-        SimpleAttrBody::new(DownlinkConfigRecognizer {
-            stage: DownlinkConfigStage::Init,
-            back_pressure: None,
-            back_pressure_recognizer: BackpressureMode::make_recognizer(),
-            idle_timeout: None,
-            idle_timeout_recognizer: Duration::make_recognizer(),
-            buffer_size: None,
-            on_invalid: None,
-            on_invalid_recognizer: OnInvalidMessage::make_recognizer(),
-            yield_after: None,
-        })
+        SimpleAttrBody::new(Self::make_recognizer())
     }
 
     fn make_body_recognizer() -> Self::BodyRec {
-        SimpleRecBody::new(DownlinkConfigRecognizer {
-            stage: DownlinkConfigStage::Init,
-            back_pressure: None,
-            back_pressure_recognizer: BackpressureMode::make_recognizer(),
-            idle_timeout: None,
-            idle_timeout_recognizer: Duration::make_recognizer(),
-            buffer_size: None,
-            on_invalid: None,
-            on_invalid_recognizer: OnInvalidMessage::make_recognizer(),
-            yield_after: None,
-        })
+        SimpleRecBody::new(Self::make_recognizer())
     }
 }
 
@@ -1261,9 +1166,7 @@ impl Recognizer for DownlinkConfigRecognizer {
                 },
                 ReadEvent::EndRecord => Some(Ok(DownlinkConfig {
                     back_pressure: self.back_pressure.unwrap_or_default(),
-                    idle_timeout: self
-                        .idle_timeout
-                        .unwrap_or_else(|| Duration::from_secs(DEFAULT_IDLE_TIMEOUT)),
+                    idle_timeout: self.idle_timeout.unwrap_or(DEFAULT_IDLE_TIMEOUT),
                     buffer_size: self.buffer_size.unwrap_or_else(|| {
                         NonZeroUsize::new(DEFAULT_DOWNLINK_BUFFER_SIZE).unwrap()
                     }),
