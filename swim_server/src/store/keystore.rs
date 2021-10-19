@@ -16,7 +16,7 @@ use crate::store::KeyspaceName;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use store::keyspaces::KeyspaceByteEngine;
-use store::{deserialize, serialize, MergeOperands, StoreError};
+use store::{deserialize, serialize, StoreError};
 use tokio::sync::oneshot;
 
 pub type KeyRequest = (String, oneshot::Sender<u64>);
@@ -24,9 +24,8 @@ pub type KeyRequest = (String, oneshot::Sender<u64>);
 /// The lane keyspace's counter key.
 pub const COUNTER_KEY: &str = "counter";
 pub const COUNTER_BYTES: &[u8] = COUNTER_KEY.as_bytes();
-const DESERIALIZATION_FAILURE: &str = "Failed to deserialize key";
-const SERIALIZATION_FAILURE: &str = "Failed to serialize key";
 pub const INCONSISTENT_KEYSPACE: &str = "Inconsistent keyspace";
+
 const INIT_FAILURE: &str = "Failed to initialise keystore";
 
 /// The prefix that all lane identifiers in the counter keyspace will be prefixed by.
@@ -97,22 +96,35 @@ pub fn format_key<I: ToString>(uri: I) -> String {
     format!("{}/{}", LANE_PREFIX, uri.to_string())
 }
 
-#[allow(clippy::unnecessary_wraps)]
-pub(crate) fn incrementing_merge_operator(
-    _new_key: &[u8],
-    existing_value: Option<&[u8]>,
-    operands: &mut MergeOperands,
-) -> Option<Vec<u8>> {
-    let mut value = match existing_value {
-        Some(bytes) => deserialize_key(bytes).expect(DESERIALIZATION_FAILURE),
-        None => INITIAL,
-    };
+#[cfg(feature = "persistence")]
+pub mod rocks {
+    use crate::store::keystore::INITIAL;
+    use rocksdb::MergeOperands;
+    use store::{deserialize_key, serialize};
 
-    for op in operands {
-        let deserialized = deserialize_key(op).expect(DESERIALIZATION_FAILURE);
-        value += deserialized;
+    #[cfg(feature = "persistence")]
+    const DESERIALIZATION_FAILURE: &str = "Failed to deserialize key";
+    #[cfg(feature = "persistence")]
+    const SERIALIZATION_FAILURE: &str = "Failed to serialize key";
+
+    #[cfg(feature = "persistence")]
+    #[allow(clippy::unnecessary_wraps)]
+    pub fn incrementing_merge_operator(
+        _new_key: &[u8],
+        existing_value: Option<&[u8]>,
+        operands: &mut MergeOperands,
+    ) -> Option<Vec<u8>> {
+        let mut value = match existing_value {
+            Some(bytes) => deserialize_key(bytes).expect(DESERIALIZATION_FAILURE),
+            None => INITIAL,
+        };
+
+        for op in operands {
+            let deserialized = deserialize_key(op).expect(DESERIALIZATION_FAILURE);
+            value += deserialized;
+        }
+        Some(serialize(&value).expect(SERIALIZATION_FAILURE))
     }
-    Some(serialize(&value).expect(SERIALIZATION_FAILURE))
 }
 
 #[cfg(test)]

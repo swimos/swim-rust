@@ -12,16 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::store::keystore::{incrementing_merge_operator, COUNTER_KEY};
+use crate::store::keystore::rocks::incrementing_merge_operator;
+use crate::store::keystore::COUNTER_KEY;
 use crate::store::{LANE_KS, MAP_LANE_KS, VALUE_LANE_KS};
-use rocksdb::{ColumnFamilyDescriptor, DB};
+use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, Options, SliceTransform, DB};
 use std::mem::size_of;
 use std::path::Path;
 use store::engines::{RocksEngine, RocksIterator, RocksPrefixIterator, StoreBuilder};
 use store::iterator::{EngineIterOpts, EngineRefIterator};
 use store::keyspaces::{Keyspace, KeyspaceByteEngine};
 use store::keyspaces::{KeyspaceDef, KeyspaceResolver, Keyspaces};
-use store::{ColumnFamily, Options, SliceTransform};
 use store::{EngineInfo, Store, StoreError};
 
 const PREFIX_BLOOM_RATIO: f64 = 0.2;

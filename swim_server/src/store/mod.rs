@@ -18,21 +18,21 @@ pub mod mock;
 pub(crate) mod fs;
 pub mod keystore;
 mod nostore;
-mod rocks;
 
-pub use rocks::{default_db_opts, default_keyspaces, RocksDatabase, RocksOpts};
+#[cfg(feature = "persistence")]
+pub mod rocks;
+
+use crate::plane::store::{open_plane, PlaneStore, SwimPlaneStore};
+use crate::store::fs::Dir;
+use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Formatter};
 use std::io;
 use std::path::PathBuf;
 use store::engines::StoreBuilder;
+use store::keyspaces::{Keyspace, Keyspaces};
 use store::StoreError;
 
-use serde::{Deserialize, Serialize};
-
-use crate::store::fs::Dir;
-use store::keyspaces::{Keyspace, Keyspaces};
-
-use crate::plane::store::{open_plane, PlaneStore, SwimPlaneStore};
+pub use store::engines::NoStore;
 
 /// Unique lane identifier keyspace. The name is `default` as either the Rust RocksDB crate or
 /// Rocks DB itself has an issue in using merge operators under a non-default column family.
@@ -142,10 +142,11 @@ where
     }
 }
 
-impl ServerStore<RocksOpts> {
-    pub fn transient_default(prefix: &str) -> io::Result<ServerStore<RocksOpts>> {
-        let db_opts = default_db_opts();
-        let keyspaces = default_keyspaces();
+#[cfg(feature = "persistence")]
+impl ServerStore<rocks::RocksOpts> {
+    pub fn transient_default(prefix: &str) -> io::Result<ServerStore<rocks::RocksOpts>> {
+        let db_opts = rocks::default_db_opts();
+        let keyspaces = rocks::default_keyspaces();
 
         Self::transient(db_opts, keyspaces, prefix)
     }

@@ -23,13 +23,14 @@ use swim_server::agent::value_lifecycle;
 use swim_server::agent::AgentContext;
 use swim_server::agent::SwimAgent;
 use swim_server::interface::{ServerHandle, SwimServer, SwimServerBuilder, SwimServerConfig};
+use swim_server::plane::store::SwimPlaneStore;
+use swim_server::store::NoStore;
 use swim_server::RoutePattern;
 
-pub async fn build_server() -> (SwimServer, ServerHandle) {
+pub async fn build_server() -> (SwimServer<SwimPlaneStore<NoStore>>, ServerHandle) {
     let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0);
     let mut swim_server_builder =
-        SwimServerBuilder::temporary_store(SwimServerConfig::default(), "test")
-            .expect("Failed to build transient store");
+        SwimServerBuilder::no_store(SwimServerConfig::default()).expect("Failed to build store");
     let mut plane_builder = swim_server_builder.plane_builder("test").unwrap();
 
     plane_builder

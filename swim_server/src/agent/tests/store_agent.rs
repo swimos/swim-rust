@@ -33,9 +33,8 @@ use crate::plane::RouteAndParameters;
 use crate::routing::RoutingAddr;
 use crate::store::fs::Dir;
 use crate::store::keystore::{KeyStore, COUNTER_BYTES};
-use crate::store::{
-    default_keyspaces, KeyspaceName, RocksDatabase, RocksOpts, StoreEngine, StoreKey,
-};
+use crate::store::rocks::{default_keyspaces, RocksDatabase, RocksOpts};
+use crate::store::{KeyspaceName, StoreEngine, StoreKey};
 use futures::future::ready;
 use futures::future::{BoxFuture, Ready};
 use std::collections::HashMap;

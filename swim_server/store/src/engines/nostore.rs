@@ -36,7 +36,7 @@ impl Store for NoStore {
 
     fn engine_info(&self) -> EngineInfo {
         EngineInfo {
-            path: "Transient".to_string(),
+            path: "No store".to_string(),
             kind: "NoStore".to_string(),
         }
     }
@@ -105,7 +105,7 @@ impl StoreBuilder for NoStoreOpts {
         I: AsRef<Path>,
     {
         Ok(NoStore {
-            path: PathBuf::from("Transient".to_string()),
+            path: PathBuf::from("No store".to_string()),
         })
     }
 }

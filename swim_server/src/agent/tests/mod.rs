@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(feature = "persistence")]
+mod store_agent;
+
 mod data_macro_agent;
 mod declarive_macro_agent;
 mod derive;
 mod reporting_agent;
 mod reporting_macro_agent;
-mod store_agent;
 pub(crate) mod test_clock;
 
 use crate::agent::lane::channels::AgentExecutionConfig;

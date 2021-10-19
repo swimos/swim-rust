@@ -25,8 +25,6 @@ use thiserror::Error;
 
 use crate::iterator::OwnedEngineRefIterator;
 use crate::keyspaces::{KeyspaceByteEngine, KeyspaceResolver};
-
-pub use rocksdb::{ColumnFamily, MergeOperands, Options, SliceTransform};
 use serde::{Deserialize, Serialize};
 
 pub type KvBytes = (Box<[u8]>, Box<[u8]>);

@@ -12,16 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::path::Path;
+mod nostore;
 
-pub use nostore::{NoStore, NoStoreOpts};
-pub use rocks::{RocksEngine, RocksIterator, RocksOpts, RocksPrefixIterator};
+#[cfg(feature = "rocks")]
+mod rocks;
+
+#[cfg(feature = "rocks")]
+pub use rocks::{RocksEngine, RocksIterator, RocksPrefixIterator};
+
+use std::path::Path;
 
 use crate::keyspaces::Keyspaces;
 use crate::{Store, StoreError};
-
-mod nostore;
-mod rocks;
+pub use nostore::{NoStore, NoStoreOpts};
 
 /// A storage engine for server stores that handles byte arrays.
 pub trait ByteEngine: 'static {
