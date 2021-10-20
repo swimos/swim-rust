@@ -12,13 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::model::supply::SupplyLane;
-use crate::meta::metric::aggregator::{AggregatorTask, MetricState};
-use crate::meta::metric::lane::{LaneMetricReporter, LanePulse, WarpLaneProfile};
-use crate::meta::metric::tests::{
-    build_uplink_profile, create_lane_map, DEFAULT_BUFFER, DEFAULT_YIELD,
-};
-use crate::meta::metric::uplink::{WarpUplinkProfile, WarpUplinkPulse};
+use crate::aggregator::{AggregatorTask, MetricState};
+use crate::lane::{LaneMetricReporter, LanePulse, WarpLaneProfile};
+use crate::tests::{build_uplink_profile, create_lane_map, DEFAULT_BUFFER, DEFAULT_YIELD};
+use crate::uplink::{WarpUplinkProfile, WarpUplinkPulse};
+use crate::SupplyLane;
 use futures::future::join;
 use std::collections::HashMap;
 use std::time::Duration;

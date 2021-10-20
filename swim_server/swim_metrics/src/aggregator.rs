@@ -12,9 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::model::supply::SupplyLane;
-use crate::meta::metric::{AggregatorError, AggregatorErrorKind, MetricReporter, MetricStage};
-use crate::meta::metric::{STOP_CLOSED, STOP_OK};
+use crate::{AggregatorError, AggregatorErrorKind, MetricReporter, SupplyLane};
+use crate::{STOP_CLOSED, STOP_OK};
 use futures::FutureExt;
 use futures::StreamExt;
 use futures::{select_biased, Stream};
@@ -75,7 +74,7 @@ impl<M: MetricReporter> MetricState<M> {
 
         *accumulated = Default::default();
 
-        let _ = lane.try_send(pulse);
+        let _ = lane.try_send_item(pulse);
 
         profile
     }
@@ -101,7 +100,7 @@ impl<M: MetricReporter> MetricState<M> {
         if last_report.elapsed() > sample_rate {
             let (pulse, profile) = reporter.report(*accumulated);
 
-            match lane.try_send(pulse) {
+            match lane.try_send_item(pulse) {
                 Ok(_) | Err(TrySendError::Full(_)) => {
                     *last_report = Instant::now();
                     *requires_flush = false;
@@ -164,7 +163,7 @@ where
         self,
         yield_after: NonZeroUsize,
         stop_notify: trigger::Sender,
-    ) -> Result<MetricStage, AggregatorError> {
+    ) -> Result<(), AggregatorError> {
         let AggregatorTask {
             stop_rx,
             sample_rate,
@@ -186,7 +185,7 @@ where
                     event!(Level::DEBUG, STOP_OK);
                     drain(&mut fused_metric_rx, &mut metrics, &output);
 
-                    break Ok(M::METRIC_STAGE);
+                    break Ok(());
                 },
                 metric = fused_metric_rx.next() => metric,
             };
@@ -275,6 +274,6 @@ fn drain<M, S>(
             } = item;
             let (pulse, profile) = reporter.report(*accumulated);
             let _ = output.try_send((k.clone(), profile));
-            let _ = lane.try_send(pulse);
+            let _ = lane.try_send_item(pulse);
         });
 }

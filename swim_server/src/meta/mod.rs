@@ -14,7 +14,6 @@
 
 pub mod info;
 pub mod log;
-pub mod metric;
 pub mod pulse;
 pub mod uri;
 
@@ -24,11 +23,11 @@ mod tests;
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::dispatch::LaneIdentifier;
 use crate::agent::lane::channels::AgentExecutionConfig;
+use crate::agent::model::supply::SupplyLane;
 use crate::agent::{AgentContext, DynamicLaneTasks, Eff, LaneIo, SwimAgent};
 use crate::meta::info::{open_info_lane, LaneInfo, LaneInformation};
-use crate::meta::log::{open_log_lanes, LogLevel, NodeLogger};
-use crate::meta::metric::NodeMetricAggregator;
-use crate::meta::pulse::open_pulse_lanes;
+use crate::meta::log::{open_log_lanes, LogEntry, LogLevel, NodeLogger};
+use crate::meta::pulse::{open_pulse_lanes, PulseLanes};
 use crate::meta::uri::{parse, MetaParseErr};
 use futures::stream::FuturesUnordered;
 use futures::FutureExt;
@@ -39,10 +38,12 @@ use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::str::FromStr;
 use swim_common::model::text::Text;
+use swim_common::sink::item::try_send::TrySend;
 use swim_common::warp::path::RelativePath;
-
+use swim_metrics::{MetaPulseLanes, MetricStage, NodeMetricAggregator};
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
+use tokio::sync::mpsc::error::TrySendError;
 use tracing::{span, Level};
 use tracing_futures::{Instrument, Instrumented};
 
@@ -51,6 +52,9 @@ lazy_static! {
         Regex::new(r"(/?)(swim:meta:)(edge|mesh|part|host|node)(?P<node>/[^/]+/)")
             .expect("Failed to compile meta pattern");
 }
+
+const LOG_ERROR_MSG: &str = "Node aggregator failed";
+const LOG_TASK_FINISHED_MSG: &str = "Node aggregator task completed";
 
 const NODE_CAPTURE_GROUP: &str = "node";
 
@@ -240,8 +244,7 @@ where
         node_uri.clone(),
         stop_rx,
         exec_conf.metrics.clone(),
-        pulse_lanes,
-        node_logger.clone(),
+        map_pulse_lanes(pulse_lanes),
     );
 
     tasks.extend(info_tasks);
@@ -249,8 +252,35 @@ where
     ios.extend(info_ios);
     ios.extend(pulse_io);
 
+    let result_logger = node_logger.clone();
+    let result_node_uri = node_uri.clone();
+
     let aggregator_task = async move {
-        let _ = aggregator_task.await;
+        match aggregator_task.await {
+            Ok(()) => {
+                let stages = vec![MetricStage::Node, MetricStage::Lane, MetricStage::Uplink];
+                for state in stages {
+                    let entry = LogEntry::make(
+                        LOG_TASK_FINISHED_MSG.to_string(),
+                        LogLevel::Debug,
+                        result_node_uri.clone(),
+                        state.to_string().to_lowercase(),
+                    );
+                    let _res = result_logger.log_entry(entry).await;
+                }
+            }
+            Err(e) => {
+                let message = format!("{}: {}", LOG_ERROR_MSG, e);
+                let entry = LogEntry::make(
+                    message,
+                    LogLevel::Error,
+                    result_node_uri,
+                    e.aggregator.to_string(),
+                );
+
+                let _res = result_logger.log_entry(entry).await;
+            }
+        };
     };
 
     task_manager.push(aggregator_task.boxed().instrument(span!(
@@ -264,22 +294,43 @@ where
     (meta_context, tasks, ios)
 }
 
+fn map_pulse_lanes(lanes: PulseLanes) -> MetaPulseLanes {
+    let PulseLanes {
+        uplinks,
+        lanes,
+        node,
+    } = lanes;
+
+    MetaPulseLanes {
+        uplinks: uplinks.into_iter().map(|(k, v)| (k, box_lane(v))).collect(),
+        lanes: lanes.into_iter().map(|(k, v)| (k, box_lane(v))).collect(),
+        node: Box::new(node),
+    }
+}
+
+fn box_lane<T>(lane: SupplyLane<T>) -> Box<dyn TrySend<T, Error = TrySendError<T>> + Send>
+where
+    T: Send + 'static,
+{
+    Box::new(lane)
+}
+
 /// Sinking meta context that will do nothing
 #[cfg(test)]
 pub(crate) fn meta_context_sink() -> MetaContext {
     use crate::agent::lane::model::demand_map::DemandMapLane;
     use crate::agent::model::supply::SupplyLane;
     use crate::meta::log::make_node_logger;
-    use crate::meta::metric::config::MetricAggregatorConfig;
     use crate::meta::pulse::PulseLanes;
+    use swim_metrics::config::MetricAggregatorConfig;
     use tokio::sync::mpsc;
 
     let (_tx, rx) = trigger::trigger();
     let node_logger = make_node_logger(RelativeUri::default());
-    let pulse_lanes = PulseLanes {
+    let pulse_lanes = MetaPulseLanes {
         uplinks: Default::default(),
         lanes: Default::default(),
-        node: SupplyLane::new(mpsc::channel(1).0),
+        node: Box::new(SupplyLane::new(mpsc::channel(1).0)),
     };
 
     let (metric_aggregator, _) = NodeMetricAggregator::new(
@@ -287,7 +338,6 @@ pub(crate) fn meta_context_sink() -> MetaContext {
         rx,
         MetricAggregatorConfig::default(),
         pulse_lanes,
-        node_logger.clone(),
     );
 
     MetaContext {

@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::model::supply::SupplyLane;
-use crate::meta::metric::lane::WarpLaneProfile;
-use crate::meta::metric::uplink::WarpUplinkPulse;
-use crate::meta::metric::{AggregatorError, AggregatorErrorKind, MetricReporter, MetricStage};
-use crate::meta::metric::{STOP_CLOSED, STOP_OK};
+use crate::lane::WarpLaneProfile;
+use crate::uplink::WarpUplinkPulse;
+use crate::{AggregatorError, AggregatorErrorKind, MetricReporter, MetricStage, SupplyLane};
+use crate::{STOP_CLOSED, STOP_OK};
 use futures::FutureExt;
 use futures::StreamExt;
 use futures::{select, Stream};
@@ -137,12 +136,12 @@ impl NodeAggregatorTask {
     }
 
     /// Runs the aggregator and yields executing back to the runtime every `yield_after`.
-    pub async fn run(self, yield_after: NonZeroUsize) -> Result<MetricStage, AggregatorError> {
+    pub async fn run(self, yield_after: NonZeroUsize) -> Result<(), AggregatorError> {
         let NodeAggregatorTask {
             stop_rx,
             sample_rate,
             mut last_report,
-            lane,
+            mut lane,
             input,
             mut profile,
             mut reporter,
@@ -160,7 +159,7 @@ impl NodeAggregatorTask {
                     event!(Level::WARN, STOP_OK);
                     drain(&mut fused_metric_rx, lane, profile, reporter)?;
 
-                    return Ok(MetricStage::Node);
+                    return Ok(());
                 },
                 metric = fused_metric_rx.next() => metric,
             };
@@ -177,7 +176,7 @@ impl NodeAggregatorTask {
                     if last_report.elapsed() > sample_rate {
                         let (pulse, _) = reporter.report(profile);
 
-                        if let Err(TrySendError::Closed(_)) = lane.try_send(pulse) {
+                        if let Err(TrySendError::Closed(_)) = lane.try_send_item(pulse) {
                             break AggregatorErrorKind::ForwardChannelClosed;
                         } else {
                             profile = Default::default();
@@ -205,7 +204,7 @@ impl NodeAggregatorTask {
 /// Drains all the pending messages from `stream` and flushes any pending pulses and profiles.
 fn drain<S>(
     stream: &mut S,
-    lane: SupplyLane<NodePulse>,
+    mut lane: SupplyLane<NodePulse>,
     mut profile: WarpLaneProfile,
     mut reporter: ModeMetricReporter,
 ) -> Result<(), AggregatorError>
@@ -217,7 +216,7 @@ where
     }
 
     let (pulse, _) = reporter.report(profile);
-    match lane.try_send(pulse) {
+    match lane.try_send_item(pulse) {
         Err(TrySendError::Closed(_)) => Err(AggregatorError {
             aggregator: MetricStage::Node,
             error: AggregatorErrorKind::ForwardChannelClosed,

@@ -12,16 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::channels::uplink::backpressure::KeyedBackpressureConfig;
-use crate::agent::lane::model::supply::SupplyLane;
-use crate::agent::model::supply::make_lane_model;
-use crate::meta::metric::config::MetricAggregatorConfig;
-use crate::meta::metric::tests::{backpressure_config, DEFAULT_BUFFER, DEFAULT_YIELD};
-use crate::meta::metric::uplink::{
+use crate::config::MetricAggregatorConfig;
+use crate::tests::{backpressure_config, DEFAULT_BUFFER, DEFAULT_YIELD};
+use crate::uplink::{
     uplink_aggregator, uplink_observer, AggregatorConfig, TaggedWarpUplinkProfile, TrySendError,
     UplinkObserver, UplinkProfileSender, WarpUplinkProfile, WarpUplinkPulse,
 };
-use crate::meta::metric::MetricStage;
+use crate::{MetricStage, SupplyLane};
 use futures::future::{join, join3};
 use futures::stream::iter;
 use futures::{FutureExt, StreamExt};
@@ -174,7 +171,7 @@ async fn task_backpressure() {
 
     let config = MetricAggregatorConfig {
         sample_rate,
-        backpressure_config: KeyedBackpressureConfig {
+        backpressure_config: MetricBackpressureConfig {
             buffer_size: NonZeroUsize::new(buffer_size).unwrap(),
             yield_after: DEFAULT_YIELD,
             bridge_buffer_size: NonZeroUsize::new(buffer_size).unwrap(),

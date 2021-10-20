@@ -12,18 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::channels::uplink::backpressure::KeyedBackpressureConfig;
-use crate::agent::lane::model::supply::SupplyLane;
-use crate::meta::log::make_node_logger;
-use crate::meta::metric::aggregator::{AggregatorTask, MetricState};
-use crate::meta::metric::config::MetricAggregatorConfig;
-use crate::meta::metric::lane::{LaneMetricReporter, LanePulse};
-use crate::meta::metric::node::NodePulse;
-use crate::meta::metric::uplink::{WarpUplinkProfile, WarpUplinkPulse};
-use crate::meta::metric::{
-    AggregatorError, AggregatorErrorKind, MetricStage, NodeMetricAggregator,
-};
-use crate::meta::pulse::PulseLanes;
+use crate::aggregator::{AggregatorTask, MetricState};
+use crate::config::MetricAggregatorConfig;
+use crate::lane::{LaneMetricReporter, LanePulse};
+use crate::node::NodePulse;
+use crate::uplink::{MetricBackpressureConfig, WarpUplinkProfile, WarpUplinkPulse};
+use crate::{AggregatorError, AggregatorErrorKind, MetricStage, NodeMetricAggregator, SupplyLane};
 use futures::future::{join, join3};
 use futures::FutureExt;
 use std::collections::HashMap;
@@ -82,8 +76,8 @@ pub fn make_profile(count: u32) -> (RelativePath, WarpUplinkProfile) {
     )
 }
 
-pub fn backpressure_config() -> KeyedBackpressureConfig {
-    KeyedBackpressureConfig {
+pub fn backpressure_config() -> MetricBackpressureConfig {
+    MetricBackpressureConfig {
         buffer_size: NonZeroUsize::new(2).unwrap(),
         yield_after: NonZeroUsize::new(256).unwrap(),
         bridge_buffer_size: NonZeroUsize::new(16).unwrap(),
@@ -313,13 +307,8 @@ async fn full_pipeline() {
         node: node_pulse_lane,
     };
 
-    let (aggregator, aggregator_task) = NodeMetricAggregator::new(
-        node_uri.clone(),
-        stop_rx,
-        config,
-        pulse_lanes,
-        make_node_logger(node_uri),
-    );
+    let (aggregator, aggregator_task) =
+        NodeMetricAggregator::new(node_uri.clone(), stop_rx, config, pulse_lanes);
 
     let _aggregator_jh = tokio::spawn(aggregator_task);
 
@@ -422,13 +411,8 @@ async fn full_pipeline_multiple_observers() {
         node: node_pulse_lane,
     };
 
-    let (aggregator, aggregator_task) = NodeMetricAggregator::new(
-        node_uri.clone(),
-        stop_rx,
-        config,
-        pulse_lanes,
-        make_node_logger(node_uri),
-    );
+    let (aggregator, aggregator_task) =
+        NodeMetricAggregator::new(node_uri.clone(), stop_rx, config, pulse_lanes);
 
     let _aggregator_jh = tokio::spawn(aggregator_task);
 

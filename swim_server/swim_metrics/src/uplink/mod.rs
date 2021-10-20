@@ -25,11 +25,8 @@ use swim_common::form::Form;
 use swim_common::warp::path::RelativePath;
 use tracing::{event, Level};
 
-use crate::agent::lane::channels::uplink::backpressure::KeyedBackpressureConfig;
-use crate::agent::lane::model::supply::SupplyLane;
-use crate::meta::metric::aggregator::{AggregatorTask, MetricState};
-use crate::meta::metric::MetricReporter;
-use crate::meta::metric::{AggregatorError, MetricStage};
+use crate::aggregator::{AggregatorTask, MetricState};
+use crate::{AggregatorError, MetricReporter, MetricStage, SupplyLane};
 use futures::{Future, Stream, StreamExt};
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
@@ -391,11 +388,23 @@ impl Drop for UplinkObserver {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MetricBackpressureConfig {
+    /// Buffer size for the channels connecting the input and output tasks.
+    pub buffer_size: NonZeroUsize,
+    /// Number of loop iterations after which the input and output tasks will yield.
+    pub yield_after: NonZeroUsize,
+    /// Buffer size for the communication side channel between the input and output tasks.
+    pub bridge_buffer_size: NonZeroUsize,
+    /// Number of keys for maintain a channel for at any one time.
+    pub cache_size: NonZeroUsize,
+}
+
 pub struct AggregatorConfig {
     pub sample_rate: Duration,
     pub buffer_size: NonZeroUsize,
     pub yield_after: NonZeroUsize,
-    pub backpressure_config: KeyedBackpressureConfig,
+    pub backpressure_config: MetricBackpressureConfig,
 }
 
 pub fn uplink_aggregator(
@@ -405,7 +414,7 @@ pub fn uplink_aggregator(
     lane_tx: mpsc::Sender<(RelativePath, WarpUplinkProfile)>,
     uplink_to_lane_tx: trigger::Sender,
 ) -> (
-    impl Future<Output = Result<MetricStage, AggregatorError>>,
+    impl Future<Output = Result<(), AggregatorError>>,
     mpsc::Sender<TaggedWarpUplinkProfile>,
 ) {
     let AggregatorConfig {
@@ -480,7 +489,7 @@ impl Keyed for TaggedWarpUplinkProfile {
 async fn metrics_release_backpressure<E, Sink>(
     messages: impl Stream<Item = TaggedWarpUplinkProfile>,
     sink: Sink,
-    config: KeyedBackpressureConfig,
+    config: MetricBackpressureConfig,
 ) -> Result<(), E>
 where
     Sink: ItemSender<TaggedWarpUplinkProfile, E>,
