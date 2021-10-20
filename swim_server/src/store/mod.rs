@@ -12,11 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod keystore;
 #[cfg(test)]
 pub mod mock;
-
-pub mod keystore;
-mod nostore;
 
 #[cfg(feature = "persistence")]
 pub mod rocks;
