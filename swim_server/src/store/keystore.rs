@@ -15,8 +15,7 @@
 use crate::store::KeyspaceName;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use store::keyspaces::KeyspaceByteEngine;
-use store::{deserialize, deserialize_key, serialize, StoreError};
+use swim_store::{deserialize, deserialize_key, serialize, KeyspaceByteEngine, StoreError};
 use tokio::sync::oneshot;
 
 pub type KeyRequest = (String, oneshot::Sender<u64>);
@@ -96,7 +95,7 @@ pub fn format_key<I: ToString>(uri: I) -> String {
 pub mod rocks {
     use crate::store::keystore::INITIAL;
     use rocksdb::MergeOperands;
-    use store::{deserialize_key, serialize};
+    use swim_store::{deserialize_key, serialize};
 
     #[cfg(feature = "persistence")]
     const DESERIALIZATION_FAILURE: &str = "Failed to deserialize key";
@@ -130,8 +129,7 @@ mod tests {
     };
     use crate::store::mock::MockStore;
     use std::sync::Arc;
-    use store::keyspaces::{Keyspace, KeyspaceByteEngine};
-    use store::{deserialize, deserialize_key};
+    use swim_store::{deserialize, deserialize_key, Keyspace, KeyspaceByteEngine};
 
     fn keyspaces() -> Vec<String> {
         vec![

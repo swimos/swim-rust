@@ -7,7 +7,7 @@ edition = "2018"
 [features]
 default = []
 debug = ["log_verbose"]
-persistence = ["rocksdb", "store/rocks"]
+persistence = ["rocksdb", "swim_store/rocks"]
 log_verbose = []
 trust-dns = ["trust-dns-resolver"]
 
@@ -47,10 +47,10 @@ lazy_static = "1.4.0"
 percent-encoding = "2.1.0"
 thiserror = "1.0"
 crossbeam-queue = "0.3"
-store = { path = "store" }
 server_store = { path = "server_store" }
 serde = { version = "1.0.124", features = ["derive", "rc"] }
 rocksdb = { version = "0.16.0", optional = true }
+swim_store = { path = "../swim_store" }
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["rt-multi-thread", "macros", "test-util"] }

@@ -15,8 +15,8 @@
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
-use store::{EngineInfo, StoreError};
 use swim_common::model::text::Text;
+use swim_store::{EngineInfo, StoreError};
 
 use crate::plane::store::PlaneStore;
 use crate::store::{StoreEngine, StoreKey};

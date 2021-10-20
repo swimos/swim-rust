@@ -15,7 +15,7 @@
 use crate::agent::store::{NodeStore, SwimNodeStore};
 use crate::plane::store::mock::MockPlaneStore;
 use crate::store::{StoreEngine, StoreKey};
-use store::{EngineInfo, StoreError};
+use swim_store::{EngineInfo, StoreError};
 
 #[derive(Clone, Debug)]
 pub struct MockNodeStore {

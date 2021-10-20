@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use std::fmt::{Display, Formatter};
-use store::StoreError;
 use swim_common::model::time::Timestamp;
+use swim_store::StoreError;
 
 #[derive(Debug)]
 pub struct StoreTaskError {

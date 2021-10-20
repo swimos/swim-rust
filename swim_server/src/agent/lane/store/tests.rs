@@ -20,9 +20,9 @@ use futures::future::pending;
 use futures::future::BoxFuture;
 use futures::Future;
 use std::collections::HashMap;
-use store::StoreError;
 use swim_common::model::time::Timestamp;
 use swim_runtime::time::timeout::timeout;
+use swim_store::StoreError;
 use swim_utilities::trigger;
 use tokio::time::{sleep, Duration};
 

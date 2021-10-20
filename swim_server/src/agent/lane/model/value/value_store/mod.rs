@@ -17,7 +17,7 @@ use crate::store::StoreKey;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::marker::PhantomData;
-use store::{deserialize, serialize_then, StoreError};
+use swim_store::{deserialize, serialize_then, StoreError};
 
 #[cfg(test)]
 mod tests;

@@ -5,7 +5,7 @@ use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
-use store::EngineInfo;
+use swim_store::EngineInfo;
 use swim_utilities::trigger;
 
 /// Aggregated node store errors.

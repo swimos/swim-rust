@@ -17,8 +17,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use crate::store::keystore::STEP;
-use store::keyspaces::{Keyspace, KeyspaceByteEngine};
-use store::{deserialize, serialize, StoreError};
+use swim_store::{deserialize, serialize, Keyspace, KeyspaceByteEngine, StoreError};
 
 pub struct MockStore {
     values: Mutex<HashMap<String, HashMap<Vec<u8>, Vec<u8>>>>,

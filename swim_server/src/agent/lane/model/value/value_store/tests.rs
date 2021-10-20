@@ -23,7 +23,7 @@ use crate::store::{StoreEngine, StoreKey};
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
-use store::{serialize, EngineInfo, StoreError};
+use swim_store::{serialize, EngineInfo, StoreError};
 
 #[derive(Clone, Debug)]
 struct TrackingValueStore {

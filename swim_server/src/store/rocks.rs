@@ -18,11 +18,11 @@ use crate::store::{LANE_KS, MAP_LANE_KS, VALUE_LANE_KS};
 use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, Options, SliceTransform, DB};
 use std::mem::size_of;
 use std::path::Path;
-use store::engines::{RocksEngine, RocksIterator, RocksPrefixIterator, StoreBuilder};
-use store::iterator::{EngineIterOpts, EngineRefIterator};
-use store::keyspaces::{Keyspace, KeyspaceByteEngine};
-use store::keyspaces::{KeyspaceDef, KeyspaceResolver, Keyspaces};
-use store::{EngineInfo, Store, StoreError};
+use swim_store::{
+    EngineInfo, EngineIterOpts, EngineRefIterator, Keyspace, KeyspaceByteEngine, KeyspaceDef,
+    KeyspaceResolver, Keyspaces, RocksEngine, RocksIterator, RocksPrefixIterator, Store,
+    StoreBuilder, StoreError,
+};
 
 const PREFIX_BLOOM_RATIO: f64 = 0.2;
 
@@ -147,7 +147,8 @@ impl StoreBuilder for RocksOpts {
                     vec
                 });
 
-        let db = DB::open_cf_descriptors(&self.0, path, descriptors)?;
+        let db = DB::open_cf_descriptors(&self.0, path, descriptors)
+            .map_err(|e| StoreError::Delegate(Box::new(e)))?;
         Ok(RocksDatabase {
             db: RocksEngine::new(db),
         })

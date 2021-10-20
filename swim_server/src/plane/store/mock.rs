@@ -16,9 +16,8 @@ use crate::agent::store::mock::MockNodeStore;
 use crate::agent::store::SwimNodeStore;
 use crate::plane::store::PlaneStore;
 use crate::store::{StoreEngine, StoreKey};
-use store::keyspaces::{Keyspace, KeyspaceResolver};
-use store::{EngineInfo, StoreError};
 use swim_common::model::text::Text;
+use swim_store::{EngineInfo, Keyspace, KeyspaceResolver, StoreError};
 
 #[derive(Clone, Debug)]
 pub struct MockPlaneStore;

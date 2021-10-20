@@ -26,11 +26,9 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Formatter};
 use std::io;
 use std::path::PathBuf;
-use store::engines::StoreBuilder;
-use store::keyspaces::{Keyspace, Keyspaces};
-use store::StoreError;
+use swim_store::{Keyspace, Keyspaces, StoreBuilder, StoreError};
 
-pub use store::engines::NoStore;
+pub use swim_store::NoStore;
 use swim_utilities::io::fs::Dir;
 
 /// Unique lane identifier keyspace. The name is `default` as either the Rust RocksDB crate or

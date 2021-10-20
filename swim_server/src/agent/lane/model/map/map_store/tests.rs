@@ -27,7 +27,7 @@ use std::num::NonZeroUsize;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 use stm::transaction::{atomically, RetryManager};
-use store::{serialize, EngineInfo, StoreError};
+use swim_store::{serialize, EngineInfo, StoreError};
 
 struct ExactlyOnce;
 

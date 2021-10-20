@@ -17,13 +17,13 @@ use crate::store::StoreKey;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::marker::PhantomData;
-use store::{deserialize, serialize, serialize_then, StoreError};
 
 #[cfg(test)]
 mod tests;
 
 mod io;
 pub use io::MapLaneStoreIo;
+use swim_store::{deserialize, serialize, serialize_then, StoreError};
 
 const INCONSISTENT_DB: &str = "Missing key or value in store";
 
