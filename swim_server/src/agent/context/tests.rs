@@ -29,7 +29,7 @@ use std::sync::Arc;
 use swim_client::configuration::DownlinkConnectionsConfig;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
-use swim_client::interface::DownlinksContext;
+use swim_client::interface::ClientContext;
 use swim_client::router::ClientRouterFactory;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
@@ -96,7 +96,7 @@ fn simple_accessors() {
         close_rx,
     );
 
-    let client = DownlinksContext::new(downlinks);
+    let client = ClientContext::new(downlinks);
     let context = ContextImpl::new(
         agent.clone(),
         routing_context,
@@ -160,7 +160,7 @@ fn create_context(
         close_rx,
     );
 
-    let client = DownlinksContext::new(downlinks);
+    let client = ClientContext::new(downlinks);
     ContextImpl::new(
         agent.clone(),
         routing_context,

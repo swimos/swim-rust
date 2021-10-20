@@ -36,7 +36,7 @@ use std::sync::Arc;
 use swim_client::configuration::DownlinkConnectionsConfig;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
-use swim_client::interface::DownlinksContext;
+use swim_client::interface::ClientContext;
 use swim_client::router::ClientRouterFactory;
 use swim_common::form::Form;
 use swim_common::model::Value;
@@ -183,7 +183,7 @@ async fn agent_log() {
         close_rx,
     );
 
-    let client = DownlinksContext::new(downlinks);
+    let client = ClientContext::new(downlinks);
 
     let (_a, agent_proc) = provider.run(
         parameters,

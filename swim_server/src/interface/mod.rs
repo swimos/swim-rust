@@ -40,7 +40,7 @@ use swim_client::configuration::{DownlinkConfig, DownlinksConfig};
 use swim_client::connections::{PoolTask, SwimConnPool};
 use swim_client::downlink::subscription::DownlinksTask;
 use swim_client::downlink::Downlinks;
-use swim_client::interface::DownlinksContext;
+use swim_client::interface::ClientContext;
 use swim_client::router::ClientRouterFactory;
 use swim_common::routing::error::RoutingError;
 use swim_common::routing::remote::config::RemoteConnectionsConfig;
@@ -265,7 +265,7 @@ impl SwimServerBuilder {
             close_rx.clone(),
         );
 
-        let downlinks_context = DownlinksContext::new(downlinks);
+        let downlinks_context = ClientContext::new(downlinks);
 
         Ok((
             SwimServer {
@@ -277,7 +277,7 @@ impl SwimServerBuilder {
                 top_level_router_fac,
                 remote_channel: (remote_tx, remote_rx),
                 plane_channel: (plane_tx, plane_rx),
-                downlinks_context,
+                client_context: downlinks_context,
                 connection_pool_task,
                 downlinks_task,
                 _store: store,
@@ -336,7 +336,7 @@ pub struct SwimServer {
         mpsc::Sender<PlaneRoutingRequest>,
         mpsc::Receiver<PlaneRoutingRequest>,
     ),
-    downlinks_context: DownlinksContext<Path>,
+    client_context: ClientContext<Path>,
     connection_pool_task: PoolTask<Path, TopLevelServerRouterFactory>,
     downlinks_task: DownlinksTask<Path>,
     _store: ServerStore<RocksOpts>,
@@ -360,7 +360,7 @@ impl SwimServer {
             top_level_router_fac,
             remote_channel: (remote_tx, remote_rx),
             plane_channel: (plane_tx, plane_rx),
-            downlinks_context,
+            client_context: downlinks_context,
             connection_pool_task,
             downlinks_task,
             _store,
@@ -431,9 +431,9 @@ impl SwimServer {
         .0
     }
 
-    /// Get a downlinks context capable of opening downlinks to other servers.
-    pub fn downlinks_context(&self) -> DownlinksContext<Path> {
-        self.downlinks_context.clone()
+    /// Get a client context capable of opening downlinks to other servers.
+    pub fn client_context(&self) -> ClientContext<Path> {
+        self.client_context.clone()
     }
 }
 

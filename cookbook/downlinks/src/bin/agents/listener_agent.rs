@@ -21,7 +21,7 @@ use swim_client::downlink::model::map::MapEvent;
 use swim_client::downlink::typed::map::events::TypedViewWithEvent;
 use swim_client::downlink::typed::map::MapDownlinkReceiver;
 use swim_client::downlink::Event;
-use swim_client::interface::DownlinksContext;
+use swim_client::interface::ClientContext;
 use swim_client::runtime::task;
 use swim_common::form::Form;
 use swim_common::model::{Item, Value};
@@ -107,10 +107,10 @@ impl LaneLifecycle<()> for TriggerListenLifecycle {
 
 async fn add_subscription(
     path: RelativePath,
-    downlinks_context: DownlinksContext<Path>,
+    client_context: ClientContext<Path>,
     shopping_carts: MapLane<String, Value>,
 ) {
-    let (_, map_recv) = downlinks_context
+    let (_, map_recv) = client_context
         .map_downlink(Path::Local(path.clone()))
         .await
         .unwrap();

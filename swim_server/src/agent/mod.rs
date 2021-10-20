@@ -93,7 +93,7 @@ use crate::meta::open_meta_lanes;
 pub use agent_derive::*;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use swim_client::interface::DownlinksContext;
+use swim_client::interface::ClientContext;
 use tokio_stream::wrappers::ReceiverStream;
 
 /// Trait that must be implemented for any agent. This is essentially just boilerplate and will
@@ -232,13 +232,14 @@ impl<Routing, Store> IoPair<Routing, Store> {
 /// * `lifecycle` - Life-cycle event handler for the agent.
 /// * `url` - The node URL for the agent instance.
 /// * `clock` - Clock for timing asynchronous events.
+/// * `client_context`- Client for opening downlinks.
 /// * `stop_trigger` - External trigger to cleanly stop the agent.
 /// * `parameters` - Parameters extracted from the agent node route pattern.
 /// * `incoming_envelopes` - The stream of envelopes routed to the agent.
 pub(crate) fn run_agent<Config, Clk, Agent, L, R, Store>(
     lifecycle: L,
     clock: Clk,
-    downlinks_context: DownlinksContext<Path>,
+    client_context: ClientContext<Path>,
     parameters: AgentParameters<Config>,
     incoming_envelopes: impl Stream<Item = TaggedEnvelope> + Send + 'static,
     router: R,
@@ -303,7 +304,7 @@ where
             routing_context,
             schedule_context,
             meta_context,
-            downlinks_context,
+            client_context,
             uri.clone(),
             store.clone(),
         );
@@ -413,7 +414,7 @@ pub type EffStream = BoxStream<'static, ()>;
 /// is running the agent.
 pub trait AgentContext<Agent> {
     /// Get a downlinks context capable of opening downlinks to other servers.
-    fn downlinks_context(&self) -> DownlinksContext<Path>;
+    fn downlinks_context(&self) -> ClientContext<Path>;
 
     /// Schedule events to be executed on a provided schedule. The events will be executed within
     /// the task that runs the agent and so should not block.

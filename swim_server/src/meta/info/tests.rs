@@ -32,7 +32,7 @@ use std::sync::Arc;
 use swim_client::configuration::DownlinkConnectionsConfig;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
-use swim_client::interface::DownlinksContext;
+use swim_client::interface::ClientContext;
 use swim_client::router::ClientRouterFactory;
 use swim_common::form::structural::read::ReadError;
 use swim_common::form::Form;
@@ -215,7 +215,7 @@ async fn lane_info_sync() {
         close_rx,
     );
 
-    let client = DownlinksContext::new(downlinks);
+    let client = ClientContext::new(downlinks);
 
     let parameters = AgentParameters::new(MockAgentConfig, exec_config, uri, HashMap::new());
 

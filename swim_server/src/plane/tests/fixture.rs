@@ -29,7 +29,7 @@ use std::any::Any;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_client::interface::DownlinksContext;
+use swim_client::interface::ClientContext;
 use swim_common::routing::{Router, TaggedEnvelope};
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::Path;
@@ -110,7 +110,7 @@ impl<Clk: Clock, Delegate: Router + 'static>
         route: RouteAndParameters,
         execution_config: AgentExecutionConfig,
         _clock: Clk,
-        _downlinks_context: DownlinksContext<Path>,
+        _client_context: ClientContext<Path>,
         incoming_envelopes: EnvChannel,
         mut router: PlaneRouter<Delegate>,
         _store: SwimNodeStore<MockPlaneStore>,
@@ -158,7 +158,7 @@ impl<Clk: Clock, Delegate>
         route: RouteAndParameters,
         execution_config: AgentExecutionConfig,
         _clock: Clk,
-        _downlinks_context: DownlinksContext<Path>,
+        _client: ClientContext<Path>,
         incoming_envelopes: EnvChannel,
         _router: PlaneRouter<Delegate>,
         _store: SwimNodeStore<MockPlaneStore>,

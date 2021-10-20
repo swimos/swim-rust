@@ -51,7 +51,7 @@ use store::{deserialize, serialize};
 use swim_client::configuration::DownlinkConnectionsConfig;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
-use swim_client::interface::DownlinksContext;
+use swim_client::interface::ClientContext;
 use swim_client::router::ClientRouterFactory;
 use swim_common::routing::RoutingAddr;
 use swim_common::warp::path::Path;
@@ -258,7 +258,7 @@ impl Default for TestStore {
     }
 }
 
-fn make_dl_context() -> DownlinksContext<Path> {
+fn make_dl_context() -> ClientContext<Path> {
     let (client_tx, client_rx) = mpsc::channel(8);
     let (remote_tx, _remote_rx) = mpsc::channel(8);
     let (plane_tx, _plane_rx) = mpsc::channel(8);
@@ -283,7 +283,7 @@ fn make_dl_context() -> DownlinksContext<Path> {
         close_rx,
     );
 
-    DownlinksContext::new(downlinks)
+    ClientContext::new(downlinks)
 }
 
 #[tokio::test]

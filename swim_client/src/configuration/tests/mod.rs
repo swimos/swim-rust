@@ -155,32 +155,28 @@ fn test_conf_from_file_retry_none() {
 }
 
 fn create_full_config() -> SwimClientConfig {
-    let mut dl_config = ClientDownlinksConfig::new(
-        DownlinkConfig::new(
-            BackpressureMode::Release {
-                input_buffer_size: NonZeroUsize::new(512).unwrap(),
-                bridge_buffer_size: NonZeroUsize::new(512).unwrap(),
-                max_active_keys: NonZeroUsize::new(512).unwrap(),
-                yield_after: NonZeroUsize::new(512).unwrap(),
-            },
-            Duration::from_nanos(6666666),
-            10,
-            OnInvalidMessage::Ignore,
-            512,
-        )
-        .unwrap(),
-    );
+    let mut dl_config = ClientDownlinksConfig::new(DownlinkConfig::new(
+        BackpressureMode::Release {
+            input_buffer_size: NonZeroUsize::new(512).unwrap(),
+            bridge_buffer_size: NonZeroUsize::new(512).unwrap(),
+            max_active_keys: NonZeroUsize::new(512).unwrap(),
+            yield_after: NonZeroUsize::new(512).unwrap(),
+        },
+        Duration::from_nanos(6666666),
+        NonZeroUsize::new(10).unwrap(),
+        OnInvalidMessage::Ignore,
+        NonZeroUsize::new(512).unwrap(),
+    ));
 
     dl_config.for_host(
         Url::parse("ws://127.0.0.1").unwrap(),
         DownlinkConfig::new(
             BackpressureMode::Propagate,
             Duration::from_secs(40000),
-            15,
+            NonZeroUsize::new(15).unwrap(),
             OnInvalidMessage::Ignore,
-            200,
-        )
-        .unwrap(),
+            NonZeroUsize::new(200).unwrap(),
+        ),
     );
 
     dl_config.for_host(
@@ -188,11 +184,10 @@ fn create_full_config() -> SwimClientConfig {
         DownlinkConfig::new(
             BackpressureMode::Propagate,
             Duration::from_secs(50000),
-            25,
+            NonZeroUsize::new(25).unwrap(),
             OnInvalidMessage::Terminate,
-            300,
-        )
-        .unwrap(),
+            NonZeroUsize::new(300).unwrap(),
+        ),
     );
 
     dl_config.for_lane(
@@ -200,11 +195,10 @@ fn create_full_config() -> SwimClientConfig {
         DownlinkConfig::new(
             BackpressureMode::Propagate,
             Duration::from_secs(90000),
-            40,
+            NonZeroUsize::new(40).unwrap(),
             OnInvalidMessage::Ignore,
-            100,
-        )
-        .unwrap(),
+            NonZeroUsize::new(100).unwrap(),
+        ),
     );
 
     dl_config.for_lane(
@@ -217,11 +211,10 @@ fn create_full_config() -> SwimClientConfig {
                 yield_after: NonZeroUsize::new(20).unwrap(),
             },
             Duration::from_secs(100000),
-            50,
+            NonZeroUsize::new(50).unwrap(),
             OnInvalidMessage::Terminate,
-            600,
-        )
-        .unwrap(),
+            NonZeroUsize::new(600).unwrap(),
+        ),
     );
 
     let config = SwimClientConfig::new(

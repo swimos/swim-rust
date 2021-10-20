@@ -43,24 +43,24 @@ async fn main() {
     swim_server_builder.add_plane(plane_builder.build());
     let (swim_server, server_handle) = swim_server_builder.bind_to(address).build().unwrap();
 
-    let downlinks_context = swim_server.downlinks_context();
+    let client_context = swim_server.client_context();
 
     let stop = async {
-        downlinks_context
+        client_context
             .send_command(
                 Path::Local(RelativePath::new("/unit/1", "unused")),
                 Value::Extant,
             )
             .await
             .unwrap();
-        downlinks_context
+        client_context
             .send_command(
                 Path::Local(RelativePath::new("/unit/foo", "unused")),
                 Value::Extant,
             )
             .await
             .unwrap();
-        downlinks_context
+        client_context
             .send_command(
                 Path::Local(RelativePath::new("/unit/foo_1", "unused")),
                 Value::Extant,

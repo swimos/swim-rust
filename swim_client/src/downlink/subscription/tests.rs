@@ -29,11 +29,10 @@ fn per_host_config() -> ClientDownlinksConfig {
     let special_params = DownlinkConfig::new(
         BackpressureMode::Propagate,
         timeout,
-        5,
+        NonZeroUsize::new(5).unwrap(),
         OnInvalidMessage::Terminate,
-        256,
-    )
-    .unwrap();
+        NonZeroUsize::new(256).unwrap(),
+    );
 
     let mut conf = ClientDownlinksConfig::default();
     conf.for_host(Url::parse("ws://127.0.0.2").unwrap(), special_params);
@@ -46,11 +45,10 @@ fn per_lane_config() -> ClientDownlinksConfig {
     let special_params = DownlinkConfig::new(
         BackpressureMode::Propagate,
         timeout,
-        5,
+        NonZeroUsize::new(5).unwrap(),
         OnInvalidMessage::Terminate,
-        256,
-    )
-    .unwrap();
+        NonZeroUsize::new(256).unwrap(),
+    );
     let mut conf = per_host_config();
     conf.for_lane(
         &AbsolutePath::new(

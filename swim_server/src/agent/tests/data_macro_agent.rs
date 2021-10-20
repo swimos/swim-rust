@@ -42,7 +42,7 @@ use stm::transaction::atomically;
 use swim_client::configuration::DownlinkConnectionsConfig;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
-use swim_client::interface::DownlinksContext;
+use swim_client::interface::ClientContext;
 use swim_client::router::ClientRouterFactory;
 use swim_common::routing::RoutingAddr;
 use swim_utilities::routing::uri::RelativeUri;
@@ -566,7 +566,7 @@ async fn agent_loop() {
         close_rx,
     );
 
-    let client = DownlinksContext::new(downlinks);
+    let client = ClientContext::new(downlinks);
 
     let (_, agent_proc) = provider.run(
         parameters,

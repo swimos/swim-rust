@@ -30,7 +30,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::ops::Deref;
 use std::sync::{Arc, Weak};
-use swim_client::interface::DownlinksContext;
+use swim_client::interface::ClientContext;
 use swim_common::request::Request;
 use swim_common::routing::error::NoAgentAtRoute;
 use swim_common::routing::error::{ConnectionError, ProtocolError, ProtocolErrorKind};
@@ -72,7 +72,7 @@ pub trait AgentRoute<Clk, Envelopes, Router, Store>: Debug + Send {
     /// URI with the route pattern.
     /// * `execution_config` - Configuration parameters controlling how the agent runs.
     /// * `clock` - Clock for scheduling events.
-    /// * `client`: The client for opening downlinks.
+    /// * `client`- Client for opening downlinks.
     /// * `incoming_envelopes`- The stream of envelopes routed to the agent.
     /// * `router` - The router by which the agent can send messages.
     #[allow(clippy::too_many_arguments)]
@@ -81,7 +81,7 @@ pub trait AgentRoute<Clk, Envelopes, Router, Store>: Debug + Send {
         route: RouteAndParameters,
         execution_config: AgentExecutionConfig,
         clock: Clk,
-        downlinks_context: DownlinksContext<Path>,
+        client: ClientContext<Path>,
         incoming_envelopes: Envelopes,
         router: Router,
         store: Store,
@@ -285,7 +285,7 @@ where
     /// Clock for scheduling tasks.
     clock: Clk,
     /// Client for opening downlinks.
-    downlinks_context: DownlinksContext<Path>,
+    client_context: ClientContext<Path>,
     /// The configuration for the agent routes that are opened.
     execution_config: AgentExecutionConfig,
     // The routes and store for for the plane
@@ -303,7 +303,7 @@ where
 impl<Clk, DelegateFac: RouterFactory, Store: PlaneStore> RouteResolver<Clk, DelegateFac, Store> {
     pub fn new(
         clock: Clk,
-        downlinks_context: DownlinksContext<Path>,
+        client_context: ClientContext<Path>,
         execution_config: AgentExecutionConfig,
         plane_spec: PlaneSpec<Clk, EnvChannel, PlaneRouter<DelegateFac::Router>, Store>,
         router_fac: PlaneRouterFactory<DelegateFac>,
@@ -312,7 +312,7 @@ impl<Clk, DelegateFac: RouterFactory, Store: PlaneStore> RouteResolver<Clk, Dele
     ) -> RouteResolver<Clk, DelegateFac, Store> {
         RouteResolver {
             clock,
-            downlinks_context,
+            client_context,
             execution_config,
             plane_spec,
             router_fac,
@@ -340,7 +340,7 @@ where
     {
         let RouteResolver {
             clock,
-            downlinks_context: client,
+            client_context,
             execution_config,
             plane_spec,
             router_fac,
@@ -361,7 +361,7 @@ where
             RouteAndParameters::new(route.clone(), params),
             execution_config.clone(),
             clock.clone(),
-            client.clone(),
+            client_context.clone(),
             ReceiverStream::new(rx).take_until(stop_trigger.clone()),
             router_fac.create_for(addr),
             store.node_store(route.path()),

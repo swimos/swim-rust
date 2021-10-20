@@ -29,7 +29,7 @@ use std::time::Duration;
 use swim_client::configuration::DownlinkConnectionsConfig;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
-use swim_client::interface::DownlinksContext;
+use swim_client::interface::ClientContext;
 use swim_client::router::ClientRouterFactory;
 use swim_common::routing::Router;
 use swim_runtime::time::clock::Clock;
@@ -119,7 +119,7 @@ async fn plane_event_loop() {
         close_rx,
     );
 
-    let client = DownlinksContext::new(downlinks);
+    let client = ClientContext::new(downlinks);
 
     let resolver = RouteResolver::new(
         swim_runtime::time::clock::runtime_clock(),

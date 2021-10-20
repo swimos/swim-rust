@@ -917,7 +917,7 @@ mod tests {
     #[tokio::test]
     async fn test_server_dl_from_server_to_lane_local() {
         let (server, mut server_handle) = build_server().await;
-        let downlink_context = server.downlinks_context();
+        let client_context = server.client_context();
         tokio::spawn(server.run());
         let port = server_handle.address().await.unwrap().port();
         let host = format!("warp://127.0.0.1:{}", port);
@@ -933,7 +933,7 @@ mod tests {
             .unwrap();
         client_dl.set("VW".to_string()).await.unwrap();
 
-        let (server_dl, mut server_recv) = downlink_context
+        let (server_dl, mut server_recv) = client_context
             .value_downlink(
                 RelativePath::new("/downlink/1", "garage").into(),
                 "".to_string(),
@@ -970,7 +970,7 @@ mod tests {
     #[tokio::test]
     async fn test_server_dl_from_server_to_lane_remote() {
         let (server, mut server_handle) = build_server().await;
-        let downlink_context = server.downlinks_context();
+        let client_context = server.client_context();
         tokio::spawn(server.run());
         let second_port = server_handle.address().await.unwrap().port();
         let second_host = format!("warp://127.0.0.1:{}", second_port);
@@ -989,7 +989,7 @@ mod tests {
             .unwrap();
         client_dl.set("VW".to_string()).await.unwrap();
 
-        let (server_dl, mut server_recv) = downlink_context
+        let (server_dl, mut server_recv) = client_context
             .value_downlink(
                 AbsolutePath::new(
                     url::Url::parse(&second_host).unwrap(),

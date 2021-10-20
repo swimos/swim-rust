@@ -82,12 +82,11 @@ impl SwimClientBuilder {
         let mut contents = String::new();
         config_file
             .read_to_string(&mut contents)
-            .map_err(ConfigError::FileError)?;
+            .map_err(ConfigError::File)?;
 
-        let config = SwimClientConfig::try_from_value(
-            &parse_single(&contents).map_err(ConfigError::ParseError)?,
-        )
-        .map_err(ConfigError::RecognizerError)?;
+        let config =
+            SwimClientConfig::try_from_value(&parse_single(&contents).map_err(ConfigError::Parse)?)
+                .map_err(ConfigError::Recognizer)?;
 
         Ok(SwimClientBuilder { config })
     }
@@ -149,7 +148,7 @@ impl SwimClientBuilder {
         });
 
         SwimClient {
-            inner: DownlinksContext { downlinks },
+            inner: ClientContext { downlinks },
             close_buffer_size: config.remote_connections_config.router_buffer_size,
             task_handle,
             stop_trigger: close_tx,
@@ -213,7 +212,7 @@ impl SwimClientBuilder {
         });
 
         SwimClient {
-            inner: DownlinksContext { downlinks },
+            inner: ClientContext { downlinks },
             close_buffer_size: config.remote_connections_config.router_buffer_size,
             task_handle,
             stop_trigger: close_tx,
@@ -241,7 +240,7 @@ impl SwimClientBuilder {
 ///
 #[derive(Debug)]
 pub struct SwimClient<Path: Addressable> {
-    inner: DownlinksContext<Path>,
+    inner: ClientContext<Path>,
     close_buffer_size: NonZeroUsize,
     task_handle: TaskHandle<RequestResult<(), Path>>,
     stop_trigger: CloseSender,
@@ -350,7 +349,7 @@ impl<Path: Addressable> SwimClient<Path> {
         let (tx, mut rx) = mpsc::channel(close_buffer_size.get());
 
         if stop_trigger.provide(tx).is_err() {
-            return Err(ClientError::CloseError);
+            return Err(ClientError::Close);
         }
 
         if let Some(Err(routing_err)) = rx.recv().await {
@@ -360,20 +359,20 @@ impl<Path: Addressable> SwimClient<Path> {
         let result = task_handle.await;
 
         match result {
-            Ok(r) => r.map_err(ClientError::SubscriptionError),
-            Err(_) => Err(ClientError::CloseError),
+            Ok(r) => r.map_err(ClientError::Subscription),
+            Err(_) => Err(ClientError::Close),
         }
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct DownlinksContext<Path: Addressable> {
+pub struct ClientContext<Path: Addressable> {
     downlinks: Downlinks<Path>,
 }
 
-impl<Path: Addressable> DownlinksContext<Path> {
+impl<Path: Addressable> ClientContext<Path> {
     pub fn new(downlinks: Downlinks<Path>) -> Self {
-        DownlinksContext { downlinks }
+        ClientContext { downlinks }
     }
 
     pub async fn send_command<T: Form>(
@@ -387,7 +386,7 @@ impl<Path: Addressable> DownlinksContext<Path> {
         self.downlinks
             .send_command(target, envelope)
             .await
-            .map_err(ClientError::SubscriptionError)
+            .map_err(ClientError::Subscription)
     }
 
     pub async fn value_downlink<T>(
@@ -401,7 +400,7 @@ impl<Path: Addressable> DownlinksContext<Path> {
         self.downlinks
             .subscribe_value(initial, path)
             .await
-            .map_err(ClientError::SubscriptionError)
+            .map_err(ClientError::Subscription)
     }
 
     pub async fn map_downlink<K, V>(
@@ -415,7 +414,7 @@ impl<Path: Addressable> DownlinksContext<Path> {
         self.downlinks
             .subscribe_map(path)
             .await
-            .map_err(ClientError::SubscriptionError)
+            .map_err(ClientError::Subscription)
     }
 
     pub async fn command_downlink<T>(
@@ -428,7 +427,7 @@ impl<Path: Addressable> DownlinksContext<Path> {
         self.downlinks
             .subscribe_command(path)
             .await
-            .map_err(ClientError::SubscriptionError)
+            .map_err(ClientError::Subscription)
     }
 
     pub async fn event_downlink<T>(
@@ -442,7 +441,7 @@ impl<Path: Addressable> DownlinksContext<Path> {
         self.downlinks
             .subscribe_event(path, violations)
             .await
-            .map_err(ClientError::SubscriptionError)
+            .map_err(ClientError::Subscription)
     }
 
     pub async fn untyped_value_downlink(
@@ -453,7 +452,7 @@ impl<Path: Addressable> DownlinksContext<Path> {
         self.downlinks
             .subscribe_value_untyped(initial, path)
             .await
-            .map_err(ClientError::SubscriptionError)
+            .map_err(ClientError::Subscription)
     }
 
     pub async fn untyped_map_downlink(
@@ -463,7 +462,7 @@ impl<Path: Addressable> DownlinksContext<Path> {
         self.downlinks
             .subscribe_map_untyped(path)
             .await
-            .map_err(ClientError::SubscriptionError)
+            .map_err(ClientError::Subscription)
     }
 
     pub async fn untyped_command_downlink(
@@ -473,7 +472,7 @@ impl<Path: Addressable> DownlinksContext<Path> {
         self.downlinks
             .subscribe_command_untyped(path)
             .await
-            .map_err(ClientError::SubscriptionError)
+            .map_err(ClientError::Subscription)
     }
 
     pub async fn untyped_event_downlink(
@@ -483,7 +482,7 @@ impl<Path: Addressable> DownlinksContext<Path> {
         self.downlinks
             .subscribe_event_untyped(path)
             .await
-            .map_err(ClientError::SubscriptionError)
+            .map_err(ClientError::Subscription)
     }
 }
 
@@ -491,13 +490,13 @@ impl<Path: Addressable> DownlinksContext<Path> {
 #[derive(Debug)]
 pub enum ClientError<Path: Addressable> {
     /// An error that occurred when subscribing to a downlink.
-    SubscriptionError(SubscriptionError<Path>),
+    Subscription(SubscriptionError<Path>),
     /// An error that occurred in the router.
-    RoutingError(RoutingError),
+    Routing(RoutingError),
     /// An error that occurred in a downlink.
-    DownlinkError(DownlinkError),
+    Downlink(DownlinkError),
     /// An error that occurred when closing the client.
-    CloseError,
+    Close,
 }
 
 impl<Path: Addressable + 'static> Display for ClientError<Path> {
@@ -512,10 +511,10 @@ impl<Path: Addressable + 'static> Display for ClientError<Path> {
 impl<Path: Addressable + 'static> Error for ClientError<Path> {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match &self {
-            ClientError::SubscriptionError(e) => Some(e),
-            ClientError::RoutingError(e) => Some(e),
-            ClientError::DownlinkError(e) => Some(e),
-            ClientError::CloseError => None,
+            ClientError::Subscription(e) => Some(e),
+            ClientError::Routing(e) => Some(e),
+            ClientError::Downlink(e) => Some(e),
+            ClientError::Close => None,
         }
     }
 
@@ -526,6 +525,6 @@ impl<Path: Addressable + 'static> Error for ClientError<Path> {
 
 impl<Path: Addressable> From<RoutingError> for ClientError<Path> {
     fn from(err: RoutingError) -> Self {
-        ClientError::RoutingError(err)
+        ClientError::Routing(err)
     }
 }

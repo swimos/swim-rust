@@ -54,7 +54,7 @@ use std::sync::Arc;
 use swim_client::configuration::DownlinkConnectionsConfig;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
-use swim_client::interface::DownlinksContext;
+use swim_client::interface::ClientContext;
 use swim_client::router::ClientRouterFactory;
 use swim_common::routing::RoutingAddr;
 use swim_common::warp::path::Path;
@@ -272,7 +272,7 @@ impl<Lane> AgentContext<TestAgent<Lane>> for TestContext<Lane>
 where
     Lane: LaneModel + Send + Sync + 'static,
 {
-    fn downlinks_context(&self) -> DownlinksContext<Path> {
+    fn downlinks_context(&self) -> ClientContext<Path> {
         panic!("Unexpected downlink context")
     }
 
@@ -796,7 +796,7 @@ pub async fn run_agent_test<Agent, Config, Lifecycle>(
         close_rx,
     );
 
-    let client = DownlinksContext::new(downlinks);
+    let client = ClientContext::new(downlinks);
 
     // The ReportingAgent is carefully contrived such that its lifecycle events all trigger in
     // a specific order. We can then safely expect these events in that order to verify the agent

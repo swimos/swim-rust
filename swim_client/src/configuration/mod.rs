@@ -42,10 +42,6 @@ use url::Url;
 #[cfg(test)]
 mod tests;
 
-const BAD_BUFFER_SIZE: &str = "Buffer sizes must be positive.";
-const BAD_YIELD_AFTER: &str = "Yield after count must be positive.";
-const BAD_TIMEOUT: &str = "Timeout must be positive.";
-
 const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(60000);
 const DEFAULT_DOWNLINK_BUFFER_SIZE: usize = 32;
 const DEFAULT_YIELD_AFTER: usize = 256;
@@ -56,15 +52,17 @@ const DEFAULT_BACK_PRESSURE_BRIDGE_BUFFER_SIZE: usize = 16;
 const DEFAULT_BACK_PRESSURE_MAX_ACTIVE_KEYS: usize = 16;
 const DEFAULT_BACK_PRESSURE_YIELD_AFTER: usize = 256;
 
+/// Configuration for the swim client.
+///
+/// * `downlink_connections_config` - Configuration parameters for the downlink connections.
+/// * `remote_connections_config` - Configuration parameters the remote connections.
+/// * `websocket_config` - Configuration parameters the WebSocket connections.
+/// * `downlinks_config` - Configuration for the behaviour of downlinks.
 #[derive(Clone, Debug, Default)]
 pub struct SwimClientConfig {
-    /// Configuration parameters for the downlink connections.
     pub downlink_connections_config: DownlinkConnectionsConfig,
-    /// Configuration parameters the remote connections.
     pub remote_connections_config: RemoteConnectionsConfig,
-    /// Configuration parameters the WebSocket connections.
     pub websocket_config: WebSocketConfig,
-    /// Configuration for the behaviour of downlinks.
     pub downlinks_config: ClientDownlinksConfig,
 }
 
@@ -944,7 +942,8 @@ impl Recognizer for ClientDownlinksConfigRecognizer {
 pub struct DownlinkConfig {
     /// Whether the downlink propagates back-pressure.
     pub back_pressure: BackpressureMode,
-    /// Timeout after which an idle downlink will be closed (not yet implemented).
+    /// Timeout after which an idle downlink will be closed.
+    /// Todo #412 (not yet implemented).
     pub idle_timeout: Duration,
     /// Buffer size for local actions performed on the downlink.
     pub buffer_size: NonZeroUsize,
@@ -958,27 +957,16 @@ impl DownlinkConfig {
     pub fn new(
         back_pressure: BackpressureMode,
         idle_timeout: Duration,
-        buffer_size: usize,
+        buffer_size: NonZeroUsize,
         on_invalid: OnInvalidMessage,
-        yield_after: usize,
-    ) -> Result<DownlinkConfig, String> {
-        if idle_timeout.is_zero() {
-            Err(BAD_TIMEOUT.to_string())
-        } else {
-            match (
-                NonZeroUsize::new(buffer_size),
-                NonZeroUsize::new(yield_after),
-            ) {
-                (Some(nz), Some(ya)) => Ok(DownlinkConfig {
-                    back_pressure,
-                    idle_timeout,
-                    buffer_size: nz,
-                    on_invalid,
-                    yield_after: ya,
-                }),
-                (None, _) => Err(BAD_BUFFER_SIZE.to_string()),
-                _ => Err(BAD_YIELD_AFTER.to_string()),
-            }
+        yield_after: NonZeroUsize,
+    ) -> DownlinkConfig {
+        DownlinkConfig {
+            back_pressure,
+            idle_timeout,
+            buffer_size,
+            on_invalid,
+            yield_after,
         }
     }
 }
@@ -994,11 +982,10 @@ impl Default for DownlinkConfig {
         DownlinkConfig::new(
             BackpressureMode::default(),
             DEFAULT_IDLE_TIMEOUT,
-            DEFAULT_DOWNLINK_BUFFER_SIZE,
+            NonZeroUsize::new(DEFAULT_DOWNLINK_BUFFER_SIZE).unwrap(),
             OnInvalidMessage::default(),
-            DEFAULT_YIELD_AFTER,
+            NonZeroUsize::new(DEFAULT_YIELD_AFTER).unwrap(),
         )
-        .unwrap()
     }
 }
 
@@ -1268,6 +1255,7 @@ impl Recognizer for DownlinkConfigRecognizer {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+/// Mode indicating whether or not the downlink propagates back-pressure.
 pub enum BackpressureMode {
     /// Propagate back-pressure through the downlink.
     Propagate,
@@ -1733,7 +1721,7 @@ impl<'a, Path: Addressable> DownlinksConfig for Box<dyn DownlinksConfig<PathType
 #[derive(Debug, Error)]
 #[error("Could not process client configuration: {0}")]
 pub enum ConfigError {
-    FileError(std::io::Error),
-    ParseError(ParseFailure),
-    RecognizerError(ReadError),
+    File(std::io::Error),
+    Parse(ParseFailure),
+    Recognizer(ReadError),
 }
