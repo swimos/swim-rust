@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::model::map::map_store::MapDataModel;
-use crate::agent::lane::model::map::MapLaneEvent;
-use crate::agent::lane::store::error::{LaneStoreErrorReport, StoreErrorHandler, StoreTaskError};
-use crate::agent::lane::store::StoreIo;
-use crate::agent::store::NodeStore;
+use crate::agent::lane::error::{LaneStoreErrorReport, StoreErrorHandler, StoreTaskError};
+use crate::agent::lane::model::map::{MapDataModel, MapStoreEvent};
+use crate::agent::lane::StoreIo;
+use crate::agent::NodeStore;
 use futures::future::BoxFuture;
 use futures::{Stream, StreamExt};
 use serde::de::DeserializeOwned;
@@ -54,7 +53,7 @@ impl<K, V, Events, Store> MapLaneStoreIo<K, V, Events, Store> {
 impl<Store, Events, K, V> StoreIo for MapLaneStoreIo<K, V, Events, Store>
 where
     Store: NodeStore,
-    Events: Stream<Item = MapLaneEvent<K, V>> + Unpin + Send + Sync + 'static,
+    Events: Stream<Item = MapStoreEvent<K, V>> + Unpin + Send + Sync + 'static,
     K: Form + Debug + Send + Sync + Serialize + DeserializeOwned + 'static,
     V: Debug + Send + Sync + Serialize + DeserializeOwned + 'static,
 {
@@ -67,12 +66,11 @@ where
 
             while let Some(event) = events.next().await {
                 match event {
-                    MapLaneEvent::Checkpoint(_) => {}
-                    MapLaneEvent::Clear => on_event(&mut error_handler, || model.clear())?,
-                    MapLaneEvent::Update(key, value) => {
+                    MapStoreEvent::Clear => on_event(&mut error_handler, || model.clear())?,
+                    MapStoreEvent::Update(key, value) => {
                         on_event(&mut error_handler, || model.put(&key, &value))?
                     }
-                    MapLaneEvent::Remove(key) => {
+                    MapStoreEvent::Remove(key) => {
                         on_event(&mut error_handler, || model.delete(&key))?
                     }
                 }

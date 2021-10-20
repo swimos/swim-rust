@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use server_store::plane::SwimPlaneStore;
+use server_store::NoStore;
 use std::fmt::Debug;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use swim_server::agent::command_lifecycle;
@@ -23,8 +25,6 @@ use swim_server::agent::value_lifecycle;
 use swim_server::agent::AgentContext;
 use swim_server::agent::SwimAgent;
 use swim_server::interface::{ServerHandle, SwimServer, SwimServerBuilder, SwimServerConfig};
-use swim_server::plane::store::SwimPlaneStore;
-use swim_server::store::NoStore;
 use swim_server::RoutePattern;
 
 pub async fn build_server() -> (SwimServer<SwimPlaneStore<NoStore>>, ServerHandle) {

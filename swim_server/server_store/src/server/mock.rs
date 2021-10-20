@@ -16,7 +16,7 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use crate::store::keystore::STEP;
+use crate::server::keystore::STEP;
 use swim_store::{deserialize, serialize, Keyspace, KeyspaceByteEngine, StoreError};
 
 pub struct MockStore {

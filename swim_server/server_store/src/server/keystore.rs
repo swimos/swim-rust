@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::store::KeyspaceName;
+use crate::server::KeyspaceName;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use swim_store::{deserialize, deserialize_key, serialize, KeyspaceByteEngine, StoreError};
@@ -91,18 +91,18 @@ pub fn format_key<I: ToString>(uri: I) -> String {
     format!("{}/{}", LANE_PREFIX, uri.to_string())
 }
 
-#[cfg(feature = "persistence")]
+#[cfg(feature = "rocks")]
 pub mod rocks {
-    use crate::store::keystore::INITIAL;
+    use crate::server::keystore::INITIAL;
     use rocksdb::MergeOperands;
     use swim_store::{deserialize_key, serialize};
 
-    #[cfg(feature = "persistence")]
+    #[cfg(feature = "rocks")]
     const DESERIALIZATION_FAILURE: &str = "Failed to deserialize key";
-    #[cfg(feature = "persistence")]
+    #[cfg(feature = "rocks")]
     const SERIALIZATION_FAILURE: &str = "Failed to serialize key";
 
-    #[cfg(feature = "persistence")]
+    #[cfg(feature = "rocks")]
     #[allow(clippy::unnecessary_wraps)]
     pub fn incrementing_merge_operator(
         _new_key: &[u8],
@@ -124,10 +124,11 @@ pub mod rocks {
 
 #[cfg(test)]
 mod tests {
-    use crate::store::keystore::{
-        format_key, KeyStore, KeyspaceName, COUNTER_BYTES, COUNTER_KEY, INCONSISTENT_KEYSPACE,
+    use crate::server::keystore::{
+        format_key, KeyStore, COUNTER_BYTES, COUNTER_KEY, INCONSISTENT_KEYSPACE,
     };
-    use crate::store::mock::MockStore;
+    use crate::server::mock::MockStore;
+    use crate::server::KeyspaceName;
     use std::sync::Arc;
     use swim_store::{deserialize, deserialize_key, Keyspace, KeyspaceByteEngine};
 

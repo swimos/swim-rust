@@ -1,6 +1,6 @@
-use crate::agent::lane::store::error::{LaneStoreErrorReport, StoreErrorHandler};
-use crate::agent::lane::store::StoreIo;
-use crate::agent::store::NodeStore;
+use crate::agent::lane::error::{LaneStoreErrorReport, StoreErrorHandler};
+use crate::agent::lane::StoreIo;
+use crate::agent::NodeStore;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use std::collections::HashMap;

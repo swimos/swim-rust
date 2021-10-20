@@ -19,16 +19,15 @@
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::plane::router::PlaneRouter;
 use crate::plane::spec::{PlaneBuilder, PlaneSpec};
-use crate::plane::store::PlaneStore;
 use crate::plane::{run_plane, EnvChannel};
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::net::dns::Resolver;
 use crate::routing::remote::net::plain::TokioPlainTextNetworking;
 use crate::routing::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
 use crate::routing::{TopLevelRouter, TopLevelRouterFactory};
-use crate::store::{ServerStore, SwimStore};
 use either::Either;
 use futures::{io, join};
+use server_store::plane::PlaneStore;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
@@ -36,7 +35,6 @@ use std::sync::Arc;
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
 use swim_runtime::task::TaskError;
 use swim_runtime::time::clock::RuntimeClock;
-use swim_store::{Keyspaces, NoStoreOpts, StoreError};
 use swim_utilities::future::open_ended::OpenEndedFutures;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
@@ -44,7 +42,10 @@ use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 
 #[cfg(feature = "persistence")]
-use crate::store::rocks;
+use server_store::rocks;
+use server_store::{ServerStore, SwimStore};
+use swim_store::nostore::NoStoreOpts;
+use swim_store::{Keyspaces, StoreError};
 
 /// Builder to create Swim server instance.
 ///

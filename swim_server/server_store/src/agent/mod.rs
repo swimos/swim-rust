@@ -12,16 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod lane;
+pub mod mock;
+
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
+use crate::plane::PlaneStore;
+use crate::server::{StoreEngine, StoreKey};
 use swim_common::model::text::Text;
 use swim_store::{EngineInfo, StoreError};
-
-use crate::plane::store::PlaneStore;
-use crate::store::{StoreEngine, StoreKey};
-
-pub mod mock;
 
 /// A trait for defining store engines which open stores for nodes.
 ///

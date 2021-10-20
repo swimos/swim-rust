@@ -12,20 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::store::NodeStore;
-use crate::store::StoreKey;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::marker::PhantomData;
+use std::sync::Arc;
 
 #[cfg(test)]
 mod tests;
 
 mod io;
+use crate::agent::NodeStore;
+use crate::server::StoreKey;
 pub use io::MapLaneStoreIo;
 use swim_store::{deserialize, serialize, serialize_then, StoreError};
 
 const INCONSISTENT_DB: &str = "Missing key or value in store";
+
+/// A single event that occurred during a transaction.
+#[derive(Debug, PartialEq, Eq)]
+pub enum MapStoreEvent<K, V> {
+    /// The map as cleared.
+    Clear,
+    /// An entry was updated.
+    Update(K, Arc<V>),
+    /// An entry was removed.
+    Remove(K),
+}
 
 pub struct MapDataModel<D, K, V> {
     delegate: D,

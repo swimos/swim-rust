@@ -21,9 +21,9 @@ use std::sync::Arc;
 use swim_common::model::text::Text;
 use swim_store::{serialize, EngineInfo, Store, StoreError};
 
-use crate::agent::store::{NodeStore, SwimNodeStore};
-use crate::store::keystore::KeyStore;
-use crate::store::{KeyspaceName, StoreEngine, StoreKey};
+use crate::agent::{NodeStore, SwimNodeStore};
+use crate::server::keystore::KeyStore;
+use crate::server::{KeyspaceName, StoreEngine, StoreKey};
 use swim_store::{Keyspaces, StoreBuilder};
 
 pub mod mock;
@@ -211,7 +211,7 @@ impl<D> SwimPlaneStore<D>
 where
     D: Store,
 {
-    pub(crate) fn new<I: Into<Text>>(
+    pub fn new<I: Into<Text>>(
         plane_name: I,
         delegate: Arc<D>,
         keystore: KeyStore<D>,

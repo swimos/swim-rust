@@ -12,18 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::store::error::{LaneStoreErrorReport, StoreErrorHandler};
-use futures::future::{ready, BoxFuture};
+#[cfg(test)]
+pub use tests::store_err_partial_eq;
 
 #[cfg(test)]
 mod tests;
 
-use futures::FutureExt;
-#[cfg(test)]
-pub use tests::store_err_partial_eq;
-
 pub mod error;
+mod model;
 pub mod task;
+
+use crate::agent::lane::error::{LaneStoreErrorReport, StoreErrorHandler};
+use futures::future::{ready, BoxFuture};
+use futures::FutureExt;
+
+pub use model::*;
 
 /// Deferred lane store IO attachment task.
 pub trait StoreIo: Send + 'static {

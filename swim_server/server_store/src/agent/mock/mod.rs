@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::store::{NodeStore, SwimNodeStore};
-use crate::plane::store::mock::MockPlaneStore;
-use crate::store::{StoreEngine, StoreKey};
+use crate::agent::{NodeStore, SwimNodeStore};
+use crate::plane::mock::MockPlaneStore;
+use crate::server::{StoreEngine, StoreKey};
 use swim_store::{EngineInfo, StoreError};
 
 #[derive(Clone, Debug)]

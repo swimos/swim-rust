@@ -16,17 +16,17 @@ pub mod keystore;
 #[cfg(test)]
 pub mod mock;
 
-#[cfg(feature = "persistence")]
+#[cfg(feature = "rocks")]
 pub mod rocks;
 
-use crate::plane::store::{open_plane, PlaneStore, SwimPlaneStore};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Formatter};
 use std::io;
 use std::path::PathBuf;
 use swim_store::{Keyspace, Keyspaces, StoreBuilder, StoreError};
 
-pub use swim_store::NoStore;
+use crate::plane::{open_plane, PlaneStore, SwimPlaneStore};
+pub use swim_store::nostore::NoStore;
 use swim_utilities::io::fs::Dir;
 
 /// Unique lane identifier keyspace. The name is `default` as either the Rust RocksDB crate or
@@ -137,7 +137,7 @@ where
     }
 }
 
-#[cfg(feature = "persistence")]
+#[cfg(feature = "rocks")]
 impl ServerStore<rocks::RocksOpts> {
     pub fn transient_default(prefix: &str) -> io::Result<ServerStore<rocks::RocksOpts>> {
         let db_opts = rocks::default_db_opts();

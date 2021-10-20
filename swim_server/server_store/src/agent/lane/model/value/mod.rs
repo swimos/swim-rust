@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::store::NodeStore;
-use crate::store::StoreKey;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::marker::PhantomData;
@@ -23,6 +21,8 @@ use swim_store::{deserialize, serialize_then, StoreError};
 mod tests;
 
 mod io;
+use crate::agent::NodeStore;
+use crate::server::StoreKey;
 pub use io::ValueLaneStoreIo;
 
 pub struct ValueDataModel<D, V> {

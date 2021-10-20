@@ -25,13 +25,13 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
-use crate::agent::store::NodeStore;
 use crate::agent::tests::reporting_macro_agent::ReportingAgentEvent;
 use crate::agent::{
     AgentContext, DynamicAgentIo, DynamicLaneTasks, LaneConfig, LaneParts, LaneTasks, SwimAgent,
 };
 use futures::future::{ready, BoxFuture, Ready};
 use futures::FutureExt;
+use server_store::agent::NodeStore;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;

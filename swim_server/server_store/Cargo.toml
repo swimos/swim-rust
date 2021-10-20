@@ -3,7 +3,19 @@ name = "server_store"
 version = "0.1.0"
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = []
+rocks = ["rocksdb"]
 
 [dependencies]
-rocksdb = "0.16.0"
+swim_store = { path = "../../swim_store" }
+swim_common = { path = "../../swim_common" }
+rocksdb = { version = "0.16.0", optional = true }
+serde = { version = "1.0.124", features = ["derive"] }
+swim_utilities = { path = "../../swim_utilities", features = ["io", "trigger"] }
+tokio = { version = "1.1.1", features = ["sync"] }
+futures = "0.3.4"
+futures-util = "0.3.4"
+
+[dev-dependencies]
+tokio = { version = "1.1.1", features = ["rt-multi-thread", "macros", "test-util"] }

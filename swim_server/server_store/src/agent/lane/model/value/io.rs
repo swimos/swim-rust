@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::store::error::{LaneStoreErrorReport, StoreErrorHandler, StoreTaskError};
-use crate::agent::lane::store::StoreIo;
-use crate::agent::model::value::value_store::ValueDataModel;
-use crate::agent::store::NodeStore;
+use crate::agent::lane::error::{LaneStoreErrorReport, StoreErrorHandler, StoreTaskError};
+use crate::agent::lane::model::value::ValueDataModel;
+use crate::agent::lane::StoreIo;
+use crate::agent::NodeStore;
 use futures::future::BoxFuture;
 use futures::{Stream, StreamExt};
 use serde::de::DeserializeOwned;

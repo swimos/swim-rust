@@ -18,7 +18,6 @@ pub mod lifecycle;
 pub(crate) mod provider;
 pub(crate) mod router;
 pub mod spec;
-pub mod store;
 #[cfg(test)]
 mod tests;
 
@@ -29,7 +28,6 @@ use crate::plane::context::PlaneContext;
 use crate::plane::error::NoAgentAtRoute;
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::spec::{PlaneSpec, RouteSpec};
-use crate::plane::store::PlaneStore;
 use crate::routing::error::{RouterError, Unresolvable};
 use crate::routing::remote::RawRoute;
 use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
@@ -38,6 +36,7 @@ use futures::future::{join, BoxFuture};
 use futures::{select_biased, FutureExt, StreamExt};
 use futures_util::stream::TakeUntil;
 use pin_utils::pin_mut;
+use server_store::plane::PlaneStore;
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;

@@ -1,6 +1,7 @@
-mod nostore;
-pub use nostore::*;
+pub mod nostore;
 pub use store_common::*;
 
 #[cfg(feature = "rocks")]
-pub use rocks_store::*;
+pub mod rocks {
+    pub use rocks_store::*;
+}
