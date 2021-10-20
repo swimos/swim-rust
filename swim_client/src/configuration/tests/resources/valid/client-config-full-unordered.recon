@@ -12,7 +12,7 @@
                 nanos: 6666666
             },
             buffer_size: 10,
-            on_invalid: ignore,
+            on_invalid: @ignore,
             yield_after: 512
         },
         host: {
@@ -23,7 +23,7 @@
                     nanos: 0
                 },
                 buffer_size: 15,
-                on_invalid: ignore,
+                on_invalid: @ignore,
                 yield_after: 200
             },
             "ws://127.0.0.2/": @downlink_config {
@@ -33,7 +33,7 @@
                     nanos: 0
                 },
                 buffer_size: 25,
-                on_invalid: terminate,
+                on_invalid: @terminate
                 yield_after: 300
             }
         },
@@ -54,7 +54,7 @@
                     nanos: 0
                 },
                 buffer_size: 50,
-                on_invalid: terminate,
+                on_invalid: @terminate
                 yield_after: 600
             },
             @path {
@@ -68,7 +68,7 @@
                     nanos: 0
                 },
                 buffer_size: 40,
-                on_invalid: ignore,
+                on_invalid: @ignore,
                 yield_after: 100
             }
         }

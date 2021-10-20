@@ -12,11 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::borrow::Borrow;
+use std::num::NonZeroUsize;
+use std::time::Duration;
+
+use swim_utilities::future::retryable::RetryStrategy;
+
 use crate::form::structural::read::error::ExpectedEvent;
 use crate::form::structural::read::event::ReadEvent;
+use crate::form::structural::read::recognizer::config::{
+    DurationRecognizer, RetryStrategyRecognizer,
+};
 use crate::form::structural::read::recognizer::{
-    DurationRecognizer, Recognizer, RecognizerReadable, RetryStrategyRecognizer, SimpleAttrBody,
-    SimpleRecBody,
+    Recognizer, RecognizerReadable, SimpleAttrBody, SimpleRecBody,
 };
 use crate::form::structural::read::ReadError;
 use crate::form::structural::write::{
@@ -24,10 +32,6 @@ use crate::form::structural::write::{
 };
 use crate::model::text::Text;
 use crate::model::ValueKind;
-use std::borrow::Borrow;
-use std::num::NonZeroUsize;
-use std::time::Duration;
-use swim_utilities::future::retryable::RetryStrategy;
 
 mod swim_common {
     pub use crate::*;

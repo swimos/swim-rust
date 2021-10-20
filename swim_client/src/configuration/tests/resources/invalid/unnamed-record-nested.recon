@@ -12,10 +12,10 @@
         }
     },
     {
-        back_pressure: @propagate()
+        back_pressure: @propagate
         idle_timeout: 60000
         buffer_size: 5
-        on_invalid: "terminate"
+        on_invalid: @terminate
         yield_after: 256
     }
 }

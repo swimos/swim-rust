@@ -12,10 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod interpreters;
-#[cfg(test)]
-mod tests;
-
 use crate::form::structural::write::interpreters::value::ValueInterpreter;
 use crate::model::blob::Blob;
 use crate::model::text::Text;
@@ -32,11 +28,14 @@ use std::num::NonZeroUsize;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_utilities::future::retryable::strategy::{Quantity, RetryStrategy};
+use swim_utilities::future::retryable::strategy::Quantity;
 use swim_utilities::routing::uri::RelativeUri;
-use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
-use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use url::Url;
+
+pub mod config;
+pub mod interpreters;
+#[cfg(test)]
+mod tests;
 
 /// Trait for types that can describe their structure using a [`StructuralWriter`].
 /// Each writer is an interpreter which could, for example, realize the structure
@@ -885,84 +884,6 @@ where
     }
 }
 
-impl StructuralWritable for RetryStrategy {
-    fn num_attributes(&self) -> usize {
-        1
-    }
-
-    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
-        match self {
-            RetryStrategy::Immediate(strat) => {
-                let header_writer = writer.record(1)?;
-                let mut body_writer = header_writer
-                    .write_extant_attr("immediate")?
-                    .complete_header(RecordBodyKind::MapLike, 1)?;
-                body_writer = body_writer.write_slot(&"retries", &strat.retry)?;
-                body_writer.done()
-            }
-            RetryStrategy::Interval(strat) => {
-                let header_writer = writer.record(1)?;
-                let mut body_writer = header_writer
-                    .write_extant_attr("interval")?
-                    .complete_header(RecordBodyKind::MapLike, 2)?;
-                body_writer = body_writer.write_slot(&"delay", &strat.delay)?;
-                body_writer = body_writer.write_slot(&"retries", &strat.retry)?;
-                body_writer.done()
-            }
-            RetryStrategy::Exponential(strat) => {
-                let header_writer = writer.record(1)?;
-                let mut body_writer = header_writer
-                    .write_extant_attr("exponential")?
-                    .complete_header(RecordBodyKind::MapLike, 2)?;
-                body_writer = body_writer.write_slot(&"max_interval", &strat.max_interval)?;
-                body_writer = body_writer.write_slot(&"max_backoff", &strat.max_backoff)?;
-                body_writer.done()
-            }
-            RetryStrategy::None(_) => writer
-                .record(1)?
-                .write_extant_attr("none")?
-                .complete_header(RecordBodyKind::Mixed, 0)?
-                .done(),
-        }
-    }
-
-    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
-        match self {
-            RetryStrategy::Immediate(strat) => {
-                let header_writer = writer.record(1)?;
-                let mut body_writer = header_writer
-                    .write_extant_attr("immediate")?
-                    .complete_header(RecordBodyKind::MapLike, 1)?;
-                body_writer = body_writer.write_slot_into("retries", strat.retry)?;
-                body_writer.done()
-            }
-            RetryStrategy::Interval(strat) => {
-                let header_writer = writer.record(1)?;
-                let mut body_writer = header_writer
-                    .write_extant_attr("interval")?
-                    .complete_header(RecordBodyKind::MapLike, 2)?;
-                body_writer = body_writer.write_slot_into("delay", strat.delay)?;
-                body_writer = body_writer.write_slot_into("retries", strat.retry)?;
-                body_writer.done()
-            }
-            RetryStrategy::Exponential(strat) => {
-                let header_writer = writer.record(1)?;
-                let mut body_writer = header_writer
-                    .write_extant_attr("exponential")?
-                    .complete_header(RecordBodyKind::MapLike, 2)?;
-                body_writer = body_writer.write_slot_into("max_interval", strat.max_interval)?;
-                body_writer = body_writer.write_slot_into("max_backoff", strat.max_backoff)?;
-                body_writer.done()
-            }
-            RetryStrategy::None(_) => writer
-                .record(1)?
-                .write_extant_attr("none")?
-                .complete_header(RecordBodyKind::Mixed, 0)?
-                .done(),
-        }
-    }
-}
-
 impl<T: StructuralWritable> StructuralWritable for Quantity<T> {
     fn num_attributes(&self) -> usize {
         0
@@ -1008,160 +929,6 @@ impl StructuralWritable for Duration {
         body_writer = body_writer.write_u32_slot("nanos", self.subsec_nanos())?;
 
         body_writer.done()
-    }
-}
-
-impl StructuralWritable for WebSocketConfig {
-    fn num_attributes(&self) -> usize {
-        1
-    }
-
-    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
-        let header_writer = writer.record(1)?;
-
-        let mut num_items = 2;
-
-        if self.max_send_queue.is_some() {
-            num_items += 1
-        }
-
-        if self.max_message_size.is_some() {
-            num_items += 1
-        }
-
-        if self.max_frame_size.is_some() {
-            num_items += 1
-        }
-
-        let mut body_writer = header_writer
-            .write_extant_attr("websocket_connections")?
-            .complete_header(RecordBodyKind::MapLike, num_items)?;
-
-        if let Some(val) = &self.max_send_queue {
-            body_writer = body_writer.write_slot(&"max_send_queue", val)?
-        }
-        if let Some(val) = &self.max_message_size {
-            body_writer = body_writer.write_slot(&"max_message_size", val)?
-        }
-        if let Some(val) = &self.max_frame_size {
-            body_writer = body_writer.write_slot(&"max_frame_size", val)?
-        }
-        body_writer =
-            body_writer.write_slot(&"accept_unmasked_frames", &self.accept_unmasked_frames)?;
-
-        body_writer = body_writer.write_slot(&"compression", &self.compression)?;
-
-        body_writer.done()
-    }
-
-    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
-        let header_writer = writer.record(1)?;
-
-        let mut num_items = 2;
-
-        if self.max_send_queue.is_some() {
-            num_items += 1
-        }
-
-        if self.max_message_size.is_some() {
-            num_items += 1
-        }
-
-        if self.max_frame_size.is_some() {
-            num_items += 1
-        }
-
-        let mut body_writer = header_writer
-            .write_extant_attr("websocket_connections")?
-            .complete_header(RecordBodyKind::MapLike, num_items)?;
-
-        if let Some(val) = self.max_send_queue {
-            body_writer = body_writer.write_slot_into("max_send_queue", val)?
-        }
-        if let Some(val) = self.max_message_size {
-            body_writer = body_writer.write_slot_into("max_message_size", val)?
-        }
-        if let Some(val) = self.max_frame_size {
-            body_writer = body_writer.write_slot_into("max_frame_size", val)?
-        }
-        body_writer =
-            body_writer.write_slot_into("accept_unmasked_frames", self.accept_unmasked_frames)?;
-
-        body_writer = body_writer.write_slot_into("compression", self.compression)?;
-
-        body_writer.done()
-    }
-}
-
-impl StructuralWritable for WsCompression {
-    fn num_attributes(&self) -> usize {
-        1
-    }
-
-    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
-        match self {
-            WsCompression::None(Some(val)) => {
-                let header_writer = writer.record(1)?;
-
-                let mut body_writer = header_writer
-                    .write_extant_attr("none")?
-                    .complete_header(RecordBodyKind::ArrayLike, 1)?;
-
-                body_writer = body_writer.write_value(val)?;
-                body_writer.done()
-            }
-            WsCompression::None(None) => {
-                let header_writer = writer.record(1)?;
-
-                header_writer
-                    .write_extant_attr("none")?
-                    .complete_header(RecordBodyKind::Mixed, 0)?
-                    .done()
-            }
-            WsCompression::Deflate(deflate) => {
-                let header_writer = writer.record(1)?;
-
-                let mut body_writer = header_writer
-                    .write_extant_attr("deflate")?
-                    .complete_header(RecordBodyKind::ArrayLike, 1)?;
-
-                body_writer = body_writer.write_value(&deflate.compression_level().level())?;
-                body_writer.done()
-            }
-        }
-    }
-
-    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
-        match self {
-            WsCompression::None(Some(val)) => {
-                let header_writer = writer.record(1)?;
-
-                let mut body_writer = header_writer
-                    .write_extant_attr("none")?
-                    .complete_header(RecordBodyKind::ArrayLike, 1)?;
-
-                body_writer = body_writer.write_value_into(val)?;
-                body_writer.done()
-            }
-            WsCompression::None(None) => {
-                let header_writer = writer.record(1)?;
-
-                header_writer
-                    .write_extant_attr("none")?
-                    .complete_header(RecordBodyKind::Mixed, 0)?
-                    .done()
-            }
-            WsCompression::Deflate(deflate) => {
-                let header_writer = writer.record(1)?;
-
-                let mut body_writer = header_writer
-                    .write_extant_attr("deflate")?
-                    .complete_header(RecordBodyKind::ArrayLike, 1)?;
-
-                body_writer = body_writer.write_value_into(deflate.compression_level().level())?;
-                body_writer.done()
-            }
-        }
     }
 }
 

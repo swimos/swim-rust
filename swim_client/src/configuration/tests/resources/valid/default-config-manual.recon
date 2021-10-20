@@ -53,7 +53,7 @@
                 nanos: 0
             },
             buffer_size: 32,
-            on_invalid: "terminate",
+            on_invalid: @terminate,
             yield_after: 256
         }
     }

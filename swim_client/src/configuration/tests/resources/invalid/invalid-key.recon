@@ -8,7 +8,7 @@
                     nanos: 0
                 },
                 buffer_size: 15,
-                on_invalid: ignore,
+                on_invalid: @ignore,
                 yield_after: 200
             }
         }
