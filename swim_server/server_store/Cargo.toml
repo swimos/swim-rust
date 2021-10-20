@@ -5,7 +5,7 @@ edition = "2018"
 
 [features]
 default = []
-rocks = ["rocksdb"]
+rocks = ["rocksdb", "swim_store/rocks"]
 
 [dependencies]
 swim_store = { path = "../../swim_store" }
