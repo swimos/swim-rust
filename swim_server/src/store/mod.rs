@@ -15,7 +15,6 @@
 #[cfg(test)]
 pub mod mock;
 
-pub(crate) mod fs;
 pub mod keystore;
 mod nostore;
 
@@ -23,7 +22,6 @@ mod nostore;
 pub mod rocks;
 
 use crate::plane::store::{open_plane, PlaneStore, SwimPlaneStore};
-use crate::store::fs::Dir;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Formatter};
 use std::io;
@@ -33,6 +31,7 @@ use store::keyspaces::{Keyspace, Keyspaces};
 use store::StoreError;
 
 pub use store::engines::NoStore;
+use swim_utilities::io::fs::Dir;
 
 /// Unique lane identifier keyspace. The name is `default` as either the Rust RocksDB crate or
 /// Rocks DB itself has an issue in using merge operators under a non-default column family.

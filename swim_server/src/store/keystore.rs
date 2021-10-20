@@ -16,7 +16,7 @@ use crate::store::KeyspaceName;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use store::keyspaces::KeyspaceByteEngine;
-use store::{deserialize, serialize, StoreError};
+use store::{deserialize, deserialize_key, serialize, StoreError};
 use tokio::sync::oneshot;
 
 pub type KeyRequest = (String, oneshot::Sender<u64>);
@@ -88,10 +88,6 @@ impl<D: KeyspaceByteEngine> KeyStore<D> {
     }
 }
 
-fn deserialize_key<B: AsRef<[u8]>>(bytes: B) -> Result<u64, StoreError> {
-    bincode::deserialize::<u64>(bytes.as_ref()).map_err(|e| StoreError::Decoding(e.to_string()))
-}
-
 pub fn format_key<I: ToString>(uri: I) -> String {
     format!("{}/{}", LANE_PREFIX, uri.to_string())
 }
@@ -130,13 +126,12 @@ pub mod rocks {
 #[cfg(test)]
 mod tests {
     use crate::store::keystore::{
-        deserialize_key, format_key, KeyStore, KeyspaceName, COUNTER_BYTES, COUNTER_KEY,
-        INCONSISTENT_KEYSPACE,
+        format_key, KeyStore, KeyspaceName, COUNTER_BYTES, COUNTER_KEY, INCONSISTENT_KEYSPACE,
     };
     use crate::store::mock::MockStore;
     use std::sync::Arc;
-    use store::deserialize;
     use store::keyspaces::{Keyspace, KeyspaceByteEngine};
+    use store::{deserialize, deserialize_key};
 
     fn keyspaces() -> Vec<String> {
         vec![
