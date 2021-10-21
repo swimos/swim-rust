@@ -39,7 +39,7 @@ agent_derive = { path = "agent_derive" }
 trybuild = "1.0.48"
 tokio-tungstenite = { version = "0.13.0", git = "https://github.com/swimos/tokio-tungstenite/", branch = "deflate-v13", features = ["tls", "deflate"] }
 tokio-native-tls = "0.3"
-auth = { path = "auth" }
+trust-dns-resolver = { version = "0.20", optional = true, features = ["tokio-runtime"] }
 regex = "1"
 lazy_static = "1.4.0"
 percent-encoding = "2.1.0"
