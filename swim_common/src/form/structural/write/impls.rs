@@ -12,6 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::form::structural::tags::{
+    ACCEPT_UNMASKED_FRAMES_TAG, COMPRESSION_TAG, DEFLATE_TAG, DELAY_TAG, EXPONENTIAL_TAG,
+    IMMEDIATE_TAG, INTERVAL_TAG, MAX_BACKOFF_TAG, MAX_FRAME_SIZE_TAG, MAX_INTERVAL_TAG,
+    MAX_MESSAGE_SIZE_TAG, MAX_SEND_QUEUE_TAG, NOTE_TAG, RETRIES_TAG, WEBSOCKET_CONNECTIONS_TAG,
+};
 use crate::form::structural::write::{
     BodyWriter, HeaderWriter, RecordBodyKind, StructuralWritable, StructuralWriter,
 };
@@ -29,32 +34,32 @@ impl StructuralWritable for RetryStrategy {
             RetryStrategy::Immediate(strat) => {
                 let header_writer = writer.record(1)?;
                 let mut body_writer = header_writer
-                    .write_extant_attr("immediate")?
+                    .write_extant_attr(IMMEDIATE_TAG)?
                     .complete_header(RecordBodyKind::MapLike, 1)?;
-                body_writer = body_writer.write_slot(&"retries", &strat.retry)?;
+                body_writer = body_writer.write_slot(&RETRIES_TAG, &strat.retry)?;
                 body_writer.done()
             }
             RetryStrategy::Interval(strat) => {
                 let header_writer = writer.record(1)?;
                 let mut body_writer = header_writer
-                    .write_extant_attr("interval")?
+                    .write_extant_attr(INTERVAL_TAG)?
                     .complete_header(RecordBodyKind::MapLike, 2)?;
-                body_writer = body_writer.write_slot(&"delay", &strat.delay)?;
-                body_writer = body_writer.write_slot(&"retries", &strat.retry)?;
+                body_writer = body_writer.write_slot(&DELAY_TAG, &strat.delay)?;
+                body_writer = body_writer.write_slot(&RETRIES_TAG, &strat.retry)?;
                 body_writer.done()
             }
             RetryStrategy::Exponential(strat) => {
                 let header_writer = writer.record(1)?;
                 let mut body_writer = header_writer
-                    .write_extant_attr("exponential")?
+                    .write_extant_attr(EXPONENTIAL_TAG)?
                     .complete_header(RecordBodyKind::MapLike, 2)?;
-                body_writer = body_writer.write_slot(&"max_interval", &strat.max_interval)?;
-                body_writer = body_writer.write_slot(&"max_backoff", &strat.max_backoff)?;
+                body_writer = body_writer.write_slot(&MAX_INTERVAL_TAG, &strat.max_interval)?;
+                body_writer = body_writer.write_slot(&MAX_BACKOFF_TAG, &strat.max_backoff)?;
                 body_writer.done()
             }
             RetryStrategy::None(_) => writer
                 .record(1)?
-                .write_extant_attr("none")?
+                .write_extant_attr(NOTE_TAG)?
                 .complete_header(RecordBodyKind::Mixed, 0)?
                 .done(),
         }
@@ -65,32 +70,32 @@ impl StructuralWritable for RetryStrategy {
             RetryStrategy::Immediate(strat) => {
                 let header_writer = writer.record(1)?;
                 let mut body_writer = header_writer
-                    .write_extant_attr("immediate")?
+                    .write_extant_attr(IMMEDIATE_TAG)?
                     .complete_header(RecordBodyKind::MapLike, 1)?;
-                body_writer = body_writer.write_slot_into("retries", strat.retry)?;
+                body_writer = body_writer.write_slot_into(RETRIES_TAG, strat.retry)?;
                 body_writer.done()
             }
             RetryStrategy::Interval(strat) => {
                 let header_writer = writer.record(1)?;
                 let mut body_writer = header_writer
-                    .write_extant_attr("interval")?
+                    .write_extant_attr(INTERVAL_TAG)?
                     .complete_header(RecordBodyKind::MapLike, 2)?;
-                body_writer = body_writer.write_slot_into("delay", strat.delay)?;
-                body_writer = body_writer.write_slot_into("retries", strat.retry)?;
+                body_writer = body_writer.write_slot_into(DELAY_TAG, strat.delay)?;
+                body_writer = body_writer.write_slot_into(RETRIES_TAG, strat.retry)?;
                 body_writer.done()
             }
             RetryStrategy::Exponential(strat) => {
                 let header_writer = writer.record(1)?;
                 let mut body_writer = header_writer
-                    .write_extant_attr("exponential")?
+                    .write_extant_attr(EXPONENTIAL_TAG)?
                     .complete_header(RecordBodyKind::MapLike, 2)?;
-                body_writer = body_writer.write_slot_into("max_interval", strat.max_interval)?;
-                body_writer = body_writer.write_slot_into("max_backoff", strat.max_backoff)?;
+                body_writer = body_writer.write_slot_into(MAX_INTERVAL_TAG, strat.max_interval)?;
+                body_writer = body_writer.write_slot_into(MAX_BACKOFF_TAG, strat.max_backoff)?;
                 body_writer.done()
             }
             RetryStrategy::None(_) => writer
                 .record(1)?
-                .write_extant_attr("none")?
+                .write_extant_attr(NOTE_TAG)?
                 .complete_header(RecordBodyKind::Mixed, 0)?
                 .done(),
         }
@@ -120,22 +125,22 @@ impl StructuralWritable for WebSocketConfig {
         }
 
         let mut body_writer = header_writer
-            .write_extant_attr("websocket_connections")?
+            .write_extant_attr(WEBSOCKET_CONNECTIONS_TAG)?
             .complete_header(RecordBodyKind::MapLike, num_items)?;
 
         if let Some(val) = &self.max_send_queue {
-            body_writer = body_writer.write_slot(&"max_send_queue", val)?
+            body_writer = body_writer.write_slot(&MAX_SEND_QUEUE_TAG, val)?
         }
         if let Some(val) = &self.max_message_size {
-            body_writer = body_writer.write_slot(&"max_message_size", val)?
+            body_writer = body_writer.write_slot(&MAX_MESSAGE_SIZE_TAG, val)?
         }
         if let Some(val) = &self.max_frame_size {
-            body_writer = body_writer.write_slot(&"max_frame_size", val)?
+            body_writer = body_writer.write_slot(&MAX_FRAME_SIZE_TAG, val)?
         }
         body_writer =
-            body_writer.write_slot(&"accept_unmasked_frames", &self.accept_unmasked_frames)?;
+            body_writer.write_slot(&ACCEPT_UNMASKED_FRAMES_TAG, &self.accept_unmasked_frames)?;
 
-        body_writer = body_writer.write_slot(&"compression", &self.compression)?;
+        body_writer = body_writer.write_slot(&COMPRESSION_TAG, &self.compression)?;
 
         body_writer.done()
     }
@@ -158,22 +163,22 @@ impl StructuralWritable for WebSocketConfig {
         }
 
         let mut body_writer = header_writer
-            .write_extant_attr("websocket_connections")?
+            .write_extant_attr(WEBSOCKET_CONNECTIONS_TAG)?
             .complete_header(RecordBodyKind::MapLike, num_items)?;
 
         if let Some(val) = self.max_send_queue {
-            body_writer = body_writer.write_slot_into("max_send_queue", val)?
+            body_writer = body_writer.write_slot_into(MAX_SEND_QUEUE_TAG, val)?
         }
         if let Some(val) = self.max_message_size {
-            body_writer = body_writer.write_slot_into("max_message_size", val)?
+            body_writer = body_writer.write_slot_into(MAX_MESSAGE_SIZE_TAG, val)?
         }
         if let Some(val) = self.max_frame_size {
-            body_writer = body_writer.write_slot_into("max_frame_size", val)?
+            body_writer = body_writer.write_slot_into(MAX_FRAME_SIZE_TAG, val)?
         }
         body_writer =
-            body_writer.write_slot_into("accept_unmasked_frames", self.accept_unmasked_frames)?;
+            body_writer.write_slot_into(ACCEPT_UNMASKED_FRAMES_TAG, self.accept_unmasked_frames)?;
 
-        body_writer = body_writer.write_slot_into("compression", self.compression)?;
+        body_writer = body_writer.write_slot_into(COMPRESSION_TAG, self.compression)?;
 
         body_writer.done()
     }
@@ -190,7 +195,7 @@ impl StructuralWritable for WsCompression {
                 let header_writer = writer.record(1)?;
 
                 let mut body_writer = header_writer
-                    .write_extant_attr("none")?
+                    .write_extant_attr(NOTE_TAG)?
                     .complete_header(RecordBodyKind::ArrayLike, 1)?;
 
                 body_writer = body_writer.write_value(val)?;
@@ -200,7 +205,7 @@ impl StructuralWritable for WsCompression {
                 let header_writer = writer.record(1)?;
 
                 header_writer
-                    .write_extant_attr("none")?
+                    .write_extant_attr(NOTE_TAG)?
                     .complete_header(RecordBodyKind::Mixed, 0)?
                     .done()
             }
@@ -208,7 +213,7 @@ impl StructuralWritable for WsCompression {
                 let header_writer = writer.record(1)?;
 
                 let mut body_writer = header_writer
-                    .write_extant_attr("deflate")?
+                    .write_extant_attr(DEFLATE_TAG)?
                     .complete_header(RecordBodyKind::ArrayLike, 1)?;
 
                 body_writer = body_writer.write_value(&deflate.compression_level().level())?;
@@ -223,7 +228,7 @@ impl StructuralWritable for WsCompression {
                 let header_writer = writer.record(1)?;
 
                 let mut body_writer = header_writer
-                    .write_extant_attr("none")?
+                    .write_extant_attr(NOTE_TAG)?
                     .complete_header(RecordBodyKind::ArrayLike, 1)?;
 
                 body_writer = body_writer.write_value_into(val)?;
@@ -233,7 +238,7 @@ impl StructuralWritable for WsCompression {
                 let header_writer = writer.record(1)?;
 
                 header_writer
-                    .write_extant_attr("none")?
+                    .write_extant_attr(NOTE_TAG)?
                     .complete_header(RecordBodyKind::Mixed, 0)?
                     .done()
             }
@@ -241,7 +246,7 @@ impl StructuralWritable for WsCompression {
                 let header_writer = writer.record(1)?;
 
                 let mut body_writer = header_writer
-                    .write_extant_attr("deflate")?
+                    .write_extant_attr(DEFLATE_TAG)?
                     .complete_header(RecordBodyKind::ArrayLike, 1)?;
 
                 body_writer = body_writer.write_value_into(deflate.compression_level().level())?;

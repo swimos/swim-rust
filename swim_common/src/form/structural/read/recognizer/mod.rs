@@ -38,7 +38,7 @@ use swim_utilities::routing::uri::RelativeUri;
 use url::Url;
 
 /// [`Recognizer`] implementations for config types.
-pub mod config;
+pub mod impls;
 /// [`Recognizer`] implementations for basic types.
 pub mod primitive;
 #[cfg(test)]

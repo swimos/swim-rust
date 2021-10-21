@@ -16,9 +16,13 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::time::Duration;
+
+use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
+use url::Url;
+
 use swim_common::form::structural::read::error::ExpectedEvent;
 use swim_common::form::structural::read::event::ReadEvent;
-use swim_common::form::structural::read::recognizer::config::{
+use swim_common::form::structural::read::recognizer::impls::{
     AbsolutePathRecognizer, DurationRecognizer, RetryStrategyRecognizer, WebSocketConfigRecognizer,
 };
 use swim_common::form::structural::read::recognizer::{
@@ -32,9 +36,14 @@ use swim_common::routing::remote::config::{
 };
 use swim_common::warp::path::AbsolutePath;
 use swim_utilities::future::retryable::RetryStrategy;
-use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
-use url::Url;
 
+use crate::configuration::tags::{
+    BACK_PRESSURE_TAG, BRIDGE_BUFFER_SIZE_TAG, BUFFER_SIZE_TAG, CONFIG_TAG, DEFAULT_TAG,
+    DL_REQ_BUFFER_SIZE_TAG, DOWNLINKS_TAG, DOWNLINK_CONFIG_TAG, DOWNLINK_CONNECTIONS_TAG, HOST_TAG,
+    IDLE_TIMEOUT_TAG, IGNORE_TAG, INPUT_BUFFER_SIZE_TAG, LANE_TAG, MAX_ACTIVE_KEYS_TAG,
+    ON_INVALID_TAG, PROPAGATE_TAG, RELEASE_TAG, REMOTE_CONNECTIONS_TAG, RETRY_STRATEGY_TAG,
+    TERMINATE_TAG, WEBSOCKET_CONNECTIONS_TAG, YIELD_AFTER_TAG,
+};
 use crate::configuration::{
     BackpressureMode, ClientDownlinksConfig, DownlinkConfig, DownlinkConnectionsConfig,
     OnInvalidMessage, SwimClientConfig, DEFAULT_BACK_PRESSURE_BRIDGE_BUFFER_SIZE,
@@ -42,15 +51,6 @@ use crate::configuration::{
     DEFAULT_BACK_PRESSURE_YIELD_AFTER, DEFAULT_BUFFER_SIZE, DEFAULT_DL_REQUEST_BUFFER_SIZE,
     DEFAULT_DOWNLINK_BUFFER_SIZE, DEFAULT_IDLE_TIMEOUT, DEFAULT_YIELD_AFTER,
 };
-
-const SWIM_CLIENT_CONFIG_TAG: &str = "config";
-const DOWNLINK_CONNECTIONS_TAG: &str = "downlink_connections";
-const CLIENT_DOWNLINKS_CONFIG_TAG: &str = "downlinks";
-const DOWNLINK_CONFIG_TAG: &str = "downlink_config";
-const PROPAGATE_TAG: &str = "propagate";
-const RELEASE_TAG: &str = "release";
-const ON_INVALID_IGNORE_TAG: &str = "ignore";
-const ON_INVALID_TERMINATE_TAG: &str = "terminate";
 
 impl RecognizerReadable for SwimClientConfig {
     type Rec = SwimClientConfigRecognizer;
@@ -115,7 +115,7 @@ impl Recognizer for SwimClientConfigRecognizer {
         match &self.stage {
             SwimClientConfigStage::Init => {
                 if let ReadEvent::StartAttribute(name) = input {
-                    if name == SWIM_CLIENT_CONFIG_TAG {
+                    if name == CONFIG_TAG {
                         self.stage = SwimClientConfigStage::Tag;
                         None
                     } else {
@@ -123,7 +123,7 @@ impl Recognizer for SwimClientConfigRecognizer {
                     }
                 } else {
                     Some(Err(input.kind_error(ExpectedEvent::Attribute(Some(
-                        Text::new(SWIM_CLIENT_CONFIG_TAG),
+                        Text::new(CONFIG_TAG),
                     )))))
                 }
             }
@@ -150,27 +150,27 @@ impl Recognizer for SwimClientConfigRecognizer {
             }
             SwimClientConfigStage::InBody => match input {
                 ReadEvent::StartAttribute(ref attr_name) => match attr_name.borrow() {
-                    "downlink_connections" => {
+                    DOWNLINK_CONNECTIONS_TAG => {
                         self.stage = SwimClientConfigStage::Field(
                             SwimClientConfigField::DownlinkConnections,
                         );
                         self.downlink_connections_recognizer.feed_event(input);
                         None
                     }
-                    "remote_connections" => {
+                    REMOTE_CONNECTIONS_TAG => {
                         self.stage =
                             SwimClientConfigStage::Field(SwimClientConfigField::RemoteConnections);
                         self.remote_connections_recognizer.feed_event(input);
                         None
                     }
-                    "websocket_connections" => {
+                    WEBSOCKET_CONNECTIONS_TAG => {
                         self.stage = SwimClientConfigStage::Field(
                             SwimClientConfigField::WebsocketConnections,
                         );
                         self.websocket_connections_recognizer.feed_event(input);
                         None
                     }
-                    "downlinks" => {
+                    DOWNLINKS_TAG => {
                         self.stage = SwimClientConfigStage::Field(SwimClientConfigField::Downlinks);
                         self.downlinks_recognizer.feed_event(input);
                         None
@@ -350,25 +350,25 @@ impl Recognizer for DownlinkConnectionsConfigRecognizer {
             }
             DownlinkConnectionsConfigStage::InBody => match input {
                 ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
-                    "dl_req_buffer_size" => {
+                    DL_REQ_BUFFER_SIZE_TAG => {
                         self.stage = DownlinkConnectionsConfigStage::Slot(
                             DownlinkConnectionsConfigField::DlBufferSize,
                         );
                         None
                     }
-                    "buffer_size" => {
+                    BUFFER_SIZE_TAG => {
                         self.stage = DownlinkConnectionsConfigStage::Slot(
                             DownlinkConnectionsConfigField::BufferSize,
                         );
                         None
                     }
-                    "yield_after" => {
+                    YIELD_AFTER_TAG => {
                         self.stage = DownlinkConnectionsConfigStage::Slot(
                             DownlinkConnectionsConfigField::YieldAfter,
                         );
                         None
                     }
-                    "retry_strategy" => {
+                    RETRY_STRATEGY_TAG => {
                         self.stage = DownlinkConnectionsConfigStage::Slot(
                             DownlinkConnectionsConfigField::RetryStrategy,
                         );
@@ -377,15 +377,11 @@ impl Recognizer for DownlinkConnectionsConfigRecognizer {
                     ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
                 },
                 ReadEvent::EndRecord => Some(Ok(DownlinkConnectionsConfig {
-                    dl_req_buffer_size: self.dl_buffer_size.unwrap_or_else(|| {
-                        NonZeroUsize::new(DEFAULT_DL_REQUEST_BUFFER_SIZE).unwrap()
-                    }),
-                    buffer_size: self
-                        .buffer_size
-                        .unwrap_or_else(|| NonZeroUsize::new(DEFAULT_BUFFER_SIZE).unwrap()),
-                    yield_after: self
-                        .yield_after
-                        .unwrap_or_else(|| NonZeroUsize::new(DEFAULT_YIELD_AFTER).unwrap()),
+                    dl_req_buffer_size: self
+                        .dl_buffer_size
+                        .unwrap_or(DEFAULT_DL_REQUEST_BUFFER_SIZE),
+                    buffer_size: self.buffer_size.unwrap_or(DEFAULT_BUFFER_SIZE),
+                    yield_after: self.yield_after.unwrap_or(DEFAULT_YIELD_AFTER),
                     retry_strategy: self.retry_strategy.unwrap_or_default(),
                 })),
                 ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
@@ -525,7 +521,7 @@ impl Recognizer for ClientDownlinksConfigRecognizer {
         match &self.stage {
             ClientDownlinksConfigStage::Init => {
                 if let ReadEvent::StartAttribute(name) = input {
-                    if name == CLIENT_DOWNLINKS_CONFIG_TAG {
+                    if name == DOWNLINKS_TAG {
                         self.stage = ClientDownlinksConfigStage::Tag;
                         None
                     } else {
@@ -533,7 +529,7 @@ impl Recognizer for ClientDownlinksConfigRecognizer {
                     }
                 } else {
                     Some(Err(input.kind_error(ExpectedEvent::Attribute(Some(
-                        Text::new(CLIENT_DOWNLINKS_CONFIG_TAG),
+                        Text::new(DOWNLINKS_TAG),
                     )))))
                 }
             }
@@ -560,17 +556,17 @@ impl Recognizer for ClientDownlinksConfigRecognizer {
             }
             ClientDownlinksConfigStage::InBody => match input {
                 ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
-                    "default" => {
+                    DEFAULT_TAG => {
                         self.stage =
                             ClientDownlinksConfigStage::Slot(ClientDownlinksConfigField::Default);
                         None
                     }
-                    "host" => {
+                    HOST_TAG => {
                         self.stage =
                             ClientDownlinksConfigStage::Slot(ClientDownlinksConfigField::Host);
                         None
                     }
-                    "lane" => {
+                    LANE_TAG => {
                         self.stage =
                             ClientDownlinksConfigStage::Slot(ClientDownlinksConfigField::Lane);
                         None
@@ -752,23 +748,23 @@ impl Recognizer for DownlinkConfigRecognizer {
             }
             DownlinkConfigStage::InBody => match input {
                 ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
-                    "back_pressure" => {
+                    BACK_PRESSURE_TAG => {
                         self.stage = DownlinkConfigStage::Slot(DownlinkConfigField::BackPressure);
                         None
                     }
-                    "idle_timeout" => {
+                    IDLE_TIMEOUT_TAG => {
                         self.stage = DownlinkConfigStage::Slot(DownlinkConfigField::IdleTimeout);
                         None
                     }
-                    "buffer_size" => {
+                    BUFFER_SIZE_TAG => {
                         self.stage = DownlinkConfigStage::Slot(DownlinkConfigField::BufferSize);
                         None
                     }
-                    "on_invalid" => {
+                    ON_INVALID_TAG => {
                         self.stage = DownlinkConfigStage::Slot(DownlinkConfigField::OnInvalid);
                         None
                     }
-                    "yield_after" => {
+                    YIELD_AFTER_TAG => {
                         self.stage = DownlinkConfigStage::Slot(DownlinkConfigField::YieldAfter);
                         None
                     }
@@ -777,13 +773,9 @@ impl Recognizer for DownlinkConfigRecognizer {
                 ReadEvent::EndRecord => Some(Ok(DownlinkConfig {
                     back_pressure: self.back_pressure.unwrap_or_default(),
                     idle_timeout: self.idle_timeout.unwrap_or(DEFAULT_IDLE_TIMEOUT),
-                    buffer_size: self.buffer_size.unwrap_or_else(|| {
-                        NonZeroUsize::new(DEFAULT_DOWNLINK_BUFFER_SIZE).unwrap()
-                    }),
+                    buffer_size: self.buffer_size.unwrap_or(DEFAULT_DOWNLINK_BUFFER_SIZE),
                     on_invalid: self.on_invalid.unwrap_or_default(),
-                    yield_after: self
-                        .yield_after
-                        .unwrap_or_else(|| NonZeroUsize::new(DEFAULT_YIELD_AFTER).unwrap()),
+                    yield_after: self.yield_after.unwrap_or(DEFAULT_YIELD_AFTER),
                 })),
                 ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                     ExpectedEvent::ValueEvent(ValueKind::Text),
@@ -983,20 +975,10 @@ impl Recognizer for BackpressureModeRecognizer {
                     match self.fields {
                         Some(BackpressureModeFields { .. }) => {
                             Some(Ok(BackpressureMode::Release {
-                                input_buffer_size: NonZeroUsize::new(
-                                    DEFAULT_BACK_PRESSURE_INPUT_BUFFER_SIZE,
-                                )
-                                .unwrap(),
-                                bridge_buffer_size: NonZeroUsize::new(
-                                    DEFAULT_BACK_PRESSURE_BRIDGE_BUFFER_SIZE,
-                                )
-                                .unwrap(),
-                                max_active_keys: NonZeroUsize::new(
-                                    DEFAULT_BACK_PRESSURE_MAX_ACTIVE_KEYS,
-                                )
-                                .unwrap(),
-                                yield_after: NonZeroUsize::new(DEFAULT_BACK_PRESSURE_YIELD_AFTER)
-                                    .unwrap(),
+                                input_buffer_size: DEFAULT_BACK_PRESSURE_INPUT_BUFFER_SIZE,
+                                bridge_buffer_size: DEFAULT_BACK_PRESSURE_BRIDGE_BUFFER_SIZE,
+                                max_active_keys: DEFAULT_BACK_PRESSURE_MAX_ACTIVE_KEYS,
+                                yield_after: DEFAULT_BACK_PRESSURE_YIELD_AFTER,
                             }))
                         }
                         None => Some(Ok(BackpressureMode::Propagate)),
@@ -1016,23 +998,23 @@ impl Recognizer for BackpressureModeRecognizer {
                     yield_after,
                 }) => match input {
                     ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
-                        "input_buffer_size" => {
+                        INPUT_BUFFER_SIZE_TAG => {
                             self.stage =
                                 BackpressureModeStage::Slot(BackpressureModeField::InputBufferSize);
                             None
                         }
-                        "bridge_buffer_size" => {
+                        BRIDGE_BUFFER_SIZE_TAG => {
                             self.stage = BackpressureModeStage::Slot(
                                 BackpressureModeField::BridgeBufferSize,
                             );
                             None
                         }
-                        "max_active_keys" => {
+                        MAX_ACTIVE_KEYS_TAG => {
                             self.stage =
                                 BackpressureModeStage::Slot(BackpressureModeField::MaxActiveKeys);
                             None
                         }
-                        "yield_after" => {
+                        YIELD_AFTER_TAG => {
                             self.stage =
                                 BackpressureModeStage::Slot(BackpressureModeField::YieldAfter);
                             None
@@ -1040,18 +1022,13 @@ impl Recognizer for BackpressureModeRecognizer {
                         ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
                     },
                     ReadEvent::EndRecord => Some(Ok(BackpressureMode::Release {
-                        input_buffer_size: input_buffer_size.unwrap_or_else(|| {
-                            NonZeroUsize::new(DEFAULT_BACK_PRESSURE_INPUT_BUFFER_SIZE).unwrap()
-                        }),
-                        bridge_buffer_size: bridge_buffer_size.unwrap_or_else(|| {
-                            NonZeroUsize::new(DEFAULT_BACK_PRESSURE_BRIDGE_BUFFER_SIZE).unwrap()
-                        }),
-                        max_active_keys: max_active_keys.unwrap_or_else(|| {
-                            NonZeroUsize::new(DEFAULT_BACK_PRESSURE_MAX_ACTIVE_KEYS).unwrap()
-                        }),
-                        yield_after: yield_after.unwrap_or_else(|| {
-                            NonZeroUsize::new(DEFAULT_BACK_PRESSURE_YIELD_AFTER).unwrap()
-                        }),
+                        input_buffer_size: input_buffer_size
+                            .unwrap_or(DEFAULT_BACK_PRESSURE_INPUT_BUFFER_SIZE),
+                        bridge_buffer_size: bridge_buffer_size
+                            .unwrap_or(DEFAULT_BACK_PRESSURE_BRIDGE_BUFFER_SIZE),
+                        max_active_keys: max_active_keys
+                            .unwrap_or(DEFAULT_BACK_PRESSURE_MAX_ACTIVE_KEYS),
+                        yield_after: yield_after.unwrap_or(DEFAULT_BACK_PRESSURE_YIELD_AFTER),
                     })),
                     ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                         ExpectedEvent::ValueEvent(ValueKind::Text),
@@ -1174,19 +1151,19 @@ impl Recognizer for OnInvalidMessageRecognizer {
         match self.stage {
             OnInvalidMessageStage::Init => match input {
                 ReadEvent::StartAttribute(ref value) => match value.borrow() {
-                    ON_INVALID_IGNORE_TAG => {
+                    IGNORE_TAG => {
                         self.fields = Some(OnInvalidMessageFields::Ignore);
                         self.stage = OnInvalidMessageStage::Tag;
                         None
                     }
-                    ON_INVALID_TERMINATE_TAG => {
+                    TERMINATE_TAG => {
                         self.fields = Some(OnInvalidMessageFields::Terminate);
                         self.stage = OnInvalidMessageStage::Tag;
                         None
                     }
                     _ => Some(Err(input.kind_error(ExpectedEvent::Or(vec![
-                        ExpectedEvent::Attribute(Some(Text::new(ON_INVALID_IGNORE_TAG))),
-                        ExpectedEvent::Attribute(Some(Text::new(ON_INVALID_TERMINATE_TAG))),
+                        ExpectedEvent::Attribute(Some(Text::new(IGNORE_TAG))),
+                        ExpectedEvent::Attribute(Some(Text::new(TERMINATE_TAG))),
                     ])))),
                 },
                 _ => Some(Err(

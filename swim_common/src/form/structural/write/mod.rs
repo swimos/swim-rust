@@ -32,7 +32,7 @@ use swim_utilities::future::retryable::strategy::Quantity;
 use swim_utilities::routing::uri::RelativeUri;
 use url::Url;
 
-pub mod config;
+pub mod impls;
 pub mod interpreters;
 #[cfg(test)]
 mod tests;

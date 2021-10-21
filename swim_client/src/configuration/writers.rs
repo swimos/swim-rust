@@ -12,6 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::configuration::tags::{
+    BACK_PRESSURE_TAG, BRIDGE_BUFFER_SIZE_TAG, BUFFER_SIZE_TAG, CONFIG_TAG, DEFAULT_TAG,
+    DL_REQ_BUFFER_SIZE_TAG, DOWNLINKS_TAG, DOWNLINK_CONFIG_TAG, DOWNLINK_CONNECTIONS_TAG, HOST_TAG,
+    IDLE_TIMEOUT_TAG, IGNORE_TAG, INPUT_BUFFER_SIZE_TAG, LANE_TAG, MAX_ACTIVE_KEYS_TAG,
+    ON_INVALID_TAG, PROPAGATE_TAG, RELEASE_TAG, RETRY_STRATEGY_TAG, TERMINATE_TAG, YIELD_AFTER_TAG,
+};
 use crate::configuration::{
     BackpressureMode, ClientDownlinksConfig, DownlinkConfig, DownlinkConnectionsConfig,
     OnInvalidMessage, SwimClientConfig,
@@ -28,7 +34,7 @@ impl StructuralWritable for SwimClientConfig {
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         let header_writer = writer.record(1)?;
         let mut body_writer = header_writer
-            .write_extant_attr("config")?
+            .write_extant_attr(CONFIG_TAG)?
             .complete_header(RecordBodyKind::ArrayLike, 4)?;
 
         body_writer = body_writer.write_value(&self.downlink_connections_config)?;
@@ -42,7 +48,7 @@ impl StructuralWritable for SwimClientConfig {
     fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
         let header_writer = writer.record(1)?;
         let mut body_writer = header_writer
-            .write_extant_attr("config")?
+            .write_extant_attr(CONFIG_TAG)?
             .complete_header(RecordBodyKind::ArrayLike, 4)?;
 
         body_writer = body_writer.write_value_into(self.downlink_connections_config)?;
@@ -62,13 +68,13 @@ impl StructuralWritable for DownlinkConnectionsConfig {
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         let header_writer = writer.record(1)?;
         let mut body_writer = header_writer
-            .write_extant_attr("downlink_connections")?
+            .write_extant_attr(DOWNLINK_CONNECTIONS_TAG)?
             .complete_header(RecordBodyKind::MapLike, 4)?;
 
-        body_writer = body_writer.write_slot(&"dl_req_buffer_size", &self.dl_req_buffer_size)?;
-        body_writer = body_writer.write_slot(&"buffer_size", &self.buffer_size)?;
-        body_writer = body_writer.write_slot(&"yield_after", &self.yield_after)?;
-        body_writer = body_writer.write_slot(&"retry_strategy", &self.retry_strategy)?;
+        body_writer = body_writer.write_slot(&DL_REQ_BUFFER_SIZE_TAG, &self.dl_req_buffer_size)?;
+        body_writer = body_writer.write_slot(&BUFFER_SIZE_TAG, &self.buffer_size)?;
+        body_writer = body_writer.write_slot(&YIELD_AFTER_TAG, &self.yield_after)?;
+        body_writer = body_writer.write_slot(&RETRY_STRATEGY_TAG, &self.retry_strategy)?;
 
         body_writer.done()
     }
@@ -76,13 +82,14 @@ impl StructuralWritable for DownlinkConnectionsConfig {
     fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
         let header_writer = writer.record(1)?;
         let mut body_writer = header_writer
-            .write_extant_attr("downlink_connections")?
+            .write_extant_attr(DOWNLINK_CONNECTIONS_TAG)?
             .complete_header(RecordBodyKind::MapLike, 4)?;
 
-        body_writer = body_writer.write_slot_into("dl_req_buffer_size", self.dl_req_buffer_size)?;
-        body_writer = body_writer.write_slot_into("buffer_size", self.buffer_size)?;
-        body_writer = body_writer.write_slot_into("yield_after", self.yield_after)?;
-        body_writer = body_writer.write_slot_into("retry_strategy", self.retry_strategy)?;
+        body_writer =
+            body_writer.write_slot_into(DL_REQ_BUFFER_SIZE_TAG, self.dl_req_buffer_size)?;
+        body_writer = body_writer.write_slot_into(BUFFER_SIZE_TAG, self.buffer_size)?;
+        body_writer = body_writer.write_slot_into(YIELD_AFTER_TAG, self.yield_after)?;
+        body_writer = body_writer.write_slot_into(RETRY_STRATEGY_TAG, self.retry_strategy)?;
 
         body_writer.done()
     }
@@ -106,17 +113,17 @@ impl StructuralWritable for ClientDownlinksConfig {
         }
 
         let mut body_writer = header_writer
-            .write_extant_attr("downlinks")?
+            .write_extant_attr(DOWNLINKS_TAG)?
             .complete_header(RecordBodyKind::MapLike, num_items)?;
 
-        body_writer = body_writer.write_slot(&"default", &self.default)?;
+        body_writer = body_writer.write_slot(&DEFAULT_TAG, &self.default)?;
 
         if !self.by_host.is_empty() {
-            body_writer = body_writer.write_slot(&"host", &self.by_host)?;
+            body_writer = body_writer.write_slot(&HOST_TAG, &self.by_host)?;
         }
 
         if !self.by_lane.is_empty() {
-            body_writer = body_writer.write_slot(&"lane", &self.by_lane)?;
+            body_writer = body_writer.write_slot(&LANE_TAG, &self.by_lane)?;
         }
 
         body_writer.done()
@@ -135,17 +142,17 @@ impl StructuralWritable for ClientDownlinksConfig {
         }
 
         let mut body_writer = header_writer
-            .write_extant_attr("downlinks")?
+            .write_extant_attr(DOWNLINKS_TAG)?
             .complete_header(RecordBodyKind::MapLike, num_items)?;
 
-        body_writer = body_writer.write_slot_into("default", self.default)?;
+        body_writer = body_writer.write_slot_into(DEFAULT_TAG, self.default)?;
 
         if !self.by_host.is_empty() {
-            body_writer = body_writer.write_slot_into("host", self.by_host)?;
+            body_writer = body_writer.write_slot_into(HOST_TAG, self.by_host)?;
         }
 
         if !self.by_lane.is_empty() {
-            body_writer = body_writer.write_slot_into("lane", self.by_lane)?;
+            body_writer = body_writer.write_slot_into(LANE_TAG, self.by_lane)?;
         }
 
         body_writer.done()
@@ -161,14 +168,14 @@ impl StructuralWritable for DownlinkConfig {
         let header_writer = writer.record(1)?;
 
         let mut body_writer = header_writer
-            .write_extant_attr("downlink_config")?
+            .write_extant_attr(DOWNLINK_CONFIG_TAG)?
             .complete_header(RecordBodyKind::MapLike, 5)?;
 
-        body_writer = body_writer.write_slot(&"back_pressure", &self.back_pressure)?;
-        body_writer = body_writer.write_slot(&"idle_timeout", &self.idle_timeout)?;
-        body_writer = body_writer.write_slot(&"buffer_size", &self.buffer_size)?;
-        body_writer = body_writer.write_slot(&"on_invalid", &self.on_invalid)?;
-        body_writer = body_writer.write_slot(&"yield_after", &self.yield_after)?;
+        body_writer = body_writer.write_slot(&BACK_PRESSURE_TAG, &self.back_pressure)?;
+        body_writer = body_writer.write_slot(&IDLE_TIMEOUT_TAG, &self.idle_timeout)?;
+        body_writer = body_writer.write_slot(&BUFFER_SIZE_TAG, &self.buffer_size)?;
+        body_writer = body_writer.write_slot(&ON_INVALID_TAG, &self.on_invalid)?;
+        body_writer = body_writer.write_slot(&YIELD_AFTER_TAG, &self.yield_after)?;
 
         body_writer.done()
     }
@@ -177,14 +184,14 @@ impl StructuralWritable for DownlinkConfig {
         let header_writer = writer.record(1)?;
 
         let mut body_writer = header_writer
-            .write_extant_attr("downlink_config")?
+            .write_extant_attr(DOWNLINK_CONFIG_TAG)?
             .complete_header(RecordBodyKind::MapLike, 5)?;
 
-        body_writer = body_writer.write_slot_into("back_pressure", self.back_pressure)?;
-        body_writer = body_writer.write_slot_into("idle_timeout", self.idle_timeout)?;
-        body_writer = body_writer.write_slot_into("buffer_size", self.buffer_size)?;
-        body_writer = body_writer.write_slot_into("on_invalid", self.on_invalid)?;
-        body_writer = body_writer.write_slot_into("yield_after", self.yield_after)?;
+        body_writer = body_writer.write_slot_into(BACK_PRESSURE_TAG, self.back_pressure)?;
+        body_writer = body_writer.write_slot_into(IDLE_TIMEOUT_TAG, self.idle_timeout)?;
+        body_writer = body_writer.write_slot_into(BUFFER_SIZE_TAG, self.buffer_size)?;
+        body_writer = body_writer.write_slot_into(ON_INVALID_TAG, self.on_invalid)?;
+        body_writer = body_writer.write_slot_into(YIELD_AFTER_TAG, self.yield_after)?;
 
         body_writer.done()
     }
@@ -200,7 +207,7 @@ impl StructuralWritable for BackpressureMode {
             BackpressureMode::Propagate => {
                 let header_writer = writer.record(1)?;
                 header_writer
-                    .write_extant_attr("propagate")?
+                    .write_extant_attr(PROPAGATE_TAG)?
                     .complete_header(RecordBodyKind::Mixed, 0)?
                     .done()
             }
@@ -212,13 +219,14 @@ impl StructuralWritable for BackpressureMode {
             } => {
                 let header_writer = writer.record(1)?;
                 let mut body_writer = header_writer
-                    .write_extant_attr("release")?
+                    .write_extant_attr(RELEASE_TAG)?
                     .complete_header(RecordBodyKind::MapLike, 4)?;
 
-                body_writer = body_writer.write_slot(&"input_buffer_size", input_buffer_size)?;
-                body_writer = body_writer.write_slot(&"bridge_buffer_size", bridge_buffer_size)?;
-                body_writer = body_writer.write_slot(&"max_active_keys", max_active_keys)?;
-                body_writer = body_writer.write_slot(&"yield_after", yield_after)?;
+                body_writer = body_writer.write_slot(&INPUT_BUFFER_SIZE_TAG, input_buffer_size)?;
+                body_writer =
+                    body_writer.write_slot(&BRIDGE_BUFFER_SIZE_TAG, bridge_buffer_size)?;
+                body_writer = body_writer.write_slot(&MAX_ACTIVE_KEYS_TAG, max_active_keys)?;
+                body_writer = body_writer.write_slot(&YIELD_AFTER_TAG, yield_after)?;
 
                 body_writer.done()
             }
@@ -230,7 +238,7 @@ impl StructuralWritable for BackpressureMode {
             BackpressureMode::Propagate => {
                 let header_writer = writer.record(1)?;
                 header_writer
-                    .write_extant_attr("propagate")?
+                    .write_extant_attr(PROPAGATE_TAG)?
                     .complete_header(RecordBodyKind::Mixed, 0)?
                     .done()
             }
@@ -242,15 +250,15 @@ impl StructuralWritable for BackpressureMode {
             } => {
                 let header_writer = writer.record(1)?;
                 let mut body_writer = header_writer
-                    .write_extant_attr("release")?
+                    .write_extant_attr(RELEASE_TAG)?
                     .complete_header(RecordBodyKind::MapLike, 4)?;
 
                 body_writer =
-                    body_writer.write_slot_into("input_buffer_size", input_buffer_size)?;
+                    body_writer.write_slot_into(INPUT_BUFFER_SIZE_TAG, input_buffer_size)?;
                 body_writer =
-                    body_writer.write_slot_into("bridge_buffer_size", bridge_buffer_size)?;
-                body_writer = body_writer.write_slot_into("max_active_keys", max_active_keys)?;
-                body_writer = body_writer.write_slot_into("yield_after", yield_after)?;
+                    body_writer.write_slot_into(BRIDGE_BUFFER_SIZE_TAG, bridge_buffer_size)?;
+                body_writer = body_writer.write_slot_into(MAX_ACTIVE_KEYS_TAG, max_active_keys)?;
+                body_writer = body_writer.write_slot_into(YIELD_AFTER_TAG, yield_after)?;
 
                 body_writer.done()
             }
@@ -267,17 +275,21 @@ impl StructuralWritable for OnInvalidMessage {
         let header_writer = writer.record(1)?;
 
         match self {
-            OnInvalidMessage::Ignore => header_writer.write_extant_attr("ignore")?,
-            OnInvalidMessage::Terminate => header_writer.write_extant_attr("terminate")?,
+            OnInvalidMessage::Ignore => header_writer.write_extant_attr(IGNORE_TAG)?,
+            OnInvalidMessage::Terminate => header_writer.write_extant_attr(TERMINATE_TAG)?,
         }
         .complete_header(RecordBodyKind::Mixed, 0)?
         .done()
     }
 
     fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        let header_writer = writer.record(1)?;
+
         match self {
-            OnInvalidMessage::Ignore => writer.write_text("ignore"),
-            OnInvalidMessage::Terminate => writer.write_text("terminate"),
+            OnInvalidMessage::Ignore => header_writer.write_extant_attr(IGNORE_TAG)?,
+            OnInvalidMessage::Terminate => header_writer.write_extant_attr(TERMINATE_TAG)?,
         }
+        .complete_header(RecordBodyKind::Mixed, 0)?
+        .done()
     }
 }

@@ -25,19 +25,23 @@ use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use url::Url;
 
 mod recognizers;
+mod tags;
 #[cfg(test)]
 mod tests;
 mod writers;
 
 const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(60000);
-const DEFAULT_DOWNLINK_BUFFER_SIZE: usize = 32;
-const DEFAULT_YIELD_AFTER: usize = 256;
-const DEFAULT_BUFFER_SIZE: usize = 128;
-const DEFAULT_DL_REQUEST_BUFFER_SIZE: usize = 8;
-const DEFAULT_BACK_PRESSURE_INPUT_BUFFER_SIZE: usize = 32;
-const DEFAULT_BACK_PRESSURE_BRIDGE_BUFFER_SIZE: usize = 16;
-const DEFAULT_BACK_PRESSURE_MAX_ACTIVE_KEYS: usize = 16;
-const DEFAULT_BACK_PRESSURE_YIELD_AFTER: usize = 256;
+const DEFAULT_DOWNLINK_BUFFER_SIZE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(32) };
+const DEFAULT_YIELD_AFTER: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(256) };
+const DEFAULT_BUFFER_SIZE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(128) };
+const DEFAULT_DL_REQUEST_BUFFER_SIZE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(8) };
+const DEFAULT_BACK_PRESSURE_INPUT_BUFFER_SIZE: NonZeroUsize =
+    unsafe { NonZeroUsize::new_unchecked(32) };
+const DEFAULT_BACK_PRESSURE_BRIDGE_BUFFER_SIZE: NonZeroUsize =
+    unsafe { NonZeroUsize::new_unchecked(16) };
+const DEFAULT_BACK_PRESSURE_MAX_ACTIVE_KEYS: NonZeroUsize =
+    unsafe { NonZeroUsize::new_unchecked(16) };
+const DEFAULT_BACK_PRESSURE_YIELD_AFTER: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(256) };
 
 /// Configuration for the swim client.
 ///
@@ -126,10 +130,10 @@ impl DownlinkConnectionsConfig {
 impl Default for DownlinkConnectionsConfig {
     fn default() -> Self {
         DownlinkConnectionsConfig {
-            dl_req_buffer_size: NonZeroUsize::new(DEFAULT_DL_REQUEST_BUFFER_SIZE).unwrap(),
+            dl_req_buffer_size: DEFAULT_DL_REQUEST_BUFFER_SIZE,
             retry_strategy: RetryStrategy::default(),
-            buffer_size: NonZeroUsize::new(DEFAULT_BUFFER_SIZE).unwrap(),
-            yield_after: NonZeroUsize::new(DEFAULT_YIELD_AFTER).unwrap(),
+            buffer_size: DEFAULT_BUFFER_SIZE,
+            yield_after: DEFAULT_YIELD_AFTER,
         }
     }
 }
@@ -231,9 +235,9 @@ impl Default for DownlinkConfig {
         DownlinkConfig::new(
             BackpressureMode::default(),
             DEFAULT_IDLE_TIMEOUT,
-            NonZeroUsize::new(DEFAULT_DOWNLINK_BUFFER_SIZE).unwrap(),
+            DEFAULT_DOWNLINK_BUFFER_SIZE,
             OnInvalidMessage::default(),
-            NonZeroUsize::new(DEFAULT_YIELD_AFTER).unwrap(),
+            DEFAULT_YIELD_AFTER,
         )
     }
 }

@@ -19,6 +19,13 @@ use crate::form::structural::read::recognizer::{
     Recognizer, RecognizerReadable, SimpleAttrBody, SimpleRecBody,
 };
 use crate::form::structural::read::ReadError;
+use crate::form::structural::tags::{
+    ABSOLUTE_PATH_TAG, ACCEPT_UNMASKED_FRAMES_TAG, COMPRESSION_TAG, DELAY_TAG, DURATION_TAG,
+    HOST_TAG, INFINITE_TAG, LANE_TAG, MAX_BACKOFF_TAG, MAX_FRAME_SIZE_TAG, MAX_INTERVAL_TAG,
+    MAX_MESSAGE_SIZE_TAG, MAX_SEND_QUEUE_TAG, NANOS_TAG, NODE_TAG, RETRIES_TAG,
+    RETRY_EXPONENTIAL_TAG, RETRY_IMMEDIATE_TAG, RETRY_INTERVAL_TAG, RETRY_NONE_TAG, SECS_TAG,
+    WEB_SOCKET_CONFIG_TAG, WS_COMPRESSION_DEFLATE_TAG, WS_COMPRESSION_NONE_TAG,
+};
 use crate::model::text::Text;
 use crate::model::ValueKind;
 use crate::warp::path::AbsolutePath;
@@ -36,16 +43,6 @@ use tokio_tungstenite::tungstenite::extensions::compression::deflate::DeflateCon
 use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use url::Url;
-
-pub const RETRY_IMMEDIATE_TAG: &str = "immediate";
-const RETRY_INTERVAL_TAG: &str = "interval";
-const RETRY_EXPONENTIAL_TAG: &str = "exponential";
-const RETRY_NONE_TAG: &str = "none";
-const DURATION_TAG: &str = "duration";
-const WEB_SOCKET_CONFIG_TAG: &str = "websocket_connections";
-const WS_COMPRESSION_NONE_TAG: &str = "none";
-const WS_COMPRESSION_DEFLATE_TAG: &str = "deflate";
-const ABSOLUTE_PATH_TAG: &str = "path";
 
 enum RetryStrategyStage {
     Init,
@@ -205,7 +202,7 @@ impl Recognizer for RetryStrategyRecognizer {
                     ref mut retries_recognizer,
                 }) => match input {
                     ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
-                        "retries" => {
+                        RETRIES_TAG => {
                             self.stage =
                                 RetryStrategyStage::Slot(RetryStrategyField::ImmediateRetries);
                             *retries_recognizer = Some(NonZeroUsize::make_recognizer());
@@ -230,13 +227,13 @@ impl Recognizer for RetryStrategyRecognizer {
                     ref mut retries_recognizer,
                 }) => match input {
                     ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
-                        "delay" => {
+                        DELAY_TAG => {
                             self.stage =
                                 RetryStrategyStage::Slot(RetryStrategyField::IntervalDelay);
                             *delay_recognizer = Some(Duration::make_recognizer());
                             None
                         }
-                        "retries" => {
+                        RETRIES_TAG => {
                             self.stage =
                                 RetryStrategyStage::Slot(RetryStrategyField::IntervalRetries);
                             *retries_recognizer = Some(Quantity::<NonZeroUsize>::make_recognizer());
@@ -262,14 +259,14 @@ impl Recognizer for RetryStrategyRecognizer {
                     ref mut max_backoff_recognizer,
                 }) => match input {
                     ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
-                        "max_interval" => {
+                        MAX_INTERVAL_TAG => {
                             self.stage = RetryStrategyStage::Slot(
                                 RetryStrategyField::ExponentialMaxInterval,
                             );
                             *max_interval_recognizer = Some(Duration::make_recognizer());
                             None
                         }
-                        "max_backoff" => {
+                        MAX_BACKOFF_TAG => {
                             self.stage =
                                 RetryStrategyStage::Slot(RetryStrategyField::ExponentialMaxBackoff);
                             *max_backoff_recognizer = Some(Quantity::<Duration>::make_recognizer());
@@ -416,7 +413,7 @@ impl<T: RecognizerReadable> Recognizer for QuantityRecognizer<T> {
 
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         match input {
-            ReadEvent::TextValue(value) if value == "infinite" => Some(Ok(Quantity::Infinite)),
+            ReadEvent::TextValue(value) if value == INFINITE_TAG => Some(Ok(Quantity::Infinite)),
             _ => match self.recognizer.feed_event(input)? {
                 Ok(val) => Some(Ok(Quantity::Finite(val))),
                 Err(err) => Some(Err(err)),
@@ -517,11 +514,11 @@ impl Recognizer for DurationRecognizer {
             }
             DurationStage::InBody => match input {
                 ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
-                    "secs" => {
+                    SECS_TAG => {
                         self.stage = DurationStage::Slot(DurationField::Secs);
                         None
                     }
-                    "nanos" => {
+                    NANOS_TAG => {
                         self.stage = DurationStage::Slot(DurationField::Nanos);
                         None
                     }
@@ -681,25 +678,25 @@ impl Recognizer for WebSocketConfigRecognizer {
             }
             WebSocketConfigStage::InBody => match input {
                 ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
-                    "max_send_queue" => {
+                    MAX_SEND_QUEUE_TAG => {
                         self.stage = WebSocketConfigStage::Slot(WebSocketConfigField::MaxSendQueue);
                         None
                     }
-                    "max_message_size" => {
+                    MAX_MESSAGE_SIZE_TAG => {
                         self.stage =
                             WebSocketConfigStage::Slot(WebSocketConfigField::MaxMessageSize);
                         None
                     }
-                    "max_frame_size" => {
+                    MAX_FRAME_SIZE_TAG => {
                         self.stage = WebSocketConfigStage::Slot(WebSocketConfigField::MaxFrameSize);
                         None
                     }
-                    "accept_unmasked_frames" => {
+                    ACCEPT_UNMASKED_FRAMES_TAG => {
                         self.stage =
                             WebSocketConfigStage::Slot(WebSocketConfigField::AcceptUnmaskedFrames);
                         None
                     }
-                    "compression" => {
+                    COMPRESSION_TAG => {
                         self.stage = WebSocketConfigStage::Slot(WebSocketConfigField::Compression);
                         None
                     }
@@ -1023,13 +1020,13 @@ impl AbsolutePathRecognizer {
 
         let mut missing = vec![];
         if host.is_none() {
-            missing.push(Text::new("host"));
+            missing.push(Text::new(HOST_TAG));
         }
         if node.is_none() {
-            missing.push(Text::new("node"));
+            missing.push(Text::new(NODE_TAG));
         }
         if lane.is_none() {
-            missing.push(Text::new("lane"));
+            missing.push(Text::new(LANE_TAG));
         }
         if let (Some(host), Some(node), Some(lane)) = (host.take(), node.take(), lane.take()) {
             Ok(AbsolutePath { host, node, lane })
@@ -1076,15 +1073,15 @@ impl Recognizer for AbsolutePathRecognizer {
             }
             AbsolutePathStage::InBody => match input {
                 ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
-                    "host" => {
+                    HOST_TAG => {
                         self.stage = AbsolutePathStage::Slot(AbsolutePathField::Host);
                         None
                     }
-                    "node" => {
+                    NODE_TAG => {
                         self.stage = AbsolutePathStage::Slot(AbsolutePathField::Node);
                         None
                     }
-                    "lane" => {
+                    LANE_TAG => {
                         self.stage = AbsolutePathStage::Slot(AbsolutePathField::Lane);
                         None
                     }

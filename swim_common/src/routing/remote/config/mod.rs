@@ -20,7 +20,7 @@ use swim_utilities::future::retryable::RetryStrategy;
 
 use crate::form::structural::read::error::ExpectedEvent;
 use crate::form::structural::read::event::ReadEvent;
-use crate::form::structural::read::recognizer::config::{
+use crate::form::structural::read::recognizer::impls::{
     DurationRecognizer, RetryStrategyRecognizer,
 };
 use crate::form::structural::read::recognizer::{
@@ -37,11 +37,19 @@ mod swim_common {
     pub use crate::*;
 }
 
-const DEFAULT_ROUTER_BUFFER_SIZE: usize = 10;
-const DEFAULT_CHANNEL_BUFFER_SIZE: usize = 10;
-const DEFAULT_ACTIVITY_TIMEOUT: u64 = 30;
-const DEFAULT_WRITE_TIMEOUT: u64 = 20;
-const DEFAULT_YIELD_AFTER: usize = 256;
+const REMOTE_CONNECTIONS_TAG: &str = "remote_connections";
+const ROUTER_BUFFER_SIZE_TAG: &str = "router_buffer_size";
+const CHANNEL_BUFFER_SIZE_TAG: &str = "channel_buffer_size";
+const ACTIVITY_TIMEOUT_TAG: &str = "activity_timeout";
+const WRITE_TIMEOUT_TAG: &str = "write_timeout";
+const CONNECTION_RETRIES_TAG: &str = "connection_retries";
+const YIELD_AFTER_TAG: &str = "yield_after";
+
+const DEFAULT_ROUTER_BUFFER_SIZE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(10) };
+const DEFAULT_CHANNEL_BUFFER_SIZE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(10) };
+const DEFAULT_ACTIVITY_TIMEOUT: Duration = Duration::from_secs(30);
+const DEFAULT_WRITE_TIMEOUT: Duration = Duration::from_secs(20);
+const DEFAULT_YIELD_AFTER: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(256) };
 
 /// Configuration parameters for remote connection management.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,12 +91,12 @@ impl RemoteConnectionsConfig {
 impl Default for RemoteConnectionsConfig {
     fn default() -> Self {
         RemoteConnectionsConfig {
-            router_buffer_size: NonZeroUsize::new(DEFAULT_ROUTER_BUFFER_SIZE).unwrap(),
-            channel_buffer_size: NonZeroUsize::new(DEFAULT_CHANNEL_BUFFER_SIZE).unwrap(),
-            activity_timeout: Duration::from_secs(DEFAULT_ACTIVITY_TIMEOUT),
-            write_timeout: Duration::from_secs(DEFAULT_WRITE_TIMEOUT),
+            router_buffer_size: DEFAULT_ROUTER_BUFFER_SIZE,
+            channel_buffer_size: DEFAULT_CHANNEL_BUFFER_SIZE,
+            activity_timeout: DEFAULT_ACTIVITY_TIMEOUT,
+            write_timeout: DEFAULT_WRITE_TIMEOUT,
             connection_retries: Default::default(),
-            yield_after: NonZeroUsize::new(DEFAULT_YIELD_AFTER).unwrap(),
+            yield_after: DEFAULT_YIELD_AFTER,
         }
     }
 }
@@ -101,15 +109,16 @@ impl StructuralWritable for RemoteConnectionsConfig {
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         let header_writer = writer.record(1)?;
         let mut body_writer = header_writer
-            .write_extant_attr("remote_connections")?
+            .write_extant_attr(REMOTE_CONNECTIONS_TAG)?
             .complete_header(RecordBodyKind::MapLike, 6)?;
 
-        body_writer = body_writer.write_slot(&"router_buffer_size", &self.router_buffer_size)?;
-        body_writer = body_writer.write_slot(&"channel_buffer_size", &self.channel_buffer_size)?;
-        body_writer = body_writer.write_slot(&"activity_timeout", &self.activity_timeout)?;
-        body_writer = body_writer.write_slot(&"write_timeout", &self.write_timeout)?;
-        body_writer = body_writer.write_slot(&"connection_retries", &self.connection_retries)?;
-        body_writer = body_writer.write_slot(&"yield_after", &self.yield_after)?;
+        body_writer = body_writer.write_slot(&ROUTER_BUFFER_SIZE_TAG, &self.router_buffer_size)?;
+        body_writer =
+            body_writer.write_slot(&CHANNEL_BUFFER_SIZE_TAG, &self.channel_buffer_size)?;
+        body_writer = body_writer.write_slot(&ACTIVITY_TIMEOUT_TAG, &self.activity_timeout)?;
+        body_writer = body_writer.write_slot(&WRITE_TIMEOUT_TAG, &self.write_timeout)?;
+        body_writer = body_writer.write_slot(&CONNECTION_RETRIES_TAG, &self.connection_retries)?;
+        body_writer = body_writer.write_slot(&YIELD_AFTER_TAG, &self.yield_after)?;
 
         body_writer.done()
     }
@@ -117,16 +126,18 @@ impl StructuralWritable for RemoteConnectionsConfig {
     fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
         let header_writer = writer.record(1)?;
         let mut body_writer = header_writer
-            .write_extant_attr("remote_connections")?
+            .write_extant_attr(REMOTE_CONNECTIONS_TAG)?
             .complete_header(RecordBodyKind::MapLike, 6)?;
 
-        body_writer = body_writer.write_slot_into("router_buffer_size", self.router_buffer_size)?;
         body_writer =
-            body_writer.write_slot_into("channel_buffer_size", self.channel_buffer_size)?;
-        body_writer = body_writer.write_slot_into("activity_timeout", self.activity_timeout)?;
-        body_writer = body_writer.write_slot_into("write_timeout", self.write_timeout)?;
-        body_writer = body_writer.write_slot_into("connection_retries", self.connection_retries)?;
-        body_writer = body_writer.write_slot_into("yield_after", self.yield_after)?;
+            body_writer.write_slot_into(ROUTER_BUFFER_SIZE_TAG, self.router_buffer_size)?;
+        body_writer =
+            body_writer.write_slot_into(CHANNEL_BUFFER_SIZE_TAG, self.channel_buffer_size)?;
+        body_writer = body_writer.write_slot_into(ACTIVITY_TIMEOUT_TAG, self.activity_timeout)?;
+        body_writer = body_writer.write_slot_into(WRITE_TIMEOUT_TAG, self.write_timeout)?;
+        body_writer =
+            body_writer.write_slot_into(CONNECTION_RETRIES_TAG, self.connection_retries)?;
+        body_writer = body_writer.write_slot_into(YIELD_AFTER_TAG, self.yield_after)?;
 
         body_writer.done()
     }
@@ -160,8 +171,6 @@ impl RecognizerReadable for RemoteConnectionsConfig {
         SimpleRecBody::new(Self::make_recognizer())
     }
 }
-
-const REMOTE_CONNECTIONS_TAG: &str = "remote_connections";
 
 enum RemoteConnectionsConfigStage {
     Init,
@@ -237,37 +246,37 @@ impl Recognizer for RemoteConnectionsConfigRecognizer {
             }
             RemoteConnectionsConfigStage::InBody => match input {
                 ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
-                    "router_buffer_size" => {
+                    ROUTER_BUFFER_SIZE_TAG => {
                         self.stage = RemoteConnectionsConfigStage::Slot(
                             RemoteConnectionsConfigField::RouterBufferSize,
                         );
                         None
                     }
-                    "channel_buffer_size" => {
+                    CHANNEL_BUFFER_SIZE_TAG => {
                         self.stage = RemoteConnectionsConfigStage::Slot(
                             RemoteConnectionsConfigField::ChannelBufferSize,
                         );
                         None
                     }
-                    "activity_timeout" => {
+                    ACTIVITY_TIMEOUT_TAG => {
                         self.stage = RemoteConnectionsConfigStage::Slot(
                             RemoteConnectionsConfigField::ActivityTimeout,
                         );
                         None
                     }
-                    "write_timeout" => {
+                    WRITE_TIMEOUT_TAG => {
                         self.stage = RemoteConnectionsConfigStage::Slot(
                             RemoteConnectionsConfigField::WriteTimeout,
                         );
                         None
                     }
-                    "connection_retries" => {
+                    CONNECTION_RETRIES_TAG => {
                         self.stage = RemoteConnectionsConfigStage::Slot(
                             RemoteConnectionsConfigField::ConnectionRetries,
                         );
                         None
                     }
-                    "yield_after" => {
+                    YIELD_AFTER_TAG => {
                         self.stage = RemoteConnectionsConfigStage::Slot(
                             RemoteConnectionsConfigField::YieldAfter,
                         );
@@ -278,20 +287,14 @@ impl Recognizer for RemoteConnectionsConfigRecognizer {
                 ReadEvent::EndRecord => Some(Ok(RemoteConnectionsConfig {
                     router_buffer_size: self
                         .router_buffer_size
-                        .unwrap_or_else(|| NonZeroUsize::new(DEFAULT_ROUTER_BUFFER_SIZE).unwrap()),
+                        .unwrap_or(DEFAULT_ROUTER_BUFFER_SIZE),
                     channel_buffer_size: self
                         .channel_buffer_size
-                        .unwrap_or_else(|| NonZeroUsize::new(DEFAULT_CHANNEL_BUFFER_SIZE).unwrap()),
-                    activity_timeout: self
-                        .activity_timeout
-                        .unwrap_or_else(|| Duration::from_secs(DEFAULT_ACTIVITY_TIMEOUT)),
-                    write_timeout: self
-                        .write_timeout
-                        .unwrap_or_else(|| Duration::from_secs(DEFAULT_WRITE_TIMEOUT)),
+                        .unwrap_or(DEFAULT_CHANNEL_BUFFER_SIZE),
+                    activity_timeout: self.activity_timeout.unwrap_or(DEFAULT_ACTIVITY_TIMEOUT),
+                    write_timeout: self.write_timeout.unwrap_or(DEFAULT_WRITE_TIMEOUT),
                     connection_retries: self.connection_retries.unwrap_or_default(),
-                    yield_after: self
-                        .yield_after
-                        .unwrap_or_else(|| NonZeroUsize::new(DEFAULT_YIELD_AFTER).unwrap()),
+                    yield_after: self.yield_after.unwrap_or(DEFAULT_YIELD_AFTER),
                 })),
                 ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                     ExpectedEvent::ValueEvent(ValueKind::Text),
