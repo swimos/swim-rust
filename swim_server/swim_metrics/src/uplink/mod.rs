@@ -314,7 +314,7 @@ impl UplinkObserver {
 
 impl UplinkObserver {
     /// Flush any pending metrics if the report interval has elapsed.
-    pub fn flush(&self) {
+    pub fn report(&self) {
         self.inner.flush();
     }
 
@@ -380,6 +380,7 @@ impl UplinkObserver {
         close_delta.store(profile_close_delta, Ordering::Relaxed);
     }
 
+    /// Forcibly flush any pending metrics regardless of the reporting interval.
     pub fn force_flush(&self) {
         self.inner.accumulate_and_send();
     }

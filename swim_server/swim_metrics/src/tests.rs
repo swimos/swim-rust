@@ -384,7 +384,7 @@ async fn full_pipeline() {
     };
 
     observer.set_inner_values(profile);
-    observer.flush();
+    observer.force_flush();
 
     assert!(task_jh.await.is_ok());
 
@@ -510,7 +510,7 @@ async fn full_pipeline_multiple_observers() {
     };
 
     observer1.set_inner_values(first);
-    observer1.flush();
+    observer1.force_flush();
 
     sleep(sample_rate).await;
 
@@ -523,7 +523,7 @@ async fn full_pipeline_multiple_observers() {
     };
 
     observer2.set_inner_values(second);
-    observer2.flush();
+    observer2.force_flush();
 
     assert!(task_jh.await.is_ok());
 
