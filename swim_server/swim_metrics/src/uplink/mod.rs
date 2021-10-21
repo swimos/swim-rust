@@ -313,28 +313,44 @@ impl UplinkObserver {
 }
 
 impl UplinkObserver {
-    pub fn on_event(&self) {
-        let _old = self.inner.event_delta.fetch_add(1, Ordering::Acquire);
+    /// Flush any pending metrics if the report interval has elapsed.
+    pub fn flush(&self) {
         self.inner.flush();
+    }
+
+    /// Report that a new event has been dispatched and send a new profile if the report interval
+    /// has elapsed.
+    pub fn on_event(&self, notify: bool) {
+        let _old = self.inner.event_delta.fetch_add(1, Ordering::Acquire);
+
+        if notify {
+            self.inner.flush();
+        }
     }
 
     /// Report that a new command message has been dispatched and send a new profile if the
     /// report interval has elapsed.
-    pub fn on_command(&self) {
+    pub fn on_command(&self, notify: bool) {
         let _old = self.inner.command_delta.fetch_add(1, Ordering::Acquire);
-        self.inner.flush();
+        if notify {
+            self.inner.flush();
+        }
     }
 
     /// Report that a new uplink opened and send a new profile if the report interval has elapsed.
-    pub fn did_open(&self) {
+    pub fn did_open(&self, notify: bool) {
         let _old = self.inner.open_delta.fetch_add(1, Ordering::Acquire);
-        self.inner.flush();
+        if notify {
+            self.inner.flush();
+        }
     }
 
     /// Report that an uplink closed and send a new profile if the report interval has elapsed.
-    pub fn did_close(&self) {
+    pub fn did_close(&self, notify: bool) {
         let _old = self.inner.close_delta.fetch_add(1, Ordering::Acquire);
-        self.inner.flush();
+        if notify {
+            self.inner.flush();
+        }
     }
 
     /// Test utility that will set the deltas and counts from `to` to the atomics in the inner
@@ -364,8 +380,7 @@ impl UplinkObserver {
         close_delta.store(profile_close_delta, Ordering::Relaxed);
     }
 
-    #[cfg(test)]
-    pub fn flush(&self) {
+    pub fn force_flush(&self) {
         self.inner.accumulate_and_send();
     }
 }

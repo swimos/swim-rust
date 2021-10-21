@@ -12,25 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::config::MetricAggregatorConfig;
-use crate::tests::{backpressure_config, DEFAULT_BUFFER, DEFAULT_YIELD};
+use crate::tests::{backpressure_config, box_supply_lane, DEFAULT_BUFFER, DEFAULT_YIELD};
 use crate::uplink::{
     uplink_aggregator, uplink_observer, AggregatorConfig, TaggedWarpUplinkProfile, TrySendError,
     UplinkObserver, UplinkProfileSender, WarpUplinkProfile, WarpUplinkPulse,
 };
-use crate::{MetricStage, SupplyLane};
 use futures::future::{join, join3};
-use futures::stream::iter;
-use futures::{FutureExt, StreamExt};
-use std::collections::{HashMap, HashSet};
-use std::num::NonZeroUsize;
+use futures::FutureExt;
+use std::collections::HashMap;
 use std::ops::Add;
 use std::str::FromStr;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 use swim_common::warp::path::RelativePath;
-use swim_runtime::time::delay::delay_for;
-use swim_runtime::time::timeout::timeout;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
 use tokio::sync::mpsc;
@@ -123,17 +117,17 @@ async fn receive_threaded() {
 
     let make_task = |observer: UplinkObserver| async move {
         for i in 0..100 {
-            observer.on_event();
-            observer.on_command();
-            observer.did_open();
-            observer.did_close();
+            observer.on_event(false);
+            observer.on_command(false);
+            observer.did_open(false);
+            observer.did_close(false);
 
             if i % 10 == 0 {
                 sleep(Duration::from_millis(100)).await;
             }
         }
 
-        observer.inner.accumulate_and_send();
+        observer.force_flush();
     };
 
     let task_left = make_task(observer.clone());
@@ -156,123 +150,10 @@ async fn receive_threaded() {
 }
 
 #[tokio::test]
-async fn task_backpressure() {
-    let (stop_tx, stop_rx) = trigger::trigger();
-
-    let format_lane = |id: usize| -> String { format!("/lane/{}", id) };
-
-    // the number of lanes
-    let count = 10;
-    let buffer_size = 2;
-    // The number of messages to send to each lane. Twice the buffer size to ensure that it overflows
-    let message_count = buffer_size * 2;
-
-    let sample_rate = Duration::from_millis(100);
-
-    let config = MetricAggregatorConfig {
-        sample_rate,
-        backpressure_config: MetricBackpressureConfig {
-            buffer_size: NonZeroUsize::new(buffer_size).unwrap(),
-            yield_after: DEFAULT_YIELD,
-            bridge_buffer_size: NonZeroUsize::new(buffer_size).unwrap(),
-            cache_size: NonZeroUsize::new(count).unwrap(),
-        },
-        ..Default::default()
-    };
-
-    let mut lanes = HashMap::new();
-    let mut lane_rx = HashMap::new();
-    let mut lane_set = HashSet::new();
-
-    (0..count).into_iter().for_each(|i| {
-        let (supply_lane, supply_rx) = make_lane_model(NonZeroUsize::new(10).unwrap());
-        let key = format_lane(i);
-
-        lane_set.insert(key.clone());
-        let path = RelativePath::new("/node", key.clone());
-        lanes.insert(path, supply_lane);
-        lane_rx.insert(key, supply_rx);
-    });
-
-    let (lane_profile_tx, _lane_profile_rx) = mpsc::channel(4096);
-    let (finish_tx, finish_rx) = trigger::trigger();
-    let aggregator_config = AggregatorConfig {
-        sample_rate,
-        buffer_size: NonZeroUsize::new(buffer_size).unwrap(),
-        yield_after: DEFAULT_YIELD,
-        backpressure_config: config.backpressure_config,
-    };
-    let (uplink_task, uplink_tx) = uplink_aggregator(
-        aggregator_config,
-        stop_rx,
-        lanes,
-        lane_profile_tx,
-        finish_tx,
-    );
-
-    let observer = UplinkMetricObserver::new(
-        config.sample_rate,
-        RelativeUri::from_str("/node").unwrap(),
-        uplink_tx,
-    );
-
-    let task_jh = tokio::spawn(uplink_task);
-
-    iter(0..count)
-        .fold(observer, |observer, lane_id| async move {
-            let inner_observer = observer.uplink_observer(format_lane(lane_id));
-
-            iter(0..message_count)
-                .fold(inner_observer, |observer, _message_id| async {
-                    delay_for(sample_rate).await;
-
-                    observer.inner.event_delta.fetch_add(1, Ordering::Acquire);
-                    observer.inner.command_delta.fetch_add(1, Ordering::Acquire);
-                    observer.inner.flush();
-
-                    observer
-                })
-                .await;
-
-            observer
-        })
-        .await;
-
-    stop_tx.trigger();
-
-    let (_, lane_set) = iter(0..count)
-        .fold(
-            (lane_rx, lane_set),
-            |(mut lane_rx, mut lane_set), lane_id| async move {
-                let lane_key = format_lane(lane_id);
-                let lane = lane_rx.get_mut(&lane_key).unwrap();
-
-                let lane_set = timeout(Duration::from_secs(5), async move {
-                    while let Some(_) = lane.next().await {
-                        lane_set.remove(&lane_key);
-                    }
-
-                    lane_set
-                })
-                .await
-                .expect("Failed to receive any profiles");
-
-                (lane_rx, lane_set)
-            },
-        )
-        .await;
-
-    assert!(lane_set.is_empty());
-
-    let _ = task_jh.await.unwrap();
-    assert!(finish_rx.await.is_ok());
-}
-
-#[tokio::test]
 async fn with_observer() {
     let (stop_tx, stop_rx) = trigger::trigger();
-    let (supply_lane_tx, mut supply_lane_rx) = mpsc::channel(5);
-    let lane = SupplyLane::new(supply_lane_tx);
+
+    let (lane, mut supply_lane_rx) = box_supply_lane(5);
 
     let mut lane_map = HashMap::new();
     let path = RelativePath::new("/node", "lane");
@@ -327,6 +208,6 @@ async fn with_observer() {
 
     let (task_result, _, _) = task.await.unwrap();
 
-    assert_eq!(task_result, Ok(MetricStage::Uplink));
+    assert_eq!(task_result, Ok(()));
     assert!(finish_rx.await.is_ok());
 }

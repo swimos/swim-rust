@@ -319,14 +319,11 @@ where
 #[cfg(test)]
 pub(crate) fn meta_context_sink() -> MetaContext {
     use crate::agent::lane::model::demand_map::DemandMapLane;
-    use crate::agent::model::supply::SupplyLane;
     use crate::meta::log::make_node_logger;
-    use crate::meta::pulse::PulseLanes;
     use swim_metrics::config::MetricAggregatorConfig;
     use tokio::sync::mpsc;
 
     let (_tx, rx) = trigger::trigger();
-    let node_logger = make_node_logger(RelativeUri::default());
     let pulse_lanes = MetaPulseLanes {
         uplinks: Default::default(),
         lanes: Default::default(),

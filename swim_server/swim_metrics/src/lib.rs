@@ -163,15 +163,6 @@ pub struct NodeMetricAggregator {
     metric_tx: Sender<TaggedWarpUplinkProfile>,
 }
 
-#[cfg(test)]
-pub fn aggregator_sink() -> NodeMetricAggregator {
-    NodeMetricAggregator {
-        sample_rate: Duration::default(),
-        node_uri: String::from("test"),
-        metric_tx: mpsc::channel(1).0,
-    }
-}
-
 impl NodeMetricAggregator {
     /// Creates a new node metric aggregator for the `node_uri`.
     ///

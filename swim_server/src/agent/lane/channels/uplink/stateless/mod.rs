@@ -164,13 +164,13 @@ where
                             }
                         }
 
-                        observer.did_open();
+                        observer.did_open(true);
                         if uplinks.insert(addr).await.is_err() {
                             break;
                         }
                     }
                     UplinkAction::Unlink => {
-                        observer.did_close();
+                        observer.did_close(true);
                         format_debug_event(uplink_kind, UNLINKING);
                         if uplinks.unlink(addr).await.is_err() {
                             break;

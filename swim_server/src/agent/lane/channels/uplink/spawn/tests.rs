@@ -20,8 +20,8 @@ use crate::agent::lane::channels::uplink::{
     PeelResult, UplinkAction, UplinkError, UplinkStateMachine,
 };
 use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, TaggedAction};
+use crate::agent::lane::model::supply::SupplyLane;
 use crate::agent::Eff;
-use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
 use crate::routing::error::RouterError;
 use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
@@ -35,6 +35,7 @@ use server_store::agent::mock::MockNodeStore;
 use server_store::agent::SwimNodeStore;
 use server_store::plane::mock::MockPlaneStore;
 use std::collections::{HashMap, HashSet};
+use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -47,9 +48,12 @@ use swim_common::routing::SendError;
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
+use swim_metrics::config::MetricAggregatorConfig;
+use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::sync::topic;
 use swim_utilities::time::AtomicInstant;
+use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Barrier};
@@ -341,7 +345,17 @@ impl AgentExecutionContext for TestContext {
     }
 
     fn metrics(&self) -> NodeMetricAggregator {
-        aggregator_sink()
+        NodeMetricAggregator::new(
+            RelativeUri::try_from("/test").unwrap(),
+            trigger::trigger().1,
+            MetricAggregatorConfig::default(),
+            MetaPulseLanes {
+                uplinks: Default::default(),
+                lanes: Default::default(),
+                node: Box::new(SupplyLane::new(mpsc::channel(1).0)),
+            },
+        )
+        .0
     }
 
     fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {

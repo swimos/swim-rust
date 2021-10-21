@@ -17,7 +17,10 @@ use crate::config::MetricAggregatorConfig;
 use crate::lane::{LaneMetricReporter, LanePulse};
 use crate::node::NodePulse;
 use crate::uplink::{MetricBackpressureConfig, WarpUplinkProfile, WarpUplinkPulse};
-use crate::{AggregatorError, AggregatorErrorKind, MetricStage, NodeMetricAggregator, SupplyLane};
+use crate::{
+    AggregatorError, AggregatorErrorKind, MetaPulseLanes, MetricStage, NodeMetricAggregator,
+    SupplyLane,
+};
 use futures::future::{join, join3};
 use futures::FutureExt;
 use std::collections::HashMap;
@@ -25,16 +28,31 @@ use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::time::Duration;
+use swim_common::sink::item::try_send::TrySend;
 use swim_common::warp::path::RelativePath;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::mpsc::Receiver;
 use tokio::time::sleep;
 use tokio_stream::wrappers::ReceiverStream;
 
 pub const DEFAULT_YIELD: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(256) };
 pub const DEFAULT_BUFFER: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(8) };
+
+pub fn box_supply_lane<T>(
+    buffer_size: usize,
+) -> (
+    Box<dyn TrySend<T, Error = TrySendError<T>> + Send>,
+    mpsc::Receiver<T>,
+)
+where
+    T: Send + 'static,
+{
+    let (lane_tx, lane_rx) = mpsc::channel(buffer_size);
+    (Box::new(lane_tx), lane_rx)
+}
 
 pub fn create_lane_map(
     count: usize,
@@ -47,9 +65,7 @@ pub fn create_lane_map(
     let mut rx_map = HashMap::new();
 
     for i in 0..count {
-        let (lane_tx, lane_rx) = mpsc::channel(buffer_size.get());
-        let lane = SupplyLane::new(lane_tx);
-
+        let (lane, lane_rx) = box_supply_lane(buffer_size.get());
         let path = RelativePath::new("/node", format!("lane_{}", i));
 
         let value = MetricState::new(LaneMetricReporter::default(), lane);
@@ -104,8 +120,7 @@ async fn drain() {
     let (trigger_tx, trigger_rx) = trigger::trigger();
     assert!(trigger_tx.trigger());
 
-    let (lane_tx, mut lane_rx) = mpsc::channel(5);
-    let lane = SupplyLane::new(lane_tx);
+    let (lane, mut lane_rx) = box_supply_lane(5);
 
     let mut lane_map = HashMap::new();
     let path = RelativePath::new("/node", "lane");
@@ -184,8 +199,7 @@ async fn drain() {
 #[tokio::test]
 async fn abnormal() {
     let (_trigger_tx, trigger_rx) = trigger::trigger();
-    let (lane_tx, _lane_rx) = mpsc::channel(5);
-    let lane = SupplyLane::new(lane_tx);
+    let (lane, _lane_rx) = box_supply_lane(5);
 
     let mut lane_map = HashMap::new();
     let path = RelativePath::new("/node", "lane");
@@ -260,8 +274,7 @@ where
     T: Send + Sync + 'static,
 {
     let path = RelativePath::new("/node", lane);
-    let (tx, rx) = mpsc::channel(DEFAULT_BUFFER.get());
-    let lane = SupplyLane::new(tx);
+    let (lane, rx) = box_supply_lane(DEFAULT_BUFFER.get());
 
     (path, rx, lane)
 }
@@ -298,10 +311,9 @@ async fn full_pipeline() {
     let (uplink_tx, mut uplink_rx) = make_pulse_map(endpoint_count, test_lanes.clone());
     let (lane_tx, mut lane_rx) = make_pulse_map(endpoint_count, test_lanes.clone());
 
-    let (node_pulse_tx, mut node_pulse_rx) = mpsc::channel(DEFAULT_BUFFER.get());
-    let node_pulse_lane = SupplyLane::new(node_pulse_tx);
+    let (node_pulse_lane, mut node_pulse_rx) = box_supply_lane(DEFAULT_BUFFER.get());
 
-    let pulse_lanes = PulseLanes {
+    let pulse_lanes = MetaPulseLanes {
         uplinks: uplink_tx,
         lanes: lane_tx,
         node: node_pulse_lane,
@@ -402,10 +414,9 @@ async fn full_pipeline_multiple_observers() {
     let (uplink_tx, mut uplink_rx) = make_pulse_map(endpoint_count, test_lanes.clone());
     let (lane_tx, mut lane_rx) = make_pulse_map(endpoint_count, test_lanes.clone());
 
-    let (node_pulse_tx, mut node_pulse_rx) = mpsc::channel(DEFAULT_BUFFER.get());
-    let node_pulse_lane = SupplyLane::new(node_pulse_tx);
+    let (node_pulse_lane, mut node_pulse_rx) = box_supply_lane(DEFAULT_BUFFER.get());
 
-    let pulse_lanes = PulseLanes {
+    let pulse_lanes = MetaPulseLanes {
         uplinks: uplink_tx,
         lanes: lane_tx,
         node: node_pulse_lane,

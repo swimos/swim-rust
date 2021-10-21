@@ -160,7 +160,7 @@ where
                             if !handle.cleanup().await {
                                 event!(Level::ERROR, message = UPLINK_TERMINATED, route = ?&self.route, ?addr);
                             }
-                            observer.did_close();
+                            observer.did_close(true);
                         }
                         action = act;
                         attempts += 1;
@@ -177,7 +177,7 @@ where
                             break false;
                         }
                     } else {
-                        observer.did_open();
+                        observer.did_open(true);
                         // We successfully dispatched to the uplink so can continue.
                         break false;
                     }
@@ -196,7 +196,7 @@ where
             }
         }
         join_all(uplink_senders.into_iter().map(|(_, h)| {
-            observer.did_close();
+            observer.did_close(true);
             h.cleanup()
         }))
         .instrument(span!(Level::DEBUG, UPLINK_CLEANUP))

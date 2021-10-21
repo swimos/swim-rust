@@ -111,3 +111,10 @@ impl<Event> TrySend<Event> for SupplyLane<Event> {
         self.sender.try_send(value)
     }
 }
+
+pub fn into_try_send<T>(lane: SupplyLane<T>) -> Box<dyn TrySend<T, Error = TrySendError<T>> + Send>
+where
+    T: Send + 'static,
+{
+    Box::new(lane)
+}

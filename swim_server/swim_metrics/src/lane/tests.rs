@@ -14,9 +14,10 @@
 
 use crate::aggregator::{AggregatorTask, MetricState};
 use crate::lane::{LaneMetricReporter, LanePulse, WarpLaneProfile};
-use crate::tests::{build_uplink_profile, create_lane_map, DEFAULT_BUFFER, DEFAULT_YIELD};
+use crate::tests::{
+    box_supply_lane, build_uplink_profile, create_lane_map, DEFAULT_BUFFER, DEFAULT_YIELD,
+};
 use crate::uplink::{WarpUplinkProfile, WarpUplinkPulse};
-use crate::SupplyLane;
 use futures::future::join;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -29,8 +30,7 @@ use tokio_stream::wrappers::ReceiverStream;
 #[tokio::test]
 async fn single() {
     let (stop_tx, stop_rx) = trigger::trigger();
-    let (lane_tx, mut lane_rx) = mpsc::channel(5);
-    let lane = SupplyLane::new(lane_tx);
+    let (lane, mut lane_rx) = box_supply_lane(5);
 
     let mut lane_map = HashMap::new();
     let path = RelativePath::new("/node", "lane");
