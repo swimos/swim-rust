@@ -14,6 +14,7 @@
 
 use std::fmt::Debug;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use swim_common::model::Value;
 use swim_common::warp::path::{AbsolutePath, RelativePath};
 use swim_server::agent::command_lifecycle;
 use swim_server::agent::lane::model::command::CommandLane;
@@ -133,6 +134,9 @@ struct UnitAgent {
 
     #[lifecycle(name = "IntegerMapLifecycle")]
     pub integer_map: MapLane<i32, i32>,
+
+    #[lifecycle(name = "DataLifecycle")]
+    pub data: ValueLane<Value>,
 }
 
 #[value_lifecycle(agent = "UnitAgent", event_type = "i32")]
@@ -166,3 +170,6 @@ struct ShoppingCartLifecycle;
 
 #[map_lifecycle(agent = "UnitAgent", key_type = "i32", value_type = "i32")]
 struct IntegerMapLifecycle;
+
+#[value_lifecycle(agent = "UnitAgent", event_type = "Value")]
+struct DataLifecycle;
