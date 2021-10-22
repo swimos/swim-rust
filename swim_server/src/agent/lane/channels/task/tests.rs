@@ -1625,7 +1625,7 @@ async fn command_lane_multiple_links() {
             2,
             &mut router_rx,
             &expected_addr,
-            Envelope::make_event(&route.node, &route.lane, Some(4.into())),
+            Envelope::make_event(&route.node, &route.lane, Some(2.into())),
         )
         .await;
 
@@ -1635,7 +1635,7 @@ async fn command_lane_multiple_links() {
             2,
             &mut router_rx,
             &expected_addr,
-            Envelope::make_event(&route.node, &route.lane, Some(6.into())),
+            Envelope::make_event(&route.node, &route.lane, Some(3.into())),
         )
         .await;
 
