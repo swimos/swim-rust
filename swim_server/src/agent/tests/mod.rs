@@ -60,13 +60,13 @@ use swim_common::routing::RoutingAddr;
 use swim_common::warp::path::Path;
 use swim_runtime::task;
 use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::sync::circular_buffer;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
 use swim_utilities::trigger::Receiver;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::{timeout, Duration};
 use tokio_stream::wrappers::ReceiverStream;
-use swim_utilities::sync::circular_buffer;
 
 pub mod stub_router {
     use futures::future::BoxFuture;
@@ -661,12 +661,15 @@ async fn command_lane_events_task() {
 
     let lifecycle: TestLifecycle<CommandLane<String>> = TestLifecycle::default();
 
-    let tasks = Box::new(CommandLifecycleTasks(LifecycleTasks {
-        name: "lane".to_string(),
-        lifecycle: lifecycle.clone(),
-        event_stream: ReceiverStream::new(commander_rx),
-        projection: proj(),
-    }, Some(commands_tx)));
+    let tasks = Box::new(CommandLifecycleTasks(
+        LifecycleTasks {
+            name: "lane".to_string(),
+            lifecycle: lifecycle.clone(),
+            event_stream: ReceiverStream::new(commander_rx),
+            projection: proj(),
+        },
+        Some(commands_tx),
+    ));
 
     assert_eq!(tasks.kind(), LaneKind::Command);
 
@@ -716,12 +719,15 @@ async fn command_lane_events_task_terminates() {
 
     let lifecycle: TestLifecycle<CommandLane<String>> = TestLifecycle::default();
 
-    let tasks = Box::new(CommandLifecycleTasks(LifecycleTasks {
-        name: "lane".to_string(),
-        lifecycle: lifecycle.clone(),
-        event_stream: ReceiverStream::new(commander_rx),
-        projection: proj(),
-    }, Some(commands_tx)));
+    let tasks = Box::new(CommandLifecycleTasks(
+        LifecycleTasks {
+            name: "lane".to_string(),
+            lifecycle: lifecycle.clone(),
+            event_stream: ReceiverStream::new(commander_rx),
+            projection: proj(),
+        },
+        Some(commands_tx),
+    ));
 
     let lane = CommandLane::new(commander_tx);
 

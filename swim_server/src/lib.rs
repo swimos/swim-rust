@@ -25,10 +25,8 @@ pub mod sync {
     pub mod circular_buffer {
         pub use swim_utilities::sync::circular_buffer::{
             channel,
-            watch_channel,
-            Sender,
-            Receiver,
-            error::{SendError, RecvError},
+            error::{RecvError, SendError},
+            watch_channel, Receiver, Sender,
         };
     }
 }

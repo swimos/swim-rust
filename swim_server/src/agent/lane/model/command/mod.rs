@@ -18,11 +18,11 @@ use crate::agent::model::COMMANDED_AFTER_STOP;
 use std::fmt::{Debug, Formatter};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use tokio::sync::mpsc::error::SendError;
+use swim_utilities::trigger;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::SendError;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, Level};
-use swim_utilities::trigger;
 
 #[cfg(test)]
 mod tests;
@@ -62,7 +62,6 @@ impl<T> Command<T> {
         let Command { command, responder } = self;
         (command, responder)
     }
-
 }
 
 impl<T> CommandLane<T>

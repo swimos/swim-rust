@@ -29,12 +29,8 @@ impl<T> CommandLaneUpdateTask<T>
 where
     T: Send + Sync + Debug + 'static,
 {
-    pub fn new(
-        commander: Commander<T>,
-    ) -> Self {
-        CommandLaneUpdateTask {
-            commander,
-        }
+    pub fn new(commander: Commander<T>) -> Self {
+        CommandLaneUpdateTask { commander }
     }
 }
 
@@ -54,14 +50,16 @@ where
         UpdateError: From<Err>,
     {
         async move {
-            let CommandLaneUpdateTask {
-                mut commander,
-            } = self;
+            let CommandLaneUpdateTask { mut commander } = self;
 
             let messages = messages.fuse();
             pin_mut!(messages);
 
-            while let Some(msg_result) = messages.next().await.map(|result| result.map(|(_, msg)| msg)) {
+            while let Some(msg_result) = messages
+                .next()
+                .await
+                .map(|result| result.map(|(_, msg)| msg))
+            {
                 match msg_result {
                     Ok(msg) => {
                         commander.command(msg).await;
@@ -73,6 +71,7 @@ where
             }
 
             Ok(())
-        }.boxed()
+        }
+        .boxed()
     }
 }

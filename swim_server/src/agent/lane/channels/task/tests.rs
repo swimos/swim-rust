@@ -67,6 +67,7 @@ use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
 use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::sync::circular_buffer;
 use swim_utilities::sync::topic;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger::{self, promise};
@@ -76,7 +77,6 @@ use tokio::time::timeout;
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
-use swim_utilities::sync::circular_buffer;
 
 #[test]
 fn lane_io_err_display_update() {
@@ -1029,7 +1029,7 @@ fn make_action_lane_task<Context: AgentExecutionContext + Send + Sync + 'static>
     (join(mock_lifecycle, task).map(|(_, r)| r), input)
 }
 
-    fn make_command_lane_task<Context: AgentExecutionContext + Send + Sync + 'static>(
+fn make_command_lane_task<Context: AgentExecutionContext + Send + Sync + 'static>(
     config: AgentExecutionConfig,
     context: Context,
 ) -> (
@@ -1050,10 +1050,7 @@ fn make_action_lane_task<Context: AgentExecutionContext + Send + Sync + 'static>
     };
     let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedClientEnvelope>(5);
 
-    let lane_io: CommandLaneIo<i32> = CommandLaneIo::new(
-        Commander(commander_tx),
-        commands_rx,
-    );
+    let lane_io: CommandLaneIo<i32> = CommandLaneIo::new(Commander(commander_tx), commands_rx);
 
     let task = super::run_command_lane_io(
         lane_io,
