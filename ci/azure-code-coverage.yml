@@ -40,10 +40,14 @@ jobs:
         workingDirectory: $(Build.SourcesDirectory)
 
       - bash: |
-          echo ${CODECOV_PUBLIC_KEY} | base64 --decode | gpg --import
           shasum -a 256 -c codecov.SHA256SUM
+        displayName: Verify the integrity of the Codecov uploader
+        workingDirectory: $(Build.SourcesDirectory)
+
+      - bash: |
+          echo ${CODECOV_PUBLIC_KEY} | base64 --decode | gpg --import
           gpg --verify codecov.SHA256SUM.sig codecov.SHA256SUM
-        displayName: Verify the Codecov uploader
+        displayName: Verify the signature of the Codecov uploader
         workingDirectory: $(Build.SourcesDirectory)
 
       - bash: |
