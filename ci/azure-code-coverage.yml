@@ -52,6 +52,8 @@ jobs:
 
       - bash: |
           chmod +x codecov
-          ./codecov -t ${CODECOV_TOKEN}
+          ./codecov -t $env:TOKEN
         displayName: Upload code coverage
         workingDirectory: $(Build.SourcesDirectory)
+        env:
+          TOKEN: $(CODECOV_TOKEN)
