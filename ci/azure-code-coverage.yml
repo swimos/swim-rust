@@ -51,6 +51,7 @@ jobs:
         workingDirectory: $(Build.SourcesDirectory)
 
       - bash: |
+          set -ex
           chmod +x codecov
           ./codecov -t $TOKEN
         displayName: Upload code coverage
