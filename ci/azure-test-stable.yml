@@ -27,7 +27,7 @@ jobs:
         parameters:
           rust_version: ${{ parameters.rust }}
       - template: azure-install-sccache.yml
-      - script: cargo test --verbose --all-features --all
+      - script: cargo test --verbose --all-features --workspace --all-targets
         env:
           RUST_BACKTRACE: 1
         displayName: cargo test --all-targets
