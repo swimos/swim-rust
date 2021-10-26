@@ -21,36 +21,36 @@ use std::sync::Arc;
 
 use im::OrdMap;
 
-use stm::local::TLocal;
-use stm::stm::{abort, left, right, Constant, Stm, VecStm, UNIT};
-use stm::transaction::{atomically, RetryManager, TransactionError, TransactionRunner};
-use stm::var::TVar;
-use summary::{clear_summary, remove_summary, update_summary};
-use swim_common::form::Form;
-use swim_common::model::Value;
-
-use crate::agent::lane::model::map::map_store::MapLaneStoreIo;
 use crate::agent::lane::model::map::summary::TransactionSummary;
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lane::{InvalidForm, LaneModel};
-use crate::agent::model::map::map_store::MapDataModel;
-use crate::agent::store::NodeStore;
 use crate::agent::StoreIo;
+use futures::future::ready;
 use futures::stream::{iter, Iter};
 use futures::Stream;
+use futures::StreamExt;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use server_store::agent::lane::map::MapStoreEvent;
+use server_store::agent::lane::map::{MapDataModel, MapLaneStoreIo};
+use server_store::agent::NodeStore;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::num::NonZeroUsize;
+use stm::local::TLocal;
+use stm::stm::{abort, left, right, Constant, Stm, VecStm, UNIT};
+use stm::transaction::{atomically, RetryManager, TransactionError, TransactionRunner};
 use stm::var::observer::{Observer, ObserverStream, ObserverSubscriber};
+use stm::var::TVar;
+use summary::{clear_summary, remove_summary, update_summary};
 use swim_common::form::structural::read::ReadError;
+use swim_common::form::Form;
+use swim_common::model::Value;
 use swim_utilities::future::{FlatmapStream, SwimStreamExt, Transform};
 use swim_warp::model::map::MapUpdate;
 use tracing::{event, Level};
 
-pub mod map_store;
 mod summary;
 
 pub type StreamedMapLane<K, V, S> = (
@@ -895,10 +895,19 @@ where
         let model = MapDataModel::<Store, K, V>::new(store, lane_id);
 
         Some(Box::new(MapLaneStoreIo::new(
-            summaries_to_events(observer),
+            summaries_to_events(observer).filter_map(|e| ready(to_map_store_event(e))),
             model,
         )))
     };
 
     (lane, subscriber, stream, store_io)
+}
+
+pub fn to_map_store_event<K, V>(event: MapLaneEvent<K, V>) -> Option<MapStoreEvent<K, V>> {
+    match event {
+        MapLaneEvent::Checkpoint(_) => None,
+        MapLaneEvent::Clear => Some(MapStoreEvent::Clear),
+        MapLaneEvent::Update(key, value) => Some(MapStoreEvent::Update(key, value)),
+        MapLaneEvent::Remove(key) => Some(MapStoreEvent::Remove(key)),
+    }
 }

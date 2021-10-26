@@ -15,11 +15,11 @@
 use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::router::PlaneRouter;
 use crate::plane::spec::{PlaneSpec, RouteSpec};
-use crate::plane::store::mock::MockPlaneStore;
 use crate::plane::tests::fixture::{ReceiveAgentRoute, SendAgentRoute, TestLifecycle};
 use crate::plane::{AgentRoute, EnvChannel};
 use crate::routing::{ServerRouter, TopLevelRouterFactory};
 use futures::future::join;
+use server_store::plane::mock::MockPlaneStore;
 use std::time::Duration;
 use swim_runtime::time::clock::Clock;
 use swim_runtime::time::timeout;

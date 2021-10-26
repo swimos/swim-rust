@@ -14,12 +14,12 @@
 
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lifecycle::AgentLifecycle;
-use crate::agent::store::NodeStore;
 use crate::agent::{AgentParameters, AgentResult, SwimAgent};
 use crate::plane::{AgentRoute, RouteAndParameters};
 use crate::routing::{ServerRouter, TaggedEnvelope};
 use futures::future::BoxFuture;
 use futures::{FutureExt, Stream};
+use server_store::agent::NodeStore;
 use std::any::Any;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
