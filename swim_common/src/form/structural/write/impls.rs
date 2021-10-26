@@ -53,8 +53,9 @@ impl StructuralWritable for RetryStrategy {
                 let mut body_writer = header_writer
                     .write_extant_attr(EXPONENTIAL_TAG)?
                     .complete_header(RecordBodyKind::MapLike, 2)?;
-                body_writer = body_writer.write_slot(&MAX_INTERVAL_TAG, &strat.max_interval)?;
-                body_writer = body_writer.write_slot(&MAX_BACKOFF_TAG, &strat.max_backoff)?;
+                body_writer =
+                    body_writer.write_slot(&MAX_INTERVAL_TAG, &strat.get_max_interval())?;
+                body_writer = body_writer.write_slot(&MAX_BACKOFF_TAG, &strat.get_max_backoff())?;
                 body_writer.done()
             }
             RetryStrategy::None(_) => writer
@@ -89,8 +90,10 @@ impl StructuralWritable for RetryStrategy {
                 let mut body_writer = header_writer
                     .write_extant_attr(EXPONENTIAL_TAG)?
                     .complete_header(RecordBodyKind::MapLike, 2)?;
-                body_writer = body_writer.write_slot_into(MAX_INTERVAL_TAG, strat.max_interval)?;
-                body_writer = body_writer.write_slot_into(MAX_BACKOFF_TAG, strat.max_backoff)?;
+                body_writer =
+                    body_writer.write_slot_into(MAX_INTERVAL_TAG, strat.get_max_interval())?;
+                body_writer =
+                    body_writer.write_slot_into(MAX_BACKOFF_TAG, strat.get_max_backoff())?;
                 body_writer.done()
             }
             RetryStrategy::None(_) => writer
