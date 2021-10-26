@@ -24,7 +24,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use swim_client::interface::DownlinksContext;
+use swim_client::interface::ClientContext;
 use swim_common::routing::Router;
 use swim_common::warp::path::Path;
 use swim_runtime::time::clock::Clock;
@@ -49,7 +49,7 @@ pub(super) struct ContextImpl<Agent, Clk, R, Store> {
     routing_context: RoutingContext<R>,
     schedule_context: SchedulerContext<Clk>,
     meta_context: Arc<MetaContext>,
-    downlinks_context: DownlinksContext<Path>,
+    client_context: ClientContext<Path>,
     agent_uri: RelativeUri,
     pub(crate) uplinks_idle_since: Arc<AtomicInstant>,
     store: Store,
@@ -66,7 +66,7 @@ impl<Agent, Clk, R: Router + Clone + 'static, Store> ContextImpl<Agent, Clk, R, 
         routing_context: RoutingContext<R>,
         schedule_context: SchedulerContext<Clk>,
         meta_context: MetaContext,
-        downlinks_context: DownlinksContext<Path>,
+        client_context: ClientContext<Path>,
         agent_uri: RelativeUri,
         store: Store,
     ) -> Self {
@@ -75,7 +75,7 @@ impl<Agent, Clk, R: Router + Clone + 'static, Store> ContextImpl<Agent, Clk, R, 
             routing_context,
             schedule_context,
             meta_context: Arc::new(meta_context),
-            downlinks_context,
+            client_context,
             agent_uri,
             uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
             store,
@@ -94,7 +94,7 @@ where
             agent_ref: self.agent_ref.clone(),
             routing_context: self.routing_context.clone(),
             schedule_context: self.schedule_context.clone(),
-            downlinks_context: self.downlinks_context.clone(),
+            client_context: self.client_context.clone(),
             meta_context: self.meta_context.clone(),
             agent_uri: self.agent_uri.clone(),
             uplinks_idle_since: self.uplinks_idle_since.clone(),
@@ -203,8 +203,8 @@ where
     Clk: Clock,
     Store: NodeStore,
 {
-    fn downlinks_context(&self) -> DownlinksContext<Path> {
-        self.downlinks_context.clone()
+    fn downlinks_context(&self) -> ClientContext<Path> {
+        self.client_context.clone()
     }
 
     fn schedule<Effect, Str, Sch>(&self, effects: Str, schedule: Sch) -> BoxFuture<()>

@@ -1,5 +1,5 @@
 @config{
-    @client {
+    @downlink_connections {
         buffer_size: "test"
     }
 }

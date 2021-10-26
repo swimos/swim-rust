@@ -23,7 +23,7 @@ use std::any::Any;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
-use swim_client::interface::DownlinksContext;
+use swim_client::interface::ClientContext;
 use swim_common::routing::{Router, TaggedEnvelope};
 use swim_common::warp::path::Path;
 use swim_runtime::time::clock::Clock;
@@ -67,7 +67,7 @@ where
         &self,
         agent_parameters: AgentParameters<Config>,
         clock: Clk,
-        downlinks_context: DownlinksContext<Path>,
+        client_context: ClientContext<Path>,
         incoming_envelopes: Envelopes,
         router: R,
         store: Store,
@@ -83,7 +83,7 @@ where
         let (agent, task) = crate::agent::run_agent(
             lifecycle.clone(),
             clock,
-            downlinks_context,
+            client_context,
             agent_parameters,
             incoming_envelopes,
             router,
@@ -110,7 +110,7 @@ where
         route: RouteAndParameters,
         execution_config: AgentExecutionConfig,
         clock: Clk,
-        downlinks_context: DownlinksContext<Path>,
+        client_context: ClientContext<Path>,
         incoming_envelopes: Envelopes,
         router: R,
         store: Store,
@@ -130,7 +130,7 @@ where
         self.run(
             parameters,
             clock,
-            downlinks_context,
+            client_context,
             incoming_envelopes,
             router,
             store,

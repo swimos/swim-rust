@@ -13,9 +13,8 @@
 // limitations under the License.
 
 use super::*;
-use crate::configuration::downlink::{
-    ClientParams, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
-};
+use crate::configuration::{ClientDownlinksConfig, DownlinkConnectionsConfig};
+use crate::configuration::{DownlinkConfig, OnInvalidMessage};
 use crate::router::tests::{FakeConnections, MockRemoteRouterTask};
 use crate::router::{ClientRouterFactory, TopLevelClientRouterFactory};
 use futures::join;
@@ -25,33 +24,31 @@ use tokio::time::Duration;
 use url::Url;
 
 // Configuration overridden for a specific host.
-fn per_host_config() -> ConfigHierarchy<AbsolutePath> {
+fn per_host_config() -> ClientDownlinksConfig {
     let timeout = Duration::from_secs(60000);
-    let special_params = DownlinkParams::new(
+    let special_params = DownlinkConfig::new(
         BackpressureMode::Propagate,
         timeout,
-        5,
+        NonZeroUsize::new(5).unwrap(),
         OnInvalidMessage::Terminate,
-        256,
-    )
-    .unwrap();
+        NonZeroUsize::new(256).unwrap(),
+    );
 
-    let mut conf = ConfigHierarchy::default();
+    let mut conf = ClientDownlinksConfig::default();
     conf.for_host(Url::parse("ws://127.0.0.2").unwrap(), special_params);
     conf
 }
 
 // Configuration overridden for a specific lane.
-fn per_lane_config() -> ConfigHierarchy<AbsolutePath> {
+fn per_lane_config() -> ClientDownlinksConfig {
     let timeout = Duration::from_secs(60000);
-    let special_params = DownlinkParams::new(
+    let special_params = DownlinkConfig::new(
         BackpressureMode::Propagate,
         timeout,
-        5,
+        NonZeroUsize::new(5).unwrap(),
         OnInvalidMessage::Terminate,
-        256,
-    )
-    .unwrap();
+        NonZeroUsize::new(256).unwrap(),
+    );
     let mut conf = per_host_config();
     conf.for_lane(
         &AbsolutePath::new(
@@ -65,7 +62,7 @@ fn per_lane_config() -> ConfigHierarchy<AbsolutePath> {
 }
 
 async fn dl_manager(
-    conf: ConfigHierarchy<AbsolutePath>,
+    conf: ClientDownlinksConfig,
     conns: FakeConnections,
 ) -> (Downlinks<AbsolutePath>, CloseSender) {
     let (client_tx, client_rx) = mpsc::channel(32);
@@ -78,13 +75,18 @@ async fn dl_manager(
     let client_router_fac = ClientRouterFactory::new(conn_request_tx, delegate_fac);
 
     let (connection_pool, pool_task) = SwimConnPool::new(
-        ClientParams::default(),
+        DownlinkConnectionsConfig::default(),
         (client_tx, client_rx),
         client_router_fac,
         close_rx.clone(),
     );
 
-    let (downlinks, downlinks_task) = Downlinks::new(connection_pool, Arc::new(conf), close_rx);
+    let (downlinks, downlinks_task) = Downlinks::new(
+        NonZeroUsize::new(8).unwrap(),
+        connection_pool,
+        Arc::new(conf),
+        close_rx,
+    );
 
     tokio::spawn(async move {
         join!(downlinks_task.run(), pool_task.run()).0.unwrap();

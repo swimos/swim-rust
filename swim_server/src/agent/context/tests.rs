@@ -17,17 +17,19 @@ use crate::agent::store::mock::MockNodeStore;
 use crate::agent::store::SwimNodeStore;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::AgentContext;
+use crate::interface::ServerDownlinksConfig;
 use crate::meta::meta_context_sink;
 use crate::plane::store::mock::MockPlaneStore;
 use crate::routing::TopLevelServerRouterFactory;
 use futures::future::BoxFuture;
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swim_client::configuration::downlink::{ClientParams, ConfigHierarchy};
+use swim_client::configuration::DownlinkConnectionsConfig;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
-use swim_client::interface::DownlinksContext;
+use swim_client::interface::ClientContext;
 use swim_client::router::ClientRouterFactory;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
@@ -81,16 +83,20 @@ fn simple_accessors() {
     let client_router_fac = ClientRouterFactory::new(client_tx.clone(), top_level_factory);
 
     let (conn_pool, _pool_task) = SwimConnPool::new(
-        ClientParams::default(),
+        DownlinkConnectionsConfig::default(),
         (client_tx, client_rx),
         client_router_fac,
         close_rx.clone(),
     );
 
-    let (downlinks, _downlinks_task) =
-        Downlinks::new(conn_pool, Arc::new(ConfigHierarchy::default()), close_rx);
+    let (downlinks, _downlinks_task) = Downlinks::new(
+        NonZeroUsize::new(8).unwrap(),
+        conn_pool,
+        Arc::new(ServerDownlinksConfig::default()),
+        close_rx,
+    );
 
-    let client = DownlinksContext::new(downlinks);
+    let client = ClientContext::new(downlinks);
     let context = ContextImpl::new(
         agent.clone(),
         routing_context,
@@ -141,16 +147,20 @@ fn create_context(
     let client_router_fac = ClientRouterFactory::new(client_tx.clone(), top_level_factory);
 
     let (conn_pool, _pool_task) = SwimConnPool::new(
-        ClientParams::default(),
+        DownlinkConnectionsConfig::default(),
         (client_tx, client_rx),
         client_router_fac,
         close_rx.clone(),
     );
 
-    let (downlinks, _downlinks_task) =
-        Downlinks::new(conn_pool, Arc::new(ConfigHierarchy::default()), close_rx);
+    let (downlinks, _downlinks_task) = Downlinks::new(
+        NonZeroUsize::new(8).unwrap(),
+        conn_pool,
+        Arc::new(ServerDownlinksConfig::default()),
+        close_rx,
+    );
 
-    let client = DownlinksContext::new(downlinks);
+    let client = ClientContext::new(downlinks);
     ContextImpl::new(
         agent.clone(),
         routing_context,

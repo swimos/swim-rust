@@ -15,7 +15,8 @@
 //! Interface for creating and running Swim client instances.
 //!
 //! The module provides methods and structures for creating and running Swim client instances.
-use crate::configuration::downlink::{Config, ConfigHierarchy};
+use crate::configuration::ConfigError;
+use crate::configuration::SwimClientConfig;
 use crate::connections::SwimConnPool;
 use crate::downlink::error::{DownlinkError, SubscriptionError};
 use crate::downlink::subscription::RequestResult;
@@ -35,9 +36,12 @@ use futures::join;
 use std::error::Error;
 use std::fmt;
 use std::fmt::{Display, Formatter};
+use std::fs::File;
+use std::io::Read;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_common::form::{Form, ValueSchema};
+use swim_common::model::parser::parse_single;
 use swim_common::model::Value;
 use swim_common::routing::error::RoutingError;
 use swim_common::routing::remote::net::dns::Resolver;
@@ -58,7 +62,7 @@ use tracing::info;
 /// The builder can be created with default or custom configuration.
 /// The custom configuration can be read from a file.
 pub struct SwimClientBuilder {
-    config: ConfigHierarchy<AbsolutePath>,
+    config: SwimClientConfig,
 }
 
 impl SwimClientBuilder {
@@ -66,48 +70,38 @@ impl SwimClientBuilder {
     ///
     /// # Arguments
     /// * `config` - The custom configuration for the client.
-    pub fn new(config: ConfigHierarchy<AbsolutePath>) -> Self {
+    pub fn new(config: SwimClientConfig) -> Self {
         SwimClientBuilder { config }
     }
 
-    //Todo dm this needs to be changed after the new client configuration is finalised.
-    // /// Create a new client builder with configuration from a file.
-    // ///
-    // /// # Arguments
-    // /// * `config_file` - Configuration file for the client.
-    // /// * `use_defaults` - Whether or not missing values should be replaced with default ones.
-    // pub fn new_from_file(
-    //     mut config_file: File,
-    //     use_defaults: bool,
-    // ) -> Result<Self, ConfigParseError> {
-    //     let mut contents = String::new();
-    //     config_file
-    //         .read_to_string(&mut contents)
-    //         .map_err(ConfigParseError::FileError)?;
-    //
-    //     let config = ConfigHierarchy::try_from_value(
-    //         parse_single(&contents).map_err(ConfigParseError::ReconError)?,
-    //         use_defaults,
-    //     )?;
-    //
-    //     Ok(SwimClientBuilder { config })
-    // }
+    /// Create a new client builder with configuration from a file.
+    ///
+    /// # Arguments
+    /// * `config_file` - Configuration file for the client.
+    pub fn new_from_file(mut config_file: File) -> Result<Self, ConfigError> {
+        let mut contents = String::new();
+        config_file
+            .read_to_string(&mut contents)
+            .map_err(ConfigError::File)?;
+
+        let config =
+            SwimClientConfig::try_from_value(&parse_single(&contents).map_err(ConfigError::Parse)?)
+                .map_err(ConfigError::Recognizer)?;
+
+        Ok(SwimClientBuilder { config })
+    }
 
     /// Build the Swim client.
     pub async fn build(self) -> SwimClient<AbsolutePath> {
-        let SwimClientBuilder {
-            config: downlinks_config,
-        } = self;
+        let SwimClientBuilder { config } = self;
 
         info!("Initialising Swim Client");
 
-        let client_params = downlinks_config.client_params();
-
         let (remote_tx, remote_rx) =
-            mpsc::channel(client_params.connections_params.router_buffer_size.get());
+            mpsc::channel(config.remote_connections_config.router_buffer_size.get());
 
         let (client_tx, client_rx) =
-            mpsc::channel(client_params.connections_params.router_buffer_size.get());
+            mpsc::channel(config.remote_connections_config.router_buffer_size.get());
 
         let top_level_router_fac =
             TopLevelClientRouterFactory::new(client_tx.clone(), remote_tx.clone());
@@ -117,10 +111,10 @@ impl SwimClientBuilder {
         let (close_tx, close_rx) = promise::promise();
 
         let remote_connections_task = RemoteConnectionsTask::new_client_task(
-            client_params.connections_params,
+            config.remote_connections_config,
             TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
             TungsteniteWsConnections {
-                config: client_params.websocket_params,
+                config: config.websocket_config,
             },
             top_level_router_fac.clone(),
             OpenEndedFutures::new(),
@@ -130,15 +124,19 @@ impl SwimClientBuilder {
 
         // The connection pool handles the connections behind the downlinks
         let (connection_pool, pool_task) = SwimConnPool::new(
-            client_params,
+            config.downlink_connections_config,
             (client_tx, client_rx),
             client_router_factory,
             close_rx.clone(),
         );
 
         // The downlinks are state machines and request connections from the pool
-        let (downlinks, downlinks_task) =
-            Downlinks::new(connection_pool, Arc::new(downlinks_config), close_rx);
+        let (downlinks, downlinks_task) = Downlinks::new(
+            config.downlink_connections_config.dl_req_buffer_size,
+            connection_pool,
+            Arc::new(config.downlinks_config),
+            close_rx,
+        );
 
         let task_handle = spawn(async {
             join!(
@@ -150,8 +148,8 @@ impl SwimClientBuilder {
         });
 
         SwimClient {
-            inner: DownlinksContext { downlinks },
-            close_buffer_size: client_params.connections_params.router_buffer_size,
+            inner: ClientContext { downlinks },
+            close_buffer_size: config.remote_connections_config.router_buffer_size,
             task_handle,
             stop_trigger: close_tx,
         }
@@ -161,15 +159,13 @@ impl SwimClientBuilder {
     pub async fn build_with_default() -> SwimClient<AbsolutePath> {
         info!("Initialising Swim Client");
 
-        let downlinks_config: ConfigHierarchy<AbsolutePath> = ConfigHierarchy::default();
-
-        let client_params = downlinks_config.client_params();
+        let config = SwimClientConfig::default();
 
         let (remote_tx, remote_rx) =
-            mpsc::channel(client_params.connections_params.router_buffer_size.get());
+            mpsc::channel(config.remote_connections_config.router_buffer_size.get());
 
         let (client_tx, client_rx) =
-            mpsc::channel(client_params.connections_params.router_buffer_size.get());
+            mpsc::channel(config.remote_connections_config.router_buffer_size.get());
 
         let top_level_router_fac =
             TopLevelClientRouterFactory::new(client_tx.clone(), remote_tx.clone());
@@ -179,10 +175,10 @@ impl SwimClientBuilder {
         let (close_tx, close_rx) = promise::promise();
 
         let remote_connections_task = RemoteConnectionsTask::new_client_task(
-            client_params.connections_params,
+            config.remote_connections_config,
             TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
             TungsteniteWsConnections {
-                config: client_params.websocket_params,
+                config: config.websocket_config,
             },
             top_level_router_fac.clone(),
             OpenEndedFutures::new(),
@@ -192,15 +188,19 @@ impl SwimClientBuilder {
 
         // The connection pool handles the connections behind the downlinks
         let (connection_pool, pool_task) = SwimConnPool::new(
-            client_params,
+            config.downlink_connections_config,
             (client_tx, client_rx),
             client_router_factory,
             close_rx.clone(),
         );
 
         // The downlinks are state machines and request connections from the pool
-        let (downlinks, downlinks_task) =
-            Downlinks::new(connection_pool, Arc::new(downlinks_config), close_rx);
+        let (downlinks, downlinks_task) = Downlinks::new(
+            config.downlink_connections_config.dl_req_buffer_size,
+            connection_pool,
+            Arc::new(config.downlinks_config),
+            close_rx,
+        );
 
         let task_handle = spawn(async {
             join!(
@@ -212,8 +212,8 @@ impl SwimClientBuilder {
         });
 
         SwimClient {
-            inner: DownlinksContext { downlinks },
-            close_buffer_size: client_params.connections_params.router_buffer_size,
+            inner: ClientContext { downlinks },
+            close_buffer_size: config.remote_connections_config.router_buffer_size,
             task_handle,
             stop_trigger: close_tx,
         }
@@ -240,7 +240,7 @@ impl SwimClientBuilder {
 ///
 #[derive(Debug)]
 pub struct SwimClient<Path: Addressable> {
-    inner: DownlinksContext<Path>,
+    inner: ClientContext<Path>,
     close_buffer_size: NonZeroUsize,
     task_handle: TaskHandle<RequestResult<(), Path>>,
     stop_trigger: CloseSender,
@@ -349,7 +349,7 @@ impl<Path: Addressable> SwimClient<Path> {
         let (tx, mut rx) = mpsc::channel(close_buffer_size.get());
 
         if stop_trigger.provide(tx).is_err() {
-            return Err(ClientError::CloseError);
+            return Err(ClientError::Close);
         }
 
         if let Some(Err(routing_err)) = rx.recv().await {
@@ -359,20 +359,20 @@ impl<Path: Addressable> SwimClient<Path> {
         let result = task_handle.await;
 
         match result {
-            Ok(r) => r.map_err(ClientError::SubscriptionError),
-            Err(_) => Err(ClientError::CloseError),
+            Ok(r) => r.map_err(ClientError::Subscription),
+            Err(_) => Err(ClientError::Close),
         }
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct DownlinksContext<Path: Addressable> {
+pub struct ClientContext<Path: Addressable> {
     downlinks: Downlinks<Path>,
 }
 
-impl<Path: Addressable> DownlinksContext<Path> {
+impl<Path: Addressable> ClientContext<Path> {
     pub fn new(downlinks: Downlinks<Path>) -> Self {
-        DownlinksContext { downlinks }
+        ClientContext { downlinks }
     }
 
     pub async fn send_command<T: Form>(
@@ -386,7 +386,7 @@ impl<Path: Addressable> DownlinksContext<Path> {
         self.downlinks
             .send_command(target, envelope)
             .await
-            .map_err(ClientError::SubscriptionError)
+            .map_err(ClientError::Subscription)
     }
 
     pub async fn value_downlink<T>(
@@ -400,7 +400,7 @@ impl<Path: Addressable> DownlinksContext<Path> {
         self.downlinks
             .subscribe_value(initial, path)
             .await
-            .map_err(ClientError::SubscriptionError)
+            .map_err(ClientError::Subscription)
     }
 
     pub async fn map_downlink<K, V>(
@@ -414,7 +414,7 @@ impl<Path: Addressable> DownlinksContext<Path> {
         self.downlinks
             .subscribe_map(path)
             .await
-            .map_err(ClientError::SubscriptionError)
+            .map_err(ClientError::Subscription)
     }
 
     pub async fn command_downlink<T>(
@@ -427,7 +427,7 @@ impl<Path: Addressable> DownlinksContext<Path> {
         self.downlinks
             .subscribe_command(path)
             .await
-            .map_err(ClientError::SubscriptionError)
+            .map_err(ClientError::Subscription)
     }
 
     pub async fn event_downlink<T>(
@@ -441,7 +441,7 @@ impl<Path: Addressable> DownlinksContext<Path> {
         self.downlinks
             .subscribe_event(path, violations)
             .await
-            .map_err(ClientError::SubscriptionError)
+            .map_err(ClientError::Subscription)
     }
 
     pub async fn untyped_value_downlink(
@@ -452,7 +452,7 @@ impl<Path: Addressable> DownlinksContext<Path> {
         self.downlinks
             .subscribe_value_untyped(initial, path)
             .await
-            .map_err(ClientError::SubscriptionError)
+            .map_err(ClientError::Subscription)
     }
 
     pub async fn untyped_map_downlink(
@@ -462,7 +462,7 @@ impl<Path: Addressable> DownlinksContext<Path> {
         self.downlinks
             .subscribe_map_untyped(path)
             .await
-            .map_err(ClientError::SubscriptionError)
+            .map_err(ClientError::Subscription)
     }
 
     pub async fn untyped_command_downlink(
@@ -472,7 +472,7 @@ impl<Path: Addressable> DownlinksContext<Path> {
         self.downlinks
             .subscribe_command_untyped(path)
             .await
-            .map_err(ClientError::SubscriptionError)
+            .map_err(ClientError::Subscription)
     }
 
     pub async fn untyped_event_downlink(
@@ -482,7 +482,7 @@ impl<Path: Addressable> DownlinksContext<Path> {
         self.downlinks
             .subscribe_event_untyped(path)
             .await
-            .map_err(ClientError::SubscriptionError)
+            .map_err(ClientError::Subscription)
     }
 }
 
@@ -490,13 +490,13 @@ impl<Path: Addressable> DownlinksContext<Path> {
 #[derive(Debug)]
 pub enum ClientError<Path: Addressable> {
     /// An error that occurred when subscribing to a downlink.
-    SubscriptionError(SubscriptionError<Path>),
+    Subscription(SubscriptionError<Path>),
     /// An error that occurred in the router.
-    RoutingError(RoutingError),
+    Routing(RoutingError),
     /// An error that occurred in a downlink.
-    DownlinkError(DownlinkError),
+    Downlink(DownlinkError),
     /// An error that occurred when closing the client.
-    CloseError,
+    Close,
 }
 
 impl<Path: Addressable + 'static> Display for ClientError<Path> {
@@ -511,10 +511,10 @@ impl<Path: Addressable + 'static> Display for ClientError<Path> {
 impl<Path: Addressable + 'static> Error for ClientError<Path> {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match &self {
-            ClientError::SubscriptionError(e) => Some(e),
-            ClientError::RoutingError(e) => Some(e),
-            ClientError::DownlinkError(e) => Some(e),
-            ClientError::CloseError => None,
+            ClientError::Subscription(e) => Some(e),
+            ClientError::Routing(e) => Some(e),
+            ClientError::Downlink(e) => Some(e),
+            ClientError::Close => None,
         }
     }
 
@@ -525,6 +525,6 @@ impl<Path: Addressable + 'static> Error for ClientError<Path> {
 
 impl<Path: Addressable> From<RoutingError> for ClientError<Path> {
     fn from(err: RoutingError) -> Self {
-        ClientError::RoutingError(err)
+        ClientError::Routing(err)
     }
 }

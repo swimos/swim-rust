@@ -12,11 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/// [`Recognizer`] implementations for basic types.
-pub mod primitive;
-#[cfg(test)]
-mod tests;
-
 use crate::form::structural::generic::coproduct::{CCons, CNil, Unify};
 use crate::form::structural::read::error::ExpectedEvent;
 use crate::form::structural::read::event::ReadEvent;
@@ -34,12 +29,20 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::marker::PhantomData;
+use std::num::NonZeroUsize;
 use std::option::Option::None;
 use std::str::FromStr;
 use std::sync::Arc;
 use swim_utilities::iteratee::Iteratee;
 use swim_utilities::routing::uri::RelativeUri;
 use url::Url;
+
+/// [`Recognizer`] implementations for config types.
+pub mod impls;
+/// [`Recognizer`] implementations for basic types.
+pub mod primitive;
+#[cfg(test)]
+mod tests;
 
 /// Trait for types that can be recognized by a [`Recognizer`] state machine.
 pub trait RecognizerReadable: Sized {
@@ -159,6 +162,7 @@ simple_readable!(i64, I64Recognizer);
 simple_readable!(u32, U32Recognizer);
 simple_readable!(u64, U64Recognizer);
 simple_readable!(usize, UsizeRecognizer);
+simple_readable!(NonZeroUsize, NonZeroUsizeRecognizer);
 simple_readable!(f64, F64Recognizer);
 simple_readable!(BigInt, BigIntRecognizer);
 simple_readable!(BigUint, BigUintRecognizer);

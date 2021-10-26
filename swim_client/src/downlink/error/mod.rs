@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::configuration::downlink::DownlinkKind;
+use crate::downlink::DownlinkKind;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use swim_common::model::schema::StandardSchema;

@@ -28,6 +28,7 @@ use crate::agent::{
     SwimAgent, TestClock,
 };
 use crate::agent::{IoPair, LaneTasks};
+use crate::interface::ServerDownlinksConfig;
 use crate::plane::provider::AgentProvider;
 use crate::plane::store::{PlaneStore, SwimPlaneStore};
 use crate::routing::TopLevelServerRouterFactory;
@@ -47,10 +48,10 @@ use store::engines::StoreBuilder;
 use store::keyspaces::KeyspaceByteEngine;
 use store::StoreError;
 use store::{deserialize, serialize};
-use swim_client::configuration::downlink::{ClientParams, ConfigHierarchy};
+use swim_client::configuration::DownlinkConnectionsConfig;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
-use swim_client::interface::DownlinksContext;
+use swim_client::interface::ClientContext;
 use swim_client::router::ClientRouterFactory;
 use swim_common::routing::RoutingAddr;
 use swim_common::warp::path::Path;
@@ -257,7 +258,7 @@ impl Default for TestStore {
     }
 }
 
-fn make_dl_context() -> DownlinksContext<Path> {
+fn make_dl_context() -> ClientContext<Path> {
     let (client_tx, client_rx) = mpsc::channel(8);
     let (remote_tx, _remote_rx) = mpsc::channel(8);
     let (plane_tx, _plane_rx) = mpsc::channel(8);
@@ -269,16 +270,20 @@ fn make_dl_context() -> DownlinksContext<Path> {
     let client_router_fac = ClientRouterFactory::new(client_tx.clone(), top_level_factory);
 
     let (conn_pool, _pool_task) = SwimConnPool::new(
-        ClientParams::default(),
+        DownlinkConnectionsConfig::default(),
         (client_tx, client_rx),
         client_router_fac,
         close_rx.clone(),
     );
 
-    let (downlinks, _downlinks_task) =
-        Downlinks::new(conn_pool, Arc::new(ConfigHierarchy::default()), close_rx);
+    let (downlinks, _downlinks_task) = Downlinks::new(
+        NonZeroUsize::new(8).unwrap(),
+        conn_pool,
+        Arc::new(ServerDownlinksConfig::default()),
+        close_rx,
+    );
 
-    DownlinksContext::new(downlinks)
+    ClientContext::new(downlinks)
 }
 
 #[tokio::test]

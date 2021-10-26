@@ -25,7 +25,7 @@ mod tests;
 
 pub mod factory;
 pub mod request;
-mod strategy;
+pub mod strategy;
 use pin_project::pin_project;
 use swim_runtime::time::delay::{delay_for, Delay};
 

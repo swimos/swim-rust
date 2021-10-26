@@ -13,14 +13,12 @@
 // limitations under the License.
 
 use super::ValueActions;
-use crate::configuration::downlink::OnInvalidMessage;
 use crate::downlink::model::value::{Action, SharedValue};
 use crate::downlink::typed::value::{TypedValueDownlink, ValueDownlinkReceiver, ValueViewError};
 use crate::downlink::typed::ViewMode;
 use crate::downlink::{Command, Message};
 use crate::downlink::{DownlinkConfig, DownlinkError};
 use futures::future::join;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_common::form::{Form, ValueSchema};
 use swim_common::model::schema::StandardSchema;
@@ -220,11 +218,7 @@ fn make_value_downlink<T: Form + ValueSchema>(init: T) -> Components<T> {
         Some(T::schema()),
         ReceiverStream::new(update_rx),
         sender,
-        DownlinkConfig {
-            buffer_size: NonZeroUsize::new(8).unwrap(),
-            yield_after: NonZeroUsize::new(2048).unwrap(),
-            on_invalid: OnInvalidMessage::Terminate,
-        },
+        DownlinkConfig::default(),
     );
     let downlink = TypedValueDownlink::new(Arc::new(dl));
     let receiver = ValueDownlinkReceiver::new(rx);

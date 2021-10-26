@@ -25,6 +25,7 @@ use crate::agent::store::mock::MockNodeStore;
 use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::{AgentContext, AgentParameters};
+use crate::interface::ServerDownlinksConfig;
 use crate::plane::provider::AgentProvider;
 use crate::routing::TopLevelServerRouterFactory;
 use crate::{
@@ -38,10 +39,10 @@ use std::sync::Arc;
 use std::time::Duration;
 use stm::stm::Stm;
 use stm::transaction::atomically;
-use swim_client::configuration::downlink::{ClientParams, ConfigHierarchy};
+use swim_client::configuration::DownlinkConnectionsConfig;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
-use swim_client::interface::DownlinksContext;
+use swim_client::interface::ClientContext;
 use swim_client::router::ClientRouterFactory;
 use swim_common::routing::RoutingAddr;
 use swim_utilities::routing::uri::RelativeUri;
@@ -552,16 +553,20 @@ async fn agent_loop() {
     let client_router_fac = ClientRouterFactory::new(client_tx.clone(), top_level_factory);
 
     let (conn_pool, _pool_task) = SwimConnPool::new(
-        ClientParams::default(),
+        DownlinkConnectionsConfig::default(),
         (client_tx, client_rx),
         client_router_fac,
         close_rx.clone(),
     );
 
-    let (downlinks, _downlinks_task) =
-        Downlinks::new(conn_pool, Arc::new(ConfigHierarchy::default()), close_rx);
+    let (downlinks, _downlinks_task) = Downlinks::new(
+        NonZeroUsize::new(8).unwrap(),
+        conn_pool,
+        Arc::new(ServerDownlinksConfig::default()),
+        close_rx,
+    );
 
-    let client = DownlinksContext::new(downlinks);
+    let client = ClientContext::new(downlinks);
 
     let (_, agent_proc) = provider.run(
         parameters,

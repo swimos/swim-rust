@@ -75,6 +75,17 @@ impl Addressable for Path {
     }
 }
 
+impl From<AbsolutePath> for Path {
+    fn from(path: AbsolutePath) -> Self {
+        Path::Remote(path)
+    }
+}
+impl From<RelativePath> for Path {
+    fn from(path: RelativePath) -> Self {
+        Path::Local(path)
+    }
+}
+
 /// Absolute path to an agent lane, on a specific host.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct AbsolutePath {
