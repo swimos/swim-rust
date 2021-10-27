@@ -20,7 +20,6 @@ pub mod interface;
 pub mod macros;
 pub mod meta;
 pub mod routing;
-pub mod store;
 
 mod plane;
 
@@ -34,4 +33,8 @@ pub use swim_utilities::routing::route_pattern::RoutePattern;
 pub use swim_utilities::routing::uri;
 
 #[doc(hidden)]
-pub use agent::model::value::ValueLaneStoreIo;
+pub mod store {
+    pub use server_store::agent::lane::value::ValueLaneStoreIo;
+    pub use server_store::agent::lane::{LaneNoStore, StoreIo};
+    pub use server_store::agent::NodeStore;
+}

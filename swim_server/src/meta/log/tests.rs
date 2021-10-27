@@ -16,7 +16,6 @@ use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::supply::SupplyLane;
 use crate::agent::lane::model::value::ValueLane;
-use crate::agent::store::mock::MockNodeStore;
 use crate::agent::{
     agent_lifecycle, map_lifecycle, value_lifecycle, AgentContext, AgentParameters, SwimAgent,
     TestClock,
@@ -28,6 +27,7 @@ use crate::plane::provider::AgentProvider;
 use crate::routing::TopLevelServerRouterFactory;
 use futures::future::BoxFuture;
 use futures::FutureExt;
+use server_store::agent::mock::MockNodeStore;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::num::NonZeroUsize;

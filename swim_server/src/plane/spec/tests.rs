@@ -15,16 +15,16 @@
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lifecycle::AgentLifecycle;
-use crate::agent::store::NodeStore;
 use crate::agent::{AgentContext, DynamicAgentIo, DynamicLaneTasks, SwimAgent};
 use crate::plane::context::PlaneContext;
 use crate::plane::error::AmbiguousRoutes;
 use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::router::PlaneRouter;
 use crate::plane::spec::{PlaneBuilder, PlaneSpec, RouteSpec};
-use crate::plane::store::mock::MockPlaneStore;
 use futures::future::{ready, BoxFuture, Ready};
 use futures::FutureExt;
+use server_store::agent::NodeStore;
+use server_store::plane::mock::MockPlaneStore;
 use std::time::Duration;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;

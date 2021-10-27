@@ -16,13 +16,13 @@ use crate::interface::ServerDownlinksConfig;
 use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::spec::RouteSpec;
-use crate::plane::store::mock::MockPlaneStore;
 use crate::plane::tests::fixture::{ReceiveAgentRoute, SendAgentRoute, TestLifecycle};
 use crate::plane::{
     AgentRoute, ContextImpl, EnvChannel, PlaneActiveRoutes, PlaneSpec, RouteResolver,
 };
 use crate::routing::TopLevelServerRouterFactory;
 use futures::future::join;
+use server_store::plane::mock::MockPlaneStore;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;

@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(feature = "persistence")]
+mod store_agent;
+
 mod data_macro_agent;
 mod declarive_macro_agent;
 mod derive;
 mod reporting_agent;
 mod reporting_macro_agent;
-mod store_agent;
 pub(crate) mod test_clock;
 
 use crate::agent::lane::channels::AgentExecutionConfig;
@@ -30,7 +32,6 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::LaneModel;
 use crate::agent::lifecycle::AgentLifecycle;
-use crate::agent::store::mock::MockNodeStore;
 use crate::agent::tests::reporting_agent::TestAgentConfig;
 use crate::agent::tests::reporting_macro_agent::ReportingAgentEvent;
 use crate::agent::tests::stub_router::SingleChannelRouter;
@@ -46,6 +47,7 @@ use crate::plane::provider::AgentProvider;
 use crate::routing::TopLevelServerRouterFactory;
 use futures::future::{join, BoxFuture};
 use futures::Stream;
+use server_store::agent::mock::MockNodeStore;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::future::Future;

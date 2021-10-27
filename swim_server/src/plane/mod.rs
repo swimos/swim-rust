@@ -19,12 +19,12 @@ use crate::plane::context::PlaneContext;
 use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::spec::RouteSpec;
-use crate::plane::store::PlaneStore;
 use either::Either;
 use futures::future::{join, BoxFuture};
 use futures::{select_biased, FutureExt, StreamExt};
 use futures_util::stream::TakeUntil;
 use pin_utils::pin_mut;
+use server_store::plane::PlaneStore;
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
@@ -57,7 +57,6 @@ pub mod lifecycle;
 pub mod provider;
 pub mod router;
 pub mod spec;
-pub mod store;
 #[cfg(test)]
 mod tests;
 

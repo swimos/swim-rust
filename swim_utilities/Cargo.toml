@@ -22,14 +22,15 @@ test-util = ["swim_test_util"]
 time = ["swim_time"]
 topic = ["swim_sync", "swim_sync/topic"]
 trigger = ["swim_trigger"]
+io = ["swim_io"]
 
 [dependencies]
-
 swim_bilock = { path = "./swim_bilock", optional = true }
 swim_errors = { path = "./swim_errors", optional = true }
 swim_format = { path = "./swim_format", optional = true }
 swim_trigger = { path = "./swim_trigger", optional = true }
 swim_future = { path = "./swim_future", optional = true }
+swim_io = { path = "./swim_io", optional = true }
 swim_iteratee = { path = "./swim_iteratee", optional = true }
 swim_lrucache = { path = "./swim_lrucache", optional = true }
 swim_route = { path = "./swim_route", optional = true }

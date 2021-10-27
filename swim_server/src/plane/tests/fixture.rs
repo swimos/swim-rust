@@ -13,18 +13,18 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::store::SwimNodeStore;
 use crate::agent::{AgentResult, AgentTaskResult};
 use crate::plane::context::PlaneContext;
 use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::router::PlaneRouter;
-use crate::plane::store::mock::MockPlaneStore;
 use crate::plane::{AgentRoute, EnvChannel, RouteAndParameters};
 use futures::future::BoxFuture;
 use futures::{FutureExt, StreamExt};
 use http::Uri;
 use parking_lot::Mutex;
 use pin_utils::pin_mut;
+use server_store::agent::SwimNodeStore;
+use server_store::plane::mock::MockPlaneStore;
 use std::any::Any;
 use std::num::NonZeroUsize;
 use std::sync::Arc;

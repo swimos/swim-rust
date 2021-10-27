@@ -20,16 +20,16 @@ use crate::agent::lane::channels::uplink::{
     PeelResult, UplinkAction, UplinkError, UplinkStateMachine,
 };
 use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, TaggedAction};
-use crate::agent::store::mock::MockNodeStore;
-use crate::agent::store::SwimNodeStore;
 use crate::agent::Eff;
 use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
-use crate::plane::store::mock::MockPlaneStore;
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::iter;
 use futures::stream::{BoxStream, FusedStream};
 use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
+use server_store::agent::mock::MockNodeStore;
+use server_store::agent::SwimNodeStore;
+use server_store::plane::mock::MockPlaneStore;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::num::NonZeroUsize;
