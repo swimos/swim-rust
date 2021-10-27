@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::handshake::{ProtocolError, ProtocolRegistry};
+use crate::handshake::{negotiate_request, ProtocolRegistry};
+use crate::ProtocolError;
 use http::header::SEC_WEBSOCKET_PROTOCOL;
 
 #[test]
@@ -24,8 +25,9 @@ fn selects_protocol_ok() {
     let request = httparse::Request::new(&mut headers);
 
     let registry = ProtocolRegistry::new(vec!["warps", "warp"]).unwrap();
+
     assert_eq!(
-        registry.negotiate_request(&request),
+        negotiate_request(&registry, &request),
         Ok(Some("warp".to_string()))
     );
 }
@@ -46,7 +48,7 @@ fn multiple_headers() {
 
     let registry = ProtocolRegistry::new(vec!["warps", "warp"]).unwrap();
     assert_eq!(
-        registry.negotiate_request(&request),
+        negotiate_request(&registry, &request),
         Ok(Some("warp".to_string()))
     );
 }
@@ -71,7 +73,7 @@ fn mixed_headers() {
 
     let registry = ProtocolRegistry::new(vec!["warps", "warp", "warps2.0"]).unwrap();
     assert_eq!(
-        registry.negotiate_request(&request),
+        negotiate_request(&registry, &request),
         Ok(Some("warps2.0".to_string()))
     );
 }
@@ -86,7 +88,7 @@ fn malformatted() {
 
     let registry = ProtocolRegistry::new(vec!["warps", "warp", "warps2.0"]).unwrap();
     assert_eq!(
-        registry.negotiate_request(&request),
+        negotiate_request(&registry, &request),
         Err(ProtocolError::Encoding)
     );
 }
@@ -100,5 +102,5 @@ fn no_match() {
     let request = httparse::Request::new(&mut headers);
 
     let registry = ProtocolRegistry::new(vec!["d"]).unwrap();
-    assert_eq!(registry.negotiate_request(&request), Ok(None));
+    assert_eq!(negotiate_request(&registry, &request), Ok(None));
 }

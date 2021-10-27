@@ -29,8 +29,8 @@ use crate::ext::NegotiatedExtension;
 use crate::handshake::client::encoding::{build_request, encode_request};
 use crate::handshake::io::BufferedIo;
 use crate::handshake::{
-    validate_header, validate_header_value, ParseResult, ProtocolRegistry, StreamingParser,
-    ACCEPT_KEY, BAD_STATUS_CODE, UPGRADE_STR, WEBSOCKET_STR,
+    negotiate_response, validate_header, validate_header_value, ParseResult, ProtocolRegistry,
+    StreamingParser, ACCEPT_KEY, BAD_STATUS_CODE, UPGRADE_STR, WEBSOCKET_STR,
 };
 use crate::{
     NoExt, NoExtProvider, Role, TryIntoRequest, WebSocket, WebSocketConfig, WebSocketStream,
@@ -387,7 +387,7 @@ where
     )?;
 
     Ok(HandshakeResult {
-        subprotocol: subprotocols.negotiate_response(response)?,
+        subprotocol: negotiate_response(subprotocols, response)?,
         extension: extension
             .negotiate_client(response.headers)
             .map_err(|e| Error::with_cause(ErrorKind::Extension, e))?
