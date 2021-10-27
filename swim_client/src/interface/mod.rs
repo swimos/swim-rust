@@ -157,7 +157,9 @@ impl SwimClientBuilder {
 
     /// Build the Swim client with default WS factory and configuration.
     pub async fn build_with_default() -> SwimClient<AbsolutePath> {
-        SwimClientBuilder::new(SwimClientConfig::default()).build()
+        SwimClientBuilder::new(SwimClientConfig::default())
+            .build()
+            .await
     }
 }
 
