@@ -152,12 +152,13 @@ impl NodeAggregatorTask {
         let mut iteration_count: usize = 0;
 
         let yield_mod = yield_after.get();
+        let stage = MetricStage::Node;
 
         let error = loop {
             let event: Option<(RelativePath, WarpLaneProfile)> = select! {
                 _ = fused_trigger => {
-                    event!(Level::WARN, STOP_OK);
                     drain(&mut fused_metric_rx, lane, profile, reporter)?;
+                    event!(Level::DEBUG, %stage, STOP_OK);
 
                     return Ok(());
                 },
@@ -165,8 +166,8 @@ impl NodeAggregatorTask {
             };
             match event {
                 None => {
-                    event!(Level::WARN, STOP_CLOSED);
                     drain(&mut fused_metric_rx, lane, profile, reporter)?;
+                    event!(Level::DEBUG, %stage, STOP_CLOSED);
 
                     break AggregatorErrorKind::AbnormalStop;
                 }

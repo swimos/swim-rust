@@ -178,12 +178,13 @@ where
         let mut fused_trigger = stop_rx.fuse();
         let mut iteration_count: usize = 0;
         let yield_mod = yield_after.get();
+        let stage = M::METRIC_STAGE;
 
         let stop_result = loop {
             let event: Option<(RelativePath, M::Input)> = select_biased! {
                 _ = fused_trigger => {
-                    event!(Level::DEBUG, STOP_OK);
                     drain(&mut fused_metric_rx, &mut metrics, &output);
+                    event!(Level::DEBUG, %stage, STOP_OK);
 
                     break Ok(());
                 },
@@ -192,7 +193,7 @@ where
             match event {
                 None => {
                     drain(&mut fused_metric_rx, &mut metrics, &output);
-                    event!(Level::WARN, STOP_CLOSED);
+                    event!(Level::WARN, %stage, STOP_CLOSED);
 
                     break Err(AggregatorError {
                         aggregator: M::METRIC_STAGE,
@@ -210,7 +211,7 @@ where
                                         aggregator: M::METRIC_STAGE,
                                         error: AggregatorErrorKind::ForwardChannelClosed,
                                     };
-                                    event!(Level::ERROR, %error, STOP_CLOSED);
+                                    event!(Level::ERROR, %stage, %error, STOP_CLOSED);
                                     break Err(error);
                                 }
                                 false

@@ -425,7 +425,7 @@ async fn full_pipeline_multiple_observers() {
     let (aggregator, aggregator_task) =
         NodeMetricAggregator::new(node_uri.clone(), stop_rx, config, pulse_lanes);
 
-    let _aggregator_jh = tokio::spawn(aggregator_task);
+    let aggregator_jh = tokio::spawn(aggregator_task);
 
     let test_lanes = test_lanes
         .into_iter()
@@ -525,7 +525,7 @@ async fn full_pipeline_multiple_observers() {
     observer2.set_inner_values(second);
     observer2.force_flush();
 
+    assert!(stop_tx.trigger());
     assert!(task_jh.await.is_ok());
-
-    stop_tx.trigger();
+    assert!(aggregator_jh.await.is_ok());
 }
