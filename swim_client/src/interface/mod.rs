@@ -157,66 +157,7 @@ impl SwimClientBuilder {
 
     /// Build the Swim client with default WS factory and configuration.
     pub async fn build_with_default() -> SwimClient<AbsolutePath> {
-        info!("Initialising Swim Client");
-
-        let config = SwimClientConfig::default();
-
-        let (remote_tx, remote_rx) =
-            mpsc::channel(config.remote_connections_config.router_buffer_size.get());
-
-        let (client_tx, client_rx) =
-            mpsc::channel(config.remote_connections_config.router_buffer_size.get());
-
-        let top_level_router_fac =
-            TopLevelClientRouterFactory::new(client_tx.clone(), remote_tx.clone());
-
-        let client_router_factory =
-            ClientRouterFactory::new(client_tx.clone(), top_level_router_fac.clone());
-        let (close_tx, close_rx) = promise::promise();
-
-        let remote_connections_task = RemoteConnectionsTask::new_client_task(
-            config.remote_connections_config,
-            TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
-            TungsteniteWsConnections {
-                config: config.websocket_config,
-            },
-            top_level_router_fac.clone(),
-            OpenEndedFutures::new(),
-            RemoteConnectionChannels::new(remote_tx, remote_rx, close_rx.clone()),
-        )
-        .await;
-
-        // The connection pool handles the connections behind the downlinks
-        let (connection_pool, pool_task) = SwimConnPool::new(
-            config.downlink_connections_config,
-            (client_tx, client_rx),
-            client_router_factory,
-            close_rx.clone(),
-        );
-
-        // The downlinks are state machines and request connections from the pool
-        let (downlinks, downlinks_task) = Downlinks::new(
-            config.downlink_connections_config.dl_req_buffer_size,
-            connection_pool,
-            Arc::new(config.downlinks_config),
-            close_rx,
-        );
-
-        let task_handle = spawn(async {
-            join!(
-                downlinks_task.run(),
-                remote_connections_task.run(),
-                pool_task.run(),
-            )
-            .0
-        });
-
-        SwimClient {
-            inner: ClientContext { downlinks },
-            close_buffer_size: config.remote_connections_config.router_buffer_size,
-            task_handle,
-            stop_trigger: close_tx,
-        }
+        SwimClientBuilder::new(SwimClientConfig::default()).build()
     }
 }
 
