@@ -32,6 +32,29 @@ jobs:
         displayName: Generate code coverage
         workingDirectory: $(Build.SourcesDirectory)
 
-      - script: bash <(curl -s https://codecov.io/bash)
+      - bash: |
+          curl -Os https://uploader.codecov.io/latest/linux/codecov
+          curl -Os https://uploader.codecov.io/latest/linux/codecov.SHA256SUM
+          curl -Os https://uploader.codecov.io/latest/linux/codecov.SHA256SUM.sig
+        displayName: Download the Codecov uploader and its keys
+        workingDirectory: $(Build.SourcesDirectory)
+
+      - bash: |
+          echo ${CODECOV_PUBLIC_KEY} | base64 --decode | gpg --import
+          gpg --verify codecov.SHA256SUM.sig codecov.SHA256SUM
+        displayName: Verify the signature of the SHA256SUM
+        workingDirectory: $(Build.SourcesDirectory)
+
+      - bash: |
+          shasum -a 256 -c codecov.SHA256SUM
+        displayName: Verify the integrity of the Codecov uploader
+        workingDirectory: $(Build.SourcesDirectory)
+
+      - bash: |
+          set -ex
+          chmod +x codecov
+          ./codecov -t $TOKEN
         displayName: Upload code coverage
         workingDirectory: $(Build.SourcesDirectory)
+        env:
+          TOKEN: $(CODECOV_TOKEN)

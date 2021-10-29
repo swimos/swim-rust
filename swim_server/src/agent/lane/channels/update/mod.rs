@@ -17,7 +17,6 @@ pub mod command;
 pub mod map;
 pub mod value;
 
-use crate::routing::RoutingAddr;
 use futures::future::{ready, BoxFuture, Either, Ready};
 use futures::stream::{iter, Iter};
 use futures::Stream;

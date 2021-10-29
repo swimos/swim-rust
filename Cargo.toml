@@ -9,6 +9,7 @@ members = [
     "swim_server",
     "swim_warp",
     "stm",
+    "swim_store",
     "swim_utilities",
     "swim_utilities/swim_*",
 ]

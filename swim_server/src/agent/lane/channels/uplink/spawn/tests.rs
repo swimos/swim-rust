@@ -20,8 +20,6 @@ use crate::agent::lane::channels::uplink::{
     PeelResult, UplinkAction, UplinkError, UplinkStateMachine,
 };
 use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, TaggedAction};
-use crate::agent::store::mock::MockNodeStore;
-use crate::agent::store::SwimNodeStore;
 use crate::agent::Eff;
 use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
 use crate::plane::store::mock::MockPlaneStore;
@@ -35,7 +33,11 @@ use futures::stream::iter;
 use futures::stream::{BoxStream, FusedStream};
 use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
+use server_store::agent::mock::MockNodeStore;
+use server_store::agent::SwimNodeStore;
+use server_store::plane::mock::MockPlaneStore;
 use std::collections::{HashMap, HashSet};
+use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -65,8 +67,11 @@ struct Message(i32);
 //A minimal suite of fake uplink and router implementations which which to test the spawner.
 
 struct TestHandler(mpsc::Sender<i32>, i32);
+
 struct TestStateMachine(i32);
+
 struct TestUpdater(mpsc::Sender<i32>);
+
 struct TestRouter {
     sender: mpsc::Sender<TaggedEnvelope>,
     drop_rx: promise::Receiver<ConnectionDropped>,
@@ -93,7 +98,7 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
     }
 }
 
-impl ServerRouter for TestRouter {
+impl Router for TestRouter {
     fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         let TestRouter {
             sender, drop_rx, ..
@@ -306,6 +311,7 @@ struct TestContext {
     messages: mpsc::Sender<TaggedEnvelope>,
     _drop_tx: promise::Sender<ConnectionDropped>,
     drop_rx: promise::Receiver<ConnectionDropped>,
+    uri: RelativeUri,
     uplinks_idle_since: Arc<AtomicInstant>,
 }
 
@@ -317,6 +323,7 @@ impl TestContext {
             messages,
             _drop_tx: drop_tx,
             drop_rx,
+            uri: RelativeUri::try_from("/mock/router".to_string()).unwrap(),
             uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
         }
     }
@@ -338,6 +345,10 @@ impl AgentExecutionContext for TestContext {
 
     fn spawner(&self) -> Sender<Eff> {
         self.spawner.clone()
+    }
+
+    fn uri(&self) -> &RelativeUri {
+        &self.uri
     }
 
     fn metrics(&self) -> NodeMetricAggregator {

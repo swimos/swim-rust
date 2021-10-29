@@ -15,20 +15,21 @@
 use std::fmt;
 use std::fmt::{Debug, Formatter};
 
-#[cfg(feature = "tls")]
 use {
-    crate::error::TlsError, crate::ws::tls::build_x509_certificate, std::path::Path,
+    crate::error::TlsError, crate::ws::tls::build_x509_certificate,
     tokio_native_tls::native_tls::Certificate,
+    std::path::Path,
 };
 use {
     tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode as TungCloseCode,
     tokio_tungstenite::tungstenite::protocol::CloseFrame, tokio_tungstenite::tungstenite::Message,
 };
+use swim_warp::envelope::Envelope;
+use crate::routing::TaggedEnvelope;
 
 #[derive(Clone)]
 pub enum Protocol {
     PlainText,
-    #[cfg(feature = "tls")]
     Tls(Certificate),
 }
 
@@ -37,16 +38,13 @@ impl PartialEq for Protocol {
         #[allow(clippy::match_like_matches_macro)]
         match (self, other) {
             (Protocol::PlainText, Protocol::PlainText) => true,
-            #[cfg(feature = "tls")]
             (Protocol::Tls(_), Protocol::Tls(_)) => true,
-            #[cfg(feature = "tls")]
             _ => false,
         }
     }
 }
 
 impl Protocol {
-    #[cfg(feature = "tls")]
     pub fn tls(path: impl AsRef<Path>) -> Result<Protocol, TlsError> {
         let cert = build_x509_certificate(path)?;
         Ok(Protocol::Tls(cert))
@@ -57,7 +55,6 @@ impl Debug for Protocol {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::PlainText => write!(f, "PlainText"),
-            #[cfg(feature = "tls")]
             Self::Tls(_) => write!(f, "Tls"),
         }
     }
@@ -133,6 +130,19 @@ pub enum WsMessage {
     Ping(Vec<u8>),
     Pong(Vec<u8>),
     Closed(Option<CloseReason>),
+}
+
+impl From<TaggedEnvelope> for WsMessage {
+    fn from(this: TaggedEnvelope) -> Self {
+        let TaggedEnvelope(_, env) = this;
+        env.into()
+    }
+}
+
+impl From<Envelope> for WsMessage {
+    fn from(this: Envelope) -> Self {
+        WsMessage::Text(this.into_value().to_string())
+    }
 }
 
 #[derive(Debug, Ord, PartialOrd, PartialEq, Eq, Clone)]

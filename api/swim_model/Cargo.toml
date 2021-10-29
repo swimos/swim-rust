@@ -7,11 +7,12 @@ edition = "2018"
 [dependencies]
 chrono = "0.4"
 either = "1.5.3"
-num-bigint = "0.3"
+num-bigint = { version = "0.3", features = ["serde"] }
 base64 = "0.13.0"
 http = "0.2.3"
 swim_utilities = { path = "../../swim_utilities", features = ["text"] }
 num-traits = "0.2.12"
 url = "2.1.1"
+serde = { version = "1.0.124", features = ["derive"] }
 
 [dev-dependencies]

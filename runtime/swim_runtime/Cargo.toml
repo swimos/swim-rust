@@ -10,6 +10,7 @@ tls = ["tokio-native-tls", "tokio-tungstenite/tls", "tungstenite/tls"]
 
 [dependencies]
 either = "1.5.3"
+flate2 = "1.0.22"
 futures = "0.3.4"
 http = "0.2.3"
 pin-project = "1.0.5"
@@ -20,8 +21,14 @@ tokio-tungstenite = { version = "0.13.0", git = "https://github.com/swimos/tokio
 swim_utilities = { path = "../../swim_utilities", features = ["errors", "circular_buffer", "future", "lrucache"] }
 url = "2.1.1"
 swim_model = { path = "../../api/swim_model" }
+swim_form = { path = "../../api/swim_form" }
 swim_async_runtime = { path = "../swim_async_runtime" }
 swim_warp = { path = "../../swim_warp" }
+swim_tracing = { path = "../../swim_utilities/swim_tracing" }
+swim_recon = { path = "../../api/formats/swim_recon" }
+slab = "0.4.2"
+tracing = "0.1.16"
+thiserror = "1.0"
 
 [dependencies.tokio-native-tls]
 version = "0.3"

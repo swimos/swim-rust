@@ -22,7 +22,6 @@ use crate::agent::AttachError;
 use crate::agent::LaneIo;
 use crate::meta::log::LogLevel;
 use crate::meta::{LaneAddressedKind, MetaNodeAddressed};
-use crate::routing::{RoutingAddr, TaggedEnvelope};
 use futures::future::{join, BoxFuture};
 use futures::{FutureExt, Stream, StreamExt};
 use std::collections::HashMap;
@@ -59,7 +58,7 @@ fn make_dispatcher(
         .map(|(name, lane)| (name, lane.boxed()))
         .collect();
 
-    let context = MockExecutionContext::new(RoutingAddr::local(1024), buffer_size, spawn_tx);
+    let context = MockExecutionContext::new(RoutingAddr::plane(1024), buffer_size, spawn_tx);
 
     let config = AgentExecutionConfig::with(
         NonZeroUsize::new(8).unwrap(),

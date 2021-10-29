@@ -46,7 +46,6 @@ use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::{AttachError, LaneIo};
 use crate::meta::uri::MetaParseErr;
 use crate::meta::{LaneAddressedKind, MetaNodeAddressed, LANES_URI, PULSE_URI, UPLINK_URI};
-use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
@@ -540,16 +539,16 @@ const FAILED_START_DROP: &str = "Lane IO task failed to start; dropping pending 
 const NODE_URI_PARSE_ERR: &str = "Failed to parse node URI.";
 const FAILED_NOT_FOUND_RESPONSE: &str = "Failed to send lane not found response.";
 
-impl<Router> EnvelopeDispatcher<Router>
+impl<R> EnvelopeDispatcher<R>
 where
-    Router: ServerRouter,
+    R: Router,
 {
     fn new(
         open_tx: mpsc::Sender<OpenRequest>,
         yield_after: NonZeroUsize,
         lane_buffer: NonZeroUsize,
         max_idle_time: Duration,
-        router: Router,
+        router: R,
     ) -> Self {
         EnvelopeDispatcher {
             senders: Default::default(),
@@ -758,13 +757,13 @@ where
     }
 }
 
-async fn send_lane_not_found<Router>(
-    router: &mut Router,
+async fn send_lane_not_found<R>(
+    router: &mut R,
     remote_addr: RoutingAddr,
     node: String,
     lane: String,
 ) where
-    Router: ServerRouter,
+    R: Router,
 {
     if let Ok(mut remote_route) = router.resolve_sender(remote_addr).await {
         if remote_route

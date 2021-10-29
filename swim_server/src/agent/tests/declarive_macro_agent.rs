@@ -237,6 +237,6 @@ async fn agent_loop() {
     let config = TestAgentConfig::new(tx);
     let agent_lifecycle = config.agent_lifecycle();
 
-    let provider = AgentProvider::new(config, agent_lifecycle);
-    run_agent_test(provider, rx).await;
+    let provider = AgentProvider::new(config.clone(), agent_lifecycle);
+    run_agent_test(provider, config, rx).await;
 }

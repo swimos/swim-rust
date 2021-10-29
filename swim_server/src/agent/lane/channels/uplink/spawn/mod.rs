@@ -23,7 +23,6 @@ use crate::agent::lane::channels::{
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::Eff;
 use crate::meta::metric::uplink::UplinkObserver;
-use crate::routing::{RoutingAddr, ServerRouter};
 use futures::future::join_all;
 use futures::{FutureExt, StreamExt};
 use std::collections::hash_map::Entry;
@@ -114,20 +113,21 @@ where
     /// * `router` - Produces channels on which outgoing envelopes can be sent.
     /// * `spawn_tx` - Channel to an asynchronous tasks spawner (used to run the uplink state
     /// machines.
+    /// * `uri` - The relative uri of the agent to which this uplink belongs.
     /// * `error_collector` - Collects errors whenever an uplink fails.
     ///
-    /// #Type Parameters
+    /// # Type Parameters
     ///
     /// * `Router` - The type of the server router.
-    pub async fn run<Router>(
+    pub async fn run<R>(
         mut self,
-        mut router: Router,
+        mut router: R,
         mut spawn_tx: mpsc::Sender<Eff>,
         uplinks_idle_since: Arc<AtomicInstant>,
         error_collector: mpsc::Sender<UplinkErrorReport>,
         observer: UplinkObserver,
     ) where
-        Router: ServerRouter,
+        R: Router,
     {
         let mut uplink_senders: HashMap<RoutingAddr, UplinkHandle> = HashMap::new();
         let mut iteration_count: usize = 0;
@@ -204,16 +204,16 @@ where
     }
 
     //Create a new uplink state machine and attach it to the router
-    async fn make_uplink<Router>(
+    async fn make_uplink<R>(
         &mut self,
         addr: RoutingAddr,
         err_tx: mpsc::Sender<UplinkErrorReport>,
         spawn_tx: &mut mpsc::Sender<Eff>,
-        router: &mut Router,
+        router: &mut R,
         uplinks_idle_since: Arc<AtomicInstant>,
     ) -> Option<UplinkHandle>
     where
-        Router: ServerRouter,
+        R: Router,
     {
         let UplinkSpawner {
             handler,

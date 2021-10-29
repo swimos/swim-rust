@@ -12,8 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use server_store::plane::SwimPlaneStore;
+use server_store::NoStore;
 use std::fmt::Debug;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use swim_common::model::Value;
+use swim_common::warp::path::{AbsolutePath, RelativePath};
 use swim_server::agent::command_lifecycle;
 use swim_server::agent::lane::model::command::CommandLane;
 use swim_server::agent::lane::model::map::MapLane;
@@ -25,20 +29,95 @@ use swim_server::agent::SwimAgent;
 use swim_server::interface::{ServerHandle, SwimServer, SwimServerBuilder, SwimServerConfig};
 use swim_server::RoutePattern;
 
-pub async fn build_server() -> (SwimServer, ServerHandle) {
+pub async fn build_server() -> (SwimServer<SwimPlaneStore<NoStore>>, ServerHandle) {
     let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0);
     let mut swim_server_builder =
-        SwimServerBuilder::temporary_store(SwimServerConfig::default(), "test")
-            .expect("Failed to build transient store");
+        SwimServerBuilder::no_store(SwimServerConfig::default()).expect("Failed to build store");
     let mut plane_builder = swim_server_builder.plane_builder("test").unwrap();
 
     plane_builder
-        .add_route::<UnitAgent, (), ()>(RoutePattern::parse_str("/unit/foo").unwrap(), (), ())
+        .add_route::<UnitAgent, (), ()>(RoutePattern::parse_str("/unit/:id").unwrap(), (), ())
+        .unwrap();
+
+    plane_builder
+        .add_route::<DownlinkAgent, (), ()>(
+            RoutePattern::parse_str("/downlink/:id").unwrap(),
+            (),
+            (),
+        )
         .unwrap();
 
     swim_server_builder.add_plane(plane_builder.build());
     swim_server_builder.bind_to(address).build().unwrap()
 }
+
+#[derive(Debug, SwimAgent)]
+struct DownlinkAgent {
+    #[lifecycle(name = "ParkLifecycle")]
+    pub park: CommandLane<String>,
+
+    #[lifecycle(name = "GarageLifecycle")]
+    pub garage: ValueLane<String>,
+}
+
+#[command_lifecycle(agent = "DownlinkAgent", command_type = "String", on_command)]
+struct ParkLifecycle;
+
+impl ParkLifecycle {
+    async fn on_command<Context>(
+        &self,
+        command: &str,
+        _model: &CommandLane<String>,
+        context: &Context,
+    ) where
+        Context: AgentContext<DownlinkAgent> + Sized + Send + Sync + 'static,
+    {
+        if command == "BMW" {
+            let (dl, _recv) = context
+                .downlinks_context()
+                .value_downlink(
+                    RelativePath::new("/downlink/1", "garage").into(),
+                    "".to_string(),
+                )
+                .await
+                .unwrap();
+
+            let current = dl.get().await.unwrap();
+            dl.set(format!("{} {}", current, "BMW")).await.unwrap();
+        } else if command == "Audi" {
+            let (dl, _recv) = context
+                .downlinks_context()
+                .value_downlink(
+                    RelativePath::new("/downlink/2", "garage").into(),
+                    "".to_string(),
+                )
+                .await
+                .unwrap();
+
+            let current = dl.get().await.unwrap();
+            dl.set(format!("{} {}", current, "Audi")).await.unwrap();
+        } else if command.starts_with("Toyota") {
+            let splitter = command.split_whitespace();
+            let port = splitter.last().unwrap();
+            let host = url::Url::parse(&format!("warp://127.0.0.1:{}", port)).unwrap();
+
+            let (dl, _recv) = context
+                .downlinks_context()
+                .value_downlink(
+                    AbsolutePath::new(host, "/downlink/1", "garage").into(),
+                    "".to_string(),
+                )
+                .await
+                .unwrap();
+
+            let current = dl.get().await.unwrap();
+            dl.set(format!("{} {}", current, "Toyota")).await.unwrap();
+        }
+    }
+}
+
+#[value_lifecycle(agent = "DownlinkAgent", event_type = "String")]
+struct GarageLifecycle;
 
 #[derive(Debug, SwimAgent)]
 struct UnitAgent {
@@ -56,6 +135,9 @@ struct UnitAgent {
 
     #[lifecycle(name = "IntegerMapLifecycle")]
     pub integer_map: MapLane<i32, i32>,
+
+    #[lifecycle(name = "DataLifecycle")]
+    pub data: ValueLane<Value>,
 }
 
 #[value_lifecycle(agent = "UnitAgent", event_type = "i32")]
@@ -89,3 +171,6 @@ struct ShoppingCartLifecycle;
 
 #[map_lifecycle(agent = "UnitAgent", key_type = "i32", value_type = "i32")]
 struct IntegerMapLifecycle;
+
+#[value_lifecycle(agent = "UnitAgent", event_type = "Value")]
+struct DataLifecycle;

@@ -12,20 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::store::NodeStore;
 use crate::agent::{AgentContext, Eff};
 use crate::meta::log::NodeLogger;
 use crate::meta::metric::NodeMetricAggregator;
 use crate::meta::MetaContext;
-use crate::routing::ServerRouter;
 use futures::future::BoxFuture;
 use futures::sink::drain;
 use futures::{FutureExt, Stream, StreamExt};
+use server_store::agent::NodeStore;
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use swim_async_runtime::time::clock::Clock;
+use swim_client::interface::ClientContext;
 use swim_utilities::future::SwimStreamExt;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::time::AtomicInstant;
@@ -42,11 +42,13 @@ mod tests;
 /// [`AgentContext`] implementation that dispatches effects to the scheduler through an MPSC
 /// channel.
 #[derive(Debug)]
-pub(super) struct ContextImpl<Agent, Clk, Router, Store> {
+pub(super) struct ContextImpl<Agent, Clk, R, Store> {
     agent_ref: Arc<Agent>,
-    routing_context: RoutingContext<Router>,
+    routing_context: RoutingContext<R>,
     schedule_context: SchedulerContext<Clk>,
     meta_context: Arc<MetaContext>,
+    client_context: ClientContext<Path>,
+    agent_uri: RelativeUri,
     pub(crate) uplinks_idle_since: Arc<AtomicInstant>,
     store: Store,
 }
@@ -56,12 +58,14 @@ const SCHED_TRIGGERED: &str = "Schedule triggered";
 const SCHED_STOPPED: &str = "Scheduler unexpectedly stopped";
 const WAITING: &str = "Schedule waiting";
 
-impl<Agent, Clk, Router, Store> ContextImpl<Agent, Clk, Router, Store> {
+impl<Agent, Clk, R: Router + Clone + 'static, Store> ContextImpl<Agent, Clk, R, Store> {
     pub(super) fn new(
         agent_ref: Arc<Agent>,
-        routing_context: RoutingContext<Router>,
+        routing_context: RoutingContext<R>,
         schedule_context: SchedulerContext<Clk>,
         meta_context: MetaContext,
+        client_context: ClientContext<Path>,
+        agent_uri: RelativeUri,
         store: Store,
     ) -> Self {
         ContextImpl {
@@ -69,16 +73,18 @@ impl<Agent, Clk, Router, Store> ContextImpl<Agent, Clk, Router, Store> {
             routing_context,
             schedule_context,
             meta_context: Arc::new(meta_context),
+            client_context,
+            agent_uri,
             uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
             store,
         }
     }
 }
 
-impl<Agent, Clk, Router, Store> Clone for ContextImpl<Agent, Clk, Router, Store>
+impl<Agent, Clk, R: Router + Clone + 'static, Store> Clone for ContextImpl<Agent, Clk, R, Store>
 where
     Clk: Clone,
-    Router: Clone,
+    R: Clone,
     Store: Clone,
 {
     fn clone(&self) -> Self {
@@ -86,7 +92,9 @@ where
             agent_ref: self.agent_ref.clone(),
             routing_context: self.routing_context.clone(),
             schedule_context: self.schedule_context.clone(),
+            client_context: self.client_context.clone(),
             meta_context: self.meta_context.clone(),
+            agent_uri: self.agent_uri.clone(),
             uplinks_idle_since: self.uplinks_idle_since.clone(),
             store: self.store.clone(),
         }
@@ -94,18 +102,14 @@ where
 }
 
 #[derive(Debug)]
-pub(super) struct RoutingContext<Router> {
+pub(super) struct RoutingContext<R> {
     uri: RelativeUri,
-    router: Router,
+    router: R,
     parameters: HashMap<String, String>,
 }
 
-impl<Router> RoutingContext<Router> {
-    pub(super) fn new(
-        uri: RelativeUri,
-        router: Router,
-        parameters: HashMap<String, String>,
-    ) -> Self {
+impl<R: Router + Clone + 'static> RoutingContext<R> {
+    pub(super) fn new(uri: RelativeUri, router: R, parameters: HashMap<String, String>) -> Self {
         RoutingContext {
             uri,
             router,
@@ -114,7 +118,7 @@ impl<Router> RoutingContext<Router> {
     }
 }
 
-impl<Router: Clone> Clone for RoutingContext<Router> {
+impl<R: Router + Clone + 'static> Clone for RoutingContext<R> {
     fn clone(&self) -> Self {
         RoutingContext {
             uri: self.uri.clone(),
@@ -190,12 +194,17 @@ impl<Clk: Clone> Clone for SchedulerContext<Clk> {
     }
 }
 
-impl<Agent, Clk, Router, Store> AgentContext<Agent> for ContextImpl<Agent, Clk, Router, Store>
+impl<Agent, Clk, R: Router + Clone + 'static, Store> AgentContext<Agent>
+    for ContextImpl<Agent, Clk, R, Store>
 where
     Agent: Send + Sync + 'static,
     Clk: Clock,
     Store: NodeStore,
 {
+    fn downlinks_context(&self) -> ClientContext<Path> {
+        self.client_context.clone()
+    }
+
     fn schedule<Effect, Str, Sch>(&self, effects: Str, schedule: Sch) -> BoxFuture<()>
     where
         Effect: Future<Output = ()> + Send + 'static,
@@ -232,7 +241,7 @@ where
 
 /// A context, scoped to an agent, to provide shared functionality to each of its lanes.
 pub trait AgentExecutionContext {
-    type Router: ServerRouter + 'static;
+    type Router: Router + 'static;
     type Store: NodeStore;
 
     /// Create a handle to the envelope router for the agent.
@@ -240,6 +249,9 @@ pub trait AgentExecutionContext {
 
     /// Provide a channel to dispatch events to the agent scheduler.
     fn spawner(&self) -> mpsc::Sender<Eff>;
+
+    /// Return the relative uri of this agent.
+    fn uri(&self) -> &RelativeUri;
 
     /// Provides an observer factory that can be used to create observers that register events that
     /// happen on nodes, lanes, and uplinks.
@@ -255,7 +267,7 @@ pub trait AgentExecutionContext {
 impl<Agent, Clk, RouterInner, Store> AgentExecutionContext
     for ContextImpl<Agent, Clk, RouterInner, Store>
 where
-    RouterInner: ServerRouter + Clone + 'static,
+    RouterInner: Router + Clone + 'static,
     Store: NodeStore,
 {
     type Router = RouterInner;
@@ -267,6 +279,10 @@ where
 
     fn spawner(&self) -> Sender<Eff> {
         self.schedule_context.scheduler.clone()
+    }
+
+    fn uri(&self) -> &RelativeUri {
+        &self.agent_uri
     }
 
     fn metrics(&self) -> NodeMetricAggregator {

@@ -14,7 +14,6 @@
 
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::model::command::CommandLane;
-use crate::routing::RoutingAddr;
 use either::Either;
 use futures::future::BoxFuture;
 use futures::select_biased;

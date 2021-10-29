@@ -21,16 +21,16 @@ use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::model::{action, command};
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
-use crate::agent::store::mock::MockNodeStore;
 use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::tests::test_clock::TestClock;
-use crate::agent::AgentContext;
+use crate::agent::{AgentContext, AgentParameters};
+use crate::interface::ServerDownlinksConfig;
 use crate::plane::provider::AgentProvider;
-use crate::plane::RouteAndParameters;
-use crate::routing::RoutingAddr;
+use crate::routing::TopLevelServerRouterFactory;
 use crate::{
     action_lifecycle, agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent,
 };
+use server_store::agent::mock::MockNodeStore;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::Debug;
@@ -39,7 +39,14 @@ use std::sync::Arc;
 use std::time::Duration;
 use stm::stm::Stm;
 use stm::transaction::atomically;
+use swim_client::configuration::DownlinkConnectionsConfig;
+use swim_client::connections::SwimConnPool;
+use swim_client::downlink::Downlinks;
+use swim_client::interface::ClientContext;
+use swim_client::router::ClientRouterFactory;
+use swim_common::routing::RoutingAddr;
 use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger::promise;
 use tokio::sync::{mpsc, Mutex};
 use tokio_stream::wrappers::ReceiverStream;
 
@@ -531,14 +538,42 @@ async fn agent_loop() {
 
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
 
-    let provider = AgentProvider::new(config, agent_lifecycle);
+    let provider = AgentProvider::new(config.clone(), agent_lifecycle);
+
+    let parameters = AgentParameters::new(config, exec_config, uri, HashMap::new());
+
+    let (client_tx, client_rx) = mpsc::channel(8);
+    let (remote_tx, _remote_rx) = mpsc::channel(8);
+    let (plane_tx, _plane_rx) = mpsc::channel(8);
+    let (_close_tx, close_rx) = promise::promise();
+
+    let top_level_factory =
+        TopLevelServerRouterFactory::new(plane_tx, client_tx.clone(), remote_tx);
+
+    let client_router_fac = ClientRouterFactory::new(client_tx.clone(), top_level_factory);
+
+    let (conn_pool, _pool_task) = SwimConnPool::new(
+        DownlinkConnectionsConfig::default(),
+        (client_tx, client_rx),
+        client_router_fac,
+        close_rx.clone(),
+    );
+
+    let (downlinks, _downlinks_task) = Downlinks::new(
+        NonZeroUsize::new(8).unwrap(),
+        conn_pool,
+        Arc::new(ServerDownlinksConfig::default()),
+        close_rx,
+    );
+
+    let client = ClientContext::new(downlinks);
 
     let (_, agent_proc) = provider.run(
-        RouteAndParameters::new(uri, HashMap::new()),
-        exec_config,
+        parameters,
         clock.clone(),
+        client,
         ReceiverStream::new(envelope_rx),
-        SingleChannelRouter::new(RoutingAddr::local(1024)),
+        SingleChannelRouter::new(RoutingAddr::plane(1024)),
         MockNodeStore::mock(),
     );
 

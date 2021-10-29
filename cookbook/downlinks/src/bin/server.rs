@@ -11,16 +11,15 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
-mod agents;
-
-use crate::agents::UnitAgent;
+use crate::agents::{ListenerAgent, UnitAgent};
 use futures::join;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 use swim_server::interface::SwimServerBuilder;
 use swim_server::RoutePattern;
 use tokio::time;
+
+mod agents;
 
 #[tokio::main]
 async fn main() {
@@ -31,15 +30,11 @@ async fn main() {
     let mut plane_builder = swim_server_builder.plane_builder("example").unwrap();
 
     plane_builder
-        .add_route::<UnitAgent, (), ()>(RoutePattern::parse_str("/unit/0").unwrap(), (), ())
+        .add_route::<UnitAgent, (), ()>(RoutePattern::parse_str("/unit/:id").unwrap(), (), ())
         .unwrap();
 
     plane_builder
-        .add_route::<UnitAgent, (), ()>(RoutePattern::parse_str("/unit/1").unwrap(), (), ())
-        .unwrap();
-
-    plane_builder
-        .add_route::<UnitAgent, (), ()>(RoutePattern::parse_str("/unit/2").unwrap(), (), ())
+        .add_route::<ListenerAgent, (), ()>(RoutePattern::parse_str("/listener").unwrap(), (), ())
         .unwrap();
 
     swim_server_builder.add_plane(plane_builder.build());
@@ -47,7 +42,7 @@ async fn main() {
 
     let stop = async {
         time::sleep(Duration::from_secs(300)).await;
-        server_handle.stop();
+        server_handle.stop().await.unwrap();
     };
 
     println!("Running basic server...");

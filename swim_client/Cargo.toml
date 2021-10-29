@@ -6,6 +6,7 @@ edition = "2018"
 
 [features]
 debug = ["log_verbose"]
+trust-dns = ["trust-dns-resolver"]
 log_verbose = []
 
 [dependencies.tokio-tungstenite]
@@ -44,6 +45,9 @@ tracing-subscriber = "0.2.11"
 tracing-futures = "0.2.4"
 tokio = { version = "1.1.1", features = ["sync", "rt", "macros", "time"] }
 tokio-stream = "0.1.2"
+trust-dns-resolver = { version = "0.20", optional = true, features = ["tokio-runtime"] }
+slab = "0.4.4"
+thiserror = "1.0.29"
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["rt-multi-thread"] }

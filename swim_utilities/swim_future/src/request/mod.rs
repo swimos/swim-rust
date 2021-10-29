@@ -19,6 +19,7 @@ use tokio::sync::oneshot;
 pub mod request_future;
 
 /// An error produced when the message could not be sent.
+#[derive(Debug)]
 pub struct RequestErr;
 
 /// An asynchronous request for an agent to provide a value.

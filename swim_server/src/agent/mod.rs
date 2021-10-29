@@ -16,7 +16,6 @@ pub mod context;
 pub(crate) mod dispatch;
 pub mod lane;
 pub mod lifecycle;
-pub mod store;
 
 #[cfg(test)]
 mod tests;
@@ -48,12 +47,9 @@ use crate::agent::lane::model::demand_map::{
 use crate::agent::lane::model::map::MapLane;
 use crate::agent::lane::model::map::{summaries_to_events, MapLaneEvent, MapSubscriber};
 use crate::agent::lane::model::supply::{make_lane_model, SupplyLane};
-use crate::agent::lane::model::value::{
-    ValueDataModel, ValueLane, ValueLaneEvent, ValueLaneStoreIo,
-};
+use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lifecycle::AgentLifecycle;
-use crate::routing::{ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
 use futures::future::{join, ready, BoxFuture};
 use futures::sink::drain;
 use futures::stream::iter;
@@ -80,11 +76,7 @@ use tokio::sync::{mpsc, oneshot};
 use tracing::{event, span, Level};
 use tracing_futures::{Instrument, Instrumented};
 
-use crate::agent::lane::model::map::map_store::MapDataModel;
-use crate::agent::lane::store::task::{NodeStoreErrors, NodeStoreTask};
-pub use crate::agent::lane::store::{LaneNoStore, StoreIo};
-use crate::agent::model::map::map_store::MapLaneStoreIo;
-use crate::agent::store::NodeStore;
+use crate::agent::model::map::to_map_store_event;
 use crate::meta::info::{LaneInfo, LaneKind};
 use crate::meta::log::NodeLogger;
 use crate::meta::open_meta_lanes;
@@ -93,6 +85,12 @@ use crate::meta::open_meta_lanes;
 pub use agent_derive::*;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use server_store::agent::lane::map::{MapDataModel, MapLaneStoreIo};
+use server_store::agent::lane::task::{NodeStoreErrors, NodeStoreTask};
+use server_store::agent::lane::value::{ValueDataModel, ValueLaneStoreIo};
+use server_store::agent::lane::StoreIo;
+use server_store::agent::NodeStore;
+use swim_client::interface::ClientContext;
 use tokio_stream::wrappers::ReceiverStream;
 
 /// Trait that must be implemented for any agent. This is essentially just boilerplate and will
@@ -231,15 +229,17 @@ impl<Routing, Store> IoPair<Routing, Store> {
 /// * `lifecycle` - Life-cycle event handler for the agent.
 /// * `url` - The node URL for the agent instance.
 /// * `clock` - Clock for timing asynchronous events.
+/// * `client_context`- Client for opening downlinks.
 /// * `stop_trigger` - External trigger to cleanly stop the agent.
 /// * `parameters` - Parameters extracted from the agent node route pattern.
 /// * `incoming_envelopes` - The stream of envelopes routed to the agent.
-pub(crate) fn run_agent<Config, Clk, Agent, L, Router, Store>(
+pub(crate) fn run_agent<Config, Clk, Agent, L, R, Store>(
     lifecycle: L,
     clock: Clk,
+    client_context: ClientContext<Path>,
     parameters: AgentParameters<Config>,
     incoming_envelopes: impl Stream<Item = TaggedEnvelope> + Send + 'static,
-    router: Router,
+    router: R,
     store: Store,
 ) -> (
     Arc<Agent>,
@@ -249,7 +249,7 @@ where
     Clk: Clock,
     Agent: SwimAgent<Config> + Send + Sync + 'static,
     L: AgentLifecycle<Agent> + Send + Sync + 'static,
-    Router: ServerRouter + Clone + 'static,
+    R: Router + Clone + 'static,
     Store: NodeStore,
 {
     let AgentParameters {
@@ -262,7 +262,7 @@ where
     let span = span!(Level::INFO, AGENT_TASK, %uri);
     let (tripwire, stop_trigger) = trigger::trigger();
     let (agent, mut tasks, io_providers) = Agent::instantiate::<
-        ContextImpl<Agent, Clk, Router, Store>,
+        ContextImpl<Agent, Clk, R, Store>,
         Store,
     >(&agent_config, &execution_config, store.clone());
     let agent_ref = Arc::new(agent);
@@ -282,7 +282,7 @@ where
         let task_manager: FuturesUnordered<Instrumented<Eff>> = FuturesUnordered::new();
 
         let (meta_context, mut meta_tasks, meta_io) =
-            open_meta_lanes::<Config, Agent, ContextImpl<Agent, Clk, Router, Store>>(
+            open_meta_lanes::<Config, Agent, ContextImpl<Agent, Clk, R, Store>>(
                 uri.clone(),
                 &execution_config,
                 lane_summary,
@@ -295,11 +295,14 @@ where
         let (tx, rx) = mpsc::channel(execution_config.scheduler_buffer.get());
         let routing_context = RoutingContext::new(uri.clone(), router, parameters);
         let schedule_context = SchedulerContext::new(tx, clock, stop_trigger.clone());
+
         let context = ContextImpl::new(
             agent_ref,
             routing_context,
             schedule_context,
             meta_context,
+            client_context,
+            uri.clone(),
             store.clone(),
         );
 
@@ -342,11 +345,11 @@ where
         .instrument(span!(Level::INFO, STORE_TASK));
         task_manager.push(store_task);
 
-        for lane_task in tasks.iter() {
-            let lane_name = lane_task.name();
+        for lane_task in tasks.iter_mut() {
+            let lane_name = lane_task.name().to_string();
             (**lane_task)
                 .start(&context)
-                .instrument(span!(Level::DEBUG, LANE_START, name = lane_name))
+                .instrument(span!(Level::DEBUG, LANE_START, name = lane_name.as_str()))
                 .await;
         }
 
@@ -407,16 +410,19 @@ pub type EffStream = BoxStream<'static, ()>;
 /// agent and lane life-cycle events and allows events to be scheduled within the task that
 /// is running the agent.
 pub trait AgentContext<Agent> {
+    /// Get a downlinks context capable of opening downlinks to other servers.
+    fn downlinks_context(&self) -> ClientContext<Path>;
+
     /// Schedule events to be executed on a provided schedule. The events will be executed within
     /// the task that runs the agent and so should not block.
     ///
-    /// #Type Parameters
+    /// # Type Parameters
     ///
     /// * `Effect` - The type of the events to schedule.
     /// * `Str` - The type of the stream of events.
     /// * `Sch` - The type of the stream of [`Duration`]s defining the schedule.
     ///
-    /// #Arguments
+    /// # Arguments
     ///
     /// * `effects` - A stream of events to be executed.
     /// * `schedule` - A stream of [`Duration`]s describing the schedule on which the effects
@@ -429,12 +435,12 @@ pub trait AgentContext<Agent> {
 
     /// Schedule an event to be run on a fixed schedule.
     ///
-    /// #Type Parameters
+    /// # Type Parameters
     ///
     /// * `Fut` - Type of the event to schedule.
     /// * `F` - Event factory closure type.
     ///
-    /// #Arguments
+    /// # Arguments
     ///
     /// * `effect` - Factory closure to generate the events.
     /// * `interval` - The fixed interval on which to generate the events.
@@ -471,11 +477,11 @@ pub trait AgentContext<Agent> {
 
     /// Schedule a single event to run after a fixed delay.
     ///
-    /// #Type Parameters
+    /// # Type Parameters
     ///
     /// * `Fut` - Type of the event to schedule.
     ///
-    /// #Arguments
+    /// # Arguments
     ///
     /// * `effect` - The single event.
     /// * `duration` - The delay before executing the event.
@@ -1093,7 +1099,7 @@ where
         None
     } else {
         Some(Box::new(MapLaneStoreIo::new(
-            summaries_to_events(observer),
+            summaries_to_events(observer).filter_map(|e| ready(to_map_store_event(e))),
             model,
         )))
     };
@@ -1458,7 +1464,7 @@ where
 
 impl<Event, Context> LaneIo<Context> for DemandLaneIo<Event>
 where
-    Event: Form + Send + Sync + 'static,
+    Event: Form + Send + Sync + Debug + 'static,
     Context: AgentExecutionContext + Sized + Send + Sync + 'static,
 {
     fn attach(

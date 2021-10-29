@@ -12,19 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(test)]
-mod tests;
-pub mod to_model;
-
-use crate::structural::write::to_model::ValueInterpreter;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::convert::TryFrom;
+use std::num::NonZeroUsize;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::Duration;
+use swim_utilities::future::retryable::strategy::Quantity;
 use swim_model::bigint::{BigInt, BigUint};
 use swim_model::{Attr, Blob, Item, Text, Value};
+use swim_model::path::AbsolutePath;
 
 #[doc(hidden)]
 pub use swim_form_derive::StructuralWritable;
@@ -32,21 +31,27 @@ use swim_model::time::Timestamp;
 use swim_utilities::routing::uri::RelativeUri;
 use url::Url;
 
+use crate::structural::write::to_model::ValueInterpreter;
+pub mod impls;
+#[cfg(test)]
+mod tests;
+pub mod to_model;
+
 /// Trait for types that can describe their structure using a [`StructuralWriter`].
 /// Each writer is an interpreter which could, for example, realize the structure
 /// as a [`Value`] or format it is a Recon string.
 pub trait StructuralWritable: Sized {
-    /// Write he strucutre of this value using the provided interpreter.
-    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error>;
-
-    /// Write he strucutre of this value using the provided interpreter, allowing
-    /// the interpreter to consume this value if needed.
-    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error>;
-
     /// The number of attributes that will be written by this instance.
     fn num_attributes(&self) -> usize;
 
-    /// Write the structure of this value with an interpreter that cannnot generate an error.
+    /// Write the structure of this value using the provided interpreter.
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error>;
+
+    /// Write the structure of this value using the provided interpreter, allowing
+    /// the interpreter to consume this value if needed.
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error>;
+
+    /// Write the structure of this value with an interpreter that cannot generate an error.
     fn write_with_infallible<W: StructuralWriter<Error = Infallible>>(&self, writer: W) -> W::Repr {
         match self.write_with(writer) {
             Ok(repr) => repr,
@@ -54,7 +59,7 @@ pub trait StructuralWritable: Sized {
         }
     }
 
-    /// Write the structure of this value with an interpreter that cannnot generate an error,
+    /// Write the structure of this value with an interpreter that cannot generate an error,
     /// allowing in t interpreter to consume this value if needed.
     fn write_into_infallible<W: StructuralWriter<Error = Infallible>>(self, writer: W) -> W::Repr {
         match self.write_into(writer) {
@@ -73,7 +78,7 @@ pub trait StructuralWritable: Sized {
         self.write_into_infallible(ValueInterpreter::default())
     }
 
-    /// If this value ocurrs as the field of a compound object, determine whether that field
+    /// If this value occurs as the field of a compound object, determine whether that field
     /// can be omitted (for example the `None` case of [`Option`]). This is intended to be
     /// used in the derive macro for this trait and should be generally need to be used.
     fn omit_as_field(&self) -> bool {
@@ -81,7 +86,7 @@ pub trait StructuralWritable: Sized {
     }
 }
 
-/// Base trait for strucutral writers that allow for a single, primitive value to be written.
+/// Base trait for structural writers that allow for a single, primitive value to be written.
 pub trait PrimitiveWriter: Sized {
     /// The result type of the writer.
     type Repr;
@@ -125,7 +130,7 @@ pub trait Label: Into<String> + Into<Text> + AsRef<str> {
 impl<T: Into<String> + Into<Text> + AsRef<str>> Label for T {}
 
 /// Describing the structure of a record proceeds in two stages, first describing
-/// the attributes in the header and then listing the items in the body (consiting
+/// the attributes in the header and then listing the items in the body (consisting
 /// of either simple values or slot fields). This is used to describe the attributes.
 pub trait HeaderWriter: Sized {
     /// The result type of the writer.
@@ -138,7 +143,7 @@ pub trait HeaderWriter: Sized {
     /// Write an attribute into the header.
     /// #Arguments
     /// * `name` - The name of the attribute.
-    /// * `value` - The value whose strucuture will be used for the value of the attribute.
+    /// * `value` - The value whose structure will be used for the value of the attribute.
     fn write_attr<V: StructuralWritable>(
         self,
         name: Cow<'_, str>,
@@ -148,13 +153,13 @@ pub trait HeaderWriter: Sized {
     /// Delegate the remainder of the process to another value (its attributes will be appended
     /// to those already described).
     /// #Arguments
-    /// * `value` - The value whose strucuture will be used for the remainder of the process.
+    /// * `value` - The value whose structure will be used for the remainder of the process.
     fn delegate<V: StructuralWritable>(self, value: &V) -> Result<Self::Repr, Self::Error>;
 
     /// Write an attribute into the header, consuming the value.
     /// #Arguments
     /// * `name` - The name of the attribute.
-    /// * `value` - The value whose strucuture will be used for the value of the attribute.
+    /// * `value` - The value whose structure will be used for the value of the attribute.
     fn write_attr_into<L: Label, V: StructuralWritable>(
         self,
         name: L,
@@ -164,7 +169,7 @@ pub trait HeaderWriter: Sized {
     /// Delegate the remainder of the process to another value (its attributes will be appended
     /// to those already described), consuming it.
     /// #Arguments
-    /// * `value` - The value whose strucuture will be used for the remainder of the process.
+    /// * `value` - The value whose structure will be used for the remainder of the process.
     fn delegate_into<V: StructuralWritable>(self, value: V) -> Result<Self::Repr, Self::Error>;
 
     fn write_extant_attr<L: Label>(self, name: L) -> Result<Self, Self::Error> {
@@ -448,6 +453,28 @@ impl StructuralWritable for usize {
     }
 }
 
+impl StructuralWritable for NonZeroUsize {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        if let Ok(n) = u64::try_from(self.get()) {
+            writer.write_u64(n)
+        } else {
+            writer.write_big_uint(BigUint::from(self.get()))
+        }
+    }
+
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        if let Ok(n) = u64::try_from(self.get()) {
+            writer.write_u64(n)
+        } else {
+            writer.write_big_uint(BigUint::from(self.get()))
+        }
+    }
+}
+
 impl StructuralWritable for f64 {
     fn num_attributes(&self) -> usize {
         0
@@ -547,6 +574,10 @@ impl StructuralWritable for Text {
 }
 
 impl StructuralWritable for RelativeUri {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(
         &self,
         writer: W,
@@ -559,14 +590,14 @@ impl StructuralWritable for RelativeUri {
         writer: W,
     ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
         writer.write_text(self.to_string())
-    }
-
-    fn num_attributes(&self) -> usize {
-        0
     }
 }
 
 impl StructuralWritable for Url {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(
         &self,
         writer: W,
@@ -579,10 +610,6 @@ impl StructuralWritable for Url {
         writer: W,
     ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
         writer.write_text(self.as_str())
-    }
-
-    fn num_attributes(&self) -> usize {
-        0
     }
 }
 
@@ -874,6 +901,88 @@ impl StructuralWritable for Timestamp {
 
     fn num_attributes(&self) -> usize {
         0
+    }
+}
+
+impl<T: StructuralWritable> StructuralWritable for Quantity<T> {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        match self {
+            Quantity::Finite(val) => val.write_with(writer),
+            Quantity::Infinite => writer.write_text("infinite"),
+        }
+    }
+
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        match self {
+            Quantity::Finite(val) => val.write_into(writer),
+            Quantity::Infinite => writer.write_text("infinite"),
+        }
+    }
+}
+
+impl StructuralWritable for Duration {
+    fn num_attributes(&self) -> usize {
+        1
+    }
+
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        let header_writer = writer.record(1)?;
+        let mut body_writer = header_writer
+            .write_extant_attr("duration")?
+            .complete_header(RecordBodyKind::MapLike, 2)?;
+        body_writer = body_writer.write_u64_slot("secs", self.as_secs())?;
+        body_writer = body_writer.write_u32_slot("nanos", self.subsec_nanos())?;
+
+        body_writer.done()
+    }
+
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        let header_writer = writer.record(1)?;
+        let mut body_writer = header_writer
+            .write_extant_attr("duration")?
+            .complete_header(RecordBodyKind::MapLike, 2)?;
+        body_writer = body_writer.write_u64_slot("secs", self.as_secs())?;
+        body_writer = body_writer.write_u32_slot("nanos", self.subsec_nanos())?;
+
+        body_writer.done()
+    }
+}
+
+impl StructuralWritable for AbsolutePath {
+    fn num_attributes(&self) -> usize {
+        1
+    }
+
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        let header_writer = writer.record(1)?;
+
+        let mut body_writer = header_writer
+            .write_extant_attr("path")?
+            .complete_header(RecordBodyKind::MapLike, 3)?;
+
+        body_writer = body_writer.write_slot(&"host", &self.host)?;
+        body_writer = body_writer.write_slot(&"node", &self.node)?;
+        body_writer = body_writer.write_slot(&"lane", &self.lane)?;
+
+        body_writer.done()
+    }
+
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        let header_writer = writer.record(1)?;
+
+        let mut body_writer = header_writer
+            .write_extant_attr("path")?
+            .complete_header(RecordBodyKind::MapLike, 3)?;
+
+        body_writer = body_writer.write_slot_into("host", self.host)?;
+        body_writer = body_writer.write_slot_into("node", self.node)?;
+        body_writer = body_writer.write_slot_into("lane", self.lane)?;
+
+        body_writer.done()
     }
 }
 

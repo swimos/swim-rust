@@ -16,8 +16,11 @@ use crate::error::{
     CloseError, CloseErrorKind, ConnectionError, IoError, ProtocolError, ProtocolErrorKind,
     ResolutionError,
 };
+use crate::routing::error::{RouterError, Unresolvable};
+use crate::routing::RoutingAddr;
 use std::io::ErrorKind;
 use std::time::Duration;
+use swim_utilities::routing::uri::RelativeUri;
 
 #[test]
 fn connection_error_display() {
@@ -56,4 +59,42 @@ fn connection_error_display() {
         string,
         "Writing to the connection failed to complete within 5s."
     )
+}
+
+#[test]
+fn unresolvable_display() {
+    let err = Unresolvable(RoutingAddr::plane(4));
+
+    let string = err.to_string();
+
+    assert_eq!(string, "No active endpoint with ID: Plane(4)");
+}
+
+#[test]
+fn resolution_error_display() {
+    let string = ResolutionError::unresolvable(RoutingAddr::plane(4).to_string()).to_string();
+    assert_eq!(string, "Address Plane(4) could not be resolved.");
+
+    let string = ResolutionError::router_dropped().to_string();
+    assert_eq!(string, "The router channel was dropped.");
+}
+
+#[test]
+fn router_error_display() {
+    let uri: RelativeUri = "/name".parse().unwrap();
+    let string = RouterError::NoAgentAtRoute(uri).to_string();
+    assert_eq!(string, "No agent at: '/name'");
+
+    let string = RouterError::ConnectionFailure(ConnectionError::Closed(CloseError::new(
+        CloseErrorKind::ClosedRemotely,
+        None,
+    )))
+    .to_string();
+    assert_eq!(
+        string,
+        "Failed to route to requested endpoint: 'The connection was closed remotely.'"
+    );
+
+    let string = RouterError::RouterDropped.to_string();
+    assert_eq!(string, "The router channel was dropped.");
 }

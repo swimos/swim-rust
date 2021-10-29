@@ -159,7 +159,7 @@ pub fn fields_from_ast<'t>(
                             None => match &original.ident {
                                 Some(ident) => {
                                     if container_label.is_modified() {
-                                        ctx.error_spanned_by(path, "Cannot apply a tag using a field when one has already been applied at the container level");   
+                                        ctx.error_spanned_by(path, "Cannot apply a tag using a field when one has already been applied at the container level");
                                     } else if structure_type.is_enum(){
                                         ctx.error_spanned_by(path, "Deriving tags is not supported by enumerations. Use #[form(tag = \"....\")] on this variant instead")
                                     } else {

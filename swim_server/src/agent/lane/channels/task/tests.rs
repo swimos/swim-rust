@@ -27,8 +27,6 @@ use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::lane::model::command::{Command, CommandLane};
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::model::supply::SupplyLane;
-use crate::agent::store::mock::MockNodeStore;
-use crate::agent::store::SwimNodeStore;
 use crate::agent::Eff;
 use crate::meta::accumulate_metrics;
 use crate::meta::log::make_node_logger;
@@ -49,6 +47,9 @@ use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::{once, BoxStream, FusedStream};
 use futures::{Future, FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
+use server_store::agent::mock::MockNodeStore;
+use server_store::agent::SwimNodeStore;
+use server_store::plane::mock::MockPlaneStore;
 use std::collections::{HashMap, HashSet};
 use std::convert::{identity, TryFrom};
 use std::fmt::Debug;
@@ -264,6 +265,7 @@ impl TestHandler {
         TestHandler(Default::default())
     }
 }
+
 struct DummyUplink;
 
 impl UplinkStateMachine<i32> for DummyUplink {
@@ -346,6 +348,7 @@ struct TestContext {
     trigger: Arc<Mutex<Option<trigger::Sender>>>,
     _drop_tx: Arc<promise::Sender<ConnectionDropped>>,
     drop_rx: promise::Receiver<ConnectionDropped>,
+    uri: RelativeUri,
     aggregator: NodeMetricAggregator,
     uplinks_idle_since: Arc<AtomicInstant>,
 }
@@ -385,7 +388,7 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
     }
 }
 
-impl ServerRouter for TestRouter {
+impl Router for TestRouter {
     fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         let TestRouter {
             sender, drop_rx, ..
@@ -422,6 +425,10 @@ impl AgentExecutionContext for TestContext {
 
     fn spawner(&self) -> Sender<Eff> {
         self.scheduler.clone()
+    }
+
+    fn uri(&self) -> &RelativeUri {
+        &self.uri
     }
 
     fn metrics(&self) -> NodeMetricAggregator {
@@ -635,6 +642,7 @@ fn make_context() -> (
         trigger: Arc::new(Mutex::new(Some(stop_tx))),
         _drop_tx: Arc::new(drop_tx),
         drop_rx,
+        uri: RelativeUri::try_from("/mock/router".to_string()).unwrap(),
         aggregator,
         uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
     };
@@ -1384,6 +1392,7 @@ impl MultiTestContextInner {
 struct MultiTestContext(
     Arc<parking_lot::Mutex<MultiTestContextInner>>,
     mpsc::Sender<Eff>,
+    RelativeUri,
     Arc<AtomicInstant>,
 );
 
@@ -1394,6 +1403,7 @@ impl MultiTestContext {
                 router_addr,
             ))),
             spawner,
+            RelativeUri::try_from("/mock/router".to_string()).unwrap(),
             Arc::new(AtomicInstant::new(Instant::now().into_std())),
         )
     }
@@ -1430,12 +1440,16 @@ impl AgentExecutionContext for MultiTestContext {
         self.1.clone()
     }
 
+    fn uri(&self) -> &RelativeUri {
+        &self.2
+    }
+
     fn metrics(&self) -> NodeMetricAggregator {
         aggregator_sink()
     }
 
     fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
-        &self.2
+        &self.3
     }
 
     fn store(&self) -> Self::Store {
@@ -1443,7 +1457,7 @@ impl AgentExecutionContext for MultiTestContext {
     }
 }
 
-impl ServerRouter for MultiTestRouter {
+impl Router for MultiTestRouter {
     fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let mut lock = self.0.lock();
@@ -1473,7 +1487,7 @@ impl ServerRouter for MultiTestRouter {
 fn make_multi_context() -> (MultiTestContext, BoxFuture<'static, ()>) {
     let (spawn_tx, spawn_rx) = mpsc::channel(5);
 
-    let context = MultiTestContext::new(RoutingAddr::local(1024), spawn_tx);
+    let context = MultiTestContext::new(RoutingAddr::plane(1024), spawn_tx);
     let spawn_task = ReceiverStream::new(spawn_rx)
         .for_each_concurrent(None, |t| t)
         .boxed();
