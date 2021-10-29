@@ -86,7 +86,9 @@ impl<Path: Addressable> SwimConnPool<Path> {
     /// # Arguments
     ///
     /// * `config`                 - The configuration for the connection pool.
-    /// * `client_conn_request_tx` - A channel for requesting remote connections.
+    /// * `client_channel`         - Channel to the swim client.
+    /// * `client_router_factory`  - Factory for creating client routers.
+    /// * `stop_trigger`           - Trigger to stop the connection pool task.
     #[instrument(skip(config))]
     pub fn new<DelegateFac: RouterFactory + Debug>(
         config: DownlinkConnectionsConfig,
@@ -120,12 +122,6 @@ impl<Path: Addressable> ConnectionPool for SwimConnPool<Path> {
     ///
     /// * `target`                  - The path to which we want to connect.
     /// * `conn_type`               - Whether or not the connection is full or only partial.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing either a `Connection` to the remote host or a `ConnectionError`.
-    /// The `Connection` contains a `ConnectionSender` and an optional `ConnectionReceiver`.
-    /// The `ConnectionReceiver` is returned when the type of the connection is `ConnectionType::Full`.
     fn request_connection(
         &mut self,
         target: Self::PathType,
@@ -448,10 +444,7 @@ impl<Path: Addressable, DelegateRouter: BidirectionalRouter>
                 message = receiver.next() => message.map(ConnectionRegistratorEvent::Message),
                 req = registrator_rx.next() => req.map(ConnectionRegistratorEvent::Request),
                 conn_err = remote_drop_rx => {
-                    match conn_err{
-                        Ok(conn_err) => Some(ConnectionRegistratorEvent::ConnectionDropped(conn_err)),
-                        Err(_) => None,
-                    }
+                    conn_err.ok().map(ConnectionRegistratorEvent::ConnectionDropped)
                 }
             };
 
@@ -578,6 +571,8 @@ impl<Path: Addressable, DelegateRouter: BidirectionalRouter>
                             })
                         }
                     }
+
+                    join_all(futures).await;
 
                     if let Some(local_drop_tx) = maybe_local_drop_tx {
                         local_drop_tx

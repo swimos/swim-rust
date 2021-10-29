@@ -36,6 +36,7 @@ use swim_common::form::structural::read::ReadError;
 use swim_common::form::Form;
 use swim_common::model::Value;
 use swim_common::sink::item;
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::SwimStreamExt;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger;
@@ -45,7 +46,7 @@ use tokio::time::{timeout, Instant};
 use tokio_stream::wrappers::ReceiverStream;
 
 fn buffer_size() -> NonZeroUsize {
-    NonZeroUsize::new(16).unwrap()
+    non_zero_usize!(16)
 }
 
 fn make_subscribable<K, V>(buffer_size: NonZeroUsize) -> (MapLane<K, V>, MapSubscriber<K, V>)

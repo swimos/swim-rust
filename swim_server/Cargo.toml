@@ -22,7 +22,7 @@ swim_store = { path = "../swim_store" }
 server_store = { path = "server_store"}
 swim_common = { path = "../swim_common" }
 swim_warp = { path = "../swim_warp" }
-swim_utilities = { path = "../swim_utilities", features = ["errors", "sync", "time", "text", "io"] }
+swim_utilities = { path = "../swim_utilities", features = ["errors", "sync", "time", "text", "io", "algebra"] }
 stringify_attr = { path = "../macro_utilities/stringify_attr" }
 swim_runtime = { path = "../swim_runtime" }
 stm = { path = "../stm" }

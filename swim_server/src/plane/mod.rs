@@ -74,6 +74,7 @@ pub trait AgentRoute<Clk, Envelopes, Router, Store>: Debug + Send {
     /// * `client`- Client for opening downlinks.
     /// * `incoming_envelopes`- The stream of envelopes routed to the agent.
     /// * `router` - The router by which the agent can send messages.
+    /// * `store` - A node store for persisting data, if the lane is not transient.
     #[allow(clippy::too_many_arguments)]
     fn run_agent(
         &self,

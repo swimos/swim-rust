@@ -21,10 +21,11 @@ use futures::StreamExt;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 use swim_common::routing::RoutingAddr;
+use swim_utilities::algebra::non_zero_usize;
 use tokio::time::timeout;
 
 fn buffer_size() -> NonZeroUsize {
-    NonZeroUsize::new(16).unwrap()
+    non_zero_usize!(16)
 }
 
 #[tokio::test]

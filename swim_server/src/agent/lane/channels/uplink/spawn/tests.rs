@@ -48,6 +48,7 @@ use swim_common::routing::{
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::sync::topic;
 use swim_utilities::time::AtomicInstant;
@@ -196,7 +197,7 @@ impl LaneUpdate for TestUpdater {
 }
 
 fn default_buffer() -> NonZeroUsize {
-    NonZeroUsize::new(5).unwrap()
+    non_zero_usize!(5)
 }
 
 fn route() -> RelativePath {
@@ -370,7 +371,7 @@ fn make_test_harness() -> (
     BoxFuture<'static, Vec<UplinkErrorReport>>,
 ) {
     let (tx_up, rx_up) = mpsc::channel(5);
-    let (tx_event, rx_event) = topic::channel(NonZeroUsize::new(5).unwrap());
+    let (tx_event, rx_event) = topic::channel(non_zero_usize!(5));
     let (tx_act, rx_act) = mpsc::channel(5);
     let (tx_router, rx_router) = mpsc::channel(5);
 

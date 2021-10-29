@@ -114,12 +114,13 @@ where
     /// * `router` - Produces channels on which outgoing envelopes can be sent.
     /// * `spawn_tx` - Channel to an asynchronous tasks spawner (used to run the uplink state
     /// machines.
-    /// * `uri` - The relative uri of the agent to which this uplink belongs.
+    /// * `uplinks_idle_since` - Time instant since the uplink has been idle.
     /// * `error_collector` - Collects errors whenever an uplink fails.
+    /// * `observer` - An observer for uplinks being opened and closed.
     ///
     /// # Type Parameters
     ///
-    /// * `Router` - The type of the server router.
+    /// * `R` - The type of the server router.
     pub async fn run<R>(
         mut self,
         mut router: R,

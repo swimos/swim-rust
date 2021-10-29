@@ -65,6 +65,7 @@ use swim_common::routing::{
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::sync::topic;
 use swim_utilities::time::AtomicInstant;
@@ -444,7 +445,7 @@ impl AgentExecutionContext for TestContext {
 }
 
 fn default_buffer() -> NonZeroUsize {
-    NonZeroUsize::new(5).unwrap()
+    non_zero_usize!(5)
 }
 
 fn make_config() -> AgentExecutionConfig {
@@ -533,7 +534,7 @@ fn make_task(
 ) {
     let (respond_tx, respond_rx) = mpsc::channel(5);
     let (envelope_tx, envelope_rx) = mpsc::channel(5);
-    let (event_tx, event_rx) = topic::channel(NonZeroUsize::new(5).unwrap());
+    let (event_tx, event_rx) = topic::channel(non_zero_usize!(5));
 
     let handler = TestHandler::new();
     let output = TaskOutput(ReceiverStream::new(respond_rx), handler.0.clone());
@@ -599,13 +600,13 @@ fn make_aggregator(
 
     let config = MetricAggregatorConfig {
         sample_rate: Duration::from_secs(u64::MAX),
-        buffer_size: NonZeroUsize::new(10).unwrap(),
-        yield_after: NonZeroUsize::new(256).unwrap(),
+        buffer_size: non_zero_usize!(10),
+        yield_after: non_zero_usize!(256),
         backpressure_config: KeyedBackpressureConfig {
-            buffer_size: NonZeroUsize::new(2).unwrap(),
-            yield_after: NonZeroUsize::new(256).unwrap(),
-            bridge_buffer_size: NonZeroUsize::new(4).unwrap(),
-            cache_size: NonZeroUsize::new(4).unwrap(),
+            buffer_size: non_zero_usize!(2),
+            yield_after: non_zero_usize!(256),
+            bridge_buffer_size: non_zero_usize!(4),
+            cache_size: non_zero_usize!(4),
         },
     };
 

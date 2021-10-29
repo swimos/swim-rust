@@ -17,6 +17,7 @@ use swim_common::form::structural::read::ReadError;
 use swim_common::model::parser::ParseFailure;
 use swim_common::routing::remote::config::RemoteConnectionsConfig;
 use swim_common::warp::path::{AbsolutePath, Addressable};
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::retryable::strategy::RetryStrategy;
 use thiserror::Error;
 use tokio::time::Duration;
@@ -30,18 +31,15 @@ mod tags;
 mod tests;
 mod writers;
 
-const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(60000);
-const DEFAULT_DOWNLINK_BUFFER_SIZE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(32) };
-const DEFAULT_YIELD_AFTER: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(256) };
-const DEFAULT_BUFFER_SIZE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(128) };
-const DEFAULT_DL_REQUEST_BUFFER_SIZE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(8) };
-const DEFAULT_BACK_PRESSURE_INPUT_BUFFER_SIZE: NonZeroUsize =
-    unsafe { NonZeroUsize::new_unchecked(32) };
-const DEFAULT_BACK_PRESSURE_BRIDGE_BUFFER_SIZE: NonZeroUsize =
-    unsafe { NonZeroUsize::new_unchecked(16) };
-const DEFAULT_BACK_PRESSURE_MAX_ACTIVE_KEYS: NonZeroUsize =
-    unsafe { NonZeroUsize::new_unchecked(16) };
-const DEFAULT_BACK_PRESSURE_YIELD_AFTER: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(256) };
+const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
+const DEFAULT_DOWNLINK_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(32);
+const DEFAULT_YIELD_AFTER: NonZeroUsize = non_zero_usize!(256);
+const DEFAULT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(128);
+const DEFAULT_DL_REQUEST_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(8);
+const DEFAULT_BACK_PRESSURE_INPUT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(32);
+const DEFAULT_BACK_PRESSURE_BRIDGE_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(16);
+const DEFAULT_BACK_PRESSURE_MAX_ACTIVE_KEYS: NonZeroUsize = non_zero_usize!(16);
+const DEFAULT_BACK_PRESSURE_YIELD_AFTER: NonZeroUsize = non_zero_usize!(256);
 
 /// Configuration for the swim client.
 ///
@@ -138,6 +136,9 @@ impl Default for DownlinkConnectionsConfig {
     }
 }
 
+/// Configuration for downlinks opened by the client.
+/// A custom downlink configuration can be specified per host or per lane,
+/// otherwise the default configuration will be used.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct ClientDownlinksConfig {
     default: DownlinkConfig,

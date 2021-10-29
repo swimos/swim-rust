@@ -294,7 +294,7 @@ fn model_crud() {
 //
 //     let model = MapDataModel::new(store, 0);
 //     let (lane, observer) =
-//         MapLane::<String, i32>::store_observable(&model, NonZeroUsize::new(8).unwrap());
+//         MapLane::<String, i32>::store_observable(&model, non_zero_usize!(8));
 //     let events = summaries_to_events::<String, i32>(observer.clone());
 //     let store_io = MapLaneStoreIo::new(events, model);
 //
@@ -331,7 +331,7 @@ fn model_crud() {
 //     let model = MapDataModel::new(store, 0);
 //
 //     let (lane, observer) =
-//         MapLane::<String, i32>::store_observable(&model, NonZeroUsize::new(8).unwrap());
+//         MapLane::<String, i32>::store_observable(&model, non_zero_usize!(8));
 //     let events = summaries_to_events::<String, i32>(observer.clone());
 //
 //     let store_io = MapLaneStoreIo::new(events, model);

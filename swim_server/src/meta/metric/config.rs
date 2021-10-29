@@ -14,6 +14,7 @@
 
 use crate::agent::lane::channels::uplink::backpressure::KeyedBackpressureConfig;
 use std::num::NonZeroUsize;
+use swim_utilities::algebra::non_zero_usize;
 use tokio::time::Duration;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,13 +33,13 @@ impl Default for MetricAggregatorConfig {
     fn default() -> Self {
         MetricAggregatorConfig {
             sample_rate: Duration::from_secs(1),
-            buffer_size: NonZeroUsize::new(10).unwrap(),
-            yield_after: NonZeroUsize::new(256).unwrap(),
+            buffer_size: non_zero_usize!(10),
+            yield_after: non_zero_usize!(256),
             backpressure_config: KeyedBackpressureConfig {
-                buffer_size: NonZeroUsize::new(2).unwrap(),
-                yield_after: NonZeroUsize::new(256).unwrap(),
-                bridge_buffer_size: NonZeroUsize::new(4).unwrap(),
-                cache_size: NonZeroUsize::new(4).unwrap(),
+                buffer_size: non_zero_usize!(2),
+                yield_after: non_zero_usize!(256),
+                bridge_buffer_size: non_zero_usize!(4),
+                cache_size: non_zero_usize!(4),
             },
         }
     }

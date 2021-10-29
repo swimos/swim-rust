@@ -124,7 +124,7 @@ fn store_load() {
 //     let model = ValueDataModel::<TrackingValueStore, String>::new(store, 0);
 //     let (lane, observer) = ValueLane::<String>::store_observable(
 //         &model,
-//         NonZeroUsize::new(8).unwrap(),
+//         non_zero_usize!(8),
 //         Default::default(),
 //     );
 //     let observer_stream = observer.into_stream();

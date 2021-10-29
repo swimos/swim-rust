@@ -30,7 +30,6 @@ use futures::FutureExt;
 use server_store::agent::mock::MockNodeStore;
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::sync::Arc;
 use swim_client::configuration::DownlinkConnectionsConfig;
@@ -46,6 +45,7 @@ use swim_common::routing::{
 };
 use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
@@ -144,7 +144,7 @@ impl Router for MockRouter {
 async fn agent_log() {
     let (tx, mut rx) = mpsc::channel(5);
     let uri = RelativeUri::try_from("/test").unwrap();
-    let buffer_size = NonZeroUsize::new(10).unwrap();
+    let buffer_size = non_zero_usize!(10);
     let clock = TestClock::default();
     let exec_config = AgentExecutionConfig::with(
         buffer_size,
@@ -177,7 +177,7 @@ async fn agent_log() {
     );
 
     let (downlinks, _downlinks_task) = Downlinks::new(
-        NonZeroUsize::new(8).unwrap(),
+        non_zero_usize!(8),
         conn_pool,
         Arc::new(ServerDownlinksConfig::default()),
         close_rx,
@@ -333,14 +333,11 @@ async fn flushes() {
 
     let (stop_tx, stop_rx) = trigger::trigger();
     let flush_interval = Duration::from_secs(2);
-    let config = make_config(
-        flush_interval,
-        FlushStrategy::Buffer(NonZeroUsize::new(6).unwrap()),
-    );
+    let config = make_config(flush_interval, FlushStrategy::Buffer(non_zero_usize!(6)));
 
     let (node_logger, task) = NodeLogger::new(
         RelativeUri::from_str("/node").unwrap(),
-        NonZeroUsize::new(256).unwrap(),
+        non_zero_usize!(256),
         stop_rx,
         log_lanes,
         config,
@@ -382,14 +379,11 @@ async fn node_logger_buffered() {
 
     let flush_interval = Duration::from_secs(30);
     let (stop_tx, stop_rx) = trigger::trigger();
-    let config = make_config(
-        flush_interval,
-        FlushStrategy::Buffer(NonZeroUsize::new(6).unwrap()),
-    );
+    let config = make_config(flush_interval, FlushStrategy::Buffer(non_zero_usize!(6)));
 
     let (node_logger, task) = NodeLogger::new(
         RelativeUri::from_str("/node").unwrap(),
-        NonZeroUsize::new(256).unwrap(),
+        non_zero_usize!(256),
         stop_rx,
         log_lanes,
         config,
@@ -453,10 +447,10 @@ async fn send(node_logger: &NodeLogger, level: LogLevel) {
 fn make_config(flush_interval: Duration, flush_strategy: FlushStrategy) -> LogConfig {
     LogConfig {
         flush_interval,
-        channel_buffer_size: NonZeroUsize::new(64).unwrap(),
-        lane_buffer: NonZeroUsize::new(2).unwrap(),
+        channel_buffer_size: non_zero_usize!(64),
+        lane_buffer: non_zero_usize!(2),
         flush_strategy,
-        max_pending_messages: NonZeroUsize::new(64).unwrap(),
+        max_pending_messages: non_zero_usize!(64),
     }
 }
 
@@ -484,7 +478,7 @@ async fn node_logger_immediate() {
 
     let (node_logger, task) = NodeLogger::new(
         RelativeUri::from_str("/node").unwrap(),
-        NonZeroUsize::new(256).unwrap(),
+        non_zero_usize!(256),
         stop_rx,
         log_lanes,
         config,

@@ -27,7 +27,6 @@ use futures::FutureExt;
 use server_store::agent::mock::MockNodeStore;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_client::configuration::DownlinkConnectionsConfig;
 use swim_client::connections::SwimConnPool;
@@ -44,6 +43,7 @@ use swim_common::routing::{
 };
 use swim_common::warp::envelope::Envelope;
 use swim_runtime::time::timeout;
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
@@ -178,7 +178,7 @@ impl Router for MockRouter {
 async fn lane_info_sync() {
     let (tx, mut rx) = mpsc::channel(5);
     let uri = RelativeUri::try_from("/test").unwrap();
-    let buffer_size = NonZeroUsize::new(10).unwrap();
+    let buffer_size = non_zero_usize!(10);
     let clock = TestClock::default();
     let exec_config = AgentExecutionConfig::with(
         buffer_size,
@@ -209,7 +209,7 @@ async fn lane_info_sync() {
     );
 
     let (downlinks, _downlinks_task) = Downlinks::new(
-        NonZeroUsize::new(8).unwrap(),
+        non_zero_usize!(8),
         conn_pool,
         Arc::new(ServerDownlinksConfig::default()),
         close_rx,

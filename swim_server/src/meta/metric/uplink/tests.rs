@@ -34,6 +34,7 @@ use std::time::Duration;
 use swim_common::warp::path::RelativePath;
 use swim_runtime::time::delay::delay_for;
 use swim_runtime::time::timeout::timeout;
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
 use tokio::sync::mpsc;
@@ -188,7 +189,7 @@ async fn task_backpressure() {
     let mut lane_set = HashSet::new();
 
     (0..count).into_iter().for_each(|i| {
-        let (supply_lane, supply_rx) = make_lane_model(NonZeroUsize::new(10).unwrap());
+        let (supply_lane, supply_rx) = make_lane_model(non_zero_usize!(10));
         let key = format_lane(i);
 
         lane_set.insert(key.clone());

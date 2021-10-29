@@ -26,7 +26,6 @@ use pin_utils::pin_mut;
 use server_store::agent::SwimNodeStore;
 use server_store::plane::mock::MockPlaneStore;
 use std::any::Any;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_client::interface::ClientContext;
@@ -34,6 +33,7 @@ use swim_common::routing::{Router, TaggedEnvelope};
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::Path;
 use swim_runtime::time::clock::Clock;
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
 
@@ -70,7 +70,7 @@ impl ReceiveAgentRoute {
 pub struct TestLifecycle;
 
 pub fn make_config() -> AgentExecutionConfig {
-    let buffer_size = NonZeroUsize::new(8).unwrap();
+    let buffer_size = non_zero_usize!(8);
     AgentExecutionConfig {
         max_pending_envelopes: 1,
         action_buffer: buffer_size,
@@ -78,11 +78,11 @@ pub fn make_config() -> AgentExecutionConfig {
         feedback_buffer: buffer_size,
         uplink_err_buffer: buffer_size,
         max_fatal_uplink_errors: 0,
-        max_uplink_start_attempts: NonZeroUsize::new(1).unwrap(),
+        max_uplink_start_attempts: non_zero_usize!(1),
         lane_buffer: buffer_size,
         observation_buffer: buffer_size,
         lane_attachment_buffer: buffer_size,
-        yield_after: NonZeroUsize::new(2048).unwrap(),
+        yield_after: non_zero_usize!(2048),
         retry_strategy: Default::default(),
         cleanup_timeout: Duration::from_secs(1),
         scheduler_buffer: buffer_size,
