@@ -344,8 +344,12 @@ pub struct FinalSegmentParser(FinalState);
 
 impl IncrementalReconParser {
     /// Convert to the final segment parser to handle the end of the input.
-    pub fn into_final_parser(self) -> Option<FinalSegmentParser> {
-        let IncrementalReconParser { mut state } = self;
+    pub fn into_final_parser(mut self) -> Option<FinalSegmentParser> {
+        self.final_parser()
+    }
+
+    fn final_parser(&mut self) -> Option<FinalSegmentParser> {
+        let IncrementalReconParser { state } = self;
         let top = state.pop();
         if state.is_empty() {
             match top {
@@ -356,6 +360,18 @@ impl IncrementalReconParser {
         } else {
             None
         }
+    }
+
+    pub fn final_parser_and_reset(&mut self) -> Option<FinalSegmentParser> {
+        let parser = self.final_parser();
+        self.state.clear();
+        self.state.push(ParseState::Init);
+        parser
+    }
+
+    pub fn reset(&mut self) {
+        self.state.clear();
+        self.state.push(ParseState::Init);
     }
 }
 

@@ -15,7 +15,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::parser::record::IncrementalReconParser;
+use crate::parser::record::{FinalSegmentParser, IncrementalReconParser};
 use crate::parser::ParseError;
 use crate::parser::Span;
 use bytes::{Buf, BytesMut};
@@ -27,6 +27,7 @@ use swim_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
 use swim_form::structural::read::ReadError;
 use swim_model::{Item, Value};
 use tokio::io::{AsyncRead, AsyncReadExt};
+use tokio_util::codec::Decoder;
 
 /// Error type for reading a configuration document.
 #[derive(Debug)]
@@ -338,5 +339,180 @@ impl LocationTracker {
             line,
             column,
         })
+    }
+}
+
+pub struct RecognizerDecoder<R> {
+    parser: IncrementalReconParser,
+    recognizer: R,
+    location: LocationTracker,
+}
+
+impl<R> RecognizerDecoder<R> {
+    pub fn new(recognizer: R) -> Self {
+        RecognizerDecoder {
+            parser: IncrementalReconParser::default(),
+            recognizer,
+            location: LocationTracker::default(),
+        }
+    }
+
+}
+
+impl<R: Recognizer> RecognizerDecoder<R> {
+
+
+    pub fn reset(&mut self) {
+        self.parser.reset();
+        self.recognizer.reset();
+        self.location = LocationTracker::default();
+    }
+
+    fn decode_inner<'a>(&mut self, span: Span<'a>) -> Result<(Span<'a>, Option<R::Target>), AsyncParseError> {
+        let RecognizerDecoder {
+            parser,
+            recognizer,
+            location,
+        } = self;
+
+        match parser.parse(span) {
+            Ok((rem, mut events)) => {
+                location.update(&rem);
+                loop {
+                    match events.next() {
+                        Some(Some(event)) => match recognizer.feed_event(event) {
+                            Some(Ok(target)) => {
+                                break Ok((rem, Some(target)));
+                            }
+                            Some(Err(e)) => {
+                                break Err(AsyncParseError::Parser(ParseError::Structure(e)));
+                            }
+                            _ => {}
+                        },
+                        Some(None) => {
+                            break match recognizer.try_flush() {
+                                Some(Ok(target)) => Ok((rem, Some(target))),
+                                Some(Err(e)) => Err(AsyncParseError::Parser(ParseError::Structure(e))),
+                                _ => Err(AsyncParseError::Parser(ParseError::Structure(ReadError::IncompleteRecord))),
+                            };
+                        }
+                        _ => {
+                            break Ok((rem, None));
+                        }
+                    }
+                }
+            }
+            Err(nom::Err::Incomplete(_)) => Ok((span, None)),
+            Err(nom::Err::Error(e) | nom::Err::Failure(e)) => Err(location.relativize_error(e)),
+        }
+    }
+}
+
+fn feed_final<'a, R>(
+    parser: &mut FinalSegmentParser,
+    recognizer: &mut R,
+    span: Span<'a>,
+    location: &mut LocationTracker,
+) -> Result<(Span<'a>, Option<R::Target>), AsyncParseError>
+where
+    R: Recognizer,
+{
+    match parser.parse(span) {
+        Ok((rem, mut events)) => {
+            loop {
+                match events.next() {
+                    Some(Some(event)) => {
+                        match recognizer.feed_event(event) {
+                            Some(Ok(target)) => {
+                                break Ok((rem, Some(target)));
+                            },
+                            Some(Err(e)) => {
+                                break Err(AsyncParseError::Parser(ParseError::Structure(e)));
+                            }
+                            _ => {},
+                        }
+                    }
+                    Some(None) => {
+                        break match recognizer.try_flush() {
+                            Some(Ok(target)) => Ok((rem, Some(target))),
+                            Some(Err(e)) => Err(AsyncParseError::Parser(ParseError::Structure(e))),
+                            _ => Err(AsyncParseError::Parser(ParseError::Structure(ReadError::IncompleteRecord))),
+                        };
+                    }
+                    _ => {
+                        break Ok((rem, None));
+                    },
+                }
+            }
+        }
+        Err(nom::Err::Incomplete(_)) => Ok((span, None)),
+        Err(nom::Err::Error(e) | nom::Err::Failure(e)) => Err(location.relativize_error(e)),
+    }
+}
+
+impl<R> Decoder for RecognizerDecoder<R>
+where
+    R: Recognizer,
+{
+    type Item = R::Target;
+    type Error = AsyncParseError;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+
+        let content = read_utf8(src.as_ref())?;
+        let span = Span::new(content);
+        match self.decode_inner(span) {
+            Ok((rem, result)) => {
+                let consumed = rem.location_offset() - span.location_offset();
+                src.advance(consumed);
+                Ok(result)
+            }
+            Err(e) => Err(e),
+        }
+
+    }
+
+    fn decode_eof(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        let content = read_utf8(buf.as_ref())?;
+        let span = Span::new(content);
+        match self.decode_inner(span) {
+            Ok((rem, output)) => {
+                let (final_rem, result) = if output.is_none() {
+                    let RecognizerDecoder { parser, recognizer, location } = self;
+                    let (final_rem, final_result) = match parser.final_parser_and_reset() {
+                        Some(mut final_parser) => {
+                            match feed_final(&mut final_parser, recognizer, rem, location) {
+                                Ok((final_rem, None)) => (final_rem, None),
+                                Ok((final_rem, ow)) => (final_rem, Some(Ok(ow))),
+                                Err(e) => (span, Some(Err(e))),
+                            }
+                        }
+                        _ => (span, None),
+                    };
+                    let finalized = if let Some(res) = final_result {
+                        res
+                    } else {
+                        match recognizer.try_flush() {
+                            Some(Ok(target)) => Ok(Some(target)),
+                            Some(Err(e)) => Err(AsyncParseError::Parser(ParseError::Structure(e))),
+                            _ => {
+                                if buf.is_empty() {
+                                    Ok(None)
+                                } else {
+                                    Err(AsyncParseError::Parser(ParseError::Structure(ReadError::IncompleteRecord)))
+                                }
+                            },
+                        }
+                    };
+                    (final_rem, finalized)
+                } else {
+                    (rem, Ok(output))
+                };
+                let consumed = final_rem.location_offset() - span.location_offset();
+                buf.advance(consumed);
+                result
+            }
+            Err(e) => Err(e),
+        }
     }
 }
