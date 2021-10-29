@@ -15,7 +15,7 @@
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::{AgentParameters, AgentResult, SwimAgent};
-use crate::plane::{AgentRoute, RouteAndParameters};
+use crate::plane::{AgentInternals, AgentRoute, RouteAndParameters};
 use futures::future::BoxFuture;
 use futures::{FutureExt, Stream};
 use server_store::agent::NodeStore;
@@ -104,17 +104,20 @@ where
     Lifecycle: AgentLifecycle<Agent> + Send + Sync + Clone + Debug + 'static,
     Store: NodeStore,
 {
-    #[allow(clippy::too_many_arguments)]
     fn run_agent(
         &self,
         route: RouteAndParameters,
         execution_config: AgentExecutionConfig,
-        clock: Clk,
-        client_context: ClientContext<Path>,
-        incoming_envelopes: Envelopes,
-        router: R,
-        store: Store,
+        agent_internals: AgentInternals<Clk, Envelopes, R, Store>,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
+        let AgentInternals {
+            clock,
+            client_context,
+            incoming_envelopes,
+            router,
+            store,
+        } = agent_internals;
+
         let RouteAndParameters {
             route: uri,
             parameters,

@@ -510,11 +510,10 @@ impl<Path: Addressable, DelegateRouter: BidirectionalRouter>
                 Some(ConnectionRegistratorEvent::Request(RegistratorRequest::Resolve {
                     request,
                 })) if maybe_raw_route.is_some() => {
-                    if request
-                        .send(Ok(maybe_raw_route.as_ref().unwrap().clone()))
-                        .is_err()
-                    {
-                        event!(Level::ERROR, REQUEST_ERROR);
+                    let raw_route = maybe_raw_route.as_ref().unwrap();
+
+                    if request.send(Ok(raw_route.clone())).is_err() {
+                        event!(Level::ERROR, REQUEST_ERROR, ?raw_route);
                     }
                 }
                 Some(ConnectionRegistratorEvent::ConnectionDropped(connection_dropped)) => {
@@ -562,11 +561,12 @@ impl<Path: Addressable, DelegateRouter: BidirectionalRouter>
                 _ => {
                     let mut futures = vec![];
 
-                    for (_, subs) in subscribers {
+                    for (rel_path, subs) in subscribers {
                         for (_, sub) in subs {
+                            let rel_path = rel_path.clone();
                             futures.push(async move {
                                 if sub.send(RouterEvent::Stopping).await.is_err() {
-                                    event!(Level::ERROR, SUBSCRIBER_ERROR);
+                                    event!(Level::ERROR, SUBSCRIBER_ERROR, ?rel_path);
                                 }
                             })
                         }

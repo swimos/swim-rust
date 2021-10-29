@@ -16,5 +16,4 @@ use crate::routing::remote::{ExternalConnections, IoResult, Listener};
 
 pub mod dns;
 pub mod plain;
-#[cfg(feature = "tokio_native_tls")]
 pub mod tls;

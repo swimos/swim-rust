@@ -133,7 +133,7 @@ const FAILED_SERVER_CONN: &str = "Failed to establish a server connection.";
 const FAILED_CLIENT_CONN: &str = "Failed to establish a client connection.";
 const NOT_IN_TABLE: &str = "A connection closed that was not in the routing table.";
 const CLOSED_NO_HANDLES: &str = "A connection closed with no handles remaining.";
-const DUPLICATED_BIDIRECTIONAL: &str = "A bidirectional connection already exists to this host.";
+const UNRESOLVABLE_BIDIRECTIONAL: &str = "A bidirectional connection could not be resolved.";
 
 /// An event loop that listens for incoming connections and routing requests and opens/accepts
 /// remote connections accordingly.
@@ -295,7 +295,7 @@ fn update_state<State: RemoteTasksState>(
                                 ConnectionError::Resolution(ResolutionError::unresolvable(
                                     host.to_string(),
                                 )),
-                                DUPLICATED_BIDIRECTIONAL,
+                                UNRESOLVABLE_BIDIRECTIONAL,
                             );
                         }
                     } else {

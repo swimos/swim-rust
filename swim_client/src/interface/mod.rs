@@ -19,7 +19,6 @@ use crate::configuration::ConfigError;
 use crate::configuration::SwimClientConfig;
 use crate::connections::SwimConnPool;
 use crate::downlink::error::{DownlinkError, SubscriptionError};
-use crate::downlink::subscription::RequestResult;
 use crate::downlink::typed::command::TypedCommandDownlink;
 use crate::downlink::typed::event::TypedEventDownlink;
 use crate::downlink::typed::map::{MapDownlinkReceiver, TypedMapDownlink};
@@ -43,7 +42,7 @@ use std::sync::Arc;
 use swim_common::form::{Form, ValueSchema};
 use swim_common::model::parser::parse_single;
 use swim_common::model::Value;
-use swim_common::routing::error::RoutingError;
+use swim_common::routing::error::{ConnectionError, RoutingError};
 use swim_common::routing::remote::net::dns::Resolver;
 use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
 use swim_common::routing::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
@@ -51,7 +50,7 @@ use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
 use swim_common::routing::CloseSender;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::{AbsolutePath, Addressable};
-use swim_runtime::task::spawn;
+use swim_runtime::task::{spawn, TaskError};
 use swim_utilities::future::open_ended::OpenEndedFutures;
 use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
@@ -144,7 +143,6 @@ impl SwimClientBuilder {
                 remote_connections_task.run(),
                 pool_task.run(),
             )
-            .0
         });
 
         SwimClient {
@@ -185,7 +183,11 @@ impl SwimClientBuilder {
 pub struct SwimClient<Path: Addressable> {
     inner: ClientContext<Path>,
     close_buffer_size: NonZeroUsize,
-    task_handle: TaskHandle<RequestResult<(), Path>>,
+    task_handle: TaskHandle<(
+        Result<(), SubscriptionError<Path>>,
+        Result<(), std::io::Error>,
+        Result<(), swim_common::routing::error::ConnectionError>,
+    )>,
     stop_trigger: CloseSender,
 }
 
@@ -299,11 +301,15 @@ impl<Path: Addressable> SwimClient<Path> {
             return Err(routing_err.into());
         }
 
-        let result = task_handle.await;
+        let result = task_handle.await?;
 
         match result {
-            Ok(r) => r.map_err(ClientError::Subscription),
-            Err(_) => Err(ClientError::Close),
+            (Err(err), _, _) => Err(err.into()),
+            (_, Err(_), _) => Err(ClientError::Subscription(
+                SubscriptionError::ConnectionError,
+            )),
+            (_, _, Err(err)) => Err(err.into()),
+            _ => Ok(()),
         }
     }
 }
@@ -440,6 +446,24 @@ pub enum ClientError<Path: Addressable> {
     Downlink(DownlinkError),
     /// An error that occurred when closing the client.
     Close,
+}
+
+impl<Path: Addressable> From<TaskError> for ClientError<Path> {
+    fn from(_err: TaskError) -> Self {
+        ClientError::Close
+    }
+}
+
+impl<Path: Addressable> From<SubscriptionError<Path>> for ClientError<Path> {
+    fn from(err: SubscriptionError<Path>) -> Self {
+        ClientError::Subscription(err)
+    }
+}
+
+impl<Path: Addressable> From<ConnectionError> for ClientError<Path> {
+    fn from(err: ConnectionError) -> Self {
+        ClientError::Routing(RoutingError::PoolError(err))
+    }
 }
 
 impl<Path: Addressable + 'static> Display for ClientError<Path> {
