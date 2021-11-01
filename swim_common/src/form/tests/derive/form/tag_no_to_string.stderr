@@ -1,5 +1,5 @@
 error[E0277]: the trait bound `B: AsRef<str>` is not satisfied
-  --> src/form/tests/derive/form/tag_no_to_string.rs:24:9
+  --> $DIR/src/form/tests/derive/form/tag_no_to_string.rs:24:9
    |
 24 |         a: B,
    |         ^ the trait `AsRef<str>` is not implemented for `B`
@@ -7,48 +7,56 @@ error[E0277]: the trait bound `B: AsRef<str>` is not satisfied
    = note: required for the cast to the object type `dyn AsRef<str>`
 
 error[E0277]: the trait bound `B: AsRef<str>` is not satisfied
-   --> src/form/tests/derive/form/tag_no_to_string.rs:21:14
+   --> $DIR/src/form/tests/derive/form/tag_no_to_string.rs:21:14
     |
 21  |     #[derive(Form)]
     |              ^^^^ the trait `AsRef<str>` is not implemented for `B`
     |
 note: required by `as_ref`
+   --> $RUST/core/src/convert/mod.rs
+    |
+    |     fn as_ref(&self) -> &T;
+    |     ^^^^^^^^^^^^^^^^^^^^^^^
     = note: this error originates in the derive macro `Form` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `B: swim_common::form::structural::Tag` is not satisfied
-    --> src/form/tests/derive/form/tag_no_to_string.rs:21:14
+    --> $DIR/src/form/tests/derive/form/tag_no_to_string.rs:21:14
      |
 21   |     #[derive(Form)]
      |              ^^^^ the trait `swim_common::form::structural::Tag` is not implemented for `B`
      |
-    ::: src/form/structural/read/recognizer/mod.rs:1805:8
+    ::: $DIR/src/form/structural/read/recognizer/mod.rs:1801:8
      |
-1805 |     R: Recognizer,
+1801 |     R: Recognizer,
      |        ---------- required by this bound in `feed_field`
      |
      = note: required because of the requirements on the impl of `Recognizer` for `TagRecognizer<B>`
      = note: this error originates in the derive macro `Form` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `B: swim_common::form::structural::Tag` is not satisfied
-   --> src/form/tests/derive/form/tag_no_to_string.rs:21:14
-    |
-21  |     #[derive(Form)]
-    |              ^^^^ the trait `swim_common::form::structural::Tag` is not implemented for `B`
-    |
-    = note: required because of the requirements on the impl of `Recognizer` for `TagRecognizer<B>`
+  --> $DIR/src/form/tests/derive/form/tag_no_to_string.rs:21:14
+   |
+21 |     #[derive(Form)]
+   |              ^^^^ the trait `swim_common::form::structural::Tag` is not implemented for `B`
+   |
+   = note: required because of the requirements on the impl of `Recognizer` for `TagRecognizer<B>`
 note: required by `reset`
-   --> src/form/structural/read/recognizer/mod.rs:101:5
-    |
-101 |     fn reset(&mut self);
-    |     ^^^^^^^^^^^^^^^^^^^^
-    = note: this error originates in the derive macro `Form` (in Nightly builds, run with -Z macro-backtrace for more info)
+  --> $DIR/src/form/structural/read/recognizer/mod.rs:98:5
+   |
+98 |     fn reset(&mut self);
+   |     ^^^^^^^^^^^^^^^^^^^^
+   = note: this error originates in the derive macro `Form` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `B: swim_common::form::structural::Tag` is not satisfied
-   --> src/form/tests/derive/form/tag_no_to_string.rs:21:14
+   --> $DIR/src/form/tests/derive/form/tag_no_to_string.rs:21:14
     |
 21  |     #[derive(Form)]
     |              ^^^^ the trait `swim_common::form::structural::Tag` is not implemented for `B`
     |
     = note: required because of the requirements on the impl of `Default` for `TagRecognizer<B>`
 note: required by `std::default::Default::default`
+   --> $RUST/core/src/default.rs
+    |
+    |     fn default() -> Self;
+    |     ^^^^^^^^^^^^^^^^^^^^^
     = note: this error originates in the derive macro `Form` (in Nightly builds, run with -Z macro-backtrace for more info)
