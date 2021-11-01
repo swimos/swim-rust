@@ -22,7 +22,6 @@ use crate::agent::lane::channels::{
 };
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::Eff;
-use crate::meta::metric::uplink::UplinkObserver;
 use crate::routing::{RoutingAddr, ServerRouter};
 use futures::future::join_all;
 use futures::{FutureExt, StreamExt};
@@ -33,6 +32,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_common::model::Value;
 use swim_common::warp::path::RelativePath;
+use swim_metrics::uplink::UplinkObserver;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger;
 use tokio::sync::mpsc;
@@ -160,7 +160,7 @@ where
                             if !handle.cleanup().await {
                                 event!(Level::ERROR, message = UPLINK_TERMINATED, route = ?&self.route, ?addr);
                             }
-                            observer.did_close();
+                            observer.did_close(true);
                         }
                         action = act;
                         attempts += 1;
@@ -177,7 +177,7 @@ where
                             break false;
                         }
                     } else {
-                        observer.did_open();
+                        observer.did_open(true);
                         // We successfully dispatched to the uplink so can continue.
                         break false;
                     }
@@ -196,7 +196,7 @@ where
             }
         }
         join_all(uplink_senders.into_iter().map(|(_, h)| {
-            observer.did_close();
+            observer.did_close(true);
             h.cleanup()
         }))
         .instrument(span!(Level::DEBUG, UPLINK_CLEANUP))

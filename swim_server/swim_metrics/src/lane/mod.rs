@@ -15,8 +15,8 @@
 #[cfg(test)]
 mod tests;
 
-use crate::meta::metric::uplink::{WarpUplinkProfile, WarpUplinkPulse};
-use crate::meta::metric::{MetricReporter, MetricStage};
+use crate::uplink::{WarpUplinkProfile, WarpUplinkPulse};
+use crate::{MetricReporter, MetricStage};
 use std::ops::Add;
 use swim_common::form::Form;
 

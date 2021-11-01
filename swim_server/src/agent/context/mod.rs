@@ -14,7 +14,6 @@
 
 use crate::agent::{AgentContext, Eff};
 use crate::meta::log::NodeLogger;
-use crate::meta::metric::NodeMetricAggregator;
 use crate::meta::MetaContext;
 use crate::routing::ServerRouter;
 use futures::future::BoxFuture;
@@ -25,6 +24,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use swim_metrics::NodeMetricAggregator;
 use swim_runtime::time::clock::Clock;
 use swim_utilities::future::SwimStreamExt;
 use swim_utilities::routing::uri::RelativeUri;

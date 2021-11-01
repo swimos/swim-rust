@@ -113,25 +113,3 @@ fn store_load() {
         }
     }
 }
-
-// #[tokio::test]
-// async fn io() {
-//     let store_initial = "loaded".to_string();
-//     let store = TrackingValueStore {
-//         value: Arc::new(Mutex::new(Some(serialize(&store_initial).unwrap()))),
-//     };
-//
-//     let model = ValueDataModel::<TrackingValueStore, String>::new(store, 0);
-//     let (lane, observer) = ValueLane::<String>::store_observable(
-//         &model,
-//         NonZeroUsize::new(8).unwrap(),
-//         Default::default(),
-//     );
-//     let observer_stream = observer.into_stream();
-//
-//     let store_io = ValueLaneStoreIo::new(observer_stream, model);
-//     let _task_handle = tokio::spawn(store_io.attach(StoreErrorHandler::new(0)));
-//
-//     let lane_value = lane.load().await;
-//     assert_eq!(*lane_value, store_initial);
-// }
