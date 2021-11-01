@@ -36,6 +36,7 @@ use std::error::Error;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::fs::File;
+use std::io;
 use std::io::Read;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -183,11 +184,7 @@ impl SwimClientBuilder {
 pub struct SwimClient<Path: Addressable> {
     inner: ClientContext<Path>,
     close_buffer_size: NonZeroUsize,
-    task_handle: TaskHandle<(
-        Result<(), SubscriptionError<Path>>,
-        Result<(), std::io::Error>,
-        Result<(), swim_common::routing::error::ConnectionError>,
-    )>,
+    task_handle: ClientTaskHandle<Path>,
     stop_trigger: CloseSender,
 }
 
@@ -305,14 +302,18 @@ impl<Path: Addressable> SwimClient<Path> {
 
         match result {
             (Err(err), _, _) => Err(err.into()),
-            (_, Err(_), _) => Err(ClientError::Subscription(
-                SubscriptionError::ConnectionError,
-            )),
+            (_, Err(err), _) => Err(err.into()),
             (_, _, Err(err)) => Err(err.into()),
             _ => Ok(()),
         }
     }
 }
+
+type ClientTaskHandle<Path> = TaskHandle<(
+    Result<(), SubscriptionError<Path>>,
+    Result<(), std::io::Error>,
+    Result<(), swim_common::routing::error::ConnectionError>,
+)>;
 
 #[derive(Clone, Debug)]
 pub struct ClientContext<Path: Addressable> {
@@ -438,6 +439,8 @@ impl<Path: Addressable> ClientContext<Path> {
 /// Represents errors that can occur in the client.
 #[derive(Debug)]
 pub enum ClientError<Path: Addressable> {
+    /// An error that occurred when the client was running.
+    RuntimeError(io::Error),
     /// An error that occurred when subscribing to a downlink.
     Subscription(SubscriptionError<Path>),
     /// An error that occurred in the router.
@@ -466,6 +469,12 @@ impl<Path: Addressable> From<ConnectionError> for ClientError<Path> {
     }
 }
 
+impl<Path: Addressable> From<io::Error> for ClientError<Path> {
+    fn from(err: io::Error) -> Self {
+        ClientError::RuntimeError(err)
+    }
+}
+
 impl<Path: Addressable + 'static> Display for ClientError<Path> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self.source() {
@@ -478,6 +487,7 @@ impl<Path: Addressable + 'static> Display for ClientError<Path> {
 impl<Path: Addressable + 'static> Error for ClientError<Path> {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match &self {
+            ClientError::RuntimeError(e) => Some(e),
             ClientError::Subscription(e) => Some(e),
             ClientError::Routing(e) => Some(e),
             ClientError::Downlink(e) => Some(e),
