@@ -14,7 +14,9 @@
 
 use crate::errors::{Error, ErrorKind, HttpError};
 use crate::handshake::client::Nonce;
-use crate::handshake::{ProtocolRegistry, UPGRADE_STR, WEBSOCKET_STR, WEBSOCKET_VERSION_STR};
+use crate::handshake::{
+    apply_to, ProtocolRegistry, UPGRADE_STR, WEBSOCKET_STR, WEBSOCKET_VERSION_STR,
+};
 use base64::encode_config_slice;
 use bytes::{BufMut, BytesMut};
 use http::header::{AsHeaderName, HeaderName, IntoHeaderName};
@@ -30,7 +32,6 @@ pub fn encode_request(dst: &mut BytesMut, request: ValidatedRequest, nonce_buffe
         host,
     } = request;
 
-    // todo replace with wyrand
     let nonce = rand::random::<[u8; 16]>();
     encode_config_slice(&nonce, base64::STANDARD, nonce_buffer);
 
@@ -119,7 +120,10 @@ where
     } = parts;
 
     if method != Method::GET {
-        return Err(Error::with_cause(ErrorKind::Http, HttpError::InvalidMethod));
+        return Err(Error::with_cause(
+            ErrorKind::Http,
+            HttpError::HttpMethod(Some(method.to_string())),
+        ));
     }
 
     if version != Version::HTTP_11 {
@@ -172,7 +176,7 @@ where
         ));
     }
 
-    subprotocols.apply_to(&mut headers)?;
+    apply_to(subprotocols, &mut headers);
 
     let option = headers
         .get(header::SEC_WEBSOCKET_KEY)

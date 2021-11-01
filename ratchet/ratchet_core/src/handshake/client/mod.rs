@@ -20,30 +20,103 @@ mod encoding;
 use bytes::BytesMut;
 use http::{header, Request, StatusCode};
 use httparse::{Response, Status};
+use log::{error, trace};
 use sha1::{Digest, Sha1};
 use std::convert::TryFrom;
-use tracing::{event, span, Level};
-use tracing_futures::Instrument;
 
 use crate::errors::{Error, ErrorKind, HttpError};
 use crate::ext::NegotiatedExtension;
 use crate::handshake::client::encoding::{build_request, encode_request};
 use crate::handshake::io::BufferedIo;
 use crate::handshake::{
-    validate_header, validate_header_value, ParseResult, ProtocolRegistry, StreamingParser,
-    ACCEPT_KEY, BAD_STATUS_CODE, UPGRADE_STR, WEBSOCKET_STR,
+    negotiate_response, validate_header, validate_header_value, ParseResult, ProtocolRegistry,
+    StreamingParser, ACCEPT_KEY, BAD_STATUS_CODE, UPGRADE_STR, WEBSOCKET_STR,
 };
-use crate::WebSocketStream;
+use crate::{
+    NoExt, NoExtProvider, Role, TryIntoRequest, WebSocket, WebSocketConfig, WebSocketStream,
+};
 use ratchet_ext::ExtensionProvider;
 use tokio_util::codec::Decoder;
 
 type Nonce = [u8; 24];
 
-const MSG_HANDSHAKE_COMPLETED: &str = "Handshake completed";
-const MSG_HANDSHAKE_FAILED: &str = "Handshake failed";
-const MSG_HANDSHAKE_START: &str = "Executing client handshake";
+const MSG_HANDSHAKE_COMPLETED: &str = "Client handshake completed";
+const MSG_HANDSHAKE_FAILED: &str = "Client handshake failed";
 
-pub async fn exec_client_handshake<S, E>(
+/// A structure representing an upgraded WebSocket session and an optional subprotocol that was
+/// negotiated during the upgrade.
+#[derive(Debug)]
+pub struct UpgradedClient<S, E> {
+    /// The WebSocket connection.
+    pub websocket: WebSocket<S, E>,
+    /// An optional subprotocol that was negotiated during the upgrade.
+    pub subprotocol: Option<String>,
+}
+
+/// Execute a WebSocket client handshake on `stream`, opting for no compression on messages and no
+/// subprotocol.
+pub async fn subscribe<S, R>(
+    config: WebSocketConfig,
+    mut stream: S,
+    request: R,
+) -> Result<UpgradedClient<S, NoExt>, Error>
+where
+    S: WebSocketStream,
+    R: TryIntoRequest,
+{
+    let mut read_buffer = BytesMut::new();
+    let HandshakeResult {
+        subprotocol,
+        extension,
+    } = exec_client_handshake(
+        &mut stream,
+        request.try_into_request()?,
+        NoExtProvider,
+        ProtocolRegistry::default(),
+        &mut read_buffer,
+    )
+    .await?;
+
+    Ok(UpgradedClient {
+        websocket: WebSocket::from_upgraded(config, stream, extension, read_buffer, Role::Client),
+        subprotocol,
+    })
+}
+
+/// Execute a WebSocket client handshake on `stream`, attempting to negotiate the extension and a
+/// subprotocol.
+pub async fn subscribe_with<S, E, R>(
+    config: WebSocketConfig,
+    mut stream: S,
+    request: R,
+    extension: &E,
+    subprotocols: ProtocolRegistry,
+) -> Result<UpgradedClient<S, E::Extension>, Error>
+where
+    S: WebSocketStream,
+    E: ExtensionProvider,
+    R: TryIntoRequest,
+{
+    let mut read_buffer = BytesMut::new();
+    let HandshakeResult {
+        subprotocol,
+        extension,
+    } = exec_client_handshake(
+        &mut stream,
+        request.try_into_request()?,
+        extension,
+        subprotocols,
+        &mut read_buffer,
+    )
+    .await?;
+
+    Ok(UpgradedClient {
+        websocket: WebSocket::from_upgraded(config, stream, extension, read_buffer, Role::Client),
+        subprotocol,
+    })
+}
+
+async fn exec_client_handshake<S, E>(
     stream: &mut S,
     request: Request<()>,
     extension: E,
@@ -55,33 +128,28 @@ where
     E: ExtensionProvider,
 {
     let machine = ClientHandshake::new(stream, subprotocols, &extension, buf);
-    let uri = request.uri();
-    let span = span!(Level::DEBUG, MSG_HANDSHAKE_START, ?uri);
-
-    let exec = async move {
-        let handshake_result = machine.exec(request).await;
-        match &handshake_result {
-            Ok(HandshakeResult {
+    let uri = request.uri().to_string();
+    let handshake_result = machine.exec(request).await;
+    match &handshake_result {
+        Ok(HandshakeResult {
+            subprotocol,
+            extension,
+            ..
+        }) => {
+            trace!(
+                "{} for: {}. Selected subprotocol: {:?} and extension: {:?}",
+                MSG_HANDSHAKE_COMPLETED,
+                uri,
                 subprotocol,
-                extension,
-                ..
-            }) => {
-                event!(
-                    Level::DEBUG,
-                    MSG_HANDSHAKE_COMPLETED,
-                    ?subprotocol,
-                    ?extension
-                )
-            }
-            Err(e) => {
-                event!(Level::ERROR, MSG_HANDSHAKE_FAILED, error = ?e)
-            }
+                extension
+            )
         }
+        Err(e) => {
+            error!("{} for {}. Error: {:?}", MSG_HANDSHAKE_FAILED, uri, e)
+        }
+    }
 
-        handshake_result
-    };
-
-    exec.instrument(span).await
+    handshake_result
 }
 
 struct ClientHandshake<'s, S, E> {
@@ -319,7 +387,7 @@ where
     )?;
 
     Ok(HandshakeResult {
-        subprotocol: subprotocols.negotiate_response(response)?,
+        subprotocol: negotiate_response(subprotocols, response)?,
         extension: extension
             .negotiate_client(response.headers)
             .map_err(|e| Error::with_cause(ErrorKind::Extension, e))?

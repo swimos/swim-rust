@@ -3,10 +3,17 @@ name = "ratchet"
 version = "0.1.0"
 authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
+description = "Async WebSocket implementation"
+keywords = ["websocket", "async", "futures", "tokio"]
+categories = ["network-programming", "asynchronous", "web-programming::websocket"]
+license = "Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/swimos/ratchet"
 
 [features]
 default = []
 deflate = ["ratchet_deflate"]
+split = ["ratchet_core/split"]
 
 [dependencies]
 ratchet_core = { path = "ratchet_core" }
@@ -25,3 +32,9 @@ required-features = ["deflate"]
 [[example]]
 name = "autobahn-server"
 required-features = ["deflate"]
+
+[[example]]
+name = "client"
+
+[[example]]
+name = "server"

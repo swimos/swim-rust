@@ -44,7 +44,7 @@ async fn run(stream: TcpStream) -> Result<(), Error> {
     .unwrap()
     .upgrade()
     .await?
-    .socket;
+    .websocket;
 
     let mut buf = BytesMut::new();
 

@@ -22,7 +22,8 @@ use ratchet_ext::{
 };
 use std::convert::Infallible;
 
-#[derive(Debug, Default, Clone)]
+/// An extension stub that does nothing.
+#[derive(Debug, Default, Copy, Clone)]
 pub struct NoExt;
 
 impl ExtensionEncoder for NoExt {
@@ -49,6 +50,8 @@ impl ExtensionDecoder for NoExt {
     }
 }
 
+/// An extension provider stub that will always succeed with `NoExt`.
+#[derive(Copy, Clone, Debug)]
 pub struct NoExtProvider;
 impl ExtensionProvider for NoExtProvider {
     type Extension = NoExt;
@@ -102,7 +105,7 @@ impl ReunitableExtension for NoExt {
     }
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct NoExtEncoder;
 impl ExtensionEncoder for NoExtEncoder {
     type Error = Infallible;
@@ -116,7 +119,7 @@ impl ExtensionEncoder for NoExtEncoder {
     }
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct NoExtDecoder;
 impl ExtensionDecoder for NoExtDecoder {
     type Error = Infallible;

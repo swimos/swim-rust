@@ -17,9 +17,63 @@ use crate::protocol::{HeaderFlags, OpCode};
 use bytes::{BufMut, BytesMut};
 use either::Either;
 use std::convert::TryFrom;
+use std::fmt::{Display, Formatter};
 use std::mem::size_of;
 
 const U16_MAX: usize = u16::MAX as usize;
+
+pub struct FramePrinter<'l>(pub &'l FrameHeader);
+impl<'l> Display for FramePrinter<'l> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let FrameHeader {
+            opcode,
+            flags,
+            mask,
+        } = self.0;
+        write!(
+            f,
+            "opcode: {}, flags: {:?}, mask: {:?}",
+            opcode, flags, mask
+        )
+    }
+}
+
+pub struct BorrowedFramePrinter<'l>(pub BorrowedFrameHeader<'l>);
+impl<'l> BorrowedFramePrinter<'l> {
+    pub fn new(
+        opcode: &'l OpCode,
+        flags: &'l HeaderFlags,
+        mask: &'l Option<u32>,
+    ) -> BorrowedFramePrinter<'l> {
+        BorrowedFramePrinter(BorrowedFrameHeader {
+            opcode,
+            flags,
+            mask,
+        })
+    }
+}
+
+impl<'l> Display for BorrowedFramePrinter<'l> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let BorrowedFrameHeader {
+            opcode,
+            flags,
+            mask,
+        } = self.0;
+        write!(
+            f,
+            "opcode: {}, flags: {:?}, mask: {:?}",
+            opcode, flags, mask
+        )
+    }
+}
+
+#[derive(Debug)]
+pub struct BorrowedFrameHeader<'l> {
+    pub opcode: &'l OpCode,
+    pub flags: &'l HeaderFlags,
+    pub mask: &'l Option<u32>,
+}
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct FrameHeader {
@@ -79,7 +133,7 @@ impl FrameHeader {
         };
 
         if let Some(mask) = mask {
-            dst.put_u32(mask);
+            dst.put_u32_le(mask);
         }
     }
 
@@ -149,14 +203,5 @@ impl FrameHeader {
             offset,
             length,
         )))
-    }
-}
-
-// todo speed up with an XOR lookup table
-pub fn apply_mask(mask: u32, bytes: &mut [u8]) {
-    let mask: [u8; 4] = mask.to_be_bytes();
-
-    for i in 0..bytes.len() {
-        bytes[i] ^= mask[i & 0x3]
     }
 }

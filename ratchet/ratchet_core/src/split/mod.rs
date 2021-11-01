@@ -33,12 +33,18 @@ use crate::{
 use bilock::{bilock, BiLock};
 use bitflags::_core::sync::atomic::Ordering;
 use bytes::BytesMut;
+use log::{error, trace};
 use ratchet_ext::{ExtensionDecoder, ExtensionEncoder, ReunitableExtension, SplittableExtension};
 use std::fmt::Debug;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
-// todo sink and stream implementations
+type ReuniteFailure<S, E> = ReuniteError<
+    S,
+    <E as SplittableExtension>::SplitEncoder,
+    <E as SplittableExtension>::SplitDecoder,
+>;
+
 pub fn split<S, E>(
     framed: framed::FramedIo<S>,
     control_buffer: BytesMut,
@@ -100,13 +106,13 @@ where
 {
     async fn write<A, E>(
         &mut self,
-        mut buf_ref: A,
+        buf_ref: A,
         message_type: PayloadType,
         is_server: bool,
         extension: &mut E,
     ) -> Result<(), Error>
     where
-        A: AsMut<[u8]>,
+        A: AsRef<[u8]>,
         E: ExtensionEncoder,
     {
         let WriteHalf {
@@ -114,7 +120,7 @@ where
             writer,
             control_buffer,
         } = self;
-        let buf = buf_ref.as_mut();
+        let buf = buf_ref.as_ref();
 
         match message_type {
             PayloadType::Text => writer
@@ -141,10 +147,10 @@ where
                 .map_err(Into::into),
             PayloadType::Ping => {
                 if buf.len() > CONTROL_MAX_SIZE {
-                    return Err(Error::with_cause(
+                    Err(Error::with_cause(
                         ErrorKind::Protocol,
                         ProtocolError::FrameOverflow,
-                    ));
+                    ))
                 } else {
                     control_buffer.clear();
                     control_buffer.clone_from_slice(&buf[..CONTROL_MAX_SIZE]);
@@ -183,6 +189,7 @@ struct FramedIo<S, E> {
     ext_decoder: NegotiatedExtension<E>,
 }
 
+/// An owned write half of a WebSocket connection.
 #[derive(Debug)]
 pub struct Sender<S, E> {
     role: Role,
@@ -191,6 +198,7 @@ pub struct Sender<S, E> {
     ext_encoder: NegotiatedExtension<E>,
 }
 
+/// An owned read half of a WebSocket connection.
 #[derive(Debug)]
 pub struct Receiver<S, E> {
     role: Role,
@@ -203,10 +211,14 @@ where
     S: WebSocketStream,
     E: ExtensionEncoder,
 {
+    /// Attempt to reunite this send half with its receiver.
+    ///
+    /// # Errors
+    /// Errors if `receiver` is not paired with this sender.
     pub fn reunite<Ext>(
         self,
         receiver: Receiver<S, Ext::SplitDecoder>,
-    ) -> Result<WebSocket<S, Ext>, ReuniteError<S, Ext::SplitEncoder, Ext::SplitDecoder>>
+    ) -> Result<WebSocket<S, Ext>, ReuniteFailure<S, Ext>>
     where
         S: Debug,
         Ext: ReunitableExtension<SplitEncoder = E>,
@@ -214,21 +226,47 @@ where
         reunite::<S, Ext>(self, receiver)
     }
 
+    /// Returns the role of this Sender.
     pub fn role(&self) -> Role {
         self.role
     }
 
+    /// Returns whether this WebSocket is closed.
     pub fn is_closed(&self) -> bool {
         self.closed.load(Ordering::Relaxed)
     }
 
-    pub async fn write(
-        &mut self,
-        buf: &mut BytesMut,
-        message_type: PayloadType,
-    ) -> Result<(), Error> {
+    /// Constructs a new text WebSocket message with a payload of `data`.
+    pub async fn write_text<I>(&mut self, data: I) -> Result<(), Error>
+    where
+        I: AsRef<str>,
+    {
+        self.write(data.as_ref(), PayloadType::Text).await
+    }
+
+    /// Constructs a new binary WebSocket message with a payload of `data`.
+    pub async fn write_binary<I>(&mut self, data: I) -> Result<(), Error>
+    where
+        I: AsRef<[u8]>,
+    {
+        self.write(data.as_ref(), PayloadType::Binary).await
+    }
+
+    /// Constructs a new ping WebSocket message with a payload of `data`.
+    pub async fn write_ping<I>(&mut self, data: I) -> Result<(), Error>
+    where
+        I: AsRef<[u8]>,
+    {
+        self.write(data.as_ref(), PayloadType::Ping).await
+    }
+
+    /// Constructs a new WebSocket message of `message_type` and with a payload of `buf_ref.
+    pub async fn write<A>(&mut self, buf: A, message_type: PayloadType) -> Result<(), Error>
+    where
+        A: AsRef<[u8]>,
+    {
         if self.is_closed() {
-            return Err(Error::with_cause(ErrorKind::Close, CloseError::Closed));
+            return Err(Error::with_cause(ErrorKind::Close, CloseError));
         }
 
         let writer = &mut *self.split_writer.lock().await;
@@ -244,11 +282,14 @@ where
             Ok(()) => Ok(()),
             Err(e) => {
                 self.closed.store(true, Ordering::Relaxed);
-                Err(e.into())
+                Err(e)
             }
         }
     }
 
+    /// Constructs a new WebSocket message of `message_type` and with a payload of `buf_ref` and
+    /// chunked by `fragment_size`. If the length of the buffer is less than the chunk size then
+    /// only a single message is sent.
     pub async fn write_fragmented(
         &mut self,
         buf: &mut BytesMut,
@@ -256,7 +297,7 @@ where
         fragment_size: usize,
     ) -> Result<(), Error> {
         if self.is_closed() {
-            return Err(Error::with_cause(ErrorKind::Close, CloseError::Closed));
+            return Err(Error::with_cause(ErrorKind::Close, CloseError));
         }
         let WriteHalf {
             split_writer,
@@ -281,6 +322,7 @@ where
         write_result
     }
 
+    /// Close this Sender with the reason provided.    
     pub async fn close(self, reason: Option<String>) -> Result<(), Error> {
         let WriteHalf {
             split_writer,
@@ -307,10 +349,25 @@ where
     S: WebSocketStream,
     E: ExtensionDecoder,
 {
+    /// Returns the role of this Receiver.
     pub fn role(&self) -> Role {
         self.role
     }
 
+    /// Attempt to read some data from the WebSocket. Returning either the type of the message
+    /// received or the error that was produced.
+    ///
+    /// # Errors
+    /// If an error is produced during a read operation the contents of `read_buffer` must be
+    /// considered to be dirty.
+    ///
+    /// # Note
+    /// Ratchet transparently handles ping messages received from the peer by returning a pong frame
+    /// and this function will return `Message::Pong` if one has been received. As per [RFC6455](https://datatracker.ietf.org/doc/html/rfc6455)
+    /// these may be interleaved between data frames. In the event of one being received while
+    /// reading a continuation, this function will then yield `Message::Ping` and the `read_buffer`
+    /// will contain the data received up to that point. The callee must ensure that the contents
+    /// of `read_buffer` are **not** then modified before calling `read` again.
     pub async fn read(&mut self, read_buffer: &mut BytesMut) -> Result<Message, Error> {
         let Receiver {
             role,
@@ -343,6 +400,8 @@ where
                     Item::Binary => return Ok(Message::Binary),
                     Item::Text => return Ok(Message::Text),
                     Item::Ping(payload) => {
+                        trace!("Received a ping frame. Responding with pong");
+
                         let WriteHalf {
                             split_writer,
                             writer,
@@ -374,9 +433,12 @@ where
                         } else {
                             return if control_buffer[..].eq(&payload[..]) {
                                 control_buffer.clear();
+                                trace!("Received pong frame");
                                 Ok(Message::Pong)
                             } else {
+                                trace!("Received a pong frame with an incorrect payload. Closing the connection");
                                 closed.store(true, Ordering::Relaxed);
+
                                 write_close(
                                     split_writer,
                                     writer,
@@ -426,7 +488,9 @@ where
                     }
                 },
                 Err(e) => {
+                    error!("WebSocket read failure: {:?}", e);
                     closed.store(true, Ordering::Relaxed);
+
                     if !e.is_io() {
                         let reason = CloseReason::new(CloseCode::Protocol, Some(e.to_string()));
                         let WriteHalf {
@@ -443,6 +507,7 @@ where
         }
     }
 
+    /// Close this receiver with the reason provided.
     pub async fn close(self, reason: Option<String>) -> Result<(), Error> {
         let WriteHalf {
             split_writer,
@@ -463,12 +528,15 @@ where
         write_result
     }
 
+    /// Returns whether this receiver is closed.
     pub fn is_closed(&self) -> bool {
         self.closed.load(Ordering::Relaxed)
     }
 }
 
+/// An error produced by `reunite` if the halves do not match.
 #[derive(Debug)]
+#[allow(missing_docs)]
 pub struct ReuniteError<S, E, D> {
     pub sender: Sender<S, E>,
     pub receiver: Receiver<S, D>,
@@ -477,7 +545,7 @@ pub struct ReuniteError<S, E, D> {
 fn reunite<S, E>(
     sender: Sender<S, E::SplitEncoder>,
     receiver: Receiver<S, E::SplitDecoder>,
-) -> Result<WebSocket<S, E>, ReuniteError<S, E::SplitEncoder, E::SplitDecoder>>
+) -> Result<WebSocket<S, E>, ReuniteFailure<S, E>>
 where
     S: WebSocketStream + Debug,
     E: ReunitableExtension,
@@ -529,6 +597,6 @@ where
             closed.load(Ordering::Relaxed),
         ))
     } else {
-        return Err(ReuniteError { sender, receiver });
+        Err(ReuniteError { sender, receiver })
     }
 }

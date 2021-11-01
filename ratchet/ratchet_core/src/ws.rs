@@ -15,22 +15,31 @@
 use crate::errors::{CloseError, Error, ErrorKind, ProtocolError};
 use crate::ext::NegotiatedExtension;
 use crate::framed::{FramedIo, Item};
-use crate::handshake::{exec_client_handshake, HandshakeResult, ProtocolRegistry};
 use crate::protocol::{
     CloseCode, CloseReason, ControlCode, DataCode, HeaderFlags, Message, MessageType, OpCode,
     PayloadType, Role,
 };
-use crate::split::{split, Receiver, Sender};
-use crate::{Request, WebSocketConfig, WebSocketStream};
+use crate::{WebSocketConfig, WebSocketStream};
 use bytes::BytesMut;
-use ratchet_ext::{
-    Extension, ExtensionEncoder, ExtensionProvider, FrameHeader as ExtFrameHeader,
-    SplittableExtension,
-};
+use log::{error, trace};
+use ratchet_ext::{Extension, ExtensionEncoder, FrameHeader as ExtFrameHeader};
+
+#[cfg(feature = "split")]
+use crate::split::{split, Receiver, Sender};
+#[cfg(feature = "split")]
+use ratchet_ext::SplittableExtension;
 
 pub const CONTROL_MAX_SIZE: usize = 125;
 pub const CONTROL_DATA_MISMATCH: &str = "Unexpected control frame data";
 
+#[cfg(feature = "split")]
+type SplitSocket<S, E> = (
+    Sender<S, <E as SplittableExtension>::SplitEncoder>,
+    Receiver<S, <E as SplittableExtension>::SplitDecoder>,
+);
+
+/// A WebSocket stream.
+#[derive(Debug)]
 pub struct WebSocket<S, E> {
     framed: FramedIo<S>,
     control_buffer: BytesMut,
@@ -43,6 +52,7 @@ where
     S: WebSocketStream,
     E: Extension,
 {
+    #[cfg(feature = "split")]
     pub(crate) fn from_parts(
         framed: FramedIo<S>,
         control_buffer: BytesMut,
@@ -57,6 +67,15 @@ where
         }
     }
 
+    /// Initialise a new `WebSocket` from a stream that has already executed a handshake.
+    ///
+    /// # Arguments
+    /// `config` - The configuration to initialise the WebSocket with.
+    /// `stream` - The stream that the handshake was executed on.
+    /// `extension` - A negotiated extension that will be used for the session.
+    /// `read_buffer` - The read buffer which will be used for the session. This **may** contain any
+    /// unread data received after performing the handshake that was not required.
+    /// `role` - The role that this WebSocket will take.
     pub fn from_upgraded(
         config: WebSocketConfig,
         stream: S,
@@ -73,6 +92,7 @@ where
         }
     }
 
+    /// Returns the role of this WebSocket.
     pub fn role(&self) -> Role {
         if self.framed.is_server() {
             Role::Server
@@ -81,6 +101,20 @@ where
         }
     }
 
+    /// Attempt to read some data from the WebSocket. Returning either the type of the message
+    /// received or the error that was produced.
+    ///
+    /// # Errors
+    /// If an error is produced during a read operation the contents of `read_buffer` must be
+    /// considered to be dirty.
+    ///
+    /// # Note
+    /// Ratchet transparently handles ping messages received from the peer by returning a pong frame
+    /// and this function will return `Message::Pong` if one has been received. As per [RFC6455](https://datatracker.ietf.org/doc/html/rfc6455)
+    /// these may be interleaved between data frames. In the event of one being received while
+    /// reading a continuation, this function will then yield `Message::Ping` and the `read_buffer`
+    /// will contain the data received up to that point. The callee must ensure that the contents
+    /// of `read_buffer` are **not** then modified before calling `read` again.
     pub async fn read(&mut self, read_buffer: &mut BytesMut) -> Result<Message, Error> {
         let WebSocket {
             framed,
@@ -91,7 +125,7 @@ where
         } = self;
 
         if *closed {
-            return Err(Error::with_cause(ErrorKind::Close, CloseError::Closed));
+            return Err(Error::with_cause(ErrorKind::Close, CloseError));
         }
 
         loop {
@@ -100,6 +134,7 @@ where
                     Item::Binary => return Ok(Message::Binary),
                     Item::Text => return Ok(Message::Text),
                     Item::Ping(payload) => {
+                        trace!("Received a ping frame. Responding with pong");
                         framed
                             .write(
                                 OpCode::ControlCode(ControlCode::Pong),
@@ -112,12 +147,15 @@ where
                     }
                     Item::Pong(payload) => {
                         if control_buffer.is_empty() {
+                            trace!("Received an unsolicited pong frame. Ignoring");
                             continue;
                         } else {
                             return if control_buffer[..].eq(&payload[..]) {
                                 control_buffer.clear();
+                                trace!("Received pong frame");
                                 Ok(Message::Pong)
                             } else {
+                                trace!("Received a pong frame with an incorrect payload. Closing the connection");
                                 self.closed = true;
                                 self.framed
                                     .write_close(CloseReason {
@@ -155,6 +193,7 @@ where
                     }
                 },
                 Err(e) => {
+                    error!("WebSocket read failure: {:?}", e);
                     self.closed = true;
 
                     if !e.is_io() {
@@ -168,13 +207,38 @@ where
         }
     }
 
-    pub async fn write(
-        &mut self,
-        buf: &mut BytesMut,
-        message_type: PayloadType,
-    ) -> Result<(), Error> {
+    /// Constructs a new text WebSocket message with a payload of `data`.
+    pub async fn write_text<I>(&mut self, data: I) -> Result<(), Error>
+    where
+        I: AsRef<str>,
+    {
+        self.write(data.as_ref(), PayloadType::Text).await
+    }
+
+    /// Constructs a new binary WebSocket message with a payload of `data`.
+    pub async fn write_binary<I>(&mut self, data: I) -> Result<(), Error>
+    where
+        I: AsRef<[u8]>,
+    {
+        self.write(data.as_ref(), PayloadType::Binary).await
+    }
+
+    /// Constructs a new ping WebSocket message with a payload of `data`.
+    pub async fn write_ping<I>(&mut self, data: I) -> Result<(), Error>
+    where
+        I: AsRef<[u8]>,
+    {
+        self.write(data.as_ref(), PayloadType::Ping).await
+    }
+
+    /// Constructs a new WebSocket message of `message_type` and with a payload of `buf.
+    pub async fn write<A>(&mut self, buf: A, message_type: PayloadType) -> Result<(), Error>
+    where
+        A: AsRef<[u8]>,
+    {
+        let buf = buf.as_ref();
         if self.closed {
-            return Err(Error::with_cause(ErrorKind::Close, CloseError::Closed));
+            return Err(Error::with_cause(ErrorKind::Close, CloseError));
         }
 
         let op_code = match message_type {
@@ -206,25 +270,32 @@ where
             Ok(()) => Ok(()),
             Err(e) => {
                 self.closed = true;
-                Err(e.into())
+                Err(e)
             }
         }
     }
 
+    /// Close this WebSocket with the reason provided.
     pub async fn close(mut self, reason: Option<String>) -> Result<(), Error> {
         self.framed
             .write_close(CloseReason::new(CloseCode::Normal, reason))
             .await
     }
 
-    pub async fn write_fragmented(
+    /// Constructs a new WebSocket message of `message_type` and with a payload of `buf_ref` and
+    /// chunked by `fragment_size`. If the length of the buffer is less than the chunk size then
+    /// only a single message is sent.
+    pub async fn write_fragmented<A>(
         &mut self,
-        buf: &mut BytesMut,
+        buf: A,
         message_type: MessageType,
         fragment_size: usize,
-    ) -> Result<(), Error> {
+    ) -> Result<(), Error>
+    where
+        A: AsRef<[u8]>,
+    {
         if self.closed {
-            return Err(Error::with_cause(ErrorKind::Close, CloseError::Closed));
+            return Err(Error::with_cause(ErrorKind::Close, CloseError));
         }
         let encoder = &mut self.extension;
         self.framed
@@ -234,19 +305,31 @@ where
             .await
     }
 
+    /// Returns whether this WebSocket is closed.
     pub fn is_closed(&self) -> bool {
         self.closed
     }
 
-    // todo add docs about:
-    //  - https://github.com/tokio-rs/tokio/issues/3200
-    //  - https://github.com/tokio-rs/tls/issues/40
-    pub fn split(self) -> Result<(Sender<S, E::SplitEncoder>, Receiver<S, E::SplitDecoder>), Error>
+    /// Attempt to split the `WebSocket` into its sender and receiver halves.
+    ///
+    /// # Note
+    /// This function does **not** split the IO. It, instead, places the IO into a `BiLock` and
+    /// requires exclusive access to it in order to perform any read or write operations.
+    ///
+    /// In addition to this, the internal framed writer is placed into a `BiLock` so
+    /// the receiver half can transparently handle control frames that may be received.
+    ///
+    /// See: [Tokio#3200](https://github.com/tokio-rs/tokio/issues/3200) and [Tokio#40](https://github.com/tokio-rs/tls/issues/40)
+    ///
+    /// # Errors
+    /// This function will only error if the `WebSocket` is already closed.
+    #[cfg(feature = "split")]
+    pub fn split(self) -> Result<SplitSocket<S, E>, Error>
     where
         E: SplittableExtension,
     {
         if self.is_closed() {
-            return Err(Error::with_cause(ErrorKind::Close, CloseError::Closed));
+            Err(Error::with_cause(ErrorKind::Close, CloseError))
         } else {
             let WebSocket {
                 framed,
@@ -257,41 +340,6 @@ where
             Ok(split(framed, control_buffer, extension))
         }
     }
-}
-
-pub struct Upgraded<S, E> {
-    pub socket: WebSocket<S, E>,
-    pub subprotocol: Option<String>,
-}
-
-pub async fn client<S, E>(
-    config: WebSocketConfig,
-    mut stream: S,
-    request: Request,
-    extension: &E,
-    subprotocols: ProtocolRegistry,
-) -> Result<Upgraded<S, E::Extension>, Error>
-where
-    S: WebSocketStream,
-    E: ExtensionProvider,
-{
-    let mut read_buffer = BytesMut::new();
-    let HandshakeResult {
-        subprotocol,
-        extension,
-    } = exec_client_handshake(
-        &mut stream,
-        request,
-        extension,
-        subprotocols,
-        &mut read_buffer,
-    )
-    .await?;
-
-    Ok(Upgraded {
-        socket: WebSocket::from_upgraded(config, stream, extension, read_buffer, Role::Client),
-        subprotocol,
-    })
 }
 
 pub fn extension_encode<E>(

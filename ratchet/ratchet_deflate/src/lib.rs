@@ -12,6 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! An implementation of permessage-deflate ([RFC 7692](https://datatracker.ietf.org/doc/html/rfc7692))
+//! as an extension for [Ratchet](../ratchet).
+//!
+//! See the documentation in [Ratchet](../ratchet) for more details on using this extension.
+
+#![deny(missing_docs, missing_debug_implementations)]
+
 #[cfg(test)]
 mod tests;
 
@@ -21,7 +28,9 @@ mod handshake;
 
 use crate::codec::{BufCompress, BufDecompress};
 use crate::error::DeflateExtensionError;
-use crate::handshake::{apply_headers, negotiate_client, negotiate_server};
+use crate::handshake::{
+    apply_headers, negotiate_client, negotiate_server, InitialisedDeflateConfig,
+};
 use bytes::BytesMut;
 use flate2::{Compress, Compression, Decompress, FlushCompress, FlushDecompress, Status};
 use ratchet_ext::{
@@ -42,12 +51,14 @@ const LZ77_MIN_WINDOW_SIZE: u8 = 8;
 /// 32,768 bytes. RFC 7692 7.1.2.1.
 const LZ77_MAX_WINDOW_SIZE: u8 = 15;
 
-#[derive(Default)]
+/// An [ExtensionProvider] for negotiating permessage-deflate during a WebSocket handshake.
+#[derive(Copy, Clone, Debug, Default)]
 pub struct DeflateExtProvider {
     config: DeflateConfig,
 }
 
 impl DeflateExtProvider {
+    /// Initialise a `DeflateExtProvider` with `config`.
     pub fn with_config(config: DeflateConfig) -> DeflateExtProvider {
         DeflateExtProvider { config }
     }
@@ -73,9 +84,11 @@ impl ExtensionProvider for DeflateExtProvider {
     }
 }
 
+/// Client or server maximum window bits. Wrapping a `u8` with a value in the range of 8..=15.
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
 pub struct WindowBits(u8);
 
+#[allow(missing_docs)]
 impl WindowBits {
     pub fn as_str(&self) -> &'static str {
         match self.0 {
@@ -127,6 +140,7 @@ impl WindowBits {
     }
 }
 
+/// An error produced by `TryFrom<u8>` on `WindowBits` when the value is not in the range of 8..=15.
 #[derive(Error, Copy, Clone, Debug, PartialEq, PartialOrd)]
 #[error("Invalid window bits: `{0}`")]
 pub struct WindowBitsParseErr(u8);
@@ -154,9 +168,9 @@ impl PartialEq<u8> for WindowBits {
     }
 }
 
-impl Into<u8> for WindowBits {
-    fn into(self) -> u8 {
-        self.0
+impl From<WindowBits> for u8 {
+    fn from(bits: WindowBits) -> Self {
+        bits.0
     }
 }
 
@@ -195,27 +209,8 @@ impl Default for DeflateConfig {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub struct InitialisedDeflateConfig {
-    server_max_window_bits: WindowBits,
-    client_max_window_bits: WindowBits,
-    compress_reset: bool,
-    decompress_reset: bool,
-    compression_level: Compression,
-}
-
-impl InitialisedDeflateConfig {
-    fn from_config(config: &DeflateConfig) -> InitialisedDeflateConfig {
-        InitialisedDeflateConfig {
-            server_max_window_bits: config.server_max_window_bits,
-            client_max_window_bits: config.client_max_window_bits,
-            compress_reset: config.accept_no_context_takeover,
-            decompress_reset: false,
-            compression_level: config.compression_level,
-        }
-    }
-}
-
+/// A negotiated permessage-deflate extension. Used by a WebSocket session for compressing and
+/// decompressing data.
 #[derive(Debug)]
 pub struct Deflate {
     encoder: DeflateEncoder,
@@ -278,6 +273,8 @@ impl ReunitableExtension for Deflate {
     }
 }
 
+/// A permessage-deflate compressor. Only producible by the `SplittableExtension` implementation on
+/// `Deflate`.
 #[derive(Debug)]
 pub struct DeflateEncoder {
     buf: BytesMut,
@@ -367,6 +364,8 @@ impl ExtensionEncoder for DeflateEncoder {
     }
 }
 
+/// A permessage-deflate decompressor. Only producible by the `SplittableExtension` implementation
+/// on `Deflate`.
 #[derive(Debug)]
 pub struct DeflateDecoder {
     buf: BytesMut,

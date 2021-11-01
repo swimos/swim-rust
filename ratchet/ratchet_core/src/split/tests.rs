@@ -11,3 +11,15 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
+use crate::split::{Receiver, Sender};
+use crate::NoExt;
+use tokio::net::TcpStream;
+
+#[test]
+fn bounds() {
+    fn is<T: Send + Sync + Unpin>() {}
+
+    is::<Sender<TcpStream, NoExt>>();
+    is::<Receiver<TcpStream, NoExt>>();
+}

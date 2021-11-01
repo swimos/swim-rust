@@ -16,8 +16,8 @@ use crate::errors::{Error, HttpError};
 use crate::ext::NoExt;
 use crate::fixture::mock;
 use crate::handshake::client::{ClientHandshake, HandshakeResult};
-use crate::handshake::{ProtocolError, ProtocolRegistry, ACCEPT_KEY, UPGRADE_STR, WEBSOCKET_STR};
-use crate::{ErrorKind, NoExtProvider, TryIntoRequest};
+use crate::handshake::{ProtocolRegistry, ACCEPT_KEY, UPGRADE_STR, WEBSOCKET_STR};
+use crate::{ErrorKind, NoExtProvider, ProtocolError, TryIntoRequest};
 use bytes::BytesMut;
 use futures::future::join;
 use futures::FutureExt;
@@ -30,8 +30,9 @@ use ratchet_ext::{
 };
 use sha1::{Digest, Sha1};
 use std::convert::Infallible;
-use swim_utilities::trigger;
+use std::sync::Arc;
 use tokio::io::AsyncReadExt;
+use tokio::sync::Notify;
 
 const TEST_URL: &str = "ws://127.0.0.1:9001/test";
 
@@ -42,12 +43,12 @@ async fn handshake_sends_valid_request() {
     let mut buf = BytesMut::new();
     let mut machine = ClientHandshake::new(
         &mut stream,
-        ProtocolRegistry::new(vec!["warp"]),
+        ProtocolRegistry::new(vec!["warp"]).unwrap(),
         &NoExtProvider,
         &mut buf,
     );
-    machine.encode(request).expect("");
-    machine.buffered.write().await.expect("");
+    machine.encode(request).unwrap();
+    machine.buffered.write().await.unwrap();
 
     let mut headers = [httparse::EMPTY_HEADER; 32];
     let mut request = httparse::Request::new(&mut headers);
@@ -129,11 +130,27 @@ async fn handshake_invalid_requests() {
     .await;
 }
 
+struct Trigger(Arc<Notify>);
+impl Trigger {
+    fn trigger() -> (Trigger, Trigger) {
+        let inner = Arc::new(Notify::new());
+        (Trigger(inner.clone()), Trigger(inner))
+    }
+
+    fn notify(&self) {
+        self.0.notify_one();
+    }
+
+    async fn notified(&self) {
+        self.0.notified().await;
+    }
+}
+
 async fn expect_server_error(response: Response<()>, expected_error: HttpError) {
     let (mut server, mut stream) = mock();
 
-    let (client_tx, client_rx) = trigger::trigger();
-    let (server_tx, server_rx) = trigger::trigger();
+    let (client_tx, client_rx) = Trigger::trigger();
+    let (server_tx, server_rx) = Trigger::trigger();
 
     let client_task = async move {
         let mut buf = BytesMut::new();
@@ -149,8 +166,8 @@ async fn expect_server_error(response: Response<()>, expected_error: HttpError) 
         machine.write().await.unwrap();
         machine.clear_buffer();
 
-        assert!(client_tx.trigger());
-        assert!(server_rx.await.is_ok());
+        client_tx.notify();
+        server_rx.notified().await;
 
         let handshake_result = machine.read().await;
 
@@ -166,9 +183,9 @@ async fn expect_server_error(response: Response<()>, expected_error: HttpError) 
     };
 
     let server_task = async move {
-        assert!(client_rx.await.is_ok());
+        client_rx.notified().await;
         server.write_response(response).await.unwrap();
-        assert!(server_tx.trigger());
+        server_tx.notify();
     };
 
     let _result = join(client_task, server_task).await;
@@ -232,8 +249,8 @@ async fn incorrect_version() {
 async fn ok_nonce() {
     let (mut server, mut stream) = mock();
 
-    let (client_tx, client_rx) = trigger::trigger();
-    let (server_tx, server_rx) = trigger::trigger();
+    let (client_tx, client_rx) = Trigger::trigger();
+    let (server_tx, server_rx) = Trigger::trigger();
 
     let client_task = async move {
         let mut buf = BytesMut::new();
@@ -249,13 +266,13 @@ async fn ok_nonce() {
         machine.write().await.unwrap();
         machine.clear_buffer();
 
-        assert!(client_tx.trigger());
-        assert!(server_rx.await.is_ok());
+        client_tx.notify();
+        server_rx.notified().await;
         assert!(machine.read().await.is_ok());
     };
 
     let server_task = async move {
-        assert!(client_rx.await.is_ok());
+        client_rx.notified().await;
 
         let request = server
             .read_request()
@@ -283,7 +300,7 @@ async fn ok_nonce() {
 
         server.write_response(response).await.unwrap();
 
-        assert!(server_tx.trigger());
+        server_tx.notify();
     };
 
     let _result = join(client_task, server_task).await;
@@ -300,8 +317,8 @@ async fn redirection() {
 
     let (mut server, mut stream) = mock();
 
-    let (client_tx, client_rx) = trigger::trigger();
-    let (server_tx, server_rx) = trigger::trigger();
+    let (client_tx, client_rx) = Trigger::trigger();
+    let (server_tx, server_rx) = Trigger::trigger();
 
     let client_task = async move {
         let mut buf = BytesMut::new();
@@ -317,8 +334,8 @@ async fn redirection() {
         machine.write().await.unwrap();
         machine.clear_buffer();
 
-        assert!(client_tx.trigger());
-        assert!(server_rx.await.is_ok());
+        client_tx.notify();
+        server_rx.notified().await;
 
         match machine.read().await {
             Ok(r) => {
@@ -335,7 +352,7 @@ async fn redirection() {
     };
 
     let server_task = async move {
-        assert!(client_rx.await.is_ok());
+        client_rx.notified().await;
 
         let response = Response::builder()
             .status(StatusCode::TEMPORARY_REDIRECT)
@@ -346,7 +363,7 @@ async fn redirection() {
 
         server.write_response(response).await.unwrap();
 
-        assert!(server_tx.trigger());
+        server_tx.notify();
     };
 
     let _result = join(client_task, server_task).await;
@@ -359,15 +376,15 @@ where
 {
     let (mut server, mut stream) = mock();
 
-    let (client_tx, client_rx) = trigger::trigger();
-    let (server_tx, server_rx) = trigger::trigger();
+    let (client_tx, client_rx) = Trigger::trigger();
+    let (server_tx, server_rx) = Trigger::trigger();
 
     let client_task = async move {
         let mut buf = BytesMut::new();
 
         let mut machine = ClientHandshake::new(
             &mut stream,
-            ProtocolRegistry::new(registry),
+            ProtocolRegistry::new(registry).unwrap(),
             &NoExtProvider,
             &mut buf,
         );
@@ -377,13 +394,13 @@ where
         machine.write().await.unwrap();
         machine.clear_buffer();
 
-        assert!(client_tx.trigger());
-        assert!(server_rx.await.is_ok());
+        client_tx.notify();
+        server_rx.notified().await;
         match_fn(machine.read().await);
     };
 
     let server_task = async move {
-        assert!(client_rx.await.is_ok());
+        client_rx.notified().await;
 
         let request = server
             .read_request()
@@ -413,7 +430,7 @@ where
 
         let response = response.body(()).unwrap();
         server.write_response(response).await.unwrap();
-        assert!(server_tx.trigger());
+        server_tx.notify();
     };
 
     let _result = join(client_task, server_task).await;
@@ -546,8 +563,8 @@ where
 {
     let (mut server, mut stream) = mock();
 
-    let (client_tx, client_rx) = trigger::trigger();
-    let (server_tx, server_rx) = trigger::trigger();
+    let (client_tx, client_rx) = Trigger::trigger();
+    let (server_tx, server_rx) = Trigger::trigger();
 
     let client_task = async move {
         let mut buf = BytesMut::new();
@@ -559,15 +576,15 @@ where
         machine.write().await.unwrap();
         machine.clear_buffer();
 
-        assert!(client_tx.trigger());
-        assert!(server_rx.await.is_ok());
+        client_tx.notify();
+        server_rx.notified().await;
 
         let read_result = machine.read().await;
         result_fn(read_result);
     };
 
     let server_task = async move {
-        assert!(client_rx.await.is_ok());
+        client_rx.notified().await;
 
         let request = server
             .read_request()
@@ -597,7 +614,7 @@ where
 
         server.write_response(response).await.unwrap();
 
-        assert!(server_tx.trigger());
+        server_tx.notify();
     };
 
     let _result = join(client_task, server_task).await;

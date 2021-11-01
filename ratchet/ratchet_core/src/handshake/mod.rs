@@ -18,25 +18,24 @@ mod tests;
 mod client;
 mod io;
 mod server;
+mod subprotocols;
 
-use crate::errors::{Error, ProtocolError};
+use crate::errors::Error;
 use crate::errors::{ErrorKind, HttpError};
 use crate::handshake::io::BufferedIo;
 use crate::{InvalidHeader, Request};
-use bytes::{Bytes, BytesMut};
-pub use client::{exec_client_handshake, HandshakeResult};
-use fnv::FnvHashSet;
-use http::header::{HeaderName, SEC_WEBSOCKET_PROTOCOL};
+use bytes::Bytes;
+use http::header::HeaderName;
 use http::Uri;
-use http::{header, HeaderMap, HeaderValue};
-use httparse::Header;
-pub use server::{accept, accept_with, WebSocketResponse, WebSocketUpgrader};
-use std::borrow::Cow;
-use std::error::Error as StdError;
+use http::{HeaderMap, HeaderValue};
 use std::str::FromStr;
 use tokio::io::AsyncRead;
 use tokio_util::codec::Decoder;
 use url::Url;
+
+pub use client::{subscribe, subscribe_with, HandshakeResult, UpgradedClient};
+pub use server::{accept, accept_with, UpgradedServer, WebSocketResponse, WebSocketUpgrader};
+pub use subprotocols::*;
 
 const WEBSOCKET_STR: &str = "websocket";
 const UPGRADE_STR: &str = "upgrade";
@@ -44,110 +43,6 @@ const WEBSOCKET_VERSION_STR: &str = "13";
 const BAD_STATUS_CODE: &str = "Invalid status code";
 const ACCEPT_KEY: &[u8] = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const METHOD_GET: &str = "get";
-
-#[derive(Default)]
-pub struct ProtocolRegistry {
-    registrants: FnvHashSet<Cow<'static, str>>,
-}
-
-enum Bias {
-    Left,
-    Right,
-}
-
-impl ProtocolRegistry {
-    pub fn new<I>(i: I) -> ProtocolRegistry
-    where
-        I: IntoIterator,
-        I::Item: Into<Cow<'static, str>>,
-    {
-        ProtocolRegistry {
-            registrants: i.into_iter().map(Into::into).collect(),
-        }
-    }
-
-    fn negotiate<'h, I>(&self, headers: I, bias: Bias) -> Result<Option<String>, ProtocolError>
-    where
-        I: Iterator<Item = &'h Header<'h>>,
-    {
-        for header in headers {
-            let value =
-                String::from_utf8(header.value.to_vec()).map_err(|_| ProtocolError::Encoding)?;
-            let protocols = value
-                .split(',')
-                .map(|s| s.trim().into())
-                .collect::<FnvHashSet<_>>();
-
-            let selected = match bias {
-                Bias::Left => {
-                    if !self.registrants.is_superset(&protocols) {
-                        return Err(ProtocolError::UnknownProtocol);
-                    }
-                    protocols
-                        .intersection(&self.registrants)
-                        .next()
-                        .map(|s| s.to_string())
-                }
-                Bias::Right => self
-                    .registrants
-                    .intersection(&protocols)
-                    .next()
-                    .map(|s| s.to_string()),
-            };
-
-            match selected {
-                Some(selected) => return Ok(Some(selected)),
-                None => continue,
-            }
-        }
-
-        Ok(None)
-    }
-
-    pub fn negotiate_response(
-        &self,
-        response: &httparse::Response,
-    ) -> Result<Option<String>, ProtocolError> {
-        let it = response
-            .headers
-            .iter()
-            .filter(|h| h.name.eq_ignore_ascii_case(SEC_WEBSOCKET_PROTOCOL.as_str()));
-
-        self.negotiate(it, Bias::Left)
-    }
-
-    pub fn negotiate_request(
-        &self,
-        request: &httparse::Request,
-    ) -> Result<Option<String>, ProtocolError> {
-        let it = request
-            .headers
-            .iter()
-            .filter(|h| h.name.eq_ignore_ascii_case(SEC_WEBSOCKET_PROTOCOL.as_str()));
-
-        self.negotiate(it, Bias::Right)
-    }
-
-    pub fn apply_to(&self, target: &mut HeaderMap) -> Result<(), crate::Error> {
-        if self.registrants.is_empty() {
-            return Ok(());
-        }
-
-        let out = self
-            .registrants
-            .clone()
-            .into_iter()
-            .collect::<Vec<_>>()
-            .join(", ");
-
-        let header_value = HeaderValue::from_str(&out).map_err(|_| {
-            crate::Error::with_cause(ErrorKind::Http, HttpError::MalformattedHeader(out))
-        })?;
-
-        target.insert(header::SEC_WEBSOCKET_PROTOCOL, header_value);
-        Ok(())
-    }
-}
 
 pub struct StreamingParser<'i, 'buf, I, P> {
     io: &'i mut BufferedIo<'buf, I>,
@@ -186,7 +81,9 @@ pub enum ParseResult<O> {
     Partial,
 }
 
+/// A trait for creating a request from a type.
 pub trait TryIntoRequest {
+    /// Attempt to convert this type into a `Request`.
     fn try_into_request(self) -> Result<Request, Error>;
 }
 

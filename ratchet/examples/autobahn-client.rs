@@ -13,21 +13,21 @@
 // limitations under the License.
 
 use bytes::BytesMut;
-use ratchet::{client, Upgraded};
-use ratchet::{Error, Message, PayloadType, ProtocolRegistry, TryIntoRequest, WebSocketConfig};
+use ratchet::UpgradedClient;
+use ratchet::{Error, Message, PayloadType, ProtocolRegistry, WebSocketConfig};
 use ratchet_deflate::{Deflate, DeflateExtProvider};
 use tokio::net::TcpStream;
 
 const AGENT: &str = "Ratchet";
 
-async fn subscribe(url: &str) -> Result<Upgraded<TcpStream, Deflate>, Error> {
+async fn subscribe(url: &str) -> Result<UpgradedClient<TcpStream, Deflate>, Error> {
     let stream = TcpStream::connect("127.0.0.1:9001").await.unwrap();
     stream.set_nodelay(true).unwrap();
 
-    client(
+    ratchet::subscribe_with(
         WebSocketConfig::default(),
         stream,
-        url.try_into_request().unwrap(),
+        url,
         &DeflateExtProvider::default(),
         ProtocolRegistry::default(),
     )
@@ -41,7 +41,7 @@ async fn get_case_count() -> Result<u32, Error> {
     let mut websocket = subscribe("ws://localhost:9001/getCaseCount")
         .await
         .unwrap()
-        .socket;
+        .websocket;
     let mut buf = BytesMut::new();
 
     match websocket.read(&mut buf).await? {
@@ -70,7 +70,7 @@ async fn run_test(case: u32) -> Result<(), Error> {
     ))
     .await
     .unwrap()
-    .socket;
+    .websocket;
 
     let mut buf = BytesMut::new();
 

@@ -16,7 +16,10 @@
 mod tests;
 
 mod frame;
+mod mask;
+
 pub use frame::*;
+pub use mask::apply_mask;
 
 use derive_more::Display;
 use std::convert::TryFrom;
@@ -56,30 +59,74 @@ impl HeaderFlags {
     }
 }
 
+/// A received WebSocket frame.
 #[derive(Debug)]
 pub enum Message {
+    /// A text message.
+    ///
+    /// # Note
+    /// [RFC6455](https://datatracker.ietf.org/doc/html/rfc6455) is not strict as to when UTF-8
+    /// validation takes place. As such, Ratchet opts to not validate the text payload and leaves it
+    /// to the user to validate it once the message has been received.
     Text,
+    /// A binary message.
     Binary,
+    /// A ping message.
     Ping,
+    /// A pong message.
     Pong,
+    /// A close message.
     Close(Option<CloseReason>),
 }
 
-#[derive(Debug)]
+impl Message {
+    /// Whether this is a text message.
+    pub fn is_text(&self) -> bool {
+        matches!(self, Message::Text)
+    }
+
+    /// Whether this is a binary message.
+    pub fn is_binary(&self) -> bool {
+        matches!(self, Message::Binary)
+    }
+
+    /// Whether this is a ping message.
+    pub fn is_ping(&self) -> bool {
+        matches!(self, Message::Ping)
+    }
+
+    /// Whether this is a pong message.
+    pub fn is_pong(&self) -> bool {
+        matches!(self, Message::Pong)
+    }
+
+    /// Whether this is a close message.
+    pub fn is_close(&self) -> bool {
+        matches!(self, Message::Close(_))
+    }
+}
+
+/// The type of a payload to send to a peer.
+#[derive(Copy, Clone, Debug)]
 pub enum PayloadType {
+    /// A text message.
     Text,
+    /// A binary message.
     Binary,
+    /// A ping message.
     Ping,
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum MessageType {
     Text,
     Binary,
 }
 
-#[derive(Clone)]
+/// A configuration for building a WebSocket.
+#[derive(Debug, Copy, Clone)]
 pub struct WebSocketConfig {
+    /// The maximum payload size that is permitted to be received.
     pub max_size: usize,
 }
 
@@ -91,13 +138,22 @@ impl Default for WebSocketConfig {
     }
 }
 
+/// The role of a WebSocket.
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Role {
+    /// The WebSocket is a client.
     Client,
+    /// The WebSocket is a server.
     Server,
 }
 
 impl Role {
+    /// Returns whether this WebSocket is a client.
+    pub fn is_client(&self) -> bool {
+        matches!(self, Role::Client)
+    }
+
+    /// Returns whether this WebSocket is a server.
     pub fn is_server(&self) -> bool {
         matches!(self, Role::Server)
     }
@@ -154,7 +210,7 @@ pub enum ControlCode {
     Pong = 10,
 }
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Copy, Clone, Debug, Error, PartialEq)]
 pub enum OpCodeParseErr {
     #[error("Reserved OpCode: `{0}`")]
     Reserved(u8),
@@ -196,7 +252,7 @@ impl CloseReason {
 /// https://developer.mozilla.org/en-US/docs/Web/API/CloseEvent
 /// https://mailarchive.ietf.org/arch/msg/hybi/P_1vbD9uyHl63nbIIbFxKMfSwcM/
 /// https://tools.ietf.org/id/draft-ietf-hybi-thewebsocketprotocol-09.html
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum CloseCode {
     Normal,
     GoingAway,
@@ -229,7 +285,7 @@ impl CloseCode {
     }
 }
 
-#[derive(Error, Debug)]
+#[derive(Copy, Clone, Error, Debug)]
 #[error("Unknown close code: `{0}`")]
 pub struct CloseCodeParseErr(pub(crate) u16);
 

@@ -13,11 +13,9 @@
 // limitations under the License.
 
 use crate::error::DeflateExtensionError;
-use crate::{
-    Deflate, DeflateConfig, InitialisedDeflateConfig, WindowBits, LZ77_MAX_WINDOW_SIZE,
-    LZ77_MIN_WINDOW_SIZE,
-};
+use crate::{Deflate, DeflateConfig, WindowBits, LZ77_MAX_WINDOW_SIZE, LZ77_MIN_WINDOW_SIZE};
 use bytes::BytesMut;
+use flate2::Compression;
 use http::header::SEC_WEBSOCKET_EXTENSIONS;
 use http::{HeaderMap, HeaderValue};
 use ratchet_ext::Header;
@@ -35,6 +33,27 @@ const ERR_TAKEOVER: &str = "The client requires context takeover";
 const UNKNOWN_PARAM: &str = "Unknown permessage-deflate parameter";
 const DUPLICATE_PARAM: &str = "Duplicate permessage-deflate parameter";
 const HEADER_ERR: &str = "Failed to produce header";
+
+#[derive(Debug, PartialEq)]
+pub struct InitialisedDeflateConfig {
+    pub server_max_window_bits: WindowBits,
+    pub client_max_window_bits: WindowBits,
+    pub compress_reset: bool,
+    pub decompress_reset: bool,
+    pub compression_level: Compression,
+}
+
+impl InitialisedDeflateConfig {
+    fn from_config(config: &DeflateConfig) -> InitialisedDeflateConfig {
+        InitialisedDeflateConfig {
+            server_max_window_bits: config.server_max_window_bits,
+            client_max_window_bits: config.client_max_window_bits,
+            compress_reset: config.accept_no_context_takeover,
+            decompress_reset: false,
+            compression_level: config.compression_level,
+        }
+    }
+}
 
 struct DeflateHeaderEncoder<'c>(&'c DeflateConfig);
 impl<'c> DeflateHeaderEncoder<'c> {
@@ -56,17 +75,15 @@ impl<'c> DeflateHeaderEncoder<'c> {
 
         write(into, EXT_IDENT);
         write(into, "; ");
+        write(into, CLIENT_MAX_BITS);
 
         if *client_max_window_bits < LZ77_MAX_WINDOW_SIZE {
-            write(into, CLIENT_MAX_BITS);
             write(into, "=");
             write(into, client_max_window_bits.as_str());
             write(into, "; ");
             write(into, SERVER_MAX_BITS);
             write(into, "=");
             write(into, server_max_window_bits.as_str());
-        } else {
-            write(into, CLIENT_MAX_BITS);
         }
 
         if *request_server_no_context_takeover {
@@ -110,7 +127,7 @@ impl<'c> DeflateHeaderEncoder<'c> {
 
 #[inline]
 fn write(into: &mut BytesMut, data: &str) {
-    if let Err(_) = into.write_str(data) {
+    if into.write_str(data).is_err() {
         extend_and_write(into, data);
     }
 }
@@ -170,7 +187,7 @@ pub fn on_request(
 
     for header in header_iter {
         let header_value =
-            std::str::from_utf8(header.value).map_err(|e| DeflateExtensionError::from(e))?;
+            std::str::from_utf8(header.value).map_err(DeflateExtensionError::from)?;
 
         for part in header_value.split(',') {
             match validate_request_header(part, config) {
@@ -226,7 +243,7 @@ fn validate_request_header(
             }
             param if param.starts_with(SERVER_MAX_BITS) => {
                 check_param(SERVER_MAX_BITS, &mut seen_server_max_bits, || {
-                    let mut window_param = param.split("=").skip(1);
+                    let mut window_param = param.split('=').skip(1);
                     match window_param.next() {
                         Some(window_param) => {
                             initialised_config.server_max_window_bits = parse_window_parameter(
@@ -245,7 +262,7 @@ fn validate_request_header(
             }
             param if param.starts_with(CLIENT_MAX_BITS) => {
                 check_param(CLIENT_MAX_BITS, &mut seen_client_max_bits, || {
-                    let mut window_param = param.split("=").skip(1);
+                    let mut window_param = param.split('=').skip(1);
                     if let Some(window_param) = window_param.next() {
                         // Absence of this parameter in an extension negotiation offer indicates
                         // that the client can receive messages compressed using an LZ77 sliding
@@ -262,9 +279,10 @@ fn validate_request_header(
                 })?;
             }
             p => {
-                return Err(DeflateExtensionError::NegotiationError(
-                    format!("{}: {}", UNKNOWN_PARAM, p).into(),
-                )
+                return Err(DeflateExtensionError::NegotiationError(format!(
+                    "{}: {}",
+                    UNKNOWN_PARAM, p
+                ))
                 .into())
             }
         }
@@ -272,7 +290,7 @@ fn validate_request_header(
 
     Ok((
         initialised_config,
-        HeaderValue::from_str(response_str.as_str()).map_err(|e| DeflateExtensionError::from(e))?,
+        HeaderValue::from_str(response_str.as_str()).map_err(DeflateExtensionError::from)?,
     ))
 }
 
@@ -354,7 +372,7 @@ pub fn on_response(
                 }
                 param if param.starts_with(SERVER_MAX_BITS) => {
                     check_param(SERVER_MAX_BITS, &mut seen_server_max_window_bits, || {
-                        let mut window_param = param.split("=").skip(1);
+                        let mut window_param = param.split('=').skip(1);
                         match window_param.next() {
                             Some(window_param) => {
                                 server_max_window_bits =
@@ -367,7 +385,7 @@ pub fn on_response(
                 }
                 param if param.starts_with(CLIENT_MAX_BITS) => {
                     check_param(CLIENT_MAX_BITS, &mut seen_client_max_window_bits, || {
-                        let mut window_param = param.split("=").skip(1);
+                        let mut window_param = param.split('=').skip(1);
                         if let Some(window_param) = window_param.next() {
                             client_max_window_bits =
                                 parse_window_parameter(window_param, client_max_window_bits)?;

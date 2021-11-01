@@ -14,11 +14,26 @@
 
 use crate::split::bilock::{bilock, BiLock};
 use futures::future::join;
-use futures::task::waker;
+use futures::task;
 use std::ops::{Deref, DerefMut};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::Context;
-use swim_utilities::test_util::TestWaker;
+
+#[derive(Default, Debug)]
+pub struct TestWaker(AtomicBool);
+
+impl TestWaker {
+    pub fn woken(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
+}
+
+impl task::ArcWake for TestWaker {
+    fn wake_by_ref(arc_self: &Arc<Self>) {
+        arc_self.0.store(true, Ordering::SeqCst);
+    }
+}
 
 #[test]
 fn bounds() {
@@ -44,7 +59,7 @@ async fn guards() {
     let (left, right) = bilock(value);
 
     let test_waker = Arc::new(TestWaker::default());
-    let waker = waker(test_waker.clone());
+    let waker = task::waker(test_waker.clone());
     let mut ctx = Context::from_waker(&waker);
 
     let poll = right.poll_lock(&mut ctx);
