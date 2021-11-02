@@ -12,14 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{bilock, BiLock};
+use crate::wait::Park;
+use crate::{bilock, raw_bilock, RawBiLock, LOCKED_BIT, PARKED_BIT};
 use futures::future::join;
+use parking_lot_core::SpinWait;
 use std::ops::{Deref, DerefMut};
+use std::sync::atomic::Ordering;
+use std::sync::{Arc, Barrier};
+use std::thread;
+use std::time::Duration;
 
 #[test]
 fn bounds() {
     fn f<T: Send + Sync>() {}
-    f::<BiLock<()>>();
+    f::<RawBiLock<(), SpinWait>>();
 }
 
 #[tokio::test]
@@ -102,4 +108,85 @@ fn reunite_err() {
         reunite_result.unwrap_err().to_string(),
         "Attempted to reunite two BiLocks that don't form a pair".to_string()
     );
+}
+
+#[test]
+fn try_lock() {
+    let initial = 13;
+    let (_left, right) = bilock(initial);
+    let guard = right.try_lock().expect("Failed to try and lock");
+    assert_eq!(initial, *guard);
+}
+
+#[test]
+fn locked_state() {
+    let (_left, right) = bilock(13);
+    let guard = right.lock();
+
+    let state = right.inner.state.load(Ordering::Relaxed);
+    assert_eq!(state, LOCKED_BIT);
+
+    drop(guard);
+
+    let state = right.inner.state.load(Ordering::Relaxed);
+    assert_eq!(state, 0);
+}
+
+#[test]
+fn parked_state() {
+    let (left, right) = raw_bilock::<i32, Park>(13);
+    let guard = right.lock();
+
+    let inner = right.inner.clone();
+    let state = inner.state.load(Ordering::Relaxed);
+    assert_eq!(state, LOCKED_BIT);
+
+    let barrier = Arc::new(Barrier::new(2));
+    let thread_barrier = barrier.clone();
+
+    let handle = thread::spawn(move || {
+        thread_barrier.wait();
+        let mut guard = left.lock();
+        *guard = 14;
+    });
+
+    barrier.wait();
+
+    let mut backoff_count = 0;
+
+    loop {
+        let state = inner.state.load(Ordering::Relaxed);
+        if state == LOCKED_BIT | PARKED_BIT {
+            break;
+        } else {
+            backoff_count += 1;
+
+            if backoff_count > 10 {
+                panic!("Parked state never set");
+            } else {
+                thread::sleep(Duration::from_millis(100));
+            }
+        }
+    }
+
+    drop(guard);
+    handle.join().unwrap();
+
+    let guard = right.lock();
+    assert_eq!(*guard, 14);
+}
+
+#[test]
+fn debug_unlocked() {
+    let (_left, right) = bilock(13);
+    let output = format!("{:?}", right);
+    assert_eq!(&output, "BiLock { data: 13 }");
+}
+
+#[test]
+fn debug_locked() {
+    let (_left, right) = bilock(13);
+    let _guard = right.lock();
+    let output = format!("{:?}", right);
+    assert_eq!(&output, "BiLock { data: \"locked\" }");
 }

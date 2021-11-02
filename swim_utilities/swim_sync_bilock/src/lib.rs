@@ -15,15 +15,19 @@
 #[cfg(test)]
 mod tests;
 
+pub mod wait;
+
+use crate::wait::WaitStrategy;
 use core::fmt;
-use std::cell::UnsafeCell;
-use crossbeam_utils::{ CachePadded};
+use crossbeam_utils::CachePadded;
 use parking_lot_core::{ParkResult, SpinWait};
 use parking_lot_core::{ParkToken, UnparkToken};
+use std::cell::UnsafeCell;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
+use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
-use std::sync::atomic::{ AtomicU8, Ordering};
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 
 const LOCKED_BIT: u8 = 0b01;
@@ -31,44 +35,74 @@ const PARKED_BIT: u8 = 0b10;
 const UNLOCK_TOKEN: UnparkToken = UnparkToken(1);
 const HANDOFF_TOKEN: UnparkToken = UnparkToken(0);
 
-/// Creates a new BiLock that provides exclusive access to the value.
+pub type BiLock<T> = RawBiLock<T, SpinWait>;
+
+/// Creates a new BiLock that provides exclusive access to the value. For situations where there
+/// will only ever be two owners this is much cheaper than a mutex.
 ///
-/// For situations where there will only ever be two owners this is much cheaper than a mutex.
+/// The returned `BiLock` will be backed by a `SpinWait` strategy which handles contention between
+/// the two halves.
 pub fn bilock<T>(val: T) -> (BiLock<T>, BiLock<T>) {
+    raw_bilock::<T, SpinWait>(val)
+}
+
+/// Creates a new BiLock that provides exclusive access to the value. For situations where there
+/// will only ever be two owners this is much cheaper than a mutex.
+pub fn raw_bilock<T, W>(val: T) -> (RawBiLock<T, W>, RawBiLock<T, W>)
+where
+    W: WaitStrategy,
+{
     let inner = Arc::new(Inner {
         state: CachePadded::new(AtomicU8::new(0)),
         value: UnsafeCell::new(val),
+        backoff: PhantomData::default(),
     });
     (
-        BiLock {
+        RawBiLock {
             inner: inner.clone(),
         },
-        BiLock { inner },
+        RawBiLock { inner },
     )
 }
 
-#[derive(Debug)]
-pub struct BiLock<T> {
-    inner: Arc<Inner<T>>,
+/// A lock primitive for protecting shared data between two owned halves. This lock will use `W`
+/// (the wait strategy) to handle contention between the two owners.
+///
+/// A BiLock is fair and will occasionally (roughly every 0.5ms) hand the lock to a parked thread if
+/// one is waiting.
+pub struct RawBiLock<T, W> {
+    inner: Arc<Inner<T, W>>,
 }
 
-#[derive(Debug)]
-struct Inner<T> {
-    state: CachePadded<AtomicU8>,
-    value: UnsafeCell<T>,
+impl<T, W> Debug for RawBiLock<T, W>
+where
+    T: Debug,
+    W: WaitStrategy,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let mut debug_struct = f.debug_struct("BiLock");
+        match self.try_lock() {
+            Some(guard) => debug_struct.field("data", &*guard).finish(),
+            None => debug_struct.field("data", &"locked").finish(),
+        }
+    }
 }
 
-unsafe impl<T: Send> Send for Inner<T> {}
-unsafe impl<T: Send> Sync for Inner<T> {}
-
-impl<T> BiLock<T> {
-    /// Returns true if the two BiLock point to the same allocation
+impl<T, W> RawBiLock<T, W>
+where
+    W: WaitStrategy,
+{
+    /// Returns true if the two BiLocks point to the same allocation
     pub fn same_bilock(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.inner, &other.inner)
     }
 
+    /// Acquire the lock and return a guard which will release it when it is dropped.
+    ///
+    /// If the wait strategy is one which will stop executing until reset, then this will block the
+    /// current thread until it is able to acquire the mutex.
     #[inline]
-    pub fn lock(&self) -> BiLockGuard<'_, T> {
+    pub fn lock(&self) -> BiLockGuard<'_, T, W> {
         match self.inner.state.compare_exchange_weak(
             0,
             LOCKED_BIT,
@@ -80,8 +114,9 @@ impl<T> BiLock<T> {
         }
     }
 
+    /// Try and acquire the lock.
     #[inline]
-    pub fn try_lock(&self) -> Option<BiLockGuard<'_, T>> {
+    pub fn try_lock(&self) -> Option<BiLockGuard<'_, T, W>> {
         match self.inner.state.compare_exchange_weak(
             0,
             LOCKED_BIT,
@@ -94,8 +129,8 @@ impl<T> BiLock<T> {
     }
 
     #[cold]
-    fn lock_park(&self) -> BiLockGuard<'_, T> {
-        let mut spinwait = SpinWait::new();
+    fn lock_park(&self) -> BiLockGuard<'_, T, W> {
+        let mut spinwait = W::new();
 
         loop {
             let mut state = self.inner.state.load(Ordering::Relaxed);
@@ -132,6 +167,8 @@ impl<T> BiLock<T> {
                 )
                 .is_err()
             {
+                // The state has changed or it could not be set. Loop back round to see if we can
+                // acquire the lock
                 continue;
             }
 
@@ -181,13 +218,13 @@ impl<T> BiLock<T> {
         unsafe {
             parking_lot_core::unpark_one(addr, |result| {
                 // If there is another thread that is parked
-                if result.unparked_threads != 0 {
+                if result.unparked_threads != 0 && result.be_fair {
                     // Set the state as still locked but no longer parked
                     self.inner.state.store(LOCKED_BIT, Ordering::Relaxed);
                     // Unpark the other thread with the token
                     HANDOFF_TOKEN
                 } else {
-                    // There are no other threads parked. Reset the state
+                    // There are no other threads parked or we are not being fair. Reset the state
                     self.inner.state.store(0, Ordering::Relaxed);
                     UNLOCK_TOKEN
                 }
@@ -197,9 +234,9 @@ impl<T> BiLock<T> {
 
     /// Reunites two `BiLock`s that form a pair or returns an error if they do not guard the same
     /// value.
-    pub fn reunite(self, other: BiLock<T>) -> Result<T, ReuniteError<T>>
-        where
-            T: Unpin,
+    pub fn reunite(self, other: RawBiLock<T, W>) -> Result<T, ReuniteError<T, W>>
+    where
+        T: Unpin,
     {
         if Arc::ptr_eq(&self.inner, &other.inner) {
             drop(other);
@@ -214,18 +251,38 @@ impl<T> BiLock<T> {
     }
 }
 
-pub struct BiLockGuard<'l, T> {
-    bilock: &'l BiLock<T>,
+struct Inner<T, W> {
+    state: CachePadded<AtomicU8>,
+    value: UnsafeCell<T>,
+    backoff: PhantomData<W>,
 }
 
-impl<'l, T> Drop for BiLockGuard<'l, T> {
+unsafe impl<T: Send, W> Send for Inner<T, W> {}
+unsafe impl<T: Send, W> Sync for Inner<T, W> {}
+
+/// A RAII guard which will unlock the bilock when it is dropped.
+#[must_use = "if a BiLock guard is not used it will be immediately unlocked"]
+pub struct BiLockGuard<'l, T, W>
+where
+    W: WaitStrategy,
+{
+    bilock: &'l RawBiLock<T, W>,
+}
+
+impl<'l, T, W> Drop for BiLockGuard<'l, T, W>
+where
+    W: WaitStrategy,
+{
     #[inline]
     fn drop(&mut self) {
         self.bilock.unlock();
     }
 }
 
-impl<T> Deref for BiLockGuard<'_, T> {
+impl<T, W> Deref for BiLockGuard<'_, T, W>
+where
+    W: WaitStrategy,
+{
     type Target = T;
 
     #[inline]
@@ -234,40 +291,45 @@ impl<T> Deref for BiLockGuard<'_, T> {
     }
 }
 
-impl<T: Unpin> DerefMut for BiLockGuard<'_, T> {
+impl<T: Unpin, W> DerefMut for BiLockGuard<'_, T, W>
+where
+    W: WaitStrategy,
+{
     #[inline]
     fn deref_mut(&mut self) -> &mut T {
         unsafe { &mut *self.bilock.inner.value.get() }
     }
 }
 
-pub struct ReuniteError<T>(pub BiLock<T>, pub BiLock<T>);
+pub struct ReuniteError<T, W>(pub RawBiLock<T, W>, pub RawBiLock<T, W>);
 
-impl<T> Debug for ReuniteError<T> {
+impl<T, W> Debug for ReuniteError<T, W> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_tuple("ReuniteError").finish()
     }
 }
 
-impl<T> Display for ReuniteError<T> {
+impl<T, W> Display for ReuniteError<T, W> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Attempted to reunite two BiLocks that don't form a pair")
     }
 }
 
-impl<T> Error for ReuniteError<T> {}
+impl<T, W> Error for ReuniteError<T, W> {}
 
 #[cfg(feature = "io")]
 mod io {
+    use crate::wait::WaitStrategy;
+    use crate::RawBiLock;
     use std::ops::DerefMut;
     use std::pin::Pin;
     use std::task::{Context, Poll};
     use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-    use crate::BiLock;
 
-    impl<T> AsyncRead for BiLock<T>
-        where
-            T: AsyncRead + Unpin,
+    impl<T, W> AsyncRead for RawBiLock<T, W>
+    where
+        T: AsyncRead + Unpin,
+        W: WaitStrategy,
     {
         fn poll_read(
             self: Pin<&mut Self>,
@@ -279,9 +341,10 @@ mod io {
         }
     }
 
-    impl<T> AsyncWrite for BiLock<T>
-        where
-            T: AsyncWrite + Unpin,
+    impl<T, W> AsyncWrite for RawBiLock<T, W>
+    where
+        T: AsyncWrite + Unpin,
+        W: WaitStrategy,
     {
         fn poll_write(
             self: Pin<&mut Self>,
@@ -292,7 +355,10 @@ mod io {
             Pin::new(guard.deref_mut()).poll_write(cx, buf)
         }
 
-        fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), std::io::Error>> {
+        fn poll_flush(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+        ) -> Poll<Result<(), std::io::Error>> {
             let mut guard = self.lock();
             Pin::new(guard.deref_mut()).poll_flush(cx)
         }
