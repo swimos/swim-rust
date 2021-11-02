@@ -6,8 +6,9 @@ edition = "2018"
 
 [features]
 default = []
-all = ["future", "errors", "sync", "iteratee", "collections", "time", "text", "lrucache", "rtree"]
+all = ["future", "errors", "sync", "iteratee", "collections", "time", "text", "lrucache", "rtree", "swim_sync_bilock", "buf_channel"]
 bilock = ["swim_bilock"]
+buf_channel = ["byte_channel"]
 circular_buffer = ["swim_sync", "swim_sync/circular_buffer"]
 collections = ["lrucache", "rtree"]
 errors = ["swim_errors"]
@@ -26,6 +27,7 @@ io = ["swim_io"]
 sync_bilock = ["swim_sync_bilock"]
 
 [dependencies]
+byte_channel = { path = "./byte_channel", optional = true }
 swim_bilock = { path = "./swim_bilock", optional = true }
 swim_sync_bilock = { path = "./swim_sync_bilock", optional = true }
 swim_errors = { path = "./swim_errors", optional = true }
