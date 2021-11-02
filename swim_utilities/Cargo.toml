@@ -23,9 +23,11 @@ time = ["swim_time"]
 topic = ["swim_sync", "swim_sync/topic"]
 trigger = ["swim_trigger"]
 io = ["swim_io"]
+sync_bilock = ["swim_sync_bilock"]
 
 [dependencies]
 swim_bilock = { path = "./swim_bilock", optional = true }
+swim_sync_bilock = { path = "./swim_sync_bilock", optional = true }
 swim_errors = { path = "./swim_errors", optional = true }
 swim_format = { path = "./swim_format", optional = true }
 swim_trigger = { path = "./swim_trigger", optional = true }
