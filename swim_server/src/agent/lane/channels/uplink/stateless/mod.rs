@@ -18,7 +18,6 @@ use crate::agent::lane::channels::uplink::{
     UplinkMessageSender,
 };
 use crate::agent::lane::channels::TaggedAction;
-use crate::meta::metric::uplink::UplinkObserver;
 use either::Either;
 use futures::{select_biased, Stream, StreamExt};
 use pin_utils::pin_mut;
@@ -29,6 +28,7 @@ use swim_common::form::Form;
 use swim_common::model::Value;
 use swim_common::routing::{Router, RoutingAddr, TaggedSender};
 use swim_common::warp::path::RelativePath;
+use swim_metrics::uplink::UplinkObserver;
 use tokio::sync::mpsc;
 use tracing::{event, Level};
 
@@ -165,13 +165,13 @@ where
                             }
                         }
 
-                        observer.did_open();
+                        observer.did_open(true);
                         if uplinks.insert(addr).await.is_err() {
                             break;
                         }
                     }
                     UplinkAction::Unlink => {
-                        observer.did_close();
+                        observer.did_close(true);
                         format_debug_event(uplink_kind, UNLINKING);
                         if uplinks.unlink(addr).await.is_err() {
                             break;

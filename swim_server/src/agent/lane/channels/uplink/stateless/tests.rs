@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::convert::TryFrom;
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::Eff;
 use futures::future::{join, join3, ready, BoxFuture};
@@ -28,11 +29,7 @@ use swim_common::warp::path::RelativePath;
 use crate::agent::lane::channels::uplink::stateless::StatelessUplinks;
 use crate::agent::lane::channels::uplink::{AddressedUplinkMessage, UplinkAction, UplinkKind};
 use crate::agent::lane::channels::TaggedAction;
-use crate::meta::metric::uplink::{
-    uplink_observer, TaggedWarpUplinkProfile, UplinkObserver, UplinkProfileSender,
-    WarpUplinkProfile,
-};
-use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
+use crate::agent::lane::model::supply::SupplyLane;
 use server_store::agent::mock::MockNodeStore;
 use server_store::agent::SwimNodeStore;
 use server_store::plane::mock::MockPlaneStore;
@@ -41,11 +38,15 @@ use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::time::AtomicInstant;
+use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
 use tokio::sync::mpsc::Receiver;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
+use swim_metrics::config::MetricAggregatorConfig;
+use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
+use swim_metrics::uplink::{TaggedWarpUplinkProfile, uplink_observer, UplinkObserver, UplinkProfileSender, WarpUplinkProfile};
 
 #[derive(Clone, Debug)]
 struct TestRouter {
@@ -112,7 +113,17 @@ impl AgentExecutionContext for TestContext {
     }
 
     fn metrics(&self) -> NodeMetricAggregator {
-        aggregator_sink()
+        NodeMetricAggregator::new(
+            RelativeUri::try_from("/test").unwrap(),
+            trigger::trigger().1,
+            MetricAggregatorConfig::default(),
+            MetaPulseLanes {
+                uplinks: Default::default(),
+                lanes: Default::default(),
+                node: Box::new(SupplyLane::new(mpsc::channel(1).0)),
+            },
+        )
+        .0
     }
 
     fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {

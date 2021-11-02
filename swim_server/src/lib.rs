@@ -16,9 +16,9 @@
 
 pub mod agent;
 pub mod interface;
+pub mod meta;
 #[macro_use]
 pub mod macros;
-pub mod meta;
 pub mod routing;
 
 mod plane;

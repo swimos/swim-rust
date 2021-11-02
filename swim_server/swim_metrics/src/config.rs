@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::channels::uplink::backpressure::KeyedBackpressureConfig;
+use crate::uplink::MetricBackpressureConfig;
 use std::num::NonZeroUsize;
 use swim_utilities::algebra::non_zero_usize;
 use tokio::time::Duration;
@@ -26,7 +26,7 @@ pub struct MetricAggregatorConfig {
     /// The number of events to process before yielding execution back to the runtime.
     pub yield_after: NonZeroUsize,
     /// Backpressure relief configuration for WARP Uplink profile ingress.
-    pub backpressure_config: KeyedBackpressureConfig,
+    pub backpressure_config: MetricBackpressureConfig,
 }
 
 impl Default for MetricAggregatorConfig {
@@ -35,7 +35,7 @@ impl Default for MetricAggregatorConfig {
             sample_rate: Duration::from_secs(1),
             buffer_size: non_zero_usize!(10),
             yield_after: non_zero_usize!(256),
-            backpressure_config: KeyedBackpressureConfig {
+            backpressure_config: MetricBackpressureConfig {
                 buffer_size: non_zero_usize!(2),
                 yield_after: non_zero_usize!(256),
                 bridge_buffer_size: non_zero_usize!(4),

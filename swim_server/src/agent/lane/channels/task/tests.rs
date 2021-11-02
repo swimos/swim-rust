@@ -15,7 +15,6 @@
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::task::{LaneIoError, LaneUplinks, UplinkChannels};
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
-use crate::agent::lane::channels::uplink::backpressure::KeyedBackpressureConfig;
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::{
     PeelResult, UplinkAction, UplinkError, UplinkStateMachine,
@@ -26,16 +25,9 @@ use crate::agent::lane::channels::{
 use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::lane::model::command::{Command, CommandLane};
 use crate::agent::lane::model::DeferredSubscription;
-use crate::agent::model::supply::SupplyLane;
+use crate::agent::model::supply::{into_try_send, SupplyLane};
 use crate::agent::Eff;
 use crate::meta::accumulate_metrics;
-use crate::meta::log::make_node_logger;
-use crate::meta::metric::config::MetricAggregatorConfig;
-use crate::meta::metric::lane::LanePulse;
-use crate::meta::metric::node::NodePulse;
-use crate::meta::metric::uplink::{UplinkObserver, WarpUplinkPulse};
-use crate::meta::metric::{aggregator_sink, AggregatorError, NodeMetricAggregator};
-use crate::meta::pulse::PulseLanes;
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::{once, BoxStream, FusedStream};
 use futures::{Future, FutureExt, Stream, StreamExt};
@@ -65,6 +57,11 @@ use swim_common::routing::{
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
+use swim_metrics::config::MetricAggregatorConfig;
+use swim_metrics::lane::LanePulse;
+use swim_metrics::node::NodePulse;
+use swim_metrics::uplink::{MetricBackpressureConfig, UplinkObserver, WarpUplinkPulse};
+use swim_metrics::{AggregatorError, MetaPulseLanes, NodeMetricAggregator};
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::sync::topic;
@@ -573,15 +570,15 @@ fn make_aggregator(
     let (uplink_tx, uplink_rx) = mpsc::channel(buffer_size);
     let lane = SupplyLane::new(uplink_tx);
     let mut uplinks = HashMap::new();
-    uplinks.insert(path.clone(), lane);
+    uplinks.insert(path.clone(), into_try_send(lane));
 
     let (lane_tx, lane_rx) = mpsc::channel(buffer_size);
     let lane = SupplyLane::new(lane_tx);
     let mut lanes = HashMap::new();
-    lanes.insert(path.clone(), lane);
+    lanes.insert(path.clone(), into_try_send(lane));
 
     let (node_tx, node_rx) = mpsc::channel(buffer_size);
-    let node = SupplyLane::new(node_tx);
+    let node = into_try_send(SupplyLane::new(node_tx));
 
     let receivers = MetricReceivers {
         uplink: uplink_rx,
@@ -589,7 +586,7 @@ fn make_aggregator(
         node: node_rx,
     };
 
-    let lanes = PulseLanes {
+    let lanes = MetaPulseLanes {
         uplinks,
         lanes,
         node,
@@ -602,7 +599,7 @@ fn make_aggregator(
         sample_rate: Duration::from_secs(u64::MAX),
         buffer_size: non_zero_usize!(10),
         yield_after: non_zero_usize!(256),
-        backpressure_config: KeyedBackpressureConfig {
+        backpressure_config: MetricBackpressureConfig {
             buffer_size: non_zero_usize!(2),
             yield_after: non_zero_usize!(256),
             bridge_buffer_size: non_zero_usize!(4),
@@ -610,8 +607,7 @@ fn make_aggregator(
         },
     };
 
-    let (aggregator, task) =
-        NodeMetricAggregator::new(uri.clone(), stop_rx, config, lanes, make_node_logger(uri));
+    let (aggregator, task) = NodeMetricAggregator::new(uri.clone(), stop_rx, config, lanes);
 
     (aggregator, task, receivers)
 }
@@ -1445,7 +1441,17 @@ impl AgentExecutionContext for MultiTestContext {
     }
 
     fn metrics(&self) -> NodeMetricAggregator {
-        aggregator_sink()
+        NodeMetricAggregator::new(
+            RelativeUri::try_from("/test").unwrap(),
+            trigger::trigger().1,
+            MetricAggregatorConfig::default(),
+            MetaPulseLanes {
+                uplinks: Default::default(),
+                lanes: Default::default(),
+                node: Box::new(SupplyLane::new(mpsc::channel(1).0)),
+            },
+        )
+        .0
     }
 
     fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
