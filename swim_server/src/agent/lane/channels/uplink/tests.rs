@@ -40,6 +40,13 @@ use swim_common::form::structural::read::ReadError;
 use swim_common::form::Form;
 use swim_common::model::Value;
 use swim_common::sink::item;
+use swim_common::warp::path::RelativePath;
+use swim_metrics::config::MetricAggregatorConfig;
+use swim_metrics::uplink::{
+    uplink_aggregator, uplink_observer, AggregatorConfig, MetricBackpressureConfig,
+    TaggedWarpUplinkProfile, UplinkObserver, UplinkProfileSender,
+};
+use swim_runtime::time::delay::delay_for;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::SwimStreamExt;
 use swim_utilities::routing::uri::RelativeUri;
@@ -49,10 +56,6 @@ use swim_warp::model::map::MapUpdate;
 use tokio::sync::mpsc;
 use tokio::time::{timeout, Instant};
 use tokio_stream::wrappers::ReceiverStream;
-use swim_common::warp::path::RelativePath;
-use swim_metrics::config::MetricAggregatorConfig;
-use swim_metrics::uplink::{AggregatorConfig, MetricBackpressureConfig, TaggedWarpUplinkProfile, uplink_aggregator, uplink_observer, UplinkObserver, UplinkProfileSender};
-use swim_runtime::time::delay::delay_for;
 
 pub const DEFAULT_YIELD: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(256) };
 

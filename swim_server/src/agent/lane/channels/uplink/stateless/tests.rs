@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::convert::TryFrom;
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::Eff;
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::{FutureExt, StreamExt};
+use std::convert::TryFrom;
 use swim_common::routing::{
     ConnectionDropped, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
 };
@@ -36,6 +36,12 @@ use server_store::plane::mock::MockPlaneStore;
 use std::ops::Add;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
+use swim_metrics::config::MetricAggregatorConfig;
+use swim_metrics::uplink::{
+    uplink_observer, TaggedWarpUplinkProfile, UplinkObserver, UplinkProfileSender,
+    WarpUplinkProfile,
+};
+use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger;
@@ -44,9 +50,6 @@ use tokio::sync::mpsc::Receiver;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
-use swim_metrics::config::MetricAggregatorConfig;
-use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
-use swim_metrics::uplink::{TaggedWarpUplinkProfile, uplink_observer, UplinkObserver, UplinkProfileSender, WarpUplinkProfile};
 
 #[derive(Clone, Debug)]
 struct TestRouter {

@@ -22,7 +22,6 @@ use crate::agent::lane::channels::uplink::{
 use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, TaggedAction};
 use crate::agent::lane::model::supply::SupplyLane;
 use crate::agent::Eff;
-use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::iter;
 use futures::stream::{BoxStream, FusedStream};
@@ -49,6 +48,8 @@ use swim_common::routing::{
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
+use swim_metrics::config::MetricAggregatorConfig;
+use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::sync::topic;
@@ -60,7 +61,6 @@ use tokio::sync::{mpsc, Barrier};
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
-use swim_metrics::config::MetricAggregatorConfig;
 
 const INIT: i32 = 42;
 
