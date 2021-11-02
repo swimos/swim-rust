@@ -42,6 +42,3 @@ swim_rtree = { path = "./swim_rtree", optional = true }
 swim_sync = { path = "./swim_sync", optional = true, default-features = false }
 swim_time = { path = "./swim_time", optional = true }
 swim_test_util = { path = "./swim_test_util", optional = true }
-
-
-
