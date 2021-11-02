@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 swim_sync_bilock = { path = "../swim_sync_bilock", features = ["io"] }
 bytes = "1.0"
-cache-padded = "1.1"
 tokio = { version = "1.1.1", features = ["io-util"] }
 
 [dev-dependencies]
@@ -15,3 +14,7 @@ futures = "0.3.4"
 futures-util = "0.3.4"
 criterion = { version = "0.3", features = ["async_tokio"] }
 rand = "0.7"
+
+[[bench]]
+name = "async_throughput"
+harness = false
