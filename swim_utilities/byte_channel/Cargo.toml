@@ -1,7 +1,7 @@
 [package]
 name = "byte_channel"
 version = "0.1.0"
-edition = "2021"
+edition = "2018"
 
 [dependencies]
 swim_sync_bilock = { path = "../swim_sync_bilock", features = ["io"] }
