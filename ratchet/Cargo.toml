@@ -35,6 +35,7 @@ required-features = ["deflate"]
 
 [[example]]
 name = "client"
+required-features = ["split"]
 
 [[example]]
 name = "server"
