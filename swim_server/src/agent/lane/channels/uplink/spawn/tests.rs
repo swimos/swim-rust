@@ -42,6 +42,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use swim_form::structural::read::ReadError;
 use swim_form::Form;
+use swim_metrics::config::MetricAggregatorConfig;
+use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
 use swim_model::path::RelativePath;
 use swim_model::Value;
 use swim_runtime::error::ResolutionError;

@@ -33,7 +33,6 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use store::StoreError;
 use swim_async_runtime::task::TaskError;
 use swim_async_runtime::time::clock::RuntimeClock;
 use swim_runtime::ws::ext::RatchetNetworking;

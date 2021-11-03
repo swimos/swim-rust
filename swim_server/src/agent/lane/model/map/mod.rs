@@ -29,7 +29,6 @@ use summary::{clear_summary, remove_summary, update_summary};
 use swim_form::Form;
 use swim_model::Value;
 
-use crate::agent::lane::model::map::map_store::MapLaneStoreIo;
 use crate::agent::lane::model::map::summary::TransactionSummary;
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lane::{InvalidForm, LaneModel};
@@ -47,9 +46,6 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::num::NonZeroUsize;
-use stm::local::TLocal;
-use stm::stm::{abort, left, right, Constant, Stm, VecStm, UNIT};
-use stm::transaction::{atomically, RetryManager, TransactionError, TransactionRunner};
 use stm::var::observer::{Observer, ObserverStream, ObserverSubscriber};
 use swim_form::structural::read::ReadError;
 use swim_utilities::future::{FlatmapStream, SwimStreamExt, Transform};

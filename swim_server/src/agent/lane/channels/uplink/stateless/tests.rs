@@ -35,7 +35,6 @@ use server_store::agent::mock::MockNodeStore;
 use server_store::agent::SwimNodeStore;
 use server_store::plane::mock::MockPlaneStore;
 use std::ops::Add;
-use swim_common::routing::ResolutionError;
 use swim_metrics::config::MetricAggregatorConfig;
 use swim_metrics::uplink::{
     uplink_observer, TaggedWarpUplinkProfile, UplinkObserver, UplinkProfileSender,

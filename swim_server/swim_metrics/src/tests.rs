@@ -29,7 +29,7 @@ use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::time::Duration;
 use swim_model::path::RelativePath;
-use swim_model::sink::item::try_send::TrySend;
+use swim_utilities::future::item_sink::TrySend;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
 use tokio::sync::mpsc;

@@ -24,8 +24,6 @@ use std::ops::Add;
 use std::str::FromStr;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
-use swim_async_runtime::time::delay::delay_for;
-use swim_async_runtime::time::timeout::timeout;
 use swim_model::path::RelativePath;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;

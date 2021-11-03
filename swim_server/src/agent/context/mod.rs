@@ -26,7 +26,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use swim_async_runtime::time::clock::Clock;
 use swim_metrics::NodeMetricAggregator;
-use swim_runtime::time::clock::Clock;
 use swim_utilities::future::SwimStreamExt;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::time::AtomicInstant;

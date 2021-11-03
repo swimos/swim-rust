@@ -83,6 +83,7 @@ impl PartialEq for ConnectionError {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (ConnectionError::Http(l), ConnectionError::Http(r)) => l.eq(r),
+            #[cfg(feature = "tls")]
             (ConnectionError::Tls(l), ConnectionError::Tls(r)) => l.eq(r),
             (ConnectionError::Capacity(l), ConnectionError::Capacity(r)) => l.eq(r),
             (ConnectionError::Protocol(l), ConnectionError::Protocol(r)) => l.eq(r),
