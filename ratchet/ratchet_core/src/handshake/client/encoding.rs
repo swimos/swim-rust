@@ -14,7 +14,9 @@
 
 use crate::errors::{Error, ErrorKind, HttpError};
 use crate::handshake::client::Nonce;
-use crate::handshake::{ProtocolRegistry, UPGRADE_STR, WEBSOCKET_STR, WEBSOCKET_VERSION_STR};
+use crate::handshake::{
+    apply_to, ProtocolRegistry, UPGRADE_STR, WEBSOCKET_STR, WEBSOCKET_VERSION_STR,
+};
 use base64::encode_config_slice;
 use bytes::{BufMut, BytesMut};
 use http::header::{AsHeaderName, HeaderName, IntoHeaderName};
@@ -175,7 +177,7 @@ where
         ));
     }
 
-    subprotocols.apply_to(&mut headers);
+    apply_to(subprotocols, &mut headers);
 
     let option = headers
         .get(header::SEC_WEBSOCKET_KEY)
