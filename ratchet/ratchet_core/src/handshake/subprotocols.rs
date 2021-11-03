@@ -21,7 +21,7 @@ use std::borrow::Cow;
 
 /// A subprotocol registry that is used for negotiating a possible subprotocol to use for a
 /// connection.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct ProtocolRegistry {
     registrants: FnvHashSet<Cow<'static, str>>,
     header: Option<HeaderValue>,
