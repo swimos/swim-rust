@@ -13,12 +13,12 @@
 // limitations under the License.
 
 use crate::agent::context::{ContextImpl, RoutingContext, SchedulerContext};
-use crate::agent::store::mock::MockNodeStore;
-use crate::agent::store::SwimNodeStore;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::AgentContext;
 use crate::meta::meta_context_sink;
-use crate::plane::store::mock::MockPlaneStore;
+use server_store::agent::mock::MockNodeStore;
+use server_store::agent::SwimNodeStore;
+use server_store::plane::mock::MockPlaneStore;
 use std::collections::HashMap;
 use std::sync::Arc;
 use swim_async_runtime::task;

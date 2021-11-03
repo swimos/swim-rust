@@ -18,11 +18,8 @@ use crate::agent::lane::channels::update::UpdateError;
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::UplinkError;
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::store::mock::MockNodeStore;
-use crate::agent::store::SwimNodeStore;
+use crate::agent::lane::model::supply::SupplyLane;
 use crate::agent::{AttachError, Eff, LaneIo};
-use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
-use crate::plane::store::mock::MockPlaneStore;
 use crate::routing::error::RouterError;
 use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
@@ -31,15 +28,26 @@ use crate::routing::{
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use parking_lot::Mutex;
+use server_store::agent::mock::MockNodeStore;
+use server_store::agent::SwimNodeStore;
+use server_store::plane::mock::MockPlaneStore;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::sync::Arc;
 use stm::transaction::TransactionError;
+use swim_common::model::Value;
+use swim_common::routing::ResolutionError;
+use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
+use swim_common::warp::path::RelativePath;
+use swim_metrics::config::MetricAggregatorConfig;
+use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
 use swim_model::path::RelativePath;
 use swim_model::Value;
 use swim_runtime::error::ResolutionError;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::time::AtomicInstant;
+use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
 use swim_warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
 use tokio::sync::mpsc;
@@ -158,7 +166,17 @@ impl AgentExecutionContext for MockExecutionContext {
     }
 
     fn metrics(&self) -> NodeMetricAggregator {
-        aggregator_sink()
+        NodeMetricAggregator::new(
+            RelativeUri::try_from("/test").unwrap(),
+            trigger::trigger().1,
+            MetricAggregatorConfig::default(),
+            MetaPulseLanes {
+                uplinks: Default::default(),
+                lanes: Default::default(),
+                node: Box::new(SupplyLane::new(mpsc::channel(1).0)),
+            },
+        )
+        .0
     }
 
     fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {

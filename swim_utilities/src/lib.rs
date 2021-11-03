@@ -37,6 +37,9 @@ pub mod collections {
 #[cfg(feature = "time")]
 pub use swim_time as time;
 
+#[cfg(feature = "io")]
+pub use swim_io as io;
+
 #[cfg(feature = "text")]
 pub use swim_route as routing;
 

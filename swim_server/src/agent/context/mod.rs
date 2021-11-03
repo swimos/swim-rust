@@ -12,20 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::store::NodeStore;
 use crate::agent::{AgentContext, Eff};
 use crate::meta::log::NodeLogger;
-use crate::meta::metric::NodeMetricAggregator;
 use crate::meta::MetaContext;
 use crate::routing::ServerRouter;
 use futures::future::BoxFuture;
 use futures::sink::drain;
 use futures::{FutureExt, Stream, StreamExt};
+use server_store::agent::NodeStore;
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use swim_async_runtime::time::clock::Clock;
+use swim_metrics::NodeMetricAggregator;
+use swim_runtime::time::clock::Clock;
 use swim_utilities::future::SwimStreamExt;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::time::AtomicInstant;

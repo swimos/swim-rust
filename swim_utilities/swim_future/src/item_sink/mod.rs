@@ -23,6 +23,7 @@ pub mod comap;
 pub mod drop_all;
 pub mod either;
 pub mod fail_all;
+pub mod try_send;
 
 pub mod error {
 

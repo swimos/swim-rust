@@ -7,6 +7,7 @@ edition = "2018"
 [features]
 default = []
 debug = ["log_verbose"]
+persistence = ["server_store/rocks"]
 log_verbose = []
 trust-dns = ["trust-dns-resolver"]
 
@@ -18,20 +19,20 @@ tracing = "0.1.16"
 
 [dependencies]
 ratchet = {  path = "../ratchet", features = ["deflate", "split"] }
-swim_runtime = { path = "../runtime/swim_runtime", features = ["tls"] }
-swim_model = { path = "../api/swim_model" }
+swim_store = { path = "../swim_store" }
+swim_metrics = { path = "swim_metrics" }
 swim_form = { path = "../api/swim_form" }
 swim_recon = { path = "../api/formats/swim_recon" }
-swim_schema = { path = "../api/swim_schema" }
-swim_warp = { path = "../swim_warp" }
-swim_utilities = { path = "../swim_utilities", features = ["errors", "sync", "time", "text"] }
 swim_tracing = { path = "../swim_utilities/swim_tracing", features = ["future"] }
+server_store = { path = "server_store"}
+swim_model = { path = "../api/swim_model" }
+swim_common = { path = "../swim_common", features = ["tls"] }
+swim_warp = { path = "../swim_warp" }
+swim_utilities = { path = "../swim_utilities", features = ["errors", "sync", "time", "text", "io"] }
 stringify_attr = { path = "../macro_utilities/stringify_attr" }
-swim_async_runtime = { path = "../runtime/swim_async_runtime" }
+swim_runtime = { path = "../swim_runtime" }
 stm = { path = "../stm" }
-agent_derive = { path = "agent_derive" }
-
-bytes = "1.0"
+swim_async_runtime = { path = "../runtime/swim_async_runtime" }
 either = "1.5.3"
 futures = "0.3.4"
 futures-util = "0.3.4"
@@ -44,20 +45,16 @@ tokio = { version = "1.1.1", features = ["rt", "net"] }
 tokio-stream = { version = "0.1.2", features = ["sync"] }
 url = "2.1.1"
 tracing-futures = "0.2.4"
+agent_derive = { path = "agent_derive" }
 trybuild = "1.0.48"
 tokio-native-tls = "0.3"
 trust-dns-resolver = { version = "0.20", optional = true, features = ["tokio-runtime"] }
-auth = { path = "auth" }
 regex = "1"
 lazy_static = "1.4.0"
 percent-encoding = "2.1.0"
 thiserror = "1.0"
 crossbeam-queue = "0.3"
-store = { path = "store" }
 serde = { version = "1.0.124", features = ["derive", "rc"] }
-bincode = "1.3.2"
-rocksdb = "0.16.0"
-tempdir = "0.3.7"
 
 [dev-dependencies]
 ratchet_fixture = { path = "../ratchet/ratchet_fixture" }

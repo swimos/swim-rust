@@ -21,37 +21,33 @@ use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::model::map::MapLane;
 use crate::agent::model::value::{ValueLane, ValueLaneEvent};
-use crate::agent::store::NodeStore;
 use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::{
     AgentContext, DynamicAgentIo, DynamicLaneTasks, LaneConfig, LaneParts, SwimAgent, TestClock,
 };
 use crate::agent::{IoPair, LaneTasks};
 use crate::plane::provider::AgentProvider;
-use crate::plane::store::{PlaneStore, SwimPlaneStore};
 use crate::plane::RouteAndParameters;
 use crate::routing::RoutingAddr;
-use crate::store::fs::Dir;
-use crate::store::keystore::{KeyStore, COUNTER_BYTES};
-use crate::store::{
-    default_keyspaces, KeyspaceName, RocksDatabase, RocksOpts, StoreEngine, StoreKey,
-};
 use futures::future::ready;
 use futures::future::{BoxFuture, Ready};
+use server_store::agent::NodeStore;
+use server_store::keystore::{KeyStore, COUNTER_BYTES};
+use server_store::plane::{PlaneStore, SwimPlaneStore};
+use server_store::rocks::RocksOpts;
+use server_store::rocks::{default_keyspaces, RocksDatabase};
+use server_store::{KeyspaceName, StoreEngine, StoreKey};
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use stm::stm::Stm;
 use stm::transaction::atomically;
-use store::engines::StoreBuilder;
-use store::keyspaces::KeyspaceByteEngine;
-use store::StoreError;
-use store::{deserialize, serialize};
+use swim_store::{deserialize, serialize, KeyspaceByteEngine, StoreBuilder, StoreError};
+use swim_utilities::io::fs::Dir;
 use swim_utilities::routing::uri::RelativeUri;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
-
 const INTERVAL: Duration = Duration::from_millis(1);
 const MAX_PERIODS: i32 = 10;
 

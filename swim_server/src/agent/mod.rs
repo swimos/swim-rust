@@ -16,7 +16,6 @@ pub mod context;
 pub(crate) mod dispatch;
 pub mod lane;
 pub mod lifecycle;
-pub mod store;
 
 #[cfg(test)]
 mod tests;
@@ -48,9 +47,7 @@ use crate::agent::lane::model::demand_map::{
 use crate::agent::lane::model::map::MapLane;
 use crate::agent::lane::model::map::{summaries_to_events, MapLaneEvent, MapSubscriber};
 use crate::agent::lane::model::supply::{make_lane_model, SupplyLane};
-use crate::agent::lane::model::value::{
-    ValueDataModel, ValueLane, ValueLaneEvent, ValueLaneStoreIo,
-};
+use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::routing::{ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
@@ -80,11 +77,7 @@ use tokio::sync::{mpsc, oneshot};
 use tracing::{event, span, Level};
 use tracing_futures::{Instrument, Instrumented};
 
-use crate::agent::lane::model::map::map_store::MapDataModel;
-use crate::agent::lane::store::task::{NodeStoreErrors, NodeStoreTask};
-pub use crate::agent::lane::store::{LaneNoStore, StoreIo};
-use crate::agent::model::map::map_store::MapLaneStoreIo;
-use crate::agent::store::NodeStore;
+use crate::agent::model::map::to_map_store_event;
 use crate::meta::info::{LaneInfo, LaneKind};
 use crate::meta::log::NodeLogger;
 use crate::meta::open_meta_lanes;
@@ -93,6 +86,11 @@ use crate::meta::open_meta_lanes;
 pub use agent_derive::*;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use server_store::agent::lane::map::{MapDataModel, MapLaneStoreIo};
+use server_store::agent::lane::task::{NodeStoreErrors, NodeStoreTask};
+use server_store::agent::lane::value::{ValueDataModel, ValueLaneStoreIo};
+use server_store::agent::lane::StoreIo;
+use server_store::agent::NodeStore;
 use tokio_stream::wrappers::ReceiverStream;
 
 /// Trait that must be implemented for any agent. This is essentially just boilerplate and will
@@ -1093,7 +1091,7 @@ where
         None
     } else {
         Some(Box::new(MapLaneStoreIo::new(
-            summaries_to_events(observer),
+            summaries_to_events(observer).filter_map(|e| ready(to_map_store_event(e))),
             model,
         )))
     };
