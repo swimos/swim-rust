@@ -33,7 +33,7 @@
                     nanos: 0
                 },
                 buffer_size: 25,
-                on_invalid: @terminate
+                on_invalid: @terminate,
                 yield_after: 300
             }
         },
@@ -54,7 +54,7 @@
                     nanos: 0
                 },
                 buffer_size: 50,
-                on_invalid: @terminate
+                on_invalid: @terminate,
                 yield_after: 600
             },
             @path {
