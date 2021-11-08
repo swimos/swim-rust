@@ -33,9 +33,9 @@ use crate::routing::TopLevelServerRouterFactory;
 use futures::future::ready;
 use futures::future::{BoxFuture, Ready};
 use server_store::agent::NodeStore;
-use server_store::engine::rocks::RocksOpts;
 use server_store::keystore::{KeyStore, COUNTER_BYTES};
 use server_store::plane::{PlaneStore, SwimPlaneStore};
+use server_store::rocks::RocksOpts;
 use server_store::rocks::{default_keyspaces, RocksDatabase};
 use server_store::{KeyspaceName, StoreEngine, StoreKey};
 use std::collections::HashMap;
@@ -57,7 +57,6 @@ use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
-
 const INTERVAL: Duration = Duration::from_millis(1);
 const MAX_PERIODS: i32 = 10;
 

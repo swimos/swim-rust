@@ -66,7 +66,7 @@ async fn small_send_and_receive() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn large_send_and_receive() {
-    send_and_receive(NonZeroUsize::new(LARGE_BOUNDARY + 1).unwrap()).await;
+    send_and_receive(non_zero_usize!(LARGE_BOUNDARY + 1)).await;
 }
 
 async fn receive_after_sender_dropped(n: NonZeroUsize) {
@@ -105,7 +105,7 @@ async fn small_receive_after_sender_dropped() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn large_receive_after_sender_dropped() {
-    receive_after_sender_dropped(NonZeroUsize::new(LARGE_BOUNDARY + 1).unwrap()).await;
+    receive_after_sender_dropped(non_zero_usize!(LARGE_BOUNDARY + 1)).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -133,7 +133,7 @@ async fn miss_update() {
 }
 
 async fn receive_several(n: usize) {
-    let (mut tx, mut rx) = super::channel(NonZeroUsize::new(n).unwrap());
+    let (mut tx, mut rx) = super::channel(non_zero_usize!(n));
 
     let send_task = async move {
         for i in 0..n {
@@ -165,7 +165,7 @@ async fn large_receive_several() {
 }
 
 async fn receive_several_stream(n: usize) {
-    let (mut tx, mut rx) = super::channel(NonZeroUsize::new(n).unwrap());
+    let (mut tx, mut rx) = super::channel(non_zero_usize!(n));
 
     let send_task = async move {
         for i in 0..n {
@@ -197,7 +197,7 @@ async fn large_receive_several_stream() {
 }
 
 async fn receive_all_stream(n: usize) {
-    let (mut tx, rx) = super::channel(NonZeroUsize::new(n).unwrap());
+    let (mut tx, rx) = super::channel(non_zero_usize!(n));
 
     let send_task = async move {
         for i in 0..n {
@@ -262,11 +262,11 @@ async fn small_send_after_receiver_dropped() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn large_send_after_receiver_dropped() {
-    send_after_receiver_dropped(NonZeroUsize::new(LARGE_BOUNDARY + 1).unwrap()).await;
+    send_after_receiver_dropped(non_zero_usize!(LARGE_BOUNDARY + 1)).await;
 }
 
 async fn send_and_receive_many(n: usize, r: usize) {
-    let (mut tx, rx) = super::channel(NonZeroUsize::new(n).unwrap());
+    let (mut tx, rx) = super::channel(non_zero_usize!(n));
 
     let send_task = async move {
         for i in 0..r {

@@ -1034,7 +1034,7 @@ fn make_command_lane_task<Context: AgentExecutionContext + Send + Sync + 'static
     TaskInput,
 ) {
     let (commander_tx, mut commander_rx) = mpsc::channel::<Command<i32>>(5);
-    let (mut commands_tx, commands_rx) = circular_buffer::channel(NonZeroUsize::new(8).unwrap());
+    let (mut commands_tx, commands_rx) = circular_buffer::channel(non_zero_usize!(8));
 
     let mock_lifecycle = async move {
         while let Some(Command { command, responder }) = commander_rx.recv().await {
