@@ -16,7 +16,7 @@
 mod store_agent;
 
 mod data_macro_agent;
-mod declarive_macro_agent;
+mod declarative_macro_agent;
 mod derive;
 mod reporting_agent;
 mod reporting_macro_agent;
