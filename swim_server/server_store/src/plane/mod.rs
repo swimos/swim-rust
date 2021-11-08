@@ -18,8 +18,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use swim_store::{serialize, EngineInfo, Store, StoreError};
 use swim_model::Text;
+use swim_store::{serialize, EngineInfo, Store, StoreError};
 
 use crate::agent::{NodeStore, SwimNodeStore};
 use crate::server::keystore::KeyStore;

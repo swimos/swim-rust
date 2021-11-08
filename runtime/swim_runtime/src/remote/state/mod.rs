@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::error::{ConnectionDropped, ConnectionError};
 use crate::remote::addresses::RemoteRoutingAddresses;
 use crate::remote::config::RemoteConnectionsConfig;
 use crate::remote::pending::PendingRequest;
@@ -19,17 +20,14 @@ use crate::remote::pending::PendingRequests;
 use crate::remote::table::{BidirectionalRegistrator, RoutingTable, SchemeHostPort};
 use crate::remote::task::TaskFactory;
 use crate::remote::{ExternalConnections, Listener, SchemeSocketAddr};
-use crate::remote::{
-    RawRoute, RemoteConnectionChannels, RemoteRoutingRequest, SchemeSocketAddrIt,
-};
+use crate::remote::{RawRoute, RemoteConnectionChannels, RemoteRoutingRequest, SchemeSocketAddrIt};
 use crate::routing::CloseReceiver;
-use crate::ws::WsConnections;
-use crate::error::{ConnectionError, ConnectionDropped};
 use crate::routing::{RouterFactory, RoutingAddr};
+use crate::ws::WsConnections;
 use futures::future::{BoxFuture, Fuse};
+use futures::stream::TakeUntil;
 use futures::StreamExt;
 use futures::{select_biased, FutureExt};
-use futures::stream::TakeUntil;
 use std::future::Future;
 use std::io;
 use std::net::SocketAddr;

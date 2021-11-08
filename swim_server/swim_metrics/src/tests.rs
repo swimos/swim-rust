@@ -30,6 +30,7 @@ use std::str::FromStr;
 use std::time::Duration;
 use swim_model::path::RelativePath;
 use swim_utilities::algebra::non_zero_usize;
+use swim_utilities::future::item_sink::try_send::TrySend;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
 use tokio::sync::mpsc;

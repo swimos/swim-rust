@@ -25,9 +25,10 @@ use std::collections::{hash_map::Entry, HashMap};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use swim_form::Form;
+use swim_metrics::uplink::UplinkObserver;
 use swim_model::path::RelativePath;
 use swim_model::Value;
-use swim_metrics::uplink::UplinkObserver;
+use swim_runtime::routing::{Router, RoutingAddr, TaggedSender};
 use tokio::sync::mpsc;
 use tracing::{event, Level};
 

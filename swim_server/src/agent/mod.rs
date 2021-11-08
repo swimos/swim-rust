@@ -66,7 +66,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use swim_async_runtime::time::clock::Clock;
 use swim_form::Form;
-use swim_model::path::RelativePath;
+use swim_model::path::{Path, RelativePath};
 use swim_utilities::future::SwimStreamExt;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::sync::topic;
@@ -91,6 +91,7 @@ use server_store::agent::lane::value::{ValueDataModel, ValueLaneStoreIo};
 use server_store::agent::lane::StoreIo;
 use server_store::agent::NodeStore;
 use swim_client::interface::ClientContext;
+use swim_runtime::routing::{Router, TaggedClientEnvelope, TaggedEnvelope};
 use tokio_stream::wrappers::ReceiverStream;
 
 /// Trait that must be implemented for any agent. This is essentially just boilerplate and will

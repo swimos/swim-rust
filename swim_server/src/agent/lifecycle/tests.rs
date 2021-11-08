@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::time::Duration;
 use swim_client::interface::ClientContext;
-use swim_common::warp::path::Path;
+use swim_model::path::Path;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger::Receiver;
 

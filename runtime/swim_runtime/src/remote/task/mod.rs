@@ -19,15 +19,13 @@ use crate::error::{
     CloseError, CloseErrorKind, ConnectionError, ProtocolError, ProtocolErrorKind, ResolutionError,
     ResolutionErrorKind,
 };
+use crate::error::{ConnectionDropped, RouterError};
 use crate::remote::config::RemoteConnectionsConfig;
 use crate::remote::router::RemoteRouter;
 use crate::remote::{BidirectionalReceiverRequest, RemoteRoutingRequest};
+use crate::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender};
 use crate::ws::selector::{SelectorResult, WsStreamSelector};
 use crate::ws::{CloseCode, CloseReason, JoinedStreamSink, WsMessage};
-use crate::error::{ConnectionDropped, RouterError};
-use crate::routing::{
-    Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender,
-};
 use either::Either;
 use futures::future::join_all;
 use futures::future::{join, BoxFuture};
@@ -95,7 +93,6 @@ impl From<ParseError> for Completion {
         )))
     }
 }
-
 
 const IGNORING_MESSAGE: &str = "Ignoring unexpected message.";
 const ERROR_ON_CLOSE: &str = "Error whilst closing connection.";

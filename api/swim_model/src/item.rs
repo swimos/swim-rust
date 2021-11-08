@@ -13,10 +13,10 @@
 // limitations under the License.
 
 use crate::Value;
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 use std::hash::Hash;
-use serde::{Serialize, Deserialize};
 
 /// An item that may occur in the body of record ['Value'].
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]

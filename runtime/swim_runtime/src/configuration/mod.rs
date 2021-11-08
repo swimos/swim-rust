@@ -12,36 +12,38 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::num::NonZeroUsize;
-use std::time::Duration;
 use flate2::Compression;
-use tokio_tungstenite::tungstenite::extensions::compression::{WsCompression as TungCompression};
-use tokio_tungstenite::tungstenite::extensions::compression::deflate::DeflateConfig;
-use tokio_tungstenite::tungstenite::protocol::{WebSocketConfig as TungWsConfig};
-use url::Url;
-use swim_form::structural::read::error::ExpectedEvent;
-use swim_form::structural::read::event::{NumericValue, ReadEvent};
-use swim_form::structural::read::ReadError;
-use swim_form::structural::read::recognizer::{Recognizer, RecognizerReadable, SimpleAttrBody, SimpleRecBody};
-use swim_form::structural::write::{BodyWriter, HeaderWriter, RecordBodyKind, StructuralWritable, StructuralWriter};
-use swim_model::path::Addressable;
-use swim_model::{Text, ValueKind};
-use swim_utilities::future::retryable::RetryStrategy;
 use std::borrow::Borrow;
 use std::convert::TryFrom;
+use std::num::NonZeroUsize;
+use std::time::Duration;
+use swim_form::structural::read::error::ExpectedEvent;
+use swim_form::structural::read::event::{NumericValue, ReadEvent};
+use swim_form::structural::read::recognizer::{
+    Recognizer, RecognizerReadable, SimpleAttrBody, SimpleRecBody,
+};
+use swim_form::structural::read::ReadError;
+use swim_form::structural::write::{
+    BodyWriter, HeaderWriter, RecordBodyKind, StructuralWritable, StructuralWriter,
+};
+use swim_model::path::Addressable;
+use swim_model::{Text, ValueKind};
+use swim_utilities::algebra::non_zero_usize;
+use swim_utilities::future::retryable::RetryStrategy;
+use tokio_tungstenite::tungstenite::extensions::compression::deflate::DeflateConfig;
+use tokio_tungstenite::tungstenite::extensions::compression::WsCompression as TungCompression;
+use tokio_tungstenite::tungstenite::protocol::WebSocketConfig as TungWsConfig;
+use url::Url;
 
-const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(60000);
-const DEFAULT_DOWNLINK_BUFFER_SIZE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(32) };
-const DEFAULT_YIELD_AFTER: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(256) };
-const DEFAULT_BUFFER_SIZE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(128) };
-const DEFAULT_DL_REQUEST_BUFFER_SIZE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(8) };
-const DEFAULT_BACK_PRESSURE_INPUT_BUFFER_SIZE: NonZeroUsize =
-    unsafe { NonZeroUsize::new_unchecked(32) };
-const DEFAULT_BACK_PRESSURE_BRIDGE_BUFFER_SIZE: NonZeroUsize =
-    unsafe { NonZeroUsize::new_unchecked(16) };
-const DEFAULT_BACK_PRESSURE_MAX_ACTIVE_KEYS: NonZeroUsize =
-    unsafe { NonZeroUsize::new_unchecked(16) };
-const DEFAULT_BACK_PRESSURE_YIELD_AFTER: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(256) };
+const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
+const DEFAULT_DOWNLINK_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(32);
+const DEFAULT_YIELD_AFTER: NonZeroUsize = non_zero_usize!(256);
+const DEFAULT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(128);
+const DEFAULT_DL_REQUEST_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(8);
+const DEFAULT_BACK_PRESSURE_INPUT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(32);
+const DEFAULT_BACK_PRESSURE_BRIDGE_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(16);
+const DEFAULT_BACK_PRESSURE_MAX_ACTIVE_KEYS: NonZeroUsize = non_zero_usize!(16);
+const DEFAULT_BACK_PRESSURE_YIELD_AFTER: NonZeroUsize = non_zero_usize!(256);
 const WEB_SOCKET_CONFIG_TAG: &str = "websocket_connections";
 const WS_COMPRESSION_NONE_TAG: &str = "none";
 const WS_COMPRESSION_DEFLATE_TAG: &str = "deflate";
@@ -53,7 +55,7 @@ const MAX_MESSAGE_SIZE_TAG: &str = "max_message_size";
 const MAX_FRAME_SIZE_TAG: &str = "max_frame_size";
 const ACCEPT_UNMASKED_FRAMES_TAG: &str = "accept_unmasked_frames";
 const COMPRESSION_TAG: &str = "compression";
-const DOWNLINK_CONNECTIONS_TAG: &str = "downlink_connections";
+pub const DOWNLINK_CONNECTIONS_TAG: &str = "downlink_connections";
 const DL_REQ_BUFFER_SIZE_TAG: &str = "dl_req_buffer_size";
 const BUFFER_SIZE_TAG: &str = "buffer_size";
 const YIELD_AFTER_TAG: &str = "yield_after";
@@ -143,7 +145,6 @@ impl Default for DownlinkConnectionsConfig {
     }
 }
 
-
 impl StructuralWritable for DownlinkConnectionsConfig {
     fn num_attributes(&self) -> usize {
         1
@@ -178,7 +179,6 @@ impl StructuralWritable for DownlinkConnectionsConfig {
         body_writer.done()
     }
 }
-
 
 impl RecognizerReadable for DownlinkConnectionsConfig {
     type Rec = recognizers::DownlinkConnectionsConfigRecognizer;
@@ -250,7 +250,6 @@ impl Default for DownlinkConfig {
     }
 }
 
-
 impl RecognizerReadable for DownlinkConfig {
     type Rec = recognizers::DownlinkConfigRecognizer;
     type AttrRec = SimpleAttrBody<recognizers::DownlinkConfigRecognizer>;
@@ -268,7 +267,6 @@ impl RecognizerReadable for DownlinkConfig {
         SimpleRecBody::new(Self::make_recognizer())
     }
 }
-
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 /// Mode indicating whether or not the downlink propagates back-pressure.
@@ -295,7 +293,6 @@ impl Default for BackpressureMode {
     }
 }
 
-
 impl RecognizerReadable for BackpressureMode {
     type Rec = recognizers::BackpressureModeRecognizer;
     type AttrRec = SimpleAttrBody<recognizers::BackpressureModeRecognizer>;
@@ -313,7 +310,6 @@ impl RecognizerReadable for BackpressureMode {
         SimpleRecBody::new(Self::make_recognizer())
     }
 }
-
 
 impl RecognizerReadable for OnInvalidMessage {
     type Rec = recognizers::OnInvalidMessageRecognizer;
@@ -455,7 +451,7 @@ impl Recognizer for WebSocketConfigRecognizer {
                     self.stage = WebSocketConfigStage::InBody;
                     None
                 } else if matches!(&input, ReadEvent::EndRecord) {
-                    Some(Ok(WebSocketConfig( TungWsConfig {
+                    Some(Ok(WebSocketConfig(TungWsConfig {
                         max_send_queue: None,
                         max_message_size: None,
                         max_frame_size: None,
@@ -496,7 +492,8 @@ impl Recognizer for WebSocketConfigRecognizer {
                     ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
                 },
                 ReadEvent::EndRecord => {
-                    let comp = self.compression
+                    let comp = self
+                        .compression
                         .as_ref()
                         .map(|c| c.0)
                         .unwrap_or(TungCompression::None(None));
@@ -507,7 +504,7 @@ impl Recognizer for WebSocketConfigRecognizer {
                         accept_unmasked_frames: self.accept_unmasked_frames.unwrap_or(false),
                         compression: comp,
                     })))
-                },
+                }
                 ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                     ExpectedEvent::ValueEvent(ValueKind::Text),
                     ExpectedEvent::EndOfRecord,
@@ -714,10 +711,12 @@ impl Recognizer for WsCompressionRecognizer {
                     None
                 } else if matches!(&input, ReadEvent::EndRecord) {
                     match self.fields {
-                        WsCompressionFields::None(_) => Some(Ok(WsCompression(TungCompression::None(None)))),
-                        WsCompressionFields::Deflate { .. } => {
-                            Some(Ok(WsCompression(TungCompression::Deflate(DeflateConfig::default()))))
+                        WsCompressionFields::None(_) => {
+                            Some(Ok(WsCompression(TungCompression::None(None))))
                         }
+                        WsCompressionFields::Deflate { .. } => Some(Ok(WsCompression(
+                            TungCompression::Deflate(DeflateConfig::default()),
+                        ))),
                     }
                 } else {
                     Some(Err(input.kind_error(ExpectedEvent::Or(vec![
@@ -754,7 +753,9 @@ impl Recognizer for WsCompressionRecognizer {
                         }
                     }
                     ReadEvent::EndRecord => match value {
-                        None => Some(Ok(WsCompression(TungCompression::Deflate(DeflateConfig::default())))),
+                        None => Some(Ok(WsCompression(TungCompression::Deflate(
+                            DeflateConfig::default(),
+                        )))),
                         Some(value) => Some(Ok(WsCompression(TungCompression::Deflate(
                             DeflateConfig::with_compression_level(Compression::new(*value)),
                         )))),
@@ -774,7 +775,6 @@ impl Recognizer for WsCompressionRecognizer {
         *fields = WsCompressionFields::None(None);
     }
 }
-
 
 impl StructuralWritable for WsCompression {
     fn num_attributes(&self) -> usize {
@@ -818,7 +818,6 @@ impl StructuralWritable for WsCompression {
         self.write_with(writer)
     }
 }
-
 
 impl StructuralWritable for WebSocketConfig {
     fn num_attributes(&self) -> usize {
@@ -869,7 +868,6 @@ impl StructuralWritable for WebSocketConfig {
         self.write_with(writer)
     }
 }
-
 
 impl StructuralWritable for DownlinkConfig {
     fn num_attributes(&self) -> usize {
@@ -990,8 +988,8 @@ impl StructuralWritable for OnInvalidMessage {
             OnInvalidMessage::Ignore => header_writer.write_extant_attr(IGNORE_TAG)?,
             OnInvalidMessage::Terminate => header_writer.write_extant_attr(TERMINATE_TAG)?,
         }
-            .complete_header(RecordBodyKind::Mixed, 0)?
-            .done()
+        .complete_header(RecordBodyKind::Mixed, 0)?
+        .done()
     }
 
     fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
@@ -1001,7 +999,7 @@ impl StructuralWritable for OnInvalidMessage {
             OnInvalidMessage::Ignore => header_writer.write_extant_attr(IGNORE_TAG)?,
             OnInvalidMessage::Terminate => header_writer.write_extant_attr(TERMINATE_TAG)?,
         }
-            .complete_header(RecordBodyKind::Mixed, 0)?
-            .done()
+        .complete_header(RecordBodyKind::Mixed, 0)?
+        .done()
     }
 }

@@ -19,6 +19,7 @@ use futures::future::join;
 use std::time::Duration;
 use swim_async_runtime::time::timeout::timeout;
 use swim_form::structural::read::ReadError;
+use swim_runtime::routing::RoutingAddr;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 

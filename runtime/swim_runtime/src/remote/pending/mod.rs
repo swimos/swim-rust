@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::error::ConnectionError;
 use crate::remote::table::{BidirectionalRegistrator, SchemeHostPort};
 use crate::remote::{BidirectionalRequest, ResolutionRequest, REQUEST_DROPPED};
-use crate::error::ConnectionError;
 use crate::routing::RoutingAddr;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use swim_tracing::request::TryRequestExt;
 use std::fmt::Debug;
+use swim_tracing::request::TryRequestExt;
 
 #[cfg(test)]
 mod tests;

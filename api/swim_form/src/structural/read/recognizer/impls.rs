@@ -20,17 +20,16 @@ use crate::structural::read::recognizer::{
 };
 use crate::structural::read::ReadError;
 use crate::structural::tags::{
-    ABSOLUTE_PATH_TAG, DELAY_TAG, DURATION_TAG,
-    HOST_TAG, INFINITE_TAG, LANE_TAG, MAX_BACKOFF_TAG, MAX_INTERVAL_TAG,
-    NANOS_TAG, NODE_TAG, RETRIES_TAG,
-    RETRY_EXPONENTIAL_TAG, RETRY_IMMEDIATE_TAG, RETRY_INTERVAL_TAG, RETRY_NONE_TAG, SECS_TAG,
+    ABSOLUTE_PATH_TAG, DELAY_TAG, DURATION_TAG, HOST_TAG, INFINITE_TAG, LANE_TAG, MAX_BACKOFF_TAG,
+    MAX_INTERVAL_TAG, NANOS_TAG, NODE_TAG, RETRIES_TAG, RETRY_EXPONENTIAL_TAG, RETRY_IMMEDIATE_TAG,
+    RETRY_INTERVAL_TAG, RETRY_NONE_TAG, SECS_TAG,
 };
-use swim_model::{Text, ValueKind};
-use swim_model::path::AbsolutePath;
 use std::borrow::Borrow;
 use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::time::Duration;
+use swim_model::path::AbsolutePath;
+use swim_model::{Text, ValueKind};
 use swim_utilities::future::retryable::strategy::{
     DEFAULT_EXPONENTIAL_MAX_BACKOFF, DEFAULT_EXPONENTIAL_MAX_INTERVAL, DEFAULT_IMMEDIATE_RETRIES,
     DEFAULT_INTERVAL_DELAY, DEFAULT_INTERVAL_RETRIES,
@@ -199,9 +198,9 @@ impl Recognizer for RetryStrategyRecognizer {
             }
             RetryStrategyStage::InBody => match self.fields {
                 Some(RetryStrategyFields::Immediate {
-                         retries,
-                         ref mut retries_recognizer,
-                     }) => match input {
+                    retries,
+                    ref mut retries_recognizer,
+                }) => match input {
                     ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
                         RETRIES_TAG => {
                             self.stage =
@@ -222,11 +221,11 @@ impl Recognizer for RetryStrategyRecognizer {
                     ])))),
                 },
                 Some(RetryStrategyFields::Interval {
-                         delay,
-                         retries,
-                         ref mut delay_recognizer,
-                         ref mut retries_recognizer,
-                     }) => match input {
+                    delay,
+                    retries,
+                    ref mut delay_recognizer,
+                    ref mut retries_recognizer,
+                }) => match input {
                     ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
                         DELAY_TAG => {
                             self.stage =
@@ -254,11 +253,11 @@ impl Recognizer for RetryStrategyRecognizer {
                     ])))),
                 },
                 Some(RetryStrategyFields::Exponential {
-                         max_interval,
-                         max_backoff,
-                         ref mut max_interval_recognizer,
-                         ref mut max_backoff_recognizer,
-                     }) => match input {
+                    max_interval,
+                    max_backoff,
+                    ref mut max_interval_recognizer,
+                    ref mut max_backoff_recognizer,
+                }) => match input {
                     ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
                         MAX_INTERVAL_TAG => {
                             self.stage = RetryStrategyStage::Slot(
@@ -299,9 +298,9 @@ impl Recognizer for RetryStrategyRecognizer {
             }
             RetryStrategyStage::Field(field) => match &mut self.fields {
                 Some(RetryStrategyFields::Immediate {
-                         retries,
-                         retries_recognizer,
-                     }) => match field {
+                    retries,
+                    retries_recognizer,
+                }) => match field {
                     RetryStrategyField::ImmediateRetries => {
                         match retries_recognizer.as_mut()?.feed_event(input)? {
                             Ok(value) => {
@@ -315,11 +314,11 @@ impl Recognizer for RetryStrategyRecognizer {
                     _ => None,
                 },
                 Some(RetryStrategyFields::Interval {
-                         retries,
-                         retries_recognizer,
-                         delay,
-                         delay_recognizer,
-                     }) => match field {
+                    retries,
+                    retries_recognizer,
+                    delay,
+                    delay_recognizer,
+                }) => match field {
                     RetryStrategyField::IntervalRetries => {
                         match retries_recognizer.as_mut()?.feed_event(input)? {
                             Ok(value) => {
@@ -343,11 +342,11 @@ impl Recognizer for RetryStrategyRecognizer {
                     _ => None,
                 },
                 Some(RetryStrategyFields::Exponential {
-                         max_interval,
-                         max_interval_recognizer,
-                         max_backoff,
-                         max_backoff_recognizer,
-                     }) => match field {
+                    max_interval,
+                    max_interval_recognizer,
+                    max_backoff,
+                    max_backoff_recognizer,
+                }) => match field {
                     RetryStrategyField::ExponentialMaxInterval => {
                         match max_interval_recognizer.as_mut()?.feed_event(input)? {
                             Ok(value) => {

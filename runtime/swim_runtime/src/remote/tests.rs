@@ -12,24 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::model::Value;
-use crate::request::Request;
-use crate::routing::error::{ConnectionError, IoError, ResolutionError, ResolutionErrorKind};
-use crate::routing::remote::pending::PendingRequest;
-use crate::routing::remote::state::{DeferredResult, Event, RemoteTasksState};
-use crate::routing::remote::table::{BidirectionalRegistrator, RoutingTable, SchemeHostPort};
-use crate::routing::remote::{
+use crate::error::{ConnectionError, IoError, ResolutionError, ResolutionErrorKind};
+use crate::remote::pending::PendingRequest;
+use crate::remote::state::{DeferredResult, Event, RemoteTasksState};
+use crate::remote::table::{BidirectionalRegistrator, RoutingTable, SchemeHostPort};
+use crate::remote::{
     BidirectionalRequest, ConnectionDropped, RawRoute, RemoteRoutingRequest, Scheme,
     SchemeSocketAddr, SchemeSocketAddrIt, Unresolvable,
 };
 use crate::routing::{RoutingAddr, TaggedEnvelope};
-use crate::warp::envelope::Envelope;
 use futures::FutureExt;
 use std::cell::RefCell;
 use std::io::ErrorKind;
-use std::net::SocketAddr;
+
 use swim_model::Value;
-use swim_runtime::error::{ConnectionError, IoError, ResolutionError, ResolutionErrorKind};
 use swim_utilities::future::request::Request;
 use swim_utilities::trigger::promise::Sender;
 use swim_warp::envelope::Envelope;

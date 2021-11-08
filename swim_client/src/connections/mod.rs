@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_runtime::configuration::DownlinkConnectionsConfig;
 use crate::router::{
     AddressableWrapper, ClientRouter, ClientRouterFactory, DownlinkRoutingRequest, RouterEvent,
     RoutingPath, RoutingTable,
@@ -28,20 +27,19 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
+use swim_async_runtime::task::*;
+use swim_model::path::{Addressable, RelativePath};
+use swim_runtime::configuration::DownlinkConnectionsConfig;
+use swim_runtime::error::ConnectionDropped;
+use swim_runtime::error::{CloseError, ConnectionError, HttpError, ResolutionError, Unresolvable};
+use swim_runtime::remote::RawRoute;
+use swim_runtime::routing::{
+    BidirectionalRoute, BidirectionalRouter, CloseReceiver, Route, Router, RouterFactory,
+    RoutingAddr, TaggedEnvelope, TaggedSender,
+};
+use swim_utilities::errors::Recoverable;
 use swim_utilities::future::request::request_future::RequestError;
 use swim_utilities::future::request::Request;
-use swim_runtime::error::{
-    CloseError, ConnectionError, HttpError, ResolutionError, Unresolvable,
-};
-use swim_runtime::remote::RawRoute;
-use swim_runtime::error::ConnectionDropped;
-use swim_runtime::routing::{
-    BidirectionalRoute, BidirectionalRouter, CloseReceiver, Route, Router,
-    RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender,
-};
-use swim_model::path::{Addressable, RelativePath};
-use swim_async_runtime::task::*;
-use swim_utilities::errors::Recoverable;
 use swim_utilities::future::retryable::RetryStrategy;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger::promise;
@@ -97,8 +95,8 @@ impl<Path: Addressable> SwimConnPool<Path> {
         client_router_factory: ClientRouterFactory<Path, DelegateFac>,
         stop_trigger: CloseReceiver,
     ) -> (SwimConnPool<Path>, PoolTask<Path, DelegateFac>)
-        where
-            <DelegateFac as RouterFactory>::Router: BidirectionalRouter,
+    where
+        <DelegateFac as RouterFactory>::Router: BidirectionalRouter,
     {
         let (client_tx, client_rx) = client_channel;
 
@@ -140,7 +138,7 @@ impl<Path: Addressable> ConnectionPool for SwimConnPool<Path> {
                 .await?;
             Ok(rx.await?)
         }
-            .boxed()
+        .boxed()
     }
 }
 
@@ -157,8 +155,8 @@ pub struct PoolTask<Path: Addressable, DelegateFac: RouterFactory> {
 }
 
 impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac>
-    where
-        <DelegateFac as RouterFactory>::Router: BidirectionalRouter,
+where
+    <DelegateFac as RouterFactory>::Router: BidirectionalRouter,
 {
     fn new(
         client_rx: mpsc::Receiver<DownlinkRoutingRequest<Path>>,
@@ -206,11 +204,11 @@ impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac>
                         let routing_path = RoutingPath::try_from(AddressableWrapper(
                             target.clone(),
                         ))
-                            .map_err(|_| {
-                                ConnectionError::Resolution(ResolutionError::unresolvable(
-                                    target.to_string(),
-                                ))
-                            })?;
+                        .map_err(|_| {
+                            ConnectionError::Resolution(ResolutionError::unresolvable(
+                                target.to_string(),
+                            ))
+                        })?;
 
                         let registrator = match routing_table.try_resolve_addr(&routing_path) {
                             Some((_, registrator)) => registrator,
@@ -379,7 +377,7 @@ struct ConnectionRegistratorTask<Path: Addressable, DelegateRouter: Bidirectiona
 }
 
 impl<Path: Addressable, DelegateRouter: BidirectionalRouter>
-ConnectionRegistratorTask<Path, DelegateRouter>
+    ConnectionRegistratorTask<Path, DelegateRouter>
 {
     fn new(
         config: DownlinkConnectionsConfig,
@@ -417,7 +415,7 @@ ConnectionRegistratorTask<Path, DelegateRouter>
             &mut client_router,
             stop_trigger.clone(),
         )
-            .await?;
+        .await?;
 
         let (receiver, maybe_raw_route, maybe_local_drop_tx) = match receiver {
             Some(receiver) => (receiver, None, None),
@@ -475,10 +473,10 @@ ConnectionRegistratorTask<Path, DelegateRouter>
                     }
                 }
                 Some(ConnectionRegistratorEvent::Request(RegistratorRequest::Connect {
-                                                             tx,
-                                                             path,
-                                                             conn_type: ConnectionType::Full,
-                                                         })) => {
+                    tx,
+                    path,
+                    conn_type: ConnectionType::Full,
+                })) => {
                     let receiver = match subscribers.entry(path.relative_path()) {
                         Entry::Occupied(mut entry) => {
                             let (tx, rx) = mpsc::channel(config.buffer_size.get());
@@ -500,17 +498,17 @@ ConnectionRegistratorTask<Path, DelegateRouter>
                     }
                 }
                 Some(ConnectionRegistratorEvent::Request(RegistratorRequest::Connect {
-                                                             tx,
-                                                             conn_type: ConnectionType::Outgoing,
-                                                             ..
-                                                         })) => {
+                    tx,
+                    conn_type: ConnectionType::Outgoing,
+                    ..
+                })) => {
                     if tx.send(Ok((sender.clone(), None))).is_err() {
                         event!(Level::ERROR, REQUEST_ERROR);
                     }
                 }
                 Some(ConnectionRegistratorEvent::Request(RegistratorRequest::Resolve {
-                                                             request,
-                                                         })) if maybe_raw_route.is_some() => {
+                    request,
+                })) if maybe_raw_route.is_some() => {
                     let raw_route = maybe_raw_route.as_ref().unwrap();
 
                     if request.send(Ok(raw_route.clone())).is_err() {
@@ -528,7 +526,7 @@ ConnectionRegistratorTask<Path, DelegateRouter>
                             &mut client_router,
                             stop_trigger.clone(),
                         )
-                            .await
+                        .await
                         {
                             Ok((new_sender, new_receiver, new_remote_drop_rx)) => {
                                 sender = new_sender;
@@ -550,7 +548,7 @@ ConnectionRegistratorTask<Path, DelegateRouter>
                             &mut subscribers,
                             RouterEvent::Unreachable(target.to_string()),
                         )
-                            .await;
+                        .await;
 
                         if let Some(local_drop_tx) = maybe_local_drop_tx {
                             local_drop_tx.provide(ConnectionDropped::Closed)?;
@@ -632,9 +630,9 @@ async fn open_connection<Path, DelegateRouter>(
     client_router: &mut ClientRouter<Path, DelegateRouter>,
     stop_trigger: CloseReceiver,
 ) -> Result<RawConnection, ConnectionError>
-    where
-        Path: Addressable,
-        DelegateRouter: BidirectionalRouter,
+where
+    Path: Addressable,
+    DelegateRouter: BidirectionalRouter,
 {
     let mut stop_rx = stop_trigger.fuse();
     loop {
@@ -678,9 +676,9 @@ async fn try_open_remote_connection<Path, DelegateRouter>(
     client_router: &mut ClientRouter<Path, DelegateRouter>,
     target: Url,
 ) -> Result<RawConnection, ConnectionError>
-    where
-        Path: Addressable,
-        DelegateRouter: BidirectionalRouter,
+where
+    Path: Addressable,
+    DelegateRouter: BidirectionalRouter,
 {
     let BidirectionalRoute {
         sender,
@@ -695,9 +693,9 @@ async fn try_open_local_connection<Path, DelegateRouter>(
     client_router: &mut ClientRouter<Path, DelegateRouter>,
     target: String,
 ) -> Result<RawConnection, ConnectionError>
-    where
-        Path: Addressable,
-        DelegateRouter: BidirectionalRouter,
+where
+    Path: Addressable,
+    DelegateRouter: BidirectionalRouter,
 {
     let relative_uri = RelativeUri::try_from(target.clone())
         .map_err(|e| ConnectionError::Http(HttpError::invalid_url(target, Some(e.to_string()))))?;

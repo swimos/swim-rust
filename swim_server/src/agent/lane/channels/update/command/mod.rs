@@ -23,6 +23,7 @@ use pin_utils::pin_mut;
 use std::fmt::Debug;
 use std::time::Duration;
 use swim_async_runtime::time::timeout;
+use swim_runtime::routing::RoutingAddr;
 use tokio::sync::mpsc;
 use tracing::{event, Level};
 

@@ -6,6 +6,8 @@ edition = "2018"
 [dependencies]
 swim_utilities = { path = "../../swim_utilities", features = ["trigger"] }
 swim_warp = { path = "../../swim_warp" }
+swim_model = { path = "../../api/swim_model" }
+swim_form = { path = "../../api/swim_form" }
 swim_runtime = { path = "../../runtime/swim_runtime" }
 tokio = { version = "1.1.1", features = ["sync"] }
 futures = "0.3.4"
@@ -17,3 +19,4 @@ tokio-stream = { version = "0.1.2", features = ["sync"] }
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["rt-multi-thread", "macros", "test-util"] }
+swim_async_runtime = { path = "../../runtime/swim_async_runtime" }

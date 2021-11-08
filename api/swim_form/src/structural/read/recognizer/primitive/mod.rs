@@ -18,10 +18,10 @@ use crate::structural::read::event::{NumericValue, ReadEvent};
 use crate::structural::read::ReadError;
 use num_traits::ToPrimitive;
 use std::convert::TryFrom;
+use std::num::NonZeroUsize;
 use swim_model::bigint::{BigInt, BigUint};
 use swim_model::Text;
 use swim_model::ValueKind;
-use std::num::NonZeroUsize;
 
 pub struct UnitRecognizer;
 pub struct I32Recognizer;

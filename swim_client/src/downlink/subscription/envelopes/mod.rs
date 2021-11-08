@@ -15,7 +15,7 @@
 use crate::downlink::model::map::UntypedMapModification;
 use crate::downlink::model::value::SharedValue;
 use crate::downlink::Command;
-use swim_model::path::{Addressable, AbsolutePath};
+use swim_model::path::Addressable;
 use swim_model::Value;
 use swim_warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
 

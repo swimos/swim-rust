@@ -15,19 +15,15 @@
 #[cfg(test)]
 mod tests;
 
-use crate::error::ResolutionError;
-use crate::remote::{
-    BadUrl, BidirectionalReceiverRequest, RawRoute, Scheme, SchemeSocketAddr,
-};
 use crate::error::ConnectionDropped;
-use crate::routing::{
-    BidirectionalRoute, RoutingAddr, TaggedEnvelope, TaggedSender,
-};
+use crate::error::ResolutionError;
+use crate::remote::{BadUrl, BidirectionalReceiverRequest, RawRoute, Scheme, SchemeSocketAddr};
+use crate::routing::{BidirectionalRoute, RoutingAddr, TaggedEnvelope, TaggedSender};
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
-use swim_utilities::trigger::promise;
 use swim_utilities::future::request::Request;
+use swim_utilities::trigger::promise;
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;

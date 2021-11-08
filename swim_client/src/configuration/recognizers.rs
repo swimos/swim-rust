@@ -14,43 +14,31 @@
 
 use std::borrow::Borrow;
 use std::collections::HashMap;
-use std::num::NonZeroUsize;
-use std::time::Duration;
 
 use url::Url;
 
 use swim_form::structural::read::error::ExpectedEvent;
 use swim_form::structural::read::event::ReadEvent;
-use swim_form::structural::read::recognizer::impls::{
-    AbsolutePathRecognizer, DurationRecognizer, RetryStrategyRecognizer,
-};
+use swim_form::structural::read::recognizer::impls::AbsolutePathRecognizer;
 use swim_form::structural::read::recognizer::{
     HashMapRecognizer, Recognizer, RecognizerReadable, SimpleAttrBody, SimpleRecBody, UrlRecognizer,
 };
 use swim_form::structural::read::ReadError;
 use swim_model::path::AbsolutePath;
 use swim_model::{Text, ValueKind};
+use swim_runtime::configuration::recognizers::{
+    DownlinkConfigRecognizer, DownlinkConnectionsConfigRecognizer,
+};
 use swim_runtime::configuration::{WebSocketConfig, WebSocketConfigRecognizer};
-use swim_runtime::configuration::recognizers::{DownlinkConfigRecognizer, DownlinkConnectionsConfigRecognizer};
 use swim_runtime::remote::config::{RemoteConnectionsConfig, RemoteConnectionsConfigRecognizer};
-use swim_utilities::future::retryable::RetryStrategy;
 
 use crate::configuration::tags::{
-    CONFIG_TAG, DEFAULT_TAG,
-    DOWNLINKS_TAG, HOST_TAG,
-    LANE_TAG, REMOTE_CONNECTIONS_TAG,
-WEBSOCKET_CONNECTIONS_TAG,
+    CONFIG_TAG, DEFAULT_TAG, DOWNLINKS_TAG, HOST_TAG, LANE_TAG, REMOTE_CONNECTIONS_TAG,
+    WEBSOCKET_CONNECTIONS_TAG,
 };
-use crate::configuration::{
-    ClientDownlinksConfig, SwimClientConfig,
-    DEFAULT_BACK_PRESSURE_BRIDGE_BUFFER_SIZE, DEFAULT_BACK_PRESSURE_INPUT_BUFFER_SIZE,
-    DEFAULT_BACK_PRESSURE_MAX_ACTIVE_KEYS, DEFAULT_BACK_PRESSURE_YIELD_AFTER, DEFAULT_BUFFER_SIZE,
-    DEFAULT_DL_REQUEST_BUFFER_SIZE, DEFAULT_DOWNLINK_BUFFER_SIZE, DEFAULT_IDLE_TIMEOUT,
-    DEFAULT_YIELD_AFTER,
-};
-use swim_runtime::configuration::{
-    BackpressureMode, DownlinkConfig, DownlinkConnectionsConfig, OnInvalidMessage,
-};
+use crate::configuration::{ClientDownlinksConfig, SwimClientConfig};
+use swim_runtime::configuration::DOWNLINK_CONNECTIONS_TAG;
+use swim_runtime::configuration::{DownlinkConfig, DownlinkConnectionsConfig};
 
 impl RecognizerReadable for SwimClientConfig {
     type Rec = SwimClientConfigRecognizer;
@@ -188,7 +176,7 @@ impl Recognizer for SwimClientConfigRecognizer {
                         websocket_config: ws_conf,
                         downlinks_config: self.downlinks.clone().unwrap_or_default(),
                     }))
-                },
+                }
                 ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                     ExpectedEvent::ValueEvent(ValueKind::Text),
                     ExpectedEvent::EndOfRecord,
@@ -262,7 +250,6 @@ impl Recognizer for SwimClientConfigRecognizer {
         downlinks_recognizer.reset();
     }
 }
-
 
 impl RecognizerReadable for ClientDownlinksConfig {
     type Rec = ClientDownlinksConfigRecognizer;

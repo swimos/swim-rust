@@ -12,19 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::request::Request;
-use crate::routing::error::{ConnectionError, IoError};
-use crate::routing::remote::config::RemoteConnectionsConfig;
-use crate::routing::remote::pending::PendingRequest;
-use crate::routing::remote::state::{
+use crate::error::{ConnectionError, IoError};
+use crate::remote::config::RemoteConnectionsConfig;
+use crate::remote::pending::PendingRequest;
+use crate::remote::state::{
     DeferredResult, Event, RemoteConnectionChannels, RemoteConnections, RemoteTasksState, State,
 };
-use crate::routing::remote::table::{BidirectionalRegistrator, SchemeHostPort};
-use crate::routing::remote::test_fixture::{
+use crate::remote::table::{BidirectionalRegistrator, SchemeHostPort};
+use crate::remote::test_fixture::{
     ErrorMode, FakeConnections, FakeListener, FakeSocket, FakeWebsocket, FakeWebsockets,
     LocalRoutes,
 };
-use crate::routing::remote::{ConnectionDropped, Scheme, SchemeSocketAddr};
+use crate::remote::{ConnectionDropped, Scheme, SchemeSocketAddr};
 use crate::routing::{CloseSender, RoutingAddr, TaggedSender};
 use futures::future::BoxFuture;
 use futures::io::ErrorKind;
@@ -32,8 +31,6 @@ use std::collections::HashMap;
 use std::io;
 use std::time::Duration;
 use swim_async_runtime::time::timeout::timeout;
-use swim_runtime::error::{ConnectionError, IoError};
-use swim_runtime::time::timeout::timeout;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::open_ended::OpenEndedFutures;
 use swim_utilities::future::request::Request;

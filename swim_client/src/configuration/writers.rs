@@ -12,16 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::configuration::tags::{
-   CONFIG_TAG, DEFAULT_TAG,
-    DOWNLINKS_TAG, HOST_TAG,
-    LANE_TAG
-};
-use swim_runtime::configuration::{BackpressureMode, DownlinkConfig, DownlinkConnectionsConfig, OnInvalidMessage, WebSocketConfig};
+use crate::configuration::tags::{CONFIG_TAG, DEFAULT_TAG, DOWNLINKS_TAG, HOST_TAG, LANE_TAG};
 use crate::configuration::{ClientDownlinksConfig, SwimClientConfig};
 use swim_form::structural::write::{
     BodyWriter, HeaderWriter, RecordBodyKind, StructuralWritable, StructuralWriter,
 };
+use swim_runtime::configuration::WebSocketConfig;
 
 impl StructuralWritable for SwimClientConfig {
     fn num_attributes(&self) -> usize {

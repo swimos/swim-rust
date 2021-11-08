@@ -16,7 +16,7 @@ use crate::error::{
     CloseError, CloseErrorKind, ConnectionError, IoError, ProtocolError, ProtocolErrorKind,
     ResolutionError,
 };
-use crate::routing::error::{RouterError, Unresolvable};
+use crate::error::{RouterError, Unresolvable};
 use crate::routing::RoutingAddr;
 use std::io::ErrorKind;
 use std::time::Duration;

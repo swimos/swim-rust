@@ -13,9 +13,8 @@
 // limitations under the License.
 
 use crate::structural::tags::{
-    DELAY_TAG, EXPONENTIAL_TAG,
-    IMMEDIATE_TAG, INTERVAL_TAG, MAX_BACKOFF_TAG, MAX_INTERVAL_TAG,
-   RETRIES_TAG,
+    DELAY_TAG, EXPONENTIAL_TAG, IMMEDIATE_TAG, INTERVAL_TAG, MAX_BACKOFF_TAG, MAX_INTERVAL_TAG,
+    RETRIES_TAG,
 };
 
 const NONE_TAG: &str = "none";
@@ -105,5 +104,3 @@ impl StructuralWritable for RetryStrategy {
         }
     }
 }
-
-

@@ -14,9 +14,9 @@
 
 use crate::remote::table::SchemeHostPort;
 use crate::remote::SchemeSocketAddr;
+use futures::future::BoxFuture;
 use futures::Future;
 use futures::FutureExt;
-use futures::future::BoxFuture;
 use std::io;
 use tokio::net::lookup_host;
 
@@ -87,8 +87,8 @@ impl DnsResolver for Resolver {
 
 #[cfg(feature = "trust-dns")]
 mod trust_dns_impl {
-    use crate::routing::remote::net::dns::DnsResolver;
-    use crate::routing::remote::table::SchemeHostPort;
+    use crate::remote::net::dns::DnsResolver;
+    use crate::remote::table::SchemeHostPort;
     use futures::future::BoxFuture;
     use std::io;
     use std::net::{SocketAddr, ToSocketAddrs};

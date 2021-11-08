@@ -19,6 +19,7 @@ use crate::plane::context::PlaneContext;
 use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::spec::RouteSpec;
+use crate::routing::PlaneRoutingRequest;
 use either::Either;
 use futures::future::{join, BoxFuture};
 use futures::{select_biased, FutureExt, StreamExt};
@@ -31,9 +32,15 @@ use std::fmt::Debug;
 use std::ops::Deref;
 use std::sync::{Arc, Weak};
 use swim_async_runtime::time::clock::Clock;
-use swim_runtime::error::{ConnectionError, ProtocolError, ProtocolErrorKind};
-use swim_utilities::future::request::Request;
 use swim_client::interface::ClientContext;
+use swim_model::path::Path;
+use swim_runtime::error::{
+    ConnectionDropped, ConnectionError, NoAgentAtRoute, ProtocolError, ProtocolErrorKind,
+    RouterError, Unresolvable,
+};
+use swim_runtime::remote::RawRoute;
+use swim_runtime::routing::{CloseReceiver, RouterFactory, RoutingAddr, TaggedEnvelope};
+use swim_utilities::future::request::Request;
 use swim_utilities::future::task::Spawner;
 use swim_utilities::routing::route_pattern::RoutePattern;
 use swim_utilities::routing::uri::RelativeUri;

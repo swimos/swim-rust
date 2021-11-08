@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::remote::table::{RoutingTable, SchemeHostPort};
-use crate::routing::remote::{RawRoute, Scheme, SchemeSocketAddr};
-use crate::routing::{ConnectionDropped, RoutingAddr, TaggedEnvelope};
-use crate::warp::envelope::Envelope;
+use crate::error::ConnectionDropped;
+use crate::remote::table::{RoutingTable, SchemeHostPort};
+use crate::remote::{RawRoute, Scheme, SchemeSocketAddr};
+use crate::routing::{RoutingAddr, TaggedEnvelope};
 use std::time::Duration;
 use swim_warp::envelope::Envelope;
 use tokio::sync::mpsc;

@@ -35,7 +35,7 @@ impl Iterator for RemoteRoutingAddresses {
 
 #[cfg(test)]
 mod tests {
-    use crate::routing::remote::addresses::RemoteRoutingAddresses;
+    use crate::remote::addresses::RemoteRoutingAddresses;
 
     #[test]
     fn generate_addresses() {

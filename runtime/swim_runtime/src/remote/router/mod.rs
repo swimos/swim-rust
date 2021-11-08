@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::error::{ResolutionError, RouterError};
 use crate::remote::{RawRoute, RemoteRoutingRequest};
-use crate::error::{RouterError, ResolutionError};
-use crate::routing::{BidirectionalRoute, BidirectionalRouter, Route, Router, RoutingAddr, TaggedSender};
+use crate::routing::{
+    BidirectionalRoute, BidirectionalRouter, Route, Router, RoutingAddr, TaggedSender,
+};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use swim_utilities::future::request::Request;

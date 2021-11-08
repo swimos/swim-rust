@@ -16,6 +16,7 @@ use super::*;
 use crate::downlink::Message;
 use std::sync::Arc;
 use swim_form::Form;
+use swim_model::path::AbsolutePath;
 use swim_model::Value::Int32Value;
 use swim_warp::envelope::LinkMessage;
 

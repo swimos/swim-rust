@@ -12,9 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::routing::PlaneRoutingRequest;
 use futures::future::BoxFuture;
 use futures::FutureExt;
-use swim_runtime::error::ResolutionError;
+use swim_runtime::error::{ResolutionError, RouterError};
+use swim_runtime::remote::RawRoute;
+use swim_runtime::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 use swim_utilities::future::request::Request;
 use swim_utilities::routing::uri::RelativeUri;
 use tokio::sync::{mpsc, oneshot};

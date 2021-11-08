@@ -31,11 +31,6 @@ use crate::downlink::Downlinks;
 use crate::downlink::SchemaViolations;
 use crate::router::{ClientRouterFactory, TopLevelClientRouterFactory};
 use crate::runtime::task::TaskHandle;
-use swim_runtime::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
-use swim_runtime::remote::net::plain::TokioPlainTextNetworking;
-use swim_runtime::remote::net::dns::Resolver;
-use swim_runtime::ws::tungstenite::TungsteniteWsConnections;
-use swim_runtime::routing::{CloseReceiver, CloseSender};
 use futures::join;
 use std::error::Error;
 use std::fmt;
@@ -45,17 +40,23 @@ use std::io;
 use std::io::Read;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use swim_async_runtime::task::{spawn, TaskError};
 use swim_form::Form;
-use swim_model::path::{Addressable, AbsolutePath};
+use swim_model::path::{AbsolutePath, Addressable};
 use swim_model::Value;
 use swim_recon::parser::parse_value as parse_single;
+use swim_runtime::error::ConnectionError;
 use swim_runtime::error::RoutingError;
-use swim_runtime::ws::WebsocketFactory;
+use swim_runtime::remote::net::dns::Resolver;
+use swim_runtime::remote::net::plain::TokioPlainTextNetworking;
+use swim_runtime::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
+use swim_runtime::routing::CloseSender;
+use swim_runtime::ws::tungstenite::TungsteniteWsConnections;
+
 use swim_schema::ValueSchema;
-use swim_warp::envelope::Envelope;
-use swim_async_runtime::task::spawn;
 use swim_utilities::future::open_ended::OpenEndedFutures;
 use swim_utilities::trigger::promise;
+use swim_warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use tracing::info;
 
@@ -314,7 +315,7 @@ impl<Path: Addressable> SwimClient<Path> {
 type ClientTaskHandle<Path> = TaskHandle<(
     Result<(), SubscriptionError<Path>>,
     Result<(), std::io::Error>,
-    Result<(), swim_common::routing::error::ConnectionError>,
+    Result<(), swim_runtime::error::ConnectionError>,
 )>;
 
 #[derive(Clone, Debug)]

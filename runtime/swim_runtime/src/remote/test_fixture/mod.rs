@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::error::{
+use crate::error::RouterError;
+use crate::error::{
     CloseError, ConnectionError, HttpError, HttpErrorKind, ResolutionError, ResolutionErrorKind,
 };
-use crate::routing::remote::table::SchemeHostPort;
-use crate::routing::remote::{ConnectionDropped, Scheme, SchemeSocketAddr};
-use crate::routing::remote::{ExternalConnections, Listener};
-use crate::routing::ws::{CloseReason, JoinedStreamSink, WsConnections, WsMessage};
-use crate::routing::RouterError;
+use crate::remote::table::SchemeHostPort;
+use crate::remote::{ConnectionDropped, Scheme, SchemeSocketAddr};
+use crate::remote::{ExternalConnections, Listener};
 use crate::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender};
+use crate::ws::{CloseReason, JoinedStreamSink, WsConnections, WsMessage};
 use futures::future::{ready, BoxFuture};
 use futures::io::ErrorKind;
 use futures::stream::Fuse;
@@ -34,10 +34,6 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicIsize, Ordering};
 use std::sync::Arc;
-use swim_runtime::error::{
-    CloseError, ConnectionError, HttpError, HttpErrorKind, ResolutionError, ResolutionErrorKind,
-};
-use swim_runtime::ws::{CloseReason, JoinedStreamSink, WsConnections, WsMessage};
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
@@ -197,13 +193,13 @@ impl RouterFactory for LocalRoutes {
 }
 
 pub mod fake_channel {
+    use crate::ws::{CloseReason, JoinedStreamSink};
     use futures::channel::mpsc;
     use futures::future::ready;
     use futures::future::BoxFuture;
     use futures::{ready, FutureExt, Sink, SinkExt, Stream, StreamExt};
     use std::pin::Pin;
     use std::task::{Context, Poll};
-    use swim_runtime::ws::{CloseReason, JoinedStreamSink};
 
     pub struct TwoWayMpsc<T, E> {
         tx: mpsc::Sender<T>,

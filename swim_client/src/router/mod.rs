@@ -22,25 +22,22 @@ use std::convert::TryFrom;
 use swim_utilities::routing::uri::RelativeUri;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
-use tokio_stream::wrappers::ReceiverStream;
-use tracing::trace_span;
-use tracing::{span, Level};
-use tracing_futures::Instrument;
+
 use url::Url;
 
-use swim_async_runtime::task::*;
-use swim_model::path::{AbsolutePath, Addressable, RelativePath};
-use swim_utilities::future::request::request_future::RequestError;
-use swim_warp::envelope::{Envelope, IncomingLinkMessage};
+use swim_model::path::{AbsolutePath, Addressable};
 
-use crate::connections::{ConnectionPool, ConnectionSender};
-use swim_runtime::error::{ConnectionError, ResolutionError, RouterError, RoutingError, Unresolvable};
-use swim_runtime::remote::{BadUrl, RawRoute, RemoteRoutingRequest};
+use swim_warp::envelope::IncomingLinkMessage;
+
+use swim_runtime::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
 use swim_runtime::remote::table::SchemeHostPort;
-use swim_runtime::routing::{BidirectionalRoute, BidirectionalRouter, Route, Router, RouterFactory, RoutingAddr, TaggedSender};
-use swim_utilities::errors::Recoverable;
+use swim_runtime::remote::{BadUrl, RawRoute, RemoteRoutingRequest};
+use swim_runtime::routing::{
+    BidirectionalRoute, BidirectionalRouter, Route, Router, RouterFactory, RoutingAddr,
+    TaggedSender,
+};
+
 use swim_utilities::future::request::Request;
-use swim_utilities::trigger::promise;
 
 #[cfg(test)]
 pub(crate) mod tests;

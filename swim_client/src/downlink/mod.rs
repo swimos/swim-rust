@@ -20,7 +20,6 @@ pub mod subscription;
 mod tests;
 pub mod typed;
 
-use swim_runtime::configuration::{DownlinkConfig, OnInvalidMessage};
 use crate::downlink::error::DownlinkError;
 use crate::downlink::model::map::UntypedMapModification;
 use crate::downlink::model::value::SharedValue;
@@ -43,6 +42,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use swim_model::Value;
+use swim_runtime::configuration::{DownlinkConfig, OnInvalidMessage};
 use swim_runtime::error::RoutingError;
 use swim_schema::schema::StandardSchema;
 use swim_utilities::errors::Recoverable;

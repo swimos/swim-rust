@@ -15,17 +15,16 @@
 use std::fmt;
 use std::fmt::{Debug, Formatter};
 
+use crate::routing::TaggedEnvelope;
+use swim_warp::envelope::Envelope;
 use {
-    crate::error::TlsError, crate::ws::tls::build_x509_certificate,
+    crate::error::TlsError, crate::ws::tls::build_x509_certificate, std::path::Path,
     tokio_native_tls::native_tls::Certificate,
-    std::path::Path,
 };
 use {
     tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode as TungCloseCode,
     tokio_tungstenite::tungstenite::protocol::CloseFrame, tokio_tungstenite::tungstenite::Message,
 };
-use swim_warp::envelope::Envelope;
-use crate::routing::TaggedEnvelope;
 
 #[derive(Clone)]
 pub enum Protocol {

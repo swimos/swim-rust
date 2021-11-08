@@ -26,24 +26,22 @@ mod tests;
 
 use std::net::SocketAddr;
 
+use crate::error::ConnectionDropped;
 use crate::error::Unresolvable;
 use crate::error::{ConnectionError, HttpError, ResolutionError, ResolutionErrorKind};
 use crate::remote::config::RemoteConnectionsConfig;
 use crate::remote::pending::PendingRequest;
 use crate::remote::state::{DeferredResult, Event, RemoteConnections, RemoteTasksState};
 use crate::remote::table::{BidirectionalRegistrator, SchemeHostPort};
+use crate::routing::{CloseReceiver, RouterFactory, RoutingAddr, TaggedEnvelope};
 use crate::ws::WsConnections;
-use crate::error::ConnectionDropped;
-use crate::routing::{
-    CloseReceiver, RouterFactory, RoutingAddr, TaggedEnvelope,
-};
 use futures::future::BoxFuture;
-use swim_utilities::future::request::Request;
 use futures::stream::FusedStream;
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::io;
 use std::io::Error;
+use swim_utilities::future::request::Request;
 use swim_utilities::future::task::Spawner;
 use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
@@ -51,7 +49,6 @@ use tracing::{event, Level};
 use url::Url;
 
 use swim_tracing::request::{RequestExt, TryRequestExt};
-use swim_utilities::trigger;
 
 #[cfg(test)]
 pub mod test_fixture;

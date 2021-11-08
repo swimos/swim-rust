@@ -13,23 +13,11 @@
 // limitations under the License.
 
 use crate::error::ConnectionError;
-use std::error::Error;
-use futures::future::BoxFuture;
-use futures::FutureExt;
-use std::any::Any;
-use std::collections::HashSet;
+
 use std::fmt::{Display, Formatter};
-use std::sync::Arc;
+
 use std::time::Duration;
 use swim_utilities::errors::Recoverable;
-use swim_utilities::future::request::request_future::RequestError;
-use swim_utilities::sync::circular_buffer;
-use tokio::sync::mpsc::error::SendError as MpscSendError;
-use swim_utilities::routing::uri::RelativeUri;
-use swim_utilities::trigger::promise;
-use tokio::sync::mpsc;
-use url::Url;
-
 
 /// Reasons for a router connection to be dropped.
 #[derive(Debug, Clone, PartialEq, Eq)]

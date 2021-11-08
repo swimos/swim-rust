@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::form::structural::read::error::ExpectedEvent;
-use crate::form::structural::read::event::ReadEvent;
-use crate::form::structural::read::recognizer::impls::{
-    DurationRecognizer, RetryStrategyRecognizer,
-};
+use std::borrow::Borrow;
+use std::num::NonZeroUsize;
+use std::time::Duration;
+use swim_form::structural::read::error::ExpectedEvent;
+use swim_form::structural::read::event::ReadEvent;
+use swim_form::structural::read::recognizer::impls::{DurationRecognizer, RetryStrategyRecognizer};
 use swim_form::structural::read::recognizer::{
     Recognizer, RecognizerReadable, SimpleAttrBody, SimpleRecBody,
 };
@@ -24,11 +25,7 @@ use swim_form::structural::read::ReadError;
 use swim_form::structural::write::{
     BodyWriter, HeaderWriter, RecordBodyKind, StructuralWritable, StructuralWriter,
 };
-use crate::model::text::Text;
-use crate::model::ValueKind;
-use std::borrow::Borrow;
-use std::num::NonZeroUsize;
-use std::time::Duration;
+use swim_model::{Text, ValueKind};
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::retryable::RetryStrategy;
 

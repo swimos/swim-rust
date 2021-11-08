@@ -14,19 +14,55 @@
 
 use futures::future::BoxFuture;
 use futures::FutureExt;
-use std::fmt::{Display, Formatter};
-use std::time::Duration;
-use swim_runtime::error::RoutingError;
-use swim_runtime::error::{ConnectionError, ResolutionError};
-use swim_runtime::ws::WsMessage;
-use swim_utilities::errors::Recoverable;
+use std::any::Any;
+use std::collections::HashSet;
+
+use std::sync::Arc;
+
+use swim_client::router::DownlinkRoutingRequest;
+use swim_model::path::Path;
+use swim_runtime::error::ResolutionError;
+use swim_runtime::error::{NoAgentAtRoute, RouterError, Unresolvable};
+use swim_runtime::remote::{RawRoute, RemoteRoutingRequest};
+use swim_runtime::routing::{
+    BidirectionalRoute, BidirectionalRouter, Route, Router, RouterFactory, RoutingAddr,
+    TaggedSender,
+};
+
 use swim_utilities::future::request::Request;
 use swim_utilities::routing::uri::RelativeUri;
-use swim_utilities::trigger::promise;
-use swim_warp::envelope::{Envelope, OutgoingLinkMessage};
+
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use url::Url;
+
+type AgentRequest = Request<Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>>;
+type EndpointRequest = Request<Result<RawRoute, Unresolvable>>;
+type RoutesRequest = Request<HashSet<RelativeUri>>;
+type ResolutionRequest = Request<Result<RoutingAddr, RouterError>>;
+
+/// Requests that can be serviced by the plane event loop.
+#[derive(Debug)]
+pub enum PlaneRoutingRequest {
+    /// Get a handle to an agent (starting it where necessary).
+    Agent {
+        name: RelativeUri,
+        request: AgentRequest,
+    },
+    /// Get channel to route messages to a specified routing address.
+    Endpoint {
+        id: RoutingAddr,
+        request: EndpointRequest,
+    },
+    /// Resolve the routing address for an agent.
+    Resolve {
+        host: Option<Url>,
+        name: RelativeUri,
+        request: ResolutionRequest,
+    },
+    /// Get all of the active routes for the plane.
+    Routes(RoutesRequest),
+}
 
 #[derive(Debug, Clone)]
 pub(crate) struct TopLevelServerRouterFactory {

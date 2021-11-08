@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::request::Request;
-use crate::routing::error::{CloseError, CloseErrorKind, ConnectionError};
-use crate::routing::remote::pending::{PendingRequest, PendingRequests};
-use crate::routing::remote::table::{BidirectionalRegistrator, SchemeHostPort};
-use crate::routing::remote::{BidirectionalRequest, Scheme};
+use crate::error::{CloseError, CloseErrorKind, ConnectionError};
+use crate::remote::pending::{PendingRequest, PendingRequests};
+use crate::remote::table::{BidirectionalRegistrator, SchemeHostPort};
+use crate::remote::{BidirectionalRequest, Scheme};
 use crate::routing::{RoutingAddr, TaggedSender};
 use futures::future::join;
+use swim_utilities::future::request::Request;
 use swim_utilities::trigger::promise;
 use tokio::sync::{mpsc, oneshot};
 

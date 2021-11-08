@@ -21,8 +21,8 @@ use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
-use swim_future::item_sink::ItemSink;
 use swim_algebra::non_zero_usize;
+use swim_future::item_sink::ItemSink;
 
 #[cfg(test)]
 mod tests;

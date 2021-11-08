@@ -12,37 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 use std::collections::HashMap;
-use std::num::NonZeroUsize;
 
-use swim_utilities::algebra::non_zero_usize;
 use swim_form::structural::read::ReadError;
-use swim_utilities::future::retryable::strategy::RetryStrategy;
-use swim_runtime::configuration::{DownlinkConfig, DownlinksConfig};
-use swim_runtime::remote::config::RemoteConnectionsConfig;
 use swim_model::path::AbsolutePath;
+use swim_model::path::Addressable;
+use swim_recon::parser::ParseError;
+use swim_runtime::configuration::{DownlinkConfig, DownlinkConnectionsConfig, DownlinksConfig};
+use swim_runtime::remote::config::RemoteConnectionsConfig;
+
 use thiserror::Error;
-use tokio::time::Duration;
 use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use url::Url;
-use swim_recon::parser::ParseError;
-use swim_model::path::Addressable;
 
 mod recognizers;
 mod tags;
 #[cfg(test)]
 mod tests;
 mod writers;
-
-const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
-const DEFAULT_DOWNLINK_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(32);
-const DEFAULT_YIELD_AFTER: NonZeroUsize = non_zero_usize!(256);
-const DEFAULT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(128);
-const DEFAULT_DL_REQUEST_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(8);
-const DEFAULT_BACK_PRESSURE_INPUT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(32);
-const DEFAULT_BACK_PRESSURE_BRIDGE_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(16);
-const DEFAULT_BACK_PRESSURE_MAX_ACTIVE_KEYS: NonZeroUsize = non_zero_usize!(16);
-const DEFAULT_BACK_PRESSURE_YIELD_AFTER: NonZeroUsize = non_zero_usize!(256);
 
 /// Configuration for the swim client.
 ///

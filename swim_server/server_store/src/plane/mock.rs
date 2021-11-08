@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_model::Text;
 use crate::agent::mock::MockNodeStore;
 use crate::agent::SwimNodeStore;
 use crate::plane::PlaneStore;
 use crate::server::{StoreEngine, StoreKey};
+use swim_model::Text;
 use swim_store::{EngineInfo, Keyspace, KeyspaceResolver, StoreError};
 
 #[derive(Clone, Debug)]

@@ -19,8 +19,8 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_model::Value;
-use swim_utilities::future::item_sink::for_mpsc_sender;
 use swim_utilities::algebra::non_zero_usize;
+use swim_utilities::future::item_sink::for_mpsc_sender;
 use tokio::time::timeout;
 use tokio_stream::wrappers::ReceiverStream;
 

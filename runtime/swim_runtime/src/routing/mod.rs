@@ -12,17 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt::{Display, Formatter};
+use crate::error::{ConnectionDropped, ResolutionError, RouterError, RoutingError};
+
 use futures::future::BoxFuture;
 use futures::FutureExt;
-use swim_warp::envelope::{Envelope, OutgoingLinkMessage};
-use swim_utilities::trigger::promise;
+use std::fmt::{Display, Formatter};
 use swim_utilities::future::item_sink::{ItemSink, SendError};
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger::promise;
+use swim_warp::envelope::{Envelope, OutgoingLinkMessage};
 use tokio::sync::mpsc;
 use url::Url;
-use swim_utilities::routing::uri::RelativeUri;
-use crate::error::{ConnectionDropped, ResolutionError, RouterError, RoutingError};
-use crate::ws::WsMessage;
 
 pub type CloseReceiver = promise::Receiver<mpsc::Sender<Result<(), RoutingError>>>;
 pub type CloseSender = promise::Sender<mpsc::Sender<Result<(), RoutingError>>>;

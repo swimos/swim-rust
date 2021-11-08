@@ -12,19 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::model::Value;
-use crate::routing::error::{ConnectionError, IoError, ResolutionError};
-use crate::routing::error::{RouterError, Unresolvable};
-use crate::routing::remote::router::RemoteRouter;
-use crate::routing::remote::test_fixture::LocalRoutes;
-use crate::routing::remote::{RawRoute, RemoteRoutingRequest};
+use crate::error::{ConnectionError, IoError, ResolutionError, RouterError, Unresolvable};
+use crate::remote::router::RemoteRouter;
+use crate::remote::test_fixture::LocalRoutes;
+use crate::remote::{RawRoute, RemoteRoutingRequest};
 use crate::routing::{Route, Router, RoutingAddr, TaggedEnvelope};
-use crate::warp::envelope::Envelope;
 use futures::future::join;
 use futures::io::ErrorKind;
 use futures::{FutureExt, StreamExt};
 use swim_model::Value;
-use swim_runtime::error::{ConnectionError, IoError, ResolutionError};
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;

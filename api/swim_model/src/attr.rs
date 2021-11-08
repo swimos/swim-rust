@@ -13,10 +13,10 @@
 // limitations under the License.
 
 use crate::text::Text;
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 use std::hash::Hash;
-use serde::{Serialize, Deserialize};
 
 use super::write_string_literal;
 use crate::{Item, Value};

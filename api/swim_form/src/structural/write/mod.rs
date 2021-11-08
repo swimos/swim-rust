@@ -20,10 +20,10 @@ use std::num::NonZeroUsize;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_utilities::future::retryable::strategy::Quantity;
 use swim_model::bigint::{BigInt, BigUint};
-use swim_model::{Attr, Blob, Item, Text, Value};
 use swim_model::path::AbsolutePath;
+use swim_model::{Attr, Blob, Item, Text, Value};
+use swim_utilities::future::retryable::strategy::Quantity;
 
 #[doc(hidden)]
 pub use swim_form_derive::StructuralWritable;

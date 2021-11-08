@@ -50,6 +50,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_async_runtime::time::timeout::timeout;
+use swim_runtime::routing::{Router, RoutingAddr, TaggedClientEnvelope, TaggedEnvelope};
 use swim_utilities::time::AtomicInstant;
 use tokio::time::Instant;
 

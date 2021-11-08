@@ -15,45 +15,37 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::model::Value;
-use crate::warp::envelope::Envelope;
-use crate::warp::path::RelativePath;
 use futures::channel::mpsc as fut_mpsc;
 use futures::future::{join, join4, BoxFuture};
 use futures::{FutureExt, SinkExt, StreamExt};
 use http::Uri;
 use parking_lot::Mutex;
-use swim_runtime::time::timeout;
-use swim_utilities::algebra::non_zero_usize;
-use tokio::sync::{mpsc, oneshot, watch};
 use swim_async_runtime::time::timeout;
 use swim_model::path::RelativePath;
 use swim_model::Value;
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::retryable::{Quantity, RetryStrategy};
 use swim_utilities::routing::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
 use swim_warp::envelope::Envelope;
+use tokio::sync::{mpsc, oneshot, watch};
 
-use crate::routing::error::{
+use crate::error::{
     CloseError, CloseErrorKind, ConnectionError, IoError, ProtocolError, ResolutionError,
 };
-use crate::routing::remote::config::RemoteConnectionsConfig;
-use crate::routing::remote::task::{ConnectionTask, DispatchError};
-use crate::routing::remote::test_fixture::fake_channel::TwoWayMpsc;
-use crate::routing::remote::test_fixture::LocalRoutes;
-use crate::routing::remote::BidirectionalReceiverRequest;
-use crate::routing::ws::WsMessage;
-use crate::routing::RouterError;
-use crate::routing::{ConnectionDropped, Route, RoutingAddr, TaggedEnvelope, TaggedSender};
+use crate::error::{ConnectionDropped, RouterError};
+use crate::remote::config::RemoteConnectionsConfig;
+use crate::remote::task::{ConnectionTask, DispatchError};
+use crate::remote::test_fixture::fake_channel::TwoWayMpsc;
+use crate::remote::test_fixture::LocalRoutes;
+use crate::remote::BidirectionalReceiverRequest;
+use crate::routing::{Route, RoutingAddr, TaggedEnvelope, TaggedSender};
+use crate::ws::WsMessage;
 use futures::io::ErrorKind;
 use slab::Slab;
 use std::num::NonZeroUsize;
 use std::time::Duration;
-use swim_runtime::error::{
-    CloseError, CloseErrorKind, ConnectionError, IoError, ProtocolError, ResolutionError,
-};
-use swim_runtime::ws::WsMessage;
 
 #[test]
 fn dispatch_error_display() {

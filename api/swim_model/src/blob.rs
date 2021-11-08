@@ -22,8 +22,6 @@ use std::hash::Hash;
 use std::io;
 use std::io::Write;
 
-pub const EXT_BLOB: &str = "___BLOB";
-
 /// A Binary Large OBject (BLOB) structure for encoding and decoding base-64 data. A URL-safe
 /// encoding (UTF-7) is used.
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

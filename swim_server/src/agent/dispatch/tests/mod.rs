@@ -31,6 +31,7 @@ use std::time::Duration;
 use stm::transaction::TransactionError;
 use swim_async_runtime::time::timeout;
 use swim_model::path::RelativePath;
+use swim_runtime::routing::{RoutingAddr, TaggedEnvelope};
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::errors::Recoverable;
 use swim_utilities::time::AtomicInstant;

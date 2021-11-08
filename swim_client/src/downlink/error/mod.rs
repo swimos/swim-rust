@@ -15,7 +15,7 @@
 use crate::downlink::DownlinkKind;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use swim_model::path::{Addressable, AbsolutePath};
+use swim_model::path::Addressable;
 use swim_model::Value;
 use swim_runtime::error::{ConnectionError, RoutingError};
 use swim_schema::schema::StandardSchema;

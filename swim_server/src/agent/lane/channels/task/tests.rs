@@ -28,20 +28,6 @@ use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::model::supply::{into_try_send, SupplyLane};
 use crate::agent::Eff;
 use crate::meta::accumulate_metrics;
-use crate::meta::log::make_node_logger;
-use crate::meta::metric::config::MetricAggregatorConfig;
-use crate::meta::metric::lane::LanePulse;
-use crate::meta::metric::node::NodePulse;
-use crate::meta::metric::uplink::{UplinkObserver, WarpUplinkPulse};
-use crate::meta::metric::{aggregator_sink, AggregatorError, NodeMetricAggregator};
-use crate::meta::pulse::PulseLanes;
-use crate::plane::store::mock::MockPlaneStore;
-use crate::routing::error::RouterError;
-use crate::routing::error::SendError;
-use crate::routing::{
-    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
-    TaggedSender,
-};
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::{once, BoxStream, FusedStream};
 use futures::{Future, FutureExt, Stream, StreamExt};
@@ -59,11 +45,20 @@ use stm::transaction::TransactionError;
 use swim_form::structural::read::ReadError;
 use swim_form::structural::write::StructuralWritable;
 use swim_form::{Form, NewTypeForm};
+use swim_metrics::config::MetricAggregatorConfig;
+use swim_metrics::lane::LanePulse;
+use swim_metrics::node::NodePulse;
+use swim_metrics::uplink::{MetricBackpressureConfig, UplinkObserver, WarpUplinkPulse};
+use swim_metrics::{AggregatorError, MetaPulseLanes, NodeMetricAggregator};
 use swim_model::path::RelativePath;
 use swim_model::Value;
-use swim_runtime::error::ResolutionError;
-use swim_runtime::error::RoutingError;
+use swim_runtime::error::{ConnectionDropped, ResolutionError, RouterError};
+use swim_runtime::routing::{
+    Route, Router, RoutingAddr, TaggedClientEnvelope, TaggedEnvelope, TaggedSender,
+};
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::item_sink::ItemSink;
+use swim_utilities::future::item_sink::SendError;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::sync::topic;
 use swim_utilities::time::AtomicInstant;
@@ -372,7 +367,7 @@ struct TestSender {
 }
 
 impl<'a> ItemSink<'a, Envelope> for TestSender {
-    type Error = SendError;
+    type Error = SendError<Envelope>;
     type SendFuture = BoxFuture<'a, Result<(), Self::Error>>;
 
     fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
@@ -380,7 +375,7 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
         async move {
             self.inner.send(tagged).await.map_err(|err| {
                 let TaggedEnvelope(_, envelope) = err.0;
-                SendError::new(RoutingError::RouterDropped, envelope)
+                SendError(envelope)
             })
         }
         .boxed()

@@ -19,7 +19,11 @@ use super::*;
 use crate::router::tests::{FakeConnections, MockRemoteRouterTask};
 use crate::router::TopLevelClientRouterFactory;
 
+use swim_model::path::AbsolutePath;
+use swim_runtime::error::RouterError;
+use swim_runtime::routing::CloseSender;
 use swim_utilities::future::retryable::Quantity;
+use swim_warp::envelope::Envelope;
 
 async fn create_connection_pool(
     fake_connections: FakeConnections,

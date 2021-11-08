@@ -18,8 +18,8 @@ use super::*;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_utilities::future::item_sink;
 use swim_utilities::algebra::non_zero_usize;
+use swim_utilities::future::item_sink;
 use tokio::time::timeout;
 
 const TIMEOUT: Duration = Duration::from_secs(30);
