@@ -15,13 +15,17 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::model::Value;
+use crate::warp::envelope::Envelope;
+use crate::warp::path::RelativePath;
 use futures::channel::mpsc as fut_mpsc;
 use futures::future::{join, join4, BoxFuture};
 use futures::{FutureExt, SinkExt, StreamExt};
 use http::Uri;
 use parking_lot::Mutex;
+use swim_runtime::time::timeout;
+use swim_utilities::algebra::non_zero_usize;
 use tokio::sync::{mpsc, oneshot, watch};
-
 use swim_async_runtime::time::timeout;
 use swim_model::path::RelativePath;
 use swim_model::Value;
@@ -310,7 +314,7 @@ async fn dispatch_immediate_success() {
 }
 
 fn retries() -> NonZeroUsize {
-    NonZeroUsize::new(100).unwrap()
+    non_zero_usize!(100)
 }
 
 #[tokio::test]
@@ -466,12 +470,12 @@ impl TaskFixture {
             bidirectional_rx,
             stop_rx,
             RemoteConnectionsConfig {
-                router_buffer_size: NonZeroUsize::new(10).unwrap(),
-                channel_buffer_size: NonZeroUsize::new(10).unwrap(),
+                router_buffer_size: non_zero_usize!(10),
+                channel_buffer_size: non_zero_usize!(10),
                 activity_timeout: Duration::from_secs(30),
                 write_timeout: Duration::from_secs(20),
-                connection_retries: RetryStrategy::immediate(NonZeroUsize::new(1).unwrap()),
-                yield_after: NonZeroUsize::new(256).unwrap(),
+                connection_retries: RetryStrategy::immediate(non_zero_usize!(1)),
+                yield_after: non_zero_usize!(256),
             },
         )
         .run()

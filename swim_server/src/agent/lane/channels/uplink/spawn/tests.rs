@@ -20,6 +20,7 @@ use crate::agent::lane::channels::uplink::{
     PeelResult, UplinkAction, UplinkError, UplinkStateMachine,
 };
 use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, TaggedAction};
+use crate::agent::lane::model::supply::SupplyLane;
 use crate::agent::Eff;
 use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
 use crate::plane::store::mock::MockPlaneStore;
@@ -51,6 +52,7 @@ use swim_utilities::future::item_sink::ItemSink;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::sync::topic;
 use swim_utilities::time::AtomicInstant;
+use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
 use swim_warp::envelope::Envelope;
 use tokio::sync::mpsc::Sender;
@@ -58,6 +60,8 @@ use tokio::sync::{mpsc, Barrier};
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
+use swim_metrics::config::MetricAggregatorConfig;
+use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
 
 const INIT: i32 = 42;
 
@@ -197,7 +201,7 @@ impl LaneUpdate for TestUpdater {
 }
 
 fn default_buffer() -> NonZeroUsize {
-    NonZeroUsize::new(5).unwrap()
+    non_zero_usize!(5)
 }
 
 fn route() -> RelativePath {
@@ -352,7 +356,17 @@ impl AgentExecutionContext for TestContext {
     }
 
     fn metrics(&self) -> NodeMetricAggregator {
-        aggregator_sink()
+        NodeMetricAggregator::new(
+            RelativeUri::try_from("/test").unwrap(),
+            trigger::trigger().1,
+            MetricAggregatorConfig::default(),
+            MetaPulseLanes {
+                uplinks: Default::default(),
+                lanes: Default::default(),
+                node: Box::new(SupplyLane::new(mpsc::channel(1).0)),
+            },
+        )
+        .0
     }
 
     fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
@@ -371,7 +385,7 @@ fn make_test_harness() -> (
     BoxFuture<'static, Vec<UplinkErrorReport>>,
 ) {
     let (tx_up, rx_up) = mpsc::channel(5);
-    let (tx_event, rx_event) = topic::channel(NonZeroUsize::new(5).unwrap());
+    let (tx_event, rx_event) = topic::channel(non_zero_usize!(5));
     let (tx_act, rx_act) = mpsc::channel(5);
     let (tx_router, rx_router) = mpsc::channel(5);
 

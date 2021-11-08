@@ -51,7 +51,6 @@ use server_store::agent::mock::MockNodeStore;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::future::Future;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_async_runtime::task;
 use swim_client::configuration::DownlinkConnectionsConfig;
@@ -60,6 +59,7 @@ use swim_client::downlink::Downlinks;
 use swim_client::interface::ClientContext;
 use swim_client::router::ClientRouterFactory;
 use swim_runtime::task;
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
@@ -753,7 +753,7 @@ pub async fn run_agent_test<Agent, Config, Lifecycle>(
     Lifecycle: AgentLifecycle<Agent> + Send + Sync + Clone + Debug + 'static,
 {
     let uri = "/test".parse().unwrap();
-    let buffer_size = NonZeroUsize::new(10).unwrap();
+    let buffer_size = non_zero_usize!(10);
     let clock = TestClock::default();
 
     let exec_config = AgentExecutionConfig::with(
@@ -787,7 +787,7 @@ pub async fn run_agent_test<Agent, Config, Lifecycle>(
     );
 
     let (downlinks, _downlinks_task) = Downlinks::new(
-        NonZeroUsize::new(8).unwrap(),
+        non_zero_usize!(8),
         conn_pool,
         Arc::new(ServerDownlinksConfig::default()),
         close_rx,

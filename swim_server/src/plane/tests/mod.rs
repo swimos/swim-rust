@@ -23,7 +23,6 @@ use crate::plane::{
 use crate::routing::TopLevelServerRouterFactory;
 use futures::future::join;
 use server_store::plane::mock::MockPlaneStore;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_async_runtime::time::clock::Clock;
@@ -35,6 +34,7 @@ use swim_client::interface::ClientContext;
 use swim_client::router::ClientRouterFactory;
 use swim_runtime::time::clock::Clock;
 use swim_runtime::time::timeout;
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::open_ended::OpenEndedFutures;
 use swim_utilities::routing::route_pattern::RoutePattern;
 use swim_utilities::trigger;
@@ -114,7 +114,7 @@ async fn plane_event_loop() {
     );
 
     let (downlinks, _downlinks_task) = Downlinks::new(
-        NonZeroUsize::new(8).unwrap(),
+        non_zero_usize!(8),
         conn_pool,
         Arc::new(ServerDownlinksConfig::default()),
         close_rx,

@@ -30,10 +30,11 @@ use futures::future::BoxFuture;
 use futures::io::ErrorKind;
 use std::collections::HashMap;
 use std::io;
-use std::num::NonZeroUsize;
 use std::time::Duration;
 use swim_async_runtime::time::timeout::timeout;
 use swim_runtime::error::{ConnectionError, IoError};
+use swim_runtime::time::timeout::timeout;
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::open_ended::OpenEndedFutures;
 use swim_utilities::future::request::Request;
 use swim_utilities::future::retryable::RetryStrategy;
@@ -56,7 +57,7 @@ fn make_state(
     ws: &FakeWebsockets,
     incoming: mpsc::Receiver<io::Result<(FakeSocket, SchemeSocketAddr)>>,
 ) -> TestFixture<'_> {
-    let buffer_size = NonZeroUsize::new(8).unwrap();
+    let buffer_size = non_zero_usize!(8);
 
     let config = RemoteConnectionsConfig {
         router_buffer_size: buffer_size,
@@ -64,7 +65,7 @@ fn make_state(
         activity_timeout: Duration::from_secs(30),
         write_timeout: Duration::from_secs(20),
         connection_retries: RetryStrategy::none(),
-        yield_after: NonZeroUsize::new(256).unwrap(),
+        yield_after: non_zero_usize!(256),
     };
 
     let fake_connections = FakeConnections::new(HashMap::new(), HashMap::new(), None, 0);

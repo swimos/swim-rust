@@ -6,5 +6,6 @@ edition = "2018"
 
 [dependencies]
 num = "0.3.0"
+swim_algebra = { path = "../swim_algebra"}
 
 [dev-dependencies]

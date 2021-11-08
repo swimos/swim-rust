@@ -1,4 +1,4 @@
-@config{
+@config {
     @downlink_connections {
         buffer_size: "test"
     }

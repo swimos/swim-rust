@@ -14,7 +14,6 @@
 
 use crate::agent::{AgentContext, Eff};
 use crate::meta::log::NodeLogger;
-use crate::meta::metric::NodeMetricAggregator;
 use crate::meta::MetaContext;
 use futures::future::BoxFuture;
 use futures::sink::drain;

@@ -52,6 +52,7 @@ use crate::PlaneBuilder;
 #[cfg(feature = "persistence")]
 use server_store::rocks;
 use server_store::{ServerStore, SwimStore};
+use swim_client::downlink::error::SubscriptionError;
 use swim_store::nostore::NoStoreOpts;
 use swim_store::{Keyspaces, StoreError};
 
@@ -368,7 +369,7 @@ where
     ///
     /// # Panics
     /// The task will panic if the address provided to the server is already being used.
-    pub async fn run(self) -> Result<(), io::Error> {
+    pub async fn run(self) -> Result<(), ServerError> {
         let SwimServer {
             address,
             config,
@@ -439,13 +440,19 @@ where
             Err(err) => panic!("Could not resolve server address: {}", err),
         };
 
-        join!(
-            connections_task.run(),
-            plane_future,
-            connection_pool_task.run(),
+        let result = join!(
             downlinks_task.run(),
-        )
-        .0
+            connections_task.run(),
+            connection_pool_task.run(),
+            plane_future,
+        );
+
+        match result {
+            (Err(err), _, _, _) => Err(err.into()),
+            (_, Err(err), _, _) => Err(err.into()),
+            (_, _, Err(err), _) => Err(ServerError::RoutingError(RoutingError::PoolError(err))),
+            _ => Ok(()),
+        }
     }
 
     /// Get a client context capable of opening downlinks to other servers.
@@ -459,7 +466,7 @@ where
 pub enum SwimServerBuilderError {
     /// An error that occurs when trying to create a server without providing the address first.
     MissingAddress,
-    /// An error occured when attempting to build the delegate store.
+    /// An error occurred when attempting to build the delegate store.
     StoreError(StoreError),
 }
 
@@ -485,6 +492,8 @@ pub enum ServerError {
     RuntimeError(io::Error),
     /// An error that occurred in the client router.
     RoutingError(RoutingError),
+    /// An error that occurred when subscribing to a downlink.
+    Subscription(SubscriptionError<Path>),
     /// An error that occurred when closing the server.
     CloseError(TaskError),
 }
@@ -494,12 +503,25 @@ impl Display for ServerError {
         match self {
             ServerError::RuntimeError(err) => err.fmt(f),
             ServerError::CloseError(err) => err.fmt(f),
+            ServerError::Subscription(err) => err.fmt(f),
             ServerError::RoutingError(err) => err.fmt(f),
         }
     }
 }
 
 impl Error for ServerError {}
+
+impl From<io::Error> for ServerError {
+    fn from(err: std::io::Error) -> Self {
+        ServerError::RuntimeError(err)
+    }
+}
+
+impl From<SubscriptionError<Path>> for ServerError {
+    fn from(err: SubscriptionError<Path>) -> Self {
+        ServerError::Subscription(err)
+    }
+}
 
 /// Swim server configuration.
 ///

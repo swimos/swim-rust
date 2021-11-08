@@ -22,7 +22,6 @@ use crate::agent::lane::channels::{
 };
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::Eff;
-use crate::meta::metric::uplink::UplinkObserver;
 use futures::future::join_all;
 use futures::{FutureExt, StreamExt};
 use std::collections::hash_map::Entry;
@@ -32,6 +31,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_model::path::RelativePath;
 use swim_model::Value;
+use swim_metrics::uplink::UplinkObserver;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger;
 use tokio::sync::mpsc;
@@ -113,12 +113,13 @@ where
     /// * `router` - Produces channels on which outgoing envelopes can be sent.
     /// * `spawn_tx` - Channel to an asynchronous tasks spawner (used to run the uplink state
     /// machines.
-    /// * `uri` - The relative uri of the agent to which this uplink belongs.
+    /// * `uplinks_idle_since` - Time instant since the uplink has been idle.
     /// * `error_collector` - Collects errors whenever an uplink fails.
+    /// * `observer` - An observer for uplinks being opened and closed.
     ///
     /// # Type Parameters
     ///
-    /// * `Router` - The type of the server router.
+    /// * `R` - The type of the server router.
     pub async fn run<R>(
         mut self,
         mut router: R,
@@ -160,7 +161,7 @@ where
                             if !handle.cleanup().await {
                                 event!(Level::ERROR, message = UPLINK_TERMINATED, route = ?&self.route, ?addr);
                             }
-                            observer.did_close();
+                            observer.did_close(true);
                         }
                         action = act;
                         attempts += 1;
@@ -177,7 +178,7 @@ where
                             break false;
                         }
                     } else {
-                        observer.did_open();
+                        observer.did_open(true);
                         // We successfully dispatched to the uplink so can continue.
                         break false;
                     }
@@ -196,7 +197,7 @@ where
             }
         }
         join_all(uplink_senders.into_iter().map(|(_, h)| {
-            observer.did_close();
+            observer.did_close(true);
             h.cleanup()
         }))
         .instrument(span!(Level::DEBUG, UPLINK_CLEANUP))

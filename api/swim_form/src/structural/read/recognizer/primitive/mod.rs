@@ -171,8 +171,11 @@ impl Recognizer for UsizeRecognizer {
                 Some(usize::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
             }
             ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
+                ExpectedEvent::ValueEvent(ValueKind::Int32),
+                ExpectedEvent::ValueEvent(ValueKind::Int64),
                 ExpectedEvent::ValueEvent(ValueKind::UInt32),
                 ExpectedEvent::ValueEvent(ValueKind::UInt64),
+                ExpectedEvent::ValueEvent(ValueKind::BigInt),
                 ExpectedEvent::ValueEvent(ValueKind::BigUint),
             ])))),
         }

@@ -12,15 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::borrow::Borrow;
-use std::num::NonZeroUsize;
-use std::time::Duration;
-
-use swim_utilities::future::retryable::RetryStrategy;
-
-use swim_form::structural::read::error::ExpectedEvent;
-use swim_form::structural::read::event::ReadEvent;
-use swim_form::structural::read::recognizer::impls::{
+use crate::form::structural::read::error::ExpectedEvent;
+use crate::form::structural::read::event::ReadEvent;
+use crate::form::structural::read::recognizer::impls::{
     DurationRecognizer, RetryStrategyRecognizer,
 };
 use swim_form::structural::read::recognizer::{
@@ -30,7 +24,13 @@ use swim_form::structural::read::ReadError;
 use swim_form::structural::write::{
     BodyWriter, HeaderWriter, RecordBodyKind, StructuralWritable, StructuralWriter,
 };
-use swim_model::{Text, ValueKind};
+use crate::model::text::Text;
+use crate::model::ValueKind;
+use std::borrow::Borrow;
+use std::num::NonZeroUsize;
+use std::time::Duration;
+use swim_utilities::algebra::non_zero_usize;
+use swim_utilities::future::retryable::RetryStrategy;
 
 mod swim_common {
     pub use crate::*;
@@ -44,11 +44,11 @@ const WRITE_TIMEOUT_TAG: &str = "write_timeout";
 const CONNECTION_RETRIES_TAG: &str = "connection_retries";
 const YIELD_AFTER_TAG: &str = "yield_after";
 
-const DEFAULT_ROUTER_BUFFER_SIZE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(10) };
-const DEFAULT_CHANNEL_BUFFER_SIZE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(10) };
+const DEFAULT_ROUTER_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(32);
+const DEFAULT_CHANNEL_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(32);
 const DEFAULT_ACTIVITY_TIMEOUT: Duration = Duration::from_secs(30);
 const DEFAULT_WRITE_TIMEOUT: Duration = Duration::from_secs(20);
-const DEFAULT_YIELD_AFTER: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(256) };
+const DEFAULT_YIELD_AFTER: NonZeroUsize = non_zero_usize!(256);
 
 /// Configuration parameters for remote connection management.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

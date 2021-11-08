@@ -20,6 +20,8 @@ use std::num::NonZeroUsize;
 use std::ops::Range;
 use swim_async_runtime::time::timeout::timeout;
 use swim_utilities::future::item_sink::for_mpsc_sender;
+use swim_runtime::time::timeout::timeout;
+use swim_utilities::algebra::non_zero_usize;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
@@ -27,15 +29,15 @@ use tokio_stream::wrappers::ReceiverStream;
 const TIMEOUT: Duration = Duration::from_secs(30);
 
 fn buffer_size() -> NonZeroUsize {
-    NonZeroUsize::new(5).unwrap()
+    non_zero_usize!(5)
 }
 
 fn max_active_keys() -> NonZeroUsize {
-    NonZeroUsize::new(5).unwrap()
+    non_zero_usize!(5)
 }
 
 fn yield_after() -> NonZeroUsize {
-    NonZeroUsize::new(256).unwrap()
+    non_zero_usize!(256)
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -135,8 +137,8 @@ async fn multiple_keys() {
         for_mpsc_sender(tx_out),
         yield_after(),
         buffer_size(),
-        NonZeroUsize::new(20).unwrap(),
-        NonZeroUsize::new(20).unwrap(),
+        non_zero_usize!(20),
+        non_zero_usize!(20),
     );
 
     let release_result = tokio::task::spawn(release_task);
@@ -184,8 +186,8 @@ async fn overflow() {
         for_mpsc_sender(tx_out),
         yield_after(),
         buffer_size(),
-        NonZeroUsize::new(20).unwrap(),
-        NonZeroUsize::new(1).unwrap(),
+        non_zero_usize!(20),
+        non_zero_usize!(1),
     );
 
     let profiles = data(range);

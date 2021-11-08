@@ -71,7 +71,7 @@ impl Router for DummyDelegate {
         &mut self,
         _addr: RoutingAddr,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
-        unimplemented!()
+        panic!("Called unexpectedly.");
     }
 
     fn lookup(
@@ -79,7 +79,7 @@ impl Router for DummyDelegate {
         _host: Option<Url>,
         _route: RelativeUri,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
-        unimplemented!()
+        panic!("Called unexpectedly.");
     }
 }
 

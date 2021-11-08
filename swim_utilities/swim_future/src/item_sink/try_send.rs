@@ -12,8 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::remote::{ExternalConnections, IoResult, Listener};
+use tokio::sync::mpsc;
 
-pub mod dns;
-pub mod plain;
-pub mod tls;
+pub struct TrySendError<I>(pub I);
+
+pub trait TrySend<T> {
+    type Error;
+
+    /// Attempt to send an item into the sink.
+    fn try_send_item(&mut self, value: T) -> Result<(), Self::Error>;
+}
+
+impl<T> TrySend<T> for mpsc::Sender<T> {
+    type Error = mpsc::error::TrySendError<T>;
+
+    fn try_send_item(&mut self, value: T) -> Result<(), Self::Error> {
+        self.try_send(value)
+    }
+}

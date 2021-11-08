@@ -62,20 +62,12 @@ pub trait AgentRoute<Clk, Envelopes, Router, Store>: Debug + Send {
     /// * `route` - The route of the agent instance and named parameters extracted from the agent
     /// URI with the route pattern.
     /// * `execution_config` - Configuration parameters controlling how the agent runs.
-    /// * `clock` - Clock for scheduling events.
-    /// * `client`- Client for opening downlinks.
-    /// * `incoming_envelopes`- The stream of envelopes routed to the agent.
-    /// * `router` - The router by which the agent can send messages.
-    #[allow(clippy::too_many_arguments)]
+    /// * `agent_internals` - The internal components of the agent.
     fn run_agent(
         &self,
         route: RouteAndParameters,
         execution_config: AgentExecutionConfig,
-        clock: Clk,
-        client: ClientContext<Path>,
-        incoming_envelopes: Envelopes,
-        router: Router,
-        store: Store,
+        agent_internals: AgentInternals<Clk, Envelopes, Router, Store>,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>);
 
     fn boxed(self) -> BoxAgentRoute<Clk, Envelopes, Router, Store>
@@ -88,6 +80,38 @@ pub trait AgentRoute<Clk, Envelopes, Router, Store>: Debug + Send {
 
 type BoxAgentRoute<Clk, Envelopes, Router, Store> =
     Box<dyn AgentRoute<Clk, Envelopes, Router, Store> + Send>;
+
+/// Internal components used for running an agent.
+pub struct AgentInternals<Clk, Envelopes, Router, Store> {
+    /// Clock for scheduling events.
+    clock: Clk,
+    /// Client context for opening downlinks.
+    client_context: ClientContext<Path>,
+    /// The stream of envelopes routed to the agent.
+    incoming_envelopes: Envelopes,
+    /// The router by which the agent can send messages.
+    router: Router,
+    /// A node store for persisting data, if the lane is not transient.
+    store: Store,
+}
+
+impl<Clk, Envelopes, Router, Store> AgentInternals<Clk, Envelopes, Router, Store> {
+    pub fn new(
+        clock: Clk,
+        client_context: ClientContext<Path>,
+        incoming_envelopes: Envelopes,
+        router: Router,
+        store: Store,
+    ) -> Self {
+        AgentInternals {
+            clock,
+            client_context,
+            incoming_envelopes,
+            router,
+            store,
+        }
+    }
+}
 
 /// Endpoint connected to an agent within the plane.
 #[derive(Debug)]
@@ -348,14 +372,19 @@ where
             .checked_add(1)
             .expect("Local endpoint counter overflow.");
         let addr = RoutingAddr::plane(*counter);
-        let (agent, task) = agent_route.run_agent(
-            RouteAndParameters::new(route.clone(), params),
-            execution_config.clone(),
+
+        let agent_internals = AgentInternals::new(
             clock.clone(),
             client_context.clone(),
             ReceiverStream::new(rx).take_until(stop_trigger.clone()),
             router_fac.create_for(addr),
             store.node_store(route.path()),
+        );
+
+        let (agent, task) = agent_route.run_agent(
+            RouteAndParameters::new(route.clone(), params),
+            execution_config.clone(),
+            agent_internals,
         );
         active_routes.add_endpoint(addr, route, LocalEndpoint::new(Arc::downgrade(&agent), tx));
         if spawner.try_add(task).is_err() {

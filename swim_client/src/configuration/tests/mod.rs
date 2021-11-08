@@ -19,6 +19,7 @@ use crate::configuration::{
 use crate::interface::SwimClientBuilder;
 use std::fs;
 use std::fs::File;
+use swim_utilities::algebra::non_zero_usize;
 use std::num::NonZeroUsize;
 use swim_model::path::AbsolutePath;
 use swim_recon::parser::parse_value as parse_single;
@@ -73,9 +74,9 @@ fn test_conf_from_file_retry_exponential() {
 
     let expected = SwimClientConfig::new(
         DownlinkConnectionsConfig::new(
-            NonZeroUsize::new(8).unwrap(),
-            NonZeroUsize::new(100).unwrap(),
-            NonZeroUsize::new(256).unwrap(),
+            non_zero_usize!(8),
+            non_zero_usize!(100),
+            non_zero_usize!(256),
             RetryStrategy::exponential(Duration::from_secs(30), Quantity::Infinite),
         ),
         Default::default(),
@@ -95,10 +96,10 @@ fn test_conf_from_file_retry_immediate() {
 
     let expected = SwimClientConfig::new(
         DownlinkConnectionsConfig::new(
-            NonZeroUsize::new(8).unwrap(),
-            NonZeroUsize::new(100).unwrap(),
-            NonZeroUsize::new(256).unwrap(),
-            RetryStrategy::immediate(NonZeroUsize::new(10).unwrap()),
+            non_zero_usize!(8),
+            non_zero_usize!(100),
+            non_zero_usize!(256),
+            RetryStrategy::immediate(non_zero_usize!(10)),
         ),
         Default::default(),
         Default::default(),
@@ -117,9 +118,9 @@ fn test_conf_from_file_retry_interval() {
 
     let expected = SwimClientConfig::new(
         DownlinkConnectionsConfig::new(
-            NonZeroUsize::new(8).unwrap(),
-            NonZeroUsize::new(100).unwrap(),
-            NonZeroUsize::new(256).unwrap(),
+            non_zero_usize!(8),
+            non_zero_usize!(100),
+            non_zero_usize!(256),
             RetryStrategy::interval(Duration::from_secs(5), Quantity::Infinite),
         ),
         Default::default(),
@@ -139,9 +140,9 @@ fn test_conf_from_file_retry_none() {
 
     let expected = SwimClientConfig::new(
         DownlinkConnectionsConfig::new(
-            NonZeroUsize::new(8).unwrap(),
-            NonZeroUsize::new(100).unwrap(),
-            NonZeroUsize::new(256).unwrap(),
+            non_zero_usize!(8),
+            non_zero_usize!(100),
+            non_zero_usize!(256),
             RetryStrategy::none(),
         ),
         Default::default(),
@@ -155,15 +156,15 @@ fn test_conf_from_file_retry_none() {
 fn create_full_config() -> SwimClientConfig {
     let mut dl_config = ClientDownlinksConfig::new(DownlinkConfig::new(
         BackpressureMode::Release {
-            input_buffer_size: NonZeroUsize::new(512).unwrap(),
-            bridge_buffer_size: NonZeroUsize::new(512).unwrap(),
-            max_active_keys: NonZeroUsize::new(512).unwrap(),
-            yield_after: NonZeroUsize::new(512).unwrap(),
+            input_buffer_size: non_zero_usize!(512),
+            bridge_buffer_size: non_zero_usize!(512),
+            max_active_keys: non_zero_usize!(512),
+            yield_after: non_zero_usize!(512),
         },
         Duration::from_nanos(6666666),
-        NonZeroUsize::new(10).unwrap(),
+        non_zero_usize!(10),
         OnInvalidMessage::Ignore,
-        NonZeroUsize::new(512).unwrap(),
+        non_zero_usize!(512),
     ));
 
     dl_config.for_host(
@@ -171,9 +172,9 @@ fn create_full_config() -> SwimClientConfig {
         DownlinkConfig::new(
             BackpressureMode::Propagate,
             Duration::from_secs(40000),
-            NonZeroUsize::new(15).unwrap(),
+            non_zero_usize!(15),
             OnInvalidMessage::Ignore,
-            NonZeroUsize::new(200).unwrap(),
+            non_zero_usize!(200),
         ),
     );
 
@@ -182,9 +183,9 @@ fn create_full_config() -> SwimClientConfig {
         DownlinkConfig::new(
             BackpressureMode::Propagate,
             Duration::from_secs(50000),
-            NonZeroUsize::new(25).unwrap(),
+            non_zero_usize!(25),
             OnInvalidMessage::Terminate,
-            NonZeroUsize::new(300).unwrap(),
+            non_zero_usize!(300),
         ),
     );
 
@@ -193,9 +194,9 @@ fn create_full_config() -> SwimClientConfig {
         DownlinkConfig::new(
             BackpressureMode::Propagate,
             Duration::from_secs(90000),
-            NonZeroUsize::new(40).unwrap(),
+            non_zero_usize!(40),
             OnInvalidMessage::Ignore,
-            NonZeroUsize::new(100).unwrap(),
+            non_zero_usize!(100),
         ),
     );
 
@@ -203,35 +204,35 @@ fn create_full_config() -> SwimClientConfig {
         &AbsolutePath::new(Url::parse("ws://192.168.0.2").unwrap(), "qux", "quz"),
         DownlinkConfig::new(
             BackpressureMode::Release {
-                input_buffer_size: NonZeroUsize::new(20).unwrap(),
-                bridge_buffer_size: NonZeroUsize::new(20).unwrap(),
-                max_active_keys: NonZeroUsize::new(20).unwrap(),
-                yield_after: NonZeroUsize::new(20).unwrap(),
+                input_buffer_size: non_zero_usize!(20),
+                bridge_buffer_size: non_zero_usize!(20),
+                max_active_keys: non_zero_usize!(20),
+                yield_after: non_zero_usize!(20),
             },
             Duration::from_secs(100000),
-            NonZeroUsize::new(50).unwrap(),
+            non_zero_usize!(50),
             OnInvalidMessage::Terminate,
-            NonZeroUsize::new(600).unwrap(),
+            non_zero_usize!(600),
         ),
     );
 
     let config = SwimClientConfig::new(
         DownlinkConnectionsConfig::new(
-            NonZeroUsize::new(8).unwrap(),
-            NonZeroUsize::new(32).unwrap(),
-            NonZeroUsize::new(200).unwrap(),
+            non_zero_usize!(8),
+            non_zero_usize!(32),
+            non_zero_usize!(200),
             RetryStrategy::interval(
                 Duration::from_secs(54),
-                Quantity::Finite(NonZeroUsize::new(13).unwrap()),
+                Quantity::Finite(non_zero_usize!(13)),
             ),
         ),
         RemoteConnectionsConfig::new(
-            NonZeroUsize::new(20).unwrap(),
-            NonZeroUsize::new(20).unwrap(),
+            non_zero_usize!(20),
+            non_zero_usize!(20),
             Duration::from_secs(60),
             Duration::from_secs(40),
             RetryStrategy::none(),
-            NonZeroUsize::new(512).unwrap(),
+            non_zero_usize!(512),
         ),
         WebSocketConfig {
             max_send_queue: Some(15),

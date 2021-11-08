@@ -23,12 +23,13 @@ use std::time::Duration;
 use stm::transaction::atomically;
 use stm::var::observer::ObserverSubscriber;
 use swim_store::{serialize, EngineInfo, StoreError};
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::sync::topic::TryRecvError;
 use swim_utilities::trigger;
 use tokio::sync::mpsc;
 
 fn buffer_size() -> NonZeroUsize {
-    NonZeroUsize::new(16).unwrap()
+    non_zero_usize!(16)
 }
 
 fn make_subscribable<T>(init: T, buffer_size: NonZeroUsize) -> (ValueLane<T>, ObserverSubscriber<T>)
@@ -87,7 +88,7 @@ async fn value_lane_compound_transaction() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn value_lane_subscribe() {
-    let (lane, observer) = ValueLane::observable(0, NonZeroUsize::new(8).unwrap());
+    let (lane, observer) = ValueLane::observable(0, non_zero_usize!(8));
 
     let sub = observer.subscriber();
 
@@ -179,11 +180,8 @@ async fn io() {
     };
 
     let model = ValueDataModel::<TrackingValueStore, String>::new(store, 0);
-    let (lane, observer) = ValueLane::<String>::store_observable(
-        &model,
-        NonZeroUsize::new(8).unwrap(),
-        Default::default(),
-    );
+    let (lane, observer) =
+        ValueLane::<String>::store_observable(&model, non_zero_usize!(8), Default::default());
     let observer_stream = observer.into_stream();
 
     let store_io = ValueLaneStoreIo::new(observer_stream, model);

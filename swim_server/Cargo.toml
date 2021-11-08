@@ -17,6 +17,11 @@ tracing = { version = "0.1.13", features = ["max_level_debug"] }
 tracing = "0.1.16"
 
 [dependencies]
+swim_client = { path = "../swim_client" }
+swim_metrics = { path = "swim_metrics" }
+swim_warp = { path = "../swim_warp" }
+swim_utilities = { path = "../swim_utilities", features = ["errors", "sync", "time", "text", "io", "algebra"] }
+stm = { path = "../stm" }
 either = "1.5.3"
 futures = "0.3.4"
 futures-util = "0.3.4"
@@ -33,14 +38,10 @@ swim_model = { path = "../api/swim_model" }
 swim_form = { path = "../api/swim_form" }
 swim_recon = { path = "../api/formats/swim_recon" }
 swim_schema = { path = "../api/swim_schema" }
-swim_warp = { path = "../swim_warp" }
-swim_utilities = { path = "../swim_utilities", features = ["errors", "sync", "time", "text"] }
 swim_tracing = { path = "../swim_utilities/swim_tracing", features = ["future"] }
 swim_store = { path = "../swim_store" }
 stringify_attr = { path = "../macro_utilities/stringify_attr" }
 swim_async_runtime = { path = "../runtime/swim_async_runtime" }
-swim_client = { path = "../swim_client" }
-stm = { path = "../stm" }
 tracing-futures = "0.2.4"
 agent_derive = { path = "agent_derive" }
 trybuild = "1.0.48"

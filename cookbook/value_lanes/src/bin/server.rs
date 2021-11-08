@@ -26,7 +26,7 @@ use tokio::time;
 async fn main() {
     let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9001);
 
-    let mut swim_server_builder = SwimServerBuilder::new(Default::default()).unwrap();
+    let mut swim_server_builder = SwimServerBuilder::no_store(Default::default()).unwrap();
 
     let mut plane_builder = swim_server_builder.plane_builder("example").unwrap();
 

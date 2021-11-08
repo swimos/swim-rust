@@ -26,12 +26,12 @@ use futures::future::{join, BoxFuture};
 use futures::{FutureExt, Stream, StreamExt};
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use stm::transaction::TransactionError;
 use swim_async_runtime::time::timeout;
 use swim_model::path::RelativePath;
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::errors::Recoverable;
 use swim_utilities::time::AtomicInstant;
 use swim_warp::envelope::{Envelope, OutgoingLinkMessage};
@@ -61,7 +61,7 @@ fn make_dispatcher(
     let context = MockExecutionContext::new(RoutingAddr::plane(1024), buffer_size, spawn_tx);
 
     let config = AgentExecutionConfig::with(
-        NonZeroUsize::new(8).unwrap(),
+        non_zero_usize!(8),
         max_pending,
         0,
         Duration::from_secs(1),

@@ -18,9 +18,10 @@ use crate::agent::lane::channels::uplink::backpressure::{
 };
 use crate::agent::lane::channels::uplink::{UplinkAction, UplinkStateMachine};
 use crate::meta::log::config::LogConfig;
-use crate::meta::metric::config::MetricAggregatorConfig;
 use std::num::NonZeroUsize;
 use std::time::Duration;
+use swim_metrics::config::MetricAggregatorConfig;
+use swim_utilities::algebra::non_zero_usize;
 use swim_runtime::routing::RoutingAddr;
 use swim_utilities::future::retryable::RetryStrategy;
 
@@ -73,7 +74,7 @@ pub struct AgentExecutionConfig {
     pub max_store_errors: usize,
 }
 
-const DEFAULT_YIELD_COUNT: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(2048) };
+const DEFAULT_YIELD_COUNT: NonZeroUsize = non_zero_usize!(2048);
 
 impl AgentExecutionConfig {
     pub fn with(
@@ -114,7 +115,7 @@ impl AgentExecutionConfig {
 
 impl Default for AgentExecutionConfig {
     fn default() -> Self {
-        let default_buffer = NonZeroUsize::new(4).unwrap();
+        let default_buffer = non_zero_usize!(4);
 
         AgentExecutionConfig {
             max_pending_envelopes: 1,
@@ -123,7 +124,7 @@ impl Default for AgentExecutionConfig {
             feedback_buffer: default_buffer,
             uplink_err_buffer: default_buffer,
             max_fatal_uplink_errors: 0,
-            max_uplink_start_attempts: NonZeroUsize::new(1).unwrap(),
+            max_uplink_start_attempts: non_zero_usize!(1),
             lane_buffer: default_buffer,
             observation_buffer: default_buffer,
             lane_attachment_buffer: default_buffer,

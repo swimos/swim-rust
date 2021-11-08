@@ -39,7 +39,6 @@ use server_store::rocks::RocksOpts;
 use server_store::rocks::{default_keyspaces, RocksDatabase};
 use server_store::{KeyspaceName, StoreEngine, StoreKey};
 use std::collections::HashMap;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use stm::stm::Stm;
 use stm::transaction::atomically;
@@ -51,6 +50,7 @@ use swim_client::router::ClientRouterFactory;
 use swim_common::routing::RoutingAddr;
 use swim_common::warp::path::Path;
 use swim_store::{deserialize, serialize, KeyspaceByteEngine, StoreBuilder, StoreError};
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::io::fs::Dir;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger::promise;
@@ -273,7 +273,7 @@ fn make_dl_context() -> ClientContext<Path> {
     );
 
     let (downlinks, _downlinks_task) = Downlinks::new(
-        NonZeroUsize::new(8).unwrap(),
+        non_zero_usize!(8),
         conn_pool,
         Arc::new(ServerDownlinksConfig::default()),
         close_rx,
@@ -314,7 +314,7 @@ async fn store_loads() {
 
     let provider = AgentProvider::new(AgentConfig, StoreAgentLifecycle);
     let uri: RelativeUri = node_uri.parse().unwrap();
-    let buffer_size = NonZeroUsize::new(10).unwrap();
+    let buffer_size = non_zero_usize!(10);
     let clock = TestClock::default();
 
     let exec_config = AgentExecutionConfig::with(
@@ -361,7 +361,7 @@ async fn store_loads() {
 async fn events() {
     let provider = AgentProvider::new(AgentConfig, StoreAgentLifecycle);
     let uri: RelativeUri = "/test".parse().unwrap();
-    let buffer_size = NonZeroUsize::new(10).unwrap();
+    let buffer_size = non_zero_usize!(10);
     let clock = TestClock::default();
 
     let store = TestStore::default();

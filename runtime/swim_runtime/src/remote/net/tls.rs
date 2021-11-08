@@ -35,6 +35,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, Level};
 
 use crate::routing::remote::net::dns::{DnsResolver, Resolver};
+use crate::routing::remote::net::plain::TokioPlainTextNetworking;
 use crate::routing::remote::net::{ExternalConnections, IoResult, Listener};
 use crate::routing::remote::table::SchemeHostPort;
 use crate::routing::remote::{Scheme, SchemeSocketAddr};

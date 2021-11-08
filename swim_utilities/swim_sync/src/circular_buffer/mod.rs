@@ -22,6 +22,7 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use swim_future::item_sink::ItemSink;
+use swim_algebra::non_zero_usize;
 
 #[cfg(test)]
 mod tests;
@@ -58,7 +59,7 @@ pub fn channel<T: Send + Sync>(capacity: NonZeroUsize) -> (Sender<T>, Receiver<T
 }
 
 pub fn watch_channel<T: Send + Sync>() -> (Sender<T>, Receiver<T>) {
-    channel(NonZeroUsize::new(1).unwrap())
+    channel(non_zero_usize!(1))
 }
 
 pub mod error {
