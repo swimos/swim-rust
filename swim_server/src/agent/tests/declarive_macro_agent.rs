@@ -36,6 +36,7 @@ use crate::agent::AgentContext;
 use crate::agent_lifecycle;
 use crate::plane::provider::AgentProvider;
 use crate::swim_agent;
+use swim_utilities::algebra::non_zero_usize;
 
 mod swim_server {
     pub use crate::*;
@@ -91,7 +92,7 @@ impl TestAgentConfig {
     pub fn new(sender: mpsc::Sender<ReportingAgentEvent>) -> Self {
         TestAgentConfig {
             collector: Arc::new(Mutex::new(EventCollector::new(sender))),
-            command_buffer_size: NonZeroUsize::new(5).unwrap(),
+            command_buffer_size: non_zero_usize!(5),
         }
     }
 

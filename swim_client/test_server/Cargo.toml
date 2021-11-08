@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 futures = "0.3.4"
 swim_server = { path = "../../swim_server" }
+server_store = { path = "../../swim_server/server_store" }
 swim_common = { path = "../../swim_common" }
 url = "2.1.1"
 tracing = "0.1.16"

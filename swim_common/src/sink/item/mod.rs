@@ -24,6 +24,7 @@ pub mod comap;
 pub mod drop_all;
 pub mod either;
 pub mod fail_all;
+pub mod try_send;
 
 /// An alternative to the [`futures::Sink`] trait for sinks that can consume their inputs in a
 /// single operation. This can simplify operations where one can guarantee that the target sink

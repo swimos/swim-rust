@@ -17,6 +17,9 @@
 pub mod never;
 pub mod ptr;
 
+#[cfg(feature = "algebra")]
+pub use swim_algebra as algebra;
+
 #[cfg(feature = "errors")]
 pub use swim_errors as errors;
 
@@ -36,6 +39,9 @@ pub mod collections {
 
 #[cfg(feature = "time")]
 pub use swim_time as time;
+
+#[cfg(feature = "io")]
+pub use swim_io as io;
 
 #[cfg(feature = "text")]
 pub use swim_route as routing;

@@ -15,15 +15,21 @@
 use super::*;
 use crate::agent::lane::tests::ExactlyOnce;
 use futures::future::join;
+use server_store::agent::lane::error::StoreErrorHandler;
+use server_store::plane::mock::MockPlaneStore;
+use server_store::{StoreEngine, StoreKey};
+use std::sync::Mutex;
 use std::time::Duration;
 use stm::transaction::atomically;
 use stm::var::observer::ObserverSubscriber;
+use swim_store::{serialize, EngineInfo, StoreError};
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::sync::topic::TryRecvError;
 use swim_utilities::trigger;
 use tokio::sync::mpsc;
 
 fn buffer_size() -> NonZeroUsize {
-    NonZeroUsize::new(16).unwrap()
+    non_zero_usize!(16)
 }
 
 fn make_subscribable<T>(init: T, buffer_size: NonZeroUsize) -> (ValueLane<T>, ObserverSubscriber<T>)
@@ -82,7 +88,7 @@ async fn value_lane_compound_transaction() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn value_lane_subscribe() {
-    let (lane, observer) = ValueLane::observable(0, NonZeroUsize::new(8).unwrap());
+    let (lane, observer) = ValueLane::observable(0, non_zero_usize!(8));
 
     let sub = observer.subscriber();
 
@@ -117,4 +123,70 @@ async fn value_lane_subscribe() {
     let t2 = tokio::spawn(gen_task);
     let result = tokio::time::timeout(Duration::from_secs(5), join(t1, t2)).await;
     assert!(matches!(result, Ok((Ok(_), Ok(_)))));
+}
+
+#[derive(Clone, Debug)]
+struct TrackingValueStore {
+    value: Arc<Mutex<Option<Vec<u8>>>>,
+}
+
+impl NodeStore for TrackingValueStore {
+    type Delegate = MockPlaneStore;
+
+    fn engine_info(&self) -> EngineInfo {
+        EngineInfo {
+            path: "tracking".to_string(),
+            kind: "tracking".to_string(),
+        }
+    }
+
+    fn lane_id_of(&self, _lane: &str) -> Result<u64, StoreError> {
+        Ok(0)
+    }
+
+    fn load_ranged_snapshot<F, K, V>(
+        &self,
+        _prefix: StoreKey,
+        _map_fn: F,
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+    {
+        panic!("Unexpected snapshot request")
+    }
+}
+
+impl StoreEngine for TrackingValueStore {
+    fn put(&self, _key: StoreKey, value: &[u8]) -> Result<(), StoreError> {
+        self.value.lock().unwrap().replace(value.to_vec());
+        Ok(())
+    }
+
+    fn get(&self, _key: StoreKey) -> Result<Option<Vec<u8>>, StoreError> {
+        Ok(self.value.lock().unwrap().clone())
+    }
+
+    fn delete(&self, _key: StoreKey) -> Result<(), StoreError> {
+        self.value.lock().unwrap().take();
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn io() {
+    let store_initial = "loaded".to_string();
+    let store = TrackingValueStore {
+        value: Arc::new(Mutex::new(Some(serialize(&store_initial).unwrap()))),
+    };
+
+    let model = ValueDataModel::<TrackingValueStore, String>::new(store, 0);
+    let (lane, observer) =
+        ValueLane::<String>::store_observable(&model, non_zero_usize!(8), Default::default());
+    let observer_stream = observer.into_stream();
+
+    let store_io = ValueLaneStoreIo::new(observer_stream, model);
+    let _task_handle = tokio::spawn(store_io.attach(StoreErrorHandler::new(0)));
+
+    let lane_value = lane.load().await;
+    assert_eq!(*lane_value, store_initial);
 }

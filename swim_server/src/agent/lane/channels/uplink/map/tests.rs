@@ -26,6 +26,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use stm::transaction::RetryManager;
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::SwimStreamExt;
 use swim_utilities::trigger;
 use tokio::sync::mpsc;
@@ -33,7 +34,7 @@ use tokio::time::timeout;
 use tokio_stream::wrappers::ReceiverStream;
 
 fn buffer_size() -> NonZeroUsize {
-    NonZeroUsize::new(16).unwrap()
+    non_zero_usize!(16)
 }
 
 struct Forever;

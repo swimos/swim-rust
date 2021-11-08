@@ -21,7 +21,6 @@ use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::model::map::MapLane;
 use crate::agent::model::value::{ValueLane, ValueLaneEvent};
-use crate::agent::store::NodeStore;
 use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::{
     AgentContext, AgentParameters, DynamicAgentIo, DynamicLaneTasks, LaneConfig, LaneParts,
@@ -30,24 +29,19 @@ use crate::agent::{
 use crate::agent::{IoPair, LaneTasks};
 use crate::interface::ServerDownlinksConfig;
 use crate::plane::provider::AgentProvider;
-use crate::plane::store::{PlaneStore, SwimPlaneStore};
 use crate::routing::TopLevelServerRouterFactory;
-use crate::store::fs::Dir;
-use crate::store::keystore::{KeyStore, COUNTER_BYTES};
-use crate::store::{
-    default_keyspaces, KeyspaceName, RocksDatabase, RocksOpts, StoreEngine, StoreKey,
-};
 use futures::future::ready;
 use futures::future::{BoxFuture, Ready};
+use server_store::agent::NodeStore;
+use server_store::engine::rocks::RocksOpts;
+use server_store::keystore::{KeyStore, COUNTER_BYTES};
+use server_store::plane::{PlaneStore, SwimPlaneStore};
+use server_store::rocks::{default_keyspaces, RocksDatabase};
+use server_store::{KeyspaceName, StoreEngine, StoreKey};
 use std::collections::HashMap;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use stm::stm::Stm;
 use stm::transaction::atomically;
-use store::engines::StoreBuilder;
-use store::keyspaces::KeyspaceByteEngine;
-use store::StoreError;
-use store::{deserialize, serialize};
 use swim_client::configuration::DownlinkConnectionsConfig;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
@@ -55,6 +49,9 @@ use swim_client::interface::ClientContext;
 use swim_client::router::ClientRouterFactory;
 use swim_common::routing::RoutingAddr;
 use swim_common::warp::path::Path;
+use swim_store::{deserialize, serialize, KeyspaceByteEngine, StoreBuilder, StoreError};
+use swim_utilities::algebra::non_zero_usize;
+use swim_utilities::io::fs::Dir;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
@@ -277,7 +274,7 @@ fn make_dl_context() -> ClientContext<Path> {
     );
 
     let (downlinks, _downlinks_task) = Downlinks::new(
-        NonZeroUsize::new(8).unwrap(),
+        non_zero_usize!(8),
         conn_pool,
         Arc::new(ServerDownlinksConfig::default()),
         close_rx,
@@ -318,7 +315,7 @@ async fn store_loads() {
 
     let provider = AgentProvider::new(AgentConfig, StoreAgentLifecycle);
     let uri: RelativeUri = node_uri.parse().unwrap();
-    let buffer_size = NonZeroUsize::new(10).unwrap();
+    let buffer_size = non_zero_usize!(10);
     let clock = TestClock::default();
 
     let exec_config = AgentExecutionConfig::with(
@@ -365,7 +362,7 @@ async fn store_loads() {
 async fn events() {
     let provider = AgentProvider::new(AgentConfig, StoreAgentLifecycle);
     let uri: RelativeUri = "/test".parse().unwrap();
-    let buffer_size = NonZeroUsize::new(10).unwrap();
+    let buffer_size = non_zero_usize!(10);
     let clock = TestClock::default();
 
     let store = TestStore::default();

@@ -21,7 +21,6 @@ use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::model::{action, command};
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
-use crate::agent::store::mock::MockNodeStore;
 use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::{AgentContext, AgentParameters};
@@ -31,6 +30,7 @@ use crate::routing::TopLevelServerRouterFactory;
 use crate::{
     action_lifecycle, agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent,
 };
+use server_store::agent::mock::MockNodeStore;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::Debug;
@@ -45,6 +45,7 @@ use swim_client::downlink::Downlinks;
 use swim_client::interface::ClientContext;
 use swim_client::router::ClientRouterFactory;
 use swim_common::routing::RoutingAddr;
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger::promise;
 use tokio::sync::{mpsc, Mutex};
@@ -83,7 +84,7 @@ impl DataAgentConfig {
     pub fn new(sender: mpsc::Sender<DataAgentEvent>) -> Self {
         DataAgentConfig {
             collector: Arc::new(Mutex::new(EventCollector::new(sender))),
-            command_buffer_size: NonZeroUsize::new(5).unwrap(),
+            command_buffer_size: non_zero_usize!(5),
         }
     }
 
@@ -522,7 +523,7 @@ async fn agent_loop() {
     let config = DataAgentConfig::new(tx);
 
     let uri = RelativeUri::try_from("/test").unwrap();
-    let buffer_size = NonZeroUsize::new(10).unwrap();
+    let buffer_size = non_zero_usize!(10);
     let clock = TestClock::default();
 
     let agent_lifecycle = config.agent_lifecycle();
@@ -560,7 +561,7 @@ async fn agent_loop() {
     );
 
     let (downlinks, _downlinks_task) = Downlinks::new(
-        NonZeroUsize::new(8).unwrap(),
+        non_zero_usize!(8),
         conn_pool,
         Arc::new(ServerDownlinksConfig::default()),
         close_rx,

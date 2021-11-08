@@ -136,11 +136,11 @@ pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream, TokenStream>
         use std::collections::HashMap;
         use std::boxed::Box;
 
-        use swim_server::agent::{LaneTasks, SwimAgent, AgentContext, IoPair, StoreIo, LaneIo};
+        use swim_server::store::{StoreIo, LaneNoStore};
+        use swim_server::agent::{LaneTasks, SwimAgent, AgentContext, IoPair, LaneIo};
         use swim_server::agent::lane::channels::AgentExecutionConfig;
         use swim_server::agent::context::AgentExecutionContext;
         use swim_server::agent::lane::lifecycle::LaneLifecycle;
-        use swim_server::agent::LaneNoStore;
 
         #[automatically_derived]
         impl SwimAgent<#config_type> for #agent_name {
@@ -155,7 +155,7 @@ pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream, TokenStream>
             )
                 where
                     Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
-                    Store: swim_server::agent::store::NodeStore,
+                    Store: swim_server::store::NodeStore,
             {
                 let mut io_map: HashMap<String, IoPair<Box<dyn LaneIo<Context>>, Box<dyn StoreIo>>> = HashMap::new();
 

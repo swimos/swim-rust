@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(feature = "persistence")]
+mod store_agent;
+
 mod data_macro_agent;
 mod declarive_macro_agent;
 mod derive;
 mod reporting_agent;
 mod reporting_macro_agent;
-mod store_agent;
 pub mod test_clock;
 
 use crate::agent::lane::channels::AgentExecutionConfig;
@@ -30,7 +32,6 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::LaneModel;
 use crate::agent::lifecycle::AgentLifecycle;
-use crate::agent::store::mock::MockNodeStore;
 use crate::agent::tests::reporting_agent::TestAgentConfig;
 use crate::agent::tests::reporting_macro_agent::ReportingAgentEvent;
 use crate::agent::tests::stub_router::SingleChannelRouter;
@@ -46,10 +47,10 @@ use crate::plane::provider::AgentProvider;
 use crate::routing::TopLevelServerRouterFactory;
 use futures::future::{join, BoxFuture};
 use futures::Stream;
+use server_store::agent::mock::MockNodeStore;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::future::Future;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_client::configuration::DownlinkConnectionsConfig;
 use swim_client::connections::SwimConnPool;
@@ -59,6 +60,7 @@ use swim_client::router::ClientRouterFactory;
 use swim_common::routing::RoutingAddr;
 use swim_common::warp::path::Path;
 use swim_runtime::task;
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::sync::circular_buffer;
 use swim_utilities::trigger;
@@ -656,7 +658,7 @@ async fn action_lane_events_task_termination() {
 async fn command_lane_events_task() {
     let (tx_lane, _rx_lane) = mpsc::channel(5);
     let (commander_tx, commander_rx) = mpsc::channel(5);
-    let (commands_tx, _commands_rx) = circular_buffer::channel(NonZeroUsize::new(8).unwrap());
+    let (commands_tx, _commands_rx) = circular_buffer::channel(non_zero_usize!(8));
     let (_stop, stop_sig) = trigger::trigger();
 
     let lifecycle: TestLifecycle<CommandLane<String>> = TestLifecycle::default();
@@ -714,7 +716,7 @@ async fn command_lane_events_task() {
 #[tokio::test]
 async fn command_lane_events_task_terminates() {
     let (commander_tx, commander_rx) = mpsc::channel(5);
-    let (commands_tx, _commands_rx) = circular_buffer::channel(NonZeroUsize::new(8).unwrap());
+    let (commands_tx, _commands_rx) = circular_buffer::channel(non_zero_usize!(8));
     let (stop, stop_sig) = trigger::trigger();
 
     let lifecycle: TestLifecycle<CommandLane<String>> = TestLifecycle::default();
@@ -765,7 +767,7 @@ pub async fn run_agent_test<Agent, Config, Lifecycle>(
     Lifecycle: AgentLifecycle<Agent> + Send + Sync + Clone + Debug + 'static,
 {
     let uri = "/test".parse().unwrap();
-    let buffer_size = NonZeroUsize::new(10).unwrap();
+    let buffer_size = non_zero_usize!(10);
     let clock = TestClock::default();
 
     let exec_config = AgentExecutionConfig::with(
@@ -799,7 +801,7 @@ pub async fn run_agent_test<Agent, Config, Lifecycle>(
     );
 
     let (downlinks, _downlinks_task) = Downlinks::new(
-        NonZeroUsize::new(8).unwrap(),
+        non_zero_usize!(8),
         conn_pool,
         Arc::new(ServerDownlinksConfig::default()),
         close_rx,

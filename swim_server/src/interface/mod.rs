@@ -15,26 +15,22 @@
 //! Interface for creating and running Swim server instances.
 //!
 //! The module provides methods and structures for creating and running Swim server instances.
+//!
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
-use crate::plane::spec::PlaneBuilder;
-use crate::plane::store::SwimPlaneStore;
 use crate::plane::PlaneActiveRoutes;
 use crate::plane::RouteResolver;
 use crate::plane::{run_plane, EnvChannel};
 use crate::plane::{ContextImpl, PlaneSpec};
 use crate::routing::{TopLevelServerRouter, TopLevelServerRouterFactory};
-use crate::store::RocksOpts;
-use crate::store::{default_keyspaces, RocksDatabase};
-use crate::store::{ServerStore, SwimStore};
 use either::Either;
 use futures::{io, join};
+use server_store::plane::PlaneStore;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use store::StoreError;
 use swim_client::configuration::DownlinkConnectionsConfig;
 use swim_client::configuration::{DownlinkConfig, DownlinksConfig};
 use swim_client::connections::{PoolTask, SwimConnPool};
@@ -60,42 +56,37 @@ use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use url::Url;
 
+use crate::PlaneBuilder;
+#[cfg(feature = "persistence")]
+use server_store::rocks;
+use server_store::{ServerStore, SwimStore};
+use swim_client::downlink::error::SubscriptionError;
+use swim_store::nostore::NoStoreOpts;
+use swim_store::{Keyspaces, StoreError};
+
 /// Builder to create Swim server instance.
 ///
 /// The builder can be created with default or custom configuration.
-pub struct SwimServerBuilder {
+pub struct SwimServerBuilder<S>
+where
+    S: SwimStore,
+{
     address: Option<SocketAddr>,
     config: SwimServerConfig,
-    planes: Vec<
-        PlaneSpec<
-            RuntimeClock,
-            EnvChannel,
-            PlaneRouter<TopLevelServerRouter>,
-            SwimPlaneStore<RocksDatabase>,
-        >,
-    >,
-    store: ServerStore<RocksOpts>,
+    planes:
+        Vec<PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelServerRouter>, S::PlaneStore>>,
+    store: S,
 }
 
-type ServerPlaneBuilder = PlaneBuilder<
-    RuntimeClock,
-    EnvChannel,
-    PlaneRouter<TopLevelServerRouter>,
-    SwimPlaneStore<RocksDatabase>,
->;
+type ServerPlaneBuilder<S> =
+    PlaneBuilder<RuntimeClock, EnvChannel, PlaneRouter<TopLevelServerRouter>, S>;
 
-impl SwimServerBuilder {
-    /// Create a new server builder with custom configuration.
-    ///
-    /// # Arguments
-    /// * `config` - The custom configuration for the server.
-    pub fn new(config: SwimServerConfig) -> io::Result<Self> {
-        Ok(SwimServerBuilder {
-            address: None,
-            config,
-            planes: Vec::new(),
-            store: ServerStore::new(RocksOpts::default(), default_keyspaces(), "target".into())?,
-        })
+impl<S> SwimServerBuilder<S>
+where
+    S: SwimStore,
+{
+    pub fn store(self, store: S) -> SwimServerBuilder<S> {
+        SwimServerBuilder { store, ..self }
     }
 
     /// Set the address of the server.
@@ -145,7 +136,7 @@ impl SwimServerBuilder {
     ///     }
     /// }
     ///
-    /// let mut swim_server_builder = SwimServerBuilder::temporary_store(SwimServerConfig::default(), "test").unwrap();
+    /// let mut swim_server_builder = SwimServerBuilder::no_store(SwimServerConfig::default()).unwrap();
     /// let mut plane_builder = swim_server_builder.plane_builder("test").unwrap();
     ///
     /// plane_builder
@@ -158,7 +149,7 @@ impl SwimServerBuilder {
     /// swim_server_builder.add_plane(plane_builder.build());
     /// # }
     /// ```
-    pub fn add_plane(&mut self, plane: PlaneDef) {
+    pub fn add_plane(&mut self, plane: PlaneDef<S::PlaneStore>) {
         if !self.planes.is_empty() {
             panic!("Multiple planes are not supported yet")
         }
@@ -168,7 +159,7 @@ impl SwimServerBuilder {
     pub fn plane_builder<I: Into<String>>(
         &mut self,
         name: I,
-    ) -> Result<ServerPlaneBuilder, SwimServerBuilderError> {
+    ) -> Result<ServerPlaneBuilder<S::PlaneStore>, SwimServerBuilderError> {
         let store = self
             .store
             .plane_store(name.into())
@@ -211,7 +202,7 @@ impl SwimServerBuilder {
     ///     }
     /// }
     ///
-    /// let mut swim_server_builder = SwimServerBuilder::temporary_store(SwimServerConfig::default(), "test").unwrap();
+    /// let mut swim_server_builder = SwimServerBuilder::no_store(SwimServerConfig::default()).unwrap();
     /// let mut plane_builder = swim_server_builder.plane_builder("test").unwrap();
     ///
     /// plane_builder
@@ -227,12 +218,14 @@ impl SwimServerBuilder {
     /// let (swim_server, server_handle) = swim_server_builder.bind_to(address).build().unwrap();
     /// # }
     /// ```
-    pub fn build(self) -> Result<(SwimServer, ServerHandle), SwimServerBuilderError> {
+    pub fn build(
+        self,
+    ) -> Result<(SwimServer<S::PlaneStore>, ServerHandle), SwimServerBuilderError> {
         let SwimServerBuilder {
             address,
             planes,
             config,
-            store,
+            store: _,
         } = self;
 
         let (close_tx, close_rx) = promise::promise();
@@ -280,13 +273,32 @@ impl SwimServerBuilder {
                 client_context: downlinks_context,
                 connection_pool_task,
                 downlinks_task,
-                _store: store,
             },
             ServerHandle {
                 either_address: Either::Left(address_rx),
                 stop_trigger_tx: close_tx,
             },
         ))
+    }
+}
+
+#[cfg(feature = "persistence")]
+impl SwimServerBuilder<ServerStore<rocks::RocksOpts>> {
+    /// Create a new server builder with custom configuration backed by RocksDB.
+    ///
+    /// # Arguments
+    /// * `config` - The custom configuration for the server.
+    pub fn new(config: SwimServerConfig) -> io::Result<Self> {
+        Ok(SwimServerBuilder {
+            address: None,
+            config,
+            planes: Vec::new(),
+            store: ServerStore::new(
+                rocks::RocksOpts::default(),
+                rocks::default_keyspaces(),
+                "target".into(),
+            )?,
+        })
     }
 
     /// Constructs a new `SwimServerBuilder` with the default configuration and is backed by a
@@ -300,9 +312,9 @@ impl SwimServerBuilder {
     pub fn temporary_store(config: SwimServerConfig, prefix: &str) -> io::Result<Self> {
         Ok(SwimServerBuilder {
             address: None,
-            store: ServerStore::<RocksOpts>::transient(
-                RocksOpts::default(),
-                default_keyspaces(),
+            store: ServerStore::<rocks::RocksOpts>::transient(
+                rocks::RocksOpts::default(),
+                rocks::default_keyspaces(),
                 prefix,
             )?,
             config,
@@ -311,20 +323,33 @@ impl SwimServerBuilder {
     }
 }
 
-type PlaneDef = PlaneSpec<
-    RuntimeClock,
-    EnvChannel,
-    PlaneRouter<TopLevelServerRouter>,
-    SwimPlaneStore<RocksDatabase>,
->;
+impl SwimServerBuilder<ServerStore<NoStoreOpts>> {
+    /// Create a new server builder with custom configuration which will persist no data.
+    ///
+    /// # Arguments
+    /// * `config` - The custom configuration for the server.
+    pub fn no_store(config: SwimServerConfig) -> io::Result<Self> {
+        Ok(SwimServerBuilder {
+            address: None,
+            config,
+            planes: Vec::new(),
+            store: ServerStore::new(NoStoreOpts, Keyspaces::new(vec![]), "target".into())?,
+        })
+    }
+}
+
+type PlaneDef<S> = PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelServerRouter>, S>;
 
 /// Swim server instance.
 ///
 /// The Swim server runs a plane and its agents and a task for remote connections asynchronously.
-pub struct SwimServer {
+pub struct SwimServer<S>
+where
+    S: PlaneStore,
+{
     address: SocketAddr,
     config: SwimServerConfig,
-    planes: Vec<PlaneDef>,
+    planes: Vec<PlaneDef<S>>,
     stop_trigger_rx: CloseReceiver,
     address_tx: promise::Sender<SocketAddr>,
     top_level_router_fac: TopLevelServerRouterFactory,
@@ -339,10 +364,12 @@ pub struct SwimServer {
     client_context: ClientContext<Path>,
     connection_pool_task: PoolTask<Path, TopLevelServerRouterFactory>,
     downlinks_task: DownlinksTask<Path>,
-    _store: ServerStore<RocksOpts>,
 }
 
-impl SwimServer {
+impl<S> SwimServer<S>
+where
+    S: PlaneStore,
+{
     /// Runs the Swim server instance.
     ///
     /// Runs the planes and remote connections tasks of the server asynchronously
@@ -350,7 +377,7 @@ impl SwimServer {
     ///
     /// # Panics
     /// The task will panic if the address provided to the server is already being used.
-    pub async fn run(self) -> Result<(), io::Error> {
+    pub async fn run(self) -> Result<(), ServerError> {
         let SwimServer {
             address,
             config,
@@ -363,7 +390,6 @@ impl SwimServer {
             client_context: downlinks_context,
             connection_pool_task,
             downlinks_task,
-            _store,
         } = self;
 
         let SwimServerConfig {
@@ -422,13 +448,19 @@ impl SwimServer {
             Err(err) => panic!("Could not resolve server address: {}", err),
         };
 
-        join!(
-            connections_task.run(),
-            plane_future,
-            connection_pool_task.run(),
+        let result = join!(
             downlinks_task.run(),
-        )
-        .0
+            connections_task.run(),
+            connection_pool_task.run(),
+            plane_future,
+        );
+
+        match result {
+            (Err(err), _, _, _) => Err(err.into()),
+            (_, Err(err), _, _) => Err(err.into()),
+            (_, _, Err(err), _) => Err(ServerError::RoutingError(RoutingError::PoolError(err))),
+            _ => Ok(()),
+        }
     }
 
     /// Get a client context capable of opening downlinks to other servers.
@@ -442,7 +474,7 @@ impl SwimServer {
 pub enum SwimServerBuilderError {
     /// An error that occurs when trying to create a server without providing the address first.
     MissingAddress,
-    /// An error occured when attempting to build the delegate store.
+    /// An error occurred when attempting to build the delegate store.
     StoreError(StoreError),
 }
 
@@ -468,6 +500,8 @@ pub enum ServerError {
     RuntimeError(io::Error),
     /// An error that occurred in the client router.
     RoutingError(RoutingError),
+    /// An error that occurred when subscribing to a downlink.
+    Subscription(SubscriptionError<Path>),
     /// An error that occurred when closing the server.
     CloseError(TaskError),
 }
@@ -477,12 +511,25 @@ impl Display for ServerError {
         match self {
             ServerError::RuntimeError(err) => err.fmt(f),
             ServerError::CloseError(err) => err.fmt(f),
+            ServerError::Subscription(err) => err.fmt(f),
             ServerError::RoutingError(err) => err.fmt(f),
         }
     }
 }
 
 impl Error for ServerError {}
+
+impl From<io::Error> for ServerError {
+    fn from(err: std::io::Error) -> Self {
+        ServerError::RuntimeError(err)
+    }
+}
+
+impl From<SubscriptionError<Path>> for ServerError {
+    fn from(err: SubscriptionError<Path>) -> Self {
+        ServerError::Subscription(err)
+    }
+}
 
 /// Swim server configuration.
 ///
@@ -610,7 +657,7 @@ impl ServerHandle {
     /// use swim_server::interface::{SwimServer, SwimServerBuilder};
     ///
     /// let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-    /// let (mut swim_server, server_handle) = SwimServerBuilder::new(Default::default()).unwrap().bind_to(address).build().unwrap();
+    /// let (mut swim_server, server_handle) = SwimServerBuilder::no_store(Default::default()).unwrap().bind_to(address).build().unwrap();
     ///
     /// let future = server_handle.stop();
     /// ```

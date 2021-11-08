@@ -13,18 +13,17 @@
 // limitations under the License.
 
 use crate::agent::context::{ContextImpl, RoutingContext, SchedulerContext};
-use crate::agent::store::mock::MockNodeStore;
-use crate::agent::store::SwimNodeStore;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::AgentContext;
 use crate::interface::ServerDownlinksConfig;
 use crate::meta::meta_context_sink;
-use crate::plane::store::mock::MockPlaneStore;
 use crate::routing::TopLevelServerRouterFactory;
 use futures::future::BoxFuture;
+use server_store::agent::mock::MockNodeStore;
+use server_store::agent::SwimNodeStore;
+use server_store::plane::mock::MockPlaneStore;
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_client::configuration::DownlinkConnectionsConfig;
 use swim_client::connections::SwimConnPool;
@@ -36,6 +35,7 @@ use swim_common::routing::error::RouterError;
 use swim_common::routing::{Route, Router, RoutingAddr};
 use swim_runtime::task;
 use swim_runtime::time::clock::Clock;
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
@@ -90,7 +90,7 @@ fn simple_accessors() {
     );
 
     let (downlinks, _downlinks_task) = Downlinks::new(
-        NonZeroUsize::new(8).unwrap(),
+        non_zero_usize!(8),
         conn_pool,
         Arc::new(ServerDownlinksConfig::default()),
         close_rx,
@@ -154,7 +154,7 @@ fn create_context(
     );
 
     let (downlinks, _downlinks_task) = Downlinks::new(
-        NonZeroUsize::new(8).unwrap(),
+        non_zero_usize!(8),
         conn_pool,
         Arc::new(ServerDownlinksConfig::default()),
         close_rx,

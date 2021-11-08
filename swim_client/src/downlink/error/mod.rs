@@ -253,6 +253,12 @@ impl<Path: Addressable> From<RequestError> for SubscriptionError<Path> {
     }
 }
 
+impl<Path: Addressable> From<ConnectionError> for SubscriptionError<Path> {
+    fn from(_: ConnectionError) -> Self {
+        SubscriptionError::ConnectionError
+    }
+}
+
 impl<Path: Addressable> Display for SubscriptionError<Path> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {

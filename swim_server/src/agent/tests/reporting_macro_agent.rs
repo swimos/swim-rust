@@ -33,6 +33,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use stm::stm::Stm;
 use stm::transaction::atomically;
+use swim_utilities::algebra::non_zero_usize;
 use tokio::sync::{mpsc, Mutex};
 
 mod swim_server {
@@ -377,7 +378,7 @@ impl TestAgentConfig {
     pub fn new(sender: mpsc::Sender<ReportingAgentEvent>) -> Self {
         TestAgentConfig {
             collector: Arc::new(Mutex::new(EventCollector::new(sender))),
-            command_buffer_size: NonZeroUsize::new(5).unwrap(),
+            command_buffer_size: non_zero_usize!(5),
         }
     }
 

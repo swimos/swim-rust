@@ -20,6 +20,7 @@ use crate::router::{ClientRouterFactory, TopLevelClientRouterFactory};
 use futures::join;
 use swim_common::routing::CloseSender;
 use swim_common::warp::path::AbsolutePath;
+use swim_utilities::algebra::non_zero_usize;
 use tokio::time::Duration;
 use url::Url;
 
@@ -29,9 +30,9 @@ fn per_host_config() -> ClientDownlinksConfig {
     let special_params = DownlinkConfig::new(
         BackpressureMode::Propagate,
         timeout,
-        NonZeroUsize::new(5).unwrap(),
+        non_zero_usize!(5),
         OnInvalidMessage::Terminate,
-        NonZeroUsize::new(256).unwrap(),
+        non_zero_usize!(256),
     );
 
     let mut conf = ClientDownlinksConfig::default();
@@ -45,9 +46,9 @@ fn per_lane_config() -> ClientDownlinksConfig {
     let special_params = DownlinkConfig::new(
         BackpressureMode::Propagate,
         timeout,
-        NonZeroUsize::new(5).unwrap(),
+        non_zero_usize!(5),
         OnInvalidMessage::Terminate,
-        NonZeroUsize::new(256).unwrap(),
+        non_zero_usize!(256),
     );
     let mut conf = per_host_config();
     conf.for_lane(
@@ -82,7 +83,7 @@ async fn dl_manager(
     );
 
     let (downlinks, downlinks_task) = Downlinks::new(
-        NonZeroUsize::new(8).unwrap(),
+        non_zero_usize!(8),
         connection_pool,
         Arc::new(conf),
         close_rx,

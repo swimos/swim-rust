@@ -22,13 +22,12 @@ use stm::var::TVar;
 
 #[cfg(test)]
 mod tests;
-mod value_store;
 
-use crate::agent::store::NodeStore;
-use crate::agent::StoreIo;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-pub use value_store::{ValueDataModel, ValueLaneStoreIo};
+use server_store::agent::lane::value::{ValueDataModel, ValueLaneStoreIo};
+use server_store::agent::lane::StoreIo;
+use server_store::agent::NodeStore;
 
 /// A lane containing a single value.
 #[derive(Debug)]

@@ -7,6 +7,7 @@ edition = "2018"
 [features]
 default = []
 debug = ["log_verbose"]
+persistence = ["server_store/rocks"]
 log_verbose = []
 
 [target.'cfg(log_verbose)'.dependencies]
@@ -16,6 +17,16 @@ tracing = { version = "0.1.13", features = ["max_level_debug"] }
 tracing = "0.1.16"
 
 [dependencies]
+swim_client = { path = "../swim_client" }
+swim_store = { path = "../swim_store" }
+swim_metrics = { path = "swim_metrics" }
+server_store = { path = "server_store"}
+swim_common = { path = "../swim_common" }
+swim_warp = { path = "../swim_warp" }
+swim_utilities = { path = "../swim_utilities", features = ["errors", "sync", "time", "text", "io", "algebra"] }
+stringify_attr = { path = "../macro_utilities/stringify_attr" }
+swim_runtime = { path = "../swim_runtime" }
+stm = { path = "../stm" }
 either = "1.5.3"
 futures = "0.3.4"
 futures-util = "0.3.4"
@@ -27,13 +38,6 @@ pin-utils = "0.1.0"
 tokio = { version = "1.1.1", features = ["rt", "net"] }
 tokio-stream = { version = "0.1.2", features = ["sync"] }
 url = "2.1.1"
-swim_client = { path = "../swim_client" }
-swim_common = { path = "../swim_common" }
-swim_warp = { path = "../swim_warp" }
-swim_utilities = { path = "../swim_utilities", features = ["errors", "sync", "time", "text"] }
-stringify_attr = { path = "../macro_utilities/stringify_attr" }
-swim_runtime = { path = "../swim_runtime" }
-stm = { path = "../stm" }
 tracing-futures = "0.2.4"
 agent_derive = { path = "agent_derive" }
 trybuild = "1.0.48"
@@ -45,11 +49,7 @@ lazy_static = "1.4.0"
 percent-encoding = "2.1.0"
 thiserror = "1.0"
 crossbeam-queue = "0.3"
-store = { path = "store" }
 serde = { version = "1.0.124", features = ["derive", "rc"] }
-bincode = "1.3.2"
-rocksdb = "0.16.0"
-tempdir = "0.3.7"
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["rt-multi-thread", "macros", "test-util"] }

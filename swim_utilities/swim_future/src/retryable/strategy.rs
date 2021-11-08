@@ -51,13 +51,23 @@ pub struct IntervalStrategy {
 pub struct ExponentialStrategy {
     /// The maximum interval between a retry, generated intervals will be truncated to this duration
     /// if they exceed it.
-    pub max_interval: Duration,
+    max_interval: Duration,
     /// The maximum backoff time that the strategy will run for. Typically 32 or 64 seconds.
-    pub max_backoff: Quantity<Duration>,
+    max_backoff: Quantity<Duration>,
     /// The time that the first request was attempted.
     start: Option<std::time::Instant>,
     /// The current retry number.
     retry_no: u64,
+}
+
+impl ExponentialStrategy {
+    pub fn get_max_interval(&self) -> Duration {
+        self.max_interval
+    }
+
+    pub fn get_max_backoff(&self) -> Quantity<Duration> {
+        self.max_backoff
+    }
 }
 
 /// Wrapper around a type that can have finite and infinite values.

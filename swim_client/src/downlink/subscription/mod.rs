@@ -111,9 +111,7 @@ impl<Path: Addressable> Downlinks<Path> {
         self.downlink_request_tx
             .send(DownlinkRequest::DirectCommand { path, envelope })
             .map_err(|_| SubscriptionError::ConnectionError)
-            .await?;
-
-        Ok(())
+            .await
     }
 
     /// Attempt to subscribe to a value lane. The downlink is returned with a single active
@@ -542,9 +540,7 @@ impl<Path: Addressable> DownlinksTask<Path> {
         let (sender, _) = self
             .connection_pool
             .request_connection(path, ConnectionType::Outgoing)
-            .await
-            .map_err(|_| SubscriptionError::ConnectionError)?
-            .map_err(|_| SubscriptionError::ConnectionError)?;
+            .await??;
 
         Ok(sender)
     }
@@ -1045,8 +1041,7 @@ impl<Path: Addressable> DownlinksTask<Path> {
         let mut sink = self.sink_for(path).await?;
         sink.send_item(envelope)
             .await
-            .map_err(|_| SubscriptionError::ConnectionError)?;
-        Ok(())
+            .map_err(|_| SubscriptionError::ConnectionError)
     }
 }
 

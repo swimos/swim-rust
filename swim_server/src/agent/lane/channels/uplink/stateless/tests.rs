@@ -16,6 +16,7 @@ use crate::agent::context::AgentExecutionContext;
 use crate::agent::Eff;
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::{FutureExt, StreamExt};
+use std::convert::TryFrom;
 use swim_common::routing::{
     ConnectionDropped, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
 };
@@ -28,19 +29,22 @@ use swim_common::warp::path::RelativePath;
 use crate::agent::lane::channels::uplink::stateless::StatelessUplinks;
 use crate::agent::lane::channels::uplink::{AddressedUplinkMessage, UplinkAction, UplinkKind};
 use crate::agent::lane::channels::TaggedAction;
-use crate::agent::store::mock::MockNodeStore;
-use crate::agent::store::SwimNodeStore;
-use crate::meta::metric::uplink::{
-    uplink_observer, TaggedWarpUplinkProfile, UplinkObserver, UplinkProfileSender,
-    WarpUplinkProfile,
-};
-use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
-use crate::plane::store::mock::MockPlaneStore;
+use crate::agent::lane::model::supply::SupplyLane;
+use server_store::agent::mock::MockNodeStore;
+use server_store::agent::SwimNodeStore;
+use server_store::plane::mock::MockPlaneStore;
 use std::ops::Add;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
+use swim_metrics::config::MetricAggregatorConfig;
+use swim_metrics::uplink::{
+    uplink_observer, TaggedWarpUplinkProfile, UplinkObserver, UplinkProfileSender,
+    WarpUplinkProfile,
+};
+use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::time::AtomicInstant;
+use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
 use tokio::sync::mpsc::Receiver;
 use tokio::time::Duration;
@@ -112,7 +116,17 @@ impl AgentExecutionContext for TestContext {
     }
 
     fn metrics(&self) -> NodeMetricAggregator {
-        aggregator_sink()
+        NodeMetricAggregator::new(
+            RelativeUri::try_from("/test").unwrap(),
+            trigger::trigger().1,
+            MetricAggregatorConfig::default(),
+            MetaPulseLanes {
+                uplinks: Default::default(),
+                lanes: Default::default(),
+                node: Box::new(SupplyLane::new(mpsc::channel(1).0)),
+            },
+        )
+        .0
     }
 
     fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {

@@ -16,11 +16,10 @@
 
 pub mod agent;
 pub mod interface;
+pub mod meta;
 #[macro_use]
 pub mod macros;
-pub mod meta;
 pub mod routing;
-pub mod store;
 pub mod sync {
     pub mod circular_buffer {
         pub use swim_utilities::sync::circular_buffer::{
@@ -30,6 +29,7 @@ pub mod sync {
         };
     }
 }
+
 mod plane;
 
 #[allow(unused_imports)]
@@ -42,4 +42,8 @@ pub use swim_utilities::routing::route_pattern::RoutePattern;
 pub use swim_utilities::routing::uri;
 
 #[doc(hidden)]
-pub use agent::model::value::ValueLaneStoreIo;
+pub mod store {
+    pub use server_store::agent::lane::value::ValueLaneStoreIo;
+    pub use server_store::agent::lane::{LaneNoStore, StoreIo};
+    pub use server_store::agent::NodeStore;
+}

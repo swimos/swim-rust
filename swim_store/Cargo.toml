@@ -1,0 +1,12 @@
+[package]
+name = "swim_store"
+version = "0.1.0"
+edition = "2018"
+
+[features]
+default = []
+rocks = ["rocks_store"]
+
+[dependencies]
+rocks_store = { path = "rocks_store", optional = true }
+store_common = { path = "store_common" }

@@ -12,20 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::model::map::{MapLane, MapLaneEvent, MapSubscriber, MapUpdate};
+use crate::agent::lane::model::map::{
+    summaries_to_events, to_map_store_event, MapLane, MapLaneEvent, MapSubscriber, MapUpdate,
+};
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lane::tests::ExactlyOnce;
+use futures::future::ready;
 use futures::{FutureExt, Stream, StreamExt};
+use server_store::agent::lane::error::StoreErrorHandler;
+use server_store::agent::lane::map::{MapDataModel, MapLaneStoreIo};
+use server_store::agent::lane::StoreIo;
+use server_store::agent::NodeStore;
+use server_store::plane::mock::MockPlaneStore;
+use server_store::{StoreEngine, StoreKey};
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
-use std::sync::Arc;
+use std::ops::Deref;
+use std::sync::{Arc, Mutex};
 use stm::stm::Stm;
 use stm::transaction::{atomically, TransactionRunner};
 use swim_common::form::Form;
 use swim_common::model::{Attr, Item, Value};
+use swim_store::{serialize, EngineInfo, StoreError};
+use swim_utilities::algebra::non_zero_usize;
 
 fn buffer_size() -> NonZeroUsize {
-    NonZeroUsize::new(16).unwrap()
+    non_zero_usize!(16)
 }
 
 fn make_subscribable<K, V>(buffer_size: NonZeroUsize) -> (MapLane<K, V>, MapSubscriber<K, V>)
@@ -506,4 +518,207 @@ async fn update_direct_multiple_test() {
             .await
             .is_ok());
     }
+}
+
+fn make_store_key(lane_id: u64, key: String) -> StoreKey {
+    StoreKey::Map {
+        lane_id,
+        key: Some(serialize(&key).expect("Failed to serialize store key")),
+    }
+}
+
+#[derive(Debug, Clone)]
+struct TrackingMapStore {
+    values: Arc<Mutex<HashMap<Vec<u8>, Vec<u8>>>>,
+}
+
+impl NodeStore for TrackingMapStore {
+    type Delegate = MockPlaneStore;
+
+    fn engine_info(&self) -> EngineInfo {
+        EngineInfo {
+            path: "tracking".to_string(),
+            kind: "tracking".to_string(),
+        }
+    }
+
+    fn lane_id_of(&self, _lane: &str) -> Result<u64, StoreError> {
+        Ok(0)
+    }
+
+    fn load_ranged_snapshot<F, K, V>(
+        &self,
+        prefix: StoreKey,
+        map_fn: F,
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+    {
+        let prefix = serialize(&prefix)?;
+        let guard = self.values.lock().unwrap();
+        let mut entries = guard.deref().clone().into_iter();
+        let mapped = entries.try_fold(Vec::new(), |mut entries, (k, v)| {
+            if k.starts_with(&prefix) {
+                match map_fn(k.as_ref(), v.as_ref()) {
+                    Ok((k, v)) => {
+                        entries.push((k, v));
+                        Ok(entries)
+                    }
+                    Err(e) => Err(e),
+                }
+            } else {
+                Ok(entries)
+            }
+        })?;
+
+        if mapped.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(mapped))
+        }
+    }
+}
+
+impl StoreEngine for TrackingMapStore {
+    fn put(&self, key: StoreKey, value: &[u8]) -> Result<(), StoreError> {
+        match key {
+            k @ StoreKey::Map { .. } => {
+                let mut guard = self.values.lock().unwrap();
+                guard.insert(serialize(&k)?, value.to_vec());
+                Ok(())
+            }
+            StoreKey::Value { .. } => {
+                panic!("Expected a map key")
+            }
+        }
+    }
+
+    fn get(&self, key: StoreKey) -> Result<Option<Vec<u8>>, StoreError> {
+        match key {
+            k @ StoreKey::Map { .. } => {
+                let guard = self.values.lock().unwrap();
+                Ok(guard.get(serialize(&k)?.as_slice()).map(|o| o.clone()))
+            }
+            StoreKey::Value { .. } => {
+                panic!("Expected a map key")
+            }
+        }
+    }
+
+    fn delete(&self, key: StoreKey) -> Result<(), StoreError> {
+        match key {
+            k @ StoreKey::Map { .. } => {
+                let mut guard = self.values.lock().unwrap();
+                guard.remove(serialize(&k)?.as_slice());
+                Ok(())
+            }
+            StoreKey::Value { .. } => {
+                panic!("Expected a map key")
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn io_load_some() {
+    let mut expected_id_0 = HashMap::new();
+    expected_id_0.insert("a".to_string(), Arc::new(1));
+    expected_id_0.insert("b".to_string(), Arc::new(2));
+    expected_id_0.insert("c".to_string(), Arc::new(3));
+    expected_id_0.insert("d".to_string(), Arc::new(4));
+    expected_id_0.insert("e".to_string(), Arc::new(5));
+
+    let mut expected_id_1 = HashMap::new();
+    expected_id_1.insert("f".to_string(), Arc::new(6));
+    expected_id_1.insert("g".to_string(), Arc::new(7));
+    expected_id_1.insert("h".to_string(), Arc::new(8));
+    expected_id_1.insert("i".to_string(), Arc::new(9));
+    expected_id_1.insert("j".to_string(), Arc::new(10));
+
+    let mut initial = expected_id_0
+        .clone()
+        .into_iter()
+        .fold(HashMap::new(), |mut map, (k, v)| {
+            let store_key = make_store_key(0, k);
+            map.insert(serialize(&store_key).unwrap(), serialize(&v).unwrap());
+            map
+        });
+
+    let serialized_id_1 = expected_id_1
+        .into_iter()
+        .fold(HashMap::new(), |mut map, (k, v)| {
+            let store_key = make_store_key(1, k);
+            map.insert(serialize(&store_key).unwrap(), serialize(&v).unwrap());
+            map
+        });
+
+    initial.extend(serialized_id_1);
+
+    let values = Arc::new(Mutex::new(initial));
+    let store = TrackingMapStore {
+        values: values.clone(),
+    };
+
+    let model = MapDataModel::new(store, 0);
+    let (lane, observer) = MapLane::<String, i32>::store_observable(&model, non_zero_usize!(8));
+    let events = summaries_to_events::<String, i32>(observer.clone())
+        .filter_map(|e| ready(to_map_store_event(e)));
+    let store_io = MapLaneStoreIo::new(events, model);
+
+    let _task_handle = tokio::spawn(store_io.attach(StoreErrorHandler::new(0)));
+
+    let lane_snapshot: HashMap<String, Arc<i32>> =
+        atomically(&lane.snapshot(), ExactlyOnce).await.unwrap();
+    assert_eq!(lane_snapshot, expected_id_0);
+}
+
+#[tokio::test]
+async fn io_crud() {
+    let mut initial = HashMap::new();
+    initial.insert("a".to_string(), Arc::new(1));
+    initial.insert("b".to_string(), Arc::new(2));
+    initial.insert("c".to_string(), Arc::new(3));
+    initial.insert("d".to_string(), Arc::new(4));
+    initial.insert("e".to_string(), Arc::new(5));
+
+    let initial = initial
+        .clone()
+        .into_iter()
+        .fold(HashMap::new(), |mut map, (k, v)| {
+            let store_key = make_store_key(0, k);
+            map.insert(serialize(&store_key).unwrap(), serialize(&v).unwrap());
+            map
+        });
+
+    let values = Arc::new(Mutex::new(initial));
+    let store = TrackingMapStore {
+        values: values.clone(),
+    };
+
+    let model = MapDataModel::new(store, 0);
+
+    let (lane, observer) = MapLane::<String, i32>::store_observable(&model, non_zero_usize!(8));
+    let events = summaries_to_events::<String, i32>(observer.clone())
+        .filter_map(|e| ready(to_map_store_event(e)));
+
+    let store_io = MapLaneStoreIo::new(events, model);
+
+    let _task_handle = tokio::spawn(store_io.attach(StoreErrorHandler::new(0)));
+
+    let update_stm = lane.update("b".to_string(), Arc::new(13));
+    assert!(atomically(&update_stm, ExactlyOnce).await.is_ok());
+
+    let delete_stm = lane.remove("c".to_string());
+    assert!(atomically(&delete_stm, ExactlyOnce).await.is_ok());
+
+    let lane_snapshot: HashMap<String, Arc<i32>> =
+        atomically(&lane.snapshot(), ExactlyOnce).await.unwrap();
+
+    let mut expected = HashMap::new();
+    expected.insert("a".to_string(), Arc::new(1));
+    expected.insert("b".to_string(), Arc::new(13));
+    expected.insert("d".to_string(), Arc::new(4));
+    expected.insert("e".to_string(), Arc::new(5));
+
+    assert_eq!(lane_snapshot, expected);
 }

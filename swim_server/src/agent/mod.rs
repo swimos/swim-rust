@@ -16,7 +16,6 @@ pub mod context;
 pub(crate) mod dispatch;
 pub mod lane;
 pub mod lifecycle;
-pub mod store;
 
 #[cfg(test)]
 pub mod tests;
@@ -45,23 +44,17 @@ use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::demand_map::{
     DemandMapLane, DemandMapLaneCommand, DemandMapLaneEvent,
 };
-use crate::agent::lane::model::map::map_store::MapDataModel;
-use crate::agent::lane::model::map::MapLane;
 use crate::agent::lane::model::map::{summaries_to_events, MapLaneEvent, MapSubscriber};
+use crate::agent::lane::model::map::{to_map_store_event, MapLane};
 use crate::agent::lane::model::supply::{make_lane_model, SupplyLane};
-use crate::agent::lane::model::value::{
-    ValueDataModel, ValueLane, ValueLaneEvent, ValueLaneStoreIo,
-};
+use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::model::DeferredSubscription;
-use crate::agent::lane::store::task::{NodeStoreErrors, NodeStoreTask};
-pub use crate::agent::lane::store::{LaneNoStore, StoreIo};
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::model::command::Commander;
-use crate::agent::model::map::map_store::MapLaneStoreIo;
-use crate::agent::store::NodeStore;
 use crate::meta::info::{LaneInfo, LaneKind};
 use crate::meta::log::NodeLogger;
 use crate::meta::open_meta_lanes;
+use crate::store::{NodeStore, StoreIo, ValueLaneStoreIo};
 #[doc(hidden)]
 #[allow(unused_imports)]
 pub use agent_derive::*;
@@ -73,6 +66,9 @@ use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use server_store::agent::lane::map::{MapDataModel, MapLaneStoreIo};
+use server_store::agent::lane::task::{NodeStoreErrors, NodeStoreTask};
+use server_store::agent::lane::value::ValueDataModel;
 use std::any::Any;
 use std::collections::HashMap;
 use std::error::Error;
@@ -829,12 +825,16 @@ struct LifecycleTasks<L, S, P> {
 }
 
 struct ValueLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
+
 struct MapLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
+
 struct ActionLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
+
 struct CommandLifecycleTasks<L, S, P, T>(
     LifecycleTasks<L, S, P>,
     Option<circular_buffer::Sender<T>>,
 );
+
 struct DemandMapLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 
 struct DemandLifecycleTasks<L, S, P, Event> {
@@ -1109,7 +1109,7 @@ where
         None
     } else {
         Some(Box::new(MapLaneStoreIo::new(
-            summaries_to_events(observer),
+            summaries_to_events(observer).filter_map(|e| ready(to_map_store_event(e))),
             model,
         )))
     };

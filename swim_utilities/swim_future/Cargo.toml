@@ -11,6 +11,7 @@ pin-project = "1.0.5"
 swim_trigger = { path = "../swim_trigger" }
 swim_runtime = { path = "../../swim_runtime" }
 rand = "0.7.3"
+swim_algebra = { path = "../swim_algebra"}
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["sync", "rt", "macros"] }

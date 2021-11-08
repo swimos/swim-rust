@@ -36,7 +36,6 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::{CommandLaneIo, Eff};
-use crate::meta::metric::uplink::UplinkObserver;
 use either::Either;
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::{select, Stream, StreamExt};
@@ -54,6 +53,7 @@ use swim_common::model::Value;
 use swim_common::routing::{RoutingAddr, TaggedClientEnvelope};
 use swim_common::warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
+use swim_metrics::uplink::UplinkObserver;
 use swim_utilities::errors::Recoverable;
 use swim_utilities::trigger;
 use tokio::sync::mpsc;
@@ -236,7 +236,7 @@ where
 
     let spawner_channels = UplinkChannels::new(events, act_rx, err_tx);
     let message_stream =
-        ReceiverStream::new(upd_rx).inspect(move |_| event_stream_observer.on_event());
+        ReceiverStream::new(upd_rx).inspect(move |_| event_stream_observer.on_event(true));
 
     let (upd_done_tx, upd_done_rx) = trigger::trigger();
     let updater = arc_handler.make_update().run_update(message_stream);
@@ -298,7 +298,7 @@ where
                         }
                         Either::Right(command) => {
                             event!(Level::TRACE, DISPATCH_COMMAND, route = ?route_cpy, ?addr, ?command);
-                            observer.on_command();
+                            observer.on_command(true);
                             if upd_tx
                                 .send(Form::try_convert(command).map(|cmd| (addr, cmd)))
                                 .await
@@ -523,7 +523,7 @@ where
 
     let feedback_rx = commands_rx
         .map(AddressedUplinkMessage::Broadcast)
-        .inspect(|_| event_observer.on_event());
+        .inspect(|_| event_observer.on_event(true));
 
     let updater = CommandLaneUpdateTask::new(commander);
     let uplinks = StatelessUplinks::new(
@@ -570,7 +570,7 @@ where
     let (feedback_tx, feedback_rx) = mpsc::channel(config.feedback_buffer.get());
     let feedback_rx = ReceiverStream::new(feedback_rx)
         .map(|(address, message)| AddressedUplinkMessage::Addressed { message, address })
-        .inspect(|_| event_observer.on_event());
+        .inspect(|_| event_observer.on_event(true));
 
     let updater =
         ActionLaneUpdateTask::new(lane.clone(), Some(feedback_tx), config.cleanup_timeout);
@@ -713,7 +713,7 @@ where
 
     let stream = stream
         .map(AddressedUplinkMessage::broadcast)
-        .inspect(|_| event_observer.on_event());
+        .inspect(|_| event_observer.on_event(true));
     let uplinks = StatelessUplinks::new(stream, route.clone(), uplink_kind, observer.clone());
 
     let on_command_strategy = OnCommandStrategy::<Dropping>::dropping();
@@ -824,7 +824,7 @@ where
                     }
                     OutgoingHeader::Command => match body {
                         Some(value) => {
-                            observer.on_command();
+                            observer.on_command(true);
 
                             let maybe_command = Cmd::try_convert(value).map(|cmd| (addr, cmd));
                             on_command_handler.on_command(maybe_command, addr).await
