@@ -17,7 +17,7 @@ use std::fmt;
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 use swim_common::model::Value;
-use swim_common::routing::RoutingError;
+use swim_common::routing::error::RoutingError;
 
 pub type SharedValue = Arc<Value>;
 

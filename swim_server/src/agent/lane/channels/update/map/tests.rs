@@ -17,7 +17,6 @@ use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent, MapSubscriber};
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lane::tests::ExactlyOnce;
-use crate::routing::RoutingAddr;
 use futures::future::{join, ready};
 use futures::stream::once;
 use futures::StreamExt;
@@ -25,11 +24,13 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_common::form::Form;
+use swim_common::routing::RoutingAddr;
+use swim_utilities::algebra::non_zero_usize;
 use swim_warp::model::map::MapUpdate;
 use tokio::time::timeout;
 
 fn buffer_size() -> NonZeroUsize {
-    NonZeroUsize::new(16).unwrap()
+    non_zero_usize!(16)
 }
 
 fn make_subscribable<K, V>(buffer_size: NonZeroUsize) -> (MapLane<K, V>, MapSubscriber<K, V>)

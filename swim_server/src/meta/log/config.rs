@@ -14,6 +14,7 @@
 
 use std::num::NonZeroUsize;
 use std::time::Duration;
+use swim_utilities::algebra::non_zero_usize;
 
 /// A flushing strategy for the log buffer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,10 +46,10 @@ impl Default for LogConfig {
     fn default() -> Self {
         LogConfig {
             flush_interval: Duration::from_secs(30),
-            channel_buffer_size: NonZeroUsize::new(64).unwrap(),
-            lane_buffer: NonZeroUsize::new(16).unwrap(),
+            channel_buffer_size: non_zero_usize!(64),
+            lane_buffer: non_zero_usize!(16),
             flush_strategy: FlushStrategy::Immediate,
-            max_pending_messages: NonZeroUsize::new(16).unwrap(),
+            max_pending_messages: non_zero_usize!(16),
         }
     }
 }

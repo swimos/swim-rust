@@ -20,6 +20,7 @@ use either::Either;
 use num_bigint::{BigInt, BigUint, ToBigInt};
 use num_traits::Signed;
 use num_traits::ToPrimitive;
+use serde::{Deserialize, Serialize};
 use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::convert::TryFrom;
@@ -41,11 +42,10 @@ pub mod text;
 
 /// The core Swim model type. A recursive data type that can be represented in text as a Recon
 /// document.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Value {
     /// A defined but empty value.
     Extant,
-
     /// A 32-bit integer wrapped as a [`Value`].
     Int32Value(i32),
 
@@ -861,7 +861,7 @@ impl From<BigUint> for Value {
 
 /// An attribute that can be applied to a record ['Value']. A key value pair where the key is
 /// a ['String'] and the value can be any ['Value'].
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
 pub struct Attr {
     pub name: Text,
     pub value: Value,
@@ -1045,7 +1045,7 @@ impl<V: Into<Value>> From<(Text, V)> for Attr {
 }
 
 /// An item that may occur in the body of record ['Value'].
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
 pub enum Item {
     /// An item consisting of a single ['Value'].
     ValueItem(Value),

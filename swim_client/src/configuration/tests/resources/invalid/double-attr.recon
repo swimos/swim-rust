@@ -1,18 +1,29 @@
 @config {
-  @attribute @client {
-        buffer_size: 2
-        router: {
-            retry_strategy: @exponential(max_interval: 16, max_backoff: 300)
-            idle_timeout: 60
-            conn_reaper_frequency: 60
-            buffer_size: 100
+    @attribute
+    @downlink_connections {
+        dl_req_buffer_size: 8,
+        buffer_size: 32,
+        yield_after: 200,
+        retry_strategy: @interval {
+            delay: @duration {
+                secs: 54,
+                nanos: 0
+            },
+            retries: 13
         }
-    }
-  @downlinks {
-        back_pressure: @propagate()
-        idle_timeout: 0
-        buffer_size: 5
-        on_invalid: "terminate"
-        yield_after: 256
-    }
+    },
+    @remote_connections {
+        router_buffer_size: 20,
+        channel_buffer_size: 20,
+        activity_timeout: @duration {
+            secs: 60,
+            nanos: 0
+        },
+        write_timeout: @duration {
+            secs: 40,
+            nanos: 0
+        },
+        connection_retries: @none,
+        yield_after: 512
+    },
 }

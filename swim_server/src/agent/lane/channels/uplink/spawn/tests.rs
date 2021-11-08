@@ -22,10 +22,6 @@ use crate::agent::lane::channels::uplink::{
 use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, TaggedAction};
 use crate::agent::lane::model::supply::SupplyLane;
 use crate::agent::Eff;
-use crate::routing::error::RouterError;
-use crate::routing::{
-    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
-};
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::iter;
 use futures::stream::{BoxStream, FusedStream};
@@ -42,14 +38,19 @@ use std::time::Duration;
 use swim_common::form::structural::read::ReadError;
 use swim_common::form::Form;
 use swim_common::model::Value;
-use swim_common::routing::ResolutionError;
-use swim_common::routing::RoutingError;
-use swim_common::routing::SendError;
+use swim_common::routing::error::ResolutionError;
+use swim_common::routing::error::RouterError;
+use swim_common::routing::error::RoutingError;
+use swim_common::routing::error::SendError;
+use swim_common::routing::{
+    ConnectionDropped, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
+};
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use swim_metrics::config::MetricAggregatorConfig;
 use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::sync::topic;
 use swim_utilities::time::AtomicInstant;
@@ -69,8 +70,11 @@ struct Message(i32);
 //A minimal suite of fake uplink and router implementations which which to test the spawner.
 
 struct TestHandler(mpsc::Sender<i32>, i32);
+
 struct TestStateMachine(i32);
+
 struct TestUpdater(mpsc::Sender<i32>);
+
 struct TestRouter {
     sender: mpsc::Sender<TaggedEnvelope>,
     drop_rx: promise::Receiver<ConnectionDropped>,
@@ -97,7 +101,7 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
     }
 }
 
-impl ServerRouter for TestRouter {
+impl Router for TestRouter {
     fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         let TestRouter {
             sender, drop_rx, ..
@@ -196,7 +200,7 @@ impl LaneUpdate for TestUpdater {
 }
 
 fn default_buffer() -> NonZeroUsize {
-    NonZeroUsize::new(5).unwrap()
+    non_zero_usize!(5)
 }
 
 fn route() -> RelativePath {
@@ -310,6 +314,7 @@ struct TestContext {
     messages: mpsc::Sender<TaggedEnvelope>,
     _drop_tx: promise::Sender<ConnectionDropped>,
     drop_rx: promise::Receiver<ConnectionDropped>,
+    uri: RelativeUri,
     uplinks_idle_since: Arc<AtomicInstant>,
 }
 
@@ -321,6 +326,7 @@ impl TestContext {
             messages,
             _drop_tx: drop_tx,
             drop_rx,
+            uri: RelativeUri::try_from("/mock/router".to_string()).unwrap(),
             uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
         }
     }
@@ -342,6 +348,10 @@ impl AgentExecutionContext for TestContext {
 
     fn spawner(&self) -> Sender<Eff> {
         self.spawner.clone()
+    }
+
+    fn uri(&self) -> &RelativeUri {
+        &self.uri
     }
 
     fn metrics(&self) -> NodeMetricAggregator {
@@ -374,7 +384,7 @@ fn make_test_harness() -> (
     BoxFuture<'static, Vec<UplinkErrorReport>>,
 ) {
     let (tx_up, rx_up) = mpsc::channel(5);
-    let (tx_event, rx_event) = topic::channel(NonZeroUsize::new(5).unwrap());
+    let (tx_event, rx_event) = topic::channel(non_zero_usize!(5));
     let (tx_act, rx_act) = mpsc::channel(5);
     let (tx_router, rx_router) = mpsc::channel(5);
 

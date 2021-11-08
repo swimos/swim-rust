@@ -25,7 +25,7 @@ mod tests;
 
 pub mod factory;
 pub mod request;
-mod strategy;
+pub mod strategy;
 use pin_project::pin_project;
 use swim_runtime::time::delay::{delay_for, Delay};
 
@@ -54,7 +54,10 @@ pub struct RetryableFuture<Fut, Err> {
     state: RetryState<Err>,
 }
 
-impl<Fut, Err> RetryableFuture<Fut, Err> {
+impl<Fut> RetryableFuture<Fut, Fut::Error>
+where
+    Fut: ResettableFuture + TryFuture,
+{
     pub fn new(future: Fut, strategy: RetryStrategy) -> Self {
         RetryableFuture {
             future,

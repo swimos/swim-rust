@@ -47,6 +47,7 @@ use swim_metrics::uplink::{
     TaggedWarpUplinkProfile, UplinkObserver, UplinkProfileSender,
 };
 use swim_runtime::time::delay::delay_for;
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::SwimStreamExt;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::time::AtomicInstant;
@@ -59,7 +60,7 @@ use tokio_stream::wrappers::ReceiverStream;
 pub const DEFAULT_YIELD: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(256) };
 
 fn buffer_size() -> NonZeroUsize {
-    NonZeroUsize::new(16).unwrap()
+    non_zero_usize!(16)
 }
 
 fn make_subscribable<K, V>(buffer_size: NonZeroUsize) -> (MapLane<K, V>, MapSubscriber<K, V>)

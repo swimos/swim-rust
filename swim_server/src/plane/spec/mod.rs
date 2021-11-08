@@ -17,11 +17,11 @@ use crate::agent::SwimAgent;
 use crate::plane::error::AmbiguousRoutes;
 use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::provider::AgentProvider;
-use crate::plane::{AgentRoute, BoxAgentRoute};
-use crate::routing::{ServerRouter, TaggedEnvelope};
+use crate::plane::{AgentRoute, BoxAgentRoute, PlaneSpec};
 use futures::Stream;
 use server_store::plane::PlaneStore;
 use std::fmt::Debug;
+use swim_common::routing::{Router, TaggedEnvelope};
 use swim_runtime::time::clock::Clock;
 use swim_utilities::routing::route_pattern::RoutePattern;
 
@@ -31,13 +31,13 @@ mod tests;
 /// Specification of an agent route in a plane. The route pattern describes a parameterized
 /// family of agents, all of which share an implementation.
 #[derive(Debug)]
-pub(super) struct RouteSpec<Clk, Envelopes, Router, Store> {
+pub struct RouteSpec<Clk, Envelopes, Router, Store> {
     pub pattern: RoutePattern,
     pub agent_route: BoxAgentRoute<Clk, Envelopes, Router, Store>,
 }
 
 impl<Clk, Envelopes, Router, Store> RouteSpec<Clk, Envelopes, Router, Store> {
-    pub(super) fn new(
+    pub fn new(
         pattern: RoutePattern,
         agent_route: BoxAgentRoute<Clk, Envelopes, Router, Store>,
     ) -> Self {
@@ -45,30 +45,6 @@ impl<Clk, Envelopes, Router, Store> RouteSpec<Clk, Envelopes, Router, Store> {
             pattern,
             agent_route,
         }
-    }
-}
-
-/// A specification of a plane, consisting of the defined routes and an optional custom lifecycle
-/// for the plane.
-#[derive(Debug)]
-pub struct PlaneSpec<Clk, Envelopes, Router, Store>
-where
-    Store: PlaneStore,
-{
-    pub(super) routes: Vec<RouteSpec<Clk, Envelopes, Router, Store::NodeStore>>,
-    pub(super) lifecycle: Option<Box<dyn PlaneLifecycle>>,
-    pub(super) store: Store,
-}
-
-impl<Clk, Envelopes, Router, Store> PlaneSpec<Clk, Envelopes, Router, Store>
-where
-    Store: PlaneStore,
-{
-    pub fn routes(&self) -> Vec<RoutePattern> {
-        self.routes
-            .iter()
-            .map(|RouteSpec { pattern, .. }| pattern.clone())
-            .collect()
     }
 }
 
@@ -80,11 +56,11 @@ pub struct PlaneBuilder<Clk, Envelopes, Router, Store>(PlaneSpec<Clk, Envelopes,
 where
     Store: PlaneStore;
 
-impl<Clk, Envelopes, Router, Store> PlaneBuilder<Clk, Envelopes, Router, Store>
+impl<Clk, Envelopes, R, Store> PlaneBuilder<Clk, Envelopes, R, Store>
 where
     Clk: Clock,
     Envelopes: Stream<Item = TaggedEnvelope> + Send + 'static,
-    Router: ServerRouter + Clone + 'static,
+    R: Router + Clone + 'static,
     Store: PlaneStore,
 {
     pub fn new(store: Store) -> Self {
@@ -131,7 +107,7 @@ where
     }
 
     /// Construct the specification without adding a plane lifecycle.
-    pub fn build(self) -> PlaneSpec<Clk, Envelopes, Router, Store> {
+    pub fn build(self) -> PlaneSpec<Clk, Envelopes, R, Store> {
         self.0
     }
 
@@ -139,7 +115,7 @@ where
     pub fn build_with_lifecycle(
         mut self,
         custom_lc: Box<dyn PlaneLifecycle>,
-    ) -> PlaneSpec<Clk, Envelopes, Router, Store> {
+    ) -> PlaneSpec<Clk, Envelopes, R, Store> {
         self.0.lifecycle = Some(custom_lc);
         self.0
     }

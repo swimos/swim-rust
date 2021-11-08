@@ -17,7 +17,6 @@ pub mod command;
 pub mod map;
 pub mod value;
 
-use crate::routing::RoutingAddr;
 use futures::future::{ready, BoxFuture, Either, Ready};
 use futures::stream::{iter, Iter};
 use futures::Stream;
@@ -26,6 +25,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::time::Duration;
 use stm::transaction::{RetryManager, TransactionError};
 use swim_common::form::structural::read::ReadError;
+use swim_common::routing::RoutingAddr;
 use swim_runtime::time::delay::{delay_for, Delay};
 use swim_utilities::future::retryable::RetryStrategy;
 use swim_utilities::future::{

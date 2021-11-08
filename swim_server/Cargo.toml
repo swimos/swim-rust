@@ -9,7 +9,6 @@ default = []
 debug = ["log_verbose"]
 persistence = ["server_store/rocks"]
 log_verbose = []
-trust-dns = ["trust-dns-resolver"]
 
 [target.'cfg(log_verbose)'.dependencies]
 tracing = { version = "0.1.13", features = ["max_level_debug"] }
@@ -18,12 +17,13 @@ tracing = { version = "0.1.13", features = ["max_level_debug"] }
 tracing = "0.1.16"
 
 [dependencies]
+swim_client = { path = "../swim_client" }
 swim_store = { path = "../swim_store" }
 swim_metrics = { path = "swim_metrics" }
 server_store = { path = "server_store"}
-swim_common = { path = "../swim_common", features = ["tls"] }
+swim_common = { path = "../swim_common" }
 swim_warp = { path = "../swim_warp" }
-swim_utilities = { path = "../swim_utilities", features = ["errors", "sync", "time", "text", "io"] }
+swim_utilities = { path = "../swim_utilities", features = ["errors", "sync", "time", "text", "io", "algebra"] }
 stringify_attr = { path = "../macro_utilities/stringify_attr" }
 swim_runtime = { path = "../swim_runtime" }
 stm = { path = "../stm" }

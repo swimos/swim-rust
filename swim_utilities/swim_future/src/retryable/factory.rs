@@ -21,7 +21,7 @@ use std::pin::Pin;
 
 /// A [`ResettableFuture`] which uses the provided factory for resets.
 #[pin_project]
-pub struct ResetabbleFutureFactory<F, O, E>
+pub struct ResettableFutureFactory<F, O, E>
 where
     F: FutureFactory<O, E>,
 {
@@ -30,7 +30,7 @@ where
     current: F::Future,
 }
 
-impl<F, O, E> ResetabbleFutureFactory<F, O, E>
+impl<F, O, E> ResettableFutureFactory<F, O, E>
 where
     F: FutureFactory<O, E>,
 {
@@ -39,7 +39,7 @@ where
     pub fn wrap(mut factory: F) -> Self {
         let current = factory.future();
 
-        ResetabbleFutureFactory { factory, current }
+        ResettableFutureFactory { factory, current }
     }
 }
 
@@ -51,7 +51,7 @@ pub trait FutureFactory<Ok, Err> {
     fn future(&mut self) -> Self::Future;
 }
 
-impl<F, O, E> ResettableFuture for ResetabbleFutureFactory<F, O, E>
+impl<F, O, E> ResettableFuture for ResettableFutureFactory<F, O, E>
 where
     F: FutureFactory<O, E>,
 {
@@ -65,7 +65,7 @@ where
     }
 }
 
-impl<F, O, E> Future for ResetabbleFutureFactory<F, O, E>
+impl<F, O, E> Future for ResettableFutureFactory<F, O, E>
 where
     F: FutureFactory<O, E>,
 {
@@ -83,7 +83,7 @@ mod tests {
         use futures::task::{Context, Poll};
         use futures::Future;
 
-        use crate::retryable::factory::{FutureFactory, ResetabbleFutureFactory};
+        use crate::retryable::factory::{FutureFactory, ResettableFutureFactory};
         use crate::retryable::RetryableFuture;
         use std::pin::Pin;
 
@@ -119,7 +119,7 @@ mod tests {
         #[tokio::test]
         async fn factory() {
             let factory = ReadyFactory::new();
-            let wrapper = ResetabbleFutureFactory::wrap(factory);
+            let wrapper = ResettableFutureFactory::wrap(factory);
 
             let retryable = RetryableFuture::new(wrapper, Default::default());
             let r = retryable.await;
@@ -128,7 +128,7 @@ mod tests {
     }
 
     mod tokio {
-        use crate::retryable::factory::{FutureFactory, ResetabbleFutureFactory};
+        use crate::retryable::factory::{FutureFactory, ResettableFutureFactory};
 
         use crate::retryable::RetryableFuture;
         use futures::future::BoxFuture;
@@ -163,7 +163,7 @@ mod tests {
         async fn test_send() {
             let payload = 5;
             let (tx, mut rx) = mpsc::channel(1);
-            let wrapper = ResetabbleFutureFactory::wrap(Send(tx, payload));
+            let wrapper = ResettableFutureFactory::wrap(Send(tx, payload));
             let retry = RetryableFuture::new(wrapper, Default::default()).await;
             let result = rx.recv().await;
 

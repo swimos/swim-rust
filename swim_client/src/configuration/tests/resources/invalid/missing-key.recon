@@ -1,5 +1,0 @@
-@config {
-    @client {
-        buffer_size: 2
-    }
-}

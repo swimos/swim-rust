@@ -22,10 +22,10 @@ mod tests;
 ///
 /// # Examples
 /// ```
-/// use std::num::NonZeroUsize;
+/// use swim_algebra::non_zero_usize;
 /// use swim_iteratee::*;
 ///
-/// let size = NonZeroUsize::new(2).unwrap();
+/// let size = non_zero_usize!(2);
 /// let mut iteratee = collect_vec_with_rem(size);
 ///
 /// //Collects elements until an output can be produced.
@@ -267,10 +267,10 @@ pub trait Iteratee<In> {
     /// # Examples
     ///
     /// ```
-    /// use std::num::NonZeroUsize;
+    /// use swim_algebra::non_zero_usize;
     /// use swim_iteratee::*;
     ///
-    /// let size = NonZeroUsize::new(2).unwrap();
+    /// let size = non_zero_usize!(2);
     ///
     /// //Collects even inputs into vectors of length 2.
     /// let mut iteratee = identity::<i32>()
@@ -419,10 +419,10 @@ pub trait Iteratee<In> {
     /// # Examples
     ///
     /// ```
-    /// use std::num::NonZeroUsize;
+    /// use swim_algebra::non_zero_usize;
     /// use swim_iteratee::*;
     ///
-    /// let size = NonZeroUsize::new(2).unwrap();
+    /// let size = non_zero_usize!(2);
     ///
     /// let data = vec![1, 2, 3, 4, 5];
     /// let mut iteratee = copy_into_vec(size);
@@ -447,10 +447,10 @@ pub trait Iteratee<In> {
     /// # Examples
     ///
     /// ```
-    /// use std::num::NonZeroUsize;
+    /// use swim_algebra::non_zero_usize;
     /// use swim_iteratee::*;
     ///
-    /// let size = NonZeroUsize::new(2).unwrap();
+    /// let size = non_zero_usize!(2);
     ///
     /// let data = vec![1, 2, 3, 4, 5];
     /// let mut iteratee = copy_into_vec_with_rem(size);
@@ -473,10 +473,10 @@ pub trait Iteratee<In> {
     /// # Examples
     ///
     /// ```
-    /// use std::num::NonZeroUsize;
+    /// use swim_algebra::non_zero_usize;
     /// use swim_iteratee::*;
     ///
-    /// let size = NonZeroUsize::new(2).unwrap();
+    /// let size = non_zero_usize!(2);
     ///
     /// let mut iteratee = collect_vec(size).fuse();
     ///
@@ -666,10 +666,10 @@ where
 /// # Examples
 ///
 /// ```
-/// use std::num::NonZeroUsize;
+/// use swim_algebra::non_zero_usize;
 /// use swim_iteratee::*;
 ///
-/// let size = NonZeroUsize::new(3).unwrap();
+/// let size = non_zero_usize!(3);
 ///
 /// let mut iteratee = collect_vec::<i32>(size);
 ///
@@ -690,10 +690,10 @@ pub fn collect_vec<T>(num: NonZeroUsize) -> impl Iteratee<T, Item = Vec<T>> {
 /// # Examples
 ///
 /// ```
-/// use std::num::NonZeroUsize;
+/// use swim_algebra::non_zero_usize;
 /// use swim_iteratee::*;
 ///
-/// let size = NonZeroUsize::new(3).unwrap();
+/// let size = non_zero_usize!(3);
 ///
 /// let mut iteratee = collect_vec_with_rem::<i32>(size);
 ///

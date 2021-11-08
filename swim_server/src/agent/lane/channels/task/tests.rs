@@ -28,11 +28,6 @@ use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::model::supply::{into_try_send, SupplyLane};
 use crate::agent::Eff;
 use crate::meta::accumulate_metrics;
-use crate::routing::error::RouterError;
-use crate::routing::{
-    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
-    TaggedSender,
-};
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::{once, BoxStream, FusedStream};
 use futures::{Future, FutureExt, Stream, StreamExt};
@@ -51,9 +46,14 @@ use swim_common::form::structural::read::ReadError;
 use swim_common::form::structural::write::StructuralWritable;
 use swim_common::form::{Form, NewTypeForm};
 use swim_common::model::Value;
-use swim_common::routing::ResolutionError;
-use swim_common::routing::RoutingError;
-use swim_common::routing::SendError;
+use swim_common::routing::error::ResolutionError;
+use swim_common::routing::error::RouterError;
+use swim_common::routing::error::RoutingError;
+use swim_common::routing::error::SendError;
+use swim_common::routing::{
+    ConnectionDropped, Route, Router, RoutingAddr, TaggedClientEnvelope, TaggedEnvelope,
+    TaggedSender,
+};
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
@@ -62,6 +62,7 @@ use swim_metrics::lane::LanePulse;
 use swim_metrics::node::NodePulse;
 use swim_metrics::uplink::{MetricBackpressureConfig, UplinkObserver, WarpUplinkPulse};
 use swim_metrics::{AggregatorError, MetaPulseLanes, NodeMetricAggregator};
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::sync::topic;
 use swim_utilities::time::AtomicInstant;
@@ -261,6 +262,7 @@ impl TestHandler {
         TestHandler(Default::default())
     }
 }
+
 struct DummyUplink;
 
 impl UplinkStateMachine<i32> for DummyUplink {
@@ -343,6 +345,7 @@ struct TestContext {
     trigger: Arc<Mutex<Option<trigger::Sender>>>,
     _drop_tx: Arc<promise::Sender<ConnectionDropped>>,
     drop_rx: promise::Receiver<ConnectionDropped>,
+    uri: RelativeUri,
     aggregator: NodeMetricAggregator,
     uplinks_idle_since: Arc<AtomicInstant>,
 }
@@ -382,7 +385,7 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
     }
 }
 
-impl ServerRouter for TestRouter {
+impl Router for TestRouter {
     fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         let TestRouter {
             sender, drop_rx, ..
@@ -421,6 +424,10 @@ impl AgentExecutionContext for TestContext {
         self.scheduler.clone()
     }
 
+    fn uri(&self) -> &RelativeUri {
+        &self.uri
+    }
+
     fn metrics(&self) -> NodeMetricAggregator {
         self.aggregator.clone()
     }
@@ -435,7 +442,7 @@ impl AgentExecutionContext for TestContext {
 }
 
 fn default_buffer() -> NonZeroUsize {
-    NonZeroUsize::new(5).unwrap()
+    non_zero_usize!(5)
 }
 
 fn make_config() -> AgentExecutionConfig {
@@ -524,7 +531,7 @@ fn make_task(
 ) {
     let (respond_tx, respond_rx) = mpsc::channel(5);
     let (envelope_tx, envelope_rx) = mpsc::channel(5);
-    let (event_tx, event_rx) = topic::channel(NonZeroUsize::new(5).unwrap());
+    let (event_tx, event_rx) = topic::channel(non_zero_usize!(5));
 
     let handler = TestHandler::new();
     let output = TaskOutput(ReceiverStream::new(respond_rx), handler.0.clone());
@@ -590,13 +597,13 @@ fn make_aggregator(
 
     let config = MetricAggregatorConfig {
         sample_rate: Duration::from_secs(u64::MAX),
-        buffer_size: NonZeroUsize::new(10).unwrap(),
-        yield_after: NonZeroUsize::new(256).unwrap(),
+        buffer_size: non_zero_usize!(10),
+        yield_after: non_zero_usize!(256),
         backpressure_config: MetricBackpressureConfig {
-            buffer_size: NonZeroUsize::new(2).unwrap(),
-            yield_after: NonZeroUsize::new(256).unwrap(),
-            bridge_buffer_size: NonZeroUsize::new(4).unwrap(),
-            cache_size: NonZeroUsize::new(4).unwrap(),
+            buffer_size: non_zero_usize!(2),
+            yield_after: non_zero_usize!(256),
+            bridge_buffer_size: non_zero_usize!(4),
+            cache_size: non_zero_usize!(4),
         },
     };
 
@@ -631,6 +638,7 @@ fn make_context() -> (
         trigger: Arc::new(Mutex::new(Some(stop_tx))),
         _drop_tx: Arc::new(drop_tx),
         drop_rx,
+        uri: RelativeUri::try_from("/mock/router".to_string()).unwrap(),
         aggregator,
         uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
     };
@@ -1380,6 +1388,7 @@ impl MultiTestContextInner {
 struct MultiTestContext(
     Arc<parking_lot::Mutex<MultiTestContextInner>>,
     mpsc::Sender<Eff>,
+    RelativeUri,
     Arc<AtomicInstant>,
 );
 
@@ -1390,6 +1399,7 @@ impl MultiTestContext {
                 router_addr,
             ))),
             spawner,
+            RelativeUri::try_from("/mock/router".to_string()).unwrap(),
             Arc::new(AtomicInstant::new(Instant::now().into_std())),
         )
     }
@@ -1426,6 +1436,10 @@ impl AgentExecutionContext for MultiTestContext {
         self.1.clone()
     }
 
+    fn uri(&self) -> &RelativeUri {
+        &self.2
+    }
+
     fn metrics(&self) -> NodeMetricAggregator {
         NodeMetricAggregator::new(
             RelativeUri::try_from("/test").unwrap(),
@@ -1441,7 +1455,7 @@ impl AgentExecutionContext for MultiTestContext {
     }
 
     fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
-        &self.2
+        &self.3
     }
 
     fn store(&self) -> Self::Store {
@@ -1449,7 +1463,7 @@ impl AgentExecutionContext for MultiTestContext {
     }
 }
 
-impl ServerRouter for MultiTestRouter {
+impl Router for MultiTestRouter {
     fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let mut lock = self.0.lock();
@@ -1479,7 +1493,7 @@ impl ServerRouter for MultiTestRouter {
 fn make_multi_context() -> (MultiTestContext, BoxFuture<'static, ()>) {
     let (spawn_tx, spawn_rx) = mpsc::channel(5);
 
-    let context = MultiTestContext::new(RoutingAddr::local(1024), spawn_tx);
+    let context = MultiTestContext::new(RoutingAddr::plane(1024), spawn_tx);
     let spawn_task = ReceiverStream::new(spawn_rx)
         .for_each_concurrent(None, |t| t)
         .boxed();

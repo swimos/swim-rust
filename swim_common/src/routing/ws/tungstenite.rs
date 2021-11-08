@@ -19,15 +19,15 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream;
 
 use crate::routing::error::{ConnectionError, TError};
+use crate::routing::error::{HttpError, HttpErrorKind, TungsteniteError};
 use crate::routing::ws::WsMessage;
 use crate::routing::ws::{
     CloseCode, CloseReason, JoinedStreamSink, TransformedStreamSink, WsConnections,
 };
-use crate::routing::{HttpError, HttpErrorKind, TungsteniteError};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode as TungCloseCode;
 
-type TransformedWsStream<S> =
+pub type TransformedWsStream<S> =
     TransformedStreamSink<WebSocketStream<S>, Message, WsMessage, TError, ConnectionError>;
 
 const DEFAULT_CLOSE_MSG: &str = "Closing connection";
@@ -90,7 +90,7 @@ where
                 tokio_tungstenite::client_async_with_config(addr, stream, Some(config)).await;
             match connect_result {
                 Ok((stream, response)) => {
-                    if response.status().is_success() {
+                    if response.status().is_success() || response.status().is_informational() {
                         Ok(TransformedStreamSink::new(stream))
                     } else {
                         Err(ConnectionError::Http(HttpError::new(

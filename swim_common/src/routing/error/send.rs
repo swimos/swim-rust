@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::RoutingError;
+use crate::routing::error::RoutingError;
 use crate::warp::envelope::Envelope;
 use std::error::Error;
 use std::fmt::{Display, Formatter};

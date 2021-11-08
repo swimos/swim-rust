@@ -12,8 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::plane::error::{AmbiguousRoutes, NoAgentAtRoute};
+use swim_common::routing::error::NoAgentAtRoute;
 use swim_utilities::routing::route_pattern::RoutePattern;
+
+use crate::plane::error::AmbiguousRoutes;
 
 #[test]
 fn no_agent_at_route_display() {

@@ -15,7 +15,7 @@
 use crate::routing::error::FmtResult;
 pub use http::{self, StatusCode};
 
-use crate::routing::{format_cause, ConnectionError};
+use crate::routing::error::{format_cause, ConnectionError};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use swim_utilities::errors::Recoverable;
