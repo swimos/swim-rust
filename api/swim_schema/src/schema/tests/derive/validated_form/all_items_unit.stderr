@@ -1,5 +1,5 @@
 error: Attribute not supported by unit compound types
-  --> $DIR/all_items_unit.rs:19:19
+  --> $DIR/src/schema/tests/derive/validated_form/all_items_unit.rs:18:14
    |
-19 |     #[form(schema(all_items(num_items = 5)))]
-   |                   ^^^^^^^^^^^^^^^^^^^^^^^^
+18 |     #[derive(ValueSchema)]
+   |              ^^^^^^^^^^^

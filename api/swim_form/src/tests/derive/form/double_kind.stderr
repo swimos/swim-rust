@@ -1,6 +1,5 @@
 error: Field has multiple kind tags
-  --> $DIR/double_kind.rs:20:9
+  --> $DIR/src/tests/derive/form/double_kind.rs:18:14
    |
-20 | /         #[form(skip, body)]
-21 | |         a: i32,
-   | |______________^
+18 |     #[derive(Form)]
+   |              ^^^^

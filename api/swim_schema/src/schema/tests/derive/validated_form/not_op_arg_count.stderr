@@ -1,5 +1,5 @@
 error: Only one argument is permitted in a NOT operator
-  --> $DIR/not_op_arg_count.rs:20:23
+  --> $DIR/src/schema/tests/derive/validated_form/not_op_arg_count.rs:18:14
    |
-20 |         #[form(schema(not(num_items = 5, num_attrs = 100)))]
-   |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+18 |     #[derive(ValueSchema)]
+   |              ^^^^^^^^^^^

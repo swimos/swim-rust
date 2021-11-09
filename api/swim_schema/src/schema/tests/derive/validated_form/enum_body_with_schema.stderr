@@ -1,6 +1,5 @@
 error: Fields marked as #[form(body)] cannot contain a schema
-  --> $DIR/enum_body_with_schema.rs:22:13
+  --> $DIR/src/schema/tests/derive/validated_form/enum_body_with_schema.rs:18:14
    |
-22 | /             #[form(body, schema(equal = "i64_eq"))]
-23 | |             b: i64,
-   | |__________________^
+18 |     #[derive(ValueSchema)]
+   |              ^^^^^^^^^^^
