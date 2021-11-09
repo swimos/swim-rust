@@ -456,7 +456,7 @@ impl Recognizer for WebSocketConfigRecognizer {
                         max_message_size: None,
                         max_frame_size: None,
                         accept_unmasked_frames: false,
-                        compression: TungCompression::None(None).into(),
+                        compression: TungCompression::None(None),
                     })))
                 } else {
                     Some(Err(input.kind_error(ExpectedEvent::Or(vec![
