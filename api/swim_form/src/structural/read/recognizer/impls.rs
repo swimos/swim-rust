@@ -13,8 +13,10 @@
 // limitations under the License.
 
 use crate::structural::read::error::ExpectedEvent;
-use crate::structural::read::event::{NumericValue, ReadEvent};
-use crate::structural::read::recognizer::primitive::NonZeroUsizeRecognizer;
+use crate::structural::read::event::ReadEvent;
+use crate::structural::read::recognizer::primitive::{
+    NonZeroUsizeRecognizer, U32Recognizer, U64Recognizer,
+};
 use crate::structural::read::recognizer::{
     Recognizer, RecognizerReadable, SimpleAttrBody, SimpleRecBody,
 };
@@ -25,7 +27,6 @@ use crate::structural::tags::{
     RETRY_INTERVAL_TAG, RETRY_NONE_TAG, SECS_TAG,
 };
 use std::borrow::Borrow;
-use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 use swim_model::path::AbsolutePath;
@@ -548,29 +549,23 @@ impl Recognizer for DurationRecognizer {
                     Some(Err(input.kind_error(ExpectedEvent::Slot)))
                 }
             }
-            DurationStage::Field(DurationField::Secs) => match input {
-                ReadEvent::Number(NumericValue::UInt(n)) => {
+            DurationStage::Field(DurationField::Secs) => match U64Recognizer.feed_event(input) {
+                Some(Ok(n)) => {
                     self.secs = Some(n);
                     self.stage = DurationStage::InBody;
                     None
                 }
-                ow => Some(Err(
-                    ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
-                )),
+                Some(Err(e)) => Some(Err(e)),
+                _ => Some(Err(ReadError::InconsistentState)),
             },
-            DurationStage::Field(DurationField::Nanos) => match input {
-                ReadEvent::Number(NumericValue::UInt(n)) => {
-                    if let Ok(m) = u32::try_from(n) {
-                        self.nanos = Some(m);
-                        self.stage = DurationStage::InBody;
-                        None
-                    } else {
-                        Some(Err(ReadError::NumberOutOfRange))
-                    }
+            DurationStage::Field(DurationField::Nanos) => match U32Recognizer.feed_event(input) {
+                Some(Ok(n)) => {
+                    self.nanos = Some(n);
+                    self.stage = DurationStage::InBody;
+                    None
                 }
-                ow => Some(Err(
-                    ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
-                )),
+                Some(Err(e)) => Some(Err(e)),
+                _ => Some(Err(ReadError::InconsistentState)),
             },
         }
     }

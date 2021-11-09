@@ -14,11 +14,11 @@
 
 use flate2::Compression;
 use std::borrow::Borrow;
-use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 use swim_form::structural::read::error::ExpectedEvent;
-use swim_form::structural::read::event::{NumericValue, ReadEvent};
+use swim_form::structural::read::event::ReadEvent;
+use swim_form::structural::read::recognizer::primitive::{U32Recognizer, UsizeRecognizer};
 use swim_form::structural::read::recognizer::{
     Recognizer, RecognizerReadable, SimpleAttrBody, SimpleRecBody,
 };
@@ -518,48 +518,39 @@ impl Recognizer for WebSocketConfigRecognizer {
                     Some(Err(input.kind_error(ExpectedEvent::Slot)))
                 }
             }
-            WebSocketConfigStage::Field(WebSocketConfigField::MaxSendQueue) => match input {
-                ReadEvent::Number(NumericValue::UInt(n)) => {
-                    if let Ok(m) = usize::try_from(n) {
-                        self.max_send_queue = Some(m);
+            WebSocketConfigStage::Field(WebSocketConfigField::MaxSendQueue) => {
+                match UsizeRecognizer.feed_event(input) {
+                    Some(Ok(n)) => {
+                        self.max_send_queue = Some(n);
                         self.stage = WebSocketConfigStage::InBody;
                         None
-                    } else {
-                        Some(Err(ReadError::NumberOutOfRange))
                     }
+                    Some(Err(e)) => Some(Err(e)),
+                    _ => Some(Err(ReadError::InconsistentState)),
                 }
-                ow => Some(Err(
-                    ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
-                )),
-            },
-            WebSocketConfigStage::Field(WebSocketConfigField::MaxMessageSize) => match input {
-                ReadEvent::Number(NumericValue::UInt(n)) => {
-                    if let Ok(m) = usize::try_from(n) {
-                        self.max_message_size = Some(m);
+            }
+            WebSocketConfigStage::Field(WebSocketConfigField::MaxMessageSize) => {
+                match UsizeRecognizer.feed_event(input) {
+                    Some(Ok(n)) => {
+                        self.max_message_size = Some(n);
                         self.stage = WebSocketConfigStage::InBody;
                         None
-                    } else {
-                        Some(Err(ReadError::NumberOutOfRange))
                     }
+                    Some(Err(e)) => Some(Err(e)),
+                    _ => Some(Err(ReadError::InconsistentState)),
                 }
-                ow => Some(Err(
-                    ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
-                )),
-            },
-            WebSocketConfigStage::Field(WebSocketConfigField::MaxFrameSize) => match input {
-                ReadEvent::Number(NumericValue::UInt(n)) => {
-                    if let Ok(m) = usize::try_from(n) {
-                        self.max_frame_size = Some(m);
+            }
+            WebSocketConfigStage::Field(WebSocketConfigField::MaxFrameSize) => {
+                match UsizeRecognizer.feed_event(input) {
+                    Some(Ok(n)) => {
+                        self.max_frame_size = Some(n);
                         self.stage = WebSocketConfigStage::InBody;
                         None
-                    } else {
-                        Some(Err(ReadError::NumberOutOfRange))
                     }
+                    Some(Err(e)) => Some(Err(e)),
+                    _ => Some(Err(ReadError::InconsistentState)),
                 }
-                ow => Some(Err(
-                    ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
-                )),
-            },
+            }
             WebSocketConfigStage::Field(WebSocketConfigField::AcceptUnmaskedFrames) => {
                 match input {
                     ReadEvent::Boolean(value) => {
@@ -726,45 +717,43 @@ impl Recognizer for WsCompressionRecognizer {
                 }
             }
             WsCompressionRecognizerStage::InBody => match &mut self.fields {
-                WsCompressionFields::None(value) => match input {
-                    ReadEvent::Number(NumericValue::UInt(n)) => {
-                        if let Ok(m) = usize::try_from(n) {
-                            *value = Some(m);
-                            self.stage = WsCompressionRecognizerStage::InBody;
-                            None
-                        } else {
-                            Some(Err(ReadError::NumberOutOfRange))
+                WsCompressionFields::None(value) => {
+                    if matches!(&input, ReadEvent::EndRecord) {
+                        Some(Ok(WsCompression(TungCompression::None(*value))))
+                    } else {
+                        match UsizeRecognizer.feed_event(input) {
+                            Some(Ok(n)) => {
+                                *value = Some(n);
+                                self.stage = WsCompressionRecognizerStage::InBody;
+                                None
+                            }
+                            Some(Err(n)) => Some(Err(n)),
+                            _ => Some(Err(ReadError::InconsistentState)),
                         }
                     }
-                    ReadEvent::EndRecord => Some(Ok(WsCompression(TungCompression::None(*value)))),
-                    ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
-                        ExpectedEvent::ValueEvent(ValueKind::UInt64),
-                        ExpectedEvent::EndOfRecord,
-                    ])))),
-                },
-                WsCompressionFields::Deflate(value) => match input {
-                    ReadEvent::Number(NumericValue::UInt(n)) => {
-                        if let Ok(m) = u32::try_from(n) {
-                            *value = Some(m);
-                            self.stage = WsCompressionRecognizerStage::InBody;
-                            None
-                        } else {
-                            Some(Err(ReadError::NumberOutOfRange))
+                }
+                WsCompressionFields::Deflate(value) => {
+                    if matches!(&input, ReadEvent::EndRecord) {
+                        match value {
+                            None => Some(Ok(WsCompression(TungCompression::Deflate(
+                                DeflateConfig::default(),
+                            )))),
+                            Some(value) => Some(Ok(WsCompression(TungCompression::Deflate(
+                                DeflateConfig::with_compression_level(Compression::new(*value)),
+                            )))),
+                        }
+                    } else {
+                        match U32Recognizer.feed_event(input) {
+                            Some(Ok(n)) => {
+                                *value = Some(n);
+                                self.stage = WsCompressionRecognizerStage::InBody;
+                                None
+                            }
+                            Some(Err(e)) => Some(Err(e)),
+                            _ => Some(Err(ReadError::InconsistentState)),
                         }
                     }
-                    ReadEvent::EndRecord => match value {
-                        None => Some(Ok(WsCompression(TungCompression::Deflate(
-                            DeflateConfig::default(),
-                        )))),
-                        Some(value) => Some(Ok(WsCompression(TungCompression::Deflate(
-                            DeflateConfig::with_compression_level(Compression::new(*value)),
-                        )))),
-                    },
-                    ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
-                        ExpectedEvent::ValueEvent(ValueKind::UInt32),
-                        ExpectedEvent::EndOfRecord,
-                    ])))),
-                },
+                }
             },
         }
     }

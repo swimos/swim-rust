@@ -38,6 +38,7 @@ fn test_conf_from_file_default_manual() {
     let contents = include_str!("resources/valid/default-config-manual.recon");
 
     let config = parse_value(contents).unwrap();
+
     let config = SwimClientConfig::try_from_value(&config).unwrap();
 
     let expected = SwimClientConfig::default();
@@ -300,7 +301,7 @@ fn test_client_file_conf_recon_error() {
     if let Err(err) = result {
         assert_eq!(
             err.to_string(),
-            "Could not process client configuration: Bad token at: 4:17"
+            "Could not process client configuration: Failed to parse the input. rule = 'Char' at (4:17)."
         )
     } else {
         panic!("Expected file error!")
@@ -417,7 +418,7 @@ fn test_conf_from_file_unexpected_value_top() {
     let result = SwimClientBuilder::new_from_file(file);
 
     if let Err(err) = result {
-        assert_eq!(err.to_string(), "Could not process client configuration: Unexpected value kind: UInt64, expected: An attribute named 'config'.")
+        assert_eq!(err.to_string(), "Could not process client configuration: Unexpected value kind: Int64, expected: An attribute named 'config'.")
     } else {
         panic!("Expected configuration parsing error!")
     }
@@ -432,7 +433,7 @@ fn test_conf_from_file_unexpected_value_nested() {
     let result = SwimClientBuilder::new_from_file(file);
 
     if let Err(err) = result {
-        assert_eq!(err.to_string(), "Could not process client configuration: Unexpected value kind: UInt64, expected: One of: [A value of kind Text, The end of the record body].")
+        assert_eq!(err.to_string(), "Could not process client configuration: Unexpected value kind: Int64, expected: One of: [A value of kind Text, The end of the record body].")
     } else {
         panic!("Expected configuration parsing error!")
     }
