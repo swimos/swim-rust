@@ -18,7 +18,7 @@ pub mod lane;
 pub mod lifecycle;
 
 #[cfg(test)]
-pub mod tests;
+mod tests;
 
 #[cfg(test)]
 pub use tests::test_clock::TestClock;

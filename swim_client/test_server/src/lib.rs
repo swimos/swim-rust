@@ -16,8 +16,6 @@ use server_store::plane::SwimPlaneStore;
 use server_store::NoStore;
 use std::fmt::Debug;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use stm::stm::Stm;
-use stm::transaction::atomically;
 use swim_common::model::Value;
 use swim_common::warp::path::{AbsolutePath, RelativePath};
 use swim_server::agent::command_lifecycle;
@@ -30,6 +28,8 @@ use swim_server::agent::value_lifecycle;
 use swim_server::agent::AgentContext;
 use swim_server::agent::SwimAgent;
 use swim_server::interface::{ServerHandle, SwimServer, SwimServerBuilder, SwimServerConfig};
+use swim_server::stm::stm::Stm;
+use swim_server::stm::transaction::atomically;
 use swim_server::{RetryStrategy, RoutePattern};
 
 pub async fn build_server() -> (SwimServer<SwimPlaneStore<NoStore>>, ServerHandle) {
