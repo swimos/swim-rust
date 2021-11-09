@@ -296,7 +296,7 @@ where
 }
 
 fn read_envelope(msg: &str) -> Result<Envelope, Completion> {
-    Ok(Envelope::try_from(parser::parse_single(msg)?)?)
+    Ok(Envelope::try_from(parser::parse_single(msg, false)?)?)
 }
 
 /// Error type indicating a failure to route an incoming message.

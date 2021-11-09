@@ -17,10 +17,11 @@ use crate::model::parser::{parse_document, parse_document_iteratee};
 use crate::model::{Attr, Item, Value};
 use swim_utilities::iteratee::Iteratee;
 
-type ReadDocument = fn(&str) -> Result<Vec<Item>, ParseFailure>;
+type ReadDocument = fn(&str, bool) -> Result<Vec<Item>, ParseFailure>;
+type ReadDocumentWithoutComments = fn(&str) -> Result<Vec<Item>, ParseFailure>;
 
-fn run_document_iteratee(repr: &str) -> Result<Vec<Item>, ParseFailure> {
-    match parse_document_iteratee()
+fn run_document_iteratee(repr: &str, allow_comments: bool) -> Result<Vec<Item>, ParseFailure> {
+    match parse_document_iteratee(allow_comments)
         .transduce_into(repr.char_indices())
         .next()
     {
@@ -29,7 +30,7 @@ fn run_document_iteratee(repr: &str) -> Result<Vec<Item>, ParseFailure> {
     }
 }
 
-fn empty_document(read_doc: ReadDocument) {
+fn empty_document(read_doc: ReadDocumentWithoutComments) {
     assert_eq!(read_doc(""), Ok(vec![]));
     assert_eq!(read_doc("    "), Ok(vec![]));
     assert_eq!(read_doc("\n"), Ok(vec![]));
@@ -38,15 +39,15 @@ fn empty_document(read_doc: ReadDocument) {
 
 #[test]
 fn parse_empty_document() {
-    empty_document(parse_document);
+    empty_document(|repr| parse_document(repr, false));
 }
 
 #[test]
 fn iteratee_empty_document() {
-    empty_document(run_document_iteratee);
+    empty_document(|repr| run_document_iteratee(repr, false));
 }
 
-fn single_value_document(read_doc: ReadDocument) {
+fn single_value_document(read_doc: ReadDocumentWithoutComments) {
     assert_eq!(read_doc("3"), Ok(vec![Item::of(3u32)]));
     assert_eq!(read_doc("name"), Ok(vec![Item::of("name")]));
     assert_eq!(
@@ -80,15 +81,15 @@ fn single_value_document(read_doc: ReadDocument) {
 
 #[test]
 fn parse_single_value_document() {
-    single_value_document(parse_document);
+    single_value_document(|repr| parse_document(repr, false));
 }
 
 #[test]
 fn iteratee_single_value_document() {
-    single_value_document(run_document_iteratee);
+    single_value_document(|repr| run_document_iteratee(repr, false));
 }
 
-fn single_slot_document(read_doc: ReadDocument) {
+fn single_slot_document(read_doc: ReadDocumentWithoutComments) {
     assert_eq!(read_doc("a:3"), Ok(vec![Item::slot("a", 3u32)]));
     assert_eq!(read_doc("\"a\":"), Ok(vec![Item::slot("a", Value::Extant)]));
     assert_eq!(
@@ -101,15 +102,15 @@ fn single_slot_document(read_doc: ReadDocument) {
 
 #[test]
 fn parse_single_slot_document() {
-    single_slot_document(parse_document);
+    single_slot_document(|repr| parse_document(repr, false));
 }
 
 #[test]
 fn iteratee_single_slot_document() {
-    single_slot_document(run_document_iteratee);
+    single_slot_document(|repr| run_document_iteratee(repr, false));
 }
 
-fn multiple_value_document(read_doc: ReadDocument) {
+fn multiple_value_document(read_doc: ReadDocumentWithoutComments) {
     assert_eq!(
         read_doc("1, 2, hello"),
         Ok(vec![Item::of(1u32), Item::of(2u32), Item::of("hello")])
@@ -121,29 +122,29 @@ fn multiple_value_document(read_doc: ReadDocument) {
             Item::of(Value::of_attr("medium")),
             Item::of(Value::Record(
                 vec![Attr::of(("complex", 3u32))],
-                vec![Item::of("a"), Item::of("b"), Item::of("c")]
-            ))
+                vec![Item::of("a"), Item::of("b"), Item::of("c")],
+            )),
         ])
     );
 }
 
 #[test]
 fn parse_multiple_value_document() {
-    multiple_value_document(parse_document);
+    multiple_value_document(|repr| parse_document(repr, false));
 }
 
 #[test]
 fn iteratee_multiple_value_document() {
-    multiple_value_document(run_document_iteratee);
+    multiple_value_document(|repr| run_document_iteratee(repr, false));
 }
 
-fn mixed_document(read_doc: ReadDocument) {
+fn mixed_document(read_doc: ReadDocumentWithoutComments) {
     assert_eq!(
         read_doc("1, name: 2, hello"),
         Ok(vec![
             Item::of(1u32),
             Item::slot("name", 2u32),
-            Item::of("hello")
+            Item::of("hello"),
         ])
     );
     assert_eq!(
@@ -155,24 +156,24 @@ fn mixed_document(read_doc: ReadDocument) {
                 "last",
                 Value::Record(
                     vec![Attr::of(("complex", 3u32))],
-                    vec![Item::of("a"), Item::of("b"), Item::of("c")]
-                )
-            )
+                    vec![Item::of("a"), Item::of("b"), Item::of("c")],
+                ),
+            ),
         ])
     );
 }
 
 #[test]
 fn parse_mixed_document() {
-    mixed_document(parse_document);
+    mixed_document(|repr| parse_document(repr, false));
 }
 
 #[test]
 fn iteratee_mixed_document() {
-    mixed_document(run_document_iteratee);
+    mixed_document(|repr| run_document_iteratee(repr, false));
 }
 
-fn no_extant_after_trailing_sep(read_doc: ReadDocument) {
+fn no_extant_after_trailing_sep(read_doc: ReadDocumentWithoutComments) {
     assert_eq!(read_doc("3,"), Ok(vec![Item::of(3u32)]));
 
     assert_eq!(
@@ -183,15 +184,15 @@ fn no_extant_after_trailing_sep(read_doc: ReadDocument) {
 
 #[test]
 fn parse_no_extant_after_trailing_sep() {
-    no_extant_after_trailing_sep(parse_document);
+    no_extant_after_trailing_sep(|repr| parse_document(repr, false));
 }
 
 #[test]
 fn iteratee_no_extant_after_trailing_sep() {
-    no_extant_after_trailing_sep(run_document_iteratee);
+    no_extant_after_trailing_sep(|repr| run_document_iteratee(repr, false));
 }
 
-fn fails_on_top_level_close(read_doc: ReadDocument) {
+fn fails_on_top_level_close(read_doc: ReadDocumentWithoutComments) {
     assert!(read_doc("}").is_err());
 
     assert!(read_doc(")").is_err());
@@ -205,10 +206,57 @@ fn fails_on_top_level_close(read_doc: ReadDocument) {
 
 #[test]
 fn parse_fails_on_top_level_close() {
-    fails_on_top_level_close(parse_document);
+    fails_on_top_level_close(|repr| parse_document(repr, false));
 }
 
 #[test]
 fn iteratee_fails_on_top_level_close() {
-    fails_on_top_level_close(run_document_iteratee);
+    fails_on_top_level_close(|repr| run_document_iteratee(repr, false));
+}
+
+fn document_with_comments(read_doc: ReadDocument) {
+    let new_line_vec = vec!["\n", "\r", "\r\n"];
+
+    for new_line in new_line_vec {
+        let first_doc = format!("#This is a comment {} 1, name: 2, hello", new_line);
+        let second_doc = format!("first: simple,{0} #First comment{0}@medium,{0} #Second comment{0} last: @complex(3) {{ {0} #third comment {0} a, b, c }}", new_line);
+
+        assert_eq!(
+            read_doc(&first_doc, true),
+            Ok(vec![
+                Item::of(1u32),
+                Item::slot("name", 2u32),
+                Item::of("hello"),
+            ])
+        );
+
+        assert!(read_doc(&first_doc, false).is_err());
+
+        assert_eq!(
+            read_doc(&second_doc, true),
+            Ok(vec![
+                Item::slot("first", "simple"),
+                Item::of(Value::of_attr("medium")),
+                Item::slot(
+                    "last",
+                    Value::Record(
+                        vec![Attr::of(("complex", 3u32))],
+                        vec![Item::of("a"), Item::of("b"), Item::of("c")],
+                    ),
+                ),
+            ])
+        );
+
+        assert!(read_doc(&second_doc, false).is_err());
+    }
+}
+
+#[test]
+fn parse_document_with_comments() {
+    document_with_comments(parse_document);
+}
+
+#[test]
+fn iteratee_document_with_comment() {
+    document_with_comments(run_document_iteratee);
 }

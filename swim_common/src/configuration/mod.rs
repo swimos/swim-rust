@@ -67,10 +67,16 @@ impl From<Utf8Error> for ConfigurationError {
 }
 
 /// Read and parse a Recon configuration file from an [`AsyncRead`] instance.
-pub async fn read_config_from<Src: AsyncRead>(input: Src) -> Result<Vec<Item>, ConfigurationError> {
+///
+/// * `input` - The input to parse.
+/// * `allow_comments` - Boolean flag indicating whether or not the parsing should fail on comments.
+pub async fn read_config_from<Src: AsyncRead>(
+    input: Src,
+    allow_comments: bool,
+) -> Result<Vec<Item>, ConfigurationError> {
     pin_mut!(input);
-    let iteratee =
-        coenumerate(parse_document_iteratee()).map(|r| r.map_err(ConfigurationError::Parser));
+    let iteratee = coenumerate(parse_document_iteratee(allow_comments))
+        .map(|r| r.map_err(ConfigurationError::Parser));
     let decoder = IterateeDecoder::new(iteratee);
     let mut framed = FramedRead::new(input, decoder);
     framed.next().await.unwrap_or_else(|| Ok(vec![]))

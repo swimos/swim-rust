@@ -1,0 +1,116 @@
+# Client configuration
+@config {
+    @downlink_connections {
+        dl_req_buffer_size: 8,
+        buffer_size: 32,
+        yield_after: 200,
+        retry_strategy: @interval {
+            delay: @duration {
+                secs: 54,
+                nanos: 0
+            },
+            retries: 13
+        }
+    },
+    # Configuration parameters for remote connection management
+    @remote_connections {
+        router_buffer_size: 20,
+        channel_buffer_size: 20,
+        activity_timeout: @duration {
+            secs: 60,
+            nanos: 0
+        },
+        write_timeout: @duration {
+            secs: 40,
+            nanos: 0
+        },
+        connection_retries: @none,
+        yield_after: 512
+    },
+    # The configuration for WebSocket connections
+    @websocket_connections {
+        max_send_queue: 15,
+        max_message_size: 60000000,
+        max_frame_size: 16000000,
+        accept_unmasked_frames: true,
+        compression: @deflate {
+            9
+        }
+    },
+    @downlinks {
+        default: @downlink_config {
+            back_pressure: @release {
+                input_buffer_size: 512,
+                bridge_buffer_size: 512,
+                max_active_keys: 512,
+                yield_after: 512
+            },
+            idle_timeout: @duration {
+                secs: 0,
+                nanos: 6666666
+            },
+            buffer_size: 10,
+            on_invalid: @ignore,
+            yield_after: 512
+        },
+        # Host specific settings
+        host: {
+            "ws://127.0.0.1/": @downlink_config {
+                back_pressure: @propagate,
+                idle_timeout: @duration {
+                    secs: 40000,
+                    nanos: 0
+                },
+                buffer_size: 15,
+                on_invalid: @ignore,
+                yield_after: 200
+            },
+            "ws://127.0.0.2/": @downlink_config {
+                back_pressure: @propagate,
+                idle_timeout: @duration {
+                    secs: 50000,
+                    nanos: 0
+                },
+                buffer_size: 25,
+                on_invalid: @terminate,
+                yield_after: 300
+            }
+        },
+        # Lane specific settings
+        lane: {
+            @path {
+                host: "ws://192.168.0.2/",
+                node: qux,
+                lane: quz
+            }: @downlink_config {
+                back_pressure: @release {
+                    input_buffer_size: 20,
+                    bridge_buffer_size: 20,
+                    max_active_keys: 20,
+                    yield_after: 20
+                },
+                idle_timeout: @duration {
+                    secs: 100000,
+                    nanos: 0
+                },
+                buffer_size: 50,
+                on_invalid: @terminate,
+                yield_after: 600
+            },
+            @path {
+                host: "ws://192.168.0.1/",
+                node: bar,
+                lane: baz
+            }: @downlink_config {
+                back_pressure: @propagate,
+                idle_timeout: @duration {
+                    secs: 90000,
+                    nanos: 0
+                },
+                buffer_size: 40,
+                on_invalid: @ignore,
+                yield_after: 100
+            }
+        }
+    }
+}

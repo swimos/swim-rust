@@ -20,7 +20,7 @@ use std::ops::Neg;
 mod documents;
 
 fn read_single_token(repr: &str) -> Result<ReconToken<&str>, Option<BadToken>> {
-    match tokenize_str(repr).next() {
+    match tokenize_str(repr, false).next() {
         Some(Ok(LocatedReconToken(token, _))) => Ok(token),
         Some(Err(failed)) => Err(Some(failed)),
         _ => Err(None),
@@ -35,7 +35,7 @@ fn read_single_token_owned(repr: &str) -> Result<ReconToken<String>, Option<BadT
 }
 
 fn consume_to_single_token(repr: &str) -> Result<ReconToken<String>, Option<BadToken>> {
-    match tokenize_iteratee()
+    match tokenize_iteratee(false)
         .transduce_into(repr.char_indices())
         .next()
     {
@@ -46,7 +46,10 @@ fn consume_to_single_token(repr: &str) -> Result<ReconToken<String>, Option<BadT
 }
 
 fn consume_to_value(repr: &str) -> Result<Value, ParseFailure> {
-    match parse_iteratee().transduce_into(repr.char_indices()).next() {
+    match parse_iteratee(false)
+        .transduce_into(repr.char_indices())
+        .next()
+    {
         Some(result) => result,
         _ => Err(ParseFailure::IncompleteRecord),
     }
@@ -325,7 +328,7 @@ fn floating_point_tokens(read_single: ReadSingleToken) {
 #[test]
 fn token_sequence() {
     let source = "@name(2){ x : -3, \"y\": true \n 7 } ";
-    let tokens = tokenize_str(source)
+    let tokens = tokenize_str(source, false)
         .map(|r| r.unwrap().0)
         .collect::<Vec<_>>();
 
@@ -355,7 +358,7 @@ fn token_sequence() {
 #[test]
 fn iteratee_token_sequence() {
     let source = "@name(2){ x : -3, \"y\": true \n 7 } ";
-    let tokens = tokenize_iteratee()
+    let tokens = tokenize_iteratee(false)
         .fuse_on_error()
         .transduce_into(source.char_indices())
         .map(|r| r.unwrap().0)
@@ -386,7 +389,7 @@ fn iteratee_token_sequence() {
 
 #[test]
 fn parse_simple_values() {
-    simple_values(parse_single);
+    simple_values(|repr| parse_single(repr, false));
 }
 
 #[test]
@@ -428,7 +431,7 @@ fn simple_values(read_single: ReadSingleValue) {
 
 #[test]
 fn parse_simple_attributes() {
-    simple_attributes(parse_single);
+    simple_attributes(|repr| parse_single(repr, false));
 }
 
 #[test]
@@ -461,7 +464,7 @@ fn simple_attributes(read_single: ReadSingleValue) {
 
 #[test]
 fn parse_simple_records() {
-    simple_records(parse_single);
+    simple_records(|repr| parse_single(repr, false));
 }
 
 #[test]
@@ -550,7 +553,7 @@ fn simple_records(read_single: ReadSingleValue) {
 
 #[test]
 fn parse_complex_attributes() {
-    complex_attributes(parse_single);
+    complex_attributes(|repr| parse_single(repr, false));
 }
 
 #[test]
@@ -700,7 +703,7 @@ fn complex_attributes(read_single: ReadSingleValue) {
 
 #[test]
 fn parse_nested_records() {
-    nested_records(parse_single);
+    nested_records(|repr| parse_single(repr, false));
 }
 
 #[test]
@@ -872,7 +875,7 @@ fn nested_records(read_single: ReadSingleValue) {
 
 #[test]
 fn parse_attribute_only_records() {
-    attribute_only_records(parse_single);
+    attribute_only_records(|repr| parse_single(repr, false));
 }
 
 #[test]
@@ -1022,7 +1025,7 @@ fn attribute_only_records(read_single: ReadSingleValue) {
 
 #[test]
 fn parse_attributes_with_new_line() {
-    attributes_with_new_line(parse_single);
+    attributes_with_new_line(|repr| parse_single(repr, false));
 }
 
 #[test]
@@ -1159,7 +1162,7 @@ fn attributes_with_new_line(read_single: ReadSingleValue) {
 
 #[test]
 fn parse_tagged_records() {
-    tagged_records(parse_single);
+    tagged_records(|repr| parse_single(repr, false));
 }
 
 #[test]
@@ -1223,7 +1226,7 @@ fn tagged_records(read_single: ReadSingleValue) {
 
 #[test]
 fn parse_nested_tagged_records() {
-    nested_tagged_records(parse_single);
+    nested_tagged_records(|repr| parse_single(repr, false));
 }
 
 #[test]
@@ -1306,7 +1309,7 @@ fn bigint_tests() {
     };
 
     assert_eq!(
-        parse_single(&format!("@name({})", big_str)).unwrap(),
+        parse_single(&format!("@name({})", big_str), false).unwrap(),
         Value::of_attr(Attr::of(("name", BigInt::from_str(&big_str).unwrap())))
     );
 
@@ -1314,7 +1317,7 @@ fn bigint_tests() {
     let u64_max_str = u64_max.to_string();
 
     assert_eq!(
-        parse_single(&format!("@name({})", u64_max_str)).unwrap(),
+        parse_single(&format!("@name({})", u64_max_str), false).unwrap(),
         Value::of_attr(Attr::of(("name", Value::UInt64Value(u64_max))))
     );
 }
@@ -1325,14 +1328,14 @@ fn biguint_tests() {
     let big_str = rng.gen_biguint(1000).to_string();
 
     assert_eq!(
-        parse_single(&format!("@name({})", big_str)).unwrap(),
+        parse_single(&format!("@name({})", big_str), false).unwrap(),
         Value::of_attr(Attr::of(("name", BigUint::from_str(&big_str).unwrap())))
     );
 
     let u64_oob_str = (u64::max_value() as i128 + 1).to_string();
 
     assert_eq!(
-        parse_single(&format!("@name({})", u64_oob_str)).unwrap(),
+        parse_single(&format!("@name({})", u64_oob_str), false).unwrap(),
         Value::of_attr(Attr::of((
             "name",
             Value::BigUint(BigUint::from_str(&u64_oob_str).unwrap())
@@ -1342,61 +1345,74 @@ fn biguint_tests() {
 
 #[test]
 fn error_tests() {
-    if let Err(e) = parse_single(&format!("@name(`)")) {
+    if let Err(e) = parse_single(&format!("@name(`)"), false) {
         assert_eq!(e.to_string(), "Bad token at: 1:7");
     } else {
         panic!("Error expected!");
     }
 
-    if let Err(e) = parse_single(&format!("@name(\n12: *foo)")) {
+    if let Err(e) = parse_single(&format!("@name(\n12: *foo)"), false) {
         assert_eq!(e.to_string(), "Bad token at: 2:5");
     } else {
         panic!("Error expected!");
     }
 
-    if let Err(e) = parse_single(&format!("@name(\r12: *foo)")) {
+    if let Err(e) = parse_single(&format!("@name(\r12: *foo)"), false) {
         assert_eq!(e.to_string(), "Bad token at: 2:5");
     } else {
         panic!("Error expected!");
     }
 
-    if let Err(e) = parse_single(&format!("@name(\r\n12: *foo)")) {
+    if let Err(e) = parse_single(&format!("@name(\r\n12: *foo)"), false) {
         assert_eq!(e.to_string(), "Bad token at: 2:5");
     } else {
         panic!("Error expected!");
     }
 
-    if let Err(e) = parse_single(&format!("@name(\n112: foo\n113: bar\n114: *baz\n115: qux)")) {
+    if let Err(e) = parse_single(
+        &format!("@name(\n112: foo\n113: bar\n114: *baz\n115: qux)"),
+        false,
+    ) {
         assert_eq!(e.to_string(), "Bad token at: 4:6");
     } else {
         panic!("Error expected!");
     }
 
-    if let Err(e) = parse_single(&format!("@name(\r112: foo\r113: bar\r114: *baz\r115: qux)")) {
+    if let Err(e) = parse_single(
+        &format!("@name(\r112: foo\r113: bar\r114: *baz\r115: qux)"),
+        false,
+    ) {
         assert_eq!(e.to_string(), "Bad token at: 4:6");
     } else {
         panic!("Error expected!");
     }
 
-    if let Err(e) = parse_single(&format!(
-        "@name(\r\n112: foo\r\n113: bar\r\n114: *baz\r\n115: qux)"
-    )) {
+    if let Err(e) = parse_single(
+        &format!("@name(\r\n112: foo\r\n113: bar\r\n114: *baz\r\n115: qux)"),
+        false,
+    ) {
         assert_eq!(e.to_string(), "Bad token at: 4:6");
     } else {
         panic!("Error expected!");
     }
 
-    if let Err(e) = parse_single(&format!(
+    if let Err(e) = parse_single(
+        &format!(
         "@config {{\n    @client {{\n        buffer_size: 2\n        router: **invalid\n    }}\n}}"
-    )) {
+    ),
+        false,
+    ) {
         assert_eq!(e.to_string(), "Bad token at: 4:17");
     } else {
         panic!("Error expected!");
     }
 
-    if let Err(e) = parse_single(&format!(
+    if let Err(e) = parse_single(
+        &format!(
         "@config {{\r    @client {{\r        buffer_size: 2\r        router: **invalid\r    }}\r}}"
-    )) {
+    ),
+        false,
+    ) {
         assert_eq!(e.to_string(), "Bad token at: 4:17");
     } else {
         panic!("Error expected!");
@@ -1404,7 +1420,7 @@ fn error_tests() {
 
     if let Err(e) = parse_single(&format!(
         "@config {{\r\n    @client {{\r\n        buffer_size: 2\r\n        router: **invalid\r\n    }}\r\n}}"
-    )) {
+    ), false) {
         assert_eq!(e.to_string(), "Bad token at: 4:17");
     } else {
         panic!("Error expected!");

@@ -31,7 +31,7 @@ async fn read_configuration_from_file() {
 
     let file = File::open(path).await;
     assert!(file.is_ok());
-    let result = super::read_config_from(file.unwrap()).await;
+    let result = super::read_config_from(file.unwrap(), false).await;
     assert!(result.is_ok());
     let items = result.unwrap();
     let complex = Value::Record(
@@ -56,6 +56,6 @@ async fn read_invalid_file() {
 
     let file = File::open(path).await;
     assert!(file.is_ok());
-    let result = super::read_config_from(file.unwrap()).await;
+    let result = super::read_config_from(file.unwrap(), false).await;
     assert!(matches!(result, Err(ConfigurationError::Parser(_))));
 }

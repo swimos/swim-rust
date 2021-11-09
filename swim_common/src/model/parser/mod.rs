@@ -123,6 +123,7 @@ pub enum TokenError {
     InvalidInteger,
     InvalidFloat,
     BadStartChar,
+    UnexpectedComment,
 }
 
 /// Errors that can occur when parsing a ['Value'] from a stream of ['ReconToken']s.
@@ -204,14 +205,25 @@ impl From<BadRecord> for ParseFailure {
 
 type TokenErrOrTerminator<'a> = Option<Result<LocatedReconToken<&'a str>, BadToken>>;
 
-fn tokenize_and_terminate(repr: &str) -> impl Iterator<Item = TokenErrOrTerminator> {
-    tokenize_str(repr).map(Some).chain(iter::once(None))
+fn tokenize_and_terminate(
+    repr: &str,
+    allow_comments: bool,
+) -> impl Iterator<Item = TokenErrOrTerminator> {
+    tokenize_str(repr, allow_comments)
+        .map(Some)
+        .chain(iter::once(None))
 }
 
 /// Parse a stream of ['Value']s from a stream of characters. More values will be read until either
 /// an error is encountered or the end of the stream is reached.
-pub fn parse_all(repr: &str) -> impl Iterator<Item = Result<Value, ParseFailure>> + '_ {
-    let tokens = tokenize_and_terminate(repr);
+///
+/// * `repr` - The string to parse.
+/// * `allow_comments` - Boolean flag indicating whether or not the parsing should fail on comments.
+pub fn parse_all(
+    repr: &str,
+    allow_comments: bool,
+) -> impl Iterator<Item = Result<Value, ParseFailure>> + '_ {
+    let tokens = tokenize_and_terminate(repr, allow_comments);
 
     tokens
         .scan(Some(vec![]), |maybe_state, maybe_token| {
@@ -237,8 +249,11 @@ pub fn parse_all(repr: &str) -> impl Iterator<Item = Result<Value, ParseFailure>
 }
 
 /// Parses a Recon document (a sequence of [`Item`]s without an enclosing body) from a string.
-pub fn parse_document(repr: &str) -> Result<Vec<Item>, ParseFailure> {
-    let mut tokens = tokenize_str(repr);
+///
+/// * `repr` - The string to parse.
+/// * `allow_comments` - Boolean flag indicating whether or not the parsing should fail on comments.
+pub fn parse_document(repr: &str, allow_comments: bool) -> Result<Vec<Item>, ParseFailure> {
+    let mut tokens = tokenize_str(repr, allow_comments);
 
     let init_state = vec![Frame::new_record(StartAt::RecordBody)];
 
@@ -382,24 +397,34 @@ fn from_tokens_document_iteratee(
 }
 
 /// Iteratee that parses a stream of UTF characters into Recon ['Value']s.
-pub fn parse_iteratee() -> impl Iteratee<(usize, char), Item = Result<Value, ParseFailure>> {
-    tokenize_iteratee()
+///
+/// * `allow_comments` - Boolean flag indicating whether or not the parsing should fail on comments.
+pub fn parse_iteratee(
+    allow_comments: bool,
+) -> impl Iteratee<(usize, char), Item = Result<Value, ParseFailure>> {
+    tokenize_iteratee(allow_comments)
         .and_then_fallible(from_tokens_iteratee())
         .fuse_on_error()
 }
 
 /// Iteratee that parses a stream of UTF characters into a recon document.
+///
+/// * `allow_comments` - Boolean flag indicating whether or not the parsing should fail on comments.
 pub fn parse_document_iteratee(
+    allow_comments: bool,
 ) -> impl Iteratee<(usize, char), Item = Result<Vec<Item>, ParseFailure>> {
-    tokenize_iteratee()
+    tokenize_iteratee(allow_comments)
         .and_then_fallible(from_tokens_document_iteratee())
         .fuse()
 }
 
 /// Parse exactly one ['Value'] from the input, returning an error if the string does not contain
 /// the representation of exactly one.
-pub fn parse_single(repr: &str) -> Result<Value, ParseFailure> {
-    let mut value_iter = parse_all(repr);
+///
+/// * `repr` - The string to parse.
+/// * `allow_comments` - Boolean flag indicating whether or not the parsing should fail on comments.
+pub fn parse_single(repr: &str, allow_comments: bool) -> Result<Value, ParseFailure> {
+    let mut value_iter = parse_all(repr, allow_comments);
     match value_iter.next() {
         Some(res @ Ok(_)) => {
             if value_iter.next().is_some() {
@@ -595,6 +620,7 @@ fn loc<S>(token: ReconToken<S>, location: Location) -> LocatedReconToken<S> {
 enum TokenParseState {
     None(Location),
     ReadingIdentifier(Location),
+    ReadingComment(Location),
     ReadingStringLiteral(Location, bool),
     ReadingInteger(Location),
     ReadingMantissa(Location),
@@ -608,6 +634,7 @@ impl TokenParseState {
     fn location(&mut self) -> &mut Location {
         match self {
             TokenParseState::None(loc) => loc,
+            TokenParseState::ReadingComment(loc) => loc,
             TokenParseState::ReadingIdentifier(loc) => loc,
             TokenParseState::ReadingStringLiteral(loc, _) => loc,
             TokenParseState::ReadingInteger(loc) => loc,
@@ -661,10 +688,25 @@ fn tokenize_update<T: TokenStr, B: TokenBuffer<T>>(
     index: usize,
     current: char,
     next: Option<(usize, char)>,
+    allow_comments: bool,
 ) -> Option<Result<LocatedReconToken<T>, BadToken>> {
     source.update(next);
     match state {
         TokenParseState::None(_) => token_start(source, state, index, current, next),
+        TokenParseState::ReadingComment(location) => {
+            if allow_comments {
+                match next {
+                    Some((_, c)) if c == '\n' || c == '\r' => {
+                        let location = *location;
+                        *state = TokenParseState::None(location);
+                        None
+                    }
+                    _ => None,
+                }
+            } else {
+                Some(Err(BadToken(*location, TokenError::UnexpectedComment)))
+            }
+        }
         TokenParseState::ReadingIdentifier(location) => match next {
             Some((_, c)) if is_identifier_char(c) => None,
             _ => {
@@ -922,6 +964,10 @@ fn token_start<T: TokenStr, B: TokenBuffer<T>>(
         '}' => Some(Result::Ok(loc(ReconToken::RecordBodyEnd, *location))),
         ':' => Some(Result::Ok(loc(ReconToken::SlotDivider, *location))),
         ',' | ';' => Some(Result::Ok(loc(ReconToken::EntrySep, *location))),
+        '#' => {
+            *state = TokenParseState::ReadingComment(*location);
+            None
+        }
         '\r' | '\n' => match next {
             Some((next_index, c)) if c == '\n' => {
                 location.update_offset(next_index);
@@ -1057,6 +1103,7 @@ fn final_token<T: TokenStr, B: TokenBuffer<T>>(
 /// Tokenize a string held entirely in memory.
 fn tokenize_str(
     repr: &str,
+    allow_comments: bool,
 ) -> impl Iterator<Item = Result<LocatedReconToken<&str>, BadToken>> + '_ {
     let following = repr
         .char_indices()
@@ -1071,8 +1118,14 @@ fn tokenize_str(
         .scan(
             TokenParseState::None(Location::new()),
             move |parse_state, ((i, current), next)| {
-                let current_token =
-                    tokenize_update(&mut token_buffer, parse_state, i, current, next);
+                let current_token = tokenize_update(
+                    &mut token_buffer,
+                    parse_state,
+                    i,
+                    current,
+                    next,
+                    allow_comments,
+                );
                 match (&current_token, next) {
                     (Some(_), _) => Some(current_token),
                     (None, None) => Some(final_token(&mut token_buffer, parse_state)),
@@ -1085,6 +1138,7 @@ fn tokenize_str(
 
 /// Create an iteratee that tokenizes unicode characters.
 fn tokenize_iteratee(
+    allow_comments: bool,
 ) -> impl Iteratee<(usize, char), Item = Result<LocatedReconToken<String>, BadToken>> {
     let char_look_ahead = look_ahead::<(usize, char)>();
     let tokenize = unfold_with_flush(
@@ -1093,14 +1147,14 @@ fn tokenize_iteratee(
             TokenAccumulator::new(),
             TokenParseState::None(Location::new()),
         ),
-        |state, item: ((usize, char), Option<(usize, char)>)| {
+        move |state, item: ((usize, char), Option<(usize, char)>)| {
             let (is_init, token_buffer, parse_state) = state;
             let ((i, current), next) = item;
             if !*is_init {
                 token_buffer.update(Some(item.0));
                 *is_init = true;
             }
-            tokenize_update(token_buffer, parse_state, i, current, next)
+            tokenize_update(token_buffer, parse_state, i, current, next, allow_comments)
         },
         |state| {
             let (_, mut token_buffer, mut parse_state) = state;
