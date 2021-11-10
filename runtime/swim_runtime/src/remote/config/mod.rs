@@ -29,10 +29,6 @@ use swim_model::{Text, ValueKind};
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::retryable::RetryStrategy;
 
-mod swim_common {
-    pub use crate::*;
-}
-
 const REMOTE_CONNECTIONS_TAG: &str = "remote_connections";
 const ROUTER_BUFFER_SIZE_TAG: &str = "router_buffer_size";
 const CHANNEL_BUFFER_SIZE_TAG: &str = "channel_buffer_size";
