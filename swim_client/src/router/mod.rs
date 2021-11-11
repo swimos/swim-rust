@@ -17,7 +17,6 @@ use crate::connections::{ConnectionChannel, ConnectionRegistrator};
 use futures::future::BoxFuture;
 use std::collections::HashMap;
 
-
 use futures::FutureExt;
 use std::convert::TryFrom;
 use swim_utilities::routing::uri::RelativeUri;
@@ -26,10 +25,9 @@ use tokio::sync::oneshot;
 
 use url::Url;
 
-
 use swim_model::path::{AbsolutePath, Addressable};
 
-use swim_warp::envelope::{ResponseEnvelope};
+use swim_warp::envelope::ResponseEnvelope;
 
 use swim_runtime::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
 use swim_runtime::remote::table::SchemeHostPort;

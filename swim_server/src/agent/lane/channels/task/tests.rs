@@ -44,7 +44,7 @@ use std::time::Duration;
 use stm::transaction::TransactionError;
 use swim_form::structural::read::ReadError;
 use swim_form::structural::write::StructuralWritable;
-use swim_form::{NewTypeForm};
+use swim_form::NewTypeForm;
 use swim_metrics::config::MetricAggregatorConfig;
 use swim_metrics::lane::LanePulse;
 use swim_metrics::node::NodePulse;
