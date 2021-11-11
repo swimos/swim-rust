@@ -17,6 +17,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_async_runtime::time::timeout::timeout;
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::item_sink::for_mpsc_sender;
 use swim_utilities::sync::circular_buffer;
 use tokio::sync::{mpsc, Barrier};
@@ -25,11 +26,11 @@ use tokio_stream::wrappers::ReceiverStream;
 const TIMEOUT: Duration = Duration::from_secs(30);
 
 fn yield_after() -> NonZeroUsize {
-    NonZeroUsize::new(256).unwrap()
+    non_zero_usize!(256)
 }
 
 fn buffer_size() -> NonZeroUsize {
-    NonZeroUsize::new(2).unwrap()
+    non_zero_usize!(2)
 }
 
 #[tokio::test(flavor = "multi_thread")]

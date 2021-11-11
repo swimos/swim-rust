@@ -23,6 +23,7 @@ pub mod comap;
 pub mod drop_all;
 pub mod either;
 pub mod fail_all;
+pub mod try_send;
 
 pub mod error {
 
@@ -79,7 +80,7 @@ pub trait ItemSender<T, E>: for<'a> ItemSink<'a, T, Error = E> {
 impl<X, T, E> ItemSender<T, E> for X where X: for<'a> ItemSink<'a, T, Error = E> {}
 
 #[derive(Clone, Debug)]
-pub struct SendError;
+pub struct SendError<T>(pub T);
 
 pub type BoxItemSink<T, E> =
     Box<dyn for<'a> ItemSink<'a, T, Error = E, SendFuture = BoxFuture<'a, Result<(), E>>>>;
@@ -138,17 +139,6 @@ pub mod map_err {
 
         fn send_item(&'a mut self, value: T) -> Self::SendFuture {
             self.sender.send_item(value).err_into()
-        }
-    }
-}
-
-pub struct WatchSink<T>(watch::Sender<Option<T>>);
-
-impl<T> WatchSink<T> {
-    pub fn broadcast(&self, value: T) -> Result<(), SendError> {
-        match self.0.send(Some(value)) {
-            Ok(_) => Ok(()),
-            Err(_) => Err(SendError {}),
         }
     }
 }
@@ -222,13 +212,6 @@ fn mpsc_send_op<'a, T: Send + 'static>(
     tx.send(t)
 }
 
-fn watch_send_op<'a, T: Send + 'static>(
-    tx: &'a mut WatchSink<T>,
-    t: T,
-) -> impl Future<Output = Result<(), SendError>> + Send + 'a {
-    ready(tx.broadcast(t))
-}
-
 fn broadcast_send_op<'a, T: Send + 'static>(
     tx: &'a mut broadcast::Sender<T>,
     t: T,
@@ -240,12 +223,6 @@ pub fn for_mpsc_sender<T: Send + 'static>(
     tx: mpsc::Sender<T>,
 ) -> impl ItemSender<T, mpsc::error::SendError<T>> + Clone {
     FnMutSender::new(tx, mpsc_send_op)
-}
-
-pub fn for_watch_sender<T: Send + 'static>(
-    tx: watch::Sender<Option<T>>,
-) -> impl ItemSender<T, SendError> {
-    FnMutSender::new(WatchSink(tx), watch_send_op)
 }
 
 pub fn for_broadcast_sender<T: Send + 'static>(

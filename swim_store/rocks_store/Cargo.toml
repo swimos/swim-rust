@@ -1,0 +1,11 @@
+[package]
+name = "rocks_store"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+store_common = { path = "../store_common" }
+rocksdb = "0.16.0"
+
+[dev-dependencies]
+tempdir = "0.3.7"

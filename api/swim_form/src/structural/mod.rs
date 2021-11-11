@@ -22,6 +22,7 @@ pub mod generic;
 pub mod read;
 #[macro_use]
 pub mod write;
+mod tags;
 
 use std::str::FromStr;
 #[doc(hidden)]

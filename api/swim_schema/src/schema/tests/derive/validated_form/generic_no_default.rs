@@ -26,5 +26,5 @@ fn main() {
         f: F,
     }
 
-    let _s = S { a: 1, f: Invalid }.as_value();
+    let _s = Form::as_value(&S { a: 1, f: Invalid });
 }

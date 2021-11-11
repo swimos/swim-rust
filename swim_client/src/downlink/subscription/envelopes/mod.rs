@@ -15,7 +15,7 @@
 use crate::downlink::model::map::UntypedMapModification;
 use crate::downlink::model::value::SharedValue;
 use crate::downlink::Command;
-use swim_model::path::AbsolutePath;
+use swim_model::path::Addressable;
 use swim_model::Value;
 use swim_warp::envelope::RequestEnvelope;
 
@@ -23,9 +23,9 @@ use swim_warp::envelope::RequestEnvelope;
 mod tests;
 
 /// Convert a downlink [`Command`] into a Warp [`OutgoingLinkMessage`].
-fn envelope_for<T, F>(
+fn envelope_for<T, F, Path: Addressable>(
     to_body: F,
-    path: &AbsolutePath,
+    path: &Path,
     command: Command<T>,
 ) -> (url::Url, RequestEnvelope)
 where
@@ -40,28 +40,28 @@ where
             Command::Action(v) => RequestEnvelope::Command(path, Some(to_body(v))),
             Command::Unlink => RequestEnvelope::Unlink(path, None),
         },
-    )
+    }
 }
 
 /// Convert a downlink [`Command`], from a value downlink, into a Warp [`OutgoingLinkMessage`].
-pub fn value_envelope(
-    path: &AbsolutePath,
+pub fn value_envelope<Path: Addressable>(
+    path: &Path,
     command: Command<SharedValue>,
 ) -> (url::Url, RequestEnvelope) {
     envelope_for(value::envelope_body, path, command)
 }
 
 /// Convert a downlink [`Command`], from a map downlink, into a Warp [`OutgoingLinkMessage`].
-pub fn map_envelope(
-    path: &AbsolutePath,
+pub fn map_envelope<Path: Addressable>(
+    path: &Path,
     command: Command<UntypedMapModification<Value>>,
 ) -> (url::Url, RequestEnvelope) {
     envelope_for(map::envelope_body, path, command)
 }
 
 /// Convert a downlink [`Command`], from a command downkink, into a Warp [`OutgoingLinkMessage`].
-pub fn command_envelope(
-    path: &AbsolutePath,
+pub fn command_envelope<Path: Addressable>(
+    path: &Path,
     command: Command<Value>,
 ) -> (url::Url, RequestEnvelope) {
     envelope_for(|v| v, path, command)

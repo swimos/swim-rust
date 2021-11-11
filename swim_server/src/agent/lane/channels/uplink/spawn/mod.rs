@@ -22,8 +22,6 @@ use crate::agent::lane::channels::{
 };
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::Eff;
-use crate::meta::metric::uplink::UplinkObserver;
-use crate::routing::{RoutingAddr, ServerRouter};
 use futures::future::join_all;
 use futures::{FutureExt, StreamExt};
 use std::collections::hash_map::Entry;
@@ -31,8 +29,10 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use swim_metrics::uplink::UplinkObserver;
 use swim_model::path::RelativePath;
 use swim_model::Value;
+use swim_runtime::routing::{Router, RoutingAddr};
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger;
 use tokio::sync::mpsc;
@@ -114,20 +114,22 @@ where
     /// * `router` - Produces channels on which outgoing envelopes can be sent.
     /// * `spawn_tx` - Channel to an asynchronous tasks spawner (used to run the uplink state
     /// machines.
+    /// * `uplinks_idle_since` - Time instant since the uplink has been idle.
     /// * `error_collector` - Collects errors whenever an uplink fails.
+    /// * `observer` - An observer for uplinks being opened and closed.
     ///
-    /// #Type Parameters
+    /// # Type Parameters
     ///
-    /// * `Router` - The type of the server router.
-    pub async fn run<Router>(
+    /// * `R` - The type of the server router.
+    pub async fn run<R>(
         mut self,
-        mut router: Router,
+        mut router: R,
         mut spawn_tx: mpsc::Sender<Eff>,
         uplinks_idle_since: Arc<AtomicInstant>,
         error_collector: mpsc::Sender<UplinkErrorReport>,
         observer: UplinkObserver,
     ) where
-        Router: ServerRouter,
+        R: Router,
     {
         let mut uplink_senders: HashMap<RoutingAddr, UplinkHandle> = HashMap::new();
         let mut iteration_count: usize = 0;
@@ -160,7 +162,7 @@ where
                             if !handle.cleanup().await {
                                 event!(Level::ERROR, message = UPLINK_TERMINATED, route = ?&self.route, ?addr);
                             }
-                            observer.did_close();
+                            observer.did_close(true);
                         }
                         action = act;
                         attempts += 1;
@@ -177,7 +179,7 @@ where
                             break false;
                         }
                     } else {
-                        observer.did_open();
+                        observer.did_open(true);
                         // We successfully dispatched to the uplink so can continue.
                         break false;
                     }
@@ -196,7 +198,7 @@ where
             }
         }
         join_all(uplink_senders.into_iter().map(|(_, h)| {
-            observer.did_close();
+            observer.did_close(true);
             h.cleanup()
         }))
         .instrument(span!(Level::DEBUG, UPLINK_CLEANUP))
@@ -204,16 +206,16 @@ where
     }
 
     //Create a new uplink state machine and attach it to the router
-    async fn make_uplink<Router>(
+    async fn make_uplink<R>(
         &mut self,
         addr: RoutingAddr,
         err_tx: mpsc::Sender<UplinkErrorReport>,
         spawn_tx: &mut mpsc::Sender<Eff>,
-        router: &mut Router,
+        router: &mut R,
         uplinks_idle_since: Arc<AtomicInstant>,
     ) -> Option<UplinkHandle>
     where
-        Router: ServerRouter,
+        R: Router,
     {
         let UplinkSpawner {
             handler,

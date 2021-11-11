@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use crate::error::FmtResult;
-
 use crate::error::{format_cause, ConnectionError};
 use std::error::Error;
 use std::fmt::{Display, Formatter};

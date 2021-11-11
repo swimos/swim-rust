@@ -13,67 +13,47 @@
 // limitations under the License.
 
 use crate::error::ConnectionError;
-use std::error::Error;
+
 use std::fmt::{Display, Formatter};
+
+use std::time::Duration;
 use swim_utilities::errors::Recoverable;
-use swim_utilities::future::request::request_future::RequestError;
-use swim_utilities::sync::circular_buffer;
-use tokio::sync::mpsc::error::SendError as MpscSendError;
 
-// An error returned by the router
-#[derive(Clone, Debug, PartialEq)]
-pub enum RoutingError {
-    // The connection to the remote host has been lost.
-    ConnectionError,
-    // The remote host is unreachable.
-    HostUnreachable,
-    // The connection pool has encountered an error.
-    PoolError(ConnectionError),
-    // The router has been stopped.
-    RouterDropped,
-    // The router has encountered an error while stopping.
-    CloseError,
+/// Reasons for a router connection to be dropped.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConnectionDropped {
+    /// The connection was explicitly closed.
+    Closed,
+    /// No data passed through the connection, in either direction, within the specified duration.
+    TimedOut(Duration),
+    /// A remote connection failed with an error.
+    Failed(ConnectionError),
+    /// A local agent failed.
+    AgentFailed,
+    /// The promise indicating the reason was dropped (this is likely a bug).
+    Unknown,
 }
 
-impl Recoverable for RoutingError {
-    fn is_fatal(&self) -> bool {
-        match &self {
-            RoutingError::ConnectionError => false,
-            RoutingError::HostUnreachable => false,
-            RoutingError::PoolError(e) => e.is_fatal(),
-            _ => true,
-        }
-    }
-}
-
-impl Display for RoutingError {
+impl Display for ConnectionDropped {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            RoutingError::ConnectionError => write!(f, "Connection error."),
-            RoutingError::HostUnreachable => write!(f, "Host unreachable."),
-            RoutingError::PoolError(e) => write!(f, "Connection pool error. {}", e),
-            RoutingError::RouterDropped => write!(f, "Router was dropped."),
-            RoutingError::CloseError => write!(f, "Closing error."),
+            ConnectionDropped::Closed => write!(f, "The connection was explicitly closed."),
+            ConnectionDropped::TimedOut(t) => write!(f, "The connection timed out after {:?}.", t),
+            ConnectionDropped::Failed(err) => write!(f, "The connection failed: '{}'", err),
+            ConnectionDropped::AgentFailed => write!(f, "The agent failed."),
+            ConnectionDropped::Unknown => write!(f, "The reason could not be determined."),
         }
     }
 }
 
-impl Error for RoutingError {}
-
-impl<T> From<MpscSendError<T>> for RoutingError {
-    fn from(_: MpscSendError<T>) -> Self {
-        RoutingError::RouterDropped
-    }
-}
-
-impl From<RoutingError> for RequestError {
-    fn from(_: RoutingError) -> Self {
-        RequestError {}
-    }
-}
-
-impl<T> From<circular_buffer::error::SendError<T>> for RoutingError {
-    fn from(_: circular_buffer::error::SendError<T>) -> Self {
-        RoutingError::RouterDropped
+impl ConnectionDropped {
+    //The Recoverable trait cannot be implemented as ConnectionDropped is not an Error.
+    pub fn is_recoverable(&self) -> bool {
+        match self {
+            ConnectionDropped::TimedOut(_) => true,
+            ConnectionDropped::Failed(err) => err.is_transient(),
+            ConnectionDropped::AgentFailed => true,
+            _ => false,
+        }
     }
 }

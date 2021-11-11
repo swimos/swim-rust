@@ -37,8 +37,6 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::Eff;
-use crate::meta::metric::uplink::UplinkObserver;
-use crate::routing::{RoutingAddr, TaggedClientEnvelope};
 use either::Either;
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::{select, Stream, StreamExt};
@@ -52,8 +50,10 @@ use std::sync::Arc;
 use stm::transaction::RetryManager;
 use swim_form::structural::read::ReadError;
 use swim_form::Form;
+use swim_metrics::uplink::UplinkObserver;
 use swim_model::path::RelativePath;
 use swim_model::Value;
+use swim_runtime::routing::{RoutingAddr, TaggedClientEnvelope};
 use swim_utilities::errors::Recoverable;
 use swim_utilities::trigger;
 use swim_warp::envelope::RequestEnvelope;
@@ -237,7 +237,7 @@ where
 
     let spawner_channels = UplinkChannels::new(events, act_rx, err_tx);
     let message_stream =
-        ReceiverStream::new(upd_rx).inspect(move |_| event_stream_observer.on_event());
+        ReceiverStream::new(upd_rx).inspect(move |_| event_stream_observer.on_event(true));
 
     let (upd_done_tx, upd_done_rx) = trigger::trigger();
     let updater = arc_handler.make_update().run_update(message_stream);
@@ -300,7 +300,7 @@ where
                         }
                         Either::Right(command) => {
                             event!(Level::TRACE, DISPATCH_COMMAND, route = ?route_cpy, ?addr, ?command);
-                            observer.on_command();
+                            observer.on_command(true);
                             if upd_tx
                                 .send(Form::try_convert(command).map(|cmd| (addr, cmd)))
                                 .await
@@ -521,7 +521,7 @@ where
     let (feedback_tx, feedback_rx) = mpsc::channel(config.feedback_buffer.get());
     let feedback_rx = ReceiverStream::new(feedback_rx)
         .map(|(_, message)| AddressedUplinkMessage::Broadcast(message))
-        .inspect(|_| event_observer.on_event());
+        .inspect(|_| event_observer.on_event(true));
 
     let updater =
         CommandLaneUpdateTask::new(lane.clone(), Some(feedback_tx), config.cleanup_timeout);
@@ -569,7 +569,7 @@ where
     let (feedback_tx, feedback_rx) = mpsc::channel(config.feedback_buffer.get());
     let feedback_rx = ReceiverStream::new(feedback_rx)
         .map(|(address, message)| AddressedUplinkMessage::Addressed { message, address })
-        .inspect(|_| event_observer.on_event());
+        .inspect(|_| event_observer.on_event(true));
 
     let updater =
         ActionLaneUpdateTask::new(lane.clone(), Some(feedback_tx), config.cleanup_timeout);
@@ -700,7 +700,7 @@ pub async fn run_auto_lane_io<S, Item>(
 ) -> Result<Vec<UplinkErrorReport>, LaneIoError>
 where
     S: Stream<Item = Item> + Send + Sync + 'static,
-    Item: Send + Sync + Form + 'static,
+    Item: Send + Sync + Form + Debug + 'static,
 {
     let span = span!(Level::INFO, LANE_IO_TASK, ?route);
     let _enter = span.enter();
@@ -712,7 +712,7 @@ where
 
     let stream = stream
         .map(AddressedUplinkMessage::broadcast)
-        .inspect(|_| event_observer.on_event());
+        .inspect(|_| event_observer.on_event(true));
     let uplinks = StatelessUplinks::new(stream, route.clone(), uplink_kind, observer.clone());
 
     let on_command_strategy = OnCommandStrategy::<Dropping>::dropping();
@@ -760,7 +760,7 @@ pub async fn run_supply_lane_io<S, Item>(
 ) -> Result<Vec<UplinkErrorReport>, LaneIoError>
 where
     S: Stream<Item = Item> + Send + Sync + 'static,
-    Item: Send + Sync + Form + 'static,
+    Item: Send + Sync + Form + Debug + 'static,
 {
     run_auto_lane_io(
         envelopes,
@@ -822,7 +822,7 @@ where
                     }
                     RequestEnvelope::Command(_, body) => match body {
                         Some(value) => {
-                            observer.on_command();
+                            observer.on_command(true);
 
                             let maybe_command = Cmd::try_convert(value).map(|cmd| (addr, cmd));
                             on_command_handler.on_command(maybe_command, addr).await
@@ -945,7 +945,7 @@ pub async fn run_demand_lane_io<Event>(
     response_rx: mpsc::Receiver<Event>,
 ) -> Result<Vec<UplinkErrorReport>, LaneIoError>
 where
-    Event: Send + Sync + Form + 'static,
+    Event: Send + Sync + Form + Debug + 'static,
 {
     run_auto_lane_io(
         envelopes,

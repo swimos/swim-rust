@@ -16,15 +16,16 @@
 
 pub mod agent;
 pub mod interface;
+pub mod meta;
 #[macro_use]
 pub mod macros;
-pub mod meta;
-pub mod plane;
 pub mod routing;
-pub mod store;
+
+mod plane;
 
 #[allow(unused_imports)]
 pub use agent_derive::*;
+pub use plane::spec::PlaneBuilder;
 pub use stringify_attr::{stringify_attr, stringify_attr_raw};
 pub use swim_utilities::future::retryable::RetryStrategy;
 pub use swim_utilities::future::SwimStreamExt;
@@ -32,4 +33,8 @@ pub use swim_utilities::routing::route_pattern::RoutePattern;
 pub use swim_utilities::routing::uri;
 
 #[doc(hidden)]
-pub use agent::model::value::ValueLaneStoreIo;
+pub mod store {
+    pub use server_store::agent::lane::value::ValueLaneStoreIo;
+    pub use server_store::agent::lane::{LaneNoStore, StoreIo};
+    pub use server_store::agent::NodeStore;
+}

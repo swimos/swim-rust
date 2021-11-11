@@ -26,12 +26,12 @@ use tokio::time;
 async fn main() {
     let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9001);
 
-    let mut swim_server_builder = SwimServerBuilder::new(Default::default()).unwrap();
+    let mut swim_server_builder = SwimServerBuilder::no_store(Default::default()).unwrap();
 
     let mut plane_builder = swim_server_builder.plane_builder("example").unwrap();
 
     plane_builder
-        .add_route::<UnitAgent, (), ()>(RoutePattern::parse_str("/unit/foo").unwrap(), (), ())
+        .add_route::<UnitAgent, (), ()>(RoutePattern::parse_str("/unit/:id").unwrap(), (), ())
         .unwrap();
 
     swim_server_builder.add_plane(plane_builder.build());
@@ -39,7 +39,7 @@ async fn main() {
 
     let stop = async {
         time::sleep(Duration::from_secs(300)).await;
-        server_handle.stop();
+        server_handle.stop().await.unwrap();
     };
 
     println!("Running basic server...");

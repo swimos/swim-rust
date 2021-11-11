@@ -15,11 +15,11 @@
 use crate::agent::lane::channels::update::action::ActionLaneUpdateTask;
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::model::action::{Action, ActionLane};
-use crate::routing::RoutingAddr;
 use futures::future::join;
 use std::time::Duration;
 use swim_async_runtime::time::timeout::timeout;
 use swim_form::structural::read::ReadError;
+use swim_runtime::routing::RoutingAddr;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 

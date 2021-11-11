@@ -1,5 +1,5 @@
 error: Unknown container attribute
-  --> $DIR/unknown_container_attr.rs:19:12
+  --> $DIR/src/tests/derive/form/unknown_container_attr.rs:18:14
    |
-19 |     #[form(swim)]
-   |            ^^^^
+18 |     #[derive(Form)]
+   |              ^^^^
