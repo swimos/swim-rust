@@ -16,12 +16,15 @@ use core::fmt::Debug;
 use swim_future::request::Request;
 use tracing::{event, Level};
 
+/// Provides extension methods for [`Request`] that log errors.
 pub trait RequestExt<T> {
     fn send_debug<M: tracing::Value + Debug>(self, data: T, message: M);
 
     fn send_warn<M: tracing::Value + Debug>(self, data: T, message: M);
 }
 
+/// Provides extension methods for [`Request`], where the value type is a [`Result`],
+/// that log errors.
 pub trait TryRequestExt<T, E> {
     fn send_ok_debug<M: tracing::Value + Debug>(self, data: T, message: M);
 

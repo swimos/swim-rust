@@ -25,7 +25,7 @@ tracing = "0.1.16"
 swim_utilities = { path = "../swim_utilities", features = ["errors", "sync", "lrucache"] }
 swim_async_runtime = { path = "../runtime/swim_async_runtime" }
 swim_warp = { path = "../swim_warp" }
-swim_runtime = { path = "../runtime/swim_runtime", features = ["tls"] }
+swim_runtime = { path = "../runtime/swim_runtime" }
 swim_model = { path = "../api/swim_model" }
 swim_form = { path = "../api/swim_form" }
 swim_recon = { path = "../api/formats/swim_recon" }
