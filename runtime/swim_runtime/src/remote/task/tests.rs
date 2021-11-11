@@ -21,7 +21,9 @@ use futures::{FutureExt, SinkExt, StreamExt};
 use http::Uri;
 use parking_lot::Mutex;
 use swim_async_runtime::time::timeout;
+use swim_form::Form;
 use swim_model::path::RelativePath;
+use swim_recon::printer::print_recon_compact;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::retryable::{Quantity, RetryStrategy};
 use swim_utilities::routing::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};
@@ -45,7 +47,6 @@ use futures::io::ErrorKind;
 use slab::Slab;
 use std::num::NonZeroUsize;
 use std::time::Duration;
-use swim_recon::printer::print_recon_compact;
 
 #[test]
 fn dispatch_error_display() {
@@ -79,7 +80,7 @@ fn dispatch_error_display() {
 
 fn envelope(path: RelativePath, body: &str) -> Envelope {
     let RelativePath { node, lane } = path;
-    Envelope::event()
+    Envelope::command()
         .node_uri(node)
         .lane_uri(lane)
         .body(body)
@@ -590,6 +591,7 @@ async fn task_send_message_failure() {
         .lane_uri("/lane")
         .body("a")
         .done();
+
     let env_cpy = envelope.clone();
 
     let test_case = async move {
@@ -623,11 +625,12 @@ async fn task_receive_message_with_route() {
     } = TaskFixture::new();
 
     let mut rx = router.add("/node".parse().unwrap());
-    let envelope = Envelope::event()
+    let envelope = Envelope::command()
         .node_uri("/node")
         .lane_uri("/lane")
         .body("a")
         .done();
+
     let env_cpy = envelope.clone();
 
     let test_case = async move {
@@ -657,23 +660,20 @@ async fn task_receive_link_message_missing_node() {
         .node_uri("/missing")
         .lane_uri("/lane")
         .done();
+
     let response = Envelope::node_not_found("/missing", "/lane");
 
     let test_case = async move {
         assert!(sock_in.send(Ok(message_for(envelope))).await.is_ok());
 
         let message = sock_out.next().await;
+        assert_eq!(message, Some(message_for(response)));
 
         stop_trigger.trigger();
-        message
     };
 
     let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
-    assert!(result.is_ok());
-    let (result, message) = result.unwrap();
-
-    assert!(matches!(result, ConnectionDropped::Closed));
-    assert_eq!(message, Some(message_for(response)));
+    assert!(matches!(result, Ok((ConnectionDropped::Closed, _))));
 }
 
 #[tokio::test]
@@ -698,7 +698,7 @@ async fn task_receive_sync_message_missing_node() {
         assert!(sock_in.send(Ok(message_for(envelope))).await.is_ok());
         let message = sock_out.next().await.unwrap();
         let envelope = Envelope::node_not_found("/missing", "/lane");
-        let expected = WsMessage::Text(format!("{}", print_recon_compact(&envelope)));
+        let expected = WsMessage::Text(envelope.into_value().to_string());
 
         assert_eq!(message, expected);
     };
@@ -725,6 +725,7 @@ async fn task_receive_message_no_route() {
         .lane_uri("/lane")
         .body("a")
         .done();
+
     let env_cpy = envelope.clone();
 
     let test_case = async move {
@@ -805,6 +806,7 @@ async fn task_timeout() {
         .lane_uri("/lane")
         .body("a")
         .done();
+
     let env_cpy = envelope.clone();
 
     let test_case = async move {
@@ -912,6 +914,7 @@ async fn read_causes_write_buffer_to_fill() {
                 .lane_uri("/lane")
                 .body(i.to_string())
                 .done();
+
             let message = Ok(message_for(envelope));
             if input.send(message).await.is_err() {
                 break;

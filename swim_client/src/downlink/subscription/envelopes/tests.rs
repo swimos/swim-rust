@@ -15,7 +15,7 @@
 use super::*;
 use crate::downlink::Message;
 use std::sync::Arc;
-use swim_model::Value::Int32Value;
+
 use swim_warp::envelope::ResponseEnvelope;
 
 fn path() -> RelativePath {
