@@ -46,7 +46,7 @@ use swim_utilities::future::retryable::RetryStrategy;
 use swim_utilities::future::task::Spawner;
 use swim_utilities::routing::uri::{BadRelativeUri, RelativeUri};
 use swim_utilities::trigger;
-use swim_warp::envelope::Envelope;
+use swim_warp::envelope::{Envelope, EnvelopeHeader};
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Instant};
 use tokio_stream::wrappers::ReceiverStream;
@@ -397,57 +397,62 @@ async fn try_dispatch_envelope<R>(
 where
     R: Router,
 {
-    if envelope.header.is_response() {
-        let mut futures = vec![];
 
-        for (idx, conn) in bidirectional_connections.iter_mut() {
-            let envelope = envelope.clone();
+    match envelope.disriminate_header() {
+        EnvelopeHeader::Response(_) => {
+            let mut futures = vec![];
 
-            futures.push(async move {
-                let result = conn.send_item(envelope).await;
-                (idx, result)
-            });
-        }
+            for (idx, conn) in bidirectional_connections.iter_mut() {
+                let envelope = envelope.clone();
 
-        let results = join_all(futures).await;
-
-        for result in results {
-            if let (idx, Err(_)) = result {
-                bidirectional_connections.remove(idx);
+                futures.push(async move {
+                    let result = conn.send_item(envelope).await;
+                    (idx, result)
+                });
             }
-        }
 
-        Ok(())
-    } else if let Some(target) = envelope.header.relative_path().as_ref() {
-        let Route { sender, .. } = if let Some(route) = resolved.get_mut(target) {
-            if route.sender.is_closed() {
-                resolved.remove(target);
-                insert_new_route(router, resolved, target)
-                    .await
-                    .map_err(|err| (envelope.clone(), err))?
-            } else {
-                route
+            let results = join_all(futures).await;
+
+            for result in results {
+                if let (idx, Err(_)) = result {
+                    bidirectional_connections.remove(idx);
+                }
             }
-        } else {
-            insert_new_route(router, resolved, target)
-                .await
-                .map_err(|err| (envelope.clone(), err))?
-        };
-        if let Err(err) = sender.send_item(envelope).await {
-            if let Some(Route { on_drop, .. }) = resolved.remove(&target) {
-                let reason = on_drop
-                    .await
-                    .map(|reason| (*reason).clone())
-                    .unwrap_or(ConnectionDropped::Unknown);
-                Err((err.0, DispatchError::Dropped(reason)))
-            } else {
-                unreachable!();
-            }
-        } else {
+
             Ok(())
         }
-    } else {
-        panic!("Authentication envelopes not yet supported.");
+        EnvelopeHeader::Request(target) => {
+            let Route { sender, .. } = if let Some(route) = resolved.get_mut(&target) {
+                if route.sender.is_closed() {
+                    resolved.remove(&target);
+                    insert_new_route(router, resolved, &target)
+                        .await
+                        .map_err(|err| (envelope.clone(), err))?
+                } else {
+                    route
+                }
+            } else {
+                insert_new_route(router, resolved, &target)
+                    .await
+                    .map_err(|err| (envelope.clone(), err))?
+            };
+            if let Err(err) = sender.send_item(envelope).await {
+                if let Some(Route { on_drop, .. }) = resolved.remove(&target) {
+                    let reason = on_drop
+                        .await
+                        .map(|reason| (*reason).clone())
+                        .unwrap_or(ConnectionDropped::Unknown);
+                    Err((err.0, DispatchError::Dropped(reason)))
+                } else {
+                    unreachable!();
+                }
+            } else {
+                Ok(())
+            }
+        }
+        _ => {
+            panic!("Authentication envelopes not yet supported.");
+        },
     }
 }
 

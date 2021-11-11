@@ -20,7 +20,7 @@ use std::fmt::{Display, Formatter};
 use swim_utilities::future::item_sink::{ItemSink, SendError};
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger::promise;
-use swim_warp::envelope::Envelope;
+use swim_warp::envelope::{Envelope, RequestEnvelope};
 use tokio::sync::mpsc;
 use url::Url;
 
@@ -87,11 +87,11 @@ pub struct TaggedEnvelope(pub RoutingAddr, pub Envelope);
 /// An [`OutgoingLinkMessage`] tagged with the key of the endpoint into routing table from which it
 /// originated.
 #[derive(Debug, Clone, PartialEq)]
-pub struct TaggedClientEnvelope(pub RoutingAddr, pub OutgoingLinkMessage);
+pub struct TaggedClientEnvelope(pub RoutingAddr, pub RequestEnvelope);
 
 impl TaggedClientEnvelope {
     pub fn lane(&self) -> &str {
-        self.1.path.lane.as_str()
+        self.1.path().lane.as_str()
     }
 }
 

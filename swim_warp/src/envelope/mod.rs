@@ -490,34 +490,11 @@ impl Envelope {
     }
 
     pub fn path(&self) -> Option<RelativePath> {
-        match self {
-            Envelope::Auth { .. } => None,
-            Envelope::DeAuth { .. } => None,
-            Envelope::Link {
-                node_uri, lane_uri, ..
-            } => Some(RelativePath::new(node_uri.clone(), lane_uri.clone())),
-            Envelope::Sync {
-                node_uri, lane_uri, ..
-            } => Some(RelativePath::new(node_uri.clone(), lane_uri.clone())),
-            Envelope::Unlink {
-                node_uri, lane_uri, ..
-            } => Some(RelativePath::new(node_uri.clone(), lane_uri.clone())),
-            Envelope::Command {
-                node_uri, lane_uri, ..
-            } => Some(RelativePath::new(node_uri.clone(), lane_uri.clone())),
-            Envelope::Linked {
-                node_uri, lane_uri, ..
-            } => Some(RelativePath::new(node_uri.clone(), lane_uri.clone())),
-            Envelope::Synced {
-                node_uri, lane_uri, ..
-            } => Some(RelativePath::new(node_uri.clone(), lane_uri.clone())),
-            Envelope::Unlinked {
-                node_uri, lane_uri, ..
-            } => Some(RelativePath::new(node_uri.clone(), lane_uri.clone())),
-            Envelope::Event {
-                node_uri, lane_uri, ..
-            } => Some(RelativePath::new(node_uri.clone(), lane_uri.clone())),
-        }
+       match self.disriminate_header() {
+           EnvelopeHeader::Request(path) => Some(path),
+           EnvelopeHeader::Response(path) => Some(path),
+           _ => None,
+       }
     }
 
     pub fn body(&self) -> Option<&Value> {
@@ -720,6 +697,43 @@ impl Envelope {
             )),
         }
     }
+
+    pub fn disriminate_header(&self) -> EnvelopeHeader {
+        match self {
+            Envelope::Auth { .. } => EnvelopeHeader::Negotiation,
+            Envelope::DeAuth { .. } => EnvelopeHeader::Negotiation,
+            Envelope::Link {
+                node_uri, lane_uri, ..
+            } => EnvelopeHeader::Request(RelativePath::new(node_uri.clone(), lane_uri.clone())),
+            Envelope::Sync {
+                node_uri, lane_uri, ..
+            } => EnvelopeHeader::Request(RelativePath::new(node_uri.clone(), lane_uri.clone())),
+            Envelope::Unlink {
+                node_uri, lane_uri, ..
+            } => EnvelopeHeader::Request(RelativePath::new(node_uri.clone(), lane_uri.clone())),
+            Envelope::Command {
+                node_uri, lane_uri, ..
+            } => EnvelopeHeader::Request(RelativePath::new(node_uri.clone(), lane_uri.clone())),
+            Envelope::Linked {
+                node_uri, lane_uri, ..
+            } => EnvelopeHeader::Response(RelativePath::new(node_uri.clone(), lane_uri.clone())),
+            Envelope::Synced {
+                node_uri, lane_uri, ..
+            } => EnvelopeHeader::Response(RelativePath::new(node_uri.clone(), lane_uri.clone())),
+            Envelope::Unlinked {
+                node_uri, lane_uri, ..
+            } => EnvelopeHeader::Response(RelativePath::new(node_uri.clone(), lane_uri.clone())),
+            Envelope::Event {
+                node_uri, lane_uri, ..
+            } => EnvelopeHeader::Response(RelativePath::new(node_uri.clone(), lane_uri.clone())),
+        }
+    }
+}
+
+pub enum EnvelopeHeader {
+    Request(RelativePath),
+    Response(RelativePath),
+    Negotiation,
 }
 
 impl RequestEnvelope {
