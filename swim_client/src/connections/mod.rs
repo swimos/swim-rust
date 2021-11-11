@@ -448,13 +448,13 @@ impl<Path: Addressable, DelegateRouter: BidirectionalRouter>
             };
 
             match request {
-                Some(ConnectionRegistratorEvent::Message(envelope)) => {
-                    if let Ok(incoming_message) = envelope.1.clone().into_incoming() {
-                        if let Some(subscribers) = subscribers.get_mut(&incoming_message.path) {
+                Some(ConnectionRegistratorEvent::Message(TaggedEnvelope(_, envelope))) => {
+                    if let Some(response) = envelope.into_response() {
+                        if let Some(subscribers) = subscribers.get_mut(response.path()) {
                             let mut futures = vec![];
 
                             for (idx, sub) in subscribers.iter() {
-                                let msg = incoming_message.clone();
+                                let msg = response.clone();
 
                                 futures.push(async move {
                                     let result = sub.send(RouterEvent::Message(msg)).await;

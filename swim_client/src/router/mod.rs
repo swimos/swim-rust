@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::connections::ConnectionRegistrator;
+use crate::connections::{ConnectionChannel, ConnectionRegistrator};
 use crate::connections::ConnectionType;
 use futures::future::BoxFuture;
 use std::collections::HashMap;
@@ -30,8 +30,6 @@ use swim_async_runtime::task::*;
 use swim_model::path::{Addressable, AbsolutePath, RelativePath};
 use swim_utilities::future::request::request_future::RequestError;
 use swim_warp::envelope::{Envelope, EnvelopeKind, ResponseEnvelope};
-
-use swim_warp::envelope::IncomingLinkMessage;
 
 use swim_runtime::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
 use swim_runtime::remote::table::SchemeHostPort;

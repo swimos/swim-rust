@@ -332,10 +332,10 @@ impl<Path: Addressable> ClientContext<Path> {
         &self,
         target: Path,
         message: T,
-    ) -> Result<(), ClientError> {
+    ) -> Result<(), ClientError<Path>> {
         let envelope = Envelope::command()
-            .node_uri(&target.node)
-            .lane_uri(&target.lane)
+            .node_uri(target.node())
+            .lane_uri(target.lane())
             .body(message)
             .done();
 

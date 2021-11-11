@@ -561,10 +561,10 @@ impl<Path: Addressable> DownlinksTask<Path> {
 
         let updates = ReceiverStream::new(incoming).map(map_router_events);
 
-        let sink_path = path.clone();
-        let cmd_sink = sink.map_err_into().comap(move |cmd: Command<SharedValue>| {
-            envelopes::value_envelope(&sink_path, cmd).into()
-        });
+        let sink_path = path.relative_path();
+        let cmd_sink = sink.map_err_into().comap(
+            move |cmd: Command<SharedValue>| envelopes::value_envelope(sink_path.clone(), cmd).into(),
+        );
 
         let (raw_dl, rec) = match config.back_pressure {
             BackpressureMode::Propagate => {
@@ -629,13 +629,15 @@ impl<Path: Addressable> DownlinksTask<Path> {
             RouterEvent::Stopping => Err(RoutingError::RouterDropped),
         });
 
-        let sink_path = path.clone();
+        let sink_path = path.relative_path();
 
         let (raw_dl, rec) = match config.back_pressure {
             BackpressureMode::Propagate => {
-                let cmd_sink = sink.comap(move |cmd: Command<UntypedMapModification<Value>>| {
-                    envelopes::map_envelope(&sink_path, cmd).into()
-                });
+                let cmd_sink = sink.comap(
+                    move |cmd: Command<UntypedMapModification<Value>>| {
+                        envelopes::map_envelope(sink_path.clone(), cmd).into()
+                    },
+                );
                 map_downlink(
                     Some(key_schema),
                     Some(value_schema),
@@ -651,16 +653,17 @@ impl<Path: Addressable> DownlinksTask<Path> {
                 yield_after,
             } => {
                 let sink_path_duplicate = sink_path.clone();
-                let direct_sink = sink.clone().map_err_into().comap(
-                    move |cmd: Command<UntypedMapModification<Value>>| {
-                        envelopes::map_envelope(&sink_path_duplicate, cmd).into()
+                let direct_sink = sink.clone()
+                    .map_err_into()
+                    .comap(move |cmd: Command<UntypedMapModification<Value>>| {
+                        envelopes::map_envelope(sink_path_duplicate.clone(), cmd).into()
+                    });
+                let action_sink = sink.map_err_into().comap(
+                    move |act: UntypedMapModification<Value>| {
+                        envelopes::map_envelope(sink_path.clone(), Command::Action(act))
+                            .into()
                     },
                 );
-                let action_sink =
-                    sink.map_err_into()
-                        .comap(move |act: UntypedMapModification<Value>| {
-                            envelopes::map_envelope(&sink_path, Command::Action(act)).into()
-                        });
 
                 let pressure_release = KeyedWatch::new(
                     action_sink,
@@ -709,11 +712,14 @@ impl<Path: Addressable> DownlinksTask<Path> {
         let sink = self.sink_for(path.clone()).await?;
 
         let config = self.config.config_for(&path);
-        let sink_path = path.clone();
+        let sink_path = path.relative_path();
 
-        let cmd_sink = sink
-            .map_err_into()
-            .comap(move |cmd: Command<Value>| envelopes::command_envelope(&sink_path, cmd).into());
+        let cmd_sink =
+            sink
+                .map_err_into()
+                .comap(move |cmd: Command<Value>| {
+                    envelopes::command_envelope(sink_path.clone(), cmd).into()
+                });
 
         let dl = match config.back_pressure {
             BackpressureMode::Propagate => {
@@ -771,10 +777,10 @@ impl<Path: Addressable> DownlinksTask<Path> {
 
         let config = self.config.config_for(&path);
 
-        let path_cpy = path.clone();
+        let path_cpy = path.relative_path();
         let cmd_sink = sink
             .map_err_into()
-            .comap(move |cmd: Command<()>| envelopes::dummy_envelope(&path_cpy, cmd).into());
+            .comap(move |cmd: Command<()>| envelopes::dummy_envelope(path_cpy.clone(), cmd).into());
 
         let (raw_dl, _) = event_downlink(
             schema.clone(),
