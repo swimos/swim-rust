@@ -20,8 +20,6 @@ use crate::routing::{Route, Router, RoutingAddr, TaggedEnvelope};
 use futures::future::join;
 use futures::io::ErrorKind;
 use futures::{FutureExt, StreamExt};
-use swim_runtime::error::{ConnectionError, IoError, ResolutionError};
-use swim_model::Value;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;

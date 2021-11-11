@@ -22,7 +22,6 @@ use http::Uri;
 use parking_lot::Mutex;
 use swim_async_runtime::time::timeout;
 use swim_model::path::RelativePath;
-use swim_model::Value;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::retryable::{Quantity, RetryStrategy};
 use swim_utilities::routing::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};
@@ -47,10 +46,6 @@ use slab::Slab;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 use swim_recon::printer::print_recon_compact;
-use swim_runtime::error::{
-    CloseError, CloseErrorKind, ConnectionError, IoError, ProtocolError, ResolutionError,
-};
-use swim_runtime::ws::WsMessage;
 
 #[test]
 fn dispatch_error_display() {
@@ -163,7 +158,11 @@ async fn try_dispatch_to_bidirectional() {
 
     let mut rx = router.add("/node".parse().unwrap());
 
-    let env = Envelope::make_event(path.node.clone(), path.lane.clone(), Some(Value::text("a")));
+    let env = Envelope::event()
+        .node_uri(&path.node)
+        .lane_uri(&path.lane)
+        .body("a")
+        .done();
 
     let result = super::try_dispatch_envelope(
         &mut router,
@@ -545,7 +544,12 @@ async fn task_send_message_bidirectional() {
         bidirectional_tx,
     } = TaskFixture::new();
 
-    let envelope = Envelope::make_event("/node", "/lane", Some(Value::text("a")));
+    let envelope = Envelope::event()
+        .node_uri("/node")
+        .lane_uri("/lane")
+        .body("a")
+        .done();
+
     let env_cpy = envelope.clone();
 
     let test_case = async move {

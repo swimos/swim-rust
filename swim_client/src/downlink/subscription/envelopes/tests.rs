@@ -18,15 +18,14 @@ use std::sync::Arc;
 use swim_model::Value::Int32Value;
 use swim_warp::envelope::ResponseEnvelope;
 
-fn path() -> AbsolutePath {
-    AbsolutePath::new(url::Url::parse("ws://127.0.0.1/").unwrap(), "node", "lane")
+fn path() -> RelativePath {
+    RelativePath::new("node", "lane")
 }
 
 #[test]
 fn unlink_value_command_to_envelope() {
     let expected = RequestEnvelope::unlink("node", "lane");
-    let (host, envelope) = value_envelope(&path(), Command::Unlink);
-    assert_eq!(host, url::Url::parse("ws://127.0.0.1/").unwrap());
+    let envelope = value_envelope(path(), Command::Unlink);
     assert_eq!(envelope, expected);
 }
 
@@ -40,8 +39,7 @@ fn unlinked_value_message_from_envelope() {
 #[test]
 fn sync_value_command_to_envelope() {
     let expected = RequestEnvelope::sync("node", "lane");
-    let (host, envelope) = value_envelope(&path(), Command::Sync);
-    assert_eq!(host, url::Url::parse("ws://127.0.0.1/").unwrap());
+    let envelope = value_envelope(path(), Command::Sync);
     assert_eq!(envelope, expected);
 }
 
@@ -62,11 +60,10 @@ fn synced_value_message_from_envelope() {
 #[test]
 fn data_value_command_to_envelope() {
     let expected = RequestEnvelope::command("node", "lane", 5);
-    let (host, envelope) = value_envelope(
-        &path(),
+    let envelope = value_envelope(
+        path(),
         Command::Action(SharedValue::new(Value::Int32Value(5))),
     );
-    assert_eq!(host, url::Url::parse("ws://127.0.0.1/").unwrap());
     assert_eq!(envelope, expected);
 }
 
@@ -74,22 +71,20 @@ fn data_value_command_to_envelope() {
 fn data_value_message_from_envelope() {
     let env = ResponseEnvelope::event("node", "lane", 7);
     let result = value::from_envelope(env);
-    assert_eq!(result, Message::Action(Int32Value(7)))
+    assert_eq!(result, Message::Action(Value::Int32Value(7)))
 }
 
 #[test]
 fn unlink_map_command_to_envelope() {
     let expected = RequestEnvelope::unlink("node", "lane");
-    let (host, envelope) = map_envelope(&path(), Command::Unlink);
-    assert_eq!(host, url::Url::parse("ws://127.0.0.1/").unwrap());
+    let envelope = map_envelope(path(), Command::Unlink);
     assert_eq!(envelope, expected);
 }
 
 #[test]
 fn sync_map_command_to_envelope() {
     let expected = RequestEnvelope::sync("node", "lane");
-    let (host, envelope) = map_envelope(&path(), Command::Sync);
-    assert_eq!(host, url::Url::parse("ws://127.0.0.1/").unwrap());
+    let envelope = map_envelope(path(), Command::Sync);
     assert_eq!(envelope, expected);
 }
 
@@ -98,8 +93,7 @@ fn clear_map_command_to_envelope() {
     let action: UntypedMapModification<Value> = UntypedMapModification::Clear;
 
     let expected = RequestEnvelope::command("node", "lane", action);
-    let (host, envelope) = map_envelope(&path(), Command::Action(UntypedMapModification::Clear));
-    assert_eq!(host, url::Url::parse("ws://127.0.0.1/").unwrap());
+    let envelope = map_envelope(path(), Command::Action(UntypedMapModification::Clear));
     assert_eq!(envelope, expected);
 }
 
@@ -108,8 +102,7 @@ fn take_map_command_to_envelope() {
     let action: UntypedMapModification<Value> = UntypedMapModification::Take(7);
 
     let expected = RequestEnvelope::command("node", "lane", action);
-    let (host, envelope) = map_envelope(&path(), Command::Action(UntypedMapModification::Take(7)));
-    assert_eq!(host, url::Url::parse("ws://127.0.0.1/").unwrap());
+    let envelope = map_envelope(path(), Command::Action(UntypedMapModification::Take(7)));
     assert_eq!(envelope, expected);
 }
 
@@ -118,8 +111,7 @@ fn skip_map_command_to_envelope() {
     let action: UntypedMapModification<Value> = UntypedMapModification::Drop(7);
 
     let expected = RequestEnvelope::command("node", "lane", action);
-    let (host, envelope) = map_envelope(&path(), Command::Action(UntypedMapModification::Drop(7)));
-    assert_eq!(host, url::Url::parse("ws://127.0.0.1/").unwrap());
+    let envelope = map_envelope(path(), Command::Action(UntypedMapModification::Drop(7)));
     assert_eq!(envelope, expected);
 }
 
@@ -128,11 +120,10 @@ fn remove_map_command_to_envelope() {
     let action = UntypedMapModification::<Value>::Remove(Value::text("key"));
 
     let expected = RequestEnvelope::command("node", "lane", action);
-    let (host, envelope) = map_envelope(
-        &path(),
+    let envelope = map_envelope(
+        path(),
         Command::Action(UntypedMapModification::Remove(Value::text("key"))),
     );
-    assert_eq!(host, url::Url::parse("ws://127.0.0.1/").unwrap());
     assert_eq!(envelope, expected);
 }
 
@@ -145,8 +136,7 @@ fn insert_map_command_to_envelope() {
     let arc_action =
         UntypedMapModification::Update(Value::text("key"), Arc::new(Value::text("value")));
 
-    let (host, envelope) = map_envelope(&path(), Command::Action(arc_action));
-    assert_eq!(host, url::Url::parse("ws://127.0.0.1/").unwrap());
+    let envelope = map_envelope(path(), Command::Action(arc_action));
     assert_eq!(envelope, expected);
 }
 

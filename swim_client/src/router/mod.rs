@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::connections::{ConnectionChannel, ConnectionRegistrator};
 use crate::connections::ConnectionType;
+use crate::connections::{ConnectionChannel, ConnectionRegistrator};
 use futures::future::BoxFuture;
 use std::collections::HashMap;
 
@@ -27,7 +27,7 @@ use tokio::sync::oneshot;
 use url::Url;
 
 use swim_async_runtime::task::*;
-use swim_model::path::{Addressable, AbsolutePath, RelativePath};
+use swim_model::path::{AbsolutePath, Addressable, RelativePath};
 use swim_utilities::future::request::request_future::RequestError;
 use swim_warp::envelope::{Envelope, EnvelopeKind, ResponseEnvelope};
 

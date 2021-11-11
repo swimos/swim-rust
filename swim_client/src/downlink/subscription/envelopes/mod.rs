@@ -23,13 +23,9 @@ use swim_warp::envelope::RequestEnvelope;
 mod tests;
 
 /// Convert a downlink [`Command`] into a Warp [`OutgoingLinkMessage`].
-fn envelope_for<T, F>(
-    to_body: F,
-    path: RelativePath,
-    command: Command<T>,
-) -> RequestEnvelope
-    where
-        F: Fn(T) -> Value,
+fn envelope_for<T, F>(to_body: F, path: RelativePath, command: Command<T>) -> RequestEnvelope
+where
+    F: Fn(T) -> Value,
 {
     match command {
         Command::Sync => RequestEnvelope::Sync(path, Default::default(), None),
@@ -40,10 +36,7 @@ fn envelope_for<T, F>(
 }
 
 /// Convert a downlink [`Command`], from a value downlink, into a Warp [`OutgoingLinkMessage`].
-pub fn value_envelope(
-    path: RelativePath,
-    command: Command<SharedValue>,
-) -> RequestEnvelope {
+pub fn value_envelope(path: RelativePath, command: Command<SharedValue>) -> RequestEnvelope {
     envelope_for(value::envelope_body, path, command)
 }
 
@@ -56,10 +49,7 @@ pub fn map_envelope(
 }
 
 /// Convert a downlink [`Command`], from a command downkink, into a Warp [`OutgoingLinkMessage`].
-pub fn command_envelope(
-    path: RelativePath,
-    command: Command<Value>,
-) -> RequestEnvelope {
+pub fn command_envelope(path: RelativePath, command: Command<Value>) -> RequestEnvelope {
     envelope_for(|v| v, path, command)
 }
 

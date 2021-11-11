@@ -397,7 +397,6 @@ async fn try_dispatch_envelope<R>(
 where
     R: Router,
 {
-
     match envelope.disriminate_header() {
         EnvelopeHeader::Response(_) => {
             let mut futures = vec![];
@@ -452,7 +451,7 @@ where
         }
         _ => {
             panic!("Authentication envelopes not yet supported.");
-        },
+        }
     }
 }
 

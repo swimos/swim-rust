@@ -490,11 +490,11 @@ impl Envelope {
     }
 
     pub fn path(&self) -> Option<RelativePath> {
-       match self.disriminate_header() {
-           EnvelopeHeader::Request(path) => Some(path),
-           EnvelopeHeader::Response(path) => Some(path),
-           _ => None,
-       }
+        match self.disriminate_header() {
+            EnvelopeHeader::Request(path) => Some(path),
+            EnvelopeHeader::Response(path) => Some(path),
+            _ => None,
+        }
     }
 
     pub fn body(&self) -> Option<&Value> {
