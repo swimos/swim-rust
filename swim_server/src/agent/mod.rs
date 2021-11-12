@@ -1229,7 +1229,7 @@ where
                 if let Some(tx) = command_io.as_mut() {
                     if let Err(circular_buffer::error::SendError(command)) = tx.try_send(command) {
                         event!(Level::ERROR, COMMAND_IO_DROPPED, ?command);
-                        command_io = None;
+                        break;
                     }
                 }
             }
