@@ -46,7 +46,9 @@ use swim_metrics::uplink::{
 };
 use swim_model::path::RelativePath;
 use swim_model::Value;
-use swim_utilities::future::{item_sink, SwimStreamExt};
+use swim_utilities::algebra::non_zero_usize;
+use swim_utilities::future::item_sink;
+use swim_utilities::future::SwimStreamExt;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger;
@@ -58,7 +60,7 @@ use tokio_stream::wrappers::ReceiverStream;
 pub const DEFAULT_YIELD: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(256) };
 
 fn buffer_size() -> NonZeroUsize {
-    NonZeroUsize::new(16).unwrap()
+    non_zero_usize!(16)
 }
 
 fn make_subscribable<K, V>(buffer_size: NonZeroUsize) -> (MapLane<K, V>, MapSubscriber<K, V>)

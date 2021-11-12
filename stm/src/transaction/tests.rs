@@ -25,10 +25,10 @@ use std::any::Any;
 use std::convert::identity;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
-use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::Context;
+use swim_utilities::algebra::non_zero_usize;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio::time::{timeout, Duration};
@@ -892,7 +892,7 @@ fn dyn_stm_erases_stack_size() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn observe_transaction_outcome() {
-    let (var, mut rx) = TVar::new_with_observer(12, NonZeroUsize::new(8).unwrap());
+    let (var, mut rx) = TVar::new_with_observer(12, non_zero_usize!(8));
 
     let stm = var.get().and_then(|i| var.put(*i + 1));
     let result = atomically(&stm, ExactlyOnce).await;

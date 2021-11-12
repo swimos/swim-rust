@@ -34,9 +34,10 @@ use stm::transaction::{atomically, TransactionRunner};
 use swim_form::Form;
 use swim_model::{Attr, Item, Value};
 use swim_store::{serialize, EngineInfo, StoreError};
+use swim_utilities::algebra::non_zero_usize;
 
 fn buffer_size() -> NonZeroUsize {
-    NonZeroUsize::new(16).unwrap()
+    non_zero_usize!(16)
 }
 
 fn make_subscribable<K, V>(buffer_size: NonZeroUsize) -> (MapLane<K, V>, MapSubscriber<K, V>)
@@ -659,8 +660,7 @@ async fn io_load_some() {
     };
 
     let model = MapDataModel::new(store, 0);
-    let (lane, observer) =
-        MapLane::<String, i32>::store_observable(&model, NonZeroUsize::new(8).unwrap());
+    let (lane, observer) = MapLane::<String, i32>::store_observable(&model, non_zero_usize!(8));
     let events = summaries_to_events::<String, i32>(observer.clone())
         .filter_map(|e| ready(to_map_store_event(e)));
     let store_io = MapLaneStoreIo::new(events, model);
@@ -697,8 +697,7 @@ async fn io_crud() {
 
     let model = MapDataModel::new(store, 0);
 
-    let (lane, observer) =
-        MapLane::<String, i32>::store_observable(&model, NonZeroUsize::new(8).unwrap());
+    let (lane, observer) = MapLane::<String, i32>::store_observable(&model, non_zero_usize!(8));
     let events = summaries_to_events::<String, i32>(observer.clone())
         .filter_map(|e| ready(to_map_store_event(e)));
 

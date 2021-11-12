@@ -18,9 +18,11 @@ pub mod mock;
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
+use swim_model::Text;
+
 use crate::plane::PlaneStore;
 use crate::server::{StoreEngine, StoreKey};
-use swim_model::Text;
+
 use swim_store::{EngineInfo, StoreError};
 
 /// A trait for defining store engines which open stores for nodes.

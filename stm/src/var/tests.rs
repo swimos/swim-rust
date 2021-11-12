@@ -15,8 +15,8 @@
 use crate::var::TVar;
 use futures::{FutureExt, StreamExt};
 use std::convert::identity;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
+use swim_utilities::algebra::non_zero_usize;
 
 #[tokio::test]
 async fn var_get() {
@@ -51,7 +51,7 @@ async fn var_store_arc() {
 
 #[tokio::test]
 async fn observe_var_store() {
-    let (var, rx) = TVar::new_with_observer(0, NonZeroUsize::new(8).unwrap());
+    let (var, rx) = TVar::new_with_observer(0, non_zero_usize!(8));
 
     let mut obs_stream = rx.into_stream();
 

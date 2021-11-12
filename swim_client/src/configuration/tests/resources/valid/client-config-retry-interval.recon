@@ -1,11 +1,14 @@
 @config {
-    @client {
-        buffer_size: 2
-        router: {
-            retry_strategy: @interval(delay: 5, retries: "indefinite")
-            idle_timeout: 100
-            conn_reaper_frequency: 6000
-            buffer_size: 15
-        }
+    @downlink_connections {
+        dl_req_buffer_size: 8,
+        buffer_size: 100,
+        retry_strategy: @interval {
+            delay: @duration {
+                secs: 5,
+                nanos: 0
+            },
+            retries: "infinite"
+        },
+        yield_after: 256
     }
 }

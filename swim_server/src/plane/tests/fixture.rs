@@ -17,8 +17,7 @@ use crate::agent::{AgentResult, AgentTaskResult};
 use crate::plane::context::PlaneContext;
 use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::router::PlaneRouter;
-use crate::plane::{AgentRoute, EnvChannel, RouteAndParameters};
-use crate::routing::{ServerRouter, TaggedEnvelope};
+use crate::plane::{AgentInternals, AgentRoute, EnvChannel, RouteAndParameters};
 use futures::future::BoxFuture;
 use futures::{FutureExt, StreamExt};
 use http::Uri;
@@ -27,10 +26,11 @@ use pin_utils::pin_mut;
 use server_store::agent::SwimNodeStore;
 use server_store::plane::mock::MockPlaneStore;
 use std::any::Any;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_async_runtime::time::clock::Clock;
+use swim_runtime::routing::{Router, TaggedEnvelope};
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
 use swim_warp::envelope::Envelope;
@@ -68,7 +68,7 @@ impl ReceiveAgentRoute {
 pub struct TestLifecycle;
 
 pub fn make_config() -> AgentExecutionConfig {
-    let buffer_size = NonZeroUsize::new(8).unwrap();
+    let buffer_size = non_zero_usize!(8);
     AgentExecutionConfig {
         max_pending_envelopes: 1,
         action_buffer: buffer_size,
@@ -76,11 +76,11 @@ pub fn make_config() -> AgentExecutionConfig {
         feedback_buffer: buffer_size,
         uplink_err_buffer: buffer_size,
         max_fatal_uplink_errors: 0,
-        max_uplink_start_attempts: NonZeroUsize::new(1).unwrap(),
+        max_uplink_start_attempts: non_zero_usize!(1),
         lane_buffer: buffer_size,
         observation_buffer: buffer_size,
         lane_attachment_buffer: buffer_size,
-        yield_after: NonZeroUsize::new(2048).unwrap(),
+        yield_after: non_zero_usize!(2048),
         retry_strategy: Default::default(),
         cleanup_timeout: Duration::from_secs(1),
         scheduler_buffer: buffer_size,
@@ -99,7 +99,7 @@ pub const RECEIVER_PREFIX: &str = "receiver";
 const LANE_NAME: &str = "receiver_lane";
 const MESSAGE: &str = "ping!";
 
-impl<Clk: Clock, Delegate: ServerRouter + 'static>
+impl<Clk: Clock, Delegate: Router + 'static>
     AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>, SwimNodeStore<MockPlaneStore>>
     for SendAgentRoute
 {
@@ -107,11 +107,19 @@ impl<Clk: Clock, Delegate: ServerRouter + 'static>
         &self,
         route: RouteAndParameters,
         execution_config: AgentExecutionConfig,
-        _clock: Clk,
-        incoming_envelopes: EnvChannel,
-        mut router: PlaneRouter<Delegate>,
-        _store: SwimNodeStore<MockPlaneStore>,
+        agent_internals: AgentInternals<
+            Clk,
+            EnvChannel,
+            PlaneRouter<Delegate>,
+            SwimNodeStore<MockPlaneStore>,
+        >,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
+        let AgentInternals {
+            incoming_envelopes,
+            mut router,
+            ..
+        } = agent_internals;
+
         let RouteAndParameters { route, parameters } = route;
 
         let id = parameters[PARAM_NAME].clone();
@@ -154,11 +162,17 @@ impl<Clk: Clock, Delegate>
         &self,
         route: RouteAndParameters,
         execution_config: AgentExecutionConfig,
-        _clock: Clk,
-        incoming_envelopes: EnvChannel,
-        _router: PlaneRouter<Delegate>,
-        _store: SwimNodeStore<MockPlaneStore>,
+        agent_internals: AgentInternals<
+            Clk,
+            EnvChannel,
+            PlaneRouter<Delegate>,
+            SwimNodeStore<MockPlaneStore>,
+        >,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
+        let AgentInternals {
+            incoming_envelopes, ..
+        } = agent_internals;
+
         let RouteAndParameters { route, parameters } = route;
 
         let ReceiveAgentRoute { expected_id, done } = self;

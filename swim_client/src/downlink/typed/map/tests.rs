@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use super::MapActions;
-use crate::configuration::downlink::OnInvalidMessage;
 use crate::downlink::model::map::{MapAction, UntypedMapModification, ValMap};
 use crate::downlink::typed::map::{
     Incompatibility, MapDownlinkReceiver, MapViewError, TypedMapDownlink,
@@ -23,7 +22,6 @@ use crate::downlink::{Command, Message};
 use crate::downlink::{DownlinkConfig, DownlinkError};
 use futures::future::join;
 use im::OrdMap;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_model::Value;
 use swim_runtime::error::RoutingError;
@@ -534,11 +532,7 @@ fn make_map_downlink<K: ValueSchema, V: ValueSchema>() -> Components<K, V> {
         Some(V::schema()),
         ReceiverStream::new(update_rx),
         sender,
-        DownlinkConfig {
-            buffer_size: NonZeroUsize::new(8).unwrap(),
-            yield_after: NonZeroUsize::new(2048).unwrap(),
-            on_invalid: OnInvalidMessage::Terminate,
-        },
+        DownlinkConfig::default(),
     );
     let downlink = TypedMapDownlink::new(Arc::new(dl));
     let receiver = MapDownlinkReceiver::new(rx);
@@ -624,6 +618,6 @@ fn map_view_error_display() {
 
     let string = err.to_string();
 
-    assert_eq!(string, format!("A Read Only view of a map downlink (key schema {} and value schema {})) was requested with key schema {} and value schema {}. The key schemas are incompatible.", 
+    assert_eq!(string, format!("A Read Only view of a map downlink (key schema {} and value schema {})) was requested with key schema {} and value schema {}. The key schemas are incompatible.",
                                StandardSchema::Anything, StandardSchema::Nothing, StandardSchema::NonNan, StandardSchema::Finite));
 }

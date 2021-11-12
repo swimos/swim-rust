@@ -37,7 +37,6 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::Eff;
-use crate::routing::{RoutingAddr, TaggedClientEnvelope};
 use either::Either;
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::{select, Stream, StreamExt};
@@ -54,6 +53,7 @@ use swim_form::Form;
 use swim_metrics::uplink::UplinkObserver;
 use swim_model::path::RelativePath;
 use swim_model::Value;
+use swim_runtime::routing::{RoutingAddr, TaggedClientEnvelope};
 use swim_utilities::errors::Recoverable;
 use swim_utilities::trigger;
 use swim_warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
@@ -699,7 +699,7 @@ pub async fn run_auto_lane_io<S, Item>(
 ) -> Result<Vec<UplinkErrorReport>, LaneIoError>
 where
     S: Stream<Item = Item> + Send + Sync + 'static,
-    Item: Send + Sync + Form + 'static,
+    Item: Send + Sync + Form + Debug + 'static,
 {
     let span = span!(Level::INFO, LANE_IO_TASK, ?route);
     let _enter = span.enter();
@@ -759,7 +759,7 @@ pub async fn run_supply_lane_io<S, Item>(
 ) -> Result<Vec<UplinkErrorReport>, LaneIoError>
 where
     S: Stream<Item = Item> + Send + Sync + 'static,
-    Item: Send + Sync + Form + 'static,
+    Item: Send + Sync + Form + Debug + 'static,
 {
     run_auto_lane_io(
         envelopes,
@@ -945,7 +945,7 @@ pub async fn run_demand_lane_io<Event>(
     response_rx: mpsc::Receiver<Event>,
 ) -> Result<Vec<UplinkErrorReport>, LaneIoError>
 where
-    Event: Send + Sync + Form + 'static,
+    Event: Send + Sync + Form + Debug + 'static,
 {
     run_auto_lane_io(
         envelopes,

@@ -1,8 +1,5 @@
 error: Only enumeration types can be tags.
-  --> $DIR/not_enum.rs:19:5
+  --> $DIR/src/tests/derive/tag/not_enum.rs:18:14
    |
-19 | /     struct S {
-20 | |         a: i32,
-21 | |         b: i32,
-22 | |     }
-   | |_____^
+18 |     #[derive(Tag)]
+   |              ^^^

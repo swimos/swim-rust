@@ -178,7 +178,7 @@ impl<D: Store> StoreEngine for SwimPlaneStore<D> {
     }
 }
 
-pub(crate) fn open_plane<B, P, D>(
+pub fn open_plane<B, P, D>(
     base_path: B,
     plane_name: P,
     builder: D,

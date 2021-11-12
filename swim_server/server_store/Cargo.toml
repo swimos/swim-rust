@@ -9,14 +9,15 @@ rocks = ["rocksdb", "swim_store/rocks"]
 
 [dependencies]
 swim_store = { path = "../../swim_store" }
-swim_model = { path = "../../api/swim_model" }
-swim_form = { path = "../../api/swim_form" }
 rocksdb = { version = "0.16.0", optional = true }
 serde = { version = "1.0.124", features = ["derive"] }
 swim_utilities = { path = "../../swim_utilities", features = ["io", "trigger"] }
+swim_model = { path = "../../api/swim_model" }
+swim_form = { path = "../../api/swim_form" }
 tokio = { version = "1.1.1", features = ["sync"] }
 futures = "0.3.4"
 futures-util = "0.3.4"
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["rt-multi-thread", "macros", "test-util"] }
+swim_async_runtime = { path = "../../runtime/swim_async_runtime" }

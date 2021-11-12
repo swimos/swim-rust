@@ -228,14 +228,13 @@ fn process_action(
                 send_error(old, key, key_schema.clone());
                 Response::default()
             } else {
+                let prev = data_state.remove(&key);
                 let did_rem = if let Some(req) = old {
-                    let prev = data_state.remove(&key);
                     let did_remove = prev.is_some();
                     let _ = req.send_ok(prev);
                     did_remove
                 } else {
-                    let old = data_state.remove(&key);
-                    old.is_some()
+                    prev.is_some()
                 };
                 if did_rem {
                     let response = (

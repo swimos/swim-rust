@@ -1,5 +1,5 @@
 error: Swim agent cannot be created from Enum.
-  --> $DIR/enum_agent.rs:23:10
+  --> $DIR/src/agent/tests/derive/fail/enum_agent.rs:21:21
    |
-23 |     enum TestAgent {}
-   |          ^^^^^^^^^
+21 |     #[derive(Debug, SwimAgent)]
+   |                     ^^^^^^^^^

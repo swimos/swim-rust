@@ -17,12 +17,12 @@ mod tests;
 
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::model::value::ValueLane;
-use crate::routing::RoutingAddr;
 use futures::future::BoxFuture;
 use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::any::Any;
 use std::fmt::Debug;
+use swim_runtime::routing::RoutingAddr;
 use tracing::{event, Level};
 
 /// Asynchronous task to set a stream of values into a [`ValueLane`].

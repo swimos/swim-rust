@@ -20,6 +20,7 @@ use std::num::NonZeroUsize;
 use std::ops::Range;
 use std::sync::Arc;
 use std::time::Duration;
+use swim_algebra::non_zero_usize;
 use swim_future::SwimFutureExt;
 use swim_trigger as trigger;
 use tokio::sync::mpsc;
@@ -836,7 +837,7 @@ async fn dropped_sender_wakes_receiver() {
 
 #[tokio::test]
 async fn send_many_records_two_receivers() {
-    let (tx, rx) = super::channel::<usize>(NonZeroUsize::new(5).unwrap());
+    let (tx, rx) = super::channel::<usize>(non_zero_usize!(5));
 
     let sender = |mut tx: Sender<usize>| async move {
         for i in 0..10000 {
@@ -888,7 +889,7 @@ async fn send_with_subscriber() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn adding_subscribers() {
-    let (mut chan_tx, chan_rx) = super::channel::<i32>(NonZeroUsize::new(8).unwrap());
+    let (mut chan_tx, chan_rx) = super::channel::<i32>(non_zero_usize!(8));
     let sub = chan_tx.subscriber();
 
     let (comm_tx, mut comm_rx) = mpsc::channel::<trigger::Sender>(2);

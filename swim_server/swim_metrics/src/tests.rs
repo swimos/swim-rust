@@ -29,7 +29,8 @@ use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::time::Duration;
 use swim_model::path::RelativePath;
-use swim_utilities::future::item_sink::TrySend;
+use swim_utilities::algebra::non_zero_usize;
+use swim_utilities::future::item_sink::try_send::TrySend;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
 use tokio::sync::mpsc;
@@ -38,8 +39,8 @@ use tokio::sync::mpsc::Receiver;
 use tokio::time::sleep;
 use tokio_stream::wrappers::ReceiverStream;
 
-pub const DEFAULT_YIELD: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(256) };
-pub const DEFAULT_BUFFER: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(8) };
+pub const DEFAULT_YIELD: NonZeroUsize = non_zero_usize!(256);
+pub const DEFAULT_BUFFER: NonZeroUsize = non_zero_usize!(8);
 
 pub fn box_supply_lane<T>(
     buffer_size: usize,
@@ -94,10 +95,10 @@ pub fn make_profile(count: u32) -> (RelativePath, WarpUplinkProfile) {
 
 pub fn backpressure_config() -> MetricBackpressureConfig {
     MetricBackpressureConfig {
-        buffer_size: NonZeroUsize::new(2).unwrap(),
-        yield_after: NonZeroUsize::new(256).unwrap(),
-        bridge_buffer_size: NonZeroUsize::new(16).unwrap(),
-        cache_size: NonZeroUsize::new(4).unwrap(),
+        buffer_size: non_zero_usize!(2),
+        yield_after: non_zero_usize!(256),
+        bridge_buffer_size: non_zero_usize!(16),
+        cache_size: non_zero_usize!(4),
     }
 }
 

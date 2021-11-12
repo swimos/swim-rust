@@ -18,9 +18,9 @@ use crate::{
     SplitStrategy,
 };
 use std::fs;
-use std::num::NonZeroUsize;
 use std::ops::Sub;
 use std::sync::{Arc, Mutex};
+use swim_algebra::non_zero_usize;
 
 fn test_tree<B: BoxBounded, L: Label>(mut tree: RTree<L, B>, entries: Vec<(L, B)>, path: String) {
     assert_eq!(
@@ -71,8 +71,8 @@ fn build_2d_search_tree() -> RTree<String, Rect<Point2D<f64>>> {
     ];
 
     RTree::bulk_load(
-        NonZeroUsize::new(2).unwrap(),
-        NonZeroUsize::new(4).unwrap(),
+        non_zero_usize!(2),
+        non_zero_usize!(4),
         SplitStrategy::Quadratic,
         items,
     )
@@ -132,8 +132,8 @@ fn build_3d_search_tree() -> RTree<String, Rect<Point3D<f64>>> {
     ];
 
     RTree::bulk_load(
-        NonZeroUsize::new(2).unwrap(),
-        NonZeroUsize::new(4).unwrap(),
+        non_zero_usize!(2),
+        non_zero_usize!(4),
         SplitStrategy::Quadratic,
         items,
     )
@@ -158,8 +158,8 @@ fn rtree_2d_linear_test() {
     ];
 
     let tree = RTree::new(
-        NonZeroUsize::new(2).unwrap(),
-        NonZeroUsize::new(4).unwrap(),
+        non_zero_usize!(2),
+        non_zero_usize!(4),
         SplitStrategy::Linear,
     )
     .unwrap();
@@ -221,8 +221,8 @@ fn rtree_3d_linear_test() {
     ];
 
     let tree = RTree::new(
-        NonZeroUsize::new(2).unwrap(),
-        NonZeroUsize::new(4).unwrap(),
+        non_zero_usize!(2),
+        non_zero_usize!(4),
         SplitStrategy::Linear,
     )
     .unwrap();
@@ -248,8 +248,8 @@ fn rtree_2d_quadratic_test() {
     ];
 
     let tree = RTree::new(
-        NonZeroUsize::new(2).unwrap(),
-        NonZeroUsize::new(4).unwrap(),
+        non_zero_usize!(2),
+        non_zero_usize!(4),
         SplitStrategy::Quadratic,
     )
     .unwrap();
@@ -311,8 +311,8 @@ fn rtree_3d_quadratic_test() {
     ];
 
     let tree = RTree::new(
-        NonZeroUsize::new(2).unwrap(),
-        NonZeroUsize::new(4).unwrap(),
+        non_zero_usize!(2),
+        non_zero_usize!(4),
         SplitStrategy::Quadratic,
     )
     .unwrap();
@@ -329,8 +329,8 @@ fn bulk_load_3_node_2d_test() {
     ];
 
     let rtree = RTree::bulk_load(
-        NonZeroUsize::new(2).unwrap(),
-        NonZeroUsize::new(4).unwrap(),
+        non_zero_usize!(2),
+        non_zero_usize!(4),
         SplitStrategy::Quadratic,
         rects,
     )
@@ -353,8 +353,8 @@ fn bulk_load_5_node_2d_test() {
     ];
 
     let rtree = RTree::bulk_load(
-        NonZeroUsize::new(2).unwrap(),
-        NonZeroUsize::new(4).unwrap(),
+        non_zero_usize!(2),
+        non_zero_usize!(4),
         SplitStrategy::Quadratic,
         items,
     )
@@ -384,8 +384,8 @@ fn bulk_load_12_node_2d_test() {
     ];
 
     let rtree = RTree::bulk_load(
-        NonZeroUsize::new(2).unwrap(),
-        NonZeroUsize::new(4).unwrap(),
+        non_zero_usize!(2),
+        non_zero_usize!(4),
         SplitStrategy::Quadratic,
         items,
     )
@@ -496,8 +496,8 @@ fn bulk_load_24_node_3d_test() {
     ];
 
     let rtree = RTree::bulk_load(
-        NonZeroUsize::new(2).unwrap(),
-        NonZeroUsize::new(4).unwrap(),
+        non_zero_usize!(2),
+        non_zero_usize!(4),
         SplitStrategy::Quadratic,
         items,
     )
@@ -566,8 +566,8 @@ fn tree_iterator_test() {
     ];
 
     let tree = RTree::bulk_load(
-        NonZeroUsize::new(2).unwrap(),
-        NonZeroUsize::new(4).unwrap(),
+        non_zero_usize!(2),
+        non_zero_usize!(4),
         SplitStrategy::Quadratic,
         items.clone(),
     )
@@ -627,8 +627,8 @@ fn tree_immutable_test() {
 #[test]
 fn tree_insert_same_bb() {
     let mut tree = RTree::new(
-        NonZeroUsize::new(1).unwrap(),
-        NonZeroUsize::new(50).unwrap(),
+        non_zero_usize!(1),
+        non_zero_usize!(50),
         SplitStrategy::Quadratic,
     )
     .unwrap();
@@ -645,8 +645,8 @@ fn tree_insert_same_bb() {
 #[test]
 fn tree_remove_same_bb_test() {
     let mut tree = RTree::new(
-        NonZeroUsize::new(1).unwrap(),
-        NonZeroUsize::new(50).unwrap(),
+        non_zero_usize!(1),
+        non_zero_usize!(50),
         SplitStrategy::Quadratic,
     )
     .unwrap();
@@ -668,8 +668,8 @@ fn tree_remove_same_bb_test() {
 #[test]
 fn tree_remove_missing_label_test() {
     let mut tree = RTree::new(
-        NonZeroUsize::new(1).unwrap(),
-        NonZeroUsize::new(50).unwrap(),
+        non_zero_usize!(1),
+        non_zero_usize!(50),
         SplitStrategy::Quadratic,
     )
     .unwrap();
@@ -689,16 +689,16 @@ fn tree_remove_missing_label_test() {
 #[test]
 fn tree_children_size_error_test() {
     let tree: Result<RTree<String, Rect<Point2D<f64>>>, ChildrenSizeError> = RTree::new(
-        NonZeroUsize::new(10).unwrap(),
-        NonZeroUsize::new(19).unwrap(),
+        non_zero_usize!(10),
+        non_zero_usize!(19),
         SplitStrategy::Quadratic,
     );
 
     assert!(matches!(tree, Err(ChildrenSizeError)));
 
     let tree: Result<RTree<String, Rect<Point2D<f64>>>, ChildrenSizeError> = RTree::new(
-        NonZeroUsize::new(50).unwrap(),
-        NonZeroUsize::new(1).unwrap(),
+        non_zero_usize!(50),
+        non_zero_usize!(1),
         SplitStrategy::Quadratic,
     );
 
@@ -708,8 +708,8 @@ fn tree_children_size_error_test() {
 #[test]
 fn tree_insert_same_labels_test() {
     let mut tree = RTree::new(
-        NonZeroUsize::new(1).unwrap(),
-        NonZeroUsize::new(50).unwrap(),
+        non_zero_usize!(1),
+        non_zero_usize!(50),
         SplitStrategy::Quadratic,
     )
     .unwrap();
@@ -737,8 +737,8 @@ fn tree_bulk_load_same_labels_test() {
     ];
 
     let result = RTree::bulk_load(
-        NonZeroUsize::new(2).unwrap(),
-        NonZeroUsize::new(4).unwrap(),
+        non_zero_usize!(2),
+        non_zero_usize!(4),
         SplitStrategy::Quadratic,
         items,
     );
@@ -753,8 +753,8 @@ fn tree_bulk_load_same_labels_test() {
 #[test]
 fn insert_no_clones_test() {
     let mut tree = RTree::new(
-        NonZeroUsize::new(2).unwrap(),
-        NonZeroUsize::new(4).unwrap(),
+        non_zero_usize!(2),
+        non_zero_usize!(4),
         SplitStrategy::Quadratic,
     )
     .unwrap();
@@ -786,8 +786,8 @@ fn insert_no_clones_test() {
 #[test]
 fn clone_on_remove_test() {
     let mut tree = RTree::new(
-        NonZeroUsize::new(2).unwrap(),
-        NonZeroUsize::new(4).unwrap(),
+        non_zero_usize!(2),
+        non_zero_usize!(4),
         SplitStrategy::Quadratic,
     )
     .unwrap();
@@ -814,8 +814,8 @@ fn clone_on_remove_test() {
 #[test]
 fn linear_split_no_clones_test() {
     let mut tree = RTree::new(
-        NonZeroUsize::new(2).unwrap(),
-        NonZeroUsize::new(4).unwrap(),
+        non_zero_usize!(2),
+        non_zero_usize!(4),
         SplitStrategy::Linear,
     )
     .unwrap();
@@ -880,8 +880,8 @@ fn linear_split_no_clones_test() {
 #[test]
 fn quadratic_split_no_clones_test() {
     let mut tree = RTree::new(
-        NonZeroUsize::new(2).unwrap(),
-        NonZeroUsize::new(4).unwrap(),
+        non_zero_usize!(2),
+        non_zero_usize!(4),
         SplitStrategy::Quadratic,
     )
     .unwrap();
@@ -946,8 +946,8 @@ fn quadratic_split_no_clones_test() {
 #[test]
 fn clone_on_merge_test() {
     let mut tree = RTree::new(
-        NonZeroUsize::new(2).unwrap(),
-        NonZeroUsize::new(4).unwrap(),
+        non_zero_usize!(2),
+        non_zero_usize!(4),
         SplitStrategy::Quadratic,
     )
     .unwrap();
@@ -1076,8 +1076,8 @@ fn bulk_load_no_clone() {
     ];
 
     let rtree = RTree::bulk_load(
-        NonZeroUsize::new(2).unwrap(),
-        NonZeroUsize::new(4).unwrap(),
+        non_zero_usize!(2),
+        non_zero_usize!(4),
         SplitStrategy::Linear,
         items,
     )
@@ -1143,8 +1143,8 @@ fn search_single_no_clone() {
     ];
 
     let rtree = RTree::bulk_load(
-        NonZeroUsize::new(2).unwrap(),
-        NonZeroUsize::new(4).unwrap(),
+        non_zero_usize!(2),
+        non_zero_usize!(4),
         SplitStrategy::Linear,
         items,
     )
@@ -1211,8 +1211,8 @@ fn search_multiple_no_clone() {
     ];
 
     let rtree = RTree::bulk_load(
-        NonZeroUsize::new(2).unwrap(),
-        NonZeroUsize::new(4).unwrap(),
+        non_zero_usize!(2),
+        non_zero_usize!(4),
         SplitStrategy::Linear,
         items,
     )

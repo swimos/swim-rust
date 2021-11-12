@@ -15,7 +15,7 @@
 use crate::agent::mock::MockNodeStore;
 use crate::agent::SwimNodeStore;
 use crate::plane::PlaneStore;
-use crate::{StoreEngine, StoreKey};
+use crate::server::{StoreEngine, StoreKey};
 use swim_model::Text;
 use swim_store::{EngineInfo, Keyspace, KeyspaceResolver, StoreError};
 

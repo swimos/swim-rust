@@ -26,7 +26,7 @@ use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::Add;
 use swim_model::path::RelativePath;
-use swim_utilities::future::item_sink::TrySend;
+use swim_utilities::future::item_sink::try_send::TrySend;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
 use tokio::sync::mpsc;
