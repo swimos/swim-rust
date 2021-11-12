@@ -15,7 +15,7 @@
 use std::fmt::Debug;
 use std::time::Duration;
 use stm::transaction::atomically;
-use swim_common::model::Value;
+use swim_model::Value;
 use swim_server::agent::command_lifecycle;
 use swim_server::agent::lane::channels::update::StmRetryStrategy;
 use swim_server::agent::lane::model::command::CommandLane;

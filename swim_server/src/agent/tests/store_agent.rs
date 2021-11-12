@@ -42,13 +42,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use stm::stm::Stm;
 use stm::transaction::atomically;
-use swim_client::configuration::DownlinkConnectionsConfig;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::ClientContext;
 use swim_client::router::ClientRouterFactory;
-use swim_common::routing::RoutingAddr;
-use swim_common::warp::path::Path;
+use swim_model::path::Path;
+use swim_runtime::configuration::DownlinkConnectionsConfig;
+use swim_runtime::routing::RoutingAddr;
 use swim_store::{deserialize, serialize, KeyspaceByteEngine, StoreBuilder, StoreError};
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::io::fs::Dir;
@@ -335,7 +335,7 @@ async fn store_loads() {
         store.delegate.node_store(uri.to_string()),
     );
 
-    let agent_task = swim_runtime::task::spawn(agent_proc);
+    let agent_task = swim_async_runtime::task::spawn(agent_proc);
 
     match agent.downcast_ref::<StoreAgent>() {
         Some(agent) => {
@@ -384,7 +384,7 @@ async fn events() {
         store.delegate.node_store(uri.to_string()),
     );
 
-    let agent_task = swim_runtime::task::spawn(agent_proc);
+    let agent_task = swim_async_runtime::task::spawn(agent_proc);
 
     fn check_value_lane(store: &TestStore, i: i32) {
         let delegate = &store.delegate;

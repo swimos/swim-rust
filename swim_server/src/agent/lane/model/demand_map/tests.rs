@@ -16,8 +16,9 @@ use crate::agent::lane::model::demand_map::{
     make_lane_model, DemandMapLaneCommand, DemandMapLaneEvent,
 };
 use futures::future::{join, join3};
-use swim_common::form::Form;
-use swim_common::record;
+
+use swim_form::Form;
+use swim_model::record;
 use swim_utilities::algebra::non_zero_usize;
 use tokio::sync::mpsc;
 

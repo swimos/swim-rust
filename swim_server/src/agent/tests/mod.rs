@@ -52,14 +52,14 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::future::Future;
 use std::sync::Arc;
-use swim_client::configuration::DownlinkConnectionsConfig;
+use swim_async_runtime::task;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::ClientContext;
 use swim_client::router::ClientRouterFactory;
-use swim_common::routing::RoutingAddr;
-use swim_common::warp::path::Path;
-use swim_runtime::task;
+use swim_model::path::Path;
+use swim_runtime::configuration::DownlinkConnectionsConfig;
+use swim_runtime::routing::RoutingAddr;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
@@ -73,11 +73,8 @@ mod stub_router {
     use futures::future::BoxFuture;
     use futures::FutureExt;
     use std::sync::Arc;
-    use swim_common::routing::error::ResolutionError;
-    use swim_common::routing::error::RouterError;
-    use swim_common::routing::{
-        ConnectionDropped, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
-    };
+    use swim_runtime::error::{ConnectionDropped, ResolutionError, RouterError};
+    use swim_runtime::routing::{Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender};
     use swim_utilities::routing::uri::RelativeUri;
     use swim_utilities::trigger::promise;
     use tokio::sync::mpsc;
@@ -812,7 +809,7 @@ pub async fn run_agent_test<Agent, Config, Lifecycle>(
         MockNodeStore::mock(),
     );
 
-    let agent_task = swim_runtime::task::spawn(agent_proc);
+    let agent_task = swim_async_runtime::task::spawn(agent_proc);
 
     async fn expect(rx: &mut mpsc::Receiver<ReportingAgentEvent>, expected: ReportingAgentEvent) {
         let result = rx.recv().await;

@@ -20,7 +20,6 @@ pub mod subscription;
 mod tests;
 pub mod typed;
 
-use crate::configuration::{DownlinkConfig, OnInvalidMessage};
 use crate::downlink::error::DownlinkError;
 use crate::downlink::model::map::UntypedMapModification;
 use crate::downlink::model::value::SharedValue;
@@ -42,12 +41,13 @@ use pin_utils::pin_mut;
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use swim_common::model::schema::StandardSchema;
-use swim_common::model::Value;
-use swim_common::request::TryRequest;
-use swim_common::routing::error::RoutingError;
-use swim_common::sink::item::ItemSender;
+use swim_model::Value;
+use swim_runtime::configuration::{DownlinkConfig, OnInvalidMessage};
+use swim_runtime::error::RoutingError;
+use swim_schema::schema::StandardSchema;
 use swim_utilities::errors::Recoverable;
+use swim_utilities::future::item_sink::ItemSender;
+use swim_utilities::future::request::TryRequest;
 use swim_utilities::sync::topic;
 use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
@@ -692,7 +692,7 @@ where
     }
     .instrument(span!(Level::INFO, DOWNLINK_TASK));
 
-    swim_runtime::task::spawn(task);
+    swim_async_runtime::task::spawn(task);
     let dl = RawDownlink {
         action_sender: act_tx,
         event_topic: event_rx.subscriber(),

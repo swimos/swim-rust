@@ -1,0 +1,5 @@
+error: At least two arguments must be provided to an AND operator
+  --> $DIR/src/schema/tests/derive/validated_form/and_op_arg_count.rs:18:14
+   |
+18 |     #[derive(ValueSchema)]
+   |              ^^^^^^^^^^^

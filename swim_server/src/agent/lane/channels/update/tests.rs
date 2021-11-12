@@ -14,7 +14,7 @@
 
 use crate::agent::lane::channels::update::UpdateError;
 use stm::transaction::TransactionError;
-use swim_common::form::structural::read::ReadError;
+use swim_form::structural::read::ReadError;
 
 #[test]
 fn update_error_display() {

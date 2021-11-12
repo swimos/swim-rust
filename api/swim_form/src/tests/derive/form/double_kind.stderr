@@ -1,0 +1,5 @@
+error: Field has multiple kind tags
+  --> $DIR/src/tests/derive/form/double_kind.rs:18:14
+   |
+18 |     #[derive(Form)]
+   |              ^^^^

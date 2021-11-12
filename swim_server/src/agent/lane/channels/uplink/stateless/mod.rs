@@ -24,11 +24,11 @@ use pin_utils::pin_mut;
 use std::collections::{hash_map::Entry, HashMap};
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use swim_common::form::Form;
-use swim_common::model::Value;
-use swim_common::routing::{Router, RoutingAddr, TaggedSender};
-use swim_common::warp::path::RelativePath;
+use swim_form::Form;
 use swim_metrics::uplink::UplinkObserver;
+use swim_model::path::RelativePath;
+use swim_model::Value;
+use swim_runtime::routing::{Router, RoutingAddr, TaggedSender};
 use tokio::sync::mpsc;
 use tracing::{event, Level};
 
