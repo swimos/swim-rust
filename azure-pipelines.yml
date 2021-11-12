@@ -8,6 +8,6 @@ jobs:
   - template: ci/azure-test-stable.yml
     parameters:
       name: test_crates
-      rust: 1.55.0
+      rust: 1.56.1
       displayName: Test all crates
       cross: eq(variables['Build.SourceBranch'], 'refs/heads/master')

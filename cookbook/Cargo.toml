@@ -1,4 +1,4 @@
 [workspace]
 members = [
-    "command_lanes", "downlinks", "join_map_lanes", "join_value_lanes", "map_lanes", "value_lanes", "timers"
+    "command_lanes", "downlinks", "join_map_lanes", "join_value_lanes", "map_lanes", "value_lanes", "timers", "web_agents"
 ]

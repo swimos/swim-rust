@@ -15,20 +15,20 @@
 use std::time::Duration;
 use swim_client::downlink::SchemaViolations;
 use swim_client::interface::SwimClientBuilder;
-use swim_common::warp::path::AbsolutePath;
+use swim_model::path::AbsolutePath;
 use tokio::{task, time};
 
 #[tokio::main]
 async fn main() {
-    let mut client = SwimClientBuilder::build_with_default().await;
-    let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
+    let client = SwimClientBuilder::build_with_default().await;
+    let host_uri = url::Url::parse(&"warp://127.0.0.1:9001".to_string()).unwrap();
     let node_uri = "/unit/foo";
-    let lane_uri = "publish";
 
-    let path = AbsolutePath::new(host_uri, node_uri, lane_uri);
+    let publish_path = AbsolutePath::new(host_uri.clone(), node_uri, "publish");
+    let publish_value_path = AbsolutePath::new(host_uri, node_uri, "publish_value");
 
     let event_dl = client
-        .event_downlink::<i64>(path.clone(), SchemaViolations::Ignore)
+        .event_downlink::<i64>(publish_value_path, SchemaViolations::Ignore)
         .await
         .unwrap();
 
@@ -46,11 +46,12 @@ async fn main() {
     // the plane with hostUri "warp://localhost:9001"
     let msg = 9035768;
     client
-        .send_command(path, msg)
+        .send_command(publish_path, msg)
         .await
         .expect("Failed to send a command!");
     time::sleep(Duration::from_secs(2)).await;
 
     println!("Stopping client in 2 seconds");
     time::sleep(Duration::from_secs(2)).await;
+    client.stop().await.unwrap();
 }

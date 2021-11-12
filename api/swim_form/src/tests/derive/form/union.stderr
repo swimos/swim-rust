@@ -1,0 +1,5 @@
+error: Union types are not supported.
+  --> $DIR/src/tests/derive/form/union.rs:18:14
+   |
+18 |     #[derive(Form)]
+   |              ^^^^

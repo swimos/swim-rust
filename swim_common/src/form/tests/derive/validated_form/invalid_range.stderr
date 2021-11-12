@@ -1,5 +1,0 @@
-error: Failed to parse range. Malformatted input at index 3
-  --> $DIR/invalid_range.rs:20:35
-   |
-20 |         #[form(schema(int_range = "0...1.."))]
-   |                                   ^^^^^^^^^

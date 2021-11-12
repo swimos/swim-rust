@@ -21,8 +21,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
-use swim_common::form::Form;
-use swim_common::warp::path::RelativePath;
+use swim_form::Form;
+use swim_model::path::RelativePath;
 use tracing::{event, Level};
 
 use crate::aggregator::{AggregatorTask, MetricState};
@@ -31,9 +31,9 @@ use futures::{Future, Stream, StreamExt};
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::ops::Add;
-use swim_common::sink::item::{for_mpsc_sender, ItemSender};
+use swim_runtime::backpressure::keyed::{release_pressure, Keyed};
+use swim_utilities::future::item_sink::{for_mpsc_sender, ItemSender};
 use swim_utilities::trigger;
-use swim_warp::backpressure::keyed::{release_pressure, Keyed};
 use tokio_stream::wrappers::ReceiverStream;
 
 impl Add<WarpUplinkProfile> for WarpUplinkProfile {

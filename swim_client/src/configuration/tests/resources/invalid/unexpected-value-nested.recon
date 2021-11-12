@@ -1,5 +1,5 @@
 @config {
-    @client {
+    @downlink_connections {
         2
     }
 }

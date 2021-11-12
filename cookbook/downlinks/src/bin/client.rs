@@ -11,17 +11,16 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 use rand::seq::SliceRandom;
 use std::time::Duration;
 use swim_client::interface::SwimClientBuilder;
-use swim_common::warp::path::AbsolutePath;
+use swim_model::path::AbsolutePath;
 use tokio::time;
 
 #[tokio::main]
 async fn main() {
-    let mut client = SwimClientBuilder::build_with_default().await;
-    let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
+    let client = SwimClientBuilder::build_with_default().await;
+    let host_uri = url::Url::parse(&"warp://127.0.0.1:9001".to_string()).unwrap();
     let node_uri_prefix = "/unit/";
 
     let path = AbsolutePath::new(
@@ -68,4 +67,5 @@ async fn main() {
 
     println!("Stopping client in 2 seconds");
     time::sleep(Duration::from_secs(2)).await;
+    client.stop().await.unwrap();
 }

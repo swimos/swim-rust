@@ -17,7 +17,6 @@ pub mod command;
 pub mod map;
 pub mod value;
 
-use crate::routing::RoutingAddr;
 use futures::future::{ready, BoxFuture, Either, Ready};
 use futures::stream::{iter, Iter};
 use futures::Stream;
@@ -25,8 +24,9 @@ use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::time::Duration;
 use stm::transaction::{RetryManager, TransactionError};
-use swim_common::form::structural::read::ReadError;
-use swim_runtime::time::delay::{delay_for, Delay};
+use swim_async_runtime::time::delay::{delay_for, Delay};
+use swim_form::structural::read::ReadError;
+use swim_runtime::routing::RoutingAddr;
 use swim_utilities::future::retryable::RetryStrategy;
 use swim_utilities::future::{
     SwimFutureExt, SwimStreamExt, Transform, TransformedFuture, TransformedStreamFut,
@@ -155,7 +155,7 @@ impl RetryManager for StmRetryStrategy {
     fn retry(&mut self) -> Self::RetryFut {
         match self.retries.next() {
             Some(Some(dur)) => {
-                Either::Right(swim_runtime::time::delay::delay_for(dur).transform(ToTrue))
+                Either::Right(swim_async_runtime::time::delay::delay_for(dur).transform(ToTrue))
             }
             Some(_) => Either::Left(ready(true)),
             _ => Either::Left(ready(false)),

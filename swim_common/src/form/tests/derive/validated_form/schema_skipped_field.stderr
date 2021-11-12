@@ -1,5 +1,0 @@
-error: Cannot derive a schema for a field that is skipped
-  --> $DIR/schema_skipped_field.rs:20:22
-   |
-20 |         #[form(skip, schema(num_items = 1))]
-   |                      ^^^^^^^^^^^^^^^^^^^^^

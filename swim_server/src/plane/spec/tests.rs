@@ -21,15 +21,14 @@ use crate::plane::error::AmbiguousRoutes;
 use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::router::PlaneRouter;
 use crate::plane::spec::{PlaneBuilder, PlaneSpec, RouteSpec};
-use crate::routing::error::RouterError;
-use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
 use futures::future::{ready, BoxFuture, Ready};
 use futures::FutureExt;
 use server_store::agent::NodeStore;
 use server_store::plane::mock::MockPlaneStore;
 use std::time::Duration;
-use swim_common::routing::ResolutionError;
-use swim_runtime::time::clock::Clock;
+use swim_async_runtime::time::clock::Clock;
+use swim_runtime::error::{ResolutionError, RouterError};
+use swim_runtime::routing::{Route, Router, RoutingAddr, TaggedEnvelope};
 use swim_utilities::routing::route_pattern::RoutePattern;
 use swim_utilities::routing::uri::RelativeUri;
 use tokio_stream::wrappers::ReceiverStream;
@@ -68,12 +67,12 @@ struct DummyPlaneLifecycle(i32);
 #[derive(Clone, Debug)]
 struct DummyDelegate;
 
-impl ServerRouter for DummyDelegate {
+impl Router for DummyDelegate {
     fn resolve_sender(
         &mut self,
         _addr: RoutingAddr,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
-        unimplemented!()
+        panic!("Called unexpectedly.");
     }
 
     fn lookup(
@@ -81,7 +80,7 @@ impl ServerRouter for DummyDelegate {
         _host: Option<Url>,
         _route: RelativeUri,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
-        unimplemented!()
+        panic!("Called unexpectedly.");
     }
 }
 

@@ -1,5 +1,0 @@
-error: StandardSchema::Nothing is not permitted on fields
-  --> $DIR/nothing_attr_on_field.rs:20:23
-   |
-20 |         #[form(schema(nothing))]
-   |                       ^^^^^^^

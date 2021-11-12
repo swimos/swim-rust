@@ -20,11 +20,6 @@ use crate::agent::lane::channels::uplink::UplinkError;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::model::supply::SupplyLane;
 use crate::agent::{AttachError, Eff, LaneIo};
-use crate::routing::error::RouterError;
-use crate::routing::{
-    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
-    TaggedSender,
-};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use parking_lot::Mutex;
@@ -36,16 +31,19 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::sync::Arc;
 use stm::transaction::TransactionError;
-use swim_common::model::Value;
-use swim_common::routing::ResolutionError;
-use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
-use swim_common::warp::path::RelativePath;
 use swim_metrics::config::MetricAggregatorConfig;
 use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
+use swim_model::path::RelativePath;
+use swim_model::Value;
+use swim_runtime::error::{ConnectionDropped, ResolutionError, RouterError};
+use swim_runtime::routing::{
+    Route, Router, RoutingAddr, TaggedClientEnvelope, TaggedEnvelope, TaggedSender,
+};
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
+use swim_warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::Instant;
@@ -101,7 +99,7 @@ impl MockRouterInner {
 #[derive(Debug, Clone)]
 pub struct MockRouter(Arc<Mutex<MockRouterInner>>);
 
-impl ServerRouter for MockRouter {
+impl Router for MockRouter {
     fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let mut lock = self.0.lock();
@@ -142,6 +140,7 @@ impl ServerRouter for MockRouter {
 pub struct MockExecutionContext {
     router: Arc<Mutex<MockRouterInner>>,
     spawner: mpsc::Sender<Eff>,
+    uri: RelativeUri,
     uplinks_idle_since: Arc<AtomicInstant>,
 }
 
@@ -155,6 +154,10 @@ impl AgentExecutionContext for MockExecutionContext {
 
     fn spawner(&self) -> Sender<Eff> {
         self.spawner.clone()
+    }
+
+    fn uri(&self) -> &RelativeUri {
+        &self.uri
     }
 
     fn store(&self) -> Self::Store {
@@ -186,6 +189,7 @@ impl MockExecutionContext {
             router: Arc::new(Mutex::new(MockRouterInner::new(router_addr, buffer_size))),
             spawner,
             uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
+            uri: RelativeUri::try_from("/mock/router".to_string()).unwrap(),
         }
     }
 

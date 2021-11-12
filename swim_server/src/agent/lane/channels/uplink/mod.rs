@@ -20,7 +20,6 @@ use crate::agent::lane::model::demand_map::DemandMapLane;
 use crate::agent::lane::model::demand_map::DemandMapLaneEvent;
 use crate::agent::lane::model::map::{make_update, MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
-use crate::routing::{RoutingAddr, TaggedSender};
 use either::Either;
 use futures::future::{ready, BoxFuture};
 use futures::stream::{once, unfold, BoxStream, FusedStream};
@@ -33,17 +32,18 @@ use std::ops::Deref;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use stm::transaction::{RetryManager, TransactionError};
-use swim_common::form::structural::read::ReadError;
-use swim_common::form::Form;
-use swim_common::model::Value;
-use swim_common::routing::SendError;
-use swim_common::sink::item::{FnMutSender, ItemSender};
-use swim_common::warp::envelope::Envelope;
-use swim_common::warp::path::RelativePath;
+use swim_form::structural::read::ReadError;
+use swim_form::Form;
+use swim_model::path::RelativePath;
+use swim_model::Value;
+use swim_runtime::backpressure::keyed::map::MapUpdateMessage;
+use swim_runtime::routing::{RoutingAddr, TaggedSender};
 use swim_utilities::errors::Recoverable;
+use swim_utilities::future::item_sink::SendError;
+use swim_utilities::future::item_sink::{FnMutSender, ItemSender};
 use swim_utilities::time::AtomicInstant;
-use swim_warp::backpressure::keyed::map::MapUpdateMessage;
-use swim_warp::model::map::MapUpdate;
+use swim_warp::envelope::Envelope;
+use swim_warp::map::MapUpdate;
 use tokio::time::Instant;
 use tracing::{event, Level};
 
@@ -759,14 +759,19 @@ impl<S> UplinkMessageSender<S> {
 }
 
 impl UplinkMessageSender<TaggedSender> {
-    pub fn into_item_sender<Msg>(self) -> impl ItemSender<UplinkMessage<Msg>, SendError> + Clone
+    pub fn into_item_sender<Msg>(
+        self,
+    ) -> impl ItemSender<UplinkMessage<Msg>, SendError<Envelope>> + Clone
     where
         Msg: Into<Value> + Send + 'static,
     {
         FnMutSender::new(self, UplinkMessageSender::send_item)
     }
 
-    pub async fn send_item<Msg>(&mut self, msg: UplinkMessage<Msg>) -> Result<(), SendError>
+    pub async fn send_item<Msg>(
+        &mut self,
+        msg: UplinkMessage<Msg>,
+    ) -> Result<(), SendError<Envelope>>
     where
         Msg: Into<Value> + Send + 'static,
     {

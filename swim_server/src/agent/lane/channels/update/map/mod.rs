@@ -14,15 +14,15 @@
 
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::model::map::MapLane;
-use crate::routing::RoutingAddr;
 use futures::future::BoxFuture;
 use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::any::Any;
 use std::fmt::Debug;
 use stm::transaction::{RetryManager, TransactionRunner};
-use swim_common::form::Form;
-use swim_warp::model::map::MapUpdate;
+use swim_form::Form;
+use swim_runtime::routing::RoutingAddr;
+use swim_warp::map::MapUpdate;
 use tracing::{event, Level};
 
 #[cfg(test)]

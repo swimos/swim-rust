@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::configuration::downlink::OnInvalidMessage;
 use crate::downlink::model::map::{MapEvent, ValMap, ViewWithEvent};
 use crate::downlink::typed::event::{EventDownlinkReceiver, EventViewError, TypedEventDownlink};
 use crate::downlink::typed::map::events::{TypedMapView, TypedViewWithEvent};
@@ -22,14 +21,13 @@ use crate::downlink::{Command, Message};
 use im::OrdMap;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swim_common::form::structural::read::ReadError;
-use swim_common::form::ValueSchema;
-use swim_common::model::schema::StandardSchema;
-use swim_common::model::Value;
-use swim_common::routing::RoutingError;
-use swim_common::sink::item::ItemSender;
+use swim_form::structural::read::ReadError;
+use swim_model::Value;
+use swim_runtime::error::RoutingError;
+use swim_schema::schema::StandardSchema;
+use swim_schema::ValueSchema;
+use swim_utilities::future::item_sink::ItemSender;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
@@ -270,18 +268,14 @@ struct Components<T> {
 fn make_event_downlink<T: ValueSchema>() -> Components<T> {
     let (update_tx, update_rx) = mpsc::channel(8);
     let (command_tx, command_rx) = mpsc::channel(8);
-    let sender = swim_common::sink::item::for_mpsc_sender(command_tx).map_err_into();
+    let sender = swim_utilities::future::item_sink::for_mpsc_sender(command_tx).map_err_into();
 
     let (dl, rx) = crate::downlink::event_downlink(
         T::schema(),
         SchemaViolations::Report,
         ReceiverStream::new(update_rx),
         sender,
-        DownlinkConfig {
-            buffer_size: NonZeroUsize::new(8).unwrap(),
-            yield_after: NonZeroUsize::new(2048).unwrap(),
-            on_invalid: OnInvalidMessage::Terminate,
-        },
+        DownlinkConfig::default(),
     );
     let downlink = TypedEventDownlink::new(Arc::new(dl));
     let receiver = EventDownlinkReceiver::new(rx);

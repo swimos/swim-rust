@@ -626,15 +626,16 @@ where
                 break Poll::Ready(None);
             }
             if let Some(fut) = current.as_mut().as_pin_mut() {
-                if let Some((new_state, item)) = ready!(fut.poll(cx)) {
-                    current.set(None);
+                let poll_result = if let Some((new_state, item)) = ready!(fut.poll(cx)) {
                     *state = Some(new_state);
-                    break Poll::Ready(Some(item));
+                    Poll::Ready(Some(item))
                 } else {
                     current.set(None);
                     *done = true;
-                    break Poll::Ready(None);
-                }
+                    Poll::Ready(None)
+                };
+                current.set(None);
+                break poll_result;
             } else {
                 let maybe_next_input = ready!(stream.as_mut().poll_next(cx));
                 if let Some(next_input) = maybe_next_input {

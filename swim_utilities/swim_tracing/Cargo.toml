@@ -4,8 +4,13 @@ version = "0.1.0"
 authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
+[features]
+default = []
+future = ["swim_future"]
+
 [dependencies]
 tracing = "0.1.16"
 tracing-subscriber = "0.2.11"
+swim_future = { path = "../swim_future", optional = true }
 
 [dev-dependencies]

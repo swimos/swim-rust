@@ -12,16 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::configuration::downlink::OnInvalidMessage;
 use crate::downlink::typed::command::{CommandViewError, TypedCommandDownlink};
 use crate::downlink::Command;
 use crate::downlink::DownlinkConfig;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swim_common::form::ValueSchema;
-use swim_common::model::schema::StandardSchema;
-use swim_common::model::Value;
-use swim_common::sink::item::ItemSender;
+use swim_model::Value;
+use swim_schema::schema::StandardSchema;
+use swim_schema::ValueSchema;
+use swim_utilities::future::item_sink::ItemSender;
 use tokio::sync::mpsc;
 
 struct Components<T> {
@@ -31,17 +29,9 @@ struct Components<T> {
 
 fn make_command_downlink<T: ValueSchema>() -> Components<T> {
     let (command_tx, command_rx) = mpsc::channel(8);
-    let sender = swim_common::sink::item::for_mpsc_sender(command_tx).map_err_into();
+    let sender = swim_utilities::future::item_sink::for_mpsc_sender(command_tx).map_err_into();
 
-    let dl = crate::downlink::command_downlink(
-        T::schema(),
-        sender,
-        DownlinkConfig {
-            buffer_size: NonZeroUsize::new(8).unwrap(),
-            yield_after: NonZeroUsize::new(2048).unwrap(),
-            on_invalid: OnInvalidMessage::Terminate,
-        },
-    );
+    let dl = crate::downlink::command_downlink(T::schema(), sender, DownlinkConfig::default());
     let downlink = TypedCommandDownlink::new(Arc::new(dl));
 
     Components {

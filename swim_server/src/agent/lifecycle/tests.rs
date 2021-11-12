@@ -20,6 +20,8 @@ use futures::Stream;
 use std::collections::HashMap;
 use std::future::Future;
 use std::time::Duration;
+use swim_client::interface::ClientContext;
+use swim_model::path::Path;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger::Receiver;
 
@@ -28,6 +30,10 @@ struct TestAgent;
 struct TestContext;
 
 impl AgentContext<TestAgent> for TestContext {
+    fn downlinks_context(&self) -> ClientContext<Path> {
+        panic!("Unexpected downlink context")
+    }
+
     fn schedule<Effect, Str, Sch>(&self, _effects: Str, _schedule: Sch) -> BoxFuture<'_, ()>
     where
         Effect: Future<Output = ()> + Send + 'static,

@@ -16,15 +16,16 @@ use crate::agent::lane::model::demand_map::{
     make_lane_model, DemandMapLaneCommand, DemandMapLaneEvent,
 };
 use futures::future::{join, join3};
-use std::num::NonZeroUsize;
-use swim_common::form::Form;
-use swim_common::record;
+
+use swim_form::Form;
+use swim_model::record;
+use swim_utilities::algebra::non_zero_usize;
 use tokio::sync::mpsc;
 
 #[tokio::test]
 async fn test_sync() {
     let (tx, mut rx) = mpsc::channel(5);
-    let (lane, _events) = make_lane_model::<i32, i32>(NonZeroUsize::new(5).unwrap(), tx);
+    let (lane, _events) = make_lane_model::<i32, i32>(non_zero_usize!(5), tx);
     let controller = lane.controller();
     let sync = controller.sync();
 
@@ -46,7 +47,7 @@ async fn test_sync() {
 #[tokio::test]
 async fn test_cue_ok() {
     let (tx, mut rx) = mpsc::channel(5);
-    let (lane, mut update_rx) = make_lane_model::<i32, i32>(NonZeroUsize::new(5).unwrap(), tx);
+    let (lane, mut update_rx) = make_lane_model::<i32, i32>(non_zero_usize!(5), tx);
 
     let cue_task = async move {
         match rx.recv().await {
@@ -78,7 +79,7 @@ async fn test_cue_ok() {
 #[tokio::test]
 async fn test_cue_none() {
     let (tx, mut rx) = mpsc::channel(5);
-    let (lane, _topic) = make_lane_model::<i32, i32>(NonZeroUsize::new(5).unwrap(), tx);
+    let (lane, _topic) = make_lane_model::<i32, i32>(non_zero_usize!(5), tx);
 
     let cue_task = async move {
         match rx.recv().await {
@@ -99,7 +100,7 @@ async fn test_cue_none() {
 #[tokio::test]
 async fn test_remove() {
     let (tx, mut rx) = mpsc::channel(5);
-    let (lane, _topic) = make_lane_model::<i32, i32>(NonZeroUsize::new(5).unwrap(), tx);
+    let (lane, _topic) = make_lane_model::<i32, i32>(non_zero_usize!(5), tx);
 
     let remove_task = async move {
         match rx.recv().await {

@@ -15,12 +15,11 @@
 pub mod error;
 pub mod model;
 mod state_machine;
-mod subscription;
+pub mod subscription;
 #[cfg(test)]
 mod tests;
 pub mod typed;
 
-use crate::configuration::downlink::{DownlinkParams, OnInvalidMessage};
 use crate::downlink::error::DownlinkError;
 use crate::downlink::model::map::UntypedMapModification;
 use crate::downlink::model::value::SharedValue;
@@ -39,16 +38,16 @@ use futures::select_biased;
 use futures::stream::FusedStream;
 use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
-use std::fmt::Debug;
-use std::num::NonZeroUsize;
+use std::fmt::{Debug, Display, Formatter};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use swim_common::model::schema::StandardSchema;
-use swim_common::model::Value;
-use swim_common::request::TryRequest;
-use swim_common::routing::RoutingError;
-use swim_common::sink::item::ItemSender;
+use swim_model::Value;
+use swim_runtime::configuration::{DownlinkConfig, OnInvalidMessage};
+use swim_runtime::error::RoutingError;
+use swim_schema::schema::StandardSchema;
 use swim_utilities::errors::Recoverable;
+use swim_utilities::future::item_sink::ItemSender;
+use swim_utilities::future::request::TryRequest;
 use swim_utilities::sync::topic;
 use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
@@ -221,23 +220,19 @@ impl<Act, Ev> RawDownlink<Act, Ev> {
     }
 }
 
-/// Configuration parameters for the downlink event loop.
-#[derive(Clone, Copy, Debug)]
-struct DownlinkConfig {
-    /// Buffer size for the action and event channels.
-    pub buffer_size: NonZeroUsize,
-    /// The downlink event loop with yield to the runtime after this many iterations.
-    pub yield_after: NonZeroUsize,
-    /// Strategy for handling invalid messages.
-    pub on_invalid: OnInvalidMessage,
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DownlinkKind {
+    Value,
+    Map,
+    Command,
 }
 
-impl From<&DownlinkParams> for DownlinkConfig {
-    fn from(conf: &DownlinkParams) -> Self {
-        DownlinkConfig {
-            buffer_size: conf.buffer_size,
-            yield_after: conf.yield_after,
-            on_invalid: conf.on_invalid,
+impl Display for DownlinkKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DownlinkKind::Value => write!(f, "Value"),
+            DownlinkKind::Map => write!(f, "Map"),
+            DownlinkKind::Command => write!(f, "Command"),
         }
     }
 }
@@ -697,7 +692,7 @@ where
     }
     .instrument(span!(Level::INFO, DOWNLINK_TASK));
 
-    swim_runtime::task::spawn(task);
+    swim_async_runtime::task::spawn(task);
     let dl = RawDownlink {
         action_sender: act_tx,
         event_topic: event_rx.subscriber(),

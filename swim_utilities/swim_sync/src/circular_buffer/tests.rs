@@ -22,6 +22,7 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use swim_algebra::non_zero_usize;
 use tokio::sync::Barrier;
 
 #[test]
@@ -55,12 +56,12 @@ async fn send_and_receive(n: NonZeroUsize) {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn one_send_and_receive() {
-    send_and_receive(NonZeroUsize::new(1).unwrap()).await;
+    send_and_receive(non_zero_usize!(1)).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn small_send_and_receive() {
-    send_and_receive(NonZeroUsize::new(5).unwrap()).await;
+    send_and_receive(non_zero_usize!(5)).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -94,12 +95,12 @@ async fn receive_after_sender_dropped(n: NonZeroUsize) {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn one_receive_after_sender_dropped() {
-    receive_after_sender_dropped(NonZeroUsize::new(1).unwrap()).await;
+    receive_after_sender_dropped(non_zero_usize!(1)).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn small_receive_after_sender_dropped() {
-    receive_after_sender_dropped(NonZeroUsize::new(5).unwrap()).await;
+    receive_after_sender_dropped(non_zero_usize!(5)).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -109,7 +110,7 @@ async fn large_receive_after_sender_dropped() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn miss_update() {
-    let (mut tx, mut rx) = super::channel(NonZeroUsize::new(1).unwrap());
+    let (mut tx, mut rx) = super::channel(non_zero_usize!(1));
     let barrier_send = Arc::new(Barrier::new(2));
     let barrier_receive = barrier_send.clone();
 
@@ -251,12 +252,12 @@ async fn send_after_receiver_dropped(n: NonZeroUsize) {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn one_send_after_receiver_dropped() {
-    send_after_receiver_dropped(NonZeroUsize::new(1).unwrap()).await;
+    send_after_receiver_dropped(non_zero_usize!(1)).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn small_send_after_receiver_dropped() {
-    send_after_receiver_dropped(NonZeroUsize::new(5).unwrap()).await;
+    send_after_receiver_dropped(non_zero_usize!(5)).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -326,7 +327,7 @@ impl ArcWake for WakeObserver {
 
 #[test]
 fn receiver_wake_on_sender_dropped() {
-    let (tx, mut rx) = super::channel::<i32>(NonZeroUsize::new(5).unwrap());
+    let (tx, mut rx) = super::channel::<i32>(non_zero_usize!(5));
 
     let obs = Arc::new(WakeObserver::new());
 

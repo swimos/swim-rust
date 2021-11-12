@@ -19,8 +19,8 @@ use swim_client::downlink::typed::map::events::TypedViewWithEvent;
 use swim_client::downlink::typed::map::MapDownlinkReceiver;
 use swim_client::downlink::Event::Remote;
 use swim_client::interface::SwimClientBuilder;
-use swim_common::model::Value;
-use swim_common::warp::path::AbsolutePath;
+use swim_model::Value;
+use swim_model::path::AbsolutePath;
 use tokio::{task, time};
 
 async fn did_update(map_recv: MapDownlinkReceiver<i32, bool>, default: bool) {
@@ -29,9 +29,9 @@ async fn did_update(map_recv: MapDownlinkReceiver<i32, bool>, default: bool) {
         .filter_map(|event| async {
             match event {
                 Remote(TypedViewWithEvent {
-                           view,
-                           event: MapEvent::Update(key),
-                       }) => Some((key, view)),
+                    view,
+                    event: MapEvent::Update(key),
+                }) => Some((key, view)),
                 _ => None,
             }
         })
@@ -47,8 +47,8 @@ async fn did_update(map_recv: MapDownlinkReceiver<i32, bool>, default: bool) {
 
 #[tokio::main]
 async fn main() {
-    let mut client = SwimClientBuilder::build_with_default().await;
-    let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
+    let client = SwimClientBuilder::build_with_default().await;
+    let host_uri = url::Url::parse(&"warp://127.0.0.1:9001".to_string()).unwrap();
 
     let building_node = "/building/swim";
     let first_room_node = "/swim/1";
@@ -117,4 +117,5 @@ async fn main() {
 
     println!("Stopping client in 2 seconds");
     time::sleep(Duration::from_secs(2)).await;
+    client.stop().await.unwrap();
 }

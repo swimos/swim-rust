@@ -1,11 +1,14 @@
 @config {
-    @client {
-        buffer_size: 2
-        router: {
-            retry_strategy: @exponential(max_interval: 30, max_backoff: "indefinite")
-            idle_timeout: 100
-            conn_reaper_frequency: 6000
-            buffer_size: 15
+    @downlink_connections {
+        dl_req_buffer_size: 8,
+        buffer_size: 100,
+        yield_after: 256,
+        retry_strategy: @exponential {
+            max_interval: @duration {
+                secs: 30,
+                nanos: 0
+            },
+            max_backoff: "infinite"
         }
     }
 }

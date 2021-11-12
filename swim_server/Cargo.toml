@@ -9,7 +9,6 @@ default = []
 debug = ["log_verbose"]
 persistence = ["server_store/rocks"]
 log_verbose = []
-trust-dns = ["trust-dns-resolver"]
 
 [target.'cfg(log_verbose)'.dependencies]
 tracing = { version = "0.1.13", features = ["max_level_debug"] }
@@ -18,14 +17,10 @@ tracing = { version = "0.1.13", features = ["max_level_debug"] }
 tracing = "0.1.16"
 
 [dependencies]
-swim_store = { path = "../swim_store" }
+swim_client = { path = "../swim_client" }
 swim_metrics = { path = "swim_metrics" }
-server_store = { path = "server_store"}
-swim_common = { path = "../swim_common", features = ["tls"] }
 swim_warp = { path = "../swim_warp" }
-swim_utilities = { path = "../swim_utilities", features = ["errors", "sync", "time", "text", "io"] }
-stringify_attr = { path = "../macro_utilities/stringify_attr" }
-swim_runtime = { path = "../swim_runtime" }
+swim_utilities = { path = "../swim_utilities", features = ["errors", "sync", "time", "text", "io", "algebra"] }
 stm = { path = "../stm" }
 either = "1.5.3"
 futures = "0.3.4"
@@ -38,6 +33,15 @@ pin-utils = "0.1.0"
 tokio = { version = "1.1.1", features = ["rt", "net"] }
 tokio-stream = { version = "0.1.2", features = ["sync"] }
 url = "2.1.1"
+swim_runtime = { path = "../runtime/swim_runtime" }
+swim_model = { path = "../api/swim_model" }
+swim_form = { path = "../api/swim_form" }
+swim_recon = { path = "../api/formats/swim_recon" }
+swim_schema = { path = "../api/swim_schema" }
+swim_tracing = { path = "../swim_utilities/swim_tracing", features = ["future"] }
+swim_store = { path = "../swim_store" }
+stringify_attr = { path = "../macro_utilities/stringify_attr" }
+swim_async_runtime = { path = "../runtime/swim_async_runtime" }
 tracing-futures = "0.2.4"
 agent_derive = { path = "agent_derive" }
 trybuild = "1.0.48"
@@ -49,7 +53,11 @@ lazy_static = "1.4.0"
 percent-encoding = "2.1.0"
 thiserror = "1.0"
 crossbeam-queue = "0.3"
+server_store = { path = "server_store"}
 serde = { version = "1.0.124", features = ["derive", "rc"] }
+bincode = "1.3.2"
+rocksdb = "0.16.0"
+tempdir = "0.3.7"
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["rt-multi-thread", "macros", "test-util"] }

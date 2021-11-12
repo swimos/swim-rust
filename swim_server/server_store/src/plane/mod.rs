@@ -18,7 +18,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use swim_common::model::text::Text;
+use swim_model::Text;
 use swim_store::{serialize, EngineInfo, Store, StoreError};
 
 use crate::agent::{NodeStore, SwimNodeStore};
@@ -178,7 +178,7 @@ impl<D: Store> StoreEngine for SwimPlaneStore<D> {
     }
 }
 
-pub(crate) fn open_plane<B, P, D>(
+pub fn open_plane<B, P, D>(
     base_path: B,
     plane_name: P,
     builder: D,

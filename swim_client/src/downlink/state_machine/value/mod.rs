@@ -19,9 +19,9 @@ use crate::downlink::error::DownlinkError;
 use crate::downlink::model::value::{Action, SharedValue, UpdateResult};
 use crate::downlink::state_machine::{Response, ResponseResult, SyncStateMachine};
 use crate::downlink::DownlinkRequest;
-use swim_common::model::schema::Schema;
-use swim_common::model::schema::StandardSchema;
-use swim_common::model::Value;
+use swim_model::Value;
+use swim_schema::schema::Schema;
+use swim_schema::schema::StandardSchema;
 
 /// State machine for value downlinks.
 pub struct ValueStateMachine {

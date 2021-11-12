@@ -12,16 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::configuration::downlink::DownlinkKind;
+use crate::downlink::DownlinkKind;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use swim_common::model::schema::StandardSchema;
-use swim_common::model::Value;
-use swim_common::request::request_future::RequestError;
-use swim_common::routing::{ConnectionError, RoutingError};
-use swim_common::sink::item;
-use swim_common::warp::path::AbsolutePath;
+use swim_model::path::Addressable;
+use swim_model::Value;
+use swim_runtime::error::{ConnectionError, RoutingError};
+use swim_schema::schema::StandardSchema;
 use swim_utilities::errors::Recoverable;
+use swim_utilities::future::item_sink;
+use swim_utilities::future::request::request_future::RequestError;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
@@ -117,8 +117,8 @@ impl<T> From<mpsc::error::TrySendError<T>> for DownlinkError {
     }
 }
 
-impl From<item::SendError> for DownlinkError {
-    fn from(_: item::SendError) -> Self {
+impl<T> From<item_sink::SendError<T>> for DownlinkError {
+    fn from(_: item_sink::SendError<T>) -> Self {
         DownlinkError::DroppedChannel
     }
 }
@@ -173,36 +173,36 @@ impl<T> From<mpsc::error::SendError<T>> for DroppedError {
     }
 }
 
-impl From<swim_common::sink::item::SendError> for DroppedError {
-    fn from(_: swim_common::sink::item::SendError) -> Self {
+impl<T> From<swim_utilities::future::item_sink::SendError<T>> for DroppedError {
+    fn from(_: swim_utilities::future::item_sink::SendError<T>) -> Self {
         DroppedError
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum SubscriptionError {
+pub enum SubscriptionError<Path: Addressable> {
     BadKind {
         expected: DownlinkKind,
         actual: DownlinkKind,
     },
     DownlinkTaskStopped,
     IncompatibleValueSchema {
-        path: AbsolutePath,
+        path: Path,
         existing: Box<StandardSchema>,
         requested: Box<StandardSchema>,
     },
     IncompatibleMapSchema {
         is_key: bool,
-        path: AbsolutePath,
+        path: Path,
         existing: Box<StandardSchema>,
         requested: Box<StandardSchema>,
     },
     ConnectionError,
 }
 
-impl SubscriptionError {
+impl<Path: Addressable> SubscriptionError<Path> {
     pub fn incompatible_value(
-        path: AbsolutePath,
+        path: Path,
         existing: StandardSchema,
         requested: StandardSchema,
     ) -> Self {
@@ -214,7 +214,7 @@ impl SubscriptionError {
     }
 
     pub fn incompatible_map_key(
-        path: AbsolutePath,
+        path: Path,
         existing: StandardSchema,
         requested: StandardSchema,
     ) -> Self {
@@ -227,7 +227,7 @@ impl SubscriptionError {
     }
 
     pub fn incompatible_map_value(
-        path: AbsolutePath,
+        path: Path,
         existing: StandardSchema,
         requested: StandardSchema,
     ) -> Self {
@@ -240,19 +240,25 @@ impl SubscriptionError {
     }
 }
 
-impl From<oneshot::error::RecvError> for SubscriptionError {
+impl<Path: Addressable> From<oneshot::error::RecvError> for SubscriptionError<Path> {
     fn from(_: oneshot::error::RecvError) -> Self {
         SubscriptionError::DownlinkTaskStopped
     }
 }
 
-impl From<RequestError> for SubscriptionError {
+impl<Path: Addressable> From<RequestError> for SubscriptionError<Path> {
     fn from(_: RequestError) -> Self {
         SubscriptionError::ConnectionError
     }
 }
 
-impl Display for SubscriptionError {
+impl<Path: Addressable> From<ConnectionError> for SubscriptionError<Path> {
+    fn from(_: ConnectionError) -> Self {
+        SubscriptionError::ConnectionError
+    }
+}
+
+impl<Path: Addressable> Display for SubscriptionError<Path> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             SubscriptionError::BadKind { expected, actual } => write!(
@@ -288,10 +294,10 @@ impl Display for SubscriptionError {
     }
 }
 
-impl std::error::Error for SubscriptionError {}
+impl<Path: Addressable> std::error::Error for SubscriptionError<Path> {}
 
-impl SubscriptionError {
-    pub fn bad_kind(expected: DownlinkKind, actual: DownlinkKind) -> SubscriptionError {
+impl<Path: Addressable> SubscriptionError<Path> {
+    pub fn bad_kind(expected: DownlinkKind, actual: DownlinkKind) -> SubscriptionError<Path> {
         SubscriptionError::BadKind { expected, actual }
     }
 }
