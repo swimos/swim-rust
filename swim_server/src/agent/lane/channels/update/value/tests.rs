@@ -15,16 +15,17 @@
 use crate::agent::lane::channels::update::value::ValueLaneUpdateTask;
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::model::value::ValueLane;
-use crate::routing::RoutingAddr;
 use futures::future::{join, ready};
 use futures::stream::once;
 use futures::StreamExt;
 use std::num::NonZeroUsize;
 use std::time::Duration;
+use swim_runtime::routing::RoutingAddr;
+use swim_utilities::algebra::non_zero_usize;
 use tokio::time::timeout;
 
 fn buffer_size() -> NonZeroUsize {
-    NonZeroUsize::new(16).unwrap()
+    non_zero_usize!(16)
 }
 
 #[tokio::test]

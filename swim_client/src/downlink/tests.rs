@@ -19,7 +19,6 @@ use super::*;
 use crate::downlink::state_machine::ResponseResult;
 use crate::downlink::{Downlink, DownlinkState};
 use futures::StreamExt;
-use std::num::NonZeroUsize;
 use std::time::Instant;
 use swim_runtime::error::RoutingError;
 use swim_utilities::future::item_sink;
@@ -186,11 +185,8 @@ fn make_test_dl_custom_on_invalid(
     let (tx_in, rx_in) = mpsc::channel(10);
     let (tx_out, rx_out) = mpsc::channel::<Command<i32>>(10);
 
-    let config = DownlinkConfig {
-        buffer_size: NonZeroUsize::new(10).unwrap(),
-        yield_after: NonZeroUsize::new(256).unwrap(),
-        on_invalid,
-    };
+    let mut config = DownlinkConfig::default();
+    config.on_invalid = on_invalid;
 
     let (downlink, dl_rx) = create_downlink(
         TestStateMachine::new(dl_start_state, start_response),

@@ -18,30 +18,32 @@ use crate::agent::lane::channels::update::UpdateError;
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::UplinkError;
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::store::mock::MockNodeStore;
-use crate::agent::store::SwimNodeStore;
+use crate::agent::lane::model::supply::SupplyLane;
 use crate::agent::{AttachError, Eff, LaneIo};
-use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
-use crate::plane::store::mock::MockPlaneStore;
-use crate::routing::error::RouterError;
-use crate::routing::{
-    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
-    TaggedSender,
-};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use parking_lot::Mutex;
+use server_store::agent::mock::MockNodeStore;
+use server_store::agent::SwimNodeStore;
+use server_store::plane::mock::MockPlaneStore;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::sync::Arc;
 use stm::transaction::TransactionError;
+use swim_metrics::config::MetricAggregatorConfig;
+use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
 use swim_model::path::RelativePath;
 use swim_model::Value;
-use swim_runtime::error::ResolutionError;
+use swim_runtime::error::{ConnectionDropped, ResolutionError, RouterError};
+use swim_runtime::routing::{
+    Route, Router, RoutingAddr, TaggedClientEnvelope, TaggedEnvelope, TaggedSender,
+};
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::time::AtomicInstant;
+use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
-use swim_warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
+use swim_warp::envelope::{Envelope, RequestEnvelope};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::Instant;
@@ -97,7 +99,7 @@ impl MockRouterInner {
 #[derive(Debug, Clone)]
 pub struct MockRouter(Arc<Mutex<MockRouterInner>>);
 
-impl ServerRouter for MockRouter {
+impl Router for MockRouter {
     fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let mut lock = self.0.lock();
@@ -138,6 +140,7 @@ impl ServerRouter for MockRouter {
 pub struct MockExecutionContext {
     router: Arc<Mutex<MockRouterInner>>,
     spawner: mpsc::Sender<Eff>,
+    uri: RelativeUri,
     uplinks_idle_since: Arc<AtomicInstant>,
 }
 
@@ -153,12 +156,26 @@ impl AgentExecutionContext for MockExecutionContext {
         self.spawner.clone()
     }
 
+    fn uri(&self) -> &RelativeUri {
+        &self.uri
+    }
+
     fn store(&self) -> Self::Store {
         MockNodeStore::mock()
     }
 
     fn metrics(&self) -> NodeMetricAggregator {
-        aggregator_sink()
+        NodeMetricAggregator::new(
+            RelativeUri::try_from("/test").unwrap(),
+            trigger::trigger().1,
+            MetricAggregatorConfig::default(),
+            MetaPulseLanes {
+                uplinks: Default::default(),
+                lanes: Default::default(),
+                node: Box::new(SupplyLane::new(mpsc::channel(1).0)),
+            },
+        )
+        .0
     }
 
     fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
@@ -172,6 +189,7 @@ impl MockExecutionContext {
             router: Arc::new(Mutex::new(MockRouterInner::new(router_addr, buffer_size))),
             spawner,
             uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
+            uri: RelativeUri::try_from("/mock/router".to_string()).unwrap(),
         }
     }
 
@@ -217,22 +235,15 @@ impl LaneIo<MockExecutionContext> for MockLane {
             let err = loop {
                 let next = envelopes.recv().await;
                 if let Some(env) = next {
-                    let TaggedClientEnvelope(
-                        addr,
-                        OutgoingLinkMessage {
-                            header,
-                            path: _,
-                            body,
-                        },
-                    ) = env;
+                    let TaggedClientEnvelope(addr, req_envelope) = env;
 
-                    if body == Some(Value::text(POISON_PILL)) {
+                    if req_envelope.body() == Some(&Value::text(POISON_PILL)) {
                         break Some(LaneIoError::for_update_err(
-                            route.clone(),
+                            req_envelope.path().clone(),
                             UpdateError::FailedTransaction(TransactionError::InvalidRetry),
                         ));
                     } else {
-                        let response = echo(&route, header, body);
+                        let response = echo(req_envelope);
                         let sender = match senders.entry(addr) {
                             Entry::Occupied(entry) => entry.into_mut(),
                             Entry::Vacant(entry) => {
@@ -281,11 +292,28 @@ impl LaneIo<MockExecutionContext> for MockLane {
     }
 }
 
-pub fn echo(route: &RelativePath, header: OutgoingHeader, body: Option<Value>) -> Envelope {
-    match header {
-        OutgoingHeader::Link(_) => Envelope::linked(&route.node, &route.lane),
-        OutgoingHeader::Sync(_) => Envelope::synced(&route.node, &route.lane),
-        OutgoingHeader::Unlink => Envelope::unlinked(&route.node, &route.lane),
-        OutgoingHeader::Command => Envelope::make_event(&route.node, &route.lane, body),
+pub fn echo(env: RequestEnvelope) -> Envelope {
+    match env {
+        RequestEnvelope::Link(RelativePath { node, lane }, params, body) => Envelope::linked()
+            .node_uri(node)
+            .lane_uri(lane)
+            .link_params(params)
+            .with_body(body)
+            .done(),
+        RequestEnvelope::Sync(RelativePath { node, lane }, _, body) => Envelope::synced()
+            .node_uri(node)
+            .lane_uri(lane)
+            .with_body(body)
+            .done(),
+        RequestEnvelope::Unlink(RelativePath { node, lane }, body) => Envelope::unlinked()
+            .node_uri(node)
+            .lane_uri(lane)
+            .with_body(body)
+            .done(),
+        RequestEnvelope::Command(RelativePath { node, lane }, body) => Envelope::event()
+            .node_uri(node)
+            .lane_uri(lane)
+            .with_body(body)
+            .done(),
     }
 }

@@ -36,7 +36,7 @@ use swim_model::path::RelativePath;
 use swim_utilities::errors::Recoverable;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
-use swim_warp::envelope::{Envelope, OutgoingHeader};
+use swim_warp::envelope::{Envelope, RequestKind};
 
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::dispatch::error::{DispatcherError, DispatcherErrors};
@@ -46,11 +46,11 @@ use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::{AttachError, LaneIo};
 use crate::meta::uri::MetaParseErr;
 use crate::meta::{LaneAddressedKind, MetaNodeAddressed, LANES_URI, PULSE_URI, UPLINK_URI};
-use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_async_runtime::time::timeout::timeout;
+use swim_runtime::routing::{Router, RoutingAddr, TaggedClientEnvelope, TaggedEnvelope};
 use swim_utilities::time::AtomicInstant;
 use tokio::time::Instant;
 
@@ -540,16 +540,16 @@ const FAILED_START_DROP: &str = "Lane IO task failed to start; dropping pending 
 const NODE_URI_PARSE_ERR: &str = "Failed to parse node URI.";
 const FAILED_NOT_FOUND_RESPONSE: &str = "Failed to send lane not found response.";
 
-impl<Router> EnvelopeDispatcher<Router>
+impl<R> EnvelopeDispatcher<R>
 where
-    Router: ServerRouter,
+    R: Router,
 {
     fn new(
         open_tx: mpsc::Sender<OpenRequest>,
         yield_after: NonZeroUsize,
         lane_buffer: NonZeroUsize,
         max_idle_time: Duration,
-        router: Router,
+        router: R,
     ) -> Self {
         EnvelopeDispatcher {
             senders: Default::default(),
@@ -619,8 +619,9 @@ where
                 }
                 Some(Either::Right(TaggedEnvelope(addr, envelope))) => {
                     event!(Level::TRACE, message = ATTEMPT_DISPATCH, ?envelope);
-                    if let Ok(envelope) = envelope.into_outgoing() {
-                        let identifier = match LaneIdentifier::try_from(&envelope.path) {
+                    if let Some(envelope) = envelope.into_request() {
+                        let path = envelope.path();
+                        let identifier = match LaneIdentifier::try_from(path) {
                             Ok(identifier) => identifier,
                             Err(e) => {
                                 event!(Level::WARN, message = NODE_URI_PARSE_ERR, ?e);
@@ -628,13 +629,13 @@ where
                                 send_lane_not_found(
                                     router,
                                     addr,
-                                    envelope.path.node.to_string(),
-                                    envelope.path.lane.to_string(),
+                                    path.node.to_string(),
+                                    path.lane.to_string(),
                                 )
                                 .await;
 
                                 break Err(DispatcherError::AttachmentFailed(
-                                    AttachError::LaneDoesNotExist(envelope.path.to_string()),
+                                    AttachError::LaneDoesNotExist(envelope.path().to_string()),
                                 ));
                             }
                         };
@@ -652,7 +653,7 @@ where
                             let (req_tx, req_rx) = oneshot::channel();
                             let (uplink_tx, uplink_rx) = mpsc::channel(lane_buffer.get());
 
-                            let result = if let OutgoingHeader::Link(_) = envelope.header {
+                            let result = if envelope.kind() == RequestKind::Link {
                                 open_tx
                                     .send(OpenRequest::new(
                                         identifier.clone(),
@@ -758,18 +759,18 @@ where
     }
 }
 
-async fn send_lane_not_found<Router>(
-    router: &mut Router,
+async fn send_lane_not_found<R>(
+    router: &mut R,
     remote_addr: RoutingAddr,
     node: String,
     lane: String,
 ) where
-    Router: ServerRouter,
+    R: Router,
 {
     if let Ok(mut remote_route) = router.resolve_sender(remote_addr).await {
         if remote_route
             .sender
-            .send_item(Envelope::lane_not_found(node.to_owned(), lane.to_owned()))
+            .send_item(Envelope::lane_not_found(node.as_str(), lane.as_str()))
             .await
             .is_err()
         {

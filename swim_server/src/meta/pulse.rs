@@ -18,15 +18,15 @@ use crate::agent::lane::model::supply::SupplyLane;
 use crate::agent::{
     make_supply_lane, AgentContext, DynamicLaneTasks, LaneIo, LaneParts, LaneTasks, SwimAgent,
 };
-use crate::meta::metric::lane::LanePulse;
-use crate::meta::metric::node::NodePulse;
-use crate::meta::metric::uplink::WarpUplinkPulse;
 use crate::meta::{IdentifiedAgentIo, LaneAddressedKind, MetaNodeAddressed};
 use std::any::Any;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use swim_form::Form;
+use swim_metrics::lane::LanePulse;
+use swim_metrics::node::NodePulse;
+use swim_metrics::uplink::WarpUplinkPulse;
 use swim_model::path::RelativePath;
 use swim_utilities::routing::uri::RelativeUri;
 

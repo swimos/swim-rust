@@ -369,13 +369,7 @@ fn header() {
     };
 
     let rec_none = Value::Record(
-        vec![Attr::of((
-            "Example",
-            Value::Record(
-                Vec::new(),
-                vec![Item::Slot(Value::text("b"), Value::Extant)],
-            ),
-        ))],
+        vec![Attr::of(("Example", Value::empty_record()))],
         vec![Item::Slot(Value::text("a"), Value::text("hello"))],
     );
 

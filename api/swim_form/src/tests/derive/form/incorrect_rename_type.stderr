@@ -1,5 +1,5 @@
 error: Expected a string literal
-  --> $DIR/incorrect_rename_type.rs:20:23
+  --> $DIR/src/tests/derive/form/incorrect_rename_type.rs:18:14
    |
-20 |         #[form(name = 13)]
-   |                       ^^
+18 |     #[derive(Form)]
+   |              ^^^^

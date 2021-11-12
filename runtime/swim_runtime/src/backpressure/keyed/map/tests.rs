@@ -19,6 +19,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_model::Value;
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::item_sink::for_mpsc_sender;
 use tokio::time::timeout;
 use tokio_stream::wrappers::ReceiverStream;
@@ -71,15 +72,15 @@ async fn validate_receive(
 }
 
 fn buffer_size() -> NonZeroUsize {
-    NonZeroUsize::new(5).unwrap()
+    non_zero_usize!(5)
 }
 
 fn max_active_keys() -> NonZeroUsize {
-    NonZeroUsize::new(5).unwrap()
+    non_zero_usize!(5)
 }
 
 fn yield_after() -> NonZeroUsize {
-    NonZeroUsize::new(256).unwrap()
+    non_zero_usize!(256)
 }
 
 #[tokio::test(flavor = "multi_thread")]

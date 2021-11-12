@@ -9,5 +9,11 @@ either = "1.5.3"
 swim_model = { path = "../api/swim_model" }
 swim_form = { path = "../api/swim_form" }
 swim_schema = { path = "../api/swim_schema" }
+futures = "0.3.4"
+pin-utils = "0.1.0"
+swim_utilities = { path = "../swim_utilities", features = ["lrucache", "sync", "algebra"] }
+tokio = { version = "1.1.1", features = ["sync"] }
+tokio-stream = "0.1.2"
 
 [dev-dependencies]
+swim_recon = { path = "../api/formats/swim_recon" }

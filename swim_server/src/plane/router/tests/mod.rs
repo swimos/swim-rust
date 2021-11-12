@@ -13,15 +13,13 @@
 // limitations under the License.
 
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
-use crate::plane::PlaneRequest;
-use crate::routing::error::{RouterError, Unresolvable};
-use crate::routing::remote::RawRoute;
-use crate::routing::{
-    RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope, TopLevelRouter,
-    TopLevelRouterFactory,
-};
+use crate::routing::{PlaneRoutingRequest, TopLevelServerRouter, TopLevelServerRouterFactory};
 use futures::future::join;
-use swim_runtime::error::{ConnectionError, ProtocolError, ResolutionErrorKind};
+use swim_runtime::error::{
+    ConnectionError, ProtocolError, ResolutionErrorKind, RouterError, Unresolvable,
+};
+use swim_runtime::remote::RawRoute;
+use swim_runtime::routing::{Router, RouterFactory, RoutingAddr, TaggedEnvelope};
 use swim_utilities::trigger::promise;
 use swim_warp::envelope::Envelope;
 use tokio::sync::mpsc;
@@ -29,20 +27,21 @@ use url::Url;
 
 #[tokio::test]
 async fn plane_router_get_sender() {
-    let addr = RoutingAddr::local(5);
+    let addr = RoutingAddr::plane(5);
 
     let (req_tx, mut req_rx) = mpsc::channel(8);
     let (send_tx, mut send_rx) = mpsc::channel(8);
     let (_drop_tx, drop_rx) = promise::promise();
 
     let (remote_tx, _remote_rx) = mpsc::channel(8);
-    let top_level_router = TopLevelRouter::new(addr, req_tx.clone(), remote_tx);
+    let (client_tx, _client_rx) = mpsc::channel(8);
+    let top_level_router = TopLevelServerRouter::new(addr, req_tx.clone(), client_tx, remote_tx);
 
     let mut router = PlaneRouter::new(addr, top_level_router, req_tx);
 
     let provider_task = async move {
         while let Some(req) = req_rx.recv().await {
-            if let PlaneRequest::Endpoint { id, request } = req {
+            if let PlaneRoutingRequest::Endpoint { id, request } = req {
                 if id == addr {
                     assert!(request
                         .send_ok(RawRoute::new(send_tx.clone(), drop_rx.clone()))
@@ -62,15 +61,18 @@ async fn plane_router_get_sender() {
         let mut sender = result1.unwrap();
         assert!(sender
             .sender
-            .send_item(Envelope::linked("/node", "lane"))
+            .send_item(Envelope::linked().node_uri("/node").lane_uri("lane").done())
             .await
             .is_ok());
         assert_eq!(
             send_rx.recv().await,
-            Some(TaggedEnvelope(addr, Envelope::linked("/node", "lane")))
+            Some(TaggedEnvelope(
+                addr,
+                Envelope::linked().node_uri("/node").lane_uri("lane").done()
+            ))
         );
 
-        let result2 = router.resolve_sender(RoutingAddr::local(56)).await;
+        let result2 = router.resolve_sender(RoutingAddr::plane(56)).await;
 
         assert!(matches!(
             result2.err().unwrap().kind(),
@@ -86,11 +88,13 @@ async fn plane_router_factory() {
     let (req_tx, _req_rx) = mpsc::channel(8);
 
     let (remote_tx, _remote_rx) = mpsc::channel(8);
-    let top_level_router_factory = TopLevelRouterFactory::new(req_tx.clone(), remote_tx);
+    let (client_tx, _client_rx) = mpsc::channel(8);
+    let top_level_router_factory =
+        TopLevelServerRouterFactory::new(req_tx.clone(), client_tx, remote_tx);
 
     let fac = PlaneRouterFactory::new(req_tx, top_level_router_factory);
-    let router = fac.create_for(RoutingAddr::local(56));
-    assert_eq!(router.tag, RoutingAddr::local(56));
+    let router = fac.create_for(RoutingAddr::plane(56));
+    assert_eq!(router.tag, RoutingAddr::plane(56));
 }
 
 #[tokio::test]
@@ -101,7 +105,8 @@ async fn plane_router_resolve() {
     let (req_tx, mut req_rx) = mpsc::channel(8);
 
     let (remote_tx, _remote_rx) = mpsc::channel(8);
-    let top_level_router = TopLevelRouter::new(addr, req_tx.clone(), remote_tx);
+    let (client_tx, _client_rx) = mpsc::channel(8);
+    let top_level_router = TopLevelServerRouter::new(addr, req_tx.clone(), client_tx, remote_tx);
 
     let mut router = PlaneRouter::new(addr, top_level_router, req_tx);
 
@@ -109,7 +114,7 @@ async fn plane_router_resolve() {
 
     let provider_task = async move {
         while let Some(req) = req_rx.recv().await {
-            if let PlaneRequest::Resolve {
+            if let PlaneRoutingRequest::Resolve {
                 host,
                 name,
                 request,

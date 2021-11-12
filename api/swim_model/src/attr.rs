@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::text::Text;
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 use std::hash::Hash;
@@ -22,7 +23,7 @@ use crate::{Item, Value};
 
 /// An attribute that can be applied to a record ['Value']. A key value pair where the key is
 /// a ['String'] and the value can be any ['Value'].
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
 pub struct Attr {
     pub name: Text,
     pub value: Value,

@@ -39,25 +39,17 @@ where
     I: Iterator<Item = ReadEvent<'a>>,
 {
     for event in rep {
-        match sm.feed_event(event) {
-            Some(Err(e)) => {
-                panic!("Recognizer failed: {}", e);
-            }
-            Some(Ok(t)) => {
-                return t;
-            }
-            _ => {}
+        if let Some(t) = sm
+            .feed_event(event)
+            .transpose()
+            .unwrap_or_else(|e| panic!("Recognizer failed: {}", e))
+        {
+            return t;
         }
     }
-    match sm.try_flush() {
-        Some(Ok(t)) => t,
-        Some(Err(e)) => {
-            panic!("Recognizer failed: {}", e);
-        }
-        _ => {
-            panic!("Recognizer did not complete.");
-        }
-    }
+    sm.try_flush()
+        .expect("Recognizer did not complete.")
+        .unwrap_or_else(|e| panic!("Recognizer failed: {}", e))
 }
 
 fn round_trip(value: Value) {

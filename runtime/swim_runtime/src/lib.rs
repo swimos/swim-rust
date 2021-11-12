@@ -18,7 +18,10 @@ pub mod backpressure;
 * how agents run. Will enventually be removed.
  */
 pub mod compat;
+pub mod configuration;
 pub mod error;
+pub mod remote;
+pub mod routing;
 pub mod ws;
 
 pub mod ws2;

@@ -14,6 +14,7 @@
 
 use std::convert::TryInto;
 use std::num::NonZeroUsize;
+use swim_algebra::non_zero_usize;
 
 use super::*;
 
@@ -89,7 +90,7 @@ fn unfold_iteratee_with_flush() {
 
 #[test]
 fn collect_to_vector() {
-    let size = NonZeroUsize::new(3).unwrap();
+    let size = non_zero_usize!(3);
     let mut iteratee = collect_vec::<i32>(size);
 
     assert!(iteratee.feed(2).is_none());
@@ -102,7 +103,7 @@ fn collect_to_vector() {
 
 #[test]
 fn collect_to_vector_with_remainder() {
-    let size = NonZeroUsize::new(3).unwrap();
+    let size = non_zero_usize!(3);
     let mut iteratee = collect_vec_with_rem::<i32>(size);
 
     assert!(iteratee.feed(2).is_none());
@@ -126,7 +127,7 @@ fn collect_all_to_vector() {
 
 #[test]
 fn map_iteratee() {
-    let size = NonZeroUsize::new(3).unwrap();
+    let size = non_zero_usize!(3);
     let mut iteratee = collect_vec::<i32>(size).map(|vec| vec.iter().sum());
 
     assert!(iteratee.feed(1).is_none());
@@ -140,7 +141,7 @@ fn map_iteratee() {
 
 #[test]
 fn map_iteratee_with_flush() {
-    let size = NonZeroUsize::new(3).unwrap();
+    let size = non_zero_usize!(3);
     let mut iteratee = collect_vec_with_rem::<i32>(size).map(|vec| vec.iter().sum());
 
     assert!(iteratee.feed(1).is_none());
@@ -154,7 +155,7 @@ fn map_iteratee_with_flush() {
 
 #[test]
 fn comap_iteratee() {
-    let size = NonZeroUsize::new(3).unwrap();
+    let size = non_zero_usize!(3);
     let mut iteratee = collect_vec(size).comap(|n: i32| n.to_string());
 
     assert!(iteratee.feed(1).is_none());
@@ -171,7 +172,7 @@ fn comap_iteratee() {
 
 #[test]
 fn comap_iteratee_with_flush() {
-    let size = NonZeroUsize::new(3).unwrap();
+    let size = non_zero_usize!(3);
     let mut iteratee = collect_vec_with_rem(size).comap(|n: i32| n.to_string());
 
     assert!(iteratee.feed(1).is_none());
@@ -188,7 +189,7 @@ fn comap_iteratee_with_flush() {
 
 #[test]
 fn maybe_comap_iteratee() {
-    let size = NonZeroUsize::new(3).unwrap();
+    let size = non_zero_usize!(3);
     let mut iteratee = collect_vec(size).maybe_comap(|n: i32| {
         if n % 2 == 0 {
             Some(n.to_string())
@@ -214,7 +215,7 @@ fn maybe_comap_iteratee() {
 
 #[test]
 fn maybe_comap_iteratee_with_flush() {
-    let size = NonZeroUsize::new(3).unwrap();
+    let size = non_zero_usize!(3);
     let mut iteratee = collect_vec_with_rem(size).maybe_comap(|n: i32| {
         if n % 2 == 0 {
             Some(n.to_string())
@@ -298,7 +299,7 @@ fn filter_iteratee() {
 
 #[test]
 fn filter_iteratee_with_flush() {
-    let size = NonZeroUsize::new(2).unwrap();
+    let size = non_zero_usize!(2);
     let mut iteratee =
         collect_vec_with_rem::<i32>(size).filter(|v| v.get(0).map(|i| i % 2 == 0).unwrap_or(false));
     assert!(iteratee.feed(7).is_none());
@@ -331,7 +332,7 @@ fn maybe_map_iteratee() {
 
 #[test]
 fn maybe_map_with_flush() {
-    let size = NonZeroUsize::new(2).unwrap();
+    let size = non_zero_usize!(2);
     let mut iteratee = collect_vec_with_rem::<i32>(size).maybe_map(|v| match v.get(0) {
         Some(i) if i % 2 == 0 => Some(v.iter().map(|j| j.to_string()).collect()),
         _ => None,
@@ -348,7 +349,7 @@ fn maybe_map_with_flush() {
 
 #[test]
 fn and_then_iteratees() {
-    let size = NonZeroUsize::new(2).unwrap();
+    let size = non_zero_usize!(2);
     let mut iteratee = identity::<i32>()
         .filter(|i| i % 2 == 0)
         .and_then(collect_vec(size));
@@ -366,7 +367,7 @@ fn and_then_iteratees() {
 
 #[test]
 fn and_then_iteratees_with_flush() {
-    let size = NonZeroUsize::new(2).unwrap();
+    let size = non_zero_usize!(2);
     let mut iteratee = identity::<i32>()
         .filter(|i| i % 2 == 0)
         .and_then(collect_vec_with_rem(size));
@@ -417,7 +418,7 @@ fn add_flush() {
 
 #[test]
 fn remove_flush() {
-    let size = NonZeroUsize::new(3).unwrap();
+    let size = non_zero_usize!(3);
     let mut iteratee = collect_vec_with_rem::<i32>(size).without_flush();
 
     assert!(iteratee.feed(2).is_none());
@@ -483,7 +484,7 @@ fn fuse_iteratee_with_flush() {
 
 #[test]
 fn transduce_iterator() {
-    let size = NonZeroUsize::new(2).unwrap();
+    let size = non_zero_usize!(2);
     let data1 = vec![5, 3, -5, 10, 7];
     let data2 = vec![12, -1];
 
@@ -501,7 +502,7 @@ fn transduce_iterator() {
 
 #[test]
 fn transduce_iterator_consuming_iteratee() {
-    let size = NonZeroUsize::new(2).unwrap();
+    let size = non_zero_usize!(2);
     let data = vec![5, 3, -5, 10, 7];
     let iteratee = copy_into_vec_with_rem(size);
     let output = iteratee.transduce_into(data.iter()).collect::<Vec<_>>();
@@ -571,7 +572,7 @@ fn attach_utf8_offsets() {
 
 #[test]
 fn fallible_composition() {
-    let size = NonZeroUsize::new(2).unwrap();
+    let size = non_zero_usize!(2);
 
     let first = identity::<Result<i32, &str>>();
     let second = collect_vec_with_rem::<i32>(size).map(|v| {

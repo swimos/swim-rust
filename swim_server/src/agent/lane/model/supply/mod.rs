@@ -23,6 +23,7 @@ use futures::future::BoxFuture;
 use futures::FutureExt;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use swim_utilities::future::item_sink::try_send::TrySend;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::{SendError, TrySendError};
 use tokio_stream::wrappers::ReceiverStream;
@@ -101,4 +102,19 @@ where
     fn events(self: Box<Self>, _context: Context) -> Eff {
         ready(()).boxed()
     }
+}
+
+impl<Event> TrySend<Event> for SupplyLane<Event> {
+    type Error = TrySendError<Event>;
+
+    fn try_send_item(&mut self, value: Event) -> Result<(), Self::Error> {
+        self.sender.try_send(value)
+    }
+}
+
+pub fn into_try_send<T>(lane: SupplyLane<T>) -> Box<dyn TrySend<T, Error = TrySendError<T>> + Send>
+where
+    T: Send + 'static,
+{
+    Box::new(lane)
 }

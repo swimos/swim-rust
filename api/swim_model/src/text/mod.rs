@@ -16,6 +16,7 @@
 mod tests;
 
 use http::uri::{InvalidUri, Uri};
+use serde::{Deserialize, Serialize};
 use std::borrow::{Borrow, BorrowMut, Cow};
 use std::cmp::Ordering;
 use std::convert::{Infallible, TryFrom};
@@ -28,6 +29,7 @@ use swim_utilities::routing::uri::{BadRelativeUri, RelativeUri};
 
 const SMALL_SIZE: usize = 3 * std::mem::size_of::<usize>();
 
+#[derive(Serialize, Deserialize)]
 enum TextInner {
     Small(usize, [u8; SMALL_SIZE]),
     Large(String),
@@ -37,6 +39,7 @@ enum TextInner {
 /// `SMALL_SIZE` bytes (allowing such strings to be held entirely within the object rather than
 /// requiring a separate allocation. This can be used in exactly the same way as [`String`] in
 /// most circumstances.
+#[derive(Serialize, Deserialize)]
 pub struct Text(TextInner);
 
 impl Text {

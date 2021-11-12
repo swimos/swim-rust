@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::plane::PlaneRequest;
-use crate::routing::error::RouterError;
-use crate::routing::remote::RawRoute;
-use crate::routing::{Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedSender};
+use crate::routing::PlaneRoutingRequest;
 use futures::future::BoxFuture;
 use futures::FutureExt;
-use swim_runtime::error::ResolutionError;
+use swim_runtime::error::{ResolutionError, RouterError};
+use swim_runtime::remote::RawRoute;
+use swim_runtime::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 use swim_utilities::future::request::Request;
 use swim_utilities::routing::uri::RelativeUri;
 use tokio::sync::{mpsc, oneshot};
@@ -29,15 +28,15 @@ mod tests;
 
 /// Creates [`PlaneRouter`] instances by cloning a channel back to the plane.
 #[derive(Debug)]
-pub struct PlaneRouterFactory<DelegateFac: ServerRouterFactory> {
-    request_sender: mpsc::Sender<PlaneRequest>,
+pub struct PlaneRouterFactory<DelegateFac: RouterFactory> {
+    request_sender: mpsc::Sender<PlaneRoutingRequest>,
     delegate_fac: DelegateFac,
 }
 
-impl<DelegateFac: ServerRouterFactory> PlaneRouterFactory<DelegateFac> {
+impl<DelegateFac: RouterFactory> PlaneRouterFactory<DelegateFac> {
     /// Create a factory from a channel back to the owning plane.
-    pub(in crate) fn new(
-        request_sender: mpsc::Sender<PlaneRequest>,
+    pub fn new(
+        request_sender: mpsc::Sender<PlaneRoutingRequest>,
         delegate_fac: DelegateFac,
     ) -> Self {
         PlaneRouterFactory {
@@ -47,7 +46,7 @@ impl<DelegateFac: ServerRouterFactory> PlaneRouterFactory<DelegateFac> {
     }
 }
 
-impl<DelegateFac: ServerRouterFactory> ServerRouterFactory for PlaneRouterFactory<DelegateFac> {
+impl<DelegateFac: RouterFactory> RouterFactory for PlaneRouterFactory<DelegateFac> {
     type Router = PlaneRouter<DelegateFac::Router>;
 
     fn create_for(&self, addr: RoutingAddr) -> Self::Router {
@@ -59,19 +58,19 @@ impl<DelegateFac: ServerRouterFactory> ServerRouterFactory for PlaneRouterFactor
     }
 }
 
-/// An implementation of [`ServerRouter`] tied to a plane.
+/// An implementation of [`Router`] tied to a plane.
 #[derive(Debug, Clone)]
 pub struct PlaneRouter<Delegate> {
     tag: RoutingAddr,
     delegate_router: Delegate,
-    request_sender: mpsc::Sender<PlaneRequest>,
+    request_sender: mpsc::Sender<PlaneRoutingRequest>,
 }
 
 impl<Delegate> PlaneRouter<Delegate> {
-    pub(in crate) fn new(
+    pub fn new(
         tag: RoutingAddr,
         delegate_router: Delegate,
-        request_sender: mpsc::Sender<PlaneRequest>,
+        request_sender: mpsc::Sender<PlaneRoutingRequest>,
     ) -> Self {
         PlaneRouter {
             tag,
@@ -81,7 +80,7 @@ impl<Delegate> PlaneRouter<Delegate> {
     }
 }
 
-impl<Delegate: ServerRouter> ServerRouter for PlaneRouter<Delegate> {
+impl<Delegate: Router> Router for PlaneRouter<Delegate> {
     fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let PlaneRouter {
@@ -90,9 +89,9 @@ impl<Delegate: ServerRouter> ServerRouter for PlaneRouter<Delegate> {
                 request_sender,
             } = self;
             let (tx, rx) = oneshot::channel();
-            if addr.is_local() {
+            if addr.is_plane() {
                 if request_sender
-                    .send(PlaneRequest::Endpoint {
+                    .send(PlaneRoutingRequest::Endpoint {
                         id: addr,
                         request: Request::new(tx),
                     })
@@ -125,7 +124,7 @@ impl<Delegate: ServerRouter> ServerRouter for PlaneRouter<Delegate> {
             let PlaneRouter { request_sender, .. } = self;
             let (tx, rx) = oneshot::channel();
             if request_sender
-                .send(PlaneRequest::Resolve {
+                .send(PlaneRoutingRequest::Resolve {
                     host,
                     name: route,
                     request: Request::new(tx),

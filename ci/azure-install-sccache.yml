@@ -22,7 +22,6 @@ steps:
     condition: eq( variables['Agent.OS'], 'Darwin' )
   - bash: |
       set -ex
-      env
       SCCACHE_ERROR_LOG=`pwd`/sccache.log RUST_LOG=debug $RUSTC_WRAPPER --start-server
       $RUSTC_WRAPPER -s
       cat sccache.log

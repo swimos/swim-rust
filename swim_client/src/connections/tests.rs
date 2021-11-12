@@ -12,235 +12,293 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
-
-use futures::task::{Context, Poll};
-use futures::Sink;
-use futures_util::stream::Stream;
-use std::pin::Pin;
+use std::time::Duration;
 use tokio::sync::mpsc;
-use url::Url;
-
-use crate::connections::factory::async_factory::AsyncFactory;
 
 use super::*;
-use crate::connections::factory::tungstenite::HostConfig;
-use swim_runtime::error::{
-    CapacityError, CapacityErrorKind, CloseErrorKind, ProtocolError, ProtocolErrorKind,
-};
-use swim_runtime::ws::ConnFuture;
-use swim_runtime::ws::Protocol;
-use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
+use crate::router::tests::{FakeConnections, MockRemoteRouterTask};
+use crate::router::TopLevelClientRouterFactory;
+
+use swim_model::path::AbsolutePath;
+use swim_runtime::error::RouterError;
+use swim_runtime::routing::CloseSender;
+use swim_utilities::future::retryable::Quantity;
+use swim_warp::envelope::Envelope;
+
+async fn create_connection_pool(
+    fake_connections: FakeConnections,
+) -> (SwimConnPool<AbsolutePath>, CloseSender) {
+    let (client_tx, client_rx) = mpsc::channel(32);
+    let (conn_request_tx, _conn_request_rx) = mpsc::channel(32);
+    let (close_tx, close_rx) = promise::promise();
+
+    let remote_tx = MockRemoteRouterTask::new(fake_connections);
+
+    let delegate_fac = TopLevelClientRouterFactory::new(client_tx.clone(), remote_tx.clone());
+    let client_router_fac = ClientRouterFactory::new(conn_request_tx, delegate_fac);
+
+    let (connection_pool, pool_task) = SwimConnPool::new(
+        DownlinkConnectionsConfig::default(),
+        (client_tx, client_rx),
+        client_router_fac,
+        close_rx.clone(),
+    );
+
+    tokio::task::spawn(pool_task.run());
+    (connection_pool, close_tx)
+}
 
 #[tokio::test]
 async fn test_connection_pool_send_single_message_single_connection() {
     // Given
-    let buffer_size = 5;
-    let host_url = url::Url::parse("ws://127.0.0.1/").unwrap();
-    let text = "Hello";
+    let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
+    let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
 
-    let (writer_tx, mut writer_rx) = mpsc::channel(buffer_size);
+    let envelope = Envelope::command()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("Hello")
+        .done();
 
-    let test_data = TestData::new(vec![], writer_tx);
-
-    let mut connection_pool = SwimConnPool::new(
-        ConnectionPoolParams::default(),
-        TestConnectionFactory::new(test_data).await,
-    );
+    let mut fake_conns = FakeConnections::new();
+    let (_remote_tx, mut remote_rx) = fake_conns.add_connection(host_url);
+    let (mut connection_pool, _close_tx) = create_connection_pool(fake_conns).await;
 
     let (mut connection_sender, _connection_receiver) = connection_pool
-        .request_connection(host_url, false)
+        .request_connection(path, ConnectionType::Outgoing)
         .await
         .unwrap()
         .unwrap();
 
     // When
-    connection_sender
-        .send_message(text.to_string().into())
-        .await
-        .unwrap();
+    connection_sender.send_item(envelope.clone()).await.unwrap();
 
     // Then
     assert_eq!(
-        writer_rx.recv().await.unwrap(),
-        WsMessage::Text("Hello".to_string())
+        remote_rx.recv().await.unwrap(),
+        TaggedEnvelope(RoutingAddr::client(0), envelope)
     );
 }
 
 #[tokio::test]
 async fn test_connection_pool_send_multiple_messages_single_connection() {
     // Given
-    let host_url = url::Url::parse("ws://127.0.0.1/").unwrap();
-    let first_text = "First_Text";
-    let second_text = "Second_Text";
+    let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
+    let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
 
-    let (writer_tx, mut writer_rx) = mpsc::channel(5);
+    let first_envelope = Envelope::command()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("First_Text")
+        .done();
+    let second_envelope = Envelope::command()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("Second_Text")
+        .done();
 
-    let test_data = TestData::new(vec![], writer_tx);
+    let mut fake_conns = FakeConnections::new();
+    let (_remote_tx, mut remote_rx) = fake_conns.add_connection(host_url);
+    let (mut connection_pool, _close_tx) = create_connection_pool(fake_conns).await;
 
-    let mut connection_pool = SwimConnPool::new(
-        ConnectionPoolParams::default(),
-        TestConnectionFactory::new(test_data).await,
-    );
-
-    let (mut first_connection_sender, _first_connection_receiver) = connection_pool
-        .request_connection(host_url.clone(), false)
-        .await
-        .unwrap()
-        .unwrap();
-
-    let (mut second_connection_sender, _second_connection_receiver) = connection_pool
-        .request_connection(host_url, false)
+    let (mut connection_sender, _connection_receiver) = connection_pool
+        .request_connection(path.clone(), ConnectionType::Outgoing)
         .await
         .unwrap()
         .unwrap();
 
     // When
-    first_connection_sender
-        .send_message(first_text.to_string().into())
+    connection_sender
+        .send_item(first_envelope.clone())
         .await
         .unwrap();
-    second_connection_sender
-        .send_message(second_text.to_string().into())
+    connection_sender
+        .send_item(second_envelope.clone())
         .await
         .unwrap();
 
     // Then
     assert_eq!(
-        writer_rx.recv().await.unwrap(),
-        WsMessage::Text("First_Text".to_string())
+        remote_rx.recv().await.unwrap(),
+        TaggedEnvelope(RoutingAddr::client(0), first_envelope)
     );
     assert_eq!(
-        writer_rx.recv().await.unwrap(),
-        WsMessage::Text("Second_Text".to_string())
+        remote_rx.recv().await.unwrap(),
+        TaggedEnvelope(RoutingAddr::client(0), second_envelope)
     );
 }
 
 #[tokio::test]
 async fn test_connection_pool_send_multiple_messages_multiple_connections() {
     // Given
-    let first_host_url = url::Url::parse("ws://127.0.0.1/").unwrap();
-    let second_host_url = url::Url::parse("ws://127.0.0.2/").unwrap();
-    let third_host_url = url::Url::parse("ws://127.0.0.3//").unwrap();
-    let first_text = "First_Text";
-    let second_text = "Second_Text";
-    let third_text = "Third_Text";
+    let first_host_url = url::Url::parse("ws://127.0.0.1:9001").unwrap();
+    let second_host_url = url::Url::parse("ws://127.0.0.2:9001/").unwrap();
+    let third_host_url = url::Url::parse("ws://127.0.0.3:9001/").unwrap();
+    let first_path = AbsolutePath::new(first_host_url.clone(), "/foo", "/bar");
+    let second_path = AbsolutePath::new(second_host_url.clone(), "/foo", "/bar");
+    let third_path = AbsolutePath::new(third_host_url.clone(), "/foo", "/bar");
 
-    let (first_writer_tx, mut first_writer_rx) = mpsc::channel(5);
+    let first_envelope = Envelope::command()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("First_Text")
+        .done();
+    let second_envelope = Envelope::command()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("Second_Text")
+        .done();
+    let third_envelope = Envelope::command()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("Third_Text")
+        .done();
 
-    let (second_writer_tx, mut second_writer_rx) = mpsc::channel(5);
-
-    let (third_writer_tx, mut third_writer_rx) = mpsc::channel(5);
-
-    let test_data = vec![
-        TestData::new(vec![], first_writer_tx),
-        TestData::new(vec![], second_writer_tx),
-        TestData::new(vec![], third_writer_tx),
-    ];
-
-    let mut connection_pool = SwimConnPool::new(
-        ConnectionPoolParams::default(),
-        TestConnectionFactory::new_multiple(test_data).await,
-    );
+    let mut fake_conns = FakeConnections::new();
+    let (_first_remote_tx, mut first_remote_rx) = fake_conns.add_connection(first_host_url);
+    let (_second_remote_tx, mut second_remote_rx) = fake_conns.add_connection(second_host_url);
+    let (_third_remote_tx, mut third_remote_rx) = fake_conns.add_connection(third_host_url);
+    let (mut connection_pool, _close_tx) = create_connection_pool(fake_conns).await;
 
     let (mut first_connection_sender, _first_connection_receiver) = connection_pool
-        .request_connection(first_host_url, false)
+        .request_connection(first_path, ConnectionType::Outgoing)
         .await
         .unwrap()
         .unwrap();
 
     let (mut second_connection_sender, _second_connection_receiver) = connection_pool
-        .request_connection(second_host_url, false)
+        .request_connection(second_path, ConnectionType::Outgoing)
         .await
         .unwrap()
         .unwrap();
 
     let (mut third_connection_sender, _third_connection_receiver) = connection_pool
-        .request_connection(third_host_url, false)
+        .request_connection(third_path, ConnectionType::Outgoing)
         .await
         .unwrap()
         .unwrap();
 
     // When
     first_connection_sender
-        .send_message(first_text.to_string().into())
+        .send_item(first_envelope.clone())
         .await
         .unwrap();
     second_connection_sender
-        .send_message(second_text.to_string().into())
+        .send_item(second_envelope.clone())
         .await
         .unwrap();
     third_connection_sender
-        .send_message(third_text.to_string().into())
+        .send_item(third_envelope.clone())
         .await
         .unwrap();
 
     // Then
     assert_eq!(
-        first_writer_rx.recv().await.unwrap(),
-        WsMessage::Text("First_Text".to_string())
+        first_remote_rx.recv().await.unwrap(),
+        TaggedEnvelope(RoutingAddr::client(0), first_envelope)
     );
     assert_eq!(
-        second_writer_rx.recv().await.unwrap(),
-        WsMessage::Text("Second_Text".to_string())
+        second_remote_rx.recv().await.unwrap(),
+        TaggedEnvelope(RoutingAddr::client(1), second_envelope)
     );
     assert_eq!(
-        third_writer_rx.recv().await.unwrap(),
-        WsMessage::Text("Third_Text".to_string())
+        third_remote_rx.recv().await.unwrap(),
+        TaggedEnvelope(RoutingAddr::client(2), third_envelope)
     );
 }
 
 #[tokio::test]
 async fn test_connection_pool_receive_single_message_single_connection() {
     // Given
-    let host_url = url::Url::parse("ws://127.0.0.1/").unwrap();
-    let mut items = Vec::new();
-    items.push("new_message".to_string().into());
-    let (writer_tx, _writer_rx) = mpsc::channel(5);
+    let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
+    let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
 
-    let test_data = TestData::new(items, writer_tx);
-    let mut connection_pool = SwimConnPool::new(
-        ConnectionPoolParams::default(),
-        TestConnectionFactory::new(test_data).await,
-    );
+    let envelope = Envelope::event()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("Hello")
+        .done();
+
+    let mut fake_conns = FakeConnections::new();
+    let (remote_tx, _remote_rx) = fake_conns.add_connection(host_url);
+    let (mut connection_pool, _close_tx) = create_connection_pool(fake_conns).await;
 
     // When
     let (_connection_sender, connection_receiver) = connection_pool
-        .request_connection(host_url, false)
+        .request_connection(path, ConnectionType::Full)
         .await
         .unwrap()
         .unwrap();
 
+    remote_tx
+        .send(TaggedEnvelope(RoutingAddr::remote(0), envelope.clone()))
+        .await
+        .unwrap();
+
     // Then
     let pool_message = connection_receiver.unwrap().recv().await.unwrap();
-    assert_eq!(pool_message, WsMessage::Text("new_message".to_string()));
+    assert_eq!(
+        pool_message,
+        RouterEvent::Message(envelope.into_response().unwrap())
+    );
 }
 
 #[tokio::test]
 async fn test_connection_pool_receive_multiple_messages_single_connection() {
     // Given
-    let host_url = url::Url::parse("ws://127.0.0.1/").unwrap();
-    let mut items = Vec::new();
-    items.push("first_message".to_string().into());
-    items.push("second_message".to_string().into());
-    items.push("third_message".to_string().into());
-    let (writer_tx, _writer_rx) = mpsc::channel(5);
+    let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
+    let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
 
-    let test_data = TestData::new(items, writer_tx);
-    let mut connection_pool = SwimConnPool::new(
-        ConnectionPoolParams::default(),
-        TestConnectionFactory::new(test_data).await,
-    );
+    let first_envelope = Envelope::event()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("first_message")
+        .done();
+    let second_envelope = Envelope::event()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("second_message")
+        .done();
+    let third_envelope = Envelope::event()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("third_message")
+        .done();
+
+    let mut fake_conns = FakeConnections::new();
+    let (remote_tx, _remote_rx) = fake_conns.add_connection(host_url);
+    let (mut connection_pool, _close_tx) = create_connection_pool(fake_conns).await;
 
     // When
     let (_connection_sender, connection_receiver) = connection_pool
-        .request_connection(host_url, false)
+        .request_connection(path, ConnectionType::Full)
         .await
         .unwrap()
         .unwrap();
 
     let mut connection_receiver = connection_receiver.unwrap();
+
+    remote_tx
+        .send(TaggedEnvelope(
+            RoutingAddr::remote(0),
+            first_envelope.clone(),
+        ))
+        .await
+        .unwrap();
+    remote_tx
+        .send(TaggedEnvelope(
+            RoutingAddr::remote(0),
+            second_envelope.clone(),
+        ))
+        .await
+        .unwrap();
+    remote_tx
+        .send(TaggedEnvelope(
+            RoutingAddr::remote(0),
+            third_envelope.clone(),
+        ))
+        .await
+        .unwrap();
 
     // Then
     let first_pool_message = connection_receiver.recv().await.unwrap();
@@ -249,65 +307,89 @@ async fn test_connection_pool_receive_multiple_messages_single_connection() {
 
     assert_eq!(
         first_pool_message,
-        WsMessage::Text("first_message".to_string())
+        RouterEvent::Message(first_envelope.into_response().unwrap())
     );
     assert_eq!(
         second_pool_message,
-        WsMessage::Text("second_message".to_string())
+        RouterEvent::Message(second_envelope.into_response().unwrap())
     );
     assert_eq!(
         third_pool_message,
-        WsMessage::Text("third_message".to_string())
+        RouterEvent::Message(third_envelope.into_response().unwrap())
     );
 }
 
 #[tokio::test]
 async fn test_connection_pool_receive_multiple_messages_multiple_connections() {
     // Given
-    let mut first_items = Vec::new();
-    let mut second_items = Vec::new();
-    let mut third_items = Vec::new();
+    let first_host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
+    let second_host_url = url::Url::parse("ws://127.0.0.2:9001/").unwrap();
+    let third_host_url = url::Url::parse("ws://127.0.0.3:9001//").unwrap();
+    let first_path = AbsolutePath::new(first_host_url.clone(), "/foo", "/bar");
+    let second_path = AbsolutePath::new(second_host_url.clone(), "/foo", "/bar");
+    let third_path = AbsolutePath::new(third_host_url.clone(), "/foo", "/bar");
 
-    first_items.push("first_message".to_string().into());
-    second_items.push("second_message".to_string().into());
-    third_items.push("third_message".to_string().into());
+    let first_envelope = Envelope::event()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("first_message")
+        .done();
+    let second_envelope = Envelope::event()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("second_message")
+        .done();
+    let third_envelope = Envelope::event()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("third_message")
+        .done();
 
-    let first_host_url = url::Url::parse("ws://127.0.0.1/").unwrap();
-    let second_host_url = url::Url::parse("ws://127.0.0.2/").unwrap();
-    let third_host_url = url::Url::parse("ws://127.0.0.3//").unwrap();
-
-    let (first_writer_tx, _first_writer_rx) = mpsc::channel(5);
-    let (second_writer_tx, _second_writer_rx) = mpsc::channel(5);
-    let (third_writer_tx, _third_writer_rx) = mpsc::channel(5);
-
-    let test_data = vec![
-        TestData::new(first_items, first_writer_tx),
-        TestData::new(second_items, second_writer_tx),
-        TestData::new(third_items, third_writer_tx),
-    ];
-
-    let mut connection_pool = SwimConnPool::new(
-        ConnectionPoolParams::default(),
-        TestConnectionFactory::new_multiple(test_data).await,
-    );
+    let mut fake_conns = FakeConnections::new();
+    let (first_reader_tx, _) = fake_conns.add_connection(first_host_url);
+    let (second_reader_tx, _) = fake_conns.add_connection(second_host_url);
+    let (third_reader_tx, _) = fake_conns.add_connection(third_host_url);
+    let (mut connection_pool, _close_tx) = create_connection_pool(fake_conns).await;
 
     // When
     let (_first_sender, mut first_receiver) = connection_pool
-        .request_connection(first_host_url, false)
+        .request_connection(first_path, ConnectionType::Full)
         .await
         .unwrap()
         .unwrap();
 
     let (_second_sender, mut second_receiver) = connection_pool
-        .request_connection(second_host_url, false)
+        .request_connection(second_path, ConnectionType::Full)
         .await
         .unwrap()
         .unwrap();
 
     let (_third_sender, mut third_receiver) = connection_pool
-        .request_connection(third_host_url, false)
+        .request_connection(third_path, ConnectionType::Full)
         .await
         .unwrap()
+        .unwrap();
+
+    first_reader_tx
+        .send(TaggedEnvelope(
+            RoutingAddr::remote(0),
+            first_envelope.clone(),
+        ))
+        .await
+        .unwrap();
+    second_reader_tx
+        .send(TaggedEnvelope(
+            RoutingAddr::remote(1),
+            second_envelope.clone(),
+        ))
+        .await
+        .unwrap();
+    third_reader_tx
+        .send(TaggedEnvelope(
+            RoutingAddr::remote(2),
+            third_envelope.clone(),
+        ))
+        .await
         .unwrap();
 
     // Then
@@ -317,69 +399,85 @@ async fn test_connection_pool_receive_multiple_messages_multiple_connections() {
 
     assert_eq!(
         first_pool_message,
-        WsMessage::Text("first_message".to_string())
+        RouterEvent::Message(first_envelope.into_response().unwrap())
     );
     assert_eq!(
         second_pool_message,
-        WsMessage::Text("second_message".to_string())
+        RouterEvent::Message(second_envelope.into_response().unwrap())
     );
     assert_eq!(
         third_pool_message,
-        WsMessage::Text("third_message".to_string())
+        RouterEvent::Message(third_envelope.into_response().unwrap())
     );
 }
 
 #[tokio::test]
 async fn test_connection_pool_send_and_receive_messages() {
     // Given
-    let host_url = url::Url::parse("ws://127.0.0.1/").unwrap();
-    let mut items = Vec::new();
-    items.push("recv_baz".to_string().into());
-    let (writer_tx, mut writer_rx) = mpsc::channel(5);
+    let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
+    let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
 
-    let test_data = TestData::new(items, writer_tx);
+    let incoming_envelope = Envelope::event()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("recv_baz")
+        .done();
 
-    let mut connection_pool = SwimConnPool::new(
-        ConnectionPoolParams::default(),
-        TestConnectionFactory::new(test_data).await,
-    );
+    let outgoing_envelope = Envelope::command()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("send_bar")
+        .done();
+
+    let mut fake_conns = FakeConnections::new();
+    let (remote_tx, mut remote_rx) = fake_conns.add_connection(host_url);
+    let (mut connection_pool, _close_tx) = create_connection_pool(fake_conns).await;
 
     let (mut connection_sender, connection_receiver) = connection_pool
-        .request_connection(host_url, false)
+        .request_connection(path, ConnectionType::Full)
         .await
         .unwrap()
         .unwrap();
 
     // When
     connection_sender
-        .send_message("send_bar".to_string().into())
+        .send_item(outgoing_envelope.clone())
         .await
         .unwrap();
+
+    remote_tx
+        .send(TaggedEnvelope(
+            RoutingAddr::remote(0),
+            incoming_envelope.clone(),
+        ))
+        .await
+        .unwrap();
+
     // Then
     let pool_message = connection_receiver.unwrap().recv().await.unwrap();
 
-    assert_eq!(pool_message, WsMessage::Text("recv_baz".to_string()));
-
     assert_eq!(
-        writer_rx.recv().await.unwrap(),
-        WsMessage::Text("send_bar".to_string())
+        pool_message,
+        RouterEvent::Message(incoming_envelope.into_response().unwrap())
+    );
+    assert_eq!(
+        remote_rx.recv().await.unwrap(),
+        TaggedEnvelope(RoutingAddr::client(0), outgoing_envelope)
     );
 }
 
 #[tokio::test]
 async fn test_connection_pool_connection_error() {
     // Given
-    let host_url = url::Url::parse("ws://127.0.0.1/").unwrap();
+    let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
+    let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
 
-    let mut connection_pool = SwimConnPool::new(
-        ConnectionPoolParams::default(),
-        TestConnectionFactory::new_multiple(vec![]).await,
-    );
+    let fake_conns = FakeConnections::new();
+    let (mut connection_pool, _close_tx) = create_connection_pool(fake_conns).await;
 
     // When
-
     let connection = connection_pool
-        .request_connection(host_url, false)
+        .request_connection(path, ConnectionType::Full)
         .await
         .unwrap();
 
@@ -388,421 +486,78 @@ async fn test_connection_pool_connection_error() {
 }
 
 #[tokio::test]
-async fn test_connection_pool_connection_error_send_message() {
-    // Given
-    let host_url = url::Url::parse("ws://127.0.0.1/").unwrap();
-    let text = "Test_message";
-    let (writer_tx, mut writer_rx) = mpsc::channel(5);
-
-    let test_data = vec![None, Some(TestData::new(vec![], writer_tx))];
-
-    let mut connection_pool = SwimConnPool::new(
-        ConnectionPoolParams::default(),
-        TestConnectionFactory::new_multiple_with_errs(test_data).await,
-    );
-
-    // When
-    let first_connection = connection_pool
-        .request_connection(host_url.clone(), false)
-        .await
-        .unwrap();
-
-    let (mut second_connection_sender, _second_connection_receiver) = connection_pool
-        .request_connection(host_url, false)
-        .await
-        .unwrap()
-        .unwrap();
-
-    second_connection_sender
-        .send_message(text.to_string().into())
-        .await
-        .unwrap();
-
-    // Then
-    assert!(first_connection.is_err());
-    assert_eq!(
-        writer_rx.recv().await.unwrap(),
-        WsMessage::Text("Test_message".to_string())
-    );
-}
-
-#[tokio::test]
 async fn test_connection_pool_close() {
     // Given
-    let (writer_tx, mut writer_rx) = mpsc::channel(5);
+    let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
 
-    let test_data = TestData::new(vec![], writer_tx);
+    let mut fake_conns = FakeConnections::new();
+    let (remote_tx, mut remote_rx) = fake_conns.add_connection(host_url);
+    let (_connection_pool, close_tx) = create_connection_pool(fake_conns).await;
 
-    let connection_pool = SwimConnPool::new(
-        ConnectionPoolParams::default(),
-        TestConnectionFactory::new(test_data).await,
-    );
-
+    let (response_tx, mut response_rx) = mpsc::channel(8);
     // When
-    assert!(connection_pool.close().await.is_ok());
+    assert!(close_tx.provide(response_tx).is_ok());
 
     // Then
-    assert!(writer_rx.recv().await.is_none());
+    assert!(response_rx.recv().await.is_none());
+    assert!(remote_rx.recv().await.is_none());
+    assert!(remote_tx.is_closed());
 }
 
 #[tokio::test]
-async fn test_connection_send_single_message() {
+async fn test_retry_open_connection_cancel() {
     // Given
-    let host = url::Url::parse("ws://127.0.0.1:9999/").unwrap();
-    let buffer_size = 5;
-    let (writer_tx, mut writer_rx) = mpsc::channel(buffer_size);
+    let target = RegistrationTarget::Local(String::from("/foo"));
+    let retry_strategy = RetryStrategy::interval(Duration::from_secs(10), Quantity::Infinite);
+    let (request_tx, _request_rx) = mpsc::channel(8);
+    let client_router_fac = ClientRouterFactory::new(request_tx, MockRouterFactory);
+    let mut client_router: ClientRouter<AbsolutePath, MockRouter> =
+        client_router_fac.create_for(RoutingAddr::client(0));
 
-    let test_data = TestData::new(vec![], writer_tx);
-
-    let mut factory = TestConnectionFactory::new(test_data).await;
-
-    let connection = SwimConnection::new(host, buffer_size, &mut factory)
-        .await
-        .unwrap();
-
+    let (close_tx, close_rx) = promise::promise();
+    let (response_tx, _response_rx) = mpsc::channel(8);
     // When
-    connection.tx.send("foo".to_string().into()).await.unwrap();
-    // Then
-    assert_eq!(
-        writer_rx.recv().await.unwrap(),
-        WsMessage::Text("foo".to_string())
-    );
-}
-
-#[tokio::test]
-async fn test_connection_send_multiple_messages() {
-    // Given
-    let host = url::Url::parse("ws://127.0.0.1:9999/").unwrap();
-    let buffer_size = 5;
-    let (writer_tx, mut writer_rx) = mpsc::channel(buffer_size);
-
-    let test_data = TestData::new(vec![], writer_tx);
-
-    let mut factory = TestConnectionFactory::new(test_data).await;
-
-    let mut connection = SwimConnection::new(host, buffer_size, &mut factory)
-        .await
-        .unwrap();
-
-    let connection_sender = &mut connection.tx;
-    // When
-    connection_sender
-        .send("foo".to_string().into())
-        .await
-        .unwrap();
-    connection_sender
-        .send("bar".to_string().into())
-        .await
-        .unwrap();
-    connection_sender
-        .send("baz".to_string().into())
-        .await
-        .unwrap();
-    // Then
-    assert_eq!(
-        writer_rx.recv().await.unwrap(),
-        WsMessage::Text("foo".to_string())
-    );
-    assert_eq!(
-        writer_rx.recv().await.unwrap(),
-        WsMessage::Text("bar".to_string())
-    );
-    assert_eq!(
-        writer_rx.recv().await.unwrap(),
-        WsMessage::Text("baz".to_string())
-    );
-}
-
-#[tokio::test]
-async fn test_connection_send_and_receive_messages() {
-    // Given
-    let host = url::Url::parse("ws://127.0.0.1:9999/").unwrap();
-    let buffer_size = 5;
-    let mut items = Vec::new();
-    items.push("message_received".to_string().into());
-    let (writer_tx, mut writer_rx) = mpsc::channel(buffer_size);
-
-    let test_data = TestData::new(items, writer_tx);
-
-    let mut factory = TestConnectionFactory::new(test_data).await;
-
-    let mut connection = SwimConnection::new(host, buffer_size, &mut factory)
-        .await
-        .unwrap();
-
-    // When
-    connection
-        .tx
-        .send("message_sent".to_string().into())
-        .await
-        .unwrap();
-    // Then
-    let pool_message = connection.rx.take().unwrap().recv().await.unwrap();
-    assert_eq!(
-        pool_message,
-        WsMessage::Text("message_received".to_string())
-    );
-
-    assert_eq!(
-        writer_rx.recv().await.unwrap(),
-        WsMessage::Text("message_sent".to_string())
-    );
-}
-
-#[tokio::test]
-async fn test_connection_receive_message_error() {
-    // Given
-    let host = url::Url::parse("ws://127.0.0.1:9999/").unwrap();
-    let buffer_size = 5;
-
-    let (writer_tx, _writer_rx) = mpsc::channel(buffer_size);
-
-    let test_data = TestData::new(vec![], writer_tx).fail_on_input();
-
-    let mut factory = TestConnectionFactory::new(test_data).await;
-
-    let connection = SwimConnection::new(host, buffer_size, &mut factory)
-        .await
-        .unwrap();
-    // When
-    let result = connection._receive_handle.await.unwrap();
+    close_tx.provide(response_tx).unwrap();
+    let result = open_connection(target, retry_strategy, &mut client_router, close_rx).await;
     // Then
     assert!(result.is_err());
-    assert_eq!(
-        result.err().unwrap(),
-        ConnectionError::Closed(CloseError::unexpected())
-    );
 }
 
-#[tokio::test]
-async fn test_new_connection_send_message_error() {
-    // Given
-    let host = url::Url::parse("ws://127.0.0.1:9999/").unwrap();
-    let buffer_size = 5;
+struct MockRouterFactory;
+impl RouterFactory for MockRouterFactory {
+    type Router = MockRouter;
 
-    let (writer_tx, _writer_rx) = mpsc::channel(buffer_size);
-
-    let test_data = TestData::new(vec![], writer_tx).fail_on_output();
-
-    let mut factory = TestConnectionFactory::new(test_data).await;
-
-    let connection = SwimConnection::new(host, buffer_size, &mut factory)
-        .await
-        .unwrap();
-    // When
-    let result = connection._send_handle.await.unwrap();
-    // Then
-    assert!(result.is_err());
-    assert_eq!(
-        result.err().unwrap(),
-        ConnectionError::Closed(CloseError::unexpected())
-    );
+    fn create_for(&self, _addr: RoutingAddr) -> Self::Router {
+        MockRouter
+    }
 }
 
-#[derive(Clone)]
-struct TestReadStream {
-    items: Vec<WsMessage>,
-    error: bool,
-}
+struct MockRouter;
 
-impl Stream for TestReadStream {
-    type Item = Result<WsMessage, ConnectionError>;
+impl Router for MockRouter {
+    fn resolve_sender(&mut self, _addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
+        unimplemented!()
+    }
 
-    fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        if self.error {
-            Poll::Ready(Some(Err(ConnectionError::Protocol(ProtocolError::new(
-                ProtocolErrorKind::WebSocket,
-                None,
-            )))))
-        } else {
-            let message = self.items.drain(0..1).next();
-            Poll::Ready(Some(message.ok_or(ConnectionError::Closed(
-                CloseError::new(CloseErrorKind::Normal, None),
-            ))))
+    fn lookup(
+        &mut self,
+        _host: Option<Url>,
+        _route: RelativeUri,
+    ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
+        async {
+            Err(RouterError::ConnectionFailure(
+                ConnectionError::WriteTimeout(Duration::from_secs(10)),
+            ))
         }
+        .boxed()
     }
 }
 
-#[derive(Clone)]
-struct TestWriteStream {
-    tx: mpsc::Sender<WsMessage>,
-    error: bool,
-}
-
-impl Sink<WsMessage> for TestWriteStream {
-    type Error = ();
-
-    fn poll_ready(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        if self.error {
-            Poll::Ready(Err(()))
-        } else {
-            Poll::Ready(Ok(()))
-        }
-    }
-
-    fn start_send(self: Pin<&mut Self>, item: WsMessage) -> Result<(), Self::Error> {
-        if self.error {
-            Err(())
-        } else {
-            self.tx.try_send(item).unwrap();
-            Ok(())
-        }
-    }
-
-    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        if self.error {
-            Poll::Ready(Err(()))
-        } else {
-            Poll::Ready(Ok(()))
-        }
-    }
-
-    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        if self.error {
-            Poll::Ready(Err(()))
-        } else {
-            Poll::Ready(Ok(()))
-        }
-    }
-}
-
-struct TestConnectionFactory {
-    inner: AsyncFactory<TestWriteStream, TestReadStream>,
-}
-
-impl TestConnectionFactory {
-    async fn new(test_data: TestData) -> Self {
-        let shared_data = Arc::new(test_data);
-        let inner = AsyncFactory::new(5, move |url, _config| {
-            let shared_data = shared_data.clone();
-            async { shared_data.open_conn(url).await }
-        })
-        .await;
-        TestConnectionFactory { inner }
-    }
-
-    async fn new_multiple(test_data: Vec<TestData>) -> Self {
-        TestConnectionFactory::new_multiple_with_errs(test_data.into_iter().map(Some).collect())
-            .await
-    }
-
-    async fn new_multiple_with_errs(test_data: Vec<Option<TestData>>) -> Self {
-        let shared_data = Arc::new(MultipleTestData::new(test_data));
-        let inner = AsyncFactory::new(5, move |url, _config| {
-            let shared_data = shared_data.clone();
-            async { shared_data.open_conn(url).await }
-        })
-        .await;
-        TestConnectionFactory { inner }
-    }
-}
-
-impl WebsocketFactory for TestConnectionFactory {
-    type WsStream = TestReadStream;
-    type WsSink = TestWriteStream;
-
-    fn connect(&mut self, url: Url) -> ConnFuture<Self::WsSink, Self::WsStream> {
-        self.inner
-            .connect_using(
-                url,
-                HostConfig {
-                    protocol: Protocol::PlainText,
-                    compression_level: WsCompression::None(None),
-                },
-            )
-            .boxed()
-    }
-}
-
-struct TestData {
-    inputs: Vec<WsMessage>,
-    outputs: mpsc::Sender<WsMessage>,
-    input_error: bool,
-    output_error: bool,
-}
-
-struct MultipleTestData {
-    connections: Vec<Option<TestData>>,
-    n: AtomicUsize,
-}
-
-impl MultipleTestData {
-    fn new(data: Vec<Option<TestData>>) -> Self {
-        MultipleTestData {
-            connections: data,
-            n: AtomicUsize::new(0),
-        }
-    }
-
-    async fn open_conn(
-        self: Arc<Self>,
-        _url: url::Url,
-    ) -> Result<(TestWriteStream, TestReadStream), ConnectionError> {
-        let i = self.n.fetch_add(1, Ordering::AcqRel);
-        if i >= self.connections.len() {
-            Err(ConnectionError::Capacity(CapacityError::new(
-                CapacityErrorKind::Ambiguous,
-                None,
-            )))
-        } else {
-            let maybe_conn = &self.connections[i];
-            match maybe_conn {
-                Some(conn) => {
-                    let data = conn.inputs.clone();
-                    let sender = conn.outputs.clone();
-                    let output = TestWriteStream {
-                        tx: sender,
-                        error: conn.output_error,
-                    };
-                    let input = TestReadStream {
-                        items: data,
-                        error: conn.input_error,
-                    };
-                    Ok((output, input))
-                }
-                _ => Err(ConnectionError::Capacity(CapacityError::new(
-                    CapacityErrorKind::Ambiguous,
-                    None,
-                ))),
-            }
-        }
-    }
-}
-
-impl TestData {
-    fn new(inputs: Vec<WsMessage>, outputs: mpsc::Sender<WsMessage>) -> Self {
-        TestData {
-            inputs,
-            outputs,
-            input_error: false,
-            output_error: false,
-        }
-    }
-
-    async fn open_conn(
-        self: Arc<Self>,
-        _url: url::Url,
-    ) -> Result<(TestWriteStream, TestReadStream), ConnectionError> {
-        let data = self.inputs.clone();
-        let sender = self.outputs.clone();
-        let output = TestWriteStream {
-            tx: sender,
-            error: self.output_error,
-        };
-        let input = TestReadStream {
-            items: data,
-            error: self.input_error,
-        };
-        Ok((output, input))
-    }
-
-    fn fail_on_input(mut self) -> Self {
-        self.input_error = true;
-        self
-    }
-
-    fn fail_on_output(mut self) -> Self {
-        self.output_error = true;
-        self
+impl BidirectionalRouter for MockRouter {
+    fn resolve_bidirectional(
+        &mut self,
+        _host: Url,
+    ) -> BoxFuture<Result<BidirectionalRoute, ResolutionError>> {
+        unimplemented!()
     }
 }
