@@ -16,16 +16,22 @@
 mod tests;
 
 use bytes::{Buf, BytesMut};
+use parking_lot::Mutex;
 use std::io::{Error, ErrorKind, Result as IoResult};
 use std::num::NonZeroUsize;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
-use swim_sync_bilock::{bilock, BiLock};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 pub fn byte_channel(buffer_size: NonZeroUsize) -> (ByteWriter, ByteReader) {
-    let (write, read) = bilock(Conduit::new(buffer_size));
-    (ByteWriter { inner: write }, ByteReader { inner: read })
+    let inner = Arc::new(Mutex::new(Conduit::new(buffer_size)));
+    (
+        ByteWriter {
+            inner: inner.clone(),
+        },
+        ByteReader { inner },
+    )
 }
 
 struct Conduit {
@@ -93,7 +99,7 @@ impl AsyncRead for Conduit {
             self.read(buf, count);
             Poll::Ready(Ok(()))
         } else if self.closed {
-            return Poll::Ready(Err(ErrorKind::BrokenPipe.into()));
+            Poll::Ready(Err(ErrorKind::BrokenPipe.into()))
         } else {
             debug_assert!(self.waker.is_none());
             self.waker = Some(cx.waker().clone());
@@ -110,9 +116,9 @@ impl AsyncWrite for Conduit {
         buf: &[u8],
     ) -> Poll<IoResult<usize>> {
         if self.closed {
-            return Poll::Ready(Err(ErrorKind::BrokenPipe.into()));
+            Poll::Ready(Err(ErrorKind::BrokenPipe.into()))
         } else if buf.is_empty() {
-            return Poll::Ready(Ok(0));
+            Poll::Ready(Ok(0))
         } else {
             let available = self.capacity - self.data.len();
             if available == 0 {
@@ -139,51 +145,55 @@ impl AsyncWrite for Conduit {
 }
 
 pub struct ByteReader {
-    inner: BiLock<Conduit>,
+    inner: Arc<Mutex<Conduit>>,
 }
 
 impl Drop for ByteReader {
     fn drop(&mut self) {
-        let mut guard = self.inner.lock();
+        let guard = &mut *(self.inner.lock());
         guard.close_channel();
     }
 }
 
 impl AsyncRead for ByteReader {
     fn poll_read(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<IoResult<()>> {
-        Pin::new(&mut self.inner).poll_read(cx, buf)
+        let inner = &mut *(self.inner.lock());
+        Pin::new(inner).poll_read(cx, buf)
     }
 }
 
 pub struct ByteWriter {
-    inner: BiLock<Conduit>,
+    inner: Arc<Mutex<Conduit>>,
 }
 
 impl Drop for ByteWriter {
     fn drop(&mut self) {
-        let mut guard = self.inner.lock();
-        guard.close_channel();
+        let inner = &mut *(self.inner.lock());
+        inner.close_channel();
     }
 }
 
 impl AsyncWrite for ByteWriter {
     fn poll_write(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, Error>> {
-        Pin::new(&mut self.inner).poll_write(cx, buf)
+        let inner = &mut *(self.inner.lock());
+        Pin::new(inner).poll_write(cx, buf)
     }
 
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
-        Pin::new(&mut self.inner).poll_flush(cx)
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+        let inner = &mut *(self.inner.lock());
+        Pin::new(inner).poll_flush(cx)
     }
 
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
-        Pin::new(&mut self.inner).poll_shutdown(cx)
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+        let inner = &mut *(self.inner.lock());
+        Pin::new(inner).poll_shutdown(cx)
     }
 }

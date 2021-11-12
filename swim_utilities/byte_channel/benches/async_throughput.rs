@@ -56,7 +56,7 @@ fn channel_throughput_benchmark(c: &mut Criterion) {
         );
 
         group.bench_with_input(
-            BenchmarkId::new("BiLock Byte Channel", &params),
+            BenchmarkId::new("Byte Channel", &params),
             &params,
             |b, p| {
                 b.to_async(&runtime).iter(|| {
@@ -65,7 +65,7 @@ fn channel_throughput_benchmark(c: &mut Criterion) {
                         buffer_size,
                         chunk_size,
                     } = p;
-                    bilock_channel_throughput(*buffer_size, test_data.clone(), *chunk_size)
+                    byte_channel_throughput(*buffer_size, test_data.clone(), *chunk_size)
                 })
             },
         );
@@ -109,7 +109,7 @@ async fn duplex_stream_throughput(length: usize, test_data: Bytes, chunk_size: u
     channel_throughput(tx, rx, test_data, chunk_size).await;
 }
 
-async fn bilock_channel_throughput(length: usize, test_data: Bytes, chunk_size: usize) {
+async fn byte_channel_throughput(length: usize, test_data: Bytes, chunk_size: usize) {
     let (tx, rx) = byte_channel(NonZeroUsize::new(length).unwrap());
 
     channel_throughput(tx, rx, test_data, chunk_size).await;
