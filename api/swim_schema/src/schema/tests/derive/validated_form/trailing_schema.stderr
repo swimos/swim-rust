@@ -1,0 +1,5 @@
+error: Use schema operators for chained schemas
+  --> $DIR/src/schema/tests/derive/validated_form/trailing_schema.rs:19:14
+   |
+19 |     #[derive(ValueSchema)]
+   |              ^^^^^^^^^^^

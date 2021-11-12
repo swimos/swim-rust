@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use num_bigint::{BigInt, BigUint};
+use swim_model::bigint::{BigInt, BigUint};
 
 use super::*;
-use swim_common::form::structural::read::ReadError;
-use swim_common::form::{Form, ValueSchema};
-use swim_common::model::schema::Schema;
-use swim_common::model::{Attr, Item};
+use swim_form::structural::read::ReadError;
+use swim_form::Form;
+use swim_model::{Attr, Item};
+use swim_schema::schema::Schema;
+use swim_schema::ValueSchema;
 
 #[test]
 pub fn clear_to_value() {

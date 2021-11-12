@@ -20,8 +20,8 @@ use crate::downlink::state_machine::ResponseResult;
 use crate::downlink::{Downlink, DownlinkState};
 use futures::StreamExt;
 use std::time::Instant;
-use swim_common::routing::error::RoutingError;
-use swim_common::sink::item;
+use swim_runtime::error::RoutingError;
+use swim_utilities::future::item_sink;
 
 struct State(i32);
 
@@ -191,7 +191,7 @@ fn make_test_dl_custom_on_invalid(
     let (downlink, dl_rx) = create_downlink(
         TestStateMachine::new(dl_start_state, start_response),
         ReceiverStream::new(rx_in),
-        item::for_mpsc_sender(tx_out).map_err_into(),
+        item_sink::for_mpsc_sender(tx_out).map_err_into(),
         config,
     );
 

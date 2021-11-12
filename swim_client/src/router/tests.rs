@@ -15,12 +15,11 @@
 use crate::router::{AddressableWrapper, RoutingPath};
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use swim_common::routing::error::ConnectionError;
-use swim_common::routing::error::ResolutionError;
-use swim_common::routing::remote::table::{BidirectionalRegistrator, SchemeHostPort};
-use swim_common::routing::remote::{RemoteRoutingRequest, Scheme};
-use swim_common::routing::{RoutingAddr, TaggedEnvelope, TaggedSender};
-use swim_common::warp::path::{AbsolutePath, Path, RelativePath};
+use swim_model::path::{AbsolutePath, Path, RelativePath};
+use swim_runtime::error::{ConnectionError, ResolutionError};
+use swim_runtime::remote::table::{BidirectionalRegistrator, SchemeHostPort};
+use swim_runtime::remote::{RemoteRoutingRequest, Scheme};
+use swim_runtime::routing::{RoutingAddr, TaggedEnvelope, TaggedSender};
 use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use url::Url;

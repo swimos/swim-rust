@@ -1,5 +1,0 @@
-error: Only one argument is permitted as the schema for all items
-  --> $DIR/all_items_op_arg_count.rs:20:23
-   |
-20 |         #[form(schema(all_items(num_items = 5, num_attrs = 5)))]
-   |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

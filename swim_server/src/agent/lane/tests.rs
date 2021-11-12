@@ -16,7 +16,7 @@ use crate::agent::lane::InvalidForm;
 use futures::future::{ready, Ready};
 use futures::stream::{empty, Empty};
 use stm::transaction::RetryManager;
-use swim_common::form::structural::read::ReadError;
+use swim_form::structural::read::ReadError;
 
 #[derive(Clone, Debug)]
 pub struct ExactlyOnce;

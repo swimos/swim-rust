@@ -44,17 +44,17 @@ use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::demand_map::{
     DemandMapLane, DemandMapLaneCommand, DemandMapLaneEvent,
 };
+use crate::agent::lane::model::map::MapLane;
 use crate::agent::lane::model::map::{summaries_to_events, MapLaneEvent, MapSubscriber};
-use crate::agent::lane::model::map::{to_map_store_event, MapLane};
 use crate::agent::lane::model::supply::{make_lane_model, SupplyLane};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::model::command::Commander;
+use crate::agent::model::map::to_map_store_event;
 use crate::meta::info::{LaneInfo, LaneKind};
 use crate::meta::log::NodeLogger;
 use crate::meta::open_meta_lanes;
-use crate::store::{NodeStore, StoreIo, ValueLaneStoreIo};
 #[doc(hidden)]
 #[allow(unused_imports)]
 pub use agent_derive::*;
@@ -68,7 +68,9 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use server_store::agent::lane::map::{MapDataModel, MapLaneStoreIo};
 use server_store::agent::lane::task::{NodeStoreErrors, NodeStoreTask};
-use server_store::agent::lane::value::ValueDataModel;
+use server_store::agent::lane::value::{ValueDataModel, ValueLaneStoreIo};
+use server_store::agent::lane::StoreIo;
+use server_store::agent::NodeStore;
 use std::any::Any;
 use std::collections::HashMap;
 use std::error::Error;
@@ -77,11 +79,11 @@ use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
+use swim_async_runtime::time::clock::Clock;
 use swim_client::interface::ClientContext;
-use swim_common::form::Form;
-use swim_common::routing::{Router, TaggedClientEnvelope, TaggedEnvelope};
-use swim_common::warp::path::{Path, RelativePath};
-use swim_runtime::time::clock::Clock;
+use swim_form::Form;
+use swim_model::path::{Path, RelativePath};
+use swim_runtime::routing::{Router, TaggedClientEnvelope, TaggedEnvelope};
 use swim_utilities::future::SwimStreamExt;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::sync::circular_buffer;

@@ -22,7 +22,7 @@ use std::hash::Hash;
 use std::sync::Arc;
 use stm::stm::Stm;
 use stm::var::TVar;
-use swim_common::model::Value;
+use swim_model::Value;
 
 /// Representation of the modification to the value of an entry in a map lane.
 #[derive(Debug)]

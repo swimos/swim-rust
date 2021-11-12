@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_common::routing::error::NoAgentAtRoute;
+use swim_runtime::error::NoAgentAtRoute;
 use swim_utilities::routing::route_pattern::RoutePattern;
 
 use crate::plane::error::AmbiguousRoutes;

@@ -23,10 +23,10 @@ use futures::StreamExt;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_common::form::Form;
-use swim_common::routing::RoutingAddr;
+use swim_form::Form;
+use swim_runtime::routing::RoutingAddr;
 use swim_utilities::algebra::non_zero_usize;
-use swim_warp::model::map::MapUpdate;
+use swim_warp::map::MapUpdate;
 use tokio::time::timeout;
 
 fn buffer_size() -> NonZeroUsize {

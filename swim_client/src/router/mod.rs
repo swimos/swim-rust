@@ -19,19 +19,25 @@ use futures::future::BoxFuture;
 use futures::FutureExt;
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use swim_common::request::Request;
-use swim_common::routing::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
-use swim_common::routing::remote::table::SchemeHostPort;
-use swim_common::routing::remote::BadUrl;
-use swim_common::routing::remote::{RawRoute, RemoteRoutingRequest};
-use swim_common::routing::{BidirectionalRoute, BidirectionalRouter};
-use swim_common::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
-use swim_common::warp::envelope::IncomingLinkMessage;
-use swim_common::warp::path::{AbsolutePath, Addressable};
 use swim_utilities::routing::uri::RelativeUri;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
+
 use url::Url;
+
+use swim_model::path::{AbsolutePath, Addressable};
+
+use swim_warp::envelope::IncomingLinkMessage;
+
+use swim_runtime::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
+use swim_runtime::remote::table::SchemeHostPort;
+use swim_runtime::remote::{BadUrl, RawRoute, RemoteRoutingRequest};
+use swim_runtime::routing::{
+    BidirectionalRoute, BidirectionalRouter, Route, Router, RouterFactory, RoutingAddr,
+    TaggedSender,
+};
+
+use swim_utilities::future::request::Request;
 
 #[cfg(test)]
 pub(crate) mod tests;

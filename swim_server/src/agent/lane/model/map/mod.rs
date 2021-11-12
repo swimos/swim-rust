@@ -21,6 +21,11 @@ use std::sync::Arc;
 
 use im::OrdMap;
 
+use stm::var::TVar;
+use summary::{clear_summary, remove_summary, update_summary};
+use swim_form::Form;
+use swim_model::Value;
+
 use crate::agent::lane::model::map::summary::TransactionSummary;
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lane::{InvalidForm, LaneModel};
@@ -42,13 +47,9 @@ use stm::local::TLocal;
 use stm::stm::{abort, left, right, Constant, Stm, VecStm, UNIT};
 use stm::transaction::{atomically, RetryManager, TransactionError, TransactionRunner};
 use stm::var::observer::{Observer, ObserverStream, ObserverSubscriber};
-use stm::var::TVar;
-use summary::{clear_summary, remove_summary, update_summary};
-use swim_common::form::structural::read::ReadError;
-use swim_common::form::Form;
-use swim_common::model::Value;
+use swim_form::structural::read::ReadError;
 use swim_utilities::future::{FlatmapStream, SwimStreamExt, Transform};
-use swim_warp::model::map::MapUpdate;
+use swim_warp::map::MapUpdate;
 use tracing::{event, Level};
 
 mod summary;

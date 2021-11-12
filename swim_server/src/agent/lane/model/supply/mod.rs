@@ -23,7 +23,7 @@ use futures::future::BoxFuture;
 use futures::FutureExt;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swim_common::sink::item::try_send::TrySend;
+use swim_utilities::future::item_sink::try_send::TrySend;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::{SendError, TrySendError};
 use tokio_stream::wrappers::ReceiverStream;

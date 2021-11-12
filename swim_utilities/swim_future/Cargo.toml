@@ -5,11 +5,12 @@ authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
 [dependencies]
+either = "1.5.3"
 futures = "0.3.4"
 tokio = { version = "1.1.1", features = ["sync"] }
 pin-project = "1.0.5"
 swim_trigger = { path = "../swim_trigger" }
-swim_runtime = { path = "../../swim_runtime" }
+swim_async_runtime = { path = "../../runtime/swim_async_runtime" }
 rand = "0.7.3"
 swim_algebra = { path = "../swim_algebra"}
 

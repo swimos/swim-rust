@@ -21,7 +21,7 @@ use crate::agent::AgentContext;
 use futures::future::{ready, Ready};
 use std::fmt::Debug;
 use std::future::Future;
-use swim_common::form::Form;
+use swim_form::Form;
 
 #[cfg(test)]
 mod tests;

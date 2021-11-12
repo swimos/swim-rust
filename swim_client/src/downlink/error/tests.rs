@@ -13,9 +13,9 @@
 // limitations under the License.
 
 use crate::downlink::error::{DownlinkError, TransitionError};
-use swim_common::model::schema::StandardSchema;
-use swim_common::model::Value;
-use swim_common::routing::error::{CloseError, ConnectionError, RoutingError};
+use swim_model::Value;
+use swim_runtime::error::{CloseError, ConnectionError, RoutingError};
+use swim_schema::schema::StandardSchema;
 
 #[test]
 fn transition_error_display() {

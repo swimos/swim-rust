@@ -36,23 +36,23 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use stm::transaction::TransactionError;
-use swim_common::form::structural::read::ReadError;
-use swim_common::form::Form;
-use swim_common::model::Value;
-use swim_common::sink::item;
-use swim_common::warp::path::RelativePath;
+use swim_async_runtime::time::delay::delay_for;
+use swim_form::structural::read::ReadError;
+use swim_form::Form;
 use swim_metrics::config::MetricAggregatorConfig;
 use swim_metrics::uplink::{
     uplink_aggregator, uplink_observer, AggregatorConfig, MetricBackpressureConfig,
     TaggedWarpUplinkProfile, UplinkObserver, UplinkProfileSender,
 };
-use swim_runtime::time::delay::delay_for;
+use swim_model::path::RelativePath;
+use swim_model::Value;
 use swim_utilities::algebra::non_zero_usize;
+use swim_utilities::future::item_sink;
 use swim_utilities::future::SwimStreamExt;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger;
-use swim_warp::model::map::MapUpdate;
+use swim_warp::map::MapUpdate;
 use tokio::sync::mpsc;
 use tokio::time::{timeout, Instant};
 use tokio_stream::wrappers::ReceiverStream;
@@ -126,7 +126,7 @@ async fn uplink_not_linked() {
     let (tx_event, rx_event) = mpsc::channel(5);
 
     let uplinks_idle_since = Arc::new(AtomicInstant::new(Instant::now().into_std()));
-    let uplink_task = uplink.run_uplink(item::for_mpsc_sender(tx_event), uplinks_idle_since);
+    let uplink_task = uplink.run_uplink(item_sink::for_mpsc_sender(tx_event), uplinks_idle_since);
 
     let send_task = async move {
         lane.store(12).await;
@@ -171,7 +171,7 @@ async fn uplink_open_to_linked() {
     let (tx_event, rx_event) = mpsc::channel(5);
 
     let uplinks_idle_since = Arc::new(AtomicInstant::new(Instant::now().into_std()));
-    let uplink_task = uplink.run_uplink(item::for_mpsc_sender(tx_event), uplinks_idle_since);
+    let uplink_task = uplink.run_uplink(item_sink::for_mpsc_sender(tx_event), uplinks_idle_since);
 
     let send_task = async move {
         lane.store(12).await;
@@ -222,7 +222,7 @@ async fn uplink_open_to_synced() {
     let (tx_event, rx_event) = mpsc::channel(5);
 
     let uplinks_idle_since = Arc::new(AtomicInstant::new(Instant::now().into_std()));
-    let uplink_task = uplink.run_uplink(item::for_mpsc_sender(tx_event), uplinks_idle_since);
+    let uplink_task = uplink.run_uplink(item_sink::for_mpsc_sender(tx_event), uplinks_idle_since);
 
     let send_task = async move {
         lane.store(12).await;

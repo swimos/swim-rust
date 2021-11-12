@@ -18,7 +18,7 @@ use futures::future::BoxFuture;
 use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::fmt::Debug;
-use swim_common::routing::RoutingAddr;
+use swim_runtime::routing::RoutingAddr;
 use tracing::{event, Level};
 
 pub struct CommandLaneUpdateTask<T> {

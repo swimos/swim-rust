@@ -21,7 +21,7 @@ use futures::{Stream, StreamExt};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::sync::Arc;
-use swim_common::model::time::Timestamp;
+use swim_model::time::Timestamp;
 
 /// Value lane store IO task.
 ///

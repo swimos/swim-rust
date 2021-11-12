@@ -1,6 +1,0 @@
-error: Fields marked as #[form(body)] cannot contain a schema
-  --> $DIR/enum_body_with_schema.rs:22:13
-   |
-22 | /             #[form(body, schema(equal = "i64_eq"))]
-23 | |             b: i64,
-   | |__________________^
