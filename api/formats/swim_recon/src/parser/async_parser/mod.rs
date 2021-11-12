@@ -54,7 +54,7 @@ impl Display for AsyncParseError {
             AsyncParseError::UnconsumedInput => {
                 write!(
                     f,
-                    " Some of the input string was not consumed by the parser."
+                    "Some of the input string was not consumed by the parser."
                 )
             }
         }
