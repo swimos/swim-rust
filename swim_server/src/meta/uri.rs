@@ -20,7 +20,7 @@ use percent_encoding::percent_decode_str;
 use pin_utils::core_reexport::fmt::Formatter;
 use std::convert::TryFrom;
 use std::fmt::Display;
-use swim_common::model::text::Text;
+use swim_model::Text;
 use swim_utilities::errors::Recoverable;
 use thiserror::Error;
 

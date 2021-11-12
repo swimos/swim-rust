@@ -17,7 +17,7 @@ use std::time::Duration;
 use swim_client::downlink::typed::value::ValueDownlinkReceiver;
 use swim_client::downlink::Event::Remote;
 use swim_client::interface::SwimClientBuilder;
-use swim_common::warp::path::AbsolutePath;
+use swim_model::path::AbsolutePath;
 use tokio::{task, time};
 
 async fn did_set(value_recv: ValueDownlinkReceiver<String>, initial_value: String) {

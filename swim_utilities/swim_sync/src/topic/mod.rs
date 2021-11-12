@@ -28,6 +28,8 @@ use futures::Stream;
 use pin_project::pin_project;
 use std::num::NonZeroUsize;
 
+use swim_future::item_sink::ItemSink;
+
 use crate::waiters::ReadWaiters;
 
 /// Create a single producer, multiple observer channel. The channel consists of a circular buffer
@@ -543,6 +545,39 @@ impl<T> Drop for ReceiverStream<T> {
     fn drop(&mut self) {
         if let Some((slot, epoch)) = self.slot_and_epoch.take() {
             self.receiver.inner.read_waiters.lock().remove(slot, epoch)
+        }
+    }
+}
+
+impl<'a, T> ItemSink<'a, T> for Sender<T>
+where
+    T: Send + Sync + 'a,
+{
+    type Error = SendError<T>;
+    type SendFuture = TopicSend<'a, T>;
+
+    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
+        self.send(value)
+    }
+}
+
+pub mod discarding {
+
+    use swim_future::item_sink::ItemSink;
+
+    /// Wraps a [`super::Sender`] for a sink implementation that uses the discarding send function.
+    pub struct Discarding<T>(pub super::Sender<T>);
+
+    impl<'a, T> ItemSink<'a, T> for Discarding<T>
+    where
+        T: Send + Sync + 'a,
+    {
+        type Error = super::SendError<T>;
+        type SendFuture = super::TopicSend<'a, T>;
+
+        fn send_item(&'a mut self, value: T) -> Self::SendFuture {
+            let Discarding(sender) = self;
+            sender.discarding_send(value)
         }
     }
 }

@@ -18,11 +18,12 @@ use tokio::sync::mpsc;
 use super::*;
 use crate::router::tests::{FakeConnections, MockRemoteRouterTask};
 use crate::router::TopLevelClientRouterFactory;
-use swim_common::routing::error::RouterError;
-use swim_common::routing::CloseSender;
-use swim_common::warp::envelope::Envelope;
-use swim_common::warp::path::AbsolutePath;
+
+use swim_model::path::AbsolutePath;
+use swim_runtime::error::RouterError;
+use swim_runtime::routing::CloseSender;
 use swim_utilities::future::retryable::Quantity;
+use swim_warp::envelope::Envelope;
 
 async fn create_connection_pool(
     fake_connections: FakeConnections,

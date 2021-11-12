@@ -22,10 +22,14 @@ tracing = { version = "0.1.13", features = ["max_level_debug"] }
 tracing = "0.1.16"
 
 [dependencies]
-swim_utilities = { path = "../swim_utilities", features = ["errors", "sync", "lrucache", "algebra"] }
-swim_runtime = { path = "../swim_runtime" }
+swim_utilities = { path = "../swim_utilities", features = ["errors", "sync", "lrucache"] }
+swim_async_runtime = { path = "../runtime/swim_async_runtime" }
 swim_warp = { path = "../swim_warp" }
-swim_common = { path = "../swim_common" }
+swim_runtime = { path = "../runtime/swim_runtime" }
+swim_model = { path = "../api/swim_model" }
+swim_form = { path = "../api/swim_form" }
+swim_recon = { path = "../api/formats/swim_recon" }
+swim_schema = { path = "../api/swim_schema" }
 
 http = "0.2"
 tokio-native-tls = "0.3"
@@ -41,7 +45,6 @@ tracing-subscriber = "0.2.11"
 tracing-futures = "0.2.4"
 tokio = { version = "1.1.1", features = ["sync", "rt", "macros", "time"] }
 tokio-stream = "0.1.2"
-num-bigint = "0.3"
 trust-dns-resolver = { version = "0.20", optional = true, features = ["tokio-runtime"] }
 slab = "0.4.4"
 thiserror = "1.0.29"

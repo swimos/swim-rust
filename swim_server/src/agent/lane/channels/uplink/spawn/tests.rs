@@ -35,27 +35,23 @@ use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_common::form::structural::read::ReadError;
-use swim_common::form::Form;
-use swim_common::model::Value;
-use swim_common::routing::error::ResolutionError;
-use swim_common::routing::error::RouterError;
-use swim_common::routing::error::RoutingError;
-use swim_common::routing::error::SendError;
-use swim_common::routing::{
-    ConnectionDropped, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
-};
-use swim_common::sink::item::ItemSink;
-use swim_common::warp::envelope::Envelope;
-use swim_common::warp::path::RelativePath;
+use swim_form::structural::read::ReadError;
+use swim_form::Form;
 use swim_metrics::config::MetricAggregatorConfig;
 use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
+use swim_model::path::RelativePath;
+use swim_model::Value;
+use swim_runtime::error::{ConnectionDropped, ResolutionError, RouterError};
+use swim_runtime::routing::{Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender};
 use swim_utilities::algebra::non_zero_usize;
+use swim_utilities::future::item_sink::ItemSink;
+use swim_utilities::future::item_sink::SendError;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::sync::topic;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
+use swim_warp::envelope::Envelope;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Barrier};
 use tokio::time::Instant;
@@ -86,7 +82,7 @@ struct TestSender {
 }
 
 impl<'a> ItemSink<'a, Envelope> for TestSender {
-    type Error = SendError;
+    type Error = SendError<Envelope>;
     type SendFuture = BoxFuture<'a, Result<(), Self::Error>>;
 
     fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
@@ -94,7 +90,7 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
         async move {
             self.inner.send(tagged).await.map_err(|err| {
                 let TaggedEnvelope(_, envelope) = err.0;
-                SendError::new(RoutingError::RouterDropped, envelope)
+                SendError(envelope)
             })
         }
         .boxed()

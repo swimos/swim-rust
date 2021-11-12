@@ -1,0 +1,5 @@
+error: Cannot derive a schema for a field that is skipped
+  --> $DIR/src/schema/tests/derive/validated_form/schema_skipped_field.rs:18:14
+   |
+18 |     #[derive(ValueSchema)]
+   |              ^^^^^^^^^^^

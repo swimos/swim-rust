@@ -1,0 +1,5 @@
+error: Only enumeration types can be tags.
+  --> $DIR/src/tests/derive/tag/not_enum.rs:18:14
+   |
+18 |     #[derive(Tag)]
+   |              ^^^

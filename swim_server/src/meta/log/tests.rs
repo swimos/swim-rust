@@ -32,24 +32,22 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::str::FromStr;
 use std::sync::Arc;
-use swim_client::configuration::DownlinkConnectionsConfig;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::ClientContext;
 use swim_client::router::ClientRouterFactory;
-use swim_common::form::Form;
-use swim_common::model::Value;
-use swim_common::routing::error::{ResolutionError, RouterError};
-use swim_common::routing::{
-    ConnectionDropped, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
-};
-use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
-use swim_common::warp::path::RelativePath;
+use swim_form::Form;
+use swim_model::path::RelativePath;
+use swim_model::Value;
+use swim_runtime::configuration::DownlinkConnectionsConfig;
+use swim_runtime::error::{ConnectionDropped, ResolutionError, RouterError};
+use swim_runtime::routing::{Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender};
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
-use swim_warp::model::map::MapUpdate;
+use swim_warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
+use swim_warp::map::MapUpdate;
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration};
 use tokio_stream::wrappers::ReceiverStream;
@@ -194,7 +192,7 @@ async fn agent_log() {
         MockNodeStore::mock(),
     );
 
-    let _agent_task = swim_runtime::task::spawn(agent_proc);
+    let _agent_task = swim_async_runtime::task::spawn(agent_proc);
 
     assert!(envelope_tx
         .send(TaggedEnvelope(

@@ -17,14 +17,13 @@ use crate::agent::Eff;
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::{FutureExt, StreamExt};
 use std::convert::TryFrom;
-use swim_common::routing::{
-    ConnectionDropped, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
-};
+use swim_runtime::error::{ConnectionDropped, RouterError};
+use swim_runtime::routing::{Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender};
 use tokio::sync::mpsc;
 
 use std::sync::Arc;
-use swim_common::warp::envelope::Envelope;
-use swim_common::warp::path::RelativePath;
+use swim_model::path::RelativePath;
+use swim_warp::envelope::Envelope;
 
 use crate::agent::lane::channels::uplink::stateless::StatelessUplinks;
 use crate::agent::lane::channels::uplink::{AddressedUplinkMessage, UplinkAction, UplinkKind};
@@ -34,14 +33,13 @@ use server_store::agent::mock::MockNodeStore;
 use server_store::agent::SwimNodeStore;
 use server_store::plane::mock::MockPlaneStore;
 use std::ops::Add;
-use swim_common::routing::error::ResolutionError;
-use swim_common::routing::error::RouterError;
 use swim_metrics::config::MetricAggregatorConfig;
 use swim_metrics::uplink::{
     uplink_observer, TaggedWarpUplinkProfile, UplinkObserver, UplinkProfileSender,
     WarpUplinkProfile,
 };
 use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
+use swim_runtime::error::ResolutionError;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger;

@@ -13,13 +13,13 @@
 // limitations under the License.
 
 use super::*;
-use crate::configuration::{ClientDownlinksConfig, DownlinkConnectionsConfig};
-use crate::configuration::{DownlinkConfig, OnInvalidMessage};
+use crate::configuration::ClientDownlinksConfig;
 use crate::router::tests::{FakeConnections, MockRemoteRouterTask};
 use crate::router::{ClientRouterFactory, TopLevelClientRouterFactory};
 use futures::join;
-use swim_common::routing::CloseSender;
-use swim_common::warp::path::AbsolutePath;
+use swim_model::path::AbsolutePath;
+use swim_runtime::configuration::{DownlinkConfig, DownlinkConnectionsConfig, OnInvalidMessage};
+use swim_runtime::routing::CloseSender;
 use swim_utilities::algebra::non_zero_usize;
 use tokio::time::Duration;
 use url::Url;

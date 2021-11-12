@@ -1,0 +1,40 @@
+[package]
+name = "swim_runtime"
+version = "0.1.0"
+authors = ["Swim.AI developers info@swim.ai"]
+edition = "2018"
+
+[features]
+default = []
+
+[dependencies]
+either = "1.5.3"
+flate2 = "1.0.22"
+futures = "0.3.4"
+http = "0.2.3"
+pin-project = "1.0.5"
+pin-utils = "0.1.0"
+tokio = { version = "1.1.1", features = ["sync", "rt"] }
+tokio-stream = "0.1.2"
+tokio-tungstenite = { version = "0.13.0", git = "https://github.com/swimos/tokio-tungstenite/", branch = "deflate-v13", features = ["deflate", "tls"] }
+tokio-native-tls = "0.3"
+swim_utilities = { path = "../../swim_utilities", features = ["errors", "circular_buffer", "future", "lrucache"] }
+url = "2.1.1"
+swim_model = { path = "../../api/swim_model" }
+swim_form = { path = "../../api/swim_form" }
+swim_async_runtime = { path = "../swim_async_runtime" }
+swim_warp = { path = "../../swim_warp" }
+swim_tracing = { path = "../../swim_utilities/swim_tracing", features = ["future"] }
+swim_recon = { path = "../../api/formats/swim_recon" }
+slab = "0.4.2"
+tracing = "0.1.16"
+thiserror = "1.0"
+im = "15.0.0"
+
+[dependencies.tungstenite]
+git = "https://github.com/swimos/tungstenite-rs"
+
+[dev-dependencies]
+tokio = { version = "1.1.1", features = ["macros", "test-util"] }
+parking_lot = "0.11.0"
+tokio-stream = "0.1.2"

@@ -1,0 +1,5 @@
+error: Fields marked as #[form(body)] cannot contain a schema
+  --> $DIR/src/schema/tests/derive/validated_form/struct_body_with_schema.rs:18:14
+   |
+18 |     #[derive(ValueSchema)]
+   |              ^^^^^^^^^^^

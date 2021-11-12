@@ -25,4 +25,4 @@ pub mod connections;
 pub mod downlink;
 pub mod interface;
 pub mod router;
-pub use swim_runtime as runtime;
+pub use swim_async_runtime as runtime;

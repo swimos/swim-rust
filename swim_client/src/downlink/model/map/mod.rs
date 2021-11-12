@@ -17,10 +17,10 @@ use std::sync::Arc;
 
 use im::ordmap::OrdMap;
 
-use swim_common::model::Value;
+use swim_model::Value;
 
 use crate::downlink::DownlinkRequest;
-use swim_warp::model::map::MapUpdate;
+use swim_warp::map::MapUpdate;
 
 #[cfg(test)]
 mod tests;
