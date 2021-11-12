@@ -1,8 +1,24 @@
-error[E0599]: no method named `as_value` found for struct `S` in the current scope
-  --> $DIR/src/schema/tests/derive/validated_form/generic_no_default.rs:29:37
-   |
-23 |     struct S<F> {
-   |     ----------- method `as_value` not found for this
-...
-29 |     let _s = S { a: 1, f: Invalid }.as_value();
-   |                                     ^^^^^^^^ method not found in `S<Invalid>`
+error[E0277]: the trait bound `S<Invalid>: StructuralWritable` is not satisfied
+   --> $DIR/src/schema/tests/derive/validated_form/generic_no_default.rs:30:29
+    |
+30  |     let _s = Form::as_value(&S { a: 1, f: Invalid });
+    |                             ^^^^^^^^^^^^^^^^^^^^^^^ the trait `StructuralWritable` is not implemented for `S<Invalid>`
+    |
+note: required by `as_value`
+   --> $WORKSPACE/api/swim_form/src/lib.rs
+    |
+    |     fn as_value(&self) -> Value {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0277]: the trait bound `S<Invalid>: RecognizerReadable` is not satisfied
+   --> $DIR/src/schema/tests/derive/validated_form/generic_no_default.rs:30:29
+    |
+30  |     let _s = Form::as_value(&S { a: 1, f: Invalid });
+    |                             ^^^^^^^^^^^^^^^^^^^^^^^ the trait `RecognizerReadable` is not implemented for `S<Invalid>`
+    |
+    = note: required because of the requirements on the impl of `StructuralReadable` for `S<Invalid>`
+note: required by `as_value`
+   --> $WORKSPACE/api/swim_form/src/lib.rs
+    |
+    |     fn as_value(&self) -> Value {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^

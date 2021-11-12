@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use swim_form::Form;
 use swim_schema::ValueSchema;
 use swim_model::ValueKind;
 

@@ -42,9 +42,13 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use stm::transaction::TransactionError;
+use swim_form::structural::read::event::ReadEvent;
+use swim_form::structural::read::recognizer::primitive::I32Recognizer;
+use swim_form::structural::read::recognizer::{
+    Recognizer, RecognizerReadable, SimpleAttrBody, SimpleRecBody,
+};
 use swim_form::structural::read::ReadError;
-use swim_form::structural::write::StructuralWritable;
-use swim_form::NewTypeForm;
+use swim_form::structural::write::{StructuralWritable, StructuralWriter};
 use swim_metrics::config::MetricAggregatorConfig;
 use swim_metrics::lane::LanePulse;
 use swim_metrics::node::NodePulse;
@@ -230,19 +234,51 @@ impl LaneUplinks for TestUplinkSpawner {
 #[derive(Debug)]
 struct Message(i32);
 
-impl NewTypeForm for Message {
-    type Inner = i32;
-
-    fn as_inner(&self) -> &Self::Inner {
-        &self.0
+impl StructuralWritable for Message {
+    fn num_attributes(&self) -> usize {
+        0
     }
 
-    fn into_inner(self) -> Self::Inner {
-        self.0
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        writer.write_i32(self.0)
     }
 
-    fn from_inner(inner: Self::Inner) -> Self {
-        Message(inner)
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        self.write_with(writer)
+    }
+}
+
+struct MessageRecognizer(I32Recognizer);
+
+impl RecognizerReadable for Message {
+    type Rec = MessageRecognizer;
+    type AttrRec = SimpleAttrBody<MessageRecognizer>;
+    type BodyRec = SimpleRecBody<MessageRecognizer>;
+
+    fn make_recognizer() -> Self::Rec {
+        MessageRecognizer(I32Recognizer)
+    }
+
+    fn make_attr_recognizer() -> Self::AttrRec {
+        SimpleAttrBody::new(Self::make_recognizer())
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        SimpleRecBody::new(Self::make_recognizer())
+    }
+}
+
+impl Recognizer for MessageRecognizer {
+    type Target = Message;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        let MessageRecognizer(inner) = self;
+        inner.feed_event(input).map(|r| r.map(Message))
+    }
+
+    fn reset(&mut self) {
+        let MessageRecognizer(inner) = self;
+        inner.reset();
     }
 }
 
