@@ -19,6 +19,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use swim_model::path::{AbsolutePath, RelativePath};
 use swim_model::Value;
 use swim_server::agent::command_lifecycle;
+use swim_server::agent::lane::channels::update::StmRetryStrategy;
 use swim_server::agent::lane::model::command::CommandLane;
 use swim_server::agent::lane::model::map::MapLane;
 use swim_server::agent::lane::model::value::ValueLane;
@@ -27,7 +28,9 @@ use swim_server::agent::value_lifecycle;
 use swim_server::agent::AgentContext;
 use swim_server::agent::SwimAgent;
 use swim_server::interface::{ServerHandle, SwimServer, SwimServerBuilder, SwimServerConfig};
-use swim_server::RoutePattern;
+use swim_server::stm::stm::Stm;
+use swim_server::stm::transaction::atomically;
+use swim_server::{RetryStrategy, RoutePattern};
 
 pub async fn build_server() -> (SwimServer<SwimPlaneStore<NoStore>>, ServerHandle) {
     let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0);
@@ -58,6 +61,9 @@ struct DownlinkAgent {
 
     #[lifecycle(name = "GarageLifecycle")]
     pub garage: ValueLane<String>,
+
+    #[lifecycle(name = "SelfParkLifecycle")]
+    pub self_park: CommandLane<String>,
 }
 
 #[command_lifecycle(agent = "DownlinkAgent", command_type = "String", on_command)]
@@ -112,7 +118,43 @@ impl ParkLifecycle {
 
             let current = dl.get().await.unwrap();
             dl.set(format!("{} {}", current, "Toyota")).await.unwrap();
+        } else {
+            let _ = atomically(
+                &context.agent().garage.get().and_then(|current| {
+                    if (*current).is_empty() {
+                        context.agent().garage.set(command.to_string())
+                    } else {
+                        context
+                            .agent()
+                            .garage
+                            .set(format!("{} {}", *current, command))
+                    }
+                }),
+                StmRetryStrategy::new(RetryStrategy::default()),
+            )
+            .await;
         }
+    }
+}
+
+#[command_lifecycle(agent = "DownlinkAgent", command_type = "String", on_command)]
+struct SelfParkLifecycle;
+
+impl SelfParkLifecycle {
+    async fn on_command<Context>(
+        &self,
+        command: &str,
+        _model: &CommandLane<String>,
+        context: &Context,
+    ) where
+        Context: AgentContext<DownlinkAgent> + Sized + Send + Sync + 'static,
+    {
+        context
+            .agent()
+            .park
+            .commander()
+            .command(command.to_string())
+            .await;
     }
 }
 
