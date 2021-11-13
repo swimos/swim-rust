@@ -14,9 +14,9 @@
 
 use crate::errors::{Error, HttpError};
 use crate::ext::NoExt;
-use crate::fixture::mock;
 use crate::handshake::client::{ClientHandshake, HandshakeResult};
 use crate::handshake::{ProtocolRegistry, ACCEPT_KEY, UPGRADE_STR, WEBSOCKET_STR};
+use crate::test_fixture::mock;
 use crate::{ErrorKind, NoExtProvider, ProtocolError, TryIntoRequest};
 use bytes::BytesMut;
 use futures::future::join;

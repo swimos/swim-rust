@@ -27,7 +27,7 @@
 )]
 
 #[cfg(test)]
-mod fixture;
+mod test_fixture;
 
 mod builder;
 mod errors;
@@ -40,6 +40,11 @@ mod ws;
 /// Split WebSocket implementation.
 #[cfg(feature = "split")]
 mod split;
+#[allow(missing_docs)]
+#[cfg(feature = "fixture")]
+pub mod fixture {
+    pub use super::protocol::write_text_frame_header;
+}
 #[cfg(feature = "split")]
 pub use split::{Receiver, ReuniteError, Sender};
 

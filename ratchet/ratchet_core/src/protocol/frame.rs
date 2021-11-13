@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::errors::ProtocolError;
-use crate::protocol::{HeaderFlags, OpCode};
+use crate::protocol::{DataCode, HeaderFlags, OpCode};
 use bytes::{BufMut, BytesMut};
 use either::Either;
 use std::convert::TryFrom;
@@ -141,7 +141,7 @@ impl FrameHeader {
         source: &[u8],
         is_server: bool,
         rsv_bits: u8,
-        max_size: usize,
+        max_message_size: usize,
     ) -> Result<Either<(FrameHeader, usize, usize), usize>, ProtocolError> {
         let source_length = source.len();
         if source_length < 2 {
@@ -184,7 +184,7 @@ impl FrameHeader {
             usize::from(payload_length)
         };
 
-        if length > max_size {
+        if length > max_message_size {
             return Err(ProtocolError::FrameOverflow);
         }
 
@@ -210,4 +210,16 @@ impl FrameHeader {
             length,
         )))
     }
+}
+
+/// Writes a WebSocket text frame header into `dst` with FIN set high.
+#[cfg(feature = "fixture")]
+pub fn write_text_frame_header(dst: &mut BytesMut, mask: Option<u32>, payload_len: usize) {
+    FrameHeader::write_into(
+        dst,
+        OpCode::DataCode(DataCode::Text),
+        HeaderFlags::FIN,
+        mask,
+        payload_len,
+    )
 }

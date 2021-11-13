@@ -59,7 +59,7 @@ where
         reader,
         writer,
         flags,
-        max_size,
+        max_message_size,
     } = framed.into_parts();
 
     let closed = Arc::new(AtomicBool::new(false));
@@ -89,7 +89,7 @@ where
         closed,
         framed: FramedIo {
             flags,
-            max_size,
+            max_message_size,
             read_half,
             reader,
             split_writer: reader_writer,
@@ -182,7 +182,7 @@ struct WriteHalf<S> {
 #[derive(Debug)]
 struct FramedIo<S, E> {
     flags: CodecFlags,
-    max_size: usize,
+    max_message_size: usize,
     read_half: BiLock<S>,
     reader: FramedRead,
     split_writer: BiLock<WriteHalf<S>>,
@@ -330,18 +330,13 @@ where
             writer,
             ..
         } = &mut *self.split_writer.lock().await;
-        let write_result = write_close(
+        write_close(
             split_writer,
             writer,
             CloseReason::new(CloseCode::Normal, reason),
             self.role.is_server(),
         )
-        .await;
-
-        if write_result.is_err() {
-            self.closed.store(true, Ordering::Relaxed);
-        }
-        write_result
+        .await
     }
 
     /// Close this WebSocket with the reason provided.
@@ -352,12 +347,7 @@ where
             writer,
             ..
         } = &mut *self.split_writer.lock().await;
-        let write_result = write_close(split_writer, writer, reason, self.role.is_server()).await;
-
-        if write_result.is_err() {
-            self.closed.store(true, Ordering::Relaxed);
-        }
-        write_result
+        write_close(split_writer, writer, reason, self.role.is_server()).await
     }
 }
 
@@ -394,7 +384,7 @@ where
         } = self;
         let FramedIo {
             flags,
-            max_size,
+            max_message_size,
             read_half,
             reader,
             split_writer,
@@ -407,7 +397,7 @@ where
                 read_half,
                 reader,
                 flags,
-                *max_size,
+                *max_message_size,
                 read_buffer,
                 ext_decoder,
             )
@@ -596,7 +586,7 @@ where
         let Receiver { closed, framed, .. } = receiver;
         let FramedIo {
             flags,
-            max_size,
+            max_message_size,
             read_half,
             reader,
             ext_decoder,
@@ -621,7 +611,7 @@ where
             reader,
             writer,
             flags,
-            max_size,
+            max_message_size,
         });
 
         Ok(WebSocket::from_parts(

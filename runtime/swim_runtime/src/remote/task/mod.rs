@@ -24,13 +24,12 @@ use crate::remote::config::RemoteConnectionsConfig;
 use crate::remote::router::RemoteRouter;
 use crate::remote::{BidirectionalReceiverRequest, RemoteRoutingRequest};
 use crate::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender};
-use crate::ws::selector::{SelectorResult, WsStreamSelector};
-use crate::ws::{CloseCode, CloseReason, JoinedStreamSink, WsMessage};
-use either::Either;
+use crate::ws::{into_stream, WsMessage};
 use futures::future::join_all;
-use futures::future::{join, BoxFuture};
-use futures::{select_biased, stream, FutureExt, Sink, Stream, StreamExt};
+use futures::future::BoxFuture;
+use futures::{select_biased, FutureExt, StreamExt};
 use pin_utils::pin_mut;
+use ratchet::{CloseCode, CloseReason, SplittableExtension, WebSocket, WebSocketStream};
 use slab::Slab;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
@@ -54,6 +53,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, Level};
 
 const ZERO: Duration = Duration::from_secs(0);
+const PEER_CLOSED: &str = "The peer closed the connection.";
 const IGNORING_MESSAGE: &str = "Ignoring unexpected message.";
 const ERROR_ON_CLOSE: &str = "Error whilst closing connection.";
 const BIDIRECTIONAL_RECEIVER_ERROR: &str = "Error whilst sending a bidirectional receiver.";
@@ -97,16 +97,17 @@ impl From<ParseError> for Completion {
     }
 }
 
-enum WsEvent {
+enum ConnectionEvent {
     Read(Result<WsMessage, ratchet::Error>),
     Write(TaggedEnvelope),
+    Request(BidirectionalReceiverRequest),
 }
 
-impl<Sock, Ext, Router> ConnectionTask<Sock, Ext, Router>
+impl<Sock, Ext, R> ConnectionTask<Sock, Ext, R>
 where
     Sock: WebSocketStream,
     Ext: SplittableExtension,
-    Router: ServerRouter,
+    R: Router,
 {
     /// Create a new task.
     ///
@@ -155,7 +156,7 @@ where
             config,
         } = self;
 
-        let outgoing_payloads = ReceiverStream::new(messages).map(Into::into);
+        let mut outgoing_payloads = ReceiverStream::new(messages).map(Into::into).fuse();
         let mut bidirectional_request_rx = ReceiverStream::new(bidirectional_request_rx).fuse();
         let mut bidirectional_connections = Slab::new();
 
@@ -181,82 +182,66 @@ where
                     .checked_add(config.activity_timeout)
                     .expect("Timer overflow."),
             );
-            let next: Option<
-                Either<
-                    BidirectionalReceiverRequest,
-                    Result<SelectorResult<WsMessage>, ConnectionError>,
-                >,
-            > = select_biased! {
+            let next: Option<ConnectionEvent> = select_biased! {
                 _ = stop_fused => {
                     break Completion::StoppedLocally;
                 },
                 _ = (&mut timeout).fuse() => {
                     break Completion::TimedOut;
                 }
-                conn_request = bidirectional_request_rx.next() => conn_request.map(Either::Left),
-                event = selector.select_rw() => event.map(Either::Right),
+                conn_request = bidirectional_request_rx.next() => conn_request.map(ConnectionEvent::Request),
+                envelope = envelopes.next() => envelope.map(ConnectionEvent::Read),
+                payload  = outgoing_payloads.next() => payload.map(ConnectionEvent::Write)
             };
 
             if let Some(event) = next {
-                // disable the linter here as there are to-dos
-                #[allow(clippy::collapsible_if)]
                 match event {
-                    Either::Left(receiver_request) => {
+                    ConnectionEvent::Request(receiver_request) => {
                         let (tx, rx) = mpsc::channel(config.channel_buffer_size.get());
                         bidirectional_connections.insert(TaggedSender::new(tag, tx));
 
                         if receiver_request.send(rx).is_err() {
                             event!(Level::WARN, BIDIRECTIONAL_RECEIVER_ERROR);
+                            // todo: should the connection not be removed here?
                         }
                     }
-                    Either::Right(Ok(SelectorResult::Read(msg))) => match msg {
-                        WsMessage::Text(msg) => match read_envelope(&msg) {
+                    ConnectionEvent::Read(msg) => match msg {
+                        Ok(WsMessage::Text(message)) => match read_envelope(&message) {
                             Ok(envelope) => {
-                                let (done_tx, done_rx) = trigger::trigger();
+                                let dispatch_result = dispatch_envelope(
+                                    &mut router,
+                                    &mut bidirectional_connections,
+                                    &mut resolved,
+                                    envelope,
+                                    config.connection_retries,
+                                    sleep,
+                                )
+                                .await;
 
-                                let write_task = write_to_socket_only(
-                                    &mut selector,
-                                    done_rx,
-                                    yield_mod,
-                                    &mut iteration_count,
-                                );
-
-                                let dispatch_task = async {
-                                    let dispatch_result = dispatch_envelope(
-                                        &mut router,
-                                        &mut bidirectional_connections,
-                                        &mut resolved,
-                                        envelope,
-                                        config.connection_retries,
-                                        sleep,
-                                    )
-                                    .await;
-                                    if let Err((env, _)) = dispatch_result {
-                                        handle_not_found(env, &message_injector).await;
-                                    }
-                                }
-                                .then(move |_| async {
-                                    done_tx.trigger();
-                                });
-
-                                let (_, write_result) = join(dispatch_task, write_task).await;
-
-                                if let Err(err) = write_result {
-                                    break Completion::Failed(err);
+                                // Todo add router to ratchet's upgrade function to avoid this
+                                if let Err((env, _)) = dispatch_result {
+                                    handle_not_found(env, &message_injector).await;
                                 }
                             }
                             Err(c) => {
                                 break c;
                             }
                         },
-                        message => {
+                        Ok(WsMessage::Close(reason)) => {
+                            event!(Level::DEBUG, PEER_CLOSED, ?reason);
+                            break Completion::StoppedRemotely;
+                        }
+                        Ok(message) => {
                             event!(Level::WARN, IGNORING_MESSAGE, ?message);
                         }
+                        Err(e) => break Completion::Failed(e.into()),
                     },
-                    Either::Right(Err(err)) => {
-                        break Completion::Failed(err);
+                    ConnectionEvent::Write(envelope) => {
+                        let TaggedEnvelope(_, envelope) = envelope;
+                        if let Err(e) = ws_tx.write_text(envelope.into_value().to_string()).await {
+                            break Completion::Failed(e.into());
+                        }
                     }
-                    Either::Right(Ok(SelectorResult::Written)) => {}
                 }
 
                 iteration_count += 1;

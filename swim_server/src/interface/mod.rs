@@ -41,13 +41,11 @@ use swim_client::interface::ClientContext;
 use swim_client::router::ClientRouterFactory;
 use swim_model::path::Addressable;
 use swim_runtime::configuration::{DownlinkConfig, DownlinkConnectionsConfig, DownlinksConfig};
-use swim_runtime::ws::tungstenite::TungsteniteWsConnections;
+use swim_runtime::ws::ext::RatchetNetworking;
 use swim_utilities::future::open_ended::OpenEndedFutures;
 use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
-use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use url::Url;
-use swim_runtime::ws::ext::RatchetNetworking;
 
 use crate::PlaneBuilder;
 #[cfg(feature = "persistence")]

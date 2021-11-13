@@ -48,8 +48,8 @@ use tokio::sync::mpsc;
 use tracing::{event, Level};
 use url::Url;
 
-use swim_tracing::request::{RequestExt, TryRequestExt};
 use ratchet::WebSocketStream;
+use swim_tracing::request::{RequestExt, TryRequestExt};
 
 #[cfg(test)]
 pub mod test_fixture;

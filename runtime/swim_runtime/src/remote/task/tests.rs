@@ -28,7 +28,7 @@ use swim_utilities::routing::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
 use swim_warp::envelope::Envelope;
-use tokio::sync::{mpsc, oneshot, watch};
+use tokio::sync::{mpsc, oneshot};
 
 use crate::error::{
     CloseError, CloseErrorKind, ConnectionError, IoError, ProtocolError, ResolutionError,
@@ -36,18 +36,17 @@ use crate::error::{
 use crate::error::{ConnectionDropped, RouterError};
 use crate::remote::config::RemoteConnectionsConfig;
 use crate::remote::task::{ConnectionTask, DispatchError};
-use crate::remote::test_fixture::fake_channel::TwoWayMpsc;
 use crate::remote::test_fixture::LocalRoutes;
 use crate::remote::BidirectionalReceiverRequest;
 use crate::routing::{Route, RoutingAddr, TaggedEnvelope, TaggedSender};
-use crate::ws::WsMessage;
+use crate::ws::{AutoWebSocket, WsMessage};
 use futures::io::ErrorKind;
-use slab::Slab;
-use std::num::NonZeroUsize;
-use std::time::Duration;
 use ratchet::{NoExt, SplittableExtension};
 use ratchet_fixture::duplex::websocket_pair;
 use ratchet_fixture::ratchet_failing_ext::FailingExt;
+use slab::Slab;
+use std::num::NonZeroUsize;
+use std::time::Duration;
 use tokio::io::DuplexStream;
 
 #[test]
@@ -502,7 +501,7 @@ async fn task_send_message() {
         stop_trigger,
         router: _router,
         bidirectional_tx: _bidirectional_tx,
-    } = TaskFixture::new();
+    } = TaskFixture::new(NoExt);
 
     let envelope = Envelope::make_event("/node", "/lane", Some(Value::text("a")));
     let env_cpy = envelope.clone();
@@ -525,13 +524,11 @@ async fn task_send_message_bidirectional() {
     let TaskFixture {
         task,
         envelope_tx: _envelope_tx,
-        sock_out: _sock_out,
+        mut websocket_peer,
         stop_trigger,
         router: _router,
-        mut sock_in,
-        send_error_tx: _send_error_tx,
         bidirectional_tx,
-    } = TaskFixture::new();
+    } = TaskFixture::new(NoExt);
 
     let envelope = Envelope::make_event("/node", "/lane", Some(Value::text("a")));
     let env_cpy = envelope.clone();
@@ -545,7 +542,10 @@ async fn task_send_message_bidirectional() {
 
         let mut bidirectional_receiver = rx.await.unwrap();
 
-        assert!(sock_in.send(Ok(message_for(env_cpy.clone()))).await.is_ok());
+        assert!(websocket_peer
+            .write_text(env_to_string(env_cpy.clone()))
+            .await
+            .is_ok());
         assert!(
             matches!(bidirectional_receiver.recv().await, Some(TaggedEnvelope(_, env)) if env == env_cpy)
         );
@@ -678,8 +678,8 @@ async fn task_receive_message_no_route() {
         mut websocket_peer,
         envelope_tx: _envelope_tx,
         stop_trigger,
-        router: _router,        bidirectional_tx: _bidirectional_tx,
-
+        router: _router,
+        bidirectional_tx: _bidirectional_tx,
     } = TaskFixture::new(NoExt);
 
     let envelope = Envelope::make_event("/node", "/lane", Some(Value::text("a")));
@@ -704,8 +704,8 @@ async fn task_receive_error() {
         mut websocket_peer,
         envelope_tx: _envelope_tx,
         stop_trigger: _stop_trigger,
-        router: _router,        bidirectional_tx: _bidirectional_tx,
-
+        router: _router,
+        bidirectional_tx: _bidirectional_tx,
     } = TaskFixture::new(NoExt);
 
     let test_case = async move {
@@ -728,8 +728,8 @@ async fn task_stopped_remotely() {
         websocket_peer,
         envelope_tx: _envelope_tx,
         stop_trigger: _stop_trigger,
-        router: _router,        bidirectional_tx: _bidirectional_tx,
-
+        router: _router,
+        bidirectional_tx: _bidirectional_tx,
     } = TaskFixture::new(NoExt);
 
     let test_case = async move {
@@ -748,8 +748,8 @@ async fn task_timeout() {
         mut websocket_peer,
         envelope_tx,
         stop_trigger: _stop_trigger,
-        router: _router,        bidirectional_tx: _bidirectional_tx,
-
+        router: _router,
+        bidirectional_tx: _bidirectional_tx,
     } = TaskFixture::new(NoExt);
 
     let envelope = Envelope::make_event("/node", "/lane", Some(Value::text("a")));
@@ -777,8 +777,7 @@ async fn task_receive_bad_message() {
         envelope_tx: _envelope_tx,
         stop_trigger: _stop_trigger,
         router: _router,
-        mut sock_in,
-        send_error_tx: _send_error_tx,
+        bidirectional_tx: _bidirectional_tx,
     } = TaskFixture::new(NoExt);
 
     let test_case = async move {
@@ -788,82 +787,4 @@ async fn task_receive_bad_message() {
     let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
     let _err = ConnectionError::Protocol(ProtocolError::warp(None));
     assert!(matches!(result, Ok((ConnectionDropped::Failed(_err), _))));
-}
-
-async fn generate_writes(
-    mut route_rx: mpsc::Receiver<TaggedEnvelope>,
-    outgoing: mpsc::Sender<TaggedEnvelope>,
-    stop_trigger: trigger::Sender,
-    n: i32,
-) -> Result<(), mpsc::error::SendError<TaggedEnvelope>> {
-    let addr = RoutingAddr::plane(7);
-
-    for i in 0..n {
-        if route_rx.recv().await.is_none() {
-            return Ok(());
-        }
-        for j in 0..(BUFFER_SIZE * 3) {
-            let envelope = Envelope::make_command(
-                "/remote_node",
-                "/remote_lane",
-                Some(Value::text(format!("{}.{}", i, j))),
-            );
-            let tagged = TaggedEnvelope(addr, envelope);
-            outgoing.send(tagged).await?;
-        }
-    }
-    stop_trigger.trigger();
-    Ok(())
-}
-
-#[tokio::test]
-async fn read_causes_write_buffer_to_fill() {
-    let TaskFixture {
-        task,
-        envelope_tx,
-        mut sock_out,
-        stop_trigger,
-        router,
-        sock_in,
-        send_error_tx: _send_error_tx,
-        bidirectional_tx: _bidirectional_tx,
-    } = TaskFixture::new();
-
-    let n = 100;
-
-    let (route_tx, route_rx) = mpsc::channel(1);
-
-    router.add_sender("/node".parse().unwrap(), route_tx.clone());
-
-    let outgoing = envelope_tx.clone();
-
-    let route_task = generate_writes(route_rx, outgoing, stop_trigger, n);
-
-    let consume_output = async move {
-        loop {
-            if sock_out.next().await.is_none() {
-                break;
-            }
-        }
-    };
-
-    let mut input = sock_in.clone();
-
-    let generate_inputs = async move {
-        for i in 0..n {
-            let envelope =
-                Envelope::make_command("/node", "/lane", Some(Value::text(i.to_string())));
-            let message = Ok(message_for(envelope));
-            if input.send(message).await.is_err() {
-                break;
-            }
-        }
-    };
-
-    let result = tokio::time::timeout(
-        Duration::from_secs(60),
-        join4(task, route_task, consume_output, generate_inputs),
-    )
-    .await;
-    assert!(matches!(result, Ok((ConnectionDropped::Closed, _, _, _))));
 }

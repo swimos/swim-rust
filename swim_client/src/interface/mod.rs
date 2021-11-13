@@ -51,8 +51,10 @@ use swim_runtime::remote::net::dns::Resolver;
 use swim_runtime::remote::net::plain::TokioPlainTextNetworking;
 use swim_runtime::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
 use swim_runtime::routing::CloseSender;
-use swim_runtime::ws::tungstenite::TungsteniteWsConnections;
 
+use ratchet::ProtocolRegistry;
+use swim_runtime::configuration::WebSocketConfig;
+use swim_runtime::ws::ext::RatchetNetworking;
 use swim_schema::ValueSchema;
 use swim_utilities::future::open_ended::OpenEndedFutures;
 use swim_utilities::trigger::promise;
@@ -113,11 +115,19 @@ impl SwimClientBuilder {
             ClientRouterFactory::new(client_tx.clone(), top_level_router_fac.clone());
         let (close_tx, close_rx) = promise::promise();
 
+        let WebSocketConfig {
+            config: ws_config,
+            compression,
+        } = config.websocket_config;
+
         let remote_connections_task = RemoteConnectionsTask::new_client_task(
             config.remote_connections_config,
             TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
-            TungsteniteWsConnections {
-                config: config.websocket_config,
+            RatchetNetworking {
+                config: ws_config,
+                provider: compression,
+                subprotocols: ProtocolRegistry::new(vec!["warp"])
+                    .expect("Failed to build subprotocol registry"),
             },
             top_level_router_fac.clone(),
             OpenEndedFutures::new(),

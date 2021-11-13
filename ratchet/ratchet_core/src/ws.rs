@@ -83,9 +83,15 @@ where
         read_buffer: BytesMut,
         role: Role,
     ) -> WebSocket<S, E> {
-        let WebSocketConfig { max_size } = config;
+        let WebSocketConfig { max_message_size } = config;
         WebSocket {
-            framed: FramedIo::new(stream, read_buffer, role, max_size, extension.bits().into()),
+            framed: FramedIo::new(
+                stream,
+                read_buffer,
+                role,
+                max_message_size,
+                extension.bits().into(),
+            ),
             extension,
             control_buffer: BytesMut::with_capacity(CONTROL_MAX_SIZE),
             closed: false,

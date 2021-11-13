@@ -16,6 +16,7 @@ use futures::channel::mpsc::SendError as FutSendError;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::io::ErrorKind;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::error::SendError as MpscSendError;
 
@@ -32,8 +33,8 @@ use swim_utilities::future::item_sink::SendError;
 use swim_utilities::future::request::request_future::RequestError;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::sync::circular_buffer;
+use thiserror::Error as ThisError;
 pub use tls::*;
-use {std::ops::Deref, tokio_tungstenite::tungstenite};
 
 pub use self::http::*;
 
@@ -51,6 +52,11 @@ mod tls;
 mod tests;
 
 pub type FmtResult = std::fmt::Result;
+
+type BoxRecoverableError = Box<dyn RecoverableError>;
+
+pub trait RecoverableError: std::error::Error + Send + Sync + Recoverable + 'static {}
+impl<T> RecoverableError for T where T: std::error::Error + Send + Sync + Recoverable + 'static {}
 
 /// An error returned by the router
 #[derive(Clone, Debug, PartialEq)]
@@ -263,7 +269,7 @@ pub(crate) fn format_cause(cause: &Option<String>) -> String {
 }
 
 /// Ways in which the router can fail to provide a route.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub enum RouterError {
     /// For a local endpoint it can be determined that no agent exists.
     NoAgentAtRoute(RelativeUri),

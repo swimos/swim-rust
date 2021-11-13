@@ -28,7 +28,6 @@ use futures::future::{BoxFuture, Fuse};
 use futures::stream::TakeUntil;
 use futures::StreamExt;
 use futures::{select_biased, FutureExt};
-use futures_util::stream::TakeUntil;
 use ratchet::{WebSocket, WebSocketStream};
 use std::future::Future;
 use std::io;

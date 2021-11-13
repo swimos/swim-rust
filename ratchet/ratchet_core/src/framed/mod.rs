@@ -82,12 +82,12 @@ impl FrameDecoder {
         buf: &mut BytesMut,
         is_server: bool,
         rsv_bits: u8,
-        max_size: usize,
+        max_message_size: usize,
     ) -> Result<DecodeResult, Error> {
         loop {
             match self {
                 FrameDecoder::DecodingHeader => {
-                    match FrameHeader::read_from(buf, is_server, rsv_bits, max_size)? {
+                    match FrameHeader::read_from(buf, is_server, rsv_bits, max_message_size)? {
                         Either::Left((header, header_len, payload_len)) => {
                             *self = FrameDecoder::DecodingPayload(header, header_len, payload_len);
                         }
@@ -124,7 +124,7 @@ impl FrameDecoder {
 pub struct ReadProps {
     pub is_server: bool,
     pub rsv_bits: u8,
-    pub max_size: usize,
+    pub max_message_size: usize,
 }
 
 #[derive(Debug)]
@@ -146,7 +146,7 @@ impl FramedRead {
         io: &mut I,
         is_server: bool,
         rsv_bits: u8,
-        max_size: usize,
+        max_message_size: usize,
     ) -> Result<(FrameHeader, BytesMut), Error>
     where
         I: AsyncRead + Unpin,
@@ -157,7 +157,7 @@ impl FramedRead {
         } = self;
 
         loop {
-            match decoder.decode(read_buffer, is_server, rsv_bits, max_size)? {
+            match decoder.decode(read_buffer, is_server, rsv_bits, max_message_size)? {
                 DecodeResult::Incomplete(count) => {
                     let len = read_buffer.len();
                     read_buffer.resize(len + count, 0u8);
@@ -183,16 +183,18 @@ impl FramedRead {
         let ReadProps {
             is_server,
             rsv_bits,
-            max_size,
+            max_message_size,
         } = props;
 
         loop {
-            let (header, payload) = self.read_frame(io, is_server, rsv_bits, max_size).await?;
+            let (header, payload) = self
+                .read_frame(io, is_server, rsv_bits, max_message_size)
+                .await?;
             trace!("Read frame: {}", FramePrinter(&header));
 
             match header.opcode {
                 OpCode::DataCode(data_code) => {
-                    if read_into.len() + payload.len() > max_size {
+                    if read_into.len() + payload.len() > max_message_size {
                         return Err(ProtocolError::FrameOverflow.into());
                     }
 
@@ -408,7 +410,7 @@ pub struct FramedIoParts<I> {
     pub reader: FramedRead,
     pub writer: FramedWrite,
     pub flags: CodecFlags,
-    pub max_size: usize,
+    pub max_message_size: usize,
 }
 
 #[derive(Debug)]
@@ -417,7 +419,7 @@ pub struct FramedIo<I> {
     reader: FramedRead,
     writer: FramedWrite,
     flags: CodecFlags,
-    max_size: usize,
+    max_message_size: usize,
 }
 
 impl<I> FramedIo<I>
@@ -431,14 +433,14 @@ where
             reader,
             writer,
             flags,
-            max_size,
+            max_message_size,
         } = parts;
         FramedIo {
             io,
             reader,
             writer,
             flags,
-            max_size,
+            max_message_size,
         }
     }
 
@@ -449,18 +451,24 @@ where
             reader,
             writer,
             flags,
-            max_size,
+            max_message_size,
         } = self;
         FramedIoParts {
             io,
             reader,
             writer,
             flags,
-            max_size,
+            max_message_size,
         }
     }
 
-    pub fn new(io: I, read_buffer: BytesMut, role: Role, max_size: usize, ext_bits: u8) -> Self {
+    pub fn new(
+        io: I,
+        read_buffer: BytesMut,
+        role: Role,
+        max_message_size: usize,
+        ext_bits: u8,
+    ) -> Self {
         let flags = match role {
             Role::Client => CodecFlags::from_bits_truncate(ext_bits),
             Role::Server => CodecFlags::from_bits_truncate(CodecFlags::ROLE.bits() | ext_bits),
@@ -471,7 +479,7 @@ where
             reader: FramedRead::new(read_buffer),
             writer: FramedWrite::default(),
             flags,
-            max_size,
+            max_message_size,
         }
     }
 
@@ -517,10 +525,10 @@ where
             io,
             reader,
             flags,
-            max_size,
+            max_message_size,
             ..
         } = self;
-        read_next(io, reader, flags, *max_size, read_into, extension).await
+        read_next(io, reader, flags, *max_message_size, read_into, extension).await
     }
 
     pub async fn write_close(&mut self, reason: CloseReason) -> Result<(), Error> {
@@ -561,7 +569,7 @@ pub async fn read_next<I, E>(
     io: &mut I,
     reader: &mut FramedRead,
     flags: &mut CodecFlags,
-    max_size: usize,
+    max_message_size: usize,
     read_into: &mut BytesMut,
     extension: &mut E,
 ) -> Result<Item, Error>
@@ -575,7 +583,7 @@ where
     let props = ReadProps {
         is_server,
         rsv_bits,
-        max_size,
+        max_message_size,
     };
 
     reader.read(io, flags, read_into, extension, props).await
