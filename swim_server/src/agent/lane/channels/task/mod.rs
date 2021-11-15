@@ -55,7 +55,7 @@ use swim_model::Value;
 use swim_runtime::routing::{RoutingAddr, TaggedClientEnvelope};
 use swim_utilities::errors::Recoverable;
 use swim_utilities::trigger;
-use swim_warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
+use swim_warp::envelope::RequestEnvelope;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
@@ -277,13 +277,14 @@ where
 
             match envelope_or_err {
                 Some(Either::Left(envelope)) => {
-                    let TaggedClientEnvelope(addr, OutgoingLinkMessage { header, body, .. }) =
-                        envelope;
-                    let action = match header {
-                        OutgoingHeader::Link(_) => Either::Left(UplinkAction::Link),
-                        OutgoingHeader::Sync(_) => Either::Left(UplinkAction::Sync),
-                        OutgoingHeader::Unlink => Either::Left(UplinkAction::Unlink),
-                        OutgoingHeader::Command => Either::Right(body.unwrap_or(Value::Extant)),
+                    let TaggedClientEnvelope(addr, env) = envelope;
+                    let action = match env {
+                        RequestEnvelope::Link(..) => Either::Left(UplinkAction::Link),
+                        RequestEnvelope::Sync(..) => Either::Left(UplinkAction::Sync),
+                        RequestEnvelope::Unlink(..) => Either::Left(UplinkAction::Unlink),
+                        RequestEnvelope::Command(_, body) => {
+                            Either::Right(body.unwrap_or(Value::Extant))
+                        }
                     };
                     match action {
                         Either::Left(uplink_action) => {
@@ -811,18 +812,17 @@ where
 
         match envelope_or_err {
             Some(Either::Left(TaggedClientEnvelope(addr, envelope))) => {
-                let OutgoingLinkMessage { header, body, .. } = envelope;
-                let sent = match header {
-                    OutgoingHeader::Link(_) => {
+                let sent = match envelope {
+                    RequestEnvelope::Link(..) => {
                         send_action(&mut actions, &route, addr, UplinkAction::Link).await
                     }
-                    OutgoingHeader::Sync(_) => {
+                    RequestEnvelope::Sync(..) => {
                         send_action(&mut actions, &route, addr, UplinkAction::Sync).await
                     }
-                    OutgoingHeader::Unlink => {
+                    RequestEnvelope::Unlink(..) => {
                         send_action(&mut actions, &route, addr, UplinkAction::Unlink).await
                     }
-                    OutgoingHeader::Command => match body {
+                    RequestEnvelope::Command(_, body) => match body {
                         Some(value) => {
                             observer.on_command(true);
 

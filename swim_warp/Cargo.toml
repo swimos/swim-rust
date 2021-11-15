@@ -16,3 +16,4 @@ tokio = { version = "1.1.1", features = ["sync"] }
 tokio-stream = "0.1.2"
 
 [dev-dependencies]
+swim_recon = { path = "../api/formats/swim_recon" }

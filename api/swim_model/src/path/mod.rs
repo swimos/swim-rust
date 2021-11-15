@@ -45,6 +45,21 @@ impl Display for Path {
     }
 }
 
+impl From<Path> for RelativePath {
+    fn from(this: Path) -> Self {
+        match this {
+            Path::Remote(p) => p.split().1,
+            Path::Local(p) => p,
+        }
+    }
+}
+
+impl From<AbsolutePath> for RelativePath {
+    fn from(this: AbsolutePath) -> Self {
+        this.split().1
+    }
+}
+
 impl Addressable for Path {
     fn node(&self) -> Text {
         match self {

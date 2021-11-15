@@ -15,6 +15,7 @@
 use crate::structural::write::{
     BodyWriter, HeaderWriter, PrimitiveWriter, RecordBodyKind, StructuralWritable, StructuralWriter,
 };
+use swim_model::Value;
 
 pub struct WritableRef<'a, T>(&'a T);
 
@@ -29,6 +30,18 @@ impl<'a, T: StructuralWritable> StructuralWritable for WritableRef<'a, T> {
 
     fn num_attributes(&self) -> usize {
         self.0.num_attributes()
+    }
+
+    fn structure(&self) -> Value {
+        self.0.structure()
+    }
+
+    fn into_structure(self) -> Value {
+        self.structure()
+    }
+
+    fn omit_as_field(&self) -> bool {
+        self.0.omit_as_field()
     }
 }
 
@@ -121,7 +134,7 @@ pub struct HeaderWithBody<T, S> {
 
 impl<T, S: AppendHeaders> HeaderWithBody<T, S> {
     fn len(&self) -> usize {
-        S::LEN + 1
+        self.slots.num_items() + 1
     }
 }
 
@@ -129,7 +142,7 @@ impl<T, S: AppendHeaders> HeaderWithBody<T, S> {
 /// in the the macro-derived implementations.
 pub trait AppendHeaders {
     /// The number of items that will be written into the attribute body.
-    const LEN: usize;
+    fn num_items(&self) -> usize;
 
     /// Write the values into the attribute body.
     fn append<B: BodyWriter>(&self, writer: B) -> Result<B, B::Error>;
@@ -139,7 +152,9 @@ pub trait AppendHeaders {
 }
 
 impl AppendHeaders for NoSlots {
-    const LEN: usize = 0;
+    fn num_items(&self) -> usize {
+        0
+    }
 
     fn append<B: BodyWriter>(&self, writer: B) -> Result<B, B::Error> {
         Ok(writer)
@@ -155,17 +170,24 @@ where
     T: StructuralWritable,
     Tail: AppendHeaders,
 {
-    const LEN: usize = Tail::LEN + 1;
+    fn num_items(&self) -> usize {
+        let HeaderSlots { value, tail, .. } = self;
+        tail.num_items() + if value.omit_as_field() { 0 } else { 1 }
+    }
 
     fn append<B: BodyWriter>(&self, mut writer: B) -> Result<B, <B as BodyWriter>::Error> {
         let HeaderSlots { key, value, tail } = self;
-        writer = writer.write_slot(key, value)?;
+        if !value.omit_as_field() {
+            writer = writer.write_slot(key, value)?;
+        }
         tail.append(writer)
     }
 
     fn append_into<B: BodyWriter>(self, mut writer: B) -> Result<B, <B as BodyWriter>::Error> {
         let HeaderSlots { key, value, tail } = self;
-        writer = writer.write_slot_into(key, value)?;
+        if !value.omit_as_field() {
+            writer = writer.write_slot_into(key, value)?;
+        }
         tail.append_into(writer)
     }
 }
@@ -227,7 +249,7 @@ where
         let SimpleHeader(inner) = self;
         let body_writer = writer
             .record(0)?
-            .complete_header(RecordBodyKind::MapLike, A::LEN)?;
+            .complete_header(RecordBodyKind::MapLike, inner.num_items())?;
         inner.append(body_writer)?.done()
     }
 
@@ -238,7 +260,7 @@ where
         let SimpleHeader(inner) = self;
         let body_writer = writer
             .record(0)?
-            .complete_header(RecordBodyKind::MapLike, A::LEN)?;
+            .complete_header(RecordBodyKind::MapLike, inner.num_items())?;
         inner.append_into(body_writer)?.done()
     }
 }

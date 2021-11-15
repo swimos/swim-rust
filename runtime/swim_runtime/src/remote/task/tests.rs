@@ -21,8 +21,9 @@ use futures::{FutureExt, SinkExt, StreamExt};
 use http::Uri;
 use parking_lot::Mutex;
 use swim_async_runtime::time::timeout;
+use swim_form::Form;
 use swim_model::path::RelativePath;
-use swim_model::Value;
+use swim_recon::printer::print_recon_compact;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::retryable::{Quantity, RetryStrategy};
 use swim_utilities::routing::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};
@@ -79,7 +80,11 @@ fn dispatch_error_display() {
 
 fn envelope(path: RelativePath, body: &str) -> Envelope {
     let RelativePath { node, lane } = path;
-    Envelope::make_command(node, lane, Some(Value::text(body)))
+    Envelope::command()
+        .node_uri(node)
+        .lane_uri(lane)
+        .body(body)
+        .done()
 }
 
 #[tokio::test]
@@ -154,7 +159,11 @@ async fn try_dispatch_to_bidirectional() {
 
     let mut rx = router.add("/node".parse().unwrap());
 
-    let env = Envelope::make_event(path.node.clone(), path.lane.clone(), Some(Value::text("a")));
+    let env = Envelope::event()
+        .node_uri(&path.node)
+        .lane_uri(&path.lane)
+        .body("a")
+        .done();
 
     let result = super::try_dispatch_envelope(
         &mut router,
@@ -487,7 +496,7 @@ impl TaskFixture {
 }
 
 fn message_for(env: Envelope) -> WsMessage {
-    WsMessage::Text(env.into_value().to_string())
+    WsMessage::Text(format!("{}", print_recon_compact(&env)))
 }
 
 #[tokio::test]
@@ -503,7 +512,11 @@ async fn task_send_message() {
         bidirectional_tx: _bidirectional_tx,
     } = TaskFixture::new();
 
-    let envelope = Envelope::make_event("/node", "/lane", Some(Value::text("a")));
+    let envelope = Envelope::event()
+        .node_uri("/node")
+        .lane_uri("/lane")
+        .body("a")
+        .done();
     let env_cpy = envelope.clone();
 
     let test_case = async move {
@@ -532,7 +545,12 @@ async fn task_send_message_bidirectional() {
         bidirectional_tx,
     } = TaskFixture::new();
 
-    let envelope = Envelope::make_event("/node", "/lane", Some(Value::text("a")));
+    let envelope = Envelope::event()
+        .node_uri("/node")
+        .lane_uri("/lane")
+        .body("a")
+        .done();
+
     let env_cpy = envelope.clone();
 
     let test_case = async move {
@@ -568,7 +586,12 @@ async fn task_send_message_failure() {
         bidirectional_tx: _bidirectional_tx,
     } = TaskFixture::new();
 
-    let envelope = Envelope::make_event("/node", "/lane", Some(Value::text("a")));
+    let envelope = Envelope::event()
+        .node_uri("/node")
+        .lane_uri("/lane")
+        .body("a")
+        .done();
+
     let env_cpy = envelope.clone();
 
     let test_case = async move {
@@ -602,7 +625,12 @@ async fn task_receive_message_with_route() {
     } = TaskFixture::new();
 
     let mut rx = router.add("/node".parse().unwrap());
-    let envelope = Envelope::make_command("/node", "/lane", Some(Value::text("a")));
+    let envelope = Envelope::command()
+        .node_uri("/node")
+        .lane_uri("/lane")
+        .body("a")
+        .done();
+
     let env_cpy = envelope.clone();
 
     let test_case = async move {
@@ -628,7 +656,11 @@ async fn task_receive_link_message_missing_node() {
         bidirectional_tx: _bidirectional_tx,
     } = TaskFixture::new();
 
-    let envelope = Envelope::link("/missing", "/lane");
+    let envelope = Envelope::link()
+        .node_uri("/missing")
+        .lane_uri("/lane")
+        .done();
+
     let response = Envelope::node_not_found("/missing", "/lane");
 
     let test_case = async move {
@@ -657,7 +689,10 @@ async fn task_receive_sync_message_missing_node() {
         bidirectional_tx: _bidirectional_tx,
     } = TaskFixture::new();
 
-    let envelope = Envelope::sync("/missing", "/lane");
+    let envelope = Envelope::sync()
+        .node_uri("/missing")
+        .lane_uri("/lane")
+        .done();
 
     let test_case = async move {
         assert!(sock_in.send(Ok(message_for(envelope))).await.is_ok());
@@ -685,7 +720,12 @@ async fn task_receive_message_no_route() {
         bidirectional_tx: _bidirectional_tx,
     } = TaskFixture::new();
 
-    let envelope = Envelope::make_event("/node", "/lane", Some(Value::text("a")));
+    let envelope = Envelope::event()
+        .node_uri("/node")
+        .lane_uri("/lane")
+        .body("a")
+        .done();
+
     let env_cpy = envelope.clone();
 
     let test_case = async move {
@@ -761,7 +801,12 @@ async fn task_timeout() {
         bidirectional_tx: _bidirectional_tx,
     } = TaskFixture::new();
 
-    let envelope = Envelope::make_event("/node", "/lane", Some(Value::text("a")));
+    let envelope = Envelope::event()
+        .node_uri("/node")
+        .lane_uri("/lane")
+        .body("a")
+        .done();
+
     let env_cpy = envelope.clone();
 
     let test_case = async move {
@@ -816,11 +861,11 @@ async fn generate_writes(
             return Ok(());
         }
         for j in 0..(BUFFER_SIZE * 3) {
-            let envelope = Envelope::make_command(
-                "/remote_node",
-                "/remote_lane",
-                Some(Value::text(format!("{}.{}", i, j))),
-            );
+            let envelope = Envelope::command()
+                .node_uri("/remote_node")
+                .lane_uri("/remote_lane")
+                .body(format!("{}.{}", i, j))
+                .done();
             let tagged = TaggedEnvelope(addr, envelope);
             outgoing.send(tagged).await?;
         }
@@ -864,8 +909,12 @@ async fn read_causes_write_buffer_to_fill() {
 
     let generate_inputs = async move {
         for i in 0..n {
-            let envelope =
-                Envelope::make_command("/node", "/lane", Some(Value::text(i.to_string())));
+            let envelope = Envelope::command()
+                .node_uri("/node")
+                .lane_uri("/lane")
+                .body(i.to_string())
+                .done();
+
             let message = Ok(message_for(envelope));
             if input.send(message).await.is_err() {
                 break;

@@ -34,20 +34,19 @@ use pin_utils::pin_mut;
 use slab::Slab;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::convert::TryFrom;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::future::Future;
 use std::str::FromStr;
 use std::time::Duration;
 use swim_model::path::RelativePath;
-use swim_recon::parser::{parse_value, ParseError};
+use swim_recon::parser::{parse_recognize, ParseError, Span};
 use swim_utilities::errors::Recoverable;
 use swim_utilities::future::retryable::RetryStrategy;
 use swim_utilities::future::task::Spawner;
 use swim_utilities::routing::uri::{BadRelativeUri, RelativeUri};
 use swim_utilities::trigger;
-use swim_warp::envelope::{Envelope, EnvelopeHeader, EnvelopeParseErr, OutgoingHeader};
+use swim_warp::envelope::{Envelope, EnvelopeHeader};
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Instant};
 use tokio_stream::wrappers::ReceiverStream;
@@ -74,15 +73,6 @@ enum Completion {
     TimedOut,
     StoppedRemotely,
     StoppedLocally,
-}
-
-impl From<EnvelopeParseErr> for Completion {
-    fn from(err: EnvelopeParseErr) -> Self {
-        Completion::Failed(ConnectionError::Protocol(ProtocolError::new(
-            ProtocolErrorKind::Warp,
-            Some(err.to_string()),
-        )))
-    }
 }
 
 impl From<ParseError> for Completion {
@@ -204,7 +194,7 @@ where
                         }
                     }
                     Either::Right(Ok(SelectorResult::Read(msg))) => match msg {
-                        WsMessage::Text(msg) => match read_envelope(&msg) {
+                        WsMessage::Text(msg) => match parse_recognize(Span::new(msg.as_str())) {
                             Ok(envelope) => {
                                 let (done_tx, done_rx) = trigger::trigger();
 
@@ -239,8 +229,8 @@ where
                                     break Completion::Failed(err);
                                 }
                             }
-                            Err(c) => {
-                                break c;
+                            Err(err) => {
+                                break err.into();
                             }
                         },
                         message => {
@@ -291,10 +281,6 @@ where
             _ => ConnectionDropped::Closed,
         }
     }
-}
-
-fn read_envelope(msg: &str) -> Result<Envelope, Completion> {
-    Ok(Envelope::try_from(parse_value(msg)?)?)
 }
 
 /// Error type indicating a failure to route an incoming message.
@@ -411,57 +397,61 @@ async fn try_dispatch_envelope<R>(
 where
     R: Router,
 {
-    if envelope.header.is_response() {
-        let mut futures = vec![];
+    match envelope.discriminate_header() {
+        EnvelopeHeader::Response(_) => {
+            let mut futures = vec![];
 
-        for (idx, conn) in bidirectional_connections.iter_mut() {
-            let envelope = envelope.clone();
+            for (idx, conn) in bidirectional_connections.iter_mut() {
+                let envelope = envelope.clone();
 
-            futures.push(async move {
-                let result = conn.send_item(envelope).await;
-                (idx, result)
-            });
-        }
-
-        let results = join_all(futures).await;
-
-        for result in results {
-            if let (idx, Err(_)) = result {
-                bidirectional_connections.remove(idx);
+                futures.push(async move {
+                    let result = conn.send_item(envelope).await;
+                    (idx, result)
+                });
             }
-        }
 
-        Ok(())
-    } else if let Some(target) = envelope.header.relative_path().as_ref() {
-        let Route { sender, .. } = if let Some(route) = resolved.get_mut(target) {
-            if route.sender.is_closed() {
-                resolved.remove(target);
-                insert_new_route(router, resolved, target)
-                    .await
-                    .map_err(|err| (envelope.clone(), err))?
-            } else {
-                route
+            let results = join_all(futures).await;
+
+            for result in results {
+                if let (idx, Err(_)) = result {
+                    bidirectional_connections.remove(idx);
+                }
             }
-        } else {
-            insert_new_route(router, resolved, target)
-                .await
-                .map_err(|err| (envelope.clone(), err))?
-        };
-        if let Err(err) = sender.send_item(envelope).await {
-            if let Some(Route { on_drop, .. }) = resolved.remove(target) {
-                let reason = on_drop
-                    .await
-                    .map(|reason| (*reason).clone())
-                    .unwrap_or(ConnectionDropped::Unknown);
-                Err((err.0, DispatchError::Dropped(reason)))
-            } else {
-                unreachable!();
-            }
-        } else {
+
             Ok(())
         }
-    } else {
-        panic!("Authentication envelopes not yet supported.");
+        EnvelopeHeader::Request(target) => {
+            let Route { sender, .. } = if let Some(route) = resolved.get_mut(&target) {
+                if route.sender.is_closed() {
+                    resolved.remove(&target);
+                    insert_new_route(router, resolved, &target)
+                        .await
+                        .map_err(|err| (envelope.clone(), err))?
+                } else {
+                    route
+                }
+            } else {
+                insert_new_route(router, resolved, &target)
+                    .await
+                    .map_err(|err| (envelope.clone(), err))?
+            };
+            if let Err(err) = sender.send_item(envelope).await {
+                if let Some(Route { on_drop, .. }) = resolved.remove(&target) {
+                    let reason = on_drop
+                        .await
+                        .map(|reason| (*reason).clone())
+                        .unwrap_or(ConnectionDropped::Unknown);
+                    Err((err.0, DispatchError::Dropped(reason)))
+                } else {
+                    unreachable!();
+                }
+            } else {
+                Ok(())
+            }
+        }
+        _ => {
+            panic!("Authentication envelopes not yet supported.");
+        }
     }
 }
 
@@ -569,9 +559,13 @@ where
 
 //Get the target path only for link and sync messages (for creating the "not found" response).
 fn link_or_sync(env: Envelope) -> Option<RelativePath> {
-    match env.header {
-        EnvelopeHeader::OutgoingLink(OutgoingHeader::Link(_), path) => Some(path),
-        EnvelopeHeader::OutgoingLink(OutgoingHeader::Sync(_), path) => Some(path),
+    match env {
+        Envelope::Link {
+            node_uri, lane_uri, ..
+        }
+        | Envelope::Sync {
+            node_uri, lane_uri, ..
+        } => Some(RelativePath::new(node_uri, lane_uri)),
         _ => None,
     }
 }
