@@ -38,7 +38,42 @@ type SplitSocket<S, E> = (
     Receiver<S, <E as SplittableExtension>::SplitDecoder>,
 );
 
-/// A WebSocket stream.
+/// An upgraded WebSocket stream.
+///
+/// This is created after a connection has been upgraded to speak the WebSocket protocol by using
+/// the `accept`, `accept_with`, `subscribe` and `subscribe_with` functions or by using
+/// `WebSocket::from_upgraded` with an already upgraded stream.
+///
+/// # Example
+/// ```no_run
+/// # use ratchet_core::{subscribe, UpgradedClient, Error, Message, PayloadType, WebSocketConfig};
+/// # use tokio::net::TcpStream;
+/// # use bytes::BytesMut;
+///
+/// # #[tokio::main]
+/// # async fn main()-> Result<(), Error> {
+/// let stream = TcpStream::connect("127.0.0.1:9001").await?;
+/// let upgraded = subscribe(WebSocketConfig::default(), stream, "ws://127.0.0.1/hello").await?;
+/// let UpgradedClient { mut  websocket, .. } = upgraded;
+///
+/// let mut buf = BytesMut::new();
+///
+/// loop {
+///     match websocket.read(&mut buf).await? {
+///         Message::Text => {
+///             websocket.write(&mut buf, PayloadType::Text).await?;
+///             buf.clear();
+///         }
+///         Message::Binary => {
+///             websocket.write(&mut buf, PayloadType::Binary).await?;
+///             buf.clear();
+///         }
+///         Message::Ping | Message::Pong => {}
+///         Message::Close(_) => break Ok(()),
+///     }
+/// }
+/// # }
+/// ```
 #[derive(Debug)]
 pub struct WebSocket<S, E> {
     framed: FramedIo<S>,
