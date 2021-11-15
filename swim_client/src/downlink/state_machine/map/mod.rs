@@ -20,8 +20,8 @@ use crate::downlink::model::map::{MapAction, UntypedMapModification, ValMap, Vie
 use crate::downlink::state_machine::{Response, ResponseResult, SyncStateMachine};
 use crate::downlink::DownlinkRequest;
 use std::sync::Arc;
-use swim_common::model::schema::{Schema, StandardSchema};
-use swim_common::model::Value;
+use swim_model::Value;
+use swim_schema::schema::{Schema, StandardSchema};
 
 /// State machine for map downlinks.
 pub struct MapStateMachine {
@@ -228,14 +228,13 @@ fn process_action(
                 send_error(old, key, key_schema.clone());
                 Response::default()
             } else {
+                let prev = data_state.remove(&key);
                 let did_rem = if let Some(req) = old {
-                    let prev = data_state.remove(&key);
                     let did_remove = prev.is_some();
                     let _ = req.send_ok(prev);
                     did_remove
                 } else {
-                    let old = data_state.remove(&key);
-                    old.is_some()
+                    prev.is_some()
                 };
                 if did_rem {
                     let response = (

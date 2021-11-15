@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::fmt::{Display, Formatter};
-use swim_common::model::time::Timestamp;
+use swim_model::time::Timestamp;
 use swim_store::StoreError;
 
 #[derive(Debug)]

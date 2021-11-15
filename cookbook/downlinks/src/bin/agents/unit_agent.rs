@@ -16,7 +16,7 @@ use std::fmt::{Debug, Display};
 use std::sync::Arc;
 use stm::stm::Stm;
 use stm::transaction::atomically;
-use swim_common::warp::path::{Path, RelativePath};
+use swim_model::path::{Path, RelativePath};
 use swim_server::agent::command_lifecycle;
 use swim_server::agent::lane::channels::update::StmRetryStrategy;
 use swim_server::agent::lane::lifecycle::LaneLifecycle;

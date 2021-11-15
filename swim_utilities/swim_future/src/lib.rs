@@ -13,7 +13,9 @@
 // limitations under the License.
 
 mod combinators;
+pub mod item_sink;
 pub mod open_ended;
+pub mod request;
 pub mod retryable;
 pub mod task;
 

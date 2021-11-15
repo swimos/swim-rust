@@ -15,14 +15,13 @@
 use crate::downlink::DownlinkKind;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use swim_common::model::schema::StandardSchema;
-use swim_common::model::Value;
-use swim_common::request::request_future::RequestError;
-use swim_common::routing::error::ConnectionError;
-use swim_common::routing::error::RoutingError;
-use swim_common::sink::item;
-use swim_common::warp::path::Addressable;
+use swim_model::path::Addressable;
+use swim_model::Value;
+use swim_runtime::error::{ConnectionError, RoutingError};
+use swim_schema::schema::StandardSchema;
 use swim_utilities::errors::Recoverable;
+use swim_utilities::future::item_sink;
+use swim_utilities::future::request::request_future::RequestError;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
@@ -118,8 +117,8 @@ impl<T> From<mpsc::error::TrySendError<T>> for DownlinkError {
     }
 }
 
-impl From<item::SendError> for DownlinkError {
-    fn from(_: item::SendError) -> Self {
+impl<T> From<item_sink::SendError<T>> for DownlinkError {
+    fn from(_: item_sink::SendError<T>) -> Self {
         DownlinkError::DroppedChannel
     }
 }
@@ -174,8 +173,8 @@ impl<T> From<mpsc::error::SendError<T>> for DroppedError {
     }
 }
 
-impl From<swim_common::sink::item::SendError> for DroppedError {
-    fn from(_: swim_common::sink::item::SendError) -> Self {
+impl<T> From<swim_utilities::future::item_sink::SendError<T>> for DroppedError {
+    fn from(_: swim_utilities::future::item_sink::SendError<T>) -> Self {
         DroppedError
     }
 }

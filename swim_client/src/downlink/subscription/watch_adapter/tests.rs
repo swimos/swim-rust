@@ -18,8 +18,8 @@ use super::*;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_common::sink::item;
 use swim_utilities::algebra::non_zero_usize;
+use swim_utilities::future::item_sink;
 use tokio::time::timeout;
 
 const TIMEOUT: Duration = Duration::from_secs(30);
@@ -85,7 +85,7 @@ fn yield_after() -> NonZeroUsize {
 async fn single_pass_through() {
     let (tx, mut rx) = mpsc::channel(5);
     let watcher = KeyedWatch::new(
-        item::for_mpsc_sender(tx).map_err_into(),
+        item_sink::for_mpsc_sender(tx).map_err_into(),
         buffer_size(),
         buffer_size(),
         max_active_keys(),
@@ -109,7 +109,7 @@ async fn multiple_one_key() {
     let (tx, rx) = mpsc::channel(5);
 
     let watcher = KeyedWatch::new(
-        item::for_mpsc_sender(tx).map_err_into(),
+        item_sink::for_mpsc_sender(tx).map_err_into(),
         buffer_size(),
         buffer_size(),
         max_active_keys(),
@@ -141,7 +141,7 @@ async fn multiple_keys() {
     let (tx, rx) = mpsc::channel(5);
 
     let watcher = KeyedWatch::new(
-        item::for_mpsc_sender(tx).map_err_into(),
+        item_sink::for_mpsc_sender(tx).map_err_into(),
         buffer_size(),
         buffer_size(),
         max_active_keys(),
@@ -174,7 +174,7 @@ async fn multiple_keys_multiple_values() {
     let (tx, rx) = mpsc::channel(5);
 
     let watcher = KeyedWatch::new(
-        item::for_mpsc_sender(tx).map_err_into(),
+        item_sink::for_mpsc_sender(tx).map_err_into(),
         buffer_size(),
         buffer_size(),
         max_active_keys(),
@@ -206,7 +206,7 @@ async fn single_clear() {
     let (tx, mut rx) = mpsc::channel(5);
 
     let watcher = KeyedWatch::new(
-        item::for_mpsc_sender(tx).map_err_into(),
+        item_sink::for_mpsc_sender(tx).map_err_into(),
         buffer_size(),
         buffer_size(),
         max_active_keys(),
@@ -230,7 +230,7 @@ async fn single_take() {
     let (tx, mut rx) = mpsc::channel(5);
 
     let watcher = KeyedWatch::new(
-        item::for_mpsc_sender(tx).map_err_into(),
+        item_sink::for_mpsc_sender(tx).map_err_into(),
         buffer_size(),
         buffer_size(),
         max_active_keys(),
@@ -254,7 +254,7 @@ async fn single_skip() {
     let (tx, mut rx) = mpsc::channel(5);
 
     let watcher = KeyedWatch::new(
-        item::for_mpsc_sender(tx).map_err_into(),
+        item_sink::for_mpsc_sender(tx).map_err_into(),
         buffer_size(),
         buffer_size(),
         max_active_keys(),
@@ -278,7 +278,7 @@ async fn special_action_ordering() {
     let (tx, rx) = mpsc::channel(5);
 
     let watcher = KeyedWatch::new(
-        item::for_mpsc_sender(tx).map_err_into(),
+        item_sink::for_mpsc_sender(tx).map_err_into(),
         buffer_size(),
         buffer_size(),
         max_active_keys(),
@@ -317,7 +317,7 @@ async fn overflow_active_keys() {
     let (tx, rx) = mpsc::channel(5);
 
     let watcher = KeyedWatch::new(
-        item::for_mpsc_sender(tx).map_err_into(),
+        item_sink::for_mpsc_sender(tx).map_err_into(),
         buffer_size(),
         buffer_size(),
         max_active_keys(),

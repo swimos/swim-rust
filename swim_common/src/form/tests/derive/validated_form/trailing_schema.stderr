@@ -1,5 +1,0 @@
-error: Use schema operators for chained schemas
-  --> $DIR/trailing_schema.rs:21:38
-   |
-21 |         #[form(schema(num_items = 2, num_attrs = 3))]
-   |                                      ^^^^^^^^^^^^^

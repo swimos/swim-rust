@@ -20,7 +20,7 @@ mod declarive_macro_agent;
 mod derive;
 mod reporting_agent;
 mod reporting_macro_agent;
-pub(crate) mod test_clock;
+pub mod test_clock;
 
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{
@@ -52,16 +52,17 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::future::Future;
 use std::sync::Arc;
-use swim_client::configuration::DownlinkConnectionsConfig;
+use swim_async_runtime::task;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::ClientContext;
 use swim_client::router::ClientRouterFactory;
-use swim_common::routing::RoutingAddr;
-use swim_common::warp::path::Path;
-use swim_runtime::task;
+use swim_model::path::Path;
+use swim_runtime::configuration::DownlinkConnectionsConfig;
+use swim_runtime::routing::RoutingAddr;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::sync::circular_buffer;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
 use swim_utilities::trigger::Receiver;
@@ -69,15 +70,12 @@ use tokio::sync::{mpsc, Mutex};
 use tokio::time::{timeout, Duration};
 use tokio_stream::wrappers::ReceiverStream;
 
-mod stub_router {
+pub mod stub_router {
     use futures::future::BoxFuture;
     use futures::FutureExt;
     use std::sync::Arc;
-    use swim_common::routing::error::ResolutionError;
-    use swim_common::routing::error::RouterError;
-    use swim_common::routing::{
-        ConnectionDropped, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
-    };
+    use swim_runtime::error::{ConnectionDropped, ResolutionError, RouterError};
+    use swim_runtime::routing::{Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender};
     use swim_utilities::routing::uri::RelativeUri;
     use swim_utilities::trigger::promise;
     use tokio::sync::mpsc;
@@ -92,7 +90,7 @@ mod stub_router {
     }
 
     impl SingleChannelRouter {
-        pub(crate) fn new(router_addr: RoutingAddr) -> Self {
+        pub fn new(router_addr: RoutingAddr) -> Self {
             let (tx, rx) = promise::promise();
             let (env_tx, mut env_rx) = mpsc::channel(16);
             tokio::spawn(async move { while let Some(_) = env_rx.recv().await {} });
@@ -656,17 +654,21 @@ async fn action_lane_events_task_termination() {
 #[tokio::test]
 async fn command_lane_events_task() {
     let (tx_lane, _rx_lane) = mpsc::channel(5);
-    let (tx, rx) = mpsc::channel(5);
+    let (commander_tx, commander_rx) = mpsc::channel(5);
+    let (commands_tx, _commands_rx) = circular_buffer::channel(non_zero_usize!(8));
     let (_stop, stop_sig) = trigger::trigger();
 
     let lifecycle: TestLifecycle<CommandLane<String>> = TestLifecycle::default();
 
-    let tasks = Box::new(CommandLifecycleTasks(LifecycleTasks {
-        name: "lane".to_string(),
-        lifecycle: lifecycle.clone(),
-        event_stream: ReceiverStream::new(rx),
-        projection: proj(),
-    }));
+    let tasks = Box::new(CommandLifecycleTasks(
+        LifecycleTasks {
+            name: "lane".to_string(),
+            lifecycle: lifecycle.clone(),
+            event_stream: ReceiverStream::new(commander_rx),
+            projection: proj(),
+        },
+        Some(commands_tx),
+    ));
 
     assert_eq!(tasks.kind(), LaneKind::Command);
 
@@ -690,9 +692,9 @@ async fn command_lane_events_task() {
 
     let send = async move {
         for x in clones.into_iter() {
-            let _ = tx.send(Command::forget(x)).await;
+            let _ = commander_tx.send(Command::forget(x)).await;
         }
-        drop(tx);
+        drop(commander_tx);
     };
 
     join(events, send).await;
@@ -710,19 +712,23 @@ async fn command_lane_events_task() {
 
 #[tokio::test]
 async fn command_lane_events_task_terminates() {
-    let (tx, rx) = mpsc::channel(5);
+    let (commander_tx, commander_rx) = mpsc::channel(5);
+    let (commands_tx, _commands_rx) = circular_buffer::channel(non_zero_usize!(8));
     let (stop, stop_sig) = trigger::trigger();
 
     let lifecycle: TestLifecycle<CommandLane<String>> = TestLifecycle::default();
 
-    let tasks = Box::new(CommandLifecycleTasks(LifecycleTasks {
-        name: "lane".to_string(),
-        lifecycle: lifecycle.clone(),
-        event_stream: ReceiverStream::new(rx),
-        projection: proj(),
-    }));
+    let tasks = Box::new(CommandLifecycleTasks(
+        LifecycleTasks {
+            name: "lane".to_string(),
+            lifecycle: lifecycle.clone(),
+            event_stream: ReceiverStream::new(commander_rx),
+            projection: proj(),
+        },
+        Some(commands_tx),
+    ));
 
-    let lane = CommandLane::new(tx);
+    let lane = CommandLane::new(commander_tx);
 
     let agent = Arc::new(TestAgent {
         name: "agent",
@@ -812,7 +818,7 @@ pub async fn run_agent_test<Agent, Config, Lifecycle>(
         MockNodeStore::mock(),
     );
 
-    let agent_task = swim_runtime::task::spawn(agent_proc);
+    let agent_task = swim_async_runtime::task::spawn(agent_proc);
 
     async fn expect(rx: &mut mpsc::Receiver<ReportingAgentEvent>, expected: ReportingAgentEvent) {
         let result = rx.recv().await;

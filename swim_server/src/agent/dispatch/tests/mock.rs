@@ -31,21 +31,19 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::sync::Arc;
 use stm::transaction::TransactionError;
-use swim_common::model::Value;
-use swim_common::routing::error::ResolutionError;
-use swim_common::routing::error::RouterError;
-use swim_common::routing::{
-    ConnectionDropped, Route, Router, RoutingAddr, TaggedClientEnvelope, TaggedEnvelope,
-    TaggedSender,
-};
-use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
-use swim_common::warp::path::RelativePath;
 use swim_metrics::config::MetricAggregatorConfig;
 use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
+use swim_model::path::RelativePath;
+use swim_model::Value;
+use swim_runtime::error::{ConnectionDropped, ResolutionError, RouterError};
+use swim_runtime::routing::{
+    Route, Router, RoutingAddr, TaggedClientEnvelope, TaggedEnvelope, TaggedSender,
+};
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
+use swim_warp::envelope::{Envelope, RequestEnvelope};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::Instant;
@@ -237,22 +235,15 @@ impl LaneIo<MockExecutionContext> for MockLane {
             let err = loop {
                 let next = envelopes.recv().await;
                 if let Some(env) = next {
-                    let TaggedClientEnvelope(
-                        addr,
-                        OutgoingLinkMessage {
-                            header,
-                            path: _,
-                            body,
-                        },
-                    ) = env;
+                    let TaggedClientEnvelope(addr, req_envelope) = env;
 
-                    if body == Some(Value::text(POISON_PILL)) {
+                    if req_envelope.body() == Some(&Value::text(POISON_PILL)) {
                         break Some(LaneIoError::for_update_err(
-                            route.clone(),
+                            req_envelope.path().clone(),
                             UpdateError::FailedTransaction(TransactionError::InvalidRetry),
                         ));
                     } else {
-                        let response = echo(&route, header, body);
+                        let response = echo(req_envelope);
                         let sender = match senders.entry(addr) {
                             Entry::Occupied(entry) => entry.into_mut(),
                             Entry::Vacant(entry) => {
@@ -301,11 +292,28 @@ impl LaneIo<MockExecutionContext> for MockLane {
     }
 }
 
-pub fn echo(route: &RelativePath, header: OutgoingHeader, body: Option<Value>) -> Envelope {
-    match header {
-        OutgoingHeader::Link(_) => Envelope::linked(&route.node, &route.lane),
-        OutgoingHeader::Sync(_) => Envelope::synced(&route.node, &route.lane),
-        OutgoingHeader::Unlink => Envelope::unlinked(&route.node, &route.lane),
-        OutgoingHeader::Command => Envelope::make_event(&route.node, &route.lane, body),
+pub fn echo(env: RequestEnvelope) -> Envelope {
+    match env {
+        RequestEnvelope::Link(RelativePath { node, lane }, params, body) => Envelope::linked()
+            .node_uri(node)
+            .lane_uri(lane)
+            .link_params(params)
+            .with_body(body)
+            .done(),
+        RequestEnvelope::Sync(RelativePath { node, lane }, _, body) => Envelope::synced()
+            .node_uri(node)
+            .lane_uri(lane)
+            .with_body(body)
+            .done(),
+        RequestEnvelope::Unlink(RelativePath { node, lane }, body) => Envelope::unlinked()
+            .node_uri(node)
+            .lane_uri(lane)
+            .with_body(body)
+            .done(),
+        RequestEnvelope::Command(RelativePath { node, lane }, body) => Envelope::event()
+            .node_uri(node)
+            .lane_uri(lane)
+            .with_body(body)
+            .done(),
     }
 }

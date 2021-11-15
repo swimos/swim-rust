@@ -132,7 +132,7 @@ mod tests {
     use crate::agent::lane::channels::update::UpdateError;
     use crate::agent::AttachError;
     use std::error::Error;
-    use swim_common::warp::path::RelativePath;
+    use swim_model::path::RelativePath;
 
     #[test]
     fn display_dispatcher_error() {

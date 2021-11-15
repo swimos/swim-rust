@@ -16,7 +16,7 @@ use futures::future::BoxFuture;
 use std::any::Any;
 use std::collections::HashSet;
 use std::sync::Arc;
-use swim_common::routing::error::NoAgentAtRoute;
+use swim_runtime::error::NoAgentAtRoute;
 use swim_utilities::routing::route_pattern::RoutePattern;
 use swim_utilities::routing::uri::RelativeUri;
 

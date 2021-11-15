@@ -21,8 +21,8 @@ use futures::{Stream, StreamExt};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::fmt::Debug;
-use swim_common::form::Form;
-use swim_common::model::time::Timestamp;
+use swim_form::Form;
+use swim_model::time::Timestamp;
 use swim_store::StoreError;
 
 /// Map lane store IO task.

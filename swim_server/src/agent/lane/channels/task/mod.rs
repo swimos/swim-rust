@@ -31,12 +31,11 @@ use crate::agent::lane::channels::{
     AgentExecutionConfig, InputMessage, LaneMessageHandler, OutputMessage, TaggedAction,
 };
 use crate::agent::lane::model::action::ActionLane;
-use crate::agent::lane::model::command::CommandLane;
 use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneEvent};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::model::DeferredSubscription;
-use crate::agent::Eff;
+use crate::agent::{CommandLaneIo, Eff};
 use either::Either;
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::{select, Stream, StreamExt};
@@ -48,15 +47,15 @@ use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use stm::transaction::RetryManager;
-use swim_common::form::structural::read::ReadError;
-use swim_common::form::Form;
-use swim_common::model::Value;
-use swim_common::routing::{RoutingAddr, TaggedClientEnvelope};
-use swim_common::warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
-use swim_common::warp::path::RelativePath;
+use swim_form::structural::read::ReadError;
+use swim_form::Form;
 use swim_metrics::uplink::UplinkObserver;
+use swim_model::path::RelativePath;
+use swim_model::Value;
+use swim_runtime::routing::{RoutingAddr, TaggedClientEnvelope};
 use swim_utilities::errors::Recoverable;
 use swim_utilities::trigger;
+use swim_warp::envelope::RequestEnvelope;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
@@ -188,7 +187,7 @@ const UPLINK_FAILED: &str = "An uplink failed with a non-fatal error.";
 const UPLINK_FATAL: &str = "An uplink failed with a fatal error.";
 const TOO_MANY_FAILURES: &str = "Terminating after too many failed uplinks.";
 
-/// Run the [`swim_common::warp::envelope::Envelope`] IO for a lane, updating the state of the lane
+/// Run the [`swim_warp::envelope::Envelope`] IO for a lane, updating the state of the lane
 /// and creating uplinks to remote subscribers.
 ///
 /// #Arguments
@@ -278,13 +277,14 @@ where
 
             match envelope_or_err {
                 Some(Either::Left(envelope)) => {
-                    let TaggedClientEnvelope(addr, OutgoingLinkMessage { header, body, .. }) =
-                        envelope;
-                    let action = match header {
-                        OutgoingHeader::Link(_) => Either::Left(UplinkAction::Link),
-                        OutgoingHeader::Sync(_) => Either::Left(UplinkAction::Sync),
-                        OutgoingHeader::Unlink => Either::Left(UplinkAction::Unlink),
-                        OutgoingHeader::Command => Either::Right(body.unwrap_or(Value::Extant)),
+                    let TaggedClientEnvelope(addr, env) = envelope;
+                    let action = match env {
+                        RequestEnvelope::Link(..) => Either::Left(UplinkAction::Link),
+                        RequestEnvelope::Sync(..) => Either::Left(UplinkAction::Sync),
+                        RequestEnvelope::Unlink(..) => Either::Left(UplinkAction::Unlink),
+                        RequestEnvelope::Command(_, body) => {
+                            Either::Right(body.unwrap_or(Value::Extant))
+                        }
                     };
                     match action {
                         Either::Left(uplink_action) => {
@@ -492,7 +492,7 @@ where
     combine_results(route, upd_result.err(), uplink_fatal, uplink_errs)
 }
 
-/// Run the [`swim_common::warp::envelope::Envelope`] IO for a command lane.
+/// Run the [`swim_warp::envelope::Envelope`] IO for a command lane.
 ///
 /// #Arguments
 /// * `lane` - The command lane.
@@ -502,28 +502,31 @@ where
 /// routing.
 /// * `route` - The route to this lane for outgoing envelope labelling.
 pub async fn run_command_lane_io<T>(
-    lane: CommandLane<T>,
+    lane_io: CommandLaneIo<T>,
     envelopes: impl Stream<Item = TaggedClientEnvelope>,
     config: AgentExecutionConfig,
     context: impl AgentExecutionContext,
     route: RelativePath,
 ) -> Result<Vec<UplinkErrorReport>, LaneIoError>
 where
-    T: Send + Sync + Form + Debug + 'static,
+    T: Clone + Send + Sync + Form + Debug + 'static,
 {
     let span = span!(Level::INFO, LANE_IO_TASK, ?route);
     let _enter = span.enter();
 
+    let CommandLaneIo {
+        commander,
+        commands_rx,
+    } = lane_io;
+
     let observer = context.metrics().uplink_observer_for_path(route.clone());
     let event_observer = observer.clone();
 
-    let (feedback_tx, feedback_rx) = mpsc::channel(config.feedback_buffer.get());
-    let feedback_rx = ReceiverStream::new(feedback_rx)
-        .map(|(_, message)| AddressedUplinkMessage::Broadcast(message))
+    let feedback_rx = commands_rx
+        .map(AddressedUplinkMessage::Broadcast)
         .inspect(|_| event_observer.on_event(true));
 
-    let updater =
-        CommandLaneUpdateTask::new(lane.clone(), Some(feedback_tx), config.cleanup_timeout);
+    let updater = CommandLaneUpdateTask::new(commander);
     let uplinks = StatelessUplinks::new(
         feedback_rx,
         route.clone(),
@@ -537,7 +540,7 @@ where
     .await
 }
 
-/// Run the [`swim_common::warp::envelope::Envelope`] IO for an action lane. This is different to
+/// Run the [`swim_warp::envelope::Envelope`] IO for an action lane. This is different to
 /// the standard `run_lane_io` as the update and uplink components of an action lane are interleaved
 /// and different uplinks will receive entirely different messages.
 ///
@@ -809,18 +812,17 @@ where
 
         match envelope_or_err {
             Some(Either::Left(TaggedClientEnvelope(addr, envelope))) => {
-                let OutgoingLinkMessage { header, body, .. } = envelope;
-                let sent = match header {
-                    OutgoingHeader::Link(_) => {
+                let sent = match envelope {
+                    RequestEnvelope::Link(..) => {
                         send_action(&mut actions, &route, addr, UplinkAction::Link).await
                     }
-                    OutgoingHeader::Sync(_) => {
+                    RequestEnvelope::Sync(..) => {
                         send_action(&mut actions, &route, addr, UplinkAction::Sync).await
                     }
-                    OutgoingHeader::Unlink => {
+                    RequestEnvelope::Unlink(..) => {
                         send_action(&mut actions, &route, addr, UplinkAction::Unlink).await
                     }
-                    OutgoingHeader::Command => match body {
+                    RequestEnvelope::Command(_, body) => match body {
                         Some(value) => {
                             observer.on_command(true);
 

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::fmt::{Debug, Display};
-use swim_common::model::{Item, Value};
+use swim_model::{Item, Value};
 use swim_server::agent::command_lifecycle;
 use swim_server::agent::lane::model::command::CommandLane;
 use swim_server::agent::AgentContext;

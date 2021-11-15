@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::configuration::{BackpressureMode, DownlinksConfig};
 use crate::connections::{ConnectionPool, ConnectionType};
 use crate::connections::{ConnectionReceiver, ConnectionSender, SwimConnPool};
 use crate::downlink::error::SubscriptionError;
@@ -41,20 +40,22 @@ use pin_utils::pin_mut;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Weak};
-use swim_common::form::{Form, ValueSchema};
-use swim_common::model::schema::StandardSchema;
-use swim_common::model::Value;
-use swim_common::request::Request;
-use swim_common::routing::error::RoutingError;
-use swim_common::routing::CloseReceiver;
-use swim_common::sink::item::either::SplitSink;
-use swim_common::sink::item::ItemSender;
-use swim_common::warp::envelope::Envelope;
-use swim_common::warp::path::Addressable;
+use swim_form::Form;
+use swim_model::path::Addressable;
+use swim_model::Value;
+use swim_runtime::backpressure;
+use swim_runtime::configuration::{BackpressureMode, DownlinksConfig};
+use swim_runtime::error::RoutingError;
+use swim_runtime::routing::CloseReceiver;
+use swim_schema::schema::StandardSchema;
+use swim_schema::ValueSchema;
+use swim_utilities::future::item_sink::either::SplitSink;
+use swim_utilities::future::item_sink::ItemSender;
+use swim_utilities::future::request::Request;
 use swim_utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture};
 use swim_utilities::sync::circular_buffer;
 use swim_utilities::trigger::promise::{self, PromiseError};
-use swim_warp::backpressure;
+use swim_warp::envelope::Envelope;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{error, info, instrument, trace_span};
@@ -560,9 +561,9 @@ impl<Path: Addressable> DownlinksTask<Path> {
 
         let updates = ReceiverStream::new(incoming).map(map_router_events);
 
-        let sink_path = path.clone();
+        let sink_path = path.relative_path();
         let cmd_sink = sink.map_err_into().comap(move |cmd: Command<SharedValue>| {
-            envelopes::value_envelope(&sink_path, cmd).into()
+            envelopes::value_envelope(sink_path.clone(), cmd).into()
         });
 
         let (raw_dl, rec) = match config.back_pressure {
@@ -579,7 +580,7 @@ impl<Path: Addressable> DownlinksTask<Path> {
                 let release_task =
                     backpressure::release_pressure(release_rx, cmd_sink.clone(), yield_after);
                 //TODO Use a Spawner instead.
-                swim_runtime::task::spawn(release_task);
+                swim_async_runtime::task::spawn(release_task);
 
                 let pressure_release = release_tx.map_err_into();
 
@@ -628,12 +629,12 @@ impl<Path: Addressable> DownlinksTask<Path> {
             RouterEvent::Stopping => Err(RoutingError::RouterDropped),
         });
 
-        let sink_path = path.clone();
+        let sink_path = path.relative_path();
 
         let (raw_dl, rec) = match config.back_pressure {
             BackpressureMode::Propagate => {
                 let cmd_sink = sink.comap(move |cmd: Command<UntypedMapModification<Value>>| {
-                    envelopes::map_envelope(&sink_path, cmd).into()
+                    envelopes::map_envelope(sink_path.clone(), cmd).into()
                 });
                 map_downlink(
                     Some(key_schema),
@@ -652,13 +653,13 @@ impl<Path: Addressable> DownlinksTask<Path> {
                 let sink_path_duplicate = sink_path.clone();
                 let direct_sink = sink.clone().map_err_into().comap(
                     move |cmd: Command<UntypedMapModification<Value>>| {
-                        envelopes::map_envelope(&sink_path_duplicate, cmd).into()
+                        envelopes::map_envelope(sink_path_duplicate.clone(), cmd).into()
                     },
                 );
                 let action_sink =
                     sink.map_err_into()
                         .comap(move |act: UntypedMapModification<Value>| {
-                            envelopes::map_envelope(&sink_path, Command::Action(act)).into()
+                            envelopes::map_envelope(sink_path.clone(), Command::Action(act)).into()
                         });
 
                 let pressure_release = KeyedWatch::new(
@@ -708,11 +709,11 @@ impl<Path: Addressable> DownlinksTask<Path> {
         let sink = self.sink_for(path.clone()).await?;
 
         let config = self.config.config_for(&path);
-        let sink_path = path.clone();
+        let sink_path = path.relative_path();
 
-        let cmd_sink = sink
-            .map_err_into()
-            .comap(move |cmd: Command<Value>| envelopes::command_envelope(&sink_path, cmd).into());
+        let cmd_sink = sink.map_err_into().comap(move |cmd: Command<Value>| {
+            envelopes::command_envelope(sink_path.clone(), cmd).into()
+        });
 
         let dl = match config.back_pressure {
             BackpressureMode::Propagate => {
@@ -729,7 +730,7 @@ impl<Path: Addressable> DownlinksTask<Path> {
                 let release_task =
                     backpressure::release_pressure(release_rx, cmd_sink.clone(), yield_after);
                 //TODO Use a Spawner instead.
-                swim_runtime::task::spawn(release_task);
+                swim_async_runtime::task::spawn(release_task);
                 let pressure_release = release_tx.map_err_into();
                 let either_sink =
                     SplitSink::new(cmd_sink, pressure_release).comap(move |cmd: Command<Value>| {
@@ -770,10 +771,10 @@ impl<Path: Addressable> DownlinksTask<Path> {
 
         let config = self.config.config_for(&path);
 
-        let path_cpy = path.clone();
+        let path_cpy = path.relative_path();
         let cmd_sink = sink
             .map_err_into()
-            .comap(move |cmd: Command<()>| envelopes::dummy_envelope(&path_cpy, cmd).into());
+            .comap(move |cmd: Command<()>| envelopes::dummy_envelope(path_cpy.clone(), cmd).into());
 
         let (raw_dl, _) = event_downlink(
             schema.clone(),

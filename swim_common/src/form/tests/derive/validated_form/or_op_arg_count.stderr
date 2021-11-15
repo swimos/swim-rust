@@ -1,5 +1,0 @@
-error: At least two arguments must be provided to an OR operator
-  --> $DIR/or_op_arg_count.rs:20:23
-   |
-20 |         #[form(schema(or(num_items = 5)))]
-   |                       ^^^^^^^^^^^^^^^^^

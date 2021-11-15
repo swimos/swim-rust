@@ -12,26 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::connections::ConnectionChannel;
-use crate::connections::ConnectionRegistrator;
 use crate::connections::ConnectionType;
+use crate::connections::{ConnectionChannel, ConnectionRegistrator};
 use futures::future::BoxFuture;
-use futures::FutureExt;
 use std::collections::HashMap;
+
+use futures::FutureExt;
 use std::convert::TryFrom;
-use swim_common::request::Request;
-use swim_common::routing::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
-use swim_common::routing::remote::table::SchemeHostPort;
-use swim_common::routing::remote::BadUrl;
-use swim_common::routing::remote::{RawRoute, RemoteRoutingRequest};
-use swim_common::routing::{BidirectionalRoute, BidirectionalRouter};
-use swim_common::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
-use swim_common::warp::envelope::IncomingLinkMessage;
-use swim_common::warp::path::{AbsolutePath, Addressable};
 use swim_utilities::routing::uri::RelativeUri;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
+
 use url::Url;
+
+use swim_model::path::{AbsolutePath, Addressable};
+
+use swim_warp::envelope::ResponseEnvelope;
+
+use swim_runtime::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
+use swim_runtime::remote::table::SchemeHostPort;
+use swim_runtime::remote::{BadUrl, RawRoute, RemoteRoutingRequest};
+use swim_runtime::routing::{
+    BidirectionalRoute, BidirectionalRouter, Route, Router, RouterFactory, RoutingAddr,
+    TaggedSender,
+};
+
+use swim_utilities::future::request::Request;
 
 #[cfg(test)]
 pub(crate) mod tests;
@@ -360,7 +366,7 @@ pub enum DownlinkRoutingRequest<Path: Addressable> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum RouterEvent {
     // Incoming message from a remote host.
-    Message(IncomingLinkMessage),
+    Message(ResponseEnvelope),
     // There was an error in the connection. If a retry strategy exists this will trigger it.
     ConnectionClosed,
     /// The remote host is unreachable. This will not trigger the retry system.

@@ -39,12 +39,12 @@ use std::sync::Arc;
 use std::time::Duration;
 use stm::stm::Stm;
 use stm::transaction::atomically;
-use swim_client::configuration::DownlinkConnectionsConfig;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::ClientContext;
 use swim_client::router::ClientRouterFactory;
-use swim_common::routing::RoutingAddr;
+use swim_runtime::configuration::DownlinkConnectionsConfig;
+use swim_runtime::routing::RoutingAddr;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger::promise;
@@ -578,7 +578,7 @@ async fn agent_loop() {
         MockNodeStore::mock(),
     );
 
-    let agent_task = swim_runtime::task::spawn(agent_proc);
+    let agent_task = swim_async_runtime::task::spawn(agent_proc);
 
     async fn expect(rx: &mut mpsc::Receiver<DataAgentEvent>, expected: DataAgentEvent) {
         let result = rx.recv().await;

@@ -35,27 +35,23 @@ use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_common::form::structural::read::ReadError;
-use swim_common::form::Form;
-use swim_common::model::Value;
-use swim_common::routing::error::ResolutionError;
-use swim_common::routing::error::RouterError;
-use swim_common::routing::error::RoutingError;
-use swim_common::routing::error::SendError;
-use swim_common::routing::{
-    ConnectionDropped, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
-};
-use swim_common::sink::item::ItemSink;
-use swim_common::warp::envelope::Envelope;
-use swim_common::warp::path::RelativePath;
+use swim_form::structural::read::ReadError;
+use swim_form::Form;
 use swim_metrics::config::MetricAggregatorConfig;
 use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
+use swim_model::path::RelativePath;
+use swim_model::Value;
+use swim_runtime::error::{ConnectionDropped, ResolutionError, RouterError};
+use swim_runtime::routing::{Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender};
 use swim_utilities::algebra::non_zero_usize;
+use swim_utilities::future::item_sink::ItemSink;
+use swim_utilities::future::item_sink::SendError;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::sync::topic;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
+use swim_warp::envelope::Envelope;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Barrier};
 use tokio::time::Instant;
@@ -86,7 +82,7 @@ struct TestSender {
 }
 
 impl<'a> ItemSink<'a, Envelope> for TestSender {
-    type Error = SendError;
+    type Error = SendError<Envelope>;
     type SendFuture = BoxFuture<'a, Result<(), Self::Error>>;
 
     fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
@@ -94,7 +90,7 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
         async move {
             self.inner.send(tagged).await.map_err(|err| {
                 let TaggedEnvelope(_, envelope) = err.0;
-                SendError::new(RoutingError::RouterDropped, envelope)
+                SendError(envelope)
             })
         }
         .boxed()
@@ -433,14 +429,23 @@ async fn link_to_lane() {
 
         assert_eq!(
             outputs.take_router_events(1).await,
-            vec![TaggedEnvelope(addr, Envelope::linked("node", "lane"))]
+            vec![TaggedEnvelope(
+                addr,
+                Envelope::linked().node_uri("node").lane_uri("lane").done()
+            )]
         );
 
         inputs.drop_action_tx();
 
         assert_eq!(
             outputs.take_router_events(1).await,
-            vec![TaggedEnvelope(addr, Envelope::unlinked("node", "lane"))]
+            vec![TaggedEnvelope(
+                addr,
+                Envelope::unlinked()
+                    .node_uri("node")
+                    .lane_uri("lane")
+                    .done()
+            )]
         );
     };
 
@@ -459,7 +464,13 @@ async fn immediate_unlink() {
 
         assert_eq!(
             outputs.take_router_events(1).await,
-            vec![TaggedEnvelope(addr, Envelope::unlinked("node", "lane"))]
+            vec![TaggedEnvelope(
+                addr,
+                Envelope::unlinked()
+                    .node_uri("node")
+                    .lane_uri("lane")
+                    .done()
+            )]
         );
     };
 
@@ -468,7 +479,11 @@ async fn immediate_unlink() {
 }
 
 fn event_envelope(n: i32) -> Envelope {
-    Envelope::make_event("node", "lane", Some(Value::Int32Value(n)))
+    Envelope::event()
+        .node_uri("node")
+        .lane_uri("lane")
+        .body(n)
+        .done()
 }
 
 #[tokio::test]
@@ -481,7 +496,10 @@ async fn receive_event() {
         inputs.action(addr, UplinkAction::Link).await;
         assert_eq!(
             outputs.take_router_events(1).await,
-            vec![TaggedEnvelope(addr, Envelope::linked("node", "lane"))]
+            vec![TaggedEnvelope(
+                addr,
+                Envelope::linked().node_uri("node").lane_uri("lane").done()
+            )]
         );
         inputs.generate_event(13).await;
         assert_eq!(
@@ -493,7 +511,13 @@ async fn receive_event() {
 
         assert_eq!(
             outputs.take_router_events(1).await,
-            vec![TaggedEnvelope(addr, Envelope::unlinked("node", "lane"))]
+            vec![TaggedEnvelope(
+                addr,
+                Envelope::unlinked()
+                    .node_uri("node")
+                    .lane_uri("lane")
+                    .done()
+            )]
         );
     };
 
@@ -513,9 +537,15 @@ async fn sync_with_lane() {
         assert_eq!(
             outputs.take_router_events(3).await,
             vec![
-                TaggedEnvelope(addr, Envelope::linked("node", "lane")),
+                TaggedEnvelope(
+                    addr,
+                    Envelope::linked().node_uri("node").lane_uri("lane").done()
+                ),
                 TaggedEnvelope(addr, event_envelope(INIT)),
-                TaggedEnvelope(addr, Envelope::synced("node", "lane"))
+                TaggedEnvelope(
+                    addr,
+                    Envelope::synced().node_uri("node").lane_uri("lane").done()
+                )
             ]
         );
 
@@ -523,7 +553,13 @@ async fn sync_with_lane() {
 
         assert_eq!(
             outputs.take_router_events(1).await,
-            vec![TaggedEnvelope(addr, Envelope::unlinked("node", "lane"))]
+            vec![TaggedEnvelope(
+                addr,
+                Envelope::unlinked()
+                    .node_uri("node")
+                    .lane_uri("lane")
+                    .done()
+            )]
         );
     };
 
@@ -543,9 +579,15 @@ async fn receive_event_after_sync() {
         assert_eq!(
             outputs.take_router_events(3).await,
             vec![
-                TaggedEnvelope(addr, Envelope::linked("node", "lane")),
+                TaggedEnvelope(
+                    addr,
+                    Envelope::linked().node_uri("node").lane_uri("lane").done()
+                ),
                 TaggedEnvelope(addr, event_envelope(INIT)),
-                TaggedEnvelope(addr, Envelope::synced("node", "lane"))
+                TaggedEnvelope(
+                    addr,
+                    Envelope::synced().node_uri("node").lane_uri("lane").done()
+                )
             ]
         );
 
@@ -559,7 +601,13 @@ async fn receive_event_after_sync() {
 
         assert_eq!(
             outputs.take_router_events(1).await,
-            vec![TaggedEnvelope(addr, Envelope::unlinked("node", "lane"))]
+            vec![TaggedEnvelope(
+                addr,
+                Envelope::unlinked()
+                    .node_uri("node")
+                    .lane_uri("lane")
+                    .done()
+            )]
         );
     };
 
@@ -577,26 +625,44 @@ async fn relink_for_same_addr() {
         inputs.action(addr, UplinkAction::Link).await;
         assert_eq!(
             outputs.take_router_events(1).await,
-            vec![TaggedEnvelope(addr, Envelope::linked("node", "lane"))]
+            vec![TaggedEnvelope(
+                addr,
+                Envelope::linked().node_uri("node").lane_uri("lane").done()
+            )]
         );
 
         inputs.action(addr, UplinkAction::Unlink).await;
         assert_eq!(
             outputs.take_router_events(1).await,
-            vec![TaggedEnvelope(addr, Envelope::unlinked("node", "lane"))]
+            vec![TaggedEnvelope(
+                addr,
+                Envelope::unlinked()
+                    .node_uri("node")
+                    .lane_uri("lane")
+                    .done()
+            )]
         );
 
         inputs.action(addr, UplinkAction::Link).await;
         assert_eq!(
             outputs.take_router_events(1).await,
-            vec![TaggedEnvelope(addr, Envelope::linked("node", "lane"))]
+            vec![TaggedEnvelope(
+                addr,
+                Envelope::linked().node_uri("node").lane_uri("lane").done()
+            )]
         );
 
         inputs.drop_action_tx();
 
         assert_eq!(
             outputs.take_router_events(1).await,
-            vec![TaggedEnvelope(addr, Envelope::unlinked("node", "lane"))]
+            vec![TaggedEnvelope(
+                addr,
+                Envelope::unlinked()
+                    .node_uri("node")
+                    .lane_uri("lane")
+                    .done()
+            )]
         );
     };
 
@@ -636,9 +702,9 @@ async fn sync_lane_twice() {
         assert_eq!(
             outputs1.take_router_events(3).await,
             vec![
-                Envelope::linked("node", "lane"),
+                Envelope::linked().node_uri("node").lane_uri("lane").done(),
                 event_envelope(INIT),
-                Envelope::synced("node", "lane")
+                Envelope::synced().node_uri("node").lane_uri("lane").done()
             ]
         );
 
@@ -646,7 +712,10 @@ async fn sync_lane_twice() {
 
         assert_eq!(
             outputs1.take_router_events(1).await,
-            vec![Envelope::unlinked("node", "lane")]
+            vec![Envelope::unlinked()
+                .node_uri("node")
+                .lane_uri("lane")
+                .done()]
         );
     };
 
@@ -654,9 +723,9 @@ async fn sync_lane_twice() {
         assert_eq!(
             outputs2.take_router_events(3).await,
             vec![
-                Envelope::linked("node", "lane"),
+                Envelope::linked().node_uri("node").lane_uri("lane").done(),
                 event_envelope(INIT),
-                Envelope::synced("node", "lane")
+                Envelope::synced().node_uri("node").lane_uri("lane").done()
             ]
         );
 
@@ -664,7 +733,10 @@ async fn sync_lane_twice() {
 
         assert_eq!(
             outputs2.take_router_events(1).await,
-            vec![Envelope::unlinked("node", "lane")]
+            vec![Envelope::unlinked()
+                .node_uri("node")
+                .lane_uri("lane")
+                .done()]
         );
     };
 
@@ -687,12 +759,21 @@ async fn uplink_failure() {
         inputs.action(addr, UplinkAction::Link).await;
         assert_eq!(
             outputs.take_router_events(1).await,
-            vec![TaggedEnvelope(addr, Envelope::linked("node", "lane"))]
+            vec![TaggedEnvelope(
+                addr,
+                Envelope::linked().node_uri("node").lane_uri("lane").done()
+            )]
         );
         inputs.generate_event(-1).await;
         assert_eq!(
             outputs.take_router_events(1).await,
-            vec![TaggedEnvelope(addr, Envelope::unlinked("node", "lane"))]
+            vec![TaggedEnvelope(
+                addr,
+                Envelope::unlinked()
+                    .node_uri("node")
+                    .lane_uri("lane")
+                    .done()
+            )]
         );
 
         inputs.drop_action_tx();

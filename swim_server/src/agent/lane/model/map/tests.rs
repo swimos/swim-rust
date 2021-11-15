@@ -31,8 +31,8 @@ use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 use stm::stm::Stm;
 use stm::transaction::{atomically, TransactionRunner};
-use swim_common::form::Form;
-use swim_common::model::{Attr, Item, Value};
+use swim_form::Form;
+use swim_model::{Attr, Item, Value};
 use swim_store::{serialize, EngineInfo, StoreError};
 use swim_utilities::algebra::non_zero_usize;
 

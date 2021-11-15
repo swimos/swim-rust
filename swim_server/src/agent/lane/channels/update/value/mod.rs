@@ -22,7 +22,7 @@ use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::any::Any;
 use std::fmt::Debug;
-use swim_common::routing::RoutingAddr;
+use swim_runtime::routing::RoutingAddr;
 use tracing::{event, Level};
 
 /// Asynchronous task to set a stream of values into a [`ValueLane`].

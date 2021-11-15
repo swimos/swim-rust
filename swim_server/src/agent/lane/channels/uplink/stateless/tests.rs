@@ -17,14 +17,13 @@ use crate::agent::Eff;
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::{FutureExt, StreamExt};
 use std::convert::TryFrom;
-use swim_common::routing::{
-    ConnectionDropped, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
-};
+use swim_runtime::error::{ConnectionDropped, RouterError};
+use swim_runtime::routing::{Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender};
 use tokio::sync::mpsc;
 
 use std::sync::Arc;
-use swim_common::warp::envelope::Envelope;
-use swim_common::warp::path::RelativePath;
+use swim_model::path::RelativePath;
+use swim_warp::envelope::Envelope;
 
 use crate::agent::lane::channels::uplink::stateless::StatelessUplinks;
 use crate::agent::lane::channels::uplink::{AddressedUplinkMessage, UplinkAction, UplinkKind};
@@ -34,14 +33,13 @@ use server_store::agent::mock::MockNodeStore;
 use server_store::agent::SwimNodeStore;
 use server_store::plane::mock::MockPlaneStore;
 use std::ops::Add;
-use swim_common::routing::error::ResolutionError;
-use swim_common::routing::error::RouterError;
 use swim_metrics::config::MetricAggregatorConfig;
 use swim_metrics::uplink::{
     uplink_observer, TaggedWarpUplinkProfile, UplinkObserver, UplinkProfileSender,
     WarpUplinkProfile,
 };
 use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
+use swim_runtime::error::ResolutionError;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger;
@@ -179,7 +177,10 @@ async fn immediate_unlink_stateless_uplinks() {
         check_receive(
             &mut router_rx,
             addr,
-            Envelope::unlinked(&route.node, &route.lane),
+            Envelope::unlinked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
 
@@ -227,7 +228,10 @@ async fn sync_with_stateless_uplinks() {
         check_receive(
             &mut router_rx,
             addr,
-            Envelope::linked(&route.node, &route.lane),
+            Envelope::linked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
 
@@ -237,7 +241,10 @@ async fn sync_with_stateless_uplinks() {
         check_receive(
             &mut router_rx,
             addr,
-            Envelope::unlinked(&route.node, &route.lane),
+            Envelope::unlinked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
     };
@@ -275,13 +282,19 @@ async fn sync_with_action_lane() {
         check_receive(
             &mut router_rx,
             addr,
-            Envelope::linked(&route.node, &route.lane),
+            Envelope::linked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
         check_receive(
             &mut router_rx,
             addr,
-            Envelope::synced(&route.node, &route.lane),
+            Envelope::synced()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
 
@@ -291,7 +304,10 @@ async fn sync_with_action_lane() {
         check_receive(
             &mut router_rx,
             addr,
-            Envelope::unlinked(&route.node, &route.lane),
+            Envelope::unlinked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
     };
@@ -329,7 +345,10 @@ async fn sync_after_link_on_stateless_uplinks() {
         check_receive(
             &mut router_rx,
             addr,
-            Envelope::linked(&route.node, &route.lane),
+            Envelope::linked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
 
@@ -341,7 +360,10 @@ async fn sync_after_link_on_stateless_uplinks() {
         check_receive(
             &mut router_rx,
             addr,
-            Envelope::synced(&route.node, &route.lane),
+            Envelope::synced()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
 
@@ -351,7 +373,10 @@ async fn sync_after_link_on_stateless_uplinks() {
         check_receive(
             &mut router_rx,
             addr,
-            Envelope::unlinked(&route.node, &route.lane),
+            Envelope::unlinked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
     };
@@ -389,7 +414,10 @@ async fn link_to_and_receive_from_broadcast_uplinks() {
         check_receive(
             &mut router_rx,
             addr,
-            Envelope::linked(&route.node, &route.lane),
+            Envelope::linked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
 
@@ -405,13 +433,21 @@ async fn link_to_and_receive_from_broadcast_uplinks() {
         check_receive(
             &mut router_rx,
             addr,
-            Envelope::make_event(&route.node, &route.lane, Some(12.into())),
+            Envelope::event()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .body(12)
+                .done(),
         )
         .await;
         check_receive(
             &mut router_rx,
             addr,
-            Envelope::make_event(&route.node, &route.lane, Some(17.into())),
+            Envelope::event()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .body(17)
+                .done(),
         )
         .await;
 
@@ -421,7 +457,10 @@ async fn link_to_and_receive_from_broadcast_uplinks() {
         check_receive(
             &mut router_rx,
             addr,
-            Envelope::unlinked(&route.node, &route.lane),
+            Envelope::unlinked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
     };
@@ -459,7 +498,10 @@ async fn link_to_and_receive_from_addressed_uplinks() {
         check_receive(
             &mut router_rx,
             addr1,
-            Envelope::linked(&route.node, &route.lane),
+            Envelope::linked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
 
@@ -470,7 +512,10 @@ async fn link_to_and_receive_from_addressed_uplinks() {
         check_receive(
             &mut router_rx,
             addr2,
-            Envelope::linked(&route.node, &route.lane),
+            Envelope::linked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
 
@@ -486,13 +531,21 @@ async fn link_to_and_receive_from_addressed_uplinks() {
         check_receive(
             &mut router_rx,
             addr1,
-            Envelope::make_event(&route.node, &route.lane, Some(12.into())),
+            Envelope::event()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .body(12)
+                .done(),
         )
         .await;
         check_receive(
             &mut router_rx,
             addr2,
-            Envelope::make_event(&route.node, &route.lane, Some(17.into())),
+            Envelope::event()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .body(17)
+                .done(),
         )
         .await;
 
@@ -503,7 +556,13 @@ async fn link_to_and_receive_from_addressed_uplinks() {
 
         for _ in &addrs {
             let TaggedEnvelope(rec_addr, envelope) = router_rx.recv().await.unwrap();
-            assert_eq!(envelope, Envelope::unlinked(&route.node, &route.lane));
+            assert_eq!(
+                envelope,
+                Envelope::unlinked()
+                    .node_uri(&route.node)
+                    .lane_uri(&route.lane)
+                    .done()
+            );
             assert!(addrs.contains(&rec_addr));
         }
     };
@@ -543,7 +602,10 @@ async fn link_twice_to_stateless_uplinks() {
             check_receive(
                 &mut router_rx,
                 *addr,
-                Envelope::linked(&route.node, &route.lane),
+                Envelope::linked()
+                    .node_uri(&route.node)
+                    .lane_uri(&route.lane)
+                    .done(),
             )
             .await;
         }
@@ -558,7 +620,11 @@ async fn link_twice_to_stateless_uplinks() {
 
             for _ in &addrs {
                 let TaggedEnvelope(rec_addr, envelope) = router_rx.recv().await.unwrap();
-                let expected = Envelope::make_event(&route.node, &route.lane, Some(v.into()));
+                let expected = Envelope::event()
+                    .node_uri(&route.node)
+                    .lane_uri(&route.lane)
+                    .body(v)
+                    .done();
 
                 assert!(addrs.contains(&rec_addr));
                 assert_eq!(envelope, expected);
@@ -570,7 +636,13 @@ async fn link_twice_to_stateless_uplinks() {
 
         for _ in &addrs {
             let TaggedEnvelope(rec_addr, envelope) = router_rx.recv().await.unwrap();
-            assert_eq!(envelope, Envelope::unlinked(&route.node, &route.lane));
+            assert_eq!(
+                envelope,
+                Envelope::unlinked()
+                    .node_uri(&route.node)
+                    .lane_uri(&route.lane)
+                    .done()
+            );
             assert!(addrs.contains(&rec_addr));
         }
     };
@@ -611,7 +683,10 @@ async fn no_messages_after_unlink_from_stateless_uplinks() {
             check_receive(
                 &mut router_rx,
                 *addr,
-                Envelope::linked(&route.node, &route.lane),
+                Envelope::linked()
+                    .node_uri(&route.node)
+                    .lane_uri(&route.lane)
+                    .done(),
             )
             .await;
         }
@@ -623,7 +698,10 @@ async fn no_messages_after_unlink_from_stateless_uplinks() {
         check_receive(
             &mut router_rx,
             addr2,
-            Envelope::unlinked(&route.node, &route.lane),
+            Envelope::unlinked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
 
@@ -639,14 +717,22 @@ async fn no_messages_after_unlink_from_stateless_uplinks() {
         check_receive(
             &mut router_rx,
             addr1,
-            Envelope::make_event(&route.node, &route.lane, Some(23.into())),
+            Envelope::event()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .body(23)
+                .done(),
         )
         .await;
 
         check_receive(
             &mut router_rx,
             addr1,
-            Envelope::make_event(&route.node, &route.lane, Some(25.into())),
+            Envelope::event()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .body(25)
+                .done(),
         )
         .await;
 
@@ -656,7 +742,10 @@ async fn no_messages_after_unlink_from_stateless_uplinks() {
         check_receive(
             &mut router_rx,
             addr1,
-            Envelope::unlinked(&route.node, &route.lane),
+            Envelope::unlinked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
     };
@@ -703,13 +792,19 @@ async fn send_no_uplink_stateless_uplinks() {
         check_receive(
             &mut router_rx,
             addr,
-            Envelope::linked(&route.node, &route.lane),
+            Envelope::linked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
         check_receive(
             &mut router_rx,
             addr,
-            Envelope::synced(&route.node, &route.lane),
+            Envelope::synced()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
 
@@ -723,7 +818,11 @@ async fn send_no_uplink_stateless_uplinks() {
             check_receive(
                 &mut router_rx,
                 addr,
-                Envelope::make_event(&route.node, &route.lane, Some(v.into())),
+                Envelope::event()
+                    .node_uri(&route.node)
+                    .lane_uri(&route.lane)
+                    .body(v)
+                    .done(),
             )
             .await;
         }
@@ -734,7 +833,10 @@ async fn send_no_uplink_stateless_uplinks() {
         check_receive(
             &mut router_rx,
             addr,
-            Envelope::unlinked(&route.node, &route.lane),
+            Envelope::unlinked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
         )
         .await;
     };
@@ -783,7 +885,10 @@ async fn metrics() {
             check_receive(
                 &mut router_rx,
                 addr,
-                Envelope::linked(&route.node, &route.lane),
+                Envelope::linked()
+                    .node_uri(&route.node)
+                    .lane_uri(&route.lane)
+                    .done(),
             )
             .await;
 
@@ -795,7 +900,10 @@ async fn metrics() {
             check_receive(
                 &mut router_rx,
                 addr,
-                Envelope::synced(&route.node, &route.lane),
+                Envelope::synced()
+                    .node_uri(&route.node)
+                    .lane_uri(&route.lane)
+                    .done(),
             )
             .await;
 
@@ -807,7 +915,10 @@ async fn metrics() {
             check_receive(
                 &mut router_rx,
                 addr,
-                Envelope::unlinked(&route.node, &route.lane),
+                Envelope::unlinked()
+                    .node_uri(&route.node)
+                    .lane_uri(&route.lane)
+                    .done(),
             )
             .await;
         }

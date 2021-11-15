@@ -18,9 +18,9 @@ mod tests {
     use swim_client::downlink::typed::map::events::TypedViewWithEvent;
     use swim_client::downlink::Event;
     use swim_client::interface::SwimClientBuilder;
-    use swim_common::form::Form;
-    use swim_common::model::{Attr, Item, Value};
-    use swim_common::warp::path::{AbsolutePath, RelativePath};
+    use swim_form::Form;
+    use swim_model::path::{AbsolutePath, RelativePath};
+    use swim_model::{Attr, Item, Value};
     use test_server::build_server;
     use tokio::time::Duration;
 
@@ -1026,5 +1026,57 @@ mod tests {
 
         let message = client_dl.get().await.unwrap();
         assert_eq!(message, "VW Volvo".to_string())
+    }
+
+    #[tokio::test]
+    async fn test_remote_and_local_dl_to_command_lane() {
+        let (server, mut server_handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = server_handle.address().await.unwrap().port();
+        let host = format!("warp://127.0.0.1:{}", port);
+
+        let client = SwimClientBuilder::build_with_default().await;
+
+        let garage_path =
+            AbsolutePath::new(url::Url::parse(&host).unwrap(), "/downlink/1", "garage");
+
+        let park_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/downlink/1", "park");
+
+        let self_park_path =
+            AbsolutePath::new(url::Url::parse(&host).unwrap(), "/downlink/1", "self_park");
+
+        let (_garage_downlink, mut garage_recv) = client
+            .value_downlink(garage_path, "".to_string())
+            .await
+            .unwrap();
+
+        let park_downlink = client
+            .event_downlink::<String>(park_path.clone(), Default::default())
+            .await
+            .unwrap();
+
+        let mut park_downlink_recv = park_downlink.subscribe().unwrap();
+
+        client
+            .send_command(park_path, "Kia".to_string())
+            .await
+            .unwrap();
+
+        client
+            .send_command(self_park_path, "Mercedes".to_string())
+            .await
+            .unwrap();
+
+        let message = garage_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("".to_string()));
+        let message = garage_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("Kia".to_string()));
+        let message = garage_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("Kia Mercedes".to_string()));
+
+        let message = park_downlink_recv.recv().await.unwrap();
+        assert_eq!(message, "Kia");
+        let message = park_downlink_recv.recv().await.unwrap();
+        assert_eq!(message, "Mercedes");
     }
 }

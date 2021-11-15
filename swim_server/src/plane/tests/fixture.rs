@@ -28,12 +28,12 @@ use server_store::plane::mock::MockPlaneStore;
 use std::any::Any;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_common::routing::{Router, TaggedEnvelope};
-use swim_common::warp::envelope::Envelope;
-use swim_runtime::time::clock::Clock;
+use swim_async_runtime::time::clock::Clock;
+use swim_runtime::routing::{Router, TaggedEnvelope};
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
+use swim_warp::envelope::Envelope;
 
 #[derive(Debug)]
 pub struct SendAgent(String);
@@ -128,17 +128,20 @@ impl<Clk: Clock, Delegate: Router + 'static>
         let expected_route: RelativeUri = format!("/{}/{}", SENDER_PREFIX, id).parse().unwrap();
         assert_eq!(route, expected_route);
         assert_eq!(execution_config, make_config());
+
         let task = async move {
             let target_node: RelativeUri =
                 format!("/{}/{}", RECEIVER_PREFIX, target).parse().unwrap();
             let addr = router.lookup(None, target_node.clone()).await.unwrap();
             let mut tx = router.resolve_sender(addr).await.unwrap().sender;
             assert!(tx
-                .send_item(Envelope::make_event(
-                    target_node.to_string(),
-                    LANE_NAME.to_string(),
-                    Some(MESSAGE.into())
-                ))
+                .send_item(
+                    Envelope::event()
+                        .node_uri(target_node.to_string())
+                        .lane_uri(LANE_NAME)
+                        .body(MESSAGE)
+                        .done()
+                )
                 .await
                 .is_ok());
             pin_mut!(incoming_envelopes);
@@ -189,11 +192,11 @@ impl<Clk: Clock, Delegate>
         let task = async move {
             pin_mut!(incoming_envelopes);
 
-            let expected_envelope = Envelope::make_event(
-                expected_route.to_string(),
-                LANE_NAME.to_string(),
-                Some(MESSAGE.into()),
-            );
+            let expected_envelope = Envelope::event()
+                .node_uri(expected_route.to_string())
+                .lane_uri(LANE_NAME)
+                .body(MESSAGE)
+                .done();
 
             let mut times_seen = 0;
 

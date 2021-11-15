@@ -20,8 +20,8 @@ use crate::agent::lane::channels::uplink::{UplinkAction, UplinkStateMachine};
 use crate::meta::log::config::LogConfig;
 use std::num::NonZeroUsize;
 use std::time::Duration;
-use swim_common::routing::RoutingAddr;
 use swim_metrics::config::MetricAggregatorConfig;
+use swim_runtime::routing::RoutingAddr;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::retryable::RetryStrategy;
 
@@ -92,7 +92,7 @@ impl AgentExecutionConfig {
             feedback_buffer: default_buffer,
             uplink_err_buffer: default_buffer,
             max_fatal_uplink_errors: error_threshold,
-            max_uplink_start_attempts: NonZeroUsize::new(error_threshold + 1).unwrap(),
+            max_uplink_start_attempts: non_zero_usize!(error_threshold + 1),
             lane_buffer: default_buffer,
             observation_buffer: default_buffer,
             lane_attachment_buffer: default_buffer,

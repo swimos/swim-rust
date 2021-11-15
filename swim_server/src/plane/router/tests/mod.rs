@@ -13,15 +13,15 @@
 // limitations under the License.
 
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
-use crate::routing::{TopLevelServerRouter, TopLevelServerRouterFactory};
+use crate::routing::{PlaneRoutingRequest, TopLevelServerRouter, TopLevelServerRouterFactory};
 use futures::future::join;
-use swim_common::routing::error::{ConnectionError, ProtocolError, ResolutionErrorKind};
-use swim_common::routing::error::{RouterError, Unresolvable};
-use swim_common::routing::remote::RawRoute;
-use swim_common::routing::PlaneRoutingRequest;
-use swim_common::routing::{Router, RouterFactory, RoutingAddr, TaggedEnvelope};
-use swim_common::warp::envelope::Envelope;
+use swim_runtime::error::{
+    ConnectionError, ProtocolError, ResolutionErrorKind, RouterError, Unresolvable,
+};
+use swim_runtime::remote::RawRoute;
+use swim_runtime::routing::{Router, RouterFactory, RoutingAddr, TaggedEnvelope};
 use swim_utilities::trigger::promise;
+use swim_warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use url::Url;
 
@@ -61,12 +61,15 @@ async fn plane_router_get_sender() {
         let mut sender = result1.unwrap();
         assert!(sender
             .sender
-            .send_item(Envelope::linked("/node", "lane"))
+            .send_item(Envelope::linked().node_uri("/node").lane_uri("lane").done())
             .await
             .is_ok());
         assert_eq!(
             send_rx.recv().await,
-            Some(TaggedEnvelope(addr, Envelope::linked("/node", "lane")))
+            Some(TaggedEnvelope(
+                addr,
+                Envelope::linked().node_uri("/node").lane_uri("lane").done()
+            ))
         );
 
         let result2 = router.resolve_sender(RoutingAddr::plane(56)).await;

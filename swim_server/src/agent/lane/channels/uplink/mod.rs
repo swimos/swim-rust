@@ -32,18 +32,18 @@ use std::ops::Deref;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use stm::transaction::{RetryManager, TransactionError};
-use swim_common::form::structural::read::ReadError;
-use swim_common::form::Form;
-use swim_common::model::Value;
-use swim_common::routing::error::SendError;
-use swim_common::routing::{RoutingAddr, TaggedSender};
-use swim_common::sink::item::{FnMutSender, ItemSender};
-use swim_common::warp::envelope::Envelope;
-use swim_common::warp::path::RelativePath;
+use swim_form::structural::read::ReadError;
+use swim_form::Form;
+use swim_model::path::RelativePath;
+use swim_model::Value;
+use swim_runtime::backpressure::keyed::map::MapUpdateMessage;
+use swim_runtime::routing::{RoutingAddr, TaggedSender};
 use swim_utilities::errors::Recoverable;
+use swim_utilities::future::item_sink::SendError;
+use swim_utilities::future::item_sink::{FnMutSender, ItemSender};
 use swim_utilities::time::AtomicInstant;
-use swim_warp::backpressure::keyed::map::MapUpdateMessage;
-use swim_warp::model::map::MapUpdate;
+use swim_warp::envelope::Envelope;
+use swim_warp::map::MapUpdate;
 use tokio::time::Instant;
 use tracing::{event, Level};
 
@@ -759,25 +759,41 @@ impl<S> UplinkMessageSender<S> {
 }
 
 impl UplinkMessageSender<TaggedSender> {
-    pub fn into_item_sender<Msg>(self) -> impl ItemSender<UplinkMessage<Msg>, SendError> + Clone
+    pub fn into_item_sender<Msg>(
+        self,
+    ) -> impl ItemSender<UplinkMessage<Msg>, SendError<Envelope>> + Clone
     where
         Msg: Into<Value> + Send + 'static,
     {
         FnMutSender::new(self, UplinkMessageSender::send_item)
     }
 
-    pub async fn send_item<Msg>(&mut self, msg: UplinkMessage<Msg>) -> Result<(), SendError>
+    pub async fn send_item<Msg>(
+        &mut self,
+        msg: UplinkMessage<Msg>,
+    ) -> Result<(), SendError<Envelope>>
     where
         Msg: Into<Value> + Send + 'static,
     {
         let UplinkMessageSender { inner, route } = self;
         let envelope = match msg {
-            UplinkMessage::Linked => Envelope::linked(&route.node, &route.lane),
-            UplinkMessage::Synced => Envelope::synced(&route.node, &route.lane),
-            UplinkMessage::Unlinked => Envelope::unlinked(&route.node, &route.lane),
-            UplinkMessage::Event(ev) => {
-                Envelope::make_event(&route.node, &route.lane, Some(ev.into()))
-            }
+            UplinkMessage::Linked => Envelope::linked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
+            UplinkMessage::Synced => Envelope::synced()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
+            UplinkMessage::Unlinked => Envelope::unlinked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
+            UplinkMessage::Event(ev) => Envelope::event()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .body(Some(ev.into()))
+                .done(),
         };
         inner.send_item(envelope).await
     }

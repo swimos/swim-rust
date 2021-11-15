@@ -13,7 +13,7 @@ rand = "0.7.3"
 tracing = "0.1.16"
 tracing-futures = "0.2.4"
 swim_client = { path = "../../swim_client" }
-swim_common = { path = "../../swim_common" }
+swim_model = { path = "../../api/swim_model" }
 swim_server = { path = "../../swim_server" }
 stm = { path = "../../stm" }
 swim_utilities = { path = "../../swim_utilities" }

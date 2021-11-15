@@ -18,11 +18,12 @@ use tokio::sync::mpsc;
 use super::*;
 use crate::router::tests::{FakeConnections, MockRemoteRouterTask};
 use crate::router::TopLevelClientRouterFactory;
-use swim_common::routing::error::RouterError;
-use swim_common::routing::CloseSender;
-use swim_common::warp::envelope::Envelope;
-use swim_common::warp::path::AbsolutePath;
+
+use swim_model::path::AbsolutePath;
+use swim_runtime::error::RouterError;
+use swim_runtime::routing::CloseSender;
 use swim_utilities::future::retryable::Quantity;
+use swim_warp::envelope::Envelope;
 
 async fn create_connection_pool(
     fake_connections: FakeConnections,
@@ -53,7 +54,11 @@ async fn test_connection_pool_send_single_message_single_connection() {
     let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
     let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
 
-    let envelope = Envelope::make_command("/foo", "/bar", Some("Hello".into()));
+    let envelope = Envelope::command()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("Hello")
+        .done();
 
     let mut fake_conns = FakeConnections::new();
     let (_remote_tx, mut remote_rx) = fake_conns.add_connection(host_url);
@@ -81,8 +86,16 @@ async fn test_connection_pool_send_multiple_messages_single_connection() {
     let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
     let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
 
-    let first_envelope = Envelope::make_command("/foo", "/bar", Some("First_Text".into()));
-    let second_envelope = Envelope::make_command("/foo", "/bar", Some("Second_Text".into()));
+    let first_envelope = Envelope::command()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("First_Text")
+        .done();
+    let second_envelope = Envelope::command()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("Second_Text")
+        .done();
 
     let mut fake_conns = FakeConnections::new();
     let (_remote_tx, mut remote_rx) = fake_conns.add_connection(host_url);
@@ -125,9 +138,21 @@ async fn test_connection_pool_send_multiple_messages_multiple_connections() {
     let second_path = AbsolutePath::new(second_host_url.clone(), "/foo", "/bar");
     let third_path = AbsolutePath::new(third_host_url.clone(), "/foo", "/bar");
 
-    let first_envelope = Envelope::make_command("/foo", "/bar", Some("First_Text".into()));
-    let second_envelope = Envelope::make_command("/foo", "/bar", Some("Second_Text".into()));
-    let third_envelope = Envelope::make_command("/foo", "/bar", Some("Third_Text".into()));
+    let first_envelope = Envelope::command()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("First_Text")
+        .done();
+    let second_envelope = Envelope::command()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("Second_Text")
+        .done();
+    let third_envelope = Envelope::command()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("Third_Text")
+        .done();
 
     let mut fake_conns = FakeConnections::new();
     let (_first_remote_tx, mut first_remote_rx) = fake_conns.add_connection(first_host_url);
@@ -188,7 +213,11 @@ async fn test_connection_pool_receive_single_message_single_connection() {
     let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
     let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
 
-    let envelope = Envelope::make_event("/foo", "/bar", Some("Hello".into()));
+    let envelope = Envelope::event()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("Hello")
+        .done();
 
     let mut fake_conns = FakeConnections::new();
     let (remote_tx, _remote_rx) = fake_conns.add_connection(host_url);
@@ -210,7 +239,7 @@ async fn test_connection_pool_receive_single_message_single_connection() {
     let pool_message = connection_receiver.unwrap().recv().await.unwrap();
     assert_eq!(
         pool_message,
-        RouterEvent::Message(envelope.into_incoming().unwrap())
+        RouterEvent::Message(envelope.into_response().unwrap())
     );
 }
 
@@ -220,9 +249,21 @@ async fn test_connection_pool_receive_multiple_messages_single_connection() {
     let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
     let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
 
-    let first_envelope = Envelope::make_event("/foo", "/bar", Some("first_message".into()));
-    let second_envelope = Envelope::make_event("/foo", "/bar", Some("second_message".into()));
-    let third_envelope = Envelope::make_event("/foo", "/bar", Some("third_message".into()));
+    let first_envelope = Envelope::event()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("first_message")
+        .done();
+    let second_envelope = Envelope::event()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("second_message")
+        .done();
+    let third_envelope = Envelope::event()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("third_message")
+        .done();
 
     let mut fake_conns = FakeConnections::new();
     let (remote_tx, _remote_rx) = fake_conns.add_connection(host_url);
@@ -266,15 +307,15 @@ async fn test_connection_pool_receive_multiple_messages_single_connection() {
 
     assert_eq!(
         first_pool_message,
-        RouterEvent::Message(first_envelope.into_incoming().unwrap())
+        RouterEvent::Message(first_envelope.into_response().unwrap())
     );
     assert_eq!(
         second_pool_message,
-        RouterEvent::Message(second_envelope.into_incoming().unwrap())
+        RouterEvent::Message(second_envelope.into_response().unwrap())
     );
     assert_eq!(
         third_pool_message,
-        RouterEvent::Message(third_envelope.into_incoming().unwrap())
+        RouterEvent::Message(third_envelope.into_response().unwrap())
     );
 }
 
@@ -288,9 +329,21 @@ async fn test_connection_pool_receive_multiple_messages_multiple_connections() {
     let second_path = AbsolutePath::new(second_host_url.clone(), "/foo", "/bar");
     let third_path = AbsolutePath::new(third_host_url.clone(), "/foo", "/bar");
 
-    let first_envelope = Envelope::make_event("/foo", "/bar", Some("first_message".into()));
-    let second_envelope = Envelope::make_event("/foo", "/bar", Some("second_message".into()));
-    let third_envelope = Envelope::make_event("/foo", "/bar", Some("third_message".into()));
+    let first_envelope = Envelope::event()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("first_message")
+        .done();
+    let second_envelope = Envelope::event()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("second_message")
+        .done();
+    let third_envelope = Envelope::event()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("third_message")
+        .done();
 
     let mut fake_conns = FakeConnections::new();
     let (first_reader_tx, _) = fake_conns.add_connection(first_host_url);
@@ -346,15 +399,15 @@ async fn test_connection_pool_receive_multiple_messages_multiple_connections() {
 
     assert_eq!(
         first_pool_message,
-        RouterEvent::Message(first_envelope.into_incoming().unwrap())
+        RouterEvent::Message(first_envelope.into_response().unwrap())
     );
     assert_eq!(
         second_pool_message,
-        RouterEvent::Message(second_envelope.into_incoming().unwrap())
+        RouterEvent::Message(second_envelope.into_response().unwrap())
     );
     assert_eq!(
         third_pool_message,
-        RouterEvent::Message(third_envelope.into_incoming().unwrap())
+        RouterEvent::Message(third_envelope.into_response().unwrap())
     );
 }
 
@@ -364,8 +417,17 @@ async fn test_connection_pool_send_and_receive_messages() {
     let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
     let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
 
-    let incoming_envelope = Envelope::make_event("/foo", "/bar", Some("recv_baz".into()));
-    let outgoing_envelope = Envelope::make_command("/foo", "/bar", Some("send_bar".into()));
+    let incoming_envelope = Envelope::event()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("recv_baz")
+        .done();
+
+    let outgoing_envelope = Envelope::command()
+        .node_uri("/foo")
+        .lane_uri("/bar")
+        .body("send_bar")
+        .done();
 
     let mut fake_conns = FakeConnections::new();
     let (remote_tx, mut remote_rx) = fake_conns.add_connection(host_url);
@@ -396,7 +458,7 @@ async fn test_connection_pool_send_and_receive_messages() {
 
     assert_eq!(
         pool_message,
-        RouterEvent::Message(incoming_envelope.into_incoming().unwrap())
+        RouterEvent::Message(incoming_envelope.into_response().unwrap())
     );
     assert_eq!(
         remote_rx.recv().await.unwrap(),

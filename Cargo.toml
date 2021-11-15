@@ -1,9 +1,11 @@
 [workspace]
+resolver = "2"
 members = [
+    "api/swim_*",
+    "api/formats/swim_*",
     "macro_utilities",
     "swim_client",
-    "swim_runtime",
-    "swim_common",
+    "runtime/swim_*",
     "swim_server",
     "swim_warp",
     "stm",

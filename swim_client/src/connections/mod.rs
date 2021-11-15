@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::configuration::DownlinkConnectionsConfig;
 use crate::router::{
     AddressableWrapper, ClientRouter, ClientRouterFactory, DownlinkRoutingRequest, RouterEvent,
     RoutingPath, RoutingTable,
@@ -28,19 +27,19 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
-use swim_common::request::request_future::RequestError;
-use swim_common::request::Request;
-use swim_common::routing::error::{
-    CloseError, ConnectionError, HttpError, ResolutionError, Unresolvable,
+use swim_async_runtime::task::*;
+use swim_model::path::{Addressable, RelativePath};
+use swim_runtime::configuration::DownlinkConnectionsConfig;
+use swim_runtime::error::ConnectionDropped;
+use swim_runtime::error::{CloseError, ConnectionError, HttpError, ResolutionError, Unresolvable};
+use swim_runtime::remote::RawRoute;
+use swim_runtime::routing::{
+    BidirectionalRoute, BidirectionalRouter, CloseReceiver, Route, Router, RouterFactory,
+    RoutingAddr, TaggedEnvelope, TaggedSender,
 };
-use swim_common::routing::remote::RawRoute;
-use swim_common::routing::{
-    BidirectionalRoute, BidirectionalRouter, CloseReceiver, ConnectionDropped, Route, Router,
-    RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender,
-};
-use swim_common::warp::path::{Addressable, RelativePath};
-use swim_runtime::task::*;
 use swim_utilities::errors::Recoverable;
+use swim_utilities::future::request::request_future::RequestError;
+use swim_utilities::future::request::Request;
 use swim_utilities::future::retryable::RetryStrategy;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger::promise;
@@ -449,13 +448,13 @@ impl<Path: Addressable, DelegateRouter: BidirectionalRouter>
             };
 
             match request {
-                Some(ConnectionRegistratorEvent::Message(envelope)) => {
-                    if let Ok(incoming_message) = envelope.1.clone().into_incoming() {
-                        if let Some(subscribers) = subscribers.get_mut(&incoming_message.path) {
+                Some(ConnectionRegistratorEvent::Message(TaggedEnvelope(_, envelope))) => {
+                    if let Some(response) = envelope.into_response() {
+                        if let Some(subscribers) = subscribers.get_mut(response.path()) {
                             let mut futures = vec![];
 
                             for (idx, sub) in subscribers.iter() {
-                                let msg = incoming_message.clone();
+                                let msg = response.clone();
 
                                 futures.push(async move {
                                     let result = sub.send(RouterEvent::Message(msg)).await;

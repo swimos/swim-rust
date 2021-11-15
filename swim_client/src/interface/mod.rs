@@ -40,20 +40,23 @@ use std::io;
 use std::io::Read;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swim_common::form::{Form, ValueSchema};
-use swim_common::model::parser::parse_single;
-use swim_common::model::Value;
-use swim_common::routing::error::{ConnectionError, RoutingError};
-use swim_common::routing::remote::net::dns::Resolver;
-use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
-use swim_common::routing::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
-use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
-use swim_common::routing::CloseSender;
-use swim_common::warp::envelope::Envelope;
-use swim_common::warp::path::{AbsolutePath, Addressable};
-use swim_runtime::task::{spawn, TaskError};
+use swim_async_runtime::task::{spawn, TaskError};
+use swim_form::Form;
+use swim_model::path::{AbsolutePath, Addressable};
+use swim_model::Value;
+use swim_recon::parser::parse_value as parse_single;
+use swim_runtime::error::ConnectionError;
+use swim_runtime::error::RoutingError;
+use swim_runtime::remote::net::dns::Resolver;
+use swim_runtime::remote::net::plain::TokioPlainTextNetworking;
+use swim_runtime::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
+use swim_runtime::routing::CloseSender;
+use swim_runtime::ws::tungstenite::TungsteniteWsConnections;
+
+use swim_schema::ValueSchema;
 use swim_utilities::future::open_ended::OpenEndedFutures;
 use swim_utilities::trigger::promise;
+use swim_warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use tracing::info;
 
@@ -314,7 +317,7 @@ impl<Path: Addressable> SwimClient<Path> {
 type ClientTaskHandle<Path> = TaskHandle<(
     Result<(), SubscriptionError<Path>>,
     Result<(), std::io::Error>,
-    Result<(), swim_common::routing::error::ConnectionError>,
+    Result<(), swim_runtime::error::ConnectionError>,
 )>;
 
 #[derive(Clone, Debug)]
@@ -332,8 +335,11 @@ impl<Path: Addressable> ClientContext<Path> {
         target: Path,
         message: T,
     ) -> Result<(), ClientError<Path>> {
-        let envelope =
-            Envelope::make_command(target.node(), target.lane(), Some(message.into_value()));
+        let envelope = Envelope::command()
+            .node_uri(target.node())
+            .lane_uri(target.lane())
+            .body(message)
+            .done();
 
         self.downlinks
             .send_command(target, envelope)

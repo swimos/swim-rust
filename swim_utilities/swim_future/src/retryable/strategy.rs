@@ -12,10 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::time::Duration;
-
 use rand::Rng;
 use std::num::NonZeroUsize;
+use std::time::Duration;
 
 pub const DEFAULT_EXPONENTIAL_MAX_INTERVAL: Duration = Duration::from_secs(16);
 pub const DEFAULT_EXPONENTIAL_MAX_BACKOFF: Duration = Duration::from_secs(300);
@@ -213,8 +212,8 @@ impl Iterator for RetryStrategy {
 #[cfg(test)]
 mod tests {
     use crate::retryable::strategy::{Quantity, RetryStrategy};
-    use std::num::NonZeroUsize;
     use std::time::Duration;
+    use swim_algebra::non_zero_usize;
 
     #[tokio::test]
     async fn test_exponential() {
@@ -241,7 +240,7 @@ mod tests {
     #[tokio::test]
     async fn test_immediate() {
         let retries = 5;
-        let strategy = RetryStrategy::immediate(NonZeroUsize::new(retries).unwrap());
+        let strategy = RetryStrategy::immediate(non_zero_usize!(retries));
         let mut it = strategy.into_iter();
         let count = it.count();
 
@@ -260,7 +259,7 @@ mod tests {
         let expected_duration = Duration::from_secs(1);
         let strategy = RetryStrategy::interval(
             expected_duration,
-            Quantity::Finite(NonZeroUsize::new(retries).unwrap()),
+            Quantity::Finite(non_zero_usize!(retries)),
         );
         let mut it = strategy.into_iter();
         let count = it.count();
