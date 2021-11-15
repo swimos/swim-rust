@@ -397,7 +397,7 @@ async fn try_dispatch_envelope<R>(
 where
     R: Router,
 {
-    match envelope.disriminate_header() {
+    match envelope.discriminate_header() {
         EnvelopeHeader::Response(_) => {
             let mut futures = vec![];
 
