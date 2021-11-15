@@ -487,7 +487,7 @@ impl Envelope {
     }
 
     pub fn path(&self) -> Option<RelativePath> {
-        match self.disriminate_header() {
+        match self.discriminate_header() {
             EnvelopeHeader::Request(path) => Some(path),
             EnvelopeHeader::Response(path) => Some(path),
             _ => None,
