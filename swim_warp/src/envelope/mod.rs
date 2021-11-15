@@ -695,7 +695,7 @@ impl Envelope {
         }
     }
 
-    pub fn disriminate_header(&self) -> EnvelopeHeader {
+    pub fn discriminate_header(&self) -> EnvelopeHeader {
         match self {
             Envelope::Auth { .. } => EnvelopeHeader::Negotiation,
             Envelope::DeAuth { .. } => EnvelopeHeader::Negotiation,
