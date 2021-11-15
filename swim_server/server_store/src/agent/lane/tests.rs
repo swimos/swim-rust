@@ -20,10 +20,10 @@ use futures::future::pending;
 use futures::future::BoxFuture;
 use futures::Future;
 use std::collections::HashMap;
+use swim_async_runtime::time::timeout::timeout;
 use swim_model::time::Timestamp;
 use swim_store::StoreError;
 use swim_utilities::trigger;
-use tokio::time::timeout;
 use tokio::time::{sleep, Duration};
 
 pub fn store_err_partial_eq(expected: Vec<StoreError>, actual: Vec<StoreTaskError>) {

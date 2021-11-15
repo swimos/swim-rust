@@ -60,8 +60,8 @@ async fn did_update(
 
 #[tokio::main]
 async fn main() {
-    let mut client = SwimClientBuilder::build_with_default().await;
-    let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
+    let client = SwimClientBuilder::build_with_default().await;
+    let host_uri = url::Url::parse(&"warp://127.0.0.1:9001".to_string()).unwrap();
     let node_uri = "/unit/foo";
     let cart_lane = "shopping_cart";
     let add_lane = "add_item";
@@ -104,4 +104,5 @@ async fn main() {
 
     println!("Stopping client in 2 seconds");
     time::sleep(Duration::from_secs(2)).await;
+    client.stop().await.unwrap();
 }

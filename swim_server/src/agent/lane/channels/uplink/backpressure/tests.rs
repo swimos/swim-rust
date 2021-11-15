@@ -18,10 +18,10 @@ use crate::agent::lane::channels::uplink::backpressure::{
 use crate::agent::lane::channels::uplink::{UplinkError, UplinkMessage, ValueLaneEvent};
 use futures::future::{join3, join_all};
 use std::collections::HashMap;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_async_runtime::time::timeout::timeout;
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::item_sink;
 use swim_warp::map::MapUpdate;
 use tokio::sync::mpsc;
@@ -31,17 +31,17 @@ const TIMEOUT: Duration = Duration::from_secs(10);
 
 fn simple_config() -> SimpleBackpressureConfig {
     SimpleBackpressureConfig {
-        buffer_size: NonZeroUsize::new(2).unwrap(),
-        yield_after: NonZeroUsize::new(256).unwrap(),
+        buffer_size: non_zero_usize!(2),
+        yield_after: non_zero_usize!(256),
     }
 }
 
 fn keyed_config() -> KeyedBackpressureConfig {
     KeyedBackpressureConfig {
-        buffer_size: NonZeroUsize::new(2).unwrap(),
-        yield_after: NonZeroUsize::new(256).unwrap(),
-        bridge_buffer_size: NonZeroUsize::new(1).unwrap(),
-        cache_size: NonZeroUsize::new(4).unwrap(),
+        buffer_size: non_zero_usize!(2),
+        yield_after: non_zero_usize!(256),
+        bridge_buffer_size: non_zero_usize!(1),
+        cache_size: non_zero_usize!(4),
     }
 }
 

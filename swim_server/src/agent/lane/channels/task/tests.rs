@@ -23,17 +23,12 @@ use crate::agent::lane::channels::{
     AgentExecutionConfig, LaneMessageHandler, OutputMessage, TaggedAction,
 };
 use crate::agent::lane::model::action::{Action, ActionLane};
-use crate::agent::lane::model::command::{Command, CommandLane};
+use crate::agent::lane::model::command::Command;
 use crate::agent::lane::model::DeferredSubscription;
+use crate::agent::model::command::Commander;
 use crate::agent::model::supply::{into_try_send, SupplyLane};
-use crate::agent::Eff;
+use crate::agent::{CommandLaneIo, Eff};
 use crate::meta::accumulate_metrics;
-use crate::routing::error::RouterError;
-use crate::routing::error::SendError;
-use crate::routing::{
-    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
-    TaggedSender,
-};
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::{once, BoxStream, FusedStream};
 use futures::{Future, FutureExt, Stream, StreamExt};
@@ -58,10 +53,15 @@ use swim_metrics::uplink::{MetricBackpressureConfig, UplinkObserver, WarpUplinkP
 use swim_metrics::{AggregatorError, MetaPulseLanes, NodeMetricAggregator};
 use swim_model::path::RelativePath;
 use swim_model::Value;
-use swim_runtime::error::ResolutionError;
-use swim_runtime::error::RoutingError;
+use swim_runtime::error::{ConnectionDropped, ResolutionError, RouterError};
+use swim_runtime::routing::{
+    Route, Router, RoutingAddr, TaggedClientEnvelope, TaggedEnvelope, TaggedSender,
+};
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::item_sink::ItemSink;
+use swim_utilities::future::item_sink::SendError;
 use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::sync::circular_buffer;
 use swim_utilities::sync::topic;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger::{self, promise};
@@ -261,6 +261,7 @@ impl TestHandler {
         TestHandler(Default::default())
     }
 }
+
 struct DummyUplink;
 
 impl UplinkStateMachine<i32> for DummyUplink {
@@ -343,6 +344,7 @@ struct TestContext {
     trigger: Arc<Mutex<Option<trigger::Sender>>>,
     _drop_tx: Arc<promise::Sender<ConnectionDropped>>,
     drop_rx: promise::Receiver<ConnectionDropped>,
+    uri: RelativeUri,
     aggregator: NodeMetricAggregator,
     uplinks_idle_since: Arc<AtomicInstant>,
 }
@@ -367,7 +369,7 @@ struct TestSender {
 }
 
 impl<'a> ItemSink<'a, Envelope> for TestSender {
-    type Error = SendError;
+    type Error = SendError<Envelope>;
     type SendFuture = BoxFuture<'a, Result<(), Self::Error>>;
 
     fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
@@ -375,14 +377,14 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
         async move {
             self.inner.send(tagged).await.map_err(|err| {
                 let TaggedEnvelope(_, envelope) = err.0;
-                SendError::new(RoutingError::RouterDropped, envelope)
+                SendError(envelope)
             })
         }
         .boxed()
     }
 }
 
-impl ServerRouter for TestRouter {
+impl Router for TestRouter {
     fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         let TestRouter {
             sender, drop_rx, ..
@@ -421,6 +423,10 @@ impl AgentExecutionContext for TestContext {
         self.scheduler.clone()
     }
 
+    fn uri(&self) -> &RelativeUri {
+        &self.uri
+    }
+
     fn metrics(&self) -> NodeMetricAggregator {
         self.aggregator.clone()
     }
@@ -435,7 +441,7 @@ impl AgentExecutionContext for TestContext {
 }
 
 fn default_buffer() -> NonZeroUsize {
-    NonZeroUsize::new(5).unwrap()
+    non_zero_usize!(5)
 }
 
 fn make_config() -> AgentExecutionConfig {
@@ -524,7 +530,7 @@ fn make_task(
 ) {
     let (respond_tx, respond_rx) = mpsc::channel(5);
     let (envelope_tx, envelope_rx) = mpsc::channel(5);
-    let (event_tx, event_rx) = topic::channel(NonZeroUsize::new(5).unwrap());
+    let (event_tx, event_rx) = topic::channel(non_zero_usize!(5));
 
     let handler = TestHandler::new();
     let output = TaskOutput(ReceiverStream::new(respond_rx), handler.0.clone());
@@ -590,13 +596,13 @@ fn make_aggregator(
 
     let config = MetricAggregatorConfig {
         sample_rate: Duration::from_secs(u64::MAX),
-        buffer_size: NonZeroUsize::new(10).unwrap(),
-        yield_after: NonZeroUsize::new(256).unwrap(),
+        buffer_size: non_zero_usize!(10),
+        yield_after: non_zero_usize!(256),
         backpressure_config: MetricBackpressureConfig {
-            buffer_size: NonZeroUsize::new(2).unwrap(),
-            yield_after: NonZeroUsize::new(256).unwrap(),
-            bridge_buffer_size: NonZeroUsize::new(4).unwrap(),
-            cache_size: NonZeroUsize::new(4).unwrap(),
+            buffer_size: non_zero_usize!(2),
+            yield_after: non_zero_usize!(256),
+            bridge_buffer_size: non_zero_usize!(4),
+            cache_size: non_zero_usize!(4),
         },
     };
 
@@ -631,6 +637,7 @@ fn make_context() -> (
         trigger: Arc::new(Mutex::new(Some(stop_tx))),
         _drop_tx: Arc::new(drop_tx),
         drop_rx,
+        uri: RelativeUri::try_from("/mock/router".to_string()).unwrap(),
         aggregator,
         uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
     };
@@ -1023,21 +1030,24 @@ fn make_command_lane_task<Context: AgentExecutionContext + Send + Sync + 'static
     impl Future<Output = Result<Vec<UplinkErrorReport>, LaneIoError>>,
     TaskInput,
 ) {
-    let (feedback_tx, mut feedback_rx) = mpsc::channel::<Command<i32>>(5);
+    let (commander_tx, mut commander_rx) = mpsc::channel::<Command<i32>>(5);
+    let (mut commands_tx, commands_rx) = circular_buffer::channel(non_zero_usize!(8));
 
     let mock_lifecycle = async move {
-        while let Some(Command { command, responder }) = feedback_rx.recv().await {
+        while let Some(Command { command, responder }) = commander_rx.recv().await {
             if let Some(responder) = responder {
-                assert!(responder.send(command * 2).is_ok());
+                assert!(responder.trigger());
             }
+            assert!(commands_tx.try_send(command).is_ok());
         }
+        let _ = commands_tx;
     };
     let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedClientEnvelope>(5);
 
-    let lane: CommandLane<i32> = CommandLane::new(feedback_tx);
+    let lane_io: CommandLaneIo<i32> = CommandLaneIo::new(Commander(commander_tx), commands_rx);
 
     let task = super::run_command_lane_io(
-        lane,
+        lane_io,
         ReceiverStream::new(envelope_rx),
         config,
         context,
@@ -1380,6 +1390,7 @@ impl MultiTestContextInner {
 struct MultiTestContext(
     Arc<parking_lot::Mutex<MultiTestContextInner>>,
     mpsc::Sender<Eff>,
+    RelativeUri,
     Arc<AtomicInstant>,
 );
 
@@ -1390,6 +1401,7 @@ impl MultiTestContext {
                 router_addr,
             ))),
             spawner,
+            RelativeUri::try_from("/mock/router".to_string()).unwrap(),
             Arc::new(AtomicInstant::new(Instant::now().into_std())),
         )
     }
@@ -1426,6 +1438,10 @@ impl AgentExecutionContext for MultiTestContext {
         self.1.clone()
     }
 
+    fn uri(&self) -> &RelativeUri {
+        &self.2
+    }
+
     fn metrics(&self) -> NodeMetricAggregator {
         NodeMetricAggregator::new(
             RelativeUri::try_from("/test").unwrap(),
@@ -1441,7 +1457,7 @@ impl AgentExecutionContext for MultiTestContext {
     }
 
     fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
-        &self.2
+        &self.3
     }
 
     fn store(&self) -> Self::Store {
@@ -1449,7 +1465,7 @@ impl AgentExecutionContext for MultiTestContext {
     }
 }
 
-impl ServerRouter for MultiTestRouter {
+impl Router for MultiTestRouter {
     fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let mut lock = self.0.lock();
@@ -1479,7 +1495,7 @@ impl ServerRouter for MultiTestRouter {
 fn make_multi_context() -> (MultiTestContext, BoxFuture<'static, ()>) {
     let (spawn_tx, spawn_rx) = mpsc::channel(5);
 
-    let context = MultiTestContext::new(RoutingAddr::local(1024), spawn_tx);
+    let context = MultiTestContext::new(RoutingAddr::plane(1024), spawn_tx);
     let spawn_task = ReceiverStream::new(spawn_rx)
         .for_each_concurrent(None, |t| t)
         .boxed();
@@ -1613,7 +1629,7 @@ async fn command_lane_multiple_links() {
             2,
             &mut router_rx,
             &expected_addr,
-            Envelope::make_event(&route.node, &route.lane, Some(4.into())),
+            Envelope::make_event(&route.node, &route.lane, Some(2.into())),
         )
         .await;
 
@@ -1623,7 +1639,7 @@ async fn command_lane_multiple_links() {
             2,
             &mut router_rx,
             &expected_addr,
-            Envelope::make_event(&route.node, &route.lane, Some(6.into())),
+            Envelope::make_event(&route.node, &route.lane, Some(3.into())),
         )
         .await;
 

@@ -1,5 +1,5 @@
 error: Only one argument is permitted as the schema for all items
-  --> $DIR/all_items_op_arg_count.rs:20:23
+  --> $DIR/src/schema/tests/derive/validated_form/all_items_op_arg_count.rs:18:14
    |
-20 |         #[form(schema(all_items(num_items = 5, num_attrs = 5)))]
-   |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+18 |     #[derive(ValueSchema)]
+   |              ^^^^^^^^^^^

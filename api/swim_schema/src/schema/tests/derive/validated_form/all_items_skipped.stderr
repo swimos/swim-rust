@@ -1,9 +1,5 @@
 error: All items schema not valid when all fields are skipped
-  --> $DIR/all_items_skipped.rs:19:5
+  --> $DIR/src/schema/tests/derive/validated_form/all_items_skipped.rs:18:14
    |
-19 | /     #[form(schema(all_items(of_kind(ValueKind::Int32))))]
-20 | |     struct S {
-21 | |         #[form(skip)]
-22 | |         f: i32,
-23 | |     }
-   | |_____^
+18 |     #[derive(ValueSchema)]
+   |              ^^^^^^^^^^^

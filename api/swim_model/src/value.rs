@@ -18,6 +18,7 @@ use crate::Text;
 use either::Either;
 use num_traits::Signed;
 use num_traits::ToPrimitive;
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
@@ -29,11 +30,10 @@ use crate::{num, Attr, Item};
 
 /// The core Swim model type. A recursive data type that can be represented in text as a Recon
 /// document.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Value {
     /// A defined but empty value.
     Extant,
-
     /// A 32-bit integer wrapped as a [`Value`].
     Int32Value(i32),
 

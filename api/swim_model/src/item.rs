@@ -13,12 +13,13 @@
 // limitations under the License.
 
 use crate::Value;
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 use std::hash::Hash;
 
 /// An item that may occur in the body of record ['Value'].
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
 pub enum Item {
     /// An item consisting of a single ['Value'].
     ValueItem(Value),

@@ -19,19 +19,19 @@ mod tests {
     use swim_client::downlink::Event;
     use swim_client::interface::SwimClientBuilder;
     use swim_form::Form;
-    use swim_model::path::AbsolutePath;
+    use swim_model::path::{AbsolutePath, RelativePath};
     use swim_model::{Attr, Item, Value};
     use test_server::build_server;
     use tokio::time::Duration;
 
     #[tokio::test]
     async fn test_value_dl_recv() {
-        let (server, mut handle) = build_server().await;
+        let (server, mut server_handle) = build_server().await;
         tokio::spawn(server.run());
-        let port = handle.address().await.unwrap().port();
+        let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::build_with_default().await;
+        let host = format!("warp://127.0.0.1:{}", port);
+        let client = SwimClientBuilder::build_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "id");
 
@@ -39,17 +39,16 @@ mod tests {
 
         let message = recv.recv().await.unwrap();
         assert_eq!(message, Event::Remote(0));
-        handle.stop();
     }
 
     #[tokio::test]
     async fn test_value_dl_send() {
-        let (server, mut handle) = build_server().await;
+        let (server, mut server_handle) = build_server().await;
         tokio::spawn(server.run());
-        let port = handle.address().await.unwrap().port();
+        let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::build_with_default().await;
+        let host = format!("warp://127.0.0.1:{}", port);
+        let client = SwimClientBuilder::build_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "id");
 
@@ -63,17 +62,16 @@ mod tests {
 
         let message = recv.recv().await.unwrap();
         assert_eq!(message, Event::Local(10));
-        handle.stop();
     }
 
     #[tokio::test]
     async fn test_map_dl_recv() {
-        let (server, mut handle) = build_server().await;
+        let (server, mut server_handle) = build_server().await;
         tokio::spawn(server.run());
-        let port = handle.address().await.unwrap().port();
+        let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::build_with_default().await;
+        let host = format!("warp://127.0.0.1:{}", port);
+        let client = SwimClientBuilder::build_with_default().await;
         let path = AbsolutePath::new(
             url::Url::parse(&host).unwrap(),
             "/unit/foo",
@@ -96,17 +94,16 @@ mod tests {
         } else {
             panic!("The map downlink did not receive the correct message!")
         }
-        handle.stop();
     }
 
     #[tokio::test]
     async fn test_map_dl_send() {
-        let (server, mut handle) = build_server().await;
+        let (server, mut server_handle) = build_server().await;
         tokio::spawn(server.run());
-        let port = handle.address().await.unwrap().port();
+        let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::build_with_default().await;
+        let host = format!("warp://127.0.0.1:{}", port);
+        let client = SwimClientBuilder::build_with_default().await;
         let path = AbsolutePath::new(
             url::Url::parse(&host).unwrap(),
             "/unit/foo",
@@ -142,17 +139,16 @@ mod tests {
         } else {
             panic!("The map downlink did not receive the correct message!")
         }
-        handle.stop();
     }
 
     #[tokio::test]
     async fn test_recv_untyped_value_event() {
-        let (server, mut handle) = build_server().await;
+        let (server, mut server_handle) = build_server().await;
         tokio::spawn(server.run());
-        let port = handle.address().await.unwrap().port();
+        let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::build_with_default().await;
+        let host = format!("warp://127.0.0.1:{}", port);
+        let client = SwimClientBuilder::build_with_default().await;
 
         let event_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
         let command_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
@@ -167,17 +163,16 @@ mod tests {
         let incoming = rec.recv().await.unwrap().clone().get_inner();
 
         assert_eq!(incoming, Value::text("Hello, from Rust!"));
-        handle.stop();
     }
 
     #[tokio::test]
     async fn test_recv_typed_value_event_valid() {
-        let (server, mut handle) = build_server().await;
+        let (server, mut server_handle) = build_server().await;
         tokio::spawn(server.run());
-        let port = handle.address().await.unwrap().port();
+        let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::build_with_default().await;
+        let host = format!("warp://127.0.0.1:{}", port);
+        let client = SwimClientBuilder::build_with_default().await;
 
         let event_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
         let command_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
@@ -203,17 +198,16 @@ mod tests {
         let incoming = rec.recv().await.unwrap();
 
         assert_eq!(incoming, "Hello, from Rust!");
-        handle.stop();
     }
 
     #[tokio::test]
     async fn test_recv_typed_value_event_invalid() {
-        let (server, mut handle) = build_server().await;
+        let (server, mut server_handle) = build_server().await;
         tokio::spawn(server.run());
-        let port = handle.address().await.unwrap().port();
+        let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::build_with_default().await;
+        let host = format!("warp://127.0.0.1:{}", port);
+        let client = SwimClientBuilder::build_with_default().await;
 
         let event_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
         let command_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
@@ -233,17 +227,16 @@ mod tests {
         let incoming = rec.recv().await;
 
         assert_eq!(incoming, None);
-        handle.stop();
     }
 
     #[tokio::test]
     async fn test_recv_untyped_map_event() {
-        let (server, mut handle) = build_server().await;
+        let (server, mut server_handle) = build_server().await;
         tokio::spawn(server.run());
-        let port = handle.address().await.unwrap().port();
+        let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::build_with_default().await;
+        let host = format!("warp://127.0.0.1:{}", port);
+        let client = SwimClientBuilder::build_with_default().await;
 
         let event_path = AbsolutePath::new(
             url::Url::parse(&host).unwrap(),
@@ -281,17 +274,16 @@ mod tests {
         let expected = Value::Record(vec![header], vec![body]);
 
         assert_eq!(incoming, expected);
-        handle.stop();
     }
 
     #[tokio::test]
     async fn test_recv_typed_map_event_valid() {
-        let (server, mut handle) = build_server().await;
+        let (server, mut server_handle) = build_server().await;
         tokio::spawn(server.run());
-        let port = handle.address().await.unwrap().port();
+        let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::build_with_default().await;
+        let host = format!("warp://127.0.0.1:{}", port);
+        let client = SwimClientBuilder::build_with_default().await;
 
         let event_path = AbsolutePath::new(
             url::Url::parse(&host).unwrap(),
@@ -329,17 +321,16 @@ mod tests {
             incoming,
             MapModification::Update("milk".to_string(), Arc::new(6i32))
         );
-        handle.stop();
     }
 
     #[tokio::test]
     async fn test_recv_typed_map_event_invalid_key() {
-        let (server, mut handle) = build_server().await;
+        let (server, mut server_handle) = build_server().await;
         tokio::spawn(server.run());
-        let port = handle.address().await.unwrap().port();
+        let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::build_with_default().await;
+        let host = format!("warp://127.0.0.1:{}", port);
+        let client = SwimClientBuilder::build_with_default().await;
 
         let event_path = AbsolutePath::new(
             url::Url::parse(&host).unwrap(),
@@ -377,17 +368,16 @@ mod tests {
         let incoming = rec.recv().await;
 
         assert_eq!(incoming, None);
-        handle.stop();
     }
 
     #[tokio::test]
     async fn test_recv_typed_map_event_invalid_value() {
-        let (server, mut handle) = build_server().await;
+        let (server, mut server_handle) = build_server().await;
         tokio::spawn(server.run());
-        let port = handle.address().await.unwrap().port();
+        let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::build_with_default().await;
+        let host = format!("warp://127.0.0.1:{}", port);
+        let client = SwimClientBuilder::build_with_default().await;
 
         let event_path = AbsolutePath::new(
             url::Url::parse(&host).unwrap(),
@@ -425,17 +415,16 @@ mod tests {
         let incoming = rec.recv().await;
 
         assert_eq!(incoming, None);
-        handle.stop();
     }
 
     #[tokio::test]
     async fn test_read_only_value() {
-        let (server, mut handle) = build_server().await;
+        let (server, mut server_handle) = build_server().await;
         tokio::spawn(server.run());
-        let port = handle.address().await.unwrap().port();
+        let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::build_with_default().await;
+        let host = format!("warp://127.0.0.1:{}", port);
+        let client = SwimClientBuilder::build_with_default().await;
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
 
         let command_dl = client
@@ -473,34 +462,32 @@ mod tests {
             message,
             Event::Remote(Value::from("Hello, Value!".to_string()))
         );
-        handle.stop();
     }
 
     #[tokio::test]
     async fn test_read_only_value_schema_error() {
-        let (server, mut handle) = build_server().await;
+        let (server, mut server_handle) = build_server().await;
         tokio::spawn(server.run());
-        let port = handle.address().await.unwrap().port();
+        let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::build_with_default().await;
+        let host = format!("warp://127.0.0.1:{}", port);
+        let client = SwimClientBuilder::build_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "id");
         let (dl, _rec) = client.value_downlink(path.clone(), 0i64).await.unwrap();
 
         assert!(dl.subscriber().covariant_cast::<String>().is_err());
         assert!(dl.subscriber().covariant_cast::<i32>().is_err());
-        handle.stop();
     }
 
     #[tokio::test]
     async fn test_read_only_map() {
-        let (server, mut handle) = build_server().await;
+        let (server, mut server_handle) = build_server().await;
         tokio::spawn(server.run());
-        let port = handle.address().await.unwrap().port();
+        let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::build_with_default().await;
+        let host = format!("warp://127.0.0.1:{}", port);
+        let client = SwimClientBuilder::build_with_default().await;
 
         let path = AbsolutePath::new(
             url::Url::parse(&host).unwrap(),
@@ -577,17 +564,16 @@ mod tests {
         } else {
             panic!("The map downlink did not receive the correct message!")
         }
-        handle.stop();
     }
 
     #[tokio::test]
     async fn test_read_only_map_schema_error() {
-        let (server, mut handle) = build_server().await;
+        let (server, mut server_handle) = build_server().await;
         tokio::spawn(server.run());
-        let port = handle.address().await.unwrap().port();
+        let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::build_with_default().await;
+        let host = format!("warp://127.0.0.1:{}", port);
+        let client = SwimClientBuilder::build_with_default().await;
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "integer_map");
 
         let (dl, _rec) = client.map_downlink::<i64, i64>(path).await.unwrap();
@@ -596,17 +582,16 @@ mod tests {
         assert!(dl.subscriber().covariant_cast::<i64, String>().is_err());
         assert!(dl.subscriber().covariant_cast::<i32, i64>().is_err());
         assert!(dl.subscriber().covariant_cast::<i64, i32>().is_err());
-        handle.stop();
     }
 
     #[tokio::test]
     async fn test_write_only_value() {
-        let (server, mut handle) = build_server().await;
+        let (server, mut server_handle) = build_server().await;
         tokio::spawn(server.run());
-        let port = handle.address().await.unwrap().port();
+        let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::build_with_default().await;
+        let host = format!("warp://127.0.0.1:{}", port);
+        let client = SwimClientBuilder::build_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
 
@@ -633,34 +618,32 @@ mod tests {
         sender_view.set(String::from("chocolate")).await.unwrap();
         let message = recv.recv().await.unwrap();
         assert_eq!(message, Event::Local(Value::text("chocolate")));
-        handle.stop();
     }
 
     #[tokio::test]
     async fn test_write_only_value_schema_error() {
-        let (server, mut handle) = build_server().await;
+        let (server, mut server_handle) = build_server().await;
         tokio::spawn(server.run());
-        let port = handle.address().await.unwrap().port();
+        let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::build_with_default().await;
+        let host = format!("warp://127.0.0.1:{}", port);
+        let client = SwimClientBuilder::build_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "id");
         let (dl, _rec) = client.value_downlink(path.clone(), 0i32).await.unwrap();
 
         assert!(dl.sender().contravariant_view::<String>().is_err());
         assert!(dl.sender().contravariant_view::<i64>().is_err());
-        handle.stop();
     }
 
     #[tokio::test]
     async fn test_write_only_map() {
-        let (server, mut handle) = build_server().await;
+        let (server, mut server_handle) = build_server().await;
         tokio::spawn(server.run());
-        let port = handle.address().await.unwrap().port();
+        let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::build_with_default().await;
+        let host = format!("warp://127.0.0.1:{}", port);
+        let client = SwimClientBuilder::build_with_default().await;
 
         let path = AbsolutePath::new(
             url::Url::parse(&host).unwrap(),
@@ -748,17 +731,16 @@ mod tests {
         } else {
             panic!("The map downlink did not receive the correct message!")
         }
-        handle.stop();
     }
 
     #[tokio::test]
     async fn test_write_only_map_schema_error() {
-        let (server, mut handle) = build_server().await;
+        let (server, mut server_handle) = build_server().await;
         tokio::spawn(server.run());
-        let port = handle.address().await.unwrap().port();
+        let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::build_with_default().await;
+        let host = format!("warp://127.0.0.1:{}", port);
+        let client = SwimClientBuilder::build_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "integer_map");
         let (dl, _) = client.map_downlink::<i32, i32>(path).await.unwrap();
@@ -767,6 +749,334 @@ mod tests {
         assert!(dl.sender().contravariant_view::<i32, String>().is_err());
         assert!(dl.sender().contravariant_view::<i64, i32>().is_err());
         assert!(dl.sender().contravariant_view::<i32, i64>().is_err());
-        handle.stop();
+    }
+
+    #[tokio::test]
+    async fn test_server_dl_between_lanes_same_agent() {
+        let (server, mut server_handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = server_handle.address().await.unwrap().port();
+        let host = format!("warp://127.0.0.1:{}", port);
+
+        let client = SwimClientBuilder::build_with_default().await;
+
+        let park_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/downlink/1", "park");
+        let garage_path =
+            AbsolutePath::new(url::Url::parse(&host).unwrap(), "/downlink/1", "garage");
+
+        let (dl, mut recv) = client
+            .value_downlink(garage_path, "".to_string())
+            .await
+            .unwrap();
+
+        dl.set("VW".to_string()).await.unwrap();
+
+        client
+            .command_downlink::<String>(park_path)
+            .await
+            .unwrap()
+            .command("BMW".to_string())
+            .await
+            .unwrap();
+
+        let message = recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("".to_string()));
+        let message = recv.recv().await.unwrap();
+        assert_eq!(message, Event::Local("VW".to_string()));
+        let message = recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("VW".to_string()));
+        let message = recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("VW BMW".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_server_dl_between_lanes_different_agents() {
+        let (server, mut server_handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = server_handle.address().await.unwrap().port();
+        let host = format!("warp://127.0.0.1:{}", port);
+
+        let client = SwimClientBuilder::build_with_default().await;
+
+        let park_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/downlink/1", "park");
+        let first_garage_path =
+            AbsolutePath::new(url::Url::parse(&host).unwrap(), "/downlink/1", "garage");
+        let second_garage_path =
+            AbsolutePath::new(url::Url::parse(&host).unwrap(), "/downlink/2", "garage");
+
+        let (first_dl, mut first_recv) = client
+            .value_downlink(first_garage_path, "".to_string())
+            .await
+            .unwrap();
+        first_dl.set("VW".to_string()).await.unwrap();
+
+        let (second_dl, mut second_recv) = client
+            .value_downlink(second_garage_path, "".to_string())
+            .await
+            .unwrap();
+        second_dl.set("VW".to_string()).await.unwrap();
+
+        client
+            .command_downlink::<String>(park_path)
+            .await
+            .unwrap()
+            .command("Audi".to_string())
+            .await
+            .unwrap();
+
+        let message = first_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("".to_string()));
+        let message = first_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Local("VW".to_string()));
+        let message = first_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("VW".to_string()));
+
+        let message = second_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("".to_string()));
+        let message = second_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Local("VW".to_string()));
+        let message = second_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("VW".to_string()));
+
+        let message = second_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("VW Audi".to_string()));
+
+        let message = first_dl.get().await.unwrap();
+        assert_eq!(message, "VW".to_string())
+    }
+
+    #[tokio::test]
+    async fn test_server_dl_between_lanes_remote() {
+        let (server, mut server_handle) = build_server().await;
+        tokio::spawn(server.run());
+        let first_port = server_handle.address().await.unwrap().port();
+        let first_host = format!("warp://127.0.0.1:{}", first_port);
+
+        let (server, mut server_handle) = build_server().await;
+        tokio::spawn(server.run());
+        let second_port = server_handle.address().await.unwrap().port();
+        let second_host = format!("warp://127.0.0.1:{}", second_port);
+
+        let client = SwimClientBuilder::build_with_default().await;
+
+        let park_path =
+            AbsolutePath::new(url::Url::parse(&first_host).unwrap(), "/downlink/1", "park");
+        let first_garage_path = AbsolutePath::new(
+            url::Url::parse(&first_host).unwrap(),
+            "/downlink/1",
+            "garage",
+        );
+
+        let second_garage_path = AbsolutePath::new(
+            url::Url::parse(&second_host).unwrap(),
+            "/downlink/1",
+            "garage",
+        );
+
+        let (first_dl, mut first_recv) = client
+            .value_downlink(first_garage_path, "".to_string())
+            .await
+            .unwrap();
+        first_dl.set("VW".to_string()).await.unwrap();
+
+        let (second_dl, mut second_recv) = client
+            .value_downlink(second_garage_path, "".to_string())
+            .await
+            .unwrap();
+        second_dl.set("VW".to_string()).await.unwrap();
+
+        client
+            .command_downlink::<String>(park_path)
+            .await
+            .unwrap()
+            .command(format!("Toyota {}", second_port))
+            .await
+            .unwrap();
+
+        let message = first_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("".to_string()));
+        let message = first_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Local("VW".to_string()));
+        let message = first_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("VW".to_string()));
+
+        let message = second_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("".to_string()));
+        let message = second_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Local("VW".to_string()));
+        let message = second_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("VW".to_string()));
+
+        let message = second_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("VW Toyota".to_string()));
+
+        let message = first_dl.get().await.unwrap();
+        assert_eq!(message, "VW".to_string())
+    }
+
+    #[tokio::test]
+    async fn test_server_dl_from_server_to_lane_local() {
+        let (server, mut server_handle) = build_server().await;
+        let client_context = server.client_context();
+        tokio::spawn(server.run());
+        let port = server_handle.address().await.unwrap().port();
+        let host = format!("warp://127.0.0.1:{}", port);
+
+        let client = SwimClientBuilder::build_with_default().await;
+
+        let garage_path =
+            AbsolutePath::new(url::Url::parse(&host).unwrap(), "/downlink/1", "garage");
+
+        let (client_dl, mut client_recv) = client
+            .value_downlink(garage_path, "".to_string())
+            .await
+            .unwrap();
+        client_dl.set("VW".to_string()).await.unwrap();
+
+        let (server_dl, mut server_recv) = client_context
+            .value_downlink(
+                RelativePath::new("/downlink/1", "garage").into(),
+                "".to_string(),
+            )
+            .await
+            .unwrap();
+
+        server_dl
+            .set(format!("{} {}", server_dl.get().await.unwrap(), "Honda"))
+            .await
+            .unwrap();
+
+        let message = client_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("".to_string()));
+        let message = client_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Local("VW".to_string()));
+        let message = client_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("VW".to_string()));
+
+        let message = server_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("VW".to_string()));
+        let message = server_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Local("VW Honda".to_string()));
+        let message = server_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("VW Honda".to_string()));
+
+        let message = client_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("VW Honda".to_string()));
+
+        let message = client_dl.get().await.unwrap();
+        assert_eq!(message, "VW Honda".to_string())
+    }
+
+    #[tokio::test]
+    async fn test_server_dl_from_server_to_lane_remote() {
+        let (server, mut server_handle) = build_server().await;
+        let client_context = server.client_context();
+        tokio::spawn(server.run());
+        let second_port = server_handle.address().await.unwrap().port();
+        let second_host = format!("warp://127.0.0.1:{}", second_port);
+
+        let client = SwimClientBuilder::build_with_default().await;
+
+        let garage_path = AbsolutePath::new(
+            url::Url::parse(&second_host).unwrap(),
+            "/downlink/1",
+            "garage",
+        );
+
+        let (client_dl, mut client_recv) = client
+            .value_downlink(garage_path, "".to_string())
+            .await
+            .unwrap();
+        client_dl.set("VW".to_string()).await.unwrap();
+
+        let (server_dl, mut server_recv) = client_context
+            .value_downlink(
+                AbsolutePath::new(
+                    url::Url::parse(&second_host).unwrap(),
+                    "/downlink/1",
+                    "garage",
+                )
+                .into(),
+                "".to_string(),
+            )
+            .await
+            .unwrap();
+
+        server_dl
+            .set(format!("{} {}", server_dl.get().await.unwrap(), "Volvo"))
+            .await
+            .unwrap();
+
+        let message = client_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("".to_string()));
+        let message = client_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Local("VW".to_string()));
+        let message = client_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("VW".to_string()));
+
+        let message = server_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("VW".to_string()));
+        let message = server_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Local("VW Volvo".to_string()));
+        let message = server_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("VW Volvo".to_string()));
+
+        let message = client_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("VW Volvo".to_string()));
+
+        let message = client_dl.get().await.unwrap();
+        assert_eq!(message, "VW Volvo".to_string())
+    }
+
+    #[tokio::test]
+    async fn test_remote_and_local_dl_to_command_lane() {
+        let (server, mut server_handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = server_handle.address().await.unwrap().port();
+        let host = format!("warp://127.0.0.1:{}", port);
+
+        let client = SwimClientBuilder::build_with_default().await;
+
+        let garage_path =
+            AbsolutePath::new(url::Url::parse(&host).unwrap(), "/downlink/1", "garage");
+
+        let park_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/downlink/1", "park");
+
+        let self_park_path =
+            AbsolutePath::new(url::Url::parse(&host).unwrap(), "/downlink/1", "self_park");
+
+        let (_garage_downlink, mut garage_recv) = client
+            .value_downlink(garage_path, "".to_string())
+            .await
+            .unwrap();
+
+        let park_downlink = client
+            .event_downlink::<String>(park_path.clone(), Default::default())
+            .await
+            .unwrap();
+
+        let mut park_downlink_recv = park_downlink.subscribe().unwrap();
+
+        client
+            .send_command(park_path, "Kia".to_string())
+            .await
+            .unwrap();
+
+        client
+            .send_command(self_park_path, "Mercedes".to_string())
+            .await
+            .unwrap();
+
+        let message = garage_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("".to_string()));
+        let message = garage_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("Kia".to_string()));
+        let message = garage_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("Kia Mercedes".to_string()));
+
+        let message = park_downlink_recv.recv().await.unwrap();
+        assert_eq!(message, "Kia");
+        let message = park_downlink_recv.recv().await.unwrap();
+        assert_eq!(message, "Mercedes");
     }
 }

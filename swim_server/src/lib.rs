@@ -19,12 +19,23 @@ pub mod interface;
 pub mod meta;
 #[macro_use]
 pub mod macros;
-pub mod plane;
 pub mod routing;
+pub mod sync {
+    pub mod circular_buffer {
+        pub use swim_utilities::sync::circular_buffer::{
+            channel,
+            error::{RecvError, SendError},
+            watch_channel, Receiver, Sender,
+        };
+    }
+}
+
+mod plane;
 
 #[allow(unused_imports)]
 pub use agent_derive::*;
-
+pub use plane::spec::PlaneBuilder;
+pub use stm;
 pub use stringify_attr::{stringify_attr, stringify_attr_raw};
 pub use swim_utilities::future::retryable::RetryStrategy;
 pub use swim_utilities::future::SwimStreamExt;

@@ -160,6 +160,18 @@ pub enum CompressionSwitcherProvider {
     Off,
 }
 
+impl PartialEq for CompressionSwitcherProvider {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (CompressionSwitcherProvider::On(left), CompressionSwitcherProvider::On(right)) => {
+                left.config().eq(right.config())
+            }
+            (CompressionSwitcherProvider::Off, CompressionSwitcherProvider::Off) => true,
+            _ => false,
+        }
+    }
+}
+
 impl ExtensionProvider for CompressionSwitcherProvider {
     type Extension = Deflate;
     type Error = DeflateExtensionError;

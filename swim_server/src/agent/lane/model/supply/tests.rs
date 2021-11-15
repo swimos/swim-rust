@@ -14,11 +14,11 @@
 
 use crate::agent::lane::model::supply::make_lane_model;
 use futures::StreamExt;
-use std::num::NonZeroUsize;
+use swim_utilities::algebra::non_zero_usize;
 
 #[tokio::test]
 async fn receive_events() {
-    let (lane, mut events) = make_lane_model(NonZeroUsize::new(1000).unwrap());
+    let (lane, mut events) = make_lane_model(non_zero_usize!(1000));
 
     let jh = tokio::spawn(async move {
         let mut expected = (0..=100).collect::<Vec<i32>>();

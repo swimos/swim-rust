@@ -21,9 +21,6 @@ use std::sync::Arc;
 
 use im::OrdMap;
 
-use stm::local::TLocal;
-use stm::stm::{abort, left, right, Constant, Stm, VecStm, UNIT};
-use stm::transaction::{atomically, RetryManager, TransactionError, TransactionRunner};
 use stm::var::TVar;
 use summary::{clear_summary, remove_summary, update_summary};
 use swim_form::Form;
@@ -46,6 +43,9 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::num::NonZeroUsize;
+use stm::local::TLocal;
+use stm::stm::{abort, left, right, Constant, Stm, VecStm, UNIT};
+use stm::transaction::{atomically, RetryManager, TransactionError, TransactionRunner};
 use stm::var::observer::{Observer, ObserverStream, ObserverSubscriber};
 use swim_form::structural::read::ReadError;
 use swim_utilities::future::{FlatmapStream, SwimStreamExt, Transform};

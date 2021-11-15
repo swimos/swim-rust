@@ -17,6 +17,9 @@
 pub mod never;
 pub mod ptr;
 
+#[cfg(feature = "algebra")]
+pub use swim_algebra as algebra;
+
 #[cfg(feature = "errors")]
 pub use swim_errors as errors;
 

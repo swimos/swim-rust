@@ -46,7 +46,9 @@ use swim_metrics::uplink::{
 };
 use swim_model::path::RelativePath;
 use swim_model::Value;
-use swim_utilities::future::{item_sink, SwimStreamExt};
+use swim_utilities::algebra::non_zero_usize;
+use swim_utilities::future::item_sink;
+use swim_utilities::future::SwimStreamExt;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger;
@@ -55,10 +57,10 @@ use tokio::sync::mpsc;
 use tokio::time::{timeout, Instant};
 use tokio_stream::wrappers::ReceiverStream;
 
-pub const DEFAULT_YIELD: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(256) };
+pub const DEFAULT_YIELD: NonZeroUsize = non_zero_usize!(256);
 
 fn buffer_size() -> NonZeroUsize {
-    NonZeroUsize::new(16).unwrap()
+    non_zero_usize!(16)
 }
 
 fn make_subscribable<K, V>(buffer_size: NonZeroUsize) -> (MapLane<K, V>, MapSubscriber<K, V>)
@@ -524,10 +526,10 @@ async fn meta_backpressure() {
     let config = MetricAggregatorConfig {
         sample_rate,
         backpressure_config: MetricBackpressureConfig {
-            buffer_size: NonZeroUsize::new(buffer_size).unwrap(),
+            buffer_size: non_zero_usize!(buffer_size),
             yield_after: DEFAULT_YIELD,
-            bridge_buffer_size: NonZeroUsize::new(buffer_size).unwrap(),
-            cache_size: NonZeroUsize::new(count).unwrap(),
+            bridge_buffer_size: non_zero_usize!(buffer_size),
+            cache_size: non_zero_usize!(count),
         },
         ..Default::default()
     };
@@ -537,7 +539,7 @@ async fn meta_backpressure() {
     let mut lane_set = HashSet::new();
 
     (0..count).into_iter().for_each(|i| {
-        let (supply_lane, supply_rx) = make_lane_model(NonZeroUsize::new(10).unwrap());
+        let (supply_lane, supply_rx) = make_lane_model(non_zero_usize!(10));
         let key = format_lane(i);
 
         lane_set.insert(key.clone());
@@ -550,7 +552,7 @@ async fn meta_backpressure() {
     let (finish_tx, finish_rx) = trigger::trigger();
     let aggregator_config = AggregatorConfig {
         sample_rate,
-        buffer_size: NonZeroUsize::new(buffer_size).unwrap(),
+        buffer_size: non_zero_usize!(buffer_size),
         yield_after: DEFAULT_YIELD,
         backpressure_config: config.backpressure_config,
     };

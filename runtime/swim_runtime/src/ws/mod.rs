@@ -36,7 +36,6 @@ pub mod utils;
 
 mod switcher;
 
-#[cfg(feature = "tls")]
 pub mod tls;
 
 #[cfg(feature = "tls")]

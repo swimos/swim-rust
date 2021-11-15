@@ -13,49 +13,30 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
-use crate::agent::lane::model::command::CommandLane;
-use crate::routing::RoutingAddr;
-use either::Either;
+use crate::agent::model::command::Commander;
 use futures::future::BoxFuture;
-use futures::select_biased;
-use futures::stream::FuturesOrdered;
 use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::fmt::Debug;
-use std::time::Duration;
-use swim_async_runtime::time::timeout;
-use tokio::sync::mpsc;
+use swim_runtime::routing::RoutingAddr;
 use tracing::{event, Level};
 
 pub struct CommandLaneUpdateTask<T> {
-    lane: CommandLane<T>,
-    feedback: Option<mpsc::Sender<(RoutingAddr, T)>>,
-    cleanup_timeout: Duration,
+    commander: Commander<T>,
 }
 
 impl<T> CommandLaneUpdateTask<T>
 where
     T: Send + Sync + Debug + 'static,
 {
-    pub fn new(
-        lane: CommandLane<T>,
-        feedback: Option<mpsc::Sender<(RoutingAddr, T)>>,
-        cleanup_timeout: Duration,
-    ) -> Self {
-        CommandLaneUpdateTask {
-            lane,
-            feedback,
-            cleanup_timeout,
-        }
+    pub fn new(commander: Commander<T>) -> Self {
+        CommandLaneUpdateTask { commander }
     }
 }
 
-const NO_COMPLETION: &str = "Command did not complete.";
-const CLEANUP_TIMEOUT: &str = "Timeout waiting for pending completions.";
-
 impl<T> LaneUpdate for CommandLaneUpdateTask<T>
 where
-    T: Send + Sync + Debug + 'static,
+    T: Clone + Send + Sync + Debug + 'static,
 {
     type Msg = T;
 
@@ -69,89 +50,27 @@ where
         UpdateError: From<Err>,
     {
         async move {
-            let CommandLaneUpdateTask {
-                lane,
-                feedback,
-                cleanup_timeout,
-            } = self;
-            let mut commander = lane.commander();
-            match feedback {
-                Some(resp_tx) => {
-                    let messages = messages.fuse();
-                    pin_mut!(messages);
-                    let mut responses = FuturesOrdered::new();
-                    let result: Result<(), UpdateError> = loop {
-                        let resp_or_msg = if responses.is_empty() {
-                            messages.next().await.map(Either::Right)
-                        } else {
-                            select_biased! {
-                                response = responses.next().fuse() => response.map(Either::Left),
-                                result = messages.next() => result.map(Either::Right),
-                            }
-                        };
+            let CommandLaneUpdateTask { mut commander } = self;
 
-                        match resp_or_msg {
-                            Some(Either::Left(Ok(addr_and_resp))) => {
-                                if resp_tx.send(addr_and_resp).await.is_err() {
-                                    break Err(UpdateError::FeedbackChannelDropped);
-                                }
-                            }
-                            Some(Either::Left(Err(_))) => {
-                                event!(Level::WARN, NO_COMPLETION);
-                            }
-                            Some(Either::Right(Ok((addr, msg)))) => {
-                                if let Ok(rx) = commander.command_and_await(msg).await {
-                                    responses
-                                        .push(rx.map(move |r| r.map(move |resp| (addr, resp))));
-                                } else {
-                                    event!(Level::ERROR, NO_COMPLETION);
-                                }
-                            }
-                            Some(Either::Right(Err(e))) => {
-                                event!(Level::ERROR, ?e);
-                            }
-                            _ => {
-                                break Ok(());
-                            }
-                        }
-                    };
-                    match result {
-                        e @ Err(UpdateError::FeedbackChannelDropped) => e,
-                        ow => {
-                            loop {
-                                let resp =
-                                    timeout::timeout(cleanup_timeout, responses.next()).await;
-                                match resp {
-                                    Ok(Some(Ok(addr_and_resp))) => {
-                                        if resp_tx.send(addr_and_resp).await.is_err() {
-                                            return Err(UpdateError::FeedbackChannelDropped);
-                                        }
-                                    }
-                                    Ok(Some(Err(_))) => {
-                                        event!(Level::WARN, NO_COMPLETION);
-                                    }
-                                    Ok(_) => {
-                                        break;
-                                    }
-                                    Err(_) => {
-                                        event!(Level::ERROR, CLEANUP_TIMEOUT);
-                                        break;
-                                    }
-                                }
-                            }
-                            ow
-                        }
-                    }
-                }
-                _ => {
-                    pin_mut!(messages);
-                    while let Some(result) = messages.next().await {
-                        let (_, msg) = result?;
+            let messages = messages.fuse();
+            pin_mut!(messages);
+
+            while let Some(msg_result) = messages
+                .next()
+                .await
+                .map(|result| result.map(|(_, msg)| msg))
+            {
+                match msg_result {
+                    Ok(msg) => {
                         commander.command(msg).await;
                     }
-                    Ok(())
+                    Err(e) => {
+                        event!(Level::ERROR, ?e);
+                    }
                 }
             }
+
+            Ok(())
         }
         .boxed()
     }

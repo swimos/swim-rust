@@ -12,504 +12,700 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
-use std::num::NonZeroUsize;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
-
+use crate::router::{
+    AddressableWrapper, ClientRouter, ClientRouterFactory, DownlinkRoutingRequest, RouterEvent,
+    RoutingPath, RoutingTable,
+};
+use futures::future::join_all;
 use futures::future::BoxFuture;
-use futures::select;
-use futures::stream;
+use futures::select_biased;
+use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
-use swim_utilities::future::request::request_future::RequestError;
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::error::{SendError, TrySendError};
-use tokio::sync::oneshot;
-use tracing::{instrument, trace};
-use url::Host;
-
-use ratchet::{ExtensionDecoder, ExtensionEncoder, WebSocketStream};
+use slab::Slab;
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
+use std::convert::TryFrom;
+use std::fmt::{Debug, Display, Formatter};
+use std::sync::Arc;
 use swim_async_runtime::task::*;
-use swim_async_runtime::time::instant::Instant;
-use swim_async_runtime::time::interval::interval;
-use swim_runtime::error::{CloseError, ConnectionError, ResolutionError, ResolutionErrorKind};
-use swim_runtime::ws::{into_stream, WebsocketFactory, WsMessage};
+use swim_model::path::{Addressable, RelativePath};
+use swim_runtime::configuration::DownlinkConnectionsConfig;
+use swim_runtime::error::ConnectionDropped;
+use swim_runtime::error::{CloseError, ConnectionError, HttpError, ResolutionError, Unresolvable};
+use swim_runtime::remote::RawRoute;
+use swim_runtime::routing::{
+    BidirectionalRoute, BidirectionalRouter, CloseReceiver, Route, Router, RouterFactory,
+    RoutingAddr, TaggedEnvelope, TaggedSender,
+};
+use swim_utilities::errors::Recoverable;
+use swim_utilities::future::request::request_future::RequestError;
+use swim_utilities::future::request::Request;
+use swim_utilities::future::retryable::RetryStrategy;
+use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger::promise;
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::Sender;
+use tokio::sync::oneshot;
+use tokio::time::sleep;
 use tokio_stream::wrappers::ReceiverStream;
-
-use crate::configuration::router::ConnectionPoolParams;
-
-pub mod factory;
+use tracing::instrument;
+use tracing::{event, Level};
+use url::Url;
 
 #[cfg(test)]
 mod tests;
 
-/// Connection pool message wraps a message from a remote host.
-#[derive(Debug)]
-pub(crate) struct ConnectionPoolMessage {
-    /// The URL of the remote host.
-    host: Host,
-    /// The message from the remote host.
-    message: String,
-}
-
-pub struct ConnectionRequest {
-    host_url: url::Url,
-    tx: oneshot::Sender<Result<ConnectionChannel, ConnectionError>>,
-    recreate_connection: bool,
-}
-
 /// Connection pool is responsible for managing the opening and closing of connections
 /// to remote hosts.
 pub trait ConnectionPool: Clone + Send + 'static {
+    type PathType: Addressable;
+
     fn request_connection(
         &mut self,
-        host_url: url::Url,
-        recreate: bool,
+        target: Self::PathType,
+        conn_type: ConnectionType,
     ) -> BoxFuture<Result<Result<Connection, ConnectionError>, RequestError>>;
-
-    fn close(self) -> BoxFuture<'static, Result<Result<(), ConnectionError>, ConnectionError>>;
-}
-
-type ConnectionPoolSharedHandle = Arc<Mutex<Option<TaskHandle<Result<(), ConnectionError>>>>>;
-
-/// The connection pool is responsible for opening new connections to remote hosts and managing
-/// them. It is possible to request a connection to be recreated or to return a cached connection
-/// for a given host if it already exists.
-#[derive(Clone)]
-pub struct SwimConnPool {
-    connection_request_tx: mpsc::Sender<ConnectionRequest>,
-    connection_requests_handle: ConnectionPoolSharedHandle,
-    stop_request_tx: mpsc::Sender<()>,
-}
-
-impl SwimConnPool {
-    /// Creates a new connection pool for managing connections to remote hosts.
-    ///
-    /// # Arguments
-    ///
-    /// * `buffer_size`             - The buffer size of the internal channels in the connection
-    ///                               pool as an integer.
-    /// * `connection_factory`      - Custom factory capable of producing connections for the pool.
-    #[instrument(skip(config, connection_factory))]
-    pub fn new<WsFac>(config: ConnectionPoolParams, connection_factory: WsFac) -> SwimConnPool
-    where
-        WsFac: WebsocketFactory + 'static,
-    {
-        let (connection_request_tx, connection_request_rx) =
-            mpsc::channel(config.buffer_size().get());
-        let (stop_request_tx, stop_request_rx) = mpsc::channel(config.buffer_size().get());
-
-        let task = PoolTask::new(
-            connection_request_rx,
-            connection_factory,
-            config.buffer_size(),
-            stop_request_rx,
-        );
-
-        let connection_requests_handler = spawn(task.run(config));
-
-        SwimConnPool {
-            connection_request_tx,
-            connection_requests_handle: Arc::new(Mutex::new(Some(connection_requests_handler))),
-            stop_request_tx,
-        }
-    }
 }
 
 pub type Connection = (ConnectionSender, Option<ConnectionReceiver>);
 
-impl ConnectionPool for SwimConnPool {
-    /// Sends and asynchronous request for a connection to a specific host.
+pub(crate) type ConnectionReceiver = mpsc::Receiver<RouterEvent>;
+pub(crate) type ConnectionSender = TaggedSender;
+
+/// The connection pool is responsible for opening new connections to remote hosts and managing
+/// them.
+#[derive(Clone)]
+pub struct SwimConnPool<Path: Addressable> {
+    client_tx: mpsc::Sender<DownlinkRoutingRequest<Path>>,
+}
+
+impl<Path: Addressable> SwimConnPool<Path> {
+    /// Creates a new connection pool for managing connections to remote hosts.
     ///
     /// # Arguments
     ///
-    /// * `host_url`                - The URL of the remote host.
-    /// * `recreate_connection`     - Boolean flag indicating whether the connection should be recreated.
+    /// * `config`                 - The configuration for the connection pool.
+    /// * `client_channel`         - Channel to the swim client.
+    /// * `client_router_factory`  - Factory for creating client routers.
+    /// * `stop_trigger`           - Trigger to stop the connection pool task.
+    #[instrument(skip(config))]
+    pub fn new<DelegateFac: RouterFactory + Debug>(
+        config: DownlinkConnectionsConfig,
+        client_channel: ClientChannel<Path>,
+        client_router_factory: ClientRouterFactory<Path, DelegateFac>,
+        stop_trigger: CloseReceiver,
+    ) -> (SwimConnPool<Path>, PoolTask<Path, DelegateFac>)
+    where
+        <DelegateFac as RouterFactory>::Router: BidirectionalRouter,
+    {
+        let (client_tx, client_rx) = client_channel;
+
+        (
+            SwimConnPool { client_tx },
+            PoolTask::new(client_rx, client_router_factory, config, stop_trigger),
+        )
+    }
+}
+
+type ClientChannel<Path> = (
+    mpsc::Sender<DownlinkRoutingRequest<Path>>,
+    mpsc::Receiver<DownlinkRoutingRequest<Path>>,
+);
+
+impl<Path: Addressable> ConnectionPool for SwimConnPool<Path> {
+    type PathType = Path;
+
+    /// Sends an asynchronous request for a connection to a specific path.
     ///
-    /// # Returns
+    /// # Arguments
     ///
-    /// A `Result` containing either a `Connection` that can be used to send and receive messages
-    /// to the remote host or a `ConnectionError`. The `Connection` contains a `ConnectionSender`
-    /// and an optional `ConnectionReceiver`. The `ConnectionReceiver` is returned either the first
-    /// time a connection is opened or when it is recreated.
+    /// * `target`                  - The path to which we want to connect.
+    /// * `conn_type`               - Whether or not the connection is full or only partial.
     fn request_connection(
         &mut self,
-        host_url: url::Url,
-        recreate_connection: bool,
+        target: Self::PathType,
+        conn_type: ConnectionType,
     ) -> BoxFuture<Result<Result<Connection, ConnectionError>, RequestError>> {
         async move {
             let (tx, rx) = oneshot::channel();
 
-            self.connection_request_tx
-                .send(ConnectionRequest {
-                    host_url,
-                    tx,
-                    recreate_connection,
+            self.client_tx
+                .send(DownlinkRoutingRequest::Connect {
+                    target,
+                    request: Request::new(tx),
+                    conn_type,
                 })
                 .await?;
             Ok(rx.await?)
         }
         .boxed()
     }
-
-    /// Stops the pool from accepting new connection requests and closes down all existing
-    /// connections.
-    fn close(self) -> BoxFuture<'static, Result<Result<(), ConnectionError>, ConnectionError>> {
-        let handle = self
-            .connection_requests_handle
-            .lock()
-            .map(|mut h| h.take())
-            .map_err(|_| ConnectionError::Closed(CloseError::unexpected()));
-        async move {
-            self.stop_request_tx.send(()).await?;
-            handle
-                .map_err(|_| ConnectionError::Closed(CloseError::unexpected()))?
-                .ok_or_else(|| ConnectionError::Closed(CloseError::unexpected()))?
-                .await
-                .map_err(|_| ConnectionError::Closed(CloseError::unexpected()))
-        }
-        .boxed()
-    }
-}
-
-enum RequestType {
-    NewConnection(ConnectionRequest),
-    Prune,
-    Close,
-}
-
-struct PoolTask<WsFac>
-where
-    WsFac: WebsocketFactory + 'static,
-{
-    connection_request_rx: mpsc::Receiver<ConnectionRequest>,
-    connection_factory: WsFac,
-    buffer_size: NonZeroUsize,
-    stop_request_rx: mpsc::Receiver<()>,
-}
-
-impl<WsFac> PoolTask<WsFac>
-where
-    WsFac: WebsocketFactory + 'static,
-{
-    fn new(
-        connection_request_rx: mpsc::Receiver<ConnectionRequest>,
-        connection_factory: WsFac,
-        buffer_size: NonZeroUsize,
-        stop_request_rx: mpsc::Receiver<()>,
-    ) -> Self {
-        PoolTask {
-            connection_request_rx,
-            connection_factory,
-            buffer_size,
-            stop_request_rx,
-        }
-    }
-
-    #[instrument(skip(self, config))]
-    async fn run(self, config: ConnectionPoolParams) -> Result<(), ConnectionError> {
-        let PoolTask {
-            connection_request_rx,
-            mut connection_factory,
-            buffer_size,
-            stop_request_rx,
-        } = self;
-        let mut connections: HashMap<String, InnerConnection> = HashMap::new();
-
-        let mut prune_timer = interval(config.conn_reaper_frequency()).fuse();
-        let mut fused_requests =
-            combine_connection_streams(connection_request_rx, stop_request_rx).fuse();
-        let conn_timeout = config.idle_timeout();
-
-        loop {
-            let request: RequestType = select! {
-                _ = prune_timer.next() => Some(RequestType::Prune),
-                req = fused_requests.next() => req,
-            }
-            .ok_or_else(|| ConnectionError::Closed(CloseError::unexpected()))?;
-
-            match request {
-                RequestType::NewConnection(conn_req) => {
-                    let ConnectionRequest {
-                        host_url,
-                        tx: request_tx,
-                        recreate_connection,
-                    } = conn_req;
-
-                    let host = host_url.as_str().to_owned();
-
-                    let recreate = match (recreate_connection, connections.get(&host)) {
-                        // Connection has stopped and needs to be recreated
-                        (_, Some(inner)) if inner.stopped() => true,
-                        // Connection doesn't exist
-                        (false, None) => true,
-                        // Connection exists and is healthy
-                        (false, Some(_)) => false,
-                        // Connection doesn't exist
-                        (true, _) => true,
-                    };
-
-                    let connection_channel = if recreate {
-                        SwimConnection::new(
-                            host_url.clone(),
-                            buffer_size.get(),
-                            &mut connection_factory,
-                        )
-                        .await
-                        .and_then(|connection| {
-                            let (inner, sender, receiver) = InnerConnection::from(connection)?;
-                            let _ = connections.insert(host.clone(), inner);
-                            Ok((sender, Some(receiver)))
-                        })
-                    } else {
-                        let inner_connection = connections.get_mut(&host).ok_or_else(|| {
-                            ConnectionError::Resolution(ResolutionError::new(
-                                ResolutionErrorKind::Unresolvable,
-                                Some(host.clone()),
-                            ))
-                        })?;
-                        inner_connection.last_accessed = Instant::now();
-
-                        Ok(((inner_connection.as_connection_sender()), None))
-                    };
-
-                    request_tx
-                        .send(connection_channel)
-                        .map_err(|_| ConnectionError::Closed(CloseError::unexpected()))?;
-                }
-
-                RequestType::Prune => {
-                    let before_size = connections.len();
-                    connections.retain(|_, v| v.last_accessed.elapsed() < conn_timeout);
-                    let after_size = connections.len();
-
-                    trace!("Pruned {} inactive connections", (before_size - after_size));
-                }
-
-                RequestType::Close => {
-                    break Ok(());
-                }
-            }
-        }
-    }
-}
-
-fn combine_connection_streams(
-    connection_requests_rx: mpsc::Receiver<ConnectionRequest>,
-    close_requests_rx: mpsc::Receiver<()>,
-) -> impl stream::Stream<Item = RequestType> + Send + 'static {
-    let connection_requests =
-        ReceiverStream::new(connection_requests_rx).map(RequestType::NewConnection);
-    let close_request = ReceiverStream::new(close_requests_rx).map(|_| RequestType::Close);
-
-    stream::select(connection_requests, close_request)
-}
-
-struct SendTask<Sock, Ext> {
-    stopped: Arc<AtomicBool>,
-    write_sink: ratchet::Sender<Sock, Ext>,
-    rx: mpsc::Receiver<WsMessage>,
-}
-
-impl<Sock, Ext> SendTask<Sock, Ext>
-where
-    Sock: WebSocketStream,
-    Ext: ExtensionEncoder,
-{
-    fn new(
-        write_sink: ratchet::Sender<Sock, Ext>,
-        rx: mpsc::Receiver<WsMessage>,
-        stopped: Arc<AtomicBool>,
-    ) -> Self {
-        SendTask {
-            stopped,
-            write_sink,
-            rx,
-        }
-    }
-
-    async fn run(self) -> Result<(), ConnectionError> {
-        let SendTask {
-            stopped,
-            write_sink: mut sender,
-            rx,
-        } = self;
-        let mut requests = ReceiverStream::new(rx);
-
-        while let Some(request) = requests.next().await {
-            match request {
-                WsMessage::Text(payload) => sender.write_text(payload).await?,
-                WsMessage::Binary(payload) => sender.write_binary(payload).await?,
-                m => {
-                    unimplemented!("{:?}", m)
-                }
-            }
-        }
-
-        stopped.store(true, Ordering::Release);
-
-        Ok(())
-    }
-}
-
-struct ReceiveTask<Sock, Ext> {
-    stopped: Arc<AtomicBool>,
-    read_stream: ratchet::Receiver<Sock, Ext>,
-    tx: mpsc::Sender<WsMessage>,
-}
-
-impl<Sock, Ext> ReceiveTask<Sock, Ext>
-where
-    Sock: WebSocketStream,
-    Ext: ExtensionDecoder,
-{
-    fn new(
-        read_stream: ratchet::Receiver<Sock, Ext>,
-        tx: mpsc::Sender<WsMessage>,
-        stopped: Arc<AtomicBool>,
-    ) -> Self {
-        ReceiveTask {
-            stopped,
-            read_stream,
-            tx,
-        }
-    }
-
-    async fn run(self) -> Result<(), ConnectionError> {
-        let ReceiveTask {
-            stopped,
-            read_stream,
-            tx,
-        } = self;
-
-        let receiver_stream = into_stream(read_stream);
-        pin_utils::pin_mut!(receiver_stream);
-
-        while let Some(event) = receiver_stream.next().await {
-            match event {
-                Ok(message) => {
-                    tx.send(message)
-                        .await
-                        .map_err(|_| ConnectionError::Closed(CloseError::unexpected()))?;
-                }
-                Err(e) => {
-                    stopped.store(true, Ordering::Release);
-                    return Err(e.into());
-                }
-            }
-        }
-        stopped.store(true, Ordering::Release);
-
-        Ok(())
-    }
-}
-
-struct InnerConnection {
-    conn: SwimConnection,
-    last_accessed: Instant,
-}
-
-impl InnerConnection {
-    pub fn as_connection_sender(&self) -> ConnectionSender {
-        ConnectionSender {
-            tx: self.conn.tx.clone(),
-        }
-    }
-
-    pub fn from(
-        mut conn: SwimConnection,
-    ) -> Result<(InnerConnection, ConnectionSender, mpsc::Receiver<WsMessage>), ConnectionError>
-    {
-        let sender = ConnectionSender {
-            tx: conn.tx.clone(),
-        };
-        let receiver = conn
-            .rx
-            .take()
-            .ok_or_else(|| ConnectionError::Closed(CloseError::unexpected()))?;
-
-        let inner = InnerConnection {
-            conn,
-            last_accessed: Instant::now(),
-        };
-        Ok((inner, sender, receiver))
-    }
-    pub fn stopped(&self) -> bool {
-        self.conn.stopped.load(Ordering::Acquire)
-    }
-}
-
-/// Connection to a remote host.
-pub struct SwimConnection {
-    stopped: Arc<AtomicBool>,
-    tx: mpsc::Sender<WsMessage>,
-    rx: Option<mpsc::Receiver<WsMessage>>,
-    _send_handle: TaskHandle<Result<(), ConnectionError>>,
-    _receive_handle: TaskHandle<Result<(), ConnectionError>>,
-}
-
-impl SwimConnection {
-    async fn new<T: WebsocketFactory + Send + Sync + 'static>(
-        host_url: url::Url,
-        buffer_size: usize,
-        websocket_factory: &mut T,
-    ) -> Result<SwimConnection, ConnectionError> {
-        let (sender_tx, sender_rx) = mpsc::channel(buffer_size);
-        let (receiver_tx, receiver_rx) = mpsc::channel(buffer_size);
-
-        let (socket_tx, socket_rx) = websocket_factory.connect(host_url).await?.split()?;
-
-        let stopped = Arc::new(AtomicBool::new(false));
-
-        let receive = ReceiveTask::new(socket_rx, receiver_tx, stopped.clone());
-        let send = SendTask::new(socket_tx, sender_rx, stopped.clone());
-
-        let send_handler = spawn(send.run());
-        let receive_handler = spawn(receive.run());
-
-        Ok(SwimConnection {
-            stopped,
-            tx: sender_tx,
-            rx: Some(receiver_rx),
-            _send_handle: send_handler,
-            _receive_handle: receive_handler,
-        })
-    }
 }
 
 pub type ConnectionChannel = (ConnectionSender, Option<ConnectionReceiver>);
 
-/// Wrapper for the transmitting end of a channel to an open connection.
+const REQUEST_ERROR: &str = "The request channel was dropped.";
+const SUBSCRIBER_ERROR: &str = "The subscriber channel was dropped.";
+
+pub struct PoolTask<Path: Addressable, DelegateFac: RouterFactory> {
+    client_rx: mpsc::Receiver<DownlinkRoutingRequest<Path>>,
+    client_router_factory: ClientRouterFactory<Path, DelegateFac>,
+    config: DownlinkConnectionsConfig,
+    stop_trigger: CloseReceiver,
+}
+
+impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac>
+where
+    <DelegateFac as RouterFactory>::Router: BidirectionalRouter,
+{
+    fn new(
+        client_rx: mpsc::Receiver<DownlinkRoutingRequest<Path>>,
+        client_router_factory: ClientRouterFactory<Path, DelegateFac>,
+        config: DownlinkConnectionsConfig,
+        stop_trigger: CloseReceiver,
+    ) -> Self {
+        PoolTask {
+            client_rx,
+            client_router_factory,
+            config,
+            stop_trigger,
+        }
+    }
+
+    pub async fn run(self) -> Result<(), ConnectionError> {
+        let PoolTask {
+            client_rx,
+            client_router_factory,
+            config,
+            stop_trigger,
+        } = self;
+
+        let mut routing_table = RoutingTable::new();
+        let mut counter: u32 = 0;
+        let registrator_handles = FuturesUnordered::new();
+
+        let mut client_rx = ReceiverStream::new(client_rx).fuse();
+        let mut stop_rx = stop_trigger.clone().fuse();
+        let mut iteration_count: usize = 0;
+
+        loop {
+            let request: Option<DownlinkRoutingRequest<Path>> = select_biased! {
+                 _ = stop_rx => None,
+                client_req = client_rx.next() => client_req,
+            };
+
+            if let Some(request) = request {
+                match request {
+                    DownlinkRoutingRequest::Connect {
+                        target,
+                        request,
+                        conn_type,
+                    } => {
+                        let routing_path = RoutingPath::try_from(AddressableWrapper(
+                            target.clone(),
+                        ))
+                        .map_err(|_| {
+                            ConnectionError::Resolution(ResolutionError::unresolvable(
+                                target.to_string(),
+                            ))
+                        })?;
+
+                        let registrator = match routing_table.try_resolve_addr(&routing_path) {
+                            Some((_, registrator)) => registrator,
+                            None => {
+                                let routing_address = RoutingAddr::client(counter);
+                                counter += 1;
+
+                                let client_router =
+                                    client_router_factory.create_for(routing_address);
+                                let (registrator, registrator_task) = ConnectionRegistrator::new(
+                                    config,
+                                    target.clone(),
+                                    client_router,
+                                    stop_trigger.clone(),
+                                );
+                                registrator_handles.push(spawn(registrator_task.run()));
+
+                                routing_table.add_registrator(
+                                    routing_path,
+                                    routing_address,
+                                    registrator.clone(),
+                                );
+
+                                registrator
+                            }
+                        };
+
+                        let connection = registrator.request_connection(target, conn_type).await;
+                        if request.send(connection).is_err() {
+                            event!(Level::ERROR, REQUEST_ERROR);
+                        }
+                    }
+                    DownlinkRoutingRequest::Endpoint { addr, request } => {
+                        match routing_table.try_resolve_endpoint(&addr) {
+                            Some(registrator) => {
+                                if let Err(err) = registrator
+                                    .registrator_tx
+                                    .send(RegistratorRequest::Resolve { request })
+                                    .await
+                                {
+                                    if let RegistratorRequest::Resolve { request } = err.0 {
+                                        if request.send(Err(Unresolvable(addr))).is_err() {
+                                            event!(Level::ERROR, REQUEST_ERROR);
+                                        }
+                                    }
+                                }
+                            }
+                            None => {
+                                if request.send(Err(Unresolvable(addr))).is_err() {
+                                    event!(Level::ERROR, REQUEST_ERROR);
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                registrator_handles.collect::<Vec<_>>().await;
+
+                return Ok(());
+            }
+
+            iteration_count += 1;
+            if iteration_count % config.yield_after == 0 {
+                tokio::task::yield_now().await;
+            }
+        }
+    }
+}
+
+type ConnectionResult = Result<(ConnectionSender, Option<ConnectionReceiver>), ConnectionError>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConnectionType {
+    /// A connection type that can both send and receive messages.
+    Full,
+    /// A connection type that can only send messages.
+    Outgoing,
+}
+
+enum RegistratorRequest<Path: Addressable> {
+    Connect {
+        tx: oneshot::Sender<ConnectionResult>,
+        path: Path,
+        conn_type: ConnectionType,
+    },
+    Resolve {
+        request: Request<Result<RawRoute, Unresolvable>>,
+    },
+}
+
 #[derive(Debug, Clone)]
-pub struct ConnectionSender {
-    tx: mpsc::Sender<WsMessage>,
+pub(crate) struct ConnectionRegistrator<Path: Addressable> {
+    registrator_tx: mpsc::Sender<RegistratorRequest<Path>>,
 }
 
-impl ConnectionSender {
-    /// Crate-only function for creating a sender. Useful for unit testing.
-    #[doc(hidden)]
-    #[allow(dead_code)]
-    pub(crate) fn new(tx: mpsc::Sender<WsMessage>) -> ConnectionSender {
-        ConnectionSender { tx }
+impl<Path: Addressable> ConnectionRegistrator<Path> {
+    fn new<DelegateRouter: BidirectionalRouter>(
+        config: DownlinkConnectionsConfig,
+        target: Path,
+        client_router: ClientRouter<Path, DelegateRouter>,
+        stop_trigger: CloseReceiver,
+    ) -> (
+        ConnectionRegistrator<Path>,
+        ConnectionRegistratorTask<Path, DelegateRouter>,
+    ) {
+        let (registrator_tx, registrator_rx) = mpsc::channel(config.buffer_size.get());
+
+        (
+            ConnectionRegistrator { registrator_tx },
+            ConnectionRegistratorTask::new(
+                config,
+                target,
+                registrator_rx,
+                client_router,
+                stop_trigger,
+            ),
+        )
     }
 
-    /// Sends a message asynchronously to the remote host of the connection.
-    ///
-    /// # Arguments
-    ///
-    /// * `message`         - Message to be sent to the remote host.
-    ///
-    /// # Returns
-    ///
-    /// `Ok` if the message has been sent.
-    /// `SendError` if it failed.
-    pub async fn send_message(&mut self, message: WsMessage) -> Result<(), SendError<WsMessage>> {
-        self.tx.send(message).await
-    }
-
-    pub fn try_send(&mut self, message: WsMessage) -> Result<(), TrySendError<WsMessage>> {
-        self.tx.try_send(message)
+    async fn request_connection(&self, path: Path, conn_type: ConnectionType) -> ConnectionResult {
+        let (tx, rx) = oneshot::channel();
+        self.registrator_tx
+            .send(RegistratorRequest::Connect {
+                tx,
+                path,
+                conn_type,
+            })
+            .await
+            .map_err(|_| ConnectionError::Resolution(ResolutionError::router_dropped()))?;
+        rx.await
+            .map_err(|_| ConnectionError::Resolution(ResolutionError::router_dropped()))?
     }
 }
 
-pub(crate) type ConnectionReceiver = mpsc::Receiver<WsMessage>;
+#[derive(Debug, Clone)]
+enum RegistrationTarget {
+    Remote(Url),
+    Local(String),
+}
+
+impl Display for RegistrationTarget {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RegistrationTarget::Remote(remote) => {
+                write!(f, "{}", remote)
+            }
+            RegistrationTarget::Local(local) => {
+                write!(f, "{}", local)
+            }
+        }
+    }
+}
+
+enum ConnectionRegistratorEvent<Path: Addressable> {
+    Message(TaggedEnvelope),
+    Request(RegistratorRequest<Path>),
+    ConnectionDropped(Arc<ConnectionDropped>),
+}
+
+struct ConnectionRegistratorTask<Path: Addressable, DelegateRouter: BidirectionalRouter> {
+    config: DownlinkConnectionsConfig,
+    target: RegistrationTarget,
+    registrator_rx: mpsc::Receiver<RegistratorRequest<Path>>,
+    client_router: ClientRouter<Path, DelegateRouter>,
+    stop_trigger: CloseReceiver,
+}
+
+impl<Path: Addressable, DelegateRouter: BidirectionalRouter>
+    ConnectionRegistratorTask<Path, DelegateRouter>
+{
+    fn new(
+        config: DownlinkConnectionsConfig,
+        target: Path,
+        registrator_rx: mpsc::Receiver<RegistratorRequest<Path>>,
+        client_router: ClientRouter<Path, DelegateRouter>,
+        stop_trigger: CloseReceiver,
+    ) -> Self {
+        let target = match target.host() {
+            Some(url) => RegistrationTarget::Remote(url),
+            None => RegistrationTarget::Local(target.node().to_string()),
+        };
+
+        ConnectionRegistratorTask {
+            config,
+            target,
+            registrator_rx,
+            client_router,
+            stop_trigger,
+        }
+    }
+
+    async fn run(self) -> Result<(), ConnectionError> {
+        let ConnectionRegistratorTask {
+            config,
+            target,
+            registrator_rx,
+            mut client_router,
+            stop_trigger,
+        } = self;
+
+        let (mut sender, receiver, remote_drop_rx) = open_connection(
+            target.clone(),
+            config.retry_strategy,
+            &mut client_router,
+            stop_trigger.clone(),
+        )
+        .await?;
+
+        let (receiver, maybe_raw_route, maybe_local_drop_tx) = match receiver {
+            Some(receiver) => (receiver, None, None),
+            None => {
+                let (local_drop_tx, local_drop_rx) = promise::promise();
+                let (envelope_sender, envelope_receiver) = mpsc::channel(config.buffer_size.get());
+                let raw_route = RawRoute::new(envelope_sender, local_drop_rx);
+
+                (envelope_receiver, Some(raw_route), Some(local_drop_tx))
+            }
+        };
+
+        let mut receiver = ReceiverStream::new(receiver).fuse();
+        let mut registrator_rx = ReceiverStream::new(registrator_rx).fuse();
+        let mut remote_drop_rx = remote_drop_rx.fuse();
+        let mut stop_rx = stop_trigger.clone().fuse();
+        let mut iteration_count: usize = 0;
+
+        let mut subscribers: HashMap<RelativePath, Slab<mpsc::Sender<RouterEvent>>> =
+            HashMap::new();
+
+        loop {
+            let request: Option<ConnectionRegistratorEvent<Path>> = select_biased! {
+                _ = stop_rx => None,
+                message = receiver.next() => message.map(ConnectionRegistratorEvent::Message),
+                req = registrator_rx.next() => req.map(ConnectionRegistratorEvent::Request),
+                conn_err = remote_drop_rx => {
+                    conn_err.ok().map(ConnectionRegistratorEvent::ConnectionDropped)
+                }
+            };
+
+            match request {
+                Some(ConnectionRegistratorEvent::Message(envelope)) => {
+                    if let Ok(incoming_message) = envelope.1.clone().into_incoming() {
+                        if let Some(subscribers) = subscribers.get_mut(&incoming_message.path) {
+                            let mut futures = vec![];
+
+                            for (idx, sub) in subscribers.iter() {
+                                let msg = incoming_message.clone();
+
+                                futures.push(async move {
+                                    let result = sub.send(RouterEvent::Message(msg)).await;
+                                    (idx, result)
+                                });
+                            }
+
+                            let results = join_all(futures).await;
+
+                            for result in results {
+                                if let (idx, Err(_)) = result {
+                                    subscribers.remove(idx);
+                                }
+                            }
+                        }
+                    }
+                }
+                Some(ConnectionRegistratorEvent::Request(RegistratorRequest::Connect {
+                    tx,
+                    path,
+                    conn_type: ConnectionType::Full,
+                })) => {
+                    let receiver = match subscribers.entry(path.relative_path()) {
+                        Entry::Occupied(mut entry) => {
+                            let (tx, rx) = mpsc::channel(config.buffer_size.get());
+                            entry.get_mut().insert(tx);
+                            rx
+                        }
+                        Entry::Vacant(vacancy) => {
+                            let (tx, rx) = mpsc::channel(config.buffer_size.get());
+                            let mut slab = Slab::new();
+                            slab.insert(tx);
+
+                            vacancy.insert(slab);
+                            rx
+                        }
+                    };
+
+                    if tx.send(Ok((sender.clone(), Some(receiver)))).is_err() {
+                        event!(Level::ERROR, REQUEST_ERROR);
+                    }
+                }
+                Some(ConnectionRegistratorEvent::Request(RegistratorRequest::Connect {
+                    tx,
+                    conn_type: ConnectionType::Outgoing,
+                    ..
+                })) => {
+                    if tx.send(Ok((sender.clone(), None))).is_err() {
+                        event!(Level::ERROR, REQUEST_ERROR);
+                    }
+                }
+                Some(ConnectionRegistratorEvent::Request(RegistratorRequest::Resolve {
+                    request,
+                })) if maybe_raw_route.is_some() => {
+                    let raw_route = maybe_raw_route.as_ref().unwrap();
+
+                    if request.send(Ok(raw_route.clone())).is_err() {
+                        event!(Level::ERROR, REQUEST_ERROR, ?raw_route);
+                    }
+                }
+                Some(ConnectionRegistratorEvent::ConnectionDropped(connection_dropped)) => {
+                    broadcast(&mut subscribers, RouterEvent::ConnectionClosed).await;
+
+                    let mut maybe_err = None;
+                    if connection_dropped.is_recoverable() {
+                        match open_connection(
+                            target.clone(),
+                            config.retry_strategy,
+                            &mut client_router,
+                            stop_trigger.clone(),
+                        )
+                        .await
+                        {
+                            Ok((new_sender, new_receiver, new_remote_drop_rx)) => {
+                                sender = new_sender;
+                                if let Some(new_receiver) = new_receiver {
+                                    receiver = ReceiverStream::new(new_receiver).fuse()
+                                }
+                                remote_drop_rx = new_remote_drop_rx.fuse();
+                            }
+                            Err(err) => {
+                                maybe_err = Some(err);
+                            }
+                        };
+                    } else {
+                        maybe_err = Some(ConnectionError::Closed(CloseError::closed()));
+                    }
+
+                    if let Some(err) = maybe_err {
+                        broadcast(
+                            &mut subscribers,
+                            RouterEvent::Unreachable(target.to_string()),
+                        )
+                        .await;
+
+                        if let Some(local_drop_tx) = maybe_local_drop_tx {
+                            local_drop_tx.provide(ConnectionDropped::Closed)?;
+                        }
+
+                        return Err(err);
+                    }
+                }
+                _ => {
+                    let mut futures = vec![];
+
+                    for (rel_path, subs) in subscribers {
+                        for (_, sub) in subs {
+                            let rel_path = rel_path.clone();
+                            futures.push(async move {
+                                if sub.send(RouterEvent::Stopping).await.is_err() {
+                                    event!(Level::ERROR, SUBSCRIBER_ERROR, ?rel_path);
+                                }
+                            })
+                        }
+                    }
+
+                    join_all(futures).await;
+
+                    if let Some(local_drop_tx) = maybe_local_drop_tx {
+                        local_drop_tx
+                            .provide(ConnectionDropped::Closed)
+                            .map_err(|_| ConnectionError::Closed(CloseError::closed()))?;
+                    }
+
+                    return Ok(());
+                }
+            }
+
+            iteration_count += 1;
+            if iteration_count % config.yield_after == 0 {
+                tokio::task::yield_now().await;
+            }
+        }
+    }
+}
+
+async fn broadcast(
+    subscribers: &mut HashMap<RelativePath, Slab<Sender<RouterEvent>>>,
+    event: RouterEvent,
+) {
+    let mut futures = vec![];
+
+    for (path, subs) in &*subscribers {
+        for (idx, sub) in subs {
+            let event_clone = event.clone();
+            futures.push(async move {
+                let result = sub.send(event_clone).await;
+                (path.clone(), idx, result)
+            })
+        }
+    }
+
+    let results = join_all(futures).await;
+
+    for result in results {
+        if let (path, idx, Err(_)) = result {
+            if let Some(subs) = subscribers.get_mut(&path) {
+                subs.remove(idx);
+            }
+        }
+    }
+}
+
+type RawConnection = (
+    TaggedSender,
+    Option<mpsc::Receiver<TaggedEnvelope>>,
+    promise::Receiver<ConnectionDropped>,
+);
+
+async fn open_connection<Path, DelegateRouter>(
+    target: RegistrationTarget,
+    mut retry_strategy: RetryStrategy,
+    client_router: &mut ClientRouter<Path, DelegateRouter>,
+    stop_trigger: CloseReceiver,
+) -> Result<RawConnection, ConnectionError>
+where
+    Path: Addressable,
+    DelegateRouter: BidirectionalRouter,
+{
+    let mut stop_rx = stop_trigger.fuse();
+    loop {
+        let result = match target.clone() {
+            RegistrationTarget::Remote(target) => {
+                try_open_remote_connection(client_router, target).await
+            }
+            RegistrationTarget::Local(target) => {
+                try_open_local_connection(client_router, target).await
+            }
+        };
+
+        match result {
+            Ok(connection) => {
+                break Ok(connection);
+            }
+            Err(err) if !err.is_fatal() => match retry_strategy.next() {
+                Some(Some(dur)) => {
+                    let cancelled: Option<()> = select_biased! {
+                        _ = stop_rx => Some(()),
+                        _ = sleep(dur).fuse() => None,
+                    };
+
+                    if cancelled.is_some() {
+                        break Err(err);
+                    }
+                }
+                None => {
+                    break Err(err);
+                }
+                _ => {}
+            },
+            Err(err) => {
+                break Err(err);
+            }
+        }
+    }
+}
+
+async fn try_open_remote_connection<Path, DelegateRouter>(
+    client_router: &mut ClientRouter<Path, DelegateRouter>,
+    target: Url,
+) -> Result<RawConnection, ConnectionError>
+where
+    Path: Addressable,
+    DelegateRouter: BidirectionalRouter,
+{
+    let BidirectionalRoute {
+        sender,
+        receiver,
+        on_drop,
+    } = client_router.resolve_bidirectional(target).await?;
+
+    Ok((sender, Some(receiver), on_drop))
+}
+
+async fn try_open_local_connection<Path, DelegateRouter>(
+    client_router: &mut ClientRouter<Path, DelegateRouter>,
+    target: String,
+) -> Result<RawConnection, ConnectionError>
+where
+    Path: Addressable,
+    DelegateRouter: BidirectionalRouter,
+{
+    let relative_uri = RelativeUri::try_from(target.clone())
+        .map_err(|e| ConnectionError::Http(HttpError::invalid_url(target, Some(e.to_string()))))?;
+
+    let routing_addr = client_router.lookup(None, relative_uri.clone()).await?;
+
+    let Route { sender, on_drop } = client_router
+        .resolve_sender(routing_addr)
+        .await
+        .map_err(ConnectionError::Resolution)?;
+
+    Ok((sender, None, on_drop))
+}

@@ -12,10 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::time::Duration;
-
 use rand::Rng;
 use std::num::NonZeroUsize;
+use std::time::Duration;
+
+pub const DEFAULT_EXPONENTIAL_MAX_INTERVAL: Duration = Duration::from_secs(16);
+pub const DEFAULT_EXPONENTIAL_MAX_BACKOFF: Duration = Duration::from_secs(300);
+pub const DEFAULT_IMMEDIATE_RETRIES: usize = 16;
+pub const DEFAULT_INTERVAL_RETRIES: usize = 8;
+pub const DEFAULT_INTERVAL_DELAY: u64 = 10;
 
 /// The retry strategy that a ['RetryableRequest`] uses to determine when to perform the next
 /// request.
@@ -36,22 +41,32 @@ pub enum RetryStrategy {
 /// strategies are backed by this.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct IntervalStrategy {
-    retry: Quantity<usize>,
-    delay: Option<Duration>,
+    pub retry: Quantity<usize>,
+    pub delay: Option<Duration>,
 }
 
 /// Truncated exponential retry strategy parameters.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ExponentialStrategy {
-    /// The time that the first request was attempted.
-    start: Option<std::time::Instant>,
     /// The maximum interval between a retry, generated intervals will be truncated to this duration
     /// if they exceed it.
     max_interval: Duration,
     /// The maximum backoff time that the strategy will run for. Typically 32 or 64 seconds.
     max_backoff: Quantity<Duration>,
+    /// The time that the first request was attempted.
+    start: Option<std::time::Instant>,
     /// The current retry number.
     retry_no: u64,
+}
+
+impl ExponentialStrategy {
+    pub fn get_max_interval(&self) -> Duration {
+        self.max_interval
+    }
+
+    pub fn get_max_backoff(&self) -> Quantity<Duration> {
+        self.max_backoff
+    }
 }
 
 /// Wrapper around a type that can have finite and infinite values.
@@ -65,8 +80,8 @@ impl Default for RetryStrategy {
     fn default() -> Self {
         RetryStrategy::Exponential(ExponentialStrategy {
             start: None,
-            max_interval: Duration::from_secs(16),
-            max_backoff: Quantity::Finite(Duration::from_secs(300)),
+            max_interval: DEFAULT_EXPONENTIAL_MAX_INTERVAL,
+            max_backoff: Quantity::Finite(DEFAULT_EXPONENTIAL_MAX_BACKOFF),
             retry_no: 0,
         })
     }
@@ -84,11 +99,27 @@ impl RetryStrategy {
         })
     }
 
+    pub fn default_exponential() -> RetryStrategy {
+        RetryStrategy::Exponential(ExponentialStrategy {
+            start: None,
+            max_interval: DEFAULT_EXPONENTIAL_MAX_INTERVAL,
+            max_backoff: Quantity::Finite(DEFAULT_EXPONENTIAL_MAX_BACKOFF),
+            retry_no: 0,
+        })
+    }
+
     /// Builds an immediate retry strategy that will attempt (`retries`) requests with no delay
     /// in between the requests.
     pub fn immediate(retries: NonZeroUsize) -> RetryStrategy {
         RetryStrategy::Immediate(IntervalStrategy {
             retry: Quantity::Finite(retries.get()),
+            delay: None,
+        })
+    }
+
+    pub fn default_immediate() -> RetryStrategy {
+        RetryStrategy::Immediate(IntervalStrategy {
+            retry: Quantity::Finite(DEFAULT_IMMEDIATE_RETRIES),
             delay: None,
         })
     }
@@ -110,9 +141,16 @@ impl RetryStrategy {
         })
     }
 
+    pub fn default_interval() -> RetryStrategy {
+        RetryStrategy::Immediate(IntervalStrategy {
+            retry: Quantity::Finite(DEFAULT_INTERVAL_RETRIES),
+            delay: Some(Duration::from_secs(DEFAULT_INTERVAL_DELAY)),
+        })
+    }
+
     /// No retry strategy. Only the initial request is attempted.
     pub fn none() -> RetryStrategy {
-        RetryStrategy::Interval(IntervalStrategy {
+        RetryStrategy::None(IntervalStrategy {
             retry: Quantity::Finite(0),
             delay: None,
         })
@@ -174,8 +212,8 @@ impl Iterator for RetryStrategy {
 #[cfg(test)]
 mod tests {
     use crate::retryable::strategy::{Quantity, RetryStrategy};
-    use std::num::NonZeroUsize;
     use std::time::Duration;
+    use swim_algebra::non_zero_usize;
 
     #[tokio::test]
     async fn test_exponential() {
@@ -202,7 +240,7 @@ mod tests {
     #[tokio::test]
     async fn test_immediate() {
         let retries = 5;
-        let strategy = RetryStrategy::immediate(NonZeroUsize::new(retries).unwrap());
+        let strategy = RetryStrategy::immediate(non_zero_usize!(retries));
         let mut it = strategy.into_iter();
         let count = it.count();
 
@@ -221,7 +259,7 @@ mod tests {
         let expected_duration = Duration::from_secs(1);
         let strategy = RetryStrategy::interval(
             expected_duration,
-            Quantity::Finite(NonZeroUsize::new(retries).unwrap()),
+            Quantity::Finite(non_zero_usize!(retries)),
         );
         let mut it = strategy.into_iter();
         let count = it.count();

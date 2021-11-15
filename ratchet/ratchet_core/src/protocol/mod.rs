@@ -124,16 +124,16 @@ pub enum MessageType {
 }
 
 /// A configuration for building a WebSocket.
-#[derive(Debug, Copy, Clone)]
+#[derive(PartialEq, Debug, Copy, Clone)]
 pub struct WebSocketConfig {
     /// The maximum payload size that is permitted to be received.
-    pub max_size: usize,
+    pub max_message_size: usize,
 }
 
 impl Default for WebSocketConfig {
     fn default() -> Self {
         WebSocketConfig {
-            max_size: usize::MAX,
+            max_message_size: 64 << 20,
         }
     }
 }

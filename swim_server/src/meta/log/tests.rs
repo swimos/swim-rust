@@ -17,28 +17,32 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::supply::SupplyLane;
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::{
-    agent_lifecycle, map_lifecycle, value_lifecycle, AgentContext, SwimAgent, TestClock,
+    agent_lifecycle, map_lifecycle, value_lifecycle, AgentContext, AgentParameters, SwimAgent,
+    TestClock,
 };
+use crate::interface::ServerDownlinksConfig;
 use crate::meta::log::config::{FlushStrategy, LogConfig};
 use crate::meta::log::{LogBuffer, LogEntry, LogLanes, LogLevel, NodeLogger};
 use crate::plane::provider::AgentProvider;
-use crate::plane::RouteAndParameters;
-use crate::routing::error::RouterError;
-use crate::routing::{
-    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
-};
+use crate::routing::TopLevelServerRouterFactory;
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use server_store::agent::mock::MockNodeStore;
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::sync::Arc;
+use swim_client::connections::SwimConnPool;
+use swim_client::downlink::Downlinks;
+use swim_client::interface::ClientContext;
+use swim_client::router::ClientRouterFactory;
 use swim_form::Form;
 use swim_model::path::RelativePath;
 use swim_model::Value;
-use swim_runtime::error::ResolutionError;
+use swim_runtime::configuration::DownlinkConnectionsConfig;
+use swim_runtime::error::{ConnectionDropped, ResolutionError, RouterError};
+use swim_runtime::routing::{Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender};
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
@@ -115,7 +119,7 @@ impl MockRouter {
     }
 }
 
-impl ServerRouter for MockRouter {
+impl Router for MockRouter {
     fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let MockRouter { inner, drop_rx, .. } = self;
@@ -138,7 +142,7 @@ impl ServerRouter for MockRouter {
 async fn agent_log() {
     let (tx, mut rx) = mpsc::channel(5);
     let uri = RelativeUri::try_from("/test").unwrap();
-    let buffer_size = NonZeroUsize::new(10).unwrap();
+    let buffer_size = non_zero_usize!(10);
     let clock = TestClock::default();
     let exec_config = AgentExecutionConfig::with(
         buffer_size,
@@ -151,12 +155,40 @@ async fn agent_log() {
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
     let provider = AgentProvider::new(MockAgentConfig, MockAgentLifecycle);
 
+    let parameters = AgentParameters::new(MockAgentConfig, exec_config, uri, HashMap::new());
+
+    let (client_tx, client_rx) = mpsc::channel(8);
+    let (remote_tx, _remote_rx) = mpsc::channel(8);
+    let (plane_tx, _plane_rx) = mpsc::channel(8);
+    let (_close_tx, close_rx) = promise::promise();
+
+    let top_level_factory =
+        TopLevelServerRouterFactory::new(plane_tx, client_tx.clone(), remote_tx);
+
+    let client_router_fac = ClientRouterFactory::new(client_tx.clone(), top_level_factory);
+
+    let (conn_pool, _pool_task) = SwimConnPool::new(
+        DownlinkConnectionsConfig::default(),
+        (client_tx, client_rx),
+        client_router_fac,
+        close_rx.clone(),
+    );
+
+    let (downlinks, _downlinks_task) = Downlinks::new(
+        non_zero_usize!(8),
+        conn_pool,
+        Arc::new(ServerDownlinksConfig::default()),
+        close_rx,
+    );
+
+    let client = ClientContext::new(downlinks);
+
     let (_a, agent_proc) = provider.run(
-        RouteAndParameters::new(uri, HashMap::new()),
-        exec_config,
+        parameters,
         clock.clone(),
+        client,
         ReceiverStream::new(envelope_rx),
-        MockRouter::new(RoutingAddr::local(1024), tx),
+        MockRouter::new(RoutingAddr::plane(1024), tx),
         MockNodeStore::mock(),
     );
 
@@ -299,14 +331,11 @@ async fn flushes() {
 
     let (stop_tx, stop_rx) = trigger::trigger();
     let flush_interval = Duration::from_secs(2);
-    let config = make_config(
-        flush_interval,
-        FlushStrategy::Buffer(NonZeroUsize::new(6).unwrap()),
-    );
+    let config = make_config(flush_interval, FlushStrategy::Buffer(non_zero_usize!(6)));
 
     let (node_logger, task) = NodeLogger::new(
         RelativeUri::from_str("/node").unwrap(),
-        NonZeroUsize::new(256).unwrap(),
+        non_zero_usize!(256),
         stop_rx,
         log_lanes,
         config,
@@ -348,14 +377,11 @@ async fn node_logger_buffered() {
 
     let flush_interval = Duration::from_secs(30);
     let (stop_tx, stop_rx) = trigger::trigger();
-    let config = make_config(
-        flush_interval,
-        FlushStrategy::Buffer(NonZeroUsize::new(6).unwrap()),
-    );
+    let config = make_config(flush_interval, FlushStrategy::Buffer(non_zero_usize!(6)));
 
     let (node_logger, task) = NodeLogger::new(
         RelativeUri::from_str("/node").unwrap(),
-        NonZeroUsize::new(256).unwrap(),
+        non_zero_usize!(256),
         stop_rx,
         log_lanes,
         config,
@@ -419,10 +445,10 @@ async fn send(node_logger: &NodeLogger, level: LogLevel) {
 fn make_config(flush_interval: Duration, flush_strategy: FlushStrategy) -> LogConfig {
     LogConfig {
         flush_interval,
-        channel_buffer_size: NonZeroUsize::new(64).unwrap(),
-        lane_buffer: NonZeroUsize::new(2).unwrap(),
+        channel_buffer_size: non_zero_usize!(64),
+        lane_buffer: non_zero_usize!(2),
         flush_strategy,
-        max_pending_messages: NonZeroUsize::new(64).unwrap(),
+        max_pending_messages: non_zero_usize!(64),
     }
 }
 
@@ -450,7 +476,7 @@ async fn node_logger_immediate() {
 
     let (node_logger, task) = NodeLogger::new(
         RelativeUri::from_str("/node").unwrap(),
-        NonZeroUsize::new(256).unwrap(),
+        non_zero_usize!(256),
         stop_rx,
         log_lanes,
         config,

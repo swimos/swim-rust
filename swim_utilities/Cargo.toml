@@ -6,7 +6,8 @@ edition = "2018"
 
 [features]
 default = []
-all = ["future", "errors", "sync", "iteratee", "collections", "time", "text", "lrucache", "rtree"]
+all = ["future", "errors", "sync", "iteratee", "collections", "time", "text", "lrucache", "rtree", "algebra"]
+algebra = ["swim_algebra"]
 circular_buffer = ["swim_sync", "swim_sync/circular_buffer"]
 collections = ["lrucache", "rtree"]
 errors = ["swim_errors"]
@@ -24,6 +25,7 @@ topic = ["swim_sync", "swim_sync/topic"]
 trigger = ["swim_trigger"]
 
 [dependencies]
+swim_algebra = { path = "./swim_algebra", optional = true }
 swim_errors = { path = "./swim_errors", optional = true }
 swim_format = { path = "./swim_format", optional = true }
 swim_trigger = { path = "./swim_trigger", optional = true }

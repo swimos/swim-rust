@@ -1,5 +1,5 @@
 error: New tag cannot be empty
-  --> $DIR/empty_tag.rs:19:18
+  --> $DIR/src/tests/derive/form/empty_tag.rs:18:14
    |
-19 |     #[form(tag = "")]
-   |                  ^^
+18 |     #[derive(Form)]
+   |              ^^^^

@@ -1,5 +1,5 @@
 error: StandardSchema::Nothing is not permitted on fields
-  --> $DIR/nothing_attr_on_field.rs:20:23
+  --> $DIR/src/schema/tests/derive/validated_form/nothing_attr_on_field.rs:18:14
    |
-20 |         #[form(schema(nothing))]
-   |                       ^^^^^^^
+18 |     #[derive(ValueSchema)]
+   |              ^^^^^^^^^^^

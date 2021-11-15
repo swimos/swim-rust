@@ -13,6 +13,7 @@ repository = "https://github.com/swimos/ratchet/ratchet_core"
 [features]
 default = []
 split = ["futures", "futures-util"]
+fixture = []
 
 [dependencies]
 ratchet_ext = { path = "../ratchet_ext" }
