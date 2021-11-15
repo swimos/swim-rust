@@ -72,4 +72,7 @@ pub fn parse_value(repr: &str) -> Result<Value, ParseError> {
 }
 
 #[cfg(feature = "async_parser")]
-pub use async_parser::{AsyncParseError, parse_recognize_with as async_parse_recognize_with, parse_recon_document, RecognizerDecoder};
+pub use async_parser::{
+    parse_recognize_with as async_parse_recognize_with, parse_recon_document, AsyncParseError,
+    RecognizerDecoder,
+};

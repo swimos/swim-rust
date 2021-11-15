@@ -356,19 +356,19 @@ impl<R> RecognizerDecoder<R> {
             location: LocationTracker::default(),
         }
     }
-
 }
 
 impl<R: Recognizer> RecognizerDecoder<R> {
-
-
     pub fn reset(&mut self) {
         self.parser.reset();
         self.recognizer.reset();
         self.location = LocationTracker::default();
     }
 
-    fn decode_inner<'a>(&mut self, span: Span<'a>) -> Result<(Span<'a>, Option<R::Target>), AsyncParseError> {
+    fn decode_inner<'a>(
+        &mut self,
+        span: Span<'a>,
+    ) -> Result<(Span<'a>, Option<R::Target>), AsyncParseError> {
         let RecognizerDecoder {
             parser,
             recognizer,
@@ -392,8 +392,12 @@ impl<R: Recognizer> RecognizerDecoder<R> {
                         Some(None) => {
                             break match recognizer.try_flush() {
                                 Some(Ok(target)) => Ok((rem, Some(target))),
-                                Some(Err(e)) => Err(AsyncParseError::Parser(ParseError::Structure(e))),
-                                _ => Err(AsyncParseError::Parser(ParseError::Structure(ReadError::IncompleteRecord))),
+                                Some(Err(e)) => {
+                                    Err(AsyncParseError::Parser(ParseError::Structure(e)))
+                                }
+                                _ => Err(AsyncParseError::Parser(ParseError::Structure(
+                                    ReadError::IncompleteRecord,
+                                ))),
                             };
                         }
                         _ => {
@@ -418,33 +422,31 @@ where
     R: Recognizer,
 {
     match parser.parse(span) {
-        Ok((rem, mut events)) => {
-            loop {
-                match events.next() {
-                    Some(Some(event)) => {
-                        match recognizer.feed_event(event) {
-                            Some(Ok(target)) => {
-                                break Ok((rem, Some(target)));
-                            },
-                            Some(Err(e)) => {
-                                break Err(AsyncParseError::Parser(ParseError::Structure(e)));
-                            }
-                            _ => {},
-                        }
+        Ok((rem, mut events)) => loop {
+            match events.next() {
+                Some(Some(event)) => match recognizer.feed_event(event) {
+                    Some(Ok(target)) => {
+                        break Ok((rem, Some(target)));
                     }
-                    Some(None) => {
-                        break match recognizer.try_flush() {
-                            Some(Ok(target)) => Ok((rem, Some(target))),
-                            Some(Err(e)) => Err(AsyncParseError::Parser(ParseError::Structure(e))),
-                            _ => Err(AsyncParseError::Parser(ParseError::Structure(ReadError::IncompleteRecord))),
-                        };
+                    Some(Err(e)) => {
+                        break Err(AsyncParseError::Parser(ParseError::Structure(e)));
                     }
-                    _ => {
-                        break Ok((rem, None));
-                    },
+                    _ => {}
+                },
+                Some(None) => {
+                    break match recognizer.try_flush() {
+                        Some(Ok(target)) => Ok((rem, Some(target))),
+                        Some(Err(e)) => Err(AsyncParseError::Parser(ParseError::Structure(e))),
+                        _ => Err(AsyncParseError::Parser(ParseError::Structure(
+                            ReadError::IncompleteRecord,
+                        ))),
+                    };
+                }
+                _ => {
+                    break Ok((rem, None));
                 }
             }
-        }
+        },
         Err(nom::Err::Incomplete(_)) => Ok((span, None)),
         Err(nom::Err::Error(e) | nom::Err::Failure(e)) => Err(location.relativize_error(e)),
     }
@@ -458,7 +460,6 @@ where
     type Error = AsyncParseError;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-
         let content = read_utf8(src.as_ref())?;
         let span = Span::new(content);
         match self.decode_inner(span) {
@@ -469,7 +470,6 @@ where
             }
             Err(e) => Err(e),
         }
-
     }
 
     fn decode_eof(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
@@ -478,7 +478,11 @@ where
         match self.decode_inner(span) {
             Ok((rem, output)) => {
                 let (final_rem, result) = if output.is_none() {
-                    let RecognizerDecoder { parser, recognizer, location } = self;
+                    let RecognizerDecoder {
+                        parser,
+                        recognizer,
+                        location,
+                    } = self;
                     let (final_rem, final_result) = match parser.final_parser_and_reset() {
                         Some(mut final_parser) => {
                             match feed_final(&mut final_parser, recognizer, rem, location) {
@@ -499,9 +503,11 @@ where
                                 if buf.is_empty() {
                                     Ok(None)
                                 } else {
-                                    Err(AsyncParseError::Parser(ParseError::Structure(ReadError::IncompleteRecord)))
+                                    Err(AsyncParseError::Parser(ParseError::Structure(
+                                        ReadError::IncompleteRecord,
+                                    )))
                                 }
-                            },
+                            }
                         }
                     };
                     (final_rem, finalized)
