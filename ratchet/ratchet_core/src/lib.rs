@@ -37,9 +37,11 @@ mod handshake;
 mod protocol;
 mod ws;
 
+mod random;
 /// Split WebSocket implementation.
 #[cfg(feature = "split")]
 mod split;
+
 #[allow(missing_docs)]
 #[cfg(feature = "fixture")]
 pub mod fixture {

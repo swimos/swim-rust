@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::errors::ProtocolError;
-use crate::protocol::{DataCode, HeaderFlags, OpCode};
+use crate::protocol::{HeaderFlags, OpCode};
 use bytes::{BufMut, BytesMut};
 use either::Either;
 use std::convert::TryFrom;
@@ -217,7 +217,7 @@ impl FrameHeader {
 pub fn write_text_frame_header(dst: &mut BytesMut, mask: Option<u32>, payload_len: usize) {
     FrameHeader::write_into(
         dst,
-        OpCode::DataCode(DataCode::Text),
+        OpCode::DataCode(crate::protocol::DataCode::Text),
         HeaderFlags::FIN,
         mask,
         payload_len,
