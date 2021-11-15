@@ -24,6 +24,14 @@ use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
+/// A single producer, single consumer (SPSC) byte channel operated on using Tokio `AsyncRead` and
+/// `AsyncWrite` implementations.
+///
+/// Internally, the shared data structure is initialised with a capacity of `buffer_size`.
+///
+/// # Note
+/// Dropping either half will close the channel but any remaining data is available to be read by
+/// the read half before an IO error is returned.
 pub fn byte_channel(buffer_size: NonZeroUsize) -> (ByteWriter, ByteReader) {
     let inner = Arc::new(Mutex::new(Conduit::new(buffer_size)));
     (
