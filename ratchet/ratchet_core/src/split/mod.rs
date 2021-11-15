@@ -45,6 +45,13 @@ type ReuniteFailure<S, E> = ReuniteError<
     <E as SplittableExtension>::SplitDecoder,
 >;
 
+/// Splits a WebSocket's parts into send and receive halves. Internally, two BiLocks are used: one
+/// over the IO and one on the write half to send any responses to any control frames that are
+/// received.
+///
+/// # Note
+/// It is possible to reunite the halves back into a WebSocket if the extension implements
+/// `ReunitableExtension`.
 pub fn split<S, E>(
     framed: framed::FramedIo<S>,
     control_buffer: BytesMut,
@@ -566,6 +573,8 @@ pub struct ReuniteError<S, E, D> {
     pub receiver: Receiver<S, D>,
 }
 
+/// Attempts to reunites the send and receive halves that form a WebSocket or returns an error if
+/// they do not represent the same connection.
 fn reunite<S, E>(
     sender: Sender<S, E::SplitEncoder>,
     receiver: Receiver<S, E::SplitDecoder>,
