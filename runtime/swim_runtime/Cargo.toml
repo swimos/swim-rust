@@ -4,9 +4,6 @@ version = "0.1.0"
 authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
-[features]
-default = []
-
 [dependencies]
 either = "1.5.3"
 flate2 = "1.0.22"

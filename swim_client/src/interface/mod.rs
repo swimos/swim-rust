@@ -333,8 +333,11 @@ impl<Path: Addressable> ClientContext<Path> {
         target: Path,
         message: T,
     ) -> Result<(), ClientError<Path>> {
-        let envelope =
-            Envelope::make_command(target.node(), target.lane(), Some(message.into_value()));
+        let envelope = Envelope::command()
+            .node_uri(target.node())
+            .lane_uri(target.lane())
+            .body(message)
+            .done();
 
         self.downlinks
             .send_command(target, envelope)

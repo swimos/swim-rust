@@ -777,12 +777,23 @@ impl UplinkMessageSender<TaggedSender> {
     {
         let UplinkMessageSender { inner, route } = self;
         let envelope = match msg {
-            UplinkMessage::Linked => Envelope::linked(&route.node, &route.lane),
-            UplinkMessage::Synced => Envelope::synced(&route.node, &route.lane),
-            UplinkMessage::Unlinked => Envelope::unlinked(&route.node, &route.lane),
-            UplinkMessage::Event(ev) => {
-                Envelope::make_event(&route.node, &route.lane, Some(ev.into()))
-            }
+            UplinkMessage::Linked => Envelope::linked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
+            UplinkMessage::Synced => Envelope::synced()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
+            UplinkMessage::Unlinked => Envelope::unlinked()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .done(),
+            UplinkMessage::Event(ev) => Envelope::event()
+                .node_uri(&route.node)
+                .lane_uri(&route.lane)
+                .body(Some(ev.into()))
+                .done(),
         };
         inner.send_item(envelope).await
     }

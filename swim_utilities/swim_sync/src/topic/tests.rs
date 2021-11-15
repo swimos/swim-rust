@@ -16,7 +16,6 @@ use crate::topic::{Receiver, SendError, Sender, TryRecvError, TrySendError};
 use futures::future::{join, join3};
 use futures::StreamExt;
 use std::future::Future;
-use std::num::NonZeroUsize;
 use std::ops::Range;
 use std::sync::Arc;
 use std::time::Duration;
@@ -51,7 +50,7 @@ fn prev_slots() {
 }
 
 fn send_until_full_for(n: usize) {
-    let (mut tx, _rx) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (mut tx, _rx) = super::channel::<usize>(non_zero_usize!(n));
     for i in 0..n {
         assert!(tx.try_send(i).is_ok());
     }
@@ -68,7 +67,7 @@ fn send_until_full() {
 }
 
 async fn send_until_full_async_for(n: usize) {
-    let (mut tx, _rx) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (mut tx, _rx) = super::channel::<usize>(non_zero_usize!(n));
     for i in 0..n {
         assert!(tx.send(i).await.is_ok());
     }
@@ -83,7 +82,7 @@ async fn send_until_full_async() {
 }
 
 fn send_and_receive_single_for(n: usize) {
-    let (mut tx, mut rx) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (mut tx, mut rx) = super::channel::<usize>(non_zero_usize!(n));
     assert!(tx.try_send(0).is_ok());
 
     let guard = rx.try_recv();
@@ -100,7 +99,7 @@ fn send_and_receive_single() {
 }
 
 async fn send_and_receive_single_async_for(n: usize) {
-    let (mut tx, mut rx) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (mut tx, mut rx) = super::channel::<usize>(non_zero_usize!(n));
     assert!(tx.send(0).await.is_ok());
 
     let guard = rx.recv().await;
@@ -117,7 +116,7 @@ async fn send_and_receive_single_async() {
 }
 
 fn send_and_receive_single_two_consumers_for(n: usize) {
-    let (mut tx, mut rx1) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (mut tx, mut rx1) = super::channel::<usize>(non_zero_usize!(n));
     let mut rx2 = rx1.clone();
 
     assert!(tx.try_send(0).is_ok());
@@ -139,7 +138,7 @@ fn send_and_receive_single_two_consumers() {
 }
 
 async fn send_and_receive_single_two_consumers_async_for(n: usize) {
-    let (mut tx, mut rx1) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (mut tx, mut rx1) = super::channel::<usize>(non_zero_usize!(n));
     let mut rx2 = rx1.clone();
 
     assert!(tx.send(0).await.is_ok());
@@ -161,7 +160,7 @@ async fn send_and_receive_single_two_consumers_async() {
 }
 
 fn send_and_receive_multiple_for(n: usize) {
-    let (mut tx, mut rx) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (mut tx, mut rx) = super::channel::<usize>(non_zero_usize!(n));
 
     for i in 0..n {
         assert!(tx.try_send(i).is_ok());
@@ -183,7 +182,7 @@ fn send_and_receive_multiple() {
 }
 
 async fn send_and_receive_multiple_async_for(n: usize) {
-    let (mut tx, mut rx) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (mut tx, mut rx) = super::channel::<usize>(non_zero_usize!(n));
 
     for i in 0..n {
         assert!(tx.send(i).await.is_ok());
@@ -205,7 +204,7 @@ async fn send_and_receive_multiple_async() {
 }
 
 fn send_and_receive_multiple_interleaved_for(n: usize) {
-    let (mut tx, mut rx) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (mut tx, mut rx) = super::channel::<usize>(non_zero_usize!(n));
 
     for i in 0..n {
         assert!(tx.try_send(i).is_ok());
@@ -222,7 +221,7 @@ fn send_and_receive_multiple_interleaved() {
 }
 
 async fn send_and_receive_multiple_interleaved_async_for(n: usize) {
-    let (mut tx, mut rx) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (mut tx, mut rx) = super::channel::<usize>(non_zero_usize!(n));
 
     for i in 0..n {
         assert!(tx.send(i).await.is_ok());
@@ -239,7 +238,7 @@ async fn send_and_receive_multiple_interleaved_async() {
 }
 
 fn send_and_receive_multiple_two_consumers_for(n: usize) {
-    let (mut tx, mut rx1) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (mut tx, mut rx1) = super::channel::<usize>(non_zero_usize!(n));
     let mut rx2 = rx1.clone();
 
     for i in 0..n {
@@ -270,7 +269,7 @@ fn send_and_receive_multiple_two_consumers() {
 }
 
 async fn send_and_receive_multiple_two_consumers_async_for(n: usize) {
-    let (mut tx, mut rx1) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (mut tx, mut rx1) = super::channel::<usize>(non_zero_usize!(n));
     let mut rx2 = rx1.clone();
 
     for i in 0..n {
@@ -301,7 +300,7 @@ async fn send_and_receive_multiple_two_consumers_async() {
 }
 
 fn unblock_with_read_for(n: usize) {
-    let (mut tx, mut rx) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (mut tx, mut rx) = super::channel::<usize>(non_zero_usize!(n));
 
     for i in 0..n {
         assert!(tx.try_send(i).is_ok());
@@ -322,7 +321,7 @@ fn unblock_with_read() {
 }
 
 async fn unblock_with_read_async_for(n: usize) {
-    let (mut tx, mut rx) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (mut tx, mut rx) = super::channel::<usize>(non_zero_usize!(n));
 
     for i in 0..n {
         assert!(tx.send(i).await.is_ok());
@@ -343,7 +342,7 @@ async fn unblock_with_read_async() {
 }
 
 fn unblock_with_two_readers_for(n: usize) {
-    let (mut tx, mut rx1) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (mut tx, mut rx1) = super::channel::<usize>(non_zero_usize!(n));
     let mut rx2 = rx1.clone();
     for i in 0..n {
         assert!(tx.try_send(i).is_ok());
@@ -366,7 +365,7 @@ fn unblock_with_two_readers() {
 }
 
 async fn unblock_with_two_readers_async_for(n: usize) {
-    let (mut tx, mut rx1) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (mut tx, mut rx1) = super::channel::<usize>(non_zero_usize!(n));
     let mut rx2 = rx1.clone();
     for i in 0..n {
         assert!(tx.send(i).await.is_ok());
@@ -389,7 +388,7 @@ async fn unblock_with_two_readers_async() {
 }
 
 fn unblock_with_dropped_reader_for(n: usize) {
-    let (mut tx, mut rx1) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (mut tx, mut rx1) = super::channel::<usize>(non_zero_usize!(n));
     let rx2 = rx1.clone();
     for i in 0..n {
         assert!(tx.try_send(i).is_ok());
@@ -412,7 +411,7 @@ fn unblock_with_dropped_reader() {
 }
 
 async fn unblock_with_dropped_reader_async_for(n: usize) {
-    let (mut tx, mut rx1) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (mut tx, mut rx1) = super::channel::<usize>(non_zero_usize!(n));
     let rx2 = rx1.clone();
     for i in 0..n {
         assert!(tx.send(i).await.is_ok());
@@ -435,7 +434,7 @@ async fn unblock_with_dropped_reader_async() {
 }
 
 fn receive_after_sender_dropped_for(n: usize) {
-    let (mut tx, mut rx) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (mut tx, mut rx) = super::channel::<usize>(non_zero_usize!(n));
 
     for i in 0..n {
         assert!(tx.try_send(i).is_ok());
@@ -456,7 +455,7 @@ fn receive_after_sender_dropped() {
 }
 
 async fn receive_after_sender_dropped_async_for(n: usize) {
-    let (mut tx, mut rx) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (mut tx, mut rx) = super::channel::<usize>(non_zero_usize!(n));
 
     for i in 0..n {
         assert!(tx.send(i).await.is_ok());
@@ -477,7 +476,7 @@ async fn receive_after_sender_dropped_async() {
 }
 
 fn send_after_all_receivers_dropped_for(n: usize) {
-    let (mut tx, rx) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (mut tx, rx) = super::channel::<usize>(non_zero_usize!(n));
 
     drop(rx);
 
@@ -492,7 +491,7 @@ fn send_after_all_receivers_dropped() {
 }
 
 async fn send_after_all_receivers_dropped_async_for(n: usize) {
-    let (mut tx, rx) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (mut tx, rx) = super::channel::<usize>(non_zero_usize!(n));
 
     drop(rx);
 
@@ -507,7 +506,7 @@ async fn send_after_all_receivers_dropped_async() {
 }
 
 async fn receive_as_stream_for(n: usize) {
-    let (mut tx, rx) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (mut tx, rx) = super::channel::<usize>(non_zero_usize!(n));
 
     for i in 0..n {
         assert!(tx.try_send(i).is_ok());
@@ -528,7 +527,7 @@ async fn receive_as_stream() {
 }
 
 async fn receive_all_as_stream_for(n: usize) {
-    let (mut tx, rx) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (mut tx, rx) = super::channel::<usize>(non_zero_usize!(n));
 
     for i in 0..n {
         assert!(tx.try_send(i).is_ok());
@@ -619,7 +618,7 @@ where
 }
 
 async fn send_receive_different_tasks_within_limit_for(n: usize) {
-    let (tx, rx) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (tx, rx) = super::channel::<usize>(non_zero_usize!(n));
     let sender = move |mut tx: Sender<usize>| async move {
         for i in 0..n {
             assert!(tx.send(i).await.is_ok());
@@ -643,7 +642,7 @@ async fn send_receive_different_tasks_within_limit() {
 }
 
 async fn send_receive_different_tasks_many_for(n: usize) {
-    let (tx, rx) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (tx, rx) = super::channel::<usize>(non_zero_usize!(n));
     let sender = |mut tx: Sender<usize>| async move {
         for i in 0..20 {
             assert!(tx.send(i).await.is_ok());
@@ -667,7 +666,7 @@ async fn send_receive_different_tasks_many() {
 }
 
 async fn receiver_wakes_sender_for(n: usize) {
-    let (tx, rx) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (tx, rx) = super::channel::<usize>(non_zero_usize!(n));
     let notify = Arc::new(Notify::new());
     let notify_cpy = notify.clone();
 
@@ -700,7 +699,7 @@ async fn receiver_wakes_sender() {
 }
 
 async fn sender_wakes_receiver_for(n: usize) {
-    let (tx, rx) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (tx, rx) = super::channel::<usize>(non_zero_usize!(n));
     let notify = Arc::new(Notify::new());
     let notify_cpy = notify.clone();
 
@@ -732,7 +731,7 @@ async fn sender_wakes_receiver() {
 }
 
 async fn sender_wakes_two_receivers_for(n: usize) {
-    let (tx, rx) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (tx, rx) = super::channel::<usize>(non_zero_usize!(n));
     let notify1 = Arc::new(Notify::new());
     let notify1_cpy = notify1.clone();
     let notify2 = Arc::new(Notify::new());
@@ -776,7 +775,7 @@ async fn sender_wakes_two_receivers() {
 }
 
 async fn dropped_receiver_wakes_sender_for(n: usize) {
-    let (tx, rx) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (tx, rx) = super::channel::<usize>(non_zero_usize!(n));
     let notify = Arc::new(Notify::new());
     let notify_cpy = notify.clone();
 
@@ -808,7 +807,7 @@ async fn dropped_receiver_wakes_sender() {
 }
 
 async fn dropped_sender_wakes_receiver_for(n: usize) {
-    let (tx, rx) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (tx, rx) = super::channel::<usize>(non_zero_usize!(n));
     let notify = Arc::new(Notify::new());
     let notify_cpy = notify.clone();
 
@@ -861,7 +860,7 @@ async fn send_many_records_two_receivers() {
 }
 
 async fn send_with_subscriber_for(n: usize) {
-    let (mut tx, rx) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let (mut tx, rx) = super::channel::<usize>(non_zero_usize!(n));
     let sub = rx.subscriber();
     drop(rx);
     assert!(matches!(tx.send(1).await, Err(SendError(1))));

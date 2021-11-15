@@ -903,15 +903,23 @@ impl<'a> ToTokens for OnDoneFn<'a> {
                             }
                         }
                         ow => {
-                            ow.iter().chain(header_fields.iter()).enumerate().fold(TokenStream::new(), |mut out, (j, fld)| {
+                            let mut acc = TokenStream::new();
+                            acc.append_all(quote! {
+                                let header = core::option::Option::get_or_insert_with(&mut fields.#idx, core::default::Default::default);
+                            });
+                            ow.iter().chain(header_fields.iter()).enumerate().fold(acc, |mut out, (j, fld)| {
                                 let inner_idx = syn::Index::from(j);
                                 let name = fld.resolve_name();
+                                let ty = fld.field_ty;
 
                                 out.append_all(quote! {
-                                if fields.#idx.as_ref().and_then(|f| f.#inner_idx.as_ref()).is_none() {
-                                    missing.push(swim_model::Text::new(#name));
-                                }
-                            });
+                                    if header.#inner_idx.is_none() {
+                                        header.#inner_idx = <#ty as swim_form::structural::read::recognizer::RecognizerReadable>::on_absent();
+                                        if header.#inner_idx.is_none() {
+                                            missing.push(swim_model::Text::new(#name));
+                                        }
+                                    }
+                                });
                                 out
                             })
                         }
@@ -970,12 +978,12 @@ impl<'a> ToTokens for OnDoneFn<'a> {
         let make_result = match inner.fields_model.type_kind {
             CompoundTypeKind::Labelled => {
                 let con_params = inner.fields_model.fields.iter().map(|fld| {
-                    let name = &fld.model.selector;
-                    if fld.directive == FieldKind::Skip {
-                        quote!(#name: core::default::Default::default())
+                    let bind = if fld.directive == FieldKind::Skip {
+                        fld.model.selector.default_binder()
                     } else {
-                        quote!(#name)
-                    }
+                        fld.model.selector.binder()
+                    };
+                    quote!(#bind)
                 });
                 quote! {
                     #constructor {

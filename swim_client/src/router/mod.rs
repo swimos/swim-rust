@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::connections::ConnectionChannel;
-use crate::connections::ConnectionRegistrator;
 use crate::connections::ConnectionType;
+use crate::connections::{ConnectionChannel, ConnectionRegistrator};
 use futures::future::BoxFuture;
-use futures::FutureExt;
 use std::collections::HashMap;
+
+use futures::FutureExt;
 use std::convert::TryFrom;
 use swim_utilities::routing::uri::RelativeUri;
 use tokio::sync::mpsc;
@@ -27,7 +27,7 @@ use url::Url;
 
 use swim_model::path::{AbsolutePath, Addressable};
 
-use swim_warp::envelope::IncomingLinkMessage;
+use swim_warp::envelope::ResponseEnvelope;
 
 use swim_runtime::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
 use swim_runtime::remote::table::SchemeHostPort;
@@ -366,7 +366,7 @@ pub enum DownlinkRoutingRequest<Path: Addressable> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum RouterEvent {
     // Incoming message from a remote host.
-    Message(IncomingLinkMessage),
+    Message(ResponseEnvelope),
     // There was an error in the connection. If a retry strategy exists this will trigger it.
     ConnectionClosed,
     /// The remote host is unreachable. This will not trigger the retry system.

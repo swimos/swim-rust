@@ -16,7 +16,7 @@ use std::fmt;
 use std::fmt::{Debug, Formatter};
 
 use crate::routing::TaggedEnvelope;
-use swim_warp::envelope::Envelope;
+use swim_recon::printer::print_recon_compact;
 use {
     crate::error::TlsError, crate::ws::tls::build_x509_certificate, std::path::Path,
     tokio_native_tls::native_tls::Certificate,
@@ -131,19 +131,6 @@ pub enum WsMessage {
     Closed(Option<CloseReason>),
 }
 
-impl From<TaggedEnvelope> for WsMessage {
-    fn from(this: TaggedEnvelope) -> Self {
-        let TaggedEnvelope(_, env) = this;
-        env.into()
-    }
-}
-
-impl From<Envelope> for WsMessage {
-    fn from(this: Envelope) -> Self {
-        WsMessage::Text(this.into_value().to_string())
-    }
-}
-
 #[derive(Debug, Ord, PartialOrd, PartialEq, Eq, Clone)]
 pub struct CloseReason {
     pub code: CloseCode,
@@ -179,5 +166,13 @@ impl From<&str> for WsMessage {
 impl From<Vec<u8>> for WsMessage {
     fn from(v: Vec<u8>) -> Self {
         WsMessage::Binary(v)
+    }
+}
+
+impl From<TaggedEnvelope> for WsMessage {
+    fn from(env: TaggedEnvelope) -> Self {
+        let TaggedEnvelope(_, envelope) = env;
+        let message = format!("{}", print_recon_compact(&envelope));
+        WsMessage::Text(message)
     }
 }

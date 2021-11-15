@@ -25,23 +25,29 @@ use swim_form::structural::write::{
 use swim_model::bigint::{BigInt, BigUint};
 use swim_model::write_string_literal;
 
-/// Print a compact Recon representation of [`StructuralWritable`] value.
+/// Print an inline Recon representation of [`StructuralWritable`] value.
 /// TODO Add pretty prining options.
 pub fn print_recon<T: StructuralWritable>(value: &T) -> impl Display + '_ {
-    ReconPrint(value)
+    ReconPrint(value, StandardPrint)
 }
 
-struct ReconPrint<'a, T>(&'a T);
+/// Print a compact Recon representation of [`StructuralWritable`] value.
+pub fn print_recon_compact<T: StructuralWritable>(value: &T) -> impl Display + '_ {
+    ReconPrint(value, CompactPrint)
+}
 
-impl<'a, T: StructuralWritable> Display for ReconPrint<'a, T> {
+struct ReconPrint<'a, T, S>(&'a T, S);
+
+impl<'a, T: StructuralWritable, S: PrintStrategy + Copy> Display for ReconPrint<'a, T, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let ReconPrint(inner) = self;
-        let printer = StructurePrinter::new(f);
+        let ReconPrint(inner, strategy) = self;
+        let printer = StructurePrinter::new(f, *strategy);
         inner.write_with(printer)
     }
 }
 
-pub struct StructurePrinter<'a, 'b> {
+pub struct StructurePrinter<'a, 'b, S> {
+    strategy: S,
     fmt: &'a mut Formatter<'b>,
     has_attr: bool,
     brace_written: bool,
@@ -50,8 +56,8 @@ pub struct StructurePrinter<'a, 'b> {
     delegated: bool,
 }
 
-impl<'a, 'b> StructurePrinter<'a, 'b> {
-    pub fn new(fmt: &'a mut Formatter<'b>) -> Self {
+impl<'a, 'b, S> StructurePrinter<'a, 'b, S> {
+    pub fn new(fmt: &'a mut Formatter<'b>, strategy: S) -> Self {
         StructurePrinter {
             fmt,
             has_attr: false,
@@ -59,6 +65,7 @@ impl<'a, 'b> StructurePrinter<'a, 'b> {
             single_item: false,
             first: true,
             delegated: false,
+            strategy,
         }
     }
 
@@ -68,17 +75,18 @@ impl<'a, 'b> StructurePrinter<'a, 'b> {
     }
 }
 
-struct AttributePrinter<'a, 'b> {
+struct AttributePrinter<'a, 'b, S> {
     fmt: &'a mut Formatter<'b>,
     has_attr: bool,
     brace_written: bool,
     single_item: bool,
     first: bool,
     delegated: bool,
+    strategy: S,
 }
 
-impl<'a, 'b> AttributePrinter<'a, 'b> {
-    fn new(fmt: &'a mut Formatter<'b>) -> Self {
+impl<'a, 'b, S> AttributePrinter<'a, 'b, S> {
+    fn new(fmt: &'a mut Formatter<'b>, strategy: S) -> Self {
         AttributePrinter {
             fmt,
             has_attr: false,
@@ -86,6 +94,7 @@ impl<'a, 'b> AttributePrinter<'a, 'b> {
             single_item: false,
             first: true,
             delegated: false,
+            strategy,
         }
     }
 
@@ -95,7 +104,10 @@ impl<'a, 'b> AttributePrinter<'a, 'b> {
     }
 }
 
-impl<'a, 'b> PrimitiveWriter for StructurePrinter<'a, 'b> {
+impl<'a, 'b, S> PrimitiveWriter for StructurePrinter<'a, 'b, S>
+where
+    S: PrintStrategy + Copy,
+{
     type Repr = ();
     type Error = std::fmt::Error;
 
@@ -220,7 +232,10 @@ impl<'a, 'b> PrimitiveWriter for StructurePrinter<'a, 'b> {
     }
 }
 
-impl<'a, 'b> StructuralWriter for StructurePrinter<'a, 'b> {
+impl<'a, 'b, S> StructuralWriter for StructurePrinter<'a, 'b, S>
+where
+    S: PrintStrategy + Copy,
+{
     type Header = Self;
     type Body = Self;
 
@@ -229,7 +244,10 @@ impl<'a, 'b> StructuralWriter for StructurePrinter<'a, 'b> {
     }
 }
 
-impl<'a, 'b> HeaderWriter for StructurePrinter<'a, 'b> {
+impl<'a, 'b, S> HeaderWriter for StructurePrinter<'a, 'b, S>
+where
+    S: PrintStrategy + Copy,
+{
     type Repr = ();
     type Error = std::fmt::Error;
     type Body = Self;
@@ -239,14 +257,19 @@ impl<'a, 'b> HeaderWriter for StructurePrinter<'a, 'b> {
         name: Cow<'_, str>,
         value: &V,
     ) -> Result<Self, Self::Error> {
-        let StructurePrinter { fmt, has_attr, .. } = &mut self;
+        let StructurePrinter {
+            fmt,
+            has_attr,
+            strategy,
+            ..
+        } = &mut self;
         if *has_attr {
-            fmt.write_str(" ")?;
+            fmt.write_str(strategy.attr_padding())?;
         } else {
             *has_attr = true;
         }
         write!(fmt, "@{}", name.as_ref())?;
-        let attr_printer = AttributePrinter::new(*fmt);
+        let attr_printer = AttributePrinter::new(*fmt, *strategy);
         value.write_with(attr_printer)?;
         Ok(self)
     }
@@ -277,27 +300,30 @@ impl<'a, 'b> HeaderWriter for StructurePrinter<'a, 'b> {
             has_attr,
             brace_written,
             single_item,
+            strategy,
             ..
         } = &mut self;
-        *single_item = num_items == 1;
         if *has_attr {
             if num_items > 1 {
-                fmt.write_str(" { ")?;
+                fmt.write_str(strategy.attr_padding())?;
+                fmt.write_str("{")?;
+                fmt.write_str(strategy.block_start_padding(num_items))?;
                 *brace_written = true;
             }
         } else {
-            if num_items == 0 {
-                fmt.write_str("{")?;
-            } else {
-                fmt.write_str("{ ")?;
-            }
+            fmt.write_str("{")?;
+            fmt.write_str(strategy.block_start_padding(num_items))?;
             *brace_written = true;
         }
+        *single_item = num_items == 1;
         Ok(self)
     }
 }
 
-impl<'a, 'b> BodyWriter for StructurePrinter<'a, 'b> {
+impl<'a, 'b, S> BodyWriter for StructurePrinter<'a, 'b, S>
+where
+    S: PrintStrategy + Copy,
+{
     type Repr = ();
     type Error = std::fmt::Error;
 
@@ -308,21 +334,24 @@ impl<'a, 'b> BodyWriter for StructurePrinter<'a, 'b> {
             single_item,
             first,
             has_attr,
+            strategy,
             ..
         } = &mut self;
         if *has_attr && !*brace_written {
             if *single_item {
                 fmt.write_str(" ")?;
             } else {
-                fmt.write_str(" {")?;
+                fmt.write_str(strategy.attr_padding())?;
+                fmt.write_str("{")?;
                 *brace_written = true;
             }
         } else if *first {
             *first = false;
         } else {
-            fmt.write_str(", ")?;
+            fmt.write_str(",")?;
+            fmt.write_str(strategy.item_padding())?;
         }
-        let printer = StructurePrinter::new(*fmt);
+        let printer = StructurePrinter::new(*fmt, *strategy);
         value.write_with(printer)?;
         Ok(self)
     }
@@ -332,17 +361,24 @@ impl<'a, 'b> BodyWriter for StructurePrinter<'a, 'b> {
         key: &K,
         value: &V,
     ) -> Result<Self, Self::Error> {
-        let StructurePrinter { fmt, first, .. } = &mut self;
+        let StructurePrinter {
+            fmt,
+            first,
+            strategy,
+            ..
+        } = &mut self;
         if *first {
             *first = false;
         } else {
-            fmt.write_str(", ")?;
+            fmt.write_str(",")?;
+            fmt.write_str(strategy.item_padding())?;
         }
-        let key_printer = StructurePrinter::new(*fmt);
+        let key_printer = StructurePrinter::new(*fmt, *strategy);
         key.write_with(key_printer)?;
-        fmt.write_str(": ")?;
+        fmt.write_str(":")?;
+        fmt.write_str(strategy.slot_padding())?;
 
-        let val_printer = StructurePrinter::new(*fmt);
+        let val_printer = StructurePrinter::new(*fmt, *strategy);
         value.write_with(val_printer)?;
         Ok(self)
     }
@@ -364,14 +400,14 @@ impl<'a, 'b> BodyWriter for StructurePrinter<'a, 'b> {
             fmt,
             brace_written,
             first,
+            strategy,
             ..
         } = self;
         if brace_written {
-            if first {
-                fmt.write_str("}")?;
-            } else {
-                fmt.write_str(" }")?;
+            if !first {
+                fmt.write_str(strategy.block_end_padding(first))?;
             }
+            fmt.write_str("}")?;
         }
         Ok(())
     }
@@ -382,19 +418,29 @@ fn write_attr_body_val<T: Display>(
     value: &T,
     delegated: bool,
     has_attr: bool,
+    strategy: &impl PrintStrategy,
 ) -> std::fmt::Result {
     if delegated {
         if has_attr {
-            write!(fmt, " {})", value)
+            write!(fmt, " {}{})", value, strategy.attr_body_padding())
         } else {
-            write!(fmt, "{})", value)
+            write!(fmt, "{}{})", value, strategy.attr_body_padding())
         }
     } else {
-        write!(fmt, "({})", value)
+        write!(
+            fmt,
+            "({}{}{})",
+            strategy.attr_body_padding(),
+            value,
+            strategy.attr_body_padding()
+        )
     }
 }
 
-impl<'a, 'b> PrimitiveWriter for AttributePrinter<'a, 'b> {
+impl<'a, 'b, S> PrimitiveWriter for AttributePrinter<'a, 'b, S>
+where
+    S: PrintStrategy + Copy,
+{
     type Repr = ();
     type Error = std::fmt::Error;
 
@@ -407,9 +453,10 @@ impl<'a, 'b> PrimitiveWriter for AttributePrinter<'a, 'b> {
             fmt,
             delegated,
             has_attr,
+            strategy,
             ..
         } = self;
-        write_attr_body_val(fmt, &value, delegated, has_attr)
+        write_attr_body_val(fmt, &value, delegated, has_attr, &strategy)
     }
 
     fn write_i64(self, value: i64) -> Result<Self::Repr, Self::Error> {
@@ -417,9 +464,10 @@ impl<'a, 'b> PrimitiveWriter for AttributePrinter<'a, 'b> {
             fmt,
             delegated,
             has_attr,
+            strategy,
             ..
         } = self;
-        write_attr_body_val(fmt, &value, delegated, has_attr)
+        write_attr_body_val(fmt, &value, delegated, has_attr, &strategy)
     }
 
     fn write_u32(self, value: u32) -> Result<Self::Repr, Self::Error> {
@@ -427,9 +475,10 @@ impl<'a, 'b> PrimitiveWriter for AttributePrinter<'a, 'b> {
             fmt,
             delegated,
             has_attr,
+            strategy,
             ..
         } = self;
-        write_attr_body_val(fmt, &value, delegated, has_attr)
+        write_attr_body_val(fmt, &value, delegated, has_attr, &strategy)
     }
 
     fn write_u64(self, value: u64) -> Result<Self::Repr, Self::Error> {
@@ -437,9 +486,10 @@ impl<'a, 'b> PrimitiveWriter for AttributePrinter<'a, 'b> {
             fmt,
             delegated,
             has_attr,
+            strategy,
             ..
         } = self;
-        write_attr_body_val(fmt, &value, delegated, has_attr)
+        write_attr_body_val(fmt, &value, delegated, has_attr, &strategy)
     }
 
     fn write_f64(self, value: f64) -> Result<Self::Repr, Self::Error> {
@@ -447,16 +497,23 @@ impl<'a, 'b> PrimitiveWriter for AttributePrinter<'a, 'b> {
             fmt,
             delegated,
             has_attr,
+            strategy,
             ..
         } = self;
         if delegated {
             if has_attr {
-                write!(fmt, " {:e})", value)
+                write!(fmt, " {:e}{})", value, strategy.attr_body_padding())
             } else {
-                write!(fmt, "{:e})", value)
+                write!(fmt, "{:e}{})", value, strategy.attr_body_padding())
             }
         } else {
-            write!(fmt, "({:e})", value)
+            write!(
+                fmt,
+                "({}{:e}{})",
+                strategy.attr_body_padding(),
+                value,
+                strategy.attr_body_padding()
+            )
         }
     }
 
@@ -465,9 +522,10 @@ impl<'a, 'b> PrimitiveWriter for AttributePrinter<'a, 'b> {
             fmt,
             delegated,
             has_attr,
+            strategy,
             ..
         } = self;
-        write_attr_body_val(fmt, &value, delegated, has_attr)
+        write_attr_body_val(fmt, &value, delegated, has_attr, &strategy)
     }
 
     fn write_big_int(self, value: BigInt) -> Result<Self::Repr, Self::Error> {
@@ -475,9 +533,10 @@ impl<'a, 'b> PrimitiveWriter for AttributePrinter<'a, 'b> {
             fmt,
             delegated,
             has_attr,
+            strategy,
             ..
         } = self;
-        write_attr_body_val(fmt, &value, delegated, has_attr)
+        write_attr_body_val(fmt, &value, delegated, has_attr, &strategy)
     }
 
     fn write_big_uint(self, value: BigUint) -> Result<Self::Repr, Self::Error> {
@@ -485,9 +544,10 @@ impl<'a, 'b> PrimitiveWriter for AttributePrinter<'a, 'b> {
             fmt,
             delegated,
             has_attr,
+            strategy,
             ..
         } = self;
-        write_attr_body_val(fmt, &value, delegated, has_attr)
+        write_attr_body_val(fmt, &value, delegated, has_attr, &strategy)
     }
 
     fn write_text<T: Label>(self, value: T) -> Result<Self::Repr, Self::Error> {
@@ -495,18 +555,18 @@ impl<'a, 'b> PrimitiveWriter for AttributePrinter<'a, 'b> {
             fmt,
             delegated,
             has_attr,
+            strategy,
             ..
         } = self;
         if delegated {
             if has_attr {
                 fmt.write_str(" ")?;
             }
-            write_string_literal(value.as_ref(), fmt)
         } else {
-            fmt.write_str("(")?;
-            write_string_literal(value.as_ref(), fmt)?;
-            fmt.write_str(")")
+            write!(fmt, "({}", strategy.attr_body_padding())?;
         }
+        write_string_literal(value.as_ref(), fmt)?;
+        write!(fmt, "{})", strategy.attr_body_padding())
     }
 
     fn write_blob_vec(self, blob: Vec<u8>) -> Result<Self::Repr, Self::Error> {
@@ -514,17 +574,24 @@ impl<'a, 'b> PrimitiveWriter for AttributePrinter<'a, 'b> {
             fmt,
             delegated,
             has_attr,
+            strategy,
             ..
         } = self;
         let rep = Base64Display::with_config(blob.as_slice(), base64::STANDARD);
         if delegated {
             if has_attr {
-                write!(fmt, " %{})", &rep)
+                write!(fmt, " %{}{})", &rep, strategy.attr_body_padding())
             } else {
-                write!(fmt, "%{})", &rep)
+                write!(fmt, "%{}{})", &rep, strategy.attr_body_padding())
             }
         } else {
-            write!(fmt, "(%{})", &rep)
+            write!(
+                fmt,
+                "({}%{}{})",
+                strategy.attr_body_padding(),
+                &rep,
+                strategy.attr_body_padding()
+            )
         }
     }
 
@@ -533,33 +600,46 @@ impl<'a, 'b> PrimitiveWriter for AttributePrinter<'a, 'b> {
             fmt,
             delegated,
             has_attr,
+            strategy,
             ..
         } = self;
         let rep = Base64Display::with_config(value, base64::STANDARD);
         if delegated {
             if has_attr {
-                write!(fmt, " %{})", &rep)
+                write!(fmt, " %{}{})", &rep, strategy.attr_body_padding())
             } else {
-                write!(fmt, "%{})", &rep)
+                write!(fmt, "%{}{})", &rep, strategy.attr_body_padding())
             }
         } else {
-            write!(fmt, "(%{})", &rep)
+            write!(
+                fmt,
+                "({}%{}{})",
+                strategy.attr_body_padding(),
+                &rep,
+                strategy.attr_body_padding()
+            )
         }
     }
 }
 
-impl<'a, 'b> StructuralWriter for AttributePrinter<'a, 'b> {
+impl<'a, 'b, S> StructuralWriter for AttributePrinter<'a, 'b, S>
+where
+    S: PrintStrategy + Copy,
+{
     type Header = Self;
     type Body = Self;
 
     fn record(mut self, _num_attrs: usize) -> Result<Self::Header, Self::Error> {
-        let AttributePrinter { fmt, .. } = &mut self;
-        fmt.write_str("(")?;
+        let AttributePrinter { fmt, strategy, .. } = &mut self;
+        write!(fmt, "({}", strategy.attr_body_padding())?;
         Ok(self)
     }
 }
 
-impl<'a, 'b> HeaderWriter for AttributePrinter<'a, 'b> {
+impl<'a, 'b, S> HeaderWriter for AttributePrinter<'a, 'b, S>
+where
+    S: PrintStrategy + Copy,
+{
     type Repr = ();
     type Error = std::fmt::Error;
     type Body = Self;
@@ -569,14 +649,19 @@ impl<'a, 'b> HeaderWriter for AttributePrinter<'a, 'b> {
         name: Cow<'_, str>,
         value: &V,
     ) -> Result<Self, Self::Error> {
-        let AttributePrinter { fmt, has_attr, .. } = &mut self;
+        let AttributePrinter {
+            fmt,
+            has_attr,
+            strategy,
+            ..
+        } = &mut self;
         if *has_attr {
-            fmt.write_str(" ")?;
+            fmt.write_str(strategy.attr_padding())?;
         } else {
             *has_attr = true;
         }
         write!(fmt, "@{}", name.as_ref())?;
-        let attr_printer = AttributePrinter::new(*fmt);
+        let attr_printer = AttributePrinter::new(*fmt, *strategy);
         value.write_with(attr_printer)?;
         Ok(self)
     }
@@ -607,6 +692,7 @@ impl<'a, 'b> HeaderWriter for AttributePrinter<'a, 'b> {
             has_attr,
             brace_written,
             single_item,
+            strategy,
             ..
         } = &mut self;
         *single_item = num_items == 1;
@@ -617,19 +703,25 @@ impl<'a, 'b> HeaderWriter for AttributePrinter<'a, 'b> {
                     fmt.write_str(" ")?;
                 }
                 _ => {
-                    fmt.write_str(" { ")?;
+                    fmt.write_str(strategy.attr_padding())?;
+                    fmt.write_str("{")?;
+                    fmt.write_str(strategy.block_start_padding(num_items))?;
                     *brace_written = true;
                 }
             }
         } else if num_items == 0 {
             fmt.write_str("{")?;
+            fmt.write_str(strategy.block_start_padding(num_items))?;
             *brace_written = true;
         }
         Ok(self)
     }
 }
 
-impl<'a, 'b> BodyWriter for AttributePrinter<'a, 'b> {
+impl<'a, 'b, S> BodyWriter for AttributePrinter<'a, 'b, S>
+where
+    S: PrintStrategy + Copy,
+{
     type Repr = ();
     type Error = std::fmt::Error;
 
@@ -640,18 +732,21 @@ impl<'a, 'b> BodyWriter for AttributePrinter<'a, 'b> {
             single_item,
             first,
             has_attr,
+            strategy,
             ..
         } = &mut self;
         if !*brace_written && !*has_attr && *single_item {
-            fmt.write_str("{ ")?;
+            fmt.write_str("{")?;
+            fmt.write_str(strategy.block_start_padding(1))?;
             *brace_written = true;
         }
         if *first {
             *first = false;
         } else {
-            fmt.write_str(", ")?;
+            fmt.write_str(",")?;
+            fmt.write_str(strategy.item_padding())?;
         }
-        let printer = StructurePrinter::new(*fmt);
+        let printer = StructurePrinter::new(*fmt, *strategy);
         value.write_with(printer)?;
         Ok(self)
     }
@@ -661,17 +756,24 @@ impl<'a, 'b> BodyWriter for AttributePrinter<'a, 'b> {
         key: &K,
         value: &V,
     ) -> Result<Self, Self::Error> {
-        let AttributePrinter { fmt, first, .. } = &mut self;
+        let AttributePrinter {
+            fmt,
+            first,
+            strategy,
+            ..
+        } = &mut self;
         if *first {
             *first = false;
         } else {
-            fmt.write_str(", ")?;
+            fmt.write_str(",")?;
+            fmt.write_str(strategy.item_padding())?;
         }
-        let key_printer = StructurePrinter::new(*fmt);
+        let key_printer = StructurePrinter::new(*fmt, *strategy);
         key.write_with(key_printer)?;
-        fmt.write_str(": ")?;
+        fmt.write_str(":")?;
+        fmt.write_str(strategy.slot_padding())?;
 
-        let val_printer = StructurePrinter::new(*fmt);
+        let val_printer = StructurePrinter::new(*fmt, *strategy);
         value.write_with(val_printer)?;
         Ok(self)
     }
@@ -704,5 +806,85 @@ impl<'a, 'b> BodyWriter for AttributePrinter<'a, 'b> {
         }
         fmt.write_str(")")?;
         Ok(())
+    }
+}
+
+pub trait PrintStrategy {
+    fn attr_padding(&self) -> &'static str;
+
+    fn attr_body_padding(&self) -> &'static str;
+
+    fn block_start_padding(&self, items: usize) -> &'static str;
+
+    fn block_end_padding(&self, is_empty: bool) -> &'static str;
+
+    fn item_padding(&self) -> &'static str;
+
+    fn slot_padding(&self) -> &'static str;
+}
+
+#[derive(Clone, Copy)]
+struct StandardPrint;
+
+#[derive(Clone, Copy)]
+struct CompactPrint;
+
+impl PrintStrategy for StandardPrint {
+    fn attr_padding(&self) -> &'static str {
+        " "
+    }
+
+    fn attr_body_padding(&self) -> &'static str {
+        ""
+    }
+
+    fn block_start_padding(&self, items: usize) -> &'static str {
+        if items == 0 {
+            ""
+        } else {
+            " "
+        }
+    }
+
+    fn block_end_padding(&self, is_empty: bool) -> &'static str {
+        if is_empty {
+            ""
+        } else {
+            " "
+        }
+    }
+
+    fn item_padding(&self) -> &'static str {
+        " "
+    }
+
+    fn slot_padding(&self) -> &'static str {
+        " "
+    }
+}
+
+impl PrintStrategy for CompactPrint {
+    fn attr_padding(&self) -> &'static str {
+        ""
+    }
+
+    fn attr_body_padding(&self) -> &'static str {
+        ""
+    }
+
+    fn block_start_padding(&self, _items: usize) -> &'static str {
+        ""
+    }
+
+    fn block_end_padding(&self, _is_empty: bool) -> &'static str {
+        ""
+    }
+
+    fn item_padding(&self) -> &'static str {
+        ""
+    }
+
+    fn slot_padding(&self) -> &'static str {
+        ""
     }
 }

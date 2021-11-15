@@ -31,6 +31,7 @@ use std::num::NonZeroUsize;
 use std::time::Duration;
 use swim_model::path::AbsolutePath;
 use swim_model::{Text, ValueKind};
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::retryable::strategy::{
     DEFAULT_EXPONENTIAL_MAX_BACKOFF, DEFAULT_EXPONENTIAL_MAX_INTERVAL, DEFAULT_IMMEDIATE_RETRIES,
     DEFAULT_INTERVAL_DELAY, DEFAULT_INTERVAL_RETRIES,
@@ -213,7 +214,7 @@ impl Recognizer for RetryStrategyRecognizer {
                     },
                     ReadEvent::EndRecord => {
                         Some(Ok(RetryStrategy::immediate(retries.unwrap_or_else(|| {
-                            NonZeroUsize::new(DEFAULT_IMMEDIATE_RETRIES).unwrap()
+                            non_zero_usize!(DEFAULT_IMMEDIATE_RETRIES)
                         }))))
                     }
                     ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
@@ -245,7 +246,7 @@ impl Recognizer for RetryStrategyRecognizer {
                     ReadEvent::EndRecord => Some(Ok(RetryStrategy::interval(
                         delay.unwrap_or_else(|| Duration::from_secs(DEFAULT_INTERVAL_DELAY)),
                         retries.unwrap_or_else(|| {
-                            Quantity::Finite(NonZeroUsize::new(DEFAULT_INTERVAL_RETRIES).unwrap())
+                            Quantity::Finite(non_zero_usize!(DEFAULT_INTERVAL_RETRIES))
                         }),
                     ))),
                     ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
