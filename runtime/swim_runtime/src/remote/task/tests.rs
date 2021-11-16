@@ -48,6 +48,7 @@ use ratchet_fixture::ratchet_failing_ext::FailingExt;
 use slab::Slab;
 use std::num::NonZeroUsize;
 use std::time::Duration;
+use swim_model::Value;
 use tokio::io::DuplexStream;
 
 #[test]
@@ -523,9 +524,15 @@ async fn task_send_message() {
         let tagged = TaggedEnvelope(RoutingAddr::plane(100), env_cpy.clone());
         assert!(envelope_tx.send(tagged).await.is_ok());
 
-        let message = websocket_peer.read().await.unwrap();
-        assert_eq!(message, message_for(env_cpy));
-        stop_trigger.trigger();
+        match websocket_peer.read().await.unwrap() {
+            WsMessage::Text(msg) => {
+                assert_eq!(msg, env_to_string(env_cpy));
+                stop_trigger.trigger();
+            }
+            m => {
+                panic!("Expected a text message, got: {:?}", m)
+            }
+        }
     };
 
     let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
@@ -749,7 +756,11 @@ async fn task_receive_error() {
     } = TaskFixture::new(NoExt);
 
     let test_case = async move {
-        let envelope = Envelope::make_event("/node", "/lane", Some(Value::text("a")));
+        let envelope = Envelope::event()
+            .node_uri("/node")
+            .lane_uri("/lane")
+            .body(Value::text("a"))
+            .done();
         assert!(websocket_peer
             .write_text(env_to_string(envelope))
             .await

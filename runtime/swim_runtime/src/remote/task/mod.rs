@@ -38,6 +38,7 @@ use std::fmt::{Display, Formatter};
 use std::future::Future;
 use std::str::FromStr;
 use std::time::Duration;
+use swim_form::Form;
 use swim_model::path::RelativePath;
 use swim_recon::parser::{parse_recognize, ParseError, Span};
 use swim_utilities::errors::Recoverable;
@@ -196,27 +197,29 @@ where
                         }
                     }
                     ConnectionEvent::Read(msg) => match msg {
-                        Ok(WsMessage::Text(message)) => match parse_recognize(Span::new(msg.as_str())) {
-                            Ok(envelope) => {
-                                let dispatch_result = dispatch_envelope(
-                                    &mut router,
-                                    &mut bidirectional_connections,
-                                    &mut resolved,
-                                    envelope,
-                                    config.connection_retries,
-                                    sleep,
-                                )
-                                .await;
+                        Ok(WsMessage::Text(message)) => {
+                            match parse_recognize(Span::new(message.as_str())) {
+                                Ok(envelope) => {
+                                    let dispatch_result = dispatch_envelope(
+                                        &mut router,
+                                        &mut bidirectional_connections,
+                                        &mut resolved,
+                                        envelope,
+                                        config.connection_retries,
+                                        sleep,
+                                    )
+                                    .await;
 
-                                // Todo add router to ratchet's upgrade function to avoid this
-                                if let Err((env, _)) = dispatch_result {
-                                    handle_not_found(env, &message_injector).await;
+                                    // Todo add router to ratchet's upgrade function to avoid this
+                                    if let Err((env, _)) = dispatch_result {
+                                        handle_not_found(env, &message_injector).await;
+                                    }
+                                }
+                                Err(err) => {
+                                    break err.into();
                                 }
                             }
-                            Err(err) => {
-                                break err.into();
-                            }
-                        },
+                        }
                         Ok(WsMessage::Close(reason)) => {
                             event!(Level::DEBUG, PEER_CLOSED, ?reason);
                             break Completion::StoppedRemotely;
