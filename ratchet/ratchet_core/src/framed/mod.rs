@@ -21,12 +21,13 @@ use crate::protocol::{
     MessageType, OpCode, Role,
 };
 use crate::protocol::{BorrowedFramePrinter, FramePrinter};
-use crate::random::Random;
 use crate::WebSocketStream;
 use bytes::Buf;
 use bytes::{BufMut, BytesMut};
 use either::Either;
 use log::trace;
+use rand::rngs::SmallRng;
+use rand::{Rng, SeedableRng};
 use ratchet_ext::{ExtensionDecoder, FrameHeader as ExtFrameHeader, OpCode as ExtOpCode};
 use std::convert::TryFrom;
 use std::fmt::{Debug, Formatter};
@@ -331,10 +332,18 @@ impl FramedRead {
     }
 }
 
-#[derive(Default)]
 pub struct FramedWrite {
     write_buffer: BytesMut,
-    rand: Random,
+    rand: SmallRng,
+}
+
+impl Default for FramedWrite {
+    fn default() -> Self {
+        FramedWrite {
+            write_buffer: Default::default(),
+            rand: SmallRng::from_entropy(),
+        }
+    }
 }
 
 impl Debug for FramedWrite {
@@ -378,7 +387,7 @@ impl FramedWrite {
         let mask = if is_server {
             None
         } else {
-            let mask = rand.generate_u32();
+            let mask = rand.gen();
             apply_mask(mask, payload_bytes.as_mut());
             Some(mask)
         };

@@ -37,7 +37,6 @@ mod handshake;
 mod protocol;
 mod ws;
 
-mod random;
 /// Split WebSocket implementation.
 #[cfg(feature = "split")]
 mod split;

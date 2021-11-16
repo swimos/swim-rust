@@ -16,8 +16,6 @@ jobs:
         - ARCH=arm64
         - RUST_BACKTRACE=1
       script:
-        - (cd ratchet/ratchet_core/ ; cargo tree)
-        - rustup toolchain list
         - rustup component add rust-src
         - cargo test --workspace --lib --tests --all-features
     - name: "Clippy, formatting and documentation"
