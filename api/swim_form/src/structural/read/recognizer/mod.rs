@@ -340,6 +340,7 @@ impl RecognizerReadable for Timestamp {
     }
 }
 
+#[derive(Debug)]
 pub struct TimestampRecognizer;
 
 impl Recognizer for TimestampRecognizer {
@@ -376,6 +377,7 @@ impl Recognizer for TimestampRecognizer {
 }
 
 /// Recognizes a vector of values of the same type.
+#[derive(Debug)]
 pub struct VecRecognizer<T, R> {
     is_attr_body: bool,
     stage: BodyStage,
@@ -474,7 +476,7 @@ impl<T: RecognizerReadable> RecognizerReadable for Vec<T> {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 enum BodyStage {
     Init,
     Item,
@@ -802,6 +804,7 @@ impl<T, Flds> Recognizer for OrdinalFieldsRecognizer<T, Flds> {
 
 /// Wraps another [`Recognizer`] to recognize the same type as an attribute body (terminated by
 /// a final end attribute event).
+#[derive(Debug)]
 pub struct SimpleAttrBody<R: Recognizer> {
     after_content: bool,
     value: Option<R::Target>,
@@ -855,6 +858,7 @@ impl<R: Recognizer> Recognizer for SimpleAttrBody<R> {
 /// Runs two [`Recognizer`]s in parallel returning the result of the first that completes
 /// successfully. If both complete with an error, the error from the recognizer that failed
 /// last is returned.
+#[derive(Debug)]
 pub struct FirstOf<R1, R2> {
     first_active: bool,
     second_active: bool,
@@ -1507,6 +1511,7 @@ impl<T: RecognizerReadable> RecognizerReadable for Arc<T> {
     }
 }
 
+#[derive(Debug)]
 pub struct OptionRecognizer<R> {
     inner: R,
     reading_value: bool,
@@ -1718,6 +1723,7 @@ impl RecognizerReadable for Value {
     }
 }
 
+#[derive(Debug)]
 enum MapStage {
     Init,
     Between,
@@ -1727,6 +1733,7 @@ enum MapStage {
 }
 
 /// [`Recognizer`] for [`HashMap`]s encoded as key-value pairs in the slots of the record body.
+#[derive(Debug)]
 pub struct HashMapRecognizer<RK: Recognizer, RV: Recognizer> {
     is_attr_body: bool,
     stage: MapStage,
@@ -2709,6 +2716,7 @@ pub fn take_fields<T: Default, U, V>(state: &mut (T, U, V)) -> Result<T, ReadErr
     Ok(std::mem::take(&mut state.0))
 }
 
+#[derive(Debug)]
 enum SimpleRecBodyState {
     Init,
     ReadingValue,
@@ -2717,6 +2725,7 @@ enum SimpleRecBodyState {
 
 /// Wraps another simple [`Recognizer`] to recognize the same type as the single item in the body
 /// of a record.
+#[derive(Debug)]
 pub struct SimpleRecBody<R: Recognizer> {
     state: SimpleRecBodyState,
     value: Option<R::Target>,

@@ -290,6 +290,7 @@ where
     }
 }
 
+#[derive(Debug)]
 struct LocationTracker {
     offset: usize,
     line: u32,
@@ -328,7 +329,7 @@ impl LocationTracker {
 
         let span_line = input.location_line();
         let (line, column) = if span_line == 1 {
-            (self.line, self.column + input.get_utf8_column())
+            (self.line, self.column + input.get_utf8_column() - 1)
         } else {
             (self.line + span_line - 1, input.get_utf8_column())
         };
@@ -375,22 +376,24 @@ impl<R: Recognizer> RecognizerDecoder<R> {
             location,
         } = self;
 
-        match parser.parse(span) {
-            Ok((rem, mut events)) => {
-                location.update(&rem);
-                loop {
-                    match events.next() {
-                        Some(Some(event)) => match recognizer.feed_event(event) {
-                            Some(Ok(target)) => {
-                                break Ok((rem, Some(target)));
+        let mut current = span;
+        'outer: loop {
+            match parser.parse(current) {
+                Ok((rem, events)) => {
+                    current = rem;
+                    for event_or_end in events {
+                        if let Some(event) = event_or_end {
+                            match recognizer.feed_event(event) {
+                                Some(Ok(target)) => {
+                                    break 'outer Ok((current, Some(target)));
+                                }
+                                Some(Err(e)) => {
+                                    break 'outer  Err(AsyncParseError::Parser(ParseError::Structure(e)));
+                                }
+                                _ => {}
                             }
-                            Some(Err(e)) => {
-                                break Err(AsyncParseError::Parser(ParseError::Structure(e)));
-                            }
-                            _ => {}
-                        },
-                        Some(None) => {
-                            break match recognizer.try_flush() {
+                        } else {
+                            break 'outer match recognizer.try_flush() {
                                 Some(Ok(target)) => Ok((rem, Some(target))),
                                 Some(Err(e)) => {
                                     Err(AsyncParseError::Parser(ParseError::Structure(e)))
@@ -400,14 +403,19 @@ impl<R: Recognizer> RecognizerDecoder<R> {
                                 ))),
                             };
                         }
-                        _ => {
-                            break Ok((rem, None));
-                        }
                     }
                 }
+                Err(nom::Err::Incomplete(_)) => {
+                    location.update(&current);
+                    break Ok((current, None));
+                },
+                Err(nom::Err::Error(e) | nom::Err::Failure(e)) => {
+                    //println!("{:?}, {:?}", location, current);
+                    location.update(&current);
+                    //panic!("{:?}, {:?}", location, current);
+                    break Err(location.relativize_error(e));
+                },
             }
-            Err(nom::Err::Incomplete(_)) => Ok((span, None)),
-            Err(nom::Err::Error(e) | nom::Err::Failure(e)) => Err(location.relativize_error(e)),
         }
     }
 }
@@ -422,19 +430,20 @@ where
     R: Recognizer,
 {
     match parser.parse(span) {
-        Ok((rem, mut events)) => loop {
-            match events.next() {
-                Some(Some(event)) => match recognizer.feed_event(event) {
-                    Some(Ok(target)) => {
-                        break Ok((rem, Some(target)));
+        Ok((rem, events)) => {
+            for event_or_end in events {
+                if let Some(event) = event_or_end {
+                    match recognizer.feed_event(event) {
+                        Some(Ok(target)) => {
+                            return Ok((rem, Some(target)));
+                        }
+                        Some(Err(e)) => {
+                            return Err(AsyncParseError::Parser(ParseError::Structure(e)));
+                        }
+                        _ => {}
                     }
-                    Some(Err(e)) => {
-                        break Err(AsyncParseError::Parser(ParseError::Structure(e)));
-                    }
-                    _ => {}
-                },
-                Some(None) => {
-                    break match recognizer.try_flush() {
+                } else {
+                    return match recognizer.try_flush() {
                         Some(Ok(target)) => Ok((rem, Some(target))),
                         Some(Err(e)) => Err(AsyncParseError::Parser(ParseError::Structure(e))),
                         _ => Err(AsyncParseError::Parser(ParseError::Structure(
@@ -442,10 +451,8 @@ where
                         ))),
                     };
                 }
-                _ => {
-                    break Ok((rem, None));
-                }
             }
+            Ok((rem, None))
         },
         Err(nom::Err::Incomplete(_)) => Ok((span, None)),
         Err(nom::Err::Error(e) | nom::Err::Failure(e)) => Err(location.relativize_error(e)),
