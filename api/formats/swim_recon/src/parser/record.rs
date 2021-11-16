@@ -14,7 +14,7 @@
 
 use super::tokens::streaming::*;
 use super::tokens::*;
-use super::Span;
+use super::{FinalAttrStage, ParseEvents, Span};
 use either::Either;
 use nom::branch::alt;
 use nom::character::complete as char_comp;
@@ -148,27 +148,6 @@ fn attr_name(input: Span<'_>) -> IResult<Span<'_>, Cow<'_, str>> {
 
 fn attr_name_final(input: Span<'_>) -> IResult<Span<'_>, Cow<'_, str>> {
     map(complete::identifier, Cow::Borrowed)(input)
-}
-
-#[derive(Debug)]
-pub enum FinalAttrStage<'a> {
-    Start(Cow<'a, str>),
-    EndAttr,
-    StartBody,
-    EndBody,
-}
-
-/// A single parse result can produce several events. This enumeration allows
-/// an iterator to consume them in turn. Note that in the cases with multiple
-/// events, the events are stored as a stack so are in reverse order.
-#[derive(Debug)]
-pub(crate) enum ParseEvents<'a> {
-    NoEvent,
-    SingleEvent(ReadEvent<'a>),
-    TwoEvents(ReadEvent<'a>, ReadEvent<'a>),
-    ThreeEvents(ReadEvent<'a>, ReadEvent<'a>, ReadEvent<'a>),
-    TerminateWithAttr(FinalAttrStage<'a>),
-    End,
 }
 
 impl<'a> ParseEvents<'a> {
