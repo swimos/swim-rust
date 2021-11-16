@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,8 +24,8 @@ use swim_client::downlink::Event;
 use swim_client::interface::ClientContext;
 use swim_client::runtime::task;
 use swim_form::Form;
-use swim_model::{Item, Value};
 use swim_model::path::{Path, RelativePath};
+use swim_model::{Item, Value};
 use swim_server::agent::command_lifecycle;
 use swim_server::agent::lane::channels::update::StmRetryStrategy;
 use swim_server::agent::lane::lifecycle::LaneLifecycle;
