@@ -35,7 +35,7 @@ bitflags = "1.2"
 either = "1.5.3"
 log = "0.4.14"
 
-[target."cfg(not(target_arch = \"arm\"))".dependencies.nanorand]
+[target."cfg(not(any(target_arch = \"arm\", target_arch = \"aarch64\")))".dependencies.nanorand]
 version = "0.5"
 default-features = false
 features = ["std", "wyrand"]

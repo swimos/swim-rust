@@ -14,19 +14,19 @@
 
 #[derive(Default)]
 pub struct Random {
-    #[cfg(not(target_arch = "arm"))]
+    #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
     inner: nanorand::WyRand,
-    #[cfg(target_arch = "arm")]
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     inner: rand::rngs::SmallRng,
 }
 
 impl Random {
-    #[cfg(not(target_arch = "arm"))]
+    #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
     pub fn generate_u32(&mut self) -> u32 {
         nanorand::RNG::generate(&mut self.inner)
     }
 
-    #[cfg(target_arch = "arm")]
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     pub fn generate_u32(&mut self) -> u32 {
         RngCore::next_u32(self.inner)
     }
