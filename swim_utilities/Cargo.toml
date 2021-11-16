@@ -8,28 +8,26 @@ edition = "2018"
 default = []
 all = ["future", "errors", "sync", "iteratee", "collections", "time", "text", "lrucache", "rtree", "buf_channel", "algebra"]
 algebra = ["swim_algebra"]
-bilock = ["swim_bilock"]
 buf_channel = ["byte_channel"]
 circular_buffer = ["swim_sync", "swim_sync/circular_buffer"]
 collections = ["lrucache", "rtree"]
 errors = ["swim_errors"]
 future = ["swim_future"]
+io = ["swim_io"]
 iteratee = ["swim_iteratee"]
 lrucache = ["swim_lrucache"]
 rtree = ["swim_rtree"]
 rwlock = ["swim_sync", "swim_sync/rwlock"]
-sync = ["bilock", "circular_buffer", "future", "rwlock", "trigger", "topic"]
+sync = ["circular_buffer", "future", "rwlock", "trigger", "topic"]
 text = ["swim_route", "swim_format"]
 test-util = ["swim_test_util"]
 time = ["swim_time"]
 topic = ["swim_sync", "swim_sync/topic"]
 trigger = ["swim_trigger"]
-io = ["swim_io"]
 
 [dependencies]
 byte_channel = { path = "./byte_channel", optional = true }
 swim_algebra = { path = "./swim_algebra", optional = true }
-swim_bilock = { path = "./swim_bilock", optional = true }
 swim_errors = { path = "./swim_errors", optional = true }
 swim_format = { path = "./swim_format", optional = true }
 swim_trigger = { path = "./swim_trigger", optional = true }

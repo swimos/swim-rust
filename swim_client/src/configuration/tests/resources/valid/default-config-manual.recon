@@ -39,11 +39,7 @@
     },
     @websocket_connections {
         max_message_size: 67108864,
-        max_frame_size: 16777216,
-        accept_unmasked_frames: false,
-        compression: @none {
-            67108864
-        }
+        compression: @none
     },
     @downlinks {
         default: @downlink_config {

@@ -61,7 +61,7 @@ impl FakeRemoteState {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 enum StateMutation {
     Stop,
     Spawn(SchemeSocketAddr, FakeWebsocket, Option<SchemeHostPort>),

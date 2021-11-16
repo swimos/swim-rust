@@ -15,6 +15,7 @@
 use flate2::Compression;
 use std::borrow::Borrow;
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 use std::time::Duration;
 use swim_form::structural::read::error::ExpectedEvent;
 use swim_form::structural::read::event::ReadEvent;
@@ -30,9 +31,10 @@ use swim_model::path::Addressable;
 use swim_model::{Text, ValueKind};
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::retryable::RetryStrategy;
-use tokio_tungstenite::tungstenite::extensions::compression::deflate::DeflateConfig;
-use tokio_tungstenite::tungstenite::extensions::compression::WsCompression as TungCompression;
-use tokio_tungstenite::tungstenite::protocol::WebSocketConfig as TungWsConfig;
+
+use crate::ws::CompressionSwitcherProvider;
+use ratchet::deflate::{DeflateConfig, DeflateExtProvider};
+use ratchet::WebSocketConfig as RatchetConfig;
 use url::Url;
 
 const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
@@ -47,15 +49,11 @@ const DEFAULT_BACK_PRESSURE_YIELD_AFTER: NonZeroUsize = non_zero_usize!(256);
 const WEB_SOCKET_CONFIG_TAG: &str = "websocket_connections";
 const WS_COMPRESSION_NONE_TAG: &str = "none";
 const WS_COMPRESSION_DEFLATE_TAG: &str = "deflate";
-const NOTE_TAG: &str = "none";
+const NONE_TAG: &str = "none";
 const DEFLATE_TAG: &str = "deflate";
 const WEBSOCKET_CONNECTIONS_TAG: &str = "websocket_connections";
-const MAX_SEND_QUEUE_TAG: &str = "max_send_queue";
 const MAX_MESSAGE_SIZE_TAG: &str = "max_message_size";
-const MAX_FRAME_SIZE_TAG: &str = "max_frame_size";
-const ACCEPT_UNMASKED_FRAMES_TAG: &str = "accept_unmasked_frames";
 const COMPRESSION_TAG: &str = "compression";
-pub const DOWNLINK_CONNECTIONS_TAG: &str = "downlink_connections";
 const DL_REQ_BUFFER_SIZE_TAG: &str = "dl_req_buffer_size";
 const BUFFER_SIZE_TAG: &str = "buffer_size";
 const YIELD_AFTER_TAG: &str = "yield_after";
@@ -71,6 +69,7 @@ const MAX_ACTIVE_KEYS_TAG: &str = "max_active_keys";
 const IGNORE_TAG: &str = "ignore";
 const TERMINATE_TAG: &str = "terminate";
 const DOWNLINK_CONFIG_TAG: &str = "downlink_config";
+pub const DOWNLINK_CONNECTIONS_TAG: &str = "downlink_connections";
 
 pub mod recognizers;
 
@@ -344,24 +343,27 @@ impl Default for OnInvalidMessage {
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct WebSocketConfig(TungWsConfig);
+#[derive(Clone, Debug, PartialEq)]
+pub struct WebSocketConfig {
+    pub config: RatchetConfig,
+    pub compression: CompressionSwitcherProvider,
+}
 
-impl From<TungWsConfig> for WebSocketConfig {
-    fn from(conf: TungWsConfig) -> Self {
-        WebSocketConfig(conf)
+impl Default for WebSocketConfig {
+    fn default() -> Self {
+        WebSocketConfig {
+            config: RatchetConfig::default(),
+            compression: CompressionSwitcherProvider::Off,
+        }
     }
 }
 
-impl From<WebSocketConfig> for TungWsConfig {
-    fn from(conf: WebSocketConfig) -> Self {
-        conf.0
-    }
-}
-
-impl AsRef<TungWsConfig> for WebSocketConfig {
-    fn as_ref(&self) -> &TungWsConfig {
-        &self.0
+impl From<RatchetConfig> for WebSocketConfig {
+    fn from(config: RatchetConfig) -> Self {
+        WebSocketConfig {
+            config,
+            compression: CompressionSwitcherProvider::Off,
+        }
     }
 }
 
@@ -373,11 +375,8 @@ impl RecognizerReadable for WebSocketConfig {
     fn make_recognizer() -> Self::Rec {
         WebSocketConfigRecognizer {
             stage: WebSocketConfigStage::Init,
-            max_send_queue: None,
             max_message_size: None,
-            max_frame_size: None,
-            accept_unmasked_frames: None,
-            compression: None,
+            compression: CompressionSwitcherProvider::Off,
             compression_recognizer: WsCompression::make_recognizer(),
         }
     }
@@ -393,11 +392,8 @@ impl RecognizerReadable for WebSocketConfig {
 
 pub struct WebSocketConfigRecognizer {
     stage: WebSocketConfigStage,
-    max_send_queue: Option<usize>,
     max_message_size: Option<usize>,
-    max_frame_size: Option<usize>,
-    accept_unmasked_frames: Option<bool>,
-    compression: Option<WsCompression>,
+    compression: CompressionSwitcherProvider,
     compression_recognizer: WsCompressionRecognizer,
 }
 
@@ -412,10 +408,7 @@ enum WebSocketConfigStage {
 
 #[derive(Clone, Copy)]
 enum WebSocketConfigField {
-    MaxSendQueue,
     MaxMessageSize,
-    MaxFrameSize,
-    AcceptUnmaskedFrames,
     Compression,
 }
 
@@ -451,13 +444,10 @@ impl Recognizer for WebSocketConfigRecognizer {
                     self.stage = WebSocketConfigStage::InBody;
                     None
                 } else if matches!(&input, ReadEvent::EndRecord) {
-                    Some(Ok(WebSocketConfig(TungWsConfig {
-                        max_send_queue: None,
-                        max_message_size: None,
-                        max_frame_size: None,
-                        accept_unmasked_frames: false,
-                        compression: TungCompression::None(None),
-                    })))
+                    Some(Ok(WebSocketConfig {
+                        config: RatchetConfig::default(),
+                        compression: CompressionSwitcherProvider::Off,
+                    }))
                 } else {
                     Some(Err(input.kind_error(ExpectedEvent::Or(vec![
                         ExpectedEvent::RecordBody,
@@ -467,22 +457,9 @@ impl Recognizer for WebSocketConfigRecognizer {
             }
             WebSocketConfigStage::InBody => match input {
                 ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
-                    MAX_SEND_QUEUE_TAG => {
-                        self.stage = WebSocketConfigStage::Slot(WebSocketConfigField::MaxSendQueue);
-                        None
-                    }
                     MAX_MESSAGE_SIZE_TAG => {
                         self.stage =
                             WebSocketConfigStage::Slot(WebSocketConfigField::MaxMessageSize);
-                        None
-                    }
-                    MAX_FRAME_SIZE_TAG => {
-                        self.stage = WebSocketConfigStage::Slot(WebSocketConfigField::MaxFrameSize);
-                        None
-                    }
-                    ACCEPT_UNMASKED_FRAMES_TAG => {
-                        self.stage =
-                            WebSocketConfigStage::Slot(WebSocketConfigField::AcceptUnmaskedFrames);
                         None
                     }
                     COMPRESSION_TAG => {
@@ -491,20 +468,12 @@ impl Recognizer for WebSocketConfigRecognizer {
                     }
                     ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
                 },
-                ReadEvent::EndRecord => {
-                    let comp = self
-                        .compression
-                        .as_ref()
-                        .map(|c| c.0)
-                        .unwrap_or(TungCompression::None(None));
-                    Some(Ok(WebSocketConfig(TungWsConfig {
-                        max_send_queue: self.max_send_queue,
-                        max_message_size: self.max_message_size,
-                        max_frame_size: self.max_frame_size,
-                        accept_unmasked_frames: self.accept_unmasked_frames.unwrap_or(false),
-                        compression: comp,
-                    })))
-                }
+                ReadEvent::EndRecord => Some(Ok(WebSocketConfig {
+                    config: RatchetConfig {
+                        max_message_size: self.max_message_size.unwrap_or(64 << 20),
+                    },
+                    compression: self.compression.clone(),
+                })),
                 ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                     ExpectedEvent::ValueEvent(ValueKind::Text),
                     ExpectedEvent::EndOfRecord,
@@ -518,17 +487,6 @@ impl Recognizer for WebSocketConfigRecognizer {
                     Some(Err(input.kind_error(ExpectedEvent::Slot)))
                 }
             }
-            WebSocketConfigStage::Field(WebSocketConfigField::MaxSendQueue) => {
-                match UsizeRecognizer.feed_event(input) {
-                    Some(Ok(n)) => {
-                        self.max_send_queue = Some(n);
-                        self.stage = WebSocketConfigStage::InBody;
-                        None
-                    }
-                    Some(Err(e)) => Some(Err(e)),
-                    _ => Some(Err(ReadError::InconsistentState)),
-                }
-            }
             WebSocketConfigStage::Field(WebSocketConfigField::MaxMessageSize) => {
                 match UsizeRecognizer.feed_event(input) {
                     Some(Ok(n)) => {
@@ -540,33 +498,10 @@ impl Recognizer for WebSocketConfigRecognizer {
                     _ => Some(Err(ReadError::InconsistentState)),
                 }
             }
-            WebSocketConfigStage::Field(WebSocketConfigField::MaxFrameSize) => {
-                match UsizeRecognizer.feed_event(input) {
-                    Some(Ok(n)) => {
-                        self.max_frame_size = Some(n);
-                        self.stage = WebSocketConfigStage::InBody;
-                        None
-                    }
-                    Some(Err(e)) => Some(Err(e)),
-                    _ => Some(Err(ReadError::InconsistentState)),
-                }
-            }
-            WebSocketConfigStage::Field(WebSocketConfigField::AcceptUnmaskedFrames) => {
-                match input {
-                    ReadEvent::Boolean(value) => {
-                        self.accept_unmasked_frames = Some(value);
-                        self.stage = WebSocketConfigStage::InBody;
-                        None
-                    }
-                    ow => Some(Err(
-                        ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::Boolean))
-                    )),
-                }
-            }
             WebSocketConfigStage::Field(WebSocketConfigField::Compression) => {
                 match self.compression_recognizer.feed_event(input)? {
                     Ok(compression) => {
-                        self.compression = Some(compression);
+                        self.compression = compression.0;
                         self.stage = WebSocketConfigStage::InBody;
                         None
                     }
@@ -579,40 +514,28 @@ impl Recognizer for WebSocketConfigRecognizer {
     fn reset(&mut self) {
         let WebSocketConfigRecognizer {
             stage,
-            max_send_queue,
             max_message_size,
-            max_frame_size,
-            accept_unmasked_frames,
             compression,
             compression_recognizer,
         } = self;
 
         *stage = WebSocketConfigStage::Init;
-        *max_send_queue = None;
         *max_message_size = None;
-        *max_frame_size = None;
-        *accept_unmasked_frames = None;
-        *compression = None;
+        *compression = CompressionSwitcherProvider::Off;
         compression_recognizer.reset();
     }
 }
 
-pub struct WsCompression(TungCompression);
+pub struct WsCompression(CompressionSwitcherProvider);
 
-impl From<TungCompression> for WsCompression {
-    fn from(config: TungCompression) -> Self {
+impl From<CompressionSwitcherProvider> for WsCompression {
+    fn from(config: CompressionSwitcherProvider) -> Self {
         WsCompression(config)
     }
 }
 
-impl From<WsCompression> for TungCompression {
-    fn from(conf: WsCompression) -> Self {
-        conf.0
-    }
-}
-
-impl AsRef<TungCompression> for WsCompression {
-    fn as_ref(&self) -> &TungCompression {
+impl AsRef<CompressionSwitcherProvider> for WsCompression {
+    fn as_ref(&self) -> &CompressionSwitcherProvider {
         &self.0
     }
 }
@@ -625,21 +548,21 @@ impl RecognizerReadable for WsCompression {
     fn make_recognizer() -> Self::Rec {
         WsCompressionRecognizer {
             stage: WsCompressionRecognizerStage::Init,
-            fields: WsCompressionFields::None(None),
+            fields: WsCompressionFields::None,
         }
     }
 
     fn make_attr_recognizer() -> Self::AttrRec {
         SimpleAttrBody::new(WsCompressionRecognizer {
             stage: WsCompressionRecognizerStage::Init,
-            fields: WsCompressionFields::None(None),
+            fields: WsCompressionFields::None,
         })
     }
 
     fn make_body_recognizer() -> Self::BodyRec {
         SimpleRecBody::new(WsCompressionRecognizer {
             stage: WsCompressionRecognizerStage::Init,
-            fields: WsCompressionFields::None(None),
+            fields: WsCompressionFields::None,
         })
     }
 }
@@ -650,7 +573,7 @@ pub struct WsCompressionRecognizer {
 }
 
 pub enum WsCompressionFields {
-    None(Option<usize>),
+    None,
     Deflate(Option<u32>),
 }
 
@@ -671,7 +594,7 @@ impl Recognizer for WsCompressionRecognizer {
                     match name.borrow() {
                         WS_COMPRESSION_NONE_TAG => {
                             self.stage = WsCompressionRecognizerStage::Tag;
-                            self.fields = WsCompressionFields::None(None);
+                            self.fields = WsCompressionFields::None;
                             None
                         }
                         WS_COMPRESSION_DEFLATE_TAG => {
@@ -702,12 +625,14 @@ impl Recognizer for WsCompressionRecognizer {
                     None
                 } else if matches!(&input, ReadEvent::EndRecord) {
                     match self.fields {
-                        WsCompressionFields::None(_) => {
-                            Some(Ok(WsCompression(TungCompression::None(None))))
+                        WsCompressionFields::None => {
+                            Some(Ok(WsCompression(CompressionSwitcherProvider::Off)))
                         }
-                        WsCompressionFields::Deflate { .. } => Some(Ok(WsCompression(
-                            TungCompression::Deflate(DeflateConfig::default()),
-                        ))),
+                        WsCompressionFields::Deflate { .. } => {
+                            Some(Ok(WsCompression(CompressionSwitcherProvider::On(
+                                Arc::new(DeflateExtProvider::default()),
+                            ))))
+                        }
                     }
                 } else {
                     Some(Err(input.kind_error(ExpectedEvent::Or(vec![
@@ -717,30 +642,27 @@ impl Recognizer for WsCompressionRecognizer {
                 }
             }
             WsCompressionRecognizerStage::InBody => match &mut self.fields {
-                WsCompressionFields::None(value) => {
-                    if matches!(&input, ReadEvent::EndRecord) {
-                        Some(Ok(WsCompression(TungCompression::None(*value))))
-                    } else {
-                        match UsizeRecognizer.feed_event(input) {
-                            Some(Ok(n)) => {
-                                *value = Some(n);
-                                self.stage = WsCompressionRecognizerStage::InBody;
-                                None
-                            }
-                            Some(Err(n)) => Some(Err(n)),
-                            _ => Some(Err(ReadError::InconsistentState)),
-                        }
+                WsCompressionFields::None => match &input {
+                    ReadEvent::EndRecord => {
+                        Some(Ok(WsCompression(CompressionSwitcherProvider::Off)))
                     }
-                }
+                    _ => Some(Err(ReadError::InconsistentState)),
+                },
                 WsCompressionFields::Deflate(value) => {
                     if matches!(&input, ReadEvent::EndRecord) {
                         match value {
-                            None => Some(Ok(WsCompression(TungCompression::Deflate(
-                                DeflateConfig::default(),
+                            None => Some(Ok(WsCompression(CompressionSwitcherProvider::On(
+                                Arc::new(DeflateExtProvider::default()),
                             )))),
-                            Some(value) => Some(Ok(WsCompression(TungCompression::Deflate(
-                                DeflateConfig::with_compression_level(Compression::new(*value)),
-                            )))),
+                            Some(value) => {
+                                Some(Ok(WsCompression(CompressionSwitcherProvider::On(
+                                    Arc::new(DeflateExtProvider::with_config(
+                                        DeflateConfig::for_compression_level(Compression::new(
+                                            *value,
+                                        )),
+                                    )),
+                                ))))
+                            }
                         }
                     } else {
                         match U32Recognizer.feed_event(input) {
@@ -761,7 +683,7 @@ impl Recognizer for WsCompressionRecognizer {
     fn reset(&mut self) {
         let WsCompressionRecognizer { stage, fields } = self;
         *stage = WsCompressionRecognizerStage::Init;
-        *fields = WsCompressionFields::None(None);
+        *fields = WsCompressionFields::None;
     }
 }
 
@@ -772,32 +694,23 @@ impl StructuralWritable for WsCompression {
 
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         match &self.0 {
-            TungCompression::None(Some(val)) => {
+            CompressionSwitcherProvider::Off => {
                 let header_writer = writer.record(1)?;
 
-                let mut body_writer = header_writer
-                    .write_extant_attr(NOTE_TAG)?
+                let body_writer = header_writer
+                    .write_extant_attr(NONE_TAG)?
                     .complete_header(RecordBodyKind::ArrayLike, 1)?;
-
-                body_writer = body_writer.write_value(val)?;
                 body_writer.done()
             }
-            TungCompression::None(None) => {
-                let header_writer = writer.record(1)?;
-
-                header_writer
-                    .write_extant_attr(NOTE_TAG)?
-                    .complete_header(RecordBodyKind::Mixed, 0)?
-                    .done()
-            }
-            TungCompression::Deflate(deflate) => {
+            CompressionSwitcherProvider::On(provider) => {
                 let header_writer = writer.record(1)?;
 
                 let mut body_writer = header_writer
                     .write_extant_attr(DEFLATE_TAG)?
                     .complete_header(RecordBodyKind::ArrayLike, 1)?;
 
-                body_writer = body_writer.write_value(&deflate.compression_level().level())?;
+                body_writer =
+                    body_writer.write_value(&provider.config().compression_level().level())?;
                 body_writer.done()
             }
         }
@@ -814,40 +727,17 @@ impl StructuralWritable for WebSocketConfig {
     }
 
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
-        let this = &self.0;
         let header_writer = writer.record(1)?;
-
-        let mut num_items = 2;
-
-        if this.max_send_queue.is_some() {
-            num_items += 1
-        }
-
-        if this.max_message_size.is_some() {
-            num_items += 1
-        }
-
-        if this.max_frame_size.is_some() {
-            num_items += 1
-        }
+        let num_items = 3;
 
         let mut body_writer = header_writer
             .write_extant_attr(WEBSOCKET_CONNECTIONS_TAG)?
             .complete_header(RecordBodyKind::MapLike, num_items)?;
 
-        if let Some(val) = &this.max_send_queue {
-            body_writer = body_writer.write_slot(&MAX_SEND_QUEUE_TAG, val)?
-        }
-        if let Some(val) = &this.max_message_size {
-            body_writer = body_writer.write_slot(&MAX_MESSAGE_SIZE_TAG, val)?
-        }
-        if let Some(val) = &this.max_frame_size {
-            body_writer = body_writer.write_slot(&MAX_FRAME_SIZE_TAG, val)?
-        }
         body_writer =
-            body_writer.write_slot(&ACCEPT_UNMASKED_FRAMES_TAG, &this.accept_unmasked_frames)?;
+            body_writer.write_slot(&MAX_MESSAGE_SIZE_TAG, &self.config.max_message_size)?;
 
-        let comp = WsCompression(this.compression);
+        let comp = WsCompression(self.compression.clone());
         body_writer = body_writer.write_slot(&COMPRESSION_TAG, &comp)?;
 
         body_writer.done()
