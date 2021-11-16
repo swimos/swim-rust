@@ -12,12 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[derive(Default)]
 pub struct Random {
     #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
     inner: nanorand::WyRand,
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     inner: rand::rngs::SmallRng,
+}
+
+impl Default for Random {
+    #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
+    fn default() -> Self {
+        Random {
+            inner: nanorand::WyRand::default(),
+        }
+    }
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    fn default() -> Self {
+        use rand::SeedableRng;
+
+        Random {
+            inner: rand::rngs::SmallRng::from_entropy(),
+        }
+    }
 }
 
 impl Random {
@@ -28,6 +44,6 @@ impl Random {
 
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     pub fn generate_u32(&mut self) -> u32 {
-        RngCore::next_u32(self.inner)
+        rand::RngCore::next_u32(&mut self.inner)
     }
 }
