@@ -5,7 +5,7 @@ language: rust
 
 branches:
   only:
-    - master
+    - main
 
 jobs:
   include:
