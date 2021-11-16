@@ -130,9 +130,15 @@ impl ExternalConnections for TokioNetworking {
         let this = self.clone();
 
         if addr.port() == HTTPS_PORT {
-            Box::pin(async move { this.tls.bind(addr).await.map(MaybeTlsListener::Tls) })
+            Box::pin(async move {
+                let _ = &this;
+                this.tls.bind(addr).await.map(MaybeTlsListener::Tls)
+            })
         } else {
-            Box::pin(async move { this.plain.bind(addr).await.map(MaybeTlsListener::PlainText) })
+            Box::pin(async move {
+                let _ = &this;
+                this.plain.bind(addr).await.map(MaybeTlsListener::PlainText)
+            })
         }
     }
 
@@ -140,9 +146,15 @@ impl ExternalConnections for TokioNetworking {
         let this = self.clone();
 
         if addr.port() == HTTPS_PORT {
-            Box::pin(async move { this.tls.try_open(addr).await.map(Either::Right) })
+            Box::pin(async move {
+                let _ = &this;
+                this.tls.try_open(addr).await.map(Either::Right)
+            })
         } else {
-            Box::pin(async move { this.plain.try_open(addr).await.map(Either::Left) })
+            Box::pin(async move {
+                let _ = &this;
+                this.plain.try_open(addr).await.map(Either::Left)
+            })
         }
     }
 

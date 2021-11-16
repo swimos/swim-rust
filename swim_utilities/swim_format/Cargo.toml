@@ -2,7 +2,7 @@
 name = "swim_format"
 version = "0.1.0"
 authors = ["Swim.AI developers info@swim.ai"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 

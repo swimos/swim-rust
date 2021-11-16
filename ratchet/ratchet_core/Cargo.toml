@@ -2,7 +2,7 @@
 name = "ratchet_core"
 version = "0.1.0"
 authors = ["Swim.AI developers info@swim.ai"]
-edition = "2018"
+edition = "2021"
 description = "Async WebSocket implementation"
 keywords = ["websocket", "async", "futures", "tokio"]
 categories = ["network-programming", "asynchronous", "web-programming::websocket"]

@@ -2,7 +2,7 @@
 name = "downlinks"
 version = "0.1.0"
 authors = ["Swim.AI developers info@swim.ai"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 url = "2.1.1"
