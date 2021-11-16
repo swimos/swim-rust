@@ -22,7 +22,7 @@ use swim_warp::envelope::RequestEnvelope;
 #[cfg(test)]
 mod tests;
 
-/// Convert a downlink [`Command`] into a Warp [`OutgoingLinkMessage`].
+/// Convert a downlink [`Command`] into a Warp [`RequestEnvelope`].
 fn envelope_for<T, F>(to_body: F, path: RelativePath, command: Command<T>) -> RequestEnvelope
 where
     F: Fn(T) -> Value,
@@ -35,12 +35,12 @@ where
     }
 }
 
-/// Convert a downlink [`Command`], from a value downlink, into a Warp [`OutgoingLinkMessage`].
+/// Convert a downlink [`Command`], from a value downlink, into a Warp [`RequestEnvelope`].
 pub fn value_envelope(path: RelativePath, command: Command<SharedValue>) -> RequestEnvelope {
     envelope_for(value::envelope_body, path, command)
 }
 
-/// Convert a downlink [`Command`], from a map downlink, into a Warp [`OutgoingLinkMessage`].
+/// Convert a downlink [`Command`], from a map downlink, into a Warp [`RequestEnvelope`].
 pub fn map_envelope(
     path: RelativePath,
     command: Command<UntypedMapModification<Value>>,
@@ -48,12 +48,12 @@ pub fn map_envelope(
     envelope_for(map::envelope_body, path, command)
 }
 
-/// Convert a downlink [`Command`], from a command downkink, into a Warp [`OutgoingLinkMessage`].
+/// Convert a downlink [`Command`], from a command downkink, into a Warp [`RequestEnvelope`].
 pub fn command_envelope(path: RelativePath, command: Command<Value>) -> RequestEnvelope {
     envelope_for(|v| v, path, command)
 }
 
-/// Convert a downlink [`Command`], from a event downlink, into a Warp [`OutgoingLinkMessage`].
+/// Convert a downlink [`Command`], from a event downlink, into a Warp [`RequestEnvelope`].
 pub fn dummy_envelope(path: RelativePath, command: Command<()>) -> RequestEnvelope {
     envelope_for(|_| Value::Extant, path, command)
 }

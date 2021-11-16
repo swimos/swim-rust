@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::fixture::{mock, ReadError};
 use crate::handshake::{UPGRADE_STR, WEBSOCKET_STR, WEBSOCKET_VERSION_STR};
+use crate::test_fixture::{mock, ReadError};
 use crate::{
     accept_with, Error, ErrorKind, HttpError, NoExtProvider, ProtocolRegistry, WebSocketConfig,
 };

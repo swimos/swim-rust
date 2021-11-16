@@ -26,10 +26,7 @@
         yield_after: 512
     },
     @websocket_connections {
-        max_send_queue: 15,
         max_message_size: 60000000,
-        max_frame_size: 16000000,
-        accept_unmasked_frames: true,
         compression: @deflate {
             9
         }

@@ -42,3 +42,9 @@ pub use ratchet_ext::{self, *};
 pub mod deflate {
     pub use ratchet_deflate::{self, *};
 }
+
+#[allow(missing_docs)]
+#[cfg(feature = "fixture")]
+pub mod fixture {
+    pub use ratchet_core::fixture::{self, *};
+}

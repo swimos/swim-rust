@@ -14,10 +14,10 @@
 
 use crate::errors::{Error, HttpError};
 use crate::ext::NoExt;
-use crate::fixture::mock;
 use crate::handshake::client::{ClientHandshake, HandshakeResult};
-use crate::handshake::{ProtocolError, ProtocolRegistry, ACCEPT_KEY, UPGRADE_STR, WEBSOCKET_STR};
-use crate::{ErrorKind, NoExtProvider, TryIntoRequest};
+use crate::handshake::{ProtocolRegistry, ACCEPT_KEY, UPGRADE_STR, WEBSOCKET_STR};
+use crate::test_fixture::mock;
+use crate::{ErrorKind, NoExtProvider, ProtocolError, TryIntoRequest};
 use bytes::BytesMut;
 use futures::future::join;
 use futures::FutureExt;

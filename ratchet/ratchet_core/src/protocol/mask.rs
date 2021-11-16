@@ -21,6 +21,7 @@ fn apply_mask_unoptimised(buf: &mut [u8], mask: [u8; 4]) {
     }
 }
 
+#[allow(missing_docs)]
 #[inline]
 pub fn apply_mask(mask: u32, bytes: &mut [u8]) {
     let mask = mask.to_ne_bytes();

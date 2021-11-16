@@ -84,7 +84,7 @@ impl Display for RoutingAddr {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TaggedEnvelope(pub RoutingAddr, pub Envelope);
 
-/// An [`OutgoingLinkMessage`] tagged with the key of the endpoint into routing table from which it
+/// An [`RequestEnvelope`] tagged with the key of the endpoint into routing table from which it
 /// originated.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TaggedClientEnvelope(pub RoutingAddr, pub RequestEnvelope);

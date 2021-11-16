@@ -16,6 +16,7 @@ use futures::channel::mpsc::SendError as FutSendError;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::io::ErrorKind;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::error::SendError as MpscSendError;
 
@@ -32,8 +33,8 @@ use swim_utilities::future::item_sink::SendError;
 use swim_utilities::future::request::request_future::RequestError;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::sync::circular_buffer;
+use thiserror::Error as ThisError;
 pub use tls::*;
-use {std::ops::Deref, tokio_tungstenite::tungstenite};
 
 pub use self::http::*;
 
@@ -51,6 +52,11 @@ mod tls;
 mod tests;
 
 pub type FmtResult = std::fmt::Result;
+
+type BoxRecoverableError = Box<dyn RecoverableError>;
+
+pub trait RecoverableError: std::error::Error + Send + Sync + Recoverable + 'static {}
+impl<T> RecoverableError for T where T: std::error::Error + Send + Sync + Recoverable + 'static {}
 
 /// An error returned by the router
 #[derive(Clone, Debug, PartialEq)]
@@ -117,7 +123,7 @@ impl<T> From<swim_utilities::future::item_sink::SendError<T>> for RoutingError {
 }
 
 /// An error denoting that a connection error has occurred.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, Clone)]
 pub enum ConnectionError {
     /// A HTTP detailing either a malformatted request/response or a peer error.
     Http(HttpError),
@@ -137,11 +143,43 @@ pub enum ConnectionError {
     Resolution(ResolutionError),
     /// A pending write did not complete within the specified duration.
     WriteTimeout(Duration),
+    /// An error was produced at the transport layer.
+    Transport(Arc<BoxRecoverableError>),
+}
+
+impl PartialEq for ConnectionError {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (ConnectionError::Http(l), ConnectionError::Http(r)) => l.eq(r),
+            #[cfg(feature = "tls")]
+            (ConnectionError::Tls(l), ConnectionError::Tls(r)) => l.eq(r),
+            (ConnectionError::Capacity(l), ConnectionError::Capacity(r)) => l.eq(r),
+            (ConnectionError::Protocol(l), ConnectionError::Protocol(r)) => l.eq(r),
+            (ConnectionError::Closed(l), ConnectionError::Closed(r)) => l.eq(r),
+            (ConnectionError::Io(l), ConnectionError::Io(r)) => l.eq(r),
+            (ConnectionError::Encoding(l), ConnectionError::Encoding(r)) => l.eq(r),
+            (ConnectionError::Resolution(l), ConnectionError::Resolution(r)) => l.eq(r),
+            (ConnectionError::WriteTimeout(l), ConnectionError::WriteTimeout(r)) => l.eq(r),
+            (ConnectionError::Transport(l), ConnectionError::Transport(r)) => {
+                l.to_string().eq(&r.to_string())
+            }
+            _ => false,
+        }
+    }
+}
+
+#[derive(Debug, ThisError)]
+#[error("{0}")]
+struct RatchetError(ratchet::Error);
+impl Recoverable for RatchetError {
+    fn is_fatal(&self) -> bool {
+        true
+    }
 }
 
 impl From<ratchet::Error> for ConnectionError {
-    fn from(_: ratchet::Error) -> Self {
-        todo!()
+    fn from(e: ratchet::Error) -> Self {
+        ConnectionError::Transport(Arc::new(Box::new(RatchetError(e))))
     }
 }
 
@@ -160,6 +198,7 @@ impl Recoverable for ConnectionError {
             ConnectionError::Encoding(e) => e.is_fatal(),
             ConnectionError::Resolution(e) => e.is_fatal(),
             ConnectionError::WriteTimeout(_) => false,
+            ConnectionError::Transport(e) => e.is_fatal(),
         }
     }
 }
@@ -182,71 +221,8 @@ impl Display for ConnectionError {
                 "Writing to the connection failed to complete within {:?}.",
                 dur
             ),
-        }
-    }
-}
-
-pub type TError = tungstenite::error::Error;
-
-#[derive(Debug)]
-pub struct TungsteniteError(pub tungstenite::error::Error);
-
-impl Deref for TungsteniteError {
-    type Target = TError;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl From<TungsteniteError> for ConnectionError {
-    fn from(e: TungsteniteError) -> Self {
-        match e.0 {
-            TError::ConnectionClosed => {
-                ConnectionError::Closed(CloseError::new(CloseErrorKind::Normal, None))
-            }
-            TError::AlreadyClosed => {
-                ConnectionError::Closed(CloseError::new(CloseErrorKind::AlreadyClosed, None))
-            }
-            TError::Io(e) => {
-                ConnectionError::Io(IoError::new(e.kind(), e.source().map(ToString::to_string)))
-            }
-            TError::Tls(e) => ConnectionError::Tls(e.into()),
-            TError::Capacity(e) => ConnectionError::Capacity(CapacityError::new(
-                CapacityErrorKind::Ambiguous,
-                Some(e.to_string()),
-            )),
-            TError::Protocol(e) => ConnectionError::Protocol(ProtocolError::new(
-                ProtocolErrorKind::WebSocket,
-                Some(e.to_string()),
-            )),
-            TError::SendQueueFull(e) => {
-                ConnectionError::Capacity(CapacityError::new(CapacityErrorKind::Full(e), None))
-            }
-            TError::Utf8 => {
-                ConnectionError::Encoding(EncodingError::new(EncodingErrorKind::Invalid, None))
-            }
-            TError::Url(e) => ConnectionError::Http(HttpError::new(
-                HttpErrorKind::InvalidUri(InvalidUriError::new(
-                    InvalidUriErrorKind::Malformatted,
-                    Some(e.to_string()),
-                )),
-                None,
-            )),
-            TError::Http(e) => ConnectionError::Http(HttpError::new(
-                HttpErrorKind::StatusCode(Some(e.status())),
-                None,
-            )),
-            TError::HttpFormat(e) => ConnectionError::Http(HttpError::new(
-                HttpErrorKind::InvalidUri(InvalidUriError::new(
-                    InvalidUriErrorKind::Malformatted,
-                    Some(e.to_string()),
-                )),
-                None,
-            )),
-            TError::ExtensionError(_) => {
-                // todo: remove once deflate PR has bene merged
-                unreachable!()
+            ConnectionError::Transport(e) => {
+                write!(f, "{}", e)
             }
         }
     }
@@ -293,7 +269,7 @@ pub(crate) fn format_cause(cause: &Option<String>) -> String {
 }
 
 /// Ways in which the router can fail to provide a route.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub enum RouterError {
     /// For a local endpoint it can be determined that no agent exists.
     NoAgentAtRoute(RelativeUri),

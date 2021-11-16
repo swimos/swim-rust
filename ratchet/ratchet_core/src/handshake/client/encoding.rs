@@ -14,7 +14,9 @@
 
 use crate::errors::{Error, ErrorKind, HttpError};
 use crate::handshake::client::Nonce;
-use crate::handshake::{ProtocolRegistry, UPGRADE_STR, WEBSOCKET_STR, WEBSOCKET_VERSION_STR};
+use crate::handshake::{
+    apply_to, ProtocolRegistry, UPGRADE_STR, WEBSOCKET_STR, WEBSOCKET_VERSION_STR,
+};
 use base64::encode_config_slice;
 use bytes::{BufMut, BytesMut};
 use http::header::{AsHeaderName, HeaderName, IntoHeaderName};
@@ -168,13 +170,14 @@ where
     extension.apply_headers(&mut headers);
 
     if headers.get(header::SEC_WEBSOCKET_PROTOCOL).is_some() {
+        // WebSocket protocols can only be applied using a ProtocolRegistry
         return Err(Error::with_cause(
             ErrorKind::Http,
             HttpError::InvalidHeader(header::SEC_WEBSOCKET_PROTOCOL),
         ));
     }
 
-    subprotocols.apply_to(&mut headers);
+    apply_to(subprotocols, &mut headers);
 
     let option = headers
         .get(header::SEC_WEBSOCKET_KEY)

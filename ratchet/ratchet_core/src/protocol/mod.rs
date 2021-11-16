@@ -60,7 +60,7 @@ impl HeaderFlags {
 }
 
 /// A received WebSocket frame.
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Message {
     /// A text message.
     ///
@@ -124,16 +124,16 @@ pub enum MessageType {
 }
 
 /// A configuration for building a WebSocket.
-#[derive(Debug, Copy, Clone)]
+#[derive(PartialEq, Debug, Copy, Clone)]
 pub struct WebSocketConfig {
     /// The maximum payload size that is permitted to be received.
-    pub max_size: usize,
+    pub max_message_size: usize,
 }
 
 impl Default for WebSocketConfig {
     fn default() -> Self {
         WebSocketConfig {
-            max_size: usize::MAX,
+            max_message_size: 64 << 20,
         }
     }
 }
@@ -253,9 +253,10 @@ impl CloseReason {
 }
 
 /// # Additional implementation sources:
-/// https://developer.mozilla.org/en-US/docs/Web/API/CloseEvent
-/// https://mailarchive.ietf.org/arch/msg/hybi/P_1vbD9uyHl63nbIIbFxKMfSwcM/
-/// https://tools.ietf.org/id/draft-ietf-hybi-thewebsocketprotocol-09.html
+/// <https://developer.mozilla.org/en-US/docs/Web/API/CloseEvent>
+/// <https://mailarchive.ietf.org/arch/msg/hybi/P_1vbD9uyHl63nbIIbFxKMfSwcM/>
+/// <https://tools.ietf.org/id/draft-ietf-hybi-thewebsocketprotocol-09.html>
+#[allow(missing_docs)]
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum CloseCode {
     Normal,
@@ -278,7 +279,7 @@ pub enum CloseCode {
 }
 
 impl CloseCode {
-    pub fn is_illegal(&self) -> bool {
+    pub(crate) fn is_illegal(&self) -> bool {
         matches!(
             self,
             CloseCode::Status

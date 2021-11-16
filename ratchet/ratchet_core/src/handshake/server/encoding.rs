@@ -15,11 +15,11 @@
 use crate::ext::NegotiatedExtension;
 use crate::handshake::io::BufferedIo;
 use crate::handshake::server::HandshakeResult;
-use crate::handshake::TryMap;
 use crate::handshake::{
     get_header, validate_header, validate_header_value, ParseResult, METHOD_GET, UPGRADE_STR,
     WEBSOCKET_STR, WEBSOCKET_VERSION_STR,
 };
+use crate::handshake::{negotiate_request, TryMap};
 use crate::{Error, ErrorKind, HttpError, ProtocolRegistry};
 use bytes::{BufMut, BytesMut};
 use http::{HeaderMap, StatusCode};
@@ -207,7 +207,7 @@ where
     validate_header(headers, http::header::HOST, |_, _| Ok(()))?;
 
     let key = get_header(headers, http::header::SEC_WEBSOCKET_KEY)?;
-    let subprotocol = subprotocols.negotiate_request(request)?;
+    let subprotocol = negotiate_request(subprotocols, request)?;
     let extension_opt = extension
         .negotiate_server(request.headers)
         .map_err(|e| Error::with_cause(ErrorKind::Extension, e))?;

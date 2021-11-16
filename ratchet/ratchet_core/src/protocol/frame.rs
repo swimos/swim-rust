@@ -83,7 +83,7 @@ pub struct FrameHeader {
 }
 
 macro_rules! try_parse_int {
-    ($source:ident, $offset:ident, $source_length:ident, $into:ty) => {{
+    ($source:ident, $offset:ident, $source_length:ident, $into:ty, $call:tt) => {{
         const WIDTH: usize = size_of::<$into>();
         if $source_length < WIDTH + $offset {
             return Ok(Either::Right($offset + WIDTH - $source_length));
@@ -91,7 +91,7 @@ macro_rules! try_parse_int {
 
         match <[u8; WIDTH]>::try_from(&$source[$offset..$offset + WIDTH]) {
             Ok(len) => {
-                let len = <$into>::from_be_bytes(len);
+                let len = <$into>::$call(len);
                 $offset += WIDTH;
                 len
             }
@@ -141,7 +141,7 @@ impl FrameHeader {
         source: &[u8],
         is_server: bool,
         rsv_bits: u8,
-        max_size: usize,
+        max_message_size: usize,
     ) -> Result<Either<(FrameHeader, usize, usize), usize>, ProtocolError> {
         let source_length = source.len();
         if source_length < 2 {
@@ -177,19 +177,25 @@ impl FrameHeader {
         let mut offset = 2;
 
         let length: usize = if payload_length == 126 {
-            try_parse_int!(source, offset, source_length, u16) as usize
+            try_parse_int!(source, offset, source_length, u16, from_be_bytes) as usize
         } else if payload_length == 127 {
-            try_parse_int!(source, offset, source_length, u64) as usize
+            try_parse_int!(source, offset, source_length, u64, from_be_bytes) as usize
         } else {
             usize::from(payload_length)
         };
 
-        if length > max_size {
+        if length > max_message_size {
             return Err(ProtocolError::FrameOverflow);
         }
 
         let mask = if masked {
-            Some(try_parse_int!(source, offset, source_length, u32))
+            Some(try_parse_int!(
+                source,
+                offset,
+                source_length,
+                u32,
+                from_le_bytes
+            ))
         } else {
             None
         };
@@ -204,4 +210,16 @@ impl FrameHeader {
             length,
         )))
     }
+}
+
+/// Writes a WebSocket text frame header into `dst` with FIN set high.
+#[cfg(feature = "fixture")]
+pub fn write_text_frame_header(dst: &mut BytesMut, mask: Option<u32>, payload_len: usize) {
+    FrameHeader::write_into(
+        dst,
+        OpCode::DataCode(crate::protocol::DataCode::Text),
+        HeaderFlags::FIN,
+        mask,
+        payload_len,
+    )
 }

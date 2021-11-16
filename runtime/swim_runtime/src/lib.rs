@@ -23,5 +23,3 @@ pub mod error;
 pub mod remote;
 pub mod routing;
 pub mod ws;
-
-pub mod ws2;

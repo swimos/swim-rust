@@ -265,9 +265,6 @@ impl AddressedBuilder {
             lane_uri,
             body,
         } = self;
-        if node_uri.is_empty() || lane_uri.is_empty() {
-            panic!("Boom!");
-        }
         match kind {
             AddressedKind::Command => Envelope::Command {
                 node_uri,
@@ -490,7 +487,7 @@ impl Envelope {
     }
 
     pub fn path(&self) -> Option<RelativePath> {
-        match self.disriminate_header() {
+        match self.discriminate_header() {
             EnvelopeHeader::Request(path) => Some(path),
             EnvelopeHeader::Response(path) => Some(path),
             _ => None,
@@ -698,7 +695,7 @@ impl Envelope {
         }
     }
 
-    pub fn disriminate_header(&self) -> EnvelopeHeader {
+    pub fn discriminate_header(&self) -> EnvelopeHeader {
         match self {
             Envelope::Auth { .. } => EnvelopeHeader::Negotiation,
             Envelope::DeAuth { .. } => EnvelopeHeader::Negotiation,

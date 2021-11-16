@@ -136,11 +136,14 @@ impl ExtensionDecoder for NoExtDecoder {
 }
 
 #[derive(Debug)]
+#[allow(missing_docs)]
 pub struct NegotiatedExtension<E>(Option<E>);
+
 impl<E> NegotiatedExtension<E>
 where
     E: Extension,
 {
+    #[allow(missing_docs)]
     pub fn take(self) -> Option<E> {
         self.0
     }

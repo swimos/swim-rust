@@ -27,10 +27,11 @@ mod error;
 mod handshake;
 
 use crate::codec::{BufCompress, BufDecompress};
-use crate::error::DeflateExtensionError;
-use crate::handshake::{apply_headers, negotiate_client, negotiate_server};
+use crate::handshake::{
+    apply_headers, negotiate_client, negotiate_server, InitialisedDeflateConfig,
+};
 use bytes::BytesMut;
-use flate2::{Compress, Compression, Decompress, FlushCompress, FlushDecompress, Status};
+use flate2::{Compress, Decompress, FlushCompress, FlushDecompress, Status};
 use ratchet_ext::{
     Extension, ExtensionDecoder, ExtensionEncoder, ExtensionProvider, FrameHeader, Header,
     HeaderMap, HeaderValue, OpCode, ReunitableExtension, RsvBits, SplittableExtension,
@@ -38,6 +39,9 @@ use ratchet_ext::{
 use std::cmp::Ordering;
 use std::convert::TryFrom;
 use thiserror::Error;
+
+pub use error::DeflateExtensionError;
+pub use flate2::Compression;
 
 const DEFLATE_TRAILER: [u8; 4] = [0, 0, 255, 255];
 
@@ -59,6 +63,11 @@ impl DeflateExtProvider {
     /// Initialise a `DeflateExtProvider` with `config`.
     pub fn with_config(config: DeflateConfig) -> DeflateExtProvider {
         DeflateExtProvider { config }
+    }
+
+    /// Provides a reference to the configuration that this provider has been initialised with.
+    pub fn config(&self) -> &DeflateConfig {
+        &self.config
     }
 }
 
@@ -194,6 +203,41 @@ pub struct DeflateConfig {
     compression_level: Compression,
 }
 
+#[allow(missing_docs)]
+impl DeflateConfig {
+    /// Initialises a default deflate configuration using the provided compression level.
+    pub fn for_compression_level(compression_level: Compression) -> DeflateConfig {
+        DeflateConfig {
+            compression_level,
+            ..Default::default()
+        }
+    }
+
+    pub fn server_max_window_bits(&self) -> WindowBits {
+        self.server_max_window_bits
+    }
+
+    pub fn client_max_window_bits(&self) -> WindowBits {
+        self.client_max_window_bits
+    }
+
+    pub fn request_server_no_context_takeover(&self) -> bool {
+        self.request_server_no_context_takeover
+    }
+
+    pub fn request_client_no_context_takeover(&self) -> bool {
+        self.request_client_no_context_takeover
+    }
+
+    pub fn accept_no_context_takeover(&self) -> bool {
+        self.accept_no_context_takeover
+    }
+
+    pub fn compression_level(&self) -> Compression {
+        self.compression_level
+    }
+}
+
 impl Default for DeflateConfig {
     fn default() -> Self {
         DeflateConfig {
@@ -203,27 +247,6 @@ impl Default for DeflateConfig {
             request_client_no_context_takeover: true,
             accept_no_context_takeover: true,
             compression_level: Compression::fast(),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub(crate) struct InitialisedDeflateConfig {
-    server_max_window_bits: WindowBits,
-    client_max_window_bits: WindowBits,
-    compress_reset: bool,
-    decompress_reset: bool,
-    compression_level: Compression,
-}
-
-impl InitialisedDeflateConfig {
-    fn from_config(config: &DeflateConfig) -> InitialisedDeflateConfig {
-        InitialisedDeflateConfig {
-            server_max_window_bits: config.server_max_window_bits,
-            client_max_window_bits: config.client_max_window_bits,
-            compress_reset: config.accept_no_context_takeover,
-            decompress_reset: false,
-            compression_level: config.compression_level,
         }
     }
 }

@@ -19,7 +19,7 @@ use swim_utilities::algebra::non_zero_usize;
 #[tokio::test]
 async fn send_command() {
     let n = non_zero_usize!(5);
-    let (model, mut events) = super::make_lane_model::<i32>(n);
+    let (model, mut events) = super::make_private_lane_model::<i32>(n);
     let mut commander = model.commander();
     commander.command(3).await;
     let event = events.next().await;
@@ -29,6 +29,6 @@ async fn send_command() {
 #[tokio::test]
 async fn debug_command_lane() {
     let n = non_zero_usize!(5);
-    let (model, _events) = super::make_lane_model::<i32>(n);
+    let (model, _events) = super::make_private_lane_model::<i32>(n);
     assert_eq!(format!("{:?}", model), "CommandLane(fn(i32) -> i32)");
 }

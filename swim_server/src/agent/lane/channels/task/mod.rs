@@ -31,12 +31,11 @@ use crate::agent::lane::channels::{
     AgentExecutionConfig, InputMessage, LaneMessageHandler, OutputMessage, TaggedAction,
 };
 use crate::agent::lane::model::action::ActionLane;
-use crate::agent::lane::model::command::CommandLane;
 use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneEvent};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::model::DeferredSubscription;
-use crate::agent::Eff;
+use crate::agent::{CommandLaneIo, Eff};
 use either::Either;
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::{select, Stream, StreamExt};
@@ -503,28 +502,31 @@ where
 /// routing.
 /// * `route` - The route to this lane for outgoing envelope labelling.
 pub async fn run_command_lane_io<T>(
-    lane: CommandLane<T>,
+    lane_io: CommandLaneIo<T>,
     envelopes: impl Stream<Item = TaggedClientEnvelope>,
     config: AgentExecutionConfig,
     context: impl AgentExecutionContext,
     route: RelativePath,
 ) -> Result<Vec<UplinkErrorReport>, LaneIoError>
 where
-    T: Send + Sync + Form + Debug + 'static,
+    T: Clone + Send + Sync + Form + Debug + 'static,
 {
     let span = span!(Level::INFO, LANE_IO_TASK, ?route);
     let _enter = span.enter();
 
+    let CommandLaneIo {
+        commander,
+        commands_rx,
+    } = lane_io;
+
     let observer = context.metrics().uplink_observer_for_path(route.clone());
     let event_observer = observer.clone();
 
-    let (feedback_tx, feedback_rx) = mpsc::channel(config.feedback_buffer.get());
-    let feedback_rx = ReceiverStream::new(feedback_rx)
-        .map(|(_, message)| AddressedUplinkMessage::Broadcast(message))
+    let feedback_rx = commands_rx
+        .map(AddressedUplinkMessage::Broadcast)
         .inspect(|_| event_observer.on_event(true));
 
-    let updater =
-        CommandLaneUpdateTask::new(lane.clone(), Some(feedback_tx), config.cleanup_timeout);
+    let updater = CommandLaneUpdateTask::new(commander);
     let uplinks = StatelessUplinks::new(
         feedback_rx,
         route.clone(),

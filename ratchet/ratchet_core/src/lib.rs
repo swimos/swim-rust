@@ -27,7 +27,7 @@
 )]
 
 #[cfg(test)]
-mod fixture;
+mod test_fixture;
 
 mod builder;
 mod errors;
@@ -40,17 +40,23 @@ mod ws;
 /// Split WebSocket implementation.
 #[cfg(feature = "split")]
 mod split;
+
+#[allow(missing_docs)]
+#[cfg(feature = "fixture")]
+pub mod fixture {
+    pub use super::protocol::write_text_frame_header;
+}
 #[cfg(feature = "split")]
 pub use split::{Receiver, ReuniteError, Sender};
 
 pub use builder::{WebSocketClientBuilder, WebSocketServerBuilder};
 pub use errors::*;
-pub use ext::{NoExt, NoExtDecoder, NoExtEncoder, NoExtProvider};
+pub use ext::{NegotiatedExtension, NoExt, NoExtDecoder, NoExtEncoder, NoExtProvider};
 pub use handshake::{
     accept, accept_with, subscribe, subscribe_with, ProtocolRegistry, TryIntoRequest,
     UpgradedClient, UpgradedServer, WebSocketResponse, WebSocketUpgrader,
 };
-pub use protocol::{CloseReason, Message, PayloadType, Role, WebSocketConfig};
+pub use protocol::{CloseCode, CloseReason, Message, PayloadType, Role, WebSocketConfig};
 pub use ws::WebSocket;
 
 use tokio::io::{AsyncRead, AsyncWrite};

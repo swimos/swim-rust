@@ -45,6 +45,13 @@ type ReuniteFailure<S, E> = ReuniteError<
     <E as SplittableExtension>::SplitDecoder,
 >;
 
+/// Splits a WebSocket's parts into send and receive halves. Internally, two BiLocks are used: one
+/// over the IO and one on the write half to send any responses to any control frames that are
+/// received.
+///
+/// # Note
+/// It is possible to reunite the halves back into a WebSocket if the extension implements
+/// `ReunitableExtension`.
 pub fn split<S, E>(
     framed: framed::FramedIo<S>,
     control_buffer: BytesMut,
@@ -59,7 +66,7 @@ where
         reader,
         writer,
         flags,
-        max_size,
+        max_message_size,
     } = framed.into_parts();
 
     let closed = Arc::new(AtomicBool::new(false));
@@ -89,7 +96,7 @@ where
         closed,
         framed: FramedIo {
             flags,
-            max_size,
+            max_message_size,
             read_half,
             reader,
             split_writer: reader_writer,
@@ -182,7 +189,7 @@ struct WriteHalf<S> {
 #[derive(Debug)]
 struct FramedIo<S, E> {
     flags: CodecFlags,
-    max_size: usize,
+    max_message_size: usize,
     read_half: BiLock<S>,
     reader: FramedRead,
     split_writer: BiLock<WriteHalf<S>>,
@@ -323,24 +330,31 @@ where
     }
 
     /// Close this Sender with the reason provided.    
-    pub async fn close(self, reason: Option<String>) -> Result<(), Error> {
+    pub async fn close(&mut self, reason: Option<String>) -> Result<(), Error> {
+        self.closed.store(true, Ordering::Relaxed);
         let WriteHalf {
             split_writer,
             writer,
             ..
         } = &mut *self.split_writer.lock().await;
-        let write_result = write_close(
+        write_close(
             split_writer,
             writer,
             CloseReason::new(CloseCode::Normal, reason),
             self.role.is_server(),
         )
-        .await;
+        .await
+    }
 
-        if write_result.is_err() {
-            self.closed.store(true, Ordering::Relaxed);
-        }
-        write_result
+    /// Close this WebSocket with the reason provided.
+    pub async fn close_with(&mut self, reason: CloseReason) -> Result<(), Error> {
+        self.closed.store(true, Ordering::Relaxed);
+        let WriteHalf {
+            split_writer,
+            writer,
+            ..
+        } = &mut *self.split_writer.lock().await;
+        write_close(split_writer, writer, reason, self.role.is_server()).await
     }
 }
 
@@ -377,7 +391,7 @@ where
         } = self;
         let FramedIo {
             flags,
-            max_size,
+            max_message_size,
             read_half,
             reader,
             split_writer,
@@ -390,7 +404,7 @@ where
                 read_half,
                 reader,
                 flags,
-                *max_size,
+                *max_message_size,
                 read_buffer,
                 ext_decoder,
             )
@@ -508,7 +522,8 @@ where
     }
 
     /// Close this receiver with the reason provided.
-    pub async fn close(self, reason: Option<String>) -> Result<(), Error> {
+    pub async fn close(&mut self, reason: Option<String>) -> Result<(), Error> {
+        self.closed.store(true, Ordering::Relaxed);
         let WriteHalf {
             split_writer,
             writer,
@@ -521,6 +536,22 @@ where
             self.role.is_server(),
         )
         .await;
+
+        if write_result.is_err() {
+            self.closed.store(true, Ordering::Relaxed);
+        }
+        write_result
+    }
+
+    /// Close this WebSocket with the reason provided.
+    pub async fn close_with(&mut self, reason: CloseReason) -> Result<(), Error> {
+        self.closed.store(true, Ordering::Relaxed);
+        let WriteHalf {
+            split_writer,
+            writer,
+            ..
+        } = &mut *self.framed.split_writer.lock().await;
+        let write_result = write_close(split_writer, writer, reason, self.role.is_server()).await;
 
         if write_result.is_err() {
             self.closed.store(true, Ordering::Relaxed);
@@ -542,6 +573,8 @@ pub struct ReuniteError<S, E, D> {
     pub receiver: Receiver<S, D>,
 }
 
+/// Attempts to reunites the send and receive halves that form a WebSocket or returns an error if
+/// they do not represent the same connection.
 fn reunite<S, E>(
     sender: Sender<S, E::SplitEncoder>,
     receiver: Receiver<S, E::SplitDecoder>,
@@ -562,7 +595,7 @@ where
         let Receiver { closed, framed, .. } = receiver;
         let FramedIo {
             flags,
-            max_size,
+            max_message_size,
             read_half,
             reader,
             ext_decoder,
@@ -587,7 +620,7 @@ where
             reader,
             writer,
             flags,
-            max_size,
+            max_message_size,
         });
 
         Ok(WebSocket::from_parts(

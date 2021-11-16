@@ -38,7 +38,42 @@ type SplitSocket<S, E> = (
     Receiver<S, <E as SplittableExtension>::SplitDecoder>,
 );
 
-/// A WebSocket stream.
+/// An upgraded WebSocket stream.
+///
+/// This is created after a connection has been upgraded to speak the WebSocket protocol by using
+/// the `accept`, `accept_with`, `subscribe` and `subscribe_with` functions or by using
+/// `WebSocket::from_upgraded` with an already upgraded stream.
+///
+/// # Example
+/// ```no_run
+/// # use ratchet_core::{subscribe, UpgradedClient, Error, Message, PayloadType, WebSocketConfig};
+/// # use tokio::net::TcpStream;
+/// # use bytes::BytesMut;
+///
+/// # #[tokio::main]
+/// # async fn main()-> Result<(), Error> {
+/// let stream = TcpStream::connect("127.0.0.1:9001").await?;
+/// let upgraded = subscribe(WebSocketConfig::default(), stream, "ws://127.0.0.1/hello").await?;
+/// let UpgradedClient { mut  websocket, .. } = upgraded;
+///
+/// let mut buf = BytesMut::new();
+///
+/// loop {
+///     match websocket.read(&mut buf).await? {
+///         Message::Text => {
+///             websocket.write(&mut buf, PayloadType::Text).await?;
+///             buf.clear();
+///         }
+///         Message::Binary => {
+///             websocket.write(&mut buf, PayloadType::Binary).await?;
+///             buf.clear();
+///         }
+///         Message::Ping | Message::Pong => {}
+///         Message::Close(_) => break Ok(()),
+///     }
+/// }
+/// # }
+/// ```
 #[derive(Debug)]
 pub struct WebSocket<S, E> {
     framed: FramedIo<S>,
@@ -83,9 +118,15 @@ where
         read_buffer: BytesMut,
         role: Role,
     ) -> WebSocket<S, E> {
-        let WebSocketConfig { max_size } = config;
+        let WebSocketConfig { max_message_size } = config;
         WebSocket {
-            framed: FramedIo::new(stream, read_buffer, role, max_size, extension.bits().into()),
+            framed: FramedIo::new(
+                stream,
+                read_buffer,
+                role,
+                max_message_size,
+                extension.bits().into(),
+            ),
             extension,
             control_buffer: BytesMut::with_capacity(CONTROL_MAX_SIZE),
             closed: false,
@@ -276,10 +317,17 @@ where
     }
 
     /// Close this WebSocket with the reason provided.
-    pub async fn close(mut self, reason: Option<String>) -> Result<(), Error> {
+    pub async fn close(&mut self, reason: Option<String>) -> Result<(), Error> {
+        self.closed = true;
         self.framed
             .write_close(CloseReason::new(CloseCode::Normal, reason))
             .await
+    }
+
+    /// Close this WebSocket with the reason provided.
+    pub async fn close_with(&mut self, reason: CloseReason) -> Result<(), Error> {
+        self.closed = true;
+        self.framed.write_close(reason).await
     }
 
     /// Constructs a new WebSocket message of `message_type` and with a payload of `buf_ref` and

@@ -5,7 +5,7 @@ authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
 [dependencies]
-swim_utilities = { path = "../../swim_utilities", features = ["text", "iteratee", "future"] }
+swim_utilities = { path = "../../swim_utilities", features = ["text", "iteratee", "future", "algebra"] }
 swim_form_derive = { path = "../swim_form_derive" }
 swim_model = { path = "../swim_model" }
 chrono = "0.4"

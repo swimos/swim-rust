@@ -14,10 +14,10 @@
 
 use crate::errors::{Error, ProtocolError};
 use crate::ext::NoExt;
-use crate::fixture::{expect_err, EmptyIo, MirroredIo};
 use crate::framed::{CodecFlags, FramedIo, Item};
 use crate::protocol::{CloseCode, CloseCodeParseErr, CloseReason, DataCode, OpCode};
 use crate::protocol::{HeaderFlags, Role};
+use crate::test_fixture::{expect_err, EmptyIo, MirroredIo};
 use bytes::BytesMut;
 use std::error::Error as StdError;
 use std::fmt::Debug;
