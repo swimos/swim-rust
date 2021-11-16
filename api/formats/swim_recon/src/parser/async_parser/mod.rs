@@ -302,7 +302,7 @@ impl Default for LocationTracker {
         LocationTracker {
             offset: 0,
             line: 1,
-            column: 0,
+            column: 1,
         }
     }
 }
@@ -317,7 +317,7 @@ impl LocationTracker {
         *offset += span.location_offset();
         let span_line = span.location_line();
         if span_line == 1 {
-            *column += span.get_utf8_column();
+            *column += span.get_utf8_column() - 1;
         } else {
             *line += span_line - 1;
             *column = span.get_utf8_column();
@@ -377,7 +377,7 @@ impl<R: Recognizer> RecognizerDecoder<R> {
         } = self;
 
         let mut current = span;
-        'outer: loop {
+        let result = 'outer: loop {
             match parser.parse(current) {
                 Ok((rem, events)) => {
                     current = rem;
@@ -388,7 +388,9 @@ impl<R: Recognizer> RecognizerDecoder<R> {
                                     break 'outer Ok((current, Some(target)));
                                 }
                                 Some(Err(e)) => {
-                                    break 'outer  Err(AsyncParseError::Parser(ParseError::Structure(e)));
+                                    break 'outer Err(AsyncParseError::Parser(
+                                        ParseError::Structure(e),
+                                    ));
                                 }
                                 _ => {}
                             }
@@ -406,17 +408,15 @@ impl<R: Recognizer> RecognizerDecoder<R> {
                     }
                 }
                 Err(nom::Err::Incomplete(_)) => {
-                    location.update(&current);
                     break Ok((current, None));
-                },
+                }
                 Err(nom::Err::Error(e) | nom::Err::Failure(e)) => {
-                    //println!("{:?}, {:?}", location, current);
-                    location.update(&current);
-                    //panic!("{:?}, {:?}", location, current);
                     break Err(location.relativize_error(e));
-                },
+                }
             }
-        }
+        };
+        location.update(&current);
+        result
     }
 }
 
@@ -453,7 +453,7 @@ where
                 }
             }
             Ok((rem, None))
-        },
+        }
         Err(nom::Err::Incomplete(_)) => Ok((span, None)),
         Err(nom::Err::Error(e) | nom::Err::Failure(e)) => Err(location.relativize_error(e)),
     }

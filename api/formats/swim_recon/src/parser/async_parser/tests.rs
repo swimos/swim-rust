@@ -15,15 +15,17 @@
 use tokio::fs::File;
 
 use crate::parser::async_parser::AsyncParseError;
-use std::path::PathBuf;
-use bytes::{BufMut, BytesMut};
-use tokio_util::codec::Decoder;
-use swim_model::{Attr, Item, Value};
-use swim_form::Form;
-use swim_form::structural::read::recognizer::RecognizerReadable;
-use crate::parser::{ParseError, RecognizerDecoder};
+use crate::parser::record::IncrementalReconParser;
 use crate::parser::Span;
+use crate::parser::{ParseError, RecognizerDecoder};
+use bytes::{BufMut, BytesMut};
+use nom::{AsBytes, Parser};
 use std::fmt::Debug;
+use std::path::PathBuf;
+use swim_form::structural::read::recognizer::RecognizerReadable;
+use swim_form::Form;
+use swim_model::{Attr, Item, Value};
+use tokio_util::codec::Decoder;
 
 fn test_data_path() -> PathBuf {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -84,7 +86,6 @@ const COMPLETE: &str = "@Example { field: 2 }";
 
 #[tokio::test]
 async fn recognize_decode_complete() {
-
     let mut decoder = RecognizerDecoder::new(Example::make_recognizer());
 
     let mut buffer = BytesMut::new();
@@ -97,7 +98,6 @@ async fn recognize_decode_complete() {
     let expected = crate::parser::parse_recognize::<Example>(Span::new(COMPLETE)).unwrap();
 
     assert_complete(result, expected);
-
 }
 
 const FIRST_PART: &str = "@Example { ";
@@ -105,7 +105,6 @@ const SECOND_PART: &str = "field: 2 }";
 
 #[tokio::test]
 async fn recognize_decode_two_parts() {
-
     let mut decoder = RecognizerDecoder::new(Example::make_recognizer());
 
     let mut buffer = BytesMut::new();
@@ -123,7 +122,6 @@ async fn recognize_decode_two_parts() {
     let expected = crate::parser::parse_recognize::<Example>(Span::new(COMPLETE)).unwrap();
 
     assert_complete(result, expected);
-
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Form)]
@@ -133,7 +131,6 @@ const UNIT_RECON: &str = "@UnitExample";
 
 #[tokio::test]
 async fn recognize_decode_eof() {
-
     let mut decoder = RecognizerDecoder::new(UnitExample::make_recognizer());
 
     let mut buffer = BytesMut::new();
@@ -146,12 +143,10 @@ async fn recognize_decode_eof() {
     let result = decoder.decode_eof(&mut buffer);
 
     assert_complete(result, UnitExample);
-
 }
 
 #[tokio::test]
 async fn recognize_decode_complete_eof() {
-
     let mut decoder = RecognizerDecoder::new(Example::make_recognizer());
 
     let mut buffer = BytesMut::new();
@@ -164,11 +159,16 @@ async fn recognize_decode_complete_eof() {
     let expected = crate::parser::parse_recognize::<Example>(Span::new(COMPLETE)).unwrap();
 
     assert_complete(result, expected);
-
 }
 
 const BAD1: &str = "#Example { field: 2 }";
 const BAD2: &str = "@Example # field: 2 }";
+const BAD3A: &str = "@Example ";
+const BAD3B: &str = " # field: 2 }";
+const BAD4: &str = "@Record {\n first # 4 }";
+const BAD5A: &str = "@Record {\n";
+const BAD5B: &str = " first: 2\n second";
+const BAD5C: &str = ": # }";
 
 #[tokio::test]
 async fn simple_error_loc() {
@@ -180,11 +180,16 @@ async fn simple_error_loc() {
     let result = decoder.decode(&mut buffer);
 
     match result {
-        Err(AsyncParseError::Parser(ParseError::Syntax { offset, line, column, .. })) => {
+        Err(AsyncParseError::Parser(ParseError::Syntax {
+            offset,
+            line,
+            column,
+            ..
+        })) => {
             assert_eq!(offset, 0);
             assert_eq!(line, 1);
             assert_eq!(column, 1);
-        },
+        }
         Err(e) => panic!("Unexpected error: {}", e),
         _ => panic!("Unexpected success."),
     }
@@ -200,15 +205,103 @@ async fn offset_error_loc() {
     let result = decoder.decode(&mut buffer);
 
     match result {
-        Err(AsyncParseError::Parser(ParseError::Syntax { offset, line, column, .. })) => {
+        Err(AsyncParseError::Parser(ParseError::Syntax {
+            offset,
+            line,
+            column,
+            ..
+        })) => {
             assert_eq!(offset, 9);
             assert_eq!(line, 1);
             assert_eq!(column, 10);
-        },
+        }
         Err(e) => panic!("Unexpected error: {}", e),
         _ => panic!("Unexpected success."),
     }
 }
 
+#[tokio::test]
+async fn split_error_loc() {
+    let mut decoder = RecognizerDecoder::new(Value::make_recognizer());
 
+    let mut buffer = BytesMut::new();
+    buffer.put_slice(BAD3A.as_bytes());
 
+    let result = decoder.decode(&mut buffer);
+    assert!(matches!(result, Ok(None)));
+
+    buffer.put_slice(BAD3B.as_bytes());
+    let result = decoder.decode(&mut buffer);
+
+    match result {
+        Err(AsyncParseError::Parser(ParseError::Syntax {
+            offset,
+            line,
+            column,
+            ..
+        })) => {
+            assert_eq!(offset, 10);
+            assert_eq!(line, 1);
+            assert_eq!(column, 11);
+        }
+        Err(e) => panic!("Unexpected error: {}", e),
+        _ => panic!("Unexpected success."),
+    }
+}
+
+#[tokio::test]
+async fn multi_line_error_loc() {
+    let mut decoder = RecognizerDecoder::new(Value::make_recognizer());
+
+    let mut buffer = BytesMut::new();
+    buffer.put_slice(BAD4.as_bytes());
+
+    let result = decoder.decode(&mut buffer);
+
+    match result {
+        Err(AsyncParseError::Parser(ParseError::Syntax {
+            offset,
+            line,
+            column,
+            ..
+        })) => {
+            assert_eq!(offset, 17);
+            assert_eq!(line, 2);
+            assert_eq!(column, 8);
+        }
+        Err(e) => panic!("Unexpected error: {}", e),
+        _ => panic!("Unexpected success."),
+    }
+}
+
+#[tokio::test]
+async fn split_multi_line_error_loc() {
+    let mut decoder = RecognizerDecoder::new(Value::make_recognizer());
+
+    let mut buffer = BytesMut::new();
+    buffer.put_slice(BAD5A.as_bytes());
+
+    let result = decoder.decode(&mut buffer);
+    assert!(matches!(result, Ok(None)));
+
+    buffer.put_slice(BAD5B.as_bytes());
+    assert!(matches!(result, Ok(None)));
+
+    buffer.put_slice(BAD5C.as_bytes());
+    let result = decoder.decode(&mut buffer);
+
+    match result {
+        Err(AsyncParseError::Parser(ParseError::Syntax {
+            offset,
+            line,
+            column,
+            ..
+        })) => {
+            assert_eq!(offset, 29);
+            assert_eq!(line, 3);
+            assert_eq!(column, 10);
+        }
+        Err(e) => panic!("Unexpected error: {}", e),
+        _ => panic!("Unexpected success."),
+    }
+}

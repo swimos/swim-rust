@@ -395,9 +395,7 @@ impl<'a> Parser<Span<'a>, ParseEvents<'a>, nom::error::Error<Span<'a>>> for Incr
                     Ok((input, events))
                 }
                 ParseState::AfterAttr => {
-                    let (input, (events, change)) = map(opt(parse_after_attr), |r| {
-                        r.unwrap_or((ParseEvents::NoEvent, StateChange::PopAfterItem))
-                    })(input)?;
+                    let (input, (events, change)) = parse_after_attr(input)?;
                     change.apply(state);
                     Ok((input, events))
                 }
@@ -872,26 +870,24 @@ impl<'a> Iterator for ParseEvents<'a> {
                 Some(Some(e1))
             }
             ParseEvents::NoEvent => None,
-            ParseEvents::TerminateWithAttr(stage) => {
-                match stage {
-                    FinalAttrStage::Start(name) => {
-                        *self = ParseEvents::TerminateWithAttr(FinalAttrStage::EndAttr);
-                        Some(Some(ReadEvent::StartAttribute(name)))
-                    },
-                    FinalAttrStage::EndAttr => {
-                        *self = ParseEvents::TerminateWithAttr(FinalAttrStage::StartBody);
-                        Some(Some(ReadEvent::EndAttribute))
-                    },
-                    FinalAttrStage::StartBody => {
-                        *self = ParseEvents::TerminateWithAttr(FinalAttrStage::EndBody);
-                        Some(Some(ReadEvent::StartBody))
-                    },
-                    FinalAttrStage::EndBody => {
-                        *self = ParseEvents::End;
-                        Some(Some(ReadEvent::EndRecord))
-                    },
+            ParseEvents::TerminateWithAttr(stage) => match stage {
+                FinalAttrStage::Start(name) => {
+                    *self = ParseEvents::TerminateWithAttr(FinalAttrStage::EndAttr);
+                    Some(Some(ReadEvent::StartAttribute(name)))
                 }
-            }
+                FinalAttrStage::EndAttr => {
+                    *self = ParseEvents::TerminateWithAttr(FinalAttrStage::StartBody);
+                    Some(Some(ReadEvent::EndAttribute))
+                }
+                FinalAttrStage::StartBody => {
+                    *self = ParseEvents::TerminateWithAttr(FinalAttrStage::EndBody);
+                    Some(Some(ReadEvent::StartBody))
+                }
+                FinalAttrStage::EndBody => {
+                    *self = ParseEvents::End;
+                    Some(Some(ReadEvent::EndRecord))
+                }
+            },
             ParseEvents::End => Some(None),
         }
     }
