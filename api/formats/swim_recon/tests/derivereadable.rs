@@ -661,3 +661,77 @@ fn derive_map_update() {
         Upd::Update("thing".to_string(), Arc::new(Value::Int32Value(76)))
     );
 }
+
+#[test]
+fn optional_slot() {
+    #[derive(StructuralReadable, Debug, PartialEq, Eq)]
+    struct MyStruct {
+        first: Option<i32>,
+        second: String,
+    }
+
+    let instance = run_recognizer::<MyStruct>("@MyStruct { first:, second: Hello }");
+    assert_eq!(
+        instance,
+        MyStruct {
+            first: None,
+            second: "Hello".to_string()
+        }
+    );
+
+    let instance = run_recognizer::<MyStruct>("@MyStruct { second: Hello }");
+    assert_eq!(
+        instance,
+        MyStruct {
+            first: None,
+            second: "Hello".to_string()
+        }
+    );
+
+    let instance = run_recognizer::<MyStruct>("@MyStruct { first: 2, second: Hello }");
+    assert_eq!(
+        instance,
+        MyStruct {
+            first: Some(2),
+            second: "Hello".to_string()
+        }
+    );
+}
+
+#[test]
+fn optional_slot_in_header() {
+    #[derive(StructuralReadable, Debug, PartialEq, Eq)]
+    struct MyStruct {
+        #[form(header)]
+        first: Option<i32>,
+        #[form(header)]
+        second: String,
+    }
+
+    let instance = run_recognizer::<MyStruct>("@MyStruct(first:, second: Hello)");
+    assert_eq!(
+        instance,
+        MyStruct {
+            first: None,
+            second: "Hello".to_string()
+        }
+    );
+
+    let instance = run_recognizer::<MyStruct>("@MyStruct(second: Hello)");
+    assert_eq!(
+        instance,
+        MyStruct {
+            first: None,
+            second: "Hello".to_string()
+        }
+    );
+
+    let instance = run_recognizer::<MyStruct>("@MyStruct(first: 2, second: Hello)");
+    assert_eq!(
+        instance,
+        MyStruct {
+            first: Some(2),
+            second: "Hello".to_string()
+        }
+    );
+}

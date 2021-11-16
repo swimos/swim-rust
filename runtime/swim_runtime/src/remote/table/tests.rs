@@ -42,7 +42,10 @@ async fn insert_and_retrieve() {
 
     let RawRoute { sender, on_drop: _ } = table.resolve(addr).unwrap();
 
-    let env = TaggedEnvelope(addr, Envelope::unlink("node", "lane"));
+    let env = TaggedEnvelope(
+        addr,
+        Envelope::unlink().node_uri("node").lane_uri("lane").done(),
+    );
 
     assert!(sender.send(env.clone()).await.is_ok());
 

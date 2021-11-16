@@ -4,9 +4,6 @@ version = "0.1.0"
 authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
-[features]
-default = []
-
 [dependencies]
 ratchet = { path = "../../ratchet", features = ["deflate", "split"] }
 ratchet_fixture = { path = "../../ratchet/ratchet_fixture" }

@@ -24,8 +24,6 @@ use crate::routing::{RoutingAddr, TaggedEnvelope};
 use futures::FutureExt;
 use std::cell::RefCell;
 use std::io::ErrorKind;
-
-use swim_model::Value;
 use swim_utilities::future::request::Request;
 use swim_utilities::trigger::promise::Sender;
 use swim_warp::envelope::Envelope;
@@ -204,7 +202,11 @@ fn transition_incoming_err() {
 fn make_env(addr: RoutingAddr) -> TaggedEnvelope {
     TaggedEnvelope(
         addr,
-        Envelope::make_event("/node", "lane", Some(Value::text("body"))),
+        Envelope::event()
+            .node_uri("/node")
+            .lane_uri("lane")
+            .body("body")
+            .done(),
     )
 }
 

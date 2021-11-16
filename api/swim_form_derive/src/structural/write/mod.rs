@@ -234,7 +234,9 @@ fn write_slot_ref(field: &FieldModel) -> TokenStream {
     let field_index = &field.selector;
     let literal_name = field.resolve_name();
     quote! {
-        body_writer = body_writer.write_slot(&#literal_name, #field_index)?;
+        if !swim_form::structural::write::StructuralWritable::omit_as_field(#field_index) {
+            body_writer = body_writer.write_slot(&#literal_name, #field_index)?;
+        }
     }
 }
 
@@ -256,7 +258,29 @@ fn write_slot_into(field: &FieldModel) -> TokenStream {
     let field_index = &field.selector;
     let literal_name = field.resolve_name();
     quote! {
-        body_writer = body_writer.write_slot_into(#literal_name, #field_index)?;
+        if !swim_form::structural::write::StructuralWritable::omit_as_field(&#field_index) {
+            body_writer = body_writer.write_slot_into(#literal_name, #field_index)?;
+        }
+    }
+}
+
+fn compute_num_slots(fields: &[&FieldModel], by_ref: bool) -> TokenStream {
+    let increments = fields.iter().map(|field| {
+        let field_index = &field.selector;
+        let fld = if by_ref {
+            quote!(&#field_index)
+        } else {
+            field_index.to_token_stream()
+        };
+        quote! {
+            if !swim_form::structural::write::StructuralWritable::omit_as_field(#fld) {
+                num_slots += 1;
+            }
+        }
+    });
+    quote! {
+        let mut num_slots: usize = 0;
+        #(#increments)*
     }
 }
 
@@ -310,7 +334,7 @@ impl<'a> ToTokens for WriteWithFn<'a> {
                 }
             }
             BodyFields::StdBody(fields) => {
-                let num_slots = fields.len();
+                let num_slots = compute_num_slots(fields, false);
 
                 let (body_kind, statements) =
                     if fields_model.body_kind == CompoundTypeKind::Labelled {
@@ -326,7 +350,8 @@ impl<'a> ToTokens for WriteWithFn<'a> {
                     };
 
                 quote! {
-                    let mut body_writer = rec_writer.complete_header(#body_kind, #num_slots)?;
+                    #num_slots
+                    let mut body_writer = rec_writer.complete_header(#body_kind, num_slots)?;
                     #(#statements)*
                     body_writer.done()
                 }
@@ -428,7 +453,7 @@ impl<'a> ToTokens for WriteIntoFn<'a> {
                 }
             }
             BodyFields::StdBody(fields) => {
-                let num_slots = fields.len();
+                let num_slots = compute_num_slots(fields, true);
 
                 let (body_kind, statements) =
                     if fields_model.body_kind == CompoundTypeKind::Labelled {
@@ -444,7 +469,8 @@ impl<'a> ToTokens for WriteIntoFn<'a> {
                     };
 
                 quote! {
-                    let mut body_writer = rec_writer.complete_header(#body_kind, #num_slots)?;
+                    #num_slots
+                    let mut body_writer = rec_writer.complete_header(#body_kind, num_slots)?;
                     #(#statements)*
                     body_writer.done()
                 }
@@ -469,7 +495,10 @@ impl<'a> ToTokens for Destructure<'a> {
             },
             context,
         ) = self;
-        let indexers = fields_model.fields.iter().map(|f| &f.model.selector);
+        let indexers = fields_model
+            .fields
+            .iter()
+            .map(|f| f.model.selector.binder());
         match fields_model.type_kind {
             CompoundTypeKind::Unit => {
                 if matches!(context, DestructureContext::VariantMatch) {
@@ -535,11 +564,12 @@ impl<'a> ToTokens for NumAttrsEnum<'a> {
             let base_attrs = v.fields.header.attributes.len() + 1;
             if let BodyFields::ReplacedBody(fld) = v.fields.body {
                 let fld_name = &fld.selector;
+                let binder = fld_name.binder();
                 let pat = match fld_name {
-                    FieldSelector::Named(id) =>  quote!(#enum_name::#var_name { #id, .. }),
+                    FieldSelector::Named(_) =>  quote!(#enum_name::#var_name { #binder, .. }),
                     FieldSelector::Ordinal(i) => {
                         let ignore = (0..*i).map(|_| quote!(_));
-                        quote!(#enum_name::#var_name(#(#ignore,)* #fld_name, ..))
+                        quote!(#enum_name::#var_name(#(#ignore,)* #binder, ..))
                     }
                 };
                 quote!(#pat => #base_attrs + swim_form::structural::write::StructuralWritable::num_attributes(#fld_name))
