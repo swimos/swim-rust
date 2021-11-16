@@ -36,7 +36,7 @@ use swim_model::path::RelativePath;
 use swim_utilities::errors::Recoverable;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
-use swim_warp::envelope::{Envelope, OutgoingHeader};
+use swim_warp::envelope::{Envelope, RequestKind};
 
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::dispatch::error::{DispatcherError, DispatcherErrors};
@@ -619,8 +619,9 @@ where
                 }
                 Some(Either::Right(TaggedEnvelope(addr, envelope))) => {
                     event!(Level::TRACE, message = ATTEMPT_DISPATCH, ?envelope);
-                    if let Ok(envelope) = envelope.into_outgoing() {
-                        let identifier = match LaneIdentifier::try_from(&envelope.path) {
+                    if let Some(envelope) = envelope.into_request() {
+                        let path = envelope.path();
+                        let identifier = match LaneIdentifier::try_from(path) {
                             Ok(identifier) => identifier,
                             Err(e) => {
                                 event!(Level::WARN, message = NODE_URI_PARSE_ERR, ?e);
@@ -628,13 +629,13 @@ where
                                 send_lane_not_found(
                                     router,
                                     addr,
-                                    envelope.path.node.to_string(),
-                                    envelope.path.lane.to_string(),
+                                    path.node.to_string(),
+                                    path.lane.to_string(),
                                 )
                                 .await;
 
                                 break Err(DispatcherError::AttachmentFailed(
-                                    AttachError::LaneDoesNotExist(envelope.path.to_string()),
+                                    AttachError::LaneDoesNotExist(envelope.path().to_string()),
                                 ));
                             }
                         };
@@ -652,7 +653,7 @@ where
                             let (req_tx, req_rx) = oneshot::channel();
                             let (uplink_tx, uplink_rx) = mpsc::channel(lane_buffer.get());
 
-                            let result = if let OutgoingHeader::Link(_) = envelope.header {
+                            let result = if envelope.kind() == RequestKind::Link {
                                 open_tx
                                     .send(OpenRequest::new(
                                         identifier.clone(),
@@ -769,7 +770,7 @@ async fn send_lane_not_found<R>(
     if let Ok(mut remote_route) = router.resolve_sender(remote_addr).await {
         if remote_route
             .sender
-            .send_item(Envelope::lane_not_found(node.to_owned(), lane.to_owned()))
+            .send_item(Envelope::lane_not_found(node.as_str(), lane.as_str()))
             .await
             .is_err()
         {

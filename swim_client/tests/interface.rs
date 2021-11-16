@@ -771,6 +771,13 @@ mod tests {
 
         dl.set("VW".to_string()).await.unwrap();
 
+        let message = recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("".to_string()));
+        let message = recv.recv().await.unwrap();
+        assert_eq!(message, Event::Local("VW".to_string()));
+        let message = recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("VW".to_string()));
+
         client
             .command_downlink::<String>(park_path)
             .await
@@ -779,12 +786,6 @@ mod tests {
             .await
             .unwrap();
 
-        let message = recv.recv().await.unwrap();
-        assert_eq!(message, Event::Remote("".to_string()));
-        let message = recv.recv().await.unwrap();
-        assert_eq!(message, Event::Local("VW".to_string()));
-        let message = recv.recv().await.unwrap();
-        assert_eq!(message, Event::Remote("VW".to_string()));
         let message = recv.recv().await.unwrap();
         assert_eq!(message, Event::Remote("VW BMW".to_string()));
     }
@@ -810,11 +811,25 @@ mod tests {
             .unwrap();
         first_dl.set("VW".to_string()).await.unwrap();
 
+        let message = first_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("".to_string()));
+        let message = first_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Local("VW".to_string()));
+        let message = first_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("VW".to_string()));
+
         let (second_dl, mut second_recv) = client
             .value_downlink(second_garage_path, "".to_string())
             .await
             .unwrap();
         second_dl.set("VW".to_string()).await.unwrap();
+
+        let message = second_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("".to_string()));
+        let message = second_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Local("VW".to_string()));
+        let message = second_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("VW".to_string()));
 
         client
             .command_downlink::<String>(park_path)
@@ -823,20 +838,6 @@ mod tests {
             .command("Audi".to_string())
             .await
             .unwrap();
-
-        let message = first_recv.recv().await.unwrap();
-        assert_eq!(message, Event::Remote("".to_string()));
-        let message = first_recv.recv().await.unwrap();
-        assert_eq!(message, Event::Local("VW".to_string()));
-        let message = first_recv.recv().await.unwrap();
-        assert_eq!(message, Event::Remote("VW".to_string()));
-
-        let message = second_recv.recv().await.unwrap();
-        assert_eq!(message, Event::Remote("".to_string()));
-        let message = second_recv.recv().await.unwrap();
-        assert_eq!(message, Event::Local("VW".to_string()));
-        let message = second_recv.recv().await.unwrap();
-        assert_eq!(message, Event::Remote("VW".to_string()));
 
         let message = second_recv.recv().await.unwrap();
         assert_eq!(message, Event::Remote("VW Audi".to_string()));
@@ -879,11 +880,25 @@ mod tests {
             .unwrap();
         first_dl.set("VW".to_string()).await.unwrap();
 
+        let message = first_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("".to_string()));
+        let message = first_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Local("VW".to_string()));
+        let message = first_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("VW".to_string()));
+
         let (second_dl, mut second_recv) = client
             .value_downlink(second_garage_path, "".to_string())
             .await
             .unwrap();
         second_dl.set("VW".to_string()).await.unwrap();
+
+        let message = second_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("".to_string()));
+        let message = second_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Local("VW".to_string()));
+        let message = second_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("VW".to_string()));
 
         client
             .command_downlink::<String>(park_path)
@@ -892,20 +907,6 @@ mod tests {
             .command(format!("Toyota {}", second_port))
             .await
             .unwrap();
-
-        let message = first_recv.recv().await.unwrap();
-        assert_eq!(message, Event::Remote("".to_string()));
-        let message = first_recv.recv().await.unwrap();
-        assert_eq!(message, Event::Local("VW".to_string()));
-        let message = first_recv.recv().await.unwrap();
-        assert_eq!(message, Event::Remote("VW".to_string()));
-
-        let message = second_recv.recv().await.unwrap();
-        assert_eq!(message, Event::Remote("".to_string()));
-        let message = second_recv.recv().await.unwrap();
-        assert_eq!(message, Event::Local("VW".to_string()));
-        let message = second_recv.recv().await.unwrap();
-        assert_eq!(message, Event::Remote("VW".to_string()));
 
         let message = second_recv.recv().await.unwrap();
         assert_eq!(message, Event::Remote("VW Toyota".to_string()));
@@ -933,6 +934,13 @@ mod tests {
             .unwrap();
         client_dl.set("VW".to_string()).await.unwrap();
 
+        let message = client_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("".to_string()));
+        let message = client_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Local("VW".to_string()));
+        let message = client_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("VW".to_string()));
+
         let (server_dl, mut server_recv) = client_context
             .value_downlink(
                 RelativePath::new("/downlink/1", "garage").into(),
@@ -945,13 +953,6 @@ mod tests {
             .set(format!("{} {}", server_dl.get().await.unwrap(), "Honda"))
             .await
             .unwrap();
-
-        let message = client_recv.recv().await.unwrap();
-        assert_eq!(message, Event::Remote("".to_string()));
-        let message = client_recv.recv().await.unwrap();
-        assert_eq!(message, Event::Local("VW".to_string()));
-        let message = client_recv.recv().await.unwrap();
-        assert_eq!(message, Event::Remote("VW".to_string()));
 
         let message = server_recv.recv().await.unwrap();
         assert_eq!(message, Event::Remote("VW".to_string()));
@@ -989,6 +990,13 @@ mod tests {
             .unwrap();
         client_dl.set("VW".to_string()).await.unwrap();
 
+        let message = client_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("".to_string()));
+        let message = client_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Local("VW".to_string()));
+        let message = client_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("VW".to_string()));
+
         let (server_dl, mut server_recv) = client_context
             .value_downlink(
                 AbsolutePath::new(
@@ -1007,13 +1015,6 @@ mod tests {
             .await
             .unwrap();
 
-        let message = client_recv.recv().await.unwrap();
-        assert_eq!(message, Event::Remote("".to_string()));
-        let message = client_recv.recv().await.unwrap();
-        assert_eq!(message, Event::Local("VW".to_string()));
-        let message = client_recv.recv().await.unwrap();
-        assert_eq!(message, Event::Remote("VW".to_string()));
-
         let message = server_recv.recv().await.unwrap();
         assert_eq!(message, Event::Remote("VW".to_string()));
         let message = server_recv.recv().await.unwrap();
@@ -1026,5 +1027,58 @@ mod tests {
 
         let message = client_dl.get().await.unwrap();
         assert_eq!(message, "VW Volvo".to_string())
+    }
+
+    #[tokio::test]
+    async fn test_remote_and_local_dl_to_command_lane() {
+        let (server, mut server_handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = server_handle.address().await.unwrap().port();
+        let host = format!("warp://127.0.0.1:{}", port);
+
+        let client = SwimClientBuilder::build_with_default().await;
+
+        let garage_path =
+            AbsolutePath::new(url::Url::parse(&host).unwrap(), "/downlink/1", "garage");
+
+        let park_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/downlink/1", "park");
+
+        let self_park_path =
+            AbsolutePath::new(url::Url::parse(&host).unwrap(), "/downlink/1", "self_park");
+
+        let (_garage_downlink, mut garage_recv) = client
+            .value_downlink(garage_path, "".to_string())
+            .await
+            .unwrap();
+
+        let park_downlink = client
+            .event_downlink::<String>(park_path.clone(), Default::default())
+            .await
+            .unwrap();
+
+        let mut park_downlink_recv = park_downlink.subscribe().unwrap();
+
+        client
+            .send_command(park_path, "Kia".to_string())
+            .await
+            .unwrap();
+
+        let message = garage_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("".to_string()));
+        let message = garage_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("Kia".to_string()));
+
+        client
+            .send_command(self_park_path, "Mercedes".to_string())
+            .await
+            .unwrap();
+
+        let message = garage_recv.recv().await.unwrap();
+        assert_eq!(message, Event::Remote("Kia Mercedes".to_string()));
+
+        let message = park_downlink_recv.recv().await.unwrap();
+        assert_eq!(message, "Kia");
+        let message = park_downlink_recv.recv().await.unwrap();
+        assert_eq!(message, "Mercedes");
     }
 }

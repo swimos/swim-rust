@@ -943,3 +943,95 @@ fn derive_generic_enum() {
 
     validate(instance, 1, RecordBodyKind::ArrayLike, 1, 1);
 }
+
+#[test]
+fn optional_slot() {
+    #[derive(StructuralWritable)]
+    struct MyStruct {
+        first: Option<i32>,
+        second: String,
+    }
+
+    let defined = MyStruct {
+        first: Some(2),
+        second: "Hello".to_string(),
+    };
+
+    let undefined = MyStruct {
+        first: None,
+        second: "Hello".to_string(),
+    };
+
+    let defined_value: Value = defined.structure();
+
+    assert_eq!(
+        defined_value,
+        Value::Record(
+            vec![Attr::from("MyStruct")],
+            vec![Item::slot("first", 2), Item::slot("second", "Hello")]
+        )
+    );
+
+    let undefined_value: Value = undefined.structure();
+
+    assert_eq!(
+        undefined_value,
+        Value::Record(
+            vec![Attr::from("MyStruct")],
+            vec![Item::slot("second", "Hello")]
+        )
+    );
+
+    validate(defined, 1, RecordBodyKind::MapLike, 2, 1);
+    validate(undefined, 1, RecordBodyKind::MapLike, 1, 1);
+}
+
+#[test]
+fn optional_slot_in_header() {
+    #[derive(StructuralWritable)]
+    struct MyStruct {
+        #[form(header)]
+        first: Option<i32>,
+        #[form(header)]
+        second: String,
+    }
+
+    let defined = MyStruct {
+        first: Some(2),
+        second: "Hello".to_string(),
+    };
+
+    let undefined = MyStruct {
+        first: None,
+        second: "Hello".to_string(),
+    };
+
+    let defined_value: Value = defined.structure();
+
+    assert_eq!(
+        defined_value,
+        Value::Record(
+            vec![Attr::with_items(
+                "MyStruct",
+                vec![Item::slot("first", 2), Item::slot("second", "Hello")]
+            )],
+            vec![]
+        )
+    );
+
+    let undefined_value: Value = undefined.structure();
+
+    assert_eq!(
+        undefined_value,
+        Value::Record(
+            vec![Attr::with_items(
+                "MyStruct",
+                vec![Item::slot("second", "Hello")]
+            )],
+            vec![]
+        )
+    );
+
+    validate(defined, 1, RecordBodyKind::ArrayLike, 0, 1);
+    validate(undefined, 1, RecordBodyKind::ArrayLike, 0, 1);
+}

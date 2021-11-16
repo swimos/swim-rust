@@ -22,7 +22,7 @@ async fn tagged_sender() {
     let mut sender = TaggedSender::new(RoutingAddr::remote(7), tx);
 
     assert!(sender
-        .send_item(Envelope::linked("/node", "lane"))
+        .send_item(Envelope::linked().node_uri("/node").lane_uri("lane").done())
         .await
         .is_ok());
 
@@ -31,7 +31,7 @@ async fn tagged_sender() {
         received,
         Some(TaggedEnvelope(
             RoutingAddr::remote(7),
-            Envelope::linked("/node", "lane")
+            Envelope::linked().node_uri("/node").lane_uri("lane").done()
         ))
     );
 }

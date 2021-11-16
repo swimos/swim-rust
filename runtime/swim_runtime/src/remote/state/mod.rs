@@ -28,6 +28,7 @@ use futures::future::{BoxFuture, Fuse};
 use futures::stream::TakeUntil;
 use futures::StreamExt;
 use futures::{select_biased, FutureExt};
+use ratchet::{WebSocket, WebSocketStream};
 use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
@@ -39,6 +40,9 @@ use tokio_stream::wrappers::ReceiverStream;
 
 #[cfg(test)]
 mod tests;
+
+type DeferredConnections<'l, Sock, Ext> =
+    OpenEndedFutures<BoxFuture<'l, DeferredResult<WebSocket<Sock, Ext>>>>;
 
 /// Trait detailing the operations permissible on the state of the remote connections management
 /// task. This is to allow the state to be decoupled from the state transition function so
@@ -121,7 +125,7 @@ where
     pending: PendingRequests,
     addresses: RemoteRoutingAddresses,
     tasks: TaskFactory<DelegateRouterFac>,
-    deferred: OpenEndedFutures<BoxFuture<'a, DeferredResult<Ws::StreamSink>>>,
+    deferred: DeferredConnections<'a, External::Socket, Ws::Ext>,
     state: State,
     external_stop: Fuse<CloseReceiver>,
     internal_stop: Option<trigger::Sender>,
@@ -134,9 +138,10 @@ where
     Ws: WsConnections<External::Socket> + Send + Sync + 'static,
     Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Unpin,
     DelegateRouterFac: RouterFactory + 'static,
+    External::Socket: WebSocketStream,
 {
     type Socket = External::Socket;
-    type WebSocket = Ws::StreamSink;
+    type WebSocket = WebSocket<Self::Socket, Ws::Ext>;
 
     fn stop(&mut self) {
         let RemoteConnections {
@@ -157,7 +162,7 @@ where
     fn spawn_task(
         &mut self,
         sock_addr: SchemeSocketAddr,
-        ws_stream: Ws::StreamSink,
+        ws_stream: WebSocket<External::Socket, Ws::Ext>,
         host: Option<SchemeHostPort>,
     ) {
         let addr = self.next_address();
@@ -326,7 +331,9 @@ where
 
     /// Select the next event based on the current state (or none if we have reached the terminal
     /// state).
-    pub async fn select_next(&mut self) -> Option<Event<External::Socket, Ws::StreamSink>> {
+    pub async fn select_next(
+        &mut self,
+    ) -> Option<Event<External::Socket, WebSocket<External::Socket, Ws::Ext>>> {
         let RemoteConnections {
             spawner,
             listener,
@@ -397,7 +404,7 @@ where
 
     pub fn defer<F>(&self, fut: F)
     where
-        F: Future<Output = DeferredResult<Ws::StreamSink>> + Send + 'a,
+        F: Future<Output = DeferredResult<WebSocket<External::Socket, Ws::Ext>>> + Send + 'a,
     {
         self.deferred.push(fut.boxed());
     }
@@ -489,29 +496,34 @@ async fn do_handshake<Socket, Ws>(
     socket: Socket,
     websockets: &Ws,
     peer_addr: SchemeSocketAddr,
-) -> Result<Ws::StreamSink, ConnectionError>
+) -> Result<WebSocket<Socket, Ws::Ext>, ConnectionError>
 where
     Socket: Send + Sync + Unpin + 'static,
     Ws: WsConnections<Socket>,
 {
     if server {
-        websockets.accept_connection(socket).await
+        websockets
+            .accept_connection(socket)
+            .await
+            .map_err(Into::into)
     } else {
         websockets
             .open_connection(socket, peer_addr.to_string())
             .await
+            .map_err(Into::into)
     }
 }
 
-async fn connect_and_handshake<External: ExternalConnections, Ws>(
+async fn connect_and_handshake<External, Ws>(
     external: External,
     sock_addr: SchemeSocketAddr,
     remaining: SchemeSocketAddrIt,
     scheme_host_port: SchemeHostPort,
     websockets: &Ws,
-) -> DeferredResult<Ws::StreamSink>
+) -> DeferredResult<WebSocket<External::Socket, Ws::Ext>>
 where
     Ws: WsConnections<External::Socket>,
+    External: ExternalConnections,
 {
     match connect_and_handshake_single(
         external,
@@ -526,16 +538,18 @@ where
     }
 }
 
-async fn connect_and_handshake_single<External: ExternalConnections, Ws>(
+async fn connect_and_handshake_single<External, Ws>(
     external: External,
     addr: SocketAddr,
     websockets: &Ws,
-    host_addr: String,
-) -> Result<Ws::StreamSink, ConnectionError>
+    host: String,
+) -> Result<WebSocket<External::Socket, Ws::Ext>, ConnectionError>
 where
     Ws: WsConnections<External::Socket>,
+    External: ExternalConnections,
 {
     websockets
-        .open_connection(external.try_open(addr).await?, host_addr)
+        .open_connection(external.try_open(addr).await?, host)
         .await
+        .map_err(Into::into)
 }

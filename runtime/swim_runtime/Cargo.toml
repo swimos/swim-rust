@@ -4,19 +4,18 @@ version = "0.1.0"
 authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
-[features]
-default = []
-
 [dependencies]
+ratchet = { path = "../../ratchet", features = ["deflate", "split"] }
+ratchet_fixture = { path = "../../ratchet/ratchet_fixture" }
+bytes = "1.0"
 either = "1.5.3"
 flate2 = "1.0.22"
 futures = "0.3.4"
+futures-util = "0.3.4"
 http = "0.2.3"
 pin-project = "1.0.5"
 pin-utils = "0.1.0"
 tokio = { version = "1.1.1", features = ["sync", "rt"] }
-tokio-stream = "0.1.2"
-tokio-tungstenite = { version = "0.13.0", git = "https://github.com/swimos/tokio-tungstenite/", branch = "deflate-v13", features = ["deflate", "tls"] }
 tokio-native-tls = "0.3"
 swim_utilities = { path = "../../swim_utilities", features = ["errors", "circular_buffer", "future", "lrucache"] }
 url = "2.1.1"
@@ -30,9 +29,7 @@ slab = "0.4.2"
 tracing = "0.1.16"
 thiserror = "1.0"
 im = "15.0.0"
-
-[dependencies.tungstenite]
-git = "https://github.com/swimos/tungstenite-rs"
+tokio-stream = { version = "0.1.2", features = ["sync"] }
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["macros", "test-util"] }

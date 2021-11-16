@@ -14,10 +14,10 @@
 
 use std::fs;
 use std::fs::File;
+use std::sync::Arc;
 
+use ratchet::deflate::{Compression, DeflateConfig, DeflateExtProvider};
 use tokio::time::Duration;
-use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
-use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use url::Url;
 
 use swim_form::Form;
@@ -25,8 +25,10 @@ use swim_model::path::AbsolutePath;
 use swim_recon::parser::parse_value;
 use swim_runtime::configuration::{
     BackpressureMode, DownlinkConfig, DownlinkConnectionsConfig, DownlinksConfig, OnInvalidMessage,
+    WebSocketConfig,
 };
 use swim_runtime::remote::config::RemoteConnectionsConfig;
+use swim_runtime::ws::CompressionSwitcherProvider;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::retryable::{Quantity, RetryStrategy};
 
@@ -240,11 +242,14 @@ fn create_full_config() -> SwimClientConfig {
             non_zero_usize!(512),
         ),
         WebSocketConfig {
-            max_send_queue: Some(15),
-            max_message_size: Some(60000000),
-            max_frame_size: Some(16000000),
-            accept_unmasked_frames: true,
-            compression: WsCompression::Deflate(Default::default()),
+            config: ratchet::WebSocketConfig {
+                max_message_size: 60000000,
+            },
+            compression: CompressionSwitcherProvider::On(Arc::new(
+                DeflateExtProvider::with_config(DeflateConfig::for_compression_level(
+                    Compression::best(),
+                )),
+            )),
         },
         dl_config,
     );

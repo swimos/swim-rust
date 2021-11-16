@@ -17,6 +17,8 @@ tracing = { version = "0.1.13", features = ["max_level_debug"] }
 tracing = "0.1.16"
 
 [dependencies]
+ratchet = {  path = "../ratchet", features = ["deflate", "split"] }
+swim_store = { path = "../swim_store" }
 swim_client = { path = "../swim_client" }
 swim_metrics = { path = "swim_metrics" }
 swim_warp = { path = "../swim_warp" }
@@ -39,13 +41,11 @@ swim_form = { path = "../api/swim_form" }
 swim_recon = { path = "../api/formats/swim_recon" }
 swim_schema = { path = "../api/swim_schema" }
 swim_tracing = { path = "../swim_utilities/swim_tracing", features = ["future"] }
-swim_store = { path = "../swim_store" }
 stringify_attr = { path = "../macro_utilities/stringify_attr" }
 swim_async_runtime = { path = "../runtime/swim_async_runtime" }
 tracing-futures = "0.2.4"
 agent_derive = { path = "agent_derive" }
 trybuild = "1.0.48"
-tokio-tungstenite = { version = "0.13.0", git = "https://github.com/swimos/tokio-tungstenite/", branch = "deflate-v13", features = ["tls", "deflate"] }
 tokio-native-tls = "0.3"
 trust-dns-resolver = { version = "0.20", optional = true, features = ["tokio-runtime"] }
 regex = "1"
@@ -60,6 +60,7 @@ rocksdb = "0.16.0"
 tempdir = "0.3.7"
 
 [dev-dependencies]
+ratchet_fixture = { path = "../ratchet/ratchet_fixture" }
 tokio = { version = "1.1.1", features = ["rt-multi-thread", "macros", "test-util"] }
 tracing = "0.1.16"
 tokio-test = "0.4.0"

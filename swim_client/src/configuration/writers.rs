@@ -17,7 +17,6 @@ use crate::configuration::{ClientDownlinksConfig, SwimClientConfig};
 use swim_form::structural::write::{
     BodyWriter, HeaderWriter, RecordBodyKind, StructuralWritable, StructuralWriter,
 };
-use swim_runtime::configuration::WebSocketConfig;
 
 impl StructuralWritable for SwimClientConfig {
     fn num_attributes(&self) -> usize {
@@ -32,8 +31,7 @@ impl StructuralWritable for SwimClientConfig {
 
         body_writer = body_writer.write_value(&self.downlink_connections_config)?;
         body_writer = body_writer.write_value(&self.remote_connections_config)?;
-        let ws_conf: WebSocketConfig = self.websocket_config.into();
-        body_writer = body_writer.write_value(&ws_conf)?;
+        body_writer = body_writer.write_value(&self.websocket_config.clone())?;
         body_writer = body_writer.write_value(&self.downlinks_config)?;
 
         body_writer.done()
@@ -47,10 +45,7 @@ impl StructuralWritable for SwimClientConfig {
 
         body_writer = body_writer.write_value_into(self.downlink_connections_config)?;
         body_writer = body_writer.write_value_into(self.remote_connections_config)?;
-
-        let ws_conf: WebSocketConfig = self.websocket_config.into();
-
-        body_writer = body_writer.write_value_into(ws_conf)?;
+        body_writer = body_writer.write_value_into(self.websocket_config)?;
         body_writer = body_writer.write_value_into(self.downlinks_config)?;
 
         body_writer.done()

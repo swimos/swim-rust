@@ -42,7 +42,7 @@ use swim_runtime::routing::{Route, Router, RoutingAddr, TaggedEnvelope, TaggedSe
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger::promise;
-use swim_warp::envelope::Envelope;
+use swim_warp::envelope::{Envelope, EnvelopeKind};
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
@@ -230,14 +230,23 @@ async fn lane_info_sync() {
     assert!(envelope_tx
         .send(TaggedEnvelope(
             RoutingAddr::remote(1),
-            Envelope::sync("/swim:meta:node/test/", "lanes"),
+            Envelope::sync()
+                .node_uri("/swim:meta:node/test/")
+                .lane_uri("lanes")
+                .done(),
         ))
         .await
         .is_ok());
 
     let assert_task = async move {
         let link = rx.recv().await.expect("No linked envelope received");
-        assert_eq!(link.1, Envelope::linked("/test", "lanes"));
+        assert_eq!(
+            link.1,
+            Envelope::linked()
+                .node_uri("/test")
+                .lane_uri("lanes")
+                .done()
+        );
 
         let mut expected_events = HashSet::new();
         expected_events.insert(record! {
@@ -263,18 +272,30 @@ async fn lane_info_sync() {
         });
 
         let event = rx.recv().await.expect("Expected an event");
-        assert_eq!(event.1.tag(), "event");
-        assert!(expected_events.contains(&event.1.body.expect("Missing event body")));
+        assert_eq!(event.1.kind(), EnvelopeKind::Event);
+        assert!(expected_events.contains(&event.1.body().expect("Missing event body")));
 
         let event = rx.recv().await.expect("Expected an event");
-        assert_eq!(event.1.tag(), "event");
-        assert!(expected_events.contains(&event.1.body.expect("Missing event body")));
+        assert_eq!(event.1.kind(), EnvelopeKind::Event);
+        assert!(expected_events.contains(&event.1.body().expect("Missing event body")));
 
         let link = rx.recv().await.expect("No synced envelope received");
-        assert_eq!(link.1, Envelope::synced("/test", "lanes"));
+        assert_eq!(
+            link.1,
+            Envelope::synced()
+                .node_uri("/test")
+                .lane_uri("lanes")
+                .done()
+        );
 
         let link = rx.recv().await.expect("No unlinked envelope received");
-        assert_eq!(link.1, Envelope::unlinked("/test", "lanes"));
+        assert_eq!(
+            link.1,
+            Envelope::unlinked()
+                .node_uri("/test")
+                .lane_uri("lanes")
+                .done()
+        );
 
         assert!(rx.recv().now_or_never().is_none());
     };

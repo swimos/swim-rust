@@ -1,0 +1,16 @@
+[package]
+name = "ratchet_ext"
+version = "0.1.0"
+authors = ["Swim.AI developers info@swim.ai"]
+edition = "2018"
+description = "WebSocket extensions for Ratchet"
+keywords = ["websocket", "async", "futures", "tokio"]
+categories = ["network-programming", "asynchronous", "web-programming::websocket"]
+license = "Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/swimos/ratchet/ratchet_ext"
+
+[dependencies]
+http = "0.2.3"
+httparse = "1.4.1"
+bytes = "1.0"
