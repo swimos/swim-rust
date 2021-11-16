@@ -194,45 +194,47 @@ where
                         }
                     }
                     Either::Right(Ok(SelectorResult::Read(msg))) => match msg {
-                        WsMessage::Text(msg) => match parse_recognize(Span::new(msg.as_str())) {
-                            Ok(envelope) => {
-                                let (done_tx, done_rx) = trigger::trigger();
+                        WsMessage::Text(msg) => {
+                            match parse_recognize(Span::new(msg.as_str()), false) {
+                                Ok(envelope) => {
+                                    let (done_tx, done_rx) = trigger::trigger();
 
-                                let write_task = write_to_socket_only(
-                                    &mut selector,
-                                    done_rx,
-                                    yield_mod,
-                                    &mut iteration_count,
-                                );
+                                    let write_task = write_to_socket_only(
+                                        &mut selector,
+                                        done_rx,
+                                        yield_mod,
+                                        &mut iteration_count,
+                                    );
 
-                                let dispatch_task = async {
-                                    let dispatch_result = dispatch_envelope(
-                                        &mut router,
-                                        &mut bidirectional_connections,
-                                        &mut resolved,
-                                        envelope,
-                                        config.connection_retries,
-                                        sleep,
-                                    )
-                                    .await;
-                                    if let Err((env, _)) = dispatch_result {
-                                        handle_not_found(env, &message_injector).await;
+                                    let dispatch_task = async {
+                                        let dispatch_result = dispatch_envelope(
+                                            &mut router,
+                                            &mut bidirectional_connections,
+                                            &mut resolved,
+                                            envelope,
+                                            config.connection_retries,
+                                            sleep,
+                                        )
+                                        .await;
+                                        if let Err((env, _)) = dispatch_result {
+                                            handle_not_found(env, &message_injector).await;
+                                        }
+                                    }
+                                    .then(move |_| async {
+                                        done_tx.trigger();
+                                    });
+
+                                    let (_, write_result) = join(dispatch_task, write_task).await;
+
+                                    if let Err(err) = write_result {
+                                        break Completion::Failed(err);
                                     }
                                 }
-                                .then(move |_| async {
-                                    done_tx.trigger();
-                                });
-
-                                let (_, write_result) = join(dispatch_task, write_task).await;
-
-                                if let Err(err) = write_result {
-                                    break Completion::Failed(err);
+                                Err(err) => {
+                                    break err.into();
                                 }
                             }
-                            Err(err) => {
-                                break err.into();
-                            }
-                        },
+                        }
                         message => {
                             event!(Level::WARN, IGNORING_MESSAGE, ?message);
                         }

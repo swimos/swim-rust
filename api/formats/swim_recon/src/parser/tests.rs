@@ -38,6 +38,15 @@ fn check_output<S, T: PartialEq<S>>(result: IResult<Span<'_>, T>, offset: usize,
     }
 }
 
+fn check_output_comments(result: IResult<Span<'_>, Vec<Span<'_>>>, offset: usize) {
+    match result {
+        Ok((rem, _)) => {
+            assert_eq!(rem.location_offset(), offset);
+        }
+        Err(_) => panic!("Unexpected failure."),
+    }
+}
+
 #[test]
 fn parse_identifier() {
     let input = span("name");
@@ -517,8 +526,73 @@ fn parse_blob_final() {
     assert_eq!(result.as_slice(), expected.as_bytes());
 }
 
+#[test]
+fn parse_comment() {
+    let input = span("#Test");
+    assert!(matches!(
+        streaming::comments(input),
+        Err(nom::Err::Incomplete(_))
+    ));
+
+    let input = span("#\n@attr");
+    check_output_comments(streaming::comments(input), 1);
+
+    let input = span("#Test\n@attr");
+    check_output_comments(streaming::comments(input), 5);
+
+    let input = span("#Test#Test\n@attr");
+    check_output_comments(streaming::comments(input), 10);
+
+    let input = span("# Test\n@attr");
+    check_output_comments(streaming::comments(input), 6);
+
+    let input = span("\n\n\n # Test \n@attr");
+    check_output_comments(streaming::comments(input), 11);
+
+    let input = span("#Foo\n # Bar\n #Baz\n@attr");
+    check_output_comments(streaming::comments(input), 17);
+}
+
+#[test]
+fn parse_comments_final() {
+    let input = span("#Test");
+    check_output_comments(complete::comments(input), 5);
+
+    let input = span("#");
+    check_output_comments(complete::comments(input), 1);
+
+    let input = span("#\n");
+    check_output_comments(complete::comments(input), 1);
+
+    let input = span("#Test\n");
+    check_output_comments(complete::comments(input), 5);
+
+    let input = span("#Test#Test\n");
+    check_output_comments(complete::comments(input), 10);
+
+    let input = span("# Test\n");
+    check_output_comments(complete::comments(input), 6);
+
+    let input = span("\n\n\n # Test \n");
+    check_output_comments(complete::comments(input), 11);
+
+    let input = span("#Foo\n # Bar\n #Baz\n");
+    check_output_comments(complete::comments(input), 17);
+}
+
 fn run_parser_iterator(input: &str) -> Result<Vec<ReadEvent<'_>>, nom::error::Error<Span<'_>>> {
-    let it = ParseIterator::new(Span::new(input));
+    let it = ParseIterator::new(Span::new(input), false);
+    let mut v = Vec::new();
+    for r in it {
+        v.push(r?);
+    }
+    Ok(v)
+}
+
+fn run_parser_iterator_with_comments(
+    input: &str,
+) -> Result<Vec<ReadEvent<'_>>, nom::error::Error<Span<'_>>> {
+    let it = ParseIterator::new(Span::new(input), true);
     let mut v = Vec::new();
     for r in it {
         v.push(r?);
@@ -626,6 +700,24 @@ fn empty() {
     assert!(matches!(result.as_slice(), [ReadEvent::Extant]));
 
     let result = run_parser_iterator("\n").unwrap();
+    assert!(matches!(result.as_slice(), [ReadEvent::Extant]));
+}
+
+#[test]
+fn empty_with_comments() {
+    let result = run_parser_iterator_with_comments("#Test").unwrap();
+    assert!(matches!(result.as_slice(), [ReadEvent::Extant]));
+
+    let result = run_parser_iterator("#Test\n").unwrap();
+    assert!(matches!(result.as_slice(), [ReadEvent::Extant]));
+
+    let result = run_parser_iterator("   # Test  # \n").unwrap();
+    assert!(matches!(result.as_slice(), [ReadEvent::Extant]));
+
+    let result = run_parser_iterator("\n\n\n#Test\n").unwrap();
+    assert!(matches!(result.as_slice(), [ReadEvent::Extant]));
+
+    let result = run_parser_iterator("#Foo \n# Bar\n #Baz").unwrap();
     assert!(matches!(result.as_slice(), [ReadEvent::Extant]));
 }
 
@@ -1224,9 +1316,40 @@ fn complex_slot() {
     assert_eq!(result, expected);
 }
 
+#[test]
+fn complex_slot_with_comments() {
+    let expected = vec![
+        ReadEvent::StartBody,
+        attr_event("key"),
+        ReadEvent::EndAttribute,
+        ReadEvent::StartBody,
+        uint_event(1),
+        uint_event(2),
+        uint_event(3),
+        ReadEvent::EndRecord,
+        ReadEvent::Slot,
+        attr_event("value"),
+        ReadEvent::EndAttribute,
+        ReadEvent::StartBody,
+        uint_event(1),
+        uint_event(2),
+        uint_event(3),
+        ReadEvent::EndRecord,
+        ReadEvent::EndRecord,
+    ];
+
+    let result = run_parser_iterator_with_comments("# First \n #Second \n { # Third \n @key {1, # Fourth \n 2, 3}: @value {1\n # Fifth \n 2\n 3\n}}#Sixth").unwrap();
+    assert_eq!(result, expected);
+}
+
 fn value_from_string(rep: &str) -> Result<Value, ParseError> {
     let span = Span::new(rep);
-    super::parse_recognize(span)
+    super::parse_recognize(span, false)
+}
+
+fn value_from_string_with_comments(rep: &str) -> Result<Value, ParseError> {
+    let span = Span::new(rep);
+    super::parse_recognize(span, true)
 }
 
 #[test]
@@ -1316,6 +1439,30 @@ fn record_with_attrs_from_string() {
     assert_eq!(
         value_from_string("@first(1, 2, 3)").unwrap(),
         Value::of_attr(("first", Value::from_vec(vec![1, 2, 3])))
+    );
+}
+
+#[test]
+fn record_with_attrs_from_string_with_comments() {
+    assert_eq!(
+        value_from_string_with_comments("#Test\n@first").unwrap(),
+        Value::of_attr("first")
+    );
+    assert_eq!(
+        value_from_string_with_comments("#Comment \n@first(1)").unwrap(),
+        Value::of_attr(("first", 1))
+    );
+    assert_eq!(
+        value_from_string_with_comments("   #Comment \n @\"two words\"(1)").unwrap(),
+        Value::of_attr(("two words", 1))
+    );
+    assert_eq!(
+        value_from_string_with_comments("\n\n # Comment \n \n @first({})").unwrap(),
+        Value::of_attr(("first", Value::empty_record()))
+    );
+    assert_eq!(
+        value_from_string_with_comments("#Comment \n\n@first @second").unwrap(),
+        Value::of_attrs(vec![Attr::of("first"), Attr::of("second")])
     );
 }
 

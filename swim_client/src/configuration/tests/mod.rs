@@ -37,7 +37,7 @@ use crate::interface::SwimClientBuilder;
 fn test_conf_from_file_default_manual() {
     let contents = include_str!("resources/valid/default-config-manual.recon");
 
-    let config = parse_value(contents).unwrap();
+    let config = parse_value(contents, true).unwrap();
 
     let config = SwimClientConfig::try_from_value(&config).unwrap();
 
@@ -50,7 +50,7 @@ fn test_conf_from_file_default_manual() {
 fn test_conf_from_file_default_automatic() {
     let contents = include_str!("resources/valid/default-config-automatic.recon");
 
-    let config = parse_value(contents).unwrap();
+    let config = parse_value(contents, true).unwrap();
     let config = SwimClientConfig::try_from_value(&config).unwrap();
 
     let expected = SwimClientConfig::default();
@@ -59,10 +59,22 @@ fn test_conf_from_file_default_automatic() {
 }
 
 #[test]
+fn test_full_conf_from_file_with_comments() {
+    let contents = include_str!("resources/valid/client-full-config-with-comments.recon");
+
+    let config = parse_value(contents, true).unwrap();
+    let config = SwimClientConfig::try_from_value(&config).unwrap();
+
+    let expected = create_full_config();
+
+    assert_eq!(config, expected)
+}
+
+#[test]
 fn test_conf_from_file_default_mixed() {
     let contents = include_str!("resources/valid/default-config-mixed.recon");
 
-    let config = parse_value(contents).unwrap();
+    let config = parse_value(contents, true).unwrap();
     let config = SwimClientConfig::try_from_value(&config).unwrap();
 
     let expected = SwimClientConfig::default();
@@ -74,7 +86,7 @@ fn test_conf_from_file_default_mixed() {
 fn test_conf_from_file_retry_exponential() {
     let contents = include_str!("resources/valid/client-config-retry-exponential.recon");
 
-    let config = parse_value(contents).unwrap();
+    let config = parse_value(contents, true).unwrap();
     let config = SwimClientConfig::try_from_value(&config).unwrap();
 
     let expected = SwimClientConfig::new(
@@ -96,7 +108,7 @@ fn test_conf_from_file_retry_exponential() {
 fn test_conf_from_file_retry_immediate() {
     let contents = include_str!("resources/valid/client-config-retry-immediate.recon");
 
-    let config = parse_value(contents).unwrap();
+    let config = parse_value(contents, true).unwrap();
     let config = SwimClientConfig::try_from_value(&config).unwrap();
 
     let expected = SwimClientConfig::new(
@@ -118,7 +130,7 @@ fn test_conf_from_file_retry_immediate() {
 fn test_conf_from_file_retry_interval() {
     let contents = include_str!("resources/valid/client-config-retry-interval.recon");
 
-    let config = parse_value(contents).unwrap();
+    let config = parse_value(contents, true).unwrap();
     let config = SwimClientConfig::try_from_value(&config).unwrap();
 
     let expected = SwimClientConfig::new(
@@ -140,7 +152,7 @@ fn test_conf_from_file_retry_interval() {
 fn test_conf_from_file_retry_none() {
     let contents = include_str!("resources/valid/client-config-retry-none.recon");
 
-    let config = parse_value(contents).unwrap();
+    let config = parse_value(contents, true).unwrap();
     let config = SwimClientConfig::try_from_value(&config).unwrap();
 
     let expected = SwimClientConfig::new(
@@ -256,7 +268,7 @@ fn create_full_config() -> SwimClientConfig {
 fn test_conf_from_file_full_ordered() {
     let contents = include_str!("resources/valid/client-config-full-ordered.recon");
 
-    let config = parse_value(contents).unwrap();
+    let config = parse_value(contents, true).unwrap();
     let config = SwimClientConfig::try_from_value(&config).unwrap();
 
     let expected = create_full_config();
@@ -268,12 +280,25 @@ fn test_conf_from_file_full_ordered() {
 fn test_conf_from_file_full_unordered() {
     let contents = include_str!("resources/valid/client-config-full-unordered.recon");
 
-    let config = parse_value(contents).unwrap();
+    let config = parse_value(contents, true).unwrap();
     let config = SwimClientConfig::try_from_value(&config).unwrap();
 
     let expected = create_full_config();
 
     assert_eq!(config, expected)
+}
+
+#[test]
+fn test_conf_from_file_with_comments() {
+    let file = fs::File::open(
+        "src/configuration/tests/resources/valid/client-full-config-with-comments.recon",
+    )
+    .unwrap();
+
+    let actual = SwimClientBuilder::new_from_file(file).unwrap();
+    let expected = SwimClientBuilder::new(create_full_config());
+
+    assert_eq!(actual, expected)
 }
 
 #[test]

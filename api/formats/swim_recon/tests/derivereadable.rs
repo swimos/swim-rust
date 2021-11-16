@@ -20,7 +20,7 @@ use swim_recon::parser::{parse_recognize, Span};
 
 fn run_recognizer<T: StructuralReadable>(rep: &str) -> T {
     let span = Span::new(rep);
-    parse_recognize(span).unwrap()
+    parse_recognize(span, false).unwrap()
 }
 
 #[test]
@@ -593,7 +593,7 @@ fn derive_empty_enum() {
     enum Empty {}
 
     let span = Span::new("");
-    assert!(parse_recognize::<Empty>(span).is_err());
+    assert!(parse_recognize::<Empty>(span, false).is_err());
 }
 
 #[test]

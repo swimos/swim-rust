@@ -21,7 +21,7 @@ use swim_model::ValueKind;
 
 /// Reading a serialized representation of a record in the Swim data model produces
 /// a stream of these events. An event is either a token, a notification that an
-/// attribute or record body has started or ended or a notifcation of a slot (this will
+/// attribute or record body has started or ended or a notification of a slot (this will
 /// occur between the slot key and the slot value). If a string does not require escaping
 /// it will be provided as a reference into the original input rather than as separate
 /// allocation.
