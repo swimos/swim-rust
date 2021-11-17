@@ -5,7 +5,7 @@ schedules:
     displayName: Nightly code coverage run
     branches:
       include:
-        - master
+        - main
         - server-prototype
 
 variables:

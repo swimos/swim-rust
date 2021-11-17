@@ -1,5 +1,5 @@
-trigger: ["master"]
-pr: ["master"]
+trigger: ["main"]
+pr: ["main"]
 
 variables:
   RUSTFLAGS: -Dwarnings
@@ -10,4 +10,4 @@ jobs:
       name: test_crates
       rust: 1.56.1
       displayName: Test all crates
-      cross: eq(variables['Build.SourceBranch'], 'refs/heads/master')
+      cross: eq(variables['Build.SourceBranch'], 'refs/heads/main')
