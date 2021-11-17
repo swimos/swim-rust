@@ -1224,6 +1224,7 @@ fn search_multiple_no_clone() {
 }
 
 #[test]
+#[allow(clippy::redundant_clone)]
 fn clone_tracker_test() {
     let first = rect!((0.0, 0.0), (10.0, 10.0));
     let clone_count = CloneCount::new();
@@ -1233,7 +1234,7 @@ fn clone_tracker_test() {
     assert_eq!(clone_count.get(), 0);
     let _a = first_clone_tracker.clone();
     assert_eq!(clone_count.get(), 1);
-    let _b = first_clone_tracker;
+    let _b = first_clone_tracker.clone();
     assert_eq!(clone_count.get(), 2);
 }
 

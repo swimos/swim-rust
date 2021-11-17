@@ -1495,7 +1495,7 @@ fn form_enum_variants() {
     let expected_schema = StandardSchema::Or(vec![
         StandardSchema::HeadAttribute {
             schema: Box::new(AttrSchema::named(
-                "UnitEnum",
+                "Unit",
                 StandardSchema::OfKind(ValueKind::Extant),
             )),
             required: true,
@@ -1506,7 +1506,7 @@ fn form_enum_variants() {
         },
         StandardSchema::HeadAttribute {
             schema: Box::new(AttrSchema::named(
-                "NewTypeEnum",
+                "NewType",
                 StandardSchema::OfKind(ValueKind::Extant),
             )),
             required: true,
@@ -1517,7 +1517,7 @@ fn form_enum_variants() {
         },
         StandardSchema::HeadAttribute {
             schema: Box::new(AttrSchema::named(
-                "TupleEnum",
+                "Tuple",
                 StandardSchema::OfKind(ValueKind::Extant),
             )),
             required: true,
@@ -1532,7 +1532,7 @@ fn form_enum_variants() {
         },
         StandardSchema::HeadAttribute {
             schema: Box::new(AttrSchema::named(
-                "StructEnum",
+                "Struct",
                 StandardSchema::OfKind(ValueKind::Extant),
             )),
             required: true,

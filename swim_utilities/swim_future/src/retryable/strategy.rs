@@ -240,35 +240,37 @@ mod tests {
     async fn test_immediate() {
         let retries = 5;
         let mut strategy = RetryStrategy::immediate(non_zero_usize!(retries));
-        let count = strategy.count();
+        let mut it = strategy.into_iter();
+        let count = it.count();
 
         assert_eq!(count, retries);
 
-        for duration in strategy {
+        while let Some(duration) = it.next() {
             assert!(duration.is_none());
         }
 
-        assert!(strategy.next().is_none());
+        assert!(it.next().is_none());
     }
 
     #[tokio::test]
     async fn test_interval() {
         let retries = 5;
         let expected_duration = Duration::from_secs(1);
-        let mut strategy = RetryStrategy::interval(
+        let strategy = RetryStrategy::interval(
             expected_duration,
             Quantity::Finite(non_zero_usize!(retries)),
         );
-        let count = strategy.count();
+        let mut it = strategy.into_iter();
+        let count = it.count();
 
         assert_eq!(count, retries);
 
-        for duration in strategy {
+        while let Some(duration) = it.next() {
             assert!(duration.is_some());
             let duration = duration.unwrap();
             assert_eq!(expected_duration, duration);
         }
 
-        assert!(strategy.next().is_none());
+        assert!(it.next().is_none());
     }
 }
