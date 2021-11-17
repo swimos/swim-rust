@@ -429,9 +429,7 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
         } = agent::make_demand_map_lane(
             "demand_map",
             false,
-            DemandMapLifecycle {
-                inner,
-            },
+            DemandMapLifecycle { inner },
             |agent: &ReportingAgent| &agent.demand_map,
             exec_conf.action_buffer,
         );

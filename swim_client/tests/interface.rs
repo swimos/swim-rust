@@ -659,10 +659,7 @@ mod tests {
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         command_dl
-            .command(MapModification::Update(
-                String::from("milk"),
-                5.into(),
-            ))
+            .command(MapModification::Update(String::from("milk"), 5.into()))
             .await
             .unwrap();
 
