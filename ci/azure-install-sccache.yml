@@ -1,9 +1,6 @@
 # This template installs sccache (Shared Compilation Cache)
 # More info: https://github.com/mozilla/sccache
 
-# Template originally from wasm-bindgen
-# https://github.com/rustwasm/wasm-bindgen/blob/master/ci/azure-install-sccache.yml
-
 steps:
   - bash: |
       set -ex
