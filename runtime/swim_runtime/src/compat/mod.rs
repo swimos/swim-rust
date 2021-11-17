@@ -23,6 +23,9 @@ use thiserror::Error;
 use tokio_util::codec::{Decoder, Encoder};
 use uuid::Uuid;
 
+#[cfg(test)]
+mod tests;
+
 pub enum AgentOperation<T> {
     Link,
     Sync,
@@ -36,7 +39,41 @@ pub struct AgentMessage<T> {
     envelope: AgentOperation<T>,
 }
 
-type RawAgentMessage<'a> = AgentMessage<&'a str>;
+impl<T> AgentMessage<T> {
+    pub fn link<L: Into<Text>>(source: Uuid, lane: L) -> Self {
+        AgentMessage {
+            source,
+            lane: lane.into(),
+            envelope: AgentOperation::Link,
+        }
+    }
+
+    pub fn sync<L: Into<Text>>(source: Uuid, lane: L) -> Self {
+        AgentMessage {
+            source,
+            lane: lane.into(),
+            envelope: AgentOperation::Sync,
+        }
+    }
+
+    pub fn unlink<L: Into<Text>>(source: Uuid, lane: L) -> Self {
+        AgentMessage {
+            source,
+            lane: lane.into(),
+            envelope: AgentOperation::Unlink,
+        }
+    }
+
+    pub fn command<L: Into<Text>>(source: Uuid, lane: L, body: T) -> Self {
+        AgentMessage {
+            source,
+            lane: lane.into(),
+            envelope: AgentOperation::Command(body),
+        }
+    }
+}
+
+type RawAgentMessage<'a> = AgentMessage<&'a [u8]>;
 
 pub struct RawAgentMessageEncoder;
 
@@ -79,7 +116,7 @@ impl<'a> Encoder<RawAgentMessage<'a>> for RawAgentMessageEncoder {
                 }
                 dst.put_u64(body_len | (COMMAND << OP_SHIFT));
                 dst.put_slice(lane.as_bytes());
-                dst.put_slice(body.as_bytes());
+                dst.put_slice(body);
             }
         }
         Ok(())
