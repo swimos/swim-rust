@@ -1,4 +1,4 @@
-// Copyright 2015-2021 SWIM.AI inc.
+// Copyright 2015-2021 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use swim_form::Form;
-use swim_schema::ValueSchema;
 use swim_model::ValueKind;
+use swim_schema::ValueSchema;
 
 fn main() {
     struct Invalid;
