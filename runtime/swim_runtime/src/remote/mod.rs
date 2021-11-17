@@ -1,4 +1,4 @@
-// Copyright 2015-2021 SWIM.AI inc.
+// Copyright 2015-2021 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -48,6 +48,7 @@ use tokio::sync::mpsc;
 use tracing::{event, Level};
 use url::Url;
 
+use ratchet::WebSocketStream;
 use swim_tracing::request::{RequestExt, TryRequestExt};
 
 #[cfg(test)]
@@ -147,6 +148,7 @@ const UNRESOLVABLE_BIDIRECTIONAL: &str = "A bidirectional connection could not b
 impl<External, Ws, DelegateRouterFac, Sp> RemoteConnectionsTask<External, Ws, DelegateRouterFac, Sp>
 where
     External: ExternalConnections,
+    External::Socket: WebSocketStream,
     Ws: WsConnections<External::Socket> + Send + Sync + 'static,
     DelegateRouterFac: RouterFactory + 'static,
     Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Send + Unpin,

@@ -1,19 +1,13 @@
 [package]
 name = "swim_client"
 version = "0.1.0"
-authors = ["Swim.AI developers info@swim.ai"]
+authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2018"
 
 [features]
 debug = ["log_verbose"]
 trust-dns = ["trust-dns-resolver"]
 log_verbose = []
-
-[dependencies.tokio-tungstenite]
-version = "0.13.0"
-git = "https://github.com/swimos/tokio-tungstenite/"
-branch = "deflate-v13"
-features = ["tls", "deflate"]
 
 [target.'cfg(log_verbose)'.dependencies]
 tracing = { version = "0.1.13", features = ["max_level_debug"] }
@@ -30,7 +24,7 @@ swim_model = { path = "../api/swim_model" }
 swim_form = { path = "../api/swim_form" }
 swim_recon = { path = "../api/formats/swim_recon" }
 swim_schema = { path = "../api/swim_schema" }
-
+ratchet = {  path = "../ratchet", features = ["deflate", "split"] }
 http = "0.2"
 tokio-native-tls = "0.3"
 pin-utils = "0.1.0"
@@ -52,3 +46,5 @@ thiserror = "1.0.29"
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["rt-multi-thread"] }
 test_server = { path = "test_server" }
+bytes = "1.0"
+ratchet_fixture = { path = "../ratchet/ratchet_fixture" }

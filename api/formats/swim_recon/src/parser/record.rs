@@ -1,4 +1,4 @@
-// Copyright 2015-2021 SWIM.AI inc.
+// Copyright 2015-2021 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 
 use super::tokens::streaming::*;
 use super::tokens::*;
-use super::Span;
+use super::{FinalAttrStage, ParseEvents, Span};
 use either::Either;
 use nom::branch::alt;
 use nom::character::complete as char_comp;
@@ -148,27 +148,6 @@ fn attr_name(input: Span<'_>) -> IResult<Span<'_>, Cow<'_, str>> {
 
 fn attr_name_final(input: Span<'_>) -> IResult<Span<'_>, Cow<'_, str>> {
     map(complete::identifier, Cow::Borrowed)(input)
-}
-
-#[derive(Debug)]
-pub enum FinalAttrStage<'a> {
-    Start(Cow<'a, str>),
-    EndAttr,
-    StartBody,
-    EndBody,
-}
-
-/// A single parse result can produce several events. This enumeration allows
-/// an iterator to consume them in turn. Note that in the cases with multiple
-/// events, the events are stored as a stack so are in reverse order.
-#[derive(Debug)]
-pub(crate) enum ParseEvents<'a> {
-    NoEvent,
-    SingleEvent(ReadEvent<'a>),
-    TwoEvents(ReadEvent<'a>, ReadEvent<'a>),
-    ThreeEvents(ReadEvent<'a>, ReadEvent<'a>, ReadEvent<'a>),
-    TerminateWithAttr(FinalAttrStage<'a>),
-    End,
 }
 
 impl<'a> ParseEvents<'a> {
@@ -367,20 +346,24 @@ impl FinalSegmentParser {
 
 impl IncrementalReconParser {
     /// Convert to the final segment parser to handle the end of the input.
-    pub fn into_final_parser(self) -> Option<FinalSegmentParser> {
+    pub fn into_final_parser(mut self) -> Option<FinalSegmentParser> {
+        self.final_parser()
+    }
+
+    fn final_parser(&mut self) -> Option<FinalSegmentParser> {
         let IncrementalReconParser {
-            mut state,
+            state,
             allow_comments,
         } = self;
         let top = state.pop();
         if state.is_empty() {
             match top {
                 Some(ParseState::Init) => {
-                    Some(FinalSegmentParser::new(FinalState::Init, allow_comments))
+                    Some(FinalSegmentParser::new(FinalState::Init, *allow_comments))
                 }
                 Some(ParseState::AfterAttr) => Some(FinalSegmentParser::new(
                     FinalState::AfterAttr,
-                    allow_comments,
+                    *allow_comments,
                 )),
                 _ => None,
             }
@@ -411,9 +394,7 @@ impl<'a> Parser<Span<'a>, ParseEvents<'a>, nom::error::Error<Span<'a>>> for Incr
             match top {
                 ParseState::Init => {
                     let (input, (events, change)) =
-                        map(preceded(char_str::multispace0, opt(parse_init)), |r| {
-                            r.unwrap_or_else(|| (ReadEvent::Extant.single(), None))
-                        })(input)?;
+                        preceded(char_str::multispace0, parse_init)(input)?;
                     if let Some(change) = change {
                         change.apply(state);
                     } else {
@@ -422,9 +403,7 @@ impl<'a> Parser<Span<'a>, ParseEvents<'a>, nom::error::Error<Span<'a>>> for Incr
                     Ok((input, events))
                 }
                 ParseState::AfterAttr => {
-                    let (input, (events, change)) = map(opt(parse_after_attr), |r| {
-                        r.unwrap_or((ParseEvents::NoEvent, StateChange::PopAfterItem))
-                    })(input)?;
+                    let (input, (events, change)) = parse_after_attr(input)?;
                     change.apply(state);
                     Ok((input, events))
                 }
@@ -901,27 +880,36 @@ impl<'a> Iterator for ParseEvents<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         match std::mem::take(self) {
             ParseEvents::ThreeEvents(e1, e2, e3) => {
-                *self = ParseEvents::TwoEvents(e2, e3);
-                Some(Some(e1))
+                *self = ParseEvents::TwoEvents(e1, e2);
+                Some(Some(e3))
             }
             ParseEvents::TwoEvents(e1, e2) => {
-                *self = ParseEvents::SingleEvent(e2);
-                Some(Some(e1))
+                *self = ParseEvents::SingleEvent(e1);
+                Some(Some(e2))
             }
             ParseEvents::SingleEvent(e1) => {
                 *self = ParseEvents::NoEvent;
                 Some(Some(e1))
             }
             ParseEvents::NoEvent => None,
-            ParseEvents::TerminateWithAttr(attr) => {
-                *self = ParseEvents::NoEvent;
-                match attr {
-                    FinalAttrStage::Start(name) => Some(Some(ReadEvent::StartAttribute(name))),
-                    FinalAttrStage::EndAttr => Some(Some(ReadEvent::EndAttribute)),
-                    FinalAttrStage::StartBody => Some(Some(ReadEvent::StartBody)),
-                    FinalAttrStage::EndBody => Some(Some(ReadEvent::EndRecord)),
+            ParseEvents::TerminateWithAttr(stage) => match stage {
+                FinalAttrStage::Start(name) => {
+                    *self = ParseEvents::TerminateWithAttr(FinalAttrStage::EndAttr);
+                    Some(Some(ReadEvent::StartAttribute(name)))
                 }
-            }
+                FinalAttrStage::EndAttr => {
+                    *self = ParseEvents::TerminateWithAttr(FinalAttrStage::StartBody);
+                    Some(Some(ReadEvent::EndAttribute))
+                }
+                FinalAttrStage::StartBody => {
+                    *self = ParseEvents::TerminateWithAttr(FinalAttrStage::EndBody);
+                    Some(Some(ReadEvent::StartBody))
+                }
+                FinalAttrStage::EndBody => {
+                    *self = ParseEvents::End;
+                    Some(Some(ReadEvent::EndRecord))
+                }
+            },
             ParseEvents::End => Some(None),
         }
     }

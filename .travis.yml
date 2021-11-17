@@ -5,7 +5,7 @@ language: rust
 
 branches:
   only:
-    - master
+    - main
 
 jobs:
   include:
@@ -17,7 +17,7 @@ jobs:
         - RUST_BACKTRACE=1
       script:
         - rustup component add rust-src
-        - cargo test --workspace --all-targets --all-features
+        - cargo test --workspace --lib --tests --all-features
     - name: "Clippy, formatting and documentation"
       os: linux
       arch: amd64

@@ -1,4 +1,4 @@
-// Copyright 2015-2021 SWIM.AI inc.
+// Copyright 2015-2021 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -52,16 +52,8 @@ pub use swim_format as format;
 #[cfg(feature = "trigger")]
 pub use swim_trigger as trigger;
 
-#[cfg(any(
-    feature = "bilock",
-    feature = "circular_buffer",
-    feature = "rwlock",
-    feature = "topic",
-))]
+#[cfg(any(feature = "circular_buffer", feature = "rwlock", feature = "topic",))]
 pub mod sync {
-    #[cfg(feature = "bilock")]
-    pub use swim_bilock as bilock;
-
     #[cfg(feature = "circular_buffer")]
     pub use swim_sync::circular_buffer;
     #[cfg(feature = "rwlock")]

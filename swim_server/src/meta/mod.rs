@@ -1,4 +1,4 @@
-// Copyright 2015-2021 SWIM.AI inc.
+// Copyright 2015-2021 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -40,8 +40,8 @@ use std::str::FromStr;
 use swim_metrics::{MetaPulseLanes, MetricStage, NodeMetricAggregator};
 use swim_model::path::RelativePath;
 use swim_model::Text;
-use swim_utilities::future::item_sink::try_send::TrySend;
 
+use swim_utilities::future::item_sink::TrySend;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
 use tokio::sync::mpsc::error::TrySendError;

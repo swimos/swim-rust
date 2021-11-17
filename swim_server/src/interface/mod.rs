@@ -1,4 +1,4 @@
-// Copyright 2015-2021 SWIM.AI inc.
+// Copyright 2015-2021 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ use crate::plane::{ContextImpl, PlaneSpec};
 use crate::routing::{PlaneRoutingRequest, TopLevelServerRouter, TopLevelServerRouterFactory};
 use either::Either;
 use futures::{io, join};
+use ratchet::{NoExtProvider, ProtocolRegistry, WebSocketConfig};
 use server_store::plane::PlaneStore;
 use std::collections::HashMap;
 use std::error::Error;
@@ -40,11 +41,10 @@ use swim_client::interface::ClientContext;
 use swim_client::router::ClientRouterFactory;
 use swim_model::path::Addressable;
 use swim_runtime::configuration::{DownlinkConfig, DownlinkConnectionsConfig, DownlinksConfig};
-use swim_runtime::ws::tungstenite::TungsteniteWsConnections;
+use swim_runtime::ws::ext::RatchetNetworking;
 use swim_utilities::future::open_ended::OpenEndedFutures;
 use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
-use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use url::Url;
 
 use crate::PlaneBuilder;
@@ -431,8 +431,10 @@ where
             conn_config,
             TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
             address,
-            TungsteniteWsConnections {
+            RatchetNetworking {
                 config: websocket_config,
+                provider: NoExtProvider,
+                subprotocols: ProtocolRegistry::new(vec!["warp0"]).unwrap(),
             },
             top_level_router_fac,
             OpenEndedFutures::new(),

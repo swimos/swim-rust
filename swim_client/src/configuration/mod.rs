@@ -1,4 +1,4 @@
-// Copyright 2015-2021 SWIM.AI inc.
+// Copyright 2015-2021 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,12 +17,12 @@ use swim_form::structural::read::ReadError;
 use swim_model::path::AbsolutePath;
 use swim_model::path::Addressable;
 use swim_recon::parser::ParseError;
-use swim_runtime::configuration::{DownlinkConfig, DownlinkConnectionsConfig, DownlinksConfig};
+use swim_runtime::configuration::{
+    DownlinkConfig, DownlinkConnectionsConfig, DownlinksConfig, WebSocketConfig,
+};
 use swim_runtime::remote::config::RemoteConnectionsConfig;
 
 use thiserror::Error;
-use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
-use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use url::Url;
 
 mod recognizers;
@@ -37,37 +37,12 @@ mod writers;
 /// * `remote_connections_config` - Configuration parameters the remote connections.
 /// * `websocket_config` - Configuration parameters the WebSocket connections.
 /// * `downlinks_config` - Configuration for the behaviour of downlinks.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct SwimClientConfig {
     pub downlink_connections_config: DownlinkConnectionsConfig,
     pub remote_connections_config: RemoteConnectionsConfig,
     pub websocket_config: WebSocketConfig,
     pub downlinks_config: ClientDownlinksConfig,
-}
-
-impl PartialEq<Self> for SwimClientConfig {
-    fn eq(&self, other: &Self) -> bool {
-        self.downlink_connections_config == other.downlink_connections_config
-            && self.remote_connections_config == other.remote_connections_config
-            && self.websocket_config.max_send_queue == other.websocket_config.max_send_queue
-            && self.websocket_config.max_message_size == other.websocket_config.max_message_size
-            && self.websocket_config.max_frame_size == other.websocket_config.max_frame_size
-            && self.websocket_config.accept_unmasked_frames
-                == other.websocket_config.accept_unmasked_frames
-            && match (
-                self.websocket_config.compression,
-                other.websocket_config.compression,
-            ) {
-                (WsCompression::None(self_val), WsCompression::None(other_val)) => {
-                    self_val == other_val
-                }
-                (WsCompression::Deflate(self_deflate), WsCompression::Deflate(other_deflate)) => {
-                    self_deflate == other_deflate
-                }
-                _ => false,
-            }
-            && self.downlinks_config == other.downlinks_config
-    }
 }
 
 impl SwimClientConfig {

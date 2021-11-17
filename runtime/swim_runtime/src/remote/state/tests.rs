@@ -1,4 +1,4 @@
-// Copyright 2015-2021 SWIM.AI inc.
+// Copyright 2015-2021 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,14 +19,14 @@ use crate::remote::state::{
     DeferredResult, Event, RemoteConnectionChannels, RemoteConnections, RemoteTasksState, State,
 };
 use crate::remote::table::{BidirectionalRegistrator, SchemeHostPort};
-use crate::remote::test_fixture::{
-    ErrorMode, FakeConnections, FakeListener, FakeSocket, FakeWebsocket, FakeWebsockets,
-    LocalRoutes,
-};
+use crate::remote::test_fixture::connections::{FakeConnections, FakeListener, FakeWebsockets};
+use crate::remote::test_fixture::LocalRoutes;
 use crate::remote::{ConnectionDropped, Scheme, SchemeSocketAddr};
 use crate::routing::{CloseSender, RoutingAddr, TaggedSender};
 use futures::future::BoxFuture;
 use futures::io::ErrorKind;
+use ratchet::{NoExt, Role};
+use ratchet_fixture::duplex::websocket_for;
 use std::collections::HashMap;
 use std::io;
 use std::time::Duration;
@@ -36,6 +36,7 @@ use swim_utilities::future::open_ended::OpenEndedFutures;
 use swim_utilities::future::request::Request;
 use swim_utilities::future::retryable::RetryStrategy;
 use swim_utilities::trigger::promise;
+use tokio::io::{duplex, DuplexStream};
 use tokio::sync::{mpsc, oneshot};
 
 type TestSpawner = OpenEndedFutures<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>>;
@@ -52,7 +53,7 @@ struct TestFixture<'a> {
 fn make_state(
     addr: RoutingAddr,
     ws: &FakeWebsockets,
-    incoming: mpsc::Receiver<io::Result<(FakeSocket, SchemeSocketAddr)>>,
+    incoming: mpsc::Receiver<io::Result<(DuplexStream, SchemeSocketAddr)>>,
 ) -> TestFixture<'_> {
     let buffer_size = non_zero_usize!(8);
 
@@ -150,7 +151,8 @@ async fn connections_state_spawn_task() {
 
     let sa = sock_addr();
 
-    let web_sock = FakeWebsocket::new(FakeSocket::trivial());
+    let (web_sock, rx) = websocket_for(Role::Client, NoExt).await;
+    drop(rx);
     let host = SchemeHostPort::new(Scheme::Ws, "my_host".to_string(), 80);
 
     let (req_tx, req_rx) = oneshot::channel();
@@ -191,7 +193,8 @@ async fn connections_state_defer_handshake() {
 
     let sa = sock_addr();
 
-    connections.defer_handshake(FakeSocket::trivial(), sa);
+    let (_ws_tx, ws_rx) = duplex(128);
+    connections.defer_handshake(ws_rx, sa);
 
     assert_eq!(connections.deferred.len(), 1);
 
@@ -222,9 +225,10 @@ async fn connections_state_defer_connect_good() {
 
     let target = SchemeHostPort::new(Scheme::Ws, "my_host".to_string(), 80);
     let sa = sock_addr();
-    let socket = FakeSocket::trivial();
+
+    let (_ws_tx, ws_rx) = duplex(128);
     fake_connections.add_dns(target.to_string(), sa);
-    fake_connections.add_socket(sa, socket);
+    fake_connections.add_socket(sa, ws_rx);
 
     connections.defer_connect_and_handshake(target.clone(), sa, vec![].into_iter());
 
@@ -488,7 +492,7 @@ async fn connections_state_shutdown_process() {
 
     let sa = sock_addr();
 
-    let web_sock = FakeWebsocket::new(FakeSocket::new(vec![], false, None, ErrorMode::None));
+    let (web_sock, _ws_rx) = websocket_for(Role::Client, NoExt).await;
     let host1 = SchemeHostPort::new(Scheme::Ws, "my_host".to_string(), 80);
     let host2 = SchemeHostPort::new(Scheme::Ws, "other".to_string(), 80);
 

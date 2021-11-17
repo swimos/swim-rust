@@ -1,4 +1,4 @@
-// Copyright 2015-2021 SWIM.AI inc.
+// Copyright 2015-2021 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -165,18 +165,12 @@ impl Recognizer for SwimClientConfigRecognizer {
                     }
                     ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
                 },
-                ReadEvent::EndRecord => {
-                    let ws_conf = match self.websocket_connections.as_ref() {
-                        Some(conf) => (*conf).into(),
-                        _ => Default::default(),
-                    };
-                    Some(Ok(SwimClientConfig {
-                        downlink_connections_config: self.downlink_connections.unwrap_or_default(),
-                        remote_connections_config: self.remote_connections.unwrap_or_default(),
-                        websocket_config: ws_conf,
-                        downlinks_config: self.downlinks.clone().unwrap_or_default(),
-                    }))
-                }
+                ReadEvent::EndRecord => Some(Ok(SwimClientConfig {
+                    downlink_connections_config: self.downlink_connections.unwrap_or_default(),
+                    remote_connections_config: self.remote_connections.unwrap_or_default(),
+                    websocket_config: self.websocket_connections.clone().unwrap_or_default(),
+                    downlinks_config: self.downlinks.clone().unwrap_or_default(),
+                })),
                 ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                     ExpectedEvent::ValueEvent(ValueKind::Text),
                     ExpectedEvent::EndOfRecord,

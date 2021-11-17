@@ -1,0 +1,42 @@
+[package]
+name = "ratchet"
+version = "0.1.0"
+authors = ["Swim Inc. developers info@swim.ai"]
+edition = "2018"
+description = "Async WebSocket implementation"
+keywords = ["websocket", "async", "futures", "tokio"]
+categories = ["network-programming", "asynchronous", "web-programming::websocket"]
+license = "Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/swimos/ratchet"
+
+[features]
+default = []
+deflate = ["ratchet_deflate"]
+split = ["ratchet_core/split"]
+fixture = ["ratchet_core/fixture"]
+
+[dependencies]
+ratchet_core = { path = "ratchet_core" }
+ratchet_ext = { path = "ratchet_ext" }
+ratchet_deflate = { path = "ratchet_deflate", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.1.1", features = ["rt-multi-thread", "macros", "test-util"] }
+tokio-stream = { version = "0.1.2", features = ["net"] }
+bytes = "1.0"
+
+[[example]]
+name = "autobahn-client"
+required-features = ["deflate"]
+
+[[example]]
+name = "autobahn-server"
+required-features = ["deflate"]
+
+[[example]]
+name = "client"
+required-features = ["split"]
+
+[[example]]
+name = "server"

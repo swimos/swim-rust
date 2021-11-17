@@ -1,4 +1,4 @@
-// Copyright 2015-2021 SWIM.AI inc.
+// Copyright 2015-2021 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@ pub mod comap;
 pub mod drop_all;
 pub mod either;
 pub mod fail_all;
-pub mod try_send;
 
 pub mod error {
 
@@ -229,4 +228,21 @@ pub fn for_broadcast_sender<T: Send + 'static>(
     tx: broadcast::Sender<T>,
 ) -> impl ItemSender<T, broadcast::error::SendError<T>> {
     FnMutSender::new(tx, broadcast_send_op)
+}
+
+pub struct TrySendError<I>(pub I);
+
+pub trait TrySend<T> {
+    type Error;
+
+    /// Attempt to send an item into the sink.
+    fn try_send_item(&mut self, value: T) -> Result<(), Self::Error>;
+}
+
+impl<T> TrySend<T> for mpsc::Sender<T> {
+    type Error = mpsc::error::TrySendError<T>;
+
+    fn try_send_item(&mut self, value: T) -> Result<(), Self::Error> {
+        self.try_send(value)
+    }
 }

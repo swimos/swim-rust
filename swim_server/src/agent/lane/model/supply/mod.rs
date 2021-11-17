@@ -1,4 +1,4 @@
-// Copyright 2015-2021 SWIM.AI inc.
+// Copyright 2015-2021 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ use futures::future::BoxFuture;
 use futures::FutureExt;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swim_utilities::future::item_sink::try_send::TrySend;
+use swim_utilities::future::item_sink::TrySend;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::{SendError, TrySendError};
 use tokio_stream::wrappers::ReceiverStream;
