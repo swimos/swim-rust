@@ -3,11 +3,12 @@
 <a href="https://www.swimos.org"><img src="https://docs.swimos.org/readme/marlin-blue.svg" align="left"></a>
 <br><br><br>
 
+## Examples
+
+The [cookbook](/cookbook) can serve as a starting point for getting familiar with core Swim concepts that form the basis of all Swim apps.
+
 ## Demo applications
 A number of demo applications are available in the [swim-rust-demos](https://github.com/swimos/swim-rust-demos) repository.
-
-## Client configuration CLI tool
-A CLI tool is available for creating configuration files for client instances [here](https://github.com/swimos/rust-client-config-cli).
 
 ## Development
 
@@ -22,8 +23,8 @@ A CLI tool is available for creating configuration files for client instances [h
 
 ### Lint
 ##### Manual
-1) `cargo fmt -- --check`
-2) `cargo clippy --all-features -- -D warnings`
+1) `cargo fmt --all -- --check`
+2) `cargo clippy --all-features --workspace -- -D warnings`
 
 ##### Automatic (before commit): 
 - Install hook: `sh ./install-commit-hook.sh`
