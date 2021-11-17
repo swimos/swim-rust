@@ -38,10 +38,8 @@ async fn responder(mut state: SharedValue, mut rx: mpsc::Receiver<Action>) {
                     if let Some(cb) = maybe_cb {
                         let _ = cb.send_ok(());
                     }
-                } else {
-                    if let Some(cb) = maybe_cb {
-                        let _ = cb.send_err(DownlinkError::InvalidAction);
-                    }
+                } else if let Some(cb) = maybe_cb {
+                    let _ = cb.send_err(DownlinkError::InvalidAction);
                 }
             }
             Action::Get(cb) => {
@@ -55,10 +53,8 @@ async fn responder(mut state: SharedValue, mut rx: mpsc::Receiver<Action>) {
                     if let Some(cb) = maybe_cb {
                         let _ = cb.send_ok(old);
                     }
-                } else {
-                    if let Some(cb) = maybe_cb {
-                        let _ = cb.send_err(DownlinkError::InvalidAction);
-                    }
+                } else if let Some(cb) = maybe_cb {
+                    let _ = cb.send_err(DownlinkError::InvalidAction);
                 }
             }
             Action::TryUpdate(f, maybe_cb) => {
@@ -245,7 +241,7 @@ async fn subscriber_covariant_cast() {
 
     assert!(sub.clone().covariant_cast::<i32>().is_ok());
     assert!(sub.clone().covariant_cast::<Value>().is_ok());
-    assert!(sub.clone().covariant_cast::<String>().is_err());
+    assert!(sub.covariant_cast::<String>().is_err());
 }
 
 #[tokio::test]

@@ -223,7 +223,9 @@ fn create_full_config() -> SwimClientConfig {
         ),
     );
 
-    let config = SwimClientConfig::new(
+    
+
+    SwimClientConfig::new(
         DownlinkConnectionsConfig::new(
             non_zero_usize!(8),
             non_zero_usize!(32),
@@ -252,9 +254,7 @@ fn create_full_config() -> SwimClientConfig {
             )),
         },
         dl_config,
-    );
-
-    config
+    )
 }
 
 #[test]

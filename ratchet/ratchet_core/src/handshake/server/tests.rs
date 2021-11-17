@@ -197,7 +197,7 @@ async fn bad_request() {
 fn assert_response_eq(left: Response<()>, right: Response<()>) {
     assert!(left.version().eq(&right.version()));
     assert!(left.status().eq(&right.status()));
-    assert!(left.headers().eq(&right.headers()));
+    assert!(left.headers().eq(right.headers()));
 }
 
 #[derive(Debug, thiserror::Error)]

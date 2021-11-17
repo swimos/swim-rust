@@ -188,7 +188,7 @@ pub fn complex_insert_to_value() {
     assert_eq!(
         Form::as_value(&UntypedMapModification::Update(
             Value::text("hello"),
-            body.clone()
+            body
         )),
         expected
     );
@@ -218,7 +218,7 @@ pub fn complex_insert_from_value() {
         result2,
         Ok(UntypedMapModification::Update(
             Value::text("hello"),
-            body.clone()
+            body
         ))
     );
 }

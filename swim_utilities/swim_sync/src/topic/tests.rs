@@ -553,8 +553,7 @@ async fn run_as_tasks<F1, F2, Fut1, Fut2>(
     rx: Receiver<usize>,
     write_task: F1,
     read_task: F2,
-) -> ()
-where
+) where
     Fut1: Future<Output = Option<Sender<usize>>> + Send + 'static,
     Fut2: Future<Output = ()> + Send + 'static,
     F1: FnOnce(Sender<usize>) -> Fut1 + Send + 'static,
@@ -583,8 +582,7 @@ async fn run_as_tasks_two_readers<F1, F2, F3, Fut1, Fut2, Fut3>(
     write_task: F1,
     read_task1: F2,
     read_task2: F3,
-) -> ()
-where
+) where
     Fut1: Future<Output = Option<Sender<usize>>> + Send + 'static,
     Fut2: Future<Output = ()> + Send + 'static,
     Fut3: Future<Output = ()> + Send + 'static,
@@ -895,7 +893,7 @@ async fn adding_subscribers() {
 
     let start_task = |rx: Receiver<i32>| {
         let mut stream = rx.into_stream();
-        let task = async move { while let Some(_) = stream.next().await {} };
+        let task = async move { while stream.next().await.is_some() {} };
         tokio::spawn(task);
     };
 

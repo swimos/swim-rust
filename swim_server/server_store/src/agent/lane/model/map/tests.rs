@@ -91,7 +91,7 @@ impl StoreEngine for TrackingMapStore {
         match key {
             k @ StoreKey::Map { .. } => {
                 let guard = self.values.lock().unwrap();
-                Ok(guard.get(serialize(&k)?.as_slice()).map(|o| o.clone()))
+                Ok(guard.get(serialize(&k)?.as_slice()).cloned())
             }
             StoreKey::Value { .. } => {
                 panic!("Expected a map key")
@@ -215,7 +215,7 @@ fn model_snapshot_multiple_ids() {
 fn model_crud() {
     let values = Arc::new(Mutex::new(HashMap::new()));
     let store = TrackingMapStore {
-        values: values.clone(),
+        values,
     };
     let model = MapDataModel::<TrackingMapStore, String, i32>::new(store, 0);
 

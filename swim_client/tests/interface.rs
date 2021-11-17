@@ -660,7 +660,7 @@ mod tests {
 
         command_dl
             .command(MapModification::Update(
-                String::from("milk").into(),
+                String::from("milk"),
                 5.into(),
             ))
             .await

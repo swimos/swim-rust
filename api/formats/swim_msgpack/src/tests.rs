@@ -27,9 +27,9 @@ fn validate<T: Form + PartialEq + Debug>(value: &T) {
     let interp = MsgPackInterpreter::new(&mut writer);
     assert!(value.write_with(interp).is_ok());
 
-    let bytes = buffer.split().freeze();
+    let mut bytes = buffer.split().freeze();
 
-    let restored: Result<T, MsgPackReadError> = read_from_msg_pack(&mut bytes.clone());
+    let restored: Result<T, MsgPackReadError> = read_from_msg_pack(&mut bytes);
 
     assert!(restored.is_ok());
 
@@ -88,7 +88,7 @@ fn msgpack_string() {
         validate(&s.to_string());
     }
     for n in &DATA_LENGTHS {
-        let long: String = std::iter::repeat('a').take(*n).collect();
+        let long = "a".repeat(*n);
         validate(&long);
     }
 }

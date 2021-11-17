@@ -18,97 +18,97 @@ use crate::{Value, ValueKind};
 fn test_i32() {
     let value = Value::Int32Value(100);
 
-    assert_eq!(Value::is_coercible_to(&value, ValueKind::Int32), true);
-    assert_eq!(Value::is_coercible_to(&value, ValueKind::Int64), true);
+    assert!(Value::is_coercible_to(&value, ValueKind::Int32));
+    assert!(Value::is_coercible_to(&value, ValueKind::Int64));
 
-    assert_eq!(
-        Value::is_coercible_to(&Value::Int32Value(-100), ValueKind::UInt32),
-        false
-    );
-    assert_eq!(
-        Value::is_coercible_to(&Value::Int32Value(-100), ValueKind::UInt64),
-        false
-    );
+    assert!(!Value::is_coercible_to(
+        &Value::Int32Value(-100),
+        ValueKind::UInt32
+    ));
+    assert!(!Value::is_coercible_to(
+        &Value::Int32Value(-100),
+        ValueKind::UInt64
+    ));
 
-    assert_eq!(Value::is_coercible_to(&value, ValueKind::UInt32), true);
-    assert_eq!(Value::is_coercible_to(&value, ValueKind::UInt64), true);
-    assert_eq!(
-        Value::is_coercible_to(&Value::Int32Value(0), ValueKind::Extant),
-        false
-    );
-    assert_eq!(Value::is_coercible_to(&value, ValueKind::Record), false);
+    assert!(Value::is_coercible_to(&value, ValueKind::UInt32));
+    assert!(Value::is_coercible_to(&value, ValueKind::UInt64));
+    assert!(!Value::is_coercible_to(
+        &Value::Int32Value(0),
+        ValueKind::Extant
+    ));
+    assert!(!Value::is_coercible_to(&value, ValueKind::Record));
 
-    assert_eq!(Value::is_coercible_to(&value, ValueKind::Boolean), false);
-    assert_eq!(
-        Value::is_coercible_to(&Value::Int32Value(0), ValueKind::Boolean),
-        false
-    );
+    assert!(!Value::is_coercible_to(&value, ValueKind::Boolean));
+    assert!(!Value::is_coercible_to(
+        &Value::Int32Value(0),
+        ValueKind::Boolean
+    ));
 
-    assert_eq!(Value::is_coercible_to(&value, ValueKind::Text), false);
+    assert!(!Value::is_coercible_to(&value, ValueKind::Text));
 }
 
 #[test]
 fn test_u32() {
     let value = Value::UInt32Value(100);
 
-    assert_eq!(Value::is_coercible_to(&value, ValueKind::Int32), true);
-    assert_eq!(Value::is_coercible_to(&value, ValueKind::Int64), true);
+    assert!(Value::is_coercible_to(&value, ValueKind::Int32));
+    assert!(Value::is_coercible_to(&value, ValueKind::Int64));
 
-    assert_eq!(
-        Value::is_coercible_to(&Value::UInt32Value(u32::MAX), ValueKind::Int32),
-        false
-    );
-    assert_eq!(
-        Value::is_coercible_to(&Value::UInt32Value(u32::MAX), ValueKind::UInt64),
-        true
-    );
+    assert!(!Value::is_coercible_to(
+        &Value::UInt32Value(u32::MAX),
+        ValueKind::Int32
+    ));
+    assert!(Value::is_coercible_to(
+        &Value::UInt32Value(u32::MAX),
+        ValueKind::UInt64
+    ));
 
-    assert_eq!(Value::is_coercible_to(&value, ValueKind::Int32), true);
-    assert_eq!(Value::is_coercible_to(&value, ValueKind::Int64), true);
-    assert_eq!(
-        Value::is_coercible_to(&Value::UInt32Value(0), ValueKind::Extant),
-        false
-    );
-    assert_eq!(Value::is_coercible_to(&value, ValueKind::Record), false);
+    assert!(Value::is_coercible_to(&value, ValueKind::Int32));
+    assert!(Value::is_coercible_to(&value, ValueKind::Int64));
+    assert!(!Value::is_coercible_to(
+        &Value::UInt32Value(0),
+        ValueKind::Extant
+    ));
+    assert!(!Value::is_coercible_to(&value, ValueKind::Record));
 
-    assert_eq!(Value::is_coercible_to(&value, ValueKind::Boolean), false);
-    assert_eq!(
-        Value::is_coercible_to(&Value::UInt32Value(0), ValueKind::Boolean),
-        false
-    );
+    assert!(!Value::is_coercible_to(&value, ValueKind::Boolean));
+    assert!(!Value::is_coercible_to(
+        &Value::UInt32Value(0),
+        ValueKind::Boolean
+    ));
 
-    assert_eq!(Value::is_coercible_to(&value, ValueKind::Text), false);
+    assert!(!Value::is_coercible_to(&value, ValueKind::Text));
 }
 
 #[test]
 fn test_u64() {
     let value = Value::UInt64Value(100);
 
-    assert_eq!(Value::is_coercible_to(&value, ValueKind::Int32), true);
-    assert_eq!(Value::is_coercible_to(&value, ValueKind::Int64), true);
+    assert!(Value::is_coercible_to(&value, ValueKind::Int32));
+    assert!(Value::is_coercible_to(&value, ValueKind::Int64));
 
-    assert_eq!(
-        Value::is_coercible_to(&Value::UInt64Value(u64::MAX), ValueKind::Int32),
-        false
-    );
-    assert_eq!(
-        Value::is_coercible_to(&Value::UInt64Value(u64::MAX), ValueKind::Int64),
-        false
-    );
+    assert!(!Value::is_coercible_to(
+        &Value::UInt64Value(u64::MAX),
+        ValueKind::Int32
+    ));
+    assert!(!Value::is_coercible_to(
+        &Value::UInt64Value(u64::MAX),
+        ValueKind::Int64
+    ));
 
-    assert_eq!(Value::is_coercible_to(&value, ValueKind::Int32), true);
-    assert_eq!(Value::is_coercible_to(&value, ValueKind::Int64), true);
-    assert_eq!(
-        Value::is_coercible_to(&Value::UInt64Value(0), ValueKind::Extant),
-        false
-    );
-    assert_eq!(Value::is_coercible_to(&value, ValueKind::Record), false);
+    assert!(Value::is_coercible_to(&value, ValueKind::Int32));
+    assert!(Value::is_coercible_to(&value, ValueKind::Int64));
+    assert!(!Value::is_coercible_to(
+        &Value::UInt64Value(0),
+        ValueKind::Extant
+    ));
+    assert!(!Value::is_coercible_to(&value, ValueKind::Record));
 
-    assert_eq!(Value::is_coercible_to(&value, ValueKind::Boolean), false);
-    assert_eq!(
-        Value::is_coercible_to(&Value::UInt64Value(0), ValueKind::Boolean),
-        false
-    );
+    assert!(!Value::is_coercible_to(&value, ValueKind::Boolean));
+    assert!(!Value::is_coercible_to(
+        &Value::UInt64Value(0),
+        ValueKind::Boolean
+    ));
 
-    assert_eq!(Value::is_coercible_to(&value, ValueKind::Text), false);
+    assert!(!Value::is_coercible_to(&value, ValueKind::Text));
 }

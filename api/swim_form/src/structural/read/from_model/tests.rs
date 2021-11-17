@@ -107,8 +107,8 @@ fn with_attributes_round_trip() {
     round_trip(rec3);
 
     let rec4 = Value::Record(
-        vec![attr1.clone(), attr2.clone(), attr3.clone()],
-        body.clone(),
+        vec![attr1, attr2, attr3],
+        body,
     );
     round_trip(rec4);
 }
@@ -122,12 +122,12 @@ fn nested_round_trip() {
     );
     let rec1 = Value::record(vec![
         Item::slot("first", inner1.clone()),
-        Item::slot(inner1.clone(), "second"),
+        Item::slot(inner1, "second"),
     ]);
 
     let rec2 = Value::record(vec![
         Item::slot("first", inner2.clone()),
-        Item::slot(inner2.clone(), "second"),
+        Item::slot(inner2, "second"),
     ]);
 
     round_trip(rec1);

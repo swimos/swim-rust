@@ -405,8 +405,8 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
                 inner: inner.clone(),
             },
             |agent: &ReportingAgent| &agent.action,
-            exec_conf.action_buffer.clone(),
-            exec_conf.feedback_buffer.clone(),
+            exec_conf.action_buffer,
+            exec_conf.feedback_buffer,
         );
 
         let LaneParts {
@@ -419,7 +419,7 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
                 inner: inner.clone(),
             },
             |agent: &ReportingAgent| &agent.demand,
-            exec_conf.action_buffer.clone(),
+            exec_conf.action_buffer,
         );
 
         let LaneParts {
@@ -430,10 +430,10 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
             "demand_map",
             false,
             DemandMapLifecycle {
-                inner: inner.clone(),
+                inner,
             },
             |agent: &ReportingAgent| &agent.demand_map,
-            exec_conf.action_buffer.clone(),
+            exec_conf.action_buffer,
         );
 
         let agent = ReportingAgent {

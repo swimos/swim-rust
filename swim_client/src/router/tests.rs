@@ -74,7 +74,7 @@ impl FakeConnections {
 pub(crate) struct MockRemoteRouterTask;
 
 impl MockRemoteRouterTask {
-    pub(crate) fn new(mut fake_conns: FakeConnections) -> mpsc::Sender<RemoteRoutingRequest> {
+    pub(crate) fn build(mut fake_conns: FakeConnections) -> mpsc::Sender<RemoteRoutingRequest> {
         let (tx, mut rx) = mpsc::channel(32);
 
         tokio::spawn(async move {
