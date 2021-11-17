@@ -159,14 +159,14 @@ async fn recognize_decode_complete_eof() {
     assert_complete(result, expected);
 }
 
-const BAD1: &str = "#Example { field: 2 }";
-const BAD2: &str = "@Example # field: 2 }";
+const BAD1: &str = "$Example { field: 2 }";
+const BAD2: &str = "@Example $ field: 2 }";
 const BAD3A: &str = "@Example ";
-const BAD3B: &str = " # field: 2 }";
-const BAD4: &str = "@Record {\n first # 4 }";
+const BAD3B: &str = " $ field: 2 }";
+const BAD4: &str = "@Record {\n first $ 4 }";
 const BAD5A: &str = "@Record {\n";
 const BAD5B: &str = " first: 2\n second";
-const BAD5C: &str = ": # }";
+const BAD5C: &str = ": $ }";
 
 #[tokio::test]
 async fn simple_error_loc() {
