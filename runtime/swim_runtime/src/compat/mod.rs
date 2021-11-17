@@ -26,6 +26,7 @@ use uuid::Uuid;
 #[cfg(test)]
 mod tests;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AgentOperation<T> {
     Link,
     Sync,
@@ -33,6 +34,7 @@ pub enum AgentOperation<T> {
     Command(T),
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AgentMessage<T> {
     source: Uuid,
     lane: Text,
@@ -196,7 +198,6 @@ where
                         src.reserve(lane_len as usize);
                         break Ok(None);
                     }
-                    src.advance(HEADER_INIT_LEN);
                     let lane = Text::new(std::str::from_utf8(&src.as_ref()[0..lane_len])?);
                     src.advance(lane_len);
                     match tag {
