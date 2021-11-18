@@ -17,11 +17,17 @@ use crate::compat::{
     RawAgentMessageEncoder, COMMAND, HEADER_INIT_LEN, LINK, OP_MASK, OP_SHIFT, SYNC, UNLINK,
 };
 use bytes::{Buf, BytesMut};
+use futures::future::join;
+use futures::{SinkExt, StreamExt};
 use std::fmt::Debug;
+use std::io::ErrorKind;
+use std::num::NonZeroUsize;
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_form::Form;
 use swim_recon::printer::print_recon_compact;
-use tokio_util::codec::{Decoder, Encoder};
+use swim_utilities::algebra::non_zero_usize;
+use swim_utilities::io::byte_channel;
+use tokio_util::codec::{Decoder, Encoder, FramedRead, FramedWrite};
 use uuid::Uuid;
 
 #[test]
@@ -128,7 +134,7 @@ fn encode_command_frame() {
     assert_eq!(body_content, body.as_bytes());
 }
 
-#[derive(Form, PartialEq, Eq, Debug)]
+#[derive(Form, PartialEq, Eq, Debug, Clone, Copy)]
 struct Example {
     first: i32,
     second: i32,
@@ -217,4 +223,76 @@ fn decode_command_frame() {
     let result = round_trip::<Example>(frame);
 
     check_result(result, AgentMessage::command(id, lane, record));
+}
+
+const CHANNEL_SIZE: NonZeroUsize = non_zero_usize!(16);
+
+#[tokio::test]
+async fn multiple_frames() {
+    let id = Uuid::new_v4();
+    let lane = "lane";
+
+    let (tx, rx) = byte_channel::byte_channel(CHANNEL_SIZE);
+
+    let mut framed_write = FramedWrite::new(tx, RawAgentMessageEncoder);
+    let decoder = AgentMessageDecoder::<Example, _>::new(Example::make_recognizer());
+
+    let mut framed_read = FramedRead::new(rx, decoder);
+
+    let record1 = Example {
+        first: 1,
+        second: 2,
+    };
+
+    let record2 = Example {
+        first: 3,
+        second: 4,
+    };
+
+    let str1 = print_recon_compact(&record1).to_string();
+    let str2 = print_recon_compact(&record2).to_string();
+
+    let frames = vec![
+        RawAgentMessage::sync(id, lane),
+        RawAgentMessage::command(id, lane, str1.as_bytes()),
+        RawAgentMessage::command(id, lane, str2.as_bytes()),
+        RawAgentMessage::unlink(id, lane),
+    ];
+
+    let send_task = async move {
+        for frame in frames {
+            if let Err(e) = framed_write.send(frame).await {
+                if e.kind() != ErrorKind::BrokenPipe {
+                    panic!("{}", e);
+                } else {
+                    break;
+                }
+            }
+        }
+    };
+
+    let recv_task = async move {
+        let mut received = vec![];
+        while let Some(result) = framed_read.next().await {
+            match result {
+                Ok(message) => received.push(message),
+                Err(e) => {
+                    return Err(e);
+                }
+            }
+        }
+        Ok(received)
+    };
+
+    let (_, result) = join(send_task, recv_task).await;
+
+    let expected = vec![
+        AgentMessage::sync(id, lane),
+        AgentMessage::command(id, lane, record1),
+        AgentMessage::command(id, lane, record2),
+        AgentMessage::unlink(id, lane),
+    ];
+
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), expected);
 }

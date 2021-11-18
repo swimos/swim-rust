@@ -46,7 +46,7 @@ pub mod io {
     #[cfg(feature = "io")]
     pub use swim_io::*;
 
-    #[cfg(feature = "io")]
+    #[cfg(feature = "buf_channel")]
     pub use byte_channel;
 }
 

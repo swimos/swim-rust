@@ -26,6 +26,7 @@ use uuid::Uuid;
 #[cfg(test)]
 mod tests;
 
+/// Operations that can be performed on an agent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AgentOperation<T> {
     Link,
@@ -34,6 +35,7 @@ pub enum AgentOperation<T> {
     Command(T),
 }
 
+/// Type of messages that can be sent to an agent.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AgentMessage<T> {
     source: Uuid,
@@ -75,8 +77,10 @@ impl<T> AgentMessage<T> {
     }
 }
 
+/// An agent message where the body is uninterprted (represented as raw bytes).
 type RawAgentMessage<'a> = AgentMessage<&'a [u8]>;
 
+/// Tokio [`Encoder`] to encode a [`RawAgentMessage`] as a byte stream.
 pub struct RawAgentMessageEncoder;
 
 const OP_SHIFT: usize = 62;
@@ -138,6 +142,8 @@ enum State<T> {
     },
 }
 
+/// Tokio [`Decoder`] that can read an [`AgentMessage`] from a stream of bytes, using a
+/// [`RecognizerDecoder`] to interpret the body.
 pub struct AgentMessageDecoder<T, R> {
     state: State<T>,
     recognizer: RecognizerDecoder<R>,
@@ -190,14 +196,16 @@ where
                         src.reserve(HEADER_INIT_LEN);
                         break Ok(None);
                     }
-                    let source = src.get_u128();
-                    let lane_len = src.get_u32() as usize;
-                    let body_len_and_tag = src.get_u64();
+                    let mut header = &src.as_ref()[0..HEADER_INIT_LEN];
+                    let source = header.get_u128();
+                    let lane_len = header.get_u32() as usize;
+                    let body_len_and_tag = header.get_u64();
                     let tag = (body_len_and_tag & OP_MASK) >> OP_SHIFT;
-                    if src.remaining() < lane_len {
+                    if src.remaining() < HEADER_INIT_LEN + lane_len {
                         src.reserve(lane_len as usize);
                         break Ok(None);
                     }
+                    src.advance(HEADER_INIT_LEN);
                     let lane = Text::new(std::str::from_utf8(&src.as_ref()[0..lane_len])?);
                     src.advance(lane_len);
                     match tag {
@@ -229,6 +237,7 @@ where
                                 lane,
                                 remaining: body_len,
                             };
+                            recognizer.reset();
                         }
                     }
                 }

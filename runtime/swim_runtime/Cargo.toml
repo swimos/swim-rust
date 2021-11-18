@@ -18,7 +18,7 @@ pin-utils = "0.1.0"
 tokio = { version = "1.1.1", features = ["sync", "rt"] }
 tokio-native-tls = "0.3"
 tokio-util = { version = "0.6.8", features = ["codec"] }
-swim_utilities = { path = "../../swim_utilities", features = ["buf_channel", "errors", "circular_buffer", "future", "lrucache"] }
+swim_utilities = { path = "../../swim_utilities", features = ["circular_buffer", "errors", "future", "lrucache"] }
 url = "2.1.1"
 swim_model = { path = "../../api/swim_model" }
 swim_form = { path = "../../api/swim_form" }
@@ -38,3 +38,4 @@ tokio = { version = "1.1.1", features = ["macros", "test-util"] }
 parking_lot = "0.11.0"
 tokio-stream = "0.1.2"
 uuid = { version = "0.8.2", features = ["v4"] }
+swim_utilities = { path = "../../swim_utilities", features = ["buf_channel"] }
