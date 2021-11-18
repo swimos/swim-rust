@@ -78,7 +78,7 @@ impl<T> AgentMessage<T> {
 }
 
 /// An agent message where the body is uninterprted (represented as raw bytes).
-type RawAgentMessage<'a> = AgentMessage<&'a [u8]>;
+pub type RawAgentMessage<'a> = AgentMessage<&'a [u8]>;
 
 /// Tokio [`Encoder`] to encode a [`RawAgentMessage`] as a byte stream.
 pub struct RawAgentMessageEncoder;
