@@ -27,9 +27,9 @@ error[E0277]: the trait bound `B: swim_form::structural::Tag` is not satisfied
      |
      = note: required because of the requirements on the impl of `Recognizer` for `TagRecognizer<B>`
 note: required by a bound in `feed_field`
-    --> $DIR/src/structural/read/recognizer/mod.rs:1871:8
+    --> $DIR/src/structural/read/recognizer/mod.rs:1878:8
      |
-1871 |     R: Recognizer,
+1878 |     R: Recognizer,
      |        ^^^^^^^^^^ required by this bound in `feed_field`
      = note: this error originates in the derive macro `Form` (in Nightly builds, run with -Z macro-backtrace for more info)
 
