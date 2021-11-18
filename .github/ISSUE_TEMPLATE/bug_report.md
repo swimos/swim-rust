@@ -23,16 +23,11 @@ A clear and concise description of what you expected to happen.
 **Screenshots**
 If applicable, add screenshots to help explain your problem.
 
-**Desktop (please complete the following information):**
- - OS: [e.g. iOS]
- - Browser [e.g. chrome, safari]
- - Version [e.g. 22]
-
-**Smartphone (please complete the following information):**
- - Device: [e.g. iPhone6]
- - OS: [e.g. iOS8.1]
- - Browser [e.g. stock browser, safari]
- - Version [e.g. 22]
+**System info:**
+ - OS: [e.g. Ubuntu]
+ - Output of `rustc --version --verbose`
 
 **Additional context**
-Add any other context about the problem here.
+Add any other context about the problem here, stacktrace, etc.
+If the bug happens in an interaction with a non-rust server or client, please also specify the language and version
+[e.g. Tested with server: java 3.11.0, Tested with client: python 1.2.0]
