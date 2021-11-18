@@ -268,7 +268,7 @@ where
             ..
         } = &mut self;
         if *has_attr {
-            fmt.write_str(strategy.attr_padding())?;
+            strategy.attr_padding().fmt(fmt)?;
         } else {
             *has_attr = true;
         }
@@ -309,7 +309,7 @@ where
         } = &mut self;
         if *has_attr {
             if num_items > 1 {
-                fmt.write_str(strategy.attr_padding())?;
+                strategy.attr_padding().fmt(fmt)?;
                 fmt.write_str("{")?;
                 strategy.block_start_padding(num_items).fmt(fmt)?;
                 *brace_written = true;
@@ -345,7 +345,7 @@ where
             if *single_item {
                 fmt.write_str(" ")?;
             } else {
-                fmt.write_str(strategy.attr_padding())?;
+                strategy.attr_padding().fmt(fmt)?;
                 fmt.write_str("{")?;
                 *brace_written = true;
             }
@@ -381,7 +381,7 @@ where
         let key_printer = StructurePrinter::new(*fmt, *strategy);
         key.write_with(key_printer)?;
         fmt.write_str(":")?;
-        fmt.write_str(strategy.slot_padding())?;
+        strategy.slot_padding().fmt(fmt)?;
 
         let val_printer = StructurePrinter::new(*fmt, *strategy);
         value.write_with(val_printer)?;
@@ -661,7 +661,7 @@ where
             ..
         } = &mut self;
         if *has_attr {
-            fmt.write_str(strategy.attr_padding())?;
+            strategy.attr_padding().fmt(fmt)?;
         } else {
             *has_attr = true;
         }
@@ -708,7 +708,7 @@ where
                     fmt.write_str(" ")?;
                 }
                 _ => {
-                    fmt.write_str(strategy.attr_padding())?;
+                    strategy.attr_padding().fmt(fmt)?;
                     fmt.write_str("{")?;
                     strategy.block_start_padding(num_items).fmt(fmt)?;
                     *brace_written = true;
@@ -777,7 +777,7 @@ where
         let key_printer = StructurePrinter::new(*fmt, *strategy);
         key.write_with(key_printer)?;
         fmt.write_str(":")?;
-        fmt.write_str(strategy.slot_padding())?;
+        strategy.slot_padding().fmt(fmt)?;
 
         let val_printer = StructurePrinter::new(*fmt, *strategy);
         value.write_with(val_printer)?;
@@ -815,51 +815,71 @@ where
     }
 }
 
-pub struct Indent<'a>(&'a str, &'a str, usize);
+/// Padding used by the print strategies to customise the output format of Recon.
+pub enum Padding<'a> {
+    /// Simple padding that writes only a string slice.
+    Simple(&'a str),
+    /// Complex padding that writes a string slice as a prefix followed by `n`
+    /// writes of another string slice.
+    Complex {
+        prefix: &'a str,
+        block: &'a str,
+        repeats: usize,
+    },
+}
 
-impl<'a> Display for Indent<'a> {
+const NO_SPACE: Padding = Padding::Simple("");
+const SINGLE_SPACE: Padding = Padding::Simple(" ");
+const PRETTY_INDENT: &str = "    ";
+const NEW_LINE: &str = "\n";
+
+impl<'a> Display for Padding<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let Indent(prefix, block, repeats) = self;
-        f.write_str(*prefix)?;
-        for _ in 0..*repeats {
-            f.write_str(*block)?;
+        match self {
+            Padding::Simple(padding) => f.write_str(*padding)?,
+            Padding::Complex {
+                prefix,
+                block,
+                repeats,
+            } => {
+                f.write_str(*prefix)?;
+                for _ in 0..*repeats {
+                    f.write_str(*block)?;
+                }
+            }
         }
+
         Ok(())
     }
 }
 
-const NO_SPACE: Indent = Indent("", "", 0);
-const SINGLE_SPACE: Indent = Indent(" ", "", 0);
-const PRETTY_INDENT: &str = "    ";
-const NEW_LINE: &str = "\n";
-
 pub trait PrintStrategy {
-    fn attr_padding(&self) -> &'static str;
+    fn attr_padding(&self) -> Padding;
 
-    fn attr_body_padding(&self) -> &'static str;
+    fn attr_body_padding(&self) -> Padding;
 
-    fn block_start_padding(&mut self, items: usize) -> Indent;
+    fn block_start_padding(&mut self, items: usize) -> Padding;
 
-    fn block_end_padding(&mut self) -> Indent;
+    fn block_end_padding(&mut self) -> Padding;
 
-    fn item_padding(&self, in_record: bool) -> Indent;
+    fn item_padding(&self, in_record: bool) -> Padding;
 
-    fn slot_padding(&self) -> &'static str;
+    fn slot_padding(&self) -> Padding;
 }
 
 #[derive(Clone, Copy)]
 struct StandardPrint;
 
 impl PrintStrategy for StandardPrint {
-    fn attr_padding(&self) -> &'static str {
-        " "
+    fn attr_padding(&self) -> Padding {
+        SINGLE_SPACE
     }
 
-    fn attr_body_padding(&self) -> &'static str {
-        ""
+    fn attr_body_padding(&self) -> Padding {
+        NO_SPACE
     }
 
-    fn block_start_padding(&mut self, items: usize) -> Indent {
+    fn block_start_padding(&mut self, items: usize) -> Padding {
         if items == 0 {
             NO_SPACE
         } else {
@@ -867,16 +887,16 @@ impl PrintStrategy for StandardPrint {
         }
     }
 
-    fn block_end_padding(&mut self) -> Indent {
+    fn block_end_padding(&mut self) -> Padding {
         SINGLE_SPACE
     }
 
-    fn item_padding(&self, _in_record: bool) -> Indent {
+    fn item_padding(&self, _in_record: bool) -> Padding {
         SINGLE_SPACE
     }
 
-    fn slot_padding(&self) -> &'static str {
-        " "
+    fn slot_padding(&self) -> Padding {
+        SINGLE_SPACE
     }
 }
 
@@ -884,28 +904,28 @@ impl PrintStrategy for StandardPrint {
 struct CompactPrint;
 
 impl PrintStrategy for CompactPrint {
-    fn attr_padding(&self) -> &'static str {
-        ""
-    }
-
-    fn attr_body_padding(&self) -> &'static str {
-        ""
-    }
-
-    fn block_start_padding(&mut self, _items: usize) -> Indent {
+    fn attr_padding(&self) -> Padding {
         NO_SPACE
     }
 
-    fn block_end_padding(&mut self) -> Indent {
+    fn attr_body_padding(&self) -> Padding {
         NO_SPACE
     }
 
-    fn item_padding(&self, _in_record: bool) -> Indent {
+    fn block_start_padding(&mut self, _items: usize) -> Padding {
         NO_SPACE
     }
 
-    fn slot_padding(&self) -> &'static str {
-        ""
+    fn block_end_padding(&mut self) -> Padding {
+        NO_SPACE
+    }
+
+    fn item_padding(&self, _in_record: bool) -> Padding {
+        NO_SPACE
+    }
+
+    fn slot_padding(&self) -> Padding {
+        NO_SPACE
     }
 }
 
@@ -919,8 +939,12 @@ impl PrettyPrint {
         PrettyPrint { indent_level: 0 }
     }
 
-    fn write_new_line(&self) -> Indent {
-        Indent(NEW_LINE, PRETTY_INDENT, self.indent_level)
+    fn write_new_line(&self) -> Padding {
+        Padding::Complex {
+            prefix: NEW_LINE,
+            block: PRETTY_INDENT,
+            repeats: self.indent_level,
+        }
     }
 
     fn increase_indent(&mut self) {
@@ -933,15 +957,15 @@ impl PrettyPrint {
 }
 
 impl PrintStrategy for PrettyPrint {
-    fn attr_padding(&self) -> &'static str {
-        " "
+    fn attr_padding(&self) -> Padding {
+        SINGLE_SPACE
     }
 
-    fn attr_body_padding(&self) -> &'static str {
-        ""
+    fn attr_body_padding(&self) -> Padding {
+        NO_SPACE
     }
 
-    fn block_start_padding(&mut self, items: usize) -> Indent {
+    fn block_start_padding(&mut self, items: usize) -> Padding {
         if items == 0 {
             NO_SPACE
         } else {
@@ -950,12 +974,12 @@ impl PrintStrategy for PrettyPrint {
         }
     }
 
-    fn block_end_padding(&mut self) -> Indent {
+    fn block_end_padding(&mut self) -> Padding {
         self.decrease_indent();
         self.write_new_line()
     }
 
-    fn item_padding(&self, in_record: bool) -> Indent {
+    fn item_padding(&self, in_record: bool) -> Padding {
         if in_record {
             self.write_new_line()
         } else {
@@ -963,7 +987,7 @@ impl PrintStrategy for PrettyPrint {
         }
     }
 
-    fn slot_padding(&self) -> &'static str {
-        " "
+    fn slot_padding(&self) -> Padding {
+        SINGLE_SPACE
     }
 }
