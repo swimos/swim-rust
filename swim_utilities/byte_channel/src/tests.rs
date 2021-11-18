@@ -52,11 +52,8 @@ async fn close_writer_empty() {
     let mut buf = BytesMut::new();
     let res = rx.read_buf(&mut buf).await;
 
-    if let Err(e) = res {
-        assert_eq!(e.kind(), ErrorKind::BrokenPipe);
-    } else {
-        panic!("Should fail.");
-    }
+    assert!(res.is_ok());
+    assert!(buf.is_empty());
 }
 
 #[tokio::test]
@@ -118,7 +115,7 @@ async fn write_unblocks_read() {
 }
 
 #[tokio::test]
-async fn reader_sees_data_written_before_writer_cloed() {
+async fn reader_sees_data_written_before_writer_closed() {
     let (mut tx, mut rx) = super::byte_channel(NonZeroUsize::new(8).unwrap());
 
     assert!(tx.write(&[0, 1, 2, 3]).await.is_ok());
@@ -130,13 +127,12 @@ async fn reader_sees_data_written_before_writer_cloed() {
     assert!(matches!(r1, Ok(4)));
     assert_eq!(buf.as_ref(), &[0, 1, 2, 3]);
 
+    buf.clear();
+
     let r2 = rx.read_buf(&mut buf).await;
 
-    if let Err(e) = r2 {
-        assert_eq!(e.kind(), ErrorKind::BrokenPipe);
-    } else {
-        panic!("Should fail.")
-    }
+    assert!(r2.is_ok());
+    assert!(buf.is_empty());
 }
 
 #[tokio::test]
@@ -173,8 +169,14 @@ async fn send_bulk() {
         let mut buf = BytesMut::new();
         buf.reserve(DATA_LEN);
         loop {
-            if rx.read_buf(&mut buf).await.is_err() {
-                break;
+            match rx.read_buf(&mut buf).await {
+                Ok(0) => {
+                    break;
+                }
+                Err(e) => {
+                    panic!("{}", e)
+                }
+                _ => {}
             }
         }
         buf.to_vec()
@@ -208,8 +210,14 @@ async fn send_bulk_multi_threaded() {
         let mut buf = BytesMut::new();
         buf.reserve(DATA_LEN);
         loop {
-            if rx.read_buf(&mut buf).await.is_err() {
-                break;
+            match rx.read_buf(&mut buf).await {
+                Ok(0) => {
+                    break;
+                }
+                Err(e) => {
+                    panic!("{}", e)
+                }
+                _ => {}
             }
         }
         buf.to_vec()
