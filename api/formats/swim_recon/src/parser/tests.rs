@@ -708,16 +708,16 @@ fn empty_with_comments() {
     let result = run_parser_iterator_with_comments("#Test").unwrap();
     assert!(matches!(result.as_slice(), [ReadEvent::Extant]));
 
-    let result = run_parser_iterator("#Test\n").unwrap();
+    let result = run_parser_iterator_with_comments("#Test\n").unwrap();
     assert!(matches!(result.as_slice(), [ReadEvent::Extant]));
 
-    let result = run_parser_iterator("   # Test  # \n").unwrap();
+    let result = run_parser_iterator_with_comments("   # Test  # \n").unwrap();
     assert!(matches!(result.as_slice(), [ReadEvent::Extant]));
 
-    let result = run_parser_iterator("\n\n\n#Test\n").unwrap();
+    let result = run_parser_iterator_with_comments("\n\n\n#Test\n").unwrap();
     assert!(matches!(result.as_slice(), [ReadEvent::Extant]));
 
-    let result = run_parser_iterator("#Foo \n# Bar\n #Baz").unwrap();
+    let result = run_parser_iterator_with_comments("#Foo \n# Bar\n #Baz").unwrap();
     assert!(matches!(result.as_slice(), [ReadEvent::Extant]));
 }
 
@@ -1491,4 +1491,40 @@ fn complex_slot_from_string() {
 
     let value = value_from_string(string).unwrap();
     assert_eq!(value, expected);
+}
+
+#[test]
+fn attr_with_comments() {
+    let attrs_one_line = "@first @second";
+    let attrs_multiple_lines = "@first\n@second";
+
+    let attrs_with_comment = "@first #Comment\n@second";
+    let attrs_with_comment_multiple_lines = "@first\n#Comment\n@second";
+    let attrs_with_multiple_comments = "@first #Comment\n\n#Another\n\n#Again\n@second";
+
+    assert_ne!(
+        value_from_string(attrs_one_line),
+        value_from_string_with_comments(attrs_with_comment)
+    );
+    assert_ne!(
+        value_from_string(attrs_one_line),
+        value_from_string_with_comments(attrs_with_multiple_comments)
+    );
+    assert_ne!(
+        value_from_string(attrs_one_line),
+        value_from_string_with_comments(attrs_with_comment_multiple_lines)
+    );
+
+    assert_eq!(
+        value_from_string(attrs_multiple_lines),
+        value_from_string_with_comments(attrs_with_comment)
+    );
+    assert_eq!(
+        value_from_string(attrs_multiple_lines),
+        value_from_string_with_comments(attrs_with_comment_multiple_lines)
+    );
+    assert_eq!(
+        value_from_string(attrs_multiple_lines),
+        value_from_string_with_comments(attrs_with_multiple_comments)
+    )
 }
