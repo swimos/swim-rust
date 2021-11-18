@@ -7,9 +7,6 @@
 
 The [cookbook](/cookbook) can serve as a starting point for getting familiar with core Swim concepts that form the basis of all Swim apps.
 
-## Demo applications
-A number of demo applications are available in the [swim-rust-demos](https://github.com/swimos/swim-rust-demos) repository.
-
 ## Development
 
 ### Dependencies
@@ -29,3 +26,5 @@ A number of demo applications are available in the [swim-rust-demos](https://git
 ##### Automatic (before commit): 
 - Install hook: `sh ./install-commit-hook.sh`
 - Remove hook: `sh ./remove-commit-hook.sh`
+
+Note: The pre-commit hooks take a while to run all checks.
