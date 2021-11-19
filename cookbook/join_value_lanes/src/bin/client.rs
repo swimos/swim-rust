@@ -1,4 +1,4 @@
-// Copyright 2015-2021 SWIM.AI inc.
+// Copyright 2015-2021 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,8 +19,8 @@ use swim_client::downlink::typed::map::events::TypedViewWithEvent;
 use swim_client::downlink::typed::map::MapDownlinkReceiver;
 use swim_client::downlink::Event::Remote;
 use swim_client::interface::SwimClientBuilder;
-use swim_model::Value;
 use swim_model::path::AbsolutePath;
+use swim_model::Value;
 use tokio::{task, time};
 
 async fn did_update(map_recv: MapDownlinkReceiver<i32, bool>, default: bool) {

@@ -1,4 +1,4 @@
-// Copyright 2015-2021 SWIM.AI inc.
+// Copyright 2015-2021 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -86,7 +86,7 @@ impl Label {
             }
             Label::Foreign(ident, ..) => {
                 let maybe_clone = if clone { quote!(.clone()) } else { quote!() };
-                quote!(swim_form::Tag::as_string(&#ident#maybe_clone))
+                quote!(swim_form::Tag::as_string(&#ident #maybe_clone))
             }
         }
     }

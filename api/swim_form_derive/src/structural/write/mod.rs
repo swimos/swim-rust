@@ -1,4 +1,4 @@
-// Copyright 2015-2021 SWIM.AI inc.
+// Copyright 2015-2021 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -300,7 +300,7 @@ impl<'a> ToTokens for WriteWithFn<'a> {
         let tag = if let Some(fld) = header.tag_name {
             let name = &fld.selector;
             quote! {
-                <core::convert::AsRef<str>>::as_ref(#name)
+                core::convert::AsRef::<str>::as_ref(#name)
             }
         } else {
             inner.resolve_name().to_token_stream()
@@ -420,7 +420,7 @@ impl<'a> ToTokens for WriteIntoFn<'a> {
         let tag = if let Some(fld) = header.tag_name {
             let ty = fld.field_ty;
             let name = &fld.selector;
-            quote!(<#ty as core::convert::AsRef<str>>::as_ref(&#name))
+            quote!(<#ty as core::convert::AsRef::<str>>::as_ref(&#name))
         } else {
             inner.resolve_name().to_token_stream()
         };

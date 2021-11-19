@@ -1,8 +1,8 @@
 [package]
 name = "swim_algebra"
 version = "0.1.0"
-authors = ["Swim.AI developers info@swim.ai"]
-edition = "2018"
+authors = ["Swim Inc. developers info@swim.ai"]
+edition = "2021"
 
 [dependencies]
 

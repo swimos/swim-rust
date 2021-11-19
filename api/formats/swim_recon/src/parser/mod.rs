@@ -1,4 +1,4 @@
-// Copyright 2015-2021 SWIM.AI inc.
+// Copyright 2015-2021 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ mod tokens;
 
 pub use crate::parser::error::ParseError;
 use nom_locate::LocatedSpan;
+use std::borrow::Cow;
 use swim_form::structural::read::event::ReadEvent;
 use swim_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
 use swim_form::structural::read::ReadError;
@@ -30,6 +31,27 @@ use swim_model::Value;
 /// Wraps a string in a strucutre that keeps track of the line and column
 /// as the input is parsed.
 pub type Span<'a> = LocatedSpan<&'a str>;
+
+#[derive(Debug)]
+enum FinalAttrStage<'a> {
+    Start(Cow<'a, str>),
+    EndAttr,
+    StartBody,
+    EndBody,
+}
+
+/// A single parse result can produce several events. This enumeration allows
+/// an iterator to consume them in turn. Note that in the cases with multiple
+/// events, the events are stored as a stack so are in reverse order.
+#[derive(Debug)]
+enum ParseEvents<'a> {
+    NoEvent,
+    SingleEvent(ReadEvent<'a>),
+    TwoEvents(ReadEvent<'a>, ReadEvent<'a>),
+    ThreeEvents(ReadEvent<'a>, ReadEvent<'a>, ReadEvent<'a>),
+    TerminateWithAttr(FinalAttrStage<'a>),
+    End,
+}
 
 /// Create an iterator that will parse a sequence of events from a complete string.
 pub fn parse_iterator(
@@ -72,4 +94,6 @@ pub fn parse_value(repr: &str) -> Result<Value, ParseError> {
 }
 
 #[cfg(feature = "async_parser")]
-pub use async_parser::{parse_recognize_with as async_parse_recognize_with, parse_recon_document};
+pub use async_parser::{
+    parse_recognize_with as async_parse_recognize_with, parse_recon_document, AsyncParseError,
+};
