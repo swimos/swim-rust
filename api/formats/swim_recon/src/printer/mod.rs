@@ -311,12 +311,12 @@ where
             if num_items > 1 {
                 strategy.attr_padding().fmt(fmt)?;
                 fmt.write_str("{")?;
-                strategy.block_start_padding(num_items).fmt(fmt)?;
+                strategy.start_block(num_items).fmt(fmt)?;
                 *brace_written = true;
             }
         } else {
             fmt.write_str("{")?;
-            strategy.block_start_padding(num_items).fmt(fmt)?;
+            strategy.start_block(num_items).fmt(fmt)?;
             *brace_written = true;
         }
         *single_item = num_items == 1;
@@ -410,7 +410,7 @@ where
         } = self;
         if brace_written {
             if !first {
-                strategy.block_end_padding().fmt(fmt)?;
+                strategy.end_block().fmt(fmt)?;
             }
             fmt.write_str("}")?;
         }
@@ -710,13 +710,13 @@ where
                 _ => {
                     strategy.attr_padding().fmt(fmt)?;
                     fmt.write_str("{")?;
-                    strategy.block_start_padding(num_items).fmt(fmt)?;
+                    strategy.start_block(num_items).fmt(fmt)?;
                     *brace_written = true;
                 }
             }
         } else if num_items == 0 {
             fmt.write_str("{")?;
-            strategy.block_start_padding(num_items).fmt(fmt)?;
+            strategy.start_block(num_items).fmt(fmt)?;
             *brace_written = true;
         }
         Ok(self)
@@ -742,7 +742,7 @@ where
         } = &mut self;
         if !*brace_written && !*has_attr && *single_item {
             fmt.write_str("{")?;
-            strategy.block_start_padding(1).fmt(fmt)?;
+            strategy.start_block(1).fmt(fmt)?;
             *brace_written = true;
         }
         if *first {
@@ -806,7 +806,7 @@ where
         } = self;
         if brace_written {
             if !first {
-                strategy.block_end_padding().fmt(fmt)?;
+                strategy.end_block().fmt(fmt)?;
             }
             fmt.write_str("}")?;
         }
@@ -858,9 +858,9 @@ pub trait PrintStrategy {
 
     fn attr_body_padding(&self) -> Padding;
 
-    fn block_start_padding(&mut self, items: usize) -> Padding;
+    fn start_block(&mut self, items: usize) -> Padding;
 
-    fn block_end_padding(&mut self) -> Padding;
+    fn end_block(&mut self) -> Padding;
 
     fn item_padding(&self, in_record: bool) -> Padding;
 
@@ -879,7 +879,7 @@ impl PrintStrategy for StandardPrint {
         NO_SPACE
     }
 
-    fn block_start_padding(&mut self, items: usize) -> Padding {
+    fn start_block(&mut self, items: usize) -> Padding {
         if items == 0 {
             NO_SPACE
         } else {
@@ -887,7 +887,7 @@ impl PrintStrategy for StandardPrint {
         }
     }
 
-    fn block_end_padding(&mut self) -> Padding {
+    fn end_block(&mut self) -> Padding {
         SINGLE_SPACE
     }
 
@@ -912,11 +912,11 @@ impl PrintStrategy for CompactPrint {
         NO_SPACE
     }
 
-    fn block_start_padding(&mut self, _items: usize) -> Padding {
+    fn start_block(&mut self, _items: usize) -> Padding {
         NO_SPACE
     }
 
-    fn block_end_padding(&mut self) -> Padding {
+    fn end_block(&mut self) -> Padding {
         NO_SPACE
     }
 
@@ -965,7 +965,7 @@ impl PrintStrategy for PrettyPrint {
         NO_SPACE
     }
 
-    fn block_start_padding(&mut self, items: usize) -> Padding {
+    fn start_block(&mut self, items: usize) -> Padding {
         if items == 0 {
             NO_SPACE
         } else {
@@ -974,7 +974,7 @@ impl PrintStrategy for PrettyPrint {
         }
     }
 
-    fn block_end_padding(&mut self) -> Padding {
+    fn end_block(&mut self) -> Padding {
         self.decrease_indent();
         self.write_new_line()
     }
