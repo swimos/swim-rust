@@ -1,7 +1,7 @@
 [package]
 name = "ratchet_fixture"
 version = "0.1.0"
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 ratchet = { path = "../../ratchet", features = ["split", "deflate", "fixture"] }
