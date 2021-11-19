@@ -870,6 +870,18 @@ fn missing_slot_parts() {
 
     let result = run_parser_iterator("{ first: 1, second: , : 3 }").unwrap();
     assert_eq!(result, expected);
+
+    let result = run_parser_iterator("{first:1,second:\n:3}").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("{first:1\nsecond:\n:3\n}").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("{first:1,second:\r\n:3}").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("{first:1\r\nsecond:\r\n:3\r\n}").unwrap();
+    assert_eq!(result, expected);
 }
 
 fn attr_event(name: &str) -> ReadEvent<'_> {
@@ -926,6 +938,46 @@ fn attr_slot_body() {
 
     let result = run_parser_iterator("@name(a:true) {}").unwrap();
     assert_eq!(result, expected);
+
+    let result = run_parser_iterator("@name(a:true\n) {}").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("@name(a:true\r\n) {}").unwrap();
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn attr_slot_body_missing_parts() {
+    let expected = vec![
+        attr_event("name"),
+        string_event("a"),
+        ReadEvent::Slot,
+        ReadEvent::Extant,
+        string_event("b"),
+        ReadEvent::Slot,
+        ReadEvent::Extant,
+        string_event("c"),
+        ReadEvent::Slot,
+        ReadEvent::Extant,
+        ReadEvent::EndAttribute,
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
+    ];
+
+    let result = run_parser_iterator("@name(a:,b:,c:)").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("@name(a:\nb:\nc:\n)").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("@name(a:\r\nb:\r\nc:\r\n)").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("@name(a:\n\nb:\n\nc:\n\n)").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("@name(a:\r\n\r\nb:\r\n\r\nc:\r\n\r\n)").unwrap();
+    assert_eq!(result, expected);
 }
 
 #[test]
@@ -946,6 +998,12 @@ fn attr_multiple_item_body() {
     assert_eq!(result, expected);
 
     let result = run_parser_iterator("@name(1, a: true,) {}").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("@name(1\n a: true,)").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("@name(1\r\n a: true,)").unwrap();
     assert_eq!(result, expected);
 }
 
@@ -1284,6 +1342,32 @@ fn simple_record_from_string() {
     assert_eq!(
         value_from_string("{a: 1, b: 2, c: 3}").unwrap(),
         Value::from_vec(vec![("a", 1), ("b", 2), ("c", 3)])
+    );
+}
+
+#[test]
+fn simple_record_from_string_missing_slots() {
+    let expected = Value::from_vec(vec![
+        ("a", Value::Extant),
+        ("b", 2.into()),
+        ("c", Value::Extant),
+    ]);
+
+    assert_eq!(value_from_string("{a: ,b:2 ,c: }").unwrap(), expected);
+
+    assert_eq!(value_from_string("{a: \n b:2 \nc: \n}").unwrap(), expected);
+
+    assert_eq!(
+        value_from_string("{a: \r\n b: 2\r\nc: \r\n}").unwrap(),
+        expected
+    );
+    assert_eq!(
+        value_from_string("{a: \n\n b: 2\n\nc: \n\n}").unwrap(),
+        expected
+    );
+    assert_eq!(
+        value_from_string("{a: \r\n\r\n b: 2\r\n\r\nc: \r\n\r\n}").unwrap(),
+        expected
     );
 }
 
