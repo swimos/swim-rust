@@ -2,7 +2,7 @@
 name = "macro_utilities"
 version = "0.1.0"
 authors = ["Swim Inc. developers info@swim.ai"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 proc-macro2 = "1.0"
