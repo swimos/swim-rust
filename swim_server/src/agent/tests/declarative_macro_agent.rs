@@ -106,7 +106,7 @@ impl TestAgentConfig {
 
 swim_agent! {
     (MacroReportingAgent, TestAgentConfig) => {
-        lane(path: "map_lane", data: MapLane<String, i32>) => {
+        lane(data: MapLane<String, i32>) => {
             lifecycle: DataLifecycle {
                 event_handler: EventCollectorHandler,
             }
@@ -143,7 +143,7 @@ swim_agent! {
                 }
             }
         }
-        pub lane(path: "total", total: ValueLane<i32>) => {
+        pub lane(total: ValueLane<i32>) => {
             lifecycle: TotalLifecycle {
                 event_handler: EventCollectorHandler,
             }
@@ -157,7 +157,7 @@ swim_agent! {
                 self.event_handler.push(ReportingAgentEvent::TotalEvent(n)).await;
             }
         }
-        lane(path: "action", action: CommandLane<String>) => {
+        lane(action: CommandLane<String>) => {
             lifecycle: ActionLifecycle {
                 event_handler: EventCollectorHandler,
             }
@@ -183,7 +183,7 @@ swim_agent! {
                 }
             }
         }
-        lane(path: "demand", demand: DemandLane<i32>) => {
+        lane(demand: DemandLane<i32>) => {
             lifecycle: DemandLifecycle {
                 event_handler: EventCollectorHandler,
             }
@@ -201,7 +201,7 @@ swim_agent! {
                 Some(total)
             }
         }
-        lane(path: "demand_map", demand_map: DemandMapLane<String, i32>) => {
+        lane(demand_map: DemandMapLane<String, i32>) => {
             lifecycle: DemandMapLifecycle {
                 event_handler: EventCollectorHandler,
             }
