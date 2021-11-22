@@ -52,7 +52,7 @@
 ///
 /// For each of these lanes, a signature is expected of:
 /// ```text
-/// pub? lane(path: LITERAL_STRING, IDENTIFIER: LANE_TYPE) => {
+/// pub? lane(IDENTIFIER: LANE_TYPE) => {
 ///     // implementation block
 /// }
 /// ```
@@ -67,7 +67,7 @@
 ///
 /// swim_agent! {
 ///     (SwimAgentName, Config) => {
-///         pub lane(path: "total", total: ValueLane<i32>) => {
+///         pub lane(total: ValueLane<i32>) => {
 ///             // The signature of the lane's lifecycle
 ///             lifecycle: TotalLifecycle {
 ///                 // Here we can add any fields to the lifecycle that we like
@@ -98,7 +98,7 @@
 ///
 /// swim_agent! {
 ///     (SwimAgentName, Config) => {
-///         lane(path: "map_lane", data: MapLane<String, i32>) => {
+///         lane(data: MapLane<String, i32>) => {
 ///             lifecycle: TotalLifecycle {
 ///                 name: String
 ///             }
@@ -126,7 +126,7 @@
 ///
 /// swim_agent! {
 ///     (SwimAgentName, Config) => {
-///         lane(path: "action_lane", data: ActionLane<String, i32>) => {
+///         lane(data: ActionLane<String, i32>) => {
 ///             // The signature of the lane's lifecycle
 ///             lifecycle: TotalLifecycle {
 ///                 // Here we can add any fields to the lifecycle that we like
@@ -153,7 +153,7 @@
 ///
 /// swim_agent! {
 ///     (SwimAgentName, Config) => {
-///         lane(path: "command_lane", data: CommandLane<String>) => {
+///         lane(data: CommandLane<String>) => {
 ///             // The signature of the lane's lifecycle
 ///             lifecycle: TotalLifecycle {
 ///                 // Here we can add any fields to the lifecycle that we like
@@ -180,7 +180,7 @@
 ///
 /// swim_agent! {
 ///     (SwimAgentName, Config) => {
-///        lane(path: "demand", demand: DemandLane<i32>) => {
+///        lane(demand: DemandLane<i32>) => {
 ///             // The signature of the lane's lifecycle
 ///             lifecycle: DemandLifecycle2 {
 ///                 // Here we can add any fields to the lifecycle that we like
@@ -206,7 +206,7 @@
 ///
 /// swim_agent! {
 ///     (SwimAgentName, Config) => {
-///         lane(path: "demand_map_lane", data: DemandMapLane<String, i32>) => {
+///         lane(data: DemandMapLane<String, i32>) => {
 ///             // The signature of the lane's lifecycle
 ///             lifecycle: TotalLifecycle {
 ///                 // Here we can add any fields to the lifecycle that we like
@@ -241,7 +241,7 @@ macro_rules! swim_agent {
     };
     // value lane
     (@ { $name: ident, $config: ident, [$([$acc_visibilities:vis] $acc_lifecycles: ident $element: ident: $ty: ty)*] [$($out_impl:tt)*] }
-        $visibility:vis lane(path: $path: tt, $lane_name:ident : ValueLane<$key: ident>) => {
+        $visibility:vis lane($lane_name:ident : ValueLane<$key: ident>) => {
             lifecycle: $lifecycle:ident { $($lifecycle_fields:tt)* }
             on_create($on_create_config:ident) $on_create:block
             on_start($on_start_self: ident, $on_start_model:ident, $on_start_context:ident) $on_start:block
@@ -301,7 +301,7 @@ macro_rules! swim_agent {
     };
     // map lane
     (@ { $name: ident, $config: ident, [$([$acc_visibilities:vis] $acc_lifecycles: ident $element: ident: $ty: ty)*] [$($out_impl:tt)*] }
-        $visibility:vis lane(path: $path: tt, $lane_name:ident : MapLane<$key: ident, $value: ident>) => {
+        $visibility:vis lane($lane_name:ident : MapLane<$key: ident, $value: ident>) => {
             lifecycle: $lifecycle:ident { $($lifecycle_fields:tt)* }
             on_create($on_create_config:ident) $on_create:block
             on_start($on_start_self: ident, $on_start_model:ident, $on_start_context:ident) $on_start:block
@@ -361,7 +361,7 @@ macro_rules! swim_agent {
     };
     // action lane
     (@ { $name: ident, $config: ident, [$([$acc_visibilities:vis] $acc_lifecycles: ident $element: ident: $ty: ty)*] [$($out_impl:tt)*] }
-        $visibility:vis lane(path: $path: tt, $lane_name:ident : ActionLane<$command_type: ident, $response_type: ident>) => {
+        $visibility:vis lane($lane_name:ident : ActionLane<$command_type: ident, $response_type: ident>) => {
             lifecycle: $lifecycle:ident { $($lifecycle_fields:tt)* }
             on_create($on_create_config:ident) $on_create:block
             on_command($on_command_self: ident, $on_command_event:ident, $on_command_model:ident, $on_command_context:ident) -> $response_type_ret: ty $on_command: block
@@ -410,7 +410,7 @@ macro_rules! swim_agent {
     };
     // command lane
     (@ { $name: ident, $config: ident, [$([$acc_visibilities:vis] $acc_lifecycles: ident $element: ident: $ty: ty)*] [$($out_impl:tt)*] }
-        $visibility:vis lane(path: $path: tt, $lane_name:ident : CommandLane<$command_type: ident>) => {
+        $visibility:vis lane($lane_name:ident : CommandLane<$command_type: ident>) => {
             lifecycle: $lifecycle:ident { $($lifecycle_fields:tt)* }
             on_create($on_create_config:ident) $on_create:block
             on_command($on_command_self: ident, $on_command_event:ident, $on_command_model:ident, $on_command_context:ident) $on_command: block
@@ -458,7 +458,7 @@ macro_rules! swim_agent {
     };
     // demand lane
     (@ { $name: ident, $config: ident, [$([$acc_visibilities:vis] $acc_lifecycles: ident $element: ident: $ty: ty)*] [$($out_impl:tt)*] }
-        $visibility:vis lane(path: $path: tt, $lane_name:ident : DemandLane<$cue_type: ident>) => {
+        $visibility:vis lane($lane_name:ident : DemandLane<$cue_type: ident>) => {
             lifecycle: $lifecycle:ident { $($lifecycle_fields:tt)* }
             on_create($on_create_config:ident) $on_create:block
             on_cue($on_cue_self: ident, $on_cue_model:ident, $on_cue_context:ident) -> $cue_type_ret:ty $on_cue: block
@@ -506,7 +506,7 @@ macro_rules! swim_agent {
     };
     // demand map lane
     (@ { $name: ident, $config: ident, [$([$acc_visibilities:vis] $acc_lifecycles: ident $element: ident: $ty: ty)*] [$($out_impl:tt)*] }
-        $visibility:vis lane(path: $path: tt, $lane_name:ident : DemandMapLane<$key_type: ident, $value_type: ident>) => {
+        $visibility:vis lane($lane_name:ident : DemandMapLane<$key_type: ident, $value_type: ident>) => {
             lifecycle: $lifecycle:ident { $($lifecycle_fields:tt)* }
             on_create($on_create_config:ident) $on_create:block
             on_cue($on_cue_self: ident, $on_cue_model:ident, $on_cue_context:ident, $on_cue_key:ident) -> $cue_type_ret:ty $on_cue: block
