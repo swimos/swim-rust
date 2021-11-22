@@ -284,10 +284,10 @@ fn complete_records_compact() {
 
     let single_value = vec![Item::of(1)];
 
-    let rec = Value::Record(vec![first.clone()], single_value.clone());
+    let rec = Value::Record(vec![first.clone()], single_value);
     assert_eq!(print_value_compact(&rec), "@first 1");
 
-    let rec = Value::Record(vec![first.clone(), second.clone()], items.clone());
+    let rec = Value::Record(vec![first, second], items);
     assert_eq!(print_value_compact(&rec), "@first@second(1){1,name:2,true}");
 }
 
@@ -306,10 +306,10 @@ fn complete_records_pretty() {
 
     let single_value = vec![Item::of(1)];
 
-    let rec = Value::Record(vec![first.clone()], single_value.clone());
+    let rec = Value::Record(vec![first.clone()], single_value);
     assert_eq!(print_value_pretty(&rec), "@first 1");
 
-    let rec = Value::Record(vec![first.clone(), second.clone()], items.clone());
+    let rec = Value::Record(vec![first, second], items);
     assert_eq!(
         print_value_pretty(&rec),
         "@first @second(1) {\n    1,\n    name: 2,\n    true\n}"
@@ -370,10 +370,7 @@ fn complex_attributes_compact() {
 
     let single_value = vec![Item::of(1)];
 
-    let rec = Value::of_attr((
-        "tag",
-        Value::Record(vec![first.clone()], single_value.clone()),
-    ));
+    let rec = Value::of_attr(("tag", Value::Record(vec![first.clone()], single_value)));
 
     assert_eq!(print_value_compact(&rec), "@tag(@first 1)");
 
@@ -391,10 +388,7 @@ fn complex_attributes_compact() {
         "tag",
         Value::from_vec(vec![
             Item::of(1),
-            Item::of(Value::Record(
-                vec![first.clone(), second.clone()],
-                items.clone(),
-            )),
+            Item::of(Value::Record(vec![first, second], items)),
             Item::slot("slot", 2),
             Item::of(3),
         ]),
@@ -421,10 +415,7 @@ fn complex_attributes_pretty() {
 
     let single_value = vec![Item::of(1)];
 
-    let rec = Value::of_attr((
-        "tag",
-        Value::Record(vec![first.clone()], single_value.clone()),
-    ));
+    let rec = Value::of_attr(("tag", Value::Record(vec![first.clone()], single_value)));
 
     assert_eq!(print_value_pretty(&rec), "@tag(@first 1)");
 
@@ -442,10 +433,7 @@ fn complex_attributes_pretty() {
         "tag",
         Value::from_vec(vec![
             Item::of(1),
-            Item::of(Value::Record(
-                vec![first.clone(), second.clone()],
-                items.clone(),
-            )),
+            Item::of(Value::Record(vec![first, second], items)),
             Item::slot("slot", 2),
             Item::of(3),
         ]),
