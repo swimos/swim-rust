@@ -70,9 +70,9 @@ async fn dl_manager(
     let (conn_request_tx, _conn_request_rx) = mpsc::channel(32);
     let (close_tx, close_rx) = promise::promise();
 
-    let remote_tx = MockRemoteRouterTask::new(conns);
+    let remote_tx = MockRemoteRouterTask::build(conns);
 
-    let delegate_fac = TopLevelClientRouterFactory::new(client_tx.clone(), remote_tx.clone());
+    let delegate_fac = TopLevelClientRouterFactory::new(client_tx.clone(), remote_tx);
     let client_router_fac = ClientRouterFactory::new(conn_request_tx, delegate_fac);
 
     let (connection_pool, pool_task) = SwimConnPool::new(

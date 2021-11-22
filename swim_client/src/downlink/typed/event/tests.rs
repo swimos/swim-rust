@@ -63,7 +63,7 @@ fn typed_map_view_len() {
 fn typed_map_view_is_empty() {
     let view = make_view();
 
-    assert_eq!(view.is_empty(), false);
+    assert!(!view.is_empty());
 }
 
 #[test]
@@ -301,7 +301,7 @@ async fn subscriber_covariant_cast() {
 
     assert!(sub.clone().covariant_cast::<i32>().is_ok());
     assert!(sub.clone().covariant_cast::<Value>().is_ok());
-    assert!(sub.clone().covariant_cast::<String>().is_err());
+    assert!(sub.covariant_cast::<String>().is_err());
 }
 
 #[test]

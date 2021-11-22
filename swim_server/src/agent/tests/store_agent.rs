@@ -413,12 +413,12 @@ async fn events() {
 
         let snapshot_opt = delegate
             .get_prefix_range(prefix, |key, value| {
-                let store_key = deserialize::<StoreKey>(&key)?;
+                let store_key = deserialize::<StoreKey>(key)?;
 
                 match store_key {
                     StoreKey::Map { key, .. } => {
                         let key = deserialize::<String>(&key.ok_or(StoreError::KeyNotFound)?)?;
-                        let value = deserialize::<i32>(&value)?;
+                        let value = deserialize::<i32>(value)?;
 
                         Ok((key, value))
                     }

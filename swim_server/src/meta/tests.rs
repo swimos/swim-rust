@@ -94,14 +94,14 @@ fn test_parse_node_addressed() {
 #[test]
 fn node_addressed_display() {
     let node_profile = MetaNodeAddressed::NodeProfile;
-    assert_eq!(format!("{}", node_profile), format!("NodePulse"));
+    assert_eq!(format!("{}", node_profile), "NodePulse".to_string());
 
     let uplink_profile = MetaNodeAddressed::UplinkProfile {
         lane_uri: "/bar".into(),
     };
     assert_eq!(
         format!("{}", uplink_profile),
-        format!("UplinkProfile(lane_uri: \"/bar\")")
+        "UplinkProfile(lane_uri: \"/bar\")".to_string()
     );
 
     let lane_addressed_pulse = MetaNodeAddressed::LaneAddressed {
@@ -110,7 +110,7 @@ fn node_addressed_display() {
     };
     assert_eq!(
         format!("{}", lane_addressed_pulse),
-        format!("Lane(lane_uri: \"/bar\", kind: Pulse)")
+        "Lane(lane_uri: \"/bar\", kind: Pulse)".to_string()
     );
     let lane_addressed_log = MetaNodeAddressed::LaneAddressed {
         lane_uri: "/bar".into(),
@@ -118,12 +118,12 @@ fn node_addressed_display() {
     };
     assert_eq!(
         format!("{}", lane_addressed_log),
-        format!("Lane(lane_uri: \"/bar\", kind: Log(level: Trace))")
+        "Lane(lane_uri: \"/bar\", kind: Log(level: Trace))".to_string()
     );
 
     let lanes = MetaNodeAddressed::Lanes;
-    assert_eq!(format!("{}", lanes), format!("Lanes"));
+    assert_eq!(format!("{}", lanes), "Lanes".to_string());
 
     let log = MetaNodeAddressed::NodeLog(LogLevel::Trace);
-    assert_eq!(format!("{}", log), format!("Log(level: Trace)"));
+    assert_eq!(format!("{}", log), "Log(level: Trace)".to_string());
 }

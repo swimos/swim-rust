@@ -85,7 +85,7 @@ fn main() {
     impl CommandLifecycle1 {
         async fn on_command<Context>(
             &self,
-            _command: &String,
+            _command: &str,
             _model: &CommandLane<String>,
             _context: &Context,
         ) where

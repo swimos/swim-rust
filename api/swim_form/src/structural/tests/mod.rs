@@ -54,10 +54,10 @@ fn general_select_field(name: &str) -> Option<u32> {
     }
 }
 
-fn general_select<'a, S, RS: Recognizer<Target = S>, T, RT: Recognizer<Target = T>>(
+fn general_select<S, RS: Recognizer<Target = S>, T, RT: Recognizer<Target = T>>(
     state: &mut (Option<S>, Option<T>, RS, RT),
     index: u32,
-    input: ReadEvent<'a>,
+    input: ReadEvent,
 ) -> Option<Result<(), ReadError>> {
     let (first, second, first_rec, second_rec) = state;
     match index {
@@ -105,8 +105,8 @@ fn general_construct<
     first_rec.reset();
     second_rec.reset();
     match (
-        first.take().or_else(|| S::on_absent()),
-        second.take().or_else(|| T::on_absent()),
+        first.take().or_else(S::on_absent),
+        second.take().or_else(T::on_absent),
     ) {
         (Some(first), Some(second)) => Ok(GeneralType { first, second }),
         (Some(_), _) => Err(ReadError::MissingFields(vec![Text::new("second")])),

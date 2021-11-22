@@ -216,19 +216,19 @@ struct CommandLifecycle1 {
 impl CommandLifecycle1 {
     async fn on_command<Context>(
         &self,
-        command: &String,
+        command: &str,
         _model: &CommandLane<String>,
         context: &Context,
     ) where
         Context: AgentContext<DataAgent> + Sized + Send + Sync + 'static,
     {
         self.event_handler
-            .push(DataAgentEvent::Command(command.clone()))
+            .push(DataAgentEvent::Command(command.to_string()))
             .await;
         if context
             .agent()
             .map_1
-            .update_direct(command.clone(), 1.into())
+            .update_direct(command.to_string(), 1.into())
             .apply(ExactlyOnce)
             .await
             .is_err()
@@ -257,19 +257,19 @@ struct CommandLifecycle2 {
 impl CommandLifecycle2 {
     async fn on_command<Context>(
         &self,
-        command: &String,
+        command: &str,
         _model: &CommandLane<String>,
         context: &Context,
     ) where
         Context: AgentContext<DataAgent> + Sized + Send + Sync + 'static,
     {
         self.event_handler
-            .push(DataAgentEvent::Command(command.clone()))
+            .push(DataAgentEvent::Command(command.to_string()))
             .await;
         if context
             .agent()
             .map_2
-            .update_direct(command.clone(), 1.0.into())
+            .update_direct(command.to_string(), 1.0.into())
             .apply(ExactlyOnce)
             .await
             .is_err()

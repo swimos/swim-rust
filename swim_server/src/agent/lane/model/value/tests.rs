@@ -95,7 +95,7 @@ async fn value_lane_subscribe() {
     let (comm_tx, mut comm_rx) = mpsc::channel::<trigger::Sender>(2);
 
     let start_task = |mut rx: Observer<i32>| {
-        let task = async move { while let Some(_) = rx.recv().await {} };
+        let task = async move { while rx.recv().await.is_some() {} };
         tokio::spawn(task);
     };
 

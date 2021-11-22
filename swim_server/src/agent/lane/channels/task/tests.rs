@@ -636,7 +636,7 @@ fn make_aggregator(
         },
     };
 
-    let (aggregator, task) = NodeMetricAggregator::new(uri.clone(), stop_rx, config, lanes);
+    let (aggregator, task) = NodeMetricAggregator::new(uri, stop_rx, config, lanes);
 
     (aggregator, task, receivers)
 }
@@ -1483,17 +1483,16 @@ impl MultiTestContext {
 
     fn take_receiver(&self, addr: RoutingAddr) -> Option<mpsc::Receiver<TaggedEnvelope>> {
         let mut lock = self.0.lock();
-        if lock.senders.contains_key(&addr) {
+        if let std::collections::hash_map::Entry::Vacant(e) = lock.senders.entry(addr) {
+            let (tx, rx) = mpsc::channel(5);
+            let (drop_tx, drop_rx) = promise::promise();
+            e.insert(Route::new(TaggedSender::new(addr, tx), drop_rx));
+            lock.receivers.insert(addr, RouteReceiver::taken(drop_tx));
+            Some(rx)
+        } else {
             lock.receivers
                 .get_mut(&addr)
                 .and_then(|rr| rr.receiver.take())
-        } else {
-            let (tx, rx) = mpsc::channel(5);
-            let (drop_tx, drop_rx) = promise::promise();
-            lock.senders
-                .insert(addr, Route::new(TaggedSender::new(addr, tx), drop_rx));
-            lock.receivers.insert(addr, RouteReceiver::taken(drop_tx));
-            Some(rx)
         }
     }
 }
