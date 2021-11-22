@@ -497,13 +497,13 @@ impl<'a> Parser<Span<'a>, ParseEvents<'a>, nom::error::Error<Span<'a>>> for Incr
                 }
                 ParseState::RecordBodySlot => {
                     let (input, (events, change)) =
-                        preceded(char_str::multispace0, parse_slot_value::<RecBody>)(input)?;
+                        preceded(char_str::space0, parse_slot_value::<RecBody>)(input)?;
                     change.apply(state);
                     Ok((input, events))
                 }
                 ParseState::AttrBodySlot => {
                     let (input, (events, change)) =
-                        preceded(char_str::multispace0, parse_slot_value::<AttrBody>)(input)?;
+                        preceded(char_str::space0, parse_slot_value::<AttrBody>)(input)?;
                     change.apply(state);
                     Ok((input, events))
                 }
@@ -685,7 +685,7 @@ fn parse_after_attr(input: Span<'_>) -> IResult<Span<'_>, (ParseEvents<'_>, Stat
         }),
         map(
             peek(alt((
-                recognize(alt((seperator, char_str::one_of(")}")))),
+                recognize(alt((separator, char_str::one_of(")}")))),
                 char_str::line_ending,
             ))),
             |_| {
@@ -801,7 +801,7 @@ fn parse_not_after_item<K: ItemsKind>(
             map(identifier_or_bool, |v| value_item::<K>(identifier_event(v))),
             map(numeric_literal, |l| value_item::<K>(ReadEvent::Number(l))),
             map(blob, |data| value_item::<K>(ReadEvent::Blob(data))),
-            map(seperator, |_| {
+            map(separator, |_| {
                 (
                     ReadEvent::Extant.single(),
                     StateChange::ChangeState(K::after_sep()),
@@ -838,7 +838,13 @@ fn parse_slot_value<K: ItemsKind>(
         map(identifier_or_bool, |v| slot_item::<K>(identifier_event(v))),
         map(numeric_literal, |l| slot_item::<K>(ReadEvent::Number(l))),
         map(blob, |data| slot_item::<K>(ReadEvent::Blob(data))),
-        map(seperator, |_| {
+        map(char_str::line_ending, |_| {
+            (
+                ReadEvent::Extant.single(),
+                StateChange::ChangeState(K::start_or_nl()),
+            )
+        }),
+        map(separator, |_| {
             (
                 ReadEvent::Extant.single(),
                 StateChange::ChangeState(K::after_sep()),
@@ -860,7 +866,7 @@ fn parse_slot_value<K: ItemsKind>(
 fn parse_after_value<K: ItemsKind>(input: Span<'_>) -> IResult<Span<'_>, Option<ParseState>> {
     alt((
         map(char_str::line_ending, |_| Some(K::start_or_nl())),
-        map(seperator, |_| Some(K::after_sep())),
+        map(separator, |_| Some(K::after_sep())),
         map(char_str::char(':'), |_| Some(K::start_slot())),
         map(char_str::char(K::end_delim()), |_| None),
     ))(input)
@@ -869,7 +875,7 @@ fn parse_after_value<K: ItemsKind>(input: Span<'_>) -> IResult<Span<'_>, Option<
 fn parse_after_slot<K: ItemsKind>(input: Span<'_>) -> IResult<Span<'_>, Option<ParseState>> {
     alt((
         map(char_str::line_ending, |_| Some(K::start_or_nl())),
-        map(seperator, |_| Some(K::after_sep())),
+        map(separator, |_| Some(K::after_sep())),
         map(char_str::char(K::end_delim()), |_| None),
     ))(input)
 }

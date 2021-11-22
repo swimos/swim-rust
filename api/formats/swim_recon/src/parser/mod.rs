@@ -28,7 +28,7 @@ use swim_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
 use swim_form::structural::read::ReadError;
 use swim_model::Value;
 
-/// Wraps a string in a strucutre that keeps track of the line and column
+/// Wraps a string in a structure that keeps track of the line and column
 /// as the input is parsed.
 pub type Span<'a> = LocatedSpan<&'a str>;
 
