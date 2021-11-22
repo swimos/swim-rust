@@ -332,7 +332,10 @@ fn complex_attributes() {
 
     assert_eq!(print_value(&rec), "@tag(@first 1)");
 
-    let rec = Value::of_attr(("tag", Value::Record(vec![first, second], items)));
+    let rec = Value::of_attr((
+        "tag",
+        Value::Record(vec![first.clone(), second.clone()], items.clone()),
+    ));
 
     assert_eq!(
         print_value(&rec),
@@ -343,10 +346,7 @@ fn complex_attributes() {
         "tag",
         Value::from_vec(vec![
             Item::of(1),
-            Item::of(Value::Record(
-                vec![first.clone(), second.clone()],
-                items.clone(),
-            )),
+            Item::of(Value::Record(vec![first, second], items)),
             Item::slot("slot", 2),
             Item::of(3),
         ]),
