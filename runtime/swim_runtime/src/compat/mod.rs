@@ -15,13 +15,19 @@
 use bytes::{Buf, BufMut, BytesMut};
 use std::convert::TryFrom;
 use std::str::Utf8Error;
-use swim_form::structural::read::recognizer::Recognizer;
+use futures::Stream;
+use swim_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
+use swim_form::structural::read::StructuralReadable;
 use swim_form::structural::read::ReadError;
-use swim_model::Text;
+use swim_model::{Text, Value};
 use swim_recon::parser::{AsyncParseError, ParseError, RecognizerDecoder};
 use thiserror::Error;
-use tokio_util::codec::{Decoder, Encoder};
+use tokio::io::AsyncRead;
+use tokio_stream::StreamExt;
+use tokio_util::codec::{Decoder, Encoder, FramedRead};
 use uuid::Uuid;
+use swim_warp::envelope::Envelope;
+use crate::routing::TaggedEnvelope;
 
 #[cfg(test)]
 mod tests;
@@ -170,6 +176,12 @@ pub enum AgentMessageDecodeError {
     Body(#[from] AsyncParseError),
 }
 
+impl From<ReadError> for AgentMessageDecodeError {
+    fn from(e: ReadError) -> Self {
+        AgentMessageDecodeError::Body(AsyncParseError::Parser(ParseError::Structure(e)))
+    }
+}
+
 impl AgentMessageDecodeError {
     fn incomplete() -> Self {
         AgentMessageDecodeError::Body(AsyncParseError::Parser(ParseError::Structure(
@@ -298,4 +310,49 @@ where
             }
         }
     }
+}
+
+pub fn read_messages<R, T>(reader: R) -> impl Stream<Item = Result<AgentMessage<T>, AgentMessageDecodeError>>
+where
+    R: AsyncRead + Unpin,
+    T: RecognizerReadable,
+{
+    let decoder = AgentMessageDecoder::<T, _>::new(T::make_recognizer());
+    FramedRead::new(reader, decoder)
+}
+
+fn fail(name: &str) -> AgentMessageDecodeError {
+    let err = ReadError::UnexpectedAttribute(Text::new(name));
+    AgentMessageDecodeError::Body(AsyncParseError::Parser(ParseError::Structure(err)))
+}
+
+impl<T: RecognizerReadable> TryFrom<TaggedEnvelope> for AgentMessage<T> {
+    type Error = AgentMessageDecodeError;
+
+    fn try_from(value: TaggedEnvelope) -> Result<Self, Self::Error> {
+        let TaggedEnvelope(addr, env) = value;
+        match env {
+            Envelope::Link { lane_uri, .. } => Ok(AgentMessage::link(addr.into(), lane_uri)),
+            Envelope::Sync { lane_uri, .. } => Ok(AgentMessage::sync(addr.into(), lane_uri)),
+            Envelope::Unlink { lane_uri, .. } => Ok(AgentMessage::unlink(addr.into(), lane_uri)),
+            Envelope::Command { lane_uri, body,  .. } => {
+                let interpreted_body = T::try_transform(body.unwrap_or(Value::Extant))?;
+                Ok(AgentMessage::command(addr.into(), lane_uri, interpreted_body))
+            },
+            Envelope::Linked { .. } => Err(fail("linked")),
+            Envelope::Synced { .. } => Err(fail("synced")),
+            Envelope::Unlinked { .. } => Err(fail("unlinked")),
+            Envelope::Event { .. } => Err(fail("event")),
+            Envelope::Auth { .. } => Err(fail("auth")),
+            Envelope::DeAuth { .. } => Err(fail("deauth")),
+        }
+    }
+}
+
+pub fn messages_from_envelopes<S, T>(envelopes: S) -> impl Stream<Item = Result<AgentMessage<T>, AgentMessageDecodeError>>
+    where
+        S: Stream<Item = TaggedEnvelope> + Unpin,
+        T: RecognizerReadable,
+{
+    envelopes.map(TryFrom::try_from)
 }
