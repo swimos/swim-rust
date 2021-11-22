@@ -186,10 +186,7 @@ pub fn complex_insert_to_value() {
         expected
     );
     assert_eq!(
-        Form::as_value(&UntypedMapModification::Update(
-            Value::text("hello"),
-            body
-        )),
+        Form::as_value(&UntypedMapModification::Update(Value::text("hello"), body)),
         expected
     );
 }
@@ -216,10 +213,7 @@ pub fn complex_insert_from_value() {
     let result2: MapModResult = Form::try_convert(rep);
     assert_eq!(
         result2,
-        Ok(UntypedMapModification::Update(
-            Value::text("hello"),
-            body
-        ))
+        Ok(UntypedMapModification::Update(Value::text("hello"), body))
     );
 }
 

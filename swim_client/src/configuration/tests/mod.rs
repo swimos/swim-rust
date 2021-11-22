@@ -223,8 +223,6 @@ fn create_full_config() -> SwimClientConfig {
         ),
     );
 
-    
-
     SwimClientConfig::new(
         DownlinkConnectionsConfig::new(
             non_zero_usize!(8),

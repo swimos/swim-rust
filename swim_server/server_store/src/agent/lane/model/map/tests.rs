@@ -214,9 +214,7 @@ fn model_snapshot_multiple_ids() {
 #[test]
 fn model_crud() {
     let values = Arc::new(Mutex::new(HashMap::new()));
-    let store = TrackingMapStore {
-        values,
-    };
+    let store = TrackingMapStore { values };
     let model = MapDataModel::<TrackingMapStore, String, i32>::new(store, 0);
 
     let mut to_load = HashMap::new();

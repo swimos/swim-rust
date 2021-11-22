@@ -106,10 +106,7 @@ fn with_attributes_round_trip() {
     let rec3 = Value::Record(vec![attr3.clone()], body.clone());
     round_trip(rec3);
 
-    let rec4 = Value::Record(
-        vec![attr1, attr2, attr3],
-        body,
-    );
+    let rec4 = Value::Record(vec![attr1, attr2, attr3], body);
     round_trip(rec4);
 }
 
