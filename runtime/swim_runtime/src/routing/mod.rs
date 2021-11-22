@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::convert::TryFrom;
 use crate::error::{ConnectionDropped, ResolutionError, RouterError, RoutingError};
+use std::convert::TryFrom;
 
 use futures::future::BoxFuture;
 use futures::FutureExt;
@@ -46,7 +46,6 @@ const PLANE: u8 = 1;
 const CLIENT: u8 = 2;
 
 impl RoutingAddr {
-
     const fn new(tag: u8, id: u32) -> Self {
         let mut uuid_as_int = id as u128;
         uuid_as_int &= (tag as u128) << 96;
@@ -86,7 +85,7 @@ impl Display for RoutingAddr {
         let RoutingAddr(inner) = self;
         match inner.as_bytes()[0] {
             REMOTE => write!(f, "Remote({:X})", inner),
-            PLANE  => write!(f, "Plane({:X})", inner),
+            PLANE => write!(f, "Plane({:X})", inner),
             _ => write!(f, "Client({:X})", inner),
         }
     }
