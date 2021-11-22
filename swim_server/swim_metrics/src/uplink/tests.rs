@@ -70,7 +70,7 @@ async fn uplink_sender_ok() {
     let sender = UplinkProfileSender::new(path.clone(), tx);
     let profile = WarpUplinkProfile::default();
 
-    assert!(sender.try_send(profile.clone()).is_ok());
+    assert!(sender.try_send(profile).is_ok());
     let expected = TaggedWarpUplinkProfile { path, profile };
 
     assert_eq!(rx.recv().now_or_never().unwrap().unwrap(), expected);
@@ -80,7 +80,7 @@ async fn uplink_sender_ok() {
 async fn uplink_sender_err() {
     let path = RelativePath::new("/node", "/lane");
     let (tx, _) = mpsc::channel(1);
-    let sender = UplinkProfileSender::new(path.clone(), tx);
+    let sender = UplinkProfileSender::new(path, tx);
 
     assert_eq!(
         sender.try_send(WarpUplinkProfile::default()),

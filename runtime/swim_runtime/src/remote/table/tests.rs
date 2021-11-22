@@ -65,7 +65,7 @@ async fn add_host_to_existing() {
     let (bidirectional_tx, _bidirectional_rx) = mpsc::channel(8);
 
     assert!(table.add_host(hp2.clone(), sock_addr).is_none());
-    table.insert(addr, Some(hp.clone()), sock_addr, tx, bidirectional_tx);
+    table.insert(addr, Some(hp), sock_addr, tx, bidirectional_tx);
     assert_eq!(table.add_host(hp2.clone(), sock_addr), Some(addr));
 
     assert_eq!(table.try_resolve(&hp2), Some(addr));

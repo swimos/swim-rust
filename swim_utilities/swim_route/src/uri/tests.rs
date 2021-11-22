@@ -30,7 +30,7 @@ fn uri_is_absolute_display() {
 #[test]
 fn relative_uri_new() {
     let good = RelativeUri::new("/example".parse().unwrap());
-    assert!(matches!(good, Ok(RelativeUri(uri)) if uri.to_string() == "/example"));
+    assert!(matches!(good, Ok(RelativeUri(uri)) if uri == "/example"));
 
     let bad = RelativeUri::new("swim://example".parse().unwrap());
     assert!(bad.is_err());
@@ -126,6 +126,7 @@ fn try_from_uri_relative_uri() {
 }
 
 #[test]
+#[allow(clippy::eq_op)]
 fn relative_uri_equality() {
     let string = "/example";
     let uri: Uri = string.parse().unwrap();

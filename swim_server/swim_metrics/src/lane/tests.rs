@@ -125,7 +125,7 @@ async fn multiple_lanes() {
     );
 
     let assertion_task = async move {
-        for (path, _v) in &rx_map {
+        for path in rx_map.keys() {
             for i in 0..profile_send_count {
                 let payload = build_uplink_profile(path.clone(), i as u32);
                 assert!(lane_profile_tx.send(payload).await.is_ok());
@@ -150,7 +150,7 @@ async fn multiple_lanes() {
             let received = v
                 .recv()
                 .await
-                .expect(&format!("No value at lane: {}", path));
+                .unwrap_or_else(|| panic!("No value at lane: {}", path));
             assert_eq!(received, expected);
         }
     };

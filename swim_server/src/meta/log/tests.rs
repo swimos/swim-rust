@@ -220,7 +220,7 @@ async fn agent_log() {
         .body(action.clone())
         .done();
 
-    let map_update = Envelope::from(map_update);
+    let map_update = map_update;
 
     assert!(envelope_tx
         .send(TaggedEnvelope(RoutingAddr::remote(1), map_update.clone()))

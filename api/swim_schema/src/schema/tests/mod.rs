@@ -15,6 +15,7 @@
 mod derive;
 
 use super::*;
+use num_traits::FloatConst;
 use regex::Regex;
 use std::collections::HashMap;
 use swim_model::bigint::{BigInt, BigUint};
@@ -74,7 +75,7 @@ fn arbitrary() -> HashMap<ValueKind, Value> {
 fn arbitrary_without(kinds: Vec<ValueKind>) -> HashMap<ValueKind, Value> {
     let mut map = arbitrary();
     for kind in kinds.iter() {
-        map.remove(&kind);
+        map.remove(kind);
     }
     map
 }
@@ -294,7 +295,7 @@ fn or_schema() {
 fn anything_schema() {
     let schema = StandardSchema::Anything;
     for value in arbitrary().values() {
-        assert!(schema.matches(&value));
+        assert!(schema.matches(value));
     }
 }
 
@@ -302,7 +303,7 @@ fn anything_schema() {
 fn nothing_schema() {
     let schema = StandardSchema::Nothing;
     for value in arbitrary().values() {
-        assert!(!schema.matches(&value));
+        assert!(!schema.matches(value));
     }
 }
 
@@ -1506,7 +1507,7 @@ fn map_record() {
     assert!(schema.matches(&Value::from_vec(good_items.clone())));
     assert!(!schema.matches(&Value::from_vec(bad_items)));
 
-    let with_attr = Value::Record(vec![Attr::of("name")], good_items.clone());
+    let with_attr = Value::Record(vec![Attr::of("name")], good_items);
     assert!(schema.matches(&with_attr));
 }
 
@@ -1955,7 +1956,7 @@ fn layout_to_value() {
         StandardSchema::Text(TextSchema::exact("name")),
         StandardSchema::Equal(Value::Int32Value(1)),
     );
-    let item_schema1 = ItemSchema::Field(slot_schema.clone());
+    let item_schema1 = ItemSchema::Field(slot_schema);
     let item_schema2 = ItemSchema::ValueItem(StandardSchema::Anything);
     let schema = StandardSchema::Layout {
         items: vec![(item_schema1.clone(), true), (item_schema2.clone(), false)],
@@ -2349,8 +2350,8 @@ fn compare_upper_bounded() {
 #[test]
 fn compare_lower_bounded() {
     assert_eq!(
-        Range::<f64>::lower_bounded(Bound::exclusive(3.14)),
-        Range::<f64>::lower_bounded(Bound::exclusive(3.14))
+        Range::<f64>::lower_bounded(Bound::exclusive(f64::PI())),
+        Range::<f64>::lower_bounded(Bound::exclusive(f64::PI()))
     );
 
     assert!(
@@ -2503,7 +2504,7 @@ fn test_fields_are_related() {
         true
     ));
 
-    assert!(!fields_are_related(&vec![], &sup_fields, true));
+    assert!(!fields_are_related(&[], &sup_fields, true));
     assert!(!fields_are_related(
         &sup_fields,
         &sub_fields_invalid_first,
@@ -2666,7 +2667,7 @@ fn test_ordered_items_are_related() {
         true
     ));
 
-    assert!(!ordered_items_are_related(&vec![], &sup_items, true));
+    assert!(!ordered_items_are_related(&[], &sup_items, true));
     assert!(!ordered_items_are_related(
         &sup_items,
         &sub_items_invalid_first,
@@ -4185,7 +4186,7 @@ fn compare_equal_f64() {
     let equal_schemas = vec![StandardSchema::Equal(Value::Float64Value(15.15))];
 
     assert_less_than(schema.clone(), greater_schemas);
-    assert_equal(schema.clone(), equal_schemas);
+    assert_equal(schema, equal_schemas);
 }
 
 #[test]
@@ -4203,7 +4204,7 @@ fn compare_equal_text() {
     ];
 
     assert_less_than(schema.clone(), greater_schemas);
-    assert_equal(schema.clone(), equal_schemas);
+    assert_equal(schema, equal_schemas);
 }
 
 #[test]
@@ -4305,7 +4306,7 @@ fn compare_equal_record() {
     let equal_schemas = vec![schema.clone()];
 
     assert_less_than(schema.clone(), greater_schemas);
-    assert_equal(schema.clone(), equal_schemas);
+    assert_equal(schema, equal_schemas);
 }
 
 #[test]
@@ -6207,7 +6208,7 @@ fn compare_has_attrs_has_attrs_exhaustive() {
     assert_equal(schema.clone(), equal_schemas);
     assert_less_than(schema.clone(), greater_schemas);
     assert_greater_than(schema.clone(), lesser_schemas);
-    assert_not_related(schema.clone(), not_related_schemas);
+    assert_not_related(schema, not_related_schemas);
 }
 
 #[test]
@@ -6378,7 +6379,7 @@ fn compare_has_attrs_has_attrs_non_exhaustive() {
     assert_equal(schema.clone(), equal_schemas);
     assert_less_than(schema.clone(), greater_schemas);
     assert_greater_than(schema.clone(), lesser_schemas);
-    assert_not_related(schema.clone(), not_related_schemas);
+    assert_not_related(schema, not_related_schemas);
 }
 
 #[test]
@@ -6810,7 +6811,7 @@ fn compare_has_slots_has_slots_exhaustive() {
     assert_equal(schema.clone(), equal_schemas);
     assert_less_than(schema.clone(), greater_schemas);
     assert_greater_than(schema.clone(), lesser_schemas);
-    assert_not_related(schema.clone(), not_related_schemas);
+    assert_not_related(schema, not_related_schemas);
 }
 
 #[test]
@@ -6981,7 +6982,7 @@ fn compare_has_slots_has_slots_non_exhaustive() {
     assert_equal(schema.clone(), equal_schemas);
     assert_less_than(schema.clone(), greater_schemas);
     assert_greater_than(schema.clone(), lesser_schemas);
-    assert_not_related(schema.clone(), not_related_schemas);
+    assert_not_related(schema, not_related_schemas);
 }
 
 #[test]
@@ -7109,7 +7110,7 @@ fn compare_has_slots_layout() {
     ];
 
     assert_greater_than(schema.clone(), lesser_schemas);
-    assert_not_related(schema.clone(), not_related_schemas);
+    assert_not_related(schema, not_related_schemas);
 }
 
 #[test]
@@ -7272,7 +7273,7 @@ fn compare_layout_layout_exhaustive() {
     assert_equal(schema.clone(), equal_schemas);
     assert_less_than(schema.clone(), greater_schemas);
     assert_greater_than(schema.clone(), lesser_schemas);
-    assert_not_related(schema.clone(), not_related_schemas);
+    assert_not_related(schema, not_related_schemas);
 }
 
 #[test]
@@ -7444,7 +7445,7 @@ fn compare_layout_layout_non_exhaustive() {
     assert_equal(schema.clone(), equal_schemas);
     assert_less_than(schema.clone(), greater_schemas);
     assert_greater_than(schema.clone(), lesser_schemas);
-    assert_not_related(schema.clone(), not_related_schemas);
+    assert_not_related(schema, not_related_schemas);
 }
 
 #[test]

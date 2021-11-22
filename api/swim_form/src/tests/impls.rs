@@ -226,7 +226,7 @@ fn test_map_modification() {
         expected
     );
     assert_eq!(
-        Form::as_value(&FormMapUpdate::Update(Value::text("hello"), body.clone())),
+        Form::as_value(&FormMapUpdate::Update(Value::text("hello"), body)),
         expected
     );
 
@@ -247,6 +247,6 @@ fn test_map_modification() {
     let result2 = FormMapUpdate::try_convert(rep);
     assert_eq!(
         result2,
-        Ok(FormMapUpdate::Update(Value::text("hello"), body.clone()))
+        Ok(FormMapUpdate::Update(Value::text("hello"), body))
     );
 }

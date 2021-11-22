@@ -20,7 +20,7 @@ use std::{thread, time};
 #[test]
 fn atomic_instant_create() {
     let instant = Instant::now();
-    let atomic_instant = AtomicInstant::new(instant.clone());
+    let atomic_instant = AtomicInstant::new(instant);
 
     assert_eq!(atomic_instant.offset.load(Relaxed), 0);
     assert_eq!(atomic_instant.base, instant);
@@ -29,7 +29,7 @@ fn atomic_instant_create() {
 #[test]
 fn atomic_instant_store() {
     let first_instant = Instant::now();
-    let atomic_instant = AtomicInstant::new(first_instant.clone());
+    let atomic_instant = AtomicInstant::new(first_instant);
 
     thread::sleep(time::Duration::from_secs(1));
 
@@ -46,7 +46,7 @@ fn atomic_instant_store() {
 #[test]
 fn atomic_instant_load() {
     let first_instant = Instant::now();
-    let atomic_instant = AtomicInstant::new(first_instant.clone());
+    let atomic_instant = AtomicInstant::new(first_instant);
 
     thread::sleep(time::Duration::from_secs(1));
 

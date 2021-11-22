@@ -29,7 +29,7 @@ fn empty_text() {
 const SMALL: &str = "word";
 const LARGE: &str = "aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa ";
 fn make_borderline() -> String {
-    std::iter::repeat('a').take(SMALL_SIZE).collect()
+    "a".repeat(SMALL_SIZE)
 }
 
 #[test]
@@ -53,7 +53,7 @@ fn text_from_string() {
     assert!(small.is_small());
     assert_eq!(small, SMALL);
 
-    let borderline = Text::from_string(make_borderline().to_string());
+    let borderline = Text::from_string(make_borderline());
     assert!(borderline.is_small());
     assert_eq!(borderline, make_borderline());
 
@@ -125,7 +125,7 @@ fn text_push_char() {
 
     let mut borderline = Text::new(make_borderline().as_str());
     borderline.push('🐳');
-    assert_eq!(borderline, make_borderline().to_string() + "🐳");
+    assert_eq!(borderline, make_borderline() + "🐳");
     assert!(!borderline.is_small());
 
     let mut large = Text::new(LARGE);
@@ -148,7 +148,7 @@ fn text_push_str() {
 
     let mut borderline = Text::new(make_borderline().as_str());
     borderline.push_str("stuff");
-    assert_eq!(borderline, make_borderline().to_string() + "stuff");
+    assert_eq!(borderline, make_borderline() + "stuff");
     assert!(!borderline.is_small());
 
     let mut large = Text::new(LARGE);
@@ -480,13 +480,13 @@ fn text_debug() {
 #[test]
 fn text_display() {
     let small = Text::new(SMALL);
-    assert_eq!(format!("{}", small), format!("{}", SMALL));
+    assert_eq!(format!("{}", small), SMALL.to_string());
 
     let borderline = Text::new(make_borderline().as_str());
-    assert_eq!(format!("{}", borderline), format!("{}", make_borderline()));
+    assert_eq!(format!("{}", borderline), make_borderline());
 
     let large = Text::new(LARGE);
-    assert_eq!(format!("{}", large), format!("{}", LARGE));
+    assert_eq!(format!("{}", large), LARGE.to_string());
 }
 
 #[test]
@@ -559,10 +559,10 @@ fn extend_text_with_chars() {
 
     let mut borderline = Text::new(make_borderline().as_str());
     borderline.extend(chars.clone().into_iter());
-    assert_eq!(borderline, make_borderline().to_string() + "extra");
+    assert_eq!(borderline, make_borderline() + "extra");
 
     let mut large = Text::new(LARGE);
-    large.extend(chars.clone().into_iter());
+    large.extend(chars.into_iter());
     assert_eq!(large, LARGE.to_string() + "extra");
 }
 
@@ -580,7 +580,7 @@ fn extend_text_with_chars_by_ref() {
 
     let mut borderline = Text::new(make_borderline().as_str());
     borderline.extend(chars.iter());
-    assert_eq!(borderline, make_borderline().to_string() + "extra");
+    assert_eq!(borderline, make_borderline() + "extra");
 
     let mut large = Text::new(LARGE);
     large.extend(chars.iter());
@@ -601,7 +601,7 @@ fn extend_text_with_chars_by_mut_ref() {
 
     let mut borderline = Text::new(make_borderline().as_str());
     borderline.extend(chars.iter_mut());
-    assert_eq!(borderline, make_borderline().to_string() + "extra");
+    assert_eq!(borderline, make_borderline() + "extra");
 
     let mut large = Text::new(LARGE);
     large.extend(chars.iter_mut());
@@ -623,7 +623,7 @@ fn extend_text_with_strs() {
 
     let mut borderline = Text::new(make_borderline().as_str());
     borderline.extend(strs.clone().into_iter());
-    assert_eq!(borderline, make_borderline().to_string() + expected_suffix);
+    assert_eq!(borderline, make_borderline() + expected_suffix);
 
     let mut large = Text::new(LARGE);
     large.extend(strs.clone().into_iter());
@@ -652,10 +652,10 @@ fn extend_text_with_strings() {
 
     let mut borderline = Text::new(make_borderline().as_str());
     borderline.extend(strs.clone().into_iter());
-    assert_eq!(borderline, make_borderline().to_string() + expected_suffix);
+    assert_eq!(borderline, make_borderline() + expected_suffix);
 
     let mut large = Text::new(LARGE);
-    large.extend(strs.clone().into_iter());
+    large.extend(strs.into_iter());
     assert_eq!(large, LARGE.to_string() + expected_suffix);
 }
 
@@ -681,7 +681,7 @@ fn extend_text_with_strings_by_ref() {
 
     let mut borderline = Text::new(make_borderline().as_str());
     borderline.extend(strs.iter());
-    assert_eq!(borderline, make_borderline().to_string() + expected_suffix);
+    assert_eq!(borderline, make_borderline() + expected_suffix);
 
     let mut large = Text::new(LARGE);
     large.extend(strs.iter());
@@ -710,10 +710,10 @@ fn extend_text_with_texts() {
 
     let mut borderline = Text::new(make_borderline().as_str());
     borderline.extend(strs.clone().into_iter());
-    assert_eq!(borderline, make_borderline().to_string() + expected_suffix);
+    assert_eq!(borderline, make_borderline() + expected_suffix);
 
     let mut large = Text::new(LARGE);
-    large.extend(strs.clone().into_iter());
+    large.extend(strs.into_iter());
     assert_eq!(large, LARGE.to_string() + expected_suffix);
 }
 
@@ -739,7 +739,7 @@ fn extend_text_with_texts_by_ref() {
 
     let mut borderline = Text::new(make_borderline().as_str());
     borderline.extend(strs.iter());
-    assert_eq!(borderline, make_borderline().to_string() + expected_suffix);
+    assert_eq!(borderline, make_borderline() + expected_suffix);
 
     let mut large = Text::new(LARGE);
     large.extend(strs.iter());

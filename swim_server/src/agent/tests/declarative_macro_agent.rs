@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #![allow(legacy_derive_helpers)]
+#![allow(clippy::ptr_arg)]
 
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
