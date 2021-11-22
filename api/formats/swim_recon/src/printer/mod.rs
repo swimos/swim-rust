@@ -26,7 +26,6 @@ use swim_model::bigint::{BigInt, BigUint};
 use swim_model::write_string_literal;
 
 /// Print an inline Recon representation of [`StructuralWritable`] value.
-/// TODO Add pretty prining options.
 pub fn print_recon<T: StructuralWritable>(value: &T) -> impl Display + '_ {
     ReconPrint(value, StandardPrint)
 }
@@ -34,6 +33,11 @@ pub fn print_recon<T: StructuralWritable>(value: &T) -> impl Display + '_ {
 /// Print a compact Recon representation of [`StructuralWritable`] value.
 pub fn print_recon_compact<T: StructuralWritable>(value: &T) -> impl Display + '_ {
     ReconPrint(value, CompactPrint)
+}
+
+/// Print a pretty Recon representation of [`StructuralWritable`] value.
+pub fn print_recon_pretty<T: StructuralWritable>(value: &T) -> impl Display + '_ {
+    ReconPrint(value, PrettyPrint::new())
 }
 
 struct ReconPrint<'a, T, S>(&'a T, S);
@@ -264,7 +268,7 @@ where
             ..
         } = &mut self;
         if *has_attr {
-            fmt.write_str(strategy.attr_padding())?;
+            strategy.attr_padding().fmt(fmt)?;
         } else {
             *has_attr = true;
         }
@@ -305,14 +309,14 @@ where
         } = &mut self;
         if *has_attr {
             if num_items > 1 {
-                fmt.write_str(strategy.attr_padding())?;
+                strategy.attr_padding().fmt(fmt)?;
                 fmt.write_str("{")?;
-                fmt.write_str(strategy.block_start_padding(num_items))?;
+                strategy.start_block(num_items).fmt(fmt)?;
                 *brace_written = true;
             }
         } else {
             fmt.write_str("{")?;
-            fmt.write_str(strategy.block_start_padding(num_items))?;
+            strategy.start_block(num_items).fmt(fmt)?;
             *brace_written = true;
         }
         *single_item = num_items == 1;
@@ -341,7 +345,7 @@ where
             if *single_item {
                 fmt.write_str(" ")?;
             } else {
-                fmt.write_str(strategy.attr_padding())?;
+                strategy.attr_padding().fmt(fmt)?;
                 fmt.write_str("{")?;
                 *brace_written = true;
             }
@@ -349,7 +353,7 @@ where
             *first = false;
         } else {
             fmt.write_str(",")?;
-            fmt.write_str(strategy.item_padding())?;
+            strategy.item_padding(*brace_written).fmt(fmt)?;
         }
         let printer = StructurePrinter::new(*fmt, *strategy);
         value.write_with(printer)?;
@@ -363,6 +367,7 @@ where
     ) -> Result<Self, Self::Error> {
         let StructurePrinter {
             fmt,
+            brace_written,
             first,
             strategy,
             ..
@@ -371,12 +376,12 @@ where
             *first = false;
         } else {
             fmt.write_str(",")?;
-            fmt.write_str(strategy.item_padding())?;
+            strategy.item_padding(*brace_written).fmt(fmt)?;
         }
         let key_printer = StructurePrinter::new(*fmt, *strategy);
         key.write_with(key_printer)?;
         fmt.write_str(":")?;
-        fmt.write_str(strategy.slot_padding())?;
+        strategy.slot_padding().fmt(fmt)?;
 
         let val_printer = StructurePrinter::new(*fmt, *strategy);
         value.write_with(val_printer)?;
@@ -400,12 +405,12 @@ where
             fmt,
             brace_written,
             first,
-            strategy,
+            mut strategy,
             ..
         } = self;
         if brace_written {
             if !first {
-                fmt.write_str(strategy.block_end_padding(first))?;
+                strategy.end_block().fmt(fmt)?;
             }
             fmt.write_str("}")?;
         }
@@ -656,7 +661,7 @@ where
             ..
         } = &mut self;
         if *has_attr {
-            fmt.write_str(strategy.attr_padding())?;
+            strategy.attr_padding().fmt(fmt)?;
         } else {
             *has_attr = true;
         }
@@ -703,15 +708,15 @@ where
                     fmt.write_str(" ")?;
                 }
                 _ => {
-                    fmt.write_str(strategy.attr_padding())?;
+                    strategy.attr_padding().fmt(fmt)?;
                     fmt.write_str("{")?;
-                    fmt.write_str(strategy.block_start_padding(num_items))?;
+                    strategy.start_block(num_items).fmt(fmt)?;
                     *brace_written = true;
                 }
             }
         } else if num_items == 0 {
             fmt.write_str("{")?;
-            fmt.write_str(strategy.block_start_padding(num_items))?;
+            strategy.start_block(num_items).fmt(fmt)?;
             *brace_written = true;
         }
         Ok(self)
@@ -737,14 +742,14 @@ where
         } = &mut self;
         if !*brace_written && !*has_attr && *single_item {
             fmt.write_str("{")?;
-            fmt.write_str(strategy.block_start_padding(1))?;
+            strategy.start_block(1).fmt(fmt)?;
             *brace_written = true;
         }
         if *first {
             *first = false;
         } else {
             fmt.write_str(",")?;
-            fmt.write_str(strategy.item_padding())?;
+            strategy.item_padding(*brace_written).fmt(fmt)?;
         }
         let printer = StructurePrinter::new(*fmt, *strategy);
         value.write_with(printer)?;
@@ -758,6 +763,7 @@ where
     ) -> Result<Self, Self::Error> {
         let AttributePrinter {
             fmt,
+            brace_written,
             first,
             strategy,
             ..
@@ -766,12 +772,12 @@ where
             *first = false;
         } else {
             fmt.write_str(",")?;
-            fmt.write_str(strategy.item_padding())?;
+            strategy.item_padding(*brace_written).fmt(fmt)?;
         }
         let key_printer = StructurePrinter::new(*fmt, *strategy);
         key.write_with(key_printer)?;
         fmt.write_str(":")?;
-        fmt.write_str(strategy.slot_padding())?;
+        strategy.slot_padding().fmt(fmt)?;
 
         let val_printer = StructurePrinter::new(*fmt, *strategy);
         value.write_with(val_printer)?;
@@ -795,96 +801,193 @@ where
             fmt,
             brace_written,
             first,
+            mut strategy,
             ..
         } = self;
         if brace_written {
-            if first {
-                fmt.write_str("}")?;
-            } else {
-                fmt.write_str(" }")?;
+            if !first {
+                strategy.end_block().fmt(fmt)?;
             }
+            fmt.write_str("}")?;
         }
         fmt.write_str(")")?;
         Ok(())
     }
 }
 
+/// Padding used by the print strategies to customise the output format of Recon.
+pub enum Padding<'a> {
+    /// Simple padding that writes only a string slice.
+    Simple(&'a str),
+    /// Complex padding that writes a string slice as a prefix followed by `n`
+    /// writes of another string slice.
+    Complex {
+        prefix: &'a str,
+        block: &'a str,
+        repeats: usize,
+    },
+}
+
+const NO_SPACE: Padding = Padding::Simple("");
+const SINGLE_SPACE: Padding = Padding::Simple(" ");
+const PRETTY_INDENT: &str = "    ";
+const NEW_LINE: &str = "\n";
+
+impl<'a> Display for Padding<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Padding::Simple(padding) => f.write_str(*padding)?,
+            Padding::Complex {
+                prefix,
+                block,
+                repeats,
+            } => {
+                f.write_str(*prefix)?;
+                for _ in 0..*repeats {
+                    f.write_str(*block)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
 pub trait PrintStrategy {
-    fn attr_padding(&self) -> &'static str;
+    fn attr_padding(&self) -> Padding;
 
-    fn attr_body_padding(&self) -> &'static str;
+    fn attr_body_padding(&self) -> Padding;
 
-    fn block_start_padding(&self, items: usize) -> &'static str;
+    fn start_block(&mut self, items: usize) -> Padding;
 
-    fn block_end_padding(&self, is_empty: bool) -> &'static str;
+    fn end_block(&mut self) -> Padding;
 
-    fn item_padding(&self) -> &'static str;
+    fn item_padding(&self, in_record: bool) -> Padding;
 
-    fn slot_padding(&self) -> &'static str;
+    fn slot_padding(&self) -> Padding;
 }
 
 #[derive(Clone, Copy)]
 struct StandardPrint;
 
-#[derive(Clone, Copy)]
-struct CompactPrint;
-
 impl PrintStrategy for StandardPrint {
-    fn attr_padding(&self) -> &'static str {
-        " "
+    fn attr_padding(&self) -> Padding {
+        SINGLE_SPACE
     }
 
-    fn attr_body_padding(&self) -> &'static str {
-        ""
+    fn attr_body_padding(&self) -> Padding {
+        NO_SPACE
     }
 
-    fn block_start_padding(&self, items: usize) -> &'static str {
+    fn start_block(&mut self, items: usize) -> Padding {
         if items == 0 {
-            ""
+            NO_SPACE
         } else {
-            " "
+            SINGLE_SPACE
         }
     }
 
-    fn block_end_padding(&self, is_empty: bool) -> &'static str {
-        if is_empty {
-            ""
-        } else {
-            " "
-        }
+    fn end_block(&mut self) -> Padding {
+        SINGLE_SPACE
     }
 
-    fn item_padding(&self) -> &'static str {
-        " "
+    fn item_padding(&self, _in_record: bool) -> Padding {
+        SINGLE_SPACE
     }
 
-    fn slot_padding(&self) -> &'static str {
-        " "
+    fn slot_padding(&self) -> Padding {
+        SINGLE_SPACE
     }
 }
 
+#[derive(Clone, Copy)]
+struct CompactPrint;
+
 impl PrintStrategy for CompactPrint {
-    fn attr_padding(&self) -> &'static str {
-        ""
+    fn attr_padding(&self) -> Padding {
+        NO_SPACE
     }
 
-    fn attr_body_padding(&self) -> &'static str {
-        ""
+    fn attr_body_padding(&self) -> Padding {
+        NO_SPACE
     }
 
-    fn block_start_padding(&self, _items: usize) -> &'static str {
-        ""
+    fn start_block(&mut self, _items: usize) -> Padding {
+        NO_SPACE
     }
 
-    fn block_end_padding(&self, _is_empty: bool) -> &'static str {
-        ""
+    fn end_block(&mut self) -> Padding {
+        NO_SPACE
     }
 
-    fn item_padding(&self) -> &'static str {
-        ""
+    fn item_padding(&self, _in_record: bool) -> Padding {
+        NO_SPACE
     }
 
-    fn slot_padding(&self) -> &'static str {
-        ""
+    fn slot_padding(&self) -> Padding {
+        NO_SPACE
+    }
+}
+
+#[derive(Clone, Copy)]
+struct PrettyPrint {
+    indent_level: usize,
+}
+
+impl PrettyPrint {
+    fn new() -> Self {
+        PrettyPrint { indent_level: 0 }
+    }
+
+    fn write_new_line(&self) -> Padding {
+        Padding::Complex {
+            prefix: NEW_LINE,
+            block: PRETTY_INDENT,
+            repeats: self.indent_level,
+        }
+    }
+
+    fn increase_indent(&mut self) {
+        self.indent_level += 1
+    }
+
+    fn decrease_indent(&mut self) {
+        self.indent_level -= 1
+    }
+}
+
+impl PrintStrategy for PrettyPrint {
+    fn attr_padding(&self) -> Padding {
+        SINGLE_SPACE
+    }
+
+    fn attr_body_padding(&self) -> Padding {
+        NO_SPACE
+    }
+
+    fn start_block(&mut self, items: usize) -> Padding {
+        if items == 0 {
+            NO_SPACE
+        } else {
+            self.increase_indent();
+            self.write_new_line()
+        }
+    }
+
+    fn end_block(&mut self) -> Padding {
+        self.decrease_indent();
+        self.write_new_line()
+    }
+
+    fn item_padding(&self, in_record: bool) -> Padding {
+        if in_record {
+            self.write_new_line()
+        } else {
+            SINGLE_SPACE
+        }
+    }
+
+    fn slot_padding(&self) -> Padding {
+        SINGLE_SPACE
     }
 }
