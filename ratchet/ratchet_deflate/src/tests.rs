@@ -354,8 +354,10 @@ fn response_unknown_param() {
 
 #[test]
 fn response_no_context_takeover() {
-    let mut config = DeflateConfig::default();
-    config.accept_no_context_takeover = false;
+    let config = DeflateConfig {
+        accept_no_context_takeover: false,
+        ..Default::default()
+    };
 
     match on_response(
         &[Header {

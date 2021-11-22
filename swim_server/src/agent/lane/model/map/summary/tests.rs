@@ -100,9 +100,7 @@ fn remove_existing_no_clear() {
     let value = Arc::new(4);
 
     let summary = TransactionSummary::default();
-    let updated = summary
-        .update(key.clone(), value.clone())
-        .remove(key.clone());
+    let updated = summary.update(key.clone(), value).remove(key.clone());
     assert_eq!(updated.coordination_id, 0);
     assert!(!updated.clear);
     assert_eq!(updated.changes.len(), 1);
@@ -118,9 +116,7 @@ fn remove_existing_clear() {
     let value = Arc::new(4);
 
     let summary = TransactionSummary::clear();
-    let updated = summary
-        .update(key.clone(), value.clone())
-        .remove(key.clone());
+    let updated = summary.update(key.clone(), value).remove(key.clone());
     assert_eq!(updated.coordination_id, 0);
     assert!(updated.clear);
     assert_eq!(updated.changes.len(), 1);
@@ -175,15 +171,13 @@ fn to_events_no_clear() {
     let key2 = Value::Int32Value(6);
 
     let summary = TransactionSummary::default();
-    let updated = summary
-        .update(key1.clone(), value1.clone())
-        .remove(key2.clone());
+    let updated = summary.update(key1, value1.clone()).remove(key2);
 
     let events = updated.to_events();
     assert!(matches!(events.as_slice(),
     [MapLaneEvent::Update(Value::Int32Value(2), v), MapLaneEvent::Remove(Value::Int32Value(6))] |
     [MapLaneEvent::Remove(Value::Int32Value(6)), MapLaneEvent::Update(Value::Int32Value(2), v)]
-    if Arc::ptr_eq(&v, &value1)));
+    if Arc::ptr_eq(v, &value1)));
 }
 
 #[test]
@@ -194,15 +188,13 @@ fn to_events_clear() {
     let key2 = Value::Int32Value(6);
 
     let summary = TransactionSummary::clear();
-    let updated = summary
-        .update(key1.clone(), value1.clone())
-        .remove(key2.clone());
+    let updated = summary.update(key1, value1.clone()).remove(key2);
 
     let events = updated.to_events();
     assert!(matches!(events.as_slice(),
     [MapLaneEvent::Clear, MapLaneEvent::Update(Value::Int32Value(2), v), MapLaneEvent::Remove(Value::Int32Value(6))] |
     [MapLaneEvent::Clear, MapLaneEvent::Remove(Value::Int32Value(6)), MapLaneEvent::Update(Value::Int32Value(2), v)]
-    if Arc::ptr_eq(&v, &value1)));
+    if Arc::ptr_eq(v, &value1)));
 }
 
 #[tokio::test]
@@ -218,17 +210,14 @@ async fn clear_summary_transaction() {
     assert!(result.is_ok());
 
     let after = var.load().await;
-    match after.as_ref() {
-        TransactionSummary {
-            coordination_id,
-            clear,
-            changes,
-        } => {
-            assert_eq!(*coordination_id, 0);
-            assert!(*clear);
-            assert!(changes.is_empty());
-        }
-    }
+    let TransactionSummary {
+        coordination_id,
+        clear,
+        changes,
+    } = after.as_ref();
+    assert_eq!(*coordination_id, 0);
+    assert!(*clear);
+    assert!(changes.is_empty());
 }
 
 #[tokio::test]
@@ -251,23 +240,20 @@ async fn update_summary_transaction() {
     assert!(result.is_ok());
 
     let after = var.load().await;
-    match after.as_ref() {
-        TransactionSummary {
-            coordination_id,
-            clear,
-            changes,
-        } => {
-            assert_eq!(*coordination_id, 0);
-            assert!(!*clear);
-            assert_eq!(changes.len(), 2);
-            assert!(
-                matches!(changes.get(&key1), Some(EntryModification::Update(v)) if Arc::ptr_eq(&v, &value1))
-            );
-            assert!(
-                matches!(changes.get(&key2), Some(EntryModification::Update(v)) if Arc::ptr_eq(&v, &value2))
-            );
-        }
-    }
+    let TransactionSummary {
+        coordination_id,
+        clear,
+        changes,
+    } = after.as_ref();
+    assert_eq!(*coordination_id, 0);
+    assert!(!*clear);
+    assert_eq!(changes.len(), 2);
+    assert!(
+        matches!(changes.get(&key1), Some(EntryModification::Update(v)) if Arc::ptr_eq(v, &value1))
+    );
+    assert!(
+        matches!(changes.get(&key2), Some(EntryModification::Update(v)) if Arc::ptr_eq(v, &value2))
+    );
 }
 
 #[tokio::test]
@@ -288,22 +274,19 @@ async fn remove_summary_transaction() {
     assert!(result.is_ok());
 
     let after = var.load().await;
-    match after.as_ref() {
-        TransactionSummary {
-            coordination_id,
-            clear,
-            changes,
-        } => {
-            assert_eq!(*coordination_id, 0);
-            assert!(!*clear);
-            assert_eq!(changes.len(), 2);
-            assert!(
-                matches!(changes.get(&key1), Some(EntryModification::Update(v)) if Arc::ptr_eq(&v, &value1))
-            );
-            assert!(matches!(
-                changes.get(&key2),
-                Some(EntryModification::Remove)
-            ));
-        }
-    }
+    let TransactionSummary {
+        coordination_id,
+        clear,
+        changes,
+    } = after.as_ref();
+    assert_eq!(*coordination_id, 0);
+    assert!(!*clear);
+    assert_eq!(changes.len(), 2);
+    assert!(
+        matches!(changes.get(&key1), Some(EntryModification::Update(v)) if Arc::ptr_eq(v, &value1))
+    );
+    assert!(matches!(
+        changes.get(&key2),
+        Some(EntryModification::Remove)
+    ));
 }

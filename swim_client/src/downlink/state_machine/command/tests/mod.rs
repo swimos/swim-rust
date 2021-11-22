@@ -51,7 +51,7 @@ fn test_handle_value_action_invalid() {
     let mut state = ();
 
     let machine = CommandStateMachine::new(StandardSchema::OfKind(ValueKind::Text));
-    let result = machine.handle_action_request(&mut state, action.clone());
+    let result = machine.handle_action_request(&mut state, action);
 
     assert!(matches!(
         result,

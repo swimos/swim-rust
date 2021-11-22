@@ -100,7 +100,7 @@ impl RemoteTasksState for FakeRemoteState {
         let FakeRemoteState { table, recording } = self;
         recording
             .get_mut()
-            .push(StateMutation::CheckAddr(host.clone(), sock_addr.clone()));
+            .push(StateMutation::CheckAddr(host.clone(), sock_addr));
         if table.get_resolved(&sock_addr).is_some() {
             Ok(())
         } else {
@@ -179,7 +179,7 @@ fn transition_incoming_ok() {
     let mut state = FakeRemoteState::default();
     let mut result = Ok(());
 
-    let event = Event::Incoming(Ok((fake_sock.clone(), sa.clone())));
+    let event = Event::Incoming(Ok((fake_sock.clone(), sa)));
     super::update_state(&mut state, &mut result, event);
 
     state.check(vec![StateMutation::DeferHandshake(fake_sock, sa)]);

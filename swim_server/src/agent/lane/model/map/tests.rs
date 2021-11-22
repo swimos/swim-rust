@@ -67,7 +67,7 @@ fn try_type_remove_event_success() {
 #[test]
 fn try_type_update_event_failure() {
     let value = Arc::new(4);
-    let event = MapLaneEvent::Update(Value::text("Boom!"), value.clone());
+    let event = MapLaneEvent::Update(Value::text("Boom!"), value);
     let typed: Result<MapLaneEvent<i32, i32>, _> = event.try_into_typed();
     assert!(typed.is_err());
 }
@@ -369,7 +369,7 @@ async fn snapshot_map() {
     expected.insert(1, Arc::new(7));
     expected.insert(8, Arc::new(13));
 
-    assert!(matches!(result, Ok(map) if &map == &expected));
+    assert!(matches!(result, Ok(map) if map == expected));
 }
 
 #[tokio::test]
@@ -597,7 +597,7 @@ impl StoreEngine for TrackingMapStore {
         match key {
             k @ StoreKey::Map { .. } => {
                 let guard = self.values.lock().unwrap();
-                Ok(guard.get(serialize(&k)?.as_slice()).map(|o| o.clone()))
+                Ok(guard.get(serialize(&k)?.as_slice()).cloned())
             }
             StoreKey::Value { .. } => {
                 panic!("Expected a map key")

@@ -56,7 +56,7 @@ async fn handshake_sends_valid_request() {
     let mut buf = BytesMut::with_capacity(1024);
     peer.read_buf(&mut buf).await.unwrap();
 
-    assert!(matches!(request.parse(&mut buf), Ok(Status::Complete(_))));
+    assert!(matches!(request.parse(&buf), Ok(Status::Complete(_))));
 
     assert_eq!(request.version, Some(1));
     assert_eq!(request.method, Some("GET"));
@@ -132,7 +132,7 @@ async fn handshake_invalid_requests() {
 
 struct Trigger(Arc<Notify>);
 impl Trigger {
-    fn trigger() -> (Trigger, Trigger) {
+    fn new() -> (Trigger, Trigger) {
         let inner = Arc::new(Notify::new());
         (Trigger(inner.clone()), Trigger(inner))
     }
@@ -149,8 +149,8 @@ impl Trigger {
 async fn expect_server_error(response: Response<()>, expected_error: HttpError) {
     let (mut server, mut stream) = mock();
 
-    let (client_tx, client_rx) = Trigger::trigger();
-    let (server_tx, server_rx) = Trigger::trigger();
+    let (client_tx, client_rx) = Trigger::new();
+    let (server_tx, server_rx) = Trigger::new();
 
     let client_task = async move {
         let mut buf = BytesMut::new();
@@ -249,8 +249,8 @@ async fn incorrect_version() {
 async fn ok_nonce() {
     let (mut server, mut stream) = mock();
 
-    let (client_tx, client_rx) = Trigger::trigger();
-    let (server_tx, server_rx) = Trigger::trigger();
+    let (client_tx, client_rx) = Trigger::new();
+    let (server_tx, server_rx) = Trigger::new();
 
     let client_task = async move {
         let mut buf = BytesMut::new();
@@ -308,7 +308,9 @@ async fn ok_nonce() {
 
 fn expect_header(headers: &HeaderMap, name: HeaderName) -> &HeaderValue {
     let err = format!("Missing header: {}", name);
-    headers.get(name).expect(err.as_str())
+    headers
+        .get(name)
+        .unwrap_or_else(|| panic!("{}", err.as_str()))
 }
 
 #[tokio::test]
@@ -317,8 +319,8 @@ async fn redirection() {
 
     let (mut server, mut stream) = mock();
 
-    let (client_tx, client_rx) = Trigger::trigger();
-    let (server_tx, server_rx) = Trigger::trigger();
+    let (client_tx, client_rx) = Trigger::new();
+    let (server_tx, server_rx) = Trigger::new();
 
     let client_task = async move {
         let mut buf = BytesMut::new();
@@ -376,8 +378,8 @@ where
 {
     let (mut server, mut stream) = mock();
 
-    let (client_tx, client_rx) = Trigger::trigger();
-    let (server_tx, server_rx) = Trigger::trigger();
+    let (client_tx, client_rx) = Trigger::new();
+    let (server_tx, server_rx) = Trigger::new();
 
     let client_task = async move {
         let mut buf = BytesMut::new();
@@ -563,8 +565,8 @@ where
 {
     let (mut server, mut stream) = mock();
 
-    let (client_tx, client_rx) = Trigger::trigger();
-    let (server_tx, server_rx) = Trigger::trigger();
+    let (client_tx, client_rx) = Trigger::new();
+    let (server_tx, server_rx) = Trigger::new();
 
     let client_task = async move {
         let mut buf = BytesMut::new();
@@ -623,17 +625,13 @@ where
 #[tokio::test]
 async fn negotiates_extension() {
     const EXT: &str = "test_extension; something=1, something_else=2";
-    const HEADERS: &'static [(HeaderName, &'static str)] =
-        &[(header::SEC_WEBSOCKET_EXTENSIONS, EXT)];
+    const HEADERS: &[(HeaderName, &str)] = &[(header::SEC_WEBSOCKET_EXTENSIONS, EXT)];
 
-    let extension_proxy = MockExtensionProxy(&HEADERS, |headers| {
-        let ext = headers
-            .iter()
-            .filter(|h| {
-                h.name
-                    .eq_ignore_ascii_case(header::SEC_WEBSOCKET_EXTENSIONS.as_str())
-            })
-            .next();
+    let extension_proxy = MockExtensionProxy(HEADERS, |headers| {
+        let ext = headers.iter().find(|h| {
+            h.name
+                .eq_ignore_ascii_case(header::SEC_WEBSOCKET_EXTENSIONS.as_str())
+        });
         match ext {
             Some(header) => {
                 let value = String::from_utf8(header.value.to_vec())
@@ -673,8 +671,8 @@ async fn negotiates_extension() {
 
 #[tokio::test]
 async fn negotiates_no_extension() {
-    const HEADERS: &'static [(HeaderName, &'static str)] = &[];
-    let extension_proxy = MockExtensionProxy(&HEADERS, |_| Ok(Some(MockExtension(false))));
+    const HEADERS: &[(HeaderName, &str)] = &[];
+    let extension_proxy = MockExtensionProxy(HEADERS, |_| Ok(Some(MockExtension(false))));
 
     extension_test(
         extension_proxy,

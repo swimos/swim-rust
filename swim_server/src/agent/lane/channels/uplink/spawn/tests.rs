@@ -397,7 +397,7 @@ fn make_test_harness() -> (
     let channels = UplinkChannels::new(rx_event.subscriber(), rx_act, error_tx);
 
     let context = TestContext::new(spawn_tx, tx_router);
-    let observer = context.metrics().uplink_observer_for_path(route().clone());
+    let observer = context.metrics().uplink_observer_for_path(route());
 
     let spawner_task = factory.make_task(handler, channels, route(), &context, observer);
 

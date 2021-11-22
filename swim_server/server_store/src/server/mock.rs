@@ -19,8 +19,10 @@ use std::sync::Mutex;
 use crate::server::keystore::STEP;
 use swim_store::{deserialize, serialize, Keyspace, KeyspaceByteEngine, StoreError};
 
+type Keyspaces = HashMap<String, HashMap<Vec<u8>, Vec<u8>>>;
+
 pub struct MockStore {
-    values: Mutex<HashMap<String, HashMap<Vec<u8>, Vec<u8>>>>,
+    values: Mutex<Keyspaces>,
 }
 
 impl MockStore {

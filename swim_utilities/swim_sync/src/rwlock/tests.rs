@@ -1033,8 +1033,8 @@ fn write_future_clears_slot_on_success() {
     let rw_lock = RwLock::new(0);
     let lock = rw_lock.try_write().unwrap();
     let mut fut = rw_lock.write();
-    let (rx, mut waker) = make_waker();
-    let mut context = Context::from_waker(&mut waker);
+    let (rx, waker) = make_waker();
+    let mut context = Context::from_waker(&waker);
 
     assert!(fut.poll_unpin(&mut context).is_pending());
     assert_eq!(rw_lock.0.write_queue.lock().len, 1);
@@ -1052,8 +1052,8 @@ fn write_future_clears_slot_on_success() {
         .unwrap_or(false));
     drop(queue_lock);
 
-    let (_rx, mut waker) = make_waker();
-    let mut context = Context::from_waker(&mut waker);
+    let (_rx, waker) = make_waker();
+    let mut context = Context::from_waker(&waker);
 
     let result = fut.poll_unpin(&mut context);
     assert!(result.is_ready());
@@ -1069,8 +1069,8 @@ fn write_future_clears_slot_on_drop() {
     let rw_lock = RwLock::new(0);
     let _lock = rw_lock.try_write().unwrap();
     let mut fut = rw_lock.write();
-    let (_rx, mut waker) = make_waker();
-    let mut context = Context::from_waker(&mut waker);
+    let (_rx, waker) = make_waker();
+    let mut context = Context::from_waker(&waker);
 
     assert!(fut.poll_unpin(&mut context).is_pending());
     let queue_lock = rw_lock.0.write_queue.lock();

@@ -93,8 +93,7 @@ fn write_after_read_stacks() {
 #[test]
 fn iterate_empty() {
     let mask = FrameMask::new();
-    let contents = mask.iter().collect::<Vec<_>>();
-    assert!(contents.is_empty());
+    assert!(mask.iter().next().is_none());
 }
 
 fn single_item_iter(i: usize) {

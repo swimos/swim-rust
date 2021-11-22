@@ -175,21 +175,18 @@ fn nested_records_to_string() {
     let inner = Value::from_vec(vec!["a", "b", "c"]);
     let nested1 = Value::from_vec(vec![inner.clone()]);
     assert_eq!(nested1.to_string(), "{{a,b,c}}");
-    let nested2 = Value::record(vec![
-        ("aa", 10).into(),
-        inner.clone().into(),
-        ("zz", 99).into(),
-    ]);
+    let nested2 = Value::record(vec![("aa", 10).into(), inner.into(), ("zz", 99).into()]);
     assert_eq!(nested2.to_string(), "{aa:10,{a,b,c},zz:99}");
     let attr_inner = Value::Record(vec![("name", 1).into()], vec![]);
-    let nested3 = Value::from_vec(vec![attr_inner.clone()]);
+    let nested3 = Value::from_vec(vec![attr_inner]);
     assert_eq!(nested3.to_string(), "{@name(1)}");
     let complex_inner = Value::Record(vec![("inner", 1).into()], vec![("a", 1).into(), 7.into()]);
-    let nested_attr: Attr = ("outer", complex_inner.clone()).into();
+    let nested_attr: Attr = ("outer", complex_inner).into();
     assert_eq!(nested_attr.to_string(), "@outer(@inner(1){a:1,7})");
 }
 
 #[test]
+#[allow(clippy::eq_op)]
 fn kind_cmp() {
     assert_eq!(ValueKind::Int32, ValueKind::Int32);
     assert!(ValueKind::Int32 < ValueKind::Int64);
