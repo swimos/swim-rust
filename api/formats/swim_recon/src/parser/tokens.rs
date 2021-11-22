@@ -179,7 +179,7 @@ pub fn string_literal(input: Span<'_>) -> IResult<Span<'_>, Cow<'_, str>> {
     )(input)
 }
 
-pub fn seperator(input: Span<'_>) -> IResult<Span<'_>, char> {
+pub fn separator(input: Span<'_>) -> IResult<Span<'_>, char> {
     use nom::character::streaming as character;
     character::one_of(",;")(input)
 }
