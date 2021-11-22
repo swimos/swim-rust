@@ -2,7 +2,13 @@
 [![Build Status](https://travis-ci.com/swimos/swim-rust.svg?token=XRdC2qdFmdcvoFQjcbvN&branch=main)](https://travis-ci.com/swimos/swim-rust)
 [![codecov](https://codecov.io/gh/swimos/swim-rust/branch/main/graph/badge.svg?token=IVWBLXCGW8)](https://codecov.io/gh/swimos/swim-rust)
 <a href="https://www.swimos.org"><img src="https://docs.swimos.org/readme/marlin-blue.svg" align="left"></a>
-<br><br><br>
+<br><br><br><br>
+
+## ⚠️🚧 Warning: Project is still under construction 👷 🚧
+
+This project is still in its early stages of development, meaning that it is not yet stable and is subject to frequent API changes.
+
+**USE AT YOUR OWN RISK!**
 
 ## Examples
 
@@ -22,7 +28,7 @@ The [cookbook](/cookbook) can serve as a starting point for getting familiar wit
 ### Lint
 ##### Manual
 1) `cargo fmt --all -- --check`
-2) `cargo clippy --all-features --workspace -- -D warnings`
+2) `cargo clippy --all-features --workspace --all-targets -- -D warnings`
 
 ##### Automatic (before commit): 
 - Install hook: `sh ./install-commit-hook.sh`
