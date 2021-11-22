@@ -112,10 +112,10 @@ fn complete_records() {
 
     let single_value = vec![Item::of(1)];
 
-    let rec = Value::Record(vec![first.clone()], single_value.clone());
+    let rec = Value::Record(vec![first.clone()], single_value);
     assert_eq!(print_value(&rec), "@first 1");
 
-    let rec = Value::Record(vec![first.clone(), second.clone()], items.clone());
+    let rec = Value::Record(vec![first, second], items);
     assert_eq!(print_value(&rec), "@first @second(1) { 1, name: 2, true }");
 }
 
@@ -131,17 +131,11 @@ fn complex_attributes() {
 
     let single_value = vec![Item::of(1)];
 
-    let rec = Value::of_attr((
-        "tag",
-        Value::Record(vec![first.clone()], single_value.clone()),
-    ));
+    let rec = Value::of_attr(("tag", Value::Record(vec![first.clone()], single_value)));
 
     assert_eq!(print_value(&rec), "@tag(@first 1)");
 
-    let rec = Value::of_attr((
-        "tag",
-        Value::Record(vec![first.clone(), second.clone()], items.clone()),
-    ));
+    let rec = Value::of_attr(("tag", Value::Record(vec![first, second], items)));
 
     assert_eq!(
         print_value(&rec),

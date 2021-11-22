@@ -273,11 +273,11 @@ async fn lane_info_sync() {
 
         let event = rx.recv().await.expect("Expected an event");
         assert_eq!(event.1.kind(), EnvelopeKind::Event);
-        assert!(expected_events.contains(&event.1.body().expect("Missing event body")));
+        assert!(expected_events.contains(event.1.body().expect("Missing event body")));
 
         let event = rx.recv().await.expect("Expected an event");
         assert_eq!(event.1.kind(), EnvelopeKind::Event);
-        assert!(expected_events.contains(&event.1.body().expect("Missing event body")));
+        assert!(expected_events.contains(event.1.body().expect("Missing event body")));
 
         let link = rx.recv().await.expect("No synced envelope received");
         assert_eq!(

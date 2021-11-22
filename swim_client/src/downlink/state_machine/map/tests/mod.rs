@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#![allow(clippy::type_complexity)]
+
 use tokio::sync::oneshot;
 
 use super::*;
@@ -204,7 +206,7 @@ fn remove_response(synced: bool) {
 
     let k = Value::from(4);
     let v = Arc::new(Value::from("hello"));
-    let start = ValMap::from(vec![(k.clone(), v.clone())]);
+    let start = ValMap::from(vec![(k.clone(), v)]);
 
     let machine = unvalidated();
     let mut state = (init, start);
@@ -249,9 +251,9 @@ fn take_response(synced: bool) {
     let k2 = Value::from(6);
     let v1 = Value::text("hello");
     let v2 = Value::text("world");
-    let start = ValMap::from(vec![(k1.clone(), v1.clone()), (k2.clone(), v2.clone())]);
+    let start = ValMap::from(vec![(k1.clone(), v1.clone()), (k2, v2)]);
 
-    let expected = ValMap::from(vec![(k1.clone(), v1.clone())]);
+    let expected = ValMap::from(vec![(k1, v1)]);
 
     let machine = unvalidated();
     let mut state = (init, start);
@@ -296,9 +298,9 @@ fn drop_response(synced: bool) {
     let k2 = Value::from(6);
     let v1 = Value::text("hello");
     let v2 = Value::text("world");
-    let start = ValMap::from(vec![(k1.clone(), v1.clone()), (k2.clone(), v2.clone())]);
+    let start = ValMap::from(vec![(k1, v1), (k2.clone(), v2.clone())]);
 
-    let expected = ValMap::from(vec![(k2.clone(), v2.clone())]);
+    let expected = ValMap::from(vec![(k2, v2)]);
 
     let machine = unvalidated();
     let mut state = (init, start);
@@ -343,7 +345,7 @@ fn clear_response(synced: bool) {
     let k2 = Value::from(6);
     let v1 = Value::text("hello");
     let v2 = Value::text("world");
-    let start = ValMap::from(vec![(k1.clone(), v1.clone()), (k2.clone(), v2.clone())]);
+    let start = ValMap::from(vec![(k1, v1), (k2, v2)]);
 
     let expected = ValMap::new();
 
@@ -398,7 +400,7 @@ fn make_get(
 fn get_action() {
     let k = Value::from(4);
     let v = Arc::new(Value::from("hello"));
-    let start = ValMap::from(vec![(k.clone(), v.clone())]);
+    let start = ValMap::from(vec![(k, v)]);
 
     let machine = unvalidated();
     let mut state = (DownlinkState::Synced, start.clone());
@@ -429,7 +431,7 @@ fn get_action() {
 fn get_key_action() {
     let k = Value::from(4);
     let v = Arc::new(Value::from("hello"));
-    let start = ValMap::from(vec![(k.clone(), v.clone())]);
+    let start = ValMap::from(vec![(k, v)]);
 
     let machine = unvalidated();
     let mut state = (DownlinkState::Synced, start.clone());
@@ -460,7 +462,7 @@ fn get_key_action() {
 fn get_absent_key_action() {
     let k = Value::from(4);
     let v = Arc::new(Value::from("hello"));
-    let start = ValMap::from(vec![(k.clone(), v.clone())]);
+    let start = ValMap::from(vec![(k, v)]);
 
     let machine = unvalidated();
     let mut state = (DownlinkState::Synced, start.clone());
@@ -509,7 +511,7 @@ fn insert_action() {
     let expected = ValMap::from(vec![(k.clone(), v.clone())]);
 
     let machine = unvalidated();
-    let mut state = (DownlinkState::Synced, start.clone());
+    let mut state = (DownlinkState::Synced, start);
 
     let (request, mut rx) = make_update(4, "hello".to_string());
 
@@ -551,7 +553,7 @@ fn update_action() {
     let expected = ValMap::from(vec![(k.clone(), v2.clone())]);
 
     let machine = unvalidated();
-    let mut state = (DownlinkState::Synced, start.clone());
+    let mut state = (DownlinkState::Synced, start);
 
     let (request, mut rx) = make_update(4, "world".to_string());
 
@@ -589,11 +591,11 @@ fn update_action_dropped() {
     let k = Value::from(4);
     let v1 = Arc::new(Value::from("hello"));
     let v2 = Arc::new(Value::from("world"));
-    let start = ValMap::from(vec![(k.clone(), v1.clone())]);
+    let start = ValMap::from(vec![(k.clone(), v1)]);
     let expected = ValMap::from(vec![(k.clone(), v2.clone())]);
 
     let machine = unvalidated();
-    let mut state = (DownlinkState::Synced, start.clone());
+    let mut state = (DownlinkState::Synced, start);
 
     let (request, _) = make_update(4, "world".to_string());
 
@@ -680,7 +682,7 @@ fn insert_action_invalid_value() {
     let (tx, mut rx) = oneshot::channel();
 
     let request = MapAction::Update {
-        key: k.clone(),
+        key: k,
         value: Value::BooleanValue(false),
         old: Some(Request::new(tx)),
     };
@@ -761,7 +763,7 @@ fn remove_action_defined() {
     let expected = ValMap::new();
 
     let machine = unvalidated();
-    let mut state = (DownlinkState::Synced, start.clone());
+    let mut state = (DownlinkState::Synced, start);
 
     let (request, mut rx) = make_remove(4);
 
@@ -797,11 +799,11 @@ fn remove_action_defined() {
 fn remove_action_dropped() {
     let k = Value::from(4);
     let v = Arc::new(Value::from("hello"));
-    let start = ValMap::from(vec![(k.clone(), v.clone())]);
+    let start = ValMap::from(vec![(k.clone(), v)]);
     let expected = ValMap::new();
 
     let machine = unvalidated();
-    let mut state = (DownlinkState::Synced, start.clone());
+    let mut state = (DownlinkState::Synced, start);
 
     let (request, _) = make_remove(4);
 
@@ -894,8 +896,8 @@ fn take_action() {
     let v1 = Arc::new(Value::from("hello"));
     let k2 = Value::from(5);
     let v2 = Arc::new(Value::from("world"));
-    let start = ValMap::from(vec![(k1.clone(), v1.clone()), (k2.clone(), v2.clone())]);
-    let expected = ValMap::from(vec![(k1.clone(), v1.clone())]);
+    let start = ValMap::from(vec![(k1.clone(), v1.clone()), (k2, v2)]);
+    let expected = ValMap::from(vec![(k1, v1)]);
 
     let machine = unvalidated();
     let mut state = (DownlinkState::Synced, start.clone());
@@ -936,11 +938,11 @@ fn take_action_dropped() {
     let v1 = Arc::new(Value::from("hello"));
     let k2 = Value::from(5);
     let v2 = Arc::new(Value::from("world"));
-    let start = ValMap::from(vec![(k1.clone(), v1.clone()), (k2.clone(), v2.clone())]);
-    let expected = ValMap::from(vec![(k1.clone(), v1.clone())]);
+    let start = ValMap::from(vec![(k1.clone(), v1.clone()), (k2, v2)]);
+    let expected = ValMap::from(vec![(k1, v1)]);
 
     let machine = unvalidated();
-    let mut state = (DownlinkState::Synced, start.clone());
+    let mut state = (DownlinkState::Synced, start);
 
     let (request, _, _) = make_take(1);
 
@@ -988,8 +990,8 @@ fn drop_action() {
     let v1 = Arc::new(Value::from("hello"));
     let k2 = Value::from(5);
     let v2 = Arc::new(Value::from("world"));
-    let start = ValMap::from(vec![(k1.clone(), v1.clone()), (k2.clone(), v2.clone())]);
-    let expected = ValMap::from(vec![(k2.clone(), v2.clone())]);
+    let start = ValMap::from(vec![(k1, v1), (k2.clone(), v2.clone())]);
+    let expected = ValMap::from(vec![(k2, v2)]);
 
     let machine = unvalidated();
     let mut state = (DownlinkState::Synced, start.clone());
@@ -1030,11 +1032,11 @@ fn drop_action_dropped() {
     let v1 = Arc::new(Value::from("hello"));
     let k2 = Value::from(5);
     let v2 = Arc::new(Value::from("world"));
-    let start = ValMap::from(vec![(k1.clone(), v1.clone()), (k2.clone(), v2.clone())]);
-    let expected = ValMap::from(vec![(k2.clone(), v2.clone())]);
+    let start = ValMap::from(vec![(k1, v1), (k2.clone(), v2.clone())]);
+    let expected = ValMap::from(vec![(k2, v2)]);
 
     let machine = unvalidated();
-    let mut state = (DownlinkState::Synced, start.clone());
+    let mut state = (DownlinkState::Synced, start);
 
     let (request, _, _) = make_drop(1);
 
@@ -1071,7 +1073,7 @@ fn clear_action() {
     let v1 = Arc::new(Value::from("hello"));
     let k2 = Value::from(5);
     let v2 = Arc::new(Value::from("world"));
-    let start = ValMap::from(vec![(k1.clone(), v1.clone()), (k2.clone(), v2.clone())]);
+    let start = ValMap::from(vec![(k1, v1), (k2, v2)]);
 
     let machine = unvalidated();
     let mut state = (DownlinkState::Synced, start.clone());
@@ -1109,10 +1111,10 @@ fn clear_action_dropped() {
     let v1 = Arc::new(Value::from("hello"));
     let k2 = Value::from(5);
     let v2 = Arc::new(Value::from("world"));
-    let start = ValMap::from(vec![(k1.clone(), v1.clone()), (k2.clone(), v2.clone())]);
+    let start = ValMap::from(vec![(k1, v1), (k2, v2)]);
 
     let machine = unvalidated();
-    let mut state = (DownlinkState::Synced, start.clone());
+    let mut state = (DownlinkState::Synced, start);
 
     let (request, _) = make_clear();
 

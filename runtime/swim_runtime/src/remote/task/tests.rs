@@ -55,8 +55,7 @@ use tokio::io::DuplexStream;
 fn dispatch_error_display() {
     let bad_uri: Uri = "swim://localhost/hello".parse().unwrap();
     let string =
-        DispatchError::BadNodeUri(BadRelativeUri::Absolute(UriIsAbsolute(bad_uri.clone())))
-            .to_string();
+        DispatchError::BadNodeUri(BadRelativeUri::Absolute(UriIsAbsolute(bad_uri))).to_string();
     assert_eq!(
         string,
         "Invalid relative URI: ''swim://localhost/hello' is an absolute URI.'"

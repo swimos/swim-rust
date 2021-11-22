@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#![allow(clippy::eq_op)]
+
 use num_traits::Float;
 use swim_model::bigint::BigInt;
 
@@ -1484,16 +1486,16 @@ fn form_enum_tag() {
 fn form_enum_variants() {
     #[derive(Form, ValueSchema)]
     enum E {
-        UnitEnum,
-        NewTypeEnum(i32),
-        TupleEnum(i32, i64, String),
-        StructEnum { a: i32, b: i64, c: String },
+        Unit,
+        NewType(i32),
+        Tuple(i32, i64, String),
+        Struct { a: i32, b: i64, c: String },
     }
 
     let expected_schema = StandardSchema::Or(vec![
         StandardSchema::HeadAttribute {
             schema: Box::new(AttrSchema::named(
-                "UnitEnum",
+                "Unit",
                 StandardSchema::OfKind(ValueKind::Extant),
             )),
             required: true,
@@ -1504,7 +1506,7 @@ fn form_enum_variants() {
         },
         StandardSchema::HeadAttribute {
             schema: Box::new(AttrSchema::named(
-                "NewTypeEnum",
+                "NewType",
                 StandardSchema::OfKind(ValueKind::Extant),
             )),
             required: true,
@@ -1515,7 +1517,7 @@ fn form_enum_variants() {
         },
         StandardSchema::HeadAttribute {
             schema: Box::new(AttrSchema::named(
-                "TupleEnum",
+                "Tuple",
                 StandardSchema::OfKind(ValueKind::Extant),
             )),
             required: true,
@@ -1530,7 +1532,7 @@ fn form_enum_variants() {
         },
         StandardSchema::HeadAttribute {
             schema: Box::new(AttrSchema::named(
-                "StructEnum",
+                "Struct",
                 StandardSchema::OfKind(ValueKind::Extant),
             )),
             required: true,
@@ -1564,10 +1566,10 @@ fn form_enum_variants() {
     ]);
 
     let enums = vec![
-        E::UnitEnum,
-        E::NewTypeEnum(i32::max_value()),
-        E::TupleEnum(i32::max_value(), i64::max_value(), String::from("swim")),
-        E::StructEnum {
+        E::Unit,
+        E::NewType(i32::max_value()),
+        E::Tuple(i32::max_value(), i64::max_value(), String::from("swim")),
+        E::Struct {
             a: i32::max_value(),
             b: i64::max_value(),
             c: String::from("swim"),

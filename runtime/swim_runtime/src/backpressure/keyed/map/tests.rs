@@ -68,7 +68,7 @@ async fn validate_receive(
             return Ok(());
         }
     }
-    return Err(map);
+    Err(map)
 }
 
 fn buffer_size() -> NonZeroUsize {

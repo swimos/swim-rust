@@ -27,10 +27,10 @@ use swim_utilities::trigger;
 use tokio::time::{sleep, Duration};
 
 pub fn store_err_partial_eq(expected: Vec<StoreError>, actual: Vec<StoreTaskError>) {
-    let mut expected_iter = expected.into_iter();
+    let expected_iter = expected.into_iter();
     let mut actual_iter = actual.into_iter();
 
-    while let Some(expected) = expected_iter.next() {
+    for expected in expected_iter {
         match actual_iter.next() {
             Some(task_error) => {
                 assert_eq!(expected, task_error.error);

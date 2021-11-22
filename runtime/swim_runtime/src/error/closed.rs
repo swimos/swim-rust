@@ -229,7 +229,7 @@ mod tests {
         assert_eq!(
             CloseError::new(
                 CloseErrorKind::InvalidCloseCode,
-                Some(format!("Received closed code 0xf"))
+                Some("Received closed code 0xf".to_string())
             )
             .to_string(),
             "Invalid close code. Received closed code 0xf"

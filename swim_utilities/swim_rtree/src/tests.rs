@@ -574,7 +574,7 @@ fn tree_iterator_test() {
     .unwrap();
 
     for (label, item) in tree.iter() {
-        assert!(items.contains(&(label.clone(), item.clone())));
+        assert!(items.contains(&(label.clone(), *item)));
     }
 }
 
@@ -797,7 +797,7 @@ fn clone_on_remove_test() {
 
     tree.insert(
         "First".to_string(),
-        CloneTracker::new(first.clone(), clone_count.clone()),
+        CloneTracker::new(first, clone_count.clone()),
     )
     .unwrap();
     assert_eq!(clone_count.get(), 0);
@@ -961,27 +961,27 @@ fn clone_on_merge_test() {
 
     tree.insert(
         "First".to_string(),
-        CloneTracker::new(first.clone(), clone_count.clone()),
+        CloneTracker::new(first, clone_count.clone()),
     )
     .unwrap();
     tree.insert(
         "Second".to_string(),
-        CloneTracker::new(second.clone(), clone_count.clone()),
+        CloneTracker::new(second, clone_count.clone()),
     )
     .unwrap();
     tree.insert(
         "Third".to_string(),
-        CloneTracker::new(third.clone(), clone_count.clone()),
+        CloneTracker::new(third, clone_count.clone()),
     )
     .unwrap();
     tree.insert(
         "Fourth".to_string(),
-        CloneTracker::new(fourth.clone(), clone_count.clone()),
+        CloneTracker::new(fourth, clone_count.clone()),
     )
     .unwrap();
     tree.insert(
         "Fifth".to_string(),
-        CloneTracker::new(fifth.clone(), clone_count.clone()),
+        CloneTracker::new(fifth, clone_count.clone()),
     )
     .unwrap();
 
@@ -1224,16 +1224,17 @@ fn search_multiple_no_clone() {
 }
 
 #[test]
+#[allow(clippy::redundant_clone)]
 fn clone_tracker_test() {
     let first = rect!((0.0, 0.0), (10.0, 10.0));
     let clone_count = CloneCount::new();
 
-    let first_clone_tracker = CloneTracker::new(first.clone(), clone_count.clone());
+    let first_clone_tracker = CloneTracker::new(first, clone_count.clone());
 
     assert_eq!(clone_count.get(), 0);
-    let _ = first_clone_tracker.clone();
+    let _a = first_clone_tracker.clone();
     assert_eq!(clone_count.get(), 1);
-    let _ = first_clone_tracker.clone();
+    let _b = first_clone_tracker.clone();
     assert_eq!(clone_count.get(), 2);
 }
 
@@ -1257,7 +1258,7 @@ impl Clone for CloneTracker {
         self.clone_count.inc();
 
         CloneTracker {
-            mbb: self.mbb.clone(),
+            mbb: self.mbb,
             clone_count: self.clone_count.clone(),
         }
     }

@@ -279,7 +279,7 @@ where
     (path, rx, lane)
 }
 
-fn assert_receive_none<T>(map: &mut HashMap<RelativePath, Receiver<T>>, skip: &Vec<RelativePath>)
+fn assert_receive_none<T>(map: &mut HashMap<RelativePath, Receiver<T>>, skip: &[RelativePath])
 where
     T: PartialEq + Debug,
 {
