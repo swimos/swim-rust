@@ -95,8 +95,7 @@ fn chain_future() {
 
 #[test]
 fn transform_stream() {
-    let inputs = iter((0..5).into_iter());
-
+    let inputs = iter(0..5);
     let outputs: Vec<i32> = block_on(inputs.transform(Plus(3)).collect::<Vec<i32>>());
 
     assert_eq!(outputs, vec![3, 4, 5, 6, 7]);
@@ -104,7 +103,7 @@ fn transform_stream() {
 
 #[test]
 fn transform_stream_fut() {
-    let inputs = iter((0..5).into_iter());
+    let inputs = iter(0..5);
 
     let outputs: Vec<i32> = block_on(inputs.transform_fut(PlusReady(3)).collect::<Vec<i32>>());
 
@@ -113,7 +112,7 @@ fn transform_stream_fut() {
 
 #[test]
 fn flatmap_stream() {
-    let inputs = iter((0..5).into_iter());
+    let inputs = iter(0..5);
 
     let outputs: Vec<i32> = block_on(
         inputs
@@ -126,7 +125,7 @@ fn flatmap_stream() {
 
 #[test]
 fn flatmap_stream_done() {
-    let inputs = iter((0..5).into_iter());
+    let inputs = iter(0..5);
 
     let mut stream = inputs.transform_flat_map(RepeatStream(3));
 
@@ -139,7 +138,7 @@ fn flatmap_stream_done() {
 
 #[test]
 fn transform_stream_fut_done() {
-    let inputs = iter((0..5).into_iter());
+    let inputs = iter(0..5);
 
     let mut stream = inputs.transform_fut(PlusReady(3));
 
@@ -166,12 +165,13 @@ impl TransformMut<i32> for PlusIfNonNeg {
 
 #[test]
 fn until_failure() {
-    let inputs = iter(vec![0, 1, 2, -3, 4].into_iter());
+    let inputs = iter(vec![0, 1, 2, -3, 4]);
     let outputs: Vec<i32> = block_on(inputs.until_failure(PlusIfNonNeg(3)).collect::<Vec<i32>>());
     assert_eq!(outputs, vec![3, 4, 5]);
 }
 
 #[tokio::test]
+#[allow(clippy::unit_cmp)]
 async fn unit_future() {
     let fut = async { 5 };
 
@@ -180,7 +180,7 @@ async fn unit_future() {
 
 #[tokio::test]
 async fn owning_scan() {
-    let inputs = iter(vec![1, 2, 3, 4].into_iter());
+    let inputs = iter(vec![1, 2, 3, 4]);
 
     let (tx, rx) = mpsc::channel(10);
 
@@ -199,7 +199,7 @@ async fn owning_scan() {
 
 #[tokio::test]
 async fn owning_scan_done() {
-    let inputs = iter(vec![1, 2, 3, 4].into_iter());
+    let inputs = iter(vec![1, 2, 3, 4]);
 
     let (tx, _rx) = mpsc::channel(10);
 

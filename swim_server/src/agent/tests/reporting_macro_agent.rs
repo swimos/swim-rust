@@ -148,19 +148,19 @@ struct ActionLifecycle {
 impl ActionLifecycle {
     async fn on_command<Context>(
         &self,
-        command: &String,
+        command: &str,
         _model: &CommandLane<String>,
         context: &Context,
     ) where
         Context: AgentContext<ReportingAgent> + Sized + Send + Sync + 'static,
     {
         self.event_handler
-            .push(ReportingAgentEvent::Command(command.clone()))
+            .push(ReportingAgentEvent::Command(command.to_string()))
             .await;
         if context
             .agent()
             .data
-            .update_direct(command.clone(), 1.into())
+            .update_direct(command.to_string(), 1.into())
             .apply(ExactlyOnce)
             .await
             .is_err()

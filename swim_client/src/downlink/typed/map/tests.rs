@@ -47,10 +47,8 @@ async fn responder(init: OrdMap<i32, i32>, mut rx: mpsc::Receiver<MapAction>) {
                     if let Some(cb) = old {
                         let _ = cb.send_ok(old_val);
                     }
-                } else {
-                    if let Some(cb) = old {
-                        let _ = cb.send_err(DownlinkError::InvalidAction);
-                    }
+                } else if let Some(cb) = old {
+                    let _ = cb.send_err(DownlinkError::InvalidAction);
                 }
             }
             MapAction::Remove { key, old } => {
@@ -60,10 +58,8 @@ async fn responder(init: OrdMap<i32, i32>, mut rx: mpsc::Receiver<MapAction>) {
                     if let Some(cb) = old {
                         let _ = cb.send_ok(old_val);
                     }
-                } else {
-                    if let Some(cb) = old {
-                        let _ = cb.send_err(DownlinkError::InvalidAction);
-                    }
+                } else if let Some(cb) = old {
+                    let _ = cb.send_err(DownlinkError::InvalidAction);
                 }
             }
             MapAction::Take { n, before, after } => {
@@ -562,7 +558,7 @@ async fn subscriber_covariant_cast() {
     assert!(sub.clone().covariant_cast::<Value, i32>().is_ok());
     assert!(sub.clone().covariant_cast::<String, i32>().is_err());
     assert!(sub.clone().covariant_cast::<i32, String>().is_err());
-    assert!(sub.clone().covariant_cast::<String, String>().is_err());
+    assert!(sub.covariant_cast::<String, String>().is_err());
 }
 
 #[tokio::test]

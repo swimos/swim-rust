@@ -32,16 +32,16 @@ async fn create_connection_pool(
     let (conn_request_tx, _conn_request_rx) = mpsc::channel(32);
     let (close_tx, close_rx) = promise::promise();
 
-    let remote_tx = MockRemoteRouterTask::new(fake_connections);
+    let remote_tx = MockRemoteRouterTask::build(fake_connections);
 
-    let delegate_fac = TopLevelClientRouterFactory::new(client_tx.clone(), remote_tx.clone());
+    let delegate_fac = TopLevelClientRouterFactory::new(client_tx.clone(), remote_tx);
     let client_router_fac = ClientRouterFactory::new(conn_request_tx, delegate_fac);
 
     let (connection_pool, pool_task) = SwimConnPool::new(
         DownlinkConnectionsConfig::default(),
         (client_tx, client_rx),
         client_router_fac,
-        close_rx.clone(),
+        close_rx,
     );
 
     tokio::task::spawn(pool_task.run());

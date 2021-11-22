@@ -344,7 +344,7 @@ fn get_after_insert_not_contained_cap_n(n: usize) {
     let s = "hello".to_string();
 
     let mut cache = LruCache::with_capacity(n).unwrap();
-    cache.insert(2, s.clone());
+    cache.insert(2, s);
 
     assert!(cache.get(&-1).is_none());
 }

@@ -366,13 +366,13 @@ fn into_map(
                 map.clear();
             }
             MapUpdate::Take(n) => {
-                let discard = map.keys().skip(n).map(|k| *k).collect::<Vec<_>>();
+                let discard = map.keys().skip(n).copied().collect::<Vec<_>>();
                 for k in discard {
                     map.remove(&k);
                 }
             }
             MapUpdate::Drop(n) => {
-                let discard = map.keys().take(n).map(|k| *k).collect::<Vec<_>>();
+                let discard = map.keys().take(n).copied().collect::<Vec<_>>();
                 for k in discard {
                     map.remove(&k);
                 }
@@ -601,7 +601,7 @@ async fn meta_backpressure() {
                 let lane = lane_rx.get_mut(&lane_key).unwrap();
 
                 let lane_set = timeout(Duration::from_secs(5), async move {
-                    while let Some(_) = lane.next().await {
+                    while lane.next().await.is_some() {
                         lane_set.remove(&lane_key);
                     }
 

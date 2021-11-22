@@ -105,7 +105,7 @@ fn test_skip() {
             vec![Item::Slot(Value::text("b"), Value::Int64Value(2))],
         );
 
-        assert_eq!(s.as_value(), rec.clone());
+        assert_eq!(s.as_value(), rec);
         assert_eq!(S::try_convert(rec), Ok(S::A { a: 0, b: 2 }));
     }
 }
@@ -307,7 +307,7 @@ fn body_replaces2() {
                 vec![Item::slot("a", 1), Item::slot("b", 2), Item::slot("c", 3)],
             ),
         ))],
-        body.clone(),
+        body,
     );
 
     let br = BodyReplace2::A {

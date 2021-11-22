@@ -90,8 +90,8 @@ fn simple_static_route_pattern() {
     assert!(route_pattern.is_ok());
 
     let route_pattern = route_pattern.unwrap();
-    let params = route_pattern.parameters().collect::<Vec<_>>();
-    assert!(params.is_empty());
+    let mut params = route_pattern.parameters();
+    assert!(params.next().is_none());
 
     if let Ok(params) = route_pattern.unapply_str("/path") {
         assert!(params.is_empty());

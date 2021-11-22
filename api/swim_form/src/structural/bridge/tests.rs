@@ -69,7 +69,7 @@ fn bridge_blob() {
 
     assert_eq!(
         <Vec<u8> as StructuralReadable>::try_read_from(&rep),
-        Ok(blob.clone())
+        Ok(blob)
     );
 }
 
@@ -79,8 +79,8 @@ fn bridge_transform_blob() {
     let rep = Value::Data(Blob::from_vec(blob.clone()));
 
     assert_eq!(
-        <Vec<u8> as StructuralReadable>::try_transform(rep.clone()),
-        Ok(blob.clone())
+        <Vec<u8> as StructuralReadable>::try_transform(rep),
+        Ok(blob)
     );
 }
 
