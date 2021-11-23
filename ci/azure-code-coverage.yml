@@ -28,9 +28,9 @@ jobs:
         displayName: Install Tarpaulin
         workingDirectory: $(Build.SourcesDirectory)
 
-      - script: cargo tarpaulin --ignore-tests -o Xml -t 600 --exclude-files demos form_derive agent_derive --avoid-cfg-tarpaulin
-        displayName: Generate code coverage
-        workingDirectory: $(Build.SourcesDirectory)
+#      - script: cargo tarpaulin --ignore-tests -o Xml -t 600 --exclude-files demos form_derive agent_derive --avoid-cfg-tarpaulin
+#        displayName: Generate code coverage
+#        workingDirectory: $(Build.SourcesDirectory)
 
       - bash: |
           curl -Os https://uploader.codecov.io/latest/linux/codecov
