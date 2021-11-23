@@ -24,12 +24,12 @@ use std::io::ErrorKind;
 use std::num::NonZeroUsize;
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_form::Form;
+use swim_model::path::RelativePath;
 use swim_recon::printer::print_recon_compact;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::io::byte_channel;
 use tokio_util::codec::{Decoder, Encoder, FramedRead, FramedWrite};
 use uuid::Uuid;
-use swim_model::path::RelativePath;
 
 #[test]
 fn encode_link_frame() {
@@ -132,7 +132,10 @@ fn encode_command_frame() {
 
     assert!(encoder.encode(frame, &mut buffer).is_ok());
 
-    assert_eq!(buffer.len(), HEADER_INIT_LEN + node.len() + lane.len() + body.len());
+    assert_eq!(
+        buffer.len(),
+        HEADER_INIT_LEN + node.len() + lane.len() + body.len()
+    );
 
     assert_eq!(buffer.get_u128(), id.as_u128());
     assert_eq!(buffer.get_u32(), node.len() as u32);
@@ -200,7 +203,10 @@ fn decode_link_frame() {
     let frame = RawAgentMessage::link(id, RelativePath::new(node, lane));
     let result = round_trip::<Example>(frame);
 
-    check_result(result, AgentMessage::link(id, RelativePath::new(node, lane)));
+    check_result(
+        result,
+        AgentMessage::link(id, RelativePath::new(node, lane)),
+    );
 }
 
 #[test]
@@ -212,7 +218,10 @@ fn decode_sync_frame() {
     let frame = RawAgentMessage::sync(id, RelativePath::new(node, lane));
     let result = round_trip::<Example>(frame);
 
-    check_result(result, AgentMessage::sync(id, RelativePath::new(node, lane)));
+    check_result(
+        result,
+        AgentMessage::sync(id, RelativePath::new(node, lane)),
+    );
 }
 
 #[test]
@@ -224,7 +233,10 @@ fn decode_unlink_frame() {
     let frame = RawAgentMessage::unlink(id, RelativePath::new(node, lane));
     let result = round_trip::<Example>(frame);
 
-    check_result(result, AgentMessage::unlink(id, RelativePath::new(node, lane)));
+    check_result(
+        result,
+        AgentMessage::unlink(id, RelativePath::new(node, lane)),
+    );
 }
 
 #[test]
@@ -243,7 +255,10 @@ fn decode_command_frame() {
 
     let result = round_trip::<Example>(frame);
 
-    check_result(result, AgentMessage::command(id, RelativePath::new(node, lane), record));
+    check_result(
+        result,
+        AgentMessage::command(id, RelativePath::new(node, lane), record),
+    );
 }
 
 const CHANNEL_SIZE: NonZeroUsize = non_zero_usize!(16);

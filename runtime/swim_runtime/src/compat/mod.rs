@@ -14,6 +14,7 @@
 
 use crate::routing::TaggedEnvelope;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
+use futures::stream::unfold;
 use futures::Stream;
 use std::convert::TryFrom;
 use std::fmt::Write;
@@ -21,16 +22,17 @@ use std::str::Utf8Error;
 use swim_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
 use swim_form::structural::read::ReadError;
 use swim_form::structural::write::StructuralWritable;
+use swim_model::path::RelativePath;
 use swim_model::{Text, Value};
 use swim_recon::parser::{AsyncParseError, ParseError, RecognizerDecoder};
 use swim_recon::printer::print_recon_compact;
+use swim_utilities::trigger::promise;
 use swim_warp::envelope::Envelope;
 use thiserror::Error;
 use tokio::io::AsyncRead;
 use tokio_stream::StreamExt;
 use tokio_util::codec::{Decoder, Encoder, FramedRead};
 use uuid::Uuid;
-use swim_model::path::RelativePath;
 
 mod routing;
 #[cfg(test)]
@@ -169,7 +171,7 @@ impl<'a> Encoder<RawAgentMessage<'a>> for RawAgentMessageEncoder {
     fn encode(&mut self, item: RawAgentMessage<'a>, dst: &mut BytesMut) -> Result<(), Self::Error> {
         let RawAgentMessage {
             source,
-            path: RelativePath{ node, lane },
+            path: RelativePath { node, lane },
             envelope,
         } = item;
         dst.reserve(HEADER_INIT_LEN + lane.len());
@@ -286,6 +288,10 @@ enum State<T> {
     },
     AfterBody {
         message: Option<AgentMessage<T>>,
+        remaining: usize,
+    },
+    Discarding {
+        error: Option<AsyncParseError>,
         remaining: usize,
     },
 }
@@ -413,37 +419,55 @@ where
                     let rem = src.split_off(to_split);
                     let buf_remaining = src.remaining();
                     let end_of_message = *remaining <= buf_remaining;
-                    let decode_result = recognizer.decode(src)?;
+                    let decode_result = recognizer.decode(src);
                     let new_remaining = src.remaining();
                     let consumed = buf_remaining - new_remaining;
                     *remaining -= consumed;
-                    if let Some(result) = decode_result {
-                        src.unsplit(rem);
-                        *state = State::AfterBody {
-                            message: Some(AgentMessage {
-                                source: *source,
-                                path: std::mem::take(path),
-                                envelope: AgentOperation::Command(result),
-                            }),
-                            remaining: *remaining,
+                    match decode_result {
+                        Ok(Some(result)) => {
+                            src.unsplit(rem);
+                            *state = State::AfterBody {
+                                message: Some(AgentMessage {
+                                    source: *source,
+                                    path: std::mem::take(path),
+                                    envelope: AgentOperation::Command(result),
+                                }),
+                                remaining: *remaining,
+                            }
                         }
-                    } else if end_of_message {
-                        let eof_result = recognizer.decode_eof(src)?;
-                        let new_remaining = src.remaining();
-                        let consumed = buf_remaining - new_remaining;
-                        *remaining -= consumed;
-                        src.unsplit(rem);
-                        break if let Some(result) = eof_result {
-                            Ok(Some(AgentMessage {
-                                source: *source,
-                                path: std::mem::take(path),
-                                envelope: AgentOperation::Command(result),
-                            }))
-                        } else {
-                            Err(AgentMessageDecodeError::incomplete())
-                        };
-                    } else {
-                        break Ok(None);
+                        Ok(None) => {
+                            if end_of_message {
+                                let eof_result = recognizer.decode_eof(src)?;
+                                let new_remaining = src.remaining();
+                                let consumed = buf_remaining - new_remaining;
+                                *remaining -= consumed;
+                                src.unsplit(rem);
+                                break if let Some(result) = eof_result {
+                                    Ok(Some(AgentMessage {
+                                        source: *source,
+                                        path: std::mem::take(path),
+                                        envelope: AgentOperation::Command(result),
+                                    }))
+                                } else {
+                                    Err(AgentMessageDecodeError::incomplete())
+                                };
+                            } else {
+                                break Ok(None);
+                            }
+                        }
+                        Err(e) => {
+                            *remaining -= new_remaining;
+                            src.unsplit(rem);
+                            src.advance(new_remaining);
+                            if *remaining == 0 {
+                                break Err(e.into());
+                            } else {
+                                *state = State::Discarding {
+                                    error: Some(e),
+                                    remaining: *remaining,
+                                }
+                            }
+                        }
                     }
                 }
                 State::AfterBody { message, remaining } => {
@@ -452,6 +476,20 @@ where
                         let result = message.take();
                         *state = State::ReadingHeader;
                         break Ok(result);
+                    } else {
+                        *remaining -= src.remaining();
+                        src.clear();
+                        break Ok(None);
+                    }
+                }
+                State::Discarding { error, remaining } => {
+                    if src.remaining() >= *remaining {
+                        src.advance(*remaining);
+                        let err = error
+                            .take()
+                            .unwrap_or_else(|| AsyncParseError::UnconsumedInput);
+                        *state = State::ReadingHeader;
+                        break Err(err.into());
                     } else {
                         *remaining -= src.remaining();
                         src.clear();
@@ -533,10 +571,30 @@ impl<T: RecognizerReadable> TryFrom<TaggedEnvelope> for AgentMessage<T> {
     fn try_from(value: TaggedEnvelope) -> Result<Self, Self::Error> {
         let TaggedEnvelope(addr, env) = value;
         match env {
-            Envelope::Link { node_uri, lane_uri, .. } => Ok(AgentMessage::link(addr.into(), RelativePath::new(node_uri, lane_uri))),
-            Envelope::Sync { node_uri, lane_uri, .. } => Ok(AgentMessage::sync(addr.into(), RelativePath::new(node_uri, lane_uri))),
-            Envelope::Unlink { node_uri, lane_uri, .. } => Ok(AgentMessage::unlink(addr.into(), RelativePath::new(node_uri, lane_uri))),
-            Envelope::Command { node_uri, lane_uri, body, .. } => {
+            Envelope::Link {
+                node_uri, lane_uri, ..
+            } => Ok(AgentMessage::link(
+                addr.into(),
+                RelativePath::new(node_uri, lane_uri),
+            )),
+            Envelope::Sync {
+                node_uri, lane_uri, ..
+            } => Ok(AgentMessage::sync(
+                addr.into(),
+                RelativePath::new(node_uri, lane_uri),
+            )),
+            Envelope::Unlink {
+                node_uri, lane_uri, ..
+            } => Ok(AgentMessage::unlink(
+                addr.into(),
+                RelativePath::new(node_uri, lane_uri),
+            )),
+            Envelope::Command {
+                node_uri,
+                lane_uri,
+                body,
+                ..
+            } => {
                 let interpreted_body = T::try_from_structure(body.unwrap_or(Value::Extant))?;
                 Ok(AgentMessage::command(
                     addr.into(),
@@ -562,4 +620,33 @@ where
     T: RecognizerReadable,
 {
     envelopes.map(TryFrom::try_from)
+}
+
+pub fn stop_on_failed<T, S>(
+    stream: S,
+    on_err: Option<promise::Sender<AgentMessageDecodeError>>,
+) -> impl Stream<Item = AgentMessage<T>>
+where
+    S: Stream<Item = Result<AgentMessage<T>, AgentMessageDecodeError>>,
+{
+    unfold(
+        (Box::pin(stream), on_err),
+        |(mut stream, mut on_err)| async move {
+            loop {
+                let result = stream.next().await?;
+                match result {
+                    Ok(msg) => {
+                        break Some((msg, (stream, on_err)));
+                    }
+                    Err(AgentMessageDecodeError::Body(_)) => {}
+                    Err(ow) => {
+                        if let Some(tx) = on_err.take() {
+                            let _ = tx.provide(ow);
+                        }
+                        break None;
+                    }
+                }
+            }
+        },
+    )
 }
