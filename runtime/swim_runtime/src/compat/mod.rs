@@ -31,6 +31,7 @@ use tokio_stream::StreamExt;
 use tokio_util::codec::{Decoder, Encoder, FramedRead};
 use uuid::Uuid;
 
+mod routing;
 #[cfg(test)]
 mod tests;
 
