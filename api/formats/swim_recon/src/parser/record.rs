@@ -213,10 +213,10 @@ pub struct ParseIterator<'a> {
 }
 
 impl<'a> ParseIterator<'a> {
-    pub fn new(input: Span<'a>) -> Self {
+    pub fn new(input: Span<'a>, allow_comments: bool) -> Self {
         ParseIterator {
             input,
-            parser: Some(Default::default()),
+            parser: Some(IncrementalReconParser::new(allow_comments)),
             pending: None,
         }
     }
@@ -300,12 +300,23 @@ impl<'a> From<ReadEvent<'a>> for ParseEvents<'a> {
 #[derive(Debug)]
 pub struct IncrementalReconParser {
     state: Vec<ParseState>,
+    allow_comments: bool,
+}
+
+impl IncrementalReconParser {
+    pub fn new(allow_comments: bool) -> Self {
+        IncrementalReconParser {
+            state: vec![ParseState::Init],
+            allow_comments,
+        }
+    }
 }
 
 impl Default for IncrementalReconParser {
     fn default() -> Self {
         IncrementalReconParser {
             state: vec![ParseState::Init],
+            allow_comments: false,
         }
     }
 }
@@ -319,7 +330,19 @@ enum FinalState {
 /// could change the final result (to allow it be used in cases where the whole string
 /// may not be available all at once). When the end of the data is reached, it should
 /// be converted into the final segment parser which can read the final events.
-pub struct FinalSegmentParser(FinalState);
+pub struct FinalSegmentParser {
+    state: FinalState,
+    allow_comments: bool,
+}
+
+impl FinalSegmentParser {
+    fn new(state: FinalState, allow_comments: bool) -> Self {
+        FinalSegmentParser {
+            state,
+            allow_comments,
+        }
+    }
+}
 
 impl IncrementalReconParser {
     /// Convert to the final segment parser to handle the end of the input.
@@ -328,12 +351,20 @@ impl IncrementalReconParser {
     }
 
     fn final_parser(&mut self) -> Option<FinalSegmentParser> {
-        let IncrementalReconParser { state } = self;
+        let IncrementalReconParser {
+            state,
+            allow_comments,
+        } = self;
         let top = state.pop();
         if state.is_empty() {
             match top {
-                Some(ParseState::Init) => Some(FinalSegmentParser(FinalState::Init)),
-                Some(ParseState::AfterAttr) => Some(FinalSegmentParser(FinalState::AfterAttr)),
+                Some(ParseState::Init) => {
+                    Some(FinalSegmentParser::new(FinalState::Init, *allow_comments))
+                }
+                Some(ParseState::AfterAttr) => Some(FinalSegmentParser::new(
+                    FinalState::AfterAttr,
+                    *allow_comments,
+                )),
                 _ => None,
             }
         } else {
@@ -359,9 +390,19 @@ impl<'a> Parser<Span<'a>, ParseEvents<'a>, nom::error::Error<Span<'a>>> for Incr
         &mut self,
         input: Span<'a>,
     ) -> IResult<Span<'a>, ParseEvents<'a>, nom::error::Error<Span<'a>>> {
-        let IncrementalReconParser { state } = self;
+        let IncrementalReconParser {
+            state,
+            allow_comments,
+        } = self;
         if let Some(top) = state.last_mut() {
             let (input, _) = char_str::space0(input)?;
+
+            let input = if *allow_comments {
+                comments(input)?.0
+            } else {
+                input
+            };
+
             match top {
                 ParseState::Init => {
                     let (input, (events, change)) =
@@ -490,13 +531,26 @@ impl<'a> Parser<Span<'a>, ParseEvents<'a>, nom::error::Error<Span<'a>>> for Fina
         &mut self,
         input: Span<'a>,
     ) -> IResult<Span<'a>, ParseEvents<'a>, nom::error::Error<Span<'a>>> {
-        let FinalSegmentParser(state) = self;
+        let FinalSegmentParser {
+            state,
+            allow_comments,
+        } = self;
         match state {
             FinalState::Init => {
+                let input = if *allow_comments {
+                    complete::comments(input)?.0
+                } else {
+                    input
+                };
                 let (input, _) = char_comp::multispace0(input)?;
                 parse_init_final(input)
             }
             FinalState::AfterAttr => {
+                let input = if *allow_comments {
+                    complete::comments(input)?.0
+                } else {
+                    input
+                };
                 let (input, _) = char_comp::space0(input)?;
                 parse_after_attr_final(input)
             }
@@ -679,6 +733,7 @@ trait ItemsKind {
 }
 
 struct AttrBody;
+
 struct RecBody;
 
 impl ItemsKind for AttrBody {

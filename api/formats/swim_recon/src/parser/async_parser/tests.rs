@@ -38,7 +38,7 @@ async fn read_configuration_from_file() {
 
     let file = File::open(path).await;
     assert!(file.is_ok());
-    let result = super::parse_recon_document(file.unwrap()).await;
+    let result = super::parse_recon_document(file.unwrap(), false).await;
     assert!(result.is_ok());
     let items = result.unwrap();
     let complex = Value::Record(
@@ -63,7 +63,7 @@ async fn read_invalid_file() {
 
     let file = File::open(path).await;
     assert!(file.is_ok());
-    let result = super::parse_recon_document(file.unwrap()).await;
+    let result = super::parse_recon_document(file.unwrap(), false).await;
     assert!(matches!(result, Err(AsyncParseError::UnconsumedInput)));
 }
 
