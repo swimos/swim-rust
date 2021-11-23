@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::structural::read::StructuralReadable;
+use crate::structural::read::recognizer::RecognizerReadable;
 use crate::structural::tests::GeneralType;
 use swim_model::{Blob, Item, Text, Value};
 
 #[test]
 fn bridge_numeric_and_logical() {
-    assert!(<() as StructuralReadable>::try_read_from(&Value::Extant).is_ok());
+    assert!(<() as RecognizerReadable>::try_read_from(&Value::Extant).is_ok());
     assert_eq!(i32::try_read_from(&Value::Int32Value(4)), Ok(4));
     assert_eq!(i64::try_read_from(&Value::Int64Value(-12)), Ok(-12i64));
     assert_eq!(u32::try_read_from(&Value::UInt32Value(5)), Ok(5u32));
@@ -29,7 +29,7 @@ fn bridge_numeric_and_logical() {
 
 #[test]
 fn bridge_transform_numeric_and_logical() {
-    assert!(<() as StructuralReadable>::try_transform(Value::Extant).is_ok());
+    assert!(<() as RecognizerReadable>::try_transform(Value::Extant).is_ok());
     assert_eq!(i32::try_transform(Value::Int32Value(4)), Ok(4));
     assert_eq!(i64::try_transform(Value::Int64Value(-12)), Ok(-12i64));
     assert_eq!(u32::try_transform(Value::UInt32Value(5)), Ok(5u32));
@@ -68,8 +68,8 @@ fn bridge_blob() {
     let rep = Value::Data(Blob::from_vec(blob.clone()));
 
     assert_eq!(
-        <Vec<u8> as StructuralReadable>::try_read_from(&rep),
-        Ok(blob)
+        <Vec<u8> as RecognizerReadable>::try_read_from(&rep),
+        Ok(blob.clone())
     );
 }
 
@@ -79,19 +79,19 @@ fn bridge_transform_blob() {
     let rep = Value::Data(Blob::from_vec(blob.clone()));
 
     assert_eq!(
-        <Vec<u8> as StructuralReadable>::try_transform(rep),
-        Ok(blob)
+        <Vec<u8> as RecognizerReadable>::try_transform(rep.clone()),
+        Ok(blob.clone())
     );
 }
 
 #[test]
 fn bridge_optional() {
     assert_eq!(
-        <Option<i32> as StructuralReadable>::try_read_from(&Value::Extant),
+        <Option<i32> as RecognizerReadable>::try_read_from(&Value::Extant),
         Ok(None)
     );
     assert_eq!(
-        <Option<i32> as StructuralReadable>::try_read_from(&Value::Int32Value(55)),
+        <Option<i32> as RecognizerReadable>::try_read_from(&Value::Int32Value(55)),
         Ok(Some(55))
     );
 }
@@ -99,11 +99,11 @@ fn bridge_optional() {
 #[test]
 fn bridge_transform_optional() {
     assert_eq!(
-        <Option<i32> as StructuralReadable>::try_transform(Value::Extant),
+        <Option<i32> as RecognizerReadable>::try_transform(Value::Extant),
         Ok(None)
     );
     assert_eq!(
-        <Option<i32> as StructuralReadable>::try_transform(Value::Int32Value(55)),
+        <Option<i32> as RecognizerReadable>::try_transform(Value::Int32Value(55)),
         Ok(Some(55))
     );
 }
@@ -112,7 +112,7 @@ fn bridge_transform_optional() {
 fn bridge_vec() {
     let rep = Value::from_vec(vec![1, 2, 3]);
     assert_eq!(
-        <Vec<i32> as StructuralReadable>::try_read_from(&rep),
+        <Vec<i32> as RecognizerReadable>::try_read_from(&rep),
         Ok(vec![1, 2, 3])
     );
 }
@@ -121,7 +121,7 @@ fn bridge_vec() {
 fn bridge_transform_vec() {
     let rep = Value::from_vec(vec![1, 2, 3]);
     assert_eq!(
-        <Vec<i32> as StructuralReadable>::try_transform(rep),
+        <Vec<i32> as RecognizerReadable>::try_transform(rep),
         Ok(vec![1, 2, 3])
     );
 }
@@ -130,7 +130,7 @@ fn bridge_transform_vec() {
 fn bridge_simple_compound() {
     let expected = GeneralType::new(2, 3);
     let rep = Value::record(vec![Item::slot("first", 2), Item::slot("second", 3)]);
-    let result = <GeneralType<i32, i32> as StructuralReadable>::try_read_from(&rep);
+    let result = <GeneralType<i32, i32> as RecognizerReadable>::try_read_from(&rep);
     assert_eq!(result, Ok(expected));
 }
 
@@ -138,7 +138,7 @@ fn bridge_simple_compound() {
 fn bridge_simple_compound_into() {
     let expected = GeneralType::new(2, 3);
     let rep = Value::record(vec![Item::slot("first", 2), Item::slot("second", 3)]);
-    let result = <GeneralType<i32, i32> as StructuralReadable>::try_transform(rep);
+    let result = <GeneralType<i32, i32> as RecognizerReadable>::try_transform(rep);
     assert_eq!(result, Ok(expected));
 }
 
