@@ -31,6 +31,7 @@ use swim_model::Value;
 /// Wraps a string in a structure that keeps track of the line and column
 /// as the input is parsed.
 pub type Span<'a> = LocatedSpan<&'a str>;
+pub use record::IncrementalReconParser;
 
 #[derive(Debug)]
 enum FinalAttrStage<'a> {
@@ -96,4 +97,5 @@ pub fn parse_value(repr: &str) -> Result<Value, ParseError> {
 #[cfg(feature = "async_parser")]
 pub use async_parser::{
     parse_recognize_with as async_parse_recognize_with, parse_recon_document, AsyncParseError,
+    RecognizerDecoder
 };

@@ -340,6 +340,18 @@ impl IncrementalReconParser {
             None
         }
     }
+
+    pub fn final_parser_and_reset(&mut self) -> Option<FinalSegmentParser> {
+        let parser = self.final_parser();
+        self.state.clear();
+        self.state.push(ParseState::Init);
+        parser
+    }
+
+    pub fn reset(&mut self) {
+        self.state.clear();
+        self.state.push(ParseState::Init);
+    }
 }
 
 impl<'a> Parser<Span<'a>, ParseEvents<'a>, nom::error::Error<Span<'a>>> for IncrementalReconParser {
