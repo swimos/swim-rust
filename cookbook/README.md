@@ -1,6 +1,6 @@
 # Cookbook
 
-All [cookbook](https://swimos.org/tutorials/) examples, implemented using the rust server and client.
+[Cookbook](https://swimos.org/tutorials/) examples, implemented using the rust server and client.
 
 ## Running a Rust example
 

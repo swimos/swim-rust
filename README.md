@@ -1,13 +1,18 @@
+[![Build Status](https://dev.azure.com/swimai-build/swim-rust/_apis/build/status/swimos.swim-rust?branchName=main)](https://dev.azure.com/swimai-build/swim-rust/_build/latest?definitionId=1&branchName=main)
 [![Build Status](https://travis-ci.com/swimos/swim-rust.svg?token=XRdC2qdFmdcvoFQjcbvN&branch=main)](https://travis-ci.com/swimos/swim-rust)
 [![codecov](https://codecov.io/gh/swimos/swim-rust/branch/main/graph/badge.svg?token=IVWBLXCGW8)](https://codecov.io/gh/swimos/swim-rust)
 <a href="https://www.swimos.org"><img src="https://docs.swimos.org/readme/marlin-blue.svg" align="left"></a>
-<br><br><br>
+<br><br><br><br>
 
-## Demo applications
-A number of demo applications are available in the [swim-rust-demos](https://github.com/swimos/swim-rust-demos) repository.
+## ⚠️🚧 Warning: Project is still under construction 👷 🚧
 
-## Client configuration CLI tool
-A CLI tool is available for creating configuration files for client instances [here](https://github.com/swimos/rust-client-config-cli).
+This project is still in its early stages of development, meaning that it is not yet stable and is subject to frequent API changes.
+
+**USE AT YOUR OWN RISK!**
+
+## Examples
+
+The [cookbook](/cookbook) can serve as a starting point for getting familiar with core Swim concepts that form the basis of all Swim apps.
 
 ## Development
 
@@ -22,9 +27,11 @@ A CLI tool is available for creating configuration files for client instances [h
 
 ### Lint
 ##### Manual
-1) `cargo fmt -- --check`
-2) `cargo clippy --all-features -- -D warnings`
+1) `cargo fmt --all -- --check`
+2) `cargo clippy --all-features --workspace --all-targets -- -D warnings`
 
 ##### Automatic (before commit): 
 - Install hook: `sh ./install-commit-hook.sh`
 - Remove hook: `sh ./remove-commit-hook.sh`
+
+Note: The pre-commit hooks take a while to run all checks.
