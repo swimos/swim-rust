@@ -9,15 +9,6 @@ branches:
 
 jobs:
   include:
-    - name: "Test ARM"
-      os: linux
-      arch: arm64
-      env:
-        - ARCH=arm64
-        - RUST_BACKTRACE=1
-      script:
-        - rustup component add rust-src
-        - cargo test --workspace --lib --tests --all-features
     - name: "Clippy, formatting and documentation"
       os: linux
       arch: amd64
