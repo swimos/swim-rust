@@ -40,6 +40,7 @@ jobs:
         workingDirectory: $(Build.SourcesDirectory)
 
       - bash: |
+          echo $PUBLIC_KEY
           echo $PUBLIC_KEY | base64 --decode | gpg --import
           gpg --verify codecov.SHA256SUM.sig codecov.SHA256SUM
         displayName: Verify the signature of the SHA256SUM
