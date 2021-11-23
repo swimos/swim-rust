@@ -152,18 +152,18 @@ pub struct RawAgentMessageEncoder;
 /// Tokio [`Encoder`] to encode an [`AgentResponse`] as a byte stream.
 pub struct AgentResponseEncoder;
 
-const OP_SHIFT: usize = 62;
-const OP_MASK: u64 = 11 << OP_SHIFT;
+const OP_SHIFT: usize = 61;
+const OP_MASK: u64 = 0b111 << OP_SHIFT;
 
-const LINK: u64 = 0b00;
-const SYNC: u64 = 0b01;
-const UNLINK: u64 = 0b10;
-const COMMAND: u64 = 0b11;
+const LINK: u64 = 0b000;
+const SYNC: u64 = 0b001;
+const UNLINK: u64 = 0b010;
+const COMMAND: u64 = 0b011;
 
-const LINKED: u64 = 0b00;
-const SYNCED: u64 = 0b01;
-const UNLINKED: u64 = 0b10;
-const EVENT: u64 = 0b11;
+const LINKED: u64 = 0b100;
+const SYNCED: u64 = 0b101;
+const UNLINKED: u64 = 0b110;
+const EVENT: u64 = 0b111;
 
 impl<'a> Encoder<RawAgentMessage<'a>> for RawAgentMessageEncoder {
     type Error = std::io::Error;
