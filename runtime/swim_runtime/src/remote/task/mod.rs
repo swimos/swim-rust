@@ -198,7 +198,7 @@ where
                     }
                     ConnectionEvent::Read(msg) => match msg {
                         Ok(WsMessage::Text(message)) => {
-                            match parse_recognize(Span::new(message.as_str())) {
+                            match parse_recognize(Span::new(message.as_str()), false) {
                                 Ok(envelope) => {
                                     let dispatch_result = dispatch_envelope(
                                         &mut router,
