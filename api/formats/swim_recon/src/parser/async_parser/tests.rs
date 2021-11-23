@@ -93,7 +93,7 @@ async fn recognize_decode_complete() {
 
     assert!(buffer.is_empty());
 
-    let expected = crate::parser::parse_recognize::<Example>(Span::new(COMPLETE)).unwrap();
+    let expected = crate::parser::parse_recognize::<Example>(Span::new(COMPLETE), false).unwrap();
 
     assert_complete(result, expected);
 }
@@ -117,7 +117,7 @@ async fn recognize_decode_two_parts() {
     buffer.put_slice(SECOND_PART.as_bytes());
     let result = decoder.decode(&mut buffer);
 
-    let expected = crate::parser::parse_recognize::<Example>(Span::new(COMPLETE)).unwrap();
+    let expected = crate::parser::parse_recognize::<Example>(Span::new(COMPLETE), false).unwrap();
 
     assert_complete(result, expected);
 }
@@ -154,7 +154,7 @@ async fn recognize_decode_complete_eof() {
 
     assert!(buffer.is_empty());
 
-    let expected = crate::parser::parse_recognize::<Example>(Span::new(COMPLETE)).unwrap();
+    let expected = crate::parser::parse_recognize::<Example>(Span::new(COMPLETE), false).unwrap();
 
     assert_complete(result, expected);
 }
