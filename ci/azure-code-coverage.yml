@@ -24,14 +24,14 @@ jobs:
           rust_version: 1.56.1
       - template: azure-install-sccache.yml
 
-#      - script: cargo install cargo-tarpaulin
-#        displayName: Install Tarpaulin
-#        workingDirectory: $(Build.SourcesDirectory)
-#
-#      - script: cargo tarpaulin --ignore-tests -o Xml -t 600 --exclude-files demos form_derive agent_derive --avoid-cfg-tarpaulin
-#        displayName: Generate code coverage
-#        workingDirectory: $(Build.SourcesDirectory)
-#
+      - script: cargo install cargo-tarpaulin
+        displayName: Install Tarpaulin
+        workingDirectory: $(Build.SourcesDirectory)
+
+      - script: cargo tarpaulin --ignore-tests -o Xml -t 600 --exclude-files demos form_derive agent_derive --avoid-cfg-tarpaulin
+        displayName: Generate code coverage
+        workingDirectory: $(Build.SourcesDirectory)
+
       - bash: |
           curl -Os https://uploader.codecov.io/latest/linux/codecov
           curl -Os https://uploader.codecov.io/latest/linux/codecov.SHA256SUM
