@@ -29,20 +29,24 @@ use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::io::byte_channel;
 use tokio_util::codec::{Decoder, Encoder, FramedRead, FramedWrite};
 use uuid::Uuid;
+use swim_model::path::RelativePath;
 
 #[test]
 fn encode_link_frame() {
     let id = Uuid::new_v4();
+    let node = "my_node";
     let lane = "lane";
-    let frame = RawAgentMessage::link(id, lane);
+    let path = RelativePath::new(node, lane);
+    let frame = RawAgentMessage::link(id, path);
     let mut encoder = RawAgentMessageEncoder;
     let mut buffer = BytesMut::new();
 
     assert!(encoder.encode(frame, &mut buffer).is_ok());
 
-    assert_eq!(buffer.len(), HEADER_INIT_LEN + lane.len());
+    assert_eq!(buffer.len(), HEADER_INIT_LEN + node.len() + lane.len());
 
     assert_eq!(buffer.get_u128(), id.as_u128());
+    assert_eq!(buffer.get_u32(), node.len() as u32);
     assert_eq!(buffer.get_u32(), lane.len() as u32);
     let body_descriptor = buffer.get_u64();
 
@@ -51,22 +55,27 @@ fn encode_link_frame() {
 
     let body_len = body_descriptor & !OP_MASK;
     assert_eq!(body_len, 0);
+    assert_eq!(&buffer.as_ref()[0..node.len()], node.as_bytes());
+    buffer.advance(node.len());
     assert_eq!(buffer.as_ref(), lane.as_bytes());
 }
 
 #[test]
 fn encode_sync_frame() {
     let id = Uuid::new_v4();
+    let node = "my_node";
     let lane = "lane";
-    let frame = RawAgentMessage::sync(id, lane);
+    let path = RelativePath::new(node, lane);
+    let frame = RawAgentMessage::sync(id, path);
     let mut encoder = RawAgentMessageEncoder;
     let mut buffer = BytesMut::new();
 
     assert!(encoder.encode(frame, &mut buffer).is_ok());
 
-    assert_eq!(buffer.len(), HEADER_INIT_LEN + lane.len());
+    assert_eq!(buffer.len(), HEADER_INIT_LEN + node.len() + lane.len());
 
     assert_eq!(buffer.get_u128(), id.as_u128());
+    assert_eq!(buffer.get_u32(), node.len() as u32);
     assert_eq!(buffer.get_u32(), lane.len() as u32);
     let body_descriptor = buffer.get_u64();
 
@@ -75,22 +84,27 @@ fn encode_sync_frame() {
 
     let body_len = body_descriptor & !OP_MASK;
     assert_eq!(body_len, 0);
+    assert_eq!(&buffer.as_ref()[0..node.len()], node.as_bytes());
+    buffer.advance(node.len());
     assert_eq!(buffer.as_ref(), lane.as_bytes());
 }
 
 #[test]
 fn encode_unlink_frame() {
     let id = Uuid::new_v4();
+    let node = "my_node";
     let lane = "lane";
-    let frame = RawAgentMessage::unlink(id, lane);
+    let path = RelativePath::new(node, lane);
+    let frame = RawAgentMessage::unlink(id, path);
     let mut encoder = RawAgentMessageEncoder;
     let mut buffer = BytesMut::new();
 
     assert!(encoder.encode(frame, &mut buffer).is_ok());
 
-    assert_eq!(buffer.len(), HEADER_INIT_LEN + lane.len());
+    assert_eq!(buffer.len(), HEADER_INIT_LEN + node.len() + lane.len());
 
     assert_eq!(buffer.get_u128(), id.as_u128());
+    assert_eq!(buffer.get_u32(), node.len() as u32);
     assert_eq!(buffer.get_u32(), lane.len() as u32);
     let body_descriptor = buffer.get_u64();
 
@@ -99,24 +113,29 @@ fn encode_unlink_frame() {
 
     let body_len = body_descriptor & !OP_MASK;
     assert_eq!(body_len, 0);
+    assert_eq!(&buffer.as_ref()[0..node.len()], node.as_bytes());
+    buffer.advance(node.len());
     assert_eq!(buffer.as_ref(), lane.as_bytes());
 }
 
 #[test]
 fn encode_command_frame() {
     let id = Uuid::new_v4();
+    let node = "my_node";
     let lane = "lane";
+    let path = RelativePath::new(node, lane);
     let body = "@Example { first: 1, second: 2 }";
-    let frame = RawAgentMessage::command(id, lane, body.as_bytes());
+    let frame = RawAgentMessage::command(id, path, body.as_bytes());
 
     let mut encoder = RawAgentMessageEncoder;
     let mut buffer = BytesMut::new();
 
     assert!(encoder.encode(frame, &mut buffer).is_ok());
 
-    assert_eq!(buffer.len(), HEADER_INIT_LEN + lane.len() + body.len());
+    assert_eq!(buffer.len(), HEADER_INIT_LEN + node.len() + lane.len() + body.len());
 
     assert_eq!(buffer.get_u128(), id.as_u128());
+    assert_eq!(buffer.get_u32(), node.len() as u32);
     assert_eq!(buffer.get_u32(), lane.len() as u32);
     let body_descriptor = buffer.get_u64();
 
@@ -126,12 +145,12 @@ fn encode_command_frame() {
     let body_len = (body_descriptor & !OP_MASK) as usize;
     assert_eq!(body_len, body.len());
 
-    let remainder = buffer.as_ref();
+    assert_eq!(&buffer.as_ref()[0..node.len()], node.as_bytes());
+    buffer.advance(node.len());
+    assert_eq!(&buffer.as_ref()[0..lane.len()], lane.as_bytes());
+    buffer.advance(lane.len());
 
-    let (lane_name, body_content) = remainder.split_at(lane.len());
-
-    assert_eq!(lane_name, lane.as_bytes());
-    assert_eq!(body_content, body.as_bytes());
+    assert_eq!(buffer.as_ref(), body.as_bytes());
 }
 
 #[derive(Form, PartialEq, Eq, Debug, Clone, Copy)]
@@ -175,41 +194,43 @@ where
 #[test]
 fn decode_link_frame() {
     let id = Uuid::new_v4();
+    let node = "my_node";
     let lane = "lane";
 
-    let frame = RawAgentMessage::link(id, lane);
+    let frame = RawAgentMessage::link(id, RelativePath::new(node, lane));
     let result = round_trip::<Example>(frame);
 
-    check_result(result, AgentMessage::link(id, lane));
+    check_result(result, AgentMessage::link(id, RelativePath::new(node, lane)));
 }
 
 #[test]
 fn decode_sync_frame() {
     let id = Uuid::new_v4();
+    let node = "my_node";
     let lane = "lane";
 
-    let frame = RawAgentMessage::sync(id, lane);
-
+    let frame = RawAgentMessage::sync(id, RelativePath::new(node, lane));
     let result = round_trip::<Example>(frame);
 
-    check_result(result, AgentMessage::sync(id, lane));
+    check_result(result, AgentMessage::sync(id, RelativePath::new(node, lane)));
 }
 
 #[test]
 fn decode_unlink_frame() {
     let id = Uuid::new_v4();
+    let node = "my_node";
     let lane = "lane";
 
-    let frame = RawAgentMessage::unlink(id, lane);
-
+    let frame = RawAgentMessage::unlink(id, RelativePath::new(node, lane));
     let result = round_trip::<Example>(frame);
 
-    check_result(result, AgentMessage::unlink(id, lane));
+    check_result(result, AgentMessage::unlink(id, RelativePath::new(node, lane)));
 }
 
 #[test]
 fn decode_command_frame() {
     let id = Uuid::new_v4();
+    let node = "my_node";
     let lane = "lane";
 
     let record = Example {
@@ -218,11 +239,11 @@ fn decode_command_frame() {
     };
     let as_text = print_recon_compact(&record).to_string();
 
-    let frame = RawAgentMessage::command(id, lane, as_text.as_bytes());
+    let frame = RawAgentMessage::command(id, RelativePath::new(node, lane), as_text.as_bytes());
 
     let result = round_trip::<Example>(frame);
 
-    check_result(result, AgentMessage::command(id, lane, record));
+    check_result(result, AgentMessage::command(id, RelativePath::new(node, lane), record));
 }
 
 const CHANNEL_SIZE: NonZeroUsize = non_zero_usize!(16);
@@ -230,6 +251,7 @@ const CHANNEL_SIZE: NonZeroUsize = non_zero_usize!(16);
 #[tokio::test]
 async fn multiple_frames() {
     let id = Uuid::new_v4();
+    let node = "my_node";
     let lane = "lane";
 
     let (tx, rx) = byte_channel::byte_channel(CHANNEL_SIZE);
@@ -253,10 +275,10 @@ async fn multiple_frames() {
     let str2 = print_recon_compact(&record2).to_string();
 
     let frames = vec![
-        RawAgentMessage::sync(id, lane),
-        RawAgentMessage::command(id, lane, str1.as_bytes()),
-        RawAgentMessage::command(id, lane, str2.as_bytes()),
-        RawAgentMessage::unlink(id, lane),
+        RawAgentMessage::sync(id, RelativePath::new(node, lane)),
+        RawAgentMessage::command(id, RelativePath::new(node, lane), str1.as_bytes()),
+        RawAgentMessage::command(id, RelativePath::new(node, lane), str2.as_bytes()),
+        RawAgentMessage::unlink(id, RelativePath::new(node, lane)),
     ];
 
     let send_task = async move {
@@ -287,10 +309,10 @@ async fn multiple_frames() {
     let (_, result) = join(send_task, recv_task).await;
 
     let expected = vec![
-        AgentMessage::sync(id, lane),
-        AgentMessage::command(id, lane, record1),
-        AgentMessage::command(id, lane, record2),
-        AgentMessage::unlink(id, lane),
+        AgentMessage::sync(id, RelativePath::new(node, lane)),
+        AgentMessage::command(id, RelativePath::new(node, lane), record1),
+        AgentMessage::command(id, RelativePath::new(node, lane), record2),
+        AgentMessage::unlink(id, RelativePath::new(node, lane)),
     ];
 
     assert!(result.is_ok());

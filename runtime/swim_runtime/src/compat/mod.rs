@@ -30,6 +30,7 @@ use tokio::io::AsyncRead;
 use tokio_stream::StreamExt;
 use tokio_util::codec::{Decoder, Encoder, FramedRead};
 use uuid::Uuid;
+use swim_model::path::RelativePath;
 
 mod routing;
 #[cfg(test)]
@@ -57,7 +58,7 @@ pub enum AgentNotification<T> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AgentMessage<T> {
     source: Uuid,
-    lane: Text,
+    path: RelativePath,
     envelope: AgentOperation<T>,
 }
 
@@ -65,73 +66,73 @@ pub struct AgentMessage<T> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AgentResponse<T> {
     target: Uuid,
-    lane: Text,
+    path: RelativePath,
     envelope: AgentNotification<T>,
 }
 
 impl<T> AgentMessage<T> {
-    pub fn link<L: Into<Text>>(source: Uuid, lane: L) -> Self {
+    pub fn link(source: Uuid, path: RelativePath) -> Self {
         AgentMessage {
             source,
-            lane: lane.into(),
+            path,
             envelope: AgentOperation::Link,
         }
     }
 
-    pub fn sync<L: Into<Text>>(source: Uuid, lane: L) -> Self {
+    pub fn sync(source: Uuid, path: RelativePath) -> Self {
         AgentMessage {
             source,
-            lane: lane.into(),
+            path,
             envelope: AgentOperation::Sync,
         }
     }
 
-    pub fn unlink<L: Into<Text>>(source: Uuid, lane: L) -> Self {
+    pub fn unlink(source: Uuid, path: RelativePath) -> Self {
         AgentMessage {
             source,
-            lane: lane.into(),
+            path,
             envelope: AgentOperation::Unlink,
         }
     }
 
-    pub fn command<L: Into<Text>>(source: Uuid, lane: L, body: T) -> Self {
+    pub fn command(source: Uuid, path: RelativePath, body: T) -> Self {
         AgentMessage {
             source,
-            lane: lane.into(),
+            path,
             envelope: AgentOperation::Command(body),
         }
     }
 }
 
 impl<T> AgentResponse<T> {
-    pub fn linked<L: Into<Text>>(target: Uuid, lane: L) -> Self {
+    pub fn linked(target: Uuid, path: RelativePath) -> Self {
         AgentResponse {
             target,
-            lane: lane.into(),
+            path,
             envelope: AgentNotification::Linked,
         }
     }
 
-    pub fn synced<L: Into<Text>>(target: Uuid, lane: L) -> Self {
+    pub fn synced(target: Uuid, path: RelativePath) -> Self {
         AgentResponse {
             target,
-            lane: lane.into(),
+            path,
             envelope: AgentNotification::Synced,
         }
     }
 
-    pub fn unlinked<L: Into<Text>>(target: Uuid, lane: L) -> Self {
+    pub fn unlinked(target: Uuid, path: RelativePath) -> Self {
         AgentResponse {
             target,
-            lane: lane.into(),
+            path,
             envelope: AgentNotification::Unlinked,
         }
     }
 
-    pub fn event<L: Into<Text>>(target: Uuid, lane: L, body: T) -> Self {
+    pub fn event(target: Uuid, path: RelativePath, body: T) -> Self {
         AgentResponse {
             target,
-            lane: lane.into(),
+            path,
             envelope: AgentNotification::Event(body),
         }
     }
@@ -168,24 +169,29 @@ impl<'a> Encoder<RawAgentMessage<'a>> for RawAgentMessageEncoder {
     fn encode(&mut self, item: RawAgentMessage<'a>, dst: &mut BytesMut) -> Result<(), Self::Error> {
         let RawAgentMessage {
             source,
-            lane,
+            path: RelativePath{ node, lane },
             envelope,
         } = item;
         dst.reserve(HEADER_INIT_LEN + lane.len());
         dst.put_u128(source.as_u128());
-        let len = u32::try_from(lane.len()).expect("Lane name to long.");
-        dst.put_u32(len);
+        let node_len = u32::try_from(node.len()).expect("Node name to long.");
+        let lane_len = u32::try_from(lane.len()).expect("Lane name to long.");
+        dst.put_u32(node_len);
+        dst.put_u32(lane_len);
         match envelope {
             AgentOperation::Link => {
                 dst.put_u64(LINK << OP_SHIFT);
+                dst.put_slice(node.as_bytes());
                 dst.put_slice(lane.as_bytes());
             }
             AgentOperation::Sync => {
                 dst.put_u64(SYNC << OP_SHIFT);
+                dst.put_slice(node.as_bytes());
                 dst.put_slice(lane.as_bytes());
             }
             AgentOperation::Unlink => {
                 dst.put_u64(UNLINK << OP_SHIFT);
+                dst.put_slice(node.as_bytes());
                 dst.put_slice(lane.as_bytes());
             }
             AgentOperation::Command(body) => {
@@ -194,6 +200,7 @@ impl<'a> Encoder<RawAgentMessage<'a>> for RawAgentMessageEncoder {
                     panic!("Body too large.")
                 }
                 dst.put_u64(body_len | (COMMAND << OP_SHIFT));
+                dst.put_slice(node.as_bytes());
                 dst.put_slice(lane.as_bytes());
                 dst.reserve(body.len());
                 dst.put_slice(body);
@@ -215,29 +222,35 @@ where
     fn encode(&mut self, item: AgentResponse<T>, dst: &mut BytesMut) -> Result<(), Self::Error> {
         let AgentResponse {
             target: source,
-            lane,
+            path: RelativePath { node, lane },
             envelope,
         } = item;
         dst.reserve(HEADER_INIT_LEN + lane.len());
         dst.put_u128(source.as_u128());
-        let len = u32::try_from(lane.len()).expect("Lane name to long.");
-        dst.put_u32(len);
+        let node_len = u32::try_from(node.len()).expect("Node name to long.");
+        let lane_len = u32::try_from(lane.len()).expect("Lane name to long.");
+        dst.put_u32(node_len);
+        dst.put_u32(lane_len);
         match envelope {
             AgentNotification::Linked => {
                 dst.put_u64(LINKED << OP_SHIFT);
+                dst.put_slice(node.as_bytes());
                 dst.put_slice(lane.as_bytes());
             }
             AgentNotification::Synced => {
                 dst.put_u64(SYNCED << OP_SHIFT);
+                dst.put_slice(node.as_bytes());
                 dst.put_slice(lane.as_bytes());
             }
             AgentNotification::Unlinked => {
                 dst.put_u64(UNLINKED << OP_SHIFT);
+                dst.put_slice(node.as_bytes());
                 dst.put_slice(lane.as_bytes());
             }
             AgentNotification::Event(body) => {
                 let body_len_offset = dst.remaining();
                 dst.put_u64(0);
+                dst.put_slice(node.as_bytes());
                 dst.put_slice(lane.as_bytes());
                 let body_offset = dst.remaining();
 
@@ -268,7 +281,7 @@ enum State<T> {
     ReadingHeader,
     ReadingBody {
         source: Uuid,
-        lane: Text,
+        path: RelativePath,
         remaining: usize,
     },
     AfterBody {
@@ -344,35 +357,39 @@ where
                     }
                     let mut header = &src.as_ref()[0..HEADER_INIT_LEN];
                     let source = header.get_u128();
+                    let node_len = header.get_u32() as usize;
                     let lane_len = header.get_u32() as usize;
                     let body_len_and_tag = header.get_u64();
                     let tag = (body_len_and_tag & OP_MASK) >> OP_SHIFT;
-                    if src.remaining() < HEADER_INIT_LEN + lane_len {
-                        src.reserve(lane_len as usize);
+                    if src.remaining() < HEADER_INIT_LEN + node_len + lane_len {
+                        src.reserve(node_len + lane_len as usize);
                         break Ok(None);
                     }
                     src.advance(HEADER_INIT_LEN);
+                    let node = Text::new(std::str::from_utf8(&src.as_ref()[0..node_len])?);
+                    src.advance(node_len);
                     let lane = Text::new(std::str::from_utf8(&src.as_ref()[0..lane_len])?);
                     src.advance(lane_len);
+                    let path = RelativePath::new(node, lane);
                     match tag {
                         LINK => {
                             break Ok(Some(AgentMessage {
                                 source: Uuid::from_u128(source),
-                                lane,
+                                path,
                                 envelope: AgentOperation::Link,
                             }));
                         }
                         SYNC => {
                             break Ok(Some(AgentMessage {
                                 source: Uuid::from_u128(source),
-                                lane,
+                                path,
                                 envelope: AgentOperation::Sync,
                             }));
                         }
                         UNLINK => {
                             break Ok(Some(AgentMessage {
                                 source: Uuid::from_u128(source),
-                                lane,
+                                path,
                                 envelope: AgentOperation::Unlink,
                             }));
                         }
@@ -380,7 +397,7 @@ where
                             let body_len = (body_len_and_tag & !OP_MASK) as usize;
                             *state = State::ReadingBody {
                                 source: Uuid::from_u128(source),
-                                lane,
+                                path,
                                 remaining: body_len,
                             };
                             recognizer.reset();
@@ -389,7 +406,7 @@ where
                 }
                 State::ReadingBody {
                     source,
-                    lane,
+                    path,
                     remaining,
                 } => {
                     let to_split = (*remaining).min(src.remaining());
@@ -405,7 +422,7 @@ where
                         *state = State::AfterBody {
                             message: Some(AgentMessage {
                                 source: *source,
-                                lane: std::mem::take(lane),
+                                path: std::mem::take(path),
                                 envelope: AgentOperation::Command(result),
                             }),
                             remaining: *remaining,
@@ -419,7 +436,7 @@ where
                         break if let Some(result) = eof_result {
                             Ok(Some(AgentMessage {
                                 source: *source,
-                                lane: std::mem::take(lane),
+                                path: std::mem::take(path),
                                 envelope: AgentOperation::Command(result),
                             }))
                         } else {
@@ -457,31 +474,38 @@ impl Decoder for RawAgentResponseDecoder {
         }
         let mut header = &src.as_ref()[0..HEADER_INIT_LEN];
         let id = header.get_u128();
+        let node_len = header.get_u32() as usize;
         let lane_len = header.get_u32() as usize;
         let body_len_and_tag = header.get_u64();
         let body_len = (body_len_and_tag & !OP_MASK) as usize;
-        let required = HEADER_INIT_LEN + lane_len + body_len;
+        let required = HEADER_INIT_LEN + node_len + lane_len + body_len;
         if src.remaining() < required {
             src.reserve(required - src.remaining());
             return Ok(None);
         }
         src.advance(HEADER_INIT_LEN);
+        let node = if let Ok(lane_name) = std::str::from_utf8(&src.as_ref()[0..node_len]) {
+            Text::new(lane_name)
+        } else {
+            return Err(std::io::Error::from(std::io::ErrorKind::InvalidData));
+        };
+        src.advance(node_len);
         let lane = if let Ok(lane_name) = std::str::from_utf8(&src.as_ref()[0..lane_len]) {
             Text::new(lane_name)
         } else {
             return Err(std::io::Error::from(std::io::ErrorKind::InvalidData));
         };
         src.advance(lane_len);
-
+        let path = RelativePath::new(node, lane);
         let tag = (body_len_and_tag & OP_MASK) >> OP_SHIFT;
         let target = Uuid::from_u128(id);
         match tag {
-            LINKED => Ok(Some(RawAgentResponse::linked(target, lane))),
-            SYNCED => Ok(Some(RawAgentResponse::synced(target, lane))),
-            UNLINKED => Ok(Some(RawAgentResponse::unlinked(target, lane))),
+            LINKED => Ok(Some(RawAgentResponse::linked(target, path))),
+            SYNCED => Ok(Some(RawAgentResponse::synced(target, path))),
+            UNLINKED => Ok(Some(RawAgentResponse::unlinked(target, path))),
             _ => {
                 let body = src.split_to(body_len).freeze();
-                Ok(Some(RawAgentResponse::event(target, lane, body)))
+                Ok(Some(RawAgentResponse::event(target, path, body)))
             }
         }
     }
@@ -509,14 +533,14 @@ impl<T: RecognizerReadable> TryFrom<TaggedEnvelope> for AgentMessage<T> {
     fn try_from(value: TaggedEnvelope) -> Result<Self, Self::Error> {
         let TaggedEnvelope(addr, env) = value;
         match env {
-            Envelope::Link { lane_uri, .. } => Ok(AgentMessage::link(addr.into(), lane_uri)),
-            Envelope::Sync { lane_uri, .. } => Ok(AgentMessage::sync(addr.into(), lane_uri)),
-            Envelope::Unlink { lane_uri, .. } => Ok(AgentMessage::unlink(addr.into(), lane_uri)),
-            Envelope::Command { lane_uri, body, .. } => {
+            Envelope::Link { node_uri, lane_uri, .. } => Ok(AgentMessage::link(addr.into(), RelativePath::new(node_uri, lane_uri))),
+            Envelope::Sync { node_uri, lane_uri, .. } => Ok(AgentMessage::sync(addr.into(), RelativePath::new(node_uri, lane_uri))),
+            Envelope::Unlink { node_uri, lane_uri, .. } => Ok(AgentMessage::unlink(addr.into(), RelativePath::new(node_uri, lane_uri))),
+            Envelope::Command { node_uri, lane_uri, body, .. } => {
                 let interpreted_body = T::try_from_structure(body.unwrap_or(Value::Extant))?;
                 Ok(AgentMessage::command(
                     addr.into(),
-                    lane_uri,
+                    RelativePath::new(node_uri, lane_uri),
                     interpreted_body,
                 ))
             }

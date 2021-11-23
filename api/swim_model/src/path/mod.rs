@@ -170,7 +170,7 @@ impl Addressable for AbsolutePath {
 }
 
 /// Relative path to an agent lane, leaving the host unspecified.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+#[derive(Clone, Default, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct RelativePath {
     pub node: Text,
     pub lane: Text,
