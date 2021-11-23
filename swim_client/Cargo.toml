@@ -24,7 +24,7 @@ swim_model = { path = "../api/swim_model" }
 swim_form = { path = "../api/swim_form" }
 swim_recon = { path = "../api/formats/swim_recon" }
 swim_schema = { path = "../api/swim_schema" }
-ratchet = {  path = "../ratchet", features = ["deflate", "split"] }
+ratchet = { package = "ratchet_rs", version = "0.1.0", features = ["deflate", "split"] }
 http = "0.2"
 tokio-native-tls = "0.3"
 pin-utils = "0.1.0"
@@ -47,4 +47,4 @@ thiserror = "1.0.29"
 tokio = { version = "1.1.1", features = ["rt-multi-thread"] }
 test_server = { path = "test_server" }
 bytes = "1.0"
-ratchet_fixture = { path = "../ratchet/ratchet_fixture" }
+ratchet_fixture = "0.1.0"
