@@ -24,10 +24,10 @@ jobs:
           rust_version: 1.56.1
       - template: azure-install-sccache.yml
 
-      - script: cargo install cargo-tarpaulin
-        displayName: Install Tarpaulin
-        workingDirectory: $(Build.SourcesDirectory)
-
+#      - script: cargo install cargo-tarpaulin
+#        displayName: Install Tarpaulin
+#        workingDirectory: $(Build.SourcesDirectory)
+#
 #      - script: cargo tarpaulin --ignore-tests -o Xml -t 600 --exclude-files demos form_derive agent_derive --avoid-cfg-tarpaulin
 #        displayName: Generate code coverage
 #        workingDirectory: $(Build.SourcesDirectory)
@@ -40,7 +40,7 @@ jobs:
         workingDirectory: $(Build.SourcesDirectory)
 
       - bash: |
-          echo ${CODECOV_PUBLIC_KEY} | base64 --decode | gpg --import
+          echo $(CODECOV_PUBLIC_KEY) | base64 --decode | gpg --import
           gpg --verify codecov.SHA256SUM.sig codecov.SHA256SUM
         displayName: Verify the signature of the SHA256SUM
         workingDirectory: $(Build.SourcesDirectory)
