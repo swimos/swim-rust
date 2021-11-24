@@ -97,6 +97,7 @@ impl From<RoutingAddr> for Uuid {
     }
 }
 
+#[derive(Debug)]
 pub struct InvalidRoutingAddr;
 
 impl TryFrom<Uuid> for RoutingAddr {

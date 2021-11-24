@@ -27,7 +27,7 @@ use swim_model::{Text, Value};
 use swim_recon::parser::{AsyncParseError, ParseError, RecognizerDecoder};
 use swim_recon::printer::print_recon_compact;
 use swim_utilities::trigger::promise;
-use swim_warp::envelope::Envelope;
+use swim_warp::envelope::{Envelope, RequestKind};
 use thiserror::Error;
 use tokio::io::AsyncRead;
 use tokio_stream::StreamExt;
@@ -59,9 +59,9 @@ pub enum AgentNotification<T> {
 /// Type of messages that can be sent to an agent.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AgentMessage<T> {
-    source: Uuid,
-    path: RelativePath,
-    envelope: AgentOperation<T>,
+    pub source: Uuid,
+    pub path: RelativePath,
+    pub envelope: AgentOperation<T>,
 }
 
 /// Type of messages that can be sent to an agent.
@@ -102,6 +102,22 @@ impl<T> AgentMessage<T> {
             source,
             path,
             envelope: AgentOperation::Command(body),
+        }
+    }
+
+    pub fn kind(&self) -> RequestKind {
+        match &self.envelope {
+            AgentOperation::Link => RequestKind::Link,
+            AgentOperation::Sync => RequestKind::Sync,
+            AgentOperation::Unlink => RequestKind::Unlink,
+            AgentOperation::Command(_) => RequestKind::Command,
+        }
+    }
+
+    pub fn body(&self) -> Option<&T> {
+        match &self.envelope {
+            AgentOperation::Command(body) => Some(body),
+            _ => None,
         }
     }
 }
@@ -487,7 +503,7 @@ where
                         src.advance(*remaining);
                         let err = error
                             .take()
-                            .unwrap_or_else(|| AsyncParseError::UnconsumedInput);
+                            .unwrap_or(AsyncParseError::UnconsumedInput);
                         *state = State::ReadingHeader;
                         break Err(err.into());
                     } else {

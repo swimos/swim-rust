@@ -50,7 +50,9 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_async_runtime::time::timeout::timeout;
-use swim_runtime::routing::{Router, RoutingAddr, TaggedClientEnvelope, TaggedEnvelope};
+use swim_model::Value;
+use swim_runtime::compat::AgentMessage;
+use swim_runtime::routing::{Router, RoutingAddr};
 use swim_utilities::time::AtomicInstant;
 use tokio::time::Instant;
 
@@ -71,7 +73,7 @@ pub struct AgentDispatcher<Context> {
 //A request to attach a lane to the dispatcher.
 struct OpenRequest {
     identifier: LaneIdentifier,
-    rx: mpsc::Receiver<TaggedClientEnvelope>,
+    rx: mpsc::Receiver<AgentMessage<Value>>,
     callback: oneshot::Sender<Result<(), AttachError>>,
     remote_addr: Option<RoutingAddr>,
 }
@@ -79,7 +81,7 @@ struct OpenRequest {
 impl OpenRequest {
     fn new(
         identifier: LaneIdentifier,
-        rx: mpsc::Receiver<TaggedClientEnvelope>,
+        rx: mpsc::Receiver<AgentMessage<Value>>,
         callback: oneshot::Sender<Result<(), AttachError>>,
         remote_addr: Option<RoutingAddr>,
     ) -> Self {
@@ -208,7 +210,7 @@ where
     /// agent.
     pub async fn run(
         self,
-        incoming: impl Stream<Item = TaggedEnvelope>,
+        incoming: impl Stream<Item = AgentMessage<Value>>,
         uplinks_idle_since: Arc<AtomicInstant>,
     ) -> Result<DispatcherErrors, DispatcherErrors> {
         let AgentDispatcher {
@@ -522,7 +524,7 @@ impl<L: Unpin> Future for AwaitNewLane<L> {
 }
 
 struct EnvelopeDispatcher<Router> {
-    senders: HashMap<LaneIdentifier, mpsc::Sender<TaggedClientEnvelope>>,
+    senders: HashMap<LaneIdentifier, mpsc::Sender<AgentMessage<Value>>>,
     open_tx: mpsc::Sender<OpenRequest>,
     await_new: FuturesUnordered<AwaitNewLane<LaneIdentifier>>,
     yield_after: NonZeroUsize,
@@ -564,7 +566,7 @@ where
 
     async fn dispatch_envelopes(
         &mut self,
-        envelopes: impl Stream<Item = TaggedEnvelope>,
+        envelopes: impl Stream<Item = AgentMessage<Value>>,
         uplinks_idle_since: Arc<AtomicInstant>,
     ) -> Result<(), DispatcherError> {
         let EnvelopeDispatcher {
@@ -617,77 +619,68 @@ where
                         break Err(DispatcherError::AttachmentFailed(err));
                     }
                 }
-                Some(Either::Right(TaggedEnvelope(addr, envelope))) => {
-                    event!(Level::TRACE, message = ATTEMPT_DISPATCH, ?envelope);
-                    if let Some(envelope) = envelope.into_request() {
-                        let path = envelope.path();
-                        let identifier = match LaneIdentifier::try_from(path) {
-                            Ok(identifier) => identifier,
-                            Err(e) => {
-                                event!(Level::WARN, message = NODE_URI_PARSE_ERR, ?e);
+                Some(Either::Right(agent_message)) => {
+                    event!(Level::TRACE, message = ATTEMPT_DISPATCH, ?agent_message);
+                    let path = &agent_message.path;
+                    let addr = RoutingAddr::try_from(agent_message.source).unwrap();
+                    let identifier = match LaneIdentifier::try_from(path) {
+                        Ok(identifier) => identifier,
+                        Err(e) => {
+                            event!(Level::WARN, message = NODE_URI_PARSE_ERR, ?e);
 
-                                send_lane_not_found(
-                                    router,
-                                    addr,
-                                    path.node.to_string(),
-                                    path.lane.to_string(),
-                                )
-                                .await;
+                            send_lane_not_found(
+                                router,
+                                addr,
+                                path.node.to_string(),
+                                path.lane.to_string(),
+                            )
+                            .await;
 
-                                break Err(DispatcherError::AttachmentFailed(
-                                    AttachError::LaneDoesNotExist(envelope.path().to_string()),
-                                ));
-                            }
+                            break Err(DispatcherError::AttachmentFailed(
+                                AttachError::LaneDoesNotExist(path.to_string()),
+                            ));
+                        }
+                    };
+
+                    if let Some(sender) = senders.get_mut(&identifier) {
+                        if sender.send(agent_message).await.is_err() {
+                            break Err(DispatcherError::SenderError);
+                        }
+                    } else {
+                        event!(Level::TRACE, message = REQUESTING_ATTACH, ?agent_message);
+                        let (req_tx, req_rx) = oneshot::channel();
+                        let (uplink_tx, uplink_rx) = mpsc::channel(lane_buffer.get());
+
+                        let result = if agent_message.kind() == RequestKind::Link {
+                            open_tx
+                                .send(OpenRequest::new(
+                                    identifier.clone(),
+                                    uplink_rx,
+                                    req_tx,
+                                    Some(addr),
+                                ))
+                                .await
+                        } else {
+                            open_tx
+                                .send(OpenRequest::new(
+                                    identifier.clone(),
+                                    uplink_rx,
+                                    req_tx,
+                                    None,
+                                ))
+                                .await
                         };
 
-                        if let Some(sender) = senders.get_mut(&identifier) {
-                            if sender
-                                .send(TaggedClientEnvelope(addr, envelope))
-                                .await
-                                .is_err()
-                            {
-                                break Err(DispatcherError::SenderError);
-                            }
-                        } else {
-                            event!(Level::TRACE, message = REQUESTING_ATTACH, ?envelope);
-                            let (req_tx, req_rx) = oneshot::channel();
-                            let (uplink_tx, uplink_rx) = mpsc::channel(lane_buffer.get());
-
-                            let result = if envelope.kind() == RequestKind::Link {
-                                open_tx
-                                    .send(OpenRequest::new(
-                                        identifier.clone(),
-                                        uplink_rx,
-                                        req_tx,
-                                        Some(addr),
-                                    ))
-                                    .await
-                            } else {
-                                open_tx
-                                    .send(OpenRequest::new(
-                                        identifier.clone(),
-                                        uplink_rx,
-                                        req_tx,
-                                        None,
-                                    ))
-                                    .await
-                            };
-
-                            if result.is_err() {
-                                break Err(DispatcherError::SenderError);
-                            }
-
-                            await_new.push(AwaitNewLane::new(identifier.clone(), req_rx));
-                            if uplink_tx
-                                .send(TaggedClientEnvelope(addr, envelope))
-                                .await
-                                .is_err()
-                            {
-                                break Err(DispatcherError::SenderError);
-                            }
-
-                            senders.insert(identifier, uplink_tx);
+                        if result.is_err() {
+                            break Err(DispatcherError::SenderError);
                         }
+
+                        await_new.push(AwaitNewLane::new(identifier.clone(), req_rx));
+                        if uplink_tx.send(agent_message).await.is_err() {
+                            break Err(DispatcherError::SenderError);
+                        }
+
+                        senders.insert(identifier, uplink_tx);
                     }
                 }
                 _ => {
@@ -744,8 +737,8 @@ type LabelledResult<L> = (L, Result<(), AttachError>);
 
 async fn select_next<L>(
     await_new: &mut FuturesUnordered<AwaitNewLane<L>>,
-    envelopes: &mut (impl FusedStream<Item = TaggedEnvelope> + Unpin),
-) -> Option<Either<LabelledResult<L>, TaggedEnvelope>>
+    envelopes: &mut (impl FusedStream<Item = AgentMessage<Value>> + Unpin),
+) -> Option<Either<LabelledResult<L>, AgentMessage<Value>>>
 where
     L: Send + Unpin + 'static,
 {

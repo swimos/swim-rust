@@ -59,7 +59,7 @@ where
 impl<Clk, Envelopes, R, Store> PlaneBuilder<Clk, Envelopes, R, Store>
 where
     Clk: Clock,
-    Envelopes: Stream<Item = TaggedEnvelope> + Send + 'static,
+    Envelopes: Stream<Item = TaggedEnvelope> + Send + Unpin + 'static,
     R: Router + Clone + 'static,
     Store: PlaneStore,
 {
