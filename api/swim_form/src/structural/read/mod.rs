@@ -16,13 +16,11 @@ pub mod event;
 pub mod from_model;
 pub mod recognizer;
 
-use crate::structural::write::StructuralWritable;
 use std::borrow::Cow;
 use swim_model::bigint::{BigInt, BigUint};
 
 pub mod error;
 
-use crate::structural::bridge::RecognizerBridge;
 use crate::structural::read::event::ReadEvent;
 use crate::structural::read::recognizer::{Recognizer, RecognizerReadable};
 pub use error::ReadError;
@@ -32,18 +30,6 @@ pub use swim_form_derive::StructuralReadable;
 
 /// Trait for types that can be structurally deserialized, from the Swim data model.
 pub trait StructuralReadable: RecognizerReadable {
-    /// Attempt to write a value of a ['StructuralWritable'] type into an instance of this type.
-    fn try_read_from<T: StructuralWritable>(writable: &T) -> Result<Self, ReadError> {
-        let bridge = RecognizerBridge::new(Self::make_recognizer());
-        writable.write_with(bridge)
-    }
-
-    /// Attempt to transform a value of a ['StructuralWritable'] type into an instance of this type.
-    fn try_transform<T: StructuralWritable>(writable: T) -> Result<Self, ReadError> {
-        let bridge = RecognizerBridge::new(Self::make_recognizer());
-        writable.write_into(bridge)
-    }
-
     fn read_extant() -> Result<Self, ReadError> {
         let mut rec = Self::make_recognizer();
         rec.feed_event(ReadEvent::Extant)

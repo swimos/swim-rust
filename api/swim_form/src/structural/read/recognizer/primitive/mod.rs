@@ -23,19 +23,33 @@ use swim_model::bigint::{BigInt, BigUint};
 use swim_model::Text;
 use swim_model::ValueKind;
 
+#[derive(Debug)]
 pub struct UnitRecognizer;
+#[derive(Debug)]
 pub struct I32Recognizer;
+#[derive(Debug)]
 pub struct I64Recognizer;
+#[derive(Debug)]
 pub struct U32Recognizer;
+#[derive(Debug)]
 pub struct U64Recognizer;
+#[derive(Debug)]
 pub struct UsizeRecognizer;
+#[derive(Debug)]
 pub struct NonZeroUsizeRecognizer;
+#[derive(Debug)]
 pub struct BigIntRecognizer;
+#[derive(Debug)]
 pub struct BigUintRecognizer;
+#[derive(Debug)]
 pub struct F64Recognizer;
+#[derive(Debug)]
 pub struct StringRecognizer;
+#[derive(Debug)]
 pub struct TextRecognizer;
+#[derive(Debug)]
 pub struct DataRecognizer;
+#[derive(Debug)]
 pub struct BoolRecognizer;
 
 impl Recognizer for UnitRecognizer {
