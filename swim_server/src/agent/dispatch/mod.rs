@@ -622,7 +622,7 @@ where
                 Some(Either::Right(agent_message)) => {
                     event!(Level::TRACE, message = ATTEMPT_DISPATCH, ?agent_message);
                     let path = &agent_message.path;
-                    let addr = RoutingAddr::try_from(agent_message.source).unwrap();
+                    let addr = agent_message.source;
                     let identifier = match LaneIdentifier::try_from(path) {
                         Ok(identifier) => identifier,
                         Err(e) => {

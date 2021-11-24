@@ -39,3 +39,4 @@ parking_lot = "0.11.0"
 tokio-stream = "0.1.2"
 uuid = { version = "0.8.2", features = ["v4"] }
 swim_utilities = { path = "../../swim_utilities", features = ["buf_channel"] }
+rand = "0.7.3"

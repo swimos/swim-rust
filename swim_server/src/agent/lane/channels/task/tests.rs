@@ -501,28 +501,27 @@ struct TaskInput {
 
 impl TaskInput {
     async fn send_link(&mut self, addr: RoutingAddr) {
-        let env = AgentMessage::link(addr.into(), RelativePath::new("node", "lane"));
+        let env = AgentMessage::link(addr, RelativePath::new("node", "lane"));
         assert!(self.envelope_tx.send(env).await.is_ok())
     }
 
     async fn send_sync(&mut self, addr: RoutingAddr) {
-        let env = AgentMessage::sync(addr.into(), RelativePath::new("node", "lane"));
+        let env = AgentMessage::sync(addr, RelativePath::new("node", "lane"));
         assert!(self.envelope_tx.send(env).await.is_ok())
     }
 
     async fn send_unlink(&mut self, addr: RoutingAddr) {
-        let env = AgentMessage::unlink(addr.into(), RelativePath::new("node", "lane"));
+        let env = AgentMessage::unlink(addr, RelativePath::new("node", "lane"));
         assert!(self.envelope_tx.send(env).await.is_ok())
     }
 
     async fn send_command(&mut self, addr: RoutingAddr, value: i32) {
-        let env =
-            AgentMessage::command(addr.into(), RelativePath::new("node", "lane"), value.into());
+        let env = AgentMessage::command(addr, RelativePath::new("node", "lane"), value.into());
         assert!(self.envelope_tx.send(env).await.is_ok())
     }
 
     async fn send_raw(&mut self, addr: RoutingAddr, value: Value) {
-        let env = AgentMessage::command(addr.into(), RelativePath::new("node", "lane"), value);
+        let env = AgentMessage::command(addr, RelativePath::new("node", "lane"), value);
         assert!(self.envelope_tx.send(env).await.is_ok())
     }
 

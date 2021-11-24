@@ -41,7 +41,6 @@ use futures::future::{join, join3, ready, BoxFuture};
 use futures::{select, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::any::Any;
-use std::convert::TryFrom;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::marker::PhantomData;
@@ -278,10 +277,10 @@ where
 
             match envelope_or_err {
                 Some(Either::Left(AgentMessage {
-                    source, envelope, ..
+                    source: addr,
+                    envelope,
+                    ..
                 })) => {
-                    let addr = RoutingAddr::try_from(source).unwrap();
-
                     let action = match envelope {
                         AgentOperation::Link => Either::Left(UplinkAction::Link),
                         AgentOperation::Sync => Either::Left(UplinkAction::Sync),
@@ -814,9 +813,10 @@ where
 
         match envelope_or_err {
             Some(Either::Left(AgentMessage {
-                source, envelope, ..
+                source: addr,
+                envelope,
+                ..
             })) => {
-                let addr = RoutingAddr::try_from(source).unwrap();
                 let sent = match envelope {
                     AgentOperation::Link => {
                         send_action(&mut actions, &route, addr, UplinkAction::Link).await

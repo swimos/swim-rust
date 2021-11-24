@@ -234,7 +234,7 @@ impl LaneIo<MockExecutionContext> for MockLane {
             let err = loop {
                 let next = envelopes.recv().await;
                 if let Some(env) = next {
-                    let addr = RoutingAddr::try_from(env.source).unwrap();
+                    let addr = env.source;
 
                     if env.body() == Some(&Value::text(POISON_PILL)) {
                         break Some(LaneIoError::for_update_err(

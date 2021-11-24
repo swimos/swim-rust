@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::TaggedEnvelope;
+use crate::routing::{InvalidRoutingAddr, RoutingAddr, TaggedEnvelope};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use futures::stream::unfold;
 use futures::Stream;
@@ -59,7 +59,7 @@ pub enum AgentNotification<T> {
 /// Type of messages that can be sent to an agent.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AgentMessage<T> {
-    pub source: Uuid,
+    pub source: RoutingAddr,
     pub path: RelativePath,
     pub envelope: AgentOperation<T>,
 }
@@ -67,13 +67,13 @@ pub struct AgentMessage<T> {
 /// Type of messages that can be sent to an agent.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AgentResponse<T> {
-    target: Uuid,
+    target: RoutingAddr,
     path: RelativePath,
     envelope: AgentNotification<T>,
 }
 
 impl<T> AgentMessage<T> {
-    pub fn link(source: Uuid, path: RelativePath) -> Self {
+    pub fn link(source: RoutingAddr, path: RelativePath) -> Self {
         AgentMessage {
             source,
             path,
@@ -81,7 +81,7 @@ impl<T> AgentMessage<T> {
         }
     }
 
-    pub fn sync(source: Uuid, path: RelativePath) -> Self {
+    pub fn sync(source: RoutingAddr, path: RelativePath) -> Self {
         AgentMessage {
             source,
             path,
@@ -89,7 +89,7 @@ impl<T> AgentMessage<T> {
         }
     }
 
-    pub fn unlink(source: Uuid, path: RelativePath) -> Self {
+    pub fn unlink(source: RoutingAddr, path: RelativePath) -> Self {
         AgentMessage {
             source,
             path,
@@ -97,7 +97,7 @@ impl<T> AgentMessage<T> {
         }
     }
 
-    pub fn command(source: Uuid, path: RelativePath, body: T) -> Self {
+    pub fn command(source: RoutingAddr, path: RelativePath, body: T) -> Self {
         AgentMessage {
             source,
             path,
@@ -123,7 +123,7 @@ impl<T> AgentMessage<T> {
 }
 
 impl<T> AgentResponse<T> {
-    pub fn linked(target: Uuid, path: RelativePath) -> Self {
+    pub fn linked(target: RoutingAddr, path: RelativePath) -> Self {
         AgentResponse {
             target,
             path,
@@ -131,7 +131,7 @@ impl<T> AgentResponse<T> {
         }
     }
 
-    pub fn synced(target: Uuid, path: RelativePath) -> Self {
+    pub fn synced(target: RoutingAddr, path: RelativePath) -> Self {
         AgentResponse {
             target,
             path,
@@ -139,7 +139,7 @@ impl<T> AgentResponse<T> {
         }
     }
 
-    pub fn unlinked(target: Uuid, path: RelativePath) -> Self {
+    pub fn unlinked(target: RoutingAddr, path: RelativePath) -> Self {
         AgentResponse {
             target,
             path,
@@ -147,7 +147,7 @@ impl<T> AgentResponse<T> {
         }
     }
 
-    pub fn event(target: Uuid, path: RelativePath, body: T) -> Self {
+    pub fn event(target: RoutingAddr, path: RelativePath, body: T) -> Self {
         AgentResponse {
             target,
             path,
@@ -191,7 +191,7 @@ impl<'a> Encoder<RawAgentMessage<'a>> for RawAgentMessageEncoder {
             envelope,
         } = item;
         dst.reserve(HEADER_INIT_LEN + lane.len());
-        dst.put_u128(source.as_u128());
+        dst.put_u128(source.uuid().as_u128());
         let node_len = u32::try_from(node.len()).expect("Node name to long.");
         let lane_len = u32::try_from(lane.len()).expect("Lane name to long.");
         dst.put_u32(node_len);
@@ -244,7 +244,7 @@ where
             envelope,
         } = item;
         dst.reserve(HEADER_INIT_LEN + lane.len());
-        dst.put_u128(source.as_u128());
+        dst.put_u128(source.uuid().as_u128());
         let node_len = u32::try_from(node.len()).expect("Node name to long.");
         let lane_len = u32::try_from(lane.len()).expect("Lane name to long.");
         dst.put_u32(node_len);
@@ -298,7 +298,7 @@ where
 enum State<T> {
     ReadingHeader,
     ReadingBody {
-        source: Uuid,
+        source: RoutingAddr,
         path: RelativePath,
         remaining: usize,
     },
@@ -339,6 +339,8 @@ const HEADER_INIT_LEN: usize = 28;
 pub enum AgentMessageDecodeError {
     #[error("Error reading from the source: {0}")]
     Io(#[from] std::io::Error),
+    #[error("Routing address is message is invalid.")]
+    Id(#[from] InvalidRoutingAddr),
     #[error("Invalid lane name: {0}")]
     LaneName(#[from] Utf8Error),
     #[error("Invalid message body: {0}")]
@@ -379,6 +381,7 @@ where
                     }
                     let mut header = &src.as_ref()[0..HEADER_INIT_LEN];
                     let source = header.get_u128();
+                    let id = RoutingAddr::try_from(Uuid::from_u128(source))?;
                     let node_len = header.get_u32() as usize;
                     let lane_len = header.get_u32() as usize;
                     let body_len_and_tag = header.get_u64();
@@ -396,21 +399,21 @@ where
                     match tag {
                         LINK => {
                             break Ok(Some(AgentMessage {
-                                source: Uuid::from_u128(source),
+                                source: id,
                                 path,
                                 envelope: AgentOperation::Link,
                             }));
                         }
                         SYNC => {
                             break Ok(Some(AgentMessage {
-                                source: Uuid::from_u128(source),
+                                source: id,
                                 path,
                                 envelope: AgentOperation::Sync,
                             }));
                         }
                         UNLINK => {
                             break Ok(Some(AgentMessage {
-                                source: Uuid::from_u128(source),
+                                source: id,
                                 path,
                                 envelope: AgentOperation::Unlink,
                             }));
@@ -418,7 +421,7 @@ where
                         _ => {
                             let body_len = (body_len_and_tag & !OP_MASK) as usize;
                             *state = State::ReadingBody {
-                                source: Uuid::from_u128(source),
+                                source: id,
                                 path,
                                 remaining: body_len,
                             };
@@ -501,9 +504,7 @@ where
                 State::Discarding { error, remaining } => {
                     if src.remaining() >= *remaining {
                         src.advance(*remaining);
-                        let err = error
-                            .take()
-                            .unwrap_or(AsyncParseError::UnconsumedInput);
+                        let err = error.take().unwrap_or(AsyncParseError::UnconsumedInput);
                         *state = State::ReadingHeader;
                         break Err(err.into());
                     } else {
@@ -527,7 +528,12 @@ impl Decoder for RawAgentResponseDecoder {
             return Ok(None);
         }
         let mut header = &src.as_ref()[0..HEADER_INIT_LEN];
-        let id = header.get_u128();
+        let target = header.get_u128();
+        let target = if let Ok(id) = RoutingAddr::try_from(Uuid::from_u128(target)) {
+            id
+        } else {
+            return Err(std::io::ErrorKind::InvalidData.into());
+        };
         let node_len = header.get_u32() as usize;
         let lane_len = header.get_u32() as usize;
         let body_len_and_tag = header.get_u64();
@@ -541,7 +547,7 @@ impl Decoder for RawAgentResponseDecoder {
         let node = if let Ok(lane_name) = std::str::from_utf8(&src.as_ref()[0..node_len]) {
             Text::new(lane_name)
         } else {
-            return Err(std::io::Error::from(std::io::ErrorKind::InvalidData));
+            return Err(std::io::ErrorKind::InvalidData.into());
         };
         src.advance(node_len);
         let lane = if let Ok(lane_name) = std::str::from_utf8(&src.as_ref()[0..lane_len]) {
@@ -552,7 +558,6 @@ impl Decoder for RawAgentResponseDecoder {
         src.advance(lane_len);
         let path = RelativePath::new(node, lane);
         let tag = (body_len_and_tag & OP_MASK) >> OP_SHIFT;
-        let target = Uuid::from_u128(id);
         match tag {
             LINKED => Ok(Some(RawAgentResponse::linked(target, path))),
             SYNCED => Ok(Some(RawAgentResponse::synced(target, path))),
@@ -590,19 +595,19 @@ impl<T: RecognizerReadable> TryFrom<TaggedEnvelope> for AgentMessage<T> {
             Envelope::Link {
                 node_uri, lane_uri, ..
             } => Ok(AgentMessage::link(
-                addr.into(),
+                addr,
                 RelativePath::new(node_uri, lane_uri),
             )),
             Envelope::Sync {
                 node_uri, lane_uri, ..
             } => Ok(AgentMessage::sync(
-                addr.into(),
+                addr,
                 RelativePath::new(node_uri, lane_uri),
             )),
             Envelope::Unlink {
                 node_uri, lane_uri, ..
             } => Ok(AgentMessage::unlink(
-                addr.into(),
+                addr,
                 RelativePath::new(node_uri, lane_uri),
             )),
             Envelope::Command {
@@ -613,7 +618,7 @@ impl<T: RecognizerReadable> TryFrom<TaggedEnvelope> for AgentMessage<T> {
             } => {
                 let interpreted_body = T::try_from_structure(body.unwrap_or(Value::Extant))?;
                 Ok(AgentMessage::command(
-                    addr.into(),
+                    addr,
                     RelativePath::new(node_uri, lane_uri),
                     interpreted_body,
                 ))

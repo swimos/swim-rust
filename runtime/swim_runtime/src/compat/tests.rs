@@ -16,6 +16,7 @@ use crate::compat::{
     AgentMessage, AgentMessageDecodeError, AgentMessageDecoder, RawAgentMessage,
     RawAgentMessageEncoder, COMMAND, HEADER_INIT_LEN, LINK, OP_MASK, OP_SHIFT, SYNC, UNLINK,
 };
+use crate::routing::RoutingAddr;
 use bytes::{Buf, BytesMut};
 use futures::future::join;
 use futures::{SinkExt, StreamExt};
@@ -29,11 +30,14 @@ use swim_recon::printer::print_recon_compact;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::io::byte_channel;
 use tokio_util::codec::{Decoder, Encoder, FramedRead, FramedWrite};
-use uuid::Uuid;
+
+fn make_addr() -> RoutingAddr {
+    RoutingAddr::plane(rand::random())
+}
 
 #[test]
 fn encode_link_frame() {
-    let id = Uuid::new_v4();
+    let id = make_addr();
     let node = "my_node";
     let lane = "lane";
     let path = RelativePath::new(node, lane);
@@ -45,7 +49,7 @@ fn encode_link_frame() {
 
     assert_eq!(buffer.len(), HEADER_INIT_LEN + node.len() + lane.len());
 
-    assert_eq!(buffer.get_u128(), id.as_u128());
+    assert_eq!(buffer.get_u128(), id.uuid().as_u128());
     assert_eq!(buffer.get_u32(), node.len() as u32);
     assert_eq!(buffer.get_u32(), lane.len() as u32);
     let body_descriptor = buffer.get_u64();
@@ -62,7 +66,7 @@ fn encode_link_frame() {
 
 #[test]
 fn encode_sync_frame() {
-    let id = Uuid::new_v4();
+    let id = make_addr();
     let node = "my_node";
     let lane = "lane";
     let path = RelativePath::new(node, lane);
@@ -74,7 +78,7 @@ fn encode_sync_frame() {
 
     assert_eq!(buffer.len(), HEADER_INIT_LEN + node.len() + lane.len());
 
-    assert_eq!(buffer.get_u128(), id.as_u128());
+    assert_eq!(buffer.get_u128(), id.uuid().as_u128());
     assert_eq!(buffer.get_u32(), node.len() as u32);
     assert_eq!(buffer.get_u32(), lane.len() as u32);
     let body_descriptor = buffer.get_u64();
@@ -91,7 +95,7 @@ fn encode_sync_frame() {
 
 #[test]
 fn encode_unlink_frame() {
-    let id = Uuid::new_v4();
+    let id = make_addr();
     let node = "my_node";
     let lane = "lane";
     let path = RelativePath::new(node, lane);
@@ -103,7 +107,7 @@ fn encode_unlink_frame() {
 
     assert_eq!(buffer.len(), HEADER_INIT_LEN + node.len() + lane.len());
 
-    assert_eq!(buffer.get_u128(), id.as_u128());
+    assert_eq!(buffer.get_u128(), id.uuid().as_u128());
     assert_eq!(buffer.get_u32(), node.len() as u32);
     assert_eq!(buffer.get_u32(), lane.len() as u32);
     let body_descriptor = buffer.get_u64();
@@ -120,7 +124,7 @@ fn encode_unlink_frame() {
 
 #[test]
 fn encode_command_frame() {
-    let id = Uuid::new_v4();
+    let id = make_addr();
     let node = "my_node";
     let lane = "lane";
     let path = RelativePath::new(node, lane);
@@ -137,7 +141,7 @@ fn encode_command_frame() {
         HEADER_INIT_LEN + node.len() + lane.len() + body.len()
     );
 
-    assert_eq!(buffer.get_u128(), id.as_u128());
+    assert_eq!(buffer.get_u128(), id.uuid().as_u128());
     assert_eq!(buffer.get_u32(), node.len() as u32);
     assert_eq!(buffer.get_u32(), lane.len() as u32);
     let body_descriptor = buffer.get_u64();
@@ -196,7 +200,7 @@ where
 
 #[test]
 fn decode_link_frame() {
-    let id = Uuid::new_v4();
+    let id = make_addr();
     let node = "my_node";
     let lane = "lane";
 
@@ -211,7 +215,7 @@ fn decode_link_frame() {
 
 #[test]
 fn decode_sync_frame() {
-    let id = Uuid::new_v4();
+    let id = make_addr();
     let node = "my_node";
     let lane = "lane";
 
@@ -226,7 +230,7 @@ fn decode_sync_frame() {
 
 #[test]
 fn decode_unlink_frame() {
-    let id = Uuid::new_v4();
+    let id = make_addr();
     let node = "my_node";
     let lane = "lane";
 
@@ -241,7 +245,7 @@ fn decode_unlink_frame() {
 
 #[test]
 fn decode_command_frame() {
-    let id = Uuid::new_v4();
+    let id = make_addr();
     let node = "my_node";
     let lane = "lane";
 
@@ -265,7 +269,7 @@ const CHANNEL_SIZE: NonZeroUsize = non_zero_usize!(16);
 
 #[tokio::test]
 async fn multiple_frames() {
-    let id = Uuid::new_v4();
+    let id = make_addr();
     let node = "my_node";
     let lane = "lane";
 

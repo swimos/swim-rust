@@ -78,6 +78,10 @@ impl RoutingAddr {
         let RoutingAddr(inner) = self;
         inner.as_bytes()[0] == CLIENT
     }
+
+    pub fn uuid(&self) -> &Uuid {
+        &self.0
+    }
 }
 
 impl Display for RoutingAddr {
@@ -98,7 +102,15 @@ impl From<RoutingAddr> for Uuid {
 }
 
 #[derive(Debug)]
-pub struct InvalidRoutingAddr;
+pub struct InvalidRoutingAddr(Uuid);
+
+impl Display for InvalidRoutingAddr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} is not a valid routing address.", &self.0)
+    }
+}
+
+impl std::error::Error for InvalidRoutingAddr {}
 
 impl TryFrom<Uuid> for RoutingAddr {
     type Error = InvalidRoutingAddr;
@@ -107,7 +119,7 @@ impl TryFrom<Uuid> for RoutingAddr {
         if value.as_bytes()[0] <= CLIENT {
             Ok(RoutingAddr(value))
         } else {
-            Err(InvalidRoutingAddr)
+            Err(InvalidRoutingAddr(value))
         }
     }
 }

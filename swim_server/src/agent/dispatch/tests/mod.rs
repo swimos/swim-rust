@@ -131,7 +131,7 @@ async fn dispatch_single() {
 
     let addr = RoutingAddr::remote(1);
 
-    let link = AgentMessage::link(addr.into(), RelativePath::new("/node", "lane"));
+    let link = AgentMessage::link(addr, RelativePath::new("/node", "lane"));
 
     let assertion_task = async move {
         assert!(envelope_tx.send(link.clone()).await.is_ok());
@@ -191,10 +191,10 @@ async fn dispatch_multiple_same_lane() {
 
     let addr = RoutingAddr::remote(1);
 
-    let link = AgentMessage::link(addr.into(), RelativePath::new("/node", "lane"));
+    let link = AgentMessage::link(addr, RelativePath::new("/node", "lane"));
 
-    let cmd1 = AgentMessage::command(addr.into(), RelativePath::new("/node", "lane"), 1.into());
-    let cmd2 = AgentMessage::command(addr.into(), RelativePath::new("/node", "lane"), 2.into());
+    let cmd1 = AgentMessage::command(addr, RelativePath::new("/node", "lane"), 1.into());
+    let cmd2 = AgentMessage::command(addr, RelativePath::new("/node", "lane"), 2.into());
 
     let assertion_task = async move {
         assert!(envelope_tx.send(link.clone()).await.is_ok());
@@ -339,7 +339,7 @@ async fn dispatch_link_to_non_existent() {
 
     let addr = RoutingAddr::remote(1);
 
-    let link = AgentMessage::link(addr.into(), RelativePath::new("/node", "other"));
+    let link = AgentMessage::link(addr, RelativePath::new("/node", "other"));
 
     let assertion_task = async move {
         assert!(envelope_tx.send(link.clone()).await.is_ok());
@@ -373,7 +373,7 @@ async fn dispatch_sync_to_non_existent() {
 
     let addr = RoutingAddr::remote(1);
 
-    let sync = AgentMessage::sync(addr.into(), RelativePath::new("/node", "other"));
+    let sync = AgentMessage::sync(addr, RelativePath::new("/node", "other"));
 
     let assertion_task = async move {
         assert!(envelope_tx.send(sync.clone()).await.is_ok());
@@ -406,7 +406,7 @@ async fn failed_lane_task() {
     let addr = RoutingAddr::remote(1);
 
     let cmd = AgentMessage::command(
-        addr.into(),
+        addr,
         RelativePath::new("/node", "lane"),
         mock::POISON_PILL.into(),
     );
@@ -450,7 +450,7 @@ async fn fatal_failed_attachment() {
 
     let addr = RoutingAddr::remote(1);
 
-    let link = AgentMessage::link(addr.into(), RelativePath::new("/node", mock::POISON_PILL));
+    let link = AgentMessage::link(addr, RelativePath::new("/node", mock::POISON_PILL));
 
     let assertion_task = async move {
         assert!(envelope_tx.send(link).await.is_ok());
@@ -523,7 +523,7 @@ async fn dispatch_meta() {
         ) {
             assert!(envelope_tx.send(env.clone()).await.is_ok());
 
-            let addr = RoutingAddr::try_from(env.source).unwrap();
+            let addr = env.source;
 
             let mut rx = context.take_receiver(&addr).unwrap();
             expect_echo(&mut rx, env).await;
