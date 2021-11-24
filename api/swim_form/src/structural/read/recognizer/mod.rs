@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::structural::bridge::RecognizerBridge;
 use crate::structural::generic::coproduct::{CCons, CNil, Unify};
 use crate::structural::read::error::ExpectedEvent;
 use crate::structural::read::event::{NumericValue, ReadEvent};
@@ -20,6 +21,7 @@ use crate::structural::read::from_model::{
 };
 use crate::structural::read::recognizer::primitive::DataRecognizer;
 use crate::structural::read::ReadError;
+use crate::structural::write::StructuralWritable;
 use crate::structural::Tag;
 use chrono::{LocalResult, TimeZone, Utc};
 use std::borrow::Borrow;
@@ -78,6 +80,29 @@ pub trait RecognizerReadable: Sized {
     /// A value is simple if it can be represented by a single [`ReadEvent`].
     fn is_simple() -> bool {
         false
+    }
+
+    /// Attempt to write a value of a ['StructuralWritable'] type into an instance of this type.
+    fn try_read_from<T: StructuralWritable>(writable: &T) -> Result<Self, ReadError> {
+        let bridge = RecognizerBridge::new(Self::make_recognizer());
+        writable.write_with(bridge)
+    }
+
+    /// Attempt to transform a value of a ['StructuralWritable'] type into an instance of this type.
+    fn try_transform<T: StructuralWritable>(writable: T) -> Result<Self, ReadError> {
+        let bridge = RecognizerBridge::new(Self::make_recognizer());
+        writable.write_into(bridge)
+    }
+
+    /// Attempte to create an instance of thist type from a [`Value`] model.
+    fn try_interpret_structure(value: &Value) -> Result<Self, ReadError> {
+        Self::try_read_from(value)
+    }
+
+    /// Attempte to create an instance of thist type from a [`Value`] model, possibly consuming
+    /// the model.
+    fn try_from_structure(value: Value) -> Result<Self, ReadError> {
+        Self::try_transform(value)
     }
 }
 
@@ -1720,6 +1745,14 @@ impl RecognizerReadable for Value {
 
     fn make_body_recognizer() -> Self::BodyRec {
         DelegateBodyMaterializer::default()
+    }
+
+    fn try_interpret_structure(value: &Value) -> Result<Self, ReadError> {
+        Ok(value.clone())
+    }
+
+    fn try_from_structure(value: Value) -> Result<Self, ReadError> {
+        Ok(value)
     }
 }
 
