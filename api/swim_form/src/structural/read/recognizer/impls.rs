@@ -579,6 +579,7 @@ impl Recognizer for DurationRecognizer {
     }
 }
 
+#[derive(Debug)]
 pub struct AbsolutePathRecognizer {
     stage: AbsolutePathStage,
     host: Option<Url>,
@@ -586,6 +587,7 @@ pub struct AbsolutePathRecognizer {
     lane: Option<Text>,
 }
 
+#[derive(Debug)]
 enum AbsolutePathStage {
     Init,
     Tag,
@@ -595,7 +597,7 @@ enum AbsolutePathStage {
     Field(AbsolutePathField),
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum AbsolutePathField {
     Host,
     Node,

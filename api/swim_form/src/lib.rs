@@ -308,12 +308,12 @@ pub trait Form: StructuralReadable + StructuralWritable {
 
     /// Attempt to create a new instance of this object from the provided `Value` instance.
     fn try_from_value(value: &Value) -> Result<Self, ReadError> {
-        Self::try_read_from(value)
+        Self::try_interpret_structure(value)
     }
 
     /// Consume the `Value` and attempt to create a new instance of this object from it.
     fn try_convert(value: Value) -> Result<Self, ReadError> {
-        Self::try_transform(value)
+        Self::try_from_structure(value)
     }
 }
 
