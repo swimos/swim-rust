@@ -17,4 +17,10 @@ swim_utilities = { path = "../swim_utilities", features = ["sync", "algebra"] }
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["rt-multi-thread", "macros", "time"] }
+criterion = { version = "0.3", features = ["async_tokio"] }
+rand = "0.7"
+
+[[bench]]
+name = "stm_throughput"
+harness = false
 
