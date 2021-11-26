@@ -12,15 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::compat::{RequestMessage, AgentMessageDecodeError, AgentMessageDecoder, RawRequestMessage, RawRequestMessageEncoder, COMMAND, HEADER_INIT_LEN, LINK, OP_MASK, OP_SHIFT, SYNC, UNLINK, ResponseMessageEncoder, ResponseMessage, LINKED, SYNCED, UNLINKED, EVENT};
+use crate::compat::{
+    AgentMessageDecoder, MessageDecodeError, RawRequestMessage, RawRequestMessageEncoder,
+    RawResponseMessage, RawResponseMessageDecoder, RequestMessage, ResponseMessage,
+    ResponseMessageEncoder, COMMAND, EVENT, HEADER_INIT_LEN, LINK, LINKED, OP_MASK, OP_SHIFT, SYNC,
+    SYNCED, UNLINK, UNLINKED,
+};
 use crate::routing::RoutingAddr;
 use bytes::{Buf, BytesMut};
 use futures::future::join;
 use futures::{SinkExt, StreamExt};
 use std::fmt::Debug;
+use std::fmt::Write;
 use std::io::ErrorKind;
 use std::num::NonZeroUsize;
 use swim_form::structural::read::recognizer::RecognizerReadable;
+use swim_form::structural::write::StructuralWritable;
 use swim_form::Form;
 use swim_model::path::RelativePath;
 use swim_recon::printer::print_recon_compact;
@@ -164,8 +171,19 @@ struct Example {
 }
 
 fn check_result<T: Eq + Debug>(
-    result: Result<Option<RequestMessage<T>>, AgentMessageDecodeError>,
+    result: Result<Option<RequestMessage<T>>, MessageDecodeError>,
     expected: RequestMessage<T>,
+) {
+    match result {
+        Ok(Some(msg)) => assert_eq!(msg, expected),
+        Ok(_) => panic!("Incomplete."),
+        Err(e) => panic!("Failed: {}", e),
+    }
+}
+
+fn check_result_response(
+    result: Result<Option<RawResponseMessage>, std::io::Error>,
+    expected: RawResponseMessage,
 ) {
     match result {
         Ok(Some(msg)) => assert_eq!(msg, expected),
@@ -176,12 +194,33 @@ fn check_result<T: Eq + Debug>(
 
 fn round_trip<T>(
     frame: RequestMessage<&[u8]>,
-) -> Result<Option<RequestMessage<T>>, AgentMessageDecodeError>
+) -> Result<Option<RequestMessage<T>>, MessageDecodeError>
 where
     T: RecognizerReadable,
 {
     let mut decoder = AgentMessageDecoder::<T, _>::new(T::make_recognizer());
     let mut encoder = RawRequestMessageEncoder;
+
+    let mut buffer = BytesMut::new();
+    assert!(encoder.encode(frame, &mut buffer).is_ok());
+
+    let result = decoder.decode(&mut buffer);
+
+    if result.is_ok() {
+        assert!(buffer.is_empty());
+    }
+
+    result
+}
+
+fn round_trip_response<T>(
+    frame: ResponseMessage<T>,
+) -> Result<Option<RawResponseMessage>, std::io::Error>
+where
+    T: StructuralWritable,
+{
+    let mut decoder = RawResponseMessageDecoder;
+    let mut encoder = ResponseMessageEncoder;
 
     let mut buffer = BytesMut::new();
     assert!(encoder.encode(frame, &mut buffer).is_ok());
@@ -428,7 +467,10 @@ fn encode_event_frame() {
     let node = "my_node";
     let lane = "lane";
     let path = RelativePath::new(node, lane);
-    let body = Example { first: 0, second: 0 };
+    let body = Example {
+        first: 0,
+        second: 0,
+    };
     let expected_body = format!("{}", print_recon_compact(&body));
 
     let frame = ResponseMessage::event(id, path, body);
@@ -460,4 +502,79 @@ fn encode_event_frame() {
     buffer.advance(lane.len());
 
     assert_eq!(buffer.as_ref(), expected_body.as_bytes());
+}
+
+#[test]
+fn decode_linked_frame() {
+    let id = make_addr();
+    let node = "my_node";
+    let lane = "lane";
+
+    let frame = ResponseMessage::<Example>::linked(id, RelativePath::new(node, lane));
+    let result = round_trip_response::<Example>(frame);
+
+    check_result_response(
+        result,
+        RawResponseMessage::linked(id, RelativePath::new(node, lane)),
+    );
+}
+
+#[test]
+fn decode_synced_frame() {
+    let id = make_addr();
+    let node = "my_node";
+    let lane = "lane";
+
+    let frame = ResponseMessage::<Example>::synced(id, RelativePath::new(node, lane));
+    let result = round_trip_response::<Example>(frame);
+
+    check_result_response(
+        result,
+        RawResponseMessage::synced(id, RelativePath::new(node, lane)),
+    );
+}
+
+#[test]
+fn decode_unlinked_frame() {
+    let id = make_addr();
+    let node = "my_node";
+    let lane = "lane";
+
+    let frame = ResponseMessage::<Example>::unlinked(id, RelativePath::new(node, lane));
+    let result = round_trip_response::<Example>(frame);
+
+    check_result_response(
+        result,
+        RawResponseMessage::unlinked(id, RelativePath::new(node, lane)),
+    );
+}
+
+#[test]
+fn decode_event_frame() {
+    let id = make_addr();
+    let node = "my_node";
+    let lane = "lane";
+
+    let message = Example {
+        first: 1,
+        second: 2,
+    };
+    let mut expected_body = BytesMut::new();
+    expected_body.reserve(1024);
+    write!(expected_body, "{}", print_recon_compact(&message)).expect("Serialization failed.");
+
+    let frame = ResponseMessage::<Example>::event(
+        id,
+        RelativePath::new(node, lane),
+        Example {
+            first: 1,
+            second: 2,
+        },
+    );
+    let result = round_trip_response::<Example>(frame);
+
+    check_result_response(
+        result,
+        RawResponseMessage::event(id, RelativePath::new(node, lane), expected_body.freeze()),
+    );
 }

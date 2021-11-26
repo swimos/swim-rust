@@ -228,10 +228,14 @@ async fn blocked_lane() {
     let addr1 = RoutingAddr::remote(1);
     let addr2 = RoutingAddr::remote(2);
 
-    let cmd1 = RequestMessage::command(addr1.into(), RelativePath::new("/node", "lane_a"), 1.into());
-    let cmd2 = RequestMessage::command(addr1.into(), RelativePath::new("/node", "lane_a"), 2.into());
-    let cmd3 = RequestMessage::command(addr1.into(), RelativePath::new("/node", "lane_a"), 3.into());
-    let cmd4 = RequestMessage::command(addr1.into(), RelativePath::new("/node", "lane_a"), 4.into());
+    let cmd1 =
+        RequestMessage::command(addr1.into(), RelativePath::new("/node", "lane_a"), 1.into());
+    let cmd2 =
+        RequestMessage::command(addr1.into(), RelativePath::new("/node", "lane_a"), 2.into());
+    let cmd3 =
+        RequestMessage::command(addr1.into(), RelativePath::new("/node", "lane_a"), 3.into());
+    let cmd4 =
+        RequestMessage::command(addr1.into(), RelativePath::new("/node", "lane_a"), 4.into());
 
     let link = RequestMessage::link(addr2.into(), RelativePath::new("/node", "lane_b"));
 

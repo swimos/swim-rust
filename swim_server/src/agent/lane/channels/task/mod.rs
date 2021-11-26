@@ -52,7 +52,7 @@ use swim_form::Form;
 use swim_metrics::uplink::UplinkObserver;
 use swim_model::path::RelativePath;
 use swim_model::Value;
-use swim_runtime::compat::{RequestMessage, Operation};
+use swim_runtime::compat::{Operation, RequestMessage};
 use swim_runtime::routing::RoutingAddr;
 use swim_utilities::errors::Recoverable;
 use swim_utilities::trigger;

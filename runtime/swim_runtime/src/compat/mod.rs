@@ -38,6 +38,8 @@ mod routing;
 #[cfg(test)]
 mod tests;
 
+pub use routing::RouteSender;
+
 /// Operations that can be performed on an agent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Operation<T> {
@@ -319,10 +321,10 @@ pub struct AgentMessageDecoder<T, R> {
     recognizer: RecognizerDecoder<R>,
 }
 
-/// Tokio [`Decoder`] that can read an [`AgentMessage`] from a stream of bytes, using a
+/// Tokio [`Decoder`] that can read an [`RawResponseMessage`] from a stream of bytes, using a
 /// [`RecognizerDecoder`] to interpret the body.
 #[derive(Default, Debug, Clone, Copy)]
-pub struct RawAgentResponseDecoder;
+pub struct RawResponseMessageDecoder;
 
 impl<T, R> AgentMessageDecoder<T, R> {
     pub fn new(recognizer: R) -> Self {
@@ -336,7 +338,7 @@ impl<T, R> AgentMessageDecoder<T, R> {
 const HEADER_INIT_LEN: usize = 32;
 
 #[derive(Error, Debug)]
-pub enum AgentMessageDecodeError {
+pub enum MessageDecodeError {
     #[error("Error reading from the source: {0}")]
     Io(#[from] std::io::Error),
     #[error("Routing address is message is invalid.")]
@@ -347,15 +349,15 @@ pub enum AgentMessageDecodeError {
     Body(#[from] AsyncParseError),
 }
 
-impl From<ReadError> for AgentMessageDecodeError {
+impl From<ReadError> for MessageDecodeError {
     fn from(e: ReadError) -> Self {
-        AgentMessageDecodeError::Body(AsyncParseError::Parser(ParseError::Structure(e)))
+        MessageDecodeError::Body(AsyncParseError::Parser(ParseError::Structure(e)))
     }
 }
 
-impl AgentMessageDecodeError {
+impl MessageDecodeError {
     fn incomplete() -> Self {
-        AgentMessageDecodeError::Body(AsyncParseError::Parser(ParseError::Structure(
+        MessageDecodeError::Body(AsyncParseError::Parser(ParseError::Structure(
             ReadError::IncompleteRecord,
         )))
     }
@@ -366,7 +368,7 @@ where
     R: Recognizer<Target = T>,
 {
     type Item = RequestMessage<T>;
-    type Error = AgentMessageDecodeError;
+    type Error = MessageDecodeError;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         let AgentMessageDecoder {
@@ -468,7 +470,7 @@ where
                                         envelope: Operation::Command(result),
                                     }))
                                 } else {
-                                    Err(AgentMessageDecodeError::incomplete())
+                                    Err(MessageDecodeError::incomplete())
                                 };
                             } else {
                                 break Ok(None);
@@ -518,7 +520,7 @@ where
     }
 }
 
-impl Decoder for RawAgentResponseDecoder {
+impl Decoder for RawResponseMessageDecoder {
     type Item = RawResponseMessage;
     type Error = std::io::Error;
 
@@ -572,7 +574,7 @@ impl Decoder for RawAgentResponseDecoder {
 
 pub fn read_messages<R, T>(
     reader: R,
-) -> impl Stream<Item = Result<RequestMessage<T>, AgentMessageDecodeError>>
+) -> impl Stream<Item = Result<RequestMessage<T>, MessageDecodeError>>
 where
     R: AsyncRead + Unpin,
     T: RecognizerReadable,
@@ -581,13 +583,13 @@ where
     FramedRead::new(reader, decoder)
 }
 
-fn fail(name: &str) -> AgentMessageDecodeError {
+fn fail(name: &str) -> MessageDecodeError {
     let err = ReadError::UnexpectedAttribute(Text::new(name));
-    AgentMessageDecodeError::Body(AsyncParseError::Parser(ParseError::Structure(err)))
+    MessageDecodeError::Body(AsyncParseError::Parser(ParseError::Structure(err)))
 }
 
 impl<T: RecognizerReadable> TryFrom<TaggedEnvelope> for RequestMessage<T> {
-    type Error = AgentMessageDecodeError;
+    type Error = MessageDecodeError;
 
     fn try_from(value: TaggedEnvelope) -> Result<Self, Self::Error> {
         let TaggedEnvelope(addr, env) = value;
@@ -635,7 +637,7 @@ impl<T: RecognizerReadable> TryFrom<TaggedEnvelope> for RequestMessage<T> {
 
 pub fn messages_from_envelopes<S, T>(
     envelopes: S,
-) -> impl Stream<Item = Result<RequestMessage<T>, AgentMessageDecodeError>>
+) -> impl Stream<Item = Result<RequestMessage<T>, MessageDecodeError>>
 where
     S: Stream<Item = TaggedEnvelope> + Unpin,
     T: RecognizerReadable,
@@ -645,10 +647,10 @@ where
 
 pub fn stop_on_failed<T, S>(
     stream: S,
-    on_err: Option<promise::Sender<AgentMessageDecodeError>>,
+    on_err: Option<promise::Sender<MessageDecodeError>>,
 ) -> impl Stream<Item = RequestMessage<T>>
 where
-    S: Stream<Item = Result<RequestMessage<T>, AgentMessageDecodeError>>,
+    S: Stream<Item = Result<RequestMessage<T>, MessageDecodeError>>,
 {
     unfold(
         (Box::pin(stream), on_err),
@@ -659,7 +661,7 @@ where
                     Ok(msg) => {
                         break Some((msg, (stream, on_err)));
                     }
-                    Err(AgentMessageDecodeError::Body(_)) => {}
+                    Err(MessageDecodeError::Body(_)) => {}
                     Err(ow) => {
                         if let Some(tx) = on_err.take() {
                             let _ = tx.provide(ow);
