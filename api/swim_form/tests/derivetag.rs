@@ -16,7 +16,7 @@ use std::str::FromStr;
 use swim_form::structural::Tag;
 use swim_model::Text;
 
-const EMPTY: [&'static str; 0] = [];
+const EMPTY: [&str; 0] = [];
 
 #[test]
 fn derive_enum_tag_empty() {

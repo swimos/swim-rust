@@ -38,7 +38,7 @@ async fn read_configuration_from_file() {
 
     let file = File::open(path).await;
     assert!(file.is_ok());
-    let result = super::parse_recon_document(file.unwrap()).await;
+    let result = super::parse_recon_document(file.unwrap(), false).await;
     assert!(result.is_ok());
     let items = result.unwrap();
     let complex = Value::Record(
@@ -63,7 +63,7 @@ async fn read_invalid_file() {
 
     let file = File::open(path).await;
     assert!(file.is_ok());
-    let result = super::parse_recon_document(file.unwrap()).await;
+    let result = super::parse_recon_document(file.unwrap(), false).await;
     assert!(matches!(result, Err(AsyncParseError::UnconsumedInput)));
 }
 
@@ -93,7 +93,7 @@ async fn recognize_decode_complete() {
 
     assert!(buffer.is_empty());
 
-    let expected = crate::parser::parse_recognize::<Example>(Span::new(COMPLETE)).unwrap();
+    let expected = crate::parser::parse_recognize::<Example>(Span::new(COMPLETE), false).unwrap();
 
     assert_complete(result, expected);
 }
@@ -117,7 +117,7 @@ async fn recognize_decode_two_parts() {
     buffer.put_slice(SECOND_PART.as_bytes());
     let result = decoder.decode(&mut buffer);
 
-    let expected = crate::parser::parse_recognize::<Example>(Span::new(COMPLETE)).unwrap();
+    let expected = crate::parser::parse_recognize::<Example>(Span::new(COMPLETE), false).unwrap();
 
     assert_complete(result, expected);
 }
@@ -154,7 +154,7 @@ async fn recognize_decode_complete_eof() {
 
     assert!(buffer.is_empty());
 
-    let expected = crate::parser::parse_recognize::<Example>(Span::new(COMPLETE)).unwrap();
+    let expected = crate::parser::parse_recognize::<Example>(Span::new(COMPLETE), false).unwrap();
 
     assert_complete(result, expected);
 }

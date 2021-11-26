@@ -186,7 +186,11 @@ const EVENT: u64 = 0b111;
 impl<'a> Encoder<RawRequestMessage<'a>> for RawRequestMessageEncoder {
     type Error = std::io::Error;
 
-    fn encode(&mut self, item: RawRequestMessage<'a>, dst: &mut BytesMut) -> Result<(), Self::Error> {
+    fn encode(
+        &mut self,
+        item: RawRequestMessage<'a>,
+        dst: &mut BytesMut,
+    ) -> Result<(), Self::Error> {
         let RawRequestMessage {
             origin: source,
             path: RelativePath { node, lane },

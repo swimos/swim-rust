@@ -2,7 +2,7 @@
 name = "downlinks"
 version = "0.1.0"
 authors = ["Swim Inc. developers info@swim.ai"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 url = "2.1.1"
@@ -14,6 +14,7 @@ tracing = "0.1.16"
 tracing-futures = "0.2.4"
 swim_client = { path = "../../swim_client" }
 swim_model = { path = "../../api/swim_model" }
+swim_form = { path = "../../api/swim_form" }
 swim_server = { path = "../../swim_server" }
 stm = { path = "../../stm" }
 swim_utilities = { path = "../../swim_utilities" }

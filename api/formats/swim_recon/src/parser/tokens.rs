@@ -179,7 +179,7 @@ pub fn string_literal(input: Span<'_>) -> IResult<Span<'_>, Cow<'_, str>> {
     )(input)
 }
 
-pub fn seperator(input: Span<'_>) -> IResult<Span<'_>, char> {
+pub fn separator(input: Span<'_>) -> IResult<Span<'_>, char> {
     use nom::character::streaming as character;
     character::one_of(",;")(input)
 }
@@ -191,6 +191,8 @@ macro_rules! token_mod {
             use super::*;
             use nom::bytes::$submod::tag_no_case;
             use nom::character::$submod as character;
+            use nom::character::$submod::not_line_ending;
+            use nom::multi::many0;
             use nom::number::$submod as number;
 
             pub fn identifier(input: Span<'_>) -> IResult<Span<'_>, &str> {
@@ -331,6 +333,13 @@ macro_rules! token_mod {
 
             pub fn blob(input: Span<'_>) -> IResult<Span<'_>, Vec<u8>> {
                 map_res(base64_literal, |span| base64::decode(*span))(input)
+            }
+
+            pub fn comments(input: Span<'_>) -> IResult<Span<'_>, Vec<Span<'_>>> {
+                many0(preceded(
+                    character::multispace0,
+                    preceded(character::char('#'), not_line_ending),
+                ))(input)
             }
         }
     };

@@ -78,6 +78,7 @@ fn msgpack_write_err_display() {
 }
 
 #[test]
+#[allow(clippy::eq_op)]
 fn msgpack_write_err_partial_eq() {
     let refl_errs = vec![
         MsgPackWriteError::WrongNumberOfAttrs,

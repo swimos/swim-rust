@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#![allow(clippy::type_complexity)]
+
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
@@ -185,8 +187,10 @@ fn make_test_dl_custom_on_invalid(
     let (tx_in, rx_in) = mpsc::channel(10);
     let (tx_out, rx_out) = mpsc::channel::<Command<i32>>(10);
 
-    let mut config = DownlinkConfig::default();
-    config.on_invalid = on_invalid;
+    let config = DownlinkConfig {
+        on_invalid,
+        ..Default::default()
+    };
 
     let (downlink, dl_rx) = create_downlink(
         TestStateMachine::new(dl_start_state, start_response),

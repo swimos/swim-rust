@@ -86,7 +86,7 @@ impl Label {
             }
             Label::Foreign(ident, ..) => {
                 let maybe_clone = if clone { quote!(.clone()) } else { quote!() };
-                quote!(swim_form::Tag::as_string(&#ident#maybe_clone))
+                quote!(swim_form::Tag::as_string(&#ident #maybe_clone))
             }
         }
     }

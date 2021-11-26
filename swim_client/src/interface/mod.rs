@@ -66,6 +66,7 @@ use tracing::info;
 ///
 /// The builder can be created with default or custom configuration.
 /// The custom configuration can be read from a file.
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct SwimClientBuilder {
     config: SwimClientConfig,
 }
@@ -89,9 +90,10 @@ impl SwimClientBuilder {
             .read_to_string(&mut contents)
             .map_err(ConfigError::File)?;
 
-        let config =
-            SwimClientConfig::try_from_value(&parse_single(&contents).map_err(ConfigError::Parse)?)
-                .map_err(ConfigError::Recognizer)?;
+        let config = SwimClientConfig::try_from_value(
+            &parse_single(&contents, true).map_err(ConfigError::Parse)?,
+        )
+        .map_err(ConfigError::Recognizer)?;
 
         Ok(SwimClientBuilder { config })
     }

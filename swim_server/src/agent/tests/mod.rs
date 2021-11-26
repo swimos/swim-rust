@@ -16,7 +16,7 @@
 mod store_agent;
 
 mod data_macro_agent;
-mod declarive_macro_agent;
+mod declarative_macro_agent;
 mod derive;
 mod reporting_agent;
 mod reporting_macro_agent;
@@ -93,7 +93,7 @@ pub mod stub_router {
         pub fn new(router_addr: RoutingAddr) -> Self {
             let (tx, rx) = promise::promise();
             let (env_tx, mut env_rx) = mpsc::channel(16);
-            tokio::spawn(async move { while let Some(_) = env_rx.recv().await {} });
+            tokio::spawn(async move { while env_rx.recv().await.is_some() {} });
             SingleChannelRouter {
                 router_addr,
                 inner: env_tx,
@@ -346,7 +346,7 @@ async fn value_lane_start_task() {
     let lock = lifecycle.0.lock().await;
 
     assert_eq!(lock.start_agent, Some("agent"));
-    assert!(matches!(&lock.start_model, Some(l) if ValueLane::same_lane(&l, &lane)));
+    assert!(matches!(&lock.start_model, Some(l) if ValueLane::same_lane(l, &lane)));
     assert!(lock.event_agent.is_none());
     assert!(lock.event_model.is_none());
     assert!(lock.events.is_empty());
@@ -409,7 +409,7 @@ async fn value_lane_events_task() {
     };
 
     assert_eq!(lock.event_agent, Some("agent"));
-    assert!(matches!(&lock.event_model, Some(l) if ValueLane::same_lane(&l, &lane)));
+    assert!(matches!(&lock.event_model, Some(l) if ValueLane::same_lane(l, &lane)));
     assert!(lock.start_agent.is_none());
     assert!(lock.start_model.is_none());
     assert!(
@@ -476,7 +476,7 @@ async fn map_lane_start_task() {
     let lock = lifecycle.0.lock().await;
 
     assert_eq!(lock.start_agent, Some("agent"));
-    assert!(matches!(&lock.start_model, Some(l) if MapLane::same_lane(&l, &lane)));
+    assert!(matches!(&lock.start_model, Some(l) if MapLane::same_lane(l, &lane)));
     assert!(lock.event_agent.is_none());
     assert!(lock.event_model.is_none());
     assert!(lock.events.is_empty());
@@ -526,7 +526,7 @@ async fn map_lane_events_task() {
     let lock = lifecycle.0.lock().await;
 
     assert_eq!(lock.event_agent, Some("agent"));
-    assert!(matches!(&lock.event_model, Some(l) if MapLane::same_lane(&l, &lane)));
+    assert!(matches!(&lock.event_model, Some(l) if MapLane::same_lane(l, &lane)));
     assert!(lock.start_agent.is_none());
     assert!(lock.start_model.is_none());
     assert!(matches!(lock.events.as_slice(), [
@@ -613,7 +613,7 @@ async fn action_lane_events_task() {
     let lock = lifecycle.0.lock().await;
 
     assert_eq!(lock.event_agent, Some("agent"));
-    assert!(matches!(&lock.event_model, Some(l) if ActionLane::same_lane(&l, &lane)));
+    assert!(matches!(&lock.event_model, Some(l) if ActionLane::same_lane(l, &lane)));
     assert!(lock.start_agent.is_none());
     assert!(lock.start_model.is_none());
     assert!(
@@ -702,7 +702,7 @@ async fn command_lane_events_task() {
     let lock = lifecycle.0.lock().await;
 
     assert_eq!(lock.event_agent, Some("agent"));
-    assert!(matches!(&lock.event_model, Some(l) if CommandLane::same_lane(&l, &lane)));
+    assert!(matches!(&lock.event_model, Some(l) if CommandLane::same_lane(l, &lane)));
     assert!(lock.start_agent.is_none());
     assert!(lock.start_model.is_none());
     assert!(

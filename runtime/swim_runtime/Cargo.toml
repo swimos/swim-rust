@@ -2,11 +2,11 @@
 name = "swim_runtime"
 version = "0.1.0"
 authors = ["Swim Inc. developers info@swim.ai"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
-ratchet = { path = "../../ratchet", features = ["deflate", "split"] }
-ratchet_fixture = { path = "../../ratchet/ratchet_fixture" }
+ratchet = { package = "ratchet_rs", version = "0.1.0", features = ["deflate", "split"] }
+ratchet_fixture = "0.1.0"
 bytes = "1.0"
 either = "1.5.3"
 flate2 = "1.0.22"
@@ -25,7 +25,7 @@ swim_form = { path = "../../api/swim_form" }
 swim_async_runtime = { path = "../swim_async_runtime" }
 swim_warp = { path = "../../swim_warp" }
 swim_tracing = { path = "../../swim_utilities/swim_tracing", features = ["future"] }
-swim_recon = { path = "../../api/formats/swim_recon" }
+swim_recon = { path = "../../api/formats/swim_recon", features = ["async_parser"] }
 slab = "0.4.2"
 tracing = "0.1.16"
 thiserror = "1.0"

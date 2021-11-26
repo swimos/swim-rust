@@ -2,10 +2,10 @@
 name = "swim_recon"
 version = "0.1.0"
 authors = ["Swim Inc. developers info@swim.ai"]
-edition = "2018"
+edition = "2021"
 
 [features]
-default = ["async_parser"]
+default = []
 async_parser = ["futures", "tokio", "tokio-util", "bytes"]
 
 [dependencies]

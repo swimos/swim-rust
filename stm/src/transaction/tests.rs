@@ -664,7 +664,7 @@ impl RetryExample {
         let RetryExample { a, b, c } = self;
         a.get().and_then(move |va| {
             if *va == 0 {
-                stm::left(Choice::new(retry_if_zero(&b, "b"), retry_if_zero(&c, "c")))
+                stm::left(Choice::new(retry_if_zero(b, "b"), retry_if_zero(c, "c")))
             } else {
                 stm::right(Constant("a".to_string()))
             }

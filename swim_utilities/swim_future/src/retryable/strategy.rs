@@ -223,9 +223,8 @@ mod tests {
         let max_backoff = Duration::from_secs(8);
         let strategy = RetryStrategy::exponential(max_interval, Quantity::Finite(max_backoff));
         let start = Instant::now();
-        let mut it = strategy.into_iter();
 
-        while let Some(duration) = it.next() {
+        for duration in strategy {
             assert!(duration.is_some());
             let duration = duration.unwrap();
 
@@ -241,12 +240,12 @@ mod tests {
     async fn test_immediate() {
         let retries = 5;
         let strategy = RetryStrategy::immediate(non_zero_usize!(retries));
-        let mut it = strategy.into_iter();
+        let mut it = strategy;
         let count = it.count();
 
         assert_eq!(count, retries);
 
-        while let Some(duration) = it.next() {
+        for duration in &mut it {
             assert!(duration.is_none());
         }
 
@@ -261,12 +260,12 @@ mod tests {
             expected_duration,
             Quantity::Finite(non_zero_usize!(retries)),
         );
-        let mut it = strategy.into_iter();
+        let mut it = strategy;
         let count = it.count();
 
         assert_eq!(count, retries);
 
-        while let Some(duration) = it.next() {
+        for duration in &mut it {
             assert!(duration.is_some());
             let duration = duration.unwrap();
             assert_eq!(expected_duration, duration);
