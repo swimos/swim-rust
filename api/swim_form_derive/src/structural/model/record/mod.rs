@@ -13,9 +13,9 @@
 // limitations under the License.
 
 use super::ValidateFrom;
-use crate::modifiers::NameTransform;
+use crate::modifiers::{NameTransform, StructTransform};
 use crate::structural::model::field::{
-    FieldWithIndex, Manifest, SegregatedFields, TaggedFieldModel,
+    FieldSelector, FieldWithIndex, Manifest, SegregatedFields, TaggedFieldModel,
 };
 use crate::structural::model::StructLike;
 use crate::SynValidation;
@@ -28,7 +28,7 @@ use std::ops::Add;
 use swim_utilities::errors::validation::{validate2, Validation, ValidationItExt};
 use syn::{Attribute, Fields, Ident};
 
-/// Description of the fields, taken from the derive input, preprocessed with any modifcations
+/// Description of the fields, taken from the derive input, preprocessed with any modifications
 /// present in attributes on the fields.
 pub struct FieldsModel<'a> {
     /// Kind of the underlying struct.
@@ -45,6 +45,21 @@ impl<'a> FieldsModel<'a> {
             .iter()
             .any(|model| model.directive == FieldKind::Tagged)
     }
+
+    pub fn newtype_field(&self) -> Option<FieldSelector<'a>> {
+        let mut selector = None;
+        for field in &self.fields {
+            if field.directive != FieldKind::Skip {
+                if selector.is_some() {
+                    return None;
+                } else {
+                    selector = Some(field.model.selector);
+                }
+            };
+        }
+
+        selector
+    }
 }
 
 /// Preprocessed description of a struct type.
@@ -55,6 +70,7 @@ pub struct StructModel<'a> {
     pub fields_model: FieldsModel<'a>,
     /// Transformation to apply to the name for the tag attribute.
     pub transform: Option<NameTransform>,
+    pub selector: Option<FieldSelector<'a>>,
 }
 
 impl<'a> StructModel<'a> {
@@ -144,16 +160,33 @@ where
             FORM_PATH,
             attributes.iter(),
             None,
-            crate::modifiers::acc_rename,
+            crate::modifiers::acc_struct_transform,
         );
 
         validate2(fields_model, rename).and_then(|(model, transform)| {
-            let struct_model = StructModel { name, fields_model: model, transform };
-            if struct_model.fields_model.has_tag_field() && struct_model.transform.is_some() {
-                let err = syn::Error::new_spanned(top, "Cannot apply a tag to a field when one has already been applied at the container level");
-                Validation::Validated(struct_model, err.into())
+            if let Some(StructTransform::Newtype) = transform {
+                if let Some(selector) = model.newtype_field() {
+                    let struct_model = StructModel { name, fields_model: model, transform: None, selector: Some(selector) };
+                    Validation::valid(struct_model)
+                }
+                else {
+                    let struct_model = StructModel { name, fields_model: model, transform: None, selector: None };
+                    let err = syn::Error::new_spanned(top, "Foo error");
+                    Validation::Validated(struct_model, err.into())
+                }
             } else {
-                Validation::valid(struct_model)
+                let transform = transform.map(|a| match a {
+                    StructTransform::Rename(a) => { a }
+                    StructTransform::Newtype => { unreachable!() }
+                });
+
+                let struct_model = StructModel { name, fields_model: model, transform, selector: None };
+                if struct_model.fields_model.has_tag_field() && struct_model.transform.is_some() {
+                    let err = syn::Error::new_spanned(top, "Cannot apply a tag to a field when one has already been applied at the container level");
+                    Validation::Validated(struct_model, err.into())
+                } else {
+                    Validation::valid(struct_model)
+                }
             }
         })
     }

@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod enumeration;
-mod impls;
-mod structure;
+// mod enumeration;
+// mod impls;
+// mod structure;
+mod foo;
 
 use trybuild::TestCases;
 

@@ -27,7 +27,7 @@ use swim_utilities::errors::validation::Validation;
 use syn::{Field, Ident, Lit, Meta, NestedMeta, Type};
 
 /// Describes how to extract a field from a struct.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum FieldSelector<'a> {
     ///Field in a labelled struct (identified by name).
     Named(&'a Ident),
