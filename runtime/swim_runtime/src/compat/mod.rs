@@ -40,7 +40,7 @@ mod tests;
 
 /// Operations that can be performed on an agent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AgentOperation<T> {
+pub enum Operation<T> {
     Link,
     Sync,
     Unlink,
@@ -49,118 +49,118 @@ pub enum AgentOperation<T> {
 
 /// Notifications that can be produced by an agent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AgentNotification<T> {
+pub enum Notification<T> {
     Linked,
     Synced,
     Unlinked,
     Event(T),
 }
 
-/// Type of messages that can be sent to an agent.
+/// Type of messages that can be sent to an agent/from a downlink..
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AgentMessage<T> {
-    pub source: RoutingAddr,
+pub struct RequestMessage<T> {
+    pub origin: RoutingAddr,
     pub path: RelativePath,
-    pub envelope: AgentOperation<T>,
+    pub envelope: Operation<T>,
 }
 
-/// Type of messages that can be sent to an agent.
+/// Type of messages that can be sent by an agent/received by a downlink.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AgentResponse<T> {
-    target: RoutingAddr,
-    path: RelativePath,
-    envelope: AgentNotification<T>,
+pub struct ResponseMessage<T> {
+    pub origin: RoutingAddr,
+    pub path: RelativePath,
+    pub envelope: Notification<T>,
 }
 
-impl<T> AgentMessage<T> {
+impl<T> RequestMessage<T> {
     pub fn link(source: RoutingAddr, path: RelativePath) -> Self {
-        AgentMessage {
-            source,
+        RequestMessage {
+            origin: source,
             path,
-            envelope: AgentOperation::Link,
+            envelope: Operation::Link,
         }
     }
 
     pub fn sync(source: RoutingAddr, path: RelativePath) -> Self {
-        AgentMessage {
-            source,
+        RequestMessage {
+            origin: source,
             path,
-            envelope: AgentOperation::Sync,
+            envelope: Operation::Sync,
         }
     }
 
     pub fn unlink(source: RoutingAddr, path: RelativePath) -> Self {
-        AgentMessage {
-            source,
+        RequestMessage {
+            origin: source,
             path,
-            envelope: AgentOperation::Unlink,
+            envelope: Operation::Unlink,
         }
     }
 
     pub fn command(source: RoutingAddr, path: RelativePath, body: T) -> Self {
-        AgentMessage {
-            source,
+        RequestMessage {
+            origin: source,
             path,
-            envelope: AgentOperation::Command(body),
+            envelope: Operation::Command(body),
         }
     }
 
     pub fn kind(&self) -> RequestKind {
         match &self.envelope {
-            AgentOperation::Link => RequestKind::Link,
-            AgentOperation::Sync => RequestKind::Sync,
-            AgentOperation::Unlink => RequestKind::Unlink,
-            AgentOperation::Command(_) => RequestKind::Command,
+            Operation::Link => RequestKind::Link,
+            Operation::Sync => RequestKind::Sync,
+            Operation::Unlink => RequestKind::Unlink,
+            Operation::Command(_) => RequestKind::Command,
         }
     }
 
     pub fn body(&self) -> Option<&T> {
         match &self.envelope {
-            AgentOperation::Command(body) => Some(body),
+            Operation::Command(body) => Some(body),
             _ => None,
         }
     }
 }
 
-impl<T> AgentResponse<T> {
+impl<T> ResponseMessage<T> {
     pub fn linked(target: RoutingAddr, path: RelativePath) -> Self {
-        AgentResponse {
-            target,
+        ResponseMessage {
+            origin: target,
             path,
-            envelope: AgentNotification::Linked,
+            envelope: Notification::Linked,
         }
     }
 
     pub fn synced(target: RoutingAddr, path: RelativePath) -> Self {
-        AgentResponse {
-            target,
+        ResponseMessage {
+            origin: target,
             path,
-            envelope: AgentNotification::Synced,
+            envelope: Notification::Synced,
         }
     }
 
     pub fn unlinked(target: RoutingAddr, path: RelativePath) -> Self {
-        AgentResponse {
-            target,
+        ResponseMessage {
+            origin: target,
             path,
-            envelope: AgentNotification::Unlinked,
+            envelope: Notification::Unlinked,
         }
     }
 
     pub fn event(target: RoutingAddr, path: RelativePath, body: T) -> Self {
-        AgentResponse {
-            target,
+        ResponseMessage {
+            origin: target,
             path,
-            envelope: AgentNotification::Event(body),
+            envelope: Notification::Event(body),
         }
     }
 }
 
 /// An agent message where the body is uninterpreted (represented as raw bytes).
-pub type RawAgentMessage<'a> = AgentMessage<&'a [u8]>;
+pub type RawAgentMessage<'a> = RequestMessage<&'a [u8]>;
 
 /// An agent message where the body is uninterpreted (represented as raw bytes).
-pub type RawAgentResponse = AgentResponse<Bytes>;
+pub type RawAgentResponse = ResponseMessage<Bytes>;
 
 /// Tokio [`Encoder`] to encode a [`RawAgentMessage`] as a byte stream.
 pub struct RawAgentMessageEncoder;
@@ -186,7 +186,7 @@ impl<'a> Encoder<RawAgentMessage<'a>> for RawAgentMessageEncoder {
 
     fn encode(&mut self, item: RawAgentMessage<'a>, dst: &mut BytesMut) -> Result<(), Self::Error> {
         let RawAgentMessage {
-            source,
+            origin: source,
             path: RelativePath { node, lane },
             envelope,
         } = item;
@@ -197,22 +197,22 @@ impl<'a> Encoder<RawAgentMessage<'a>> for RawAgentMessageEncoder {
         dst.put_u32(node_len);
         dst.put_u32(lane_len);
         match envelope {
-            AgentOperation::Link => {
+            Operation::Link => {
                 dst.put_u64(LINK << OP_SHIFT);
                 dst.put_slice(node.as_bytes());
                 dst.put_slice(lane.as_bytes());
             }
-            AgentOperation::Sync => {
+            Operation::Sync => {
                 dst.put_u64(SYNC << OP_SHIFT);
                 dst.put_slice(node.as_bytes());
                 dst.put_slice(lane.as_bytes());
             }
-            AgentOperation::Unlink => {
+            Operation::Unlink => {
                 dst.put_u64(UNLINK << OP_SHIFT);
                 dst.put_slice(node.as_bytes());
                 dst.put_slice(lane.as_bytes());
             }
-            AgentOperation::Command(body) => {
+            Operation::Command(body) => {
                 let body_len = body.len() as u64;
                 if body_len & OP_MASK != 0 {
                     panic!("Body too large.")
@@ -231,15 +231,15 @@ impl<'a> Encoder<RawAgentMessage<'a>> for RawAgentMessageEncoder {
 const RESERVE_INIT: usize = 256;
 const RESERVE_MULT: usize = 2;
 
-impl<T> Encoder<AgentResponse<T>> for AgentResponseEncoder
+impl<T> Encoder<ResponseMessage<T>> for AgentResponseEncoder
 where
     T: StructuralWritable,
 {
     type Error = std::io::Error;
 
-    fn encode(&mut self, item: AgentResponse<T>, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        let AgentResponse {
-            target: source,
+    fn encode(&mut self, item: ResponseMessage<T>, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        let ResponseMessage {
+            origin: source,
             path: RelativePath { node, lane },
             envelope,
         } = item;
@@ -250,22 +250,22 @@ where
         dst.put_u32(node_len);
         dst.put_u32(lane_len);
         match envelope {
-            AgentNotification::Linked => {
+            Notification::Linked => {
                 dst.put_u64(LINKED << OP_SHIFT);
                 dst.put_slice(node.as_bytes());
                 dst.put_slice(lane.as_bytes());
             }
-            AgentNotification::Synced => {
+            Notification::Synced => {
                 dst.put_u64(SYNCED << OP_SHIFT);
                 dst.put_slice(node.as_bytes());
                 dst.put_slice(lane.as_bytes());
             }
-            AgentNotification::Unlinked => {
+            Notification::Unlinked => {
                 dst.put_u64(UNLINKED << OP_SHIFT);
                 dst.put_slice(node.as_bytes());
                 dst.put_slice(lane.as_bytes());
             }
-            AgentNotification::Event(body) => {
+            Notification::Event(body) => {
                 let body_len_offset = dst.remaining();
                 dst.put_u64(0);
                 dst.put_slice(node.as_bytes());
@@ -303,7 +303,7 @@ enum State<T> {
         remaining: usize,
     },
     AfterBody {
-        message: Option<AgentMessage<T>>,
+        message: Option<RequestMessage<T>>,
         remaining: usize,
     },
     Discarding {
@@ -365,7 +365,7 @@ impl<T, R> Decoder for AgentMessageDecoder<T, R>
 where
     R: Recognizer<Target = T>,
 {
-    type Item = AgentMessage<T>;
+    type Item = RequestMessage<T>;
     type Error = AgentMessageDecodeError;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
@@ -398,24 +398,24 @@ where
                     let path = RelativePath::new(node, lane);
                     match tag {
                         LINK => {
-                            break Ok(Some(AgentMessage {
-                                source: id,
+                            break Ok(Some(RequestMessage {
+                                origin: id,
                                 path,
-                                envelope: AgentOperation::Link,
+                                envelope: Operation::Link,
                             }));
                         }
                         SYNC => {
-                            break Ok(Some(AgentMessage {
-                                source: id,
+                            break Ok(Some(RequestMessage {
+                                origin: id,
                                 path,
-                                envelope: AgentOperation::Sync,
+                                envelope: Operation::Sync,
                             }));
                         }
                         UNLINK => {
-                            break Ok(Some(AgentMessage {
-                                source: id,
+                            break Ok(Some(RequestMessage {
+                                origin: id,
                                 path,
-                                envelope: AgentOperation::Unlink,
+                                envelope: Operation::Unlink,
                             }));
                         }
                         _ => {
@@ -446,10 +446,10 @@ where
                         Ok(Some(result)) => {
                             src.unsplit(rem);
                             *state = State::AfterBody {
-                                message: Some(AgentMessage {
-                                    source: *source,
+                                message: Some(RequestMessage {
+                                    origin: *source,
                                     path: std::mem::take(path),
-                                    envelope: AgentOperation::Command(result),
+                                    envelope: Operation::Command(result),
                                 }),
                                 remaining: *remaining,
                             }
@@ -462,10 +462,10 @@ where
                                 *remaining -= consumed;
                                 src.unsplit(rem);
                                 break if let Some(result) = eof_result {
-                                    Ok(Some(AgentMessage {
-                                        source: *source,
+                                    Ok(Some(RequestMessage {
+                                        origin: *source,
                                         path: std::mem::take(path),
-                                        envelope: AgentOperation::Command(result),
+                                        envelope: Operation::Command(result),
                                     }))
                                 } else {
                                     Err(AgentMessageDecodeError::incomplete())
@@ -572,7 +572,7 @@ impl Decoder for RawAgentResponseDecoder {
 
 pub fn read_messages<R, T>(
     reader: R,
-) -> impl Stream<Item = Result<AgentMessage<T>, AgentMessageDecodeError>>
+) -> impl Stream<Item = Result<RequestMessage<T>, AgentMessageDecodeError>>
 where
     R: AsyncRead + Unpin,
     T: RecognizerReadable,
@@ -586,7 +586,7 @@ fn fail(name: &str) -> AgentMessageDecodeError {
     AgentMessageDecodeError::Body(AsyncParseError::Parser(ParseError::Structure(err)))
 }
 
-impl<T: RecognizerReadable> TryFrom<TaggedEnvelope> for AgentMessage<T> {
+impl<T: RecognizerReadable> TryFrom<TaggedEnvelope> for RequestMessage<T> {
     type Error = AgentMessageDecodeError;
 
     fn try_from(value: TaggedEnvelope) -> Result<Self, Self::Error> {
@@ -594,19 +594,19 @@ impl<T: RecognizerReadable> TryFrom<TaggedEnvelope> for AgentMessage<T> {
         match env {
             Envelope::Link {
                 node_uri, lane_uri, ..
-            } => Ok(AgentMessage::link(
+            } => Ok(RequestMessage::link(
                 addr,
                 RelativePath::new(node_uri, lane_uri),
             )),
             Envelope::Sync {
                 node_uri, lane_uri, ..
-            } => Ok(AgentMessage::sync(
+            } => Ok(RequestMessage::sync(
                 addr,
                 RelativePath::new(node_uri, lane_uri),
             )),
             Envelope::Unlink {
                 node_uri, lane_uri, ..
-            } => Ok(AgentMessage::unlink(
+            } => Ok(RequestMessage::unlink(
                 addr,
                 RelativePath::new(node_uri, lane_uri),
             )),
@@ -617,7 +617,7 @@ impl<T: RecognizerReadable> TryFrom<TaggedEnvelope> for AgentMessage<T> {
                 ..
             } => {
                 let interpreted_body = T::try_from_structure(body.unwrap_or(Value::Extant))?;
-                Ok(AgentMessage::command(
+                Ok(RequestMessage::command(
                     addr,
                     RelativePath::new(node_uri, lane_uri),
                     interpreted_body,
@@ -635,7 +635,7 @@ impl<T: RecognizerReadable> TryFrom<TaggedEnvelope> for AgentMessage<T> {
 
 pub fn messages_from_envelopes<S, T>(
     envelopes: S,
-) -> impl Stream<Item = Result<AgentMessage<T>, AgentMessageDecodeError>>
+) -> impl Stream<Item = Result<RequestMessage<T>, AgentMessageDecodeError>>
 where
     S: Stream<Item = TaggedEnvelope> + Unpin,
     T: RecognizerReadable,
@@ -646,9 +646,9 @@ where
 pub fn stop_on_failed<T, S>(
     stream: S,
     on_err: Option<promise::Sender<AgentMessageDecodeError>>,
-) -> impl Stream<Item = AgentMessage<T>>
+) -> impl Stream<Item = RequestMessage<T>>
 where
-    S: Stream<Item = Result<AgentMessage<T>, AgentMessageDecodeError>>,
+    S: Stream<Item = Result<RequestMessage<T>, AgentMessageDecodeError>>,
 {
     unfold(
         (Box::pin(stream), on_err),

@@ -35,7 +35,7 @@ use swim_metrics::config::MetricAggregatorConfig;
 use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
 use swim_model::path::RelativePath;
 use swim_model::Value;
-use swim_runtime::compat::{AgentMessage, AgentOperation};
+use swim_runtime::compat::{RequestMessage, Operation};
 use swim_runtime::error::{ConnectionDropped, ResolutionError, RouterError};
 use swim_runtime::routing::{Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender};
 use swim_utilities::routing::uri::RelativeUri;
@@ -220,7 +220,7 @@ impl LaneIo<MockExecutionContext> for MockLane {
     fn attach(
         self,
         route: RelativePath,
-        mut envelopes: Receiver<AgentMessage<Value>>,
+        mut envelopes: Receiver<RequestMessage<Value>>,
         _config: AgentExecutionConfig,
         context: MockExecutionContext,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
@@ -234,7 +234,7 @@ impl LaneIo<MockExecutionContext> for MockLane {
             let err = loop {
                 let next = envelopes.recv().await;
                 if let Some(env) = next {
-                    let addr = env.source;
+                    let addr = env.origin;
 
                     if env.body() == Some(&Value::text(POISON_PILL)) {
                         break Some(LaneIoError::for_update_err(
@@ -283,7 +283,7 @@ impl LaneIo<MockExecutionContext> for MockLane {
     fn attach_boxed(
         self: Box<Self>,
         route: RelativePath,
-        envelopes: Receiver<AgentMessage<Value>>,
+        envelopes: Receiver<RequestMessage<Value>>,
         config: AgentExecutionConfig,
         context: MockExecutionContext,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
@@ -291,18 +291,18 @@ impl LaneIo<MockExecutionContext> for MockLane {
     }
 }
 
-pub fn echo(env: AgentMessage<Value>) -> Envelope {
-    let AgentMessage {
+pub fn echo(env: RequestMessage<Value>) -> Envelope {
+    let RequestMessage {
         path: RelativePath { node, lane },
         envelope,
         ..
     } = env;
 
     match envelope {
-        AgentOperation::Link => Envelope::linked().node_uri(node).lane_uri(lane).done(),
-        AgentOperation::Sync => Envelope::synced().node_uri(node).lane_uri(lane).done(),
-        AgentOperation::Unlink => Envelope::unlinked().node_uri(node).lane_uri(lane).done(),
-        AgentOperation::Command(body) => Envelope::command()
+        Operation::Link => Envelope::linked().node_uri(node).lane_uri(lane).done(),
+        Operation::Sync => Envelope::synced().node_uri(node).lane_uri(lane).done(),
+        Operation::Unlink => Envelope::unlinked().node_uri(node).lane_uri(lane).done(),
+        Operation::Command(body) => Envelope::command()
             .node_uri(node)
             .lane_uri(lane)
             .body(body)

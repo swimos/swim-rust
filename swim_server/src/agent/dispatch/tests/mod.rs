@@ -32,7 +32,7 @@ use stm::transaction::TransactionError;
 use swim_async_runtime::time::timeout;
 use swim_model::path::RelativePath;
 use swim_model::Value;
-use swim_runtime::compat::AgentMessage;
+use swim_runtime::compat::RequestMessage;
 use swim_runtime::routing::{RoutingAddr, TaggedEnvelope};
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::errors::Recoverable;
@@ -49,7 +49,7 @@ fn make_dispatcher(
     buffer_size: usize,
     max_pending: usize,
     lanes: HashMap<LaneIdentifier, MockLane>,
-    envelopes: impl Stream<Item = AgentMessage<Value>> + Send + 'static,
+    envelopes: impl Stream<Item = RequestMessage<Value>> + Send + 'static,
 ) -> (
     BoxFuture<'static, Result<DispatcherErrors, DispatcherErrors>>,
     MockExecutionContext,
@@ -99,7 +99,7 @@ fn lanes(names: Vec<&str>) -> HashMap<LaneIdentifier, MockLane> {
     map
 }
 
-async fn expect_echo(rx: &mut mpsc::Receiver<TaggedEnvelope>, env: AgentMessage<Value>) {
+async fn expect_echo(rx: &mut mpsc::Receiver<TaggedEnvelope>, env: RequestMessage<Value>) {
     let maybe_envelope = rx.recv().await;
     assert!(maybe_envelope.is_some());
     let rec_envelope = maybe_envelope.unwrap();
@@ -110,7 +110,7 @@ async fn expect_echo(rx: &mut mpsc::Receiver<TaggedEnvelope>, env: AgentMessage<
 
 #[tokio::test]
 async fn dispatch_nothing() {
-    let (envelope_tx, envelope_rx) = mpsc::channel::<AgentMessage<Value>>(8);
+    let (envelope_tx, envelope_rx) = mpsc::channel::<RequestMessage<Value>>(8);
 
     let (task, context) =
         make_dispatcher(8, 10, lanes(vec!["lane"]), ReceiverStream::new(envelope_rx));
@@ -124,14 +124,14 @@ async fn dispatch_nothing() {
 
 #[tokio::test]
 async fn dispatch_single() {
-    let (envelope_tx, envelope_rx) = mpsc::channel::<AgentMessage<Value>>(8);
+    let (envelope_tx, envelope_rx) = mpsc::channel::<RequestMessage<Value>>(8);
 
     let (task, context) =
         make_dispatcher(8, 10, lanes(vec!["lane"]), ReceiverStream::new(envelope_rx));
 
     let addr = RoutingAddr::remote(1);
 
-    let link = AgentMessage::link(addr, RelativePath::new("/node", "lane"));
+    let link = RequestMessage::link(addr, RelativePath::new("/node", "lane"));
 
     let assertion_task = async move {
         assert!(envelope_tx.send(link.clone()).await.is_ok());
@@ -149,7 +149,7 @@ async fn dispatch_single() {
 
 #[tokio::test]
 async fn dispatch_two_lanes() {
-    let (envelope_tx, envelope_rx) = mpsc::channel::<AgentMessage<Value>>(8);
+    let (envelope_tx, envelope_rx) = mpsc::channel::<RequestMessage<Value>>(8);
 
     let (task, context) = make_dispatcher(
         8,
@@ -161,8 +161,8 @@ async fn dispatch_two_lanes() {
     let addr1 = RoutingAddr::remote(1);
     let addr2 = RoutingAddr::remote(2);
 
-    let link = AgentMessage::link(addr1.into(), RelativePath::new("/node", "lane_a"));
-    let sync = AgentMessage::sync(addr2.into(), RelativePath::new("/node", "lane_b"));
+    let link = RequestMessage::link(addr1.into(), RelativePath::new("/node", "lane_a"));
+    let sync = RequestMessage::sync(addr2.into(), RelativePath::new("/node", "lane_b"));
 
     let assertion_task = async move {
         assert!(envelope_tx.send(link.clone()).await.is_ok());
@@ -184,17 +184,17 @@ async fn dispatch_two_lanes() {
 
 #[tokio::test]
 async fn dispatch_multiple_same_lane() {
-    let (envelope_tx, envelope_rx) = mpsc::channel::<AgentMessage<Value>>(8);
+    let (envelope_tx, envelope_rx) = mpsc::channel::<RequestMessage<Value>>(8);
 
     let (task, context) =
         make_dispatcher(8, 10, lanes(vec!["lane"]), ReceiverStream::new(envelope_rx));
 
     let addr = RoutingAddr::remote(1);
 
-    let link = AgentMessage::link(addr, RelativePath::new("/node", "lane"));
+    let link = RequestMessage::link(addr, RelativePath::new("/node", "lane"));
 
-    let cmd1 = AgentMessage::command(addr, RelativePath::new("/node", "lane"), 1.into());
-    let cmd2 = AgentMessage::command(addr, RelativePath::new("/node", "lane"), 2.into());
+    let cmd1 = RequestMessage::command(addr, RelativePath::new("/node", "lane"), 1.into());
+    let cmd2 = RequestMessage::command(addr, RelativePath::new("/node", "lane"), 2.into());
 
     let assertion_task = async move {
         assert!(envelope_tx.send(link.clone()).await.is_ok());
@@ -216,7 +216,7 @@ async fn dispatch_multiple_same_lane() {
 
 #[tokio::test]
 async fn blocked_lane() {
-    let (envelope_tx, envelope_rx) = mpsc::channel::<AgentMessage<Value>>(8);
+    let (envelope_tx, envelope_rx) = mpsc::channel::<RequestMessage<Value>>(8);
 
     let (task, context) = make_dispatcher(
         1,
@@ -228,12 +228,12 @@ async fn blocked_lane() {
     let addr1 = RoutingAddr::remote(1);
     let addr2 = RoutingAddr::remote(2);
 
-    let cmd1 = AgentMessage::command(addr1.into(), RelativePath::new("/node", "lane_a"), 1.into());
-    let cmd2 = AgentMessage::command(addr1.into(), RelativePath::new("/node", "lane_a"), 2.into());
-    let cmd3 = AgentMessage::command(addr1.into(), RelativePath::new("/node", "lane_a"), 3.into());
-    let cmd4 = AgentMessage::command(addr1.into(), RelativePath::new("/node", "lane_a"), 4.into());
+    let cmd1 = RequestMessage::command(addr1.into(), RelativePath::new("/node", "lane_a"), 1.into());
+    let cmd2 = RequestMessage::command(addr1.into(), RelativePath::new("/node", "lane_a"), 2.into());
+    let cmd3 = RequestMessage::command(addr1.into(), RelativePath::new("/node", "lane_a"), 3.into());
+    let cmd4 = RequestMessage::command(addr1.into(), RelativePath::new("/node", "lane_a"), 4.into());
 
-    let link = AgentMessage::link(addr2.into(), RelativePath::new("/node", "lane_b"));
+    let link = RequestMessage::link(addr2.into(), RelativePath::new("/node", "lane_b"));
 
     let assertion_task = async move {
         assert!(envelope_tx.send(cmd1.clone()).await.is_ok());
@@ -267,7 +267,7 @@ async fn blocked_lane() {
 
 #[tokio::test]
 async fn flush_pending() {
-    let (envelope_tx, envelope_rx) = mpsc::channel::<AgentMessage<Value>>(8);
+    let (envelope_tx, envelope_rx) = mpsc::channel::<RequestMessage<Value>>(8);
 
     let (task, context) = make_dispatcher(
         1,
@@ -279,14 +279,14 @@ async fn flush_pending() {
     let addr1 = RoutingAddr::remote(1);
     let addr2 = RoutingAddr::remote(2);
 
-    let link = AgentMessage::link(addr2.into(), RelativePath::new("/node", "lane_b"));
+    let link = RequestMessage::link(addr2.into(), RelativePath::new("/node", "lane_b"));
 
     //Chose to ensure there are several pending messages when the dispatcher stops.
     let n = 8;
 
     let assertion_task = async move {
         let cmd0 =
-            AgentMessage::command(addr1.into(), RelativePath::new("/node", "lane_a"), 0.into());
+            RequestMessage::command(addr1.into(), RelativePath::new("/node", "lane_a"), 0.into());
 
         assert!(envelope_tx.send(cmd0.clone()).await.is_ok());
         let mut rx1 = context.take_receiver(&addr1).unwrap();
@@ -295,7 +295,7 @@ async fn flush_pending() {
         //Lane A is now attached.
 
         for i in 0..n {
-            let cmd = AgentMessage::command(
+            let cmd = RequestMessage::command(
                 addr1.into(),
                 RelativePath::new("/node", "lane_a"),
                 (i + 1).into(),
@@ -314,7 +314,7 @@ async fn flush_pending() {
         drop(envelope_tx);
 
         for i in 0..n {
-            let cmd = AgentMessage::command(
+            let cmd = RequestMessage::command(
                 addr1.into(),
                 RelativePath::new("/node", "lane_a"),
                 (i + 1).into(),
@@ -332,14 +332,14 @@ async fn flush_pending() {
 
 #[tokio::test]
 async fn dispatch_link_to_non_existent() {
-    let (envelope_tx, envelope_rx) = mpsc::channel::<AgentMessage<Value>>(8);
+    let (envelope_tx, envelope_rx) = mpsc::channel::<RequestMessage<Value>>(8);
 
     let (task, context) =
         make_dispatcher(8, 10, lanes(vec!["lane"]), ReceiverStream::new(envelope_rx));
 
     let addr = RoutingAddr::remote(1);
 
-    let link = AgentMessage::link(addr, RelativePath::new("/node", "other"));
+    let link = RequestMessage::link(addr, RelativePath::new("/node", "other"));
 
     let assertion_task = async move {
         assert!(envelope_tx.send(link.clone()).await.is_ok());
@@ -366,14 +366,14 @@ async fn dispatch_link_to_non_existent() {
 
 #[tokio::test]
 async fn dispatch_sync_to_non_existent() {
-    let (envelope_tx, envelope_rx) = mpsc::channel::<AgentMessage<Value>>(8);
+    let (envelope_tx, envelope_rx) = mpsc::channel::<RequestMessage<Value>>(8);
 
     let (task, context) =
         make_dispatcher(8, 10, lanes(vec!["lane"]), ReceiverStream::new(envelope_rx));
 
     let addr = RoutingAddr::remote(1);
 
-    let sync = AgentMessage::sync(addr, RelativePath::new("/node", "other"));
+    let sync = RequestMessage::sync(addr, RelativePath::new("/node", "other"));
 
     let assertion_task = async move {
         assert!(envelope_tx.send(sync.clone()).await.is_ok());
@@ -398,14 +398,14 @@ async fn dispatch_sync_to_non_existent() {
 
 #[tokio::test]
 async fn failed_lane_task() {
-    let (envelope_tx, envelope_rx) = mpsc::channel::<AgentMessage<Value>>(8);
+    let (envelope_tx, envelope_rx) = mpsc::channel::<RequestMessage<Value>>(8);
 
     let (task, context) =
         make_dispatcher(8, 10, lanes(vec!["lane"]), ReceiverStream::new(envelope_rx));
 
     let addr = RoutingAddr::remote(1);
 
-    let cmd = AgentMessage::command(
+    let cmd = RequestMessage::command(
         addr,
         RelativePath::new("/node", "lane"),
         mock::POISON_PILL.into(),
@@ -439,7 +439,7 @@ async fn failed_lane_task() {
 
 #[tokio::test]
 async fn fatal_failed_attachment() {
-    let (envelope_tx, envelope_rx) = mpsc::channel::<AgentMessage<Value>>(8);
+    let (envelope_tx, envelope_rx) = mpsc::channel::<RequestMessage<Value>>(8);
 
     let (task, context) = make_dispatcher(
         8,
@@ -450,7 +450,7 @@ async fn fatal_failed_attachment() {
 
     let addr = RoutingAddr::remote(1);
 
-    let link = AgentMessage::link(addr, RelativePath::new("/node", mock::POISON_PILL));
+    let link = RequestMessage::link(addr, RelativePath::new("/node", mock::POISON_PILL));
 
     let assertion_task = async move {
         assert!(envelope_tx.send(link).await.is_ok());
@@ -504,7 +504,7 @@ async fn dispatch_meta() {
         );
     }
 
-    let (envelope_tx, envelope_rx) = mpsc::channel::<AgentMessage<Value>>(8);
+    let (envelope_tx, envelope_rx) = mpsc::channel::<RequestMessage<Value>>(8);
 
     let (task, context) = make_dispatcher(8, 10, map, ReceiverStream::new(envelope_rx));
 
@@ -517,13 +517,13 @@ async fn dispatch_meta() {
         };
 
         async fn assert(
-            envelope_tx: &Sender<AgentMessage<Value>>,
+            envelope_tx: &Sender<RequestMessage<Value>>,
             context: &MockExecutionContext,
-            env: AgentMessage<Value>,
+            env: RequestMessage<Value>,
         ) {
             assert!(envelope_tx.send(env.clone()).await.is_ok());
 
-            let addr = env.source;
+            let addr = env.origin;
 
             let mut rx = context.take_receiver(&addr).unwrap();
             expect_echo(&mut rx, env).await;
@@ -532,7 +532,7 @@ async fn dispatch_meta() {
         assert(
             &envelope_tx,
             &context,
-            AgentMessage::link(
+            RequestMessage::link(
                 make_addr().into(),
                 RelativePath::new("/swim:meta:node/unit%2Ffoo/", "pulse"),
             ),
@@ -542,7 +542,7 @@ async fn dispatch_meta() {
         assert(
             &envelope_tx,
             &context,
-            AgentMessage::link(
+            RequestMessage::link(
                 make_addr().into(),
                 RelativePath::new("/swim:meta:node/unit%2Ffoo/lane/bar", "uplink"),
             ),
@@ -552,7 +552,7 @@ async fn dispatch_meta() {
         assert(
             &envelope_tx,
             &context,
-            AgentMessage::link(
+            RequestMessage::link(
                 make_addr().into(),
                 RelativePath::new("/swim:meta:node/unit%2Ffoo/lane/bar", "traceLog"),
             ),
@@ -562,7 +562,7 @@ async fn dispatch_meta() {
         assert(
             &envelope_tx,
             &context,
-            AgentMessage::link(
+            RequestMessage::link(
                 make_addr().into(),
                 RelativePath::new("/swim:meta:node/unit%2Ffoo/", "lanes"),
             ),
@@ -573,7 +573,7 @@ async fn dispatch_meta() {
             assert(
                 &envelope_tx,
                 &context,
-                AgentMessage::link(
+                RequestMessage::link(
                     make_addr().into(),
                     RelativePath::new("/swim:meta:node/unit%2Ffoo", level.uri_ref()),
                 ),
@@ -582,7 +582,7 @@ async fn dispatch_meta() {
         }
 
         let addr = make_addr();
-        let env = AgentMessage::link(
+        let env = RequestMessage::link(
             make_addr().into(),
             RelativePath::new("/swim:meta:node/unit%2Ffoo/bar/fizz", "lane"),
         );

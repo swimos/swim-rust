@@ -57,7 +57,7 @@ use swim_metrics::uplink::{MetricBackpressureConfig, UplinkObserver, WarpUplinkP
 use swim_metrics::{AggregatorError, MetaPulseLanes, NodeMetricAggregator};
 use swim_model::path::RelativePath;
 use swim_model::Value;
-use swim_runtime::compat::AgentMessage;
+use swim_runtime::compat::RequestMessage;
 use swim_runtime::error::{ConnectionDropped, ResolutionError, RouterError};
 use swim_runtime::routing::{Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender};
 use swim_utilities::algebra::non_zero_usize;
@@ -495,33 +495,33 @@ fn route() -> RelativePath {
 }
 
 struct TaskInput {
-    envelope_tx: mpsc::Sender<AgentMessage<Value>>,
+    envelope_tx: mpsc::Sender<RequestMessage<Value>>,
     _event_tx: Option<topic::Sender<i32>>,
 }
 
 impl TaskInput {
     async fn send_link(&mut self, addr: RoutingAddr) {
-        let env = AgentMessage::link(addr, RelativePath::new("node", "lane"));
+        let env = RequestMessage::link(addr, RelativePath::new("node", "lane"));
         assert!(self.envelope_tx.send(env).await.is_ok())
     }
 
     async fn send_sync(&mut self, addr: RoutingAddr) {
-        let env = AgentMessage::sync(addr, RelativePath::new("node", "lane"));
+        let env = RequestMessage::sync(addr, RelativePath::new("node", "lane"));
         assert!(self.envelope_tx.send(env).await.is_ok())
     }
 
     async fn send_unlink(&mut self, addr: RoutingAddr) {
-        let env = AgentMessage::unlink(addr, RelativePath::new("node", "lane"));
+        let env = RequestMessage::unlink(addr, RelativePath::new("node", "lane"));
         assert!(self.envelope_tx.send(env).await.is_ok())
     }
 
     async fn send_command(&mut self, addr: RoutingAddr, value: i32) {
-        let env = AgentMessage::command(addr, RelativePath::new("node", "lane"), value.into());
+        let env = RequestMessage::command(addr, RelativePath::new("node", "lane"), value.into());
         assert!(self.envelope_tx.send(env).await.is_ok())
     }
 
     async fn send_raw(&mut self, addr: RoutingAddr, value: Value) {
-        let env = AgentMessage::command(addr, RelativePath::new("node", "lane"), value);
+        let env = RequestMessage::command(addr, RelativePath::new("node", "lane"), value);
         assert!(self.envelope_tx.send(env).await.is_ok())
     }
 
@@ -1032,7 +1032,7 @@ fn make_action_lane_task<Context: AgentExecutionContext + Send + Sync + 'static>
             }
         }
     };
-    let (envelope_tx, envelope_rx) = mpsc::channel::<AgentMessage<Value>>(5);
+    let (envelope_tx, envelope_rx) = mpsc::channel::<RequestMessage<Value>>(5);
 
     let lane: ActionLane<i32, i32> = ActionLane::new(feedback_tx);
 
@@ -1071,7 +1071,7 @@ fn make_command_lane_task<Context: AgentExecutionContext + Send + Sync + 'static
         }
         let _ = commands_tx;
     };
-    let (envelope_tx, envelope_rx) = mpsc::channel::<AgentMessage<Value>>(5);
+    let (envelope_tx, envelope_rx) = mpsc::channel::<RequestMessage<Value>>(5);
 
     let lane_io: CommandLaneIo<i32> = CommandLaneIo::new(Commander(commander_tx), commands_rx);
 

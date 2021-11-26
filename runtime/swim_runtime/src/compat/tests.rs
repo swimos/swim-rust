@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::compat::{
-    AgentMessage, AgentMessageDecodeError, AgentMessageDecoder, RawAgentMessage,
+    RequestMessage, AgentMessageDecodeError, AgentMessageDecoder, RawAgentMessage,
     RawAgentMessageEncoder, COMMAND, HEADER_INIT_LEN, LINK, OP_MASK, OP_SHIFT, SYNC, UNLINK,
 };
 use crate::routing::RoutingAddr;
@@ -167,8 +167,8 @@ struct Example {
 }
 
 fn check_result<T: Eq + Debug>(
-    result: Result<Option<AgentMessage<T>>, AgentMessageDecodeError>,
-    expected: AgentMessage<T>,
+    result: Result<Option<RequestMessage<T>>, AgentMessageDecodeError>,
+    expected: RequestMessage<T>,
 ) {
     match result {
         Ok(Some(msg)) => assert_eq!(msg, expected),
@@ -178,8 +178,8 @@ fn check_result<T: Eq + Debug>(
 }
 
 fn round_trip<T>(
-    frame: AgentMessage<&[u8]>,
-) -> Result<Option<AgentMessage<T>>, AgentMessageDecodeError>
+    frame: RequestMessage<&[u8]>,
+) -> Result<Option<RequestMessage<T>>, AgentMessageDecodeError>
 where
     T: RecognizerReadable,
 {
@@ -209,7 +209,7 @@ fn decode_link_frame() {
 
     check_result(
         result,
-        AgentMessage::link(id, RelativePath::new(node, lane)),
+        RequestMessage::link(id, RelativePath::new(node, lane)),
     );
 }
 
@@ -224,7 +224,7 @@ fn decode_sync_frame() {
 
     check_result(
         result,
-        AgentMessage::sync(id, RelativePath::new(node, lane)),
+        RequestMessage::sync(id, RelativePath::new(node, lane)),
     );
 }
 
@@ -239,7 +239,7 @@ fn decode_unlink_frame() {
 
     check_result(
         result,
-        AgentMessage::unlink(id, RelativePath::new(node, lane)),
+        RequestMessage::unlink(id, RelativePath::new(node, lane)),
     );
 }
 
@@ -261,7 +261,7 @@ fn decode_command_frame() {
 
     check_result(
         result,
-        AgentMessage::command(id, RelativePath::new(node, lane), record),
+        RequestMessage::command(id, RelativePath::new(node, lane), record),
     );
 }
 
@@ -328,10 +328,10 @@ async fn multiple_frames() {
     let (_, result) = join(send_task, recv_task).await;
 
     let expected = vec![
-        AgentMessage::sync(id, RelativePath::new(node, lane)),
-        AgentMessage::command(id, RelativePath::new(node, lane), record1),
-        AgentMessage::command(id, RelativePath::new(node, lane), record2),
-        AgentMessage::unlink(id, RelativePath::new(node, lane)),
+        RequestMessage::sync(id, RelativePath::new(node, lane)),
+        RequestMessage::command(id, RelativePath::new(node, lane), record1),
+        RequestMessage::command(id, RelativePath::new(node, lane), record2),
+        RequestMessage::unlink(id, RelativePath::new(node, lane)),
     ];
 
     assert!(result.is_ok());
