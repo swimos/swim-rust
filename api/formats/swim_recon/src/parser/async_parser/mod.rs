@@ -516,18 +516,16 @@ where
                         }
                         _ => (span, None),
                     };
-                    let finalized = final_result.unwrap_or_else(|| {
-                        match recognizer.try_flush() {
-                            Some(Ok(target)) => Ok(Some(target)),
-                            Some(Err(e)) => Err(AsyncParseError::Parser(ParseError::Structure(e))),
-                            _ => {
-                                if buf.is_empty() {
-                                    Ok(None)
-                                } else {
-                                    Err(AsyncParseError::Parser(ParseError::Structure(
-                                        ReadError::IncompleteRecord,
-                                    )))
-                                }
+                    let finalized = final_result.unwrap_or_else(|| match recognizer.try_flush() {
+                        Some(Ok(target)) => Ok(Some(target)),
+                        Some(Err(e)) => Err(AsyncParseError::Parser(ParseError::Structure(e))),
+                        _ => {
+                            if buf.is_empty() {
+                                Ok(None)
+                            } else {
+                                Err(AsyncParseError::Parser(ParseError::Structure(
+                                    ReadError::IncompleteRecord,
+                                )))
                             }
                         }
                     });
