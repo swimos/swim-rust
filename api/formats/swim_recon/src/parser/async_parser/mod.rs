@@ -356,7 +356,7 @@ impl LocationTracker {
 
 /// Tokio [`Decoder`] that parses its input as Recon and uses this to drive a [`Recognizer`] until
 /// it completes. Not that this is cannot be used as a stand-alone decoder as it has no concept of
-/// a separator between frames. I needs to be incorporated into another decoder that can determine
+/// a separator between frames. It needs to be incorporated into another decoder that can determine
 /// where one record ends and another begins.
 pub struct RecognizerDecoder<R> {
     parser: IncrementalReconParser,
