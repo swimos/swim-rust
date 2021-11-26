@@ -27,7 +27,7 @@
 // limitations under the License.
 
 use criterion::{
-    criterion_group, criterion_main, BenchmarkId, Criterion, SamplingMode, Throughput,
+    criterion_group, criterion_main, Criterion, SamplingMode, Throughput,
 };
 use futures::StreamExt;
 use std::num::NonZeroUsize;
@@ -48,11 +48,11 @@ fn stm_throughput_benchmark(c: &mut Criterion) {
     group.throughput(Throughput::Elements(NUM_VALUES as u64));
 
     group.bench_function("stm set", |b| {
-        b.to_async(&runtime).iter(|| stm_set_throughput())
+        b.to_async(&runtime).iter(stm_set_throughput)
     });
 
     group.bench_function("stm set observed", |b| {
-        b.to_async(&runtime).iter(|| stm_set_throughput_observed())
+        b.to_async(&runtime).iter(stm_set_throughput_observed)
     });
 }
 
