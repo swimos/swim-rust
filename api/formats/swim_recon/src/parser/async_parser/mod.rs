@@ -516,9 +516,7 @@ where
                         }
                         _ => (span, None),
                     };
-                    let finalized = if let Some(res) = final_result {
-                        res
-                    } else {
+                    let finalized = final_result.unwrap_or_else(|| {
                         match recognizer.try_flush() {
                             Some(Ok(target)) => Ok(Some(target)),
                             Some(Err(e)) => Err(AsyncParseError::Parser(ParseError::Structure(e))),
@@ -532,7 +530,7 @@ where
                                 }
                             }
                         }
-                    };
+                    });
                     (final_rem, finalized)
                 } else {
                     (rem, Ok(output))
