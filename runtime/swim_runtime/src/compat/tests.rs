@@ -12,10 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::compat::{
-    RequestMessage, AgentMessageDecodeError, AgentMessageDecoder, RawAgentMessage,
-    RawAgentMessageEncoder, COMMAND, HEADER_INIT_LEN, LINK, OP_MASK, OP_SHIFT, SYNC, UNLINK,
-};
+use crate::compat::{RequestMessage, AgentMessageDecodeError, AgentMessageDecoder, RawRequestMessage, RawRequestMessageEncoder, COMMAND, HEADER_INIT_LEN, LINK, OP_MASK, OP_SHIFT, SYNC, UNLINK, ResponseMessageEncoder, ResponseMessage, LINKED, SYNCED, UNLINKED, EVENT};
 use crate::routing::RoutingAddr;
 use bytes::{Buf, BytesMut};
 use futures::future::join;
@@ -41,8 +38,8 @@ fn encode_link_frame() {
     let node = "my_node";
     let lane = "lane";
     let path = RelativePath::new(node, lane);
-    let frame = RawAgentMessage::link(id, path);
-    let mut encoder = RawAgentMessageEncoder;
+    let frame = RawRequestMessage::link(id, path);
+    let mut encoder = RawRequestMessageEncoder;
     let mut buffer = BytesMut::new();
 
     assert!(encoder.encode(frame, &mut buffer).is_ok());
@@ -70,8 +67,8 @@ fn encode_sync_frame() {
     let node = "my_node";
     let lane = "lane";
     let path = RelativePath::new(node, lane);
-    let frame = RawAgentMessage::sync(id, path);
-    let mut encoder = RawAgentMessageEncoder;
+    let frame = RawRequestMessage::sync(id, path);
+    let mut encoder = RawRequestMessageEncoder;
     let mut buffer = BytesMut::new();
 
     assert!(encoder.encode(frame, &mut buffer).is_ok());
@@ -99,8 +96,8 @@ fn encode_unlink_frame() {
     let node = "my_node";
     let lane = "lane";
     let path = RelativePath::new(node, lane);
-    let frame = RawAgentMessage::unlink(id, path);
-    let mut encoder = RawAgentMessageEncoder;
+    let frame = RawRequestMessage::unlink(id, path);
+    let mut encoder = RawRequestMessageEncoder;
     let mut buffer = BytesMut::new();
 
     assert!(encoder.encode(frame, &mut buffer).is_ok());
@@ -129,9 +126,9 @@ fn encode_command_frame() {
     let lane = "lane";
     let path = RelativePath::new(node, lane);
     let body = "@Example { first: 1, second: 2 }";
-    let frame = RawAgentMessage::command(id, path, body.as_bytes());
+    let frame = RawRequestMessage::command(id, path, body.as_bytes());
 
-    let mut encoder = RawAgentMessageEncoder;
+    let mut encoder = RawRequestMessageEncoder;
     let mut buffer = BytesMut::new();
 
     assert!(encoder.encode(frame, &mut buffer).is_ok());
@@ -184,7 +181,7 @@ where
     T: RecognizerReadable,
 {
     let mut decoder = AgentMessageDecoder::<T, _>::new(T::make_recognizer());
-    let mut encoder = RawAgentMessageEncoder;
+    let mut encoder = RawRequestMessageEncoder;
 
     let mut buffer = BytesMut::new();
     assert!(encoder.encode(frame, &mut buffer).is_ok());
@@ -204,7 +201,7 @@ fn decode_link_frame() {
     let node = "my_node";
     let lane = "lane";
 
-    let frame = RawAgentMessage::link(id, RelativePath::new(node, lane));
+    let frame = RawRequestMessage::link(id, RelativePath::new(node, lane));
     let result = round_trip::<Example>(frame);
 
     check_result(
@@ -219,7 +216,7 @@ fn decode_sync_frame() {
     let node = "my_node";
     let lane = "lane";
 
-    let frame = RawAgentMessage::sync(id, RelativePath::new(node, lane));
+    let frame = RawRequestMessage::sync(id, RelativePath::new(node, lane));
     let result = round_trip::<Example>(frame);
 
     check_result(
@@ -234,7 +231,7 @@ fn decode_unlink_frame() {
     let node = "my_node";
     let lane = "lane";
 
-    let frame = RawAgentMessage::unlink(id, RelativePath::new(node, lane));
+    let frame = RawRequestMessage::unlink(id, RelativePath::new(node, lane));
     let result = round_trip::<Example>(frame);
 
     check_result(
@@ -255,7 +252,7 @@ fn decode_command_frame() {
     };
     let as_text = print_recon_compact(&record).to_string();
 
-    let frame = RawAgentMessage::command(id, RelativePath::new(node, lane), as_text.as_bytes());
+    let frame = RawRequestMessage::command(id, RelativePath::new(node, lane), as_text.as_bytes());
 
     let result = round_trip::<Example>(frame);
 
@@ -275,7 +272,7 @@ async fn multiple_frames() {
 
     let (tx, rx) = byte_channel::byte_channel(CHANNEL_SIZE);
 
-    let mut framed_write = FramedWrite::new(tx, RawAgentMessageEncoder);
+    let mut framed_write = FramedWrite::new(tx, RawRequestMessageEncoder);
     let decoder = AgentMessageDecoder::<Example, _>::new(Example::make_recognizer());
 
     let mut framed_read = FramedRead::new(rx, decoder);
@@ -294,10 +291,10 @@ async fn multiple_frames() {
     let str2 = print_recon_compact(&record2).to_string();
 
     let frames = vec![
-        RawAgentMessage::sync(id, RelativePath::new(node, lane)),
-        RawAgentMessage::command(id, RelativePath::new(node, lane), str1.as_bytes()),
-        RawAgentMessage::command(id, RelativePath::new(node, lane), str2.as_bytes()),
-        RawAgentMessage::unlink(id, RelativePath::new(node, lane)),
+        RawRequestMessage::sync(id, RelativePath::new(node, lane)),
+        RawRequestMessage::command(id, RelativePath::new(node, lane), str1.as_bytes()),
+        RawRequestMessage::command(id, RelativePath::new(node, lane), str2.as_bytes()),
+        RawRequestMessage::unlink(id, RelativePath::new(node, lane)),
     ];
 
     let send_task = async move {
@@ -336,4 +333,131 @@ async fn multiple_frames() {
 
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), expected);
+}
+
+#[test]
+fn encode_linked_frame() {
+    let id = make_addr();
+    let node = "my_node";
+    let lane = "lane";
+    let path = RelativePath::new(node, lane);
+    let frame = ResponseMessage::<Example>::linked(id, path);
+    let mut encoder = ResponseMessageEncoder;
+    let mut buffer = BytesMut::new();
+
+    assert!(encoder.encode(frame, &mut buffer).is_ok());
+
+    assert_eq!(buffer.len(), HEADER_INIT_LEN + node.len() + lane.len());
+
+    assert_eq!(buffer.get_u128(), id.uuid().as_u128());
+    assert_eq!(buffer.get_u32(), node.len() as u32);
+    assert_eq!(buffer.get_u32(), lane.len() as u32);
+    let body_descriptor = buffer.get_u64();
+
+    let tag = body_descriptor >> OP_SHIFT;
+    assert_eq!(tag, LINKED);
+
+    let body_len = body_descriptor & !OP_MASK;
+    assert_eq!(body_len, 0);
+    assert_eq!(&buffer.as_ref()[0..node.len()], node.as_bytes());
+    buffer.advance(node.len());
+    assert_eq!(buffer.as_ref(), lane.as_bytes());
+}
+
+#[test]
+fn encode_synced_frame() {
+    let id = make_addr();
+    let node = "my_node";
+    let lane = "lane";
+    let path = RelativePath::new(node, lane);
+    let frame = ResponseMessage::<Example>::synced(id, path);
+    let mut encoder = ResponseMessageEncoder;
+    let mut buffer = BytesMut::new();
+
+    assert!(encoder.encode(frame, &mut buffer).is_ok());
+
+    assert_eq!(buffer.len(), HEADER_INIT_LEN + node.len() + lane.len());
+
+    assert_eq!(buffer.get_u128(), id.uuid().as_u128());
+    assert_eq!(buffer.get_u32(), node.len() as u32);
+    assert_eq!(buffer.get_u32(), lane.len() as u32);
+    let body_descriptor = buffer.get_u64();
+
+    let tag = body_descriptor >> OP_SHIFT;
+    assert_eq!(tag, SYNCED);
+
+    let body_len = body_descriptor & !OP_MASK;
+    assert_eq!(body_len, 0);
+    assert_eq!(&buffer.as_ref()[0..node.len()], node.as_bytes());
+    buffer.advance(node.len());
+    assert_eq!(buffer.as_ref(), lane.as_bytes());
+}
+
+#[test]
+fn encode_unlinked_frame() {
+    let id = make_addr();
+    let node = "my_node";
+    let lane = "lane";
+    let path = RelativePath::new(node, lane);
+    let frame = ResponseMessage::<Example>::unlinked(id, path);
+    let mut encoder = ResponseMessageEncoder;
+    let mut buffer = BytesMut::new();
+
+    assert!(encoder.encode(frame, &mut buffer).is_ok());
+
+    assert_eq!(buffer.len(), HEADER_INIT_LEN + node.len() + lane.len());
+
+    assert_eq!(buffer.get_u128(), id.uuid().as_u128());
+    assert_eq!(buffer.get_u32(), node.len() as u32);
+    assert_eq!(buffer.get_u32(), lane.len() as u32);
+    let body_descriptor = buffer.get_u64();
+
+    let tag = body_descriptor >> OP_SHIFT;
+    assert_eq!(tag, UNLINKED);
+
+    let body_len = body_descriptor & !OP_MASK;
+    assert_eq!(body_len, 0);
+    assert_eq!(&buffer.as_ref()[0..node.len()], node.as_bytes());
+    buffer.advance(node.len());
+    assert_eq!(buffer.as_ref(), lane.as_bytes());
+}
+
+#[test]
+fn encode_event_frame() {
+    let id = make_addr();
+    let node = "my_node";
+    let lane = "lane";
+    let path = RelativePath::new(node, lane);
+    let body = Example { first: 0, second: 0 };
+    let expected_body = format!("{}", print_recon_compact(&body));
+
+    let frame = ResponseMessage::event(id, path, body);
+
+    let mut encoder = ResponseMessageEncoder;
+    let mut buffer = BytesMut::new();
+
+    assert!(encoder.encode(frame, &mut buffer).is_ok());
+
+    assert_eq!(
+        buffer.len(),
+        HEADER_INIT_LEN + node.len() + lane.len() + expected_body.len()
+    );
+
+    assert_eq!(buffer.get_u128(), id.uuid().as_u128());
+    assert_eq!(buffer.get_u32(), node.len() as u32);
+    assert_eq!(buffer.get_u32(), lane.len() as u32);
+    let body_descriptor = buffer.get_u64();
+
+    let tag = body_descriptor >> OP_SHIFT;
+    assert_eq!(tag, EVENT);
+
+    let body_len = (body_descriptor & !OP_MASK) as usize;
+    assert_eq!(body_len, expected_body.len());
+
+    assert_eq!(&buffer.as_ref()[0..node.len()], node.as_bytes());
+    buffer.advance(node.len());
+    assert_eq!(&buffer.as_ref()[0..lane.len()], lane.as_bytes());
+    buffer.advance(lane.len());
+
+    assert_eq!(buffer.as_ref(), expected_body.as_bytes());
 }

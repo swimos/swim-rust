@@ -157,16 +157,16 @@ impl<T> ResponseMessage<T> {
 }
 
 /// An agent message where the body is uninterpreted (represented as raw bytes).
-pub type RawAgentMessage<'a> = RequestMessage<&'a [u8]>;
+pub type RawRequestMessage<'a> = RequestMessage<&'a [u8]>;
 
 /// An agent message where the body is uninterpreted (represented as raw bytes).
-pub type RawAgentResponse = ResponseMessage<Bytes>;
+pub type RawResponseMessage = ResponseMessage<Bytes>;
 
-/// Tokio [`Encoder`] to encode a [`RawAgentMessage`] as a byte stream.
-pub struct RawAgentMessageEncoder;
+/// Tokio [`Encoder`] to encode a [`RawRequestMessage`] as a byte stream.
+pub struct RawRequestMessageEncoder;
 
-/// Tokio [`Encoder`] to encode an [`AgentResponse`] as a byte stream.
-pub struct AgentResponseEncoder;
+/// Tokio [`Encoder`] to encode an [`ResponseMessage`] as a byte stream.
+pub struct ResponseMessageEncoder;
 
 const OP_SHIFT: usize = 61;
 const OP_MASK: u64 = 0b111 << OP_SHIFT;
@@ -181,11 +181,11 @@ const SYNCED: u64 = 0b101;
 const UNLINKED: u64 = 0b110;
 const EVENT: u64 = 0b111;
 
-impl<'a> Encoder<RawAgentMessage<'a>> for RawAgentMessageEncoder {
+impl<'a> Encoder<RawRequestMessage<'a>> for RawRequestMessageEncoder {
     type Error = std::io::Error;
 
-    fn encode(&mut self, item: RawAgentMessage<'a>, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        let RawAgentMessage {
+    fn encode(&mut self, item: RawRequestMessage<'a>, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        let RawRequestMessage {
             origin: source,
             path: RelativePath { node, lane },
             envelope,
@@ -231,7 +231,7 @@ impl<'a> Encoder<RawAgentMessage<'a>> for RawAgentMessageEncoder {
 const RESERVE_INIT: usize = 256;
 const RESERVE_MULT: usize = 2;
 
-impl<T> Encoder<ResponseMessage<T>> for AgentResponseEncoder
+impl<T> Encoder<ResponseMessage<T>> for ResponseMessageEncoder
 where
     T: StructuralWritable,
 {
@@ -333,7 +333,7 @@ impl<T, R> AgentMessageDecoder<T, R> {
     }
 }
 
-const HEADER_INIT_LEN: usize = 28;
+const HEADER_INIT_LEN: usize = 32;
 
 #[derive(Error, Debug)]
 pub enum AgentMessageDecodeError {
@@ -519,7 +519,7 @@ where
 }
 
 impl Decoder for RawAgentResponseDecoder {
-    type Item = RawAgentResponse;
+    type Item = RawResponseMessage;
     type Error = std::io::Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
@@ -559,12 +559,12 @@ impl Decoder for RawAgentResponseDecoder {
         let path = RelativePath::new(node, lane);
         let tag = (body_len_and_tag & OP_MASK) >> OP_SHIFT;
         match tag {
-            LINKED => Ok(Some(RawAgentResponse::linked(target, path))),
-            SYNCED => Ok(Some(RawAgentResponse::synced(target, path))),
-            UNLINKED => Ok(Some(RawAgentResponse::unlinked(target, path))),
+            LINKED => Ok(Some(RawResponseMessage::linked(target, path))),
+            SYNCED => Ok(Some(RawResponseMessage::synced(target, path))),
+            UNLINKED => Ok(Some(RawResponseMessage::unlinked(target, path))),
             _ => {
                 let body = src.split_to(body_len).freeze();
-                Ok(Some(RawAgentResponse::event(target, path, body)))
+                Ok(Some(RawResponseMessage::event(target, path, body)))
             }
         }
     }

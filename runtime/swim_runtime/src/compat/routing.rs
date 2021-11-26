@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::compat::{ResponseMessage, AgentResponseEncoder};
+use crate::compat::{ResponseMessage, ResponseMessageEncoder};
 use futures::sink;
 use futures::SinkExt;
 use std::marker::PhantomData;
@@ -22,14 +22,14 @@ use tokio::io::AsyncWrite;
 use tokio_util::codec::FramedWrite;
 
 pub struct RouteSender<T, W> {
-    inner: FramedWrite<W, AgentResponseEncoder>,
+    inner: FramedWrite<W, ResponseMessageEncoder>,
     _type: PhantomData<fn(T)>,
 }
 
 impl<T, W: AsyncWrite> RouteSender<T, W> {
     pub fn new(writer: W) -> Self {
         RouteSender {
-            inner: FramedWrite::new(writer, AgentResponseEncoder),
+            inner: FramedWrite::new(writer, ResponseMessageEncoder),
             _type: PhantomData,
         }
     }
@@ -41,7 +41,7 @@ where
     W: AsyncWrite + Unpin + Send + 'static,
 {
     type Error = std::io::Error;
-    type SendFuture = sink::Send<'a, FramedWrite<W, AgentResponseEncoder>, ResponseMessage<T>>;
+    type SendFuture = sink::Send<'a, FramedWrite<W, ResponseMessageEncoder>, ResponseMessage<T>>;
 
     fn send_item(&'a mut self, value: ResponseMessage<T>) -> Self::SendFuture {
         self.inner.send(value)
