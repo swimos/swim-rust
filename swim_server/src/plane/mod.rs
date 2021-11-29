@@ -38,7 +38,7 @@ use swim_runtime::error::{
     ConnectionDropped, ConnectionError, NoAgentAtRoute, ProtocolError, ProtocolErrorKind,
     RouterError, Unresolvable,
 };
-use swim_runtime::remote::RawRoute;
+use swim_runtime::remote::RawOutRoute;
 use swim_runtime::routing::{CloseReceiver, RouterFactory, RoutingAddr, TaggedEnvelope};
 use swim_utilities::future::request::Request;
 use swim_utilities::future::task::Spawner;
@@ -143,11 +143,11 @@ impl LocalEndpoint {
         }
     }
 
-    fn route(&self) -> RawRoute {
+    fn route(&self) -> RawOutRoute {
         let LocalEndpoint {
             channel, drop_rx, ..
         } = self;
-        RawRoute::new(channel.clone(), drop_rx.clone())
+        RawOutRoute::new(channel.clone(), drop_rx.clone())
     }
 }
 
@@ -498,13 +498,36 @@ pub async fn run_plane<Clk, S, DelegateFac: RouterFactory, Store>(
                         event!(Level::WARN, DROPPED_REQUEST);
                     }
                 }
-                Either::Left(Some(PlaneRoutingRequest::Endpoint { id, request })) => {
+                Either::Left(Some(PlaneRoutingRequest::EndpointOut { id, request })) => {
                     if id.is_plane() {
                         event!(Level::TRACE, GETTING_LOCAL_ENDPOINT, ?id);
                         let result = if let Some(tx) = resolver
                             .active_routes
                             .get_endpoint(&id)
                             .map(LocalEndpoint::route)
+                        {
+                            Ok(tx)
+                        } else {
+                            Err(Unresolvable(id))
+                        };
+                        if request.send(result).is_err() {
+                            event!(Level::WARN, DROPPED_REQUEST);
+                        }
+                    } else {
+                        event!(Level::TRACE, GETTING_REMOTE_ENDPOINT, ?id);
+                        //TODO Attach external routing here.
+                        if request.send_err(Unresolvable(id)).is_err() {
+                            event!(Level::WARN, DROPPED_REQUEST);
+                        }
+                    }
+                }
+                Either::Left(Some(PlaneRoutingRequest::EndpointIn { id, request })) => {
+                    if id.is_plane() {
+                        event!(Level::TRACE, GETTING_LOCAL_ENDPOINT, ?id);
+                        let result = if let Some(tx) = resolver
+                            .active_routes
+                            .get_endpoint(&id)
+                            .map(|ep| ep.drop_rx.clone())
                         {
                             Ok(tx)
                         } else {

@@ -15,13 +15,14 @@
 use crate::routing::PlaneRoutingRequest;
 use futures::future::BoxFuture;
 use futures::FutureExt;
-use swim_runtime::error::{ResolutionError, RouterError};
-use swim_runtime::remote::RawRoute;
+use swim_runtime::error::{ConnectionDropped, ResolutionError, RouterError};
+use swim_runtime::remote::RawOutRoute;
 use swim_runtime::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 use swim_utilities::future::request::Request;
 use swim_utilities::routing::uri::RelativeUri;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
+use swim_utilities::trigger::promise;
 
 #[cfg(test)]
 mod tests;
@@ -91,7 +92,7 @@ impl<Delegate: Router> Router for PlaneRouter<Delegate> {
             let (tx, rx) = oneshot::channel();
             if addr.is_plane() {
                 if request_sender
-                    .send(PlaneRoutingRequest::Endpoint {
+                    .send(PlaneRoutingRequest::EndpointOut {
                         id: addr,
                         request: Request::new(tx),
                     })
@@ -101,7 +102,7 @@ impl<Delegate: Router> Router for PlaneRouter<Delegate> {
                     Err(ResolutionError::router_dropped())
                 } else {
                     match rx.await {
-                        Ok(Ok(RawRoute { sender, on_drop })) => {
+                        Ok(Ok(RawOutRoute { sender, on_drop })) => {
                             Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
                         }
                         Ok(Err(err)) => Err(ResolutionError::unresolvable(err.to_string())),
@@ -113,6 +114,40 @@ impl<Delegate: Router> Router for PlaneRouter<Delegate> {
             }
         }
         .boxed()
+    }
+
+    fn register_interest(&mut self, addr: RoutingAddr) -> BoxFuture<Result<promise::Receiver<ConnectionDropped>, ResolutionError>> {
+        async move {
+            let PlaneRouter {
+                delegate_router,
+                request_sender,
+                ..
+            } = self;
+            let (tx, rx) = oneshot::channel();
+            if addr.is_plane() {
+                if request_sender
+                    .send(PlaneRoutingRequest::EndpointIn {
+                        id: addr,
+                        request: Request::new(tx),
+                    })
+                    .await
+                    .is_err()
+                {
+                    Err(ResolutionError::router_dropped())
+                } else {
+                    match rx.await {
+                        Ok(Ok(on_drop)) => {
+                            Ok(on_drop)
+                        }
+                        Ok(Err(err)) => Err(ResolutionError::unresolvable(err.to_string())),
+                        Err(_) => Err(ResolutionError::router_dropped()),
+                    }
+                }
+            } else {
+                delegate_router.register_interest(addr).await
+            }
+        }
+            .boxed()
     }
 
     fn lookup(

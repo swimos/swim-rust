@@ -55,21 +55,22 @@ use swim_tracing::request::{RequestExt, TryRequestExt};
 pub mod test_fixture;
 
 #[derive(Clone, Debug)]
-pub struct RawRoute {
+pub struct RawOutRoute {
     pub sender: mpsc::Sender<TaggedEnvelope>,
     pub on_drop: promise::Receiver<ConnectionDropped>,
 }
 
-impl RawRoute {
+impl RawOutRoute {
     pub fn new(
         sender: mpsc::Sender<TaggedEnvelope>,
         on_drop: promise::Receiver<ConnectionDropped>,
     ) -> Self {
-        RawRoute { sender, on_drop }
+        RawOutRoute { sender, on_drop }
     }
 }
 
-type EndpointRequest = Request<Result<RawRoute, Unresolvable>>;
+type EndpointOutRequest = Request<Result<RawOutRoute, Unresolvable>>;
+type EndpointInRequest = Request<Result<promise::Receiver<ConnectionDropped>, ConnectionError>>;
 type ResolutionRequest = Request<Result<RoutingAddr, ConnectionError>>;
 type BidirectionalRequest = Request<Result<BidirectionalRegistrator, ConnectionError>>;
 type BidirectionalReceiverRequest = Request<mpsc::Receiver<TaggedEnvelope>>;
@@ -78,9 +79,14 @@ type BidirectionalReceiverRequest = Request<mpsc::Receiver<TaggedEnvelope>>;
 #[derive(Debug)]
 pub enum RemoteRoutingRequest {
     /// Get channel to route messages to a specified routing address.
-    Endpoint {
+    EndpointOut {
         addr: RoutingAddr,
-        request: EndpointRequest,
+        request: EndpointOutRequest,
+    },
+    /// Get channel to route messages from a specified routing address.
+    EndpointIn {
+        addr: RoutingAddr,
+        request: EndpointInRequest,
     },
     /// Resolve the routing address for a host.
     ResolveUrl {
@@ -278,13 +284,23 @@ fn update_state<State: RemoteTasksState>(
             *overall_result = Err(conn_err);
             state.stop();
         }
-        Event::Request(RemoteRoutingRequest::Endpoint { addr, request }) => {
+        Event::Request(RemoteRoutingRequest::EndpointOut { addr, request }) => {
             let result = if let Some(tx) = state.table_resolve(addr) {
                 Ok(tx)
             } else {
                 Err(Unresolvable(addr))
             };
             request.send_debug(result, REQUEST_DROPPED);
+        }
+        Event::Request(RemoteRoutingRequest::EndpointIn { addr, request }) => {
+            if let Some(bidirectional_route) = state.table_resolve_bidirectional(addr) {
+                //TODO Clean this up.
+                state.defer_new_receiver(request, bidirectional_route);
+
+            } else {
+                let err = ConnectionError::Resolution(ResolutionError::new(ResolutionErrorKind::Unresolvable, None));
+                request.send_err_debug(err, UNRESOLVABLE_BIDIRECTIONAL);
+            }
         }
         Event::Request(RemoteRoutingRequest::Bidirectional { host, request }) => {
             match SchemeHostPort::try_from(host.clone()) {
@@ -391,6 +407,9 @@ fn update_state<State: RemoteTasksState>(
                     )),
                 );
             }
+        }
+        Event::Deferred(DeferredResult::NewRouteReceiver { request, result }) => {
+            request.send_debug(result, FAILED_CLIENT_CONN);
         }
         Event::ConnectionClosed(addr, reason) => {
             if let Some(tx) = state.table_remove(addr) {

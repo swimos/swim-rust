@@ -161,6 +161,15 @@ pub struct BidirectionalRoute {
 }
 
 impl BidirectionalRoute {
+
+    pub fn into_on_drop(self) -> promise::Receiver<ConnectionDropped> {
+        let BidirectionalRoute { on_drop, .. } = self;
+        on_drop
+    }
+
+}
+
+impl BidirectionalRoute {
     pub fn new(
         sender: TaggedSender,
         receiver: mpsc::Receiver<TaggedEnvelope>,
@@ -177,9 +186,12 @@ impl BidirectionalRoute {
 /// Trait for routers capable of resolving addresses and returning connections to them.
 /// The connections can only be used to send [`Envelope`]s to the corresponding addresses.
 pub trait Router: Send + Sync {
+
     /// Given a routing address, resolve the corresponding router entry
     /// consisting of a sender that will push envelopes to the endpoint.
     fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>>;
+
+    fn register_interest(&mut self, addr: RoutingAddr) -> BoxFuture<Result<promise::Receiver<ConnectionDropped>, ResolutionError>>;
 
     /// Find and return the corresponding routing address of an endpoint for a given route.
     fn lookup(

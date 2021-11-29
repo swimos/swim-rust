@@ -18,7 +18,7 @@ use futures::future::join;
 use swim_runtime::error::{
     ConnectionError, ProtocolError, ResolutionErrorKind, RouterError, Unresolvable,
 };
-use swim_runtime::remote::RawRoute;
+use swim_runtime::remote::RawOutRoute;
 use swim_runtime::routing::{Router, RouterFactory, RoutingAddr, TaggedEnvelope};
 use swim_utilities::trigger::promise;
 use swim_warp::envelope::Envelope;
@@ -41,10 +41,10 @@ async fn plane_router_get_sender() {
 
     let provider_task = async move {
         while let Some(req) = req_rx.recv().await {
-            if let PlaneRoutingRequest::Endpoint { id, request } = req {
+            if let PlaneRoutingRequest::EndpointOut { id, request } = req {
                 if id == addr {
                     assert!(request
-                        .send_ok(RawRoute::new(send_tx.clone(), drop_rx.clone()))
+                        .send_ok(RawOutRoute::new(send_tx.clone(), drop_rx.clone()))
                         .is_ok());
                 } else {
                     assert!(request.send_err(Unresolvable(id)).is_ok());

@@ -32,7 +32,7 @@ use swim_model::path::{Addressable, RelativePath};
 use swim_runtime::configuration::DownlinkConnectionsConfig;
 use swim_runtime::error::ConnectionDropped;
 use swim_runtime::error::{CloseError, ConnectionError, HttpError, ResolutionError, Unresolvable};
-use swim_runtime::remote::RawRoute;
+use swim_runtime::remote::RawOutRoute;
 use swim_runtime::routing::{
     BidirectionalRoute, BidirectionalRouter, CloseReceiver, Route, Router, RouterFactory,
     RoutingAddr, TaggedEnvelope, TaggedSender,
@@ -295,7 +295,7 @@ enum RegistratorRequest<Path: Addressable> {
         conn_type: ConnectionType,
     },
     Resolve {
-        request: Request<Result<RawRoute, Unresolvable>>,
+        request: Request<Result<RawOutRoute, Unresolvable>>,
     },
 }
 
@@ -422,7 +422,7 @@ impl<Path: Addressable, DelegateRouter: BidirectionalRouter>
             None => {
                 let (local_drop_tx, local_drop_rx) = promise::promise();
                 let (envelope_sender, envelope_receiver) = mpsc::channel(config.buffer_size.get());
-                let raw_route = RawRoute::new(envelope_sender, local_drop_rx);
+                let raw_route = RawOutRoute::new(envelope_sender, local_drop_rx);
 
                 (envelope_receiver, Some(raw_route), Some(local_drop_tx))
             }

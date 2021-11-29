@@ -19,9 +19,9 @@ use crate::remote::pending::PendingRequest;
 use crate::remote::pending::PendingRequests;
 use crate::remote::table::{BidirectionalRegistrator, RoutingTable, SchemeHostPort};
 use crate::remote::task::TaskFactory;
-use crate::remote::{ExternalConnections, Listener, SchemeSocketAddr};
-use crate::remote::{RawRoute, RemoteConnectionChannels, RemoteRoutingRequest, SchemeSocketAddrIt};
-use crate::routing::CloseReceiver;
+use crate::remote::{EndpointInRequest, ExternalConnections, Listener, SchemeSocketAddr};
+use crate::remote::{RawOutRoute, RemoteConnectionChannels, RemoteRoutingRequest, SchemeSocketAddrIt};
+use crate::routing::{BidirectionalRoute, CloseReceiver};
 use crate::routing::{RouterFactory, RoutingAddr};
 use crate::ws::WsConnections;
 use futures::future::{BoxFuture, Fuse};
@@ -81,6 +81,10 @@ pub trait RemoteTasksState {
         remaining: SchemeSocketAddrIt,
     );
 
+    fn defer_new_receiver(&mut self,
+                          request: EndpointInRequest,
+                          registrator: BidirectionalRegistrator);
+
     /// Add a deferred DNS lookup for a host.
     fn defer_dns_lookup(&mut self, target: SchemeHostPort, resolution_request: PendingRequest);
 
@@ -88,7 +92,7 @@ pub trait RemoteTasksState {
     fn fail_connection(&mut self, host: &SchemeHostPort, error: ConnectionError);
 
     /// Resolve an entry in the routing table.
-    fn table_resolve(&self, addr: RoutingAddr) -> Option<RawRoute>;
+    fn table_resolve(&self, addr: RoutingAddr) -> Option<RawOutRoute>;
 
     /// Resolve a bidirectional route in the routing table.
     fn table_resolve_bidirectional(&self, addr: RoutingAddr) -> Option<BidirectionalRegistrator>;
@@ -231,6 +235,18 @@ where
         });
     }
 
+    fn defer_new_receiver(&mut self,
+                          request: EndpointInRequest,
+                          registrator: BidirectionalRegistrator) {
+        self.defer(async move {
+            let result = registrator.register().await
+                .map(|BidirectionalRoute { on_drop, .. }| {
+                    on_drop
+                }).map_err(Into::into);
+            DeferredResult::NewRouteReceiver { request, result }
+        });
+    }
+
     fn defer_dns_lookup(&mut self, target: SchemeHostPort, resolution_request: PendingRequest) {
         let target_cpy = target.clone();
         let external = self.external.clone();
@@ -248,7 +264,7 @@ where
         self.pending.send_err(host, error);
     }
 
-    fn table_resolve(&self, addr: RoutingAddr) -> Option<RawRoute> {
+    fn table_resolve(&self, addr: RoutingAddr) -> Option<RawOutRoute> {
         self.table.resolve(addr)
     }
 
@@ -431,6 +447,10 @@ pub enum DeferredResult<Snk> {
         result: io::Result<SchemeSocketAddrIt>,
         host: SchemeHostPort,
     },
+    NewRouteReceiver {
+        request: EndpointInRequest,
+        result: Result<promise::Receiver<ConnectionDropped>, ConnectionError>,
+    }
 }
 
 impl<Snk> DeferredResult<Snk> {

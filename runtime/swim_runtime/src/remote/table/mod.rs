@@ -17,7 +17,7 @@ mod tests;
 
 use crate::error::ConnectionDropped;
 use crate::error::ResolutionError;
-use crate::remote::{BadUrl, BidirectionalReceiverRequest, RawRoute, Scheme, SchemeSocketAddr};
+use crate::remote::{BadUrl, BidirectionalReceiverRequest, RawOutRoute, Scheme, SchemeSocketAddr};
 use crate::routing::{BidirectionalRoute, RoutingAddr, TaggedEnvelope, TaggedSender};
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
@@ -110,10 +110,10 @@ impl RoutingTable {
     }
 
     /// Get the entry in the table associated with a routing key, if it exists.
-    pub fn resolve(&self, addr: RoutingAddr) -> Option<RawRoute> {
+    pub fn resolve(&self, addr: RoutingAddr) -> Option<RawOutRoute> {
         self.endpoints
             .get(&addr)
-            .map(|h| RawRoute::new(h.tx.clone(), h.drop_rx.clone()))
+            .map(|h| RawOutRoute::new(h.tx.clone(), h.drop_rx.clone()))
     }
 
     /// Get a bidirectional connection to the routing address, if it exists.

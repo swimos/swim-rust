@@ -15,7 +15,7 @@
 use crate::error::{ConnectionError, IoError, ResolutionError, RouterError, Unresolvable};
 use crate::remote::router::RemoteRouter;
 use crate::remote::test_fixture::LocalRoutes;
-use crate::remote::{RawRoute, RemoteRoutingRequest};
+use crate::remote::{RawOutRoute, RemoteRoutingRequest};
 use crate::routing::{Route, Router, RoutingAddr, TaggedEnvelope};
 use futures::future::join;
 use futures::io::ErrorKind;
@@ -43,10 +43,10 @@ async fn fake_resolution(
 
     while let Some(request) = rx.next().await {
         match request {
-            RemoteRoutingRequest::Endpoint { addr, request } => {
+            RemoteRoutingRequest::EndpointOut { addr, request } => {
                 if resolved && addr == ADDR {
                     assert!(request
-                        .send_ok(RawRoute::new(sender.clone(), drop_rx.clone()))
+                        .send_ok(RawOutRoute::new(sender.clone(), drop_rx.clone()))
                         .is_ok());
                 } else {
                     assert!(request.send_err(Unresolvable(addr)).is_ok());

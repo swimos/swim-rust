@@ -17,7 +17,7 @@ use crate::remote::pending::PendingRequest;
 use crate::remote::state::{DeferredResult, Event, RemoteTasksState};
 use crate::remote::table::{BidirectionalRegistrator, RoutingTable, SchemeHostPort};
 use crate::remote::{
-    BidirectionalRequest, ConnectionDropped, RawRoute, RemoteRoutingRequest, Scheme,
+    BidirectionalRequest, ConnectionDropped, RawOutRoute, RemoteRoutingRequest, Scheme,
     SchemeSocketAddr, SchemeSocketAddrIt, Unresolvable,
 };
 use crate::routing::{RoutingAddr, TaggedEnvelope};
@@ -143,7 +143,7 @@ impl RemoteTasksState for FakeRemoteState {
             .push(StateMutation::FailConnection(host.clone(), error));
     }
 
-    fn table_resolve(&self, addr: RoutingAddr) -> Option<RawRoute> {
+    fn table_resolve(&self, addr: RoutingAddr) -> Option<RawOutRoute> {
         self.table.resolve(addr)
     }
 
@@ -227,7 +227,7 @@ async fn transition_request_endpoint_in_table() {
         .insert(addr, None, sa, route_tx, bidirectional_tx);
     let mut result = Ok(());
 
-    let event = Event::Request(RemoteRoutingRequest::Endpoint { addr, request });
+    let event = Event::Request(RemoteRoutingRequest::EndpointOut { addr, request });
     super::update_state(&mut state, &mut result, event);
 
     state.check(vec![]);
@@ -235,7 +235,7 @@ async fn transition_request_endpoint_in_table() {
 
     let result = req_rx.await;
     match result {
-        Ok(Ok(RawRoute { sender, .. })) => {
+        Ok(Ok(RawOutRoute { sender, .. })) => {
             assert!(sender.send(envelope.clone()).await.is_ok());
             assert_eq!(route_rx.recv().now_or_never(), Some(Some(envelope)))
         }
@@ -256,7 +256,7 @@ async fn transition_request_endpoint_not_in_table() {
 
     let mut result = Ok(());
 
-    let event = Event::Request(RemoteRoutingRequest::Endpoint { addr, request });
+    let event = Event::Request(RemoteRoutingRequest::EndpointOut { addr, request });
     super::update_state(&mut state, &mut result, event);
 
     state.check(vec![]);
