@@ -20,6 +20,7 @@ pub mod meta;
 #[macro_use]
 pub mod macros;
 pub mod routing;
+mod scheduler;
 pub mod sync {
     pub mod circular_buffer {
         pub use swim_utilities::sync::circular_buffer::{

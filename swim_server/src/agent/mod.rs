@@ -23,7 +23,7 @@ mod tests;
 #[cfg(test)]
 pub use tests::test_clock::TestClock;
 
-use crate::agent::context::{AgentExecutionContext, ContextImpl, RoutingContext, SchedulerContext};
+use crate::agent::context::{AgentExecutionContext, ContextImpl, RoutingContext};
 use crate::agent::dispatch::error::DispatcherErrors;
 use crate::agent::dispatch::{AgentDispatcher, LaneIdentifier};
 use crate::agent::lane::channels::task::{
@@ -96,6 +96,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
 use tracing_futures::{Instrument, Instrumented};
+use crate::scheduler::SchedulerContext;
 
 /// Trait that must be implemented for any agent. This is essentially just boilerplate and will
 /// eventually be implemented using a derive macro.
