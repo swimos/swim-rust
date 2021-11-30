@@ -74,18 +74,21 @@ where
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>)
     where
         Clk: Clock,
-        Envelopes: Stream<Item = TaggedEnvelope> + Send + 'static,
+        Envelopes: Stream<Item = TaggedEnvelope> + Send + Unpin + 'static,
         R: Router + Clone + 'static,
         Store: NodeStore,
     {
         let AgentProvider { lifecycle, .. } = self;
+        use swim_runtime::compat;
+        let messages =
+            compat::stop_on_failed(compat::messages_from_envelopes(incoming_envelopes), None);
 
         let (agent, task) = crate::agent::run_agent(
             lifecycle.clone(),
             clock,
             client_context,
             agent_parameters,
-            incoming_envelopes,
+            messages,
             router,
             store,
         );
@@ -97,7 +100,7 @@ impl<Clk, Envelopes, R, Agent, Config, Lifecycle, Store> AgentRoute<Clk, Envelop
     for AgentProvider<Agent, Config, Lifecycle>
 where
     Clk: Clock,
-    Envelopes: Stream<Item = TaggedEnvelope> + Send + 'static,
+    Envelopes: Stream<Item = TaggedEnvelope> + Send + Unpin + 'static,
     R: Router + Clone + 'static,
     Agent: SwimAgent<Config> + Send + Sync + Debug + 'static,
     Config: Send + Sync + Clone + Debug + 'static,

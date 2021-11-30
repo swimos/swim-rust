@@ -17,21 +17,26 @@ pin-project = "1.0.5"
 pin-utils = "0.1.0"
 tokio = { version = "1.1.1", features = ["sync", "rt"] }
 tokio-native-tls = "0.3"
-swim_utilities = { path = "../../swim_utilities", features = ["errors", "circular_buffer", "future", "lrucache"] }
+tokio-util = { version = "0.6.8", features = ["codec"] }
+swim_utilities = { path = "../../swim_utilities", features = ["circular_buffer", "errors", "future", "lrucache"] }
 url = "2.1.1"
 swim_model = { path = "../../api/swim_model" }
 swim_form = { path = "../../api/swim_form" }
 swim_async_runtime = { path = "../swim_async_runtime" }
 swim_warp = { path = "../../swim_warp" }
 swim_tracing = { path = "../../swim_utilities/swim_tracing", features = ["future"] }
-swim_recon = { path = "../../api/formats/swim_recon" }
+swim_recon = { path = "../../api/formats/swim_recon", features = ["async_parser"] }
 slab = "0.4.2"
 tracing = "0.1.16"
 thiserror = "1.0"
 im = "15.0.0"
 tokio-stream = { version = "0.1.2", features = ["sync"] }
+uuid = "0.8.2"
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["macros", "test-util"] }
 parking_lot = "0.11.0"
 tokio-stream = "0.1.2"
+uuid = { version = "0.8.2", features = ["v4"] }
+swim_utilities = { path = "../../swim_utilities", features = ["buf_channel"] }
+rand = "0.7.3"

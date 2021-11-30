@@ -94,12 +94,12 @@ pub trait RecognizerReadable: Sized {
         writable.write_into(bridge)
     }
 
-    /// Attempte to create an instance of thist type from a [`Value`] model.
+    /// Attempt to create an instance of thist type from a [`Value`] model.
     fn try_interpret_structure(value: &Value) -> Result<Self, ReadError> {
         Self::try_read_from(value)
     }
 
-    /// Attempte to create an instance of thist type from a [`Value`] model, possibly consuming
+    /// Attempt to create an instance of thist type from a [`Value`] model, possibly consuming
     /// the model.
     fn try_from_structure(value: Value) -> Result<Self, ReadError> {
         Self::try_transform(value)

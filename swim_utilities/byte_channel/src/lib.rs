@@ -101,13 +101,14 @@ impl AsyncRead for Conduit {
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<IoResult<()>> {
-        let remaining = buf.remaining();
-        if self.data.has_remaining() && remaining > 0 {
-            let count = self.data.remaining().min(remaining);
-            self.read(buf, count);
+        if self.data.has_remaining() {
+            let count = self.data.remaining().min(buf.remaining());
+            if count > 0 {
+                self.read(buf, count);
+            }
             Poll::Ready(Ok(()))
         } else if self.closed {
-            Poll::Ready(Err(ErrorKind::BrokenPipe.into()))
+            Poll::Ready(Ok(()))
         } else {
             debug_assert!(self.waker.is_none());
             self.waker = Some(cx.waker().clone());

@@ -42,6 +42,12 @@ pub enum AsyncParseError {
     UnconsumedInput,
 }
 
+impl Default for AsyncParseError {
+    fn default() -> Self {
+        AsyncParseError::UnconsumedInput
+    }
+}
+
 impl Display for AsyncParseError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {

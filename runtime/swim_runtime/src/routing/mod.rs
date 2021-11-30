@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::error::{ConnectionDropped, ResolutionError, RouterError, RoutingError};
+use std::convert::TryFrom;
 
 use futures::future::BoxFuture;
 use futures::FutureExt;
@@ -23,59 +24,102 @@ use swim_utilities::trigger::promise;
 use swim_warp::envelope::{Envelope, RequestEnvelope};
 use tokio::sync::mpsc;
 use url::Url;
+use uuid::Uuid;
 
 pub type CloseReceiver = promise::Receiver<mpsc::Sender<Result<(), RoutingError>>>;
 pub type CloseSender = promise::Sender<mpsc::Sender<Result<(), RoutingError>>>;
 
+#[cfg(test)]
+mod tests;
+
 /// A key into the server routing table specifying an endpoint to which [`Envelope`]s can be sent.
 /// This is deliberately non-descriptive to allow it to be [`Copy`] and so very cheap to use as a
 /// key.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum Location {
-    /// Indicates that envelopes will be routed to a remote host.
-    Remote(u32),
-    /// Indicates that envelopes will be routed to another agent on this host.
-    Plane(u32),
-    /// Indicates that envelopes will be routed to a downlink on the client.
-    Client(u32),
-}
+type Location = Uuid;
 
 /// An opaque routing address.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RoutingAddr(Location);
 
+const REMOTE: u8 = 0;
+const PLANE: u8 = 1;
+const CLIENT: u8 = 2;
+
 impl RoutingAddr {
+    const fn new(tag: u8, id: u32) -> Self {
+        let mut uuid_as_int = id as u128;
+        uuid_as_int &= (tag as u128) << 96;
+        RoutingAddr(Uuid::from_u128(uuid_as_int))
+    }
+
     pub const fn remote(id: u32) -> Self {
-        RoutingAddr(Location::Remote(id))
+        RoutingAddr::new(REMOTE, id)
     }
 
     pub const fn plane(id: u32) -> Self {
-        RoutingAddr(Location::Plane(id))
+        RoutingAddr::new(PLANE, id)
     }
 
     pub const fn client(id: u32) -> Self {
-        RoutingAddr(Location::Client(id))
+        RoutingAddr::new(CLIENT, id)
     }
 
     pub fn is_plane(&self) -> bool {
-        matches!(self, RoutingAddr(Location::Plane(_)))
+        let RoutingAddr(inner) = self;
+        inner.as_bytes()[0] == PLANE
     }
 
     pub fn is_remote(&self) -> bool {
-        matches!(self, RoutingAddr(Location::Remote(_)))
+        let RoutingAddr(inner) = self;
+        inner.as_bytes()[0] == REMOTE
     }
 
     pub fn is_client(&self) -> bool {
-        matches!(self, RoutingAddr(Location::Client(_)))
+        let RoutingAddr(inner) = self;
+        inner.as_bytes()[0] == CLIENT
+    }
+
+    pub fn uuid(&self) -> &Uuid {
+        &self.0
     }
 }
 
 impl Display for RoutingAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RoutingAddr(Location::Remote(id)) => write!(f, "Remote({:X})", id),
-            RoutingAddr(Location::Plane(id)) => write!(f, "Plane({:X})", id),
-            RoutingAddr(Location::Client(id)) => write!(f, "Client({:X})", id),
+        let RoutingAddr(inner) = self;
+        match inner.as_bytes()[0] {
+            REMOTE => write!(f, "Remote({:X})", inner),
+            PLANE => write!(f, "Plane({:X})", inner),
+            _ => write!(f, "Client({:X})", inner),
+        }
+    }
+}
+
+impl From<RoutingAddr> for Uuid {
+    fn from(addr: RoutingAddr) -> Self {
+        addr.0
+    }
+}
+
+#[derive(Debug)]
+pub struct InvalidRoutingAddr(Uuid);
+
+impl Display for InvalidRoutingAddr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} is not a valid routing address.", &self.0)
+    }
+}
+
+impl std::error::Error for InvalidRoutingAddr {}
+
+impl TryFrom<Uuid> for RoutingAddr {
+    type Error = InvalidRoutingAddr;
+
+    fn try_from(value: Uuid) -> Result<Self, Self::Error> {
+        if value.as_bytes()[0] <= CLIENT {
+            Ok(RoutingAddr(value))
+        } else {
+            Err(InvalidRoutingAddr(value))
         }
     }
 }
