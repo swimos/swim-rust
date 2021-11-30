@@ -168,14 +168,12 @@ mod parser {
             Some(Ok(HeaderReadEvent::Slot(name, Either::Left(value)))) if name == expected => {
                 Ok(value.into())
             }
-            Some(Ok(_)) => return Err(HeaderParseErr::UnexpectedItem("string".into())),
-            Some(Err(e)) => return Err(HeaderParseErr::Malformatted(e.to_string())),
-            None => {
-                return Err(HeaderParseErr::Malformatted(format!(
-                    "Missing slot: `{}`",
-                    expected
-                )))
-            }
+            Some(Ok(_)) => Err(HeaderParseErr::UnexpectedItem("string".into())),
+            Some(Err(e)) => Err(HeaderParseErr::Malformatted(e.to_string())),
+            None => Err(HeaderParseErr::Malformatted(format!(
+                "Missing slot: `{}`",
+                expected
+            ))),
         }
     }
 
@@ -225,7 +223,7 @@ mod parser {
     ) -> Result<&'a str, HeaderParseErr> {
         match parser.next() {
             None => Ok(&repr[parser.offset()..]),
-            e => Err(HeaderParseErr::Malformatted("Unconsumed input".into())),
+            _ => Err(HeaderParseErr::Malformatted("Unconsumed input".into())),
         }
     }
 }

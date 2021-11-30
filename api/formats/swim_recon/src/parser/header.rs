@@ -14,7 +14,7 @@
 
 use crate::parser::record::attr_name_final;
 use crate::parser::tokens::complete::{identifier, numeric_literal};
-use crate::parser::tokens::{seperator, string_literal};
+use crate::parser::tokens::{separator, string_literal};
 use crate::parser::Span;
 use either::Either;
 use nom::branch::alt;
@@ -61,11 +61,10 @@ impl<'a> Parser<Span<'a>, ReadEvent<'a>, nom::error::Error<Span<'a>>> for Header
                 let (input, (name, has_body)) = attr(input)?;
                 if has_body {
                     *state = HeaderParserState::ReadingPrimarySlot;
-                    Ok((input, ReadEvent::Tag(name)))
                 } else {
                     *state = HeaderParserState::Fin;
-                    Ok((input, ReadEvent::Tag(name)))
                 }
+                Ok((input, ReadEvent::Tag(name)))
             }
             HeaderParserState::ReadingPrimarySlot => match parse_primary_slot(input) {
                 Ok((input, (name, value))) => {
@@ -181,7 +180,7 @@ fn parse_primary_slot(
 fn parse_secondary_slot(
     input: Span<'_>,
 ) -> IResult<Span<'_>, (Cow<'_, str>, Either<Cow<'_, str>, f64>, bool)> {
-    let (input, _) = preceded(multispace0, seperator)(input)?;
+    let (input, _) = preceded(multispace0, separator)(input)?;
     map(
         pair(
             parse_primary_slot,
