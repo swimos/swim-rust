@@ -146,7 +146,7 @@ fn attr_name(input: Span<'_>) -> IResult<Span<'_>, Cow<'_, str>> {
     alt((string_literal, map(identifier, Cow::Borrowed)))(input)
 }
 
-fn attr_name_final(input: Span<'_>) -> IResult<Span<'_>, Cow<'_, str>> {
+pub fn attr_name_final(input: Span<'_>) -> IResult<Span<'_>, Cow<'_, str>> {
     map(complete::identifier, Cow::Borrowed)(input)
 }
 
@@ -610,7 +610,7 @@ fn parse_init(input: Span<'_>) -> IResult<Span<'_>, (ParseEvents<'_>, Option<Sta
     ))(input)
 }
 
-fn attr(input: Span<'_>) -> IResult<Span<'_>, (Cow<'_, str>, bool)> {
+pub fn attr(input: Span<'_>) -> IResult<Span<'_>, (Cow<'_, str>, bool)> {
     preceded(
         char_str::char('@'),
         pair(attr_name, map(opt(char_str::char('(')), |o| o.is_some())),
