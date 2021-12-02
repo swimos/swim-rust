@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,18 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod backpressure;
-/*
-*TODO A temporary compatibility layer to allow the router to be changed for #397 without changing
-* how agents run. Will enventually be removed.
- */
-pub mod compat;
-pub mod configuration;
-pub mod error;
-pub mod remote;
-pub mod routing;
-pub mod ws;
+use ratchet::{ExtensionEncoder, WebSocketStream};
+use swim_utilities::trigger;
 
-// todo: replacement byte routing infrastructure
-#[allow(dead_code)]
-mod byte_routing;
+pub async fn write_task<S, E>(_sender: ratchet::Sender<S, E>, _stop_on: trigger::Receiver)
+where
+    S: WebSocketStream,
+    E: ExtensionEncoder,
+{
+    //
+}

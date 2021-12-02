@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,18 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod backpressure;
-/*
-*TODO A temporary compatibility layer to allow the router to be changed for #397 without changing
-* how agents run. Will enventually be removed.
- */
-pub mod compat;
-pub mod configuration;
-pub mod error;
-pub mod remote;
-pub mod routing;
-pub mod ws;
+use ratchet::WebSocketConfig;
+use std::time::Duration;
 
-// todo: replacement byte routing infrastructure
-#[allow(dead_code)]
-mod byte_routing;
+mod transport;
+
+// todo
+pub struct TransportConfiguration {
+    /// WebSocket connection configuration.
+    websocket: WebSocketConfig,
+    /// Split messages over this size and send them as continuations.
+    chunk_after: usize,
+    /// Timeout after.
+    timeout: Duration,
+    /// Read forward channel reaper frequency.
+    reap_after: Duration,
+}

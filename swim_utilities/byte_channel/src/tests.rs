@@ -52,10 +52,13 @@ async fn close_writer_empty() {
     let mut buf = BytesMut::new();
     let res = rx.read_buf(&mut buf).await;
 
-    if let Err(e) = res {
-        assert_eq!(e.kind(), ErrorKind::BrokenPipe);
-    } else {
-        panic!("Should fail.");
+    match res {
+        Ok(0) => {
+            assert!(rx.is_closed())
+        }
+        r => {
+            panic!("Expected Ok(0). Got: {:?}", r)
+        }
     }
 }
 
@@ -68,6 +71,7 @@ async fn close_reader_empty() {
 
     if let Err(e) = res {
         assert_eq!(e.kind(), ErrorKind::BrokenPipe);
+        assert!(tx.is_closed());
     } else {
         panic!("Should fail.");
     }
@@ -118,7 +122,7 @@ async fn write_unblocks_read() {
 }
 
 #[tokio::test]
-async fn reader_sees_data_written_before_writer_cloed() {
+async fn reader_sees_data_written_before_writer_closed() {
     let (mut tx, mut rx) = super::byte_channel(NonZeroUsize::new(8).unwrap());
 
     assert!(tx.write(&[0, 1, 2, 3]).await.is_ok());
@@ -132,10 +136,13 @@ async fn reader_sees_data_written_before_writer_cloed() {
 
     let r2 = rx.read_buf(&mut buf).await;
 
-    if let Err(e) = r2 {
-        assert_eq!(e.kind(), ErrorKind::BrokenPipe);
-    } else {
-        panic!("Should fail.")
+    match r2 {
+        Ok(0) => {
+            assert!(rx.is_closed())
+        }
+        r => {
+            panic!("Expected Ok(0). Got: {:?}", r)
+        }
     }
 }
 
@@ -173,7 +180,7 @@ async fn send_bulk() {
         let mut buf = BytesMut::new();
         buf.reserve(DATA_LEN);
         loop {
-            if rx.read_buf(&mut buf).await.is_err() {
+            if let Ok(0) = rx.read_buf(&mut buf).await {
                 break;
             }
         }
@@ -208,7 +215,7 @@ async fn send_bulk_multi_threaded() {
         let mut buf = BytesMut::new();
         buf.reserve(DATA_LEN);
         loop {
-            if rx.read_buf(&mut buf).await.is_err() {
+            if let Ok(0) = rx.read_buf(&mut buf).await {
                 break;
             }
         }
