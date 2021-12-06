@@ -46,20 +46,25 @@ impl<'a> FieldsModel<'a> {
             .any(|model| model.directive == FieldKind::Tagged)
     }
 
-    pub fn newtype_field(&self) -> Option<FieldSelector<'a>> {
+    pub fn newtype_field(&self) -> Result<FieldSelector<'a>, NewtypeFieldError> {
         let mut selector = None;
         for field in &self.fields {
             if field.directive != FieldKind::Skip {
                 if selector.is_some() {
-                    return None;
+                    return Err(NewtypeFieldError::Multiple);
                 } else {
                     selector = Some(field.model.selector);
                 }
             };
         }
 
-        selector
+        selector.ok_or(NewtypeFieldError::Empty)
     }
+}
+
+pub enum NewtypeFieldError {
+    Empty,
+    Multiple,
 }
 
 /// Preprocessed description of a struct type.
@@ -68,9 +73,9 @@ pub struct StructModel<'a> {
     pub name: &'a Ident,
     /// Description of the fields of the struct.
     pub fields_model: FieldsModel<'a>,
+    //Todo dm change comment
     /// Transformation to apply to the name for the tag attribute.
-    pub transform: Option<NameTransform>,
-    pub selector: Option<FieldSelector<'a>>,
+    pub transform: Option<StructTransform<'a>>,
 }
 
 impl<'a> StructModel<'a> {
@@ -78,6 +83,24 @@ impl<'a> StructModel<'a> {
     pub fn resolve_name(&self) -> ResolvedName<'_> {
         ResolvedName(self)
     }
+
+    /// Todo dm add comment
+    pub fn newtype_selector(&self) -> Option<FieldSelector<'a>> {
+        if let Some(StructTransform::Newtype(Some(selector))) = self.transform {
+            Some(selector)
+        } else {
+            None
+        }
+    }
+
+    //Todo dm
+    // pub fn rename_transform(&self) -> Option<FieldSelector<'a>> {
+    //     if let Some(StructTransform::Rename(name_transform)) = self.transform {
+    //         Some(selector)
+    //     } else {
+    //         None
+    //     }
+    // }
 }
 
 pub struct ResolvedName<'a>(&'a StructModel<'a>);
@@ -85,7 +108,7 @@ pub struct ResolvedName<'a>(&'a StructModel<'a>);
 impl<'a> ToTokens for ResolvedName<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let ResolvedName(def) = self;
-        if let Some(trans) = def.transform.as_ref() {
+        if let Some(StructTransform::Rename(trans)) = def.transform.as_ref() {
             match trans {
                 NameTransform::Rename(name) => proc_macro2::Literal::string(name),
             }
@@ -156,37 +179,44 @@ where
 
         let fields_model = FieldsModel::validate(definition.fields());
 
-        let rename = crate::modifiers::fold_attr_meta(
+        let transform = crate::modifiers::fold_attr_meta(
             FORM_PATH,
             attributes.iter(),
             None,
             crate::modifiers::acc_struct_transform,
         );
 
-        validate2(fields_model, rename).and_then(|(model, transform)| {
-            if let Some(StructTransform::Newtype) = transform {
-                if let Some(selector) = model.newtype_field() {
-                    let struct_model = StructModel { name, fields_model: model, transform: None, selector: Some(selector) };
-                    Validation::valid(struct_model)
+        validate2(fields_model, transform).and_then(|(model, transform)| {
+            match transform {
+                Some(StructTransform::Newtype(_)) => {
+                    match model.newtype_field() {
+                        Ok(selector) => {
+                            let struct_model = StructModel { name, fields_model: model, transform: Some(StructTransform::Newtype(Some(selector))) };
+                            Validation::valid(struct_model)
+                        }
+                        Err(NewtypeFieldError::Multiple) => {
+                            let struct_model = StructModel { name, fields_model: model, transform: None };
+                            let err = syn::Error::new_spanned(top, "Cannot apply `newtype` attribute to a multi-field container");
+                            Validation::Validated(struct_model, err.into())
+                        }
+                        Err(NewtypeFieldError::Empty) => {
+                            let struct_model = StructModel { name, fields_model: model, transform: None };
+                            let err = syn::Error::new_spanned(top, "Cannot apply `newtype` attribute to an empty container");
+                            Validation::Validated(struct_model, err.into())
+                        }
+                    }
                 }
-                else {
-                    let struct_model = StructModel { name, fields_model: model, transform: None, selector: None };
-                    let err = syn::Error::new_spanned(top, "Foo error");
-                    Validation::Validated(struct_model, err.into())
-                }
-            } else {
-                let transform = transform.map(|a| match a {
-                    StructTransform::Rename(a) => { a }
-                    StructTransform::Newtype => { unreachable!() }
-                });
+                Some(transform @ StructTransform::Rename(_)) => {
+                    let struct_model = StructModel { name, fields_model: model, transform: Some(transform) };
 
-                let struct_model = StructModel { name, fields_model: model, transform, selector: None };
-                if struct_model.fields_model.has_tag_field() && struct_model.transform.is_some() {
-                    let err = syn::Error::new_spanned(top, "Cannot apply a tag to a field when one has already been applied at the container level");
-                    Validation::Validated(struct_model, err.into())
-                } else {
-                    Validation::valid(struct_model)
+                    if struct_model.fields_model.has_tag_field() {
+                        let err = syn::Error::new_spanned(top, "Cannot apply a tag to a field when one has already been applied at the container level");
+                        Validation::Validated(struct_model, err.into())
+                    } else {
+                        Validation::valid(struct_model)
+                    }
                 }
+                None => { Validation::valid(StructModel { name, fields_model: model, transform: None }) }
             }
         })
     }

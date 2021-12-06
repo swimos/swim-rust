@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::modifiers::NameTransform;
+use crate::modifiers::{NameTransform, StructTransform};
 use crate::structural::model::record::{SegregatedStructModel, StructDef, StructModel};
 use crate::structural::model::ValidateFrom;
 use crate::SynValidation;
@@ -77,6 +77,8 @@ impl<'a> EnumDef<'a> {
 const VARIANT_WITH_TAG: &str = "Enum variants cannot specify a tag field";
 const TAG_SPECIFIED_FOR_ENUM: &str =
     "A tag name cannot be specified for an enum type, only its variants.";
+const NEWTYPE_SPECIFIED_FOR_ENUM: &str =
+    "An enum type cannot be annotated with `newtype`, only its variants.";
 
 impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
     fn validate(input: EnumDef<'a>) -> SynValidation<Self> {
@@ -116,7 +118,7 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
             FORM_PATH,
             attributes.iter(),
             None,
-            crate::modifiers::acc_rename,
+            crate::modifiers::acc_struct_transform,
         );
 
         validate2(variants, rename).and_then(|(variants, transform)| {
@@ -124,7 +126,9 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
                 Validation::valid(HashSet::new()),
                 false,
                 |mut names, v| {
-                    let name = if let Some(NameTransform::Rename(rename)) = &v.transform {
+                    let name = if let Some(StructTransform::Rename(NameTransform::Rename(rename))) =
+                    &v.transform
+                    {
                         rename.clone()
                     } else {
                         v.name.to_string()
@@ -143,11 +147,16 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
             );
             names.and_then(move |_| {
                 let enum_model = EnumModel { name, variants };
-                if transform.is_some() {
-                    let err = syn::Error::new_spanned(top, TAG_SPECIFIED_FOR_ENUM);
-                    Validation::Validated(enum_model, err.into())
-                } else {
-                    Validation::valid(enum_model)
+                match transform {
+                    Some(StructTransform::Newtype(_)) => {
+                        let err = syn::Error::new_spanned(top, NEWTYPE_SPECIFIED_FOR_ENUM);
+                        Validation::Validated(enum_model, err.into())
+                    }
+                    Some(StructTransform::Rename(_)) => {
+                        let err = syn::Error::new_spanned(top, TAG_SPECIFIED_FOR_ENUM);
+                        Validation::Validated(enum_model, err.into())
+                    }
+                    _ => { Validation::valid(enum_model) }
                 }
             })
         })

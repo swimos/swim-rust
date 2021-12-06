@@ -49,6 +49,7 @@ impl<'a> Destructure<'a> {
 }
 
 struct WriteWithFn<'a>(&'a SegregatedStructModel<'a>);
+
 struct WriteIntoFn<'a>(&'a SegregatedStructModel<'a>);
 
 impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedEnumModel<'a>> {
@@ -95,8 +96,15 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedEnumModel<'a>> {
             let name = inner.name;
             let write_with_cases = variants.iter().map(|v| {
                 let destructure = Destructure::variant_match(v.inner);
-                let write_with = WriteWithFn(v);
-                let num_attrs = num_attributes_case(v, true);
+
+                let (write_with, num_attrs) = if let Some(selector) = v.inner.newtype_selector() {
+                    (quote! { #selector.write_with(writer) }, quote! { 0 })
+                } else {
+                    (
+                        WriteWithFn(v).to_token_stream(),
+                        num_attributes_case(v, true).to_token_stream(),
+                    )
+                };
                 quote! {
                     #name::#destructure => {
                         let num_attrs = #num_attrs;
@@ -107,8 +115,16 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedEnumModel<'a>> {
 
             let write_into_cases = variants.iter().map(|v| {
                 let destructure = Destructure::variant_match(v.inner);
-                let write_into = WriteIntoFn(v);
-                let num_attrs = num_attributes_case(v, false);
+
+                let (write_into, num_attrs) = if let Some(selector) = v.inner.newtype_selector() {
+                    (quote! { #selector.write_into(writer) }, quote! { 0 })
+                } else {
+                    (
+                        WriteIntoFn(v).to_token_stream(),
+                        num_attributes_case(v, false).to_token_stream(),
+                    )
+                };
+
                 quote! {
                     #name::#destructure => {
                         let num_attrs = #num_attrs;
@@ -169,74 +185,52 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedStructModel<'a>> {
 
         let destructure = Destructure::assign(inner.inner);
 
-        let writable_impl = if let Some(selector) = inner.inner.selector {
-            let name = inner.inner.name;
-            let writer_trait = make_writer_trait();
-            quote! {
+        let name = inner.inner.name;
+        let writer_trait = make_writer_trait();
 
-                #[automatically_derived]
-                impl #impl_lst swim_form::structural::write::StructuralWritable for #name #ty_params #where_clause {
+        let (write_with, write_into, num_attrs) =
+            if let Some(selector) = inner.inner.newtype_selector() {
+                (
+                    quote! { #selector.write_with(writer) },
+                    quote! { #selector.write_into(writer) },
+                    quote! { 0 },
+                )
+            } else {
+                (
+                    WriteWithFn(inner).to_token_stream(),
+                    WriteIntoFn(inner).to_token_stream(),
+                    num_attributes(inner).to_token_stream(),
+                )
+            };
 
-                    #[inline]
-                    fn num_attributes(&self) -> usize {
-                        0
-                    }
+        let writable_impl = quote! {
 
-                    #[allow(non_snake_case, unused_variables)]
-                    #[inline]
-                    fn write_with<__W: #writer_trait>(&self, writer: __W) -> core::result::Result<__W::Repr, __W::Error> {
-                        use swim_form::structural::write::HeaderWriter;
-                        use swim_form::structural::write::BodyWriter;
-                        let #destructure = self;
-                        #selector.write_with(writer)
-                    }
+            #[automatically_derived]
+            impl #impl_lst swim_form::structural::write::StructuralWritable for #name #ty_params #where_clause {
 
-                    #[allow(non_snake_case, unused_variables)]
-                    #[inline]
-                    fn write_into<__W: #writer_trait>(self, writer: __W) -> core::result::Result<__W::Repr, __W::Error> {
-                        use swim_form::structural::write::HeaderWriter;
-                        use swim_form::structural::write::BodyWriter;
-                        let #destructure = self;
-                        #selector.write_into(writer)
-                    }
+                #[inline]
+                fn num_attributes(&self) -> usize {
+                    #num_attrs
                 }
-            }
-        } else {
-            let name = inner.inner.name;
-            let write_with = WriteWithFn(inner);
-            let write_into = WriteIntoFn(inner);
-            let writer_trait = make_writer_trait();
-            let num_attrs = num_attributes(inner);
 
-            quote! {
+                #[allow(non_snake_case, unused_variables)]
+                #[inline]
+                fn write_with<__W: #writer_trait>(&self, writer: __W) -> core::result::Result<__W::Repr, __W::Error> {
+                    use swim_form::structural::write::HeaderWriter;
+                    use swim_form::structural::write::BodyWriter;
+                    let num_attrs = #num_attrs;
+                    let #destructure = self;
+                    #write_with
+                }
 
-                #[automatically_derived]
-                impl #impl_lst swim_form::structural::write::StructuralWritable for #name #ty_params #where_clause {
-
-                    #[inline]
-                    fn num_attributes(&self) -> usize {
-                        #num_attrs
-                    }
-
-                    #[allow(non_snake_case, unused_variables)]
-                    #[inline]
-                    fn write_with<__W: #writer_trait>(&self, writer: __W) -> core::result::Result<__W::Repr, __W::Error> {
-                        use swim_form::structural::write::HeaderWriter;
-                        use swim_form::structural::write::BodyWriter;
-                        let num_attrs = swim_form::structural::write::StructuralWritable::num_attributes(self);
-                        let #destructure = self;
-                        #write_with
-                    }
-
-                    #[allow(non_snake_case, unused_variables)]
-                    #[inline]
-                    fn write_into<__W: #writer_trait>(self, writer: __W) -> core::result::Result<__W::Repr, __W::Error> {
-                        use swim_form::structural::write::HeaderWriter;
-                        use swim_form::structural::write::BodyWriter;
-                        let num_attrs = swim_form::structural::write::StructuralWritable::num_attributes(&self);
-                        let #destructure = self;
-                        #write_into
-                    }
+                #[allow(non_snake_case, unused_variables)]
+                #[inline]
+                fn write_into<__W: #writer_trait>(self, writer: __W) -> core::result::Result<__W::Repr, __W::Error> {
+                    use swim_form::structural::write::HeaderWriter;
+                    use swim_form::structural::write::BodyWriter;
+                    let num_attrs = #num_attrs;
+                    let #destructure = self;
+                    #write_into
                 }
             }
         };
@@ -601,7 +595,7 @@ impl<'a> ToTokens for NumAttrsEnum<'a> {
                 let fld_name = &fld.selector;
                 let binder = fld_name.binder();
                 let pat = match fld_name {
-                    FieldSelector::Named(_) =>  quote!(#enum_name::#var_name { #binder, .. }),
+                    FieldSelector::Named(_) => quote!(#enum_name::#var_name { #binder, .. }),
                     FieldSelector::Ordinal(i) => {
                         let ignore = (0..*i).map(|_| quote!(_));
                         quote!(#enum_name::#var_name(#(#ignore,)* #binder, ..))
