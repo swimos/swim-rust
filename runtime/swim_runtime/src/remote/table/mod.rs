@@ -18,8 +18,8 @@ mod tests;
 use crate::error::ConnectionDropped;
 use crate::error::ResolutionError;
 use crate::remote::task::AttachClientRouted;
-use crate::remote::{BadUrl, BidirectionalReceiverRequest, RawOutRoute, Scheme, SchemeSocketAddr};
-use crate::routing::{BidirectionalRoute, RoutingAddr, TaggedEnvelope, TaggedSender};
+use crate::remote::{BadUrl, RawOutRoute, Scheme, SchemeSocketAddr};
+use crate::routing::{RoutingAddr, TaggedEnvelope, TaggedSender};
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
@@ -95,10 +95,6 @@ pub struct RoutingTable {
     endpoints: HashMap<RoutingAddr, Handle>,
 }
 
-#[derive(Debug, Clone, Copy, Error)]
-#[error("Bidirectional connections do not support subscribers.")]
-pub struct BidirectionalError;
-
 impl RoutingTable {
     /// Try to get the routing key in the table for a given host/port combination.
     pub fn try_resolve(&self, target: &SchemeHostPort) -> Option<RoutingAddr> {
@@ -126,11 +122,6 @@ impl RoutingTable {
             let route = RawOutRoute::new(h.tx.clone(), h.drop_rx.clone());
             (route, &h.client_request_tx)
         })
-    }
-
-    /// Get a bidirectional connection to the routing address, if it exists.
-    pub fn resolve_bidirectional(&self, _addr: RoutingAddr) -> Option<BidirectionalRegistrator> {
-        todo!()
     }
 
     /// Insert an entry into the table.
@@ -211,45 +202,6 @@ impl RoutingTable {
             Some(drop_tx)
         } else {
             None
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct BidirectionalRegistrator {
-    sender: TaggedSender,
-    receiver_request_tx: mpsc::Sender<BidirectionalReceiverRequest>,
-    on_drop: promise::Receiver<ConnectionDropped>,
-}
-
-impl BidirectionalRegistrator {
-    pub fn new(
-        sender: TaggedSender,
-        receiver_request_tx: mpsc::Sender<BidirectionalReceiverRequest>,
-        on_drop: promise::Receiver<ConnectionDropped>,
-    ) -> Self {
-        BidirectionalRegistrator {
-            sender,
-            receiver_request_tx,
-            on_drop,
-        }
-    }
-
-    pub async fn register(self) -> Result<BidirectionalRoute, ResolutionError> {
-        let (tx, rx) = oneshot::channel();
-        self.receiver_request_tx
-            .send(Request::new(tx))
-            .await
-            .map_err(|_| ResolutionError::router_dropped())?;
-
-        match rx.await {
-            Ok((client_tag, receiver)) => Ok(BidirectionalRoute::new(
-                client_tag,
-                self.sender,
-                receiver,
-                self.on_drop,
-            )),
-            Err(_) => Err(ResolutionError::router_dropped()),
         }
     }
 }

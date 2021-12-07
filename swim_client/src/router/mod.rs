@@ -33,7 +33,7 @@ use swim_runtime::error::{ConnectionError, ResolutionError, RouterError, Unresol
 use swim_runtime::remote::table::SchemeHostPort;
 use swim_runtime::remote::{BadUrl, RawOutRoute, RemoteRoutingRequest};
 use swim_runtime::routing::{
-    BidirectionalRoute, BidirectionalRouter, Route, Router, RouterFactory, RoutingAddr,
+    Route, Router, RouterFactory, RoutingAddr,
     TaggedSender,
 };
 
@@ -163,15 +163,6 @@ impl Router for TopLevelClientRouter {
     }
 }
 
-impl BidirectionalRouter for TopLevelClientRouter {
-    fn resolve_bidirectional(
-        &mut self,
-        _host: Url,
-    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
-        todo!()
-    }
-}
-
 pub(crate) type Node = String;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -252,10 +243,7 @@ impl<Path: Addressable, DelegateFac: RouterFactory> ClientRouterFactory<Path, De
 }
 
 impl<Path: Addressable, DelegateFac: RouterFactory> RouterFactory
-    for ClientRouterFactory<Path, DelegateFac>
-where
-    <DelegateFac as RouterFactory>::Router: BidirectionalRouter,
-{
+    for ClientRouterFactory<Path, DelegateFac> {
     type Router = ClientRouter<Path, DelegateFac::Router>;
 
     fn create_for(&self, addr: RoutingAddr) -> Self::Router {
@@ -268,13 +256,13 @@ where
 }
 
 #[derive(Debug, Clone)]
-pub struct ClientRouter<Path: Addressable, DelegateRouter: BidirectionalRouter> {
+pub struct ClientRouter<Path: Addressable, DelegateRouter> {
     tag: RoutingAddr,
     request_sender: mpsc::Sender<DownlinkRoutingRequest<Path>>,
     delegate_router: DelegateRouter,
 }
 
-impl<Path: Addressable, DelegateRouter: BidirectionalRouter> Router
+impl<Path: Addressable, DelegateRouter: Router> Router
     for ClientRouter<Path, DelegateRouter>
 {
     fn resolve_sender(
@@ -302,24 +290,6 @@ impl<Path: Addressable, DelegateRouter: BidirectionalRouter> Router
             } = self;
 
             delegate_router.lookup(host, route).await
-        }
-        .boxed()
-    }
-}
-
-impl<Path: Addressable, DelegateRouter: BidirectionalRouter> BidirectionalRouter
-    for ClientRouter<Path, DelegateRouter>
-{
-    fn resolve_bidirectional(
-        &mut self,
-        host: Url,
-    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
-        async move {
-            let ClientRouter {
-                delegate_router, ..
-            } = self;
-
-            delegate_router.resolve_bidirectional(host).await
         }
         .boxed()
     }

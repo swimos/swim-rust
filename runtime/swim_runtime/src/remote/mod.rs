@@ -73,7 +73,6 @@ impl RawOutRoute {
 type EndpointRequest = Request<Result<RawOutRoute, Unresolvable>>;
 type ResolutionRequest = Request<Result<RoutingAddr, ConnectionError>>;
 type ClientRequest = Request<Result<UnroutableClient, Unresolvable>>;
-type BidirectionalReceiverRequest = Request<(RoutingAddr, mpsc::Receiver<TaggedEnvelope>)>;
 
 #[derive(Debug)]
 pub struct AttachClientRequest {

@@ -25,7 +25,7 @@ use swim_runtime::error::ResolutionError;
 use swim_runtime::error::{NoAgentAtRoute, RouterError, Unresolvable};
 use swim_runtime::remote::{RawOutRoute, RemoteRoutingRequest};
 use swim_runtime::routing::{
-    BidirectionalRoute, BidirectionalRouter, ClientRoute, Route, Router, RouterFactory,
+    ClientRoute, Route, Router, RouterFactory,
     RoutingAddr, TaggedSender,
 };
 
@@ -227,14 +227,5 @@ impl Router for TopLevelServerRouter {
             }
         }
         .boxed()
-    }
-}
-
-impl BidirectionalRouter for TopLevelServerRouter {
-    fn resolve_bidirectional(
-        &mut self,
-        _host: Url,
-    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
-        todo!()
     }
 }

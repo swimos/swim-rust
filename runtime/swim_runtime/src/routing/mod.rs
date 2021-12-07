@@ -229,37 +229,6 @@ impl Route {
     }
 }
 
-#[derive(Debug)]
-pub struct BidirectionalRoute {
-    pub client_tag: RoutingAddr,
-    pub sender: TaggedSender,
-    pub receiver: mpsc::Receiver<TaggedEnvelope>,
-    pub on_drop: promise::Receiver<ConnectionDropped>,
-}
-
-impl BidirectionalRoute {
-    pub fn into_on_drop(self) -> promise::Receiver<ConnectionDropped> {
-        let BidirectionalRoute { on_drop, .. } = self;
-        on_drop
-    }
-}
-
-impl BidirectionalRoute {
-    pub fn new(
-        client_tag: RoutingAddr,
-        sender: TaggedSender,
-        receiver: mpsc::Receiver<TaggedEnvelope>,
-        on_drop: promise::Receiver<ConnectionDropped>,
-    ) -> Self {
-        BidirectionalRoute {
-            client_tag,
-            sender,
-            receiver,
-            on_drop,
-        }
-    }
-}
-
 /// Trait for routers capable of resolving addresses and returning connections to them.
 /// The connections can only be used to send [`Envelope`]s to the corresponding addresses.
 pub trait Router: Send + Sync {
@@ -273,16 +242,6 @@ pub trait Router: Send + Sync {
         host: Option<Url>,
         route: RelativeUri,
     ) -> BoxFuture<Result<RoutingAddr, RouterError>>;
-}
-
-/// Trait for routers capable of resolving addresses and returning bidirectional connections to them.
-/// The connections can be used to both send and receive [`Envelope`]s to and from the corresponding addresses.
-pub trait BidirectionalRouter: Router {
-    /// Resolve a bidirectional connection for a given host.
-    fn resolve_bidirectional(
-        &mut self,
-        host: Url,
-    ) -> BoxFuture<Result<BidirectionalRoute, ResolutionError>>;
 }
 
 /// Create router instances bound to particular routing addresses.

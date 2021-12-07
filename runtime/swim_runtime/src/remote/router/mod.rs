@@ -15,7 +15,7 @@
 use crate::error::{ResolutionError, RouterError, Unresolvable};
 use crate::remote::{RawOutRoute, RemoteRoutingRequest};
 use crate::routing::{
-    BidirectionalRoute, BidirectionalRouter, Route, Router, RoutingAddr, TaggedSender,
+    Route, Router, RoutingAddr, TaggedSender,
 };
 use futures::future::BoxFuture;
 use futures::FutureExt;
@@ -112,14 +112,5 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
             }
         }
         .boxed()
-    }
-}
-
-impl<DelegateRouter: Router> BidirectionalRouter for RemoteRouter<DelegateRouter> {
-    fn resolve_bidirectional(
-        &mut self,
-        _host: Url,
-    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
-        todo!()
     }
 }

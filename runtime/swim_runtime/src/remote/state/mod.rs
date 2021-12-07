@@ -17,7 +17,7 @@ use crate::remote::addresses::RemoteRoutingAddresses;
 use crate::remote::config::RemoteConnectionsConfig;
 use crate::remote::pending::PendingRequest;
 use crate::remote::pending::PendingRequests;
-use crate::remote::table::{BidirectionalRegistrator, RoutingTable, SchemeHostPort};
+use crate::remote::table::{RoutingTable, SchemeHostPort};
 use crate::remote::task::{AttachClientRouted, TaskFactory};
 use crate::remote::{ExternalConnections, Listener, SchemeSocketAddr};
 use crate::remote::{
@@ -97,9 +97,6 @@ pub trait RemoteTasksState {
         &self,
         addr: RoutingAddr,
     ) -> Option<(RawOutRoute, &mpsc::Sender<AttachClientRouted>)>;
-
-    /// Resolve a bidirectional route in the routing table.
-    fn table_resolve_bidirectional(&self, addr: RoutingAddr) -> Option<BidirectionalRegistrator>;
 
     /// Try to resolve a host in the routing table.
     fn table_try_resolve(&self, target: &SchemeHostPort) -> Option<RoutingAddr>;
@@ -253,10 +250,6 @@ where
         addr: RoutingAddr,
     ) -> Option<(RawOutRoute, &mpsc::Sender<AttachClientRouted>)> {
         self.table.resolve_attach_client(addr)
-    }
-
-    fn table_resolve_bidirectional(&self, addr: RoutingAddr) -> Option<BidirectionalRegistrator> {
-        self.table.resolve_bidirectional(addr)
     }
 
     fn table_try_resolve(&self, target: &SchemeHostPort) -> Option<RoutingAddr> {
