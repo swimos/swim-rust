@@ -140,7 +140,7 @@ pub enum ConnectionError {
     /// An unsupported encoding error or an illegal type error.
     Encoding(EncodingError),
     /// An error produced when attempting to resolve a peer.
-    Resolution(ResolutionError),
+    Resolution(String),
     /// A pending write did not complete within the specified duration.
     WriteTimeout(Duration),
     /// An error was produced at the transport layer.
@@ -196,7 +196,7 @@ impl Recoverable for ConnectionError {
                 ErrorKind::Interrupted | ErrorKind::TimedOut | ErrorKind::ConnectionReset
             ),
             ConnectionError::Encoding(e) => e.is_fatal(),
-            ConnectionError::Resolution(e) => e.is_fatal(),
+            ConnectionError::Resolution(_) => false,
             ConnectionError::WriteTimeout(_) => false,
             ConnectionError::Transport(e) => e.is_fatal(),
         }
@@ -247,7 +247,7 @@ impl From<ConnectionDropped> for ConnectionError {
     }
 }
 
-impl From<RouterError> for ConnectionError {
+/*impl From<RouterError> for ConnectionError {
     fn from(err: RouterError) -> Self {
         match err {
             RouterError::NoAgentAtRoute(err) => {
@@ -259,7 +259,7 @@ impl From<RouterError> for ConnectionError {
             }
         }
     }
-}
+}*/
 
 pub(crate) fn format_cause(cause: &Option<String>) -> String {
     match cause {

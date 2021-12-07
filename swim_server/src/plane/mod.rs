@@ -524,7 +524,9 @@ pub async fn run_plane<Clk, S, DelegateFac: RouterFactory, Store>(
                 Either::Left(Some(PlaneRoutingRequest::EndpointIn { id, request })) => {
                     if id.is_plane() {
                         event!(Level::TRACE, GETTING_LOCAL_ENDPOINT, ?id);
-                        let result = if let Some(tx) = resolver
+                        //TODO Add clients
+                        todo!()
+                        /*let result = if let Some(tx) = resolver
                             .active_routes
                             .get_endpoint(&id)
                             .map(|ep| ep.drop_rx.clone())
@@ -535,7 +537,7 @@ pub async fn run_plane<Clk, S, DelegateFac: RouterFactory, Store>(
                         };
                         if request.send(result).is_err() {
                             event!(Level::WARN, DROPPED_REQUEST);
-                        }
+                        }*/
                     } else {
                         event!(Level::TRACE, GETTING_REMOTE_ENDPOINT, ?id);
                         //TODO Attach external routing here.

@@ -153,7 +153,7 @@ impl SwimClientBuilder {
             close_rx,
         );
 
-        let task_handle = spawn(async {
+        let task_handle = spawn(async move {
             join!(
                 downlinks_task.run(),
                 remote_connections_task.run(),

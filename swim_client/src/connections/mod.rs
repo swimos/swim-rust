@@ -30,8 +30,8 @@ use std::sync::Arc;
 use swim_async_runtime::task::*;
 use swim_model::path::{Addressable, RelativePath};
 use swim_runtime::configuration::DownlinkConnectionsConfig;
-use swim_runtime::error::ConnectionDropped;
-use swim_runtime::error::{CloseError, ConnectionError, HttpError, ResolutionError, Unresolvable};
+use swim_runtime::error::{CloseError, ConnectionError, HttpError, Unresolvable};
+use swim_runtime::error::{ConnectionDropped, RouterError};
 use swim_runtime::remote::RawOutRoute;
 use swim_runtime::routing::{
     BidirectionalRoute, BidirectionalRouter, CloseReceiver, Route, Router, RouterFactory,
@@ -201,14 +201,9 @@ where
                         request,
                         conn_type,
                     } => {
-                        let routing_path = RoutingPath::try_from(AddressableWrapper(
-                            target.clone(),
-                        ))
-                        .map_err(|_| {
-                            ConnectionError::Resolution(ResolutionError::unresolvable(
-                                target.to_string(),
-                            ))
-                        })?;
+                        let routing_path =
+                            RoutingPath::try_from(AddressableWrapper(target.clone()))
+                                .map_err(|_| ConnectionError::Resolution(target.to_string()))?;
 
                         let registrator = match routing_table.try_resolve_addr(&routing_path) {
                             Some((_, registrator)) => registrator,
@@ -337,9 +332,10 @@ impl<Path: Addressable> ConnectionRegistrator<Path> {
                 conn_type,
             })
             .await
-            .map_err(|_| ConnectionError::Resolution(ResolutionError::router_dropped()))?;
+            .map_err(|_| ConnectionError::Resolution("Router dropped.".to_string()))?; //TODO Remove
         rx.await
-            .map_err(|_| ConnectionError::Resolution(ResolutionError::router_dropped()))?
+            .map_err(|_| ConnectionError::Resolution("Router dropped.".to_string()))?
+        //TODO Remove
     }
 }
 
@@ -535,8 +531,8 @@ impl<Path: Addressable, DelegateRouter: BidirectionalRouter>
                                 }
                                 remote_drop_rx = new_remote_drop_rx.fuse();
                             }
-                            Err(err) => {
-                                maybe_err = Some(err);
+                            Err(_) => {
+                                maybe_err = Some(ConnectionError::Resolution("Failed".to_string()));
                             }
                         };
                     } else {
@@ -641,7 +637,10 @@ where
                 try_open_remote_connection(client_router, target).await
             }
             RegistrationTarget::Local(target) => {
-                try_open_local_connection(client_router, target).await
+                let relative_uri = RelativeUri::try_from(target.clone()).map_err(|e| {
+                    ConnectionError::Http(HttpError::invalid_url(target, Some(e.to_string())))
+                })?;
+                try_open_local_connection(client_router, relative_uri).await
             }
         };
 
@@ -684,28 +683,37 @@ where
         sender,
         receiver,
         on_drop,
-    } = client_router.resolve_bidirectional(target).await?;
+        ..
+    } = client_router
+        .resolve_bidirectional(target)
+        .await
+        .map_err(|_| {
+            ConnectionError::Closed(CloseError::closed()) //TODO Remove.
+        })?;
 
     Ok((sender, Some(receiver), on_drop))
 }
 
 async fn try_open_local_connection<Path, DelegateRouter>(
     client_router: &mut ClientRouter<Path, DelegateRouter>,
-    target: String,
+    relative_uri: RelativeUri,
 ) -> Result<RawConnection, ConnectionError>
 where
     Path: Addressable,
     DelegateRouter: BidirectionalRouter,
 {
-    let relative_uri = RelativeUri::try_from(target.clone())
-        .map_err(|e| ConnectionError::Http(HttpError::invalid_url(target, Some(e.to_string()))))?;
-
-    let routing_addr = client_router.lookup(None, relative_uri.clone()).await?;
+    let routing_addr = client_router
+        .lookup(None, relative_uri.clone())
+        .await
+        .map_err(|e| match e {
+            RouterError::ConnectionFailure(e) => e,
+            _ => ConnectionError::Closed(CloseError::closed()), //TODO Remove
+        })?;
 
     let Route { sender, on_drop } = client_router
         .resolve_sender(routing_addr)
         .await
-        .map_err(ConnectionError::Resolution)?;
+        .map_err(|_| ConnectionError::Closed(CloseError::closed()))?; //TODO Remove
 
     Ok((sender, None, on_drop))
 }

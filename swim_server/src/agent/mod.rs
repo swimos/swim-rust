@@ -55,6 +55,7 @@ use crate::agent::model::map::to_map_store_event;
 use crate::meta::info::{LaneInfo, LaneKind};
 use crate::meta::log::NodeLogger;
 use crate::meta::open_meta_lanes;
+use crate::scheduler::SchedulerContext;
 #[doc(hidden)]
 #[allow(unused_imports)]
 pub use agent_derive::*;
@@ -96,7 +97,6 @@ use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
 use tracing_futures::{Instrument, Instrumented};
-use crate::scheduler::SchedulerContext;
 
 /// Trait that must be implemented for any agent. This is essentially just boilerplate and will
 /// eventually be implemented using a derive macro.

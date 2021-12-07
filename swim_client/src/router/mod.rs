@@ -29,13 +29,15 @@ use swim_model::path::{AbsolutePath, Addressable};
 
 use swim_warp::envelope::ResponseEnvelope;
 
-use swim_runtime::error::{ConnectionDropped, ConnectionError, ResolutionError, RouterError, Unresolvable};
+use swim_runtime::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
 use swim_runtime::remote::table::SchemeHostPort;
 use swim_runtime::remote::{BadUrl, RawOutRoute, RemoteRoutingRequest};
-use swim_runtime::routing::{BidirectionalRoute, BidirectionalRouter, Route, Router, RouterFactory, RoutingAddr, TaggedSender};
+use swim_runtime::routing::{
+    BidirectionalRoute, BidirectionalRouter, Route, Router, RouterFactory, RoutingAddr,
+    TaggedSender,
+};
 
 use swim_utilities::future::request::Request;
-use swim_utilities::trigger::promise;
 
 #[cfg(test)]
 pub(crate) mod tests;
@@ -113,47 +115,15 @@ impl Router for TopLevelClientRouter {
                         Ok(Ok(RawOutRoute { sender, on_drop })) => {
                             Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
                         }
-                        Ok(Err(_)) => Err(ResolutionError::unresolvable(addr.to_string())),
+                        Ok(Err(_)) => Err(ResolutionError::unresolvable(addr)),
                         Err(_) => Err(ResolutionError::router_dropped()),
                     }
                 }
             } else {
-                Err(ResolutionError::unresolvable(addr.to_string()))
+                Err(ResolutionError::unresolvable(addr))
             }
         }
         .boxed()
-    }
-
-    fn register_interest(&mut self, addr: RoutingAddr) -> BoxFuture<Result<promise::Receiver<ConnectionDropped>, ResolutionError>> {
-        async move {
-            let TopLevelClientRouter {
-                remote_sender,
-                ..
-            } = self;
-
-            if addr.is_remote() {
-                let (tx, rx) = oneshot::channel();
-                let request = Request::new(tx);
-                if remote_sender
-                    .send(RemoteRoutingRequest::EndpointIn { addr, request })
-                    .await
-                    .is_err()
-                {
-                    Err(ResolutionError::router_dropped())
-                } else {
-                    match rx.await {
-                        Ok(Ok(on_drop)) => {
-                            Ok(on_drop)
-                        }
-                        Ok(Err(_)) => Err(ResolutionError::unresolvable(addr.to_string())),
-                        Err(_) => Err(ResolutionError::router_dropped()),
-                    }
-                }
-            } else {
-                Err(ResolutionError::unresolvable(addr.to_string()))
-            }
-        }
-            .boxed()
     }
 
     fn lookup(
@@ -185,7 +155,7 @@ impl Router for TopLevelClientRouter {
                     }
                 }
                 None => Err(RouterError::ConnectionFailure(ConnectionError::Resolution(
-                    ResolutionError::unresolvable(route.to_string()),
+                    route.to_string(),
                 ))),
             }
         }
@@ -196,30 +166,9 @@ impl Router for TopLevelClientRouter {
 impl BidirectionalRouter for TopLevelClientRouter {
     fn resolve_bidirectional(
         &mut self,
-        host: Url,
+        _host: Url,
     ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
-        async move {
-            let TopLevelClientRouter { remote_sender, .. } = self;
-
-            let (tx, rx) = oneshot::channel();
-            if remote_sender
-                .send(RemoteRoutingRequest::Bidirectional {
-                    host: host.clone(),
-                    request: Request::new(tx),
-                })
-                .await
-                .is_err()
-            {
-                Err(ResolutionError::router_dropped())
-            } else {
-                match rx.await {
-                    Ok(Ok(registrator)) => registrator.register().await,
-                    Ok(Err(_)) => Err(ResolutionError::unresolvable(host.to_string())),
-                    Err(_) => Err(ResolutionError::router_dropped()),
-                }
-            }
-        }
-        .boxed()
+        todo!()
     }
 }
 
@@ -238,7 +187,7 @@ impl<T: Addressable> TryFrom<AddressableWrapper<T>> for RoutingPath {
 
     fn try_from(path: AddressableWrapper<T>) -> Result<Self, Self::Error> {
         match path.0.host() {
-            Some(host) => Ok(RoutingPath::Remote(SchemeHostPort::try_from(host)?)),
+            Some(host) => Ok(RoutingPath::Remote(SchemeHostPort::try_from(&host)?)),
             None => Ok(RoutingPath::Local(path.0.node().to_string())),
         }
     }
@@ -340,17 +289,6 @@ impl<Path: Addressable, DelegateRouter: BidirectionalRouter> Router
             delegate_router.resolve_sender(addr).await
         }
         .boxed()
-    }
-
-    fn register_interest(&mut self, addr: RoutingAddr) -> BoxFuture<Result<promise::Receiver<ConnectionDropped>, ResolutionError>> {
-        async move {
-            let ClientRouter {
-                delegate_router, ..
-            } = self;
-
-            delegate_router.register_interest(addr).await
-        }
-            .boxed()
     }
 
     fn lookup(

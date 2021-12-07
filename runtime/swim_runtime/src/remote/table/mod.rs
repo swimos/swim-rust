@@ -17,6 +17,7 @@ mod tests;
 
 use crate::error::ConnectionDropped;
 use crate::error::ResolutionError;
+use crate::remote::task::AttachClientRouted;
 use crate::remote::{BadUrl, BidirectionalReceiverRequest, RawOutRoute, Scheme, SchemeSocketAddr};
 use crate::routing::{BidirectionalRoute, RoutingAddr, TaggedEnvelope, TaggedSender};
 use std::collections::{HashMap, HashSet};
@@ -62,10 +63,10 @@ impl Display for SchemeHostPort {
     }
 }
 
-impl TryFrom<Url> for SchemeHostPort {
+impl<'a> TryFrom<&'a Url> for SchemeHostPort {
     type Error = BadUrl;
 
-    fn try_from(url: Url) -> Result<Self, Self::Error> {
+    fn try_from(url: &'a Url) -> Result<Self, Self::Error> {
         let scheme = Scheme::try_from(url.scheme())?;
         match (url.host_str(), url.port()) {
             (Some(host_str), Some(port)) => {
@@ -117,12 +118,19 @@ impl RoutingTable {
     }
 
     /// Get a bidirectional connection to the routing address, if it exists.
-    pub fn resolve_bidirectional(&self, addr: RoutingAddr) -> Option<BidirectionalRegistrator> {
-        self.endpoints.get(&addr).map(|h| BidirectionalRegistrator {
-            sender: TaggedSender::new(addr, h.tx.clone()),
-            receiver_request_tx: h.bidirectional_request_tx.clone(),
-            on_drop: h.drop_rx.clone(),
+    pub fn resolve_attach_client(
+        &self,
+        addr: RoutingAddr,
+    ) -> Option<(RawOutRoute, &mpsc::Sender<AttachClientRouted>)> {
+        self.endpoints.get(&addr).map(|h| {
+            let route = RawOutRoute::new(h.tx.clone(), h.drop_rx.clone());
+            (route, &h.client_request_tx)
         })
+    }
+
+    /// Get a bidirectional connection to the routing address, if it exists.
+    pub fn resolve_bidirectional(&self, _addr: RoutingAddr) -> Option<BidirectionalRegistrator> {
+        todo!()
     }
 
     /// Insert an entry into the table.
@@ -132,8 +140,8 @@ impl RoutingTable {
         host: Option<SchemeHostPort>,
         sock_addr: SchemeSocketAddr,
         tx: mpsc::Sender<TaggedEnvelope>,
-        bidirectional_request_tx: mpsc::Sender<BidirectionalReceiverRequest>,
-    ) -> BidirectionalRegistrator {
+        client_request_tx: mpsc::Sender<AttachClientRouted>,
+    ) {
         let RoutingTable {
             open_sockets,
             resolved_forward,
@@ -149,20 +157,12 @@ impl RoutingTable {
             hosts.insert(host);
         }
 
-        let handle = Handle::new(tx, bidirectional_request_tx, sock_addr, hosts);
-
-        let bidirectional_registrator = BidirectionalRegistrator {
-            sender: TaggedSender::new(addr, handle.tx.clone()),
-            receiver_request_tx: handle.bidirectional_request_tx.clone(),
-            on_drop: handle.drop_rx.clone(),
-        };
+        let handle = Handle::new(tx, client_request_tx, sock_addr, hosts);
 
         endpoints.insert(addr, handle);
-
-        bidirectional_registrator
     }
 
-    /// Associate another hose/port combination with a socket address that already has an entry in
+    /// Associate another host/port combination with a socket address that already has an entry in
     /// the table. This will return [`Some`] if and only if there is already an entry for that
     /// address.
     pub fn add_host(
@@ -243,7 +243,12 @@ impl BidirectionalRegistrator {
             .map_err(|_| ResolutionError::router_dropped())?;
 
         match rx.await {
-            Ok(receiver) => Ok(BidirectionalRoute::new(self.sender, receiver, self.on_drop)),
+            Ok((client_tag, receiver)) => Ok(BidirectionalRoute::new(
+                client_tag,
+                self.sender,
+                receiver,
+                self.on_drop,
+            )),
             Err(_) => Err(ResolutionError::router_dropped()),
         }
     }
@@ -252,7 +257,7 @@ impl BidirectionalRegistrator {
 #[derive(Debug)]
 struct Handle {
     tx: mpsc::Sender<TaggedEnvelope>,
-    bidirectional_request_tx: mpsc::Sender<BidirectionalReceiverRequest>,
+    client_request_tx: mpsc::Sender<AttachClientRouted>,
     drop_tx: promise::Sender<ConnectionDropped>,
     drop_rx: promise::Receiver<ConnectionDropped>,
     peer: SchemeSocketAddr,
@@ -262,14 +267,14 @@ struct Handle {
 impl Handle {
     fn new(
         tx: mpsc::Sender<TaggedEnvelope>,
-        bidirectional_request_tx: mpsc::Sender<BidirectionalReceiverRequest>,
+        client_request_tx: mpsc::Sender<AttachClientRouted>,
         peer: SchemeSocketAddr,
         bindings: HashSet<SchemeHostPort>,
     ) -> Self {
         let (drop_tx, drop_rx) = promise::promise();
         Handle {
             tx,
-            bidirectional_request_tx,
+            client_request_tx,
             drop_tx,
             drop_rx,
             peer,

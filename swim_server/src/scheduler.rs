@@ -12,27 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_async_runtime::time::clock::Clock;
-use tokio::sync::mpsc;
-use swim_utilities::trigger;
-use std::future::Future;
-use futures::{Stream, StreamExt};
-use std::time::Duration;
-use std::sync::atomic::{Ordering, AtomicU64};
-use std::sync::Arc;
-use futures::future::BoxFuture;
-use tracing::{event, span, Level};
-use swim_utilities::future::SwimStreamExt;
-use futures::sink::drain;
 use crate::agent::Eff;
+use futures::future::BoxFuture;
+use futures::sink::drain;
 use futures::FutureExt;
+use futures::{Stream, StreamExt};
+use std::future::Future;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+use swim_async_runtime::time::clock::Clock;
+use swim_utilities::future::SwimStreamExt;
+use swim_utilities::trigger;
+use tokio::sync::mpsc;
+use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 
 const SCHEDULE: &str = "Schedule";
 const SCHED_TRIGGERED: &str = "Schedule triggered";
 const SCHED_STOPPED: &str = "Scheduler unexpectedly stopped";
 const WAITING: &str = "Schedule waiting";
-
 
 #[derive(Debug)]
 pub struct SchedulerContext<Clk> {
@@ -43,7 +42,11 @@ pub struct SchedulerContext<Clk> {
 }
 
 impl<Clk: Clock> SchedulerContext<Clk> {
-    pub(super) fn new(scheduler: mpsc::Sender<Eff>, clock: Clk, stop_signal: trigger::Receiver) -> Self {
+    pub(super) fn new(
+        scheduler: mpsc::Sender<Eff>,
+        clock: Clk,
+        stop_signal: trigger::Receiver,
+    ) -> Self {
         SchedulerContext {
             scheduler,
             schedule_count: Default::default(),
@@ -53,10 +56,10 @@ impl<Clk: Clock> SchedulerContext<Clk> {
     }
 
     pub fn schedule<Effect, Str, Sch>(&self, effects: Str, schedule: Sch) -> BoxFuture<()>
-        where
-            Effect: Future<Output = ()> + Send + 'static,
-            Str: Stream<Item = Effect> + Send + 'static,
-            Sch: Stream<Item = Duration> + Send + 'static,
+    where
+        Effect: Future<Output = ()> + Send + 'static,
+        Str: Stream<Item = Effect> + Send + 'static,
+        Sch: Stream<Item = Duration> + Send + 'static,
     {
         let index = self.schedule_count.fetch_add(1, Ordering::Relaxed);
 
@@ -87,11 +90,9 @@ impl<Clk: Clock> SchedulerContext<Clk> {
             }
         })
     }
-
 }
 
 impl<Clk> SchedulerContext<Clk> {
-
     pub fn stop_rx(&self) -> trigger::Receiver {
         self.stop_signal.clone()
     }
@@ -99,7 +100,6 @@ impl<Clk> SchedulerContext<Clk> {
     pub fn schedule_tx(&self) -> mpsc::Sender<Eff> {
         self.scheduler.clone()
     }
-
 }
 
 impl<Clk: Clone> Clone for SchedulerContext<Clk> {

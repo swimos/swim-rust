@@ -15,6 +15,7 @@
 use crate::error::{ConnectionDropped, ResolutionError, RouterError, RoutingError};
 use std::convert::TryFrom;
 
+use crate::remote::RawOutRoute;
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use std::fmt::{Display, Formatter};
@@ -147,6 +148,81 @@ pub struct Route {
     pub on_drop: promise::Receiver<ConnectionDropped>,
 }
 
+#[derive(Debug)]
+pub struct ClientRoute {
+    tag: RoutingAddr,
+    route: Route,
+    receiver: mpsc::Receiver<TaggedEnvelope>,
+    rx_on_dropped: promise::Receiver<ConnectionDropped>,
+    handle_drop: Option<promise::Sender<ConnectionDropped>>,
+}
+
+#[derive(Debug)]
+pub struct UnroutableClient {
+    route: RawOutRoute,
+    receiver: mpsc::Receiver<TaggedEnvelope>,
+    rx_on_dropped: promise::Receiver<ConnectionDropped>,
+    handle_drop: promise::Sender<ConnectionDropped>,
+}
+
+impl ClientRoute {
+    pub fn new(
+        tag: RoutingAddr,
+        route: Route,
+        receiver: mpsc::Receiver<TaggedEnvelope>,
+        rx_on_dropped: promise::Receiver<ConnectionDropped>,
+        handle_drop: promise::Sender<ConnectionDropped>,
+    ) -> Self {
+        ClientRoute {
+            tag,
+            route,
+            receiver,
+            rx_on_dropped,
+            handle_drop: Some(handle_drop),
+        }
+    }
+}
+
+impl UnroutableClient {
+    pub fn new(
+        route: RawOutRoute,
+        receiver: mpsc::Receiver<TaggedEnvelope>,
+        rx_on_dropped: promise::Receiver<ConnectionDropped>,
+        handle_drop: promise::Sender<ConnectionDropped>,
+    ) -> Self {
+        UnroutableClient {
+            route,
+            receiver,
+            rx_on_dropped,
+            handle_drop,
+        }
+    }
+
+    pub fn make_client(self, addr: RoutingAddr) -> ClientRoute {
+        let UnroutableClient {
+            route: RawOutRoute { sender, on_drop },
+            receiver,
+            rx_on_dropped,
+            handle_drop,
+        } = self;
+        ClientRoute::new(
+            addr,
+            Route::new(TaggedSender::new(addr, sender), on_drop),
+            receiver,
+            rx_on_dropped,
+            handle_drop,
+        )
+    }
+}
+
+impl Drop for ClientRoute {
+    fn drop(&mut self) {
+        if let Some(tx) = self.handle_drop.take() {
+            let _ = tx.provide(ConnectionDropped::Closed);
+        }
+    }
+}
+
 impl Route {
     pub fn new(sender: TaggedSender, on_drop: promise::Receiver<ConnectionDropped>) -> Self {
         Route { sender, on_drop }
@@ -155,27 +231,28 @@ impl Route {
 
 #[derive(Debug)]
 pub struct BidirectionalRoute {
+    pub client_tag: RoutingAddr,
     pub sender: TaggedSender,
     pub receiver: mpsc::Receiver<TaggedEnvelope>,
     pub on_drop: promise::Receiver<ConnectionDropped>,
 }
 
 impl BidirectionalRoute {
-
     pub fn into_on_drop(self) -> promise::Receiver<ConnectionDropped> {
         let BidirectionalRoute { on_drop, .. } = self;
         on_drop
     }
-
 }
 
 impl BidirectionalRoute {
     pub fn new(
+        client_tag: RoutingAddr,
         sender: TaggedSender,
         receiver: mpsc::Receiver<TaggedEnvelope>,
         on_drop: promise::Receiver<ConnectionDropped>,
     ) -> Self {
         BidirectionalRoute {
+            client_tag,
             sender,
             receiver,
             on_drop,
@@ -186,12 +263,9 @@ impl BidirectionalRoute {
 /// Trait for routers capable of resolving addresses and returning connections to them.
 /// The connections can only be used to send [`Envelope`]s to the corresponding addresses.
 pub trait Router: Send + Sync {
-
     /// Given a routing address, resolve the corresponding router entry
     /// consisting of a sender that will push envelopes to the endpoint.
     fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>>;
-
-    fn register_interest(&mut self, addr: RoutingAddr) -> BoxFuture<Result<promise::Receiver<ConnectionDropped>, ResolutionError>>;
 
     /// Find and return the corresponding routing address of an endpoint for a given route.
     fn lookup(

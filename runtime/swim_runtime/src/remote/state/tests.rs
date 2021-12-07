@@ -162,7 +162,9 @@ async fn connections_state_spawn_task() {
         PendingRequest::Resolution(Request::new(req_tx)),
     );
 
-    connections.spawn_task(sa, web_sock, Some(host.clone()));
+    connections
+        .spawn_task(sa, web_sock, Some(host.clone()))
+        .await;
 
     assert_eq!(connections.spawner.len(), 1);
     let table = &connections.table;
@@ -468,7 +470,7 @@ async fn connections_check_in_table_clears_pending() {
         bidirectional_request_tx,
     );
 
-    assert!(connections.check_socket_addr(host2, sa).is_ok());
+    assert!(connections.check_socket_addr(host2, sa).await.is_ok());
 
     let result = timeout(Duration::from_secs(5), req_rx).await;
 
@@ -498,7 +500,9 @@ async fn connections_state_shutdown_process() {
 
     let (req_tx, _req_rx) = oneshot::channel();
 
-    connections.spawn_task(sa, web_sock, Some(host1.clone()));
+    connections
+        .spawn_task(sa, web_sock, Some(host1.clone()))
+        .await;
     connections.defer_dns_lookup(
         host2.clone(),
         PendingRequest::Resolution(Request::new(req_tx)),

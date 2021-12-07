@@ -22,17 +22,17 @@ use crate::error::{
 use crate::error::{ConnectionDropped, RouterError};
 use crate::remote::config::RemoteConnectionsConfig;
 use crate::remote::router::RemoteRouter;
-use crate::remote::{BidirectionalReceiverRequest, RemoteRoutingRequest};
-use crate::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender};
+use crate::remote::{AttachClientRequest, RawOutRoute, RemoteRoutingRequest};
+use crate::routing::{
+    Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender, UnroutableClient,
+};
 use crate::ws::{into_stream, WsMessage};
-use futures::future::join_all;
 use futures::future::BoxFuture;
 use futures::{select_biased, FutureExt, StreamExt};
 use pin_utils::pin_mut;
 use ratchet::{CloseCode, CloseReason, SplittableExtension, WebSocket, WebSocketStream};
-use slab::Slab;
 use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::future::Future;
@@ -40,12 +40,15 @@ use std::str::FromStr;
 use std::time::Duration;
 use swim_form::Form;
 use swim_model::path::RelativePath;
+use swim_model::Text;
 use swim_recon::parser::{parse_recognize, ParseError, Span};
 use swim_utilities::errors::Recoverable;
+use swim_utilities::future::open_ended::OpenEndedFutures;
 use swim_utilities::future::retryable::RetryStrategy;
 use swim_utilities::future::task::Spawner;
 use swim_utilities::routing::uri::{BadRelativeUri, RelativeUri};
 use swim_utilities::trigger;
+use swim_utilities::trigger::promise;
 use swim_warp::envelope::{Envelope, EnvelopeHeader};
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Instant};
@@ -56,7 +59,7 @@ const ZERO: Duration = Duration::from_secs(0);
 const PEER_CLOSED: &str = "The peer closed the connection.";
 const IGNORING_MESSAGE: &str = "Ignoring unexpected message.";
 const ERROR_ON_CLOSE: &str = "Error whilst closing connection.";
-const BIDIRECTIONAL_RECEIVER_ERROR: &str = "Error whilst sending a bidirectional receiver.";
+const CLIENT_ATTACH_DROPPED: &str = "Client request was dropped.";
 
 /// A task that manages reading from and writing to a web-sockets channel.
 pub struct ConnectionTask<Sock, Ext, Router> {
@@ -65,7 +68,7 @@ pub struct ConnectionTask<Sock, Ext, Router> {
     messages: mpsc::Receiver<TaggedEnvelope>,
     message_injector: mpsc::Sender<TaggedEnvelope>,
     router: Router,
-    bidirectional_request_rx: mpsc::Receiver<BidirectionalReceiverRequest>,
+    attach_client_rx: mpsc::Receiver<AttachClientRouted>,
     stop_signal: trigger::Receiver,
     config: RemoteConnectionsConfig,
 }
@@ -88,10 +91,22 @@ impl From<ParseError> for Completion {
     }
 }
 
+pub struct AttachClientRouted {
+    pub route: RawOutRoute,
+    pub request: AttachClientRequest,
+}
+
+impl AttachClientRouted {
+    pub fn new(route: RawOutRoute, request: AttachClientRequest) -> Self {
+        AttachClientRouted { route, request }
+    }
+}
+
 enum ConnectionEvent {
     Read(Result<WsMessage, ratchet::Error>),
     Write(TaggedEnvelope),
-    Request(BidirectionalReceiverRequest),
+    Request(AttachClientRouted),
+    ClientTerminated(Text, u64),
 }
 
 impl<Sock, Ext, R> ConnectionTask<Sock, Ext, R>
@@ -118,7 +133,7 @@ where
         ws_stream: WebSocket<Sock, Ext>,
         router: R,
         (messages_tx, messages_rx): (mpsc::Sender<TaggedEnvelope>, mpsc::Receiver<TaggedEnvelope>),
-        bidirectional_request_rx: mpsc::Receiver<BidirectionalReceiverRequest>,
+        attach_client_rx: mpsc::Receiver<AttachClientRouted>,
         stop_signal: trigger::Receiver,
         config: RemoteConnectionsConfig,
     ) -> Self {
@@ -129,7 +144,7 @@ where
             messages: messages_rx,
             message_injector: messages_tx,
             router,
-            bidirectional_request_rx,
+            attach_client_rx,
             stop_signal,
             config,
         }
@@ -142,14 +157,16 @@ where
             messages,
             message_injector,
             mut router,
-            bidirectional_request_rx,
+            attach_client_rx,
             stop_signal,
             config,
         } = self;
 
+        let (client_close_tx, client_close_rx) = promise::promise();
+
         let mut outgoing_payloads = ReceiverStream::new(messages).map(Into::into).fuse();
-        let mut bidirectional_request_rx = ReceiverStream::new(bidirectional_request_rx).fuse();
-        let mut bidirectional_connections = Slab::new();
+        let mut client_req_stream = ReceiverStream::new(attach_client_rx).fuse();
+        let mut client_connections = HashMap::<Text, Vec<(u64, TaggedSender)>>::new();
 
         let (mut ws_tx, ws_rx) = match ws_stream.split() {
             Ok((tx, rx)) => (tx, rx),
@@ -167,6 +184,10 @@ where
         let yield_mod = config.yield_after.get();
         let mut iteration_count: usize = 0;
 
+        let client_monitor = OpenEndedFutures::new();
+        let mut client_index: u64 = 0;
+        pin_mut!(client_monitor);
+
         let completion = loop {
             timeout.as_mut().reset(
                 Instant::now()
@@ -180,21 +201,42 @@ where
                 _ = (&mut timeout).fuse() => {
                     break Completion::TimedOut;
                 }
-                conn_request = bidirectional_request_rx.next() => conn_request.map(ConnectionEvent::Request),
+                client = client_monitor.next() => client.map(|(uri, i)| ConnectionEvent::ClientTerminated(uri, i)),
+                conn_request = client_req_stream.next() => conn_request.map(ConnectionEvent::Request),
                 envelope = envelopes.next() => envelope.map(ConnectionEvent::Read),
                 payload  = outgoing_payloads.next() => payload.map(ConnectionEvent::Write)
             };
 
             if let Some(event) = next {
                 match event {
-                    ConnectionEvent::Request(receiver_request) => {
+                    ConnectionEvent::Request(AttachClientRouted { route, request }) => {
                         let (tx, rx) = mpsc::channel(config.channel_buffer_size.get());
-                        bidirectional_connections.insert(TaggedSender::new(tag, tx));
 
-                        if receiver_request.send(rx).is_err() {
-                            event!(Level::WARN, BIDIRECTIONAL_RECEIVER_ERROR);
-                            // todo: should the connection not be removed here?
+                        let (on_drop, on_dropped) = promise::promise();
+
+                        let client_route =
+                            UnroutableClient::new(route, rx, client_close_rx.clone(), on_drop);
+
+                        let AttachClientRequest { node, request, .. } = request;
+
+                        let node_uri = Text::from(node.to_string());
+
+                        if request.send_ok(client_route).is_ok() {
+                            let senders = client_connections.entry(node_uri.clone()).or_default();
+                            let i = client_index;
+                            client_index += 1;
+                            senders.push((i, TaggedSender::new(tag, tx)));
+
+                            let monitor = async move {
+                                let _ = on_dropped.await;
+                                (node_uri, i)
+                            };
+                            client_monitor.push(monitor);
+                        } else {
+                            event!(Level::DEBUG, CLIENT_ATTACH_DROPPED);
                         }
+
+                        //TODO Add cleanup.
                     }
                     ConnectionEvent::Read(msg) => match msg {
                         Ok(WsMessage::Text(message)) => {
@@ -202,7 +244,7 @@ where
                                 Ok(envelope) => {
                                     let dispatch_result = dispatch_envelope(
                                         &mut router,
-                                        &mut bidirectional_connections,
+                                        &mut client_connections,
                                         &mut resolved,
                                         envelope,
                                         config.connection_retries,
@@ -235,6 +277,11 @@ where
                             break Completion::Failed(e.into());
                         }
                     }
+                    ConnectionEvent::ClientTerminated(node_uri, i) => {
+                        if let Some(senders) = client_connections.get_mut(&node_uri) {
+                            senders.retain(|(j, _)| *j != i);
+                        }
+                    }
                 }
 
                 iteration_count += 1;
@@ -263,14 +310,16 @@ where
             }
         }
 
-        match completion {
+        let final_result = match completion {
             Completion::Failed(err) => ConnectionDropped::Failed(err),
             Completion::TimedOut => ConnectionDropped::TimedOut(config.activity_timeout),
             Completion::StoppedRemotely => ConnectionDropped::Failed(ConnectionError::Closed(
                 CloseError::new(CloseErrorKind::ClosedRemotely, None),
             )),
             _ => ConnectionDropped::Closed,
-        }
+        };
+        let _ = client_close_tx.provide(final_result.clone());
+        final_result
     }
 }
 
@@ -342,7 +391,7 @@ impl From<RouterError> for DispatchError {
 
 async fn dispatch_envelope<R, F, D>(
     router: &mut R,
-    bidirectional_connections: &mut Slab<TaggedSender>,
+    client_connections: &mut HashMap<Text, Vec<(u64, TaggedSender)>>,
     resolved: &mut HashMap<RelativePath, Route>,
     mut envelope: Envelope,
     mut retry_strategy: RetryStrategy,
@@ -354,8 +403,7 @@ where
     D: Future<Output = ()>,
 {
     loop {
-        let result =
-            try_dispatch_envelope(router, bidirectional_connections, resolved, envelope).await;
+        let result = try_dispatch_envelope(router, client_connections, resolved, envelope).await;
         match result {
             Err((env, err)) if !err.is_fatal() => {
                 match retry_strategy.next() {
@@ -381,7 +429,7 @@ where
 
 async fn try_dispatch_envelope<R>(
     router: &mut R,
-    bidirectional_connections: &mut Slab<TaggedSender>,
+    client_connections: &mut HashMap<Text, Vec<(u64, TaggedSender)>>,
     resolved: &mut HashMap<RelativePath, Route>,
     envelope: Envelope,
 ) -> Result<(), (Envelope, DispatchError)>
@@ -389,26 +437,28 @@ where
     R: Router,
 {
     match envelope.discriminate_header() {
-        EnvelopeHeader::Response(_) => {
-            let mut futures = vec![];
-
-            for (idx, conn) in bidirectional_connections.iter_mut() {
-                let envelope = envelope.clone();
-
-                futures.push(async move {
-                    let result = conn.send_item(envelope).await;
-                    (idx, result)
-                });
-            }
-
-            let results = join_all(futures).await;
-
-            for result in results {
-                if let (idx, Err(_)) = result {
-                    bidirectional_connections.remove(idx);
+        EnvelopeHeader::Response(path) => {
+            if let Some(endpoints) = client_connections.get_mut(&path.node) {
+                if let Some(((_, last), senders)) = endpoints.split_last_mut() {
+                    let mut failed = HashSet::new();
+                    for (i, tx) in senders.iter_mut().map(|(_, s)| s).enumerate() {
+                        if tx.send_item(envelope.clone()).await.is_err() {
+                            failed.insert(i);
+                        }
+                    }
+                    if last.send_item(envelope).await.is_err() {
+                        failed.insert(senders.len());
+                    }
+                    if !failed.is_empty() {
+                        *endpoints = std::mem::take(endpoints)
+                            .into_iter()
+                            .enumerate()
+                            .filter(|(i, _)| !failed.contains(i))
+                            .map(|(_, tx)| tx)
+                            .collect();
+                    }
                 }
             }
-
             Ok(())
         }
         EnvelopeHeader::Request(target) => {
@@ -511,7 +561,7 @@ where
         spawner: &Sp,
     ) -> (
         mpsc::Sender<TaggedEnvelope>,
-        mpsc::Sender<BidirectionalReceiverRequest>,
+        mpsc::Sender<AttachClientRouted>,
     )
     where
         Ext: SplittableExtension + Send + 'static,

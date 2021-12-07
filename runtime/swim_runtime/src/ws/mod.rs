@@ -54,7 +54,7 @@ pub trait WsConnections<Socket>
 where
     Socket: Send + Sync + Unpin,
 {
-    type Ext: SplittableExtension + Send + 'static;
+    type Ext: SplittableExtension + Send + Sync + 'static;
     type Error: Into<ConnectionError>;
 
     /// Negotiate a new client connection.
