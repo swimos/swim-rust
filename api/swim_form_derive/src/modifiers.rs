@@ -187,31 +187,14 @@ impl<'a> TryFrom<&'a syn::NestedMeta> for StructTransform<'a> {
                 if path == NEWTYPE_PATH {
                     Ok(StructTransform::Newtype(None))
                 } else if let Some(name_str) = path.get_ident().map(|id| id.to_string()) {
-                    //Todo dm this is different than bellow
                     Err(NameTransformError::UnknownAttributeName(name_str, path))
                 } else {
                     Err(NameTransformError::UnknownAttribute(nested_meta))
                 }
             }
-            syn::NestedMeta::Meta(syn::Meta::NameValue(name)) if name.path == TAG_PATH => {
-                if name.path == TAG_PATH {
-                    match &name.lit {
-                        syn::Lit::Str(s) => {
-                            let tag = s.value();
-                            if tag.is_empty() {
-                                Err(NameTransformError::EmptyName(s))
-                            } else {
-                                Ok(StructTransform::Rename(NameTransform::Rename(tag)))
-                            }
-                        }
-                        ow => Err(NameTransformError::NonStringName(ow)),
-                    }
-                } else if let Some(name_str) = name.path.get_ident().map(|id| id.to_string()) {
-                    Err(NameTransformError::UnknownAttributeName(name_str, name))
-                } else {
-                    Err(NameTransformError::UnknownAttribute(nested_meta))
-                }
-            }
+            syn::NestedMeta::Meta(syn::Meta::NameValue(name)) if name.path == TAG_PATH => Ok(
+                StructTransform::Rename(NameTransform::try_from(nested_meta)?),
+            ),
             syn::NestedMeta::Meta(syn::Meta::List(lst)) => {
                 if let Some(name_str) = lst.path.get_ident().map(|id| id.to_string()) {
                     Err(NameTransformError::UnknownAttributeName(name_str, lst))
