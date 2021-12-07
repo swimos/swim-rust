@@ -45,6 +45,12 @@ const REMOTE: u8 = 0;
 const PLANE: u8 = 1;
 const CLIENT: u8 = 2;
 
+pub enum RoutingAddrKind {
+    Remote,
+    Plane,
+    Client,
+}
+
 impl RoutingAddr {
     const fn new(tag: u8, id: u32) -> Self {
         let mut uuid_as_int = id as u128;
@@ -82,6 +88,58 @@ impl RoutingAddr {
     pub fn uuid(&self) -> &Uuid {
         &self.0
     }
+
+    pub fn discriminate(&self) -> RoutingAddrKind {
+        if self.is_remote() {
+            RoutingAddrKind::Remote
+        } else if self.is_plane() {
+            RoutingAddrKind::Plane
+        } else {
+            RoutingAddrKind::Client
+        }
+    }
+}
+
+macro_rules! typed_addrs {
+    ($(($id:ident, $call:tt),)+) => {
+        $(
+            pub struct $id(RoutingAddr);
+
+            impl $id {
+                pub fn new(raw: RoutingAddr) -> Option<$id> {
+                    if raw.$call() {
+                        Some($id(raw))
+                    } else {
+                        None
+                    }
+                }
+            }
+
+            impl From<$id> for RoutingAddr {
+                fn from(raw: $id) -> Self {
+                    raw.0
+                }
+            }
+
+            impl Display for $id {
+                fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+                    self.0.fmt(f)
+                }
+            }
+
+            impl AsRef<RoutingAddr> for $id {
+                fn as_ref(&self) -> &RoutingAddr {
+                    &self.0
+                }
+            }
+        )+
+    };
+}
+
+typed_addrs! {
+    (RemoteRoutingAddr, is_remote),
+    (PlaneRoutingAddr, is_plane),
+    (ClientRoutingAddr, is_client),
 }
 
 impl Display for RoutingAddr {

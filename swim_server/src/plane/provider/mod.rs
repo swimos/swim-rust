@@ -80,6 +80,7 @@ where
     {
         let AgentProvider { lifecycle, .. } = self;
         use swim_runtime::compat;
+
         let messages =
             compat::stop_on_failed(compat::messages_from_envelopes(incoming_envelopes), None);
 

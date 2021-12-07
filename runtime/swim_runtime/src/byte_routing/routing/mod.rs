@@ -13,17 +13,12 @@
 // limitations under the License.
 
 mod dispatch;
-pub mod mock;
-
-use crate::error::{ResolutionError, RouterError};
-use crate::routing::RoutingAddr;
+mod router;
 pub use dispatch::{DispatchError, Dispatcher};
-use futures_util::future::BoxFuture;
 use futures_util::SinkExt;
+pub use router::{Address, Router};
 use swim_utilities::io::byte_channel::ByteWriter;
-use swim_utilities::routing::uri::RelativeUri;
 use tokio_util::codec::{Encoder, FramedWrite};
-use url::Url;
 
 pub struct Route<E> {
     pub framed: FramedWrite<ByteWriter, E>,
@@ -61,19 +56,7 @@ impl RawRoute {
 }
 
 impl RawRoute {
-    // todo: the byte channel requires an is_closed function
     pub fn is_closed(&self) -> bool {
-        false
+        self.writer.is_closed()
     }
-}
-
-pub trait Router: Clone + Send + Sync + 'static {
-    fn resolve_sender(&mut self, addr: RoutingAddr)
-        -> BoxFuture<Result<RawRoute, ResolutionError>>;
-
-    fn lookup(
-        &mut self,
-        host: Option<Url>,
-        route: RelativeUri,
-    ) -> BoxFuture<Result<RoutingAddr, RouterError>>;
 }

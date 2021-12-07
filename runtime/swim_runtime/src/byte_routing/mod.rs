@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod codec;
-mod remote;
-mod routing;
-mod selector;
+pub mod codec;
+pub mod read_selector;
+pub mod remote;
+pub mod routing;

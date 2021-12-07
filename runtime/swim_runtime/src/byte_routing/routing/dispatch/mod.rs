@@ -30,18 +30,15 @@ use tokio::time::sleep;
 use tokio_util::codec::Encoder;
 
 // todo this should have a task that automatically prunes handles to the agents every N minutes
-pub struct Dispatcher<R> {
+pub struct Dispatcher {
     retry_strategy: RetryStrategy,
-    router: R,
+    router: Router,
     agents: HashMap<RelativePath, Route<RawRequestMessageEncoder>>,
     downlinks: HashMap<RelativePath, Route<ResponseMessageEncoder>>,
 }
 
-impl<R> Dispatcher<R>
-where
-    R: Router,
-{
-    pub fn new(retry_strategy: RetryStrategy, router: R) -> Dispatcher<R> {
+impl Dispatcher {
+    pub fn new(retry_strategy: RetryStrategy, router: Router) -> Dispatcher {
         Dispatcher {
             retry_strategy,
             router,
@@ -90,28 +87,35 @@ where
     }
 }
 
-fn request_encoder() -> RawRequestMessageEncoder {
+const fn request_encoder() -> RawRequestMessageEncoder {
     RawRequestMessageEncoder
 }
 
-fn response_encoder() -> ResponseMessageEncoder {
+const fn response_encoder() -> ResponseMessageEncoder {
     ResponseMessageEncoder
 }
 
-async fn dispatch<R, E, I>(
+async fn dispatch<E, I>(
     mut retry_strategy: RetryStrategy,
-    router: &mut R,
+    router: &mut Router,
     map: &mut HashMap<RelativePath, Route<E>>,
     target: RelativePath,
     message: I,
     encoder_fac: fn() -> E,
 ) -> Result<(), DispatchError>
 where
-    R: Router,
     E: Encoder<I, Error = IoError>,
     I: Clone,
 {
     loop {
+        // If the handle returned already existed, then it's possible that the route has timed out
+        // between it being returned and the message send operation. In order to deliver the
+        // message, we need to keep a copy of it in case the send operation fails as we will need to
+        // reopen the route and then send it again. For now, cloning the message will suffice but a
+        // more efficient operation will need to be implemented as if there is an error the message
+        // is not returned like with MPSC channels.
+        //
+        // todo
         let dispatch_result =
             try_dispatch(router, map, target.clone(), message.clone(), encoder_fac).await;
         match dispatch_result {
@@ -131,39 +135,15 @@ where
     }
 }
 
-#[derive(Debug, Error)]
-pub enum DispatchError {
-    #[error("Peer sent a malformatted message")]
-    Malformatted,
-    #[error("{0}")]
-    Io(IoError),
-    #[error("{0}")]
-    Resolution(ResolutionError),
-}
-
-impl Recoverable for DispatchError {
-    fn is_fatal(&self) -> bool {
-        match self {
-            DispatchError::Io(e) => match e.kind() {
-                ErrorKind::BrokenPipe => false,
-                _ => true,
-            },
-            _ => true,
-        }
-    }
-}
-
-async fn try_dispatch<R, E, I>(
-    router: &mut R,
+async fn try_dispatch<E, I>(
+    router: &mut Router,
     map: &mut HashMap<RelativePath, Route<E>>,
     target: RelativePath,
     message: I,
     encoder_fac: fn() -> E,
 ) -> Result<(), DispatchError>
 where
-    R: Router,
     E: Encoder<I, Error = IoError>,
-    I: Clone,
 {
     let route = match map.entry(target) {
         Entry::Occupied(mut entry) => {
@@ -179,18 +159,22 @@ where
         }
     };
 
-    // If the handle returned above already existed, then it's possible that the route has timed
-    // out between it being returned and here. In order to deliver the message, we need to keep a
-    // copy of it in case the send operation fails as we will need to reopen the route and then send
-    // it again. For now, cloning the message will suffice but a more efficient operation will need
-    // to be implemented as if there is an error the message is not returned like with MPSC
-    // channels.
-    //
-    // todo
-    match route.send(message.clone()).await {
-        Ok(()) => Ok(()),
-        Err(e) => Err(DispatchError::Io(e)),
-    }
+    route.send(message).await.map_err(DispatchError::Io)
+}
+
+async fn try_open_route<E>(
+    router: &mut Router,
+    target: RelativePath,
+    encoder_fac: fn() -> E,
+) -> Result<Route<E>, ResolutionError> {
+    let target_addr = router
+        .lookup(RelativeUri::from_str(target.node.as_str())?)
+        .await?;
+
+    Ok(router
+        .resolve_sender(target_addr)
+        .await?
+        .into_framed(encoder_fac()))
 }
 
 impl From<ResolutionError> for DispatchError {
@@ -217,20 +201,24 @@ impl From<HeaderParseErr> for DispatchError {
     }
 }
 
-async fn try_open_route<R, E>(
-    router: &mut R,
-    target: RelativePath,
-    encoder_fac: fn() -> E,
-) -> Result<Route<E>, ResolutionError>
-where
-    R: Router,
-{
-    let target_addr = router
-        .lookup(None, RelativeUri::from_str(target.node.as_str())?)
-        .await?;
+#[derive(Debug, Error)]
+pub enum DispatchError {
+    #[error("Peer sent a malformatted message")]
+    Malformatted,
+    #[error("{0}")]
+    Io(IoError),
+    #[error("{0}")]
+    Resolution(ResolutionError),
+}
 
-    Ok(router
-        .resolve_sender(target_addr)
-        .await?
-        .into_framed(encoder_fac()))
+impl Recoverable for DispatchError {
+    fn is_fatal(&self) -> bool {
+        match self {
+            DispatchError::Io(e) => match e.kind() {
+                ErrorKind::BrokenPipe => false,
+                _ => true,
+            },
+            _ => true,
+        }
+    }
 }

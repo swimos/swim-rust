@@ -229,7 +229,7 @@ async fn lane_info_sync() {
 
     assert!(envelope_tx
         .send(TaggedEnvelope(
-            RoutingAddr::remote(1),
+            RoutingAddr::remote(1,),
             Envelope::sync()
                 .node_uri("/swim:meta:node/test/")
                 .lane_uri("lanes")

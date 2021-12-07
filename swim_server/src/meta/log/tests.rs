@@ -195,7 +195,7 @@ async fn agent_log() {
 
     assert!(envelope_tx
         .send(TaggedEnvelope(
-            RoutingAddr::remote(1),
+            RoutingAddr::remote(1,),
             Envelope::sync().node_uri("/test").lane_uri("map").done(),
         ))
         .await
@@ -203,7 +203,7 @@ async fn agent_log() {
 
     assert!(envelope_tx
         .send(TaggedEnvelope(
-            RoutingAddr::remote(1),
+            RoutingAddr::remote(1,),
             Envelope::sync()
                 .node_uri("/swim:meta:node/test")
                 .lane_uri("infoLog")
@@ -223,7 +223,7 @@ async fn agent_log() {
     let map_update = map_update;
 
     assert!(envelope_tx
-        .send(TaggedEnvelope(RoutingAddr::remote(1), map_update.clone()))
+        .send(TaggedEnvelope(RoutingAddr::remote(1,), map_update.clone()))
         .await
         .is_ok());
 

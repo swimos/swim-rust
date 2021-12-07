@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 mod read;
 mod write;
 
@@ -24,18 +27,17 @@ use swim_utilities::trigger;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
-pub struct TransportIo<S, E, R> {
+pub struct TransportIo<S, E> {
     socket: WebSocket<S, E>,
-    router: R,
+    router: Router,
 }
 
-impl<S, E, R> TransportIo<S, E, R>
+impl<S, E> TransportIo<S, E>
 where
     S: WebSocketStream,
     E: SplittableExtension,
-    R: Router,
 {
-    pub fn new(socket: WebSocket<S, E>, router: R) -> TransportIo<S, E, R> {
+    pub fn new(socket: WebSocket<S, E>, router: Router) -> TransportIo<S, E> {
         TransportIo { socket, router }
     }
 

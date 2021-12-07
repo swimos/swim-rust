@@ -26,4 +26,4 @@ pub mod ws;
 
 // todo: replacement byte routing infrastructure
 #[allow(dead_code)]
-mod byte_routing;
+pub mod byte_routing;

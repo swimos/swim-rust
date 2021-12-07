@@ -562,7 +562,7 @@ fn link_or_sync(env: Envelope) -> Option<RelativePath> {
     }
 }
 
-// Dummy origing for not found messages.
+// Dummy origin for not found messages.
 const NOT_FOUND_ADDR: RoutingAddr = RoutingAddr::plane(0);
 
 // For a link or sync message that cannot be routed, send back a "not found" message.

@@ -27,9 +27,9 @@ use swim_model::path::RelativePath;
 use swim_utilities::future::retryable::RetryStrategy;
 use swim_utilities::trigger;
 
-pub async fn read_task<S, D, E, R>(
+pub async fn read_task<S, D, E>(
     id: RoutingAddr,
-    router: R,
+    router: Router,
     receiver: ratchet::Receiver<S, E>,
     mut downlink_rx: D,
     stop_on: trigger::Receiver,
@@ -38,7 +38,6 @@ where
     S: WebSocketStream,
     D: Stream<Item = (RelativePath, RawRoute)> + Unpin,
     E: ExtensionDecoder,
-    R: Router,
 {
     let mut dispatcher = Dispatcher::new(RetryStrategy::default(), router);
     let stream = into_stream(receiver).take_until(stop_on);
@@ -76,11 +75,13 @@ enum ReadEvent {
     Stop,
 }
 
+#[derive(Debug)]
 pub struct ReadError {
     pub kind: ReadErrorKind,
     pub cause: Box<dyn Error + Send + Sync + 'static>,
 }
 
+#[derive(PartialEq, Debug)]
 pub enum ReadErrorKind {
     Dispatch,
     Websocket,
@@ -118,14 +119,11 @@ where
     }
 }
 
-async fn dispatch_text_message<R>(
-    dispatcher: &mut Dispatcher<R>,
+async fn dispatch_text_message(
+    dispatcher: &mut Dispatcher,
     value: String,
     id: RoutingAddr,
-) -> Result<(), DispatchError>
-where
-    R: Router,
-{
+) -> Result<(), DispatchError> {
     let message = read_raw_header(value.as_str())?.tag(id);
     dispatcher.dispatch(message).await
 }

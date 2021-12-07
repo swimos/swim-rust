@@ -30,7 +30,7 @@ async fn tagged_sender() {
     assert_eq!(
         received,
         Some(TaggedEnvelope(
-            RoutingAddr::remote(7),
+            RoutingAddr::remote(7,),
             Envelope::linked().node_uri("/node").lane_uri("lane").done()
         ))
     );
@@ -38,7 +38,7 @@ async fn tagged_sender() {
 
 #[test]
 fn routing_addr_display() {
-    let string = format!("{}", RoutingAddr::remote(0x1));
+    let string = format!("{}", RoutingAddr::remote(0x1,));
     assert_eq!(string, "Remote(1)");
 
     let string = format!("{}", RoutingAddr::plane(0x1a));
