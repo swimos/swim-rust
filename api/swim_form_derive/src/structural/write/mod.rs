@@ -49,7 +49,6 @@ impl<'a> Destructure<'a> {
 }
 
 struct WriteWithFn<'a>(&'a SegregatedStructModel<'a>);
-
 struct WriteIntoFn<'a>(&'a SegregatedStructModel<'a>);
 
 impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedEnumModel<'a>> {
@@ -96,15 +95,8 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedEnumModel<'a>> {
             let name = inner.name;
             let write_with_cases = variants.iter().map(|v| {
                 let destructure = Destructure::variant_match(v.inner);
-
-                let (write_with, num_attrs) = if let Some(selector) = v.inner.newtype_selector() {
-                    (quote! { #selector.write_with(writer) }, quote! { 0 })
-                } else {
-                    (
-                        WriteWithFn(v).to_token_stream(),
-                        num_attributes_case(v, true).to_token_stream(),
-                    )
-                };
+                let write_with = WriteWithFn(v);
+                let num_attrs = num_attributes_case(v, true);
                 quote! {
                     #name::#destructure => {
                         let num_attrs = #num_attrs;
@@ -115,16 +107,8 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedEnumModel<'a>> {
 
             let write_into_cases = variants.iter().map(|v| {
                 let destructure = Destructure::variant_match(v.inner);
-
-                let (write_into, num_attrs) = if let Some(selector) = v.inner.newtype_selector() {
-                    (quote! { #selector.write_into(writer) }, quote! { 0 })
-                } else {
-                    (
-                        WriteIntoFn(v).to_token_stream(),
-                        num_attributes_case(v, false).to_token_stream(),
-                    )
-                };
-
+                let write_into = WriteIntoFn(v);
+                let num_attrs = num_attributes_case(v, false);
                 quote! {
                     #name::#destructure => {
                         let num_attrs = #num_attrs;

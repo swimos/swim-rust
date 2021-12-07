@@ -1038,6 +1038,94 @@ pub struct LabelledStructRecognizer<T, Flds> {
     vtable: LabelledVTable<T, Flds>,
 }
 
+//Todo dm add doc
+pub struct LabelledNewtypeRecognizer<T, Flds> {
+    fields: Flds,
+    vtable: LabelledVTable<T, Flds>,
+}
+
+impl<T, Flds> LabelledNewtypeRecognizer<T, Flds> {
+    //Todo dm add doc
+    pub fn new(
+        _tag: TagSpec,
+        fields: Flds,
+        _num_fields: u32,
+        vtable: LabelledVTable<T, Flds>,
+    ) -> Self {
+        LabelledNewtypeRecognizer { fields, vtable }
+    }
+}
+
+impl<T, Flds> Recognizer for LabelledNewtypeRecognizer<T, Flds> {
+    type Target = T;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        let LabelledNewtypeRecognizer {
+            fields,
+            vtable:
+                LabelledVTable {
+                    select_recog,
+                    on_done,
+                    ..
+                },
+        } = self;
+
+        if let Err(e) = select_recog(fields, 0, input)? {
+            Some(Err(e))
+        } else {
+            Some(on_done(fields))
+        }
+    }
+
+    fn reset(&mut self) {
+        (self.vtable.reset)(&mut self.fields);
+    }
+}
+
+//Todo dm add doc
+pub struct OrdinalNewtypeRecognizer<T, Flds> {
+    fields: Flds,
+    vtable: OrdinalVTable<T, Flds>,
+}
+
+impl<T, Flds> OrdinalNewtypeRecognizer<T, Flds> {
+    //Todo dm add doc
+    pub fn new(
+        _tag: TagSpec,
+        fields: Flds,
+        _num_fields: u32,
+        vtable: OrdinalVTable<T, Flds>,
+    ) -> Self {
+        OrdinalNewtypeRecognizer { fields, vtable }
+    }
+}
+
+impl<T, Flds> Recognizer for OrdinalNewtypeRecognizer<T, Flds> {
+    type Target = T;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        let OrdinalNewtypeRecognizer {
+            fields,
+            vtable:
+                OrdinalVTable {
+                    select_recog,
+                    on_done,
+                    ..
+                },
+        } = self;
+
+        if let Err(e) = select_recog(fields, 0, input)? {
+            Some(Err(e))
+        } else {
+            Some(on_done(fields))
+        }
+    }
+
+    fn reset(&mut self) {
+        (self.vtable.reset)(&mut self.fields);
+    }
+}
+
 /// The derivation macro produces the functions that are used to populate this table to provide
 /// the specific parts of the implementation.
 pub struct LabelledVTable<T, Flds> {

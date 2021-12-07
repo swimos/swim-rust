@@ -76,9 +76,9 @@ impl<'a> EnumDef<'a> {
 
 const VARIANT_WITH_TAG: &str = "Enum variants cannot specify a tag field";
 const TAG_SPECIFIED_FOR_ENUM: &str =
-    "A tag name cannot be specified for an enum type, only its variants.";
-const NEWTYPE_SPECIFIED_FOR_ENUM: &str =
-    "An enum type cannot be annotated with `newtype`, only its variants.";
+    "A tag name cannot be specified for an enum type, only its variants";
+const NEWTYPE_SPECIFIED_FOR_ENUM: &str = "Cannot use `newtype` annotation with enums";
+const NEWTYPE_SPECIFIED_FOR_VARIANT: &str = "Cannot use `newtype` annotation with enum variants";
 
 impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
     fn validate(input: EnumDef<'a>) -> SynValidation<Self> {
@@ -126,13 +126,17 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
                 Validation::valid(HashSet::new()),
                 false,
                 |mut names, v| {
-                    let name = if let Some(StructTransform::Rename(NameTransform::Rename(rename))) =
-                    &v.transform
-                    {
-                        rename.clone()
-                    } else {
-                        v.name.to_string()
+                    let name = match &v.transform {
+                        Some(StructTransform::Rename(NameTransform::Rename(rename))) => {
+                            rename.clone()
+                        }
+                        Some(StructTransform::Newtype(_)) => {
+                            let err = syn::Error::new_spanned(top, NEWTYPE_SPECIFIED_FOR_VARIANT);
+                            return Validation::Failed(err.into())
+                        }
+                        None => v.name.to_string(),
                     };
+
                     if names.contains(&name) {
                         let err = syn::Error::new_spanned(
                             top,
@@ -156,7 +160,7 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
                         let err = syn::Error::new_spanned(top, TAG_SPECIFIED_FOR_ENUM);
                         Validation::Validated(enum_model, err.into())
                     }
-                    _ => { Validation::valid(enum_model) }
+                    _ => Validation::valid(enum_model),
                 }
             })
         })

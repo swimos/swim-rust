@@ -144,7 +144,7 @@ pub enum StructTransform<'a> {
     Newtype(Option<FieldSelector<'a>>),
 }
 
-/// Fold operation to extract a name transform from the attributes on a type or field.
+/// Fold operation to extract a struct transform from the attributes on a type.
 pub fn acc_struct_transform(
     mut state: Option<StructTransform>,
     nested_meta: syn::NestedMeta,
@@ -167,7 +167,6 @@ pub fn acc_struct_transform(
                     None
                 }
             },
-            //Todo dm should this result in newtype overriding rename rather than an error?
             _ => Some(syn::Error::new_spanned(
                 nested_meta,
                 "Cannot use both `rename` and `newtype`",
