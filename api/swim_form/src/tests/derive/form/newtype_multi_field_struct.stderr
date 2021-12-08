@@ -1,0 +1,5 @@
+error: Cannot apply `newtype` attribute to a multi-field struct
+ --> src/tests/derive/form/newtype_multi_field_struct.rs:4:14
+  |
+4 |     #[derive(Form)]
+  |              ^^^^

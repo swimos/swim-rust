@@ -132,7 +132,7 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
                         }
                         Some(StructTransform::Newtype(_)) => {
                             let err = syn::Error::new_spanned(top, NEWTYPE_SPECIFIED_FOR_VARIANT);
-                            return Validation::Failed(err.into())
+                            return Validation::Failed(err.into());
                         }
                         None => v.name.to_string(),
                     };

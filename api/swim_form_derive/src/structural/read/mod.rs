@@ -1163,18 +1163,16 @@ fn compound_recognizer(
             syn::Ident::new("OrdinalVTable", Span::call_site()),
         )
     } else {
-        let (r, v) = if model.inner.fields_model.body_kind == CompoundTypeKind::Labelled {
-            if model.inner.newtype_selector().is_some() {
+        let (r, v) = match (
+            model.inner.fields_model.body_kind,
+            model.inner.newtype_selector(),
+        ) {
+            (CompoundTypeKind::Labelled, Some(_)) => {
                 ("LabelledNewtypeRecognizer", "LabelledVTable")
-            } else {
-                ("LabelledStructRecognizer", "LabelledVTable")
             }
-        } else {
-            if model.inner.newtype_selector().is_some() {
-                ("OrdinalNewtypeRecognizer", "OrdinalVTable")
-            } else {
-                ("OrdinalStructRecognizer", "OrdinalVTable")
-            }
+            (CompoundTypeKind::Labelled, None) => ("LabelledStructRecognizer", "LabelledVTable"),
+            (_, Some(_)) => ("OrdinalNewtypeRecognizer", "OrdinalVTable"),
+            (_, None) => ("OrdinalStructRecognizer", "OrdinalVTable"),
         };
         (
             syn::Ident::new(r, Span::call_site()),

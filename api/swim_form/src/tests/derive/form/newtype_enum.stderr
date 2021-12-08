@@ -1,0 +1,5 @@
+error: Cannot use `newtype` annotation with enums
+ --> src/tests/derive/form/newtype_enum.rs:4:14
+  |
+4 |     #[derive(Form)]
+  |              ^^^^
