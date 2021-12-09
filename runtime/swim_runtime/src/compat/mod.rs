@@ -528,7 +528,7 @@ where
 
 impl Decoder for RawResponseMessageDecoder {
     type Item = RawResponseMessage;
-    type Error = std::io::Error;
+    type Error = MessageDecodeError;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         if src.remaining() < HEADER_INIT_LEN {
@@ -540,7 +540,9 @@ impl Decoder for RawResponseMessageDecoder {
         let target = if let Ok(id) = RoutingAddr::try_from(Uuid::from_u128(target)) {
             id
         } else {
-            return Err(std::io::ErrorKind::InvalidData.into());
+            return Err(MessageDecodeError::Io(
+                std::io::ErrorKind::InvalidData.into(),
+            ));
         };
         let node_len = header.get_u32() as usize;
         let lane_len = header.get_u32() as usize;
@@ -555,13 +557,17 @@ impl Decoder for RawResponseMessageDecoder {
         let node = if let Ok(lane_name) = std::str::from_utf8(&src.as_ref()[0..node_len]) {
             Text::new(lane_name)
         } else {
-            return Err(std::io::ErrorKind::InvalidData.into());
+            return Err(MessageDecodeError::Io(
+                std::io::ErrorKind::InvalidData.into(),
+            ));
         };
         src.advance(node_len);
         let lane = if let Ok(lane_name) = std::str::from_utf8(&src.as_ref()[0..lane_len]) {
             Text::new(lane_name)
         } else {
-            return Err(std::io::Error::from(std::io::ErrorKind::InvalidData));
+            return Err(MessageDecodeError::Io(
+                std::io::ErrorKind::InvalidData.into(),
+            ));
         };
         src.advance(lane_len);
         let path = RelativePath::new(node, lane);

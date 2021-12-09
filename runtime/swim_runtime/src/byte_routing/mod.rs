@@ -13,6 +13,6 @@
 // limitations under the License.
 
 pub mod codec;
-pub mod read_selector;
 pub mod remote;
 pub mod routing;
+pub mod selector;

@@ -14,7 +14,7 @@
 
 use crate::byte_routing::routing::router::error::RouterError;
 use crate::byte_routing::routing::RawRoute;
-use crate::error::{ConnectionError, NoAgentAtRoute, Unresolvable};
+use crate::error::{ConnectionError, NoAgentAtRoute};
 use crate::remote::table::BidirectionalRegistrator;
 use crate::routing::{RoutingAddr, TaggedSender};
 use std::any::Any;

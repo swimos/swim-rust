@@ -18,18 +18,41 @@ mod tests;
 mod read;
 mod write;
 
+use crate::byte_routing::remote::transport::read::ReadError;
+use crate::byte_routing::remote::transport::write::WriteError;
 use crate::byte_routing::routing::{RawRoute, Router};
+use crate::compat::{AgentMessageDecoder, RawResponseMessageDecoder};
 use crate::routing::RoutingAddr;
-use futures_util::future::join;
+use futures_util::future::try_join;
+use futures_util::TryFutureExt;
 use ratchet::{SplittableExtension, WebSocket, WebSocketStream};
+use swim_form::structural::read::from_model::ValueMaterializer;
 use swim_model::path::RelativePath;
+use swim_model::Value;
+use swim_utilities::io::byte_channel::ByteReader;
 use swim_utilities::trigger;
+use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
+use tokio_util::codec::FramedRead;
+
+type AttachmentChannel<D> = mpsc::Receiver<FramedRead<ByteReader, D>>;
+type DownlinkChannel = AttachmentChannel<RawResponseMessageDecoder>;
+type AgentChannel = AttachmentChannel<AgentMessageDecoder<Value, ValueMaterializer>>;
+
+#[derive(Debug, Error)]
+pub enum TransportError {
+    #[error("Transport read error: `{0}`")]
+    Read(#[from] ReadError),
+    #[error("Transport write error: `{0}`")]
+    Write(#[from] WriteError),
+}
 
 pub struct TransportIo<S, E> {
     socket: WebSocket<S, E>,
     router: Router,
+    downlinks: DownlinkChannel,
+    agents: AgentChannel,
 }
 
 impl<S, E> TransportIo<S, E>
@@ -37,8 +60,18 @@ where
     S: WebSocketStream,
     E: SplittableExtension,
 {
-    pub fn new(socket: WebSocket<S, E>, router: Router) -> TransportIo<S, E> {
-        TransportIo { socket, router }
+    pub fn new(
+        socket: WebSocket<S, E>,
+        router: Router,
+        downlinks: DownlinkChannel,
+        agents: AgentChannel,
+    ) -> TransportIo<S, E> {
+        TransportIo {
+            socket,
+            router,
+            downlinks,
+            agents,
+        }
     }
 
     // todo replace with tokio::Notify
@@ -47,16 +80,25 @@ where
         id: RoutingAddr,
         stop_on: trigger::Receiver,
         dl_rx: mpsc::Receiver<(RelativePath, RawRoute)>,
-    ) -> Result<(), ()> {
-        let TransportIo { socket, router } = self;
+    ) -> Result<(), TransportError> {
+        let TransportIo {
+            socket,
+            router,
+            downlinks,
+            agents,
+        } = self;
 
-        let (io_tx, io_rx) = socket.split().unwrap();
-
-        let write_task = write::write_task(io_tx, stop_on.clone());
+        let (io_tx, io_rx) = socket
+            .split()
+            .map_err(|e| TransportError::Read(ReadError::WebSocket(e)))?;
+        let write_task = write::write_task(io_tx, downlinks, agents, stop_on.clone());
         let read_task = read::read_task(id, router, io_rx, ReceiverStream::new(dl_rx), stop_on);
 
-        join(write_task, read_task).await;
-
-        Ok(())
+        try_join(
+            write_task.map_err(Into::into),
+            read_task.map_err(Into::into),
+        )
+        .await
+        .map(|_| ())
     }
 }

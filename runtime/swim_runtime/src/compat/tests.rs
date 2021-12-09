@@ -182,7 +182,7 @@ fn check_result<T: Eq + Debug>(
 }
 
 fn check_result_response(
-    result: Result<Option<RawResponseMessage>, std::io::Error>,
+    result: Result<Option<RawResponseMessage>, MessageDecodeError>,
     expected: RawResponseMessage,
 ) {
     match result {
@@ -215,7 +215,7 @@ where
 
 fn round_trip_response<T>(
     frame: ResponseMessage<T>,
-) -> Result<Option<RawResponseMessage>, std::io::Error>
+) -> Result<Option<RawResponseMessage>, MessageDecodeError>
 where
     T: StructuralWritable,
 {

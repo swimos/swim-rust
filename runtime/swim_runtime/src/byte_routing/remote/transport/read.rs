@@ -22,10 +22,24 @@ use futures_util::future::select;
 use futures_util::StreamExt;
 use pin_utils::pin_mut;
 use ratchet::{ExtensionDecoder, WebSocketStream};
-use std::error::Error;
 use swim_model::path::RelativePath;
 use swim_utilities::future::retryable::RetryStrategy;
 use swim_utilities::trigger;
+use thiserror::Error;
+
+enum ReadEvent {
+    Dispatch(WsMessage),
+    Register(RelativePath, RawRoute),
+    Stop,
+}
+
+#[derive(Debug, Error)]
+pub enum ReadError {
+    #[error("Dispatch error: `{0}`")]
+    Dispatch(#[from] DispatchError),
+    #[error("Transport error: `{0}`")]
+    WebSocket(#[from] ratchet::Error),
+}
 
 pub async fn read_task<S, D, E>(
     id: RoutingAddr,
@@ -69,34 +83,6 @@ fn panic_binary() {
     panic!("Received an unsupported binary websocket message")
 }
 
-enum ReadEvent {
-    Dispatch(WsMessage),
-    Register(RelativePath, RawRoute),
-    Stop,
-}
-
-#[derive(Debug)]
-pub struct ReadError {
-    pub kind: ReadErrorKind,
-    pub cause: Box<dyn Error + Send + Sync + 'static>,
-}
-
-#[derive(PartialEq, Debug)]
-pub enum ReadErrorKind {
-    Dispatch,
-    Websocket,
-    DownlinkChannelClosed,
-}
-
-impl From<DispatchError> for ReadError {
-    fn from(e: DispatchError) -> Self {
-        ReadError {
-            kind: ReadErrorKind::Dispatch,
-            cause: Box::new(e),
-        }
-    }
-}
-
 async fn select_next<S, D>(ws_rx: &mut S, downlink_rx: &mut D) -> Result<ReadEvent, ReadError>
 where
     S: Stream<Item = Result<WsMessage, ratchet::Error>> + Unpin,
@@ -110,10 +96,7 @@ where
             //  to be written that still handles control frames and upholds the websocket protocol.
             Ok(ReadEvent::Dispatch(msg))
         }
-        Either::Left((Some(Err(e)), _)) => Err(ReadError {
-            kind: ReadErrorKind::Websocket,
-            cause: Box::new(e),
-        }),
+        Either::Left((Some(Err(e)), _)) => Err(e.into()),
         Either::Right((Some((addr, writer)), _)) => Ok(ReadEvent::Register(addr, writer)),
         Either::Left((None, _)) | Either::Right((None, _)) => Ok(ReadEvent::Stop),
     }

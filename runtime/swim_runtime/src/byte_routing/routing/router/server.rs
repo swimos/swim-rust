@@ -13,16 +13,11 @@
 // limitations under the License.
 
 use crate::byte_routing::routing::router::error::{RouterError, RouterErrorKind};
-use crate::byte_routing::routing::router::models::{
-    DownlinkRoutingRequest, PlaneRoutingRequest, RemoteRoutingRequest,
-};
-use crate::byte_routing::routing::{RawRoute, Route};
-use crate::compat::ResponseMessageEncoder;
-use crate::routing::{BidirectionalRoute, PlaneRoutingAddr, RoutingAddr, RoutingAddrKind};
+use crate::byte_routing::routing::router::models::{PlaneRoutingRequest, RemoteRoutingRequest};
+use crate::byte_routing::routing::RawRoute;
+use crate::routing::{RoutingAddr, RoutingAddrKind};
 use std::convert::identity;
 use std::future::Future;
-use std::sync::Arc;
-use swim_model::path::Path;
 use swim_utilities::future::request::Request;
 use swim_utilities::routing::uri::RelativeUri;
 use tokio::sync::mpsc::error::SendError;
@@ -31,29 +26,16 @@ use url::Url;
 
 #[derive(Clone, Debug)]
 pub struct ServerRouter {
-    inner: Arc<Inner>,
-}
-
-#[derive(Debug)]
-struct Inner {
     plane: mpsc::Sender<PlaneRoutingRequest>,
-    client: mpsc::Sender<DownlinkRoutingRequest<Path>>,
     remote: mpsc::Sender<RemoteRoutingRequest>,
 }
 
 impl ServerRouter {
     pub fn new(
         plane: mpsc::Sender<PlaneRoutingRequest>,
-        client: mpsc::Sender<DownlinkRoutingRequest<Path>>,
         remote: mpsc::Sender<RemoteRoutingRequest>,
     ) -> ServerRouter {
-        ServerRouter {
-            inner: Arc::new(Inner {
-                plane,
-                client,
-                remote,
-            }),
-        }
+        ServerRouter { plane, remote }
     }
 
     async fn exec<Func, Fut, E, T>(&self, op: Func) -> Result<T, RouterError>
@@ -75,7 +57,7 @@ impl ServerRouter {
     pub async fn resolve_sender(&mut self, addr: RoutingAddr) -> Result<RawRoute, RouterError> {
         match addr.discriminate() {
             RoutingAddrKind::Remote => {
-                let tx = &self.inner.remote;
+                let tx = &self.remote;
                 self.exec(|callback| {
                     tx.send(RemoteRoutingRequest::Endpoint {
                         addr,
@@ -85,7 +67,7 @@ impl ServerRouter {
                 .await
             }
             RoutingAddrKind::Plane => {
-                let tx = &self.inner.plane;
+                let tx = &self.plane;
                 self.exec(|callback| {
                     tx.send(PlaneRoutingRequest::Endpoint {
                         addr,
@@ -95,14 +77,8 @@ impl ServerRouter {
                 .await
             }
             RoutingAddrKind::Client => {
-                let tx = &self.inner.client;
-                self.exec(|callback| {
-                    tx.send(DownlinkRoutingRequest::Endpoint {
-                        addr,
-                        request: Request::new(callback),
-                    })
-                })
-                .await
+                // todo
+                Err(RouterError::new(RouterErrorKind::Resolution))
             }
         }
     }
@@ -112,7 +88,7 @@ impl ServerRouter {
         uri: RelativeUri,
         host: Option<Url>,
     ) -> Result<RoutingAddr, RouterError> {
-        let tx = &self.inner.plane;
+        let tx = &self.plane;
         self.exec(|callback| {
             tx.send(PlaneRoutingRequest::Resolve {
                 host,
@@ -121,21 +97,5 @@ impl ServerRouter {
             })
         })
         .await
-    }
-
-    pub async fn resolve_bidirectional(
-        &mut self,
-        host: Url,
-    ) -> Result<BidirectionalRoute, RouterError> {
-        let tx = &self.inner.remote;
-        let registrator = self
-            .exec(|callback| {
-                tx.send(RemoteRoutingRequest::Bidirectional {
-                    host,
-                    request: Request::new(callback),
-                })
-            })
-            .await?;
-        registrator.register().await.map_err(Into::into)
     }
 }

@@ -14,7 +14,6 @@
 
 use crate::error::ResolutionError;
 use std::error::Error;
-use swim_utilities::errors::Recoverable;
 
 #[derive(Debug)]
 pub struct RouterError {
