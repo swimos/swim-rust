@@ -1215,16 +1215,20 @@ impl<'a> ToTokens for StructReadableImpl<'a> {
         let on_done = on_done_name();
         let on_reset = on_reset_name();
 
-        tokens.append_all(quote! {
-            type Rec = #recog_ty;
-            type AttrRec = swim_form::structural::read::recognizer::SimpleAttrBody<
-                #recog_ty,
-            >;
-            type BodyRec = Self::Rec;
-
-            #[allow(non_snake_case)]
-            #[inline]
-            fn make_recognizer() -> Self::Rec {
+        let make_recognizer_fn_body = if fields.inner.newtype_selector().is_some() {
+            quote! {
+            <#recog_ty>::new(
+                    (core::default::Default::default(), #make_fld_recog, core::marker::PhantomData),
+                    <#vtable_ty>::new(
+                        #select_index,
+                        #select_feed,
+                        #on_done,
+                        #on_reset,
+                    )
+                )
+            }
+        } else {
+            quote! {
                 <#recog_ty>::new(
                     #tag,
                     (core::default::Default::default(), #make_fld_recog, core::marker::PhantomData),
@@ -1236,6 +1240,20 @@ impl<'a> ToTokens for StructReadableImpl<'a> {
                         #on_reset,
                     )
                 )
+            }
+        };
+
+        tokens.append_all(quote! {
+            type Rec = #recog_ty;
+            type AttrRec = swim_form::structural::read::recognizer::SimpleAttrBody<
+                #recog_ty,
+            >;
+            type BodyRec = Self::Rec;
+
+            #[allow(non_snake_case)]
+            #[inline]
+            fn make_recognizer() -> Self::Rec {
+               #make_recognizer_fn_body
             }
 
             #[inline]

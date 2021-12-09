@@ -28,7 +28,8 @@ use std::ops::Add;
 use swim_utilities::errors::validation::{validate2, Validation, ValidationItExt};
 use syn::{Attribute, Fields, Ident};
 
-const NEWTYPE_MULTI_FIELD_ERR: &str = "Cannot apply `newtype` attribute to a multi-field struct";
+const NEWTYPE_MULTI_FIELD_ERR: &str =
+    "Cannot apply `newtype` attribute to a struct with multiple fields";
 const NEWTYPE_EMPTY_ERR: &str = "Cannot apply `newtype` attribute to an empty struct";
 const FIELD_TAG_ERR: &str =
     "Cannot apply a tag to a field when one has already been applied at the container level";
