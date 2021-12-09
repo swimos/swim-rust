@@ -20,6 +20,7 @@ mod write;
 
 use crate::byte_routing::remote::transport::read::ReadError;
 use crate::byte_routing::remote::transport::write::WriteError;
+use crate::byte_routing::remote::TransportConfiguration;
 use crate::byte_routing::routing::{RawRoute, Router};
 use crate::compat::{AgentMessageDecoder, RawResponseMessageDecoder};
 use crate::routing::RoutingAddr;
@@ -49,10 +50,12 @@ pub enum TransportError {
 }
 
 pub struct TransportIo<S, E> {
+    configuration: TransportConfiguration,
     socket: WebSocket<S, E>,
     router: Router,
-    downlinks: DownlinkChannel,
-    agents: AgentChannel,
+    downlink_write: DownlinkChannel,
+    downlink_read: mpsc::Receiver<(RelativePath, RawRoute)>,
+    agent_write: AgentChannel,
 }
 
 impl<S, E> TransportIo<S, E>
@@ -61,38 +64,59 @@ where
     E: SplittableExtension,
 {
     pub fn new(
+        configuration: TransportConfiguration,
         socket: WebSocket<S, E>,
         router: Router,
-        downlinks: DownlinkChannel,
-        agents: AgentChannel,
+        downlink_write: DownlinkChannel,
+        downlink_read: mpsc::Receiver<(RelativePath, RawRoute)>,
+        agent_write: AgentChannel,
     ) -> TransportIo<S, E> {
         TransportIo {
+            configuration,
             socket,
             router,
-            downlinks,
-            agents,
+            downlink_write,
+            downlink_read,
+            agent_write,
         }
     }
 
-    // todo replace with tokio::Notify
     pub async fn run(
         self,
         id: RoutingAddr,
         stop_on: trigger::Receiver,
-        dl_rx: mpsc::Receiver<(RelativePath, RawRoute)>,
     ) -> Result<(), TransportError> {
         let TransportIo {
+            configuration,
             socket,
             router,
-            downlinks,
-            agents,
+            downlink_write,
+            agent_write,
+            downlink_read,
         } = self;
+        let TransportConfiguration {
+            chunk_after,
+            timeout,
+            reap_after,
+        } = configuration;
 
         let (io_tx, io_rx) = socket
             .split()
             .map_err(|e| TransportError::Read(ReadError::WebSocket(e)))?;
-        let write_task = write::write_task(io_tx, downlinks, agents, stop_on.clone());
-        let read_task = read::read_task(id, router, io_rx, ReceiverStream::new(dl_rx), stop_on);
+        let write_task = write::task(
+            io_tx,
+            chunk_after,
+            downlink_write,
+            agent_write,
+            stop_on.clone(),
+        );
+        let read_task = read::task(
+            id,
+            router,
+            io_rx,
+            ReceiverStream::new(downlink_read),
+            stop_on,
+        );
 
         try_join(
             write_task.map_err(Into::into),

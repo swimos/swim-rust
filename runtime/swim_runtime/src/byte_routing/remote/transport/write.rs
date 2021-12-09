@@ -18,9 +18,11 @@ use crate::compat::{
     AgentMessageDecoder, MessageDecodeError, Notification, Operation, RawResponseMessageDecoder,
     RequestMessage, ResponseMessage,
 };
+use bytes::BytesMut;
 use futures_util::StreamExt;
-use ratchet::{ExtensionEncoder, WebSocketStream};
+use ratchet::{ExtensionEncoder, MessageType, WebSocketStream};
 use std::io::ErrorKind;
+use std::num::NonZeroUsize;
 use swim_form::structural::read::from_model::ValueMaterializer;
 use swim_model::Value;
 use swim_utilities::io::byte_channel::ByteReader;
@@ -59,8 +61,9 @@ pub enum WriteError {
     WebSocket(#[from] ratchet::Error),
 }
 
-pub async fn write_task<S, E>(
+pub async fn task<S, E>(
     mut sender: ratchet::Sender<S, E>,
+    chunk_after: NonZeroUsize,
     downlink_channel: DownlinkChannel,
     agent_channel: AgentChannel,
     stop_on: trigger::Receiver,
@@ -69,6 +72,7 @@ where
     S: WebSocketStream,
     E: ExtensionEncoder,
 {
+    let chunk_after = chunk_after.get();
     let mut downlink_requests = ReceiverStream::new(downlink_channel).take_until(stop_on.clone());
     let mut agent_requests = ReceiverStream::new(agent_channel).take_until(stop_on.clone());
     let mut downlink_selector = Selector::new(map_reader);
@@ -85,7 +89,7 @@ where
         match action {
             Some(WriteEvent::Message(result)) => match result {
                 Ok(payload) => {
-                    write_message(&mut sender, payload).await?;
+                    write_message(&mut sender, payload, chunk_after).await?;
                 }
                 Err(e) => {
                     match e {
@@ -111,6 +115,7 @@ where
 async fn write_message<S, E>(
     sender: &mut ratchet::Sender<S, E>,
     message: Message,
+    chunk_after: usize,
 ) -> Result<(), ratchet::Error>
 where
     S: WebSocketStream,
@@ -142,13 +147,16 @@ where
     };
 
     let payload = format!(
-        "@{}(node:{}, lane,{}){}",
+        "@{}(node:{}, lane:{}){}",
         envelope,
         path.node,
         path.lane,
         body.unwrap_or_default()
     );
-    sender.write_text(payload).await
+
+    sender
+        .write_fragmented(payload, MessageType::Text, chunk_after)
+        .await
 }
 
 async fn map_reader<D>(

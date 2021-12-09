@@ -13,16 +13,15 @@
 // limitations under the License.
 
 use ratchet::WebSocketConfig;
+use std::num::NonZeroUsize;
 use std::time::Duration;
 
 mod transport;
 
 // todo
 pub struct TransportConfiguration {
-    /// WebSocket connection configuration.
-    websocket: WebSocketConfig,
     /// Split messages over this size and send them as continuations.
-    chunk_after: usize,
+    chunk_after: NonZeroUsize,
     /// Timeout after.
     timeout: Duration,
     /// Read forward channel reaper frequency.

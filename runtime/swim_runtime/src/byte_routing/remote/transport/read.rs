@@ -41,7 +41,7 @@ pub enum ReadError {
     WebSocket(#[from] ratchet::Error),
 }
 
-pub async fn read_task<S, D, E>(
+pub async fn task<S, D, E>(
     id: RoutingAddr,
     router: Router,
     receiver: ratchet::Receiver<S, E>,
