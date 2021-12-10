@@ -30,21 +30,43 @@ async fn tagged_sender() {
     assert_eq!(
         received,
         Some(TaggedEnvelope(
-            RoutingAddr::remote(7,),
+            RoutingAddr::remote(7),
             Envelope::linked().node_uri("/node").lane_uri("lane").done()
         ))
     );
 }
 
 #[test]
+fn routing_addr_discriminate() {
+    assert!(RoutingAddr::remote(0x1).is_remote());
+    assert!(RoutingAddr::client(0x1).is_client());
+    assert!(RoutingAddr::plane(0x1).is_plane());
+    assert!(RoutingAddr::remote(u32::MAX).is_remote());
+    assert!(RoutingAddr::client(u32::MAX).is_client());
+    assert!(RoutingAddr::plane(u32::MAX).is_plane());
+}
+
+#[test]
 fn routing_addr_display() {
-    let addr = RoutingAddr::client(2);
-    println!("{}", addr);
-    println!("{}", addr.is_client());
-    let addr = RoutingAddr::plane(2);
-    println!("{}", addr.is_plane());
-    println!("{}", addr);
-    let addr = RoutingAddr::remote(2);
-    println!("{}", addr.is_remote());
-    println!("{}", addr);
+    assert_eq!(
+        RoutingAddr::remote(0x1).to_string(),
+        "Remote(1)".to_string()
+    );
+    assert_eq!(
+        RoutingAddr::remote(u32::MAX).to_string(),
+        "Remote(4294967295)".to_string()
+    );
+    assert_eq!(RoutingAddr::plane(0x1).to_string(), "Plane(1)".to_string());
+    assert_eq!(
+        RoutingAddr::plane(u32::MAX).to_string(),
+        "Plane(4294967295)".to_string()
+    );
+    assert_eq!(
+        RoutingAddr::client(0x1).to_string(),
+        "Client(1)".to_string()
+    );
+    assert_eq!(
+        RoutingAddr::client(u32::MAX).to_string(),
+        "Client(4294967295)".to_string()
+    );
 }
