@@ -472,6 +472,7 @@ where
                 tokio::task::yield_now().await;
             }
         }
+
         if errors.is_fatal() {
             Err(errors)
         } else {
