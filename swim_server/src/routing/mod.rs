@@ -19,7 +19,6 @@ use std::collections::HashSet;
 
 use std::sync::Arc;
 
-use swim_model::path::Path;
 use swim_runtime::error::ResolutionError;
 use swim_runtime::error::{NoAgentAtRoute, RouterError, Unresolvable};
 use swim_runtime::remote::{RawOutRoute, RemoteRoutingRequest};
@@ -69,14 +68,14 @@ pub enum PlaneRoutingRequest {
 #[derive(Debug, Clone)]
 pub(crate) struct TopLevelServerRouterFactory {
     plane_sender: mpsc::Sender<PlaneRoutingRequest>,
-    client_sender: mpsc::Sender<DownlinkRoutingRequest<Path>>,
+    client_sender: mpsc::Sender<ClientEndpointRequest>,
     remote_sender: mpsc::Sender<RemoteRoutingRequest>,
 }
 
 impl TopLevelServerRouterFactory {
     pub(in crate) fn new(
         plane_sender: mpsc::Sender<PlaneRoutingRequest>,
-        client_sender: mpsc::Sender<DownlinkRoutingRequest<Path>>,
+        client_sender: mpsc::Sender<ClientEndpointRequest>,
         remote_sender: mpsc::Sender<RemoteRoutingRequest>,
     ) -> Self {
         TopLevelServerRouterFactory {

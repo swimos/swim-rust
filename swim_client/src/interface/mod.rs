@@ -43,7 +43,6 @@ use swim_form::Form;
 use swim_model::path::{AbsolutePath, Addressable};
 use swim_model::Value;
 use swim_recon::parser::parse_value as parse_single;
-use swim_runtime::error::ConnectionError;
 use swim_runtime::error::RoutingError;
 use swim_runtime::remote::net::dns::Resolver;
 use swim_runtime::remote::net::plain::TokioPlainTextNetworking;
@@ -473,12 +472,6 @@ impl<Path: Addressable> From<TaskError> for ClientError<Path> {
 impl<Path: Addressable> From<SubscriptionError<Path>> for ClientError<Path> {
     fn from(err: SubscriptionError<Path>) -> Self {
         ClientError::Subscription(err)
-    }
-}
-
-impl<Path: Addressable> From<ConnectionError> for ClientError<Path> {
-    fn from(err: ConnectionError) -> Self {
-        ClientError::Routing(RoutingError::PoolError(err))
     }
 }
 

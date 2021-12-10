@@ -65,8 +65,6 @@ pub enum RoutingError {
     ConnectionError,
     /// The remote host is unreachable.
     HostUnreachable,
-    /// The connection pool has encountered an error.
-    PoolError(ConnectionError),
     /// The router has been stopped.
     RouterDropped,
     /// The router has encountered an error while stopping.
@@ -78,7 +76,6 @@ impl Recoverable for RoutingError {
         match &self {
             RoutingError::ConnectionError => false,
             RoutingError::HostUnreachable => false,
-            RoutingError::PoolError(e) => e.is_fatal(),
             _ => true,
         }
     }
@@ -89,7 +86,6 @@ impl Display for RoutingError {
         match self {
             RoutingError::ConnectionError => write!(f, "Connection error."),
             RoutingError::HostUnreachable => write!(f, "Host unreachable."),
-            RoutingError::PoolError(e) => write!(f, "Connection pool error. {}", e),
             RoutingError::RouterDropped => write!(f, "Router was dropped."),
             RoutingError::CloseError => write!(f, "Closing error."),
         }
