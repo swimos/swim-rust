@@ -13,10 +13,10 @@
 // limitations under the License.
 
 mod dispatch;
-mod router;
+pub mod router;
 pub use dispatch::{DispatchError, Dispatcher};
 use futures_util::SinkExt;
-pub use router::{Address, Router};
+pub use router::Address;
 use swim_utilities::io::byte_channel::ByteWriter;
 use tokio_util::codec::{Encoder, FramedWrite};
 

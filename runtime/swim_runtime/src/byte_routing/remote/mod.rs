@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use ratchet::WebSocketConfig;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 

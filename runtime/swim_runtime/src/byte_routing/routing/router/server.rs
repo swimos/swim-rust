@@ -14,15 +14,13 @@
 
 use crate::byte_routing::routing::router::error::{RouterError, RouterErrorKind};
 use crate::byte_routing::routing::router::models::{PlaneRoutingRequest, RemoteRoutingRequest};
-use crate::byte_routing::routing::RawRoute;
+use crate::byte_routing::routing::{Address, RawRoute};
 use crate::routing::{RoutingAddr, RoutingAddrKind};
 use std::convert::identity;
 use std::future::Future;
 use swim_utilities::future::request::Request;
-use swim_utilities::routing::uri::RelativeUri;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::{mpsc, oneshot};
-use url::Url;
 
 #[derive(Clone, Debug)]
 pub struct ServerRouter {
@@ -57,6 +55,7 @@ impl ServerRouter {
     pub async fn resolve_sender(&mut self, addr: RoutingAddr) -> Result<RawRoute, RouterError> {
         match addr.discriminate() {
             RoutingAddrKind::Remote => {
+                println!("Remote");
                 let tx = &self.remote;
                 self.exec(|callback| {
                     tx.send(RemoteRoutingRequest::Endpoint {
@@ -67,6 +66,7 @@ impl ServerRouter {
                 .await
             }
             RoutingAddrKind::Plane => {
+                println!("Plane");
                 let tx = &self.plane;
                 self.exec(|callback| {
                     tx.send(PlaneRoutingRequest::Endpoint {
@@ -83,11 +83,15 @@ impl ServerRouter {
         }
     }
 
-    pub async fn lookup(
-        &mut self,
-        uri: RelativeUri,
-        host: Option<Url>,
-    ) -> Result<RoutingAddr, RouterError> {
+    pub async fn lookup<A>(&mut self, address: A) -> Result<RoutingAddr, RouterError>
+    where
+        A: Into<Address>,
+    {
+        let (host, uri) = match address.into() {
+            Address::Local(uri) => (None, uri),
+            Address::Remote(host, uri) => (Some(host), uri),
+        };
+
         let tx = &self.plane;
         self.exec(|callback| {
             tx.send(PlaneRoutingRequest::Resolve {

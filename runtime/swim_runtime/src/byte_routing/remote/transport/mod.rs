@@ -21,7 +21,8 @@ mod write;
 use crate::byte_routing::remote::transport::read::ReadError;
 use crate::byte_routing::remote::transport::write::WriteError;
 use crate::byte_routing::remote::TransportConfiguration;
-use crate::byte_routing::routing::{RawRoute, Router};
+use crate::byte_routing::routing::router::ServerRouter;
+use crate::byte_routing::routing::RawRoute;
 use crate::compat::{AgentMessageDecoder, RawResponseMessageDecoder};
 use crate::routing::RoutingAddr;
 use futures_util::future::try_join;
@@ -52,7 +53,7 @@ pub enum TransportError {
 pub struct TransportIo<S, E> {
     configuration: TransportConfiguration,
     socket: WebSocket<S, E>,
-    router: Router,
+    router: ServerRouter,
     downlink_write: DownlinkChannel,
     downlink_read: mpsc::Receiver<(RelativePath, RawRoute)>,
     agent_write: AgentChannel,
@@ -66,7 +67,7 @@ where
     pub fn new(
         configuration: TransportConfiguration,
         socket: WebSocket<S, E>,
-        router: Router,
+        router: ServerRouter,
         downlink_write: DownlinkChannel,
         downlink_read: mpsc::Receiver<(RelativePath, RawRoute)>,
         agent_write: AgentChannel,

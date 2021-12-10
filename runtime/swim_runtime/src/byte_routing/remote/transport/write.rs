@@ -18,7 +18,6 @@ use crate::compat::{
     AgentMessageDecoder, MessageDecodeError, Notification, Operation, RawResponseMessageDecoder,
     RequestMessage, ResponseMessage,
 };
-use bytes::BytesMut;
 use futures_util::StreamExt;
 use ratchet::{ExtensionEncoder, MessageType, WebSocketStream};
 use std::io::ErrorKind;

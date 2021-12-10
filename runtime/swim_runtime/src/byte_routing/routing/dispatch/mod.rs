@@ -13,9 +13,10 @@
 // limitations under the License.
 
 use crate::byte_routing::codec::TaggedMessage;
-use crate::byte_routing::routing::{RawRoute, Route, Router};
+use crate::byte_routing::routing::router::ServerRouter;
+use crate::byte_routing::routing::router::{RouterError, RouterErrorKind};
+use crate::byte_routing::routing::{RawRoute, Route};
 use crate::compat::{RawRequestMessageEncoder, ResponseMessageEncoder};
-use crate::error::{ResolutionError, ResolutionErrorKind, RouterError};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::io::{Error as IoError, ErrorKind};
@@ -32,13 +33,13 @@ use tokio_util::codec::Encoder;
 // todo this should have a task that automatically prunes handles to the agents every N minutes
 pub struct Dispatcher {
     retry_strategy: RetryStrategy,
-    router: Router,
+    router: ServerRouter,
     agents: HashMap<RelativePath, Route<RawRequestMessageEncoder>>,
     downlinks: HashMap<RelativePath, Route<ResponseMessageEncoder>>,
 }
 
 impl Dispatcher {
-    pub fn new(retry_strategy: RetryStrategy, router: Router) -> Dispatcher {
+    pub fn new(retry_strategy: RetryStrategy, router: ServerRouter) -> Dispatcher {
         Dispatcher {
             retry_strategy,
             router,
@@ -97,7 +98,7 @@ const fn response_encoder() -> ResponseMessageEncoder {
 
 async fn dispatch<E, I>(
     mut retry_strategy: RetryStrategy,
-    router: &mut Router,
+    router: &mut ServerRouter,
     map: &mut HashMap<RelativePath, Route<E>>,
     target: RelativePath,
     message: I,
@@ -136,7 +137,7 @@ where
 }
 
 async fn try_dispatch<E, I>(
-    router: &mut Router,
+    router: &mut ServerRouter,
     map: &mut HashMap<RelativePath, Route<E>>,
     target: RelativePath,
     message: I,
@@ -163,10 +164,10 @@ where
 }
 
 async fn try_open_route<E>(
-    router: &mut Router,
+    router: &mut ServerRouter,
     target: RelativePath,
     encoder_fac: fn() -> E,
-) -> Result<Route<E>, ResolutionError> {
+) -> Result<Route<E>, RouterError> {
     let target_addr = router
         .lookup(RelativeUri::from_str(target.node.as_str())?)
         .await?;
@@ -177,30 +178,6 @@ async fn try_open_route<E>(
         .into_framed(encoder_fac()))
 }
 
-impl From<ResolutionError> for DispatchError {
-    fn from(e: ResolutionError) -> Self {
-        DispatchError::Resolution(e)
-    }
-}
-
-impl From<BadRelativeUri> for ResolutionError {
-    fn from(e: BadRelativeUri) -> Self {
-        ResolutionError::new(ResolutionErrorKind::Unresolvable, Some(e.to_string()))
-    }
-}
-
-impl From<RouterError> for ResolutionError {
-    fn from(e: RouterError) -> Self {
-        ResolutionError::new(ResolutionErrorKind::Unresolvable, Some(e.to_string()))
-    }
-}
-
-impl From<HeaderParseErr> for DispatchError {
-    fn from(_: HeaderParseErr) -> Self {
-        DispatchError::Malformatted
-    }
-}
-
 #[derive(Debug, Error)]
 pub enum DispatchError {
     #[error("Peer sent a malformatted message")]
@@ -208,7 +185,19 @@ pub enum DispatchError {
     #[error("{0}")]
     Io(IoError),
     #[error("{0}")]
-    Resolution(ResolutionError),
+    Router(#[from] RouterError),
+}
+
+impl From<BadRelativeUri> for RouterError {
+    fn from(e: BadRelativeUri) -> Self {
+        RouterError::with_cause(RouterErrorKind::Resolution, e)
+    }
+}
+
+impl From<HeaderParseErr> for DispatchError {
+    fn from(_: HeaderParseErr) -> Self {
+        DispatchError::Malformatted
+    }
 }
 
 impl Recoverable for DispatchError {

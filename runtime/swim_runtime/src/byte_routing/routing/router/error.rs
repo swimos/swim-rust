@@ -14,6 +14,7 @@
 
 use crate::error::ResolutionError;
 use std::error::Error;
+use std::fmt::{Display, Formatter};
 
 #[derive(Debug)]
 pub struct RouterError {
@@ -41,6 +42,26 @@ impl RouterError {
             self.kind,
             RouterErrorKind::NoAgentAtRoute | RouterErrorKind::Resolution
         )
+    }
+}
+
+impl Display for RouterError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let RouterError { kind, cause } = self;
+        match cause {
+            Some(cause) => {
+                write!(f, "RouterError({:?}, {})", kind, cause)
+            }
+            None => {
+                write!(f, "RouterError({:?})", kind)
+            }
+        }
+    }
+}
+
+impl Error for RouterError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        self.cause.as_ref().map(|e| &**e as _)
     }
 }
 
