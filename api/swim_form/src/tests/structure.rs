@@ -15,7 +15,7 @@
 use crate::structural::Tag;
 use crate::Form;
 use swim_model::time::Timestamp;
-use swim_model::{Attr, Item, Value};
+use swim_model::{Attr, Item, Text, Value};
 
 mod swim_form {
     pub use crate::*;
@@ -533,4 +533,156 @@ fn generic_duplicated_bound_2() {
     let s = S { a: Valid };
 
     let _ = s.as_value();
+}
+
+#[test]
+fn test_newtype() {
+    {
+        #[derive(Form, Debug, PartialEq, Clone)]
+        #[form(newtype)]
+        struct First(i32);
+
+        let first = First(13);
+        let val = Value::Int32Value(13);
+        assert_eq!(first.as_value(), val);
+        assert_eq!(First::try_from_value(&val), Ok(First(13)));
+        assert_eq!(First::try_convert(val.clone()), Ok(First(13)));
+        assert_eq!(first.into_value(), val);
+    }
+
+    {
+        #[derive(Form, Debug, PartialEq, Clone)]
+        #[form(newtype)]
+        struct Second(i32, #[form(skip)] String);
+
+        let second = Second(42, "Test".to_string());
+        let val = Value::Int32Value(42);
+        assert_eq!(second.as_value(), val);
+        assert_eq!(Second::try_from_value(&val), Ok(Second(42, "".to_string())));
+        assert_eq!(
+            Second::try_convert(val.clone()),
+            Ok(Second(42, "".to_string()))
+        );
+        assert_eq!(second.into_value(), val);
+    }
+
+    {
+        #[derive(Form, Debug, PartialEq, Clone)]
+        #[form(newtype)]
+        struct Third(#[form(skip)] Option<i32>, #[form(skip)] String, u32);
+
+        let third = Third(Some(15), "Test".to_string(), 256);
+        let val = Value::Int32Value(256);
+        assert_eq!(third.as_value(), val);
+        assert_eq!(
+            Third::try_from_value(&val),
+            Ok(Third(None, "".to_string(), 256))
+        );
+        assert_eq!(
+            Third::try_convert(val.clone()),
+            Ok(Third(None, "".to_string(), 256))
+        );
+        assert_eq!(third.into_value(), val);
+    }
+
+    {
+        #[derive(Form, Debug, PartialEq, Clone)]
+        #[form(newtype)]
+        struct Fourth {
+            a: String,
+        }
+
+        let fourth = Fourth {
+            a: "Hello, world!".to_string(),
+        };
+        let val = Value::Text(Text::new("Hello, world!"));
+        assert_eq!(fourth.as_value(), val);
+        assert_eq!(
+            Fourth::try_from_value(&val),
+            Ok(Fourth {
+                a: "Hello, world!".to_string()
+            })
+        );
+        assert_eq!(
+            Fourth::try_convert(val.clone()),
+            Ok(Fourth {
+                a: "Hello, world!".to_string()
+            })
+        );
+        assert_eq!(fourth.into_value(), val);
+    }
+
+    {
+        #[derive(Form, Debug, PartialEq, Clone)]
+        #[form(newtype)]
+        struct Fifth {
+            a: String,
+            #[form(skip)]
+            b: i32,
+            #[form(skip)]
+            c: i32,
+        }
+
+        let fifth = Fifth {
+            a: "O.o".to_string(),
+            b: 11,
+            c: 22,
+        };
+        let val = Value::Text(Text::new("O.o"));
+        assert_eq!(fifth.as_value(), val);
+        assert_eq!(
+            Fifth::try_from_value(&val),
+            Ok(Fifth {
+                a: "O.o".to_string(),
+                b: 0,
+                c: 0,
+            })
+        );
+        assert_eq!(
+            Fifth::try_convert(val.clone()),
+            Ok(Fifth {
+                a: "O.o".to_string(),
+                b: 0,
+                c: 0,
+            })
+        );
+        assert_eq!(fifth.into_value(), val);
+    }
+
+    {
+        #[derive(Form, Debug, PartialEq, Clone)]
+        #[form(newtype)]
+        struct Sixth {
+            #[form(skip)]
+            a: String,
+            b: i32,
+            #[form(skip)]
+            c: i32,
+        }
+
+        let sixth = Sixth {
+            a: "@.@".to_string(),
+            b: 11,
+            c: 22,
+        };
+        let val = Value::Int32Value(11);
+        assert_eq!(sixth.as_value(), val);
+        assert_eq!(
+            Sixth::try_from_value(&val),
+            Ok(Sixth {
+                a: "".to_string(),
+                b: 11,
+                c: 0,
+            })
+        );
+        assert_eq!(
+            Sixth::try_convert(val.clone()),
+            Ok(Sixth {
+                a: "".to_string(),
+                b: 11,
+                c: 0,
+            })
+        );
+        assert_eq!(sixth.into_value(), val);
+    }
 }

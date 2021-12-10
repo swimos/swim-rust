@@ -1,0 +1,5 @@
+error: Cannot apply `newtype` attribute to an empty struct
+ --> src/tests/derive/form/newtype_empty_struct.rs:4:14
+  |
+4 |     #[derive(Form)]
+  |              ^^^^
