@@ -17,7 +17,6 @@
 //! The module provides methods and structures for creating and running Swim client instances.
 use crate::configuration::ConfigError;
 use crate::configuration::SwimClientConfig;
-use crate::connections::SwimConnPool;
 use crate::downlink::error::{DownlinkError, SubscriptionError};
 use crate::downlink::typed::command::TypedCommandDownlink;
 use crate::downlink::typed::event::TypedEventDownlink;
@@ -29,7 +28,6 @@ use crate::downlink::typed::{
 };
 use crate::downlink::Downlinks;
 use crate::downlink::SchemaViolations;
-use crate::router::{ClientRouterFactory, TopLevelClientRouterFactory};
 use crate::runtime::task::TaskHandle;
 use futures::join;
 use std::error::Error;
@@ -49,9 +47,10 @@ use swim_runtime::error::ConnectionError;
 use swim_runtime::error::RoutingError;
 use swim_runtime::remote::net::dns::Resolver;
 use swim_runtime::remote::net::plain::TokioPlainTextNetworking;
-use swim_runtime::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
-use swim_runtime::routing::CloseSender;
+use swim_runtime::remote::{RemoteConnectionChannels, RemoteConnectionsTask, RemoteRouterFactory};
+use swim_runtime::routing::{CloseSender, NoRoutes};
 
+use crate::router::{ClientConnectionFactory, ClientRouterTask};
 use ratchet::ProtocolRegistry;
 use swim_runtime::configuration::WebSocketConfig;
 use swim_runtime::ws::ext::RatchetNetworking;
@@ -110,11 +109,7 @@ impl SwimClientBuilder {
         let (client_tx, client_rx) =
             mpsc::channel(config.remote_connections_config.router_buffer_size.get());
 
-        let top_level_router_fac =
-            TopLevelClientRouterFactory::new(client_tx.clone(), remote_tx.clone());
-
-        let client_router_factory =
-            ClientRouterFactory::new(client_tx.clone(), top_level_router_fac.clone());
+        let router_factory = RemoteRouterFactory::new(NoRoutes, remote_tx.clone());
         let (close_tx, close_rx) = promise::promise();
 
         let WebSocketConfig {
@@ -131,24 +126,25 @@ impl SwimClientBuilder {
                 subprotocols: ProtocolRegistry::new(vec!["warp"])
                     .expect("Failed to build subprotocol registry"),
             },
-            top_level_router_fac.clone(),
+            NoRoutes,
             OpenEndedFutures::new(),
-            RemoteConnectionChannels::new(remote_tx, remote_rx, close_rx.clone()),
+            RemoteConnectionChannels::new(remote_tx.clone(), remote_rx, close_rx.clone()),
         )
         .await;
 
-        // The connection pool handles the connections behind the downlinks
-        let (connection_pool, pool_task) = SwimConnPool::new(
-            config.downlink_connections_config,
-            (client_tx, client_rx),
-            client_router_factory,
+        // The connection factory handles the connections behind the downlinks
+        let connections = ClientConnectionFactory::new(router_factory, client_tx, remote_tx);
+        let connections_task = ClientRouterTask::new(
             close_rx.clone(),
+            client_rx,
+            config.downlink_connections_config.buffer_size,
+            config.downlink_connections_config.yield_after,
         );
 
         // The downlinks are state machines and request connections from the pool
         let (downlinks, downlinks_task) = Downlinks::new(
-            config.downlink_connections_config.dl_req_buffer_size,
-            connection_pool,
+            connections,
+            config.downlink_connections_config,
             Arc::new(config.downlinks_config),
             close_rx,
         );
@@ -157,7 +153,7 @@ impl SwimClientBuilder {
             join!(
                 downlinks_task.run(),
                 remote_connections_task.run(),
-                pool_task.run(),
+                connections_task.run(),
             )
         });
 
@@ -318,7 +314,6 @@ impl<Path: Addressable> SwimClient<Path> {
         match result {
             (Err(err), _, _) => Err(err.into()),
             (_, Err(err), _) => Err(err.into()),
-            (_, _, Err(err)) => Err(err.into()),
             _ => Ok(()),
         }
     }
@@ -327,7 +322,7 @@ impl<Path: Addressable> SwimClient<Path> {
 type ClientTaskHandle<Path> = TaskHandle<(
     Result<(), SubscriptionError<Path>>,
     Result<(), std::io::Error>,
-    Result<(), swim_runtime::error::ConnectionError>,
+    (),
 )>;
 
 #[derive(Clone, Debug)]

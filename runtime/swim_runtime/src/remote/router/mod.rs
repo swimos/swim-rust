@@ -14,9 +14,7 @@
 
 use crate::error::{ResolutionError, RouterError, Unresolvable};
 use crate::remote::{RawOutRoute, RemoteRoutingRequest};
-use crate::routing::{
-    Route, Router, RoutingAddr, TaggedSender,
-};
+use crate::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use swim_utilities::future::request::Request;
@@ -95,20 +93,77 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
                 ..
             } = self;
             if let Some(url) = host {
-                let (tx, rx) = oneshot::channel();
-                let request = Request::new(tx);
-                let routing_req = RemoteRoutingRequest::ResolveUrl { host: url, request };
-                if request_tx.send(routing_req).await.is_err() {
-                    Err(RouterError::RouterDropped)
-                } else {
-                    match rx.await {
-                        Ok(Ok(addr)) => Ok(addr),
-                        Ok(Err(err)) => Err(RouterError::ConnectionFailure(err)),
-                        Err(_) => Err(RouterError::RouterDropped),
-                    }
-                }
+                lookup_inner(request_tx, url).await
             } else {
                 delegate_router.lookup(host, route).await
+            }
+        }
+        .boxed()
+    }
+}
+
+pub struct RemoteRouterFactory<F> {
+    delegate_router_factory: F,
+    request_tx: mpsc::Sender<RemoteRoutingRequest>,
+}
+
+impl<F> RemoteRouterFactory<F> {
+    pub fn new(delegate_router_factory: F, request_tx: mpsc::Sender<RemoteRoutingRequest>) -> Self {
+        RemoteRouterFactory {
+            delegate_router_factory,
+            request_tx,
+        }
+    }
+}
+
+async fn lookup_inner(
+    request_tx: &mpsc::Sender<RemoteRoutingRequest>,
+    url: Url,
+) -> Result<RoutingAddr, RouterError> {
+    let (tx, rx) = oneshot::channel();
+    let request = Request::new(tx);
+    let routing_req = RemoteRoutingRequest::ResolveUrl { host: url, request };
+    if request_tx.send(routing_req).await.is_err() {
+        Err(RouterError::RouterDropped)
+    } else {
+        match rx.await {
+            Ok(Ok(addr)) => Ok(addr),
+            Ok(Err(err)) => Err(RouterError::ConnectionFailure(err)),
+            Err(_) => Err(RouterError::RouterDropped),
+        }
+    }
+}
+
+impl<F: RouterFactory> RouterFactory for RemoteRouterFactory<F> {
+    type Router = RemoteRouter<F::Router>;
+
+    fn create_for(&self, addr: RoutingAddr) -> Self::Router {
+        let RemoteRouterFactory {
+            delegate_router_factory,
+            request_tx,
+        } = self;
+        RemoteRouter::new(
+            addr,
+            delegate_router_factory.create_for(addr),
+            request_tx.clone(),
+        )
+    }
+
+    fn lookup(
+        &mut self,
+        host: Option<Url>,
+        route: RelativeUri,
+    ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
+        async move {
+            let RemoteRouterFactory {
+                request_tx,
+                delegate_router_factory,
+                ..
+            } = self;
+            if let Some(url) = host {
+                lookup_inner(request_tx, url).await
+            } else {
+                delegate_router_factory.lookup(host, route).await
             }
         }
         .boxed()

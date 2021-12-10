@@ -49,6 +49,7 @@ use tracing::{event, Level};
 use url::Url;
 
 use ratchet::WebSocketStream;
+pub use router::{RemoteRouter, RemoteRouterFactory};
 use swim_tracing::request::{RequestExt, TryRequestExt};
 use swim_utilities::routing::uri::RelativeUri;
 

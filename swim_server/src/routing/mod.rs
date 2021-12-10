@@ -19,19 +19,16 @@ use std::collections::HashSet;
 
 use std::sync::Arc;
 
-use swim_client::router::DownlinkRoutingRequest;
 use swim_model::path::Path;
 use swim_runtime::error::ResolutionError;
 use swim_runtime::error::{NoAgentAtRoute, RouterError, Unresolvable};
 use swim_runtime::remote::{RawOutRoute, RemoteRoutingRequest};
-use swim_runtime::routing::{
-    ClientRoute, Route, Router, RouterFactory,
-    RoutingAddr, TaggedSender,
-};
+use swim_runtime::routing::{ClientRoute, Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 
 use swim_utilities::future::request::Request;
 use swim_utilities::routing::uri::RelativeUri;
 
+use swim_client::router::ClientEndpointRequest;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use url::Url;
@@ -101,13 +98,25 @@ impl RouterFactory for TopLevelServerRouterFactory {
             self.remote_sender.clone(),
         )
     }
+
+    fn lookup(
+        &mut self,
+        host: Option<Url>,
+        route: RelativeUri,
+    ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
+        async move {
+            let TopLevelServerRouterFactory { plane_sender, .. } = self;
+            lookup_inner(plane_sender, host, route).await
+        }
+        .boxed()
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct TopLevelServerRouter {
     addr: RoutingAddr,
     plane_sender: mpsc::Sender<PlaneRoutingRequest>,
-    client_sender: mpsc::Sender<DownlinkRoutingRequest<Path>>,
+    client_sender: mpsc::Sender<ClientEndpointRequest>,
     remote_sender: mpsc::Sender<RemoteRoutingRequest>,
 }
 
@@ -115,7 +124,7 @@ impl TopLevelServerRouter {
     pub(crate) fn new(
         addr: RoutingAddr,
         plane_sender: mpsc::Sender<PlaneRoutingRequest>,
-        client_sender: mpsc::Sender<DownlinkRoutingRequest<Path>>,
+        client_sender: mpsc::Sender<ClientEndpointRequest>,
         remote_sender: mpsc::Sender<RemoteRoutingRequest>,
     ) -> Self {
         TopLevelServerRouter {
@@ -123,6 +132,31 @@ impl TopLevelServerRouter {
             plane_sender,
             client_sender,
             remote_sender,
+        }
+    }
+}
+
+async fn lookup_inner(
+    plane_sender: &mpsc::Sender<PlaneRoutingRequest>,
+    host: Option<Url>,
+    route: RelativeUri,
+) -> Result<RoutingAddr, RouterError> {
+    let (tx, rx) = oneshot::channel();
+    if plane_sender
+        .send(PlaneRoutingRequest::Resolve {
+            host,
+            name: route.clone(),
+            request: Request::new(tx),
+        })
+        .await
+        .is_err()
+    {
+        Err(RouterError::NoAgentAtRoute(route))
+    } else {
+        match rx.await {
+            Ok(Ok(addr)) => Ok(addr),
+            Ok(Err(err)) => Err(err),
+            Err(_) => Err(RouterError::RouterDropped),
         }
     }
 }
@@ -180,7 +214,7 @@ impl Router for TopLevelServerRouter {
                 let (tx, rx) = oneshot::channel();
                 let request = Request::new(tx);
                 if client_sender
-                    .send(DownlinkRoutingRequest::Endpoint { addr, request })
+                    .send(ClientEndpointRequest::Get(addr, request))
                     .await
                     .is_err()
                 {
@@ -206,25 +240,7 @@ impl Router for TopLevelServerRouter {
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         async move {
             let TopLevelServerRouter { plane_sender, .. } = self;
-
-            let (tx, rx) = oneshot::channel();
-            if plane_sender
-                .send(PlaneRoutingRequest::Resolve {
-                    host,
-                    name: route.clone(),
-                    request: Request::new(tx),
-                })
-                .await
-                .is_err()
-            {
-                Err(RouterError::NoAgentAtRoute(route))
-            } else {
-                match rx.await {
-                    Ok(Ok(addr)) => Ok(addr),
-                    Ok(Err(err)) => Err(err),
-                    Err(_) => Err(RouterError::RouterDropped),
-                }
-            }
+            lookup_inner(plane_sender, host, route).await
         }
         .boxed()
     }

@@ -180,4 +180,12 @@ impl RouterFactory for LocalRoutes {
         let LocalRoutes(_, inner) = self;
         LocalRoutes(addr, inner.clone())
     }
+
+    fn lookup(
+        &mut self,
+        host: Option<Url>,
+        route: RelativeUri,
+    ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
+        Router::lookup(self, host, route)
+    }
 }

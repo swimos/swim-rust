@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::error::{ConnectionDropped, ResolutionError, RouterError, RoutingError};
+use crate::error::{
+    ConnectionDropped, ConnectionError, ResolutionError, RouterError, RoutingError,
+};
 use std::convert::TryFrom;
 
 use crate::remote::RawOutRoute;
@@ -150,11 +152,11 @@ pub struct Route {
 
 #[derive(Debug)]
 pub struct ClientRoute {
-    tag: RoutingAddr,
-    route: Route,
-    receiver: mpsc::Receiver<TaggedEnvelope>,
-    rx_on_dropped: promise::Receiver<ConnectionDropped>,
-    handle_drop: Option<promise::Sender<ConnectionDropped>>,
+    pub tag: RoutingAddr,
+    pub route: Route,
+    pub receiver: mpsc::Receiver<TaggedEnvelope>,
+    pub rx_on_dropped: promise::Receiver<ConnectionDropped>,
+    pub handle_drop: ClientRouteMonitor,
 }
 
 #[derive(Debug)]
@@ -162,7 +164,7 @@ pub struct UnroutableClient {
     route: RawOutRoute,
     receiver: mpsc::Receiver<TaggedEnvelope>,
     rx_on_dropped: promise::Receiver<ConnectionDropped>,
-    handle_drop: promise::Sender<ConnectionDropped>,
+    handle_drop: ClientRouteMonitor,
 }
 
 impl ClientRoute {
@@ -171,14 +173,31 @@ impl ClientRoute {
         route: Route,
         receiver: mpsc::Receiver<TaggedEnvelope>,
         rx_on_dropped: promise::Receiver<ConnectionDropped>,
-        handle_drop: promise::Sender<ConnectionDropped>,
+        handle_drop: ClientRouteMonitor,
     ) -> Self {
         ClientRoute {
             tag,
             route,
             receiver,
             rx_on_dropped,
-            handle_drop: Some(handle_drop),
+            handle_drop,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ClientRouteMonitor(Option<promise::Sender<ConnectionDropped>>);
+
+impl ClientRouteMonitor {
+    pub fn new(sender: promise::Sender<ConnectionDropped>) -> Self {
+        ClientRouteMonitor(Some(sender))
+    }
+}
+
+impl Drop for ClientRouteMonitor {
+    fn drop(&mut self) {
+        if let Some(tx) = self.0.take() {
+            let _ = tx.provide(ConnectionDropped::Closed);
         }
     }
 }
@@ -194,7 +213,7 @@ impl UnroutableClient {
             route,
             receiver,
             rx_on_dropped,
-            handle_drop,
+            handle_drop: ClientRouteMonitor(Some(handle_drop)),
         }
     }
 
@@ -212,14 +231,6 @@ impl UnroutableClient {
             rx_on_dropped,
             handle_drop,
         )
-    }
-}
-
-impl Drop for ClientRoute {
-    fn drop(&mut self) {
-        if let Some(tx) = self.handle_drop.take() {
-            let _ = tx.provide(ConnectionDropped::Closed);
-        }
     }
 }
 
@@ -250,6 +261,13 @@ pub trait RouterFactory: Send + Sync {
 
     /// Create a new router for a given routing address.
     fn create_for(&self, addr: RoutingAddr) -> Self::Router;
+
+    /// Find and return the corresponding routing address of an endpoint for a given route.
+    fn lookup(
+        &mut self,
+        host: Option<Url>,
+        route: RelativeUri,
+    ) -> BoxFuture<Result<RoutingAddr, RouterError>>;
 }
 
 /// Sender that attaches a [`RoutingAddr`] to received envelopes before sending them over a channel.
@@ -286,5 +304,47 @@ impl<'a> ItemSink<'a, Envelope> for TaggedSender {
 
     fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
         self.send_item(value).boxed()
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct NoRoutes;
+
+impl Router for NoRoutes {
+    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
+        async move { Err(ResolutionError::Unresolvable(addr)) }.boxed()
+    }
+
+    fn lookup(
+        &mut self,
+        host: Option<Url>,
+        route: RelativeUri,
+    ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
+        async move {
+            if let Some(url) = host {
+                Err(RouterError::ConnectionFailure(ConnectionError::Resolution(
+                    url.to_string(),
+                )))
+            } else {
+                Err(RouterError::NoAgentAtRoute(route))
+            }
+        }
+        .boxed()
+    }
+}
+
+impl RouterFactory for NoRoutes {
+    type Router = NoRoutes;
+
+    fn create_for(&self, _addr: RoutingAddr) -> Self::Router {
+        NoRoutes
+    }
+
+    fn lookup(
+        &mut self,
+        host: Option<Url>,
+        route: RelativeUri,
+    ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
+        Router::lookup(self, host, route)
     }
 }
