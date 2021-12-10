@@ -110,7 +110,6 @@ impl AsyncRead for Conduit {
         } else if self.closed {
             Poll::Ready(Ok(()))
         } else {
-            debug_assert!(self.waker.is_none());
             self.waker = Some(cx.waker().clone());
             Poll::Pending
         }
@@ -131,7 +130,6 @@ impl AsyncWrite for Conduit {
         } else {
             let available = self.capacity - self.data.len();
             if available == 0 {
-                debug_assert!(self.waker.is_none());
                 self.waker = Some(cx.waker().clone());
                 return Poll::Pending;
             }
