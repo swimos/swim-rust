@@ -40,6 +40,7 @@ impl MockPlaneRouter {
             lut,
             mut resolver,
         } = self;
+
         while let Some(request) = rx.recv().await {
             match request {
                 PlaneRoutingRequest::Endpoint { addr, request } => {
@@ -47,18 +48,13 @@ impl MockPlaneRouter {
                         Some(addr) => Ok(addr.take().expect("Route already taken")),
                         None => Err(RouterError::new(RouterErrorKind::Resolution)),
                     };
-                    println!("Router endpoint: {:?}", response);
                     let _ = request.send(response);
                 }
                 PlaneRoutingRequest::Resolve { request, uri, .. } => {
                     let response = match lut.get(&uri) {
-                        Some(addr) => {
-                            println!("Addr: {}", addr);
-                            Ok(*addr)
-                        }
+                        Some(addr) => Ok(*addr),
                         None => Err(RouterError::new(RouterErrorKind::Resolution)),
                     };
-                    println!("Router resolve: {:?}", response);
                     let _ = request.send(response);
                 }
                 PlaneRoutingRequest::Agent { .. } => {

@@ -83,7 +83,7 @@ fn make_task(
     };
 
     let read_task = transport::read::task(
-        RoutingAddr::remote(13),
+        RoutingAddr::plane(13),
         router,
         socket_receiver,
         ReceiverStream::new(downlink_rx),
@@ -168,7 +168,7 @@ async fn read_message() {
     let main_task = async move {
         let frame = create_frame(msg);
         assert!(socket_tx.write(frame.as_ref()).await.is_ok());
-        println!("{:?}", read_task.await);
+        assert!(read_task.await.is_ok());
     };
 
     let reader_task = async move {
@@ -189,14 +189,4 @@ async fn read_message() {
     };
 
     join(main_task, reader_task).await;
-}
-
-#[test]
-fn t() {
-    let tag = RoutingAddr::plane(0x1a);
-    println!("{}", tag);
-    println!("{}", tag.is_plane());
-
-    let string = format!("{}", RoutingAddr::plane(0x1a));
-    assert_eq!(string, "Plane(1A)");
 }

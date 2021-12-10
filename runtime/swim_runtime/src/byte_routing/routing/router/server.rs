@@ -55,7 +55,6 @@ impl ServerRouter {
     pub async fn resolve_sender(&mut self, addr: RoutingAddr) -> Result<RawRoute, RouterError> {
         match addr.discriminate() {
             RoutingAddrKind::Remote => {
-                println!("Remote");
                 let tx = &self.remote;
                 self.exec(|callback| {
                     tx.send(RemoteRoutingRequest::Endpoint {
@@ -66,7 +65,6 @@ impl ServerRouter {
                 .await
             }
             RoutingAddrKind::Plane => {
-                println!("Plane");
                 let tx = &self.plane;
                 self.exec(|callback| {
                     tx.send(PlaneRoutingRequest::Endpoint {
