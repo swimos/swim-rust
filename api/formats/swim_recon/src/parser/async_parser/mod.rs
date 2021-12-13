@@ -364,6 +364,7 @@ impl LocationTracker {
 /// it completes. Not that this is cannot be used as a stand-alone decoder as it has no concept of
 /// a separator between frames. It needs to be incorporated into another decoder that can determine
 /// where one record ends and another begins.
+#[derive(Debug)]
 pub struct RecognizerDecoder<R> {
     parser: IncrementalReconParser,
     recognizer: R,

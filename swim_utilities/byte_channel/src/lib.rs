@@ -171,6 +171,7 @@ impl AsyncWrite for Conduit {
     }
 }
 
+#[derive(Debug)]
 pub struct ByteReader {
     inner: Arc<Mutex<Conduit>>,
     closed: Arc<AtomicBool>,

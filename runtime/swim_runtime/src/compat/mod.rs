@@ -303,6 +303,7 @@ where
     }
 }
 
+#[derive(Debug)]
 enum State<T> {
     ReadingHeader,
     ReadingBody {
@@ -322,6 +323,7 @@ enum State<T> {
 
 /// Tokio [`Decoder`] that can read an [`AgentMessage`] from a stream of bytes, using a
 /// [`RecognizerDecoder`] to interpret the body.
+#[derive(Debug)]
 pub struct AgentMessageDecoder<T, R> {
     state: State<T>,
     recognizer: RecognizerDecoder<R>,

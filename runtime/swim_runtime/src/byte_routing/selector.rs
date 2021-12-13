@@ -46,9 +46,8 @@ where
 
     loop {
         let action = select! {
-                read = selector.read() => read.map(Either::Left),
-                request = requests.next() => request.map(Either::Right)
-
+            read = selector.read() => Some(Either::Left(read)),
+            request = requests.next() => request.map(Either::Right)
         };
 
         match action {
@@ -115,14 +114,18 @@ where
         tasks.0.push(fac(producer));
     }
 
-    pub async fn read(&mut self) -> Option<Result<O, E>> {
-        match self.tasks.next().await.flatten() {
-            Some(Ok((producer, output))) => {
-                self.attach(producer);
-                Some(Ok(output))
+    pub async fn read(&mut self) -> Result<O, E> {
+        loop {
+            match self.tasks.next().await.flatten() {
+                Some(Ok((producer, output))) => {
+                    self.attach(producer);
+                    break Ok(output);
+                }
+                Some(Err(e)) => break Err(e),
+                None => {
+                    // a task has completed but yielded nothing
+                }
             }
-            Some(Err(e)) => Some(Err(e)),
-            None => None,
         }
     }
 }
@@ -133,7 +136,7 @@ mod tests {
     use crate::compat::{AgentMessageDecoder, Operation, RawRequestMessageEncoder, RequestMessage};
     use crate::routing::RoutingAddr;
     use futures_util::future::join3;
-    use futures_util::SinkExt;
+    use futures_util::{FutureExt, SinkExt};
     use swim_form::structural::read::recognizer::RecognizerReadable;
     use swim_model::path::RelativePath;
     use swim_model::Value;
@@ -156,9 +159,11 @@ mod tests {
         selector.attach(vec![4, 5, 6]);
 
         for _ in 0..5 {
-            let event: Option<Result<i32, ()>> = selector.read().await;
-            println!("{:?}", event);
+            let event: Result<i32, ()> = selector.read().await;
+            assert!(event.is_ok());
         }
+
+        assert!(selector.read().now_or_never().is_none());
     }
 
     #[tokio::test]

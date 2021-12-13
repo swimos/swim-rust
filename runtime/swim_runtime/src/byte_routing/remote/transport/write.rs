@@ -31,6 +31,7 @@ use tokio::select;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{Decoder, FramedRead};
 
+#[derive(Debug)]
 enum Message {
     Request(RequestMessage<swim_model::Value>),
     Response(ResponseMessage<bytes::Bytes>),
@@ -77,10 +78,10 @@ where
     let mut downlink_selector = Selector::new(map_reader);
     let mut agent_selector = Selector::new(map_reader);
 
-    loop {
+    let r = loop {
         let action: Option<WriteEvent> = select! {
-            ev = downlink_selector.read() => ev.map(|msg| WriteEvent::Message(msg.map(Into::into))),
-            ev = agent_selector.read() => ev.map(|msg| WriteEvent::Message(msg.map(Into::into))),
+            ev = downlink_selector.read() => Some(WriteEvent::Message(ev.map(Into::into))),
+            ev = agent_selector.read() => Some(WriteEvent::Message(ev.map(Into::into))),
             req = downlink_requests.next() => req.map(WriteEvent::AttachDownlink),
             req = agent_requests.next() => req.map(WriteEvent::AttachAgent),
         };
@@ -108,7 +109,11 @@ where
             Some(WriteEvent::AttachDownlink(framed)) => downlink_selector.attach(framed),
             None => break Ok(()),
         }
-    }
+    };
+
+    println!("Write task complete");
+
+    r
 }
 
 async fn write_message<S, E>(
