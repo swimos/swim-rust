@@ -27,17 +27,17 @@ use tokio::sync::{mpsc, oneshot};
 /// This hands out raw byte channels for sending messages to the destination and it is the callees
 /// responsibility to ensure that the correct encoder is attached to the route.
 #[derive(Clone, Debug)]
-pub struct RawServerRouter {
+pub struct ServerRouter {
     plane: mpsc::Sender<PlaneRoutingRequest>,
     remote: mpsc::Sender<RemoteRoutingRequest>,
 }
 
-impl RawServerRouter {
+impl ServerRouter {
     pub fn new(
         plane: mpsc::Sender<PlaneRoutingRequest>,
         remote: mpsc::Sender<RemoteRoutingRequest>,
-    ) -> RawServerRouter {
-        RawServerRouter { plane, remote }
+    ) -> ServerRouter {
+        ServerRouter { plane, remote }
     }
 
     async fn exec<Func, Fut, E, T>(&self, op: Func) -> Result<T, RouterError>
@@ -106,29 +106,29 @@ impl RawServerRouter {
     }
 
     /// Creates a server router that will tag senders with `tag`.
-    fn create_for(&self, tag: RoutingAddr) -> ServerRouter {
-        ServerRouter::new(tag, self.clone())
+    pub fn create_for(&self, tag: RoutingAddr) -> TaggedServerRouter {
+        TaggedServerRouter::new(tag, self.clone())
     }
 }
 
 /// A wrapper around a raw server router that attaches a tag (RoutingAddr) to routes that are
 /// resolved.
 #[derive(Debug)]
-pub struct ServerRouter {
+pub struct TaggedServerRouter {
     tag: RoutingAddr,
-    inner: RawServerRouter,
+    inner: ServerRouter,
 }
 
-impl ServerRouter {
-    pub fn new(tag: RoutingAddr, inner: RawServerRouter) -> ServerRouter {
-        ServerRouter { tag, inner }
+impl TaggedServerRouter {
+    fn new(tag: RoutingAddr, inner: ServerRouter) -> TaggedServerRouter {
+        TaggedServerRouter { tag, inner }
     }
 
     pub async fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
     ) -> Result<TaggedRawRoute, RouterError> {
-        let ServerRouter { tag, inner } = self;
+        let TaggedServerRouter { tag, inner } = self;
         let RawRoute { writer } = inner.resolve_sender(addr).await?;
         Ok(TaggedRawRoute::new(*tag, writer))
     }

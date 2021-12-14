@@ -15,6 +15,7 @@
 #[cfg(test)]
 mod tests;
 
+use crate::byte_routing::routing::router::{ServerRouter, TaggedServerRouter};
 use crate::error::{
     CloseError, CloseErrorKind, ConnectionError, ProtocolError, ProtocolErrorKind, ResolutionError,
     ResolutionErrorKind,
@@ -23,7 +24,7 @@ use crate::error::{ConnectionDropped, RouterError};
 use crate::remote::config::RemoteConnectionsConfig;
 use crate::remote::router::RemoteRouter;
 use crate::remote::{BidirectionalReceiverRequest, RemoteRoutingRequest};
-use crate::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender};
+use crate::routing::{Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender};
 use crate::ws::{into_stream, WsMessage};
 use futures::future::join_all;
 use futures::future::BoxFuture;
@@ -59,12 +60,12 @@ const ERROR_ON_CLOSE: &str = "Error whilst closing connection.";
 const BIDIRECTIONAL_RECEIVER_ERROR: &str = "Error whilst sending a bidirectional receiver.";
 
 /// A task that manages reading from and writing to a web-sockets channel.
-pub struct ConnectionTask<Sock, Ext, Router> {
+pub struct ConnectionTask<Sock, Ext> {
     tag: RoutingAddr,
     ws_stream: WebSocket<Sock, Ext>,
     messages: mpsc::Receiver<TaggedEnvelope>,
     message_injector: mpsc::Sender<TaggedEnvelope>,
-    router: Router,
+    router: TaggedServerRouter,
     bidirectional_request_rx: mpsc::Receiver<BidirectionalReceiverRequest>,
     stop_signal: trigger::Receiver,
     config: RemoteConnectionsConfig,
@@ -94,11 +95,10 @@ enum ConnectionEvent {
     Request(BidirectionalReceiverRequest),
 }
 
-impl<Sock, Ext, R> ConnectionTask<Sock, Ext, R>
+impl<Sock, Ext> ConnectionTask<Sock, Ext>
 where
     Sock: WebSocketStream,
     Ext: SplittableExtension,
-    R: Router,
 {
     /// Create a new task.
     ///
@@ -116,7 +116,7 @@ where
     pub fn new(
         tag: RoutingAddr,
         ws_stream: WebSocket<Sock, Ext>,
-        router: R,
+        router: TaggedServerRouter,
         (messages_tx, messages_rx): (mpsc::Sender<TaggedEnvelope>, mpsc::Receiver<TaggedEnvelope>),
         bidirectional_request_rx: mpsc::Receiver<BidirectionalReceiverRequest>,
         stop_signal: trigger::Receiver,
@@ -340,8 +340,8 @@ impl From<RouterError> for DispatchError {
     }
 }
 
-async fn dispatch_envelope<R, F, D>(
-    router: &mut R,
+async fn dispatch_envelope<F, D>(
+    router: &TaggedServerRouter,
     bidirectional_connections: &mut Slab<TaggedSender>,
     resolved: &mut HashMap<RelativePath, Route>,
     mut envelope: Envelope,
@@ -349,34 +349,34 @@ async fn dispatch_envelope<R, F, D>(
     delay_fn: F,
 ) -> Result<(), (Envelope, DispatchError)>
 where
-    R: Router,
     F: Fn(Duration) -> D,
     D: Future<Output = ()>,
 {
-    loop {
-        let result =
-            try_dispatch_envelope(router, bidirectional_connections, resolved, envelope).await;
-        match result {
-            Err((env, err)) if !err.is_fatal() => {
-                match retry_strategy.next() {
-                    Some(Some(dur)) => {
-                        delay_fn(dur).await;
-                    }
-                    None => {
-                        break Err((env, err));
-                    }
-                    _ => {}
-                }
-                envelope = env;
-            }
-            Err((env, err)) => {
-                break Err((env, err));
-            }
-            _ => {
-                break Ok(());
-            }
-        }
-    }
+    // loop {
+    //     let result =
+    //         try_dispatch_envelope(router, bidirectional_connections, resolved, envelope).await;
+    //     match result {
+    //         Err((env, err)) if !err.is_fatal() => {
+    //             match retry_strategy.next() {
+    //                 Some(Some(dur)) => {
+    //                     delay_fn(dur).await;
+    //                 }
+    //                 None => {
+    //                     break Err((env, err));
+    //                 }
+    //                 _ => {}
+    //             }
+    //             envelope = env;
+    //         }
+    //         Err((env, err)) => {
+    //             break Err((env, err));
+    //         }
+    //         _ => {
+    //             break Ok(());
+    //         }
+    //     }
+    // }
+    unimplemented!()
 }
 
 async fn try_dispatch_envelope<R>(
@@ -477,33 +477,28 @@ where
 }
 
 /// Factory to create and spawn new connection tasks.
-pub struct TaskFactory<DelegateRouterFac> {
+pub struct TaskFactory {
     request_tx: mpsc::Sender<RemoteRoutingRequest>,
     stop_trigger: trigger::Receiver,
     configuration: RemoteConnectionsConfig,
-    delegate_router_fac: DelegateRouterFac,
+    router: ServerRouter,
 }
 
-impl<DelegateRouterFac> TaskFactory<DelegateRouterFac> {
+impl TaskFactory {
     pub fn new(
         request_tx: mpsc::Sender<RemoteRoutingRequest>,
         stop_trigger: trigger::Receiver,
         configuration: RemoteConnectionsConfig,
-        delegate_router_fac: DelegateRouterFac,
+        router: ServerRouter,
     ) -> Self {
         TaskFactory {
             request_tx,
             stop_trigger,
             configuration,
-            delegate_router_fac,
+            router,
         }
     }
-}
 
-impl<DelegateRouterFac> TaskFactory<DelegateRouterFac>
-where
-    DelegateRouterFac: RouterFactory + 'static,
-{
     pub fn spawn_connection_task<Sock, Ext, Sp>(
         &self,
         ws_stream: WebSocket<Sock, Ext>,
@@ -522,7 +517,7 @@ where
             request_tx,
             stop_trigger,
             configuration,
-            delegate_router_fac,
+            router,
         } = self;
         let (msg_tx, msg_rx) = mpsc::channel(configuration.channel_buffer_size.get());
         let (bidirectional_request_tx, bidirectional_request_rx) =
@@ -531,7 +526,7 @@ where
         let task = ConnectionTask::new(
             tag,
             ws_stream,
-            RemoteRouter::new(tag, delegate_router_fac.create_for(tag), request_tx.clone()),
+            router.create_for(tag),
             (msg_tx.clone(), msg_rx),
             bidirectional_request_rx,
             stop_trigger.clone(),

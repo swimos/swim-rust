@@ -18,7 +18,7 @@ use crate::byte_routing::remote::transport;
 use crate::byte_routing::remote::transport::read::ReadError;
 use crate::byte_routing::remote::transport::tests::fixture::MockPlaneRouter;
 use crate::byte_routing::remote::transport::Attachment;
-use crate::byte_routing::routing::router::RawServerRouter;
+use crate::byte_routing::routing::router::ServerRouter;
 use crate::byte_routing::routing::RawRoute;
 use crate::compat::{
     AgentMessageDecoder, Operation, RawRequestMessageEncoder, RawResponseMessageDecoder,
@@ -79,7 +79,7 @@ fn make_read_task(
 
     let (plane_tx, plane_rx) = mpsc::channel(16);
     let mock_plane_router = MockPlaneRouter::new(plane_rx, lut, resolver);
-    let router = RawServerRouter::new(plane_tx, mpsc::channel(1).0);
+    let router = ServerRouter::new(plane_tx, mpsc::channel(1).0);
 
     let fixture = ReadFixture {
         _router: tokio::spawn(mock_plane_router.run()),

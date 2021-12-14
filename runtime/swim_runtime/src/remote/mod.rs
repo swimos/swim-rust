@@ -33,7 +33,7 @@ use crate::remote::config::RemoteConnectionsConfig;
 use crate::remote::pending::PendingRequest;
 use crate::remote::state::{DeferredResult, Event, RemoteConnections, RemoteTasksState};
 use crate::remote::table::{BidirectionalRegistrator, SchemeHostPort};
-use crate::routing::{CloseReceiver, RouterFactory, RoutingAddr, TaggedEnvelope};
+use crate::routing::{CloseReceiver, RoutingAddr, TaggedEnvelope};
 use crate::ws::WsConnections;
 use futures::future::BoxFuture;
 use futures::stream::FusedStream;
@@ -48,6 +48,7 @@ use tokio::sync::mpsc;
 use tracing::{event, Level};
 use url::Url;
 
+use crate::byte_routing::routing::router::ServerRouter;
 use ratchet::WebSocketStream;
 use swim_tracing::request::{RequestExt, TryRequestExt};
 
@@ -115,11 +116,11 @@ impl RemoteConnectionChannels {
 }
 
 #[derive(Debug)]
-pub struct RemoteConnectionsTask<External: ExternalConnections, Ws, DelegateRouterFac, Sp> {
+pub struct RemoteConnectionsTask<External: ExternalConnections, Ws, Sp> {
     external: External,
     listener: Option<External::ListenerType>,
     websockets: Ws,
-    delegate_router_fac: DelegateRouterFac,
+    router: ServerRouter,
     stop_trigger: CloseReceiver,
     spawner: Sp,
     configuration: RemoteConnectionsConfig,
@@ -145,19 +146,18 @@ const UNRESOLVABLE_BIDIRECTIONAL: &str = "A bidirectional connection could not b
 /// * `Ws` - Negotiates a web socket connection on top of the sockets provided by `External`.
 /// * `Sp` - Spawner to run the tasks that manage the connections opened by this state machine.
 /// * `Routerfac` - Creates router instances to be provided to the connection management tasks.
-impl<External, Ws, DelegateRouterFac, Sp> RemoteConnectionsTask<External, Ws, DelegateRouterFac, Sp>
+impl<External, Ws, Sp> RemoteConnectionsTask<External, Ws, Sp>
 where
     External: ExternalConnections,
     External::Socket: WebSocketStream,
     Ws: WsConnections<External::Socket> + Send + Sync + 'static,
-    DelegateRouterFac: RouterFactory + 'static,
     Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Send + Unpin,
 {
     pub async fn new_client_task(
         configuration: RemoteConnectionsConfig,
         external: External,
         websockets: Ws,
-        delegate_router_fac: DelegateRouterFac,
+        router: ServerRouter,
         spawner: Sp,
         channels: RemoteConnectionChannels,
     ) -> Self {
@@ -171,7 +171,7 @@ where
             external,
             listener: None,
             websockets,
-            delegate_router_fac,
+            router,
             stop_trigger,
             spawner,
             configuration,
@@ -185,7 +185,7 @@ where
         external: External,
         bind_addr: SocketAddr,
         websockets: Ws,
-        delegate_router_fac: DelegateRouterFac,
+        router: ServerRouter,
         spawner: Sp,
         channels: RemoteConnectionChannels,
     ) -> io::Result<Self> {
@@ -201,7 +201,7 @@ where
             external,
             listener: Some(listener),
             websockets,
-            delegate_router_fac,
+            router,
             stop_trigger,
             spawner,
             configuration,
@@ -219,7 +219,7 @@ where
             external,
             listener,
             websockets,
-            delegate_router_fac,
+            router,
             stop_trigger,
             spawner,
             configuration,
@@ -233,7 +233,7 @@ where
             spawner,
             external,
             listener,
-            delegate_router_fac,
+            router,
             RemoteConnectionChannels {
                 request_tx: remote_tx,
                 request_rx: remote_rx,
@@ -245,7 +245,7 @@ where
     }
 
     async fn run_loop(
-        mut state: RemoteConnections<'_, External, Ws, Sp, DelegateRouterFac>,
+        mut state: RemoteConnections<'_, External, Ws, Sp>,
         configuration: RemoteConnectionsConfig,
     ) -> Result<(), Error> {
         let mut overall_result = Ok(());

@@ -68,7 +68,8 @@ pub enum PlaneRoutingRequest {
 pub(crate) struct TopLevelServerRouterFactory {
     plane_sender: mpsc::Sender<PlaneRoutingRequest>,
     client_sender: mpsc::Sender<DownlinkRoutingRequest<Path>>,
-    remote_sender: mpsc::Sender<RemoteRoutingRequest>,
+    // todo
+    pub remote_sender: mpsc::Sender<RemoteRoutingRequest>,
 }
 
 impl TopLevelServerRouterFactory {

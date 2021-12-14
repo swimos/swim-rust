@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::byte_routing::message::read_raw_header;
-use crate::byte_routing::routing::router::RawServerRouter;
+use crate::byte_routing::routing::router::ServerRouter;
 use crate::byte_routing::routing::{DispatchError, Dispatcher, RawRoute};
 use crate::routing::RoutingAddr;
 use crate::ws::{into_stream, WsMessage};
@@ -44,7 +44,7 @@ pub enum ReadError {
 
 pub async fn task<S, D, E>(
     id: RoutingAddr,
-    router: RawServerRouter,
+    router: ServerRouter,
     receiver: ratchet::Receiver<S, E>,
     mut downlink_rx: D,
     stop_on: trigger::Receiver,

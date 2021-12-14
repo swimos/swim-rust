@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::byte_routing::message::Message;
-use crate::byte_routing::routing::router::RawServerRouter;
+use crate::byte_routing::routing::router::ServerRouter;
 use crate::byte_routing::routing::router::{RouterError, RouterErrorKind};
 use crate::byte_routing::routing::{RawRoute, Route};
 use crate::byte_routing::Taggable;
@@ -36,7 +36,7 @@ use tokio_util::codec::Encoder;
 pub struct Dispatcher {
     tag: RoutingAddr,
     retry_strategy: RetryStrategy,
-    router: RawServerRouter,
+    router: ServerRouter,
     agents: HashMap<RelativePath, Route<RawRequestMessageEncoder>>,
     downlinks: HashMap<RelativePath, Route<ResponseMessageEncoder>>,
 }
@@ -45,7 +45,7 @@ impl Dispatcher {
     pub fn new(
         tag: RoutingAddr,
         retry_strategy: RetryStrategy,
-        router: RawServerRouter,
+        router: ServerRouter,
     ) -> Dispatcher {
         Dispatcher {
             tag,
@@ -110,7 +110,7 @@ const fn response_encoder() -> ResponseMessageEncoder {
 async fn dispatch<E, I>(
     tag: RoutingAddr,
     mut retry_strategy: RetryStrategy,
-    router: &mut RawServerRouter,
+    router: &mut ServerRouter,
     map: &mut HashMap<RelativePath, Route<E>>,
     target: RelativePath,
     message: I,
@@ -157,7 +157,7 @@ where
 
 async fn try_dispatch<E, I>(
     tag: RoutingAddr,
-    router: &mut RawServerRouter,
+    router: &mut ServerRouter,
     map: &mut HashMap<RelativePath, Route<E>>,
     target: RelativePath,
     message: I,
@@ -186,7 +186,7 @@ where
 
 async fn try_open_route<E>(
     tag: RoutingAddr,
-    router: &mut RawServerRouter,
+    router: &mut ServerRouter,
     target: RelativePath,
     encoder_fac: fn() -> E,
 ) -> Result<Route<E>, RouterError> {
