@@ -17,11 +17,12 @@ mod fixture;
 use crate::byte_routing::remote::transport;
 use crate::byte_routing::remote::transport::read::ReadError;
 use crate::byte_routing::remote::transport::tests::fixture::MockPlaneRouter;
-use crate::byte_routing::routing::router::ServerRouter;
+use crate::byte_routing::remote::transport::Attachment;
+use crate::byte_routing::routing::router::RawServerRouter;
 use crate::byte_routing::routing::RawRoute;
 use crate::compat::{
     AgentMessageDecoder, Operation, RawRequestMessageEncoder, RawResponseMessageDecoder,
-    RequestMessage, ResponseMessage, ResponseMessageEncoder,
+    ResponseMessageEncoder, TaggedRequestMessage, TaggedResponseMessage,
 };
 use crate::routing::RoutingAddr;
 use bytes::BytesMut;
@@ -78,7 +79,7 @@ fn make_read_task(
 
     let (plane_tx, plane_rx) = mpsc::channel(16);
     let mock_plane_router = MockPlaneRouter::new(plane_rx, lut, resolver);
-    let router = ServerRouter::new(plane_tx, mpsc::channel(1).0);
+    let router = RawServerRouter::new(plane_tx, mpsc::channel(1).0);
 
     let fixture = ReadFixture {
         _router: tokio::spawn(mock_plane_router.run()),
@@ -179,7 +180,7 @@ async fn read_message() {
         let mut framed = FramedRead::new(reader, decoder);
         match framed.next().await {
             Some(Ok(message)) => {
-                let expected = RequestMessage {
+                let expected = TaggedRequestMessage {
                     origin: LOCAL_ADDR,
                     path: RelativePath::new("/node", "lane"),
                     envelope: Operation::Command("13".into()),
@@ -201,19 +202,12 @@ async fn write_ok() {
     let (socket_sender, _socket_receiver) = socket.split().unwrap();
     let (stop_tx, stop_rx) = trigger::trigger();
 
-    let (downlink_tx, downlink_rx) = mpsc::channel(8);
-    let (agent_tx, agent_rx) = mpsc::channel(8);
+    let (attach_tx, attach_rx) = mpsc::channel(8);
 
-    let downlink_tx_guard = downlink_tx.clone();
-    let agent_tx_guard = agent_tx.clone();
+    let attach_tx_guard = attach_tx.clone();
 
-    let write_task = transport::write::task(
-        socket_sender,
-        non_zero_usize!(4096),
-        downlink_rx,
-        agent_rx,
-        stop_rx,
-    );
+    let write_task =
+        transport::write::task(socket_sender, non_zero_usize!(4096), attach_rx, stop_rx);
 
     let receive_task = async move {
         let mut peer_rx = ratchet::WebSocket::from_upgraded(
@@ -254,18 +248,20 @@ async fn write_ok() {
         stop_tx.trigger();
 
         // guard to prevent the write task from completing until we have read every message
-        let _g1 = downlink_tx_guard;
-        let _g2 = agent_tx_guard;
+        let _g = attach_tx_guard;
     };
 
     let produce_task = async move {
         let (downlink_write_tx, downlink_read_rx) = byte_channel(non_zero_usize!(256));
         let read_framed = FramedRead::new(downlink_read_rx, RawResponseMessageDecoder::default());
-        assert!(downlink_tx.send(read_framed).await.is_ok());
+        assert!(attach_tx
+            .send(Attachment::Downlink(read_framed))
+            .await
+            .is_ok());
 
         let mut write_framed = FramedWrite::new(downlink_write_tx, ResponseMessageEncoder);
         assert!(write_framed
-            .send(ResponseMessage::<Value>::synced(
+            .send(TaggedResponseMessage::<Value>::synced(
                 RoutingAddr::plane(1),
                 RelativePath::new("node", "lane")
             ))
@@ -277,11 +273,11 @@ async fn write_ok() {
             agent_read_rx,
             AgentMessageDecoder::new(ValueMaterializer::default()),
         );
-        assert!(agent_tx.send(read_framed).await.is_ok());
+        assert!(attach_tx.send(Attachment::Agent(read_framed)).await.is_ok());
 
         let mut write_framed = FramedWrite::new(agent_write_tx, RawRequestMessageEncoder);
         assert!(write_framed
-            .send(RequestMessage::sync(
+            .send(TaggedRequestMessage::sync(
                 RoutingAddr::plane(1),
                 RelativePath::new("node", "lane")
             ))
@@ -289,7 +285,7 @@ async fn write_ok() {
             .is_ok());
 
         assert!(write_framed
-            .send(RequestMessage::link(
+            .send(TaggedRequestMessage::link(
                 RoutingAddr::plane(1),
                 RelativePath::new("node", "lane"),
             ))

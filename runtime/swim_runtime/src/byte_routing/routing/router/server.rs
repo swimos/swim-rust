@@ -14,7 +14,7 @@
 
 use crate::byte_routing::routing::router::error::{RouterError, RouterErrorKind};
 use crate::byte_routing::routing::router::models::{PlaneRoutingRequest, RemoteRoutingRequest};
-use crate::byte_routing::routing::{Address, RawRoute};
+use crate::byte_routing::routing::{Address, RawRoute, TaggedRawRoute};
 use crate::routing::{RoutingAddr, RoutingAddrKind};
 use std::convert::identity;
 use std::future::Future;
@@ -22,18 +22,22 @@ use swim_utilities::future::request::Request;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::{mpsc, oneshot};
 
+/// A server router which resolves raw routes that have no origin associated with them.
+///
+/// This hands out raw byte channels for sending messages to the destination and it is the callees
+/// responsibility to ensure that the correct encoder is attached to the route.
 #[derive(Clone, Debug)]
-pub struct ServerRouter {
+pub struct RawServerRouter {
     plane: mpsc::Sender<PlaneRoutingRequest>,
     remote: mpsc::Sender<RemoteRoutingRequest>,
 }
 
-impl ServerRouter {
+impl RawServerRouter {
     pub fn new(
         plane: mpsc::Sender<PlaneRoutingRequest>,
         remote: mpsc::Sender<RemoteRoutingRequest>,
-    ) -> ServerRouter {
-        ServerRouter { plane, remote }
+    ) -> RawServerRouter {
+        RawServerRouter { plane, remote }
     }
 
     async fn exec<Func, Fut, E, T>(&self, op: Func) -> Result<T, RouterError>
@@ -99,5 +103,40 @@ impl ServerRouter {
             })
         })
         .await
+    }
+
+    /// Creates a server router that will tag senders with `tag`.
+    fn create_for(&self, tag: RoutingAddr) -> ServerRouter {
+        ServerRouter::new(tag, self.clone())
+    }
+}
+
+/// A wrapper around a raw server router that attaches a tag (RoutingAddr) to routes that are
+/// resolved.
+#[derive(Debug)]
+pub struct ServerRouter {
+    tag: RoutingAddr,
+    inner: RawServerRouter,
+}
+
+impl ServerRouter {
+    pub fn new(tag: RoutingAddr, inner: RawServerRouter) -> ServerRouter {
+        ServerRouter { tag, inner }
+    }
+
+    pub async fn resolve_sender(
+        &mut self,
+        addr: RoutingAddr,
+    ) -> Result<TaggedRawRoute, RouterError> {
+        let ServerRouter { tag, inner } = self;
+        let RawRoute { writer } = inner.resolve_sender(addr).await?;
+        Ok(TaggedRawRoute::new(*tag, writer))
+    }
+
+    pub async fn lookup<A>(&mut self, address: A) -> Result<RoutingAddr, RouterError>
+    where
+        A: Into<Address>,
+    {
+        self.inner.lookup(address).await
     }
 }

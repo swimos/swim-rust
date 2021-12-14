@@ -12,7 +12,42 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod codec;
+use crate::compat::{RequestMessage, ResponseMessage, TaggedRequestMessage, TaggedResponseMessage};
+use crate::routing::RoutingAddr;
+
+pub mod message;
 pub mod remote;
 pub mod routing;
 pub mod selector;
+
+pub trait Taggable {
+    type Out;
+
+    fn tag(self, tag: RoutingAddr) -> Self::Out;
+}
+
+impl<T> Taggable for RequestMessage<T> {
+    type Out = TaggedRequestMessage<T>;
+
+    fn tag(self, tag: RoutingAddr) -> Self::Out {
+        let RequestMessage { path, envelope } = self;
+        TaggedRequestMessage {
+            origin: tag,
+            path,
+            envelope,
+        }
+    }
+}
+
+impl<T> Taggable for ResponseMessage<T> {
+    type Out = TaggedResponseMessage<T>;
+
+    fn tag(self, tag: RoutingAddr) -> Self::Out {
+        let ResponseMessage { path, envelope } = self;
+        TaggedResponseMessage {
+            origin: tag,
+            path,
+            envelope,
+        }
+    }
+}

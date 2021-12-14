@@ -162,7 +162,7 @@ impl RoutingTable {
         bidirectional_registrator
     }
 
-    /// Associate another hose/port combination with a socket address that already has an entry in
+    /// Associate another host/port combination with a socket address that already has an entry in
     /// the table. This will return [`Some`] if and only if there is already an entry for that
     /// address.
     pub fn add_host(

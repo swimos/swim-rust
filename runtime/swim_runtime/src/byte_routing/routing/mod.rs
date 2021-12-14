@@ -14,24 +14,36 @@
 
 mod dispatch;
 pub mod router;
+use crate::byte_routing::Taggable;
+use crate::routing::RoutingAddr;
 pub use dispatch::{DispatchError, Dispatcher};
 use futures_util::SinkExt;
 pub use router::Address;
 use swim_utilities::io::byte_channel::ByteWriter;
 use tokio_util::codec::{Encoder, FramedWrite};
 
+/// A unique route from which messages originate from `addr`.
 pub struct Route<E> {
+    pub addr: RoutingAddr,
     pub framed: FramedWrite<ByteWriter, E>,
-    // pub on_drop: promise::Receiver<ConnectionDropped>,
 }
 
 impl<E> Route<E> {
-    /// Encode and send `item` into this route.
+    pub fn new(addr: RoutingAddr, writer: ByteWriter, encoder: E) -> Route<E> {
+        Route {
+            addr,
+            framed: FramedWrite::new(writer, encoder),
+        }
+    }
+
+    /// Tag, encode and send `item` into this route.
     pub async fn send<I>(&mut self, item: I) -> Result<(), E::Error>
     where
-        E: Encoder<I>,
+        E: Encoder<I::Out>,
+        I: Taggable,
     {
-        self.framed.send(item).await
+        let Route { addr, framed } = self;
+        framed.send(item.tag(*addr)).await
     }
 
     pub fn is_closed(&self) -> bool {
@@ -39,20 +51,25 @@ impl<E> Route<E> {
     }
 }
 
+/// A route that has no encoder associated with it but has an origin.
+#[derive(Debug)]
+pub struct TaggedRawRoute {
+    pub addr: RoutingAddr,
+    pub writer: ByteWriter,
+}
+
+impl TaggedRawRoute {
+    pub fn new(addr: RoutingAddr, writer: ByteWriter) -> TaggedRawRoute {
+        TaggedRawRoute { addr, writer }
+    }
+}
+
+/// A route that has no tag or encoder associated with it.
+///
+/// Created by the router.
 #[derive(Debug)]
 pub struct RawRoute {
     pub writer: ByteWriter,
-    // pub on_drop: promise::Receiver<ConnectionDropped>,
-}
-
-impl RawRoute {
-    /// Attach `encoder` to this writer for sending messages.
-    pub fn into_framed<E>(self, encoder: E) -> Route<E> {
-        let RawRoute { writer } = self;
-        Route {
-            framed: FramedWrite::new(writer, encoder),
-        }
-    }
 }
 
 impl RawRoute {

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::compat::{ResponseMessage, ResponseMessageEncoder};
+use crate::compat::{ResponseMessageEncoder, TaggedResponseMessage};
 use futures::sink;
 use futures::SinkExt;
 use std::marker::PhantomData;
@@ -35,15 +35,16 @@ impl<T, W: AsyncWrite> RouteSender<T, W> {
     }
 }
 
-impl<'a, T, W> ItemSink<'a, ResponseMessage<T>> for RouteSender<T, W>
+impl<'a, T, W> ItemSink<'a, TaggedResponseMessage<T>> for RouteSender<T, W>
 where
     T: StructuralWritable + Send + 'static,
     W: AsyncWrite + Unpin + Send + 'static,
 {
     type Error = std::io::Error;
-    type SendFuture = sink::Send<'a, FramedWrite<W, ResponseMessageEncoder>, ResponseMessage<T>>;
+    type SendFuture =
+        sink::Send<'a, FramedWrite<W, ResponseMessageEncoder>, TaggedResponseMessage<T>>;
 
-    fn send_item(&'a mut self, value: ResponseMessage<T>) -> Self::SendFuture {
+    fn send_item(&'a mut self, value: TaggedResponseMessage<T>) -> Self::SendFuture {
         self.inner.send(value)
     }
 }

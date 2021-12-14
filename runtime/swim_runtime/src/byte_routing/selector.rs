@@ -133,7 +133,9 @@ where
 #[cfg(test)]
 mod tests {
     use crate::byte_routing::selector::{read_bridge, Selector};
-    use crate::compat::{AgentMessageDecoder, Operation, RawRequestMessageEncoder, RequestMessage};
+    use crate::compat::{
+        AgentMessageDecoder, Operation, RawRequestMessageEncoder, TaggedRequestMessage,
+    };
     use crate::routing::RoutingAddr;
     use futures_util::future::join3;
     use futures_util::{FutureExt, SinkExt};
@@ -179,11 +181,14 @@ mod tests {
             sink_tx,
         );
         let receiver_task = async move {
-            async fn read(sink: &mut mpsc::Receiver<RequestMessage<Value>>, op: Operation<Value>) {
+            async fn read(
+                sink: &mut mpsc::Receiver<TaggedRequestMessage<Value>>,
+                op: Operation<Value>,
+            ) {
                 let message = sink.recv().await.unwrap();
                 assert_eq!(
                     message,
-                    RequestMessage {
+                    TaggedRequestMessage {
                         origin: RoutingAddr::remote(13),
                         path: RelativePath::new("node", "lane"),
                         envelope: op
@@ -211,7 +216,7 @@ mod tests {
                 op: Operation<&[u8]>,
             ) {
                 assert!(framed
-                    .send(RequestMessage {
+                    .send(TaggedRequestMessage {
                         origin: RoutingAddr::remote(13),
                         path: RelativePath::new("node", "lane"),
                         envelope: op
@@ -225,6 +230,6 @@ mod tests {
             write(&mut framed, Operation::Unlink).await;
         };
 
-        join3(bridge_task, receiver_task, write_task).await;
+        let _r = join3(bridge_task, receiver_task, write_task).await;
     }
 }

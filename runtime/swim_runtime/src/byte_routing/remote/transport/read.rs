@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::byte_routing::codec::read_raw_header;
-use crate::byte_routing::routing::router::ServerRouter;
+use crate::byte_routing::message::read_raw_header;
+use crate::byte_routing::routing::router::RawServerRouter;
 use crate::byte_routing::routing::{DispatchError, Dispatcher, RawRoute};
 use crate::routing::RoutingAddr;
 use crate::ws::{into_stream, WsMessage};
@@ -44,7 +44,7 @@ pub enum ReadError {
 
 pub async fn task<S, D, E>(
     id: RoutingAddr,
-    router: ServerRouter,
+    router: RawServerRouter,
     receiver: ratchet::Receiver<S, E>,
     mut downlink_rx: D,
     stop_on: trigger::Receiver,
@@ -54,7 +54,7 @@ where
     D: Stream<Item = (RelativePath, RawRoute)> + Unpin,
     E: ExtensionDecoder,
 {
-    let mut dispatcher = Dispatcher::new(RetryStrategy::default(), router);
+    let mut dispatcher = Dispatcher::new(id, RetryStrategy::default(), router);
     let stream = into_stream(receiver).take_until(stop_on);
 
     pin_mut!(stream);
@@ -62,7 +62,7 @@ where
     loop {
         match select_next(&mut stream, &mut downlink_rx).await {
             Ok(ReadEvent::Dispatch(msg)) => match msg {
-                WsMessage::Text(value) => dispatch_text_message(&mut dispatcher, value, id).await?,
+                WsMessage::Text(value) => dispatch_text_message(&mut dispatcher, value).await?,
                 WsMessage::Binary(_) => panic_binary(),
                 WsMessage::Ping | WsMessage::Pong => {}
                 WsMessage::Close(_) => break,
@@ -106,8 +106,7 @@ where
 async fn dispatch_text_message(
     dispatcher: &mut Dispatcher,
     value: String,
-    id: RoutingAddr,
 ) -> Result<(), DispatchError> {
-    let message = read_raw_header(value.as_str())?.tag(id);
+    let message = read_raw_header(value.as_str())?;
     dispatcher.dispatch(message).await
 }

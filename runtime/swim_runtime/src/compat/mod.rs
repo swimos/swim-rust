@@ -58,9 +58,21 @@ pub enum Notification<T> {
     Event(T),
 }
 
-/// Type of messages that can be sent to an agent/from a downlink..
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RequestMessage<T> {
+    pub path: RelativePath,
+    pub envelope: Operation<T>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ResponseMessage<T> {
+    pub path: RelativePath,
+    pub envelope: Notification<T>,
+}
+
+/// Type of messages that can be sent to an agent/from a downlink..
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TaggedRequestMessage<T> {
     pub origin: RoutingAddr,
     pub path: RelativePath,
     pub envelope: Operation<T>,
@@ -68,15 +80,15 @@ pub struct RequestMessage<T> {
 
 /// Type of messages that can be sent by an agent/received by a downlink.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ResponseMessage<T> {
+pub struct TaggedResponseMessage<T> {
     pub origin: RoutingAddr,
     pub path: RelativePath,
     pub envelope: Notification<T>,
 }
 
-impl<T> RequestMessage<T> {
+impl<T> TaggedRequestMessage<T> {
     pub fn link(source: RoutingAddr, path: RelativePath) -> Self {
-        RequestMessage {
+        TaggedRequestMessage {
             origin: source,
             path,
             envelope: Operation::Link,
@@ -84,7 +96,7 @@ impl<T> RequestMessage<T> {
     }
 
     pub fn sync(source: RoutingAddr, path: RelativePath) -> Self {
-        RequestMessage {
+        TaggedRequestMessage {
             origin: source,
             path,
             envelope: Operation::Sync,
@@ -92,7 +104,7 @@ impl<T> RequestMessage<T> {
     }
 
     pub fn unlink(source: RoutingAddr, path: RelativePath) -> Self {
-        RequestMessage {
+        TaggedRequestMessage {
             origin: source,
             path,
             envelope: Operation::Unlink,
@@ -100,7 +112,7 @@ impl<T> RequestMessage<T> {
     }
 
     pub fn command(source: RoutingAddr, path: RelativePath, body: T) -> Self {
-        RequestMessage {
+        TaggedRequestMessage {
             origin: source,
             path,
             envelope: Operation::Command(body),
@@ -124,9 +136,9 @@ impl<T> RequestMessage<T> {
     }
 }
 
-impl<T> ResponseMessage<T> {
+impl<T> TaggedResponseMessage<T> {
     pub fn linked(target: RoutingAddr, path: RelativePath) -> Self {
-        ResponseMessage {
+        TaggedResponseMessage {
             origin: target,
             path,
             envelope: Notification::Linked,
@@ -134,7 +146,7 @@ impl<T> ResponseMessage<T> {
     }
 
     pub fn synced(target: RoutingAddr, path: RelativePath) -> Self {
-        ResponseMessage {
+        TaggedResponseMessage {
             origin: target,
             path,
             envelope: Notification::Synced,
@@ -142,7 +154,7 @@ impl<T> ResponseMessage<T> {
     }
 
     pub fn unlinked(target: RoutingAddr, path: RelativePath) -> Self {
-        ResponseMessage {
+        TaggedResponseMessage {
             origin: target,
             path,
             envelope: Notification::Unlinked,
@@ -150,7 +162,7 @@ impl<T> ResponseMessage<T> {
     }
 
     pub fn event(target: RoutingAddr, path: RelativePath, body: T) -> Self {
-        ResponseMessage {
+        TaggedResponseMessage {
             origin: target,
             path,
             envelope: Notification::Event(body),
@@ -159,10 +171,10 @@ impl<T> ResponseMessage<T> {
 }
 
 /// An agent message where the body is uninterpreted (represented as raw bytes).
-pub type RawRequestMessage<'a> = RequestMessage<&'a [u8]>;
+pub type RawRequestMessage<'a> = TaggedRequestMessage<&'a [u8]>;
 
 /// An agent message where the body is uninterpreted (represented as raw bytes).
-pub type RawResponseMessage = ResponseMessage<Bytes>;
+pub type RawResponseMessage = TaggedResponseMessage<Bytes>;
 
 /// Tokio [`Encoder`] to encode a [`RawRequestMessage`] as a byte stream.
 #[derive(Debug)]
@@ -239,14 +251,18 @@ impl<'a> Encoder<RawRequestMessage<'a>> for RawRequestMessageEncoder {
 const RESERVE_INIT: usize = 256;
 const RESERVE_MULT: usize = 2;
 
-impl<T> Encoder<ResponseMessage<T>> for ResponseMessageEncoder
+impl<T> Encoder<TaggedResponseMessage<T>> for ResponseMessageEncoder
 where
     T: StructuralWritable,
 {
     type Error = std::io::Error;
 
-    fn encode(&mut self, item: ResponseMessage<T>, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        let ResponseMessage {
+    fn encode(
+        &mut self,
+        item: TaggedResponseMessage<T>,
+        dst: &mut BytesMut,
+    ) -> Result<(), Self::Error> {
+        let TaggedResponseMessage {
             origin: source,
             path: RelativePath { node, lane },
             envelope,
@@ -312,7 +328,7 @@ enum State<T> {
         remaining: usize,
     },
     AfterBody {
-        message: Option<RequestMessage<T>>,
+        message: Option<TaggedRequestMessage<T>>,
         remaining: usize,
     },
     Discarding {
@@ -375,7 +391,7 @@ impl<T, R> Decoder for AgentMessageDecoder<T, R>
 where
     R: Recognizer<Target = T>,
 {
-    type Item = RequestMessage<T>;
+    type Item = TaggedRequestMessage<T>;
     type Error = MessageDecodeError;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
@@ -408,21 +424,21 @@ where
                     let path = RelativePath::new(node, lane);
                     match tag {
                         LINK => {
-                            break Ok(Some(RequestMessage {
+                            break Ok(Some(TaggedRequestMessage {
                                 origin: id,
                                 path,
                                 envelope: Operation::Link,
                             }));
                         }
                         SYNC => {
-                            break Ok(Some(RequestMessage {
+                            break Ok(Some(TaggedRequestMessage {
                                 origin: id,
                                 path,
                                 envelope: Operation::Sync,
                             }));
                         }
                         UNLINK => {
-                            break Ok(Some(RequestMessage {
+                            break Ok(Some(TaggedRequestMessage {
                                 origin: id,
                                 path,
                                 envelope: Operation::Unlink,
@@ -456,7 +472,7 @@ where
                         Ok(Some(result)) => {
                             src.unsplit(rem);
                             *state = State::AfterBody {
-                                message: Some(RequestMessage {
+                                message: Some(TaggedRequestMessage {
                                     origin: *source,
                                     path: std::mem::take(path),
                                     envelope: Operation::Command(result),
@@ -472,7 +488,7 @@ where
                                 *remaining -= consumed;
                                 src.unsplit(rem);
                                 break if let Some(result) = eof_result {
-                                    Ok(Some(RequestMessage {
+                                    Ok(Some(TaggedRequestMessage {
                                         origin: *source,
                                         path: std::mem::take(path),
                                         envelope: Operation::Command(result),
@@ -588,7 +604,7 @@ impl Decoder for RawResponseMessageDecoder {
 
 pub fn read_messages<R, T>(
     reader: R,
-) -> impl Stream<Item = Result<RequestMessage<T>, MessageDecodeError>>
+) -> impl Stream<Item = Result<TaggedRequestMessage<T>, MessageDecodeError>>
 where
     R: AsyncRead + Unpin,
     T: RecognizerReadable,
@@ -602,7 +618,7 @@ fn fail(name: &str) -> MessageDecodeError {
     MessageDecodeError::Body(AsyncParseError::Parser(ParseError::Structure(err)))
 }
 
-impl<T: RecognizerReadable> TryFrom<TaggedEnvelope> for RequestMessage<T> {
+impl<T: RecognizerReadable> TryFrom<TaggedEnvelope> for TaggedRequestMessage<T> {
     type Error = MessageDecodeError;
 
     fn try_from(value: TaggedEnvelope) -> Result<Self, Self::Error> {
@@ -610,19 +626,19 @@ impl<T: RecognizerReadable> TryFrom<TaggedEnvelope> for RequestMessage<T> {
         match env {
             Envelope::Link {
                 node_uri, lane_uri, ..
-            } => Ok(RequestMessage::link(
+            } => Ok(TaggedRequestMessage::link(
                 addr,
                 RelativePath::new(node_uri, lane_uri),
             )),
             Envelope::Sync {
                 node_uri, lane_uri, ..
-            } => Ok(RequestMessage::sync(
+            } => Ok(TaggedRequestMessage::sync(
                 addr,
                 RelativePath::new(node_uri, lane_uri),
             )),
             Envelope::Unlink {
                 node_uri, lane_uri, ..
-            } => Ok(RequestMessage::unlink(
+            } => Ok(TaggedRequestMessage::unlink(
                 addr,
                 RelativePath::new(node_uri, lane_uri),
             )),
@@ -633,7 +649,7 @@ impl<T: RecognizerReadable> TryFrom<TaggedEnvelope> for RequestMessage<T> {
                 ..
             } => {
                 let interpreted_body = T::try_from_structure(body.unwrap_or(Value::Extant))?;
-                Ok(RequestMessage::command(
+                Ok(TaggedRequestMessage::command(
                     addr,
                     RelativePath::new(node_uri, lane_uri),
                     interpreted_body,
@@ -651,7 +667,7 @@ impl<T: RecognizerReadable> TryFrom<TaggedEnvelope> for RequestMessage<T> {
 
 pub fn messages_from_envelopes<S, T>(
     envelopes: S,
-) -> impl Stream<Item = Result<RequestMessage<T>, MessageDecodeError>>
+) -> impl Stream<Item = Result<TaggedRequestMessage<T>, MessageDecodeError>>
 where
     S: Stream<Item = TaggedEnvelope> + Unpin,
     T: RecognizerReadable,
@@ -662,9 +678,9 @@ where
 pub fn stop_on_failed<T, S>(
     stream: S,
     on_err: Option<promise::Sender<MessageDecodeError>>,
-) -> impl Stream<Item = RequestMessage<T>>
+) -> impl Stream<Item = TaggedRequestMessage<T>>
 where
-    S: Stream<Item = Result<RequestMessage<T>, MessageDecodeError>>,
+    S: Stream<Item = Result<TaggedRequestMessage<T>, MessageDecodeError>>,
 {
     unfold(
         (Box::pin(stream), on_err),

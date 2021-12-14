@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::byte_routing::codec::TaggedMessage;
-use crate::byte_routing::routing::router::ServerRouter;
+use crate::byte_routing::message::Message;
+use crate::byte_routing::routing::router::RawServerRouter;
 use crate::byte_routing::routing::router::{RouterError, RouterErrorKind};
 use crate::byte_routing::routing::{RawRoute, Route};
+use crate::byte_routing::Taggable;
 use crate::compat::{RawRequestMessageEncoder, ResponseMessageEncoder};
+use crate::routing::RoutingAddr;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::io::{Error as IoError, ErrorKind};
@@ -32,15 +34,21 @@ use tokio_util::codec::Encoder;
 
 // todo this should have a task that automatically prunes handles to the agents every N minutes
 pub struct Dispatcher {
+    tag: RoutingAddr,
     retry_strategy: RetryStrategy,
-    router: ServerRouter,
+    router: RawServerRouter,
     agents: HashMap<RelativePath, Route<RawRequestMessageEncoder>>,
     downlinks: HashMap<RelativePath, Route<ResponseMessageEncoder>>,
 }
 
 impl Dispatcher {
-    pub fn new(retry_strategy: RetryStrategy, router: ServerRouter) -> Dispatcher {
+    pub fn new(
+        tag: RoutingAddr,
+        retry_strategy: RetryStrategy,
+        router: RawServerRouter,
+    ) -> Dispatcher {
         Dispatcher {
+            tag,
             retry_strategy,
             router,
             agents: HashMap::default(),
@@ -48,13 +56,14 @@ impl Dispatcher {
         }
     }
 
-    pub fn register_downlink(&mut self, addr: RelativePath, route: RawRoute) {
+    pub fn register_downlink(&mut self, path: RelativePath, route: RawRoute) {
         self.downlinks
-            .insert(addr, route.into_framed(response_encoder()));
+            .insert(path, Route::new(self.tag, route.writer, response_encoder()));
     }
 
-    pub async fn dispatch(&mut self, message: TaggedMessage<'_>) -> Result<(), DispatchError> {
+    pub async fn dispatch(&mut self, message: Message<'_>) -> Result<(), DispatchError> {
         let Dispatcher {
+            tag,
             retry_strategy,
             router,
             agents,
@@ -62,8 +71,9 @@ impl Dispatcher {
         } = self;
 
         match message {
-            TaggedMessage::Request(message) => {
+            Message::Request(message) => {
                 dispatch(
+                    *tag,
                     *retry_strategy,
                     router,
                     agents,
@@ -73,8 +83,9 @@ impl Dispatcher {
                 )
                 .await
             }
-            TaggedMessage::Response(message) => {
+            Message::Response(message) => {
                 dispatch(
+                    *tag,
                     *retry_strategy,
                     router,
                     downlinks,
@@ -97,16 +108,17 @@ const fn response_encoder() -> ResponseMessageEncoder {
 }
 
 async fn dispatch<E, I>(
+    tag: RoutingAddr,
     mut retry_strategy: RetryStrategy,
-    router: &mut ServerRouter,
+    router: &mut RawServerRouter,
     map: &mut HashMap<RelativePath, Route<E>>,
     target: RelativePath,
     message: I,
     encoder_fac: fn() -> E,
 ) -> Result<(), DispatchError>
 where
-    E: Encoder<I, Error = IoError>,
-    I: Clone,
+    E: Encoder<I::Out, Error = IoError>,
+    I: Clone + Taggable,
 {
     loop {
         // If the handle returned already existed, then it's possible that the route has timed out
@@ -117,8 +129,15 @@ where
         // is not returned like with MPSC channels.
         //
         // todo
-        let dispatch_result =
-            try_dispatch(router, map, target.clone(), message.clone(), encoder_fac).await;
+        let dispatch_result = try_dispatch(
+            tag,
+            router,
+            map,
+            target.clone(),
+            message.clone(),
+            encoder_fac,
+        )
+        .await;
         match dispatch_result {
             Ok(()) => break Ok(()),
             Err(e) => {
@@ -137,25 +156,27 @@ where
 }
 
 async fn try_dispatch<E, I>(
-    router: &mut ServerRouter,
+    tag: RoutingAddr,
+    router: &mut RawServerRouter,
     map: &mut HashMap<RelativePath, Route<E>>,
     target: RelativePath,
     message: I,
     encoder_fac: fn() -> E,
 ) -> Result<(), DispatchError>
 where
-    E: Encoder<I, Error = IoError>,
+    E: Encoder<I::Out, Error = IoError>,
+    I: Taggable,
 {
     let route = match map.entry(target) {
         Entry::Occupied(mut entry) => {
             if entry.get_mut().is_closed() {
-                let route = try_open_route(router, entry.key().clone(), encoder_fac).await?;
+                let route = try_open_route(tag, router, entry.key().clone(), encoder_fac).await?;
                 *entry.get_mut() = route;
             }
             entry.into_mut()
         }
         Entry::Vacant(entry) => {
-            let route = try_open_route(router, entry.key().clone(), encoder_fac).await?;
+            let route = try_open_route(tag, router, entry.key().clone(), encoder_fac).await?;
             entry.insert(route)
         }
     };
@@ -164,7 +185,8 @@ where
 }
 
 async fn try_open_route<E>(
-    router: &mut ServerRouter,
+    tag: RoutingAddr,
+    router: &mut RawServerRouter,
     target: RelativePath,
     encoder_fac: fn() -> E,
 ) -> Result<Route<E>, RouterError> {
@@ -172,10 +194,8 @@ async fn try_open_route<E>(
         .lookup(RelativeUri::from_str(target.node.as_str())?)
         .await?;
 
-    Ok(router
-        .resolve_sender(target_addr)
-        .await?
-        .into_framed(encoder_fac()))
+    let RawRoute { writer } = router.resolve_sender(target_addr).await?;
+    Ok(Route::new(tag, writer, encoder_fac()))
 }
 
 #[derive(Debug, Error)]

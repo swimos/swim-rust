@@ -21,7 +21,7 @@ mod write;
 use crate::byte_routing::remote::transport::read::ReadError;
 use crate::byte_routing::remote::transport::write::WriteError;
 use crate::byte_routing::remote::TransportConfiguration;
-use crate::byte_routing::routing::router::ServerRouter;
+use crate::byte_routing::routing::router::RawServerRouter;
 use crate::byte_routing::routing::RawRoute;
 use crate::compat::{AgentMessageDecoder, RawResponseMessageDecoder};
 use crate::routing::RoutingAddr;
@@ -38,9 +38,14 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::FramedRead;
 
-type AttachmentChannel<D> = mpsc::Receiver<FramedRead<ByteReader, D>>;
-type DownlinkChannel = AttachmentChannel<RawResponseMessageDecoder>;
-type AgentChannel = AttachmentChannel<AgentMessageDecoder<Value, ValueMaterializer>>;
+type AttachmentChannel = mpsc::Receiver<Attachment>;
+type DownlinkChannel = FramedRead<ByteReader, RawResponseMessageDecoder>;
+type AgentChannel = FramedRead<ByteReader, AgentMessageDecoder<Value, ValueMaterializer>>;
+
+pub enum Attachment {
+    Agent(AgentChannel),
+    Downlink(DownlinkChannel),
+}
 
 #[derive(Debug, Error)]
 pub enum TransportError {
@@ -53,10 +58,9 @@ pub enum TransportError {
 pub struct TransportIo<S, E> {
     configuration: TransportConfiguration,
     socket: WebSocket<S, E>,
-    router: ServerRouter,
-    downlink_write: DownlinkChannel,
+    router: RawServerRouter,
+    attachments: AttachmentChannel,
     downlink_read: mpsc::Receiver<(RelativePath, RawRoute)>,
-    agent_write: AgentChannel,
 }
 
 impl<S, E> TransportIo<S, E>
@@ -67,18 +71,16 @@ where
     pub fn new(
         configuration: TransportConfiguration,
         socket: WebSocket<S, E>,
-        router: ServerRouter,
-        downlink_write: DownlinkChannel,
+        router: RawServerRouter,
+        attachments: AttachmentChannel,
         downlink_read: mpsc::Receiver<(RelativePath, RawRoute)>,
-        agent_write: AgentChannel,
     ) -> TransportIo<S, E> {
         TransportIo {
             configuration,
             socket,
             router,
-            downlink_write,
+            attachments,
             downlink_read,
-            agent_write,
         }
     }
 
@@ -91,8 +93,7 @@ where
             configuration,
             socket,
             router,
-            downlink_write,
-            agent_write,
+            attachments,
             downlink_read,
         } = self;
         let TransportConfiguration {
@@ -104,13 +105,7 @@ where
         let (io_tx, io_rx) = socket
             .split()
             .map_err(|e| TransportError::Read(ReadError::WebSocket(e)))?;
-        let write_task = write::task(
-            io_tx,
-            chunk_after,
-            downlink_write,
-            agent_write,
-            stop_on.clone(),
-        );
+        let write_task = write::task(io_tx, chunk_after, attachments, stop_on.clone());
         let read_task = read::task(
             id,
             router,

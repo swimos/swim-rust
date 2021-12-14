@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::byte_routing::remote::transport::{AgentChannel, DownlinkChannel};
+use crate::byte_routing::remote::transport::{Attachment, AttachmentChannel};
 use crate::byte_routing::selector::Selector;
 use crate::compat::{
     AgentMessageDecoder, MessageDecodeError, Notification, Operation, RawResponseMessageDecoder,
-    RequestMessage, ResponseMessage,
+    TaggedRequestMessage, TaggedResponseMessage,
 };
 use futures_util::StreamExt;
 use ratchet::{ExtensionEncoder, MessageType, WebSocketStream};
@@ -33,18 +33,18 @@ use tokio_util::codec::{Decoder, FramedRead};
 
 #[derive(Debug)]
 enum Message {
-    Request(RequestMessage<swim_model::Value>),
-    Response(ResponseMessage<bytes::Bytes>),
+    Request(TaggedRequestMessage<swim_model::Value>),
+    Response(TaggedResponseMessage<bytes::Bytes>),
 }
 
-impl From<RequestMessage<Value>> for Message {
-    fn from(req: RequestMessage<Value>) -> Self {
+impl From<TaggedRequestMessage<Value>> for Message {
+    fn from(req: TaggedRequestMessage<Value>) -> Self {
         Message::Request(req)
     }
 }
 
-impl From<ResponseMessage<bytes::Bytes>> for Message {
-    fn from(req: ResponseMessage<bytes::Bytes>) -> Self {
+impl From<TaggedResponseMessage<bytes::Bytes>> for Message {
+    fn from(req: TaggedResponseMessage<bytes::Bytes>) -> Self {
         Message::Response(req)
     }
 }
@@ -64,8 +64,7 @@ pub enum WriteError {
 pub async fn task<S, E>(
     mut sender: ratchet::Sender<S, E>,
     chunk_after: NonZeroUsize,
-    downlink_channel: DownlinkChannel,
-    agent_channel: AgentChannel,
+    attachments: AttachmentChannel,
     stop_on: trigger::Receiver,
 ) -> Result<(), WriteError>
 where
@@ -73,17 +72,20 @@ where
     E: ExtensionEncoder,
 {
     let chunk_after = chunk_after.get();
-    let mut downlink_requests = ReceiverStream::new(downlink_channel).take_until(stop_on.clone());
-    let mut agent_requests = ReceiverStream::new(agent_channel).take_until(stop_on.clone());
+    let mut attachments = ReceiverStream::new(attachments).take_until(stop_on);
     let mut downlink_selector = Selector::new(map_reader);
     let mut agent_selector = Selector::new(map_reader);
 
-    let r = loop {
+    loop {
         let action: Option<WriteEvent> = select! {
             ev = downlink_selector.read() => Some(WriteEvent::Message(ev.map(Into::into))),
             ev = agent_selector.read() => Some(WriteEvent::Message(ev.map(Into::into))),
-            req = downlink_requests.next() => req.map(WriteEvent::AttachDownlink),
-            req = agent_requests.next() => req.map(WriteEvent::AttachAgent),
+            req = attachments.next() => {
+                req.map(|inner| match inner {
+                    Attachment::Agent(agent) => WriteEvent::AttachAgent(agent),
+                    Attachment::Downlink(downlink) => WriteEvent::AttachDownlink(downlink),
+                })
+            }
         };
 
         match action {
@@ -109,11 +111,7 @@ where
             Some(WriteEvent::AttachDownlink(framed)) => downlink_selector.attach(framed),
             None => break Ok(()),
         }
-    };
-
-    println!("Write task complete");
-
-    r
+    }
 }
 
 async fn write_message<S, E>(
@@ -127,7 +125,7 @@ where
 {
     let (path, envelope, body) = match message {
         Message::Request(request) => {
-            let RequestMessage { path, envelope, .. } = request;
+            let TaggedRequestMessage { path, envelope, .. } = request;
             match envelope {
                 Operation::Link => (path, "link", None),
                 Operation::Sync => (path, "sync", None),
@@ -136,7 +134,7 @@ where
             }
         }
         Message::Response(response) => {
-            let ResponseMessage { path, envelope, .. } = response;
+            let TaggedResponseMessage { path, envelope, .. } = response;
             match envelope {
                 Notification::Linked => (path, "linked", None),
                 Notification::Synced => (path, "synced", None),

@@ -35,7 +35,7 @@ use swim_metrics::config::MetricAggregatorConfig;
 use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
 use swim_model::path::RelativePath;
 use swim_model::Value;
-use swim_runtime::compat::{Operation, RequestMessage};
+use swim_runtime::compat::{Operation, TaggedRequestMessage};
 use swim_runtime::error::{ConnectionDropped, ResolutionError, RouterError};
 use swim_runtime::routing::{Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender};
 use swim_utilities::routing::uri::RelativeUri;
@@ -220,7 +220,7 @@ impl LaneIo<MockExecutionContext> for MockLane {
     fn attach(
         self,
         route: RelativePath,
-        mut envelopes: Receiver<RequestMessage<Value>>,
+        mut envelopes: Receiver<TaggedRequestMessage<Value>>,
         _config: AgentExecutionConfig,
         context: MockExecutionContext,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
@@ -283,7 +283,7 @@ impl LaneIo<MockExecutionContext> for MockLane {
     fn attach_boxed(
         self: Box<Self>,
         route: RelativePath,
-        envelopes: Receiver<RequestMessage<Value>>,
+        envelopes: Receiver<TaggedRequestMessage<Value>>,
         config: AgentExecutionConfig,
         context: MockExecutionContext,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
@@ -291,8 +291,8 @@ impl LaneIo<MockExecutionContext> for MockLane {
     }
 }
 
-pub fn echo(env: RequestMessage<Value>) -> Envelope {
-    let RequestMessage {
+pub fn echo(env: TaggedRequestMessage<Value>) -> Envelope {
+    let TaggedRequestMessage {
         path: RelativePath { node, lane },
         envelope,
         ..
