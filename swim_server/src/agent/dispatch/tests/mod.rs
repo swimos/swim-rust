@@ -466,6 +466,7 @@ async fn fatal_failed_attachment() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn dispatch_meta() {
     let mut map = HashMap::new();
 
