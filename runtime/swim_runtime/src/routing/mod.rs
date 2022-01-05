@@ -51,7 +51,7 @@ const CLIENT: u8 = 2;
 impl RoutingAddr {
     const fn new(tag: u8, id: u32) -> Self {
         let mut uuid_as_int = id as u128;
-        uuid_as_int &= (tag as u128) << 96;
+        uuid_as_int |= (tag as u128) << 120;
         RoutingAddr(Uuid::from_u128(uuid_as_int))
     }
 
@@ -85,15 +85,21 @@ impl RoutingAddr {
     pub fn uuid(&self) -> &Uuid {
         &self.0
     }
+
+    fn get_location(&self) -> u32 {
+        let RoutingAddr(location) = self;
+        let repr = <[u8; 4]>::try_from(&location.as_bytes()[12..]).unwrap();
+        u32::from_be_bytes(repr)
+    }
 }
 
 impl Display for RoutingAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let RoutingAddr(inner) = self;
-        match inner.as_bytes()[0] {
-            REMOTE => write!(f, "Remote({:X})", inner),
-            PLANE => write!(f, "Plane({:X})", inner),
-            _ => write!(f, "Client({:X})", inner),
+        let location = self.get_location();
+        match self.0.as_bytes()[0] {
+            REMOTE => write!(f, "Remote({})", location),
+            PLANE => write!(f, "Plane({})", location),
+            _ => write!(f, "Client({})", location),
         }
     }
 }

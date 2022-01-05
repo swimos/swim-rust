@@ -210,7 +210,7 @@ impl Display for ConnectionError {
             ConnectionError::Closed(e) => write!(f, "{}", e),
             ConnectionError::Io(e) => write!(f, "{}", e),
             ConnectionError::Encoding(e) => write!(f, "{}", e),
-            ConnectionError::Resolution(e) => write!(f, "{}", e),
+            ConnectionError::Resolution(e) => write!(f, "Address {} could not be resolved.", e),
             ConnectionError::WriteTimeout(dur) => write!(
                 f,
                 "Writing to the connection failed to complete within {:?}.",

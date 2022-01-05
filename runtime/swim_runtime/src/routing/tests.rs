@@ -37,10 +37,36 @@ async fn tagged_sender() {
 }
 
 #[test]
-fn routing_addr_display() {
-    let string = format!("{}", RoutingAddr::remote(0x1));
-    assert_eq!(string, "Remote(1)");
+fn routing_addr_discriminate() {
+    assert!(RoutingAddr::remote(0x1).is_remote());
+    assert!(RoutingAddr::client(0x1).is_client());
+    assert!(RoutingAddr::plane(0x1).is_plane());
+    assert!(RoutingAddr::remote(u32::MAX).is_remote());
+    assert!(RoutingAddr::client(u32::MAX).is_client());
+    assert!(RoutingAddr::plane(u32::MAX).is_plane());
+}
 
-    let string = format!("{}", RoutingAddr::plane(0x1a));
-    assert_eq!(string, "Plane(1A)");
+#[test]
+fn routing_addr_display() {
+    assert_eq!(
+        RoutingAddr::remote(0x1).to_string(),
+        "Remote(1)".to_string()
+    );
+    assert_eq!(
+        RoutingAddr::remote(u32::MAX).to_string(),
+        "Remote(4294967295)".to_string()
+    );
+    assert_eq!(RoutingAddr::plane(0x1).to_string(), "Plane(1)".to_string());
+    assert_eq!(
+        RoutingAddr::plane(u32::MAX).to_string(),
+        "Plane(4294967295)".to_string()
+    );
+    assert_eq!(
+        RoutingAddr::client(0x1).to_string(),
+        "Client(1)".to_string()
+    );
+    assert_eq!(
+        RoutingAddr::client(u32::MAX).to_string(),
+        "Client(4294967295)".to_string()
+    );
 }
