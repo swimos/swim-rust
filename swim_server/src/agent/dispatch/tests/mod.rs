@@ -161,8 +161,8 @@ async fn dispatch_two_lanes() {
     let addr1 = RoutingAddr::remote(1);
     let addr2 = RoutingAddr::remote(2);
 
-    let link = RequestMessage::link(addr1.into(), RelativePath::new("/node", "lane_a"));
-    let sync = RequestMessage::sync(addr2.into(), RelativePath::new("/node", "lane_b"));
+    let link = RequestMessage::link(addr1, RelativePath::new("/node", "lane_a"));
+    let sync = RequestMessage::sync(addr2, RelativePath::new("/node", "lane_b"));
 
     let assertion_task = async move {
         assert!(envelope_tx.send(link.clone()).await.is_ok());
@@ -228,16 +228,12 @@ async fn blocked_lane() {
     let addr1 = RoutingAddr::remote(1);
     let addr2 = RoutingAddr::remote(2);
 
-    let cmd1 =
-        RequestMessage::command(addr1.into(), RelativePath::new("/node", "lane_a"), 1.into());
-    let cmd2 =
-        RequestMessage::command(addr1.into(), RelativePath::new("/node", "lane_a"), 2.into());
-    let cmd3 =
-        RequestMessage::command(addr1.into(), RelativePath::new("/node", "lane_a"), 3.into());
-    let cmd4 =
-        RequestMessage::command(addr1.into(), RelativePath::new("/node", "lane_a"), 4.into());
+    let cmd1 = RequestMessage::command(addr1, RelativePath::new("/node", "lane_a"), 1.into());
+    let cmd2 = RequestMessage::command(addr1, RelativePath::new("/node", "lane_a"), 2.into());
+    let cmd3 = RequestMessage::command(addr1, RelativePath::new("/node", "lane_a"), 3.into());
+    let cmd4 = RequestMessage::command(addr1, RelativePath::new("/node", "lane_a"), 4.into());
 
-    let link = RequestMessage::link(addr2.into(), RelativePath::new("/node", "lane_b"));
+    let link = RequestMessage::link(addr2, RelativePath::new("/node", "lane_b"));
 
     let assertion_task = async move {
         assert!(envelope_tx.send(cmd1.clone()).await.is_ok());
@@ -283,14 +279,13 @@ async fn flush_pending() {
     let addr1 = RoutingAddr::remote(1);
     let addr2 = RoutingAddr::remote(2);
 
-    let link = RequestMessage::link(addr2.into(), RelativePath::new("/node", "lane_b"));
+    let link = RequestMessage::link(addr2, RelativePath::new("/node", "lane_b"));
 
     //Chose to ensure there are several pending messages when the dispatcher stops.
     let n = 8;
 
     let assertion_task = async move {
-        let cmd0 =
-            RequestMessage::command(addr1.into(), RelativePath::new("/node", "lane_a"), 0.into());
+        let cmd0 = RequestMessage::command(addr1, RelativePath::new("/node", "lane_a"), 0.into());
 
         assert!(envelope_tx.send(cmd0.clone()).await.is_ok());
         let mut rx1 = context.take_receiver(&addr1).unwrap();
@@ -300,7 +295,7 @@ async fn flush_pending() {
 
         for i in 0..n {
             let cmd = RequestMessage::command(
-                addr1.into(),
+                addr1,
                 RelativePath::new("/node", "lane_a"),
                 (i + 1).into(),
             );
@@ -319,7 +314,7 @@ async fn flush_pending() {
 
         for i in 0..n {
             let cmd = RequestMessage::command(
-                addr1.into(),
+                addr1,
                 RelativePath::new("/node", "lane_a"),
                 (i + 1).into(),
             );
@@ -537,7 +532,7 @@ async fn dispatch_meta() {
             &envelope_tx,
             &context,
             RequestMessage::link(
-                make_addr().into(),
+                make_addr(),
                 RelativePath::new("/swim:meta:node/unit%2Ffoo/", "pulse"),
             ),
         )
@@ -547,7 +542,7 @@ async fn dispatch_meta() {
             &envelope_tx,
             &context,
             RequestMessage::link(
-                make_addr().into(),
+                make_addr(),
                 RelativePath::new("/swim:meta:node/unit%2Ffoo/lane/bar", "uplink"),
             ),
         )
@@ -557,7 +552,7 @@ async fn dispatch_meta() {
             &envelope_tx,
             &context,
             RequestMessage::link(
-                make_addr().into(),
+                make_addr(),
                 RelativePath::new("/swim:meta:node/unit%2Ffoo/lane/bar", "traceLog"),
             ),
         )
@@ -567,7 +562,7 @@ async fn dispatch_meta() {
             &envelope_tx,
             &context,
             RequestMessage::link(
-                make_addr().into(),
+                make_addr(),
                 RelativePath::new("/swim:meta:node/unit%2Ffoo/", "lanes"),
             ),
         )
@@ -578,7 +573,7 @@ async fn dispatch_meta() {
                 &envelope_tx,
                 &context,
                 RequestMessage::link(
-                    make_addr().into(),
+                    make_addr(),
                     RelativePath::new("/swim:meta:node/unit%2Ffoo", level.uri_ref()),
                 ),
             )
@@ -587,7 +582,7 @@ async fn dispatch_meta() {
 
         let addr = make_addr();
         let env = RequestMessage::link(
-            make_addr().into(),
+            make_addr(),
             RelativePath::new("/swim:meta:node/unit%2Ffoo/bar/fizz", "lane"),
         );
 

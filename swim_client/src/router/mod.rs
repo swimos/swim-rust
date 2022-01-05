@@ -194,7 +194,7 @@ impl ClientRouterTask {
                         .local_client_routes
                         .get(&addr)
                         .map(|Entry { route, .. }| route.clone())
-                        .ok_or_else(|| Unresolvable(addr));
+                        .ok_or(Unresolvable(addr));
                     request.send_debug(result, REQUEST_DROPPED);
                 }
                 Either::Left(Some(ClientEndpointRequest::MakeUnroutable(request))) => {

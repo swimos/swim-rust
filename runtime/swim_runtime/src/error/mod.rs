@@ -73,11 +73,10 @@ pub enum RoutingError {
 
 impl Recoverable for RoutingError {
     fn is_fatal(&self) -> bool {
-        match &self {
-            RoutingError::ConnectionError => false,
-            RoutingError::HostUnreachable => false,
-            _ => true,
-        }
+        !matches!(
+            self,
+            RoutingError::ConnectionError | RoutingError::HostUnreachable
+        )
     }
 }
 

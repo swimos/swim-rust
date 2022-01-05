@@ -82,19 +82,18 @@ impl MockRemoteRouterTask {
                     RemoteRoutingRequest::ResolveUrl { host, request } => {
                         if let Some(id) = url_to_id.get(&host) {
                             request.send_ok(*id).unwrap();
+                        } else if let Some((sender_tx, receiver_rx)) =
+                            fake_conns.get_connection(&host)
+                        {
+                            let id = RoutingAddr::remote(count);
+                            count += 1;
+                            url_to_id.insert(host, id);
+                            id_to_conn.insert(id, (sender_tx, Some(receiver_rx)));
+                            request.send_ok(id).unwrap();
                         } else {
-                            if let Some((sender_tx, receiver_rx)) = fake_conns.get_connection(&host)
-                            {
-                                let id = RoutingAddr::remote(count);
-                                count += 1;
-                                url_to_id.insert(host, id);
-                                id_to_conn.insert(id, (sender_tx, Some(receiver_rx)));
-                                request.send_ok(id).unwrap();
-                            } else {
-                                request
-                                    .send_err(ConnectionError::Resolution(host.to_string()))
-                                    .unwrap();
-                            }
+                            request
+                                .send_err(ConnectionError::Resolution(host.to_string()))
+                                .unwrap();
                         }
                     }
                     RemoteRoutingRequest::AttachClient { request } => {
