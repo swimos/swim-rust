@@ -12,20 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::router::{AddressableWrapper, RoutingPath};
 use std::collections::HashMap;
-use std::convert::TryFrom;
-use swim_model::path::{AbsolutePath, Path, RelativePath};
-use swim_runtime::error::{ConnectionError, ResolutionError};
-use swim_runtime::remote::table::{BidirectionalRegistrator, SchemeHostPort};
-use swim_runtime::remote::{RemoteRoutingRequest, Scheme};
-use swim_runtime::routing::{RoutingAddr, TaggedEnvelope, TaggedSender};
+use swim_runtime::error::{ConnectionError, Unresolvable};
+use swim_runtime::remote::{AttachClientRequest, RawOutRoute, RemoteRoutingRequest};
+use swim_runtime::routing::{RoutingAddr, TaggedEnvelope, UnroutableClient};
 use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use url::Url;
 
 pub(crate) struct FakeConnections {
-    outgoing_channels: HashMap<Url, TaggedSender>,
+    outgoing_channels: HashMap<Url, mpsc::Sender<TaggedEnvelope>>,
     incoming_channels: HashMap<Url, mpsc::Receiver<TaggedEnvelope>>,
     addr: u32,
 }
@@ -46,10 +42,7 @@ impl FakeConnections {
         let (outgoing_tx, outgoing_rx) = mpsc::channel(8);
         let (incoming_tx, incoming_rx) = mpsc::channel(8);
 
-        let _ = self.outgoing_channels.insert(
-            url.clone(),
-            TaggedSender::new(RoutingAddr::client(self.addr), outgoing_tx),
-        );
+        let _ = self.outgoing_channels.insert(url.clone(), outgoing_tx);
         let _ = self.incoming_channels.insert(url, incoming_rx);
         self.addr += 1;
 
@@ -59,7 +52,7 @@ impl FakeConnections {
     fn get_connection(
         &mut self,
         url: &Url,
-    ) -> Option<(TaggedSender, mpsc::Receiver<TaggedEnvelope>)> {
+    ) -> Option<(mpsc::Sender<TaggedEnvelope>, mpsc::Receiver<TaggedEnvelope>)> {
         if let Some(conn_sender) = self.outgoing_channels.get(url) {
             Some((
                 conn_sender.clone(),
@@ -80,28 +73,52 @@ impl MockRemoteRouterTask {
         tokio::spawn(async move {
             let mut drops = vec![];
 
+            let mut count = 0;
+            let mut url_to_id = HashMap::new();
+            let mut id_to_conn = HashMap::new();
+
             while let Some(request) = rx.recv().await {
                 match request {
-                    RemoteRoutingRequest::Bidirectional { host, request } => {
-                        if let Some((sender_tx, receiver_rx)) = fake_conns.get_connection(&host) {
-                            let (tx, mut rx) = mpsc::channel(8);
+                    RemoteRoutingRequest::ResolveUrl { host, request } => {
+                        if let Some(id) = url_to_id.get(&host) {
+                            request.send_ok(*id).unwrap();
+                        } else {
+                            if let Some((sender_tx, receiver_rx)) = fake_conns.get_connection(&host)
+                            {
+                                let id = RoutingAddr::remote(count);
+                                count += 1;
+                                url_to_id.insert(host, id);
+                                id_to_conn.insert(id, (sender_tx, Some(receiver_rx)));
+                                request.send_ok(id).unwrap();
+                            } else {
+                                request
+                                    .send_err(ConnectionError::Resolution(host.to_string()))
+                                    .unwrap();
+                            }
+                        }
+                    }
+                    RemoteRoutingRequest::AttachClient { request } => {
+                        let AttachClientRequest { addr, request, .. } = request;
+                        if let Some((sender_tx, receiver_rx)) = id_to_conn.get_mut(&addr) {
                             let (on_drop_tx, on_drop_rx) = promise::promise();
+
+                            let (on_dropped_tx, _on_dropped_rx) = promise::promise();
 
                             drops.push(on_drop_tx);
 
-                            let registrator =
-                                BidirectionalRegistrator::new(sender_tx, tx, on_drop_rx);
+                            let route = UnroutableClient::new(
+                                RawOutRoute {
+                                    sender: sender_tx.clone(),
+                                    on_drop: on_drop_rx.clone(),
+                                },
+                                receiver_rx.take().expect("Receiver taken twice."),
+                                on_drop_rx,
+                                on_dropped_tx,
+                            );
 
-                            request.send(Ok(registrator)).unwrap();
-
-                            let receiver_request = rx.recv().await.unwrap();
-                            receiver_request.send(receiver_rx).unwrap();
+                            request.send(Ok(route)).unwrap();
                         } else {
-                            request
-                                .send(Err(ConnectionError::Resolution(
-                                    ResolutionError::unresolvable(host.to_string()),
-                                )))
-                                .unwrap();
+                            request.send(Err(Unresolvable(addr))).unwrap();
                         }
                     }
                     _ => unreachable!(),
@@ -111,57 +128,4 @@ impl MockRemoteRouterTask {
 
         tx
     }
-}
-
-#[test]
-fn test_routing_path_from_relative_path() {
-    let path = RelativePath::new("/foo", "/bar");
-
-    let routing_path = RoutingPath::try_from(AddressableWrapper(path)).unwrap();
-
-    assert_eq!(routing_path, RoutingPath::Local("/foo".to_string()))
-}
-
-#[test]
-fn test_routing_path_from_absolute_path() {
-    let url = url::Url::parse(&"warp://127.0.0.1:9001".to_string()).unwrap();
-    let path = AbsolutePath::new(url, "/foo", "/bar");
-
-    let routing_path = RoutingPath::try_from(AddressableWrapper(path)).unwrap();
-
-    assert_eq!(
-        routing_path,
-        RoutingPath::Remote(SchemeHostPort::new(
-            Scheme::Ws,
-            "127.0.0.1".to_string(),
-            9001
-        ))
-    )
-}
-
-#[test]
-fn test_routing_path_from_absolute_path_invalid() {
-    let url = url::Url::parse(&"carp://127.0.0.1:9001".to_string()).unwrap();
-    let path = AbsolutePath::new(url, "/foo", "/bar");
-
-    let routing_path = RoutingPath::try_from(AddressableWrapper(path));
-
-    assert!(routing_path.is_err());
-}
-
-#[test]
-fn test_routing_path_from_path() {
-    let path = Path::Local(RelativePath::new("/foo", "/bar"));
-    let routing_path = RoutingPath::try_from(AddressableWrapper(path)).unwrap();
-
-    assert_eq!(routing_path, RoutingPath::Local("/foo".to_string()))
-}
-
-#[test]
-fn test_routing_path_from_path_invalid() {
-    let url = Url::parse("unix:/run/foo.socket").unwrap();
-    let path = Path::Remote(AbsolutePath::new(url, "/foo", "/bar"));
-    let routing_path = RoutingPath::try_from(AddressableWrapper(path));
-
-    assert!(routing_path.is_err());
 }

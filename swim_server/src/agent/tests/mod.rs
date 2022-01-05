@@ -53,10 +53,9 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::sync::Arc;
 use swim_async_runtime::task;
-use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::ClientContext;
-use swim_client::router::ClientRouterFactory;
+use swim_client::router::ClientConnectionFactory;
 use swim_model::path::Path;
 use swim_runtime::configuration::DownlinkConnectionsConfig;
 use swim_runtime::routing::RoutingAddr;
@@ -780,26 +779,19 @@ pub async fn run_agent_test<Agent, Config, Lifecycle>(
 
     let parameters = AgentParameters::new(config, exec_config, uri, HashMap::new());
 
-    let (client_tx, client_rx) = mpsc::channel(8);
+    let (client_tx, _client_rx) = mpsc::channel(8);
     let (remote_tx, _remote_rx) = mpsc::channel(8);
     let (plane_tx, _plane_rx) = mpsc::channel(8);
     let (_close_tx, close_rx) = promise::promise();
 
     let top_level_factory =
-        TopLevelServerRouterFactory::new(plane_tx, client_tx.clone(), remote_tx);
+        TopLevelServerRouterFactory::new(plane_tx, client_tx.clone(), remote_tx.clone());
 
-    let client_router_fac = ClientRouterFactory::new(client_tx.clone(), top_level_factory);
-
-    let (conn_pool, _pool_task) = SwimConnPool::new(
-        DownlinkConnectionsConfig::default(),
-        (client_tx, client_rx),
-        client_router_fac,
-        close_rx.clone(),
-    );
+    let connection_factory = ClientConnectionFactory::new(top_level_factory, client_tx, remote_tx);
 
     let (downlinks, _downlinks_task) = Downlinks::new(
-        non_zero_usize!(8),
-        conn_pool,
+        connection_factory,
+        DownlinkConnectionsConfig::default(),
         Arc::new(ServerDownlinksConfig::default()),
         close_rx,
     );

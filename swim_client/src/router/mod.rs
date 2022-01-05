@@ -357,7 +357,7 @@ impl<RF: RouterFactory> ClientConnectionFactory<RF> {
             let request = AttachClientRequest::new(addr, node_uri, Request::new(tx));
             if self
                 .remote
-                .send(RemoteRoutingRequest::AttachClient { addr, request })
+                .send(RemoteRoutingRequest::AttachClient { request })
                 .await
                 .is_err()
             {

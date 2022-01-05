@@ -106,10 +106,7 @@ pub enum RemoteRoutingRequest {
         request: ResolutionRequest,
     },
     /// Attach a client route to the connection to the specified host.
-    AttachClient {
-        addr: RoutingAddr,
-        request: AttachClientRequest,
-    },
+    AttachClient { request: AttachClientRequest },
 }
 
 pub struct RemoteConnectionChannels {
@@ -310,13 +307,13 @@ fn update_state<State: RemoteTasksState>(
             request.send_debug(result, REQUEST_DROPPED);
             None
         }
-        Event::Request(RemoteRoutingRequest::AttachClient { addr, request }) => {
-            if let Some((route, req_tx)) = state.resolve_client_request(addr) {
+        Event::Request(RemoteRoutingRequest::AttachClient { request }) => {
+            if let Some((route, req_tx)) = state.resolve_client_request(request.addr) {
                 Some(PendingClient::new(req_tx.clone(), route, request))
             } else {
                 request
                     .request
-                    .send_err_debug(Unresolvable(addr), REQUEST_DROPPED);
+                    .send_err_debug(Unresolvable(request.addr), REQUEST_DROPPED);
                 None
             }
         }

@@ -15,11 +15,12 @@
 use super::*;
 use crate::configuration::ClientDownlinksConfig;
 use crate::router::tests::{FakeConnections, MockRemoteRouterTask};
-use crate::router::{ClientRouterFactory, TopLevelClientRouterFactory};
-use futures::join;
+use crate::router::ClientRouterTask;
+use futures::future::join;
 use swim_model::path::AbsolutePath;
 use swim_runtime::configuration::{DownlinkConfig, DownlinkConnectionsConfig, OnInvalidMessage};
-use swim_runtime::routing::CloseSender;
+use swim_runtime::remote::RemoteRouterFactory;
+use swim_runtime::routing::{CloseSender, NoRoutes};
 use swim_utilities::algebra::non_zero_usize;
 use tokio::time::Duration;
 use url::Url;
@@ -67,30 +68,32 @@ async fn dl_manager(
     conns: FakeConnections,
 ) -> (Downlinks<AbsolutePath>, CloseSender) {
     let (client_tx, client_rx) = mpsc::channel(32);
-    let (conn_request_tx, _conn_request_rx) = mpsc::channel(32);
+
     let (close_tx, close_rx) = promise::promise();
 
     let remote_tx = MockRemoteRouterTask::build(conns);
 
-    let delegate_fac = TopLevelClientRouterFactory::new(client_tx.clone(), remote_tx);
-    let client_router_fac = ClientRouterFactory::new(conn_request_tx, delegate_fac);
+    let config = DownlinkConnectionsConfig::default();
 
-    let (connection_pool, pool_task) = SwimConnPool::new(
-        DownlinkConnectionsConfig::default(),
-        (client_tx, client_rx),
-        client_router_fac,
+    let router_factory = RemoteRouterFactory::new(NoRoutes, remote_tx.clone());
+
+    let connection_factory = ClientConnectionFactory::new(router_factory, client_tx, remote_tx);
+
+    let client_task = ClientRouterTask::new(
         close_rx.clone(),
+        client_rx,
+        config.buffer_size,
+        config.yield_after,
     );
 
-    let (downlinks, downlinks_task) = Downlinks::new(
-        non_zero_usize!(8),
-        connection_pool,
-        Arc::new(conf),
-        close_rx,
-    );
+    let (downlinks, downlinks_task) =
+        Downlinks::new(connection_factory, config, Arc::new(conf), close_rx);
 
     tokio::spawn(async move {
-        join!(downlinks_task.run(), pool_task.run()).0.unwrap();
+        join(downlinks_task.run(), client_task.run())
+            .await
+            .0
+            .unwrap()
     });
 
     (downlinks, close_tx)

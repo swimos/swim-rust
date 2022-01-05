@@ -14,9 +14,7 @@
 
 pub mod connections;
 use crate::error::RouterError;
-use crate::error::{
-    ConnectionError, HttpError, HttpErrorKind, ResolutionError, ResolutionErrorKind,
-};
+use crate::error::{ConnectionError, HttpError, HttpErrorKind, ResolutionError};
 use crate::remote::ConnectionDropped;
 use crate::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender};
 use futures::future::{ready, BoxFuture};
@@ -66,10 +64,10 @@ impl Router for LocalRoutes {
             if *countdown == 0 {
                 Ok(route.clone())
             } else {
-                Err(ResolutionError::unresolvable(addr.to_string()))
+                Err(ResolutionError::unresolvable(addr))
             }
         } else {
-            Err(ResolutionError::unresolvable(addr.to_string()))
+            Err(ResolutionError::unresolvable(addr))
         };
         ready(result).boxed()
     }
@@ -80,9 +78,9 @@ impl Router for LocalRoutes {
         route: RelativeUri,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         let mut lock = self.1.lock();
-        let result = if host.is_some() {
+        let result = if let Some(host_name) = host {
             Err(RouterError::ConnectionFailure(ConnectionError::Resolution(
-                ResolutionError::new(ResolutionErrorKind::Unresolvable, None),
+                host_name.to_string(),
             )))
         } else if let Some((addr, countdown)) = lock.uri_mappings.get_mut(&route) {
             if *countdown == 0 {

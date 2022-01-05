@@ -100,10 +100,4 @@ fn routing_error_to_downlink_error() {
     assert!(
         matches!(err, DownlinkError::ConnectionFailure(str) if str == "The host is unreachable")
     );
-
-    let err: DownlinkError =
-        RoutingError::PoolError(ConnectionError::Closed(CloseError::unexpected())).into();
-    assert!(
-        matches!(err, DownlinkError::ConnectionPoolFailure(ConnectionError::Closed(e)) if e == CloseError::unexpected())
-    );
 }
