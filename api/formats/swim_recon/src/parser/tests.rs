@@ -21,6 +21,7 @@ use nom::IResult;
 use std::borrow::Cow;
 use std::ops::{Add, Neg, Sub};
 use swim_form::structural::read::event::{NumericValue, ReadEvent};
+use swim_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
 use swim_model::bigint::{BigInt, BigUint};
 use swim_model::{Attr, Item, Text, Value};
 
@@ -1611,4 +1612,66 @@ fn attr_with_comments() {
         value_from_string(attrs_multiple_lines),
         value_from_string_with_comments(attrs_with_multiple_comments)
     )
+}
+
+#[test]
+fn tesst() {
+    let first = "@name(a: 1, b: 2)";
+    let second = "@name({a: 1, b: 2})";
+
+    // let first = "{a:2}";
+    // let second = "{ a: 2 }";
+
+    // let first = "@tag(){}:1";
+    // let second = "@tag{}:1";
+
+    let mut it_1 = ParseIterator::new(Span::new(first), false);
+    let mut recognizer_1 = Value::make_recognizer();
+
+    let mut it_2 = ParseIterator::new(Span::new(second), false);
+    let mut recognizer_2 = Value::make_recognizer();
+
+    loop {
+        let mut stop = true;
+
+        if let Some(Ok(v)) = it_1.next(){
+            recognizer_1.feed_event(v);
+            stop = false;
+        }
+
+        if let Some(Ok(v)) = it_2.next(){
+            recognizer_2.feed_event(v);
+            stop = false;
+        }
+
+        if stop{
+            break
+        }
+
+        assert_eq!(recognizer_1.stack, recognizer_2.stack);
+
+        //Todo dm this will not produce anything until completion
+        // let a = recognizer_1.feed_event(it_1.next().unwrap().unwrap());
+        // let b = recognizer_2.feed_event(it_2.next().unwrap().unwrap());
+
+        // eprintln!("recognizer_1.stack = {:#?}", recognizer_1.stack);
+        // eprintln!("recognizer_2.stack = {:#?}", recognizer_2.stack);
+        // eprintln!("--");
+
+
+        // eprintln!("a = {:#?}", a);
+        // eprintln!("b = {:#?}", b);
+        // assert_eq!(a, b)
+    }
+
+    //
+    // assert!(it_1.eq(it_2));
+
+    // let result_1 = run_parser_iterator(first).unwrap();
+    // let result_2 = run_parser_iterator(second).unwrap();
+    // assert_eq!(result_1, result_2);
+    //
+    // let result_1 = value_from_string(first).unwrap();
+    // let result_2 = value_from_string(second).unwrap();
+    // assert_eq!(result_1, result_2);
 }
