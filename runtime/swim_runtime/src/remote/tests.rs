@@ -148,10 +148,9 @@ impl RemoteTasksState for FakeRemoteState {
 
     fn resolve_client_request(
         &self,
-        _addr: RoutingAddr,
+        addr: RoutingAddr,
     ) -> Option<(RawOutRoute, &mpsc::Sender<AttachClientRouted>)> {
-        //TODO Implement this.
-        todo!()
+        self.table.resolve_attach_client(addr)
     }
 
     fn table_try_resolve(&self, target: &SchemeHostPort) -> Option<RoutingAddr> {

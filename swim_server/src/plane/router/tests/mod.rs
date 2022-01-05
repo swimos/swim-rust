@@ -41,7 +41,7 @@ async fn plane_router_get_sender() {
 
     let provider_task = async move {
         while let Some(req) = req_rx.recv().await {
-            if let PlaneRoutingRequest::EndpointOut { id, request } = req {
+            if let PlaneRoutingRequest::Endpoint { id, request } = req {
                 if id == addr {
                     assert!(request
                         .send_ok(RawOutRoute::new(send_tx.clone(), drop_rx.clone()))

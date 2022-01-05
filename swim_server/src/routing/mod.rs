@@ -22,7 +22,7 @@ use std::sync::Arc;
 use swim_runtime::error::ResolutionError;
 use swim_runtime::error::{NoAgentAtRoute, RouterError, Unresolvable};
 use swim_runtime::remote::{RawOutRoute, RemoteRoutingRequest};
-use swim_runtime::routing::{ClientRoute, Route, Router, RouterFactory, RoutingAddr, TaggedSender};
+use swim_runtime::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 
 use swim_utilities::future::request::Request;
 use swim_utilities::routing::uri::RelativeUri;
@@ -33,8 +33,7 @@ use tokio::sync::oneshot;
 use url::Url;
 
 type AgentRequest = Request<Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>>;
-type EndpointRequestOut = Request<Result<RawOutRoute, Unresolvable>>;
-type EndpointRequestIn = Request<Result<ClientRoute, Unresolvable>>;
+type EndpointRequest = Request<Result<RawOutRoute, Unresolvable>>;
 type RoutesRequest = Request<HashSet<RelativeUri>>;
 type ResolutionRequest = Request<Result<RoutingAddr, RouterError>>;
 
@@ -47,13 +46,9 @@ pub enum PlaneRoutingRequest {
         request: AgentRequest,
     },
     /// Get channel to route messages to a specified routing address.
-    EndpointOut {
+    Endpoint {
         id: RoutingAddr,
-        request: EndpointRequestOut,
-    },
-    EndpointIn {
-        id: RoutingAddr,
-        request: EndpointRequestIn,
+        request: EndpointRequest,
     },
     /// Resolve the routing address for an agent.
     Resolve {
@@ -195,7 +190,7 @@ impl Router for TopLevelServerRouter {
                 let (tx, rx) = oneshot::channel();
                 let request = Request::new(tx);
                 if plane_sender
-                    .send(PlaneRoutingRequest::EndpointOut { id: addr, request })
+                    .send(PlaneRoutingRequest::Endpoint { id: addr, request })
                     .await
                     .is_err()
                 {

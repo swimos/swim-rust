@@ -130,7 +130,7 @@ impl<Delegate: Router> Router for PlaneRouter<Delegate> {
             let (tx, rx) = oneshot::channel();
             if addr.is_plane() {
                 if request_sender
-                    .send(PlaneRoutingRequest::EndpointOut {
+                    .send(PlaneRoutingRequest::Endpoint {
                         id: addr,
                         request: Request::new(tx),
                     })
