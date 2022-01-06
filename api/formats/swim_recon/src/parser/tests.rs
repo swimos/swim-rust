@@ -801,7 +801,7 @@ fn missing_items() {
             ReadEvent::Extant,
             string_event("two"),
             uint_event(3),
-            ReadEvent::EndRecord
+            ReadEvent::EndRecord,
         ]
     );
 
@@ -813,7 +813,7 @@ fn missing_items() {
             uint_event(1),
             ReadEvent::Extant,
             uint_event(3),
-            ReadEvent::EndRecord
+            ReadEvent::EndRecord,
         ]
     );
 
@@ -825,7 +825,7 @@ fn missing_items() {
             uint_event(1),
             string_event("two"),
             ReadEvent::Extant,
-            ReadEvent::EndRecord
+            ReadEvent::EndRecord,
         ]
     );
 }
@@ -1619,59 +1619,88 @@ fn tesst() {
     let first = "@name(a: 1, b: 2)";
     let second = "@name({a: 1, b: 2})";
 
+    //Todo dm these are not equal
+    // let first = "@name(@age(a: 1, b: 2))";
+    // let second = "@name({@age(a: 1, b: 2)})";
+
     // let first = "{a:2}";
     // let second = "{ a: 2 }";
 
     // let first = "@tag(){}:1";
     // let second = "@tag{}:1";
 
-    let mut it_1 = ParseIterator::new(Span::new(first), false);
+    let mut it_1 = ParseIterator::new(Span::new(first), false).peekable();
     let mut recognizer_1 = Value::make_recognizer();
 
-    let mut it_2 = ParseIterator::new(Span::new(second), false);
+    let mut it_2 = ParseIterator::new(Span::new(second), false).peekable();
     let mut recognizer_2 = Value::make_recognizer();
 
     loop {
         let mut stop = true;
 
-        if let Some(Ok(v)) = it_1.next(){
-            recognizer_1.feed_event(v);
+        if it_1.peek() != it_2.peek() {
+            eprintln!("it_1.peek() = {:?}", it_1.peek());
+            eprintln!("it_2.peek() = {:?}", it_2.peek());
+
+            if it_1.peek() == Some(&Ok(ReadEvent::StartBody)) {
+                if let Some(Ok(v)) = it_1.next() {
+                    if let Some(Ok(val)) = recognizer_1.feed_event(v) {
+                        eprintln!("val1 = {:#?}", val);
+                    }
+                    stop = false;
+                }
+            }
+
+            if it_1.peek() == Some(&Ok(ReadEvent::EndRecord)) {
+                if let Some(Ok(v)) = it_1.next() {
+                    if let Some(Ok(val)) = recognizer_1.feed_event(v) {
+                        eprintln!("val1 = {:#?}", val);
+                    }
+                    stop = false;
+                }
+            }
+
+            if it_2.peek() == Some(&Ok(ReadEvent::StartBody)) {
+                if let Some(Ok(v)) = it_2.next() {
+                    if let Some(Ok(val)) = recognizer_2.feed_event(v) {
+                        eprintln!("val2 = {:#?}", val);
+                    }
+                    stop = false;
+                }
+            }
+
+            if it_2.peek() == Some(&Ok(ReadEvent::EndRecord)) {
+                if let Some(Ok(v)) = it_2.next() {
+                    if let Some(Ok(val)) = recognizer_2.feed_event(v) {
+                        eprintln!("val2 = {:#?}", val);
+                    }
+                    stop = false;
+                }
+            }
+        }
+
+        if let Some(Ok(v)) = it_1.next() {
+            if let Some(Ok(val)) = recognizer_1.feed_event(v) {
+                eprintln!("val1 = {:#?}", val);
+            }
             stop = false;
         }
 
-        if let Some(Ok(v)) = it_2.next(){
-            recognizer_2.feed_event(v);
+        if let Some(Ok(v)) = it_2.next() {
+            if let Some(Ok(val)) = recognizer_2.feed_event(v) {
+                eprintln!("val2 = {:#?}", val);
+            }
             stop = false;
         }
 
-        if stop{
-            break
+        // assert_eq!(recognizer_1, recognizer_2);
+
+        if stop {
+            break;
         }
-
-        assert_eq!(recognizer_1.stack, recognizer_2.stack);
-
-        //Todo dm this will not produce anything until completion
-        // let a = recognizer_1.feed_event(it_1.next().unwrap().unwrap());
-        // let b = recognizer_2.feed_event(it_2.next().unwrap().unwrap());
-
-        // eprintln!("recognizer_1.stack = {:#?}", recognizer_1.stack);
-        // eprintln!("recognizer_2.stack = {:#?}", recognizer_2.stack);
-        // eprintln!("--");
-
-
-        // eprintln!("a = {:#?}", a);
-        // eprintln!("b = {:#?}", b);
-        // assert_eq!(a, b)
     }
 
-    //
-    // assert!(it_1.eq(it_2));
-
-    // let result_1 = run_parser_iterator(first).unwrap();
-    // let result_2 = run_parser_iterator(second).unwrap();
-    // assert_eq!(result_1, result_2);
-    //
-    // let result_1 = value_from_string(first).unwrap();
-    // let result_2 = value_from_string(second).unwrap();
-    // assert_eq!(result_1, result_2);
+    let result_1 = value_from_string(first).unwrap();
+    let result_2 = value_from_string(second).unwrap();
+    assert_eq!(result_1, result_2);
 }

@@ -22,7 +22,7 @@ use std::convert::TryFrom;
 use std::option::Option::None;
 use swim_model::{Attr, Blob, Item, Text, Value};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 enum RecordKey {
     NoKey,
     Attr(Text),
@@ -35,7 +35,7 @@ impl Default for RecordKey {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq, Eq)]
 struct RecordBuilder {
     key: RecordKey,
     attrs: Vec<Attr>,
@@ -59,6 +59,22 @@ impl RecordBuilder {
 pub struct ValueMaterializer {
     stack: Vec<RecordBuilder>,
     slot_key: Option<Value>,
+}
+
+impl PartialEq for ValueMaterializer {
+    fn eq(&self, other: &Self) -> bool {
+        if self.slot_key.eq(&other.slot_key) {
+            if self.stack.len() == other.stack.len() {
+                return self.stack.eq(&other.stack);
+            } else if let (Some(self_builder), Some(other_builder)) =
+                (self.stack.last(), other.stack.last())
+            {
+                //Todo dm maybe check more than just the items.
+                return self_builder.items.eq(&other_builder.items);
+            }
+        }
+        false
+    }
 }
 
 enum ItemEvent {
