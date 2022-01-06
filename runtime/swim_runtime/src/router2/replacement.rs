@@ -15,8 +15,8 @@
 use crate::remote::table::BidirectionalRegistrator;
 use crate::remote::RawRoute;
 use crate::router2::{
-    callback, Address, ReplacementDownlinkRoutingRequest, ReplacementPlaneRoutingRequest,
-    ReplacementRemoteRoutingRequest, RouterError, RouterErrorKind,
+    callback, Address, DownlinkRoutingRequest, NewRoutingError, PlaneRoutingRequest,
+    RemoteRoutingRequest,
 };
 use crate::routing::{BidirectionalRoute, Route, RoutingAddr, RoutingAddrKind, TaggedSender};
 use swim_model::path::Addressable;
@@ -24,21 +24,17 @@ use swim_utilities::future::request::Request;
 use tokio::sync::mpsc;
 use url::Url;
 
-/// A router which resolves raw routes that have no origin associated with them.
-///
-/// This hands out raw byte channels for sending messages to the destination and it is the callees
-/// responsibility to ensure that the correct encoder is attached to the route.
 #[derive(Clone, Debug)]
 pub struct ReplacementRouter<Path> {
-    client: mpsc::Sender<ReplacementDownlinkRoutingRequest<Path>>,
-    plane: Option<mpsc::Sender<ReplacementPlaneRoutingRequest>>,
-    remote: mpsc::Sender<ReplacementRemoteRoutingRequest>,
+    client: mpsc::Sender<DownlinkRoutingRequest<Path>>,
+    plane: Option<mpsc::Sender<PlaneRoutingRequest>>,
+    remote: mpsc::Sender<RemoteRoutingRequest>,
 }
 
 impl<Path> ReplacementRouter<Path> {
     pub fn client(
-        client: mpsc::Sender<ReplacementDownlinkRoutingRequest<Path>>,
-        remote: mpsc::Sender<ReplacementRemoteRoutingRequest>,
+        client: mpsc::Sender<DownlinkRoutingRequest<Path>>,
+        remote: mpsc::Sender<RemoteRoutingRequest>,
     ) -> ReplacementRouter<Path> {
         ReplacementRouter {
             client,
@@ -48,9 +44,9 @@ impl<Path> ReplacementRouter<Path> {
     }
 
     pub fn server(
-        client: mpsc::Sender<ReplacementDownlinkRoutingRequest<Path>>,
-        plane: mpsc::Sender<ReplacementPlaneRoutingRequest>,
-        remote: mpsc::Sender<ReplacementRemoteRoutingRequest>,
+        client: mpsc::Sender<DownlinkRoutingRequest<Path>>,
+        plane: mpsc::Sender<PlaneRoutingRequest>,
+        remote: mpsc::Sender<RemoteRoutingRequest>,
     ) -> ReplacementRouter<Path> {
         ReplacementRouter {
             client,
@@ -59,7 +55,7 @@ impl<Path> ReplacementRouter<Path> {
         }
     }
 
-    pub async fn resolve_sender(&mut self, addr: RoutingAddr) -> Result<RawRoute, RouterError> {
+    pub async fn resolve_sender(&mut self, addr: RoutingAddr) -> Result<RawRoute, NewRoutingError> {
         let ReplacementRouter {
             client,
             plane,
@@ -69,7 +65,7 @@ impl<Path> ReplacementRouter<Path> {
         match addr.discriminate() {
             RoutingAddrKind::Remote => {
                 callback(|callback| {
-                    remote.send(ReplacementRemoteRoutingRequest::Endpoint {
+                    remote.send(RemoteRoutingRequest::Endpoint {
                         addr,
                         request: Request::new(callback),
                     })
@@ -79,14 +75,14 @@ impl<Path> ReplacementRouter<Path> {
             RoutingAddrKind::Plane => match plane {
                 Some(tx) => {
                     callback(|callback| {
-                        tx.send(ReplacementPlaneRoutingRequest::Endpoint {
+                        tx.send(PlaneRoutingRequest::Endpoint {
                             addr,
                             request: Request::new(callback),
                         })
                     })
                     .await
                 }
-                None => Err(RouterError::new(RouterErrorKind::Resolution)),
+                None => Err(NewRoutingError::Resolution(None)),
             },
             RoutingAddrKind::Client => {
                 let _ = client;
@@ -95,7 +91,7 @@ impl<Path> ReplacementRouter<Path> {
         }
     }
 
-    pub async fn lookup<A>(&mut self, address: A) -> Result<RoutingAddr, RouterError>
+    pub async fn lookup<A>(&mut self, address: A) -> Result<RoutingAddr, NewRoutingError>
     where
         A: Into<Address>,
     {
@@ -105,24 +101,24 @@ impl<Path> ReplacementRouter<Path> {
             Some(url) => {
                 callback(|callback| {
                     let tx = &self.remote;
-                    tx.send(ReplacementRemoteRoutingRequest::ResolveUrl {
+                    tx.send(RemoteRoutingRequest::ResolveUrl {
                         host: url.clone(),
                         request: Request::new(callback),
                     })
                 })
                 .await
             }
-            None => Err(RouterError::new(RouterErrorKind::Resolution)),
+            None => Err(NewRoutingError::Resolution(None)),
         }
     }
 
     pub async fn resolve_bidirectional(
         &mut self,
         host: Url,
-    ) -> Result<BidirectionalRegistrator, RouterError> {
+    ) -> Result<BidirectionalRegistrator, NewRoutingError> {
         let tx = &self.remote;
         callback(|callback| {
-            tx.send(ReplacementRemoteRoutingRequest::Bidirectional {
+            tx.send(RemoteRoutingRequest::Bidirectional {
                 host,
                 request: Request::new(callback),
             })
@@ -151,13 +147,13 @@ impl<Path> TaggedReplacementRouter<Path> {
         TaggedReplacementRouter { tag, inner }
     }
 
-    pub async fn resolve_sender(&mut self, addr: RoutingAddr) -> Result<Route, RouterError> {
+    pub async fn resolve_sender(&mut self, addr: RoutingAddr) -> Result<Route, NewRoutingError> {
         let TaggedReplacementRouter { tag, inner } = self;
         let RawRoute { sender, on_drop } = inner.resolve_sender(addr).await?;
         Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
     }
 
-    pub async fn lookup<A>(&mut self, address: A) -> Result<RoutingAddr, RouterError>
+    pub async fn lookup<A>(&mut self, address: A) -> Result<RoutingAddr, NewRoutingError>
     where
         A: Into<Address>,
     {
@@ -167,7 +163,7 @@ impl<Path> TaggedReplacementRouter<Path> {
     pub async fn resolve_bidirectional(
         &mut self,
         host: Url,
-    ) -> Result<BidirectionalRoute, RouterError> {
+    ) -> Result<BidirectionalRoute, NewRoutingError> {
         let handle = self.inner.resolve_bidirectional(host).await?;
         handle.register().await.map_err(Into::into)
     }

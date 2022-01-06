@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::error::{ResolutionError, RouterError};
-use crate::remote::{RawRoute, RemoteRoutingRequest};
+use crate::remote::RawRoute;
+use crate::router2::{NewRoutingError, RemoteRoutingRequest};
 use crate::routing::{
     BidirectionalRoute, BidirectionalRouter, Route, Router, RoutingAddr, TaggedSender,
 };
@@ -54,7 +54,7 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-    ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
+    ) -> BoxFuture<'_, Result<Route, NewRoutingError>> {
         async move {
             let RemoteRouter {
                 tag,
@@ -66,14 +66,14 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
                 let request = Request::new(tx);
                 let routing_req = RemoteRoutingRequest::Endpoint { addr, request };
                 if request_tx.send(routing_req).await.is_err() {
-                    Err(ResolutionError::router_dropped())
+                    Err(NewRoutingError::RouterDropped)
                 } else {
                     match rx.await {
                         Ok(Ok(RawRoute { sender, on_drop })) => {
                             Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
                         }
-                        Ok(Err(err)) => Err(ResolutionError::unresolvable(err.to_string())),
-                        Err(_) => Err(ResolutionError::router_dropped()),
+                        Ok(Err(err)) => Err(err),
+                        Err(_) => Err(NewRoutingError::RouterDropped),
                     }
                 }
             } else {
@@ -87,7 +87,7 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
-    ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
+    ) -> BoxFuture<'_, Result<RoutingAddr, NewRoutingError>> {
         async move {
             let RemoteRouter {
                 request_tx,
@@ -99,12 +99,12 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
                 let request = Request::new(tx);
                 let routing_req = RemoteRoutingRequest::ResolveUrl { host: url, request };
                 if request_tx.send(routing_req).await.is_err() {
-                    Err(RouterError::RouterDropped)
+                    Err(NewRoutingError::RouterDropped)
                 } else {
                     match rx.await {
                         Ok(Ok(addr)) => Ok(addr),
-                        Ok(Err(err)) => Err(RouterError::ConnectionFailure(err)),
-                        Err(_) => Err(RouterError::RouterDropped),
+                        Ok(Err(err)) => Err(err),
+                        Err(_) => Err(NewRoutingError::RouterDropped),
                     }
                 }
             } else {
@@ -119,7 +119,7 @@ impl<DelegateRouter: Router> BidirectionalRouter for RemoteRouter<DelegateRouter
     fn resolve_bidirectional(
         &mut self,
         host: Url,
-    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
+    ) -> BoxFuture<'_, Result<BidirectionalRoute, NewRoutingError>> {
         let RemoteRouter { request_tx, .. } = self;
         async move {
             let (tx, rx) = oneshot::channel();
@@ -128,12 +128,12 @@ impl<DelegateRouter: Router> BidirectionalRouter for RemoteRouter<DelegateRouter
                 request: Request::new(tx),
             };
             if request_tx.send(routing_req).await.is_err() {
-                Err(ResolutionError::router_dropped())
+                Err(NewRoutingError::RouterDropped)
             } else {
                 match rx.await {
-                    Ok(Ok(registrator)) => registrator.register().await,
-                    Ok(Err(_)) => Err(ResolutionError::unresolvable(host.to_string())),
-                    Err(_) => Err(ResolutionError::router_dropped()),
+                    Ok(Ok(registrator)) => registrator.register().await.map_err(Into::into),
+                    Ok(Err(err)) => Err(err),
+                    Err(_) => Err(NewRoutingError::RouterDropped),
                 }
             }
         }

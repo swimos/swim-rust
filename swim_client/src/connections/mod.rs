@@ -13,8 +13,7 @@
 // limitations under the License.
 
 use crate::router::{
-    AddressableWrapper, ClientRouter, ClientRouterFactory, DownlinkRoutingRequest, RouterEvent,
-    RoutingPath, RoutingTable,
+    AddressableWrapper, ClientRouter, ClientRouterFactory, RoutingPath, RoutingTable,
 };
 use futures::future::join_all;
 use futures::future::BoxFuture;
@@ -31,8 +30,9 @@ use swim_async_runtime::task::*;
 use swim_model::path::{Addressable, RelativePath};
 use swim_runtime::configuration::DownlinkConnectionsConfig;
 use swim_runtime::error::ConnectionDropped;
-use swim_runtime::error::{CloseError, ConnectionError, HttpError, ResolutionError, Unresolvable};
+use swim_runtime::error::{CloseError, ConnectionError, HttpError, ResolutionError};
 use swim_runtime::remote::RawRoute;
+use swim_runtime::router2::{ConnectionType, DownlinkRoutingRequest, NewRoutingError, RouterEvent};
 use swim_runtime::routing::{
     BidirectionalRoute, BidirectionalRouter, CloseReceiver, Route, Router, RouterFactory,
     RoutingAddr, TaggedEnvelope, TaggedSender,
@@ -136,7 +136,7 @@ impl<Path: Addressable> ConnectionPool for SwimConnPool<Path> {
                     conn_type,
                 })
                 .await?;
-            Ok(rx.await?)
+            Ok(rx.await?.map_err(Into::into))
         }
         .boxed()
     }
@@ -250,14 +250,22 @@ where
                                     .await
                                 {
                                     if let RegistratorRequest::Resolve { request } = err.0 {
-                                        if request.send(Err(Unresolvable(addr))).is_err() {
+                                        if request
+                                            .send(Err(NewRoutingError::Resolution(Some(
+                                                addr.to_string(),
+                                            ))))
+                                            .is_err()
+                                        {
                                             event!(Level::ERROR, REQUEST_ERROR);
                                         }
                                     }
                                 }
                             }
                             None => {
-                                if request.send(Err(Unresolvable(addr))).is_err() {
+                                if request
+                                    .send(Err(NewRoutingError::Resolution(Some(addr.to_string()))))
+                                    .is_err()
+                                {
                                     event!(Level::ERROR, REQUEST_ERROR);
                                 }
                             }
@@ -278,15 +286,15 @@ where
     }
 }
 
-type ConnectionResult = Result<(ConnectionSender, Option<ConnectionReceiver>), ConnectionError>;
+type ConnectionResult = Result<(ConnectionSender, Option<ConnectionReceiver>), NewRoutingError>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConnectionType {
-    /// A connection type that can both send and receive messages.
-    Full,
-    /// A connection type that can only send messages.
-    Outgoing,
-}
+// #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+// pub enum ConnectionType {
+//     /// A connection type that can both send and receive messages.
+//     Full,
+//     /// A connection type that can only send messages.
+//     Outgoing,
+// }
 
 enum RegistratorRequest<Path: Addressable> {
     Connect {
@@ -295,7 +303,7 @@ enum RegistratorRequest<Path: Addressable> {
         conn_type: ConnectionType,
     },
     Resolve {
-        request: Request<Result<RawRoute, Unresolvable>>,
+        request: Request<Result<RawRoute, NewRoutingError>>,
     },
 }
 
@@ -337,9 +345,8 @@ impl<Path: Addressable> ConnectionRegistrator<Path> {
                 conn_type,
             })
             .await
-            .map_err(|_| ConnectionError::Resolution(ResolutionError::router_dropped()))?;
-        rx.await
-            .map_err(|_| ConnectionError::Resolution(ResolutionError::router_dropped()))?
+            .map_err(|_| NewRoutingError::RouterDropped)?;
+        rx.await.map_err(|_| NewRoutingError::RouterDropped)?
     }
 }
 
@@ -518,7 +525,7 @@ impl<Path: Addressable, DelegateRouter: BidirectionalRouter>
                 Some(ConnectionRegistratorEvent::ConnectionDropped(connection_dropped)) => {
                     broadcast(&mut subscribers, RouterEvent::ConnectionClosed).await;
 
-                    let mut maybe_err = None;
+                    let mut maybe_err: Option<NewRoutingError> = None;
                     if connection_dropped.is_recoverable() {
                         match open_connection(
                             target.clone(),
@@ -540,7 +547,7 @@ impl<Path: Addressable, DelegateRouter: BidirectionalRouter>
                             }
                         };
                     } else {
-                        maybe_err = Some(ConnectionError::Closed(CloseError::closed()));
+                        maybe_err = Some(ConnectionError::Closed(CloseError::closed()).into());
                     }
 
                     if let Some(err) = maybe_err {
@@ -554,7 +561,7 @@ impl<Path: Addressable, DelegateRouter: BidirectionalRouter>
                             local_drop_tx.provide(ConnectionDropped::Closed)?;
                         }
 
-                        return Err(err);
+                        return Err(err.into());
                     }
                 }
                 _ => {
@@ -629,7 +636,7 @@ async fn open_connection<Path, DelegateRouter>(
     mut retry_strategy: RetryStrategy,
     client_router: &mut ClientRouter<Path, DelegateRouter>,
     stop_trigger: CloseReceiver,
-) -> Result<RawConnection, ConnectionError>
+) -> Result<RawConnection, NewRoutingError>
 where
     Path: Addressable,
     DelegateRouter: BidirectionalRouter,
@@ -675,7 +682,7 @@ where
 async fn try_open_remote_connection<Path, DelegateRouter>(
     client_router: &mut ClientRouter<Path, DelegateRouter>,
     target: Url,
-) -> Result<RawConnection, ConnectionError>
+) -> Result<RawConnection, NewRoutingError>
 where
     Path: Addressable,
     DelegateRouter: BidirectionalRouter,
@@ -692,7 +699,7 @@ where
 async fn try_open_local_connection<Path, DelegateRouter>(
     client_router: &mut ClientRouter<Path, DelegateRouter>,
     target: String,
-) -> Result<RawConnection, ConnectionError>
+) -> Result<RawConnection, NewRoutingError>
 where
     Path: Addressable,
     DelegateRouter: BidirectionalRouter,
@@ -702,10 +709,7 @@ where
 
     let routing_addr = client_router.lookup(None, relative_uri.clone()).await?;
 
-    let Route { sender, on_drop } = client_router
-        .resolve_sender(routing_addr)
-        .await
-        .map_err(ConnectionError::Resolution)?;
+    let Route { sender, on_drop } = client_router.resolve_sender(routing_addr).await?;
 
     Ok((sender, None, on_drop))
 }

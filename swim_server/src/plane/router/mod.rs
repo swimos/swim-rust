@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::PlaneRoutingRequest;
 use futures::future::BoxFuture;
 use futures::FutureExt;
-use swim_runtime::error::{ResolutionError, RouterError};
 use swim_runtime::remote::RawRoute;
+use swim_runtime::router2::{NewRoutingError, PlaneRoutingRequest};
 use swim_runtime::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 use swim_utilities::future::request::Request;
 use swim_utilities::routing::uri::RelativeUri;
@@ -81,7 +80,7 @@ impl<Delegate> PlaneRouter<Delegate> {
 }
 
 impl<Delegate: Router> Router for PlaneRouter<Delegate> {
-    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
+    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, NewRoutingError>> {
         async move {
             let PlaneRouter {
                 tag,
@@ -92,20 +91,20 @@ impl<Delegate: Router> Router for PlaneRouter<Delegate> {
             if addr.is_plane() {
                 if request_sender
                     .send(PlaneRoutingRequest::Endpoint {
-                        id: addr,
+                        addr,
                         request: Request::new(tx),
                     })
                     .await
                     .is_err()
                 {
-                    Err(ResolutionError::router_dropped())
+                    Err(NewRoutingError::RouterDropped)
                 } else {
                     match rx.await {
                         Ok(Ok(RawRoute { sender, on_drop })) => {
                             Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
                         }
-                        Ok(Err(err)) => Err(ResolutionError::unresolvable(err.to_string())),
-                        Err(_) => Err(ResolutionError::router_dropped()),
+                        Ok(Err(err)) => Err(err),
+                        Err(_) => Err(NewRoutingError::RouterDropped),
                     }
                 }
             } else {
@@ -119,7 +118,7 @@ impl<Delegate: Router> Router for PlaneRouter<Delegate> {
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
-    ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
+    ) -> BoxFuture<Result<RoutingAddr, NewRoutingError>> {
         async move {
             let PlaneRouter { request_sender, .. } = self;
             let (tx, rx) = oneshot::channel();
@@ -132,12 +131,12 @@ impl<Delegate: Router> Router for PlaneRouter<Delegate> {
                 .await
                 .is_err()
             {
-                Err(RouterError::RouterDropped)
+                Err(NewRoutingError::RouterDropped)
             } else {
                 match rx.await {
                     Ok(Ok(addr)) => Ok(addr),
                     Ok(Err(err)) => Err(err),
-                    Err(_) => Err(RouterError::RouterDropped),
+                    Err(_) => Err(NewRoutingError::RouterDropped),
                 }
             }
         }

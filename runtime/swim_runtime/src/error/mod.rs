@@ -20,6 +20,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::error::SendError as MpscSendError;
 
+use crate::router2::NewRoutingError;
 use crate::routing::RoutingAddr;
 pub use capacity::*;
 pub use closed::*;
@@ -145,6 +146,21 @@ pub enum ConnectionError {
     WriteTimeout(Duration),
     /// An error was produced at the transport layer.
     Transport(Arc<BoxRecoverableError>),
+}
+
+impl From<NewRoutingError> for ConnectionError {
+    fn from(e: NewRoutingError) -> Self {
+        match e {
+            NewRoutingError::Resolution(target) => ConnectionError::Resolution(
+                ResolutionError::new(ResolutionErrorKind::Unresolvable, target),
+            ),
+            NewRoutingError::Connection(e) => e,
+            NewRoutingError::RouterDropped => ConnectionError::Resolution(ResolutionError::new(
+                ResolutionErrorKind::RouterDropped,
+                None,
+            )),
+        }
+    }
 }
 
 impl PartialEq for ConnectionError {

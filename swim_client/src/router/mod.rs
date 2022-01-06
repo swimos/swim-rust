@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::connections::ConnectionType;
-use crate::connections::{ConnectionChannel, ConnectionRegistrator};
+use crate::connections::ConnectionRegistrator;
 use futures::future::BoxFuture;
 use std::collections::HashMap;
 
@@ -26,12 +25,10 @@ use tokio::sync::oneshot;
 use url::Url;
 
 use swim_model::path::{AbsolutePath, Addressable};
-
-use swim_warp::envelope::ResponseEnvelope;
-
-use swim_runtime::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
+use swim_runtime::error::{ConnectionError, ResolutionError};
 use swim_runtime::remote::table::SchemeHostPort;
-use swim_runtime::remote::{BadUrl, RawRoute, RemoteRoutingRequest};
+use swim_runtime::remote::{BadUrl, RawRoute};
+use swim_runtime::router2::{DownlinkRoutingRequest, NewRoutingError, RemoteRoutingRequest};
 use swim_runtime::routing::{
     BidirectionalRoute, BidirectionalRouter, Route, Router, RouterFactory, RoutingAddr,
     TaggedSender,
@@ -93,7 +90,7 @@ impl Router for TopLevelClientRouter {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-    ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
+    ) -> BoxFuture<'_, Result<Route, NewRoutingError>> {
         async move {
             let TopLevelClientRouter {
                 remote_sender,
@@ -109,18 +106,18 @@ impl Router for TopLevelClientRouter {
                     .await
                     .is_err()
                 {
-                    Err(ResolutionError::router_dropped())
+                    Err(NewRoutingError::RouterDropped)
                 } else {
                     match rx.await {
                         Ok(Ok(RawRoute { sender, on_drop })) => {
                             Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
                         }
-                        Ok(Err(_)) => Err(ResolutionError::unresolvable(addr.to_string())),
-                        Err(_) => Err(ResolutionError::router_dropped()),
+                        Ok(Err(_)) => Err(NewRoutingError::Resolution(Some(addr.to_string()))),
+                        Err(_) => Err(NewRoutingError::RouterDropped),
                     }
                 }
             } else {
-                Err(ResolutionError::unresolvable(addr.to_string()))
+                Err(NewRoutingError::Resolution(Some(addr.to_string())))
             }
         }
         .boxed()
@@ -130,7 +127,7 @@ impl Router for TopLevelClientRouter {
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
-    ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
+    ) -> BoxFuture<'_, Result<RoutingAddr, NewRoutingError>> {
         async move {
             let TopLevelClientRouter { remote_sender, .. } = self;
 
@@ -145,16 +142,16 @@ impl Router for TopLevelClientRouter {
                         .await
                         .is_err()
                     {
-                        Err(RouterError::RouterDropped)
+                        Err(NewRoutingError::RouterDropped)
                     } else {
                         match rx.await {
                             Ok(Ok(addr)) => Ok(addr),
-                            Ok(Err(err)) => Err(RouterError::ConnectionFailure(err)),
-                            Err(_) => Err(RouterError::RouterDropped),
+                            Ok(Err(err)) => Err(err),
+                            Err(_) => Err(NewRoutingError::RouterDropped),
                         }
                     }
                 }
-                None => Err(RouterError::ConnectionFailure(ConnectionError::Resolution(
+                None => Err(NewRoutingError::Connection(ConnectionError::Resolution(
                     ResolutionError::unresolvable(route.to_string()),
                 ))),
             }
@@ -167,7 +164,7 @@ impl BidirectionalRouter for TopLevelClientRouter {
     fn resolve_bidirectional(
         &mut self,
         host: Url,
-    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
+    ) -> BoxFuture<'_, Result<BidirectionalRoute, NewRoutingError>> {
         async move {
             let TopLevelClientRouter { remote_sender, .. } = self;
 
@@ -180,12 +177,12 @@ impl BidirectionalRouter for TopLevelClientRouter {
                 .await
                 .is_err()
             {
-                Err(ResolutionError::router_dropped())
+                Err(NewRoutingError::RouterDropped)
             } else {
                 match rx.await {
-                    Ok(Ok(registrator)) => registrator.register().await,
-                    Ok(Err(_)) => Err(ResolutionError::unresolvable(host.to_string())),
-                    Err(_) => Err(ResolutionError::router_dropped()),
+                    Ok(Ok(registrator)) => registrator.register().await.map_err(Into::into),
+                    Ok(Err(err)) => Err(err),
+                    Err(_) => Err(NewRoutingError::RouterDropped),
                 }
             }
         }
@@ -301,7 +298,7 @@ impl<Path: Addressable, DelegateRouter: BidirectionalRouter> Router
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-    ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
+    ) -> BoxFuture<'_, Result<Route, NewRoutingError>> {
         async move {
             let ClientRouter {
                 delegate_router, ..
@@ -316,7 +313,7 @@ impl<Path: Addressable, DelegateRouter: BidirectionalRouter> Router
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
-    ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
+    ) -> BoxFuture<'_, Result<RoutingAddr, NewRoutingError>> {
         async move {
             let ClientRouter {
                 delegate_router, ..
@@ -334,7 +331,7 @@ impl<Path: Addressable, DelegateRouter: BidirectionalRouter> BidirectionalRouter
     fn resolve_bidirectional(
         &mut self,
         host: Url,
-    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
+    ) -> BoxFuture<'_, Result<BidirectionalRoute, NewRoutingError>> {
         async move {
             let ClientRouter {
                 delegate_router, ..
@@ -346,31 +343,33 @@ impl<Path: Addressable, DelegateRouter: BidirectionalRouter> BidirectionalRouter
     }
 }
 
-#[derive(Debug)]
-pub enum DownlinkRoutingRequest<Path: Addressable> {
-    /// Obtain a connection.
-    Connect {
-        target: Path,
-        request: Request<Result<ConnectionChannel, ConnectionError>>,
-        conn_type: ConnectionType,
-    },
-    /// Get channel to route messages to a specified routing address.
-    Endpoint {
-        addr: RoutingAddr,
-        request: Request<Result<RawRoute, Unresolvable>>,
-    },
-}
+// todo remove
+// #[derive(Debug)]
+// pub enum DownlinkRoutingRequest<Path: Addressable> {
+//     /// Obtain a connection.
+//     Connect {
+//         target: Path,
+//         request: Request<Result<ConnectionChannel, ConnectionError>>,
+//         conn_type: ConnectionType,
+//     },
+//     /// Get channel to route messages to a specified routing address.
+//     Endpoint {
+//         addr: RoutingAddr,
+//         request: Request<Result<RawRoute, Unresolvable>>,
+//     },
+// }
 
-/// The Router events are emitted by the connection streams of the router and indicate
-/// messages or errors from the remote host.
-#[derive(Debug, Clone, PartialEq)]
-pub enum RouterEvent {
-    // Incoming message from a remote host.
-    Message(ResponseEnvelope),
-    // There was an error in the connection. If a retry strategy exists this will trigger it.
-    ConnectionClosed,
-    /// The remote host is unreachable. This will not trigger the retry system.
-    Unreachable(String),
-    // The router is stopping.
-    Stopping,
-}
+// todo remove
+// /// The Router events are emitted by the connection streams of the router and indicate
+// /// messages or errors from the remote host.
+// #[derive(Debug, Clone, PartialEq)]
+// pub enum RouterEvent {
+//     // Incoming message from a remote host.
+//     Message(ResponseEnvelope),
+//     // There was an error in the connection. If a retry strategy exists this will trigger it.
+//     ConnectionClosed,
+//     /// The remote host is unreachable. This will not trigger the retry system.
+//     Unreachable(String),
+//     // The router is stopping.
+//     Stopping,
+// }

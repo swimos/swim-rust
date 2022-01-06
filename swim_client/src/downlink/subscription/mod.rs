@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::connections::{ConnectionPool, ConnectionType};
+use crate::connections::ConnectionPool;
 use crate::connections::{ConnectionReceiver, ConnectionSender, SwimConnPool};
 use crate::downlink::error::SubscriptionError;
 use crate::downlink::model::map::UntypedMapModification;
@@ -30,7 +30,6 @@ use crate::downlink::{
     command_downlink, event_downlink, map_downlink, value_downlink, Command, Downlink,
     DownlinkError, DownlinkKind, Message, SchemaViolations,
 };
-use crate::router::RouterEvent;
 use either::Either;
 use futures::FutureExt;
 use futures_util::future::TryFutureExt;
@@ -46,6 +45,7 @@ use swim_model::Value;
 use swim_runtime::backpressure;
 use swim_runtime::configuration::{BackpressureMode, DownlinksConfig};
 use swim_runtime::error::RoutingError;
+use swim_runtime::router2::{ConnectionType, RouterEvent};
 use swim_runtime::routing::CloseReceiver;
 use swim_schema::schema::StandardSchema;
 use swim_schema::ValueSchema;

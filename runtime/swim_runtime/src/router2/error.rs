@@ -12,69 +12,95 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::error::ResolutionError;
-use std::error::Error;
-use std::fmt::{Display, Formatter};
+use crate::error::{ConnectionError, ResolutionError};
+use swim_utilities::errors::Recoverable;
+use thiserror::Error;
 
-#[derive(Debug)]
-pub struct RouterError {
-    kind: RouterErrorKind,
-    cause: Option<Box<dyn Error + Send + Sync + 'static>>,
-}
-
-impl RouterError {
-    pub fn new(kind: RouterErrorKind) -> RouterError {
-        RouterError { kind, cause: None }
-    }
-
-    pub fn with_cause<E>(kind: RouterErrorKind, cause: E) -> RouterError
-    where
-        E: Error + Send + Sync + 'static,
-    {
-        RouterError {
-            kind,
-            cause: Some(Box::new(cause)),
-        }
-    }
-
-    pub fn is_resolution(&self) -> bool {
-        matches!(
-            self.kind,
-            RouterErrorKind::NoAgentAtRoute | RouterErrorKind::Resolution
-        )
-    }
-}
-
-impl Display for RouterError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let RouterError { kind, cause } = self;
-        match cause {
-            Some(cause) => {
-                write!(f, "RouterError({:?}, {})", kind, cause)
-            }
-            None => {
-                write!(f, "RouterError({:?})", kind)
-            }
-        }
-    }
-}
-
-impl Error for RouterError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        self.cause.as_ref().map(|e| &**e as _)
-    }
-}
-
-#[derive(Debug)]
-pub enum RouterErrorKind {
-    NoAgentAtRoute,
-    ConnectionFailure,
+#[derive(Error, Debug, PartialEq)]
+pub enum NewRoutingError {
+    #[error("`{0:?}`")]
+    Resolution(Option<String>),
+    #[error("`{0}`")]
+    Connection(#[from] ConnectionError),
+    #[error("Router dropped")]
     RouterDropped,
-    Resolution,
 }
 
-impl From<ResolutionError> for RouterError {
-    fn from(e: ResolutionError) -> Self {
-        RouterError::with_cause(RouterErrorKind::Resolution, e)
+impl Recoverable for NewRoutingError {
+    fn is_fatal(&self) -> bool {
+        match self {
+            NewRoutingError::Resolution(_) => false,
+            NewRoutingError::Connection(e) => e.is_fatal(),
+            NewRoutingError::RouterDropped => true,
+        }
     }
 }
+
+impl From<ResolutionError> for NewRoutingError {
+    fn from(_: ResolutionError) -> Self {
+        NewRoutingError::Resolution(None)
+    }
+}
+
+// #[derive(Debug)]
+// pub struct RouterError {
+//     kind: RouterErrorKind,
+//     cause: Option<Box<dyn Error + Send + Sync + 'static>>,
+// }
+//
+// impl RouterError {
+//     pub fn new(kind: RouterErrorKind) -> RouterError {
+//         RouterError { kind, cause: None }
+//     }
+//
+//     pub fn with_cause<E>(kind: RouterErrorKind, cause: E) -> RouterError
+//     where
+//         E: Error + Send + Sync + 'static,
+//     {
+//         RouterError {
+//             kind,
+//             cause: Some(Box::new(cause)),
+//         }
+//     }
+//
+//     pub fn is_resolution(&self) -> bool {
+//         matches!(
+//             self.kind,
+//             RouterErrorKind::NoAgentAtRoute | RouterErrorKind::Resolution
+//         )
+//     }
+// }
+//
+// impl Display for RouterError {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+//         let RouterError { kind, cause } = self;
+//         match cause {
+//             Some(cause) => {
+//                 write!(f, "RouterError({:?}, {})", kind, cause)
+//             }
+//             None => {
+//                 write!(f, "RouterError({:?})", kind)
+//             }
+//         }
+//     }
+// }
+//
+// impl Error for RouterError {
+//     fn source(&self) -> Option<&(dyn Error + 'static)> {
+//         self.cause.as_ref().map(|e| &**e as _)
+//     }
+// }
+//
+// #[derive(Debug)]
+// pub enum RouterErrorKind {
+//     NoAgentAtRoute,
+//     ConnectionFailure,
+//     RouterDropped,
+//     Resolution,
+// }
+//
+// impl From<ResolutionError> for RouterError {
+//     fn from(e: ResolutionError) -> Self {
+//         RouterError::with_cause(RouterErrorKind::Resolution, e)
+//     }
+// }

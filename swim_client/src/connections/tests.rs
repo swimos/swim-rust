@@ -20,7 +20,6 @@ use crate::router::tests::{FakeConnections, MockRemoteRouterTask};
 use crate::router::TopLevelClientRouterFactory;
 
 use swim_model::path::AbsolutePath;
-use swim_runtime::error::RouterError;
 use swim_runtime::routing::CloseSender;
 use swim_utilities::future::retryable::Quantity;
 use swim_warp::envelope::Envelope;
@@ -535,7 +534,7 @@ impl RouterFactory for MockRouterFactory {
 struct MockRouter;
 
 impl Router for MockRouter {
-    fn resolve_sender(&mut self, _addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
+    fn resolve_sender(&mut self, _addr: RoutingAddr) -> BoxFuture<Result<Route, NewRoutingError>> {
         unimplemented!()
     }
 
@@ -543,11 +542,11 @@ impl Router for MockRouter {
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,
-    ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
+    ) -> BoxFuture<Result<RoutingAddr, NewRoutingError>> {
         async {
-            Err(RouterError::ConnectionFailure(
-                ConnectionError::WriteTimeout(Duration::from_secs(10)),
-            ))
+            Err(NewRoutingError::Connection(ConnectionError::WriteTimeout(
+                Duration::from_secs(10),
+            )))
         }
         .boxed()
     }
@@ -557,7 +556,7 @@ impl BidirectionalRouter for MockRouter {
     fn resolve_bidirectional(
         &mut self,
         _host: Url,
-    ) -> BoxFuture<Result<BidirectionalRoute, ResolutionError>> {
+    ) -> BoxFuture<Result<BidirectionalRoute, NewRoutingError>> {
         unimplemented!()
     }
 }

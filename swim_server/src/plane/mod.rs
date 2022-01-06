@@ -19,7 +19,6 @@ use crate::plane::context::PlaneContext;
 use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::spec::RouteSpec;
-use crate::routing::PlaneRoutingRequest;
 use either::Either;
 use futures::future::{join, BoxFuture};
 use futures::{select_biased, FutureExt, StreamExt};
@@ -36,9 +35,9 @@ use swim_client::interface::ClientContext;
 use swim_model::path::Path;
 use swim_runtime::error::{
     ConnectionDropped, ConnectionError, NoAgentAtRoute, ProtocolError, ProtocolErrorKind,
-    RouterError, Unresolvable,
 };
 use swim_runtime::remote::RawRoute;
+use swim_runtime::router2::{NewRoutingError, PlaneRoutingRequest};
 use swim_runtime::routing::{CloseReceiver, RouterFactory, RoutingAddr, TaggedEnvelope};
 use swim_utilities::future::request::Request;
 use swim_utilities::future::task::Spawner;
@@ -498,7 +497,7 @@ pub async fn run_plane<Clk, S, DelegateFac: RouterFactory, Store>(
                         event!(Level::WARN, DROPPED_REQUEST);
                     }
                 }
-                Either::Left(Some(PlaneRoutingRequest::Endpoint { id, request })) => {
+                Either::Left(Some(PlaneRoutingRequest::Endpoint { addr: id, request })) => {
                     if id.is_plane() {
                         event!(Level::TRACE, GETTING_LOCAL_ENDPOINT, ?id);
                         let result = if let Some(tx) = resolver
@@ -508,7 +507,7 @@ pub async fn run_plane<Clk, S, DelegateFac: RouterFactory, Store>(
                         {
                             Ok(tx)
                         } else {
-                            Err(Unresolvable(id))
+                            Err(NewRoutingError::Resolution(Some(id.to_string())))
                         };
                         if request.send(result).is_err() {
                             event!(Level::WARN, DROPPED_REQUEST);
@@ -516,7 +515,10 @@ pub async fn run_plane<Clk, S, DelegateFac: RouterFactory, Store>(
                     } else {
                         event!(Level::TRACE, GETTING_REMOTE_ENDPOINT, ?id);
                         //TODO Attach external routing here.
-                        if request.send_err(Unresolvable(id)).is_err() {
+                        if request
+                            .send_err(NewRoutingError::Resolution(Some(id.to_string())))
+                            .is_err()
+                        {
                             event!(Level::WARN, DROPPED_REQUEST);
                         }
                     }
@@ -535,7 +537,9 @@ pub async fn run_plane<Clk, S, DelegateFac: RouterFactory, Store>(
                     } else {
                         match resolver.try_open_route(route, spawner.deref()) {
                             Ok((_, addr)) => Ok(addr),
-                            Err(NoAgentAtRoute(uri)) => Err(RouterError::NoAgentAtRoute(uri)),
+                            Err(NoAgentAtRoute(uri)) => {
+                                Err(NewRoutingError::Resolution(Some(uri.to_string())))
+                            }
                         }
                     };
                     if request.send(result).is_err() {
@@ -550,7 +554,7 @@ pub async fn run_plane<Clk, S, DelegateFac: RouterFactory, Store>(
                     event!(Level::TRACE, RESOLVING, ?host_url, ?name);
                     //TODO Attach external resolution here.
                     if request
-                        .send_err(RouterError::ConnectionFailure(ConnectionError::Protocol(
+                        .send_err(NewRoutingError::Connection(ConnectionError::Protocol(
                             ProtocolError::new(ProtocolErrorKind::WebSocket, None),
                         )))
                         .is_err()

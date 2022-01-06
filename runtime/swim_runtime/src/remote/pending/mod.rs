@@ -14,7 +14,8 @@
 
 use crate::error::ConnectionError;
 use crate::remote::table::{BidirectionalRegistrator, SchemeHostPort};
-use crate::remote::{BidirectionalRequest, ResolutionRequest, REQUEST_DROPPED};
+use crate::remote::REQUEST_DROPPED;
+use crate::router2::{BidirectionalRequest, NewRoutingError, ResolutionRequest};
 use crate::routing::RoutingAddr;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
@@ -45,7 +46,7 @@ impl PendingRequest {
         }
     }
 
-    pub fn send_err_debug<M: tracing::Value + Debug>(self, err: ConnectionError, message: M) {
+    pub fn send_err_debug<M: tracing::Value + Debug>(self, err: NewRoutingError, message: M) {
         match self {
             PendingRequest::Resolution(request) => request.send_err_debug(err, message),
             PendingRequest::Bidirectional(request) => request.send_err_debug(err, message),
@@ -93,10 +94,10 @@ impl PendingRequests {
         if let Some(mut requests) = map.remove(host) {
             let first = requests.pop();
             for request in requests.into_iter() {
-                request.send_err_debug(err.clone(), REQUEST_DROPPED);
+                request.send_err_debug(err.clone().into(), REQUEST_DROPPED);
             }
             if let Some(first) = first {
-                first.send_err_debug(err, REQUEST_DROPPED);
+                first.send_err_debug(err.into(), REQUEST_DROPPED);
             }
         }
     }

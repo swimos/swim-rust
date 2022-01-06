@@ -18,7 +18,8 @@ use std::convert::TryFrom;
 use swim_model::path::{AbsolutePath, Path, RelativePath};
 use swim_runtime::error::{ConnectionError, ResolutionError};
 use swim_runtime::remote::table::{BidirectionalRegistrator, SchemeHostPort};
-use swim_runtime::remote::{RemoteRoutingRequest, Scheme};
+use swim_runtime::remote::Scheme;
+use swim_runtime::router2::{NewRoutingError, RemoteRoutingRequest};
 use swim_runtime::routing::{RoutingAddr, TaggedEnvelope, TaggedSender};
 use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
@@ -98,8 +99,10 @@ impl MockRemoteRouterTask {
                             receiver_request.send(receiver_rx).unwrap();
                         } else {
                             request
-                                .send(Err(ConnectionError::Resolution(
-                                    ResolutionError::unresolvable(host.to_string()),
+                                .send(Err(NewRoutingError::Connection(
+                                    ConnectionError::Resolution(ResolutionError::unresolvable(
+                                        host.to_string(),
+                                    )),
                                 )))
                                 .unwrap();
                         }

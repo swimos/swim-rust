@@ -19,11 +19,9 @@ use std::collections::HashSet;
 
 use std::sync::Arc;
 
-use swim_client::router::DownlinkRoutingRequest;
 use swim_model::path::Path;
-use swim_runtime::error::ResolutionError;
 use swim_runtime::error::{NoAgentAtRoute, RouterError, Unresolvable};
-use swim_runtime::remote::{RawRoute, RemoteRoutingRequest};
+use swim_runtime::remote::RawRoute;
 use swim_runtime::routing::{
     BidirectionalRoute, BidirectionalRouter, Route, Router, RouterFactory, RoutingAddr,
     TaggedSender,
@@ -32,6 +30,9 @@ use swim_runtime::routing::{
 use swim_utilities::future::request::Request;
 use swim_utilities::routing::uri::RelativeUri;
 
+use swim_runtime::router2::{
+    DownlinkRoutingRequest, NewRoutingError, PlaneRoutingRequest, RemoteRoutingRequest,
+};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use url::Url;
@@ -41,28 +42,29 @@ type EndpointRequest = Request<Result<RawRoute, Unresolvable>>;
 type RoutesRequest = Request<HashSet<RelativeUri>>;
 type ResolutionRequest = Request<Result<RoutingAddr, RouterError>>;
 
-/// Requests that can be serviced by the plane event loop.
-#[derive(Debug)]
-pub enum PlaneRoutingRequest {
-    /// Get a handle to an agent (starting it where necessary).
-    Agent {
-        name: RelativeUri,
-        request: AgentRequest,
-    },
-    /// Get channel to route messages to a specified routing address.
-    Endpoint {
-        id: RoutingAddr,
-        request: EndpointRequest,
-    },
-    /// Resolve the routing address for an agent.
-    Resolve {
-        host: Option<Url>,
-        name: RelativeUri,
-        request: ResolutionRequest,
-    },
-    /// Get all of the active routes for the plane.
-    Routes(RoutesRequest),
-}
+// todo remove
+// /// Requests that can be serviced by the plane event loop.
+// #[derive(Debug)]
+// pub enum PlaneRoutingRequest {
+//     /// Get a handle to an agent (starting it where necessary).
+//     Agent {
+//         name: RelativeUri,
+//         request: AgentRequest,
+//     },
+//     /// Get channel to route messages to a specified routing address.
+//     Endpoint {
+//         id: RoutingAddr,
+//         request: EndpointRequest,
+//     },
+//     /// Resolve the routing address for an agent.
+//     Resolve {
+//         host: Option<Url>,
+//         name: RelativeUri,
+//         request: ResolutionRequest,
+//     },
+//     /// Get all of the active routes for the plane.
+//     Routes(RoutesRequest),
+// }
 
 #[derive(Debug, Clone)]
 pub(crate) struct TopLevelServerRouterFactory {
@@ -126,7 +128,7 @@ impl Router for TopLevelServerRouter {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-    ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
+    ) -> BoxFuture<'_, Result<Route, NewRoutingError>> {
         async move {
             let TopLevelServerRouter {
                 plane_sender,
@@ -143,32 +145,32 @@ impl Router for TopLevelServerRouter {
                     .await
                     .is_err()
                 {
-                    Err(ResolutionError::router_dropped())
+                    Err(NewRoutingError::RouterDropped)
                 } else {
                     match rx.await {
                         Ok(Ok(RawRoute { sender, on_drop })) => {
                             Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
                         }
-                        Ok(Err(_)) => Err(ResolutionError::unresolvable(addr.to_string())),
-                        Err(_) => Err(ResolutionError::router_dropped()),
+                        Ok(Err(err)) => Err(err),
+                        Err(_) => Err(NewRoutingError::RouterDropped),
                     }
                 }
             } else if addr.is_plane() {
                 let (tx, rx) = oneshot::channel();
                 let request = Request::new(tx);
                 if plane_sender
-                    .send(PlaneRoutingRequest::Endpoint { id: addr, request })
+                    .send(PlaneRoutingRequest::Endpoint { addr, request })
                     .await
                     .is_err()
                 {
-                    Err(ResolutionError::router_dropped())
+                    Err(NewRoutingError::RouterDropped)
                 } else {
                     match rx.await {
                         Ok(Ok(RawRoute { sender, on_drop })) => {
                             Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
                         }
-                        Ok(Err(_)) => Err(ResolutionError::unresolvable(addr.to_string())),
-                        Err(_) => Err(ResolutionError::router_dropped()),
+                        Ok(Err(err)) => Err(err),
+                        Err(_) => Err(NewRoutingError::RouterDropped),
                     }
                 }
             } else {
@@ -179,14 +181,14 @@ impl Router for TopLevelServerRouter {
                     .await
                     .is_err()
                 {
-                    Err(ResolutionError::router_dropped())
+                    Err(NewRoutingError::RouterDropped)
                 } else {
                     match rx.await {
                         Ok(Ok(RawRoute { sender, on_drop })) => {
                             Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
                         }
-                        Ok(Err(_)) => Err(ResolutionError::unresolvable(addr.to_string())),
-                        Err(_) => Err(ResolutionError::router_dropped()),
+                        Ok(Err(err)) => Err(err),
+                        Err(_) => Err(NewRoutingError::RouterDropped),
                     }
                 }
             }
@@ -198,7 +200,7 @@ impl Router for TopLevelServerRouter {
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
-    ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
+    ) -> BoxFuture<'_, Result<RoutingAddr, NewRoutingError>> {
         async move {
             let TopLevelServerRouter { plane_sender, .. } = self;
 
@@ -212,12 +214,12 @@ impl Router for TopLevelServerRouter {
                 .await
                 .is_err()
             {
-                Err(RouterError::NoAgentAtRoute(route))
+                Err(NewRoutingError::Resolution(Some(route.to_string())))
             } else {
                 match rx.await {
                     Ok(Ok(addr)) => Ok(addr),
                     Ok(Err(err)) => Err(err),
-                    Err(_) => Err(RouterError::RouterDropped),
+                    Err(_) => Err(NewRoutingError::RouterDropped),
                 }
             }
         }
@@ -229,7 +231,7 @@ impl BidirectionalRouter for TopLevelServerRouter {
     fn resolve_bidirectional(
         &mut self,
         host: Url,
-    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
+    ) -> BoxFuture<'_, Result<BidirectionalRoute, NewRoutingError>> {
         async move {
             let TopLevelServerRouter { remote_sender, .. } = self;
 
@@ -242,12 +244,12 @@ impl BidirectionalRouter for TopLevelServerRouter {
                 .await
                 .is_err()
             {
-                Err(ResolutionError::router_dropped())
+                Err(NewRoutingError::RouterDropped)
             } else {
                 match rx.await {
-                    Ok(Ok(registrator)) => registrator.register().await,
-                    Ok(Err(_)) => Err(ResolutionError::unresolvable(host.to_string())),
-                    Err(_) => Err(ResolutionError::router_dropped()),
+                    Ok(Ok(registrator)) => registrator.register().await.map_err(Into::into),
+                    Ok(Err(err)) => Err(err),
+                    Err(_) => Err(NewRoutingError::RouterDropped),
                 }
             }
         }

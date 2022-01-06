@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::error::{ConnectionDropped, ResolutionError, RouterError, RoutingError};
+use crate::error::{ConnectionDropped, RoutingError};
 use std::convert::TryFrom;
 
+use crate::router2::NewRoutingError;
 use bytes::Buf;
 use futures::future::BoxFuture;
 use futures::FutureExt;
@@ -201,14 +202,14 @@ impl BidirectionalRoute {
 pub trait Router: Send + Sync {
     /// Given a routing address, resolve the corresponding router entry
     /// consisting of a sender that will push envelopes to the endpoint.
-    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>>;
+    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, NewRoutingError>>;
 
     /// Find and return the corresponding routing address of an endpoint for a given route.
     fn lookup(
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
-    ) -> BoxFuture<Result<RoutingAddr, RouterError>>;
+    ) -> BoxFuture<Result<RoutingAddr, NewRoutingError>>;
 }
 
 /// Trait for routers capable of resolving addresses and returning bidirectional connections to them.
@@ -218,7 +219,7 @@ pub trait BidirectionalRouter: Router {
     fn resolve_bidirectional(
         &mut self,
         host: Url,
-    ) -> BoxFuture<Result<BidirectionalRoute, ResolutionError>>;
+    ) -> BoxFuture<Result<BidirectionalRoute, NewRoutingError>>;
 }
 
 /// Create router instances bound to particular routing addresses.

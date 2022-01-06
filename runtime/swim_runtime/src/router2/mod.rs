@@ -66,18 +66,18 @@ impl From<RelativeUri> for Address {
     }
 }
 
-async fn callback<Func, Fut, E, T>(op: Func) -> Result<T, RouterError>
+async fn callback<Func, Fut, E, T>(op: Func) -> Result<T, NewRoutingError>
 where
-    Func: FnOnce(oneshot::Sender<Result<T, RouterError>>) -> Fut,
+    Func: FnOnce(oneshot::Sender<Result<T, NewRoutingError>>) -> Fut,
     Fut: Future<Output = Result<(), SendError<E>>>,
 {
     let (callback_tx, callback_rx) = oneshot::channel();
 
     op(callback_tx)
         .await
-        .map_err(|_| RouterError::new(RouterErrorKind::RouterDropped))?;
+        .map_err(|_| NewRoutingError::RouterDropped)?;
     callback_rx
         .await
-        .map_err(|_| RouterError::new(RouterErrorKind::RouterDropped))
+        .map_err(|_| NewRoutingError::RouterDropped)
         .and_then(identity)
 }

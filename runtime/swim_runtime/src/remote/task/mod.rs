@@ -15,14 +15,14 @@
 #[cfg(test)]
 mod tests;
 
+use crate::error::ConnectionDropped;
 use crate::error::{
     CloseError, CloseErrorKind, ConnectionError, ProtocolError, ProtocolErrorKind, ResolutionError,
     ResolutionErrorKind,
 };
-use crate::error::{ConnectionDropped, RouterError};
 use crate::remote::config::RemoteConnectionsConfig;
 use crate::remote::router::RemoteRouter;
-use crate::remote::{BidirectionalReceiverRequest, RemoteRoutingRequest};
+use crate::router2::{BidirectionalReceiverRequest, NewRoutingError, RemoteRoutingRequest};
 use crate::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender};
 use crate::ws::{into_stream, WsMessage};
 use futures::future::join_all;
@@ -279,7 +279,7 @@ where
 enum DispatchError {
     BadNodeUri(BadRelativeUri),
     Unresolvable(ResolutionError),
-    RoutingProblem(RouterError),
+    RoutingProblem(NewRoutingError),
     Dropped(ConnectionDropped),
 }
 
@@ -334,8 +334,8 @@ impl From<ResolutionError> for DispatchError {
     }
 }
 
-impl From<RouterError> for DispatchError {
-    fn from(err: RouterError) -> Self {
+impl From<NewRoutingError> for DispatchError {
+    fn from(err: NewRoutingError) -> Self {
         DispatchError::RoutingProblem(err)
     }
 }
