@@ -19,7 +19,7 @@ use super::*;
 use crate::router::tests::{FakeConnections, MockRemoteRouterTask};
 
 use swim_model::path::AbsolutePath;
-use swim_runtime::routing::{BidirectionalRouter, CloseSender, Router, RouterFactory};
+use swim_runtime::routing::CloseSender;
 use swim_utilities::future::retryable::Quantity;
 use swim_warp::envelope::Envelope;
 
@@ -506,7 +506,7 @@ async fn test_retry_open_connection_cancel() {
     let (request_tx, _request_rx) = mpsc::channel(8);
 
     let router = ReplacementRouter::<RelativePath>::client(request_tx, mpsc::channel(1).0);
-    let mut tagged = router.create_for(RoutingAddr::client(1));
+    let mut tagged = router.tagged(RoutingAddr::client(1));
 
     let (close_tx, close_rx) = promise::promise();
     let (response_tx, _response_rx) = mpsc::channel(8);
@@ -515,43 +515,4 @@ async fn test_retry_open_connection_cancel() {
     let result = open_connection(target, retry_strategy, &mut tagged, close_rx).await;
     // Then
     assert!(result.is_err());
-}
-
-struct MockRouterFactory;
-impl RouterFactory for MockRouterFactory {
-    type Router = MockRouter;
-
-    fn create_for(&self, _addr: RoutingAddr) -> Self::Router {
-        MockRouter
-    }
-}
-
-struct MockRouter;
-
-impl Router for MockRouter {
-    fn resolve_sender(&mut self, _addr: RoutingAddr) -> BoxFuture<Result<Route, NewRoutingError>> {
-        unimplemented!()
-    }
-
-    fn lookup(
-        &mut self,
-        _host: Option<Url>,
-        _route: RelativeUri,
-    ) -> BoxFuture<Result<RoutingAddr, NewRoutingError>> {
-        async {
-            Err(NewRoutingError::Connection(ConnectionError::WriteTimeout(
-                Duration::from_secs(10),
-            )))
-        }
-        .boxed()
-    }
-}
-
-impl BidirectionalRouter for MockRouter {
-    fn resolve_bidirectional(
-        &mut self,
-        _host: Url,
-    ) -> BoxFuture<Result<BidirectionalRoute, NewRoutingError>> {
-        unimplemented!()
-    }
 }

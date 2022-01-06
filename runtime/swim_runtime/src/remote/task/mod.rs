@@ -531,7 +531,7 @@ where
         let task = ConnectionTask::new(
             tag,
             ws_stream,
-            router.create_for(tag),
+            router.tagged(tag),
             (msg_tx.clone(), msg_rx),
             bidirectional_request_rx,
             stop_trigger.clone(),

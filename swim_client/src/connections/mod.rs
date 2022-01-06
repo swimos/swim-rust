@@ -210,7 +210,7 @@ impl<Path: Addressable> PoolTask<Path> {
                                 let routing_address = RoutingAddr::client(counter);
                                 counter += 1;
 
-                                let client_router = router.create_for(routing_address);
+                                let client_router = router.tagged(routing_address);
                                 let (registrator, registrator_task) = ConnectionRegistrator::new(
                                     config,
                                     target.clone(),

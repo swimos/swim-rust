@@ -383,7 +383,7 @@ where
             clock.clone(),
             client_context.clone(),
             ReceiverStream::new(rx).take_until(stop_trigger.clone()),
-            router.create_for(addr),
+            router.tagged(addr),
             store.node_store(route.path()),
         );
 

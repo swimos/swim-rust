@@ -139,7 +139,7 @@ impl<Path> ReplacementRouter<Path> {
     }
 
     /// Creates a router that will tag senders with `tag`.
-    pub fn create_for(&self, tag: RoutingAddr) -> TaggedReplacementRouter<Path>
+    pub fn tagged(&self, tag: RoutingAddr) -> TaggedReplacementRouter<Path>
     where
         Path: Addressable,
     {
