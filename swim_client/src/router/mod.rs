@@ -342,34 +342,3 @@ impl<Path: Addressable, DelegateRouter: BidirectionalRouter> BidirectionalRouter
         .boxed()
     }
 }
-
-// todo remove
-// #[derive(Debug)]
-// pub enum DownlinkRoutingRequest<Path: Addressable> {
-//     /// Obtain a connection.
-//     Connect {
-//         target: Path,
-//         request: Request<Result<ConnectionChannel, ConnectionError>>,
-//         conn_type: ConnectionType,
-//     },
-//     /// Get channel to route messages to a specified routing address.
-//     Endpoint {
-//         addr: RoutingAddr,
-//         request: Request<Result<RawRoute, Unresolvable>>,
-//     },
-// }
-
-// todo remove
-// /// The Router events are emitted by the connection streams of the router and indicate
-// /// messages or errors from the remote host.
-// #[derive(Debug, Clone, PartialEq)]
-// pub enum RouterEvent {
-//     // Incoming message from a remote host.
-//     Message(ResponseEnvelope),
-//     // There was an error in the connection. If a retry strategy exists this will trigger it.
-//     ConnectionClosed,
-//     /// The remote host is unreachable. This will not trigger the retry system.
-//     Unreachable(String),
-//     // The router is stopping.
-//     Stopping,
-// }

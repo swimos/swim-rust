@@ -42,30 +42,6 @@ type EndpointRequest = Request<Result<RawRoute, Unresolvable>>;
 type RoutesRequest = Request<HashSet<RelativeUri>>;
 type ResolutionRequest = Request<Result<RoutingAddr, RouterError>>;
 
-// todo remove
-// /// Requests that can be serviced by the plane event loop.
-// #[derive(Debug)]
-// pub enum PlaneRoutingRequest {
-//     /// Get a handle to an agent (starting it where necessary).
-//     Agent {
-//         name: RelativeUri,
-//         request: AgentRequest,
-//     },
-//     /// Get channel to route messages to a specified routing address.
-//     Endpoint {
-//         id: RoutingAddr,
-//         request: EndpointRequest,
-//     },
-//     /// Resolve the routing address for an agent.
-//     Resolve {
-//         host: Option<Url>,
-//         name: RelativeUri,
-//         request: ResolutionRequest,
-//     },
-//     /// Get all of the active routes for the plane.
-//     Routes(RoutesRequest),
-// }
-
 #[derive(Debug, Clone)]
 pub(crate) struct TopLevelServerRouterFactory {
     plane_sender: mpsc::Sender<PlaneRoutingRequest>,
