@@ -53,7 +53,7 @@ use swim_runtime::routing::CloseSender;
 
 use ratchet::ProtocolRegistry;
 use swim_runtime::configuration::WebSocketConfig;
-use swim_runtime::router2::Router;
+use swim_runtime::remote::router::Router;
 use swim_runtime::ws::ext::RatchetNetworking;
 use swim_schema::ValueSchema;
 use swim_utilities::future::open_ended::OpenEndedFutures;

@@ -21,7 +21,7 @@ use crate::error::{
     ResolutionErrorKind,
 };
 use crate::remote::config::RemoteConnectionsConfig;
-use crate::router2::{BidirectionalReceiverRequest, Router, RoutingError, TaggedRouter};
+use crate::remote::router::{BidirectionalReceiverRequest, Router, RoutingError, TaggedRouter};
 use crate::routing::{Route, RoutingAddr, TaggedEnvelope, TaggedSender};
 use crate::ws::{into_stream, WsMessage};
 use futures::future::join_all;

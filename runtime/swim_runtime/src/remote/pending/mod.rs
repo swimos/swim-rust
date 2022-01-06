@@ -13,9 +13,9 @@
 // limitations under the License.
 
 use crate::error::ConnectionError;
+use crate::remote::router::{BidirectionalRequest, ResolutionRequest, RoutingError};
 use crate::remote::table::{BidirectionalRegistrator, SchemeHostPort};
 use crate::remote::REQUEST_DROPPED;
-use crate::router2::{BidirectionalRequest, ResolutionRequest, RoutingError};
 use crate::routing::RoutingAddr;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;

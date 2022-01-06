@@ -16,7 +16,7 @@ mod addresses;
 pub mod config;
 pub mod net;
 mod pending;
-pub(crate) mod router;
+pub mod router;
 mod state;
 pub mod table;
 mod task;
@@ -45,7 +45,7 @@ use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use tracing::{event, Level};
 
-use crate::router2::{RemoteRoutingRequest, Router, RoutingError};
+use crate::remote::router::{RemoteRoutingRequest, Router, RoutingError};
 use ratchet::WebSocketStream;
 use swim_model::path::Addressable;
 use swim_tracing::request::{RequestExt, TryRequestExt};

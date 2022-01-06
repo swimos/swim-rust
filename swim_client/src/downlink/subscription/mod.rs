@@ -45,7 +45,7 @@ use swim_model::Value;
 use swim_runtime::backpressure;
 use swim_runtime::configuration::{BackpressureMode, DownlinksConfig};
 use swim_runtime::error::RoutingError;
-use swim_runtime::router2::{ConnectionType, RouterEvent};
+use swim_runtime::remote::router::{ConnectionType, RouterEvent};
 use swim_runtime::routing::CloseReceiver;
 use swim_schema::schema::StandardSchema;
 use swim_schema::ValueSchema;

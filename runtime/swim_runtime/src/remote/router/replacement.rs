@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::remote::table::BidirectionalRegistrator;
-use crate::remote::RawRoute;
-use crate::router2::{
+use crate::remote::router::{
     callback, Address, DownlinkRoutingRequest, PlaneRoutingRequest, RemoteRoutingRequest,
     RoutingError,
 };
+use crate::remote::table::BidirectionalRegistrator;
+use crate::remote::RawRoute;
 use crate::routing::{BidirectionalRoute, Route, RoutingAddr, RoutingAddrKind, TaggedSender};
 use swim_model::path::Addressable;
 use swim_utilities::future::request::Request;

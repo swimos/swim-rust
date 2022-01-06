@@ -1,7 +1,7 @@
 use crate::error::NoAgentAtRoute;
+use crate::remote::router::RoutingError;
 use crate::remote::table::BidirectionalRegistrator;
 use crate::remote::RawRoute;
-use crate::router2::RoutingError;
 use crate::routing::{RoutingAddr, TaggedEnvelope, TaggedSender};
 use std::any::Any;
 use std::collections::HashSet;

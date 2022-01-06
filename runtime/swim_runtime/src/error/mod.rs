@@ -20,7 +20,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::error::SendError as MpscSendError;
 
-use crate::router2::RoutingError;
 use crate::routing::RoutingAddr;
 pub use capacity::*;
 pub use closed::*;
@@ -148,18 +147,17 @@ pub enum ConnectionError {
     Transport(Arc<BoxRecoverableError>),
 }
 
-impl From<RoutingError> for ConnectionError {
-    fn from(e: RoutingError) -> Self {
+use crate::remote::router::RoutingError as ReplacementRoutingError;
+impl From<ReplacementRoutingError> for ConnectionError {
+    fn from(e: ReplacementRoutingError) -> Self {
         match e {
-            RoutingError::Resolution(target) => ConnectionError::Resolution(ResolutionError::new(
-                ResolutionErrorKind::Unresolvable,
-                target,
-            )),
-            RoutingError::Connection(e) => e,
-            RoutingError::RouterDropped => ConnectionError::Resolution(ResolutionError::new(
-                ResolutionErrorKind::RouterDropped,
-                None,
-            )),
+            ReplacementRoutingError::Resolution(target) => ConnectionError::Resolution(
+                ResolutionError::new(ResolutionErrorKind::Unresolvable, target),
+            ),
+            ReplacementRoutingError::Connection(e) => e,
+            ReplacementRoutingError::RouterDropped => ConnectionError::Resolution(
+                ResolutionError::new(ResolutionErrorKind::RouterDropped, None),
+            ),
         }
     }
 }

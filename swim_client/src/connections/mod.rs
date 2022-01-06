@@ -29,10 +29,10 @@ use swim_model::path::{Addressable, RelativePath};
 use swim_runtime::configuration::DownlinkConnectionsConfig;
 use swim_runtime::error::ConnectionDropped;
 use swim_runtime::error::{CloseError, ConnectionError, HttpError, ResolutionError};
-use swim_runtime::remote::RawRoute;
-use swim_runtime::router2::{
+use swim_runtime::remote::router::{
     ConnectionType, DownlinkRoutingRequest, Router, RouterEvent, RoutingError, TaggedRouter,
 };
+use swim_runtime::remote::RawRoute;
 use swim_runtime::routing::{
     BidirectionalRoute, CloseReceiver, Route, RoutingAddr, TaggedEnvelope, TaggedSender,
 };
