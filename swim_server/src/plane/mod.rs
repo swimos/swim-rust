@@ -34,10 +34,7 @@ use std::sync::{Arc, Weak};
 use swim_async_runtime::time::clock::Clock;
 use swim_client::interface::ClientContext;
 use swim_model::path::Path;
-use swim_runtime::error::{
-    ConnectionDropped, ConnectionError, NoAgentAtRoute, ProtocolError, ProtocolErrorKind,
-    RouterError, Unresolvable,
-};
+use swim_runtime::error::{ConnectionDropped, NoAgentAtRoute, RouterError, Unresolvable};
 use swim_runtime::remote::RawOutRoute;
 use swim_runtime::routing::{CloseReceiver, RouterFactory, RoutingAddr, TaggedEnvelope};
 use swim_utilities::future::request::Request;
@@ -521,11 +518,7 @@ pub async fn run_plane<Clk, S, DelegateFac: RouterFactory, Store>(
                         }
                     }
                 }
-                Either::Left(Some(PlaneRoutingRequest::Resolve {
-                    host: None,
-                    name,
-                    request,
-                })) => {
+                Either::Left(Some(PlaneRoutingRequest::Resolve { name, request })) => {
                     event!(Level::TRACE, RESOLVING, ?name);
 
                     let route = get_route(name);
@@ -539,22 +532,6 @@ pub async fn run_plane<Clk, S, DelegateFac: RouterFactory, Store>(
                         }
                     };
                     if request.send(result).is_err() {
-                        event!(Level::WARN, DROPPED_REQUEST);
-                    }
-                }
-                Either::Left(Some(PlaneRoutingRequest::Resolve {
-                    host: Some(host_url),
-                    name,
-                    request,
-                })) => {
-                    event!(Level::TRACE, RESOLVING, ?host_url, ?name);
-                    //TODO Attach external resolution here.
-                    if request
-                        .send_err(RouterError::ConnectionFailure(ConnectionError::Protocol(
-                            ProtocolError::new(ProtocolErrorKind::WebSocket, None),
-                        )))
-                        .is_err()
-                    {
                         event!(Level::WARN, DROPPED_REQUEST);
                     }
                 }

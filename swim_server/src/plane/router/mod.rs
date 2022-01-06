@@ -17,7 +17,7 @@ use futures::FutureExt;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 
-use swim_runtime::error::{ResolutionError, RouterError, Unresolvable};
+use swim_runtime::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
 use swim_runtime::remote::RawOutRoute;
 use swim_runtime::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 use swim_utilities::future::request::Request;
@@ -99,22 +99,27 @@ async fn lookup_inner(
     host: Option<Url>,
     route: RelativeUri,
 ) -> Result<RoutingAddr, RouterError> {
-    let (tx, rx) = oneshot::channel();
-    if request_sender
-        .send(PlaneRoutingRequest::Resolve {
-            host,
-            name: route,
-            request: Request::new(tx),
-        })
-        .await
-        .is_err()
-    {
-        Err(RouterError::RouterDropped)
+    if let Some(host) = host {
+        Err(RouterError::ConnectionFailure(ConnectionError::Resolution(
+            host.to_string(),
+        )))
     } else {
-        match rx.await {
-            Ok(Ok(addr)) => Ok(addr),
-            Ok(Err(err)) => Err(err),
-            Err(_) => Err(RouterError::RouterDropped),
+        let (tx, rx) = oneshot::channel();
+        if request_sender
+            .send(PlaneRoutingRequest::Resolve {
+                name: route,
+                request: Request::new(tx),
+            })
+            .await
+            .is_err()
+        {
+            Err(RouterError::RouterDropped)
+        } else {
+            match rx.await {
+                Ok(Ok(addr)) => Ok(addr),
+                Ok(Err(err)) => Err(err),
+                Err(_) => Err(RouterError::RouterDropped),
+            }
         }
     }
 }
