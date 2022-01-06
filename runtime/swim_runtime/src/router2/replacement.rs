@@ -108,7 +108,19 @@ impl<Path> ReplacementRouter<Path> {
                 })
                 .await
             }
-            None => Err(NewRoutingError::Resolution(None)),
+            None => match &self.plane {
+                Some(tx) => {
+                    callback(|callback| {
+                        tx.send(PlaneRoutingRequest::Resolve {
+                            host: None,
+                            name: address.uri().clone(),
+                            request: Request::new(callback),
+                        })
+                    })
+                    .await
+                }
+                None => Err(NewRoutingError::Resolution(None)),
+            },
         }
     }
 

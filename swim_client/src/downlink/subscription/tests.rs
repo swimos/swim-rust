@@ -15,10 +15,10 @@
 use super::*;
 use crate::configuration::ClientDownlinksConfig;
 use crate::router::tests::{FakeConnections, MockRemoteRouterTask};
-use crate::router::{ClientRouterFactory, TopLevelClientRouterFactory};
 use futures::join;
 use swim_model::path::AbsolutePath;
 use swim_runtime::configuration::{DownlinkConfig, DownlinkConnectionsConfig, OnInvalidMessage};
+use swim_runtime::router2::ReplacementRouter;
 use swim_runtime::routing::CloseSender;
 use swim_utilities::algebra::non_zero_usize;
 use tokio::time::Duration;
@@ -67,18 +67,15 @@ async fn dl_manager(
     conns: FakeConnections,
 ) -> (Downlinks<AbsolutePath>, CloseSender) {
     let (client_tx, client_rx) = mpsc::channel(32);
-    let (conn_request_tx, _conn_request_rx) = mpsc::channel(32);
     let (close_tx, close_rx) = promise::promise();
-
     let remote_tx = MockRemoteRouterTask::build(conns);
 
-    let delegate_fac = TopLevelClientRouterFactory::new(client_tx.clone(), remote_tx);
-    let client_router_fac = ClientRouterFactory::new(conn_request_tx, delegate_fac);
+    let router = ReplacementRouter::client(client_tx.clone(), remote_tx);
 
     let (connection_pool, pool_task) = SwimConnPool::new(
         DownlinkConnectionsConfig::default(),
         (client_tx, client_rx),
-        client_router_fac,
+        router,
         close_rx.clone(),
     );
 

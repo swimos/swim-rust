@@ -12,9 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::router::{
-    AddressableWrapper, ClientRouter, ClientRouterFactory, RoutingPath, RoutingTable,
-};
+use crate::router::{AddressableWrapper, RoutingPath, RoutingTable};
 use futures::future::join_all;
 use futures::future::BoxFuture;
 use futures::select_biased;
@@ -32,10 +30,12 @@ use swim_runtime::configuration::DownlinkConnectionsConfig;
 use swim_runtime::error::ConnectionDropped;
 use swim_runtime::error::{CloseError, ConnectionError, HttpError, ResolutionError};
 use swim_runtime::remote::RawRoute;
-use swim_runtime::router2::{ConnectionType, DownlinkRoutingRequest, NewRoutingError, RouterEvent};
+use swim_runtime::router2::{
+    ConnectionType, DownlinkRoutingRequest, NewRoutingError, ReplacementRouter, RouterEvent,
+    TaggedReplacementRouter,
+};
 use swim_runtime::routing::{
-    BidirectionalRoute, BidirectionalRouter, CloseReceiver, Route, Router, RouterFactory,
-    RoutingAddr, TaggedEnvelope, TaggedSender,
+    BidirectionalRoute, CloseReceiver, Route, RoutingAddr, TaggedEnvelope, TaggedSender,
 };
 use swim_utilities::errors::Recoverable;
 use swim_utilities::future::request::request_future::RequestError;
@@ -89,20 +89,17 @@ impl<Path: Addressable> SwimConnPool<Path> {
     /// * `client_router_factory`  - Factory for creating client routers.
     /// * `stop_trigger`           - Trigger to stop the connection pool task.
     #[instrument(skip(config))]
-    pub fn new<DelegateFac: RouterFactory + Debug>(
+    pub fn new(
         config: DownlinkConnectionsConfig,
         client_channel: ClientChannel<Path>,
-        client_router_factory: ClientRouterFactory<Path, DelegateFac>,
+        router: ReplacementRouter<Path>,
         stop_trigger: CloseReceiver,
-    ) -> (SwimConnPool<Path>, PoolTask<Path, DelegateFac>)
-    where
-        <DelegateFac as RouterFactory>::Router: BidirectionalRouter,
-    {
+    ) -> (SwimConnPool<Path>, PoolTask<Path>) {
         let (client_tx, client_rx) = client_channel;
 
         (
             SwimConnPool { client_tx },
-            PoolTask::new(client_rx, client_router_factory, config, stop_trigger),
+            PoolTask::new(client_rx, router, config, stop_trigger),
         )
     }
 }
@@ -147,26 +144,23 @@ pub type ConnectionChannel = (ConnectionSender, Option<ConnectionReceiver>);
 const REQUEST_ERROR: &str = "The request channel was dropped.";
 const SUBSCRIBER_ERROR: &str = "The subscriber channel was dropped.";
 
-pub struct PoolTask<Path: Addressable, DelegateFac: RouterFactory> {
+pub struct PoolTask<Path: Addressable> {
     client_rx: mpsc::Receiver<DownlinkRoutingRequest<Path>>,
-    client_router_factory: ClientRouterFactory<Path, DelegateFac>,
+    router: ReplacementRouter<Path>,
     config: DownlinkConnectionsConfig,
     stop_trigger: CloseReceiver,
 }
 
-impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac>
-where
-    <DelegateFac as RouterFactory>::Router: BidirectionalRouter,
-{
+impl<Path: Addressable> PoolTask<Path> {
     fn new(
         client_rx: mpsc::Receiver<DownlinkRoutingRequest<Path>>,
-        client_router_factory: ClientRouterFactory<Path, DelegateFac>,
+        router: ReplacementRouter<Path>,
         config: DownlinkConnectionsConfig,
         stop_trigger: CloseReceiver,
     ) -> Self {
         PoolTask {
             client_rx,
-            client_router_factory,
+            router,
             config,
             stop_trigger,
         }
@@ -175,7 +169,7 @@ where
     pub async fn run(self) -> Result<(), ConnectionError> {
         let PoolTask {
             client_rx,
-            client_router_factory,
+            router,
             config,
             stop_trigger,
         } = self;
@@ -216,8 +210,7 @@ where
                                 let routing_address = RoutingAddr::client(counter);
                                 counter += 1;
 
-                                let client_router =
-                                    client_router_factory.create_for(routing_address);
+                                let client_router = router.create_for(routing_address);
                                 let (registrator, registrator_task) = ConnectionRegistrator::new(
                                     config,
                                     target.clone(),
@@ -288,14 +281,6 @@ where
 
 type ConnectionResult = Result<(ConnectionSender, Option<ConnectionReceiver>), NewRoutingError>;
 
-// #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-// pub enum ConnectionType {
-//     /// A connection type that can both send and receive messages.
-//     Full,
-//     /// A connection type that can only send messages.
-//     Outgoing,
-// }
-
 enum RegistratorRequest<Path: Addressable> {
     Connect {
         tx: oneshot::Sender<ConnectionResult>,
@@ -313,26 +298,17 @@ pub(crate) struct ConnectionRegistrator<Path: Addressable> {
 }
 
 impl<Path: Addressable> ConnectionRegistrator<Path> {
-    fn new<DelegateRouter: BidirectionalRouter>(
+    fn new(
         config: DownlinkConnectionsConfig,
         target: Path,
-        client_router: ClientRouter<Path, DelegateRouter>,
+        router: TaggedReplacementRouter<Path>,
         stop_trigger: CloseReceiver,
-    ) -> (
-        ConnectionRegistrator<Path>,
-        ConnectionRegistratorTask<Path, DelegateRouter>,
-    ) {
+    ) -> (ConnectionRegistrator<Path>, ConnectionRegistratorTask<Path>) {
         let (registrator_tx, registrator_rx) = mpsc::channel(config.buffer_size.get());
 
         (
             ConnectionRegistrator { registrator_tx },
-            ConnectionRegistratorTask::new(
-                config,
-                target,
-                registrator_rx,
-                client_router,
-                stop_trigger,
-            ),
+            ConnectionRegistratorTask::new(config, target, registrator_rx, router, stop_trigger),
         )
     }
 
@@ -375,22 +351,20 @@ enum ConnectionRegistratorEvent<Path: Addressable> {
     ConnectionDropped(Arc<ConnectionDropped>),
 }
 
-struct ConnectionRegistratorTask<Path: Addressable, DelegateRouter: BidirectionalRouter> {
+struct ConnectionRegistratorTask<Path: Addressable> {
     config: DownlinkConnectionsConfig,
     target: RegistrationTarget,
     registrator_rx: mpsc::Receiver<RegistratorRequest<Path>>,
-    client_router: ClientRouter<Path, DelegateRouter>,
+    router: TaggedReplacementRouter<Path>,
     stop_trigger: CloseReceiver,
 }
 
-impl<Path: Addressable, DelegateRouter: BidirectionalRouter>
-    ConnectionRegistratorTask<Path, DelegateRouter>
-{
+impl<Path: Addressable> ConnectionRegistratorTask<Path> {
     fn new(
         config: DownlinkConnectionsConfig,
         target: Path,
         registrator_rx: mpsc::Receiver<RegistratorRequest<Path>>,
-        client_router: ClientRouter<Path, DelegateRouter>,
+        router: TaggedReplacementRouter<Path>,
         stop_trigger: CloseReceiver,
     ) -> Self {
         let target = match target.host() {
@@ -402,7 +376,7 @@ impl<Path: Addressable, DelegateRouter: BidirectionalRouter>
             config,
             target,
             registrator_rx,
-            client_router,
+            router,
             stop_trigger,
         }
     }
@@ -412,14 +386,14 @@ impl<Path: Addressable, DelegateRouter: BidirectionalRouter>
             config,
             target,
             registrator_rx,
-            mut client_router,
+            mut router,
             stop_trigger,
         } = self;
 
         let (mut sender, receiver, remote_drop_rx) = open_connection(
             target.clone(),
             config.retry_strategy,
-            &mut client_router,
+            &mut router,
             stop_trigger.clone(),
         )
         .await?;
@@ -530,7 +504,7 @@ impl<Path: Addressable, DelegateRouter: BidirectionalRouter>
                         match open_connection(
                             target.clone(),
                             config.retry_strategy,
-                            &mut client_router,
+                            &mut router,
                             stop_trigger.clone(),
                         )
                         .await
@@ -631,25 +605,20 @@ type RawConnection = (
     promise::Receiver<ConnectionDropped>,
 );
 
-async fn open_connection<Path, DelegateRouter>(
+async fn open_connection<Path>(
     target: RegistrationTarget,
     mut retry_strategy: RetryStrategy,
-    client_router: &mut ClientRouter<Path, DelegateRouter>,
+    router: &mut TaggedReplacementRouter<Path>,
     stop_trigger: CloseReceiver,
 ) -> Result<RawConnection, NewRoutingError>
 where
     Path: Addressable,
-    DelegateRouter: BidirectionalRouter,
 {
     let mut stop_rx = stop_trigger.fuse();
     loop {
         let result = match target.clone() {
-            RegistrationTarget::Remote(target) => {
-                try_open_remote_connection(client_router, target).await
-            }
-            RegistrationTarget::Local(target) => {
-                try_open_local_connection(client_router, target).await
-            }
+            RegistrationTarget::Remote(target) => try_open_remote_connection(router, target).await,
+            RegistrationTarget::Local(target) => try_open_local_connection(router, target).await,
         };
 
         match result {
@@ -679,37 +648,35 @@ where
     }
 }
 
-async fn try_open_remote_connection<Path, DelegateRouter>(
-    client_router: &mut ClientRouter<Path, DelegateRouter>,
+async fn try_open_remote_connection<Path>(
+    router: &mut TaggedReplacementRouter<Path>,
     target: Url,
 ) -> Result<RawConnection, NewRoutingError>
 where
     Path: Addressable,
-    DelegateRouter: BidirectionalRouter,
 {
     let BidirectionalRoute {
         sender,
         receiver,
         on_drop,
-    } = client_router.resolve_bidirectional(target).await?;
+    } = router.resolve_bidirectional(target).await?;
 
     Ok((sender, Some(receiver), on_drop))
 }
 
-async fn try_open_local_connection<Path, DelegateRouter>(
-    client_router: &mut ClientRouter<Path, DelegateRouter>,
+async fn try_open_local_connection<Path>(
+    router: &mut TaggedReplacementRouter<Path>,
     target: String,
 ) -> Result<RawConnection, NewRoutingError>
 where
     Path: Addressable,
-    DelegateRouter: BidirectionalRouter,
 {
     let relative_uri = RelativeUri::try_from(target.clone())
         .map_err(|e| ConnectionError::Http(HttpError::invalid_url(target, Some(e.to_string()))))?;
 
-    let routing_addr = client_router.lookup(None, relative_uri.clone()).await?;
+    let routing_addr = router.lookup(relative_uri.clone()).await?;
 
-    let Route { sender, on_drop } = client_router.resolve_sender(routing_addr).await?;
+    let Route { sender, on_drop } = router.resolve_sender(routing_addr).await?;
 
     Ok((sender, None, on_drop))
 }

@@ -38,7 +38,6 @@ use swim_client::connections::{PoolTask, SwimConnPool};
 use swim_client::downlink::subscription::DownlinksTask;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::ClientContext;
-use swim_client::router::ClientRouterFactory;
 use swim_model::path::Addressable;
 use swim_runtime::configuration::{DownlinkConfig, DownlinkConnectionsConfig, DownlinksConfig};
 use swim_runtime::ws::ext::RatchetNetworking;
@@ -58,7 +57,7 @@ use swim_runtime::remote::config::RemoteConnectionsConfig;
 use swim_runtime::remote::net::dns::Resolver;
 use swim_runtime::remote::net::plain::TokioPlainTextNetworking;
 use swim_runtime::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
-use swim_runtime::router2::{PlaneRoutingRequest, RemoteRoutingRequest};
+use swim_runtime::router2::{PlaneRoutingRequest, RemoteRoutingRequest, ReplacementRouter};
 use swim_runtime::routing::{CloseReceiver, CloseSender};
 use swim_store::nostore::NoStoreOpts;
 use swim_store::{Keyspaces, StoreError};
@@ -234,19 +233,18 @@ where
         let (remote_tx, remote_rx) = mpsc::channel(config.conn_config.channel_buffer_size.get());
         let (plane_tx, plane_rx) = mpsc::channel(config.conn_config.channel_buffer_size.get());
 
+        let router = ReplacementRouter::client(client_tx.clone(), remote_tx.clone());
+
         let top_level_router_fac = TopLevelServerRouterFactory::new(
             plane_tx.clone(),
             client_tx.clone(),
             remote_tx.clone(),
         );
 
-        let client_router_factory =
-            ClientRouterFactory::new(client_tx.clone(), top_level_router_fac.clone());
-
         let (connection_pool, connection_pool_task) = SwimConnPool::new(
             config.downlink_connections_config,
             (client_tx, client_rx),
-            client_router_factory,
+            router,
             close_rx.clone(),
         );
 
@@ -361,7 +359,7 @@ where
         mpsc::Receiver<PlaneRoutingRequest>,
     ),
     client_context: ClientContext<Path>,
-    connection_pool_task: PoolTask<Path, TopLevelServerRouterFactory>,
+    connection_pool_task: PoolTask<Path>,
     downlinks_task: DownlinksTask<Path>,
 }
 

@@ -35,6 +35,13 @@ pub enum Address {
 }
 
 impl Address {
+    pub fn uri(&self) -> &RelativeUri {
+        match self {
+            Address::Local(uri) => uri,
+            Address::Remote(_, uri) => uri,
+        }
+    }
+
     pub fn url(&self) -> Option<&Url> {
         match self {
             Address::Local(_) => None,

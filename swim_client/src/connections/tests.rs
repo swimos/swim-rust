@@ -17,10 +17,9 @@ use tokio::sync::mpsc;
 
 use super::*;
 use crate::router::tests::{FakeConnections, MockRemoteRouterTask};
-use crate::router::TopLevelClientRouterFactory;
 
 use swim_model::path::AbsolutePath;
-use swim_runtime::routing::CloseSender;
+use swim_runtime::routing::{BidirectionalRouter, CloseSender, Router, RouterFactory};
 use swim_utilities::future::retryable::Quantity;
 use swim_warp::envelope::Envelope;
 
@@ -28,18 +27,14 @@ async fn create_connection_pool(
     fake_connections: FakeConnections,
 ) -> (SwimConnPool<AbsolutePath>, CloseSender) {
     let (client_tx, client_rx) = mpsc::channel(32);
-    let (conn_request_tx, _conn_request_rx) = mpsc::channel(32);
     let (close_tx, close_rx) = promise::promise();
-
     let remote_tx = MockRemoteRouterTask::build(fake_connections);
-
-    let delegate_fac = TopLevelClientRouterFactory::new(client_tx.clone(), remote_tx);
-    let client_router_fac = ClientRouterFactory::new(conn_request_tx, delegate_fac);
+    let router = ReplacementRouter::client(client_tx.clone(), remote_tx);
 
     let (connection_pool, pool_task) = SwimConnPool::new(
         DownlinkConnectionsConfig::default(),
         (client_tx, client_rx),
-        client_router_fac,
+        router,
         close_rx,
     );
 
@@ -509,15 +504,15 @@ async fn test_retry_open_connection_cancel() {
     let target = RegistrationTarget::Local(String::from("/foo"));
     let retry_strategy = RetryStrategy::interval(Duration::from_secs(10), Quantity::Infinite);
     let (request_tx, _request_rx) = mpsc::channel(8);
-    let client_router_fac = ClientRouterFactory::new(request_tx, MockRouterFactory);
-    let mut client_router: ClientRouter<AbsolutePath, MockRouter> =
-        client_router_fac.create_for(RoutingAddr::client(0));
+
+    let router = ReplacementRouter::<RelativePath>::client(request_tx, mpsc::channel(1).0);
+    let mut tagged = router.create_for(RoutingAddr::client(1));
 
     let (close_tx, close_rx) = promise::promise();
     let (response_tx, _response_rx) = mpsc::channel(8);
     // When
     close_tx.provide(response_tx).unwrap();
-    let result = open_connection(target, retry_strategy, &mut client_router, close_rx).await;
+    let result = open_connection(target, retry_strategy, &mut tagged, close_rx).await;
     // Then
     assert!(result.is_err());
 }

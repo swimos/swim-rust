@@ -14,13 +14,8 @@
 
 use futures::future::BoxFuture;
 use futures::FutureExt;
-use std::any::Any;
-use std::collections::HashSet;
-
-use std::sync::Arc;
 
 use swim_model::path::Path;
-use swim_runtime::error::{NoAgentAtRoute, RouterError, Unresolvable};
 use swim_runtime::remote::RawRoute;
 use swim_runtime::routing::{
     BidirectionalRoute, BidirectionalRouter, Route, Router, RouterFactory, RoutingAddr,
@@ -36,11 +31,6 @@ use swim_runtime::router2::{
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use url::Url;
-
-type AgentRequest = Request<Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>>;
-type EndpointRequest = Request<Result<RawRoute, Unresolvable>>;
-type RoutesRequest = Request<HashSet<RelativeUri>>;
-type ResolutionRequest = Request<Result<RoutingAddr, RouterError>>;
 
 #[derive(Debug, Clone)]
 pub(crate) struct TopLevelServerRouterFactory {

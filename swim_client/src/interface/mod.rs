@@ -29,7 +29,7 @@ use crate::downlink::typed::{
 };
 use crate::downlink::Downlinks;
 use crate::downlink::SchemaViolations;
-use crate::router::{ClientRouterFactory, TopLevelClientRouterFactory};
+use crate::router::TopLevelClientRouterFactory;
 use crate::runtime::task::TaskHandle;
 use futures::join;
 use std::error::Error;
@@ -54,6 +54,7 @@ use swim_runtime::routing::CloseSender;
 
 use ratchet::ProtocolRegistry;
 use swim_runtime::configuration::WebSocketConfig;
+use swim_runtime::router2::ReplacementRouter;
 use swim_runtime::ws::ext::RatchetNetworking;
 use swim_schema::ValueSchema;
 use swim_utilities::future::open_ended::OpenEndedFutures;
@@ -106,15 +107,13 @@ impl SwimClientBuilder {
 
         let (remote_tx, remote_rx) =
             mpsc::channel(config.remote_connections_config.router_buffer_size.get());
-
         let (client_tx, client_rx) =
             mpsc::channel(config.remote_connections_config.router_buffer_size.get());
 
+        let router = ReplacementRouter::client(client_tx.clone(), remote_tx.clone());
         let top_level_router_fac =
             TopLevelClientRouterFactory::new(client_tx.clone(), remote_tx.clone());
 
-        let client_router_factory =
-            ClientRouterFactory::new(client_tx.clone(), top_level_router_fac.clone());
         let (close_tx, close_rx) = promise::promise();
 
         let WebSocketConfig {
@@ -141,7 +140,7 @@ impl SwimClientBuilder {
         let (connection_pool, pool_task) = SwimConnPool::new(
             config.downlink_connections_config,
             (client_tx, client_rx),
-            client_router_factory,
+            router,
             close_rx.clone(),
         );
 
