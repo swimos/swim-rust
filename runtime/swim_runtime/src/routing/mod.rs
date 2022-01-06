@@ -46,6 +46,12 @@ const REMOTE: u8 = 0;
 const PLANE: u8 = 1;
 const CLIENT: u8 = 2;
 
+pub enum RoutingAddrKind {
+    Remote,
+    Plane,
+    Client,
+}
+
 impl RoutingAddr {
     const fn new(tag: u8, id: u32) -> Self {
         let mut uuid_as_int = id as u128;
@@ -87,6 +93,16 @@ impl RoutingAddr {
     fn get_location(&self) -> u32 {
         let mut slice = &self.0.as_bytes()[12..];
         slice.get_u32()
+    }
+
+    pub fn discriminate(&self) -> RoutingAddrKind {
+        if self.is_remote() {
+            RoutingAddrKind::Remote
+        } else if self.is_plane() {
+            RoutingAddrKind::Plane
+        } else {
+            RoutingAddrKind::Client
+        }
     }
 }
 

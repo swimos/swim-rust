@@ -21,5 +21,6 @@ pub mod compat;
 pub mod configuration;
 pub mod error;
 pub mod remote;
+pub mod router2;
 pub mod routing;
 pub mod ws;
