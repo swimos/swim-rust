@@ -13,23 +13,14 @@
 // limitations under the License.
 
 use crate::connections::ConnectionRegistrator;
-use futures::future::BoxFuture;
 use std::collections::HashMap;
 
-use futures::FutureExt;
 use std::convert::TryFrom;
-use swim_utilities::routing::uri::RelativeUri;
-use tokio::sync::mpsc;
-
-use url::Url;
 
 use swim_model::path::Addressable;
 use swim_runtime::remote::table::SchemeHostPort;
 use swim_runtime::remote::BadUrl;
-use swim_runtime::router2::{DownlinkRoutingRequest, NewRoutingError};
-use swim_runtime::routing::{
-    BidirectionalRoute, BidirectionalRouter, Route, Router, RouterFactory, RoutingAddr,
-};
+use swim_runtime::routing::RoutingAddr;
 
 #[cfg(test)]
 pub(crate) mod tests;
@@ -92,97 +83,5 @@ impl<Path: Addressable> RoutingTable<Path> {
     ) {
         self.addresses.insert(routing_path, routing_addr);
         self.endpoints.insert(routing_addr, connection_registrator);
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ClientRouterFactory<Path: Addressable, DelegateFac: RouterFactory> {
-    client_request_sender: mpsc::Sender<DownlinkRoutingRequest<Path>>,
-    delegate_fac: DelegateFac,
-}
-
-impl<Path: Addressable, DelegateFac: RouterFactory> ClientRouterFactory<Path, DelegateFac> {
-    pub fn new(
-        request_sender: mpsc::Sender<DownlinkRoutingRequest<Path>>,
-        delegate_fac: DelegateFac,
-    ) -> Self {
-        ClientRouterFactory {
-            client_request_sender: request_sender,
-            delegate_fac,
-        }
-    }
-}
-
-impl<Path: Addressable, DelegateFac: RouterFactory> RouterFactory
-    for ClientRouterFactory<Path, DelegateFac>
-where
-    <DelegateFac as RouterFactory>::Router: BidirectionalRouter,
-{
-    type Router = ClientRouter<Path, DelegateFac::Router>;
-
-    fn create_for(&self, addr: RoutingAddr) -> Self::Router {
-        ClientRouter {
-            tag: addr,
-            request_sender: self.client_request_sender.clone(),
-            delegate_router: self.delegate_fac.create_for(addr),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ClientRouter<Path: Addressable, DelegateRouter: BidirectionalRouter> {
-    tag: RoutingAddr,
-    request_sender: mpsc::Sender<DownlinkRoutingRequest<Path>>,
-    delegate_router: DelegateRouter,
-}
-
-impl<Path: Addressable, DelegateRouter: BidirectionalRouter> Router
-    for ClientRouter<Path, DelegateRouter>
-{
-    fn resolve_sender(
-        &mut self,
-        addr: RoutingAddr,
-    ) -> BoxFuture<'_, Result<Route, NewRoutingError>> {
-        async move {
-            let ClientRouter {
-                delegate_router, ..
-            } = self;
-
-            delegate_router.resolve_sender(addr).await
-        }
-        .boxed()
-    }
-
-    fn lookup(
-        &mut self,
-        host: Option<Url>,
-        route: RelativeUri,
-    ) -> BoxFuture<'_, Result<RoutingAddr, NewRoutingError>> {
-        async move {
-            let ClientRouter {
-                delegate_router, ..
-            } = self;
-
-            delegate_router.lookup(host, route).await
-        }
-        .boxed()
-    }
-}
-
-impl<Path: Addressable, DelegateRouter: BidirectionalRouter> BidirectionalRouter
-    for ClientRouter<Path, DelegateRouter>
-{
-    fn resolve_bidirectional(
-        &mut self,
-        host: Url,
-    ) -> BoxFuture<'_, Result<BidirectionalRoute, NewRoutingError>> {
-        async move {
-            let ClientRouter {
-                delegate_router, ..
-            } = self;
-
-            delegate_router.resolve_bidirectional(host).await
-        }
-        .boxed()
     }
 }

@@ -15,17 +15,14 @@
 use crate::error::{ConnectionDropped, RoutingError};
 use std::convert::TryFrom;
 
-use crate::router2::NewRoutingError;
 use bytes::Buf;
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use std::fmt::{Display, Formatter};
 use swim_utilities::future::item_sink::{ItemSink, SendError};
-use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger::promise;
 use swim_warp::envelope::{Envelope, RequestEnvelope};
 use tokio::sync::mpsc;
-use url::Url;
 use uuid::Uuid;
 
 pub type CloseReceiver = promise::Receiver<mpsc::Sender<Result<(), RoutingError>>>;
@@ -195,39 +192,6 @@ impl BidirectionalRoute {
             on_drop,
         }
     }
-}
-
-/// Trait for routers capable of resolving addresses and returning connections to them.
-/// The connections can only be used to send [`Envelope`]s to the corresponding addresses.
-pub trait Router: Send + Sync {
-    /// Given a routing address, resolve the corresponding router entry
-    /// consisting of a sender that will push envelopes to the endpoint.
-    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, NewRoutingError>>;
-
-    /// Find and return the corresponding routing address of an endpoint for a given route.
-    fn lookup(
-        &mut self,
-        host: Option<Url>,
-        route: RelativeUri,
-    ) -> BoxFuture<Result<RoutingAddr, NewRoutingError>>;
-}
-
-/// Trait for routers capable of resolving addresses and returning bidirectional connections to them.
-/// The connections can be used to both send and receive [`Envelope`]s to and from the corresponding addresses.
-pub trait BidirectionalRouter: Router {
-    /// Resolve a bidirectional connection for a given host.
-    fn resolve_bidirectional(
-        &mut self,
-        host: Url,
-    ) -> BoxFuture<Result<BidirectionalRoute, NewRoutingError>>;
-}
-
-/// Create router instances bound to particular routing addresses.
-pub trait RouterFactory: Send + Sync {
-    type Router: Router + 'static;
-
-    /// Create a new router for a given routing address.
-    fn create_for(&self, addr: RoutingAddr) -> Self::Router;
 }
 
 /// Sender that attaches a [`RoutingAddr`] to received envelopes before sending them over a channel.
