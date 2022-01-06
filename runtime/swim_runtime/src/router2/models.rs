@@ -1,7 +1,7 @@
 use crate::error::NoAgentAtRoute;
 use crate::remote::table::BidirectionalRegistrator;
 use crate::remote::RawRoute;
-use crate::router2::NewRoutingError;
+use crate::router2::RoutingError;
 use crate::routing::{RoutingAddr, TaggedEnvelope, TaggedSender};
 use std::any::Any;
 use std::collections::HashSet;
@@ -12,12 +12,12 @@ use swim_warp::envelope::ResponseEnvelope;
 use tokio::sync::mpsc;
 use url::Url;
 
-pub type EndpointRequest = Request<Result<RawRoute, NewRoutingError>>;
-pub type BidirectionalRequest = Request<Result<BidirectionalRegistrator, NewRoutingError>>;
+pub type EndpointRequest = Request<Result<RawRoute, RoutingError>>;
+pub type BidirectionalRequest = Request<Result<BidirectionalRegistrator, RoutingError>>;
 pub type ConnectionChannel = (TaggedSender, Option<mpsc::Receiver<RouterEvent>>);
 pub type AgentRequest = Request<Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>>;
 pub type RoutesRequest = Request<HashSet<RelativeUri>>;
-pub type ResolutionRequest = Request<Result<RoutingAddr, NewRoutingError>>;
+pub type ResolutionRequest = Request<Result<RoutingAddr, RoutingError>>;
 pub type BidirectionalReceiverRequest = Request<mpsc::Receiver<TaggedEnvelope>>;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -88,12 +88,12 @@ pub enum DownlinkRoutingRequest<Path> {
     /// Obtain a connection.
     Connect {
         target: Path,
-        request: Request<Result<ConnectionChannel, NewRoutingError>>,
+        request: Request<Result<ConnectionChannel, RoutingError>>,
         conn_type: ConnectionType,
     },
     /// Get channel to route messages to a specified routing address.
     Endpoint {
         addr: RoutingAddr,
-        request: Request<Result<RawRoute, NewRoutingError>>,
+        request: Request<Result<RawRoute, RoutingError>>,
     },
 }

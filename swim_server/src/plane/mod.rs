@@ -36,9 +36,7 @@ use swim_runtime::error::{
     ConnectionDropped, ConnectionError, NoAgentAtRoute, ProtocolError, ProtocolErrorKind,
 };
 use swim_runtime::remote::RawRoute;
-use swim_runtime::router2::{
-    NewRoutingError, PlaneRoutingRequest, ReplacementRouter, TaggedReplacementRouter,
-};
+use swim_runtime::router2::{PlaneRoutingRequest, Router, RoutingError, TaggedRouter};
 use swim_runtime::routing::{CloseReceiver, RoutingAddr, TaggedEnvelope};
 use swim_utilities::future::request::Request;
 use swim_utilities::future::task::Spawner;
@@ -95,7 +93,7 @@ pub struct AgentInternals<Clk, Envelopes, Store> {
     /// The stream of envelopes routed to the agent.
     incoming_envelopes: Envelopes,
     /// The router by which the agent can send messages.
-    router: TaggedReplacementRouter<Path>,
+    router: TaggedRouter<Path>,
     /// A node store for persisting data, if the lane is not transient.
     store: Store,
 }
@@ -105,7 +103,7 @@ impl<Clk, Envelopes, Store> AgentInternals<Clk, Envelopes, Store> {
         clock: Clk,
         client_context: ClientContext<Path>,
         incoming_envelopes: Envelopes,
-        router: TaggedReplacementRouter<Path>,
+        router: TaggedRouter<Path>,
         store: Store,
     ) -> Self {
         AgentInternals {
@@ -310,7 +308,7 @@ where
     // The routes and store for for the plane
     plane_spec: PlaneSpec<Clk, EnvChannel, Store>,
     /// Factory to create handles to the plane router when an agent is opened.
-    router: ReplacementRouter<Path>,
+    router: Router<Path>,
     /// External trigger that is fired when the plane should stop.
     stop_trigger: CloseReceiver,
     /// The map of currently active routes.
@@ -328,7 +326,7 @@ where
         client_context: ClientContext<Path>,
         execution_config: AgentExecutionConfig,
         plane_spec: PlaneSpec<Clk, EnvChannel, Store>,
-        router: ReplacementRouter<Path>,
+        router: Router<Path>,
         stop_trigger: CloseReceiver,
         active_routes: PlaneActiveRoutes,
     ) -> RouteResolver<Clk, Store> {
@@ -506,7 +504,7 @@ pub async fn run_plane<Clk, S, Store>(
                         {
                             Ok(tx)
                         } else {
-                            Err(NewRoutingError::Resolution(Some(id.to_string())))
+                            Err(RoutingError::Resolution(Some(id.to_string())))
                         };
                         if request.send(result).is_err() {
                             event!(Level::WARN, DROPPED_REQUEST);
@@ -515,7 +513,7 @@ pub async fn run_plane<Clk, S, Store>(
                         event!(Level::TRACE, GETTING_REMOTE_ENDPOINT, ?id);
                         //TODO Attach external routing here.
                         if request
-                            .send_err(NewRoutingError::Resolution(Some(id.to_string())))
+                            .send_err(RoutingError::Resolution(Some(id.to_string())))
                             .is_err()
                         {
                             event!(Level::WARN, DROPPED_REQUEST);
@@ -537,7 +535,7 @@ pub async fn run_plane<Clk, S, Store>(
                         match resolver.try_open_route(route, spawner.deref()) {
                             Ok((_, addr)) => Ok(addr),
                             Err(NoAgentAtRoute(uri)) => {
-                                Err(NewRoutingError::Resolution(Some(uri.to_string())))
+                                Err(RoutingError::Resolution(Some(uri.to_string())))
                             }
                         }
                     };
@@ -553,7 +551,7 @@ pub async fn run_plane<Clk, S, Store>(
                     event!(Level::TRACE, RESOLVING, ?host_url, ?name);
                     //TODO Attach external resolution here.
                     if request
-                        .send_err(NewRoutingError::Connection(ConnectionError::Protocol(
+                        .send_err(RoutingError::Connection(ConnectionError::Protocol(
                             ProtocolError::new(ProtocolErrorKind::WebSocket, None),
                         )))
                         .is_err()

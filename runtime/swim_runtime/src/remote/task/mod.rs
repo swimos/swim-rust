@@ -21,9 +21,7 @@ use crate::error::{
     ResolutionErrorKind,
 };
 use crate::remote::config::RemoteConnectionsConfig;
-use crate::router2::{
-    BidirectionalReceiverRequest, NewRoutingError, ReplacementRouter, TaggedReplacementRouter,
-};
+use crate::router2::{BidirectionalReceiverRequest, Router, RoutingError, TaggedRouter};
 use crate::routing::{Route, RoutingAddr, TaggedEnvelope, TaggedSender};
 use crate::ws::{into_stream, WsMessage};
 use futures::future::join_all;
@@ -65,7 +63,7 @@ pub struct ConnectionTask<Sock, Ext, Path> {
     ws_stream: WebSocket<Sock, Ext>,
     messages: mpsc::Receiver<TaggedEnvelope>,
     message_injector: mpsc::Sender<TaggedEnvelope>,
-    router: TaggedReplacementRouter<Path>,
+    router: TaggedRouter<Path>,
     bidirectional_request_rx: mpsc::Receiver<BidirectionalReceiverRequest>,
     stop_signal: trigger::Receiver,
     config: RemoteConnectionsConfig,
@@ -117,7 +115,7 @@ where
     pub fn new(
         tag: RoutingAddr,
         ws_stream: WebSocket<Sock, Ext>,
-        router: TaggedReplacementRouter<Path>,
+        router: TaggedRouter<Path>,
         (messages_tx, messages_rx): (mpsc::Sender<TaggedEnvelope>, mpsc::Receiver<TaggedEnvelope>),
         bidirectional_request_rx: mpsc::Receiver<BidirectionalReceiverRequest>,
         stop_signal: trigger::Receiver,
@@ -280,7 +278,7 @@ where
 enum DispatchError {
     BadNodeUri(BadRelativeUri),
     Unresolvable(ResolutionError),
-    RoutingProblem(NewRoutingError),
+    RoutingProblem(RoutingError),
     Dropped(ConnectionDropped),
 }
 
@@ -335,14 +333,14 @@ impl From<ResolutionError> for DispatchError {
     }
 }
 
-impl From<NewRoutingError> for DispatchError {
-    fn from(err: NewRoutingError) -> Self {
+impl From<RoutingError> for DispatchError {
+    fn from(err: RoutingError) -> Self {
         DispatchError::RoutingProblem(err)
     }
 }
 
 async fn dispatch_envelope<Path, F, D>(
-    router: &mut TaggedReplacementRouter<Path>,
+    router: &mut TaggedRouter<Path>,
     bidirectional_connections: &mut Slab<TaggedSender>,
     resolved: &mut HashMap<RelativePath, Route>,
     mut envelope: Envelope,
@@ -381,7 +379,7 @@ where
 }
 
 async fn try_dispatch_envelope<Path>(
-    router: &mut TaggedReplacementRouter<Path>,
+    router: &mut TaggedRouter<Path>,
     bidirectional_connections: &mut Slab<TaggedSender>,
     resolved: &mut HashMap<RelativePath, Route>,
     envelope: Envelope,
@@ -449,7 +447,7 @@ where
 
 #[allow(clippy::needless_lifetimes)]
 async fn insert_new_route<'a, Path>(
-    router: &mut TaggedReplacementRouter<Path>,
+    router: &mut TaggedRouter<Path>,
     resolved: &'a mut HashMap<RelativePath, Route>,
     target: &RelativePath,
 ) -> Result<&'a mut Route, DispatchError>
@@ -468,7 +466,7 @@ where
 }
 
 async fn get_route<Path>(
-    router: &mut TaggedReplacementRouter<Path>,
+    router: &mut TaggedRouter<Path>,
     target: &RelativePath,
 ) -> Result<Route, DispatchError>
 where
@@ -484,14 +482,14 @@ where
 pub struct TaskFactory<Path> {
     stop_trigger: trigger::Receiver,
     configuration: RemoteConnectionsConfig,
-    router: ReplacementRouter<Path>,
+    router: Router<Path>,
 }
 
 impl<Path> TaskFactory<Path> {
     pub fn new(
         stop_trigger: trigger::Receiver,
         configuration: RemoteConnectionsConfig,
-        router: ReplacementRouter<Path>,
+        router: Router<Path>,
     ) -> Self {
         TaskFactory {
             stop_trigger,

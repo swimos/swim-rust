@@ -18,7 +18,7 @@ use crate::router::tests::{FakeConnections, MockRemoteRouterTask};
 use futures::join;
 use swim_model::path::AbsolutePath;
 use swim_runtime::configuration::{DownlinkConfig, DownlinkConnectionsConfig, OnInvalidMessage};
-use swim_runtime::router2::ReplacementRouter;
+use swim_runtime::router2::Router;
 use swim_runtime::routing::CloseSender;
 use swim_utilities::algebra::non_zero_usize;
 use tokio::time::Duration;
@@ -70,7 +70,7 @@ async fn dl_manager(
     let (close_tx, close_rx) = promise::promise();
     let remote_tx = MockRemoteRouterTask::build(conns);
 
-    let router = ReplacementRouter::client(client_tx.clone(), remote_tx);
+    let router = Router::client(client_tx.clone(), remote_tx);
 
     let (connection_pool, pool_task) = SwimConnPool::new(
         DownlinkConnectionsConfig::default(),

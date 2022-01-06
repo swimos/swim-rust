@@ -29,7 +29,7 @@ async fn create_connection_pool(
     let (client_tx, client_rx) = mpsc::channel(32);
     let (close_tx, close_rx) = promise::promise();
     let remote_tx = MockRemoteRouterTask::build(fake_connections);
-    let router = ReplacementRouter::client(client_tx.clone(), remote_tx);
+    let router = Router::client(client_tx.clone(), remote_tx);
 
     let (connection_pool, pool_task) = SwimConnPool::new(
         DownlinkConnectionsConfig::default(),
@@ -505,7 +505,7 @@ async fn test_retry_open_connection_cancel() {
     let retry_strategy = RetryStrategy::interval(Duration::from_secs(10), Quantity::Infinite);
     let (request_tx, _request_rx) = mpsc::channel(8);
 
-    let router = ReplacementRouter::<RelativePath>::client(request_tx, mpsc::channel(1).0);
+    let router = Router::<RelativePath>::client(request_tx, mpsc::channel(1).0);
     let mut tagged = router.tagged(RoutingAddr::client(1));
 
     let (close_tx, close_rx) = promise::promise();

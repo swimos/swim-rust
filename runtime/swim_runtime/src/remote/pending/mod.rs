@@ -15,7 +15,7 @@
 use crate::error::ConnectionError;
 use crate::remote::table::{BidirectionalRegistrator, SchemeHostPort};
 use crate::remote::REQUEST_DROPPED;
-use crate::router2::{BidirectionalRequest, NewRoutingError, ResolutionRequest};
+use crate::router2::{BidirectionalRequest, ResolutionRequest, RoutingError};
 use crate::routing::RoutingAddr;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
@@ -46,7 +46,7 @@ impl PendingRequest {
         }
     }
 
-    pub fn send_err_debug<M: tracing::Value + Debug>(self, err: NewRoutingError, message: M) {
+    pub fn send_err_debug<M: tracing::Value + Debug>(self, err: RoutingError, message: M) {
         match self {
             PendingRequest::Resolution(request) => request.send_err_debug(err, message),
             PendingRequest::Bidirectional(request) => request.send_err_debug(err, message),

@@ -85,7 +85,7 @@ use swim_form::Form;
 use swim_model::path::{Path, RelativePath};
 use swim_model::Value;
 use swim_runtime::compat::RequestMessage;
-use swim_runtime::router2::TaggedReplacementRouter;
+use swim_runtime::router2::TaggedRouter;
 use swim_utilities::future::SwimStreamExt;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::sync::circular_buffer;
@@ -244,7 +244,7 @@ pub(crate) fn run_agent<Config, Clk, Agent, L, Store>(
     client_context: ClientContext<Path>,
     parameters: AgentParameters<Config>,
     incoming_envelopes: impl Stream<Item = RequestMessage<Value>> + Send + 'static,
-    router: TaggedReplacementRouter<Path>,
+    router: TaggedRouter<Path>,
     store: Store,
 ) -> (
     Arc<Agent>,

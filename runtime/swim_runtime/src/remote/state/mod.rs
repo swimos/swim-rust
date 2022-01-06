@@ -21,7 +21,7 @@ use crate::remote::table::{BidirectionalRegistrator, RoutingTable, SchemeHostPor
 use crate::remote::task::TaskFactory;
 use crate::remote::{ExternalConnections, Listener, SchemeSocketAddr};
 use crate::remote::{RawRoute, RemoteConnectionChannels, SchemeSocketAddrIt};
-use crate::router2::{RemoteRoutingRequest, ReplacementRouter};
+use crate::router2::{RemoteRoutingRequest, Router};
 use crate::routing::CloseReceiver;
 use crate::routing::RoutingAddr;
 use crate::ws::WsConnections;
@@ -292,7 +292,7 @@ where
         spawner: Sp,
         external: External,
         listener: Option<External::ListenerType>,
-        router: ReplacementRouter<Path>,
+        router: Router<Path>,
         channels: RemoteConnectionChannels,
     ) -> Self {
         let RemoteConnectionChannels {

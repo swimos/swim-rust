@@ -31,8 +31,7 @@ use swim_runtime::error::ConnectionDropped;
 use swim_runtime::error::{CloseError, ConnectionError, HttpError, ResolutionError};
 use swim_runtime::remote::RawRoute;
 use swim_runtime::router2::{
-    ConnectionType, DownlinkRoutingRequest, NewRoutingError, ReplacementRouter, RouterEvent,
-    TaggedReplacementRouter,
+    ConnectionType, DownlinkRoutingRequest, Router, RouterEvent, RoutingError, TaggedRouter,
 };
 use swim_runtime::routing::{
     BidirectionalRoute, CloseReceiver, Route, RoutingAddr, TaggedEnvelope, TaggedSender,
@@ -92,7 +91,7 @@ impl<Path: Addressable> SwimConnPool<Path> {
     pub fn new(
         config: DownlinkConnectionsConfig,
         client_channel: ClientChannel<Path>,
-        router: ReplacementRouter<Path>,
+        router: Router<Path>,
         stop_trigger: CloseReceiver,
     ) -> (SwimConnPool<Path>, PoolTask<Path>) {
         let (client_tx, client_rx) = client_channel;
@@ -146,7 +145,7 @@ const SUBSCRIBER_ERROR: &str = "The subscriber channel was dropped.";
 
 pub struct PoolTask<Path: Addressable> {
     client_rx: mpsc::Receiver<DownlinkRoutingRequest<Path>>,
-    router: ReplacementRouter<Path>,
+    router: Router<Path>,
     config: DownlinkConnectionsConfig,
     stop_trigger: CloseReceiver,
 }
@@ -154,7 +153,7 @@ pub struct PoolTask<Path: Addressable> {
 impl<Path: Addressable> PoolTask<Path> {
     fn new(
         client_rx: mpsc::Receiver<DownlinkRoutingRequest<Path>>,
-        router: ReplacementRouter<Path>,
+        router: Router<Path>,
         config: DownlinkConnectionsConfig,
         stop_trigger: CloseReceiver,
     ) -> Self {
@@ -244,7 +243,7 @@ impl<Path: Addressable> PoolTask<Path> {
                                 {
                                     if let RegistratorRequest::Resolve { request } = err.0 {
                                         if request
-                                            .send(Err(NewRoutingError::Resolution(Some(
+                                            .send(Err(RoutingError::Resolution(Some(
                                                 addr.to_string(),
                                             ))))
                                             .is_err()
@@ -256,7 +255,7 @@ impl<Path: Addressable> PoolTask<Path> {
                             }
                             None => {
                                 if request
-                                    .send(Err(NewRoutingError::Resolution(Some(addr.to_string()))))
+                                    .send(Err(RoutingError::Resolution(Some(addr.to_string()))))
                                     .is_err()
                                 {
                                     event!(Level::ERROR, REQUEST_ERROR);
@@ -279,7 +278,7 @@ impl<Path: Addressable> PoolTask<Path> {
     }
 }
 
-type ConnectionResult = Result<(ConnectionSender, Option<ConnectionReceiver>), NewRoutingError>;
+type ConnectionResult = Result<(ConnectionSender, Option<ConnectionReceiver>), RoutingError>;
 
 enum RegistratorRequest<Path: Addressable> {
     Connect {
@@ -288,7 +287,7 @@ enum RegistratorRequest<Path: Addressable> {
         conn_type: ConnectionType,
     },
     Resolve {
-        request: Request<Result<RawRoute, NewRoutingError>>,
+        request: Request<Result<RawRoute, RoutingError>>,
     },
 }
 
@@ -301,7 +300,7 @@ impl<Path: Addressable> ConnectionRegistrator<Path> {
     fn new(
         config: DownlinkConnectionsConfig,
         target: Path,
-        router: TaggedReplacementRouter<Path>,
+        router: TaggedRouter<Path>,
         stop_trigger: CloseReceiver,
     ) -> (ConnectionRegistrator<Path>, ConnectionRegistratorTask<Path>) {
         let (registrator_tx, registrator_rx) = mpsc::channel(config.buffer_size.get());
@@ -321,8 +320,8 @@ impl<Path: Addressable> ConnectionRegistrator<Path> {
                 conn_type,
             })
             .await
-            .map_err(|_| NewRoutingError::RouterDropped)?;
-        rx.await.map_err(|_| NewRoutingError::RouterDropped)?
+            .map_err(|_| RoutingError::RouterDropped)?;
+        rx.await.map_err(|_| RoutingError::RouterDropped)?
     }
 }
 
@@ -355,7 +354,7 @@ struct ConnectionRegistratorTask<Path: Addressable> {
     config: DownlinkConnectionsConfig,
     target: RegistrationTarget,
     registrator_rx: mpsc::Receiver<RegistratorRequest<Path>>,
-    router: TaggedReplacementRouter<Path>,
+    router: TaggedRouter<Path>,
     stop_trigger: CloseReceiver,
 }
 
@@ -364,7 +363,7 @@ impl<Path: Addressable> ConnectionRegistratorTask<Path> {
         config: DownlinkConnectionsConfig,
         target: Path,
         registrator_rx: mpsc::Receiver<RegistratorRequest<Path>>,
-        router: TaggedReplacementRouter<Path>,
+        router: TaggedRouter<Path>,
         stop_trigger: CloseReceiver,
     ) -> Self {
         let target = match target.host() {
@@ -499,7 +498,7 @@ impl<Path: Addressable> ConnectionRegistratorTask<Path> {
                 Some(ConnectionRegistratorEvent::ConnectionDropped(connection_dropped)) => {
                     broadcast(&mut subscribers, RouterEvent::ConnectionClosed).await;
 
-                    let mut maybe_err: Option<NewRoutingError> = None;
+                    let mut maybe_err: Option<RoutingError> = None;
                     if connection_dropped.is_recoverable() {
                         match open_connection(
                             target.clone(),
@@ -608,9 +607,9 @@ type RawConnection = (
 async fn open_connection<Path>(
     target: RegistrationTarget,
     mut retry_strategy: RetryStrategy,
-    router: &mut TaggedReplacementRouter<Path>,
+    router: &mut TaggedRouter<Path>,
     stop_trigger: CloseReceiver,
-) -> Result<RawConnection, NewRoutingError>
+) -> Result<RawConnection, RoutingError>
 where
     Path: Addressable,
 {
@@ -649,9 +648,9 @@ where
 }
 
 async fn try_open_remote_connection<Path>(
-    router: &mut TaggedReplacementRouter<Path>,
+    router: &mut TaggedRouter<Path>,
     target: Url,
-) -> Result<RawConnection, NewRoutingError>
+) -> Result<RawConnection, RoutingError>
 where
     Path: Addressable,
 {
@@ -665,9 +664,9 @@ where
 }
 
 async fn try_open_local_connection<Path>(
-    router: &mut TaggedReplacementRouter<Path>,
+    router: &mut TaggedRouter<Path>,
     target: String,
-) -> Result<RawConnection, NewRoutingError>
+) -> Result<RawConnection, RoutingError>
 where
     Path: Addressable,
 {

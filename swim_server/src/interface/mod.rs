@@ -55,7 +55,7 @@ use swim_runtime::remote::config::RemoteConnectionsConfig;
 use swim_runtime::remote::net::dns::Resolver;
 use swim_runtime::remote::net::plain::TokioPlainTextNetworking;
 use swim_runtime::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
-use swim_runtime::router2::{PlaneRoutingRequest, RemoteRoutingRequest, ReplacementRouter};
+use swim_runtime::router2::{PlaneRoutingRequest, RemoteRoutingRequest, Router};
 use swim_runtime::routing::{CloseReceiver, CloseSender};
 use swim_store::nostore::NoStoreOpts;
 use swim_store::{Keyspaces, StoreError};
@@ -229,7 +229,7 @@ where
         let (remote_tx, remote_rx) = mpsc::channel(config.conn_config.channel_buffer_size.get());
         let (plane_tx, plane_rx) = mpsc::channel(config.conn_config.channel_buffer_size.get());
 
-        let router = ReplacementRouter::client(client_tx.clone(), remote_tx.clone());
+        let router = Router::client(client_tx.clone(), remote_tx.clone());
 
         let (connection_pool, connection_pool_task) = SwimConnPool::new(
             config.downlink_connections_config,
@@ -339,7 +339,7 @@ where
     planes: Vec<PlaneDef<S>>,
     stop_trigger_rx: CloseReceiver,
     address_tx: promise::Sender<SocketAddr>,
-    router: ReplacementRouter<Path>,
+    router: Router<Path>,
     remote_channel: (
         mpsc::Sender<RemoteRoutingRequest>,
         mpsc::Receiver<RemoteRoutingRequest>,

@@ -17,7 +17,7 @@ use swim_utilities::errors::Recoverable;
 use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq)]
-pub enum NewRoutingError {
+pub enum RoutingError {
     #[error("`{0:?}`")]
     Resolution(Option<String>),
     #[error("`{0}`")]
@@ -26,19 +26,19 @@ pub enum NewRoutingError {
     RouterDropped,
 }
 
-impl Recoverable for NewRoutingError {
+impl Recoverable for RoutingError {
     fn is_fatal(&self) -> bool {
         match self {
-            NewRoutingError::Resolution(_) => false,
-            NewRoutingError::Connection(e) => e.is_fatal(),
-            NewRoutingError::RouterDropped => true,
+            RoutingError::Resolution(_) => false,
+            RoutingError::Connection(e) => e.is_fatal(),
+            RoutingError::RouterDropped => true,
         }
     }
 }
 
-impl From<ResolutionError> for NewRoutingError {
+impl From<ResolutionError> for RoutingError {
     fn from(_: ResolutionError) -> Self {
-        NewRoutingError::Resolution(None)
+        RoutingError::Resolution(None)
     }
 }
 

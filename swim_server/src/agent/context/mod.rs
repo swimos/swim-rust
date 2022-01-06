@@ -27,7 +27,7 @@ use swim_async_runtime::time::clock::Clock;
 use swim_client::interface::ClientContext;
 use swim_metrics::NodeMetricAggregator;
 use swim_model::path::Path;
-use swim_runtime::router2::TaggedReplacementRouter;
+use swim_runtime::router2::TaggedRouter;
 use swim_utilities::future::SwimStreamExt;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::time::AtomicInstant;
@@ -105,14 +105,14 @@ where
 #[derive(Debug)]
 pub(super) struct RoutingContext {
     uri: RelativeUri,
-    router: TaggedReplacementRouter<Path>,
+    router: TaggedRouter<Path>,
     parameters: HashMap<String, String>,
 }
 
 impl RoutingContext {
     pub(super) fn new(
         uri: RelativeUri,
-        router: TaggedReplacementRouter<Path>,
+        router: TaggedRouter<Path>,
         parameters: HashMap<String, String>,
     ) -> Self {
         RoutingContext {
@@ -248,7 +248,7 @@ pub trait AgentExecutionContext {
     type Store: NodeStore;
 
     /// Create a handle to the envelope router for the agent.
-    fn router_handle(&self) -> TaggedReplacementRouter<Path>;
+    fn router_handle(&self) -> TaggedRouter<Path>;
 
     /// Provide a channel to dispatch events to the agent scheduler.
     fn spawner(&self) -> mpsc::Sender<Eff>;
@@ -273,7 +273,7 @@ where
 {
     type Store = Store;
 
-    fn router_handle(&self) -> TaggedReplacementRouter<Path> {
+    fn router_handle(&self) -> TaggedRouter<Path> {
         self.routing_context.router.clone()
     }
 

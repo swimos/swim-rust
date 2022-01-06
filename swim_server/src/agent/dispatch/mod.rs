@@ -52,7 +52,7 @@ use std::time::Duration;
 use swim_async_runtime::time::timeout::timeout;
 use swim_model::Value;
 use swim_runtime::compat::RequestMessage;
-use swim_runtime::router2::TaggedReplacementRouter;
+use swim_runtime::router2::TaggedRouter;
 use swim_runtime::routing::RoutingAddr;
 use swim_utilities::time::AtomicInstant;
 use tokio::time::Instant;
@@ -532,7 +532,7 @@ struct EnvelopeDispatcher {
     yield_after: NonZeroUsize,
     lane_buffer: NonZeroUsize,
     max_idle_time: Duration,
-    router: TaggedReplacementRouter<Path>,
+    router: TaggedRouter<Path>,
 }
 
 const BAD_CALLBACK: &str = "Could not send input channel to the envelope dispatcher.";
@@ -550,7 +550,7 @@ impl EnvelopeDispatcher {
         yield_after: NonZeroUsize,
         lane_buffer: NonZeroUsize,
         max_idle_time: Duration,
-        router: TaggedReplacementRouter<Path>,
+        router: TaggedRouter<Path>,
     ) -> Self {
         EnvelopeDispatcher {
             senders: Default::default(),
@@ -752,7 +752,7 @@ where
 }
 
 async fn send_lane_not_found(
-    router: &mut TaggedReplacementRouter<Path>,
+    router: &mut TaggedRouter<Path>,
     remote_addr: RoutingAddr,
     node: String,
     lane: String,

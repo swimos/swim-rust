@@ -45,7 +45,7 @@ use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use tracing::{event, Level};
 
-use crate::router2::{NewRoutingError, RemoteRoutingRequest, ReplacementRouter};
+use crate::router2::{RemoteRoutingRequest, Router, RoutingError};
 use ratchet::WebSocketStream;
 use swim_model::path::Addressable;
 use swim_tracing::request::{RequestExt, TryRequestExt};
@@ -93,7 +93,7 @@ pub struct RemoteConnectionsTask<External: ExternalConnections, Ws, Sp, Path> {
     external: External,
     listener: Option<External::ListenerType>,
     websockets: Ws,
-    router: ReplacementRouter<Path>,
+    router: Router<Path>,
     stop_trigger: CloseReceiver,
     spawner: Sp,
     configuration: RemoteConnectionsConfig,
@@ -131,7 +131,7 @@ where
         configuration: RemoteConnectionsConfig,
         external: External,
         websockets: Ws,
-        router: ReplacementRouter<Path>,
+        router: Router<Path>,
         spawner: Sp,
         channels: RemoteConnectionChannels,
     ) -> Self {
@@ -159,7 +159,7 @@ where
         external: External,
         bind_addr: SocketAddr,
         websockets: Ws,
-        router: ReplacementRouter<Path>,
+        router: Router<Path>,
         spawner: Sp,
         channels: RemoteConnectionChannels,
     ) -> io::Result<Self> {
@@ -256,7 +256,7 @@ fn update_state<State: RemoteTasksState>(
             let result = if let Some(tx) = state.table_resolve(addr) {
                 Ok(tx)
             } else {
-                Err(NewRoutingError::Resolution(None))
+                Err(RoutingError::Resolution(None))
             };
             request.send_debug(result, REQUEST_DROPPED);
         }
@@ -268,7 +268,7 @@ fn update_state<State: RemoteTasksState>(
                             request.send_ok_debug(bidirectional_route, REQUEST_DROPPED);
                         } else {
                             request.send_err_debug(
-                                NewRoutingError::Resolution(Some(host.to_string())),
+                                RoutingError::Resolution(Some(host.to_string())),
                                 UNRESOLVABLE_BIDIRECTIONAL,
                             );
                         }
@@ -278,7 +278,7 @@ fn update_state<State: RemoteTasksState>(
                 }
                 _ => {
                     request.send_err_debug(
-                        NewRoutingError::Connection(ConnectionError::Http(HttpError::invalid_url(
+                        RoutingError::Connection(ConnectionError::Http(HttpError::invalid_url(
                             host.to_string(),
                             None,
                         ))),
@@ -298,7 +298,7 @@ fn update_state<State: RemoteTasksState>(
                 }
                 _ => {
                     request.send_err_debug(
-                        NewRoutingError::Connection(ConnectionError::Http(HttpError::invalid_url(
+                        RoutingError::Connection(ConnectionError::Http(HttpError::invalid_url(
                             host.to_string(),
                             None,
                         ))),

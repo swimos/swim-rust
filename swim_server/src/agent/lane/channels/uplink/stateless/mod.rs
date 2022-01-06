@@ -28,7 +28,7 @@ use swim_form::Form;
 use swim_metrics::uplink::UplinkObserver;
 use swim_model::path::{Path, RelativePath};
 use swim_model::Value;
-use swim_runtime::router2::TaggedReplacementRouter;
+use swim_runtime::router2::TaggedRouter;
 use swim_runtime::routing::{RoutingAddr, TaggedSender};
 use tokio::sync::mpsc;
 use tracing::{event, Level};
@@ -84,7 +84,7 @@ where
     pub async fn run(
         self,
         uplink_actions: impl Stream<Item = TaggedAction>,
-        router: TaggedReplacementRouter<Path>,
+        router: TaggedRouter<Path>,
         err_tx: mpsc::Sender<UplinkErrorReport>,
         yield_mod: usize,
     ) {
@@ -204,7 +204,7 @@ impl<R: Form> From<RespMsg<R>> for Value {
 
 /// Wraps a map of uplinks and provides compound operations on them to the uplink task.
 struct Uplinks<Msg> {
-    router: TaggedReplacementRouter<Path>,
+    router: TaggedRouter<Path>,
     uplinks: HashMap<RoutingAddr, UplinkMessageSender<TaggedSender>>,
     err_tx: mpsc::Sender<UplinkErrorReport>,
     route: RelativePath,
@@ -218,7 +218,7 @@ where
     Msg: Form + Send + Debug + 'static,
 {
     fn new(
-        router: TaggedReplacementRouter<Path>,
+        router: TaggedRouter<Path>,
         err_tx: mpsc::Sender<UplinkErrorReport>,
         route: RelativePath,
     ) -> Self {

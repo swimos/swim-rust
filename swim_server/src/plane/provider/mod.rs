@@ -26,7 +26,7 @@ use std::sync::Arc;
 use swim_async_runtime::time::clock::Clock;
 use swim_client::interface::ClientContext;
 use swim_model::path::Path;
-use swim_runtime::router2::TaggedReplacementRouter;
+use swim_runtime::router2::TaggedRouter;
 use swim_runtime::routing::TaggedEnvelope;
 
 /// [`AgentRoute`] implementation that spawns agents with a fixed configuration.
@@ -70,7 +70,7 @@ where
         clock: Clk,
         client_context: ClientContext<Path>,
         incoming_envelopes: Envelopes,
-        router: TaggedReplacementRouter<Path>,
+        router: TaggedRouter<Path>,
         store: Store,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>)
     where
