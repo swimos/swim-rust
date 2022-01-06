@@ -30,9 +30,10 @@ use std::fmt::{Display, Formatter};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_metrics::uplink::UplinkObserver;
-use swim_model::path::RelativePath;
+use swim_model::path::{Path, RelativePath};
 use swim_model::Value;
-use swim_runtime::routing::{Router, RoutingAddr};
+use swim_runtime::router2::TaggedReplacementRouter;
+use swim_runtime::routing::RoutingAddr;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger;
 use tokio::sync::mpsc;
@@ -121,16 +122,14 @@ where
     /// # Type Parameters
     ///
     /// * `R` - The type of the server router.
-    pub async fn run<R>(
+    pub async fn run(
         mut self,
-        mut router: R,
+        mut router: TaggedReplacementRouter<Path>,
         mut spawn_tx: mpsc::Sender<Eff>,
         uplinks_idle_since: Arc<AtomicInstant>,
         error_collector: mpsc::Sender<UplinkErrorReport>,
         observer: UplinkObserver,
-    ) where
-        R: Router,
-    {
+    ) {
         let mut uplink_senders: HashMap<RoutingAddr, UplinkHandle> = HashMap::new();
         let mut iteration_count: usize = 0;
         let yield_mod = self.yield_after.get();
@@ -206,17 +205,14 @@ where
     }
 
     //Create a new uplink state machine and attach it to the router
-    async fn make_uplink<R>(
+    async fn make_uplink(
         &mut self,
         addr: RoutingAddr,
         err_tx: mpsc::Sender<UplinkErrorReport>,
         spawn_tx: &mut mpsc::Sender<Eff>,
-        router: &mut R,
+        router: &mut TaggedReplacementRouter<Path>,
         uplinks_idle_since: Arc<AtomicInstant>,
-    ) -> Option<UplinkHandle>
-    where
-        R: Router,
-    {
+    ) -> Option<UplinkHandle> {
         let UplinkSpawner {
             handler,
             topic,

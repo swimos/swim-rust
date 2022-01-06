@@ -148,7 +148,7 @@ impl<Path> ReplacementRouter<Path> {
 }
 
 /// A wrapper around a raw router that attaches a tag (RoutingAddr) to routes that are resolved.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TaggedReplacementRouter<Path> {
     tag: RoutingAddr,
     inner: ReplacementRouter<Path>,

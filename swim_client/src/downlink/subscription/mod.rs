@@ -66,11 +66,11 @@ mod tests;
 mod watch_adapter;
 
 #[derive(Clone, Debug)]
-pub struct Downlinks<Path: Addressable> {
+pub struct Downlinks<Path> {
     downlink_request_tx: mpsc::Sender<DownlinkRequest<Path>>,
 }
 
-pub enum DownlinkRequest<Path: Addressable> {
+pub enum DownlinkRequest<Path> {
     Subscription(DownlinkSpecifier<Path>),
     DirectCommand { path: Path, envelope: Envelope },
 }
@@ -308,7 +308,7 @@ impl<Path: Addressable> Downlinks<Path> {
 
 pub type RequestResult<T, Path> = Result<T, SubscriptionError<Path>>;
 
-pub enum DownlinkSpecifier<Path: Addressable> {
+pub enum DownlinkSpecifier<Path> {
     Value {
         init: Value,
         path: Path,

@@ -20,175 +20,19 @@ use futures::FutureExt;
 use std::convert::TryFrom;
 use swim_utilities::routing::uri::RelativeUri;
 use tokio::sync::mpsc;
-use tokio::sync::oneshot;
 
 use url::Url;
 
-use swim_model::path::{AbsolutePath, Addressable};
-use swim_runtime::error::{ConnectionError, ResolutionError};
+use swim_model::path::Addressable;
 use swim_runtime::remote::table::SchemeHostPort;
-use swim_runtime::remote::{BadUrl, RawRoute};
-use swim_runtime::router2::{DownlinkRoutingRequest, NewRoutingError, RemoteRoutingRequest};
+use swim_runtime::remote::BadUrl;
+use swim_runtime::router2::{DownlinkRoutingRequest, NewRoutingError};
 use swim_runtime::routing::{
     BidirectionalRoute, BidirectionalRouter, Route, Router, RouterFactory, RoutingAddr,
-    TaggedSender,
 };
-
-use swim_utilities::future::request::Request;
 
 #[cfg(test)]
 pub(crate) mod tests;
-
-#[derive(Debug, Clone)]
-pub(crate) struct TopLevelClientRouterFactory {
-    client_sender: mpsc::Sender<DownlinkRoutingRequest<AbsolutePath>>,
-    remote_sender: mpsc::Sender<RemoteRoutingRequest>,
-}
-
-impl TopLevelClientRouterFactory {
-    pub(in crate) fn new(
-        client_sender: mpsc::Sender<DownlinkRoutingRequest<AbsolutePath>>,
-        remote_sender: mpsc::Sender<RemoteRoutingRequest>,
-    ) -> Self {
-        TopLevelClientRouterFactory {
-            client_sender,
-            remote_sender,
-        }
-    }
-}
-
-impl RouterFactory for TopLevelClientRouterFactory {
-    type Router = TopLevelClientRouter;
-
-    fn create_for(&self, addr: RoutingAddr) -> Self::Router {
-        TopLevelClientRouter::new(addr, self.client_sender.clone(), self.remote_sender.clone())
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct TopLevelClientRouter {
-    addr: RoutingAddr,
-    client_sender: mpsc::Sender<DownlinkRoutingRequest<AbsolutePath>>,
-    remote_sender: mpsc::Sender<RemoteRoutingRequest>,
-}
-
-impl TopLevelClientRouter {
-    pub(crate) fn new(
-        addr: RoutingAddr,
-        client_sender: mpsc::Sender<DownlinkRoutingRequest<AbsolutePath>>,
-        remote_sender: mpsc::Sender<RemoteRoutingRequest>,
-    ) -> Self {
-        TopLevelClientRouter {
-            addr,
-            client_sender,
-            remote_sender,
-        }
-    }
-}
-
-impl Router for TopLevelClientRouter {
-    fn resolve_sender(
-        &mut self,
-        addr: RoutingAddr,
-    ) -> BoxFuture<'_, Result<Route, NewRoutingError>> {
-        async move {
-            let TopLevelClientRouter {
-                remote_sender,
-                addr: tag,
-                ..
-            } = self;
-
-            if addr.is_remote() {
-                let (tx, rx) = oneshot::channel();
-                let request = Request::new(tx);
-                if remote_sender
-                    .send(RemoteRoutingRequest::Endpoint { addr, request })
-                    .await
-                    .is_err()
-                {
-                    Err(NewRoutingError::RouterDropped)
-                } else {
-                    match rx.await {
-                        Ok(Ok(RawRoute { sender, on_drop })) => {
-                            Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
-                        }
-                        Ok(Err(_)) => Err(NewRoutingError::Resolution(Some(addr.to_string()))),
-                        Err(_) => Err(NewRoutingError::RouterDropped),
-                    }
-                }
-            } else {
-                Err(NewRoutingError::Resolution(Some(addr.to_string())))
-            }
-        }
-        .boxed()
-    }
-
-    fn lookup(
-        &mut self,
-        host: Option<Url>,
-        route: RelativeUri,
-    ) -> BoxFuture<'_, Result<RoutingAddr, NewRoutingError>> {
-        async move {
-            let TopLevelClientRouter { remote_sender, .. } = self;
-
-            match host {
-                Some(host) => {
-                    let (tx, rx) = oneshot::channel();
-                    if remote_sender
-                        .send(RemoteRoutingRequest::ResolveUrl {
-                            host,
-                            request: Request::new(tx),
-                        })
-                        .await
-                        .is_err()
-                    {
-                        Err(NewRoutingError::RouterDropped)
-                    } else {
-                        match rx.await {
-                            Ok(Ok(addr)) => Ok(addr),
-                            Ok(Err(err)) => Err(err),
-                            Err(_) => Err(NewRoutingError::RouterDropped),
-                        }
-                    }
-                }
-                None => Err(NewRoutingError::Connection(ConnectionError::Resolution(
-                    ResolutionError::unresolvable(route.to_string()),
-                ))),
-            }
-        }
-        .boxed()
-    }
-}
-
-impl BidirectionalRouter for TopLevelClientRouter {
-    fn resolve_bidirectional(
-        &mut self,
-        host: Url,
-    ) -> BoxFuture<'_, Result<BidirectionalRoute, NewRoutingError>> {
-        async move {
-            let TopLevelClientRouter { remote_sender, .. } = self;
-
-            let (tx, rx) = oneshot::channel();
-            if remote_sender
-                .send(RemoteRoutingRequest::Bidirectional {
-                    host: host.clone(),
-                    request: Request::new(tx),
-                })
-                .await
-                .is_err()
-            {
-                Err(NewRoutingError::RouterDropped)
-            } else {
-                match rx.await {
-                    Ok(Ok(registrator)) => registrator.register().await.map_err(Into::into),
-                    Ok(Err(err)) => Err(err),
-                    Err(_) => Err(NewRoutingError::RouterDropped),
-                }
-            }
-        }
-        .boxed()
-    }
-}
 
 pub(crate) type Node = String;
 

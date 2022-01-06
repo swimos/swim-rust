@@ -27,7 +27,7 @@ use swim_async_runtime::time::clock::Clock;
 use swim_client::interface::ClientContext;
 use swim_metrics::NodeMetricAggregator;
 use swim_model::path::Path;
-use swim_runtime::routing::Router;
+use swim_runtime::router2::TaggedReplacementRouter;
 use swim_utilities::future::SwimStreamExt;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::time::AtomicInstant;
@@ -44,9 +44,9 @@ mod tests;
 /// [`AgentContext`] implementation that dispatches effects to the scheduler through an MPSC
 /// channel.
 #[derive(Debug)]
-pub(super) struct ContextImpl<Agent, Clk, R, Store> {
+pub(super) struct ContextImpl<Agent, Clk, Store> {
     agent_ref: Arc<Agent>,
-    routing_context: RoutingContext<R>,
+    routing_context: RoutingContext,
     schedule_context: SchedulerContext<Clk>,
     meta_context: Arc<MetaContext>,
     client_context: ClientContext<Path>,
@@ -60,10 +60,10 @@ const SCHED_TRIGGERED: &str = "Schedule triggered";
 const SCHED_STOPPED: &str = "Scheduler unexpectedly stopped";
 const WAITING: &str = "Schedule waiting";
 
-impl<Agent, Clk, R: Router + Clone + 'static, Store> ContextImpl<Agent, Clk, R, Store> {
+impl<Agent, Clk, Store> ContextImpl<Agent, Clk, Store> {
     pub(super) fn new(
         agent_ref: Arc<Agent>,
-        routing_context: RoutingContext<R>,
+        routing_context: RoutingContext,
         schedule_context: SchedulerContext<Clk>,
         meta_context: MetaContext,
         client_context: ClientContext<Path>,
@@ -83,10 +83,9 @@ impl<Agent, Clk, R: Router + Clone + 'static, Store> ContextImpl<Agent, Clk, R, 
     }
 }
 
-impl<Agent, Clk, R: Router + Clone + 'static, Store> Clone for ContextImpl<Agent, Clk, R, Store>
+impl<Agent, Clk, Store> Clone for ContextImpl<Agent, Clk, Store>
 where
     Clk: Clone,
-    R: Clone,
     Store: Clone,
 {
     fn clone(&self) -> Self {
@@ -104,14 +103,18 @@ where
 }
 
 #[derive(Debug)]
-pub(super) struct RoutingContext<R> {
+pub(super) struct RoutingContext {
     uri: RelativeUri,
-    router: R,
+    router: TaggedReplacementRouter<Path>,
     parameters: HashMap<String, String>,
 }
 
-impl<R: Router + Clone + 'static> RoutingContext<R> {
-    pub(super) fn new(uri: RelativeUri, router: R, parameters: HashMap<String, String>) -> Self {
+impl RoutingContext {
+    pub(super) fn new(
+        uri: RelativeUri,
+        router: TaggedReplacementRouter<Path>,
+        parameters: HashMap<String, String>,
+    ) -> Self {
         RoutingContext {
             uri,
             router,
@@ -120,7 +123,7 @@ impl<R: Router + Clone + 'static> RoutingContext<R> {
     }
 }
 
-impl<R: Router + Clone + 'static> Clone for RoutingContext<R> {
+impl Clone for RoutingContext {
     fn clone(&self) -> Self {
         RoutingContext {
             uri: self.uri.clone(),
@@ -196,8 +199,7 @@ impl<Clk: Clone> Clone for SchedulerContext<Clk> {
     }
 }
 
-impl<Agent, Clk, R: Router + Clone + 'static, Store> AgentContext<Agent>
-    for ContextImpl<Agent, Clk, R, Store>
+impl<Agent, Clk, Store> AgentContext<Agent> for ContextImpl<Agent, Clk, Store>
 where
     Agent: Send + Sync + 'static,
     Clk: Clock,
@@ -243,11 +245,10 @@ where
 
 /// A context, scoped to an agent, to provide shared functionality to each of its lanes.
 pub trait AgentExecutionContext {
-    type Router: Router + 'static;
     type Store: NodeStore;
 
     /// Create a handle to the envelope router for the agent.
-    fn router_handle(&self) -> Self::Router;
+    fn router_handle(&self) -> TaggedReplacementRouter<Path>;
 
     /// Provide a channel to dispatch events to the agent scheduler.
     fn spawner(&self) -> mpsc::Sender<Eff>;
@@ -266,16 +267,13 @@ pub trait AgentExecutionContext {
     fn store(&self) -> Self::Store;
 }
 
-impl<Agent, Clk, RouterInner, Store> AgentExecutionContext
-    for ContextImpl<Agent, Clk, RouterInner, Store>
+impl<Agent, Clk, Store> AgentExecutionContext for ContextImpl<Agent, Clk, Store>
 where
-    RouterInner: Router + Clone + 'static,
     Store: NodeStore,
 {
-    type Router = RouterInner;
     type Store = Store;
 
-    fn router_handle(&self) -> Self::Router {
+    fn router_handle(&self) -> TaggedReplacementRouter<Path> {
         self.routing_context.router.clone()
     }
 

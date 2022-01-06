@@ -17,12 +17,10 @@
 //! The module provides methods and structures for creating and running Swim server instances.
 //!
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::PlaneActiveRoutes;
 use crate::plane::RouteResolver;
 use crate::plane::{run_plane, EnvChannel};
 use crate::plane::{ContextImpl, PlaneSpec};
-use crate::routing::{TopLevelServerRouter, TopLevelServerRouterFactory};
 use either::Either;
 use futures::{io, join};
 use ratchet::{NoExtProvider, ProtocolRegistry, WebSocketConfig};
@@ -71,13 +69,11 @@ where
 {
     address: Option<SocketAddr>,
     config: SwimServerConfig,
-    planes:
-        Vec<PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelServerRouter>, S::PlaneStore>>,
+    planes: Vec<PlaneSpec<RuntimeClock, EnvChannel, S::PlaneStore>>,
     store: S,
 }
 
-type ServerPlaneBuilder<S> =
-    PlaneBuilder<RuntimeClock, EnvChannel, PlaneRouter<TopLevelServerRouter>, S>;
+type ServerPlaneBuilder<S> = PlaneBuilder<RuntimeClock, EnvChannel, S>;
 
 impl<S> SwimServerBuilder<S>
 where
@@ -235,16 +231,10 @@ where
 
         let router = ReplacementRouter::client(client_tx.clone(), remote_tx.clone());
 
-        let top_level_router_fac = TopLevelServerRouterFactory::new(
-            plane_tx.clone(),
-            client_tx.clone(),
-            remote_tx.clone(),
-        );
-
         let (connection_pool, connection_pool_task) = SwimConnPool::new(
             config.downlink_connections_config,
             (client_tx, client_rx),
-            router,
+            router.clone(),
             close_rx.clone(),
         );
 
@@ -264,7 +254,7 @@ where
                 stop_trigger_rx: close_rx,
                 address: address.ok_or(SwimServerBuilderError::MissingAddress)?,
                 address_tx,
-                top_level_router_fac,
+                router,
                 remote_channel: (remote_tx, remote_rx),
                 plane_channel: (plane_tx, plane_rx),
                 client_context: downlinks_context,
@@ -335,7 +325,7 @@ impl SwimServerBuilder<ServerStore<NoStoreOpts>> {
     }
 }
 
-type PlaneDef<S> = PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelServerRouter>, S>;
+type PlaneDef<S> = PlaneSpec<RuntimeClock, EnvChannel, S>;
 
 /// Swim server instance.
 ///
@@ -349,7 +339,7 @@ where
     planes: Vec<PlaneDef<S>>,
     stop_trigger_rx: CloseReceiver,
     address_tx: promise::Sender<SocketAddr>,
-    top_level_router_fac: TopLevelServerRouterFactory,
+    router: ReplacementRouter<Path>,
     remote_channel: (
         mpsc::Sender<RemoteRoutingRequest>,
         mpsc::Receiver<RemoteRoutingRequest>,
@@ -381,7 +371,7 @@ where
             mut planes,
             stop_trigger_rx,
             address_tx,
-            top_level_router_fac,
+            router,
             remote_channel: (remote_tx, remote_rx),
             plane_channel: (plane_tx, plane_rx),
             client_context: downlinks_context,
@@ -412,7 +402,7 @@ where
             downlinks_context,
             agent_config,
             spec,
-            PlaneRouterFactory::new(plane_tx, top_level_router_fac.clone()),
+            router.clone(),
             stop_trigger_rx.clone(),
             PlaneActiveRoutes::default(),
         );
@@ -435,7 +425,7 @@ where
                 provider: NoExtProvider,
                 subprotocols: ProtocolRegistry::new(vec!["warp0"]).unwrap(),
             },
-            top_level_router_fac,
+            router,
             OpenEndedFutures::new(),
             RemoteConnectionChannels::new(remote_tx, remote_rx, stop_trigger_rx),
         )

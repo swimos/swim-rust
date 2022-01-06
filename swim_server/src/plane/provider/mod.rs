@@ -26,7 +26,8 @@ use std::sync::Arc;
 use swim_async_runtime::time::clock::Clock;
 use swim_client::interface::ClientContext;
 use swim_model::path::Path;
-use swim_runtime::routing::{Router, TaggedEnvelope};
+use swim_runtime::router2::TaggedReplacementRouter;
+use swim_runtime::routing::TaggedEnvelope;
 
 /// [`AgentRoute`] implementation that spawns agents with a fixed configuration.
 pub struct AgentProvider<Agent, Config, Lifecycle> {
@@ -63,19 +64,18 @@ where
         }
     }
 
-    pub fn run<Clk, Envelopes, R, Store>(
+    pub fn run<Clk, Envelopes, Store>(
         &self,
         agent_parameters: AgentParameters<Config>,
         clock: Clk,
         client_context: ClientContext<Path>,
         incoming_envelopes: Envelopes,
-        router: R,
+        router: TaggedReplacementRouter<Path>,
         store: Store,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>)
     where
         Clk: Clock,
         Envelopes: Stream<Item = TaggedEnvelope> + Send + Unpin + 'static,
-        R: Router + Clone + 'static,
         Store: NodeStore,
     {
         let AgentProvider { lifecycle, .. } = self;
@@ -96,12 +96,11 @@ where
     }
 }
 
-impl<Clk, Envelopes, R, Agent, Config, Lifecycle, Store> AgentRoute<Clk, Envelopes, R, Store>
+impl<Clk, Envelopes, Agent, Config, Lifecycle, Store> AgentRoute<Clk, Envelopes, Store>
     for AgentProvider<Agent, Config, Lifecycle>
 where
     Clk: Clock,
     Envelopes: Stream<Item = TaggedEnvelope> + Send + Unpin + 'static,
-    R: Router + Clone + 'static,
     Agent: SwimAgent<Config> + Send + Sync + Debug + 'static,
     Config: Send + Sync + Clone + Debug + 'static,
     Lifecycle: AgentLifecycle<Agent> + Send + Sync + Clone + Debug + 'static,
@@ -111,7 +110,7 @@ where
         &self,
         route: RouteAndParameters,
         execution_config: AgentExecutionConfig,
-        agent_internals: AgentInternals<Clk, Envelopes, R, Store>,
+        agent_internals: AgentInternals<Clk, Envelopes, Store>,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
         let AgentInternals {
             clock,

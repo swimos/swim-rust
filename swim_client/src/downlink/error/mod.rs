@@ -180,7 +180,7 @@ impl<T> From<swim_utilities::future::item_sink::SendError<T>> for DroppedError {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum SubscriptionError<Path: Addressable> {
+pub enum SubscriptionError<Path> {
     BadKind {
         expected: DownlinkKind,
         actual: DownlinkKind,

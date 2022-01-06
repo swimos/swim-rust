@@ -21,9 +21,9 @@ use crate::remote::table::{BidirectionalRegistrator, RoutingTable, SchemeHostPor
 use crate::remote::task::TaskFactory;
 use crate::remote::{ExternalConnections, Listener, SchemeSocketAddr};
 use crate::remote::{RawRoute, RemoteConnectionChannels, SchemeSocketAddrIt};
-use crate::router2::RemoteRoutingRequest;
+use crate::router2::{RemoteRoutingRequest, ReplacementRouter};
 use crate::routing::CloseReceiver;
-use crate::routing::{RouterFactory, RoutingAddr};
+use crate::routing::RoutingAddr;
 use crate::ws::WsConnections;
 use futures::future::{BoxFuture, Fuse};
 use futures::stream::TakeUntil;
@@ -33,6 +33,7 @@ use ratchet::{WebSocket, WebSocketStream};
 use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
+use swim_model::path::Addressable;
 use swim_utilities::future::open_ended::OpenEndedFutures;
 use swim_utilities::future::task::Spawner;
 use swim_utilities::trigger;
@@ -112,7 +113,7 @@ pub trait RemoteTasksState {
 /// * `Ws` - Negotiates a web socket connection on top of the sockets provided by `External`.
 /// * `Sp` - Spawner to run the tasks that manage the connections opened by this state machine.
 /// * `Routerfac` - Creates router instances to be provided to the connection management tasks.
-pub struct RemoteConnections<'a, External, Ws, Sp, DelegateRouterFac>
+pub struct RemoteConnections<'a, External, Ws, Sp, Path>
 where
     External: ExternalConnections,
     Ws: WsConnections<External::Socket>,
@@ -125,20 +126,19 @@ where
     table: RoutingTable,
     pending: PendingRequests,
     addresses: RemoteRoutingAddresses,
-    tasks: TaskFactory<DelegateRouterFac>,
+    tasks: TaskFactory<Path>,
     deferred: DeferredConnections<'a, External::Socket, Ws::Ext>,
     state: State,
     external_stop: Fuse<CloseReceiver>,
     internal_stop: Option<trigger::Sender>,
 }
 
-impl<'a, External, Ws, Sp, DelegateRouterFac> RemoteTasksState
-    for RemoteConnections<'a, External, Ws, Sp, DelegateRouterFac>
+impl<'a, External, Ws, Sp, Path> RemoteTasksState for RemoteConnections<'a, External, Ws, Sp, Path>
 where
     External: ExternalConnections,
     Ws: WsConnections<External::Socket> + Send + Sync + 'static,
     Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Unpin,
-    DelegateRouterFac: RouterFactory + 'static,
+    Path: Addressable,
     External::Socket: WebSocketStream,
 {
     type Socket = External::Socket;
@@ -266,13 +266,12 @@ where
     }
 }
 
-impl<'a, External, Ws, Sp, DelegateRouterFac>
-    RemoteConnections<'a, External, Ws, Sp, DelegateRouterFac>
+impl<'a, External, Ws, Sp, Path> RemoteConnections<'a, External, Ws, Sp, Path>
 where
     External: ExternalConnections,
     Ws: WsConnections<External::Socket> + Send + Sync + 'static,
     Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Unpin,
-    DelegateRouterFac: RouterFactory + 'static,
+    Path: Addressable,
 {
     /// Create a new, empty state.
     ///
@@ -293,22 +292,17 @@ where
         spawner: Sp,
         external: External,
         listener: Option<External::ListenerType>,
-        delegate_router_fac: DelegateRouterFac,
+        router: ReplacementRouter<Path>,
         channels: RemoteConnectionChannels,
     ) -> Self {
         let RemoteConnectionChannels {
-            request_tx,
             request_rx,
             stop_trigger,
+            ..
         } = channels;
 
         let (stop_tx, stop_rx) = trigger::trigger();
-        let tasks = TaskFactory::new(
-            request_tx,
-            stop_rx.clone(),
-            configuration,
-            delegate_router_fac,
-        );
+        let tasks = TaskFactory::new(stop_rx.clone(), configuration, router);
         RemoteConnections {
             websockets,
             listener: listener.map(Listener::into_stream),

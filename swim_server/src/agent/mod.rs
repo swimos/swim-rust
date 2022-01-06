@@ -85,7 +85,7 @@ use swim_form::Form;
 use swim_model::path::{Path, RelativePath};
 use swim_model::Value;
 use swim_runtime::compat::RequestMessage;
-use swim_runtime::routing::Router;
+use swim_runtime::router2::TaggedReplacementRouter;
 use swim_utilities::future::SwimStreamExt;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::sync::circular_buffer;
@@ -238,13 +238,13 @@ impl<Routing, Store> IoPair<Routing, Store> {
 /// * `stop_trigger` - External trigger to cleanly stop the agent.
 /// * `parameters` - Parameters extracted from the agent node route pattern.
 /// * `incoming_envelopes` - The stream of envelopes routed to the agent.
-pub(crate) fn run_agent<Config, Clk, Agent, L, R, Store>(
+pub(crate) fn run_agent<Config, Clk, Agent, L, Store>(
     lifecycle: L,
     clock: Clk,
     client_context: ClientContext<Path>,
     parameters: AgentParameters<Config>,
     incoming_envelopes: impl Stream<Item = RequestMessage<Value>> + Send + 'static,
-    router: R,
+    router: TaggedReplacementRouter<Path>,
     store: Store,
 ) -> (
     Arc<Agent>,
@@ -254,7 +254,6 @@ where
     Clk: Clock,
     Agent: SwimAgent<Config> + Send + Sync + 'static,
     L: AgentLifecycle<Agent> + Send + Sync + 'static,
-    R: Router + Clone + 'static,
     Store: NodeStore,
 {
     let AgentParameters {
@@ -267,7 +266,7 @@ where
     let span = span!(Level::INFO, AGENT_TASK, %uri);
     let (tripwire, stop_trigger) = trigger::trigger();
     let (agent, mut tasks, io_providers) = Agent::instantiate::<
-        ContextImpl<Agent, Clk, R, Store>,
+        ContextImpl<Agent, Clk, Store>,
         Store,
     >(&agent_config, &execution_config, store.clone());
     let agent_ref = Arc::new(agent);
@@ -287,7 +286,7 @@ where
         let task_manager: FuturesUnordered<Instrumented<Eff>> = FuturesUnordered::new();
 
         let (meta_context, mut meta_tasks, meta_io) =
-            open_meta_lanes::<Config, Agent, ContextImpl<Agent, Clk, R, Store>>(
+            open_meta_lanes::<Config, Agent, ContextImpl<Agent, Clk, Store>>(
                 uri.clone(),
                 &execution_config,
                 lane_summary,

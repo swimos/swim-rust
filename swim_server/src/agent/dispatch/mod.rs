@@ -32,7 +32,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 
-use swim_model::path::RelativePath;
+use swim_model::path::{Path, RelativePath};
 use swim_utilities::errors::Recoverable;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
@@ -52,7 +52,8 @@ use std::time::Duration;
 use swim_async_runtime::time::timeout::timeout;
 use swim_model::Value;
 use swim_runtime::compat::RequestMessage;
-use swim_runtime::routing::{Router, RoutingAddr};
+use swim_runtime::router2::TaggedReplacementRouter;
+use swim_runtime::routing::RoutingAddr;
 use swim_utilities::time::AtomicInstant;
 use tokio::time::Instant;
 
@@ -524,14 +525,14 @@ impl<L: Unpin> Future for AwaitNewLane<L> {
     }
 }
 
-struct EnvelopeDispatcher<Router> {
+struct EnvelopeDispatcher {
     senders: HashMap<LaneIdentifier, mpsc::Sender<RequestMessage<Value>>>,
     open_tx: mpsc::Sender<OpenRequest>,
     await_new: FuturesUnordered<AwaitNewLane<LaneIdentifier>>,
     yield_after: NonZeroUsize,
     lane_buffer: NonZeroUsize,
     max_idle_time: Duration,
-    router: Router,
+    router: TaggedReplacementRouter<Path>,
 }
 
 const BAD_CALLBACK: &str = "Could not send input channel to the envelope dispatcher.";
@@ -543,16 +544,13 @@ const FAILED_START_DROP: &str = "Lane IO task failed to start; dropping pending 
 const NODE_URI_PARSE_ERR: &str = "Failed to parse node URI.";
 const FAILED_NOT_FOUND_RESPONSE: &str = "Failed to send lane not found response.";
 
-impl<R> EnvelopeDispatcher<R>
-where
-    R: Router,
-{
+impl EnvelopeDispatcher {
     fn new(
         open_tx: mpsc::Sender<OpenRequest>,
         yield_after: NonZeroUsize,
         lane_buffer: NonZeroUsize,
         max_idle_time: Duration,
-        router: R,
+        router: TaggedReplacementRouter<Path>,
     ) -> Self {
         EnvelopeDispatcher {
             senders: Default::default(),
@@ -753,14 +751,12 @@ where
     }
 }
 
-async fn send_lane_not_found<R>(
-    router: &mut R,
+async fn send_lane_not_found(
+    router: &mut TaggedReplacementRouter<Path>,
     remote_addr: RoutingAddr,
     node: String,
     lane: String,
-) where
-    R: Router,
-{
+) {
     if let Ok(mut remote_route) = router.resolve_sender(remote_addr).await {
         if remote_route
             .sender

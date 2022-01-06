@@ -21,9 +21,10 @@ use crate::error::{
     ResolutionErrorKind,
 };
 use crate::remote::config::RemoteConnectionsConfig;
-use crate::remote::router::RemoteRouter;
-use crate::router2::{BidirectionalReceiverRequest, NewRoutingError, RemoteRoutingRequest};
-use crate::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender};
+use crate::router2::{
+    BidirectionalReceiverRequest, NewRoutingError, ReplacementRouter, TaggedReplacementRouter,
+};
+use crate::routing::{Route, RoutingAddr, TaggedEnvelope, TaggedSender};
 use crate::ws::{into_stream, WsMessage};
 use futures::future::join_all;
 use futures::future::BoxFuture;
@@ -39,7 +40,7 @@ use std::future::Future;
 use std::str::FromStr;
 use std::time::Duration;
 use swim_form::Form;
-use swim_model::path::RelativePath;
+use swim_model::path::{Addressable, RelativePath};
 use swim_recon::parser::{parse_recognize, ParseError, Span};
 use swim_utilities::errors::Recoverable;
 use swim_utilities::future::retryable::RetryStrategy;
@@ -59,12 +60,12 @@ const ERROR_ON_CLOSE: &str = "Error whilst closing connection.";
 const BIDIRECTIONAL_RECEIVER_ERROR: &str = "Error whilst sending a bidirectional receiver.";
 
 /// A task that manages reading from and writing to a web-sockets channel.
-pub struct ConnectionTask<Sock, Ext, Router> {
+pub struct ConnectionTask<Sock, Ext, Path> {
     tag: RoutingAddr,
     ws_stream: WebSocket<Sock, Ext>,
     messages: mpsc::Receiver<TaggedEnvelope>,
     message_injector: mpsc::Sender<TaggedEnvelope>,
-    router: Router,
+    router: TaggedReplacementRouter<Path>,
     bidirectional_request_rx: mpsc::Receiver<BidirectionalReceiverRequest>,
     stop_signal: trigger::Receiver,
     config: RemoteConnectionsConfig,
@@ -94,11 +95,11 @@ enum ConnectionEvent {
     Request(BidirectionalReceiverRequest),
 }
 
-impl<Sock, Ext, R> ConnectionTask<Sock, Ext, R>
+impl<Sock, Ext, Path> ConnectionTask<Sock, Ext, Path>
 where
     Sock: WebSocketStream,
     Ext: SplittableExtension,
-    R: Router,
+    Path: Addressable,
 {
     /// Create a new task.
     ///
@@ -116,7 +117,7 @@ where
     pub fn new(
         tag: RoutingAddr,
         ws_stream: WebSocket<Sock, Ext>,
-        router: R,
+        router: TaggedReplacementRouter<Path>,
         (messages_tx, messages_rx): (mpsc::Sender<TaggedEnvelope>, mpsc::Receiver<TaggedEnvelope>),
         bidirectional_request_rx: mpsc::Receiver<BidirectionalReceiverRequest>,
         stop_signal: trigger::Receiver,
@@ -340,8 +341,8 @@ impl From<NewRoutingError> for DispatchError {
     }
 }
 
-async fn dispatch_envelope<R, F, D>(
-    router: &mut R,
+async fn dispatch_envelope<Path, F, D>(
+    router: &mut TaggedReplacementRouter<Path>,
     bidirectional_connections: &mut Slab<TaggedSender>,
     resolved: &mut HashMap<RelativePath, Route>,
     mut envelope: Envelope,
@@ -349,7 +350,7 @@ async fn dispatch_envelope<R, F, D>(
     delay_fn: F,
 ) -> Result<(), (Envelope, DispatchError)>
 where
-    R: Router,
+    Path: Addressable,
     F: Fn(Duration) -> D,
     D: Future<Output = ()>,
 {
@@ -379,14 +380,14 @@ where
     }
 }
 
-async fn try_dispatch_envelope<R>(
-    router: &mut R,
+async fn try_dispatch_envelope<Path>(
+    router: &mut TaggedReplacementRouter<Path>,
     bidirectional_connections: &mut Slab<TaggedSender>,
     resolved: &mut HashMap<RelativePath, Route>,
     envelope: Envelope,
 ) -> Result<(), (Envelope, DispatchError)>
 where
-    R: Router,
+    Path: Addressable,
 {
     match envelope.discriminate_header() {
         EnvelopeHeader::Response(_) => {
@@ -447,13 +448,13 @@ where
 }
 
 #[allow(clippy::needless_lifetimes)]
-async fn insert_new_route<'a, R>(
-    router: &mut R,
+async fn insert_new_route<'a, Path>(
+    router: &mut TaggedReplacementRouter<Path>,
     resolved: &'a mut HashMap<RelativePath, Route>,
     target: &RelativePath,
 ) -> Result<&'a mut Route, DispatchError>
 where
-    R: Router,
+    Path: Addressable,
 {
     let route = get_route(router, target).await;
 
@@ -466,43 +467,43 @@ where
     }
 }
 
-async fn get_route<R>(router: &mut R, target: &RelativePath) -> Result<Route, DispatchError>
+async fn get_route<Path>(
+    router: &mut TaggedReplacementRouter<Path>,
+    target: &RelativePath,
+) -> Result<Route, DispatchError>
 where
-    R: Router,
+    Path: Addressable,
 {
     let target_addr = router
-        .lookup(None, RelativeUri::from_str(target.node.as_str())?)
+        .lookup(RelativeUri::from_str(target.node.as_str())?)
         .await?;
     Ok(router.resolve_sender(target_addr).await?)
 }
 
 /// Factory to create and spawn new connection tasks.
-pub struct TaskFactory<DelegateRouterFac> {
-    request_tx: mpsc::Sender<RemoteRoutingRequest>,
+pub struct TaskFactory<Path> {
     stop_trigger: trigger::Receiver,
     configuration: RemoteConnectionsConfig,
-    delegate_router_fac: DelegateRouterFac,
+    router: ReplacementRouter<Path>,
 }
 
-impl<DelegateRouterFac> TaskFactory<DelegateRouterFac> {
+impl<Path> TaskFactory<Path> {
     pub fn new(
-        request_tx: mpsc::Sender<RemoteRoutingRequest>,
         stop_trigger: trigger::Receiver,
         configuration: RemoteConnectionsConfig,
-        delegate_router_fac: DelegateRouterFac,
+        router: ReplacementRouter<Path>,
     ) -> Self {
         TaskFactory {
-            request_tx,
             stop_trigger,
             configuration,
-            delegate_router_fac,
+            router,
         }
     }
 }
 
-impl<DelegateRouterFac> TaskFactory<DelegateRouterFac>
+impl<Path> TaskFactory<Path>
 where
-    DelegateRouterFac: RouterFactory + 'static,
+    Path: Addressable,
 {
     pub fn spawn_connection_task<Sock, Ext, Sp>(
         &self,
@@ -519,10 +520,9 @@ where
         Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>>,
     {
         let TaskFactory {
-            request_tx,
             stop_trigger,
             configuration,
-            delegate_router_fac,
+            router,
         } = self;
         let (msg_tx, msg_rx) = mpsc::channel(configuration.channel_buffer_size.get());
         let (bidirectional_request_tx, bidirectional_request_rx) =
@@ -531,7 +531,7 @@ where
         let task = ConnectionTask::new(
             tag,
             ws_stream,
-            RemoteRouter::new(tag, delegate_router_fac.create_for(tag), request_tx.clone()),
+            router.create_for(tag),
             (msg_tx.clone(), msg_rx),
             bidirectional_request_rx,
             stop_trigger.clone(),

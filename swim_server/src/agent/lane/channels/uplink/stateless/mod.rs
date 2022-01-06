@@ -26,9 +26,10 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use swim_form::Form;
 use swim_metrics::uplink::UplinkObserver;
-use swim_model::path::RelativePath;
+use swim_model::path::{Path, RelativePath};
 use swim_model::Value;
-use swim_runtime::routing::{Router, RoutingAddr, TaggedSender};
+use swim_runtime::router2::TaggedReplacementRouter;
+use swim_runtime::routing::{RoutingAddr, TaggedSender};
 use tokio::sync::mpsc;
 use tracing::{event, Level};
 
@@ -80,22 +81,20 @@ where
     S: Stream<Item = AddressedUplinkMessage<F>>,
     F: Send + Sync + Form + Debug + 'static,
 {
-    pub async fn run<R>(
+    pub async fn run(
         self,
         uplink_actions: impl Stream<Item = TaggedAction>,
-        router: R,
+        router: TaggedReplacementRouter<Path>,
         err_tx: mpsc::Sender<UplinkErrorReport>,
         yield_mod: usize,
-    ) where
-        R: Router,
-    {
+    ) {
         let StatelessUplinks {
             route,
             producer,
             uplink_kind,
             observer,
         } = self;
-        let mut uplinks: Uplinks<F, R> = Uplinks::new(router, err_tx, route);
+        let mut uplinks: Uplinks<F> = Uplinks::new(router, err_tx, route);
 
         let uplink_actions = uplink_actions.fuse();
         let producer = producer.fuse();
@@ -204,8 +203,8 @@ impl<R: Form> From<RespMsg<R>> for Value {
 }
 
 /// Wraps a map of uplinks and provides compound operations on them to the uplink task.
-struct Uplinks<Msg, R: Router> {
-    router: R,
+struct Uplinks<Msg> {
+    router: TaggedReplacementRouter<Path>,
     uplinks: HashMap<RoutingAddr, UplinkMessageSender<TaggedSender>>,
     err_tx: mpsc::Sender<UplinkErrorReport>,
     route: RelativePath,
@@ -214,12 +213,15 @@ struct Uplinks<Msg, R: Router> {
 
 struct RouterStopping;
 
-impl<Msg, R> Uplinks<Msg, R>
+impl<Msg> Uplinks<Msg>
 where
-    R: Router,
     Msg: Form + Send + Debug + 'static,
 {
-    fn new(router: R, err_tx: mpsc::Sender<UplinkErrorReport>, route: RelativePath) -> Self {
+    fn new(
+        router: TaggedReplacementRouter<Path>,
+        err_tx: mpsc::Sender<UplinkErrorReport>,
+        route: RelativePath,
+    ) -> Self {
         Uplinks {
             router,
             uplinks: HashMap::new(),
@@ -255,10 +257,7 @@ where
             &mut mpsc::Sender<UplinkErrorReport>,
         ),
         RouterStopping,
-    >
-    where
-        R: Router,
-    {
+    > {
         let Uplinks {
             router,
             uplinks,
@@ -295,10 +294,7 @@ where
         }
     }
 
-    async fn insert(&mut self, addr: RoutingAddr) -> Result<(), RouterStopping>
-    where
-        R: Router,
-    {
+    async fn insert(&mut self, addr: RoutingAddr) -> Result<(), RouterStopping> {
         let Uplinks {
             router,
             uplinks,
