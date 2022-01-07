@@ -589,7 +589,6 @@ async fn dispatch_meta() {
         assert!(envelope_tx.send(env.clone()).await.is_ok());
 
         let expected_env = Envelope::lane_not_found("/swim:meta:node/unit%2Ffoo/bar/fizz", "lane");
-
         let mut rx = context.take_receiver(&addr).unwrap();
         let TaggedEnvelope(_, env) = rx.recv().await.unwrap();
 

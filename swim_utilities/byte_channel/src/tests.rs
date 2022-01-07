@@ -52,11 +52,7 @@ async fn close_writer_empty() {
     let mut buf = BytesMut::new();
     let res = rx.read_buf(&mut buf).await;
 
-    if let Err(e) = res {
-        assert_eq!(e.kind(), ErrorKind::BrokenPipe);
-    } else {
-        panic!("Should fail.");
-    }
+    assert!(matches!(res, Ok(0)));
 }
 
 #[tokio::test]
@@ -132,11 +128,7 @@ async fn reader_sees_data_written_before_writer_cloed() {
 
     let r2 = rx.read_buf(&mut buf).await;
 
-    if let Err(e) = r2 {
-        assert_eq!(e.kind(), ErrorKind::BrokenPipe);
-    } else {
-        panic!("Should fail.")
-    }
+    assert!(matches!(r2, Ok(0)));
 }
 
 #[tokio::test]
@@ -173,8 +165,10 @@ async fn send_bulk() {
         let mut buf = BytesMut::new();
         buf.reserve(DATA_LEN);
         loop {
-            if rx.read_buf(&mut buf).await.is_err() {
-                break;
+            match rx.read_buf(&mut buf).await {
+                Ok(0) => break,
+                Ok(_) => continue,
+                Err(e) => panic!("Read error: {:?}", e),
             }
         }
         buf.to_vec()
@@ -208,8 +202,10 @@ async fn send_bulk_multi_threaded() {
         let mut buf = BytesMut::new();
         buf.reserve(DATA_LEN);
         loop {
-            if rx.read_buf(&mut buf).await.is_err() {
-                break;
+            match rx.read_buf(&mut buf).await {
+                Ok(0) => break,
+                Ok(_) => continue,
+                Err(e) => panic!("Read error: {:?}", e),
             }
         }
         buf.to_vec()

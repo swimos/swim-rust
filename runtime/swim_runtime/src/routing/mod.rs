@@ -18,6 +18,7 @@ use crate::error::{
 use std::convert::TryFrom;
 
 use crate::remote::RawOutRoute;
+use bytes::Buf;
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use std::fmt::{Display, Formatter};
@@ -87,9 +88,8 @@ impl RoutingAddr {
     }
 
     fn get_location(&self) -> u32 {
-        let RoutingAddr(location) = self;
-        let repr = <[u8; 4]>::try_from(&location.as_bytes()[12..]).unwrap();
-        u32::from_be_bytes(repr)
+        let mut slice = &self.0.as_bytes()[12..];
+        slice.get_u32()
     }
 }
 
