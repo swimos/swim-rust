@@ -15,13 +15,12 @@
 use super::tokens::{complete, streaming, string_literal};
 use super::Span;
 use crate::parser::record::ParseIterator;
-use crate::parser::ParseError;
+use crate::parser::{compare_values, record, ParseError};
 use either::Either;
 use nom::IResult;
 use std::borrow::Cow;
 use std::ops::{Add, Neg, Sub};
 use swim_form::structural::read::event::{NumericValue, ReadEvent};
-use swim_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
 use swim_model::bigint::{BigInt, BigUint};
 use swim_model::{Attr, Item, Text, Value};
 
@@ -1615,92 +1614,89 @@ fn attr_with_comments() {
 }
 
 #[test]
-fn tesst() {
+fn cmp_simple() {
     let first = "@name(a: 1, b: 2)";
-    let second = "@name({a: 1, b: 2})";
+    let second = "@name(a: 1, b: 2)";
 
-    //Todo dm these are not equal
-    // let first = "@name(@age(a: 1, b: 2))";
-    // let second = "@name({@age(a: 1, b: 2)})";
-
-    // let first = "{a:2}";
-    // let second = "{ a: 2 }";
-
-    // let first = "@tag(){}:1";
-    // let second = "@tag{}:1";
-
-    let mut it_1 = ParseIterator::new(Span::new(first), false).peekable();
-    let mut recognizer_1 = Value::make_recognizer();
-
-    let mut it_2 = ParseIterator::new(Span::new(second), false).peekable();
-    let mut recognizer_2 = Value::make_recognizer();
-
-    loop {
-        let mut stop = true;
-
-        if it_1.peek() != it_2.peek() {
-            eprintln!("it_1.peek() = {:?}", it_1.peek());
-            eprintln!("it_2.peek() = {:?}", it_2.peek());
-
-            if it_1.peek() == Some(&Ok(ReadEvent::StartBody)) {
-                if let Some(Ok(v)) = it_1.next() {
-                    if let Some(Ok(val)) = recognizer_1.feed_event(v) {
-                        eprintln!("val1 = {:#?}", val);
-                    }
-                    stop = false;
-                }
-            }
-
-            if it_1.peek() == Some(&Ok(ReadEvent::EndRecord)) {
-                if let Some(Ok(v)) = it_1.next() {
-                    if let Some(Ok(val)) = recognizer_1.feed_event(v) {
-                        eprintln!("val1 = {:#?}", val);
-                    }
-                    stop = false;
-                }
-            }
-
-            if it_2.peek() == Some(&Ok(ReadEvent::StartBody)) {
-                if let Some(Ok(v)) = it_2.next() {
-                    if let Some(Ok(val)) = recognizer_2.feed_event(v) {
-                        eprintln!("val2 = {:#?}", val);
-                    }
-                    stop = false;
-                }
-            }
-
-            if it_2.peek() == Some(&Ok(ReadEvent::EndRecord)) {
-                if let Some(Ok(v)) = it_2.next() {
-                    if let Some(Ok(val)) = recognizer_2.feed_event(v) {
-                        eprintln!("val2 = {:#?}", val);
-                    }
-                    stop = false;
-                }
-            }
-        }
-
-        if let Some(Ok(v)) = it_1.next() {
-            if let Some(Ok(val)) = recognizer_1.feed_event(v) {
-                eprintln!("val1 = {:#?}", val);
-            }
-            stop = false;
-        }
-
-        if let Some(Ok(v)) = it_2.next() {
-            if let Some(Ok(val)) = recognizer_2.feed_event(v) {
-                eprintln!("val2 = {:#?}", val);
-            }
-            stop = false;
-        }
-
-        // assert_eq!(recognizer_1, recognizer_2);
-
-        if stop {
-            break;
-        }
-    }
+    assert!(compare_values(first, second));
 
     let result_1 = value_from_string(first).unwrap();
     let result_2 = value_from_string(second).unwrap();
     assert_eq!(result_1, result_2);
+}
+
+#[test]
+fn cmp_complex() {
+    let first = "{a:2}";
+    let second = "{ a: 2 }";
+
+    assert!(compare_values(first, second));
+
+    let result_1 = value_from_string(first).unwrap();
+    let result_2 = value_from_string(second).unwrap();
+    assert_eq!(result_1, result_2);
+
+    let first = "@tag(){}:1";
+    let second = "@tag{}:1";
+
+    assert!(compare_values(first, second));
+
+    let result_1 = value_from_string(first).unwrap();
+    let result_2 = value_from_string(second).unwrap();
+    assert_eq!(result_1, result_2);
+
+    let first = "@name(a: 1, b: 2)";
+    let second = "@name({a: 1, b: 2})";
+
+    assert!(compare_values(first, second));
+
+    let result_1 = value_from_string(first).unwrap();
+    let result_2 = value_from_string(second).unwrap();
+    assert_eq!(result_1, result_2);
+}
+
+#[test]
+fn cmp_early_termination_simple() {
+    let first = "@name(a: 1, b: 2, c: 3)";
+    let second = "@name(a:1, b: 4, c: 3)";
+
+    let first_iter = &mut record::ParseIterator::new(Span::new(first), false).peekable();
+    let second_iter = &mut record::ParseIterator::new(Span::new(second), false).peekable();
+
+    assert!(!record::incremental_compare(first_iter, second_iter));
+    assert_eq!(
+        first_iter.next().unwrap().unwrap(),
+        ReadEvent::TextValue(Cow::from("c"))
+    );
+    assert_eq!(
+        second_iter.next().unwrap().unwrap(),
+        ReadEvent::TextValue(Cow::from("c"))
+    );
+
+    let result_1 = value_from_string(first).unwrap();
+    let result_2 = value_from_string(second).unwrap();
+    assert_ne!(result_1, result_2);
+}
+
+#[test]
+fn cmp_early_termination_complex() {
+    let first = "@name(a: 1, b: 2)";
+    let second = "@name(   {a: 3, b: 2}    )";
+
+    let first_iter = &mut record::ParseIterator::new(Span::new(first), false).peekable();
+    let second_iter = &mut record::ParseIterator::new(Span::new(second), false).peekable();
+
+    assert!(!record::incremental_compare(first_iter, second_iter));
+    assert_eq!(
+        first_iter.next().unwrap().unwrap(),
+        ReadEvent::TextValue(Cow::from("b"))
+    );
+    assert_eq!(
+        second_iter.next().unwrap().unwrap(),
+        ReadEvent::TextValue(Cow::from("b"))
+    );
+
+    let result_1 = value_from_string(first).unwrap();
+    let result_2 = value_from_string(second).unwrap();
+    assert_ne!(result_1, result_2);
 }

@@ -35,12 +35,36 @@ impl Default for RecordKey {
     }
 }
 
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, Eq)]
 struct RecordBuilder {
     key: RecordKey,
     attrs: Vec<Attr>,
     items: Vec<Item>,
     in_body: bool,
+}
+
+impl PartialEq for RecordBuilder {
+    fn eq(&self, other: &Self) -> bool {
+        if self.key == other.key && self.attrs == other.attrs && self.in_body == other.in_body {
+            if self.items.len() == other.items.len() {
+                return self.items == other.items;
+            } else if self.items.len() == 1 {
+                if let Some(Item::ValueItem(Value::Record(attr, items))) = self.items.get(0) {
+                    if attr.is_empty() {
+                        return items == &other.items;
+                    }
+                }
+            } else if other.items.len() == 1 {
+                if let Some(Item::ValueItem(Value::Record(attr, items))) = other.items.get(0) {
+                    if attr.is_empty() {
+                        return items == &self.items;
+                    }
+                }
+            }
+        }
+
+        false
+    }
 }
 
 impl RecordBuilder {
@@ -65,12 +89,29 @@ impl PartialEq for ValueMaterializer {
     fn eq(&self, other: &Self) -> bool {
         if self.slot_key.eq(&other.slot_key) {
             if self.stack.len() == other.stack.len() {
-                return self.stack.eq(&other.stack);
-            } else if let (Some(self_builder), Some(other_builder)) =
-                (self.stack.last(), other.stack.last())
-            {
-                //Todo dm maybe check more than just the items.
-                return self_builder.items.eq(&other_builder.items);
+                return self.stack == other.stack;
+            } else {
+                let (mut longer_iter, mut shorter_iter) = if self.stack.len() > other.stack.len() {
+                    (self.stack.iter().rev(), other.stack.iter().rev())
+                } else {
+                    (other.stack.iter().rev(), self.stack.iter().rev())
+                };
+
+                if let (
+                    Some(longer_builder_first),
+                    Some(longer_builder_second),
+                    Some(shorter_builder),
+                ) = (longer_iter.next(), longer_iter.next(), shorter_iter.next())
+                {
+                    if longer_builder_first.key == RecordKey::NoKey
+                        && longer_builder_first.items == shorter_builder.items
+                        && longer_builder_first.attrs == shorter_builder.attrs
+                        && longer_builder_second.key == shorter_builder.key
+                        && longer_builder_second.in_body == shorter_builder.in_body
+                    {
+                        return Iterator::eq(longer_iter, shorter_iter);
+                    }
+                }
             }
         }
         false
