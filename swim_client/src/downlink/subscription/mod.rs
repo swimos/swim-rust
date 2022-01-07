@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::connections::ConnectionSender;
 use crate::downlink::error::SubscriptionError;
 use crate::downlink::model::map::UntypedMapModification;
 use crate::downlink::model::value::SharedValue;
@@ -547,7 +546,7 @@ where
     pub async fn connection_for(
         &mut self,
         path: Path,
-    ) -> RequestResult<(ConnectionSender, impl Stream<Item = RouterEvent>), Path> {
+    ) -> RequestResult<(Route, impl Stream<Item = RouterEvent>), Path> {
         let host = path.host();
         let node_uri = path.node();
         let lane = path.lane();
@@ -567,14 +566,13 @@ where
         }
     }
 
-    pub async fn sink_for(&mut self, path: Path) -> RequestResult<ConnectionSender, Path> {
+    pub async fn sink_for(&mut self, path: Path) -> RequestResult<Route, Path> {
         let host = path.host();
         let node_uri = path.node();
         match RelativeUri::try_from(node_uri.as_str()) {
             Err(_) => Err(SubscriptionError::BadUri(node_uri)),
             Ok(node_uri) => {
-                let Route { sender, .. } = self.connections.get_sender(host, node_uri).await?;
-                Ok(sender)
+                Ok(self.connections.get_sender(host, node_uri).await?)
             }
         }
     }
@@ -1095,7 +1093,7 @@ async fn open_downlink<Path, RF>(
     lane: Text,
     mut retry_strategy: RetryStrategy,
     stop_trigger: CloseReceiver,
-) -> RequestResult<(ConnectionSender, impl Stream<Item = RouterEvent>), Path>
+) -> RequestResult<(Route, impl Stream<Item = RouterEvent>), Path>
 where
     RF: RouterFactory,
 {
@@ -1105,7 +1103,7 @@ where
             .await
         {
             Ok(ClientRoute {
-                route: Route { sender, .. },
+                route,
                 receiver,
                 rx_on_dropped,
                 handle_drop,
@@ -1115,7 +1113,7 @@ where
                     .filter_map(|TaggedEnvelope(_, env)| ready(env.into_response()));
                 let route_stream =
                     RouteStream::new(host, envelopes, rx_on_dropped, handle_drop, stop_trigger);
-                break Ok((sender, route_stream.into_stream()));
+                break Ok((route, route_stream.into_stream()));
             }
             Err(e) if e.is_fatal() => {
                 break Err(e.into());

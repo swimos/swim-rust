@@ -763,7 +763,6 @@ async fn send_lane_not_found<R>(
 {
     if let Ok(mut remote_route) = router.resolve_sender(remote_addr).await {
         if remote_route
-            .sender
             .send_item(Envelope::lane_not_found(node.as_str(), lane.as_str()))
             .await
             .is_err()

@@ -229,7 +229,7 @@ impl LaneIo<MockExecutionContext> for MockLane {
             return Err(AttachError::LaneStoppedReporting);
         }
         Ok(async move {
-            let mut senders: HashMap<RoutingAddr, TaggedSender> = HashMap::new();
+            let mut senders: HashMap<RoutingAddr, Route> = HashMap::new();
 
             let err = loop {
                 let next = envelopes.recv().await;
@@ -247,7 +247,7 @@ impl LaneIo<MockExecutionContext> for MockLane {
                             Entry::Occupied(entry) => entry.into_mut(),
                             Entry::Vacant(entry) => {
                                 if let Ok(sender) = router.resolve_sender(addr).await {
-                                    entry.insert(sender.sender)
+                                    entry.insert(sender)
                                 } else {
                                     break Some(LaneIoError::for_uplink_errors(
                                         route.clone(),

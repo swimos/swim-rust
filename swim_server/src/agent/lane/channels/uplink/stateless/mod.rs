@@ -28,7 +28,7 @@ use swim_form::Form;
 use swim_metrics::uplink::UplinkObserver;
 use swim_model::path::RelativePath;
 use swim_model::Value;
-use swim_runtime::routing::{Router, RoutingAddr, TaggedSender};
+use swim_runtime::routing::{Route, Router, RoutingAddr};
 use tokio::sync::mpsc;
 use tracing::{event, Level};
 
@@ -206,7 +206,7 @@ impl<R: Form> From<RespMsg<R>> for Value {
 /// Wraps a map of uplinks and provides compound operations on them to the uplink task.
 struct Uplinks<Msg, R: Router> {
     router: R,
-    uplinks: HashMap<RoutingAddr, UplinkMessageSender<TaggedSender>>,
+    uplinks: HashMap<RoutingAddr, UplinkMessageSender<Route>>,
     err_tx: mpsc::Sender<UplinkErrorReport>,
     route: RelativePath,
     _input: PhantomData<Msg>,
@@ -251,7 +251,7 @@ where
         addr: RoutingAddr,
     ) -> Result<
         (
-            &mut UplinkMessageSender<TaggedSender>,
+            &mut UplinkMessageSender<Route>,
             &mut mpsc::Sender<UplinkErrorReport>,
         ),
         RouterStopping,
@@ -270,7 +270,7 @@ where
             Entry::Occupied(entry) => Ok((entry.into_mut(), err_tx)),
             Entry::Vacant(vacant) => match router.resolve_sender(addr).await {
                 Ok(sender) => Ok((
-                    vacant.insert(UplinkMessageSender::new(sender.sender, route.clone())),
+                    vacant.insert(UplinkMessageSender::new(sender, route.clone())),
                     err_tx,
                 )),
                 _ => Err(RouterStopping),
@@ -310,7 +310,7 @@ where
             Entry::Occupied(_) => Ok(()),
             Entry::Vacant(vacant) => match router.resolve_sender(addr).await {
                 Ok(sender) => {
-                    vacant.insert(UplinkMessageSender::new(sender.sender, route.clone()));
+                    vacant.insert(UplinkMessageSender::new(sender, route.clone()));
                     Ok(())
                 }
                 _ => Err(RouterStopping),
@@ -335,7 +335,7 @@ where
             uplinks.remove(&addr);
             Ok(())
         } else if let Ok(sender) = router.resolve_sender(addr).await {
-            let mut sender = UplinkMessageSender::new(sender.sender, route.clone());
+            let mut sender = UplinkMessageSender::new(sender, route.clone());
             let _ = sender.send_item(msg).await;
             Ok(())
         } else {

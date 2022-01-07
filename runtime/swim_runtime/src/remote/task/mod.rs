@@ -467,8 +467,8 @@ where
             Ok(())
         }
         EnvelopeHeader::Request(target) => {
-            let Route { sender, .. } = if let Some(route) = resolved.get_mut(&target) {
-                if route.sender.is_closed() {
+            let route = if let Some(route) = resolved.get_mut(&target) {
+                if route.is_closed() {
                     resolved.remove(&target);
                     insert_new_route(router, resolved, &target)
                         .await
@@ -481,12 +481,9 @@ where
                     .await
                     .map_err(|err| (envelope.clone(), err))?
             };
-            if let Err(err) = sender.send_item(envelope).await {
-                if let Some(Route { on_drop, .. }) = resolved.remove(&target) {
-                    let reason = on_drop
-                        .await
-                        .map(|reason| (*reason).clone())
-                        .unwrap_or(ConnectionDropped::Unknown);
+            if let Err(err) = route.send_item(envelope).await {
+                if let Some(route) = resolved.remove(&target) {
+                    let reason = route.terminated().await;
                     Err((err.0, DispatchError::Dropped(reason)))
                 } else {
                     unreachable!();

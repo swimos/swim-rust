@@ -152,8 +152,8 @@ impl TaggedClientEnvelope {
 /// and a promise that will be satisfied when the endpoint closes.
 #[derive(Clone, Debug)]
 pub struct Route {
-    pub sender: TaggedSender,
-    pub on_drop: promise::Receiver<ConnectionDropped>,
+    sender: TaggedSender,
+    on_drop: promise::Receiver<ConnectionDropped>,
 }
 
 #[derive(Debug)]
@@ -244,6 +244,22 @@ impl Route {
     pub fn new(sender: TaggedSender, on_drop: promise::Receiver<ConnectionDropped>) -> Self {
         Route { sender, on_drop }
     }
+
+    pub fn is_closed(&self) -> bool {
+        self.sender.is_closed()
+    }
+
+    pub async fn send_item(&mut self, envelope: Envelope) -> Result<(), SendError<Envelope>> {
+        self.sender.send_item(envelope).await
+    }
+
+    pub async fn terminated(self) -> ConnectionDropped {
+        let Route { on_drop, ..} = self;
+        on_drop
+            .await
+            .map(|reason| (*reason).clone())
+            .unwrap_or(ConnectionDropped::Unknown)
+    }
 }
 
 /// Trait for routers capable of resolving addresses and returning connections to them.
@@ -310,6 +326,15 @@ impl<'a> ItemSink<'a, Envelope> for TaggedSender {
 
     fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
         self.send_item(value).boxed()
+    }
+}
+
+impl<'a> ItemSink<'a, Envelope> for Route {
+    type Error = SendError<Envelope>;
+    type SendFuture = BoxFuture<'a, Result<(), Self::Error>>;
+
+    fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
+        self.sender.send_item(value).boxed()
     }
 }
 

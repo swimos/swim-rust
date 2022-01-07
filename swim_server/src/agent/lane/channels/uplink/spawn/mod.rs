@@ -235,7 +235,7 @@ where
         let uplink = Uplink::new(state_machine, ReceiverStream::new(rx).fuse(), updates);
 
         let sink = if let Ok(sender) = router.resolve_sender(addr).await {
-            UplinkMessageSender::new(sender.sender, route.clone())
+            UplinkMessageSender::new(sender, route.clone())
         } else {
             return None;
         };

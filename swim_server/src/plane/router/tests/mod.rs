@@ -59,7 +59,6 @@ async fn plane_router_get_sender() {
         assert!(result1.is_ok());
         let mut sender = result1.unwrap();
         assert!(sender
-            .sender
             .send_item(Envelope::linked().node_uri("/node").lane_uri("lane").done())
             .await
             .is_ok());
