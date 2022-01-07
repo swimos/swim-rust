@@ -16,7 +16,6 @@ use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::{AgentResult, AgentTaskResult};
 use crate::plane::context::PlaneContext;
 use crate::plane::lifecycle::PlaneLifecycle;
-use crate::plane::router::PlaneRouter;
 use crate::plane::{AgentInternals, AgentRoute, EnvChannel, RouteAndParameters};
 use futures::future::BoxFuture;
 use futures::{FutureExt, StreamExt};
@@ -29,7 +28,7 @@ use std::any::Any;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_async_runtime::time::clock::Clock;
-use swim_runtime::routing::{Router, TaggedEnvelope};
+use swim_runtime::routing::TaggedEnvelope;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
@@ -99,20 +98,12 @@ pub const RECEIVER_PREFIX: &str = "receiver";
 const LANE_NAME: &str = "receiver_lane";
 const MESSAGE: &str = "ping!";
 
-impl<Clk: Clock, Delegate: Router + 'static>
-    AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>, SwimNodeStore<MockPlaneStore>>
-    for SendAgentRoute
-{
+impl<Clk: Clock> AgentRoute<Clk, EnvChannel, SwimNodeStore<MockPlaneStore>> for SendAgentRoute {
     fn run_agent(
         &self,
         route: RouteAndParameters,
         execution_config: AgentExecutionConfig,
-        agent_internals: AgentInternals<
-            Clk,
-            EnvChannel,
-            PlaneRouter<Delegate>,
-            SwimNodeStore<MockPlaneStore>,
-        >,
+        agent_internals: AgentInternals<Clk, EnvChannel, SwimNodeStore<MockPlaneStore>>,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
         let AgentInternals {
             incoming_envelopes,
@@ -157,20 +148,12 @@ impl<Clk: Clock, Delegate: Router + 'static>
     }
 }
 
-impl<Clk: Clock, Delegate>
-    AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>, SwimNodeStore<MockPlaneStore>>
-    for ReceiveAgentRoute
-{
+impl<Clk: Clock> AgentRoute<Clk, EnvChannel, SwimNodeStore<MockPlaneStore>> for ReceiveAgentRoute {
     fn run_agent(
         &self,
         route: RouteAndParameters,
         execution_config: AgentExecutionConfig,
-        agent_internals: AgentInternals<
-            Clk,
-            EnvChannel,
-            PlaneRouter<Delegate>,
-            SwimNodeStore<MockPlaneStore>,
-        >,
+        agent_internals: AgentInternals<Clk, EnvChannel, SwimNodeStore<MockPlaneStore>>,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
         let AgentInternals {
             incoming_envelopes, ..

@@ -14,13 +14,11 @@
 
 use crate::interface::ServerDownlinksConfig;
 use crate::plane::lifecycle::PlaneLifecycle;
-use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::spec::RouteSpec;
 use crate::plane::tests::fixture::{ReceiveAgentRoute, SendAgentRoute, TestLifecycle};
 use crate::plane::{
     AgentRoute, ContextImpl, EnvChannel, PlaneActiveRoutes, PlaneSpec, RouteResolver,
 };
-use crate::routing::TopLevelServerRouterFactory;
 use futures::future::join;
 use server_store::plane::mock::MockPlaneStore;
 use std::sync::Arc;
@@ -30,9 +28,8 @@ use swim_async_runtime::time::timeout;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::ClientContext;
-use swim_client::router::ClientRouterFactory;
 use swim_runtime::configuration::DownlinkConnectionsConfig;
-use swim_runtime::routing::Router;
+use swim_runtime::remote::router::Router;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::open_ended::OpenEndedFutures;
 use swim_utilities::routing::route_pattern::RoutePattern;
@@ -42,8 +39,8 @@ use tokio::sync::mpsc;
 
 mod fixture;
 
-fn make_spec<Clk: Clock, Delegate: Router + 'static>() -> (
-    PlaneSpec<Clk, EnvChannel, PlaneRouter<Delegate>, MockPlaneStore>,
+fn make_spec<Clk: Clock>() -> (
+    PlaneSpec<Clk, EnvChannel, MockPlaneStore>,
     trigger::Receiver,
 ) {
     let send_pattern = RoutePattern::parse(
@@ -85,14 +82,7 @@ async fn plane_event_loop() {
 
     let (stop_tx, stop_rx) = promise::promise();
     let config = fixture::make_config();
-
-    let (remote_tx, _remote_rx) = mpsc::channel(8);
-    let (client_tx, _client_rx) = mpsc::channel(8);
-    let top_level_router_fac =
-        TopLevelServerRouterFactory::new(context_tx.clone(), client_tx, remote_tx);
-
     let context = ContextImpl::new(context_tx.clone(), spec.routes());
-
     let lifecycle = spec.take_lifecycle();
 
     let (client_tx, client_rx) = mpsc::channel(8);
@@ -100,15 +90,12 @@ async fn plane_event_loop() {
     let (plane_tx, _plane_rx) = mpsc::channel(8);
     let (_close_tx, close_rx) = promise::promise();
 
-    let top_level_factory =
-        TopLevelServerRouterFactory::new(plane_tx, client_tx.clone(), remote_tx);
-
-    let client_router_fac = ClientRouterFactory::new(client_tx.clone(), top_level_factory);
+    let router = Router::server(client_tx.clone(), plane_tx.clone(), remote_tx);
 
     let (conn_pool, _pool_task) = SwimConnPool::new(
         DownlinkConnectionsConfig::default(),
         (client_tx, client_rx),
-        client_router_fac,
+        router.clone(),
         close_rx.clone(),
     );
 
@@ -126,7 +113,7 @@ async fn plane_event_loop() {
         client,
         config,
         spec,
-        PlaneRouterFactory::new(context_tx, top_level_router_fac.clone()),
+        router,
         stop_rx.clone(),
         PlaneActiveRoutes::default(),
     );

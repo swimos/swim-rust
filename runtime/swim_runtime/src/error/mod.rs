@@ -147,13 +147,21 @@ pub enum ConnectionError {
     Transport(Arc<BoxRecoverableError>),
 }
 
-use crate::remote::router::RoutingError as ReplacementRoutingError;
+use crate::remote::router::{ResolutionErrorReplacement, RoutingError as ReplacementRoutingError};
 impl From<ReplacementRoutingError> for ConnectionError {
     fn from(e: ReplacementRoutingError) -> Self {
         match e {
-            ReplacementRoutingError::Resolution(target) => ConnectionError::Resolution(
-                ResolutionError::new(ResolutionErrorKind::Unresolvable, target),
-            ),
+            ReplacementRoutingError::Resolution(target) => match target {
+                ResolutionErrorReplacement::Unresolvable => ConnectionError::Resolution(
+                    ResolutionError::new(ResolutionErrorKind::Unresolvable, None),
+                ),
+                ResolutionErrorReplacement::NoAgentAtRoute(route) => {
+                    ConnectionError::Resolution(ResolutionError::new(
+                        ResolutionErrorKind::Unresolvable,
+                        Some(route.to_string()),
+                    ))
+                }
+            },
             ReplacementRoutingError::Connection(e) => e,
             ReplacementRoutingError::RouterDropped => ConnectionError::Resolution(
                 ResolutionError::new(ResolutionErrorKind::RouterDropped, None),

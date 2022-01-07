@@ -14,8 +14,9 @@
 
 use crate::error::{CloseError, CloseErrorKind, ConnectionError};
 use crate::remote::pending::{PendingRequest, PendingRequests};
+use crate::remote::router::{BidirectionalRequest, RoutingError};
 use crate::remote::table::{BidirectionalRegistrator, SchemeHostPort};
-use crate::remote::{BidirectionalRequest, Scheme};
+use crate::remote::Scheme;
 use crate::routing::{RoutingAddr, TaggedSender};
 use futures::future::join;
 use swim_utilities::future::request::Request;
@@ -38,9 +39,8 @@ async fn add_single_and_send_err() {
     let result = rx.await;
     assert_eq!(
         result,
-        Ok(Err(ConnectionError::Closed(CloseError::new(
-            CloseErrorKind::ClosedRemotely,
-            None,
+        Ok(Err(RoutingError::Connection(ConnectionError::Closed(
+            CloseError::new(CloseErrorKind::ClosedRemotely, None,)
         ))))
     );
 }
@@ -61,11 +61,11 @@ async fn add_single_bidirectional_and_send_err() {
     let result = rx.await;
     assert!(matches!(
         result,
-        Ok(Err(ConnectionError::Closed(err))) if err == CloseError::new(
+        Ok(Err(RoutingError::Connection(ConnectionError::Closed(err)))) if err == CloseError::new(
             CloseErrorKind::ClosedRemotely,
             None,
-        )
-    ));
+
+    )));
 }
 
 #[tokio::test]
@@ -89,13 +89,11 @@ async fn add_two_and_send_err() {
     assert_eq!(
         results,
         (
-            Ok(Err(ConnectionError::Closed(CloseError::new(
-                CloseErrorKind::ClosedRemotely,
-                None,
+            Ok(Err(RoutingError::Connection(ConnectionError::Closed(
+                CloseError::new(CloseErrorKind::ClosedRemotely, None,)
             )))),
-            Ok(Err(ConnectionError::Closed(CloseError::new(
-                CloseErrorKind::ClosedRemotely,
-                None,
+            Ok(Err(RoutingError::Connection(ConnectionError::Closed(
+                CloseError::new(CloseErrorKind::ClosedRemotely, None,)
             ))))
         )
     );

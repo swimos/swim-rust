@@ -14,7 +14,7 @@
 
 use crate::remote::router::{
     callback, Address, DownlinkRoutingRequest, PlaneRoutingRequest, RemoteRoutingRequest,
-    RoutingError,
+    ResolutionErrorReplacement, RoutingError,
 };
 use crate::remote::table::BidirectionalRegistrator;
 use crate::remote::RawRoute;
@@ -82,7 +82,9 @@ impl<Path> Router<Path> {
                     })
                     .await
                 }
-                None => Err(RoutingError::Resolution(None)),
+                None => Err(RoutingError::Resolution(
+                    ResolutionErrorReplacement::Unresolvable,
+                )),
             },
             RoutingAddrKind::Client => {
                 let _ = client;
@@ -113,13 +115,15 @@ impl<Path> Router<Path> {
                     callback(|callback| {
                         tx.send(PlaneRoutingRequest::Resolve {
                             host: None,
-                            name: address.uri().clone(),
+                            route: address.uri().clone(),
                             request: Request::new(callback),
                         })
                     })
                     .await
                 }
-                None => Err(RoutingError::Resolution(None)),
+                None => Err(RoutingError::Resolution(
+                    ResolutionErrorReplacement::NoAgentAtRoute(address.uri().clone()),
+                )),
             },
         }
     }

@@ -37,7 +37,7 @@ use swim_model::path::RelativePath;
 use swim_model::Value;
 use swim_runtime::compat::{Operation, RequestMessage};
 use swim_runtime::error::{ConnectionDropped, ResolutionError, RouterError};
-use swim_runtime::routing::{Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender};
+use swim_runtime::routing::{Route, RoutingAddr, TaggedEnvelope, TaggedSender};
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger;
@@ -144,7 +144,6 @@ pub struct MockExecutionContext {
 }
 
 impl AgentExecutionContext for MockExecutionContext {
-    type Router = MockRouter;
     type Store = SwimNodeStore<MockPlaneStore>;
 
     fn router_handle(&self) -> Self::Router {

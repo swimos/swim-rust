@@ -30,7 +30,8 @@ use swim_runtime::configuration::DownlinkConnectionsConfig;
 use swim_runtime::error::ConnectionDropped;
 use swim_runtime::error::{CloseError, ConnectionError, HttpError, ResolutionError};
 use swim_runtime::remote::router::{
-    ConnectionType, DownlinkRoutingRequest, Router, RouterEvent, RoutingError, TaggedRouter,
+    ConnectionType, DownlinkRoutingRequest, ResolutionErrorReplacement, Router, RouterEvent,
+    RoutingError, TaggedRouter,
 };
 use swim_runtime::remote::RawRoute;
 use swim_runtime::routing::{
@@ -243,9 +244,9 @@ impl<Path: Addressable> PoolTask<Path> {
                                 {
                                     if let RegistratorRequest::Resolve { request } = err.0 {
                                         if request
-                                            .send(Err(RoutingError::Resolution(Some(
-                                                addr.to_string(),
-                                            ))))
+                                            .send(Err(RoutingError::Resolution(
+                                                ResolutionErrorReplacement::Unresolvable,
+                                            )))
                                             .is_err()
                                         {
                                             event!(Level::ERROR, REQUEST_ERROR);
@@ -255,7 +256,9 @@ impl<Path: Addressable> PoolTask<Path> {
                             }
                             None => {
                                 if request
-                                    .send(Err(RoutingError::Resolution(Some(addr.to_string()))))
+                                    .send(Err(RoutingError::Resolution(
+                                        ResolutionErrorReplacement::Unresolvable,
+                                    )))
                                     .is_err()
                                 {
                                     event!(Level::ERROR, REQUEST_ERROR);

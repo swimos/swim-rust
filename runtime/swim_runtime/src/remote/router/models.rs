@@ -56,7 +56,7 @@ pub enum PlaneRoutingRequest {
     /// Resolve the routing address for an agent.
     Resolve {
         host: Option<Url>,
-        name: RelativeUri,
+        route: RelativeUri,
         request: ResolutionRequest,
     },
     /// Get all of the active routes for the plane.

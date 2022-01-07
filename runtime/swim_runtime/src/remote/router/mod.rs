@@ -12,10 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(test)]
-mod tests;
+// todo router
+// #[cfg(test)]
+// mod tests;
 
 mod error;
+pub mod fixture;
 mod models;
 mod replacement;
 

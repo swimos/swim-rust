@@ -18,7 +18,7 @@ use crate::router::tests::{FakeConnections, MockRemoteRouterTask};
 use futures::join;
 use swim_model::path::AbsolutePath;
 use swim_runtime::configuration::{DownlinkConfig, DownlinkConnectionsConfig, OnInvalidMessage};
-use swim_runtime::router2::Router;
+use swim_runtime::remote::router::Router;
 use swim_runtime::routing::CloseSender;
 use swim_utilities::algebra::non_zero_usize;
 use tokio::time::Duration;

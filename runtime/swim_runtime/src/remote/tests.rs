@@ -14,11 +14,11 @@
 
 use crate::error::{ConnectionError, IoError, ResolutionError, ResolutionErrorKind};
 use crate::remote::pending::PendingRequest;
+use crate::remote::router::{BidirectionalRequest, ResolutionErrorReplacement, RoutingError};
 use crate::remote::state::{DeferredResult, Event, RemoteTasksState};
 use crate::remote::table::{BidirectionalRegistrator, RoutingTable, SchemeHostPort};
 use crate::remote::{
-    BidirectionalRequest, ConnectionDropped, RawRoute, RemoteRoutingRequest, Scheme,
-    SchemeSocketAddr, SchemeSocketAddrIt, Unresolvable,
+    ConnectionDropped, RawRoute, RemoteRoutingRequest, Scheme, SchemeSocketAddr, SchemeSocketAddrIt,
 };
 use crate::routing::{RoutingAddr, TaggedEnvelope};
 use futures::FutureExt;
@@ -263,7 +263,9 @@ async fn transition_request_endpoint_not_in_table() {
     assert!(result.is_ok());
 
     let result = req_rx.await;
-    assert!(matches!(result, Ok(Err(Unresolvable(a))) if a == addr));
+    assert!(
+        matches!(result, Ok(Err(RoutingError::Resolution(ResolutionErrorReplacement::NoAgentAtRoute(a)))) if a == addr.to_string())
+    );
 }
 
 #[tokio::test]

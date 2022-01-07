@@ -12,33 +12,53 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::error::{ConnectionError, ResolutionError};
+use crate::error::{ConnectionError, ResolutionError, ResolutionErrorKind};
 use swim_utilities::errors::Recoverable;
+use swim_utilities::routing::uri::RelativeUri;
 use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq)]
 pub enum RoutingError {
     #[error("`{0:?}`")]
-    Resolution(Option<String>),
+    Resolution(ResolutionErrorReplacement),
     #[error("`{0}`")]
     Connection(#[from] ConnectionError),
     #[error("Router dropped")]
     RouterDropped,
 }
 
+#[derive(Error, Debug, PartialEq)]
+pub enum ResolutionErrorReplacement {
+    #[error("Unresolvable")]
+    Unresolvable,
+    #[error("No agent at route: `{0}`")]
+    NoAgentAtRoute(RelativeUri),
+}
+
 impl Recoverable for RoutingError {
     fn is_fatal(&self) -> bool {
         match self {
-            RoutingError::Resolution(_) => false,
+            RoutingError::Resolution(_) => true,
             RoutingError::Connection(e) => e.is_fatal(),
             RoutingError::RouterDropped => true,
         }
     }
 }
 
+impl From<ResolutionErrorReplacement> for RoutingError {
+    fn from(e: ResolutionErrorReplacement) -> Self {
+        RoutingError::Resolution(e)
+    }
+}
+
 impl From<ResolutionError> for RoutingError {
-    fn from(_: ResolutionError) -> Self {
-        RoutingError::Resolution(None)
+    fn from(e: ResolutionError) -> Self {
+        match e.kind() {
+            ResolutionErrorKind::Unresolvable => {
+                RoutingError::Resolution(ResolutionErrorReplacement::Unresolvable)
+            }
+            ResolutionErrorKind::RouterDropped => RoutingError::RouterDropped,
+        }
     }
 }
 

@@ -17,7 +17,6 @@ use crate::agent::tests::test_clock::TestClock;
 use crate::agent::AgentContext;
 use crate::interface::ServerDownlinksConfig;
 use crate::meta::meta_context_sink;
-use crate::routing::TopLevelServerRouterFactory;
 use futures::future::BoxFuture;
 use server_store::agent::mock::MockNodeStore;
 use server_store::agent::SwimNodeStore;
@@ -30,10 +29,10 @@ use swim_async_runtime::time::clock::Clock;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::ClientContext;
-use swim_client::router::ClientRouterFactory;
 use swim_runtime::configuration::DownlinkConnectionsConfig;
 use swim_runtime::error::{ResolutionError, RouterError};
-use swim_runtime::routing::{Route, Router, RoutingAddr};
+use swim_runtime::remote::router::Router;
+use swim_runtime::routing::{Route, RoutingAddr};
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
@@ -42,49 +41,28 @@ use tokio::sync::mpsc;
 use tokio::time::Duration;
 use url::Url;
 
-#[derive(Clone)]
-struct MockRouter {}
-
-impl Router for MockRouter {
-    fn resolve_sender(
-        &mut self,
-        _addr: RoutingAddr,
-    ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
-        unimplemented!()
-    }
-
-    fn lookup(
-        &mut self,
-        _host: Option<Url>,
-        _route: RelativeUri,
-    ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
-        unimplemented!()
-    }
-}
-
 #[test]
 fn simple_accessors() {
     let (tx, _rx) = mpsc::channel(1);
     let (_close, close_sig) = trigger::trigger();
     let agent = Arc::new("agent");
-    let routing_context =
-        RoutingContext::new("/node".parse().unwrap(), MockRouter {}, HashMap::new());
-    let schedule_context = SchedulerContext::new(tx, TestClock::default(), close_sig.clone());
-
     let (client_tx, client_rx) = mpsc::channel(8);
     let (remote_tx, _remote_rx) = mpsc::channel(8);
     let (plane_tx, _plane_rx) = mpsc::channel(8);
+    let router = Router::server(client_tx.clone(), plane_tx.clone(), remote_tx.clone());
+
     let (_close_tx, close_rx) = promise::promise();
-
-    let top_level_factory =
-        TopLevelServerRouterFactory::new(plane_tx, client_tx.clone(), remote_tx);
-
-    let client_router_fac = ClientRouterFactory::new(client_tx.clone(), top_level_factory);
+    let routing_context = RoutingContext::new(
+        "/node".parse().unwrap(),
+        router.tagged(RoutingAddr::remote(0)),
+        HashMap::new(),
+    );
+    let schedule_context = SchedulerContext::new(tx, TestClock::default(), close_sig.clone());
 
     let (conn_pool, _pool_task) = SwimConnPool::new(
         DownlinkConnectionsConfig::default(),
         (client_tx, client_rx),
-        client_router_fac,
+        router.clone(),
         close_rx.clone(),
     );
 
@@ -118,7 +96,7 @@ fn create_context(
     n: usize,
     clock: TestClock,
     close_trigger: trigger::Receiver,
-) -> ContextImpl<&'static str, impl Clock, MockRouter, SwimNodeStore<MockPlaneStore>> {
+) -> ContextImpl<&'static str, impl Clock, SwimNodeStore<MockPlaneStore>> {
     let (tx, mut rx) = mpsc::channel(n);
 
     //Run any tasks that get scheduled.
@@ -130,25 +108,25 @@ fn create_context(
         }
     });
 
-    let agent = Arc::new("agent");
-    let routing_context =
-        RoutingContext::new("/node".parse().unwrap(), MockRouter {}, HashMap::new());
-    let schedule_context = SchedulerContext::new(tx, clock, close_trigger);
-
     let (client_tx, client_rx) = mpsc::channel(8);
     let (remote_tx, _remote_rx) = mpsc::channel(8);
     let (plane_tx, _plane_rx) = mpsc::channel(8);
     let (_close_tx, close_rx) = promise::promise();
 
-    let top_level_factory =
-        TopLevelServerRouterFactory::new(plane_tx, client_tx.clone(), remote_tx);
+    let router = Router::server(client_tx.clone(), plane_tx, remote_tx);
 
-    let client_router_fac = ClientRouterFactory::new(client_tx.clone(), top_level_factory);
+    let agent = Arc::new("agent");
+    let routing_context = RoutingContext::new(
+        "/node".parse().unwrap(),
+        router.tagged(RoutingAddr::plane(1024)),
+        HashMap::new(),
+    );
+    let schedule_context = SchedulerContext::new(tx, clock, close_trigger);
 
     let (conn_pool, _pool_task) = SwimConnPool::new(
         DownlinkConnectionsConfig::default(),
         (client_tx, client_rx),
-        client_router_fac,
+        router,
         close_rx.clone(),
     );
 

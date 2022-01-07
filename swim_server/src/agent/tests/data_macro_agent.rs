@@ -26,7 +26,6 @@ use crate::agent::tests::test_clock::TestClock;
 use crate::agent::{AgentContext, AgentParameters};
 use crate::interface::ServerDownlinksConfig;
 use crate::plane::provider::AgentProvider;
-use crate::routing::TopLevelServerRouterFactory;
 use crate::{
     action_lifecycle, agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent,
 };
@@ -42,8 +41,8 @@ use stm::transaction::atomically;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::ClientContext;
-use swim_client::router::ClientRouterFactory;
 use swim_runtime::configuration::DownlinkConnectionsConfig;
+use swim_runtime::remote::router::Router;
 use swim_runtime::routing::RoutingAddr;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
@@ -548,15 +547,12 @@ async fn agent_loop() {
     let (plane_tx, _plane_rx) = mpsc::channel(8);
     let (_close_tx, close_rx) = promise::promise();
 
-    let top_level_factory =
-        TopLevelServerRouterFactory::new(plane_tx, client_tx.clone(), remote_tx);
-
-    let client_router_fac = ClientRouterFactory::new(client_tx.clone(), top_level_factory);
+    let router = Router::server(client_tx.clone(), plane_tx.clone(), remote_tx);
 
     let (conn_pool, _pool_task) = SwimConnPool::new(
         DownlinkConnectionsConfig::default(),
         (client_tx, client_rx),
-        client_router_fac,
+        router.clone(),
         close_rx.clone(),
     );
 
@@ -574,7 +570,7 @@ async fn agent_loop() {
         clock.clone(),
         client,
         ReceiverStream::new(envelope_rx),
-        SingleChannelRouter::new(RoutingAddr::plane(1024)),
+        router.tagged(RoutingAddr::plane(1024)),
         MockNodeStore::mock(),
     );
 

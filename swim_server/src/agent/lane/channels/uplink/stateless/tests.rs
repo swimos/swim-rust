@@ -18,11 +18,11 @@ use futures::future::{join, join3, ready, BoxFuture};
 use futures::{FutureExt, StreamExt};
 use std::convert::TryFrom;
 use swim_runtime::error::{ConnectionDropped, RouterError};
-use swim_runtime::routing::{Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender};
+use swim_runtime::routing::{Route, RoutingAddr, TaggedEnvelope, TaggedSender};
 use tokio::sync::mpsc;
 
 use std::sync::Arc;
-use swim_model::path::RelativePath;
+use swim_model::path::{Path, RelativePath};
 use swim_warp::envelope::Envelope;
 
 use crate::agent::lane::channels::uplink::stateless::StatelessUplinks;
@@ -40,6 +40,7 @@ use swim_metrics::uplink::{
 };
 use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
 use swim_runtime::error::ResolutionError;
+use swim_runtime::remote::router::TaggedRouter;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger;
@@ -98,10 +99,9 @@ struct TestContext(
 );
 
 impl AgentExecutionContext for TestContext {
-    type Router = TestRouter;
     type Store = SwimNodeStore<MockPlaneStore>;
 
-    fn router_handle(&self) -> Self::Router {
+    fn router_handle(&self) -> TaggedRouter<Path> {
         self.0.clone()
     }
 

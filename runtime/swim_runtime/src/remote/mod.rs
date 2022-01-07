@@ -45,7 +45,9 @@ use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use tracing::{event, Level};
 
-use crate::remote::router::{RemoteRoutingRequest, Router, RoutingError};
+use crate::remote::router::{
+    RemoteRoutingRequest, ResolutionErrorReplacement, Router, RoutingError,
+};
 use ratchet::WebSocketStream;
 use swim_model::path::Addressable;
 use swim_tracing::request::{RequestExt, TryRequestExt};
@@ -256,7 +258,9 @@ fn update_state<State: RemoteTasksState>(
             let result = if let Some(tx) = state.table_resolve(addr) {
                 Ok(tx)
             } else {
-                Err(RoutingError::Resolution(None))
+                Err(RoutingError::Resolution(
+                    ResolutionErrorReplacement::Unresolvable,
+                ))
             };
             request.send_debug(result, REQUEST_DROPPED);
         }
@@ -268,7 +272,7 @@ fn update_state<State: RemoteTasksState>(
                             request.send_ok_debug(bidirectional_route, REQUEST_DROPPED);
                         } else {
                             request.send_err_debug(
-                                RoutingError::Resolution(Some(host.to_string())),
+                                RoutingError::Resolution(ResolutionErrorReplacement::Unresolvable),
                                 UNRESOLVABLE_BIDIRECTIONAL,
                             );
                         }

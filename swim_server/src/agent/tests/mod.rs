@@ -44,7 +44,6 @@ use crate::interface::ServerDownlinksConfig;
 use crate::meta::info::LaneKind;
 use crate::meta::log::NodeLogger;
 use crate::plane::provider::AgentProvider;
-use crate::routing::TopLevelServerRouterFactory;
 use futures::future::{join, BoxFuture};
 use futures::Stream;
 use server_store::agent::mock::MockNodeStore;
@@ -56,9 +55,9 @@ use swim_async_runtime::task;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::ClientContext;
-use swim_client::router::ClientRouterFactory;
 use swim_model::path::Path;
 use swim_runtime::configuration::DownlinkConnectionsConfig;
+use swim_runtime::remote::router::Router;
 use swim_runtime::routing::RoutingAddr;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
@@ -75,7 +74,7 @@ pub mod stub_router {
     use futures::FutureExt;
     use std::sync::Arc;
     use swim_runtime::error::{ConnectionDropped, ResolutionError, RouterError};
-    use swim_runtime::routing::{Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender};
+    use swim_runtime::routing::{Route, RoutingAddr, TaggedEnvelope, TaggedSender};
     use swim_utilities::routing::uri::RelativeUri;
     use swim_utilities::trigger::promise;
     use tokio::sync::mpsc;
@@ -785,15 +784,12 @@ pub async fn run_agent_test<Agent, Config, Lifecycle>(
     let (plane_tx, _plane_rx) = mpsc::channel(8);
     let (_close_tx, close_rx) = promise::promise();
 
-    let top_level_factory =
-        TopLevelServerRouterFactory::new(plane_tx, client_tx.clone(), remote_tx);
-
-    let client_router_fac = ClientRouterFactory::new(client_tx.clone(), top_level_factory);
+    let router = Router::server(client_tx.clone(), plane_tx.clone(), remote_tx);
 
     let (conn_pool, _pool_task) = SwimConnPool::new(
         DownlinkConnectionsConfig::default(),
         (client_tx, client_rx),
-        client_router_fac,
+        router.clone(),
         close_rx.clone(),
     );
 
@@ -814,7 +810,7 @@ pub async fn run_agent_test<Agent, Config, Lifecycle>(
         clock.clone(),
         client,
         ReceiverStream::new(envelope_rx),
-        SingleChannelRouter::new(RoutingAddr::plane(1024)),
+        router.tagged(RoutingAddr::plane(1024)),
         MockNodeStore::mock(),
     );
 

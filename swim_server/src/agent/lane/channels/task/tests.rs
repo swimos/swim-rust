@@ -55,11 +55,14 @@ use swim_metrics::lane::LanePulse;
 use swim_metrics::node::NodePulse;
 use swim_metrics::uplink::{MetricBackpressureConfig, UplinkObserver, WarpUplinkPulse};
 use swim_metrics::{AggregatorError, MetaPulseLanes, NodeMetricAggregator};
-use swim_model::path::RelativePath;
+use swim_model::path::{Path, RelativePath};
 use swim_model::Value;
 use swim_runtime::compat::RequestMessage;
 use swim_runtime::error::{ConnectionDropped, ResolutionError, RouterError};
-use swim_runtime::routing::{Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender};
+use swim_runtime::remote::router::fixture::{router_fixture, RouterCallback};
+use swim_runtime::remote::router::{PlaneRoutingRequest, Router, TaggedRouter};
+use swim_runtime::remote::RawRoute;
+use swim_runtime::routing::{Route, RoutingAddr, TaggedEnvelope, TaggedSender};
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::item_sink::ItemSink;
 use swim_utilities::future::item_sink::SendError;
@@ -71,6 +74,7 @@ use swim_utilities::trigger::{self, promise};
 use swim_warp::envelope::Envelope;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Mutex};
+use tokio::task::JoinHandle;
 use tokio::time::timeout;
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
@@ -374,6 +378,7 @@ impl LaneMessageHandler for TestHandler {
 
 #[derive(Clone)]
 struct TestContext {
+    router: TaggedRouter<Path>,
     scheduler: mpsc::Sender<Eff>,
     messages: mpsc::Sender<TaggedEnvelope>,
     trigger: Arc<Mutex<Option<trigger::Sender>>>,
@@ -390,11 +395,6 @@ impl TestContext {
             tx.trigger();
         }
     }
-}
-
-struct TestRouter {
-    sender: mpsc::Sender<TaggedEnvelope>,
-    drop_rx: promise::Receiver<ConnectionDropped>,
 }
 
 #[derive(Clone, Debug)]
@@ -419,39 +419,35 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
     }
 }
 
-impl Router for TestRouter {
-    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
-        let TestRouter {
-            sender, drop_rx, ..
-        } = self;
-        ready(Ok(Route::new(
-            TaggedSender::new(addr, sender.clone()),
-            drop_rx.clone(),
-        )))
-        .boxed()
-    }
+struct TestRouter {
+    sender: mpsc::Sender<TaggedEnvelope>,
+    drop_rx: promise::Receiver<ConnectionDropped>,
+}
 
-    fn lookup(
-        &mut self,
-        _host: Option<Url>,
-        _route: RelativeUri,
-    ) -> BoxFuture<'static, Result<RoutingAddr, RouterError>> {
-        panic!("Unexpected resolution attempt.")
+impl RouterCallback<PlaneRoutingRequest> for TestRouter {
+    fn call(&mut self, arg: PlaneRoutingRequest) -> BoxFuture<()> {
+        match arg {
+            PlaneRoutingRequest::Endpoint { request, .. } => {
+                let TestRouter {
+                    sender, drop_rx, ..
+                } = self;
+
+                let _ = request.send(Ok(RawRoute::new(sender.clone(), drop_rx.clone())));
+            }
+            req => {
+                panic!("Unexpected request: {:?}", req)
+            }
+        }
+
+        ready(()).boxed()
     }
 }
 
 impl AgentExecutionContext for TestContext {
-    type Router = TestRouter;
     type Store = SwimNodeStore<MockPlaneStore>;
 
-    fn router_handle(&self) -> Self::Router {
-        let TestContext {
-            messages, drop_rx, ..
-        } = self;
-        TestRouter {
-            sender: messages.clone(),
-            drop_rx: drop_rx.clone(),
-        }
+    fn router_handle(&self) -> TaggedRouter<Path> {
+        self.router.clone()
     }
 
     fn spawner(&self) -> Sender<Eff> {
@@ -1446,7 +1442,7 @@ impl RouteReceiver {
 #[derive(Debug)]
 struct MultiTestContextInner {
     router_addr: RoutingAddr,
-    senders: HashMap<RoutingAddr, Route>,
+    senders: HashMap<RoutingAddr, RawRoute>,
     receivers: HashMap<RoutingAddr, RouteReceiver>,
 }
 
@@ -1462,6 +1458,7 @@ impl MultiTestContextInner {
 
 #[derive(Debug, Clone)]
 struct MultiTestContext(
+    TaggedRouter<Path>,
     Arc<parking_lot::Mutex<MultiTestContextInner>>,
     mpsc::Sender<Eff>,
     RelativeUri,
@@ -1470,6 +1467,8 @@ struct MultiTestContext(
 
 impl MultiTestContext {
     fn new(router_addr: RoutingAddr, spawner: mpsc::Sender<Eff>) -> Self {
+        let (router, _task) = router_fixture((), (), ());
+
         MultiTestContext(
             Arc::new(parking_lot::Mutex::new(MultiTestContextInner::new(
                 router_addr,
@@ -1485,7 +1484,8 @@ impl MultiTestContext {
         if let std::collections::hash_map::Entry::Vacant(e) = lock.senders.entry(addr) {
             let (tx, rx) = mpsc::channel(5);
             let (drop_tx, drop_rx) = promise::promise();
-            e.insert(Route::new(TaggedSender::new(addr, tx), drop_rx));
+
+            e.insert(RawRoute::new(tx, drop_rx));
             lock.receivers.insert(addr, RouteReceiver::taken(drop_tx));
             Some(rx)
         } else {
@@ -1496,15 +1496,63 @@ impl MultiTestContext {
     }
 }
 
+mod router {
+    use crate::agent::lane::channels::task::tests::{MultiTestContextInner, RouteReceiver};
+    use futures_util::future::BoxFuture;
+    use std::sync::Arc;
+    use swim_model::path::Path;
+    use swim_runtime::remote::router::fixture::{invalid, router_fixture, RouterCallback};
+    use swim_runtime::remote::router::{PlaneRoutingRequest, Router};
+    use swim_runtime::remote::RawRoute;
+    use swim_utilities::trigger::promise;
+    use tokio::sync::mpsc;
+    use tokio::task::JoinHandle;
+
+    pub fn plane(
+        inner: Arc<parking_lot::Mutex<MultiTestContextInner>>,
+    ) -> (Router<Path>, JoinHandle<()>) {
+        router_fixture(PlaneRouter(inner), invalid, invalid)
+    }
+
+    struct PlaneRouter(Arc<parking_lot::Mutex<MultiTestContextInner>>);
+
+    impl RouterCallback<PlaneRoutingRequest> for PlaneRouter {
+        fn call(&mut self, request: PlaneRoutingRequest) -> BoxFuture<()> {
+            let mut lock = self.0.lock();
+
+            Box::pin(async move {
+                match request {
+                    PlaneRoutingRequest::Agent { .. } => panic!("Unexpected agent request"),
+                    PlaneRoutingRequest::Endpoint { addr, request } => {
+                        let result = if let Some(sender) = lock.senders.get(&addr) {
+                            Ok(sender.clone())
+                        } else {
+                            let (tx, rx) = mpsc::channel(5);
+                            let (drop_tx, drop_rx) = promise::promise();
+                            let route = RawRoute::new(tx, drop_rx);
+                            lock.senders.insert(addr, route.clone());
+                            lock.receivers.insert(addr, RouteReceiver::new(rx, drop_tx));
+                            Ok(route)
+                        };
+
+                        let _ = request.send(result);
+                    }
+                    PlaneRoutingRequest::Resolve { .. } => panic!("Unexpected resolution request"),
+                    PlaneRoutingRequest::Routes(_) => panic!("Unexpected routes request"),
+                }
+            })
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct MultiTestRouter(Arc<parking_lot::Mutex<MultiTestContextInner>>);
 
 impl AgentExecutionContext for MultiTestContext {
-    type Router = MultiTestRouter;
     type Store = SwimNodeStore<MockPlaneStore>;
 
-    fn router_handle(&self) -> Self::Router {
-        MultiTestRouter(self.0.clone())
+    fn router_handle(&self) -> TaggedRouter<Path> {
+        self.0.clone()
     }
 
     fn spawner(&self) -> Sender<Eff> {
@@ -1535,6 +1583,39 @@ impl AgentExecutionContext for MultiTestContext {
 
     fn store(&self) -> Self::Store {
         MockNodeStore::mock()
+    }
+}
+
+fn r() {
+    struct MultiTestRouter(Arc<parking_lot::Mutex<MultiTestContextInner>>);
+
+    impl RouterCallback<PlaneRoutingRequest> for MultiTestRouter {
+        fn call(&mut self, arg: PlaneRoutingRequest) -> BoxFuture<()> {
+            let mut lock = self.0.lock();
+
+            Box::pin(async move {
+                match arg {
+                    PlaneRoutingRequest::Agent { .. } => {}
+                    PlaneRoutingRequest::Endpoint { addr, request } => {
+                        let result = if let Some(sender) = lock.senders.get(&addr) {
+                            Ok(sender.clone())
+                        } else {
+                            let (tx, rx) = mpsc::channel(5);
+                            let (drop_tx, drop_rx) = promise::promise();
+                            let route = RawRoute::new(tx, drop_rx);
+                            lock.senders.insert(addr, route.clone());
+                            lock.receivers.insert(addr, RouteReceiver::new(rx, drop_tx));
+                            Ok(route)
+                        };
+
+                        let _ = request.send(result);
+                    }
+                    req => {
+                        panic!("Unexpected request: {:?}", req)
+                    }
+                }
+            })
+        }
     }
 }
 

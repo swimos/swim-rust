@@ -39,10 +39,11 @@ use swim_form::structural::read::ReadError;
 use swim_form::Form;
 use swim_metrics::config::MetricAggregatorConfig;
 use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
-use swim_model::path::RelativePath;
+use swim_model::path::{Path, RelativePath};
 use swim_model::Value;
 use swim_runtime::error::{ConnectionDropped, ResolutionError, RouterError};
-use swim_runtime::routing::{Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender};
+use swim_runtime::remote::router::TaggedRouter;
+use swim_runtime::routing::{Route, RoutingAddr, TaggedEnvelope, TaggedSender};
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::item_sink::ItemSink;
 use swim_utilities::future::item_sink::SendError;
@@ -306,6 +307,7 @@ fn make_config() -> AgentExecutionConfig {
 }
 
 struct TestContext {
+    router: TaggedRouter<Path>,
     spawner: mpsc::Sender<Eff>,
     messages: mpsc::Sender<TaggedEnvelope>,
     _drop_tx: promise::Sender<ConnectionDropped>,
@@ -329,7 +331,6 @@ impl TestContext {
 }
 
 impl AgentExecutionContext for TestContext {
-    type Router = TestRouter;
     type Store = SwimNodeStore<MockPlaneStore>;
 
     fn router_handle(&self) -> Self::Router {

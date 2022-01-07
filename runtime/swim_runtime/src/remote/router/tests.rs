@@ -13,10 +13,10 @@
 // limitations under the License.
 
 use crate::error::{ConnectionError, IoError, ResolutionError, RouterError, Unresolvable};
-use crate::remote::router::RemoteRouter;
+use crate::remote::router::RoutingError;
 use crate::remote::test_fixture::LocalRoutes;
 use crate::remote::{RawRoute, RemoteRoutingRequest};
-use crate::routing::{Route, Router, RoutingAddr, TaggedEnvelope};
+use crate::routing::{Route, RoutingAddr, TaggedEnvelope};
 use futures::future::join;
 use futures::io::ErrorKind;
 use futures::{FutureExt, StreamExt};
@@ -49,7 +49,9 @@ async fn fake_resolution(
                         .send_ok(RawRoute::new(sender.clone(), drop_rx.clone()))
                         .is_ok());
                 } else {
-                    assert!(request.send_err(Unresolvable(addr)).is_ok());
+                    assert!(request
+                        .send_err(RoutingError::Resolution(Some(addr.to_string())))
+                        .is_ok());
                 }
             }
             RemoteRoutingRequest::ResolveUrl { host, request } => {
@@ -58,7 +60,10 @@ async fn fake_resolution(
                     assert!(request.send_ok(ADDR).is_ok());
                 } else {
                     assert!(request
-                        .send_err(ConnectionError::Io(IoError::new(ErrorKind::NotFound, None)))
+                        .send_err(RoutingError::Connection(ConnectionError::Io(IoError::new(
+                            ErrorKind::NotFound,
+                            None
+                        ))))
                         .is_ok());
                 }
             }

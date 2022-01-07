@@ -20,7 +20,7 @@ use crate::remote::state::{
 };
 use crate::remote::table::{BidirectionalRegistrator, SchemeHostPort};
 use crate::remote::test_fixture::connections::{FakeConnections, FakeListener, FakeWebsockets};
-use crate::remote::test_fixture::LocalRoutes;
+use crate::remote::test_fixture::{LocalRoutes, RouteTable};
 use crate::remote::{ConnectionDropped, Scheme, SchemeSocketAddr};
 use crate::routing::{CloseSender, RoutingAddr, TaggedSender};
 use futures::future::BoxFuture;
@@ -31,6 +31,7 @@ use std::collections::HashMap;
 use std::io;
 use std::time::Duration;
 use swim_async_runtime::time::timeout::timeout;
+use swim_model::path::Path;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::open_ended::OpenEndedFutures;
 use swim_utilities::future::request::Request;
@@ -41,12 +42,11 @@ use tokio::sync::{mpsc, oneshot};
 
 type TestSpawner = OpenEndedFutures<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>>;
 type TestConnections<'a> =
-    RemoteConnections<'a, FakeConnections, FakeWebsockets, TestSpawner, LocalRoutes>;
+    RemoteConnections<'a, FakeConnections, FakeWebsockets, TestSpawner, Path>;
 
 struct TestFixture<'a> {
     connections: TestConnections<'a>,
     fake_connections: FakeConnections,
-    local: LocalRoutes,
     stop_trigger: CloseSender,
 }
 
@@ -67,7 +67,9 @@ fn make_state(
     };
 
     let fake_connections = FakeConnections::new(HashMap::new(), HashMap::new(), None, 0);
-    let router = LocalRoutes::new(addr);
+    let table = RouteTable::new(addr);
+
+    let (router, _jh) = LocalRoutes::from_table(table);
 
     let (stop_tx, stop_rx) = promise::promise();
     let (remote_tx, remote_rx) = mpsc::channel(8);
@@ -78,7 +80,7 @@ fn make_state(
         OpenEndedFutures::new(),
         fake_connections.clone(),
         Some(FakeListener::new(incoming)),
-        router.clone(),
+        router,
         RemoteConnectionChannels {
             request_tx: remote_tx,
             request_rx: remote_rx,
@@ -89,7 +91,6 @@ fn make_state(
     TestFixture {
         connections,
         fake_connections,
-        local: router,
         stop_trigger: stop_tx,
     }
 }
@@ -102,7 +103,6 @@ async fn connections_state_stop_when_idle() {
     let TestFixture {
         mut connections,
         fake_connections: _fake_connections,
-        local: _local,
         stop_trigger: _stop_trigger,
     } = make_state(addr, &ws, incoming_rx);
 
@@ -124,7 +124,6 @@ fn connections_state_next_addr() {
     let TestFixture {
         mut connections,
         fake_connections: _fake_connections,
-        local: _local,
         stop_trigger: _stop_trigger,
     } = make_state(addr, &ws, incoming_rx);
 
@@ -145,7 +144,6 @@ async fn connections_state_spawn_task() {
     let TestFixture {
         mut connections,
         fake_connections: _fake_connections,
-        local: _local,
         stop_trigger: _stop_trigger,
     } = make_state(addr, &ws, incoming_rx);
 
@@ -187,7 +185,6 @@ async fn connections_state_defer_handshake() {
     let TestFixture {
         mut connections,
         fake_connections: _fake_connections,
-        local: _local,
         stop_trigger: _stop_trigger,
     } = make_state(addr, &ws, incoming_rx);
 
@@ -219,7 +216,6 @@ async fn connections_state_defer_connect_good() {
     let TestFixture {
         mut connections,
         fake_connections,
-        local: _local,
         stop_trigger: _stop_trigger,
     } = make_state(addr, &ws, incoming_rx);
 
@@ -255,7 +251,6 @@ async fn connections_state_defer_connect_failed() {
     let TestFixture {
         mut connections,
         fake_connections,
-        local: _local,
         stop_trigger: _stop_trigger,
     } = make_state(addr, &ws, incoming_rx);
 
@@ -301,7 +296,6 @@ async fn connections_state_defer_dns_good() {
     let TestFixture {
         mut connections,
         fake_connections,
-        local: _local,
         stop_trigger: _stop_trigger,
     } = make_state(addr, &ws, incoming_rx);
 
@@ -358,7 +352,6 @@ async fn connections_state_defer_dns_failed() {
     let TestFixture {
         mut connections,
         fake_connections: _fake_connections,
-        local: _local,
         stop_trigger: _stop_trigger,
     } = make_state(addr, &ws, incoming_rx);
 
@@ -412,7 +405,6 @@ async fn connections_failure_triggers_pending() {
     let TestFixture {
         mut connections,
         fake_connections: _fake_connections,
-        local: _local,
         stop_trigger: _stop_trigger,
     } = make_state(addr, &ws, incoming_rx);
 
@@ -441,7 +433,6 @@ async fn connections_check_in_table_clears_pending() {
     let TestFixture {
         mut connections,
         fake_connections: _fake_connections,
-        local: _local,
         stop_trigger: _stop_trigger,
     } = make_state(addr, &ws, incoming_rx);
 
@@ -486,7 +477,6 @@ async fn connections_state_shutdown_process() {
     let TestFixture {
         mut connections,
         fake_connections: _fake_connections,
-        local: _local,
         stop_trigger,
     } = make_state(addr, &ws, incoming_rx);
 

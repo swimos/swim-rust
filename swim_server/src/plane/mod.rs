@@ -35,7 +35,9 @@ use swim_model::path::Path;
 use swim_runtime::error::{
     ConnectionDropped, ConnectionError, NoAgentAtRoute, ProtocolError, ProtocolErrorKind,
 };
-use swim_runtime::remote::router::{PlaneRoutingRequest, Router, RoutingError, TaggedRouter};
+use swim_runtime::remote::router::{
+    PlaneRoutingRequest, ResolutionErrorReplacement, Router, RoutingError, TaggedRouter,
+};
 use swim_runtime::remote::RawRoute;
 use swim_runtime::routing::{CloseReceiver, RoutingAddr, TaggedEnvelope};
 use swim_utilities::future::request::Request;
@@ -504,7 +506,9 @@ pub async fn run_plane<Clk, S, Store>(
                         {
                             Ok(tx)
                         } else {
-                            Err(RoutingError::Resolution(Some(id.to_string())))
+                            Err(RoutingError::Resolution(
+                                ResolutionErrorReplacement::Unresolvable,
+                            ))
                         };
                         if request.send(result).is_err() {
                             event!(Level::WARN, DROPPED_REQUEST);
@@ -513,7 +517,9 @@ pub async fn run_plane<Clk, S, Store>(
                         event!(Level::TRACE, GETTING_REMOTE_ENDPOINT, ?id);
                         //TODO Attach external routing here.
                         if request
-                            .send_err(RoutingError::Resolution(Some(id.to_string())))
+                            .send_err(RoutingError::Resolution(
+                                ResolutionErrorReplacement::Unresolvable,
+                            ))
                             .is_err()
                         {
                             event!(Level::WARN, DROPPED_REQUEST);
@@ -522,7 +528,7 @@ pub async fn run_plane<Clk, S, Store>(
                 }
                 Either::Left(Some(PlaneRoutingRequest::Resolve {
                     host: None,
-                    name,
+                    route: name,
                     request,
                 })) => {
                     event!(Level::TRACE, RESOLVING, ?name);
@@ -534,9 +540,9 @@ pub async fn run_plane<Clk, S, Store>(
                     } else {
                         match resolver.try_open_route(route, spawner.deref()) {
                             Ok((_, addr)) => Ok(addr),
-                            Err(NoAgentAtRoute(uri)) => {
-                                Err(RoutingError::Resolution(Some(uri.to_string())))
-                            }
+                            Err(NoAgentAtRoute(uri)) => Err(RoutingError::Resolution(
+                                ResolutionErrorReplacement::NoAgentAtRoute(uri),
+                            )),
                         }
                     };
                     if request.send(result).is_err() {
@@ -545,7 +551,7 @@ pub async fn run_plane<Clk, S, Store>(
                 }
                 Either::Left(Some(PlaneRoutingRequest::Resolve {
                     host: Some(host_url),
-                    name,
+                    route: name,
                     request,
                 })) => {
                     event!(Level::TRACE, RESOLVING, ?host_url, ?name);
