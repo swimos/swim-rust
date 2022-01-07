@@ -29,25 +29,21 @@ use crate::downlink::{
     DownlinkError, DownlinkKind, Message, SchemaViolations,
 };
 use crate::router::ClientConnectionFactory;
-use crate::router::RouterEvent;
 use either::Either;
-use futures::future::{ready, select, Either as FEither, TryFutureExt};
+use futures::future::TryFutureExt;
 use futures::select_biased;
-use futures::stream::{unfold, FuturesUnordered, StreamExt};
+use futures::stream::{FuturesUnordered, StreamExt};
 use futures::{FutureExt, Stream};
 use pin_utils::pin_mut;
 use std::collections::HashMap;
-use std::io::ErrorKind;
 use std::sync::{Arc, Weak};
 use swim_form::Form;
 use swim_model::path::Addressable;
 use swim_model::{Text, Value};
 use swim_runtime::backpressure;
 use swim_runtime::configuration::{BackpressureMode, DownlinkConnectionsConfig, DownlinksConfig};
-use swim_runtime::error::{ConnectionDropped, ConnectionError, RoutingError};
-use swim_runtime::routing::{
-    ClientRoute, ClientRouteMonitor, CloseReceiver, Route, RouterFactory, TaggedEnvelope,
-};
+use swim_runtime::error::RoutingError;
+use swim_runtime::routing::{ClientRoute, CloseReceiver, Route, RouterEvent, RouterFactory};
 use swim_schema::schema::StandardSchema;
 use swim_schema::ValueSchema;
 use swim_utilities::errors::Recoverable;
@@ -59,7 +55,7 @@ use swim_utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture};
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::sync::circular_buffer;
 use swim_utilities::trigger::promise::{self, PromiseError};
-use swim_warp::envelope::{Envelope, ResponseEnvelope};
+use swim_warp::envelope::Envelope;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{error, info, instrument, trace_span};
@@ -571,9 +567,7 @@ where
         let node_uri = path.node();
         match RelativeUri::try_from(node_uri.as_str()) {
             Err(_) => Err(SubscriptionError::BadUri(node_uri)),
-            Ok(node_uri) => {
-                Ok(self.connections.get_sender(host, node_uri).await?)
-            }
+            Ok(node_uri) => Ok(self.connections.get_sender(host, node_uri).await?),
         }
     }
 
@@ -1101,19 +1095,10 @@ where
         match connections
             .create_endpoint(host.clone(), node_uri.clone(), lane.clone())
             .await
+            .map(ClientRoute::split)
         {
-            Ok(ClientRoute {
-                route,
-                receiver,
-                rx_on_dropped,
-                handle_drop,
-                ..
-            }) => {
-                let envelopes = ReceiverStream::new(receiver)
-                    .filter_map(|TaggedEnvelope(_, env)| ready(env.into_response()));
-                let route_stream =
-                    RouteStream::new(host, envelopes, rx_on_dropped, handle_drop, stop_trigger);
-                break Ok((route, route_stream.into_stream()));
+            Ok((route, client_receiver)) => {
+                break Ok((route, client_receiver.into_stream(host, stop_trigger)));
             }
             Err(e) if e.is_fatal() => {
                 break Err(e.into());
@@ -1128,83 +1113,5 @@ where
                 }
             },
         }
-    }
-}
-
-struct RouteStream<S> {
-    host: Option<Url>,
-    stream: S,
-    on_dropped: Option<promise::Receiver<ConnectionDropped>>,
-    _monitor: ClientRouteMonitor,
-    stop_trigger: CloseReceiver,
-}
-
-impl<S> RouteStream<S> {
-    fn new(
-        host: Option<Url>,
-        stream: S,
-        on_dropped: promise::Receiver<ConnectionDropped>,
-        monitor: ClientRouteMonitor,
-        stop_trigger: CloseReceiver,
-    ) -> Self {
-        RouteStream {
-            host,
-            stream,
-            on_dropped: Some(on_dropped),
-            _monitor: monitor,
-            stop_trigger,
-        }
-    }
-}
-
-impl<S> RouteStream<S>
-where
-    S: Stream<Item = ResponseEnvelope> + Unpin,
-{
-    fn into_stream(self) -> impl Stream<Item = RouterEvent> {
-        unfold(self, |mut rs| async move {
-            let RouteStream {
-                host,
-                stream,
-                on_dropped,
-                stop_trigger,
-                ..
-            } = &mut rs;
-            if let Some(dropped) = on_dropped {
-                let event = match select(stream.next(), stop_trigger).await {
-                    FEither::Left((Some(env), _)) => RouterEvent::Message(env),
-                    FEither::Left(_) => {
-                        let result = dropped.await;
-                        *on_dropped = None;
-                        if let Ok(reason) = result {
-                            match &*reason {
-                                ConnectionDropped::Failed(ConnectionError::Resolution(name)) => {
-                                    RouterEvent::Unreachable(name.clone())
-                                }
-                                ConnectionDropped::Failed(ConnectionError::Io(e)) => {
-                                    match (e.kind(), host) {
-                                        (ErrorKind::NotFound, Some(host)) => {
-                                            RouterEvent::Unreachable(host.to_string())
-                                        }
-                                        _ => RouterEvent::ConnectionClosed,
-                                    }
-                                }
-                                ConnectionDropped::Failed(_) => RouterEvent::ConnectionClosed,
-                                _ => RouterEvent::ConnectionClosed,
-                            }
-                        } else {
-                            RouterEvent::ConnectionClosed
-                        }
-                    }
-                    FEither::Right(_) => {
-                        *on_dropped = None;
-                        RouterEvent::Stopping
-                    }
-                };
-                Some((event, rs))
-            } else {
-                None
-            }
-        })
     }
 }

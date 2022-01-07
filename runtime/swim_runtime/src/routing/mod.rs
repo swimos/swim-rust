@@ -20,12 +20,13 @@ use std::convert::TryFrom;
 use crate::remote::RawOutRoute;
 use bytes::Buf;
 use futures::future::BoxFuture;
-use futures::FutureExt;
+use futures::{FutureExt, Stream};
 use std::fmt::{Display, Formatter};
+use std::io::ErrorKind;
 use swim_utilities::future::item_sink::{ItemSink, SendError};
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger::promise;
-use swim_warp::envelope::{Envelope, RequestEnvelope};
+use swim_warp::envelope::{Envelope, RequestEnvelope, ResponseEnvelope};
 use tokio::sync::mpsc;
 use url::Url;
 use uuid::Uuid;
@@ -158,11 +159,126 @@ pub struct Route {
 
 #[derive(Debug)]
 pub struct ClientRoute {
-    pub tag: RoutingAddr,
-    pub route: Route,
-    pub receiver: mpsc::Receiver<TaggedEnvelope>,
-    pub rx_on_dropped: promise::Receiver<ConnectionDropped>,
-    pub handle_drop: ClientRouteMonitor,
+    route: Route,
+    receiver: ClientReceiver,
+}
+
+#[derive(Debug)]
+pub struct ClientReceiver {
+    tag: RoutingAddr,
+    receiver: mpsc::Receiver<TaggedEnvelope>,
+    rx_on_dropped: promise::Receiver<ConnectionDropped>,
+    handle_drop: ClientRouteMonitor,
+}
+
+use futures::future::{ready, select, Either};
+use futures::stream::unfold;
+use futures::StreamExt;
+use tokio_stream::wrappers::ReceiverStream;
+
+/// The Router events are emitted by the connection streams of the router and indicate
+/// messages or errors from the remote host.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RouterEvent {
+    // Incoming message from a remote host.
+    Message(ResponseEnvelope),
+    // There was an error in the connection. If a retry strategy exists this will trigger it.
+    ConnectionClosed,
+    /// The remote host is unreachable. This will not trigger the retry system.
+    Unreachable(String),
+    // The router is stopping.
+    Stopping,
+}
+
+struct RouteStream<S> {
+    host: Option<Url>,
+    stream: S,
+    on_dropped: Option<promise::Receiver<ConnectionDropped>>,
+    _monitor: ClientRouteMonitor,
+    stop_trigger: CloseReceiver,
+}
+
+impl<S> RouteStream<S> {
+    fn new(
+        host: Option<Url>,
+        stream: S,
+        on_dropped: promise::Receiver<ConnectionDropped>,
+        monitor: ClientRouteMonitor,
+        stop_trigger: CloseReceiver,
+    ) -> Self {
+        RouteStream {
+            host,
+            stream,
+            on_dropped: Some(on_dropped),
+            _monitor: monitor,
+            stop_trigger,
+        }
+    }
+}
+
+impl ClientReceiver {
+    pub fn into_stream(
+        self,
+        host: Option<Url>,
+        stop_trigger: CloseReceiver,
+    ) -> impl Stream<Item = RouterEvent> {
+        let ClientReceiver {
+            receiver,
+            rx_on_dropped,
+            handle_drop,
+            ..
+        } = self;
+
+        let stream = ReceiverStream::new(receiver)
+            .filter_map(|TaggedEnvelope(_, env)| ready(env.into_response()));
+
+        let seed = RouteStream::new(host, stream, rx_on_dropped, handle_drop, stop_trigger);
+
+        unfold(seed, |mut rs| async move {
+            let RouteStream {
+                host,
+                stream,
+                on_dropped,
+                stop_trigger,
+                ..
+            } = &mut rs;
+            if let Some(dropped) = on_dropped {
+                let event = match select(stream.next(), stop_trigger).await {
+                    Either::Left((Some(env), _)) => RouterEvent::Message(env),
+                    Either::Left(_) => {
+                        let result = dropped.await;
+                        *on_dropped = None;
+                        if let Ok(reason) = result {
+                            match &*reason {
+                                ConnectionDropped::Failed(ConnectionError::Resolution(name)) => {
+                                    RouterEvent::Unreachable(name.clone())
+                                }
+                                ConnectionDropped::Failed(ConnectionError::Io(e)) => {
+                                    match (e.kind(), host) {
+                                        (ErrorKind::NotFound, Some(host)) => {
+                                            RouterEvent::Unreachable(host.to_string())
+                                        }
+                                        _ => RouterEvent::ConnectionClosed,
+                                    }
+                                }
+                                ConnectionDropped::Failed(_) => RouterEvent::ConnectionClosed,
+                                _ => RouterEvent::ConnectionClosed,
+                            }
+                        } else {
+                            RouterEvent::ConnectionClosed
+                        }
+                    }
+                    Either::Right(_) => {
+                        *on_dropped = None;
+                        RouterEvent::Stopping
+                    }
+                };
+                Some((event, rs))
+            } else {
+                None
+            }
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -182,12 +298,19 @@ impl ClientRoute {
         handle_drop: ClientRouteMonitor,
     ) -> Self {
         ClientRoute {
-            tag,
             route,
-            receiver,
-            rx_on_dropped,
-            handle_drop,
+            receiver: ClientReceiver {
+                tag,
+                receiver,
+                rx_on_dropped,
+                handle_drop,
+            },
         }
+    }
+
+    pub fn split(self) -> (Route, ClientReceiver) {
+        let ClientRoute { route, receiver } = self;
+        (route, receiver)
     }
 }
 
@@ -254,7 +377,7 @@ impl Route {
     }
 
     pub async fn terminated(self) -> ConnectionDropped {
-        let Route { on_drop, ..} = self;
+        let Route { on_drop, .. } = self;
         on_drop
             .await
             .map(|reason| (*reason).clone())
