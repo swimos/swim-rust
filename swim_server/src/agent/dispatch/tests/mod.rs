@@ -466,7 +466,6 @@ async fn fatal_failed_attachment() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn dispatch_meta() {
     let mut map = HashMap::new();
 
@@ -583,7 +582,7 @@ async fn dispatch_meta() {
 
         let addr = make_addr();
         let env = RequestMessage::link(
-            make_addr(),
+            addr,
             RelativePath::new("/swim:meta:node/unit%2Ffoo/bar/fizz", "lane"),
         );
 
