@@ -50,6 +50,7 @@ use url::Url;
 
 use ratchet::WebSocketStream;
 pub use router::{RemoteRouter, RemoteRouterFactory};
+use swim_model::Text;
 use swim_tracing::request::{RequestExt, TryRequestExt};
 use swim_utilities::routing::uri::RelativeUri;
 
@@ -79,14 +80,16 @@ type ClientRequest = Request<Result<UnroutableClient, Unresolvable>>;
 pub struct AttachClientRequest {
     pub addr: RoutingAddr,
     pub node: RelativeUri,
+    pub lane: Text,
     pub request: ClientRequest,
 }
 
 impl AttachClientRequest {
-    pub fn new(addr: RoutingAddr, node: RelativeUri, request: ClientRequest) -> Self {
+    pub fn new(addr: RoutingAddr, node: RelativeUri, lane: Text, request: ClientRequest) -> Self {
         AttachClientRequest {
             addr,
             node,
+            lane,
             request,
         }
     }

@@ -20,6 +20,7 @@ use futures::{FutureExt, StreamExt};
 use pin_utils::pin_mut;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
+use swim_model::Text;
 use swim_runtime::error::{
     CloseError, ConnectionDropped, ConnectionError, ResolutionError, RouterError, Unresolvable,
 };
@@ -349,12 +350,13 @@ impl<RF: RouterFactory> ClientConnectionFactory<RF> {
         &mut self,
         host: Option<Url>,
         node_uri: RelativeUri,
+        lane: Text,
     ) -> Result<ClientRoute, RouterError> {
         let addr = self.router_factory.lookup(host, node_uri.clone()).await?;
         if addr.is_remote() {
             let endpoint_addr = self.new_unroutable().await?;
             let (tx, rx) = oneshot::channel();
-            let request = AttachClientRequest::new(addr, node_uri, Request::new(tx));
+            let request = AttachClientRequest::new(addr, node_uri, lane, Request::new(tx));
             if self
                 .remote
                 .send(RemoteRoutingRequest::AttachClient { request })

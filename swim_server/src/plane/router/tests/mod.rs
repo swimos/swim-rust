@@ -14,17 +14,15 @@
 
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::routing::{PlaneRoutingRequest, TopLevelServerRouter, TopLevelServerRouterFactory};
+use crate::uri::RelativeUri;
 use futures::future::join;
-use swim_runtime::error::{
-    ConnectionError, ResolutionErrorKind, RouterError, Unresolvable,
-};
+use swim_runtime::error::{ConnectionError, ResolutionErrorKind, RouterError, Unresolvable};
 use swim_runtime::remote::RawOutRoute;
 use swim_runtime::routing::{Router, RouterFactory, RoutingAddr, TaggedEnvelope};
 use swim_utilities::trigger::promise;
 use swim_warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use url::Url;
-use crate::uri::RelativeUri;
 
 #[tokio::test]
 async fn plane_router_get_sender() {
@@ -113,11 +111,7 @@ async fn plane_router_resolve() {
 
     let provider_task = async move {
         while let Some(req) = req_rx.recv().await {
-            if let PlaneRoutingRequest::Resolve {
-                name,
-                request,
-            } = req
-            {
+            if let PlaneRoutingRequest::Resolve { name, request } = req {
                 if name == "/node" {
                     assert!(request.send_ok(addr).is_ok());
                 } else {
@@ -135,11 +129,11 @@ async fn plane_router_resolve() {
 
         let uri: RelativeUri = "/node".parse().unwrap();
 
-        let result2 = router
-            .lookup(Some(host.clone()), uri.clone())
-            .await;
+        let result2 = router.lookup(Some(host.clone()), uri.clone()).await;
 
-        assert!(matches!(result2, Err(RouterError::ConnectionFailure(ConnectionError::Resolution(msg))) if msg == host.to_string()));
+        assert!(
+            matches!(result2, Err(RouterError::ConnectionFailure(ConnectionError::Resolution(msg))) if msg == host.to_string())
+        );
 
         let result3 = router.lookup(None, "/other".parse().unwrap()).await;
         assert!(matches!(result3, Err(RouterError::NoAgentAtRoute(name)) if name == "/other"));

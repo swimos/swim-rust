@@ -42,7 +42,7 @@ use std::io::ErrorKind;
 use std::sync::{Arc, Weak};
 use swim_form::Form;
 use swim_model::path::Addressable;
-use swim_model::Value;
+use swim_model::{Text, Value};
 use swim_runtime::backpressure;
 use swim_runtime::configuration::{BackpressureMode, DownlinkConnectionsConfig, DownlinksConfig};
 use swim_runtime::error::{ConnectionDropped, ConnectionError, RoutingError};
@@ -550,6 +550,7 @@ where
     ) -> RequestResult<(ConnectionSender, impl Stream<Item = RouterEvent>), Path> {
         let host = path.host();
         let node_uri = path.node();
+        let lane = path.lane();
         match RelativeUri::try_from(node_uri.as_str()) {
             Err(_) => Err(SubscriptionError::BadUri(node_uri)),
             Ok(node_uri) => {
@@ -557,6 +558,7 @@ where
                     &mut self.connections,
                     host,
                     node_uri,
+                    lane,
                     self.connections_config.retry_strategy,
                     self.close_rx.clone(),
                 )
@@ -1090,6 +1092,7 @@ async fn open_downlink<Path, RF>(
     connections: &mut ClientConnectionFactory<RF>,
     host: Option<Url>,
     node_uri: RelativeUri,
+    lane: Text,
     mut retry_strategy: RetryStrategy,
     stop_trigger: CloseReceiver,
 ) -> RequestResult<(ConnectionSender, impl Stream<Item = RouterEvent>), Path>
@@ -1098,7 +1101,7 @@ where
 {
     loop {
         match connections
-            .create_endpoint(host.clone(), node_uri.clone())
+            .create_endpoint(host.clone(), node_uri.clone(), lane.clone())
             .await
         {
             Ok(ClientRoute {

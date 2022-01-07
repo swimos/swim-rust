@@ -106,7 +106,7 @@ enum ConnectionEvent {
     Read(Result<WsMessage, ratchet::Error>),
     Write(TaggedEnvelope),
     Request(AttachClientRouted),
-    ClientTerminated(Text, u64),
+    ClientTerminated(RelativePath, u64),
 }
 
 impl<Sock, Ext, R> ConnectionTask<Sock, Ext, R>
@@ -166,7 +166,7 @@ where
 
         let mut outgoing_payloads = ReceiverStream::new(messages).map(Into::into).fuse();
         let mut client_req_stream = ReceiverStream::new(attach_client_rx).fuse();
-        let mut client_connections = HashMap::<Text, Vec<(u64, TaggedSender)>>::new();
+        let mut client_connections = HashMap::<RelativePath, Vec<(u64, TaggedSender)>>::new();
 
         let (mut ws_tx, ws_rx) = match ws_stream.split() {
             Ok((tx, rx)) => (tx, rx),
@@ -217,19 +217,24 @@ where
                         let client_route =
                             UnroutableClient::new(route, rx, client_close_rx.clone(), on_drop);
 
-                        let AttachClientRequest { node, request, .. } = request;
+                        let AttachClientRequest {
+                            node,
+                            lane,
+                            request,
+                            ..
+                        } = request;
 
-                        let node_uri = Text::from(node.to_string());
+                        let key = RelativePath::new(Text::from(node.to_string()), lane);
 
                         if request.send_ok(client_route).is_ok() {
-                            let senders = client_connections.entry(node_uri.clone()).or_default();
+                            let senders = client_connections.entry(key.clone()).or_default();
                             let i = client_index;
                             client_index += 1;
                             senders.push((i, TaggedSender::new(tag, tx)));
 
                             let monitor = async move {
                                 let _ = on_dropped.await;
-                                (node_uri, i)
+                                (key, i)
                             };
                             client_monitor.push(monitor);
                         } else {
@@ -277,8 +282,8 @@ where
                             break Completion::Failed(e.into());
                         }
                     }
-                    ConnectionEvent::ClientTerminated(node_uri, i) => {
-                        if let Some(senders) = client_connections.get_mut(&node_uri) {
+                    ConnectionEvent::ClientTerminated(key, i) => {
+                        if let Some(senders) = client_connections.get_mut(&key) {
                             senders.retain(|(j, _)| *j != i);
                         }
                     }
@@ -391,7 +396,7 @@ impl From<RouterError> for DispatchError {
 
 async fn dispatch_envelope<R, F, D>(
     router: &mut R,
-    client_connections: &mut HashMap<Text, Vec<(u64, TaggedSender)>>,
+    client_connections: &mut HashMap<RelativePath, Vec<(u64, TaggedSender)>>,
     resolved: &mut HashMap<RelativePath, Route>,
     mut envelope: Envelope,
     mut retry_strategy: RetryStrategy,
@@ -429,7 +434,7 @@ where
 
 async fn try_dispatch_envelope<R>(
     router: &mut R,
-    client_connections: &mut HashMap<Text, Vec<(u64, TaggedSender)>>,
+    client_connections: &mut HashMap<RelativePath, Vec<(u64, TaggedSender)>>,
     resolved: &mut HashMap<RelativePath, Route>,
     envelope: Envelope,
 ) -> Result<(), (Envelope, DispatchError)>
@@ -438,7 +443,7 @@ where
 {
     match envelope.discriminate_header() {
         EnvelopeHeader::Response(path) => {
-            if let Some(endpoints) = client_connections.get_mut(&path.node) {
+            if let Some(endpoints) = client_connections.get_mut(&path) {
                 if let Some(((_, last), senders)) = endpoints.split_last_mut() {
                     let mut failed = HashSet::new();
                     for (i, tx) in senders.iter_mut().map(|(_, s)| s).enumerate() {
