@@ -37,9 +37,8 @@ use swim_form::Form;
 use swim_model::path::RelativePath;
 use swim_model::Value;
 use swim_runtime::backpressure::keyed::map::MapUpdateMessage;
-use swim_runtime::routing::{Route, RoutingAddr};
+use swim_runtime::routing::{Route, RoutingAddr, SendFailed};
 use swim_utilities::errors::Recoverable;
-use swim_utilities::future::item_sink::SendError;
 use swim_utilities::future::item_sink::{FnMutSender, ItemSender};
 use swim_utilities::time::AtomicInstant;
 use swim_warp::envelope::Envelope;
@@ -762,7 +761,7 @@ impl<S> UplinkMessageSender<S> {
 impl UplinkMessageSender<Route> {
     pub fn into_item_sender<Msg>(
         self,
-    ) -> impl ItemSender<UplinkMessage<Msg>, SendError<Envelope>>
+    ) -> impl ItemSender<UplinkMessage<Msg>, SendFailed>
     where
         Msg: Into<Value> + Send + 'static,
     {
@@ -772,7 +771,7 @@ impl UplinkMessageSender<Route> {
     pub async fn send_item<Msg>(
         &mut self,
         msg: UplinkMessage<Msg>,
-    ) -> Result<(), SendError<Envelope>>
+    ) -> Result<(), SendFailed>
     where
         Msg: Into<Value> + Send + 'static,
     {

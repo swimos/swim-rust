@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::error::SendError as MpscSendError;
 
-use crate::routing::RoutingAddr;
+use crate::routing::{RoutingAddr, SendFailed};
 pub use capacity::*;
 pub use closed::*;
 pub use encoding::*;
@@ -116,6 +116,13 @@ impl<T> From<swim_utilities::future::item_sink::SendError<T>> for RoutingError {
         RoutingError::RouterDropped
     }
 }
+
+impl From<SendFailed> for RoutingError {
+    fn from(_: SendFailed) -> Self {
+        RoutingError::RouterDropped
+    }
+}
+
 
 /// An error denoting that a connection error has occurred.
 #[derive(Debug, Clone)]

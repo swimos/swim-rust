@@ -16,6 +16,7 @@ use crate::error::{
     ConnectionDropped, ConnectionError, ResolutionError, RouterError, RoutingError,
 };
 use std::convert::TryFrom;
+use std::error::Error;
 
 use crate::remote::RawOutRoute;
 use bytes::Buf;
@@ -392,6 +393,17 @@ impl UnroutableClient {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct SendFailed;
+
+impl Display for SendFailed {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Envelope could not be routed.")
+    }
+}
+
+impl Error for SendFailed {}
+
 impl Route {
     pub fn new(sender: TaggedSender, on_drop: promise::Receiver<ConnectionDropped>) -> Self {
         Route { sender: RouteSender::Mpsc(sender), on_drop }
@@ -409,11 +421,11 @@ impl Route {
         }
     }
 
-    pub async fn send_item(&mut self, envelope: Envelope) -> Result<(), SendError<Envelope>> {
+    pub async fn send_item(&mut self, envelope: Envelope) -> Result<(), SendFailed> {
         let Route { sender, ..} = self;
         match sender {
             RouteSender::Mpsc(tx) => {
-                tx.send_item(envelope).await
+                tx.send_item(envelope).await.map_err(|_| SendFailed)
             },
             RouteSender::ByteChannel(_tx) => {
                 todo!()
@@ -502,7 +514,7 @@ impl<'a> ItemSink<'a, Envelope> for TaggedSender {
 }
 
 impl<'a> ItemSink<'a, Envelope> for Route {
-    type Error = SendError<Envelope>;
+    type Error = SendFailed;
     type SendFuture = BoxFuture<'a, Result<(), Self::Error>>;
 
     fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
@@ -510,7 +522,7 @@ impl<'a> ItemSink<'a, Envelope> for Route {
             let Route { sender, .. } = self;
             match sender {
                 RouteSender::Mpsc(tx) => {
-                    tx.send_item(value).await
+                    tx.send_item(value).await.map_err(|_| SendFailed)
                 }
                 RouteSender::ByteChannel(_tx) => {
                     todo!()
