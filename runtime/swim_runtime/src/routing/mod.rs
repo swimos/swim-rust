@@ -149,11 +149,39 @@ impl TaggedClientEnvelope {
     }
 }
 
+#[derive(Debug)]
+pub struct TaggedByteChannel {
+    addr: RoutingAddr,
+    channel: ByteWriter,
+}
+
+impl TaggedByteChannel {
+
+    pub fn new(addr: RoutingAddr,
+               channel: ByteWriter) -> Self {
+        TaggedByteChannel {
+            addr,
+            channel
+        }
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.channel.is_closed()
+    }
+
+}
+
+#[derive(Debug)]
+enum RouteSender {
+    Mpsc(TaggedSender),
+    ByteChannel(TaggedByteChannel)
+}
+
 /// A single entry in the router consisting of a sender that will push envelopes to the endpoint
 /// and a promise that will be satisfied when the endpoint closes.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Route {
-    sender: TaggedSender,
+    sender: RouteSender,
     on_drop: promise::Receiver<ConnectionDropped>,
 }
 
@@ -175,6 +203,7 @@ use futures::future::{ready, select, Either};
 use futures::stream::unfold;
 use futures::StreamExt;
 use tokio_stream::wrappers::ReceiverStream;
+use swim_utilities::io::byte_channel::ByteWriter;
 
 /// The Router events are emitted by the connection streams of the router and indicate
 /// messages or errors from the remote host.
@@ -365,15 +394,31 @@ impl UnroutableClient {
 
 impl Route {
     pub fn new(sender: TaggedSender, on_drop: promise::Receiver<ConnectionDropped>) -> Self {
-        Route { sender, on_drop }
+        Route { sender: RouteSender::Mpsc(sender), on_drop }
+    }
+
+    pub fn new_bytes(sender: TaggedByteChannel, on_drop: promise::Receiver<ConnectionDropped>) -> Self {
+        Route { sender: RouteSender::ByteChannel(sender), on_drop }
     }
 
     pub fn is_closed(&self) -> bool {
-        self.sender.is_closed()
+        let Route { sender, ..} = self;
+        match sender {
+            RouteSender::Mpsc(tx) => tx.is_closed(),
+            RouteSender::ByteChannel(tx) => tx.is_closed(),
+        }
     }
 
     pub async fn send_item(&mut self, envelope: Envelope) -> Result<(), SendError<Envelope>> {
-        self.sender.send_item(envelope).await
+        let Route { sender, ..} = self;
+        match sender {
+            RouteSender::Mpsc(tx) => {
+                tx.send_item(envelope).await
+            },
+            RouteSender::ByteChannel(_tx) => {
+                todo!()
+            }
+        }
     }
 
     pub async fn terminated(self) -> ConnectionDropped {
@@ -382,6 +427,10 @@ impl Route {
             .await
             .map(|reason| (*reason).clone())
             .unwrap_or(ConnectionDropped::Unknown)
+    }
+
+    pub async fn duplicate(&self) -> Self {
+        todo!()
     }
 }
 
@@ -457,7 +506,17 @@ impl<'a> ItemSink<'a, Envelope> for Route {
     type SendFuture = BoxFuture<'a, Result<(), Self::Error>>;
 
     fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
-        self.sender.send_item(value).boxed()
+        async move {
+            let Route { sender, .. } = self;
+            match sender {
+                RouteSender::Mpsc(tx) => {
+                    tx.send_item(value).await
+                }
+                RouteSender::ByteChannel(_tx) => {
+                    todo!()
+                }
+            }
+        }.boxed()
     }
 }
 

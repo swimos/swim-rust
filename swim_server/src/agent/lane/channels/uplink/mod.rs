@@ -262,7 +262,7 @@ where
         uplinks_idle_since: Arc<AtomicInstant>,
     ) -> Result<(), UplinkError>
     where
-        Sender: ItemSender<UplinkMessage<SM::Msg>, SendErr> + Send + Sync + Clone,
+        Sender: ItemSender<UplinkMessage<SM::Msg>, SendErr> + Send + Sync,
         SendErr: Send,
     {
         let Uplink {
@@ -276,7 +276,7 @@ where
         let update_stream = as_stream(&state_machine, &mut actions, &mut updates);
 
         let completion = state_machine
-            .send_message_stream(update_stream, sender.clone(), uplinks_idle_since)
+            .send_message_stream(update_stream, &mut sender, uplinks_idle_since)
             .await;
         let attempt_unlink = match &completion {
             Ok(_) => false,
@@ -488,12 +488,12 @@ pub trait UplinkStateMachine<Event>: Send + Sync {
     fn send_message_stream<'a, Messages, Sender, SendErr>(
         &'a self,
         message_stream: Messages,
-        sender: Sender,
+        sender: &'a mut Sender,
         uplinks_idle_since: Arc<AtomicInstant>,
     ) -> BoxFuture<'a, Result<(), UplinkError>>
     where
         Messages: Stream<Item = Result<UplinkMessage<Self::Msg>, UplinkError>> + Send + 'a,
-        Sender: ItemSender<UplinkMessage<Self::Msg>, SendErr> + Send + Sync + Clone + 'a,
+        Sender: ItemSender<UplinkMessage<Self::Msg>, SendErr> + Send + Sync + 'a,
         SendErr: Send + 'a,
     {
         default_send_message_stream(message_stream, sender, uplinks_idle_since).boxed()
@@ -502,7 +502,7 @@ pub trait UplinkStateMachine<Event>: Send + Sync {
 
 async fn default_send_message_stream<Msg, Messages, Sender, SendErr>(
     message_stream: Messages,
-    mut sender: Sender,
+    sender: &mut Sender,
     uplinks_idle_since: Arc<AtomicInstant>,
 ) -> Result<(), UplinkError>
 where
@@ -514,7 +514,7 @@ where
     loop {
         match message_stream.next().await {
             Some(Ok(msg)) => {
-                let result = send_msg(&mut sender, msg).await;
+                let result = send_msg(sender, msg).await;
                 if result.is_err() {
                     break result;
                 } else {
@@ -633,18 +633,19 @@ where
     fn send_message_stream<'a, Messages, Sender, SendErr>(
         &'a self,
         message_stream: Messages,
-        sender: Sender,
+        sender: &'a mut Sender,
         uplinks_idle_since: Arc<AtomicInstant>,
     ) -> BoxFuture<'a, Result<(), UplinkError>>
     where
         Messages: Stream<Item = Result<UplinkMessage<Self::Msg>, UplinkError>> + Send + 'a,
-        Sender: ItemSender<UplinkMessage<Self::Msg>, SendErr> + Send + Sync + Clone + 'a,
+        Sender: ItemSender<UplinkMessage<Self::Msg>, SendErr> + Send + Sync + 'a,
         SendErr: Send + 'a,
     {
         async move {
             if let Some(config) = self.backpressure_config {
-                backpressure::value_uplink_release_backpressure(message_stream, sender, config)
-                    .await
+                //backpressure::value_uplink_release_backpressure(message_stream, sender, config)
+                //    .await
+                todo!()
             } else {
                 default_send_message_stream(message_stream, sender, uplinks_idle_since).await
             }
@@ -726,13 +727,13 @@ where
     fn send_message_stream<'a, Messages, Sender, SendErr>(
         &'a self,
         message_stream: Messages,
-        sender: Sender,
+        sender: &'a mut Sender,
         uplinks_idle_since: Arc<AtomicInstant>,
     ) -> BoxFuture<'a, Result<(), UplinkError>>
     where
         Messages:
             Stream<Item = Result<UplinkMessage<MapUpdate<Value, V>>, UplinkError>> + Send + 'a,
-        Sender: ItemSender<UplinkMessage<MapUpdate<Value, V>>, SendErr> + Send + Sync + Clone + 'a,
+        Sender: ItemSender<UplinkMessage<MapUpdate<Value, V>>, SendErr> + Send + Sync + 'a,
         SendErr: Send + 'a,
     {
         async move {
@@ -761,7 +762,7 @@ impl<S> UplinkMessageSender<S> {
 impl UplinkMessageSender<Route> {
     pub fn into_item_sender<Msg>(
         self,
-    ) -> impl ItemSender<UplinkMessage<Msg>, SendError<Envelope>> + Clone
+    ) -> impl ItemSender<UplinkMessage<Msg>, SendError<Envelope>>
     where
         Msg: Into<Value> + Send + 'static,
     {

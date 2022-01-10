@@ -38,7 +38,7 @@ use pin_utils::pin_mut;
 use std::collections::HashMap;
 use std::sync::{Arc, Weak};
 use swim_form::Form;
-use swim_model::path::Addressable;
+use swim_model::path::{Addressable, RelativePath};
 use swim_model::{Text, Value};
 use swim_runtime::backpressure;
 use swim_runtime::configuration::{BackpressureMode, DownlinkConnectionsConfig, DownlinksConfig};
@@ -587,12 +587,11 @@ where
         let updates = incoming.map(map_router_events);
 
         let sink_path = path.relative_path();
-        let cmd_sink = sink.map_err_into().comap(move |cmd: Command<SharedValue>| {
-            envelopes::value_envelope(sink_path.clone(), cmd).into()
-        });
+
 
         let (raw_dl, rec) = match config.back_pressure {
             BackpressureMode::Propagate => {
+                let cmd_sink = make_value_sink(sink, sink_path);
                 value_downlink(init, Some(schema), updates, cmd_sink, (&config).into())
             }
             BackpressureMode::Release {
@@ -600,16 +599,18 @@ where
                 yield_after,
                 ..
             } => {
+                let cmd_sink1 = make_value_sink(sink.duplicate().await, sink_path.clone());
+                let cmd_sink2 = make_value_sink(sink, sink_path);
                 let (release_tx, release_rx) = circular_buffer::channel(input_buffer_size);
 
                 let release_task =
-                    backpressure::release_pressure(release_rx, cmd_sink.clone(), yield_after);
+                    backpressure::release_pressure(release_rx, cmd_sink1, yield_after);
                 //TODO Use a Spawner instead.
                 swim_async_runtime::task::spawn(release_task);
 
                 let pressure_release = release_tx.map_err_into();
 
-                let either_sink = SplitSink::new(cmd_sink, pressure_release).comap(
+                let either_sink = SplitSink::new(cmd_sink2, pressure_release).comap(
                     move |cmd: Command<SharedValue>| match cmd {
                         act @ Command::Action(_) => Either::Right(act),
                         ow => Either::Left(ow),
@@ -676,7 +677,7 @@ where
                 yield_after,
             } => {
                 let sink_path_duplicate = sink_path.clone();
-                let direct_sink = sink.clone().map_err_into().comap(
+                let direct_sink = sink.duplicate().await.map_err_into().comap(
                     move |cmd: Command<UntypedMapModification<Value>>| {
                         envelopes::map_envelope(sink_path_duplicate.clone(), cmd).into()
                     },
@@ -736,12 +737,9 @@ where
         let config = self.config.config_for(&path);
         let sink_path = path.relative_path();
 
-        let cmd_sink = sink.map_err_into().comap(move |cmd: Command<Value>| {
-            envelopes::command_envelope(sink_path.clone(), cmd).into()
-        });
-
         let dl = match config.back_pressure {
             BackpressureMode::Propagate => {
+                let cmd_sink = make_command_sink(sink, sink_path);
                 Arc::new(command_downlink(schema.clone(), cmd_sink, (&config).into()))
             }
 
@@ -750,15 +748,17 @@ where
                 yield_after,
                 ..
             } => {
+                let cmd_sink1 = make_command_sink(sink.duplicate().await, sink_path.clone());
+                let cmd_sink2 = make_command_sink(sink, sink_path);
                 let (release_tx, release_rx) = circular_buffer::channel(input_buffer_size);
 
                 let release_task =
-                    backpressure::release_pressure(release_rx, cmd_sink.clone(), yield_after);
+                    backpressure::release_pressure(release_rx, cmd_sink1, yield_after);
                 //TODO Use a Spawner instead.
                 swim_async_runtime::task::spawn(release_task);
                 let pressure_release = release_tx.map_err_into();
                 let either_sink =
-                    SplitSink::new(cmd_sink, pressure_release).comap(move |cmd: Command<Value>| {
+                    SplitSink::new(cmd_sink2, pressure_release).comap(move |cmd: Command<Value>| {
                         match cmd {
                             act @ Command::Action(_) => Either::Right(act),
                             ow => Either::Left(ow),
@@ -1069,6 +1069,18 @@ where
             .await
             .map_err(|_| SubscriptionError::ConnectionError)
     }
+}
+
+fn make_value_sink(route: Route, sink_path: RelativePath) -> impl ItemSender<Command<SharedValue>, RoutingError> + Send + Sync + 'static {
+    route.map_err_into().comap(move |cmd: Command<SharedValue>| {
+        envelopes::value_envelope(sink_path.clone(), cmd).into()
+    })
+}
+
+fn make_command_sink(route: Route, sink_path: RelativePath) -> impl ItemSender<Command<Value>, RoutingError> + Send + Sync + 'static {
+    route.map_err_into().comap(move |cmd: Command<Value>| {
+        envelopes::command_envelope(sink_path.clone(), cmd).into()
+    })
 }
 
 fn map_router_events(event: RouterEvent) -> Result<Message<Value>, RoutingError> {

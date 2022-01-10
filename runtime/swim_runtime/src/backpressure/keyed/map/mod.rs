@@ -98,7 +98,7 @@ impl<K, V> From<SpecialAction> for MapUpdate<K, V> {
 /// * `buffer_size` - Size of the circular buffer used for each key.
 pub async fn release_pressure<M, K, V, E, Snk>(
     rx: impl Stream<Item = M>,
-    sink: Snk,
+    sink: &mut Snk,
     yield_after: NonZeroUsize,
     bridge_buffer: NonZeroUsize,
     cache_size: NonZeroUsize,

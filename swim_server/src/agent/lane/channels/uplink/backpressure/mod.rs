@@ -115,13 +115,13 @@ const INTERNAL_ERROR: &str = "Internal channel error.";
 /// will be discarded. Up to a fixed maximum number of keys are kept active at any one time.
 pub async fn map_uplink_release_backpressure<K, V, E, Snk>(
     messages: impl Stream<Item = Result<UplinkMessage<MapUpdate<K, V>>, UplinkError>>,
-    sink: Snk,
+    sink: &mut Snk,
     config: KeyedBackpressureConfig,
 ) -> Result<(), UplinkError>
 where
     K: Form + Hash + Eq + Clone + Send + Sync + Debug,
     V: Form + Send + Sync + Debug,
-    Snk: ItemSender<UplinkMessage<MapUpdate<K, V>>, E> + Clone,
+    Snk: ItemSender<UplinkMessage<MapUpdate<K, V>>, E>,
 {
     let (result_tx, result_rx) = oneshot::channel();
     pin_mut!(messages);
@@ -150,7 +150,7 @@ where
 
     let task_result = release_pressure_map(
         good_messages,
-        sink.clone(),
+        sink,
         config.yield_after,
         config.bridge_buffer_size,
         config.cache_size,
