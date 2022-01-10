@@ -15,7 +15,7 @@
 use super::tokens::{complete, streaming, string_literal};
 use super::Span;
 use crate::parser::record::ParseIterator;
-use crate::parser::{compare_values, record, ParseError};
+use crate::parser::ParseError;
 use either::Either;
 use nom::IResult;
 use std::borrow::Cow;
@@ -1611,92 +1611,4 @@ fn attr_with_comments() {
         value_from_string(attrs_multiple_lines),
         value_from_string_with_comments(attrs_with_multiple_comments)
     )
-}
-
-#[test]
-fn cmp_simple() {
-    let first = "@name(a: 1, b: 2)";
-    let second = "@name(a: 1, b: 2)";
-
-    assert!(compare_values(first, second));
-
-    let result_1 = value_from_string(first).unwrap();
-    let result_2 = value_from_string(second).unwrap();
-    assert_eq!(result_1, result_2);
-}
-
-#[test]
-fn cmp_complex() {
-    let first = "{a:2}";
-    let second = "{ a: 2 }";
-
-    assert!(compare_values(first, second));
-
-    let result_1 = value_from_string(first).unwrap();
-    let result_2 = value_from_string(second).unwrap();
-    assert_eq!(result_1, result_2);
-
-    let first = "@tag(){}:1";
-    let second = "@tag{}:1";
-
-    assert!(compare_values(first, second));
-
-    let result_1 = value_from_string(first).unwrap();
-    let result_2 = value_from_string(second).unwrap();
-    assert_eq!(result_1, result_2);
-
-    let first = "@name(a: 1, b: 2)";
-    let second = "@name({a: 1, b: 2})";
-
-    assert!(compare_values(first, second));
-
-    let result_1 = value_from_string(first).unwrap();
-    let result_2 = value_from_string(second).unwrap();
-    assert_eq!(result_1, result_2);
-}
-
-#[test]
-fn cmp_early_termination_simple() {
-    let first = "@name(a: 1, b: 2, c: 3)";
-    let second = "@name(a:1, b: 4, c: 3)";
-
-    let first_iter = &mut record::ParseIterator::new(Span::new(first), false).peekable();
-    let second_iter = &mut record::ParseIterator::new(Span::new(second), false).peekable();
-
-    assert!(!record::incremental_compare(first_iter, second_iter));
-    assert_eq!(
-        first_iter.next().unwrap().unwrap(),
-        ReadEvent::TextValue(Cow::from("c"))
-    );
-    assert_eq!(
-        second_iter.next().unwrap().unwrap(),
-        ReadEvent::TextValue(Cow::from("c"))
-    );
-
-    let result_1 = value_from_string(first).unwrap();
-    let result_2 = value_from_string(second).unwrap();
-    assert_ne!(result_1, result_2);
-}
-
-#[test]
-fn cmp_early_termination_complex() {
-    let first = "@name(a: 1, b: 2)";
-    let second = "@name(   {a: 3, b: 2}    )";
-
-    let first_iter = &mut record::ParseIterator::new(Span::new(first), false).peekable();
-    let second_iter = &mut record::ParseIterator::new(Span::new(second), false).peekable();
-
-    assert!(!record::incremental_compare(first_iter, second_iter));
-    assert_eq!(
-        first_iter.next().unwrap().unwrap(),
-        ReadEvent::TextValue(Cow::from("b"))
-    );
-    assert_eq!(
-        second_iter.next().unwrap().unwrap(),
-        ReadEvent::TextValue(Cow::from("b"))
-    );
-
-    let result_1 = value_from_string(first).unwrap();
-    let result_2 = value_from_string(second).unwrap();
-    assert_ne!(result_1, result_2);
 }

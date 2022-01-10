@@ -24,10 +24,7 @@ use nom::error::ErrorKind;
 use nom::sequence::{pair, preceded};
 use nom::{Finish, IResult, Parser};
 use std::borrow::Cow;
-use std::iter::Peekable;
 use swim_form::structural::read::event::ReadEvent;
-use swim_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
-use swim_model::Value;
 
 /// Change the state of the parser after producing an event.
 #[derive(Debug)]
@@ -213,56 +210,6 @@ pub struct ParseIterator<'a> {
     input: Span<'a>,
     parser: Option<IncrementalReconParser>,
     pending: Option<ParseEvents<'a>>,
-}
-
-pub fn incremental_compare(
-    first_iter: &mut Peekable<ParseIterator>,
-    second_iter: &mut Peekable<ParseIterator>,
-) -> bool {
-    let mut recognizer_1 = Value::make_recognizer();
-    let mut recognizer_2 = Value::make_recognizer();
-
-    let mut value_1 = None;
-    let mut value_2 = None;
-
-    loop {
-        match (first_iter.next(), second_iter.next()) {
-            (Some(Ok(event_1)), Some(Ok(event_2))) => {
-                value_1 = recognizer_1.feed_event(event_1);
-                value_2 = recognizer_2.feed_event(event_2);
-            }
-
-            (Some(Ok(event_1)), None) => {
-                value_1 = recognizer_1.feed_event(event_1);
-            }
-            (None, Some(Ok(event_2))) => {
-                value_2 = recognizer_2.feed_event(event_2);
-            }
-
-            _ => {
-                break;
-            }
-        }
-
-        match (first_iter.peek(), second_iter.peek()) {
-            (Some(Ok(event_1_next)), Some(Ok(event_2_next))) if event_1_next != event_2_next => {
-                if *event_1_next == ReadEvent::StartBody || *event_1_next == ReadEvent::EndRecord {
-                    value_1 = recognizer_1.feed_event(first_iter.next().unwrap().unwrap());
-                }
-                if *event_2_next == ReadEvent::StartBody || *event_2_next == ReadEvent::EndRecord {
-                    value_2 = recognizer_2.feed_event(second_iter.next().unwrap().unwrap());
-                }
-            }
-
-            _ => {}
-        }
-
-        if recognizer_1 != recognizer_2 {
-            return false;
-        }
-    }
-
-    value_1 == value_2
 }
 
 impl<'a> ParseIterator<'a> {

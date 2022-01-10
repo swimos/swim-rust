@@ -23,6 +23,7 @@ mod tokens;
 pub use crate::parser::error::ParseError;
 use nom_locate::LocatedSpan;
 pub use record::IncrementalReconParser;
+pub use record::ParseIterator;
 use std::borrow::Cow;
 use swim_form::structural::read::event::ReadEvent;
 use swim_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
@@ -110,17 +111,6 @@ pub fn parse_recognize<T: RecognizerReadable>(
 /// * `allow_comments` - Boolean flag indicating whether or not the parsing should fail on comments.
 pub fn parse_value(repr: &str, allow_comments: bool) -> Result<Value, ParseError> {
     parse_recognize(Span::new(repr), allow_comments)
-}
-
-/// Compare two recon values incrementally, terminating early if a difference is discovered.
-///
-/// * `first` - The first recon value.
-/// * `second` - The second recon value.
-pub fn compare_values(first: &str, second: &str) -> bool {
-    record::incremental_compare(
-        &mut record::ParseIterator::new(Span::new(first), false).peekable(),
-        &mut record::ParseIterator::new(Span::new(second), false).peekable(),
-    )
 }
 
 #[cfg(feature = "async_parser")]
