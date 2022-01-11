@@ -189,13 +189,19 @@ pub struct Route {
 #[derive(Debug)]
 pub struct ClientRoute {
     route: Route,
-    receiver: ClientReceiver,
+    receiver: ClientEndpoint,
 }
 
 #[derive(Debug)]
-pub struct ClientReceiver {
+enum ClientReceiver {
+    Mpsc(mpsc::Receiver<TaggedEnvelope>),
+    ByteChannel(ByteReader),
+}
+
+#[derive(Debug)]
+pub struct ClientEndpoint {
     tag: RoutingAddr,
-    receiver: mpsc::Receiver<TaggedEnvelope>,
+    receiver: ClientReceiver,
     rx_on_dropped: promise::Receiver<ConnectionDropped>,
     handle_drop: ClientRouteMonitor,
 }
@@ -205,7 +211,7 @@ use futures::future::{ready, select, Either};
 use futures::stream::unfold;
 use futures::StreamExt;
 use futures_util::SinkExt;
-use swim_utilities::io::byte_channel::ByteWriter;
+use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::FramedWrite;
 
@@ -249,68 +255,75 @@ impl<S> RouteStream<S> {
     }
 }
 
-impl ClientReceiver {
+impl ClientEndpoint {
     pub fn into_stream(
         self,
         host: Option<Url>,
         stop_trigger: CloseReceiver,
     ) -> impl Stream<Item = RouterEvent> {
-        let ClientReceiver {
+        let ClientEndpoint {
             receiver,
             rx_on_dropped,
             handle_drop,
             ..
         } = self;
+        match receiver {
+            ClientReceiver::Mpsc(receiver) => {
 
-        let stream = ReceiverStream::new(receiver)
-            .filter_map(|TaggedEnvelope(_, env)| ready(env.into_response()));
+                let stream = ReceiverStream::new(receiver)
+                    .filter_map(|TaggedEnvelope(_, env)| ready(env.into_response()));
 
-        let seed = RouteStream::new(host, stream, rx_on_dropped, handle_drop, stop_trigger);
+                let seed = RouteStream::new(host, stream, rx_on_dropped, handle_drop, stop_trigger);
 
-        unfold(seed, |mut rs| async move {
-            let RouteStream {
-                host,
-                stream,
-                on_dropped,
-                stop_trigger,
-                ..
-            } = &mut rs;
-            if let Some(dropped) = on_dropped {
-                let event = match select(stream.next(), stop_trigger).await {
-                    Either::Left((Some(env), _)) => RouterEvent::Message(env),
-                    Either::Left(_) => {
-                        let result = dropped.await;
-                        *on_dropped = None;
-                        if let Ok(reason) = result {
-                            match &*reason {
-                                ConnectionDropped::Failed(ConnectionError::Resolution(name)) => {
-                                    RouterEvent::Unreachable(name.clone())
-                                }
-                                ConnectionDropped::Failed(ConnectionError::Io(e)) => {
-                                    match (e.kind(), host) {
-                                        (ErrorKind::NotFound, Some(host)) => {
-                                            RouterEvent::Unreachable(host.to_string())
+                unfold(seed, |mut rs| async move {
+                    let RouteStream {
+                        host,
+                        stream,
+                        on_dropped,
+                        stop_trigger,
+                        ..
+                    } = &mut rs;
+                    if let Some(dropped) = on_dropped {
+                        let event = match select(stream.next(), stop_trigger).await {
+                            Either::Left((Some(env), _)) => RouterEvent::Message(env),
+                            Either::Left(_) => {
+                                let result = dropped.await;
+                                *on_dropped = None;
+                                if let Ok(reason) = result {
+                                    match &*reason {
+                                        ConnectionDropped::Failed(ConnectionError::Resolution(name)) => {
+                                            RouterEvent::Unreachable(name.clone())
                                         }
+                                        ConnectionDropped::Failed(ConnectionError::Io(e)) => {
+                                            match (e.kind(), host) {
+                                                (ErrorKind::NotFound, Some(host)) => {
+                                                    RouterEvent::Unreachable(host.to_string())
+                                                }
+                                                _ => RouterEvent::ConnectionClosed,
+                                            }
+                                        }
+                                        ConnectionDropped::Failed(_) => RouterEvent::ConnectionClosed,
                                         _ => RouterEvent::ConnectionClosed,
                                     }
+                                } else {
+                                    RouterEvent::ConnectionClosed
                                 }
-                                ConnectionDropped::Failed(_) => RouterEvent::ConnectionClosed,
-                                _ => RouterEvent::ConnectionClosed,
                             }
-                        } else {
-                            RouterEvent::ConnectionClosed
-                        }
+                            Either::Right(_) => {
+                                *on_dropped = None;
+                                RouterEvent::Stopping
+                            }
+                        };
+                        Some((event, rs))
+                    } else {
+                        None
                     }
-                    Either::Right(_) => {
-                        *on_dropped = None;
-                        RouterEvent::Stopping
-                    }
-                };
-                Some((event, rs))
-            } else {
-                None
+                })
             }
-        })
+            ClientReceiver::ByteChannel(_rx) => {
+                todo!()
+            }
+        }
     }
 }
 
@@ -332,16 +345,34 @@ impl ClientRoute {
     ) -> Self {
         ClientRoute {
             route,
-            receiver: ClientReceiver {
+            receiver: ClientEndpoint {
                 tag,
-                receiver,
+                receiver: ClientReceiver::Mpsc(receiver),
                 rx_on_dropped,
                 handle_drop,
             },
         }
     }
 
-    pub fn split(self) -> (Route, ClientReceiver) {
+    pub fn new_bytes(
+        tag: RoutingAddr,
+        route: Route,
+        receiver: ByteReader,
+        rx_on_dropped: promise::Receiver<ConnectionDropped>,
+        handle_drop: ClientRouteMonitor,
+    ) -> Self {
+        ClientRoute {
+            route,
+            receiver: ClientEndpoint {
+                tag,
+                receiver: ClientReceiver::ByteChannel(receiver),
+                rx_on_dropped,
+                handle_drop,
+            },
+        }
+    }
+
+    pub fn split(self) -> (Route, ClientEndpoint) {
         let ClientRoute { route, receiver } = self;
         (route, receiver)
     }
