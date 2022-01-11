@@ -44,7 +44,7 @@ use swim_model::path::Addressable;
 use swim_model::Value;
 use swim_runtime::backpressure;
 use swim_runtime::configuration::{BackpressureMode, DownlinksConfig};
-use swim_runtime::error::RoutingError;
+use swim_runtime::error::{CloseError, CloseErrorKind, ConnectionError, RoutingError};
 use swim_runtime::remote::router::{ConnectionType, RouterEvent};
 use swim_runtime::routing::CloseReceiver;
 use swim_schema::schema::StandardSchema;
@@ -624,8 +624,10 @@ impl<Path: Addressable> DownlinksTask<Path> {
 
         let updates = ReceiverStream::new(incoming).map(|e| match e {
             RouterEvent::Message(l) => Ok(envelopes::map::from_envelope(l)),
-            RouterEvent::ConnectionClosed => Err(RoutingError::ConnectionError),
-            RouterEvent::Unreachable(_) => Err(RoutingError::HostUnreachable),
+            RouterEvent::ConnectionClosed => Err(RoutingError::Connection(
+                ConnectionError::Closed(CloseError::new(CloseErrorKind::Closed, None)),
+            )),
+            RouterEvent::Unreachable(e) => Err(RoutingError::Unresolvable(e)),
             RouterEvent::Stopping => Err(RoutingError::RouterDropped),
         });
 
@@ -1049,8 +1051,10 @@ impl<Path: Addressable> DownlinksTask<Path> {
 fn map_router_events(event: RouterEvent) -> Result<Message<Value>, RoutingError> {
     match event {
         RouterEvent::Message(l) => Ok(envelopes::value::from_envelope(l)),
-        RouterEvent::ConnectionClosed => Err(RoutingError::ConnectionError),
-        RouterEvent::Unreachable(_) => Err(RoutingError::HostUnreachable),
+        RouterEvent::ConnectionClosed => Err(RoutingError::Connection(ConnectionError::Closed(
+            CloseError::new(CloseErrorKind::Closed, None),
+        ))),
+        RouterEvent::Unreachable(e) => Err(RoutingError::Unresolvable(e)),
         RouterEvent::Stopping => Err(RoutingError::RouterDropped),
     }
 }

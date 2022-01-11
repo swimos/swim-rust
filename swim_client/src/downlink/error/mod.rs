@@ -55,13 +55,12 @@ impl From<RoutingError> for DownlinkError {
     fn from(e: RoutingError) -> Self {
         match e {
             RoutingError::RouterDropped => DownlinkError::DroppedChannel,
-            RoutingError::ConnectionError => {
-                DownlinkError::ConnectionFailure("The connection has been lost".to_string())
-            }
-            RoutingError::PoolError(e) => DownlinkError::ConnectionPoolFailure(e),
-            RoutingError::CloseError => DownlinkError::ClosingFailure,
-            RoutingError::HostUnreachable => {
-                DownlinkError::ConnectionFailure("The host is unreachable".to_string())
+            RoutingError::Connection(e) => DownlinkError::ConnectionFailure(format!(
+                "The connection has been lost. Cause: {}",
+                e
+            )),
+            RoutingError::Unresolvable(e) => {
+                DownlinkError::ConnectionFailure(format!("The host is unreachable, Cause: {}", e))
             }
         }
     }

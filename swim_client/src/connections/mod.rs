@@ -27,11 +27,10 @@ use std::sync::Arc;
 use swim_async_runtime::task::*;
 use swim_model::path::{Addressable, RelativePath};
 use swim_runtime::configuration::DownlinkConnectionsConfig;
-use swim_runtime::error::ConnectionDropped;
-use swim_runtime::error::{CloseError, ConnectionError, HttpError, ResolutionError};
+use swim_runtime::error::{CloseError, ConnectionError, HttpError};
+use swim_runtime::error::{ConnectionDropped, RoutingError};
 use swim_runtime::remote::router::{
-    ConnectionType, DownlinkRoutingRequest, ResolutionErrorReplacement, Router, RouterEvent,
-    RoutingError, TaggedRouter,
+    ConnectionType, DownlinkRoutingRequest, Router, RouterEvent, TaggedRouter,
 };
 use swim_runtime::remote::RawRoute;
 use swim_runtime::routing::{
@@ -198,10 +197,9 @@ impl<Path: Addressable> PoolTask<Path> {
                         let routing_path = RoutingPath::try_from(AddressableWrapper(
                             target.clone(),
                         ))
-                        .map_err(|_| {
-                            ConnectionError::Resolution(ResolutionError::unresolvable(
-                                target.to_string(),
-                            ))
+                        .map_err(|_| match target.host() {
+                            Some(host) => ConnectionError::Unresolvable(host.to_string()),
+                            None => ConnectionError::Unresolvable(target.to_string()),
                         })?;
 
                         let registrator = match routing_table.try_resolve_addr(&routing_path) {
@@ -244,9 +242,7 @@ impl<Path: Addressable> PoolTask<Path> {
                                 {
                                     if let RegistratorRequest::Resolve { request } = err.0 {
                                         if request
-                                            .send(Err(RoutingError::Resolution(
-                                                ResolutionErrorReplacement::Unresolvable,
-                                            )))
+                                            .send(Err(RoutingError::Unresolvable(addr.to_string())))
                                             .is_err()
                                         {
                                             event!(Level::ERROR, REQUEST_ERROR);
@@ -256,9 +252,7 @@ impl<Path: Addressable> PoolTask<Path> {
                             }
                             None => {
                                 if request
-                                    .send(Err(RoutingError::Resolution(
-                                        ResolutionErrorReplacement::Unresolvable,
-                                    )))
+                                    .send(Err(RoutingError::Unresolvable(addr.to_string())))
                                     .is_err()
                                 {
                                     event!(Level::ERROR, REQUEST_ERROR);

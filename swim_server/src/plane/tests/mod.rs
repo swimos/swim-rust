@@ -75,8 +75,6 @@ fn make_spec<Clk: Clock>() -> (
     )
 }
 
-// todo router
-#[ignore]
 #[tokio::test]
 async fn plane_event_loop() {
     let (mut spec, done_rx) = make_spec();
@@ -89,10 +87,9 @@ async fn plane_event_loop() {
 
     let (client_tx, client_rx) = mpsc::channel(8);
     let (remote_tx, _remote_rx) = mpsc::channel(8);
-    let (plane_tx, _plane_rx) = mpsc::channel(8);
     let (_close_tx, close_rx) = promise::promise();
 
-    let router = Router::server(client_tx.clone(), plane_tx.clone(), remote_tx);
+    let router = Router::server(client_tx.clone(), context_tx, remote_tx);
 
     let (conn_pool, _pool_task) = SwimConnPool::new(
         DownlinkConnectionsConfig::default(),

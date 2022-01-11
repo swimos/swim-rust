@@ -467,7 +467,7 @@ async fn unlinks_on_unreachable_host() {
     assert_eq!(first_cmd, Some(Command::Sync));
 
     assert!(messages
-        .send(Err(RoutingError::HostUnreachable))
+        .send(Err(RoutingError::RouterDropped))
         .await
         .is_ok());
 
@@ -490,7 +490,7 @@ async fn queues_on_unreachable_host() {
     assert_eq!(first_cmd, Some(Command::Sync));
 
     assert!(messages
-        .send(Err(RoutingError::HostUnreachable))
+        .send(Err(RoutingError::Unresolvable("swim.ai".to_string())))
         .await
         .is_ok());
 

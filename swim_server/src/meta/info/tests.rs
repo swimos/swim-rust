@@ -34,7 +34,7 @@ use swim_form::structural::read::ReadError;
 use swim_form::Form;
 use swim_model::record;
 use swim_runtime::configuration::DownlinkConnectionsConfig;
-use swim_runtime::remote::router::fixture::{client_router_resolver, remote_router_resolver};
+use swim_runtime::remote::router::fixture::remote_router_resolver;
 use swim_runtime::routing::{RoutingAddr, TaggedEnvelope};
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;

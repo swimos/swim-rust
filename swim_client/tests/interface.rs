@@ -748,9 +748,7 @@ mod tests {
         assert!(dl.sender().contravariant_view::<i32, i64>().is_err());
     }
 
-    // todo: failing test
     #[tokio::test]
-    #[ignore]
     async fn test_server_dl_between_lanes_same_agent() {
         let (server, mut server_handle) = build_server().await;
         tokio::spawn(server.run());
@@ -789,9 +787,7 @@ mod tests {
         assert_eq!(message, Event::Remote("VW BMW".to_string()));
     }
 
-    // todo: failing test
     #[tokio::test]
-    #[ignore]
     async fn test_server_dl_between_lanes_different_agents() {
         let (server, mut server_handle) = build_server().await;
         tokio::spawn(server.run());
@@ -916,9 +912,7 @@ mod tests {
         assert_eq!(message, "VW".to_string())
     }
 
-    // todo: failing test
     #[tokio::test]
-    #[ignore]
     async fn test_server_dl_from_server_to_lane_local() {
         let (server, mut server_handle) = build_server().await;
         let client_context = server.client_context();

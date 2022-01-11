@@ -477,7 +477,7 @@ impl<Path: Addressable> From<SubscriptionError<Path>> for ClientError<Path> {
 
 impl<Path: Addressable> From<ConnectionError> for ClientError<Path> {
     fn from(err: ConnectionError) -> Self {
-        ClientError::Routing(RoutingError::PoolError(err))
+        ClientError::Routing(RoutingError::Connection(err))
     }
 }
 

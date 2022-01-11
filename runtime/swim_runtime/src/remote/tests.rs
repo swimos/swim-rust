@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::error::{ConnectionError, IoError, ResolutionError, ResolutionErrorKind};
+use crate::error::{ConnectionError, IoError, RoutingError};
 use crate::remote::pending::PendingRequest;
-use crate::remote::router::{BidirectionalRequest, ResolutionErrorReplacement, RoutingError};
+use crate::remote::router::BidirectionalRequest;
 use crate::remote::state::{DeferredResult, Event, RemoteTasksState};
 use crate::remote::table::{BidirectionalRegistrator, RoutingTable, SchemeHostPort};
 use crate::remote::{
@@ -263,9 +263,8 @@ async fn transition_request_endpoint_not_in_table() {
     assert!(result.is_ok());
 
     let result = req_rx.await;
-    assert!(
-        matches!(result, Ok(Err(RoutingError::Resolution(ResolutionErrorReplacement::NoAgentAtRoute(a)))) if a == addr.to_string())
-    );
+    println!("{:?}", result);
+    assert!(matches!(result, Ok(Err(RoutingError::Unresolvable(host))) if host == "Remote(10)"));
 }
 
 #[tokio::test]
@@ -421,10 +420,7 @@ fn transition_deferred_dns_empty() {
     });
     super::update_state(&mut state, &mut result, event);
 
-    let err = ConnectionError::Resolution(ResolutionError::new(
-        ResolutionErrorKind::Unresolvable,
-        Some(host.to_string()),
-    ));
+    let err = ConnectionError::Unresolvable(host.to_string());
 
     state.check(vec![StateMutation::FailConnection(host, err)]);
     assert!(result.is_ok());

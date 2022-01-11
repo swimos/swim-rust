@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::error::ConnectionError;
-use crate::remote::router::{BidirectionalRequest, ResolutionRequest, RoutingError};
+use crate::error::{ConnectionError, RoutingError};
+use crate::remote::router::{BidirectionalRequest, ResolutionRequest};
 use crate::remote::table::{BidirectionalRegistrator, SchemeHostPort};
 use crate::remote::REQUEST_DROPPED;
 use crate::routing::RoutingAddr;

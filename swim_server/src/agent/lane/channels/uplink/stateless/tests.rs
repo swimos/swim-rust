@@ -38,7 +38,7 @@ use swim_metrics::uplink::{
     WarpUplinkProfile,
 };
 use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
-use swim_runtime::remote::router::fixture::{plane_router_resolver, remote_router_resolver};
+use swim_runtime::remote::router::fixture::remote_router_resolver;
 use swim_runtime::remote::router::TaggedRouter;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::time::AtomicInstant;

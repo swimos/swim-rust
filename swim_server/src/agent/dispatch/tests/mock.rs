@@ -87,7 +87,7 @@ mod router {
     use std::sync::Arc;
     use swim_model::path::Path;
     use swim_runtime::remote::router::fixture::{invalid, router_fixture, RouterCallback};
-    use swim_runtime::remote::router::{PlaneRoutingRequest, RemoteRoutingRequest, TaggedRouter};
+    use swim_runtime::remote::router::{RemoteRoutingRequest, TaggedRouter};
     use swim_runtime::remote::RawRoute;
     use swim_runtime::routing::RoutingAddr;
     use swim_utilities::trigger::promise;

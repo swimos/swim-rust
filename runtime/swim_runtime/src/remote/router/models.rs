@@ -1,5 +1,4 @@
-use crate::error::NoAgentAtRoute;
-use crate::remote::router::RoutingError;
+use crate::error::{NoAgentAtRoute, RoutingError};
 use crate::remote::table::BidirectionalRegistrator;
 use crate::remote::RawRoute;
 use crate::routing::{RoutingAddr, TaggedEnvelope, TaggedSender};
@@ -96,4 +95,62 @@ pub enum DownlinkRoutingRequest<Path> {
         addr: RoutingAddr,
         request: Request<Result<RawRoute, RoutingError>>,
     },
+}
+
+#[derive(Debug)]
+pub enum Address {
+    Local(RelativeUri),
+    Remote(Url, RelativeUri),
+}
+
+impl Address {
+    pub fn uri(&self) -> &RelativeUri {
+        match self {
+            Address::Local(uri) => uri,
+            Address::Remote(_, uri) => uri,
+        }
+    }
+
+    pub fn url(&self) -> Option<&Url> {
+        match self {
+            Address::Local(_) => None,
+            Address::Remote(url, _) => Some(url),
+        }
+    }
+
+    pub fn is_local(&self) -> bool {
+        matches!(self, Address::Local(_))
+    }
+
+    pub fn is_remote(&self) -> bool {
+        matches!(self, Address::Remote(_, _))
+    }
+
+    pub fn into_string(self) -> String {
+        match self {
+            Address::Local(addr) => addr.to_string(),
+            Address::Remote(mut base, path) => {
+                if let Ok(mut parts) = base.path_segments_mut() {
+                    parts.push(path.to_string().as_ref());
+                }
+
+                base.to_string()
+            }
+        }
+    }
+}
+
+impl From<(Option<Url>, RelativeUri)> for Address {
+    fn from(p: (Option<Url>, RelativeUri)) -> Self {
+        match p {
+            (Some(url), uri) => Address::Remote(url, uri),
+            (None, uri) => Address::Local(uri),
+        }
+    }
+}
+
+impl From<RelativeUri> for Address {
+    fn from(uri: RelativeUri) -> Self {
+        Address::Local(uri)
+    }
 }

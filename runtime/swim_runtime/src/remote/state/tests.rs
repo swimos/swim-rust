@@ -116,8 +116,8 @@ async fn connections_state_stop_when_idle() {
     ));
 }
 
-#[test]
-fn connections_state_next_addr() {
+#[tokio::test]
+async fn connections_state_next_addr() {
     let addr = RoutingAddr::remote(45);
     let (_incoming_tx, incoming_rx) = mpsc::channel(8);
     let ws = FakeWebsockets;

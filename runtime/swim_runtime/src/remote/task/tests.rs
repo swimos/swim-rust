@@ -25,20 +25,16 @@ use swim_model::path::RelativePath;
 use swim_recon::printer::print_recon_compact;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::retryable::{Quantity, RetryStrategy};
-use swim_utilities::routing::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};
+use swim_utilities::routing::uri::{BadRelativeUri, UriIsAbsolute};
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
 use swim_warp::envelope::Envelope;
 use tokio::sync::{mpsc, oneshot};
 
-use crate::error::ConnectionDropped;
-use crate::error::{
-    CloseError, CloseErrorKind, ConnectionError, IoError, ProtocolError, ResolutionError,
-};
+use crate::error::{CloseError, CloseErrorKind, ConnectionError, IoError, ProtocolError};
+use crate::error::{ConnectionDropped, RoutingError};
 use crate::remote::config::RemoteConnectionsConfig;
-use crate::remote::router::{
-    BidirectionalReceiverRequest, ResolutionErrorReplacement, RoutingError,
-};
+use crate::remote::router::BidirectionalReceiverRequest;
 use crate::remote::task::{ConnectionTask, DispatchError};
 use crate::remote::test_fixture::{LocalRoutes, RouteTable};
 use crate::routing::{Route, RoutingAddr, TaggedEnvelope, TaggedSender};
@@ -61,12 +57,6 @@ fn dispatch_error_display() {
     assert_eq!(
         string,
         "Invalid relative URI: ''swim://localhost/hello' is an absolute URI.'"
-    );
-
-    let string = DispatchError::Unresolvable(ResolutionError::router_dropped()).to_string();
-    assert_eq!(
-        string,
-        "Could not resolve a router endpoint: 'The router channel was dropped.'"
     );
 
     let string = DispatchError::RoutingProblem(RoutingError::RouterDropped).to_string();
@@ -210,10 +200,10 @@ async fn try_dispatch_closed_sender() {
     .await;
 
     if let Err((return_env, err)) = result {
-        let expected_uri: RelativeUri = "/node".parse().unwrap();
+        let expected_uri = "/node";
         assert_eq!(return_env, env);
         assert!(
-            matches!(err, DispatchError::RoutingProblem(RoutingError::Resolution(ResolutionErrorReplacement::NoAgentAtRoute(uri))) if uri == expected_uri)
+            matches!(err, DispatchError::RoutingProblem(RoutingError::Connection(ConnectionError::Unresolvable(uri))) if uri == expected_uri)
         );
     } else {
         panic!("Unexpected success.")
@@ -277,10 +267,10 @@ async fn try_dispatch_fail_on_no_route() {
     .await;
 
     if let Err((return_env, err)) = result {
-        let expected_uri: RelativeUri = "/node".parse().unwrap();
+        let expected_uri = "/node";
         assert_eq!(return_env, env);
         assert!(
-            matches!(err, DispatchError::RoutingProblem(RoutingError::Resolution(ResolutionErrorReplacement::NoAgentAtRoute(uri))) if uri == expected_uri)
+            matches!(err, DispatchError::RoutingProblem(RoutingError::Connection(ConnectionError::Unresolvable(uri))) if uri == expected_uri)
         );
     } else {
         panic!("Unexpected success.")
@@ -363,9 +353,10 @@ async fn dispatch_immediate_failure() {
     assert!(delays.lock().is_empty());
 
     if let Err((err_env, err)) = result {
-        let expected_uri: RelativeUri = "/node".parse().unwrap();
+        let expected_uri = "/node";
+
         assert!(
-            matches!(err, DispatchError::RoutingProblem(RoutingError::Resolution(ResolutionErrorReplacement::NoAgentAtRoute(uri))) if uri == expected_uri
+            matches!(err, DispatchError::RoutingProblem(RoutingError::Connection(ConnectionError::Unresolvable(uri))) if uri == expected_uri
             )
         );
         assert_eq!(err_env, env);

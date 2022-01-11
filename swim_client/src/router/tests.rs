@@ -16,8 +16,8 @@ use crate::router::{AddressableWrapper, RoutingPath};
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use swim_model::path::{AbsolutePath, Path, RelativePath};
-use swim_runtime::error::{ConnectionError, ResolutionError};
-use swim_runtime::remote::router::{RemoteRoutingRequest, RoutingError};
+use swim_runtime::error::RoutingError;
+use swim_runtime::remote::router::RemoteRoutingRequest;
 use swim_runtime::remote::table::{BidirectionalRegistrator, SchemeHostPort};
 use swim_runtime::remote::Scheme;
 use swim_runtime::routing::{RoutingAddr, TaggedEnvelope, TaggedSender};
@@ -99,9 +99,7 @@ impl MockRemoteRouterTask {
                             receiver_request.send(receiver_rx).unwrap();
                         } else {
                             request
-                                .send(Err(RoutingError::Connection(ConnectionError::Resolution(
-                                    ResolutionError::unresolvable(host.to_string()),
-                                ))))
+                                .send(Err(RoutingError::Unresolvable(host.to_string())))
                                 .unwrap();
                         }
                     }

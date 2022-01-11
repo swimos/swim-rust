@@ -15,13 +15,10 @@
 #[cfg(test)]
 mod tests;
 
-use crate::error::ConnectionDropped;
-use crate::error::{
-    CloseError, CloseErrorKind, ConnectionError, ProtocolError, ProtocolErrorKind, ResolutionError,
-    ResolutionErrorKind,
-};
+use crate::error::{CloseError, CloseErrorKind, ConnectionError, ProtocolError, ProtocolErrorKind};
+use crate::error::{ConnectionDropped, RoutingError};
 use crate::remote::config::RemoteConnectionsConfig;
-use crate::remote::router::{BidirectionalReceiverRequest, Router, RoutingError, TaggedRouter};
+use crate::remote::router::{BidirectionalReceiverRequest, Router, TaggedRouter};
 use crate::routing::{Route, RoutingAddr, TaggedEnvelope, TaggedSender};
 use crate::ws::{into_stream, WsMessage};
 use futures::future::join_all;
@@ -277,7 +274,6 @@ where
 #[derive(Debug)]
 enum DispatchError {
     BadNodeUri(BadRelativeUri),
-    Unresolvable(ResolutionError),
     RoutingProblem(RoutingError),
     Dropped(ConnectionDropped),
 }
@@ -286,9 +282,6 @@ impl Display for DispatchError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             DispatchError::BadNodeUri(err) => write!(f, "Invalid relative URI: '{}'", err),
-            DispatchError::Unresolvable(err) => {
-                write!(f, "Could not resolve a router endpoint: '{}'", err)
-            }
             DispatchError::RoutingProblem(err) => {
                 write!(f, "Could not find a router endpoint: '{}'", err)
             }
@@ -301,7 +294,6 @@ impl Error for DispatchError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             DispatchError::BadNodeUri(err) => Some(err),
-            DispatchError::Unresolvable(err) => Some(err),
             DispatchError::RoutingProblem(err) => Some(err),
             _ => None,
         }
@@ -313,9 +305,6 @@ impl Recoverable for DispatchError {
         match self {
             DispatchError::RoutingProblem(err) => err.is_fatal(),
             DispatchError::Dropped(reason) => !reason.is_recoverable(),
-            DispatchError::Unresolvable(e) if e.kind() == ResolutionErrorKind::Unresolvable => {
-                false
-            }
             _ => true,
         }
     }
@@ -324,12 +313,6 @@ impl Recoverable for DispatchError {
 impl From<BadRelativeUri> for DispatchError {
     fn from(err: BadRelativeUri) -> Self {
         DispatchError::BadNodeUri(err)
-    }
-}
-
-impl From<ResolutionError> for DispatchError {
-    fn from(err: ResolutionError) -> Self {
-        DispatchError::Unresolvable(err)
     }
 }
 

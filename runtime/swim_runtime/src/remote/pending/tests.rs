@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::error::{CloseError, CloseErrorKind, ConnectionError};
+use crate::error::{CloseError, CloseErrorKind, ConnectionError, RoutingError};
 use crate::remote::pending::{PendingRequest, PendingRequests};
-use crate::remote::router::{BidirectionalRequest, RoutingError};
+use crate::remote::router::BidirectionalRequest;
 use crate::remote::table::{BidirectionalRegistrator, SchemeHostPort};
 use crate::remote::Scheme;
 use crate::routing::{RoutingAddr, TaggedSender};

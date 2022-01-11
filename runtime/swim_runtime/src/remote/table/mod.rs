@@ -15,8 +15,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::error::ConnectionDropped;
-use crate::error::ResolutionError;
+use crate::error::{ConnectionDropped, RoutingError};
 use crate::remote::router::BidirectionalReceiverRequest;
 use crate::remote::{BadUrl, RawRoute, Scheme, SchemeSocketAddr};
 use crate::routing::{BidirectionalRoute, RoutingAddr, TaggedEnvelope, TaggedSender};
@@ -236,16 +235,16 @@ impl BidirectionalRegistrator {
         }
     }
 
-    pub async fn register(self) -> Result<BidirectionalRoute, ResolutionError> {
+    pub async fn register(self) -> Result<BidirectionalRoute, RoutingError> {
         let (tx, rx) = oneshot::channel();
         self.receiver_request_tx
             .send(Request::new(tx))
             .await
-            .map_err(|_| ResolutionError::router_dropped())?;
+            .map_err(|_| RoutingError::RouterDropped)?;
 
         match rx.await {
             Ok(receiver) => Ok(BidirectionalRoute::new(self.sender, receiver, self.on_drop)),
-            Err(_) => Err(ResolutionError::router_dropped()),
+            Err(_) => Err(RoutingError::RouterDropped),
         }
     }
 }

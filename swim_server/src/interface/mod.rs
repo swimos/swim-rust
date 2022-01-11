@@ -229,7 +229,7 @@ where
         let (remote_tx, remote_rx) = mpsc::channel(config.conn_config.channel_buffer_size.get());
         let (plane_tx, plane_rx) = mpsc::channel(config.conn_config.channel_buffer_size.get());
 
-        let router = Router::client(client_tx.clone(), remote_tx.clone());
+        let router = Router::server(client_tx.clone(), plane_tx.clone(), remote_tx.clone());
 
         let (connection_pool, connection_pool_task) = SwimConnPool::new(
             config.downlink_connections_config,
@@ -447,7 +447,7 @@ where
         match result {
             (Err(err), _, _, _) => Err(err.into()),
             (_, Err(err), _, _) => Err(err.into()),
-            (_, _, Err(err), _) => Err(ServerError::RoutingError(RoutingError::PoolError(err))),
+            (_, _, Err(err), _) => Err(ServerError::RoutingError(RoutingError::Connection(err))),
             _ => Ok(()),
         }
     }

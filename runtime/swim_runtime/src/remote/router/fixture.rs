@@ -60,18 +60,9 @@ where
             };
 
             match item {
-                Some(Event::Plane(request)) => {
-                    println!("Router service fixture: resolving plane request");
-                    plane_cb.call(request).await
-                }
-                Some(Event::Remote(request)) => {
-                    println!("Router service fixture: resolving remote request");
-                    remote_cb.call(request).await
-                }
-                Some(Event::Client(request)) => {
-                    println!("Router service fixture: resolving client request");
-                    client_cb.call(request).await
-                }
+                Some(Event::Plane(request)) => plane_cb.call(request).await,
+                Some(Event::Remote(request)) => remote_cb.call(request).await,
+                Some(Event::Client(request)) => client_cb.call(request).await,
                 None => break,
             }
         }

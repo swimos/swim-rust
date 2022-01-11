@@ -46,7 +46,7 @@ fn simple_accessors() {
     let (client_tx, client_rx) = mpsc::channel(8);
     let (remote_tx, _remote_rx) = mpsc::channel(8);
     let (plane_tx, _plane_rx) = mpsc::channel(8);
-    let router = Router::server(client_tx.clone(), plane_tx.clone(), remote_tx.clone());
+    let router = Router::server(client_tx.clone(), plane_tx, remote_tx);
 
     let (_close_tx, close_rx) = promise::promise();
     let routing_context = RoutingContext::new(
@@ -59,7 +59,7 @@ fn simple_accessors() {
     let (conn_pool, _pool_task) = SwimConnPool::new(
         DownlinkConnectionsConfig::default(),
         (client_tx, client_rx),
-        router.clone(),
+        router,
         close_rx.clone(),
     );
 

@@ -59,7 +59,7 @@ use swim_model::path::{Path, RelativePath};
 use swim_model::Value;
 use swim_runtime::compat::RequestMessage;
 use swim_runtime::error::ConnectionDropped;
-use swim_runtime::remote::router::fixture::{empty, remote_router_resolver, RouterCallback};
+use swim_runtime::remote::router::fixture::{remote_router_resolver, RouterCallback};
 use swim_runtime::remote::router::{PlaneRoutingRequest, TaggedRouter};
 use swim_runtime::remote::RawRoute;
 use swim_runtime::routing::{RoutingAddr, TaggedEnvelope};
@@ -380,7 +380,6 @@ struct TestContext {
     scheduler: mpsc::Sender<Eff>,
     trigger: Arc<Mutex<Option<trigger::Sender>>>,
     _drop_tx: Arc<promise::Sender<ConnectionDropped>>,
-    drop_rx: promise::Receiver<ConnectionDropped>,
     uri: RelativeUri,
     aggregator: NodeMetricAggregator,
     uplinks_idle_since: Arc<AtomicInstant>,
@@ -652,14 +651,13 @@ fn make_context() -> (
 
     let (drop_tx, drop_rx) = promise::promise();
     let (aggregator, aggregator_task, receivers) = make_aggregator(stop_rx.clone());
-    let (router, _jh) = remote_router_resolver(router_tx, drop_rx.clone());
+    let (router, _jh) = remote_router_resolver(router_tx, drop_rx);
 
     let context = TestContext {
         router: router.untagged(),
         scheduler: spawn_tx,
         trigger: Arc::new(Mutex::new(Some(stop_tx))),
         _drop_tx: Arc::new(drop_tx),
-        drop_rx,
         uri: RelativeUri::try_from("/mock/router".to_string()).unwrap(),
         aggregator,
         uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
@@ -1439,15 +1437,13 @@ impl RouteReceiver {
 
 #[derive(Debug)]
 pub struct MultiTestContextInner {
-    router_addr: RoutingAddr,
     senders: HashMap<RoutingAddr, RawRoute>,
     receivers: HashMap<RoutingAddr, RouteReceiver>,
 }
 
 impl MultiTestContextInner {
-    fn new(router_addr: RoutingAddr) -> Self {
+    fn new() -> Self {
         MultiTestContextInner {
-            router_addr,
             senders: HashMap::new(),
             receivers: HashMap::new(),
         }
@@ -1464,10 +1460,8 @@ struct MultiTestContext(
 );
 
 impl MultiTestContext {
-    fn new(router_addr: RoutingAddr, spawner: mpsc::Sender<Eff>) -> Self {
-        let context_inner = Arc::new(parking_lot::Mutex::new(MultiTestContextInner::new(
-            router_addr,
-        )));
+    fn new(spawner: mpsc::Sender<Eff>) -> Self {
+        let context_inner = Arc::new(parking_lot::Mutex::new(MultiTestContextInner::new()));
 
         let (router, _task) = router::remote(context_inner.clone());
 
@@ -1541,7 +1535,7 @@ mod router {
     use std::sync::Arc;
     use swim_model::path::Path;
     use swim_runtime::remote::router::fixture::{invalid, router_fixture, RouterCallback};
-    use swim_runtime::remote::router::{PlaneRoutingRequest, RemoteRoutingRequest, Router};
+    use swim_runtime::remote::router::{RemoteRoutingRequest, Router};
     use swim_runtime::remote::RawRoute;
     use swim_utilities::trigger::promise;
     use tokio::sync::mpsc;
@@ -1557,8 +1551,6 @@ mod router {
 
     impl RouterCallback<RemoteRoutingRequest> for RemoteRouter {
         fn call(&mut self, request: RemoteRoutingRequest) -> BoxFuture<()> {
-            println!("Router callback");
-
             let inner = self.0.clone();
 
             Box::pin(async move {
@@ -1589,7 +1581,7 @@ mod router {
 fn make_multi_context() -> (MultiTestContext, BoxFuture<'static, ()>) {
     let (spawn_tx, spawn_rx) = mpsc::channel(5);
 
-    let context = MultiTestContext::new(RoutingAddr::plane(1024), spawn_tx);
+    let context = MultiTestContext::new(spawn_tx);
     let spawn_task = ReceiverStream::new(spawn_rx)
         .for_each_concurrent(None, |t| t)
         .boxed();
@@ -1617,12 +1609,7 @@ async fn handle_action_lane_non_fatal_uplink_error() {
     drop(context);
 
     let io_task = async move {
-        println!("Sending link");
-
         input.send_link(addr1).await;
-
-        println!("Sent link");
-
         expect_envelope(
             &mut router_rx1,
             addr1,
@@ -1633,19 +1620,10 @@ async fn handle_action_lane_non_fatal_uplink_error() {
         )
         .await;
 
-        println!("Got env");
-
         drop(router_rx1);
 
-        println!("Sending command");
-
         input.send_command(addr1, 3).await;
-
-        println!("Sending link 2");
-
         input.send_link(addr2).await;
-
-        println!("Sent link 2");
 
         expect_envelope(
             router_rx2_ref,
@@ -1656,8 +1634,6 @@ async fn handle_action_lane_non_fatal_uplink_error() {
                 .done(),
         )
         .await;
-
-        println!("Got env 2");
 
         drop(input);
     };

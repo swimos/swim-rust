@@ -36,7 +36,7 @@ use swim_client::interface::ClientContext;
 use swim_form::Form;
 use swim_model::Value;
 use swim_runtime::configuration::DownlinkConnectionsConfig;
-use swim_runtime::remote::router::fixture::{plane_router_resolver, remote_router_resolver};
+use swim_runtime::remote::router::fixture::remote_router_resolver;
 use swim_runtime::routing::{RoutingAddr, TaggedEnvelope};
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
@@ -93,8 +93,6 @@ impl MapLifecycle {
 #[agent_lifecycle(agent = "MockAgent")]
 struct MockAgentLifecycle;
 
-// todo router
-#[ignore]
 #[tokio::test]
 async fn agent_log() {
     let (tx, mut rx) = mpsc::channel(5);
@@ -173,10 +171,8 @@ async fn agent_log() {
         .body(action.clone())
         .done();
 
-    let map_update = map_update;
-
     assert!(envelope_tx
-        .send(TaggedEnvelope(RoutingAddr::remote(1), map_update.clone()))
+        .send(TaggedEnvelope(RoutingAddr::remote(1), map_update))
         .await
         .is_ok());
 
@@ -198,6 +194,20 @@ async fn agent_log() {
             .done()
     );
 
+    let event = rx.recv().await.expect("Missing event envelope");
+    let body = event.1.body().expect("Missing event body");
+    let log_entry = LogEntry::try_from_value(body).expect("Failed to convert log entry");
+
+    assert_eq!(
+        log_entry,
+        LogEntry::make(
+            TEST_MSG.to_string(),
+            LogLevel::Info,
+            RelativeUri::from_str("/test").unwrap(),
+            "lane".to_string()
+        )
+    );
+
     let link = rx.recv().await.expect("Missing linked envelope");
     assert_eq!(
         link.1,
@@ -213,6 +223,7 @@ async fn agent_log() {
             .body(action.clone())
             .done()
     );
+
     let event = rx.recv().await.expect("Missing event envelope");
     assert_eq!(
         event.1,
@@ -229,10 +240,10 @@ async fn agent_log() {
         Envelope::synced().node_uri("/test").lane_uri("map").done()
     );
 
-    let event = rx.recv().await.expect("Missing event envelope");
+    let event = rx.recv().await.expect("Missing synced envelope");
     let body = event.1.body().expect("Missing event body");
-
     let log_entry = LogEntry::try_from_value(body).expect("Failed to convert log entry");
+
     assert_eq!(
         log_entry,
         LogEntry::make(

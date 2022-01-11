@@ -22,7 +22,6 @@ use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::model::map::MapLane;
 use crate::agent::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::tests::stub_router;
-use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::{
     AgentContext, AgentParameters, DynamicAgentIo, DynamicLaneTasks, LaneConfig, LaneParts,
     SwimAgent, TestClock,
@@ -30,7 +29,6 @@ use crate::agent::{
 use crate::agent::{IoPair, LaneTasks};
 use crate::interface::ServerDownlinksConfig;
 use crate::plane::provider::AgentProvider;
-use crate::routing::TopLevelServerRouterFactory;
 use futures::future::ready;
 use futures::future::{BoxFuture, Ready};
 use server_store::agent::NodeStore;
@@ -46,9 +44,9 @@ use stm::transaction::atomically;
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::ClientContext;
-use swim_client::router::ClientRouterFactory;
 use swim_model::path::Path;
 use swim_runtime::configuration::DownlinkConnectionsConfig;
+use swim_runtime::remote::router::Router;
 use swim_runtime::routing::RoutingAddr;
 use swim_store::{deserialize, serialize, KeyspaceByteEngine, StoreBuilder, StoreError};
 use swim_utilities::algebra::non_zero_usize;
@@ -262,15 +260,12 @@ fn make_dl_context() -> ClientContext<Path> {
     let (plane_tx, _plane_rx) = mpsc::channel(8);
     let (_close_tx, close_rx) = promise::promise();
 
-    let top_level_factory =
-        TopLevelServerRouterFactory::new(plane_tx, client_tx.clone(), remote_tx);
-
-    let client_router_fac = ClientRouterFactory::new(client_tx.clone(), top_level_factory);
+    let router = Router::server(client_tx.clone(), plane_tx, remote_tx);
 
     let (conn_pool, _pool_task) = SwimConnPool::new(
         DownlinkConnectionsConfig::default(),
         (client_tx, client_rx),
-        client_router_fac,
+        router,
         close_rx.clone(),
     );
 
@@ -329,7 +324,7 @@ async fn store_loads() {
     );
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
 
-    let (router, _jh) = stub_router::make(RoutingAddr::plane(1024));
+    let (router, _jh) = stub_router(RoutingAddr::plane(1024));
 
     let (agent, agent_proc) = provider.run(
         AgentParameters::new(AgentConfig, exec_config, uri.clone(), HashMap::new()),
@@ -380,7 +375,7 @@ async fn events() {
         Duration::from_secs(1),
     );
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
-    let (router, _jh) = stub_router::make(RoutingAddr::plane(1024));
+    let (router, _jh) = stub_router(RoutingAddr::plane(1024));
 
     let (_, agent_proc) = provider.run(
         AgentParameters::new(AgentConfig, exec_config, uri.clone(), HashMap::new()),

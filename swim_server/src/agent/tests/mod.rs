@@ -56,7 +56,8 @@ use swim_client::downlink::Downlinks;
 use swim_client::interface::ClientContext;
 use swim_model::path::Path;
 use swim_runtime::configuration::DownlinkConnectionsConfig;
-use swim_runtime::remote::router::Router;
+use swim_runtime::remote::router::fixture::plane_router_resolver;
+use swim_runtime::remote::router::{Router, TaggedRouter};
 use swim_runtime::routing::RoutingAddr;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
@@ -65,31 +66,22 @@ use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
 use swim_utilities::trigger::Receiver;
 use tokio::sync::{mpsc, Mutex};
+use tokio::task::JoinHandle;
 use tokio::time::{timeout, Duration};
 use tokio_stream::wrappers::ReceiverStream;
 
-pub mod stub_router {
-    use swim_model::path::Path;
-    use swim_runtime::remote::router::fixture::plane_router_resolver;
-    use swim_runtime::remote::router::TaggedRouter;
-    use swim_runtime::routing::RoutingAddr;
-    use swim_utilities::trigger::promise;
-    use tokio::sync::mpsc;
-    use tokio::task::JoinHandle;
+pub fn stub_router(router_addr: RoutingAddr) -> (TaggedRouter<Path>, JoinHandle<()>) {
+    let (tx, rx) = promise::promise();
+    let (env_tx, mut env_rx) = mpsc::channel(16);
+    let (router, jh) = plane_router_resolver(env_tx, rx);
 
-    pub fn make(router_addr: RoutingAddr) -> (TaggedRouter<Path>, JoinHandle<()>) {
-        let (tx, rx) = promise::promise();
-        let (env_tx, mut env_rx) = mpsc::channel(16);
-        let (router, jh) = plane_router_resolver(env_tx, rx);
+    tokio::spawn(async move {
+        while env_rx.recv().await.is_some() {}
 
-        tokio::spawn(async move {
-            while env_rx.recv().await.is_some() {}
+        let _drop_guard = tx;
+    });
 
-            let _drop_guard = tx;
-        });
-
-        (router.tagged(router_addr), jh)
-    }
+    (router.tagged(router_addr), jh)
 }
 
 struct TestAgent<Lane> {

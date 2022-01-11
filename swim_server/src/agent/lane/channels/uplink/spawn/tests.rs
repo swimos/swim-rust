@@ -42,7 +42,7 @@ use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
 use swim_model::path::{Path, RelativePath};
 use swim_model::Value;
 use swim_runtime::error::ConnectionDropped;
-use swim_runtime::remote::router::fixture::{plane_router_resolver, remote_router_resolver};
+use swim_runtime::remote::router::fixture::remote_router_resolver;
 use swim_runtime::remote::router::TaggedRouter;
 use swim_runtime::routing::{RoutingAddr, TaggedEnvelope};
 use swim_utilities::algebra::non_zero_usize;

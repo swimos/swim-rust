@@ -34,10 +34,9 @@ use swim_client::interface::ClientContext;
 use swim_model::path::Path;
 use swim_runtime::error::{
     ConnectionDropped, ConnectionError, NoAgentAtRoute, ProtocolError, ProtocolErrorKind,
+    RoutingError,
 };
-use swim_runtime::remote::router::{
-    PlaneRoutingRequest, ResolutionErrorReplacement, Router, RoutingError, TaggedRouter,
-};
+use swim_runtime::remote::router::{PlaneRoutingRequest, Router, TaggedRouter};
 use swim_runtime::remote::RawRoute;
 use swim_runtime::routing::{CloseReceiver, RoutingAddr, TaggedEnvelope};
 use swim_utilities::future::request::Request;
@@ -373,6 +372,7 @@ where
         let PlaneSpec { routes, store, .. } = plane_spec;
 
         let (agent_route, params) = route_for(&route, routes.as_slice())?;
+
         let (tx, rx) = mpsc::channel::<TaggedEnvelope>(8);
         *counter = counter
             .checked_add(1)
@@ -396,6 +396,7 @@ where
         if spawner.try_add(task).is_err() {
             panic!("Task spawner terminated unexpectedly.");
         }
+
         Ok((agent, addr))
     }
 }
@@ -506,9 +507,7 @@ pub async fn run_plane<Clk, S, Store>(
                         {
                             Ok(tx)
                         } else {
-                            Err(RoutingError::Resolution(
-                                ResolutionErrorReplacement::Unresolvable,
-                            ))
+                            Err(RoutingError::Unresolvable(id.to_string()))
                         };
                         if request.send(result).is_err() {
                             event!(Level::WARN, DROPPED_REQUEST);
@@ -517,9 +516,7 @@ pub async fn run_plane<Clk, S, Store>(
                         event!(Level::TRACE, GETTING_REMOTE_ENDPOINT, ?id);
                         //TODO Attach external routing here.
                         if request
-                            .send_err(RoutingError::Resolution(
-                                ResolutionErrorReplacement::Unresolvable,
-                            ))
+                            .send_err(RoutingError::Unresolvable(id.to_string()))
                             .is_err()
                         {
                             event!(Level::WARN, DROPPED_REQUEST);
@@ -540,9 +537,9 @@ pub async fn run_plane<Clk, S, Store>(
                     } else {
                         match resolver.try_open_route(route, spawner.deref()) {
                             Ok((_, addr)) => Ok(addr),
-                            Err(NoAgentAtRoute(uri)) => Err(RoutingError::Resolution(
-                                ResolutionErrorReplacement::NoAgentAtRoute(uri),
-                            )),
+                            Err(NoAgentAtRoute(uri)) => {
+                                Err(RoutingError::Unresolvable(uri.to_string()))
+                            }
                         }
                     };
                     if request.send(result).is_err() {

@@ -14,12 +14,9 @@
 
 pub mod connections;
 
-use crate::error::{
-    ConnectionError, HttpError, HttpErrorKind, ResolutionError, ResolutionErrorKind,
-};
+use crate::error::{ConnectionError, HttpError, HttpErrorKind, RoutingError};
 use crate::remote::router::{
-    DownlinkRoutingRequest, PlaneRoutingRequest, RemoteRoutingRequest, ResolutionErrorReplacement,
-    Router, RoutingError,
+    DownlinkRoutingRequest, PlaneRoutingRequest, RemoteRoutingRequest, Router,
 };
 use crate::remote::{ConnectionDropped, RawRoute};
 use crate::routing::{RoutingAddr, TaggedEnvelope};
@@ -34,6 +31,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_stream::wrappers::ReceiverStream;
 
+#[derive(Debug)]
 enum Event {
     Plane(PlaneRoutingRequest),
     Remote(RemoteRoutingRequest),
@@ -167,8 +165,6 @@ impl LocalRoutes {
             };
             match item {
                 Some(Event::Plane(request)) => {
-                    println!("Local routes received plane request: {:?}", request);
-
                     match request {
                         PlaneRoutingRequest::Agent { .. } => {}
                         PlaneRoutingRequest::Endpoint { addr, request } => {
@@ -179,16 +175,13 @@ impl LocalRoutes {
                                 if *countdown == 0 {
                                     Ok(route.clone())
                                 } else {
-                                    Err(RoutingError::Connection(ConnectionError::Resolution(
-                                        ResolutionError::new(
-                                            ResolutionErrorKind::Unresolvable,
-                                            None,
-                                        ),
+                                    Err(RoutingError::Connection(ConnectionError::Unresolvable(
+                                        addr.to_string(),
                                     )))
                                 }
                             } else {
-                                Err(RoutingError::Connection(ConnectionError::Resolution(
-                                    ResolutionError::new(ResolutionErrorKind::Unresolvable, None),
+                                Err(RoutingError::Connection(ConnectionError::Unresolvable(
+                                    addr.to_string(),
                                 )))
                             };
 
@@ -200,9 +193,7 @@ impl LocalRoutes {
                             request,
                         } => {
                             let result = if host.is_some() {
-                                Err(RoutingError::Connection(ConnectionError::Resolution(
-                                    ResolutionError::new(ResolutionErrorKind::Unresolvable, None),
-                                )))
+                                Err(RoutingError::Unresolvable(host.unwrap().to_string()))
                             } else if let Some((addr, countdown)) = uri_mappings.get_mut(&route) {
                                 if *countdown == 0 {
                                     Ok(*addr)
@@ -221,9 +212,9 @@ impl LocalRoutes {
                                     )))
                                 }
                             } else {
-                                Err(RoutingError::Resolution(
-                                    ResolutionErrorReplacement::NoAgentAtRoute(route),
-                                ))
+                                Err(RoutingError::Connection(ConnectionError::Unresolvable(
+                                    route.to_string(),
+                                )))
                             };
 
                             let _ = request.send(result);
@@ -231,12 +222,7 @@ impl LocalRoutes {
                         PlaneRoutingRequest::Routes(_) => {}
                     }
                 }
-                Some(Event::Remote(request)) => {
-                    println!("Local routes received remote request: {:?}", request);
-                }
-                Some(Event::Client(request)) => {
-                    println!("Local routes received client request: {:?}", request);
-                }
+                Some(ev) => panic!("Unexpected event: {:?}", ev),
                 None => break,
             }
         }
