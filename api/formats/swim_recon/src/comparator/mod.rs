@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::parser::Span;
+use smallvec::SmallVec;
 use swim_form::structural::read::event::ReadEvent;
 
 #[cfg(test)]
@@ -44,20 +45,27 @@ fn incremental_compare<
             (Some(Ok(event_1)), Some(Ok(event_2))) if event_1 == event_2 => {
                 validator_1.feed_event(event_1);
                 validator_2.feed_event(event_2);
-                continue;
             }
 
             (Some(Ok(mut event_1)), Some(Ok(mut event_2))) if event_1 != event_2 => {
                 if event_1 == ReadEvent::StartBody || event_1 == ReadEvent::EndRecord {
                     validator_1.feed_event(event_1);
-                    //Todo dm remove unwraps
-                    event_1 = first_iter.next().unwrap().unwrap();
+
+                    if let Some(Ok(event)) = first_iter.next() {
+                        event_1 = event;
+                    } else {
+                        return false;
+                    }
                 }
 
                 if event_2 == ReadEvent::StartBody || event_2 == ReadEvent::EndRecord {
                     validator_2.feed_event(event_2);
-                    //Todo dm remove unwraps
-                    event_2 = second_iter.next().unwrap().unwrap();
+
+                    if let Some(Ok(event)) = second_iter.next() {
+                        event_2 = event;
+                    } else {
+                        return false;
+                    }
                 }
 
                 if event_1 != event_2 {
@@ -76,7 +84,7 @@ fn incremental_compare<
             }
 
             _ => {
-                break;
+                return validator_1 == validator_2;
             }
         }
 
@@ -84,8 +92,6 @@ fn incremental_compare<
             return false;
         }
     }
-
-    validator_1 == validator_2
 }
 
 #[derive(Debug, Clone)]
@@ -97,14 +103,14 @@ enum ValidatorState {
 
 #[derive(Debug, Clone)]
 struct InProgressState {
-    stack: Vec<BuilderState>,
+    stack: SmallVec<[BuilderState; 4]>,
     slot_key: bool,
 }
 
 impl InProgressState {
     fn new() -> Self {
         InProgressState {
-            stack: vec![],
+            stack: SmallVec::with_capacity(4),
             slot_key: false,
         }
     }
@@ -149,17 +155,15 @@ impl InProgressState {
         Ok(())
     }
 
-    fn pop(&mut self, is_attr_end: bool) -> Result<(), ()> {
+    fn pop(&mut self, is_attr_end: bool) -> Result<bool, ()> {
         if let Some(BuilderState { key, .. }) = self.stack.pop() {
             match key {
                 KeyState::NoKey => {
                     if self.stack.is_empty() {
-                        Ok(())
-                        // Ok(Some(record))
+                        Ok(true)
                     } else {
                         self.add_value()?;
-                        Ok(())
-                        // Ok(None)
+                        Ok(false)
                     }
                 }
                 KeyState::Slot => {
@@ -167,15 +171,13 @@ impl InProgressState {
                         Err(())
                     } else {
                         self.add_slot()?;
-                        Ok(())
-                        // Ok(None)
+                        Ok(false)
                     }
                 }
                 KeyState::Attr => {
                     if is_attr_end {
                         self.add_attr()?;
-                        Ok(())
-                        // Ok(None)
+                        Ok(false)
                     } else {
                         Err(())
                     }
@@ -213,14 +215,14 @@ impl InProgressState {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 enum KeyState {
     NoKey,
     Attr,
     Slot,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 struct BuilderState {
     key: KeyState,
     in_body: bool,
@@ -233,11 +235,11 @@ struct ValueValidator {
 
 impl PartialEq for ValueValidator {
     fn eq(&self, other: &Self) -> bool {
-        match (&self.state, &other.state) {
-            (ValidatorState::Init, ValidatorState::Init) => true,
-            (ValidatorState::InProgress(_), ValidatorState::InProgress(_)) => true,
-            _ => false,
-        }
+        matches!(
+            (&self.state, &other.state),
+            (ValidatorState::Init, ValidatorState::Init)
+                | (ValidatorState::InProgress(_), ValidatorState::InProgress(_))
+        )
     }
 }
 
@@ -272,7 +274,7 @@ impl ValueValidator {
                 | ReadEvent::Number(_)
                 | ReadEvent::Boolean(_)
                 | ReadEvent::Blob(_) => {
-                    if let Err(_) = state.add_item() {
+                    if state.add_item().is_err() {
                         self.state = ValidatorState::Invalid
                     }
                 }
@@ -280,25 +282,31 @@ impl ValueValidator {
                     state.new_attr_frame();
                 }
                 ReadEvent::StartBody => {
-                    if let Err(_) = state.new_record_item() {
+                    if state.new_record_item().is_err() {
                         self.state = ValidatorState::Invalid
                     }
                 }
                 ReadEvent::Slot => {
-                    if let Err(_) = state.set_slot_key() {
+                    if state.set_slot_key().is_err() {
                         self.state = ValidatorState::Invalid
                     }
                 }
-                ReadEvent::EndAttribute => {
-                    if let Err(_) = state.pop(true) {
-                        self.state = ValidatorState::Invalid
+                ReadEvent::EndAttribute => match state.pop(true) {
+                    Ok(done) => {
+                        if done {
+                            self.state = ValidatorState::Init
+                        }
                     }
-                }
-                ReadEvent::EndRecord => {
-                    if let Err(_) = state.pop(false) {
-                        self.state = ValidatorState::Invalid
+                    Err(_) => self.state = ValidatorState::Invalid,
+                },
+                ReadEvent::EndRecord => match state.pop(false) {
+                    Ok(done) => {
+                        if done {
+                            self.state = ValidatorState::Init
+                        }
                     }
-                }
+                    Err(_) => self.state = ValidatorState::Invalid,
+                },
             },
             ValidatorState::Invalid => {}
         }

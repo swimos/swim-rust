@@ -15,7 +15,7 @@
 use crate::comparator::{compare_values, incremental_compare};
 use crate::parser::{ParseError, ParseIterator, Span};
 use std::borrow::Cow;
-use swim_form::structural::read::event::ReadEvent;
+use swim_form::structural::read::event::{NumericValue, ReadEvent};
 use swim_model::Value;
 
 fn value_from_string(rep: &str) -> Result<Value, ParseError> {
@@ -27,6 +27,15 @@ fn value_from_string(rep: &str) -> Result<Value, ParseError> {
 fn cmp_simple() {
     let first = "@name(a: 1, b: 2)";
     let second = "@name(a: 1, b: 2)";
+
+    assert!(compare_values(first, second));
+
+    let result_1 = value_from_string(first).unwrap();
+    let result_2 = value_from_string(second).unwrap();
+    assert_eq!(result_1, result_2);
+
+    let first = "\"test\"";
+    let second = "test";
 
     assert!(compare_values(first, second));
 
@@ -57,6 +66,33 @@ fn cmp_complex() {
 
     let first = "@name(a: 1, b: 2)";
     let second = "@name({a: 1, b: 2})";
+
+    assert!(compare_values(first, second));
+
+    let result_1 = value_from_string(first).unwrap();
+    let result_2 = value_from_string(second).unwrap();
+    assert_eq!(result_1, result_2);
+
+    let first = "@first(1)@second(2)";
+    let second = "@first(1)@second(2) {}";
+
+    assert!(compare_values(first, second));
+
+    let result_1 = value_from_string(first).unwrap();
+    let result_2 = value_from_string(second).unwrap();
+    assert_eq!(result_1, result_2);
+
+    let first = "{ @inner(0), after }";
+    let second = "{ @inner(0) {}, after }";
+
+    assert!(compare_values(first, second));
+
+    let result_1 = value_from_string(first).unwrap();
+    let result_2 = value_from_string(second).unwrap();
+    assert_eq!(result_1, result_2);
+
+    let first = "@outer(@inner)";
+    let second = "@outer(@inner {})";
 
     assert!(compare_values(first, second));
 
@@ -113,19 +149,71 @@ fn cmp_early_termination_complex() {
 
 #[test]
 fn cmp_early_termination_invalid() {
-    let first = vec![Ok(ReadEvent::Slot)];
-    let second = vec![Ok(ReadEvent::Slot)];
+    let first = vec![
+        Ok(ReadEvent::Slot),
+        Ok(ReadEvent::Number(NumericValue::Int(5))),
+    ];
+    let second = vec![
+        Ok(ReadEvent::Slot),
+        Ok(ReadEvent::Number(NumericValue::Int(5))),
+    ];
 
     let mut first_iter = first.into_iter();
     let mut second_iter = second.into_iter();
 
     assert!(!incremental_compare(&mut first_iter, &mut second_iter));
-    // assert_eq!(
-    //     first_iter.next().unwrap().unwrap(),
-    //     ReadEvent::TextValue(Cow::from("c"))
-    // );
-    // assert_eq!(
-    //     second_iter.next().unwrap().unwrap(),
-    //     ReadEvent::TextValue(Cow::from("c"))
-    // );
+    assert_eq!(
+        first_iter.next().unwrap().unwrap(),
+        ReadEvent::Number(NumericValue::Int(5))
+    );
+    assert_eq!(
+        second_iter.next().unwrap().unwrap(),
+        ReadEvent::Number(NumericValue::Int(5))
+    );
+
+    let first = vec![
+        Ok(ReadEvent::EndAttribute),
+        Ok(ReadEvent::Number(NumericValue::Int(10))),
+    ];
+    let second = vec![
+        Ok(ReadEvent::EndAttribute),
+        Ok(ReadEvent::Number(NumericValue::Int(10))),
+    ];
+
+    let mut first_iter = first.into_iter();
+    let mut second_iter = second.into_iter();
+
+    assert!(!incremental_compare(&mut first_iter, &mut second_iter));
+    assert_eq!(
+        first_iter.next().unwrap().unwrap(),
+        ReadEvent::Number(NumericValue::Int(10))
+    );
+    assert_eq!(
+        second_iter.next().unwrap().unwrap(),
+        ReadEvent::Number(NumericValue::Int(10))
+    );
+
+    let first = vec![
+        Ok(ReadEvent::StartAttribute(Cow::from("foo"))),
+        Ok(ReadEvent::EndRecord),
+        Ok(ReadEvent::Number(NumericValue::Int(20))),
+    ];
+    let second = vec![
+        Ok(ReadEvent::StartAttribute(Cow::from("foo"))),
+        Ok(ReadEvent::EndRecord),
+        Ok(ReadEvent::Number(NumericValue::Int(20))),
+    ];
+
+    let mut first_iter = first.into_iter();
+    let mut second_iter = second.into_iter();
+
+    assert!(!incremental_compare(&mut first_iter, &mut second_iter));
+    assert_eq!(
+        first_iter.next().unwrap().unwrap(),
+        ReadEvent::Number(NumericValue::Int(20))
+    );
+    assert_eq!(
+        second_iter.next().unwrap().unwrap(),
+        ReadEvent::Number(NumericValue::Int(20))
+    );
 }
