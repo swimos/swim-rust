@@ -152,17 +152,23 @@ impl TaggedClientEnvelope {
 
 #[derive(Debug)]
 pub struct TaggedByteChannel {
-    addr: RoutingAddr,
-    channel: ByteWriter,
+    channel: FramedWrite<ByteWriter, EnvelopeEncoder>,
 }
 
 impl TaggedByteChannel {
     pub fn new(addr: RoutingAddr, channel: ByteWriter) -> Self {
-        TaggedByteChannel { addr, channel }
+        TaggedByteChannel {
+            channel: FramedWrite::new(channel, EnvelopeEncoder::new(addr)),
+        }
     }
 
     pub fn is_closed(&self) -> bool {
-        self.channel.is_closed()
+        self.channel.get_ref().is_closed()
+    }
+
+    pub async fn send(&mut self, envelope: Envelope) -> Result<(), std::io::Error> {
+        let TaggedByteChannel { channel } = self;
+        channel.send(envelope).await
     }
 }
 
@@ -194,11 +200,14 @@ pub struct ClientReceiver {
     handle_drop: ClientRouteMonitor,
 }
 
+use crate::compat::EnvelopeEncoder;
 use futures::future::{ready, select, Either};
 use futures::stream::unfold;
 use futures::StreamExt;
+use futures_util::SinkExt;
 use swim_utilities::io::byte_channel::ByteWriter;
 use tokio_stream::wrappers::ReceiverStream;
+use tokio_util::codec::FramedWrite;
 
 /// The Router events are emitted by the connection streams of the router and indicate
 /// messages or errors from the remote host.
@@ -428,9 +437,7 @@ impl Route {
         let Route { sender, .. } = self;
         match sender {
             RouteSender::Mpsc(tx) => tx.send_item(envelope).await.map_err(|_| SendFailed),
-            RouteSender::ByteChannel(_tx) => {
-                todo!()
-            }
+            RouteSender::ByteChannel(tx) => tx.send(envelope).await.map_err(|_| SendFailed),
         }
     }
 
@@ -523,9 +530,7 @@ impl<'a> ItemSink<'a, Envelope> for Route {
             let Route { sender, .. } = self;
             match sender {
                 RouteSender::Mpsc(tx) => tx.send_item(value).await.map_err(|_| SendFailed),
-                RouteSender::ByteChannel(_tx) => {
-                    todo!()
-                }
+                RouteSender::ByteChannel(tx) => tx.send(value).await.map_err(|_| SendFailed),
             }
         }
         .boxed()
