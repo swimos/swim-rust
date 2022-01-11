@@ -759,19 +759,14 @@ impl<S> UplinkMessageSender<S> {
 }
 
 impl UplinkMessageSender<Route> {
-    pub fn into_item_sender<Msg>(
-        self,
-    ) -> impl ItemSender<UplinkMessage<Msg>, SendFailed>
+    pub fn into_item_sender<Msg>(self) -> impl ItemSender<UplinkMessage<Msg>, SendFailed>
     where
         Msg: Into<Value> + Send + 'static,
     {
         FnMutSender::new(self, UplinkMessageSender::send_item)
     }
 
-    pub async fn send_item<Msg>(
-        &mut self,
-        msg: UplinkMessage<Msg>,
-    ) -> Result<(), SendFailed>
+    pub async fn send_item<Msg>(&mut self, msg: UplinkMessage<Msg>) -> Result<(), SendFailed>
     where
         Msg: Into<Value> + Send + 'static,
     {

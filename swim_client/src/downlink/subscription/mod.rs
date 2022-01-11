@@ -588,7 +588,6 @@ where
 
         let sink_path = path.relative_path();
 
-
         let (raw_dl, rec) = match config.back_pressure {
             BackpressureMode::Propagate => {
                 let cmd_sink = make_value_sink(sink, sink_path);
@@ -757,13 +756,12 @@ where
                 //TODO Use a Spawner instead.
                 swim_async_runtime::task::spawn(release_task);
                 let pressure_release = release_tx.map_err_into();
-                let either_sink =
-                    SplitSink::new(cmd_sink2, pressure_release).comap(move |cmd: Command<Value>| {
-                        match cmd {
-                            act @ Command::Action(_) => Either::Right(act),
-                            ow => Either::Left(ow),
-                        }
-                    });
+                let either_sink = SplitSink::new(cmd_sink2, pressure_release).comap(
+                    move |cmd: Command<Value>| match cmd {
+                        act @ Command::Action(_) => Either::Right(act),
+                        ow => Either::Left(ow),
+                    },
+                );
 
                 Arc::new(command_downlink(
                     schema.clone(),
@@ -1071,13 +1069,21 @@ where
     }
 }
 
-fn make_value_sink(route: Route, sink_path: RelativePath) -> impl ItemSender<Command<SharedValue>, RoutingError> + Send + Sync + 'static {
-    route.map_err_into().comap(move |cmd: Command<SharedValue>| {
-        envelopes::value_envelope(sink_path.clone(), cmd).into()
-    })
+fn make_value_sink(
+    route: Route,
+    sink_path: RelativePath,
+) -> impl ItemSender<Command<SharedValue>, RoutingError> + Send + Sync + 'static {
+    route
+        .map_err_into()
+        .comap(move |cmd: Command<SharedValue>| {
+            envelopes::value_envelope(sink_path.clone(), cmd).into()
+        })
 }
 
-fn make_command_sink(route: Route, sink_path: RelativePath) -> impl ItemSender<Command<Value>, RoutingError> + Send + Sync + 'static {
+fn make_command_sink(
+    route: Route,
+    sink_path: RelativePath,
+) -> impl ItemSender<Command<Value>, RoutingError> + Send + Sync + 'static {
     route.map_err_into().comap(move |cmd: Command<Value>| {
         envelopes::command_envelope(sink_path.clone(), cmd).into()
     })

@@ -181,11 +181,9 @@ pub struct ByteWriter {
 }
 
 impl ByteWriter {
-
     pub fn is_closed(&self) -> bool {
         self.inner.lock().closed
     }
-
 }
 
 impl Drop for ByteWriter {

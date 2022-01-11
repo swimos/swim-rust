@@ -196,7 +196,7 @@ impl<'a> Encoder<RawRequestMessage<'a>> for RawRequestMessageEncoder {
             path: RelativePath { node, lane },
             envelope,
         } = item;
-        dst.reserve(HEADER_INIT_LEN + lane.len());
+        dst.reserve(HEADER_INIT_LEN + lane.len() + node.len());
         dst.put_u128(source.uuid().as_u128());
         let node_len = u32::try_from(node.len()).expect("Node name to long.");
         let lane_len = u32::try_from(lane.len()).expect("Lane name to long.");
@@ -249,7 +249,7 @@ where
             path: RelativePath { node, lane },
             envelope,
         } = item;
-        dst.reserve(HEADER_INIT_LEN + lane.len());
+        dst.reserve(HEADER_INIT_LEN + node.len() + lane.len());
         dst.put_u128(source.uuid().as_u128());
         let node_len = u32::try_from(node.len()).expect("Node name to long.");
         let lane_len = u32::try_from(lane.len()).expect("Lane name to long.");
@@ -272,33 +272,42 @@ where
                 dst.put_slice(lane.as_bytes());
             }
             Notification::Event(body) => {
-                let body_len_offset = dst.remaining();
-                dst.put_u64(0);
-                dst.put_slice(node.as_bytes());
-                dst.put_slice(lane.as_bytes());
-                let body_offset = dst.remaining();
-
-                let mut next_res =
-                    RESERVE_INIT.max(dst.remaining_mut().saturating_mul(RESERVE_MULT));
-                loop {
-                    if write!(dst, "{}", print_recon_compact(&body)).is_err() {
-                        dst.truncate(body_offset);
-                        dst.reserve(next_res);
-                        next_res = next_res.saturating_mul(RESERVE_MULT);
-                    } else {
-                        break;
-                    }
-                }
-                let body_len = (dst.remaining() - body_offset) as u64;
-                if body_len & OP_MASK != 0 {
-                    panic!("Body too large.")
-                }
-                let mut rewound = &mut dst.as_mut()[body_len_offset..];
-                rewound.put_u64(body_len | (EVENT << OP_SHIFT));
+                put_with_body(node.as_str(), lane.as_str(), EVENT, &body, dst);
             }
         }
         Ok(())
     }
+}
+
+fn put_with_body<T: StructuralWritable>(
+    node: &str,
+    lane: &str,
+    code: u64,
+    body: &T,
+    dst: &mut BytesMut,
+) {
+    let body_len_offset = dst.remaining();
+    dst.put_u64(0);
+    dst.put_slice(node.as_bytes());
+    dst.put_slice(lane.as_bytes());
+    let body_offset = dst.remaining();
+
+    let mut next_res = RESERVE_INIT.max(dst.remaining_mut().saturating_mul(RESERVE_MULT));
+    loop {
+        if write!(dst, "{}", print_recon_compact(body)).is_err() {
+            dst.truncate(body_offset);
+            dst.reserve(next_res);
+            next_res = next_res.saturating_mul(RESERVE_MULT);
+        } else {
+            break;
+        }
+    }
+    let body_len = (dst.remaining() - body_offset) as u64;
+    if body_len & OP_MASK != 0 {
+        panic!("Body too large.")
+    }
+    let mut rewound = &mut dst.as_mut()[body_len_offset..];
+    rewound.put_u64(body_len | (code << OP_SHIFT));
 }
 
 enum State<T> {
@@ -676,4 +685,85 @@ where
             }
         },
     )
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct EnvelopeEncoder(pub RoutingAddr);
+
+impl EnvelopeEncoder {
+    pub fn new(addr: RoutingAddr) -> Self {
+        EnvelopeEncoder(addr)
+    }
+}
+
+impl Encoder<Envelope> for EnvelopeEncoder {
+    type Error = std::io::Error;
+
+    fn encode(&mut self, item: Envelope, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        let EnvelopeEncoder(source) = self;
+        let (node, lane, code, body) = match item {
+            Envelope::Auth { .. } | Envelope::DeAuth { .. } => {
+                panic!("Unexpected auth/death envelope.");
+            }
+            Envelope::Link {
+                node_uri, lane_uri, ..
+            } => (node_uri, lane_uri, LINK, None),
+            Envelope::Sync {
+                node_uri, lane_uri, ..
+            } => (node_uri, lane_uri, SYNC, None),
+            Envelope::Unlink {
+                node_uri, lane_uri, ..
+            } => (node_uri, lane_uri, UNLINK, None),
+            Envelope::Command {
+                node_uri,
+                lane_uri,
+                body,
+            } => (
+                node_uri,
+                lane_uri,
+                COMMAND,
+                Some(body.unwrap_or(Value::Extant)),
+            ),
+            Envelope::Linked {
+                node_uri, lane_uri, ..
+            } => (node_uri, lane_uri, LINKED, None),
+            Envelope::Synced {
+                node_uri, lane_uri, ..
+            } => (node_uri, lane_uri, SYNCED, None),
+            Envelope::Unlinked {
+                node_uri,
+                lane_uri,
+                body,
+            } => (
+                node_uri,
+                lane_uri,
+                UNLINKED,
+                Some(body.unwrap_or(Value::Extant)),
+            ),
+            Envelope::Event {
+                node_uri,
+                lane_uri,
+                body,
+            } => (
+                node_uri,
+                lane_uri,
+                EVENT,
+                Some(body.unwrap_or(Value::Extant)),
+            ),
+        };
+        dst.reserve(HEADER_INIT_LEN + lane.len() + node.len());
+        dst.put_u128(source.uuid().as_u128());
+        let node_len = u32::try_from(node.len()).expect("Node name to long.");
+        let lane_len = u32::try_from(lane.len()).expect("Lane name to long.");
+        dst.put_u32(node_len);
+        dst.put_u32(lane_len);
+        if let Some(body) = body {
+            put_with_body(node.as_str(), lane.as_str(), code, &body, dst);
+        } else {
+            dst.put_u64(code << OP_SHIFT);
+            dst.put_slice(node.as_bytes());
+            dst.put_slice(lane.as_bytes());
+        }
+        Ok(())
+    }
 }

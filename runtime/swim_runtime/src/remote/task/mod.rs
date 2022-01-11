@@ -441,14 +441,12 @@ where
             let route = if let Some(route) = resolved.get_mut(&target) {
                 if route.is_closed() {
                     resolved.remove(&target);
-                    insert_new_route(router, resolved, &target, retry_strategy, delay_fn)
-                        .await?
+                    insert_new_route(router, resolved, &target, retry_strategy, delay_fn).await?
                 } else {
                     route
                 }
             } else {
-                insert_new_route(router, resolved, &target, retry_strategy, delay_fn)
-                    .await?
+                insert_new_route(router, resolved, &target, retry_strategy, delay_fn).await?
             };
             if route.send_item(envelope).await.is_err() {
                 if let Some(route) = resolved.remove(&target) {
@@ -484,17 +482,15 @@ where
     let route = loop {
         let result = get_route(router, target).await;
         match result {
-            Err(err) if !err.is_fatal() => {
-                match retry.next() {
-                    Some(Some(dur)) => {
-                        delay_fn(dur).await;
-                    }
-                    None => {
-                        break Err(err);
-                    }
-                    _ => {}
+            Err(err) if !err.is_fatal() => match retry.next() {
+                Some(Some(dur)) => {
+                    delay_fn(dur).await;
                 }
-            }
+                None => {
+                    break Err(err);
+                }
+                _ => {}
+            },
             Err(err) => {
                 break Err(err);
             }
@@ -597,9 +593,7 @@ where
 }
 
 //Get the target path only for link and sync messages (for creating the "not found" response).
-fn link_or_sync(env: &Envelope,
-                node: &mut String,
-                lane: &mut String) -> bool {
+fn link_or_sync(env: &Envelope, node: &mut String, lane: &mut String) -> bool {
     match env {
         Envelope::Link {
             node_uri, lane_uri, ..
@@ -610,7 +604,7 @@ fn link_or_sync(env: &Envelope,
             node.replace_range(.., node_uri.as_str());
             lane.replace_range(.., lane_uri.as_str());
             true
-        },
+        }
         _ => false,
     }
 }
@@ -619,9 +613,7 @@ fn link_or_sync(env: &Envelope,
 const NOT_FOUND_ADDR: RoutingAddr = RoutingAddr::plane(0);
 
 // For a link or sync message that cannot be routed, send back a "not found" message.
-async fn handle_not_found(sender: &mpsc::Sender<TaggedEnvelope>,
-                          node: &str,
-                          lane: &str) {
+async fn handle_not_found(sender: &mpsc::Sender<TaggedEnvelope>, node: &str, lane: &str) {
     let not_found = Envelope::node_not_found(Text::new(node), Text::new(lane));
     //An error here means the web socket connection has failed and will produce an error
     //the next time it is polled so it is fine to discard this error.

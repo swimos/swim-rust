@@ -123,7 +123,6 @@ impl From<SendFailed> for RoutingError {
     }
 }
 
-
 /// An error denoting that a connection error has occurred.
 #[derive(Debug, Clone)]
 pub enum ConnectionError {
