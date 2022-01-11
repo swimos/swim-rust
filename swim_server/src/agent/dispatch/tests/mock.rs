@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::agent::context::AgentExecutionContext;
+use crate::agent::dispatch::tests::mock::router::MockRouterInner;
 use crate::agent::lane::channels::task::LaneIoError;
 use crate::agent::lane::channels::update::UpdateError;
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
@@ -33,11 +34,13 @@ use std::sync::Arc;
 use stm::transaction::TransactionError;
 use swim_metrics::config::MetricAggregatorConfig;
 use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
-use swim_model::path::RelativePath;
+use swim_model::path::{Path, RelativePath};
 use swim_model::Value;
 use swim_runtime::compat::{Operation, RequestMessage};
-use swim_runtime::error::{ConnectionDropped, ResolutionError, RouterError};
-use swim_runtime::routing::{Route, RoutingAddr, TaggedEnvelope, TaggedSender};
+use swim_runtime::error::ConnectionDropped;
+use swim_runtime::remote::router::TaggedRouter;
+use swim_runtime::remote::RawRoute;
+use swim_runtime::routing::{RoutingAddr, TaggedEnvelope, TaggedSender};
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger;
@@ -46,13 +49,12 @@ use swim_warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::Instant;
-use url::Url;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MockLane;
 
 #[derive(Debug)]
-struct RouteReceiver {
+pub struct RouteReceiver {
     receiver: Option<mpsc::Receiver<TaggedEnvelope>>,
     _drop_tx: promise::Sender<ConnectionDropped>,
 }
@@ -76,68 +78,86 @@ impl RouteReceiver {
     }
 }
 
-#[derive(Debug)]
-struct MockRouterInner {
-    router_addr: RoutingAddr,
-    buffer_size: usize,
-    senders: HashMap<RoutingAddr, Route>,
-    receivers: HashMap<RoutingAddr, RouteReceiver>,
-}
+mod router {
+    use crate::agent::dispatch::tests::mock::RouteReceiver;
+    use futures_util::future::BoxFuture;
+    use parking_lot::Mutex;
+    use std::collections::hash_map::Entry;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use swim_model::path::Path;
+    use swim_runtime::remote::router::fixture::{invalid, router_fixture, RouterCallback};
+    use swim_runtime::remote::router::{PlaneRoutingRequest, RemoteRoutingRequest, TaggedRouter};
+    use swim_runtime::remote::RawRoute;
+    use swim_runtime::routing::RoutingAddr;
+    use swim_utilities::trigger::promise;
+    use tokio::sync::mpsc;
+    use tokio::task::JoinHandle;
 
-impl MockRouterInner {
-    fn new(router_addr: RoutingAddr, buffer_size: usize) -> Self {
-        MockRouterInner {
-            router_addr,
-            buffer_size,
-            senders: Default::default(),
-            receivers: Default::default(),
-        }
+    #[derive(Debug)]
+    pub struct MockRouterInner {
+        pub buffer_size: usize,
+        pub senders: HashMap<RoutingAddr, RawRoute>,
+        pub receivers: HashMap<RoutingAddr, RouteReceiver>,
     }
-}
 
-#[derive(Debug, Clone)]
-pub struct MockRouter(Arc<Mutex<MockRouterInner>>);
-
-impl Router for MockRouter {
-    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
-        async move {
-            let mut lock = self.0.lock();
-            let MockRouterInner {
-                router_addr,
+    impl MockRouterInner {
+        pub fn new(buffer_size: usize) -> Self {
+            MockRouterInner {
                 buffer_size,
-                senders,
-                receivers,
-            } = &mut *lock;
-            let route = match senders.entry(addr) {
-                Entry::Occupied(entry) => entry.get().clone(),
-                Entry::Vacant(entry) => {
-                    let (tx, rx) = mpsc::channel(*buffer_size);
-                    let (drop_tx, drop_rx) = promise::promise();
-                    entry.insert(Route::new(
-                        TaggedSender::new(*router_addr, tx.clone()),
-                        drop_rx.clone(),
-                    ));
-                    receivers.insert(addr, RouteReceiver::new(rx, drop_tx));
-                    Route::new(TaggedSender::new(*router_addr, tx), drop_rx)
-                }
-            };
-            Ok(route)
+                senders: Default::default(),
+                receivers: Default::default(),
+            }
         }
-        .boxed()
     }
 
-    fn lookup(
-        &mut self,
-        _host: Option<Url>,
-        _route: RelativeUri,
-    ) -> BoxFuture<'static, Result<RoutingAddr, RouterError>> {
-        panic!("Unexpected resolution attempt.")
+    struct RemoteRouter {
+        inner: Arc<Mutex<MockRouterInner>>,
+    }
+
+    impl RouterCallback<RemoteRoutingRequest> for RemoteRouter {
+        fn call(&mut self, arg: RemoteRoutingRequest) -> BoxFuture<()> {
+            let inner = self.inner.clone();
+            Box::pin(async move {
+                match arg {
+                    RemoteRoutingRequest::Endpoint { addr, request } => {
+                        let mut lock = inner.lock();
+                        let MockRouterInner {
+                            buffer_size,
+                            senders,
+                            receivers,
+                        } = &mut *lock;
+                        let route = match senders.entry(addr) {
+                            Entry::Occupied(entry) => entry.get().clone(),
+                            Entry::Vacant(entry) => {
+                                let (tx, rx) = mpsc::channel(*buffer_size);
+                                let (drop_tx, drop_rx) = promise::promise();
+                                entry.insert(RawRoute::new(tx.clone(), drop_rx.clone()));
+                                receivers.insert(addr, RouteReceiver::new(rx, drop_tx));
+                                RawRoute::new(tx, drop_rx)
+                            }
+                        };
+                        let _r = request.send(Ok(route));
+                    }
+                    r => panic!("Unexpected request: {:?}", r),
+                }
+            })
+        }
+    }
+
+    pub fn make(
+        router_addr: RoutingAddr,
+        inner: Arc<Mutex<MockRouterInner>>,
+    ) -> (TaggedRouter<Path>, JoinHandle<()>) {
+        let (router, jh) = router_fixture(invalid, RemoteRouter { inner }, invalid);
+        (router.tagged(router_addr), jh)
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct MockExecutionContext {
-    router: Arc<Mutex<MockRouterInner>>,
+    channels: Arc<Mutex<MockRouterInner>>,
+    router: TaggedRouter<Path>,
     spawner: mpsc::Sender<Eff>,
     uri: RelativeUri,
     uplinks_idle_since: Arc<AtomicInstant>,
@@ -146,8 +166,8 @@ pub struct MockExecutionContext {
 impl AgentExecutionContext for MockExecutionContext {
     type Store = SwimNodeStore<MockPlaneStore>;
 
-    fn router_handle(&self) -> Self::Router {
-        MockRouter(self.router.clone())
+    fn router_handle(&self) -> TaggedRouter<Path> {
+        self.router.clone()
     }
 
     fn spawner(&self) -> Sender<Eff> {
@@ -183,8 +203,12 @@ impl AgentExecutionContext for MockExecutionContext {
 
 impl MockExecutionContext {
     pub fn new(router_addr: RoutingAddr, buffer_size: usize, spawner: mpsc::Sender<Eff>) -> Self {
+        let inner = Arc::new(Mutex::new(MockRouterInner::new(buffer_size)));
+        let (router, _jh) = router::make(router_addr, inner.clone());
+
         MockExecutionContext {
-            router: Arc::new(Mutex::new(MockRouterInner::new(router_addr, buffer_size))),
+            channels: inner,
+            router,
             spawner,
             uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
             uri: RelativeUri::try_from("/mock/router".to_string()).unwrap(),
@@ -192,20 +216,18 @@ impl MockExecutionContext {
     }
 
     pub fn take_receiver(&self, addr: &RoutingAddr) -> Option<mpsc::Receiver<TaggedEnvelope>> {
-        let mut lock = self.router.lock();
+        let mut lock = self.channels.lock();
         let MockRouterInner {
-            router_addr,
             buffer_size,
             senders,
             receivers,
-            ..
         } = &mut *lock;
         match senders.entry(*addr) {
             Entry::Occupied(_) => receivers.get_mut(addr).and_then(|rr| rr.receiver.take()),
             Entry::Vacant(entry) => {
                 let (tx, rx) = mpsc::channel(*buffer_size);
                 let (drop_tx, drop_rx) = promise::promise();
-                entry.insert(Route::new(TaggedSender::new(*router_addr, tx), drop_rx));
+                entry.insert(RawRoute::new(tx, drop_rx));
                 receivers.insert(*addr, RouteReceiver::taken(drop_tx));
                 Some(rx)
             }

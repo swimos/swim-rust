@@ -147,26 +147,45 @@ impl<Path> Router<Path> {
     where
         Path: Addressable,
     {
-        TaggedRouter::new(tag, self.clone())
+        TaggedRouter::new(Some(tag), self.clone())
+    }
+
+    /// Creates a router that will tag senders with the provided routing address during sender
+    /// resolution.
+    pub fn untagged(&self) -> TaggedRouter<Path>
+    where
+        Path: Addressable,
+    {
+        TaggedRouter::new(None, self.clone())
     }
 }
 
 /// A wrapper around a raw router that attaches a tag (RoutingAddr) to routes that are resolved.
 #[derive(Clone, Debug)]
 pub struct TaggedRouter<Path> {
-    tag: RoutingAddr,
+    tag: Option<RoutingAddr>,
     inner: Router<Path>,
 }
 
 impl<Path> TaggedRouter<Path> {
-    fn new(tag: RoutingAddr, inner: Router<Path>) -> TaggedRouter<Path> {
+    fn new(tag: Option<RoutingAddr>, inner: Router<Path>) -> TaggedRouter<Path> {
         TaggedRouter { tag, inner }
     }
 
     pub async fn resolve_sender(&mut self, addr: RoutingAddr) -> Result<Route, RoutingError> {
+        println!("Resolve sender: {:?}", addr);
+
         let TaggedRouter { tag, inner } = self;
         let RawRoute { sender, on_drop } = inner.resolve_sender(addr).await?;
-        Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
+
+        let tag = match tag {
+            Some(tag) => *tag,
+            None => addr,
+        };
+
+        println!("Tagging with: {:?}", tag);
+
+        Ok(Route::new(TaggedSender::new(tag, sender), on_drop))
     }
 
     pub async fn lookup<A>(&mut self, address: A) -> Result<RoutingAddr, RoutingError>

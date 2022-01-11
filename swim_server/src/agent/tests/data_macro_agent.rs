@@ -21,7 +21,6 @@ use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::model::{action, command};
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
-use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::{AgentContext, AgentParameters};
 use crate::interface::ServerDownlinksConfig;

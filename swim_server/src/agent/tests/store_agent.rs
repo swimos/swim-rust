@@ -21,6 +21,7 @@ use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::model::map::MapLane;
 use crate::agent::model::value::{ValueLane, ValueLaneEvent};
+use crate::agent::tests::stub_router;
 use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::{
     AgentContext, AgentParameters, DynamicAgentIo, DynamicLaneTasks, LaneConfig, LaneParts,
@@ -57,6 +58,7 @@ use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
+
 const INTERVAL: Duration = Duration::from_millis(1);
 const MAX_PERIODS: i32 = 10;
 
@@ -326,12 +328,15 @@ async fn store_loads() {
         Duration::from_secs(1),
     );
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
+
+    let (router, _jh) = stub_router::make(RoutingAddr::plane(1024));
+
     let (agent, agent_proc) = provider.run(
         AgentParameters::new(AgentConfig, exec_config, uri.clone(), HashMap::new()),
         clock.clone(),
         make_dl_context(),
         ReceiverStream::new(envelope_rx),
-        SingleChannelRouter::new(RoutingAddr::plane(1024)),
+        router,
         store.delegate.node_store(uri.to_string()),
     );
 
@@ -375,12 +380,14 @@ async fn events() {
         Duration::from_secs(1),
     );
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
+    let (router, _jh) = stub_router::make(RoutingAddr::plane(1024));
+
     let (_, agent_proc) = provider.run(
         AgentParameters::new(AgentConfig, exec_config, uri.clone(), HashMap::new()),
         clock.clone(),
         make_dl_context(),
         ReceiverStream::new(envelope_rx),
-        SingleChannelRouter::new(RoutingAddr::plane(1024)),
+        router,
         store.delegate.node_store(uri.to_string()),
     );
 

@@ -21,7 +21,6 @@ use crate::agent::{
 use crate::interface::ServerDownlinksConfig;
 use crate::meta::info::{LaneInfo, LaneKind};
 use crate::plane::provider::AgentProvider;
-use futures::future::BoxFuture;
 use futures::FutureExt;
 use server_store::agent::mock::MockNodeStore;
 use std::collections::{HashMap, HashSet};
@@ -35,9 +34,8 @@ use swim_form::structural::read::ReadError;
 use swim_form::Form;
 use swim_model::record;
 use swim_runtime::configuration::DownlinkConnectionsConfig;
-use swim_runtime::error::{ConnectionDropped, ResolutionError, RouterError};
-use swim_runtime::remote::router::Router;
-use swim_runtime::routing::{Route, RoutingAddr, TaggedEnvelope, TaggedSender};
+use swim_runtime::remote::router::fixture::{client_router_resolver, remote_router_resolver};
+use swim_runtime::routing::{RoutingAddr, TaggedEnvelope};
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger::promise;
@@ -45,7 +43,6 @@ use swim_warp::envelope::{Envelope, EnvelopeKind};
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
-use url::Url;
 
 mod swim_server {
     pub use crate::*;
@@ -130,46 +127,6 @@ struct MapLifecycle;
 #[agent_lifecycle(agent = "MockAgent")]
 struct MockAgentLifecycle;
 
-#[derive(Clone)]
-struct MockRouter {
-    router_addr: RoutingAddr,
-    inner: mpsc::Sender<TaggedEnvelope>,
-    _drop_tx: Arc<promise::Sender<ConnectionDropped>>,
-    drop_rx: promise::Receiver<ConnectionDropped>,
-}
-
-impl MockRouter {
-    fn new(router_addr: RoutingAddr, inner: mpsc::Sender<TaggedEnvelope>) -> MockRouter {
-        let (tx, rx) = promise::promise();
-
-        MockRouter {
-            router_addr,
-            inner,
-            _drop_tx: Arc::new(tx),
-            drop_rx: rx,
-        }
-    }
-}
-
-impl Router for MockRouter {
-    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
-        async move {
-            let MockRouter { inner, drop_rx, .. } = self;
-            let route = Route::new(TaggedSender::new(addr, inner.clone()), drop_rx.clone());
-            Ok(route)
-        }
-        .boxed()
-    }
-
-    fn lookup(
-        &mut self,
-        _host: Option<Url>,
-        _route: RelativeUri,
-    ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
-        panic!("Unexpected resolution attempt.")
-    }
-}
-
 #[tokio::test]
 async fn lane_info_sync() {
     let (tx, mut rx) = mpsc::channel(5);
@@ -188,11 +145,9 @@ async fn lane_info_sync() {
     let provider = AgentProvider::new(MockAgentConfig, MockAgentLifecycle);
 
     let (client_tx, client_rx) = mpsc::channel(8);
-    let (remote_tx, _remote_rx) = mpsc::channel(8);
-    let (plane_tx, _plane_rx) = mpsc::channel(8);
     let (_close_tx, close_rx) = promise::promise();
-
-    let router = Router::server(client_tx.clone(), plane_tx.clone(), remote_tx);
+    let (_promise_tx, promise_rx) = promise::promise();
+    let (router, _jh) = remote_router_resolver(tx, promise_rx);
 
     let (conn_pool, _pool_task) = SwimConnPool::new(
         DownlinkConnectionsConfig::default(),
@@ -217,7 +172,7 @@ async fn lane_info_sync() {
         clock.clone(),
         client,
         ReceiverStream::new(envelope_rx),
-        router.tagged(RoutingAddr::plane(1024), tx),
+        router.tagged(RoutingAddr::plane(1024)),
         MockNodeStore::mock(),
     );
 

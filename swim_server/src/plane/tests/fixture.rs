@@ -123,7 +123,7 @@ impl<Clk: Clock> AgentRoute<Clk, EnvChannel, SwimNodeStore<MockPlaneStore>> for 
         let task = async move {
             let target_node: RelativeUri =
                 format!("/{}/{}", RECEIVER_PREFIX, target).parse().unwrap();
-            let addr = router.lookup(None, target_node.clone()).await.unwrap();
+            let addr = router.lookup(target_node.clone()).await.unwrap();
             let mut tx = router.resolve_sender(addr).await.unwrap().sender;
             assert!(tx
                 .send_item(

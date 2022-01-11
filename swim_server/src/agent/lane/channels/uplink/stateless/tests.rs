@@ -14,11 +14,10 @@
 
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::Eff;
-use futures::future::{join, join3, ready, BoxFuture};
-use futures::{FutureExt, StreamExt};
+use futures::future::{join, join3};
+use futures::StreamExt;
 use std::convert::TryFrom;
-use swim_runtime::error::{ConnectionDropped, RouterError};
-use swim_runtime::routing::{Route, RoutingAddr, TaggedEnvelope, TaggedSender};
+use swim_runtime::routing::{RoutingAddr, TaggedEnvelope};
 use tokio::sync::mpsc;
 
 use std::sync::Arc;
@@ -39,60 +38,30 @@ use swim_metrics::uplink::{
     WarpUplinkProfile,
 };
 use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
-use swim_runtime::error::ResolutionError;
+use swim_runtime::remote::router::fixture::{plane_router_resolver, remote_router_resolver};
 use swim_runtime::remote::router::TaggedRouter;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
 use tokio::sync::mpsc::Receiver;
+use tokio::task::JoinHandle;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
-use url::Url;
 
-#[derive(Clone, Debug)]
-struct TestRouter {
-    router_addr: RoutingAddr,
-    sender: mpsc::Sender<TaggedEnvelope>,
-    _drop_tx: Arc<promise::Sender<ConnectionDropped>>,
-    drop_rx: promise::Receiver<ConnectionDropped>,
-}
+fn make_router(sender: mpsc::Sender<TaggedEnvelope>) -> (TaggedRouter<Path>, JoinHandle<()>) {
+    let (drop_tx, drop_rx) = promise::promise();
+    let (router, jh) = remote_router_resolver(sender, drop_rx);
+    let jh = tokio::spawn(async move {
+        jh.await.expect("Router task failed");
+        let _drop_guard = drop_tx;
+    });
 
-impl TestRouter {
-    fn new(router_addr: RoutingAddr, sender: mpsc::Sender<TaggedEnvelope>) -> Self {
-        let (drop_tx, drop_rx) = promise::promise();
-        TestRouter {
-            router_addr,
-            sender,
-            _drop_tx: Arc::new(drop_tx),
-            drop_rx,
-        }
-    }
-}
-
-impl Router for TestRouter {
-    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
-        let TestRouter {
-            sender, drop_rx, ..
-        } = self;
-        ready(Ok(Route::new(
-            TaggedSender::new(addr, sender.clone()),
-            drop_rx.clone(),
-        )))
-        .boxed()
-    }
-
-    fn lookup(
-        &mut self,
-        _host: Option<Url>,
-        _route: RelativeUri,
-    ) -> BoxFuture<'static, Result<RoutingAddr, RouterError>> {
-        panic!("Unexpected resolution attempt.")
-    }
+    (router.untagged(), jh)
 }
 
 struct TestContext(
-    TestRouter,
+    TaggedRouter<Path>,
     mpsc::Sender<Eff>,
     RelativeUri,
     Arc<AtomicInstant>,
@@ -162,7 +131,7 @@ async fn immediate_unlink_stateless_uplinks() {
         stub_action_observer(),
     );
 
-    let router = TestRouter::new(RoutingAddr::plane(1024), router_tx);
+    let (router, _jh) = make_router(router_tx);
 
     let uplinks_task = uplinks.run(ReceiverStream::new(action_rx), router, error_tx, 256);
 
@@ -213,7 +182,7 @@ async fn sync_with_stateless_uplinks() {
         stub_action_observer(),
     );
 
-    let router = TestRouter::new(RoutingAddr::plane(1024), router_tx);
+    let (router, _jh) = make_router(router_tx);
 
     let uplinks_task = uplinks.run(ReceiverStream::new(action_rx), router, error_tx, 256);
 
@@ -267,7 +236,7 @@ async fn sync_with_action_lane() {
         stub_action_observer(),
     );
 
-    let router = TestRouter::new(RoutingAddr::plane(1024), router_tx);
+    let (router, _jh) = make_router(router_tx);
 
     let uplinks_task = uplinks.run(ReceiverStream::new(action_rx), router, error_tx, 256);
 
@@ -330,7 +299,7 @@ async fn sync_after_link_on_stateless_uplinks() {
         stub_action_observer(),
     );
 
-    let router = TestRouter::new(RoutingAddr::plane(1024), router_tx);
+    let (router, _jh) = make_router(router_tx);
 
     let uplinks_task = uplinks.run(ReceiverStream::new(action_rx), router, error_tx, 256);
 
@@ -399,7 +368,7 @@ async fn link_to_and_receive_from_broadcast_uplinks() {
         stub_action_observer(),
     );
 
-    let router = TestRouter::new(RoutingAddr::plane(1024), router_tx);
+    let (router, _jh) = make_router(router_tx);
 
     let uplinks_task = uplinks.run(ReceiverStream::new(action_rx), router, error_tx, 256);
 
@@ -483,7 +452,7 @@ async fn link_to_and_receive_from_addressed_uplinks() {
         stub_action_observer(),
     );
 
-    let router = TestRouter::new(RoutingAddr::plane(1024), router_tx);
+    let (router, _jh) = make_router(router_tx);
 
     let uplinks_task = uplinks.run(ReceiverStream::new(action_rx), router, error_tx, 256);
 
@@ -586,7 +555,7 @@ async fn link_twice_to_stateless_uplinks() {
         stub_action_observer(),
     );
 
-    let router = TestRouter::new(RoutingAddr::plane(1024), router_tx);
+    let (router, _jh) = make_router(router_tx);
 
     let uplinks_task = uplinks.run(ReceiverStream::new(action_rx), router, error_tx, 256);
 
@@ -665,7 +634,7 @@ async fn no_messages_after_unlink_from_stateless_uplinks() {
         stub_action_observer(),
     );
 
-    let router = TestRouter::new(RoutingAddr::plane(1024), router_tx);
+    let (router, _jh) = make_router(router_tx);
 
     let uplinks_task = uplinks.run(ReceiverStream::new(action_rx), router, error_tx, 256);
 
@@ -763,7 +732,7 @@ async fn send_no_uplink_stateless_uplinks() {
     let (router_tx, mut router_rx) = mpsc::channel(5);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
-    let router = TestRouter::new(RoutingAddr::plane(1024), router_tx);
+    let (router, _jh) = make_router(router_tx);
 
     let uplinks = StatelessUplinks::new(
         ReceiverStream::new(producer_rx),
@@ -869,7 +838,7 @@ async fn metrics() {
         observer,
     );
 
-    let router = TestRouter::new(RoutingAddr::plane(1024), router_tx);
+    let (router, _jh) = make_router(router_tx);
 
     let uplinks_task = uplinks.run(ReceiverStream::new(action_rx), router, error_tx, 256);
 

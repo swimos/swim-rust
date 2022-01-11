@@ -34,7 +34,6 @@ use crate::agent::lane::LaneModel;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::tests::reporting_agent::TestAgentConfig;
 use crate::agent::tests::reporting_macro_agent::ReportingAgentEvent;
-use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::{
     ActionLifecycleTasks, AgentContext, AgentParameters, CommandLifecycleTasks, Lane, LaneTasks,
@@ -70,58 +69,26 @@ use tokio::time::{timeout, Duration};
 use tokio_stream::wrappers::ReceiverStream;
 
 pub mod stub_router {
-    use futures::future::BoxFuture;
-    use futures::FutureExt;
-    use std::sync::Arc;
-    use swim_runtime::error::{ConnectionDropped, ResolutionError, RouterError};
-    use swim_runtime::routing::{Route, RoutingAddr, TaggedEnvelope, TaggedSender};
-    use swim_utilities::routing::uri::RelativeUri;
+    use swim_model::path::Path;
+    use swim_runtime::remote::router::fixture::plane_router_resolver;
+    use swim_runtime::remote::router::TaggedRouter;
+    use swim_runtime::routing::RoutingAddr;
     use swim_utilities::trigger::promise;
     use tokio::sync::mpsc;
-    use url::Url;
+    use tokio::task::JoinHandle;
 
-    #[derive(Clone)]
-    pub struct SingleChannelRouter {
-        router_addr: RoutingAddr,
-        inner: mpsc::Sender<TaggedEnvelope>,
-        _drop_tx: Arc<promise::Sender<ConnectionDropped>>,
-        drop_rx: promise::Receiver<ConnectionDropped>,
-    }
+    pub fn make(router_addr: RoutingAddr) -> (TaggedRouter<Path>, JoinHandle<()>) {
+        let (tx, rx) = promise::promise();
+        let (env_tx, mut env_rx) = mpsc::channel(16);
+        let (router, jh) = plane_router_resolver(env_tx, rx);
 
-    impl SingleChannelRouter {
-        pub fn new(router_addr: RoutingAddr) -> Self {
-            let (tx, rx) = promise::promise();
-            let (env_tx, mut env_rx) = mpsc::channel(16);
-            tokio::spawn(async move { while env_rx.recv().await.is_some() {} });
-            SingleChannelRouter {
-                router_addr,
-                inner: env_tx,
-                _drop_tx: Arc::new(tx),
-                drop_rx: rx,
-            }
-        }
-    }
+        tokio::spawn(async move {
+            while env_rx.recv().await.is_some() {}
 
-    impl Router for SingleChannelRouter {
-        fn resolve_sender(
-            &mut self,
-            addr: RoutingAddr,
-        ) -> BoxFuture<Result<Route, ResolutionError>> {
-            async move {
-                let SingleChannelRouter { inner, drop_rx, .. } = self;
-                let route = Route::new(TaggedSender::new(addr, inner.clone()), drop_rx.clone());
-                Ok(route)
-            }
-            .boxed()
-        }
+            let _drop_guard = tx;
+        });
 
-        fn lookup(
-            &mut self,
-            _host: Option<Url>,
-            _route: RelativeUri,
-        ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
-            panic!("Unexpected resolution attempt.")
-        }
+        (router.tagged(router_addr), jh)
     }
 }
 

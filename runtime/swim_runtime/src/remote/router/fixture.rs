@@ -3,7 +3,7 @@ use crate::remote::router::{
     DownlinkRoutingRequest, PlaneRoutingRequest, RemoteRoutingRequest, Router,
 };
 use crate::remote::RawRoute;
-use crate::routing::{RoutingAddr, TaggedEnvelope};
+use crate::routing::TaggedEnvelope;
 use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
 use std::fmt::Debug;
@@ -60,9 +60,18 @@ where
             };
 
             match item {
-                Some(Event::Plane(request)) => plane_cb.call(request).await,
-                Some(Event::Remote(request)) => remote_cb.call(request).await,
-                Some(Event::Client(request)) => client_cb.call(request).await,
+                Some(Event::Plane(request)) => {
+                    println!("Router service fixture: resolving plane request");
+                    plane_cb.call(request).await
+                }
+                Some(Event::Remote(request)) => {
+                    println!("Router service fixture: resolving remote request");
+                    remote_cb.call(request).await
+                }
+                Some(Event::Client(request)) => {
+                    println!("Router service fixture: resolving client request");
+                    client_cb.call(request).await
+                }
                 None => break,
             }
         }
@@ -89,8 +98,19 @@ where
     }
 }
 
-pub async fn invalid<A: Debug>(arg: A) {
-    panic!("Received an invalid request: {:?}", arg);
+pub async fn invalid<A>(arg: A)
+where
+    A: Debug,
+{
+    panic!("Received an unexpected request: {:?}", arg);
+}
+
+pub fn empty() -> (Router<Path>, JoinHandle<()>) {
+    router_fixture(
+        |arg| async move { panic!("Plane router received an unexpected request: {:?}", arg) },
+        |arg| async move { panic!("Remote router received an unexpected request: {:?}", arg) },
+        |arg| async move { panic!("Client router received an unexpected request: {:?}", arg) },
+    )
 }
 
 pub fn router_fixture<Path, PF, RF, CF>(
@@ -147,5 +167,73 @@ pub fn plane_router_resolver(
     sender: mpsc::Sender<TaggedEnvelope>,
     drop_rx: promise::Receiver<ConnectionDropped>,
 ) -> (Router<Path>, JoinHandle<()>) {
-    router_fixture(PlaneRouterResolver { sender, drop_rx }, invalid, invalid)
+    router_fixture(
+        PlaneRouterResolver { sender, drop_rx },
+        |arg| async move { panic!("Remote router received an unexpected request: {:?}", arg) },
+        |arg| async move { panic!("Client router received an unexpected request: {:?}", arg) },
+    )
+}
+
+struct ClientRouterResolver {
+    sender: mpsc::Sender<TaggedEnvelope>,
+    drop_rx: promise::Receiver<ConnectionDropped>,
+}
+
+impl RouterCallback<DownlinkRoutingRequest<Path>> for ClientRouterResolver {
+    fn call(&mut self, arg: DownlinkRoutingRequest<Path>) -> BoxFuture<()> {
+        match arg {
+            DownlinkRoutingRequest::Endpoint { request, .. } => {
+                let ClientRouterResolver { sender, drop_rx } = self;
+                let _ = request.send(Ok(RawRoute::new(sender.clone(), drop_rx.clone())));
+            }
+            req => {
+                panic!("Downlink router received an unexpected request: {:?}", req)
+            }
+        }
+
+        ready(()).boxed()
+    }
+}
+
+pub fn client_router_resolver(
+    sender: mpsc::Sender<TaggedEnvelope>,
+    drop_rx: promise::Receiver<ConnectionDropped>,
+) -> (Router<Path>, JoinHandle<()>) {
+    router_fixture(
+        |arg| async move { panic!("Remote router received an unexpected request: {:?}", arg) },
+        |arg| async move { panic!("Client router received an unexpected request: {:?}", arg) },
+        ClientRouterResolver { sender, drop_rx },
+    )
+}
+
+struct RemoteRouterResolver {
+    sender: mpsc::Sender<TaggedEnvelope>,
+    drop_rx: promise::Receiver<ConnectionDropped>,
+}
+
+impl RouterCallback<RemoteRoutingRequest> for RemoteRouterResolver {
+    fn call(&mut self, arg: RemoteRoutingRequest) -> BoxFuture<()> {
+        match arg {
+            RemoteRoutingRequest::Endpoint { request, .. } => {
+                let RemoteRouterResolver { sender, drop_rx } = self;
+                let _ = request.send(Ok(RawRoute::new(sender.clone(), drop_rx.clone())));
+            }
+            req => {
+                panic!("Remote router received an unexpected request: {:?}", req)
+            }
+        }
+
+        ready(()).boxed()
+    }
+}
+
+pub fn remote_router_resolver(
+    sender: mpsc::Sender<TaggedEnvelope>,
+    drop_rx: promise::Receiver<ConnectionDropped>,
+) -> (Router<Path>, JoinHandle<()>) {
+    router_fixture(
+        |arg| async move { panic!("Remote router received an unexpected request: {:?}", arg) },
+        RemoteRouterResolver { sender, drop_rx },
+        |arg| async move { panic!("Client router received an unexpected request: {:?}", arg) },
+    )
 }

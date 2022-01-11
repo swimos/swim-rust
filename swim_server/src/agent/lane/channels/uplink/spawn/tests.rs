@@ -22,7 +22,7 @@ use crate::agent::lane::channels::uplink::{
 use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, TaggedAction};
 use crate::agent::lane::model::supply::SupplyLane;
 use crate::agent::Eff;
-use futures::future::{join, join3, ready, BoxFuture};
+use futures::future::{join, join3, BoxFuture};
 use futures::stream::iter;
 use futures::stream::{BoxStream, FusedStream};
 use futures::{FutureExt, Stream, StreamExt};
@@ -41,9 +41,10 @@ use swim_metrics::config::MetricAggregatorConfig;
 use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
 use swim_model::path::{Path, RelativePath};
 use swim_model::Value;
-use swim_runtime::error::{ConnectionDropped, ResolutionError, RouterError};
+use swim_runtime::error::ConnectionDropped;
+use swim_runtime::remote::router::fixture::{plane_router_resolver, remote_router_resolver};
 use swim_runtime::remote::router::TaggedRouter;
-use swim_runtime::routing::{Route, RoutingAddr, TaggedEnvelope, TaggedSender};
+use swim_runtime::routing::{RoutingAddr, TaggedEnvelope};
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::item_sink::ItemSink;
 use swim_utilities::future::item_sink::SendError;
@@ -57,7 +58,6 @@ use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Barrier};
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
-use url::Url;
 
 const INIT: i32 = 42;
 
@@ -71,11 +71,6 @@ struct TestHandler(mpsc::Sender<i32>, i32);
 struct TestStateMachine(i32);
 
 struct TestUpdater(mpsc::Sender<i32>);
-
-struct TestRouter {
-    sender: mpsc::Sender<TaggedEnvelope>,
-    drop_rx: promise::Receiver<ConnectionDropped>,
-}
 
 struct TestSender {
     addr: RoutingAddr,
@@ -95,27 +90,6 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
             })
         }
         .boxed()
-    }
-}
-
-impl Router for TestRouter {
-    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
-        let TestRouter {
-            sender, drop_rx, ..
-        } = self;
-        ready(Ok(Route::new(
-            TaggedSender::new(addr, sender.clone()),
-            drop_rx.clone(),
-        )))
-        .boxed()
-    }
-
-    fn lookup(
-        &mut self,
-        _host: Option<Url>,
-        _route: RelativeUri,
-    ) -> BoxFuture<'static, Result<RoutingAddr, RouterError>> {
-        panic!("Unexpected resolution attempt.")
     }
 }
 
@@ -309,9 +283,7 @@ fn make_config() -> AgentExecutionConfig {
 struct TestContext {
     router: TaggedRouter<Path>,
     spawner: mpsc::Sender<Eff>,
-    messages: mpsc::Sender<TaggedEnvelope>,
     _drop_tx: promise::Sender<ConnectionDropped>,
-    drop_rx: promise::Receiver<ConnectionDropped>,
     uri: RelativeUri,
     uplinks_idle_since: Arc<AtomicInstant>,
 }
@@ -319,11 +291,12 @@ struct TestContext {
 impl TestContext {
     fn new(spawner: mpsc::Sender<Eff>, messages: mpsc::Sender<TaggedEnvelope>) -> Self {
         let (drop_tx, drop_rx) = promise::promise();
+        let (router, _jh) = remote_router_resolver(messages, drop_rx);
+
         TestContext {
+            router: router.untagged(),
             spawner,
-            messages,
             _drop_tx: drop_tx,
-            drop_rx,
             uri: RelativeUri::try_from("/mock/router".to_string()).unwrap(),
             uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
         }
@@ -333,14 +306,8 @@ impl TestContext {
 impl AgentExecutionContext for TestContext {
     type Store = SwimNodeStore<MockPlaneStore>;
 
-    fn router_handle(&self) -> Self::Router {
-        let TestContext {
-            messages, drop_rx, ..
-        } = self;
-        TestRouter {
-            sender: messages.clone(),
-            drop_rx: drop_rx.clone(),
-        }
+    fn router_handle(&self) -> TaggedRouter<Path> {
+        self.router.clone()
     }
 
     fn spawner(&self) -> Sender<Eff> {

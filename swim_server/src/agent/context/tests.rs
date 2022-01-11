@@ -17,7 +17,6 @@ use crate::agent::tests::test_clock::TestClock;
 use crate::agent::AgentContext;
 use crate::interface::ServerDownlinksConfig;
 use crate::meta::meta_context_sink;
-use futures::future::BoxFuture;
 use server_store::agent::mock::MockNodeStore;
 use server_store::agent::SwimNodeStore;
 use server_store::plane::mock::MockPlaneStore;
@@ -30,16 +29,14 @@ use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::ClientContext;
 use swim_runtime::configuration::DownlinkConnectionsConfig;
-use swim_runtime::error::{ResolutionError, RouterError};
 use swim_runtime::remote::router::Router;
-use swim_runtime::routing::{Route, RoutingAddr};
+use swim_runtime::routing::RoutingAddr;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
-use url::Url;
 
 #[test]
 fn simple_accessors() {

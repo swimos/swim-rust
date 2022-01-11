@@ -75,6 +75,8 @@ fn make_spec<Clk: Clock>() -> (
     )
 }
 
+// todo router
+#[ignore]
 #[tokio::test]
 async fn plane_event_loop() {
     let (mut spec, done_rx) = make_spec();

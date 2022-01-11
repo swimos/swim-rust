@@ -26,12 +26,9 @@ use server_store::agent::NodeStore;
 use server_store::plane::mock::MockPlaneStore;
 use std::time::Duration;
 use swim_async_runtime::time::clock::Clock;
-use swim_runtime::error::{ResolutionError, RouterError};
-use swim_runtime::routing::{Route, RoutingAddr, TaggedEnvelope};
+use swim_runtime::routing::TaggedEnvelope;
 use swim_utilities::routing::route_pattern::RoutePattern;
-use swim_utilities::routing::uri::RelativeUri;
 use tokio_stream::wrappers::ReceiverStream;
-use url::Url;
 
 #[derive(Default, Clone, Debug)]
 struct DummyClock;
@@ -44,12 +41,7 @@ impl Clock for DummyClock {
     }
 }
 
-type BuilderType = PlaneBuilder<
-    DummyClock,
-    ReceiverStream<TaggedEnvelope>,
-    PlaneRouter<DummyDelegate>,
-    MockPlaneStore,
->;
+type BuilderType = PlaneBuilder<DummyClock, ReceiverStream<TaggedEnvelope>, MockPlaneStore>;
 
 #[derive(Debug)]
 struct DummyAgent;
@@ -62,26 +54,6 @@ struct DummyLifecycle(i32);
 
 #[derive(Clone, Debug)]
 struct DummyPlaneLifecycle(i32);
-
-#[derive(Clone, Debug)]
-struct DummyDelegate;
-
-impl Router for DummyDelegate {
-    fn resolve_sender(
-        &mut self,
-        _addr: RoutingAddr,
-    ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
-        panic!("Called unexpectedly.");
-    }
-
-    fn lookup(
-        &mut self,
-        _host: Option<Url>,
-        _route: RelativeUri,
-    ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
-        panic!("Called unexpectedly.");
-    }
-}
 
 impl SwimAgent<DummyConfig> for DummyAgent {
     fn instantiate<Context, Store>(
