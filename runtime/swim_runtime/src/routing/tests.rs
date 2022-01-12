@@ -124,7 +124,7 @@ impl RouterCallback<RemoteRoutingRequest> for RemoteResolver {
             RemoteRoutingRequest::Endpoint { addr, request } => {
                 if *resolved && addr == ADDR {
                     assert!(request
-                        .send_ok(RawRoute::new(sender.clone(), drop_rx.clone()))
+                        .send_ok(RawRoute::new(sender.clone(), drop_rx))
                         .is_ok());
                 } else {
                     assert!(request.send_err(ResolutionError::Addr(addr)).is_ok());
