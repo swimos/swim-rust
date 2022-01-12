@@ -268,63 +268,90 @@ impl ClientEndpoint {
             ..
         } = self;
         match receiver {
-            ClientReceiver::Mpsc(receiver) => {
-
-                let stream = ReceiverStream::new(receiver)
-                    .filter_map(|TaggedEnvelope(_, env)| ready(env.into_response()));
-
-                let seed = RouteStream::new(host, stream, rx_on_dropped, handle_drop, stop_trigger);
-
-                unfold(seed, |mut rs| async move {
-                    let RouteStream {
-                        host,
-                        stream,
-                        on_dropped,
-                        stop_trigger,
-                        ..
-                    } = &mut rs;
-                    if let Some(dropped) = on_dropped {
-                        let event = match select(stream.next(), stop_trigger).await {
-                            Either::Left((Some(env), _)) => RouterEvent::Message(env),
-                            Either::Left(_) => {
-                                let result = dropped.await;
-                                *on_dropped = None;
-                                if let Ok(reason) = result {
-                                    match &*reason {
-                                        ConnectionDropped::Failed(ConnectionError::Resolution(name)) => {
-                                            RouterEvent::Unreachable(name.clone())
-                                        }
-                                        ConnectionDropped::Failed(ConnectionError::Io(e)) => {
-                                            match (e.kind(), host) {
-                                                (ErrorKind::NotFound, Some(host)) => {
-                                                    RouterEvent::Unreachable(host.to_string())
-                                                }
-                                                _ => RouterEvent::ConnectionClosed,
-                                            }
-                                        }
-                                        ConnectionDropped::Failed(_) => RouterEvent::ConnectionClosed,
-                                        _ => RouterEvent::ConnectionClosed,
-                                    }
-                                } else {
-                                    RouterEvent::ConnectionClosed
-                                }
-                            }
-                            Either::Right(_) => {
-                                *on_dropped = None;
-                                RouterEvent::Stopping
-                            }
-                        };
-                        Some((event, rs))
-                    } else {
-                        None
-                    }
-                })
-            }
-            ClientReceiver::ByteChannel(_rx) => {
-                todo!()
-            }
+            ClientReceiver::Mpsc(receiver) => Either::Left(mpsc_client_stream(
+                receiver,
+                rx_on_dropped,
+                handle_drop,
+                host,
+                stop_trigger,
+            )),
+            ClientReceiver::ByteChannel(receiver) => Either::Right(bytes_channel_client_stream(
+                receiver,
+                rx_on_dropped,
+                handle_drop,
+                host,
+                stop_trigger,
+            )),
         }
     }
+}
+
+fn bytes_channel_client_stream(
+    _receiver: ByteReader,
+    _rx_on_dropped: promise::Receiver<ConnectionDropped>,
+    _handle_drop: ClientRouteMonitor,
+    _host: Option<Url>,
+    _stop_trigger: CloseReceiver,
+) -> impl Stream<Item = RouterEvent> {
+    futures::stream::empty()
+}
+
+fn mpsc_client_stream(
+    receiver: mpsc::Receiver<TaggedEnvelope>,
+    rx_on_dropped: promise::Receiver<ConnectionDropped>,
+    handle_drop: ClientRouteMonitor,
+    host: Option<Url>,
+    stop_trigger: CloseReceiver,
+) -> impl Stream<Item = RouterEvent> {
+    let stream = ReceiverStream::new(receiver)
+        .filter_map(|TaggedEnvelope(_, env)| ready(env.into_response()));
+
+    let seed = RouteStream::new(host, stream, rx_on_dropped, handle_drop, stop_trigger);
+
+    unfold(seed, |mut rs| async move {
+        let RouteStream {
+            host,
+            stream,
+            on_dropped,
+            stop_trigger,
+            ..
+        } = &mut rs;
+        if let Some(dropped) = on_dropped {
+            let event = match select(stream.next(), stop_trigger).await {
+                Either::Left((Some(env), _)) => RouterEvent::Message(env),
+                Either::Left(_) => {
+                    let result = dropped.await;
+                    *on_dropped = None;
+                    if let Ok(reason) = result {
+                        match &*reason {
+                            ConnectionDropped::Failed(ConnectionError::Resolution(name)) => {
+                                RouterEvent::Unreachable(name.clone())
+                            }
+                            ConnectionDropped::Failed(ConnectionError::Io(e)) => {
+                                match (e.kind(), host) {
+                                    (ErrorKind::NotFound, Some(host)) => {
+                                        RouterEvent::Unreachable(host.to_string())
+                                    }
+                                    _ => RouterEvent::ConnectionClosed,
+                                }
+                            }
+                            ConnectionDropped::Failed(_) => RouterEvent::ConnectionClosed,
+                            _ => RouterEvent::ConnectionClosed,
+                        }
+                    } else {
+                        RouterEvent::ConnectionClosed
+                    }
+                }
+                Either::Right(_) => {
+                    *on_dropped = None;
+                    RouterEvent::Stopping
+                }
+            };
+            Some((event, rs))
+        } else {
+            None
+        }
+    })
 }
 
 #[derive(Debug)]

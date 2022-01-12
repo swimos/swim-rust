@@ -19,7 +19,7 @@ use crate::compat::{
     SYNCED, UNLINK, UNLINKED,
 };
 use crate::routing::RoutingAddr;
-use bytes::{Buf, BytesMut};
+use bytes::{Buf, Bytes, BytesMut};
 use futures::future::join;
 use futures::{SinkExt, StreamExt};
 use std::fmt::Debug;
@@ -214,7 +214,7 @@ where
 }
 
 fn round_trip_response<T>(
-    frame: ResponseMessage<T>,
+    frame: ResponseMessage<T, Bytes>,
 ) -> Result<Option<RawResponseMessage>, std::io::Error>
 where
     T: StructuralWritable,
@@ -380,7 +380,7 @@ fn encode_linked_frame() {
     let node = "my_node";
     let lane = "lane";
     let path = RelativePath::new(node, lane);
-    let frame = ResponseMessage::<Example>::linked(id, path);
+    let frame = ResponseMessage::<Example, Bytes>::linked(id, path);
     let mut encoder = ResponseMessageEncoder;
     let mut buffer = BytesMut::new();
 
@@ -409,7 +409,7 @@ fn encode_synced_frame() {
     let node = "my_node";
     let lane = "lane";
     let path = RelativePath::new(node, lane);
-    let frame = ResponseMessage::<Example>::synced(id, path);
+    let frame = ResponseMessage::<Example, Bytes>::synced(id, path);
     let mut encoder = ResponseMessageEncoder;
     let mut buffer = BytesMut::new();
 
@@ -438,7 +438,7 @@ fn encode_unlinked_frame() {
     let node = "my_node";
     let lane = "lane";
     let path = RelativePath::new(node, lane);
-    let frame = ResponseMessage::<Example>::unlinked(id, path);
+    let frame = ResponseMessage::<Example, Bytes>::unlinked(id, path, None);
     let mut encoder = ResponseMessageEncoder;
     let mut buffer = BytesMut::new();
 
@@ -473,7 +473,7 @@ fn encode_event_frame() {
     };
     let expected_body = format!("{}", print_recon_compact(&body));
 
-    let frame = ResponseMessage::event(id, path, body);
+    let frame = ResponseMessage::<Example, Bytes>::event(id, path, body);
 
     let mut encoder = ResponseMessageEncoder;
     let mut buffer = BytesMut::new();
@@ -510,7 +510,7 @@ fn decode_linked_frame() {
     let node = "my_node";
     let lane = "lane";
 
-    let frame = ResponseMessage::<Example>::linked(id, RelativePath::new(node, lane));
+    let frame = ResponseMessage::<Example, Bytes>::linked(id, RelativePath::new(node, lane));
     let result = round_trip_response::<Example>(frame);
 
     check_result_response(
@@ -525,7 +525,7 @@ fn decode_synced_frame() {
     let node = "my_node";
     let lane = "lane";
 
-    let frame = ResponseMessage::<Example>::synced(id, RelativePath::new(node, lane));
+    let frame = ResponseMessage::<Example, Bytes>::synced(id, RelativePath::new(node, lane));
     let result = round_trip_response::<Example>(frame);
 
     check_result_response(
@@ -540,12 +540,13 @@ fn decode_unlinked_frame() {
     let node = "my_node";
     let lane = "lane";
 
-    let frame = ResponseMessage::<Example>::unlinked(id, RelativePath::new(node, lane));
+    let frame =
+        ResponseMessage::<Example, Bytes>::unlinked(id, RelativePath::new(node, lane), None);
     let result = round_trip_response::<Example>(frame);
 
     check_result_response(
         result,
-        RawResponseMessage::unlinked(id, RelativePath::new(node, lane)),
+        RawResponseMessage::unlinked(id, RelativePath::new(node, lane), None),
     );
 }
 
@@ -563,7 +564,7 @@ fn decode_event_frame() {
     expected_body.reserve(1024);
     write!(expected_body, "{}", print_recon_compact(&message)).expect("Serialization failed.");
 
-    let frame = ResponseMessage::<Example>::event(
+    let frame = ResponseMessage::<Example, Bytes>::event(
         id,
         RelativePath::new(node, lane),
         Example {

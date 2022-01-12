@@ -50,11 +50,11 @@ pub enum Operation<T> {
 }
 
 /// Notifications that can be produced by an agent.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Notification<T> {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Notification<T, U> {
     Linked,
     Synced,
-    Unlinked,
+    Unlinked(Option<U>),
     Event(T),
 }
 
@@ -68,10 +68,10 @@ pub struct RequestMessage<T> {
 
 /// Type of messages that can be sent by an agent/received by a downlink.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ResponseMessage<T> {
+pub struct ResponseMessage<T, U> {
     pub origin: RoutingAddr,
     pub path: RelativePath,
-    pub envelope: Notification<T>,
+    pub envelope: Notification<T, U>,
 }
 
 impl<T> RequestMessage<T> {
@@ -124,7 +124,7 @@ impl<T> RequestMessage<T> {
     }
 }
 
-impl<T> ResponseMessage<T> {
+impl<T, U> ResponseMessage<T, U> {
     pub fn linked(target: RoutingAddr, path: RelativePath) -> Self {
         ResponseMessage {
             origin: target,
@@ -141,11 +141,11 @@ impl<T> ResponseMessage<T> {
         }
     }
 
-    pub fn unlinked(target: RoutingAddr, path: RelativePath) -> Self {
+    pub fn unlinked(target: RoutingAddr, path: RelativePath, body: Option<U>) -> Self {
         ResponseMessage {
             origin: target,
             path,
-            envelope: Notification::Unlinked,
+            envelope: Notification::Unlinked(body),
         }
     }
 
@@ -162,7 +162,7 @@ impl<T> ResponseMessage<T> {
 pub type RawRequestMessage<'a> = RequestMessage<&'a [u8]>;
 
 /// An agent message where the body is uninterpreted (represented as raw bytes).
-pub type RawResponseMessage = ResponseMessage<Bytes>;
+pub type RawResponseMessage = ResponseMessage<Bytes, Bytes>;
 
 /// Tokio [`Encoder`] to encode a [`RawRequestMessage`] as a byte stream.
 pub struct RawRequestMessageEncoder;
@@ -237,13 +237,18 @@ impl<'a> Encoder<RawRequestMessage<'a>> for RawRequestMessageEncoder {
 const RESERVE_INIT: usize = 256;
 const RESERVE_MULT: usize = 2;
 
-impl<T> Encoder<ResponseMessage<T>> for ResponseMessageEncoder
+impl<T, U> Encoder<ResponseMessage<T, U>> for ResponseMessageEncoder
 where
     T: StructuralWritable,
+    U: AsRef<[u8]>,
 {
     type Error = std::io::Error;
 
-    fn encode(&mut self, item: ResponseMessage<T>, dst: &mut BytesMut) -> Result<(), Self::Error> {
+    fn encode(
+        &mut self,
+        item: ResponseMessage<T, U>,
+        dst: &mut BytesMut,
+    ) -> Result<(), Self::Error> {
         let ResponseMessage {
             origin: source,
             path: RelativePath { node, lane },
@@ -266,10 +271,15 @@ where
                 dst.put_slice(node.as_bytes());
                 dst.put_slice(lane.as_bytes());
             }
-            Notification::Unlinked => {
-                dst.put_u64(UNLINKED << OP_SHIFT);
+            Notification::Unlinked(body) => {
+                let body_len = body.as_ref().map(|b| b.as_ref().len()).unwrap_or_default();
+                dst.put_u64(body_len as u64 | (UNLINKED << OP_SHIFT));
                 dst.put_slice(node.as_bytes());
                 dst.put_slice(lane.as_bytes());
+                dst.reserve(body_len);
+                if let Some(body) = body {
+                    dst.put_slice(body.as_ref());
+                }
             }
             Notification::Event(body) => {
                 put_with_body(node.as_str(), lane.as_str(), EVENT, &body, dst);
@@ -310,7 +320,7 @@ fn put_with_body<T: StructuralWritable>(
     rewound.put_u64(body_len | (code << OP_SHIFT));
 }
 
-enum State<T> {
+enum RequestState<T> {
     ReadingHeader,
     ReadingBody {
         source: RoutingAddr,
@@ -327,10 +337,35 @@ enum State<T> {
     },
 }
 
-/// Tokio [`Decoder`] that can read an [`AgentMessage`] from a stream of bytes, using a
+enum ResponseState<T, U> {
+    ReadingHeader,
+    ReadingBody {
+        is_event: bool,
+        source: RoutingAddr,
+        path: RelativePath,
+        remaining: usize,
+    },
+    AfterBody {
+        message: Option<ResponseMessage<T, U>>,
+        remaining: usize,
+    },
+    Discarding {
+        error: Option<AsyncParseError>,
+        remaining: usize,
+    },
+}
+
+/// Tokio [`Decoder`] that can read an [`RequestMessage`] from a stream of bytes, using a
 /// [`RecognizerDecoder`] to interpret the body.
 pub struct AgentMessageDecoder<T, R> {
-    state: State<T>,
+    state: RequestState<T>,
+    recognizer: RecognizerDecoder<R>,
+}
+
+/// Tokio [`Decoder`] that can read an [`ResponseMessage`] from a stream of bytes, using a
+/// [`RecognizerDecoder`] to interpret the body.
+pub struct ClientMessageDecoder<T, R> {
+    state: ResponseState<T, Bytes>,
     recognizer: RecognizerDecoder<R>,
 }
 
@@ -342,7 +377,7 @@ pub struct RawResponseMessageDecoder;
 impl<T, R> AgentMessageDecoder<T, R> {
     pub fn new(recognizer: R) -> Self {
         AgentMessageDecoder {
-            state: State::ReadingHeader,
+            state: RequestState::ReadingHeader,
             recognizer: RecognizerDecoder::new(recognizer),
         }
     }
@@ -354,10 +389,12 @@ const HEADER_INIT_LEN: usize = 32;
 pub enum MessageDecodeError {
     #[error("Error reading from the source: {0}")]
     Io(#[from] std::io::Error),
-    #[error("Routing address is message is invalid.")]
+    #[error("Routing address in message is invalid.")]
     Id(#[from] InvalidRoutingAddr),
     #[error("Invalid lane name: {0}")]
     LaneName(#[from] Utf8Error),
+    #[error("Unexpecetd message tag code: {0}")]
+    UnexpectedCode(u64),
     #[error("Invalid message body: {0}")]
     Body(#[from] AsyncParseError),
 }
@@ -389,7 +426,7 @@ where
         } = self;
         loop {
             match state {
-                State::ReadingHeader => {
+                RequestState::ReadingHeader => {
                     if src.remaining() < HEADER_INIT_LEN {
                         src.reserve(HEADER_INIT_LEN);
                         break Ok(None);
@@ -433,18 +470,21 @@ where
                                 envelope: Operation::Unlink,
                             }));
                         }
-                        _ => {
+                        COMMAND => {
                             let body_len = (body_len_and_tag & !OP_MASK) as usize;
-                            *state = State::ReadingBody {
+                            *state = RequestState::ReadingBody {
                                 source: id,
                                 path,
                                 remaining: body_len,
                             };
                             recognizer.reset();
                         }
+                        _ => {
+                            break Err(MessageDecodeError::UnexpectedCode(tag));
+                        }
                     }
                 }
-                State::ReadingBody {
+                RequestState::ReadingBody {
                     source,
                     path,
                     remaining,
@@ -460,7 +500,7 @@ where
                     match decode_result {
                         Ok(Some(result)) => {
                             src.unsplit(rem);
-                            *state = State::AfterBody {
+                            *state = RequestState::AfterBody {
                                 message: Some(RequestMessage {
                                     origin: *source,
                                     path: std::mem::take(path),
@@ -496,7 +536,7 @@ where
                             if *remaining == 0 {
                                 break Err(e.into());
                             } else {
-                                *state = State::Discarding {
+                                *state = RequestState::Discarding {
                                     error: Some(e),
                                     remaining: *remaining,
                                 }
@@ -504,11 +544,11 @@ where
                         }
                     }
                 }
-                State::AfterBody { message, remaining } => {
+                RequestState::AfterBody { message, remaining } => {
                     if src.remaining() >= *remaining {
                         src.advance(*remaining);
                         let result = message.take();
-                        *state = State::ReadingHeader;
+                        *state = RequestState::ReadingHeader;
                         break Ok(result);
                     } else {
                         *remaining -= src.remaining();
@@ -516,11 +556,197 @@ where
                         break Ok(None);
                     }
                 }
-                State::Discarding { error, remaining } => {
+                RequestState::Discarding { error, remaining } => {
                     if src.remaining() >= *remaining {
                         src.advance(*remaining);
                         let err = error.take().unwrap_or(AsyncParseError::UnconsumedInput);
-                        *state = State::ReadingHeader;
+                        *state = RequestState::ReadingHeader;
+                        break Err(err.into());
+                    } else {
+                        *remaining -= src.remaining();
+                        src.clear();
+                        break Ok(None);
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl<T, R> Decoder for ClientMessageDecoder<T, R>
+where
+    R: Recognizer<Target = T>,
+{
+    type Item = ResponseMessage<T, Bytes>;
+    type Error = MessageDecodeError;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        let ClientMessageDecoder {
+            state, recognizer, ..
+        } = self;
+        loop {
+            match state {
+                ResponseState::ReadingHeader => {
+                    if src.remaining() < HEADER_INIT_LEN {
+                        src.reserve(HEADER_INIT_LEN);
+                        break Ok(None);
+                    }
+                    let mut header = &src.as_ref()[0..HEADER_INIT_LEN];
+                    let source = header.get_u128();
+                    let id = RoutingAddr::try_from(Uuid::from_u128(source))?;
+                    let node_len = header.get_u32() as usize;
+                    let lane_len = header.get_u32() as usize;
+                    let body_len_and_tag = header.get_u64();
+                    let tag = (body_len_and_tag & OP_MASK) >> OP_SHIFT;
+                    if src.remaining() < HEADER_INIT_LEN + node_len + lane_len {
+                        src.reserve(node_len + lane_len as usize);
+                        break Ok(None);
+                    }
+                    src.advance(HEADER_INIT_LEN);
+                    let node = Text::new(std::str::from_utf8(&src.as_ref()[0..node_len])?);
+                    src.advance(node_len);
+                    let lane = Text::new(std::str::from_utf8(&src.as_ref()[0..lane_len])?);
+                    src.advance(lane_len);
+                    let path = RelativePath::new(node, lane);
+                    match tag {
+                        LINKED => {
+                            break Ok(Some(ResponseMessage {
+                                origin: id,
+                                path,
+                                envelope: Notification::Linked,
+                            }));
+                        }
+                        SYNCED => {
+                            break Ok(Some(ResponseMessage {
+                                origin: id,
+                                path,
+                                envelope: Notification::Synced,
+                            }));
+                        }
+                        UNLINKED => {
+                            let body_len = (body_len_and_tag & !OP_MASK) as usize;
+                            *state = ResponseState::ReadingBody {
+                                is_event: false,
+                                source: id,
+                                path,
+                                remaining: body_len,
+                            };
+                        }
+                        EVENT => {
+                            let body_len = (body_len_and_tag & !OP_MASK) as usize;
+                            *state = ResponseState::ReadingBody {
+                                is_event: true,
+                                source: id,
+                                path,
+                                remaining: body_len,
+                            };
+                            recognizer.reset();
+                        }
+                        _ => {
+                            break Err(MessageDecodeError::UnexpectedCode(tag));
+                        }
+                    }
+                }
+                ResponseState::ReadingBody {
+                    is_event,
+                    source,
+                    path,
+                    remaining,
+                } if *is_event => {
+                    let to_split = (*remaining).min(src.remaining());
+                    let rem = src.split_off(to_split);
+                    let buf_remaining = src.remaining();
+                    let end_of_message = *remaining <= buf_remaining;
+                    let decode_result = recognizer.decode(src);
+                    let new_remaining = src.remaining();
+                    let consumed = buf_remaining - new_remaining;
+                    *remaining -= consumed;
+                    match decode_result {
+                        Ok(Some(result)) => {
+                            src.unsplit(rem);
+                            *state = ResponseState::AfterBody {
+                                message: Some(ResponseMessage {
+                                    origin: *source,
+                                    path: std::mem::take(path),
+                                    envelope: Notification::Event(result),
+                                }),
+                                remaining: *remaining,
+                            }
+                        }
+                        Ok(None) => {
+                            if end_of_message {
+                                let eof_result = recognizer.decode_eof(src)?;
+                                let new_remaining = src.remaining();
+                                let consumed = buf_remaining - new_remaining;
+                                *remaining -= consumed;
+                                src.unsplit(rem);
+                                break if let Some(result) = eof_result {
+                                    Ok(Some(ResponseMessage {
+                                        origin: *source,
+                                        path: std::mem::take(path),
+                                        envelope: Notification::Event(result),
+                                    }))
+                                } else {
+                                    Err(MessageDecodeError::incomplete())
+                                };
+                            } else {
+                                break Ok(None);
+                            }
+                        }
+                        Err(e) => {
+                            *remaining -= new_remaining;
+                            src.unsplit(rem);
+                            src.advance(new_remaining);
+                            if *remaining == 0 {
+                                break Err(e.into());
+                            } else {
+                                *state = ResponseState::Discarding {
+                                    error: Some(e),
+                                    remaining: *remaining,
+                                }
+                            }
+                        }
+                    }
+                }
+                ResponseState::ReadingBody {
+                    source,
+                    path,
+                    remaining,
+                    ..
+                } => {
+                    if *remaining > src.remaining() {
+                        src.reserve(*remaining - src.remaining());
+                        break Ok(None);
+                    } else {
+                        let body = if *remaining == 0 {
+                            None
+                        } else {
+                            Some(src.split_to(*remaining).freeze())
+                        };
+                        break Ok(Some(ResponseMessage::unlinked(
+                            *source,
+                            std::mem::take(path),
+                            body,
+                        )));
+                    }
+                }
+                ResponseState::AfterBody { message, remaining } => {
+                    if src.remaining() >= *remaining {
+                        src.advance(*remaining);
+                        let result = message.take();
+                        *state = ResponseState::ReadingHeader;
+                        break Ok(result);
+                    } else {
+                        *remaining -= src.remaining();
+                        src.clear();
+                        break Ok(None);
+                    }
+                }
+                ResponseState::Discarding { error, remaining } => {
+                    if src.remaining() >= *remaining {
+                        src.advance(*remaining);
+                        let err = error.take().unwrap_or(AsyncParseError::UnconsumedInput);
+                        *state = ResponseState::ReadingHeader;
                         break Err(err.into());
                     } else {
                         *remaining -= src.remaining();
@@ -576,7 +802,14 @@ impl Decoder for RawResponseMessageDecoder {
         match tag {
             LINKED => Ok(Some(RawResponseMessage::linked(target, path))),
             SYNCED => Ok(Some(RawResponseMessage::synced(target, path))),
-            UNLINKED => Ok(Some(RawResponseMessage::unlinked(target, path))),
+            UNLINKED => {
+                let body = if body_len == 0 {
+                    None
+                } else {
+                    Some(src.split_to(body_len).freeze())
+                };
+                Ok(Some(RawResponseMessage::unlinked(target, path, body)))
+            }
             _ => {
                 let body = src.split_to(body_len).freeze();
                 Ok(Some(RawResponseMessage::event(target, path, body)))
