@@ -21,7 +21,7 @@ use swim_utilities::errors::Recoverable;
 use thiserror::Error;
 use tokio::sync::mpsc::error::SendError;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq, Clone)]
 pub enum RoutingError {
     #[error("Router dropped")]
     Dropped,

@@ -24,3 +24,6 @@ pub mod error;
 pub mod remote;
 pub mod routing;
 pub mod ws;
+
+#[cfg(test)]
+pub(crate) mod test_fixture;

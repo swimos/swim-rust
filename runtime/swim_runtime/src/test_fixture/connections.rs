@@ -33,16 +33,6 @@ use tokio::io::DuplexStream;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
-#[derive(Debug, Clone)]
-pub enum ErrorMode {
-    /// Return an error when sending messages.
-    Send,
-    /// Return an error when receiving messages.
-    Receive,
-    /// Do not return any errors.
-    None,
-}
-
 #[derive(Debug)]
 struct FakeConnectionsInner {
     sockets: HashMap<SchemeSocketAddr, Result<DuplexStream, io::Error>>,

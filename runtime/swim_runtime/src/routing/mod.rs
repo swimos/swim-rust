@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 pub mod fixture;
 mod models;
 mod router;
@@ -34,9 +37,6 @@ use uuid::Uuid;
 
 pub type CloseReceiver = promise::Receiver<mpsc::Sender<Result<(), RoutingError>>>;
 pub type CloseSender = promise::Sender<mpsc::Sender<Result<(), RoutingError>>>;
-
-#[cfg(test)]
-mod tests;
 
 /// A key into the server routing table specifying an endpoint to which [`Envelope`]s can be sent.
 /// This is deliberately non-descriptive to allow it to be [`Copy`] and so very cheap to use as a

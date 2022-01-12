@@ -37,9 +37,9 @@ use crate::error::{
 use crate::error::{ConnectionDropped, RoutingError};
 use crate::remote::config::RemoteConnectionsConfig;
 use crate::remote::task::{ConnectionTask, DispatchError};
-use crate::remote::test_fixture::{LocalRoutes, RouteTable};
 use crate::routing::BidirectionalReceiverRequest;
 use crate::routing::{Route, RoutingAddr, TaggedEnvelope, TaggedSender};
+use crate::test_fixture::{LocalRoutes, RouteTable};
 use crate::ws::{AutoWebSocket, WsMessage};
 use futures::io::ErrorKind;
 use ratchet::{NoExt, SplittableExtension};

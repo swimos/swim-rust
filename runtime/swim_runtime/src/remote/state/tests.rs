@@ -19,10 +19,10 @@ use crate::remote::state::{
     DeferredResult, Event, RemoteConnectionChannels, RemoteConnections, RemoteTasksState, State,
 };
 use crate::remote::table::{BidirectionalRegistrator, SchemeHostPort};
-use crate::remote::test_fixture::connections::{FakeConnections, FakeListener, FakeWebsockets};
-use crate::remote::test_fixture::{LocalRoutes, RouteTable};
 use crate::remote::{ConnectionDropped, Scheme, SchemeSocketAddr};
 use crate::routing::{CloseSender, RoutingAddr, TaggedSender};
+use crate::test_fixture::connections::{FakeConnections, FakeListener, FakeWebsockets};
+use crate::test_fixture::{LocalRoutes, RouteTable};
 use futures::future::BoxFuture;
 use futures::io::ErrorKind;
 use ratchet::{NoExt, Role};

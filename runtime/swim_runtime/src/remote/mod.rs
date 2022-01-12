@@ -51,9 +51,6 @@ use ratchet::WebSocketStream;
 use swim_model::path::Addressable;
 use swim_tracing::request::{RequestExt, TryRequestExt};
 
-#[cfg(test)]
-pub mod test_fixture;
-
 #[derive(Clone, Debug)]
 pub struct RawRoute {
     pub sender: mpsc::Sender<TaggedEnvelope>,
