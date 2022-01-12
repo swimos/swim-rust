@@ -16,8 +16,8 @@
 mod tests;
 
 use crate::error::{ConnectionDropped, ConnectionError};
-use crate::remote::router::BidirectionalReceiverRequest;
 use crate::remote::{BadUrl, RawRoute, Scheme, SchemeSocketAddr};
+use crate::routing::BidirectionalReceiverRequest;
 use crate::routing::{BidirectionalRoute, RoutingAddr, TaggedEnvelope, TaggedSender};
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;

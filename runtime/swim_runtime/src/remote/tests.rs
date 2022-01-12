@@ -14,12 +14,12 @@
 
 use crate::error::{ConnectionError, IoError, ResolutionError};
 use crate::remote::pending::PendingRequest;
-use crate::remote::router::BidirectionalRequest;
 use crate::remote::state::{DeferredResult, Event, RemoteTasksState};
 use crate::remote::table::{BidirectionalRegistrator, RoutingTable, SchemeHostPort};
 use crate::remote::{
     ConnectionDropped, RawRoute, RemoteRoutingRequest, Scheme, SchemeSocketAddr, SchemeSocketAddrIt,
 };
+use crate::routing::BidirectionalRequest;
 use crate::routing::{RoutingAddr, TaggedEnvelope};
 use futures::FutureExt;
 use std::cell::RefCell;

@@ -15,10 +15,9 @@
 pub mod connections;
 
 use crate::error::{ConnectionError, HttpError, HttpErrorKind, ResolutionError};
-use crate::remote::router::{
-    DownlinkRoutingRequest, PlaneRoutingRequest, RemoteRoutingRequest, Router,
-};
 use crate::remote::{ConnectionDropped, RawRoute};
+use crate::routing::Router;
+use crate::routing::{DownlinkRoutingRequest, PlaneRoutingRequest, RemoteRoutingRequest};
 use crate::routing::{RoutingAddr, TaggedEnvelope};
 use futures_util::StreamExt;
 use http::StatusCode;

@@ -85,7 +85,7 @@ use swim_form::Form;
 use swim_model::path::{Path, RelativePath};
 use swim_model::Value;
 use swim_runtime::compat::RequestMessage;
-use swim_runtime::remote::router::TaggedRouter;
+use swim_runtime::routing::TaggedRouter;
 use swim_utilities::future::SwimStreamExt;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::sync::circular_buffer;

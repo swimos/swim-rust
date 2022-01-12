@@ -12,15 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// todo router
-// #[cfg(test)]
-// mod tests;
-
-pub mod fixture;
-mod models;
-
-pub use models::*;
-
 use std::convert::identity;
 use std::future::Future;
 use tokio::sync::mpsc::error::SendError;
@@ -29,7 +20,10 @@ use tokio::sync::oneshot;
 use crate::error::{ConnectionError, ResolutionError, RoutingError};
 use crate::remote::table::BidirectionalRegistrator;
 use crate::remote::RawRoute;
-use crate::routing::{BidirectionalRoute, Route, RoutingAddr, RoutingAddrKind, TaggedSender};
+use crate::routing::{
+    Address, BidirectionalRoute, DownlinkRoutingRequest, PlaneRoutingRequest, RemoteRoutingRequest,
+    Route, RoutingAddr, RoutingAddrKind, TaggedSender,
+};
 use swim_model::path::Addressable;
 use swim_utilities::future::request::Request;
 use tokio::sync::mpsc;

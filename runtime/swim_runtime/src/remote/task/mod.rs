@@ -20,8 +20,9 @@ use crate::error::{
 };
 use crate::error::{ConnectionDropped, RoutingError};
 use crate::remote::config::RemoteConnectionsConfig;
-use crate::remote::router::{BidirectionalReceiverRequest, Router, TaggedRouter};
+use crate::routing::BidirectionalReceiverRequest;
 use crate::routing::{Route, RoutingAddr, TaggedEnvelope, TaggedSender};
+use crate::routing::{Router, TaggedRouter};
 use crate::ws::{into_stream, WsMessage};
 use futures::future::join_all;
 use futures::future::BoxFuture;

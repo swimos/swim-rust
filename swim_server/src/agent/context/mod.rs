@@ -27,7 +27,7 @@ use swim_async_runtime::time::clock::Clock;
 use swim_client::interface::ClientContext;
 use swim_metrics::NodeMetricAggregator;
 use swim_model::path::Path;
-use swim_runtime::remote::router::TaggedRouter;
+use swim_runtime::routing::TaggedRouter;
 use swim_utilities::future::SwimStreamExt;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::time::AtomicInstant;

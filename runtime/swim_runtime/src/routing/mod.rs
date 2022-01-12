@@ -12,6 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod fixture;
+mod models;
+mod router;
+
+pub use models::*;
+pub use router::*;
+
 use crate::error::{ConnectionDropped, RoutingError};
 use std::convert::TryFrom;
 

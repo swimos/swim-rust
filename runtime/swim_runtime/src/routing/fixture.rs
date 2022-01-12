@@ -1,9 +1,7 @@
 use crate::error::ConnectionDropped;
-use crate::remote::router::{
-    DownlinkRoutingRequest, PlaneRoutingRequest, RemoteRoutingRequest, Router,
-};
 use crate::remote::RawRoute;
 use crate::routing::TaggedEnvelope;
+use crate::routing::{DownlinkRoutingRequest, PlaneRoutingRequest, RemoteRoutingRequest, Router};
 use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
 use std::fmt::Debug;

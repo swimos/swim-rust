@@ -13,10 +13,10 @@
 // limitations under the License.
 
 use crate::error::ConnectionError;
-use crate::remote::router::{BidirectionalRequest, ResolutionRequest};
 use crate::remote::table::{BidirectionalRegistrator, SchemeHostPort};
 use crate::remote::REQUEST_DROPPED;
 use crate::routing::RoutingAddr;
+use crate::routing::{BidirectionalRequest, ResolutionRequest};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fmt::Debug;

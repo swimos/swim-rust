@@ -26,8 +26,8 @@ use std::sync::Arc;
 use swim_async_runtime::time::clock::Clock;
 use swim_client::interface::ClientContext;
 use swim_model::path::Path;
-use swim_runtime::remote::router::TaggedRouter;
 use swim_runtime::routing::TaggedEnvelope;
+use swim_runtime::routing::TaggedRouter;
 
 /// [`AgentRoute`] implementation that spawns agents with a fixed configuration.
 pub struct AgentProvider<Agent, Config, Lifecycle> {

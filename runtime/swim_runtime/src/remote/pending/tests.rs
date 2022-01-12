@@ -14,9 +14,9 @@
 
 use crate::error::{CloseError, CloseErrorKind, ConnectionError};
 use crate::remote::pending::{PendingRequest, PendingRequests};
-use crate::remote::router::BidirectionalRequest;
 use crate::remote::table::{BidirectionalRegistrator, SchemeHostPort};
 use crate::remote::Scheme;
+use crate::routing::BidirectionalRequest;
 use crate::routing::{RoutingAddr, TaggedSender};
 use futures::future::join;
 use swim_utilities::future::request::Request;

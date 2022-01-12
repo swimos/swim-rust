@@ -36,7 +36,7 @@ use swim_client::interface::ClientContext;
 use swim_form::Form;
 use swim_model::Value;
 use swim_runtime::configuration::DownlinkConnectionsConfig;
-use swim_runtime::remote::router::fixture::remote_router_resolver;
+use swim_runtime::routing::fixture::remote_router_resolver;
 use swim_runtime::routing::{RoutingAddr, TaggedEnvelope};
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;

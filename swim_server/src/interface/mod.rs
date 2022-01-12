@@ -54,9 +54,9 @@ use swim_runtime::error::RoutingError;
 use swim_runtime::remote::config::RemoteConnectionsConfig;
 use swim_runtime::remote::net::dns::Resolver;
 use swim_runtime::remote::net::plain::TokioPlainTextNetworking;
-use swim_runtime::remote::router::{PlaneRoutingRequest, RemoteRoutingRequest, Router};
 use swim_runtime::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
 use swim_runtime::routing::{CloseReceiver, CloseSender};
+use swim_runtime::routing::{PlaneRoutingRequest, RemoteRoutingRequest, Router};
 use swim_store::nostore::NoStoreOpts;
 use swim_store::{Keyspaces, StoreError};
 

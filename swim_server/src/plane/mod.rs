@@ -36,9 +36,9 @@ use swim_runtime::error::{
     ConnectionDropped, ConnectionError, NoAgentAtRoute, ProtocolError, ProtocolErrorKind,
     ResolutionError,
 };
-use swim_runtime::remote::router::{PlaneRoutingRequest, Router, TaggedRouter};
 use swim_runtime::remote::RawRoute;
 use swim_runtime::routing::{CloseReceiver, RoutingAddr, TaggedEnvelope};
+use swim_runtime::routing::{PlaneRoutingRequest, Router, TaggedRouter};
 use swim_utilities::future::request::Request;
 use swim_utilities::future::task::Spawner;
 use swim_utilities::routing::route_pattern::RoutePattern;

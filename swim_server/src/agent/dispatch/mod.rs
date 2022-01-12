@@ -52,8 +52,8 @@ use std::time::Duration;
 use swim_async_runtime::time::timeout::timeout;
 use swim_model::Value;
 use swim_runtime::compat::RequestMessage;
-use swim_runtime::remote::router::TaggedRouter;
 use swim_runtime::routing::RoutingAddr;
+use swim_runtime::routing::TaggedRouter;
 use swim_utilities::time::AtomicInstant;
 use tokio::time::Instant;
 

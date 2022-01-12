@@ -47,8 +47,8 @@ use swim_runtime::configuration::{BackpressureMode, DownlinksConfig};
 use swim_runtime::error::{
     CloseError, CloseErrorKind, ConnectionError, ResolutionError, RoutingError,
 };
-use swim_runtime::remote::router::{ConnectionType, RouterEvent};
 use swim_runtime::routing::CloseReceiver;
+use swim_runtime::routing::{ConnectionType, RouterEvent};
 use swim_schema::schema::StandardSchema;
 use swim_schema::ValueSchema;
 use swim_utilities::future::item_sink::either::SplitSink;

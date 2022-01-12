@@ -29,13 +29,12 @@ use swim_model::path::{Addressable, RelativePath};
 use swim_runtime::configuration::DownlinkConnectionsConfig;
 use swim_runtime::error::{CloseError, ConnectionError, HttpError, ResolutionError};
 use swim_runtime::error::{ConnectionDropped, RoutingError};
-use swim_runtime::remote::router::{
-    ConnectionType, DownlinkRoutingRequest, Router, RouterEvent, TaggedRouter,
-};
 use swim_runtime::remote::RawRoute;
 use swim_runtime::routing::{
     BidirectionalRoute, CloseReceiver, Route, RoutingAddr, TaggedEnvelope, TaggedSender,
 };
+use swim_runtime::routing::{ConnectionType, DownlinkRoutingRequest, RouterEvent};
+use swim_runtime::routing::{Router, TaggedRouter};
 use swim_utilities::errors::Recoverable;
 use swim_utilities::future::request::request_future::RequestError;
 use swim_utilities::future::request::Request;

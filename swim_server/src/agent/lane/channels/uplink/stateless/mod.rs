@@ -28,7 +28,7 @@ use swim_form::Form;
 use swim_metrics::uplink::UplinkObserver;
 use swim_model::path::{Path, RelativePath};
 use swim_model::Value;
-use swim_runtime::remote::router::TaggedRouter;
+use swim_runtime::routing::TaggedRouter;
 use swim_runtime::routing::{RoutingAddr, TaggedSender};
 use tokio::sync::mpsc;
 use tracing::{event, Level};
