@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::error::{ConnectionError, RoutingError};
+use crate::error::ConnectionError;
 use crate::remote::router::{BidirectionalRequest, ResolutionRequest};
 use crate::remote::table::{BidirectionalRegistrator, SchemeHostPort};
 use crate::remote::REQUEST_DROPPED;
@@ -46,7 +46,7 @@ impl PendingRequest {
         }
     }
 
-    pub fn send_err_debug<M: tracing::Value + Debug>(self, err: RoutingError, message: M) {
+    pub fn send_err_debug<M: tracing::Value + Debug>(self, err: ConnectionError, message: M) {
         match self {
             PendingRequest::Resolution(request) => request.send_err_debug(err, message),
             PendingRequest::Bidirectional(request) => request.send_err_debug(err, message),
@@ -94,10 +94,10 @@ impl PendingRequests {
         if let Some(mut requests) = map.remove(host) {
             let first = requests.pop();
             for request in requests.into_iter() {
-                request.send_err_debug(err.clone().into(), REQUEST_DROPPED);
+                request.send_err_debug(err.clone(), REQUEST_DROPPED);
             }
             if let Some(first) = first {
-                first.send_err_debug(err.into(), REQUEST_DROPPED);
+                first.send_err_debug(err, REQUEST_DROPPED);
             }
         }
     }

@@ -14,7 +14,9 @@
 
 use crate::downlink::error::{DownlinkError, TransitionError};
 use swim_model::Value;
-use swim_runtime::error::{CloseError, CloseErrorKind, ConnectionError, RoutingError};
+use swim_runtime::error::{
+    CloseError, CloseErrorKind, ConnectionError, ResolutionError, RoutingError,
+};
 use swim_runtime::routing::RoutingAddr;
 use swim_schema::schema::StandardSchema;
 
@@ -91,24 +93,22 @@ fn routing_error_to_downlink_error() {
         None,
     )))
     .into();
-    assert!(matches!(err, DownlinkError::ClosingFailure));
+    assert_eq!(err, DownlinkError::ClosingFailure);
 
     let err: DownlinkError = RoutingError::Connection(ConnectionError::RouterDropped).into();
-    assert!(
-        matches!(err, DownlinkError::ConnectionFailure(str) if str == "The connection has been lost. Cause: Router dropped")
-    );
+    assert_eq!(err, DownlinkError::DroppedChannel);
 
-    let err: DownlinkError = RoutingError::RouterDropped.into();
-    assert!(matches!(err, DownlinkError::DroppedChannel));
+    let err: DownlinkError = RoutingError::Dropped.into();
+    assert_eq!(err, DownlinkError::DroppedChannel);
 
-    let err: DownlinkError = RoutingError::Unresolvable(RoutingAddr::client(1).to_string()).into();
+    let err: DownlinkError =
+        RoutingError::Resolution(ResolutionError::Addr(RoutingAddr::client(1))).into();
     assert!(
-        matches!(err, DownlinkError::ConnectionFailure(str) if str == "The host is unreachable")
+        matches!(err, DownlinkError::ConnectionFailure(str) if str == "Resolution error: `Failed to resolve routing addr: `Client(1)``")
     );
 
     let err: DownlinkError =
         RoutingError::Connection(ConnectionError::Closed(CloseError::unexpected())).into();
-    assert!(
-        matches!(err, DownlinkError::ConnectionPoolFailure(ConnectionError::Closed(e)) if e == CloseError::unexpected())
-    );
+
+    assert_eq!(err, DownlinkError::ClosingFailure);
 }

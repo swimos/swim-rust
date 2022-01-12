@@ -21,8 +21,9 @@ use super::*;
 use crate::downlink::state_machine::ResponseResult;
 use crate::downlink::{Downlink, DownlinkState};
 use futures::StreamExt;
+use http::StatusCode;
 use std::time::Instant;
-use swim_runtime::error::RoutingError;
+use swim_runtime::error::{ConnectionError, HttpError, HttpErrorKind, RoutingError};
 use swim_utilities::future::item_sink;
 
 struct State(i32);
@@ -466,10 +467,7 @@ async fn unlinks_on_unreachable_host() {
     let first_cmd = commands.recv().await;
     assert_eq!(first_cmd, Some(Command::Sync));
 
-    assert!(messages
-        .send(Err(RoutingError::RouterDropped))
-        .await
-        .is_ok());
+    assert!(messages.send(Err(transient_err())).await.is_ok());
 
     let first_cmd = commands.recv().await;
 
@@ -478,6 +476,15 @@ async fn unlinks_on_unreachable_host() {
 
     let first_ev = dl_rx.recv().await.map(|g| (*g).clone());
     assert_eq!(first_ev, Some(Event::Remote(0)));
+}
+
+fn transient_err() -> RoutingError {
+    let err = RoutingError::Connection(ConnectionError::Http(HttpError::new(
+        HttpErrorKind::StatusCode(Some(StatusCode::TEMPORARY_REDIRECT)),
+        None,
+    )));
+    assert!(err.is_transient());
+    err
 }
 
 #[tokio::test]
@@ -489,10 +496,7 @@ async fn queues_on_unreachable_host() {
     let first_cmd = commands.recv().await;
     assert_eq!(first_cmd, Some(Command::Sync));
 
-    assert!(messages
-        .send(Err(RoutingError::Unresolvable("swim.ai".to_string())))
-        .await
-        .is_ok());
+    assert!(messages.send(Err(transient_err())).await.is_ok());
 
     assert_eq!(commands.recv().await, Some(Command::Sync));
 
@@ -524,10 +528,7 @@ async fn terminates_when_router_dropped() {
 
     assert_eq!(first_cmd, Some(Command::Sync));
 
-    assert!(messages
-        .send(Err(RoutingError::RouterDropped))
-        .await
-        .is_ok());
+    assert!(messages.send(Err(RoutingError::Dropped)).await.is_ok());
 
     let stop_res = dl.await_stopped().await;
     assert!(stop_res.is_ok());

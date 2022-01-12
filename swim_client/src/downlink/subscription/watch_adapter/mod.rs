@@ -284,8 +284,7 @@ where
                         }
                     }
                     Either::Right(modification) => {
-                        if let Err(RoutingError::RouterDropped) = sink.send_item(modification).await
-                        {
+                        if let Err(RoutingError::Dropped) = sink.send_item(modification).await {
                             //Router was dropped.
                             break;
                         }
@@ -308,7 +307,7 @@ where
     Snk: ItemSender<Mod, RoutingError>,
 {
     while let Some(Some(modification)) = key_streams.next().now_or_never() {
-        if let Err(RoutingError::RouterDropped) = sink.send_item(modification).await {
+        if let Err(RoutingError::Dropped) = sink.send_item(modification).await {
             //Router was dropped.
             return false;
         }
@@ -337,7 +336,7 @@ where
         SpecialAction::Skip(n) => UntypedMapModification::Drop(n),
         SpecialAction::Clear => UntypedMapModification::Clear,
     };
-    if let Err(RoutingError::RouterDropped) = sink.send_item(special).await {
+    if let Err(RoutingError::Dropped) = sink.send_item(special).await {
         //Router was dropped.
         return false;
     }

@@ -1,4 +1,4 @@
-use crate::error::{NoAgentAtRoute, RoutingError};
+use crate::error::{ConnectionError, NoAgentAtRoute, ResolutionError, RoutingError};
 use crate::remote::table::BidirectionalRegistrator;
 use crate::remote::RawRoute;
 use crate::routing::{RoutingAddr, TaggedEnvelope, TaggedSender};
@@ -11,12 +11,12 @@ use swim_warp::envelope::ResponseEnvelope;
 use tokio::sync::mpsc;
 use url::Url;
 
-pub type EndpointRequest = Request<Result<RawRoute, RoutingError>>;
-pub type BidirectionalRequest = Request<Result<BidirectionalRegistrator, RoutingError>>;
+pub type EndpointRequest = Request<Result<RawRoute, ResolutionError>>;
+pub type BidirectionalRequest = Request<Result<BidirectionalRegistrator, ConnectionError>>;
 pub type ConnectionChannel = (TaggedSender, Option<mpsc::Receiver<RouterEvent>>);
 pub type AgentRequest = Request<Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>>;
 pub type RoutesRequest = Request<HashSet<RelativeUri>>;
-pub type ResolutionRequest = Request<Result<RoutingAddr, RoutingError>>;
+pub type ResolutionRequest = Request<Result<RoutingAddr, ConnectionError>>;
 pub type BidirectionalReceiverRequest = Request<mpsc::Receiver<TaggedEnvelope>>;
 
 #[derive(Debug, Clone, PartialEq)]

@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::error::Unresolvable;
 use crate::error::{
     CloseError, CloseErrorKind, ConnectionError, IoError, ProtocolError, ProtocolErrorKind,
+    ResolutionError, RoutingError,
 };
-use crate::error::{RouterError, Unresolvable};
 use crate::routing::RoutingAddr;
 use std::io::ErrorKind;
-use std::time::Duration;
 use swim_utilities::routing::uri::RelativeUri;
 
 #[test]
@@ -27,11 +27,11 @@ fn connection_error_display() {
         ConnectionError::Closed(CloseError::new(CloseErrorKind::ClosedRemotely, None)).to_string();
     assert_eq!(string, "The connection was closed remotely.");
 
-    let string = ConnectionError::Unresolvable("xyz://localtoast:9001/".to_string()).to_string();
-    assert_eq!(
-        string,
-        "Address xyz://localtoast:9001/ could not be resolved."
-    );
+    let string = ConnectionError::Resolution(ResolutionError::Host(
+        "xyz://localtoast:9001/".parse().unwrap(),
+    ))
+    .to_string();
+    assert_eq!(string, "Failed to resolve host: `xyz://localtoast:9001/`");
 
     let string = ConnectionError::Protocol(ProtocolError::new(
         ProtocolErrorKind::Warp,
@@ -49,12 +49,6 @@ fn connection_error_display() {
 
     let string = ConnectionError::Closed(CloseError::new(CloseErrorKind::Normal, None)).to_string();
     assert_eq!(string, "The connection has been closed.");
-
-    let string = ConnectionError::WriteTimeout(Duration::from_secs(5)).to_string();
-    assert_eq!(
-        string,
-        "Writing to the connection failed to complete within 5s."
-    )
 }
 
 #[test]
@@ -69,19 +63,16 @@ fn unresolvable_display() {
 #[test]
 fn router_error_display() {
     let uri: RelativeUri = "/name".parse().unwrap();
-    let string = RouterError::NoAgentAtRoute(uri).to_string();
-    assert_eq!(string, "No agent at: '/name'");
+    let string = RoutingError::Resolution(ResolutionError::Agent(uri)).to_string();
+    assert_eq!(string, "Failed to resolve agent URI: `/name`");
 
-    let string = RouterError::ConnectionFailure(ConnectionError::Closed(CloseError::new(
+    let string = RoutingError::Connection(ConnectionError::Closed(CloseError::new(
         CloseErrorKind::ClosedRemotely,
         None,
     )))
     .to_string();
-    assert_eq!(
-        string,
-        "Failed to route to requested endpoint: 'The connection was closed remotely.'"
-    );
+    assert_eq!(string, "The connection was closed remotely.");
 
-    let string = RouterError::RouterDropped.to_string();
-    assert_eq!(string, "The router channel was dropped.");
+    let string = RoutingError::Dropped.to_string();
+    assert_eq!(string, "Router dropped");
 }

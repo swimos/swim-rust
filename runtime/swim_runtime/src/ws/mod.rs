@@ -36,16 +36,7 @@ pub mod utils;
 
 mod switcher;
 
-pub mod tls;
-
-#[cfg(feature = "tls")]
-pub type WebSocketDef<E> = WebSocket<StreamSwitcher<TcpStream, TlsStream<TcpStream>>, E>;
-#[cfg(not(feature = "tls"))]
 pub type WebSocketDef<E> = WebSocket<TcpStream, E>;
-
-#[cfg(feature = "tls")]
-pub type StreamDef = StreamSwitcher<TcpStream, TlsStream<TcpStream>>;
-#[cfg(not(feature = "tls"))]
 pub type StreamDef = TcpStream;
 
 pub type WsOpenFuture<'l, Sock, Ext, Error> = BoxFuture<'l, Result<WebSocket<Sock, Ext>, Error>>;
@@ -81,8 +72,6 @@ pub trait WebsocketFactory: Send + Sync {
 #[derive(Clone)]
 pub enum Protocol {
     PlainText,
-    #[cfg(feature = "tls")]
-    Tls(Certificate),
 }
 
 impl PartialEq for Protocol {
@@ -90,19 +79,7 @@ impl PartialEq for Protocol {
         #[allow(clippy::match_like_matches_macro)]
         match (self, other) {
             (Protocol::PlainText, Protocol::PlainText) => true,
-            #[cfg(feature = "tls")]
-            (Protocol::Tls(_), Protocol::Tls(_)) => true,
-            #[cfg(feature = "tls")]
-            _ => false,
         }
-    }
-}
-
-impl Protocol {
-    #[cfg(feature = "tls")]
-    pub fn tls(path: impl AsRef<Path>) -> Result<Protocol, TlsError> {
-        let cert = build_x509_certificate(path)?;
-        Ok(Protocol::Tls(cert))
     }
 }
 
@@ -110,8 +87,6 @@ impl Debug for Protocol {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::PlainText => write!(f, "PlainText"),
-            #[cfg(feature = "tls")]
-            Self::Tls(_) => write!(f, "Tls"),
         }
     }
 }

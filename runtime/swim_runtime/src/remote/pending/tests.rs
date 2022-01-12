@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::error::{CloseError, CloseErrorKind, ConnectionError, RoutingError};
+use crate::error::{CloseError, CloseErrorKind, ConnectionError};
 use crate::remote::pending::{PendingRequest, PendingRequests};
 use crate::remote::router::BidirectionalRequest;
 use crate::remote::table::{BidirectionalRegistrator, SchemeHostPort};
@@ -39,8 +39,9 @@ async fn add_single_and_send_err() {
     let result = rx.await;
     assert_eq!(
         result,
-        Ok(Err(RoutingError::Connection(ConnectionError::Closed(
-            CloseError::new(CloseErrorKind::ClosedRemotely, None,)
+        Ok(Err(ConnectionError::Closed(CloseError::new(
+            CloseErrorKind::ClosedRemotely,
+            None,
         ))))
     );
 }
@@ -61,7 +62,7 @@ async fn add_single_bidirectional_and_send_err() {
     let result = rx.await;
     assert!(matches!(
         result,
-        Ok(Err(RoutingError::Connection(ConnectionError::Closed(err)))) if err == CloseError::new(
+        Ok(Err(ConnectionError::Closed(err))) if err == CloseError::new(
             CloseErrorKind::ClosedRemotely,
             None,
 
@@ -89,11 +90,13 @@ async fn add_two_and_send_err() {
     assert_eq!(
         results,
         (
-            Ok(Err(RoutingError::Connection(ConnectionError::Closed(
-                CloseError::new(CloseErrorKind::ClosedRemotely, None,)
+            Ok(Err(ConnectionError::Closed(CloseError::new(
+                CloseErrorKind::ClosedRemotely,
+                None,
             )))),
-            Ok(Err(RoutingError::Connection(ConnectionError::Closed(
-                CloseError::new(CloseErrorKind::ClosedRemotely, None,)
+            Ok(Err(ConnectionError::Closed(CloseError::new(
+                CloseErrorKind::ClosedRemotely,
+                None,
             ))))
         )
     );

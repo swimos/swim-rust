@@ -27,7 +27,7 @@ use std::sync::Arc;
 use swim_async_runtime::task::*;
 use swim_model::path::{Addressable, RelativePath};
 use swim_runtime::configuration::DownlinkConnectionsConfig;
-use swim_runtime::error::{CloseError, ConnectionError, HttpError};
+use swim_runtime::error::{CloseError, ConnectionError, HttpError, ResolutionError};
 use swim_runtime::error::{ConnectionDropped, RoutingError};
 use swim_runtime::remote::router::{
     ConnectionType, DownlinkRoutingRequest, Router, RouterEvent, TaggedRouter,
@@ -194,13 +194,10 @@ impl<Path: Addressable> PoolTask<Path> {
                         request,
                         conn_type,
                     } => {
-                        let routing_path = RoutingPath::try_from(AddressableWrapper(
-                            target.clone(),
-                        ))
-                        .map_err(|_| match target.host() {
-                            Some(host) => ConnectionError::Unresolvable(host.to_string()),
-                            None => ConnectionError::Unresolvable(target.to_string()),
-                        })?;
+                        let routing_path =
+                            RoutingPath::try_from(AddressableWrapper(target.clone())).map_err(
+                                |e| ConnectionError::Resolution(ResolutionError::malformatted(e)),
+                            )?;
 
                         let registrator = match routing_table.try_resolve_addr(&routing_path) {
                             Some((_, registrator)) => registrator,
@@ -242,7 +239,9 @@ impl<Path: Addressable> PoolTask<Path> {
                                 {
                                     if let RegistratorRequest::Resolve { request } = err.0 {
                                         if request
-                                            .send(Err(RoutingError::Unresolvable(addr.to_string())))
+                                            .send(Err(RoutingError::Resolution(
+                                                ResolutionError::Addr(addr),
+                                            )))
                                             .is_err()
                                         {
                                             event!(Level::ERROR, REQUEST_ERROR);
@@ -252,7 +251,9 @@ impl<Path: Addressable> PoolTask<Path> {
                             }
                             None => {
                                 if request
-                                    .send(Err(RoutingError::Unresolvable(addr.to_string())))
+                                    .send(Err(RoutingError::Resolution(ResolutionError::Addr(
+                                        addr,
+                                    ))))
                                     .is_err()
                                 {
                                     event!(Level::ERROR, REQUEST_ERROR);
@@ -317,8 +318,8 @@ impl<Path: Addressable> ConnectionRegistrator<Path> {
                 conn_type,
             })
             .await
-            .map_err(|_| RoutingError::RouterDropped)?;
-        rx.await.map_err(|_| RoutingError::RouterDropped)?
+            .map_err(|_| RoutingError::Dropped)?;
+        rx.await.map_err(|_| RoutingError::Dropped)?
     }
 }
 
@@ -495,7 +496,7 @@ impl<Path: Addressable> ConnectionRegistratorTask<Path> {
                 Some(ConnectionRegistratorEvent::ConnectionDropped(connection_dropped)) => {
                     broadcast(&mut subscribers, RouterEvent::ConnectionClosed).await;
 
-                    let mut maybe_err: Option<RoutingError> = None;
+                    let mut maybe_err = None;
                     if connection_dropped.is_recoverable() {
                         match open_connection(
                             target.clone(),
@@ -517,7 +518,7 @@ impl<Path: Addressable> ConnectionRegistratorTask<Path> {
                             }
                         };
                     } else {
-                        maybe_err = Some(ConnectionError::Closed(CloseError::closed()).into());
+                        maybe_err = Some(ConnectionError::Closed(CloseError::closed()));
                     }
 
                     if let Some(err) = maybe_err {
@@ -531,7 +532,7 @@ impl<Path: Addressable> ConnectionRegistratorTask<Path> {
                             local_drop_tx.provide(ConnectionDropped::Closed)?;
                         }
 
-                        return Err(err.into());
+                        return Err(err);
                     }
                 }
                 _ => {
@@ -606,7 +607,7 @@ async fn open_connection<Path>(
     mut retry_strategy: RetryStrategy,
     router: &mut TaggedRouter<Path>,
     stop_trigger: CloseReceiver,
-) -> Result<RawConnection, RoutingError>
+) -> Result<RawConnection, ConnectionError>
 where
     Path: Addressable,
 {
@@ -647,7 +648,7 @@ where
 async fn try_open_remote_connection<Path>(
     router: &mut TaggedRouter<Path>,
     target: Url,
-) -> Result<RawConnection, RoutingError>
+) -> Result<RawConnection, ConnectionError>
 where
     Path: Addressable,
 {
@@ -663,7 +664,7 @@ where
 async fn try_open_local_connection<Path>(
     router: &mut TaggedRouter<Path>,
     target: String,
-) -> Result<RawConnection, RoutingError>
+) -> Result<RawConnection, ConnectionError>
 where
     Path: Addressable,
 {

@@ -16,7 +16,6 @@
 // #[cfg(test)]
 // mod tests;
 
-// mod error;
 pub mod fixture;
 mod models;
 
@@ -27,13 +26,14 @@ use std::future::Future;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot;
 
-use crate::error::RoutingError;
+use crate::error::{ConnectionError, ResolutionError, RoutingError};
 use crate::remote::table::BidirectionalRegistrator;
 use crate::remote::RawRoute;
 use crate::routing::{BidirectionalRoute, Route, RoutingAddr, RoutingAddrKind, TaggedSender};
 use swim_model::path::Addressable;
 use swim_utilities::future::request::Request;
 use tokio::sync::mpsc;
+use tokio::sync::oneshot::error::RecvError;
 use url::Url;
 
 #[derive(Clone, Debug)]
@@ -67,7 +67,7 @@ impl<Path> Router<Path> {
         }
     }
 
-    pub async fn resolve_sender(&mut self, addr: RoutingAddr) -> Result<RawRoute, RoutingError> {
+    pub async fn resolve_sender(&mut self, addr: RoutingAddr) -> Result<RawRoute, ResolutionError> {
         let Router {
             client,
             plane,
@@ -94,7 +94,7 @@ impl<Path> Router<Path> {
                     })
                     .await
                 }
-                None => Err(RoutingError::Unresolvable(addr.to_string())),
+                None => Err(ResolutionError::Addr(addr)),
             },
             RoutingAddrKind::Client => {
                 // todo: implement once #457 has been merged
@@ -111,28 +111,28 @@ impl<Path> Router<Path> {
         let address = address.into();
 
         match address.url() {
-            Some(url) => {
-                callback(|callback| {
-                    let tx = &self.remote;
-                    tx.send(RemoteRoutingRequest::ResolveUrl {
-                        host: url.clone(),
+            Some(url) => callback(|callback| {
+                let tx = &self.remote;
+                tx.send(RemoteRoutingRequest::ResolveUrl {
+                    host: url.clone(),
+                    request: Request::new(callback),
+                })
+            })
+            .await
+            .map_err(Into::into),
+            None => match &self.plane {
+                Some(tx) => callback(|callback| {
+                    tx.send(PlaneRoutingRequest::Resolve {
+                        host: None,
+                        route: address.uri().clone(),
                         request: Request::new(callback),
                     })
                 })
                 .await
-            }
-            None => match &self.plane {
-                Some(tx) => {
-                    callback(|callback| {
-                        tx.send(PlaneRoutingRequest::Resolve {
-                            host: None,
-                            route: address.uri().clone(),
-                            request: Request::new(callback),
-                        })
-                    })
-                    .await
-                }
-                None => Err(RoutingError::Unresolvable(address.into_string())),
+                .map_err(Into::into),
+                None => Err(RoutingError::Resolution(ResolutionError::Agent(
+                    address.uri().clone(),
+                ))),
             },
         }
     }
@@ -140,7 +140,7 @@ impl<Path> Router<Path> {
     pub async fn resolve_bidirectional(
         &mut self,
         host: Url,
-    ) -> Result<BidirectionalRegistrator, RoutingError> {
+    ) -> Result<BidirectionalRegistrator, ConnectionError> {
         let tx = &self.remote;
         callback(|callback| {
             tx.send(RemoteRoutingRequest::Bidirectional {
@@ -181,7 +181,7 @@ impl<Path> TaggedRouter<Path> {
         TaggedRouter { tag, inner }
     }
 
-    pub async fn resolve_sender(&mut self, addr: RoutingAddr) -> Result<Route, RoutingError> {
+    pub async fn resolve_sender(&mut self, addr: RoutingAddr) -> Result<Route, ResolutionError> {
         let TaggedRouter { tag, inner } = self;
         let RawRoute { sender, on_drop } = inner.resolve_sender(addr).await?;
 
@@ -203,24 +203,20 @@ impl<Path> TaggedRouter<Path> {
     pub async fn resolve_bidirectional(
         &mut self,
         host: Url,
-    ) -> Result<BidirectionalRoute, RoutingError> {
+    ) -> Result<BidirectionalRoute, ConnectionError> {
         let handle = self.inner.resolve_bidirectional(host).await?;
-        handle.register().await.map_err(Into::into)
+        handle.register().await
     }
 }
 
-async fn callback<Func, Fut, E, T>(op: Func) -> Result<T, RoutingError>
+async fn callback<Func, Fut, E, T, P>(op: Func) -> Result<T, E>
 where
-    Func: FnOnce(oneshot::Sender<Result<T, RoutingError>>) -> Fut,
-    Fut: Future<Output = Result<(), SendError<E>>>,
+    Func: FnOnce(oneshot::Sender<Result<T, E>>) -> Fut,
+    Fut: Future<Output = Result<(), SendError<P>>>,
+    E: From<RecvError> + From<SendError<P>>,
 {
     let (callback_tx, callback_rx) = oneshot::channel();
 
-    op(callback_tx)
-        .await
-        .map_err(|_| RoutingError::RouterDropped)?;
-    callback_rx
-        .await
-        .map_err(|_| RoutingError::RouterDropped)
-        .and_then(identity)
+    op(callback_tx).await.map_err::<E, _>(Into::into)?;
+    callback_rx.await.map_err(Into::into).and_then(identity)
 }

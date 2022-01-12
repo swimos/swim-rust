@@ -26,7 +26,7 @@ mod tests;
 
 use std::net::SocketAddr;
 
-use crate::error::{ConnectionDropped, RoutingError};
+use crate::error::{ConnectionDropped, ResolutionError};
 use crate::error::{ConnectionError, HttpError};
 use crate::remote::config::RemoteConnectionsConfig;
 use crate::remote::pending::PendingRequest;
@@ -39,9 +39,10 @@ use futures::stream::FusedStream;
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::io;
-use std::io::Error;
+use std::io::Error as StdError;
 use swim_utilities::future::task::Spawner;
 use swim_utilities::trigger::promise;
+use thiserror::Error;
 use tokio::sync::mpsc;
 use tracing::{event, Level};
 
@@ -221,7 +222,7 @@ where
     async fn run_loop(
         mut state: RemoteConnections<'_, External, Ws, Sp, Path>,
         configuration: RemoteConnectionsConfig,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StdError> {
         let mut overall_result = Ok(());
         let mut iteration_count: usize = 0;
         let yield_mod = configuration.yield_after.get();
@@ -256,7 +257,7 @@ fn update_state<State: RemoteTasksState>(
             let result = if let Some(tx) = state.table_resolve(addr) {
                 Ok(tx)
             } else {
-                Err(RoutingError::Unresolvable(addr.to_string()))
+                Err(ResolutionError::Addr(addr))
             };
             request.send_debug(result, REQUEST_DROPPED);
         }
@@ -268,7 +269,7 @@ fn update_state<State: RemoteTasksState>(
                             request.send_ok_debug(bidirectional_route, REQUEST_DROPPED);
                         } else {
                             request.send_err_debug(
-                                RoutingError::Unresolvable(addr.to_string()),
+                                ConnectionError::Resolution(ResolutionError::Addr(addr)),
                                 UNRESOLVABLE_BIDIRECTIONAL,
                             );
                         }
@@ -278,10 +279,7 @@ fn update_state<State: RemoteTasksState>(
                 }
                 _ => {
                     request.send_err_debug(
-                        RoutingError::Connection(ConnectionError::Http(HttpError::invalid_url(
-                            host.to_string(),
-                            None,
-                        ))),
+                        ConnectionError::Http(HttpError::invalid_url(host.to_string(), None)),
                         REQUEST_DROPPED,
                     );
                 }
@@ -298,10 +296,7 @@ fn update_state<State: RemoteTasksState>(
                 }
                 _ => {
                     request.send_err_debug(
-                        RoutingError::Connection(ConnectionError::Http(HttpError::invalid_url(
-                            host.to_string(),
-                            None,
-                        ))),
+                        ConnectionError::Http(HttpError::invalid_url(host.to_string(), None)),
                         REQUEST_DROPPED,
                     );
                 }
@@ -359,9 +354,10 @@ fn update_state<State: RemoteTasksState>(
                     state.defer_connect_and_handshake(host, sock_addr, addrs);
                 }
             } else {
-                let host_err = host.to_string();
-
-                state.fail_connection(&host, ConnectionError::Unresolvable(host_err));
+                state.fail_connection(
+                    &host,
+                    ConnectionError::Resolution(ResolutionError::Host(host.to_string())),
+                );
             }
         }
         Event::ConnectionClosed(addr, reason) => {
@@ -376,9 +372,11 @@ fn update_state<State: RemoteTasksState>(
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Error, Debug, PartialEq, Eq)]
 pub enum BadUrl {
+    #[error("Malformatted scheme: `{0}`")]
     BadScheme(String),
+    #[error("Missing host")]
     NoHost,
 }
 

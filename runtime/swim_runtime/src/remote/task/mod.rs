@@ -15,7 +15,9 @@
 #[cfg(test)]
 mod tests;
 
-use crate::error::{CloseError, CloseErrorKind, ConnectionError, ProtocolError, ProtocolErrorKind};
+use crate::error::{
+    CloseError, CloseErrorKind, ConnectionError, ProtocolError, ProtocolErrorKind, ResolutionError,
+};
 use crate::error::{ConnectionDropped, RoutingError};
 use crate::remote::config::RemoteConnectionsConfig;
 use crate::remote::router::{BidirectionalReceiverRequest, Router, TaggedRouter};
@@ -278,6 +280,12 @@ enum DispatchError {
     Dropped(ConnectionDropped),
 }
 
+impl From<ResolutionError> for DispatchError {
+    fn from(e: ResolutionError) -> Self {
+        DispatchError::RoutingProblem(RoutingError::Resolution(e))
+    }
+}
+
 impl Display for DispatchError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -432,7 +440,7 @@ where
 async fn insert_new_route<'a, Path>(
     router: &mut TaggedRouter<Path>,
     resolved: &'a mut HashMap<RelativePath, Route>,
-    target: &RelativePath,
+    target: &'a RelativePath,
 ) -> Result<&'a mut Route, DispatchError>
 where
     Path: Addressable,

@@ -44,7 +44,9 @@ use swim_model::path::Addressable;
 use swim_model::Value;
 use swim_runtime::backpressure;
 use swim_runtime::configuration::{BackpressureMode, DownlinksConfig};
-use swim_runtime::error::{CloseError, CloseErrorKind, ConnectionError, RoutingError};
+use swim_runtime::error::{
+    CloseError, CloseErrorKind, ConnectionError, ResolutionError, RoutingError,
+};
 use swim_runtime::remote::router::{ConnectionType, RouterEvent};
 use swim_runtime::routing::CloseReceiver;
 use swim_schema::schema::StandardSchema;
@@ -627,8 +629,8 @@ impl<Path: Addressable> DownlinksTask<Path> {
             RouterEvent::ConnectionClosed => Err(RoutingError::Connection(
                 ConnectionError::Closed(CloseError::new(CloseErrorKind::Closed, None)),
             )),
-            RouterEvent::Unreachable(e) => Err(RoutingError::Unresolvable(e)),
-            RouterEvent::Stopping => Err(RoutingError::RouterDropped),
+            RouterEvent::Unreachable(e) => Err(RoutingError::Resolution(ResolutionError::Host(e))),
+            RouterEvent::Stopping => Err(RoutingError::Dropped),
         });
 
         let sink_path = path.relative_path();
@@ -1054,7 +1056,7 @@ fn map_router_events(event: RouterEvent) -> Result<Message<Value>, RoutingError>
         RouterEvent::ConnectionClosed => Err(RoutingError::Connection(ConnectionError::Closed(
             CloseError::new(CloseErrorKind::Closed, None),
         ))),
-        RouterEvent::Unreachable(e) => Err(RoutingError::Unresolvable(e)),
-        RouterEvent::Stopping => Err(RoutingError::RouterDropped),
+        RouterEvent::Unreachable(e) => Err(RoutingError::Resolution(ResolutionError::Host(e))),
+        RouterEvent::Stopping => Err(RoutingError::Dropped),
     }
 }

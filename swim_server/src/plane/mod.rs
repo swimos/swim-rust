@@ -34,7 +34,7 @@ use swim_client::interface::ClientContext;
 use swim_model::path::Path;
 use swim_runtime::error::{
     ConnectionDropped, ConnectionError, NoAgentAtRoute, ProtocolError, ProtocolErrorKind,
-    RoutingError,
+    ResolutionError,
 };
 use swim_runtime::remote::router::{PlaneRoutingRequest, Router, TaggedRouter};
 use swim_runtime::remote::RawRoute;
@@ -507,7 +507,7 @@ pub async fn run_plane<Clk, S, Store>(
                         {
                             Ok(tx)
                         } else {
-                            Err(RoutingError::Unresolvable(id.to_string()))
+                            Err(ResolutionError::Addr(id))
                         };
                         if request.send(result).is_err() {
                             event!(Level::WARN, DROPPED_REQUEST);
@@ -515,10 +515,7 @@ pub async fn run_plane<Clk, S, Store>(
                     } else {
                         event!(Level::TRACE, GETTING_REMOTE_ENDPOINT, ?id);
                         //TODO Attach external routing here.
-                        if request
-                            .send_err(RoutingError::Unresolvable(id.to_string()))
-                            .is_err()
-                        {
+                        if request.send_err(ResolutionError::Addr(id)).is_err() {
                             event!(Level::WARN, DROPPED_REQUEST);
                         }
                     }
@@ -537,9 +534,7 @@ pub async fn run_plane<Clk, S, Store>(
                     } else {
                         match resolver.try_open_route(route, spawner.deref()) {
                             Ok((_, addr)) => Ok(addr),
-                            Err(NoAgentAtRoute(uri)) => {
-                                Err(RoutingError::Unresolvable(uri.to_string()))
-                            }
+                            Err(NoAgentAtRoute(uri)) => Err(ResolutionError::Agent(uri).into()),
                         }
                     };
                     if request.send(result).is_err() {
@@ -554,8 +549,9 @@ pub async fn run_plane<Clk, S, Store>(
                     event!(Level::TRACE, RESOLVING, ?host_url, ?name);
                     //TODO Attach external resolution here.
                     if request
-                        .send_err(RoutingError::Connection(ConnectionError::Protocol(
-                            ProtocolError::new(ProtocolErrorKind::WebSocket, None),
+                        .send_err(ConnectionError::Protocol(ProtocolError::new(
+                            ProtocolErrorKind::WebSocket,
+                            None,
                         )))
                         .is_err()
                     {

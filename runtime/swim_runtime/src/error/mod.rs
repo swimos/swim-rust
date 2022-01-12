@@ -17,15 +17,10 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::io::ErrorKind;
 use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::mpsc::error::SendError as MpscSendError;
-
-use thiserror::Error;
 
 use crate::routing::RoutingAddr;
 pub use capacity::*;
 pub use closed::*;
-pub use encoding::*;
 pub use io::*;
 pub use protocol::*;
 pub use resolution::*;
@@ -36,19 +31,16 @@ use swim_utilities::future::request::request_future::RequestError;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::sync::circular_buffer;
 use thiserror::Error as ThisError;
-pub use tls::*;
 
 pub use self::http::*;
 
 mod capacity;
 mod closed;
-mod encoding;
 mod http;
 mod io;
 mod protocol;
 mod resolution;
 mod routing;
-mod tls;
 
 #[cfg(test)]
 mod tests;
@@ -60,32 +52,6 @@ type BoxRecoverableError = Box<dyn RecoverableError>;
 pub trait RecoverableError: std::error::Error + Send + Sync + Recoverable + 'static {}
 impl<T> RecoverableError for T where T: std::error::Error + Send + Sync + Recoverable + 'static {}
 
-#[derive(Error, Debug, PartialEq)]
-pub enum RoutingError {
-    #[error("Failed to resolve the address: `{0}`")]
-    Unresolvable(String),
-    #[error("`{0}`")]
-    Connection(#[from] ConnectionError),
-    #[error("Router dropped")]
-    RouterDropped,
-}
-
-impl Recoverable for RoutingError {
-    fn is_fatal(&self) -> bool {
-        match self {
-            RoutingError::Unresolvable(_) => true,
-            RoutingError::Connection(e) => e.is_fatal(),
-            RoutingError::RouterDropped => true,
-        }
-    }
-}
-
-impl<T> From<MpscSendError<T>> for RoutingError {
-    fn from(_: MpscSendError<T>) -> Self {
-        RoutingError::RouterDropped
-    }
-}
-
 impl From<RoutingError> for RequestError {
     fn from(_: RoutingError) -> Self {
         RequestError {}
@@ -94,13 +60,13 @@ impl From<RoutingError> for RequestError {
 
 impl<T> From<circular_buffer::error::SendError<T>> for RoutingError {
     fn from(_: circular_buffer::error::SendError<T>) -> Self {
-        RoutingError::RouterDropped
+        RoutingError::Dropped
     }
 }
 
 impl<T> From<swim_utilities::future::item_sink::SendError<T>> for RoutingError {
     fn from(_: SendError<T>) -> Self {
-        RoutingError::RouterDropped
+        RoutingError::Dropped
     }
 }
 
@@ -109,8 +75,6 @@ impl<T> From<swim_utilities::future::item_sink::SendError<T>> for RoutingError {
 pub enum ConnectionError {
     /// A HTTP detailing either a malformatted request/response or a peer error.
     Http(HttpError),
-    /// A TLS error that may be produced when reading a certificate or through a connection.
-    Tls(TlsError),
     /// An error detailing that there has been a read/write buffer overflow.
     Capacity(CapacityError),
     /// A connection protocol error.
@@ -119,24 +83,26 @@ pub enum ConnectionError {
     Closed(CloseError),
     /// An IO error produced during a read/write operation.
     Io(IoError),
-    /// An unsupported encoding error or an illegal type error.
-    Encoding(EncodingError),
     /// An error produced when attempting to resolve a peer.
-    Unresolvable(String),
-    /// A pending write did not complete within the specified duration.
-    WriteTimeout(Duration),
+    Resolution(ResolutionError),
     /// An error was produced at the transport layer.
     Transport(Arc<BoxRecoverableError>),
     /// The router was dropped
     RouterDropped,
 }
 
+impl From<ResolutionError> for ConnectionError {
+    fn from(e: ResolutionError) -> Self {
+        ConnectionError::Resolution(e)
+    }
+}
+
 impl From<RoutingError> for ConnectionError {
     fn from(e: RoutingError) -> Self {
         match e {
-            RoutingError::Unresolvable(e) => ConnectionError::Unresolvable(e),
             RoutingError::Connection(e) => e,
-            RoutingError::RouterDropped => ConnectionError::RouterDropped,
+            RoutingError::Dropped => ConnectionError::RouterDropped,
+            RoutingError::Resolution(e) => ConnectionError::Resolution(e),
         }
     }
 }
@@ -145,15 +111,11 @@ impl PartialEq for ConnectionError {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (ConnectionError::Http(l), ConnectionError::Http(r)) => l.eq(r),
-            #[cfg(feature = "tls")]
-            (ConnectionError::Tls(l), ConnectionError::Tls(r)) => l.eq(r),
             (ConnectionError::Capacity(l), ConnectionError::Capacity(r)) => l.eq(r),
             (ConnectionError::Protocol(l), ConnectionError::Protocol(r)) => l.eq(r),
             (ConnectionError::Closed(l), ConnectionError::Closed(r)) => l.eq(r),
             (ConnectionError::Io(l), ConnectionError::Io(r)) => l.eq(r),
-            (ConnectionError::Encoding(l), ConnectionError::Encoding(r)) => l.eq(r),
-            (ConnectionError::Unresolvable(l), ConnectionError::Unresolvable(r)) => l.eq(r),
-            (ConnectionError::WriteTimeout(l), ConnectionError::WriteTimeout(r)) => l.eq(r),
+            (ConnectionError::Resolution(l), ConnectionError::Resolution(r)) => l.eq(r),
             (ConnectionError::Transport(l), ConnectionError::Transport(r)) => {
                 l.to_string().eq(&r.to_string())
             }
@@ -181,7 +143,6 @@ impl Recoverable for ConnectionError {
     fn is_fatal(&self) -> bool {
         match self {
             ConnectionError::Http(e) => e.is_fatal(),
-            ConnectionError::Tls(e) => e.is_fatal(),
             ConnectionError::Capacity(e) => e.is_fatal(),
             ConnectionError::Protocol(e) => e.is_fatal(),
             ConnectionError::Closed(e) => e.is_fatal(),
@@ -189,9 +150,7 @@ impl Recoverable for ConnectionError {
                 e.kind(),
                 ErrorKind::Interrupted | ErrorKind::TimedOut | ErrorKind::ConnectionReset
             ),
-            ConnectionError::Encoding(e) => e.is_fatal(),
-            ConnectionError::Unresolvable(_) => true,
-            ConnectionError::WriteTimeout(_) => false,
+            ConnectionError::Resolution(e) => e.is_fatal(),
             ConnectionError::Transport(e) => e.is_fatal(),
             ConnectionError::RouterDropped => true,
         }
@@ -204,18 +163,11 @@ impl Display for ConnectionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             ConnectionError::Http(e) => write!(f, "{}", e),
-            ConnectionError::Tls(e) => write!(f, "{}", e),
             ConnectionError::Capacity(e) => write!(f, "{}", e),
             ConnectionError::Protocol(e) => write!(f, "{}", e),
             ConnectionError::Closed(e) => write!(f, "{}", e),
             ConnectionError::Io(e) => write!(f, "{}", e),
-            ConnectionError::Encoding(e) => write!(f, "{}", e),
-            ConnectionError::Unresolvable(e) => write!(f, "Address {} could not be resolved.", e),
-            ConnectionError::WriteTimeout(dur) => write!(
-                f,
-                "Writing to the connection failed to complete within {:?}.",
-                dur
-            ),
+            ConnectionError::Resolution(e) => write!(f, "{}", e),
             ConnectionError::Transport(e) => {
                 write!(f, "{}", e)
             }
@@ -245,54 +197,10 @@ impl From<ConnectionDropped> for ConnectionError {
     }
 }
 
-impl From<RouterError> for ConnectionError {
-    fn from(err: RouterError) -> Self {
-        match err {
-            RouterError::NoAgentAtRoute(uri) => ConnectionError::Unresolvable(uri.to_string()),
-            RouterError::ConnectionFailure(err) => err,
-            RouterError::RouterDropped => ConnectionError::RouterDropped,
-        }
-    }
-}
-
 pub(crate) fn format_cause(cause: &Option<String>) -> String {
     match cause {
         Some(c) => format!(" {}", c),
         None => String::new(),
-    }
-}
-
-/// Ways in which the router can fail to provide a route.
-#[derive(Debug, PartialEq)]
-pub enum RouterError {
-    /// For a local endpoint it can be determined that no agent exists.
-    NoAgentAtRoute(RelativeUri),
-    /// Connecting to a remote endpoint failed (the endpoint may or may not exist).
-    ConnectionFailure(ConnectionError),
-    /// The router was dropped (the application is likely stopping).
-    RouterDropped,
-}
-
-impl Display for RouterError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RouterError::NoAgentAtRoute(route) => write!(f, "No agent at: '{}'", route),
-            RouterError::ConnectionFailure(err) => {
-                write!(f, "Failed to route to requested endpoint: '{}'", err)
-            }
-            RouterError::RouterDropped => write!(f, "The router channel was dropped."),
-        }
-    }
-}
-
-impl Error for RouterError {}
-
-impl Recoverable for RouterError {
-    fn is_fatal(&self) -> bool {
-        match self {
-            RouterError::ConnectionFailure(err) => err.is_fatal(),
-            _ => true,
-        }
     }
 }
 

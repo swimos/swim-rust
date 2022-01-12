@@ -12,12 +12,40 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::error::ConnectionError;
+use crate::error::{ConnectionError, ResolutionError};
 
 use std::fmt::{Display, Formatter};
 
 use std::time::Duration;
 use swim_utilities::errors::Recoverable;
+use thiserror::Error;
+use tokio::sync::mpsc::error::SendError;
+
+#[derive(Debug, Error)]
+pub enum RoutingError {
+    #[error("Router dropped")]
+    Dropped,
+    #[error("{0}")]
+    Connection(#[from] ConnectionError),
+    #[error("{0}")]
+    Resolution(#[from] ResolutionError),
+}
+
+impl Recoverable for RoutingError {
+    fn is_fatal(&self) -> bool {
+        match self {
+            RoutingError::Dropped => true,
+            RoutingError::Connection(e) => e.is_fatal(),
+            RoutingError::Resolution(e) => e.is_fatal(),
+        }
+    }
+}
+
+impl<P> From<SendError<P>> for RoutingError {
+    fn from(_: SendError<P>) -> Self {
+        RoutingError::Dropped
+    }
+}
 
 /// Reasons for a router connection to be dropped.
 #[derive(Debug, Clone, PartialEq)]

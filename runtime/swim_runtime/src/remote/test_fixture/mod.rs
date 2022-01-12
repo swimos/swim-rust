@@ -14,7 +14,7 @@
 
 pub mod connections;
 
-use crate::error::{ConnectionError, HttpError, HttpErrorKind, RoutingError};
+use crate::error::{ConnectionError, HttpError, HttpErrorKind, ResolutionError};
 use crate::remote::router::{
     DownlinkRoutingRequest, PlaneRoutingRequest, RemoteRoutingRequest, Router,
 };
@@ -175,14 +175,10 @@ impl LocalRoutes {
                                 if *countdown == 0 {
                                     Ok(route.clone())
                                 } else {
-                                    Err(RoutingError::Connection(ConnectionError::Unresolvable(
-                                        addr.to_string(),
-                                    )))
+                                    Err(ResolutionError::Addr(addr))
                                 }
                             } else {
-                                Err(RoutingError::Connection(ConnectionError::Unresolvable(
-                                    addr.to_string(),
-                                )))
+                                Err(ResolutionError::Addr(addr))
                             };
 
                             let _ = request.send(result);
@@ -193,7 +189,7 @@ impl LocalRoutes {
                             request,
                         } => {
                             let result = if host.is_some() {
-                                Err(RoutingError::Unresolvable(host.unwrap().to_string()))
+                                Err(ResolutionError::Host(host.unwrap().to_string()).into())
                             } else if let Some((addr, countdown)) = uri_mappings.get_mut(&route) {
                                 if *countdown == 0 {
                                     Ok(*addr)
@@ -204,17 +200,13 @@ impl LocalRoutes {
                                         *countdown -= 1;
                                     }
                                     // A non-fatal error that will allow a retry.
-                                    Err(RoutingError::Connection(ConnectionError::Http(
-                                        HttpError::new(
-                                            HttpErrorKind::StatusCode(Some(StatusCode::CONTINUE)),
-                                            None,
-                                        ),
+                                    Err(ConnectionError::Http(HttpError::new(
+                                        HttpErrorKind::StatusCode(Some(StatusCode::CONTINUE)),
+                                        None,
                                     )))
                                 }
                             } else {
-                                Err(RoutingError::Connection(ConnectionError::Unresolvable(
-                                    route.to_string(),
-                                )))
+                                Err(ResolutionError::Agent(route).into())
                             };
 
                             let _ = request.send(result);
