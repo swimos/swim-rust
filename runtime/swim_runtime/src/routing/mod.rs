@@ -24,6 +24,8 @@ use futures::future::BoxFuture;
 use futures::{FutureExt, Stream};
 use std::fmt::{Display, Formatter};
 use std::io::ErrorKind;
+use swim_form::structural::read::recognizer::RecognizerReadable;
+use swim_model::Value;
 use swim_utilities::future::item_sink::{ItemSink, SendError};
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger::promise;
@@ -206,14 +208,16 @@ pub struct ClientEndpoint {
     handle_drop: ClientRouteMonitor,
 }
 
-use crate::compat::EnvelopeEncoder;
+use crate::compat::{
+    ClientMessageDecoder, EnvelopeEncoder, MessageDecodeError, Notification, ResponseMessage,
+};
 use futures::future::{ready, select, Either};
 use futures::stream::unfold;
 use futures::StreamExt;
 use futures_util::SinkExt;
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use tokio_stream::wrappers::ReceiverStream;
-use tokio_util::codec::FramedWrite;
+use tokio_util::codec::{FramedRead, FramedWrite};
 
 /// The Router events are emitted by the connection streams of the router and indicate
 /// messages or errors from the remote host.
@@ -286,14 +290,36 @@ impl ClientEndpoint {
     }
 }
 
+enum ChannelFailure {
+    ChannelBroken,
+    InvalidFrame,
+}
+
 fn bytes_channel_client_stream(
-    _receiver: ByteReader,
-    _rx_on_dropped: promise::Receiver<ConnectionDropped>,
-    _handle_drop: ClientRouteMonitor,
-    _host: Option<Url>,
-    _stop_trigger: CloseReceiver,
+    receiver: ByteReader,
+    rx_on_dropped: promise::Receiver<ConnectionDropped>,
+    handle_drop: ClientRouteMonitor,
+    host: Option<Url>,
+    stop_trigger: CloseReceiver,
 ) -> impl Stream<Item = RouterEvent> {
-    futures::stream::empty()
+    let decoder = ClientMessageDecoder::new(Value::make_recognizer());
+    let framed = FramedRead::new(receiver, decoder);
+    let stream = framed.map(|result| match result {
+        Ok(message) => {
+            let ResponseMessage { path, envelope, .. } = message;
+
+            let envelope = match envelope {
+                Notification::Linked => ResponseEnvelope::Linked(path, Default::default(), None),
+                Notification::Synced => ResponseEnvelope::Synced(path, None),
+                Notification::Unlinked(_) => ResponseEnvelope::Unlinked(path, None),
+                Notification::Event(body) => ResponseEnvelope::Event(path, Some(body)),
+            };
+            Ok(envelope)
+        }
+        Err(MessageDecodeError::Io(_)) => Err(ChannelFailure::ChannelBroken),
+        Err(_) => Err(ChannelFailure::InvalidFrame),
+    });
+    client_stream(stream, rx_on_dropped, handle_drop, host, stop_trigger)
 }
 
 fn mpsc_client_stream(
@@ -304,8 +330,20 @@ fn mpsc_client_stream(
     stop_trigger: CloseReceiver,
 ) -> impl Stream<Item = RouterEvent> {
     let stream = ReceiverStream::new(receiver)
-        .filter_map(|TaggedEnvelope(_, env)| ready(env.into_response()));
+        .filter_map(|TaggedEnvelope(_, env)| ready(env.into_response().map(Ok)));
+    client_stream(stream, rx_on_dropped, handle_drop, host, stop_trigger)
+}
 
+fn client_stream<S>(
+    stream: S,
+    rx_on_dropped: promise::Receiver<ConnectionDropped>,
+    handle_drop: ClientRouteMonitor,
+    host: Option<Url>,
+    stop_trigger: CloseReceiver,
+) -> impl Stream<Item = RouterEvent>
+where
+    S: Stream<Item = Result<ResponseEnvelope, ChannelFailure>> + Unpin,
+{
     let seed = RouteStream::new(host, stream, rx_on_dropped, handle_drop, stop_trigger);
 
     unfold(seed, |mut rs| async move {
@@ -318,7 +356,11 @@ fn mpsc_client_stream(
         } = &mut rs;
         if let Some(dropped) = on_dropped {
             let event = match select(stream.next(), stop_trigger).await {
-                Either::Left((Some(env), _)) => RouterEvent::Message(env),
+                Either::Left((Some(Ok(env)), _)) => RouterEvent::Message(env),
+                Either::Left((Some(Err(ChannelFailure::InvalidFrame)), _)) => {
+                    *on_dropped = None;
+                    RouterEvent::ConnectionClosed
+                }
                 Either::Left(_) => {
                     let result = dropped.await;
                     *on_dropped = None;

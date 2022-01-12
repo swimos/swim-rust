@@ -383,6 +383,15 @@ impl<T, R> AgentMessageDecoder<T, R> {
     }
 }
 
+impl<T, R> ClientMessageDecoder<T, R> {
+    pub fn new(recognizer: R) -> Self {
+        ClientMessageDecoder {
+            state: ResponseState::ReadingHeader,
+            recognizer: RecognizerDecoder::new(recognizer),
+        }
+    }
+}
+
 const HEADER_INIT_LEN: usize = 32;
 
 #[derive(Error, Debug)]
