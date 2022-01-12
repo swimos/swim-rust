@@ -145,6 +145,19 @@ fn cmp_early_termination_complex() {
     let result_1 = value_from_string(first).unwrap();
     let result_2 = value_from_string(second).unwrap();
     assert_ne!(result_1, result_2);
+
+    let first = "{{test}:3}";
+    let second = "{{test}3}";
+
+    let first_iter = &mut ParseIterator::new(Span::new(first), false);
+    let second_iter = &mut ParseIterator::new(Span::new(second), false);
+
+    assert!(!incremental_compare(first_iter, second_iter));
+    assert_eq!(
+        first_iter.next().unwrap().unwrap(),
+        ReadEvent::Number(NumericValue::UInt(3))
+    );
+    assert!(second_iter.next().is_none());
 }
 
 #[test]

@@ -83,6 +83,10 @@ fn incremental_compare<
                 validator_2.feed_event(event_2);
             }
 
+            (Some(Err(_)), _) | (_, Some(Err(_))) => {
+                return false;
+            }
+
             _ => {
                 return validator_1 == validator_2;
             }
