@@ -58,6 +58,19 @@ pub trait ItemSink<'a, T> {
     fn send_item(&'a mut self, value: T) -> Self::SendFuture;
 }
 
+impl<'a, 'b, T, S> ItemSink<'b, T> for &'a mut S
+where
+    S: ItemSink<'b, T>,
+    'a: 'b,
+{
+    type Error = S::Error;
+    type SendFuture = S::SendFuture;
+
+    fn send_item(&'b mut self, value: T) -> Self::SendFuture {
+        (**self).send_item(value)
+    }
+}
+
 pub trait ItemSender<T, E>: for<'a> ItemSink<'a, T, Error = E> {
     fn map_err_into<E2>(self) -> map_err::SenderErrInto<Self, E2>
     where

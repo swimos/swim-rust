@@ -48,7 +48,7 @@ use swim_schema::schema::StandardSchema;
 use swim_schema::ValueSchema;
 use swim_utilities::errors::Recoverable;
 use swim_utilities::future::item_sink::either::SplitSink;
-use swim_utilities::future::item_sink::ItemSender;
+use swim_utilities::future::item_sink::{for_mpsc_sender, ItemSender};
 use swim_utilities::future::request::Request;
 use swim_utilities::future::retryable::RetryStrategy;
 use swim_utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture};
@@ -598,18 +598,19 @@ where
                 yield_after,
                 ..
             } => {
-                let cmd_sink1 = make_value_sink(sink.duplicate().await, sink_path.clone());
-                let cmd_sink2 = make_value_sink(sink, sink_path);
+                let cmd_sink = make_value_sink(sink, sink_path);
                 let (release_tx, release_rx) = circular_buffer::channel(input_buffer_size);
+                let (priority_tx, priority_rx) = mpsc::channel(1);
 
                 let release_task =
-                    backpressure::release_pressure(release_rx, cmd_sink1, yield_after);
+                    backpressure::pressure_valve(priority_rx, release_rx, cmd_sink, yield_after);
                 //TODO Use a Spawner instead.
                 swim_async_runtime::task::spawn(release_task);
 
+                let direct = for_mpsc_sender(priority_tx).map_err_into();
                 let pressure_release = release_tx.map_err_into();
 
-                let either_sink = SplitSink::new(cmd_sink2, pressure_release).comap(
+                let either_sink = SplitSink::new(direct, pressure_release).comap(
                     move |cmd: Command<SharedValue>| match cmd {
                         act @ Command::Action(_) => Either::Right(act),
                         ow => Either::Left(ow),
@@ -747,25 +748,29 @@ where
                 yield_after,
                 ..
             } => {
-                let cmd_sink1 = make_command_sink(sink.duplicate().await, sink_path.clone());
-                let cmd_sink2 = make_command_sink(sink, sink_path);
+                let cmd_sink = make_command_sink(sink, sink_path);
+                let (priority_tx, priority_rx) = mpsc::channel(1);
                 let (release_tx, release_rx) = circular_buffer::channel(input_buffer_size);
 
                 let release_task =
-                    backpressure::release_pressure(release_rx, cmd_sink1, yield_after);
+                    backpressure::pressure_valve(priority_rx, release_rx, cmd_sink, yield_after);
                 //TODO Use a Spawner instead.
                 swim_async_runtime::task::spawn(release_task);
+
+                let direct = for_mpsc_sender(priority_tx).map_err_into();
                 let pressure_release = release_tx.map_err_into();
-                let either_sink = SplitSink::new(cmd_sink2, pressure_release).comap(
-                    move |cmd: Command<Value>| match cmd {
-                        act @ Command::Action(_) => Either::Right(act),
-                        ow => Either::Left(ow),
-                    },
-                );
+
+                let either_sink =
+                    SplitSink::new(direct, pressure_release).comap(move |cmd: Command<Value>| {
+                        match cmd {
+                            act @ Command::Action(_) => Either::Right(act),
+                            ow => Either::Left(ow),
+                        }
+                    });
 
                 Arc::new(command_downlink(
                     schema.clone(),
-                    either_sink.map_err_into(),
+                    either_sink,
                     (&config).into(),
                 ))
             }

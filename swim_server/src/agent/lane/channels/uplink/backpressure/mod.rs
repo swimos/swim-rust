@@ -59,12 +59,12 @@ pub struct KeyedBackpressureConfig {
 /// If the second tasks does not keep up with the first, some messages will be discarded.
 pub async fn value_uplink_release_backpressure<T, E, Snk>(
     messages: impl Stream<Item = Result<UplinkMessage<ValueLaneEvent<T>>, UplinkError>>,
-    mut sink: Snk,
+    sink: &mut Snk,
     config: SimpleBackpressureConfig,
 ) -> Result<(), UplinkError>
 where
     T: Send + Sync + Debug,
-    Snk: ItemSender<UplinkMessage<ValueLaneEvent<T>>, E> + Clone,
+    Snk: ItemSender<UplinkMessage<ValueLaneEvent<T>>, E>,
 {
     let SimpleBackpressureConfig {
         buffer_size,
@@ -74,7 +74,7 @@ where
     let (mut internal_tx, internal_rx) =
         circular_buffer::channel::<Flushable<UplinkMessage<ValueLaneEvent<T>>>>(buffer_size);
 
-    let out_task = release_pressure(internal_rx, sink.clone(), yield_after);
+    let out_task = release_pressure(internal_rx, sink, yield_after);
 
     let in_task = async move {
         pin_mut!(messages);
@@ -88,12 +88,9 @@ where
                 ow => {
                     let (flush_tx, flush_rx) = trigger::trigger();
                     internal_tx
-                        .try_send(Flushable::Flush(flush_tx))
+                        .try_send(Flushable::Flush(ow, flush_tx))
                         .expect(INTERNAL_ERROR);
-                    let _ = flush_rx.await;
-                    sink.send_item(ow)
-                        .await
-                        .map_err(|_| UplinkError::ChannelDropped)?;
+                    flush_rx.await.map_err(|_| UplinkError::ChannelDropped)?;
                 }
             }
         }

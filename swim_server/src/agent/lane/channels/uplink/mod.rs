@@ -641,10 +641,9 @@ where
         SendErr: Send + 'a,
     {
         async move {
-            if let Some(_config) = self.backpressure_config {
-                //backpressure::value_uplink_release_backpressure(message_stream, sender, config)
-                //    .await
-                todo!()
+            if let Some(config) = self.backpressure_config {
+                backpressure::value_uplink_release_backpressure(message_stream, sender, config)
+                    .await
             } else {
                 default_send_message_stream(message_stream, sender, uplinks_idle_since).await
             }
