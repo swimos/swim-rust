@@ -71,6 +71,8 @@ impl Drop for Entry {
     }
 }
 
+/// The client routing table contains handles to clients attached to local lanes. These can be
+/// routed to directly to allow agents to send messages directly to the client.
 struct ClientRoutingTable {
     local_client_routes: HashMap<RoutingAddr, Entry>,
     next_id: u32,
@@ -78,6 +80,8 @@ struct ClientRoutingTable {
 }
 
 impl ClientRoutingTable {
+    /// # Arguments
+    /// * `channel_size` The size of the envelope buffer for sending to the route.
     fn new(channel_size: NonZeroUsize) -> Self {
         ClientRoutingTable {
             local_client_routes: Default::default(),
@@ -122,6 +126,7 @@ impl ClientRoutingTable {
     }
 }
 
+/// A single routable client endpoint.
 pub struct ClientEndpoint {
     endpoint_addr: RoutingAddr,
     receiver: mpsc::Receiver<TaggedEnvelope>,
@@ -129,12 +134,18 @@ pub struct ClientEndpoint {
     on_drop: ClientRouteMonitor,
 }
 
+/// A request that can be send to the task that manages client routes.
 pub enum ClientEndpointRequest {
+    /// Get a route associated with an existing address, if it exists.
     Get(RoutingAddr, Request<Result<RawOutRoute, Unresolvable>>),
+    /// Add a new route to the table.
     MakeRoutable(Request<ClientEndpoint>),
+    /// Issue a new (dummy) routing ID for an unroutable client.
     MakeUnroutable(Request<RoutingAddr>),
 }
 
+/// This task manages the issuing of routing IDs for client routes and the creation of routable
+/// endpoints for downlinks to local lanes.
 pub struct ClientRouterTask {
     stop_trigger: CloseReceiver,
     requests: mpsc::Receiver<ClientEndpointRequest>,
@@ -145,6 +156,12 @@ pub struct ClientRouterTask {
 const REQUEST_DROPPED: &str = "Client routing request dropped.";
 
 impl ClientRouterTask {
+    /// # Arguments
+    /// * `stop_trigger` - Indicagtes when the application is stopping and the task should
+    /// terminate.
+    /// * `requests` - Stream of requests to be served by the task.
+    /// * `channel_size` - Enevelope buffer size for endpoints created by the task.
+    /// * `yield_after` - Maximum number of requests to service before yielding.
     pub fn new(
         stop_trigger: CloseReceiver,
         requests: mpsc::Receiver<ClientEndpointRequest>,
@@ -238,6 +255,7 @@ impl ClientRouterTask {
     }
 }
 
+/// Router implementation that can route to endpoints created by the [`ClientRouterTask`].
 pub struct ClientRouter {
     tag: RoutingAddr,
     client: mpsc::Sender<ClientEndpointRequest>,

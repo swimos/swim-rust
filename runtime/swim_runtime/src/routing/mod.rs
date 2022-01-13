@@ -156,15 +156,26 @@ pub struct Route {
     pub on_drop: promise::Receiver<ConnectionDropped>,
 }
 
+/// A extended router entry for a client (downlink). In addition to the [`Route`] for sending
+/// messages, there is also a receiver to which incoming messages for the downlink will be routed.
 #[derive(Debug)]
 pub struct ClientRoute {
+    // The routing address for the target of this route.
     pub tag: RoutingAddr,
+    // Route to which outgoingmessages to are sent.
     pub route: Route,
+    // Receiver for incoming messages for this client.
     pub receiver: mpsc::Receiver<TaggedEnvelope>,
+    // Promise that will be satisfied after the channel corresponding to the receiver is dropped.
     pub rx_on_dropped: promise::Receiver<ConnectionDropped>,
+    // When this handle is dropped, the task with the responsibility of routing messages to this
+    // client will be informed that it is no longer active.
     pub handle_drop: ClientRouteMonitor,
 }
 
+/// A client route that cannot be directly route to. This type of client route is attached to a
+/// remote socket and so does not have a routing address of its own. (By contrast, a client
+/// connected to a local lane can be routed to directly by the agent to which it is connected).
 #[derive(Debug)]
 pub struct UnroutableClient {
     route: RawOutRoute,
@@ -191,6 +202,9 @@ impl ClientRoute {
     }
 }
 
+/// A client route monitor keeps track of whether a client route is being used. A downlink that
+/// has a client route should make sure that it its monitor is not dropped until it has stopped.
+/// This is used to notify that task that is routing messags to the downlink that it can stop.
 #[derive(Debug)]
 pub struct ClientRouteMonitor(Option<promise::Sender<ConnectionDropped>>);
 
