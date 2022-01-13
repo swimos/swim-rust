@@ -99,6 +99,15 @@ fn cmp_complex() {
     let result_1 = value_from_string(first).unwrap();
     let result_2 = value_from_string(second).unwrap();
     assert_eq!(result_1, result_2);
+
+    let first = "@foo({one: 1, two: @bar(1,2,3), three: 3, four: {@baz({1,2})}})";
+    let second = "@foo(one: 1, two: @bar({1,2,3}), three: 3, four: {@baz(1,2)})";
+
+    assert!(compare_values(first, second));
+
+    let result_1 = value_from_string(first).unwrap();
+    let result_2 = value_from_string(second).unwrap();
+    assert_eq!(result_1, result_2);
 }
 
 #[test]
@@ -106,8 +115,8 @@ fn cmp_early_termination_simple() {
     let first = "@name(a: 1, b: 2, c: 3)";
     let second = "@name(a:1, b: 4, c: 3)";
 
-    let first_iter = &mut ParseIterator::new(Span::new(first), false);
-    let second_iter = &mut ParseIterator::new(Span::new(second), false);
+    let first_iter = &mut ParseIterator::new(Span::new(first), false).peekable();
+    let second_iter = &mut ParseIterator::new(Span::new(second), false).peekable();
 
     assert!(!incremental_compare(first_iter, second_iter));
     assert_eq!(
@@ -129,8 +138,8 @@ fn cmp_early_termination_complex() {
     let first = "@name(a: 1, b: 2)";
     let second = "@name(   {a: 3, b: 2}    )";
 
-    let first_iter = &mut ParseIterator::new(Span::new(first), false);
-    let second_iter = &mut ParseIterator::new(Span::new(second), false);
+    let first_iter = &mut ParseIterator::new(Span::new(first), false).peekable();
+    let second_iter = &mut ParseIterator::new(Span::new(second), false).peekable();
 
     assert!(!incremental_compare(first_iter, second_iter));
     assert_eq!(
@@ -149,8 +158,8 @@ fn cmp_early_termination_complex() {
     let first = "{{test}:3}";
     let second = "{{test}3}";
 
-    let first_iter = &mut ParseIterator::new(Span::new(first), false);
-    let second_iter = &mut ParseIterator::new(Span::new(second), false);
+    let first_iter = &mut ParseIterator::new(Span::new(first), false).peekable();
+    let second_iter = &mut ParseIterator::new(Span::new(second), false).peekable();
 
     assert!(!incremental_compare(first_iter, second_iter));
     assert_eq!(
@@ -158,6 +167,16 @@ fn cmp_early_termination_complex() {
         ReadEvent::Number(NumericValue::UInt(3))
     );
     assert!(second_iter.next().is_none());
+
+    let first = "@foo(1)";
+    let second = "@foo({1})";
+
+    let first_iter = &mut ParseIterator::new(Span::new(first), false).peekable();
+    let second_iter = &mut ParseIterator::new(Span::new(second), false).peekable();
+
+    assert!(!incremental_compare(first_iter, second_iter));
+    assert_eq!(first_iter.next().unwrap().unwrap(), ReadEvent::EndAttribute);
+    assert_eq!(second_iter.next().unwrap().unwrap(), ReadEvent::EndRecord);
 }
 
 #[test]
@@ -171,8 +190,8 @@ fn cmp_early_termination_invalid() {
         Ok(ReadEvent::Number(NumericValue::Int(5))),
     ];
 
-    let mut first_iter = first.into_iter();
-    let mut second_iter = second.into_iter();
+    let mut first_iter = first.into_iter().peekable();
+    let mut second_iter = second.into_iter().peekable();
 
     assert!(!incremental_compare(&mut first_iter, &mut second_iter));
     assert_eq!(
@@ -193,8 +212,8 @@ fn cmp_early_termination_invalid() {
         Ok(ReadEvent::Number(NumericValue::Int(10))),
     ];
 
-    let mut first_iter = first.into_iter();
-    let mut second_iter = second.into_iter();
+    let mut first_iter = first.into_iter().peekable();
+    let mut second_iter = second.into_iter().peekable();
 
     assert!(!incremental_compare(&mut first_iter, &mut second_iter));
     assert_eq!(
@@ -217,8 +236,8 @@ fn cmp_early_termination_invalid() {
         Ok(ReadEvent::Number(NumericValue::Int(20))),
     ];
 
-    let mut first_iter = first.into_iter();
-    let mut second_iter = second.into_iter();
+    let mut first_iter = first.into_iter().peekable();
+    let mut second_iter = second.into_iter().peekable();
 
     assert!(!incremental_compare(&mut first_iter, &mut second_iter));
     assert_eq!(

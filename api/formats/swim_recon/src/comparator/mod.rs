@@ -14,6 +14,7 @@
 
 use crate::parser::Span;
 use smallvec::SmallVec;
+use std::iter::Peekable;
 use swim_form::structural::read::event::ReadEvent;
 
 #[cfg(test)]
@@ -25,8 +26,8 @@ mod tests;
 /// * `second` - The second recon value.
 pub fn compare_values(first: &str, second: &str) -> bool {
     incremental_compare(
-        &mut crate::parser::ParseIterator::new(Span::new(first), false),
-        &mut crate::parser::ParseIterator::new(Span::new(second), false),
+        &mut crate::parser::ParseIterator::new(Span::new(first), false).peekable(),
+        &mut crate::parser::ParseIterator::new(Span::new(second), false).peekable(),
     )
 }
 
@@ -34,8 +35,8 @@ fn incremental_compare<
     'a,
     It: Iterator<Item = Result<ReadEvent<'a>, nom::error::Error<Span<'a>>>>,
 >(
-    first_iter: &mut It,
-    second_iter: &mut It,
+    first_iter: &mut Peekable<It>,
+    second_iter: &mut Peekable<It>,
 ) -> bool {
     let mut validator_1 = ValueValidator::new();
     let mut validator_2 = ValueValidator::new();
@@ -48,7 +49,21 @@ fn incremental_compare<
             }
 
             (Some(Ok(mut event_1)), Some(Ok(mut event_2))) if event_1 != event_2 => {
-                if event_1 == ReadEvent::StartBody || event_1 == ReadEvent::EndRecord {
+                if event_1 == ReadEvent::StartBody {
+                    validator_1.feed_event(event_1);
+
+                    if let Some(Ok(event)) = first_iter.next() {
+                        event_1 = event;
+                    } else {
+                        return false;
+                    }
+
+                    if matches!(first_iter.peek(), Some(Ok(ReadEvent::EndRecord))) {
+                        return false;
+                    }
+                }
+
+                if event_1 == ReadEvent::EndRecord {
                     validator_1.feed_event(event_1);
 
                     if let Some(Ok(event)) = first_iter.next() {
@@ -58,7 +73,21 @@ fn incremental_compare<
                     }
                 }
 
-                if event_2 == ReadEvent::StartBody || event_2 == ReadEvent::EndRecord {
+                if event_2 == ReadEvent::StartBody {
+                    validator_2.feed_event(event_2);
+
+                    if let Some(Ok(event)) = second_iter.next() {
+                        event_2 = event;
+                    } else {
+                        return false;
+                    }
+
+                    if matches!(second_iter.peek(), Some(Ok(ReadEvent::EndRecord))) {
+                        return false;
+                    }
+                }
+
+                if event_2 == ReadEvent::EndRecord {
                     validator_2.feed_event(event_2);
 
                     if let Some(Ok(event)) = second_iter.next() {
@@ -107,7 +136,9 @@ enum ValidatorState {
 
 #[derive(Debug, Clone)]
 struct InProgressState {
+    /// The internal stack of builders.
     stack: SmallVec<[BuilderState; 4]>,
+    /// Flag indicating if there is a slot key.
     slot_key: bool,
 }
 
@@ -159,6 +190,8 @@ impl InProgressState {
         Ok(())
     }
 
+    /// Pops the top element from the stack of builder states and returns either an Ok(bool), where
+    /// the bool indicates whether or not the validator is done, or an error.
     fn pop(&mut self, is_attr_end: bool) -> Result<bool, ()> {
         if let Some(BuilderState { key, .. }) = self.stack.pop() {
             match key {
@@ -228,7 +261,9 @@ enum KeyState {
 
 #[derive(Debug, Clone, Copy)]
 struct BuilderState {
+    /// The type of the key for the current builder.
     key: KeyState,
+    /// Flag indicating if the value from the builder is in a body.
     in_body: bool,
 }
 
