@@ -204,6 +204,7 @@ pub struct Route {
 pub struct ClientRoute {
     // Route to which outgoingmessages to are sent.
     route: Route,
+    // Incoming messages for the client.
     receiver: ClientEndpoint,
 }
 
@@ -213,6 +214,7 @@ enum ClientReceiver {
     ByteChannel(ByteReader),
 }
 
+/// Additional component for a router endpoint associated with a client.
 #[derive(Debug)]
 pub struct ClientEndpoint {
     // The routing address for the target of this route.
