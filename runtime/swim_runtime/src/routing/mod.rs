@@ -33,6 +33,16 @@ use swim_warp::envelope::{Envelope, RequestEnvelope, ResponseEnvelope};
 use tokio::sync::mpsc;
 use url::Url;
 use uuid::Uuid;
+use crate::compat::{
+    ClientMessageDecoder, EnvelopeEncoder, MessageDecodeError, Notification, ResponseMessage,
+};
+use futures::future::{ready, select, Either};
+use futures::stream::unfold;
+use futures::StreamExt;
+use futures_util::SinkExt;
+use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use tokio_stream::wrappers::ReceiverStream;
+use tokio_util::codec::{FramedRead, FramedWrite};
 
 pub type CloseReceiver = promise::Receiver<mpsc::Sender<Result<(), RoutingError>>>;
 pub type CloseSender = promise::Sender<mpsc::Sender<Result<(), RoutingError>>>;
@@ -188,8 +198,11 @@ pub struct Route {
     on_drop: promise::Receiver<ConnectionDropped>,
 }
 
+/// A extended router entry for a client (downlink). In addition to the [`Route`] for sending
+/// messages, there is also a receiver to which incoming messages for the downlink will be routed.
 #[derive(Debug)]
 pub struct ClientRoute {
+    // Route to which outgoingmessages to are sent.
     route: Route,
     receiver: ClientEndpoint,
 }
@@ -202,22 +215,16 @@ enum ClientReceiver {
 
 #[derive(Debug)]
 pub struct ClientEndpoint {
+    // The routing address for the target of this route.
     tag: RoutingAddr,
+    // Receiver for incoming messages for this client.
     receiver: ClientReceiver,
+    // Promise that will be satisfied after the channel corresponding to the receiver is dropped.
     rx_on_dropped: promise::Receiver<ConnectionDropped>,
+    // When this handle is dropped, the task with the responsibility of routing messages to this
+    // client will be informed that it is no longer active.
     handle_drop: ClientRouteMonitor,
 }
-
-use crate::compat::{
-    ClientMessageDecoder, EnvelopeEncoder, MessageDecodeError, Notification, ResponseMessage,
-};
-use futures::future::{ready, select, Either};
-use futures::stream::unfold;
-use futures::StreamExt;
-use futures_util::SinkExt;
-use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
-use tokio_stream::wrappers::ReceiverStream;
-use tokio_util::codec::{FramedRead, FramedWrite};
 
 /// The Router events are emitted by the connection streams of the router and indicate
 /// messages or errors from the remote host.
@@ -396,6 +403,9 @@ where
     })
 }
 
+/// A client route that cannot be directly route to. This type of client route is attached to a
+/// remote socket and so does not have a routing address of its own. (By contrast, a client
+/// connected to a local lane can be routed to directly by the agent to which it is connected).
 #[derive(Debug)]
 pub struct UnroutableClient {
     route: RawOutRoute,
@@ -447,6 +457,9 @@ impl ClientRoute {
     }
 }
 
+/// A client route monitor keeps track of whether a client route is being used. A downlink that
+/// has a client route should make sure that it its monitor is not dropped until it has stopped.
+/// This is used to notify that task that is routing messags to the downlink that it can stop.
 #[derive(Debug)]
 pub struct ClientRouteMonitor(Option<promise::Sender<ConnectionDropped>>);
 
