@@ -185,7 +185,7 @@ impl ClientRouterTask {
                     Either::Right((Some(closed_notification), _)) => {
                         Either::Right(closed_notification)
                     }
-                    _ => unreachable!(), //Unreachable as we already checked that endpoint_monitior is non-empty.
+                    _ => unreachable!(), //Unreachable as we already checked that endpoint_monitor is non-empty.
                 }
             };
 
