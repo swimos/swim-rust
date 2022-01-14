@@ -15,14 +15,13 @@
 pub mod connections;
 
 use crate::error::{ConnectionDropped, ConnectionError, HttpError, HttpErrorKind, ResolutionError};
-use crate::remote::RawRoute;
-use crate::routing::Router;
-use crate::routing::{DownlinkRoutingRequest, PlaneRoutingRequest, RemoteRoutingRequest};
+use crate::remote::RawOutRoute;
+use crate::routing::{ClientEndpointRequest, Router};
+use crate::routing::{PlaneRoutingRequest, RemoteRoutingRequest};
 use crate::routing::{RoutingAddr, TaggedEnvelope};
 use futures_util::StreamExt;
 use http::StatusCode;
 use std::collections::{hash_map, HashMap};
-use swim_model::path::Path;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger::promise;
 use tokio::select;
@@ -34,7 +33,7 @@ use tokio_stream::wrappers::ReceiverStream;
 enum Event {
     Plane(PlaneRoutingRequest),
     Remote(RemoteRoutingRequest),
-    Client(DownlinkRoutingRequest<Path>),
+    Client(ClientEndpointRequest),
 }
 
 #[derive(Debug)]
@@ -97,7 +96,7 @@ impl RouteTable {
                 *counter += 1;
                 vacant.insert((id, countdown));
                 let (drop_tx, drop_rx) = promise::promise();
-                let route = RawRoute::new(tx, drop_rx);
+                let route = RawOutRoute::new(tx, drop_rx);
                 routes.insert(
                     id,
                     Entry {
@@ -116,11 +115,11 @@ pub struct LocalRoutes {
     uri_mappings: HashMap<RelativeUri, (RoutingAddr, u8)>,
     plane_rx: mpsc::Receiver<PlaneRoutingRequest>,
     remote_rx: mpsc::Receiver<RemoteRoutingRequest>,
-    client_rx: mpsc::Receiver<DownlinkRoutingRequest<Path>>,
+    client_rx: mpsc::Receiver<ClientEndpointRequest>,
 }
 
 impl LocalRoutes {
-    pub fn from_table(table: RouteTable) -> (Router<Path>, JoinHandle<()>) {
+    pub fn from_table(table: RouteTable) -> (Router, JoinHandle<()>) {
         let RouteTable {
             routes,
             uri_mappings,
@@ -182,14 +181,10 @@ impl LocalRoutes {
 
                             let _ = request.send(result);
                         }
-                        PlaneRoutingRequest::Resolve {
-                            host,
-                            route,
-                            request,
-                        } => {
-                            let result = if host.is_some() {
-                                Err(ResolutionError::Host(host.unwrap().to_string()).into())
-                            } else if let Some((addr, countdown)) = uri_mappings.get_mut(&route) {
+                        PlaneRoutingRequest::Resolve { name, request } => {
+                            let result = if let Some((addr, countdown)) =
+                                uri_mappings.get_mut(&name)
+                            {
                                 if *countdown == 0 {
                                     Ok(*addr)
                                 } else {
@@ -205,7 +200,7 @@ impl LocalRoutes {
                                     )))
                                 }
                             } else {
-                                Err(ResolutionError::Agent(route).into())
+                                Err(ResolutionError::Agent(name).into())
                             };
 
                             let _ = request.send(result);
@@ -222,7 +217,7 @@ impl LocalRoutes {
 
 #[derive(Debug)]
 struct Entry {
-    route: RawRoute,
+    route: RawOutRoute,
     _on_drop: promise::Sender<ConnectionDropped>,
     countdown: u8,
 }

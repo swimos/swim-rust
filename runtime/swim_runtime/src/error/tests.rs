@@ -61,6 +61,15 @@ fn unresolvable_display() {
 }
 
 #[test]
+fn resolution_error_display() {
+    let string = ResolutionError::Addr(RoutingAddr::plane(4)).to_string();
+    assert_eq!(string, "Failed to resolve routing addr: `Plane(4)`");
+
+    let string = ResolutionError::Dropped.to_string();
+    assert_eq!(string, "Router dropped");
+}
+
+#[test]
 fn router_error_display() {
     let uri: RelativeUri = "/name".parse().unwrap();
     let string = RoutingError::Resolution(ResolutionError::Agent(uri)).to_string();

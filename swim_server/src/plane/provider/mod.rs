@@ -70,7 +70,7 @@ where
         clock: Clk,
         client_context: ClientContext<Path>,
         incoming_envelopes: Envelopes,
-        router: TaggedRouter<Path>,
+        router: TaggedRouter,
         store: Store,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>)
     where

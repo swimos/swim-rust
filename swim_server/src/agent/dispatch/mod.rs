@@ -32,7 +32,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 
-use swim_model::path::{Path, RelativePath};
+use swim_model::path::RelativePath;
 use swim_utilities::errors::Recoverable;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
@@ -532,7 +532,7 @@ struct EnvelopeDispatcher {
     yield_after: NonZeroUsize,
     lane_buffer: NonZeroUsize,
     max_idle_time: Duration,
-    router: TaggedRouter<Path>,
+    router: TaggedRouter,
 }
 
 const BAD_CALLBACK: &str = "Could not send input channel to the envelope dispatcher.";
@@ -550,7 +550,7 @@ impl EnvelopeDispatcher {
         yield_after: NonZeroUsize,
         lane_buffer: NonZeroUsize,
         max_idle_time: Duration,
-        router: TaggedRouter<Path>,
+        router: TaggedRouter,
     ) -> Self {
         EnvelopeDispatcher {
             senders: Default::default(),
@@ -752,7 +752,7 @@ where
 }
 
 async fn send_lane_not_found(
-    router: &mut TaggedRouter<Path>,
+    router: &mut TaggedRouter,
     remote_addr: RoutingAddr,
     node: String,
     lane: String,

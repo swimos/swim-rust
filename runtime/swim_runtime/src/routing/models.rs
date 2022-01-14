@@ -1,23 +1,25 @@
-use crate::error::{ConnectionError, NoAgentAtRoute, ResolutionError, RoutingError};
-use crate::remote::table::BidirectionalRegistrator;
-use crate::remote::RawRoute;
-use crate::routing::{RoutingAddr, TaggedEnvelope, TaggedSender};
+use crate::error::{ConnectionDropped, ConnectionError, NoAgentAtRoute, ResolutionError};
+use crate::remote::RawOutRoute;
+use crate::routing::{
+    ClientRouteMonitor, RoutingAddr, TaggedEnvelope, TaggedSender, UnroutableClient,
+};
 use std::any::Any;
 use std::collections::HashSet;
 use std::sync::Arc;
+use swim_model::Text;
 use swim_utilities::future::request::Request;
 use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::trigger::promise;
 use swim_warp::envelope::ResponseEnvelope;
 use tokio::sync::mpsc;
 use url::Url;
 
-pub type EndpointRequest = Request<Result<RawRoute, ResolutionError>>;
-pub type BidirectionalRequest = Request<Result<BidirectionalRegistrator, ConnectionError>>;
+pub type EndpointRequest = Request<Result<RawOutRoute, ResolutionError>>;
 pub type ConnectionChannel = (TaggedSender, Option<mpsc::Receiver<RouterEvent>>);
 pub type AgentRequest = Request<Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>>;
 pub type RoutesRequest = Request<HashSet<RelativeUri>>;
 pub type ResolutionRequest = Request<Result<RoutingAddr, ConnectionError>>;
-pub type BidirectionalReceiverRequest = Request<mpsc::Receiver<TaggedEnvelope>>;
+pub type ClientRequest = Request<Result<UnroutableClient, ResolutionError>>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RouterEvent {
@@ -26,7 +28,7 @@ pub enum RouterEvent {
     /// There was an error in the connection. If a retry strategy exists this will trigger it.
     ConnectionClosed,
     /// The remote host is unreachable. This will not trigger the retry system.
-    Unreachable(String),
+    Unreachable(ResolutionError),
     /// The router is stopping.
     Stopping,
 }
@@ -54,8 +56,7 @@ pub enum PlaneRoutingRequest {
     },
     /// Resolve the routing address for an agent.
     Resolve {
-        host: Option<Url>,
-        route: RelativeUri,
+        name: RelativeUri,
         request: ResolutionRequest,
     },
     /// Get all of the active routes for the plane.
@@ -66,7 +67,7 @@ pub enum PlaneRoutingRequest {
 #[derive(Debug)]
 pub enum RemoteRoutingRequest {
     /// Get channel to route messages to a specified routing address.
-    Endpoint {
+    EndpointOut {
         addr: RoutingAddr,
         request: EndpointRequest,
     },
@@ -75,26 +76,23 @@ pub enum RemoteRoutingRequest {
         host: Url,
         request: ResolutionRequest,
     },
-    /// Establish a bidirectional connection.
-    Bidirectional {
-        host: Url,
-        request: BidirectionalRequest,
-    },
+    /// Attach a client route to the connection to the specified host.
+    AttachClient { request: AttachClientRequest },
 }
 
 #[derive(Debug)]
-pub enum DownlinkRoutingRequest<Path> {
-    /// Obtain a connection.
-    Connect {
-        target: Path,
-        request: Request<Result<ConnectionChannel, RoutingError>>,
-        conn_type: ConnectionType,
-    },
-    /// Get channel to route messages to a specified routing address.
-    Endpoint {
-        addr: RoutingAddr,
-        request: Request<Result<RawRoute, RoutingError>>,
-    },
+pub enum ClientEndpointRequest {
+    Get(RoutingAddr, Request<Result<RawOutRoute, ResolutionError>>),
+    MakeRoutable(Request<ClientEndpoint>),
+    MakeUnroutable(Request<RoutingAddr>),
+}
+
+#[derive(Debug)]
+pub struct ClientEndpoint {
+    pub endpoint_addr: RoutingAddr,
+    pub receiver: mpsc::Receiver<TaggedEnvelope>,
+    pub on_dropped: promise::Receiver<ConnectionDropped>,
+    pub on_drop: ClientRouteMonitor,
 }
 
 #[derive(Debug)]
@@ -152,5 +150,24 @@ impl From<(Option<Url>, RelativeUri)> for Address {
 impl From<RelativeUri> for Address {
     fn from(uri: RelativeUri) -> Self {
         Address::Local(uri)
+    }
+}
+
+#[derive(Debug)]
+pub struct AttachClientRequest {
+    pub addr: RoutingAddr,
+    pub node: RelativeUri,
+    pub lane: Text,
+    pub request: ClientRequest,
+}
+
+impl AttachClientRequest {
+    pub fn new(addr: RoutingAddr, node: RelativeUri, lane: Text, request: ClientRequest) -> Self {
+        AttachClientRequest {
+            addr,
+            node,
+            lane,
+            request,
+        }
     }
 }

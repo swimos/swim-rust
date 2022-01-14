@@ -25,13 +25,12 @@ use std::convert::TryFrom;
 use std::sync::Arc;
 use swim_async_runtime::task;
 use swim_async_runtime::time::clock::Clock;
-use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::ClientContext;
+
+use swim_client::router::ClientConnectionFactory;
 use swim_runtime::configuration::DownlinkConnectionsConfig;
-use swim_runtime::routing::Router;
-use swim_runtime::routing::RoutingAddr;
-use swim_utilities::algebra::non_zero_usize;
+use swim_runtime::routing::{Router, RoutingAddr};
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
@@ -43,10 +42,13 @@ fn simple_accessors() {
     let (tx, _rx) = mpsc::channel(1);
     let (_close, close_sig) = trigger::trigger();
     let agent = Arc::new("agent");
-    let (client_tx, client_rx) = mpsc::channel(8);
+
+    let schedule_context = SchedulerContext::new(tx, TestClock::default(), close_sig.clone());
+
+    let (client_tx, _client_rx) = mpsc::channel(8);
     let (remote_tx, _remote_rx) = mpsc::channel(8);
     let (plane_tx, _plane_rx) = mpsc::channel(8);
-    let router = Router::server(client_tx.clone(), plane_tx, remote_tx);
+    let router = Router::server(client_tx.clone(), plane_tx, remote_tx.clone());
 
     let (_close_tx, close_rx) = promise::promise();
     let routing_context = RoutingContext::new(
@@ -54,18 +56,12 @@ fn simple_accessors() {
         router.tagged(RoutingAddr::remote(0)),
         HashMap::new(),
     );
-    let schedule_context = SchedulerContext::new(tx, TestClock::default(), close_sig.clone());
 
-    let (conn_pool, _pool_task) = SwimConnPool::new(
-        DownlinkConnectionsConfig::default(),
-        (client_tx, client_rx),
-        router,
-        close_rx.clone(),
-    );
+    let client_connections = ClientConnectionFactory::new(router, client_tx, remote_tx);
 
     let (downlinks, _downlinks_task) = Downlinks::new(
-        non_zero_usize!(8),
-        conn_pool,
+        client_connections,
+        DownlinkConnectionsConfig::default(),
         Arc::new(ServerDownlinksConfig::default()),
         close_rx,
     );
@@ -105,12 +101,12 @@ fn create_context(
         }
     });
 
-    let (client_tx, client_rx) = mpsc::channel(8);
+    let (client_tx, _client_rx) = mpsc::channel(8);
     let (remote_tx, _remote_rx) = mpsc::channel(8);
     let (plane_tx, _plane_rx) = mpsc::channel(8);
     let (_close_tx, close_rx) = promise::promise();
 
-    let router = Router::server(client_tx.clone(), plane_tx, remote_tx);
+    let router = Router::server(client_tx.clone(), plane_tx, remote_tx.clone());
 
     let agent = Arc::new("agent");
     let routing_context = RoutingContext::new(
@@ -120,16 +116,11 @@ fn create_context(
     );
     let schedule_context = SchedulerContext::new(tx, clock, close_trigger);
 
-    let (conn_pool, _pool_task) = SwimConnPool::new(
-        DownlinkConnectionsConfig::default(),
-        (client_tx, client_rx),
-        router,
-        close_rx.clone(),
-    );
+    let client_connections = ClientConnectionFactory::new(router, client_tx, remote_tx);
 
     let (downlinks, _downlinks_task) = Downlinks::new(
-        non_zero_usize!(8),
-        conn_pool,
+        client_connections,
+        DownlinkConnectionsConfig::default(),
         Arc::new(ServerDownlinksConfig::default()),
         close_rx,
     );

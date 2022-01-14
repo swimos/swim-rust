@@ -32,7 +32,6 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use swim_async_runtime::task::TaskError;
 use swim_async_runtime::time::clock::RuntimeClock;
-use swim_client::connections::{PoolTask, SwimConnPool};
 use swim_client::downlink::subscription::DownlinksTask;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::ClientContext;
@@ -49,6 +48,7 @@ use crate::PlaneBuilder;
 use server_store::rocks;
 use server_store::{ServerStore, SwimStore};
 use swim_client::downlink::error::SubscriptionError;
+use swim_client::router::{ClientConnectionFactory, ClientRouterTask};
 use swim_model::path::Path;
 use swim_runtime::error::RoutingError;
 use swim_runtime::remote::config::RemoteConnectionsConfig;
@@ -231,16 +231,18 @@ where
 
         let router = Router::server(client_tx.clone(), plane_tx.clone(), remote_tx.clone());
 
-        let (connection_pool, connection_pool_task) = SwimConnPool::new(
-            config.downlink_connections_config,
-            (client_tx, client_rx),
-            router.clone(),
+        let connections =
+            ClientConnectionFactory::new(router.clone(), client_tx, remote_tx.clone());
+        let client_router_task = ClientRouterTask::new(
             close_rx.clone(),
+            client_rx,
+            config.downlink_connections_config.buffer_size,
+            config.downlink_connections_config.yield_after,
         );
 
         let (downlinks, downlinks_task) = Downlinks::new(
-            config.downlink_connections_config.dl_req_buffer_size,
-            connection_pool,
+            connections,
+            config.downlink_connections_config,
             Arc::new(config.downlinks_config.clone()),
             close_rx.clone(),
         );
@@ -258,7 +260,7 @@ where
                 remote_channel: (remote_tx, remote_rx),
                 plane_channel: (plane_tx, plane_rx),
                 client_context: downlinks_context,
-                connection_pool_task,
+                client_router_task,
                 downlinks_task,
             },
             ServerHandle {
@@ -339,7 +341,7 @@ where
     planes: Vec<PlaneDef<S>>,
     stop_trigger_rx: CloseReceiver,
     address_tx: promise::Sender<SocketAddr>,
-    router: Router<Path>,
+    router: Router,
     remote_channel: (
         mpsc::Sender<RemoteRoutingRequest>,
         mpsc::Receiver<RemoteRoutingRequest>,
@@ -349,8 +351,8 @@ where
         mpsc::Receiver<PlaneRoutingRequest>,
     ),
     client_context: ClientContext<Path>,
-    connection_pool_task: PoolTask<Path>,
     downlinks_task: DownlinksTask<Path>,
+    client_router_task: ClientRouterTask,
 }
 
 impl<S> SwimServer<S>
@@ -375,7 +377,7 @@ where
             remote_channel: (remote_tx, remote_rx),
             plane_channel: (plane_tx, plane_rx),
             client_context: downlinks_context,
-            connection_pool_task,
+            client_router_task,
             downlinks_task,
         } = self;
 
@@ -440,14 +442,13 @@ where
         let result = join!(
             downlinks_task.run(),
             connections_task.run(),
-            connection_pool_task.run(),
+            client_router_task.run(),
             plane_future,
         );
 
         match result {
             (Err(err), _, _, _) => Err(err.into()),
             (_, Err(err), _, _) => Err(err.into()),
-            (_, _, Err(err), _) => Err(ServerError::RoutingError(RoutingError::Connection(err))),
             _ => Ok(()),
         }
     }

@@ -15,28 +15,24 @@
 use crate::agent::{AgentContext, Eff};
 use crate::meta::log::NodeLogger;
 use crate::meta::MetaContext;
+use crate::scheduler::SchedulerContext;
 use futures::future::BoxFuture;
-use futures::sink::drain;
-use futures::{FutureExt, Stream, StreamExt};
+use futures::Stream;
 use server_store::agent::NodeStore;
 use std::collections::HashMap;
 use std::future::Future;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use swim_async_runtime::time::clock::Clock;
 use swim_client::interface::ClientContext;
 use swim_metrics::NodeMetricAggregator;
 use swim_model::path::Path;
 use swim_runtime::routing::TaggedRouter;
-use swim_utilities::future::SwimStreamExt;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::time::{Duration, Instant};
-use tracing::{event, span, Level};
-use tracing_futures::Instrument;
 
 #[cfg(test)]
 mod tests;
@@ -54,11 +50,6 @@ pub(super) struct ContextImpl<Agent, Clk, Store> {
     pub(crate) uplinks_idle_since: Arc<AtomicInstant>,
     store: Store,
 }
-
-const SCHEDULE: &str = "Schedule";
-const SCHED_TRIGGERED: &str = "Schedule triggered";
-const SCHED_STOPPED: &str = "Scheduler unexpectedly stopped";
-const WAITING: &str = "Schedule waiting";
 
 impl<Agent, Clk, Store> ContextImpl<Agent, Clk, Store> {
     pub(super) fn new(
@@ -105,14 +96,14 @@ where
 #[derive(Debug)]
 pub(super) struct RoutingContext {
     uri: RelativeUri,
-    router: TaggedRouter<Path>,
+    router: TaggedRouter,
     parameters: HashMap<String, String>,
 }
 
 impl RoutingContext {
     pub(super) fn new(
         uri: RelativeUri,
-        router: TaggedRouter<Path>,
+        router: TaggedRouter,
         parameters: HashMap<String, String>,
     ) -> Self {
         RoutingContext {
@@ -129,72 +120,6 @@ impl Clone for RoutingContext {
             uri: self.uri.clone(),
             router: self.router.clone(),
             parameters: self.parameters.clone(),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub(super) struct SchedulerContext<Clk> {
-    scheduler: mpsc::Sender<Eff>,
-    schedule_count: Arc<AtomicU64>,
-    clock: Clk,
-    stop_signal: trigger::Receiver,
-}
-
-impl<Clk: Clock> SchedulerContext<Clk> {
-    pub(super) fn new(scheduler: Sender<Eff>, clock: Clk, stop_signal: trigger::Receiver) -> Self {
-        SchedulerContext {
-            scheduler,
-            schedule_count: Default::default(),
-            clock,
-            stop_signal,
-        }
-    }
-
-    fn schedule<Effect, Str, Sch>(&self, effects: Str, schedule: Sch) -> BoxFuture<()>
-    where
-        Effect: Future<Output = ()> + Send + 'static,
-        Str: Stream<Item = Effect> + Send + 'static,
-        Sch: Stream<Item = Duration> + Send + 'static,
-    {
-        let index = self.schedule_count.fetch_add(1, Ordering::Relaxed);
-
-        let clock = self.clock.clone();
-        let schedule_effect = schedule
-            .zip(effects)
-            .then(move |(dur, eff)| {
-                event!(Level::TRACE, WAITING, ?dur);
-                let delay_fut = clock.delay(dur);
-                async move {
-                    delay_fut.await;
-                    event!(Level::TRACE, SCHED_TRIGGERED);
-                    eff.await;
-                }
-            })
-            .take_until(self.stop_signal.clone())
-            .never_error()
-            .forward(drain())
-            .map(|_| ()) //Never is an empty type so we can drop the errors.
-            .instrument(span!(Level::DEBUG, SCHEDULE, index))
-            .boxed();
-
-        let sender = self.scheduler.clone();
-        Box::pin(async move {
-            //TODO Handle this.
-            if sender.send(schedule_effect).await.is_err() {
-                event!(Level::ERROR, SCHED_STOPPED)
-            }
-        })
-    }
-}
-
-impl<Clk: Clone> Clone for SchedulerContext<Clk> {
-    fn clone(&self) -> Self {
-        SchedulerContext {
-            scheduler: self.scheduler.clone(),
-            schedule_count: self.schedule_count.clone(),
-            clock: self.clock.clone(),
-            stop_signal: self.stop_signal.clone(),
         }
     }
 }
@@ -227,7 +152,7 @@ where
     }
 
     fn agent_stop_event(&self) -> trigger::Receiver {
-        self.schedule_context.stop_signal.clone()
+        self.schedule_context.stop_rx()
     }
 
     fn parameter(&self, key: &str) -> Option<&String> {
@@ -248,7 +173,7 @@ pub trait AgentExecutionContext {
     type Store: NodeStore;
 
     /// Create a handle to the envelope router for the agent.
-    fn router_handle(&self) -> TaggedRouter<Path>;
+    fn router_handle(&self) -> TaggedRouter;
 
     /// Provide a channel to dispatch events to the agent scheduler.
     fn spawner(&self) -> mpsc::Sender<Eff>;
@@ -273,12 +198,12 @@ where
 {
     type Store = Store;
 
-    fn router_handle(&self) -> TaggedRouter<Path> {
+    fn router_handle(&self) -> TaggedRouter {
         self.routing_context.router.clone()
     }
 
     fn spawner(&self) -> Sender<Eff> {
-        self.schedule_context.scheduler.clone()
+        self.schedule_context.schedule_tx()
     }
 
     fn uri(&self) -> &RelativeUri {

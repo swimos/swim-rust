@@ -32,11 +32,9 @@ use std::sync::{Arc, Weak};
 use swim_async_runtime::time::clock::Clock;
 use swim_client::interface::ClientContext;
 use swim_model::path::Path;
-use swim_runtime::error::{
-    ConnectionDropped, ConnectionError, NoAgentAtRoute, ProtocolError, ProtocolErrorKind,
-    ResolutionError,
-};
-use swim_runtime::remote::RawRoute;
+use swim_runtime::error::{ConnectionDropped, ResolutionError};
+use swim_runtime::error::{NoAgentAtRoute, RoutingError};
+use swim_runtime::remote::RawOutRoute;
 use swim_runtime::routing::{CloseReceiver, RoutingAddr, TaggedEnvelope};
 use swim_runtime::routing::{PlaneRoutingRequest, Router, TaggedRouter};
 use swim_utilities::future::request::Request;
@@ -94,7 +92,7 @@ pub struct AgentInternals<Clk, Envelopes, Store> {
     /// The stream of envelopes routed to the agent.
     incoming_envelopes: Envelopes,
     /// The router by which the agent can send messages.
-    router: TaggedRouter<Path>,
+    router: TaggedRouter,
     /// A node store for persisting data, if the lane is not transient.
     store: Store,
 }
@@ -104,7 +102,7 @@ impl<Clk, Envelopes, Store> AgentInternals<Clk, Envelopes, Store> {
         clock: Clk,
         client_context: ClientContext<Path>,
         incoming_envelopes: Envelopes,
-        router: TaggedRouter<Path>,
+        router: TaggedRouter,
         store: Store,
     ) -> Self {
         AgentInternals {
@@ -140,11 +138,11 @@ impl LocalEndpoint {
         }
     }
 
-    fn route(&self) -> RawRoute {
+    fn route(&self) -> RawOutRoute {
         let LocalEndpoint {
             channel, drop_rx, ..
         } = self;
-        RawRoute::new(channel.clone(), drop_rx.clone())
+        RawOutRoute::new(channel.clone(), drop_rx.clone())
     }
 }
 
@@ -309,7 +307,7 @@ where
     // The routes and store for for the plane
     plane_spec: PlaneSpec<Clk, EnvChannel, Store>,
     /// Factory to create handles to the plane router when an agent is opened.
-    router: Router<Path>,
+    router: Router,
     /// External trigger that is fired when the plane should stop.
     stop_trigger: CloseReceiver,
     /// The map of currently active routes.
@@ -327,7 +325,7 @@ where
         client_context: ClientContext<Path>,
         execution_config: AgentExecutionConfig,
         plane_spec: PlaneSpec<Clk, EnvChannel, Store>,
-        router: Router<Path>,
+        router: Router,
         stop_trigger: CloseReceiver,
         active_routes: PlaneActiveRoutes,
     ) -> RouteResolver<Clk, Store> {
@@ -520,11 +518,7 @@ pub async fn run_plane<Clk, S, Store>(
                         }
                     }
                 }
-                Either::Left(Some(PlaneRoutingRequest::Resolve {
-                    host: None,
-                    route: name,
-                    request,
-                })) => {
+                Either::Left(Some(PlaneRoutingRequest::Resolve { name, request })) => {
                     event!(Level::TRACE, RESOLVING, ?name);
 
                     let route = get_route(name);
@@ -534,27 +528,12 @@ pub async fn run_plane<Clk, S, Store>(
                     } else {
                         match resolver.try_open_route(route, spawner.deref()) {
                             Ok((_, addr)) => Ok(addr),
-                            Err(NoAgentAtRoute(uri)) => Err(ResolutionError::Agent(uri).into()),
+                            Err(NoAgentAtRoute(uri)) => {
+                                Err(RoutingError::Resolution(ResolutionError::Agent(uri)).into())
+                            }
                         }
                     };
                     if request.send(result).is_err() {
-                        event!(Level::WARN, DROPPED_REQUEST);
-                    }
-                }
-                Either::Left(Some(PlaneRoutingRequest::Resolve {
-                    host: Some(host_url),
-                    route: name,
-                    request,
-                })) => {
-                    event!(Level::TRACE, RESOLVING, ?host_url, ?name);
-                    //TODO Attach external resolution here.
-                    if request
-                        .send_err(ConnectionError::Protocol(ProtocolError::new(
-                            ProtocolErrorKind::WebSocket,
-                            None,
-                        )))
-                        .is_err()
-                    {
                         event!(Level::WARN, DROPPED_REQUEST);
                     }
                 }

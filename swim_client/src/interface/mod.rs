@@ -17,7 +17,6 @@
 //! The module provides methods and structures for creating and running Swim client instances.
 use crate::configuration::ConfigError;
 use crate::configuration::SwimClientConfig;
-use crate::connections::SwimConnPool;
 use crate::downlink::error::{DownlinkError, SubscriptionError};
 use crate::downlink::typed::command::TypedCommandDownlink;
 use crate::downlink::typed::event::TypedEventDownlink;
@@ -44,13 +43,13 @@ use swim_form::Form;
 use swim_model::path::{AbsolutePath, Addressable};
 use swim_model::Value;
 use swim_recon::parser::parse_value as parse_single;
-use swim_runtime::error::ConnectionError;
-use swim_runtime::error::RoutingError;
+use swim_runtime::error::{ConnectionError, RoutingError};
 use swim_runtime::remote::net::dns::Resolver;
 use swim_runtime::remote::net::plain::TokioPlainTextNetworking;
 use swim_runtime::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
 use swim_runtime::routing::CloseSender;
 
+use crate::router::{ClientConnectionFactory, ClientRouterTask};
 use ratchet::ProtocolRegistry;
 use swim_runtime::configuration::WebSocketConfig;
 use swim_runtime::routing::Router;
@@ -127,31 +126,32 @@ impl SwimClientBuilder {
             },
             router.clone(),
             OpenEndedFutures::new(),
-            RemoteConnectionChannels::new(remote_tx, remote_rx, close_rx.clone()),
+            RemoteConnectionChannels::new(remote_tx.clone(), remote_rx, close_rx.clone()),
         )
         .await;
 
-        // The connection pool handles the connections behind the downlinks
-        let (connection_pool, pool_task) = SwimConnPool::new(
-            config.downlink_connections_config,
-            (client_tx, client_rx),
-            router,
+        // The connection factory handles the connections behind the downlinks
+        let connections = ClientConnectionFactory::new(router, client_tx, remote_tx);
+        let connections_task = ClientRouterTask::new(
             close_rx.clone(),
+            client_rx,
+            config.downlink_connections_config.buffer_size,
+            config.downlink_connections_config.yield_after,
         );
 
         // The downlinks are state machines and request connections from the pool
         let (downlinks, downlinks_task) = Downlinks::new(
-            config.downlink_connections_config.dl_req_buffer_size,
-            connection_pool,
+            connections,
+            config.downlink_connections_config,
             Arc::new(config.downlinks_config),
             close_rx,
         );
 
-        let task_handle = spawn(async {
+        let task_handle = spawn(async move {
             join!(
                 downlinks_task.run(),
                 remote_connections_task.run(),
-                pool_task.run(),
+                connections_task.run(),
             )
         });
 
@@ -312,7 +312,6 @@ impl<Path: Addressable> SwimClient<Path> {
         match result {
             (Err(err), _, _) => Err(err.into()),
             (_, Err(err), _) => Err(err.into()),
-            (_, _, Err(err)) => Err(err.into()),
             _ => Ok(()),
         }
     }
@@ -321,7 +320,7 @@ impl<Path: Addressable> SwimClient<Path> {
 type ClientTaskHandle<Path> = TaskHandle<(
     Result<(), SubscriptionError<Path>>,
     Result<(), std::io::Error>,
-    Result<(), swim_runtime::error::ConnectionError>,
+    (),
 )>;
 
 #[derive(Clone, Debug)]

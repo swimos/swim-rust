@@ -21,7 +21,7 @@ use swim_runtime::routing::{RoutingAddr, TaggedEnvelope};
 use tokio::sync::mpsc;
 
 use std::sync::Arc;
-use swim_model::path::{Path, RelativePath};
+use swim_model::path::RelativePath;
 use swim_warp::envelope::Envelope;
 
 use crate::agent::lane::channels::uplink::stateless::StatelessUplinks;
@@ -49,7 +49,7 @@ use tokio::task::JoinHandle;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
 
-fn make_router(sender: mpsc::Sender<TaggedEnvelope>) -> (TaggedRouter<Path>, JoinHandle<()>) {
+fn make_router(sender: mpsc::Sender<TaggedEnvelope>) -> (TaggedRouter, JoinHandle<()>) {
     let (drop_tx, drop_rx) = promise::promise();
     let (router, jh) = remote_router_resolver(sender, drop_rx);
     let jh = tokio::spawn(async move {
@@ -61,7 +61,7 @@ fn make_router(sender: mpsc::Sender<TaggedEnvelope>) -> (TaggedRouter<Path>, Joi
 }
 
 struct TestContext(
-    TaggedRouter<Path>,
+    TaggedRouter,
     mpsc::Sender<Eff>,
     RelativeUri,
     Arc<AtomicInstant>,
@@ -70,7 +70,7 @@ struct TestContext(
 impl AgentExecutionContext for TestContext {
     type Store = SwimNodeStore<MockPlaneStore>;
 
-    fn router_handle(&self) -> TaggedRouter<Path> {
+    fn router_handle(&self) -> TaggedRouter {
         self.0.clone()
     }
 

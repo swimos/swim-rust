@@ -16,7 +16,7 @@ use crate::downlink::DownlinkKind;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use swim_model::path::Addressable;
-use swim_model::Value;
+use swim_model::{Text, Value};
 use swim_runtime::error::{ConnectionError, RoutingError};
 use swim_schema::schema::StandardSchema;
 use swim_utilities::errors::Recoverable;
@@ -200,6 +200,7 @@ pub enum SubscriptionError<Path> {
         existing: Box<StandardSchema>,
         requested: Box<StandardSchema>,
     },
+    BadUri(Text),
     ConnectionError,
 }
 
@@ -261,6 +262,15 @@ impl<Path: Addressable> From<ConnectionError> for SubscriptionError<Path> {
     }
 }
 
+impl<Path> From<RoutingError> for SubscriptionError<Path> {
+    fn from(e: RoutingError) -> Self {
+        match e {
+            RoutingError::Dropped => SubscriptionError::DownlinkTaskStopped,
+            _ => SubscriptionError::ConnectionError,
+        }
+    }
+}
+
 impl<Path: Addressable> Display for SubscriptionError<Path> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -292,6 +302,9 @@ impl<Path: Addressable> Display for SubscriptionError<Path> {
             }
             SubscriptionError::ConnectionError => {
                 write!(f, "The downlink could not establish a connection.")
+            }
+            SubscriptionError::BadUri(uri) => {
+                write!(f, "Invalid relative URI: {}", uri)
             }
         }
     }

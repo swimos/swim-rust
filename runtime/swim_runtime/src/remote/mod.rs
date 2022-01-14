@@ -28,7 +28,7 @@ use std::net::SocketAddr;
 use crate::error::{ConnectionDropped, ResolutionError};
 use crate::error::{ConnectionError, HttpError};
 use crate::remote::config::RemoteConnectionsConfig;
-use crate::remote::pending::PendingRequest;
+use crate::remote::pending::{PendingClient, PendingRequest};
 use crate::remote::state::{DeferredResult, Event, RemoteConnections, RemoteTasksState};
 use crate::remote::table::SchemeHostPort;
 use crate::routing::{CloseReceiver, RoutingAddr, TaggedEnvelope};
@@ -48,21 +48,21 @@ use tracing::{event, Level};
 use crate::routing::RemoteRoutingRequest;
 use crate::routing::Router;
 use ratchet::WebSocketStream;
-use swim_model::path::Addressable;
+
 use swim_tracing::request::{RequestExt, TryRequestExt};
 
 #[derive(Clone, Debug)]
-pub struct RawRoute {
+pub struct RawOutRoute {
     pub sender: mpsc::Sender<TaggedEnvelope>,
     pub on_drop: promise::Receiver<ConnectionDropped>,
 }
 
-impl RawRoute {
+impl RawOutRoute {
     pub fn new(
         sender: mpsc::Sender<TaggedEnvelope>,
         on_drop: promise::Receiver<ConnectionDropped>,
     ) -> Self {
-        RawRoute { sender, on_drop }
+        RawOutRoute { sender, on_drop }
     }
 }
 
@@ -87,11 +87,11 @@ impl RemoteConnectionChannels {
 }
 
 #[derive(Debug)]
-pub struct RemoteConnectionsTask<External: ExternalConnections, Ws, Sp, Path> {
+pub struct RemoteConnectionsTask<External: ExternalConnections, Ws, Sp> {
     external: External,
     listener: Option<External::ListenerType>,
     websockets: Ws,
-    router: Router<Path>,
+    router: Router,
     stop_trigger: CloseReceiver,
     spawner: Sp,
     configuration: RemoteConnectionsConfig,
@@ -106,7 +106,6 @@ const FAILED_SERVER_CONN: &str = "Failed to establish a server connection.";
 const FAILED_CLIENT_CONN: &str = "Failed to establish a client connection.";
 const NOT_IN_TABLE: &str = "A connection closed that was not in the routing table.";
 const CLOSED_NO_HANDLES: &str = "A connection closed with no handles remaining.";
-const UNRESOLVABLE_BIDIRECTIONAL: &str = "A bidirectional connection could not be resolved.";
 
 /// An event loop that listens for incoming connections and routing requests and opens/accepts
 /// remote connections accordingly.
@@ -117,19 +116,18 @@ const UNRESOLVABLE_BIDIRECTIONAL: &str = "A bidirectional connection could not b
 /// * `Ws` - Negotiates a web socket connection on top of the sockets provided by `External`.
 /// * `Sp` - Spawner to run the tasks that manage the connections opened by this state machine.
 /// * `Routerfac` - Creates router instances to be provided to the connection management tasks.
-impl<External, Ws, Sp, Path> RemoteConnectionsTask<External, Ws, Sp, Path>
+impl<External, Ws, Sp> RemoteConnectionsTask<External, Ws, Sp>
 where
     External: ExternalConnections,
     External::Socket: WebSocketStream,
     Ws: WsConnections<External::Socket> + Send + Sync + 'static,
     Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Send + Unpin,
-    Path: Addressable,
 {
     pub async fn new_client_task(
         configuration: RemoteConnectionsConfig,
         external: External,
         websockets: Ws,
-        router: Router<Path>,
+        router: Router,
         spawner: Sp,
         channels: RemoteConnectionChannels,
     ) -> Self {
@@ -157,7 +155,7 @@ where
         external: External,
         bind_addr: SocketAddr,
         websockets: Ws,
-        router: Router<Path>,
+        router: Router,
         spawner: Sp,
         channels: RemoteConnectionChannels,
     ) -> io::Result<Self> {
@@ -199,25 +197,27 @@ where
             remote_rx,
         } = self;
 
-        let state = RemoteConnections::new(
-            &websockets,
-            configuration,
-            spawner,
-            external,
-            listener,
-            router,
-            RemoteConnectionChannels {
-                request_tx: remote_tx,
-                request_rx: remote_rx,
-                stop_trigger,
-            },
-        );
-
-        RemoteConnectionsTask::run_loop(state, configuration).await
+        async move {
+            let state = RemoteConnections::new(
+                &websockets,
+                configuration,
+                spawner,
+                external,
+                listener,
+                router,
+                RemoteConnectionChannels {
+                    request_tx: remote_tx,
+                    request_rx: remote_rx,
+                    stop_trigger,
+                },
+            );
+            RemoteConnectionsTask::run_loop(state, configuration).await
+        }
+        .await
     }
 
     async fn run_loop(
-        mut state: RemoteConnections<'_, External, Ws, Sp, Path>,
+        mut state: RemoteConnections<'_, External, Ws, Sp>,
         configuration: RemoteConnectionsConfig,
     ) -> Result<(), StdError> {
         let mut overall_result = Ok(());
@@ -225,7 +225,9 @@ where
         let yield_mod = configuration.yield_after.get();
 
         while let Some(event) = state.select_next().await {
-            update_state(&mut state, &mut overall_result, event);
+            if let Some(pending_clients) = update_state(&mut state, &mut overall_result, event) {
+                pending_clients.send_attach_requests().await;
+            }
 
             iteration_count += 1;
             if iteration_count % yield_mod == 0 {
@@ -241,49 +243,38 @@ fn update_state<State: RemoteTasksState>(
     state: &mut State,
     overall_result: &mut Result<(), io::Error>,
     next: Event<State::Socket, State::WebSocket>,
-) {
+) -> Option<PendingClient> {
     match next {
         Event::Incoming(Ok((stream, peer_addr))) => {
             state.defer_handshake(stream, peer_addr);
+            None
         }
         Event::Incoming(Err(conn_err)) => {
             *overall_result = Err(conn_err);
             state.stop();
+            None
         }
-        Event::Request(RemoteRoutingRequest::Endpoint { addr, request }) => {
+        Event::Request(RemoteRoutingRequest::EndpointOut { addr, request }) => {
             let result = if let Some(tx) = state.table_resolve(addr) {
                 Ok(tx)
             } else {
                 Err(ResolutionError::Addr(addr))
             };
             request.send_debug(result, REQUEST_DROPPED);
+            None
         }
-        Event::Request(RemoteRoutingRequest::Bidirectional { host, request }) => {
-            match SchemeHostPort::try_from(host.clone()) {
-                Ok(target) => {
-                    if let Some(addr) = state.table_try_resolve(&target) {
-                        if let Some(bidirectional_route) = state.table_resolve_bidirectional(addr) {
-                            request.send_ok_debug(bidirectional_route, REQUEST_DROPPED);
-                        } else {
-                            request.send_err_debug(
-                                ConnectionError::Resolution(ResolutionError::Addr(addr)),
-                                UNRESOLVABLE_BIDIRECTIONAL,
-                            );
-                        }
-                    } else {
-                        state.defer_dns_lookup(target, PendingRequest::Bidirectional(request));
-                    }
-                }
-                _ => {
-                    request.send_err_debug(
-                        ConnectionError::Http(HttpError::invalid_url(host.to_string(), None)),
-                        REQUEST_DROPPED,
-                    );
-                }
+        Event::Request(RemoteRoutingRequest::AttachClient { request }) => {
+            if let Some((route, req_tx)) = state.resolve_client_request(request.addr) {
+                Some(PendingClient::new(req_tx.clone(), route, request))
+            } else {
+                request
+                    .request
+                    .send_err_debug(ResolutionError::Addr(request.addr), REQUEST_DROPPED);
+                None
             }
         }
         Event::Request(RemoteRoutingRequest::ResolveUrl { host, request }) => {
-            match SchemeHostPort::try_from(host.clone()) {
+            match SchemeHostPort::try_from(&host) {
                 Ok(target) => {
                     if let Some(addr) = state.table_try_resolve(&target) {
                         request.send_ok_debug(addr, REQUEST_DROPPED);
@@ -298,23 +289,27 @@ fn update_state<State: RemoteTasksState>(
                     );
                 }
             }
+            None
         }
         Event::Deferred(DeferredResult::ServerHandshake {
             result: Ok(ws_stream),
             sock_addr,
         }) => {
             state.spawn_task(sock_addr, ws_stream, None);
+            None
         }
         Event::Deferred(DeferredResult::ServerHandshake {
             result: Err(error), ..
         }) => {
             event!(Level::ERROR, FAILED_SERVER_CONN, ?error);
+            None
         }
         Event::Deferred(DeferredResult::ClientHandshake {
             result: Ok((ws_stream, sock_addr)),
             host,
         }) => {
             state.spawn_task(sock_addr, ws_stream, Some(host));
+            None
         }
         Event::Deferred(DeferredResult::ClientHandshake {
             result: Err(error),
@@ -323,6 +318,7 @@ fn update_state<State: RemoteTasksState>(
         }) => {
             event!(Level::ERROR, FAILED_CLIENT_CONN, ?error);
             state.fail_connection(&host, error);
+            None
         }
         Event::Deferred(DeferredResult::FailedConnection {
             error,
@@ -334,6 +330,7 @@ fn update_state<State: RemoteTasksState>(
             } else {
                 state.fail_connection(&host, error);
             }
+            None
         }
         Event::Deferred(DeferredResult::Dns {
             result: Err(err),
@@ -341,6 +338,7 @@ fn update_state<State: RemoteTasksState>(
             ..
         }) => {
             state.fail_connection(&host, ConnectionError::Io(err.into()));
+            None
         }
         Event::Deferred(DeferredResult::Dns {
             result: Ok(mut addrs),
@@ -356,6 +354,7 @@ fn update_state<State: RemoteTasksState>(
                     ConnectionError::Resolution(ResolutionError::Host(host.to_string())),
                 );
             }
+            None
         }
         Event::ConnectionClosed(addr, reason) => {
             if let Some(tx) = state.table_remove(addr) {
@@ -365,6 +364,7 @@ fn update_state<State: RemoteTasksState>(
             } else {
                 event!(Level::ERROR, NOT_IN_TABLE, ?addr);
             }
+            None
         }
     }
 }
@@ -452,7 +452,10 @@ impl Display for SchemeSocketAddr {
 /// abstract over [`std::net::TcpListener`] for testing purposes.
 pub trait Listener {
     type Socket: Unpin + Send + Sync + 'static;
-    type AcceptStream: FusedStream<Item = IoResult<(Self::Socket, SchemeSocketAddr)>> + Unpin;
+    type AcceptStream: FusedStream<Item = IoResult<(Self::Socket, SchemeSocketAddr)>>
+        + Send
+        + Sync
+        + Unpin;
 
     fn into_stream(self) -> Self::AcceptStream;
 }
@@ -461,7 +464,7 @@ pub trait Listener {
 /// used to abstract over [`std::net::TcpListener`] and [`std::net::TcpStream`] for testing purposes.
 pub trait ExternalConnections: Clone + Send + Sync + 'static {
     type Socket: Unpin + Send + Sync + 'static;
-    type ListenerType: Listener<Socket = Self::Socket>;
+    type ListenerType: Listener<Socket = Self::Socket> + Send + Sync;
 
     fn bind(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::ListenerType>>;
     fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>>;

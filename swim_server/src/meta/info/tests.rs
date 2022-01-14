@@ -27,9 +27,9 @@ use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::sync::Arc;
 use swim_async_runtime::time::timeout;
-use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::ClientContext;
+use swim_client::router::ClientConnectionFactory;
 use swim_form::structural::read::ReadError;
 use swim_form::Form;
 use swim_model::record;
@@ -144,21 +144,17 @@ async fn lane_info_sync() {
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
     let provider = AgentProvider::new(MockAgentConfig, MockAgentLifecycle);
 
-    let (client_tx, client_rx) = mpsc::channel(8);
+    let (client_tx, _client_rx) = mpsc::channel(8);
+    let (remote_tx, _remote_rx) = mpsc::channel(8);
     let (_close_tx, close_rx) = promise::promise();
     let (_promise_tx, promise_rx) = promise::promise();
     let (router, _jh) = remote_router_resolver(tx, promise_rx);
 
-    let (conn_pool, _pool_task) = SwimConnPool::new(
-        DownlinkConnectionsConfig::default(),
-        (client_tx, client_rx),
-        router.clone(),
-        close_rx.clone(),
-    );
+    let client_connections = ClientConnectionFactory::new(router.clone(), client_tx, remote_tx);
 
     let (downlinks, _downlinks_task) = Downlinks::new(
-        non_zero_usize!(8),
-        conn_pool,
+        client_connections,
+        DownlinkConnectionsConfig::default(),
         Arc::new(ServerDownlinksConfig::default()),
         close_rx,
     );

@@ -34,11 +34,11 @@ use std::sync::Arc;
 use stm::transaction::TransactionError;
 use swim_metrics::config::MetricAggregatorConfig;
 use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
-use swim_model::path::{Path, RelativePath};
+use swim_model::path::RelativePath;
 use swim_model::Value;
 use swim_runtime::compat::{Operation, RequestMessage};
 use swim_runtime::error::ConnectionDropped;
-use swim_runtime::remote::RawRoute;
+use swim_runtime::remote::RawOutRoute;
 use swim_runtime::routing::TaggedRouter;
 use swim_runtime::routing::{RoutingAddr, TaggedEnvelope, TaggedSender};
 use swim_utilities::routing::uri::RelativeUri;
@@ -85,8 +85,7 @@ mod router {
     use std::collections::hash_map::Entry;
     use std::collections::HashMap;
     use std::sync::Arc;
-    use swim_model::path::Path;
-    use swim_runtime::remote::RawRoute;
+    use swim_runtime::remote::RawOutRoute;
     use swim_runtime::routing::fixture::{invalid, router_fixture, RouterCallback};
     use swim_runtime::routing::RoutingAddr;
     use swim_runtime::routing::{RemoteRoutingRequest, TaggedRouter};
@@ -97,7 +96,7 @@ mod router {
     #[derive(Debug)]
     pub struct MockRouterInner {
         pub buffer_size: usize,
-        pub senders: HashMap<RoutingAddr, RawRoute>,
+        pub senders: HashMap<RoutingAddr, RawOutRoute>,
         pub receivers: HashMap<RoutingAddr, RouteReceiver>,
     }
 
@@ -120,7 +119,7 @@ mod router {
             let inner = self.inner.clone();
             Box::pin(async move {
                 match arg {
-                    RemoteRoutingRequest::Endpoint { addr, request } => {
+                    RemoteRoutingRequest::EndpointOut { addr, request } => {
                         let mut lock = inner.lock();
                         let MockRouterInner {
                             buffer_size,
@@ -132,9 +131,9 @@ mod router {
                             Entry::Vacant(entry) => {
                                 let (tx, rx) = mpsc::channel(*buffer_size);
                                 let (drop_tx, drop_rx) = promise::promise();
-                                entry.insert(RawRoute::new(tx.clone(), drop_rx.clone()));
+                                entry.insert(RawOutRoute::new(tx.clone(), drop_rx.clone()));
                                 receivers.insert(addr, RouteReceiver::new(rx, drop_tx));
-                                RawRoute::new(tx, drop_rx)
+                                RawOutRoute::new(tx, drop_rx)
                             }
                         };
                         let _r = request.send(Ok(route));
@@ -148,7 +147,7 @@ mod router {
     pub fn make(
         router_addr: RoutingAddr,
         inner: Arc<Mutex<MockRouterInner>>,
-    ) -> (TaggedRouter<Path>, JoinHandle<()>) {
+    ) -> (TaggedRouter, JoinHandle<()>) {
         let (router, jh) = router_fixture(invalid, RemoteRouter { inner }, invalid);
         (router.tagged(router_addr), jh)
     }
@@ -157,7 +156,7 @@ mod router {
 #[derive(Debug, Clone)]
 pub struct MockExecutionContext {
     channels: Arc<Mutex<MockRouterInner>>,
-    router: TaggedRouter<Path>,
+    router: TaggedRouter,
     spawner: mpsc::Sender<Eff>,
     uri: RelativeUri,
     uplinks_idle_since: Arc<AtomicInstant>,
@@ -166,7 +165,7 @@ pub struct MockExecutionContext {
 impl AgentExecutionContext for MockExecutionContext {
     type Store = SwimNodeStore<MockPlaneStore>;
 
-    fn router_handle(&self) -> TaggedRouter<Path> {
+    fn router_handle(&self) -> TaggedRouter {
         self.router.clone()
     }
 
@@ -227,7 +226,7 @@ impl MockExecutionContext {
             Entry::Vacant(entry) => {
                 let (tx, rx) = mpsc::channel(*buffer_size);
                 let (drop_tx, drop_rx) = promise::promise();
-                entry.insert(RawRoute::new(tx, drop_rx));
+                entry.insert(RawOutRoute::new(tx, drop_rx));
                 receivers.insert(*addr, RouteReceiver::taken(drop_tx));
                 Some(rx)
             }

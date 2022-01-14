@@ -275,7 +275,7 @@ const COMMAND_SEND_COMP: &str = "Command send completed successfully.";
 const COMMAND_SEND_FAILED: &str = "Sending command failed.";
 const ATTEMPTING_RESTART: &str = "Attempting to restart downlink after connnection dropped.";
 
-impl<M, SM, WarpMessages, Action> DownlinkEventLoop<SM, WarpMessages, Action>
+impl<M: Debug, SM, WarpMessages, Action> DownlinkEventLoop<SM, WarpMessages, Action>
 where
     Action: 'static,
     WarpMessages: Stream<Item = Result<Message<M>, RoutingError>> + Send + Sync + 'static,
@@ -490,7 +490,7 @@ impl<CmdSender> From<CommonEffect> for SelectMsgsEffect<CmdSender> {
 
 type WriteResult<CmdSender> = (CmdSender, Result<(), RoutingError>);
 
-async fn select_messages_only<M, Action, WarpMessages, CmdSender, Fut, SM>(
+async fn select_messages_only<M: Debug, Action, WarpMessages, CmdSender, Fut, SM>(
     state_machine: &SM,
     state: &mut SM::State,
     message_stream: &mut WarpMessages,
@@ -530,7 +530,7 @@ where
     }
 }
 
-async fn process_message<M, Action, SM>(
+async fn process_message<M: Debug, Action, SM>(
     state_machine: &SM,
     state: &mut SM::State,
     events: &mut topic::Sender<Event<SM::Report>>,
@@ -540,6 +540,13 @@ async fn process_message<M, Action, SM>(
 where
     SM: DownlinkStateMachine<M, Action>,
 {
+    let msg_str = format!("{:?}", message);
+    let is_interesting = msg_str == "Action(Text(Text(Small, \"Kia\")))";
+
+    if is_interesting {
+        //panic!("Found it");
+    }
+
     match state_machine.handle_warp_message(state, message) {
         EventResult {
             result: Ok(event),
@@ -575,7 +582,7 @@ where
     }
 }
 
-async fn select_messages_and_actions<M, Action, WarpMessages, Actions, SM>(
+async fn select_messages_and_actions<M: Debug, Action, WarpMessages, Actions, SM>(
     state_machine: &SM,
     state: &mut SM::State,
     message_stream: &mut WarpMessages,
@@ -669,7 +676,7 @@ fn create_downlink<M, Act, SM, CmdSend, WarpMessages>(
     config: DownlinkConfig,
 ) -> (RawDownlink<Act, SM::Report>, RawReceiver<SM::Report>)
 where
-    M: Send + 'static,
+    M: Debug + Send + 'static,
     Act: Send + 'static,
     SM: DownlinkStateMachine<M, Act> + Send + Sync + 'static,
     WarpMessages: Stream<Item = Result<Message<M>, RoutingError>> + Send + Sync + 'static,

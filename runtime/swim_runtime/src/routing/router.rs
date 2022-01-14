@@ -17,31 +17,28 @@ use std::future::Future;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot;
 
-use crate::error::{ConnectionError, ResolutionError, RoutingError};
-use crate::remote::table::BidirectionalRegistrator;
-use crate::remote::RawRoute;
+use crate::error::{ResolutionError, RoutingError};
+use crate::remote::RawOutRoute;
 use crate::routing::{
-    Address, BidirectionalRoute, DownlinkRoutingRequest, PlaneRoutingRequest, RemoteRoutingRequest,
-    Route, RoutingAddr, RoutingAddrKind, TaggedSender,
+    Address, ClientEndpointRequest, PlaneRoutingRequest, RemoteRoutingRequest, Route, RoutingAddr,
+    RoutingAddrKind, TaggedSender,
 };
-use swim_model::path::Addressable;
 use swim_utilities::future::request::Request;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot::error::RecvError;
-use url::Url;
 
 #[derive(Clone, Debug)]
-pub struct Router<Path> {
-    client: mpsc::Sender<DownlinkRoutingRequest<Path>>,
+pub struct Router {
+    client: mpsc::Sender<ClientEndpointRequest>,
     plane: Option<mpsc::Sender<PlaneRoutingRequest>>,
     remote: mpsc::Sender<RemoteRoutingRequest>,
 }
 
-impl<Path> Router<Path> {
+impl Router {
     pub fn client(
-        client: mpsc::Sender<DownlinkRoutingRequest<Path>>,
+        client: mpsc::Sender<ClientEndpointRequest>,
         remote: mpsc::Sender<RemoteRoutingRequest>,
-    ) -> Router<Path> {
+    ) -> Router {
         Router {
             client,
             plane: None,
@@ -50,10 +47,10 @@ impl<Path> Router<Path> {
     }
 
     pub fn server(
-        client: mpsc::Sender<DownlinkRoutingRequest<Path>>,
+        client: mpsc::Sender<ClientEndpointRequest>,
         plane: mpsc::Sender<PlaneRoutingRequest>,
         remote: mpsc::Sender<RemoteRoutingRequest>,
-    ) -> Router<Path> {
+    ) -> Router {
         Router {
             client,
             plane: Some(plane),
@@ -61,7 +58,10 @@ impl<Path> Router<Path> {
         }
     }
 
-    pub async fn resolve_sender(&mut self, addr: RoutingAddr) -> Result<RawRoute, ResolutionError> {
+    pub async fn resolve_sender(
+        &mut self,
+        addr: RoutingAddr,
+    ) -> Result<RawOutRoute, ResolutionError> {
         let Router {
             client,
             plane,
@@ -71,7 +71,7 @@ impl<Path> Router<Path> {
         match addr.discriminate() {
             RoutingAddrKind::Remote => {
                 callback(|callback| {
-                    remote.send(RemoteRoutingRequest::Endpoint {
+                    remote.send(RemoteRoutingRequest::EndpointOut {
                         addr,
                         request: Request::new(callback),
                     })
@@ -91,9 +91,10 @@ impl<Path> Router<Path> {
                 None => Err(ResolutionError::Addr(addr)),
             },
             RoutingAddrKind::Client => {
-                // todo: implement once #457 has been merged
-                let _ = client;
-                unimplemented!()
+                callback(|callback| {
+                    client.send(ClientEndpointRequest::Get(addr, Request::new(callback)))
+                })
+                .await
             }
         }
     }
@@ -117,8 +118,7 @@ impl<Path> Router<Path> {
             None => match &self.plane {
                 Some(tx) => callback(|callback| {
                     tx.send(PlaneRoutingRequest::Resolve {
-                        host: None,
-                        route: address.uri().clone(),
+                        name: address.uri().clone(),
                         request: Request::new(callback),
                     })
                 })
@@ -131,53 +131,33 @@ impl<Path> Router<Path> {
         }
     }
 
-    pub async fn resolve_bidirectional(
-        &mut self,
-        host: Url,
-    ) -> Result<BidirectionalRegistrator, ConnectionError> {
-        let tx = &self.remote;
-        callback(|callback| {
-            tx.send(RemoteRoutingRequest::Bidirectional {
-                host: host.clone(),
-                request: Request::new(callback),
-            })
-        })
-        .await
-    }
-
     /// Creates a router that will tag senders with `tag`.
-    pub fn tagged(&self, tag: RoutingAddr) -> TaggedRouter<Path>
-    where
-        Path: Addressable,
-    {
+    pub fn tagged(&self, tag: RoutingAddr) -> TaggedRouter {
         TaggedRouter::new(Some(tag), self.clone())
     }
 
     /// Creates a router that will tag senders with the provided routing address during sender
     /// resolution.
-    pub fn untagged(&self) -> TaggedRouter<Path>
-    where
-        Path: Addressable,
-    {
+    pub fn untagged(&self) -> TaggedRouter {
         TaggedRouter::new(None, self.clone())
     }
 }
 
 /// A wrapper around a raw router that attaches a tag (RoutingAddr) to routes that are resolved.
 #[derive(Clone, Debug)]
-pub struct TaggedRouter<Path> {
+pub struct TaggedRouter {
     tag: Option<RoutingAddr>,
-    inner: Router<Path>,
+    inner: Router,
 }
 
-impl<Path> TaggedRouter<Path> {
-    fn new(tag: Option<RoutingAddr>, inner: Router<Path>) -> TaggedRouter<Path> {
+impl TaggedRouter {
+    fn new(tag: Option<RoutingAddr>, inner: Router) -> TaggedRouter {
         TaggedRouter { tag, inner }
     }
 
     pub async fn resolve_sender(&mut self, addr: RoutingAddr) -> Result<Route, ResolutionError> {
         let TaggedRouter { tag, inner } = self;
-        let RawRoute { sender, on_drop } = inner.resolve_sender(addr).await?;
+        let RawOutRoute { sender, on_drop } = inner.resolve_sender(addr).await?;
 
         let tag = match tag {
             Some(tag) => *tag,
@@ -192,14 +172,6 @@ impl<Path> TaggedRouter<Path> {
         A: Into<Address>,
     {
         self.inner.lookup(address).await
-    }
-
-    pub async fn resolve_bidirectional(
-        &mut self,
-        host: Url,
-    ) -> Result<BidirectionalRoute, ConnectionError> {
-        let handle = self.inner.resolve_bidirectional(host).await?;
-        handle.register().await
     }
 }
 

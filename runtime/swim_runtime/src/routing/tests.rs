@@ -16,7 +16,6 @@ use futures::future::BoxFuture;
 use futures::io::ErrorKind;
 use futures::FutureExt;
 use futures_util::future::ready;
-use swim_model::path::Path;
 use tokio::sync::mpsc;
 use url::Url;
 
@@ -25,7 +24,7 @@ use swim_utilities::trigger::promise;
 use swim_warp::envelope::Envelope;
 
 use crate::error::{ConnectionError, IoError, ResolutionError, RoutingError};
-use crate::remote::RawRoute;
+use crate::remote::RawOutRoute;
 use crate::routing::fixture::router_fixture;
 use crate::routing::fixture::{invalid, RouterCallback};
 use crate::routing::{PlaneRoutingRequest, RemoteRoutingRequest, Route};
@@ -121,10 +120,10 @@ impl RouterCallback<RemoteRoutingRequest> for RemoteResolver {
         let (_drop_tx, drop_rx) = promise::promise();
 
         match request {
-            RemoteRoutingRequest::Endpoint { addr, request } => {
+            RemoteRoutingRequest::EndpointOut { addr, request } => {
                 if *resolved && addr == ADDR {
                     assert!(request
-                        .send_ok(RawRoute::new(sender.clone(), drop_rx))
+                        .send_ok(RawOutRoute::new(sender.clone(), drop_rx))
                         .is_ok());
                 } else {
                     assert!(request.send_err(ResolutionError::Addr(addr)).is_ok());
@@ -140,7 +139,9 @@ impl RouterCallback<RemoteRoutingRequest> for RemoteResolver {
                         .is_ok());
                 }
             }
-            RemoteRoutingRequest::Bidirectional { .. } => {}
+            RemoteRoutingRequest::AttachClient { .. } => {
+                panic!("Unexpected request");
+            }
         }
 
         ready(()).boxed()
@@ -154,7 +155,7 @@ async fn resolve_remote_ok() {
     let (tx, mut rx) = mpsc::channel(8);
     let url = test_url();
 
-    let (router, _task) = router_fixture::<Path, _, _, _>(
+    let (router, _task) = router_fixture(
         invalid,
         RemoteResolver {
             url: url.clone(),
@@ -184,7 +185,7 @@ async fn resolve_remote_failure() {
     let (tx, _rx) = mpsc::channel(8);
     let url = test_url();
 
-    let (mut router, _task) = router_fixture::<Path, _, _, _>(
+    let (mut router, _task) = router_fixture(
         invalid,
         RemoteResolver {
             url: url.clone(),
@@ -206,7 +207,7 @@ async fn lookup_remote_failure() {
     let (tx, _rx) = mpsc::channel(8);
     let url = test_url();
 
-    let (mut router, _task) = router_fixture::<Path, _, _, _>(
+    let (mut router, _task) = router_fixture(
         invalid,
         RemoteResolver {
             url: url.clone(),
@@ -256,7 +257,7 @@ async fn resolve_local_err() {
     let (tx, _rx) = mpsc::channel(8);
     let url = test_url();
 
-    let (router, _task) = router_fixture::<Path, _, _, _>(
+    let (router, _task) = router_fixture(
         |req: PlaneRoutingRequest| async move {
             match req {
                 PlaneRoutingRequest::Endpoint { addr, request } => {
@@ -284,13 +285,13 @@ async fn resolve_local_err() {
 
 #[tokio::test]
 async fn lookup_local_err() {
-    let (mut router, _task) = crate::routing::fixture::router_fixture::<Path, _, _, _>(
+    let (mut router, _task) = crate::routing::fixture::router_fixture(
         |req: PlaneRoutingRequest| async move {
             match req {
-                PlaneRoutingRequest::Resolve { route, request, .. } => {
+                PlaneRoutingRequest::Resolve { name, request, .. } => {
                     let _r = request
                         .send(Err(
-                            RoutingError::Resolution(ResolutionError::Agent(route)).into()
+                            RoutingError::Resolution(ResolutionError::Agent(name)).into()
                         ));
                 }
                 req => panic!("Unexpected request: {:?}", req),

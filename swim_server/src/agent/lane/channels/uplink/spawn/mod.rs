@@ -30,7 +30,7 @@ use std::fmt::{Display, Formatter};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_metrics::uplink::UplinkObserver;
-use swim_model::path::{Path, RelativePath};
+use swim_model::path::RelativePath;
 use swim_model::Value;
 use swim_runtime::routing::RoutingAddr;
 use swim_runtime::routing::TaggedRouter;
@@ -124,7 +124,7 @@ where
     /// * `R` - The type of the server router.
     pub async fn run(
         mut self,
-        mut router: TaggedRouter<Path>,
+        mut router: TaggedRouter,
         mut spawn_tx: mpsc::Sender<Eff>,
         uplinks_idle_since: Arc<AtomicInstant>,
         error_collector: mpsc::Sender<UplinkErrorReport>,
@@ -210,7 +210,7 @@ where
         addr: RoutingAddr,
         err_tx: mpsc::Sender<UplinkErrorReport>,
         spawn_tx: &mut mpsc::Sender<Eff>,
-        router: &mut TaggedRouter<Path>,
+        router: &mut TaggedRouter,
         uplinks_idle_since: Arc<AtomicInstant>,
     ) -> Option<UplinkHandle> {
         let UplinkSpawner {

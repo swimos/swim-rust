@@ -17,10 +17,11 @@ use crate::remote::addresses::RemoteRoutingAddresses;
 use crate::remote::config::RemoteConnectionsConfig;
 use crate::remote::pending::PendingRequest;
 use crate::remote::pending::PendingRequests;
-use crate::remote::table::{BidirectionalRegistrator, RoutingTable, SchemeHostPort};
-use crate::remote::task::TaskFactory;
+use crate::remote::table::{RoutingTable, SchemeHostPort};
+use crate::remote::task::{AttachClientRouted, TaskFactory};
+use crate::remote::RawOutRoute;
 use crate::remote::{ExternalConnections, Listener, SchemeSocketAddr};
-use crate::remote::{RawRoute, RemoteConnectionChannels, SchemeSocketAddrIt};
+use crate::remote::{RemoteConnectionChannels, SchemeSocketAddrIt};
 use crate::routing::CloseReceiver;
 use crate::routing::RemoteRoutingRequest;
 use crate::routing::Router;
@@ -34,11 +35,11 @@ use ratchet::{WebSocket, WebSocketStream};
 use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
-use swim_model::path::Addressable;
 use swim_utilities::future::open_ended::OpenEndedFutures;
 use swim_utilities::future::task::Spawner;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise::{self, Sender};
+use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
 #[cfg(test)]
@@ -65,7 +66,7 @@ pub trait RemoteTasksState {
         host: Option<SchemeHostPort>,
     );
 
-    /// Check a pair of host/socket address, registering the hose with the address if a connection
+    /// Check a pair of host/socket address, registering the host with the address if a connection
     /// is already open to it and fulfilling any requests for that host.
     fn check_socket_addr(
         &mut self,
@@ -91,10 +92,12 @@ pub trait RemoteTasksState {
     fn fail_connection(&mut self, host: &SchemeHostPort, error: ConnectionError);
 
     /// Resolve an entry in the routing table.
-    fn table_resolve(&self, addr: RoutingAddr) -> Option<RawRoute>;
+    fn table_resolve(&self, addr: RoutingAddr) -> Option<RawOutRoute>;
 
-    /// Resolve a bidirectional route in the routing table.
-    fn table_resolve_bidirectional(&self, addr: RoutingAddr) -> Option<BidirectionalRegistrator>;
+    fn resolve_client_request(
+        &self,
+        addr: RoutingAddr,
+    ) -> Option<(RawOutRoute, &mpsc::Sender<AttachClientRouted>)>;
 
     /// Try to resolve a host in the routing table.
     fn table_try_resolve(&self, target: &SchemeHostPort) -> Option<RoutingAddr>;
@@ -114,7 +117,7 @@ pub trait RemoteTasksState {
 /// * `Ws` - Negotiates a web socket connection on top of the sockets provided by `External`.
 /// * `Sp` - Spawner to run the tasks that manage the connections opened by this state machine.
 /// * `Routerfac` - Creates router instances to be provided to the connection management tasks.
-pub struct RemoteConnections<'a, External, Ws, Sp, Path>
+pub struct RemoteConnections<'a, External, Ws, Sp>
 where
     External: ExternalConnections,
     Ws: WsConnections<External::Socket>,
@@ -127,19 +130,18 @@ where
     table: RoutingTable,
     pending: PendingRequests,
     addresses: RemoteRoutingAddresses,
-    tasks: TaskFactory<Path>,
+    tasks: TaskFactory,
     deferred: DeferredConnections<'a, External::Socket, Ws::Ext>,
     state: State,
     external_stop: Fuse<CloseReceiver>,
     internal_stop: Option<trigger::Sender>,
 }
 
-impl<'a, External, Ws, Sp, Path> RemoteTasksState for RemoteConnections<'a, External, Ws, Sp, Path>
+impl<'a, External, Ws, Sp> RemoteTasksState for RemoteConnections<'a, External, Ws, Sp>
 where
     External: ExternalConnections,
     Ws: WsConnections<External::Socket> + Send + Sync + 'static,
     Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Unpin,
-    Path: Addressable,
     External::Socket: WebSocketStream,
 {
     type Socket = External::Socket;
@@ -176,19 +178,12 @@ where
             ..
         } = self;
 
-        let (msg_tx, bidirectional_request_tx) =
-            tasks.spawn_connection_task(ws_stream, addr, spawner);
+        let (msg_tx, client_tx) = tasks.spawn_connection_task(ws_stream, addr, spawner);
 
-        let bidirectional_registrator = table.insert(
-            addr,
-            host.clone(),
-            sock_addr,
-            msg_tx,
-            bidirectional_request_tx,
-        );
+        table.insert(addr, host.clone(), sock_addr, msg_tx, client_tx);
 
         if let Some(host) = host {
-            pending.send_ok(&host, addr, bidirectional_registrator);
+            pending.send_ok(&host, addr);
         }
     }
 
@@ -198,15 +193,10 @@ where
         sock_addr: SchemeSocketAddr,
     ) -> Result<(), SchemeHostPort> {
         let RemoteConnections { table, pending, .. } = self;
-
         if let Some(addr) = table.get_resolved(&sock_addr) {
-            if let Some(bidirectional_registrator) = table.resolve_bidirectional(addr) {
-                pending.send_ok(&host, addr, bidirectional_registrator);
-                table.add_host(host, sock_addr);
-                Ok(())
-            } else {
-                Err(host)
-            }
+            pending.send_ok(&host, addr);
+            table.add_host(host, sock_addr);
+            Ok(())
         } else {
             Err(host)
         }
@@ -250,12 +240,15 @@ where
         self.pending.send_err(host, error);
     }
 
-    fn table_resolve(&self, addr: RoutingAddr) -> Option<RawRoute> {
+    fn table_resolve(&self, addr: RoutingAddr) -> Option<RawOutRoute> {
         self.table.resolve(addr)
     }
 
-    fn table_resolve_bidirectional(&self, addr: RoutingAddr) -> Option<BidirectionalRegistrator> {
-        self.table.resolve_bidirectional(addr)
+    fn resolve_client_request(
+        &self,
+        addr: RoutingAddr,
+    ) -> Option<(RawOutRoute, &mpsc::Sender<AttachClientRouted>)> {
+        self.table.resolve_attach_client(addr)
     }
 
     fn table_try_resolve(&self, target: &SchemeHostPort) -> Option<RoutingAddr> {
@@ -267,12 +260,11 @@ where
     }
 }
 
-impl<'a, External, Ws, Sp, Path> RemoteConnections<'a, External, Ws, Sp, Path>
+impl<'a, External, Ws, Sp> RemoteConnections<'a, External, Ws, Sp>
 where
     External: ExternalConnections,
     Ws: WsConnections<External::Socket> + Send + Sync + 'static,
     Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Unpin,
-    Path: Addressable,
 {
     /// Create a new, empty state.
     ///
@@ -293,7 +285,7 @@ where
         spawner: Sp,
         external: External,
         listener: Option<External::ListenerType>,
-        router: Router<Path>,
+        router: Router,
         channels: RemoteConnectionChannels,
     ) -> Self {
         let RemoteConnectionChannels {

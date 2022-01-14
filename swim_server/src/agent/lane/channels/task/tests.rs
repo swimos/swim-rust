@@ -55,11 +55,11 @@ use swim_metrics::lane::LanePulse;
 use swim_metrics::node::NodePulse;
 use swim_metrics::uplink::{MetricBackpressureConfig, UplinkObserver, WarpUplinkPulse};
 use swim_metrics::{AggregatorError, MetaPulseLanes, NodeMetricAggregator};
-use swim_model::path::{Path, RelativePath};
+use swim_model::path::RelativePath;
 use swim_model::Value;
 use swim_runtime::compat::RequestMessage;
 use swim_runtime::error::ConnectionDropped;
-use swim_runtime::remote::RawRoute;
+use swim_runtime::remote::RawOutRoute;
 use swim_runtime::routing::fixture::{remote_router_resolver, RouterCallback};
 use swim_runtime::routing::{PlaneRoutingRequest, TaggedRouter};
 use swim_runtime::routing::{RoutingAddr, TaggedEnvelope};
@@ -376,7 +376,7 @@ impl LaneMessageHandler for TestHandler {
 
 #[derive(Clone)]
 struct TestContext {
-    router: TaggedRouter<Path>,
+    router: TaggedRouter,
     scheduler: mpsc::Sender<Eff>,
     trigger: Arc<Mutex<Option<trigger::Sender>>>,
     _drop_tx: Arc<promise::Sender<ConnectionDropped>>,
@@ -428,7 +428,7 @@ impl RouterCallback<PlaneRoutingRequest> for TestRouter {
                     sender, drop_rx, ..
                 } = self;
 
-                let _ = request.send(Ok(RawRoute::new(sender.clone(), drop_rx.clone())));
+                let _ = request.send(Ok(RawOutRoute::new(sender.clone(), drop_rx.clone())));
             }
             req => {
                 panic!("Unexpected request: {:?}", req)
@@ -442,7 +442,7 @@ impl RouterCallback<PlaneRoutingRequest> for TestRouter {
 impl AgentExecutionContext for TestContext {
     type Store = SwimNodeStore<MockPlaneStore>;
 
-    fn router_handle(&self) -> TaggedRouter<Path> {
+    fn router_handle(&self) -> TaggedRouter {
         self.router.clone()
     }
 
@@ -1437,7 +1437,7 @@ impl RouteReceiver {
 
 #[derive(Debug)]
 pub struct MultiTestContextInner {
-    senders: HashMap<RoutingAddr, RawRoute>,
+    senders: HashMap<RoutingAddr, RawOutRoute>,
     receivers: HashMap<RoutingAddr, RouteReceiver>,
 }
 
@@ -1452,7 +1452,7 @@ impl MultiTestContextInner {
 
 #[derive(Debug, Clone)]
 struct MultiTestContext(
-    TaggedRouter<Path>,
+    TaggedRouter,
     Arc<parking_lot::Mutex<MultiTestContextInner>>,
     mpsc::Sender<Eff>,
     RelativeUri,
@@ -1480,7 +1480,7 @@ impl MultiTestContext {
             let (tx, rx) = mpsc::channel(5);
             let (drop_tx, drop_rx) = promise::promise();
 
-            e.insert(RawRoute::new(tx, drop_rx));
+            e.insert(RawOutRoute::new(tx, drop_rx));
             lock.receivers.insert(addr, RouteReceiver::taken(drop_tx));
             Some(rx)
         } else {
@@ -1494,7 +1494,7 @@ impl MultiTestContext {
 impl AgentExecutionContext for MultiTestContext {
     type Store = SwimNodeStore<MockPlaneStore>;
 
-    fn router_handle(&self) -> TaggedRouter<Path> {
+    fn router_handle(&self) -> TaggedRouter {
         self.0.clone()
     }
 
@@ -1533,8 +1533,7 @@ mod router {
     use crate::agent::lane::channels::task::tests::{MultiTestContextInner, RouteReceiver};
     use futures_util::future::BoxFuture;
     use std::sync::Arc;
-    use swim_model::path::Path;
-    use swim_runtime::remote::RawRoute;
+    use swim_runtime::remote::RawOutRoute;
     use swim_runtime::routing::fixture::{invalid, router_fixture, RouterCallback};
     use swim_runtime::routing::{RemoteRoutingRequest, Router};
     use swim_utilities::trigger::promise;
@@ -1543,7 +1542,7 @@ mod router {
 
     pub fn remote(
         inner: Arc<parking_lot::Mutex<MultiTestContextInner>>,
-    ) -> (Router<Path>, JoinHandle<()>) {
+    ) -> (Router, JoinHandle<()>) {
         router_fixture(invalid, RemoteRouter(inner), invalid)
     }
 
@@ -1557,13 +1556,13 @@ mod router {
                 let mut lock = inner.lock();
 
                 match request {
-                    RemoteRoutingRequest::Endpoint { addr, request } => {
+                    RemoteRoutingRequest::EndpointOut { addr, request } => {
                         let result = if let Some(sender) = lock.senders.get(&addr) {
                             Ok(sender.clone())
                         } else {
                             let (tx, rx) = mpsc::channel(5);
                             let (drop_tx, drop_rx) = promise::promise();
-                            let route = RawRoute::new(tx, drop_rx);
+                            let route = RawOutRoute::new(tx, drop_rx);
                             lock.senders.insert(addr, route.clone());
                             lock.receivers.insert(addr, RouteReceiver::new(rx, drop_tx));
                             Ok(route)

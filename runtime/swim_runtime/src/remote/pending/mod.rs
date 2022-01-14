@@ -12,15 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::error::ConnectionError;
-use crate::remote::table::{BidirectionalRegistrator, SchemeHostPort};
-use crate::remote::REQUEST_DROPPED;
+use crate::error::{ConnectionError, ResolutionError};
+use crate::remote::table::SchemeHostPort;
+use crate::remote::task::AttachClientRouted;
+use crate::remote::{RawOutRoute, REQUEST_DROPPED};
 use crate::routing::RoutingAddr;
-use crate::routing::{BidirectionalRequest, ResolutionRequest};
+use crate::routing::{AttachClientRequest, ResolutionRequest};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use swim_tracing::request::TryRequestExt;
+use tokio::sync::mpsc;
 
 #[cfg(test)]
 mod tests;
@@ -28,28 +30,32 @@ mod tests;
 #[derive(Debug)]
 pub enum PendingRequest {
     Resolution(ResolutionRequest),
-    Bidirectional(BidirectionalRequest),
 }
 
-impl PendingRequest {
-    pub fn send_ok_debug<M: tracing::Value + Debug>(
-        self,
-        addr: RoutingAddr,
-        bidirectional_registrator: &BidirectionalRegistrator,
-        message: M,
-    ) {
-        match self {
-            PendingRequest::Resolution(request) => request.send_ok_debug(addr, message),
-            PendingRequest::Bidirectional(request) => {
-                request.send_ok_debug(bidirectional_registrator.clone(), message)
-            }
-        }
+pub struct PendingClient {
+    tx: mpsc::Sender<AttachClientRouted>,
+    route: RawOutRoute,
+    request: AttachClientRequest,
+}
+
+impl PendingClient {
+    pub fn new(
+        tx: mpsc::Sender<AttachClientRouted>,
+        route: RawOutRoute,
+        request: AttachClientRequest,
+    ) -> Self {
+        PendingClient { tx, route, request }
     }
 
-    pub fn send_err_debug<M: tracing::Value + Debug>(self, err: ConnectionError, message: M) {
-        match self {
-            PendingRequest::Resolution(request) => request.send_err_debug(err, message),
-            PendingRequest::Bidirectional(request) => request.send_err_debug(err, message),
+    pub async fn send_attach_requests(self) {
+        let PendingClient { tx, route, request } = self;
+        let routed_request = AttachClientRouted::new(route.clone(), request);
+        if let Err(e) = tx.send(routed_request).await {
+            let AttachClientRouted {
+                request: AttachClientRequest { addr, request, .. },
+                ..
+            } = e.0;
+            request.send_err_debug(ResolutionError::Addr(addr), REQUEST_DROPPED);
         }
     }
 }
@@ -74,16 +80,16 @@ impl PendingRequests {
     }
 
     /// Complete all requests for a given host/port combination with a successful result.
-    pub fn send_ok(
-        &mut self,
-        host: &SchemeHostPort,
-        addr: RoutingAddr,
-        bidirectional_registrator: BidirectionalRegistrator,
-    ) {
+    pub fn send_ok(&mut self, host: &SchemeHostPort, addr: RoutingAddr) {
         let PendingRequests(map) = self;
+
         if let Some(requests) = map.remove(host) {
             for request in requests.into_iter() {
-                request.send_ok_debug(addr, &bidirectional_registrator, REQUEST_DROPPED)
+                match request {
+                    PendingRequest::Resolution(request) => {
+                        request.send_ok_debug(addr, REQUEST_DROPPED)
+                    }
+                }
             }
         }
     }
@@ -94,10 +100,18 @@ impl PendingRequests {
         if let Some(mut requests) = map.remove(host) {
             let first = requests.pop();
             for request in requests.into_iter() {
-                request.send_err_debug(err.clone(), REQUEST_DROPPED);
+                match request {
+                    PendingRequest::Resolution(request) => {
+                        request.send_err_debug(err.clone(), REQUEST_DROPPED)
+                    }
+                }
             }
             if let Some(first) = first {
-                first.send_err_debug(err, REQUEST_DROPPED);
+                match first {
+                    PendingRequest::Resolution(request) => {
+                        request.send_err_debug(err, REQUEST_DROPPED)
+                    }
+                }
             }
         }
     }

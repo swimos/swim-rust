@@ -39,7 +39,7 @@ use swim_form::structural::read::ReadError;
 use swim_form::Form;
 use swim_metrics::config::MetricAggregatorConfig;
 use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
-use swim_model::path::{Path, RelativePath};
+use swim_model::path::RelativePath;
 use swim_model::Value;
 use swim_runtime::error::ConnectionDropped;
 use swim_runtime::routing::fixture::remote_router_resolver;
@@ -281,7 +281,7 @@ fn make_config() -> AgentExecutionConfig {
 }
 
 struct TestContext {
-    router: TaggedRouter<Path>,
+    router: TaggedRouter,
     spawner: mpsc::Sender<Eff>,
     _drop_tx: promise::Sender<ConnectionDropped>,
     uri: RelativeUri,
@@ -306,7 +306,7 @@ impl TestContext {
 impl AgentExecutionContext for TestContext {
     type Store = SwimNodeStore<MockPlaneStore>;
 
-    fn router_handle(&self) -> TaggedRouter<Path> {
+    fn router_handle(&self) -> TaggedRouter {
         self.router.clone()
     }
 

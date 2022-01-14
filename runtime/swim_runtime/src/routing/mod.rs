@@ -25,6 +25,7 @@ pub use router::*;
 use crate::error::{ConnectionDropped, RoutingError};
 use std::convert::TryFrom;
 
+use crate::remote::RawOutRoute;
 use bytes::Buf;
 use futures::future::BoxFuture;
 use futures::FutureExt;
@@ -174,30 +175,93 @@ pub struct Route {
     pub on_drop: promise::Receiver<ConnectionDropped>,
 }
 
-impl Route {
-    pub fn new(sender: TaggedSender, on_drop: promise::Receiver<ConnectionDropped>) -> Self {
-        Route { sender, on_drop }
+#[derive(Debug)]
+pub struct ClientRoute {
+    pub tag: RoutingAddr,
+    pub route: Route,
+    pub receiver: mpsc::Receiver<TaggedEnvelope>,
+    pub rx_on_dropped: promise::Receiver<ConnectionDropped>,
+    pub handle_drop: ClientRouteMonitor,
+}
+
+#[derive(Debug)]
+pub struct UnroutableClient {
+    route: RawOutRoute,
+    receiver: mpsc::Receiver<TaggedEnvelope>,
+    rx_on_dropped: promise::Receiver<ConnectionDropped>,
+    handle_drop: ClientRouteMonitor,
+}
+
+impl ClientRoute {
+    pub fn new(
+        tag: RoutingAddr,
+        route: Route,
+        receiver: mpsc::Receiver<TaggedEnvelope>,
+        rx_on_dropped: promise::Receiver<ConnectionDropped>,
+        handle_drop: ClientRouteMonitor,
+    ) -> Self {
+        ClientRoute {
+            tag,
+            route,
+            receiver,
+            rx_on_dropped,
+            handle_drop,
+        }
     }
 }
 
 #[derive(Debug)]
-pub struct BidirectionalRoute {
-    pub sender: TaggedSender,
-    pub receiver: mpsc::Receiver<TaggedEnvelope>,
-    pub on_drop: promise::Receiver<ConnectionDropped>,
+pub struct ClientRouteMonitor(Option<promise::Sender<ConnectionDropped>>);
+
+impl ClientRouteMonitor {
+    pub fn new(sender: promise::Sender<ConnectionDropped>) -> Self {
+        ClientRouteMonitor(Some(sender))
+    }
 }
 
-impl BidirectionalRoute {
-    pub fn new(
-        sender: TaggedSender,
-        receiver: mpsc::Receiver<TaggedEnvelope>,
-        on_drop: promise::Receiver<ConnectionDropped>,
-    ) -> Self {
-        BidirectionalRoute {
-            sender,
-            receiver,
-            on_drop,
+impl Drop for ClientRouteMonitor {
+    fn drop(&mut self) {
+        if let Some(tx) = self.0.take() {
+            let _ = tx.provide(ConnectionDropped::Closed);
         }
+    }
+}
+
+impl UnroutableClient {
+    pub fn new(
+        route: RawOutRoute,
+        receiver: mpsc::Receiver<TaggedEnvelope>,
+        rx_on_dropped: promise::Receiver<ConnectionDropped>,
+        handle_drop: promise::Sender<ConnectionDropped>,
+    ) -> Self {
+        UnroutableClient {
+            route,
+            receiver,
+            rx_on_dropped,
+            handle_drop: ClientRouteMonitor(Some(handle_drop)),
+        }
+    }
+
+    pub fn make_client(self, addr: RoutingAddr) -> ClientRoute {
+        let UnroutableClient {
+            route: RawOutRoute { sender, on_drop },
+            receiver,
+            rx_on_dropped,
+            handle_drop,
+        } = self;
+        ClientRoute::new(
+            addr,
+            Route::new(TaggedSender::new(addr, sender), on_drop),
+            receiver,
+            rx_on_dropped,
+            handle_drop,
+        )
+    }
+}
+
+impl Route {
+    pub fn new(sender: TaggedSender, on_drop: promise::Receiver<ConnectionDropped>) -> Self {
+        Route { sender, on_drop }
     }
 }
 

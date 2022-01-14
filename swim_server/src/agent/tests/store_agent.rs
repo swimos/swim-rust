@@ -41,11 +41,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use stm::stm::Stm;
 use stm::transaction::atomically;
-use swim_client::connections::SwimConnPool;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::ClientContext;
+use swim_client::router::ClientConnectionFactory;
 use swim_model::path::Path;
-use swim_runtime::configuration::DownlinkConnectionsConfig;
 use swim_runtime::routing::Router;
 use swim_runtime::routing::RoutingAddr;
 use swim_store::{deserialize, serialize, KeyspaceByteEngine, StoreBuilder, StoreError};
@@ -255,23 +254,17 @@ impl Default for TestStore {
 }
 
 fn make_dl_context() -> ClientContext<Path> {
-    let (client_tx, client_rx) = mpsc::channel(8);
+    let (client_tx, _client_rx) = mpsc::channel(8);
     let (remote_tx, _remote_rx) = mpsc::channel(8);
     let (plane_tx, _plane_rx) = mpsc::channel(8);
     let (_close_tx, close_rx) = promise::promise();
 
-    let router = Router::server(client_tx.clone(), plane_tx, remote_tx);
-
-    let (conn_pool, _pool_task) = SwimConnPool::new(
-        DownlinkConnectionsConfig::default(),
-        (client_tx, client_rx),
-        router,
-        close_rx.clone(),
-    );
+    let router = Router::server(client_tx.clone(), plane_tx, remote_tx.clone());
+    let connection_factory = ClientConnectionFactory::new(router, client_tx, remote_tx);
 
     let (downlinks, _downlinks_task) = Downlinks::new(
-        non_zero_usize!(8),
-        conn_pool,
+        connection_factory,
+        Default::default(),
         Arc::new(ServerDownlinksConfig::default()),
         close_rx,
     );

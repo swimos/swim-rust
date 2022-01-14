@@ -23,7 +23,7 @@ mod tests;
 #[cfg(test)]
 pub use tests::test_clock::TestClock;
 
-use crate::agent::context::{AgentExecutionContext, ContextImpl, RoutingContext, SchedulerContext};
+use crate::agent::context::{AgentExecutionContext, ContextImpl, RoutingContext};
 use crate::agent::dispatch::error::DispatcherErrors;
 use crate::agent::dispatch::{AgentDispatcher, LaneIdentifier};
 use crate::agent::lane::channels::task::{
@@ -55,6 +55,7 @@ use crate::agent::model::map::to_map_store_event;
 use crate::meta::info::{LaneInfo, LaneKind};
 use crate::meta::log::NodeLogger;
 use crate::meta::open_meta_lanes;
+use crate::scheduler::SchedulerContext;
 #[doc(hidden)]
 #[allow(unused_imports)]
 pub use agent_derive::*;
@@ -244,7 +245,7 @@ pub(crate) fn run_agent<Config, Clk, Agent, L, Store>(
     client_context: ClientContext<Path>,
     parameters: AgentParameters<Config>,
     incoming_envelopes: impl Stream<Item = RequestMessage<Value>> + Send + 'static,
-    router: TaggedRouter<Path>,
+    router: TaggedRouter,
     store: Store,
 ) -> (
     Arc<Agent>,

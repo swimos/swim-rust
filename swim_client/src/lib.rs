@@ -21,7 +21,6 @@
 //! - `websocket`: Provides a WebSocket connector that works on non-WASM platforms.
 
 pub mod configuration;
-pub mod connections;
 pub mod downlink;
 pub mod interface;
 pub mod router;
