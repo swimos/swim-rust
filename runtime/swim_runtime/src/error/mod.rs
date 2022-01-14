@@ -248,20 +248,6 @@ impl From<ConnectionDropped> for ConnectionError {
     }
 }
 
-/*impl From<RouterError> for ConnectionError {
-    fn from(err: RouterError) -> Self {
-        match err {
-            RouterError::NoAgentAtRoute(err) => {
-                ConnectionError::Resolution(ResolutionError::unresolvable(err.to_string()))
-            }
-            RouterError::ConnectionFailure(err) => err,
-            RouterError::RouterDropped => {
-                ConnectionError::Resolution(ResolutionError::router_dropped())
-            }
-        }
-    }
-}*/
-
 pub(crate) fn format_cause(cause: &Option<String>) -> String {
     match cause {
         Some(c) => format!(" {}", c),
