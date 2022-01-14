@@ -932,6 +932,10 @@ where
 #[derive(Debug, Clone, Copy)]
 pub struct EnvelopeEncoder(pub RoutingAddr);
 
+/// Temporary shim to allow the existing agent and downlink implementations to write in to a byte
+/// channel using the same format as the request and response message encoders. This encoding is
+/// lossy (the rate and priority fields of the envelopes are ignored and bodies are discarded for
+/// most types of envelope). Attempting to encode auth/death envelopes will result in a a panic.
 impl EnvelopeEncoder {
     pub fn new(addr: RoutingAddr) -> Self {
         EnvelopeEncoder(addr)

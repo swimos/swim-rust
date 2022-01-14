@@ -13,10 +13,10 @@
 // limitations under the License.
 
 use crate::compat::{
-    AgentMessageDecoder, MessageDecodeError, RawRequestMessage, RawRequestMessageEncoder,
-    RawResponseMessage, RawResponseMessageDecoder, RequestMessage, ResponseMessage,
-    ResponseMessageEncoder, COMMAND, EVENT, HEADER_INIT_LEN, LINK, LINKED, OP_MASK, OP_SHIFT, SYNC,
-    SYNCED, UNLINK, UNLINKED,
+    AgentMessageDecoder, EnvelopeEncoder, MessageDecodeError, RawRequestMessage,
+    RawRequestMessageEncoder, RawResponseMessage, RawResponseMessageDecoder, RequestMessage,
+    ResponseMessage, ResponseMessageEncoder, COMMAND, EVENT, HEADER_INIT_LEN, LINK, LINKED,
+    OP_MASK, OP_SHIFT, SYNC, SYNCED, UNLINK, UNLINKED,
 };
 use crate::routing::RoutingAddr;
 use bytes::{Buf, Bytes, BytesMut};
@@ -30,9 +30,11 @@ use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_form::structural::write::StructuralWritable;
 use swim_form::Form;
 use swim_model::path::RelativePath;
+use swim_model::Value;
 use swim_recon::printer::print_recon_compact;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::io::byte_channel;
+use swim_warp::envelope::Envelope;
 use tokio_util::codec::{Decoder, Encoder, FramedRead, FramedWrite};
 
 fn make_addr() -> RoutingAddr {
@@ -462,6 +464,45 @@ fn encode_unlinked_frame() {
 }
 
 #[test]
+fn encode_unlinked_frame_with_body() {
+    let id = make_addr();
+    let node = "my_node";
+    let lane = "lane";
+    let path = RelativePath::new(node, lane);
+
+    let body = "Gone";
+
+    let frame = ResponseMessage::<Example, _>::unlinked(id, path, Some(body.as_bytes()));
+    let mut encoder = ResponseMessageEncoder;
+    let mut buffer = BytesMut::new();
+
+    assert!(encoder.encode(frame, &mut buffer).is_ok());
+
+    assert_eq!(
+        buffer.len(),
+        HEADER_INIT_LEN + node.len() + lane.len() + body.len()
+    );
+
+    assert_eq!(buffer.get_u128(), id.uuid().as_u128());
+    assert_eq!(buffer.get_u32(), node.len() as u32);
+    assert_eq!(buffer.get_u32(), lane.len() as u32);
+    let body_descriptor = buffer.get_u64();
+
+    let tag = body_descriptor >> OP_SHIFT;
+    assert_eq!(tag, UNLINKED);
+
+    let body_len = (body_descriptor & !OP_MASK) as usize;
+    assert_eq!(body_len, body.len());
+
+    assert_eq!(&buffer.as_ref()[0..node.len()], node.as_bytes());
+    buffer.advance(node.len());
+    assert_eq!(&buffer.as_ref()[0..lane.len()], lane.as_bytes());
+    buffer.advance(lane.len());
+
+    assert_eq!(buffer.as_ref(), body.as_bytes());
+}
+
+#[test]
 fn encode_event_frame() {
     let id = make_addr();
     let node = "my_node";
@@ -578,4 +619,304 @@ fn decode_event_frame() {
         result,
         RawResponseMessage::event(id, RelativePath::new(node, lane), expected_body.freeze()),
     );
+}
+
+#[test]
+fn encode_link_envelope() {
+    let id = make_addr();
+    let node = "my_node";
+    let lane = "lane";
+
+    let frame = Envelope::link().node_uri(node).lane_uri(lane).done();
+    let mut encoder = EnvelopeEncoder::new(id);
+    let mut buffer = BytesMut::new();
+
+    assert!(encoder.encode(frame, &mut buffer).is_ok());
+
+    assert_eq!(buffer.len(), HEADER_INIT_LEN + node.len() + lane.len());
+
+    assert_eq!(buffer.get_u128(), id.uuid().as_u128());
+    assert_eq!(buffer.get_u32(), node.len() as u32);
+    assert_eq!(buffer.get_u32(), lane.len() as u32);
+    let body_descriptor = buffer.get_u64();
+
+    let tag = body_descriptor >> OP_SHIFT;
+    assert_eq!(tag, LINK);
+
+    let body_len = body_descriptor & !OP_MASK;
+    assert_eq!(body_len, 0);
+    assert_eq!(&buffer.as_ref()[0..node.len()], node.as_bytes());
+    buffer.advance(node.len());
+    assert_eq!(buffer.as_ref(), lane.as_bytes());
+}
+
+#[test]
+fn encode_linked_envelope() {
+    let id = make_addr();
+    let node = "my_node";
+    let lane = "lane";
+
+    let frame = Envelope::linked().node_uri(node).lane_uri(lane).done();
+    let mut encoder = EnvelopeEncoder::new(id);
+    let mut buffer = BytesMut::new();
+
+    assert!(encoder.encode(frame, &mut buffer).is_ok());
+
+    assert_eq!(buffer.len(), HEADER_INIT_LEN + node.len() + lane.len());
+
+    assert_eq!(buffer.get_u128(), id.uuid().as_u128());
+    assert_eq!(buffer.get_u32(), node.len() as u32);
+    assert_eq!(buffer.get_u32(), lane.len() as u32);
+    let body_descriptor = buffer.get_u64();
+
+    let tag = body_descriptor >> OP_SHIFT;
+    assert_eq!(tag, LINKED);
+
+    let body_len = body_descriptor & !OP_MASK;
+    assert_eq!(body_len, 0);
+    assert_eq!(&buffer.as_ref()[0..node.len()], node.as_bytes());
+    buffer.advance(node.len());
+    assert_eq!(buffer.as_ref(), lane.as_bytes());
+}
+
+#[test]
+fn encode_sync_envelope() {
+    let id = make_addr();
+    let node = "my_node";
+    let lane = "lane";
+
+    let frame = Envelope::sync().node_uri(node).lane_uri(lane).done();
+    let mut encoder = EnvelopeEncoder::new(id);
+    let mut buffer = BytesMut::new();
+
+    assert!(encoder.encode(frame, &mut buffer).is_ok());
+
+    assert_eq!(buffer.len(), HEADER_INIT_LEN + node.len() + lane.len());
+
+    assert_eq!(buffer.get_u128(), id.uuid().as_u128());
+    assert_eq!(buffer.get_u32(), node.len() as u32);
+    assert_eq!(buffer.get_u32(), lane.len() as u32);
+    let body_descriptor = buffer.get_u64();
+
+    let tag = body_descriptor >> OP_SHIFT;
+    assert_eq!(tag, SYNC);
+
+    let body_len = body_descriptor & !OP_MASK;
+    assert_eq!(body_len, 0);
+    assert_eq!(&buffer.as_ref()[0..node.len()], node.as_bytes());
+    buffer.advance(node.len());
+    assert_eq!(buffer.as_ref(), lane.as_bytes());
+}
+
+#[test]
+fn encode_synced_envelope() {
+    let id = make_addr();
+    let node = "my_node";
+    let lane = "lane";
+
+    let frame = Envelope::synced().node_uri(node).lane_uri(lane).done();
+    let mut encoder = EnvelopeEncoder::new(id);
+    let mut buffer = BytesMut::new();
+
+    assert!(encoder.encode(frame, &mut buffer).is_ok());
+
+    assert_eq!(buffer.len(), HEADER_INIT_LEN + node.len() + lane.len());
+
+    assert_eq!(buffer.get_u128(), id.uuid().as_u128());
+    assert_eq!(buffer.get_u32(), node.len() as u32);
+    assert_eq!(buffer.get_u32(), lane.len() as u32);
+    let body_descriptor = buffer.get_u64();
+
+    let tag = body_descriptor >> OP_SHIFT;
+    assert_eq!(tag, SYNCED);
+
+    let body_len = body_descriptor & !OP_MASK;
+    assert_eq!(body_len, 0);
+    assert_eq!(&buffer.as_ref()[0..node.len()], node.as_bytes());
+    buffer.advance(node.len());
+    assert_eq!(buffer.as_ref(), lane.as_bytes());
+}
+
+#[test]
+fn encode_unlink_envelope() {
+    let id = make_addr();
+    let node = "my_node";
+    let lane = "lane";
+
+    let frame = Envelope::unlink().node_uri(node).lane_uri(lane).done();
+    let mut encoder = EnvelopeEncoder::new(id);
+    let mut buffer = BytesMut::new();
+
+    assert!(encoder.encode(frame, &mut buffer).is_ok());
+
+    assert_eq!(buffer.len(), HEADER_INIT_LEN + node.len() + lane.len());
+
+    assert_eq!(buffer.get_u128(), id.uuid().as_u128());
+    assert_eq!(buffer.get_u32(), node.len() as u32);
+    assert_eq!(buffer.get_u32(), lane.len() as u32);
+    let body_descriptor = buffer.get_u64();
+
+    let tag = body_descriptor >> OP_SHIFT;
+    assert_eq!(tag, UNLINK);
+
+    let body_len = body_descriptor & !OP_MASK;
+    assert_eq!(body_len, 0);
+    assert_eq!(&buffer.as_ref()[0..node.len()], node.as_bytes());
+    buffer.advance(node.len());
+    assert_eq!(buffer.as_ref(), lane.as_bytes());
+}
+
+#[test]
+fn encode_unlinked_envelope() {
+    let id = make_addr();
+    let node = "my_node";
+    let lane = "lane";
+
+    let frame = Envelope::unlinked().node_uri(node).lane_uri(lane).done();
+    let mut encoder = EnvelopeEncoder::new(id);
+    let mut buffer = BytesMut::new();
+
+    assert!(encoder.encode(frame, &mut buffer).is_ok());
+
+    assert_eq!(buffer.len(), HEADER_INIT_LEN + node.len() + lane.len());
+
+    assert_eq!(buffer.get_u128(), id.uuid().as_u128());
+    assert_eq!(buffer.get_u32(), node.len() as u32);
+    assert_eq!(buffer.get_u32(), lane.len() as u32);
+    let body_descriptor = buffer.get_u64();
+
+    let tag = body_descriptor >> OP_SHIFT;
+    assert_eq!(tag, UNLINKED);
+
+    let body_len = body_descriptor & !OP_MASK;
+    assert_eq!(body_len, 0);
+    assert_eq!(&buffer.as_ref()[0..node.len()], node.as_bytes());
+    buffer.advance(node.len());
+    assert_eq!(buffer.as_ref(), lane.as_bytes());
+}
+
+#[test]
+fn encode_unlinked_envelope_with_body() {
+    let id = make_addr();
+    let node = "my_node";
+    let lane = "lane";
+    let body = Value::text("Gone");
+    let expected_body = format!("{}", print_recon_compact(&body));
+
+    let frame = Envelope::unlinked()
+        .node_uri(node)
+        .lane_uri(lane)
+        .body(body)
+        .done();
+    let mut encoder = EnvelopeEncoder::new(id);
+    let mut buffer = BytesMut::new();
+
+    assert!(encoder.encode(frame, &mut buffer).is_ok());
+
+    assert_eq!(
+        buffer.len(),
+        HEADER_INIT_LEN + node.len() + lane.len() + expected_body.len()
+    );
+
+    assert_eq!(buffer.get_u128(), id.uuid().as_u128());
+    assert_eq!(buffer.get_u32(), node.len() as u32);
+    assert_eq!(buffer.get_u32(), lane.len() as u32);
+    let body_descriptor = buffer.get_u64();
+
+    let tag = body_descriptor >> OP_SHIFT;
+    assert_eq!(tag, UNLINKED);
+
+    let body_len = (body_descriptor & !OP_MASK) as usize;
+    assert_eq!(body_len, expected_body.len());
+
+    assert_eq!(&buffer.as_ref()[0..node.len()], node.as_bytes());
+    buffer.advance(node.len());
+    assert_eq!(&buffer.as_ref()[0..lane.len()], lane.as_bytes());
+    buffer.advance(lane.len());
+
+    assert_eq!(buffer.as_ref(), expected_body.as_bytes());
+}
+
+#[test]
+fn encode_command_envelope() {
+    let id = make_addr();
+    let node = "my_node";
+    let lane = "lane";
+    let body = Value::of_attr(("set", 2));
+    let expected_body = format!("{}", print_recon_compact(&body));
+
+    let frame = Envelope::command()
+        .node_uri(node)
+        .lane_uri(lane)
+        .body(body)
+        .done();
+    let mut encoder = EnvelopeEncoder::new(id);
+    let mut buffer = BytesMut::new();
+
+    assert!(encoder.encode(frame, &mut buffer).is_ok());
+
+    assert_eq!(
+        buffer.len(),
+        HEADER_INIT_LEN + node.len() + lane.len() + expected_body.len()
+    );
+
+    assert_eq!(buffer.get_u128(), id.uuid().as_u128());
+    assert_eq!(buffer.get_u32(), node.len() as u32);
+    assert_eq!(buffer.get_u32(), lane.len() as u32);
+    let body_descriptor = buffer.get_u64();
+
+    let tag = body_descriptor >> OP_SHIFT;
+    assert_eq!(tag, COMMAND);
+
+    let body_len = (body_descriptor & !OP_MASK) as usize;
+    assert_eq!(body_len, expected_body.len());
+
+    assert_eq!(&buffer.as_ref()[0..node.len()], node.as_bytes());
+    buffer.advance(node.len());
+    assert_eq!(&buffer.as_ref()[0..lane.len()], lane.as_bytes());
+    buffer.advance(lane.len());
+
+    assert_eq!(buffer.as_ref(), expected_body.as_bytes());
+}
+
+#[test]
+fn encode_event_envelope() {
+    let id = make_addr();
+    let node = "my_node";
+    let lane = "lane";
+    let body = Value::of_attr(("set", 2));
+    let expected_body = format!("{}", print_recon_compact(&body));
+
+    let frame = Envelope::event()
+        .node_uri(node)
+        .lane_uri(lane)
+        .body(body)
+        .done();
+    let mut encoder = EnvelopeEncoder::new(id);
+    let mut buffer = BytesMut::new();
+
+    assert!(encoder.encode(frame, &mut buffer).is_ok());
+
+    assert_eq!(
+        buffer.len(),
+        HEADER_INIT_LEN + node.len() + lane.len() + expected_body.len()
+    );
+
+    assert_eq!(buffer.get_u128(), id.uuid().as_u128());
+    assert_eq!(buffer.get_u32(), node.len() as u32);
+    assert_eq!(buffer.get_u32(), lane.len() as u32);
+    let body_descriptor = buffer.get_u64();
+
+    let tag = body_descriptor >> OP_SHIFT;
+    assert_eq!(tag, EVENT);
+
+    let body_len = (body_descriptor & !OP_MASK) as usize;
+    assert_eq!(body_len, expected_body.len());
+
+    assert_eq!(&buffer.as_ref()[0..node.len()], node.as_bytes());
+    buffer.advance(node.len());
+    assert_eq!(&buffer.as_ref()[0..lane.len()], lane.as_bytes());
+    buffer.advance(lane.len());
+
+    assert_eq!(buffer.as_ref(), expected_body.as_bytes());
 }
