@@ -563,10 +563,6 @@ impl Route {
             .map(|reason| (*reason).clone())
             .unwrap_or(ConnectionDropped::Unknown)
     }
-
-    pub async fn duplicate(&self) -> Self {
-        todo!()
-    }
 }
 
 /// Trait for routers capable of resolving addresses and returning connections to them.

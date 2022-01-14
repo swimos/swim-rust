@@ -15,10 +15,11 @@
 use crate::configuration::DownlinkConnectionsConfig;
 use crate::configuration::{
     BackpressureMode, DownlinkConfig, OnInvalidMessage, DEFAULT_BACK_PRESSURE_BRIDGE_BUFFER_SIZE,
-    DEFAULT_BACK_PRESSURE_INPUT_BUFFER_SIZE, DEFAULT_BACK_PRESSURE_MAX_ACTIVE_KEYS,
-    DEFAULT_BACK_PRESSURE_YIELD_AFTER, DEFAULT_BUFFER_SIZE, DEFAULT_DL_REQUEST_BUFFER_SIZE,
-    DEFAULT_DOWNLINK_BUFFER_SIZE, DEFAULT_IDLE_TIMEOUT, DEFAULT_YIELD_AFTER, DOWNLINK_CONFIG_TAG,
-    DOWNLINK_CONNECTIONS_TAG, IGNORE_TAG, PROPAGATE_TAG, RELEASE_TAG, TERMINATE_TAG,
+    DEFAULT_BACK_PRESSURE_INPUT_BUFFER_SIZE, DEFAULT_BACK_PRESSURE_KEY_BUFFER_SIZE,
+    DEFAULT_BACK_PRESSURE_MAX_ACTIVE_KEYS, DEFAULT_BACK_PRESSURE_YIELD_AFTER, DEFAULT_BUFFER_SIZE,
+    DEFAULT_DL_REQUEST_BUFFER_SIZE, DEFAULT_DOWNLINK_BUFFER_SIZE, DEFAULT_IDLE_TIMEOUT,
+    DEFAULT_YIELD_AFTER, DOWNLINK_CONFIG_TAG, DOWNLINK_CONNECTIONS_TAG, IGNORE_TAG, PROPAGATE_TAG,
+    RELEASE_TAG, TERMINATE_TAG,
 };
 use std::borrow::Borrow;
 use std::num::NonZeroUsize;
@@ -65,7 +66,7 @@ enum DownlinkConnectionsConfigField {
 use super::{
     BACK_PRESSURE_TAG, BRIDGE_BUFFER_SIZE_TAG, BUFFER_SIZE_TAG, DL_REQ_BUFFER_SIZE_TAG,
     IDLE_TIMEOUT_TAG, INPUT_BUFFER_SIZE_TAG, MAX_ACTIVE_KEYS_TAG, ON_INVALID_TAG,
-    RETRY_STRATEGY_TAG, YIELD_AFTER_TAG,
+    PER_KEY_BUFFER_SIZE_TAG, RETRY_STRATEGY_TAG, YIELD_AFTER_TAG,
 };
 
 impl Recognizer for DownlinkConnectionsConfigRecognizer {
@@ -447,6 +448,7 @@ enum BackpressureModeField {
     BridgeBufferSize,
     MaxActiveKeys,
     YieldAfter,
+    PerKeyBufferSize,
 }
 
 struct BackpressureModeFields {
@@ -454,6 +456,7 @@ struct BackpressureModeFields {
     bridge_buffer_size: Option<NonZeroUsize>,
     max_active_keys: Option<NonZeroUsize>,
     yield_after: Option<NonZeroUsize>,
+    per_key_buffer_size: Option<NonZeroUsize>,
 }
 
 impl Recognizer for BackpressureModeRecognizer {
@@ -476,6 +479,7 @@ impl Recognizer for BackpressureModeRecognizer {
                                 bridge_buffer_size: None,
                                 max_active_keys: None,
                                 yield_after: None,
+                                per_key_buffer_size: None,
                             });
                             None
                         }
@@ -510,6 +514,7 @@ impl Recognizer for BackpressureModeRecognizer {
                                 bridge_buffer_size: DEFAULT_BACK_PRESSURE_BRIDGE_BUFFER_SIZE,
                                 max_active_keys: DEFAULT_BACK_PRESSURE_MAX_ACTIVE_KEYS,
                                 yield_after: DEFAULT_BACK_PRESSURE_YIELD_AFTER,
+                                per_key_buffer_size: DEFAULT_BACK_PRESSURE_KEY_BUFFER_SIZE,
                             }))
                         }
                         None => Some(Ok(BackpressureMode::Propagate)),
@@ -527,6 +532,7 @@ impl Recognizer for BackpressureModeRecognizer {
                     bridge_buffer_size,
                     max_active_keys,
                     yield_after,
+                    per_key_buffer_size,
                 }) => match input {
                     ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
                         INPUT_BUFFER_SIZE_TAG => {
@@ -550,6 +556,12 @@ impl Recognizer for BackpressureModeRecognizer {
                                 BackpressureModeStage::Slot(BackpressureModeField::YieldAfter);
                             None
                         }
+                        PER_KEY_BUFFER_SIZE_TAG => {
+                            self.stage = BackpressureModeStage::Slot(
+                                BackpressureModeField::PerKeyBufferSize,
+                            );
+                            None
+                        }
                         ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
                     },
                     ReadEvent::EndRecord => Some(Ok(BackpressureMode::Release {
@@ -560,6 +572,8 @@ impl Recognizer for BackpressureModeRecognizer {
                         max_active_keys: max_active_keys
                             .unwrap_or(DEFAULT_BACK_PRESSURE_MAX_ACTIVE_KEYS),
                         yield_after: yield_after.unwrap_or(DEFAULT_BACK_PRESSURE_YIELD_AFTER),
+                        per_key_buffer_size: per_key_buffer_size
+                            .unwrap_or(DEFAULT_BACK_PRESSURE_KEY_BUFFER_SIZE),
                     })),
                     ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                         ExpectedEvent::ValueEvent(ValueKind::Text),
@@ -586,6 +600,7 @@ impl Recognizer for BackpressureModeRecognizer {
                     bridge_buffer_size,
                     max_active_keys,
                     yield_after,
+                    per_key_buffer_size,
                 }) => match field {
                     BackpressureModeField::InputBufferSize => {
                         match NonZeroUsize::make_recognizer().feed_event(input)? {
@@ -621,6 +636,16 @@ impl Recognizer for BackpressureModeRecognizer {
                         match NonZeroUsize::make_recognizer().feed_event(input)? {
                             Ok(value) => {
                                 *yield_after = Some(value);
+                                self.stage = BackpressureModeStage::InBody;
+                                None
+                            }
+                            Err(err) => Some(Err(err)),
+                        }
+                    }
+                    BackpressureModeField::PerKeyBufferSize => {
+                        match NonZeroUsize::make_recognizer().feed_event(input)? {
+                            Ok(value) => {
+                                *per_key_buffer_size = Some(value);
                                 self.stage = BackpressureModeStage::InBody;
                                 None
                             }

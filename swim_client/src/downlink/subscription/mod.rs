@@ -15,7 +15,6 @@
 use crate::downlink::error::SubscriptionError;
 use crate::downlink::model::map::UntypedMapModification;
 use crate::downlink::model::value::SharedValue;
-use crate::downlink::subscription::watch_adapter::KeyedWatch;
 use crate::downlink::typed::command::TypedCommandDownlink;
 use crate::downlink::typed::event::TypedEventDownlink;
 use crate::downlink::typed::map::{MapDownlinkReceiver, TypedMapDownlink};
@@ -64,7 +63,6 @@ use url::Url;
 pub mod envelopes;
 #[cfg(test)]
 mod tests;
-mod watch_adapter;
 
 #[derive(Clone, Debug)]
 pub struct Downlinks<Path> {
@@ -675,40 +673,38 @@ where
                 bridge_buffer_size,
                 max_active_keys,
                 yield_after,
+                per_key_buffer_size,
             } => {
-                let sink_path_duplicate = sink_path.clone();
-                let direct_sink = sink.duplicate().await.map_err_into().comap(
-                    move |cmd: Command<UntypedMapModification<Value>>| {
-                        envelopes::map_envelope(sink_path_duplicate.clone(), cmd).into()
-                    },
+                use swim_runtime::backpressure::keyed::map::release_pressure as release_pressure_map;
+
+                let (tx, rx) = mpsc::channel::<Command<UntypedMapModification<Value>>>(
+                    input_buffer_size.get(),
                 );
-                let action_sink =
-                    sink.map_err_into()
-                        .comap(move |act: UntypedMapModification<Value>| {
-                            envelopes::map_envelope(sink_path.clone(), Command::Action(act)).into()
+                let in_stream = ReceiverStream::new(rx);
+                let release_task = async move {
+                    let mut out_sink =
+                        sink.comap(move |cmd: Command<UntypedMapModification<Value>>| {
+                            envelopes::map_envelope(sink_path.clone(), cmd).into()
                         });
+                    release_pressure_map(
+                        in_stream,
+                        &mut out_sink,
+                        yield_after,
+                        bridge_buffer_size,
+                        max_active_keys,
+                        per_key_buffer_size,
+                    )
+                    .await
+                };
+                //TODO Use a Spawner instead.
+                swim_async_runtime::task::spawn(release_task);
 
-                let pressure_release = KeyedWatch::new(
-                    action_sink,
-                    input_buffer_size,
-                    bridge_buffer_size,
-                    max_active_keys,
-                    yield_after,
-                )
-                .await;
-
-                let either_sink = SplitSink::new(direct_sink, pressure_release.into_item_sender())
-                    .comap(
-                        move |cmd: Command<UntypedMapModification<Value>>| match cmd {
-                            Command::Action(act) => Either::Right(act),
-                            ow => Either::Left(ow),
-                        },
-                    );
+                let output_sink = for_mpsc_sender(tx).map_err_into();
                 map_downlink(
                     Some(key_schema),
                     Some(value_schema),
                     updates,
-                    either_sink.map_err_into(),
+                    output_sink,
                     (&config).into(),
                 )
             }

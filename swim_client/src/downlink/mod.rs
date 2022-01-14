@@ -55,6 +55,8 @@ use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
 
 pub use crate::downlink::subscription::Downlinks;
+use swim_runtime::backpressure::keyed::map::MapUpdateMessage;
+use swim_warp::map::MapUpdate;
 use tracing_futures::Instrument;
 
 /// Trait defining the common operations supported by all downlinks.
@@ -119,6 +121,19 @@ pub enum CommandKind {
     Sync,
     Action,
     Unlink,
+}
+
+impl MapUpdateMessage<Value, Value> for Command<UntypedMapModification<Value>> {
+    fn discriminate(self) -> Either<MapUpdate<Value, Value>, Self> {
+        match self {
+            Command::Action(upd) => Either::Left(upd),
+            ow => Either::Right(ow),
+        }
+    }
+
+    fn repack(update: MapUpdate<Value, Value>) -> Self {
+        Command::Action(update)
+    }
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
