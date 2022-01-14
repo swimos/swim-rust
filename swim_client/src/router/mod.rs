@@ -54,6 +54,8 @@ impl Drop for Entry {
     }
 }
 
+/// The client routing table contains handles to clients attached to local lanes. These can be
+/// routed to directly to allow agents to send messages directly to the client.
 struct ClientRoutingTable {
     local_client_routes: HashMap<RoutingAddr, Entry>,
     next_id: u32,
@@ -61,6 +63,8 @@ struct ClientRoutingTable {
 }
 
 impl ClientRoutingTable {
+    /// # Arguments
+    /// * `channel_size` The size of the envelope buffer for sending to the route.
     fn new(channel_size: NonZeroUsize) -> Self {
         ClientRoutingTable {
             local_client_routes: Default::default(),
@@ -115,6 +119,12 @@ pub struct ClientRouterTask {
 const REQUEST_DROPPED: &str = "Client routing request dropped.";
 
 impl ClientRouterTask {
+    /// # Arguments
+    /// * `stop_trigger` - Indicagtes when the application is stopping and the task should
+    /// terminate.
+    /// * `requests` - Stream of requests to be served by the task.
+    /// * `channel_size` - Enevelope buffer size for endpoints created by the task.
+    /// * `yield_after` - Maximum number of requests to service before yielding.
     pub fn new(
         stop_trigger: CloseReceiver,
         requests: mpsc::Receiver<ClientEndpointRequest>,
@@ -155,7 +165,7 @@ impl ClientRouterTask {
                     Either::Right((Some(closed_notification), _)) => {
                         Either::Right(closed_notification)
                     }
-                    _ => unreachable!(), //Unreachable as we already checked that endpoint_monitior is non-empty.
+                    _ => unreachable!(), //Unreachable as we already checked that endpoint_monitor is non-empty.
                 }
             };
 

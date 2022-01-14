@@ -80,13 +80,18 @@ pub enum RemoteRoutingRequest {
     AttachClient { request: AttachClientRequest },
 }
 
+/// A request that can be send to the task that manages client routes.
 #[derive(Debug)]
 pub enum ClientEndpointRequest {
+    /// Get a route associated with an existing address, if it exists.
     Get(RoutingAddr, Request<Result<RawOutRoute, ResolutionError>>),
+    /// Add a new route to the table.
     MakeRoutable(Request<ClientEndpoint>),
+    /// Issue a new (dummy) routing ID for an unroutable client.
     MakeUnroutable(Request<RoutingAddr>),
 }
 
+/// A single routable client endpoint.
 #[derive(Debug)]
 pub struct ClientEndpoint {
     pub endpoint_addr: RoutingAddr,
