@@ -15,7 +15,7 @@
 use crate::error::{ConnectionError, IoError, ResolutionError, RouterError, Unresolvable};
 use crate::remote::router::RemoteRouter;
 use crate::remote::test_fixture::LocalRoutes;
-use crate::remote::{RawRoute, RemoteRoutingRequest};
+use crate::remote::{RawOutRoute, RemoteRoutingRequest};
 use crate::routing::{Route, Router, RoutingAddr, TaggedEnvelope};
 use futures::future::join;
 use futures::io::ErrorKind;
@@ -43,10 +43,10 @@ async fn fake_resolution(
 
     while let Some(request) = rx.next().await {
         match request {
-            RemoteRoutingRequest::Endpoint { addr, request } => {
+            RemoteRoutingRequest::EndpointOut { addr, request } => {
                 if resolved && addr == ADDR {
                     assert!(request
-                        .send_ok(RawRoute::new(sender.clone(), drop_rx.clone()))
+                        .send_ok(RawOutRoute::new(sender.clone(), drop_rx.clone()))
                         .is_ok());
                 } else {
                     assert!(request.send_err(Unresolvable(addr)).is_ok());
@@ -62,7 +62,7 @@ async fn fake_resolution(
                         .is_ok());
                 }
             }
-            RemoteRoutingRequest::Bidirectional { .. } => {}
+            RemoteRoutingRequest::AttachClient { .. } => {}
         }
     }
 }
@@ -125,7 +125,7 @@ async fn resolve_remote_failure() {
     let task = async move {
         let other_addr = RoutingAddr::remote(56);
         let result = router.resolve_sender(other_addr).await;
-        let _expected = ResolutionError::unresolvable(other_addr.to_string());
+        let _expected = ResolutionError::unresolvable(other_addr);
 
         assert!(matches!(result, Err(_expected)));
         drop(stop_tx);
@@ -208,7 +208,7 @@ async fn resolve_local_err() {
     let task = async move {
         let local_addr = RoutingAddr::plane(0);
         let result = router.resolve_sender(local_addr).await;
-        let _expected = ResolutionError::unresolvable(local_addr.to_string());
+        let _expected = ResolutionError::unresolvable(local_addr);
 
         assert!(matches!(result, Err(_expected)));
         drop(stop_tx);

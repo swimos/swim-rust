@@ -65,8 +65,6 @@ pub enum RoutingError {
     ConnectionError,
     /// The remote host is unreachable.
     HostUnreachable,
-    /// The connection pool has encountered an error.
-    PoolError(ConnectionError),
     /// The router has been stopped.
     RouterDropped,
     /// The router has encountered an error while stopping.
@@ -75,12 +73,10 @@ pub enum RoutingError {
 
 impl Recoverable for RoutingError {
     fn is_fatal(&self) -> bool {
-        match &self {
-            RoutingError::ConnectionError => false,
-            RoutingError::HostUnreachable => false,
-            RoutingError::PoolError(e) => e.is_fatal(),
-            _ => true,
-        }
+        !matches!(
+            self,
+            RoutingError::ConnectionError | RoutingError::HostUnreachable
+        )
     }
 }
 
@@ -89,7 +85,6 @@ impl Display for RoutingError {
         match self {
             RoutingError::ConnectionError => write!(f, "Connection error."),
             RoutingError::HostUnreachable => write!(f, "Host unreachable."),
-            RoutingError::PoolError(e) => write!(f, "Connection pool error. {}", e),
             RoutingError::RouterDropped => write!(f, "Router was dropped."),
             RoutingError::CloseError => write!(f, "Closing error."),
         }
@@ -140,7 +135,7 @@ pub enum ConnectionError {
     /// An unsupported encoding error or an illegal type error.
     Encoding(EncodingError),
     /// An error produced when attempting to resolve a peer.
-    Resolution(ResolutionError),
+    Resolution(String),
     /// A pending write did not complete within the specified duration.
     WriteTimeout(Duration),
     /// An error was produced at the transport layer.
@@ -196,7 +191,7 @@ impl Recoverable for ConnectionError {
                 ErrorKind::Interrupted | ErrorKind::TimedOut | ErrorKind::ConnectionReset
             ),
             ConnectionError::Encoding(e) => e.is_fatal(),
-            ConnectionError::Resolution(e) => e.is_fatal(),
+            ConnectionError::Resolution(_) => false,
             ConnectionError::WriteTimeout(_) => false,
             ConnectionError::Transport(e) => e.is_fatal(),
         }
@@ -215,7 +210,7 @@ impl Display for ConnectionError {
             ConnectionError::Closed(e) => write!(f, "{}", e),
             ConnectionError::Io(e) => write!(f, "{}", e),
             ConnectionError::Encoding(e) => write!(f, "{}", e),
-            ConnectionError::Resolution(e) => write!(f, "{}", e),
+            ConnectionError::Resolution(e) => write!(f, "Address {} could not be resolved.", e),
             ConnectionError::WriteTimeout(dur) => write!(
                 f,
                 "Writing to the connection failed to complete within {:?}.",
@@ -244,20 +239,6 @@ impl From<FutSendError> for ConnectionError {
 impl From<ConnectionDropped> for ConnectionError {
     fn from(_: ConnectionDropped) -> Self {
         ConnectionError::Closed(CloseError::closed())
-    }
-}
-
-impl From<RouterError> for ConnectionError {
-    fn from(err: RouterError) -> Self {
-        match err {
-            RouterError::NoAgentAtRoute(err) => {
-                ConnectionError::Resolution(ResolutionError::unresolvable(err.to_string()))
-            }
-            RouterError::ConnectionFailure(err) => err,
-            RouterError::RouterDropped => {
-                ConnectionError::Resolution(ResolutionError::router_dropped())
-            }
-        }
     }
 }
 

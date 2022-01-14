@@ -28,10 +28,7 @@ fn connection_error_display() {
         ConnectionError::Closed(CloseError::new(CloseErrorKind::ClosedRemotely, None)).to_string();
     assert_eq!(string, "The connection was closed remotely.");
 
-    let string = ConnectionError::Resolution(ResolutionError::unresolvable(
-        "xyz://localtoast:9001/".into(),
-    ))
-    .to_string();
+    let string = ConnectionError::Resolution("xyz://localtoast:9001/".to_string()).to_string();
     assert_eq!(
         string,
         "Address xyz://localtoast:9001/ could not be resolved."
@@ -72,7 +69,7 @@ fn unresolvable_display() {
 
 #[test]
 fn resolution_error_display() {
-    let string = ResolutionError::unresolvable(RoutingAddr::plane(4).to_string()).to_string();
+    let string = ResolutionError::unresolvable(RoutingAddr::plane(4)).to_string();
     assert_eq!(string, "Address Plane(4) could not be resolved.");
 
     let string = ResolutionError::router_dropped().to_string();

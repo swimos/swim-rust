@@ -14,11 +14,10 @@
 
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::routing::{PlaneRoutingRequest, TopLevelServerRouter, TopLevelServerRouterFactory};
+use crate::uri::RelativeUri;
 use futures::future::join;
-use swim_runtime::error::{
-    ConnectionError, ProtocolError, ResolutionErrorKind, RouterError, Unresolvable,
-};
-use swim_runtime::remote::RawRoute;
+use swim_runtime::error::{ConnectionError, ResolutionErrorKind, RouterError, Unresolvable};
+use swim_runtime::remote::RawOutRoute;
 use swim_runtime::routing::{Router, RouterFactory, RoutingAddr, TaggedEnvelope};
 use swim_utilities::trigger::promise;
 use swim_warp::envelope::Envelope;
@@ -44,7 +43,7 @@ async fn plane_router_get_sender() {
             if let PlaneRoutingRequest::Endpoint { id, request } = req {
                 if id == addr {
                     assert!(request
-                        .send_ok(RawRoute::new(send_tx.clone(), drop_rx.clone()))
+                        .send_ok(RawOutRoute::new(send_tx.clone(), drop_rx.clone()))
                         .is_ok());
                 } else {
                     assert!(request.send_err(Unresolvable(id)).is_ok());
@@ -110,24 +109,11 @@ async fn plane_router_resolve() {
 
     let mut router = PlaneRouter::new(addr, top_level_router, req_tx);
 
-    let host_cpy = host.clone();
-
     let provider_task = async move {
         while let Some(req) = req_rx.recv().await {
-            if let PlaneRoutingRequest::Resolve {
-                host,
-                name,
-                request,
-            } = req
-            {
-                if host == Some(host_cpy.clone()) && name == "/node" {
+            if let PlaneRoutingRequest::Resolve { name, request } = req {
+                if name == "/node" {
                     assert!(request.send_ok(addr).is_ok());
-                } else if host.is_some() {
-                    assert!(request
-                        .send_err(RouterError::ConnectionFailure(ConnectionError::Protocol(
-                            ProtocolError::warp(Some("Boom!".into()))
-                        )))
-                        .is_ok());
                 } else {
                     assert!(request.send_err(RouterError::NoAgentAtRoute(name)).is_ok());
                 }
@@ -138,23 +124,19 @@ async fn plane_router_resolve() {
     };
 
     let send_task = async move {
-        let result1 = router.lookup(Some(host), "/node".parse().unwrap()).await;
+        let result1 = router.lookup(None, "/node".parse().unwrap()).await;
         assert!(matches!(result1, Ok(a) if a == addr));
 
-        let other_host = Url::parse("warp://other").unwrap();
+        let uri: RelativeUri = "/node".parse().unwrap();
 
-        let result2 = router
-            .lookup(Some(other_host), "/node".parse().unwrap())
-            .await;
+        let result2 = router.lookup(Some(host.clone()), uri.clone()).await;
 
-        let _expected = RouterError::ConnectionFailure(ConnectionError::Protocol(
-            ProtocolError::warp(Some("Boom!".into())),
-        ));
+        assert!(
+            matches!(result2, Err(RouterError::ConnectionFailure(ConnectionError::Resolution(msg))) if msg == host.to_string())
+        );
 
-        assert!(matches!(result2, Err(_expected)));
-
-        let result3 = router.lookup(None, "/node".parse().unwrap()).await;
-        assert!(matches!(result3, Err(RouterError::NoAgentAtRoute(name)) if name == "/node"));
+        let result3 = router.lookup(None, "/other".parse().unwrap()).await;
+        assert!(matches!(result3, Err(RouterError::NoAgentAtRoute(name)) if name == "/other"));
     };
 
     join(provider_task, send_task).await;

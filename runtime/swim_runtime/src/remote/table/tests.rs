@@ -14,7 +14,7 @@
 
 use crate::error::ConnectionDropped;
 use crate::remote::table::{RoutingTable, SchemeHostPort};
-use crate::remote::{RawRoute, Scheme, SchemeSocketAddr};
+use crate::remote::{RawOutRoute, Scheme, SchemeSocketAddr};
 use crate::routing::{RoutingAddr, TaggedEnvelope};
 use std::time::Duration;
 use swim_warp::envelope::Envelope;
@@ -40,7 +40,7 @@ async fn insert_and_retrieve() {
     assert_eq!(table.try_resolve(&hp), Some(addr));
     assert_eq!(table.get_resolved(&sock_addr), Some(addr));
 
-    let RawRoute { sender, on_drop: _ } = table.resolve(addr).unwrap();
+    let RawOutRoute { sender, on_drop: _ } = table.resolve(addr).unwrap();
 
     let env = TaggedEnvelope(
         addr,
@@ -82,7 +82,7 @@ async fn remove_entry() {
 
     table.insert(addr, Some(hp.clone()), sock_addr, tx, bidirectional_tx);
 
-    let RawRoute {
+    let RawOutRoute {
         sender: _sender,
         on_drop,
     } = table.resolve(addr).unwrap();

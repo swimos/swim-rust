@@ -18,11 +18,11 @@ use crate::remote::pending::PendingRequest;
 use crate::remote::state::{
     DeferredResult, Event, RemoteConnectionChannels, RemoteConnections, RemoteTasksState, State,
 };
-use crate::remote::table::{BidirectionalRegistrator, SchemeHostPort};
+use crate::remote::table::SchemeHostPort;
 use crate::remote::test_fixture::connections::{FakeConnections, FakeListener, FakeWebsockets};
 use crate::remote::test_fixture::LocalRoutes;
 use crate::remote::{ConnectionDropped, Scheme, SchemeSocketAddr};
-use crate::routing::{CloseSender, RoutingAddr, TaggedSender};
+use crate::routing::{CloseSender, RoutingAddr};
 use futures::future::BoxFuture;
 use futures::io::ErrorKind;
 use ratchet::{NoExt, Role};
@@ -311,13 +311,6 @@ async fn connections_state_defer_dns_good() {
 
     let (req_tx, req_rx) = oneshot::channel();
 
-    let (envelope_tx, _envelope_rx) = mpsc::channel(8);
-    let (request_tx, _request_rx) = mpsc::channel(8);
-    let (_drop_tx, drop_rx) = promise::promise();
-
-    let bidirectional_registrator =
-        BidirectionalRegistrator::new(TaggedSender::new(addr, envelope_tx), request_tx, drop_rx);
-
     connections.defer_dns_lookup(
         target.clone(),
         PendingRequest::Resolution(Request::new(req_tx)),
@@ -344,7 +337,7 @@ async fn connections_state_defer_dns_good() {
 
     connections
         .pending
-        .send_ok(&target, RoutingAddr::remote(42), bidirectional_registrator);
+        .send_ok(&target, RoutingAddr::remote(42));
 
     let result = timeout(Duration::from_secs(5), req_rx).await;
     assert!(matches!(result, Ok(Ok(Ok(a))) if a == RoutingAddr::remote(42)));
@@ -363,12 +356,6 @@ async fn connections_state_defer_dns_failed() {
     } = make_state(addr, &ws, incoming_rx);
 
     let target = SchemeHostPort::new(Scheme::Ws, "my_host".to_string(), 80);
-    let (envelope_tx, _envelope_rx) = mpsc::channel(8);
-    let (request_tx, _request_rx) = mpsc::channel(8);
-    let (_drop_tx, drop_rx) = promise::promise();
-
-    let bidirectional_registrator =
-        BidirectionalRegistrator::new(TaggedSender::new(addr, envelope_tx), request_tx, drop_rx);
 
     let (req_tx, req_rx) = oneshot::channel();
 
@@ -398,7 +385,7 @@ async fn connections_state_defer_dns_failed() {
 
     connections
         .pending
-        .send_ok(&target, RoutingAddr::remote(42), bidirectional_registrator);
+        .send_ok(&target, RoutingAddr::remote(42));
 
     let result = timeout(Duration::from_secs(5), req_rx).await;
     assert!(matches!(result, Ok(Ok(Ok(a))) if a == RoutingAddr::remote(42)));
