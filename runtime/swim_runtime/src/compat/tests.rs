@@ -13,10 +13,10 @@
 // limitations under the License.
 
 use crate::compat::{
-    AgentMessageDecoder, EnvelopeEncoder, MessageDecodeError, RawRequestMessage,
-    RawRequestMessageEncoder, RawResponseMessage, RawResponseMessageDecoder, RequestMessage,
-    ResponseMessage, ResponseMessageEncoder, COMMAND, EVENT, HEADER_INIT_LEN, LINK, LINKED,
-    OP_MASK, OP_SHIFT, SYNC, SYNCED, UNLINK, UNLINKED,
+    AgentMessageDecoder, ClientMessageDecoder, EnvelopeEncoder, MessageDecodeError,
+    RawRequestMessage, RawRequestMessageEncoder, RawResponseMessage, RawResponseMessageDecoder,
+    RequestMessage, ResponseMessage, ResponseMessageEncoder, COMMAND, EVENT, HEADER_INIT_LEN, LINK,
+    LINKED, OP_MASK, OP_SHIFT, SYNC, SYNCED, UNLINK, UNLINKED,
 };
 use crate::routing::RoutingAddr;
 use bytes::{Buf, Bytes, BytesMut};
@@ -183,9 +183,20 @@ fn check_result<T: Eq + Debug>(
     }
 }
 
-fn check_result_response(
+fn check_result_rawresponse(
     result: Result<Option<RawResponseMessage>, std::io::Error>,
     expected: RawResponseMessage,
+) {
+    match result {
+        Ok(Some(msg)) => assert_eq!(msg, expected),
+        Ok(_) => panic!("Incomplete."),
+        Err(e) => panic!("Failed: {}", e),
+    }
+}
+
+fn check_result_response<T: Eq + Debug>(
+    result: Result<Option<ResponseMessage<T, Bytes>>, MessageDecodeError>,
+    expected: ResponseMessage<T, Bytes>,
 ) {
     match result {
         Ok(Some(msg)) => assert_eq!(msg, expected),
@@ -215,13 +226,35 @@ where
     result
 }
 
-fn round_trip_response<T>(
+fn round_trip_rawresponse<T>(
     frame: ResponseMessage<T, Bytes>,
 ) -> Result<Option<RawResponseMessage>, std::io::Error>
 where
     T: StructuralWritable,
 {
     let mut decoder = RawResponseMessageDecoder;
+    let mut encoder = ResponseMessageEncoder;
+
+    let mut buffer = BytesMut::new();
+    assert!(encoder.encode(frame, &mut buffer).is_ok());
+
+    let result = decoder.decode(&mut buffer);
+
+    if result.is_ok() {
+        assert!(buffer.is_empty());
+    }
+
+    result
+}
+
+fn round_trip_response<T, U>(
+    frame: ResponseMessage<T, U>,
+) -> Result<Option<ResponseMessage<T, Bytes>>, MessageDecodeError>
+where
+    U: AsRef<[u8]>,
+    T: StructuralWritable + RecognizerReadable,
+{
+    let mut decoder = ClientMessageDecoder::<T, _>::new(T::make_recognizer());
     let mut encoder = ResponseMessageEncoder;
 
     let mut buffer = BytesMut::new();
@@ -552,9 +585,9 @@ fn decode_linked_frame() {
     let lane = "lane";
 
     let frame = ResponseMessage::<Example, Bytes>::linked(id, RelativePath::new(node, lane));
-    let result = round_trip_response::<Example>(frame);
+    let result = round_trip_rawresponse::<Example>(frame);
 
-    check_result_response(
+    check_result_rawresponse(
         result,
         RawResponseMessage::linked(id, RelativePath::new(node, lane)),
     );
@@ -567,9 +600,9 @@ fn decode_synced_frame() {
     let lane = "lane";
 
     let frame = ResponseMessage::<Example, Bytes>::synced(id, RelativePath::new(node, lane));
-    let result = round_trip_response::<Example>(frame);
+    let result = round_trip_rawresponse::<Example>(frame);
 
-    check_result_response(
+    check_result_rawresponse(
         result,
         RawResponseMessage::synced(id, RelativePath::new(node, lane)),
     );
@@ -583,9 +616,9 @@ fn decode_unlinked_frame() {
 
     let frame =
         ResponseMessage::<Example, Bytes>::unlinked(id, RelativePath::new(node, lane), None);
-    let result = round_trip_response::<Example>(frame);
+    let result = round_trip_rawresponse::<Example>(frame);
 
-    check_result_response(
+    check_result_rawresponse(
         result,
         RawResponseMessage::unlinked(id, RelativePath::new(node, lane), None),
     );
@@ -613,9 +646,9 @@ fn decode_event_frame() {
             second: 2,
         },
     );
-    let result = round_trip_response::<Example>(frame);
+    let result = round_trip_rawresponse::<Example>(frame);
 
-    check_result_response(
+    check_result_rawresponse(
         result,
         RawResponseMessage::event(id, RelativePath::new(node, lane), expected_body.freeze()),
     );
@@ -919,4 +952,94 @@ fn encode_event_envelope() {
     buffer.advance(lane.len());
 
     assert_eq!(buffer.as_ref(), expected_body.as_bytes());
+}
+
+#[test]
+fn decode_client_linked_frame() {
+    let id = make_addr();
+    let node = "my_node";
+    let lane = "lane";
+
+    let frame = ResponseMessage::<Example, Bytes>::linked(id, RelativePath::new(node, lane));
+    let result = round_trip_response(frame);
+
+    check_result_response(
+        result,
+        ResponseMessage::<Example, Bytes>::linked(id, RelativePath::new(node, lane)),
+    );
+}
+
+#[test]
+fn decode_client_synced_frame() {
+    let id = make_addr();
+    let node = "my_node";
+    let lane = "lane";
+
+    let frame = ResponseMessage::<Example, Bytes>::synced(id, RelativePath::new(node, lane));
+    let result = round_trip_response(frame);
+
+    check_result_response(
+        result,
+        ResponseMessage::<Example, Bytes>::synced(id, RelativePath::new(node, lane)),
+    );
+}
+
+#[test]
+fn decode_client_unlinked_frame() {
+    let id = make_addr();
+    let node = "my_node";
+    let lane = "lane";
+
+    let frame =
+        ResponseMessage::<Example, Bytes>::unlinked(id, RelativePath::new(node, lane), None);
+    let result = round_trip_response(frame);
+
+    check_result_response(
+        result,
+        ResponseMessage::<Example, Bytes>::unlinked(id, RelativePath::new(node, lane), None),
+    );
+}
+
+#[test]
+fn decode_client_unlinked_frame_with_body() {
+    let id = make_addr();
+    let node = "my_node";
+    let lane = "lane";
+    let body = "Gone";
+
+    let frame = ResponseMessage::<Example, _>::unlinked(
+        id,
+        RelativePath::new(node, lane),
+        Some(body.as_bytes()),
+    );
+    let result = round_trip_response(frame);
+
+    let expected_body = Bytes::copy_from_slice(body.as_bytes());
+    check_result_response(
+        result,
+        ResponseMessage::<Example, Bytes>::unlinked(
+            id,
+            RelativePath::new(node, lane),
+            Some(expected_body),
+        ),
+    );
+}
+
+#[test]
+fn decode_client_event_frame() {
+    let id = make_addr();
+    let node = "my_node";
+    let lane = "lane";
+    let body = Example {
+        first: 1,
+        second: 2,
+    };
+
+    let frame = ResponseMessage::<Example, Bytes>::event(id, RelativePath::new(node, lane), body);
+    let result = round_trip_response(frame);
+
+    check_result_response(
+        result,
+        ResponseMessage::<Example, Bytes>::event(id, RelativePath::new(node, lane), body),
+    );
 }
