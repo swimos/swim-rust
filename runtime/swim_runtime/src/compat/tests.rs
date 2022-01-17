@@ -660,7 +660,12 @@ fn encode_link_envelope() {
     let node = "my_node";
     let lane = "lane";
 
-    let frame = Envelope::link().node_uri(node).lane_uri(lane).done();
+    let frame = Envelope::link()
+        .node_uri(node)
+        .lane_uri(lane)
+        .priority(0.5)
+        .rate(0.25)
+        .done();
     let mut encoder = EnvelopeEncoder::new(id);
     let mut buffer = BytesMut::new();
 
@@ -689,7 +694,12 @@ fn encode_linked_envelope() {
     let node = "my_node";
     let lane = "lane";
 
-    let frame = Envelope::linked().node_uri(node).lane_uri(lane).done();
+    let frame = Envelope::linked()
+        .node_uri(node)
+        .lane_uri(lane)
+        .priority(0.5)
+        .rate(0.25)
+        .done();
     let mut encoder = EnvelopeEncoder::new(id);
     let mut buffer = BytesMut::new();
 
@@ -718,7 +728,12 @@ fn encode_sync_envelope() {
     let node = "my_node";
     let lane = "lane";
 
-    let frame = Envelope::sync().node_uri(node).lane_uri(lane).done();
+    let frame = Envelope::sync()
+        .node_uri(node)
+        .lane_uri(lane)
+        .priority(0.5)
+        .rate(0.25)
+        .done();
     let mut encoder = EnvelopeEncoder::new(id);
     let mut buffer = BytesMut::new();
 
@@ -768,6 +783,30 @@ fn encode_synced_envelope() {
     assert_eq!(&buffer.as_ref()[0..node.len()], node.as_bytes());
     buffer.advance(node.len());
     assert_eq!(buffer.as_ref(), lane.as_bytes());
+}
+
+#[test]
+#[should_panic]
+fn encode_auth_envelope() {
+    let id = make_addr();
+
+    let frame = Envelope::auth_empty();
+    let mut encoder = EnvelopeEncoder::new(id);
+    let mut buffer = BytesMut::new();
+
+    let _ = encoder.encode(frame, &mut buffer);
+}
+
+#[test]
+#[should_panic]
+fn encode_deauth_envelope() {
+    let id = make_addr();
+
+    let frame = Envelope::deauth_empty();
+    let mut encoder = EnvelopeEncoder::new(id);
+    let mut buffer = BytesMut::new();
+
+    let _ = encoder.encode(frame, &mut buffer);
 }
 
 #[test]
