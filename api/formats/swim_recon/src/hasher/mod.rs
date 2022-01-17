@@ -6,6 +6,7 @@ use swim_form::structural::read::event::ReadEvent;
 #[cfg(test)]
 mod tests;
 
+#[derive(Debug, Clone)]
 struct NormalisationStack<'a> {
     stack: smallvec::SmallVec<[AttrContents<'a>; 4]>,
 }
@@ -41,10 +42,13 @@ impl<'a> NormalisationStack<'a> {
     }
 }
 
+#[derive(Debug, Clone)]
 struct AttrContents<'a> {
     contents: smallvec::SmallVec<[ReadEvent<'a>; 10]>,
     has_slot: bool,
-    primitives: usize,
+    items: usize,
+    //Todo dm guard against underflow
+    in_nested: usize,
 }
 
 impl<'a> AttrContents<'a> {
@@ -52,26 +56,31 @@ impl<'a> AttrContents<'a> {
         AttrContents {
             contents: Default::default(),
             has_slot: false,
-            primitives: 0,
+            items: 0,
+            in_nested: 0,
         }
     }
 
     fn push(&mut self, event: ReadEvent<'a>) {
-        //Todo dm check if you need to add brackets
-        if matches!(event, ReadEvent::Slot) {
-            self.has_slot = true;
+        if matches!(event, ReadEvent::EndRecord | ReadEvent::EndAttribute) {
+            self.in_nested -= 1;
+        } else if self.in_nested == 0 {
+            if matches!(event, ReadEvent::Slot) {
+                self.has_slot = true;
+            } else {
+                self.items += 1;
+            }
         }
 
-        if event.is_primitive() {
-            self.primitives += 1;
+        if matches!(event, ReadEvent::StartBody | ReadEvent::StartAttribute(_)) {
+            self.in_nested += 1;
         }
 
         self.contents.push(event);
     }
 
     fn implicit_record(&self) -> bool {
-        //Todo dm implement
-        false
+        self.has_slot || self.items > 1
     }
 }
 
@@ -91,6 +100,8 @@ fn normalise<'a, It: Iterator<Item = Result<ReadEvent<'a>, nom::error::Error<Spa
 
     while let Some(maybe_event) = iter.next() {
         let event = maybe_event.map_err(|_| ())?;
+
+        eprintln!("event = {:?}", event);
 
         if matches!(event, ReadEvent::StartAttribute(_)) {
             stack.push(event);
@@ -120,11 +131,14 @@ fn normalise<'a, It: Iterator<Item = Result<ReadEvent<'a>, nom::error::Error<Spa
         } else {
             stack.push(event);
         }
+
+        eprintln!("stack = {:?}", stack);
+        eprintln!("----------");
     }
 
-    // Ok(stack.into_iter().fold(vec![], |mut normalised, n| {
-    //     normalised.extend(n);
-    //     normalised
-    // }))
-    Err(())
+    //Todo dm change this
+    Ok(stack.stack.into_iter().fold(vec![], |mut normalised, n| {
+        normalised.extend(n);
+        normalised
+    }))
 }
