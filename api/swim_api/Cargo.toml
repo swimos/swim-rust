@@ -1,0 +1,12 @@
+[package]
+name = "swim_api"
+version = "0.1.0"
+authors = ["Swim Inc. developers info@swim.ai"]
+edition = "2021"
+
+[dependencies]
+futures = "0.3.4"
+swim_utilities = { path = "../../swim_utilities", features = ["io"] }
+swim_model = { path = "../swim_model" }
+swim_form = { path = "../swim_form" }
+thiserror = "1.0"
