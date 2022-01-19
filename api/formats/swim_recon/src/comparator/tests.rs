@@ -126,6 +126,42 @@ fn cmp_complex() {
     let result_1 = value_from_string(first).unwrap();
     let result_2 = value_from_string(second).unwrap();
     assert_eq!(result_1, result_2);
+
+    let first = "@name(@foo,@bar)";
+    let second = "@name({@foo, @bar})";
+
+    assert!(compare_values(first, second));
+
+    let result_1 = value_from_string(first).unwrap();
+    let result_2 = value_from_string(second).unwrap();
+    assert_eq!(result_1, result_2);
+
+    let first = "@name(1, @foo@bar)";
+    let second = "@name({1, @foo@bar})";
+
+    assert!(compare_values(first, second));
+
+    let result_1 = value_from_string(first).unwrap();
+    let result_2 = value_from_string(second).unwrap();
+    assert_eq!(result_1, result_2);
+
+    let first = "@name(@foo@bar({@bar, 1, @baz()}), @bar@foo()@baz)";
+    let second = "@name({@foo@bar(@bar, 1, @baz()), @bar@foo()@baz})";
+
+    assert!(compare_values(first, second));
+
+    let result_1 = value_from_string(first).unwrap();
+    let result_2 = value_from_string(second).unwrap();
+    assert_eq!(result_1, result_2);
+
+    let first = "@foo(1, @bar(2,3), 4, 5)";
+    let second = "@foo(1, @bar({2,3}), 4, 5)";
+
+    assert!(compare_values(first, second));
+
+    let result_1 = value_from_string(first).unwrap();
+    let result_2 = value_from_string(second).unwrap();
+    assert_eq!(result_1, result_2);
 }
 
 #[test]
@@ -213,6 +249,42 @@ fn cmp_early_termination_complex() {
 
     let first = "@foo()";
     let second = "@foo({})";
+
+    let first_iter = &mut ParseIterator::new(Span::new(first), false).peekable();
+    let second_iter = &mut ParseIterator::new(Span::new(second), false).peekable();
+
+    assert!(!incremental_compare(first_iter, second_iter));
+    assert_eq!(first_iter.next().unwrap().unwrap(), ReadEvent::StartBody);
+    assert_eq!(second_iter.next().unwrap().unwrap(), ReadEvent::StartBody);
+
+    let first = "@foo(@bar@baz) ";
+    let second = "@foo({@bar@baz})";
+
+    let first_iter = &mut ParseIterator::new(Span::new(first), false).peekable();
+    let second_iter = &mut ParseIterator::new(Span::new(second), false).peekable();
+
+    assert!(!incremental_compare(first_iter, second_iter));
+    assert_eq!(first_iter.next().unwrap().unwrap(), ReadEvent::StartBody);
+    assert_eq!(second_iter.next().unwrap().unwrap(), ReadEvent::StartBody);
+
+    let first = "@name({1,2},{3,4})";
+    let second = "@name({1,2,3,4})";
+
+    let first_iter = &mut ParseIterator::new(Span::new(first), false).peekable();
+    let second_iter = &mut ParseIterator::new(Span::new(second), false).peekable();
+
+    assert!(!incremental_compare(first_iter, second_iter));
+    assert_eq!(
+        first_iter.next().unwrap().unwrap(),
+        ReadEvent::Number(NumericValue::UInt(3))
+    );
+    assert_eq!(
+        second_iter.next().unwrap().unwrap(),
+        ReadEvent::Number(NumericValue::UInt(4))
+    );
+
+    let first = "@foo(1, @bar(2), 3, 4)";
+    let second = "@foo(1, @bar({2}), 3, 4)";
 
     let first_iter = &mut ParseIterator::new(Span::new(first), false).peekable();
     let second_iter = &mut ParseIterator::new(Span::new(second), false).peekable();
