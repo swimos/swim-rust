@@ -690,6 +690,7 @@ where
                                 *remaining -= consumed;
                                 src.unsplit(rem);
                                 break if let Some(result) = eof_result {
+                                    //*state = ResponseState::ReadingHeader;
                                     Ok(Some(ResponseMessage {
                                         origin: *source,
                                         path: std::mem::take(path),
@@ -732,6 +733,7 @@ where
                         } else {
                             Some(src.split_to(*remaining).freeze())
                         };
+                        //*state = ResponseState::ReadingHeader;
                         break Ok(Some(ResponseMessage::unlinked(
                             *source,
                             std::mem::take(path),

@@ -14,3 +14,4 @@
 
 pub mod downlink;
 pub mod error;
+pub mod protocol;

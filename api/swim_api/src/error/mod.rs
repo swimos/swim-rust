@@ -14,19 +14,34 @@
 
 use swim_form::structural::read::ReadError;
 use swim_model::Text;
+use swim_recon::parser::AsyncParseError;
 use thiserror::Error;
 
-#[derive(Error, Debug, Clone, PartialEq, Eq)]
+#[derive(Error, Debug)]
+pub enum FrameIoError {
+    #[error("{0}")]
+    Io(#[from] std::io::Error),
+    #[error("{0}")]
+    BadFrame(#[from] InvalidFrame),
+}
+
+impl From<AsyncParseError> for FrameIoError {
+    fn from(e: AsyncParseError) -> Self {
+        FrameIoError::BadFrame(InvalidFrame::InvalidMessageBody(e))
+    }
+}
+
+#[derive(Error, Debug)]
 pub enum InvalidFrame {
     #[error("An incoming frame was incomplete.")]
     Incomplete,
     #[error("Invalid frame header: {problem}")]
     InvalidHeader { problem: Text },
-    #[error("Invalid frame body: {problem}")]
-    InvalidMessageBody { body: Vec<u8>, problem: Text },
+    #[error("Invalid frame body: {0}")]
+    InvalidMessageBody(#[from] AsyncParseError),
 }
 
-#[derive(Error, Debug, Clone, PartialEq, Eq)]
+#[derive(Error, Debug)]
 pub enum DownlinkTaskError {
     #[error("{0}")]
     BadFrame(#[from] InvalidFrame),

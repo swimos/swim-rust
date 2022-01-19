@@ -19,7 +19,7 @@ use std::fmt::{Display, Formatter};
 use swim_form::structural::read::ReadError;
 
 /// Error that can occur when parsing into a structurally readable type.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ParseError {
     /// Parsing the input text failed. At the moment this just indicates the location
     /// in the input and the `nom` rule that failed.

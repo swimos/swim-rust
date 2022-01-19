@@ -19,6 +19,7 @@ pub mod backpressure;
  */
 pub mod compat;
 pub mod configuration;
+pub mod downlink;
 pub mod error;
 pub mod remote;
 pub mod routing;

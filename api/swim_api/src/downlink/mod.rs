@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use futures::future::BoxFuture;
 use swim_model::path::AbsolutePath;
@@ -41,4 +41,36 @@ pub trait Downlink {
         input: ByteReader,
         output: ByteWriter,
     ) -> BoxFuture<'static, Result<(), DownlinkTaskError>>;
+}
+
+impl<T: Downlink> Downlink for Box<T> {
+    fn kind(&self) -> DownlinkKind {
+        (**self).kind()
+    }
+
+    fn run(
+        &self,
+        path: AbsolutePath,
+        config: DownlinkConfig,
+        input: ByteReader,
+        output: ByteWriter,
+    ) -> BoxFuture<'static, Result<(), DownlinkTaskError>> {
+        (**self).run(path, config, input, output)
+    }
+}
+
+impl<T: Downlink + Send + Sync> Downlink for Arc<T> {
+    fn kind(&self) -> DownlinkKind {
+        (**self).kind()
+    }
+
+    fn run(
+        &self,
+        path: AbsolutePath,
+        config: DownlinkConfig,
+        input: ByteReader,
+        output: ByteWriter,
+    ) -> BoxFuture<'static, Result<(), DownlinkTaskError>> {
+        (**self).run(path, config, input, output)
+    }
 }

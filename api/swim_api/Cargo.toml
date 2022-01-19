@@ -9,4 +9,8 @@ futures = "0.3.4"
 swim_utilities = { path = "../../swim_utilities", features = ["io"] }
 swim_model = { path = "../swim_model" }
 swim_form = { path = "../swim_form" }
+swim_recon = { path = "../../api/formats/swim_recon", features = ["async_parser"] }
 thiserror = "1.0"
+bytes = "1.0"
+tokio = { version = "1.1.1" }
+tokio-util = { version = "0.6.8", features = ["codec"] }
