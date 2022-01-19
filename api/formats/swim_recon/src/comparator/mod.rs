@@ -126,24 +126,253 @@ fn incremental_compare<
 #[derive(Debug, Clone)]
 enum ValidatorState {
     Init,
-    InProgress(InProgressState),
+    InProgress,
     Invalid,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+enum ItemType {
+    ValueItem(ValueType),
+    Slot(ValueType, ValueType),
+}
+
+impl ItemType {
+    fn len(&self) -> usize {
+        match self {
+            ItemType::ValueItem(val) => val.len(),
+            ItemType::Slot(key, val) => key.len() + val.len(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+enum ValueType {
+    Primitive,
+    Record(Vec<ValueType>, Vec<ItemType>),
+}
+
+impl ValueType {
+    fn len(&self) -> usize {
+        match self {
+            ValueType::Primitive => 1,
+            ValueType::Record(attrs, items) => {
+                let mut size = 0;
+
+                if attrs.is_empty() {
+                    size += 1;
+                } else {
+                    for attr in attrs {
+                        size += attr.len();
+                    }
+                }
+
+                if items.is_empty() {
+                    size += 1;
+                } else {
+                    for item in items {
+                        size += item.len();
+                    }
+                }
+
+                size
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+enum KeyState {
+    NoKey,
+    Attr,
+    Slot(ValueType),
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct BuilderState {
+    /// The type of the key for the current builder.
+    key: KeyState,
+    /// Flag indicating if the value from the builder is in a body.
+    in_body: bool,
+    /// A vector containing the attributes of the builder.
+    attrs: SmallVec<[ValueType; 4]>,
+    /// A vector containing the items of the builder.
+    items: SmallVec<[ItemType; 4]>,
+}
+
+impl BuilderState {
+    fn items_len(&self) -> usize {
+        let mut size = 0;
+
+        for item in &self.items {
+            size += item.len()
+        }
+
+        size
+    }
+
+    fn attrs_len(&self) -> usize {
+        let mut size = 0;
+
+        for attr in &self.attrs {
+            size += attr.len()
+        }
+
+        size
+    }
+}
+
 #[derive(Debug, Clone)]
-struct InProgressState {
+struct ValueValidator {
+    /// The state of the validator.
+    state: ValidatorState,
     /// The internal stack of builders.
     stack: SmallVec<[BuilderState; 4]>,
     /// Flag indicating if there is a slot key.
     slot_key: Option<ValueType>,
 }
 
-impl InProgressState {
+impl PartialEq for ValueValidator {
+    fn eq(&self, other: &Self) -> bool {
+        match (&self.state, &other.state) {
+            (ValidatorState::InProgress, ValidatorState::InProgress) => {
+                let mut self_iter = self.stack.iter().peekable();
+                let mut other_iter = other.stack.iter().peekable();
+
+                loop {
+                    match (self_iter.next(), other_iter.next()) {
+                        (Some(self_builder), Some(other_builder)) => {
+                            if self_builder == other_builder {
+                                continue;
+                            } else {
+                                let mut self_items_len = self_builder.items_len();
+                                let mut other_items_len = other_builder.items_len();
+
+                                let mut self_attrs_len = self_builder.attrs_len();
+                                let mut other_attrs_len = other_builder.attrs_len();
+
+                                while let Some(self_builder_next) = self_iter.peek() {
+                                    if self_builder_next.key == KeyState::NoKey {
+                                        let self_builder_next = self_iter.next().unwrap();
+                                        self_items_len += self_builder_next.items_len();
+                                        self_attrs_len += self_builder_next.attrs_len();
+                                    } else {
+                                        break;
+                                    }
+                                }
+                                while let Some(other_builder_next) = other_iter.peek() {
+                                    if other_builder_next.key == KeyState::NoKey {
+                                        let other_builder_next = other_iter.next().unwrap();
+                                        other_items_len += other_builder_next.items_len();
+                                        other_attrs_len += other_builder_next.attrs_len();
+                                    } else {
+                                        break;
+                                    }
+                                }
+
+                                if self_items_len == other_items_len
+                                    && self_attrs_len == other_attrs_len
+                                {
+                                    continue;
+                                } else {
+                                    return false;
+                                }
+                            }
+                        }
+                        (Some(self_builder), None) => {
+                            if self_builder.key == KeyState::NoKey
+                                && self_builder.attrs.is_empty()
+                                && self_builder.items.is_empty()
+                            {
+                                continue;
+                            }
+                        }
+                        (None, Some(other_builder)) => {
+                            if other_builder.key == KeyState::NoKey
+                                && other_builder.attrs.is_empty()
+                                && other_builder.items.is_empty()
+                            {
+                                continue;
+                            }
+                        }
+                        (None, None) => return true,
+                    }
+                }
+            }
+            (ValidatorState::Init, ValidatorState::Init) => true,
+            _ => false,
+        }
+    }
+}
+
+impl ValueValidator {
     fn new() -> Self {
-        InProgressState {
+        ValueValidator {
+            state: ValidatorState::Init,
             stack: SmallVec::with_capacity(4),
             slot_key: None,
         }
+    }
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<ValueType> {
+        match &mut self.state {
+            ValidatorState::Init => match input {
+                ReadEvent::StartAttribute(_) => {
+                    self.new_attr_frame();
+                    self.state = ValidatorState::InProgress;
+                }
+                ReadEvent::StartBody => {
+                    self.new_record_frame(true);
+                    self.state = ValidatorState::InProgress;
+                }
+                ReadEvent::Slot => self.state = ValidatorState::Invalid,
+                ReadEvent::EndAttribute => self.state = ValidatorState::Invalid,
+                ReadEvent::EndRecord => self.state = ValidatorState::Invalid,
+                _ => {}
+            },
+            ValidatorState::InProgress => match input {
+                ReadEvent::Extant
+                | ReadEvent::TextValue(_)
+                | ReadEvent::Number(_)
+                | ReadEvent::Boolean(_)
+                | ReadEvent::Blob(_) => {
+                    if self.add_item(ValueType::Primitive).is_err() {
+                        self.state = ValidatorState::Invalid
+                    }
+                }
+                ReadEvent::StartAttribute(_) => {
+                    self.new_attr_frame();
+                }
+                ReadEvent::StartBody => {
+                    if self.new_record_item().is_err() {
+                        self.state = ValidatorState::Invalid
+                    }
+                }
+                ReadEvent::Slot => {
+                    if self.set_slot_key().is_err() {
+                        self.state = ValidatorState::Invalid
+                    }
+                }
+                ReadEvent::EndAttribute => match self.pop(true) {
+                    Ok(done) => {
+                        if done.is_some() {
+                            self.state = ValidatorState::Init
+                        }
+                    }
+                    Err(_) => self.state = ValidatorState::Invalid,
+                },
+                ReadEvent::EndRecord => match self.pop(false) {
+                    Ok(done) => {
+                        if let Some(val) = done {
+                            self.state = ValidatorState::Init;
+                            return Some(val);
+                        }
+                    }
+                    Err(_) => self.state = ValidatorState::Invalid,
+                },
+            },
+            ValidatorState::Invalid => {}
+        }
+        None
     }
 
     fn new_record_frame(&mut self, in_body: bool) {
@@ -151,15 +380,15 @@ impl InProgressState {
             BuilderState {
                 key: KeyState::Slot(key),
                 in_body,
-                attrs: Vec::with_capacity(4),
-                items: Vec::with_capacity(4),
+                attrs: SmallVec::with_capacity(4),
+                items: SmallVec::with_capacity(4),
             }
         } else {
             BuilderState {
                 key: KeyState::NoKey,
                 in_body,
-                attrs: Vec::with_capacity(4),
-                items: Vec::with_capacity(4),
+                attrs: SmallVec::with_capacity(4),
+                items: SmallVec::with_capacity(4),
             }
         };
 
@@ -186,8 +415,8 @@ impl InProgressState {
         self.stack.push(BuilderState {
             key: KeyState::Attr,
             in_body: true,
-            attrs: Vec::with_capacity(4),
-            items: Vec::with_capacity(4),
+            attrs: SmallVec::with_capacity(4),
+            items: SmallVec::with_capacity(4),
         })
     }
 
@@ -216,7 +445,7 @@ impl InProgressState {
                     if is_attr_end {
                         Err(())
                     } else {
-                        let record = ValueType::Record(attrs, items);
+                        let record = ValueType::Record(attrs.into_vec(), items.into_vec());
                         if self.stack.is_empty() {
                             Ok(Some(record))
                         } else {
@@ -229,7 +458,7 @@ impl InProgressState {
                     if is_attr_end {
                         Err(())
                     } else {
-                        let record = ValueType::Record(attrs, items);
+                        let record = ValueType::Record(attrs.into_vec(), items.into_vec());
                         self.add_slot(key, record)?;
                         Ok(None)
                     }
@@ -245,7 +474,7 @@ impl InProgressState {
                                 _ => ValueType::Primitive,
                             }
                         } else {
-                            ValueType::Record(attrs, items)
+                            ValueType::Record(attrs.into_vec(), items.into_vec())
                         };
                         self.add_attr(body)?;
                         Ok(None)
@@ -296,194 +525,5 @@ impl InProgressState {
             .items
             .push(ItemType::ValueItem(value));
         Ok(())
-    }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-enum ItemType {
-    ValueItem(ValueType),
-    Slot(ValueType, ValueType),
-}
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-enum ValueType {
-    Primitive,
-    Record(Vec<ValueType>, Vec<ItemType>),
-}
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-enum KeyState {
-    NoKey,
-    Attr,
-    Slot(ValueType),
-}
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-struct BuilderState {
-    /// The type of the key for the current builder.
-    key: KeyState,
-    /// Flag indicating if the value from the builder is in a body.
-    in_body: bool,
-    /// A vector containing the attributes of the builder.
-    attrs: Vec<ValueType>,
-    /// A vector containing the items of the builder.
-    items: Vec<ItemType>,
-}
-
-#[derive(Debug, Clone)]
-struct ValueValidator {
-    state: ValidatorState,
-}
-
-//Todo dm
-impl PartialEq for ValueValidator {
-    fn eq(&self, other: &Self) -> bool {
-        match (&self.state, &other.state) {
-            (ValidatorState::InProgress(self_state), ValidatorState::InProgress(other_state)) => {
-                let mut self_iter = self_state.stack.iter().peekable();
-                let mut other_iter = other_state.stack.iter().peekable();
-
-                loop {
-                    match (self_iter.next(), other_iter.next()) {
-                        (Some(self_builder), Some(other_builder)) => {
-                            if self_builder == other_builder {
-                                continue;
-                            } else {
-                                let mut self_items = self_builder.items.clone();
-                                let mut other_items = other_builder.items.clone();
-
-                                let mut self_attrs = self_builder.attrs.clone();
-                                let mut other_attrs = other_builder.attrs.clone();
-
-                                loop {
-                                    if let Some(self_builder_next) = self_iter.peek() {
-                                        if self_builder_next.key == KeyState::NoKey {
-                                            let self_builder_next = self_iter.next().unwrap();
-                                            self_items.extend(self_builder_next.items.clone());
-                                            self_attrs.extend(self_builder_next.attrs.clone());
-                                        } else {
-                                            break;
-                                        }
-                                    } else {
-                                        break;
-                                    }
-                                }
-
-                                loop {
-                                    if let Some(other_builder_next) = other_iter.peek() {
-                                        if other_builder_next.key == KeyState::NoKey {
-                                            let other_builder_next = other_iter.next().unwrap();
-                                            other_items.extend(other_builder_next.items.clone());
-                                            other_attrs.extend(other_builder_next.attrs.clone());
-                                        } else {
-                                            break;
-                                        }
-                                    } else {
-                                        break;
-                                    }
-                                }
-
-                                if self_items == other_items && self_attrs == other_attrs {
-                                    continue;
-                                } else {
-                                    return false;
-                                }
-                            }
-                        }
-                        (Some(self_builder), None) => {
-                            if self_builder.key == KeyState::NoKey
-                                && self_builder.attrs.len() == 0
-                                && self_builder.items.len() == 0
-                            {
-                                continue;
-                            }
-                        }
-                        (None, Some(other_builder)) => {
-                            if other_builder.key == KeyState::NoKey
-                                && other_builder.attrs.len() == 0
-                                && other_builder.items.len() == 0
-                            {
-                                continue;
-                            }
-                        }
-                        (None, None) => return true,
-                    }
-                }
-            }
-            (ValidatorState::Init, ValidatorState::Init) => true,
-            _ => false,
-        }
-    }
-}
-
-impl ValueValidator {
-    fn new() -> Self {
-        ValueValidator {
-            state: ValidatorState::Init,
-        }
-    }
-
-    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<ValueType> {
-        match &mut self.state {
-            ValidatorState::Init => match input {
-                ReadEvent::StartAttribute(_) => {
-                    let mut state = InProgressState::new();
-                    state.new_attr_frame();
-                    self.state = ValidatorState::InProgress(state);
-                }
-                ReadEvent::StartBody => {
-                    let mut state = InProgressState::new();
-                    state.new_record_frame(true);
-                    self.state = ValidatorState::InProgress(state);
-                }
-                ReadEvent::Slot => self.state = ValidatorState::Invalid,
-                ReadEvent::EndAttribute => self.state = ValidatorState::Invalid,
-                ReadEvent::EndRecord => self.state = ValidatorState::Invalid,
-                _ => {}
-            },
-            ValidatorState::InProgress(state) => match input {
-                ReadEvent::Extant
-                | ReadEvent::TextValue(_)
-                | ReadEvent::Number(_)
-                | ReadEvent::Boolean(_)
-                | ReadEvent::Blob(_) => {
-                    if state.add_item(ValueType::Primitive).is_err() {
-                        self.state = ValidatorState::Invalid
-                    }
-                }
-                ReadEvent::StartAttribute(_) => {
-                    state.new_attr_frame();
-                }
-                ReadEvent::StartBody => {
-                    if state.new_record_item().is_err() {
-                        self.state = ValidatorState::Invalid
-                    }
-                }
-                ReadEvent::Slot => {
-                    if state.set_slot_key().is_err() {
-                        self.state = ValidatorState::Invalid
-                    }
-                }
-                ReadEvent::EndAttribute => match state.pop(true) {
-                    Ok(done) => {
-                        if done.is_some() {
-                            self.state = ValidatorState::Init
-                        }
-                    }
-                    Err(_) => self.state = ValidatorState::Invalid,
-                },
-                ReadEvent::EndRecord => match state.pop(false) {
-                    Ok(done) => {
-                        if let Some(val) = done {
-                            self.state = ValidatorState::Init;
-                            return Some(val);
-                        }
-                    }
-                    Err(_) => self.state = ValidatorState::Invalid,
-                },
-            },
-            ValidatorState::Invalid => {}
-        }
-        None
     }
 }
