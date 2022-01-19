@@ -49,6 +49,7 @@ struct AttrContents<'a> {
     items: usize,
     //Todo dm guard against underflow
     in_nested: usize,
+    was_last_attr: bool,
 }
 
 impl<'a> AttrContents<'a> {
@@ -58,6 +59,7 @@ impl<'a> AttrContents<'a> {
             has_slot: false,
             items: 0,
             in_nested: 0,
+            was_last_attr: true,
         }
     }
 
@@ -68,8 +70,17 @@ impl<'a> AttrContents<'a> {
             if matches!(event, ReadEvent::Slot) {
                 self.has_slot = true;
             } else {
-                self.items += 1;
+                if matches!(event, ReadEvent::StartAttribute(_) | ReadEvent::EndAttribute) && self.was_last_attr == true {
+
+                } else {
+                    self.was_last_attr = false;
+                    self.items += 1;
+                }
             }
+        }
+
+        if matches!(event, ReadEvent::StartAttribute(_)) {
+            self.was_last_attr = true;
         }
 
         if matches!(event, ReadEvent::StartBody | ReadEvent::StartAttribute(_)) {
