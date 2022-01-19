@@ -241,41 +241,37 @@ impl PartialEq for ValueValidator {
                 loop {
                     match (self_iter.next(), other_iter.next()) {
                         (Some(self_builder), Some(other_builder)) => {
-                            if self_builder == other_builder {
+                            let mut self_items_len = self_builder.items_len();
+                            let mut other_items_len = other_builder.items_len();
+
+                            let mut self_attrs_len = self_builder.attrs_len();
+                            let mut other_attrs_len = other_builder.attrs_len();
+
+                            while let Some(self_builder_next) = self_iter.peek() {
+                                if self_builder_next.key == KeyState::NoKey {
+                                    let self_builder_next = self_iter.next().unwrap();
+                                    self_items_len += self_builder_next.items_len();
+                                    self_attrs_len += self_builder_next.attrs_len();
+                                } else {
+                                    break;
+                                }
+                            }
+                            while let Some(other_builder_next) = other_iter.peek() {
+                                if other_builder_next.key == KeyState::NoKey {
+                                    let other_builder_next = other_iter.next().unwrap();
+                                    other_items_len += other_builder_next.items_len();
+                                    other_attrs_len += other_builder_next.attrs_len();
+                                } else {
+                                    break;
+                                }
+                            }
+
+                            if self_items_len == other_items_len
+                                && self_attrs_len == other_attrs_len
+                            {
                                 continue;
                             } else {
-                                let mut self_items_len = self_builder.items_len();
-                                let mut other_items_len = other_builder.items_len();
-
-                                let mut self_attrs_len = self_builder.attrs_len();
-                                let mut other_attrs_len = other_builder.attrs_len();
-
-                                while let Some(self_builder_next) = self_iter.peek() {
-                                    if self_builder_next.key == KeyState::NoKey {
-                                        let self_builder_next = self_iter.next().unwrap();
-                                        self_items_len += self_builder_next.items_len();
-                                        self_attrs_len += self_builder_next.attrs_len();
-                                    } else {
-                                        break;
-                                    }
-                                }
-                                while let Some(other_builder_next) = other_iter.peek() {
-                                    if other_builder_next.key == KeyState::NoKey {
-                                        let other_builder_next = other_iter.next().unwrap();
-                                        other_items_len += other_builder_next.items_len();
-                                        other_attrs_len += other_builder_next.attrs_len();
-                                    } else {
-                                        break;
-                                    }
-                                }
-
-                                if self_items_len == other_items_len
-                                    && self_attrs_len == other_attrs_len
-                                {
-                                    continue;
-                                } else {
-                                    return false;
-                                }
+                                return false;
                             }
                         }
                         (Some(self_builder), None) => {

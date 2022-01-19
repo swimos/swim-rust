@@ -162,6 +162,24 @@ fn cmp_complex() {
     let result_1 = value_from_string(first).unwrap();
     let result_2 = value_from_string(second).unwrap();
     assert_eq!(result_1, result_2);
+
+    let first = "@name(a: @foo)";
+    let second = "@name({a: @foo})";
+
+    assert!(compare_values(first, second));
+
+    let result_1 = value_from_string(first).unwrap();
+    let result_2 = value_from_string(second).unwrap();
+    assert_eq!(result_1, result_2);
+
+    let first = "@name(b: @foo@bar@baz, @foo(1,2), @bar@baz))";
+    let second = "@name({b: @foo@bar@baz, @foo({1,2}), @bar@baz})";
+
+    assert!(compare_values(first, second));
+
+    let result_1 = value_from_string(first).unwrap();
+    let result_2 = value_from_string(second).unwrap();
+    assert_eq!(result_1, result_2);
 }
 
 #[test]
