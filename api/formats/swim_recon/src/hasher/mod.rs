@@ -1,12 +1,58 @@
-use crate::parser::Span;
+use crate::parser::{ParseError, Span};
 use smallvec::IntoIter;
-use std::iter::Peekable;
+use std::collections::hash_map::DefaultHasher;
+use std::error::Error;
+use std::fmt::{Display, Formatter};
+use std::hash::{Hash, Hasher};
 use swim_form::structural::read::event::ReadEvent;
 
 #[cfg(test)]
 mod tests;
 
-#[derive(Debug, Clone)]
+pub fn calculate_hash(value: &str) -> Result<u64, HashError> {
+    let mut hasher = DefaultHasher::new();
+
+    let stack = normalise(&mut crate::parser::ParseIterator::new(
+        Span::new(value),
+        false,
+    ))?;
+
+    stack.hash(&mut hasher);
+    Ok(hasher.finish())
+}
+
+fn normalise<'a, It: Iterator<Item = Result<ReadEvent<'a>, nom::error::Error<Span<'a>>>>>(
+    iter: &mut It,
+) -> Result<NormalisationStack<'a>, HashError> {
+    let mut stack = NormalisationStack::new();
+
+    for maybe_event in iter {
+        let event = maybe_event.map_err(ParseError::from)?;
+
+        if matches!(event, ReadEvent::StartAttribute(_)) {
+            stack.push(event)?;
+            stack.add_attr();
+        } else if matches!(event, ReadEvent::EndAttribute) {
+            let attr_contents = stack.pop().ok_or(ParseError::InvalidEventStream)?;
+
+            if attr_contents.is_implicit_record() {
+                stack.push(ReadEvent::StartBody)?;
+                stack.extend(attr_contents)?;
+                stack.push(ReadEvent::EndRecord)?;
+            } else {
+                stack.extend(attr_contents)?;
+            }
+
+            stack.push(event)?;
+        } else {
+            stack.push(event)?;
+        }
+    }
+
+    Ok(stack)
+}
+
+#[derive(Debug, Clone, Hash)]
 struct NormalisationStack<'a> {
     stack: smallvec::SmallVec<[AttrContents<'a>; 4]>,
 }
@@ -18,13 +64,18 @@ impl<'a> NormalisationStack<'a> {
         }
     }
 
-    fn push(&mut self, event: ReadEvent<'a>) {
+    fn add_attr(&mut self) {
+        self.stack.push(AttrContents::new());
+    }
+
+    fn push(&mut self, event: ReadEvent<'a>) -> Result<(), HashError> {
         match self.stack.last_mut() {
             Some(last) => last.push(event),
             None => {
                 let mut attr_contents = AttrContents::new();
-                attr_contents.push(event);
+                attr_contents.push(event)?;
                 self.stack.push(attr_contents);
+                Ok(())
             }
         }
     }
@@ -33,64 +84,77 @@ impl<'a> NormalisationStack<'a> {
         self.stack.pop()
     }
 
-    fn start_attr(&mut self) {
-        self.stack.push(AttrContents::new());
-    }
+    fn extend(&mut self, attr_contents: AttrContents<'a>) -> Result<(), HashError> {
+        self.stack
+            .last_mut()
+            .ok_or(ParseError::InvalidEventStream)?
+            .contents
+            .extend(attr_contents);
 
-    fn end_attr(&mut self) {
-        self.stack.push(AttrContents::new());
+        Ok(())
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash)]
 struct AttrContents<'a> {
+    /// The contents of the attribute.
     contents: smallvec::SmallVec<[ReadEvent<'a>; 10]>,
+    /// Shows how deep we are in nested records.
+    nested_level: usize,
+    /// Flag showing if the attribute contains any slots.
     has_slot: bool,
+    /// The number of items that the attribute contains.
     items: usize,
-    //Todo dm guard against underflow
-    in_nested: usize,
-    was_last_attr: bool,
+    /// Flag showing whether or not the last item that was added was an attribute.
+    is_last_attr: bool,
 }
 
 impl<'a> AttrContents<'a> {
     fn new() -> Self {
         AttrContents {
             contents: Default::default(),
+            nested_level: 0,
             has_slot: false,
             items: 0,
-            in_nested: 0,
-            was_last_attr: true,
+            is_last_attr: true,
         }
     }
 
-    fn push(&mut self, event: ReadEvent<'a>) {
+    fn push(&mut self, event: ReadEvent<'a>) -> Result<(), HashError> {
         if matches!(event, ReadEvent::EndRecord | ReadEvent::EndAttribute) {
-            self.in_nested -= 1;
-        } else if self.in_nested == 0 {
+            self.nested_level = self
+                .nested_level
+                .checked_sub(1)
+                .ok_or(ParseError::InvalidEventStream)?;
+        } else if self.nested_level == 0 {
             if matches!(event, ReadEvent::Slot) {
                 self.has_slot = true;
-            } else {
-                if matches!(event, ReadEvent::StartAttribute(_) | ReadEvent::EndAttribute) && self.was_last_attr == true {
-
-                } else {
-                    self.was_last_attr = false;
-                    self.items += 1;
-                }
+            } else if self.can_concat_attrs(&event) {
+                self.is_last_attr = false;
+                self.items += 1;
             }
         }
 
         if matches!(event, ReadEvent::StartAttribute(_)) {
-            self.was_last_attr = true;
+            self.is_last_attr = true;
         }
 
         if matches!(event, ReadEvent::StartBody | ReadEvent::StartAttribute(_)) {
-            self.in_nested += 1;
+            self.nested_level += 1;
         }
 
         self.contents.push(event);
+        Ok(())
     }
 
-    fn implicit_record(&self) -> bool {
+    fn can_concat_attrs(&mut self, event: &ReadEvent<'a>) -> bool {
+        !(matches!(
+            event,
+            ReadEvent::StartAttribute(_) | ReadEvent::EndAttribute
+        ) && self.is_last_attr)
+    }
+
+    fn is_implicit_record(&self) -> bool {
         self.has_slot || self.items > 1
     }
 }
@@ -104,52 +168,19 @@ impl<'a> IntoIterator for AttrContents<'a> {
     }
 }
 
-fn normalise<'a, It: Iterator<Item = Result<ReadEvent<'a>, nom::error::Error<Span<'a>>>>>(
-    iter: &mut Peekable<It>,
-) -> Result<Vec<ReadEvent<'a>>, ()> {
-    let mut stack = NormalisationStack::new();
+#[derive(Debug, PartialEq, Eq)]
+pub struct HashError(ParseError);
 
-    while let Some(maybe_event) = iter.next() {
-        let event = maybe_event.map_err(|_| ())?;
-
-        eprintln!("event = {:?}", event);
-
-        if matches!(event, ReadEvent::StartAttribute(_)) {
-            stack.push(event);
-            stack.start_attr();
-        } else if matches!(event, ReadEvent::EndAttribute) {
-            let attr_contents = stack.pop().ok_or(())?;
-
-            if attr_contents.implicit_record() {
-                stack.push(ReadEvent::StartBody);
-                stack
-                    .stack
-                    .last_mut()
-                    .ok_or(())?
-                    .contents
-                    .extend(attr_contents);
-                stack.push(ReadEvent::EndRecord);
-            } else {
-                stack
-                    .stack
-                    .last_mut()
-                    .ok_or(())?
-                    .contents
-                    .extend(attr_contents);
-            }
-
-            stack.push(event);
-        } else {
-            stack.push(event);
-        }
-
-        eprintln!("stack = {:?}", stack);
-        eprintln!("----------");
+impl From<ParseError> for HashError {
+    fn from(err: ParseError) -> Self {
+        HashError(err)
     }
+}
 
-    //Todo dm change this
-    Ok(stack.stack.into_iter().fold(vec![], |mut normalised, n| {
-        normalised.extend(n);
-        normalised
-    }))
+impl Error for HashError {}
+
+impl Display for HashError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
 }
