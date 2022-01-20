@@ -22,7 +22,7 @@ use std::fmt::Write;
 
 use crate::error::{FrameIoError, InvalidFrame};
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum DownlinkNotification<T> {
     Synced,
     Event {
@@ -35,7 +35,8 @@ pub struct DownlinkOperation<T> {
     body: T,
 }
 
-pub struct DownlinkNotifiationEncoder;
+#[derive(Debug, Default, Clone, Copy)]
+pub struct DownlinkNotificationEncoder;
 
 const SYNCED: u8 = 1;
 const EVENT: u8 = 2;
@@ -43,10 +44,10 @@ const EVENT: u8 = 2;
 const TAG_SIZE: usize = std::mem::size_of::<u8>();
 const LEN_SIZE: usize = std::mem::size_of::<u64>();
 
-impl Encoder<DownlinkNotification<Bytes>> for DownlinkNotifiationEncoder {
+impl<T: AsRef<[u8]>> Encoder<DownlinkNotification<T>> for DownlinkNotificationEncoder {
     type Error = std::io::Error;
     
-    fn encode(&mut self, item: DownlinkNotification<Bytes>, dst: &mut bytes::BytesMut) -> Result<(), Self::Error> {
+    fn encode(&mut self, item: DownlinkNotification<T>, dst: &mut bytes::BytesMut) -> Result<(), Self::Error> {
         match item {
             DownlinkNotification::Synced => {
                 dst.reserve(TAG_SIZE);
@@ -55,10 +56,10 @@ impl Encoder<DownlinkNotification<Bytes>> for DownlinkNotifiationEncoder {
             DownlinkNotification::Event {
                 body,
             } => {
-                dst.reserve(TAG_SIZE + LEN_SIZE + body.len());
+                dst.reserve(TAG_SIZE + LEN_SIZE + body.as_ref().len());
                 dst.put_u8(EVENT);
-                dst.put_u64(body.len() as u64);
-                dst.put(body);
+                dst.put_u64(body.as_ref().len() as u64);
+                dst.put(body.as_ref());
             }
         }
         Ok(())
