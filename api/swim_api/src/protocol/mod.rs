@@ -32,7 +32,7 @@ pub enum DownlinkNotification<T> {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct DownlinkOperation<T> {
-    body: T,
+    pub body: T,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
