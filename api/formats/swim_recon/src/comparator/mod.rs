@@ -229,6 +229,11 @@ impl PartialEq for ValueValidator {
     fn eq(&self, other: &Self) -> bool {
         eprintln!("self = {:?}", self);
         eprintln!("other = {:?}", other);
+
+        if self.slot_key != other.slot_key {
+            return false;
+        }
+
         match (&self.state, &other.state) {
             (ValidatorState::InProgress, ValidatorState::InProgress) => {
                 let mut self_iter = self.stack.iter().peekable();
