@@ -25,6 +25,7 @@ jobs:
       # Run rustfmt
       - script: |
           cargo fmt -- --check
+        displayName: Run rustfmt
 
       # Run doc
       - script: |
