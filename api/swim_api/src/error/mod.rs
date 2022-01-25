@@ -43,8 +43,10 @@ pub enum InvalidFrame {
 
 #[derive(Error, Debug)]
 pub enum DownlinkTaskError {
+    #[error("The downlink failed to start.")]
+    FailedToStart,
     #[error("{0}")]
-    BadFrame(#[from] InvalidFrame),
+    BadFrame(#[from] FrameIoError),
     #[error("Failed to deserialize frame body: {0}")]
     DeserializationFailed(#[from] ReadError),
 }

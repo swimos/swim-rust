@@ -12,22 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use bytes::{Bytes, BufMut, Buf};
+use bytes::{Buf, BufMut, Bytes};
+use std::fmt::Write;
 use swim_form::structural::{read::recognizer::Recognizer, write::StructuralWritable};
+use swim_model::Text;
 use swim_recon::parser::{AsyncParseError, RecognizerDecoder};
 use swim_recon::printer::print_recon_compact;
-use swim_model::Text;
 use tokio_util::codec::{Decoder, Encoder};
-use std::fmt::Write;
 
 use crate::error::{FrameIoError, InvalidFrame};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum DownlinkNotification<T> {
+    Linked,
     Synced,
-    Event {
-        body: T,
-    }
+    Event { body: T },
+    Unlinked,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -38,28 +38,40 @@ pub struct DownlinkOperation<T> {
 #[derive(Debug, Default, Clone, Copy)]
 pub struct DownlinkNotificationEncoder;
 
-const SYNCED: u8 = 1;
-const EVENT: u8 = 2;
+const LINKED: u8 = 1;
+const SYNCED: u8 = 2;
+const EVENT: u8 = 3;
+const UNLINKED: u8 = 4;
 
 const TAG_SIZE: usize = std::mem::size_of::<u8>();
 const LEN_SIZE: usize = std::mem::size_of::<u64>();
 
 impl<T: AsRef<[u8]>> Encoder<DownlinkNotification<T>> for DownlinkNotificationEncoder {
     type Error = std::io::Error;
-    
-    fn encode(&mut self, item: DownlinkNotification<T>, dst: &mut bytes::BytesMut) -> Result<(), Self::Error> {
+
+    fn encode(
+        &mut self,
+        item: DownlinkNotification<T>,
+        dst: &mut bytes::BytesMut,
+    ) -> Result<(), Self::Error> {
         match item {
+            DownlinkNotification::Linked => {
+                dst.reserve(TAG_SIZE);
+                dst.put_u8(LINKED);
+            }
             DownlinkNotification::Synced => {
                 dst.reserve(TAG_SIZE);
                 dst.put_u8(SYNCED);
-            },
-            DownlinkNotification::Event {
-                body,
-            } => {
+            }
+            DownlinkNotification::Event { body } => {
                 dst.reserve(TAG_SIZE + LEN_SIZE + body.as_ref().len());
                 dst.put_u8(EVENT);
                 dst.put_u64(body.as_ref().len() as u64);
                 dst.put(body.as_ref());
+            }
+            DownlinkNotification::Unlinked => {
+                dst.reserve(TAG_SIZE);
+                dst.put_u8(UNLINKED);
             }
         }
         Ok(())
@@ -85,14 +97,23 @@ pub struct DownlinkNotifiationDecoder<T, R> {
     recognizer: RecognizerDecoder<R>,
 }
 
+impl<R: Recognizer> DownlinkNotifiationDecoder<R::Target, R> {
+    pub fn new(recognizer: R) -> Self {
+        DownlinkNotifiationDecoder {
+            state: DownlinkNotifiationDecoderState::ReadingHeader,
+            recognizer: RecognizerDecoder::new(recognizer),
+        }
+    }
+}
+
 impl<T, R> Decoder for DownlinkNotifiationDecoder<T, R>
 where
-R: Recognizer<Target = T>,
+    R: Recognizer<Target = T>,
 {
     type Item = DownlinkNotification<T>;
-    
+
     type Error = FrameIoError;
-    
+
     fn decode(&mut self, src: &mut bytes::BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         let DownlinkNotifiationDecoder {
             state, recognizer, ..
@@ -106,30 +127,41 @@ R: Recognizer<Target = T>,
                     }
                     let tag = src.as_ref()[0];
                     match tag {
+                        LINKED => {
+                            src.advance(1);
+                            break Ok(Some(DownlinkNotification::Linked));
+                        }
                         SYNCED => {
                             src.advance(1);
                             break Ok(Some(DownlinkNotification::Synced));
-                        },
+                        }
                         EVENT => {
                             if src.remaining() < TAG_SIZE + LEN_SIZE {
                                 let required = src.remaining() - TAG_SIZE - LEN_SIZE;
-                                 src.reserve(required);
+                                src.reserve(required);
                                 break Ok(None);
                             } else {
                                 src.advance(1);
                                 let len = src.get_u64() as usize;
-                                *state = DownlinkNotifiationDecoderState::ReadingBody { remaining: len };
+                                *state =
+                                    DownlinkNotifiationDecoderState::ReadingBody { remaining: len };
                             }
-                        },
+                        }
+                        UNLINKED => {
+                            src.advance(1);
+                            break Ok(Some(DownlinkNotification::Unlinked));
+                        }
                         t => {
-                            break Err(FrameIoError::BadFrame(InvalidFrame::InvalidHeader { problem: Text::from(format!("Invalid downlink notification tag: {}", t))}));
+                            break Err(FrameIoError::BadFrame(InvalidFrame::InvalidHeader {
+                                problem: Text::from(format!(
+                                    "Invalid downlink notification tag: {}",
+                                    t
+                                )),
+                            }));
                         }
                     }
-                    
                 }
-                DownlinkNotifiationDecoderState::ReadingBody {
-                    remaining,
-                } => {
+                DownlinkNotifiationDecoderState::ReadingBody { remaining } => {
                     let to_split = (*remaining).min(src.remaining());
                     let rem = src.split_off(to_split);
                     let buf_remaining = src.remaining();
@@ -142,7 +174,7 @@ R: Recognizer<Target = T>,
                         Ok(Some(result)) => {
                             src.unsplit(rem);
                             *state = DownlinkNotifiationDecoderState::AfterBody {
-                                message: Some(DownlinkNotification::Event { body: result}),
+                                message: Some(DownlinkNotification::Event { body: result }),
                                 remaining: *remaining,
                             }
                         }
@@ -155,7 +187,7 @@ R: Recognizer<Target = T>,
                                 src.unsplit(rem);
                                 break if let Some(result) = eof_result {
                                     *state = DownlinkNotifiationDecoderState::ReadingHeader;
-                                    Ok(Some(DownlinkNotification::Event { body: result}))
+                                    Ok(Some(DownlinkNotification::Event { body: result }))
                                 } else {
                                     Err(FrameIoError::BadFrame(InvalidFrame::Incomplete))
                                 };
@@ -215,17 +247,21 @@ const RESERVE_MULT: usize = 2;
 
 impl<T> Encoder<DownlinkOperation<T>> for DownlinkOperationEncoder
 where
-T: StructuralWritable,
+    T: StructuralWritable,
 {
     type Error = std::io::Error;
-    
-    fn encode(&mut self, item: DownlinkOperation<T>, dst: &mut bytes::BytesMut) -> Result<(), Self::Error> {
-        let DownlinkOperation { body} = item;
+
+    fn encode(
+        &mut self,
+        item: DownlinkOperation<T>,
+        dst: &mut bytes::BytesMut,
+    ) -> Result<(), Self::Error> {
+        let DownlinkOperation { body } = item;
         dst.reserve(LEN_SIZE);
         let body_len_offset = dst.remaining();
         dst.put_u64(0);
         let body_offset = dst.remaining();
-        
+
         let mut next_res = RESERVE_INIT.max(dst.remaining_mut().saturating_mul(RESERVE_MULT));
         loop {
             if write!(dst, "{}", print_recon_compact(&body)).is_err() {

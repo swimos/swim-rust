@@ -40,6 +40,9 @@ use crate::compat::{
 };
 use crate::routing::RoutingAddr;
 
+#[cfg(test)]
+mod tests;
+
 bitflags! {
     pub struct DownlinkOptions: u32 {
         const SYNC = 0b00000001;
@@ -152,14 +155,14 @@ enum ReadTaskState {
 
 struct DownlinkSender {
     sender: FramedWrite<ByteWriter, DownlinkNotificationEncoder>,
-    _options: DownlinkOptions,
+    options: DownlinkOptions,
 }
 
 impl DownlinkSender {
     fn new(writer: ByteWriter, options: DownlinkOptions) -> Self {
         DownlinkSender {
             sender: FramedWrite::new(writer, DownlinkNotificationEncoder::default()),
-            _options: options,
+            options,
         }
     }
 
@@ -336,12 +339,14 @@ async fn read_task(
                 flushed.set(true);
             }
             Some(Either::Right((writer, options))) => {
-                let dl_writer = DownlinkSender::new(writer, options);
-                empty_timestamp = None;
-                if options.contains(DownlinkOptions::SYNC) && state != ReadTaskState::Synced {
-                    pending.push(dl_writer);
-                } else {
-                    registered.push(dl_writer);
+                let mut dl_writer = DownlinkSender::new(writer, options);
+                if dl_writer.send(DownlinkNotification::Linked).await.is_ok() {
+                    empty_timestamp = None;
+                    if options.contains(DownlinkOptions::SYNC) && state != ReadTaskState::Synced {
+                        pending.push(dl_writer);
+                    } else {
+                        registered.push(dl_writer);
+                    }
                 }
             }
             _ => {
@@ -349,6 +354,8 @@ async fn read_task(
             }
         }
     }
+    unlink(pending).await;
+    unlink(registered).await;
     Ok(())
 }
 
@@ -376,6 +383,17 @@ async fn send_current(senders: &mut Vec<DownlinkSender>, current: &BytesMut) {
         }
     }
     clear_failed(senders, &failed);
+}
+
+async fn unlink(senders: Vec<DownlinkSender>) -> Vec<DownlinkSender> {
+    let mut to_keep = vec![];
+    for mut tx in senders.into_iter() {
+        let still_active = tx.send(DownlinkNotification::Unlinked).await.is_ok();
+        if tx.options.contains(DownlinkOptions::KEEP_LINKED) && still_active {
+            to_keep.push(tx);
+        }
+    }
+    to_keep
 }
 
 fn clear_failed(senders: &mut Vec<DownlinkSender>, failed: &HashSet<usize>) {
