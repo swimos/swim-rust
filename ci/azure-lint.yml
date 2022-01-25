@@ -1,0 +1,13 @@
+steps:
+  # Run clippy
+  - script: |
+      cargo clippy --all-features --workspace --all-targets -- -D warnings
+    displayName: Run Clippy
+    condition: eq(variables['Agent.OS'], 'Linux')
+
+  # Run rustfmt
+  - script: |
+      RUSTDOCFLAGS="--cfg docsrs -Dwarnings" cargo doc --lib --no-deps --all-features --workspace
+      cargo fmt -- --check
+    displayName: Run rustfmt
+    condition: eq(variables['Agent.OS'], 'Linux')
