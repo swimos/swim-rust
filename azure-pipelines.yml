@@ -6,15 +6,15 @@ variables:
   RUST_VERSION: 1.56.1
 
 stages:
-  - stage: Lint
+  - stage: (Lint Stage)
     jobs:
       - template: ci/azure-lint.yml
         parameters:
           name: lint_crates
           rust: $(RUST_VERSION)
           displayName: Lint all crates
-  - stage: Test
-    dependsOn: Lint
+  - stage: (Test Stage)
+    dependsOn: (Lint Stage)
     jobs:
       - template: ci/azure-test-stable.yml
         parameters:
