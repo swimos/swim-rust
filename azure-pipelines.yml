@@ -8,7 +8,7 @@ variables:
 stages:
   - stage: Lint
     jobs:
-      -template: ci/azure-lint.yml
+      - template: ci/azure-lint.yml
         parameters:
           name: lint_crates
           rust: $(RUST_VERSION)
