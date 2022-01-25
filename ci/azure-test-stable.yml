@@ -27,8 +27,6 @@ jobs:
         parameters:
           rust_version: ${{ parameters.rust }}
       - template: azure-install-sccache.yml
-      - template: azure-install-linters.yml
-      - template: azure-lint.yml
       - script: cargo test --verbose --all-features --workspace --lib --tests
         env:
           RUST_BACKTRACE: 1
