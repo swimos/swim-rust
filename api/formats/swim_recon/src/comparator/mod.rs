@@ -127,14 +127,14 @@ fn incremental_compare<
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum ValidatorState {
     Init,
     InProgress,
     Invalid,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum ItemType {
     ValueItem(ValueType),
     Slot(ValueType, ValueType),
@@ -149,7 +149,7 @@ impl ItemType {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum ValueType {
     Primitive,
     Record(usize, usize),
@@ -180,14 +180,14 @@ impl ValueType {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum KeyState {
     NoKey,
     Attr,
     Slot(ValueType),
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 struct BuilderState {
     /// The type of the key for the current builder.
     key: KeyState,
@@ -196,18 +196,60 @@ struct BuilderState {
     /// A vector containing the attributes of the builder.
     attrs: usize,
     /// A vector containing the items of the builder.
-    items: SmallVec<[ItemType; 4]>,
+    items: ItemCollection,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+struct ItemCollection {
+    last: Option<ItemType>,
+    rest_size: usize,
+    items_count: usize,
+}
+
+impl ItemCollection {
+    fn new() -> Self {
+        ItemCollection {
+            last: None,
+            rest_size: 0,
+            items_count: 0,
+        }
+    }
+
+    //Todo dm probably need to be renamed
+    fn len(&self) -> usize {
+        if let Some(last) = &self.last {
+            self.rest_size + last.len()
+        } else {
+            self.rest_size
+        }
+    }
+
+    fn count(&self) -> usize {
+        self.items_count
+    }
+
+    fn is_empty(&self) -> bool {
+        self.items_count == 0
+    }
+
+    fn pop(&mut self) -> Option<ItemType> {
+        self.last.take()
+    }
+
+    fn push(&mut self, item: ItemType) {
+        self.items_count += 1;
+
+        if let Some(last) = &self.last {
+            self.rest_size += last.len()
+        }
+
+        self.last = Some(item);
+    }
 }
 
 impl BuilderState {
     fn items_len(&self) -> usize {
-        let mut size = 0;
-
-        for item in &self.items {
-            size += item.len()
-        }
-
-        size
+        self.items.len()
     }
 
     fn attrs_len(&self) -> usize {
@@ -379,14 +421,14 @@ impl ValueValidator {
                 key: KeyState::Slot(key),
                 in_body,
                 attrs: 0,
-                items: SmallVec::with_capacity(4),
+                items: ItemCollection::new(),
             }
         } else {
             BuilderState {
                 key: KeyState::NoKey,
                 in_body,
                 attrs: 0,
-                items: SmallVec::with_capacity(4),
+                items: ItemCollection::new(),
             }
         };
 
@@ -414,7 +456,7 @@ impl ValueValidator {
             key: KeyState::Attr,
             in_body: true,
             attrs: 0,
-            items: SmallVec::with_capacity(4),
+            items: ItemCollection::new(),
         })
     }
 
@@ -443,15 +485,7 @@ impl ValueValidator {
                     if is_attr_end {
                         Err(())
                     } else {
-                        let mut size = 0;
-                        for i in items {
-                            size += i.len();
-                        }
-                        if size == 0 {
-                            size += 1;
-                        }
-
-                        let record = ValueType::Record(attrs, size);
+                        let record = ValueType::Record(attrs, items.len());
                         if self.stack.is_empty() {
                             Ok(Some(record))
                         } else {
@@ -464,22 +498,14 @@ impl ValueValidator {
                     if is_attr_end {
                         Err(())
                     } else {
-                        let mut size = 0;
-                        for i in items {
-                            size += i.len();
-                        }
-                        if size == 0 {
-                            size += 1;
-                        }
-
-                        let record = ValueType::Record(attrs, size);
+                        let record = ValueType::Record(attrs, items.len());
                         self.add_slot(key, record)?;
                         Ok(None)
                     }
                 }
                 KeyState::Attr => {
                     if is_attr_end {
-                        let body = if attrs == 0 && items.len() <= 1 {
+                        let body = if attrs == 0 && items.count() <= 1 {
                             match items.pop() {
                                 Some(ItemType::ValueItem(value)) => value,
                                 Some(slot @ ItemType::Slot(_, _)) => {
@@ -488,15 +514,7 @@ impl ValueValidator {
                                 _ => ValueType::Primitive,
                             }
                         } else {
-                            let mut size = 0;
-                            for i in items {
-                                size += i.len();
-                            }
-                            if size == 0 {
-                                size += 1;
-                            }
-
-                            ValueType::Record(attrs, size)
+                            ValueType::Record(attrs, items.len())
                         };
                         self.add_attr(body)?;
                         Ok(None)
