@@ -5,7 +5,7 @@ jobs:
       vmImage: ubuntu-18.04
 
     steps:
-      - # Install rust
+      # Install rust
       - template: azure-install-rust.yml
         parameters:
           rust_version: ${{ parameters.rust }}
