@@ -123,32 +123,38 @@ fn incremental_compare<
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum ValidatorState {
     Init,
     InProgress,
     Invalid,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+/// The type of an item.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum ItemType {
-    ValueItem(ValueType),
+    /// Item holding a single value.
+    Value(ValueType),
+    /// Item holding a slot with a key and a value.
     Slot(ValueType, ValueType),
 }
 
 impl ItemType {
     fn len(&self) -> usize {
         match self {
-            ItemType::ValueItem(val) => val.len(),
+            ItemType::Value(val) => val.len(),
             ItemType::Slot(key, val) => key.len() + val.len(),
         }
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+/// The type of a value.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum ValueType {
+    /// A simple primitive value.
     Primitive,
-    Record(Vec<ValueType>, Vec<ItemType>),
+    /// A record, containing the sizes of its nested attributes and items.
+    Record(usize, usize),
 }
 
 impl ValueType {
@@ -158,20 +164,16 @@ impl ValueType {
             ValueType::Record(attrs, items) => {
                 let mut size = 0;
 
-                if attrs.is_empty() {
+                if *attrs == 0 {
                     size += 1;
                 } else {
-                    for attr in attrs {
-                        size += attr.len();
-                    }
+                    size += *attrs;
                 }
 
-                if items.is_empty() {
+                if *items == 0 {
                     size += 1;
                 } else {
-                    for item in items {
-                        size += item.len();
-                    }
+                    size += items
                 }
 
                 size
@@ -180,44 +182,97 @@ impl ValueType {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum KeyState {
     NoKey,
     Attr,
     Slot(ValueType),
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 struct BuilderState {
     /// The type of the key for the current builder.
     key: KeyState,
     /// Flag indicating if the value from the builder is in a body.
     in_body: bool,
     /// A vector containing the attributes of the builder.
-    attrs: SmallVec<[ValueType; 4]>,
-    /// A vector containing the items of the builder.
-    items: SmallVec<[ItemType; 4]>,
+    attrs: usize,
+    /// A structure containing information about the items of the builder.
+    items: ItemCollection,
+}
+
+/// A custom data structure that stores the last item and the size and count
+/// of the rest of the items inserted into it. This information is needed in order
+/// to correctly compare attributes with implicit and explicit record syntax.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+struct ItemCollection {
+    /// The last item inserted into the collection.
+    last: Option<ItemType>,
+    /// The size of all items in the collection, excluding the last item.
+    /// This is different than the count as the size of an item includes
+    /// the sizes of all of its child items.
+    rest_size: usize,
+    /// The total count of items in the collection.
+    items_count: usize,
+}
+
+impl ItemCollection {
+    fn new() -> Self {
+        ItemCollection {
+            last: None,
+            rest_size: 0,
+            items_count: 0,
+        }
+    }
+
+    /// The size of all items in the collection.
+    /// This is different than the count as the size of an item includes
+    /// the sizes of all of its child items.
+    fn items_len(&self) -> usize {
+        if let Some(last) = &self.last {
+            self.rest_size + last.len()
+        } else {
+            self.rest_size
+        }
+    }
+
+    /// The number of items in the collection.
+    fn count(&self) -> usize {
+        self.items_count
+    }
+
+    /// Whether or not this collection has any items.
+    fn is_empty(&self) -> bool {
+        self.items_count == 0
+    }
+
+    /// Stores an item into the collection.
+    /// Note: Once a new item is stored the previous item can no longer be retrieved.
+    fn push(&mut self, item: ItemType) {
+        self.items_count += 1;
+
+        if let Some(last) = &self.last {
+            self.rest_size += last.len()
+        }
+
+        self.last = Some(item);
+    }
+
+    /// Returns the last item from the collection.
+    /// Note: This collection only stores the last item. No item before it can
+    /// be retrieved or removed.
+    fn pop(&mut self) -> Option<ItemType> {
+        self.last.take()
+    }
 }
 
 impl BuilderState {
     fn items_len(&self) -> usize {
-        let mut size = 0;
-
-        for item in &self.items {
-            size += item.len()
-        }
-
-        size
+        self.items.items_len()
     }
 
     fn attrs_len(&self) -> usize {
-        let mut size = 0;
-
-        for attr in &self.attrs {
-            size += attr.len()
-        }
-
-        size
+        self.attrs
     }
 }
 
@@ -227,12 +282,16 @@ struct ValueValidator {
     state: ValidatorState,
     /// The internal stack of builders.
     stack: SmallVec<[BuilderState; 4]>,
-    /// Flag indicating if there is a slot key.
+    /// The value of the slot key, if present.
     slot_key: Option<ValueType>,
 }
 
 impl PartialEq for ValueValidator {
     fn eq(&self, other: &Self) -> bool {
+        if self.slot_key != other.slot_key {
+            return false;
+        }
+
         match (&self.state, &other.state) {
             (ValidatorState::InProgress, ValidatorState::InProgress) => {
                 let mut self_iter = self.stack.iter().peekable();
@@ -276,7 +335,7 @@ impl PartialEq for ValueValidator {
                         }
                         (Some(self_builder), None) => {
                             if self_builder.key == KeyState::NoKey
-                                && self_builder.attrs.is_empty()
+                                && self_builder.attrs == 0
                                 && self_builder.items.is_empty()
                             {
                                 continue;
@@ -284,7 +343,7 @@ impl PartialEq for ValueValidator {
                         }
                         (None, Some(other_builder)) => {
                             if other_builder.key == KeyState::NoKey
-                                && other_builder.attrs.is_empty()
+                                && other_builder.attrs == 0
                                 && other_builder.items.is_empty()
                             {
                                 continue;
@@ -376,15 +435,15 @@ impl ValueValidator {
             BuilderState {
                 key: KeyState::Slot(key),
                 in_body,
-                attrs: SmallVec::with_capacity(4),
-                items: SmallVec::with_capacity(4),
+                attrs: 0,
+                items: ItemCollection::new(),
             }
         } else {
             BuilderState {
                 key: KeyState::NoKey,
                 in_body,
-                attrs: SmallVec::with_capacity(4),
-                items: SmallVec::with_capacity(4),
+                attrs: 0,
+                items: ItemCollection::new(),
             }
         };
 
@@ -411,14 +470,14 @@ impl ValueValidator {
         self.stack.push(BuilderState {
             key: KeyState::Attr,
             in_body: true,
-            attrs: SmallVec::with_capacity(4),
-            items: SmallVec::with_capacity(4),
+            attrs: 0,
+            items: ItemCollection::new(),
         })
     }
 
     fn set_slot_key(&mut self) -> Result<(), ()> {
         let key = match self.stack.last_mut().ok_or(())?.items.pop() {
-            Some(ItemType::ValueItem(value)) => value,
+            Some(ItemType::Value(value)) => value,
             _ => ValueType::Primitive,
         };
 
@@ -441,7 +500,7 @@ impl ValueValidator {
                     if is_attr_end {
                         Err(())
                     } else {
-                        let record = ValueType::Record(attrs.into_vec(), items.into_vec());
+                        let record = ValueType::Record(attrs, items.items_len());
                         if self.stack.is_empty() {
                             Ok(Some(record))
                         } else {
@@ -454,23 +513,23 @@ impl ValueValidator {
                     if is_attr_end {
                         Err(())
                     } else {
-                        let record = ValueType::Record(attrs.into_vec(), items.into_vec());
+                        let record = ValueType::Record(attrs, items.items_len());
                         self.add_slot(key, record)?;
                         Ok(None)
                     }
                 }
                 KeyState::Attr => {
                     if is_attr_end {
-                        let body = if attrs.is_empty() && items.len() <= 1 {
+                        let body = if attrs == 0 && items.count() <= 1 {
                             match items.pop() {
-                                Some(ItemType::ValueItem(value)) => value,
+                                Some(ItemType::Value(value)) => value,
                                 Some(slot @ ItemType::Slot(_, _)) => {
-                                    ValueType::Record(Vec::new(), vec![slot])
+                                    ValueType::Record(0, slot.len())
                                 }
                                 _ => ValueType::Primitive,
                             }
                         } else {
-                            ValueType::Record(attrs.into_vec(), items.into_vec())
+                            ValueType::Record(attrs, items.items_len())
                         };
                         self.add_attr(body)?;
                         Ok(None)
@@ -485,7 +544,7 @@ impl ValueValidator {
     }
 
     fn add_attr(&mut self, value: ValueType) -> Result<(), ()> {
-        self.stack.last_mut().ok_or(())?.attrs.push(value);
+        self.stack.last_mut().ok_or(())?.attrs += value.len();
         Ok(())
     }
 
@@ -497,7 +556,7 @@ impl ValueValidator {
             if let Some(key) = slot_key {
                 top.items.push(ItemType::Slot(key, value));
             } else {
-                top.items.push(ItemType::ValueItem(value));
+                top.items.push(ItemType::Value(value));
             }
             Ok(())
         } else {
@@ -519,7 +578,7 @@ impl ValueValidator {
             .last_mut()
             .ok_or(())?
             .items
-            .push(ItemType::ValueItem(value));
+            .push(ItemType::Value(value));
         Ok(())
     }
 }
