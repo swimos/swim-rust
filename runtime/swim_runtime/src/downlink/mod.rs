@@ -22,7 +22,6 @@ use futures::future::{join, join3, select as select_fut, Either};
 use futures::stream::{select, unfold, SelectAll};
 use futures::{SinkExt, Stream, StreamExt};
 use pin_utils::pin_mut;
-use swim_api::error::DownlinkTaskError;
 use swim_api::protocol::{
     DownlinkNotification, DownlinkNotificationEncoder, DownlinkOperation, DownlinkOperationDecoder,
 };
@@ -69,8 +68,8 @@ impl AttachAction {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Config {
-    empty_timeout: Duration,
-    flush_timout: Duration,
+    pub empty_timeout: Duration,
+    pub flush_timout: Duration,
 }
 
 pub struct ValueDownlinkManagementTask {
@@ -104,7 +103,7 @@ impl ValueDownlinkManagementTask {
         }
     }
 
-    pub async fn run(self) -> Result<(), DownlinkTaskError> {
+    pub async fn run(self) {
         let ValueDownlinkManagementTask {
             requests,
             input,
@@ -120,8 +119,7 @@ impl ValueDownlinkManagementTask {
         let att = attach_task(requests, producer_tx, consumer_tx, stopping.clone());
         let read = read_task(input, consumer_rx, stopping.clone(), config);
         let write = write_task(output, producer_rx, stopping, identity, path, config);
-        let (_, read_result, write_result) = join3(att, read, write).await;
-        read_result.and(write_result)
+        join3(att, read, write).await;
     }
 }
 
@@ -269,7 +267,7 @@ async fn read_task(
     consumers: mpsc::Receiver<(ByteWriter, DownlinkOptions)>,
     stopping: trigger::Receiver,
     config: Config,
-) -> Result<(), DownlinkTaskError> {
+) {
     let messages = FramedRead::new(input, RawResponseMessageDecoder);
 
     let flushed = Cell::new(true);
@@ -356,7 +354,6 @@ async fn read_task(
     }
     unlink(pending).await;
     unlink(registered).await;
-    Ok(())
 }
 
 async fn sync_current(senders: &mut Vec<DownlinkSender>, current: &BytesMut) {
@@ -432,6 +429,20 @@ impl RequestSender {
         }
     }
 
+    async fn send_link(&mut self) -> Result<(), std::io::Error> {
+        let RequestSender {
+            sender,
+            identity,
+            path,
+        } = self;
+        let message = RawRequestMessage {
+            origin: *identity,
+            path: path.clone(),
+            envelope: Operation::Link,
+        };
+        sender.send(message).await
+    }
+
     async fn send_sync(&mut self) -> Result<(), std::io::Error> {
         let RequestSender {
             sender,
@@ -485,9 +496,14 @@ async fn write_task(
     identity: RoutingAddr,
     path: RelativePath,
     config: Config,
-) -> Result<(), DownlinkTaskError> {
+) {
+    let mut message_writer = RequestSender::new(output, identity, path);
+    if message_writer.send_link().await.is_err() {
+        return;
+    }
+
     let mut state = WriteState::Idle {
-        message_writer: RequestSender::new(output, identity, path),
+        message_writer,
         buffer: BytesMut::new(),
     };
     let mut current = BytesMut::new();
@@ -675,5 +691,4 @@ async fn write_task(
             }
         }
     }
-    Ok(())
 }
