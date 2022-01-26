@@ -10,6 +10,9 @@ jobs:
         parameters:
           rust_version: ${{ parameters.rust }}
 
+      # Install sccache
+      - template: azure-install-sccache.yml
+
       # Install clippy
       - script: |
           rustup component add clippy
