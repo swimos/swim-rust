@@ -3,11 +3,22 @@ pr: ["main"]
 
 variables:
   RUSTFLAGS: -Dwarnings
+  RUST_VERSION: 1.56.1
 
-jobs:
-  - template: ci/azure-test-stable.yml
-    parameters:
-      name: test_crates
-      rust: 1.56.1
-      displayName: Test all crates
-      cross: eq(variables['Build.SourceBranch'], 'refs/heads/main')
+stages:
+  - stage: Lint
+    jobs:
+      - template: ci/azure-lint.yml
+        parameters:
+          name: lint_crates
+          rust: $(RUST_VERSION)
+          displayName: All crates
+  - stage: Test
+    dependsOn: Lint
+    jobs:
+      - template: ci/azure-test-stable.yml
+        parameters:
+          name: test_crates
+          rust: $(RUST_VERSION)
+          displayName: All crates
+          cross: eq(variables['Build.SourceBranch'], 'refs/heads/main')
