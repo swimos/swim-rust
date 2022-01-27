@@ -22,6 +22,9 @@ use tokio_util::codec::{Decoder, Encoder};
 
 use crate::error::{FrameIoError, InvalidFrame};
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum DownlinkNotification<T> {
     Linked,
@@ -181,8 +184,8 @@ where
                         Ok(None) => {
                             if end_of_message {
                                 let eof_result = recognizer.decode_eof(src)?;
-                                let new_remaining = src.remaining();
-                                let consumed = buf_remaining - new_remaining;
+                                let final_remaining = src.remaining();
+                                let consumed = new_remaining - final_remaining;
                                 *remaining -= consumed;
                                 src.unsplit(rem);
                                 break if let Some(result) = eof_result {

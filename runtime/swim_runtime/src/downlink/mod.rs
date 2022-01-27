@@ -284,7 +284,8 @@ async fn read_task(
 
     let mut state = ReadTaskState::Init;
     let mut current = BytesMut::new();
-    let mut pending: Vec<DownlinkSender> = vec![];
+    let mut awaiting_synced: Vec<DownlinkSender> = vec![];
+    let mut awaiting_linked: Vec<DownlinkSender> = vec![];
     let mut registered: Vec<DownlinkSender> = vec![];
 
     let mut empty_timestamp = Some(Instant::now());
@@ -304,11 +305,14 @@ async fn read_task(
             Some(Either::Left(Ok(Ok(RawResponseMessage { envelope, .. })))) => match envelope {
                 Notification::Linked => {
                     state = ReadTaskState::Linked;
+                    link(&mut awaiting_linked, &mut awaiting_synced, &mut registered).await;
+                    if awaiting_synced.is_empty() && registered.is_empty() {
+                        empty_timestamp = Some(Instant::now() + config.empty_timeout);
+                    }
                 }
                 Notification::Synced => {
                     state = ReadTaskState::Synced;
-                    sync_current(&mut pending, &current).await;
-                    registered.extend(pending.drain(..));
+                    sync_current(&mut awaiting_synced, &mut registered, &current).await;
                     if registered.is_empty() {
                         empty_timestamp = Some(Instant::now() + config.empty_timeout);
                     }
@@ -318,7 +322,7 @@ async fn read_task(
                     current.reserve(bytes.len());
                     current.put(bytes);
                     send_current(&mut registered, &current).await;
-                    if registered.is_empty() && pending.is_empty() {
+                    if registered.is_empty() && awaiting_synced.is_empty() {
                         empty_timestamp = Some(Instant::now() + config.empty_timeout);
                         flushed.set(true);
                     } else {
@@ -330,21 +334,20 @@ async fn read_task(
                 }
             },
             Some(Either::Left(Err(_))) => {
-                join(flush_all(&mut pending), flush_all(&mut registered)).await;
-                if registered.is_empty() && pending.is_empty() {
+                join(flush_all(&mut awaiting_synced), flush_all(&mut registered)).await;
+                if registered.is_empty() && awaiting_synced.is_empty() {
                     empty_timestamp = Some(Instant::now() + config.empty_timeout);
                 }
                 flushed.set(true);
             }
             Some(Either::Right((writer, options))) => {
                 let mut dl_writer = DownlinkSender::new(writer, options);
-                if dl_writer.send(DownlinkNotification::Linked).await.is_ok() {
+                if matches!(state, ReadTaskState::Init) {
                     empty_timestamp = None;
-                    if options.contains(DownlinkOptions::SYNC) && state != ReadTaskState::Synced {
-                        pending.push(dl_writer);
-                    } else {
-                        registered.push(dl_writer);
-                    }
+                    awaiting_linked.push(dl_writer);
+                } else if dl_writer.send(DownlinkNotification::Linked).await.is_ok() {
+                    empty_timestamp = None;
+                    awaiting_synced.push(dl_writer);
                 }
             }
             _ => {
@@ -352,23 +355,22 @@ async fn read_task(
             }
         }
     }
-    unlink(pending).await;
+    unlink(awaiting_linked).await;
+    unlink(awaiting_synced).await;
     unlink(registered).await;
 }
 
-async fn sync_current(senders: &mut Vec<DownlinkSender>, current: &BytesMut) {
+async fn sync_current(
+    awaiting_synced: &mut Vec<DownlinkSender>,
+    registered: &mut Vec<DownlinkSender>,
+    current: &BytesMut,
+) {
     let event = DownlinkNotification::Event { body: current };
-    let mut failed = HashSet::<usize>::default();
-    for (i, tx) in senders.iter_mut().enumerate() {
-        if tx.feed(event).await.is_err() {
-            failed.insert(i);
-        } else {
-            if tx.send(DownlinkNotification::Synced).await.is_err() {
-                failed.insert(i);
-            }
+    for mut tx in awaiting_synced.drain(..) {
+        if tx.feed(event).await.is_ok() && tx.send(DownlinkNotification::Synced).await.is_ok() {
+            registered.push(tx);
         }
     }
-    clear_failed(senders, &failed);
 }
 
 async fn send_current(senders: &mut Vec<DownlinkSender>, current: &BytesMut) {
@@ -380,6 +382,24 @@ async fn send_current(senders: &mut Vec<DownlinkSender>, current: &BytesMut) {
         }
     }
     clear_failed(senders, &failed);
+}
+
+async fn link(
+    awaiting_linked: &mut Vec<DownlinkSender>,
+    awaiting_synced: &mut Vec<DownlinkSender>,
+    registered: &mut Vec<DownlinkSender>,
+) {
+    let event = DownlinkNotification::Linked;
+
+    for mut tx in awaiting_linked.drain(..) {
+        if tx.send(event).await.is_ok() {
+            if tx.options.contains(DownlinkOptions::SYNC) {
+                awaiting_synced.push(tx);
+            } else {
+                registered.push(tx);
+            }
+        }
+    }
 }
 
 async fn unlink(senders: Vec<DownlinkSender>) -> Vec<DownlinkSender> {
@@ -544,10 +564,10 @@ async fn write_task(
                     {
                         let receiver = DownlinkReceiver::new(reader, options, next_id());
                         registered.push(receiver);
-                        if options.contains(DownlinkOptions::SYNC) {
-                            if message_writer.send_sync().await.is_err() {
-                                break;
-                            }
+                        if options.contains(DownlinkOptions::SYNC)
+                            && message_writer.send_sync().await.is_err()
+                        {
+                            break;
                         }
                         state = WriteState::Idle {
                             message_writer,
@@ -577,10 +597,10 @@ async fn write_task(
                         Either::Left(Some((reader, options))) => {
                             let receiver = DownlinkReceiver::new(reader, options, next_id());
                             registered.push(receiver);
-                            if options.contains(DownlinkOptions::SYNC) {
-                                if message_writer.send_sync().await.is_err() {
-                                    break;
-                                }
+                            if options.contains(DownlinkOptions::SYNC)
+                                && message_writer.send_sync().await.is_err()
+                            {
+                                break;
                             }
                             state = WriteState::Idle {
                                 message_writer,

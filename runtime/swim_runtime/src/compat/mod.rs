@@ -521,8 +521,8 @@ where
                         Ok(None) => {
                             if end_of_message {
                                 let eof_result = recognizer.decode_eof(src)?;
-                                let new_remaining = src.remaining();
-                                let consumed = buf_remaining - new_remaining;
+                                let final_remaining = src.remaining();
+                                let consumed = new_remaining - final_remaining;
                                 *remaining -= consumed;
                                 src.unsplit(rem);
                                 break if let Some(result) = eof_result {
@@ -685,8 +685,8 @@ where
                         Ok(None) => {
                             if end_of_message {
                                 let eof_result = recognizer.decode_eof(src)?;
-                                let new_remaining = src.remaining();
-                                let consumed = buf_remaining - new_remaining;
+                                let final_remaining = src.remaining();
+                                let consumed = new_remaining - final_remaining;
                                 *remaining -= consumed;
                                 src.unsplit(rem);
                                 break if let Some(result) = eof_result {

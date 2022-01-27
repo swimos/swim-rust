@@ -1039,7 +1039,7 @@ impl_writable_tuple! { 12 => ([T0, v0] [T1, v1] [T2, v2] [T3, v3] [T4, v4] [T5, 
 
 pub struct WriteByRef<'a, T>(&'a T);
 
-pub fn write_by_ref<'a, T>(data: &'a T) -> WriteByRef<'a, T> {
+pub fn write_by_ref<T>(data: &T) -> WriteByRef<'_, T> {
     WriteByRef(data)
 }
 

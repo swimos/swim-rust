@@ -12,31 +12,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::future::Future;
 use std::num::NonZeroUsize;
 use std::time::Duration;
-use std::future::Future;
 
-use crate::compat::{ResponseMessageEncoder, ResponseMessage, Operation, AgentMessageDecoder, RequestMessage, MessageDecodeError};
+use crate::compat::{
+    AgentMessageDecoder, MessageDecodeError, Operation, RequestMessage, ResponseMessage,
+    ResponseMessageEncoder,
+};
 use crate::routing::RoutingAddr;
 
 use super::{AttachAction, DownlinkOptions, ValueDownlinkManagementTask};
-use futures::{SinkExt, StreamExt};
 use futures::future::join3;
+use futures::{SinkExt, StreamExt};
 use swim_api::error::DownlinkTaskError;
 use swim_api::protocol::{
-    DownlinkNotifiationDecoder, DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, DownlinkNotificationEncoder,
+    DownlinkNotifiationDecoder, DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder,
 };
-use swim_form::structural::write::write_by_ref;
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_form::Form;
-use swim_model::Text;
 use swim_model::path::RelativePath;
-use swim_recon::printer::print_recon_compact;
+use swim_model::Text;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::io::byte_channel::{self, ByteReader, ByteWriter};
 use swim_utilities::trigger;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
+use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_util::codec::{FramedRead, FramedWrite};
 
 #[derive(Debug, Form, PartialEq, Eq, Clone)]
@@ -47,16 +49,32 @@ enum Message {
 
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(1024);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum State {
     Unlinked,
     Linked,
     Synced,
 }
 
+type Event = (State, DownlinkNotification<Message>);
+
+struct TestContext {
+    tx: TestSender,
+    rx: TestReceiver,
+    start_client: trigger::Sender,
+    stop: trigger::Sender,
+    events: UnboundedReceiverStream<Event>,
+}
+
 async fn run_fake_downlink(
     sub: mpsc::Sender<AttachAction>,
     options: DownlinkOptions,
+    start: trigger::Receiver,
+    event_tx: mpsc::UnboundedSender<Event>,
 ) -> Result<(), DownlinkTaskError> {
+    if start.await.is_err() {
+        return Err(DownlinkTaskError::FailedToStart);
+    }
     let (tx_in, rx_in) = byte_channel::byte_channel(BUFFER_SIZE);
     let (tx_out, rx_out) = byte_channel::byte_channel(BUFFER_SIZE);
     if sub
@@ -77,6 +95,7 @@ async fn run_fake_downlink(
     let mut current = Text::default();
 
     while let Some(message) = read.next().await.transpose()? {
+        assert!(event_tx.send((state, message.clone())).is_ok());
         match state {
             State::Unlinked => match message {
                 DownlinkNotification::Linked => {
@@ -92,7 +111,6 @@ async fn run_fake_downlink(
                     state = State::Synced;
                 }
                 DownlinkNotification::Unlinked => {
-                    state = State::Unlinked;
                     break;
                 }
                 DownlinkNotification::Event {
@@ -104,7 +122,6 @@ async fn run_fake_downlink(
             },
             State::Synced => match message {
                 DownlinkNotification::Unlinked => {
-                    state = State::Unlinked;
                     break;
                 }
                 DownlinkNotification::Event {
@@ -115,8 +132,9 @@ async fn run_fake_downlink(
                 DownlinkNotification::Event {
                     body: Message::Ping,
                 } => {
+                    let response = Message::CurrentValue(current.clone());
                     if write
-                        .send(DownlinkOperation { body: write_by_ref(&current) })
+                        .send(DownlinkOperation { body: response })
                         .await
                         .is_err()
                     {
@@ -136,14 +154,20 @@ const REMOTE_ADDR: RoutingAddr = RoutingAddr::remote(1);
 const REMOTE_NODE: &str = "/remote";
 const REMOTE_LANE: &str = "remote_lane";
 
-async fn run_test<F, Fut>(options: DownlinkOptions, test_block: F) -> Result<(), DownlinkTaskError>
+async fn run_test<F, Fut>(
+    options: DownlinkOptions,
+    test_block: F,
+) -> (Fut::Output, Result<(), DownlinkTaskError>)
 where
-    F: FnOnce(TestSender, TestReceiver, trigger::Sender) -> Fut,
-    Fut: Future<Output = ()> + Send + 'static,
+    F: FnOnce(TestContext) -> Fut,
+    Fut: Future + Send + 'static,
 {
     let (attach_tx, attach_rx) = mpsc::channel(CHANNEL_SIZE);
+    let (start_tx, start_rx) = trigger::trigger();
     let (stop_tx, stop_rx) = trigger::trigger();
-    let downlink = run_fake_downlink(attach_tx, options);
+    let (event_tx, event_rx) = mpsc::unbounded_channel();
+
+    let downlink = run_fake_downlink(attach_tx, options, start_rx, event_tx);
 
     let (in_tx, in_rx) = byte_channel::byte_channel(BUFFER_SIZE);
     let (out_tx, out_rx) = byte_channel::byte_channel(BUFFER_SIZE);
@@ -155,18 +179,28 @@ where
     };
 
     let management_task = ValueDownlinkManagementTask::new(
-        attach_rx, 
-        in_rx, 
-        out_tx, 
-        stop_rx, 
-        RoutingAddr::client(1), 
-        path, 
-        config).run();
+        attach_rx,
+        in_rx,
+        out_tx,
+        stop_rx,
+        RoutingAddr::client(1),
+        path,
+        config,
+    )
+    .run();
 
-    let test_task = test_block(TestSender::new(in_tx), TestReceiver::new(out_rx), stop_tx);
+    let test_task = test_block(TestContext {
+        tx: TestSender::new(in_tx),
+        rx: TestReceiver::new(out_rx),
+        start_client: start_tx,
+        stop: stop_tx,
+        events: UnboundedReceiverStream::new(event_rx),
+    });
 
-    let (_, _, result) = timeout(TEST_TIMEOUT, join3(management_task, test_task, downlink)).await.unwrap();
-    result
+    let (_, task_res, result) = timeout(TEST_TIMEOUT, join3(management_task, test_task, downlink))
+        .await
+        .unwrap();
+    (task_res, result)
 }
 
 struct TestSender(FramedWrite<ByteWriter, ResponseMessageEncoder>);
@@ -175,23 +209,24 @@ type MsgDecoder<T> = AgentMessageDecoder<T, <T as RecognizerReadable>::Rec>;
 struct TestReceiver(FramedRead<ByteReader, MsgDecoder<Message>>);
 
 impl TestSender {
-
     fn new(writer: ByteWriter) -> Self {
         TestSender(FramedWrite::new(writer, ResponseMessageEncoder))
     }
 
     async fn link(&mut self) {
-        self.send(ResponseMessage::linked(REMOTE_ADDR, RelativePath::new(REMOTE_NODE, REMOTE_LANE))).await;
-
+        self.send(ResponseMessage::linked(
+            REMOTE_ADDR,
+            RelativePath::new(REMOTE_NODE, REMOTE_LANE),
+        ))
+        .await;
     }
 
     async fn sync(&mut self) {
-        self.send(ResponseMessage::synced(REMOTE_ADDR, RelativePath::new(REMOTE_NODE, REMOTE_LANE))).await;
-
-    }
-
-    async fn unlink(&mut self) {
-        self.send(ResponseMessage::unlinked(REMOTE_ADDR, RelativePath::new(REMOTE_NODE, REMOTE_LANE), None)).await;
+        self.send(ResponseMessage::synced(
+            REMOTE_ADDR,
+            RelativePath::new(REMOTE_NODE, REMOTE_LANE),
+        ))
+        .await;
     }
 
     async fn send(&mut self, message: ResponseMessage<Message, &[u8]>) {
@@ -199,33 +234,38 @@ impl TestSender {
     }
 
     async fn update(&mut self, message: Message) {
-        let recon = format!("{}", print_recon_compact(&message));
         let message = ResponseMessage::event(
-            REMOTE_ADDR, RelativePath::new(REMOTE_NODE, REMOTE_LANE), message);
+            REMOTE_ADDR,
+            RelativePath::new(REMOTE_NODE, REMOTE_LANE),
+            message,
+        );
         self.send(message).await;
     }
-
 }
 
 impl TestReceiver {
-
     fn new(reader: ByteReader) -> Self {
-        TestReceiver(FramedRead::new(reader, MsgDecoder::new(Message::make_recognizer())))
+        TestReceiver(FramedRead::new(
+            reader,
+            MsgDecoder::new(Message::make_recognizer()),
+        ))
     }
 
     async fn recv(&mut self) -> Option<Result<RequestMessage<Message>, MessageDecodeError>> {
         self.0.next().await
     }
-
 }
 
-fn expect_message(result: Option<Result<RequestMessage<Message>, MessageDecodeError>>, message: Operation<Message>) {
+fn expect_message(
+    result: Option<Result<RequestMessage<Message>, MessageDecodeError>>,
+    message: Operation<Message>,
+) {
     match result {
         Some(Ok(m)) => {
             assert_eq!(m.envelope, message);
-        },
+        }
         Some(Err(e)) => {
-            panic!("Unexpected error: {}", e); 
+            panic!("Unexpected error: {}", e);
         }
         _ => {
             panic!("Unexpected termination.")
@@ -233,10 +273,116 @@ fn expect_message(result: Option<Result<RequestMessage<Message>, MessageDecodeEr
     }
 }
 
+fn expect_event(result: Option<Event>, state: State, notification: DownlinkNotification<Message>) {
+    if let Some(ev) = result {
+        assert_eq!(ev, (state, notification));
+    } else {
+        panic!("Client stopped unexpectedly.");
+    }
+}
+
 #[tokio::test]
-async fn clean_shutdown() {
-    assert!(run_test(DownlinkOptions::SYNC, |_tx, mut rx: TestReceiver, stop| async move {
-        expect_message(rx.recv().await, Operation::Link);
-        stop.trigger();
-    }).await.is_ok());
+async fn shutdowm_none_attached() {
+    let (events, result) = run_test(
+        DownlinkOptions::empty(),
+        |TestContext {
+             mut rx,
+             stop,
+             events,
+             ..
+         }| async move {
+            expect_message(rx.recv().await, Operation::Link);
+            stop.trigger();
+            events.collect::<Vec<_>>().await
+        },
+    )
+    .await;
+    assert!(matches!(result, Err(DownlinkTaskError::FailedToStart)));
+    assert!(events.is_empty());
+}
+
+#[tokio::test]
+async fn shutdowm_after_attached() {
+    let (events, result) = run_test(
+        DownlinkOptions::empty(),
+        |TestContext {
+             mut tx,
+             mut rx,
+             start_client,
+             stop,
+             mut events,
+             ..
+         }| async move {
+            expect_message(rx.recv().await, Operation::Link);
+
+            start_client.trigger();
+            tx.link().await;
+
+            expect_event(
+                events.next().await,
+                State::Unlinked,
+                DownlinkNotification::Linked,
+            );
+
+            stop.trigger();
+            events.collect::<Vec<_>>().await
+        },
+    )
+    .await;
+    assert!(result.is_ok());
+    assert_eq!(
+        events,
+        vec![(State::Linked, DownlinkNotification::Unlinked)]
+    );
+}
+
+#[tokio::test]
+async fn sync_from_nothing() {
+    let (events, result) = run_test(
+        DownlinkOptions::SYNC,
+        |TestContext {
+             mut tx,
+             mut rx,
+             start_client,
+             stop,
+             mut events,
+             ..
+         }| async move {
+            expect_message(rx.recv().await, Operation::Link);
+
+            start_client.trigger();
+            tx.link().await;
+
+            expect_event(
+                events.next().await,
+                State::Unlinked,
+                DownlinkNotification::Linked,
+            );
+            expect_message(rx.recv().await, Operation::Sync);
+
+            let message = Message::CurrentValue(Text::new("A"));
+            tx.update(message.clone()).await;
+            tx.sync().await;
+
+            expect_event(
+                events.next().await,
+                State::Linked,
+                DownlinkNotification::Event { body: message },
+            );
+            expect_event(
+                events.next().await,
+                State::Linked,
+                DownlinkNotification::Synced,
+            );
+
+            stop.trigger();
+            events.collect::<Vec<_>>().await
+        },
+    )
+    .await;
+    assert!(result.is_ok());
+    assert_eq!(
+        events,
+        vec![(State::Synced, DownlinkNotification::Unlinked)]
+    );
 }
