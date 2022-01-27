@@ -12,10 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::{byte_channel, ByteReader};
 use bytes::BytesMut;
 use futures::future::join;
 use futures::FutureExt;
 use rand::Rng;
+use slab::Slab;
 use std::future::Future;
 use std::io::ErrorKind;
 use std::num::NonZeroUsize;
@@ -23,12 +25,115 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::time::timeout;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt, ReadBuf};
+use tokio::time::{sleep, timeout};
 
 const BYTE_CHANNEL_LEN: usize = 4096;
 const DATA_LEN: usize = 1048576;
 const CHUNK_LEN: usize = 1024;
+
+struct MultiReader {
+    readers: Vec<ByteReader>,
+    last: Option<usize>,
+}
+
+impl MultiReader {
+    fn new() -> Self {
+        MultiReader {
+            readers: Vec::new(),
+            last: None,
+        }
+    }
+
+    fn add_reader(&mut self, reader: ByteReader) {
+        self.readers.push(reader);
+    }
+}
+
+impl AsyncRead for MultiReader {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        let mut len = buf.filled().len();
+        let mut adjustment = 0;
+
+        for mut i in 0..self.readers.len() {
+            eprintln!("i = {:?}", i);
+            let index = i - adjustment;
+
+            if let Some(reader) = self.readers.get_mut(index) {
+                let result = Pin::new(reader).poll_read(cx, buf);
+
+                if let Poll::Ready(result) = result {
+                    match result {
+                        Ok(_) if len < buf.filled().len() => {
+                            len = buf.filled().len();
+                            return Poll::Ready(Ok(()));
+                        }
+                        _ => {
+                            self.readers.remove(index);
+                            adjustment += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        if self.readers.is_empty() {
+            eprintln!("done");
+            Poll::Ready(Ok(()))
+        } else {
+            eprintln!("pending");
+            Poll::Pending
+        }
+    }
+}
+
+#[tokio::test]
+async fn foo() {
+    let (mut first_writer, mut first_reader) = byte_channel(NonZeroUsize::new(16).unwrap());
+    let (mut second_writer, mut second_reader) = byte_channel(NonZeroUsize::new(16).unwrap());
+    let (mut third_writer, mut third_reader) = byte_channel(NonZeroUsize::new(16).unwrap());
+
+    let mut multi_reader = MultiReader::new();
+
+    multi_reader.add_reader(first_reader);
+    multi_reader.add_reader(second_reader);
+    multi_reader.add_reader(third_reader);
+
+    let write = async move {
+        sleep(Duration::from_secs(1)).await;
+        let a = first_writer.write("foo".as_bytes()).await;
+        println!("sent foo");
+        // drop(first_writer);
+        // sleep(Duration::from_secs(1)).await;
+        // let a = second_writer.write("bar".as_bytes()).await;
+        // println!("sent bar");
+        drop(second_writer);
+        drop(third_writer);
+        sleep(Duration::from_secs(10)).await;
+    };
+
+    let read = async move {
+        let mut buf = BytesMut::new();
+        // sleep(Duration::from_secs(2)).await;
+        let c = multi_reader.read_buf(&mut buf).await;
+        eprintln!("c = {:?}", c);
+        eprintln!("buf = {:?}", buf);
+        let c = multi_reader.read_buf(&mut buf).await;
+        eprintln!("c = {:?}", c);
+        eprintln!("buf = {:?}", buf);
+        let c = multi_reader.read_buf(&mut buf).await;
+        eprintln!(
+            "multi_reader.readers.len() = {:?}",
+            multi_reader.readers.len()
+        );
+    };
+
+    join(timeout(Duration::from_secs(100), read), write).await;
+}
 
 #[tokio::test]
 async fn simple_send_recv() {
