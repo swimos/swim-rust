@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::protocol::DownlinkNotifiationDecoder;
+use crate::protocol::{
+    DownlinkNotifiationDecoder, DownlinkOperation, DownlinkOperationDecoder,
+    DownlinkOperationEncoder,
+};
 use bytes::{Buf, Bytes, BytesMut};
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_form::Form;
@@ -137,4 +140,133 @@ fn decode_recon_notification() {
             body: Message::CurrentValue(Text::new(content))
         }
     );
+}
+
+#[test]
+fn decode_recon_notification_twice() {
+    let content = "content";
+    let msg1 = Message::CurrentValue(Text::new(content));
+    let recon1 = format!("{}", print_recon_compact(&msg1));
+    let event1 = DownlinkNotification::Event {
+        body: recon1.as_bytes(),
+    };
+
+    let msg2 = Message::Ping;
+    let recon2 = format!("{}", print_recon_compact(&msg2));
+    let event2 = DownlinkNotification::Event {
+        body: recon2.as_bytes(),
+    };
+
+    let mut buffer = BytesMut::new();
+    assert!(DownlinkNotificationEncoder
+        .encode(event1, &mut buffer)
+        .is_ok());
+    assert!(DownlinkNotificationEncoder
+        .encode(event2, &mut buffer)
+        .is_ok());
+    let mut decoder = DownlinkNotifiationDecoder::new(Message::make_recognizer());
+
+    let restored1 = decoder.decode(&mut buffer);
+
+    match restored1 {
+        Ok(Some(value)) => {
+            assert_eq!(
+                value,
+                DownlinkNotification::Event {
+                    body: Message::CurrentValue(Text::new(content))
+                }
+            );
+        }
+        ow => {
+            panic!("Failed: {:?}", ow);
+        }
+    }
+
+    let restored2 = decoder.decode(&mut buffer);
+
+    match restored2 {
+        Ok(Some(value)) => {
+            assert_eq!(
+                value,
+                DownlinkNotification::Event {
+                    body: Message::Ping
+                }
+            );
+        }
+        ow => {
+            panic!("Failed: {:?}", ow);
+        }
+    }
+}
+
+#[test]
+fn encode_operation() {
+    let content = "body";
+    let mut buffer = BytesMut::new();
+    assert!(DownlinkOperationEncoder
+        .encode(DownlinkOperation::new(Text::new("body")), &mut buffer)
+        .is_ok());
+
+    assert_eq!(buffer.len(), content.len() + 8);
+    assert_eq!(buffer.get_u64() as usize, content.len());
+    assert_eq!(buffer.as_ref(), content.as_bytes());
+}
+
+#[test]
+fn encode_complex_operation() {
+    let content = "body";
+    let op = Message::CurrentValue(Text::new(content));
+    let recon = format!("{}", print_recon_compact(&op));
+    let mut buffer = BytesMut::new();
+    assert!(DownlinkOperationEncoder
+        .encode(DownlinkOperation::new(op), &mut buffer)
+        .is_ok());
+
+    assert_eq!(buffer.len(), recon.len() + 8);
+    assert_eq!(buffer.get_u64() as usize, recon.len());
+    assert_eq!(buffer.as_ref(), recon.as_bytes());
+}
+
+#[test]
+fn decode_operation() {
+    let content = "body";
+    let mut buffer = BytesMut::new();
+    assert!(DownlinkOperationEncoder
+        .encode(DownlinkOperation::new(Text::new("body")), &mut buffer)
+        .is_ok());
+
+    match DownlinkOperationDecoder.decode(&mut buffer) {
+        Ok(Some(DownlinkOperation { body })) => {
+            assert_eq!(body.as_ref(), content.as_bytes());
+        }
+        Ok(None) => {
+            panic!("Incomplete.")
+        }
+        Err(e) => {
+            panic!("Failed: {}", e);
+        }
+    }
+}
+
+#[test]
+fn decode_complex_operation() {
+    let content = "body";
+    let op = Message::CurrentValue(Text::new(content));
+    let recon = format!("{}", print_recon_compact(&op));
+    let mut buffer = BytesMut::new();
+    assert!(DownlinkOperationEncoder
+        .encode(DownlinkOperation::new(op), &mut buffer)
+        .is_ok());
+
+    match DownlinkOperationDecoder.decode(&mut buffer) {
+        Ok(Some(DownlinkOperation { body })) => {
+            assert_eq!(body.as_ref(), recon.as_bytes());
+        }
+        Ok(None) => {
+            panic!("Incomplete.")
+        }
+        Err(e) => {
+            panic!("Failed: {}", e);
+        }
+    }
 }

@@ -320,6 +320,7 @@ fn put_with_body<T: StructuralWritable>(
     rewound.put_u64(body_len | (code << OP_SHIFT));
 }
 
+#[derive(Debug)]
 enum RequestState<T> {
     ReadingHeader,
     ReadingBody {
@@ -525,7 +526,7 @@ where
                                 let consumed = new_remaining - final_remaining;
                                 *remaining -= consumed;
                                 src.unsplit(rem);
-                                break if let Some(result) = eof_result {
+                                let result = if let Some(result) = eof_result {
                                     Ok(Some(RequestMessage {
                                         origin: *source,
                                         path: std::mem::take(path),
@@ -534,6 +535,8 @@ where
                                 } else {
                                     Err(MessageDecodeError::incomplete())
                                 };
+                                *state = RequestState::ReadingHeader;
+                                break result;
                             } else {
                                 break Ok(None);
                             }
@@ -543,6 +546,7 @@ where
                             src.unsplit(rem);
                             src.advance(new_remaining);
                             if *remaining == 0 {
+                                *state = RequestState::ReadingHeader;
                                 break Err(e.into());
                             } else {
                                 *state = RequestState::Discarding {
@@ -689,8 +693,7 @@ where
                                 let consumed = new_remaining - final_remaining;
                                 *remaining -= consumed;
                                 src.unsplit(rem);
-                                break if let Some(result) = eof_result {
-                                    //*state = ResponseState::ReadingHeader;
+                                let result = if let Some(result) = eof_result {
                                     Ok(Some(ResponseMessage {
                                         origin: *source,
                                         path: std::mem::take(path),
@@ -699,6 +702,8 @@ where
                                 } else {
                                     Err(MessageDecodeError::incomplete())
                                 };
+                                *state = ResponseState::ReadingHeader;
+                                break result;
                             } else {
                                 break Ok(None);
                             }
@@ -708,6 +713,7 @@ where
                             src.unsplit(rem);
                             src.advance(new_remaining);
                             if *remaining == 0 {
+                                *state = ResponseState::ReadingHeader;
                                 break Err(e.into());
                             } else {
                                 *state = ResponseState::Discarding {
@@ -733,12 +739,13 @@ where
                         } else {
                             Some(src.split_to(*remaining).freeze())
                         };
-                        //*state = ResponseState::ReadingHeader;
-                        break Ok(Some(ResponseMessage::unlinked(
+                        let result = Ok(Some(ResponseMessage::unlinked(
                             *source,
                             std::mem::take(path),
                             body,
                         )));
+                        *state = ResponseState::ReadingHeader;
+                        break result;
                     }
                 }
                 ResponseState::AfterBody { message, remaining } => {

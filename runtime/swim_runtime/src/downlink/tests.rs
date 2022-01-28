@@ -66,6 +66,12 @@ struct TestContext {
     events: UnboundedReceiverStream<Event>,
 }
 
+struct SyncedTestContext {
+    tx: TestSender,
+    rx: TestReceiver,
+    events: UnboundedReceiverStream<Event>,
+}
+
 async fn run_fake_downlink(
     sub: mpsc::Sender<AttachAction>,
     options: DownlinkOptions,
@@ -380,6 +386,161 @@ async fn sync_from_nothing() {
         },
     )
     .await;
+    assert!(result.is_ok());
+    assert_eq!(
+        events,
+        vec![(State::Synced, DownlinkNotification::Unlinked)]
+    );
+}
+
+#[tokio::test]
+async fn sync_after_value() {
+    let (events, result) = run_test(
+        DownlinkOptions::SYNC,
+        |TestContext {
+             mut tx,
+             mut rx,
+             start_client,
+             stop,
+             mut events,
+             ..
+         }| async move {
+            expect_message(rx.recv().await, Operation::Link);
+
+            tx.link().await;
+
+            let message1 = Message::CurrentValue(Text::new("A"));
+            tx.update(message1).await;
+
+            start_client.trigger();
+
+            expect_event(
+                events.next().await,
+                State::Unlinked,
+                DownlinkNotification::Linked,
+            );
+            expect_message(rx.recv().await, Operation::Sync);
+
+            let message2 = Message::CurrentValue(Text::new("B"));
+            tx.update(message2.clone()).await;
+            tx.sync().await;
+
+            expect_event(
+                events.next().await,
+                State::Linked,
+                DownlinkNotification::Event { body: message2 },
+            );
+            expect_event(
+                events.next().await,
+                State::Linked,
+                DownlinkNotification::Synced,
+            );
+
+            stop.trigger();
+            events.collect::<Vec<_>>().await
+        },
+    )
+    .await;
+    assert!(result.is_ok());
+    assert_eq!(
+        events,
+        vec![(State::Synced, DownlinkNotification::Unlinked)]
+    );
+}
+
+async fn sync_client_then<F, Fut>(context: TestContext, f: F) -> Vec<Event>
+where
+    F: FnOnce(SyncedTestContext) -> Fut,
+    Fut: Future<Output = UnboundedReceiverStream<Event>> + Send + 'static,
+{
+    let TestContext {
+        mut tx,
+        mut rx,
+        start_client,
+        stop,
+        mut events,
+    } = context;
+    expect_message(rx.recv().await, Operation::Link);
+
+    start_client.trigger();
+    tx.link().await;
+
+    expect_event(
+        events.next().await,
+        State::Unlinked,
+        DownlinkNotification::Linked,
+    );
+    expect_message(rx.recv().await, Operation::Sync);
+
+    let message = Message::CurrentValue(Text::new("A"));
+    tx.update(message.clone()).await;
+    tx.sync().await;
+
+    expect_event(
+        events.next().await,
+        State::Linked,
+        DownlinkNotification::Event { body: message },
+    );
+    expect_event(
+        events.next().await,
+        State::Linked,
+        DownlinkNotification::Synced,
+    );
+    let events = f(SyncedTestContext { tx, rx, events }).await;
+    stop.trigger();
+    events.collect::<Vec<_>>().await
+}
+
+#[tokio::test]
+async fn receive_commands() {
+    let (events, result) = run_test(DownlinkOptions::SYNC, |context| {
+        sync_client_then(
+            context,
+            |SyncedTestContext {
+                 mut tx,
+                 mut rx,
+                 mut events,
+             }| async move {
+                tx.update(Message::Ping).await;
+                expect_event(
+                    events.next().await,
+                    State::Synced,
+                    DownlinkNotification::Event {
+                        body: Message::Ping,
+                    },
+                );
+                expect_message(
+                    rx.recv().await,
+                    Operation::Command(Message::CurrentValue(Text::new("A"))),
+                );
+
+                tx.update(Message::CurrentValue(Text::new("B"))).await;
+                expect_event(
+                    events.next().await,
+                    State::Synced,
+                    DownlinkNotification::Event {
+                        body: Message::CurrentValue(Text::new("B")),
+                    },
+                );
+                tx.update(Message::Ping).await;
+                expect_event(
+                    events.next().await,
+                    State::Synced,
+                    DownlinkNotification::Event {
+                        body: Message::Ping,
+                    },
+                );
+                expect_message(
+                    rx.recv().await,
+                    Operation::Command(Message::CurrentValue(Text::new("B"))),
+                );
+
+                events
+            },
+        )
+    })
+    .await;
+
     assert!(result.is_ok());
     assert_eq!(
         events,

@@ -30,7 +30,7 @@ use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_form::structural::write::StructuralWritable;
 use swim_form::Form;
 use swim_model::path::RelativePath;
-use swim_model::Value;
+use swim_model::{Text, Value};
 use swim_recon::printer::print_recon_compact;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::io::byte_channel;
@@ -209,7 +209,7 @@ fn round_trip<T>(
     frame: RequestMessage<&[u8]>,
 ) -> Result<Option<RequestMessage<T>>, MessageDecodeError>
 where
-    T: RecognizerReadable,
+    T: RecognizerReadable + Debug,
 {
     let mut decoder = AgentMessageDecoder::<T, _>::new(T::make_recognizer());
     let mut encoder = RawRequestMessageEncoder;
@@ -1080,5 +1080,49 @@ fn decode_client_event_frame() {
     check_result_response(
         result,
         ResponseMessage::<Example, Bytes>::event(id, RelativePath::new(node, lane), body),
+    );
+}
+
+#[derive(Form, PartialEq, Eq, Debug)]
+enum Example2 {
+    First(Text),
+    Second,
+}
+
+#[test]
+fn decode_command_frame_twice() {
+    let id = make_addr();
+    let node = "my_node";
+    let lane = "lane";
+    let body = "body";
+
+    let first = Example2::First(Text::new(body));
+    let second = Example2::Second;
+    let first_as_text = print_recon_compact(&first).to_string();
+    let second_as_text = print_recon_compact(&second).to_string();
+
+    let first_frame =
+        RawRequestMessage::command(id, RelativePath::new(node, lane), first_as_text.as_bytes());
+    let second_frame =
+        RawRequestMessage::command(id, RelativePath::new(node, lane), second_as_text.as_bytes());
+
+    let mut decoder = AgentMessageDecoder::<Example2, _>::new(Example2::make_recognizer());
+    let mut encoder = RawRequestMessageEncoder;
+
+    let mut buffer = BytesMut::new();
+    assert!(encoder.encode(first_frame, &mut buffer).is_ok());
+    assert!(encoder.encode(second_frame, &mut buffer).is_ok());
+
+    let first_result = decoder.decode(&mut buffer);
+    let second_result = decoder.decode(&mut buffer);
+
+    check_result(
+        first_result,
+        RequestMessage::command(id, RelativePath::new(node, lane), first),
+    );
+
+    check_result(
+        second_result,
+        RequestMessage::command(id, RelativePath::new(node, lane), second),
     );
 }

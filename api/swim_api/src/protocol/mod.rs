@@ -38,6 +38,12 @@ pub struct DownlinkOperation<T> {
     pub body: T,
 }
 
+impl<T> DownlinkOperation<T> {
+    pub fn new(body: T) -> Self {
+        DownlinkOperation { body }
+    }
+}
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct DownlinkNotificationEncoder;
 
@@ -146,6 +152,7 @@ where
                             } else {
                                 src.advance(1);
                                 let len = src.get_u64() as usize;
+                                recognizer.reset();
                                 *state =
                                     DownlinkNotifiationDecoderState::ReadingBody { remaining: len };
                             }
@@ -188,8 +195,8 @@ where
                                 let consumed = new_remaining - final_remaining;
                                 *remaining -= consumed;
                                 src.unsplit(rem);
+                                *state = DownlinkNotifiationDecoderState::ReadingHeader;
                                 break if let Some(result) = eof_result {
-                                    *state = DownlinkNotifiationDecoderState::ReadingHeader;
                                     Ok(Some(DownlinkNotification::Event { body: result }))
                                 } else {
                                     Err(FrameIoError::BadFrame(InvalidFrame::Incomplete))
@@ -203,6 +210,7 @@ where
                             src.unsplit(rem);
                             src.advance(new_remaining);
                             if *remaining == 0 {
+                                *state = DownlinkNotifiationDecoderState::ReadingHeader;
                                 break Err(e.into());
                             } else {
                                 *state = DownlinkNotifiationDecoderState::Discarding {
@@ -217,7 +225,6 @@ where
                     if src.remaining() >= *remaining {
                         src.advance(*remaining);
                         let result = message.take();
-                        recognizer.reset();
                         *state = DownlinkNotifiationDecoderState::ReadingHeader;
                         break Ok(result);
                     } else {
