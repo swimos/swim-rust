@@ -50,7 +50,7 @@ impl MultiReader {
 
     fn next_ready(&mut self) -> Option<usize> {
         if self.ready_local == 0 {
-            self.ready_local = self.ready_remote.fetch_and(0, Ordering::SeqCst);
+            self.ready_local = self.ready_remote.fetch_and(0, Ordering::Relaxed);
 
             if self.ready_local == 0 {
                 return None;
@@ -77,7 +77,7 @@ impl AsyncRead for MultiReader {
 
                 let result = Pin::new(reader).poll_read(
                     &mut Context::from_waker(&waker_fn(move || {
-                        ready.fetch_or(1 << index, Ordering::SeqCst);
+                        ready.fetch_or(1 << index, Ordering::Relaxed);
                         // Wake up the parent task
                         waker.wake_by_ref();
                     })),
