@@ -17,14 +17,95 @@ mod tests;
 
 use bytes::{Buf, BytesMut};
 use parking_lot::Mutex;
+use slab::Slab;
 use std::fmt::{Debug, Formatter};
 use std::io::{Error, ErrorKind, Result as IoResult};
 use std::num::NonZeroUsize;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use waker_fn::waker_fn;
+
+struct MultiReader {
+    readers: Slab<ByteReader>,
+    ready_remote: Arc<AtomicUsize>,
+    ready_local: usize,
+}
+
+impl MultiReader {
+    fn new() -> Self {
+        MultiReader {
+            readers: Slab::new(),
+            ready_remote: Arc::new(AtomicUsize::new(0)),
+            ready_local: 0,
+        }
+    }
+
+    fn add_reader(&mut self, reader: ByteReader) {
+        let key = self.readers.insert(reader);
+        self.ready_local |= 1 << key;
+    }
+
+    fn next_ready(&mut self) -> Option<usize> {
+        if self.ready_local == 0 {
+            self.ready_local = self.ready_remote.fetch_and(0, Ordering::SeqCst);
+
+            if self.ready_local == 0 {
+                return None;
+            }
+        }
+
+        let index = self.ready_local.trailing_zeros() as usize;
+        Some(index)
+    }
+}
+
+impl AsyncRead for MultiReader {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        while let Some(index) = self.next_ready() {
+            let waker = cx.waker().clone();
+            let ready = self.ready_remote.clone();
+
+            if let Some(reader) = self.readers.get_mut(index) {
+                let buff_len = buf.filled().len();
+
+                let result = Pin::new(reader).poll_read(
+                    &mut Context::from_waker(&waker_fn(move || {
+                        ready.fetch_or(1 << index, Ordering::SeqCst);
+                        // Wake up the parent task
+                        waker.wake_by_ref();
+                    })),
+                    buf,
+                );
+
+                if let Poll::Ready(result) = result {
+                    match result {
+                        Ok(_) if buff_len < buf.filled().len() => {
+                            return Poll::Ready(Ok(()));
+                        }
+                        _ => {
+                            self.readers.remove(index);
+                        }
+                    }
+                }
+
+                self.ready_local ^= 1 << index;
+            }
+        }
+
+        if self.readers.is_empty() {
+            Poll::Ready(Ok(()))
+        } else {
+            Poll::Pending
+        }
+    }
+}
 
 /// A single producer, single consumer (SPSC) byte channel operated on using Tokio `AsyncRead` and
 /// `AsyncWrite` implementations.

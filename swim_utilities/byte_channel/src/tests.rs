@@ -12,134 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{byte_channel, ByteReader};
+use crate::{byte_channel, MultiReader};
 use bytes::BytesMut;
 use futures::future::join;
 use futures::FutureExt;
-use futures_util::stream::FuturesUnordered;
 use rand::Rng;
-use slab::Slab;
 use std::future::Future;
 use std::io::ErrorKind;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt, ReadBuf};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time::{sleep, timeout};
-use waker_fn::waker_fn;
 
 const BYTE_CHANNEL_LEN: usize = 4096;
 const DATA_LEN: usize = 1048576;
 const CHUNK_LEN: usize = 1024;
 
-struct MultiReader {
-    readers: Slab<ByteReader>,
-    ready_remote: Arc<AtomicUsize>,
-    ready_local: usize,
-}
-
-impl MultiReader {
-    fn new() -> Self {
-        MultiReader {
-            readers: Slab::new(),
-            ready_remote: Arc::new(AtomicUsize::new(0)),
-            ready_local: 0,
-        }
-    }
-
-    fn add_reader(&mut self, reader: ByteReader) {
-        let key = self.readers.insert(reader);
-        self.ready_local |= 1 << key;
-    }
-
-    fn next_ready(&mut self) -> Option<usize> {
-        if self.ready_local == 0 {
-            self.ready_local = self.ready_remote.fetch_and(0, Ordering::SeqCst);
-
-            if self.ready_local == 0 {
-                return None;
-            }
-        }
-
-        let index = self.ready_local.trailing_zeros() as usize;
-        Some(index)
-    }
-}
-
-impl AsyncRead for MultiReader {
-    fn poll_read(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut ReadBuf<'_>,
-    ) -> Poll<std::io::Result<()>> {
-        while let Some(index) = self.next_ready() {
-            let waker = cx.waker().clone();
-            let ready = self.ready_remote.clone();
-
-            if let Some(reader) = self.readers.get_mut(index) {
-                let buff_len = buf.filled().len();
-
-                let result = Pin::new(reader).poll_read(
-                    &mut Context::from_waker(&waker_fn(move || {
-                        ready.fetch_or(1 << index, Ordering::SeqCst);
-                        // Wake up the parent task
-                        waker.wake_by_ref();
-                    })),
-                    buf,
-                );
-
-                if let Poll::Ready(result) = result {
-                    match result {
-                        Ok(_) if buff_len < buf.filled().len() => {
-                            return Poll::Ready(Ok(()));
-                        }
-                        _ => {
-                            self.readers.remove(index);
-                        }
-                    }
-                }
-
-                self.ready_local ^= 1 << index;
-            }
-        }
-
-        if self.readers.is_empty() {
-            Poll::Ready(Ok(()))
-        } else {
-            Poll::Pending
-        }
-    }
-}
-
 #[tokio::test]
-async fn bar() {
-    let (mut writer, mut reader) = byte_channel(NonZeroUsize::new(16).unwrap());
-
-    let write = async move {
-        writer.write("foo".as_bytes()).await;
-        sleep(Duration::from_secs(1)).await;
-        drop(writer);
-        sleep(Duration::from_secs(1)).await;
-    };
-
-    let read = async move {
-        let mut buf = BytesMut::new();
-        let val = reader.read_buf(&mut buf).await;
-        eprintln!("val = {:?}", val);
-        let val = reader.read_buf(&mut buf).await;
-    };
-
-    join(timeout(Duration::from_secs(10), read), write).await;
-}
-
-#[tokio::test]
-async fn foo() {
-    let (mut first_writer, mut first_reader) = byte_channel(NonZeroUsize::new(16).unwrap());
-    let (mut second_writer, mut second_reader) = byte_channel(NonZeroUsize::new(16).unwrap());
-    let (mut third_writer, mut third_reader) = byte_channel(NonZeroUsize::new(16).unwrap());
+async fn multi_reader_test() {
+    let (mut first_writer, first_reader) = byte_channel(NonZeroUsize::new(16).unwrap());
+    let (mut second_writer, second_reader) = byte_channel(NonZeroUsize::new(16).unwrap());
+    let (third_writer, third_reader) = byte_channel(NonZeroUsize::new(16).unwrap());
 
     let mut multi_reader = MultiReader::new();
 
@@ -149,16 +45,16 @@ async fn foo() {
 
     let write = async move {
         sleep(Duration::from_secs(1)).await;
-        let a = first_writer.write("foo".as_bytes()).await;
+        first_writer.write("foo".as_bytes()).await.unwrap();
         println!("sent foo 1");
         sleep(Duration::from_secs(1)).await;
-        let a = second_writer.write("bar".as_bytes()).await;
+        second_writer.write("bar".as_bytes()).await.unwrap();
         println!("sent bar 1");
         sleep(Duration::from_secs(1)).await;
-        let a = first_writer.write("foo2".as_bytes()).await;
+        first_writer.write("foo2".as_bytes()).await.unwrap();
         println!("sent foo 2");
         sleep(Duration::from_secs(1)).await;
-        let a = second_writer.write("bar2".as_bytes()).await;
+        second_writer.write("bar2".as_bytes()).await.unwrap();
         println!("sent bar 2");
         sleep(Duration::from_secs(1)).await;
         drop(first_writer);
@@ -169,7 +65,6 @@ async fn foo() {
 
     let read = async move {
         let mut buf = BytesMut::new();
-        // sleep(Duration::from_secs(2)).await;
         let c = multi_reader.read_buf(&mut buf).await;
         eprintln!("c = {:?}", c);
         eprintln!("buf = {:?}", buf);
@@ -183,16 +78,14 @@ async fn foo() {
         eprintln!("c = {:?}", c);
         eprintln!("buf = {:?}", buf);
         let c = multi_reader.read_buf(&mut buf).await;
+        eprintln!("c = {:?}", c);
         eprintln!(
             "multi_reader.readers.len() = {:?}",
             multi_reader.readers.len()
         );
     };
 
-    // read.await;
-    // timeout(Duration::from_secs(10), read).await;
-
-    join(timeout(Duration::from_secs(10), read), write).await;
+    let _ = join(timeout(Duration::from_secs(20), read), write).await;
 }
 
 #[tokio::test]
