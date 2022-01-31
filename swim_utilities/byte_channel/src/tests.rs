@@ -85,7 +85,7 @@ async fn multi_reader_test() {
         );
     };
 
-    let _ = join(timeout(Duration::from_secs(20), read), write).await;
+    let _ = join(timeout(Duration::from_secs(15), read), write).await;
 }
 
 #[tokio::test]
