@@ -16,26 +16,30 @@
 mod tests;
 
 use bytes::{Buf, BytesMut};
+use futures_util::Stream;
+use futures_util::{SinkExt, StreamExt};
 use parking_lot::Mutex;
 use slab::Slab;
 use std::fmt::{Debug, Formatter};
 use std::io::{Error, ErrorKind, Result as IoResult};
 use std::num::NonZeroUsize;
+use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::sync::mpsc;
+use tokio_util::codec::{Decoder, FramedRead};
 use waker_fn::waker_fn;
 
-pub struct MultiReader {
-    readers: Slab<ByteReader>,
+pub struct MultiReader<D> {
+    pub readers: Slab<FramedRead<ByteReader, D>>,
     tx: mpsc::UnboundedSender<usize>,
     rx: mpsc::UnboundedReceiver<usize>,
 }
 
-impl MultiReader {
+impl<D: Decoder> MultiReader<D> {
     pub fn new() -> Self {
         let (tx, rx) = mpsc::unbounded_channel();
 
@@ -46,43 +50,38 @@ impl MultiReader {
         }
     }
 
-    pub fn add_reader(&mut self, reader: ByteReader) {
-        let key = self.readers.insert(reader);
+    pub fn add_reader(&mut self, reader: ByteReader, decoder: D) {
+        let framed = FramedRead::new(reader, decoder);
+        let key = self.readers.insert(framed);
         self.tx.send(key).expect("Channel closed unexpectedly!");
     }
 }
 
-impl AsyncRead for MultiReader {
-    fn poll_read(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut ReadBuf<'_>,
-    ) -> Poll<std::io::Result<()>> {
+impl<D: Decoder + Unpin> Stream for MultiReader<D> {
+    type Item = Result<D::Item, D::Error>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let waker = cx.waker().clone();
         let tx = self.tx.clone();
 
         if let Poll::Ready(Some(index)) = self.rx.poll_recv(cx) {
             if let Some(reader) = self.readers.get_mut(index) {
-                let buff_len = buf.filled().len();
-
-                let result = Pin::new(reader).poll_read(
-                    &mut Context::from_waker(&waker_fn(move || {
+                let result =
+                    Pin::new(reader).poll_next(&mut Context::from_waker(&waker_fn(move || {
                         tx.send(index).expect("Channel closed unexpectedly!");
                         // Wake up the parent task
                         waker.wake_by_ref();
-                    })),
-                    buf,
-                );
+                    })));
 
                 if let Poll::Ready(result) = result {
                     match result {
-                        Ok(_) if buff_len < buf.filled().len() => {
+                        Some(item) => {
                             // Add this reader to the back of the queue
                             self.tx.send(index).expect("Channel closed unexpectedly!");
-                            return Poll::Ready(Ok(()));
+                            return Poll::Ready(Some(item));
                         }
-                        _ => {
-                            // If the buffer has not been changed, it implies that EOF has been reached.
+                        None => {
+                            // The reader is closed and so we remove it.
                             self.readers.remove(index);
                         }
                     }
@@ -91,7 +90,8 @@ impl AsyncRead for MultiReader {
         }
 
         if self.readers.is_empty() {
-            Poll::Ready(Ok(()))
+            // All readers are done so the multi reader is also done.
+            Poll::Ready(None)
         } else {
             Poll::Pending
         }
