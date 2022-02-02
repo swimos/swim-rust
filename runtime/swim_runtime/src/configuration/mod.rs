@@ -46,6 +46,7 @@ const DEFAULT_BACK_PRESSURE_INPUT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(32
 const DEFAULT_BACK_PRESSURE_BRIDGE_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(16);
 const DEFAULT_BACK_PRESSURE_MAX_ACTIVE_KEYS: NonZeroUsize = non_zero_usize!(16);
 const DEFAULT_BACK_PRESSURE_YIELD_AFTER: NonZeroUsize = non_zero_usize!(256);
+const DEFAULT_BACK_PRESSURE_KEY_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(32);
 const WEB_SOCKET_CONFIG_TAG: &str = "websocket_connections";
 const WS_COMPRESSION_NONE_TAG: &str = "none";
 const WS_COMPRESSION_DEFLATE_TAG: &str = "deflate";
@@ -57,6 +58,7 @@ const COMPRESSION_TAG: &str = "compression";
 const DL_REQ_BUFFER_SIZE_TAG: &str = "dl_req_buffer_size";
 const BUFFER_SIZE_TAG: &str = "buffer_size";
 const YIELD_AFTER_TAG: &str = "yield_after";
+const PER_KEY_BUFFER_SIZE_TAG: &str = "per_key_buffer_size";
 const RETRY_STRATEGY_TAG: &str = "retry_strategy";
 const BACK_PRESSURE_TAG: &str = "back_pressure";
 const IDLE_TIMEOUT_TAG: &str = "idle_timeout";
@@ -283,6 +285,8 @@ pub enum BackpressureMode {
         max_active_keys: NonZeroUsize,
         /// Number of values to process before yielding to the runtime.
         yield_after: NonZeroUsize,
+        /// Size of the circular buffer to use for each key of a map downlink.
+        per_key_buffer_size: NonZeroUsize,
     },
 }
 
@@ -805,6 +809,7 @@ impl StructuralWritable for BackpressureMode {
                 bridge_buffer_size,
                 max_active_keys,
                 yield_after,
+                per_key_buffer_size,
             } => {
                 let header_writer = writer.record(1)?;
                 let mut body_writer = header_writer
@@ -816,7 +821,8 @@ impl StructuralWritable for BackpressureMode {
                     body_writer.write_slot(&BRIDGE_BUFFER_SIZE_TAG, bridge_buffer_size)?;
                 body_writer = body_writer.write_slot(&MAX_ACTIVE_KEYS_TAG, max_active_keys)?;
                 body_writer = body_writer.write_slot(&YIELD_AFTER_TAG, yield_after)?;
-
+                body_writer =
+                    body_writer.write_slot(&PER_KEY_BUFFER_SIZE_TAG, per_key_buffer_size)?;
                 body_writer.done()
             }
         }
@@ -836,6 +842,7 @@ impl StructuralWritable for BackpressureMode {
                 bridge_buffer_size,
                 max_active_keys,
                 yield_after,
+                per_key_buffer_size,
             } => {
                 let header_writer = writer.record(1)?;
                 let mut body_writer = header_writer
@@ -848,7 +855,8 @@ impl StructuralWritable for BackpressureMode {
                     body_writer.write_slot_into(BRIDGE_BUFFER_SIZE_TAG, bridge_buffer_size)?;
                 body_writer = body_writer.write_slot_into(MAX_ACTIVE_KEYS_TAG, max_active_keys)?;
                 body_writer = body_writer.write_slot_into(YIELD_AFTER_TAG, yield_after)?;
-
+                body_writer =
+                    body_writer.write_slot_into(PER_KEY_BUFFER_SIZE_TAG, per_key_buffer_size)?;
                 body_writer.done()
             }
         }

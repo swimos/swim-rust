@@ -213,7 +213,7 @@ pub enum SpecialActionResult {
 
 pub async fn consume_buffers<M, K, V, E, S, F, Snk>(
     bridge_rx: mpsc::Receiver<Action<M, K, V, S>>,
-    mut sink: Snk,
+    sink: &mut Snk,
     yield_after: NonZeroUsize,
     on_special: impl Fn(S) -> (SpecialActionResult, Option<M>),
     mut take_fn: impl Fn(K, BridgeBufferReceiver<V>) -> F,
@@ -283,7 +283,7 @@ where
                             &mut buffers,
                             &mut queued_buffers,
                             &mut active_keys,
-                            &mut sink,
+                            sink,
                             &mut take_fn,
                             &mut map_fn,
                             None,
@@ -301,7 +301,7 @@ where
                     &mut buffers,
                     &mut queued_buffers,
                     &mut active_keys,
-                    &mut sink,
+                    sink,
                     &mut take_fn,
                     &mut map_fn,
                     Some(key),
@@ -315,7 +315,7 @@ where
                     &mut buffers,
                     &mut queued_buffers,
                     &mut active_keys,
-                    &mut sink,
+                    sink,
                     &mut take_fn,
                     &mut map_fn,
                     None,
@@ -325,7 +325,7 @@ where
                 sink.send_item(message).await?;
             }
             Either::Right((key, Some((value, remainder)))) => {
-                dispatch(map_fn(key.clone(), value), &mut sink).await?;
+                dispatch(map_fn(key.clone(), value), sink).await?;
                 buffers.push(take_fn(key, remainder));
             }
             Either::Right((key, _)) => {

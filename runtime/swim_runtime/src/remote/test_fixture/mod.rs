@@ -30,7 +30,8 @@ use url::Url;
 
 #[derive(Debug)]
 struct Entry {
-    route: Route,
+    route_sender: TaggedSender,
+    on_dropped: promise::Receiver<ConnectionDropped>,
     on_drop: promise::Sender<ConnectionDropped>,
     countdown: u8,
 }
@@ -58,11 +59,14 @@ impl Router for LocalRoutes {
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         let lock = self.1.lock();
         let result = if let Some(Entry {
-            route, countdown, ..
+            route_sender,
+            on_dropped,
+            countdown,
+            ..
         }) = lock.routes.get(&addr)
         {
             if *countdown == 0 {
-                Ok(route.clone())
+                Ok(Route::new(route_sender.clone(), on_dropped.clone()))
             } else {
                 Err(ResolutionError::unresolvable(addr))
             }
@@ -140,11 +144,11 @@ impl LocalRoutes {
                 *counter += 1;
                 vacant.insert((id, countdown));
                 let (drop_tx, drop_rx) = promise::promise();
-                let route = Route::new(TaggedSender::new(*owner_addr, tx), drop_rx);
                 routes.insert(
                     id,
                     Entry {
-                        route,
+                        route_sender: TaggedSender::new(*owner_addr, tx),
+                        on_dropped: drop_rx,
                         on_drop: drop_tx,
                         countdown,
                     },

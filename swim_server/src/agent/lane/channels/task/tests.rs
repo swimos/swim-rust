@@ -1446,7 +1446,7 @@ impl RouteReceiver {
 #[derive(Debug)]
 struct MultiTestContextInner {
     router_addr: RoutingAddr,
-    senders: HashMap<RoutingAddr, Route>,
+    senders: HashMap<RoutingAddr, (TaggedSender, promise::Receiver<ConnectionDropped>)>,
     receivers: HashMap<RoutingAddr, RouteReceiver>,
 }
 
@@ -1485,7 +1485,7 @@ impl MultiTestContext {
         if let std::collections::hash_map::Entry::Vacant(e) = lock.senders.entry(addr) {
             let (tx, rx) = mpsc::channel(5);
             let (drop_tx, drop_rx) = promise::promise();
-            e.insert(Route::new(TaggedSender::new(addr, tx), drop_rx));
+            e.insert((TaggedSender::new(addr, tx), drop_rx));
             lock.receivers.insert(addr, RouteReceiver::taken(drop_tx));
             Some(rx)
         } else {
@@ -1542,15 +1542,15 @@ impl Router for MultiTestRouter {
     fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let mut lock = self.0.lock();
-            if let Some(sender) = lock.senders.get(&addr) {
-                Ok(sender.clone())
+            if let Some((sender, on_dropped)) = lock.senders.get(&addr) {
+                Ok(Route::new(sender.clone(), on_dropped.clone()))
             } else {
                 let (tx, rx) = mpsc::channel(5);
                 let (drop_tx, drop_rx) = promise::promise();
-                let route = Route::new(TaggedSender::new(addr, tx), drop_rx);
-                lock.senders.insert(addr, route.clone());
+                let sender = TaggedSender::new(addr, tx);
+                lock.senders.insert(addr, (sender.clone(), drop_rx.clone()));
                 lock.receivers.insert(addr, RouteReceiver::new(rx, drop_tx));
-                Ok(route)
+                Ok(Route::new(sender, drop_rx))
             }
         }
         .boxed()

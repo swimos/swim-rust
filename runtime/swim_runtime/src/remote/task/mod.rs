@@ -188,6 +188,10 @@ where
         let mut client_index: u64 = 0;
         pin_mut!(client_monitor);
 
+        let mut needs_resp;
+        let mut node: String = Default::default();
+        let mut lane: String = Default::default();
+
         let completion = loop {
             timeout.as_mut().reset(
                 Instant::now()
@@ -247,19 +251,20 @@ where
                         Ok(WsMessage::Text(message)) => {
                             match parse_recognize(Span::new(message.as_str()), false) {
                                 Ok(envelope) => {
+                                    needs_resp = link_or_sync(&envelope, &mut node, &mut lane);
                                     let dispatch_result = dispatch_envelope(
                                         &mut router,
                                         &mut client_connections,
                                         &mut resolved,
                                         envelope,
-                                        config.connection_retries,
+                                        &config.connection_retries,
                                         sleep,
                                     )
                                     .await;
 
                                     // Todo add router to ratchet's upgrade function to avoid this
-                                    if let Err((env, _)) = dispatch_result {
-                                        handle_not_found(env, &message_injector).await;
+                                    if dispatch_result.is_err() && needs_resp {
+                                        handle_not_found(&message_injector, &node, &lane).await;
                                     }
                                 }
                                 Err(err) => {
@@ -398,48 +403,14 @@ async fn dispatch_envelope<R, F, D>(
     router: &mut R,
     client_connections: &mut HashMap<RelativePath, Vec<(u64, TaggedSender)>>,
     resolved: &mut HashMap<RelativePath, Route>,
-    mut envelope: Envelope,
-    mut retry_strategy: RetryStrategy,
+    envelope: Envelope,
+    retry_strategy: &RetryStrategy,
     delay_fn: F,
-) -> Result<(), (Envelope, DispatchError)>
+) -> Result<(), DispatchError>
 where
     R: Router,
     F: Fn(Duration) -> D,
     D: Future<Output = ()>,
-{
-    loop {
-        let result = try_dispatch_envelope(router, client_connections, resolved, envelope).await;
-        match result {
-            Err((env, err)) if !err.is_fatal() => {
-                match retry_strategy.next() {
-                    Some(Some(dur)) => {
-                        delay_fn(dur).await;
-                    }
-                    None => {
-                        break Err((env, err));
-                    }
-                    _ => {}
-                }
-                envelope = env;
-            }
-            Err((env, err)) => {
-                break Err((env, err));
-            }
-            _ => {
-                break Ok(());
-            }
-        }
-    }
-}
-
-async fn try_dispatch_envelope<R>(
-    router: &mut R,
-    client_connections: &mut HashMap<RelativePath, Vec<(u64, TaggedSender)>>,
-    resolved: &mut HashMap<RelativePath, Route>,
-    envelope: Envelope,
-) -> Result<(), (Envelope, DispatchError)>
-where
-    R: Router,
 {
     match envelope.discriminate_header() {
         EnvelopeHeader::Response(path) => {
@@ -467,27 +438,20 @@ where
             Ok(())
         }
         EnvelopeHeader::Request(target) => {
-            let Route { sender, .. } = if let Some(route) = resolved.get_mut(&target) {
-                if route.sender.is_closed() {
+            let route = if let Some(route) = resolved.get_mut(&target) {
+                if route.is_closed() {
                     resolved.remove(&target);
-                    insert_new_route(router, resolved, &target)
-                        .await
-                        .map_err(|err| (envelope.clone(), err))?
+                    insert_new_route(router, resolved, &target, retry_strategy, delay_fn).await?
                 } else {
                     route
                 }
             } else {
-                insert_new_route(router, resolved, &target)
-                    .await
-                    .map_err(|err| (envelope.clone(), err))?
+                insert_new_route(router, resolved, &target, retry_strategy, delay_fn).await?
             };
-            if let Err(err) = sender.send_item(envelope).await {
-                if let Some(Route { on_drop, .. }) = resolved.remove(&target) {
-                    let reason = on_drop
-                        .await
-                        .map(|reason| (*reason).clone())
-                        .unwrap_or(ConnectionDropped::Unknown);
-                    Err((err.0, DispatchError::Dropped(reason)))
+            if route.send_item(envelope).await.is_err() {
+                if let Some(route) = resolved.remove(&target) {
+                    let reason = route.terminated().await;
+                    Err(DispatchError::Dropped(reason))
                 } else {
                     unreachable!();
                 }
@@ -502,15 +466,39 @@ where
 }
 
 #[allow(clippy::needless_lifetimes)]
-async fn insert_new_route<'a, R>(
+async fn insert_new_route<'a, R, F, D>(
     router: &mut R,
     resolved: &'a mut HashMap<RelativePath, Route>,
     target: &RelativePath,
+    retry_strategy: &RetryStrategy,
+    delay_fn: F,
 ) -> Result<&'a mut Route, DispatchError>
 where
     R: Router,
+    F: Fn(Duration) -> D,
+    D: Future<Output = ()>,
 {
-    let route = get_route(router, target).await;
+    let mut retry = *retry_strategy;
+    let route = loop {
+        let result = get_route(router, target).await;
+        match result {
+            Err(err) if !err.is_fatal() => match retry.next() {
+                Some(Some(dur)) => {
+                    delay_fn(dur).await;
+                }
+                None => {
+                    break Err(err);
+                }
+                _ => {}
+            },
+            Err(err) => {
+                break Err(err);
+            }
+            Ok(r) => {
+                break Ok(r);
+            }
+        }
+    };
 
     match route {
         Ok(route) => match resolved.entry(target.clone()) {
@@ -605,15 +593,19 @@ where
 }
 
 //Get the target path only for link and sync messages (for creating the "not found" response).
-fn link_or_sync(env: Envelope) -> Option<RelativePath> {
+fn link_or_sync(env: &Envelope, node: &mut String, lane: &mut String) -> bool {
     match env {
         Envelope::Link {
             node_uri, lane_uri, ..
         }
         | Envelope::Sync {
             node_uri, lane_uri, ..
-        } => Some(RelativePath::new(node_uri, lane_uri)),
-        _ => None,
+        } => {
+            node.replace_range(.., node_uri.as_str());
+            lane.replace_range(.., lane_uri.as_str());
+            true
+        }
+        _ => false,
     }
 }
 
@@ -621,11 +613,9 @@ fn link_or_sync(env: Envelope) -> Option<RelativePath> {
 const NOT_FOUND_ADDR: RoutingAddr = RoutingAddr::plane(0);
 
 // For a link or sync message that cannot be routed, send back a "not found" message.
-async fn handle_not_found(env: Envelope, sender: &mpsc::Sender<TaggedEnvelope>) {
-    if let Some(RelativePath { node, lane }) = link_or_sync(env) {
-        let not_found = Envelope::node_not_found(node, lane);
-        //An error here means the web socket connection has failed and will produce an error
-        //the next time it is polled so it is fine to discard this error.
-        let _ = sender.send(TaggedEnvelope(NOT_FOUND_ADDR, not_found)).await;
-    }
+async fn handle_not_found(sender: &mpsc::Sender<TaggedEnvelope>, node: &str, lane: &str) {
+    let not_found = Envelope::node_not_found(Text::new(node), Text::new(lane));
+    //An error here means the web socket connection has failed and will produce an error
+    //the next time it is polled so it is fine to discard this error.
+    let _ = sender.send(TaggedEnvelope(NOT_FOUND_ADDR, not_found)).await;
 }

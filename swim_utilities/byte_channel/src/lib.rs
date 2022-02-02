@@ -42,6 +42,7 @@ pub fn byte_channel(buffer_size: NonZeroUsize) -> (ByteWriter, ByteReader) {
     )
 }
 
+#[derive(Debug)]
 struct Conduit {
     data: BytesMut,
     capacity: usize,
@@ -151,6 +152,7 @@ impl AsyncWrite for Conduit {
     }
 }
 
+#[derive(Debug)]
 pub struct ByteReader {
     inner: Arc<Mutex<Conduit>>,
 }
@@ -173,8 +175,15 @@ impl AsyncRead for ByteReader {
     }
 }
 
+#[derive(Debug)]
 pub struct ByteWriter {
     inner: Arc<Mutex<Conduit>>,
+}
+
+impl ByteWriter {
+    pub fn is_closed(&self) -> bool {
+        self.inner.lock().closed
+    }
 }
 
 impl Drop for ByteWriter {

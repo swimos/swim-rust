@@ -16,7 +16,7 @@ use crate::error::{ConnectionError, IoError, ResolutionError, RouterError, Unres
 use crate::remote::router::RemoteRouter;
 use crate::remote::test_fixture::LocalRoutes;
 use crate::remote::{RawOutRoute, RemoteRoutingRequest};
-use crate::routing::{Route, Router, RoutingAddr, TaggedEnvelope};
+use crate::routing::{Router, RoutingAddr, TaggedEnvelope};
 use futures::future::join;
 use futures::io::ErrorKind;
 use futures::{FutureExt, StreamExt};
@@ -100,8 +100,8 @@ async fn resolve_remote_ok() {
         assert_eq!(result, Ok(ADDR));
         let result = router.resolve_sender(ADDR).await;
         assert!(result.is_ok());
-        let Route { mut sender, .. } = result.unwrap();
-        assert!(sender.send_item(envelope("a")).await.is_ok());
+        let mut route = result.unwrap();
+        assert!(route.send_item(envelope("a")).await.is_ok());
         drop(stop_tx);
         let result = rx.recv().now_or_never();
         assert_eq!(result, Some(Some(TaggedEnvelope(our_addr, envelope("a")))));
@@ -182,8 +182,8 @@ async fn delegate_local_ok() {
 
         let result = router.resolve_sender(local_addr).await;
         assert!(result.is_ok());
-        let Route { mut sender, .. } = result.unwrap();
-        assert!(sender.send_item(envelope("a")).await.is_ok());
+        let mut route = result.unwrap();
+        assert!(route.send_item(envelope("a")).await.is_ok());
         drop(stop_tx);
         let result = rx.recv().now_or_never();
         assert_eq!(result, Some(Some(TaggedEnvelope(our_addr, envelope("a")))));

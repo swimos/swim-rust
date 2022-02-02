@@ -17,6 +17,7 @@ use std::num::NonZeroUsize;
 use swim_utilities::future::item_sink::ItemSender;
 use swim_utilities::sync::circular_buffer;
 use swim_utilities::trigger;
+use tokio::sync::mpsc;
 
 pub mod keyed;
 
@@ -26,37 +27,70 @@ mod test;
 #[derive(Debug)]
 pub enum Flushable<T> {
     Value(T),
-    Flush(trigger::Sender),
+    Flush(T, trigger::Sender),
 }
 
-impl<T> From<T> for Flushable<T> {
-    fn from(v: T) -> Self {
-        Flushable::Value(v)
-    }
-}
-
-pub async fn release_pressure<T, M, E, Snk>(
-    mut rx: circular_buffer::Receiver<M>,
-    mut sink: Snk,
+pub async fn release_pressure<T, E, Snk>(
+    mut rx: circular_buffer::Receiver<Flushable<T>>,
+    sink: &mut Snk,
     yield_after: NonZeroUsize,
 ) -> Result<(), E>
 where
-    M: Into<Flushable<T>> + Send + Sync,
+    T: Send + Sync,
     Snk: ItemSender<T, E>,
 {
     let mut iteration_count: usize = 0;
     let yield_mod = yield_after.get();
     while let Ok(value) = rx.recv().await {
-        match value.into() {
+        match value {
             Flushable::Value(v) => {
                 if let Err(e) = sink.send_item(v).await {
                     return Err(e);
                 }
             }
-            Flushable::Flush(tx) => {
+            Flushable::Flush(v, tx) => {
+                if let Err(e) = sink.send_item(v).await {
+                    return Err(e);
+                }
                 tx.trigger();
             }
         }
+        iteration_count = iteration_count.wrapping_add(1);
+        if iteration_count % yield_mod == 0 {
+            tokio::task::yield_now().await;
+        }
+    }
+    Ok(())
+}
+
+use futures::future::{select, Either};
+use pin_utils::pin_mut;
+
+/// TODO Merge/remove the two implementations.
+/// This is a variant of the abouve `release_pressure`. Currently downlinks use this version
+/// and uplinks the other. They should be merged or replaced in favour of something else.
+pub async fn pressure_valve<T, E>(
+    mut priority: mpsc::Receiver<T>,
+    mut merge: circular_buffer::Receiver<T>,
+    mut sink: impl ItemSender<T, E>,
+    yield_after: NonZeroUsize,
+) -> Result<(), E>
+where
+    T: Send + Sync,
+{
+    let mut iteration_count: usize = 0;
+    let yield_mod = yield_after.get();
+    loop {
+        let recv = priority.recv();
+        pin_mut!(recv);
+        let value = match select(recv, merge.recv()).await {
+            Either::Left((Some(t), _)) => t,
+            Either::Right((Ok(t), _)) => t,
+            _ => {
+                break;
+            }
+        };
+        sink.send_item(value).await?;
         iteration_count = iteration_count.wrapping_add(1);
         if iteration_count % yield_mod == 0 {
             tokio::task::yield_now().await;

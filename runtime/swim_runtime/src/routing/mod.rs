@@ -16,17 +16,31 @@ use crate::error::{
     ConnectionDropped, ConnectionError, ResolutionError, RouterError, RoutingError,
 };
 use std::convert::TryFrom;
+use std::error::Error;
 
+use crate::compat::{
+    ClientMessageDecoder, EnvelopeEncoder, MessageDecodeError, Notification, ResponseMessage,
+};
 use crate::remote::RawOutRoute;
 use bytes::Buf;
 use futures::future::BoxFuture;
-use futures::FutureExt;
+use futures::future::{ready, select, Either};
+use futures::stream::unfold;
+use futures::StreamExt;
+use futures::{FutureExt, Stream};
+use futures_util::SinkExt;
 use std::fmt::{Display, Formatter};
+use std::io::ErrorKind;
+use swim_form::structural::read::recognizer::RecognizerReadable;
+use swim_model::Value;
 use swim_utilities::future::item_sink::{ItemSink, SendError};
+use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger::promise;
-use swim_warp::envelope::{Envelope, RequestEnvelope};
+use swim_warp::envelope::{Envelope, RequestEnvelope, ResponseEnvelope};
 use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
+use tokio_util::codec::{FramedRead, FramedWrite};
 use url::Url;
 use uuid::Uuid;
 
@@ -148,29 +162,247 @@ impl TaggedClientEnvelope {
     }
 }
 
+#[derive(Debug)]
+pub struct TaggedByteChannel {
+    channel: FramedWrite<ByteWriter, EnvelopeEncoder>,
+}
+
+impl TaggedByteChannel {
+    pub fn new(addr: RoutingAddr, channel: ByteWriter) -> Self {
+        TaggedByteChannel {
+            channel: FramedWrite::new(channel, EnvelopeEncoder::new(addr)),
+        }
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.channel.get_ref().is_closed()
+    }
+
+    pub async fn send(&mut self, envelope: Envelope) -> Result<(), std::io::Error> {
+        let TaggedByteChannel { channel } = self;
+        channel.send(envelope).await
+    }
+}
+
+#[derive(Debug)]
+enum RouteSender {
+    Mpsc(TaggedSender),
+    ByteChannel(TaggedByteChannel),
+}
+
 /// A single entry in the router consisting of a sender that will push envelopes to the endpoint
 /// and a promise that will be satisfied when the endpoint closes.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Route {
-    pub sender: TaggedSender,
-    pub on_drop: promise::Receiver<ConnectionDropped>,
+    sender: RouteSender,
+    on_drop: promise::Receiver<ConnectionDropped>,
 }
 
 /// A extended router entry for a client (downlink). In addition to the [`Route`] for sending
 /// messages, there is also a receiver to which incoming messages for the downlink will be routed.
 #[derive(Debug)]
 pub struct ClientRoute {
-    // The routing address for the target of this route.
-    pub tag: RoutingAddr,
     // Route to which outgoingmessages to are sent.
-    pub route: Route,
+    route: Route,
+    // Incoming messages for the client.
+    receiver: ClientEndpoint,
+}
+
+#[derive(Debug)]
+enum ClientReceiver {
+    Mpsc(mpsc::Receiver<TaggedEnvelope>),
+    ByteChannel(ByteReader),
+}
+
+/// Additional component for a router endpoint associated with a client.
+#[derive(Debug)]
+pub struct ClientEndpoint {
+    // The routing address for the target of this route.
+    tag: RoutingAddr,
     // Receiver for incoming messages for this client.
-    pub receiver: mpsc::Receiver<TaggedEnvelope>,
+    receiver: ClientReceiver,
     // Promise that will be satisfied after the channel corresponding to the receiver is dropped.
-    pub rx_on_dropped: promise::Receiver<ConnectionDropped>,
+    rx_on_dropped: promise::Receiver<ConnectionDropped>,
     // When this handle is dropped, the task with the responsibility of routing messages to this
     // client will be informed that it is no longer active.
-    pub handle_drop: ClientRouteMonitor,
+    handle_drop: ClientRouteMonitor,
+}
+
+/// The Router events are emitted by the connection streams of the router and indicate
+/// messages or errors from the remote host.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RouterEvent {
+    // Incoming message from a remote host.
+    Message(ResponseEnvelope),
+    // There was an error in the connection. If a retry strategy exists this will trigger it.
+    ConnectionClosed,
+    /// The remote host is unreachable. This will not trigger the retry system.
+    Unreachable(String),
+    // The router is stopping.
+    Stopping,
+}
+
+struct RouteStream<S> {
+    host: Option<Url>,
+    stream: S,
+    on_dropped: Option<promise::Receiver<ConnectionDropped>>,
+    _monitor: ClientRouteMonitor,
+    stop_trigger: CloseReceiver,
+}
+
+impl<S> RouteStream<S> {
+    fn new(
+        host: Option<Url>,
+        stream: S,
+        on_dropped: promise::Receiver<ConnectionDropped>,
+        monitor: ClientRouteMonitor,
+        stop_trigger: CloseReceiver,
+    ) -> Self {
+        RouteStream {
+            host,
+            stream,
+            on_dropped: Some(on_dropped),
+            _monitor: monitor,
+            stop_trigger,
+        }
+    }
+}
+
+impl ClientEndpoint {
+    pub fn into_stream(
+        self,
+        host: Option<Url>,
+        stop_trigger: CloseReceiver,
+    ) -> impl Stream<Item = RouterEvent> {
+        let ClientEndpoint {
+            receiver,
+            rx_on_dropped,
+            handle_drop,
+            ..
+        } = self;
+        match receiver {
+            ClientReceiver::Mpsc(receiver) => Either::Left(mpsc_client_stream(
+                receiver,
+                rx_on_dropped,
+                handle_drop,
+                host,
+                stop_trigger,
+            )),
+            ClientReceiver::ByteChannel(receiver) => Either::Right(bytes_channel_client_stream(
+                receiver,
+                rx_on_dropped,
+                handle_drop,
+                host,
+                stop_trigger,
+            )),
+        }
+    }
+}
+
+enum ChannelFailure {
+    ChannelBroken,
+    InvalidFrame,
+}
+
+fn bytes_channel_client_stream(
+    receiver: ByteReader,
+    rx_on_dropped: promise::Receiver<ConnectionDropped>,
+    handle_drop: ClientRouteMonitor,
+    host: Option<Url>,
+    stop_trigger: CloseReceiver,
+) -> impl Stream<Item = RouterEvent> {
+    let decoder = ClientMessageDecoder::new(Value::make_recognizer());
+    let framed = FramedRead::new(receiver, decoder);
+    let stream = framed.map(|result| match result {
+        Ok(message) => {
+            let ResponseMessage { path, envelope, .. } = message;
+
+            let envelope = match envelope {
+                Notification::Linked => ResponseEnvelope::Linked(path, Default::default(), None),
+                Notification::Synced => ResponseEnvelope::Synced(path, None),
+                Notification::Unlinked(_) => ResponseEnvelope::Unlinked(path, None),
+                Notification::Event(body) => ResponseEnvelope::Event(path, Some(body)),
+            };
+            Ok(envelope)
+        }
+        Err(MessageDecodeError::Io(_)) => Err(ChannelFailure::ChannelBroken),
+        Err(_) => Err(ChannelFailure::InvalidFrame),
+    });
+    client_stream(stream, rx_on_dropped, handle_drop, host, stop_trigger)
+}
+
+fn mpsc_client_stream(
+    receiver: mpsc::Receiver<TaggedEnvelope>,
+    rx_on_dropped: promise::Receiver<ConnectionDropped>,
+    handle_drop: ClientRouteMonitor,
+    host: Option<Url>,
+    stop_trigger: CloseReceiver,
+) -> impl Stream<Item = RouterEvent> {
+    let stream = ReceiverStream::new(receiver)
+        .filter_map(|TaggedEnvelope(_, env)| ready(env.into_response().map(Ok)));
+    client_stream(stream, rx_on_dropped, handle_drop, host, stop_trigger)
+}
+
+fn client_stream<S>(
+    stream: S,
+    rx_on_dropped: promise::Receiver<ConnectionDropped>,
+    handle_drop: ClientRouteMonitor,
+    host: Option<Url>,
+    stop_trigger: CloseReceiver,
+) -> impl Stream<Item = RouterEvent>
+where
+    S: Stream<Item = Result<ResponseEnvelope, ChannelFailure>> + Unpin,
+{
+    let seed = RouteStream::new(host, stream, rx_on_dropped, handle_drop, stop_trigger);
+
+    unfold(seed, |mut rs| async move {
+        let RouteStream {
+            host,
+            stream,
+            on_dropped,
+            stop_trigger,
+            ..
+        } = &mut rs;
+        if let Some(dropped) = on_dropped {
+            let event = match select(stream.next(), stop_trigger).await {
+                Either::Left((Some(Ok(env)), _)) => RouterEvent::Message(env),
+                Either::Left((Some(Err(ChannelFailure::InvalidFrame)), _)) => {
+                    *on_dropped = None;
+                    RouterEvent::ConnectionClosed
+                }
+                Either::Left(_) => {
+                    let result = dropped.await;
+                    *on_dropped = None;
+                    if let Ok(reason) = result {
+                        match &*reason {
+                            ConnectionDropped::Failed(ConnectionError::Resolution(name)) => {
+                                RouterEvent::Unreachable(name.clone())
+                            }
+                            ConnectionDropped::Failed(ConnectionError::Io(e)) => {
+                                match (e.kind(), host) {
+                                    (ErrorKind::NotFound, Some(host)) => {
+                                        RouterEvent::Unreachable(host.to_string())
+                                    }
+                                    _ => RouterEvent::ConnectionClosed,
+                                }
+                            }
+                            ConnectionDropped::Failed(_) => RouterEvent::ConnectionClosed,
+                            _ => RouterEvent::ConnectionClosed,
+                        }
+                    } else {
+                        RouterEvent::ConnectionClosed
+                    }
+                }
+                Either::Right(_) => {
+                    *on_dropped = None;
+                    RouterEvent::Stopping
+                }
+            };
+            Some((event, rs))
+        } else {
+            None
+        }
+    })
 }
 
 /// A client route that cannot be directly route to. This type of client route is attached to a
@@ -193,12 +425,37 @@ impl ClientRoute {
         handle_drop: ClientRouteMonitor,
     ) -> Self {
         ClientRoute {
-            tag,
             route,
-            receiver,
-            rx_on_dropped,
-            handle_drop,
+            receiver: ClientEndpoint {
+                tag,
+                receiver: ClientReceiver::Mpsc(receiver),
+                rx_on_dropped,
+                handle_drop,
+            },
         }
+    }
+
+    pub fn new_bytes(
+        tag: RoutingAddr,
+        route: Route,
+        receiver: ByteReader,
+        rx_on_dropped: promise::Receiver<ConnectionDropped>,
+        handle_drop: ClientRouteMonitor,
+    ) -> Self {
+        ClientRoute {
+            route,
+            receiver: ClientEndpoint {
+                tag,
+                receiver: ClientReceiver::ByteChannel(receiver),
+                rx_on_dropped,
+                handle_drop,
+            },
+        }
+    }
+
+    pub fn split(self) -> (Route, ClientEndpoint) {
+        let ClientRoute { route, receiver } = self;
+        (route, receiver)
     }
 }
 
@@ -254,9 +511,57 @@ impl UnroutableClient {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct SendFailed;
+
+impl Display for SendFailed {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Envelope could not be routed.")
+    }
+}
+
+impl Error for SendFailed {}
+
 impl Route {
     pub fn new(sender: TaggedSender, on_drop: promise::Receiver<ConnectionDropped>) -> Self {
-        Route { sender, on_drop }
+        Route {
+            sender: RouteSender::Mpsc(sender),
+            on_drop,
+        }
+    }
+
+    pub fn new_bytes(
+        sender: TaggedByteChannel,
+        on_drop: promise::Receiver<ConnectionDropped>,
+    ) -> Self {
+        Route {
+            sender: RouteSender::ByteChannel(sender),
+            on_drop,
+        }
+    }
+
+    pub fn is_closed(&self) -> bool {
+        let Route { sender, .. } = self;
+        match sender {
+            RouteSender::Mpsc(tx) => tx.is_closed(),
+            RouteSender::ByteChannel(tx) => tx.is_closed(),
+        }
+    }
+
+    pub async fn send_item(&mut self, envelope: Envelope) -> Result<(), SendFailed> {
+        let Route { sender, .. } = self;
+        match sender {
+            RouteSender::Mpsc(tx) => tx.send_item(envelope).await.map_err(|_| SendFailed),
+            RouteSender::ByteChannel(tx) => tx.send(envelope).await.map_err(|_| SendFailed),
+        }
+    }
+
+    pub async fn terminated(self) -> ConnectionDropped {
+        let Route { on_drop, .. } = self;
+        on_drop
+            .await
+            .map(|reason| (*reason).clone())
+            .unwrap_or(ConnectionDropped::Unknown)
     }
 }
 
@@ -324,6 +629,22 @@ impl<'a> ItemSink<'a, Envelope> for TaggedSender {
 
     fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
         self.send_item(value).boxed()
+    }
+}
+
+impl<'a> ItemSink<'a, Envelope> for Route {
+    type Error = SendFailed;
+    type SendFuture = BoxFuture<'a, Result<(), Self::Error>>;
+
+    fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
+        async move {
+            let Route { sender, .. } = self;
+            match sender {
+                RouteSender::Mpsc(tx) => tx.send_item(value).await.map_err(|_| SendFailed),
+                RouteSender::ByteChannel(tx) => tx.send(value).await.map_err(|_| SendFailed),
+            }
+        }
+        .boxed()
     }
 }
 

@@ -12,11 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::connections::ConnectionSender;
 use crate::downlink::error::SubscriptionError;
 use crate::downlink::model::map::UntypedMapModification;
 use crate::downlink::model::value::SharedValue;
-use crate::downlink::subscription::watch_adapter::KeyedWatch;
 use crate::downlink::typed::command::TypedCommandDownlink;
 use crate::downlink::typed::event::TypedEventDownlink;
 use crate::downlink::typed::map::{MapDownlinkReceiver, TypedMapDownlink};
@@ -30,37 +28,33 @@ use crate::downlink::{
     DownlinkError, DownlinkKind, Message, SchemaViolations,
 };
 use crate::router::ClientConnectionFactory;
-use crate::router::RouterEvent;
 use either::Either;
-use futures::future::{ready, select, Either as FEither, TryFutureExt};
+use futures::future::TryFutureExt;
 use futures::select_biased;
-use futures::stream::{unfold, FuturesUnordered, StreamExt};
+use futures::stream::{FuturesUnordered, StreamExt};
 use futures::{FutureExt, Stream};
 use pin_utils::pin_mut;
 use std::collections::HashMap;
-use std::io::ErrorKind;
 use std::sync::{Arc, Weak};
 use swim_form::Form;
-use swim_model::path::Addressable;
+use swim_model::path::{Addressable, RelativePath};
 use swim_model::{Text, Value};
 use swim_runtime::backpressure;
 use swim_runtime::configuration::{BackpressureMode, DownlinkConnectionsConfig, DownlinksConfig};
-use swim_runtime::error::{ConnectionDropped, ConnectionError, RoutingError};
-use swim_runtime::routing::{
-    ClientRoute, ClientRouteMonitor, CloseReceiver, Route, RouterFactory, TaggedEnvelope,
-};
+use swim_runtime::error::RoutingError;
+use swim_runtime::routing::{ClientRoute, CloseReceiver, Route, RouterEvent, RouterFactory};
 use swim_schema::schema::StandardSchema;
 use swim_schema::ValueSchema;
 use swim_utilities::errors::Recoverable;
 use swim_utilities::future::item_sink::either::SplitSink;
-use swim_utilities::future::item_sink::ItemSender;
+use swim_utilities::future::item_sink::{for_mpsc_sender, ItemSender};
 use swim_utilities::future::request::Request;
 use swim_utilities::future::retryable::RetryStrategy;
 use swim_utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture};
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::sync::circular_buffer;
 use swim_utilities::trigger::promise::{self, PromiseError};
-use swim_warp::envelope::{Envelope, ResponseEnvelope};
+use swim_warp::envelope::Envelope;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{error, info, instrument, trace_span};
@@ -69,7 +63,6 @@ use url::Url;
 pub mod envelopes;
 #[cfg(test)]
 mod tests;
-mod watch_adapter;
 
 #[derive(Clone, Debug)]
 pub struct Downlinks<Path> {
@@ -547,7 +540,7 @@ where
     pub async fn connection_for(
         &mut self,
         path: Path,
-    ) -> RequestResult<(ConnectionSender, impl Stream<Item = RouterEvent>), Path> {
+    ) -> RequestResult<(Route, impl Stream<Item = RouterEvent>), Path> {
         let host = path.host();
         let node_uri = path.node();
         let lane = path.lane();
@@ -567,15 +560,12 @@ where
         }
     }
 
-    pub async fn sink_for(&mut self, path: Path) -> RequestResult<ConnectionSender, Path> {
+    pub async fn sink_for(&mut self, path: Path) -> RequestResult<Route, Path> {
         let host = path.host();
         let node_uri = path.node();
         match RelativeUri::try_from(node_uri.as_str()) {
             Err(_) => Err(SubscriptionError::BadUri(node_uri)),
-            Ok(node_uri) => {
-                let Route { sender, .. } = self.connections.get_sender(host, node_uri).await?;
-                Ok(sender)
-            }
+            Ok(node_uri) => Ok(self.connections.get_sender(host, node_uri).await?),
         }
     }
 
@@ -595,12 +585,10 @@ where
         let updates = incoming.map(map_router_events);
 
         let sink_path = path.relative_path();
-        let cmd_sink = sink.map_err_into().comap(move |cmd: Command<SharedValue>| {
-            envelopes::value_envelope(sink_path.clone(), cmd).into()
-        });
 
         let (raw_dl, rec) = match config.back_pressure {
             BackpressureMode::Propagate => {
+                let cmd_sink = make_value_sink(sink, sink_path);
                 value_downlink(init, Some(schema), updates, cmd_sink, (&config).into())
             }
             BackpressureMode::Release {
@@ -608,16 +596,19 @@ where
                 yield_after,
                 ..
             } => {
+                let cmd_sink = make_value_sink(sink, sink_path);
                 let (release_tx, release_rx) = circular_buffer::channel(input_buffer_size);
+                let (priority_tx, priority_rx) = mpsc::channel(1);
 
                 let release_task =
-                    backpressure::release_pressure(release_rx, cmd_sink.clone(), yield_after);
+                    backpressure::pressure_valve(priority_rx, release_rx, cmd_sink, yield_after);
                 //TODO Use a Spawner instead.
                 swim_async_runtime::task::spawn(release_task);
 
+                let direct = for_mpsc_sender(priority_tx).map_err_into();
                 let pressure_release = release_tx.map_err_into();
 
-                let either_sink = SplitSink::new(cmd_sink, pressure_release).comap(
+                let either_sink = SplitSink::new(direct, pressure_release).comap(
                     move |cmd: Command<SharedValue>| match cmd {
                         act @ Command::Action(_) => Either::Right(act),
                         ow => Either::Left(ow),
@@ -682,40 +673,38 @@ where
                 bridge_buffer_size,
                 max_active_keys,
                 yield_after,
+                per_key_buffer_size,
             } => {
-                let sink_path_duplicate = sink_path.clone();
-                let direct_sink = sink.clone().map_err_into().comap(
-                    move |cmd: Command<UntypedMapModification<Value>>| {
-                        envelopes::map_envelope(sink_path_duplicate.clone(), cmd).into()
-                    },
+                use swim_runtime::backpressure::keyed::map::release_pressure as release_pressure_map;
+
+                let (tx, rx) = mpsc::channel::<Command<UntypedMapModification<Value>>>(
+                    input_buffer_size.get(),
                 );
-                let action_sink =
-                    sink.map_err_into()
-                        .comap(move |act: UntypedMapModification<Value>| {
-                            envelopes::map_envelope(sink_path.clone(), Command::Action(act)).into()
+                let in_stream = ReceiverStream::new(rx);
+                let release_task = async move {
+                    let mut out_sink =
+                        sink.comap(move |cmd: Command<UntypedMapModification<Value>>| {
+                            envelopes::map_envelope(sink_path.clone(), cmd).into()
                         });
+                    release_pressure_map(
+                        in_stream,
+                        &mut out_sink,
+                        yield_after,
+                        bridge_buffer_size,
+                        max_active_keys,
+                        per_key_buffer_size,
+                    )
+                    .await
+                };
+                //TODO Use a Spawner instead.
+                swim_async_runtime::task::spawn(release_task);
 
-                let pressure_release = KeyedWatch::new(
-                    action_sink,
-                    input_buffer_size,
-                    bridge_buffer_size,
-                    max_active_keys,
-                    yield_after,
-                )
-                .await;
-
-                let either_sink = SplitSink::new(direct_sink, pressure_release.into_item_sender())
-                    .comap(
-                        move |cmd: Command<UntypedMapModification<Value>>| match cmd {
-                            Command::Action(act) => Either::Right(act),
-                            ow => Either::Left(ow),
-                        },
-                    );
+                let output_sink = for_mpsc_sender(tx).map_err_into();
                 map_downlink(
                     Some(key_schema),
                     Some(value_schema),
                     updates,
-                    either_sink.map_err_into(),
+                    output_sink,
                     (&config).into(),
                 )
             }
@@ -744,12 +733,9 @@ where
         let config = self.config.config_for(&path);
         let sink_path = path.relative_path();
 
-        let cmd_sink = sink.map_err_into().comap(move |cmd: Command<Value>| {
-            envelopes::command_envelope(sink_path.clone(), cmd).into()
-        });
-
         let dl = match config.back_pressure {
             BackpressureMode::Propagate => {
+                let cmd_sink = make_command_sink(sink, sink_path);
                 Arc::new(command_downlink(schema.clone(), cmd_sink, (&config).into()))
             }
 
@@ -758,15 +744,20 @@ where
                 yield_after,
                 ..
             } => {
+                let cmd_sink = make_command_sink(sink, sink_path);
+                let (priority_tx, priority_rx) = mpsc::channel(1);
                 let (release_tx, release_rx) = circular_buffer::channel(input_buffer_size);
 
                 let release_task =
-                    backpressure::release_pressure(release_rx, cmd_sink.clone(), yield_after);
+                    backpressure::pressure_valve(priority_rx, release_rx, cmd_sink, yield_after);
                 //TODO Use a Spawner instead.
                 swim_async_runtime::task::spawn(release_task);
+
+                let direct = for_mpsc_sender(priority_tx).map_err_into();
                 let pressure_release = release_tx.map_err_into();
+
                 let either_sink =
-                    SplitSink::new(cmd_sink, pressure_release).comap(move |cmd: Command<Value>| {
+                    SplitSink::new(direct, pressure_release).comap(move |cmd: Command<Value>| {
                         match cmd {
                             act @ Command::Action(_) => Either::Right(act),
                             ow => Either::Left(ow),
@@ -775,7 +766,7 @@ where
 
                 Arc::new(command_downlink(
                     schema.clone(),
-                    either_sink.map_err_into(),
+                    either_sink,
                     (&config).into(),
                 ))
             }
@@ -1079,6 +1070,26 @@ where
     }
 }
 
+fn make_value_sink(
+    route: Route,
+    sink_path: RelativePath,
+) -> impl ItemSender<Command<SharedValue>, RoutingError> + Send + Sync + 'static {
+    route
+        .map_err_into()
+        .comap(move |cmd: Command<SharedValue>| {
+            envelopes::value_envelope(sink_path.clone(), cmd).into()
+        })
+}
+
+fn make_command_sink(
+    route: Route,
+    sink_path: RelativePath,
+) -> impl ItemSender<Command<Value>, RoutingError> + Send + Sync + 'static {
+    route.map_err_into().comap(move |cmd: Command<Value>| {
+        envelopes::command_envelope(sink_path.clone(), cmd).into()
+    })
+}
+
 fn map_router_events(event: RouterEvent) -> Result<Message<Value>, RoutingError> {
     match event {
         RouterEvent::Message(l) => Ok(envelopes::value::from_envelope(l)),
@@ -1095,7 +1106,7 @@ async fn open_downlink<Path, RF>(
     lane: Text,
     mut retry_strategy: RetryStrategy,
     stop_trigger: CloseReceiver,
-) -> RequestResult<(ConnectionSender, impl Stream<Item = RouterEvent>), Path>
+) -> RequestResult<(Route, impl Stream<Item = RouterEvent>), Path>
 where
     RF: RouterFactory,
 {
@@ -1103,19 +1114,10 @@ where
         match connections
             .create_endpoint(host.clone(), node_uri.clone(), lane.clone())
             .await
+            .map(ClientRoute::split)
         {
-            Ok(ClientRoute {
-                route: Route { sender, .. },
-                receiver,
-                rx_on_dropped,
-                handle_drop,
-                ..
-            }) => {
-                let envelopes = ReceiverStream::new(receiver)
-                    .filter_map(|TaggedEnvelope(_, env)| ready(env.into_response()));
-                let route_stream =
-                    RouteStream::new(host, envelopes, rx_on_dropped, handle_drop, stop_trigger);
-                break Ok((sender, route_stream.into_stream()));
+            Ok((route, client_receiver)) => {
+                break Ok((route, client_receiver.into_stream(host, stop_trigger)));
             }
             Err(e) if e.is_fatal() => {
                 break Err(e.into());
@@ -1130,83 +1132,5 @@ where
                 }
             },
         }
-    }
-}
-
-struct RouteStream<S> {
-    host: Option<Url>,
-    stream: S,
-    on_dropped: Option<promise::Receiver<ConnectionDropped>>,
-    _monitor: ClientRouteMonitor,
-    stop_trigger: CloseReceiver,
-}
-
-impl<S> RouteStream<S> {
-    fn new(
-        host: Option<Url>,
-        stream: S,
-        on_dropped: promise::Receiver<ConnectionDropped>,
-        monitor: ClientRouteMonitor,
-        stop_trigger: CloseReceiver,
-    ) -> Self {
-        RouteStream {
-            host,
-            stream,
-            on_dropped: Some(on_dropped),
-            _monitor: monitor,
-            stop_trigger,
-        }
-    }
-}
-
-impl<S> RouteStream<S>
-where
-    S: Stream<Item = ResponseEnvelope> + Unpin,
-{
-    fn into_stream(self) -> impl Stream<Item = RouterEvent> {
-        unfold(self, |mut rs| async move {
-            let RouteStream {
-                host,
-                stream,
-                on_dropped,
-                stop_trigger,
-                ..
-            } = &mut rs;
-            if let Some(dropped) = on_dropped {
-                let event = match select(stream.next(), stop_trigger).await {
-                    FEither::Left((Some(env), _)) => RouterEvent::Message(env),
-                    FEither::Left(_) => {
-                        let result = dropped.await;
-                        *on_dropped = None;
-                        if let Ok(reason) = result {
-                            match &*reason {
-                                ConnectionDropped::Failed(ConnectionError::Resolution(name)) => {
-                                    RouterEvent::Unreachable(name.clone())
-                                }
-                                ConnectionDropped::Failed(ConnectionError::Io(e)) => {
-                                    match (e.kind(), host) {
-                                        (ErrorKind::NotFound, Some(host)) => {
-                                            RouterEvent::Unreachable(host.to_string())
-                                        }
-                                        _ => RouterEvent::ConnectionClosed,
-                                    }
-                                }
-                                ConnectionDropped::Failed(_) => RouterEvent::ConnectionClosed,
-                                _ => RouterEvent::ConnectionClosed,
-                            }
-                        } else {
-                            RouterEvent::ConnectionClosed
-                        }
-                    }
-                    FEither::Right(_) => {
-                        *on_dropped = None;
-                        RouterEvent::Stopping
-                    }
-                };
-                Some((event, rs))
-            } else {
-                None
-            }
-        })
     }
 }

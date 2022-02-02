@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::error::SendError as MpscSendError;
 
-use crate::routing::RoutingAddr;
+use crate::routing::{RoutingAddr, SendFailed};
 pub use capacity::*;
 pub use closed::*;
 pub use encoding::*;
@@ -113,6 +113,12 @@ impl<T> From<circular_buffer::error::SendError<T>> for RoutingError {
 
 impl<T> From<swim_utilities::future::item_sink::SendError<T>> for RoutingError {
     fn from(_: SendError<T>) -> Self {
+        RoutingError::RouterDropped
+    }
+}
+
+impl From<SendFailed> for RoutingError {
+    fn from(_: SendFailed) -> Self {
         RoutingError::RouterDropped
     }
 }

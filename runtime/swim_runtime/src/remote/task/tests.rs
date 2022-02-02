@@ -15,7 +15,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use futures::future::{join, BoxFuture};
+use futures::future::{join, ready, BoxFuture};
 use futures::FutureExt;
 use http::Uri;
 use parking_lot::Mutex;
@@ -48,6 +48,8 @@ use std::num::NonZeroUsize;
 use std::time::Duration;
 use swim_model::Value;
 use tokio::io::DuplexStream;
+
+const NO_RETRY: RetryStrategy = RetryStrategy::none();
 
 #[test]
 fn dispatch_error_display() {
@@ -103,11 +105,13 @@ async fn try_dispatch_in_map() {
 
     let env = envelope(path, "a");
 
-    let result = super::try_dispatch_envelope(
+    let result = super::dispatch_envelope(
         &mut router,
         &mut bidirectional_connections,
         &mut resolved,
         env.clone(),
+        &NO_RETRY,
+        |_| ready(()),
     )
     .await;
 
@@ -129,11 +133,13 @@ async fn try_dispatch_from_router() {
 
     let env = envelope(path.clone(), "a");
 
-    let result = super::try_dispatch_envelope(
+    let result = super::dispatch_envelope(
         &mut router,
         &mut bidirectional_connections,
         &mut resolved,
         env.clone(),
+        &NO_RETRY,
+        |_| ready(()),
     )
     .await;
 
@@ -155,17 +161,18 @@ async fn try_dispatch_closed_sender() {
 
     let env = envelope(path.clone(), "a");
 
-    let result = super::try_dispatch_envelope(
+    let result = super::dispatch_envelope(
         &mut router,
         &mut bidirectional_connections,
         &mut resolved,
         env.clone(),
+        &NO_RETRY,
+        |_| ready(()),
     )
     .await;
 
-    if let Err((return_env, err)) = result {
+    if let Err(err) = result {
         let expected_uri: RelativeUri = "/node".parse().unwrap();
-        assert_eq!(return_env, env);
         assert!(
             matches!(err, DispatchError::RoutingProblem(RouterError::NoAgentAtRoute(uri)) if uri == expected_uri)
         );
@@ -195,11 +202,13 @@ async fn try_dispatch_fail_on_dropped() {
     drop(rx);
     drop(drop_tx);
 
-    let result = super::try_dispatch_envelope(
+    let result = super::dispatch_envelope(
         &mut router,
         &mut bidirectional_connections,
         &mut resolved,
         env.clone(),
+        &NO_RETRY,
+        |_| ready(()),
     )
     .await;
 
@@ -219,17 +228,18 @@ async fn try_dispatch_fail_on_no_route() {
 
     let env = envelope(path.clone(), "a");
 
-    let result = super::try_dispatch_envelope(
+    let result = super::dispatch_envelope(
         &mut router,
         &mut bidirectional_connections,
         &mut resolved,
         env.clone(),
+        &NO_RETRY,
+        |_| ready(()),
     )
     .await;
 
-    if let Err((return_env, err)) = result {
+    if let Err(err) = result {
         let expected_uri: RelativeUri = "/node".parse().unwrap();
-        assert_eq!(return_env, env);
         assert!(
             matches!(err, DispatchError::RoutingProblem(RouterError::NoAgentAtRoute(uri)) if uri == expected_uri)
         );
@@ -257,7 +267,7 @@ async fn dispatch_immediate_success() {
         &mut bidirectional_connections,
         &mut resolved,
         env.clone(),
-        RetryStrategy::none(),
+        &NO_RETRY,
         |dur| {
             let delays_cpy = delays.clone();
             async move {
@@ -298,7 +308,7 @@ async fn dispatch_immediate_failure() {
         &mut bidirectional_connections,
         &mut resolved,
         env.clone(),
-        RetryStrategy::interval(Duration::from_secs(1), Quantity::Finite(retries())),
+        &RetryStrategy::interval(Duration::from_secs(1), Quantity::Finite(retries())),
         |dur| {
             let delays_cpy = delays.clone();
             async move {
@@ -310,12 +320,11 @@ async fn dispatch_immediate_failure() {
 
     assert!(delays.lock().is_empty());
 
-    if let Err((err_env, err)) = result {
+    if let Err(err) = result {
         let expected_uri: RelativeUri = "/node".parse().unwrap();
         assert!(
             matches!(err, DispatchError::RoutingProblem(RouterError::NoAgentAtRoute(uri)) if uri == expected_uri)
         );
-        assert_eq!(err_env, env)
     } else {
         panic!("Unexpected success.")
     }
@@ -340,7 +349,7 @@ async fn dispatch_after_retry() {
         &mut bidirectional_connections,
         &mut resolved,
         env.clone(),
-        RetryStrategy::interval(Duration::from_secs(1), Quantity::Finite(retries())),
+        &RetryStrategy::interval(Duration::from_secs(1), Quantity::Finite(retries())),
         |dur| {
             let delays_cpy = delays.clone();
             async move {
@@ -379,7 +388,7 @@ async fn dispatch_after_immediate_retry() {
         &mut bidirectional_connections,
         &mut resolved,
         env.clone(),
-        RetryStrategy::immediate(retries()),
+        &RetryStrategy::immediate(retries()),
         |dur| {
             let delays_cpy = delays.clone();
             async move {

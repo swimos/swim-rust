@@ -133,7 +133,7 @@ impl<Clk: Clock, Delegate: Router + 'static>
             let target_node: RelativeUri =
                 format!("/{}/{}", RECEIVER_PREFIX, target).parse().unwrap();
             let addr = router.lookup(None, target_node.clone()).await.unwrap();
-            let mut tx = router.resolve_sender(addr).await.unwrap().sender;
+            let mut tx = router.resolve_sender(addr).await.unwrap();
             assert!(tx
                 .send_item(
                     Envelope::event()

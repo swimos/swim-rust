@@ -87,14 +87,19 @@ fn yield_after() -> NonZeroUsize {
 async fn single_pass_through() {
     let (tx_in, rx_in) = mpsc::channel(8);
     let (tx_out, mut rx_out) = mpsc::channel(8);
-    let release_task = super::release_pressure(
-        ReceiverStream::new(rx_in),
-        for_mpsc_sender(tx_out),
-        yield_after(),
-        buffer_size(),
-        max_active_keys(),
-        buffer_size(),
-    );
+
+    let release_task = async move {
+        let mut sender = for_mpsc_sender(tx_out);
+        super::release_pressure(
+            ReceiverStream::new(rx_in),
+            &mut sender,
+            yield_after(),
+            buffer_size(),
+            max_active_keys(),
+            buffer_size(),
+        )
+        .await
+    };
 
     let release_result = tokio::task::spawn(release_task);
 
@@ -116,14 +121,18 @@ async fn single_pass_through() {
 async fn multiple_one_key() {
     let (tx_in, rx_in) = mpsc::channel(8);
     let (tx_out, rx_out) = mpsc::channel(8);
-    let release_task = super::release_pressure(
-        ReceiverStream::new(rx_in),
-        for_mpsc_sender(tx_out),
-        yield_after(),
-        buffer_size(),
-        max_active_keys(),
-        buffer_size(),
-    );
+    let release_task = async move {
+        let mut sender = for_mpsc_sender(tx_out);
+        super::release_pressure(
+            ReceiverStream::new(rx_in),
+            &mut sender,
+            yield_after(),
+            buffer_size(),
+            max_active_keys(),
+            buffer_size(),
+        )
+        .await
+    };
 
     let release_result = tokio::task::spawn(release_task);
 
@@ -152,14 +161,18 @@ async fn multiple_one_key() {
 async fn multiple_keys() {
     let (tx_in, rx_in) = mpsc::channel(8);
     let (tx_out, rx_out) = mpsc::channel(8);
-    let release_task = super::release_pressure(
-        ReceiverStream::new(rx_in),
-        for_mpsc_sender(tx_out),
-        yield_after(),
-        buffer_size(),
-        max_active_keys(),
-        buffer_size(),
-    );
+    let release_task = async move {
+        let mut sender = for_mpsc_sender(tx_out);
+        super::release_pressure(
+            ReceiverStream::new(rx_in),
+            &mut sender,
+            yield_after(),
+            buffer_size(),
+            max_active_keys(),
+            buffer_size(),
+        )
+        .await
+    };
 
     let release_result = tokio::task::spawn(release_task);
 
@@ -190,14 +203,18 @@ async fn multiple_keys() {
 async fn multiple_keys_multiple_values() {
     let (tx_in, rx_in) = mpsc::channel(8);
     let (tx_out, rx_out) = mpsc::channel(8);
-    let release_task = super::release_pressure(
-        ReceiverStream::new(rx_in),
-        for_mpsc_sender(tx_out),
-        yield_after(),
-        buffer_size(),
-        max_active_keys(),
-        buffer_size(),
-    );
+    let release_task = async move {
+        let mut sender = for_mpsc_sender(tx_out);
+        super::release_pressure(
+            ReceiverStream::new(rx_in),
+            &mut sender,
+            yield_after(),
+            buffer_size(),
+            max_active_keys(),
+            buffer_size(),
+        )
+        .await
+    };
 
     let release_result = tokio::task::spawn(release_task);
 
@@ -226,14 +243,18 @@ async fn multiple_keys_multiple_values() {
 async fn single_clear() {
     let (tx_in, rx_in) = mpsc::channel::<MapUpdate<Value, Value>>(8);
     let (tx_out, mut rx_out) = mpsc::channel::<MapUpdate<Value, Value>>(8);
-    let release_task = super::release_pressure(
-        ReceiverStream::new(rx_in),
-        for_mpsc_sender(tx_out),
-        yield_after(),
-        buffer_size(),
-        max_active_keys(),
-        buffer_size(),
-    );
+    let release_task = async move {
+        let mut sender = for_mpsc_sender(tx_out);
+        super::release_pressure(
+            ReceiverStream::new(rx_in),
+            &mut sender,
+            yield_after(),
+            buffer_size(),
+            max_active_keys(),
+            buffer_size(),
+        )
+        .await
+    };
 
     let release_result = tokio::task::spawn(release_task);
 
@@ -255,14 +276,18 @@ async fn single_clear() {
 async fn single_take() {
     let (tx_in, rx_in) = mpsc::channel::<MapUpdate<Value, Value>>(8);
     let (tx_out, mut rx_out) = mpsc::channel::<MapUpdate<Value, Value>>(8);
-    let release_task = super::release_pressure(
-        ReceiverStream::new(rx_in),
-        for_mpsc_sender(tx_out),
-        yield_after(),
-        buffer_size(),
-        max_active_keys(),
-        buffer_size(),
-    );
+    let release_task = async move {
+        let mut sender = for_mpsc_sender(tx_out);
+        super::release_pressure(
+            ReceiverStream::new(rx_in),
+            &mut sender,
+            yield_after(),
+            buffer_size(),
+            max_active_keys(),
+            buffer_size(),
+        )
+        .await
+    };
 
     let release_result = tokio::task::spawn(release_task);
 
@@ -283,14 +308,18 @@ async fn single_take() {
 async fn single_skip() {
     let (tx_in, rx_in) = mpsc::channel::<MapUpdate<Value, Value>>(8);
     let (tx_out, mut rx_out) = mpsc::channel::<MapUpdate<Value, Value>>(8);
-    let release_task = super::release_pressure(
-        ReceiverStream::new(rx_in),
-        for_mpsc_sender(tx_out),
-        yield_after(),
-        buffer_size(),
-        max_active_keys(),
-        buffer_size(),
-    );
+    let release_task = async move {
+        let mut sender = for_mpsc_sender(tx_out);
+        super::release_pressure(
+            ReceiverStream::new(rx_in),
+            &mut sender,
+            yield_after(),
+            buffer_size(),
+            max_active_keys(),
+            buffer_size(),
+        )
+        .await
+    };
 
     let release_result = tokio::task::spawn(release_task);
 
@@ -312,14 +341,18 @@ async fn single_skip() {
 async fn special_action_ordering() {
     let (tx_in, rx_in) = mpsc::channel(8);
     let (tx_out, rx_out) = mpsc::channel(8);
-    let release_task = super::release_pressure(
-        ReceiverStream::new(rx_in),
-        for_mpsc_sender(tx_out),
-        yield_after(),
-        buffer_size(),
-        max_active_keys(),
-        buffer_size(),
-    );
+    let release_task = async move {
+        let mut sender = for_mpsc_sender(tx_out);
+        super::release_pressure(
+            ReceiverStream::new(rx_in),
+            &mut sender,
+            yield_after(),
+            buffer_size(),
+            max_active_keys(),
+            buffer_size(),
+        )
+        .await
+    };
 
     let release_result = tokio::task::spawn(release_task);
 
@@ -356,14 +389,18 @@ async fn special_action_ordering() {
 async fn overflow_active_keys() {
     let (tx_in, rx_in) = mpsc::channel(8);
     let (tx_out, rx_out) = mpsc::channel(8);
-    let release_task = super::release_pressure(
-        ReceiverStream::new(rx_in),
-        for_mpsc_sender(tx_out),
-        yield_after(),
-        buffer_size(),
-        max_active_keys(),
-        buffer_size(),
-    );
+    let release_task = async move {
+        let mut sender = for_mpsc_sender(tx_out);
+        super::release_pressure(
+            ReceiverStream::new(rx_in),
+            &mut sender,
+            yield_after(),
+            buffer_size(),
+            max_active_keys(),
+            buffer_size(),
+        )
+        .await
+    };
 
     let release_result = tokio::task::spawn(release_task);
 

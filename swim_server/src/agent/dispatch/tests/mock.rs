@@ -80,7 +80,7 @@ impl RouteReceiver {
 struct MockRouterInner {
     router_addr: RoutingAddr,
     buffer_size: usize,
-    senders: HashMap<RoutingAddr, Route>,
+    senders: HashMap<RoutingAddr, (TaggedSender, promise::Receiver<ConnectionDropped>)>,
     receivers: HashMap<RoutingAddr, RouteReceiver>,
 }
 
@@ -109,14 +109,14 @@ impl Router for MockRouter {
                 receivers,
             } = &mut *lock;
             let route = match senders.entry(addr) {
-                Entry::Occupied(entry) => entry.get().clone(),
+                Entry::Occupied(entry) => {
+                    let (tx, on_dropped) = entry.get();
+                    Route::new(tx.clone(), on_dropped.clone())
+                }
                 Entry::Vacant(entry) => {
                     let (tx, rx) = mpsc::channel(*buffer_size);
                     let (drop_tx, drop_rx) = promise::promise();
-                    entry.insert(Route::new(
-                        TaggedSender::new(*router_addr, tx.clone()),
-                        drop_rx.clone(),
-                    ));
+                    entry.insert((TaggedSender::new(*router_addr, tx.clone()), drop_rx.clone()));
                     receivers.insert(addr, RouteReceiver::new(rx, drop_tx));
                     Route::new(TaggedSender::new(*router_addr, tx), drop_rx)
                 }
@@ -206,7 +206,7 @@ impl MockExecutionContext {
             Entry::Vacant(entry) => {
                 let (tx, rx) = mpsc::channel(*buffer_size);
                 let (drop_tx, drop_rx) = promise::promise();
-                entry.insert(Route::new(TaggedSender::new(*router_addr, tx), drop_rx));
+                entry.insert((TaggedSender::new(*router_addr, tx), drop_rx));
                 receivers.insert(*addr, RouteReceiver::taken(drop_tx));
                 Some(rx)
             }
@@ -229,7 +229,7 @@ impl LaneIo<MockExecutionContext> for MockLane {
             return Err(AttachError::LaneStoppedReporting);
         }
         Ok(async move {
-            let mut senders: HashMap<RoutingAddr, TaggedSender> = HashMap::new();
+            let mut senders: HashMap<RoutingAddr, Route> = HashMap::new();
 
             let err = loop {
                 let next = envelopes.recv().await;
@@ -247,7 +247,7 @@ impl LaneIo<MockExecutionContext> for MockLane {
                             Entry::Occupied(entry) => entry.into_mut(),
                             Entry::Vacant(entry) => {
                                 if let Ok(sender) = router.resolve_sender(addr).await {
-                                    entry.insert(sender.sender)
+                                    entry.insert(sender)
                                 } else {
                                     break Some(LaneIoError::for_uplink_errors(
                                         route.clone(),
