@@ -52,9 +52,8 @@ impl<D: Decoder> MultiReader<D> {
         }
     }
 
-    pub fn add_reader(&mut self, reader: ByteReader, decoder: D) {
-        let framed = FramedRead::new(reader, decoder);
-        let key = self.readers.insert(framed);
+    pub fn add_reader(&mut self, reader: FramedRead<ByteReader, D>) {
+        let key = self.readers.insert(reader);
         self.tx.send(key).expect("Channel closed unexpectedly!");
     }
 }
