@@ -8,6 +8,7 @@ edition = "2021"
 either = "1.5.3"
 futures = "0.3.4"
 tokio = { version = "1.1.1", features = ["sync"] }
+tokio-util = { version = "0.6.8", features = ["codec"] }
 pin-project = "1.0.5"
 swim_trigger = { path = "../swim_trigger" }
 swim_async_runtime = { path = "../../runtime/swim_async_runtime" }
@@ -18,3 +19,4 @@ swim_algebra = { path = "../swim_algebra"}
 tokio = { version = "1.1.1", features = ["sync", "rt", "macros"] }
 tokio-stream = "0.1.2"
 pin-utils = "0.1.0"
+parking_lot = "0.11.0"
