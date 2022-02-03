@@ -16,11 +16,13 @@
 mod tests;
 
 use bytes::{Buf, BytesMut};
+use futures_util::stream::StreamFuture;
 use futures_util::Stream;
 use futures_util::{SinkExt, StreamExt};
 use parking_lot::Mutex;
 use slab::Slab;
 use std::fmt::{Debug, Formatter};
+use std::future::Future;
 use std::io::{Error, ErrorKind, Result as IoResult};
 use std::num::NonZeroUsize;
 use std::ops::{Deref, DerefMut};
@@ -61,10 +63,10 @@ impl<D: Decoder + Unpin> Stream for MultiReader<D> {
     type Item = Result<D::Item, D::Error>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let waker = cx.waker().clone();
-        let tx = self.tx.clone();
+        while let Poll::Ready(Some(index)) = self.rx.poll_recv(cx) {
+            let waker = cx.waker().clone();
+            let tx = self.tx.clone();
 
-        if let Poll::Ready(Some(index)) = self.rx.poll_recv(cx) {
             if let Some(reader) = self.readers.get_mut(index) {
                 let result =
                     Pin::new(reader).poll_next(&mut Context::from_waker(&waker_fn(move || {
