@@ -12,20 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cell::Cell;
 use std::collections::HashSet;
 use std::time::Duration;
 
 use bitflags::bitflags;
 use bytes::{BufMut, Bytes, BytesMut};
 use futures::future::{join, join3, select as select_fut, Either};
-use futures::stream::{select, unfold, SelectAll};
+use futures::stream::SelectAll;
 use futures::{SinkExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use swim_api::protocol::{
     DownlinkNotification, DownlinkNotificationEncoder, DownlinkOperation, DownlinkOperationDecoder,
 };
 use swim_model::path::RelativePath;
+use swim_utilities::future::immediate_or_join;
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swim_utilities::trigger;
 use tokio::sync::mpsc;
@@ -69,7 +69,6 @@ impl AttachAction {
 #[derive(Debug, Clone, Copy)]
 pub struct Config {
     pub empty_timeout: Duration,
-    pub flush_timout: Duration,
 }
 
 pub struct ValueDownlinkManagementTask {
@@ -241,46 +240,17 @@ impl Stream for DownlinkReceiver {
     }
 }
 
-fn stream_timeout<'a, S: 'a>(
-    stream: S,
-    duration: Duration,
-    flushed: &'a Cell<bool>,
-) -> impl Stream<Item = Result<S::Item, ()>> + 'a
-where
-    S: Stream + Unpin,
-{
-    unfold(stream, move |mut s| async move {
-        if !flushed.get() {
-            match timeout(duration, s.next()).await {
-                Ok(Some(v)) => Some((Ok(v), s)),
-                Ok(_) => None,
-                Err(_) => Some((Err(()), s)),
-            }
-        } else {
-            s.next().await.map(move |v| (Ok(v), s))
-        }
-    })
-}
-
 async fn read_task(
     input: ByteReader,
     consumers: mpsc::Receiver<(ByteWriter, DownlinkOptions)>,
     stopping: trigger::Receiver,
     config: Config,
 ) {
-    let messages = FramedRead::new(input, RawResponseMessageDecoder);
+    let mut messages = FramedRead::new(input, RawResponseMessageDecoder);
 
-    let flushed = Cell::new(true);
+    let mut flushed = true;
 
-    let messages_with_timeout =
-        stream_timeout(messages, config.flush_timout, &flushed).map(Either::Left);
-
-    pin_mut!(messages_with_timeout);
-    let mut stream = select(
-        messages_with_timeout,
-        ReceiverStream::new(consumers).map(Either::Right),
-    )
-    .take_until(stopping);
+    let mut consumer_stream = ReceiverStream::new(consumers).take_until(stopping);
 
     let mut state = ReadTaskState::Init;
     let mut current = BytesMut::new();
@@ -291,18 +261,36 @@ async fn read_task(
     let mut empty_timestamp = Some(Instant::now());
     loop {
         let next_item = if let Some(timestamp) = empty_timestamp {
-            if let Ok(result) = timeout_at(timestamp, stream.next()).await {
-                result
+            if let Ok(result) = timeout_at(timestamp, consumer_stream.next()).await {
+                result.map(Either::Right)
             } else {
                 // No consumers registered within the timeout so stop.
                 break;
             }
+        } else if flushed {
+            match select_fut(consumer_stream.next(), messages.next()).await {
+                Either::Left((consumer, _)) => consumer.map(Either::Right),
+                Either::Right((msg, _)) => msg.map(Either::Left),
+            }
         } else {
-            stream.next().await
+            let get_next = select_fut(consumer_stream.next(), messages.next());
+            let flush = join(flush_all(&mut awaiting_synced), flush_all(&mut registered));
+            let next_with_flush = immediate_or_join(get_next, flush);
+            let (next, flush_result) = next_with_flush.await;
+            if flush_result.is_some() {
+                if registered.is_empty() && awaiting_synced.is_empty() {
+                    empty_timestamp = Some(Instant::now() + config.empty_timeout);
+                }
+                flushed = true;
+            }
+            match next {
+                Either::Left((consumer, _)) => consumer.map(Either::Right),
+                Either::Right((msg, _)) => msg.map(Either::Left),
+            }
         };
 
         match next_item {
-            Some(Either::Left(Ok(Ok(RawResponseMessage { envelope, .. })))) => match envelope {
+            Some(Either::Left(Ok(RawResponseMessage { envelope, .. }))) => match envelope {
                 Notification::Linked => {
                     state = ReadTaskState::Linked;
                     link(&mut awaiting_linked, &mut awaiting_synced, &mut registered).await;
@@ -324,22 +312,22 @@ async fn read_task(
                     send_current(&mut registered, &current).await;
                     if registered.is_empty() && awaiting_synced.is_empty() {
                         empty_timestamp = Some(Instant::now() + config.empty_timeout);
-                        flushed.set(true);
+                        flushed = true;
                     } else {
-                        flushed.set(false);
+                        flushed = false;
                     }
                 }
                 Notification::Unlinked(_) => {
                     break;
                 }
             },
-            Some(Either::Left(Err(_))) => {
-                join(flush_all(&mut awaiting_synced), flush_all(&mut registered)).await;
-                if registered.is_empty() && awaiting_synced.is_empty() {
-                    empty_timestamp = Some(Instant::now() + config.empty_timeout);
-                }
-                flushed.set(true);
-            }
+            //Some(Either::Left(Err(_))) => {
+            //    join(flush_all(&mut awaiting_synced), flush_all(&mut registered)).await;
+            //    if registered.is_empty() && awaiting_synced.is_empty() {
+            //        empty_timestamp = Some(Instant::now() + config.empty_timeout);
+            //    }
+            //    flushed.set(true);
+            //}
             Some(Either::Right((writer, options))) => {
                 let mut dl_writer = DownlinkSender::new(writer, options);
                 if matches!(state, ReadTaskState::Init) {
@@ -504,11 +492,6 @@ enum WriteState<F> {
     Writing(F),
 }
 
-enum Suspended {
-    Write,
-    Flush,
-}
-
 async fn write_task(
     output: ByteWriter,
     producers: mpsc::Receiver<(ByteReader, DownlinkOptions)>,
@@ -538,14 +521,10 @@ async fn write_task(
     };
     let mut flushed = true;
 
-    let suspend_write = |mut message_writer: RequestSender, buffer: BytesMut, option: Suspended| async move {
-        let result = match option {
-            Suspended::Write => message_writer
-                .feed_command(buffer.as_ref())
-                .await
-                .map(|_| false),
-            Suspended::Flush => message_writer.flush().await.map(|_| true),
-        };
+    let suspend_write = |mut message_writer: RequestSender, buffer: BytesMut| async move {
+        let result =message_writer
+            .feed_command(buffer.as_ref())
+            .await;
         (result, message_writer, buffer)
     };
 
@@ -556,12 +535,19 @@ async fn write_task(
                 mut buffer,
             } => {
                 if registered.is_empty() {
-                    if !flushed {
-                        let write_fut = suspend_write(message_writer, buffer, Suspended::Flush);
-                        state = WriteState::Writing(write_fut);
-                    } else if let Ok(Some((reader, options))) =
-                        timeout(config.empty_timeout, reg_requests.next()).await
-                    {
+                    let req_with_timeout = timeout(config.empty_timeout, reg_requests.next());
+                    let req_result = if flushed {
+                        req_with_timeout.await
+                    } else {
+                        let (req_result, flush_result) = join(req_with_timeout, message_writer.flush()).await;
+                        if flush_result.is_err() {
+                            break 'outer;
+                        } else {
+                            flushed = true;
+                        }
+                        req_result
+                    };
+                    if let Ok(Some((reader, options))) = req_result {
                         let receiver = DownlinkReceiver::new(reader, options, next_id());
                         registered.push(receiver);
                         if options.contains(DownlinkOptions::SYNC)
@@ -579,16 +565,25 @@ async fn write_task(
                     }
                 } else {
                     let req_or_op = {
-                        let next_op = async {
-                            if flushed {
-                                Ok(registered.next().await)
-                            } else {
-                                timeout(config.flush_timout, registered.next()).await
+                        let next = select_fut(reg_requests.next(), registered.next());
+                        let next_op = if flushed {
+                            next.await
+                        } else {
+                            let next_with_flush = immediate_or_join(next, message_writer.flush());
+                            let (next_op, flush_result) = next_with_flush.await;
+                            match flush_result {
+                                Some(Err(_)) => {
+                                    break 'outer;
+                                }
+                                Some(Ok(_)) => {
+                                    flushed = true;
+                                }
+                                _ => {},
                             }
+                            next_op
                         };
-                        pin_mut!(next_op);
-                        match select_fut(reg_requests.next(), next_op).await {
-                            Either::Left((r, _)) => Either::Left(r),
+                        match next_op {
+                            Either::Left((r, _ )) => Either::Left(r),
                             Either::Right((r, _)) => Either::Right(r),
                         }
                     };
@@ -610,16 +605,16 @@ async fn write_task(
                         Either::Left(_) => {
                             break;
                         }
-                        Either::Right(Ok(Some(Ok(DownlinkOperation { body })))) => {
+                        Either::Right(Some(Ok(DownlinkOperation { body }))) => {
                             buffer.clear();
                             buffer.reserve(body.len());
                             buffer.put(body);
-                            let write_fut = suspend_write(message_writer, buffer, Suspended::Write);
+                            let write_fut = suspend_write(message_writer, buffer);
                             updated = false;
                             flushed = false;
                             state = WriteState::Writing(write_fut);
                         }
-                        Either::Right(Ok(Some(Err(Failed(id))))) => {
+                        Either::Right(Some(Err(Failed(id)))) => {
                             if let Some(rx) = registered.iter_mut().find(|rx| rx.id == id) {
                                 rx.terminate();
                             }
@@ -627,10 +622,6 @@ async fn write_task(
                                 message_writer,
                                 buffer,
                             };
-                        }
-                        Either::Right(Err(_)) => {
-                            let write_fut = suspend_write(message_writer, buffer, Suspended::Flush);
-                            state = WriteState::Writing(write_fut);
                         }
                         Either::Right(_) => {
                             state = WriteState::Idle {
@@ -646,17 +637,12 @@ async fn write_task(
                 'inner: loop {
                     if registered.is_empty() {
                         let (result, message_writer, mut buffer) = write_fut.await;
-                        match result {
-                            Err(_) => {
-                                break 'outer;
-                            }
-                            Ok(did_flush) => {
-                                flushed = did_flush;
-                            }
+                        if result.is_err() {
+                            break 'outer;
                         }
                         if updated {
                             std::mem::swap(&mut buffer, &mut current);
-                            let write_fut = suspend_write(message_writer, buffer, Suspended::Write);
+                            let write_fut = suspend_write(message_writer, buffer);
                             updated = false;
                             flushed = false;
                             state = WriteState::Writing(write_fut);
@@ -670,18 +656,13 @@ async fn write_task(
                     } else {
                         match select_fut(&mut write_fut, registered.next()).await {
                             Either::Left(((result, message_writer, mut buffer), _)) => {
-                                match result {
-                                    Err(_) => {
-                                        break 'outer;
-                                    }
-                                    Ok(did_flush) => {
-                                        flushed = did_flush;
-                                    }
+                                if result.is_err() {
+                                    break 'outer;
                                 }
                                 if updated {
                                     std::mem::swap(&mut buffer, &mut current);
                                     let write_fut =
-                                        suspend_write(message_writer, buffer, Suspended::Write);
+                                        suspend_write(message_writer, buffer);
                                     updated = false;
                                     flushed = false;
                                     state = WriteState::Writing(write_fut);
