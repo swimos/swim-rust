@@ -146,7 +146,7 @@ where
                         }
                         EVENT => {
                             if src.remaining() < TAG_SIZE + LEN_SIZE {
-                                let required = src.remaining() - TAG_SIZE - LEN_SIZE;
+                                let required = TAG_SIZE + LEN_SIZE - src.remaining();
                                 src.reserve(required);
                                 break Ok(None);
                             } else {
