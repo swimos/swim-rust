@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{byte_channel, MultiReader};
 use bytes::BytesMut;
 use futures::future::join;
 use futures::FutureExt;
@@ -25,68 +24,11 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::time::{sleep, timeout};
+use tokio::time::timeout;
 
 const BYTE_CHANNEL_LEN: usize = 4096;
 const DATA_LEN: usize = 1048576;
 const CHUNK_LEN: usize = 1024;
-
-#[tokio::test]
-async fn multi_reader_test() {
-    let (mut first_writer, first_reader) = byte_channel(NonZeroUsize::new(16).unwrap());
-    let (mut second_writer, second_reader) = byte_channel(NonZeroUsize::new(16).unwrap());
-    let (third_writer, third_reader) = byte_channel(NonZeroUsize::new(16).unwrap());
-
-    let mut multi_reader = MultiReader::new();
-
-    multi_reader.add_reader(first_reader);
-    multi_reader.add_reader(second_reader);
-    multi_reader.add_reader(third_reader);
-
-    let write = async move {
-        sleep(Duration::from_secs(1)).await;
-        first_writer.write("foo".as_bytes()).await.unwrap();
-        println!("sent foo 1");
-        sleep(Duration::from_secs(1)).await;
-        second_writer.write("bar".as_bytes()).await.unwrap();
-        println!("sent bar 1");
-        sleep(Duration::from_secs(1)).await;
-        first_writer.write("foo2".as_bytes()).await.unwrap();
-        println!("sent foo 2");
-        sleep(Duration::from_secs(1)).await;
-        second_writer.write("bar2".as_bytes()).await.unwrap();
-        println!("sent bar 2");
-        sleep(Duration::from_secs(1)).await;
-        drop(first_writer);
-        drop(second_writer);
-        drop(third_writer);
-        sleep(Duration::from_secs(1)).await;
-    };
-
-    let read = async move {
-        let mut buf = BytesMut::new();
-        let c = multi_reader.read_buf(&mut buf).await;
-        eprintln!("c = {:?}", c);
-        eprintln!("buf = {:?}", buf);
-        let c = multi_reader.read_buf(&mut buf).await;
-        eprintln!("c = {:?}", c);
-        eprintln!("buf = {:?}", buf);
-        let c = multi_reader.read_buf(&mut buf).await;
-        eprintln!("c = {:?}", c);
-        eprintln!("buf = {:?}", buf);
-        let c = multi_reader.read_buf(&mut buf).await;
-        eprintln!("c = {:?}", c);
-        eprintln!("buf = {:?}", buf);
-        let c = multi_reader.read_buf(&mut buf).await;
-        eprintln!("c = {:?}", c);
-        eprintln!(
-            "multi_reader.readers.len() = {:?}",
-            multi_reader.readers.len()
-        );
-    };
-
-    let _ = join(timeout(Duration::from_secs(15), read), write).await;
-}
 
 #[tokio::test]
 async fn simple_send_recv() {

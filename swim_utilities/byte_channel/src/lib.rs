@@ -16,45 +16,73 @@
 mod tests;
 
 use bytes::{Buf, BytesMut};
-use futures_util::stream::StreamFuture;
 use futures_util::Stream;
-use futures_util::{SinkExt, StreamExt};
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 use slab::Slab;
+use std::cell::UnsafeCell;
 use std::fmt::{Debug, Formatter};
-use std::future::Future;
 use std::io::{Error, ErrorKind, Result as IoResult};
 use std::num::NonZeroUsize;
-use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-use tokio::sync::mpsc;
 use tokio_util::codec::{Decoder, FramedRead};
 use waker_fn::waker_fn;
 
 pub struct MultiReader<D> {
     pub readers: Slab<FramedRead<ByteReader, D>>,
-    tx: mpsc::UnboundedSender<usize>,
-    rx: mpsc::UnboundedReceiver<usize>,
+    ready_remote: Arc<RwLock<Vec<AtomicUsize>>>,
+    ready_local: Vec<usize>,
 }
 
 impl<D: Decoder> MultiReader<D> {
     pub fn new() -> Self {
-        let (tx, rx) = mpsc::unbounded_channel();
-
         MultiReader {
             readers: Slab::new(),
-            tx,
-            rx,
+            ready_remote: Arc::new(RwLock::new(vec![AtomicUsize::new(0)])),
+            ready_local: vec![0],
         }
     }
 
     pub fn add_reader(&mut self, reader: FramedRead<ByteReader, D>) {
         let key = self.readers.insert(reader);
-        self.tx.send(key).expect("Channel closed unexpectedly!");
+        let bucket = key / usize::BITS as usize;
+
+        match self.ready_local.get_mut(bucket) {
+            Some(mut flags) => {
+                *flags |= 1 << key;
+            }
+            None => {
+                self.ready_local.insert(bucket, 1 << key);
+                self.ready_remote
+                    .write()
+                    .insert(bucket, AtomicUsize::new(0));
+            }
+        }
+    }
+
+    fn next_ready(&mut self) -> Option<(usize, usize)> {
+        for (bucket, flags) in self.ready_local.iter().enumerate() {
+            if *flags != 0 {
+                let index = flags.trailing_zeros() as usize;
+                return Some((bucket, index));
+            }
+        }
+
+        for (bucket, flags) in self.ready_remote.read().iter().enumerate() {
+            *self.ready_local.get_mut(bucket).unwrap() = flags.fetch_and(0, Ordering::SeqCst);
+        }
+
+        for (bucket, flags) in self.ready_local.iter().enumerate() {
+            if *flags != 0 {
+                let index = flags.trailing_zeros() as usize;
+                return Some((bucket, index));
+            }
+        }
+
+        None
     }
 }
 
@@ -62,14 +90,18 @@ impl<D: Decoder + Unpin> Stream for MultiReader<D> {
     type Item = Result<D::Item, D::Error>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        while let Poll::Ready(Some(index)) = self.rx.poll_recv(cx) {
+        while let Some((bucket, index)) = self.next_ready() {
             let waker = cx.waker().clone();
-            let tx = self.tx.clone();
+            let ready = self.ready_remote.clone();
 
-            if let Some(reader) = self.readers.get_mut(index) {
+            if let Some(reader) = self.readers.get_mut(index + bucket * usize::BITS as usize) {
                 let result =
                     Pin::new(reader).poll_next(&mut Context::from_waker(&waker_fn(move || {
-                        tx.send(index).expect("Channel closed unexpectedly!");
+                        ready
+                            .read()
+                            .get(bucket)
+                            .unwrap()
+                            .fetch_or(1 << index, Ordering::SeqCst);
                         // Wake up the parent task
                         waker.wake_by_ref();
                     })));
@@ -78,15 +110,16 @@ impl<D: Decoder + Unpin> Stream for MultiReader<D> {
                     match result {
                         Some(item) => {
                             // Add this reader to the back of the queue
-                            self.tx.send(index).expect("Channel closed unexpectedly!");
                             return Poll::Ready(Some(item));
                         }
                         None => {
                             // The reader is closed and so we remove it.
-                            self.readers.remove(index);
+                            self.readers.remove(index + bucket * usize::BITS as usize);
                         }
                     }
                 }
+
+                *self.ready_local.get_mut(bucket).unwrap() ^= 1 << index;
             }
         }
 
