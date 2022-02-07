@@ -34,8 +34,8 @@ use swim_runtime::routing::RoutingAddr;
 use tokio::runtime::Builder;
 use tokio_util::codec::{FramedRead, FramedWrite};
 
-const MESSAGE_COUNT: u32 = 10;
-const CHANNEL_COUNT: u32 = 2;
+const MESSAGE_COUNT: u32 = 1000;
+const CHANNEL_COUNT: u32 = 10;
 // const SAMPLE_SIZE: usize = 1000;
 
 fn multi_reader_benchmark(c: &mut Criterion) {

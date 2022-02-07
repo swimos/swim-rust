@@ -5,13 +5,15 @@ use futures_util::stream::SelectAll;
 use futures_util::{SinkExt, StreamExt};
 use std::num::NonZeroUsize;
 use std::time::Duration;
-use tokio::time::{sleep, timeout};
+use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_model::path::RelativePath;
 use swim_model::Value;
-use swim_runtime::compat::{AgentMessageDecoder, Operation, RawRequestMessageEncoder, TaggedRequestMessage};
+use swim_runtime::compat::{
+    AgentMessageDecoder, Operation, RawRequestMessageEncoder, TaggedRequestMessage,
+};
 use swim_runtime::routing::RoutingAddr;
+use tokio::time::{sleep, timeout};
 use tokio_util::codec::{FramedRead, FramedWrite};
-use swim_form::structural::read::recognizer::RecognizerReadable;
 
 #[tokio::test]
 async fn multi_reader_test_select() {
@@ -204,5 +206,5 @@ async fn multi_reader_test() {
         );
     };
 
-    let _ = join(read, write).await;
+    let _ = join(timeout(Duration::from_secs(10), read), write).await;
 }
