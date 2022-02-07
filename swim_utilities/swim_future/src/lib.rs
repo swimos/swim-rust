@@ -20,7 +20,8 @@ pub mod retryable;
 pub mod task;
 
 pub use combinators::{
-    immediate_or_join, FlatmapStream, ImmediateOrJoin, NeverErrorStream, NotifyOnBlocked,
-    SwimFutureExt, SwimStreamExt, SwimTryFutureExt, Transform, TransformMut, TransformOnce,
-    TransformedFuture, TransformedSink, TransformedStream, TransformedStreamFut,
+    immediate_or_join, immediate_or_start, FlatmapStream, ImmediateOrJoin, ImmediateOrStart,
+    NeverErrorStream, NotifyOnBlocked, SecondaryResult, SwimFutureExt, SwimStreamExt,
+    SwimTryFutureExt, Transform, TransformMut, TransformOnce, TransformedFuture, TransformedSink,
+    TransformedStream, TransformedStreamFut,
 };
