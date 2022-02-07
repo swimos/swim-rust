@@ -8,7 +8,7 @@ edition = "2021"
 default = []
 all = ["future", "errors", "sync", "iteratee", "collections", "time", "text", "lrucache", "rtree", "buf_channel", "algebra"]
 algebra = ["swim_algebra"]
-buf_channel = ["byte_channel"]
+buf_channel = ["byte_channel", "multi_reader"]
 circular_buffer = ["swim_sync", "swim_sync/circular_buffer"]
 collections = ["lrucache", "rtree"]
 errors = ["swim_errors"]
@@ -27,6 +27,7 @@ trigger = ["swim_trigger"]
 
 [dependencies]
 byte_channel = { path = "./byte_channel", optional = true }
+multi_reader = { path = "./multi_reader", optional = true }
 swim_algebra = { path = "./swim_algebra", optional = true }
 swim_errors = { path = "./swim_errors", optional = true }
 swim_format = { path = "./swim_format", optional = true }

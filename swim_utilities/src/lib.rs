@@ -48,6 +48,9 @@ pub mod io {
 
     #[cfg(feature = "buf_channel")]
     pub use byte_channel;
+
+    #[cfg(feature = "buf_channel")]
+    pub use multi_reader;
 }
 
 #[cfg(feature = "text")]

@@ -13,34 +13,30 @@
 // limitations under the License.
 
 // use crate::routing::RoutingAddr;
-use bytes::BytesMut;
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use byte_channel::byte_channel;
+use byte_channel::{ByteReader, ByteWriter};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use futures::stream::SelectAll;
-use futures::Sink;
 use futures_util::future::join;
-use futures_util::SinkExt;
-use ratchet::Message;
+use futures_util::{SinkExt, Stream, StreamExt};
+use multi_reader::MultiReader;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 use swim_form::structural::read::from_model::ValueMaterializer;
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_model::path::RelativePath;
-use swim_model::{Item, Value};
+use swim_model::Value;
 use swim_runtime::compat::{
     AgentMessageDecoder, MessageDecodeError, Operation, RawRequestMessageEncoder,
     TaggedRequestMessage,
 };
 use swim_runtime::routing::RoutingAddr;
-use swim_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter, MultiReader};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::runtime::Builder;
-use tokio::time::{sleep, timeout};
-use tokio_stream::{Stream, StreamExt};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
-const MESSAGE_COUNT: u32 = 100;
-const CHANNEL_COUNT: u32 = 50;
-const SAMPLE_SIZE: usize = 1000;
+const MESSAGE_COUNT: u32 = 10;
+const CHANNEL_COUNT: u32 = 2;
+// const SAMPLE_SIZE: usize = 1000;
 
 fn multi_reader_benchmark(c: &mut Criterion) {
     let runtime = Builder::new_multi_thread()
@@ -50,7 +46,7 @@ fn multi_reader_benchmark(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("Read selector");
 
-    group.sample_size(SAMPLE_SIZE);
+    // group.sample_size(SAMPLE_SIZE);
     group.measurement_time(Duration::from_secs(10));
     group.bench_function(BenchmarkId::new("Select all", 1), |bencher| {
         bencher.to_async(&runtime).iter(|| select_all_test())

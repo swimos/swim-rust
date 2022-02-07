@@ -1,0 +1,25 @@
+[package]
+name = "multi_reader"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bytes = "1.0"
+byte_channel= { path = "../byte_channel" }
+parking_lot = "0.11.0"
+waker-fn = "1.1.0"
+slab = "0.4.4"
+tokio-util = { version = "0.6.8", features = ["codec"] }
+futures-util = "0.3.4"
+
+[dev-dependencies]
+tokio = { version = "1.1.1", features = ["rt-multi-thread", "test-util", "macros"] }
+futures = { version = "0.3.4", features = ["io-compat", "compat"] }
+criterion = { version = "0.3", features = ["async_tokio"] }
+swim_runtime = { path = "../../runtime/swim_runtime" }
+swim_model = { path = "../../api/swim_model" }
+swim_form = { path = "../../api/swim_form" }
+
+[[bench]]
+name = "mutli_reader_throughput"
+harness = false
