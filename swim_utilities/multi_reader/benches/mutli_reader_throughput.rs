@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// use crate::routing::RoutingAddr;
 use byte_channel::byte_channel;
 use byte_channel::{ByteReader, ByteWriter};
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
@@ -20,6 +19,7 @@ use futures::stream::SelectAll;
 use futures_util::future::join;
 use futures_util::{SinkExt, Stream, StreamExt};
 use multi_reader::MultiReader;
+use std::fmt::{Display, Formatter};
 use std::num::NonZeroUsize;
 use std::time::Duration;
 use swim_form::structural::read::from_model::ValueMaterializer;
@@ -34,35 +34,74 @@ use swim_runtime::routing::RoutingAddr;
 use tokio::runtime::Builder;
 use tokio_util::codec::{FramedRead, FramedWrite};
 
-const MESSAGE_COUNT: u32 = 1000;
-const CHANNEL_COUNT: u32 = 10;
-// const SAMPLE_SIZE: usize = 1000;
+const MESSAGE_COUNTS: &[usize] = &[10, 100, 1000];
+const CHANNEL_COUNTS: &[usize] = &[1, 8, 64, 512];
+
+#[derive(Debug, Clone, Copy)]
+struct TestParams {
+    message_count: usize,
+    channel_count: usize,
+}
+
+impl Display for TestParams {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "[message_count = {}, channel_count = {}]",
+            self.message_count, self.channel_count
+        )
+    }
+}
+
+fn test_params() -> Vec<TestParams> {
+    let mut params = vec![];
+
+    for i in MESSAGE_COUNTS {
+        for j in CHANNEL_COUNTS {
+            params.push(TestParams {
+                message_count: *i,
+                channel_count: *j,
+            })
+        }
+    }
+    params
+}
 
 fn multi_reader_benchmark(c: &mut Criterion) {
+    let param_sets = test_params();
+
     let runtime = Builder::new_multi_thread()
         .worker_threads(2)
         .build()
         .expect("Failed to crate Tokio runtime.");
 
     let mut group = c.benchmark_group("Read selector");
+    group.measurement_time(Duration::from_secs(20));
 
-    // group.sample_size(SAMPLE_SIZE);
-    group.measurement_time(Duration::from_secs(10));
-    group.bench_function(BenchmarkId::new("Select all", 1), |bencher| {
-        bencher.to_async(&runtime).iter(|| select_all_test())
-    });
-    group.bench_function(BenchmarkId::new("Multi reader", 1), |bencher| {
-        bencher.to_async(&runtime).iter(|| multi_reader_test())
-    });
+    for params in param_sets {
+        group.bench_with_input(
+            BenchmarkId::new("Select all", &params),
+            &params,
+            |bencher, params| bencher.to_async(&runtime).iter(|| select_all_test(*params)),
+        );
 
-    group.finish();
+        group.bench_with_input(
+            BenchmarkId::new("Multi reader", &params),
+            &params,
+            |bencher, params| {
+                bencher
+                    .to_async(&runtime)
+                    .iter(|| multi_reader_test(*params))
+            },
+        );
+    }
 }
 
 criterion_group!(benches, multi_reader_benchmark);
 criterion_main!(benches);
 
 fn create_channels(
-    n: u32,
+    n: usize,
 ) -> (
     Vec<FramedWrite<ByteWriter, RawRequestMessageEncoder>>,
     Vec<FramedRead<ByteReader, AgentMessageDecoder<Value, ValueMaterializer>>>,
@@ -91,6 +130,7 @@ fn create_framed_channel() -> (
 
 async fn read<T: Stream<Item = Result<TaggedRequestMessage<Value>, MessageDecodeError>> + Unpin>(
     mut reader: T,
+    params: TestParams,
 ) {
     let mut count = 0;
     while let Some(result) = reader.next().await {
@@ -98,15 +138,18 @@ async fn read<T: Stream<Item = Result<TaggedRequestMessage<Value>, MessageDecode
         count += 1;
     }
 
-    assert_eq!(count, MESSAGE_COUNT * CHANNEL_COUNT);
+    assert_eq!(count, params.message_count * params.channel_count);
 }
 
-async fn write(mut writers: Vec<FramedWrite<ByteWriter, RawRequestMessageEncoder>>) {
-    for i in 0..MESSAGE_COUNT {
+async fn write(
+    mut writers: Vec<FramedWrite<ByteWriter, RawRequestMessageEncoder>>,
+    message_count: usize,
+) {
+    for i in 0..message_count {
         for writer in &mut writers {
             writer
                 .feed(TaggedRequestMessage {
-                    origin: RoutingAddr::remote(i),
+                    origin: RoutingAddr::remote(i as u32),
                     path: RelativePath::new(format!("node_{}", i), format!("lane_{}", i)),
                     envelope: Operation::Link,
                 })
@@ -120,24 +163,32 @@ async fn write(mut writers: Vec<FramedWrite<ByteWriter, RawRequestMessageEncoder
     }
 }
 
-async fn select_all_test() {
-    let (writers, readers) = create_channels(CHANNEL_COUNT);
+async fn select_all_test(params: TestParams) {
+    let (writers, readers) = create_channels(params.channel_count);
 
     let mut multi_reader = SelectAll::new();
     for reader in readers {
         multi_reader.push(reader)
     }
 
-    let _ = join(read(multi_reader), write(writers)).await;
+    let _ = join(
+        read(multi_reader, params),
+        write(writers, params.message_count),
+    )
+    .await;
 }
 
-async fn multi_reader_test() {
-    let (writers, readers) = create_channels(CHANNEL_COUNT);
+async fn multi_reader_test(params: TestParams) {
+    let (writers, readers) = create_channels(params.channel_count);
 
     let mut multi_reader = MultiReader::new();
     for reader in readers {
         multi_reader.add_reader(reader)
     }
 
-    let _ = join(read(multi_reader), write(writers)).await;
+    let _ = join(
+        read(multi_reader, params),
+        write(writers, params.message_count),
+    )
+    .await;
 }
