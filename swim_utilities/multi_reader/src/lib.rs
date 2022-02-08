@@ -17,6 +17,7 @@ pub struct MultiReader<D> {
     ready_remote_buckets: Arc<RwLock<Vec<AtomicUsize>>>,
     ready_local_flags: usize,
     ready_local_bucket: usize,
+    buckets_count: usize,
 }
 
 impl<D: Decoder> MultiReader<D> {
@@ -26,6 +27,7 @@ impl<D: Decoder> MultiReader<D> {
             ready_remote_buckets: Arc::new(RwLock::new(vec![AtomicUsize::new(0)])),
             ready_local_flags: 0,
             ready_local_bucket: 0,
+            buckets_count: 1,
         }
     }
 
@@ -37,16 +39,14 @@ impl<D: Decoder> MultiReader<D> {
         if bucket == self.ready_local_bucket {
             self.ready_local_flags |= 1 << index;
         } else {
-            match self.ready_remote_buckets.read().get(bucket) {
-                Some(flags) => {
-                    flags.fetch_or(1 << index, Ordering::SeqCst);
-                }
-                None => {
-                    self.ready_remote_buckets
-                        .write()
-                        .insert(bucket, AtomicUsize::new(0));
-                }
-            }
+            if let Some(flags) = self.ready_remote_buckets.read().get(bucket) {
+                flags.fetch_or(1 << index, Ordering::SeqCst);
+                return;
+            };
+            self.ready_remote_buckets
+                .write()
+                .insert(bucket, AtomicUsize::new(1 << index));
+            self.buckets_count += 1;
         }
     }
 
@@ -57,12 +57,12 @@ impl<D: Decoder> MultiReader<D> {
             let remote_buckets = self.ready_remote_buckets.read();
 
             loop {
-                if remote_buckets.len() > 1 {
+                if self.buckets_count > 1 {
                     // Go to the next bucket.
                     self.ready_local_bucket += 1;
 
                     // Wrap around if we are past the end.
-                    if remote_buckets.len() <= self.ready_local_bucket {
+                    if self.buckets_count <= self.ready_local_bucket {
                         self.ready_local_bucket = 0;
                     }
                 }
