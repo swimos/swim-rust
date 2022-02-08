@@ -581,8 +581,7 @@ async fn exhaust_output_buffer() {
                  mut events,
              }| async move {
                 for i in 0..(LIMIT + 1) {
-                    let f = async {
-                        let i_text = Text::from(format!("{}", i));
+                    let i_text = Text::from(format!("{}", i));
                         tx.update(Message::CurrentValue(i_text.clone())).await;
                         expect_event(
                             events.next().await,
@@ -599,10 +598,6 @@ async fn exhaust_output_buffer() {
                                 body: Message::Ping,
                             },
                         );
-                    };
-                    //let err = format!("Boom {:?}", i);
-                    //timeout(Duration::from_secs(1), f).await.expect(err.as_str());
-                    f.await
                 }
                 let mut messages = vec![];
                 loop {
@@ -620,9 +615,6 @@ async fn exhaust_output_buffer() {
                         }
                         ow => panic!("Unexpected result: {:?}", ow),
                     }
-                }
-                for message in &messages {
-                    println!("{:?}", message);
                 }
                 assert!(messages.len() < LIMIT);
                 let mut prev = None;
