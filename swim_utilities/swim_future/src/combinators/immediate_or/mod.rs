@@ -234,6 +234,7 @@ where
                     Poll::Ready((result, SecondaryResult::NotStarted(second_fut)))
                 } else {
                     if let Poll::Ready(result) = this.second.as_mut().unwrap().poll_unpin(cx) {
+                        *this.second = None;
                         *this.second_output = Some(result);
                     }
                     *this.state = StartState::Pending;
@@ -258,6 +259,7 @@ where
                     }
                     (_, Some(Poll::Ready(second_result))) => {
                         *this.second_output = Some(second_result);
+                        *this.second = None;
                         Poll::Pending
                     }
                     _ => Poll::Pending,
