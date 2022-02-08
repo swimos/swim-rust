@@ -35,7 +35,7 @@ use tokio::runtime::Builder;
 use tokio_util::codec::{FramedRead, FramedWrite};
 
 const MESSAGE_COUNTS: &[usize] = &[10, 100, 1000];
-const CHANNEL_COUNTS: &[usize] = &[1, 8, 64, 512];
+const CHANNEL_COUNTS: &[usize] = &[1, 8, 64];
 
 #[derive(Debug, Clone, Copy)]
 struct TestParams {
