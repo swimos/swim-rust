@@ -47,8 +47,6 @@ enum Message {
     CurrentValue(Text),
 }
 
-const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(1024);
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum State {
     Unlinked,
@@ -77,10 +75,19 @@ async fn run_fake_downlink(
     options: DownlinkOptions,
     start: trigger::Receiver,
     event_tx: mpsc::UnboundedSender<Event>,
-) -> Result<(), DownlinkTaskError> {
+) -> Result<Vec<String>, DownlinkTaskError> {
+    use std::time::Instant;
+    let start_t = Instant::now();
+    let mut events = vec![];
+    let mut ev = |msg: &str| {
+        let offset = Instant::now() - start_t;
+        events.push(format!("{:?}: {}", offset, msg));
+    };
     if start.await.is_err() {
         return Err(DownlinkTaskError::FailedToStart);
     }
+
+    ev("Started");
     let (tx_in, rx_in) = byte_channel::byte_channel(BUFFER_SIZE);
     let (tx_out, rx_out) = byte_channel::byte_channel(BUFFER_SIZE);
     if sub
@@ -90,6 +97,7 @@ async fn run_fake_downlink(
     {
         return Err(DownlinkTaskError::FailedToStart);
     }
+    ev("Attached");
     let mut state = State::Unlinked;
     let mut read = FramedRead::new(
         rx_in,
@@ -101,19 +109,24 @@ async fn run_fake_downlink(
     let mut current = Text::default();
 
     while let Some(message) = read.next().await.transpose()? {
+        ev("Reporting message");
         assert!(event_tx.send((state, message.clone())).is_ok());
+        ev("Reported message");
         match state {
             State::Unlinked => match message {
                 DownlinkNotification::Linked => {
+                    ev("Unlinked -> Linked");
                     state = State::Linked;
                 }
                 DownlinkNotification::Synced => {
+                    ev("Unlinked -> Synced");
                     state = State::Synced;
                 }
                 _ => {}
             },
             State::Linked => match message {
                 DownlinkNotification::Synced => {
+                    ev("Linked -> Synced");
                     state = State::Synced;
                 }
                 DownlinkNotification::Unlinked => {
@@ -122,6 +135,7 @@ async fn run_fake_downlink(
                 DownlinkNotification::Event {
                     body: Message::CurrentValue(v),
                 } => {
+                    ev("Updated(Linked)");
                     current = v;
                 }
                 _ => {}
@@ -133,12 +147,14 @@ async fn run_fake_downlink(
                 DownlinkNotification::Event {
                     body: Message::CurrentValue(v),
                 } => {
+                    ev("Updated(Synced)");
                     current = v;
                 }
                 DownlinkNotification::Event {
                     body: Message::Ping,
                 } => {
                     let response = Message::CurrentValue(current.clone());
+                    ev("Sending value.");
                     if write
                         .send(DownlinkOperation { body: response })
                         .await
@@ -146,24 +162,28 @@ async fn run_fake_downlink(
                     {
                         break;
                     }
+                    ev("Sent value");
                 }
                 _ => {}
             },
         }
     }
-    Ok(())
+    ev("Stopped");
+    Ok(events)
 }
 
+const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(1024);
 const CHANNEL_SIZE: usize = 16;
-const TEST_TIMEOUT: Duration = Duration::from_secs(5);
+const TEST_TIMEOUT: Duration = Duration::from_secs(10);
 const REMOTE_ADDR: RoutingAddr = RoutingAddr::remote(1);
 const REMOTE_NODE: &str = "/remote";
 const REMOTE_LANE: &str = "remote_lane";
+const EMPTY_TIMEOUT: Duration = Duration::from_secs(2);
 
 async fn run_test<F, Fut>(
     options: DownlinkOptions,
     test_block: F,
-) -> (Fut::Output, Result<(), DownlinkTaskError>)
+) -> (Fut::Output, Result<Vec<String>, DownlinkTaskError>)
 where
     F: FnOnce(TestContext) -> Fut,
     Fut: Future + Send + 'static,
@@ -180,8 +200,7 @@ where
 
     let path = RelativePath::new("/node", "lane");
     let config = super::Config {
-        empty_timeout: Duration::from_secs(5),
-        flush_timout: Duration::from_millis(10),
+        empty_timeout: EMPTY_TIMEOUT,
     };
 
     let management_task = ValueDownlinkManagementTask::new(
@@ -535,6 +554,85 @@ async fn receive_commands() {
                     Operation::Command(Message::CurrentValue(Text::new("B"))),
                 );
 
+                events
+            },
+        )
+    })
+    .await;
+
+    assert!(result.is_ok());
+    assert_eq!(
+        events,
+        vec![(State::Synced, DownlinkNotification::Unlinked)]
+    );
+}
+
+const LIMIT: usize = 150;
+
+#[tokio::test]
+async fn exhaust_output_buffer() {
+    let final_body = LIMIT.to_string();
+    let (events, result) = run_test(DownlinkOptions::SYNC, move |context| {
+        sync_client_then(
+            context,
+            |SyncedTestContext {
+                 mut tx,
+                 mut rx,
+                 mut events,
+             }| async move {
+                for i in 0..(LIMIT + 1) {
+                    let f = async {
+                        let i_text = Text::from(format!("{}", i));
+                        tx.update(Message::CurrentValue(i_text.clone())).await;
+                        expect_event(
+                            events.next().await,
+                            State::Synced,
+                            DownlinkNotification::Event {
+                                body: Message::CurrentValue(i_text),
+                            },
+                        );
+                        tx.update(Message::Ping).await;
+                        expect_event(
+                            events.next().await,
+                            State::Synced,
+                            DownlinkNotification::Event {
+                                body: Message::Ping,
+                            },
+                        );
+                    };
+                    //let err = format!("Boom {:?}", i);
+                    //timeout(Duration::from_secs(1), f).await.expect(err.as_str());
+                    f.await
+                }
+                let mut messages = vec![];
+                loop {
+                    let result = rx.recv().await;
+                    match result {
+                        Some(Ok(RequestMessage {
+                            envelope: Operation::Command(Message::CurrentValue(body)),
+                            ..
+                        })) => {
+                            let fin = body == final_body;
+                            messages.push(body);
+                            if fin {
+                                break;
+                            }
+                        }
+                        ow => panic!("Unexpected result: {:?}", ow),
+                    }
+                }
+                for message in &messages {
+                    println!("{:?}", message);
+                }
+                assert!(messages.len() < LIMIT);
+                let mut prev = None;
+                for message in messages.into_iter() {
+                    let j = message.as_str().parse::<usize>().unwrap();
+                    if let Some(i) = prev {
+                        assert!(i < j);
+                    }
+                    prev = Some(j);
+                }
                 events
             },
         )

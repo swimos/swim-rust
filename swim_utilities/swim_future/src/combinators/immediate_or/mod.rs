@@ -193,7 +193,7 @@ where
 #[derive(Debug)]
 pub enum SecondaryResult<F: Future> {
     /// The second future was never started.
-    NotStarted,
+    NotStarted(F),
     /// The second future was started but did not complete.
     Pending(F),
     /// The second future was completed.
@@ -230,7 +230,8 @@ where
             StartState::Init => {
                 if let Poll::Ready(result) = this.first.as_mut().poll(cx) {
                     *this.state = StartState::Done;
-                    Poll::Ready((result, SecondaryResult::NotStarted))
+                    let second_fut = this.second.take().unwrap();
+                    Poll::Ready((result, SecondaryResult::NotStarted(second_fut)))
                 } else {
                     if let Poll::Ready(result) = this.second.as_mut().unwrap().poll_unpin(cx) {
                         *this.second_output = Some(result);

@@ -269,7 +269,7 @@ mod or_start {
         let (_tx, rx) = swim_trigger::trigger();
         let fut = immediate_or_start(ready(()), rx);
         let (_, second_result) = fut.await;
-        assert!(matches!(second_result, SecondaryResult::NotStarted));
+        assert!(matches!(second_result, SecondaryResult::NotStarted(_)));
     }
 
     #[test]
