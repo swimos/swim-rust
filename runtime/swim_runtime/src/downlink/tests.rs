@@ -73,21 +73,12 @@ struct SyncedTestContext {
 async fn run_fake_downlink(
     sub: mpsc::Sender<AttachAction>,
     options: DownlinkOptions,
-    start: trigger::Receiver,
+    _start: trigger::Receiver,
     event_tx: mpsc::UnboundedSender<Event>,
-) -> Result<Vec<String>, DownlinkTaskError> {
+) -> Result<(), DownlinkTaskError> {
     use std::time::Instant;
-    let start_t = Instant::now();
-    let mut events = vec![];
-    let mut ev = |msg: &str| {
-        let offset = Instant::now() - start_t;
-        events.push(format!("{:?}: {}", offset, msg));
-    };
-    if start.await.is_err() {
-        return Err(DownlinkTaskError::FailedToStart);
-    }
+    let _start_t = Instant::now();
 
-    ev("Started");
     let (tx_in, rx_in) = byte_channel::byte_channel(BUFFER_SIZE);
     let (tx_out, rx_out) = byte_channel::byte_channel(BUFFER_SIZE);
     if sub
@@ -97,7 +88,6 @@ async fn run_fake_downlink(
     {
         return Err(DownlinkTaskError::FailedToStart);
     }
-    ev("Attached");
     let mut state = State::Unlinked;
     let mut read = FramedRead::new(
         rx_in,
@@ -109,24 +99,19 @@ async fn run_fake_downlink(
     let mut current = Text::default();
 
     while let Some(message) = read.next().await.transpose()? {
-        ev("Reporting message");
         assert!(event_tx.send((state, message.clone())).is_ok());
-        ev("Reported message");
         match state {
             State::Unlinked => match message {
                 DownlinkNotification::Linked => {
-                    ev("Unlinked -> Linked");
                     state = State::Linked;
                 }
                 DownlinkNotification::Synced => {
-                    ev("Unlinked -> Synced");
                     state = State::Synced;
                 }
                 _ => {}
             },
             State::Linked => match message {
                 DownlinkNotification::Synced => {
-                    ev("Linked -> Synced");
                     state = State::Synced;
                 }
                 DownlinkNotification::Unlinked => {
@@ -135,7 +120,6 @@ async fn run_fake_downlink(
                 DownlinkNotification::Event {
                     body: Message::CurrentValue(v),
                 } => {
-                    ev("Updated(Linked)");
                     current = v;
                 }
                 _ => {}
@@ -147,14 +131,12 @@ async fn run_fake_downlink(
                 DownlinkNotification::Event {
                     body: Message::CurrentValue(v),
                 } => {
-                    ev("Updated(Synced)");
                     current = v;
                 }
                 DownlinkNotification::Event {
                     body: Message::Ping,
                 } => {
                     let response = Message::CurrentValue(current.clone());
-                    ev("Sending value.");
                     if write
                         .send(DownlinkOperation { body: response })
                         .await
@@ -162,14 +144,12 @@ async fn run_fake_downlink(
                     {
                         break;
                     }
-                    ev("Sent value");
                 }
                 _ => {}
             },
         }
     }
-    ev("Stopped");
-    Ok(events)
+    Ok(())
 }
 
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(1024);
@@ -183,7 +163,26 @@ const EMPTY_TIMEOUT: Duration = Duration::from_secs(2);
 async fn run_test<F, Fut>(
     options: DownlinkOptions,
     test_block: F,
-) -> (Fut::Output, Result<Vec<String>, DownlinkTaskError>)
+) -> (Fut::Output, Result<(), DownlinkTaskError>)
+where
+    F: FnOnce(TestContext) -> Fut,
+    Fut: Future + Send + 'static,
+{
+    run_test_with_config(
+        options,
+        super::Config {
+            empty_timeout: EMPTY_TIMEOUT,
+        },
+        test_block,
+    )
+    .await
+}
+
+async fn run_test_with_config<F, Fut>(
+    options: DownlinkOptions,
+    config: super::Config,
+    test_block: F,
+) -> (Fut::Output, Result<(), DownlinkTaskError>)
 where
     F: FnOnce(TestContext) -> Fut,
     Fut: Future + Send + 'static,
@@ -199,9 +198,6 @@ where
     let (out_tx, out_rx) = byte_channel::byte_channel(BUFFER_SIZE);
 
     let path = RelativePath::new("/node", "lane");
-    let config = super::Config {
-        empty_timeout: EMPTY_TIMEOUT,
-    };
 
     let management_task = ValueDownlinkManagementTask::new(
         attach_rx,
@@ -582,22 +578,22 @@ async fn exhaust_output_buffer() {
              }| async move {
                 for i in 0..(LIMIT + 1) {
                     let i_text = Text::from(format!("{}", i));
-                        tx.update(Message::CurrentValue(i_text.clone())).await;
-                        expect_event(
-                            events.next().await,
-                            State::Synced,
-                            DownlinkNotification::Event {
-                                body: Message::CurrentValue(i_text),
-                            },
-                        );
-                        tx.update(Message::Ping).await;
-                        expect_event(
-                            events.next().await,
-                            State::Synced,
-                            DownlinkNotification::Event {
-                                body: Message::Ping,
-                            },
-                        );
+                    tx.update(Message::CurrentValue(i_text.clone())).await;
+                    expect_event(
+                        events.next().await,
+                        State::Synced,
+                        DownlinkNotification::Event {
+                            body: Message::CurrentValue(i_text),
+                        },
+                    );
+                    tx.update(Message::Ping).await;
+                    expect_event(
+                        events.next().await,
+                        State::Synced,
+                        DownlinkNotification::Event {
+                            body: Message::Ping,
+                        },
+                    );
                 }
                 let mut messages = vec![];
                 loop {
@@ -636,4 +632,26 @@ async fn exhaust_output_buffer() {
         events,
         vec![(State::Synced, DownlinkNotification::Unlinked)]
     );
+}
+
+#[tokio::test]
+async fn shutdowm_after_timeout_with_no_subscribers() {
+    let ((_stop, events), result) = run_test_with_config(
+        DownlinkOptions::empty(),
+        super::Config {
+            empty_timeout: Duration::from_millis(100),
+        },
+        |TestContext {
+             mut rx,
+             stop,
+             events,
+             ..
+         }| async move {
+            expect_message(rx.recv().await, Operation::Link);
+            (stop, events)
+        },
+    )
+    .await;
+    assert!(matches!(result, Err(DownlinkTaskError::FailedToStart)));
+    assert!(events.collect::<Vec<_>>().await.is_empty());
 }
