@@ -73,11 +73,12 @@ struct SyncedTestContext {
 async fn run_fake_downlink(
     sub: mpsc::Sender<AttachAction>,
     options: DownlinkOptions,
-    _start: trigger::Receiver,
+    start: trigger::Receiver,
     event_tx: mpsc::UnboundedSender<Event>,
 ) -> Result<(), DownlinkTaskError> {
-    use std::time::Instant;
-    let _start_t = Instant::now();
+    if start.await.is_err() {
+        return Err(DownlinkTaskError::FailedToStart);
+    }
 
     let (tx_in, rx_in) = byte_channel::byte_channel(BUFFER_SIZE);
     let (tx_out, rx_out) = byte_channel::byte_channel(BUFFER_SIZE);
