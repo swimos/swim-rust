@@ -50,6 +50,25 @@ bitflags! {
     }
 }
 
+bitflags! {
+    pub struct WriteTaskState: u32 {
+        const UPDATED = 0b00000001;
+        const FLUSHED = 0b00000010;
+        const NEEDS_SYNC = 0b00000100;
+        const INIT = Self::FLUSHED.bits;
+    }
+}
+
+impl WriteTaskState {
+
+    pub fn set_needs_sync(&mut self, options: DownlinkOptions) {
+        if options.contains(DownlinkOptions::SYNC) {
+            *self |= WriteTaskState::NEEDS_SYNC;
+        }
+    }
+
+}
+
 pub struct AttachAction {
     input: ByteReader,
     output: ByteWriter,
@@ -526,9 +545,8 @@ async fn write_task(
         id += 1;
         i
     };
-    let mut flushed = true;
-    let mut updated = false;
-    let mut needs_sync = false;
+
+    let mut task_state = WriteTaskState::INIT;
 
     let suspend_write = |mut message_writer: RequestSender, buffer: BytesMut, kind: WriteKind| async move {
         let result = match kind {
@@ -545,9 +563,9 @@ async fn write_task(
                 mut buffer,
             } => {
                 if registered.is_empty() {
-                    needs_sync = false;
+                    task_state.remove(WriteTaskState::NEEDS_SYNC);
                     let req_with_timeout = timeout(config.empty_timeout, reg_requests.next());
-                    let req_result = if flushed {
+                    let req_result = if task_state.contains(WriteTaskState::FLUSHED) {
                         req_with_timeout.await
                     } else {
                         let (req_result, flush_result) =
@@ -555,7 +573,7 @@ async fn write_task(
                         if flush_result.is_err() {
                             break 'outer;
                         } else {
-                            flushed = true;
+                            task_state |= WriteTaskState::FLUSHED;
                         }
                         req_result
                     };
@@ -577,7 +595,7 @@ async fn write_task(
                     }
                 } else {
                     let next = select(reg_requests.next(), registered.next());
-                    let (next_op, flush_outcome) = if flushed {
+                    let (next_op, flush_outcome) = if task_state.contains(WriteTaskState::FLUSHED) {
                         (discard(next.await), Either::Left(message_writer))
                     } else {
                         let (next_op, flush_result) =
@@ -586,7 +604,7 @@ async fn write_task(
                             SecondaryResult::NotStarted(of) => Either::Left(of.reclaim()),
                             SecondaryResult::Pending(of) => Either::Right(of),
                             SecondaryResult::Completed(Ok(sender)) => {
-                                flushed = true;
+                                task_state |= WriteTaskState::FLUSHED;
                                 Either::Left(sender)
                             }
                             SecondaryResult::Completed(Err(_)) => {
@@ -613,7 +631,7 @@ async fn write_task(
                                     }
                                 }
                                 Either::Right(flush) => {
-                                    needs_sync |= options.contains(DownlinkOptions::SYNC);
+                                    task_state.set_needs_sync(options);
                                     state = WriteState::Flushing { flush, buffer };
                                 }
                             }
@@ -629,15 +647,14 @@ async fn write_task(
                                     buffer.put(body);
                                     let write_fut =
                                         suspend_write(message_writer, buffer, WriteKind::Data);
-                                    updated = false;
-                                    flushed = false;
+                                    task_state.remove(WriteTaskState::FLUSHED | WriteTaskState::UPDATED);
                                     state = WriteState::Writing(write_fut);
                                 }
                                 Either::Right(flush) => {
                                     current.clear();
                                     current.reserve(body.len());
                                     current.put(body);
-                                    updated = true;
+                                    task_state |= WriteTaskState::UPDATED;
                                     state = WriteState::Flushing { flush, buffer };
                                 }
                             }
@@ -658,7 +675,7 @@ async fn write_task(
                 pin_mut!(write_fut);
                 'inner: loop {
                     let result = if registered.is_empty() {
-                        needs_sync = false;
+                        task_state.remove(WriteTaskState::NEEDS_SYNC);
                         match select(&mut write_fut, reg_requests.next()).await {
                             Either::Left((write_result, _)) => {
                                 SuspendedResult::SuspendedCompleted(write_result)
@@ -681,17 +698,15 @@ async fn write_task(
                             if result.is_err() {
                                 break 'outer;
                             }
-                            if needs_sync {
-                                needs_sync = false;
-                                flushed = false;
+                            if task_state.contains(WriteTaskState::NEEDS_SYNC) {
+                                task_state.remove(WriteTaskState::FLUSHED | WriteTaskState::NEEDS_SYNC);
                                 let write = suspend_write(message_writer, buffer, WriteKind::Sync);
                                 state = WriteState::Writing(write);
-                            } else if updated {
+                            } else if task_state.contains(WriteTaskState::UPDATED) {
                                 std::mem::swap(&mut buffer, &mut current);
                                 let write_fut =
                                     suspend_write(message_writer, buffer, WriteKind::Data);
-                                updated = false;
-                                flushed = false;
+                                task_state.remove(WriteTaskState::FLUSHED | WriteTaskState::UPDATED);
                                 state = WriteState::Writing(write_fut);
                             } else {
                                 state = WriteState::Idle {
@@ -705,7 +720,7 @@ async fn write_task(
                             current.clear();
                             current.reserve(body.len());
                             current.put(body);
-                            updated = true;
+                            task_state |= WriteTaskState::UPDATED;
                         }
                         SuspendedResult::NextRecord(Some(Err(Failed(id)))) => {
                             if let Some(rx) = registered.iter_mut().find(|rx| rx.id == id) {
@@ -715,7 +730,7 @@ async fn write_task(
                         SuspendedResult::NewRegistration(Some((reader, options))) => {
                             let receiver = DownlinkReceiver::new(reader, options, next_id());
                             registered.push(receiver);
-                            needs_sync |= options.contains(DownlinkOptions::SYNC);
+                            task_state.set_needs_sync(options);
                         }
                         SuspendedResult::NewRegistration(_) => {
                             break 'outer;
@@ -729,7 +744,7 @@ async fn write_task(
                 mut buffer,
             } => {
                 let result = if registered.is_empty() {
-                    needs_sync = false;
+                    task_state.remove(WriteTaskState::NEEDS_SYNC);
                     match select(&mut flush, reg_requests.next()).await {
                         Either::Left((flush_result, _)) => {
                             SuspendedResult::SuspendedCompleted(flush_result)
@@ -742,16 +757,14 @@ async fn write_task(
 
                 match result {
                     SuspendedResult::SuspendedCompleted(Ok(message_writer)) => {
-                        if needs_sync {
-                            needs_sync = false;
-                            flushed = false;
+                        if task_state.contains(WriteTaskState::NEEDS_SYNC) {
+                            task_state.remove(WriteTaskState::FLUSHED | WriteTaskState::NEEDS_SYNC);
                             let write = suspend_write(message_writer, buffer, WriteKind::Sync);
                             state = WriteState::Writing(write);
-                        } else if updated {
+                        } else if task_state.contains(WriteTaskState::UPDATED) {
                             std::mem::swap(&mut buffer, &mut current);
                             let write_fut = suspend_write(message_writer, buffer, WriteKind::Data);
-                            updated = false;
-                            flushed = false;
+                            task_state.remove(WriteTaskState::FLUSHED | WriteTaskState::UPDATED);
                             state = WriteState::Writing(write_fut);
                         } else {
                             state = WriteState::Idle {
@@ -766,7 +779,7 @@ async fn write_task(
                                 current.clear();
                                 current.reserve(body.len());
                                 current.put(body);
-                                updated = true;
+                                task_state |= WriteTaskState::UPDATED;
                             }
                             Some(Err(Failed(id))) => {
                                 if let Some(rx) = registered.iter_mut().find(|rx| rx.id == id) {
@@ -780,7 +793,7 @@ async fn write_task(
                     SuspendedResult::NewRegistration(Some((reader, options))) => {
                         let receiver = DownlinkReceiver::new(reader, options, next_id());
                         registered.push(receiver);
-                        needs_sync |= options.contains(DownlinkOptions::SYNC);
+                        task_state.set_needs_sync(options);
                         state = WriteState::Flushing { flush, buffer };
                     }
                     _ => {
