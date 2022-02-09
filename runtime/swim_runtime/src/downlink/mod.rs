@@ -60,13 +60,11 @@ bitflags! {
 }
 
 impl WriteTaskState {
-
     pub fn set_needs_sync(&mut self, options: DownlinkOptions) {
         if options.contains(DownlinkOptions::SYNC) {
             *self |= WriteTaskState::NEEDS_SYNC;
         }
     }
-
 }
 
 pub struct AttachAction {
@@ -647,7 +645,8 @@ async fn write_task(
                                     buffer.put(body);
                                     let write_fut =
                                         suspend_write(message_writer, buffer, WriteKind::Data);
-                                    task_state.remove(WriteTaskState::FLUSHED | WriteTaskState::UPDATED);
+                                    task_state
+                                        .remove(WriteTaskState::FLUSHED | WriteTaskState::UPDATED);
                                     state = WriteState::Writing(write_fut);
                                 }
                                 Either::Right(flush) => {
@@ -699,14 +698,16 @@ async fn write_task(
                                 break 'outer;
                             }
                             if task_state.contains(WriteTaskState::NEEDS_SYNC) {
-                                task_state.remove(WriteTaskState::FLUSHED | WriteTaskState::NEEDS_SYNC);
+                                task_state
+                                    .remove(WriteTaskState::FLUSHED | WriteTaskState::NEEDS_SYNC);
                                 let write = suspend_write(message_writer, buffer, WriteKind::Sync);
                                 state = WriteState::Writing(write);
                             } else if task_state.contains(WriteTaskState::UPDATED) {
                                 std::mem::swap(&mut buffer, &mut current);
                                 let write_fut =
                                     suspend_write(message_writer, buffer, WriteKind::Data);
-                                task_state.remove(WriteTaskState::FLUSHED | WriteTaskState::UPDATED);
+                                task_state
+                                    .remove(WriteTaskState::FLUSHED | WriteTaskState::UPDATED);
                                 state = WriteState::Writing(write_fut);
                             } else {
                                 state = WriteState::Idle {

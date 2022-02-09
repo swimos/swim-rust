@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::fmt::Debug;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::time::Duration;
@@ -23,7 +24,7 @@ use crate::compat::{
 use crate::routing::RoutingAddr;
 
 use super::{AttachAction, DownlinkOptions, ValueDownlinkManagementTask};
-use futures::future::join3;
+use futures::future::{join3, join4};
 use futures::{SinkExt, StreamExt};
 use swim_api::error::DownlinkTaskError;
 use swim_api::protocol::{
@@ -58,7 +59,7 @@ type Event = (State, DownlinkNotification<Message>);
 
 struct TestContext {
     tx: TestSender,
-    rx: TestReceiver,
+    rx: TestReceiver<Message>,
     start_client: trigger::Sender,
     stop: trigger::Sender,
     events: UnboundedReceiverStream<Event>,
@@ -66,7 +67,7 @@ struct TestContext {
 
 struct SyncedTestContext {
     tx: TestSender,
-    rx: TestReceiver,
+    rx: TestReceiver<Message>,
     events: UnboundedReceiverStream<Event>,
 }
 
@@ -228,7 +229,7 @@ where
 struct TestSender(FramedWrite<ByteWriter, ResponseMessageEncoder>);
 
 type MsgDecoder<T> = AgentMessageDecoder<T, <T as RecognizerReadable>::Rec>;
-struct TestReceiver(FramedRead<ByteReader, MsgDecoder<Message>>);
+struct TestReceiver<M: RecognizerReadable>(FramedRead<ByteReader, MsgDecoder<M>>);
 
 impl TestSender {
     fn new(writer: ByteWriter) -> Self {
@@ -263,24 +264,33 @@ impl TestSender {
         );
         self.send(message).await;
     }
+
+    async fn update_text(&mut self, message: Text) {
+        let message: ResponseMessage<Text, &[u8]> = ResponseMessage::event(
+            REMOTE_ADDR,
+            RelativePath::new(REMOTE_NODE, REMOTE_LANE),
+            message,
+        );
+        assert!(self.0.send(message).await.is_ok());
+    }
 }
 
-impl TestReceiver {
+impl<M: RecognizerReadable> TestReceiver<M> {
     fn new(reader: ByteReader) -> Self {
         TestReceiver(FramedRead::new(
             reader,
-            MsgDecoder::new(Message::make_recognizer()),
+            MsgDecoder::new(M::make_recognizer()),
         ))
     }
 
-    async fn recv(&mut self) -> Option<Result<RequestMessage<Message>, MessageDecodeError>> {
+    async fn recv(&mut self) -> Option<Result<RequestMessage<M>, MessageDecodeError>> {
         self.0.next().await
     }
 }
 
-fn expect_message(
-    result: Option<Result<RequestMessage<Message>, MessageDecodeError>>,
-    message: Operation<Message>,
+fn expect_message<M: Eq + Debug>(
+    result: Option<Result<RequestMessage<M>, MessageDecodeError>>,
+    message: Operation<M>,
 ) {
     match result {
         Some(Ok(m)) => {
@@ -298,6 +308,17 @@ fn expect_message(
 fn expect_event(result: Option<Event>, state: State, notification: DownlinkNotification<Message>) {
     if let Some(ev) = result {
         assert_eq!(ev, (state, notification));
+    } else {
+        panic!("Client stopped unexpectedly.");
+    }
+}
+
+fn expect_text_event(
+    result: Option<DownlinkNotification<Text>>,
+    notification: DownlinkNotification<Text>,
+) {
+    if let Some(ev) = result {
+        assert_eq!(ev, notification);
     } else {
         panic!("Client stopped unexpectedly.");
     }
@@ -655,4 +676,319 @@ async fn shutdowm_after_timeout_with_no_subscribers() {
     .await;
     assert!(matches!(result, Err(DownlinkTaskError::FailedToStart)));
     assert!(events.collect::<Vec<_>>().await.is_empty());
+}
+
+struct ConsumerContext {
+    start_client: Option<trigger::Sender>,
+    events: UnboundedReceiverStream<DownlinkNotification<Text>>,
+}
+
+struct TwoConsumerTestContext {
+    tx: TestSender,
+    rx: TestReceiver<Text>,
+    stop: trigger::Sender,
+    first_consumer: ConsumerContext,
+    second_consumer: ConsumerContext,
+}
+
+async fn run_simple_fake_downlink(
+    tag: &'static str,
+    sub: mpsc::Sender<AttachAction>,
+    options: DownlinkOptions,
+    start: trigger::Receiver,
+    event_tx: mpsc::UnboundedSender<DownlinkNotification<Text>>,
+) -> Result<(), DownlinkTaskError> {
+    if start.await.is_err() {
+        return Err(DownlinkTaskError::FailedToStart);
+    }
+
+    let (tx_in, rx_in) = byte_channel::byte_channel(BUFFER_SIZE);
+    let (tx_out, rx_out) = byte_channel::byte_channel(BUFFER_SIZE);
+    if sub
+        .send(AttachAction::new(rx_out, tx_in, options))
+        .await
+        .is_err()
+    {
+        return Err(DownlinkTaskError::FailedToStart);
+    }
+    let mut state = State::Unlinked;
+    let mut read = FramedRead::new(
+        rx_in,
+        DownlinkNotifiationDecoder::new(Text::make_recognizer()),
+    );
+
+    let mut write = FramedWrite::new(tx_out, DownlinkOperationEncoder);
+
+    while let Some(message) = read.next().await.transpose()? {
+        assert!(event_tx.send(message.clone()).is_ok());
+        match state {
+            State::Unlinked => match message {
+                DownlinkNotification::Linked => {
+                    state = State::Linked;
+                }
+                DownlinkNotification::Synced => {
+                    state = State::Synced;
+                }
+                _ => {}
+            },
+            State::Linked => match message {
+                DownlinkNotification::Synced => {
+                    state = State::Synced;
+                }
+                DownlinkNotification::Unlinked => {
+                    break;
+                }
+                _ => {}
+            },
+            State::Synced => match message {
+                DownlinkNotification::Unlinked => {
+                    break;
+                }
+                DownlinkNotification::Event { body } => {
+                    if body == tag {
+                        let response = Text::from(format!("Response from {}.", tag));
+                        if write
+                            .send(DownlinkOperation { body: response })
+                            .await
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                }
+                _ => {}
+            },
+        }
+    }
+    Ok(())
+}
+
+const FIRST_TAG: &str = "A";
+const SECOND_TAG: &str = "B";
+
+async fn run_test_with_two_consumers<F, Fut>(
+    options: DownlinkOptions,
+    config: super::Config,
+    test_block: F,
+) -> (
+    Fut::Output,
+    Result<(), DownlinkTaskError>,
+    Result<(), DownlinkTaskError>,
+)
+where
+    F: FnOnce(TwoConsumerTestContext) -> Fut,
+    Fut: Future + Send + 'static,
+{
+    let (attach_tx, attach_rx) = mpsc::channel(CHANNEL_SIZE);
+    let (start_tx1, start_rx1) = trigger::trigger();
+    let (start_tx2, start_rx2) = trigger::trigger();
+    let (stop_tx, stop_rx) = trigger::trigger();
+    let (event_tx1, event_rx1) = mpsc::unbounded_channel();
+    let (event_tx2, event_rx2) = mpsc::unbounded_channel();
+
+    let downlink1 =
+        run_simple_fake_downlink(FIRST_TAG, attach_tx.clone(), options, start_rx1, event_tx1);
+    let downlink2 = run_simple_fake_downlink(SECOND_TAG, attach_tx, options, start_rx2, event_tx2);
+
+    let (in_tx, in_rx) = byte_channel::byte_channel(BUFFER_SIZE);
+    let (out_tx, out_rx) = byte_channel::byte_channel(BUFFER_SIZE);
+
+    let path = RelativePath::new("/node", "lane");
+
+    let management_task = ValueDownlinkManagementTask::new(
+        attach_rx,
+        in_rx,
+        out_tx,
+        stop_rx,
+        RoutingAddr::client(1),
+        path,
+        config,
+    )
+    .run();
+
+    let context = TwoConsumerTestContext {
+        tx: TestSender::new(in_tx),
+        rx: TestReceiver::new(out_rx),
+        stop: stop_tx,
+        first_consumer: ConsumerContext {
+            start_client: Some(start_tx1),
+            events: UnboundedReceiverStream::new(event_rx1),
+        },
+        second_consumer: ConsumerContext {
+            start_client: Some(start_tx2),
+            events: UnboundedReceiverStream::new(event_rx2),
+        },
+    };
+
+    let test_task = test_block(context);
+
+    let (_, task_res, result1, result2) = timeout(
+        TEST_TIMEOUT,
+        join4(management_task, test_task, downlink1, downlink2),
+    )
+    .await
+    .unwrap();
+    (task_res, result1, result2)
+}
+
+async fn sync_both(context: &mut TwoConsumerTestContext) {
+    let TwoConsumerTestContext {
+        tx,
+        rx,
+        first_consumer,
+        second_consumer,
+        ..
+    } = context;
+    let ConsumerContext {
+        start_client: start_first,
+        events: first_events,
+    } = first_consumer;
+
+    let ConsumerContext {
+        start_client: start_second,
+        events: second_events,
+    } = second_consumer;
+
+    expect_message(rx.recv().await, Operation::Link);
+
+    if let Some(start) = start_first.take() {
+        start.trigger();
+    }
+    if let Some(start) = start_second.take() {
+        start.trigger();
+    }
+    tx.link().await;
+
+    expect_text_event(first_events.next().await, DownlinkNotification::Linked);
+    expect_text_event(second_events.next().await, DownlinkNotification::Linked);
+    expect_message(rx.recv().await, Operation::Sync);
+    expect_message(rx.recv().await, Operation::Sync);
+
+    let content = Text::new("Content");
+    tx.update_text(content.clone()).await;
+    tx.sync().await;
+
+    expect_text_event(
+        first_events.next().await,
+        DownlinkNotification::Event {
+            body: content.clone(),
+        },
+    );
+    expect_text_event(
+        second_events.next().await,
+        DownlinkNotification::Event { body: content },
+    );
+    expect_text_event(first_events.next().await, DownlinkNotification::Synced);
+    expect_text_event(second_events.next().await, DownlinkNotification::Synced);
+}
+
+#[tokio::test]
+async fn sync_two_consumers() {
+    let ((first_events, second_events), first_result, second_result) = run_test_with_two_consumers(
+        DownlinkOptions::SYNC,
+        super::Config {
+            empty_timeout: EMPTY_TIMEOUT,
+        },
+        |mut context| async move {
+            sync_both(&mut context).await;
+            let TwoConsumerTestContext {
+                tx: _tx,
+                rx: _rx,
+                stop,
+                first_consumer,
+                second_consumer,
+            } = context;
+            stop.trigger();
+            (
+                first_consumer.events.collect::<Vec<_>>().await,
+                second_consumer.events.collect::<Vec<_>>().await,
+            )
+        },
+    )
+    .await;
+    assert!(first_result.is_ok());
+    assert!(second_result.is_ok());
+    assert_eq!(first_events, vec![DownlinkNotification::Unlinked]);
+    assert_eq!(second_events, vec![DownlinkNotification::Unlinked]);
+}
+
+#[tokio::test]
+async fn receive_from_two_consumers() {
+    let ((first_events, second_events), first_result, second_result) = run_test_with_two_consumers(
+        DownlinkOptions::SYNC,
+        super::Config {
+            empty_timeout: EMPTY_TIMEOUT,
+        },
+        |mut context| async move {
+            sync_both(&mut context).await;
+
+            let TwoConsumerTestContext {
+                mut tx,
+                mut rx,
+                stop,
+                first_consumer,
+                second_consumer,
+            } = context;
+
+            let ConsumerContext {
+                events: mut first_events,
+                ..
+            } = first_consumer;
+
+            let ConsumerContext {
+                events: mut second_events,
+                ..
+            } = second_consumer;
+
+            tx.update_text(Text::new(FIRST_TAG)).await;
+
+            expect_text_event(
+                first_events.next().await,
+                DownlinkNotification::Event {
+                    body: Text::new(FIRST_TAG),
+                },
+            );
+            expect_text_event(
+                second_events.next().await,
+                DownlinkNotification::Event {
+                    body: Text::new(FIRST_TAG),
+                },
+            );
+
+            expect_message(
+                rx.recv().await,
+                Operation::Command(format!("Response from {}.", FIRST_TAG).into()),
+            );
+
+            tx.update_text(Text::new(SECOND_TAG)).await;
+            expect_text_event(
+                first_events.next().await,
+                DownlinkNotification::Event {
+                    body: Text::new(SECOND_TAG),
+                },
+            );
+            expect_text_event(
+                second_events.next().await,
+                DownlinkNotification::Event {
+                    body: Text::new(SECOND_TAG),
+                },
+            );
+
+            expect_message(
+                rx.recv().await,
+                Operation::Command(format!("Response from {}.", SECOND_TAG).into()),
+            );
+
+            stop.trigger();
+            (
+                first_events.collect::<Vec<_>>().await,
+                second_events.collect::<Vec<_>>().await,
+            )
+        },
+    )
+    .await;
+    assert!(first_result.is_ok());
+    assert!(second_result.is_ok());
+    assert_eq!(first_events, vec![DownlinkNotification::Unlinked]);
+    assert_eq!(second_events, vec![DownlinkNotification::Unlinked]);
 }
