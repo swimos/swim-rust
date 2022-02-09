@@ -23,7 +23,7 @@ use crate::compat::{
 };
 use crate::routing::RoutingAddr;
 
-use super::{AttachAction, DownlinkOptions, ValueDownlinkManagementTask};
+use super::{AttachAction, DownlinkOptions, ValueDownlinkRuntime};
 use futures::future::{join3, join4};
 use futures::{SinkExt, StreamExt};
 use swim_api::error::DownlinkTaskError;
@@ -172,7 +172,7 @@ where
 {
     run_test_with_config(
         options,
-        super::Config {
+        super::DownlinkRuntimeConfig {
             empty_timeout: EMPTY_TIMEOUT,
         },
         test_block,
@@ -182,7 +182,7 @@ where
 
 async fn run_test_with_config<F, Fut>(
     options: DownlinkOptions,
-    config: super::Config,
+    config: super::DownlinkRuntimeConfig,
     test_block: F,
 ) -> (Fut::Output, Result<(), DownlinkTaskError>)
 where
@@ -201,7 +201,7 @@ where
 
     let path = RelativePath::new("/node", "lane");
 
-    let management_task = ValueDownlinkManagementTask::new(
+    let management_task = ValueDownlinkRuntime::new(
         attach_rx,
         in_rx,
         out_tx,
@@ -660,7 +660,7 @@ async fn exhaust_output_buffer() {
 async fn shutdowm_after_timeout_with_no_subscribers() {
     let ((_stop, events), result) = run_test_with_config(
         DownlinkOptions::empty(),
-        super::Config {
+        super::DownlinkRuntimeConfig {
             empty_timeout: Duration::from_millis(100),
         },
         |TestContext {
@@ -768,7 +768,7 @@ const SECOND_TAG: &str = "B";
 
 async fn run_test_with_two_consumers<F, Fut>(
     options: DownlinkOptions,
-    config: super::Config,
+    config: super::DownlinkRuntimeConfig,
     test_block: F,
 ) -> (
     Fut::Output,
@@ -795,7 +795,7 @@ where
 
     let path = RelativePath::new("/node", "lane");
 
-    let management_task = ValueDownlinkManagementTask::new(
+    let management_task = ValueDownlinkRuntime::new(
         attach_rx,
         in_rx,
         out_tx,
@@ -886,7 +886,7 @@ async fn sync_both(context: &mut TwoConsumerTestContext) {
 async fn sync_two_consumers() {
     let ((first_events, second_events), first_result, second_result) = run_test_with_two_consumers(
         DownlinkOptions::SYNC,
-        super::Config {
+        super::DownlinkRuntimeConfig {
             empty_timeout: EMPTY_TIMEOUT,
         },
         |mut context| async move {
@@ -916,7 +916,7 @@ async fn sync_two_consumers() {
 async fn receive_from_two_consumers() {
     let ((first_events, second_events), first_result, second_result) = run_test_with_two_consumers(
         DownlinkOptions::SYNC,
-        super::Config {
+        super::DownlinkRuntimeConfig {
             empty_timeout: EMPTY_TIMEOUT,
         },
         |mut context| async move {

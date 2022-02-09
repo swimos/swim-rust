@@ -43,23 +43,34 @@ use crate::routing::RoutingAddr;
 mod tests;
 
 bitflags! {
+    /// Flags that a downlink consumer can set to instruct the downlink runtime how it wishes
+    /// to be driven.
     pub struct DownlinkOptions: u32 {
+        /// The consumer needs to be synchronized with the remote lane.
         const SYNC = 0b00000001;
+        /// If the connection fails, it should be restarted and the consumer passed to the new
+        /// connection.
         const KEEP_LINKED = 0b00000010;
         const DEFAULT = Self::SYNC.bits | Self::KEEP_LINKED.bits;
     }
 }
 
 bitflags! {
-    pub struct WriteTaskState: u32 {
+    /// Internal flags for the downlink runtime write task.
+    struct WriteTaskState: u32 {
+        /// A new value has been received while a write was pending.
         const UPDATED = 0b00000001;
+        /// The outgoing channel has been flushed.
         const FLUSHED = 0b00000010;
+        /// A new consumer that needs to be synced has joined why a write was pending.
         const NEEDS_SYNC = 0b00000100;
+        /// When the task starts it does not need to be flushed.
         const INIT = Self::FLUSHED.bits;
     }
 }
 
 impl WriteTaskState {
+    /// If a new consumer needs to be synced, set the appropriate state bit.
     pub fn set_needs_sync(&mut self, options: DownlinkOptions) {
         if options.contains(DownlinkOptions::SYNC) {
             *self |= WriteTaskState::NEEDS_SYNC;
@@ -67,6 +78,7 @@ impl WriteTaskState {
     }
 }
 
+/// A request to attach a new consumer to the downlink runtime.
 pub struct AttachAction {
     input: ByteReader,
     output: ByteWriter,
@@ -83,22 +95,33 @@ impl AttachAction {
     }
 }
 
+/// Configuration parameters for the downlink runtime.
 #[derive(Debug, Clone, Copy)]
-pub struct Config {
+pub struct DownlinkRuntimeConfig {
+    /// If the runtime has no consumers for longer than this timeout, it will stop.
     pub empty_timeout: Duration,
 }
 
-pub struct ValueDownlinkManagementTask {
+/// The runtime component for a value type downlink (i.e. value downlink, event downlink, etc.).
+pub struct ValueDownlinkRuntime {
     requests: mpsc::Receiver<AttachAction>,
     input: ByteReader,
     output: ByteWriter,
     stopping: trigger::Receiver,
     identity: RoutingAddr,
     path: RelativePath,
-    config: Config,
+    config: DownlinkRuntimeConfig,
 }
 
-impl ValueDownlinkManagementTask {
+impl ValueDownlinkRuntime {
+    /// #Arguments
+    /// * `requests` - The channel through which new consumers connect to the runtime.
+    /// * `input` - Byte channel through which messages are received from the remote lane.
+    /// * `output` - Byte channel through which messages are sent to the remote lane.
+    /// * `stopping` - Trigger to instruct the runtime to stop.
+    /// * `identity` - The routing ID of this runtime.
+    /// * `path` - The path to the remote lane.
+    /// * `config` - Configuration parameters for the runtime.
     pub fn new(
         requests: mpsc::Receiver<AttachAction>,
         input: ByteReader,
@@ -106,9 +129,9 @@ impl ValueDownlinkManagementTask {
         stopping: trigger::Receiver,
         identity: RoutingAddr,
         path: RelativePath,
-        config: Config,
+        config: DownlinkRuntimeConfig,
     ) -> Self {
-        ValueDownlinkManagementTask {
+        ValueDownlinkRuntime {
             requests,
             input,
             output,
@@ -120,7 +143,7 @@ impl ValueDownlinkManagementTask {
     }
 
     pub async fn run(self) {
-        let ValueDownlinkManagementTask {
+        let ValueDownlinkRuntime {
             requests,
             input,
             output,
@@ -139,6 +162,7 @@ impl ValueDownlinkManagementTask {
     }
 }
 
+/// Communicates with the read and write tasks to add new consumers.
 async fn attach_task(
     rx: mpsc::Receiver<AttachAction>,
     producer_tx: mpsc::Sender<(ByteReader, DownlinkOptions)>,
@@ -160,6 +184,7 @@ async fn attach_task(
         }
     }
 }
+
 #[derive(Debug, PartialEq, Eq)]
 enum ReadTaskState {
     Init,
@@ -167,6 +192,7 @@ enum ReadTaskState {
     Synced,
 }
 
+/// Sender to communicate with a subscriber to the downlink.
 struct DownlinkSender {
     sender: FramedWrite<ByteWriter, DownlinkNotificationEncoder>,
     options: DownlinkOptions,
@@ -215,23 +241,23 @@ where
     sender.flush().await
 }
 
+/// Receiver to receive commands from downlink subscribers.
 struct DownlinkReceiver {
     receiver: FramedRead<ByteReader, DownlinkOperationDecoder>,
-    _options: DownlinkOptions,
     id: u64,
     terminated: bool,
 }
 
 impl DownlinkReceiver {
-    fn new(reader: ByteReader, options: DownlinkOptions, id: u64) -> Self {
+    fn new(reader: ByteReader, id: u64) -> Self {
         DownlinkReceiver {
             receiver: FramedRead::new(reader, DownlinkOperationDecoder),
-            _options: options,
             id,
             terminated: false,
         }
     }
 
+    /// Stops a receiver so that it will be removed from a [`SelectAll`] collection.
     fn terminate(&mut self) {
         self.terminated = true;
     }
@@ -257,11 +283,12 @@ impl Stream for DownlinkReceiver {
     }
 }
 
+/// Consumes incoming messages from the remote lane and passes them to the consumers.
 async fn read_task(
     input: ByteReader,
     consumers: mpsc::Receiver<(ByteWriter, DownlinkOptions)>,
     stopping: trigger::Receiver,
-    config: Config,
+    config: DownlinkRuntimeConfig,
 ) {
     let mut messages = FramedRead::new(input, RawResponseMessageDecoder);
 
@@ -499,12 +526,18 @@ impl RequestSender {
     }
 }
 
+/// The internal state of the write task.
 enum WriteState<F> {
+    /// No writes are currently pending.
     Idle {
         message_writer: RequestSender,
         buffer: BytesMut,
     },
+    /// A write to the outgoing channel is pending. In this state backpressure relief will
+    /// cause updates the overwritten.
     Writing(F),
+    /// The outgoing channel is flushing. In this state backpressure relief will cause updates
+    /// the overwritten.
     Flushing {
         flush: OwningFlush,
         buffer: BytesMut,
@@ -516,13 +549,15 @@ enum WriteKind {
     Data,
 }
 
+/// Receives commands for the subscribers to the downlink and writes them to the outgoing channel.
+/// If commands are received faster than the channel can send them, some records will be dropped.
 async fn write_task(
     output: ByteWriter,
     producers: mpsc::Receiver<(ByteReader, DownlinkOptions)>,
     stopping: trigger::Receiver,
     identity: RoutingAddr,
     path: RelativePath,
-    config: Config,
+    config: DownlinkRuntimeConfig,
 ) {
     let mut message_writer = RequestSender::new(output, identity, path);
     if message_writer.send_link().await.is_err() {
@@ -537,6 +572,7 @@ async fn write_task(
 
     let mut registered: SelectAll<DownlinkReceiver> = SelectAll::new();
     let mut reg_requests = ReceiverStream::new(producers).take_until(stopping);
+    // Consumers are given unique IDs to allow them to be removed when they fail.
     let mut id: u64 = 0;
     let mut next_id = move || {
         let i = id;
@@ -576,7 +612,7 @@ async fn write_task(
                         req_result
                     };
                     if let Ok(Some((reader, options))) = req_result {
-                        let receiver = DownlinkReceiver::new(reader, options, next_id());
+                        let receiver = DownlinkReceiver::new(reader, next_id());
                         registered.push(receiver);
                         if options.contains(DownlinkOptions::SYNC) {
                             let write = suspend_write(message_writer, buffer, WriteKind::Sync);
@@ -613,7 +649,7 @@ async fn write_task(
                     };
                     match next_op {
                         Either::Left(Some((reader, options))) => {
-                            let receiver = DownlinkReceiver::new(reader, options, next_id());
+                            let receiver = DownlinkReceiver::new(reader, next_id());
                             registered.push(receiver);
                             match flush_outcome {
                                 Either::Left(message_writer) => {
@@ -671,6 +707,9 @@ async fn write_task(
                 }
             }
             WriteState::Writing(write_fut) => {
+                // It is necessary for the write to be pinned. Rather than putting it into a heap
+                // allocation, it is instead pinned to the stack and another, inner loop is started
+                // until the write completes.
                 pin_mut!(write_fut);
                 'inner: loop {
                     let result = if registered.is_empty() {
@@ -715,9 +754,12 @@ async fn write_task(
                                     buffer,
                                 };
                             }
+
+                            // The write has completed so we can return to the outer loop.
                             break 'inner;
                         }
                         SuspendedResult::NextRecord(Some(Ok(DownlinkOperation { body }))) => {
+                            // Writing is currently blocked so overwrite the next value to be sent.
                             current.clear();
                             current.reserve(body.len());
                             current.put(body);
@@ -729,7 +771,7 @@ async fn write_task(
                             }
                         }
                         SuspendedResult::NewRegistration(Some((reader, options))) => {
-                            let receiver = DownlinkReceiver::new(reader, options, next_id());
+                            let receiver = DownlinkReceiver::new(reader, next_id());
                             registered.push(receiver);
                             task_state.set_needs_sync(options);
                         }
@@ -777,6 +819,7 @@ async fn write_task(
                     SuspendedResult::NextRecord(result) => {
                         match result {
                             Some(Ok(DownlinkOperation { body })) => {
+                                // Writing is currently blocked so overwrite the next value to be sent.
                                 current.clear();
                                 current.reserve(body.len());
                                 current.put(body);
@@ -792,7 +835,7 @@ async fn write_task(
                         state = WriteState::Flushing { flush, buffer };
                     }
                     SuspendedResult::NewRegistration(Some((reader, options))) => {
-                        let receiver = DownlinkReceiver::new(reader, options, next_id());
+                        let receiver = DownlinkReceiver::new(reader, next_id());
                         registered.push(receiver);
                         task_state.set_needs_sync(options);
                         state = WriteState::Flushing { flush, buffer };
@@ -823,6 +866,8 @@ use futures::ready;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+/// A future that flushes a sender and then returns it. This is necessary as we need
+/// an [`Unpin`] future so an equivlanent async block would not work.
 struct OwningFlush {
     inner: Option<RequestSender>,
 }
@@ -871,6 +916,8 @@ fn discard<A1, A2, B1, B2>(either: Either<(A1, A2), (B1, B2)>) -> Either<A1, B1>
     }
 }
 
+/// This enum is for clarity only to avoid having nested [`Either`]s in matche statements
+/// after nesting [`select`] calls.
 enum SuspendedResult<A, B, C> {
     SuspendedCompleted(A),
     NextRecord(B),
