@@ -26,7 +26,7 @@ use crate::routing::RoutingAddr;
 use super::{AttachAction, DownlinkOptions, ValueDownlinkRuntime};
 use futures::future::{join3, join4};
 use futures::{SinkExt, StreamExt};
-use swim_api::error::DownlinkTaskError;
+use swim_api::error::{DownlinkTaskError, FrameIoError, InvalidFrame};
 use swim_api::protocol::{
     DownlinkNotifiationDecoder, DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder,
 };
@@ -45,6 +45,7 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 #[derive(Debug, Form, PartialEq, Eq, Clone)]
 enum Message {
     Ping,
+    Fail,
     CurrentValue(Text),
 }
 
@@ -68,6 +69,7 @@ struct TestContext {
 struct SyncedTestContext {
     tx: TestSender,
     rx: TestReceiver<Message>,
+    stop: trigger::Sender,
     events: UnboundedReceiverStream<Event>,
 }
 
@@ -147,6 +149,13 @@ async fn run_fake_downlink(
                         break;
                     }
                 }
+                DownlinkNotification::Event {
+                    body: Message::Fail,
+                } => {
+                    return Err(DownlinkTaskError::BadFrame(FrameIoError::BadFrame(
+                        InvalidFrame::Incomplete,
+                    )));
+                }
                 _ => {}
             },
         }
@@ -194,7 +203,7 @@ where
     let (stop_tx, stop_rx) = trigger::trigger();
     let (event_tx, event_rx) = mpsc::unbounded_channel();
 
-    let downlink = run_fake_downlink(attach_tx, options, start_rx, event_tx);
+    let downlink = run_fake_downlink(attach_tx.clone(), options, start_rx, event_tx);
 
     let (in_tx, in_rx) = byte_channel::byte_channel(BUFFER_SIZE);
     let (out_tx, out_rx) = byte_channel::byte_channel(BUFFER_SIZE);
@@ -523,8 +532,13 @@ where
         State::Linked,
         DownlinkNotification::Synced,
     );
-    let events = f(SyncedTestContext { tx, rx, events }).await;
-    stop.trigger();
+    let events = f(SyncedTestContext {
+        tx,
+        rx,
+        stop,
+        events,
+    })
+    .await;
     events.collect::<Vec<_>>().await
 }
 
@@ -536,6 +550,7 @@ async fn receive_commands() {
             |SyncedTestContext {
                  mut tx,
                  mut rx,
+                 stop,
                  mut events,
              }| async move {
                 tx.update(Message::Ping).await;
@@ -571,6 +586,7 @@ async fn receive_commands() {
                     rx.recv().await,
                     Operation::Command(Message::CurrentValue(Text::new("B"))),
                 );
+                stop.trigger();
 
                 events
             },
@@ -585,6 +601,34 @@ async fn receive_commands() {
     );
 }
 
+#[tokio::test]
+async fn handle_failed_consumer() {
+    let (events, result) = run_test(DownlinkOptions::SYNC, |context| {
+        sync_client_then(context, |context| async move {
+            let SyncedTestContext {
+                mut tx,
+                rx: _rx,
+                stop: _stop, //No explicit stop, shutdown should ocurr becase there are no remaining consumers.
+                mut events,
+            } = context;
+            tx.update(Message::Fail).await; //Cause the consumer to fail.
+            expect_event(
+                events.next().await,
+                State::Synced,
+                DownlinkNotification::Event {
+                    body: Message::Fail,
+                },
+            );
+            tx.update(Message::Ping).await; //Sending another messasge should cause the write task to notice the failure.
+            events
+        })
+    })
+    .await;
+
+    assert!(matches!(result, Err(DownlinkTaskError::BadFrame(_))));
+    assert!(events.is_empty());
+}
+
 const LIMIT: usize = 150;
 
 #[tokio::test]
@@ -596,6 +640,7 @@ async fn exhaust_output_buffer() {
             |SyncedTestContext {
                  mut tx,
                  mut rx,
+                 stop,
                  mut events,
              }| async move {
                 for i in 0..(LIMIT + 1) {
@@ -643,6 +688,7 @@ async fn exhaust_output_buffer() {
                     }
                     prev = Some(j);
                 }
+                stop.trigger();
                 events
             },
         )
@@ -788,7 +834,8 @@ where
 
     let downlink1 =
         run_simple_fake_downlink(FIRST_TAG, attach_tx.clone(), options, start_rx1, event_tx1);
-    let downlink2 = run_simple_fake_downlink(SECOND_TAG, attach_tx, options, start_rx2, event_tx2);
+    let downlink2 =
+        run_simple_fake_downlink(SECOND_TAG, attach_tx.clone(), options, start_rx2, event_tx2);
 
     let (in_tx, in_rx) = byte_channel::byte_channel(BUFFER_SIZE);
     let (out_tx, out_rx) = byte_channel::byte_channel(BUFFER_SIZE);
