@@ -710,12 +710,14 @@ async fn shutdowm_after_timeout_with_no_subscribers() {
             empty_timeout: Duration::from_millis(100),
         },
         |TestContext {
+             tx: _tx,
              mut rx,
              stop,
              events,
-             ..
+             start_client,
          }| async move {
             expect_message(rx.recv().await, Operation::Link);
+            drop(start_client);
             (stop, events)
         },
     )

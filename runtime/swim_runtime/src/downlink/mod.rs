@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use bitflags::bitflags;
 use bytes::{BufMut, Bytes, BytesMut};
-use futures::future::{join, join3, select, Either};
+use futures::future::{join, select, Either};
 use futures::stream::SelectAll;
 use futures::{Future, FutureExt, Sink, SinkExt, Stream, StreamExt};
 use pin_utils::pin_mut;
@@ -155,10 +155,21 @@ impl ValueDownlinkRuntime {
 
         let (producer_tx, producer_rx) = mpsc::channel(8);
         let (consumer_tx, consumer_rx) = mpsc::channel(8);
-        let att = attach_task(requests, producer_tx, consumer_tx, stopping.clone());
+        let (kill_switch_tx, kill_switch_rx) = trigger::trigger();
+        let att = attach_task(
+            requests,
+            producer_tx,
+            consumer_tx,
+            stopping.clone(),
+            kill_switch_rx,
+        );
         let read = read_task(input, consumer_rx, stopping.clone(), config);
         let write = write_task(output, producer_rx, stopping, identity, path, config);
-        join3(att, read, write).await;
+        let io = async move {
+            join(read, write).await;
+            kill_switch_tx.trigger();
+        };
+        join(att, io).await;
     }
 }
 
@@ -168,8 +179,10 @@ async fn attach_task(
     producer_tx: mpsc::Sender<(ByteReader, DownlinkOptions)>,
     consumer_tx: mpsc::Sender<(ByteWriter, DownlinkOptions)>,
     stopping: trigger::Receiver,
+    kill_switch: trigger::Receiver,
 ) {
-    let mut stream = ReceiverStream::new(rx).take_until(stopping);
+    let combined_stop = select(stopping, kill_switch);
+    let mut stream = ReceiverStream::new(rx).take_until(combined_stop);
     while let Some(AttachAction {
         input,
         output,
@@ -302,7 +315,7 @@ async fn read_task(
     let mut awaiting_linked: Vec<DownlinkSender> = vec![];
     let mut registered: Vec<DownlinkSender> = vec![];
 
-    let mut empty_timestamp = Some(Instant::now());
+    let mut empty_timestamp = Some(Instant::now() + config.empty_timeout);
     loop {
         let next_item = if let Some(timestamp) = empty_timestamp {
             if let Ok(result) = timeout_at(timestamp, consumer_stream.next()).await {
