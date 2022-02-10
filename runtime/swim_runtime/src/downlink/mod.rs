@@ -21,7 +21,7 @@ use futures::future::{join, join3, select, Either};
 use futures::stream::SelectAll;
 use futures::{Future, FutureExt, Sink, SinkExt, Stream, StreamExt};
 use pin_utils::pin_mut;
-use swim_api::protocol::{
+use swim_api::protocol::downlink::{
     DownlinkNotification, DownlinkNotificationEncoder, DownlinkOperation, DownlinkOperationDecoder,
 };
 use swim_model::path::RelativePath;

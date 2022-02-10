@@ -1036,26 +1036,3 @@ impl_writable_tuple! { 9 => ([T0, v0] [T1, v1] [T2, v2] [T3, v3] [T4, v4] [T5, v
 impl_writable_tuple! { 10 => ([T0, v0] [T1, v1] [T2, v2] [T3, v3] [T4, v4] [T5, v5] [T6, v6] [T7, v7] [T8, v8] [T9, v9]) }
 impl_writable_tuple! { 11 => ([T0, v0] [T1, v1] [T2, v2] [T3, v3] [T4, v4] [T5, v5] [T6, v6] [T7, v7] [T8, v8] [T9, v9] [T10, v10]) }
 impl_writable_tuple! { 12 => ([T0, v0] [T1, v1] [T2, v2] [T3, v3] [T4, v4] [T5, v5] [T6, v6] [T7, v7] [T8, v8] [T9, v9] [T10, v10] [T11, v11]) }
-
-pub struct WriteByRef<'a, T>(&'a T);
-
-pub fn write_by_ref<T>(data: &T) -> WriteByRef<'_, T> {
-    WriteByRef(data)
-}
-
-impl<'a, T> StructuralWritable for WriteByRef<'a, T>
-where
-    T: StructuralWritable,
-{
-    fn num_attributes(&self) -> usize {
-        self.0.num_attributes()
-    }
-
-    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
-        self.0.write_with(writer)
-    }
-
-    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
-        self.0.write_with(writer)
-    }
-}

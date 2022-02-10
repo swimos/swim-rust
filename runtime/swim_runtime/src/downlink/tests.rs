@@ -27,7 +27,7 @@ use super::{AttachAction, DownlinkOptions, ValueDownlinkRuntime};
 use futures::future::{join3, join4};
 use futures::{SinkExt, StreamExt};
 use swim_api::error::{DownlinkTaskError, FrameIoError, InvalidFrame};
-use swim_api::protocol::{
+use swim_api::protocol::downlink::{
     DownlinkNotifiationDecoder, DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder,
 };
 use swim_form::structural::read::recognizer::RecognizerReadable;

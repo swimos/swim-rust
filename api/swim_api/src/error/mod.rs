@@ -17,6 +17,7 @@ use swim_model::Text;
 use swim_recon::parser::AsyncParseError;
 use thiserror::Error;
 
+/// Indicates that an agent or downlink failed to read a frame from a byte stream.
 #[derive(Error, Debug)]
 pub enum FrameIoError {
     #[error("{0}")]
@@ -31,6 +32,7 @@ impl From<AsyncParseError> for FrameIoError {
     }
 }
 
+/// Indicates that the content of a frame was invalid.
 #[derive(Error, Debug)]
 pub enum InvalidFrame {
     #[error("An incoming frame was incomplete.")]
@@ -41,6 +43,7 @@ pub enum InvalidFrame {
     InvalidMessageBody(#[from] AsyncParseError),
 }
 
+/// Possible failure modes for a downlink consumer.
 #[derive(Error, Debug)]
 pub enum DownlinkTaskError {
     #[error("The downlink failed to start.")]
