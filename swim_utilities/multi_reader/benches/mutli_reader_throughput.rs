@@ -19,6 +19,9 @@ use futures::stream::SelectAll;
 use futures_util::future::join;
 use futures_util::{SinkExt, Stream, StreamExt};
 use multi_reader::MultiReader;
+use rand::rngs::SmallRng;
+use rand::seq::SliceRandom;
+use rand::SeedableRng;
 use std::fmt::{Display, Formatter};
 use std::num::NonZeroUsize;
 use std::time::Duration;
@@ -35,20 +38,46 @@ use tokio::runtime::Builder;
 use tokio_util::codec::{FramedRead, FramedWrite};
 
 const MESSAGE_COUNTS: &[usize] = &[10, 100, 1000];
-const CHANNEL_COUNTS: &[usize] = &[1, 8, 64, 512];
+const CHANNEL_COUNTS: &[usize] = &[2, 8, 64, 128, 256, 512];
+
+const SEED: &[u8; 32] = &[55; 32];
+
+const MESSAGE_ORDER: &[WritersOrder] = &[
+    WritersOrder::Normal,
+    WritersOrder::Reversed,
+    WritersOrder::Unordered,
+];
+
+#[derive(Debug, Clone, Copy)]
+enum WritersOrder {
+    Normal,
+    Unordered,
+    Reversed,
+}
+
+impl Display for WritersOrder {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WritersOrder::Normal => write!(f, "normal"),
+            WritersOrder::Unordered => write!(f, "unordered"),
+            WritersOrder::Reversed => write!(f, "reversed"),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 struct TestParams {
     message_count: usize,
     channel_count: usize,
+    writers_order: WritersOrder,
 }
 
 impl Display for TestParams {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "[message_count = {}, channel_count = {}]",
-            self.message_count, self.channel_count
+            "[message_count = {}, channel_count = {}, writers_order = {}]",
+            self.message_count, self.channel_count, self.writers_order
         )
     }
 }
@@ -58,10 +87,13 @@ fn test_params() -> Vec<TestParams> {
 
     for i in MESSAGE_COUNTS {
         for j in CHANNEL_COUNTS {
-            params.push(TestParams {
-                message_count: *i,
-                channel_count: *j,
-            })
+            for k in MESSAGE_ORDER {
+                params.push(TestParams {
+                    message_count: *i,
+                    channel_count: *j,
+                    writers_order: *k,
+                })
+            }
         }
     }
     params
@@ -144,11 +176,18 @@ async fn read<T: Stream<Item = Result<TaggedRequestMessage<Value>, MessageDecode
 async fn write(
     mut writers: Vec<FramedWrite<ByteWriter, RawRequestMessageEncoder>>,
     message_count: usize,
+    writers_order: WritersOrder,
 ) {
+    match writers_order {
+        WritersOrder::Normal => {}
+        WritersOrder::Unordered => writers.shuffle(&mut SmallRng::from_seed(*SEED)),
+        WritersOrder::Reversed => writers.reverse(),
+    }
+
     for i in 0..message_count {
         for writer in &mut writers {
             writer
-                .feed(TaggedRequestMessage {
+                .send(TaggedRequestMessage {
                     origin: RoutingAddr::remote(i as u32),
                     path: RelativePath::new(format!("node_{}", i), format!("lane_{}", i)),
                     envelope: Operation::Link,
@@ -156,10 +195,6 @@ async fn write(
                 .await
                 .unwrap();
         }
-    }
-
-    for writer in &mut writers {
-        writer.flush().await.unwrap();
     }
 }
 
@@ -173,7 +208,7 @@ async fn select_all_test(params: TestParams) {
 
     let _ = join(
         read(multi_reader, params),
-        write(writers, params.message_count),
+        write(writers, params.message_count, params.writers_order),
     )
     .await;
 }
@@ -188,7 +223,7 @@ async fn multi_reader_test(params: TestParams) {
 
     let _ = join(
         read(multi_reader, params),
-        write(writers, params.message_count),
+        write(writers, params.message_count, params.writers_order),
     )
     .await;
 }
