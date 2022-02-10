@@ -13,6 +13,9 @@
 // limitations under the License.
 
 pub mod downlink;
-pub mod error;
-pub mod events;
-pub mod protocol;
+
+#[derive(Clone, Copy, Default, Debug)]
+pub struct NoHandler;
+
+#[derive(Clone, Copy, Default, Debug)]
+pub struct FnMutHandler<F>(F);
