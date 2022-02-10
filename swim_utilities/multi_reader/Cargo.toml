@@ -16,6 +16,7 @@ futures-util = "0.3.4"
 tokio = { version = "1.1.1", features = ["rt-multi-thread", "test-util", "macros"] }
 futures = { version = "0.3.4", features = ["io-compat", "compat"] }
 criterion = { version = "0.3", features = ["async_tokio"] }
+rand = "0.8.4"
 swim_runtime = { path = "../../runtime/swim_runtime" }
 swim_model = { path = "../../api/swim_model" }
 swim_form = { path = "../../api/swim_form" }
