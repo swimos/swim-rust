@@ -135,12 +135,10 @@ fn multi_reader_benchmark(c: &mut Criterion) {
 criterion_group!(benches, multi_reader_benchmark);
 criterion_main!(benches);
 
-fn create_channels(
-    n: usize,
-) -> (
-    Vec<FramedWrite<ByteWriter, RawRequestMessageEncoder>>,
-    Vec<FramedRead<ByteReader, AgentMessageDecoder<Value, ValueMaterializer>>>,
-) {
+type Writer = FramedWrite<ByteWriter, RawRequestMessageEncoder>;
+type Reader = FramedRead<ByteReader, AgentMessageDecoder<Value, ValueMaterializer>>;
+
+fn create_channels(n: usize) -> (Vec<Writer>, Vec<Reader>) {
     let mut writers = Vec::new();
     let mut readers = Vec::new();
     for _ in 0..n {
@@ -151,10 +149,7 @@ fn create_channels(
     (writers, readers)
 }
 
-fn create_framed_channel() -> (
-    FramedWrite<ByteWriter, RawRequestMessageEncoder>,
-    FramedRead<ByteReader, AgentMessageDecoder<Value, ValueMaterializer>>,
-) {
+fn create_framed_channel() -> (Writer, Reader) {
     let (writer, reader) = byte_channel(NonZeroUsize::new(16).unwrap());
 
     let framed_writer = FramedWrite::new(writer, RawRequestMessageEncoder);
@@ -176,11 +171,7 @@ async fn read<T: Stream<Item = Result<RequestMessage<Value>, MessageDecodeError>
     assert_eq!(count, params.message_count * params.channel_count);
 }
 
-async fn write(
-    mut writers: Vec<FramedWrite<ByteWriter, RawRequestMessageEncoder>>,
-    message_count: usize,
-    writers_order: WritersOrder,
-) {
+async fn write(mut writers: Vec<Writer>, message_count: usize, writers_order: WritersOrder) {
     match writers_order {
         WritersOrder::Normal => {}
         WritersOrder::Unordered => writers.shuffle(&mut SmallRng::from_seed(*SEED)),

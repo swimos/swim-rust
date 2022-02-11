@@ -12,90 +12,142 @@ use waker_fn::waker_fn;
 #[cfg(test)]
 mod tests;
 
+const BUCKET_SIZE: usize = usize::BITS as usize;
+
+type Index = usize;
+
+struct LocalFlags(usize);
+
+impl LocalFlags {
+    #[inline(always)]
+    fn get_next(&mut self) -> usize {
+        let index = self.0.trailing_zeros() as usize;
+        self.0 ^= 1 << index;
+        index
+    }
+
+    #[inline(always)]
+    fn set_all_flags(&mut self, flags: usize) {
+        self.0 = flags;
+    }
+
+    #[inline(always)]
+    fn set_flag(&mut self, index: usize) {
+        self.0 |= 1 << index
+    }
+
+    #[inline(always)]
+    fn is_empty(&self) -> bool {
+        self.0 == 0
+    }
+}
+
+struct ReaderBuckets(SmallVec<[Arc<AtomicUsize>; 4]>);
+
+impl ReaderBuckets {
+    fn new() -> Self {
+        ReaderBuckets(smallvec![Arc::new(AtomicUsize::new(0))])
+    }
+
+    #[inline(always)]
+    fn set(&mut self, bucket: usize, index: usize) {
+        match self.0.get(bucket) {
+            Some(flags) => {
+                flags.fetch_or(1 << index, Ordering::SeqCst);
+            }
+            None => {
+                self.0
+                    .insert(bucket, Arc::new(AtomicUsize::new(1 << index)));
+            }
+        }
+    }
+
+    #[inline(always)]
+    fn get(&self, bucket: usize) -> Option<&Arc<AtomicUsize>> {
+        self.0.get(bucket)
+    }
+
+    #[inline(always)]
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
 pub struct MultiReader<D> {
     readers: Slab<FramedRead<ByteReader, D>>,
-    ready_remote: SmallVec<[Arc<AtomicUsize>; 4]>,
-    ready_local_flags: usize,
-    ready_local_bucket: usize,
-    next: Option<(usize, usize)>,
+    reader_buckets: ReaderBuckets,
+    local_flags: LocalFlags,
+    current_bucket: usize,
+    ready_reader: Option<Index>,
 }
 
 impl<D: Decoder> MultiReader<D> {
     pub fn new() -> Self {
         MultiReader {
             readers: Slab::new(),
-            ready_remote: smallvec![Arc::new(AtomicUsize::new(0))],
-            ready_local_flags: 0,
-            ready_local_bucket: 0,
-            next: None,
+            reader_buckets: ReaderBuckets::new(),
+            local_flags: LocalFlags(0),
+            current_bucket: 0,
+            ready_reader: None,
         }
     }
 
     pub fn add_reader(&mut self, reader: FramedRead<ByteReader, D>) {
         let key = self.readers.insert(reader);
-        let bucket = key / usize::BITS as usize;
-        let index = key % usize::BITS as usize;
+        let bucket = key / BUCKET_SIZE;
+        let index = key % BUCKET_SIZE;
 
-        if bucket == self.ready_local_bucket {
-            self.ready_local_flags |= 1 << index;
-            if self.next.is_none() {
-                self.next = Some((bucket, index));
+        if bucket == self.current_bucket {
+            self.local_flags.set_flag(index);
+            if self.ready_reader.is_none() {
+                self.ready_reader = Some(index);
             }
         } else {
-            match self.ready_remote.get(bucket) {
-                Some(flags) => {
-                    flags.fetch_or(1 << index, Ordering::SeqCst);
-                }
-                None => {
-                    self.ready_remote
-                        .insert(bucket, Arc::new(AtomicUsize::new(1 << index)));
-                }
-            }
+            self.reader_buckets.set(bucket, index);
         }
     }
 
-    fn get_next_ready(&mut self) -> Option<(usize, usize)> {
-        self.next.or_else(|| {
-            self.update_next();
-            self.next
+    fn get_next_reader(&mut self) -> Option<usize> {
+        self.ready_reader.or_else(|| {
+            self.update_next_reader();
+            self.ready_reader
         })
     }
 
-    fn update_next(&mut self) {
-        if self.ready_local_flags == 0 {
-            let starting_idx = self.ready_local_bucket;
+    fn update_next_reader(&mut self) {
+        if self.local_flags.is_empty() {
+            let starting_idx = self.current_bucket;
 
             loop {
                 // Go to the next bucket.
-                self.ready_local_bucket += 1;
+                self.current_bucket += 1;
 
                 // Wrap around if we are past the end.
-                if self.ready_remote.len() <= self.ready_local_bucket {
-                    self.ready_local_bucket = 0;
+                if self.reader_buckets.len() <= self.current_bucket {
+                    self.current_bucket = 0;
                 }
 
                 // Read the bucket and check if it has any ready flags.
-                self.ready_local_flags = self
-                    .ready_remote
-                    .get(self.ready_local_bucket)
-                    .expect("Invalid bucket")
-                    .fetch_and(0, Ordering::SeqCst);
+                self.local_flags.set_all_flags(
+                    self.reader_buckets
+                        .get(self.current_bucket)
+                        .expect("Invalid bucket")
+                        .fetch_and(0, Ordering::SeqCst),
+                );
 
-                if self.ready_local_flags != 0 {
+                if !self.local_flags.is_empty() {
                     break;
                 }
 
                 // If we are back at the start and there is nothing, it means that everything is empty.
-                if starting_idx == self.ready_local_bucket {
-                    self.next = None;
+                if starting_idx == self.current_bucket {
+                    self.ready_reader = None;
                     return;
                 }
             }
         }
 
-        let index = self.ready_local_flags.trailing_zeros() as usize;
-        self.next = Some((self.ready_local_bucket, index));
-        self.ready_local_flags ^= 1 << index;
+        self.ready_reader = Some(self.local_flags.get_next());
     }
 }
 
@@ -103,15 +155,17 @@ impl<D: Decoder + Unpin> Stream for MultiReader<D> {
     type Item = Result<D::Item, D::Error>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        while let Some((bucket, index)) = self.get_next_ready() {
+        while let Some(index) = self.get_next_reader() {
             let waker = cx.waker().clone();
+            let bucket = self.current_bucket;
+
             let ready = self
-                .ready_remote
+                .reader_buckets
                 .get(bucket)
                 .expect("Invalid bucket")
                 .clone();
 
-            if let Some(reader) = self.readers.get_mut(index + bucket * usize::BITS as usize) {
+            if let Some(reader) = self.readers.get_mut(index + bucket * BUCKET_SIZE) {
                 let result =
                     Pin::new(reader).poll_next(&mut Context::from_waker(&waker_fn(move || {
                         ready.fetch_or(1 << index, Ordering::SeqCst);
@@ -126,14 +180,14 @@ impl<D: Decoder + Unpin> Stream for MultiReader<D> {
                         }
                         None => {
                             // The reader is closed and so we remove it.
-                            self.readers.remove(index + bucket * usize::BITS as usize);
+                            self.readers.remove(index + bucket * BUCKET_SIZE);
                         }
                     }
                 }
             }
 
             // Stop polling the current reader.
-            self.next = None;
+            self.ready_reader = None;
         }
 
         if self.readers.is_empty() {
@@ -142,5 +196,11 @@ impl<D: Decoder + Unpin> Stream for MultiReader<D> {
         } else {
             Poll::Pending
         }
+    }
+}
+
+impl<D: Decoder> Default for MultiReader<D> {
+    fn default() -> Self {
+        Self::new()
     }
 }
