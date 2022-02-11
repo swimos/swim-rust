@@ -9,7 +9,7 @@ use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_model::path::RelativePath;
 use swim_model::Value;
 use swim_runtime::compat::{
-    AgentMessageDecoder, Operation, RawRequestMessageEncoder, TaggedRequestMessage,
+    AgentMessageDecoder, Operation, RawRequestMessageEncoder, RequestMessage,
 };
 use swim_runtime::routing::RoutingAddr;
 use tokio::time::{sleep, timeout};
@@ -28,7 +28,7 @@ async fn multi_reader_test_select() {
         let third_framed = FramedWrite::new(third_writer, RawRequestMessageEncoder);
 
         first_framed
-            .send(TaggedRequestMessage {
+            .send(RequestMessage {
                 origin: RoutingAddr::remote(1),
                 path: RelativePath::new("node_1", "lane_1"),
                 envelope: Operation::Link,
@@ -39,7 +39,7 @@ async fn multi_reader_test_select() {
         sleep(Duration::from_secs(1)).await;
 
         second_framed
-            .send(TaggedRequestMessage {
+            .send(RequestMessage {
                 origin: RoutingAddr::remote(2),
                 path: RelativePath::new("node_2", "lane_2"),
                 envelope: Operation::Link,
@@ -50,7 +50,7 @@ async fn multi_reader_test_select() {
         sleep(Duration::from_secs(1)).await;
 
         first_framed
-            .send(TaggedRequestMessage {
+            .send(RequestMessage {
                 origin: RoutingAddr::remote(3),
                 path: RelativePath::new("node_3", "lane_3"),
                 envelope: Operation::Link,
@@ -61,7 +61,7 @@ async fn multi_reader_test_select() {
         sleep(Duration::from_secs(1)).await;
 
         second_framed
-            .send(TaggedRequestMessage {
+            .send(RequestMessage {
                 origin: RoutingAddr::remote(4),
                 path: RelativePath::new("node_4", "lane_4"),
                 envelope: Operation::Link,
@@ -140,7 +140,7 @@ async fn multi_reader_test() {
         let third_framed = FramedWrite::new(third_writer, RawRequestMessageEncoder);
 
         first_framed
-            .send(TaggedRequestMessage {
+            .send(RequestMessage {
                 origin: RoutingAddr::remote(1),
                 path: RelativePath::new("node_1", "lane_1"),
                 envelope: Operation::Link,
@@ -151,7 +151,7 @@ async fn multi_reader_test() {
         sleep(Duration::from_secs(1)).await;
 
         second_framed
-            .send(TaggedRequestMessage {
+            .send(RequestMessage {
                 origin: RoutingAddr::remote(2),
                 path: RelativePath::new("node_2", "lane_2"),
                 envelope: Operation::Link,
@@ -162,7 +162,7 @@ async fn multi_reader_test() {
         sleep(Duration::from_secs(1)).await;
 
         first_framed
-            .send(TaggedRequestMessage {
+            .send(RequestMessage {
                 origin: RoutingAddr::remote(3),
                 path: RelativePath::new("node_3", "lane_3"),
                 envelope: Operation::Link,
@@ -173,7 +173,7 @@ async fn multi_reader_test() {
         sleep(Duration::from_secs(1)).await;
 
         second_framed
-            .send(TaggedRequestMessage {
+            .send(RequestMessage {
                 origin: RoutingAddr::remote(4),
                 path: RelativePath::new("node_4", "lane_4"),
                 envelope: Operation::Link,

@@ -30,14 +30,13 @@ use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_model::path::RelativePath;
 use swim_model::Value;
 use swim_runtime::compat::{
-    AgentMessageDecoder, MessageDecodeError, Operation, RawRequestMessageEncoder,
-    TaggedRequestMessage,
+    AgentMessageDecoder, MessageDecodeError, Operation, RawRequestMessageEncoder, RequestMessage,
 };
 use swim_runtime::routing::RoutingAddr;
 use tokio::runtime::Builder;
 use tokio_util::codec::{FramedRead, FramedWrite};
 
-const MESSAGE_COUNTS: &[usize] = &[10, 100, 1000];
+const MESSAGE_COUNTS: &[usize] = &[10, 100, 1000, 10000];
 const CHANNEL_COUNTS: &[usize] = &[2, 8, 64, 128, 256, 512];
 
 const SEED: &[u8; 32] = &[55; 32];
@@ -164,7 +163,7 @@ fn create_framed_channel() -> (
     (framed_writer, framed_reader)
 }
 
-async fn read<T: Stream<Item = Result<TaggedRequestMessage<Value>, MessageDecodeError>> + Unpin>(
+async fn read<T: Stream<Item = Result<RequestMessage<Value>, MessageDecodeError>> + Unpin>(
     mut reader: T,
     params: TestParams,
 ) {
@@ -191,7 +190,7 @@ async fn write(
     for i in 0..message_count {
         for writer in &mut writers {
             writer
-                .send(TaggedRequestMessage {
+                .send(RequestMessage {
                     origin: RoutingAddr::remote(i as u32),
                     path: RelativePath::new(format!("node_{}", i), format!("lane_{}", i)),
                     envelope: Operation::Link,
