@@ -12,16 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::PlaneRoutingRequest;
 use futures::future::BoxFuture;
 use futures::FutureExt;
-use swim_runtime::error::{ResolutionError, RouterError};
-use swim_runtime::remote::RawRoute;
+use tokio::sync::{mpsc, oneshot};
+use url::Url;
+
+use swim_runtime::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
+use swim_runtime::remote::RawOutRoute;
 use swim_runtime::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 use swim_utilities::future::request::Request;
 use swim_utilities::routing::uri::RelativeUri;
-use tokio::sync::{mpsc, oneshot};
-use url::Url;
+
+use crate::routing::PlaneRoutingRequest;
 
 #[cfg(test)]
 mod tests;
@@ -56,6 +58,18 @@ impl<DelegateFac: RouterFactory> RouterFactory for PlaneRouterFactory<DelegateFa
             self.request_sender.clone(),
         )
     }
+
+    fn lookup(
+        &mut self,
+        host: Option<Url>,
+        route: RelativeUri,
+    ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
+        async move {
+            let PlaneRouterFactory { request_sender, .. } = self;
+            lookup_inner(request_sender, host, route).await
+        }
+        .boxed()
+    }
 }
 
 /// An implementation of [`Router`] tied to a plane.
@@ -76,6 +90,36 @@ impl<Delegate> PlaneRouter<Delegate> {
             tag,
             delegate_router,
             request_sender,
+        }
+    }
+}
+
+async fn lookup_inner(
+    request_sender: &mpsc::Sender<PlaneRoutingRequest>,
+    host: Option<Url>,
+    route: RelativeUri,
+) -> Result<RoutingAddr, RouterError> {
+    if let Some(host) = host {
+        Err(RouterError::ConnectionFailure(ConnectionError::Resolution(
+            host.to_string(),
+        )))
+    } else {
+        let (tx, rx) = oneshot::channel();
+        if request_sender
+            .send(PlaneRoutingRequest::Resolve {
+                name: route,
+                request: Request::new(tx),
+            })
+            .await
+            .is_err()
+        {
+            Err(RouterError::RouterDropped)
+        } else {
+            match rx.await {
+                Ok(Ok(addr)) => Ok(addr),
+                Ok(Err(err)) => Err(err),
+                Err(_) => Err(RouterError::RouterDropped),
+            }
         }
     }
 }
@@ -101,10 +145,10 @@ impl<Delegate: Router> Router for PlaneRouter<Delegate> {
                     Err(ResolutionError::router_dropped())
                 } else {
                     match rx.await {
-                        Ok(Ok(RawRoute { sender, on_drop })) => {
+                        Ok(Ok(RawOutRoute { sender, on_drop })) => {
                             Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
                         }
-                        Ok(Err(err)) => Err(ResolutionError::unresolvable(err.to_string())),
+                        Ok(Err(Unresolvable(addr))) => Err(ResolutionError::unresolvable(addr)),
                         Err(_) => Err(ResolutionError::router_dropped()),
                     }
                 }
@@ -122,24 +166,7 @@ impl<Delegate: Router> Router for PlaneRouter<Delegate> {
     ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
         async move {
             let PlaneRouter { request_sender, .. } = self;
-            let (tx, rx) = oneshot::channel();
-            if request_sender
-                .send(PlaneRoutingRequest::Resolve {
-                    host,
-                    name: route,
-                    request: Request::new(tx),
-                })
-                .await
-                .is_err()
-            {
-                Err(RouterError::RouterDropped)
-            } else {
-                match rx.await {
-                    Ok(Ok(addr)) => Ok(addr),
-                    Ok(Err(err)) => Err(err),
-                    Err(_) => Err(RouterError::RouterDropped),
-                }
-            }
+            lookup_inner(request_sender, host, route).await
         }
         .boxed()
     }

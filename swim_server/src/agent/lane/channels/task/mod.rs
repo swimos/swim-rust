@@ -52,7 +52,7 @@ use swim_form::Form;
 use swim_metrics::uplink::UplinkObserver;
 use swim_model::path::RelativePath;
 use swim_model::Value;
-use swim_runtime::compat::{Operation, TaggedRequestMessage};
+use swim_runtime::compat::{Operation, RequestMessage};
 use swim_runtime::routing::RoutingAddr;
 use swim_utilities::errors::Recoverable;
 use swim_utilities::trigger;
@@ -202,7 +202,7 @@ const TOO_MANY_FAILURES: &str = "Terminating after too many failed uplinks.";
 pub async fn run_lane_io<Handler, Uplinks, Deferred>(
     message_handler: Handler,
     lane_uplinks: Uplinks,
-    envelopes: impl Stream<Item = TaggedRequestMessage<Value>>,
+    envelopes: impl Stream<Item = RequestMessage<Value>>,
     events: Deferred,
     config: AgentExecutionConfig,
     context: impl AgentExecutionContext,
@@ -270,13 +270,13 @@ where
         let mut iteration_count: usize = 0;
 
         let failed: bool = loop {
-            let envelope_or_err: Option<Either<TaggedRequestMessage<Value>, UplinkErrorReport>> = select! {
+            let envelope_or_err: Option<Either<RequestMessage<Value>, UplinkErrorReport>> = select! {
                 maybe_env = envelopes.next() => maybe_env.map(Either::Left),
                 maybe_err = err_rx.next() => maybe_err.map(Either::Right),
             };
 
             match envelope_or_err {
-                Some(Either::Left(TaggedRequestMessage {
+                Some(Either::Left(RequestMessage {
                     origin: addr,
                     envelope,
                     ..
@@ -432,7 +432,7 @@ async fn send_action(
 }
 
 async fn run_stateless_lane_io<Upd, S, Msg, Ev>(
-    envelopes: impl Stream<Item = TaggedRequestMessage<Value>>,
+    envelopes: impl Stream<Item = RequestMessage<Value>>,
     config: AgentExecutionConfig,
     context: impl AgentExecutionContext,
     route: RelativePath,
@@ -504,7 +504,7 @@ where
 /// * `route` - The route to this lane for outgoing envelope labelling.
 pub async fn run_command_lane_io<T>(
     lane_io: CommandLaneIo<T>,
-    envelopes: impl Stream<Item = TaggedRequestMessage<Value>>,
+    envelopes: impl Stream<Item = RequestMessage<Value>>,
     config: AgentExecutionConfig,
     context: impl AgentExecutionContext,
     route: RelativePath,
@@ -554,7 +554,7 @@ where
 /// * `route` - The route to this lane for outgoing envelope labelling.
 pub async fn run_action_lane_io<Command, Response>(
     lane: ActionLane<Command, Response>,
-    envelopes: impl Stream<Item = TaggedRequestMessage<Value>>,
+    envelopes: impl Stream<Item = RequestMessage<Value>>,
     config: AgentExecutionConfig,
     context: impl AgentExecutionContext,
     route: RelativePath,
@@ -694,7 +694,7 @@ impl UplinkErrorAcc {
 }
 
 pub async fn run_auto_lane_io<S, Item>(
-    envelopes: impl Stream<Item = TaggedRequestMessage<Value>>,
+    envelopes: impl Stream<Item = RequestMessage<Value>>,
     config: AgentExecutionConfig,
     context: impl AgentExecutionContext,
     route: RelativePath,
@@ -755,7 +755,7 @@ where
 }
 
 pub async fn run_supply_lane_io<S, Item>(
-    envelopes: impl Stream<Item = TaggedRequestMessage<Value>>,
+    envelopes: impl Stream<Item = RequestMessage<Value>>,
     config: AgentExecutionConfig,
     context: impl AgentExecutionContext,
     route: RelativePath,
@@ -783,7 +783,7 @@ struct UplinkErrorReporter {
 
 async fn action_envelope_task_with_uplinks<Cmd>(
     route: RelativePath,
-    envelopes: impl Stream<Item = TaggedRequestMessage<Value>>,
+    envelopes: impl Stream<Item = RequestMessage<Value>>,
     mut actions: mpsc::Sender<TaggedAction>,
     err_reporter: UplinkErrorReporter,
     mut on_command_handler: OnCommandStrategy<Cmd>,
@@ -806,13 +806,13 @@ where
     let mut iteration_count: usize = 0;
 
     let mut failed: bool = loop {
-        let envelope_or_err: Option<Either<TaggedRequestMessage<Value>, UplinkErrorReport>> = select! {
+        let envelope_or_err: Option<Either<RequestMessage<Value>, UplinkErrorReport>> = select! {
             maybe_env = envelopes.next() => maybe_env.map(Either::Left),
             maybe_err = err_rx.next() => maybe_err.map(Either::Right),
         };
 
         match envelope_or_err {
-            Some(Either::Left(TaggedRequestMessage {
+            Some(Either::Left(RequestMessage {
                 origin: addr,
                 envelope,
                 ..
@@ -938,7 +938,7 @@ where
 }
 
 pub async fn run_demand_lane_io<Event>(
-    envelopes: impl Stream<Item = TaggedRequestMessage<Value>>,
+    envelopes: impl Stream<Item = RequestMessage<Value>>,
     config: AgentExecutionConfig,
     context: impl AgentExecutionContext,
     route: RelativePath,

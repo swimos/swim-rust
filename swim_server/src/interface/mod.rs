@@ -17,11 +17,12 @@
 //! The module provides methods and structures for creating and running Swim server instances.
 //!
 use crate::agent::lane::channels::AgentExecutionConfig;
+use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::PlaneActiveRoutes;
 use crate::plane::RouteResolver;
 use crate::plane::{run_plane, EnvChannel};
 use crate::plane::{ContextImpl, PlaneSpec};
-use crate::routing::{PlaneRoutingRequest, TopLevelServerRouterFactory};
+use crate::routing::{PlaneRoutingRequest, TopLevelServerRouter, TopLevelServerRouterFactory};
 use either::Either;
 use futures::{io, join};
 use ratchet::{NoExtProvider, ProtocolRegistry, WebSocketConfig};
@@ -33,11 +34,9 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use swim_async_runtime::task::TaskError;
 use swim_async_runtime::time::clock::RuntimeClock;
-use swim_client::connections::{PoolTask, SwimConnPool};
 use swim_client::downlink::subscription::DownlinksTask;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::ClientContext;
-use swim_client::router::ClientRouterFactory;
 use swim_model::path::Addressable;
 use swim_runtime::configuration::{DownlinkConfig, DownlinkConnectionsConfig, DownlinksConfig};
 use swim_runtime::ws::ext::RatchetNetworking;
@@ -51,8 +50,8 @@ use crate::PlaneBuilder;
 use server_store::rocks;
 use server_store::{ServerStore, SwimStore};
 use swim_client::downlink::error::SubscriptionError;
+use swim_client::router::{ClientConnectionFactory, ClientRouterTask};
 use swim_model::path::Path;
-use swim_runtime::byte_routing::routing::router::{ServerRouter, TaggedServerRouter};
 use swim_runtime::error::RoutingError;
 use swim_runtime::remote::config::RemoteConnectionsConfig;
 use swim_runtime::remote::net::dns::Resolver;
@@ -71,11 +70,13 @@ where
 {
     address: Option<SocketAddr>,
     config: SwimServerConfig,
-    planes: Vec<PlaneSpec<RuntimeClock, EnvChannel, S::PlaneStore>>,
+    planes:
+        Vec<PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelServerRouter>, S::PlaneStore>>,
     store: S,
 }
 
-type ServerPlaneBuilder<S> = PlaneBuilder<RuntimeClock, EnvChannel, S>;
+type ServerPlaneBuilder<S> =
+    PlaneBuilder<RuntimeClock, EnvChannel, PlaneRouter<TopLevelServerRouter>, S>;
 
 impl<S> SwimServerBuilder<S>
 where
@@ -227,30 +228,36 @@ where
         let (close_tx, close_rx) = promise::promise();
         let (address_tx, address_rx) = promise::promise();
 
-        // let (client_tx, client_rx) = mpsc::channel(config.conn_config.channel_buffer_size.get());
+        let (client_tx, client_rx) = mpsc::channel(config.conn_config.channel_buffer_size.get());
         let (remote_tx, remote_rx) = mpsc::channel(config.conn_config.channel_buffer_size.get());
         let (plane_tx, plane_rx) = mpsc::channel(config.conn_config.channel_buffer_size.get());
 
-        let router = ServerRouter::new(plane_tx.clone(), remote_tx.clone());
+        let top_level_router_fac = TopLevelServerRouterFactory::new(
+            plane_tx.clone(),
+            client_tx.clone(),
+            remote_tx.clone(),
+        );
 
-        // let client_router =
-        //     ClientRouterFactory::new(client_tx.clone(), router.clone());
-        //
-        // let (connection_pool, connection_pool_task) = SwimConnPool::new(
-        //     config.downlink_connections_config,
-        //     (client_tx, client_rx),
-        //     client_router,
-        //     close_rx.clone(),
-        // );
-        //
-        // let (downlinks, downlinks_task) = Downlinks::new(
-        //     config.downlink_connections_config.dl_req_buffer_size,
-        //     connection_pool,
-        //     Arc::new(config.downlinks_config.clone()),
-        //     close_rx.clone(),
-        // );
-        //
-        // let client_context = ClientContext::new(downlinks);
+        let connections = ClientConnectionFactory::new(
+            top_level_router_fac.clone(),
+            client_tx,
+            remote_tx.clone(),
+        );
+        let client_router_task = ClientRouterTask::new(
+            close_rx.clone(),
+            client_rx,
+            config.downlink_connections_config.buffer_size,
+            config.downlink_connections_config.yield_after,
+        );
+
+        let (downlinks, downlinks_task) = Downlinks::new(
+            connections,
+            config.downlink_connections_config,
+            Arc::new(config.downlinks_config.clone()),
+            close_rx.clone(),
+        );
+
+        let downlinks_context = ClientContext::new(downlinks);
 
         Ok((
             SwimServer {
@@ -259,12 +266,12 @@ where
                 stop_trigger_rx: close_rx,
                 address: address.ok_or(SwimServerBuilderError::MissingAddress)?,
                 address_tx,
-                router,
+                top_level_router_fac,
                 remote_channel: (remote_tx, remote_rx),
                 plane_channel: (plane_tx, plane_rx),
-                // client_context,
-                // connection_pool_task,
-                // downlinks_task,
+                client_context: downlinks_context,
+                client_router_task,
+                downlinks_task,
             },
             ServerHandle {
                 either_address: Either::Left(address_rx),
@@ -330,7 +337,7 @@ impl SwimServerBuilder<ServerStore<NoStoreOpts>> {
     }
 }
 
-type PlaneDef<S> = PlaneSpec<RuntimeClock, EnvChannel, S>;
+type PlaneDef<S> = PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelServerRouter>, S>;
 
 /// Swim server instance.
 ///
@@ -344,6 +351,7 @@ where
     planes: Vec<PlaneDef<S>>,
     stop_trigger_rx: CloseReceiver,
     address_tx: promise::Sender<SocketAddr>,
+    top_level_router_fac: TopLevelServerRouterFactory,
     remote_channel: (
         mpsc::Sender<RemoteRoutingRequest>,
         mpsc::Receiver<RemoteRoutingRequest>,
@@ -352,10 +360,9 @@ where
         mpsc::Sender<PlaneRoutingRequest>,
         mpsc::Receiver<PlaneRoutingRequest>,
     ),
-    // client_context: ClientContext<Path>,
-    // connection_pool_task: PoolTask<Path, TopLevelServerRouterFactory>,
-    // downlinks_task: DownlinksTask<Path>,
-    router: ServerRouter,
+    client_context: ClientContext<Path>,
+    client_router_task: ClientRouterTask,
+    downlinks_task: DownlinksTask<TopLevelServerRouterFactory, Path>,
 }
 
 impl<S> SwimServer<S>
@@ -376,12 +383,12 @@ where
             mut planes,
             stop_trigger_rx,
             address_tx,
-            router,
+            top_level_router_fac,
             remote_channel: (remote_tx, remote_rx),
             plane_channel: (plane_tx, plane_rx),
-            // client_context: downlinks_context,
-            // connection_pool_task,
-            // downlinks_task,
+            client_context: downlinks_context,
+            client_router_task,
+            downlinks_task,
         } = self;
 
         let SwimServerConfig {
@@ -404,10 +411,10 @@ where
 
         let resolver = RouteResolver::new(
             clock,
-            // downlinks_context,
+            downlinks_context,
             agent_config,
             spec,
-            router,
+            PlaneRouterFactory::new(plane_tx, top_level_router_fac.clone()),
             stop_trigger_rx.clone(),
             PlaneActiveRoutes::default(),
         );
@@ -430,6 +437,7 @@ where
                 provider: NoExtProvider,
                 subprotocols: ProtocolRegistry::new(vec!["warp0"]).unwrap(),
             },
+            top_level_router_fac,
             OpenEndedFutures::new(),
             RemoteConnectionChannels::new(remote_tx, remote_rx, stop_trigger_rx),
         )
@@ -442,15 +450,16 @@ where
         };
 
         let result = join!(
-            // downlinks_task.run(),
+            downlinks_task.run(),
             connections_task.run(),
-            // connection_pool_task.run(),
+            client_router_task.run(),
             plane_future,
         );
 
         match result {
-            (Err(err), _) => Err(err.into()),
-            (_, Err(err)) => Err(err.into()),
+            (Err(err), _, _, _) => Err(err.into()),
+            (_, Err(err), _, _) => Err(err.into()),
+            _ => Ok(()),
         }
     }
 

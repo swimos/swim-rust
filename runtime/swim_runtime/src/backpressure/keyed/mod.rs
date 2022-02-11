@@ -61,7 +61,7 @@ pub trait Keyed {
 /// * `buffer_size` - Size of the circular buffer used for each key.
 pub async fn release_pressure<K, V, E, Snk>(
     rx: impl Stream<Item = V>,
-    sink: Snk,
+    mut sink: Snk,
     yield_after: NonZeroUsize,
     bridge_buffer: NonZeroUsize,
     cache_size: NonZeroUsize,
@@ -77,7 +77,7 @@ where
 
     let consume = consume_buffers(
         bridge_rx,
-        sink,
+        &mut sink,
         yield_after,
         |_| (SpecialActionResult::Noop, None),
         take_event,

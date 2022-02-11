@@ -100,13 +100,19 @@ const LANE_NAME: &str = "receiver_lane";
 const MESSAGE: &str = "ping!";
 
 impl<Clk: Clock, Delegate: Router + 'static>
-    AgentRoute<Clk, EnvChannel, SwimNodeStore<MockPlaneStore>> for SendAgentRoute
+    AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>, SwimNodeStore<MockPlaneStore>>
+    for SendAgentRoute
 {
     fn run_agent(
         &self,
         route: RouteAndParameters,
         execution_config: AgentExecutionConfig,
-        agent_internals: AgentInternals<Clk, EnvChannel, SwimNodeStore<MockPlaneStore>>,
+        agent_internals: AgentInternals<
+            Clk,
+            EnvChannel,
+            PlaneRouter<Delegate>,
+            SwimNodeStore<MockPlaneStore>,
+        >,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
         let AgentInternals {
             incoming_envelopes,
@@ -127,7 +133,7 @@ impl<Clk: Clock, Delegate: Router + 'static>
             let target_node: RelativeUri =
                 format!("/{}/{}", RECEIVER_PREFIX, target).parse().unwrap();
             let addr = router.lookup(None, target_node.clone()).await.unwrap();
-            let mut tx = router.resolve_sender(addr).await.unwrap().sender;
+            let mut tx = router.resolve_sender(addr).await.unwrap();
             assert!(tx
                 .send_item(
                     Envelope::event()

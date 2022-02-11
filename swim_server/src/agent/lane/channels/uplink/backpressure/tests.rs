@@ -53,11 +53,15 @@ async fn value_uplink_backpressure_release_events() {
     let (in_tx, in_rx) = mpsc::channel::<ValueIn>(8);
     let (out_tx, mut out_rx) = mpsc::channel::<ValueOut>(2);
 
-    let relief_task = super::value_uplink_release_backpressure(
-        ReceiverStream::new(in_rx),
-        item_sink::for_mpsc_sender(out_tx),
-        simple_config(),
-    );
+    let relief_task = async move {
+        let mut sender = item_sink::for_mpsc_sender(out_tx);
+        super::value_uplink_release_backpressure(
+            ReceiverStream::new(in_rx),
+            &mut sender,
+            simple_config(),
+        )
+        .await
+    };
 
     let provide_task = async move {
         for i in 0..100 {
@@ -92,11 +96,15 @@ async fn value_uplink_backpressure_release_special() {
     let (in_tx, in_rx) = mpsc::channel::<ValueIn>(8);
     let (out_tx, mut out_rx) = mpsc::channel::<ValueOut>(2);
 
-    let relief_task = super::value_uplink_release_backpressure(
-        ReceiverStream::new(in_rx),
-        item_sink::for_mpsc_sender(out_tx),
-        simple_config(),
-    );
+    let relief_task = async move {
+        let mut sender = item_sink::for_mpsc_sender(out_tx);
+        super::value_uplink_release_backpressure(
+            ReceiverStream::new(in_rx),
+            &mut sender,
+            simple_config(),
+        )
+        .await
+    };
 
     let provide_task = async move {
         for i in 0..50 {
@@ -145,11 +153,15 @@ async fn value_uplink_backpressure_release_failure() {
     let (in_tx, in_rx) = mpsc::channel::<ValueIn>(8);
     let (out_tx, mut out_rx) = mpsc::channel::<ValueOut>(2);
 
-    let relief_task = super::value_uplink_release_backpressure(
-        ReceiverStream::new(in_rx),
-        item_sink::for_mpsc_sender(out_tx),
-        simple_config(),
-    );
+    let relief_task = async move {
+        let mut sender = item_sink::for_mpsc_sender(out_tx);
+        super::value_uplink_release_backpressure(
+            ReceiverStream::new(in_rx),
+            &mut sender,
+            simple_config(),
+        )
+        .await
+    };
 
     let provide_task = async move {
         for i in 0..5 {
@@ -194,11 +206,15 @@ async fn map_uplink_backpressure_release_events() {
     let (in_tx, in_rx) = mpsc::channel::<MapIn>(8);
     let (out_tx, mut out_rx) = mpsc::channel::<MapOut>(2);
 
-    let relief_task = super::map_uplink_release_backpressure(
-        ReceiverStream::new(in_rx),
-        item_sink::for_mpsc_sender(out_tx),
-        keyed_config(),
-    );
+    let relief_task = async move {
+        let mut sender = item_sink::for_mpsc_sender(out_tx);
+        super::map_uplink_release_backpressure(
+            ReceiverStream::new(in_rx),
+            &mut sender,
+            keyed_config(),
+        )
+        .await
+    };
 
     let provide_tasks = join_all((0..3).into_iter().map(|n| {
         let tx = in_tx.clone();
@@ -242,11 +258,15 @@ async fn map_uplink_backpressure_release_special() {
     let (in_tx, in_rx) = mpsc::channel::<MapIn>(8);
     let (out_tx, mut out_rx) = mpsc::channel::<MapOut>(2);
 
-    let relief_task = super::map_uplink_release_backpressure(
-        ReceiverStream::new(in_rx),
-        item_sink::for_mpsc_sender(out_tx),
-        keyed_config(),
-    );
+    let relief_task = async move {
+        let mut sender = item_sink::for_mpsc_sender(out_tx);
+        super::map_uplink_release_backpressure(
+            ReceiverStream::new(in_rx),
+            &mut sender,
+            keyed_config(),
+        )
+        .await
+    };
 
     let provide_task = async move {
         join_all((0..3).into_iter().map(|n| {
@@ -313,11 +333,15 @@ async fn map_uplink_backpressure_release_failure() {
     let (in_tx, in_rx) = mpsc::channel::<MapIn>(8);
     let (out_tx, mut out_rx) = mpsc::channel::<MapOut>(2);
 
-    let relief_task = super::map_uplink_release_backpressure(
-        ReceiverStream::new(in_rx),
-        item_sink::for_mpsc_sender(out_tx),
-        keyed_config(),
-    );
+    let relief_task = async move {
+        let mut sender = item_sink::for_mpsc_sender(out_tx);
+        super::map_uplink_release_backpressure(
+            ReceiverStream::new(in_rx),
+            &mut sender,
+            keyed_config(),
+        )
+        .await
+    };
 
     let provide_task = async move {
         for i in 0..4 {

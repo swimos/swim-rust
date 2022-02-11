@@ -146,7 +146,7 @@ fn attr_name(input: Span<'_>) -> IResult<Span<'_>, Cow<'_, str>> {
     alt((string_literal, map(identifier, Cow::Borrowed)))(input)
 }
 
-pub fn attr_name_final(input: Span<'_>) -> IResult<Span<'_>, Cow<'_, str>> {
+fn attr_name_final(input: Span<'_>) -> IResult<Span<'_>, Cow<'_, str>> {
     map(complete::identifier, Cow::Borrowed)(input)
 }
 

@@ -15,15 +15,12 @@
 #[cfg(feature = "async_parser")]
 mod async_parser;
 mod error;
-mod header;
 mod record;
 #[cfg(test)]
 mod tests;
 mod tokens;
 
 pub use crate::parser::error::ParseError;
-pub use crate::parser::header::HeaderParseIterator;
-pub use header::ReadEvent as HeaderReadEvent;
 use nom_locate::LocatedSpan;
 use std::borrow::Cow;
 use swim_form::structural::read::event::ReadEvent;
@@ -113,11 +110,6 @@ pub fn parse_recognize<T: RecognizerReadable>(
 /// * `allow_comments` - Boolean flag indicating whether or not the parsing should fail on comments.
 pub fn parse_value(repr: &str, allow_comments: bool) -> Result<Value, ParseError> {
     parse_recognize(Span::new(repr), allow_comments)
-}
-
-/// A one-off function for parsing an attribute from a `RawEnvelopeHeader`.
-pub fn parse_envelope_header(repr: &str) -> HeaderParseIterator {
-    header::HeaderParseIterator::new(repr)
 }
 
 #[cfg(feature = "async_parser")]

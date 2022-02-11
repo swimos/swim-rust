@@ -12,40 +12,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::error::FmtResult;
+use crate::error::{FmtResult, Unresolvable};
 
-use crate::error::{format_cause, ConnectionError};
+use crate::routing::RoutingAddr;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use swim_utilities::errors::Recoverable;
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct ResolutionError {
-    kind: ResolutionErrorKind,
-    cause: Option<String>,
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum ResolutionError {
+    RouterDropped,
+    Unresolvable(RoutingAddr),
 }
 
 impl ResolutionError {
-    pub fn new(kind: ResolutionErrorKind, cause: Option<String>) -> ResolutionError {
-        ResolutionError { kind, cause }
-    }
-
     pub fn kind(&self) -> ResolutionErrorKind {
-        self.kind
+        match self {
+            ResolutionError::RouterDropped => ResolutionErrorKind::RouterDropped,
+            ResolutionError::Unresolvable(_) => ResolutionErrorKind::Unresolvable,
+        }
     }
 
-    pub fn unresolvable(host: String) -> ResolutionError {
-        ResolutionError {
-            kind: ResolutionErrorKind::Unresolvable,
-            cause: Some(host),
-        }
+    pub fn unresolvable(addr: RoutingAddr) -> ResolutionError {
+        ResolutionError::Unresolvable(addr)
     }
 
     pub fn router_dropped() -> ResolutionError {
-        ResolutionError {
-            kind: ResolutionErrorKind::RouterDropped,
-            cause: None,
-        }
+        ResolutionError::RouterDropped
     }
 }
 
@@ -61,20 +54,11 @@ impl Error for ResolutionError {}
 
 impl Display for ResolutionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        let ResolutionError { kind, cause } = self;
-
-        match kind {
-            ResolutionErrorKind::Unresolvable => match cause {
-                Some(addr) => {
-                    write!(f, "Address {} could not be resolved.", addr)
-                }
-                None => write!(f, "Address could not be resolved."),
-            },
-            ResolutionErrorKind::RouterDropped => {
-                let cause = format_cause(cause);
-
-                write!(f, "The router channel was dropped.{}", cause)
+        match self {
+            ResolutionError::Unresolvable(addr) => {
+                write!(f, "Address {} could not be resolved.", addr)
             }
+            ResolutionError::RouterDropped => write!(f, "The router channel was dropped."),
         }
     }
 }
@@ -85,35 +69,26 @@ impl Recoverable for ResolutionError {
     }
 }
 
-impl From<ResolutionError> for ConnectionError {
-    fn from(e: ResolutionError) -> Self {
-        ConnectionError::Resolution(e)
+impl From<Unresolvable> for ResolutionError {
+    fn from(err: Unresolvable) -> Self {
+        ResolutionError::Unresolvable(err.0)
     }
 }
 
 #[test]
 fn test_resolution_error() {
+    let id = RoutingAddr::remote(1);
+    let id_str = id.to_string();
     assert_eq!(
-        ResolutionError::unresolvable("http://swim.ai".to_string()).to_string(),
-        "Address http://swim.ai could not be resolved."
+        ResolutionError::unresolvable(id).to_string(),
+        format!("Address {} could not be resolved.", id_str)
     );
-    assert_eq!(
-        ResolutionError::new(ResolutionErrorKind::Unresolvable, None).to_string(),
-        "Address could not be resolved."
-    );
+
     assert_eq!(
         ResolutionError::router_dropped().to_string(),
         "The router channel was dropped."
     );
-    assert_eq!(
-        ResolutionError::new(
-            ResolutionErrorKind::RouterDropped,
-            Some("Server stopping".to_string())
-        )
-        .to_string(),
-        "The router channel was dropped. Server stopping"
-    );
 
     assert!(ResolutionError::router_dropped().is_fatal());
-    assert!(ResolutionError::unresolvable("swim.ai".to_string()).is_fatal());
+    assert!(ResolutionError::unresolvable(id).is_fatal());
 }

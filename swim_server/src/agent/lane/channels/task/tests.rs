@@ -57,7 +57,7 @@ use swim_metrics::uplink::{MetricBackpressureConfig, UplinkObserver, WarpUplinkP
 use swim_metrics::{AggregatorError, MetaPulseLanes, NodeMetricAggregator};
 use swim_model::path::RelativePath;
 use swim_model::Value;
-use swim_runtime::compat::TaggedRequestMessage;
+use swim_runtime::compat::RequestMessage;
 use swim_runtime::error::{ConnectionDropped, ResolutionError, RouterError};
 use swim_runtime::routing::{Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender};
 use swim_utilities::algebra::non_zero_usize;
@@ -495,34 +495,33 @@ fn route() -> RelativePath {
 }
 
 struct TaskInput {
-    envelope_tx: mpsc::Sender<TaggedRequestMessage<Value>>,
+    envelope_tx: mpsc::Sender<RequestMessage<Value>>,
     _event_tx: Option<topic::Sender<i32>>,
 }
 
 impl TaskInput {
     async fn send_link(&mut self, addr: RoutingAddr) {
-        let env = TaggedRequestMessage::link(addr, RelativePath::new("node", "lane"));
+        let env = RequestMessage::link(addr, RelativePath::new("node", "lane"));
         assert!(self.envelope_tx.send(env).await.is_ok())
     }
 
     async fn send_sync(&mut self, addr: RoutingAddr) {
-        let env = TaggedRequestMessage::sync(addr, RelativePath::new("node", "lane"));
+        let env = RequestMessage::sync(addr, RelativePath::new("node", "lane"));
         assert!(self.envelope_tx.send(env).await.is_ok())
     }
 
     async fn send_unlink(&mut self, addr: RoutingAddr) {
-        let env = TaggedRequestMessage::unlink(addr, RelativePath::new("node", "lane"));
+        let env = RequestMessage::unlink(addr, RelativePath::new("node", "lane"));
         assert!(self.envelope_tx.send(env).await.is_ok())
     }
 
     async fn send_command(&mut self, addr: RoutingAddr, value: i32) {
-        let env =
-            TaggedRequestMessage::command(addr, RelativePath::new("node", "lane"), value.into());
+        let env = RequestMessage::command(addr, RelativePath::new("node", "lane"), value.into());
         assert!(self.envelope_tx.send(env).await.is_ok())
     }
 
     async fn send_raw(&mut self, addr: RoutingAddr, value: Value) {
-        let env = TaggedRequestMessage::command(addr, RelativePath::new("node", "lane"), value);
+        let env = RequestMessage::command(addr, RelativePath::new("node", "lane"), value);
         assert!(self.envelope_tx.send(env).await.is_ok())
     }
 
@@ -1033,7 +1032,7 @@ fn make_action_lane_task<Context: AgentExecutionContext + Send + Sync + 'static>
             }
         }
     };
-    let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedRequestMessage<Value>>(5);
+    let (envelope_tx, envelope_rx) = mpsc::channel::<RequestMessage<Value>>(5);
 
     let lane: ActionLane<i32, i32> = ActionLane::new(feedback_tx);
 
@@ -1072,7 +1071,7 @@ fn make_command_lane_task<Context: AgentExecutionContext + Send + Sync + 'static
         }
         let _ = commands_tx;
     };
-    let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedRequestMessage<Value>>(5);
+    let (envelope_tx, envelope_rx) = mpsc::channel::<RequestMessage<Value>>(5);
 
     let lane_io: CommandLaneIo<i32> = CommandLaneIo::new(Commander(commander_tx), commands_rx);
 
@@ -1447,7 +1446,7 @@ impl RouteReceiver {
 #[derive(Debug)]
 struct MultiTestContextInner {
     router_addr: RoutingAddr,
-    senders: HashMap<RoutingAddr, Route>,
+    senders: HashMap<RoutingAddr, (TaggedSender, promise::Receiver<ConnectionDropped>)>,
     receivers: HashMap<RoutingAddr, RouteReceiver>,
 }
 
@@ -1486,7 +1485,7 @@ impl MultiTestContext {
         if let std::collections::hash_map::Entry::Vacant(e) = lock.senders.entry(addr) {
             let (tx, rx) = mpsc::channel(5);
             let (drop_tx, drop_rx) = promise::promise();
-            e.insert(Route::new(TaggedSender::new(addr, tx), drop_rx));
+            e.insert((TaggedSender::new(addr, tx), drop_rx));
             lock.receivers.insert(addr, RouteReceiver::taken(drop_tx));
             Some(rx)
         } else {
@@ -1543,15 +1542,15 @@ impl Router for MultiTestRouter {
     fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let mut lock = self.0.lock();
-            if let Some(sender) = lock.senders.get(&addr) {
-                Ok(sender.clone())
+            if let Some((sender, on_dropped)) = lock.senders.get(&addr) {
+                Ok(Route::new(sender.clone(), on_dropped.clone()))
             } else {
                 let (tx, rx) = mpsc::channel(5);
                 let (drop_tx, drop_rx) = promise::promise();
-                let route = Route::new(TaggedSender::new(addr, tx), drop_rx);
-                lock.senders.insert(addr, route.clone());
+                let sender = TaggedSender::new(addr, tx);
+                lock.senders.insert(addr, (sender.clone(), drop_rx.clone()));
                 lock.receivers.insert(addr, RouteReceiver::new(rx, drop_tx));
-                Ok(route)
+                Ok(Route::new(sender, drop_rx))
             }
         }
         .boxed()

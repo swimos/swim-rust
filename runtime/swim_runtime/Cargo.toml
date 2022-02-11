@@ -10,12 +10,12 @@ ratchet_fixture = "0.1.0"
 bytes = "1.0"
 either = "1.5.3"
 flate2 = "1.0.22"
-futures = { version = "0.3.4", features = ["io-compat", "compat"] }
+futures = "0.3.4"
 futures-util = "0.3.4"
 http = "0.2.3"
 pin-project = "1.0.5"
 pin-utils = "0.1.0"
-tokio = { version = "1.1.1", features = ["sync", "rt", "io-util"] }
+tokio = { version = "1.1.1", features = ["sync", "rt"] }
 tokio-native-tls = "0.3"
 tokio-util = { version = "0.6.8", features = ["codec"] }
 swim_utilities = { path = "../../swim_utilities", features = ["circular_buffer", "errors", "future", "lrucache"] }

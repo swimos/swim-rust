@@ -23,7 +23,7 @@ mod tests;
 #[cfg(test)]
 pub use tests::test_clock::TestClock;
 
-use crate::agent::context::{AgentExecutionContext, ContextImpl, RoutingContext, SchedulerContext};
+use crate::agent::context::{AgentExecutionContext, ContextImpl, RoutingContext};
 use crate::agent::dispatch::error::DispatcherErrors;
 use crate::agent::dispatch::{AgentDispatcher, LaneIdentifier};
 use crate::agent::lane::channels::task::{
@@ -55,6 +55,7 @@ use crate::agent::model::map::to_map_store_event;
 use crate::meta::info::{LaneInfo, LaneKind};
 use crate::meta::log::NodeLogger;
 use crate::meta::open_meta_lanes;
+use crate::scheduler::SchedulerContext;
 #[doc(hidden)]
 #[allow(unused_imports)]
 pub use agent_derive::*;
@@ -84,7 +85,7 @@ use swim_client::interface::ClientContext;
 use swim_form::Form;
 use swim_model::path::{Path, RelativePath};
 use swim_model::Value;
-use swim_runtime::compat::TaggedRequestMessage;
+use swim_runtime::compat::RequestMessage;
 use swim_runtime::routing::Router;
 use swim_utilities::future::SwimStreamExt;
 use swim_utilities::routing::uri::RelativeUri;
@@ -243,7 +244,7 @@ pub(crate) fn run_agent<Config, Clk, Agent, L, R, Store>(
     clock: Clk,
     client_context: ClientContext<Path>,
     parameters: AgentParameters<Config>,
-    incoming_envelopes: impl Stream<Item = TaggedRequestMessage<Value>> + Send + 'static,
+    incoming_envelopes: impl Stream<Item = RequestMessage<Value>> + Send + 'static,
     router: R,
     store: Store,
 ) -> (
@@ -582,7 +583,7 @@ pub trait LaneIo<Context: AgentExecutionContext + Sized + Send + Sync + 'static>
     fn attach(
         self,
         route: RelativePath,
-        envelopes: mpsc::Receiver<TaggedRequestMessage<Value>>,
+        envelopes: mpsc::Receiver<RequestMessage<Value>>,
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError>;
@@ -590,7 +591,7 @@ pub trait LaneIo<Context: AgentExecutionContext + Sized + Send + Sync + 'static>
     fn attach_boxed(
         self: Box<Self>,
         route: RelativePath,
-        envelopes: mpsc::Receiver<TaggedRequestMessage<Value>>,
+        envelopes: mpsc::Receiver<RequestMessage<Value>>,
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError>;
@@ -627,7 +628,7 @@ where
     fn attach(
         self,
         route: RelativePath,
-        envelopes: Receiver<TaggedRequestMessage<Value>>,
+        envelopes: Receiver<RequestMessage<Value>>,
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
@@ -651,7 +652,7 @@ where
     fn attach_boxed(
         self: Box<Self>,
         route: RelativePath,
-        envelopes: Receiver<TaggedRequestMessage<Value>>,
+        envelopes: Receiver<RequestMessage<Value>>,
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
@@ -685,7 +686,7 @@ where
     fn attach(
         self,
         route: RelativePath,
-        envelopes: Receiver<TaggedRequestMessage<Value>>,
+        envelopes: Receiver<RequestMessage<Value>>,
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
@@ -713,7 +714,7 @@ where
     fn attach_boxed(
         self: Box<Self>,
         route: RelativePath,
-        envelopes: Receiver<TaggedRequestMessage<Value>>,
+        envelopes: Receiver<RequestMessage<Value>>,
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
@@ -744,7 +745,7 @@ where
     fn attach(
         self,
         route: RelativePath,
-        envelopes: Receiver<TaggedRequestMessage<Value>>,
+        envelopes: Receiver<RequestMessage<Value>>,
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
@@ -763,7 +764,7 @@ where
     fn attach_boxed(
         self: Box<Self>,
         route: RelativePath,
-        envelopes: Receiver<TaggedRequestMessage<Value>>,
+        envelopes: Receiver<RequestMessage<Value>>,
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
@@ -796,7 +797,7 @@ where
     fn attach(
         self,
         route: RelativePath,
-        envelopes: Receiver<TaggedRequestMessage<Value>>,
+        envelopes: Receiver<RequestMessage<Value>>,
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
@@ -813,7 +814,7 @@ where
     fn attach_boxed(
         self: Box<Self>,
         route: RelativePath,
-        envelopes: Receiver<TaggedRequestMessage<Value>>,
+        envelopes: Receiver<RequestMessage<Value>>,
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
@@ -1410,7 +1411,7 @@ where
     fn attach(
         self,
         route: RelativePath,
-        envelopes: Receiver<TaggedRequestMessage<Value>>,
+        envelopes: Receiver<RequestMessage<Value>>,
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
@@ -1429,7 +1430,7 @@ where
     fn attach_boxed(
         self: Box<Self>,
         route: RelativePath,
-        envelopes: Receiver<TaggedRequestMessage<Value>>,
+        envelopes: Receiver<RequestMessage<Value>>,
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
@@ -1507,7 +1508,7 @@ where
     fn attach(
         self,
         route: RelativePath,
-        envelopes: Receiver<TaggedRequestMessage<Value>>,
+        envelopes: Receiver<RequestMessage<Value>>,
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
@@ -1526,7 +1527,7 @@ where
     fn attach_boxed(
         self: Box<Self>,
         route: RelativePath,
-        envelopes: Receiver<TaggedRequestMessage<Value>>,
+        envelopes: Receiver<RequestMessage<Value>>,
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
@@ -1663,7 +1664,7 @@ where
     fn attach(
         self,
         route: RelativePath,
-        envelopes: Receiver<TaggedRequestMessage<swim_model::Value>>,
+        envelopes: Receiver<RequestMessage<swim_model::Value>>,
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
@@ -1697,7 +1698,7 @@ where
     fn attach_boxed(
         self: Box<Self>,
         route: RelativePath,
-        envelopes: Receiver<TaggedRequestMessage<swim_model::Value>>,
+        envelopes: Receiver<RequestMessage<swim_model::Value>>,
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {

@@ -14,9 +14,7 @@
 
 pub mod connections;
 use crate::error::RouterError;
-use crate::error::{
-    ConnectionError, HttpError, HttpErrorKind, ResolutionError, ResolutionErrorKind,
-};
+use crate::error::{ConnectionError, HttpError, HttpErrorKind, ResolutionError};
 use crate::remote::ConnectionDropped;
 use crate::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender};
 use futures::future::{ready, BoxFuture};
@@ -32,7 +30,8 @@ use url::Url;
 
 #[derive(Debug)]
 struct Entry {
-    route: Route,
+    route_sender: TaggedSender,
+    on_dropped: promise::Receiver<ConnectionDropped>,
     on_drop: promise::Sender<ConnectionDropped>,
     countdown: u8,
 }
@@ -60,16 +59,19 @@ impl Router for LocalRoutes {
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         let lock = self.1.lock();
         let result = if let Some(Entry {
-            route, countdown, ..
+            route_sender,
+            on_dropped,
+            countdown,
+            ..
         }) = lock.routes.get(&addr)
         {
             if *countdown == 0 {
-                Ok(route.clone())
+                Ok(Route::new(route_sender.clone(), on_dropped.clone()))
             } else {
-                Err(ResolutionError::unresolvable(addr.to_string()))
+                Err(ResolutionError::unresolvable(addr))
             }
         } else {
-            Err(ResolutionError::unresolvable(addr.to_string()))
+            Err(ResolutionError::unresolvable(addr))
         };
         ready(result).boxed()
     }
@@ -80,9 +82,9 @@ impl Router for LocalRoutes {
         route: RelativeUri,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         let mut lock = self.1.lock();
-        let result = if host.is_some() {
+        let result = if let Some(host_name) = host {
             Err(RouterError::ConnectionFailure(ConnectionError::Resolution(
-                ResolutionError::new(ResolutionErrorKind::Unresolvable, None),
+                host_name.to_string(),
             )))
         } else if let Some((addr, countdown)) = lock.uri_mappings.get_mut(&route) {
             if *countdown == 0 {
@@ -142,11 +144,11 @@ impl LocalRoutes {
                 *counter += 1;
                 vacant.insert((id, countdown));
                 let (drop_tx, drop_rx) = promise::promise();
-                let route = Route::new(TaggedSender::new(*owner_addr, tx), drop_rx);
                 routes.insert(
                     id,
                     Entry {
-                        route,
+                        route_sender: TaggedSender::new(*owner_addr, tx),
+                        on_dropped: drop_rx,
                         on_drop: drop_tx,
                         countdown,
                     },
@@ -179,5 +181,13 @@ impl RouterFactory for LocalRoutes {
     fn create_for(&self, addr: RoutingAddr) -> Self::Router {
         let LocalRoutes(_, inner) = self;
         LocalRoutes(addr, inner.clone())
+    }
+
+    fn lookup(
+        &mut self,
+        host: Option<Url>,
+        route: RelativeUri,
+    ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
+        Router::lookup(self, host, route)
     }
 }

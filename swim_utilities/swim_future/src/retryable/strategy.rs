@@ -149,7 +149,7 @@ impl RetryStrategy {
     }
 
     /// No retry strategy. Only the initial request is attempted.
-    pub fn none() -> RetryStrategy {
+    pub const fn none() -> RetryStrategy {
         RetryStrategy::None(IntervalStrategy {
             retry: Quantity::Finite(0),
             delay: None,

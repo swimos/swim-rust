@@ -51,7 +51,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use swim_async_runtime::time::timeout::timeout;
 use swim_model::Value;
-use swim_runtime::compat::TaggedRequestMessage;
+use swim_runtime::compat::RequestMessage;
 use swim_runtime::routing::{Router, RoutingAddr};
 use swim_utilities::time::AtomicInstant;
 use tokio::time::Instant;
@@ -73,7 +73,7 @@ pub struct AgentDispatcher<Context> {
 //A request to attach a lane to the dispatcher.
 struct OpenRequest {
     identifier: LaneIdentifier,
-    rx: mpsc::Receiver<TaggedRequestMessage<Value>>,
+    rx: mpsc::Receiver<RequestMessage<Value>>,
     callback: oneshot::Sender<Result<(), AttachError>>,
     remote_addr: Option<RoutingAddr>,
 }
@@ -81,7 +81,7 @@ struct OpenRequest {
 impl OpenRequest {
     fn new(
         identifier: LaneIdentifier,
-        rx: mpsc::Receiver<TaggedRequestMessage<Value>>,
+        rx: mpsc::Receiver<RequestMessage<Value>>,
         callback: oneshot::Sender<Result<(), AttachError>>,
         remote_addr: Option<RoutingAddr>,
     ) -> Self {
@@ -210,7 +210,7 @@ where
     /// agent.
     pub async fn run(
         self,
-        incoming: impl Stream<Item = TaggedRequestMessage<Value>>,
+        incoming: impl Stream<Item = RequestMessage<Value>>,
         uplinks_idle_since: Arc<AtomicInstant>,
     ) -> Result<DispatcherErrors, DispatcherErrors> {
         let AgentDispatcher {
@@ -525,7 +525,7 @@ impl<L: Unpin> Future for AwaitNewLane<L> {
 }
 
 struct EnvelopeDispatcher<Router> {
-    senders: HashMap<LaneIdentifier, mpsc::Sender<TaggedRequestMessage<Value>>>,
+    senders: HashMap<LaneIdentifier, mpsc::Sender<RequestMessage<Value>>>,
     open_tx: mpsc::Sender<OpenRequest>,
     await_new: FuturesUnordered<AwaitNewLane<LaneIdentifier>>,
     yield_after: NonZeroUsize,
@@ -567,7 +567,7 @@ where
 
     async fn dispatch_envelopes(
         &mut self,
-        envelopes: impl Stream<Item = TaggedRequestMessage<Value>>,
+        envelopes: impl Stream<Item = RequestMessage<Value>>,
         uplinks_idle_since: Arc<AtomicInstant>,
     ) -> Result<(), DispatcherError> {
         let EnvelopeDispatcher {
@@ -738,8 +738,8 @@ type LabelledResult<L> = (L, Result<(), AttachError>);
 
 async fn select_next<L>(
     await_new: &mut FuturesUnordered<AwaitNewLane<L>>,
-    envelopes: &mut (impl FusedStream<Item = TaggedRequestMessage<Value>> + Unpin),
-) -> Option<Either<LabelledResult<L>, TaggedRequestMessage<Value>>>
+    envelopes: &mut (impl FusedStream<Item = RequestMessage<Value>> + Unpin),
+) -> Option<Either<LabelledResult<L>, RequestMessage<Value>>>
 where
     L: Send + Unpin + 'static,
 {
@@ -763,7 +763,6 @@ async fn send_lane_not_found<R>(
 {
     if let Ok(mut remote_route) = router.resolve_sender(remote_addr).await {
         if remote_route
-            .sender
             .send_item(Envelope::lane_not_found(node.as_str(), lane.as_str()))
             .await
             .is_err()

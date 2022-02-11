@@ -42,6 +42,7 @@ tokio-stream = "0.1.2"
 trust-dns-resolver = { version = "0.20", optional = true, features = ["tokio-runtime"] }
 slab = "0.4.4"
 thiserror = "1.0.29"
+swim_tracing = { path = "../swim_utilities/swim_tracing", features = ["future"] }
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["rt-multi-thread"] }

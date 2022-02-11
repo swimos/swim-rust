@@ -17,11 +17,9 @@ mod tests;
 
 use bytes::{Buf, BytesMut};
 use parking_lot::Mutex;
-use std::fmt::{Debug, Formatter};
 use std::io::{Error, ErrorKind, Result as IoResult};
 use std::num::NonZeroUsize;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
@@ -35,54 +33,37 @@ use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 /// Dropping either half will close the channel but any remaining data is available to be read by
 /// the read half before an IO error is returned.
 pub fn byte_channel(buffer_size: NonZeroUsize) -> (ByteWriter, ByteReader) {
-    let closed = Arc::new(AtomicBool::new(false));
-    let inner = Arc::new(Mutex::new(Conduit::new(buffer_size, closed.clone())));
+    let inner = Arc::new(Mutex::new(Conduit::new(buffer_size)));
     (
         ByteWriter {
             inner: inner.clone(),
-            closed: closed.clone(),
         },
-        ByteReader { inner, closed },
+        ByteReader { inner },
     )
 }
 
+#[derive(Debug)]
 struct Conduit {
     data: BytesMut,
     capacity: usize,
     waker: Option<Waker>,
-    closed: Arc<AtomicBool>,
-}
-
-impl Debug for Conduit {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let Conduit {
-            data,
-            capacity,
-            closed,
-            ..
-        } = self;
-        f.debug_struct("Conduit")
-            .field("data", data)
-            .field("capacity", capacity)
-            .field("closed", closed)
-            .finish()
-    }
+    closed: bool,
 }
 
 impl Conduit {
-    fn new(buffer_size: NonZeroUsize, closed: Arc<AtomicBool>) -> Conduit {
+    fn new(buffer_size: NonZeroUsize) -> Conduit {
         let buffer_size = buffer_size.get();
         Conduit {
             data: BytesMut::with_capacity(buffer_size),
             capacity: buffer_size,
             waker: None,
-            closed,
+            closed: false,
         }
     }
 
     #[inline]
     fn close_channel(&mut self) {
-        self.closed.store(true, Ordering::SeqCst);
+        self.closed = true;
         self.wake();
     }
 
@@ -127,7 +108,7 @@ impl AsyncRead for Conduit {
                 self.read(buf, count);
             }
             Poll::Ready(Ok(()))
-        } else if self.closed.load(Ordering::Relaxed) {
+        } else if self.closed {
             Poll::Ready(Ok(()))
         } else {
             self.waker = Some(cx.waker().clone());
@@ -143,7 +124,7 @@ impl AsyncWrite for Conduit {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<IoResult<usize>> {
-        if self.closed.load(Ordering::SeqCst) {
+        if self.closed {
             Poll::Ready(Err(ErrorKind::BrokenPipe.into()))
         } else if buf.is_empty() {
             Poll::Ready(Ok(0))
@@ -174,13 +155,6 @@ impl AsyncWrite for Conduit {
 #[derive(Debug)]
 pub struct ByteReader {
     inner: Arc<Mutex<Conduit>>,
-    closed: Arc<AtomicBool>,
-}
-
-impl ByteReader {
-    pub fn is_closed(&self) -> bool {
-        self.closed.load(Ordering::Acquire)
-    }
 }
 
 impl Drop for ByteReader {
@@ -201,30 +175,14 @@ impl AsyncRead for ByteReader {
     }
 }
 
+#[derive(Debug)]
 pub struct ByteWriter {
     inner: Arc<Mutex<Conduit>>,
-    closed: Arc<AtomicBool>,
 }
 
 impl ByteWriter {
     pub fn is_closed(&self) -> bool {
-        self.closed.load(Ordering::Acquire)
-    }
-}
-
-impl Debug for ByteWriter {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let ByteWriter { inner, closed } = self;
-        match inner.try_lock() {
-            Some(guard) => f
-                .debug_struct("ByteWriter")
-                .field("value", &*guard)
-                .field("closed", closed)
-                .finish(),
-            None => {
-                write!(f, "ByteWriter")
-            }
-        }
+        self.inner.lock().closed
     }
 }
 

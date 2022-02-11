@@ -26,8 +26,7 @@ use std::sync::Arc;
 use swim_async_runtime::time::clock::Clock;
 use swim_client::interface::ClientContext;
 use swim_model::path::Path;
-use swim_runtime::byte_routing::routing::router::TaggedServerRouter;
-use swim_runtime::routing::TaggedEnvelope;
+use swim_runtime::routing::{Router, TaggedEnvelope};
 
 /// [`AgentRoute`] implementation that spawns agents with a fixed configuration.
 pub struct AgentProvider<Agent, Config, Lifecycle> {
@@ -64,45 +63,45 @@ where
         }
     }
 
-    pub fn run<Clk, Envelopes, Store>(
+    pub fn run<Clk, Envelopes, R, Store>(
         &self,
         agent_parameters: AgentParameters<Config>,
         clock: Clk,
-        // client_context: ClientContext<Path>,
+        client_context: ClientContext<Path>,
         incoming_envelopes: Envelopes,
-        router: TaggedServerRouter,
+        router: R,
         store: Store,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>)
     where
         Clk: Clock,
         Envelopes: Stream<Item = TaggedEnvelope> + Send + Unpin + 'static,
+        R: Router + Clone + 'static,
         Store: NodeStore,
     {
-        // let AgentProvider { lifecycle, .. } = self;
-        // use swim_runtime::compat;
-        //
-        // let messages =
-        //     compat::stop_on_failed(compat::messages_from_envelopes(incoming_envelopes), None);
-        //
-        // let (agent, task) = crate::agent::run_agent(
-        //     lifecycle.clone(),
-        //     clock,
-        //     client_context,
-        //     agent_parameters,
-        //     messages,
-        //     router,
-        //     store,
-        // );
-        // (agent, task.boxed())
-        unimplemented!()
+        let AgentProvider { lifecycle, .. } = self;
+        use swim_runtime::compat;
+        let messages =
+            compat::stop_on_failed(compat::messages_from_envelopes(incoming_envelopes), None);
+
+        let (agent, task) = crate::agent::run_agent(
+            lifecycle.clone(),
+            clock,
+            client_context,
+            agent_parameters,
+            messages,
+            router,
+            store,
+        );
+        (agent, task.boxed())
     }
 }
 
-impl<Clk, Envelopes, Agent, Config, Lifecycle, Store> AgentRoute<Clk, Envelopes, Store>
+impl<Clk, Envelopes, R, Agent, Config, Lifecycle, Store> AgentRoute<Clk, Envelopes, R, Store>
     for AgentProvider<Agent, Config, Lifecycle>
 where
     Clk: Clock,
     Envelopes: Stream<Item = TaggedEnvelope> + Send + Unpin + 'static,
+    R: Router + Clone + 'static,
     Agent: SwimAgent<Config> + Send + Sync + Debug + 'static,
     Config: Send + Sync + Clone + Debug + 'static,
     Lifecycle: AgentLifecycle<Agent> + Send + Sync + Clone + Debug + 'static,
@@ -112,11 +111,11 @@ where
         &self,
         route: RouteAndParameters,
         execution_config: AgentExecutionConfig,
-        agent_internals: AgentInternals<Clk, Envelopes, Store>,
+        agent_internals: AgentInternals<Clk, Envelopes, R, Store>,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
         let AgentInternals {
             clock,
-            // client_context,
+            client_context,
             incoming_envelopes,
             router,
             store,
@@ -137,7 +136,7 @@ where
         self.run(
             parameters,
             clock,
-            // client_context,
+            client_context,
             incoming_envelopes,
             router,
             store,

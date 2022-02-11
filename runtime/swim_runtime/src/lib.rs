@@ -23,7 +23,3 @@ pub mod error;
 pub mod remote;
 pub mod routing;
 pub mod ws;
-
-// todo: replacement byte routing infrastructure
-#[allow(dead_code)]
-pub mod byte_routing;

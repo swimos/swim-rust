@@ -12,14 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod header;
-
 use swim_form::structural::write::StructuralWritable;
 use swim_form::Form;
 use swim_model::path::RelativePath;
 use swim_model::{Attr, Text, Value};
-
-pub use header::{HeaderParseErr, RawEnvelopeHeader};
 
 const NODE_NOT_FOUND_TAG: &str = "nodeNotFound";
 const LANE_NOT_FOUND_TAG: &str = "laneNotFound";

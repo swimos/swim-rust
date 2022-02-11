@@ -17,6 +17,7 @@ use crate::agent::AgentResult;
 use crate::meta::get_route;
 use crate::plane::context::PlaneContext;
 use crate::plane::lifecycle::PlaneLifecycle;
+use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::spec::RouteSpec;
 use crate::routing::PlaneRoutingRequest;
 use either::Either;
@@ -31,13 +32,11 @@ use std::fmt::Debug;
 use std::ops::Deref;
 use std::sync::{Arc, Weak};
 use swim_async_runtime::time::clock::Clock;
-use swim_runtime::byte_routing::routing::router::{ServerRouter, TaggedServerRouter};
-use swim_runtime::error::{
-    ConnectionDropped, ConnectionError, NoAgentAtRoute, ProtocolError, ProtocolErrorKind,
-    RouterError, Unresolvable,
-};
-use swim_runtime::remote::RawRoute;
-use swim_runtime::routing::{CloseReceiver, RoutingAddr, TaggedEnvelope};
+use swim_client::interface::ClientContext;
+use swim_model::path::Path;
+use swim_runtime::error::{ConnectionDropped, NoAgentAtRoute, RouterError, Unresolvable};
+use swim_runtime::remote::RawOutRoute;
+use swim_runtime::routing::{CloseReceiver, RouterFactory, RoutingAddr, TaggedEnvelope};
 use swim_utilities::future::request::Request;
 use swim_utilities::future::task::Spawner;
 use swim_utilities::routing::route_pattern::RoutePattern;
@@ -59,7 +58,7 @@ mod tests;
 
 /// Trait for agent routes. An agent route can construct and run any number of instances of a
 /// [`SwimAgent`] type.
-pub trait AgentRoute<Clk, Envelopes, Store>: Debug + Send {
+pub trait AgentRoute<Clk, Envelopes, Router, Store>: Debug + Send {
     /// Run an instance of the agent.
     ///
     /// # Arguments
@@ -72,10 +71,10 @@ pub trait AgentRoute<Clk, Envelopes, Store>: Debug + Send {
         &self,
         route: RouteAndParameters,
         execution_config: AgentExecutionConfig,
-        agent_internals: AgentInternals<Clk, Envelopes, Store>,
+        agent_internals: AgentInternals<Clk, Envelopes, Router, Store>,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>);
 
-    fn boxed(self) -> BoxAgentRoute<Clk, Envelopes, Store>
+    fn boxed(self) -> BoxAgentRoute<Clk, Envelopes, Router, Store>
     where
         Self: Sized + 'static,
     {
@@ -83,33 +82,34 @@ pub trait AgentRoute<Clk, Envelopes, Store>: Debug + Send {
     }
 }
 
-type BoxAgentRoute<Clk, Envelopes, Store> = Box<dyn AgentRoute<Clk, Envelopes, Store> + Send>;
+type BoxAgentRoute<Clk, Envelopes, Router, Store> =
+    Box<dyn AgentRoute<Clk, Envelopes, Router, Store> + Send>;
 
 /// Internal components used for running an agent.
-pub struct AgentInternals<Clk, Envelopes, Store> {
+pub struct AgentInternals<Clk, Envelopes, Router, Store> {
     /// Clock for scheduling events.
     clock: Clk,
     /// Client context for opening downlinks.
-    // client_context: ClientContext<Path>,
+    client_context: ClientContext<Path>,
     /// The stream of envelopes routed to the agent.
     incoming_envelopes: Envelopes,
     /// The router by which the agent can send messages.
-    router: TaggedServerRouter,
+    router: Router,
     /// A node store for persisting data, if the lane is not transient.
     store: Store,
 }
 
-impl<Clk, Envelopes, Store> AgentInternals<Clk, Envelopes, Store> {
+impl<Clk, Envelopes, Router, Store> AgentInternals<Clk, Envelopes, Router, Store> {
     pub fn new(
         clock: Clk,
-        // client_context: ClientContext<Path>,
+        client_context: ClientContext<Path>,
         incoming_envelopes: Envelopes,
-        router: TaggedServerRouter,
+        router: Router,
         store: Store,
     ) -> Self {
         AgentInternals {
             clock,
-            // client_context,
+            client_context,
             incoming_envelopes,
             router,
             store,
@@ -140,11 +140,11 @@ impl LocalEndpoint {
         }
     }
 
-    fn route(&self) -> RawRoute {
+    fn route(&self) -> RawOutRoute {
         let LocalEndpoint {
             channel, drop_rx, ..
         } = self;
-        RawRoute::new(channel.clone(), drop_rx.clone())
+        RawOutRoute::new(channel.clone(), drop_rx.clone())
     }
 }
 
@@ -153,16 +153,16 @@ pub type EnvChannel = TakeUntil<ReceiverStream<TaggedEnvelope>, CloseReceiver>;
 /// A specification of a plane, consisting of the defined routes, store and an optional custom lifecycle
 /// for the plane.
 #[derive(Debug)]
-pub struct PlaneSpec<Clk, Envelopes, Store>
+pub struct PlaneSpec<Clk, Envelopes, Router, Store>
 where
     Store: PlaneStore,
 {
-    routes: Vec<RouteSpec<Clk, Envelopes, Store::NodeStore>>,
+    routes: Vec<RouteSpec<Clk, Envelopes, Router, Store::NodeStore>>,
     lifecycle: Option<Box<dyn PlaneLifecycle>>,
     store: Store,
 }
 
-impl<Clk, Envelopes, Store> PlaneSpec<Clk, Envelopes, Store>
+impl<Clk, Envelopes, Router, Store> PlaneSpec<Clk, Envelopes, Router, Store>
 where
     Store: PlaneStore,
 {
@@ -296,19 +296,21 @@ impl PlaneContext for ContextImpl {
 
 /// Contains the specifications of all routes that are within a plane and maintains the map of
 /// currently active routes.
-pub struct RouteResolver<Clk, Store>
+pub struct RouteResolver<Clk, DelegateFac, Store>
 where
+    DelegateFac: RouterFactory,
     Store: PlaneStore,
 {
     /// Clock for scheduling tasks.
     clock: Clk,
     /// Client for opening downlinks.
-    // client_context: ClientContext<Path>,
+    client_context: ClientContext<Path>,
     /// The configuration for the agent routes that are opened.
     execution_config: AgentExecutionConfig,
-    /// The routes and store for for the plane
-    plane_spec: PlaneSpec<Clk, EnvChannel, Store>,
-    router: ServerRouter,
+    // The routes and store for for the plane
+    plane_spec: PlaneSpec<Clk, EnvChannel, PlaneRouter<DelegateFac::Router>, Store>,
+    /// Factory to create handles to the plane router when an agent is opened.
+    router_fac: PlaneRouterFactory<DelegateFac>,
     /// External trigger that is fired when the plane should stop.
     stop_trigger: CloseReceiver,
     /// The map of currently active routes.
@@ -317,22 +319,22 @@ where
     counter: u32,
 }
 
-impl<Clk, Store: PlaneStore> RouteResolver<Clk, Store> {
+impl<Clk, DelegateFac: RouterFactory, Store: PlaneStore> RouteResolver<Clk, DelegateFac, Store> {
     pub fn new(
         clock: Clk,
-        // client_context: ClientContext<Path>,
+        client_context: ClientContext<Path>,
         execution_config: AgentExecutionConfig,
-        plane_spec: PlaneSpec<Clk, EnvChannel, Store>,
-        router: ServerRouter,
+        plane_spec: PlaneSpec<Clk, EnvChannel, PlaneRouter<DelegateFac::Router>, Store>,
+        router_fac: PlaneRouterFactory<DelegateFac>,
         stop_trigger: CloseReceiver,
         active_routes: PlaneActiveRoutes,
-    ) -> RouteResolver<Clk, Store> {
+    ) -> RouteResolver<Clk, DelegateFac, Store> {
         RouteResolver {
             clock,
-            // client_context,
+            client_context,
             execution_config,
             plane_spec,
-            router,
+            router_fac,
             stop_trigger,
             active_routes,
             counter: 0,
@@ -340,9 +342,10 @@ impl<Clk, Store: PlaneStore> RouteResolver<Clk, Store> {
     }
 }
 
-impl<Clk, Store> RouteResolver<Clk, Store>
+impl<Clk, DelegateFac, Store> RouteResolver<Clk, DelegateFac, Store>
 where
     Clk: Clock,
+    DelegateFac: RouterFactory,
     Store: PlaneStore,
 {
     /// Attempts to open an agent at a specified route.
@@ -356,10 +359,10 @@ where
     {
         let RouteResolver {
             clock,
-            // client_context,
+            client_context,
             execution_config,
             plane_spec,
-            router,
+            router_fac,
             stop_trigger,
             active_routes,
             counter,
@@ -376,9 +379,9 @@ where
 
         let agent_internals = AgentInternals::new(
             clock.clone(),
-            // client_context.clone(),
+            client_context.clone(),
             ReceiverStream::new(rx).take_until(stop_trigger.clone()),
-            router.create_for(addr),
+            router_fac.create_for(addr),
             store.node_store(route.path()),
         );
 
@@ -423,8 +426,8 @@ const PLANE_STOPPED: &str = "The plane has stopped.";
 /// * `stop_trigger` - Trigger to fire externally when the plane should stop.
 /// * `spawner` - Tasks spawner.
 /// * `context_rx` - Receiver for plane requests.
-pub async fn run_plane<Clk, S, Store>(
-    mut resolver: RouteResolver<Clk, Store>,
+pub async fn run_plane<Clk, S, DelegateFac: RouterFactory, Store>(
+    mut resolver: RouteResolver<Clk, DelegateFac, Store>,
     mut lifecycle: Option<Box<dyn PlaneLifecycle>>,
     mut context: ContextImpl,
     stop_trigger: CloseReceiver,
@@ -433,6 +436,7 @@ pub async fn run_plane<Clk, S, Store>(
 ) where
     Clk: Clock,
     S: Spawner<BoxFuture<'static, AgentResult>>,
+    DelegateFac: RouterFactory,
     Store: PlaneStore,
 {
     event!(Level::DEBUG, STARTING);
@@ -514,11 +518,7 @@ pub async fn run_plane<Clk, S, Store>(
                         }
                     }
                 }
-                Either::Left(Some(PlaneRoutingRequest::Resolve {
-                    host: None,
-                    name,
-                    request,
-                })) => {
+                Either::Left(Some(PlaneRoutingRequest::Resolve { name, request })) => {
                     event!(Level::TRACE, RESOLVING, ?name);
 
                     let route = get_route(name);
@@ -532,22 +532,6 @@ pub async fn run_plane<Clk, S, Store>(
                         }
                     };
                     if request.send(result).is_err() {
-                        event!(Level::WARN, DROPPED_REQUEST);
-                    }
-                }
-                Either::Left(Some(PlaneRoutingRequest::Resolve {
-                    host: Some(host_url),
-                    name,
-                    request,
-                })) => {
-                    event!(Level::TRACE, RESOLVING, ?host_url, ?name);
-                    //TODO Attach external resolution here.
-                    if request
-                        .send_err(RouterError::ConnectionFailure(ConnectionError::Protocol(
-                            ProtocolError::new(ProtocolErrorKind::WebSocket, None),
-                        )))
-                        .is_err()
-                    {
                         event!(Level::WARN, DROPPED_REQUEST);
                     }
                 }
@@ -610,7 +594,8 @@ pub async fn run_plane<Clk, S, Store>(
     event!(Level::DEBUG, PLANE_STOPPED);
 }
 
-type PlaneAgentRoute<Clk, Store> = BoxAgentRoute<Clk, EnvChannel, Store>;
+type PlaneAgentRoute<Clk, Delegate, Store> =
+    BoxAgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>, Store>;
 type Params = HashMap<String, String>;
 
 pub struct RouteAndParameters {
@@ -626,10 +611,10 @@ impl RouteAndParameters {
 
 /// Find the appropriate specification for a route along with any parameters derived from the
 /// route pattern.
-fn route_for<'a, Clk, Store>(
+fn route_for<'a, Clk, Delegate, Store>(
     route: &RelativeUri,
-    routes: &'a [RouteSpec<Clk, EnvChannel, Store>],
-) -> Result<(&'a PlaneAgentRoute<Clk, Store>, Params), NoAgentAtRoute> {
+    routes: &'a [RouteSpec<Clk, EnvChannel, PlaneRouter<Delegate>, Store>],
+) -> Result<(&'a PlaneAgentRoute<Clk, Delegate, Store>, Params), NoAgentAtRoute> {
     //TODO This could be a lot more efficient though it would probably only matter for planes with a large number of routes.
     let matched = routes
         .iter()
