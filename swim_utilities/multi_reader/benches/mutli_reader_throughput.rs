@@ -14,7 +14,7 @@
 
 use byte_channel::byte_channel;
 use byte_channel::{ByteReader, ByteWriter};
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use futures::stream::SelectAll;
 use futures_util::future::join;
 use futures_util::{SinkExt, Stream, StreamExt};
@@ -111,6 +111,10 @@ fn multi_reader_benchmark(c: &mut Criterion) {
     group.measurement_time(Duration::from_secs(20));
 
     for params in param_sets {
+        group.throughput(Throughput::Elements(
+            (params.message_count * params.channel_count) as u64,
+        ));
+
         group.bench_with_input(
             BenchmarkId::new("Select all", &params),
             &params,
