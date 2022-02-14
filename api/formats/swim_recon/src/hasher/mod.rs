@@ -1,6 +1,19 @@
+// Copyright 2015-2022 Swim Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 use crate::parser::{ParseError, Span};
 use smallvec::IntoIter;
-use std::collections::hash_map::DefaultHasher;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
@@ -9,9 +22,7 @@ use swim_form::structural::read::event::ReadEvent;
 #[cfg(test)]
 mod tests;
 
-pub fn calculate_hash(value: &str) -> Result<u64, HashError> {
-    let mut hasher = DefaultHasher::new();
-
+pub fn calculate_hash<H: Hasher>(value: &str, mut hasher: H) -> Result<u64, HashError> {
     let stack = normalise(&mut crate::parser::ParseIterator::new(
         Span::new(value),
         false,
@@ -29,23 +40,28 @@ fn normalise<'a, It: Iterator<Item = Result<ReadEvent<'a>, nom::error::Error<Spa
     for maybe_event in iter {
         let event = maybe_event.map_err(ParseError::from)?;
 
-        if matches!(event, ReadEvent::StartAttribute(_)) {
-            stack.push(event)?;
-            stack.add_attr();
-        } else if matches!(event, ReadEvent::EndAttribute) {
-            let attr_contents = stack.pop().ok_or(ParseError::InvalidEventStream)?;
+        match event {
+            ReadEvent::StartAttribute(_) => {
+                stack.push(event)?;
+                stack.add_attr();
+            }
+            ReadEvent::EndAttribute => {
+                let attr_contents = stack.pop().ok_or(ParseError::InvalidEventStream)?;
 
-            if attr_contents.is_implicit_record() {
-                stack.push(ReadEvent::StartBody)?;
-                stack.extend(attr_contents)?;
-                stack.push(ReadEvent::EndRecord)?;
-            } else {
-                stack.extend(attr_contents)?;
+                if attr_contents.is_implicit_record() {
+                    stack.push(ReadEvent::StartBody)?;
+                    stack.extend(attr_contents)?;
+                    stack.push(ReadEvent::EndRecord)?;
+                } else {
+                    stack.extend(attr_contents)?;
+                }
+
+                stack.push(event)?;
             }
 
-            stack.push(event)?;
-        } else {
-            stack.push(event)?;
+            _ => {
+                stack.push(event)?;
+            }
         }
     }
 
