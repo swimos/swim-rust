@@ -19,7 +19,7 @@ pub use on_linked::{OnLinked, OnLinkedShared};
 pub use on_set::{OnSet, OnSetShared};
 pub use on_synced::{OnSynced, OnSyncedShared};
 pub use on_unlinked::{OnUnlinked, OnUnlinkedShared};
-use swim_api::handlers::{FnMutHandler, NoHandler, WithShared, BlockingHandler};
+use swim_api::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
 
 mod on_event;
 mod on_linked;
@@ -189,7 +189,7 @@ where
         f: F,
     ) -> StatelessValueDownlinkLifecycle<T, FLinked, FSynced, FEv, BlockingHandler<F>, FUnlinked>
     where
-       F: FnMut(Option<&T>, &T) + Send,
+        F: FnMut(Option<&T>, &T) + Send,
     {
         StatelessValueDownlinkLifecycle {
             _value_type: PhantomData,

@@ -14,7 +14,7 @@
 
 use futures::future::{ready, Ready};
 use std::future::Future;
-use swim_api::handlers::{FnMutHandler, NoHandler, WithShared, BlockingHandler};
+use swim_api::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
 
 pub trait OnSynced<'a, T>: Send {
     type OnSyncedFut: Future<Output = ()> + Send + 'a;
@@ -96,4 +96,20 @@ where
         f(value);
         ready(())
     }
+}
+
+#[macro_export]
+macro_rules! on_synced_handler {
+    ($t:ty, |$param:ident| $body:expr) => {{
+        async fn handler($param: &$t) {
+            $body
+        }
+        handler
+    }};
+    ($t:ty, $s:ty, |$shared:ident, $param:ident| $body:expr) => {{
+        async fn handler($shared: &mut $s, $param: &$t) {
+            $body
+        }
+        handler
+    }};
 }

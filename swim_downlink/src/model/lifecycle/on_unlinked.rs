@@ -14,7 +14,7 @@
 
 use futures::future::{ready, Ready};
 use std::future::Future;
-use swim_api::handlers::{FnMutHandler, NoHandler, WithShared, BlockingHandler};
+use swim_api::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
 
 pub trait OnUnlinked<'a>: Send {
     type OnUnlinkedFut: Future<Output = ()> + Send + 'a;
@@ -93,4 +93,14 @@ where
         f();
         ready(())
     }
+}
+
+#[macro_export]
+macro_rules! on_unlinked_handler {
+    ($s:ty, |$shared:ident| $body:expr) => {{
+        async fn handler($shared: &mut $s) {
+            $body
+        }
+        handler
+    }};
 }

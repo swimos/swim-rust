@@ -14,7 +14,7 @@
 
 use futures::future::{ready, Ready};
 use std::future::Future;
-use swim_api::handlers::{FnMutHandler, NoHandler, WithShared, BlockingHandler};
+use swim_api::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
 
 pub trait OnSet<'a, T>: Send {
     type OnSetFut: Future<Output = ()> + Send + 'a;
@@ -116,4 +116,20 @@ where
         f(existing, new_value);
         ready(())
     }
+}
+
+#[macro_export]
+macro_rules! on_set_handler {
+    ($t:ty, |$before:ident, $after:ident| $body:expr) => {{
+        async fn handler($before: core::option::Option<&$t>, $after: &$t) {
+            $body
+        }
+        handler
+    }};
+    ($t:ty, $s:ty, |$shared:ident, $before:ident, $after:ident| $body:expr) => {{
+        async fn handler($shared: &mut $s, $before: core::option::Option<&$t>, $after: &$t) {
+            $body
+        }
+        handler
+    }};
 }

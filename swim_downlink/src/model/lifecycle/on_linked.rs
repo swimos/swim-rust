@@ -108,3 +108,13 @@ where
         ready(())
     }
 }
+
+#[macro_export]
+macro_rules! on_linked_handler {
+    ($s:ty, |$shared:ident| $body:expr) => {{
+        async fn handler($shared: &mut $s) {
+            $body
+        }
+        handler
+    }};
+}
