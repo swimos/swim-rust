@@ -149,6 +149,11 @@ fn recon_hash_eq() {
     let first = "@name(b: )";
     let second = "@name({b: })";
     cmp_eq(first, second);
+
+    let first = "@first(@second(@third(@fourth(@fifth, 1), 2), 3), 4)";
+    let second = "@first({@second({@third({@fourth({@fifth, 1}), 2}),3}), 4})";
+
+    cmp_eq(first, second);
 }
 
 #[test]
