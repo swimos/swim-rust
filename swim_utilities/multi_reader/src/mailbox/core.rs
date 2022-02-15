@@ -1,28 +1,20 @@
 use futures::task::AtomicWaker;
 use std::cell::UnsafeCell;
 use std::ptr;
-use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::Waker;
 use tokio_util::codec::{Decoder, Encoder};
 
-pub trait AbstractWaker {
-    fn wake(self);
-}
-
-impl AbstractWaker for Waker {
-    fn wake(self) {
-        Waker::wake(self)
-    }
-}
-
-pub trait Codec<I>: Encoder<I> + Decoder<Item = I> {}
+const STATE_COMPLETE: usize = 0;
+const STATE_PENDING: usize = 1;
 
 #[derive(Clone, Debug)]
 pub struct WriteTask {
     waker: Arc<AtomicWaker>,
     is_pending: Arc<AtomicBool>,
     is_complete: Arc<AtomicBool>,
+    state: Arc<AtomicUsize>,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -40,32 +32,36 @@ impl WriteTask {
             waker: Arc::new(shared_waker),
             is_pending: Arc::new(AtomicBool::new(false)),
             is_complete: Arc::new(AtomicBool::new(false)),
+            state: Arc::new(AtomicUsize::new(0)),
         }
     }
 
-    pub fn wake(&mut self) {
+    #[inline]
+    pub fn wake(&self) {
         let WriteTask {
-            waker,
-            is_pending,
-            is_complete,
+            waker, is_pending, ..
         } = self;
 
         is_pending.store(false, Ordering::Relaxed);
         waker.wake();
     }
 
+    #[inline]
     pub fn register(&self, waker: &Waker) {
         self.waker.register(waker);
     }
 
+    #[inline]
     pub fn is_pending(&self) -> bool {
         self.is_pending.load(Ordering::Relaxed)
     }
 
+    #[inline]
     pub fn is_complete(&self) -> bool {
         self.is_complete.load(Ordering::Relaxed)
     }
 
+    #[inline]
     pub fn complete(&self) {
         self.is_complete.store(true, Ordering::Relaxed);
         self.waker.wake();
@@ -92,17 +88,93 @@ impl<T> Node<T> {
     }
 }
 
-pub struct Queue<I> {
+#[derive(Debug, PartialEq)]
+pub enum QueueResult<T> {
+    Data(T),
+    Empty,
+    Inconsistent,
+}
+
+impl<T> QueueResult<T> {
+    pub fn is_some(&self) -> bool {
+        matches!(self, QueueResult::Data(_))
+    }
+
+    pub fn is_none(&self) -> bool {
+        matches!(self, QueueResult::Empty)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct QueueProducer<I> {
+    inner: Arc<Queue<I>>,
+}
+
+impl<I> QueueProducer<I> {
+    #[inline]
+    pub fn push(&self, item: I) {
+        self.inner.push(item)
+    }
+
+    #[inline]
+    pub fn has_next(&self) -> bool {
+        self.inner.has_next()
+    }
+}
+
+#[derive(Debug)]
+pub struct QueueConsumer<I> {
+    inner: Arc<Queue<I>>,
+}
+
+impl<I> QueueConsumer<I> {
+    #[inline]
+    pub fn head_ref(&self) -> QueueResult<&I> {
+        self.inner.head_ref()
+    }
+
+    #[inline]
+    pub fn pop(&self) -> QueueResult<I> {
+        self.inner.pop()
+    }
+
+    #[inline]
+    pub fn has_next(&self) -> bool {
+        self.inner.has_next()
+    }
+}
+
+pub fn queue<I>() -> (QueueProducer<I>, QueueConsumer<I>) {
+    let inner = Arc::new(Queue::default());
+    (
+        QueueProducer {
+            inner: inner.clone(),
+        },
+        QueueConsumer { inner },
+    )
+}
+
+// Based on std::sync::mpsc::mpsc_queue::SyncQueue
+#[derive(Debug)]
+struct Queue<I> {
     head: AtomicPtr<Node<I>>,
     tail: UnsafeCell<*mut Node<I>>,
 }
 
+impl<I> Default for Queue<I> {
+    fn default() -> Self {
+        let empty = Node::new(None);
+        Queue::new(AtomicPtr::new(empty), UnsafeCell::new(empty))
+    }
+}
+
 impl<I> Queue<I> {
-    pub fn new(head: AtomicPtr<Node<I>>, tail: UnsafeCell<*mut Node<I>>) -> Queue<I> {
+    fn new(head: AtomicPtr<Node<I>>, tail: UnsafeCell<*mut Node<I>>) -> Queue<I> {
         Queue { head, tail }
     }
 
-    pub fn push(&self, item: I) {
+    #[inline]
+    fn push(&self, item: I) {
         unsafe {
             let n = Node::new(Some(item));
             let prev = self.head.swap(n, Ordering::AcqRel);
@@ -110,7 +182,26 @@ impl<I> Queue<I> {
         }
     }
 
-    pub fn pop(&self) -> Option<I> {
+    #[inline]
+    fn head_ref(&self) -> QueueResult<&I> {
+        unsafe {
+            let tail = *self.tail.get();
+            let next = (*tail).next.load(Ordering::Acquire);
+
+            if !next.is_null() {
+                QueueResult::Data((*next).value.as_ref().unwrap())
+            } else {
+                if self.head.load(Ordering::Acquire) == tail {
+                    QueueResult::Empty
+                } else {
+                    QueueResult::Inconsistent
+                }
+            }
+        }
+    }
+
+    #[inline]
+    fn pop(&self) -> QueueResult<I> {
         unsafe {
             let tail = *self.tail.get();
             let next = (*tail).next.load(Ordering::Acquire);
@@ -124,14 +215,19 @@ impl<I> Queue<I> {
                 let ret = (*next).value.take().unwrap();
                 drop(Box::from_raw(tail));
 
-                Some(ret)
+                QueueResult::Data(ret)
             } else {
-                None
+                if self.head.load(Ordering::Acquire) == tail {
+                    QueueResult::Empty
+                } else {
+                    QueueResult::Inconsistent
+                }
             }
         }
     }
 
-    pub fn has_next(&self) -> bool {
+    #[inline]
+    fn has_next(&self) -> bool {
         unsafe {
             let tail = *self.tail.get();
             let next = (*tail).next.load(Ordering::Acquire);

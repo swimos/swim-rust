@@ -15,13 +15,13 @@ pin_project! {
         tx: &'r RawChannelSender,
         item: I,
         state: SendState,
-        write_idx:usize
+        write_idx: usize
     }
 }
 
 enum SendState {
     None,
-    AcquiringPermit(WriteTask),
+    Waiting(WriteTask),
     Writing(WriteTask),
 }
 
@@ -63,33 +63,34 @@ where
             match &this.state {
                 SendState::None => {
                     let task = WriteTask::new(cx.waker());
+                    let wake = !write_queue.has_next();
 
                     write_queue.push(task.clone());
-                    *this.state = SendState::AcquiringPermit(task);
+                    *this.state = SendState::Waiting(task);
 
-                    // no point in waking the receiver if the queue isn't empty as nothing will
-                    // happen to us until we reach the head
-                    // if !write_queue.has_next() {
-                    receiver.wake();
-                    // }
+                    if wake {
+                        // We only want to wake the receiver if there is not another entry in the
+                        // queue as nothing will happen to the task until it has reached the head.
+                        receiver.wake();
+                    }
 
                     break Poll::Pending;
                 }
-                SendState::AcquiringPermit(state) => {
+                SendState::Waiting(task) => {
                     // guard against spurious wake ups
-                    if state.is_pending() {
-                        state.register(cx.waker());
+                    if task.is_pending() {
+                        task.register(cx.waker());
                         return Poll::Pending;
                     }
 
-                    *this.state = SendState::Writing(state.clone());
+                    *this.state = SendState::Writing(task.clone());
                 }
-                SendState::Writing(state) => {
+                SendState::Writing(task) => {
                     let data = &mut *mailbox.lock();
                     let available = *capacity - data.len();
 
                     if available == 0 {
-                        state.register(cx.waker());
+                        task.register(cx.waker());
                         receiver.wake();
 
                         break Poll::Pending;
@@ -99,7 +100,7 @@ where
                         *write_idx += len;
 
                         if *write_idx == item.len() {
-                            state.complete();
+                            task.complete();
                             break Poll::Ready(Ok(()));
                         } else {
                             receiver.wake();
