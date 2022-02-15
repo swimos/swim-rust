@@ -14,7 +14,7 @@
 
 use futures::future::{ready, Ready};
 use std::future::Future;
-use swim_api::handlers::{FnMutHandler, NoHandler, WithShared};
+use swim_api::handlers::{FnMutHandler, NoHandler, WithShared, BlockingHandler};
 
 pub trait OnSet<'a, T>: Send {
     type OnSetFut: Future<Output = ()> + Send + 'a;
@@ -101,5 +101,19 @@ where
         new_value: &'a T,
     ) -> Self::OnSetFut {
         self.0.on_set(existing, new_value)
+    }
+}
+
+impl<'a, F, T> OnSet<'a, T> for BlockingHandler<F>
+where
+    T: 'static,
+    F: FnMut(Option<&'a T>, &'a T) + Send,
+{
+    type OnSetFut = Ready<()>;
+
+    fn on_set(&'a mut self, existing: Option<&'a T>, new_value: &'a T) -> Self::OnSetFut {
+        let BlockingHandler(f) = self;
+        f(existing, new_value);
+        ready(())
     }
 }

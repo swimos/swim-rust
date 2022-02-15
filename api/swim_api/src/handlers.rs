@@ -36,3 +36,5 @@ impl<State, F> ClosureHandler<State, F> {
         ClosureHandler { state, f }
     }
 }
+
+pub struct BlockingHandler<F>(pub F);

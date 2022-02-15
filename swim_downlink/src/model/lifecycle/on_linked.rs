@@ -14,7 +14,7 @@
 
 use futures::future::{ready, Ready};
 use std::future::Future;
-use swim_api::handlers::{ClosureHandler, FnMutHandler, NoHandler, WithShared};
+use swim_api::handlers::{BlockingHandler, ClosureHandler, FnMutHandler, NoHandler, WithShared};
 
 pub trait OnLinked<'a>: Send {
     type OnLinkedFut: Future<Output = ()> + Send + 'a;
@@ -93,5 +93,18 @@ where
     fn on_linked(&'a mut self) -> Self::OnLinkedFut {
         let ClosureHandler { state, f } = self;
         f(state)
+    }
+}
+
+impl<'a, F> OnLinked<'a> for BlockingHandler<F>
+where
+    F: FnMut() + Send,
+{
+    type OnLinkedFut = Ready<()>;
+
+    fn on_linked(&'a mut self) -> Self::OnLinkedFut {
+        let BlockingHandler(f) = self;
+        f();
+        ready(())
     }
 }

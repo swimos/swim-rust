@@ -14,7 +14,7 @@
 
 use futures::future::{ready, Ready};
 use std::future::Future;
-use swim_api::handlers::{FnMutHandler, NoHandler, WithShared};
+use swim_api::handlers::{FnMutHandler, NoHandler, WithShared, BlockingHandler};
 
 pub trait OnUnlinked<'a>: Send {
     type OnUnlinkedFut: Future<Output = ()> + Send + 'a;
@@ -79,5 +79,18 @@ where
 
     fn on_unlinked(&'a mut self, _state: &'a mut Shared) -> Self::OnUnlinkedFut {
         self.0.on_unlinked()
+    }
+}
+
+impl<'a, F> OnUnlinked<'a> for BlockingHandler<F>
+where
+    F: FnMut() + Send,
+{
+    type OnUnlinkedFut = Ready<()>;
+
+    fn on_unlinked(&'a mut self) -> Self::OnUnlinkedFut {
+        let BlockingHandler(f) = self;
+        f();
+        ready(())
     }
 }

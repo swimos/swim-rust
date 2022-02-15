@@ -19,6 +19,7 @@ fn make_lifecycles() {
     let _basic = basic_lifecycle();
     let _with_handler = with_handler_lifecycle();
     let _basic_stateful = stateful_lifecycle();
+    let _blocking = with_blocking_handler_lifecycle();
 }
 
 fn basic_lifecycle() -> impl for<'a> ValueDownlinkLifecycle<'a, i32> {
@@ -50,4 +51,16 @@ fn stateful_lifecycle() -> impl for<'a> ValueDownlinkLifecycle<'a, i32> {
     for_value_downlink::<i32>()
         .with("Stuff".to_string())
         .on_set(handler_with_state)
+}
+
+fn with_blocking_handler_lifecycle() -> impl for<'a> ValueDownlinkLifecycle<'a, i32> {
+    let mut m = 0;
+    let mut n = 0;
+    for_value_downlink::<i32>().on_linked_blocking(move || {
+        n += 1;
+        println!("Linked {} times.", n);
+    }).on_synced_blocking(move |v| {
+        m += 1;
+        println!("Synced {} times. Value = {}", m, v);
+    })
 }

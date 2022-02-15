@@ -14,7 +14,7 @@
 
 use futures::future::{ready, Ready};
 use std::future::Future;
-use swim_api::handlers::{FnMutHandler, NoHandler, WithShared};
+use swim_api::handlers::{FnMutHandler, NoHandler, WithShared, BlockingHandler};
 
 pub trait OnSynced<'a, T>: Send {
     type OnSyncedFut: Future<Output = ()> + Send + 'a;
@@ -81,5 +81,19 @@ where
 
     fn on_synced(&'a mut self, _shared: &'a mut Shared, value: &'a T) -> Self::OnSyncedFut {
         self.0.on_synced(value)
+    }
+}
+
+impl<'a, F, T> OnSynced<'a, T> for BlockingHandler<F>
+where
+    T: 'static,
+    F: FnMut(&'a T) + Send,
+{
+    type OnSyncedFut = Ready<()>;
+
+    fn on_synced(&'a mut self, value: &'a T) -> Self::OnSyncedFut {
+        let BlockingHandler(f) = self;
+        f(value);
+        ready(())
     }
 }
