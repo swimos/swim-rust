@@ -14,12 +14,12 @@
 
 use std::marker::PhantomData;
 
-use super::{FnMutHandler, NoHandler, WithShared};
 pub use on_event::{OnEvent, OnEventShared};
 pub use on_linked::{OnLinked, OnLinkedShared};
 pub use on_set::{OnSet, OnSetShared};
 pub use on_synced::{OnSynced, OnSyncedShared};
 pub use on_unlinked::{OnUnlinked, OnUnlinkedShared};
+use swim_api::handlers::{FnMutHandler, NoHandler, WithShared};
 
 mod on_event;
 mod on_linked;

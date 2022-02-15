@@ -14,10 +14,10 @@
 
 use tokio::sync::mpsc;
 
-use swim_api::lifecycle::downlink::{
-    for_value_downlink, StatelessValueDownlinkLifecycle, ValueDownlinkLifecycle,
-};
-use swim_api::lifecycle::NoHandler;
+use lifecycle::{for_value_downlink, StatelessValueDownlinkLifecycle, ValueDownlinkLifecycle};
+use swim_api::handlers::NoHandler;
+
+pub mod lifecycle;
 
 pub struct ValueDownlinkModel<T, LC> {
     pub set_value: mpsc::Receiver<T>,

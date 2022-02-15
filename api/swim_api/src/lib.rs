@@ -14,5 +14,5 @@
 
 pub mod downlink;
 pub mod error;
-pub mod lifecycle;
+pub mod handlers;
 pub mod protocol;

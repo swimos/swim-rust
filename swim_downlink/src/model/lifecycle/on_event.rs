@@ -12,10 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::lifecycle::downlink::WithShared;
-use crate::lifecycle::{FnMutHandler, NoHandler};
 use futures::future::{ready, Ready};
 use std::future::Future;
+use swim_api::handlers::{FnMutHandler, NoHandler, WithShared};
 
 pub trait OnEvent<'a, T>: Send {
     type OnEventFut: Future<Output = ()> + Send + 'a;

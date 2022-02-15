@@ -22,8 +22,6 @@ fn make_lifecycles() {
 }
 
 fn basic_lifecycle() -> impl for<'a> ValueDownlinkLifecycle<'a, i32> {
-    
-
     for_value_downlink::<i32>()
 }
 
@@ -36,8 +34,6 @@ async fn handler(from: Option<&i32>, to: &i32) {
 }
 
 fn with_handler_lifecycle() -> impl for<'a> ValueDownlinkLifecycle<'a, i32> {
-    
-
     for_value_downlink::<i32>().on_set(handler)
 }
 
@@ -51,8 +47,6 @@ async fn handler_with_state(state: &mut String, from: Option<&i32>, to: &i32) {
 }
 
 fn stateful_lifecycle() -> impl for<'a> ValueDownlinkLifecycle<'a, i32> {
-    
-
     for_value_downlink::<i32>()
         .with("Stuff".to_string())
         .on_set(handler_with_state)

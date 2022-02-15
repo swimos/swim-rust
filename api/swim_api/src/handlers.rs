@@ -12,15 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod downlink;
-
 #[derive(Clone, Copy, Default, Debug)]
 pub struct NoHandler;
 
 #[derive(Clone, Copy, Default, Debug)]
-pub struct FnMutHandler<F>(F);
+pub struct FnMutHandler<F>(pub F);
 
-pub struct WithShared<H>(H);
+pub struct WithShared<H>(pub H);
 
 impl<H> WithShared<H> {
     pub fn new(handler: H) -> WithShared<H> {
@@ -29,8 +27,8 @@ impl<H> WithShared<H> {
 }
 
 pub struct ClosureHandler<State, F> {
-    state: State,
-    f: F,
+    pub state: State,
+    pub f: F,
 }
 
 impl<State, F> ClosureHandler<State, F> {

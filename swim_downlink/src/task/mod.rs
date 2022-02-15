@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::model::lifecycle::ValueDownlinkLifecycle;
 use futures::future::{join, BoxFuture};
 use futures::{FutureExt, Sink, SinkExt, StreamExt};
 use swim_api::downlink::{Downlink, DownlinkConfig, DownlinkKind};
 use swim_api::error::DownlinkTaskError;
-use swim_api::lifecycle::downlink::ValueDownlinkLifecycle;
 use swim_api::protocol::downlink::{
     DownlinkNotifiationDecoder, DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder,
 };
