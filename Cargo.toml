@@ -12,6 +12,7 @@ members = [
     "swim_store",
     "swim_utilities",
     "swim_utilities/swim_*",
+    "swim_downlink",
 ]
 
 exclude = [

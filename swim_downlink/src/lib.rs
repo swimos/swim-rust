@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod downlink;
-pub mod error;
-pub mod lifecycle;
-pub mod protocol;
+mod model;
+mod task;
+
+pub use model::{value_downlink, DefaultValueDownlinkModel, ValueDownlinkModel};
+pub use task::DownlinkTask;

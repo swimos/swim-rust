@@ -48,6 +48,8 @@ pub enum InvalidFrame {
 pub enum DownlinkTaskError {
     #[error("The downlink failed to start.")]
     FailedToStart,
+    #[error("A synced envelope was received with no data provided.")]
+    SyncedWithNoValue,
     #[error("{0}")]
     BadFrame(#[from] FrameIoError),
     #[error("Failed to deserialize frame body: {0}")]

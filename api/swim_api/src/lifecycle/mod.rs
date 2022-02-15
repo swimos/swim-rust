@@ -19,3 +19,22 @@ pub struct NoHandler;
 
 #[derive(Clone, Copy, Default, Debug)]
 pub struct FnMutHandler<F>(F);
+
+pub struct WithShared<H>(H);
+
+impl<H> WithShared<H> {
+    pub fn new(handler: H) -> WithShared<H> {
+        WithShared(handler)
+    }
+}
+
+pub struct ClosureHandler<State, F> {
+    state: State,
+    f: F,
+}
+
+impl<State, F> ClosureHandler<State, F> {
+    pub fn new(state: State, f: F) -> Self {
+        ClosureHandler { state, f }
+    }
+}

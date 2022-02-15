@@ -1,0 +1,15 @@
+[package]
+name = "swim_downlink"
+version = "0.1.0"
+authors = ["Swim Inc. developers info@swim.ai"]
+edition = "2021"
+
+[dependencies]
+futures = "0.3.4"
+swim_utilities = { path = "../swim_utilities", features = ["io"] }
+swim_model = { path = "../api/swim_model" }
+swim_form = { path = "../api/swim_form" }
+bytes = "1.0"
+tokio = { version = "1.1.1" }
+tokio-util = { version = "0.6.8", features = ["codec"] }
+swim_api = { path = "../api/swim_api" }

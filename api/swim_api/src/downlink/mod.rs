@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::sync::Arc;
-
 use futures::future::BoxFuture;
 use swim_model::path::AbsolutePath;
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
@@ -31,9 +29,20 @@ pub enum DownlinkKind {
     Map,
 }
 
+#[derive(Debug, Clone, Copy)]
 /// General downlink configuration parameters.
 pub struct DownlinkConfig {
-    //TODO To be filled in later.
+    pub events_when_not_synced: bool,
+    pub terminate_on_unlinked: bool,
+}
+
+impl Default for DownlinkConfig {
+    fn default() -> Self {
+        Self {
+            events_when_not_synced: false,
+            terminate_on_unlinked: true,
+        }
+    }
 }
 
 /// Trait to define a consumer to a downlink. Instaces of this will be passed to the runtime
@@ -53,7 +62,7 @@ pub trait Downlink {
     /// * `input` - Byte channel on which updates will be received from the runtime.
     /// * `output` - Byte channel on which command will be sent to the runtime.
     fn run(
-        &self,
+        self,
         path: AbsolutePath,
         config: DownlinkConfig,
         input: ByteReader,
@@ -67,28 +76,12 @@ impl<T: Downlink> Downlink for Box<T> {
     }
 
     fn run(
-        &self,
+        self,
         path: AbsolutePath,
         config: DownlinkConfig,
         input: ByteReader,
         output: ByteWriter,
     ) -> BoxFuture<'static, Result<(), DownlinkTaskError>> {
-        (**self).run(path, config, input, output)
-    }
-}
-
-impl<T: Downlink + Send + Sync> Downlink for Arc<T> {
-    fn kind(&self) -> DownlinkKind {
-        (**self).kind()
-    }
-
-    fn run(
-        &self,
-        path: AbsolutePath,
-        config: DownlinkConfig,
-        input: ByteReader,
-        output: ByteWriter,
-    ) -> BoxFuture<'static, Result<(), DownlinkTaskError>> {
-        (**self).run(path, config, input, output)
+        (*self).run(path, config, input, output)
     }
 }
