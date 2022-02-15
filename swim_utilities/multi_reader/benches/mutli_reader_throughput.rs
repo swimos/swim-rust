@@ -12,19 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use byte_channel::byte_channel;
-use byte_channel::{ByteReader, ByteWriter};
+use std::fmt::{Display, Formatter};
+use std::num::NonZeroUsize;
+use std::time::Duration;
+
+use bytes::BytesMut;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use futures::stream::SelectAll;
 use futures_util::future::join;
 use futures_util::{SinkExt, Stream, StreamExt};
-use multi_reader::MultiReader;
 use rand::rngs::SmallRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
-use std::fmt::{Display, Formatter};
-use std::num::NonZeroUsize;
-use std::time::Duration;
+use tokio::runtime::Builder;
+use tokio_util::codec::{Encoder, FramedRead, FramedWrite};
+
+use byte_channel::byte_channel;
+use byte_channel::{ByteReader, ByteWriter};
+use multi_reader::mailbox::fan_in::{mailbox_channel, RawChannelSender};
+use multi_reader::MultiReader;
 use swim_form::structural::read::from_model::ValueMaterializer;
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_model::path::RelativePath;
@@ -33,50 +39,24 @@ use swim_runtime::compat::{
     AgentMessageDecoder, MessageDecodeError, Operation, RawRequestMessageEncoder, RequestMessage,
 };
 use swim_runtime::routing::RoutingAddr;
-use tokio::runtime::Builder;
-use tokio_util::codec::{FramedRead, FramedWrite};
 
-const MESSAGE_COUNTS: &[usize] = &[10, 100, 1000, 10000];
-const CHANNEL_COUNTS: &[usize] = &[2, 8, 64, 128, 256, 512];
+const MESSAGE_COUNTS: &[usize] = &[/*10, 100, */ 1000 /*, 10000*/];
+const CHANNEL_COUNTS: &[usize] = &[/*2, 8, */ 64 /*, 256, 512*/];
 
 const SEED: &[u8; 32] = &[55; 32];
-
-const MESSAGE_ORDER: &[WritersOrder] = &[
-    WritersOrder::Normal,
-    WritersOrder::Reversed,
-    WritersOrder::Unordered,
-];
-
-#[derive(Debug, Clone, Copy)]
-enum WritersOrder {
-    Normal,
-    Unordered,
-    Reversed,
-}
-
-impl Display for WritersOrder {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            WritersOrder::Normal => write!(f, "normal"),
-            WritersOrder::Unordered => write!(f, "unordered"),
-            WritersOrder::Reversed => write!(f, "reversed"),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Copy)]
 struct TestParams {
     message_count: usize,
     channel_count: usize,
-    writers_order: WritersOrder,
 }
 
 impl Display for TestParams {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "[message_count = {}, channel_count = {}, writers_order = {}]",
-            self.message_count, self.channel_count, self.writers_order
+            "[message_count = {}, channel_count = {}]",
+            self.message_count, self.channel_count
         )
     }
 }
@@ -86,13 +66,10 @@ fn test_params() -> Vec<TestParams> {
 
     for i in MESSAGE_COUNTS {
         for j in CHANNEL_COUNTS {
-            for k in MESSAGE_ORDER {
-                params.push(TestParams {
-                    message_count: *i,
-                    channel_count: *j,
-                    writers_order: *k,
-                })
-            }
+            params.push(TestParams {
+                message_count: *i,
+                channel_count: *j,
+            })
         }
     }
     params
@@ -113,6 +90,16 @@ fn multi_reader_benchmark(c: &mut Criterion) {
         group.throughput(Throughput::Elements(
             (params.message_count * params.channel_count) as u64,
         ));
+
+        group.bench_with_input(
+            BenchmarkId::new("Mailbox (fan in)", &params),
+            &params,
+            |bencher, params| {
+                bencher
+                    .to_async(&runtime)
+                    .iter(|| fan_in_mailbox_test(*params))
+            },
+        );
 
         group.bench_with_input(
             BenchmarkId::new("Select all", &params),
@@ -166,18 +153,15 @@ async fn read<T: Stream<Item = Result<RequestMessage<Value>, MessageDecodeError>
     while let Some(result) = reader.next().await {
         result.unwrap();
         count += 1;
-    }
 
+        if (params.message_count * params.channel_count) - count == 0 {
+            break;
+        }
+    }
     assert_eq!(count, params.message_count * params.channel_count);
 }
 
-async fn write(mut writers: Vec<Writer>, message_count: usize, writers_order: WritersOrder) {
-    match writers_order {
-        WritersOrder::Normal => {}
-        WritersOrder::Unordered => writers.shuffle(&mut SmallRng::from_seed(*SEED)),
-        WritersOrder::Reversed => writers.reverse(),
-    }
-
+async fn write(mut writers: Vec<Writer>, message_count: usize) {
     for i in 0..message_count {
         for writer in &mut writers {
             writer
@@ -202,7 +186,7 @@ async fn select_all_test(params: TestParams) {
 
     let _ = join(
         read(multi_reader, params),
-        write(writers, params.message_count, params.writers_order),
+        write(writers, params.message_count),
     )
     .await;
 }
@@ -217,7 +201,47 @@ async fn multi_reader_test(params: TestParams) {
 
     let _ = join(
         read(multi_reader, params),
-        write(writers, params.message_count, params.writers_order),
+        write(writers, params.message_count),
+    )
+    .await;
+}
+
+async fn fan_in_mailbox_test(params: TestParams) {
+    let (registrar, mut rx) = mailbox_channel(NonZeroUsize::new(256).unwrap());
+
+    let mut writers = Vec::with_capacity(params.channel_count);
+    for _ in 0..params.channel_count {
+        writers.push(registrar.register().unwrap());
+    }
+
+    async fn mailbox_write(mut writers: Vec<RawChannelSender>, message_count: usize) {
+        let mut buf = BytesMut::new();
+        for i in 0..message_count {
+            for writer in &mut writers {
+                RawRequestMessageEncoder
+                    .encode(
+                        RequestMessage {
+                            origin: RoutingAddr::remote(i as u32),
+                            path: RelativePath::new(format!("node_{}", i), format!("lane_{}", i)),
+                            envelope: Operation::Link,
+                        },
+                        &mut buf,
+                    )
+                    .unwrap();
+
+                writer.send(&mut buf).await.unwrap();
+
+                buf.clear()
+            }
+        }
+    }
+
+    let _ = join(
+        read(
+            FramedRead::new(rx, AgentMessageDecoder::new(Value::make_recognizer())),
+            params,
+        ),
+        mailbox_write(writers, params.message_count),
     )
     .await;
 }

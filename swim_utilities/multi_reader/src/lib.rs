@@ -1,3 +1,7 @@
+#![allow(warnings)]
+
+pub mod mailbox;
+
 use byte_channel::ByteReader;
 use futures_util::Stream;
 use slab::Slab;

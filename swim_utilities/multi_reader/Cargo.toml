@@ -12,6 +12,9 @@ slab = "0.4.4"
 tokio-util = { version = "0.6.8", features = ["codec"] }
 futures-util = "0.3.4"
 smallvec = "1.7.0"
+pin-project-lite = "0.2.8"
+futures = "0.3.4"
+tokio = { version = "1.1.1", features = ["io-util"] }
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["rt-multi-thread", "test-util", "macros"] }
