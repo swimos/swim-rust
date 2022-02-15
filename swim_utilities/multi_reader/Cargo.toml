@@ -7,6 +7,8 @@ edition = "2021"
 bytes = "1.0"
 byte_channel= { path = "../byte_channel" }
 parking_lot = "0.11.0"
+parking_lot_core = "0.9.1"
+
 waker-fn = "1.1.0"
 slab = "0.4.4"
 tokio-util = { version = "0.6.8", features = ["codec"] }

@@ -1,3 +1,17 @@
+// Copyright 2015-2021 Swim Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 use crate::mailbox::core::{queue, Node, QueueResult};
 use crate::mailbox::fan_in::mailbox_channel;
 use bytes::BytesMut;
@@ -114,93 +128,4 @@ fn queue_head_ref() {
 
     queue_tx.push(3);
     assert_eq!(queue_rx.head_ref(), QueueResult::Data(&3));
-}
-
-#[test]
-fn bm() {
-    let count = 100_000;
-
-    {
-        let now = std::time::Instant::now();
-        let (queue_tx, queue_rx) = queue::<i32>();
-
-        for i in 0..count {
-            queue_tx.push(i);
-        }
-
-        for i in 0..count {
-            match queue_rx.pop() {
-                QueueResult::Data(a) => {
-                    assert_eq!(a, i)
-                }
-                r => panic!("{:?}", r),
-            }
-        }
-
-        assert!(queue_rx.pop().is_none());
-        println!("1: {}", (std::time::Instant::now() - now).as_nanos());
-    }
-    {
-        let now = std::time::Instant::now();
-        let mut deque = VecDeque::new();
-
-        for i in 0..count {
-            deque.push_back(i);
-        }
-
-        for i in 0..count {
-            assert_eq!(deque.pop_front(), Some(i));
-        }
-
-        assert!(deque.pop_front().is_none());
-        println!("2: {}", (std::time::Instant::now() - now).as_nanos());
-    }
-    {
-        let now = std::time::Instant::now();
-        let mut ll = LinkedList::new();
-
-        for i in 0..count {
-            ll.push_back(i);
-        }
-
-        for i in 0..count {
-            assert_eq!(ll.pop_front(), Some(i));
-        }
-
-        assert!(ll.pop_front().is_none());
-        println!("3: {}", (std::time::Instant::now() - now).as_nanos());
-    }
-    {
-        let now = std::time::Instant::now();
-        let mut ll = ConcurrentQueue::unbounded();
-
-        for i in 0..count {
-            ll.push(i).unwrap();
-        }
-
-        for i in 0..count {
-            assert_eq!(ll.pop(), Ok(i));
-        }
-
-        assert!(ll.pop().is_err());
-        println!("4: {}", (std::time::Instant::now() - now).as_nanos());
-    }
-    {
-        let now = std::time::Instant::now();
-        let mut deque = Arc::new(Mutex::new(VecDeque::new()));
-
-        for i in 0..count {
-            let deque = &mut *deque.lock();
-            deque.push_back(i);
-        }
-
-        for i in 0..count {
-            let deque = &mut *deque.lock();
-            assert_eq!(deque.pop_front(), Some(i));
-        }
-
-        let deque = &mut *deque.lock();
-        assert!(deque.pop_front().is_none());
-        println!("5: {}", (std::time::Instant::now() - now).as_nanos());
-    }
 }

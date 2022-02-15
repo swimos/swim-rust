@@ -12,80 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::task::AtomicWaker;
 use std::cell::UnsafeCell;
 use std::ptr;
-use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::task::Waker;
-use tokio_util::codec::{Decoder, Encoder};
-
-const STATE_COMPLETE: usize = 0;
-const STATE_PENDING: usize = 1;
-
-#[derive(Clone, Debug)]
-pub struct WriteTask {
-    waker: Arc<AtomicWaker>,
-    is_pending: Arc<AtomicBool>,
-    is_complete: Arc<AtomicBool>,
-    state: Arc<AtomicUsize>,
-}
-
-#[derive(Copy, Clone, Debug)]
-enum WriteTaskState {
-    Pending,
-    Head,
-    Complete,
-}
-
-impl WriteTask {
-    pub fn new(waker: &Waker) -> WriteTask {
-        let shared_waker = AtomicWaker::new();
-        shared_waker.register(waker);
-        WriteTask {
-            waker: Arc::new(shared_waker),
-            is_pending: Arc::new(AtomicBool::new(true)),
-            is_complete: Arc::new(AtomicBool::new(false)),
-            state: Arc::new(AtomicUsize::new(0)),
-        }
-    }
-
-    #[inline]
-    pub fn wake(&self) {
-        let WriteTask {
-            waker, is_pending, ..
-        } = self;
-
-        is_pending.store(false, Ordering::Relaxed);
-        waker.wake();
-    }
-
-    #[inline]
-    pub fn register(&self, waker: &Waker) {
-        self.waker.register(waker);
-    }
-
-    #[inline]
-    pub fn is_pending(&self) -> bool {
-        self.is_pending.load(Ordering::Relaxed)
-    }
-
-    #[inline]
-    pub fn is_complete(&self) -> bool {
-        self.is_complete.load(Ordering::Relaxed)
-    }
-
-    #[inline]
-    pub fn complete(&self) {
-        self.is_complete.store(true, Ordering::Relaxed);
-        self.waker.wake();
-    }
-}
-
-pub struct QueueEntry {
-    task: Waker,
-    is_parked: bool,
-}
 
 #[derive(Debug)]
 pub struct Node<T> {
@@ -126,7 +56,7 @@ pub struct QueueProducer<I> {
 
 impl<I> QueueProducer<I> {
     #[inline]
-    pub fn push(&self, item: I) {
+    pub fn push(&self, item: I) -> Result<(), I> {
         self.inner.push(item)
     }
 
@@ -158,8 +88,8 @@ impl<I> QueueConsumer<I> {
     }
 }
 
-pub fn queue<I>() -> (QueueProducer<I>, QueueConsumer<I>) {
-    let inner = Arc::new(Queue::default());
+pub fn queue<I>(capacity: usize) -> (QueueProducer<I>, QueueConsumer<I>) {
+    let inner = Arc::new(Queue::new(capacity));
     (
         QueueProducer {
             inner: inner.clone(),
@@ -173,29 +103,36 @@ pub fn queue<I>() -> (QueueProducer<I>, QueueConsumer<I>) {
 // Something else may be more suitable here
 #[derive(Debug)]
 struct Queue<I> {
+    capacity: usize,
+    len: AtomicUsize,
     head: AtomicPtr<Node<I>>,
     tail: UnsafeCell<*mut Node<I>>,
 }
 
-impl<I> Default for Queue<I> {
-    fn default() -> Self {
-        let empty = Node::new(None);
-        Queue::new(AtomicPtr::new(empty), UnsafeCell::new(empty))
-    }
-}
-
 impl<I> Queue<I> {
-    fn new(head: AtomicPtr<Node<I>>, tail: UnsafeCell<*mut Node<I>>) -> Queue<I> {
-        Queue { head, tail }
+    fn new(capacity: usize) -> Queue<I> {
+        let empty = Node::new(None);
+        Queue {
+            capacity,
+            len: AtomicUsize::new(0),
+            head: AtomicPtr::new(empty),
+            tail: UnsafeCell::new(empty),
+        }
     }
 
     #[inline]
-    fn push(&self, item: I) {
+    fn push(&self, item: I) -> Result<(), I> {
+        if self.len.load(Ordering::Relaxed) + 1 > self.capacity {
+            return Err(item);
+        }
+
         unsafe {
             let n = Node::new(Some(item));
             let prev = self.head.swap(n, Ordering::AcqRel);
             (*prev).next.store(n, Ordering::Release);
         }
+
+        Ok(())
     }
 
     #[inline]
