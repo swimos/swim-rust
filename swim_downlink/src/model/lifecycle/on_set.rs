@@ -118,6 +118,26 @@ where
     }
 }
 
+impl<'a, T, F, Shared> OnSetShared<'a, T, Shared> for BlockingHandler<F>
+where
+    Shared: 'static,
+    T: 'static,
+    F: FnMut(&'a mut Shared, Option<&'a T>, &'a T) + Send,
+{
+    type OnSetFut = Ready<()>;
+
+    fn on_set(
+        &'a mut self,
+        shared: &'a mut Shared,
+        existing: Option<&'a T>,
+        new_value: &'a T,
+    ) -> Self::OnSetFut {
+        let BlockingHandler(f) = self;
+        f(shared, existing, new_value);
+        ready(())
+    }
+}
+
 #[macro_export]
 macro_rules! on_set_handler {
     ($t:ty, |$before:ident, $after:ident| $body:expr) => {{

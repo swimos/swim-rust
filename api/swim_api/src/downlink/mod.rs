@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use futures::future::BoxFuture;
-use swim_model::path::AbsolutePath;
+use swim_model::path::Path;
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 
 use crate::error::DownlinkTaskError;
@@ -63,7 +63,7 @@ pub trait Downlink {
     /// * `output` - Byte channel on which command will be sent to the runtime.
     fn run(
         self,
-        path: AbsolutePath,
+        path: Path,
         config: DownlinkConfig,
         input: ByteReader,
         output: ByteWriter,
@@ -77,7 +77,7 @@ impl<T: Downlink> Downlink for Box<T> {
 
     fn run(
         self,
-        path: AbsolutePath,
+        path: Path,
         config: DownlinkConfig,
         input: ByteReader,
         output: ByteWriter,

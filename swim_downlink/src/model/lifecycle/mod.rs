@@ -379,6 +379,24 @@ where
         }
     }
 
+    pub fn on_linked_blocking<F>(
+        self,
+        f: F,
+    ) -> StatefulValueDownlinkLifecycle<T, Shared, BlockingHandler<F>, FSynced, FEv, FSet, FUnlinked>
+    where
+        F: FnMut(&mut Shared) + Send,
+    {
+        StatefulValueDownlinkLifecycle {
+            _value_type: PhantomData,
+            shared: self.shared,
+            on_linked: BlockingHandler(f),
+            on_synced: self.on_synced,
+            on_event: self.on_event,
+            on_set: self.on_set,
+            on_unlinked: self.on_unlinked,
+        }
+    }
+
     pub fn on_synced<F>(
         self,
         f: F,
@@ -391,6 +409,24 @@ where
             shared: self.shared,
             on_linked: self.on_linked,
             on_synced: FnMutHandler(f),
+            on_event: self.on_event,
+            on_set: self.on_set,
+            on_unlinked: self.on_unlinked,
+        }
+    }
+
+    pub fn on_synced_blocking<F>(
+        self,
+        f: F,
+    ) -> StatefulValueDownlinkLifecycle<T, Shared, FLinked, BlockingHandler<F>, FEv, FSet, FUnlinked>
+    where
+        F: FnMut(&mut Shared, &T),
+    {
+        StatefulValueDownlinkLifecycle {
+            _value_type: PhantomData,
+            shared: self.shared,
+            on_linked: self.on_linked,
+            on_synced: BlockingHandler(f),
             on_event: self.on_event,
             on_set: self.on_set,
             on_unlinked: self.on_unlinked,
@@ -415,6 +451,32 @@ where
         }
     }
 
+    pub fn on_event_blocking<F>(
+        self,
+        f: F,
+    ) -> StatefulValueDownlinkLifecycle<
+        T,
+        Shared,
+        FLinked,
+        FSynced,
+        BlockingHandler<F>,
+        FSet,
+        FUnlinked,
+    >
+    where
+        F: FnMut(&mut Shared, &T),
+    {
+        StatefulValueDownlinkLifecycle {
+            _value_type: PhantomData,
+            shared: self.shared,
+            on_linked: self.on_linked,
+            on_synced: self.on_synced,
+            on_event: BlockingHandler(f),
+            on_set: self.on_set,
+            on_unlinked: self.on_unlinked,
+        }
+    }
+
     pub fn on_set<F>(
         self,
         f: F,
@@ -429,6 +491,32 @@ where
             on_synced: self.on_synced,
             on_event: self.on_event,
             on_set: FnMutHandler(f),
+            on_unlinked: self.on_unlinked,
+        }
+    }
+
+    pub fn on_set_blocking<F>(
+        self,
+        f: F,
+    ) -> StatefulValueDownlinkLifecycle<
+        T,
+        Shared,
+        FLinked,
+        FSynced,
+        FEv,
+        BlockingHandler<F>,
+        FUnlinked,
+    >
+    where
+        F: FnMut(&mut Shared, Option<&T>, &T),
+    {
+        StatefulValueDownlinkLifecycle {
+            _value_type: PhantomData,
+            shared: self.shared,
+            on_linked: self.on_linked,
+            on_synced: self.on_synced,
+            on_event: self.on_event,
+            on_set: BlockingHandler(f),
             on_unlinked: self.on_unlinked,
         }
     }
@@ -448,6 +536,24 @@ where
             on_event: self.on_event,
             on_set: self.on_set,
             on_unlinked: FnMutHandler(f),
+        }
+    }
+
+    pub fn on_unlinked_blocking<F>(
+        self,
+        f: F,
+    ) -> StatefulValueDownlinkLifecycle<T, Shared, FLinked, FSynced, FEv, FSet, BlockingHandler<F>>
+    where
+        F: FnMut(&mut Shared),
+    {
+        StatefulValueDownlinkLifecycle {
+            _value_type: PhantomData,
+            shared: self.shared,
+            on_linked: self.on_linked,
+            on_synced: self.on_synced,
+            on_event: self.on_event,
+            on_set: self.on_set,
+            on_unlinked: BlockingHandler(f),
         }
     }
 }

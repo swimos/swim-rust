@@ -13,3 +13,6 @@ bytes = "1.0"
 tokio = { version = "1.1.1" }
 tokio-util = { version = "0.6.8", features = ["codec"] }
 swim_api = { path = "../api/swim_api" }
+
+[dev-dependencies]
+swim_recon = { path = "../api/formats/swim_recon", features = ["async_parser"] }

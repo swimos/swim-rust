@@ -22,13 +22,16 @@ use swim_api::protocol::downlink::{
 };
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_form::Form;
-use swim_model::path::AbsolutePath;
+use swim_model::path::Path;
 use swim_utilities::future::immediate_or_join;
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use tokio::sync::mpsc;
 use tokio_util::codec::{FramedRead, FramedWrite};
 
 use crate::ValueDownlinkModel;
+
+#[cfg(test)]
+mod tests;
 
 pub struct DownlinkTask<Model>(Model);
 
@@ -44,7 +47,7 @@ where
 
     fn run(
         self,
-        path: AbsolutePath,
+        path: Path,
         config: DownlinkConfig,
         input: ByteReader,
         output: ByteWriter,
@@ -56,7 +59,7 @@ where
 
 async fn value_dowinlink_task<T, LC>(
     model: ValueDownlinkModel<T, LC>,
-    _path: AbsolutePath,
+    _path: Path,
     config: DownlinkConfig,
     input: ByteReader,
     output: ByteWriter,

@@ -46,7 +46,7 @@ where
 pub trait OnLinkedShared<'a, Shared>: Send {
     type OnLinkedFut: Future<Output = ()> + Send + 'a;
 
-    fn on_linked(&'a mut self, state: &'a mut Shared) -> Self::OnLinkedFut;
+    fn on_linked(&'a mut self, shared: &'a mut Shared) -> Self::OnLinkedFut;
 }
 
 impl<'a, Shared> OnLinkedShared<'a, Shared> for NoHandler {
@@ -105,6 +105,20 @@ where
     fn on_linked(&'a mut self) -> Self::OnLinkedFut {
         let BlockingHandler(f) = self;
         f();
+        ready(())
+    }
+}
+
+impl<'a, Shared, F> OnLinkedShared<'a, Shared> for BlockingHandler<F>
+where
+    Shared: 'static,
+    F: FnMut(&'a mut Shared) + Send,
+{
+    type OnLinkedFut = Ready<()>;
+
+    fn on_linked(&'a mut self, shared: &'a mut Shared) -> Self::OnLinkedFut {
+        let BlockingHandler(f) = self;
+        f(shared);
         ready(())
     }
 }

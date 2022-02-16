@@ -98,6 +98,21 @@ where
     }
 }
 
+impl<'a, F, T, Shared> OnEventShared<'a, T, Shared> for BlockingHandler<F>
+where
+    T: 'static,
+    Shared: 'static,
+    F: FnMut(&'a mut Shared, &'a T) + Send,
+{
+    type OnEventFut = Ready<()>;
+
+    fn on_event(&'a mut self, shared: &'a mut Shared, value: &'a T) -> Self::OnEventFut {
+        let BlockingHandler(f) = self;
+        f(shared, value);
+        ready(())
+    }
+}
+
 #[macro_export]
 macro_rules! on_event_handler {
     ($t:ty, |$param:ident| $body:expr) => {{

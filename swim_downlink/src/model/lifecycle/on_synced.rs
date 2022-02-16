@@ -98,6 +98,21 @@ where
     }
 }
 
+impl<'a, F, T, Shared> OnSyncedShared<'a, T, Shared> for BlockingHandler<F>
+where
+    T: 'static,
+    Shared: 'static,
+    F: FnMut(&'a mut Shared, &'a T) + Send,
+{
+    type OnSyncedFut = Ready<()>;
+
+    fn on_synced(&'a mut self, shared: &'a mut Shared, value: &'a T) -> Self::OnSyncedFut {
+        let BlockingHandler(f) = self;
+        f(shared, value);
+        ready(())
+    }
+}
+
 #[macro_export]
 macro_rules! on_synced_handler {
     ($t:ty, |$param:ident| $body:expr) => {{

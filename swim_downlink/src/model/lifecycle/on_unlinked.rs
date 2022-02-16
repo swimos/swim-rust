@@ -95,6 +95,20 @@ where
     }
 }
 
+impl<'a, Shared, F> OnUnlinkedShared<'a, Shared> for BlockingHandler<F>
+where
+    Shared: 'static,
+    F: FnMut(&'a mut Shared) + Send,
+{
+    type OnUnlinkedFut = Ready<()>;
+
+    fn on_unlinked(&'a mut self, shared: &'a mut Shared) -> Self::OnUnlinkedFut {
+        let BlockingHandler(f) = self;
+        f(shared);
+        ready(())
+    }
+}
+
 #[macro_export]
 macro_rules! on_unlinked_handler {
     ($s:ty, |$shared:ident| $body:expr) => {{
