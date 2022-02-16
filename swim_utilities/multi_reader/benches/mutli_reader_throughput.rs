@@ -150,7 +150,7 @@ fn create_channels(n: usize) -> (Vec<Writer>, Vec<Reader>) {
 }
 
 fn create_framed_channel() -> (Writer, Reader) {
-    let (writer, reader) = byte_channel(NonZeroUsize::new(16).unwrap());
+    let (writer, reader) = byte_channel(NonZeroUsize::new(256).unwrap());
 
     let framed_writer = FramedWrite::new(writer, RawRequestMessageEncoder);
     let framed_reader = FramedRead::new(reader, AgentMessageDecoder::new(Value::make_recognizer()));
