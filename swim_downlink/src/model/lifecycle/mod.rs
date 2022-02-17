@@ -34,12 +34,22 @@ pub trait ValueDownlinkHandlers<'a, T>:
 {
 }
 
+pub trait EventDownlinkHandlers<'a, T>: OnLinked<'a> + OnEvent<'a, T> + OnUnlinked<'a> {}
+
 pub trait ValueDownlinkLifecycle<T>: for<'a> ValueDownlinkHandlers<'a, T> {}
+pub trait EventDownlinkLifecycle<T>: for<'a> EventDownlinkHandlers<'a, T> {}
 
 impl<T, L> ValueDownlinkLifecycle<T> for L where L: for<'a> ValueDownlinkHandlers<'a, T> {}
 
+impl<T, L> EventDownlinkLifecycle<T> for L where L: for<'a> EventDownlinkHandlers<'a, T> {}
+
 impl<'a, T, L> ValueDownlinkHandlers<'a, T> for L where
     L: OnLinked<'a> + OnSynced<'a, T> + OnEvent<'a, T> + OnSet<'a, T> + OnUnlinked<'a>
+{
+}
+
+impl<'a, T, L> EventDownlinkHandlers<'a, T> for L where
+    L: OnLinked<'a> + OnEvent<'a, T> + OnUnlinked<'a>
 {
 }
 
@@ -659,6 +669,353 @@ where
 
     fn on_unlinked(&'a mut self) -> Self::OnUnlinkedFut {
         let StatefulValueDownlinkLifecycle {
+            shared,
+            on_unlinked,
+            ..
+        } = self;
+        on_unlinked.on_unlinked(shared)
+    }
+}
+
+pub struct StatelessEventDownlinkLifecycle<T, FLink, FEv, FUnlink> {
+    _value_type: PhantomData<fn(T)>,
+    on_linked: FLink,
+    on_event: FEv,
+    on_unlinked: FUnlink,
+}
+
+pub fn for_event_downlink<T>() -> StatelessEventDownlinkLifecycle<T, NoHandler, NoHandler, NoHandler>
+{
+    StatelessEventDownlinkLifecycle {
+        _value_type: PhantomData,
+        on_linked: NoHandler,
+        on_event: NoHandler,
+        on_unlinked: NoHandler,
+    }
+}
+
+pub struct StatefulEventDownlinkLifecycle<T, Shared, FLink, FEv, FUnlink> {
+    _value_type: PhantomData<fn(T)>,
+    shared: Shared,
+    on_linked: FLink,
+    on_event: FEv,
+    on_unlinked: FUnlink,
+}
+
+impl<T, FLinked, FEv, FUnlinked> StatelessEventDownlinkLifecycle<T, FLinked, FEv, FUnlinked>
+where
+    T: Send + Sync + 'static,
+{
+    pub fn on_linked<F>(
+        self,
+        f: F,
+    ) -> StatelessEventDownlinkLifecycle<T, FnMutHandler<F>, FEv, FUnlinked>
+    where
+        FnMutHandler<F>: for<'a> OnLinked<'a>,
+    {
+        StatelessEventDownlinkLifecycle {
+            _value_type: PhantomData,
+            on_linked: FnMutHandler(f),
+            on_event: self.on_event,
+            on_unlinked: self.on_unlinked,
+        }
+    }
+
+    pub fn on_linked_blocking<F>(
+        self,
+        f: F,
+    ) -> StatelessEventDownlinkLifecycle<T, BlockingHandler<F>, FEv, FUnlinked>
+    where
+        F: FnMut() + Send,
+    {
+        StatelessEventDownlinkLifecycle {
+            _value_type: PhantomData,
+            on_linked: BlockingHandler(f),
+            on_event: self.on_event,
+            on_unlinked: self.on_unlinked,
+        }
+    }
+
+    pub fn on_event<F>(
+        self,
+        f: F,
+    ) -> StatelessEventDownlinkLifecycle<T, FLinked, FnMutHandler<F>, FUnlinked>
+    where
+        FnMutHandler<F>: for<'a> OnEvent<'a, T>,
+    {
+        StatelessEventDownlinkLifecycle {
+            _value_type: PhantomData,
+            on_linked: self.on_linked,
+            on_event: FnMutHandler(f),
+            on_unlinked: self.on_unlinked,
+        }
+    }
+
+    pub fn on_event_blocking<F>(
+        self,
+        f: F,
+    ) -> StatelessEventDownlinkLifecycle<T, FLinked, BlockingHandler<F>, FUnlinked>
+    where
+        F: FnMut(&T) + Send,
+    {
+        StatelessEventDownlinkLifecycle {
+            _value_type: PhantomData,
+            on_linked: self.on_linked,
+            on_event: BlockingHandler(f),
+            on_unlinked: self.on_unlinked,
+        }
+    }
+
+    pub fn on_unlinked<F>(
+        self,
+        f: F,
+    ) -> StatelessEventDownlinkLifecycle<T, FLinked, FEv, FnMutHandler<F>>
+    where
+        FnMutHandler<F>: for<'a> OnUnlinked<'a>,
+    {
+        StatelessEventDownlinkLifecycle {
+            _value_type: PhantomData,
+            on_linked: self.on_linked,
+            on_event: self.on_event,
+            on_unlinked: FnMutHandler(f),
+        }
+    }
+
+    pub fn on_unlinked_blocking<F>(
+        self,
+        f: F,
+    ) -> StatelessEventDownlinkLifecycle<T, FLinked, FEv, BlockingHandler<F>>
+    where
+        F: FnMut() + Send,
+    {
+        StatelessEventDownlinkLifecycle {
+            _value_type: PhantomData,
+            on_linked: self.on_linked,
+            on_event: self.on_event,
+            on_unlinked: BlockingHandler(f),
+        }
+    }
+
+    #[allow(clippy::type_complexity)] //There is no way this type can be decomposed.
+    pub fn with<Shared>(
+        self,
+        shared_state: Shared,
+    ) -> StatefulEventDownlinkLifecycle<
+        T,
+        Shared,
+        WithShared<FLinked>,
+        WithShared<FEv>,
+        WithShared<FUnlinked>,
+    > {
+        StatefulEventDownlinkLifecycle {
+            _value_type: PhantomData,
+            shared: shared_state,
+            on_linked: WithShared::new(self.on_linked),
+            on_event: WithShared::new(self.on_event),
+            on_unlinked: WithShared::new(self.on_unlinked),
+        }
+    }
+}
+
+impl<'a, T, FLinked, FEv, FUnlinked> OnLinked<'a>
+    for StatelessEventDownlinkLifecycle<T, FLinked, FEv, FUnlinked>
+where
+    T: Send + Sync + 'static,
+    FLinked: OnLinked<'a>,
+    FEv: Send,
+    FUnlinked: Send,
+{
+    type OnLinkedFut = FLinked::OnLinkedFut;
+
+    fn on_linked(&'a mut self) -> Self::OnLinkedFut {
+        self.on_linked.on_linked()
+    }
+}
+
+impl<'a, T, FLinked, FEv, FUnlinked> OnEvent<'a, T>
+    for StatelessEventDownlinkLifecycle<T, FLinked, FEv, FUnlinked>
+where
+    T: Send + Sync + 'static,
+    FLinked: Send,
+    FEv: OnEvent<'a, T>,
+    FUnlinked: Send,
+{
+    type OnEventFut = FEv::OnEventFut;
+
+    fn on_event(&'a mut self, value: &'a T) -> Self::OnEventFut {
+        self.on_event.on_event(value)
+    }
+}
+
+impl<'a, T, FLinked, FEv, FUnlinked> OnUnlinked<'a>
+    for StatelessEventDownlinkLifecycle<T, FLinked, FEv, FUnlinked>
+where
+    T: Send + Sync + 'static,
+    FLinked: Send,
+    FEv: Send,
+    FUnlinked: OnUnlinked<'a>,
+{
+    type OnUnlinkedFut = FUnlinked::OnUnlinkedFut;
+
+    fn on_unlinked(&'a mut self) -> Self::OnUnlinkedFut {
+        self.on_unlinked.on_unlinked()
+    }
+}
+
+impl<T, Shared, FLinked, FEv, FUnlinked>
+    StatefulEventDownlinkLifecycle<T, Shared, FLinked, FEv, FUnlinked>
+where
+    T: Send + Sync + 'static,
+    Shared: Send + Sync + 'static,
+{
+    pub fn on_linked<F>(
+        self,
+        f: F,
+    ) -> StatefulEventDownlinkLifecycle<T, Shared, FnMutHandler<F>, FEv, FUnlinked>
+    where
+        FnMutHandler<F>: for<'a> OnLinkedShared<'a, Shared>,
+    {
+        StatefulEventDownlinkLifecycle {
+            _value_type: PhantomData,
+            shared: self.shared,
+            on_linked: FnMutHandler(f),
+            on_event: self.on_event,
+            on_unlinked: self.on_unlinked,
+        }
+    }
+
+    pub fn on_linked_blocking<F>(
+        self,
+        f: F,
+    ) -> StatefulEventDownlinkLifecycle<T, Shared, BlockingHandler<F>, FEv, FUnlinked>
+    where
+        F: FnMut(&mut Shared) + Send,
+    {
+        StatefulEventDownlinkLifecycle {
+            _value_type: PhantomData,
+            shared: self.shared,
+            on_linked: BlockingHandler(f),
+            on_event: self.on_event,
+            on_unlinked: self.on_unlinked,
+        }
+    }
+
+    pub fn on_event<F>(
+        self,
+        f: F,
+    ) -> StatefulEventDownlinkLifecycle<T, Shared, FLinked, FnMutHandler<F>, FUnlinked>
+    where
+        FnMutHandler<F>: for<'a> OnEventShared<'a, T, Shared>,
+    {
+        StatefulEventDownlinkLifecycle {
+            _value_type: PhantomData,
+            shared: self.shared,
+            on_linked: self.on_linked,
+            on_event: FnMutHandler(f),
+            on_unlinked: self.on_unlinked,
+        }
+    }
+
+    pub fn on_event_blocking<F>(
+        self,
+        f: F,
+    ) -> StatefulEventDownlinkLifecycle<T, Shared, FLinked, BlockingHandler<F>, FUnlinked>
+    where
+        F: FnMut(&mut Shared, &T),
+    {
+        StatefulEventDownlinkLifecycle {
+            _value_type: PhantomData,
+            shared: self.shared,
+            on_linked: self.on_linked,
+            on_event: BlockingHandler(f),
+            on_unlinked: self.on_unlinked,
+        }
+    }
+
+    pub fn on_unlinked<F>(
+        self,
+        f: F,
+    ) -> StatefulEventDownlinkLifecycle<T, Shared, FLinked, FEv, FnMutHandler<F>>
+    where
+        FnMutHandler<F>: for<'a> OnUnlinkedShared<'a, Shared>,
+    {
+        StatefulEventDownlinkLifecycle {
+            _value_type: PhantomData,
+            shared: self.shared,
+            on_linked: self.on_linked,
+            on_event: self.on_event,
+            on_unlinked: FnMutHandler(f),
+        }
+    }
+
+    pub fn on_unlinked_blocking<F>(
+        self,
+        f: F,
+    ) -> StatefulEventDownlinkLifecycle<T, Shared, FLinked, FEv, BlockingHandler<F>>
+    where
+        F: FnMut(&mut Shared),
+    {
+        StatefulEventDownlinkLifecycle {
+            _value_type: PhantomData,
+            shared: self.shared,
+            on_linked: self.on_linked,
+            on_event: self.on_event,
+            on_unlinked: BlockingHandler(f),
+        }
+    }
+}
+
+impl<'a, T, Shared, FLinked, FEv, FUnlinked> OnLinked<'a>
+    for StatefulEventDownlinkLifecycle<T, Shared, FLinked, FEv, FUnlinked>
+where
+    T: Send + Sync + 'static,
+    Shared: Send + Sync + 'static,
+    FLinked: OnLinkedShared<'a, Shared>,
+    FEv: Send,
+    FUnlinked: Send,
+{
+    type OnLinkedFut = FLinked::OnLinkedFut;
+
+    fn on_linked(&'a mut self) -> Self::OnLinkedFut {
+        let StatefulEventDownlinkLifecycle {
+            shared, on_linked, ..
+        } = self;
+        on_linked.on_linked(shared)
+    }
+}
+
+impl<'a, T, Shared, FLinked, FEv, FUnlinked> OnEvent<'a, T>
+    for StatefulEventDownlinkLifecycle<T, Shared, FLinked, FEv, FUnlinked>
+where
+    T: Send + Sync + 'static,
+    Shared: Send + Sync + 'static,
+    FLinked: Send,
+    FEv: OnEventShared<'a, T, Shared>,
+    FUnlinked: Send,
+{
+    type OnEventFut = FEv::OnEventFut;
+
+    fn on_event(&'a mut self, value: &'a T) -> Self::OnEventFut {
+        let StatefulEventDownlinkLifecycle {
+            shared, on_event, ..
+        } = self;
+        on_event.on_event(shared, value)
+    }
+}
+
+impl<'a, T, Shared, FLinked, FEv, FUnlinked> OnUnlinked<'a>
+    for StatefulEventDownlinkLifecycle<T, Shared, FLinked, FEv, FUnlinked>
+where
+    T: Send + Sync + 'static,
+    Shared: Send + Sync + 'static,
+    FLinked: Send,
+    FEv: Send,
+    FUnlinked: OnUnlinkedShared<'a, Shared>,
+{
+    type OnUnlinkedFut = FUnlinked::OnUnlinkedFut;
+
+    fn on_unlinked(&'a mut self) -> Self::OnUnlinkedFut {
+        let StatefulEventDownlinkLifecycle {
             shared,
             on_unlinked,
             ..

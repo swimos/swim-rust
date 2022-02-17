@@ -12,15 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::marker::PhantomData;
+
 use tokio::sync::mpsc;
 
-use lifecycle::{for_value_downlink, StatelessValueDownlinkLifecycle, ValueDownlinkHandlers};
+use lifecycle::{
+    for_event_downlink, for_value_downlink, EventDownlinkLifecycle,
+    StatelessEventDownlinkLifecycle, StatelessValueDownlinkLifecycle, ValueDownlinkLifecycle,
+};
 use swim_api::handlers::NoHandler;
 
 pub mod lifecycle;
 
 pub struct ValueDownlinkModel<T, LC> {
     pub set_value: mpsc::Receiver<T>,
+    pub lifecycle: LC,
+}
+
+pub struct EventDownlinkModel<T, LC> {
+    _type: PhantomData<T>,
     pub lifecycle: LC,
 }
 
@@ -33,10 +43,22 @@ impl<T, LC> ValueDownlinkModel<T, LC> {
     }
 }
 
+impl<T, LC> EventDownlinkModel<T, LC> {
+    pub fn new(lifecycle: LC) -> Self {
+        EventDownlinkModel {
+            _type: PhantomData,
+            lifecycle,
+        }
+    }
+}
+
 pub type DefaultValueDownlinkModel<T> = ValueDownlinkModel<
     T,
     StatelessValueDownlinkLifecycle<T, NoHandler, NoHandler, NoHandler, NoHandler, NoHandler>,
 >;
+
+pub type DefaultEventDownlinkModel<T> =
+    EventDownlinkModel<T, StatelessEventDownlinkLifecycle<T, NoHandler, NoHandler, NoHandler>>;
 
 pub fn value_downlink<T>(set_value: mpsc::Receiver<T>) -> DefaultValueDownlinkModel<T> {
     ValueDownlinkModel {
@@ -45,14 +67,21 @@ pub fn value_downlink<T>(set_value: mpsc::Receiver<T>) -> DefaultValueDownlinkMo
     }
 }
 
+pub fn event_downlink<T>() -> DefaultEventDownlinkModel<T> {
+    EventDownlinkModel {
+        _type: PhantomData,
+        lifecycle: for_event_downlink::<T>(),
+    }
+}
+
 impl<T, LC> ValueDownlinkModel<T, LC>
 where
-    LC: for<'a> ValueDownlinkHandlers<'a, T>,
+    LC: ValueDownlinkLifecycle<T>,
 {
     pub fn with_lifecycle<F, LC2>(self, f: F) -> ValueDownlinkModel<T, LC2>
     where
         F: Fn(LC) -> LC2,
-        LC2: for<'a> ValueDownlinkHandlers<'a, T>,
+        LC2: ValueDownlinkLifecycle<T>,
     {
         let ValueDownlinkModel {
             set_value,
@@ -61,6 +90,24 @@ where
 
         ValueDownlinkModel {
             set_value,
+            lifecycle: f(lifecycle),
+        }
+    }
+}
+
+impl<T, LC> EventDownlinkModel<T, LC>
+where
+    LC: EventDownlinkLifecycle<T>,
+{
+    pub fn with_lifecycle<F, LC2>(self, f: F) -> EventDownlinkModel<T, LC2>
+    where
+        F: Fn(LC) -> LC2,
+        LC2: EventDownlinkLifecycle<T>,
+    {
+        let EventDownlinkModel { lifecycle, .. } = self;
+
+        EventDownlinkModel {
+            _type: PhantomData,
             lifecycle: f(lifecycle),
         }
     }

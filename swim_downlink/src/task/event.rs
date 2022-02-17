@@ -12,11 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod model;
-mod task;
+use crate::model::lifecycle::EventDownlinkLifecycle;
 
-pub use model::{
-    event_downlink, value_downlink, DefaultEventDownlinkModel, DefaultValueDownlinkModel,
-    EventDownlinkModel, ValueDownlinkModel,
-};
-pub use task::DownlinkTask;
+use swim_api::downlink::DownlinkConfig;
+use swim_api::error::DownlinkTaskError;
+
+use swim_form::Form;
+use swim_model::path::Path;
+
+use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
+
+use crate::EventDownlinkModel;
+
+pub async fn event_dowinlink_task<T, LC>(
+    _model: EventDownlinkModel<T, LC>,
+    _path: Path,
+    _config: DownlinkConfig,
+    _input: ByteReader,
+    _output: ByteWriter,
+) -> Result<(), DownlinkTaskError>
+where
+    T: Form + Send + Sync + 'static,
+    LC: EventDownlinkLifecycle<T>,
+{
+    todo!()
+}
