@@ -25,7 +25,9 @@ use swim_form::Form;
 use swim_model::path::Path;
 use swim_utilities::future::immediate_or_join;
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use swim_utilities::trigger;
 use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{FramedRead, FramedWrite};
 
 use crate::ValueDownlinkModel;
@@ -35,11 +37,17 @@ mod tests;
 
 pub struct DownlinkTask<Model>(Model);
 
+impl<Model> DownlinkTask<Model> {
+    pub fn new(model: Model) -> Self {
+        DownlinkTask(model)
+    }
+}
+
 impl<T, LC> Downlink for DownlinkTask<ValueDownlinkModel<T, LC>>
 where
     T: Form + Send + Sync + 'static,
     <T as RecognizerReadable>::Rec: Send,
-    LC: for<'a> ValueDownlinkLifecycle<'a, T> + 'static,
+    LC: ValueDownlinkLifecycle<T> + 'static,
 {
     fn kind(&self) -> DownlinkKind {
         DownlinkKind::Value
@@ -66,15 +74,20 @@ async fn value_dowinlink_task<T, LC>(
 ) -> Result<(), DownlinkTaskError>
 where
     T: Form + Send + Sync + 'static,
-    LC: for<'a> ValueDownlinkLifecycle<'a, T>,
+    LC: ValueDownlinkLifecycle<T>,
 {
     let ValueDownlinkModel {
         set_value,
         lifecycle,
     } = model;
-    let read = read_task(config, input, lifecycle);
+    let (stop_tx, stop_rx) = trigger::trigger();
+    let read = async move {
+        let result = read_task(config, input, lifecycle).await;
+        let _ = stop_tx.trigger();
+        result
+    };
     let framed_writer = FramedWrite::new(output, DownlinkOperationEncoder);
-    let write = write_task(framed_writer, set_value);
+    let write = write_task(framed_writer, set_value, stop_rx);
     let (read_result, _) = join(read, write).await;
     read_result
 }
@@ -92,7 +105,7 @@ async fn read_task<T, LC>(
 ) -> Result<(), DownlinkTaskError>
 where
     T: Form + Send + Sync + 'static,
-    LC: for<'a> ValueDownlinkLifecycle<'a, T>,
+    LC: ValueDownlinkLifecycle<T>,
 {
     let DownlinkConfig {
         events_when_not_synced,
@@ -147,13 +160,17 @@ where
     Ok(())
 }
 
-async fn write_task<Snk, T>(mut framed: Snk, mut set_value: mpsc::Receiver<T>)
-where
+async fn write_task<Snk, T>(
+    mut framed: Snk,
+    set_value: mpsc::Receiver<T>,
+    stop_trigger: trigger::Receiver,
+) where
     Snk: Sink<DownlinkOperation<T>> + Unpin,
     T: Form + Send + 'static,
 {
+    let mut set_stream = ReceiverStream::new(set_value).take_until(stop_trigger);
     while let (Some(value), Some(Ok(_)) | None) =
-        immediate_or_join(set_value.recv(), framed.flush()).await
+        immediate_or_join(set_stream.next(), framed.flush()).await
     {
         let op = DownlinkOperation::new(value);
         if framed.feed(op).await.is_err() {

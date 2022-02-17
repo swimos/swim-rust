@@ -14,7 +14,7 @@
 
 use tokio::sync::mpsc;
 
-use lifecycle::{for_value_downlink, StatelessValueDownlinkLifecycle, ValueDownlinkLifecycle};
+use lifecycle::{for_value_downlink, StatelessValueDownlinkLifecycle, ValueDownlinkHandlers};
 use swim_api::handlers::NoHandler;
 
 pub mod lifecycle;
@@ -22,6 +22,15 @@ pub mod lifecycle;
 pub struct ValueDownlinkModel<T, LC> {
     pub set_value: mpsc::Receiver<T>,
     pub lifecycle: LC,
+}
+
+impl<T, LC> ValueDownlinkModel<T, LC> {
+    pub fn new(set_value: mpsc::Receiver<T>, lifecycle: LC) -> Self {
+        ValueDownlinkModel {
+            set_value,
+            lifecycle,
+        }
+    }
 }
 
 pub type DefaultValueDownlinkModel<T> = ValueDownlinkModel<
@@ -38,12 +47,12 @@ pub fn value_downlink<T>(set_value: mpsc::Receiver<T>) -> DefaultValueDownlinkMo
 
 impl<T, LC> ValueDownlinkModel<T, LC>
 where
-    LC: for<'a> ValueDownlinkLifecycle<'a, T>,
+    LC: for<'a> ValueDownlinkHandlers<'a, T>,
 {
     pub fn with_lifecycle<F, LC2>(self, f: F) -> ValueDownlinkModel<T, LC2>
     where
         F: Fn(LC) -> LC2,
-        LC2: for<'a> ValueDownlinkLifecycle<'a, T>,
+        LC2: for<'a> ValueDownlinkHandlers<'a, T>,
     {
         let ValueDownlinkModel {
             set_value,

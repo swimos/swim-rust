@@ -29,12 +29,16 @@ mod on_unlinked;
 #[cfg(test)]
 mod tests;
 
-pub trait ValueDownlinkLifecycle<'a, T>:
+pub trait ValueDownlinkHandlers<'a, T>:
     OnLinked<'a> + OnSynced<'a, T> + OnEvent<'a, T> + OnSet<'a, T> + OnUnlinked<'a>
 {
 }
 
-impl<'a, T, L> ValueDownlinkLifecycle<'a, T> for L where
+pub trait ValueDownlinkLifecycle<T>: for<'a> ValueDownlinkHandlers<'a, T> {}
+
+impl<T, L> ValueDownlinkLifecycle<T> for L where L: for<'a> ValueDownlinkHandlers<'a, T> {}
+
+impl<'a, T, L> ValueDownlinkHandlers<'a, T> for L where
     L: OnLinked<'a> + OnSynced<'a, T> + OnEvent<'a, T> + OnSet<'a, T> + OnUnlinked<'a>
 {
 }

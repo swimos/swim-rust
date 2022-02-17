@@ -23,7 +23,7 @@ fn make_lifecycles() {
     let _blocking = with_blocking_handler_lifecycle();
 }
 
-fn basic_lifecycle() -> impl for<'a> ValueDownlinkLifecycle<'a, i32> {
+fn basic_lifecycle() -> impl ValueDownlinkLifecycle<i32> {
     for_value_downlink::<i32>()
 }
 
@@ -35,13 +35,13 @@ async fn handler(from: Option<&i32>, to: &i32) {
     }
 }
 
-fn with_handler_lifecycle() -> impl for<'a> ValueDownlinkLifecycle<'a, i32> {
+fn with_handler_lifecycle() -> impl ValueDownlinkLifecycle<i32> {
     for_value_downlink::<i32>().on_set(handler)
 }
 
 use crate::on_synced_handler;
 
-fn with_handler_lifecycle2() -> impl for<'a> ValueDownlinkLifecycle<'a, i32> {
+fn with_handler_lifecycle2() -> impl ValueDownlinkLifecycle<i32> {
     for_value_downlink::<i32>().on_synced(on_synced_handler!(i32, |value| {
         println!("{}", value);
     }))
@@ -56,13 +56,13 @@ async fn handler_with_state(state: &mut String, from: Option<&i32>, to: &i32) {
     *state = "Done".to_string();
 }
 
-fn stateful_lifecycle() -> impl for<'a> ValueDownlinkLifecycle<'a, i32> {
+fn stateful_lifecycle() -> impl ValueDownlinkLifecycle<i32> {
     for_value_downlink::<i32>()
         .with("Stuff".to_string())
         .on_set(handler_with_state)
 }
 
-fn with_blocking_handler_lifecycle() -> impl for<'a> ValueDownlinkLifecycle<'a, i32> {
+fn with_blocking_handler_lifecycle() -> impl ValueDownlinkLifecycle<i32> {
     let mut m = 0;
     let mut n = 0;
     for_value_downlink::<i32>()
