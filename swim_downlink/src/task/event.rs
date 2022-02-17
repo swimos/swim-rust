@@ -13,27 +13,78 @@
 // limitations under the License.
 
 use crate::model::lifecycle::EventDownlinkLifecycle;
-
+use futures::StreamExt;
 use swim_api::downlink::DownlinkConfig;
 use swim_api::error::DownlinkTaskError;
-
-use swim_form::Form;
+use swim_api::protocol::downlink::{DownlinkNotifiationDecoder, DownlinkNotification};
+use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_model::path::Path;
-
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use tokio_util::codec::FramedRead;
 
 use crate::EventDownlinkModel;
 
 pub async fn event_dowinlink_task<T, LC>(
-    _model: EventDownlinkModel<T, LC>,
+    model: EventDownlinkModel<T, LC>,
     _path: Path,
-    _config: DownlinkConfig,
-    _input: ByteReader,
+    config: DownlinkConfig,
+    input: ByteReader,
     _output: ByteWriter,
 ) -> Result<(), DownlinkTaskError>
 where
-    T: Form + Send + Sync + 'static,
+    T: RecognizerReadable + Send + Sync + 'static,
     LC: EventDownlinkLifecycle<T>,
 {
-    todo!()
+    let EventDownlinkModel { lifecycle, .. } = model;
+
+    read_task(config, input, lifecycle).await
+}
+
+enum State {
+    Unlinked,
+    Linked,
+}
+
+async fn read_task<T, LC>(
+    config: DownlinkConfig,
+    input: ByteReader,
+    mut lifecycle: LC,
+) -> Result<(), DownlinkTaskError>
+where
+    T: RecognizerReadable + Send + Sync + 'static,
+    LC: EventDownlinkLifecycle<T>,
+{
+    let DownlinkConfig {
+        terminate_on_unlinked,
+        ..
+    } = config;
+    let mut state = State::Unlinked;
+    let mut framed_read =
+        FramedRead::new(input, DownlinkNotifiationDecoder::new(T::make_recognizer()));
+
+    while let Some(result) = framed_read.next().await {
+        match result? {
+            DownlinkNotification::Linked | DownlinkNotification::Synced => {
+                if matches!(&state, State::Unlinked) {
+                    lifecycle.on_linked().await;
+                    state = State::Linked;
+                }
+            }
+            DownlinkNotification::Event { body } => match &mut state {
+                State::Linked => {
+                    lifecycle.on_event(&body).await;
+                }
+                _ => {}
+            },
+            DownlinkNotification::Unlinked => {
+                lifecycle.on_unlinked().await;
+                if terminate_on_unlinked {
+                    break;
+                } else {
+                    state = State::Unlinked;
+                }
+            }
+        }
+    }
+    Ok(())
 }

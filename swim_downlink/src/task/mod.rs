@@ -63,7 +63,7 @@ where
 
 impl<T, LC> Downlink for DownlinkTask<EventDownlinkModel<T, LC>>
 where
-    T: Form + Send + Sync + 'static,
+    T: RecognizerReadable + Send + Sync + 'static,
     <T as RecognizerReadable>::Rec: Send,
     LC: EventDownlinkLifecycle<T> + 'static,
 {
