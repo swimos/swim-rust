@@ -12,122 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::future::Future;
-use std::num::NonZeroUsize;
-
-use futures::future::join;
-use futures::{SinkExt, StreamExt};
 use swim_api::{
-    downlink::{Downlink, DownlinkConfig},
-    error::DownlinkTaskError,
-    protocol::downlink::{
-        DownlinkNotification, DownlinkNotificationEncoder, DownlinkOperation,
-        DownlinkOperationDecoder,
-    },
+    downlink::DownlinkConfig, error::DownlinkTaskError, protocol::downlink::DownlinkNotification,
 };
-use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
-use swim_model::path::{Path, RelativePath};
-use swim_recon::parser::{parse_recognize, Span};
-use swim_recon::printer::print_recon_compact;
-use swim_utilities::{
-    algebra::non_zero_usize,
-    io::byte_channel::{byte_channel, ByteReader, ByteWriter},
-};
-use tokio::sync::mpsc;
-use tokio_util::codec::{FramedRead, FramedWrite};
 
+use tokio::sync::mpsc;
+
+use super::run_downlink_task;
 use crate::model::lifecycle::{for_value_downlink, ValueDownlinkLifecycle};
 use crate::{DownlinkTask, ValueDownlinkModel};
-
-const CHANNEL_SIZE: NonZeroUsize = non_zero_usize!(1024);
-
-struct TestWriter(FramedWrite<ByteWriter, DownlinkNotificationEncoder>);
-
-impl TestWriter {
-    fn new(tx: ByteWriter) -> Self {
-        TestWriter(FramedWrite::new(tx, DownlinkNotificationEncoder))
-    }
-}
-struct TestReader(FramedRead<ByteReader, DownlinkOperationDecoder>);
-
-impl TestReader {
-    fn new(rx: ByteReader) -> Self {
-        TestReader(FramedRead::new(rx, DownlinkOperationDecoder))
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct ReadFailed;
-
-impl From<std::io::Error> for ReadFailed {
-    fn from(_: std::io::Error) -> Self {
-        ReadFailed
-    }
-}
-
-impl From<std::str::Utf8Error> for ReadFailed {
-    fn from(_: std::str::Utf8Error) -> Self {
-        ReadFailed
-    }
-}
-
-impl TestReader {
-    async fn recv<T: RecognizerReadable>(&mut self) -> Result<Option<T>, ReadFailed> {
-        let TestReader(inner) = self;
-        let op = inner.next().await.transpose()?;
-        if let Some(DownlinkOperation { body }) = op {
-            let body_str = std::str::from_utf8(body.as_ref())?;
-            let input = Span::new(body_str);
-            if let Ok(v) = parse_recognize(input, false) {
-                Ok(Some(v))
-            } else {
-                Err(ReadFailed)
-            }
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-impl TestWriter {
-    async fn send_value<T>(&mut self, notification: DownlinkNotification<T>)
-    where
-        T: StructuralWritable,
-    {
-        let TestWriter(writer) = self;
-        let raw = match notification {
-            DownlinkNotification::Linked => DownlinkNotification::Linked,
-            DownlinkNotification::Synced => DownlinkNotification::Synced,
-            DownlinkNotification::Unlinked => DownlinkNotification::Unlinked,
-            DownlinkNotification::Event { body } => {
-                let body_bytes = format!("{}", print_recon_compact(&body)).into_bytes();
-                DownlinkNotification::Event { body: body_bytes }
-            }
-        };
-        assert!(writer.send(raw).await.is_ok());
-    }
-}
-
-async fn run_downlink_task<D, F, Fut>(
-    task: D,
-    config: DownlinkConfig,
-    test_block: F,
-) -> Result<Fut::Output, DownlinkTaskError>
-where
-    D: Downlink,
-    F: FnOnce(TestWriter, TestReader) -> Fut,
-    Fut: Future,
-{
-    let path = Path::Local(RelativePath::new("node", "lane"));
-
-    let (in_tx, in_rx) = byte_channel(CHANNEL_SIZE);
-    let (out_tx, out_rx) = byte_channel(CHANNEL_SIZE);
-
-    let dl_task = task.run(path, config, in_rx, out_tx);
-    let test_body = test_block(TestWriter::new(in_tx), TestReader::new(out_rx));
-    let (result, out) = join(dl_task, test_body).await;
-    result.map(|_| out)
-}
 
 #[derive(Debug, PartialEq, Eq)]
 enum TestMessage<T> {
@@ -189,10 +82,12 @@ async fn link_downlink() {
             let _reader = reader;
             writer.send_value::<i32>(DownlinkNotification::Linked).await;
             expect_event(&mut event_rx, TestMessage::Linked).await;
+            event_rx
         },
     )
     .await;
     assert!(result.is_ok());
+    assert!(result.unwrap().recv().await.is_none());
 }
 
 #[tokio::test]
@@ -245,10 +140,12 @@ async fn sync_downlink() {
             writer.send_value::<i32>(DownlinkNotification::Synced).await;
             expect_event(&mut event_rx, TestMessage::Linked).await;
             expect_event(&mut event_rx, TestMessage::Synced(5)).await;
+            event_rx
         },
     )
     .await;
     assert!(result.is_ok());
+    assert!(result.unwrap().recv().await.is_none());
 }
 
 #[tokio::test]
@@ -280,10 +177,12 @@ async fn report_events_before_sync() {
             expect_event(&mut event_rx, TestMessage::Set(None, 5)).await;
             expect_event(&mut event_rx, TestMessage::Event(67)).await;
             expect_event(&mut event_rx, TestMessage::Set(Some(5), 67)).await;
+            event_rx
         },
     )
     .await;
     assert!(result.is_ok());
+    assert!(result.unwrap().recv().await.is_none());
 }
 
 #[tokio::test]
@@ -315,10 +214,12 @@ async fn report_events_after_sync() {
             expect_event(&mut event_rx, TestMessage::Synced(5)).await;
             expect_event(&mut event_rx, TestMessage::Event(67)).await;
             expect_event(&mut event_rx, TestMessage::Set(Some(5), 67)).await;
+            event_rx
         },
     )
     .await;
     assert!(result.is_ok());
+    assert!(result.unwrap().recv().await.is_none());
 }
 
 #[tokio::test]
@@ -348,11 +249,18 @@ async fn terminate_after_unlinked() {
             expect_event(&mut event_rx, TestMessage::Linked).await;
             expect_event(&mut event_rx, TestMessage::Synced(5)).await;
             expect_event(&mut event_rx, TestMessage::Unlinked).await;
-            (writer, reader)
+            (writer, reader, event_rx)
         },
     )
     .await;
-    assert!(result.is_ok());
+    match result {
+        Ok((_writer, _reader, mut events)) => {
+            assert!(events.recv().await.is_none());
+        }
+        Err(e) => {
+            panic!("Task failed: {}", e)
+        }
+    }
 }
 
 #[tokio::test]
@@ -427,10 +335,12 @@ async fn relink_downlink() {
             expect_event(&mut event_rx, TestMessage::Unlinked).await;
             expect_event(&mut event_rx, TestMessage::Linked).await;
             expect_event(&mut event_rx, TestMessage::Synced(7)).await;
+            event_rx
         },
     )
     .await;
     assert!(result.is_ok());
+    assert!(result.unwrap().recv().await.is_none());
 }
 
 #[tokio::test]
