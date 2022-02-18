@@ -36,7 +36,7 @@ pub struct DownlinkConfig {
     //TODO To be filled in later.
 }
 
-/// Trait to define a consumer to a downlink. Instaces of this will be passed to the runtime
+/// Trait to define a consumer to a downlink. Instances of this will be passed to the runtime
 /// to be executed. User code should not generally need to implement this directly. It is
 /// necessary for this trait to be object safe and any changes to it should take that into
 /// account.

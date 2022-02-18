@@ -170,6 +170,7 @@ const REMOTE_ADDR: RoutingAddr = RoutingAddr::remote(1);
 const REMOTE_NODE: &str = "/remote";
 const REMOTE_LANE: &str = "remote_lane";
 const EMPTY_TIMEOUT: Duration = Duration::from_secs(2);
+const ATT_QUEUE_SIZE: NonZeroUsize = non_zero_usize!(8);
 
 async fn run_test<F, Fut>(
     options: DownlinkOptions,
@@ -183,6 +184,7 @@ where
         options,
         super::DownlinkRuntimeConfig {
             empty_timeout: EMPTY_TIMEOUT,
+            attachment_queue_size: ATT_QUEUE_SIZE,
         },
         test_block,
     )
@@ -708,6 +710,7 @@ async fn shutdowm_after_timeout_with_no_subscribers() {
         DownlinkOptions::empty(),
         super::DownlinkRuntimeConfig {
             empty_timeout: Duration::from_millis(100),
+            attachment_queue_size: ATT_QUEUE_SIZE,
         },
         |TestContext {
              tx: _tx,
@@ -937,6 +940,7 @@ async fn sync_two_consumers() {
         DownlinkOptions::SYNC,
         super::DownlinkRuntimeConfig {
             empty_timeout: EMPTY_TIMEOUT,
+            attachment_queue_size: ATT_QUEUE_SIZE,
         },
         |mut context| async move {
             sync_both(&mut context).await;
@@ -967,6 +971,7 @@ async fn receive_from_two_consumers() {
         DownlinkOptions::SYNC,
         super::DownlinkRuntimeConfig {
             empty_timeout: EMPTY_TIMEOUT,
+            attachment_queue_size: ATT_QUEUE_SIZE,
         },
         |mut context| async move {
             sync_both(&mut context).await;

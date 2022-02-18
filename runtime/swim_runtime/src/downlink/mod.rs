@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use std::collections::HashSet;
+use std::num::NonZeroUsize;
 use std::time::Duration;
 
 use bitflags::bitflags;
@@ -45,25 +46,25 @@ mod tests;
 bitflags! {
     /// Flags that a downlink consumer can set to instruct the downlink runtime how it wishes
     /// to be driven.
-    pub struct DownlinkOptions: u32 {
+    pub struct DownlinkOptions: u8 {
         /// The consumer needs to be synchronized with the remote lane.
-        const SYNC = 0b00000001;
+        const SYNC = 0b01;
         /// If the connection fails, it should be restarted and the consumer passed to the new
         /// connection.
-        const KEEP_LINKED = 0b00000010;
+        const KEEP_LINKED = 0b10;
         const DEFAULT = Self::SYNC.bits | Self::KEEP_LINKED.bits;
     }
 }
 
 bitflags! {
     /// Internal flags for the downlink runtime write task.
-    struct WriteTaskState: u32 {
+    struct WriteTaskState: u8 {
         /// A new value has been received while a write was pending.
-        const UPDATED = 0b00000001;
+        const UPDATED = 0b001;
         /// The outgoing channel has been flushed.
-        const FLUSHED = 0b00000010;
+        const FLUSHED = 0b010;
         /// A new consumer that needs to be synced has joined why a write was pending.
-        const NEEDS_SYNC = 0b00000100;
+        const NEEDS_SYNC = 0b100;
         /// When the task starts it does not need to be flushed.
         const INIT = Self::FLUSHED.bits;
     }
@@ -100,6 +101,8 @@ impl AttachAction {
 pub struct DownlinkRuntimeConfig {
     /// If the runtime has no consumers for longer than this timeout, it will stop.
     pub empty_timeout: Duration,
+    /// Size of the queue for accepting new subscribers to a downlink.
+    pub attachment_queue_size: NonZeroUsize,
 }
 
 /// The runtime component for a value type downlink (i.e. value downlink, event downlink, etc.).
@@ -153,8 +156,8 @@ impl ValueDownlinkRuntime {
             config,
         } = self;
 
-        let (producer_tx, producer_rx) = mpsc::channel(8);
-        let (consumer_tx, consumer_rx) = mpsc::channel(8);
+        let (producer_tx, producer_rx) = mpsc::channel(config.attachment_queue_size.get());
+        let (consumer_tx, consumer_rx) = mpsc::channel(config.attachment_queue_size.get());
         let (kill_switch_tx, kill_switch_rx) = trigger::trigger();
         let att = attach_task(
             requests,
