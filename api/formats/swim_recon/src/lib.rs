@@ -13,5 +13,6 @@
 // limitations under the License.
 
 pub mod comparator;
+pub mod hasher;
 pub mod parser;
 pub mod printer;
