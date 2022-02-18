@@ -70,12 +70,11 @@ where
                     state = State::Linked;
                 }
             }
-            DownlinkNotification::Event { body } => match &mut state {
-                State::Linked => {
+            DownlinkNotification::Event { body } => {
+                if matches!(state, State::Linked) {
                     lifecycle.on_event(&body).await;
                 }
-                _ => {}
-            },
+            }
             DownlinkNotification::Unlinked => {
                 lifecycle.on_unlinked().await;
                 if terminate_on_unlinked {
