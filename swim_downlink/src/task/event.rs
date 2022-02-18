@@ -24,6 +24,15 @@ use tokio_util::codec::FramedRead;
 
 use crate::EventDownlinkModel;
 
+/// Task to drive an event downlink, calling lifecyle events at appropriate points.
+///
+/// #Arguments
+///
+/// * `model` - The downlink model, providing the lifecycle and a stream of values to set.
+/// * `_path` - The path of the lane to which the downlink is attached.
+/// * `config` - Configuration parameters to the downlink.
+/// * `input` - Input stream for messages to the downlink from the runtime.
+/// * `_output` - Output stream for messages from the downlink to the runtime.
 pub async fn event_dowinlink_task<T, LC>(
     model: EventDownlinkModel<T, LC>,
     _path: Path,

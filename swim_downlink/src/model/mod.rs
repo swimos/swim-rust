@@ -17,8 +17,8 @@ use std::marker::PhantomData;
 use tokio::sync::mpsc;
 
 use lifecycle::{
-    for_event_downlink, for_value_downlink, EventDownlinkLifecycle,
-    StatelessEventDownlinkLifecycle, StatelessValueDownlinkLifecycle, ValueDownlinkLifecycle,
+    for_event_downlink, for_value_downlink, BasicEventDownlinkLifecycle,
+    BasicValueDownlinkLifecycle, EventDownlinkLifecycle, ValueDownlinkLifecycle,
 };
 use swim_api::handlers::NoHandler;
 
@@ -54,11 +54,11 @@ impl<T, LC> EventDownlinkModel<T, LC> {
 
 pub type DefaultValueDownlinkModel<T> = ValueDownlinkModel<
     T,
-    StatelessValueDownlinkLifecycle<T, NoHandler, NoHandler, NoHandler, NoHandler, NoHandler>,
+    BasicValueDownlinkLifecycle<T, NoHandler, NoHandler, NoHandler, NoHandler, NoHandler>,
 >;
 
 pub type DefaultEventDownlinkModel<T> =
-    EventDownlinkModel<T, StatelessEventDownlinkLifecycle<T, NoHandler, NoHandler, NoHandler>>;
+    EventDownlinkModel<T, BasicEventDownlinkLifecycle<T, NoHandler, NoHandler, NoHandler>>;
 
 pub fn value_downlink<T>(set_value: mpsc::Receiver<T>) -> DefaultValueDownlinkModel<T> {
     ValueDownlinkModel {

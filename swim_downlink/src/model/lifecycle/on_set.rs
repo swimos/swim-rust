@@ -16,10 +16,31 @@ use futures::future::{ready, Ready};
 use std::future::Future;
 use swim_api::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
 
+/// Trait for event handlers to be called when a value changes.
 pub trait OnSet<'a, T>: Send {
     type OnSetFut: Future<Output = ()> + Send + 'a;
 
+    /// #Arguments
+    /// * `existing` - The existing value, if it is defined.
+    /// * `new_value` - The replacement value.
     fn on_set(&'a mut self, existing: Option<&'a T>, new_value: &'a T) -> Self::OnSetFut;
+}
+
+/// Trait for event handlers, that share state with other handlers, called when a downlink
+/// receives a new event.
+pub trait OnSetShared<'a, T, Shared>: Send {
+    type OnSetFut: Future<Output = ()> + Send + 'a;
+
+    /// #Arguments
+    /// * `shared` - The shared state.
+    /// * `existing` - The existing value, if it is defined.
+    /// * `new_value` - The replacement value.
+    fn on_set(
+        &'a mut self,
+        shared: &'a mut Shared,
+        existing: Option<&'a T>,
+        new_value: &'a T,
+    ) -> Self::OnSetFut;
 }
 
 impl<'a, T> OnSet<'a, T> for NoHandler {
@@ -42,17 +63,6 @@ where
         let FnMutHandler(f) = self;
         f(existing, new_value)
     }
-}
-
-pub trait OnSetShared<'a, T, Shared>: Send {
-    type OnSetFut: Future<Output = ()> + Send + 'a;
-
-    fn on_set(
-        &'a mut self,
-        shared: &'a mut Shared,
-        existing: Option<&'a T>,
-        new_value: &'a T,
-    ) -> Self::OnSetFut;
 }
 
 impl<'a, T, Shared> OnSetShared<'a, T, Shared> for NoHandler {

@@ -16,10 +16,19 @@ use futures::future::{ready, Ready};
 use std::future::Future;
 use swim_api::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
 
+/// Trait for event handlers to be called when a downlink synchronizes.
 pub trait OnSynced<'a, T>: Send {
     type OnSyncedFut: Future<Output = ()> + Send + 'a;
 
     fn on_synced(&'a mut self, value: &'a T) -> Self::OnSyncedFut;
+}
+
+/// Trait for event handlers, that share state with other handlers, called when a downlink
+/// synchronizes.
+pub trait OnSyncedShared<'a, T, Shared>: Send {
+    type OnSyncedFut: Future<Output = ()> + Send + 'a;
+
+    fn on_synced(&'a mut self, shared: &'a mut Shared, value: &'a T) -> Self::OnSyncedFut;
 }
 
 impl<'a, T> OnSynced<'a, T> for NoHandler {
@@ -42,12 +51,6 @@ where
         let FnMutHandler(f) = self;
         f(value)
     }
-}
-
-pub trait OnSyncedShared<'a, T, Shared>: Send {
-    type OnSyncedFut: Future<Output = ()> + Send + 'a;
-
-    fn on_synced(&'a mut self, shared: &'a mut Shared, value: &'a T) -> Self::OnSyncedFut;
 }
 
 impl<'a, T, Shared> OnSyncedShared<'a, T, Shared> for NoHandler {

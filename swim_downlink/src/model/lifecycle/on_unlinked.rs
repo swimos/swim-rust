@@ -16,10 +16,19 @@ use futures::future::{ready, Ready};
 use std::future::Future;
 use swim_api::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
 
+/// Trait for event handlers to be called when a downlink disconnects.
 pub trait OnUnlinked<'a>: Send {
     type OnUnlinkedFut: Future<Output = ()> + Send + 'a;
 
     fn on_unlinked(&'a mut self) -> Self::OnUnlinkedFut;
+}
+
+/// Trait for event handlers, that share state with other handlers, called when a downlink
+/// disconnects.
+pub trait OnUnlinkedShared<'a, Shared>: Send {
+    type OnUnlinkedFut: Future<Output = ()> + Send + 'a;
+
+    fn on_unlinked(&'a mut self, shared: &'a mut Shared) -> Self::OnUnlinkedFut;
 }
 
 impl<'a> OnUnlinked<'a> for NoHandler {
@@ -41,12 +50,6 @@ where
         let FnMutHandler(f) = self;
         f()
     }
-}
-
-pub trait OnUnlinkedShared<'a, Shared>: Send {
-    type OnUnlinkedFut: Future<Output = ()> + Send + 'a;
-
-    fn on_unlinked(&'a mut self, shared: &'a mut Shared) -> Self::OnUnlinkedFut;
 }
 
 impl<'a, Shared> OnUnlinkedShared<'a, Shared> for NoHandler {

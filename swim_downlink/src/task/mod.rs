@@ -31,6 +31,7 @@ mod event;
 mod tests;
 mod value;
 
+/// Wrapper for downlink models to allow them to serve as a [`Downlink`].
 pub struct DownlinkTask<Model>(Model);
 
 impl<Model> DownlinkTask<Model> {

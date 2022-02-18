@@ -12,12 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+/// An event hanlder that does nothing.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct NoHandler;
 
+/// Wraps a [`FnMut`] instance to use as an event handler.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct FnMutHandler<F>(pub F);
 
+/// Wraps a [`FnMut`] instance, with an additional parameter for shared state, as an event handler.
 pub struct WithShared<H>(pub H);
 
 impl<H> WithShared<H> {
@@ -26,6 +29,7 @@ impl<H> WithShared<H> {
     }
 }
 
+/// Wraps some state and a closure that can act upon it as an event handler.
 pub struct ClosureHandler<State, F> {
     pub state: State,
     pub f: F,
@@ -37,4 +41,5 @@ impl<State, F> ClosureHandler<State, F> {
     }
 }
 
+/// Wraps a synchronous closure as a (blocking) asynchronous closure to use as an event handler.
 pub struct BlockingHandler<F>(pub F);

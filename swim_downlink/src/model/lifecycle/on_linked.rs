@@ -16,10 +16,19 @@ use futures::future::{ready, Ready};
 use std::future::Future;
 use swim_api::handlers::{BlockingHandler, ClosureHandler, FnMutHandler, NoHandler, WithShared};
 
+/// Trait for event handlers to be called when a downlink connects.
 pub trait OnLinked<'a>: Send {
     type OnLinkedFut: Future<Output = ()> + Send + 'a;
 
     fn on_linked(&'a mut self) -> Self::OnLinkedFut;
+}
+
+/// Trait for event handlers, that share state with other handlers, called when a downlink
+/// connects.
+pub trait OnLinkedShared<'a, Shared>: Send {
+    type OnLinkedFut: Future<Output = ()> + Send + 'a;
+
+    fn on_linked(&'a mut self, shared: &'a mut Shared) -> Self::OnLinkedFut;
 }
 
 impl<'a> OnLinked<'a> for NoHandler {
@@ -41,12 +50,6 @@ where
         let FnMutHandler(f) = self;
         f()
     }
-}
-
-pub trait OnLinkedShared<'a, Shared>: Send {
-    type OnLinkedFut: Future<Output = ()> + Send + 'a;
-
-    fn on_linked(&'a mut self, shared: &'a mut Shared) -> Self::OnLinkedFut;
 }
 
 impl<'a, Shared> OnLinkedShared<'a, Shared> for NoHandler {
