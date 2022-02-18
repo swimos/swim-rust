@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use byte_channel::ByteReader;
 use futures_util::Stream;
 use slab::Slab;
 use smallvec::{smallvec, SmallVec};
@@ -20,15 +19,12 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use tokio_util::codec::{Decoder, FramedRead};
 use waker_fn::waker_fn;
 
 #[cfg(test)]
 mod tests;
 
 const BUCKET_SIZE: usize = usize::BITS as usize;
-
-type Index = usize;
 
 /// Flags indicating when a reader is ready to be polled, stored
 /// as an integer. Each bit of the integer shows if the reader
@@ -110,9 +106,9 @@ impl ReaderBuckets {
 }
 
 /// A reader combinator capable of reading from many framed readers concurrently.
-pub struct MultiReader<D> {
+pub struct MultiReader<S> {
     /// A collection of all framed readers.
-    readers: Slab<FramedRead<ByteReader, D>>,
+    readers: Slab<S>,
     /// A bucket of flags set by the readers whenever they are ready to be polled.
     reader_buckets: ReaderBuckets,
     /// A local copy of the reader flags from the current bucket.
@@ -120,10 +116,10 @@ pub struct MultiReader<D> {
     /// The index of the current bucket of readers.
     current_bucket: usize,
     /// The next reader that is ready to be polled.
-    ready_reader: Option<Index>,
+    ready_reader: Option<usize>,
 }
 
-impl<D: Decoder> MultiReader<D> {
+impl<S: Stream> MultiReader<S> {
     pub fn new() -> Self {
         MultiReader {
             readers: Slab::new(),
@@ -135,7 +131,7 @@ impl<D: Decoder> MultiReader<D> {
     }
 
     /// Add a reader to be polled when ready.
-    pub fn add_reader(&mut self, reader: FramedRead<ByteReader, D>) {
+    pub fn add_reader(&mut self, reader: S) {
         let key = self.readers.insert(reader);
         let bucket = key / BUCKET_SIZE;
         let index = key % BUCKET_SIZE;
@@ -191,8 +187,8 @@ impl<D: Decoder> MultiReader<D> {
     }
 }
 
-impl<D: Decoder + Unpin> Stream for MultiReader<D> {
-    type Item = Result<D::Item, D::Error>;
+impl<S: Stream + Unpin> Stream for MultiReader<S> {
+    type Item = S::Item;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         while let Some(index) = self.get_next_reader() {
@@ -237,7 +233,7 @@ impl<D: Decoder + Unpin> Stream for MultiReader<D> {
     }
 }
 
-impl<D: Decoder> Default for MultiReader<D> {
+impl<S: Stream> Default for MultiReader<S> {
     fn default() -> Self {
         Self::new()
     }

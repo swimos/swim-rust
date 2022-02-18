@@ -18,7 +18,6 @@ use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Through
 use futures::stream::SelectAll;
 use futures_util::future::join;
 use futures_util::{SinkExt, Stream, StreamExt};
-use multi_reader::MultiReader;
 use rand::rngs::SmallRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
@@ -29,6 +28,7 @@ use swim_form::structural::read::from_model::ValueMaterializer;
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_model::path::RelativePath;
 use swim_model::Value;
+use swim_multi_reader::MultiReader;
 use swim_runtime::compat::{
     AgentMessageDecoder, MessageDecodeError, Operation, RawRequestMessageEncoder, RequestMessage,
 };
@@ -36,7 +36,7 @@ use swim_runtime::routing::RoutingAddr;
 use tokio::runtime::Builder;
 use tokio_util::codec::{FramedRead, FramedWrite};
 
-const MESSAGE_COUNTS: &[usize] = &[10, 100, 1000, 10000];
+const MESSAGE_COUNTS: &[usize] = &[10, 100, 1000];
 const CHANNEL_COUNTS: &[usize] = &[2, 8, 64, 128, 256, 512];
 
 const SEED: &[u8; 32] = &[55; 32];
