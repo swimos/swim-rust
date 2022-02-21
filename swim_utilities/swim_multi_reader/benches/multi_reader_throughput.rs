@@ -45,6 +45,7 @@ const MESSAGE_ORDER: &[WritersOrder] = &[
     WritersOrder::Normal,
     WritersOrder::Reversed,
     WritersOrder::Unordered,
+    WritersOrder::Parallel,
 ];
 
 #[derive(Debug, Clone, Copy)]
@@ -52,6 +53,7 @@ enum WritersOrder {
     Normal,
     Unordered,
     Reversed,
+    Parallel,
 }
 
 impl Display for WritersOrder {
@@ -60,6 +62,7 @@ impl Display for WritersOrder {
             WritersOrder::Normal => write!(f, "normal"),
             WritersOrder::Unordered => write!(f, "unordered"),
             WritersOrder::Reversed => write!(f, "reversed"),
+            WritersOrder::Parallel => write!(f, "parallel"),
         }
     }
 }
@@ -176,6 +179,27 @@ async fn write(mut writers: Vec<Writer>, message_count: usize, writers_order: Wr
         WritersOrder::Normal => {}
         WritersOrder::Unordered => writers.shuffle(&mut SmallRng::from_seed(*SEED)),
         WritersOrder::Reversed => writers.reverse(),
+        WritersOrder::Parallel => {
+            for mut writer in writers {
+                tokio::spawn(async move {
+                    for i in 0..message_count {
+                        writer
+                            .send(RequestMessage {
+                                origin: RoutingAddr::remote(i as u32),
+                                path: RelativePath::new(
+                                    format!("node_{}", i),
+                                    format!("lane_{}", i),
+                                ),
+                                envelope: Operation::Link,
+                            })
+                            .await
+                            .unwrap();
+                    }
+                });
+            }
+
+            return;
+        }
     }
 
     for i in 0..message_count {
