@@ -23,5 +23,5 @@ swim_model = { path = "../../api/swim_model" }
 swim_form = { path = "../../api/swim_form" }
 
 [[bench]]
-name = "mutli_reader_throughput"
+name = "multi_reader_throughput"
 harness = false

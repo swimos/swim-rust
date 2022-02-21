@@ -212,7 +212,7 @@ async fn multi_reader_test(params: TestParams) {
 
     let mut multi_reader = MultiReader::new();
     for reader in readers {
-        multi_reader.add_reader(reader)
+        multi_reader.add(reader)
     }
 
     let _ = join(
