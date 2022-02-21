@@ -33,6 +33,8 @@ use tokio::sync::mpsc;
 use tokio::time::{timeout, timeout_at, Instant};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{Encoder, FramedRead, FramedWrite};
+use tracing::{info, info_span, trace, warn};
+use tracing_futures::Instrument;
 
 use crate::compat::{
     Notification, Operation, RawRequestMessage, RawRequestMessageEncoder, RawResponseMessage,
@@ -165,9 +167,19 @@ impl ValueDownlinkRuntime {
             consumer_tx,
             stopping.clone(),
             kill_switch_rx,
-        );
-        let read = read_task(input, consumer_rx, stopping.clone(), config);
-        let write = write_task(output, producer_rx, stopping, identity, path, config);
+        )
+        .instrument(info_span!("Downlink Runtime Attachment Task", %path));
+        let read = read_task(input, consumer_rx, stopping.clone(), config)
+            .instrument(info_span!("Downlink Runtime Read Task", %path));
+        let write = write_task(
+            output,
+            producer_rx,
+            stopping,
+            identity,
+            path.clone(),
+            config,
+        )
+        .instrument(info_span!("Downlink Runtime Write Task", %path));
         let io = async move {
             join(read, write).await;
             kill_switch_tx.trigger();
@@ -199,6 +211,7 @@ async fn attach_task(
             break;
         }
     }
+    trace!("Attachment task stopping.");
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -324,21 +337,26 @@ async fn read_task(
             if let Ok(result) = timeout_at(timestamp, consumer_stream.next()).await {
                 result.map(Either::Right)
             } else {
+                info!("No consumers connected within the timeout period.");
                 // No consumers registered within the timeout so stop.
                 break;
             }
         } else if flushed {
+            trace!("Waiting without flush.");
             match select(consumer_stream.next(), messages.next()).await {
                 Either::Left((consumer, _)) => consumer.map(Either::Right),
                 Either::Right((msg, _)) => msg.map(Either::Left),
             }
         } else {
+            trace!("Waiting with flush.");
             let get_next = select(consumer_stream.next(), messages.next());
             let flush = join(flush_all(&mut awaiting_synced), flush_all(&mut registered));
             let next_with_flush = immediate_or_join(get_next, flush);
             let (next, flush_result) = next_with_flush.await;
             if flush_result.is_some() {
+                trace!("Flush completed.");
                 if registered.is_empty() && awaiting_synced.is_empty() {
+                    trace!("Number of subscribers dropped to 0.");
                     empty_timestamp = Some(Instant::now() + config.empty_timeout);
                 }
                 flushed = true;
@@ -352,6 +370,7 @@ async fn read_task(
         match next_item {
             Some(Either::Left(Ok(RawResponseMessage { envelope, .. }))) => match envelope {
                 Notification::Linked => {
+                    trace!("Entering Linked state.");
                     state = ReadTaskState::Linked;
                     link(&mut awaiting_linked, &mut awaiting_synced, &mut registered).await;
                     if awaiting_synced.is_empty() && registered.is_empty() {
@@ -359,6 +378,7 @@ async fn read_task(
                     }
                 }
                 Notification::Synced => {
+                    trace!("Entering Synced state.");
                     state = ReadTaskState::Synced;
                     sync_current(&mut awaiting_synced, &mut registered, &current).await;
                     if registered.is_empty() {
@@ -366,36 +386,43 @@ async fn read_task(
                     }
                 }
                 Notification::Event(bytes) => {
+                    trace!("Dispatching an event.");
                     current.clear();
                     current.reserve(bytes.len());
                     current.put(bytes);
                     send_current(&mut registered, &current).await;
                     if registered.is_empty() && awaiting_synced.is_empty() {
+                        trace!("Number of subscribers dropped to 0.");
                         empty_timestamp = Some(Instant::now() + config.empty_timeout);
                         flushed = true;
                     } else {
                         flushed = false;
                     }
                 }
-                Notification::Unlinked(_) => {
+                Notification::Unlinked(message) => {
+                    trace!("Stopping after unlinked: {msg:?}", msg = message);
                     break;
                 }
             },
             Some(Either::Right((writer, options))) => {
                 let mut dl_writer = DownlinkSender::new(writer, options);
                 if matches!(state, ReadTaskState::Init) {
+                    trace!("Attaching a new subscriber to be linked.");
                     empty_timestamp = None;
                     awaiting_linked.push(dl_writer);
                 } else if dl_writer.send(DownlinkNotification::Linked).await.is_ok() {
+                    trace!("Attaching a new subscriber to be synced.");
                     empty_timestamp = None;
                     awaiting_synced.push(dl_writer);
                 }
             }
             _ => {
+                trace!("Stopping after being dropped by the runtime.");
                 break;
             }
         }
     }
+    trace!("Read task stopping and unlinked all subscribers");
     unlink(awaiting_linked).await;
     unlink(awaiting_synced).await;
     unlink(registered).await;
@@ -456,6 +483,10 @@ async fn unlink(senders: Vec<DownlinkSender>) -> Vec<DownlinkSender> {
 
 fn clear_failed(senders: &mut Vec<DownlinkSender>, failed: &HashSet<usize>) {
     if !failed.is_empty() {
+        trace!(
+            "Clearing {num_failed} failed subscribers.",
+            num_failed = failed.len()
+        );
         let mut i = 0;
         senders.retain(|_| {
             let keep = !failed.contains(&i);
@@ -661,27 +692,37 @@ async fn write_task(
                         let (req_result, flush_result) =
                             join(req_with_timeout, message_writer.flush()).await;
                         if flush_result.is_err() {
+                            warn!("Flushing the output failed.");
                             break 'outer;
                         } else {
                             task_state |= WriteTaskState::FLUSHED;
                         }
                         req_result
                     };
-                    if let Ok(Some((reader, options))) = req_result {
-                        let receiver = DownlinkReceiver::new(reader, next_id());
-                        registered.push(receiver);
-                        if options.contains(DownlinkOptions::SYNC) {
-                            let write = suspend_write(message_writer, buffer, WriteKind::Sync);
-                            state = WriteState::Writing(Either::Left(write));
-                        } else {
-                            state = WriteState::Idle {
-                                message_writer,
-                                buffer,
-                            };
+                    match req_result {
+                        Ok(Some((reader, options))) => {
+                            trace!("Registering new subscriber.");
+                            let receiver = DownlinkReceiver::new(reader, next_id());
+                            registered.push(receiver);
+                            if options.contains(DownlinkOptions::SYNC) {
+                                trace!("Sending a Sync message.");
+                                let write = suspend_write(message_writer, buffer, WriteKind::Sync);
+                                state = WriteState::Writing(Either::Left(write));
+                            } else {
+                                state = WriteState::Idle {
+                                    message_writer,
+                                    buffer,
+                                };
+                            }
                         }
-                    } else {
-                        // Either we are stopping or no one registered within the timeout.
-                        break;
+                        Err(_) => {
+                            info!("Stopping as no subscribers attached within the timeout.");
+                            break;
+                        }
+                        _ => {
+                            info!("Stopping after dropped by the runtime.");
+                            break;
+                        }
                     }
                 } else {
                     let next = select(reg_requests.next(), registered.next());
@@ -698,6 +739,7 @@ async fn write_task(
                                 Either::Left(sender)
                             }
                             SecondaryResult::Completed(Err(_)) => {
+                                warn!("Flushing the output failed.");
                                 break 'outer;
                             }
                         };
@@ -710,6 +752,7 @@ async fn write_task(
                             match flush_outcome {
                                 Either::Left(message_writer) => {
                                     if options.contains(DownlinkOptions::SYNC) {
+                                        trace!("Sending a Sync message.");
                                         let write =
                                             suspend_write(message_writer, buffer, WriteKind::Sync);
                                         state = WriteState::Writing(Either::Left(write));
@@ -721,6 +764,7 @@ async fn write_task(
                                     }
                                 }
                                 Either::Right(flush) => {
+                                    trace!("Waiting on the completion of a flush.");
                                     task_state.set_needs_sync(options);
                                     state =
                                         WriteState::Writing(Either::Right(do_flush(flush, buffer)));
@@ -728,11 +772,13 @@ async fn write_task(
                             }
                         }
                         Either::Left(_) => {
+                            info!("Stopping after dropped by the runtime.");
                             break 'outer;
                         }
                         Either::Right(Some(Ok(DownlinkOperation { body }))) => {
                             match flush_outcome {
                                 Either::Left(message_writer) => {
+                                    trace!("Dispatching an event.");
                                     buffer.clear();
                                     buffer.reserve(body.len());
                                     buffer.put(body);
@@ -743,6 +789,7 @@ async fn write_task(
                                     state = WriteState::Writing(Either::Left(write_fut));
                                 }
                                 Either::Right(flush) => {
+                                    trace!("Storing an event in the buffer and waiting on a flush to compelte.");
                                     current.clear();
                                     current.reserve(body.len());
                                     current.put(body);
@@ -754,6 +801,7 @@ async fn write_task(
                         }
                         Either::Right(ow) => {
                             if let Some(Err(Failed(id))) = ow {
+                                trace!("Removing a failed subscriber");
                                 if let Some(rx) = registered.iter_mut().find(|rx| rx.id == id) {
                                     rx.terminate();
                                 }
@@ -764,6 +812,7 @@ async fn write_task(
                                     buffer,
                                 },
                                 Either::Right(flush) => {
+                                    trace!("Waiting on the completion of a flush.");
                                     WriteState::Writing(Either::Right(do_flush(flush, buffer)))
                                 }
                             };
@@ -797,14 +846,17 @@ async fn write_task(
                             let message_writer = if let Ok(mw) = result {
                                 mw
                             } else {
+                                warn!("Writing to the output failed.");
                                 break 'outer;
                             };
                             if task_state.contains(WriteTaskState::NEEDS_SYNC) {
+                                trace!("Sending a Sync message.");
                                 task_state
                                     .remove(WriteTaskState::FLUSHED | WriteTaskState::NEEDS_SYNC);
                                 let write = suspend_write(message_writer, buffer, WriteKind::Sync);
                                 state = WriteState::Writing(Either::Left(write));
                             } else if task_state.contains(WriteTaskState::UPDATED) {
+                                trace!("Dispatching the updated buffer.");
                                 std::mem::swap(&mut buffer, &mut current);
                                 let write_fut =
                                     suspend_write(message_writer, buffer, WriteKind::Data);
@@ -812,6 +864,7 @@ async fn write_task(
                                     .remove(WriteTaskState::FLUSHED | WriteTaskState::UPDATED);
                                 state = WriteState::Writing(Either::Left(write_fut));
                             } else {
+                                trace!("Task has become idle.");
                                 state = WriteState::Idle {
                                     message_writer,
                                     buffer,
@@ -822,22 +875,26 @@ async fn write_task(
                         }
                         SuspendedResult::NextRecord(Some(Ok(DownlinkOperation { body }))) => {
                             // Writing is currently blocked so overwrite the next value to be sent.
+                            trace!("Over-writing the current event buffer.");
                             current.clear();
                             current.reserve(body.len());
                             current.put(body);
                             task_state |= WriteTaskState::UPDATED;
                         }
                         SuspendedResult::NextRecord(Some(Err(Failed(id)))) => {
+                            trace!("Removing a failed subscriber.");
                             if let Some(rx) = registered.iter_mut().find(|rx| rx.id == id) {
                                 rx.terminate();
                             }
                         }
                         SuspendedResult::NewRegistration(Some((reader, options))) => {
+                            trace!("Registering a new subscriber.");
                             let receiver = DownlinkReceiver::new(reader, next_id());
                             registered.push(receiver);
                             task_state.set_needs_sync(options);
                         }
                         SuspendedResult::NewRegistration(_) => {
+                            info!("Stopping after dropped by the runtime.");
                             break 'outer;
                         }
                         _ => {}

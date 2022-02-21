@@ -30,6 +30,7 @@ swim_tracing = { path = "../../swim_utilities/swim_tracing", features = ["future
 swim_recon = { path = "../../api/formats/swim_recon", features = ["async_parser"] }
 slab = "0.4.2"
 tracing = "0.1.16"
+tracing-futures = "0.2.4"
 thiserror = "1.0"
 im = "15.0.0"
 tokio-stream = { version = "0.1.2", features = ["sync"] }
