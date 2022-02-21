@@ -33,7 +33,7 @@ use tokio::sync::mpsc;
 use tokio::time::{timeout, timeout_at, Instant};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{Encoder, FramedRead, FramedWrite};
-use tracing::{info, info_span, trace, warn};
+use tracing::{error, info, info_span, trace, warn};
 use tracing_futures::Instrument;
 
 use crate::compat::{
@@ -415,6 +415,13 @@ async fn read_task(
                     empty_timestamp = None;
                     awaiting_synced.push(dl_writer);
                 }
+            }
+            Some(Either::Left(Err(err))) => {
+                error!(
+                    "Failed to read a frame from the input: {error}",
+                    error = err
+                );
+                break;
             }
             _ => {
                 trace!("Stopping after being dropped by the runtime.");
