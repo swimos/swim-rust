@@ -62,6 +62,13 @@ impl LocalFlags {
     fn is_empty(&self) -> bool {
         self.0 == 0
     }
+
+    /// Clear all flags and return the previous ones.
+    fn get_and_clear(&mut self) -> usize {
+        let flags = self.0;
+        self.0 = 0;
+        flags
+    }
 }
 
 /// A collection of flags indicating whether a stream is ready or pending.
@@ -105,10 +112,10 @@ pub struct MultiReader<S> {
     stream_buckets: StreamBuckets,
     /// A local copy of the stream flags from the current bucket.
     local_flags: LocalFlags,
+    /// Flags of all streams that should be put at the back of the queue.
+    queue_flags: LocalFlags,
     /// The index of the current bucket of streams.
     current_bucket: usize,
-    /// The next stream that is ready to be polled.
-    ready_stream: Option<usize>,
 }
 
 impl<S: Stream> MultiReader<S> {
@@ -118,8 +125,8 @@ impl<S: Stream> MultiReader<S> {
             streams: Slab::new(),
             stream_buckets: StreamBuckets::new(),
             local_flags: LocalFlags(0),
+            queue_flags: LocalFlags(0),
             current_bucket: 0,
-            ready_stream: None,
         }
     }
 
@@ -132,24 +139,18 @@ impl<S: Stream> MultiReader<S> {
 
         if bucket == self.current_bucket {
             self.local_flags.set_flag(index);
-            if self.ready_stream.is_none() {
-                self.ready_stream = Some(index);
-            }
         } else {
             self.stream_buckets.set(bucket, index);
         }
     }
 
     fn get_next_stream(&mut self) -> Option<usize> {
-        self.ready_stream.or_else(|| {
-            self.update_next_stream();
-            self.ready_stream
-        })
-    }
-
-    fn update_next_stream(&mut self) {
         if self.local_flags.is_empty() {
             let starting_idx = self.current_bucket;
+            self.stream_buckets
+                .get(self.current_bucket)
+                .expect("Invalid bucket")
+                .fetch_or(self.queue_flags.get_and_clear(), Ordering::SeqCst);
 
             loop {
                 self.current_bucket += 1;
@@ -171,13 +172,12 @@ impl<S: Stream> MultiReader<S> {
 
                 // If we are back at the start and there is nothing, it means that everything is empty.
                 if starting_idx == self.current_bucket {
-                    self.ready_stream = None;
-                    return;
+                    return None;
                 }
             }
         }
 
-        self.ready_stream = self.local_flags.get_next();
+        self.local_flags.get_next()
     }
 }
 
@@ -205,6 +205,8 @@ impl<S: Stream + Unpin> Stream for MultiReader<S> {
                 if let Poll::Ready(result) = result {
                     match result {
                         Some(item) => {
+                            // Add the stream to the back of the queue.
+                            self.queue_flags.set_flag(index);
                             return Poll::Ready(Some(item));
                         }
                         None => {
@@ -214,9 +216,6 @@ impl<S: Stream + Unpin> Stream for MultiReader<S> {
                     }
                 }
             }
-
-            // Stop polling the current stream.
-            self.ready_stream = None;
         }
 
         if self.streams.is_empty() {

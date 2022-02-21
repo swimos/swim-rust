@@ -538,7 +538,7 @@ async fn test_multiple_streams_polled() {
     let _ = timeout(Duration::from_millis(10), multi_reader.next()).await;
 
     for (_, reader) in multi_reader.streams {
-        assert!(reader.polled)
+        assert_eq!(reader.polled, 1)
     }
 }
 
@@ -556,74 +556,107 @@ async fn test_multiple_streams_completing() {
     let _ = timeout(Duration::from_millis(10), multi_reader.next()).await;
     assert_eq!(multi_reader.streams.len(), 5);
 
-    multi_reader.streams.get_mut(0).unwrap().done = true;
-    multi_reader
-        .streams
-        .get_mut(0)
-        .unwrap()
-        .waker
-        .as_ref()
-        .unwrap()
-        .wake_by_ref();
+    multi_reader.streams.get_mut(0).unwrap().close();
+    multi_reader.streams.get_mut(0).unwrap().wake();
     let _ = timeout(Duration::from_millis(10), multi_reader.next()).await;
     assert_eq!(multi_reader.streams.len(), 4);
 
-    multi_reader.streams.get_mut(1).unwrap().done = true;
-    multi_reader
-        .streams
-        .get_mut(1)
-        .unwrap()
-        .waker
-        .as_ref()
-        .unwrap()
-        .wake_by_ref();
+    multi_reader.streams.get_mut(1).unwrap().close();
+    multi_reader.streams.get_mut(1).unwrap().wake();
     let _ = timeout(Duration::from_millis(10), multi_reader.next()).await;
     assert_eq!(multi_reader.streams.len(), 3);
 
-    multi_reader.streams.get_mut(2).unwrap().done = true;
-    multi_reader
-        .streams
-        .get_mut(2)
-        .unwrap()
-        .waker
-        .as_ref()
-        .unwrap()
-        .wake_by_ref();
-    multi_reader.streams.get_mut(3).unwrap().done = true;
-    multi_reader
-        .streams
-        .get_mut(3)
-        .unwrap()
-        .waker
-        .as_ref()
-        .unwrap()
-        .wake_by_ref();
-    multi_reader.streams.get_mut(4).unwrap().done = true;
-    multi_reader
-        .streams
-        .get_mut(4)
-        .unwrap()
-        .waker
-        .as_ref()
-        .unwrap()
-        .wake_by_ref();
+    multi_reader.streams.get_mut(2).unwrap().close();
+    multi_reader.streams.get_mut(2).unwrap().wake();
+    multi_reader.streams.get_mut(3).unwrap().close();
+    multi_reader.streams.get_mut(3).unwrap().wake();
+    multi_reader.streams.get_mut(4).unwrap().close();
+    multi_reader.streams.get_mut(4).unwrap().wake();
     let _ = timeout(Duration::from_millis(10), multi_reader.next()).await;
     assert_eq!(multi_reader.streams.len(), 0);
 }
 
+#[tokio::test]
+async fn test_streams_non_biased_single_bucket() {
+    let mut multi_reader = MultiReader::new();
+
+    multi_reader.add(TestReader::new());
+    multi_reader.add(TestReader::new());
+    multi_reader.add(TestReader::new());
+
+    let _ = timeout(Duration::from_millis(10), multi_reader.next()).await;
+
+    multi_reader.streams.get_mut(0).unwrap().ready();
+    multi_reader.streams.get_mut(0).unwrap().wake();
+    multi_reader.streams.get_mut(1).unwrap().ready();
+    multi_reader.streams.get_mut(1).unwrap().wake();
+    multi_reader.streams.get_mut(2).unwrap().ready();
+    multi_reader.streams.get_mut(2).unwrap().wake();
+
+    let _ = timeout(Duration::from_millis(10), multi_reader.next()).await;
+    let _ = timeout(Duration::from_millis(10), multi_reader.next()).await;
+    let _ = timeout(Duration::from_millis(10), multi_reader.next()).await;
+
+    for (_, reader) in multi_reader.streams {
+        assert_eq!(reader.polled, 2)
+    }
+}
+
+#[tokio::test]
+async fn test_streams_non_biased_multiple_buckets() {
+    let mut multi_reader = MultiReader::new();
+
+    for _ in 0..512 {
+        multi_reader.add(TestReader::new());
+    }
+
+    let _ = timeout(Duration::from_millis(10), multi_reader.next()).await;
+
+    for i in 0..512 {
+        multi_reader.streams.get_mut(i).unwrap().ready();
+        multi_reader.streams.get_mut(i).unwrap().wake();
+    }
+
+    for _ in 0..512 * 2 {
+        let _ = timeout(Duration::from_millis(10), multi_reader.next()).await;
+    }
+
+    for (_, reader) in multi_reader.streams {
+        assert_eq!(reader.polled, 3)
+    }
+}
+
+enum ReaderState {
+    Ready,
+    Closed,
+    Pending,
+}
+
 struct TestReader {
-    polled: bool,
-    done: bool,
+    polled: usize,
+    state: ReaderState,
     waker: Option<Waker>,
 }
 
 impl TestReader {
     fn new() -> Self {
         TestReader {
-            polled: false,
-            done: false,
+            polled: 0,
+            state: ReaderState::Pending,
             waker: None,
         }
+    }
+
+    fn wake(&self) {
+        self.waker.as_ref().unwrap().wake_by_ref();
+    }
+
+    fn close(&mut self) {
+        self.state = ReaderState::Closed;
+    }
+
+    fn ready(&mut self) {
+        self.state = ReaderState::Ready;
     }
 }
 
@@ -631,12 +664,16 @@ impl Stream for TestReader {
     type Item = ();
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.polled = true;
-        if self.done {
-            Poll::Ready(None)
-        } else {
+        self.polled += 1;
+
+        if self.waker.is_none() {
             self.waker = Some(cx.waker().clone());
-            Poll::Pending
+        }
+
+        match self.state {
+            ReaderState::Ready => Poll::Ready(Some(())),
+            ReaderState::Closed => Poll::Ready(None),
+            ReaderState::Pending => Poll::Pending,
         }
     }
 }
