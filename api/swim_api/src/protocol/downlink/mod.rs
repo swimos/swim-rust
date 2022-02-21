@@ -34,7 +34,7 @@ pub enum DownlinkNotification<T> {
     Unlinked,
 }
 
-/// Message type for communication from a dowinlink subscriber to the runtime.
+/// Message type for communication from a downlink subscriber to the runtime.
 #[derive(Debug, PartialEq, Eq)]
 pub struct DownlinkOperation<T> {
     pub body: T,
@@ -75,10 +75,12 @@ impl<T: AsRef<[u8]>> Encoder<DownlinkNotification<T>> for DownlinkNotificationEn
                 dst.put_u8(SYNCED);
             }
             DownlinkNotification::Event { body } => {
-                dst.reserve(TAG_SIZE + LEN_SIZE + body.as_ref().len());
+                let body_bytes = body.as_ref();
+                let body_len = body_bytes.len();
+                dst.reserve(TAG_SIZE + LEN_SIZE + body_len);
                 dst.put_u8(EVENT);
-                dst.put_u64(body.as_ref().len() as u64);
-                dst.put(body.as_ref());
+                dst.put_u64(body_len as u64);
+                dst.put(body_bytes);
             }
             DownlinkNotification::Unlinked => {
                 dst.reserve(TAG_SIZE);
@@ -178,7 +180,11 @@ where
                     let rem = src.split_off(to_split);
                     let buf_remaining = src.remaining();
                     let end_of_message = *remaining <= buf_remaining;
-                    let decode_result = recognizer.decode(src);
+                    let decode_result = if end_of_message {
+                        recognizer.decode_eof(src)
+                    } else {
+                        recognizer.decode(src)
+                    };
                     let new_remaining = src.remaining();
                     let consumed = buf_remaining - new_remaining;
                     *remaining -= consumed;
@@ -191,21 +197,7 @@ where
                             }
                         }
                         Ok(None) => {
-                            if end_of_message {
-                                let eof_result = recognizer.decode_eof(src)?;
-                                let final_remaining = src.remaining();
-                                let consumed = new_remaining - final_remaining;
-                                *remaining -= consumed;
-                                src.unsplit(rem);
-                                *state = DownlinkNotifiationDecoderState::ReadingHeader;
-                                break if let Some(result) = eof_result {
-                                    Ok(Some(DownlinkNotification::Event { body: result }))
-                                } else {
-                                    Err(FrameIoError::BadFrame(InvalidFrame::Incomplete))
-                                };
-                            } else {
-                                break Ok(None);
-                            }
+                            break Ok(None);
                         }
                         Err(e) => {
                             *remaining -= new_remaining;

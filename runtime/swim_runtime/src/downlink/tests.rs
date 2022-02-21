@@ -37,6 +37,7 @@ use swim_model::Text;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::io::byte_channel::{self, ByteReader, ByteWriter};
 use swim_utilities::trigger;
+use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -170,6 +171,7 @@ const REMOTE_ADDR: RoutingAddr = RoutingAddr::remote(1);
 const REMOTE_NODE: &str = "/remote";
 const REMOTE_LANE: &str = "remote_lane";
 const EMPTY_TIMEOUT: Duration = Duration::from_secs(2);
+const ATT_QUEUE_SIZE: NonZeroUsize = non_zero_usize!(8);
 
 async fn run_test<F, Fut>(
     options: DownlinkOptions,
@@ -183,6 +185,7 @@ where
         options,
         super::DownlinkRuntimeConfig {
             empty_timeout: EMPTY_TIMEOUT,
+            attachment_queue_size: ATT_QUEUE_SIZE,
         },
         test_block,
     )
@@ -282,7 +285,20 @@ impl TestSender {
         );
         assert!(self.0.send(message).await.is_ok());
     }
+
+    async fn corrupted_frame(&mut self) {
+        let inner = self.0.get_mut();
+        assert!(inner.write_u128(REMOTE_ADDR.uuid().as_u128()).await.is_ok());
+        assert!(inner.write_u32(REMOTE_NODE.len() as u32).await.is_ok());
+        assert!(inner.write_u32(REMOTE_LANE.len() as u32).await.is_ok());
+        assert!(inner.write_u64(0).await.is_ok());
+        //Replacing the node name with invalid UTF8 will cause the decoder to fail.
+        assert!(inner.write(BAD_UTF8).await.is_ok());
+        assert!(inner.write(REMOTE_LANE.as_bytes()).await.is_ok());
+    }
 }
+
+const BAD_UTF8: &[u8] = &[0xf0, 0x28, 0x8c, 0x28, 0x00, 0x00, 0x00];
 
 impl<M: RecognizerReadable> TestReceiver<M> {
     fn new(reader: ByteReader) -> Self {
@@ -380,6 +396,39 @@ async fn shutdowm_after_attached() {
             events.collect::<Vec<_>>().await
         },
     )
+    .await;
+    assert!(result.is_ok());
+    assert_eq!(
+        events,
+        vec![(State::Linked, DownlinkNotification::Unlinked)]
+    );
+}
+
+#[tokio::test]
+async fn shutdowm_after_corrupted_frame() {
+    let (events, result) = run_test(DownlinkOptions::empty(), |context| async move {
+        let TestContext {
+            mut tx,
+            mut rx,
+            start_client,
+            stop: _stop,
+            mut events,
+            ..
+        } = context;
+        expect_message(rx.recv().await, Operation::Link);
+
+        start_client.trigger();
+        tx.link().await;
+
+        expect_event(
+            events.next().await,
+            State::Unlinked,
+            DownlinkNotification::Linked,
+        );
+
+        tx.corrupted_frame().await;
+        events.collect::<Vec<_>>().await
+    })
     .await;
     assert!(result.is_ok());
     assert_eq!(
@@ -708,6 +757,7 @@ async fn shutdowm_after_timeout_with_no_subscribers() {
         DownlinkOptions::empty(),
         super::DownlinkRuntimeConfig {
             empty_timeout: Duration::from_millis(100),
+            attachment_queue_size: ATT_QUEUE_SIZE,
         },
         |TestContext {
              tx: _tx,
@@ -937,6 +987,7 @@ async fn sync_two_consumers() {
         DownlinkOptions::SYNC,
         super::DownlinkRuntimeConfig {
             empty_timeout: EMPTY_TIMEOUT,
+            attachment_queue_size: ATT_QUEUE_SIZE,
         },
         |mut context| async move {
             sync_both(&mut context).await;
@@ -967,6 +1018,7 @@ async fn receive_from_two_consumers() {
         DownlinkOptions::SYNC,
         super::DownlinkRuntimeConfig {
             empty_timeout: EMPTY_TIMEOUT,
+            attachment_queue_size: ATT_QUEUE_SIZE,
         },
         |mut context| async move {
             sync_both(&mut context).await;
