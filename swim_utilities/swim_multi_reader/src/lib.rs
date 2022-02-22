@@ -147,10 +147,13 @@ impl<S: Stream> MultiReader<S> {
     fn get_next_stream(&mut self) -> Option<usize> {
         if self.local_flags.is_empty() {
             let starting_idx = self.current_bucket;
-            self.stream_buckets
-                .get(self.current_bucket)
-                .expect("Invalid bucket")
-                .fetch_or(self.queue_flags.get_and_clear(), Ordering::SeqCst);
+
+            if !self.queue_flags.is_empty() {
+                self.stream_buckets
+                    .get(self.current_bucket)
+                    .expect("Invalid bucket")
+                    .fetch_or(self.queue_flags.get_and_clear(), Ordering::SeqCst);
+            }
 
             loop {
                 self.current_bucket += 1;
