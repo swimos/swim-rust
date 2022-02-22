@@ -33,7 +33,7 @@ pub trait ValueDownlinkHandlers<'a, T>:
 {
 }
 
-/// The set of handlers that a value downlink lifecycle supports.
+/// The set of handlers that an event downlink lifecycle supports.
 pub trait EventDownlinkHandlers<'a, T>: OnLinked<'a> + OnEvent<'a, T> + OnUnlinked<'a> {}
 
 /// Description of a lifecycle for a value downlink.
@@ -79,6 +79,26 @@ pub fn for_value_downlink<T>(
     }
 }
 
+type WithSharedValueDownlinkLifecycle<T, Shared, FLinked, FSynced, FEv, FSet, FUnlinked> =
+    StatefulValueDownlinkLifecycle<
+        T,
+        Shared,
+        WithShared<FLinked>,
+        WithShared<FSynced>,
+        WithShared<FEv>,
+        WithShared<FSet>,
+        WithShared<FUnlinked>,
+    >;
+
+type WithSharedEventDownlinkLifecycle<T, Shared, FLinked, FEv, FUnlinked> =
+    StatefulEventDownlinkLifecycle<
+        T,
+        Shared,
+        WithShared<FLinked>,
+        WithShared<FEv>,
+        WithShared<FUnlinked>,
+    >;
+
 impl<T, FLinked, FSynced, FEv, FSet, FUnlinked>
     BasicValueDownlinkLifecycle<T, FLinked, FSynced, FEv, FSet, FUnlinked>
 where
@@ -103,8 +123,7 @@ where
     }
 
     /// Replace the handler that is called when the downlink connects with the specified synchronous
-    /// closure. This operation should be guaranteed to complete quickly to avoid blocking the task
-    /// executing the downlink.
+    /// closure. Running this closure will block the task so it should complete quickly.
     pub fn on_linked_blocking<F>(
         self,
         f: F,
@@ -122,7 +141,7 @@ where
         }
     }
 
-    /// Replace the handler that is called when the synchronizes connects.
+    /// Replace the handler that is called when the downlink synchronizes.
     pub fn on_synced<F>(
         self,
         f: F,
@@ -141,8 +160,7 @@ where
     }
 
     /// Replace the handler that is called when the downlink synchronizes with the specified synchronous
-    /// closure. This operation should be guaranteed to complete quickly to avoid blocking the task
-    /// executing the downlink.
+    /// closure. Running this closure will block the task so it should complete quickly.
     pub fn on_synced_blocking<F>(
         self,
         f: F,
@@ -179,8 +197,7 @@ where
     }
 
     /// Replace the handler that is called when the downlink receives and event with the specified
-    /// synchronous closure. This operation should be guaranteed to complete quickly to avoid blocking
-    /// the task executing the downlink.
+    /// synchronous closure. Running this closure will block the task so it should complete quickly.
     pub fn on_event_blocking<F>(
         self,
         f: F,
@@ -217,8 +234,7 @@ where
     }
 
     /// Replace the handler that is called when the downlink value changes with the specified synchronous
-    /// closure. This operation should be guaranteed to complete quickly to avoid blocking the task
-    /// executing the downlink.
+    /// closure. Running this closure will block the task so it should complete quickly.
     pub fn on_set_blocking<F>(
         self,
         f: F,
@@ -255,8 +271,7 @@ where
     }
 
     /// Replace the handler that is called when the downlink disconnects with the specified synchronous
-    /// closure. This operation should be guaranteed to complete quickly to avoid blocking the task
-    /// executing the downlink.
+    /// closure. Running this closure will block the task so it should complete quickly.
     pub fn on_unlinked_blocking<F>(
         self,
         f: F,
@@ -275,19 +290,10 @@ where
     }
 
     /// Adds shared state this is accessible to all handlers for this downlink.
-    #[allow(clippy::type_complexity)] //There is no way this type can be decomposed.
     pub fn with<Shared>(
         self,
         shared_state: Shared,
-    ) -> StatefulValueDownlinkLifecycle<
-        T,
-        Shared,
-        WithShared<FLinked>,
-        WithShared<FSynced>,
-        WithShared<FEv>,
-        WithShared<FSet>,
-        WithShared<FUnlinked>,
-    > {
+    ) -> WithSharedValueDownlinkLifecycle<T, Shared, FLinked, FSynced, FEv, FSet, FUnlinked> {
         StatefulValueDownlinkLifecycle {
             _value_type: PhantomData,
             shared: shared_state,
@@ -422,8 +428,7 @@ where
     }
 
     /// Replace the handler that is called when the downlink connects with the specified synchronous
-    /// closure. This operation should be guaranteed to complete quickly to avoid blocking the task
-    /// executing the downlink.
+    /// closure. Running this closure will block the task so it should complete quickly.
     pub fn on_linked_blocking<F>(
         self,
         f: F,
@@ -462,8 +467,7 @@ where
     }
 
     /// Replace the handler that is called when the downlink synchronizes with the specified synchronous
-    /// closure. This operation should be guaranteed to complete quickly to avoid blocking the task
-    /// executing the downlink.
+    /// closure. Running this closure will block the task so it should complete quickly.
     pub fn on_synced_blocking<F>(
         self,
         f: F,
@@ -502,8 +506,7 @@ where
     }
 
     /// Replace the handler that is called when the downlink receives a new event with the specified
-    /// synchronous closure. This operation should be guaranteed to complete quickly to avoid blocking the task
-    /// executing the downlink.
+    /// synchronous closure. Running this closure will block the task so it should complete quickly.
     pub fn on_event_blocking<F>(
         self,
         f: F,
@@ -550,8 +553,7 @@ where
     }
 
     /// Replace the handler that is called when the downlink value changes with the specified synchronous
-    /// closure. This operation should be guaranteed to complete quickly to avoid blocking the task
-    /// executing the downlink.
+    /// closure. Running this closure will block the task so it should complete quickly.
     pub fn on_set_blocking<F>(
         self,
         f: F,
@@ -598,8 +600,7 @@ where
     }
 
     /// Replace the handler that is called when the downlink disconnects with the specified synchronous
-    /// closure. This operation should be guaranteed to complete quickly to avoid blocking the task
-    /// executing the downlink.
+    /// closure. Running this closure will block the task so it should complete quickly.
     pub fn on_unlinked_blocking<F>(
         self,
         f: F,
@@ -772,8 +773,7 @@ where
     }
 
     /// Replace the handler that is called when the downlink connects with the specified synchronous
-    /// closure. This operation should be guaranteed to complete quickly to avoid blocking the task
-    /// executing the downlink.
+    /// closure. Running this closure will block the task so it should complete quickly.
     pub fn on_linked_blocking<F>(
         self,
         f: F,
@@ -806,8 +806,7 @@ where
     }
 
     /// Replace the handler that is called when the downlink receives a new event with the specified
-    /// synchronous closure. This operation should be guaranteed to complete quickly to avoid blocking the task
-    /// executing the downlink.
+    /// synchronous closure. Running this closure will block the task so it should complete quickly.
     pub fn on_event_blocking<F>(
         self,
         f: F,
@@ -840,8 +839,7 @@ where
     }
 
     /// Replace the handler that is called when the downlink disconnects with the specified synchronous
-    /// closure. This operation should be guaranteed to complete quickly to avoid blocking the task
-    /// executing the downlink.
+    /// closure. Running this closure will block the task so it should complete quickly.
     pub fn on_unlinked_blocking<F>(
         self,
         f: F,
@@ -858,17 +856,10 @@ where
     }
 
     /// Adds shared state this is accessible to all handlers for this downlink.
-    #[allow(clippy::type_complexity)] //There is no way this type can be decomposed.
     pub fn with<Shared>(
         self,
         shared_state: Shared,
-    ) -> StatefulEventDownlinkLifecycle<
-        T,
-        Shared,
-        WithShared<FLinked>,
-        WithShared<FEv>,
-        WithShared<FUnlinked>,
-    > {
+    ) -> WithSharedEventDownlinkLifecycle<T, Shared, FLinked, FEv, FUnlinked> {
         StatefulEventDownlinkLifecycle {
             _value_type: PhantomData,
             shared: shared_state,
@@ -947,6 +938,8 @@ where
         }
     }
 
+    /// Replace the handler that is called when the downlink connects. Running this closure
+    /// will block the task so it should complete quickly.
     pub fn on_linked_blocking<F>(
         self,
         f: F,
@@ -979,7 +972,8 @@ where
             on_unlinked: self.on_unlinked,
         }
     }
-
+    /// Replace the handler that is called when the downlink receives a new event. Running this closure
+    /// will block the task so it should complete quickly.
     pub fn on_event_blocking<F>(
         self,
         f: F,
@@ -1013,6 +1007,8 @@ where
         }
     }
 
+    /// Replace the handler that is called when the downlink disconnects. Running this closure
+    /// will block the task so it should complete quickly.
     pub fn on_unlinked_blocking<F>(
         self,
         f: F,

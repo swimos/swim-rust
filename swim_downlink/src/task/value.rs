@@ -42,7 +42,7 @@ use crate::ValueDownlinkModel;
 /// #Arguments
 ///
 /// * `model` - The downlink model, providing the lifecycle and a stream of values to set.
-/// * `_path` - The path of the lane to which the downlink is attached.
+/// * `path` - The path of the lane to which the downlink is attached.
 /// * `config` - Configuration parameters to the downlink.
 /// * `input` - Input stream for messages to the downlink from the runtime.
 /// * `output` - Output stream for messages from the downlink to the runtime.

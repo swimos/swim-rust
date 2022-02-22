@@ -24,6 +24,9 @@ use swim_model::path::Path;
 
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 
+use tracing::info_span;
+use tracing_futures::Instrument;
+
 use crate::{EventDownlinkModel, ValueDownlinkModel};
 
 mod event;
@@ -58,7 +61,9 @@ where
         output: ByteWriter,
     ) -> BoxFuture<'static, Result<(), DownlinkTaskError>> {
         let DownlinkTask(model) = self;
-        value::value_dowinlink_task(model, path, config, input, output).boxed()
+        value::value_dowinlink_task(model, path, config, input, output)
+            .instrument(info_span!("Downlink task.", kind = ?DownlinkKind::Value))
+            .boxed()
     }
 }
 
@@ -80,6 +85,8 @@ where
         output: ByteWriter,
     ) -> BoxFuture<'static, Result<(), DownlinkTaskError>> {
         let DownlinkTask(model) = self;
-        event::event_dowinlink_task(model, path, config, input, output).boxed()
+        event::event_dowinlink_task(model, path, config, input, output)
+            .instrument(info_span!("Downlink task.", kind = ?DownlinkKind::Event))
+            .boxed()
     }
 }
