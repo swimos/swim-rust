@@ -168,11 +168,24 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedStructModel<'a>> {
         let (impl_lst, ty_params, where_clause) = new_generics.split_for_impl();
 
         let destructure = Destructure::assign(inner.inner);
+
         let name = inner.inner.name;
-        let write_with = WriteWithFn(inner);
-        let write_into = WriteIntoFn(inner);
         let writer_trait = make_writer_trait();
-        let num_attrs = num_attributes(inner);
+
+        let (write_with, write_into, num_attrs) =
+            if let Some(selector) = inner.inner.newtype_selector() {
+                (
+                    quote! { #selector.write_with(writer) },
+                    quote! { #selector.write_into(writer) },
+                    quote! { 0 },
+                )
+            } else {
+                (
+                    WriteWithFn(inner).to_token_stream(),
+                    WriteIntoFn(inner).to_token_stream(),
+                    num_attributes(inner).to_token_stream(),
+                )
+            };
 
         let writable_impl = quote! {
 
@@ -189,7 +202,7 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedStructModel<'a>> {
                 fn write_with<__W: #writer_trait>(&self, writer: __W) -> core::result::Result<__W::Repr, __W::Error> {
                     use swim_form::structural::write::HeaderWriter;
                     use swim_form::structural::write::BodyWriter;
-                    let num_attrs = swim_form::structural::write::StructuralWritable::num_attributes(self);
+                    let num_attrs = #num_attrs;
                     let #destructure = self;
                     #write_with
                 }
@@ -199,7 +212,7 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedStructModel<'a>> {
                 fn write_into<__W: #writer_trait>(self, writer: __W) -> core::result::Result<__W::Repr, __W::Error> {
                     use swim_form::structural::write::HeaderWriter;
                     use swim_form::structural::write::BodyWriter;
-                    let num_attrs = swim_form::structural::write::StructuralWritable::num_attributes(&self);
+                    let num_attrs = #num_attrs;
                     let #destructure = self;
                     #write_into
                 }
@@ -566,7 +579,7 @@ impl<'a> ToTokens for NumAttrsEnum<'a> {
                 let fld_name = &fld.selector;
                 let binder = fld_name.binder();
                 let pat = match fld_name {
-                    FieldSelector::Named(_) =>  quote!(#enum_name::#var_name { #binder, .. }),
+                    FieldSelector::Named(_) => quote!(#enum_name::#var_name { #binder, .. }),
                     FieldSelector::Ordinal(i) => {
                         let ignore = (0..*i).map(|_| quote!(_));
                         quote!(#enum_name::#var_name(#(#ignore,)* #binder, ..))

@@ -12,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::structural::model::field::FieldSelector;
 use crate::SynValidation;
-use macro_utilities::attr_names::{SCHEMA_PATH, TAG_PATH};
+use macro_utilities::attr_names::{NEWTYPE_PATH, SCHEMA_PATH, TAG_PATH};
 use macro_utilities::Symbol;
 use quote::ToTokens;
 use std::convert::TryFrom;
@@ -136,4 +137,72 @@ pub fn acc_rename(
         Err(e) => Some(e.into()),
     };
     Validation::Validated(state, err.into())
+}
+
+pub enum StructTransform<'a> {
+    Rename(NameTransform),
+    Newtype(Option<FieldSelector<'a>>),
+}
+
+/// Fold operation to extract a struct transform from the attributes on a type.
+pub fn acc_struct_transform(
+    mut state: Option<StructTransform>,
+    nested_meta: syn::NestedMeta,
+) -> SynValidation<Option<StructTransform>> {
+    let err = match StructTransform::try_from(&nested_meta) {
+        Ok(transform) => match (&mut state, transform) {
+            (Some(StructTransform::Rename(_)), StructTransform::Rename(_)) => Some(
+                syn::Error::new_spanned(nested_meta, "Duplicate `rename` tag"),
+            ),
+            (Some(StructTransform::Newtype(_)), StructTransform::Newtype(_)) => Some(
+                syn::Error::new_spanned(nested_meta, "Duplicate `newtype` tag"),
+            ),
+            (None, transform) => match transform {
+                StructTransform::Rename(rename) => {
+                    state = Some(StructTransform::Rename(rename));
+                    None
+                }
+                StructTransform::Newtype(_) => {
+                    state = Some(StructTransform::Newtype(None));
+                    None
+                }
+            },
+            _ => Some(syn::Error::new_spanned(
+                nested_meta,
+                "Cannot use both `rename` and `newtype`",
+            )),
+        },
+        Err(NameTransformError::UnknownAttributeName(name, _)) if name == SCHEMA_PATH => None, //Overlap with other macros which we can ignore.
+        Err(e) => Some(e.into()),
+    };
+    Validation::Validated(state, err.into())
+}
+
+impl<'a> TryFrom<&'a syn::NestedMeta> for StructTransform<'a> {
+    type Error = NameTransformError<'a>;
+
+    fn try_from(nested_meta: &'a syn::NestedMeta) -> Result<Self, Self::Error> {
+        match nested_meta {
+            syn::NestedMeta::Meta(syn::Meta::Path(path)) if path == NEWTYPE_PATH => {
+                if path == NEWTYPE_PATH {
+                    Ok(StructTransform::Newtype(None))
+                } else if let Some(name_str) = path.get_ident().map(|id| id.to_string()) {
+                    Err(NameTransformError::UnknownAttributeName(name_str, path))
+                } else {
+                    Err(NameTransformError::UnknownAttribute(nested_meta))
+                }
+            }
+            syn::NestedMeta::Meta(syn::Meta::NameValue(name)) if name.path == TAG_PATH => Ok(
+                StructTransform::Rename(NameTransform::try_from(nested_meta)?),
+            ),
+            syn::NestedMeta::Meta(syn::Meta::List(lst)) => {
+                if let Some(name_str) = lst.path.get_ident().map(|id| id.to_string()) {
+                    Err(NameTransformError::UnknownAttributeName(name_str, lst))
+                } else {
+                    Err(NameTransformError::UnknownAttribute(nested_meta))
+                }
+            }
+            _ => Err(NameTransformError::UnknownAttribute(nested_meta)),
+        }
+    }
 }

@@ -1,0 +1,39 @@
+jobs:
+  - job: ${{ parameters.name }}
+    displayName: ${{ parameters.displayName }}
+    pool:
+      vmImage: ubuntu-18.04
+
+    steps:
+      # Install rust
+      - template: azure-install-rust.yml
+        parameters:
+          rust_version: ${{ parameters.rust }}
+
+      # Install clippy
+      - script: |
+          rustup component add clippy
+          cargo clippy --version
+        displayName: Install Clippy
+
+      # Install rustfmt
+      - script: |
+          rustup component add rustfmt
+          cargo fmt --version
+        displayName: Install rustfmt
+
+      # Run clippy
+      - script: |
+          cargo clippy --all-features --workspace --all-targets -- -D warnings
+        displayName: Run Clippy
+
+      # Run rustfmt
+      - script: |
+          cargo fmt -- --check
+        displayName: Run rustfmt
+
+      # Run doc
+      - script: |
+          RUSTDOCFLAGS="--cfg docsrs -Dwarnings" 
+          cargo doc --lib --no-deps --all-features --workspace
+        displayName: Run doc
