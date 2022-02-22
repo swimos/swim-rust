@@ -26,8 +26,6 @@ mod on_linked;
 mod on_set;
 mod on_synced;
 mod on_unlinked;
-#[cfg(test)]
-mod tests;
 
 /// The set of handlers that a value downlink lifecycle supports.
 pub trait ValueDownlinkHandlers<'a, T>:
