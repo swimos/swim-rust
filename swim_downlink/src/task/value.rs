@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::fmt::Display;
+
 use crate::model::lifecycle::ValueDownlinkLifecycle;
 use futures::future::join;
 use futures::{Sink, SinkExt, StreamExt};
@@ -20,14 +22,18 @@ use swim_api::error::DownlinkTaskError;
 use swim_api::protocol::downlink::{
     DownlinkNotifiationDecoder, DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder,
 };
+use swim_form::structural::write::StructuralWritable;
 use swim_form::Form;
 use swim_model::path::Path;
+use swim_recon::printer::print_recon;
 use swim_utilities::future::immediate_or_join;
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swim_utilities::trigger;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{FramedRead, FramedWrite};
+use tracing::{info_span, trace};
+use tracing_futures::Instrument;
 
 use crate::ValueDownlinkModel;
 
@@ -42,7 +48,7 @@ use crate::ValueDownlinkModel;
 /// * `output` - Output stream for messages from the downlink to the runtime.
 pub async fn value_dowinlink_task<T, LC>(
     model: ValueDownlinkModel<T, LC>,
-    _path: Path,
+    path: Path,
     config: DownlinkConfig,
     input: ByteReader,
     output: ByteWriter,
@@ -60,9 +66,11 @@ where
         let result = read_task(config, input, lifecycle).await;
         let _ = stop_tx.trigger();
         result
-    };
+    }
+    .instrument(info_span!("Downlink read task.", %path));
     let framed_writer = FramedWrite::new(output, DownlinkOperationEncoder);
-    let write = write_task(framed_writer, set_value, stop_rx);
+    let write = write_task(framed_writer, set_value, stop_rx)
+        .instrument(info_span!("Downlink write task.", %path));
     let (read_result, _) = join(read, write).await;
     read_result
 }
@@ -71,6 +79,20 @@ enum State<T> {
     Unlinked,
     Linked(Option<T>),
     Synced(T),
+}
+
+struct ShowState<'a, T>(&'a State<T>);
+
+impl<'a, T: StructuralWritable> Display for ShowState<'a, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let ShowState(inner) = self;
+        match *inner {
+            State::Unlinked => f.write_str("Unlinked"),
+            State::Linked(Some(v)) => write!(f, "Linked({})", print_recon(v)),
+            State::Linked(_) => f.write_str("Linked"),
+            State::Synced(v) => write!(f, "Synced({})", print_recon(v)),
+        }
+    }
 }
 
 async fn read_task<T, LC>(
@@ -93,38 +115,60 @@ where
     while let Some(result) = framed_read.next().await {
         match result? {
             DownlinkNotification::Linked => {
+                trace!(
+                    "Received Linked in state {state}",
+                    state = ShowState(&state)
+                );
                 if matches!(&state, State::Unlinked) {
                     lifecycle.on_linked().await;
                     state = State::Linked(None);
                 }
             }
-            DownlinkNotification::Synced => match state {
-                State::Linked(Some(value)) => {
-                    lifecycle.on_synced(&value).await;
-                    state = State::Synced(value);
-                }
-                _ => {
-                    return Err(DownlinkTaskError::SyncedWithNoValue);
-                }
-            },
-            DownlinkNotification::Event { body } => match &mut state {
-                State::Linked(value) => {
-                    if events_when_not_synced {
-                        lifecycle.on_event(&body).await;
-                        lifecycle.on_set(value.as_ref(), &body).await;
+            DownlinkNotification::Synced => {
+                trace!(
+                    "Received Synced in state {state}",
+                    state = ShowState(&state)
+                );
+                match state {
+                    State::Linked(Some(value)) => {
+                        lifecycle.on_synced(&value).await;
+                        state = State::Synced(value);
                     }
-                    *value = Some(body);
+                    _ => {
+                        return Err(DownlinkTaskError::SyncedWithNoValue);
+                    }
                 }
-                State::Synced(value) => {
-                    lifecycle.on_event(&body).await;
-                    lifecycle.on_set(Some(value), &body).await;
-                    *value = body;
+            }
+            DownlinkNotification::Event { body } => {
+                trace!(
+                    "Received Event with body '{body}' in state {state}",
+                    body = print_recon(&body),
+                    state = ShowState(&state)
+                );
+                match &mut state {
+                    State::Linked(value) => {
+                        if events_when_not_synced {
+                            lifecycle.on_event(&body).await;
+                            lifecycle.on_set(value.as_ref(), &body).await;
+                        }
+                        *value = Some(body);
+                    }
+                    State::Synced(value) => {
+                        lifecycle.on_event(&body).await;
+                        lifecycle.on_set(Some(value), &body).await;
+                        *value = body;
+                    }
+                    _ => {}
                 }
-                _ => {}
-            },
+            }
             DownlinkNotification::Unlinked => {
+                trace!(
+                    "Received Unlinked in state {state}",
+                    state = ShowState(&state)
+                );
                 lifecycle.on_unlinked().await;
                 if terminate_on_unlinked {
+                    trace!("Terminating on Unlinked.");
                     break;
                 } else {
                     state = State::Unlinked;
@@ -147,6 +191,7 @@ async fn write_task<Snk, T>(
     while let (Some(value), Some(Ok(_)) | None) =
         immediate_or_join(set_stream.next(), framed.flush()).await
     {
+        trace!("Sending command '{cmd}'.", cmd = print_recon(&value));
         let op = DownlinkOperation::new(value);
         if framed.feed(op).await.is_err() {
             break;

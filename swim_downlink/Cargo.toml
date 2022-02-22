@@ -9,11 +9,14 @@ futures = "0.3.4"
 swim_utilities = { path = "../swim_utilities", features = ["io", "trigger"] }
 swim_model = { path = "../api/swim_model" }
 swim_form = { path = "../api/swim_form" }
+swim_recon = { path = "../api/formats/swim_recon" }
 bytes = "1.0"
 tokio = { version = "1.1.1" }
 tokio-util = { version = "0.6.8", features = ["codec"] }
 swim_api = { path = "../api/swim_api" }
 tokio-stream = "0.1.2"
+tracing = "0.1.16"
+tracing-futures = "0.2.4"
 
 [dev-dependencies]
 swim_recon = { path = "../api/formats/swim_recon", features = ["async_parser"] }
