@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use swim_api::error::{DownlinkTaskError, FrameIoError, InvalidFrame};
 use swim_api::{downlink::DownlinkConfig, protocol::downlink::DownlinkNotification};
 
 use tokio::sync::mpsc;
@@ -173,6 +174,36 @@ async fn terminate_after_unlinked() {
             panic!("Task failed: {}", e)
         }
     }
+}
+
+#[tokio::test]
+async fn terminate_after_corrupt_frame() {
+    let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32>>();
+    let lifecycle = make_lifecycle(event_tx);
+    let model = EventDownlinkModel::<i32, _>::new(lifecycle);
+
+    let config = DownlinkConfig {
+        events_when_not_synced: false,
+        terminate_on_unlinked: true,
+    };
+
+    let result = run_downlink_task(
+        DownlinkTask::new(model),
+        config,
+        |mut writer, reader| async move {
+            writer.send_value::<i32>(DownlinkNotification::Linked).await;
+            expect_event(&mut event_rx, TestMessage::Linked).await;
+            writer.send_corrupted_frame().await;
+            (writer, reader, event_rx)
+        },
+    )
+    .await;
+    assert!(matches!(
+        result,
+        Err(DownlinkTaskError::BadFrame(FrameIoError::BadFrame(
+            InvalidFrame::InvalidMessageBody(_)
+        )))
+    ));
 }
 
 #[tokio::test]

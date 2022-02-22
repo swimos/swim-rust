@@ -91,6 +91,8 @@ impl TestReader {
     }
 }
 
+const BAD_UTF8: &[u8] = &[0xf0, 0x28, 0x8c, 0x28, 0x00, 0x00, 0x00];
+
 impl TestWriter {
     async fn send_value<T>(&mut self, notification: DownlinkNotification<T>)
     where
@@ -107,6 +109,12 @@ impl TestWriter {
             }
         };
         assert!(writer.send(raw).await.is_ok());
+    }
+
+    async fn send_corrupted_frame(&mut self) {
+        let TestWriter(writer) = self;
+        let bad = DownlinkNotification::Event { body: BAD_UTF8 };
+        assert!(writer.send(bad).await.is_ok());
     }
 }
 
