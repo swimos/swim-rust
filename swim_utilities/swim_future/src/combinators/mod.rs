@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod immediate_or;
 #[cfg(test)]
 mod tests;
 
@@ -24,6 +25,10 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::Notify;
+
+pub use immediate_or::{
+    immediate_or_join, immediate_or_start, ImmediateOrJoin, ImmediateOrStart, SecondaryResult,
+};
 
 /// A future that transforms another future using [`Into`].
 #[pin_project]
