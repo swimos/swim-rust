@@ -42,6 +42,7 @@ use crate::compat::{
 };
 use crate::routing::RoutingAddr;
 
+mod key;
 #[cfg(test)]
 mod tests;
 
