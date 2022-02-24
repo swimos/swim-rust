@@ -84,6 +84,8 @@ pub struct RawMapOperationDecoder;
 const UPDATE: u8 = 0;
 const REMOVE: u8 = 1;
 const CLEAR: u8 = 2;
+const TAKE: u8 = 3;
+const DROP: u8 = 4;
 
 use super::{LEN_SIZE, TAG_SIZE};
 
@@ -383,5 +385,99 @@ impl<K: StructuralWritable, V: StructuralWritable> Encoder<MapOperation<K, V>>
             }
         }
         Ok(())
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum MapMessage<K, V> {
+    Operation(MapOperation<K, V>),
+    Take(u64),
+    Drop(u64),
+}
+
+impl<K, V> From<MapOperation<K, V>> for MapMessage<K, V> {
+    fn from(op: MapOperation<K, V>) -> Self {
+        MapMessage::Operation(op)
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct MapMessageEncoder<Inner>(Inner);
+
+impl<Inner> MapMessageEncoder<Inner> {
+    pub fn new(inner: Inner) -> Self {
+        MapMessageEncoder(inner)
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct MapMessageDecoder<Inner>(Inner);
+
+impl<Inner> MapMessageDecoder<Inner> {
+    pub fn new(inner: Inner) -> Self {
+        MapMessageDecoder(inner)
+    }
+}
+
+impl<K, V, Inner> Encoder<MapMessage<K, V>> for MapMessageEncoder<Inner>
+where
+    Inner: Encoder<MapOperation<K, V>>,
+{
+    type Error = Inner::Error;
+
+    fn encode(&mut self, item: MapMessage<K, V>, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        let MapMessageEncoder(inner) = self;
+        match item {
+            MapMessage::Operation(op) => inner.encode(op, dst),
+            MapMessage::Take(n) => {
+                dst.reserve(TAG_SIZE + LEN_SIZE);
+                dst.put_u8(TAKE);
+                dst.put_u64(n);
+                Ok(())
+            }
+            MapMessage::Drop(n) => {
+                dst.reserve(TAG_SIZE + LEN_SIZE);
+                dst.put_u8(DROP);
+                dst.put_u64(n);
+                Ok(())
+            }
+        }
+    }
+}
+
+impl<K, V, Inner> Decoder for MapMessageDecoder<Inner>
+where
+    Inner: Decoder<Item = MapOperation<K, V>>,
+{
+    type Item = MapMessage<K, V>;
+
+    type Error = Inner::Error;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        let MapMessageDecoder(inner) = self;
+        if src.remaining() < TAG_SIZE {
+            src.reserve(TAG_SIZE);
+            return Ok(None);
+        }
+        match src.as_ref()[0] {
+            tag @ (TAKE | DROP) => {
+                let required = TAG_SIZE + LEN_SIZE;
+                if src.remaining() < required {
+                    src.reserve(required - src.remaining());
+                    return Ok(None);
+                }
+                src.advance(TAG_SIZE);
+                let n = src.get_u64();
+                Ok(Some(if tag == TAKE {
+                    MapMessage::Take(n)
+                } else {
+                    MapMessage::Drop(n)
+                }))
+            }
+            _ => {
+                let result = inner.decode(src)?;
+                Ok(result.map(MapMessage::Operation))
+            }
+        }
     }
 }

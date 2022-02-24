@@ -18,11 +18,13 @@ use swim_form::Form;
 use swim_recon::printer::print_recon_compact;
 use tokio_util::codec::{Decoder, Encoder};
 
+use crate::protocol::map::{DROP, TAKE};
 use crate::protocol::{LEN_SIZE, TAG_SIZE};
 
 use super::{
-    MapOperation, MapOperationDecoder, MapOperationEncoder, RawMapOperation,
-    RawMapOperationDecoder, RawMapOperationEncoder, CLEAR, REMOVE, UPDATE,
+    MapMessage, MapMessageDecoder, MapMessageEncoder, MapOperation, MapOperationDecoder,
+    MapOperationEncoder, RawMapOperation, RawMapOperationDecoder, RawMapOperationEncoder, CLEAR,
+    REMOVE, UPDATE,
 };
 
 fn encode_raw_operation(op: MapOperation<&[u8], &[u8]>) -> Bytes {
@@ -43,6 +45,7 @@ fn round_trip<K: StructuralWritable, V: StructuralWritable>(
     let mut buffer = BytesMut::new();
     assert!(MapOperationEncoder.encode(op, &mut buffer).is_ok());
     let result = RawMapOperationDecoder.decode(&mut buffer);
+    assert!(buffer.is_empty());
     match result {
         Ok(Some(value)) => value,
         Ok(None) => {
@@ -61,6 +64,7 @@ fn round_trip_raw<K: RecognizerReadable, V: RecognizerReadable>(
     assert!(RawMapOperationEncoder.encode(op, &mut buffer).is_ok());
     let mut decoder = MapOperationDecoder::default();
     let result = decoder.decode(&mut buffer);
+    assert!(buffer.is_empty());
     match result {
         Ok(Some(value)) => value,
         Ok(None) => {
@@ -172,7 +176,7 @@ fn encode_remove_operation() {
 }
 
 #[test]
-fn decode_clear_notification() {
+fn decode_clear_operation() {
     let restored = round_trip_raw::<String, String>(MapOperation::Clear);
     assert_eq!(restored, MapOperation::Clear);
 
@@ -181,7 +185,7 @@ fn decode_clear_notification() {
 }
 
 #[test]
-fn decode_update_notification() {
+fn decode_update_operation() {
     let raw = RawMapOperation::Update {
         key: Bytes::from_static(KEY.as_bytes()),
         value: Bytes::from_static(VALUE.as_bytes()),
@@ -216,7 +220,7 @@ fn decode_update_notification() {
 }
 
 #[test]
-fn decode_remove_notification() {
+fn decode_remove_operation() {
     let raw = RawMapOperation::Remove {
         key: Bytes::from_static(KEY.as_bytes()),
     };
@@ -236,4 +240,74 @@ fn decode_remove_notification() {
 
     let restored = round_trip::<String, Example>(op);
     assert_eq!(restored, MapOperation::Remove { key: expected_key });
+}
+
+fn encode_message<K: StructuralWritable, V: StructuralWritable>(op: MapMessage<K, V>) -> Bytes {
+    let mut buffer = BytesMut::new();
+    let mut encoder = MapMessageEncoder::new(MapOperationEncoder);
+    assert!(encoder.encode(op, &mut buffer).is_ok());
+    buffer.freeze()
+}
+
+fn round_trip_message<K: Form, V: Form>(op: MapMessage<K, V>) -> MapMessage<K, V> {
+    let mut buffer = BytesMut::new();
+    let mut encoder = MapMessageEncoder::new(MapOperationEncoder);
+    let mut decoder = MapMessageDecoder::new(MapOperationDecoder::<K, V>::default());
+    assert!(encoder.encode(op, &mut buffer).is_ok());
+    let result = decoder.decode(&mut buffer);
+    assert!(buffer.is_empty());
+    match result {
+        Ok(Some(value)) => value,
+        Ok(None) => {
+            panic!("Incomplete.");
+        }
+        Err(e) => {
+            panic!("Bad frame: {}", e);
+        }
+    }
+}
+
+#[test]
+fn encode_take_message() {
+    let mut bytes = encode_message::<String, String>(MapMessage::Take(7));
+    assert_eq!(bytes.len(), TAG_SIZE + LEN_SIZE);
+    assert_eq!(bytes.get_u8(), TAKE);
+    assert_eq!(bytes.get_u64(), 7);
+}
+
+#[test]
+fn encode_drop_message() {
+    let mut bytes = encode_message::<String, String>(MapMessage::Drop(9));
+    assert_eq!(bytes.len(), TAG_SIZE + LEN_SIZE);
+    assert_eq!(bytes.get_u8(), DROP);
+    assert_eq!(bytes.get_u64(), 9);
+}
+
+#[test]
+fn encode_op_message() {
+    let mut bytes = encode_message::<String, String>(MapOperation::Clear.into());
+    assert_eq!(bytes.len(), TAG_SIZE);
+    assert_eq!(bytes.get_u8(), CLEAR);
+}
+
+#[test]
+fn decode_take_message() {
+    let restored = round_trip_message::<String, String>(MapMessage::Take(678));
+    assert_eq!(restored, MapMessage::Take(678));
+}
+
+#[test]
+fn decode_drop_message() {
+    let restored = round_trip_message::<String, String>(MapMessage::Drop(75783932));
+    assert_eq!(restored, MapMessage::Drop(75783932));
+}
+
+#[test]
+fn decode_op_message() {
+    let op = MapOperation::Update {
+        key: KEY.to_string(),
+        value: VALUE.to_string(),
+    };
+    let restored = round_trip_message::<String, String>(op.clone().into());
+    assert_eq!(restored, MapMessage::Operation(op));
 }
