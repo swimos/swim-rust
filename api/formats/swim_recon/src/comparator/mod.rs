@@ -108,6 +108,12 @@ fn incremental_compare<
                 validator_2.feed_event(event_2);
             }
 
+            (Some(Err(first_err)), Some(Err(second_err))) => {
+                if first_err != second_err {
+                    return false;
+                }
+            }
+
             (Some(Err(_)), _) | (_, Some(Err(_))) => {
                 return false;
             }
@@ -118,7 +124,11 @@ fn incremental_compare<
         }
 
         if validator_1 != validator_2 {
-            return false;
+            return if validator_1.has_invalid_state() && validator_2.has_invalid_state() {
+                Iterator::eq(first_iter, second_iter)
+            } else {
+                false
+            };
         }
     }
 }
@@ -366,6 +376,10 @@ impl ValueValidator {
             stack: SmallVec::with_capacity(4),
             slot_key: None,
         }
+    }
+
+    fn has_invalid_state(&self) -> bool {
+        self.state == ValidatorState::Invalid
     }
 
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<ValueType> {
