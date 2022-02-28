@@ -16,6 +16,8 @@ use bytes::Bytes;
 use std::hash::{Hash, Hasher};
 use swim_recon::comparator;
 
+/// Wraps an array of UTF-8 bytes and compares and hases them by their interpretation as
+/// recon documents.
 #[derive(Debug, Clone, Eq)]
 pub struct ReconKey {
     content: Bytes,
