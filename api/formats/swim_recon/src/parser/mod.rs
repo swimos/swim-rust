@@ -22,6 +22,8 @@ mod tokens;
 
 pub use crate::parser::error::ParseError;
 use nom_locate::LocatedSpan;
+pub use record::IncrementalReconParser;
+pub use record::ParseIterator;
 use std::borrow::Cow;
 use swim_form::structural::read::event::ReadEvent;
 use swim_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
@@ -31,7 +33,6 @@ use swim_model::Value;
 /// Wraps a string in a structure that keeps track of the line and column
 /// as the input is parsed.
 pub type Span<'a> = LocatedSpan<&'a str>;
-pub use record::IncrementalReconParser;
 
 #[derive(Debug)]
 enum FinalAttrStage<'a> {

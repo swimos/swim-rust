@@ -14,8 +14,10 @@
 
 use crate::structural::read::error::ExpectedEvent;
 use crate::structural::read::ReadError;
+use num_traits::ToPrimitive;
 use std::borrow::Cow;
-use swim_model::bigint::{BigInt, BigUint};
+use std::hash::{Hash, Hasher};
+use swim_model::bigint::{BigInt, BigUint, ToBigInt};
 use swim_model::Text;
 use swim_model::ValueKind;
 
@@ -25,7 +27,7 @@ use swim_model::ValueKind;
 /// occur between the slot key and the slot value). If a string does not require escaping
 /// it will be provided as a reference into the original input rather than as separate
 /// allocation.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Hash)]
 pub enum ReadEvent<'a> {
     Extant,
     TextValue(Cow<'a, str>),
@@ -70,13 +72,119 @@ impl<'a> ReadEvent<'a> {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 pub enum NumericValue {
     Int(i64),
     UInt(u64),
     BigInt(BigInt),
     BigUint(BigUint),
     Float(f64),
+}
+
+impl Hash for NumericValue {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        const INT_HASH: u8 = 0;
+        const BIGINT_HASH: u8 = 1;
+        const FLOAT64_HASH: u8 = 2;
+
+        match self {
+            NumericValue::Int(n) => {
+                state.write_u8(INT_HASH);
+                state.write_i128(*n as i128);
+            }
+            NumericValue::UInt(n) => {
+                state.write_u8(INT_HASH);
+                state.write_i128(*n as i128);
+            }
+            NumericValue::BigInt(bi) => {
+                if let Some(n) = bi.to_i128() {
+                    state.write_u8(INT_HASH);
+                    state.write_i128(n as i128);
+                } else {
+                    state.write_u8(BIGINT_HASH);
+                    bi.hash(state);
+                }
+            }
+            NumericValue::BigUint(bi) => {
+                if let Some(n) = bi.to_i128() {
+                    state.write_u8(INT_HASH);
+                    state.write_i128(n as i128);
+                } else if let Some(n) = bi.to_bigint() {
+                    state.write_u8(BIGINT_HASH);
+                    n.hash(state);
+                } else {
+                    unreachable!();
+                }
+            }
+            NumericValue::Float(x) => {
+                state.write_u8(FLOAT64_HASH);
+                if x.is_nan() {
+                    state.write_u64(0);
+                } else {
+                    state.write_u64(x.to_bits());
+                }
+            }
+        }
+    }
+}
+
+impl PartialEq for NumericValue {
+    fn eq(&self, other: &Self) -> bool {
+        match self {
+            NumericValue::Int(n) => match other {
+                NumericValue::Int(m) => n == m,
+                NumericValue::UInt(m) => i64::try_from(*m).map(|ref m| n == m).unwrap_or(false),
+                NumericValue::BigInt(big_m) => big_m.to_i64().map(|ref m| n == m).unwrap_or(false),
+                NumericValue::BigUint(big_m) => big_m.to_i64().map(|ref m| n == m).unwrap_or(false),
+                NumericValue::Float(_) => false,
+            },
+            NumericValue::UInt(n) => match other {
+                NumericValue::Int(m) => u64::try_from(*m).map(|ref m| n == m).unwrap_or(false),
+                NumericValue::UInt(m) => n == m,
+                NumericValue::BigInt(big_m) => big_m.to_u64().map(|ref m| n == m).unwrap_or(false),
+                NumericValue::BigUint(big_m) => big_m.to_u64().map(|ref m| n == m).unwrap_or(false),
+                NumericValue::Float(_) => false,
+            },
+            NumericValue::BigInt(left) => match other {
+                NumericValue::Int(right) => {
+                    left.to_i64().map(|ref left| left == right).unwrap_or(false)
+                }
+                NumericValue::UInt(right) => {
+                    left.to_u64().map(|ref left| left == right).unwrap_or(false)
+                }
+                NumericValue::BigInt(right) => left == right,
+                NumericValue::BigUint(right) => right
+                    .to_bigint()
+                    .map(|ref right| left == right)
+                    .unwrap_or(false),
+                NumericValue::Float(_) => false,
+            },
+            NumericValue::BigUint(left) => match other {
+                NumericValue::Int(right) => {
+                    left.to_i64().map(|ref left| left == right).unwrap_or(false)
+                }
+                NumericValue::UInt(right) => {
+                    left.to_u64().map(|ref left| left == right).unwrap_or(false)
+                }
+                NumericValue::BigInt(right) => left
+                    .to_bigint()
+                    .map(|ref left| left == right)
+                    .unwrap_or(false),
+                NumericValue::BigUint(right) => left == right,
+                NumericValue::Float(_) => false,
+            },
+            NumericValue::Float(x) => match other {
+                NumericValue::Float(y) => {
+                    if x.is_nan() {
+                        y.is_nan()
+                    } else {
+                        x == y
+                    }
+                }
+                _ => false,
+            },
+        }
+    }
 }
 
 impl<'a> From<u8> for ReadEvent<'a> {

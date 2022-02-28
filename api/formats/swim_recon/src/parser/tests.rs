@@ -800,7 +800,7 @@ fn missing_items() {
             ReadEvent::Extant,
             string_event("two"),
             uint_event(3),
-            ReadEvent::EndRecord
+            ReadEvent::EndRecord,
         ]
     );
 
@@ -812,7 +812,7 @@ fn missing_items() {
             uint_event(1),
             ReadEvent::Extant,
             uint_event(3),
-            ReadEvent::EndRecord
+            ReadEvent::EndRecord,
         ]
     );
 
@@ -824,7 +824,7 @@ fn missing_items() {
             uint_event(1),
             string_event("two"),
             ReadEvent::Extant,
-            ReadEvent::EndRecord
+            ReadEvent::EndRecord,
         ]
     );
 }
