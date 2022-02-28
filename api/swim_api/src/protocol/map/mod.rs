@@ -23,6 +23,8 @@ mod tests;
 
 use crate::error::{FrameIoError, InvalidFrame};
 
+/// An operation that can be applied to a map lane. This type is used by map uplinks and downlinks
+/// to describe alterations to the lane.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum MapOperation<K, V> {
     Update { key: K, value: V },
@@ -388,6 +390,10 @@ impl<K: StructuralWritable, V: StructuralWritable> Encoder<MapOperation<K, V>>
     }
 }
 
+/// Reprsentation of map lane messages (used to form the body of Recond messages when operating)
+/// on downlinks. This extends [`MapOperation`] with `Take` (retain the first `n` items) and `Drop`
+/// (remove teh first `n` items). We never use these internally but must support them for communicating
+/// with other implementations.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum MapMessage<K, V> {
     Operation(MapOperation<K, V>),
