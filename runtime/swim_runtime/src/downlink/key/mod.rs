@@ -12,18 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use bytes::Bytes;
 use std::hash::{Hash, Hasher};
 use swim_recon::comparator;
 
 #[derive(Debug, Clone, Eq)]
 pub struct ReconKey {
-    content: Box<str>,
+    content: Bytes,
 }
 
 impl From<String> for ReconKey {
     fn from(content: String) -> Self {
         ReconKey {
-            content: content.into_boxed_str(),
+            content: Bytes::from(content.into_bytes()),
         }
     }
 }
@@ -43,9 +44,19 @@ impl TryFrom<&[u8]> for ReconKey {
     }
 }
 
+impl TryFrom<Bytes> for ReconKey {
+    type Error = std::str::Utf8Error;
+
+    fn try_from(content: Bytes) -> Result<Self, Self::Error> {
+        std::str::from_utf8(content.as_ref())?;
+        Ok(ReconKey { content })
+    }
+}
+
 impl AsRef<str> for ReconKey {
     fn as_ref(&self) -> &str {
-        &self.content
+        // Safe as we only all a key to be constructed from bytes containg valid UTF8.
+        unsafe { std::str::from_utf8_unchecked(self.content.as_ref()) }
     }
 }
 
@@ -59,5 +70,15 @@ impl Hash for ReconKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
         //TODO Use the Recon hasher.
         self.content.hash(state)
+    }
+}
+
+impl ReconKey {
+    pub fn into_bytes(self) -> Bytes {
+        self.content
+    }
+
+    pub fn as_bytes(&self) -> &Bytes {
+        &self.content
     }
 }

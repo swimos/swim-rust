@@ -42,7 +42,8 @@ use crate::compat::{
 };
 use crate::routing::RoutingAddr;
 
-mod key;
+pub mod key;
+pub mod map_queue;
 #[cfg(test)]
 mod tests;
 

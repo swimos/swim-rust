@@ -1,0 +1,160 @@
+// Copyright 2015-2021 Swim Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use std::{
+    collections::{hash_map::RandomState, HashMap, VecDeque},
+    hash::BuildHasher,
+};
+
+use bytes::{BufMut, Bytes, BytesMut};
+use swim_api::protocol::map::{MapOperation, RawMapOperation};
+
+use super::key::ReconKey;
+
+#[cfg(test)]
+mod tests;
+
+type QueueEntry = MapOperation<ReconKey, BytesMut>;
+
+#[derive(Debug)]
+pub struct MapOperationQueue<S = RandomState> {
+    buffer: BytesMut,
+    head_epoch: usize,
+    queue: VecDeque<QueueEntry>,
+    epoch_map: HashMap<ReconKey, usize, S>,
+}
+
+impl<S> MapOperationQueue<S> {
+    pub fn with_hasher(hash_builder: S) -> Self {
+        MapOperationQueue {
+            buffer: BytesMut::new(),
+            head_epoch: 0,
+            queue: VecDeque::new(),
+            epoch_map: HashMap::with_hasher(hash_builder),
+        }
+    }
+}
+
+impl MapOperationQueue<RandomState> {
+    pub fn new() -> Self {
+        Self::with_hasher(RandomState::new())
+    }
+}
+
+impl Default for MapOperationQueue<RandomState> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn make_copy(target: &mut BytesMut, bytes: Bytes) -> BytesMut {
+    target.put(bytes);
+    target.split()
+}
+
+impl<S: BuildHasher> MapOperationQueue<S> {
+    pub fn push(&mut self, operation: RawMapOperation) -> Result<(), std::str::Utf8Error> {
+        let MapOperationQueue {
+            buffer,
+            head_epoch,
+            queue,
+            epoch_map,
+        } = self;
+        match operation {
+            RawMapOperation::Update { key, value } => {
+                let recon_key = ReconKey::try_from(make_copy(buffer, key).freeze())?;
+                let slot = epoch_map.get(&recon_key).and_then(|epoch| {
+                    let index = epoch.wrapping_sub(*head_epoch);
+                    debug_assert!(index < queue.len());
+                    queue.get_mut(index)
+                });
+                if let Some(entry) = slot {
+                    match entry {
+                        QueueEntry::Update { value: old, .. } if old.capacity() >= value.len() => {
+                            old.clear();
+                            old.put(value);
+                        }
+                        _ => {
+                            *entry = QueueEntry::Update {
+                                key: recon_key,
+                                value: make_copy(buffer, value),
+                            };
+                        }
+                    }
+                } else {
+                    let epoch = head_epoch.wrapping_add(queue.len());
+                    let key = recon_key.clone();
+                    epoch_map.insert(recon_key, epoch);
+                    queue.push_back(QueueEntry::Update {
+                        key,
+                        value: make_copy(buffer, value),
+                    });
+                }
+            }
+            RawMapOperation::Remove { key } => {
+                let recon_key = ReconKey::try_from(key)?;
+                let slot = epoch_map.get(&recon_key).and_then(|epoch| {
+                    let index = epoch.wrapping_sub(*head_epoch);
+                    debug_assert!(index < queue.len());
+                    queue.get_mut(index)
+                });
+                if let Some(entry) = slot {
+                    *entry = QueueEntry::Remove { key: recon_key };
+                } else {
+                    let epoch = head_epoch.wrapping_add(queue.len());
+                    let key = recon_key.clone();
+                    epoch_map.insert(recon_key, epoch);
+                    queue.push_back(QueueEntry::Remove { key });
+                }
+            }
+            RawMapOperation::Clear => {
+                *head_epoch = 0;
+                queue.clear();
+                epoch_map.clear();
+                queue.push_back(QueueEntry::Clear);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn pop(&mut self) -> Option<RawMapOperation> {
+        let MapOperationQueue {
+            head_epoch,
+            queue,
+            epoch_map,
+            ..
+        } = self;
+        if let Some(entry) = queue.pop_front() {
+            *head_epoch = head_epoch.wrapping_add(1);
+            Some(match entry {
+                MapOperation::Update { key, value } => {
+                    epoch_map.remove(&key);
+                    MapOperation::Update {
+                        key: key.into_bytes(),
+                        value: value.freeze(),
+                    }
+                }
+                MapOperation::Remove { key } => {
+                    epoch_map.remove(&key);
+                    MapOperation::Remove {
+                        key: key.into_bytes(),
+                    }
+                }
+                MapOperation::Clear => MapOperation::Clear,
+            })
+        } else {
+            None
+        }
+    }
+}
