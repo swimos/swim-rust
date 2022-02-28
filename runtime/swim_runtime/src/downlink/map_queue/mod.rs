@@ -27,6 +27,16 @@ mod tests;
 
 type QueueEntry = MapOperation<ReconKey, BytesMut>;
 
+/// A queue of map operations to be sent by a transmitter of state updates for a map lane. If
+/// an update/removal is sent for a key that is already in the queue this will replace the
+/// existing entry (without altering its position in the queue) rather than being pushed at
+/// the tail. If a clear operation is pushed into the queue, the queue will be emptied and the
+/// clear pushed at the head.
+///
+/// # Notes
+///
+/// The queue contains an internal hash map, the hasing of which can be controlled via the type
+/// parameter.
 #[derive(Debug)]
 pub struct MapOperationQueue<S = RandomState> {
     buffer: BytesMut,
@@ -74,6 +84,11 @@ impl<S> MapOperationQueue<S> {
 }
 
 impl<S: BuildHasher> MapOperationQueue<S> {
+    /// Push an operation into the queue. It is necessary for the key to contain valud UTF-8 for
+    /// it to be possible to compare keys and, if this is not the case, this operation will fail.
+    ///
+    /// # Arguments
+    /// * `operation` - The operation push into the queue (any key must be valid UTF-8).
     pub fn push(&mut self, operation: RawMapOperation) -> Result<(), std::str::Utf8Error> {
         let MapOperationQueue {
             buffer,
@@ -138,6 +153,7 @@ impl<S: BuildHasher> MapOperationQueue<S> {
         Ok(())
     }
 
+    /// Attempt to remove the head of the queue.
     pub fn pop(&mut self) -> Option<RawMapOperation> {
         let MapOperationQueue {
             head_epoch,
