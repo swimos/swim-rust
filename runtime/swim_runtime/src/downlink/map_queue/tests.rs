@@ -209,11 +209,12 @@ fn overwrite_in_middle() {
     }
     assert_eq!(queue.len(), 5);
 
+    assert_eq!(queue.pop(), Some(update("key1", "value1")));
+
     let upd = update("key3", "replaced");
     assert!(queue.push(upd).is_ok());
-    assert_eq!(queue.len(), 5);
+    assert_eq!(queue.len(), 4);
 
-    assert_eq!(queue.pop(), Some(update("key1", "value1")));
     assert_eq!(queue.pop(), Some(update("key2", "value2")));
     assert_eq!(queue.pop(), Some(update("key3", "replaced")));
     assert_eq!(queue.pop(), Some(update("key4", "value4")));
