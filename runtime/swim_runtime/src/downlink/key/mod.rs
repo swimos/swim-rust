@@ -77,8 +77,4 @@ impl ReconKey {
     pub fn into_bytes(self) -> Bytes {
         self.content
     }
-
-    pub fn as_bytes(&self) -> &Bytes {
-        &self.content
-    }
 }

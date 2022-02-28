@@ -63,6 +63,16 @@ fn make_copy(target: &mut BytesMut, bytes: Bytes) -> BytesMut {
     target.split()
 }
 
+impl<S> MapOperationQueue<S> {
+    pub fn is_empty(&self) -> bool {
+        self.queue.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.queue.len()
+    }
+}
+
 impl<S: BuildHasher> MapOperationQueue<S> {
     pub fn push(&mut self, operation: RawMapOperation) -> Result<(), std::str::Utf8Error> {
         let MapOperationQueue {
