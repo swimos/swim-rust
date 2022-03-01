@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::parser::HashParseIterator;
 use crate::parser::{ParseError, Span};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
@@ -22,6 +23,14 @@ use swim_form::structural::read::event::ReadEvent;
 mod tests;
 
 pub fn calculate_hash<H: Hasher + Clone>(value: &str, hasher: H) -> Result<u64, HashError> {
+    let mut parse_iterator = HashParseIterator::new(Span::new(value));
+
+    eprintln!("start parse_iterator.input = {:?}", parse_iterator.input);
+    parse_iterator.parse();
+    // eprintln!("end parse_iterator.input = {:?}", parse_iterator.input);
+
+    //Todo use the nom combinators here
+
     hash_incremental(
         &mut crate::parser::ParseIterator::new(Span::new(value), false),
         hasher,
