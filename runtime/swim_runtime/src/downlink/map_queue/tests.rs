@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::hash_map::RandomState;
+
 use bytes::{BufMut, Bytes, BytesMut};
 
 use super::MapOperationQueue;
@@ -252,8 +254,10 @@ fn clear_when_filled() {
 // actually ocurr but we should be robust against it.
 #[test]
 fn epoch_overflow() {
-    let mut queue = MapOperationQueue::default();
-    queue.head_epoch = usize::MAX - 2;
+    let mut queue = MapOperationQueue::<RandomState> {
+        head_epoch: usize::MAX - 2,
+        ..Default::default()
+    };
 
     for i in 0..5 {
         let key = format!("key{}", i);

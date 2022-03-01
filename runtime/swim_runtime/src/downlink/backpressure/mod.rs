@@ -12,16 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{convert::Infallible, str::Utf8Error, fmt::Display};
+use std::{convert::Infallible, fmt::Display, str::Utf8Error};
 
-use bytes::{Bytes, BytesMut, BufMut};
-use swim_api::protocol::{downlink::{DownlinkOperation, DownlinkOperationDecoder}, map::{RawMapOperation, RawMapOperationEncoder, RawMapOperationDecoder}};
+use bytes::{BufMut, Bytes, BytesMut};
+use swim_api::protocol::{
+    downlink::{DownlinkOperation, DownlinkOperationDecoder},
+    map::{RawMapOperation, RawMapOperationDecoder, RawMapOperationEncoder},
+};
 use tokio_util::codec::{Decoder, Encoder};
 
 use super::map_queue::MapOperationQueue;
 
 pub trait DownlinkBackpressure {
-
     type Operation;
     type Dec: Decoder<Item = Self::Operation>;
     type Err: Display;
@@ -35,7 +37,6 @@ pub trait DownlinkBackpressure {
     fn has_data(&self) -> bool;
 
     fn prepare_write(&mut self, buffer: &mut BytesMut);
-
 }
 
 #[derive(Debug)]
@@ -43,7 +44,7 @@ pub enum DebugEvent {
     HasData(bool),
     Push(Vec<u8>),
     WriteDirect(Vec<u8>),
-    PrepareWrite(Vec<u8>, Vec<u8>)
+    PrepareWrite(Vec<u8>, Vec<u8>),
 }
 
 #[derive(Debug, Default)]
@@ -53,14 +54,12 @@ pub struct ValueBackpressure {
 }
 
 impl ValueBackpressure {
-
     pub fn new(tx: tokio::sync::mpsc::UnboundedSender<DebugEvent>) -> Self {
         ValueBackpressure {
             tx: Some(tx),
             current: Default::default(),
         }
     }
-
 }
 
 #[derive(Debug, Default)]
@@ -82,11 +81,11 @@ impl DownlinkBackpressure for ValueBackpressure {
     fn push_operation(&mut self, op: Self::Operation) -> Result<(), Infallible> {
         let ValueBackpressure { tx, current } = self;
         let DownlinkOperation { body } = op;
-        
+
         if let Some(tx) = tx {
             let _ = tx.send(DebugEvent::Push(body.to_vec()));
         }
-        
+        current.clear();
         current.reserve(body.len());
         current.put(body);
         Ok(())
@@ -104,13 +103,17 @@ impl DownlinkBackpressure for ValueBackpressure {
         if let Some(tx) = &self.tx {
             let _ = tx.send(DebugEvent::WriteDirect(body.to_vec()));
         }
+        buffer.clear();
         buffer.reserve(body.len());
         buffer.put(body);
     }
 
     fn prepare_write(&mut self, buffer: &mut BytesMut) {
         if let Some(tx) = &self.tx {
-            let _ = tx.send(DebugEvent::PrepareWrite(self.current.to_vec(), buffer.to_vec()));
+            let _ = tx.send(DebugEvent::PrepareWrite(
+                self.current.to_vec(),
+                buffer.to_vec(),
+            ));
         }
         std::mem::swap(&mut self.current, buffer);
         self.current.clear()
@@ -118,7 +121,6 @@ impl DownlinkBackpressure for ValueBackpressure {
 }
 
 impl DownlinkBackpressure for MapBackpressure {
-    
     type Operation = RawMapOperation;
 
     type Dec = RawMapOperationDecoder;
@@ -137,20 +139,20 @@ impl DownlinkBackpressure for MapBackpressure {
     }
 
     fn write_direct(&mut self, op: Self::Operation, buffer: &mut BytesMut) {
-        let MapBackpressure {
-            encoder, ..
-        } = self;
-         // Encoding the operation cannot fail.
-        encoder.encode(op, buffer).expect("Encoding should be unfallible.");
+        let MapBackpressure { encoder, .. } = self;
+        // Encoding the operation cannot fail.
+        encoder
+            .encode(op, buffer)
+            .expect("Encoding should be unfallible.");
     }
 
     fn prepare_write(&mut self, buffer: &mut BytesMut) {
-        let MapBackpressure {
-            queue, encoder,
-        } = self;
+        let MapBackpressure { queue, encoder } = self;
         if let Some(head) = queue.pop() {
             // Encoding the operation cannot fail.
-            encoder.encode(head, buffer).expect("Encoding should be unfallible.");
+            encoder
+                .encode(head, buffer)
+                .expect("Encoding should be unfallible.");
         }
     }
 }
