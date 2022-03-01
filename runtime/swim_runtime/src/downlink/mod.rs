@@ -42,6 +42,7 @@ use crate::compat::{
 };
 use crate::routing::RoutingAddr;
 
+pub mod backpressure;
 mod key;
 pub mod map_queue;
 #[cfg(test)]
