@@ -25,16 +25,10 @@ mod tests;
 pub fn calculate_hash<H: Hasher + Clone>(value: &str, hasher: H) -> Result<u64, HashError> {
     let mut parse_iterator = HashParseIterator::new(Span::new(value));
 
-    eprintln!("start parse_iterator.input = {:?}", parse_iterator.input);
-    parse_iterator.parse();
-    // eprintln!("end parse_iterator.input = {:?}", parse_iterator.input);
-
-    //Todo use the nom combinators here
-
-    hash_incremental(
-        &mut crate::parser::ParseIterator::new(Span::new(value), false),
-        hasher,
-    )
+    // eprintln!("start parse_iterator.input = {:?}", parse_iterator.input);
+    parse_iterator
+        .hash()
+        .map_err(|err| HashError(ParseError::InvalidEventStream))
 }
 
 fn hash_incremental<'a, It, H>(iter: &mut It, hasher: H) -> Result<u64, HashError>
