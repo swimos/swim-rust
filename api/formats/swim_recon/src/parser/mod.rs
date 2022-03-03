@@ -22,6 +22,7 @@ mod tokens;
 
 pub use crate::parser::error::ParseError;
 use nom_locate::LocatedSpan;
+pub use record::HashParser;
 pub use record::IncrementalReconParser;
 pub use record::ParseIterator;
 use std::borrow::Cow;

@@ -12,198 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::parser::HashParseIterator;
+use crate::parser::HashParser;
 use crate::parser::{ParseError, Span};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use std::hash::{Hash, Hasher};
-use swim_form::structural::read::event::ReadEvent;
+use std::hash::Hasher;
 
 #[cfg(test)]
 mod tests;
 
-pub fn calculate_hash<H: Hasher + Clone>(value: &str, hasher: H) -> Result<u64, HashError> {
-    let mut parse_iterator = HashParseIterator::new(Span::new(value));
-
-    // eprintln!("start parse_iterator.input = {:?}", parse_iterator.input);
-    parse_iterator
-        .hash()
-        .map_err(|err| HashError(ParseError::InvalidEventStream))
-}
-
-fn hash_incremental<'a, It, H>(iter: &mut It, hasher: H) -> Result<u64, HashError>
-where
-    It: Iterator<Item = Result<ReadEvent<'a>, nom::error::Error<Span<'a>>>>,
-    H: Hasher + Clone,
-{
-    let mut recon_hasher = NormalisationHasher::new(hasher);
-
-    for maybe_event in iter {
-        let event = maybe_event.map_err(ParseError::from)?;
-
-        match event {
-            ReadEvent::StartAttribute(_) => {
-                recon_hasher.push(event)?;
-                recon_hasher.add_attr();
-            }
-            ReadEvent::EndAttribute => {
-                let attr_contents = recon_hasher.pop().ok_or(ParseError::InvalidEventStream)?;
-                recon_hasher.extend(attr_contents)?;
-                recon_hasher.push(event)?;
-            }
-            _ => {
-                recon_hasher.push(event)?;
-            }
-        }
-    }
-
-    recon_hasher.finish()
-}
-
-#[derive(Debug, Clone)]
-struct NormalisationHasher<H> {
-    stack: smallvec::SmallVec<[AttrContents<H>; 4]>,
-    hasher: H,
-}
-
-impl<H: Hasher + Clone> NormalisationHasher<H> {
-    fn new(hasher: H) -> Self {
-        NormalisationHasher {
-            stack: Default::default(),
-            hasher,
-        }
-    }
-
-    fn add_attr(&mut self) {
-        self.stack.push(AttrContents::new(self.hasher.clone()));
-    }
-
-    fn push(&mut self, event: ReadEvent<'_>) -> Result<(), HashError> {
-        match self.stack.last_mut() {
-            Some(last) => last.push(event),
-            None => {
-                let mut attr_contents = AttrContents::new(self.hasher.clone());
-                attr_contents.push(event)?;
-                self.stack.push(attr_contents);
-                Ok(())
-            }
-        }
-    }
-
-    fn pop(&mut self) -> Option<AttrContents<H>> {
-        self.stack.pop()
-    }
-
-    fn extend(&mut self, attr_contents: AttrContents<H>) -> Result<(), HashError> {
-        let attr_hash = attr_contents.finish();
-
-        attr_hash.hash(
-            &mut self
-                .stack
-                .last_mut()
-                .ok_or(ParseError::InvalidEventStream)?
-                .original_hasher,
-        );
-
-        attr_hash.hash(
-            &mut self
-                .stack
-                .last_mut()
-                .ok_or(ParseError::InvalidEventStream)?
-                .normalised_hasher,
-        );
-
-        Ok(())
-    }
-
-    fn finish(mut self) -> Result<u64, HashError> {
-        Ok(self
-            .stack
-            .pop()
-            .ok_or(ParseError::InvalidEventStream)?
-            .original_hasher
-            .finish())
-    }
-}
-
-#[derive(Debug, Clone)]
-struct AttrContents<H> {
-    /// Hasher calculating the hash of the original read events.
-    original_hasher: H,
-    /// Hasher calculating the hash of the normalised read events.
-    normalised_hasher: H,
-    /// Shows how deep we are in nested records.
-    nested_level: usize,
-    /// Flag showing if the attribute contains any slots.
-    has_slot: bool,
-    /// The number of items that the attribute contains.
-    items: usize,
-    /// Flag showing whether or not the last item that was added was an attribute.
-    is_last_attr: bool,
-}
-
-impl<H: Hasher + Clone> AttrContents<H> {
-    fn new(hasher: H) -> Self {
-        let mut normalised_hasher = hasher.clone();
-        ReadEvent::StartBody.hash(&mut normalised_hasher);
-
-        AttrContents {
-            original_hasher: hasher,
-            normalised_hasher,
-            nested_level: 0,
-            has_slot: false,
-            items: 0,
-            is_last_attr: true,
-        }
-    }
-
-    fn push(&mut self, event: ReadEvent<'_>) -> Result<(), HashError> {
-        if matches!(event, ReadEvent::EndRecord | ReadEvent::EndAttribute) {
-            self.nested_level = self
-                .nested_level
-                .checked_sub(1)
-                .ok_or(ParseError::InvalidEventStream)?;
-        } else if self.nested_level == 0 {
-            if matches!(event, ReadEvent::Slot) {
-                self.has_slot = true;
-            } else if self.can_concat_attrs(&event) {
-                self.is_last_attr = false;
-                self.items += 1;
-            }
-        }
-
-        if matches!(event, ReadEvent::StartAttribute(_)) {
-            self.is_last_attr = true;
-        }
-
-        if matches!(event, ReadEvent::StartBody | ReadEvent::StartAttribute(_)) {
-            self.nested_level += 1;
-        }
-
-        event.hash(&mut self.original_hasher);
-        event.hash(&mut self.normalised_hasher);
-        Ok(())
-    }
-
-    fn can_concat_attrs(&mut self, event: &ReadEvent<'_>) -> bool {
-        !(matches!(
-            event,
-            ReadEvent::StartAttribute(_) | ReadEvent::EndAttribute
-        ) && self.is_last_attr)
-    }
-
-    fn is_implicit_record(&self) -> bool {
-        self.has_slot || self.items > 1
-    }
-
-    fn finish(mut self) -> u64 {
-        if self.is_implicit_record() {
-            ReadEvent::EndRecord.hash(&mut self.normalised_hasher);
-            self.normalised_hasher.finish()
-        } else {
-            self.original_hasher.finish()
-        }
-    }
+pub fn calculate_hash<H: Hasher>(value: &str, hasher: H) -> Result<u64, HashError> {
+    let parse_iterator = HashParser::new(Span::new(value), hasher);
+    parse_iterator.hash()
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -212,6 +32,12 @@ pub struct HashError(ParseError);
 impl From<ParseError> for HashError {
     fn from(err: ParseError) -> Self {
         HashError(err)
+    }
+}
+
+impl<'a> From<nom::error::Error<Span<'a>>> for HashError {
+    fn from(err: nom::error::Error<Span<'a>>) -> Self {
+        HashError(err.into())
     }
 }
 

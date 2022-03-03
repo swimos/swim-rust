@@ -213,4 +213,8 @@ fn recon_hash_not_eq() {
     let first = "@foo(1, @bar(2), 3, 4)";
     let second = "@foo(1, @bar({2}), 3, 4)";
     cmp_ne(first, second);
+
+    let first = "@foo(@bar(1,2))";
+    let second = "@foo({@bar(1,2)})";
+    cmp_ne(first, second);
 }

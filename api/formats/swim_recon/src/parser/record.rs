@@ -15,16 +15,191 @@
 use super::tokens::streaming::*;
 use super::tokens::*;
 use super::{FinalAttrStage, ParseEvents, Span};
+use crate::hasher::HashError;
 use either::Either;
 use nom::branch::alt;
+use nom::bytes::complete::is_not;
 use nom::character::complete as char_comp;
 use nom::character::streaming as char_str;
 use nom::combinator::{eof, map, opt, peek, recognize};
 use nom::error::ErrorKind;
 use nom::sequence::{pair, preceded};
 use nom::{Finish, IResult, Parser};
+use smallvec::SmallVec;
 use std::borrow::Cow;
+use std::hash::{Hash, Hasher};
 use swim_form::structural::read::event::ReadEvent;
+
+/// A Recon parser that produces a sequence of parse events from a complete string and
+/// calculates their hash.
+pub struct HashParser<'a, H> {
+    input: Span<'a>,
+    parser: Option<IncrementalReconParser>,
+    closing_brackets: SmallVec<[bool; 4]>,
+    hasher: H,
+}
+
+impl<'a, H: Hasher> HashParser<'a, H> {
+    pub fn new(input: Span<'a>, hasher: H) -> Self {
+        HashParser {
+            input,
+            parser: Some(IncrementalReconParser::new(false)),
+            closing_brackets: SmallVec::with_capacity(4),
+            hasher,
+        }
+    }
+
+    pub fn hash(self) -> Result<u64, HashError> {
+        let HashParser {
+            mut input,
+            mut parser,
+            mut closing_brackets,
+            mut hasher,
+        } = self;
+
+        loop {
+            let ex = match parser.as_mut() {
+                None => return Ok(hasher.finish()),
+                Some(parser) => parser.parse(input),
+            };
+
+            let mut events = match ex {
+                Ok((remaining, events)) => {
+                    input = remaining;
+                    events
+                }
+                Err(nom::Err::Incomplete(_)) => {
+                    if let Some(mut p) = parser
+                        .take()
+                        .and_then(IncrementalReconParser::into_final_parser)
+                    {
+                        match p.parse(input).finish() {
+                            Ok((remaining, events)) => {
+                                input = remaining;
+                                events
+                            }
+                            Err(err) => {
+                                return Err(err.into());
+                            }
+                        }
+                    } else {
+                        let err = nom::error::Error::new(input, ErrorKind::Alt);
+                        return Err(err.into());
+                    }
+                }
+                Err(nom::Err::Error(err)) | Err(nom::Err::Failure(err)) => {
+                    return Err(err.into());
+                }
+            };
+
+            while let Some(event_or_end) = events.take_event() {
+                match event_or_end {
+                    EventOrEnd::Event(event, _) => match event {
+                        ReadEvent::StartAttribute(_) => {
+                            event.hash(&mut hasher);
+
+                            if is_implicit_record(input, &parser) {
+                                closing_brackets.push(true);
+                                ReadEvent::StartBody.hash(&mut hasher);
+                            } else {
+                                closing_brackets.push(false);
+                            }
+                        }
+
+                        ReadEvent::EndAttribute => {
+                            if let Some(add_closing_bracket) = closing_brackets.pop() {
+                                if add_closing_bracket {
+                                    ReadEvent::EndRecord.hash(&mut hasher);
+                                }
+                            }
+
+                            event.hash(&mut hasher);
+                        }
+
+                        _ => {
+                            event.hash(&mut hasher);
+                        }
+                    },
+                    EventOrEnd::End => return Ok(hasher.finish()),
+                }
+            }
+        }
+    }
+}
+
+/// State showing the validation progress of whether the
+/// current attribute body is an implicit record or not.
+#[derive(Debug, Clone, Copy)]
+enum ValidationState {
+    /// Validation is still in progress and we are at the
+    /// top level in the body of an attribute.
+    Top,
+    /// Validation is still in progress and we are
+    /// N levels deep inside nested records or attributes.
+    Nested(usize),
+    /// Validation completed with a result.
+    Done(bool),
+}
+
+impl ValidationState {
+    fn increment(level: usize) -> ValidationState {
+        ValidationState::Nested(level + 1)
+    }
+
+    fn decrement(level: usize) -> ValidationState {
+        if level == 1 {
+            ValidationState::Top
+        } else {
+            ValidationState::Nested(level - 1)
+        }
+    }
+
+    fn finish(result: bool) -> ValidationState {
+        ValidationState::Done(result)
+    }
+}
+
+fn is_implicit_record(input: Span, parser: &Option<IncrementalReconParser>) -> bool {
+    if let Some(parser) = parser {
+        if matches!(parser.state.last(), Some(ParseState::AfterAttr)) {
+            return false;
+        }
+    }
+
+    let mut result: IResult<Span<'_>, ValidationState> = Ok((input, ValidationState::Top));
+
+    loop {
+        result = match result {
+            Ok((rest, ValidationState::Top)) => preceded(
+                opt(is_not(",;:{()")),
+                alt((
+                    map(separator, |_| ValidationState::finish(true)),
+                    map(char_str::char(':'), |_| ValidationState::finish(true)),
+                    map(char_str::char('{'), |_| ValidationState::increment(0)),
+                    map(char_str::char('('), |_| ValidationState::increment(0)),
+                    map(char_str::char(AttrBody::end_delim()), |_| {
+                        ValidationState::finish(false)
+                    }),
+                )),
+            )(rest),
+            Ok((rest, ValidationState::Nested(level))) => preceded(
+                opt(is_not("{()}")),
+                alt((
+                    map(char_str::char('{'), |_| ValidationState::increment(level)),
+                    map(char_str::char('('), |_| ValidationState::increment(level)),
+                    map(char_str::char(AttrBody::end_delim()), |_| {
+                        ValidationState::decrement(level)
+                    }),
+                    map(char_str::char(RecBody::end_delim()), |_| {
+                        ValidationState::decrement(level)
+                    }),
+                )),
+            )(rest),
+            Ok((_, ValidationState::Done(result))) => return result,
+            Err(_) => return false,
+        }
+    }
+}
 
 /// Change the state of the parser after producing an event.
 #[derive(Debug)]
@@ -199,6 +374,7 @@ impl<'a> Default for ParseEvents<'a> {
     }
 }
 
+#[derive(Debug)]
 enum EventOrEnd<'a> {
     Event(ReadEvent<'a>, bool),
     End,
