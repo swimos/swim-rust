@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::hasher::calculate_hash;
-use crate::parser::{ParseError, Span};
+use crate::parser::{ParseError, ReconStr, Span};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
 use swim_model::Value;
@@ -23,30 +23,30 @@ fn value_from_string(rep: &str) -> Result<Value, ParseError> {
     crate::parser::parse_recognize(span, false)
 }
 
-fn cmp_eq(first: &str, second: &str) {
-    let mut first_hasher = DefaultHasher::new();
-    let mut second_hasher = DefaultHasher::new();
-    calculate_hash(first, &mut first_hasher);
-    calculate_hash(second, &mut second_hasher);
+fn calc_recon_hash(recon: &str) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    calculate_hash(recon, &mut hasher);
+    hasher.finish()
+}
 
-    assert_eq!(first_hasher.finish(), second_hasher.finish());
+fn cmp_eq(first: &str, second: &str) {
+    assert_eq!(calc_recon_hash(first), calc_recon_hash(second));
 
     let result_1 = value_from_string(first).unwrap();
     let result_2 = value_from_string(second).unwrap();
     assert_eq!(result_1, result_2);
+
+    assert_eq!(ReconStr::new(first), ReconStr::new(second));
 }
 
 fn cmp_ne(first: &str, second: &str) {
-    let mut first_hasher = DefaultHasher::new();
-    let mut second_hasher = DefaultHasher::new();
-    calculate_hash(first, &mut first_hasher);
-    calculate_hash(second, &mut second_hasher);
-
-    assert_ne!(first_hasher.finish(), second_hasher.finish());
+    assert_ne!(calc_recon_hash(first), calc_recon_hash(second));
 
     let result_1 = value_from_string(first).unwrap();
     let result_2 = value_from_string(second).unwrap();
     assert_ne!(result_1, result_2);
+
+    assert_ne!(ReconStr::new(first), ReconStr::new(second));
 }
 
 #[test]
@@ -222,4 +222,51 @@ fn recon_hash_not_eq() {
     let first = "@foo(@bar(1,2))";
     let second = "@foo({@bar(1,2)})";
     cmp_ne(first, second);
+}
+
+#[test]
+fn recon_invalid_hash_eq() {
+    let first = ":5";
+    let second = ":5";
+
+    assert_eq!(calc_recon_hash(first), calc_recon_hash(second));
+    assert_eq!(ReconStr::new(first), ReconStr::new(second));
+
+    let first = ")10";
+    let second = ")10";
+    assert_eq!(calc_recon_hash(first), calc_recon_hash(second));
+    assert_eq!(ReconStr::new(first), ReconStr::new(second));
+
+    let first = "@foo}20";
+    let second = "@foo}20";
+    assert_eq!(calc_recon_hash(first), calc_recon_hash(second));
+    assert_eq!(ReconStr::new(first), ReconStr::new(second));
+
+    let first = "@foo(1, 2, 3)-";
+    let second = "@foo(1, 2, 3)-";
+    assert_eq!(calc_recon_hash(first), calc_recon_hash(second));
+    assert_eq!(ReconStr::new(first), ReconStr::new(second));
+}
+
+#[test]
+fn recon_invalid_hash_not_eq() {
+    let first = ":5, 30";
+    let second = ":10, 30";
+    assert_ne!(calc_recon_hash(first), calc_recon_hash(second));
+    assert_ne!(ReconStr::new(first), ReconStr::new(second));
+
+    let first = ")15";
+    let second = ")20";
+    assert_ne!(calc_recon_hash(first), calc_recon_hash(second));
+    assert_ne!(ReconStr::new(first), ReconStr::new(second));
+
+    let first = "@foo-30";
+    let second = "@foo-35";
+    assert_ne!(calc_recon_hash(first), calc_recon_hash(second));
+    assert_ne!(ReconStr::new(first), ReconStr::new(second));
+
+    let first = "@foo(1, 2, 3){-}";
+    let second = "@foo({1, 2, 3}){-}";
+    assert_ne!(calc_recon_hash(first), calc_recon_hash(second));
+    assert_ne!(ReconStr::new(first), ReconStr::new(second));
 }

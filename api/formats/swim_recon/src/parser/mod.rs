@@ -37,13 +37,28 @@ use swim_model::Value;
 /// as the input is parsed.
 pub type Span<'a> = LocatedSpan<&'a str>;
 
+#[derive(Debug, Clone, Copy)]
 pub struct ReconStr<'a>(&'a str);
+
+impl<'a> ReconStr<'a> {
+    pub fn new(str: &'a str) -> Self {
+        ReconStr(str)
+    }
+}
 
 impl<'a> Hash for ReconStr<'a> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         calculate_hash(self.0, state)
     }
 }
+
+impl<'a> PartialEq<Self> for ReconStr<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        compare_values(self.0, other.0)
+    }
+}
+
+impl<'a> Eq for ReconStr<'a> {}
 
 #[derive(Debug)]
 enum FinalAttrStage<'a> {
@@ -124,6 +139,7 @@ pub fn parse_value(repr: &str, allow_comments: bool) -> Result<Value, ParseError
     parse_recognize(Span::new(repr), allow_comments)
 }
 
+use crate::comparator::compare_values;
 #[cfg(feature = "async_parser")]
 pub use async_parser::{
     parse_recognize_with as async_parse_recognize_with, parse_recon_document, AsyncParseError,
