@@ -285,7 +285,7 @@ fn cmp_early_termination_complex() {
     assert_eq!(first_iter.next().unwrap().unwrap(), ReadEvent::StartBody);
     assert_eq!(second_iter.next().unwrap().unwrap(), ReadEvent::StartBody);
 
-    let first = "@foo(@bar@baz) ";
+    let first = "@foo(@bar@baz)";
     let second = "@foo({@bar@baz})";
 
     let first_iter = &mut ParseIterator::new(Span::new(first), false).peekable();
