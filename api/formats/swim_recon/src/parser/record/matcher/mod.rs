@@ -16,15 +16,17 @@ use std::borrow::Cow;
 
 use super::super::tokens::complete::{blob, identifier, numeric_literal};
 use super::super::tokens::string_literal;
-use super::attr_name;
 use nom::branch::alt;
 use nom::character::complete::{char, multispace0, one_of, space0};
-use nom::combinator::{flat_map, map, map_res, opt, recognize, rest};
+use nom::combinator::{complete, flat_map, map, map_res, opt, recognize, rest};
 use nom::multi::{fold_many0, many0_count, many1_count};
 use nom::sequence::{delimited, pair, preceded, terminated, tuple};
 use nom::IResult;
 
 use crate::parser::Span;
+
+#[cfg(test)]
+mod tests;
 
 pub trait HeaderPeeler<'a>: Clone {
     type Output: 'a;
@@ -54,7 +56,7 @@ where
     }
 }
 
-fn value<'a>(input: Span<'a>) -> IResult<Span<'a>, Span<'a>> {
+fn value(input: Span<'_>) -> IResult<Span<'_>, Span<'_>> {
     alt((
         recognize(string_literal),
         recognize(identifier),
@@ -64,57 +66,63 @@ fn value<'a>(input: Span<'a>) -> IResult<Span<'a>, Span<'a>> {
     ))(input)
 }
 
-fn record<'a>(input: Span<'a>) -> IResult<Span<'a>, Span<'a>> {
-    alt((recognize(pair(attrs, body_after_attrs)), standalone_body))(input)
+fn record(input: Span<'_>) -> IResult<Span<'_>, Span<'_>> {
+    alt((
+        recognize(pair(attrs, body_after_attrs)),
+        recognize(body(('{', '}'))),
+    ))(input)
 }
 
-fn attrs<'a>(input: Span<'a>) -> IResult<Span<'a>, Span<'a>> {
+fn attrs(input: Span<'_>) -> IResult<Span<'_>, Span<'_>> {
     recognize(many1_count(pair(attr, space0)))(input)
 }
 
-fn attr<'a>(input: Span<'a>) -> IResult<Span<'a>, Span<'a>> {
-    recognize(tuple((char('@'), attr_name, opt(attr_body))))(input)
+fn attr_name(input: Span<'_>) -> IResult<Span<'_>, Cow<'_, str>> {
+    alt((string_literal, map(identifier, Cow::Borrowed)))(input)
 }
 
-fn attr_body<'a>(input: Span<'a>) -> IResult<Span<'a>, Span<'a>> {
-    delimited(
-        pair(char('('), multispace0),
-        items,
-        pair(multispace0, char(')')),
-    )(input)
+fn attr(input: Span<'_>) -> IResult<Span<'_>, Span<'_>> {
+    recognize(tuple((char('@'), attr_name, opt(body(('(', ')'))))))(input)
 }
 
-fn items<'a>(input: Span<'a>) -> IResult<Span<'a>, Span<'a>> {
+fn body(delim: (char, char)) -> impl for<'a> FnMut(Span<'a>) -> IResult<Span<'a>, Span<'a>> {
+    let (l, r) = delim;
+    move |input| {
+        delimited(
+            pair(char(l), multispace0),
+            items,
+            pair(multispace0, char(r)),
+        )(input)
+    }
+}
+
+fn items(input: Span<'_>) -> IResult<Span<'_>, Span<'_>> {
     recognize(pair(opt(item), many0_count(preceded(separator, opt(item)))))(input)
 }
 
-fn separator<'a>(input: Span<'a>) -> IResult<Span<'a>, Span<'a>> {
+fn separator(input: Span<'_>) -> IResult<Span<'_>, Span<'_>> {
     recognize(delimited(space0, one_of(",;\n\r"), multispace0))(input)
 }
 
-fn slot_div<'a>(input: Span<'a>) -> IResult<Span<'a>, Span<'a>> {
+fn slot_div(input: Span<'_>) -> IResult<Span<'_>, Span<'_>> {
     recognize(delimited(multispace0, char(':'), multispace0))(input)
 }
 
-fn item<'a>(input: Span<'a>) -> IResult<Span<'a>, Span<'a>> {
+fn item(input: Span<'_>) -> IResult<Span<'_>, Span<'_>> {
     recognize(pair(value, opt(preceded(slot_div, opt(value)))))(input)
 }
 
-fn body_after_attrs<'a>(input: Span<'a>) -> IResult<Span<'a>, Span<'a>> {
+fn body_after_attrs(input: Span<'_>) -> IResult<Span<'_>, Span<'_>> {
     recognize(opt(alt((
-        recognize(string_literal),
+        recognize(complete(string_literal)),
         recognize(identifier),
         recognize(numeric_literal),
         recognize(blob),
-        standalone_body,
+        body(('{', '}')),
     ))))(input)
 }
 
-fn standalone_body<'a>(input: Span<'a>) -> IResult<Span<'a>, Span<'a>> {
-    delimited(char('{'), items, char('}'))(input)
-}
-
-fn name<'a>(input: Span<'a>) -> IResult<Span<'a>, Cow<'a, str>> {
+fn name(input: Span<'_>) -> IResult<Span<'_>, Cow<'_, str>> {
     alt((map(identifier, Cow::Borrowed), string_literal))(input)
 }
 
@@ -135,18 +143,18 @@ enum PeelItem<'a> {
     SlotItem(Cow<'a, str>, Span<'a>),
 }
 
-fn peel_value_item<'a>(input: Span<'a>) -> IResult<Span<'a>, PeelItem<'a>> {
+fn peel_value_item(input: Span<'_>) -> IResult<Span<'_>, PeelItem<'_>> {
     map(recognize(value), PeelItem::ValueItem)(input)
 }
 
-fn peel_slot_item<'a>(input: Span<'a>) -> IResult<Span<'a>, PeelItem<'a>> {
+fn peel_slot_item(input: Span<'_>) -> IResult<Span<'_>, PeelItem<'_>> {
     map(
         pair(name, preceded(slot_div, recognize(opt(value)))),
         |(name, v)| PeelItem::SlotItem(name, v),
     )(input)
 }
 
-fn peel_item<'a>(input: Span<'a>) -> IResult<Span<'a>, PeelItem<'a>> {
+fn peel_item(input: Span<'_>) -> IResult<Span<'_>, PeelItem<'_>> {
     alt((peel_slot_item, peel_value_item))(input)
 }
 
@@ -161,7 +169,7 @@ impl<'a> SepPeelItem<'a> {
     }
 }
 
-fn peel_item_with_sep<'a>(input: Span<'a>) -> IResult<Span<'a>, SepPeelItem<'a>> {
+fn peel_item_with_sep(input: Span<'_>) -> IResult<Span<'_>, SepPeelItem<'_>> {
     alt((
         map(
             terminated(opt(peel_item), pair(space0, one_of(",;"))),
