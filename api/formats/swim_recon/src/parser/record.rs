@@ -32,38 +32,30 @@ use swim_form::structural::read::event::ReadEvent;
 
 /// A Recon parser that produces a sequence of parse events from a complete string and
 /// calculates their hash.
-pub struct HashParser<'a, H> {
+pub struct HashParser<'a> {
     input: Span<'a>,
     parser: Option<IncrementalReconParser>,
     closing_brackets: SmallVec<[bool; 4]>,
-    hasher: H,
 }
 
-impl<'a, H: Hasher> HashParser<'a, H> {
-    pub fn new(input: Span<'a>, hasher: H) -> Self {
+impl<'a> HashParser<'a> {
+    pub fn new(input: Span<'a>) -> Self {
         HashParser {
             input,
             parser: Some(IncrementalReconParser::new(false)),
             closing_brackets: SmallVec::with_capacity(4),
-            hasher,
         }
     }
 
-    pub fn hash(self) -> Result<u64, HashError> {
+    pub fn hash<H: Hasher>(self, hasher: &mut H) -> Option<HashError> {
         let HashParser {
             mut input,
             mut parser,
             mut closing_brackets,
-            mut hasher,
         } = self;
 
         loop {
-            let ex = match parser.as_mut() {
-                None => return Ok(hasher.finish()),
-                Some(parser) => parser.parse(input),
-            };
-
-            let mut events = match ex {
+            let mut events = match parser.as_mut()?.parse(input) {
                 Ok((remaining, events)) => {
                     input = remaining;
                     events
@@ -79,28 +71,28 @@ impl<'a, H: Hasher> HashParser<'a, H> {
                                 events
                             }
                             Err(err) => {
-                                return Err(err.into());
+                                return Some(err.into());
                             }
                         }
                     } else {
                         let err = nom::error::Error::new(input, ErrorKind::Alt);
-                        return Err(err.into());
+                        return Some(err.into());
                     }
                 }
                 Err(nom::Err::Error(err)) | Err(nom::Err::Failure(err)) => {
-                    return Err(err.into());
+                    return Some(err.into());
                 }
             };
 
             while let Some(event_or_end) = events.take_event() {
                 match event_or_end {
-                    EventOrEnd::Event(event, _) => match event {
+                    EventOrEnd::Event(event, has_next) => match event {
                         ReadEvent::StartAttribute(_) => {
-                            event.hash(&mut hasher);
+                            event.hash(hasher);
 
-                            if is_implicit_record(input, &parser) {
+                            if !has_next && is_implicit_record(input) {
                                 closing_brackets.push(true);
-                                ReadEvent::StartBody.hash(&mut hasher);
+                                ReadEvent::StartBody.hash(hasher);
                             } else {
                                 closing_brackets.push(false);
                             }
@@ -109,18 +101,18 @@ impl<'a, H: Hasher> HashParser<'a, H> {
                         ReadEvent::EndAttribute => {
                             if let Some(add_closing_bracket) = closing_brackets.pop() {
                                 if add_closing_bracket {
-                                    ReadEvent::EndRecord.hash(&mut hasher);
+                                    ReadEvent::EndRecord.hash(hasher);
                                 }
                             }
 
-                            event.hash(&mut hasher);
+                            event.hash(hasher);
                         }
 
                         _ => {
-                            event.hash(&mut hasher);
+                            event.hash(hasher);
                         }
                     },
-                    EventOrEnd::End => return Ok(hasher.finish()),
+                    EventOrEnd::End => return None,
                 }
             }
         }
@@ -159,13 +151,7 @@ impl ValidationState {
     }
 }
 
-fn is_implicit_record(input: Span, parser: &Option<IncrementalReconParser>) -> bool {
-    if let Some(parser) = parser {
-        if matches!(parser.state.last(), Some(ParseState::AfterAttr)) {
-            return false;
-        }
-    }
-
+fn is_implicit_record(input: Span) -> bool {
     let mut result: IResult<Span<'_>, ValidationState> = Ok((input, ValidationState::Top));
 
     loop {

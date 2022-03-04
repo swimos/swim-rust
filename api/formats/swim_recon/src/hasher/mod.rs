@@ -16,14 +16,17 @@ use crate::parser::HashParser;
 use crate::parser::{ParseError, Span};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use std::hash::Hasher;
+use std::hash::{Hash, Hasher};
 
 #[cfg(test)]
 mod tests;
 
-pub fn calculate_hash<H: Hasher>(value: &str, hasher: H) -> Result<u64, HashError> {
-    let parse_iterator = HashParser::new(Span::new(value), hasher);
-    parse_iterator.hash()
+pub fn calculate_hash<H: Hasher>(value: &str, hasher: &mut H) {
+    let parse_iterator = HashParser::new(Span::new(value));
+
+    if parse_iterator.hash(hasher).is_some() {
+        value.hash(hasher)
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]

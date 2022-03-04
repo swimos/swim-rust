@@ -20,12 +20,14 @@ mod record;
 mod tests;
 mod tokens;
 
+use crate::hasher::calculate_hash;
 pub use crate::parser::error::ParseError;
 use nom_locate::LocatedSpan;
 pub use record::HashParser;
 pub use record::IncrementalReconParser;
 pub use record::ParseIterator;
 use std::borrow::Cow;
+use std::hash::{Hash, Hasher};
 use swim_form::structural::read::event::ReadEvent;
 use swim_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
 use swim_form::structural::read::ReadError;
@@ -34,6 +36,14 @@ use swim_model::Value;
 /// Wraps a string in a structure that keeps track of the line and column
 /// as the input is parsed.
 pub type Span<'a> = LocatedSpan<&'a str>;
+
+pub struct ReconStr<'a>(&'a str);
+
+impl<'a> Hash for ReconStr<'a> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        calculate_hash(self.0, state)
+    }
+}
 
 #[derive(Debug)]
 enum FinalAttrStage<'a> {

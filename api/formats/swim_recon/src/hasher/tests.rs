@@ -15,6 +15,7 @@
 use crate::hasher::calculate_hash;
 use crate::parser::{ParseError, Span};
 use std::collections::hash_map::DefaultHasher;
+use std::hash::Hasher;
 use swim_model::Value;
 
 fn value_from_string(rep: &str) -> Result<Value, ParseError> {
@@ -23,10 +24,12 @@ fn value_from_string(rep: &str) -> Result<Value, ParseError> {
 }
 
 fn cmp_eq(first: &str, second: &str) {
-    assert_eq!(
-        calculate_hash(first, DefaultHasher::new()).unwrap(),
-        calculate_hash(second, DefaultHasher::new()).unwrap()
-    );
+    let mut first_hasher = DefaultHasher::new();
+    let mut second_hasher = DefaultHasher::new();
+    calculate_hash(first, &mut first_hasher);
+    calculate_hash(second, &mut second_hasher);
+
+    assert_eq!(first_hasher.finish(), second_hasher.finish());
 
     let result_1 = value_from_string(first).unwrap();
     let result_2 = value_from_string(second).unwrap();
@@ -34,10 +37,12 @@ fn cmp_eq(first: &str, second: &str) {
 }
 
 fn cmp_ne(first: &str, second: &str) {
-    assert_ne!(
-        calculate_hash(first, DefaultHasher::new()).unwrap(),
-        calculate_hash(second, DefaultHasher::new()).unwrap()
-    );
+    let mut first_hasher = DefaultHasher::new();
+    let mut second_hasher = DefaultHasher::new();
+    calculate_hash(first, &mut first_hasher);
+    calculate_hash(second, &mut second_hasher);
+
+    assert_ne!(first_hasher.finish(), second_hasher.finish());
 
     let result_1 = value_from_string(first).unwrap();
     let result_2 = value_from_string(second).unwrap();
