@@ -210,7 +210,7 @@ where
     }
 }
 
-pub fn peel_items<'a, P>(peeler: P) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, P>
+fn peel_items<'a, P>(peeler: P) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, P>
 where
     P: HeaderPeeler<'a>,
 {
