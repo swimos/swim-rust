@@ -18,7 +18,7 @@ use super::super::tokens::complete::{blob, identifier, numeric_literal};
 use super::super::tokens::string_literal;
 use nom::branch::alt;
 use nom::character::complete::{char, multispace0, one_of, space0};
-use nom::combinator::{complete, flat_map, map, map_res, opt, recognize, rest};
+use nom::combinator::{complete, flat_map, map, map_res, opt, recognize, rest, success};
 use nom::multi::{fold_many0, many0_count, many1_count};
 use nom::sequence::{delimited, pair, preceded, terminated, tuple};
 use nom::IResult;
@@ -43,16 +43,17 @@ pub trait HeaderPeeler<'a>: Clone {
     fn done(self, body: Span<'a>) -> Result<Self::Output, Self::Error>;
 }
 
-pub fn peel_message<P>(
+pub fn peel_message<'a, P>(
     peeler: P,
-) -> impl for<'a> FnMut(Span<'a>) -> IResult<Span<'a>, <P as HeaderPeeler<'a>>::Output>
+) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, <P as HeaderPeeler<'a>>::Output>
 where
-    P: for<'a> HeaderPeeler<'a>,
+    P: HeaderPeeler<'a>,
 {
     move |input| {
-        map_res(pair(peel_tag_attr(peeler.clone()), rest), |(p, rem)| {
-            p.done(rem)
-        })(input)
+        map_res(
+            pair(peel_tag_attr(peeler.clone()), preceded(space0, rest)),
+            |(p, rem)| p.done(rem),
+        )(input)
     }
 }
 
@@ -126,9 +127,9 @@ fn name(input: Span<'_>) -> IResult<Span<'_>, Cow<'_, str>> {
     alt((map(identifier, Cow::Borrowed), string_literal))(input)
 }
 
-fn match_tag<P>(peeler: P) -> impl for<'a> FnMut(Span<'a>) -> IResult<Span<'a>, P>
+fn match_tag<'a, P>(peeler: P) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, P>
 where
-    P: for<'a> HeaderPeeler<'a>,
+    P: HeaderPeeler<'a>,
 {
     move |input| {
         map_res(preceded(char('@'), name), |tag| {
@@ -138,6 +139,7 @@ where
     }
 }
 
+#[derive(Debug)]
 enum PeelItem<'a> {
     ValueItem(Span<'a>),
     SlotItem(Cow<'a, str>, Span<'a>),
@@ -158,6 +160,7 @@ fn peel_item(input: Span<'_>) -> IResult<Span<'_>, PeelItem<'_>> {
     alt((peel_slot_item, peel_value_item))(input)
 }
 
+#[derive(Debug)]
 struct SepPeelItem<'a> {
     item: Option<PeelItem<'a>>,
     after_sep: bool,
@@ -170,28 +173,31 @@ impl<'a> SepPeelItem<'a> {
 }
 
 fn peel_item_with_sep(input: Span<'_>) -> IResult<Span<'_>, SepPeelItem<'_>> {
-    alt((
-        map(
-            terminated(opt(peel_item), pair(space0, one_of(",;"))),
-            |item| SepPeelItem::new(item, true),
-        ),
-        map(
-            terminated(peel_item, pair(space0, one_of("\r\n"))),
-            |item| SepPeelItem::new(Some(item), false),
-        ),
-    ))(input)
+    preceded(
+        multispace0,
+        alt((
+            map(
+                terminated(opt(peel_item), pair(space0, one_of(",;"))),
+                |item| SepPeelItem::new(item, true),
+            ),
+            map(
+                terminated(peel_item, pair(space0, one_of("\r\n"))),
+                |item| SepPeelItem::new(Some(item), false),
+            ),
+        )),
+    )(input)
 }
 
-fn peel_final_item<P>(
+fn peel_final_item<'a, P>(
     peeler: P,
     terminated: bool,
-) -> impl for<'a> FnMut(Span<'a>) -> IResult<Span<'a>, P>
+) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, P>
 where
-    P: for<'a> HeaderPeeler<'a>,
+    P: HeaderPeeler<'a>,
 {
     move |input| {
         let peeler_ref = &peeler;
-        map_res(opt(peel_item), move |maybe| {
+        map_res(preceded(multispace0, opt(peel_item)), move |maybe| {
             let p = (*peeler_ref).clone();
             if let Some(item) = maybe {
                 apply_item(p, item)
@@ -204,9 +210,9 @@ where
     }
 }
 
-pub fn peel_items<P>(peeler: P) -> impl for<'a> FnMut(Span<'a>) -> IResult<Span<'a>, P>
+pub fn peel_items<'a, P>(peeler: P) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, P>
 where
-    P: for<'a> HeaderPeeler<'a>,
+    P: HeaderPeeler<'a>,
 {
     move |input| {
         let peeler_ref = &peeler;
@@ -230,8 +236,7 @@ where
             r.map(|p| (p, after_sep))
         });
 
-        delimited(
-            multispace0,
+        terminated(
             flat_map(sequence, |(p, after_sep)| peel_final_item(p, after_sep)),
             multispace0,
         )(input)
@@ -248,13 +253,16 @@ where
     }
 }
 
-fn peel_tag_attr<P>(peeler: P) -> impl for<'a> FnMut(Span<'a>) -> IResult<Span<'a>, P>
+fn peel_tag_attr<'a, P>(peeler: P) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, P>
 where
-    P: for<'a> HeaderPeeler<'a>,
+    P: HeaderPeeler<'a>,
 {
     move |input| {
         flat_map(match_tag(peeler.clone()), |p| {
-            delimited(char('('), peel_items(p), char(')'))
+            alt((
+                delimited(char('('), peel_items(p.clone()), char(')')),
+                success(p),
+            ))
         })(input)
     }
 }
