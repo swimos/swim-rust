@@ -347,9 +347,9 @@ fn cmp_invalid_not_eq() {
     let second = ")20";
     assert!(!compare_values(first, second));
 
-    let first = "@foo}30";
-    let second = "@foo}35";
-    assert!(compare_values(first, second));
+    let first = "@foo-30";
+    let second = "@foo-35";
+    assert!(!compare_values(first, second));
 
     let first = "@foo(1, 2, 3){-}";
     let second = "@foo({1, 2, 3}){-}";
