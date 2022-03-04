@@ -200,7 +200,7 @@ fn cmp_early_termination_simple() {
     let first_iter = &mut ParseIterator::new(Span::new(first), false).peekable();
     let second_iter = &mut ParseIterator::new(Span::new(second), false).peekable();
 
-    assert!(!incremental_compare(first_iter, second_iter));
+    assert!(!incremental_compare(first_iter, second_iter).unwrap());
     assert_eq!(
         first_iter.next().unwrap().unwrap(),
         ReadEvent::TextValue(Cow::from("c"))
@@ -223,7 +223,7 @@ fn cmp_early_termination_complex() {
     let first_iter = &mut ParseIterator::new(Span::new(first), false).peekable();
     let second_iter = &mut ParseIterator::new(Span::new(second), false).peekable();
 
-    assert!(!incremental_compare(first_iter, second_iter));
+    assert!(!incremental_compare(first_iter, second_iter).unwrap());
 
     assert_eq!(first_iter.next().unwrap().unwrap(), ReadEvent::StartBody);
     assert_eq!(second_iter.next().unwrap().unwrap(), ReadEvent::StartBody);
@@ -238,7 +238,7 @@ fn cmp_early_termination_complex() {
     let first_iter = &mut ParseIterator::new(Span::new(first), false).peekable();
     let second_iter = &mut ParseIterator::new(Span::new(second), false).peekable();
 
-    assert!(!incremental_compare(first_iter, second_iter));
+    assert!(!incremental_compare(first_iter, second_iter).unwrap());
     assert_eq!(
         first_iter.next().unwrap().unwrap(),
         ReadEvent::TextValue(Cow::from("b"))
@@ -258,7 +258,7 @@ fn cmp_early_termination_complex() {
     let first_iter = &mut ParseIterator::new(Span::new(first), false).peekable();
     let second_iter = &mut ParseIterator::new(Span::new(second), false).peekable();
 
-    assert!(!incremental_compare(first_iter, second_iter));
+    assert!(!incremental_compare(first_iter, second_iter).unwrap());
     assert_eq!(
         first_iter.next().unwrap().unwrap(),
         ReadEvent::Number(NumericValue::UInt(3))
@@ -271,7 +271,7 @@ fn cmp_early_termination_complex() {
     let first_iter = &mut ParseIterator::new(Span::new(first), false).peekable();
     let second_iter = &mut ParseIterator::new(Span::new(second), false).peekable();
 
-    assert!(!incremental_compare(first_iter, second_iter));
+    assert!(!incremental_compare(first_iter, second_iter).unwrap());
     assert_eq!(first_iter.next().unwrap().unwrap(), ReadEvent::StartBody);
     assert_eq!(second_iter.next().unwrap().unwrap(), ReadEvent::StartBody);
 
@@ -281,7 +281,7 @@ fn cmp_early_termination_complex() {
     let first_iter = &mut ParseIterator::new(Span::new(first), false).peekable();
     let second_iter = &mut ParseIterator::new(Span::new(second), false).peekable();
 
-    assert!(!incremental_compare(first_iter, second_iter));
+    assert!(!incremental_compare(first_iter, second_iter).unwrap());
     assert_eq!(first_iter.next().unwrap().unwrap(), ReadEvent::StartBody);
     assert_eq!(second_iter.next().unwrap().unwrap(), ReadEvent::StartBody);
 
@@ -291,7 +291,7 @@ fn cmp_early_termination_complex() {
     let first_iter = &mut ParseIterator::new(Span::new(first), false).peekable();
     let second_iter = &mut ParseIterator::new(Span::new(second), false).peekable();
 
-    assert!(!incremental_compare(first_iter, second_iter));
+    assert!(!incremental_compare(first_iter, second_iter).unwrap());
     assert_eq!(first_iter.next().unwrap().unwrap(), ReadEvent::StartBody);
     assert_eq!(second_iter.next().unwrap().unwrap(), ReadEvent::StartBody);
 
@@ -301,7 +301,7 @@ fn cmp_early_termination_complex() {
     let first_iter = &mut ParseIterator::new(Span::new(first), false).peekable();
     let second_iter = &mut ParseIterator::new(Span::new(second), false).peekable();
 
-    assert!(!incremental_compare(first_iter, second_iter));
+    assert!(!incremental_compare(first_iter, second_iter).unwrap());
     assert_eq!(
         first_iter.next().unwrap().unwrap(),
         ReadEvent::Number(NumericValue::UInt(3))
@@ -317,92 +317,123 @@ fn cmp_early_termination_complex() {
     let first_iter = &mut ParseIterator::new(Span::new(first), false).peekable();
     let second_iter = &mut ParseIterator::new(Span::new(second), false).peekable();
 
-    assert!(!incremental_compare(first_iter, second_iter));
+    assert!(!incremental_compare(first_iter, second_iter).unwrap());
     assert_eq!(first_iter.next().unwrap().unwrap(), ReadEvent::StartBody);
     assert_eq!(second_iter.next().unwrap().unwrap(), ReadEvent::StartBody);
 }
 
 #[test]
 fn cmp_invalid_eq() {
-    let first = vec![
-        Ok(ReadEvent::Slot),
-        Ok(ReadEvent::Number(NumericValue::Int(5))),
-    ];
-    let second = vec![
-        Ok(ReadEvent::Slot),
-        Ok(ReadEvent::Number(NumericValue::Int(5))),
-    ];
+    let first = ":5";
+    let second = ":5";
+    assert!(compare_values(first, second));
 
-    let mut first_iter = first.into_iter().peekable();
-    let mut second_iter = second.into_iter().peekable();
+    let first = ")10";
+    let second = ")10";
+    assert!(compare_values(first, second));
 
-    assert!(incremental_compare(&mut first_iter, &mut second_iter));
-
-    let first = vec![
-        Ok(ReadEvent::EndAttribute),
-        Ok(ReadEvent::Number(NumericValue::Int(10))),
-    ];
-    let second = vec![
-        Ok(ReadEvent::EndAttribute),
-        Ok(ReadEvent::Number(NumericValue::Int(10))),
-    ];
-
-    let mut first_iter = first.into_iter().peekable();
-    let mut second_iter = second.into_iter().peekable();
-
-    assert!(incremental_compare(&mut first_iter, &mut second_iter));
-
-    let first = vec![
-        Ok(ReadEvent::StartAttribute(Cow::from("foo"))),
-        Ok(ReadEvent::EndRecord),
-        Ok(ReadEvent::Number(NumericValue::Int(20))),
-    ];
-    let second = vec![
-        Ok(ReadEvent::StartAttribute(Cow::from("foo"))),
-        Ok(ReadEvent::EndRecord),
-        Ok(ReadEvent::Number(NumericValue::Int(20))),
-    ];
-
-    let mut first_iter = first.into_iter().peekable();
-    let mut second_iter = second.into_iter().peekable();
-
-    assert!(incremental_compare(&mut first_iter, &mut second_iter));
-
-    let first = vec![
-        Ok(ReadEvent::StartAttribute(Cow::from("foo"))),
-        Err(nom::error::Error::new(Span::new(":"), ErrorKind::Char)),
-    ];
-    let second = vec![
-        Ok(ReadEvent::StartAttribute(Cow::from("foo"))),
-        Err(nom::error::Error::new(Span::new(":"), ErrorKind::Char)),
-    ];
-
-    let mut first_iter = first.into_iter().peekable();
-    let mut second_iter = second.into_iter().peekable();
-
-    assert!(incremental_compare(&mut first_iter, &mut second_iter));
-
-    let first = vec![
-        Ok(ReadEvent::StartAttribute(Cow::from("foo"))),
-        Err(nom::error::Error::new(Span::new(":"), ErrorKind::Char)),
-        Err(nom::error::Error::new(Span::new(";"), ErrorKind::Char)),
-        Err(nom::error::Error::new(Span::new(">"), ErrorKind::Char)),
-    ];
-    let second = vec![
-        Ok(ReadEvent::StartAttribute(Cow::from("foo"))),
-        Err(nom::error::Error::new(Span::new(":"), ErrorKind::Char)),
-        Err(nom::error::Error::new(Span::new(";"), ErrorKind::Char)),
-        Err(nom::error::Error::new(Span::new(">"), ErrorKind::Char)),
-    ];
-
-    let mut first_iter = first.into_iter().peekable();
-    let mut second_iter = second.into_iter().peekable();
-
-    assert!(incremental_compare(&mut first_iter, &mut second_iter));
+    let first = "@foo}20";
+    let second = "@foo}20";
+    assert!(compare_values(first, second));
 }
 
 #[test]
 fn cmp_invalid_not_eq() {
+    let first = ":5, 30";
+    let second = ":10, 30";
+    assert!(!compare_values(first, second));
+
+    let first = ")15";
+    let second = ")20";
+    assert!(!compare_values(first, second));
+
+    let first = "@foo}30";
+    let second = "@foo}35";
+    assert!(compare_values(first, second));
+
+    let first = "@foo(1, 2, 3){-}";
+    let second = "@foo({1, 2, 3}){-}";
+    assert!(!compare_values(first, second));
+}
+
+#[test]
+fn cmp_invalid_early_termination() {
+    let first = vec![
+        Ok(ReadEvent::Slot),
+        Ok(ReadEvent::Number(NumericValue::Int(5))),
+    ];
+    let second = vec![
+        Ok(ReadEvent::Slot),
+        Ok(ReadEvent::Number(NumericValue::Int(5))),
+    ];
+
+    let mut first_iter = first.into_iter().peekable();
+    let mut second_iter = second.into_iter().peekable();
+
+    assert!(incremental_compare(&mut first_iter, &mut second_iter).is_none());
+
+    let first = vec![
+        Ok(ReadEvent::EndAttribute),
+        Ok(ReadEvent::Number(NumericValue::Int(10))),
+    ];
+    let second = vec![
+        Ok(ReadEvent::EndAttribute),
+        Ok(ReadEvent::Number(NumericValue::Int(10))),
+    ];
+
+    let mut first_iter = first.into_iter().peekable();
+    let mut second_iter = second.into_iter().peekable();
+
+    assert!(incremental_compare(&mut first_iter, &mut second_iter).is_none());
+
+    let first = vec![
+        Ok(ReadEvent::StartAttribute(Cow::from("foo"))),
+        Ok(ReadEvent::EndRecord),
+        Ok(ReadEvent::Number(NumericValue::Int(20))),
+    ];
+    let second = vec![
+        Ok(ReadEvent::StartAttribute(Cow::from("foo"))),
+        Ok(ReadEvent::EndRecord),
+        Ok(ReadEvent::Number(NumericValue::Int(20))),
+    ];
+
+    let mut first_iter = first.into_iter().peekable();
+    let mut second_iter = second.into_iter().peekable();
+
+    assert!(incremental_compare(&mut first_iter, &mut second_iter).is_none());
+
+    let first = vec![
+        Ok(ReadEvent::StartAttribute(Cow::from("foo"))),
+        Err(nom::error::Error::new(Span::new(":"), ErrorKind::Char)),
+    ];
+    let second = vec![
+        Ok(ReadEvent::StartAttribute(Cow::from("foo"))),
+        Err(nom::error::Error::new(Span::new(":"), ErrorKind::Char)),
+    ];
+
+    let mut first_iter = first.into_iter().peekable();
+    let mut second_iter = second.into_iter().peekable();
+
+    assert!(incremental_compare(&mut first_iter, &mut second_iter).is_none());
+
+    let first = vec![
+        Ok(ReadEvent::StartAttribute(Cow::from("foo"))),
+        Err(nom::error::Error::new(Span::new(":"), ErrorKind::Char)),
+        Err(nom::error::Error::new(Span::new(";"), ErrorKind::Char)),
+        Err(nom::error::Error::new(Span::new(">"), ErrorKind::Char)),
+    ];
+    let second = vec![
+        Ok(ReadEvent::StartAttribute(Cow::from("foo"))),
+        Err(nom::error::Error::new(Span::new(":"), ErrorKind::Char)),
+        Err(nom::error::Error::new(Span::new(";"), ErrorKind::Char)),
+        Err(nom::error::Error::new(Span::new(">"), ErrorKind::Char)),
+    ];
+
+    let mut first_iter = first.into_iter().peekable();
+    let mut second_iter = second.into_iter().peekable();
+
+    assert!(incremental_compare(&mut first_iter, &mut second_iter).is_none());
+
     let first = vec![
         Ok(ReadEvent::Slot),
         Ok(ReadEvent::Number(NumericValue::Int(5))),
@@ -417,15 +448,15 @@ fn cmp_invalid_not_eq() {
     let mut first_iter = first.into_iter().peekable();
     let mut second_iter = second.into_iter().peekable();
 
-    assert!(!incremental_compare(&mut first_iter, &mut second_iter));
+    assert!(incremental_compare(&mut first_iter, &mut second_iter).is_none());
 
     assert_eq!(
         first_iter.next().unwrap().unwrap(),
-        ReadEvent::Number(NumericValue::Int(30))
+        ReadEvent::Number(NumericValue::Int(5))
     );
     assert_eq!(
         second_iter.next().unwrap().unwrap(),
-        ReadEvent::Number(NumericValue::Int(30))
+        ReadEvent::Number(NumericValue::Int(10))
     );
 
     let first = vec![
@@ -442,15 +473,15 @@ fn cmp_invalid_not_eq() {
     let mut first_iter = first.into_iter().peekable();
     let mut second_iter = second.into_iter().peekable();
 
-    assert!(!incremental_compare(&mut first_iter, &mut second_iter));
+    assert!(incremental_compare(&mut first_iter, &mut second_iter).is_none());
 
     assert_eq!(
         first_iter.next().unwrap().unwrap(),
-        ReadEvent::Number(NumericValue::Int(60))
+        ReadEvent::Number(NumericValue::Int(10))
     );
     assert_eq!(
         second_iter.next().unwrap().unwrap(),
-        ReadEvent::Number(NumericValue::Int(60))
+        ReadEvent::Number(NumericValue::Int(15))
     );
 
     let first = vec![
@@ -469,15 +500,15 @@ fn cmp_invalid_not_eq() {
     let mut first_iter = first.into_iter().peekable();
     let mut second_iter = second.into_iter().peekable();
 
-    assert!(!incremental_compare(&mut first_iter, &mut second_iter));
+    assert!(incremental_compare(&mut first_iter, &mut second_iter).is_none());
 
     assert_eq!(
         first_iter.next().unwrap().unwrap(),
-        ReadEvent::Number(NumericValue::Int(90))
+        ReadEvent::Number(NumericValue::Int(20))
     );
     assert_eq!(
         second_iter.next().unwrap().unwrap(),
-        ReadEvent::Number(NumericValue::Int(90))
+        ReadEvent::Number(NumericValue::Int(25))
     );
 
     let first = vec![
@@ -494,7 +525,7 @@ fn cmp_invalid_not_eq() {
     let mut first_iter = first.into_iter().peekable();
     let mut second_iter = second.into_iter().peekable();
 
-    assert!(!incremental_compare(&mut first_iter, &mut second_iter));
+    assert!(incremental_compare(&mut first_iter, &mut second_iter).is_none());
 
     let first_next = first_iter.next().unwrap();
     let second_next = second_iter.next().unwrap();
@@ -522,15 +553,15 @@ fn cmp_invalid_not_eq() {
     let mut first_iter = first.into_iter().peekable();
     let mut second_iter = second.into_iter().peekable();
 
-    assert!(!incremental_compare(&mut first_iter, &mut second_iter));
+    assert!(incremental_compare(&mut first_iter, &mut second_iter).is_none());
 
     let first_next = first_iter.next().unwrap();
     let second_next = second_iter.next().unwrap();
 
     assert!(
-        matches!(first_next, Err(err) if err == nom::error::Error::new(Span::new(">"), ErrorKind::Char))
+        matches!(first_next, Err(err) if err == nom::error::Error::new(Span::new("+"), ErrorKind::Char))
     );
     assert!(
-        matches!(second_next, Err(err) if err == nom::error::Error::new(Span::new(">"), ErrorKind::Char))
+        matches!(second_next, Err(err) if err == nom::error::Error::new(Span::new("-"), ErrorKind::Char))
     );
 }

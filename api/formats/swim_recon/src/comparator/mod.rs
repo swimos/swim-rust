@@ -25,10 +25,13 @@ mod tests;
 /// * `first` - The first recon value.
 /// * `second` - The second recon value.
 pub fn compare_values(first: &str, second: &str) -> bool {
-    incremental_compare(
+    match incremental_compare(
         &mut crate::parser::ParseIterator::new(Span::new(first), false).peekable(),
         &mut crate::parser::ParseIterator::new(Span::new(second), false).peekable(),
-    )
+    ) {
+        Some(eq) => eq,
+        None => first == second,
+    }
 }
 
 fn incremental_compare<
@@ -37,7 +40,7 @@ fn incremental_compare<
 >(
     first_iter: &mut Peekable<It>,
     second_iter: &mut Peekable<It>,
-) -> bool {
+) -> Option<bool> {
     let mut validator_1 = ValueValidator::new();
     let mut validator_2 = ValueValidator::new();
 
@@ -55,7 +58,7 @@ fn incremental_compare<
                     if let Some(Ok(event)) = first_iter.next() {
                         event_1 = event;
                     } else {
-                        return false;
+                        return Some(false);
                     }
                 }
 
@@ -65,7 +68,7 @@ fn incremental_compare<
                     if let Some(Ok(event)) = first_iter.next() {
                         event_1 = event;
                     } else {
-                        return false;
+                        return Some(false);
                     }
                 }
 
@@ -75,7 +78,7 @@ fn incremental_compare<
                     if let Some(Ok(event)) = second_iter.next() {
                         event_2 = event;
                     } else {
-                        return false;
+                        return Some(false);
                     }
                 }
 
@@ -85,19 +88,19 @@ fn incremental_compare<
                     if let Some(Ok(event)) = second_iter.next() {
                         event_2 = event;
                     } else {
-                        return false;
+                        return Some(false);
                     }
                 }
 
                 if event_1 != event_2 {
-                    return false;
+                    return Some(false);
                 }
 
                 let first_value = validator_1.feed_event(event_1);
                 let second_value = validator_2.feed_event(event_2);
 
                 if first_value != second_value {
-                    return false;
+                    return Some(false);
                 }
             }
 
@@ -108,26 +111,24 @@ fn incremental_compare<
                 validator_2.feed_event(event_2);
             }
 
-            (Some(Err(first_err)), Some(Err(second_err))) => {
-                if first_err != second_err {
-                    return false;
-                }
+            (Some(Err(_)), Some(Err(_))) => {
+                return None;
             }
 
             (Some(Err(_)), _) | (_, Some(Err(_))) => {
-                return false;
+                return Some(false);
             }
 
             _ => {
-                return validator_1 == validator_2;
+                return Some(validator_1 == validator_2);
             }
         }
 
         if validator_1 != validator_2 {
             return if validator_1.has_invalid_state() && validator_2.has_invalid_state() {
-                Iterator::eq(first_iter, second_iter)
+                None
             } else {
-                false
+                Some(false)
             };
         }
     }
