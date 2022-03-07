@@ -23,45 +23,48 @@ use tokio_util::codec::{Decoder, Encoder};
 
 use super::map_queue::MapOperationQueue;
 
+/// Backpressure strategy for the output task of a downlink. This is used to encode the
+/// difference in behaviour between different kinds of downlink (particuarly value and
+/// map downlinks.)
 pub trait DownlinkBackpressure {
+    /// The type of operations expected from the downlink implementation.
     type Operation;
+    /// Decoder for operations received from the downlink implementation.
     type Dec: Decoder<Item = Self::Operation>;
+    /// Errors that could ocurr when a frame is pushed into the backpressure relief mechanism.
     type Err: Display;
 
     fn make_decoder() -> Self::Dec;
 
+    /// Called when a record has been sent on the downlink but writing is blocked.
     fn push_operation(&mut self, op: Self::Operation) -> Result<(), Self::Err>;
 
+    /// When writing is not blocked, this is called to write the outgoing record into
+    /// the output buffer.
     fn write_direct(&mut self, op: Self::Operation, buffer: &mut BytesMut);
 
+    /// Determine whether the strategy has data to be written to the output buffer.
     fn has_data(&self) -> bool;
 
+    /// Drain one record from the strategy to the output buffer.
     fn prepare_write(&mut self, buffer: &mut BytesMut);
 }
 
-#[derive(Debug)]
-pub enum DebugEvent {
-    HasData(bool),
-    Push(Vec<u8>),
-    WriteDirect(Vec<u8>),
-    PrepareWrite(Vec<u8>, Vec<u8>),
-}
-
+/// Backpressure implementation for value-like downlinks. This contains a buffer which
+/// is repeatedly overwritten each time a new record is pushed.
 #[derive(Debug, Default)]
 pub struct ValueBackpressure {
-    tx: Option<tokio::sync::mpsc::UnboundedSender<DebugEvent>>,
     current: BytesMut,
 }
 
 impl ValueBackpressure {
-    pub fn new(tx: tokio::sync::mpsc::UnboundedSender<DebugEvent>) -> Self {
-        ValueBackpressure {
-            tx: Some(tx),
-            current: Default::default(),
-        }
+    pub fn new() -> Self {
+        ValueBackpressure::default()
     }
 }
 
+/// Backpressure implementation for map-like downlinks. Map updates are pushed into a
+/// [`MapOperationQueue`] that relieves backpressure on a per-key basis.
 #[derive(Debug, Default)]
 pub struct MapBackpressure {
     queue: MapOperationQueue,
@@ -79,12 +82,9 @@ impl DownlinkBackpressure for ValueBackpressure {
     }
 
     fn push_operation(&mut self, op: Self::Operation) -> Result<(), Infallible> {
-        let ValueBackpressure { tx, current } = self;
+        let ValueBackpressure { current } = self;
         let DownlinkOperation { body } = op;
 
-        if let Some(tx) = tx {
-            let _ = tx.send(DebugEvent::Push(body.to_vec()));
-        }
         current.clear();
         current.reserve(body.len());
         current.put(body);
@@ -92,29 +92,17 @@ impl DownlinkBackpressure for ValueBackpressure {
     }
 
     fn has_data(&self) -> bool {
-        if let Some(tx) = &self.tx {
-            let _ = tx.send(DebugEvent::HasData(!self.current.is_empty()));
-        }
         !self.current.is_empty()
     }
 
     fn write_direct(&mut self, op: Self::Operation, buffer: &mut BytesMut) {
         let DownlinkOperation { body } = op;
-        if let Some(tx) = &self.tx {
-            let _ = tx.send(DebugEvent::WriteDirect(body.to_vec()));
-        }
         buffer.clear();
         buffer.reserve(body.len());
         buffer.put(body);
     }
 
     fn prepare_write(&mut self, buffer: &mut BytesMut) {
-        if let Some(tx) = &self.tx {
-            let _ = tx.send(DebugEvent::PrepareWrite(
-                self.current.to_vec(),
-                buffer.to_vec(),
-            ));
-        }
         std::mem::swap(&mut self.current, buffer);
         self.current.clear()
     }
