@@ -13,11 +13,9 @@
 // limitations under the License.
 
 use bytes::{Buf, BufMut, Bytes};
-use std::fmt::Write;
 use swim_form::structural::{read::recognizer::Recognizer, write::StructuralWritable};
 use swim_model::Text;
 use swim_recon::parser::{AsyncParseError, RecognizerDecoder};
-use swim_recon::printer::print_recon_compact;
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::error::{FrameIoError, InvalidFrame};
@@ -54,8 +52,7 @@ const SYNCED: u8 = 2;
 const EVENT: u8 = 3;
 const UNLINKED: u8 = 4;
 
-const TAG_SIZE: usize = std::mem::size_of::<u8>();
-const LEN_SIZE: usize = std::mem::size_of::<u64>();
+use super::{LEN_SIZE, TAG_SIZE};
 
 impl<T: AsRef<[u8]>> Encoder<DownlinkNotification<T>> for DownlinkNotificationEncoder {
     type Error = std::io::Error;
@@ -176,18 +173,8 @@ where
                     }
                 }
                 DownlinkNotifiationDecoderState::ReadingBody { remaining } => {
-                    let to_split = (*remaining).min(src.remaining());
-                    let rem = src.split_off(to_split);
-                    let buf_remaining = src.remaining();
-                    let end_of_message = *remaining <= buf_remaining;
-                    let decode_result = if end_of_message {
-                        recognizer.decode_eof(src)
-                    } else {
-                        recognizer.decode(src)
-                    };
-                    let new_remaining = src.remaining();
-                    let consumed = buf_remaining - new_remaining;
-                    *remaining -= consumed;
+                    let (new_remaining, rem, decode_result) =
+                        super::consume_bounded(remaining, src, recognizer);
                     match decode_result {
                         Ok(Some(result)) => {
                             src.unsplit(rem);
@@ -245,9 +232,6 @@ where
 }
 pub struct DownlinkOperationEncoder;
 
-const RESERVE_INIT: usize = 256;
-const RESERVE_MULT: usize = 2;
-
 impl<T> Encoder<DownlinkOperation<T>> for DownlinkOperationEncoder
 where
     T: StructuralWritable,
@@ -260,28 +244,12 @@ where
         dst: &mut bytes::BytesMut,
     ) -> Result<(), Self::Error> {
         let DownlinkOperation { body } = item;
-        dst.reserve(LEN_SIZE);
-        let body_len_offset = dst.remaining();
-        dst.put_u64(0);
-        let body_offset = dst.remaining();
-
-        let mut next_res = RESERVE_INIT.max(dst.remaining_mut().saturating_mul(RESERVE_MULT));
-        loop {
-            if write!(dst, "{}", print_recon_compact(&body)).is_err() {
-                dst.truncate(body_offset);
-                dst.reserve(next_res);
-                next_res = next_res.saturating_mul(RESERVE_MULT);
-            } else {
-                break;
-            }
-        }
-        let body_len = (dst.remaining() - body_offset) as u64;
-        let mut rewound = &mut dst.as_mut()[body_len_offset..];
-        rewound.put_u64(body_len);
+        super::write_recon(dst, &body);
         Ok(())
     }
 }
 
+#[derive(Debug, Default)]
 pub struct DownlinkOperationDecoder;
 
 impl Decoder for DownlinkOperationDecoder {

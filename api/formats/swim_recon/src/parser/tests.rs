@@ -50,10 +50,8 @@ fn check_output_comments(result: IResult<Span<'_>, Vec<Span<'_>>>, offset: usize
 #[test]
 fn parse_identifier() {
     let input = span("name");
-    assert!(matches!(
-        streaming::identifier(input),
-        Err(nom::Err::Incomplete(_))
-    ));
+    let res: IResult<Span<'_>, &str> = streaming::identifier(input);
+    assert!(matches!(res, Err(nom::Err::Incomplete(_))));
 
     let input = span("name ");
     check_output(streaming::identifier(input), 4, "name");
