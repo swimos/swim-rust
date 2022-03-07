@@ -13,15 +13,18 @@
 // limitations under the License.
 
 use std::borrow::Cow;
+use std::str::Utf8Error;
 
 use super::super::tokens::complete::{blob, identifier, numeric_literal};
 use super::super::tokens::string_literal;
+use bytes::Bytes;
 use nom::branch::alt;
 use nom::character::complete::{char, multispace0, one_of, space0};
 use nom::combinator::{complete, flat_map, map, map_res, opt, recognize, rest, success};
 use nom::multi::{fold_many0, many0_count, many1_count};
 use nom::sequence::{delimited, pair, preceded, terminated, tuple};
-use nom::IResult;
+use nom::{Finish, IResult};
+use thiserror::Error;
 
 use crate::parser::Span;
 
@@ -264,5 +267,28 @@ where
                 success(p),
             ))
         })(input)
+    }
+}
+
+#[derive(Error, Debug)]
+pub enum MessageExtractError {
+    #[error("Data contains invalid UTF8: {0}")]
+    BadUtf8(#[from] Utf8Error),
+    #[error("Parse error in header: {0}")]
+    ParseError(String),
+}
+
+pub fn try_extract_header<'a, P>(
+    bytes: &'a Bytes,
+    peeler: P,
+) -> Result<P::Output, MessageExtractError>
+where
+    P: HeaderPeeler<'a>,
+{
+    let text = std::str::from_utf8(bytes)?;
+    let span = Span::new(text);
+    match peel_message(peeler)(span).finish() {
+        Ok((_, output)) => Ok(output),
+        Err(e) => Err(MessageExtractError::ParseError(e.to_string())),
     }
 }
