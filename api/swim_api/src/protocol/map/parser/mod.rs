@@ -31,6 +31,7 @@ enum MessageKind {
     Drop,
 }
 
+/// Description of a sub-string of the input.
 #[derive(Debug, Clone, Copy)]
 struct Chunk {
     offset: usize,
@@ -46,6 +47,10 @@ impl<'a> From<Span<'a>> for Chunk {
     }
 }
 
+/// Implementaton of [`HeaderPeeler`] that recognizes the header attribute of a warp map message.
+/// Rather than parsing the header, this recognizer simply keeps track of the kind of the message
+/// and where any key or value is located within the message so these can be extracted as
+/// substrings by the caller.
 #[derive(Debug, Clone, Copy, Default)]
 struct MapMessagePeeler {
     kind: Option<MessageKind>,
@@ -181,6 +186,7 @@ fn make_raw(bytes: &Bytes, peeled: MapMessage<Chunk, usize>) -> MapMessage<Bytes
     }
 }
 
+/// Attempt to interpet the header tag of a warp map message.
 pub fn extract_header(bytes: &Bytes) -> Result<MapMessage<Bytes, Bytes>, MessageExtractError> {
     let offsets = try_extract_header(bytes, MapMessagePeeler::default())?;
     Ok(make_raw(bytes, offsets))

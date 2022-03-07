@@ -17,7 +17,6 @@ use std::str::Utf8Error;
 
 use super::super::tokens::complete::{blob, identifier, numeric_literal};
 use super::super::tokens::string_literal;
-use bytes::Bytes;
 use nom::branch::alt;
 use nom::character::complete::{char, multispace0, one_of, space0};
 use nom::combinator::{complete, flat_map, map, map_res, opt, recognize, rest, success};
@@ -31,22 +30,67 @@ use crate::parser::Span;
 #[cfg(test)]
 mod tests;
 
+/// Implementers of this trait attempt to recognize a particular pattern in the first attribute of
+/// a Recon value. It is necessary for such types to be clonable (for use in different brancehs)
+/// of the parser and cloned instances should behave identically to the original. As clone could
+/// be called several times, this operation should be cheap (generally implementations should, in
+/// fact be [`Copy`]).
 pub trait HeaderPeeler<'a>: Clone {
+    /// The type of results produced after recognizing an attribute.
     type Output: 'a;
+    /// Possible failure cases from attempting to interpret the attribute.
     type Error: Clone + 'a;
 
+    /// Provide the name of the tag attribute.
+    ///
+    /// #Arguments
+    /// * `name` - The name of the tag. Not that this has a more restrictive lifetime as may
+    /// have been unescaped buy the parser.
     fn tag(self, name: &str) -> Result<Self, Self::Error>;
 
+    /// Feed a slot from the body of the attribute.
+    ///
+    /// #Arguments
+    /// * `name` - The name of the slot. Not that this has a more restrictive lifetime as may
+    /// have been unescaped buy the parser.
+    /// * `value` - Span of the input containing the Recon of the value of the slot.
     fn feed_header_slot(self, name: &str, value: Span<'a>) -> Result<Self, Self::Error>;
 
+    /// Feed a value item from the body of the attribute.
+    ///
+    /// #Arguments
+    /// * `value` - Span of the input containing the Recon of the item
     fn feed_header_value(self, value: Span<'a>) -> Result<Self, Self::Error>;
 
+    /// Feed an empty item from the body of the attribute. (Note that the result of recognizing
+    /// "@attr" will be different from "@attr()").
     fn feed_header_extant(self) -> Result<Self, Self::Error>;
 
+    /// Attempt to interpret the attribute.
+    ///
+    /// #Arguments
+    /// * `body` - The remainder of the input span. Note that this is entirely uninterpreted and
+    /// so many not contain valid Recon.
     fn done(self, body: Span<'a>) -> Result<Self::Output, Self::Error>;
 }
 
-pub fn peel_message<'a, P>(
+/// Run an implementation of [`HeaderPeeler`] against an array of bytes.
+pub fn try_extract_header<'a, P>(
+    bytes: &'a [u8],
+    peeler: P,
+) -> Result<P::Output, MessageExtractError>
+where
+    P: HeaderPeeler<'a>,
+{
+    let text = std::str::from_utf8(bytes)?;
+    let span = Span::new(text);
+    match peel_message(peeler)(span).finish() {
+        Ok((_, output)) => Ok(output),
+        Err(e) => Err(MessageExtractError::ParseError(e.to_string())),
+    }
+}
+
+fn peel_message<'a, P>(
     peeler: P,
 ) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, <P as HeaderPeeler<'a>>::Output>
 where
@@ -270,25 +314,11 @@ where
     }
 }
 
+/// Errors that can occur attempting to parse the header of a Recon value.
 #[derive(Error, Debug)]
 pub enum MessageExtractError {
     #[error("Data contains invalid UTF8: {0}")]
     BadUtf8(#[from] Utf8Error),
     #[error("Parse error in header: {0}")]
     ParseError(String),
-}
-
-pub fn try_extract_header<'a, P>(
-    bytes: &'a Bytes,
-    peeler: P,
-) -> Result<P::Output, MessageExtractError>
-where
-    P: HeaderPeeler<'a>,
-{
-    let text = std::str::from_utf8(bytes)?;
-    let span = Span::new(text);
-    match peel_message(peeler)(span).finish() {
-        Ok((_, output)) => Ok(output),
-        Err(e) => Err(MessageExtractError::ParseError(e.to_string())),
-    }
 }
