@@ -19,6 +19,9 @@ use swim_recon::parser::{try_extract_header, HeaderPeeler, MessageExtractError, 
 
 use super::{MapMessage, MapOperation};
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Debug, Clone, Copy)]
 enum MessageKind {
     Update,
