@@ -18,6 +18,7 @@ use swim_utilities::format::comma_sep;
 use thiserror::Error;
 use tracing::warn;
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum BadFrameResponse<E> {
     /// Instruction ignore the bad envelope.
     Ignore,
@@ -74,7 +75,7 @@ impl<E> BadFrameStrategy<E> for AlwaysIgnoreStrategy {
     }
 }
 
-/// A strategu that will ignore several bad envelopes, collecting the errors, and then
+/// A strategy that will ignore several bad envelopes, collecting the errors, and then
 /// abort.
 pub struct CountStrategy<E> {
     max: usize,
@@ -83,7 +84,6 @@ pub struct CountStrategy<E> {
 }
 
 impl<E> CountStrategy<E> {
-    
     pub fn new(max: NonZeroUsize) -> Self {
         CountStrategy {
             max: max.get(),
@@ -94,13 +94,19 @@ impl<E> CountStrategy<E> {
 }
 
 /// A collection of errors, accumulated by a [`CountStrategy`].
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq, Eq)]
 #[error("Too many bad frames: {errors}")]
 pub struct ErrorLog<E> {
     errors: Errors<E>,
 }
 
-#[derive(Debug)]
+impl<E> AsRef<[E]> for ErrorLog<E> {
+    fn as_ref(&self) -> &[E] {
+        &self.errors.0
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct Errors<E>(Vec<E>);
 
 impl<E: Display> Display for Errors<E> {
@@ -130,6 +136,65 @@ impl<E: std::error::Error> BadFrameStrategy<E> for CountStrategy<E> {
             );
             errors.push(error);
             BadFrameResponse::Ignore
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use swim_utilities::algebra::non_zero_usize;
+    use thiserror::Error;
+
+    #[derive(Debug, Error, PartialEq, Eq)]
+    #[error("{0}")]
+    struct TestError(String);
+
+    #[test]
+    fn always_abort() {
+        let mut handler = AlwaysAbortStrategy;
+        let response = handler.failed_with(TestError("failed".to_string()));
+        assert_eq!(
+            response,
+            BadFrameResponse::Abort(TestError("failed".to_string()))
+        );
+    }
+
+    #[test]
+    fn always_ignore() {
+        let mut handler = AlwaysIgnoreStrategy;
+        let response = handler.failed_with(TestError("failed".to_string()));
+        assert_eq!(response, BadFrameResponse::Ignore);
+    }
+
+    const MAX: NonZeroUsize = non_zero_usize!(3);
+
+    #[test]
+    fn count_errors() {
+        let mut handler = CountStrategy::new(MAX);
+
+        let first = handler.failed_with(TestError("first".to_string()));
+        assert_eq!(BadFrameResponse::Ignore, first);
+
+        let second = handler.failed_with(TestError("second".to_string()));
+        assert_eq!(BadFrameResponse::Ignore, second);
+
+        let third = handler.failed_with(TestError("third".to_string()));
+        match third {
+            BadFrameResponse::Abort(report) => {
+                assert_eq!(
+                    report.as_ref(),
+                    &[
+                        TestError("first".to_string()),
+                        TestError("second".to_string()),
+                        TestError("third".to_string())
+                    ]
+                )
+            }
+            BadFrameResponse::Ignore => {
+                panic!("Error ignored.");
+            }
         }
     }
 }
