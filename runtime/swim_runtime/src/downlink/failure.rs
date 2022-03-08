@@ -19,16 +19,26 @@ use thiserror::Error;
 use tracing::warn;
 
 pub enum BadFrameResponse<E> {
+    /// Instruction ignore the bad envelope.
     Ignore,
+    /// Instruction to abort the downlink runtime task with the specified error.
     Abort(E),
 }
 
+/// For some downlink types (particularly map downlinks) the runtime needs to inspect
+/// the content of event messages. As this inspection can fail, the downlink must know
+/// what to do when it encounters invalid event bodies. A strategy implementing this
+/// trait describes whether the runtime task should continue (ignoring the bad envelope)
+/// or abort.
 pub trait BadFrameStrategy<E> {
+    /// The type of error reports produced on an abort.
     type Report: std::error::Error;
 
+    /// Determine whether to continue or abort.
     fn failed_with(&mut self, error: E) -> BadFrameResponse<Self::Report>;
 }
 
+/// Dummy strategy for downlink types that cannot fail in this way.
 #[derive(Debug, Default)]
 pub struct InfallibleStrategy;
 
@@ -40,6 +50,7 @@ impl BadFrameStrategy<Infallible> for InfallibleStrategy {
     }
 }
 
+/// A strategy that always aborts with the error it is given.
 #[derive(Debug, Default)]
 pub struct AlwaysAbortStrategy;
 
@@ -51,6 +62,7 @@ impl<E: std::error::Error> BadFrameStrategy<E> for AlwaysAbortStrategy {
     }
 }
 
+/// A strategy that ignores all bad envelopes.
 #[derive(Debug, Default)]
 pub struct AlwaysIgnoreStrategy;
 
@@ -62,6 +74,8 @@ impl<E> BadFrameStrategy<E> for AlwaysIgnoreStrategy {
     }
 }
 
+/// A strategu that will ignore several bad envelopes, collecting the errors, and then
+/// abort.
 pub struct CountStrategy<E> {
     max: usize,
     count: usize,
@@ -69,6 +83,7 @@ pub struct CountStrategy<E> {
 }
 
 impl<E> CountStrategy<E> {
+    
     pub fn new(max: NonZeroUsize) -> Self {
         CountStrategy {
             max: max.get(),
@@ -78,6 +93,7 @@ impl<E> CountStrategy<E> {
     }
 }
 
+/// A collection of errors, accumulated by a [`CountStrategy`].
 #[derive(Debug, Error)]
 #[error("Too many bad frames: {errors}")]
 pub struct ErrorLog<E> {

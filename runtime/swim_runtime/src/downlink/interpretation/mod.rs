@@ -19,9 +19,13 @@ use swim_api::protocol::map::{extract_header, MapMessageEncoder, RawMapOperation
 use swim_recon::parser::MessageExtractError;
 use tokio_util::codec::Encoder;
 
+/// A possible transformation to apply to an incoming event body, before passing it on
+/// to the downlink implementation.
 pub trait DownlinkInterpretation {
     type Error;
 
+    /// Interpret the body held in the incoming buffer and write the appropriately transformed
+    /// data into the buffer.
     fn interpret_frame_data(
         &mut self,
         frame: Bytes,
@@ -46,16 +50,20 @@ where
     }
 }
 
-pub fn trivial_interpretation(frame: Bytes, buffer: &mut BytesMut) -> Result<(), Infallible> {
+/// Trivial interpretation that simply copies between the buffers (used for value-like downlinks).
+fn trivial_interpretation(frame: Bytes, buffer: &mut BytesMut) -> Result<(), Infallible> {
     buffer.reserve(frame.len());
     buffer.put(frame);
     Ok(())
 }
 
+/// For value downlinks, simply copy bewteen the buffers.
 pub fn value_interpretation() -> impl DownlinkInterpretation<Error = Infallible> {
     FnMutInterpretation(trivial_interpretation)
 }
 
+/// Interpretation for map downlinks that attemps to extract key and value information
+/// from the event.
 #[derive(Debug, Default)]
 pub struct MapInterpretation {
     encoder: MapMessageEncoder<RawMapOperationEncoder>,
