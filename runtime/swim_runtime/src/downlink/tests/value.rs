@@ -21,9 +21,10 @@ use crate::compat::{
     AgentMessageDecoder, MessageDecodeError, Operation, RequestMessage, ResponseMessage,
     ResponseMessageEncoder,
 };
+use crate::downlink::DownlinkRuntimeConfig;
 use crate::routing::RoutingAddr;
 
-use super::{AttachAction, DownlinkOptions, ValueDownlinkRuntime};
+use super::super::{AttachAction, DownlinkOptions, ValueDownlinkRuntime};
 use futures::future::{join3, join4};
 use futures::{SinkExt, StreamExt};
 use swim_api::error::{DownlinkTaskError, FrameIoError, InvalidFrame};
@@ -183,7 +184,7 @@ where
 {
     run_test_with_config(
         options,
-        super::DownlinkRuntimeConfig {
+        DownlinkRuntimeConfig {
             empty_timeout: EMPTY_TIMEOUT,
             attachment_queue_size: ATT_QUEUE_SIZE,
         },
@@ -194,7 +195,7 @@ where
 
 async fn run_test_with_config<F, Fut>(
     options: DownlinkOptions,
-    config: super::DownlinkRuntimeConfig,
+    config: DownlinkRuntimeConfig,
     test_block: F,
 ) -> (Fut::Output, Result<(), DownlinkTaskError>)
 where
@@ -754,7 +755,7 @@ async fn exhaust_output_buffer() {
 async fn shutdowm_after_timeout_with_no_subscribers() {
     let ((_stop, events), result) = run_test_with_config(
         DownlinkOptions::empty(),
-        super::DownlinkRuntimeConfig {
+        DownlinkRuntimeConfig {
             empty_timeout: Duration::from_millis(100),
             attachment_queue_size: ATT_QUEUE_SIZE,
         },
@@ -865,7 +866,7 @@ const SECOND_TAG: &str = "B";
 
 async fn run_test_with_two_consumers<F, Fut>(
     options: DownlinkOptions,
-    config: super::DownlinkRuntimeConfig,
+    config: DownlinkRuntimeConfig,
     test_block: F,
 ) -> (
     Fut::Output,
@@ -983,7 +984,7 @@ async fn sync_both(context: &mut TwoConsumerTestContext) {
 async fn sync_two_consumers() {
     let ((first_events, second_events), first_result, second_result) = run_test_with_two_consumers(
         DownlinkOptions::SYNC,
-        super::DownlinkRuntimeConfig {
+        DownlinkRuntimeConfig {
             empty_timeout: EMPTY_TIMEOUT,
             attachment_queue_size: ATT_QUEUE_SIZE,
         },
@@ -1014,7 +1015,7 @@ async fn sync_two_consumers() {
 async fn receive_from_two_consumers() {
     let ((first_events, second_events), first_result, second_result) = run_test_with_two_consumers(
         DownlinkOptions::SYNC,
-        super::DownlinkRuntimeConfig {
+        DownlinkRuntimeConfig {
             empty_timeout: EMPTY_TIMEOUT,
             attachment_queue_size: ATT_QUEUE_SIZE,
         },
