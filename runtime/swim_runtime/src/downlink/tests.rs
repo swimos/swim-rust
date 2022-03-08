@@ -215,8 +215,7 @@ where
 
     let management_task = ValueDownlinkRuntime::new(
         attach_rx,
-        in_rx,
-        out_tx,
+        (out_tx, in_rx),
         stop_rx,
         RoutingAddr::client(1),
         path,
@@ -896,8 +895,7 @@ where
 
     let management_task = ValueDownlinkRuntime::new(
         attach_rx,
-        in_rx,
-        out_tx,
+        (out_tx, in_rx),
         stop_rx,
         RoutingAddr::client(1),
         path,

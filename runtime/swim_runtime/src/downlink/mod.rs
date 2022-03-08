@@ -17,7 +17,7 @@ use std::num::NonZeroUsize;
 use std::time::Duration;
 
 use bitflags::bitflags;
-use bytes::{BufMut, BytesMut};
+use bytes::BytesMut;
 use futures::future::{join, select, Either};
 use futures::stream::SelectAll;
 use futures::{Future, FutureExt, Sink, SinkExt, Stream, StreamExt};
@@ -39,11 +39,14 @@ use crate::compat::{
     RawResponseMessageDecoder,
 };
 use crate::downlink::backpressure::DownlinkBackpressure;
+use crate::downlink::failure::BadFrameResponse;
 use crate::routing::RoutingAddr;
 
-pub mod backpressure;
+mod backpressure;
+pub mod failure;
+mod interpretation;
 mod key;
-pub mod map_queue;
+mod map_queue;
 #[cfg(test)]
 mod tests;
 
@@ -71,6 +74,8 @@ bitflags! {
         const INIT = Self::FLUSHED.bits;
     }
 }
+
+pub type Io = (ByteWriter, ByteReader);
 
 impl WriteTaskState {
     /// If a new consumer needs to be synced, set the appropriate state bit.
@@ -118,24 +123,35 @@ pub struct ValueDownlinkRuntime {
     config: DownlinkRuntimeConfig,
 }
 
+/// The runtime component for a map type downlink.
+pub struct MapDownlinkRuntime<H> {
+    requests: mpsc::Receiver<AttachAction>,
+    input: ByteReader,
+    output: ByteWriter,
+    stopping: trigger::Receiver,
+    identity: RoutingAddr,
+    path: RelativePath,
+    config: DownlinkRuntimeConfig,
+    failure_handler: H,
+}
+
 impl ValueDownlinkRuntime {
     /// #Arguments
     /// * `requests` - The channel through which new consumers connect to the runtime.
-    /// * `input` - Byte channel through which messages are received from the remote lane.
-    /// * `output` - Byte channel through which messages are sent to the remote lane.
+    /// * `io` - Byte channels through which messages are received from and sent to the remote lane.
     /// * `stopping` - Trigger to instruct the runtime to stop.
     /// * `identity` - The routing ID of this runtime.
     /// * `path` - The path to the remote lane.
     /// * `config` - Configuration parameters for the runtime.
     pub fn new(
         requests: mpsc::Receiver<AttachAction>,
-        input: ByteReader,
-        output: ByteWriter,
+        io: Io,
         stopping: trigger::Receiver,
         identity: RoutingAddr,
         path: RelativePath,
         config: DownlinkRuntimeConfig,
     ) -> Self {
+        let (output, input) = io;
         ValueDownlinkRuntime {
             requests,
             input,
@@ -168,9 +184,16 @@ impl ValueDownlinkRuntime {
             stopping.clone(),
             kill_switch_rx,
         )
-        .instrument(info_span!("Downlink Runtime Attachment Task", %path));
-        let read = read_task(input, consumer_rx, stopping.clone(), config)
-            .instrument(info_span!("Downlink Runtime Read Task", %path));
+        .instrument(info_span!("Value Downlink Runtime Attachment Task", %path));
+        let read = read_task(
+            input,
+            consumer_rx,
+            stopping.clone(),
+            config,
+            value_interpretation(),
+            InfallibleStrategy,
+        )
+        .instrument(info_span!("Value Downlink Runtime Read Task", %path));
         let write = write_task(
             output,
             producer_rx,
@@ -180,9 +203,103 @@ impl ValueDownlinkRuntime {
             config,
             ValueBackpressure::default(),
         )
-        .instrument(info_span!("Downlink Runtime Write Task", %path));
+        .instrument(info_span!("Value Downlink Runtime Write Task", %path));
         let io = async move {
-            join(read, write).await;
+            let (read_res, _) = join(read, write).await;
+            if let Err(e) = read_res {
+                match e {}
+            }
+            kill_switch_tx.trigger();
+        };
+        join(att, io).await;
+    }
+}
+
+impl<H> MapDownlinkRuntime<H> {
+    /// #Arguments
+    /// * `requests` - The channel through which new consumers connect to the runtime.
+    /// * `io` - Byte channels through which messages are received from and sent to the remote lane.
+    /// * `stopping` - Trigger to instruct the runtime to stop.
+    /// * `identity` - The routing ID of this runtime.
+    /// * `path` - The path to the remote lane.
+    /// * `config` - Configuration parameters for the runtime.
+    /// * `failure_handler` - Handler for event frames that do no contain valid map
+    /// messages.
+    pub fn new(
+        requests: mpsc::Receiver<AttachAction>,
+        io: Io,
+        stopping: trigger::Receiver,
+        identity: RoutingAddr,
+        path: RelativePath,
+        config: DownlinkRuntimeConfig,
+        failure_handler: H,
+    ) -> Self {
+        let (output, input) = io;
+        MapDownlinkRuntime {
+            requests,
+            input,
+            output,
+            stopping,
+            identity,
+            path,
+            config,
+            failure_handler,
+        }
+    }
+}
+impl<H: BadFrameStrategy<<MapInterpretation as DownlinkInterpretation>::Error>>
+    MapDownlinkRuntime<H>
+{
+    pub async fn run(self) {
+        let MapDownlinkRuntime {
+            requests,
+            input,
+            output,
+            stopping,
+            identity,
+            path,
+            config,
+            failure_handler,
+        } = self;
+
+        let (producer_tx, producer_rx) = mpsc::channel(config.attachment_queue_size.get());
+        let (consumer_tx, consumer_rx) = mpsc::channel(config.attachment_queue_size.get());
+        let (kill_switch_tx, kill_switch_rx) = trigger::trigger();
+        let att = attach_task(
+            requests,
+            producer_tx,
+            consumer_tx,
+            stopping.clone(),
+            kill_switch_rx,
+        )
+        .instrument(info_span!("Map Downlink Runtime Attachment Task", %path));
+        let read = read_task(
+            input,
+            consumer_rx,
+            stopping.clone(),
+            config,
+            MapInterpretation::default(),
+            failure_handler,
+        )
+        .instrument(info_span!("Map Downlink Runtime Read Task", %path));
+        let write = write_task(
+            output,
+            producer_rx,
+            stopping,
+            identity,
+            path.clone(),
+            config,
+            MapBackpressure::default(),
+        )
+        .instrument(info_span!("Map Downlink Runtime Write Task", %path));
+        let io = async move {
+            let (read_res, _) = join(read, write).await;
+            if let Err(e) = read_res {
+                error!(
+                    "Map downlink received invalid event messages: {problems}",
+                    problems = e
+                );
+            }
             kill_switch_tx.trigger();
         };
         join(att, io).await;
@@ -314,12 +431,18 @@ impl<D: Decoder> Stream for DownlinkReceiver<D> {
 }
 
 /// Consumes incoming messages from the remote lane and passes them to the consumers.
-async fn read_task(
+async fn read_task<I, H>(
     input: ByteReader,
     consumers: mpsc::Receiver<(ByteWriter, DownlinkOptions)>,
     stopping: trigger::Receiver,
     config: DownlinkRuntimeConfig,
-) {
+    mut interpretation: I,
+    mut failure_handler: H,
+) -> Result<(), H::Report>
+where
+    I: DownlinkInterpretation,
+    H: BadFrameStrategy<I::Error>,
+{
     let mut messages = FramedRead::new(input, RawResponseMessageDecoder);
 
     let mut flushed = true;
@@ -389,8 +512,11 @@ async fn read_task(
                 Notification::Event(bytes) => {
                     trace!("Dispatching an event.");
                     current.clear();
-                    current.reserve(bytes.len());
-                    current.put(bytes);
+                    if let Err(e) = interpretation.interpret_frame_data(bytes, &mut current) {
+                        if let BadFrameResponse::Abort(report) = failure_handler.failed_with(e) {
+                            return Err(report);
+                        }
+                    }
                     send_current(&mut registered, &current).await;
                     if registered.is_empty() && awaiting_synced.is_empty() {
                         trace!("Number of subscribers dropped to 0.");
@@ -434,6 +560,7 @@ async fn read_task(
     unlink(awaiting_linked).await;
     unlink(awaiting_synced).await;
     unlink(registered).await;
+    Ok(())
 }
 
 async fn sync_current(
@@ -915,7 +1042,9 @@ use futures::ready;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use self::backpressure::ValueBackpressure;
+use self::backpressure::{MapBackpressure, ValueBackpressure};
+use self::failure::{BadFrameStrategy, InfallibleStrategy};
+use self::interpretation::{value_interpretation, DownlinkInterpretation, MapInterpretation};
 
 /// A future that flushes a sender and then returns it. This is necessary as we need
 /// an [`Unpin`] future so an equivlanent async block would not work.

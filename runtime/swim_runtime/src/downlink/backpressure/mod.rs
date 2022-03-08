@@ -57,12 +57,6 @@ pub struct ValueBackpressure {
     current: BytesMut,
 }
 
-impl ValueBackpressure {
-    pub fn new() -> Self {
-        ValueBackpressure::default()
-    }
-}
-
 /// Backpressure implementation for map-like downlinks. Map updates are pushed into a
 /// [`MapOperationQueue`] that relieves backpressure on a per-key basis.
 #[derive(Debug, Default)]

@@ -19,6 +19,12 @@ use bytes::{BufMut, Bytes, BytesMut};
 use super::MapOperationQueue;
 use swim_api::protocol::map::RawMapOperation;
 
+impl<S> MapOperationQueue<S> {
+    pub fn len(&self) -> usize {
+        self.queue.len()
+    }
+}
+
 fn bytes_of(text: &str) -> Bytes {
     let mut buf = BytesMut::with_capacity(text.len());
     buf.put(text.as_bytes());
