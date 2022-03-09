@@ -22,9 +22,9 @@ use std::hash::{Hash, Hasher};
 mod tests;
 
 pub fn calculate_hash<H: Hasher>(value: &str, hasher: &mut H) {
-    let parse_iterator = HashParser::new(Span::new(value));
+    let parse_iterator = HashParser::new();
 
-    if parse_iterator.hash(hasher).is_some() {
+    if parse_iterator.hash(Span::new(value), hasher).is_some() {
         value.hash(hasher)
     }
 }

@@ -37,6 +37,18 @@ use swim_model::Value;
 /// as the input is parsed.
 pub type Span<'a> = LocatedSpan<&'a str>;
 
+/// A wrapper around a Recon string that supports equality comparison and hashing
+/// based on the semantic equality of the Recon and not the actual string representation.
+///
+/// # Examples
+///
+/// ```
+/// use swim_recon::parser::ReconStr;
+/// let first = ReconStr("@attr(1,2)");
+/// let second = ReconStr("@attr({1,2})");
+///
+/// assert_eq!(first, second);
+/// ```
 #[derive(Debug, Clone, Copy)]
 pub struct ReconStr<'a>(&'a str);
 
