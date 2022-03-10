@@ -14,7 +14,6 @@
 
 use std::fmt::Debug;
 use std::future::Future;
-use std::num::NonZeroUsize;
 use std::time::Duration;
 
 use crate::compat::{
@@ -29,13 +28,12 @@ use futures::future::{join3, join4};
 use futures::{SinkExt, StreamExt};
 use swim_api::error::{DownlinkTaskError, FrameIoError, InvalidFrame};
 use swim_api::protocol::downlink::{
-    DownlinkNotifiationDecoder, DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder,
+    ValueNotificationDecoder, DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder,
 };
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_form::Form;
 use swim_model::path::RelativePath;
 use swim_model::Text;
-use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::io::byte_channel::{self, ByteReader, ByteWriter};
 use swim_utilities::trigger;
 use tokio::io::AsyncWriteExt;
@@ -43,19 +41,13 @@ use tokio::sync::mpsc;
 use tokio::time::timeout;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_util::codec::{FramedRead, FramedWrite};
+use super::*;
 
 #[derive(Debug, Form, PartialEq, Eq, Clone)]
 enum Message {
     Ping,
     Fail,
     CurrentValue(Text),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum State {
-    Unlinked,
-    Linked,
-    Synced,
 }
 
 type Event = (State, DownlinkNotification<Message>);
@@ -97,7 +89,7 @@ async fn run_fake_downlink(
     let mut state = State::Unlinked;
     let mut read = FramedRead::new(
         rx_in,
-        DownlinkNotifiationDecoder::new(Message::make_recognizer()),
+        ValueNotificationDecoder::default(),
     );
 
     let mut write = FramedWrite::new(tx_out, DownlinkOperationEncoder);
@@ -164,15 +156,6 @@ async fn run_fake_downlink(
     }
     Ok(())
 }
-
-const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(1024);
-const CHANNEL_SIZE: usize = 16;
-const TEST_TIMEOUT: Duration = Duration::from_secs(10);
-const REMOTE_ADDR: RoutingAddr = RoutingAddr::remote(1);
-const REMOTE_NODE: &str = "/remote";
-const REMOTE_LANE: &str = "remote_lane";
-const EMPTY_TIMEOUT: Duration = Duration::from_secs(2);
-const ATT_QUEUE_SIZE: NonZeroUsize = non_zero_usize!(8);
 
 async fn run_test<F, Fut>(
     options: DownlinkOptions,
@@ -812,7 +795,7 @@ async fn run_simple_fake_downlink(
     let mut state = State::Unlinked;
     let mut read = FramedRead::new(
         rx_in,
-        DownlinkNotifiationDecoder::new(Text::make_recognizer()),
+        ValueNotificationDecoder::default(),
     );
 
     let mut write = FramedWrite::new(tx_out, DownlinkOperationEncoder);

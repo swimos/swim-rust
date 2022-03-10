@@ -12,5 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::{num::NonZeroUsize, time::Duration};
+
+use swim_utilities::algebra::non_zero_usize;
+
+use crate::routing::RoutingAddr;
+
 mod value;
 mod map;
+
+const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(1024);
+const CHANNEL_SIZE: usize = 16;
+const TEST_TIMEOUT: Duration = Duration::from_secs(10);
+const REMOTE_ADDR: RoutingAddr = RoutingAddr::remote(1);
+const REMOTE_NODE: &str = "/remote";
+const REMOTE_LANE: &str = "remote_lane";
+const EMPTY_TIMEOUT: Duration = Duration::from_secs(2);
+const ATT_QUEUE_SIZE: NonZeroUsize = non_zero_usize!(8);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum State {
+    Unlinked,
+    Linked,
+    Synced,
+}

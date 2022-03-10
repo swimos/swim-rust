@@ -18,7 +18,7 @@ use crate::model::lifecycle::EventDownlinkLifecycle;
 use futures::StreamExt;
 use swim_api::downlink::DownlinkConfig;
 use swim_api::error::DownlinkTaskError;
-use swim_api::protocol::downlink::{DownlinkNotifiationDecoder, DownlinkNotification};
+use swim_api::protocol::downlink::{ValueNotificationDecoder, DownlinkNotification};
 use swim_form::Form;
 use swim_model::path::Path;
 use swim_recon::printer::print_recon;
@@ -85,7 +85,7 @@ where
     } = config;
     let mut state = State::Unlinked;
     let mut framed_read =
-        FramedRead::new(input, DownlinkNotifiationDecoder::new(T::make_recognizer()));
+        FramedRead::new(input, ValueNotificationDecoder::default());
 
     while let Some(result) = framed_read.next().await {
         match result? {

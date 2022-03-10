@@ -13,7 +13,10 @@
 // limitations under the License.
 
 use bytes::{Buf, BufMut, Bytes};
-use swim_form::structural::{read::recognizer::Recognizer, write::StructuralWritable};
+use swim_form::structural::{
+    read::recognizer::RecognizerReadable,
+    write::StructuralWritable,
+};
 use swim_model::Text;
 use swim_recon::parser::{AsyncParseError, RecognizerDecoder};
 use tokio_util::codec::{Decoder, Encoder};
@@ -52,7 +55,10 @@ const SYNCED: u8 = 2;
 const EVENT: u8 = 3;
 const UNLINKED: u8 = 4;
 
-use super::{LEN_SIZE, TAG_SIZE};
+use super::{
+    map::{MapMessage, MapMessageDecoder, MapOperationDecoder},
+    LEN_SIZE, TAG_SIZE,
+};
 
 impl<T: AsRef<[u8]>> Encoder<DownlinkNotification<T>> for DownlinkNotificationEncoder {
     type Error = std::io::Error;
@@ -87,7 +93,8 @@ impl<T: AsRef<[u8]>> Encoder<DownlinkNotification<T>> for DownlinkNotificationEn
         Ok(())
     }
 }
-pub enum DownlinkNotifiationDecoderState<T> {
+#[derive(Debug)]
+pub enum DownlinkNotificationDecoderState<T> {
     ReadingHeader,
     ReadingBody {
         remaining: usize,
@@ -97,40 +104,110 @@ pub enum DownlinkNotifiationDecoderState<T> {
         remaining: usize,
     },
     Discarding {
-        error: Option<AsyncParseError>,
+        error: Option<FrameIoError>,
         remaining: usize,
     },
 }
 
-pub struct DownlinkNotifiationDecoder<T, R> {
-    state: DownlinkNotifiationDecoderState<T>,
-    recognizer: RecognizerDecoder<R>,
+impl<T> Default for DownlinkNotificationDecoderState<T> {
+    fn default() -> Self {
+        Self::ReadingHeader
+    }
 }
 
-impl<R: Recognizer> DownlinkNotifiationDecoder<R::Target, R> {
-    pub fn new(recognizer: R) -> Self {
-        DownlinkNotifiationDecoder {
-            state: DownlinkNotifiationDecoderState::ReadingHeader,
-            recognizer: RecognizerDecoder::new(recognizer),
+#[derive(Debug)]
+struct DownlinkNotificationDecoder<T, D> {
+    state: DownlinkNotificationDecoderState<T>,
+    body_decoder: D,
+}
+
+type MsgDecoder<K, V> = MapMessageDecoder<MapOperationDecoder<K, V>>;
+
+type MapNotDecoderInner<K, V> = DownlinkNotificationDecoder<MapMessage<K, V>, MsgDecoder<K, V>>;
+type ValueNotDecoderInner<T> =
+    DownlinkNotificationDecoder<T, RecognizerDecoder<<T as RecognizerReadable>::Rec>>;
+
+pub struct ValueNotificationDecoder<T: RecognizerReadable> {
+    inner: ValueNotDecoderInner<T>,
+}
+
+impl<T> Default for ValueNotificationDecoder<T>
+where
+    T: RecognizerReadable,
+{
+    fn default() -> Self {
+        Self {
+            inner: DownlinkNotificationDecoder {
+                state: Default::default(),
+                body_decoder: RecognizerDecoder::new(T::make_recognizer()),
+            },
+        }
+    }
+}
+pub struct MapNotificationDecoder<K: RecognizerReadable, V: RecognizerReadable> {
+    inner: MapNotDecoderInner<K, V>,
+}
+
+impl<K, V> Default for MapNotificationDecoder<K, V>
+where
+    K: RecognizerReadable,
+    V: RecognizerReadable,
+{
+    fn default() -> Self {
+        Self {
+            inner: DownlinkNotificationDecoder {
+                state: Default::default(),
+                body_decoder: MapMessageDecoder::default(),
+            },
         }
     }
 }
 
-impl<T, R> Decoder for DownlinkNotifiationDecoder<T, R>
+impl<K, V> Decoder for MapNotificationDecoder<K, V>
 where
-    R: Recognizer<Target = T>,
+    K: RecognizerReadable,
+    V: RecognizerReadable,
+{
+    type Item = DownlinkNotification<MapMessage<K, V>>;
+
+    type Error = FrameIoError;
+
+    fn decode(&mut self, src: &mut bytes::BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        self.inner.decode(src)
+    }
+}
+
+impl<T> Decoder for ValueNotificationDecoder<T>
+where
+    T: RecognizerReadable,
 {
     type Item = DownlinkNotification<T>;
 
     type Error = FrameIoError;
 
     fn decode(&mut self, src: &mut bytes::BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        let DownlinkNotifiationDecoder {
-            state, recognizer, ..
+        self.inner.decode(src)
+    }
+}
+
+impl<T, D> Decoder for DownlinkNotificationDecoder<T, D>
+where
+    D: Decoder<Item = T>,
+    D::Error: Into<FrameIoError>,
+{
+    type Item = DownlinkNotification<T>;
+
+    type Error = FrameIoError;
+
+    fn decode(&mut self, src: &mut bytes::BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        let DownlinkNotificationDecoder {
+            state,
+            body_decoder,
+            ..
         } = self;
         loop {
             match state {
-                DownlinkNotifiationDecoderState::ReadingHeader => {
+                DownlinkNotificationDecoderState::ReadingHeader => {
                     if src.remaining() < TAG_SIZE {
                         src.reserve(TAG_SIZE);
                         break Ok(None);
@@ -153,9 +230,8 @@ where
                             } else {
                                 src.advance(1);
                                 let len = src.get_u64() as usize;
-                                recognizer.reset();
                                 *state =
-                                    DownlinkNotifiationDecoderState::ReadingBody { remaining: len };
+                                    DownlinkNotificationDecoderState::ReadingBody { remaining: len };
                             }
                         }
                         UNLINKED => {
@@ -172,13 +248,13 @@ where
                         }
                     }
                 }
-                DownlinkNotifiationDecoderState::ReadingBody { remaining } => {
+                DownlinkNotificationDecoderState::ReadingBody { remaining } => {
                     let (new_remaining, rem, decode_result) =
-                        super::consume_bounded(remaining, src, recognizer);
+                        super::consume_bounded(remaining, src, body_decoder);
                     match decode_result {
                         Ok(Some(result)) => {
                             src.unsplit(rem);
-                            *state = DownlinkNotifiationDecoderState::AfterBody {
+                            *state = DownlinkNotificationDecoderState::AfterBody {
                                 message: Some(DownlinkNotification::Event { body: result }),
                                 remaining: *remaining,
                             }
@@ -191,22 +267,22 @@ where
                             src.unsplit(rem);
                             src.advance(new_remaining);
                             if *remaining == 0 {
-                                *state = DownlinkNotifiationDecoderState::ReadingHeader;
+                                *state = DownlinkNotificationDecoderState::ReadingHeader;
                                 break Err(e.into());
                             } else {
-                                *state = DownlinkNotifiationDecoderState::Discarding {
-                                    error: Some(e),
+                                *state = DownlinkNotificationDecoderState::Discarding {
+                                    error: Some(e.into()),
                                     remaining: *remaining,
                                 }
                             }
                         }
                     }
                 }
-                DownlinkNotifiationDecoderState::AfterBody { message, remaining } => {
+                DownlinkNotificationDecoderState::AfterBody { message, remaining } => {
                     if src.remaining() >= *remaining {
                         src.advance(*remaining);
                         let result = message.take();
-                        *state = DownlinkNotifiationDecoderState::ReadingHeader;
+                        *state = DownlinkNotificationDecoderState::ReadingHeader;
                         break Ok(result);
                     } else {
                         *remaining -= src.remaining();
@@ -214,11 +290,13 @@ where
                         break Ok(None);
                     }
                 }
-                DownlinkNotifiationDecoderState::Discarding { error, remaining } => {
+                DownlinkNotificationDecoderState::Discarding { error, remaining } => {
                     if src.remaining() >= *remaining {
                         src.advance(*remaining);
-                        let err = error.take().unwrap_or(AsyncParseError::UnconsumedInput);
-                        *state = DownlinkNotifiationDecoderState::ReadingHeader;
+                        let err = error
+                            .take()
+                            .unwrap_or(AsyncParseError::UnconsumedInput.into());
+                        *state = DownlinkNotificationDecoderState::ReadingHeader;
                         break Err(err.into());
                     } else {
                         *remaining -= src.remaining();

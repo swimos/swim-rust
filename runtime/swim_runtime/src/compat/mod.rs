@@ -488,7 +488,6 @@ where
                                 path,
                                 remaining: body_len,
                             };
-                            recognizer.reset();
                         }
                         _ => {
                             break Err(MessageDecodeError::UnexpectedCode(tag));
@@ -654,7 +653,6 @@ where
                                 path,
                                 remaining: body_len,
                             };
-                            recognizer.reset();
                         }
                         _ => {
                             break Err(MessageDecodeError::UnexpectedCode(tag));

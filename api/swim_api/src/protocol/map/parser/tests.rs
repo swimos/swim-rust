@@ -15,7 +15,7 @@
 use bytes::BytesMut;
 use std::fmt::Write;
 
-use crate::protocol::map::{MapMessage, MapOperation};
+use crate::protocol::map::MapMessage;
 
 #[test]
 fn peel_clear_header() {
@@ -31,7 +31,7 @@ fn peel_clear_header() {
 
     assert!(matches!(
         message,
-        MapMessage::Operation(MapOperation::Clear)
+        MapMessage::Clear
     ));
 }
 
@@ -75,7 +75,7 @@ fn peel_remove_header() {
     let result = super::extract_header(&bytes);
 
     match result {
-        Ok(MapMessage::Operation(MapOperation::Remove { key })) => {
+        Ok(MapMessage::Remove { key }) => {
             assert_eq!(key.as_ref(), b"567");
         }
         ow => {
@@ -95,7 +95,7 @@ fn peel_update_header() {
     let result = super::extract_header(&bytes);
 
     match result {
-        Ok(MapMessage::Operation(MapOperation::Update { key, value })) => {
+        Ok(MapMessage::Update { key, value }) => {
             assert_eq!(key.as_ref(), b"\"my key\"");
             assert_eq!(value.as_ref(), b"@inner { a: 1, b: 2}");
         }

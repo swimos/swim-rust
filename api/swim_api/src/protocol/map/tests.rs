@@ -309,5 +309,43 @@ fn decode_op_message() {
         value: VALUE.to_string(),
     };
     let restored = round_trip_message::<String, String>(op.clone().into());
-    assert_eq!(restored, MapMessage::Operation(op));
+    assert_eq!(restored, op.into());
+}
+
+#[test]
+fn test_map_operation_form() {
+    let op = MapOperation::Update { key: 0, value: 1};
+    let recon = format!("{}", print_recon_compact(&op));
+    assert_eq!(recon, "@update(key:0) 1");
+
+    let op: MapOperation<i32, i32> = MapOperation::Remove { key: 0 };
+    let recon = format!("{}", print_recon_compact(&op));
+    assert_eq!(recon, "@remove(key:0)");
+
+    let op: MapOperation<i32, i32> = MapOperation::Clear;
+    let recon = format!("{}", print_recon_compact(&op));
+    assert_eq!(recon, "@clear");
+}
+
+#[test]
+fn test_map_message_form() {
+    let op = MapMessage::Update { key: 0, value: 1};
+    let recon = format!("{}", print_recon_compact(&op));
+    assert_eq!(recon, "@update(key:0) 1");
+
+    let op: MapMessage<i32, i32> = MapMessage::Remove { key: 0 };
+    let recon = format!("{}", print_recon_compact(&op));
+    assert_eq!(recon, "@remove(key:0)");
+
+    let op: MapMessage<i32, i32> = MapMessage::Clear;
+    let recon = format!("{}", print_recon_compact(&op));
+    assert_eq!(recon, "@clear");
+
+    let op: MapMessage<i32, i32> = MapMessage::Take(1);
+    let recon = format!("{}", print_recon_compact(&op));
+    assert_eq!(recon, "@take(1)");
+
+    let op: MapMessage<i32, i32> = MapMessage::Drop(1);
+    let recon = format!("{}", print_recon_compact(&op));
+    assert_eq!(recon, "@drop(1)");
 }

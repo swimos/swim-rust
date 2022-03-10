@@ -14,7 +14,7 @@
 
 use crate::error::{FrameIoError, InvalidFrame};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
+use swim_form::{structural::{read::recognizer::RecognizerReadable, write::StructuralWritable}, Form};
 use swim_model::Text;
 use swim_recon::parser::{AsyncParseError, RecognizerDecoder};
 use tokio_util::codec::{Decoder, Encoder};
@@ -27,10 +27,20 @@ pub use parser::extract_header;
 
 /// An operation that can be applied to a map lane. This type is used by map uplinks and downlinks
 /// to describe alterations to the lane.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Form)]
 pub enum MapOperation<K, V> {
-    Update { key: K, value: V },
-    Remove { key: K },
+    #[form(tag = "update")]
+    Update { 
+        key: K, 
+        #[form(body)] 
+        value: V,
+    },
+    #[form(tag = "remove")]
+    Remove {
+        #[form(header)]
+        key: K 
+    },
+    #[form(tag = "clear")]
     Clear,
 }
 
@@ -218,8 +228,6 @@ impl<K: RecognizerReadable, V: RecognizerReadable> Decoder for MapOperationDecod
                                 remaining: key_len,
                                 value_size: Some(value_len),
                             };
-                            key_recognizer.reset();
-                            value_recognizer.reset();
                         }
                         REMOVE => {
                             let required = TAG_SIZE + LEN_SIZE;
@@ -234,7 +242,6 @@ impl<K: RecognizerReadable, V: RecognizerReadable> Decoder for MapOperationDecod
                                 remaining: key_len,
                                 value_size: None,
                             };
-                            key_recognizer.reset();
                         }
                         CLEAR => {
                             src.advance(1);
@@ -396,16 +403,34 @@ impl<K: StructuralWritable, V: StructuralWritable> Encoder<MapOperation<K, V>>
 /// on downlinks. This extends [`MapOperation`] with `Take` (retain the first `n` items) and `Drop`
 /// (remove teh first `n` items). We never use these internally but must support them for communicating
 /// with other implementations.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Form)]
 pub enum MapMessage<K, V> {
-    Operation(MapOperation<K, V>),
-    Take(u64),
-    Drop(u64),
+    #[form(tag = "update")]
+    Update { 
+        key: K, 
+        #[form(body)] 
+        value: V,
+    },
+    #[form(tag = "remove")]
+    Remove {
+        #[form(header)]
+        key: K 
+    },
+    #[form(tag = "clear")]
+    Clear,
+    #[form(tag = "take")]
+    Take(#[form(header_body)] u64),
+    #[form(tag = "drop")]
+    Drop(#[form(header_body)] u64),
 }
 
 impl<K, V> From<MapOperation<K, V>> for MapMessage<K, V> {
     fn from(op: MapOperation<K, V>) -> Self {
-        MapMessage::Operation(op)
+        match op {
+            MapOperation::Update { key, value } => MapMessage::Update { key, value },
+            MapOperation::Remove { key} => MapMessage::Remove { key },
+            MapOperation::Clear => MapMessage::Clear,
+        }
     }
 }
 
@@ -436,7 +461,9 @@ where
     fn encode(&mut self, item: MapMessage<K, V>, dst: &mut BytesMut) -> Result<(), Self::Error> {
         let MapMessageEncoder(inner) = self;
         match item {
-            MapMessage::Operation(op) => inner.encode(op, dst),
+            MapMessage::Update { key, value} => inner.encode(MapOperation::Update { key, value}, dst),
+            MapMessage::Remove { key} => inner.encode(MapOperation::Remove { key }, dst),
+            MapMessage::Clear => inner.encode(MapOperation::Clear, dst),
             MapMessage::Take(n) => {
                 dst.reserve(TAG_SIZE + LEN_SIZE);
                 dst.put_u8(TAKE);
@@ -484,7 +511,7 @@ where
             }
             _ => {
                 let result = inner.decode(src)?;
-                Ok(result.map(MapMessage::Operation))
+                Ok(result.map(Into::into))
             }
         }
     }
