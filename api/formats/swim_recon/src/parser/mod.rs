@@ -44,8 +44,8 @@ pub type Span<'a> = LocatedSpan<&'a str>;
 ///
 /// ```
 /// use swim_recon::parser::ReconStr;
-/// let first = ReconStr("@attr(1,2)");
-/// let second = ReconStr("@attr({1,2})");
+/// let first = ReconStr::new("@attr(1,2)");
+/// let second = ReconStr::new("@attr({1,2})");
 ///
 /// assert_eq!(first, second);
 /// ```
