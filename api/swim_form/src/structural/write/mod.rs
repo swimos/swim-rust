@@ -384,6 +384,23 @@ where
     }
 }
 
+impl<T> StructuralWritable for &mut T
+where
+    T: StructuralWritable,
+{
+    fn num_attributes(&self) -> usize {
+        T::num_attributes(self)
+    }
+
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        T::write_with(self, writer)
+    }
+
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        T::write_with(self, writer)
+    }
+}
+
 impl StructuralWritable for () {
     fn num_attributes(&self) -> usize {
         0
