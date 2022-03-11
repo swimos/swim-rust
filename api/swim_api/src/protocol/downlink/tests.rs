@@ -13,8 +13,7 @@
 // limitations under the License.
 
 use crate::protocol::downlink::{
-    ValueNotificationDecoder, DownlinkOperation, DownlinkOperationDecoder,
-    DownlinkOperationEncoder,
+    DownlinkOperation, DownlinkOperationDecoder, DownlinkOperationEncoder, ValueNotificationDecoder,
 };
 use bytes::{Buf, Bytes, BytesMut};
 use swim_form::structural::read::recognizer::RecognizerReadable;

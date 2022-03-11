@@ -20,7 +20,7 @@ use futures::{Sink, SinkExt, StreamExt};
 use swim_api::downlink::DownlinkConfig;
 use swim_api::error::DownlinkTaskError;
 use swim_api::protocol::downlink::{
-    ValueNotificationDecoder, DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder,
+    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
 };
 use swim_form::structural::write::StructuralWritable;
 use swim_form::Form;
@@ -109,8 +109,7 @@ where
         terminate_on_unlinked,
     } = config;
     let mut state: State<T> = State::Unlinked;
-    let mut framed_read =
-        FramedRead::new(input, ValueNotificationDecoder::default());
+    let mut framed_read = FramedRead::new(input, ValueNotificationDecoder::default());
 
     while let Some(result) = framed_read.next().await {
         match result? {

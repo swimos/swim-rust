@@ -24,11 +24,12 @@ use crate::downlink::DownlinkRuntimeConfig;
 use crate::routing::RoutingAddr;
 
 use super::super::{AttachAction, DownlinkOptions, ValueDownlinkRuntime};
+use super::*;
 use futures::future::{join3, join4};
 use futures::{SinkExt, StreamExt};
 use swim_api::error::{DownlinkTaskError, FrameIoError, InvalidFrame};
 use swim_api::protocol::downlink::{
-    ValueNotificationDecoder, DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder,
+    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
 };
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_form::Form;
@@ -41,7 +42,6 @@ use tokio::sync::mpsc;
 use tokio::time::timeout;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_util::codec::{FramedRead, FramedWrite};
-use super::*;
 
 #[derive(Debug, Form, PartialEq, Eq, Clone)]
 enum Message {
@@ -87,10 +87,7 @@ async fn run_fake_downlink(
         return Err(DownlinkTaskError::FailedToStart);
     }
     let mut state = State::Unlinked;
-    let mut read = FramedRead::new(
-        rx_in,
-        ValueNotificationDecoder::default(),
-    );
+    let mut read = FramedRead::new(rx_in, ValueNotificationDecoder::default());
 
     let mut write = FramedWrite::new(tx_out, DownlinkOperationEncoder);
 
@@ -793,10 +790,7 @@ async fn run_simple_fake_downlink(
         return Err(DownlinkTaskError::FailedToStart);
     }
     let mut state = State::Unlinked;
-    let mut read = FramedRead::new(
-        rx_in,
-        ValueNotificationDecoder::default(),
-    );
+    let mut read = FramedRead::new(rx_in, ValueNotificationDecoder::default());
 
     let mut write = FramedWrite::new(tx_out, DownlinkOperationEncoder);
 

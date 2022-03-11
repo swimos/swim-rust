@@ -14,7 +14,10 @@
 
 use crate::error::{FrameIoError, InvalidFrame};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use swim_form::{structural::{read::recognizer::RecognizerReadable, write::StructuralWritable}, Form};
+use swim_form::{
+    structural::{read::recognizer::RecognizerReadable, write::StructuralWritable},
+    Form,
+};
 use swim_model::Text;
 use swim_recon::parser::{AsyncParseError, RecognizerDecoder};
 use tokio_util::codec::{Decoder, Encoder};
@@ -30,15 +33,15 @@ pub use parser::extract_header;
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Form)]
 pub enum MapOperation<K, V> {
     #[form(tag = "update")]
-    Update { 
-        key: K, 
-        #[form(body)] 
+    Update {
+        key: K,
+        #[form(body)]
         value: V,
     },
     #[form(tag = "remove")]
     Remove {
         #[form(header)]
-        key: K 
+        key: K,
     },
     #[form(tag = "clear")]
     Clear,
@@ -406,15 +409,15 @@ impl<K: StructuralWritable, V: StructuralWritable> Encoder<MapOperation<K, V>>
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Form)]
 pub enum MapMessage<K, V> {
     #[form(tag = "update")]
-    Update { 
-        key: K, 
-        #[form(body)] 
+    Update {
+        key: K,
+        #[form(body)]
         value: V,
     },
     #[form(tag = "remove")]
     Remove {
         #[form(header)]
-        key: K 
+        key: K,
     },
     #[form(tag = "clear")]
     Clear,
@@ -428,7 +431,7 @@ impl<K, V> From<MapOperation<K, V>> for MapMessage<K, V> {
     fn from(op: MapOperation<K, V>) -> Self {
         match op {
             MapOperation::Update { key, value } => MapMessage::Update { key, value },
-            MapOperation::Remove { key} => MapMessage::Remove { key },
+            MapOperation::Remove { key } => MapMessage::Remove { key },
             MapOperation::Clear => MapMessage::Clear,
         }
     }
@@ -461,8 +464,10 @@ where
     fn encode(&mut self, item: MapMessage<K, V>, dst: &mut BytesMut) -> Result<(), Self::Error> {
         let MapMessageEncoder(inner) = self;
         match item {
-            MapMessage::Update { key, value} => inner.encode(MapOperation::Update { key, value}, dst),
-            MapMessage::Remove { key} => inner.encode(MapOperation::Remove { key }, dst),
+            MapMessage::Update { key, value } => {
+                inner.encode(MapOperation::Update { key, value }, dst)
+            }
+            MapMessage::Remove { key } => inner.encode(MapOperation::Remove { key }, dst),
             MapMessage::Clear => inner.encode(MapOperation::Clear, dst),
             MapMessage::Take(n) => {
                 dst.reserve(TAG_SIZE + LEN_SIZE);

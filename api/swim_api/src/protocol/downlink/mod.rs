@@ -13,10 +13,7 @@
 // limitations under the License.
 
 use bytes::{Buf, BufMut, Bytes};
-use swim_form::structural::{
-    read::recognizer::RecognizerReadable,
-    write::StructuralWritable,
-};
+use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swim_model::Text;
 use swim_recon::parser::{AsyncParseError, RecognizerDecoder};
 use tokio_util::codec::{Decoder, Encoder};
@@ -230,8 +227,9 @@ where
                             } else {
                                 src.advance(1);
                                 let len = src.get_u64() as usize;
-                                *state =
-                                    DownlinkNotificationDecoderState::ReadingBody { remaining: len };
+                                *state = DownlinkNotificationDecoderState::ReadingBody {
+                                    remaining: len,
+                                };
                             }
                         }
                         UNLINKED => {

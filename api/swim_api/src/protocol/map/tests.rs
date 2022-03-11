@@ -314,7 +314,7 @@ fn decode_op_message() {
 
 #[test]
 fn test_map_operation_form() {
-    let op = MapOperation::Update { key: 0, value: 1};
+    let op = MapOperation::Update { key: 0, value: 1 };
     let recon = format!("{}", print_recon_compact(&op));
     assert_eq!(recon, "@update(key:0) 1");
 
@@ -329,7 +329,7 @@ fn test_map_operation_form() {
 
 #[test]
 fn test_map_message_form() {
-    let op = MapMessage::Update { key: 0, value: 1};
+    let op = MapMessage::Update { key: 0, value: 1 };
     let recon = format!("{}", print_recon_compact(&op));
     assert_eq!(recon, "@update(key:0) 1");
 

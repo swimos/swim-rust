@@ -29,10 +29,7 @@ fn peel_clear_header() {
 
     let message = result.unwrap();
 
-    assert!(matches!(
-        message,
-        MapMessage::Clear
-    ));
+    assert!(matches!(message, MapMessage::Clear));
 }
 
 #[test]

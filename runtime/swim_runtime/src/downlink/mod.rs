@@ -340,6 +340,7 @@ enum ReadTaskState {
 }
 
 /// Sender to communicate with a subscriber to the downlink.
+#[derive(Debug)]
 struct DownlinkSender {
     sender: FramedWrite<ByteWriter, DownlinkNotificationEncoder>,
     options: DownlinkOptions,
@@ -504,7 +505,11 @@ where
                 Notification::Synced => {
                     trace!("Entering Synced state.");
                     state = ReadTaskState::Synced;
-                    sync_current(&mut awaiting_synced, &mut registered, &current).await;
+                    if I::SINGLE_FRAME_STATE {
+                        sync_current(&mut awaiting_synced, &mut registered, &current).await;
+                    } else {
+                        sync_only(&mut awaiting_synced, &mut registered).await;
+                    }
                     if registered.is_empty() {
                         empty_timestamp = Some(Instant::now() + config.empty_timeout);
                     }
@@ -518,6 +523,9 @@ where
                         }
                     }
                     send_current(&mut registered, &current).await;
+                    if !I::SINGLE_FRAME_STATE {
+                        send_current(&mut awaiting_synced, &current).await;
+                    }
                     if registered.is_empty() && awaiting_synced.is_empty() {
                         trace!("Number of subscribers dropped to 0.");
                         empty_timestamp = Some(Instant::now() + config.empty_timeout);
@@ -571,6 +579,17 @@ async fn sync_current(
     let event = DownlinkNotification::Event { body: current };
     for mut tx in awaiting_synced.drain(..) {
         if tx.feed(event).await.is_ok() && tx.send(DownlinkNotification::Synced).await.is_ok() {
+            registered.push(tx);
+        }
+    }
+}
+
+async fn sync_only(
+    awaiting_synced: &mut Vec<DownlinkSender>,
+    registered: &mut Vec<DownlinkSender>,
+) {
+    for mut tx in awaiting_synced.drain(..) {
+        if tx.send(DownlinkNotification::Synced).await.is_ok() {
             registered.push(tx);
         }
     }

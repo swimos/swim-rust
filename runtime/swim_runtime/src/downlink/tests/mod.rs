@@ -18,8 +18,8 @@ use swim_utilities::algebra::non_zero_usize;
 
 use crate::routing::RoutingAddr;
 
-mod value;
 mod map;
+mod value;
 
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(1024);
 const CHANNEL_SIZE: usize = 16;
