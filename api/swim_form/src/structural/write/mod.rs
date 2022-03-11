@@ -40,7 +40,7 @@ pub mod to_model;
 /// Trait for types that can describe their structure using a [`StructuralWriter`].
 /// Each writer is an interpreter which could, for example, realize the structure
 /// as a [`Value`] or format it is a Recon string.
-pub trait StructuralWritable: Sized {
+pub trait StructuralWritable {
     /// The number of attributes that will be written by this instance.
     fn num_attributes(&self) -> usize;
 
@@ -61,7 +61,10 @@ pub trait StructuralWritable: Sized {
 
     /// Write the structure of this value with an interpreter that cannot generate an error,
     /// allowing in t interpreter to consume this value if needed.
-    fn write_into_infallible<W: StructuralWriter<Error = Infallible>>(self, writer: W) -> W::Repr {
+    fn write_into_infallible<W: StructuralWriter<Error = Infallible>>(self, writer: W) -> W::Repr
+    where
+        Self: Sized,
+    {
         match self.write_into(writer) {
             Ok(repr) => repr,
             Err(e) => match e {},
@@ -74,7 +77,10 @@ pub trait StructuralWritable: Sized {
     }
 
     /// Covert this value into a [`Value`].
-    fn into_structure(self) -> Value {
+    fn into_structure(self) -> Value
+    where
+        Self: Sized,
+    {
         self.write_into_infallible(ValueInterpreter::default())
     }
 
@@ -359,6 +365,23 @@ pub trait BodyWriter: Sized {
 
     /// Finish describing the record and attempt to produce the final result.
     fn done(self) -> Result<Self::Repr, Self::Error>;
+}
+
+impl<T> StructuralWritable for &T
+where
+    T: StructuralWritable,
+{
+    fn num_attributes(&self) -> usize {
+        T::num_attributes(self)
+    }
+
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        T::write_with(self, writer)
+    }
+
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        T::write_with(self, writer)
+    }
 }
 
 impl StructuralWritable for () {
