@@ -457,14 +457,14 @@ where
     let mut registered: Vec<DownlinkSender> = vec![];
 
     let mut empty_timestamp = Some(Instant::now() + config.empty_timeout);
-    loop {
+    let result = loop {
         let next_item = if let Some(timestamp) = empty_timestamp {
             if let Ok(result) = timeout_at(timestamp, consumer_stream.next()).await {
                 result.map(Either::Right)
             } else {
                 info!("No consumers connected within the timeout period.");
                 // No consumers registered within the timeout so stop.
-                break;
+                break Ok(());
             }
         } else if flushed {
             trace!("Waiting without flush.");
@@ -519,7 +519,7 @@ where
                     current.clear();
                     if let Err(e) = interpretation.interpret_frame_data(bytes, &mut current) {
                         if let BadFrameResponse::Abort(report) = failure_handler.failed_with(e) {
-                            return Err(report);
+                            break Err(report);
                         }
                     }
                     send_current(&mut registered, &current).await;
@@ -536,7 +536,7 @@ where
                 }
                 Notification::Unlinked(message) => {
                     trace!("Stopping after unlinked: {msg:?}", msg = message);
-                    break;
+                    break Ok(());
                 }
             },
             Some(Either::Right((writer, options))) => {
@@ -556,19 +556,19 @@ where
                     "Failed to read a frame from the input: {error}",
                     error = err
                 );
-                break;
+                break Ok(());
             }
             _ => {
                 trace!("Stopping after being dropped by the runtime.");
-                break;
+                break Ok(());
             }
         }
-    }
+    };
     trace!("Read task stopping and unlinked all subscribers");
     unlink(awaiting_linked).await;
     unlink(awaiting_synced).await;
     unlink(registered).await;
-    Ok(())
+    result
 }
 
 async fn sync_current(

@@ -29,7 +29,7 @@ use swim_form::{structural::read::recognizer::RecognizerReadable, Form};
 use swim_model::{path::RelativePath, Text};
 use swim_utilities::{
     io::byte_channel::{self, ByteReader, ByteWriter},
-    trigger,
+    trigger::{self, promise},
 };
 use tokio::{
     io::AsyncWriteExt,
@@ -45,8 +45,9 @@ use crate::{
         ResponseMessageEncoder,
     },
     downlink::{
-        failure::AlwaysAbortStrategy, AttachAction, DownlinkOptions, DownlinkRuntimeConfig,
-        MapDownlinkRuntime,
+        failure::{AlwaysAbortStrategy, BadFrameResponse, BadFrameStrategy},
+        interpretation::{DownlinkInterpretation, MapInterpretation},
+        AttachAction, DownlinkOptions, DownlinkRuntimeConfig, MapDownlinkRuntime,
     },
 };
 
@@ -316,19 +317,22 @@ where
             empty_timeout: EMPTY_TIMEOUT,
             attachment_queue_size: ATT_QUEUE_SIZE,
         },
+        AlwaysAbortStrategy,
         test_block,
     )
     .await
 }
 
-async fn run_test_with_config<F, Fut>(
+async fn run_test_with_config<F, Fut, H>(
     options: DownlinkOptions,
     config: DownlinkRuntimeConfig,
+    failure_strategy: H,
     test_block: F,
 ) -> (Fut::Output, Result<(), DownlinkTaskError>)
 where
     F: FnOnce(TestContext) -> Fut,
     Fut: Future + Send + 'static,
+    H: BadFrameStrategy<<MapInterpretation as DownlinkInterpretation>::Error>,
 {
     let (attach_tx, attach_rx) = mpsc::channel(CHANNEL_SIZE);
     let (start_tx, start_rx) = trigger::trigger();
@@ -350,7 +354,7 @@ where
         RoutingAddr::client(1),
         path,
         config,
-        AlwaysAbortStrategy,
+        failure_strategy,
     )
     .run();
 
@@ -642,5 +646,174 @@ async fn receive_commands() {
     assert_eq!(
         events,
         vec![(State::Synced, DownlinkNotification::Unlinked)]
+    );
+}
+
+#[tokio::test]
+async fn send_all_message_kinds() {
+    let (events, result) = run_test(DownlinkOptions::SYNC, |context| {
+        sync_client_then(context, |context| async move {
+            let SyncedTestContext {
+                mut tx,
+                rx: _rx,
+                stop,
+                mut events,
+                send_tx: _,
+            } = context;
+
+            tx.update(1, rec(0, 0)).await;
+            tx.remove(1).await;
+            tx.clear().await;
+            tx.take(0).await;
+            tx.drop(0).await;
+
+            expect_event(
+                events.next().await,
+                State::Synced,
+                DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 1,
+                        value: rec(0, 0),
+                    },
+                },
+            );
+
+            expect_event(
+                events.next().await,
+                State::Synced,
+                DownlinkNotification::Event {
+                    body: MapMessage::Remove { key: 1 },
+                },
+            );
+
+            expect_event(
+                events.next().await,
+                State::Synced,
+                DownlinkNotification::Event {
+                    body: MapMessage::Clear,
+                },
+            );
+
+            expect_event(
+                events.next().await,
+                State::Synced,
+                DownlinkNotification::Event {
+                    body: MapMessage::Take(0),
+                },
+            );
+
+            expect_event(
+                events.next().await,
+                State::Synced,
+                DownlinkNotification::Event {
+                    body: MapMessage::Drop(0),
+                },
+            );
+
+            stop.trigger();
+
+            events
+        })
+    })
+    .await;
+
+    assert!(result.is_ok());
+    assert_eq!(
+        events,
+        vec![(State::Synced, DownlinkNotification::Unlinked)]
+    );
+}
+
+#[tokio::test]
+async fn shutdowm_after_timeout_with_no_subscribers() {
+    let ((_stop, events), result) = run_test_with_config(
+        DownlinkOptions::empty(),
+        DownlinkRuntimeConfig {
+            empty_timeout: Duration::from_millis(100),
+            attachment_queue_size: ATT_QUEUE_SIZE,
+        },
+        AlwaysAbortStrategy,
+        |TestContext {
+             tx: _tx,
+             mut rx,
+             stop,
+             events,
+             start_client,
+             send_tx: _,
+         }| async move {
+            expect_message(rx.recv().await, Operation::Link);
+            drop(start_client);
+            (stop, events)
+        },
+    )
+    .await;
+    assert!(matches!(result, Err(DownlinkTaskError::FailedToStart)));
+    assert!(events.collect::<Vec<_>>().await.is_empty());
+}
+
+struct TestStrategy(Option<promise::Sender<String>>);
+
+impl TestStrategy {
+    fn make() -> (Self, promise::Receiver<String>) {
+        let (tx, rx) = promise::promise();
+        (TestStrategy(Some(tx)), rx)
+    }
+}
+
+impl<E: std::error::Error> BadFrameStrategy<E> for TestStrategy {
+    type Report = E;
+
+    fn failed_with(&mut self, error: E) -> BadFrameResponse<E> {
+        let TestStrategy(inner) = self;
+        if let Some(tx) = inner.take() {
+            assert!(tx.provide(format!("{}", error)).is_ok());
+        }
+        BadFrameResponse::Abort(error)
+    }
+}
+
+#[tokio::test]
+async fn use_bad_message_strategy() {
+    let (test_strategy, bad_message_rx) = TestStrategy::make();
+    let ((_stop, events), result) = run_test_with_config(
+        DownlinkOptions::SYNC,
+        DownlinkRuntimeConfig {
+            empty_timeout: EMPTY_TIMEOUT,
+            attachment_queue_size: ATT_QUEUE_SIZE,
+        },
+        test_strategy,
+        move |TestContext {
+                  mut tx,
+                  mut rx,
+                  start_client,
+                  stop,
+                  mut events,
+                  ..
+              }| async move {
+            expect_message(rx.recv().await, Operation::Link);
+
+            start_client.trigger();
+            tx.link().await;
+
+            expect_event(
+                events.next().await,
+                State::Unlinked,
+                DownlinkNotification::Linked,
+            );
+            expect_message(rx.recv().await, Operation::Sync);
+
+            tx.update_text(Text::new("invalid")).await;
+
+            let result = bad_message_rx.await;
+            assert!(result.is_ok());
+
+            (stop, events.collect::<Vec<_>>().await)
+        },
+    )
+    .await;
+    assert!(result.is_ok());
+    assert_eq!(
+        events,
+        vec![(State::Linked, DownlinkNotification::Unlinked)]
     );
 }
