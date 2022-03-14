@@ -104,7 +104,7 @@ async fn run_fake_downlink(
         match next {
             Either::Left(Some(result)) => {
                 let message = result?;
-                assert!(event_tx.send((state, message.clone())).is_ok());
+                assert!(event_tx.send((state, message)).is_ok());
                 match state {
                     State::Unlinked => match message {
                         DownlinkNotification::Linked => {
@@ -955,7 +955,7 @@ async fn run_simple_fake_downlink(
     let mut write = FramedWrite::new(tx_out, MapOperationEncoder);
 
     while let Some(message) = read.next().await.transpose()? {
-        assert!(event_tx.send((state, message.clone())).is_ok());
+        assert!(event_tx.send((state, message)).is_ok());
         match state {
             State::Unlinked => match message {
                 DownlinkNotification::Linked => {

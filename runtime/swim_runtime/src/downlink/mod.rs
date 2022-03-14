@@ -135,6 +135,28 @@ pub struct MapDownlinkRuntime<H> {
     failure_handler: H,
 }
 
+async fn await_io_tasks<F1, F2, E>(
+    read: F1,
+    write: F2,
+    kill_switch_tx: trigger::Sender,
+) -> Result<(), E>
+where
+    F1: Future<Output = Result<(), E>>,
+    F2: Future<Output = ()>,
+{
+    pin_mut!(read);
+    pin_mut!(write);
+    let first_finished = select(read, write).await;
+    kill_switch_tx.trigger();
+    match first_finished {
+        Either::Left((read_res, write_fut)) => {
+            write_fut.await;
+            read_res
+        }
+        Either::Right((_, read_fut)) => read_fut.await,
+    }
+}
+
 impl ValueDownlinkRuntime {
     /// #Arguments
     /// * `requests` - The channel through which new consumers connect to the runtime.
@@ -205,11 +227,10 @@ impl ValueDownlinkRuntime {
         )
         .instrument(info_span!("Value Downlink Runtime Write Task", %path));
         let io = async move {
-            let (read_res, _) = join(read, write).await;
+            let read_res = await_io_tasks(read, write, kill_switch_tx).await;
             if let Err(e) = read_res {
                 match e {}
             }
-            kill_switch_tx.trigger();
         };
         join(att, io).await;
     }
@@ -293,14 +314,13 @@ impl<H: BadFrameStrategy<<MapInterpretation as DownlinkInterpretation>::Error>>
         )
         .instrument(info_span!("Map Downlink Runtime Write Task", %path));
         let io = async move {
-            let (read_res, _) = join(read, write).await;
+            let read_res = await_io_tasks(read, write, kill_switch_tx).await;
             if let Err(e) = read_res {
                 error!(
                     "Map downlink received invalid event messages: {problems}",
                     problems = e
                 );
             }
-            kill_switch_tx.trigger();
         };
         join(att, io).await;
     }

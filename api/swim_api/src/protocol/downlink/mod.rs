@@ -293,9 +293,9 @@ where
                         src.advance(*remaining);
                         let err = error
                             .take()
-                            .unwrap_or(AsyncParseError::UnconsumedInput.into());
+                            .unwrap_or_else(|| AsyncParseError::UnconsumedInput.into());
                         *state = DownlinkNotificationDecoderState::ReadingHeader;
-                        break Err(err.into());
+                        break Err(err);
                     } else {
                         *remaining -= src.remaining();
                         src.clear();
