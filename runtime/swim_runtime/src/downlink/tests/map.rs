@@ -855,3 +855,63 @@ async fn handle_failed_consumer() {
     assert!(matches!(result, Err(DownlinkTaskError::BadFrame(_))));
     assert!(events.is_empty());
 }
+
+const LIMIT: i32 = 150;
+const KEY: i32 = 1;
+
+#[tokio::test]
+async fn exhaust_output_buffer() {
+    let (events, result) = run_test(DownlinkOptions::SYNC, move |context| {
+        sync_client_then(
+            context,
+            |context| async move {
+                let SyncedTestContext {
+                    tx: _tx,
+                    mut rx,
+                    stop,
+                    events,
+                    mut send_tx,
+                } = context;
+                for i in 0..(LIMIT + 1) {
+                    send_tx.update(KEY, rec(i, i + 1));
+                }
+                let mut messages = vec![];
+                loop {
+                    let result = rx.recv().await;
+                    match result {
+                        Some(Ok(RequestMessage {
+                            envelope: Operation::Command(MapOperation::Update { key, value}),
+                            ..
+                        })) => {
+                            assert_eq!(key, KEY);
+                            let fin = value.a == LIMIT;
+                            messages.push(value);
+                            if fin {
+                                break;
+                            }
+                        }
+                        ow => panic!("Unexpected result: {:?}", ow),
+                    }
+                }
+                assert!((messages.len() as i32) < LIMIT);
+                let mut prev = None;
+                for message in messages.into_iter() {
+                    let Record { a, .. } = message;
+                    if let Some(i) = prev {
+                        assert!(i < a);
+                    }
+                    prev = Some(a);
+                }
+                stop.trigger();
+                events
+            },
+        )
+    })
+    .await;
+
+    assert!(result.is_ok());
+    assert_eq!(
+        events,
+        vec![(State::Synced, DownlinkNotification::Unlinked)]
+    );
+}
