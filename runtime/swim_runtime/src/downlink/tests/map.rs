@@ -19,7 +19,7 @@ use futures::{
 use std::fmt::Debug;
 use std::future::Future;
 use swim_api::{
-    error::DownlinkTaskError,
+    error::{DownlinkTaskError, FrameIoError, InvalidFrame},
     protocol::{
         downlink::{DownlinkNotification, MapNotificationDecoder},
         map::{MapMessage, MapOperation, MapOperationEncoder},
@@ -60,6 +60,8 @@ struct Record {
 }
 
 type Event = (State, DownlinkNotification<MapMessage<i32, Record>>);
+
+const FAIL_KEY: i32 = -2;
 
 async fn run_fake_downlink(
     sub: mpsc::Sender<AttachAction>,
@@ -125,6 +127,13 @@ async fn run_fake_downlink(
                     State::Synced => match message {
                         DownlinkNotification::Unlinked => {
                             break;
+                        }
+                        DownlinkNotification::Event {
+                            body: MapMessage::Update { key, ..} | MapMessage::Remove { key},
+                        } if key == FAIL_KEY => {
+                            return Err(DownlinkTaskError::BadFrame(FrameIoError::BadFrame(
+                                InvalidFrame::Incomplete,
+                            )));
                         }
                         _ => {}
                     },
@@ -816,4 +825,33 @@ async fn use_bad_message_strategy() {
         events,
         vec![(State::Linked, DownlinkNotification::Unlinked)]
     );
+}
+
+#[tokio::test]
+async fn handle_failed_consumer() {
+    let (events, result) = run_test(DownlinkOptions::SYNC, |context| {
+        sync_client_then(context, |context| async move {
+            let SyncedTestContext {
+                mut tx,
+                rx: _rx,
+                stop: _stop, //No explicit stop, shutdown should ocurr becase there are no remaining consumers.
+                mut events,
+                send_tx: _,
+            } = context;
+            tx.update(-2, rec(1, 2)).await; //Cause the consumer to fail.
+            expect_event(
+                events.next().await,
+                State::Synced,
+                DownlinkNotification::Event {
+                    body: MapMessage::Update { key: -2, value: rec(1, 2)},
+                },
+            );
+            tx.clear().await; //Sending another messasge should cause the write task to notice the failure.
+            events
+        })
+    })
+    .await;
+
+    assert!(matches!(result, Err(DownlinkTaskError::BadFrame(_))));
+    assert!(events.is_empty());
 }
