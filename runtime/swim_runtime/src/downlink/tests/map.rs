@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use futures::{
-    future::{join3, select, Either},
+    future::{join3, join4, select, Either},
     SinkExt, StreamExt,
 };
 use std::fmt::Debug;
@@ -129,7 +129,7 @@ async fn run_fake_downlink(
                             break;
                         }
                         DownlinkNotification::Event {
-                            body: MapMessage::Update { key, ..} | MapMessage::Remove { key},
+                            body: MapMessage::Update { key, .. } | MapMessage::Remove { key },
                         } if key == FAIL_KEY => {
                             return Err(DownlinkTaskError::BadFrame(FrameIoError::BadFrame(
                                 InvalidFrame::Incomplete,
@@ -843,7 +843,10 @@ async fn handle_failed_consumer() {
                 events.next().await,
                 State::Synced,
                 DownlinkNotification::Event {
-                    body: MapMessage::Update { key: -2, value: rec(1, 2)},
+                    body: MapMessage::Update {
+                        key: -2,
+                        value: rec(1, 2),
+                    },
                 },
             );
             tx.clear().await; //Sending another messasge should cause the write task to notice the failure.
@@ -862,56 +865,430 @@ const KEY: i32 = 1;
 #[tokio::test]
 async fn exhaust_output_buffer() {
     let (events, result) = run_test(DownlinkOptions::SYNC, move |context| {
-        sync_client_then(
-            context,
-            |context| async move {
-                let SyncedTestContext {
-                    tx: _tx,
-                    mut rx,
-                    stop,
-                    events,
-                    mut send_tx,
-                } = context;
-                for i in 0..(LIMIT + 1) {
-                    send_tx.update(KEY, rec(i, i + 1));
-                }
-                let mut messages = vec![];
-                loop {
-                    let result = rx.recv().await;
-                    match result {
-                        Some(Ok(RequestMessage {
-                            envelope: Operation::Command(MapOperation::Update { key, value}),
-                            ..
-                        })) => {
-                            assert_eq!(key, KEY);
-                            let fin = value.a == LIMIT;
-                            messages.push(value);
-                            if fin {
-                                break;
-                            }
+        sync_client_then(context, |context| async move {
+            let SyncedTestContext {
+                tx: _tx,
+                mut rx,
+                stop,
+                events,
+                mut send_tx,
+            } = context;
+            for i in 0..(LIMIT + 1) {
+                send_tx.update(KEY, rec(i, i + 1));
+            }
+            let mut messages = vec![];
+            loop {
+                let result = rx.recv().await;
+                match result {
+                    Some(Ok(RequestMessage {
+                        envelope: Operation::Command(MapOperation::Update { key, value }),
+                        ..
+                    })) => {
+                        assert_eq!(key, KEY);
+                        let fin = value.a == LIMIT;
+                        messages.push(value);
+                        if fin {
+                            break;
                         }
-                        ow => panic!("Unexpected result: {:?}", ow),
                     }
+                    ow => panic!("Unexpected result: {:?}", ow),
                 }
-                assert!((messages.len() as i32) < LIMIT);
-                let mut prev = None;
-                for message in messages.into_iter() {
-                    let Record { a, .. } = message;
-                    if let Some(i) = prev {
-                        assert!(i < a);
-                    }
-                    prev = Some(a);
+            }
+            assert!((messages.len() as i32) < LIMIT);
+            let mut prev = None;
+            for message in messages.into_iter() {
+                let Record { a, .. } = message;
+                if let Some(i) = prev {
+                    assert!(i < a);
                 }
-                stop.trigger();
-                events
-            },
-        )
+                prev = Some(a);
+            }
+            stop.trigger();
+            events
+        })
     })
     .await;
 
     assert!(result.is_ok());
     assert_eq!(
         events,
+        vec![(State::Synced, DownlinkNotification::Unlinked)]
+    );
+}
+
+struct ConsumerContext {
+    start_client: Option<trigger::Sender>,
+    events: UnboundedReceiverStream<Event>,
+}
+
+struct TwoConsumerTestContext {
+    tx: TestSender,
+    rx: TestReceiver<i32, Record>,
+    stop: trigger::Sender,
+    first_consumer: ConsumerContext,
+    second_consumer: ConsumerContext,
+}
+
+async fn run_simple_fake_downlink(
+    tag: i32,
+    sub: mpsc::Sender<AttachAction>,
+    options: DownlinkOptions,
+    start: trigger::Receiver,
+    event_tx: mpsc::UnboundedSender<Event>,
+) -> Result<(), DownlinkTaskError> {
+    if start.await.is_err() {
+        return Err(DownlinkTaskError::FailedToStart);
+    }
+
+    let (tx_in, rx_in) = byte_channel::byte_channel(BUFFER_SIZE);
+    let (tx_out, rx_out) = byte_channel::byte_channel(BUFFER_SIZE);
+    if sub
+        .send(AttachAction::new(rx_out, tx_in, options))
+        .await
+        .is_err()
+    {
+        return Err(DownlinkTaskError::FailedToStart);
+    }
+    let mut state = State::Unlinked;
+    let mut read = FramedRead::new(rx_in, MapNotificationDecoder::<i32, Record>::default());
+
+    let mut write = FramedWrite::new(tx_out, MapOperationEncoder);
+
+    while let Some(message) = read.next().await.transpose()? {
+        assert!(event_tx.send((state, message.clone())).is_ok());
+        match state {
+            State::Unlinked => match message {
+                DownlinkNotification::Linked => {
+                    state = State::Linked;
+                }
+                DownlinkNotification::Synced => {
+                    state = State::Synced;
+                }
+                _ => {}
+            },
+            State::Linked => match message {
+                DownlinkNotification::Synced => {
+                    state = State::Synced;
+                }
+                DownlinkNotification::Unlinked => {
+                    break;
+                }
+                _ => {}
+            },
+            State::Synced => match message {
+                DownlinkNotification::Unlinked => {
+                    break;
+                }
+                DownlinkNotification::Event {
+                    body: MapMessage::Update { key, value },
+                } => {
+                    if key == tag {
+                        let op: MapOperation<i32, Record> = MapOperation::Update {
+                            key: 2 * tag,
+                            value,
+                        };
+                        if write.send(op).await.is_err() {
+                            break;
+                        }
+                    }
+                }
+                _ => {}
+            },
+        }
+    }
+    Ok(())
+}
+
+const FIRST_TAG: i32 = 7;
+const SECOND_TAG: i32 = 13;
+
+async fn run_test_with_two_consumers<F, Fut>(
+    options: DownlinkOptions,
+    config: DownlinkRuntimeConfig,
+    test_block: F,
+) -> (
+    Fut::Output,
+    Result<(), DownlinkTaskError>,
+    Result<(), DownlinkTaskError>,
+)
+where
+    F: FnOnce(TwoConsumerTestContext) -> Fut,
+    Fut: Future + Send + 'static,
+{
+    let (attach_tx, attach_rx) = mpsc::channel(CHANNEL_SIZE);
+    let (start_tx1, start_rx1) = trigger::trigger();
+    let (start_tx2, start_rx2) = trigger::trigger();
+    let (stop_tx, stop_rx) = trigger::trigger();
+    let (event_tx1, event_rx1) = mpsc::unbounded_channel();
+    let (event_tx2, event_rx2) = mpsc::unbounded_channel();
+
+    let downlink1 =
+        run_simple_fake_downlink(FIRST_TAG, attach_tx.clone(), options, start_rx1, event_tx1);
+    let downlink2 =
+        run_simple_fake_downlink(SECOND_TAG, attach_tx.clone(), options, start_rx2, event_tx2);
+
+    let (in_tx, in_rx) = byte_channel::byte_channel(BUFFER_SIZE);
+    let (out_tx, out_rx) = byte_channel::byte_channel(BUFFER_SIZE);
+
+    let path = RelativePath::new("/node", "lane");
+
+    let management_task = MapDownlinkRuntime::new(
+        attach_rx,
+        (out_tx, in_rx),
+        stop_rx,
+        RoutingAddr::client(1),
+        path,
+        config,
+        AlwaysAbortStrategy,
+    )
+    .run();
+
+    let context = TwoConsumerTestContext {
+        tx: TestSender::new(in_tx),
+        rx: TestReceiver::new(out_rx),
+        stop: stop_tx,
+        first_consumer: ConsumerContext {
+            start_client: Some(start_tx1),
+            events: UnboundedReceiverStream::new(event_rx1),
+        },
+        second_consumer: ConsumerContext {
+            start_client: Some(start_tx2),
+            events: UnboundedReceiverStream::new(event_rx2),
+        },
+    };
+
+    let test_task = test_block(context);
+
+    let (_, task_res, result1, result2) = timeout(
+        TEST_TIMEOUT,
+        join4(management_task, test_task, downlink1, downlink2),
+    )
+    .await
+    .unwrap();
+    (task_res, result1, result2)
+}
+
+async fn sync_both(context: &mut TwoConsumerTestContext) {
+    let TwoConsumerTestContext {
+        tx,
+        rx,
+        first_consumer,
+        second_consumer,
+        ..
+    } = context;
+    let ConsumerContext {
+        start_client: start_first,
+        events: first_events,
+    } = first_consumer;
+
+    let ConsumerContext {
+        start_client: start_second,
+        events: second_events,
+    } = second_consumer;
+
+    expect_message(rx.recv().await, Operation::Link);
+
+    if let Some(start) = start_first.take() {
+        start.trigger();
+    }
+    if let Some(start) = start_second.take() {
+        start.trigger();
+    }
+    tx.link().await;
+
+    expect_event(
+        first_events.next().await,
+        State::Unlinked,
+        DownlinkNotification::Linked,
+    );
+    expect_event(
+        second_events.next().await,
+        State::Unlinked,
+        DownlinkNotification::Linked,
+    );
+    expect_message(rx.recv().await, Operation::Sync);
+    expect_message(rx.recv().await, Operation::Sync);
+
+    tx.update(1, rec(0, 1)).await;
+    tx.sync().await;
+
+    expect_event(
+        first_events.next().await,
+        State::Linked,
+        DownlinkNotification::Event {
+            body: MapMessage::Update {
+                key: 1,
+                value: rec(0, 1),
+            },
+        },
+    );
+    expect_event(
+        second_events.next().await,
+        State::Linked,
+        DownlinkNotification::Event {
+            body: MapMessage::Update {
+                key: 1,
+                value: rec(0, 1),
+            },
+        },
+    );
+
+    expect_event(
+        first_events.next().await,
+        State::Linked,
+        DownlinkNotification::Synced,
+    );
+    expect_event(
+        second_events.next().await,
+        State::Linked,
+        DownlinkNotification::Synced,
+    );
+}
+
+#[tokio::test]
+async fn sync_two_consumers() {
+    let ((first_events, second_events), first_result, second_result) = run_test_with_two_consumers(
+        DownlinkOptions::SYNC,
+        DownlinkRuntimeConfig {
+            empty_timeout: EMPTY_TIMEOUT,
+            attachment_queue_size: ATT_QUEUE_SIZE,
+        },
+        |mut context| async move {
+            sync_both(&mut context).await;
+            let TwoConsumerTestContext {
+                tx: _tx,
+                rx: _rx,
+                stop,
+                first_consumer,
+                second_consumer,
+            } = context;
+            stop.trigger();
+            (
+                first_consumer.events.collect::<Vec<_>>().await,
+                second_consumer.events.collect::<Vec<_>>().await,
+            )
+        },
+    )
+    .await;
+    assert!(first_result.is_ok());
+    assert!(second_result.is_ok());
+    assert_eq!(
+        first_events,
+        vec![(State::Synced, DownlinkNotification::Unlinked)]
+    );
+    assert_eq!(
+        second_events,
+        vec![(State::Synced, DownlinkNotification::Unlinked)]
+    );
+}
+
+#[tokio::test]
+async fn receive_from_two_consumers() {
+    let ((first_events, second_events), first_result, second_result) = run_test_with_two_consumers(
+        DownlinkOptions::SYNC,
+        DownlinkRuntimeConfig {
+            empty_timeout: EMPTY_TIMEOUT,
+            attachment_queue_size: ATT_QUEUE_SIZE,
+        },
+        |mut context| async move {
+            sync_both(&mut context).await;
+
+            let TwoConsumerTestContext {
+                mut tx,
+                mut rx,
+                stop,
+                first_consumer,
+                second_consumer,
+            } = context;
+
+            let ConsumerContext {
+                events: mut first_events,
+                ..
+            } = first_consumer;
+
+            let ConsumerContext {
+                events: mut second_events,
+                ..
+            } = second_consumer;
+
+            tx.update(FIRST_TAG, rec(1, 2)).await;
+
+            expect_event(
+                first_events.next().await,
+                State::Synced,
+                DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: FIRST_TAG,
+                        value: rec(1, 2),
+                    },
+                },
+            );
+            expect_event(
+                second_events.next().await,
+                State::Synced,
+                DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: FIRST_TAG,
+                        value: rec(1, 2),
+                    },
+                },
+            );
+
+            expect_message(
+                rx.recv().await,
+                Operation::Command(MapOperation::Update {
+                    key: FIRST_TAG * 2,
+                    value: rec(1, 2),
+                }),
+            );
+
+            tx.update(SECOND_TAG, rec(3, 4)).await;
+
+            expect_event(
+                first_events.next().await,
+                State::Synced,
+                DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: SECOND_TAG,
+                        value: rec(3, 4),
+                    },
+                },
+            );
+            expect_event(
+                second_events.next().await,
+                State::Synced,
+                DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: SECOND_TAG,
+                        value: rec(3, 4),
+                    },
+                },
+            );
+
+            expect_message(
+                rx.recv().await,
+                Operation::Command(MapOperation::Update {
+                    key: SECOND_TAG * 2,
+                    value: rec(3, 4),
+                }),
+            );
+
+            stop.trigger();
+            (
+                first_events.collect::<Vec<_>>().await,
+                second_events.collect::<Vec<_>>().await,
+            )
+        },
+    )
+    .await;
+    assert!(first_result.is_ok());
+    assert!(second_result.is_ok());
+    assert_eq!(
+        first_events,
+        vec![(State::Synced, DownlinkNotification::Unlinked)]
+    );
+    assert_eq!(
+        second_events,
         vec![(State::Synced, DownlinkNotification::Unlinked)]
     );
 }
