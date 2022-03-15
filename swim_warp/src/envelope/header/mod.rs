@@ -12,61 +12,65 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{fmt::Display, num::ParseFloatError};
+use std::{borrow::Cow, fmt::Display, num::ParseFloatError};
 
 use super::EnvelopeKind;
 use smallvec::{smallvec, SmallVec};
-use swim_recon::parser::{try_extract_header, HeaderPeeler, MessageExtractError, Span};
+use swim_recon::parser::{parse_text, try_extract_header, HeaderPeeler, MessageExtractError, Span};
 use swim_utilities::format::comma_sep;
 use thiserror::Error;
 
+#[cfg(test)]
+mod tests;
+
+#[derive(Debug)]
 pub enum RawEnvelope<'a> {
     Auth(Span<'a>),
     DeAuth(Span<'a>),
     Link {
-        node_uri: &'a str,
-        lane_uri: &'a str,
+        node_uri: Cow<'a, str>,
+        lane_uri: Cow<'a, str>,
         rate: Option<f32>,
         prio: Option<f32>,
         body: Span<'a>,
     },
     Sync {
-        node_uri: &'a str,
-        lane_uri: &'a str,
+        node_uri: Cow<'a, str>,
+        lane_uri: Cow<'a, str>,
         rate: Option<f32>,
         prio: Option<f32>,
         body: Span<'a>,
     },
     Command {
-        node_uri: &'a str,
-        lane_uri: &'a str,
+        node_uri: Cow<'a, str>,
+        lane_uri: Cow<'a, str>,
         body: Span<'a>,
     },
     Unlink {
-        node_uri: &'a str,
-        lane_uri: &'a str,
+        node_uri: Cow<'a, str>,
+        lane_uri: Cow<'a, str>,
         body: Span<'a>,
     },
     Linked {
-        node_uri: &'a str,
-        lane_uri: &'a str,
+        node_uri: Cow<'a, str>,
+        lane_uri: Cow<'a, str>,
         rate: Option<f32>,
         prio: Option<f32>,
         body: Span<'a>,
     },
     Synced {
-        node_uri: &'a str,
-        lane_uri: &'a str,
+        node_uri: Cow<'a, str>,
+        lane_uri: Cow<'a, str>,
         body: Span<'a>,
     },
     Event {
-        node_uri: &'a str,
-        lane_uri: &'a str,
+        node_uri: Cow<'a, str>,
+        lane_uri: Cow<'a, str>,
         body: Span<'a>,
     },
     Unlinked {
-        node_uri: &'a str,
-        lane_uri: &'a str,
+        node_uri: Cow<'a, str>,
+        lane_uri: Cow<'a, str>,
         body: Span<'a>,
     },
 }
@@ -98,6 +102,8 @@ pub enum HeaderExtractionError {
     UnexpectedHeaderValue(String),
     #[error("Unexpected slot in header: '{name} = {value}'")]
     UnexpectedHeaderSlot { name: String, value: String },
+    #[error("'{0}' cannot be interpreted as a recon string.")]
+    InvalidString(String),
     #[error("Expecting a floating point number.")]
     InvalidFloat(#[from] ParseFloatError),
     #[error("The input did not contain an envelope header.")]
@@ -126,10 +132,22 @@ fn with_path<'a, F>(
     constructor: F,
 ) -> Result<RawEnvelope<'a>, HeaderExtractionError>
 where
-    F: FnOnce(&'a str, &'a str, Span<'a>) -> RawEnvelope<'a>,
+    F: FnOnce(Cow<'a, str>, Cow<'a, str>, Span<'a>) -> RawEnvelope<'a>,
 {
     match (node_uri, lane_uri) {
-        (Some(node_uri), Some(lane_uri)) => Ok(constructor(node_uri, lane_uri, body)),
+        (Some(node_uri), Some(lane_uri)) => {
+            let node_uri_text = if let Ok(node_uri_text) = parse_text(Span::new(node_uri)) {
+                node_uri_text
+            } else {
+                return Err(HeaderExtractionError::InvalidString(node_uri.to_string()));
+            };
+            let lane_uri_text = if let Ok(lane_uri_text) = parse_text(Span::new(lane_uri)) {
+                lane_uri_text
+            } else {
+                return Err(HeaderExtractionError::InvalidString(node_uri.to_string()));
+            };
+            Ok(constructor(node_uri_text, lane_uri_text, body))
+        }
         (_, Some(_)) => Err(HeaderExtractionError::MissingSlots(Missing::single(
             NODE_URI_SLOT,
         ))),
@@ -152,7 +170,7 @@ fn with_rate_prio<'a, F>(
     constructor: F,
 ) -> Result<RawEnvelope<'a>, HeaderExtractionError>
 where
-    F: FnOnce(&'a str, &'a str, Option<f32>, Option<f32>, Span<'a>) -> RawEnvelope<'a>,
+    F: FnOnce(Cow<'a, str>, Cow<'a, str>, Option<f32>, Option<f32>, Span<'a>) -> RawEnvelope<'a>,
 {
     let attach_rate_prio =
         move |node_uri, lane_uri, body| constructor(node_uri, lane_uri, rate, prio, body);
