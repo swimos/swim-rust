@@ -14,6 +14,9 @@ pin-utils = "0.1.0"
 swim_utilities = { path = "../swim_utilities", features = ["lrucache", "sync", "algebra"] }
 tokio = { version = "1.1.1", features = ["sync"] }
 tokio-stream = "0.1.2"
+swim_recon = { path = "../api/formats/swim_recon" }
+thiserror = "1.0"
+smallvec ="1.7.0"
 
 [dev-dependencies]
-swim_recon = { path = "../api/formats/swim_recon" }
+
