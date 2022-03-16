@@ -23,6 +23,9 @@ use thiserror::Error;
 #[cfg(test)]
 mod tests;
 
+/// Interpreted form of a warp envelope, taken from a recon encoded string. Wherever possible, string
+/// references point back into the original string (the exception being string literals that need
+/// to be unescaped).
 #[derive(Debug)]
 pub enum RawEnvelope<'a> {
     Auth(Span<'a>),
@@ -75,6 +78,7 @@ pub enum RawEnvelope<'a> {
     },
 }
 
+/// A list of missing slots.
 #[derive(Debug, Clone)]
 pub struct Missing(SmallVec<[&'static str; 2]>);
 
@@ -94,6 +98,7 @@ impl Display for Missing {
     }
 }
 
+/// Possible errors that can ocurr when attempting to interpret the header of a warp envelope.
 #[derive(Debug, Error, Clone)]
 pub enum HeaderExtractionError {
     #[error("Invalid tag name: '{0}'")]
@@ -112,6 +117,7 @@ pub enum HeaderExtractionError {
     MissingSlots(Missing),
 }
 
+/// Try to interpret an array of bytes as a warp envelope, without allocating.
 pub fn peel_envelope_header(input: &[u8]) -> Result<RawEnvelope<'_>, MessageExtractError> {
     try_extract_header(input, EnvelopeHeaderPeeler::default())
 }
