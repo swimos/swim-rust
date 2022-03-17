@@ -70,6 +70,8 @@ pub trait Downlink {
     ) -> BoxFuture<'static, Result<(), DownlinkTaskError>>;
 }
 
+static_assertions::assert_obj_safe!(Downlink);
+
 impl<T: Downlink> Downlink for Box<T> {
     fn kind(&self) -> DownlinkKind {
         (**self).kind()
