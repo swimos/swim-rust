@@ -57,7 +57,7 @@ impl TryFrom<Bytes> for ReconKey {
 
 impl AsRef<str> for ReconKey {
     fn as_ref(&self) -> &str {
-        // Safe as we only all a key to be constructed from bytes containg valid UTF8.
+        // Safe as we only allow a key to be constructed from bytes containg valid UTF8.
         unsafe { std::str::from_utf8_unchecked(self.content.as_ref()) }
     }
 }
