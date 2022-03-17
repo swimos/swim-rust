@@ -16,6 +16,7 @@ use super::tokens::streaming::*;
 use super::tokens::*;
 use super::{FinalAttrStage, ParseEvents, Span};
 use either::Either;
+pub use hash::HashParser;
 use nom::branch::alt;
 use nom::character::complete as char_comp;
 use nom::character::streaming as char_str;
@@ -27,6 +28,7 @@ use std::borrow::Cow;
 use swim_form::structural::read::event::ReadEvent;
 
 pub mod matcher;
+mod hash;
 
 /// Change the state of the parser after producing an event.
 #[derive(Debug)]
@@ -201,6 +203,7 @@ impl<'a> Default for ParseEvents<'a> {
     }
 }
 
+#[derive(Debug)]
 enum EventOrEnd<'a> {
     Event(ReadEvent<'a>, bool),
     End,
