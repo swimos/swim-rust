@@ -27,6 +27,7 @@ use nom::{Finish, IResult, Parser};
 use std::borrow::Cow;
 use swim_form::structural::read::event::ReadEvent;
 
+pub mod matcher;
 mod hash;
 
 /// Change the state of the parser after producing an event.

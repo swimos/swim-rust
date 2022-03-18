@@ -249,6 +249,7 @@ where
     }
 }
 
+#[derive(Debug, Default)]
 pub struct DownlinkOperationDecoder;
 
 impl Decoder for DownlinkOperationDecoder {

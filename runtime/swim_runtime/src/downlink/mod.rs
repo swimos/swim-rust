@@ -17,14 +17,12 @@ use std::num::NonZeroUsize;
 use std::time::Duration;
 
 use bitflags::bitflags;
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::{BufMut, BytesMut};
 use futures::future::{join, select, Either};
 use futures::stream::SelectAll;
 use futures::{Future, FutureExt, Sink, SinkExt, Stream, StreamExt};
 use pin_utils::pin_mut;
-use swim_api::protocol::downlink::{
-    DownlinkNotification, DownlinkNotificationEncoder, DownlinkOperation, DownlinkOperationDecoder,
-};
+use swim_api::protocol::downlink::{DownlinkNotification, DownlinkNotificationEncoder};
 use swim_model::path::RelativePath;
 use swim_utilities::future::{immediate_or_join, immediate_or_start, SecondaryResult};
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
@@ -32,7 +30,7 @@ use swim_utilities::trigger;
 use tokio::sync::mpsc;
 use tokio::time::{timeout, timeout_at, Instant};
 use tokio_stream::wrappers::ReceiverStream;
-use tokio_util::codec::{Encoder, FramedRead, FramedWrite};
+use tokio_util::codec::{Decoder, Encoder, FramedRead, FramedWrite};
 use tracing::{error, info, info_span, trace, warn};
 use tracing_futures::Instrument;
 
@@ -40,8 +38,10 @@ use crate::compat::{
     Notification, Operation, RawRequestMessage, RawRequestMessageEncoder, RawResponseMessage,
     RawResponseMessageDecoder,
 };
+use crate::downlink::backpressure::DownlinkBackpressure;
 use crate::routing::RoutingAddr;
 
+pub mod backpressure;
 mod key;
 pub mod map_queue;
 #[cfg(test)]
@@ -63,12 +63,10 @@ bitflags! {
 bitflags! {
     /// Internal flags for the downlink runtime write task.
     struct WriteTaskState: u8 {
-        /// A new value has been received while a write was pending.
-        const UPDATED = 0b001;
         /// The outgoing channel has been flushed.
-        const FLUSHED = 0b010;
+        const FLUSHED = 0b01;
         /// A new consumer that needs to be synced has joined why a write was pending.
-        const NEEDS_SYNC = 0b100;
+        const NEEDS_SYNC = 0b10;
         /// When the task starts it does not need to be flushed.
         const INIT = Self::FLUSHED.bits;
     }
@@ -180,6 +178,7 @@ impl ValueDownlinkRuntime {
             identity,
             path.clone(),
             config,
+            ValueBackpressure::default(),
         )
         .instrument(info_span!("Downlink Runtime Write Task", %path));
         let io = async move {
@@ -273,16 +272,16 @@ where
 }
 
 /// Receiver to receive commands from downlink subscribers.
-struct DownlinkReceiver {
-    receiver: FramedRead<ByteReader, DownlinkOperationDecoder>,
+struct DownlinkReceiver<D> {
+    receiver: FramedRead<ByteReader, D>,
     id: u64,
     terminated: bool,
 }
 
-impl DownlinkReceiver {
-    fn new(reader: ByteReader, id: u64) -> Self {
+impl<D: Decoder> DownlinkReceiver<D> {
+    fn new(reader: ByteReader, id: u64, decoder: D) -> Self {
         DownlinkReceiver {
-            receiver: FramedRead::new(reader, DownlinkOperationDecoder),
+            receiver: FramedRead::new(reader, decoder),
             id,
             terminated: false,
         }
@@ -296,8 +295,8 @@ impl DownlinkReceiver {
 
 struct Failed(u64);
 
-impl Stream for DownlinkReceiver {
-    type Item = Result<DownlinkOperation<Bytes>, Failed>;
+impl<D: Decoder> Stream for DownlinkReceiver<D> {
+    type Item = Result<D::Item, Failed>;
 
     fn poll_next(
         self: std::pin::Pin<&mut Self>,
@@ -609,13 +608,14 @@ async fn do_flush(
 
 /// Receives commands for the subscribers to the downlink and writes them to the outgoing channel.
 /// If commands are received faster than the channel can send them, some records will be dropped.
-async fn write_task(
+async fn write_task<B: DownlinkBackpressure>(
     output: ByteWriter,
     producers: mpsc::Receiver<(ByteReader, DownlinkOptions)>,
     stopping: trigger::Receiver,
     identity: RoutingAddr,
     path: RelativePath,
     config: DownlinkRuntimeConfig,
+    mut backpressure: B,
 ) {
     let mut message_writer = RequestSender::new(output, identity, path);
     if message_writer.send_link().await.is_err() {
@@ -626,9 +626,8 @@ async fn write_task(
         message_writer,
         buffer: BytesMut::new(),
     };
-    let mut current = BytesMut::new();
 
-    let mut registered: SelectAll<DownlinkReceiver> = SelectAll::new();
+    let mut registered: SelectAll<DownlinkReceiver<B::Dec>> = SelectAll::new();
     let mut reg_requests = ReceiverStream::new(producers).take_until(stopping);
     // Consumers are given unique IDs to allow them to be removed when they fail.
     let mut id: u64 = 0;
@@ -654,8 +653,9 @@ async fn write_task(
     // Flags
     // =====
     //
-    // UPDATED:     While a write or flush was occurring, at least one new command has been received and
-    //              another write needs to be scheduled.
+    // HAS_DATA:    While a write or flush was occurring, at least one new command has been received and
+    //              another write needs to be scheduled. This is stored implicitly in the bakpressure
+    //              implementation.
     // FLUSHED:     Indicates that all data written to the output has been flushed.
     // NEEDS_SYNC:  While a write or flush was ocurring, a new subscriber was added that requested a SYNC
     //              message to be sent and this should be sent at the next opportunity.
@@ -676,14 +676,14 @@ async fn write_task(
     //          2. If a command is received and:
     //              a. The flush did not start or completed successfully. We move to the Writing state, writing
     //                 the command.
-    //              b. The flush started and did not complete. The command is written into a buffer, the UPDATED
+    //              b. The flush started and did not complete. The command is written into a buffer, the HAS_DATA
     //                 flag is set and we move into the Flushing state.
     // Writing: A write (of a command or SYNC message) is pending. In this state it will wait for the write to
     //          complete and for new subscribers and outgoing commands from existing subscribers.
     //          1. If the write completes and:
     //              a. The NEEDS_SYNC flag is set. A new write is scheduled for the SYNC and we remain in the
     //                 Writing state.
-    //              b. The UPDATED flag is set. A new write is scheduled for the contents of the buffer and we
+    //              b. The HAS_DATA flag is set. A new write is scheduled for the contents of the buffer and we
     //                 remain in the Writing state.
     //              c. Otherwise we move back to the Idle state.
     'outer: loop {
@@ -711,7 +711,8 @@ async fn write_task(
                     match req_result {
                         Ok(Some((reader, options))) => {
                             trace!("Registering new subscriber.");
-                            let receiver = DownlinkReceiver::new(reader, next_id());
+                            let receiver =
+                                DownlinkReceiver::new(reader, next_id(), B::make_decoder());
                             registered.push(receiver);
                             if options.contains(DownlinkOptions::SYNC) {
                                 trace!("Sending a Sync message.");
@@ -756,7 +757,8 @@ async fn write_task(
                     };
                     match next_op {
                         Either::Left(Some((reader, options))) => {
-                            let receiver = DownlinkReceiver::new(reader, next_id());
+                            let receiver =
+                                DownlinkReceiver::new(reader, next_id(), B::make_decoder());
                             registered.push(receiver);
                             match flush_outcome {
                                 Either::Left(message_writer) => {
@@ -784,30 +786,26 @@ async fn write_task(
                             info!("Stopping after dropped by the runtime.");
                             break 'outer;
                         }
-                        Either::Right(Some(Ok(DownlinkOperation { body }))) => {
-                            match flush_outcome {
-                                Either::Left(message_writer) => {
-                                    trace!("Dispatching an event.");
-                                    buffer.clear();
-                                    buffer.reserve(body.len());
-                                    buffer.put(body);
-                                    let write_fut =
-                                        suspend_write(message_writer, buffer, WriteKind::Data);
-                                    task_state
-                                        .remove(WriteTaskState::FLUSHED | WriteTaskState::UPDATED);
-                                    state = WriteState::Writing(Either::Left(write_fut));
-                                }
-                                Either::Right(flush) => {
-                                    trace!("Storing an event in the buffer and waiting on a flush to compelte.");
-                                    current.clear();
-                                    current.reserve(body.len());
-                                    current.put(body);
-                                    task_state |= WriteTaskState::UPDATED;
-                                    state =
-                                        WriteState::Writing(Either::Right(do_flush(flush, buffer)));
-                                }
+                        Either::Right(Some(Ok(op))) => match flush_outcome {
+                            Either::Left(message_writer) => {
+                                trace!("Dispatching an event.");
+                                backpressure.write_direct(op, &mut buffer);
+                                let write_fut =
+                                    suspend_write(message_writer, buffer, WriteKind::Data);
+                                task_state.remove(WriteTaskState::FLUSHED);
+                                state = WriteState::Writing(Either::Left(write_fut));
                             }
-                        }
+                            Either::Right(flush) => {
+                                trace!("Storing an event in the buffer and waiting on a flush to compelte.");
+                                if let Err(err) = backpressure.push_operation(op) {
+                                    error!(
+                                        "Failed to process downlink operaton: {error}",
+                                        error = err
+                                    );
+                                };
+                                state = WriteState::Writing(Either::Right(do_flush(flush, buffer)));
+                            }
+                        },
                         Either::Right(ow) => {
                             if let Some(Err(Failed(id))) = ow {
                                 trace!("Removing a failed subscriber");
@@ -864,13 +862,12 @@ async fn write_task(
                                     .remove(WriteTaskState::FLUSHED | WriteTaskState::NEEDS_SYNC);
                                 let write = suspend_write(message_writer, buffer, WriteKind::Sync);
                                 state = WriteState::Writing(Either::Left(write));
-                            } else if task_state.contains(WriteTaskState::UPDATED) {
+                            } else if backpressure.has_data() {
                                 trace!("Dispatching the updated buffer.");
-                                std::mem::swap(&mut buffer, &mut current);
+                                backpressure.prepare_write(&mut buffer);
                                 let write_fut =
                                     suspend_write(message_writer, buffer, WriteKind::Data);
-                                task_state
-                                    .remove(WriteTaskState::FLUSHED | WriteTaskState::UPDATED);
+                                task_state.remove(WriteTaskState::FLUSHED);
                                 state = WriteState::Writing(Either::Left(write_fut));
                             } else {
                                 trace!("Task has become idle.");
@@ -882,13 +879,12 @@ async fn write_task(
                             // The write has completed so we can return to the outer loop.
                             break 'inner;
                         }
-                        SuspendedResult::NextRecord(Some(Ok(DownlinkOperation { body }))) => {
+                        SuspendedResult::NextRecord(Some(Ok(op))) => {
                             // Writing is currently blocked so overwrite the next value to be sent.
                             trace!("Over-writing the current event buffer.");
-                            current.clear();
-                            current.reserve(body.len());
-                            current.put(body);
-                            task_state |= WriteTaskState::UPDATED;
+                            if let Err(err) = backpressure.push_operation(op) {
+                                error!("Failed to process downlink operaton: {error}", error = err);
+                            };
                         }
                         SuspendedResult::NextRecord(Some(Err(Failed(id)))) => {
                             trace!("Removing a failed subscriber.");
@@ -898,7 +894,8 @@ async fn write_task(
                         }
                         SuspendedResult::NewRegistration(Some((reader, options))) => {
                             trace!("Registering a new subscriber.");
-                            let receiver = DownlinkReceiver::new(reader, next_id());
+                            let receiver =
+                                DownlinkReceiver::new(reader, next_id(), B::make_decoder());
                             registered.push(receiver);
                             task_state.set_needs_sync(options);
                         }
@@ -917,6 +914,8 @@ async fn write_task(
 use futures::ready;
 use std::pin::Pin;
 use std::task::{Context, Poll};
+
+use self::backpressure::ValueBackpressure;
 
 /// A future that flushes a sender and then returns it. This is necessary as we need
 /// an [`Unpin`] future so an equivlanent async block would not work.

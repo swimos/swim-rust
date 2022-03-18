@@ -12,16 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::error::{FrameIoError, InvalidFrame};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swim_model::Text;
 use swim_recon::parser::{AsyncParseError, RecognizerDecoder};
 use tokio_util::codec::{Decoder, Encoder};
 
+mod parser;
 #[cfg(test)]
 mod tests;
 
-use crate::error::{FrameIoError, InvalidFrame};
+pub use parser::extract_header;
 
 /// An operation that can be applied to a map lane. This type is used by map uplinks and downlinks
 /// to describe alterations to the lane.
