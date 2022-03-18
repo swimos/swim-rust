@@ -55,3 +55,24 @@ pub enum DownlinkTaskError {
     #[error("Failed to deserialize frame body: {0}")]
     DeserializationFailed(#[from] ReadError),
 }
+
+#[derive(Error, Debug)]
+pub enum AgentRuntimeError {
+    #[error("The agent runtime has terminated.")]
+    Terminated
+}
+
+#[derive(Error, Debug)]
+pub enum AgentTaskError {
+    #[error("{0}")]
+    BadFrame(#[from] FrameIoError),
+    #[error("Failed to deserialize frame body: {0}")]
+    DeserializationFailed(#[from] ReadError),
+}
+
+#[derive(Error, Debug)]
+pub enum AgentInitError {
+    #[error("The agent failed to start.")]
+    FailedToStart,
+}
+
