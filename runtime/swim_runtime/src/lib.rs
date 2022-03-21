@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod agent;
 pub mod backpressure;
 /*
 *TODO A temporary compatibility layer to allow the router to be changed for #397 without changing

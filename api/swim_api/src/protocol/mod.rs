@@ -18,6 +18,7 @@ use swim_form::structural::write::StructuralWritable;
 use swim_recon::printer::print_recon_compact;
 use tokio_util::codec::Decoder;
 
+pub mod agent;
 pub mod downlink;
 pub mod map;
 

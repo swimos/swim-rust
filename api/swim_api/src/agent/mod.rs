@@ -25,16 +25,16 @@ pub enum UplinkKind {
 
 pub trait AgentContext {
 
-    fn add_lane(
-        &self,
+    fn add_lane<'a>(
+        &'a self,
         name: &str,
         uplink_kind: UplinkKind,
-    ) -> BoxFuture<'static, Result<(ByteReader, ByteWriter), AgentRuntimeError>>;
+    ) -> BoxFuture<'a, Result<(ByteReader, ByteWriter), AgentRuntimeError>>;
 
-    fn open_downlink(
-        &self,
+    fn open_downlink<'a>(
+        &'a self,
         config: DownlinkConfig,
-        downlink: Box<dyn Downlink>) ->  BoxFuture<'static, Result<(), AgentRuntimeError>>;
+        downlink: Box<dyn Downlink + Send>) ->  BoxFuture<'a, Result<(), AgentRuntimeError>>;
 
 }
 
