@@ -61,7 +61,7 @@ pub enum DownlinkTaskError {
 #[derive(Error, Debug)]
 pub enum AgentRuntimeError {
     #[error("The agent runtime has terminated.")]
-    Terminated
+    Terminated,
 }
 
 impl<T> From<mpsc::error::SendError<T>> for AgentRuntimeError {
@@ -95,4 +95,3 @@ pub enum AgentInitError {
     #[error("The agent failed to start.")]
     FailedToStart,
 }
-

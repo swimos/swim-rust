@@ -22,6 +22,9 @@ use crate::error::{FrameIoError, InvalidFrame};
 
 use super::map::{MapOperation, MapOperationEncoder, RawMapOperationDecoder};
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LaneRequest<T> {
     Command(T),
@@ -46,6 +49,22 @@ pub struct ValueLaneResponse<T> {
     value: T,
 }
 
+impl<T> ValueLaneResponse<T> {
+    pub fn event(value: T) -> Self {
+        ValueLaneResponse {
+            kind: LaneResponseKind::StandardEvent,
+            value,
+        }
+    }
+
+    pub fn sync(id: u64, value: T) -> Self {
+        ValueLaneResponse {
+            kind: LaneResponseKind::SyncEvent(id),
+            value,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MapLaneResponse<K, V> {
     Event {
@@ -60,7 +79,7 @@ const SYNC: u8 = 1;
 const SYNC_COMPLETE: u8 = 2;
 const EVENT: u8 = 0;
 
-const TAG_LEN: usize = 0;
+const TAG_LEN: usize = 1;
 const BODY_LEN: usize = std::mem::size_of::<u64>();
 const ID_LEN: usize = std::mem::size_of::<u64>();
 
@@ -114,6 +133,15 @@ impl<T> Default for LaneRequestDecoderState<T> {
 pub struct LaneRequestDecoder<T, D> {
     state: LaneRequestDecoderState<T>,
     inner: D,
+}
+
+impl<T, D> LaneRequestDecoder<T, D> {
+    pub fn new(decoder: D) -> Self {
+        LaneRequestDecoder {
+            state: Default::default(),
+            inner: decoder,
+        }
+    }
 }
 
 impl<T, D> Decoder for LaneRequestDecoder<T, D>

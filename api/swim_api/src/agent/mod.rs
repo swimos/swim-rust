@@ -13,18 +13,23 @@
 // limitations under the License.
 
 use futures::future::BoxFuture;
-use swim_utilities::{io::byte_channel::{ByteReader, ByteWriter}, routing::uri::RelativeUri};
+use swim_utilities::{
+    io::byte_channel::{ByteReader, ByteWriter},
+    routing::uri::RelativeUri,
+};
 
-use crate::{error::{AgentRuntimeError, AgentTaskError, AgentInitError}, downlink::{DownlinkConfig, Downlink}};
+use crate::{
+    downlink::{Downlink, DownlinkConfig},
+    error::{AgentInitError, AgentRuntimeError, AgentTaskError},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UplinkKind {
     Value,
-    Map
+    Map,
 }
 
 pub trait AgentContext {
-
     fn add_lane<'a>(
         &'a self,
         name: &str,
@@ -34,8 +39,8 @@ pub trait AgentContext {
     fn open_downlink<'a>(
         &'a self,
         config: DownlinkConfig,
-        downlink: Box<dyn Downlink + Send>) ->  BoxFuture<'a, Result<(), AgentRuntimeError>>;
-
+        downlink: Box<dyn Downlink + Send>,
+    ) -> BoxFuture<'a, Result<(), AgentRuntimeError>>;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -47,13 +52,12 @@ pub type AgentTask<'a> = BoxFuture<'a, Result<(), AgentTaskError>>;
 pub type AgentInitResult<'a> = Result<AgentTask<'a>, AgentInitError>;
 
 pub trait Agent {
-
-    fn run<'a>(&self,
+    fn run<'a>(
+        &self,
         route: RelativeUri,
         config: AgentConfig,
         context: &'a dyn AgentContext,
-        ) -> BoxFuture<'a, AgentInitResult<'a>>;
-
+    ) -> BoxFuture<'a, AgentInitResult<'a>>;
 }
 
 static_assertions::assert_obj_safe!(AgentContext, Agent);
