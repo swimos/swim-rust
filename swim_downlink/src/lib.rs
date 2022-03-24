@@ -16,7 +16,8 @@ mod model;
 mod task;
 
 pub use model::{
-    event_downlink, value_downlink, DefaultEventDownlinkModel, DefaultValueDownlinkModel,
-    EventDownlinkModel, ValueDownlinkModel,
+    event_downlink, map_downlink, value_downlink, DefaultEventDownlinkModel,
+    DefaultMapDownlinkModel, DefaultValueDownlinkModel, EventDownlinkModel, MapDownlinkModel,
+    MapEvent, ValueDownlinkModel,
 };
 pub use task::DownlinkTask;

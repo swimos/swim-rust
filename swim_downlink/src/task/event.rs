@@ -29,16 +29,16 @@ use tracing_futures::Instrument;
 
 use crate::EventDownlinkModel;
 
-/// Task to drive an event downlink, calling lifecyle events at appropriate points.
+/// Task to drive an event downlink, calling lifecycle events at appropriate points.
 ///
-/// #Arguments
+/// # Arguments
 ///
 /// * `model` - The downlink model, providing the lifecycle and a stream of values to set.
 /// * `path` - The path of the lane to which the downlink is attached.
 /// * `config` - Configuration parameters to the downlink.
 /// * `input` - Input stream for messages to the downlink from the runtime.
 /// * `_output` - Output stream for messages from the downlink to the runtime.
-pub async fn event_dowinlink_task<T, LC>(
+pub async fn event_downlink_task<T, LC>(
     model: EventDownlinkModel<T, LC>,
     path: Path,
     config: DownlinkConfig,

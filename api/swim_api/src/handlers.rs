@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/// An event hanlder that does nothing.
+/// An event handler that does nothing.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct NoHandler;
 

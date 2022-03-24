@@ -30,6 +30,7 @@ use tracing_futures::Instrument;
 use crate::{EventDownlinkModel, ValueDownlinkModel};
 
 mod event;
+mod map;
 #[cfg(test)]
 mod tests;
 mod value;
@@ -61,7 +62,7 @@ where
         output: ByteWriter,
     ) -> BoxFuture<'static, Result<(), DownlinkTaskError>> {
         let DownlinkTask(model) = self;
-        value::value_dowinlink_task(model, path, config, input, output)
+        value::value_downlink_task(model, path, config, input, output)
             .instrument(info_span!("Downlink task.", kind = ?DownlinkKind::Value))
             .boxed()
     }
@@ -85,8 +86,32 @@ where
         output: ByteWriter,
     ) -> BoxFuture<'static, Result<(), DownlinkTaskError>> {
         let DownlinkTask(model) = self;
-        event::event_dowinlink_task(model, path, config, input, output)
+        event::event_downlink_task(model, path, config, input, output)
             .instrument(info_span!("Downlink task.", kind = ?DownlinkKind::Event))
+            .boxed()
+    }
+}
+
+impl<T, LC> Downlink for DownlinkTask<MapDownlinkModel<T, LC>>
+where
+    T: Form + Send + Sync + 'static,
+    <T as RecognizerReadable>::Rec: Send,
+    LC: MapDownlinkLifecycle<T> + 'static,
+{
+    fn kind(&self) -> DownlinkKind {
+        DownlinkKind::Map
+    }
+
+    fn run(
+        self,
+        path: Path,
+        config: DownlinkConfig,
+        input: ByteReader,
+        output: ByteWriter,
+    ) -> BoxFuture<'static, Result<(), DownlinkTaskError>> {
+        let DownlinkTask(model) = self;
+        map::map_downlink_task(model, path, config, input, output)
+            .instrument(info_span!("Downlink task.", kind = ?DownlinkKind::Map))
             .boxed()
     }
 }

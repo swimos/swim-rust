@@ -14,14 +14,16 @@
 
 use std::fmt::Display;
 
-use crate::model::lifecycle::ValueDownlinkLifecycle;
+use crate::model::lifecycle::{MapDownlinkLifecycle, ValueDownlinkLifecycle};
 use futures::future::join;
 use futures::{Sink, SinkExt, StreamExt};
 use swim_api::downlink::DownlinkConfig;
 use swim_api::error::DownlinkTaskError;
 use swim_api::protocol::downlink::{
-    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
+    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, MapNotificationDecoder,
+    ValueNotificationDecoder,
 };
+use swim_api::protocol::map::MapMessage;
 use swim_form::structural::write::StructuralWritable;
 use swim_form::Form;
 use swim_model::path::Path;
@@ -35,30 +37,31 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::{info_span, trace};
 use tracing_futures::Instrument;
 
-use crate::ValueDownlinkModel;
+use crate::{MapDownlinkModel, MapEvent};
 
-/// Task to drive a value downlink, calling lifecycle events at appropriate points.
+/// Task to drive a map downlink, calling lifecycle events at appropriate points.
 ///
 /// # Arguments
 ///
-/// * `model` - The downlink model, providing the lifecycle and a stream of values to set.
+/// * `model` - The downlink model, providing the lifecycle and a stream of events to process.
 /// * `path` - The path of the lane to which the downlink is attached.
 /// * `config` - Configuration parameters to the downlink.
 /// * `input` - Input stream for messages to the downlink from the runtime.
 /// * `output` - Output stream for messages from the downlink to the runtime.
-pub async fn value_downlink_task<T, LC>(
-    model: ValueDownlinkModel<T, LC>,
+pub async fn map_downlink_task<K, V, LC>(
+    model: MapDownlinkModel<K, V, LC>,
     path: Path,
     config: DownlinkConfig,
     input: ByteReader,
     output: ByteWriter,
 ) -> Result<(), DownlinkTaskError>
-where
-    T: Form + Send + Sync + 'static,
-    LC: ValueDownlinkLifecycle<T>,
+    where
+        K: Form + Send + Sync + 'static,
+        V: Form + Send + Sync + 'static,
+        LC: MapDownlinkLifecycle<K, V>,
 {
-    let ValueDownlinkModel {
-        set_value,
+    let MapDownlinkModel {
+        event_stream,
         lifecycle,
     } = model;
     let (stop_tx, stop_rx) = trigger::trigger();
@@ -67,49 +70,51 @@ where
         let _ = stop_tx.trigger();
         result
     }
-    .instrument(info_span!("Downlink read task.", %path));
+        .instrument(info_span!("Downlink read task.", %path));
     let framed_writer = FramedWrite::new(output, DownlinkOperationEncoder);
-    let write = write_task(framed_writer, set_value, stop_rx)
+    let write = write_task(framed_writer, event_stream, stop_rx)
         .instrument(info_span!("Downlink write task.", %path));
     let (read_result, _) = join(read, write).await;
     read_result
 }
 
-enum State<T> {
+enum State<K, V> {
     Unlinked,
-    Linked(Option<T>),
-    Synced(T),
+    Linked(Option<im::HashMap<K, V>>),
+    Synced(im::HashMap<K, V>),
 }
 
-struct ShowState<'a, T>(&'a State<T>);
+struct ShowState<'a, K, V>(&'a State<K, V>);
 
-impl<'a, T: StructuralWritable> Display for ShowState<'a, T> {
+//Todo maybe change print
+impl<'a, K: StructuralWritable, V: StructuralWritable> Display for ShowState<'a, K, V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let ShowState(inner) = self;
         match *inner {
             State::Unlinked => f.write_str("Unlinked"),
-            State::Linked(Some(v)) => write!(f, "Linked({})", print_recon(v)),
+            State::Linked(Some(map)) => write!(f, "Linked({})", print_recon(map)),
             State::Linked(_) => f.write_str("Linked"),
-            State::Synced(v) => write!(f, "Synced({})", print_recon(v)),
+            State::Synced(map) => write!(f, "Synced({})", print_recon(map)),
         }
     }
 }
 
-async fn read_task<T, LC>(
+async fn read_task<K, V, LC>(
     config: DownlinkConfig,
     input: ByteReader,
     mut lifecycle: LC,
 ) -> Result<(), DownlinkTaskError>
-where
-    T: Form + Send + Sync + 'static,
-    LC: ValueDownlinkLifecycle<T>,
+    where
+        K: Form + Send + Sync + 'static,
+        V: Form + Send + Sync + 'static,
+        LC: ValueDownlinkLifecycle<T>,
 {
     let DownlinkConfig {
         events_when_not_synced,
         terminate_on_unlinked,
     } = config;
-    let mut state: State<T> = State::Unlinked;
-    let mut framed_read = FramedRead::new(input, ValueNotificationDecoder::default());
+    let mut state: State<K, V> = State::Unlinked;
+    let mut framed_read = FramedRead::new(input, MapNotificationDecoder::<K, V>::default());
 
     while let Some(result) = framed_read.next().await {
         match result? {
@@ -139,6 +144,14 @@ where
                 }
             }
             DownlinkNotification::Event { body } => {
+                match body {
+                    MapMessage::Update { key, value } => {}
+                    MapMessage::Remove { key } => {}
+                    MapMessage::Clear => {}
+                    MapMessage::Take(n) => {}
+                    MapMessage::Drop(n) => {}
+                }
+
                 trace!(
                     "Received Event with body '{body}' in state {state}",
                     body = print_recon(&body),
@@ -178,17 +191,18 @@ where
     Ok(())
 }
 
-async fn write_task<Snk, T>(
+async fn write_task<Snk, K, V>(
     mut framed: Snk,
-    set_value: mpsc::Receiver<T>,
+    event_stream: mpsc::Receiver<MapEvent<K, V>>,
     stop_trigger: trigger::Receiver,
 ) where
-    Snk: Sink<DownlinkOperation<T>> + Unpin,
-    T: Form + Send + 'static,
+    Snk: Sink<DownlinkOperation<MapEvent<K, V>>> + Unpin,
+    K: Form + Send + 'static,
+    V: Form + Send + 'static,
 {
-    let mut set_stream = ReceiverStream::new(set_value).take_until(stop_trigger);
+    let mut event_stream = ReceiverStream::new(event_stream).take_until(stop_trigger);
     while let (Some(value), Some(Ok(_)) | None) =
-        immediate_or_join(set_stream.next(), framed.flush()).await
+    immediate_or_join(event_stream.next(), framed.flush()).await
     {
         trace!("Sending command '{cmd}'.", cmd = print_recon(&value));
         let op = DownlinkOperation::new(value);
