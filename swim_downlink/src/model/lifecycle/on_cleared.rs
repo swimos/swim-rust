@@ -106,7 +106,7 @@ where
         _shared: &'a mut Shared,
         map: im::HashMap<K, V>,
     ) -> Self::OnClearedFut {
-        self.0.on_cleared(key, map)
+        self.0.on_cleared(map)
     }
 }
 

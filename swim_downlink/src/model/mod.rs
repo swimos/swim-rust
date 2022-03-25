@@ -17,20 +17,18 @@ use std::marker::PhantomData;
 use tokio::sync::mpsc;
 
 use lifecycle::{
-    for_event_downlink, for_value_downlink, BasicEventDownlinkLifecycle,
-    BasicValueDownlinkLifecycle, EventDownlinkLifecycle, ValueDownlinkLifecycle,
+    for_event_downlink, for_map_downlink, for_value_downlink, BasicEventDownlinkLifecycle,
+    BasicMapDownlinkLifecycle, BasicValueDownlinkLifecycle, EventDownlinkLifecycle,
+    MapDownlinkLifecycle, ValueDownlinkLifecycle,
 };
 use swim_api::handlers::NoHandler;
+use swim_api::protocol::map::MapMessage;
+use swim_form::Form;
 
 pub mod lifecycle;
 
 pub struct ValueDownlinkModel<T, LC> {
     pub set_value: mpsc::Receiver<T>,
-    pub lifecycle: LC,
-}
-
-pub struct EventDownlinkModel<T, LC> {
-    _type: PhantomData<T>,
     pub lifecycle: LC,
 }
 
@@ -43,10 +41,29 @@ impl<T, LC> ValueDownlinkModel<T, LC> {
     }
 }
 
+pub struct EventDownlinkModel<T, LC> {
+    _type: PhantomData<T>,
+    pub lifecycle: LC,
+}
+
 impl<T, LC> EventDownlinkModel<T, LC> {
     pub fn new(lifecycle: LC) -> Self {
         EventDownlinkModel {
             _type: PhantomData,
+            lifecycle,
+        }
+    }
+}
+
+pub struct MapDownlinkModel<K, V, LC> {
+    pub event_stream: mpsc::Receiver<MapMessage<K, V>>,
+    pub lifecycle: LC,
+}
+
+impl<K, V, LC> MapDownlinkModel<K, V, LC> {
+    pub fn new(event_stream: mpsc::Receiver<MapMessage<K, V>>, lifecycle: LC) -> Self {
+        MapDownlinkModel {
+            event_stream,
             lifecycle,
         }
     }
@@ -60,6 +77,22 @@ pub type DefaultValueDownlinkModel<T> = ValueDownlinkModel<
 pub type DefaultEventDownlinkModel<T> =
     EventDownlinkModel<T, BasicEventDownlinkLifecycle<T, NoHandler, NoHandler, NoHandler>>;
 
+pub type DefaultMapDownlinkModel<K, V> = MapDownlinkModel<
+    K,
+    V,
+    BasicMapDownlinkLifecycle<
+        K,
+        V,
+        NoHandler,
+        NoHandler,
+        NoHandler,
+        NoHandler,
+        NoHandler,
+        NoHandler,
+        NoHandler,
+    >,
+>;
+
 pub fn value_downlink<T>(set_value: mpsc::Receiver<T>) -> DefaultValueDownlinkModel<T> {
     ValueDownlinkModel {
         set_value,
@@ -71,6 +104,15 @@ pub fn event_downlink<T>() -> DefaultEventDownlinkModel<T> {
     EventDownlinkModel {
         _type: PhantomData,
         lifecycle: for_event_downlink::<T>(),
+    }
+}
+
+pub fn map_downlink<K, V>(
+    event_stream: mpsc::Receiver<MapMessage<K, V>>,
+) -> DefaultMapDownlinkModel<K, V> {
+    MapDownlinkModel {
+        event_stream,
+        lifecycle: for_map_downlink::<K, V>(),
     }
 }
 
@@ -108,6 +150,27 @@ where
 
         EventDownlinkModel {
             _type: PhantomData,
+            lifecycle: f(lifecycle),
+        }
+    }
+}
+
+impl<K, V, LC> MapDownlinkModel<K, V, LC>
+where
+    LC: MapDownlinkLifecycle<K, V>,
+{
+    pub fn with_lifecycle<F, LC2>(self, f: F) -> MapDownlinkModel<K, V, LC2>
+    where
+        F: Fn(LC) -> LC2,
+        LC2: MapDownlinkLifecycle<K, V>,
+    {
+        let MapDownlinkModel {
+            event_stream,
+            lifecycle,
+        } = self;
+
+        MapDownlinkModel {
+            event_stream,
             lifecycle: f(lifecycle),
         }
     }

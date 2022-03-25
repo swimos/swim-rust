@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::model::lifecycle::{EventDownlinkLifecycle, ValueDownlinkLifecycle};
+use std::hash::Hash;
+use crate::model::lifecycle::{
+    EventDownlinkLifecycle, MapDownlinkLifecycle, ValueDownlinkLifecycle,
+};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use swim_api::downlink::{Downlink, DownlinkConfig, DownlinkKind};
@@ -27,7 +30,7 @@ use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use tracing::info_span;
 use tracing_futures::Instrument;
 
-use crate::{EventDownlinkModel, ValueDownlinkModel};
+use crate::{EventDownlinkModel, MapDownlinkModel, ValueDownlinkModel};
 
 mod event;
 mod map;
@@ -92,11 +95,13 @@ where
     }
 }
 
-impl<T, LC> Downlink for DownlinkTask<MapDownlinkModel<T, LC>>
+impl<K, V, LC> Downlink for DownlinkTask<MapDownlinkModel<K, V, LC>>
 where
-    T: Form + Send + Sync + 'static,
-    <T as RecognizerReadable>::Rec: Send,
-    LC: MapDownlinkLifecycle<T> + 'static,
+    K: Form + Hash + Eq + Clone + Send + Sync + 'static,
+    V: Form + Clone + Send + Sync + 'static,
+    <K as RecognizerReadable>::Rec: Send,
+    <V as RecognizerReadable>::Rec: Send,
+    LC: MapDownlinkLifecycle<K, V> + 'static,
 {
     fn kind(&self) -> DownlinkKind {
         DownlinkKind::Map
