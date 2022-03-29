@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use bytes::{Buf, BufMut, BytesMut};
+use bytes::{Buf, BufMut, BytesMut, Bytes};
 use std::fmt::Write;
 use swim_form::structural::write::StructuralWritable;
 use swim_recon::printer::print_recon_compact;
-use tokio_util::codec::Decoder;
+use tokio_util::codec::{Decoder, Encoder};
 
 pub mod agent;
 pub mod downlink;
@@ -90,4 +90,40 @@ fn write_recon_kv<K: StructuralWritable, V: StructuralWritable>(
     let mut rewound = &mut dst.as_mut()[header_offset..];
     rewound.put_u64(key_len);
     rewound.put_u64(value_len);
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct WithLengthBytesCodec;
+
+impl<B: AsRef<[u8]>> Encoder<B> for WithLengthBytesCodec {
+    type Error = std::io::Error;
+
+    fn encode(&mut self, item: B, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        let bytes = item.as_ref();
+        dst.reserve(LEN_SIZE + bytes.len());
+        dst.put_u64(bytes.len() as u64);
+        dst.put(bytes);
+        Ok(())
+    }
+}
+
+impl Decoder for WithLengthBytesCodec {
+    type Item = Bytes;
+
+    type Error = std::io::Error;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        if src.remaining() < LEN_SIZE {
+            Ok(None)
+        } else {
+            let mut bytes = src.as_ref();
+            let len = bytes.get_u64() as usize;
+            if src.remaining() >= LEN_SIZE + len {
+                src.advance(LEN_SIZE);
+                Ok(Some(src.split_to(len).freeze()))
+            } else {
+                Ok(None)
+            }
+        }
+    }
 }

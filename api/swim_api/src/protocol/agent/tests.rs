@@ -31,7 +31,7 @@ use super::LaneRequest;
 
 #[test]
 fn encode_sync_lane_request() {
-    let mut encoder = LaneRequestEncoder;
+    let mut encoder = LaneRequestEncoder::value();
     let mut buffer = BytesMut::new();
     let request: LaneRequest<&[u8]> = LaneRequest::Sync(67);
     assert!(encoder.encode(request, &mut buffer).is_ok());
@@ -43,7 +43,7 @@ fn encode_sync_lane_request() {
 
 #[test]
 fn encode_command_lane_request() {
-    let mut encoder = LaneRequestEncoder;
+    let mut encoder = LaneRequestEncoder::value();
     let mut buffer = BytesMut::new();
     let content = b"body";
     let request = LaneRequest::Command(content);
@@ -71,7 +71,7 @@ fn round_trip_request(request: LaneRequest<Example>) {
         }
     };
 
-    let mut encoder = LaneRequestEncoder;
+    let mut encoder = LaneRequestEncoder::value();
     let mut buffer = BytesMut::new();
     assert!(encoder.encode(with_bytes, &mut buffer).is_ok());
 

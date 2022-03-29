@@ -20,7 +20,7 @@ use tokio_util::codec::{Decoder, Encoder};
 
 use crate::error::{FrameIoError, InvalidFrame};
 
-use super::map::{MapOperation, MapOperationEncoder, RawMapOperationDecoder};
+use super::{map::{MapOperation, MapOperationEncoder, RawMapOperationDecoder, RawMapOperationEncoder, MapMessageEncoder}, WithLengthBytesCodec};
 
 #[cfg(test)]
 mod tests;
@@ -84,19 +84,43 @@ const BODY_LEN: usize = std::mem::size_of::<u64>();
 const ID_LEN: usize = std::mem::size_of::<u64>();
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct LaneRequestEncoder;
+pub struct LaneRequestEncoder<Inner> {
+    inner: Inner,
+}
 
-impl<B: AsRef<[u8]>> Encoder<LaneRequest<B>> for LaneRequestEncoder {
-    type Error = std::io::Error;
+impl LaneRequestEncoder<WithLengthBytesCodec> {
 
-    fn encode(&mut self, item: LaneRequest<B>, dst: &mut BytesMut) -> Result<(), Self::Error> {
+    pub fn value() -> Self {
+        LaneRequestEncoder {
+            inner: WithLengthBytesCodec,
+        }
+    }
+
+}
+
+impl LaneRequestEncoder<MapMessageEncoder<RawMapOperationEncoder>> {
+
+    pub fn map() -> Self {
+        LaneRequestEncoder {
+            inner: Default::default(),
+        }
+    }
+
+}
+
+impl<T, Inner> Encoder<LaneRequest<T>> for LaneRequestEncoder<Inner>
+where
+    Inner: Encoder<T>,
+{
+    type Error = Inner::Error;
+
+    fn encode(&mut self, item: LaneRequest<T>, dst: &mut BytesMut) -> Result<(), Self::Error> {
         match item {
             LaneRequest::Command(cmd) => {
-                let bytes = cmd.as_ref();
-                dst.reserve(TAG_LEN + BODY_LEN + bytes.len());
+                let LaneRequestEncoder { inner, ..} = self;
+                dst.reserve(TAG_LEN);
                 dst.put_u8(COMMAND);
-                dst.put_u64(bytes.len() as u64);
-                dst.put(bytes);
+                inner.encode(cmd, dst)?;
             }
             LaneRequest::Sync(id) => {
                 dst.reserve(TAG_LEN + ID_LEN);

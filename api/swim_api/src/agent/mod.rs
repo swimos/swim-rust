@@ -12,10 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::num::NonZeroUsize;
+
 use futures::future::BoxFuture;
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
-    routing::uri::RelativeUri,
+    routing::uri::RelativeUri, algebra::non_zero_usize,
 };
 
 use crate::{
@@ -29,11 +31,26 @@ pub enum UplinkKind {
     Map,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct LaneConfig {
+    pub input_buffer_size: NonZeroUsize,
+    pub output_buffer_size: NonZeroUsize,
+}
+
+const DEFAULT_BUFFER: NonZeroUsize = non_zero_usize!(4096);
+
+impl Default for LaneConfig {
+    fn default() -> Self {
+        Self { input_buffer_size: DEFAULT_BUFFER, output_buffer_size: DEFAULT_BUFFER }
+    }
+}
+
 pub trait AgentContext {
     fn add_lane<'a>(
         &'a self,
         name: &str,
         uplink_kind: UplinkKind,
+        config: Option<LaneConfig>,
     ) -> BoxFuture<'a, Result<(ByteReader, ByteWriter), AgentRuntimeError>>;
 
     fn open_downlink<'a>(
