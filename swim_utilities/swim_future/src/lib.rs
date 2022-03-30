@@ -18,6 +18,7 @@ pub mod open_ended;
 pub mod request;
 pub mod retryable;
 pub mod task;
+pub mod latch;
 
 pub use combinators::{
     immediate_or_join, immediate_or_start, FlatmapStream, ImmediateOrJoin, ImmediateOrStart,
