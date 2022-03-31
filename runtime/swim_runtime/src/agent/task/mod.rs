@@ -15,7 +15,7 @@
 use bytes::Bytes;
 use futures::{
     future::{select as fselect, Either},
-    stream::select as sselect,
+    stream::{select as sselect, FuturesUnordered},
     SinkExt, Stream, StreamExt,
 };
 use swim_api::{
@@ -28,11 +28,11 @@ use swim_api::{
             extract_header, MapMessage, MapMessageEncoder, MapOperation, RawMapOperationEncoder,
         },
         WithLengthBytesCodec,
-    },
+    }, error::AgentRuntimeError,
 };
 use swim_model::Text;
 use swim_recon::parser::MessageExtractError;
-use swim_utilities::io::byte_channel::{self, ByteReader, ByteWriter};
+use swim_utilities::io::byte_channel::{self, ByteReader, ByteWriter, byte_channel};
 use swim_utilities::trigger;
 use thiserror::Error;
 use tokio::sync::mpsc;
@@ -304,7 +304,10 @@ impl AgentRuntimeTask {
 }
 
 enum ReadTaskRegistration {
-    Lane(LaneSender),
+    Lane {
+        name: Text,
+        sender: LaneSender,
+    },
     Remote(ByteReader),
 }
 
@@ -330,6 +333,9 @@ async fn attachment_task(
     )
     .take_until(combined_stop);
 
+    let mut remote_id: u64 = 0;
+    //let mut pending = FuturesUnordered::new();
+
     while let Some(event) = stream.next().await {
         match event {
             Either::Left(AgentRuntimeRequest::AddLane {
@@ -337,7 +343,35 @@ async fn attachment_task(
                 kind,
                 config,
                 promise,
-            }) => {}
+            }) => {
+                let lane_config = config.unwrap_or_default();
+                let (in_tx, in_rx) = byte_channel(lane_config.input_buffer_size);
+                let (out_tx, out_rx) = byte_channel(lane_config.output_buffer_size);
+                let sender = LaneSender::new(in_tx, kind);
+                if read_tx.send(ReadTaskRegistration::Lane {
+                    name: name.clone(),
+                    sender,
+                }).await.is_err() {
+                    let _ = promise.send(Err(AgentRuntimeError::Terminated));
+                    break;
+                }
+                let failed = match kind {
+                    UplinkKind::Value => {
+                        let receiver = LaneReceiver::value(name.clone(), out_rx);
+                        write_tx.send(WriteTaskRegistration::ValueLane(receiver)).await.is_err()
+                    }
+                    UplinkKind::Map => {
+                        let receiver = LaneReceiver::map(name.clone(), out_rx);
+                        write_tx.send(WriteTaskRegistration::MapLane(receiver)).await.is_err()
+                    }
+                };
+                if failed {
+                    let _ = promise.send(Err(AgentRuntimeError::Terminated));
+                    break;
+                }
+                let _ = promise.send(Ok((in_rx, out_tx)));
+                todo!()
+            }
             Either::Left(_) => todo!("Opening downlinks form agents not implemented."),
             Either::Right(AgentAttachmentRequest { io: (rx, tx) }) => {}
         }
