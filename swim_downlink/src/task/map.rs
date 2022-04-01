@@ -146,18 +146,17 @@ where
                     body = print_recon(&message),
                     state = ShowState(&state)
                 );
-                match &mut state {
-                    State::Linked(map) => {
-                        if events_when_not_synced {
-                            handle_message(message, &mut lifecycle, map, true).await;
-                        } else {
-                            handle_message(message, &mut lifecycle, map, false).await;
-                        }
+                match state {
+                    State::Linked(mut map) => {
+                        map = handle_message(message, &mut lifecycle, map, events_when_not_synced)
+                            .await;
+                        state = State::Linked(map)
                     }
-                    State::Synced(map) => {
-                        handle_message(message, &mut lifecycle, map, true).await;
+                    State::Synced(mut map) => {
+                        map = handle_message(message, &mut lifecycle, map, true).await;
+                        state = State::Synced(map)
                     }
-                    _ => {}
+                    _ => state = State::Unlinked,
                 }
             }
             DownlinkNotification::Unlinked => {
@@ -181,9 +180,10 @@ where
 async fn handle_message<K, V, LC>(
     message: MapMessage<K, V>,
     lifecycle: &mut LC,
-    map: &mut BTreeMap<K, V>,
+    mut map: BTreeMap<K, V>,
     with_callbacks: bool,
-) where
+) -> BTreeMap<K, V>
+where
     K: Form + Ord + Eq + Clone + Send + Sync + 'static,
     V: Form + Clone + Send + Sync + 'static,
     LC: MapDownlinkLifecycle<K, V>,
@@ -203,46 +203,47 @@ async fn handle_message<K, V, LC>(
         MapMessage::Remove { key } => {
             let prev_value = map.remove(&key);
             if with_callbacks {
-                lifecycle.on_removed(&key, prev_value.as_ref());
+                lifecycle.on_removed(&key, prev_value.as_ref()).await;
             }
         }
         MapMessage::Clear => {
             if with_callbacks {
-                lifecycle.on_cleared(map);
+                lifecycle.on_cleared(&map).await;
             }
             map.clear();
         }
         MapMessage::Take(n) => {
-            let mut idx = 0;
-            map.retain(|key, prev_value| {
-                if n > idx {
-                    idx += 1;
-                    true
-                } else {
-                    idx += 1;
+            let mut map_iter = map.into_iter().enumerate();
+
+            while let Some((idx, (key, prev_value))) = map_iter.next() {
+                if n > idx as u64 {
                     if with_callbacks {
-                        lifecycle.on_removed(key, Some(prev_value));
+                        lifecycle.on_removed(&key, Some(&prev_value)).await;
                     }
-                    false
+                } else {
+                    break;
                 }
-            });
+            }
+
+            map = map_iter.map(|(_, (key, value))| (key, value)).collect();
         }
         MapMessage::Drop(n) => {
-            let mut idx = 0;
-            map.retain(|key, prev_value| {
-                if n > idx {
-                    idx += 1;
+            let mut map_iter = map.into_iter().rev().enumerate();
+
+            while let Some((idx, (key, prev_value))) = map_iter.next() {
+                if n > idx as u64 {
                     if with_callbacks {
-                        lifecycle.on_removed(key, Some(prev_value));
+                        lifecycle.on_removed(&key, Some(&prev_value)).await;
                     }
-                    false
                 } else {
-                    idx += 1;
-                    true
+                    break;
                 }
-            });
+            }
+
+            map = map_iter.map(|(_, (key, value))| (key, value)).collect();
         }
     }
+    map
 }
 
 async fn write_task<Snk, K, V>(
