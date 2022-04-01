@@ -23,7 +23,6 @@ use lifecycle::{
 };
 use swim_api::handlers::NoHandler;
 use swim_api::protocol::map::MapMessage;
-use swim_form::Form;
 
 pub mod lifecycle;
 

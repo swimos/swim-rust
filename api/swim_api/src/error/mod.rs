@@ -50,6 +50,8 @@ pub enum DownlinkTaskError {
     FailedToStart,
     #[error("A synced envelope was received with no data provided.")]
     SyncedWithNoValue,
+    #[error("A synced envelope was received before the lane was linked.")]
+    SyncedBeforeLinked,
     #[error("{0}")]
     BadFrame(#[from] FrameIoError),
     #[error("Failed to deserialize frame body: {0}")]

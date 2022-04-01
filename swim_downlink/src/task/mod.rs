@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::hash::Hash;
 use crate::model::lifecycle::{
     EventDownlinkLifecycle, MapDownlinkLifecycle, ValueDownlinkLifecycle,
 };
@@ -97,7 +96,7 @@ where
 
 impl<K, V, LC> Downlink for DownlinkTask<MapDownlinkModel<K, V, LC>>
 where
-    K: Form + Hash + Eq + Clone + Send + Sync + 'static,
+    K: Form + Ord + Eq + Clone + Send + Sync + 'static,
     V: Form + Clone + Send + Sync + 'static,
     <K as RecognizerReadable>::Rec: Send,
     <V as RecognizerReadable>::Rec: Send,

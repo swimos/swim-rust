@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::convert::Infallible;
 use std::convert::TryFrom;
 use std::num::NonZeroUsize;
@@ -851,6 +851,40 @@ impl<T: StructuralWritable> StructuralWritable for Option<T> {
 }
 
 impl<K, V, S> StructuralWritable for HashMap<K, V, S>
+where
+    K: StructuralWritable,
+    V: StructuralWritable,
+{
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        let len = self.len();
+        self.iter()
+            .try_fold(
+                writer
+                    .record(0)?
+                    .complete_header(RecordBodyKind::MapLike, len)?,
+                |record_writer, (key, value)| record_writer.write_slot(key, value),
+            )?
+            .done()
+    }
+
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        let len = self.len();
+        self.into_iter()
+            .try_fold(
+                writer
+                    .record(0)?
+                    .complete_header(RecordBodyKind::MapLike, len)?,
+                |record_writer, (key, value)| record_writer.write_slot_into(key, value),
+            )?
+            .done()
+    }
+}
+
+impl<K, V> StructuralWritable for BTreeMap<K, V>
 where
     K: StructuralWritable,
     V: StructuralWritable,

@@ -12,19 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::hash_map::RandomState;
-use std::fmt::Display;
-use std::hash::Hash;
-
 use crate::model::lifecycle::MapDownlinkLifecycle;
 use futures::future::join;
 use futures::{Sink, SinkExt, StreamExt};
-use im::hashmap::Entry;
+use std::collections::BTreeMap;
+use std::fmt::Display;
 use swim_api::downlink::DownlinkConfig;
 use swim_api::error::DownlinkTaskError;
 use swim_api::protocol::downlink::{
     DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, MapNotificationDecoder,
-    ValueNotificationDecoder,
 };
 use swim_api::protocol::map::MapMessage;
 use swim_form::structural::write::StructuralWritable;
@@ -59,7 +55,7 @@ pub async fn map_downlink_task<K, V, LC>(
     output: ByteWriter,
 ) -> Result<(), DownlinkTaskError>
 where
-    K: Form + Hash + Eq + Clone + Send + Sync + 'static,
+    K: Form + Ord + Eq + Clone + Send + Sync + 'static,
     V: Form + Clone + Send + Sync + 'static,
     LC: MapDownlinkLifecycle<K, V>,
 {
@@ -83,21 +79,19 @@ where
 
 enum State<K, V> {
     Unlinked,
-    Linked(im::HashMap<K, V>),
-    Synced(im::HashMap<K, V>),
+    Linked(BTreeMap<K, V>),
+    Synced(BTreeMap<K, V>),
 }
 
 struct ShowState<'a, K, V>(&'a State<K, V>);
 
-//Todo change print
 impl<'a, K: StructuralWritable, V: StructuralWritable> Display for ShowState<'a, K, V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let ShowState(inner) = self;
         match *inner {
             State::Unlinked => f.write_str("Unlinked"),
-            State::Linked(map) => write!(f, "Linked({})", "unimplemented"),
-            // State::Linked(_) => f.write_str("Linked"),
-            State::Synced(map) => write!(f, "Synced({})", "unimplemented"),
+            State::Linked(map) => write!(f, "Linked({})", print_recon(map)),
+            State::Synced(map) => write!(f, "Synced({})", print_recon(map)),
         }
     }
 }
@@ -108,7 +102,7 @@ async fn read_task<K, V, LC>(
     mut lifecycle: LC,
 ) -> Result<(), DownlinkTaskError>
 where
-    K: Form + Hash + Eq + Clone + Send + Sync + 'static,
+    K: Form + Ord + Eq + Clone + Send + Sync + 'static,
     V: Form + Clone + Send + Sync + 'static,
     LC: MapDownlinkLifecycle<K, V>,
 {
@@ -128,7 +122,7 @@ where
                 );
                 if matches!(&state, State::Unlinked) {
                     lifecycle.on_linked().await;
-                    state = State::Linked(im::HashMap::new());
+                    state = State::Linked(BTreeMap::new());
                 }
             }
             DownlinkNotification::Synced => {
@@ -142,57 +136,26 @@ where
                         state = State::Synced(value);
                     }
                     _ => {
-                        return Err(DownlinkTaskError::SyncedWithNoValue);
+                        return Err(DownlinkTaskError::SyncedBeforeLinked);
                     }
                 }
             }
-            DownlinkNotification::Event { body } => {
-                //     trace!(
-                //     "Received Event with body '{body}' in state {state}",
-                //     body = print_recon(&body),
-                //     state = ShowState(&state)
-                // );
+            DownlinkNotification::Event { body: message } => {
+                trace!(
+                    "Received Event with body '{body}' in state {state}",
+                    body = print_recon(&message),
+                    state = ShowState(&state)
+                );
                 match &mut state {
                     State::Linked(map) => {
                         if events_when_not_synced {
-                            lifecycle.on_event(&body).await;
-                            match body {
-                                MapMessage::Update { .. } => {}
-                                MapMessage::Remove { .. } => {}
-                                MapMessage::Clear => {}
-                                MapMessage::Take(_) => {}
-                                MapMessage::Drop(_) => {}
-                            }
-
-                            // lifecycle.on_set(value.as_ref(), &body).await;
+                            handle_message(message, &mut lifecycle, map, true).await;
+                        } else {
+                            handle_message(message, &mut lifecycle, map, false).await;
                         }
-                        // *value = Some(body);
                     }
                     State::Synced(map) => {
-                        lifecycle.on_event(&body).await;
-
-                        match body {
-                            MapMessage::Update { key, value } => {
-                                let prev_value = map.get(&key);
-                                lifecycle.on_updated(&key, prev_value, &value);
-                                map.insert(key, value);
-                            }
-                            MapMessage::Remove { key } => {
-                                let prev_value = map.remove(&key);
-                                lifecycle.on_removed(&key, prev_value.as_ref());
-                            }
-                            MapMessage::Clear => {
-                                //Todo replace with ref
-                                lifecycle.on_cleared(map.clone());
-                                map.clear();
-                            }
-                            MapMessage::Take(n) => {
-                                unimplemented!()
-                            }
-                            MapMessage::Drop(n) => {
-                                unimplemented!()
-                            }
-                        }
+                        handle_message(message, &mut lifecycle, map, true).await;
                     }
                     _ => {}
                 }
@@ -213,6 +176,73 @@ where
         }
     }
     Ok(())
+}
+
+async fn handle_message<K, V, LC>(
+    message: MapMessage<K, V>,
+    lifecycle: &mut LC,
+    map: &mut BTreeMap<K, V>,
+    with_callbacks: bool,
+) where
+    K: Form + Ord + Eq + Clone + Send + Sync + 'static,
+    V: Form + Clone + Send + Sync + 'static,
+    LC: MapDownlinkLifecycle<K, V>,
+{
+    if with_callbacks {
+        lifecycle.on_event(&message).await;
+    }
+
+    match message {
+        MapMessage::Update { key, value } => {
+            if with_callbacks {
+                let prev_value = map.get(&key);
+                lifecycle.on_updated(&key, prev_value, &value).await;
+            }
+            map.insert(key, value);
+        }
+        MapMessage::Remove { key } => {
+            let prev_value = map.remove(&key);
+            if with_callbacks {
+                lifecycle.on_removed(&key, prev_value.as_ref());
+            }
+        }
+        MapMessage::Clear => {
+            if with_callbacks {
+                lifecycle.on_cleared(map);
+            }
+            map.clear();
+        }
+        MapMessage::Take(n) => {
+            let mut idx = 0;
+            map.retain(|key, prev_value| {
+                if n > idx {
+                    idx += 1;
+                    true
+                } else {
+                    idx += 1;
+                    if with_callbacks {
+                        lifecycle.on_removed(key, Some(prev_value));
+                    }
+                    false
+                }
+            });
+        }
+        MapMessage::Drop(n) => {
+            let mut idx = 0;
+            map.retain(|key, prev_value| {
+                if n > idx {
+                    idx += 1;
+                    if with_callbacks {
+                        lifecycle.on_removed(key, Some(prev_value));
+                    }
+                    false
+                } else {
+                    idx += 1;
+                    true
+                }
+            });
+        }
+    }
 }
 
 async fn write_task<Snk, K, V>(
