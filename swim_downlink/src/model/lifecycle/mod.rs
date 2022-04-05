@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::BTreeMap;
+use im::OrdMap;
 use std::marker::PhantomData;
 
 pub use on_cleared::{OnCleared, OnClearedShared};
@@ -47,7 +47,7 @@ pub trait EventDownlinkHandlers<'a, T>: OnLinked<'a> + OnEvent<'a, T> + OnUnlink
 /// The set of handlers that a map downlink lifecycle supports.
 pub trait MapDownlinkHandlers<'a, K, V>:
     OnLinked<'a>
-    + OnSynced<'a, BTreeMap<K, V>>
+    + OnSynced<'a, OrdMap<K, V>>
     + OnEvent<'a, MapMessage<K, V>>
     + OnUpdated<'a, K, V>
     + OnRemoved<'a, K, V>
@@ -83,7 +83,7 @@ impl<'a, T, L> EventDownlinkHandlers<'a, T> for L where
 
 impl<'a, K, V, L> MapDownlinkHandlers<'a, K, V> for L where
     L: OnLinked<'a>
-        + OnSynced<'a, BTreeMap<K, V>>
+        + OnSynced<'a, OrdMap<K, V>>
         + OnEvent<'a, MapMessage<K, V>>
         + OnUpdated<'a, K, V>
         + OnRemoved<'a, K, V>
@@ -1228,7 +1228,7 @@ where
         f: F,
     ) -> BasicMapDownlinkLifecycle<K, V, FLink, FnMutHandler<F>, FEv, FUpd, FRmv, FClr, FUnlink>
     where
-        FnMutHandler<F>: for<'a> OnSynced<'a, BTreeMap<K, V>>,
+        FnMutHandler<F>: for<'a> OnSynced<'a, OrdMap<K, V>>,
     {
         BasicMapDownlinkLifecycle {
             _key_type: PhantomData,
@@ -1250,7 +1250,7 @@ where
         f: F,
     ) -> BasicMapDownlinkLifecycle<K, V, FLink, BlockingHandler<F>, FEv, FUpd, FRmv, FClr, FUnlink>
     where
-        F: FnMut(&BTreeMap<K, V>) + Send,
+        F: FnMut(&OrdMap<K, V>) + Send,
     {
         BasicMapDownlinkLifecycle {
             _key_type: PhantomData,
@@ -1422,7 +1422,7 @@ where
         f: F,
     ) -> BasicMapDownlinkLifecycle<K, V, FLink, FSync, FEv, FUpd, FRmv, BlockingHandler<F>, FUnlink>
     where
-        F: FnMut(BTreeMap<K, V>) + Send,
+        F: FnMut(OrdMap<K, V>) + Send,
     {
         BasicMapDownlinkLifecycle {
             _key_type: PhantomData,
@@ -1521,13 +1521,13 @@ where
     }
 }
 
-impl<'a, K, V, FLink, FSync, FEv, FUpd, FRmv, FClr, FUnlink> OnSynced<'a, BTreeMap<K, V>>
+impl<'a, K, V, FLink, FSync, FEv, FUpd, FRmv, FClr, FUnlink> OnSynced<'a, OrdMap<K, V>>
     for BasicMapDownlinkLifecycle<K, V, FLink, FSync, FEv, FUpd, FRmv, FClr, FUnlink>
 where
     K: Send + Sync + 'static,
     V: Send + Sync + 'static,
     FLink: Send,
-    FSync: OnSynced<'a, BTreeMap<K, V>>,
+    FSync: OnSynced<'a, OrdMap<K, V>>,
     FEv: Send,
     FUpd: Send,
     FRmv: Send,
@@ -1536,7 +1536,7 @@ where
 {
     type OnSyncedFut = FSync::OnSyncedFut;
 
-    fn on_synced(&'a mut self, value: &'a BTreeMap<K, V>) -> Self::OnSyncedFut {
+    fn on_synced(&'a mut self, value: &'a OrdMap<K, V>) -> Self::OnSyncedFut {
         self.on_synced.on_synced(value)
     }
 }
@@ -1621,7 +1621,7 @@ where
 {
     type OnClearedFut = FClr::OnClearedFut;
 
-    fn on_cleared(&'a mut self, map: &'a BTreeMap<K, V>) -> Self::OnClearedFut {
+    fn on_cleared(&'a mut self, map: &'a OrdMap<K, V>) -> Self::OnClearedFut {
         self.on_cleared.on_cleared(map)
     }
 }
@@ -1752,7 +1752,7 @@ where
         FUnlink,
     >
     where
-        FnMutHandler<F>: for<'a> OnSyncedShared<'a, BTreeMap<K, V>, Shared>,
+        FnMutHandler<F>: for<'a> OnSyncedShared<'a, OrdMap<K, V>, Shared>,
     {
         StatefulMapDownlinkLifecycle {
             _key_type: PhantomData,
@@ -1786,7 +1786,7 @@ where
         FUnlink,
     >
     where
-        F: FnMut(&mut Shared, &BTreeMap<K, V>),
+        F: FnMut(&mut Shared, &OrdMap<K, V>),
     {
         StatefulMapDownlinkLifecycle {
             _key_type: PhantomData,
@@ -2054,7 +2054,7 @@ where
         FUnlink,
     >
     where
-        F: FnMut(&mut Shared, &BTreeMap<K, V>),
+        F: FnMut(&mut Shared, &OrdMap<K, V>),
     {
         StatefulMapDownlinkLifecycle {
             _key_type: PhantomData,
@@ -2162,14 +2162,14 @@ where
     }
 }
 
-impl<'a, K, V, Shared, FLink, FSync, FEv, FUpd, FRmv, FClr, FUnlink> OnSynced<'a, BTreeMap<K, V>>
+impl<'a, K, V, Shared, FLink, FSync, FEv, FUpd, FRmv, FClr, FUnlink> OnSynced<'a, OrdMap<K, V>>
     for StatefulMapDownlinkLifecycle<K, V, Shared, FLink, FSync, FEv, FUpd, FRmv, FClr, FUnlink>
 where
     K: Send + Sync + 'static,
     V: Send + Sync + 'static,
     Shared: Send + Sync + 'static,
     FLink: Send,
-    FSync: OnSyncedShared<'a, BTreeMap<K, V>, Shared>,
+    FSync: OnSyncedShared<'a, OrdMap<K, V>, Shared>,
     FEv: Send,
     FUpd: Send,
     FRmv: Send,
@@ -2178,7 +2178,7 @@ where
 {
     type OnSyncedFut = FSync::OnSyncedFut;
 
-    fn on_synced(&'a mut self, value: &'a BTreeMap<K, V>) -> Self::OnSyncedFut {
+    fn on_synced(&'a mut self, value: &'a OrdMap<K, V>) -> Self::OnSyncedFut {
         let StatefulMapDownlinkLifecycle {
             shared, on_synced, ..
         } = self;
@@ -2279,7 +2279,7 @@ where
 {
     type OnClearedFut = FClr::OnClearedFut;
 
-    fn on_cleared(&'a mut self, map: &'a BTreeMap<K, V>) -> Self::OnClearedFut {
+    fn on_cleared(&'a mut self, map: &'a OrdMap<K, V>) -> Self::OnClearedFut {
         let StatefulMapDownlinkLifecycle {
             shared, on_cleared, ..
         } = self;

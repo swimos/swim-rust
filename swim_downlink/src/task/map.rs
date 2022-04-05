@@ -15,7 +15,7 @@
 use crate::model::lifecycle::MapDownlinkLifecycle;
 use futures::future::join;
 use futures::{Sink, SinkExt, StreamExt};
-use std::collections::BTreeMap;
+use im::OrdMap;
 use std::fmt::Display;
 use swim_api::downlink::DownlinkConfig;
 use swim_api::error::DownlinkTaskError;
@@ -79,13 +79,17 @@ where
 
 enum State<K, V> {
     Unlinked,
-    Linked(BTreeMap<K, V>),
-    Synced(BTreeMap<K, V>),
+    Linked(OrdMap<K, V>),
+    Synced(OrdMap<K, V>),
 }
 
 struct ShowState<'a, K, V>(&'a State<K, V>);
 
-impl<'a, K: StructuralWritable, V: StructuralWritable> Display for ShowState<'a, K, V> {
+impl<'a, K, V> Display for ShowState<'a, K, V>
+where
+    K: StructuralWritable + Ord + Clone,
+    V: StructuralWritable + Clone,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let ShowState(inner) = self;
         match *inner {
@@ -122,7 +126,7 @@ where
                 );
                 if matches!(&state, State::Unlinked) {
                     lifecycle.on_linked().await;
-                    state = State::Linked(BTreeMap::new());
+                    state = State::Linked(OrdMap::new());
                 }
             }
             DownlinkNotification::Synced => {
@@ -180,9 +184,9 @@ where
 async fn handle_message<K, V, LC>(
     message: MapMessage<K, V>,
     lifecycle: &mut LC,
-    mut map: BTreeMap<K, V>,
+    mut map: OrdMap<K, V>,
     with_callbacks: bool,
-) -> BTreeMap<K, V>
+) -> OrdMap<K, V>
 where
     K: Form + Ord + Eq + Clone + Send + Sync + 'static,
     V: Form + Clone + Send + Sync + 'static,
