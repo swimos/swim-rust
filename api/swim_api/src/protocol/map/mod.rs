@@ -106,6 +106,10 @@ const DROP: u8 = 4;
 
 use super::{LEN_SIZE, TAG_SIZE};
 
+const OVERSIZE_KEY: &str = "Key too large.";
+const OVERSIZE_VALUE: &str = "Value too large.";
+const BAD_TAG: &str = "Invalid map operation tag: ";
+
 impl<K: AsRef<[u8]>, V: AsRef<[u8]>> Encoder<MapOperation<K, V>> for RawMapOperationEncoder {
     type Error = std::io::Error;
 
@@ -116,8 +120,8 @@ impl<K: AsRef<[u8]>, V: AsRef<[u8]>> Encoder<MapOperation<K, V>> for RawMapOpera
                 let value_bytes = value.as_ref();
                 dst.reserve(TAG_SIZE + 2 * LEN_SIZE + key_bytes.len() + value_bytes.len());
                 dst.put_u8(UPDATE);
-                let key_len = u64::try_from(key_bytes.len()).expect("Key too large.");
-                let value_len = u64::try_from(value_bytes.len()).expect("Value too large.");
+                let key_len = u64::try_from(key_bytes.len()).expect(OVERSIZE_KEY);
+                let value_len = u64::try_from(value_bytes.len()).expect(OVERSIZE_VALUE);
                 dst.put_u64(key_len);
                 dst.put_u64(value_len);
                 dst.put(key_bytes);
@@ -192,7 +196,7 @@ impl Decoder for RawMapOperationDecoder {
                 Ok(Some(RawMapOperation::Clear))
             }
             ow => Err(FrameIoError::BadFrame(InvalidFrame::InvalidHeader {
-                problem: Text::from(format!("Invalid map operation tag: {}", ow)),
+                problem: Text::from(format!("{}{}", BAD_TAG, ow)),
             })),
         }
     }

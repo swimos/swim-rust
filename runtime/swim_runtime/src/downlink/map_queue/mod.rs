@@ -80,7 +80,7 @@ impl<S> MapOperationQueue<S> {
 }
 
 impl<S: BuildHasher> MapOperationQueue<S> {
-    /// Push an operation into the queue. It is necessary for the key to contain valud UTF-8 for
+    /// Push an operation into the queue. It is necessary for the key to contain valid UTF-8 for
     /// it to be possible to compare keys and, if this is not the case, this operation will fail.
     ///
     /// # Arguments

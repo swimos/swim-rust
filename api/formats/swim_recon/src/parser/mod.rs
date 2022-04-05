@@ -20,6 +20,7 @@ mod record;
 mod tests;
 mod tokens;
 
+use crate::hasher::calculate_hash;
 pub use crate::parser::error::ParseError;
 use nom::branch::alt;
 use nom::character::complete::space0;
@@ -27,9 +28,11 @@ use nom::combinator::{eof, map};
 use nom::sequence::{delimited, terminated};
 use nom::Finish;
 use nom_locate::LocatedSpan;
+pub use record::HashParser;
 pub use record::IncrementalReconParser;
 pub use record::ParseIterator;
 use std::borrow::Cow;
+use std::hash::{Hash, Hasher};
 use swim_form::structural::read::event::ReadEvent;
 use swim_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
 use swim_form::structural::read::ReadError;
@@ -40,6 +43,41 @@ pub use record::matcher::{try_extract_header, HeaderPeeler, MessageExtractError}
 /// Wraps a string in a structure that keeps track of the line and column
 /// as the input is parsed.
 pub type Span<'a> = LocatedSpan<&'a str>;
+
+/// A wrapper around a Recon string that supports equality comparison and hashing
+/// based on the semantic equality of the Recon and not the actual string representation.
+///
+/// # Examples
+///
+/// ```
+/// use swim_recon::parser::ReconStr;
+/// let first = ReconStr::new("@attr(1,2)");
+/// let second = ReconStr::new("@attr({1,2})");
+///
+/// assert_eq!(first, second);
+/// ```
+#[derive(Debug, Clone, Copy)]
+pub struct ReconStr<'a>(&'a str);
+
+impl<'a> ReconStr<'a> {
+    pub fn new(str: &'a str) -> Self {
+        ReconStr(str)
+    }
+}
+
+impl<'a> Hash for ReconStr<'a> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        calculate_hash(self.0, state)
+    }
+}
+
+impl<'a> PartialEq<Self> for ReconStr<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        compare_values(self.0, other.0)
+    }
+}
+
+impl<'a> Eq for ReconStr<'a> {}
 
 #[derive(Debug)]
 enum FinalAttrStage<'a> {
@@ -138,6 +176,7 @@ pub fn parse_value(repr: &str, allow_comments: bool) -> Result<Value, ParseError
     parse_recognize(Span::new(repr), allow_comments)
 }
 
+use crate::comparator::compare_values;
 #[cfg(feature = "async_parser")]
 pub use async_parser::{
     parse_recognize_with as async_parse_recognize_with, parse_recon_document, AsyncParseError,
