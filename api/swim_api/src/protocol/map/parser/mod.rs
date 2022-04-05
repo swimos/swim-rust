@@ -165,22 +165,21 @@ impl<'a> HeaderPeeler<'a> for MapMessagePeeler {
 
 fn make_raw(bytes: &Bytes, peeled: MapMessage<Chunk, usize>) -> MapMessage<Bytes, Bytes> {
     match peeled {
-        MapMessage::Operation(MapOperation::Update { key, value }) => {
+        MapMessage::Update { key, value } => {
             let Chunk { offset, len } = key;
             let key_bytes = bytes.slice(offset..(offset + len));
             let value_bytes = bytes.slice(value..);
-            MapOperation::Update {
+            MapMessage::Update {
                 key: key_bytes,
                 value: value_bytes,
             }
-            .into()
         }
-        MapMessage::Operation(MapOperation::Remove { key }) => {
+        MapMessage::Remove { key } => {
             let Chunk { offset, len } = key;
             let key_bytes = bytes.slice(offset..(offset + len));
-            MapOperation::Remove { key: key_bytes }.into()
+            MapMessage::Remove { key: key_bytes }
         }
-        MapMessage::Operation(MapOperation::Clear) => MapMessage::Operation(MapOperation::Clear),
+        MapMessage::Clear => MapMessage::Clear,
         MapMessage::Take(n) => MapMessage::Take(n),
         MapMessage::Drop(n) => MapMessage::Drop(n),
     }

@@ -13,8 +13,7 @@
 // limitations under the License.
 
 use crate::protocol::downlink::{
-    DownlinkNotifiationDecoder, DownlinkOperation, DownlinkOperationDecoder,
-    DownlinkOperationEncoder,
+    DownlinkOperation, DownlinkOperationDecoder, DownlinkOperationEncoder, ValueNotificationDecoder,
 };
 use bytes::{Buf, Bytes, BytesMut};
 use swim_form::structural::read::recognizer::RecognizerReadable;
@@ -40,7 +39,7 @@ fn round_trip<T: RecognizerReadable>(
     assert!(DownlinkNotificationEncoder
         .encode(notification, &mut buffer)
         .is_ok());
-    let mut decoder = DownlinkNotifiationDecoder::new(T::make_recognizer());
+    let mut decoder = ValueNotificationDecoder::default();
     let result = decoder.decode(&mut buffer);
     match result {
         Ok(Some(value)) => value,
@@ -164,7 +163,7 @@ fn decode_recon_notification_twice() {
     assert!(DownlinkNotificationEncoder
         .encode(event2, &mut buffer)
         .is_ok());
-    let mut decoder = DownlinkNotifiationDecoder::new(Message::make_recognizer());
+    let mut decoder = ValueNotificationDecoder::default();
 
     let restored1 = decoder.decode(&mut buffer);
 

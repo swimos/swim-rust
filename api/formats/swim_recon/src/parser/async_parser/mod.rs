@@ -382,7 +382,7 @@ impl<R> RecognizerDecoder<R> {
 
 impl<R: Recognizer> RecognizerDecoder<R> {
     /// Reset the decoder to its initial state.
-    pub fn reset(&mut self) {
+    fn reset(&mut self) {
         self.parser.reset();
         self.recognizer.reset();
         self.location = LocationTracker::default();
@@ -440,6 +440,19 @@ impl<R: Recognizer> RecognizerDecoder<R> {
         location.update(&current);
         result
     }
+
+    fn decode_bytes(&mut self, src: &mut BytesMut) -> Result<Option<R::Target>, AsyncParseError> {
+        let content = read_utf8(src.as_ref())?;
+        let span = Span::new(content);
+        match self.decode_inner(span) {
+            Ok((rem, result)) => {
+                let consumed = rem.location_offset() - span.location_offset();
+                src.advance(consumed);
+                Ok(result)
+            }
+            Err(e) => Err(e),
+        }
+    }
 }
 
 fn feed_final<'a, R>(
@@ -489,22 +502,17 @@ where
     type Error = AsyncParseError;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        let content = read_utf8(src.as_ref())?;
-        let span = Span::new(content);
-        match self.decode_inner(span) {
-            Ok((rem, result)) => {
-                let consumed = rem.location_offset() - span.location_offset();
-                src.advance(consumed);
-                Ok(result)
-            }
-            Err(e) => Err(e),
+        let result = self.decode_bytes(src);
+        if !matches!(result, Ok(None)) {
+            self.reset();
         }
+        result
     }
 
     fn decode_eof(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         let content = read_utf8(buf.as_ref())?;
         let span = Span::new(content);
-        match self.decode_inner(span) {
+        let result = match self.decode_inner(span) {
             Ok((rem, output)) => {
                 let (final_rem, result) = if output.is_none() {
                     let RecognizerDecoder {
@@ -544,6 +552,8 @@ where
                 result
             }
             Err(e) => Err(e),
-        }
+        };
+        self.reset();
+        result
     }
 }

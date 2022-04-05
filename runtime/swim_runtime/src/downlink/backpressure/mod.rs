@@ -17,11 +17,11 @@ use std::{convert::Infallible, fmt::Display, str::Utf8Error};
 use bytes::{BufMut, Bytes, BytesMut};
 use swim_api::protocol::{
     downlink::{DownlinkOperation, DownlinkOperationDecoder},
-    map::{RawMapOperation, RawMapOperationDecoder, RawMapOperationEncoder},
+    map::{RawMapOperation, RawMapOperationDecoder},
 };
 use tokio_util::codec::{Decoder, Encoder};
 
-use super::map_queue::MapOperationQueue;
+use super::{interpretation::MapOperationReconEncoder, map_queue::MapOperationQueue};
 
 /// Backpressure strategy for the output task of a downlink. This is used to encode the
 /// difference in behaviour between different kinds of downlink (particuarly value and
@@ -57,18 +57,12 @@ pub struct ValueBackpressure {
     current: BytesMut,
 }
 
-impl ValueBackpressure {
-    pub fn new() -> Self {
-        ValueBackpressure::default()
-    }
-}
-
 /// Backpressure implementation for map-like downlinks. Map updates are pushed into a
 /// [`MapOperationQueue`] that relieves backpressure on a per-key basis.
 #[derive(Debug, Default)]
 pub struct MapBackpressure {
     queue: MapOperationQueue,
-    encoder: RawMapOperationEncoder,
+    encoder: MapOperationReconEncoder,
 }
 
 impl DownlinkBackpressure for ValueBackpressure {
@@ -128,6 +122,7 @@ impl DownlinkBackpressure for MapBackpressure {
 
     fn write_direct(&mut self, op: Self::Operation, buffer: &mut BytesMut) {
         let MapBackpressure { encoder, .. } = self;
+        buffer.clear();
         // Encoding the operation cannot fail.
         encoder
             .encode(op, buffer)
@@ -136,6 +131,7 @@ impl DownlinkBackpressure for MapBackpressure {
 
     fn prepare_write(&mut self, buffer: &mut BytesMut) {
         let MapBackpressure { queue, encoder } = self;
+        buffer.clear();
         if let Some(head) = queue.pop() {
             // Encoding the operation cannot fail.
             encoder

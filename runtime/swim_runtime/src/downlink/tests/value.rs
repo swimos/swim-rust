@@ -14,27 +14,27 @@
 
 use std::fmt::Debug;
 use std::future::Future;
-use std::num::NonZeroUsize;
 use std::time::Duration;
 
 use crate::compat::{
     AgentMessageDecoder, MessageDecodeError, Operation, RequestMessage, ResponseMessage,
     ResponseMessageEncoder,
 };
+use crate::downlink::DownlinkRuntimeConfig;
 use crate::routing::RoutingAddr;
 
-use super::{AttachAction, DownlinkOptions, ValueDownlinkRuntime};
+use super::super::{AttachAction, DownlinkOptions, ValueDownlinkRuntime};
+use super::*;
 use futures::future::{join3, join4};
 use futures::{SinkExt, StreamExt};
 use swim_api::error::{DownlinkTaskError, FrameIoError, InvalidFrame};
 use swim_api::protocol::downlink::{
-    DownlinkNotifiationDecoder, DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder,
+    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
 };
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_form::Form;
 use swim_model::path::RelativePath;
 use swim_model::Text;
-use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::io::byte_channel::{self, ByteReader, ByteWriter};
 use swim_utilities::trigger;
 use tokio::io::AsyncWriteExt;
@@ -48,13 +48,6 @@ enum Message {
     Ping,
     Fail,
     CurrentValue(Text),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum State {
-    Unlinked,
-    Linked,
-    Synced,
 }
 
 type Event = (State, DownlinkNotification<Message>);
@@ -94,10 +87,7 @@ async fn run_fake_downlink(
         return Err(DownlinkTaskError::FailedToStart);
     }
     let mut state = State::Unlinked;
-    let mut read = FramedRead::new(
-        rx_in,
-        DownlinkNotifiationDecoder::new(Message::make_recognizer()),
-    );
+    let mut read = FramedRead::new(rx_in, ValueNotificationDecoder::default());
 
     let mut write = FramedWrite::new(tx_out, DownlinkOperationEncoder);
 
@@ -164,15 +154,6 @@ async fn run_fake_downlink(
     Ok(())
 }
 
-const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(1024);
-const CHANNEL_SIZE: usize = 16;
-const TEST_TIMEOUT: Duration = Duration::from_secs(10);
-const REMOTE_ADDR: RoutingAddr = RoutingAddr::remote(1);
-const REMOTE_NODE: &str = "/remote";
-const REMOTE_LANE: &str = "remote_lane";
-const EMPTY_TIMEOUT: Duration = Duration::from_secs(2);
-const ATT_QUEUE_SIZE: NonZeroUsize = non_zero_usize!(8);
-
 async fn run_test<F, Fut>(
     options: DownlinkOptions,
     test_block: F,
@@ -183,7 +164,7 @@ where
 {
     run_test_with_config(
         options,
-        super::DownlinkRuntimeConfig {
+        DownlinkRuntimeConfig {
             empty_timeout: EMPTY_TIMEOUT,
             attachment_queue_size: ATT_QUEUE_SIZE,
         },
@@ -194,7 +175,7 @@ where
 
 async fn run_test_with_config<F, Fut>(
     options: DownlinkOptions,
-    config: super::DownlinkRuntimeConfig,
+    config: DownlinkRuntimeConfig,
     test_block: F,
 ) -> (Fut::Output, Result<(), DownlinkTaskError>)
 where
@@ -215,8 +196,7 @@ where
 
     let management_task = ValueDownlinkRuntime::new(
         attach_rx,
-        in_rx,
-        out_tx,
+        (out_tx, in_rx),
         stop_rx,
         RoutingAddr::client(1),
         path,
@@ -755,7 +735,7 @@ async fn exhaust_output_buffer() {
 async fn shutdowm_after_timeout_with_no_subscribers() {
     let ((_stop, events), result) = run_test_with_config(
         DownlinkOptions::empty(),
-        super::DownlinkRuntimeConfig {
+        DownlinkRuntimeConfig {
             empty_timeout: Duration::from_millis(100),
             attachment_queue_size: ATT_QUEUE_SIZE,
         },
@@ -810,10 +790,7 @@ async fn run_simple_fake_downlink(
         return Err(DownlinkTaskError::FailedToStart);
     }
     let mut state = State::Unlinked;
-    let mut read = FramedRead::new(
-        rx_in,
-        DownlinkNotifiationDecoder::new(Text::make_recognizer()),
-    );
+    let mut read = FramedRead::new(rx_in, ValueNotificationDecoder::default());
 
     let mut write = FramedWrite::new(tx_out, DownlinkOperationEncoder);
 
@@ -866,7 +843,7 @@ const SECOND_TAG: &str = "B";
 
 async fn run_test_with_two_consumers<F, Fut>(
     options: DownlinkOptions,
-    config: super::DownlinkRuntimeConfig,
+    config: DownlinkRuntimeConfig,
     test_block: F,
 ) -> (
     Fut::Output,
@@ -896,8 +873,7 @@ where
 
     let management_task = ValueDownlinkRuntime::new(
         attach_rx,
-        in_rx,
-        out_tx,
+        (out_tx, in_rx),
         stop_rx,
         RoutingAddr::client(1),
         path,
@@ -985,7 +961,7 @@ async fn sync_both(context: &mut TwoConsumerTestContext) {
 async fn sync_two_consumers() {
     let ((first_events, second_events), first_result, second_result) = run_test_with_two_consumers(
         DownlinkOptions::SYNC,
-        super::DownlinkRuntimeConfig {
+        DownlinkRuntimeConfig {
             empty_timeout: EMPTY_TIMEOUT,
             attachment_queue_size: ATT_QUEUE_SIZE,
         },
@@ -1016,7 +992,7 @@ async fn sync_two_consumers() {
 async fn receive_from_two_consumers() {
     let ((first_events, second_events), first_result, second_result) = run_test_with_two_consumers(
         DownlinkOptions::SYNC,
-        super::DownlinkRuntimeConfig {
+        DownlinkRuntimeConfig {
             empty_timeout: EMPTY_TIMEOUT,
             attachment_queue_size: ATT_QUEUE_SIZE,
         },

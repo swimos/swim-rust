@@ -17,7 +17,7 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use futures::stream::unfold;
 use futures::Stream;
 use std::convert::TryFrom;
-use std::fmt::Write;
+use std::fmt::{Debug, Write};
 use std::str::Utf8Error;
 use swim_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
 use swim_form::structural::read::ReadError;
@@ -168,6 +168,7 @@ pub type RawResponseMessage = ResponseMessage<Bytes, Bytes>;
 #[derive(Debug)]
 pub struct RawRequestMessageEncoder;
 
+#[derive(Debug)]
 /// Tokio [`Encoder`] to encode an [`ResponseMessage`] as a byte stream.
 pub struct ResponseMessageEncoder;
 
@@ -364,6 +365,15 @@ pub struct AgentMessageDecoder<T, R> {
     recognizer: RecognizerDecoder<R>,
 }
 
+impl<T: Debug, R> Debug for AgentMessageDecoder<T, R> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AgentMessageDecoder")
+            .field("state", &self.state)
+            .field("recognizer", &"...")
+            .finish()
+    }
+}
+
 /// Tokio [`Decoder`] that can read an [`ResponseMessage`] from a stream of bytes, using a
 /// [`RecognizerDecoder`] to interpret the body.
 pub struct ClientMessageDecoder<T, R> {
@@ -488,7 +498,6 @@ where
                                 path,
                                 remaining: body_len,
                             };
-                            recognizer.reset();
                         }
                         _ => {
                             break Err(MessageDecodeError::UnexpectedCode(tag));
@@ -654,7 +663,6 @@ where
                                 path,
                                 remaining: body_len,
                             };
-                            recognizer.reset();
                         }
                         _ => {
                             break Err(MessageDecodeError::UnexpectedCode(tag));
