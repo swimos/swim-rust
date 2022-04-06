@@ -60,3 +60,6 @@ jobs:
         workingDirectory: $(Build.SourcesDirectory)
         env:
           TOKEN: $(CODECOV_TOKEN)
+
+    parameters:
+      cross: eq(variables['Build.SourceBranch'], 'refs/heads/main')
