@@ -219,7 +219,7 @@ where
         MapMessage::Take(n) => {
             let mut map_iter = map.into_iter().enumerate();
 
-            while let Some((idx, (key, prev_value))) = map_iter.next() {
+            for (idx, (key, prev_value)) in &mut map_iter {
                 if n > idx as u64 {
                     if with_callbacks {
                         lifecycle.on_removed(&key, Some(&prev_value)).await;
@@ -234,7 +234,7 @@ where
         MapMessage::Drop(n) => {
             let mut map_iter = map.into_iter().rev().enumerate();
 
-            while let Some((idx, (key, prev_value))) = map_iter.next() {
+            for (idx, (key, prev_value)) in &mut map_iter {
                 if n > idx as u64 {
                     if with_callbacks {
                         lifecycle.on_removed(&key, Some(&prev_value)).await;
