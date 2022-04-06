@@ -87,8 +87,8 @@ struct ShowState<'a, K, V>(&'a State<K, V>);
 
 impl<'a, K, V> Display for ShowState<'a, K, V>
 where
-    K: StructuralWritable + Ord + Clone,
-    V: StructuralWritable + Clone,
+    K: StructuralWritable + Ord + Clone + 'static,
+    V: StructuralWritable + Clone + 'static,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let ShowState(inner) = self;
