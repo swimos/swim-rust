@@ -14,7 +14,7 @@ variables:
 jobs:
   parameters:
     cross: eq(variables['Build.SourceBranch'], 'refs/heads/main')
-    
+
   - job: Code_coverage
     displayName: Code coverage
 
