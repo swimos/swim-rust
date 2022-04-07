@@ -19,7 +19,7 @@ mod tests;
 use futures::never::Never;
 use futures::stream::FusedStream;
 use futures::task::{Context, Poll};
-use futures::{ready, Future, Sink, Stream, TryFuture};
+use futures::{ready, Future, Sink, Stream, TryFuture, TryStream};
 use pin_project::pin_project;
 use std::marker::PhantomData;
 use std::pin::Pin;
@@ -668,6 +668,42 @@ where
     }
 }
 
+/// A stream that runs another stream of [`Result`]s until it produces an error and then
+/// termintes.
+#[pin_project]
+#[derive(Debug)]
+pub struct StopAfterError<Str> {
+    #[pin]
+    stream: Str,
+    terminated: bool,
+}
+
+impl<Str> StopAfterError<Str> {
+
+    fn new(stream: Str) -> Self {
+        StopAfterError { stream, terminated: false }
+    }
+
+}
+
+impl<Str: TryStream> Stream for StopAfterError<Str> {
+    type Item = Result<Str::Ok, Str::Error>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let projected = self.project();
+        if *projected.terminated {
+            Poll::Ready(None)
+        } else {
+            let result = ready!(projected.stream.try_poll_next(cx));
+            if matches!(result, Some(Err(_))) {
+                *projected.terminated = true;
+            }
+            Poll::Ready(result)
+        }
+    }
+}
+
+
 /// A stream that runs another stream of [`Result`]s until an error is produces, yielding the
 /// OK values.
 #[pin_project]
@@ -848,6 +884,28 @@ pub trait SwimStreamExt: Stream {
         Trans: TransformMut<Self::Item, Out = Result<T, E>>,
     {
         UntilFailure::new(self, transform)
+    }
+
+    /// Run the stream until an error is encountered and then stop.
+    /// 
+    /// #Examples
+    /// ```
+    /// use futures::executor::block_on;
+    /// use futures::stream::iter;
+    /// use futures::StreamExt;
+    /// use swim_future::SwimStreamExt;
+    /// 
+    /// let inputs = iter(vec![Ok(0), Ok(1), Ok(2), Err("Boom!"), Ok(4), Err("Boom!")].into_iter());
+    /// let outputs: Vec<Result<i32, &'static str>> = block_on(inputs.stop_after_error().collect());
+    /// 
+    /// assert_eq!(outputs, vec![Ok(0), Ok(1), Ok(2), Err("Boom!")]);
+    /// 
+    /// ```
+    fn stop_after_error(self) -> StopAfterError<Self>
+    where
+        Self: Sized,
+    {
+        StopAfterError::new(self)
     }
 
     /// Transform this stream into an infallible [`NeverErrorStream`].

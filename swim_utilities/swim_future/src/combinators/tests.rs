@@ -170,6 +170,13 @@ fn until_failure() {
     assert_eq!(outputs, vec![3, 4, 5]);
 }
 
+#[test]
+fn stop_after_error() {
+    let inputs = iter(vec![Ok(0), Ok(1), Ok(2), Err("Boom!"), Ok(4), Err("Boom!")].into_iter());
+    let outputs = block_on(inputs.stop_after_error().collect::<Vec<_>>());
+    assert_eq!(outputs, vec![Ok(0), Ok(1), Ok(2), Err("Boom!")]);
+}
+
 #[tokio::test]
 #[allow(clippy::unit_cmp)]
 async fn unit_future() {
