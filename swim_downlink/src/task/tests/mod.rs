@@ -17,6 +17,8 @@ use std::num::NonZeroUsize;
 
 use futures::future::join;
 use futures::{SinkExt, StreamExt};
+use swim_api::protocol::downlink::SimpleMessageEncoder;
+use swim_api::protocol::map::{MapMessage, MapMessageEncoder, MapOperation, MapOperationEncoder};
 use swim_api::{
     downlink::{Downlink, DownlinkConfig},
     error::DownlinkTaskError,
@@ -33,22 +35,24 @@ use swim_utilities::{
     algebra::non_zero_usize,
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
 };
-
 use tokio::time::{timeout, Duration};
-use tokio_util::codec::{FramedRead, FramedWrite};
+use tokio_util::codec::{Encoder, FramedRead, FramedWrite};
 
 mod event;
-// mod map;
+mod map;
 mod value;
 
 const CHANNEL_SIZE: NonZeroUsize = non_zero_usize!(1024);
 const TEST_TIMEOUT: Duration = Duration::from_secs(5);
 
-struct TestWriter(FramedWrite<ByteWriter, DownlinkNotificationEncoder>);
+struct TestWriter<E>(FramedWrite<ByteWriter, DownlinkNotificationEncoder<E>>);
 
-impl TestWriter {
-    fn new(tx: ByteWriter) -> Self {
-        TestWriter(FramedWrite::new(tx, DownlinkNotificationEncoder))
+impl<E> TestWriter<E> {
+    fn new(tx: ByteWriter, body_encoder: E) -> Self {
+        TestWriter(FramedWrite::new(
+            tx,
+            DownlinkNotificationEncoder::new(body_encoder),
+        ))
     }
 }
 struct TestReader(FramedRead<ByteReader, DownlinkOperationDecoder>);
@@ -94,7 +98,36 @@ impl TestReader {
 
 const BAD_UTF8: &[u8] = &[0xf0, 0x28, 0x8c, 0x28, 0x00, 0x00, 0x00];
 
-impl TestWriter {
+impl TestWriter<MapMessageEncoder<MapOperationEncoder>> {
+    async fn send_value<K, V>(&mut self, notification: DownlinkNotification<MapMessage<K, V>>)
+    where
+        K: StructuralWritable,
+        V: StructuralWritable,
+    {
+        let TestWriter(writer) = self;
+        let raw = match notification {
+            DownlinkNotification::Linked => DownlinkNotification::Linked,
+            DownlinkNotification::Synced => DownlinkNotification::Synced,
+            DownlinkNotification::Unlinked => DownlinkNotification::Unlinked,
+            DownlinkNotification::Event { body } => DownlinkNotification::Event { body },
+        };
+
+        assert!(writer.send(raw).await.is_ok());
+    }
+
+    async fn send_corrupted_frame(&mut self) {
+        let TestWriter(writer) = self;
+        let bad = DownlinkNotification::Event {
+            body: MapMessage::Update {
+                value: BAD_UTF8,
+                key: BAD_UTF8,
+            },
+        };
+        assert!(writer.send(bad).await.is_ok());
+    }
+}
+
+impl TestWriter<SimpleMessageEncoder> {
     async fn send_value<T>(&mut self, notification: DownlinkNotification<T>)
     where
         T: StructuralWritable,
@@ -109,6 +142,7 @@ impl TestWriter {
                 DownlinkNotification::Event { body: body_bytes }
             }
         };
+
         assert!(writer.send(raw).await.is_ok());
     }
 
@@ -119,14 +153,15 @@ impl TestWriter {
     }
 }
 
-async fn run_downlink_task<D, F, Fut>(
+async fn run_downlink_task<D, F, Fut, E>(
     task: D,
     config: DownlinkConfig,
     test_block: F,
+    body_encoder: E,
 ) -> Result<Fut::Output, DownlinkTaskError>
 where
     D: Downlink,
-    F: FnOnce(TestWriter, TestReader) -> Fut,
+    F: FnOnce(TestWriter<E>, TestReader) -> Fut,
     Fut: Future,
 {
     let path = Path::Local(RelativePath::new("node", "lane"));
@@ -135,7 +170,10 @@ where
     let (out_tx, out_rx) = byte_channel(CHANNEL_SIZE);
 
     let dl_task = task.run(path, config, in_rx, out_tx);
-    let test_body = test_block(TestWriter::new(in_tx), TestReader::new(out_rx));
+    let test_body = test_block(
+        TestWriter::new(in_tx, body_encoder),
+        TestReader::new(out_rx),
+    );
     let (result, out) = timeout(TEST_TIMEOUT, join(dl_task, test_body))
         .await
         .expect("Test timed out.");

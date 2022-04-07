@@ -19,7 +19,7 @@ use swim_api::{
     protocol::downlink::DownlinkNotification,
 };
 
-use swim_api::protocol::map::MapMessage;
+use swim_api::protocol::map::{MapMessage, MapMessageEncoder, MapOperationEncoder};
 use tokio::sync::mpsc;
 
 use super::run_downlink_task;
@@ -27,7 +27,7 @@ use crate::model::lifecycle::{for_map_downlink, MapDownlinkLifecycle};
 use crate::{DownlinkTask, MapDownlinkModel};
 
 #[derive(Debug, PartialEq, Eq)]
-enum TestMessage<K, V> {
+enum TestMessage<K: Ord, V: Ord> {
     Linked,
     Synced(OrdMap<K, V>),
     Event(MapMessage<K, V>),
@@ -41,8 +41,8 @@ fn make_lifecycle<K, V>(
     tx: mpsc::UnboundedSender<TestMessage<K, V>>,
 ) -> impl MapDownlinkLifecycle<K, V>
 where
-    K: Clone + Send + Sync + 'static,
-    V: Clone + Send + Sync + 'static,
+    K: Ord + Clone + Send + Sync + 'static,
+    V: Ord + Clone + Send + Sync + 'static,
 {
     for_map_downlink::<K, V>()
         .with(tx)
@@ -81,8 +81,8 @@ async fn expect_event<K, V>(
     event_rx: &mut mpsc::UnboundedReceiver<TestMessage<K, V>>,
     expected: TestMessage<K, V>,
 ) where
-    K: Eq + std::fmt::Debug,
-    V: Eq + std::fmt::Debug,
+    K: Ord + Eq + std::fmt::Debug,
+    V: Ord + Eq + std::fmt::Debug,
 {
     assert_eq!(event_rx.recv().await, Some(expected))
 }
@@ -105,11 +105,12 @@ async fn link_downlink() {
         |mut writer, reader| async move {
             let _reader = reader;
             writer
-                .send_value::<MapMessage<i32, String>>(DownlinkNotification::Linked)
+                .send_value::<i32, String>(DownlinkNotification::Linked)
                 .await;
             expect_event(&mut event_rx, TestMessage::Linked).await;
             event_rx
         },
+        MapMessageEncoder::new(MapOperationEncoder),
     )
     .await;
     assert!(result.is_ok());
@@ -134,9 +135,10 @@ async fn invalid_sync_downlink() {
         |mut writer, reader| async move {
             let _reader = reader;
             writer
-                .send_value::<MapMessage<i32, String>>(DownlinkNotification::Synced)
+                .send_value::<i32, String>(DownlinkNotification::Synced)
                 .await;
         },
+        MapMessageEncoder::new(MapOperationEncoder),
     )
     .await;
     assert!(matches!(result, Err(DownlinkTaskError::SyncedBeforeLinked)));
@@ -163,10 +165,10 @@ async fn sync_downlink() {
         |mut writer, reader| async move {
             let _reader = reader;
             writer
-                .send_value::<MapMessage<i32, String>>(DownlinkNotification::Linked)
+                .send_value::<i32, String>(DownlinkNotification::Linked)
                 .await;
             writer
-                .send_value::<MapMessage<i32, String>>(DownlinkNotification::Event {
+                .send_value::<i32, String>(DownlinkNotification::Event {
                     body: MapMessage::Update {
                         key: 10,
                         value: "milk".to_string(),
@@ -174,12 +176,13 @@ async fn sync_downlink() {
                 })
                 .await;
             writer
-                .send_value::<MapMessage<i32, String>>(DownlinkNotification::Synced)
+                .send_value::<i32, String>(DownlinkNotification::Synced)
                 .await;
             expect_event(&mut event_rx, TestMessage::Linked).await;
             expect_event(&mut event_rx, TestMessage::Synced(map)).await;
             event_rx
         },
+        MapMessageEncoder::new(MapOperationEncoder),
     )
     .await;
     assert!(result.is_ok());

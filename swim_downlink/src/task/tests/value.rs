@@ -18,6 +18,7 @@ use swim_api::{
     protocol::downlink::DownlinkNotification,
 };
 
+use swim_api::protocol::downlink::SimpleMessageEncoder;
 use tokio::sync::mpsc;
 
 use super::run_downlink_task;
@@ -86,6 +87,7 @@ async fn link_downlink() {
             expect_event(&mut event_rx, TestMessage::Linked).await;
             event_rx
         },
+        SimpleMessageEncoder,
     )
     .await;
     assert!(result.is_ok());
@@ -113,6 +115,7 @@ async fn invalid_sync_downlink() {
             writer.send_value::<i32>(DownlinkNotification::Synced).await;
             expect_event(&mut event_rx, TestMessage::Linked).await;
         },
+        SimpleMessageEncoder,
     )
     .await;
     assert!(matches!(result, Err(DownlinkTaskError::SyncedWithNoValue)));
@@ -144,6 +147,7 @@ async fn sync_downlink() {
             expect_event(&mut event_rx, TestMessage::Synced(5)).await;
             event_rx
         },
+        SimpleMessageEncoder,
     )
     .await;
     assert!(result.is_ok());
@@ -181,6 +185,7 @@ async fn report_events_before_sync() {
             expect_event(&mut event_rx, TestMessage::Set(Some(5), 67)).await;
             event_rx
         },
+        SimpleMessageEncoder,
     )
     .await;
     assert!(result.is_ok());
@@ -218,6 +223,7 @@ async fn report_events_after_sync() {
             expect_event(&mut event_rx, TestMessage::Set(Some(5), 67)).await;
             event_rx
         },
+        SimpleMessageEncoder,
     )
     .await;
     assert!(result.is_ok());
@@ -253,6 +259,7 @@ async fn terminate_after_unlinked() {
             expect_event(&mut event_rx, TestMessage::Unlinked).await;
             (writer, reader, event_rx)
         },
+        SimpleMessageEncoder,
     )
     .await;
     match result {
@@ -286,6 +293,7 @@ async fn terminate_after_corrupt_frame() {
             writer.send_corrupted_frame().await;
             (writer, reader, event_rx)
         },
+        SimpleMessageEncoder,
     )
     .await;
     assert!(matches!(
@@ -328,6 +336,7 @@ async fn unlink_discards_value() {
             expect_event(&mut event_rx, TestMessage::Unlinked).await;
             expect_event(&mut event_rx, TestMessage::Linked).await;
         },
+        SimpleMessageEncoder,
     )
     .await;
     assert!(matches!(result, Err(DownlinkTaskError::SyncedWithNoValue)));
@@ -370,6 +379,7 @@ async fn relink_downlink() {
             expect_event(&mut event_rx, TestMessage::Synced(7)).await;
             event_rx
         },
+        SimpleMessageEncoder,
     )
     .await;
     assert!(result.is_ok());
@@ -396,6 +406,7 @@ async fn send_on_downlink() {
             assert!(set_tx.send(12).await.is_ok());
             assert_eq!(reader.recv::<i32>().await, Ok(Some(12)));
         },
+        SimpleMessageEncoder,
     )
     .await;
     assert!(result.is_ok());

@@ -15,6 +15,7 @@
 use swim_api::error::{DownlinkTaskError, FrameIoError, InvalidFrame};
 use swim_api::{downlink::DownlinkConfig, protocol::downlink::DownlinkNotification};
 
+use swim_api::protocol::downlink::SimpleMessageEncoder;
 use tokio::sync::mpsc;
 
 use super::run_downlink_task;
@@ -72,6 +73,7 @@ async fn link_downlink() {
             expect_event(&mut event_rx, TestMessage::Linked).await;
             event_rx
         },
+        SimpleMessageEncoder,
     )
     .await;
     assert!(result.is_ok());
@@ -101,6 +103,7 @@ async fn message_before_linked() {
             expect_event(&mut event_rx, TestMessage::Linked).await;
             event_rx
         },
+        SimpleMessageEncoder,
     )
     .await;
     assert!(result.is_ok());
@@ -131,6 +134,7 @@ async fn message_after_linked() {
             expect_event(&mut event_rx, TestMessage::Event(9)).await;
             event_rx
         },
+        SimpleMessageEncoder,
     )
     .await;
     assert!(result.is_ok());
@@ -164,6 +168,7 @@ async fn terminate_after_unlinked() {
             expect_event(&mut event_rx, TestMessage::Unlinked).await;
             (writer, reader, event_rx)
         },
+        SimpleMessageEncoder,
     )
     .await;
     match result {
@@ -196,6 +201,7 @@ async fn terminate_after_corrupt_frame() {
             writer.send_corrupted_frame().await;
             (writer, reader, event_rx)
         },
+        SimpleMessageEncoder,
     )
     .await;
     assert!(matches!(
@@ -243,6 +249,7 @@ async fn relink_downlink() {
             expect_event(&mut event_rx, TestMessage::Event(11)).await;
             event_rx
         },
+        SimpleMessageEncoder,
     )
     .await;
     assert!(result.is_ok());
