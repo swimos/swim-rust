@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::SwimFutureExt;
 use futures::future::join;
-use tokio::time::timeout;
-use tokio::sync::Notify;
 use std::sync::Arc;
 use std::time::Duration;
-use crate::SwimFutureExt;
+use tokio::sync::Notify;
+use tokio::time::timeout;
 
 const TIMEOUT: Duration = Duration::from_millis(100);
 
@@ -37,9 +37,9 @@ async fn wait_on_one_immediate() {
 #[tokio::test]
 async fn wait_on_one_delayed() {
     let ([counter], on_done) = super::make_latch::<1>();
-    
+
     let notify = Arc::new(Notify::new());
-    
+
     let done_fut = on_done.notify_on_blocked(notify.clone());
 
     let countdown_fut = async move {
@@ -47,8 +47,9 @@ async fn wait_on_one_delayed() {
         drop(counter);
     };
 
-    assert!(timeout(TIMEOUT, join(done_fut, countdown_fut)).await.is_ok());
-
+    assert!(timeout(TIMEOUT, join(done_fut, countdown_fut))
+        .await
+        .is_ok());
 }
 
 #[tokio::test]
@@ -64,7 +65,7 @@ async fn wait_on_two_single_delayed() {
     drop(counter1);
 
     let notify = Arc::new(Notify::new());
-    
+
     let done_fut = on_done.notify_on_blocked(notify.clone());
 
     let countdown_fut = async move {
@@ -72,15 +73,17 @@ async fn wait_on_two_single_delayed() {
         drop(counter2);
     };
 
-    assert!(timeout(TIMEOUT, join(done_fut, countdown_fut)).await.is_ok());
+    assert!(timeout(TIMEOUT, join(done_fut, countdown_fut))
+        .await
+        .is_ok());
 }
 
 #[tokio::test]
 async fn wait_on_two_both_delayed() {
     let ([counter1, counter2], on_done) = super::make_latch::<2>();
-    
+
     let notify = Arc::new(Notify::new());
-    
+
     let done_fut = on_done.notify_on_blocked(notify.clone());
 
     let countdown_fut = async move {
@@ -89,5 +92,7 @@ async fn wait_on_two_both_delayed() {
         drop(counter1);
     };
 
-    assert!(timeout(TIMEOUT, join(done_fut, countdown_fut)).await.is_ok());
+    assert!(timeout(TIMEOUT, join(done_fut, countdown_fut))
+        .await
+        .is_ok());
 }

@@ -16,8 +16,9 @@ use std::num::NonZeroUsize;
 
 use futures::future::BoxFuture;
 use swim_utilities::{
+    algebra::non_zero_usize,
     io::byte_channel::{ByteReader, ByteWriter},
-    routing::uri::RelativeUri, algebra::non_zero_usize,
+    routing::uri::RelativeUri,
 };
 
 use crate::{
@@ -41,7 +42,10 @@ const DEFAULT_BUFFER: NonZeroUsize = non_zero_usize!(4096);
 
 impl Default for LaneConfig {
     fn default() -> Self {
-        Self { input_buffer_size: DEFAULT_BUFFER, output_buffer_size: DEFAULT_BUFFER }
+        Self {
+            input_buffer_size: DEFAULT_BUFFER,
+            output_buffer_size: DEFAULT_BUFFER,
+        }
     }
 }
 

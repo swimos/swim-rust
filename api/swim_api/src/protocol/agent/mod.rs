@@ -17,10 +17,17 @@ use swim_form::structural::write::StructuralWritable;
 use swim_model::Text;
 use swim_recon::parser::AsyncParseError;
 use tokio_util::codec::{Decoder, Encoder};
+use uuid::Uuid;
 
 use crate::error::{FrameIoError, InvalidFrame};
 
-use super::{map::{MapOperation, MapOperationEncoder, RawMapOperationDecoder, RawMapOperationEncoder, MapMessageEncoder}, WithLengthBytesCodec};
+use super::{
+    map::{
+        MapMessageEncoder, MapOperation, MapOperationEncoder, RawMapOperationDecoder,
+        RawMapOperationEncoder,
+    },
+    WithLengthBytesCodec,
+};
 
 #[cfg(test)]
 mod tests;
@@ -28,13 +35,13 @@ mod tests;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LaneRequest<T> {
     Command(T),
-    Sync(u64),
+    Sync(Uuid),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LaneResponseKind {
     StandardEvent,
-    SyncEvent(u64),
+    SyncEvent(Uuid),
 }
 
 impl Default for LaneResponseKind {
@@ -57,7 +64,7 @@ impl<T> ValueLaneResponse<T> {
         }
     }
 
-    pub fn sync(id: u64, value: T) -> Self {
+    pub fn sync(id: Uuid, value: T) -> Self {
         ValueLaneResponse {
             kind: LaneResponseKind::SyncEvent(id),
             value,
@@ -81,7 +88,7 @@ const EVENT: u8 = 0;
 
 const TAG_LEN: usize = 1;
 const BODY_LEN: usize = std::mem::size_of::<u64>();
-const ID_LEN: usize = std::mem::size_of::<u64>();
+const ID_LEN: usize = std::mem::size_of::<u128>();
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LaneRequestEncoder<Inner> {
@@ -89,23 +96,19 @@ pub struct LaneRequestEncoder<Inner> {
 }
 
 impl LaneRequestEncoder<WithLengthBytesCodec> {
-
     pub fn value() -> Self {
         LaneRequestEncoder {
             inner: WithLengthBytesCodec,
         }
     }
-
 }
 
 impl LaneRequestEncoder<MapMessageEncoder<RawMapOperationEncoder>> {
-
     pub fn map() -> Self {
         LaneRequestEncoder {
             inner: Default::default(),
         }
     }
-
 }
 
 impl<T, Inner> Encoder<LaneRequest<T>> for LaneRequestEncoder<Inner>
@@ -117,7 +120,7 @@ where
     fn encode(&mut self, item: LaneRequest<T>, dst: &mut BytesMut) -> Result<(), Self::Error> {
         match item {
             LaneRequest::Command(cmd) => {
-                let LaneRequestEncoder { inner, ..} = self;
+                let LaneRequestEncoder { inner, .. } = self;
                 dst.reserve(TAG_LEN);
                 dst.put_u8(COMMAND);
                 inner.encode(cmd, dst)?;
@@ -125,7 +128,7 @@ where
             LaneRequest::Sync(id) => {
                 dst.reserve(TAG_LEN + ID_LEN);
                 dst.put_u8(SYNC);
-                dst.put_u64(id);
+                dst.put_u128(id.as_u128());
             }
         }
         Ok(())
@@ -194,7 +197,7 @@ where
                             };
                         }
                         SYNC => {
-                            let id = src.get_u64();
+                            let id = Uuid::from_u128(src.get_u128());
                             break Ok(Some(LaneRequest::Sync(id)));
                         }
                         t => {
@@ -288,7 +291,7 @@ where
             LaneResponseKind::SyncEvent(id) => {
                 dst.reserve(TAG_LEN + ID_LEN);
                 dst.put_u8(SYNC_COMPLETE);
-                dst.put_u64(id);
+                dst.put_u128(id.as_u128());
             }
         }
         super::write_recon(dst, &value);
@@ -333,7 +336,7 @@ impl Decoder for ValueLaneResponseDecoder {
                     src.reserve(TAG_LEN + ID_LEN + BODY_LEN);
                     return Ok(None);
                 }
-                let id = input.get_u64();
+                let id = Uuid::from_u128(input.get_u128());
                 let len = input.get_u64() as usize;
                 if input.remaining() < len {
                     src.reserve(TAG_LEN + ID_LEN + BODY_LEN + len);
@@ -385,7 +388,7 @@ where
             } => {
                 dst.reserve(TAG_LEN + ID_LEN);
                 dst.put_u8(SYNC);
-                dst.put_u64(id);
+                dst.put_u128(id.as_u128());
                 self.inner.encode(operation, dst)?;
             }
             MapLaneResponse::SyncComplete(id) => {
@@ -442,7 +445,7 @@ impl Decoder for MapLaneResponseDecoder {
                             if input.remaining() < ID_LEN {
                                 break Ok(None);
                             }
-                            let id = input.get_u64();
+                            let id = Uuid::from_u128(input.get_u128());
                             src.advance(TAG_LEN + ID_LEN);
                             *state = MapLaneResponseDecoderState::ReadingBody(
                                 LaneResponseKind::SyncEvent(id),

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use bytes::{Buf, BufMut, BytesMut, Bytes};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
 use std::fmt::Write;
 use swim_form::structural::write::StructuralWritable;
 use swim_recon::printer::print_recon_compact;

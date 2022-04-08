@@ -12,8 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{sync::{atomic::{AtomicUsize, Ordering}, Arc}, pin::Pin, task::{Context, Poll}};
 use std::future::Future;
+use std::{
+    pin::Pin,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    task::{Context, Poll},
+};
 
 use futures::task::AtomicWaker;
 
@@ -27,8 +34,13 @@ pub fn make_latch<const N: usize>() -> ([Countdown; N], OnDone) {
         count: AtomicUsize::new(N),
         waker: Default::default(),
     });
-    let counter_vec = (0..N).map(|_| Countdown { inner: inner.clone() }).collect::<Vec<_>>();
-    let counters = counter_vec.try_into()
+    let counter_vec = (0..N)
+        .map(|_| Countdown {
+            inner: inner.clone(),
+        })
+        .collect::<Vec<_>>();
+    let counters = counter_vec
+        .try_into()
         .expect("Vector had incorrect number of entries.");
     let on_done = OnDone { inner };
     (counters, on_done)
@@ -48,7 +60,7 @@ pub struct Countdown {
 
 impl Drop for Countdown {
     fn drop(&mut self) {
-        let LatchInner { count, waker} = &*self.inner;
+        let LatchInner { count, waker } = &*self.inner;
         if count.fetch_sub(1, Ordering::Release) == 1 {
             waker.wake();
         }
@@ -65,7 +77,7 @@ impl Future for OnDone {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let LatchInner { count, waker} = &*self.get_mut().inner;
+        let LatchInner { count, waker } = &*self.get_mut().inner;
         if count.load(Ordering::Acquire) == 0 {
             Poll::Ready(())
         } else {
@@ -78,4 +90,3 @@ impl Future for OnDone {
         }
     }
 }
-

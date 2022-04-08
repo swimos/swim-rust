@@ -15,3 +15,4 @@ bytes = "1.0"
 tokio = { version = "1.1.1" }
 tokio-util = { version = "0.6.8", features = ["codec"] }
 static_assertions = "1.1.0"
+uuid = "0.8.2"

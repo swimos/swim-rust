@@ -105,9 +105,7 @@ impl Debug for AgentRuntimeRequest {
                 .field("promise", promise)
                 .finish(),
             Self::OpenDownlink {
-                config,
-                promise,
-                ..
+                config, promise, ..
             } => f
                 .debug_struct("OpenDownlink")
                 .field("config", config)
@@ -119,7 +117,7 @@ impl Debug for AgentRuntimeRequest {
 }
 
 #[derive(Debug)]
-struct AgentAttachmentRequest {
+pub struct AgentAttachmentRequest {
     pub io: Io,
 }
 

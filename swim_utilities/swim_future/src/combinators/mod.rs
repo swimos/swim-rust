@@ -679,11 +679,12 @@ pub struct StopAfterError<Str> {
 }
 
 impl<Str> StopAfterError<Str> {
-
     fn new(stream: Str) -> Self {
-        StopAfterError { stream, terminated: false }
+        StopAfterError {
+            stream,
+            terminated: false,
+        }
     }
-
 }
 
 impl<Str: TryStream> Stream for StopAfterError<Str> {
@@ -702,7 +703,6 @@ impl<Str: TryStream> Stream for StopAfterError<Str> {
         }
     }
 }
-
 
 /// A stream that runs another stream of [`Result`]s until an error is produces, yielding the
 /// OK values.
@@ -887,19 +887,19 @@ pub trait SwimStreamExt: Stream {
     }
 
     /// Run the stream until an error is encountered and then stop.
-    /// 
+    ///
     /// #Examples
     /// ```
     /// use futures::executor::block_on;
     /// use futures::stream::iter;
     /// use futures::StreamExt;
     /// use swim_future::SwimStreamExt;
-    /// 
+    ///
     /// let inputs = iter(vec![Ok(0), Ok(1), Ok(2), Err("Boom!"), Ok(4), Err("Boom!")].into_iter());
     /// let outputs: Vec<Result<i32, &'static str>> = block_on(inputs.stop_after_error().collect());
-    /// 
+    ///
     /// assert_eq!(outputs, vec![Ok(0), Ok(1), Ok(2), Err("Boom!")]);
-    /// 
+    ///
     /// ```
     fn stop_after_error(self) -> StopAfterError<Self>
     where

@@ -381,10 +381,13 @@ pub struct ClientMessageDecoder<T, R> {
     recognizer: RecognizerDecoder<R>,
 }
 
-/// Tokio [`Decoder`] that can read an [`RawResponseMessage`] from a stream of bytes, using a
-/// [`RecognizerDecoder`] to interpret the body.
+/// Tokio [`Decoder`] that can read an [`RawResponseMessage`] from a stream of bytes.
 #[derive(Default, Debug, Clone, Copy)]
 pub struct RawResponseMessageDecoder;
+
+/// Tokio [`Decoder`] that can read an [`RawRequestMessage`] from a stream of bytes.
+#[derive(Default, Debug, Clone, Copy)]
+pub struct RawRequestMessageDecoder;
 
 impl<T, R> AgentMessageDecoder<T, R> {
     pub fn new(recognizer: R) -> Self {
@@ -840,6 +843,58 @@ impl Decoder for RawResponseMessageDecoder {
             _ => {
                 let body = src.split_to(body_len).freeze();
                 Ok(Some(RawResponseMessage::event(target, path, body)))
+            }
+        }
+    }
+}
+
+impl Decoder for RawRequestMessageDecoder {
+    type Item = RequestMessage<Bytes>;
+    type Error = std::io::Error;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        if src.remaining() < HEADER_INIT_LEN {
+            src.reserve(HEADER_INIT_LEN - src.remaining() + 1);
+            return Ok(None);
+        }
+        let mut header = &src.as_ref()[0..HEADER_INIT_LEN];
+        let origin = header.get_u128();
+        let origin = if let Ok(id) = RoutingAddr::try_from(Uuid::from_u128(origin)) {
+            id
+        } else {
+            return Err(std::io::ErrorKind::InvalidData.into());
+        };
+        let node_len = header.get_u32() as usize;
+        let lane_len = header.get_u32() as usize;
+        let body_len_and_tag = header.get_u64();
+        let body_len = (body_len_and_tag & !OP_MASK) as usize;
+        let required = HEADER_INIT_LEN + node_len + lane_len + body_len;
+        if src.remaining() < required {
+            src.reserve(required);
+            return Ok(None);
+        }
+        src.advance(HEADER_INIT_LEN);
+        let node = if let Ok(lane_name) = std::str::from_utf8(&src.as_ref()[0..node_len]) {
+            Text::new(lane_name)
+        } else {
+            return Err(std::io::ErrorKind::InvalidData.into());
+        };
+        src.advance(node_len);
+        let lane = if let Ok(lane_name) = std::str::from_utf8(&src.as_ref()[0..lane_len]) {
+            Text::new(lane_name)
+        } else {
+            return Err(std::io::Error::from(std::io::ErrorKind::InvalidData));
+        };
+        src.advance(lane_len);
+        let path = RelativePath::new(node, lane);
+        let tag = (body_len_and_tag & OP_MASK) >> OP_SHIFT;
+        match tag {
+            LINK => Ok(Some(RequestMessage::link(origin, path))),
+            SYNC => Ok(Some(RequestMessage::sync(origin, path))),
+            UNLINK => Ok(Some(RequestMessage::unlink(origin, path))),
+            _ => {
+                let body = src.split_to(body_len).freeze();
+                Ok(Some(RequestMessage::command(origin, path, body)))
             }
         }
     }

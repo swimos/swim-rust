@@ -14,15 +14,15 @@
 
 mod combinators;
 pub mod item_sink;
+pub mod latch;
 pub mod open_ended;
 pub mod request;
 pub mod retryable;
 pub mod task;
-pub mod latch;
 
 pub use combinators::{
     immediate_or_join, immediate_or_start, FlatmapStream, ImmediateOrJoin, ImmediateOrStart,
-    NeverErrorStream, NotifyOnBlocked, SecondaryResult, SwimFutureExt, SwimStreamExt,
-    SwimTryFutureExt, Transform, TransformMut, TransformOnce, TransformedFuture, TransformedSink,
-    TransformedStream, TransformedStreamFut,
+    NeverErrorStream, NotifyOnBlocked, SecondaryResult, StopAfterError, SwimFutureExt,
+    SwimStreamExt, SwimTryFutureExt, Transform, TransformMut, TransformOnce, TransformedFuture,
+    TransformedSink, TransformedStream, TransformedStreamFut,
 };
