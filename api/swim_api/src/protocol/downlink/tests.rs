@@ -13,7 +13,8 @@
 // limitations under the License.
 
 use crate::protocol::downlink::{
-    DownlinkOperation, DownlinkOperationDecoder, DownlinkOperationEncoder, ValueNotificationDecoder,
+    DownlinkOperation, DownlinkOperationDecoder, DownlinkOperationEncoder, SimpleMessageEncoder,
+    ValueNotificationDecoder,
 };
 use bytes::{Buf, Bytes, BytesMut};
 use swim_form::structural::read::recognizer::RecognizerReadable;
@@ -26,7 +27,7 @@ use super::{DownlinkNotification, DownlinkNotificationEncoder, EVENT, LINKED, SY
 
 fn encode_notification(notification: DownlinkNotification<&[u8]>) -> Bytes {
     let mut buffer = BytesMut::new();
-    assert!(DownlinkNotificationEncoder
+    assert!(DownlinkNotificationEncoder::new(SimpleMessageEncoder)
         .encode(notification, &mut buffer)
         .is_ok());
     buffer.freeze()
@@ -36,7 +37,7 @@ fn round_trip<T: RecognizerReadable>(
     notification: DownlinkNotification<&[u8]>,
 ) -> DownlinkNotification<T> {
     let mut buffer = BytesMut::new();
-    assert!(DownlinkNotificationEncoder
+    assert!(DownlinkNotificationEncoder::new(SimpleMessageEncoder)
         .encode(notification, &mut buffer)
         .is_ok());
     let mut decoder = ValueNotificationDecoder::default();
@@ -79,9 +80,8 @@ fn encode_event_notification() {
     let mut buffer = encode_notification(DownlinkNotification::Event {
         body: content.as_bytes(),
     });
-    assert_eq!(buffer.len(), content.len() + 9);
+    assert_eq!(buffer.len(), content.len() + 1);
     assert_eq!(buffer.get_u8(), EVENT);
-    assert_eq!(buffer.get_u64() as usize, content.len());
     assert_eq!(buffer.as_ref(), content.as_bytes());
 }
 
@@ -157,10 +157,10 @@ fn decode_recon_notification_twice() {
     };
 
     let mut buffer = BytesMut::new();
-    assert!(DownlinkNotificationEncoder
+    assert!(DownlinkNotificationEncoder::new(SimpleMessageEncoder)
         .encode(event1, &mut buffer)
         .is_ok());
-    assert!(DownlinkNotificationEncoder
+    assert!(DownlinkNotificationEncoder::new(SimpleMessageEncoder)
         .encode(event2, &mut buffer)
         .is_ok());
     let mut decoder = ValueNotificationDecoder::default();

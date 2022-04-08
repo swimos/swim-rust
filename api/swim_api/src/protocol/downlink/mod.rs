@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use bytes::{Buf, BufMut, Bytes};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
 use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swim_model::Text;
 use swim_recon::parser::{AsyncParseError, RecognizerDecoder};
@@ -45,7 +45,15 @@ impl<T> DownlinkOperation<T> {
 }
 
 #[derive(Debug, Default, Clone, Copy)]
-pub struct DownlinkNotificationEncoder;
+pub struct DownlinkNotificationEncoder<E> {
+    body_encoder: E,
+}
+
+impl<E> DownlinkNotificationEncoder<E> {
+    pub fn new(body_encoder: E) -> Self {
+        DownlinkNotificationEncoder { body_encoder }
+    }
+}
 
 const LINKED: u8 = 1;
 const SYNCED: u8 = 2;
@@ -57,7 +65,24 @@ use super::{
     LEN_SIZE, TAG_SIZE,
 };
 
-impl<T: AsRef<[u8]>> Encoder<DownlinkNotification<T>> for DownlinkNotificationEncoder {
+pub struct SimpleMessageEncoder;
+
+impl<T: AsRef<[u8]>> Encoder<T> for SimpleMessageEncoder {
+    type Error = std::io::Error;
+
+    fn encode(&mut self, item: T, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        let item_bytes = item.as_ref();
+        let item_len = item_bytes.len();
+        dst.reserve(TAG_SIZE + item_len);
+        dst.put(item_bytes);
+        Ok(())
+    }
+}
+
+impl<T, E> Encoder<DownlinkNotification<T>> for DownlinkNotificationEncoder<E>
+where
+    E: Encoder<T, Error = std::io::Error>,
+{
     type Error = std::io::Error;
 
     fn encode(
@@ -75,12 +100,8 @@ impl<T: AsRef<[u8]>> Encoder<DownlinkNotification<T>> for DownlinkNotificationEn
                 dst.put_u8(SYNCED);
             }
             DownlinkNotification::Event { body } => {
-                let body_bytes = body.as_ref();
-                let body_len = body_bytes.len();
-                dst.reserve(TAG_SIZE + LEN_SIZE + body_len);
                 dst.put_u8(EVENT);
-                dst.put_u64(body_len as u64);
-                dst.put(body_bytes);
+                self.body_encoder.encode(body, dst)?;
             }
             DownlinkNotification::Unlinked => {
                 dst.reserve(TAG_SIZE);
@@ -93,12 +114,9 @@ impl<T: AsRef<[u8]>> Encoder<DownlinkNotification<T>> for DownlinkNotificationEn
 #[derive(Debug)]
 pub enum DownlinkNotificationDecoderState<T> {
     ReadingHeader,
-    ReadingBody {
-        remaining: usize,
-    },
+    ReadingBody,
     AfterBody {
         message: Option<DownlinkNotification<T>>,
-        remaining: usize,
     },
     Discarding {
         error: Option<FrameIoError>,
@@ -220,16 +238,13 @@ where
                             break Ok(Some(DownlinkNotification::Synced));
                         }
                         EVENT => {
-                            if src.remaining() < TAG_SIZE + LEN_SIZE {
-                                let required = TAG_SIZE + LEN_SIZE - src.remaining();
+                            if src.remaining() < TAG_SIZE {
+                                let required = TAG_SIZE - src.remaining();
                                 src.reserve(required);
                                 break Ok(None);
                             } else {
                                 src.advance(1);
-                                let len = src.get_u64() as usize;
-                                *state = DownlinkNotificationDecoderState::ReadingBody {
-                                    remaining: len,
-                                };
+                                *state = DownlinkNotificationDecoderState::ReadingBody;
                             }
                         }
                         UNLINKED => {
@@ -246,47 +261,34 @@ where
                         }
                     }
                 }
-                DownlinkNotificationDecoderState::ReadingBody { remaining } => {
-                    let (new_remaining, rem, decode_result) =
-                        super::consume_bounded(remaining, src, body_decoder);
+                DownlinkNotificationDecoderState::ReadingBody => {
+                    let decode_result = body_decoder.decode_eof(src);
                     match decode_result {
                         Ok(Some(result)) => {
-                            src.unsplit(rem);
                             *state = DownlinkNotificationDecoderState::AfterBody {
                                 message: Some(DownlinkNotification::Event { body: result }),
-                                remaining: *remaining,
                             }
                         }
                         Ok(None) => {
                             break Ok(None);
                         }
                         Err(e) => {
-                            *remaining -= new_remaining;
-                            src.unsplit(rem);
-                            src.advance(new_remaining);
-                            if *remaining == 0 {
+                            if src.remaining() == 0 {
                                 *state = DownlinkNotificationDecoderState::ReadingHeader;
                                 break Err(e.into());
                             } else {
                                 *state = DownlinkNotificationDecoderState::Discarding {
                                     error: Some(e.into()),
-                                    remaining: *remaining,
+                                    remaining: src.remaining(),
                                 }
                             }
                         }
                     }
                 }
-                DownlinkNotificationDecoderState::AfterBody { message, remaining } => {
-                    if src.remaining() >= *remaining {
-                        src.advance(*remaining);
-                        let result = message.take();
-                        *state = DownlinkNotificationDecoderState::ReadingHeader;
-                        break Ok(result);
-                    } else {
-                        *remaining -= src.remaining();
-                        src.clear();
-                        break Ok(None);
-                    }
+                DownlinkNotificationDecoderState::AfterBody { message } => {
+                    let result = message.take();
+                    *state = DownlinkNotificationDecoderState::ReadingHeader;
+                    break Ok(result);
                 }
                 DownlinkNotificationDecoderState::Discarding { error, remaining } => {
                     if src.remaining() >= *remaining {
