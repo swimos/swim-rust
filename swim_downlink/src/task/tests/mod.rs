@@ -115,16 +115,16 @@ impl TestWriter<MapMessageEncoder<MapOperationEncoder>> {
         assert!(writer.send(raw).await.is_ok());
     }
 
-    async fn send_corrupted_frame(&mut self) {
-        let TestWriter(writer) = self;
-        let bad = DownlinkNotification::Event {
-            body: MapMessage::Update {
-                value: BAD_UTF8,
-                key: BAD_UTF8,
-            },
-        };
-        assert!(writer.send(bad).await.is_ok());
-    }
+    // async fn send_corrupted_frame(&mut self) {
+    //     let TestWriter(writer) = self;
+    //     let bad = DownlinkNotification::Event {
+    //         body: MapMessage::Update {
+    //             value: BAD_UTF8,
+    //             key: BAD_UTF8,
+    //         },
+    //     };
+    //     assert!(writer.send(bad).await.is_ok());
+    // }
 }
 
 impl TestWriter<SimpleMessageEncoder> {
