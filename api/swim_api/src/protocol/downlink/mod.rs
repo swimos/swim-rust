@@ -44,7 +44,9 @@ impl<T> DownlinkOperation<T> {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+pub type RawDownlinkNotificationEncoder = DownlinkNotificationEncoder<SimpleMessageEncoder>;
+
+#[derive(Debug, Clone, Copy)]
 pub struct DownlinkNotificationEncoder<E> {
     body_encoder: E,
 }
@@ -65,6 +67,7 @@ use super::{
     LEN_SIZE, TAG_SIZE,
 };
 
+#[derive(Debug, Clone, Copy)]
 pub struct SimpleMessageEncoder;
 
 impl<T: AsRef<[u8]>> Encoder<T> for SimpleMessageEncoder {

@@ -18,7 +18,7 @@ use std::num::NonZeroUsize;
 use futures::future::join;
 use futures::{SinkExt, StreamExt};
 use swim_api::protocol::downlink::SimpleMessageEncoder;
-use swim_api::protocol::map::{MapMessage, MapMessageEncoder, MapOperation, MapOperationEncoder};
+use swim_api::protocol::map::{MapMessage, MapMessageEncoder, MapOperationEncoder};
 use swim_api::{
     downlink::{Downlink, DownlinkConfig},
     error::DownlinkTaskError,
@@ -36,7 +36,7 @@ use swim_utilities::{
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
 };
 use tokio::time::{timeout, Duration};
-use tokio_util::codec::{Encoder, FramedRead, FramedWrite};
+use tokio_util::codec::{FramedRead, FramedWrite};
 
 mod event;
 mod map;

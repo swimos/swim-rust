@@ -14,9 +14,7 @@
 
 use im::OrdMap;
 use swim_api::{
-    downlink::DownlinkConfig,
-    error::{DownlinkTaskError, FrameIoError, InvalidFrame},
-    protocol::downlink::DownlinkNotification,
+    downlink::DownlinkConfig, error::DownlinkTaskError, protocol::downlink::DownlinkNotification,
 };
 
 use swim_api::protocol::map::{MapMessage, MapMessageEncoder, MapOperationEncoder};
