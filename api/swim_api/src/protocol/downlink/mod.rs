@@ -76,7 +76,7 @@ impl<T: AsRef<[u8]>> Encoder<T> for SimpleMessageEncoder {
     fn encode(&mut self, item: T, dst: &mut BytesMut) -> Result<(), Self::Error> {
         let item_bytes = item.as_ref();
         let item_len = item_bytes.len();
-        dst.reserve(TAG_SIZE + item_len);
+        dst.reserve(item_len);
         dst.put(item_bytes);
         Ok(())
     }
@@ -103,8 +103,15 @@ where
                 dst.put_u8(SYNCED);
             }
             DownlinkNotification::Event { body } => {
+                dst.reserve(TAG_SIZE + LEN_SIZE);
                 dst.put_u8(EVENT);
+                let body_len_offset = dst.remaining();
+                dst.put_u64(0);
+                let len_before_body = dst.len();
                 self.body_encoder.encode(body, dst)?;
+                let body_len = (dst.len() - len_before_body) as u64;
+                let mut rewound = &mut dst.as_mut()[body_len_offset..];
+                rewound.put_u64(body_len);
             }
             DownlinkNotification::Unlinked => {
                 dst.reserve(TAG_SIZE);
@@ -117,9 +124,12 @@ where
 #[derive(Debug)]
 pub enum DownlinkNotificationDecoderState<T> {
     ReadingHeader,
-    ReadingBody,
+    ReadingBody {
+        remaining: usize,
+    },
     AfterBody {
         message: Option<DownlinkNotification<T>>,
+        remaining: usize,
     },
     Discarding {
         error: Option<FrameIoError>,
@@ -241,13 +251,16 @@ where
                             break Ok(Some(DownlinkNotification::Synced));
                         }
                         EVENT => {
-                            if src.remaining() < TAG_SIZE {
-                                let required = TAG_SIZE - src.remaining();
+                            if src.remaining() < TAG_SIZE + LEN_SIZE {
+                                let required = TAG_SIZE + LEN_SIZE - src.remaining();
                                 src.reserve(required);
                                 break Ok(None);
                             } else {
                                 src.advance(1);
-                                *state = DownlinkNotificationDecoderState::ReadingBody;
+                                let len = src.get_u64() as usize;
+                                *state = DownlinkNotificationDecoderState::ReadingBody {
+                                    remaining: len,
+                                };
                             }
                         }
                         UNLINKED => {
@@ -264,34 +277,47 @@ where
                         }
                     }
                 }
-                DownlinkNotificationDecoderState::ReadingBody => {
-                    let decode_result = body_decoder.decode_eof(src);
+                DownlinkNotificationDecoderState::ReadingBody { remaining } => {
+                    let (new_remaining, rem, decode_result) =
+                        super::consume_bounded(remaining, src, body_decoder);
                     match decode_result {
                         Ok(Some(result)) => {
+                            src.unsplit(rem);
                             *state = DownlinkNotificationDecoderState::AfterBody {
                                 message: Some(DownlinkNotification::Event { body: result }),
+                                remaining: *remaining,
                             }
                         }
                         Ok(None) => {
                             break Ok(None);
                         }
                         Err(e) => {
-                            if src.remaining() == 0 {
+                            *remaining -= new_remaining;
+                            src.unsplit(rem);
+                            src.advance(new_remaining);
+                            if *remaining == 0 {
                                 *state = DownlinkNotificationDecoderState::ReadingHeader;
                                 break Err(e.into());
                             } else {
                                 *state = DownlinkNotificationDecoderState::Discarding {
                                     error: Some(e.into()),
-                                    remaining: src.remaining(),
+                                    remaining: *remaining,
                                 }
                             }
                         }
                     }
                 }
-                DownlinkNotificationDecoderState::AfterBody { message } => {
-                    let result = message.take();
-                    *state = DownlinkNotificationDecoderState::ReadingHeader;
-                    break Ok(result);
+                DownlinkNotificationDecoderState::AfterBody { message, remaining } => {
+                    if src.remaining() >= *remaining {
+                        src.advance(*remaining);
+                        let result = message.take();
+                        *state = DownlinkNotificationDecoderState::ReadingHeader;
+                        break Ok(result);
+                    } else {
+                        *remaining -= src.remaining();
+                        src.clear();
+                        break Ok(None);
+                    }
                 }
                 DownlinkNotificationDecoderState::Discarding { error, remaining } => {
                     if src.remaining() >= *remaining {

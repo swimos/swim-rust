@@ -80,8 +80,9 @@ fn encode_event_notification() {
     let mut buffer = encode_notification(DownlinkNotification::Event {
         body: content.as_bytes(),
     });
-    assert_eq!(buffer.len(), content.len() + 1);
+    assert_eq!(buffer.len(), content.len() + 9);
     assert_eq!(buffer.get_u8(), EVENT);
+    assert_eq!(buffer.get_u64() as usize, content.len());
     assert_eq!(buffer.as_ref(), content.as_bytes());
 }
 
