@@ -15,6 +15,7 @@
 use std::{sync::{atomic::{AtomicU8, Ordering}, Arc}, pin::Pin, task::{Context, Poll}, cell::Cell};
 
 use futures::{task::AtomicWaker, Future};
+use static_assertions::{assert_impl_all, assert_not_impl_any};
 
 #[cfg(test)]
 mod tests;
@@ -24,6 +25,7 @@ const FIRST: u8 = 0b01;
 const SECOND: u8 = 0b10;
 const UNANIMITY: u8 = 0b11;
 
+#[derive(Debug)]
 struct Inner {
     flags: AtomicU8,
     waker: AtomicWaker,
@@ -31,39 +33,47 @@ struct Inner {
 
 /// Allows for a party to the coordination to vote for the process to stop or to attempt
 /// to rescind a previous vote.
-pub struct Sender {
+#[derive(Debug)]
+pub struct Voter {
     flag: u8,
     inverse: u8,
     voted: Cell<bool>,
     inner: Arc<Inner>,
 }
 
+assert_impl_all!(Voter: Send);
+assert_not_impl_any!(Voter: Clone);
+
 /// A future that completes when the parties reach unanimity.
+#[derive(Debug)]
 pub struct Receiver {
     inner: Arc<Inner>,
 }
+
+assert_impl_all!(Receiver: Send, Sync);
+assert_not_impl_any!(Receiver: Clone);
 
 /// Allows the read and write parts of the agent runtime to vote on when the runtime should stop.
 /// The [`Receiver`] future will only complete when both [`Sender`]s have voted to stop. If
 /// only one sender has voted to stop, it may rescind its vote. Rescinding a vote will only be
 /// respected if unanimity was not reached.
-pub fn timeout_coordinator() -> (Sender, Sender, Receiver) {
+pub fn timeout_coordinator() -> (Voter, Voter, Receiver) {
     let inner = Arc::new(Inner {
         flags: AtomicU8::new(INIT),
         waker: Default::default()
     });
-    let sender1 = Sender { flag: FIRST, inverse: SECOND, voted: Cell::new(false), inner: inner.clone() };
-    let sender2 = Sender { flag: SECOND, inverse: FIRST, voted: Cell::new(false), inner: inner.clone() };
+    let sender1 = Voter { flag: FIRST, inverse: SECOND, voted: Cell::new(false), inner: inner.clone() };
+    let sender2 = Voter { flag: SECOND, inverse: FIRST, voted: Cell::new(false), inner: inner.clone() };
     let receiver = Receiver { inner };
     (sender1, sender2, receiver)
 }
 
-impl Sender {
+impl Voter {
 
     /// Vote for the process to stop. Returns true if unanimity has been reached. This can
     /// be called any number of times.
-    fn vote(&self) -> bool {
-        let Sender { flag, inverse, voted, inner } = self;
+    pub fn vote(&self) -> bool {
+        let Voter { flag, inverse, voted, inner } = self;
         let Inner { flags, waker } = &**inner;
         let before = flags.fetch_or(*flag, Ordering::Release);
         voted.set(true);
@@ -79,15 +89,15 @@ impl Sender {
     /// this this has had no effect). If this sender has not previously voted to stop, this does
     /// nothing. Sequences of voute and rescind can be called any number of times in any order.
     /// Once unanimity has been reached, no calls will have any effect.
-    fn rescind(&self) -> bool {
-        let Sender { flag, voted, inner, .. } = self;
+    pub fn rescind(&self) -> bool {
+        let Voter { flag, voted, inner, .. } = self;
         let Inner { flags, .. } = &**inner;
         voted.get() && flags.compare_exchange(*flag, INIT, Ordering::Relaxed, Ordering::Relaxed).is_err()
     }
 
 }
 
-impl Drop for Sender {
+impl Drop for Voter {
     fn drop(&mut self) {
         //If a sender is dropped before voting, vote to ensure the receiver can't deadlock.
         if !self.voted.get() {

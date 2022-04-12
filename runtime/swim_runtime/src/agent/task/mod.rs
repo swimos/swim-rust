@@ -15,6 +15,7 @@
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
+use std::time::Duration;
 use std::{collections::HashMap, num::NonZeroUsize};
 
 use crate::compat::{Operation, RawRequestMessageDecoder, RequestMessage};
@@ -48,11 +49,12 @@ use swim_utilities::io::byte_channel::{self, byte_channel, ByteReader, ByteWrite
 use swim_utilities::trigger;
 use thiserror::Error;
 use tokio::sync::mpsc;
+use tokio::time::timeout;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{Decoder, Encoder, FramedRead, FramedWrite};
 use uuid::Uuid;
 
-mod timeout;
+mod timeout_coord;
 
 #[derive(Debug, Clone, Copy)]
 pub struct AgentRuntimeConfig {
@@ -60,6 +62,7 @@ pub struct AgentRuntimeConfig {
     /// Size of the queue for accepting new subscribers to a downlink.
     pub attachment_queue_size: NonZeroUsize,
     pub unknown_lane_queue_size: NonZeroUsize,
+    pub inactive_timeout: Duration,
 }
 
 pub struct AgentInitTask {
@@ -122,7 +125,7 @@ impl AgentInit {
 pub struct NoLanes;
 
 impl AgentInitTask {
-    pub(super) fn new(
+    pub fn new(
         requests: mpsc::Receiver<AgentRuntimeRequest>,
         init_complete: trigger::Receiver,
         config: AgentRuntimeConfig,
@@ -368,18 +371,20 @@ impl AgentRuntimeTask {
         let (read_tx, read_rx) = mpsc::channel(config.attachment_queue_size.get());
         let (write_tx, write_rx) = mpsc::channel(config.attachment_queue_size.get());
         let (unknown_tx, unknown_rx) = mpsc::channel(config.unknown_lane_queue_size.get());
+        let (read_vote, write_vote, vote_waiter) = timeout_coord::timeout_coordinator();
 
         let (kill_switch_tx, kill_switch_rx) = trigger::trigger();
+
+        let combined_stop = fselect(fselect(stopping.clone(), kill_switch_rx), vote_waiter);
         let att = attachment_task(
             rx,
             attachment_rx,
             read_tx,
             write_tx,
-            stopping.clone(),
-            kill_switch_rx,
+            combined_stop,
         );
-        let read = read_task(read_endpoints, read_rx, unknown_tx, stopping.clone());
-        let write = write_task(write_endpoints, write_rx, unknown_rx, stopping);
+        let read = read_task(config, read_endpoints, read_rx, unknown_tx, read_vote, stopping.clone());
+        let write = write_task(write_endpoints, write_rx, unknown_rx, write_vote, stopping);
 
         let io = await_io_tasks(read, write, kill_switch_tx);
         join(att, io).await;
@@ -397,15 +402,15 @@ enum WriteTaskRegistration {
     Remote(ByteWriter),
 }
 
-async fn attachment_task(
+async fn attachment_task<F>(
     runtime: mpsc::Receiver<AgentRuntimeRequest>,
     attachment: mpsc::Receiver<AgentAttachmentRequest>,
     read_tx: mpsc::Sender<ReadTaskRegistration>,
     write_tx: mpsc::Sender<WriteTaskRegistration>,
-    stopping: trigger::Receiver,
-    kill_switch: trigger::Receiver,
-) {
-    let combined_stop = fselect(stopping, kill_switch);
+    combined_stop: F,
+)
+where
+    F: Future + Unpin, {
 
     let mut stream = sselect(
         ReceiverStream::new(runtime).map(Either::Left),
@@ -482,10 +487,18 @@ fn remote_receiver(reader: ByteReader) -> RemoteReceiver {
     RemoteReceiver::new(reader, Default::default())
 }
 
+enum ReadTaskEvent {
+    Registration(ReadTaskRegistration),
+    Envelope(RequestMessage<Bytes>),
+    Timeout,
+}
+
 async fn read_task(
+    config: AgentRuntimeConfig,
     initial_endpoints: Vec<LaneEndpoint<ByteWriter>>,
     reg_rx: mpsc::Receiver<ReadTaskRegistration>,
     coord_tx: mpsc::Sender<RwCoorindationMessage>,
+    stop_vote: timeout_coord::Voter,
     stopping: trigger::Receiver,
 ) {
     let mut remotes = SelectAll::<StopAfterError<RemoteReceiver>>::new();
@@ -513,31 +526,33 @@ async fn read_task(
     loop {
         let flush = flush_lane(&mut lanes, &mut needs_flush);
         let next = if remotes.is_empty() {
-            //TODO Timeout on empty.
-            if let (Some(reg), _) = immediate_or_join(reg_stream.next(), flush).await {
-                Either::Left(reg)
-            } else {
-                break;
-            }
-        } else {
-            let select_next = fselect(reg_stream.next(), remotes.next());
-            let (result, _) = immediate_or_join(select_next, flush).await;
-            match result {
-                Either::Left((Some(reg), _)) => Either::Left(reg),
-                Either::Left((_, _)) => {
+            match immediate_or_join(timeout(config.inactive_timeout, reg_stream.next()), flush).await {
+                (Ok(Some(reg)), _) => ReadTaskEvent::Registration(reg),
+                (Err(_), _) => ReadTaskEvent::Timeout,
+                _ => {
                     break;
                 }
-                Either::Right((Some(Ok(envelope)), _)) => Either::Right(envelope),
-                Either::Right((Some(Err(_e)), _)) => {
+            }
+        } else {
+            let select_next = timeout(config.inactive_timeout, fselect(reg_stream.next(), remotes.next()));
+            let (result, _) = immediate_or_join(select_next, flush).await;
+            match result {
+                Ok(Either::Left((Some(reg), _))) => ReadTaskEvent::Registration(reg),
+                Ok(Either::Left((_, _))) => {
+                    break;
+                }
+                Ok(Either::Right((Some(Ok(envelope)), _))) => ReadTaskEvent::Envelope(envelope),
+                Ok(Either::Right((Some(Err(_e)), _))) => {
                     todo!("Log error");
                 }
-                Either::Right((_, _)) => {
+                Ok(Either::Right((_, _))) => {
                     continue;
                 }
+                Err(_) => ReadTaskEvent::Timeout,
             }
         };
         match next {
-            Either::Left(reg) => match reg {
+            ReadTaskEvent::Registration(reg) => match reg {
                 ReadTaskRegistration::Lane { name, sender } => {
                     let id = next_id();
                     name_mapping.insert(name, id);
@@ -548,7 +563,7 @@ async fn read_task(
                     remotes.push(rx);
                 }
             },
-            Either::Right(msg) => {
+            ReadTaskEvent::Envelope(msg) => {
                 let RequestMessage {
                     path,
                     origin,
@@ -632,6 +647,11 @@ async fn read_task(
                     }
                 }
             }
+            ReadTaskEvent::Timeout => {
+                if stop_vote.vote() {
+                    break;
+                }
+            }
         }
     }
 }
@@ -650,6 +670,7 @@ async fn write_task(
     initial_endpoints: Vec<LaneEndpoint<ByteReader>>,
     reg_rx: mpsc::Receiver<WriteTaskRegistration>,
     unknown_rx: mpsc::Receiver<RwCoorindationMessage>,
+    stop_voter: timeout_coord::Voter,
     stopping: trigger::Receiver,
 ) {
     todo!()

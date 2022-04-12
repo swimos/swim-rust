@@ -75,7 +75,7 @@ impl AgentContext for AgentRuntimeContext {
 
 type Io = (ByteReader, ByteWriter);
 
-enum AgentRuntimeRequest {
+pub enum AgentRuntimeRequest {
     AddLane {
         name: Text,
         kind: UplinkKind,
