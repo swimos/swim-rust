@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use bytes::{Buf, BufMut, Bytes};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
 use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swim_model::Text;
 use swim_recon::parser::{AsyncParseError, RecognizerDecoder};
@@ -44,8 +44,18 @@ impl<T> DownlinkOperation<T> {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct DownlinkNotificationEncoder;
+pub type RawDownlinkNotificationEncoder = DownlinkNotificationEncoder<SimpleMessageEncoder>;
+
+#[derive(Debug, Clone, Copy)]
+pub struct DownlinkNotificationEncoder<E> {
+    body_encoder: E,
+}
+
+impl<E> DownlinkNotificationEncoder<E> {
+    pub fn new(body_encoder: E) -> Self {
+        DownlinkNotificationEncoder { body_encoder }
+    }
+}
 
 const LINKED: u8 = 1;
 const SYNCED: u8 = 2;
@@ -57,7 +67,25 @@ use super::{
     LEN_SIZE, TAG_SIZE,
 };
 
-impl<T: AsRef<[u8]>> Encoder<DownlinkNotification<T>> for DownlinkNotificationEncoder {
+#[derive(Debug, Clone, Copy)]
+pub struct SimpleMessageEncoder;
+
+impl<T: AsRef<[u8]>> Encoder<T> for SimpleMessageEncoder {
+    type Error = std::io::Error;
+
+    fn encode(&mut self, item: T, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        let item_bytes = item.as_ref();
+        let item_len = item_bytes.len();
+        dst.reserve(item_len);
+        dst.put(item_bytes);
+        Ok(())
+    }
+}
+
+impl<T, E> Encoder<DownlinkNotification<T>> for DownlinkNotificationEncoder<E>
+where
+    E: Encoder<T, Error = std::io::Error>,
+{
     type Error = std::io::Error;
 
     fn encode(
@@ -75,12 +103,15 @@ impl<T: AsRef<[u8]>> Encoder<DownlinkNotification<T>> for DownlinkNotificationEn
                 dst.put_u8(SYNCED);
             }
             DownlinkNotification::Event { body } => {
-                let body_bytes = body.as_ref();
-                let body_len = body_bytes.len();
-                dst.reserve(TAG_SIZE + LEN_SIZE + body_len);
+                dst.reserve(TAG_SIZE + LEN_SIZE);
                 dst.put_u8(EVENT);
-                dst.put_u64(body_len as u64);
-                dst.put(body_bytes);
+                let body_len_offset = dst.remaining();
+                dst.put_u64(0);
+                let len_before_body = dst.len();
+                self.body_encoder.encode(body, dst)?;
+                let body_len = (dst.len() - len_before_body) as u64;
+                let mut rewound = &mut dst.as_mut()[body_len_offset..];
+                rewound.put_u64(body_len);
             }
             DownlinkNotification::Unlinked => {
                 dst.reserve(TAG_SIZE);

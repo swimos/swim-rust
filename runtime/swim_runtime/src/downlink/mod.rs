@@ -22,7 +22,10 @@ use futures::future::{join, select, Either};
 use futures::stream::SelectAll;
 use futures::{Future, FutureExt, Sink, SinkExt, Stream, StreamExt};
 use pin_utils::pin_mut;
-use swim_api::protocol::downlink::{DownlinkNotification, DownlinkNotificationEncoder};
+use swim_api::protocol::downlink::{
+    DownlinkNotification, DownlinkNotificationEncoder, RawDownlinkNotificationEncoder,
+    SimpleMessageEncoder,
+};
 use swim_model::path::RelativePath;
 use swim_utilities::future::{immediate_or_join, immediate_or_start, SecondaryResult};
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
@@ -362,30 +365,33 @@ enum ReadTaskState {
 /// Sender to communicate with a subscriber to the downlink.
 #[derive(Debug)]
 struct DownlinkSender {
-    sender: FramedWrite<ByteWriter, DownlinkNotificationEncoder>,
+    sender: FramedWrite<ByteWriter, RawDownlinkNotificationEncoder>,
     options: DownlinkOptions,
 }
 
 impl DownlinkSender {
     fn new(writer: ByteWriter, options: DownlinkOptions) -> Self {
         DownlinkSender {
-            sender: FramedWrite::new(writer, DownlinkNotificationEncoder::default()),
+            sender: FramedWrite::new(
+                writer,
+                DownlinkNotificationEncoder::new(SimpleMessageEncoder),
+            ),
             options,
         }
     }
 
     async fn feed(
         &mut self,
-        mesage: DownlinkNotification<&BytesMut>,
+        message: DownlinkNotification<&BytesMut>,
     ) -> Result<(), std::io::Error> {
-        self.sender.feed(mesage).await
+        self.sender.feed(message).await
     }
 
     async fn send(
         &mut self,
-        mesage: DownlinkNotification<&BytesMut>,
+        message: DownlinkNotification<&BytesMut>,
     ) -> Result<(), std::io::Error> {
-        self.sender.send(mesage).await
+        self.sender.send(message).await
     }
 
     async fn flush(&mut self) -> Result<(), std::io::Error> {
