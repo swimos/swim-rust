@@ -189,7 +189,6 @@ async fn sync_downlink() {
     assert!(result.unwrap().recv().await.is_none());
 }
 
-//Todo add more test cases with remove, clear, take, drop
 #[tokio::test]
 async fn report_update_events_before_sync() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, String>>();
@@ -201,6 +200,9 @@ async fn report_update_events_before_sync() {
         events_when_not_synced: true,
         terminate_on_unlinked: true,
     };
+
+    let mut map = OrdMap::new();
+    map.insert(10, "biscuits".to_string());
 
     let result = run_downlink_task(
         DownlinkTask::new(model),
@@ -224,6 +226,12 @@ async fn report_update_events_before_sync() {
                         key: 10,
                         value: "biscuits".to_string(),
                     },
+                })
+                .await;
+
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Clear,
                 })
                 .await;
             expect_event(&mut event_rx, TestMessage::Linked).await;
@@ -253,6 +261,8 @@ async fn report_update_events_before_sync() {
                 TestMessage::Update(10, Some("milk".to_string()), "biscuits".to_string()),
             )
             .await;
+            expect_event(&mut event_rx, TestMessage::Event(MapMessage::Clear)).await;
+            expect_event(&mut event_rx, TestMessage::Clear(map)).await;
 
             event_rx
         },
@@ -265,6 +275,192 @@ async fn report_update_events_before_sync() {
 
 #[tokio::test]
 async fn report_update_events_after_sync() {
+    let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, String>>();
+    let (_command_tx, command_rx) = mpsc::channel(16);
+    let lifecycle = make_lifecycle(event_tx);
+    let model = MapDownlinkModel::new(command_rx, lifecycle);
+
+    let config = DownlinkConfig {
+        events_when_not_synced: false,
+        terminate_on_unlinked: true,
+    };
+
+    let mut first_map = OrdMap::new();
+    first_map.insert(10, "milk".to_string());
+
+    let mut second_map = OrdMap::new();
+    second_map.insert(10, "biscuits".to_string());
+
+    let result = run_downlink_task(
+        DownlinkTask::new(model),
+        config,
+        |mut writer, reader| async move {
+            let _reader = reader;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Linked)
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 10,
+                        value: "milk".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Synced)
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 10,
+                        value: "biscuits".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Clear,
+                })
+                .await;
+            expect_event(&mut event_rx, TestMessage::Linked).await;
+            expect_event(&mut event_rx, TestMessage::Synced(first_map)).await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Event(MapMessage::Update {
+                    key: 10,
+                    value: "biscuits".to_string(),
+                }),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Update(10, Some("milk".to_string()), "biscuits".to_string()),
+            )
+            .await;
+            expect_event(&mut event_rx, TestMessage::Event(MapMessage::Clear)).await;
+            expect_event(&mut event_rx, TestMessage::Clear(second_map)).await;
+
+            event_rx
+        },
+        MapMessageEncoder::new(MapOperationEncoder),
+    )
+    .await;
+    assert!(result.is_ok());
+    assert!(result.unwrap().recv().await.is_none());
+}
+
+#[tokio::test]
+async fn report_remove_events_before_sync() {
+    let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, String>>();
+    let (_command_tx, command_rx) = mpsc::channel(16);
+    let lifecycle = make_lifecycle(event_tx);
+    let model = MapDownlinkModel::new(command_rx, lifecycle);
+
+    let config = DownlinkConfig {
+        events_when_not_synced: true,
+        terminate_on_unlinked: true,
+    };
+
+    let mut map = OrdMap::new();
+    map.insert(10, "milk".to_string());
+
+    let result = run_downlink_task(
+        DownlinkTask::new(model),
+        config,
+        |mut writer, reader| async move {
+            let _reader = reader;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Linked)
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 10,
+                        value: "milk".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 15,
+                        value: "biscuits".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Remove { key: 15 },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Remove { key: 25 },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Clear,
+                })
+                .await;
+            expect_event(&mut event_rx, TestMessage::Linked).await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Event(MapMessage::Update {
+                    key: 10,
+                    value: "milk".to_string(),
+                }),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Update(10, None, "milk".to_string()),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Event(MapMessage::Update {
+                    key: 15,
+                    value: "biscuits".to_string(),
+                }),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Update(15, None, "biscuits".to_string()),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Event(MapMessage::Remove { key: 15 }),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Remove(15, Some("biscuits".to_string())),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Event(MapMessage::Remove { key: 25 }),
+            )
+            .await;
+            expect_event(&mut event_rx, TestMessage::Remove(25, None)).await;
+            expect_event(&mut event_rx, TestMessage::Event(MapMessage::Clear)).await;
+            expect_event(&mut event_rx, TestMessage::Clear(map)).await;
+
+            event_rx
+        },
+        MapMessageEncoder::new(MapOperationEncoder),
+    )
+    .await;
+    assert!(result.is_ok());
+    assert!(result.unwrap().recv().await.is_none());
+}
+
+#[tokio::test]
+async fn report_remove_events_after_sync() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, String>>();
     let (_command_tx, command_rx) = mpsc::channel(16);
     let lifecycle = make_lifecycle(event_tx);
@@ -295,31 +491,884 @@ async fn report_update_events_after_sync() {
                 })
                 .await;
             writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 15,
+                        value: "tea".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Remove { key: 15 },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Remove { key: 25 },
+                })
+                .await;
+            writer
                 .send_value::<i32, String>(DownlinkNotification::Synced)
                 .await;
             writer
                 .send_value::<i32, String>(DownlinkNotification::Event {
                     body: MapMessage::Update {
-                        key: 10,
+                        key: 15,
                         value: "biscuits".to_string(),
                     },
                 })
                 .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Remove { key: 15 },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Remove { key: 25 },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Clear,
+                })
+                .await;
             expect_event(&mut event_rx, TestMessage::Linked).await;
-            expect_event(&mut event_rx, TestMessage::Synced(map)).await;
+            expect_event(&mut event_rx, TestMessage::Synced(map.clone())).await;
             expect_event(
                 &mut event_rx,
                 TestMessage::Event(MapMessage::Update {
-                    key: 10,
+                    key: 15,
                     value: "biscuits".to_string(),
                 }),
             )
             .await;
             expect_event(
                 &mut event_rx,
-                TestMessage::Update(10, Some("milk".to_string()), "biscuits".to_string()),
+                TestMessage::Update(15, None, "biscuits".to_string()),
             )
             .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Event(MapMessage::Remove { key: 15 }),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Remove(15, Some("biscuits".to_string())),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Event(MapMessage::Remove { key: 25 }),
+            )
+            .await;
+            expect_event(&mut event_rx, TestMessage::Remove(25, None)).await;
+            expect_event(&mut event_rx, TestMessage::Event(MapMessage::Clear)).await;
+            expect_event(&mut event_rx, TestMessage::Clear(map)).await;
+
+            event_rx
+        },
+        MapMessageEncoder::new(MapOperationEncoder),
+    )
+    .await;
+    assert!(result.is_ok());
+    assert!(result.unwrap().recv().await.is_none());
+}
+
+#[tokio::test]
+async fn report_clear_events_before_sync() {
+    let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, String>>();
+    let (_command_tx, command_rx) = mpsc::channel(16);
+    let lifecycle = make_lifecycle(event_tx);
+    let model = MapDownlinkModel::new(command_rx, lifecycle);
+
+    let config = DownlinkConfig {
+        events_when_not_synced: true,
+        terminate_on_unlinked: true,
+    };
+
+    let mut map = OrdMap::new();
+    map.insert(10, "milk".to_string());
+    map.insert(15, "biscuits".to_string());
+
+    let result = run_downlink_task(
+        DownlinkTask::new(model),
+        config,
+        |mut writer, reader| async move {
+            let _reader = reader;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Linked)
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 10,
+                        value: "milk".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 15,
+                        value: "biscuits".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Clear,
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Clear,
+                })
+                .await;
+            expect_event(&mut event_rx, TestMessage::Linked).await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Event(MapMessage::Update {
+                    key: 10,
+                    value: "milk".to_string(),
+                }),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Update(10, None, "milk".to_string()),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Event(MapMessage::Update {
+                    key: 15,
+                    value: "biscuits".to_string(),
+                }),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Update(15, None, "biscuits".to_string()),
+            )
+            .await;
+
+            expect_event(&mut event_rx, TestMessage::Event(MapMessage::Clear)).await;
+            expect_event(&mut event_rx, TestMessage::Clear(map)).await;
+            expect_event(&mut event_rx, TestMessage::Event(MapMessage::Clear)).await;
+            expect_event(&mut event_rx, TestMessage::Clear(OrdMap::new())).await;
+
+            event_rx
+        },
+        MapMessageEncoder::new(MapOperationEncoder),
+    )
+    .await;
+    assert!(result.is_ok());
+    assert!(result.unwrap().recv().await.is_none());
+}
+
+#[tokio::test]
+async fn report_clear_events_after_sync() {
+    let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, String>>();
+    let (_command_tx, command_rx) = mpsc::channel(16);
+    let lifecycle = make_lifecycle(event_tx);
+    let model = MapDownlinkModel::new(command_rx, lifecycle);
+
+    let config = DownlinkConfig {
+        events_when_not_synced: false,
+        terminate_on_unlinked: true,
+    };
+
+    let mut map = OrdMap::new();
+    map.insert(10, "milk".to_string());
+    map.insert(15, "tea".to_string());
+
+    let result = run_downlink_task(
+        DownlinkTask::new(model),
+        config,
+        |mut writer, reader| async move {
+            let _reader = reader;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Linked)
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 10,
+                        value: "milk".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 15,
+                        value: "tea".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Clear,
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Clear,
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Synced)
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 10,
+                        value: "milk".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 15,
+                        value: "tea".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Clear,
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Clear,
+                })
+                .await;
+            expect_event(&mut event_rx, TestMessage::Linked).await;
+            expect_event(&mut event_rx, TestMessage::Synced(OrdMap::new())).await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Event(MapMessage::Update {
+                    key: 10,
+                    value: "milk".to_string(),
+                }),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Update(10, None, "milk".to_string()),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Event(MapMessage::Update {
+                    key: 15,
+                    value: "tea".to_string(),
+                }),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Update(15, None, "tea".to_string()),
+            )
+            .await;
+            expect_event(&mut event_rx, TestMessage::Event(MapMessage::Clear)).await;
+            expect_event(&mut event_rx, TestMessage::Clear(map)).await;
+            expect_event(&mut event_rx, TestMessage::Event(MapMessage::Clear)).await;
+            expect_event(&mut event_rx, TestMessage::Clear(OrdMap::new())).await;
+
+            event_rx
+        },
+        MapMessageEncoder::new(MapOperationEncoder),
+    )
+    .await;
+    assert!(result.is_ok());
+    assert!(result.unwrap().recv().await.is_none());
+}
+
+#[tokio::test]
+async fn report_take_events_before_sync() {
+    let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, String>>();
+    let (_command_tx, command_rx) = mpsc::channel(16);
+    let lifecycle = make_lifecycle(event_tx);
+    let model = MapDownlinkModel::new(command_rx, lifecycle);
+
+    let config = DownlinkConfig {
+        events_when_not_synced: true,
+        terminate_on_unlinked: true,
+    };
+
+    let result = run_downlink_task(
+        DownlinkTask::new(model),
+        config,
+        |mut writer, reader| async move {
+            let _reader = reader;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Linked)
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 10,
+                        value: "milk".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 15,
+                        value: "biscuits".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 20,
+                        value: "tea".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Take(2),
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Take(3),
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Clear,
+                })
+                .await;
+            expect_event(&mut event_rx, TestMessage::Linked).await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Event(MapMessage::Update {
+                    key: 10,
+                    value: "milk".to_string(),
+                }),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Update(10, None, "milk".to_string()),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Event(MapMessage::Update {
+                    key: 15,
+                    value: "biscuits".to_string(),
+                }),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Update(15, None, "biscuits".to_string()),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Event(MapMessage::Update {
+                    key: 20,
+                    value: "tea".to_string(),
+                }),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Update(20, None, "tea".to_string()),
+            )
+            .await;
+            expect_event(&mut event_rx, TestMessage::Event(MapMessage::Take(2))).await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Remove(10, Some("milk".to_string())),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Remove(15, Some("biscuits".to_string())),
+            )
+            .await;
+            expect_event(&mut event_rx, TestMessage::Event(MapMessage::Take(3))).await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Remove(20, Some("tea".to_string())),
+            )
+            .await;
+            expect_event(&mut event_rx, TestMessage::Event(MapMessage::Clear)).await;
+            expect_event(&mut event_rx, TestMessage::Clear(OrdMap::new())).await;
+
+            event_rx
+        },
+        MapMessageEncoder::new(MapOperationEncoder),
+    )
+    .await;
+    assert!(result.is_ok());
+    assert!(result.unwrap().recv().await.is_none());
+}
+
+#[tokio::test]
+async fn report_take_events_after_sync() {
+    let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, String>>();
+    let (_command_tx, command_rx) = mpsc::channel(16);
+    let lifecycle = make_lifecycle(event_tx);
+    let model = MapDownlinkModel::new(command_rx, lifecycle);
+
+    let config = DownlinkConfig {
+        events_when_not_synced: false,
+        terminate_on_unlinked: true,
+    };
+
+    let result = run_downlink_task(
+        DownlinkTask::new(model),
+        config,
+        |mut writer, reader| async move {
+            let _reader = reader;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Linked)
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 10,
+                        value: "milk".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 15,
+                        value: "biscuits".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 20,
+                        value: "tea".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Take(2),
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Take(3),
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Synced)
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 10,
+                        value: "milk".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 15,
+                        value: "biscuits".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 20,
+                        value: "tea".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Take(2),
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Take(3),
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Clear,
+                })
+                .await;
+            expect_event(&mut event_rx, TestMessage::Linked).await;
+            expect_event(&mut event_rx, TestMessage::Synced(OrdMap::new())).await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Event(MapMessage::Update {
+                    key: 10,
+                    value: "milk".to_string(),
+                }),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Update(10, None, "milk".to_string()),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Event(MapMessage::Update {
+                    key: 15,
+                    value: "biscuits".to_string(),
+                }),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Update(15, None, "biscuits".to_string()),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Event(MapMessage::Update {
+                    key: 20,
+                    value: "tea".to_string(),
+                }),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Update(20, None, "tea".to_string()),
+            )
+            .await;
+            expect_event(&mut event_rx, TestMessage::Event(MapMessage::Take(2))).await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Remove(10, Some("milk".to_string())),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Remove(15, Some("biscuits".to_string())),
+            )
+            .await;
+            expect_event(&mut event_rx, TestMessage::Event(MapMessage::Take(3))).await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Remove(20, Some("tea".to_string())),
+            )
+            .await;
+            expect_event(&mut event_rx, TestMessage::Event(MapMessage::Clear)).await;
+            expect_event(&mut event_rx, TestMessage::Clear(OrdMap::new())).await;
+
+            event_rx
+        },
+        MapMessageEncoder::new(MapOperationEncoder),
+    )
+    .await;
+    assert!(result.is_ok());
+    assert!(result.unwrap().recv().await.is_none());
+}
+
+#[tokio::test]
+async fn report_drop_events_before_sync() {
+    let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, String>>();
+    let (_command_tx, command_rx) = mpsc::channel(16);
+    let lifecycle = make_lifecycle(event_tx);
+    let model = MapDownlinkModel::new(command_rx, lifecycle);
+
+    let config = DownlinkConfig {
+        events_when_not_synced: true,
+        terminate_on_unlinked: true,
+    };
+
+    let result = run_downlink_task(
+        DownlinkTask::new(model),
+        config,
+        |mut writer, reader| async move {
+            let _reader = reader;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Linked)
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 10,
+                        value: "milk".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 15,
+                        value: "biscuits".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 20,
+                        value: "tea".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Drop(2),
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Drop(3),
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Clear,
+                })
+                .await;
+            expect_event(&mut event_rx, TestMessage::Linked).await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Event(MapMessage::Update {
+                    key: 10,
+                    value: "milk".to_string(),
+                }),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Update(10, None, "milk".to_string()),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Event(MapMessage::Update {
+                    key: 15,
+                    value: "biscuits".to_string(),
+                }),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Update(15, None, "biscuits".to_string()),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Event(MapMessage::Update {
+                    key: 20,
+                    value: "tea".to_string(),
+                }),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Update(20, None, "tea".to_string()),
+            )
+            .await;
+            expect_event(&mut event_rx, TestMessage::Event(MapMessage::Drop(2))).await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Remove(20, Some("tea".to_string())),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Remove(15, Some("biscuits".to_string())),
+            )
+            .await;
+            expect_event(&mut event_rx, TestMessage::Event(MapMessage::Drop(3))).await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Remove(10, Some("milk".to_string())),
+            )
+            .await;
+            expect_event(&mut event_rx, TestMessage::Event(MapMessage::Clear)).await;
+            expect_event(&mut event_rx, TestMessage::Clear(OrdMap::new())).await;
+
+            event_rx
+        },
+        MapMessageEncoder::new(MapOperationEncoder),
+    )
+    .await;
+    assert!(result.is_ok());
+    assert!(result.unwrap().recv().await.is_none());
+}
+
+#[tokio::test]
+async fn report_drop_events_after_sync() {
+    let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, String>>();
+    let (_command_tx, command_rx) = mpsc::channel(16);
+    let lifecycle = make_lifecycle(event_tx);
+    let model = MapDownlinkModel::new(command_rx, lifecycle);
+
+    let config = DownlinkConfig {
+        events_when_not_synced: false,
+        terminate_on_unlinked: true,
+    };
+
+    let result = run_downlink_task(
+        DownlinkTask::new(model),
+        config,
+        |mut writer, reader| async move {
+            let _reader = reader;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Linked)
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 10,
+                        value: "milk".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 15,
+                        value: "biscuits".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 20,
+                        value: "tea".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Drop(2),
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Drop(3),
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Synced)
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 10,
+                        value: "milk".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 15,
+                        value: "biscuits".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 20,
+                        value: "tea".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Drop(2),
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Drop(3),
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Clear,
+                })
+                .await;
+            expect_event(&mut event_rx, TestMessage::Linked).await;
+            expect_event(&mut event_rx, TestMessage::Synced(OrdMap::new())).await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Event(MapMessage::Update {
+                    key: 10,
+                    value: "milk".to_string(),
+                }),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Update(10, None, "milk".to_string()),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Event(MapMessage::Update {
+                    key: 15,
+                    value: "biscuits".to_string(),
+                }),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Update(15, None, "biscuits".to_string()),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Event(MapMessage::Update {
+                    key: 20,
+                    value: "tea".to_string(),
+                }),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Update(20, None, "tea".to_string()),
+            )
+            .await;
+            expect_event(&mut event_rx, TestMessage::Event(MapMessage::Drop(2))).await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Remove(20, Some("tea".to_string())),
+            )
+            .await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Remove(15, Some("biscuits".to_string())),
+            )
+            .await;
+            expect_event(&mut event_rx, TestMessage::Event(MapMessage::Drop(3))).await;
+            expect_event(
+                &mut event_rx,
+                TestMessage::Remove(10, Some("milk".to_string())),
+            )
+            .await;
+            expect_event(&mut event_rx, TestMessage::Event(MapMessage::Clear)).await;
+            expect_event(&mut event_rx, TestMessage::Clear(OrdMap::new())).await;
+
             event_rx
         },
         MapMessageEncoder::new(MapOperationEncoder),
@@ -417,107 +1466,158 @@ async fn terminate_after_corrupt_frame() {
     ));
 }
 
-// #[tokio::test]
-// async fn unlink_discards_value() {
-//     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, String>>();
-//     let (_command_tx, command_rx) = mpsc::channel(16);
-//     let lifecycle = make_lifecycle(event_tx);
-//     let model = MapDownlinkModel::new(command_rx, lifecycle);
-//
-//     let config = DownlinkConfig {
-//         events_when_not_synced: false,
-//         terminate_on_unlinked: false,
-//     };
-//
-//     let result = run_downlink_task(
-//         DownlinkTask::new(model),
-//         config,
-//         |mut writer, reader| async move {
-//             let _reader = reader;
-//             writer.send_value::<i32, String>(DownlinkNotification::Linked).await;
-//             writer
-//                 .send_value::<i32, String>(DownlinkNotification::Event { body: 5 })
-//                 .await;
-//             writer.send_value::<i32, String>(DownlinkNotification::Synced).await;
-//             writer
-//                 .send_value::<i32, String>(DownlinkNotification::Unlinked)
-//                 .await;
-//             writer.send_value::<i32, String>(DownlinkNotification::Linked).await;
-//             writer.send_value::<i32, String>(DownlinkNotification::Synced).await;
-//             expect_event(&mut event_rx, TestMessage::Linked).await;
-//             expect_event(&mut event_rx, TestMessage::Synced(5)).await;
-//             expect_event(&mut event_rx, TestMessage::Unlinked).await;
-//             expect_event(&mut event_rx, TestMessage::Linked).await;
-//         },
-//     )
-//     .await;
-//     assert!(matches!(result, Err(DownlinkTaskError::SyncedWithNoValue)));
-// }
-//
-// #[tokio::test]
-// async fn relink_downlink() {
-//     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, String>>();
-//     let (_command_tx, command_rx) = mpsc::channel(16);
-//     let lifecycle = make_lifecycle(event_tx);
-//     let model = MapDownlinkModel::new(command_rx, lifecycle);
-//
-//     let config = DownlinkConfig {
-//         events_when_not_synced: false,
-//         terminate_on_unlinked: false,
-//     };
-//
-//     let result = run_downlink_task(
-//         DownlinkTask::new(model),
-//         config,
-//         |mut writer, reader| async move {
-//             let _reader = reader;
-//             writer.send_value::<i32, String>(DownlinkNotification::Linked).await;
-//             writer
-//                 .send_value::<i32, String>(DownlinkNotification::Event { body: 5 })
-//                 .await;
-//             writer.send_value::<i32, String>(DownlinkNotification::Synced).await;
-//             writer
-//                 .send_value::<i32, String>(DownlinkNotification::Unlinked)
-//                 .await;
-//             writer.send_value::<i32, String>(DownlinkNotification::Linked).await;
-//             writer
-//                 .send_value::<i32, String>(DownlinkNotification::Event { body: 7 })
-//                 .await;
-//             writer.send_value::<i32, String>(DownlinkNotification::Synced).await;
-//             expect_event(&mut event_rx, TestMessage::Linked).await;
-//             expect_event(&mut event_rx, TestMessage::Synced(5)).await;
-//             expect_event(&mut event_rx, TestMessage::Unlinked).await;
-//             expect_event(&mut event_rx, TestMessage::Linked).await;
-//             expect_event(&mut event_rx, TestMessage::Synced(7)).await;
-//             event_rx
-//         },
-//     )
-//     .await;
-//     assert!(result.is_ok());
-//     assert!(result.unwrap().recv().await.is_none());
-// }
-//
-// #[tokio::test]
-// async fn send_on_downlink() {
-//     let (event_tx, _event_rx) = mpsc::unbounded_channel::<TestMessage<i32, String>>();
-//     let (command_tx, command_rx) = mpsc::channel(16);
-//     let lifecycle = make_lifecycle(event_tx);
-//     let model = MapDownlinkModel::new(command_rx, lifecycle);
-//
-//     let config = DownlinkConfig {
-//         events_when_not_synced: false,
-//         terminate_on_unlinked: true,
-//     };
-//
-//     let result = run_downlink_task(
-//         DownlinkTask::new(model),
-//         config,
-//         |writer, mut reader| async move {
-//             let _writer = writer;
-//             assert!(command_tx.send(12).await.is_ok());
-//             assert_eq!(reader.recv::<i32, String>().await, Ok(Some(12)));
-//         },
-//     )
-//     .await;
-//     assert!(result.is_ok());
-// }
+#[tokio::test]
+async fn unlink_discards_value() {
+    let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, String>>();
+    let (_command_tx, command_rx) = mpsc::channel(16);
+    let lifecycle = make_lifecycle(event_tx);
+    let model = MapDownlinkModel::new(command_rx, lifecycle);
+
+    let config = DownlinkConfig {
+        events_when_not_synced: false,
+        terminate_on_unlinked: false,
+    };
+
+    let mut map = OrdMap::new();
+    map.insert(10, "milk".to_string());
+
+    let result = run_downlink_task(
+        DownlinkTask::new(model),
+        config,
+        |mut writer, reader| async move {
+            let _reader = reader;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Linked)
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 10,
+                        value: "milk".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Synced)
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Unlinked)
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Synced)
+                .await;
+            expect_event(&mut event_rx, TestMessage::Linked).await;
+            expect_event(&mut event_rx, TestMessage::Synced(map)).await;
+            expect_event(&mut event_rx, TestMessage::Unlinked).await;
+        },
+        MapMessageEncoder::new(MapOperationEncoder),
+    )
+    .await;
+    assert!(matches!(result, Err(DownlinkTaskError::SyncedBeforeLinked)));
+}
+
+#[tokio::test]
+async fn relink_downlink() {
+    let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, String>>();
+    let (_command_tx, command_rx) = mpsc::channel(16);
+    let lifecycle = make_lifecycle(event_tx);
+    let model = MapDownlinkModel::new(command_rx, lifecycle);
+
+    let config = DownlinkConfig {
+        events_when_not_synced: false,
+        terminate_on_unlinked: false,
+    };
+
+    let mut first_map = OrdMap::new();
+    first_map.insert(10, "milk".to_string());
+
+    let mut second_map = OrdMap::new();
+    second_map.insert(15, "biscuits".to_string());
+
+    let result = run_downlink_task(
+        DownlinkTask::new(model),
+        config,
+        |mut writer, reader| async move {
+            let _reader = reader;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Linked)
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 10,
+                        value: "milk".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Synced)
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Unlinked)
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Linked)
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Event {
+                    body: MapMessage::Update {
+                        key: 15,
+                        value: "biscuits".to_string(),
+                    },
+                })
+                .await;
+            writer
+                .send_value::<i32, String>(DownlinkNotification::Synced)
+                .await;
+            expect_event(&mut event_rx, TestMessage::Linked).await;
+            expect_event(&mut event_rx, TestMessage::Synced(first_map)).await;
+            expect_event(&mut event_rx, TestMessage::Unlinked).await;
+            expect_event(&mut event_rx, TestMessage::Linked).await;
+            expect_event(&mut event_rx, TestMessage::Synced(second_map)).await;
+            event_rx
+        },
+        MapMessageEncoder::new(MapOperationEncoder),
+    )
+    .await;
+    assert!(result.is_ok());
+    assert!(result.unwrap().recv().await.is_none());
+}
+
+#[tokio::test]
+async fn send_on_downlink() {
+    let (event_tx, _event_rx) = mpsc::unbounded_channel::<TestMessage<i32, String>>();
+    let (command_tx, command_rx) = mpsc::channel(16);
+    let lifecycle = make_lifecycle(event_tx);
+    let model = MapDownlinkModel::new(command_rx, lifecycle);
+
+    let config = DownlinkConfig {
+        events_when_not_synced: false,
+        terminate_on_unlinked: true,
+    };
+
+    let result = run_downlink_task(
+        DownlinkTask::new(model),
+        config,
+        |writer, mut reader| async move {
+            let _writer = writer;
+            assert!(command_tx
+                .send(MapMessage::Update {
+                    key: 10,
+                    value: "milk".to_string(),
+                })
+                .await
+                .is_ok());
+            assert_eq!(
+                reader.recv::<MapMessage<i32, String>>().await,
+                Ok(Some(MapMessage::Update {
+                    key: 10,
+                    value: "milk".to_string(),
+                }))
+            );
+        },
+        MapMessageEncoder::new(MapOperationEncoder),
+    )
+    .await;
+    assert!(result.is_ok());
+}

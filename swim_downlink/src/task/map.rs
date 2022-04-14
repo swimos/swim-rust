@@ -220,11 +220,11 @@ where
             let mut map_iter = map.into_iter().enumerate();
 
             for (idx, (key, prev_value)) in &mut map_iter {
-                if n > idx as u64 {
-                    if with_callbacks {
-                        lifecycle.on_removed(&key, Some(&prev_value)).await;
-                    }
-                } else {
+                if with_callbacks {
+                    lifecycle.on_removed(&key, Some(&prev_value)).await;
+                }
+
+                if n - 1 <= idx as u64 {
                     break;
                 }
             }
@@ -235,11 +235,11 @@ where
             let mut map_iter = map.into_iter().rev().enumerate();
 
             for (idx, (key, prev_value)) in &mut map_iter {
-                if n > idx as u64 {
-                    if with_callbacks {
-                        lifecycle.on_removed(&key, Some(&prev_value)).await;
-                    }
-                } else {
+                if with_callbacks {
+                    lifecycle.on_removed(&key, Some(&prev_value)).await;
+                }
+
+                if n - 1 <= idx as u64 {
                     break;
                 }
             }
