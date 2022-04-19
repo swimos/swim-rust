@@ -40,6 +40,9 @@ pub mod collections {
 #[cfg(feature = "time")]
 pub use swim_time as time;
 
+#[cfg(feature = "multi_reader")]
+pub use swim_multi_reader;
+
 #[cfg(any(feature = "io", feature = "buf_channel"))]
 pub mod io {
 
