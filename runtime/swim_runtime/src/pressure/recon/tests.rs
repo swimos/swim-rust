@@ -15,8 +15,7 @@
 use bytes::{Bytes, BytesMut};
 use swim_api::protocol::map::{MapOperation, RawMapOperation};
 use tokio_util::codec::Encoder;
-
-use crate::downlink::interpretation::MapOperationReconEncoder;
+use super::MapOperationReconEncoder;
 
 #[test]
 fn recon_encode_clear() {

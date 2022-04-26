@@ -38,15 +38,12 @@ use crate::compat::{
     Notification, Operation, RawRequestMessage, RawRequestMessageEncoder, RawResponseMessage,
     RawResponseMessageDecoder,
 };
-use crate::downlink::backpressure::DownlinkBackpressure;
+use crate::pressure::DownlinkBackpressure;
 use crate::downlink::failure::BadFrameResponse;
 use crate::routing::RoutingAddr;
 
-mod backpressure;
 pub mod failure;
 mod interpretation;
-mod key;
-mod map_queue;
 #[cfg(test)]
 mod tests;
 
@@ -1081,7 +1078,7 @@ use futures::ready;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use self::backpressure::{MapBackpressure, ValueBackpressure};
+use crate::pressure::{MapBackpressure, ValueBackpressure};
 use self::failure::{BadFrameStrategy, InfallibleStrategy};
 use self::interpretation::{value_interpretation, DownlinkInterpretation, MapInterpretation};
 

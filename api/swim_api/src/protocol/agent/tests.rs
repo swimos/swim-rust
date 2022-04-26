@@ -178,7 +178,7 @@ fn decode_event_value_lane_response() {
 fn encode_sync_complete_map_lane_response() {
     let mut encoder = MapLaneResponseEncoder::default();
     let mut buffer = BytesMut::new();
-    let request: MapLaneResponse<i32, Example> = MapLaneResponse::SyncComplete(7574);
+    let request: MapLaneResponse<i32, Example> = MapLaneResponse::SyncComplete(Uuid::from_u128(7574));
     assert!(encoder.encode(request, &mut buffer).is_ok());
 
     assert_eq!(buffer.remaining(), 9);
@@ -291,7 +291,7 @@ fn round_trip_map_response(response: MapLaneResponse<i32, Example>) {
 
 #[test]
 fn decode_sync_complete_map_lane_response() {
-    round_trip_map_response(MapLaneResponse::SyncComplete(7482));
+    round_trip_map_response(MapLaneResponse::SyncComplete(Uuid::from_u128(7482)));
 }
 
 #[test]

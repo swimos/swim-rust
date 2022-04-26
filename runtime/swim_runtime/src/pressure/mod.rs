@@ -21,7 +21,12 @@ use swim_api::protocol::{
 };
 use tokio_util::codec::{Decoder, Encoder};
 
-use super::{interpretation::MapOperationReconEncoder, map_queue::MapOperationQueue};
+use map_queue::MapOperationQueue;
+mod map_queue;
+mod key;
+pub mod recon;
+
+use recon::MapOperationReconEncoder;
 
 /// Backpressure strategy for the output task of a downlink. This is used to encode the
 /// difference in behaviour between different kinds of downlink (particuarly value and
@@ -57,12 +62,36 @@ pub struct ValueBackpressure {
     current: BytesMut,
 }
 
+impl ValueBackpressure {
+
+    pub fn push_bytes(&mut self, body: Bytes) {
+        let ValueBackpressure { current } = self;
+
+        current.clear();
+        current.reserve(body.len());
+        current.put(body);
+    }
+
+    pub fn has_data(&self) -> bool {
+        !self.current.is_empty()
+    }
+
+}
+
 /// Backpressure implementation for map-like downlinks. Map updates are pushed into a
 /// [`MapOperationQueue`] that relieves backpressure on a per-key basis.
 #[derive(Debug, Default)]
 pub struct MapBackpressure {
     queue: MapOperationQueue,
     encoder: MapOperationReconEncoder,
+}
+
+impl MapBackpressure {
+
+    pub fn push(&mut self, operation: RawMapOperation) -> Result<(), std::str::Utf8Error> {
+        self.queue.push(operation)
+    }
+
 }
 
 impl DownlinkBackpressure for ValueBackpressure {
@@ -76,17 +105,13 @@ impl DownlinkBackpressure for ValueBackpressure {
     }
 
     fn push_operation(&mut self, op: Self::Operation) -> Result<(), Infallible> {
-        let ValueBackpressure { current } = self;
         let DownlinkOperation { body } = op;
-
-        current.clear();
-        current.reserve(body.len());
-        current.put(body);
+        self.push_bytes(body);
         Ok(())
     }
 
     fn has_data(&self) -> bool {
-        !self.current.is_empty()
+        ValueBackpressure::has_data(self)
     }
 
     fn write_direct(&mut self, op: Self::Operation, buffer: &mut BytesMut) {

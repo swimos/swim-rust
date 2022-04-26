@@ -168,6 +168,10 @@ pub type RawResponseMessage = ResponseMessage<Bytes, Bytes>;
 #[derive(Debug)]
 pub struct RawRequestMessageEncoder;
 
+/// Tokio [`Encoder`] to encode a [`RawResponseMessage`] as a byte stream.
+#[derive(Debug, Default)]
+pub struct RawResponseMessageEncoder;
+
 #[derive(Debug)]
 /// Tokio [`Encoder`] to encode an [`ResponseMessage`] as a byte stream.
 pub struct ResponseMessageEncoder;
@@ -230,6 +234,67 @@ impl<'a> Encoder<RawRequestMessage<'a>> for RawRequestMessageEncoder {
                 dst.put_slice(lane.as_bytes());
                 dst.reserve(body.len());
                 dst.put_slice(body);
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<B1, B2> Encoder<ResponseMessage<B1, B2>> for RawResponseMessageEncoder
+where
+    B1: AsRef<[u8]>,
+    B2: AsRef<[u8]>,
+{
+    type Error = std::io::Error;
+
+    fn encode(
+        &mut self,
+        item: ResponseMessage<B1, B2>,
+        dst: &mut BytesMut,
+    ) -> Result<(), Self::Error> {
+        let ResponseMessage {
+            origin: source,
+            path: RelativePath { node, lane },
+            envelope,
+        } = item;
+        dst.reserve(HEADER_INIT_LEN + lane.len() + node.len());
+        dst.put_u128(source.uuid().as_u128());
+        let node_len = u32::try_from(node.len()).expect("Node name to long.");
+        let lane_len = u32::try_from(lane.len()).expect("Lane name to long.");
+        dst.put_u32(node_len);
+        dst.put_u32(lane_len);
+        match envelope {
+            Notification::Linked => {
+                dst.put_u64(LINKED << OP_SHIFT);
+                dst.put_slice(node.as_bytes());
+                dst.put_slice(lane.as_bytes());
+            }
+            Notification::Synced => {
+                dst.put_u64(SYNCED << OP_SHIFT);
+                dst.put_slice(node.as_bytes());
+                dst.put_slice(lane.as_bytes());
+            }
+            Notification::Unlinked(body) => {
+                let body_len = body.as_ref().map(|b| b.as_ref().len()).unwrap_or_default();
+                dst.put_u64(body_len as u64 | (UNLINKED << OP_SHIFT));
+                dst.put_slice(node.as_bytes());
+                dst.put_slice(lane.as_bytes());
+                dst.reserve(body_len);
+                if let Some(body) = body {
+                    dst.put_slice(body.as_ref());
+                }
+            }
+            Notification::Event(body) => {
+                let body_bytes = body.as_ref();
+                let body_len = body_bytes.len() as u64;
+                if body_len & OP_MASK != 0 {
+                    panic!("Body too large.")
+                }
+                dst.put_u64(body_len | (EVENT << OP_SHIFT));
+                dst.put_slice(node.as_bytes());
+                dst.put_slice(lane.as_bytes());
+                dst.reserve(body_bytes.len());
+                dst.put_slice(body_bytes);
             }
         }
         Ok(())

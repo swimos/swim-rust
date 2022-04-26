@@ -22,6 +22,7 @@ pub mod compat;
 pub mod configuration;
 pub mod downlink;
 pub mod error;
+pub mod pressure;
 pub mod remote;
 pub mod routing;
 pub mod ws;

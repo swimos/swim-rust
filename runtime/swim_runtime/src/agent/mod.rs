@@ -21,6 +21,7 @@ use swim_api::{
 use swim_model::Text;
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use tokio::sync::{mpsc, oneshot};
+use uuid::Uuid;
 
 use std::fmt::Debug;
 
@@ -118,11 +119,12 @@ impl Debug for AgentRuntimeRequest {
 
 #[derive(Debug)]
 pub struct AgentAttachmentRequest {
+    pub id: Uuid,
     pub io: Io,
 }
 
 impl AgentAttachmentRequest {
-    pub fn new(io: Io) -> Self {
-        AgentAttachmentRequest { io }
+    pub fn new(id: Uuid, io: Io) -> Self {
+        AgentAttachmentRequest { id, io }
     }
 }

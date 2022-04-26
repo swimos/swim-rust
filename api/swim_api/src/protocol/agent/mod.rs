@@ -52,8 +52,8 @@ impl Default for LaneResponseKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ValueLaneResponse<T> {
-    kind: LaneResponseKind,
-    value: T,
+    pub kind: LaneResponseKind,
+    pub value: T,
 }
 
 impl<T> ValueLaneResponse<T> {
@@ -78,7 +78,7 @@ pub enum MapLaneResponse<K, V> {
         kind: LaneResponseKind,
         operation: MapOperation<K, V>,
     },
-    SyncComplete(u64),
+    SyncComplete(Uuid),
 }
 
 const COMMAND: u8 = 0;
@@ -394,7 +394,7 @@ where
             MapLaneResponse::SyncComplete(id) => {
                 dst.reserve(TAG_LEN + ID_LEN);
                 dst.put_u8(SYNC_COMPLETE);
-                dst.put_u64(id);
+                dst.put_u128(id.as_u128());
             }
         }
         Ok(())
@@ -455,7 +455,7 @@ impl Decoder for MapLaneResponseDecoder {
                             if input.remaining() < ID_LEN {
                                 break Ok(None);
                             }
-                            let id = input.get_u64();
+                            let id = Uuid::from_u128(input.get_u128());
                             src.advance(TAG_LEN + ID_LEN);
                             break Ok(Some(MapLaneResponse::SyncComplete(id)));
                         }
