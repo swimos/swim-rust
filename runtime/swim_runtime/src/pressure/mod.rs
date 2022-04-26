@@ -22,8 +22,8 @@ use swim_api::protocol::{
 use tokio_util::codec::{Decoder, Encoder};
 
 use map_queue::MapOperationQueue;
-mod map_queue;
 mod key;
+mod map_queue;
 pub mod recon;
 
 use recon::MapOperationReconEncoder;
@@ -63,7 +63,6 @@ pub struct ValueBackpressure {
 }
 
 impl ValueBackpressure {
-
     pub fn push_bytes(&mut self, body: Bytes) {
         let ValueBackpressure { current } = self;
 
@@ -75,7 +74,6 @@ impl ValueBackpressure {
     pub fn has_data(&self) -> bool {
         !self.current.is_empty()
     }
-
 }
 
 /// Backpressure implementation for map-like downlinks. Map updates are pushed into a
@@ -87,11 +85,9 @@ pub struct MapBackpressure {
 }
 
 impl MapBackpressure {
-
     pub fn push(&mut self, operation: RawMapOperation) -> Result<(), std::str::Utf8Error> {
         self.queue.push(operation)
     }
-
 }
 
 impl DownlinkBackpressure for ValueBackpressure {

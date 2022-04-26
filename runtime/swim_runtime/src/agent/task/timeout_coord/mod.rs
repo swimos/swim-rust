@@ -12,7 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{sync::{atomic::{AtomicU8, Ordering}, Arc}, pin::Pin, task::{Context, Poll}, cell::Cell};
+use std::{
+    cell::Cell,
+    pin::Pin,
+    sync::{
+        atomic::{AtomicU8, Ordering},
+        Arc,
+    },
+    task::{Context, Poll},
+};
 
 use futures::{task::AtomicWaker, Future};
 use static_assertions::{assert_impl_all, assert_not_impl_any};
@@ -60,20 +68,34 @@ assert_not_impl_any!(Receiver: Clone);
 pub fn timeout_coordinator() -> (Voter, Voter, Receiver) {
     let inner = Arc::new(Inner {
         flags: AtomicU8::new(INIT),
-        waker: Default::default()
+        waker: Default::default(),
     });
-    let sender1 = Voter { flag: FIRST, inverse: SECOND, voted: Cell::new(false), inner: inner.clone() };
-    let sender2 = Voter { flag: SECOND, inverse: FIRST, voted: Cell::new(false), inner: inner.clone() };
+    let sender1 = Voter {
+        flag: FIRST,
+        inverse: SECOND,
+        voted: Cell::new(false),
+        inner: inner.clone(),
+    };
+    let sender2 = Voter {
+        flag: SECOND,
+        inverse: FIRST,
+        voted: Cell::new(false),
+        inner: inner.clone(),
+    };
     let receiver = Receiver { inner };
     (sender1, sender2, receiver)
 }
 
 impl Voter {
-
     /// Vote for the process to stop. Returns true if unanimity has been reached. This can
     /// be called any number of times.
     pub fn vote(&self) -> bool {
-        let Voter { flag, inverse, voted, inner } = self;
+        let Voter {
+            flag,
+            inverse,
+            voted,
+            inner,
+        } = self;
         let Inner { flags, waker } = &**inner;
         let before = flags.fetch_or(*flag, Ordering::Release);
         voted.set(true);
@@ -90,11 +112,15 @@ impl Voter {
     /// nothing. Sequences of voute and rescind can be called any number of times in any order.
     /// Once unanimity has been reached, no calls will have any effect.
     pub fn rescind(&self) -> bool {
-        let Voter { flag, voted, inner, .. } = self;
+        let Voter {
+            flag, voted, inner, ..
+        } = self;
         let Inner { flags, .. } = &**inner;
-        voted.get() && flags.compare_exchange(*flag, INIT, Ordering::Relaxed, Ordering::Relaxed).is_err()
+        voted.get()
+            && flags
+                .compare_exchange(*flag, INIT, Ordering::Relaxed, Ordering::Relaxed)
+                .is_err()
     }
-
 }
 
 impl Drop for Voter {
@@ -110,7 +136,7 @@ impl Future for Receiver {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let Inner{ flags, waker } = &*self.get_mut().inner;
+        let Inner { flags, waker } = &*self.get_mut().inner;
         if flags.load(Ordering::Relaxed) == UNANIMITY {
             Poll::Ready(())
         } else {

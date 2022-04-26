@@ -134,7 +134,7 @@ fn round_trip_value_response(response: ValueLaneResponse<Example>) {
     let mut buffer = BytesMut::new();
     assert!(write!(buffer, "{}", print_recon_compact(value)).is_ok());
     let with_bytes = ValueLaneResponse {
-        kind: kind.clone(),
+        kind: *kind,
         value: buffer.freeze(),
     };
     let mut encoder = ValueLaneResponseEncoder;
@@ -178,7 +178,8 @@ fn decode_event_value_lane_response() {
 fn encode_sync_complete_map_lane_response() {
     let mut encoder = MapLaneResponseEncoder::default();
     let mut buffer = BytesMut::new();
-    let request: MapLaneResponse<i32, Example> = MapLaneResponse::SyncComplete(Uuid::from_u128(7574));
+    let request: MapLaneResponse<i32, Example> =
+        MapLaneResponse::SyncComplete(Uuid::from_u128(7574));
     assert!(encoder.encode(request, &mut buffer).is_ok());
 
     assert_eq!(buffer.remaining(), 9);
@@ -204,7 +205,7 @@ fn encode_sync_event_map_lane_response() {
     };
     let request: MapLaneResponse<i32, Example> = MapLaneResponse::Event {
         kind: LaneResponseKind::SyncEvent(Uuid::from_u128(85874)),
-        operation: operation.clone(),
+        operation: operation,
     };
 
     let exp_op = expected_operation(operation);
@@ -229,7 +230,7 @@ fn encode_event_map_lane_response() {
     };
     let request: MapLaneResponse<i32, Example> = MapLaneResponse::Event {
         kind: LaneResponseKind::StandardEvent,
-        operation: operation.clone(),
+        operation: operation,
     };
 
     let exp_op = expected_operation(operation);

@@ -15,9 +15,7 @@
 use std::convert::Infallible;
 
 use bytes::{BufMut, Bytes, BytesMut};
-use swim_api::protocol::map::{
-    extract_header, MapMessageEncoder, RawMapOperationEncoder,
-};
+use swim_api::protocol::map::{extract_header, MapMessageEncoder, RawMapOperationEncoder};
 use swim_recon::parser::MessageExtractError;
 use tokio_util::codec::Encoder;
 

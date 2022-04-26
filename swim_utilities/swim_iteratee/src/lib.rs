@@ -1089,8 +1089,7 @@ where
             scan,
             ..
         } = self;
-        iteratee
-            .feed(input).and_then(|out| (*scan)(state, out))
+        iteratee.feed(input).and_then(|out| (*scan)(state, out))
     }
 
     fn flush(self) -> Option<Self::Item>
@@ -1143,8 +1142,7 @@ where
             state,
             scan,
         } = self;
-        iteratee
-            .feed(input).and_then(|out| (*scan)(state, out))
+        iteratee.feed(input).and_then(|out| (*scan)(state, out))
     }
 
     fn demand_hint(&self) -> (usize, Option<usize>) {
@@ -1167,7 +1165,8 @@ where
     fn feed(&mut self, input: S) -> Option<Self::Item> {
         let IterateeAndThen { first, second } = self;
         first
-            .feed(input).and_then(|intermediate| second.feed(intermediate))
+            .feed(input)
+            .and_then(|intermediate| second.feed(intermediate))
     }
 
     fn flush(self) -> Option<Self::Item>
@@ -1176,7 +1175,8 @@ where
     {
         let IterateeAndThen { first, mut second } = self;
         first
-            .flush().and_then(|intermediate| second.feed(intermediate))
+            .flush()
+            .and_then(|intermediate| second.feed(intermediate))
             .or_else(|| second.flush())
     }
 

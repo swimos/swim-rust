@@ -12,28 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::hash_map::Entry;
-use std::collections::{HashSet, VecDeque};
 use std::fmt::Debug;
 use std::future::Future;
 use std::pin::Pin;
-use std::str::Utf8Error;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use std::{collections::HashMap, num::NonZeroUsize};
 
-use crate::compat::{
-    Notification, Operation, RawRequestMessageDecoder, RawResponseMessageEncoder, RequestMessage,
-    ResponseMessage,
-};
-use crate::pressure::recon::MapOperationReconEncoder;
-use crate::pressure::{DownlinkBackpressure, MapBackpressure, ValueBackpressure};
+use crate::compat::{Notification, Operation, RawRequestMessageDecoder, RequestMessage};
+use crate::pressure::DownlinkBackpressure;
 use crate::routing::RoutingAddr;
 
+use self::links::Links;
+use self::uplink::{RemoteSender, SpecialUplinkAction, UplinkResponse, WriteAction, WriteResult};
+use self::write_tracker::RemoteWriteTracker;
+
 use super::{AgentAttachmentRequest, AgentRuntimeRequest, Io};
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::{Bytes, BytesMut};
 use futures::ready;
-use futures::stream::FuturesUnordered;
 use futures::{
     future::{join, select as fselect, Either},
     stream::{select as sselect, SelectAll},
@@ -48,9 +44,7 @@ use swim_api::{
         agent::{
             LaneRequest, LaneRequestEncoder, MapLaneResponseDecoder, ValueLaneResponseDecoder,
         },
-        map::{
-            extract_header, MapMessage, MapMessageEncoder, MapOperation, RawMapOperationEncoder,
-        },
+        map::{extract_header, MapMessage, MapMessageEncoder, RawMapOperationEncoder},
         WithLengthBytesCodec,
     },
 };
@@ -58,7 +52,7 @@ use swim_model::path::RelativePath;
 use swim_model::Text;
 use swim_recon::parser::MessageExtractError;
 use swim_utilities::future::{immediate_or_join, StopAfterError, SwimStreamExt};
-use swim_utilities::io::byte_channel::{self, byte_channel, ByteReader, ByteWriter};
+use swim_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
 use swim_utilities::trigger;
 use thiserror::Error;
 use tokio::sync::mpsc;
@@ -67,7 +61,13 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{Encoder, FramedRead, FramedWrite};
 use uuid::Uuid;
 
+mod init;
+mod links;
 mod timeout_coord;
+mod uplink;
+mod write_tracker;
+
+pub use init::AgentInitTask;
 
 #[derive(Debug, Clone, Copy)]
 pub struct AgentRuntimeConfig {
@@ -75,12 +75,6 @@ pub struct AgentRuntimeConfig {
     /// Size of the queue for accepting new subscribers to a downlink.
     pub attachment_queue_size: NonZeroUsize,
     pub inactive_timeout: Duration,
-}
-
-pub struct AgentInitTask {
-    requests: mpsc::Receiver<AgentRuntimeRequest>,
-    init_complete: trigger::Receiver,
-    config: AgentRuntimeConfig,
 }
 
 pub struct LaneEndpoint<T> {
@@ -105,11 +99,7 @@ impl LaneEndpoint<Io> {
             io: rx,
         };
 
-        let write = LaneEndpoint {
-            name: name.clone(),
-            kind,
-            io: tx,
-        };
+        let write = LaneEndpoint { name, kind, io: tx };
 
         (read, write)
     }
@@ -136,74 +126,6 @@ impl AgentInit {
             attachment_rx,
             stopping,
             config,
-        }
-    }
-}
-
-pub struct NoLanes;
-
-impl AgentInitTask {
-    pub fn new(
-        requests: mpsc::Receiver<AgentRuntimeRequest>,
-        init_complete: trigger::Receiver,
-        config: AgentRuntimeConfig,
-    ) -> Self {
-        AgentInitTask {
-            requests,
-            init_complete,
-            config,
-        }
-    }
-
-    pub async fn run(self) -> Result<AgentInit, NoLanes> {
-        let AgentInitTask {
-            requests,
-            init_complete,
-            config: agent_config,
-        } = self;
-
-        let mut request_stream = ReceiverStream::new(requests);
-        let mut terminated = (&mut request_stream).take_until(init_complete);
-
-        let mut endpoints = vec![];
-
-        while let Some(request) = terminated.next().await {
-            match request {
-                AgentRuntimeRequest::AddLane {
-                    name,
-                    kind,
-                    config,
-                    promise,
-                } => {
-                    let LaneConfig {
-                        input_buffer_size,
-                        output_buffer_size,
-                    } = config.unwrap_or(agent_config.default_lane_config);
-
-                    let (in_tx, in_rx) = byte_channel::byte_channel(input_buffer_size);
-                    let (out_tx, out_rx) = byte_channel::byte_channel(output_buffer_size);
-
-                    let io = (in_rx, out_tx);
-                    if promise.send(Ok(io)).is_ok() {
-                        endpoints.push(LaneEndpoint {
-                            name,
-                            kind,
-                            io: (out_rx, in_tx),
-                        });
-                    }
-                }
-                AgentRuntimeRequest::OpenDownlink { .. } => {
-                    todo!("Opening downlinks from agents not implemented yet.")
-                }
-            }
-        }
-        if endpoints.is_empty() {
-            Err(NoLanes)
-        } else {
-            Ok(AgentInit {
-                rx: request_stream.into_inner(),
-                endpoints,
-            })
         }
     }
 }
@@ -326,15 +248,6 @@ struct LaneReceiver<D> {
 
 type ValueLaneReceiver = LaneReceiver<ValueLaneResponseDecoder>;
 type MapLaneReceiver = LaneReceiver<MapLaneResponseDecoder>;
-
-#[derive(Debug, Clone)]
-enum UplinkResponse {
-    SyncedValue(Bytes),
-    SyncedMap,
-    Value(Bytes),
-    Map(MapOperation<Bytes, Bytes>),
-    Special(SpecialUplinkAction),
-}
 
 #[derive(Debug)]
 struct RawLaneResponse {
@@ -858,146 +771,6 @@ impl LaneChannels {
     }
 }
 
-#[derive(Debug, Default)]
-struct Links {
-    forward: HashMap<u64, HashSet<Uuid>>,
-    backwards: HashMap<Uuid, HashSet<u64>>,
-}
-
-impl Links {
-    fn insert(&mut self, lane_id: u64, remote_id: Uuid) {
-        let Links { forward, backwards } = self;
-        forward.entry(lane_id).or_default().insert(remote_id);
-        backwards.entry(remote_id).or_default().insert(lane_id);
-    }
-
-    fn remove(&mut self, lane_id: u64, remote_id: Uuid) {
-        let Links { forward, backwards } = self;
-
-        if let Entry::Occupied(mut entry) = forward.entry(lane_id) {
-            entry.get_mut().remove(&remote_id);
-            if entry.get().is_empty() {
-                entry.remove();
-            }
-        }
-        if let Entry::Occupied(mut entry) = backwards.entry(remote_id) {
-            entry.get_mut().remove(&lane_id);
-            if entry.get().is_empty() {
-                entry.remove();
-            }
-        }
-    }
-
-    fn linked_from(&self, id: u64) -> Option<&HashSet<Uuid>> {
-        self.forward.get(&id)
-    }
-
-    fn remove_lane(&mut self, id: u64) -> HashSet<Uuid> {
-        let Links { forward, backwards } = self;
-        let remote_ids = forward.remove(&id).unwrap_or_default();
-        for remote_id in remote_ids.iter() {
-            if let Some(set) = backwards.get_mut(&remote_id) {
-                set.remove(&id);
-            }
-        }
-        remote_ids
-    }
-
-    fn remove_remote(&mut self, id: Uuid) {
-        let Links { forward, backwards } = self;
-        let lane_ids = backwards.remove(&id).unwrap_or_default();
-        for lane_id in lane_ids.iter() {
-            if let Some(set) = forward.get_mut(&lane_id) {
-                set.remove(&id);
-            }
-        }
-    }
-}
-
-#[derive(Debug, Default)]
-struct Uplink<B> {
-    queued: bool,
-    send_synced: bool,
-    backpressure: B,
-}
-
-#[derive(Debug)]
-struct RemoteSender {
-    sender: FramedWrite<ByteWriter, RawResponseMessageEncoder>,
-    identity: RoutingAddr,
-    node: Text,
-    prev_lane: Option<u64>,
-    lane: String,
-}
-
-impl RemoteSender {
-    fn remote_id(&self) -> Uuid {
-        *self.identity.uuid()
-    }
-
-    fn update_lane(&mut self, lane_id: u64, lane_names: &HashMap<u64, Text>) {
-        let RemoteSender {
-            prev_lane, lane, ..
-        } = self;
-        if *prev_lane != Some(lane_id) {
-            *prev_lane = Some(lane_id);
-            lane.clear();
-            lane.push_str(lane_names[&lane_id].as_str());
-        }
-    }
-
-    async fn send_notification(
-        &mut self,
-        notification: Notification<&BytesMut, &[u8]>,
-        with_flush: bool,
-    ) -> Result<(), std::io::Error> {
-        let RemoteSender {
-            sender,
-            identity,
-            node,
-            lane,
-            ..
-        } = self;
-
-        let message: ResponseMessage<&BytesMut, &[u8]> = ResponseMessage {
-            origin: *identity,
-            path: RelativePath::new(node.as_str(), lane.as_str()),
-            envelope: notification,
-        };
-        if with_flush {
-            sender.send(message).await?;
-        } else {
-            sender.feed(message).await?;
-        }
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone)]
-enum SpecialUplinkAction {
-    Linked(u64),
-    Unlinked(u64, Text),
-    LaneNotFound(Text),
-}
-
-type WriteResult = (RemoteSender, BytesMut, Result<(), std::io::Error>);
-
-struct Uplinks<F> {
-    writer: Option<(RemoteSender, BytesMut)>,
-    value_uplinks: HashMap<u64, Uplink<ValueBackpressure>>,
-    map_uplinks: HashMap<u64, Uplink<MapBackpressure>>,
-    write_queue: VecDeque<(UplinkKind, u64)>,
-    special_queue: VecDeque<SpecialUplinkAction>,
-    write_op: F,
-}
-
-enum WriteAction {
-    Event,
-    EventAndSynced,
-    MapSynced(Option<MapBackpressure>),
-    Special(SpecialUplinkAction),
-}
-
 async fn perform_write(
     mut writer: RemoteSender,
     mut buffer: BytesMut,
@@ -1043,7 +816,7 @@ async fn perform_write_inner(
                 .send_notification(Notification::Unlinked(Some(msg.as_bytes())), true)
                 .await?;
         }
-        WriteAction::Special(SpecialUplinkAction::LaneNotFound(_)) => {
+        WriteAction::Special(SpecialUplinkAction::LaneNotFound) => {
             writer
                 .send_notification(Notification::Unlinked(Some(LANE_NOT_FOUND_BODY)), true)
                 .await?;
@@ -1051,298 +824,6 @@ async fn perform_write_inner(
     }
 
     Ok(())
-}
-
-fn write_to_buffer(response: UplinkResponse, buffer: &mut BytesMut) -> WriteAction {
-    match response {
-        UplinkResponse::SyncedValue(body) => {
-            buffer.clear();
-            buffer.reserve(body.len());
-            buffer.put(body);
-            WriteAction::EventAndSynced
-        }
-        UplinkResponse::SyncedMap => WriteAction::MapSynced(None),
-        UplinkResponse::Value(body) => {
-            buffer.clear();
-            buffer.reserve(body.len());
-            buffer.put(body);
-            WriteAction::Event
-        }
-        UplinkResponse::Map(operation) => {
-            let mut encoder = MapOperationReconEncoder;
-            encoder
-                .encode(operation, buffer)
-                .expect("Wiritng map operations is infallible.");
-            WriteAction::Event
-        }
-        UplinkResponse::Special(special) => WriteAction::Special(special),
-    }
-}
-
-impl<F, W> Uplinks<F>
-where
-    F: Fn(RemoteSender, BytesMut, WriteAction) -> W + Clone,
-    W: Future<Output = WriteResult> + Send + 'static,
-{
-    fn new(node: Text, identity: RoutingAddr, writer: ByteWriter, write_op: F) -> Self {
-        let sender = RemoteSender {
-            sender: FramedWrite::new(writer, Default::default()),
-            identity,
-            node,
-            prev_lane: None,
-            lane: Default::default(),
-        };
-        Uplinks {
-            writer: Some((sender, Default::default())),
-            value_uplinks: Default::default(),
-            map_uplinks: Default::default(),
-            write_queue: Default::default(),
-            special_queue: Default::default(),
-            write_op,
-        }
-    }
-
-    fn push(
-        &mut self,
-        lane_id: u64,
-        event: UplinkResponse,
-        lane_names: &HashMap<u64, Text>,
-    ) -> Result<Option<W>, Utf8Error> {
-        let Uplinks {
-            writer,
-            value_uplinks,
-            map_uplinks,
-            write_queue,
-            special_queue,
-            write_op,
-        } = self;
-        if let Some((mut writer, mut buffer)) = writer.take() {
-            let action = write_to_buffer(event, &mut buffer);
-            writer.update_lane(lane_id, lane_names);
-            Ok(Some(write_op(writer, buffer, action)))
-        } else {
-            match event {
-                UplinkResponse::Value(body) => {
-                    let Uplink {
-                        queued,
-                        backpressure,
-                        ..
-                    } = value_uplinks.entry(lane_id).or_default();
-                    backpressure.push_bytes(body);
-                    if !*queued {
-                        write_queue.push_back((UplinkKind::Value, lane_id));
-                        *queued = true;
-                    }
-                }
-                UplinkResponse::Map(operation) => {
-                    let Uplink {
-                        queued,
-                        backpressure,
-                        ..
-                    } = map_uplinks.entry(lane_id).or_default();
-                    backpressure.push(operation)?;
-                    if !*queued {
-                        write_queue.push_back((UplinkKind::Map, lane_id));
-                        *queued = true;
-                    }
-                }
-                UplinkResponse::SyncedValue(body) => {
-                    let Uplink {
-                        queued,
-                        send_synced,
-                        backpressure,
-                        ..
-                    } = value_uplinks.entry(lane_id).or_default();
-                    backpressure.push_bytes(body);
-                    *send_synced = true;
-                    if !*queued {
-                        write_queue.push_back((UplinkKind::Value, lane_id));
-                        *queued = true;
-                    }
-                }
-                UplinkResponse::SyncedMap => {
-                    let Uplink {
-                        queued,
-                        send_synced,
-                        ..
-                    } = map_uplinks.entry(lane_id).or_default();
-                    *send_synced = true;
-                    if !*queued {
-                        write_queue.push_back((UplinkKind::Map, lane_id));
-                        *queued = true;
-                    }
-                }
-                UplinkResponse::Special(special) => {
-                    if let SpecialUplinkAction::Unlinked(id, _) = &special {
-                        value_uplinks.remove(id);
-                        map_uplinks.remove(id);
-                    }
-                    special_queue.push_back(special);
-                }
-            }
-            Ok(None)
-        }
-    }
-
-    fn replace_and_pop(&mut self, sender: RemoteSender, mut buffer: BytesMut) -> Option<W> {
-        let Uplinks {
-            writer,
-            value_uplinks,
-            map_uplinks,
-            write_queue,
-            special_queue,
-            write_op,
-        } = self;
-        debug_assert!(writer.is_none());
-        if let Some(special) = special_queue.pop_front() {
-            Some(write_op(sender, buffer, WriteAction::Special(special)))
-        } else if let Some((kind, lane_id)) = write_queue.pop_front() {
-            match kind {
-                UplinkKind::Value => value_uplinks.get_mut(&lane_id).and_then(
-                    |Uplink {
-                         queued,
-                         send_synced,
-                         backpressure,
-                     }| {
-                        *queued = false;
-                        let synced = std::mem::replace(send_synced, false);
-                        backpressure.prepare_write(&mut buffer);
-                        let action = if synced {
-                            WriteAction::EventAndSynced
-                        } else {
-                            WriteAction::Event
-                        };
-                        Some(write_op(sender, buffer, action))
-                    },
-                ),
-                UplinkKind::Map => map_uplinks.get_mut(&lane_id).and_then(
-                    |Uplink {
-                         queued,
-                         send_synced,
-                         backpressure,
-                     }| {
-                        let synced = std::mem::replace(send_synced, false);
-                        if synced {
-                            *queued = false;
-                            Some(write_op(
-                                sender,
-                                buffer,
-                                WriteAction::MapSynced(Some(std::mem::take(backpressure))),
-                            ))
-                        } else {
-                            backpressure.prepare_write(&mut buffer);
-                            if backpressure.has_data() {
-                                write_queue.push_back((UplinkKind::Map, lane_id));
-                            } else {
-                                *queued = false;
-                            }
-                            Some(write_op(sender, buffer, WriteAction::Event))
-                        }
-                    },
-                ),
-            }
-        } else {
-            *writer = Some((sender, buffer));
-            None
-        }
-    }
-
-}
-
-struct RemoteWriteTracker<W, F> {
-    remotes: HashMap<Uuid, Uplinks<F>>,
-    pending_writes: FuturesUnordered<W>,
-    write_op: F,
-}
-
-impl<W, F> RemoteWriteTracker<W, F>
-where
-    F: Fn(RemoteSender, BytesMut, WriteAction) -> W + Clone,
-    W: Future<Output = WriteResult> + Send + 'static,
-{
-    fn new(write_op: F) -> Self {
-        Self {
-            remotes: Default::default(),
-            pending_writes: Default::default(),
-            write_op,
-        }
-    }
-
-    fn insert(&mut self, remote_id: Uuid, node: Text, identity: RoutingAddr, writer: ByteWriter) {
-        let RemoteWriteTracker {
-            remotes, write_op, ..
-        } = self;
-        remotes.insert(
-            remote_id,
-            Uplinks::new(node, identity, writer, write_op.clone()),
-        );
-    }
-
-    fn push_write(
-        &mut self,
-        lane_names: &HashMap<u64, Text>,
-        lane_id: u64,
-        response: UplinkResponse,
-        target: &Uuid,
-    ) {
-        let RemoteWriteTracker {
-            remotes,
-            pending_writes,
-            ..
-        } = self;
-        if let Some(uplink) = remotes.get_mut(target) {
-            match uplink.push(lane_id, response, lane_names) {
-                Ok(Some(write)) => {
-                    pending_writes.push(write);
-                }
-                Err(_) => {
-                    //TODO Log error.
-                }
-                _ => {}
-            }
-        }
-    }
-
-    fn has_pending(&self) -> bool {
-        self.pending_writes.is_empty()
-    }
-
-    fn unlink_lane(
-        &mut self,
-        remote_id: Uuid,
-        lane_id: u64,
-        lane_names: &HashMap<u64, Text>,
-    ) -> Result<(), Utf8Error> {
-        let RemoteWriteTracker {
-            pending_writes,
-            ..
-        } = self;
-        if let Some(uplinks) = self.remotes.get_mut(&remote_id) {
-            if let Some(write) = uplinks.push(
-                lane_id,
-                UplinkResponse::Special(SpecialUplinkAction::Unlinked(lane_id, Text::empty())),
-                lane_names,
-            )? {
-                pending_writes.push(write);
-            }
-        }
-        Ok(())
-    }
-
-    fn replace_and_pop(&mut self, writer: RemoteSender, buffer: BytesMut) {
-        let RemoteWriteTracker {
-            remotes,
-            pending_writes,
-            ..
-        } = self;
-        let id = writer.remote_id();
-        if let Some(write) = remotes
-            .get_mut(&id)
-            .and_then(|uplinks| uplinks.replace_and_pop(writer, buffer))
-        {
-            pending_writes.push(write);
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -1405,14 +886,14 @@ where
                         WriteTaskEvent::Stop
                     };
                 }
-                maybe_write_done = write_tracker.pending_writes.next(), if write_tracker.has_pending() => {
+                maybe_write_done = write_tracker.next(), if write_tracker.has_pending() => {
                     if let Some((writer, buffer, result)) = maybe_write_done {
                         let remote_id = writer.remote_id();
                         if result.is_ok() {
                             write_tracker.replace_and_pop(writer, buffer);
                         } else {
                             //TODO Log failed uplink.
-                            write_tracker.remotes.remove(&remote_id);
+                            write_tracker.remove_remote(remote_id);
                             links.remove_remote(remote_id);
                         }
                     }
@@ -1426,9 +907,10 @@ where
                             lane_channels.remove(lane_id);
                             let linked_remotes = links.remove_lane(lane_id);
                             for remote_id in linked_remotes {
-                                if write_tracker.unlink_lane(remote_id, 
-                                    lane_id, 
-                                    &lane_channels.lane_names_rev).is_err() {
+                                let lane_name = &lane_channels.lane_names_rev[&lane_id];
+                                if write_tracker.unlink_lane(remote_id,
+                                    lane_id,
+                                    lane_name.as_str()).is_err() {
                                     todo!("Handle this.");
                                 }
                             }
@@ -1463,11 +945,12 @@ where
             }
             WriteTaskRegistration::Coord(RwCoorindationMessage::Link { origin, lane }) => {
                 match lane_channels.id_for(&lane) {
-                    Some(id) if write_tracker.remotes.contains_key(&origin) => {
+                    Some(id) if write_tracker.has_remote(origin) => {
                         links.insert(id, origin);
+                        let lane_name = &lane_channels.lane_names_rev[&id];
                         write_tracker.push_write(
-                            &lane_channels.lane_names_rev,
                             id,
+                            lane_name.as_str(),
                             UplinkResponse::Special(SpecialUplinkAction::Linked(id)),
                             &origin,
                         );
@@ -1481,9 +964,10 @@ where
                 if let Some(lane_id) = lane_channels.id_for(&lane) {
                     links.remove(lane_id, origin);
                     let message = Text::new("Link closed.");
+                    let lane_name = &lane_channels.lane_names_rev[&lane_id];
                     write_tracker.push_write(
-                        &lane_channels.lane_names_rev,
                         lane_id,
+                        lane_name.as_str(),
                         UplinkResponse::Special(SpecialUplinkAction::Unlinked(lane_id, message)),
                         &origin,
                     );
@@ -1491,13 +975,17 @@ where
             }
             WriteTaskRegistration::Coord(RwCoorindationMessage::UnknownLane { origin, path }) => {
                 write_tracker.push_write(
-                    &lane_channels.lane_names_rev,
                     0,
-                    UplinkResponse::Special(SpecialUplinkAction::LaneNotFound(path.lane)),
+                    path.lane.as_str(),
+                    UplinkResponse::Special(SpecialUplinkAction::LaneNotFound),
                     &origin,
                 );
             }
-            WriteTaskRegistration::Coord(RwCoorindationMessage::BadEnvelope { origin: _, lane: _, error: _  }) => {
+            WriteTaskRegistration::Coord(RwCoorindationMessage::BadEnvelope {
+                origin: _,
+                lane: _,
+                error: _,
+            }) => {
                 todo!("Handle this.")
             }
         }
@@ -1511,11 +999,12 @@ where
             ..
         } = self;
         let RawLaneResponse { target, response } = response;
+        let lane_name = &lane_channels.lane_names_rev[&id];
         if let Some(remote_id) = target {
-            write_tracker.push_write(&lane_channels.lane_names_rev, id, response, &remote_id);
+            write_tracker.push_write(id, lane_name.as_str(), response, &remote_id);
         } else if let Some(targets) = links.linked_from(id) {
             for (remote_id, response) in targets.iter().zip(std::iter::repeat(response)) {
-                write_tracker.push_write(&lane_channels.lane_names_rev, id, response, remote_id);
+                write_tracker.push_write(id, lane_name.as_str(), response, remote_id);
             }
         }
     }

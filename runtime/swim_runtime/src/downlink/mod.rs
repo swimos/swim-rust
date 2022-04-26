@@ -38,8 +38,8 @@ use crate::compat::{
     Notification, Operation, RawRequestMessage, RawRequestMessageEncoder, RawResponseMessage,
     RawResponseMessageDecoder,
 };
-use crate::pressure::DownlinkBackpressure;
 use crate::downlink::failure::BadFrameResponse;
+use crate::pressure::DownlinkBackpressure;
 use crate::routing::RoutingAddr;
 
 pub mod failure;
@@ -1078,9 +1078,9 @@ use futures::ready;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use crate::pressure::{MapBackpressure, ValueBackpressure};
 use self::failure::{BadFrameStrategy, InfallibleStrategy};
 use self::interpretation::{value_interpretation, DownlinkInterpretation, MapInterpretation};
+use crate::pressure::{MapBackpressure, ValueBackpressure};
 
 /// A future that flushes a sender and then returns it. This is necessary as we need
 /// an [`Unpin`] future so an equivlanent async block would not work.

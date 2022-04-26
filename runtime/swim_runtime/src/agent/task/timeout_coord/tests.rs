@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use futures::future::join;
+use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
-use std::future::Future;
-use futures::future::join;
 use swim_utilities::future::SwimFutureExt;
 use tokio::sync::Notify;
 use tokio::time::timeout;
@@ -35,15 +35,14 @@ where
 
 #[tokio::test]
 async fn complete_immediately() {
-
     with_timeout(async {
         let (tx1, tx2, rx) = super::timeout_coordinator();
         assert!(!tx1.vote());
         assert!(tx2.vote());
 
         rx.await;
-    }).await;
-
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -61,7 +60,6 @@ async fn complete_async() {
     };
 
     with_timeout(join(wait_task, vote_task)).await;
-
 }
 
 #[tokio::test]
@@ -79,7 +77,6 @@ async fn complete_async2() {
     };
 
     with_timeout(join(wait_task, vote_task)).await;
-
 }
 
 #[tokio::test]
@@ -104,7 +101,6 @@ async fn complete_async_wait_between_votes() {
     };
 
     with_timeout(join(wait_task, vote_task)).await;
-
 }
 
 #[tokio::test]
@@ -131,12 +127,10 @@ async fn rescind_vote() {
     };
 
     with_timeout(join(wait_task, vote_task)).await;
-
 }
 
 #[tokio::test]
 async fn cannot_rescind_after_unanimity() {
-
     with_timeout(async {
         let (tx1, tx2, rx) = super::timeout_coordinator();
         assert!(!tx1.vote());
@@ -144,7 +138,6 @@ async fn cannot_rescind_after_unanimity() {
         assert!(tx1.rescind());
 
         rx.await;
-    }).await;
-
+    })
+    .await;
 }
-
