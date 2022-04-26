@@ -641,9 +641,7 @@ impl ServerHandle {
 
         either_address
             .as_ref()
-            .right()
-            .map(Option::as_ref)
-            .flatten()
+            .right().and_then(Option::as_ref)
     }
 
     /// Terminates the associated server instance.

@@ -768,7 +768,7 @@ where
                         }
                     }
 
-                    let min_entry = Arc::make_mut(&mut min_entry);
+                    let min_entry = Arc::make_mut(min_entry);
 
                     if let Some((first_entry, second_entry)) =
                         min_entry.insert(item, min_rect, level)
