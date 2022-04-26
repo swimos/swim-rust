@@ -20,7 +20,7 @@ use tracing::warn;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum BadFrameResponse<E> {
-    /// Instruction ignore the bad envelope.
+    /// Instruction to ignore the bad envelope.
     Ignore,
     /// Instruction to abort the downlink runtime task with the specified error.
     Abort(E),

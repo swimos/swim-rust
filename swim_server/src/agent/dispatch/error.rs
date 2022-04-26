@@ -108,7 +108,7 @@ impl Display for DispatcherError {
                 write!(f, "Sender failed.")
             }
             DispatcherError::AgentTimedOut(dur) => {
-                write!(f, "Agent timed out after {}s.", dur.as_secs().to_string())
+                write!(f, "Agent timed out after {}s.", dur.as_secs())
             }
         }
     }

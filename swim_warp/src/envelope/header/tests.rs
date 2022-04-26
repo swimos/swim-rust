@@ -394,6 +394,7 @@ fn bad_enevelopes() {
         b"@linked(node: \"/node\", lane: name, prio: \"max\")@body {a: 1}",
         b"@linked@body {a: 1}",
         b"@linked(7, node: \"/node\", lane: name, rate: 0.5)@body {a: 1}",
+        b"@linked(node:node, lane:\"lane);",
     ];
     for envelope in envelopes {
         let result = peel_envelope_header(envelope);

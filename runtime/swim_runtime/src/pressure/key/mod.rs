@@ -14,7 +14,7 @@
 
 use bytes::Bytes;
 use std::hash::{Hash, Hasher};
-use swim_recon::comparator;
+use swim_recon::{comparator, hasher};
 
 /// Wraps an array of UTF-8 bytes and compares and hases them by their interpretation as
 /// recon documents.
@@ -57,7 +57,7 @@ impl TryFrom<Bytes> for ReconKey {
 
 impl AsRef<str> for ReconKey {
     fn as_ref(&self) -> &str {
-        // Safe as we only all a key to be constructed from bytes containg valid UTF8.
+        // Safe as we only allow a key to be constructed from bytes containg valid UTF8.
         unsafe { std::str::from_utf8_unchecked(self.content.as_ref()) }
     }
 }
@@ -70,8 +70,7 @@ impl PartialEq for ReconKey {
 
 impl Hash for ReconKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        //TODO Use the Recon hasher.
-        self.content.hash(state)
+        hasher::calculate_hash(self.as_ref(), state)
     }
 }
 

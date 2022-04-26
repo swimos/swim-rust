@@ -191,13 +191,14 @@ impl Display for LaneKind {
 /// A handle to a lane that returns all of the lanes on an agent.
 #[derive(Clone, Debug)]
 pub struct LaneInformation {
-    info_lane: DemandMapLane<String, LaneInfo>,
+    _info_lane: DemandMapLane<String, LaneInfo>,
 }
 
 impl LaneInformation {
-    #[cfg(test)]
     pub fn new(info_lane: DemandMapLane<String, LaneInfo>) -> LaneInformation {
-        LaneInformation { info_lane }
+        LaneInformation {
+            _info_lane: info_lane,
+        }
     }
 }
 
@@ -387,7 +388,7 @@ where
     let (info_lane, lane_info_task, lane_info_io) =
         make_meta_demand_map_lane(LANES_URI.to_string(), true, lane_buffer, lanes_summary);
 
-    let info_handler = LaneInformation { info_lane };
+    let info_handler = LaneInformation::new(info_lane);
 
     let lane_info_io = lane_info_io.expect("Lane returned private IO").boxed();
     let mut lane_hashmap = HashMap::new();

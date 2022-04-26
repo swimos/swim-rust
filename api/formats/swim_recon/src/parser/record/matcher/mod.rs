@@ -44,15 +44,15 @@ pub trait HeaderPeeler<'a>: Clone {
     /// Provide the name of the tag attribute.
     ///
     /// #Arguments
-    /// * `name` - The name of the tag. Not that this has a more restrictive lifetime as may
-    /// have been unescaped buy the parser.
+    /// * `name` - The name of the tag. Note that this has a more restrictive lifetime as may
+    /// have been unescaped by the parser.
     fn tag(self, name: &str) -> Result<Self, Self::Error>;
 
     /// Feed a slot from the body of the attribute.
     ///
     /// #Arguments
-    /// * `name` - The name of the slot. Not that this has a more restrictive lifetime as may
-    /// have been unescaped buy the parser.
+    /// * `name` - The name of the slot. Note that this has a more restrictive lifetime as may
+    /// have been unescaped by the parser.
     /// * `value` - Span of the input containing the Recon of the value of the slot.
     fn feed_header_slot(self, name: &str, value: Span<'a>) -> Result<Self, Self::Error>;
 
@@ -70,7 +70,7 @@ pub trait HeaderPeeler<'a>: Clone {
     ///
     /// #Arguments
     /// * `body` - The remainder of the input span. Note that this is entirely uninterpreted and
-    /// so many not contain valid Recon.
+    /// so may not contain valid Recon.
     fn done(self, body: Span<'a>) -> Result<Self::Output, Self::Error>;
 }
 
@@ -106,7 +106,7 @@ where
 
 fn value(input: Span<'_>) -> IResult<Span<'_>, Span<'_>> {
     alt((
-        recognize(string_literal),
+        recognize(comp_string_literal),
         recognize(identifier),
         recognize(numeric_literal),
         recognize(blob),
@@ -121,12 +121,16 @@ fn record(input: Span<'_>) -> IResult<Span<'_>, Span<'_>> {
     ))(input)
 }
 
+fn comp_string_literal(input: Span<'_>) -> IResult<Span<'_>, Cow<'_, str>> {
+    complete(string_literal)(input)
+}
+
 fn attrs(input: Span<'_>) -> IResult<Span<'_>, Span<'_>> {
     recognize(many1_count(pair(attr, space0)))(input)
 }
 
 fn attr_name(input: Span<'_>) -> IResult<Span<'_>, Cow<'_, str>> {
-    alt((string_literal, map(identifier, Cow::Borrowed)))(input)
+    alt((comp_string_literal, map(identifier, Cow::Borrowed)))(input)
 }
 
 fn attr(input: Span<'_>) -> IResult<Span<'_>, Span<'_>> {
@@ -162,7 +166,7 @@ fn item(input: Span<'_>) -> IResult<Span<'_>, Span<'_>> {
 
 fn body_after_attrs(input: Span<'_>) -> IResult<Span<'_>, Span<'_>> {
     recognize(opt(alt((
-        recognize(complete(string_literal)),
+        recognize(comp_string_literal),
         recognize(identifier),
         recognize(numeric_literal),
         recognize(blob),
@@ -171,7 +175,7 @@ fn body_after_attrs(input: Span<'_>) -> IResult<Span<'_>, Span<'_>> {
 }
 
 fn name(input: Span<'_>) -> IResult<Span<'_>, Cow<'_, str>> {
-    alt((map(identifier, Cow::Borrowed), string_literal))(input)
+    alt((map(identifier, Cow::Borrowed), comp_string_literal))(input)
 }
 
 fn match_tag<'a, P>(peeler: P) -> impl FnMut(Span<'a>) -> IResult<Span<'a>, P>

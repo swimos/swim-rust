@@ -46,7 +46,7 @@ pub fn parse_attr_input(ctx: &mut Context, meta: NestedMeta) -> Result<Vec<Meta>
                 format!(
                     "{}. Found `{}`",
                     EXPECTED_LIST,
-                    meta.to_token_stream().to_string()
+                    meta.to_token_stream()
                 ),
             );
             Err(())

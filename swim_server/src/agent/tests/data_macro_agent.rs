@@ -34,7 +34,6 @@ use server_store::agent::mock::MockNodeStore;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::Debug;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use stm::stm::Stm;
@@ -43,7 +42,6 @@ use swim_client::downlink::Downlinks;
 use swim_client::interface::ClientContext;
 use swim_client::router::ClientConnectionFactory;
 use swim_runtime::configuration::DownlinkConnectionsConfig;
-use swim_runtime::routing::RoutingAddr;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger::promise;
@@ -76,14 +74,12 @@ pub struct DataAgent {
 #[derive(Clone, Debug)]
 pub struct DataAgentConfig {
     collector: Arc<Mutex<EventCollector>>,
-    command_buffer_size: NonZeroUsize,
 }
 
 impl DataAgentConfig {
     pub fn new(sender: mpsc::Sender<DataAgentEvent>) -> Self {
         DataAgentConfig {
             collector: Arc::new(Mutex::new(EventCollector::new(sender))),
-            command_buffer_size: non_zero_usize!(5),
         }
     }
 
@@ -566,7 +562,7 @@ async fn agent_loop() {
         clock.clone(),
         client,
         ReceiverStream::new(envelope_rx),
-        SingleChannelRouter::new(RoutingAddr::plane(1024)),
+        SingleChannelRouter::new(),
         MockNodeStore::mock(),
     );
 

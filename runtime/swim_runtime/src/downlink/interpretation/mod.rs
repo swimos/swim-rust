@@ -26,6 +26,9 @@ use tokio_util::codec::Encoder;
 pub trait DownlinkInterpretation {
     type Error;
 
+    /// Whether the state of the downlink can always be determined by the contents of a single envelope.
+    /// For example, this would be false for map downlinks as maps could require any number of
+    /// envelopes to determine their state.
     const SINGLE_FRAME_STATE: bool = true;
 
     /// Interpret the body held in the incoming buffer and write the appropriately transformed
