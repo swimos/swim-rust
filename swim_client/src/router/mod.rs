@@ -412,7 +412,7 @@ impl<RF: RouterFactory> ClientConnectionFactory<RF> {
                 match router.resolve_sender(addr).await {
                     Ok(route) => {
                         let client_route =
-                            ClientRoute::new(endpoint_addr, route, receiver, on_dropped, on_drop);
+                            ClientRoute::new(route, receiver, on_dropped, on_drop);
                         Ok(client_route)
                     }
                     Err(ResolutionError::RouterDropped) => Err(RouterError::RouterDropped),

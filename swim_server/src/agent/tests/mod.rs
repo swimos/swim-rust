@@ -58,7 +58,6 @@ use swim_client::interface::ClientContext;
 use swim_client::router::ClientConnectionFactory;
 use swim_model::path::Path;
 use swim_runtime::configuration::DownlinkConnectionsConfig;
-use swim_runtime::routing::RoutingAddr;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::sync::circular_buffer;
@@ -82,19 +81,17 @@ pub mod stub_router {
 
     #[derive(Clone)]
     pub struct SingleChannelRouter {
-        router_addr: RoutingAddr,
         inner: mpsc::Sender<TaggedEnvelope>,
         _drop_tx: Arc<promise::Sender<ConnectionDropped>>,
         drop_rx: promise::Receiver<ConnectionDropped>,
     }
 
     impl SingleChannelRouter {
-        pub fn new(router_addr: RoutingAddr) -> Self {
+        pub fn new() -> Self {
             let (tx, rx) = promise::promise();
             let (env_tx, mut env_rx) = mpsc::channel(16);
             tokio::spawn(async move { while env_rx.recv().await.is_some() {} });
             SingleChannelRouter {
-                router_addr,
                 inner: env_tx,
                 _drop_tx: Arc::new(tx),
                 drop_rx: rx,
@@ -806,7 +803,7 @@ pub async fn run_agent_test<Agent, Config, Lifecycle>(
         clock.clone(),
         client,
         ReceiverStream::new(envelope_rx),
-        SingleChannelRouter::new(RoutingAddr::plane(1024)),
+        SingleChannelRouter::new(),
         MockNodeStore::mock(),
     );
 
