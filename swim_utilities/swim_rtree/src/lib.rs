@@ -249,8 +249,8 @@ where
             }
         }
 
-        if maybe_orphan_nodes.is_some() {
-            for orphan in maybe_orphan_nodes.unwrap() {
+        if let Some(orphans) = maybe_orphan_nodes {
+            for orphan in orphans {
                 match *orphan {
                     Entry::Leaf { .. } => self.internal_insert(orphan, 0),
                     Entry::Branch {
