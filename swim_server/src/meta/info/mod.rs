@@ -195,9 +195,10 @@ pub struct LaneInformation {
 }
 
 impl LaneInformation {
-    
     pub fn new(info_lane: DemandMapLane<String, LaneInfo>) -> LaneInformation {
-        LaneInformation { _info_lane: info_lane }
+        LaneInformation {
+            _info_lane: info_lane,
+        }
     }
 }
 
