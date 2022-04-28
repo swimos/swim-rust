@@ -19,9 +19,9 @@ use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
-use crate::agent::AgentRuntimeRequest;
+use crate::agent::{AgentRuntimeConfig, AgentRuntimeRequest};
 
-use super::{AgentRuntimeConfig, InitialEndpoints, LaneEndpoint};
+use super::{InitialEndpoints, LaneEndpoint};
 
 use tracing::{error, info};
 

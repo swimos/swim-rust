@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Duration;
-use std::{collections::HashMap, num::NonZeroUsize};
 
 use crate::compat::{Notification, Operation, RawRequestMessageDecoder, RequestMessage};
 use crate::pressure::DownlinkBackpressure;
@@ -27,7 +27,7 @@ use self::links::Links;
 use self::uplink::{RemoteSender, SpecialUplinkAction, UplinkResponse, WriteAction, WriteResult};
 use self::write_tracker::RemoteWriteTracker;
 
-use super::{AgentAttachmentRequest, AgentRuntimeRequest, Io};
+use super::{AgentAttachmentRequest, AgentRuntimeConfig, AgentRuntimeRequest, Io};
 use bytes::{Bytes, BytesMut};
 use futures::ready;
 use futures::stream::FuturesUnordered;
@@ -39,7 +39,7 @@ use futures::{
 use pin_utils::pin_mut;
 use swim_api::protocol::agent::{LaneResponseKind, MapLaneResponse, ValueLaneResponse};
 use swim_api::{
-    agent::{LaneConfig, UplinkKind},
+    agent::UplinkKind,
     error::AgentRuntimeError,
     protocol::{
         agent::{
@@ -71,15 +71,7 @@ mod timeout_coord;
 mod uplink;
 mod write_tracker;
 
-pub use init::AgentInitTask;
-
-#[derive(Debug, Clone, Copy)]
-pub struct AgentRuntimeConfig {
-    pub default_lane_config: LaneConfig,
-    /// Size of the queue for accepting new subscribers to a downlink.
-    pub attachment_queue_size: NonZeroUsize,
-    pub inactive_timeout: Duration,
-}
+pub use init::{AgentInitTask, NoLanes};
 
 #[derive(Debug)]
 pub struct LaneEndpoint<T> {
