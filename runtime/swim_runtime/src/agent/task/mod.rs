@@ -808,7 +808,8 @@ impl LaneChannels {
         debug!("Adding lane with name '{}' and ID {}.", name, id);
         lane_names.insert(name.clone(), id);
         lane_names_rev.insert(id, name);
-        let stream = match kind {
+
+        match kind {
             UplinkKind::Value => {
                 let receiver = LaneReceiver::value(id, reader);
                 Either::Left(receiver).stop_after_error()
@@ -817,8 +818,7 @@ impl LaneChannels {
                 let receiver = LaneReceiver::map(id, reader);
                 Either::Right(receiver).stop_after_error()
             }
-        };
-        stream
+        }
     }
 
     fn remove(&mut self, id: u64) -> Option<Text> {

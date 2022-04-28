@@ -205,7 +205,7 @@ fn encode_sync_event_map_lane_response() {
     };
     let request: MapLaneResponse<i32, Example> = MapLaneResponse::Event {
         kind: LaneResponseKind::SyncEvent(Uuid::from_u128(85874)),
-        operation: operation,
+        operation,
     };
 
     let exp_op = expected_operation(operation);
@@ -230,7 +230,7 @@ fn encode_event_map_lane_response() {
     };
     let request: MapLaneResponse<i32, Example> = MapLaneResponse::Event {
         kind: LaneResponseKind::StandardEvent,
-        operation: operation,
+        operation,
     };
 
     let exp_op = expected_operation(operation);

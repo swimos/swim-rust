@@ -54,11 +54,11 @@ impl AgentContext for AgentRuntimeContext {
         .boxed()
     }
 
-    fn open_downlink<'a>(
-        &'a self,
+    fn open_downlink(
+        &self,
         config: DownlinkConfig,
         downlink: Box<dyn Downlink + Send>,
-    ) -> BoxFuture<'a, Result<(), AgentRuntimeError>> {
+    ) -> BoxFuture<'_, Result<(), AgentRuntimeError>> {
         async move {
             let (tx, rx) = oneshot::channel();
             self.tx
