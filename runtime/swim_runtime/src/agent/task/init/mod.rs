@@ -15,12 +15,15 @@
 use futures::StreamExt;
 use swim_api::agent::LaneConfig;
 use swim_utilities::{io::byte_channel, trigger};
+use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::agent::AgentRuntimeRequest;
 
-use super::{AgentInit, AgentRuntimeConfig, LaneEndpoint};
+use super::{AgentRuntimeConfig, InitialEndpoints, LaneEndpoint};
+
+use tracing::{error, info};
 
 pub struct AgentInitTask {
     requests: mpsc::Receiver<AgentRuntimeRequest>,
@@ -28,6 +31,8 @@ pub struct AgentInitTask {
     config: AgentRuntimeConfig,
 }
 
+#[derive(Debug, Clone, Copy, Error)]
+#[error("No lanes were registered.")]
 pub struct NoLanes;
 
 impl AgentInitTask {
@@ -43,7 +48,7 @@ impl AgentInitTask {
         }
     }
 
-    pub async fn run(self) -> Result<AgentInit, NoLanes> {
+    pub async fn run(self) -> Result<InitialEndpoints, NoLanes> {
         let AgentInitTask {
             requests,
             init_complete,
@@ -63,6 +68,7 @@ impl AgentInitTask {
                     config,
                     promise,
                 } => {
+                    info!("Registering a new {} lane with name '{}'.", kind, name);
                     let LaneConfig {
                         input_buffer_size,
                         output_buffer_size,
@@ -78,6 +84,11 @@ impl AgentInitTask {
                             kind,
                             io: (out_rx, in_tx),
                         });
+                    } else {
+                        error!(
+                            "Agent failed to receive lane registration for {} lane named '{}'.",
+                            kind, name
+                        );
                     }
                 }
                 AgentRuntimeRequest::OpenDownlink { .. } => {
@@ -88,7 +99,7 @@ impl AgentInitTask {
         if endpoints.is_empty() {
             Err(NoLanes)
         } else {
-            Ok(AgentInit {
+            Ok(InitialEndpoints {
                 rx: request_stream.into_inner(),
                 endpoints,
             })

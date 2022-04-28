@@ -30,6 +30,7 @@ use self::write_tracker::RemoteWriteTracker;
 use super::{AgentAttachmentRequest, AgentRuntimeRequest, Io};
 use bytes::{Bytes, BytesMut};
 use futures::ready;
+use futures::stream::FuturesUnordered;
 use futures::{
     future::{join, select as fselect, Either},
     stream::{select as sselect, SelectAll},
@@ -61,6 +62,9 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{Encoder, FramedRead, FramedWrite};
 use uuid::Uuid;
 
+use tracing::{debug, error, info, info_span, trace, warn};
+use tracing_futures::Instrument;
+
 mod init;
 mod links;
 mod timeout_coord;
@@ -77,6 +81,7 @@ pub struct AgentRuntimeConfig {
     pub inactive_timeout: Duration,
 }
 
+#[derive(Debug)]
 pub struct LaneEndpoint<T> {
     name: Text,
     kind: UplinkKind,
@@ -105,12 +110,13 @@ impl LaneEndpoint<Io> {
     }
 }
 
-pub struct AgentInit {
+#[derive(Debug)]
+pub struct InitialEndpoints {
     rx: mpsc::Receiver<AgentRuntimeRequest>,
     endpoints: Vec<LaneEndpoint<Io>>,
 }
 
-impl AgentInit {
+impl InitialEndpoints {
     pub fn make_runtime_task(
         self,
         identity: RoutingAddr,
@@ -130,10 +136,11 @@ impl AgentInit {
     }
 }
 
+#[derive(Debug)]
 pub struct AgentRuntimeTask {
     identity: RoutingAddr,
     node_uri: Text,
-    init: AgentInit,
+    init: InitialEndpoints,
     attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
     stopping: trigger::Receiver,
     config: AgentRuntimeConfig,
@@ -241,6 +248,7 @@ where
     sender.flush().await
 }
 
+#[derive(Debug)]
 struct LaneReceiver<D> {
     lane_id: u64,
     receiver: FramedRead<ByteReader, D>,
@@ -321,6 +329,7 @@ impl LaneReceiver<MapLaneResponseDecoder> {
     }
 }
 
+#[derive(Debug)]
 struct Failed(u64);
 
 impl Stream for ValueLaneReceiver {
@@ -354,7 +363,7 @@ impl AgentRuntimeTask {
         let AgentRuntimeTask {
             identity,
             node_uri,
-            init: AgentInit { rx, endpoints },
+            init: InitialEndpoints { rx, endpoints },
             attachment_rx,
             stopping,
             config,
@@ -370,7 +379,8 @@ impl AgentRuntimeTask {
         let (kill_switch_tx, kill_switch_rx) = trigger::trigger();
 
         let combined_stop = fselect(fselect(stopping.clone(), kill_switch_rx), vote_waiter);
-        let att = attachment_task(rx, attachment_rx, read_tx, write_tx.clone(), combined_stop);
+        let att = attachment_task(rx, attachment_rx, read_tx, write_tx.clone(), combined_stop)
+            .instrument(info_span!("Agent Runtime Attachment Task", %identity, %node_uri));
         let read = read_task(
             config,
             read_endpoints,
@@ -378,14 +388,16 @@ impl AgentRuntimeTask {
             write_tx,
             read_vote,
             stopping.clone(),
-        );
+        )
+        .instrument(info_span!("Agent Runtime Read Task", %identity, %node_uri));
         let write = write_task(
-            WriteTaskConfiguration::new(identity, node_uri, config),
+            WriteTaskConfiguration::new(identity, node_uri.clone(), config),
             write_endpoints,
             write_rx,
             write_vote,
             stopping,
-        );
+        )
+        .instrument(info_span!("Agent Runtime Write Task", %identity, %node_uri));
 
         let io = await_io_tasks(read, write, kill_switch_tx);
         join(att, io).await;
@@ -402,6 +414,8 @@ enum WriteTaskRegistration {
     Remote { id: Uuid, writer: ByteWriter },
     Coord(RwCoorindationMessage),
 }
+
+const BAD_LANE_REG: &str = "Agent failed to receive lane registration result.";
 
 async fn attachment_task<F>(
     runtime: mpsc::Receiver<AgentRuntimeRequest>,
@@ -426,20 +440,27 @@ async fn attachment_task<F>(
                 config,
                 promise,
             }) => {
+                info!("Registering a new {} lane with name {}.", kind, name);
                 let lane_config = config.unwrap_or_default();
                 let (in_tx, in_rx) = byte_channel(lane_config.input_buffer_size);
                 let (out_tx, out_rx) = byte_channel(lane_config.output_buffer_size);
                 let sender = LaneSender::new(in_tx, kind);
                 let read_permit = match read_tx.reserve().await {
                     Err(_) => {
-                        let _ = promise.send(Err(AgentRuntimeError::Terminated));
+                        warn!("Read task stopped while attempting to register a new {} lane named '{}'.", kind, name);
+                        if promise.send(Err(AgentRuntimeError::Terminated)).is_err() {
+                            error!(BAD_LANE_REG);
+                        }
                         break;
                     }
                     Ok(permit) => permit,
                 };
                 let write_permit = match write_tx.reserve().await {
                     Err(_) => {
-                        let _ = promise.send(Err(AgentRuntimeError::Terminated));
+                        warn!("Write task stopped while attempting to register a new {} lane named '{}'.", kind, name);
+                        if promise.send(Err(AgentRuntimeError::Terminated)).is_err() {
+                            error!(BAD_LANE_REG);
+                        }
                         break;
                     }
                     Ok(permit) => permit,
@@ -464,18 +485,26 @@ async fn attachment_task<F>(
                         }));
                     }
                 }
-                let _ = promise.send(Ok((in_rx, out_tx)));
+                if promise.send(Ok((in_rx, out_tx))).is_err() {
+                    error!(BAD_LANE_REG);
+                }
             }
             Either::Left(_) => todo!("Opening downlinks form agents not implemented."),
             Either::Right(AgentAttachmentRequest { id, io: (rx, tx) }) => {
+                info!(
+                    "Attaching a new remote endpoint with ID {id} to the agent.",
+                    id = id
+                );
                 let read_permit = match read_tx.reserve().await {
                     Err(_) => {
+                        warn!("Read task stopped while attempting to attach a remote endpoint.");
                         break;
                     }
                     Ok(permit) => permit,
                 };
                 let write_permit = match write_tx.reserve().await {
                     Err(_) => {
+                        warn!("Write task stopped while attempting to attach a remote endpoint.");
                         break;
                     }
                     Ok(permit) => permit,
@@ -492,6 +521,9 @@ type RemoteReceiver = FramedRead<ByteReader, RawRequestMessageDecoder>;
 fn remote_receiver(reader: ByteReader) -> RemoteReceiver {
     RemoteReceiver::new(reader, Default::default())
 }
+
+const TASK_COORD_ERR: &str = "Stopping after communcating with the write task failed.";
+const STOP_VOTED: &str = "Stopping as read and write tasks have both voted to do so.";
 
 enum ReadTaskEvent {
     Registration(ReadTaskRegistration),
@@ -522,6 +554,7 @@ async fn read_task(
     let mut name_mapping = HashMap::new();
     let mut lanes = HashMap::new();
     let mut needs_flush = None;
+    let mut voted = false;
 
     for LaneEndpoint { name, kind, io } in initial_endpoints.into_iter() {
         let i = next_id();
@@ -550,11 +583,13 @@ async fn read_task(
             match result {
                 Ok(Either::Left((Some(reg), _))) => ReadTaskEvent::Registration(reg),
                 Ok(Either::Left((_, _))) => {
+                    info!("Terminating after registration task stopped.");
                     break;
                 }
                 Ok(Either::Right((Some(Ok(envelope)), _))) => ReadTaskEvent::Envelope(envelope),
-                Ok(Either::Right((Some(Err(_e)), _))) => {
-                    todo!("Log error");
+                Ok(Either::Right((Some(Err(error)), _))) => {
+                    error!(error = ?error, "Failed reading from lane: {}", error);
+                    continue;
                 }
                 Ok(Either::Right((_, _))) => {
                     continue;
@@ -566,15 +601,31 @@ async fn read_task(
             ReadTaskEvent::Registration(reg) => match reg {
                 ReadTaskRegistration::Lane { name, sender } => {
                     let id = next_id();
+                    info!(
+                        "Reading from new lane named '{}'. Assigned ID is {}.",
+                        name, id
+                    );
                     name_mapping.insert(name, id);
                     lanes.insert(id, sender);
                 }
                 ReadTaskRegistration::Remote { reader } => {
+                    info!("Reading from new remote endpoint.");
                     let rx = remote_receiver(reader).stop_after_error();
                     remotes.push(rx);
                 }
             },
             ReadTaskEvent::Envelope(msg) => {
+                if voted {
+                    trace!("Attempting to rescind stop vote.");
+                    if stop_vote.rescind() {
+                        info!(STOP_VOTED);
+                        break;
+                    } else {
+                        info!("Vote to stop rescinded.");
+                        voted = false;
+                    }
+                }
+                debug!(message = ?msg, "Processing envelope.");
                 let RequestMessage {
                     path,
                     origin,
@@ -583,6 +634,11 @@ async fn read_task(
 
                 if let Some(id) = name_mapping.get(&path.lane) {
                     if matches!(&needs_flush, Some(i) if i != id) {
+                        trace!(
+                            "Flushing lane '{name}' (id = {id})",
+                            name = path.lane,
+                            id = id
+                        );
                         flush_lane(&mut lanes, &mut needs_flush).await;
                     }
                     if let Some(lane_tx) = lanes.get_mut(id) {
@@ -591,6 +647,10 @@ async fn read_task(
 
                         match envelope {
                             Operation::Link => {
+                                debug!(
+                                    "Attempting to set up link to {} from lane '{}'.",
+                                    origin, lane
+                                );
                                 if write_tx
                                     .send(WriteTaskRegistration::Coord(
                                         RwCoorindationMessage::Link { origin, lane },
@@ -598,27 +658,36 @@ async fn read_task(
                                     .await
                                     .is_err()
                                 {
+                                    error!(TASK_COORD_ERR);
                                     break;
                                 }
                             }
                             Operation::Sync => {
+                                debug!(
+                                    "Attempting to synchronize {} with lane '{}'.",
+                                    origin, lane
+                                );
                                 if lane_tx.start_sync(origin).await.is_err() {
-                                    //TODO Log failed lane.
+                                    error!(
+                                        "Failed to communicate with lane '{}'. Removing handle.",
+                                        lane
+                                    );
                                     if let Some(id) = name_mapping.remove(&lane) {
                                         lanes.remove(&id);
                                     }
                                 };
                             }
                             Operation::Command(body) => {
+                                trace!(body = ?body, "Dispatching command envelope from {} to lane '{}'.", origin, lane);
                                 match lane_tx.feed_frame(body).await {
                                     Err(LaneSendError::Io(_)) => {
-                                        //TODO Log failed lane.
+                                        error!("Failed to communicate with lane '{}'. Removing handle.", lane);
                                         if let Some(id) = name_mapping.remove(&lane) {
                                             lanes.remove(&id);
                                         }
                                     }
                                     Err(LaneSendError::Extraction(error)) => {
-                                        //TODO Log bad envelope.
+                                        error!(error = ?error, "Received invalid envelope from {} for lane '{}'", origin, lane);
                                         if write_tx
                                             .send(WriteTaskRegistration::Coord(
                                                 RwCoorindationMessage::BadEnvelope {
@@ -630,6 +699,7 @@ async fn read_task(
                                             .await
                                             .is_err()
                                         {
+                                            error!(TASK_COORD_ERR);
                                             break;
                                         }
                                     }
@@ -639,6 +709,10 @@ async fn read_task(
                                 }
                             }
                             Operation::Unlink => {
+                                debug!(
+                                    "Attempting to stop the link to {} from lane '{}'.",
+                                    origin, lane
+                                );
                                 if write_tx
                                     .send(WriteTaskRegistration::Coord(
                                         RwCoorindationMessage::Unlink { origin, lane },
@@ -646,13 +720,14 @@ async fn read_task(
                                     .await
                                     .is_err()
                                 {
+                                    error!(TASK_COORD_ERR);
                                     break;
                                 }
                             }
                         }
                     }
                 } else {
-                    //TODO Log non-existant lane.
+                    info!("Recevied envelope for non-existent lane '{}'.", path.lane);
                     let flush = flush_lane(&mut lanes, &mut needs_flush);
                     let send_err = write_tx.send(WriteTaskRegistration::Coord(
                         RwCoorindationMessage::UnknownLane {
@@ -662,14 +737,21 @@ async fn read_task(
                     ));
                     let (_, result) = join(flush, send_err).await;
                     if result.is_err() {
+                        error!(TASK_COORD_ERR);
                         break;
                     }
                 }
             }
             ReadTaskEvent::Timeout => {
+                info!(
+                    "No envelopes received within {:?}. Voting to stop.",
+                    config.inactive_timeout
+                );
                 if stop_vote.vote() {
+                    info!(STOP_VOTED);
                     break;
                 }
+                voted = true;
             }
         }
     }
@@ -688,29 +770,19 @@ async fn flush_lane(lanes: &mut HashMap<u64, LaneSender>, needs_flush: &mut Opti
 enum WriteTaskEvent {
     Registration(WriteTaskRegistration),
     Event { id: u64, response: RawLaneResponse },
+    WriteDone(WriteResult),
+    LaneFailed(u64),
     Timeout,
     Stop,
 }
 
 type LaneStream = StopAfterError<Either<ValueLaneReceiver, MapLaneReceiver>>;
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct LaneChannels {
     lane_id_counter: u64,
     lane_names: HashMap<Text, u64>,
     lane_names_rev: HashMap<u64, Text>,
-    lanes: SelectAll<LaneStream>,
-}
-
-impl Debug for LaneChannels {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("LaneChannels")
-            .field("lane_id_counter", &self.lane_id_counter)
-            .field("lane_names", &self.lane_names)
-            .field("lane_names_rev", &self.lane_names_rev)
-            .field("lanes", &"...")
-            .finish()
-    }
 }
 
 impl LaneChannels {
@@ -720,12 +792,12 @@ impl LaneChannels {
         id
     }
 
-    fn add_endpoint(&mut self, endpoint: LaneEndpoint<ByteReader>) {
+    #[must_use]
+    fn add_endpoint(&mut self, endpoint: LaneEndpoint<ByteReader>) -> LaneStream {
         let id = self.next_id();
         let LaneChannels {
             lane_names,
             lane_names_rev,
-            lanes,
             ..
         } = self;
         let LaneEndpoint {
@@ -733,6 +805,7 @@ impl LaneChannels {
             kind,
             io: reader,
         } = endpoint;
+        debug!("Adding lane with name '{}' and ID {}.", name, id);
         lane_names.insert(name.clone(), id);
         lane_names_rev.insert(id, name);
         let stream = match kind {
@@ -745,7 +818,7 @@ impl LaneChannels {
                 Either::Right(receiver).stop_after_error()
             }
         };
-        lanes.push(stream);
+        stream
     }
 
     fn remove(&mut self, id: u64) -> Option<Text> {
@@ -760,10 +833,6 @@ impl LaneChannels {
         } else {
             None
         }
-    }
-
-    fn is_empty(&self) -> bool {
-        self.lanes.is_empty()
     }
 
     fn id_for(&self, name: &Text) -> Option<u64> {
@@ -843,38 +912,50 @@ impl WriteTaskConfiguration {
     }
 }
 
-struct WriteTaskState<S, W, F> {
-    configuration: WriteTaskConfiguration,
+#[derive(Debug)]
+struct WriteTaskEvents<'a, S, W> {
+    inactive_timeout: Duration,
+    timeout_delay: Pin<&'a mut Sleep>,
     reg_stream: S,
-    links: Links,
-    lane_channels: LaneChannels,
-    write_tracker: RemoteWriteTracker<W, F>,
+    lanes: SelectAll<LaneStream>,
+    pending_writes: FuturesUnordered<W>,
 }
 
-impl<S, W, F> WriteTaskState<S, W, F>
-where
-    S: Stream<Item = WriteTaskRegistration> + Unpin,
-    F: Fn(RemoteSender, BytesMut, WriteAction) -> W + Clone,
-    W: Future<Output = WriteResult> + Send + 'static,
-{
-    fn new(configuration: WriteTaskConfiguration, reg_stream: S, write_op: F) -> Self {
-        WriteTaskState {
-            configuration,
+impl<'a, S, W> WriteTaskEvents<'a, S, W> {
+    fn new(inactive_timeout: Duration, timeout_delay: Pin<&'a mut Sleep>, reg_stream: S) -> Self {
+        WriteTaskEvents {
+            inactive_timeout,
+            timeout_delay,
             reg_stream,
-            links: Default::default(),
-            lane_channels: Default::default(),
-            write_tracker: RemoteWriteTracker::new(write_op),
+            lanes: Default::default(),
+            pending_writes: Default::default(),
         }
     }
 
-    async fn select_next(&mut self, mut timeout_delay: Pin<&mut Sleep>) -> WriteTaskEvent {
-        let WriteTaskState {
+    fn add_lane(&mut self, lane: LaneStream) {
+        self.lanes.push(lane);
+    }
+
+    fn schedule_write(&mut self, write: W) {
+        self.pending_writes.push(write);
+    }
+}
+
+impl<'a, S, W> WriteTaskEvents<'a, S, W>
+where
+    S: Stream<Item = WriteTaskRegistration> + Unpin,
+    W: Future<Output = WriteResult> + Send + 'static,
+{
+    async fn select_next(&mut self) -> WriteTaskEvent {
+        let WriteTaskEvents {
+            inactive_timeout,
+            timeout_delay,
             reg_stream,
-            lane_channels,
-            write_tracker,
-            links,
-            ..
+            lanes,
+            pending_writes,
         } = self;
+
+        let mut delay = timeout_delay.as_mut();
 
         loop {
             tokio::select! {
@@ -883,49 +964,85 @@ where
                     break if let Some(reg) = maybe_reg {
                         WriteTaskEvent::Registration(reg)
                     } else {
+                        trace!("Stopping as the coordination task stopped.");
                         WriteTaskEvent::Stop
                     };
                 }
-                maybe_write_done = write_tracker.next(), if write_tracker.has_pending() => {
-                    if let Some((writer, buffer, result)) = maybe_write_done {
-                        let remote_id = writer.remote_id();
-                        if result.is_ok() {
-                            write_tracker.replace_and_pop(writer, buffer);
-                        } else {
-                            //TODO Log failed uplink.
-                            write_tracker.remove_remote(remote_id);
-                            links.remove_remote(remote_id);
-                        }
+                maybe_write_done = pending_writes.next(), if !pending_writes.is_empty() => {
+                    if let Some(result) = maybe_write_done {
+                        break WriteTaskEvent::WriteDone(result);
                     }
                 }
-                maybe_result = lane_channels.lanes.next(), if !lane_channels.is_empty() => {
+                maybe_result = lanes.next(), if !lanes.is_empty() => {
                     match maybe_result {
                         Some(Ok((id, response))) =>  {
+                            delay.as_mut().reset(
+                                Instant::now()
+                                    .checked_add(*inactive_timeout)
+                                    .expect("Timer overflow."),
+                            );
                             break WriteTaskEvent::Event { id, response };
                         },
                         Some(Err(Failed(lane_id))) => {
-                            lane_channels.remove(lane_id);
-                            let linked_remotes = links.remove_lane(lane_id);
-                            for remote_id in linked_remotes {
-                                let lane_name = &lane_channels.lane_names_rev[&lane_id];
-                                if write_tracker.unlink_lane(remote_id,
-                                    lane_id,
-                                    lane_name.as_str()).is_err() {
-                                    todo!("Handle this.");
-                                }
-                            }
+                            break WriteTaskEvent::LaneFailed(lane_id);
                         }
                         _ => {}
                     }
                 }
-                _ = &mut timeout_delay => {
-                    break WriteTaskEvent::Timeout;
+                _ = &mut delay => {
+                    if lanes.is_empty() {
+                        trace!("Stopping as there are no active lanes.");
+                        WriteTaskEvent::Stop
+                    } else {
+                        WriteTaskEvent::Timeout
+                    };
                 }
             };
         }
     }
+}
 
-    fn handle_registration(&mut self, reg: WriteTaskRegistration) {
+#[derive(Debug)]
+struct WriteTaskState<F> {
+    configuration: WriteTaskConfiguration,
+    links: Links,
+    lane_channels: LaneChannels,
+    write_tracker: RemoteWriteTracker<F>,
+}
+
+#[derive(Debug)]
+enum RegistrationResult<W> {
+    AddLane(LaneStream),
+    ScheduleWrite(W),
+    Nothing,
+}
+
+impl<W> From<Option<W>> for RegistrationResult<W> {
+    fn from(opt: Option<W>) -> Self {
+        if let Some(write) = opt {
+            RegistrationResult::ScheduleWrite(write)
+        } else {
+            RegistrationResult::Nothing
+        }
+    }
+}
+
+impl<W, F> WriteTaskState<F>
+where
+    F: Fn(RemoteSender, BytesMut, WriteAction) -> W + Clone,
+    W: Future<Output = WriteResult> + Send + 'static,
+{
+    fn new(configuration: WriteTaskConfiguration, write_op: F) -> Self {
+        WriteTaskState {
+            configuration,
+            links: Default::default(),
+            lane_channels: Default::default(),
+            write_tracker: RemoteWriteTracker::new(write_op),
+        }
+    }
+
+    #[must_use]
+    fn handle_registration(&mut self, reg: WriteTaskRegistration) -> RegistrationResult<W> {
         let WriteTaskState {
             configuration:
                 WriteTaskConfiguration {
@@ -938,75 +1055,147 @@ where
         } = self;
         match reg {
             WriteTaskRegistration::Lane(endpoint) => {
-                lane_channels.add_endpoint(endpoint);
+                RegistrationResult::AddLane(lane_channels.add_endpoint(endpoint))
             }
             WriteTaskRegistration::Remote { id, writer } => {
                 write_tracker.insert(id, node_uri.clone(), *identity, writer);
+                RegistrationResult::Nothing
             }
             WriteTaskRegistration::Coord(RwCoorindationMessage::Link { origin, lane }) => {
+                info!("Attempting to set up link from '{}' to {}.", lane, origin);
                 match lane_channels.id_for(&lane) {
                     Some(id) if write_tracker.has_remote(origin) => {
                         links.insert(id, origin);
                         let lane_name = &lane_channels.lane_names_rev[&id];
-                        write_tracker.push_write(
-                            id,
-                            lane_name.as_str(),
-                            UplinkResponse::Special(SpecialUplinkAction::Linked(id)),
-                            &origin,
-                        );
+                        write_tracker
+                            .push_special(
+                                lane_name.as_str(),
+                                SpecialUplinkAction::Linked(id),
+                                &origin,
+                            )
+                            .into()
+                    }
+                    Some(_) => {
+                        error!("No remote with ID {}.", origin);
+                        RegistrationResult::Nothing
                     }
                     _ => {
-                        //TODO Log bad link.
+                        if write_tracker.has_remote(origin) {
+                            error!("No lane named '{}'.", lane);
+                        } else {
+                            error!("No lane named '{}' or remote with ID {}.", lane, origin);
+                        }
+                        RegistrationResult::Nothing
                     }
                 }
             }
             WriteTaskRegistration::Coord(RwCoorindationMessage::Unlink { origin, lane }) => {
+                info!(
+                    "Attempting to close any link from '{}' to {}.",
+                    lane, origin
+                );
                 if let Some(lane_id) = lane_channels.id_for(&lane) {
                     links.remove(lane_id, origin);
                     let message = Text::new("Link closed.");
                     let lane_name = &lane_channels.lane_names_rev[&lane_id];
-                    write_tracker.push_write(
-                        lane_id,
-                        lane_name.as_str(),
-                        UplinkResponse::Special(SpecialUplinkAction::Unlinked(lane_id, message)),
-                        &origin,
-                    );
+                    write_tracker
+                        .push_special(
+                            lane_name.as_str(),
+                            SpecialUplinkAction::Unlinked(lane_id, message),
+                            &origin,
+                        )
+                        .into()
+                } else {
+                    error!("No lane named '{}'.", lane);
+                    RegistrationResult::Nothing
                 }
             }
             WriteTaskRegistration::Coord(RwCoorindationMessage::UnknownLane { origin, path }) => {
-                write_tracker.push_write(
-                    0,
-                    path.lane.as_str(),
-                    UplinkResponse::Special(SpecialUplinkAction::LaneNotFound),
-                    &origin,
+                info!(
+                    "Received envelope for non-existent lane '{}' from {}.",
+                    path.lane, origin
                 );
+                write_tracker
+                    .push_special(
+                        path.lane.as_str(),
+                        SpecialUplinkAction::LaneNotFound,
+                        &origin,
+                    )
+                    .into()
             }
             WriteTaskRegistration::Coord(RwCoorindationMessage::BadEnvelope {
-                origin: _,
-                lane: _,
-                error: _,
+                origin,
+                lane,
+                error,
             }) => {
-                todo!("Handle this.")
+                info!(error = ?error, "Received in invalid envelope for lane '{}' from {}.", lane, origin);
+                RegistrationResult::Nothing
             }
         }
     }
 
-    fn handle_event(&mut self, id: u64, response: RawLaneResponse) {
+    fn handle_event(&mut self, id: u64, response: RawLaneResponse) -> impl Iterator<Item = W> + '_ {
         let WriteTaskState {
             lane_channels,
             links,
             write_tracker,
             ..
         } = self;
+
+        use either::Either;
+
         let RawLaneResponse { target, response } = response;
         let lane_name = &lane_channels.lane_names_rev[&id];
         if let Some(remote_id) = target {
-            write_tracker.push_write(id, lane_name.as_str(), response, &remote_id);
+            trace!(response = ?response, "Routing response to {}.", remote_id);
+            let write = write_tracker.push_write(id, lane_name.as_str(), response, &remote_id);
+            Either::Left(write.into_iter())
         } else if let Some(targets) = links.linked_from(id) {
-            for (remote_id, response) in targets.iter().zip(std::iter::repeat(response)) {
-                write_tracker.push_write(id, lane_name.as_str(), response, remote_id);
-            }
+            trace!(response = ?response, targets = ?targets, "Broadcasting response to all linked remotes.");
+            Either::Right(targets.iter().zip(std::iter::repeat(response)).flat_map(
+                move |(remote_id, response)| {
+                    write_tracker.push_write(id, lane_name.as_str(), response, remote_id)
+                },
+            ))
+        } else {
+            trace!(response = ?response, "Discarding response.");
+            Either::Left(None.into_iter())
         }
+    }
+
+    fn remove_remote(&mut self, remote_id: Uuid) {
+        info!("Removing remote connection {}.", remote_id);
+        self.links.remove_remote(remote_id);
+        self.write_tracker.remove_remote(remote_id);
+    }
+
+    fn remove_lane(&mut self, lane_id: u64) -> impl Iterator<Item = W> + '_ {
+        let WriteTaskState {
+            lane_channels,
+            links,
+            write_tracker,
+            ..
+        } = self;
+        info!("Attempting to remove lane with id {}.", lane_id);
+        lane_channels.remove(lane_id);
+        let linked_remotes = links.remove_lane(lane_id);
+        linked_remotes.into_iter().flat_map(move |remote_id| {
+            let lane_name = &lane_channels.lane_names_rev[&lane_id];
+            info!("Unlinking remotes connected to {}.", lane_name);
+            write_tracker.unlink_lane(remote_id, lane_id, lane_name.as_str())
+        })
+    }
+
+    fn replace(&mut self, writer: RemoteSender, buffer: BytesMut) -> Option<W> {
+        trace!(
+            "Replacing writer {} after completed write.",
+            writer.remote_id()
+        );
+        self.write_tracker.replace_and_pop(writer, buffer)
+    }
+
+    fn has_remotes(&self) -> bool {
+        !self.write_tracker.is_empty()
     }
 }
 
@@ -1021,43 +1210,87 @@ async fn write_task(
     let runtime_config = configuration.runtime_config;
 
     let timeout_delay = sleep(runtime_config.inactive_timeout);
-    let mut state = WriteTaskState::new(configuration, reg_stream, perform_write);
-
-    initial_endpoints
-        .into_iter()
-        .for_each(|endpoint| state.lane_channels.add_endpoint(endpoint));
 
     pin_mut!(timeout_delay);
+    let mut streams = WriteTaskEvents::new(
+        runtime_config.inactive_timeout,
+        timeout_delay.as_mut(),
+        reg_stream,
+    );
+    let mut state = WriteTaskState::new(configuration, perform_write);
+
+    info!(endpoints = ?initial_endpoints, "Adding initial endpoints.");
+    for endpoint in initial_endpoints {
+        let lane = state.lane_channels.add_endpoint(endpoint);
+        streams.add_lane(lane);
+    }
 
     let mut voted = false;
 
     loop {
-        let next = state.select_next(timeout_delay.as_mut()).await;
+        let next = streams.select_next().await;
         match next {
-            WriteTaskEvent::Registration(reg) => {
-                state.handle_registration(reg);
-            }
+            WriteTaskEvent::Registration(reg) => match state.handle_registration(reg) {
+                RegistrationResult::AddLane(lane) => {
+                    streams.add_lane(lane);
+                }
+                RegistrationResult::ScheduleWrite(write) => {
+                    streams.schedule_write(write);
+                }
+                _ => {}
+            },
             WriteTaskEvent::Event { id, response } => {
                 if voted {
                     if stop_voter.rescind() {
+                        info!(STOP_VOTED);
                         break;
                     }
                     voted = false;
                 }
-                timeout_delay.as_mut().reset(
-                    Instant::now()
-                        .checked_add(runtime_config.inactive_timeout)
-                        .expect("Timer overflow."),
+                for write in state.handle_event(id, response) {
+                    streams.schedule_write(write);
+                }
+            }
+            WriteTaskEvent::WriteDone((writer, buffer, result)) => {
+                if result.is_ok() {
+                    if let Some(write) = state.replace(writer, buffer) {
+                        streams.schedule_write(write);
+                    }
+                } else {
+                    let remote_id = writer.remote_id();
+                    error!(
+                        "Writing to remote {} failed. Removing attached uplinks.",
+                        remote_id
+                    );
+                    state.remove_remote(remote_id);
+                }
+            }
+            WriteTaskEvent::LaneFailed(lane_id) => {
+                error!(
+                    "Lane with ID {} failed. Unlinking all attached uplinks.",
+                    lane_id
                 );
-                state.handle_event(id, response);
+                for write in state.remove_lane(lane_id) {
+                    streams.schedule_write(write);
+                }
             }
             WriteTaskEvent::Timeout => {
+                info!(
+                    "No events sent within {:?}, voting to stop.",
+                    runtime_config.inactive_timeout
+                );
+                if !state.has_remotes() {
+                    info!("Stopping after timeout with no remotes.");
+                    break;
+                }
                 voted = true;
                 if stop_voter.vote() {
+                    info!(STOP_VOTED);
                     break;
                 }
             }
             WriteTaskEvent::Stop => {
+                info!("Write task stopping.");
                 break;
             }
         }

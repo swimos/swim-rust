@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashMap, str::Utf8Error};
+use std::collections::HashMap;
 
 use bytes::BytesMut;
-use futures::{stream::FuturesUnordered, Future, StreamExt};
+use futures::Future;
 use swim_model::Text;
 use swim_utilities::io::byte_channel::ByteWriter;
+use tracing::debug;
 use uuid::Uuid;
 
 use crate::routing::RoutingAddr;
@@ -26,13 +27,13 @@ use super::uplink::{
     RemoteSender, SpecialUplinkAction, UplinkResponse, Uplinks, WriteAction, WriteResult,
 };
 
-pub struct RemoteWriteTracker<W, F> {
+#[derive(Debug)]
+pub struct RemoteWriteTracker<F> {
     remotes: HashMap<Uuid, Uplinks<F>>,
-    pending_writes: FuturesUnordered<W>,
     write_op: F,
 }
 
-impl<W, F> RemoteWriteTracker<W, F>
+impl<W, F> RemoteWriteTracker<F>
 where
     F: Fn(RemoteSender, BytesMut, WriteAction) -> W + Clone,
     W: Future<Output = WriteResult> + Send + 'static,
@@ -40,13 +41,8 @@ where
     pub fn new(write_op: F) -> Self {
         Self {
             remotes: Default::default(),
-            pending_writes: Default::default(),
             write_op,
         }
-    }
-
-    pub async fn next(&mut self) -> Option<WriteResult> {
-        self.pending_writes.next().await
     }
 
     pub fn remove_remote(&mut self, remote_id: Uuid) {
@@ -63,6 +59,7 @@ where
         identity: RoutingAddr,
         writer: ByteWriter,
     ) {
+        debug!("Registering remote with ID {}.", remote_id);
         let RemoteWriteTracker {
             remotes, write_op, ..
         } = self;
@@ -72,66 +69,63 @@ where
         );
     }
 
+    #[must_use]
+    pub fn push_special(
+        &mut self,
+        lane_name: &str,
+        response: SpecialUplinkAction,
+        target: &Uuid,
+    ) -> Option<W> {
+        let RemoteWriteTracker { remotes, .. } = self;
+        remotes
+            .get_mut(target)
+            .and_then(|uplink| uplink.push_special(response, lane_name))
+    }
+
+    #[must_use]
     pub fn push_write(
         &mut self,
         lane_id: u64,
         lane_name: &str,
         response: UplinkResponse,
         target: &Uuid,
-    ) {
-        let RemoteWriteTracker {
-            remotes,
-            pending_writes,
-            ..
-        } = self;
+    ) -> Option<W> {
+        let RemoteWriteTracker { remotes, .. } = self;
         if let Some(uplink) = remotes.get_mut(target) {
             match uplink.push(lane_id, response, lane_name) {
-                Ok(Some(write)) => {
-                    pending_writes.push(write);
-                }
+                Ok(Some(write)) => Some(write),
                 Err(_) => {
                     //TODO Log error.
+                    None
                 }
-                _ => {}
+                _ => None,
             }
+        } else {
+            None
         }
     }
 
-    pub fn has_pending(&self) -> bool {
-        self.pending_writes.is_empty()
-    }
-
-    pub fn unlink_lane(
-        &mut self,
-        remote_id: Uuid,
-        lane_id: u64,
-        lane_name: &str,
-    ) -> Result<(), Utf8Error> {
-        let RemoteWriteTracker { pending_writes, .. } = self;
-        if let Some(uplinks) = self.remotes.get_mut(&remote_id) {
-            if let Some(write) = uplinks.push(
-                lane_id,
-                UplinkResponse::Special(SpecialUplinkAction::Unlinked(lane_id, Text::empty())),
+    #[must_use]
+    pub fn unlink_lane(&mut self, remote_id: Uuid, lane_id: u64, lane_name: &str) -> Option<W> {
+        let RemoteWriteTracker { remotes, .. } = self;
+        remotes.get_mut(&remote_id).and_then(|uplinks| {
+            uplinks.push_special(
+                SpecialUplinkAction::Unlinked(lane_id, Text::empty()),
                 lane_name,
-            )? {
-                pending_writes.push(write);
-            }
-        }
-        Ok(())
+            )
+        })
     }
 
-    pub fn replace_and_pop(&mut self, writer: RemoteSender, buffer: BytesMut) {
-        let RemoteWriteTracker {
-            remotes,
-            pending_writes,
-            ..
-        } = self;
+    #[must_use]
+    pub fn replace_and_pop(&mut self, writer: RemoteSender, buffer: BytesMut) -> Option<W> {
+        let RemoteWriteTracker { remotes, .. } = self;
         let id = writer.remote_id();
-        if let Some(write) = remotes
+        remotes
             .get_mut(&id)
             .and_then(|uplinks| uplinks.replace_and_pop(writer, buffer))
-        {
-            pending_writes.push(write);
-        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.remotes.is_empty()
     }
 }

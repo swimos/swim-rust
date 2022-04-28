@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::num::NonZeroUsize;
+use std::{
+    fmt::{Display, Formatter},
+    num::NonZeroUsize,
+};
 
 use futures::future::BoxFuture;
 use swim_utilities::{
@@ -30,6 +33,15 @@ use crate::{
 pub enum UplinkKind {
     Value,
     Map,
+}
+
+impl Display for UplinkKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UplinkKind::Value => f.write_str("Value"),
+            UplinkKind::Map => f.write_str("Map"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

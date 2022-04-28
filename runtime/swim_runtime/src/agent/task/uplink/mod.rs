@@ -81,6 +81,7 @@ impl RemoteSender {
     }
 }
 
+#[derive(Debug)]
 pub struct Uplinks<F> {
     writer: Option<(RemoteSender, BytesMut)>,
     value_uplinks: HashMap<u64, Uplink<ValueBackpressure>>,
@@ -110,7 +111,6 @@ pub enum UplinkResponse {
     SyncedMap,
     Value(Bytes),
     Map(MapOperation<Bytes, Bytes>),
-    Special(SpecialUplinkAction),
 }
 
 impl<F, W> Uplinks<F>
@@ -135,6 +135,28 @@ where
         }
     }
 
+    pub fn push_special(&mut self, action: SpecialUplinkAction, lane_name: &str) -> Option<W> {
+        let Uplinks {
+            writer,
+            value_uplinks,
+            map_uplinks,
+            special_queue,
+            write_op,
+            ..
+        } = self;
+        if let Some((mut writer, buffer)) = writer.take() {
+            writer.update_lane(lane_name);
+            Some(write_op(writer, buffer, WriteAction::Special(action)))
+        } else {
+            if let SpecialUplinkAction::Unlinked(id, _) = &action {
+                value_uplinks.remove(id);
+                map_uplinks.remove(id);
+            }
+            special_queue.push_back(action);
+            None
+        }
+    }
+
     pub fn push(
         &mut self,
         lane_id: u64,
@@ -146,8 +168,8 @@ where
             value_uplinks,
             map_uplinks,
             write_queue,
-            special_queue,
             write_op,
+            ..
         } = self;
         if let Some((mut writer, mut buffer)) = writer.take() {
             let action = write_to_buffer(event, &mut buffer);
@@ -204,13 +226,6 @@ where
                         write_queue.push_back((UplinkKind::Map, lane_id));
                         *queued = true;
                     }
-                }
-                UplinkResponse::Special(special) => {
-                    if let SpecialUplinkAction::Unlinked(id, _) = &special {
-                        value_uplinks.remove(id);
-                        map_uplinks.remove(id);
-                    }
-                    special_queue.push_back(special);
                 }
             }
             Ok(None)
@@ -310,6 +325,5 @@ fn write_to_buffer(response: UplinkResponse, buffer: &mut BytesMut) -> WriteActi
                 .expect("Wiritng map operations is infallible.");
             WriteAction::Event
         }
-        UplinkResponse::Special(special) => WriteAction::Special(special),
     }
 }
