@@ -18,68 +18,26 @@ use std::{
 };
 
 use bytes::{BufMut, Bytes, BytesMut};
-use futures::{Future, SinkExt};
+use futures::Future;
 use swim_api::{agent::UplinkKind, protocol::map::MapOperation};
-use swim_model::{path::RelativePath, Text};
+use swim_model::Text;
 use swim_utilities::io::byte_channel::ByteWriter;
-use tokio_util::codec::{Encoder, FramedWrite};
-use uuid::Uuid;
+use tokio_util::codec::Encoder;
 
 use crate::{
-    compat::{Notification, RawResponseMessageEncoder, ResponseMessage},
     pressure::{
         recon::MapOperationReconEncoder, DownlinkBackpressure, MapBackpressure, ValueBackpressure,
     },
     routing::RoutingAddr,
 };
 
+mod remote_sender;
+#[cfg(test)]
+mod tests;
+
+pub use remote_sender::RemoteSender;
+
 pub type WriteResult = (RemoteSender, BytesMut, Result<(), std::io::Error>);
-
-#[derive(Debug)]
-pub struct RemoteSender {
-    sender: FramedWrite<ByteWriter, RawResponseMessageEncoder>,
-    identity: RoutingAddr,
-    node: Text,
-    lane: String,
-}
-
-impl RemoteSender {
-    pub fn remote_id(&self) -> Uuid {
-        *self.identity.uuid()
-    }
-
-    pub fn update_lane(&mut self, lane_name: &str) {
-        let RemoteSender { lane, .. } = self;
-        lane.clear();
-        lane.push_str(lane_name);
-    }
-
-    pub async fn send_notification(
-        &mut self,
-        notification: Notification<&BytesMut, &[u8]>,
-        with_flush: bool,
-    ) -> Result<(), std::io::Error> {
-        let RemoteSender {
-            sender,
-            identity,
-            node,
-            lane,
-            ..
-        } = self;
-
-        let message: ResponseMessage<&BytesMut, &[u8]> = ResponseMessage {
-            origin: *identity,
-            path: RelativePath::new(node.as_str(), lane.as_str()),
-            envelope: notification,
-        };
-        if with_flush {
-            sender.send(message).await?;
-        } else {
-            sender.feed(message).await?;
-        }
-        Ok(())
-    }
-}
 
 #[derive(Debug)]
 pub struct Uplinks<F> {
@@ -119,12 +77,7 @@ where
     W: Future<Output = WriteResult> + Send + 'static,
 {
     pub fn new(node: Text, identity: RoutingAddr, writer: ByteWriter, write_op: F) -> Self {
-        let sender = RemoteSender {
-            sender: FramedWrite::new(writer, Default::default()),
-            identity,
-            node,
-            lane: Default::default(),
-        };
+        let sender = RemoteSender::new(writer, identity, node);
         Uplinks {
             writer: Some((sender, Default::default())),
             value_uplinks: Default::default(),

@@ -849,37 +849,37 @@ async fn perform_write_inner(
     match action {
         WriteAction::Event => {
             writer
-                .send_notification(Notification::Event(&*buffer), true)
+                .send_notification(Notification::Event(&*buffer))
                 .await?;
         }
         WriteAction::EventAndSynced => {
             writer
-                .send_notification(Notification::Event(&*buffer), true)
+                .send_notification(Notification::Event(&*buffer))
                 .await?;
-            writer.send_notification(Notification::Synced, true).await?;
+            writer.send_notification(Notification::Synced).await?;
         }
         WriteAction::MapSynced(maybe_queue) => {
             if let Some(mut queue) = maybe_queue {
                 while queue.has_data() {
                     queue.prepare_write(buffer);
                     writer
-                        .send_notification(Notification::Event(&*buffer), true)
+                        .send_notification(Notification::Event(&*buffer))
                         .await?;
                 }
-                writer.send_notification(Notification::Synced, true).await?;
+                writer.send_notification(Notification::Synced).await?;
             }
         }
         WriteAction::Special(SpecialUplinkAction::Linked(_)) => {
-            writer.send_notification(Notification::Linked, true).await?;
+            writer.send_notification(Notification::Linked).await?;
         }
         WriteAction::Special(SpecialUplinkAction::Unlinked(_, msg)) => {
             writer
-                .send_notification(Notification::Unlinked(Some(msg.as_bytes())), true)
+                .send_notification(Notification::Unlinked(Some(msg.as_bytes())))
                 .await?;
         }
         WriteAction::Special(SpecialUplinkAction::LaneNotFound) => {
             writer
-                .send_notification(Notification::Unlinked(Some(LANE_NOT_FOUND_BODY)), true)
+                .send_notification(Notification::Unlinked(Some(LANE_NOT_FOUND_BODY)))
                 .await?;
         }
     }
