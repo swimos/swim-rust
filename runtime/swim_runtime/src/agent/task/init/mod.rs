@@ -25,6 +25,9 @@ use super::{InitialEndpoints, LaneEndpoint};
 
 use tracing::{error, info};
 
+#[cfg(test)]
+mod tests;
+
 pub struct AgentInitTask {
     requests: mpsc::Receiver<AgentRuntimeRequest>,
     init_complete: trigger::Receiver,
