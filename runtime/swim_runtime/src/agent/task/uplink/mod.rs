@@ -26,7 +26,7 @@ use tokio_util::codec::Encoder;
 
 use crate::{
     pressure::{
-        recon::MapOperationReconEncoder, DownlinkBackpressure, MapBackpressure, ValueBackpressure,
+        recon::MapOperationReconEncoder, BackpressureStrategy, MapBackpressure, ValueBackpressure,
     },
     routing::RoutingAddr,
 };

@@ -16,10 +16,10 @@ use std::{convert::Infallible, fmt::Display, str::Utf8Error};
 
 use bytes::{BufMut, Bytes, BytesMut};
 use swim_api::protocol::{
-    downlink::{DownlinkOperation, DownlinkOperationDecoder},
-    map::{RawMapOperation, RawMapOperationDecoder},
+    downlink::DownlinkOperation,
+    map::RawMapOperation,
 };
-use tokio_util::codec::{Decoder, Encoder};
+use tokio_util::codec::Encoder;
 
 use map_queue::MapOperationQueue;
 mod key;
@@ -31,15 +31,11 @@ use recon::MapOperationReconEncoder;
 /// Backpressure strategy for the output task of a downlink. This is used to encode the
 /// difference in behaviour between different kinds of downlink (particuarly value and
 /// map downlinks.)
-pub trait DownlinkBackpressure {
+pub trait BackpressureStrategy {
     /// The type of operations expected from the downlink implementation.
     type Operation;
-    /// Decoder for operations received from the downlink implementation.
-    type Dec: Decoder<Item = Self::Operation>;
     /// Errors that could ocurr when a frame is pushed into the backpressure relief mechanism.
     type Err: Display;
-
-    fn make_decoder() -> Self::Dec;
 
     /// Called when a record has been sent on the downlink but writing is blocked.
     fn push_operation(&mut self, op: Self::Operation) -> Result<(), Self::Err>;
@@ -90,15 +86,10 @@ impl MapBackpressure {
     }
 }
 
-impl DownlinkBackpressure for ValueBackpressure {
+impl BackpressureStrategy for ValueBackpressure {
     type Operation = DownlinkOperation<Bytes>;
 
-    type Dec = DownlinkOperationDecoder;
     type Err = Infallible;
-
-    fn make_decoder() -> Self::Dec {
-        Default::default()
-    }
 
     fn push_operation(&mut self, op: Self::Operation) -> Result<(), Infallible> {
         let DownlinkOperation { body } = op;
@@ -123,15 +114,10 @@ impl DownlinkBackpressure for ValueBackpressure {
     }
 }
 
-impl DownlinkBackpressure for MapBackpressure {
+impl BackpressureStrategy for MapBackpressure {
     type Operation = RawMapOperation;
 
-    type Dec = RawMapOperationDecoder;
     type Err = Utf8Error;
-
-    fn make_decoder() -> Self::Dec {
-        Default::default()
-    }
 
     fn push_operation(&mut self, op: Self::Operation) -> Result<(), Utf8Error> {
         self.queue.push(op)

@@ -20,7 +20,7 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 use crate::compat::{Notification, Operation, RawRequestMessageDecoder, RequestMessage};
-use crate::pressure::DownlinkBackpressure;
+use crate::pressure::BackpressureStrategy;
 use crate::routing::RoutingAddr;
 
 use self::links::Links;
