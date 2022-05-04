@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{convert::Infallible, fmt::Display, str::Utf8Error};
+use std::{convert::Infallible, fmt::Display};
 
 use bytes::{BufMut, Bytes, BytesMut};
 use swim_api::protocol::{downlink::DownlinkOperation, map::RawMapOperation};
@@ -24,6 +24,8 @@ mod map_queue;
 pub mod recon;
 
 use recon::MapOperationReconEncoder;
+
+use crate::error::InvalidKey;
 
 /// Backpressure strategy for the output task of a downlink. This is used to encode the
 /// difference in behaviour between different kinds of downlink (particuarly value and
@@ -78,7 +80,7 @@ pub struct MapBackpressure {
 }
 
 impl MapBackpressure {
-    pub fn push(&mut self, operation: RawMapOperation) -> Result<(), std::str::Utf8Error> {
+    pub fn push(&mut self, operation: RawMapOperation) -> Result<(), InvalidKey> {
         self.queue.push(operation)
     }
 
@@ -118,9 +120,9 @@ impl BackpressureStrategy for ValueBackpressure {
 impl BackpressureStrategy for MapBackpressure {
     type Operation = RawMapOperation;
 
-    type Err = Utf8Error;
+    type Err = InvalidKey;
 
-    fn push_operation(&mut self, op: Self::Operation) -> Result<(), Utf8Error> {
+    fn push_operation(&mut self, op: Self::Operation) -> Result<(), InvalidKey> {
         self.queue.push(op)
     }
 

@@ -12,12 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use bytes::Bytes;
 use futures::channel::mpsc::SendError as FutSendError;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::io::ErrorKind;
+use std::str::Utf8Error;
 use std::sync::Arc;
 use std::time::Duration;
+use thiserror::Error;
 use tokio::sync::mpsc::error::SendError as MpscSendError;
 
 use crate::routing::{RoutingAddr, SendFailed};
@@ -315,3 +318,26 @@ impl Display for NoAgentAtRoute {
 }
 
 impl Error for NoAgentAtRoute {}
+
+/// Error indicated that the key for a map message contained invalid UTF8.
+#[derive(Debug, Error)]
+pub struct InvalidKey {
+    key_bytes: Bytes,
+    source: Utf8Error,
+}
+
+impl Display for InvalidKey {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "The key {:?}, contains invalid UTF8: {}.",
+            self.key_bytes, self.source
+        )
+    }
+}
+
+impl InvalidKey {
+    pub fn new(key_bytes: Bytes, source: Utf8Error) -> Self {
+        InvalidKey { key_bytes, source }
+    }
+}

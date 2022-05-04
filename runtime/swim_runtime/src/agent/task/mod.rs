@@ -20,6 +20,7 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 use crate::compat::{Notification, Operation, RawRequestMessageDecoder, RequestMessage};
+use crate::error::InvalidKey;
 use crate::pressure::BackpressureStrategy;
 use crate::routing::RoutingAddr;
 
@@ -1023,6 +1024,11 @@ impl<W> From<Option<W>> for RegistrationResult<W> {
     }
 }
 
+fn discard_error<W>(error: InvalidKey) -> Option<W> {
+    warn!("Discarding invalid map lane event: {}.", error);
+    None
+}
+
 impl<W, F> WriteTaskState<F>
 where
     F: Fn(RemoteSender, BytesMut, WriteAction) -> W + Clone,
@@ -1141,14 +1147,17 @@ where
         let RawLaneResponse { target, response } = response;
         if let Some(remote_id) = target {
             trace!(response = ?response, "Routing response to {}.", remote_id);
-            let write =
-                write_tracker.push_write(id, lane_channels.lane_map(), response, &remote_id);
+            let write = write_tracker
+                .push_write(id, lane_channels.lane_map(), response, &remote_id)
+                .unwrap_or_else(discard_error);
             Either::Left(write.into_iter())
         } else if let Some(targets) = links.linked_from(id) {
             trace!(response = ?response, targets = ?targets, "Broadcasting response to all linked remotes.");
             Either::Right(targets.iter().zip(std::iter::repeat(response)).flat_map(
                 move |(remote_id, response)| {
-                    write_tracker.push_write(id, &lane_channels.lane_names_rev, response, remote_id)
+                    write_tracker
+                        .push_write(id, &lane_channels.lane_names_rev, response, remote_id)
+                        .unwrap_or_else(discard_error)
                 },
             ))
         } else {

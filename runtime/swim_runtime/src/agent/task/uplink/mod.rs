@@ -12,10 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{
-    collections::{HashMap, VecDeque},
-    str::Utf8Error,
-};
+use std::collections::{HashMap, VecDeque};
 
 use bytes::{BufMut, Bytes, BytesMut};
 use swim_api::{agent::UplinkKind, protocol::map::MapOperation};
@@ -24,6 +21,7 @@ use swim_utilities::io::byte_channel::ByteWriter;
 use tokio_util::codec::Encoder;
 
 use crate::{
+    error::InvalidKey,
     pressure::{
         recon::MapOperationReconEncoder, BackpressureStrategy, MapBackpressure, ValueBackpressure,
     },
@@ -137,7 +135,7 @@ where
         lane_id: u64,
         event: UplinkResponse,
         lane_names: &HashMap<u64, Text>,
-    ) -> Result<Option<W>, Utf8Error> {
+    ) -> Result<Option<W>, InvalidKey> {
         let Uplinks {
             writer,
             value_uplinks,
@@ -297,7 +295,7 @@ struct Uplink<B> {
 fn write_to_buffer(
     response: UplinkResponse,
     buffer: &mut BytesMut,
-) -> Result<WriteAction, Utf8Error> {
+) -> Result<WriteAction, InvalidKey> {
     let action = match response {
         UplinkResponse::SyncedValue(body) => {
             buffer.clear();
@@ -316,7 +314,9 @@ fn write_to_buffer(
             //Validating the key is valid UTF8 for consistency with the backpressure relief case.
             match &operation {
                 MapOperation::Update { key, .. } | MapOperation::Remove { key } => {
-                    std::str::from_utf8(key.as_ref())?;
+                    if let Err(e) = std::str::from_utf8(key.as_ref()) {
+                        return Err(InvalidKey::new(key.clone(), e));
+                    }
                 }
                 _ => {}
             }

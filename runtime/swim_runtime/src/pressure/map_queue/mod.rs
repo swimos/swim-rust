@@ -20,6 +20,8 @@ use std::{
 use bytes::{BufMut, Bytes, BytesMut};
 use swim_api::protocol::map::{MapOperation, RawMapOperation};
 
+use crate::error::InvalidKey;
+
 use super::key::ReconKey;
 
 #[cfg(test)]
@@ -68,8 +70,9 @@ impl Default for MapOperationQueue<RandomState> {
     }
 }
 
-fn make_copy(target: &mut BytesMut, bytes: Bytes) -> BytesMut {
-    target.put(bytes);
+fn make_copy(target: &mut BytesMut, bytes: &Bytes) -> BytesMut {
+    let mut content = bytes.as_ref();
+    target.put(&mut content);
     target.split()
 }
 
@@ -85,7 +88,7 @@ impl<S: BuildHasher> MapOperationQueue<S> {
     ///
     /// # Arguments
     /// * `operation` - The operation push into the queue (any key must be valid UTF-8).
-    pub fn push(&mut self, operation: RawMapOperation) -> Result<(), std::str::Utf8Error> {
+    pub fn push(&mut self, operation: RawMapOperation) -> Result<(), InvalidKey> {
         let MapOperationQueue {
             buffer,
             head_epoch,
@@ -94,7 +97,8 @@ impl<S: BuildHasher> MapOperationQueue<S> {
         } = self;
         match operation {
             RawMapOperation::Update { key, value } => {
-                let recon_key = ReconKey::try_from(make_copy(buffer, key).freeze())?;
+                let recon_key = ReconKey::try_from(make_copy(buffer, &key).freeze())
+                    .map_err(|e| InvalidKey::new(key, e))?;
                 let slot = epoch_map.get(&recon_key).and_then(|epoch| {
                     let index = epoch.wrapping_sub(*head_epoch);
                     debug_assert!(index < queue.len());
@@ -109,7 +113,7 @@ impl<S: BuildHasher> MapOperationQueue<S> {
                         _ => {
                             *entry = QueueEntry::Update {
                                 key: recon_key,
-                                value: make_copy(buffer, value),
+                                value: make_copy(buffer, &value),
                             };
                         }
                     }
@@ -119,12 +123,13 @@ impl<S: BuildHasher> MapOperationQueue<S> {
                     epoch_map.insert(recon_key, epoch);
                     queue.push_back(QueueEntry::Update {
                         key,
-                        value: make_copy(buffer, value),
+                        value: make_copy(buffer, &value),
                     });
                 }
             }
             RawMapOperation::Remove { key } => {
-                let recon_key = ReconKey::try_from(key)?;
+                let recon_key =
+                    ReconKey::try_from(key.clone()).map_err(|e| InvalidKey::new(key, e))?;
                 let slot = epoch_map.get(&recon_key).and_then(|epoch| {
                     let index = epoch.wrapping_sub(*head_epoch);
                     debug_assert!(index < queue.len());

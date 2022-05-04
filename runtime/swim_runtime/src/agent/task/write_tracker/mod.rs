@@ -21,7 +21,7 @@ use swim_utilities::io::byte_channel::ByteWriter;
 use tracing::debug;
 use uuid::Uuid;
 
-use crate::routing::RoutingAddr;
+use crate::{error::InvalidKey, routing::RoutingAddr};
 
 use super::uplink::{
     RemoteSender, SpecialUplinkAction, UplinkResponse, Uplinks, WriteAction, WriteResult,
@@ -52,6 +52,7 @@ where
     pub fn has_remote(&self, remote_id: Uuid) -> bool {
         self.remotes.contains_key(&remote_id)
     }
+
     pub fn insert(
         &mut self,
         remote_id: Uuid,
@@ -89,19 +90,12 @@ where
         lane_names: &HashMap<u64, Text>,
         response: UplinkResponse,
         target: &Uuid,
-    ) -> Option<W> {
+    ) -> Result<Option<W>, InvalidKey> {
         let RemoteWriteTracker { remotes, .. } = self;
         if let Some(uplink) = remotes.get_mut(target) {
-            match uplink.push(lane_id, response, lane_names) {
-                Ok(Some(write)) => Some(write),
-                Err(_) => {
-                    //TODO Log error.
-                    None
-                }
-                _ => None,
-            }
+            uplink.push(lane_id, response, lane_names)
         } else {
-            None
+            Ok(None)
         }
     }
 
