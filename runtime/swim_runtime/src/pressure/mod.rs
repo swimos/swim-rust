@@ -15,10 +15,7 @@
 use std::{convert::Infallible, fmt::Display, str::Utf8Error};
 
 use bytes::{BufMut, Bytes, BytesMut};
-use swim_api::protocol::{
-    downlink::DownlinkOperation,
-    map::RawMapOperation,
-};
+use swim_api::protocol::{downlink::DownlinkOperation, map::RawMapOperation};
 use tokio_util::codec::Encoder;
 
 use map_queue::MapOperationQueue;
@@ -84,6 +81,10 @@ impl MapBackpressure {
     pub fn push(&mut self, operation: RawMapOperation) -> Result<(), std::str::Utf8Error> {
         self.queue.push(operation)
     }
+
+    pub fn pop(&mut self) -> Option<RawMapOperation> {
+        self.queue.pop()
+    }
 }
 
 impl BackpressureStrategy for ValueBackpressure {
@@ -137,11 +138,10 @@ impl BackpressureStrategy for MapBackpressure {
     }
 
     fn prepare_write(&mut self, buffer: &mut BytesMut) {
-        let MapBackpressure { queue, encoder } = self;
         buffer.clear();
-        if let Some(head) = queue.pop() {
+        if let Some(head) = self.pop() {
             // Encoding the operation cannot fail.
-            encoder
+            self.encoder
                 .encode(head, buffer)
                 .expect("Encoding should be unfallible.");
         }

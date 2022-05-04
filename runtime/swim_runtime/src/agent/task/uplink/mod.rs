@@ -18,7 +18,6 @@ use std::{
 };
 
 use bytes::{BufMut, Bytes, BytesMut};
-use futures::Future;
 use swim_api::{agent::UplinkKind, protocol::map::MapOperation};
 use swim_model::Text;
 use swim_utilities::io::byte_channel::ByteWriter;
@@ -52,10 +51,29 @@ pub struct Uplinks<F> {
 #[derive(Debug, Clone)]
 pub enum SpecialUplinkAction {
     Linked(u64),
-    Unlinked(u64, Text),
-    LaneNotFound,
+    Unlinked { lane_id: u64, message: Text },
+    LaneNotFound { lane_name: Text },
 }
 
+impl SpecialUplinkAction {
+    pub fn unlinked(lane_id: u64, message: Text) -> Self {
+        SpecialUplinkAction::Unlinked { lane_id, message }
+    }
+
+    pub fn lane_not_found(lane_name: Text) -> Self {
+        SpecialUplinkAction::LaneNotFound { lane_name }
+    }
+
+    pub fn lane_name<'a>(&'a self, lane_names: &'a HashMap<u64, Text>) -> &'a str {
+        match self {
+            SpecialUplinkAction::Linked(id) => lane_names[id].as_str(),
+            SpecialUplinkAction::Unlinked { lane_id, .. } => lane_names[lane_id].as_str(),
+            SpecialUplinkAction::LaneNotFound { lane_name } => lane_name.as_str(),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum WriteAction {
     Event,
     EventAndSynced,
@@ -74,7 +92,6 @@ pub enum UplinkResponse {
 impl<F, W> Uplinks<F>
 where
     F: Fn(RemoteSender, BytesMut, WriteAction) -> W + Clone,
-    W: Future<Output = WriteResult> + Send + 'static,
 {
     pub fn new(node: Text, identity: RoutingAddr, writer: ByteWriter, write_op: F) -> Self {
         let sender = RemoteSender::new(writer, identity, node);
@@ -88,7 +105,11 @@ where
         }
     }
 
-    pub fn push_special(&mut self, action: SpecialUplinkAction, lane_name: &str) -> Option<W> {
+    pub fn push_special(
+        &mut self,
+        action: SpecialUplinkAction,
+        lane_names: &HashMap<u64, Text>,
+    ) -> Option<W> {
         let Uplinks {
             writer,
             value_uplinks,
@@ -98,12 +119,13 @@ where
             ..
         } = self;
         if let Some((mut writer, buffer)) = writer.take() {
+            let lane_name = action.lane_name(lane_names);
             writer.update_lane(lane_name);
             Some(write_op(writer, buffer, WriteAction::Special(action)))
         } else {
-            if let SpecialUplinkAction::Unlinked(id, _) = &action {
-                value_uplinks.remove(id);
-                map_uplinks.remove(id);
+            if let SpecialUplinkAction::Unlinked { lane_id, .. } = &action {
+                value_uplinks.remove(lane_id);
+                map_uplinks.remove(lane_id);
             }
             special_queue.push_back(action);
             None
@@ -114,7 +136,7 @@ where
         &mut self,
         lane_id: u64,
         event: UplinkResponse,
-        lane_name: &str,
+        lane_names: &HashMap<u64, Text>,
     ) -> Result<Option<W>, Utf8Error> {
         let Uplinks {
             writer,
@@ -125,8 +147,8 @@ where
             ..
         } = self;
         if let Some((mut writer, mut buffer)) = writer.take() {
-            let action = write_to_buffer(event, &mut buffer);
-            writer.update_lane(lane_name);
+            let action = write_to_buffer(event, &mut buffer)?;
+            writer.update_lane(lane_names[&lane_id].as_str());
             Ok(Some(write_op(writer, buffer, action)))
         } else {
             match event {
@@ -185,7 +207,12 @@ where
         }
     }
 
-    pub fn replace_and_pop(&mut self, sender: RemoteSender, mut buffer: BytesMut) -> Option<W> {
+    pub fn replace_and_pop(
+        &mut self,
+        mut sender: RemoteSender,
+        mut buffer: BytesMut,
+        lane_names: &HashMap<u64, Text>,
+    ) -> Option<W> {
         let Uplinks {
             writer,
             value_uplinks,
@@ -196,55 +223,66 @@ where
         } = self;
         debug_assert!(writer.is_none());
         if let Some(special) = special_queue.pop_front() {
+            sender.update_lane(special.lane_name(lane_names));
             Some(write_op(sender, buffer, WriteAction::Special(special)))
-        } else if let Some((kind, lane_id)) = write_queue.pop_front() {
-            match kind {
-                UplinkKind::Value => value_uplinks.get_mut(&lane_id).map(
-                    |Uplink {
-                         queued,
-                         send_synced,
-                         backpressure,
-                     }| {
-                        *queued = false;
-                        let synced = std::mem::replace(send_synced, false);
-                        backpressure.prepare_write(&mut buffer);
-                        let action = if synced {
-                            WriteAction::EventAndSynced
-                        } else {
-                            WriteAction::Event
-                        };
-                        write_op(sender, buffer, action)
-                    },
-                ),
-                UplinkKind::Map => map_uplinks.get_mut(&lane_id).map(
-                    |Uplink {
-                         queued,
-                         send_synced,
-                         backpressure,
-                     }| {
-                        let synced = std::mem::replace(send_synced, false);
-                        if synced {
-                            *queued = false;
-                            write_op(
-                                sender,
-                                buffer,
-                                WriteAction::MapSynced(Some(std::mem::take(backpressure))),
-                            )
-                        } else {
-                            backpressure.prepare_write(&mut buffer);
-                            if backpressure.has_data() {
-                                write_queue.push_back((UplinkKind::Map, lane_id));
-                            } else {
-                                *queued = false;
-                            }
-                            write_op(sender, buffer, WriteAction::Event)
-                        }
-                    },
-                ),
-            }
         } else {
-            *writer = Some((sender, buffer));
-            None
+            loop {
+                if let Some((kind, lane_id)) = write_queue.pop_front() {
+                    match kind {
+                        UplinkKind::Value => {
+                            if let Some(Uplink {
+                                queued,
+                                send_synced,
+                                backpressure,
+                            }) = value_uplinks.get_mut(&lane_id)
+                            {
+                                *queued = false;
+                                let synced = std::mem::replace(send_synced, false);
+                                backpressure.prepare_write(&mut buffer);
+                                let action = if synced {
+                                    WriteAction::EventAndSynced
+                                } else {
+                                    WriteAction::Event
+                                };
+                                sender.update_lane(lane_names[&lane_id].as_str());
+                                break Some(write_op(sender, buffer, action));
+                            }
+                        }
+                        UplinkKind::Map => {
+                            if let Some(Uplink {
+                                queued,
+                                send_synced,
+                                backpressure,
+                            }) = map_uplinks.get_mut(&lane_id)
+                            {
+                                let synced = std::mem::replace(send_synced, false);
+                                let write = if synced {
+                                    *queued = false;
+                                    sender.update_lane(lane_names[&lane_id].as_str());
+                                    write_op(
+                                        sender,
+                                        buffer,
+                                        WriteAction::MapSynced(Some(std::mem::take(backpressure))),
+                                    )
+                                } else {
+                                    backpressure.prepare_write(&mut buffer);
+                                    if backpressure.has_data() {
+                                        write_queue.push_back((UplinkKind::Map, lane_id));
+                                    } else {
+                                        *queued = false;
+                                    }
+                                    sender.update_lane(lane_names[&lane_id].as_str());
+                                    write_op(sender, buffer, WriteAction::Event)
+                                };
+                                break Some(write);
+                            }
+                        }
+                    }
+                } else {
+                    *writer = Some((sender, buffer));
+                    break None;
+                }
+            }
         }
     }
 }
@@ -256,8 +294,11 @@ struct Uplink<B> {
     backpressure: B,
 }
 
-fn write_to_buffer(response: UplinkResponse, buffer: &mut BytesMut) -> WriteAction {
-    match response {
+fn write_to_buffer(
+    response: UplinkResponse,
+    buffer: &mut BytesMut,
+) -> Result<WriteAction, Utf8Error> {
+    let action = match response {
         UplinkResponse::SyncedValue(body) => {
             buffer.clear();
             buffer.reserve(body.len());
@@ -272,11 +313,19 @@ fn write_to_buffer(response: UplinkResponse, buffer: &mut BytesMut) -> WriteActi
             WriteAction::Event
         }
         UplinkResponse::Map(operation) => {
+            //Validating the key is valid UTF8 for consistency with the backpressure relief case.
+            match &operation {
+                MapOperation::Update { key, .. } | MapOperation::Remove { key } => {
+                    std::str::from_utf8(key.as_ref())?;
+                }
+                _ => {}
+            }
             let mut encoder = MapOperationReconEncoder;
             encoder
                 .encode(operation, buffer)
                 .expect("Wiritng map operations is infallible.");
             WriteAction::Event
         }
-    }
+    };
+    Ok(action)
 }

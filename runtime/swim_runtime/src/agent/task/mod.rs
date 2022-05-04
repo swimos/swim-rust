@@ -784,6 +784,10 @@ impl LaneChannels {
         id
     }
 
+    fn lane_map(&self) -> &HashMap<u64, Text> {
+        &self.lane_names_rev
+    }
+
     #[must_use]
     fn add_endpoint(&mut self, endpoint: LaneEndpoint<ByteReader>) -> LaneStream {
         let id = self.next_id();
@@ -872,12 +876,12 @@ async fn perform_write_inner(
         WriteAction::Special(SpecialUplinkAction::Linked(_)) => {
             writer.send_notification(Notification::Linked).await?;
         }
-        WriteAction::Special(SpecialUplinkAction::Unlinked(_, msg)) => {
+        WriteAction::Special(SpecialUplinkAction::Unlinked { message, .. }) => {
             writer
-                .send_notification(Notification::Unlinked(Some(msg.as_bytes())))
+                .send_notification(Notification::Unlinked(Some(message.as_bytes())))
                 .await?;
         }
-        WriteAction::Special(SpecialUplinkAction::LaneNotFound) => {
+        WriteAction::Special(SpecialUplinkAction::LaneNotFound { .. }) => {
             writer
                 .send_notification(Notification::Unlinked(Some(LANE_NOT_FOUND_BODY)))
                 .await?;
@@ -1058,10 +1062,9 @@ where
                 match lane_channels.id_for(&lane) {
                     Some(id) if write_tracker.has_remote(origin) => {
                         links.insert(id, origin);
-                        let lane_name = &lane_channels.lane_names_rev[&id];
                         write_tracker
                             .push_special(
-                                lane_name.as_str(),
+                                lane_channels.lane_map(),
                                 SpecialUplinkAction::Linked(id),
                                 &origin,
                             )
@@ -1089,11 +1092,10 @@ where
                 if let Some(lane_id) = lane_channels.id_for(&lane) {
                     links.remove(lane_id, origin);
                     let message = Text::new("Link closed.");
-                    let lane_name = &lane_channels.lane_names_rev[&lane_id];
                     write_tracker
                         .push_special(
-                            lane_name.as_str(),
-                            SpecialUplinkAction::Unlinked(lane_id, message),
+                            lane_channels.lane_map(),
+                            SpecialUplinkAction::unlinked(lane_id, message),
                             &origin,
                         )
                         .into()
@@ -1109,8 +1111,8 @@ where
                 );
                 write_tracker
                     .push_special(
-                        path.lane.as_str(),
-                        SpecialUplinkAction::LaneNotFound,
+                        lane_channels.lane_map(),
+                        SpecialUplinkAction::lane_not_found(path.lane.clone()),
                         &origin,
                     )
                     .into()
@@ -1137,16 +1139,16 @@ where
         use either::Either;
 
         let RawLaneResponse { target, response } = response;
-        let lane_name = &lane_channels.lane_names_rev[&id];
         if let Some(remote_id) = target {
             trace!(response = ?response, "Routing response to {}.", remote_id);
-            let write = write_tracker.push_write(id, lane_name.as_str(), response, &remote_id);
+            let write =
+                write_tracker.push_write(id, lane_channels.lane_map(), response, &remote_id);
             Either::Left(write.into_iter())
         } else if let Some(targets) = links.linked_from(id) {
             trace!(response = ?response, targets = ?targets, "Broadcasting response to all linked remotes.");
             Either::Right(targets.iter().zip(std::iter::repeat(response)).flat_map(
                 move |(remote_id, response)| {
-                    write_tracker.push_write(id, lane_name.as_str(), response, remote_id)
+                    write_tracker.push_write(id, &lane_channels.lane_names_rev, response, remote_id)
                 },
             ))
         } else {
@@ -1172,18 +1174,22 @@ where
         lane_channels.remove(lane_id);
         let linked_remotes = links.remove_lane(lane_id);
         linked_remotes.into_iter().flat_map(move |remote_id| {
-            let lane_name = &lane_channels.lane_names_rev[&lane_id];
-            info!("Unlinking remotes connected to {}.", lane_name);
-            write_tracker.unlink_lane(remote_id, lane_id, lane_name.as_str())
+            info!("Unlinking remotes connected to lane with id {}.", lane_id);
+            write_tracker.unlink_lane(remote_id, lane_id, lane_channels.lane_map())
         })
     }
 
     fn replace(&mut self, writer: RemoteSender, buffer: BytesMut) -> Option<W> {
+        let WriteTaskState {
+            lane_channels,
+            write_tracker,
+            ..
+        } = self;
         trace!(
             "Replacing writer {} after completed write.",
             writer.remote_id()
         );
-        self.write_tracker.replace_and_pop(writer, buffer)
+        write_tracker.replace_and_pop(writer, buffer, lane_channels.lane_map())
     }
 
     fn has_remotes(&self) -> bool {

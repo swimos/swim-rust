@@ -39,8 +39,8 @@ use crate::compat::{
     RawResponseMessageDecoder,
 };
 use crate::downlink::failure::BadFrameResponse;
-use backpressure::DownlinkBackpressure;
 use crate::routing::RoutingAddr;
+use backpressure::DownlinkBackpressure;
 
 mod backpressure;
 pub mod failure;

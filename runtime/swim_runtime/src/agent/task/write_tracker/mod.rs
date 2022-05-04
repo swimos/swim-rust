@@ -72,27 +72,27 @@ where
     #[must_use]
     pub fn push_special(
         &mut self,
-        lane_name: &str,
+        lane_names: &HashMap<u64, Text>,
         response: SpecialUplinkAction,
         target: &Uuid,
     ) -> Option<W> {
         let RemoteWriteTracker { remotes, .. } = self;
         remotes
             .get_mut(target)
-            .and_then(|uplink| uplink.push_special(response, lane_name))
+            .and_then(|uplink| uplink.push_special(response, lane_names))
     }
 
     #[must_use]
     pub fn push_write(
         &mut self,
         lane_id: u64,
-        lane_name: &str,
+        lane_names: &HashMap<u64, Text>,
         response: UplinkResponse,
         target: &Uuid,
     ) -> Option<W> {
         let RemoteWriteTracker { remotes, .. } = self;
         if let Some(uplink) = remotes.get_mut(target) {
-            match uplink.push(lane_id, response, lane_name) {
+            match uplink.push(lane_id, response, lane_names) {
                 Ok(Some(write)) => Some(write),
                 Err(_) => {
                     //TODO Log error.
@@ -106,23 +106,33 @@ where
     }
 
     #[must_use]
-    pub fn unlink_lane(&mut self, remote_id: Uuid, lane_id: u64, lane_name: &str) -> Option<W> {
+    pub fn unlink_lane(
+        &mut self,
+        remote_id: Uuid,
+        lane_id: u64,
+        lane_names: &HashMap<u64, Text>,
+    ) -> Option<W> {
         let RemoteWriteTracker { remotes, .. } = self;
         remotes.get_mut(&remote_id).and_then(|uplinks| {
             uplinks.push_special(
-                SpecialUplinkAction::Unlinked(lane_id, Text::empty()),
-                lane_name,
+                SpecialUplinkAction::unlinked(lane_id, Text::empty()),
+                lane_names,
             )
         })
     }
 
     #[must_use]
-    pub fn replace_and_pop(&mut self, writer: RemoteSender, buffer: BytesMut) -> Option<W> {
+    pub fn replace_and_pop(
+        &mut self,
+        writer: RemoteSender,
+        buffer: BytesMut,
+        lane_names: &HashMap<u64, Text>,
+    ) -> Option<W> {
         let RemoteWriteTracker { remotes, .. } = self;
         let id = writer.remote_id();
         remotes
             .get_mut(&id)
-            .and_then(|uplinks| uplinks.replace_and_pop(writer, buffer))
+            .and_then(|uplinks| uplinks.replace_and_pop(writer, buffer, lane_names))
     }
 
     pub fn is_empty(&self) -> bool {

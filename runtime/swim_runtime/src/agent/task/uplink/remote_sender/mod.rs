@@ -32,7 +32,7 @@ pub struct RemoteSender {
     sender: FramedWrite<ByteWriter, RawResponseMessageEncoder>,
     identity: RoutingAddr,
     node: Text,
-    lane: String,
+    pub lane: String,
 }
 
 impl RemoteSender {
