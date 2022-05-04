@@ -1112,7 +1112,7 @@ where
                 write_tracker
                     .push_special(
                         lane_channels.lane_map(),
-                        SpecialUplinkAction::lane_not_found(path.lane.clone()),
+                        SpecialUplinkAction::lane_not_found(path.lane),
                         &origin,
                     )
                     .into()
