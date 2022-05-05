@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashMap, num::NonZeroUsize};
+use std::num::NonZeroUsize;
 
 use bytes::{Bytes, BytesMut};
 use swim_api::protocol::map::{MapOperation, RawMapOperation};
@@ -22,7 +22,10 @@ use swim_utilities::{
     io::byte_channel::{byte_channel, ByteReader},
 };
 
-use crate::{agent::task::uplink::UplinkResponse, routing::RoutingAddr};
+use crate::{
+    agent::task::remotes::{LaneRegistry, UplinkResponse},
+    routing::RoutingAddr,
+};
 
 use super::{RemoteSender, SpecialUplinkAction, Uplinks, WriteAction};
 
@@ -55,10 +58,10 @@ fn make_uplinks() -> (Uplinks<TestOp>, ByteReader) {
 const LANE_NAME: &str = "lane";
 const OTHER_LANE_NAME: &str = "other";
 
-fn lane_names() -> HashMap<u64, Text> {
-    let mut names = HashMap::new();
-    names.insert(0, Text::new(LANE_NAME));
-    names.insert(1, Text::new(OTHER_LANE_NAME));
+fn lane_names() -> LaneRegistry {
+    let mut names = LaneRegistry::default();
+    assert_eq!(names.add_endpoint(Text::new(LANE_NAME)), 0);
+    assert_eq!(names.add_endpoint(Text::new(OTHER_LANE_NAME)), 1);
     names
 }
 

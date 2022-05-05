@@ -28,13 +28,10 @@ use crate::{
     routing::RoutingAddr,
 };
 
-mod remote_sender;
 #[cfg(test)]
 mod tests;
 
-pub use remote_sender::RemoteSender;
-
-pub type WriteResult = (RemoteSender, BytesMut, Result<(), std::io::Error>);
+use super::{LaneRegistry, RemoteSender};
 
 #[derive(Debug)]
 pub struct Uplinks<F> {
@@ -62,10 +59,10 @@ impl SpecialUplinkAction {
         SpecialUplinkAction::LaneNotFound { lane_name }
     }
 
-    pub fn lane_name<'a>(&'a self, lane_names: &'a HashMap<u64, Text>) -> &'a str {
+    pub fn lane_name<'a>(&'a self, registry: &'a LaneRegistry) -> &'a str {
         match self {
-            SpecialUplinkAction::Linked(id) => lane_names[id].as_str(),
-            SpecialUplinkAction::Unlinked { lane_id, .. } => lane_names[lane_id].as_str(),
+            SpecialUplinkAction::Linked(id) => registry.name_for(*id),
+            SpecialUplinkAction::Unlinked { lane_id, .. } => registry.name_for(*lane_id),
             SpecialUplinkAction::LaneNotFound { lane_name } => lane_name.as_str(),
         }
     }
@@ -106,7 +103,7 @@ where
     pub fn push_special(
         &mut self,
         action: SpecialUplinkAction,
-        lane_names: &HashMap<u64, Text>,
+        registry: &LaneRegistry,
     ) -> Option<W> {
         let Uplinks {
             writer,
@@ -117,7 +114,7 @@ where
             ..
         } = self;
         if let Some((mut writer, buffer)) = writer.take() {
-            let lane_name = action.lane_name(lane_names);
+            let lane_name = action.lane_name(registry);
             writer.update_lane(lane_name);
             Some(write_op(writer, buffer, WriteAction::Special(action)))
         } else {
@@ -134,7 +131,7 @@ where
         &mut self,
         lane_id: u64,
         event: UplinkResponse,
-        lane_names: &HashMap<u64, Text>,
+        registry: &LaneRegistry,
     ) -> Result<Option<W>, InvalidKey> {
         let Uplinks {
             writer,
@@ -146,7 +143,7 @@ where
         } = self;
         if let Some((mut writer, mut buffer)) = writer.take() {
             let action = write_to_buffer(event, &mut buffer)?;
-            writer.update_lane(lane_names[&lane_id].as_str());
+            writer.update_lane(registry.name_for(lane_id));
             Ok(Some(write_op(writer, buffer, action)))
         } else {
             match event {
@@ -209,7 +206,7 @@ where
         &mut self,
         mut sender: RemoteSender,
         mut buffer: BytesMut,
-        lane_names: &HashMap<u64, Text>,
+        registry: &LaneRegistry,
     ) -> Option<W> {
         let Uplinks {
             writer,
@@ -221,7 +218,7 @@ where
         } = self;
         debug_assert!(writer.is_none());
         if let Some(special) = special_queue.pop_front() {
-            sender.update_lane(special.lane_name(lane_names));
+            sender.update_lane(special.lane_name(registry));
             Some(write_op(sender, buffer, WriteAction::Special(special)))
         } else {
             loop {
@@ -242,7 +239,7 @@ where
                                 } else {
                                     WriteAction::Event
                                 };
-                                sender.update_lane(lane_names[&lane_id].as_str());
+                                sender.update_lane(registry.name_for(lane_id));
                                 break Some(write_op(sender, buffer, action));
                             }
                         }
@@ -256,7 +253,7 @@ where
                                 let synced = std::mem::replace(send_synced, false);
                                 let write = if synced {
                                     *queued = false;
-                                    sender.update_lane(lane_names[&lane_id].as_str());
+                                    sender.update_lane(registry.name_for(lane_id));
                                     write_op(
                                         sender,
                                         buffer,
@@ -269,7 +266,7 @@ where
                                     } else {
                                         *queued = false;
                                     }
-                                    sender.update_lane(lane_names[&lane_id].as_str());
+                                    sender.update_lane(registry.name_for(lane_id));
                                     write_op(sender, buffer, WriteAction::Event)
                                 };
                                 break Some(write);
