@@ -25,9 +25,9 @@ use crate::routing::RoutingAddr;
 
 use self::links::Links;
 use self::remotes::{
-    LaneRegistry, RemoteSender, RemoteWriteTracker, SpecialUplinkAction, UplinkResponse,
-    WriteAction, WriteResult, perform_write
+    LaneRegistry, RemoteSender, RemoteTracker, SpecialUplinkAction, UplinkResponse,
 };
+use self::write_fut::{WriteTask, WriteResult};
 
 use super::{AgentAttachmentRequest, AgentRuntimeConfig, AgentRuntimeRequest, Io};
 use bytes::{Bytes, BytesMut};
@@ -69,9 +69,9 @@ use tracing_futures::Instrument;
 
 mod init;
 mod links;
-mod timeout_coord;
 mod remotes;
-
+mod timeout_coord;
+mod write_fut;
 
 pub use init::{AgentInitTask, NoLanes};
 
@@ -899,10 +899,10 @@ where
 }
 
 #[derive(Debug)]
-struct WriteTaskState<F> {
+struct WriteTaskState {
     configuration: WriteTaskConfiguration,
     links: Links,
-    write_tracker: RemoteWriteTracker<F>,
+    write_tracker: RemoteTracker,
 }
 
 #[derive(Debug)]
@@ -927,21 +927,17 @@ fn discard_error<W>(error: InvalidKey) -> Option<W> {
     None
 }
 
-impl<W, F> WriteTaskState<F>
-where
-    F: Fn(RemoteSender, BytesMut, WriteAction) -> W + Clone,
-    W: Future<Output = WriteResult> + Send + 'static,
-{
-    fn new(configuration: WriteTaskConfiguration, write_op: F) -> Self {
+impl WriteTaskState {
+    fn new(configuration: WriteTaskConfiguration) -> Self {
         WriteTaskState {
             configuration,
             links: Default::default(),
-            write_tracker: RemoteWriteTracker::new(write_op),
+            write_tracker: Default::default(),
         }
     }
 
     #[must_use]
-    fn handle_registration(&mut self, reg: WriteTaskRegistration) -> RegistrationResult<W> {
+    fn handle_registration(&mut self, reg: WriteTaskRegistration) -> RegistrationResult<WriteTask> {
         let WriteTaskState {
             configuration:
                 WriteTaskConfiguration {
@@ -1019,7 +1015,11 @@ where
         }
     }
 
-    fn handle_event(&mut self, id: u64, response: RawLaneResponse) -> impl Iterator<Item = W> + '_ {
+    fn handle_event(
+        &mut self,
+        id: u64,
+        response: RawLaneResponse,
+    ) -> impl Iterator<Item = WriteTask> + '_ {
         let WriteTaskState {
             links,
             write_tracker,
@@ -1056,7 +1056,7 @@ where
         self.write_tracker.remove_remote(remote_id);
     }
 
-    fn remove_lane(&mut self, lane_id: u64) -> impl Iterator<Item = W> + '_ {
+    fn remove_lane(&mut self, lane_id: u64) -> impl Iterator<Item = WriteTask> + '_ {
         let WriteTaskState {
             links,
             write_tracker,
@@ -1071,7 +1071,7 @@ where
         })
     }
 
-    fn replace(&mut self, writer: RemoteSender, buffer: BytesMut) -> Option<W> {
+    fn replace(&mut self, writer: RemoteSender, buffer: BytesMut) -> Option<WriteTask> {
         let WriteTaskState { write_tracker, .. } = self;
         trace!(
             "Replacing writer {} after completed write.",
@@ -1103,7 +1103,7 @@ async fn write_task(
         timeout_delay.as_mut(),
         reg_stream,
     );
-    let mut state = WriteTaskState::new(configuration, perform_write);
+    let mut state = WriteTaskState::new(configuration);
 
     info!(endpoints = ?initial_endpoints, "Adding initial endpoints.");
     for endpoint in initial_endpoints {
@@ -1121,7 +1121,7 @@ async fn write_task(
                     streams.add_lane(lane);
                 }
                 RegistrationResult::ScheduleWrite(write) => {
-                    streams.schedule_write(write);
+                    streams.schedule_write(write.into_future());
                 }
                 _ => {}
             },
@@ -1134,13 +1134,13 @@ async fn write_task(
                     voted = false;
                 }
                 for write in state.handle_event(id, response) {
-                    streams.schedule_write(write);
+                    streams.schedule_write(write.into_future());
                 }
             }
             WriteTaskEvent::WriteDone((writer, buffer, result)) => {
                 if result.is_ok() {
                     if let Some(write) = state.replace(writer, buffer) {
-                        streams.schedule_write(write);
+                        streams.schedule_write(write.into_future());
                     }
                 } else {
                     let remote_id = writer.remote_id();
@@ -1157,7 +1157,7 @@ async fn write_task(
                     lane_id
                 );
                 for write in state.remove_lane(lane_id) {
-                    streams.schedule_write(write);
+                    streams.schedule_write(write.into_future());
                 }
             }
             WriteTaskEvent::Timeout => {

@@ -21,6 +21,7 @@ use swim_utilities::io::byte_channel::ByteWriter;
 use tokio_util::codec::Encoder;
 
 use crate::{
+    agent::task::write_fut::{WriteAction, WriteTask},
     error::InvalidKey,
     pressure::{
         recon::MapOperationReconEncoder, BackpressureStrategy, MapBackpressure, ValueBackpressure,
@@ -34,13 +35,12 @@ mod tests;
 use super::{LaneRegistry, RemoteSender};
 
 #[derive(Debug)]
-pub struct Uplinks<F> {
+pub struct Uplinks {
     writer: Option<(RemoteSender, BytesMut)>,
     value_uplinks: HashMap<u64, Uplink<ValueBackpressure>>,
     map_uplinks: HashMap<u64, Uplink<MapBackpressure>>,
     write_queue: VecDeque<(UplinkKind, u64)>,
     special_queue: VecDeque<SpecialUplinkAction>,
-    write_op: F,
 }
 
 #[derive(Debug, Clone)]
@@ -68,14 +68,6 @@ impl SpecialUplinkAction {
     }
 }
 
-#[derive(Debug)]
-pub enum WriteAction {
-    Event,
-    EventAndSynced,
-    MapSynced(Option<MapBackpressure>),
-    Special(SpecialUplinkAction),
-}
-
 #[derive(Debug, Clone)]
 pub enum UplinkResponse {
     SyncedValue(Bytes),
@@ -84,11 +76,8 @@ pub enum UplinkResponse {
     Map(MapOperation<Bytes, Bytes>),
 }
 
-impl<F, W> Uplinks<F>
-where
-    F: Fn(RemoteSender, BytesMut, WriteAction) -> W + Clone,
-{
-    pub fn new(node: Text, identity: RoutingAddr, writer: ByteWriter, write_op: F) -> Self {
+impl Uplinks {
+    pub fn new(node: Text, identity: RoutingAddr, writer: ByteWriter) -> Self {
         let sender = RemoteSender::new(writer, identity, node);
         Uplinks {
             writer: Some((sender, Default::default())),
@@ -96,7 +85,6 @@ where
             map_uplinks: Default::default(),
             write_queue: Default::default(),
             special_queue: Default::default(),
-            write_op,
         }
     }
 
@@ -104,19 +92,18 @@ where
         &mut self,
         action: SpecialUplinkAction,
         registry: &LaneRegistry,
-    ) -> Option<W> {
+    ) -> Option<WriteTask> {
         let Uplinks {
             writer,
             value_uplinks,
             map_uplinks,
             special_queue,
-            write_op,
             ..
         } = self;
         if let Some((mut writer, buffer)) = writer.take() {
             let lane_name = action.lane_name(registry);
             writer.update_lane(lane_name);
-            Some(write_op(writer, buffer, WriteAction::Special(action)))
+            Some(WriteTask::new(writer, buffer, WriteAction::Special(action)))
         } else {
             if let SpecialUplinkAction::Unlinked { lane_id, .. } = &action {
                 value_uplinks.remove(lane_id);
@@ -132,19 +119,18 @@ where
         lane_id: u64,
         event: UplinkResponse,
         registry: &LaneRegistry,
-    ) -> Result<Option<W>, InvalidKey> {
+    ) -> Result<Option<WriteTask>, InvalidKey> {
         let Uplinks {
             writer,
             value_uplinks,
             map_uplinks,
             write_queue,
-            write_op,
             ..
         } = self;
         if let Some((mut writer, mut buffer)) = writer.take() {
             let action = write_to_buffer(event, &mut buffer)?;
             writer.update_lane(registry.name_for(lane_id));
-            Ok(Some(write_op(writer, buffer, action)))
+            Ok(Some(WriteTask::new(writer, buffer, action)))
         } else {
             match event {
                 UplinkResponse::Value(body) => {
@@ -207,19 +193,22 @@ where
         mut sender: RemoteSender,
         mut buffer: BytesMut,
         registry: &LaneRegistry,
-    ) -> Option<W> {
+    ) -> Option<WriteTask> {
         let Uplinks {
             writer,
             value_uplinks,
             map_uplinks,
             write_queue,
             special_queue,
-            write_op,
         } = self;
         debug_assert!(writer.is_none());
         if let Some(special) = special_queue.pop_front() {
             sender.update_lane(special.lane_name(registry));
-            Some(write_op(sender, buffer, WriteAction::Special(special)))
+            Some(WriteTask::new(
+                sender,
+                buffer,
+                WriteAction::Special(special),
+            ))
         } else {
             loop {
                 if let Some((kind, lane_id)) = write_queue.pop_front() {
@@ -240,7 +229,7 @@ where
                                     WriteAction::Event
                                 };
                                 sender.update_lane(registry.name_for(lane_id));
-                                break Some(write_op(sender, buffer, action));
+                                break Some(WriteTask::new(sender, buffer, action));
                             }
                         }
                         UplinkKind::Map => {
@@ -254,7 +243,7 @@ where
                                 let write = if synced {
                                     *queued = false;
                                     sender.update_lane(registry.name_for(lane_id));
-                                    write_op(
+                                    WriteTask::new(
                                         sender,
                                         buffer,
                                         WriteAction::MapSynced(Some(std::mem::take(backpressure))),
@@ -267,7 +256,7 @@ where
                                         *queued = false;
                                     }
                                     sender.update_lane(registry.name_for(lane_id));
-                                    write_op(sender, buffer, WriteAction::Event)
+                                    WriteTask::new(sender, buffer, WriteAction::Event)
                                 };
                                 break Some(write);
                             }

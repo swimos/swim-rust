@@ -23,34 +23,22 @@ use swim_utilities::{
 };
 
 use crate::{
-    agent::task::remotes::{LaneRegistry, UplinkResponse},
+    agent::task::{
+        remotes::{LaneRegistry, UplinkResponse},
+        write_fut::WriteTask,
+    },
     routing::RoutingAddr,
 };
 
 use super::{RemoteSender, SpecialUplinkAction, Uplinks, WriteAction};
 
-fn fake_write_op(
-    sender: RemoteSender,
-    buffer: BytesMut,
-    action: WriteAction,
-) -> (RemoteSender, BytesMut, WriteAction) {
-    (sender, buffer, action)
-}
-
-type TestOp = fn(RemoteSender, BytesMut, WriteAction) -> (RemoteSender, BytesMut, WriteAction);
-
 const NODE_URI: &str = "/node";
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 
-fn make_uplinks() -> (Uplinks<TestOp>, ByteReader) {
+fn make_uplinks() -> (Uplinks, ByteReader) {
     let (tx, rx) = byte_channel(BUFFER_SIZE);
     (
-        Uplinks::new(
-            Text::new(NODE_URI),
-            RoutingAddr::plane(0),
-            tx,
-            fake_write_op,
-        ),
+        Uplinks::new(Text::new(NODE_URI), RoutingAddr::plane(0), tx),
         rx,
     )
 }
@@ -70,7 +58,7 @@ fn push_linked() {
     let lane_names = lane_names();
     let (mut uplinks, _reader) = make_uplinks();
 
-    let (sender, _, action) = uplinks
+    let WriteTask { sender, action, .. } = uplinks
         .push_special(SpecialUplinkAction::Linked(0), &lane_names)
         .expect("Expected immediate write.");
 
@@ -87,7 +75,7 @@ fn push_unlinked() {
 
     let (mut uplinks, _reader) = make_uplinks();
 
-    let (sender, _, action) = uplinks
+    let WriteTask { sender, action, .. } = uplinks
         .push_special(
             SpecialUplinkAction::unlinked(0, Text::new("Gone")),
             &lane_names,
@@ -105,7 +93,7 @@ fn push_lane_not_found() {
     let lane_names = lane_names();
     let (mut uplinks, _reader) = make_uplinks();
 
-    let (sender, _, action) = uplinks
+    let WriteTask { sender, action, .. } = uplinks
         .push_special(
             SpecialUplinkAction::lane_not_found(Text::new("boom")),
             &lane_names,
@@ -124,7 +112,7 @@ fn resinstate_writer() {
 
     let (mut uplinks, _reader) = make_uplinks();
 
-    let (sender, buffer, _) = uplinks
+    let WriteTask { sender, buffer, .. } = uplinks
         .push_special(SpecialUplinkAction::Linked(0), &lane_names)
         .expect("Expected immediate write.");
 
@@ -139,7 +127,11 @@ fn queue_special() {
 
     let (mut uplinks, _reader) = make_uplinks();
 
-    let (sender, buffer, action) = uplinks
+    let WriteTask {
+        sender,
+        buffer,
+        action,
+    } = uplinks
         .push_special(SpecialUplinkAction::Linked(0), &lane_names)
         .expect("Expected immediate write.");
 
@@ -155,7 +147,7 @@ fn queue_special() {
         WriteAction::Special(SpecialUplinkAction::Linked(0))
     ));
 
-    let (sender, _, action) = uplinks
+    let WriteTask { sender, action, .. } = uplinks
         .replace_and_pop(sender, buffer, &lane_names)
         .expect("Expected queued result.");
 
@@ -175,7 +167,11 @@ fn push_value_event() {
 
     let content = Bytes::from_static(BODY1);
 
-    let (sender, buffer, action) = uplinks
+    let WriteTask {
+        sender,
+        buffer,
+        action,
+    } = uplinks
         .push(0, UplinkResponse::Value(content), &lane_names)
         .expect("Action was invalid.")
         .expect("Expected immediate write.");
@@ -192,7 +188,11 @@ fn push_value_synced() {
 
     let content = Bytes::from_static(BODY1);
 
-    let (sender, buffer, action) = uplinks
+    let WriteTask {
+        sender,
+        buffer,
+        action,
+    } = uplinks
         .push(0, UplinkResponse::SyncedValue(content), &lane_names)
         .expect("Action was invalid.")
         .expect("Expected immediate write.");
@@ -207,7 +207,7 @@ fn push_map_synced() {
     let lane_names = lane_names();
     let (mut uplinks, _reader) = make_uplinks();
 
-    let (sender, _buffer, action) = uplinks
+    let WriteTask { sender, action, .. } = uplinks
         .push(0, UplinkResponse::SyncedMap, &lane_names)
         .expect("Action was invalid.")
         .expect("Expected immediate write.");
@@ -224,7 +224,11 @@ fn push_good_map_event() {
     let lane_names = lane_names();
     let (mut uplinks, _reader) = make_uplinks();
 
-    let (sender, buffer, action) = uplinks
+    let WriteTask {
+        sender,
+        buffer,
+        action,
+    } = uplinks
         .push(
             0,
             UplinkResponse::Map(MapOperation::Remove {
@@ -259,14 +263,9 @@ fn push_bad_map_event() {
     assert!(result.is_err());
 }
 
-fn make_uplinks_writing() -> (Uplinks<TestOp>, ByteReader, RemoteSender, BytesMut) {
+fn make_uplinks_writing() -> (Uplinks, ByteReader, RemoteSender, BytesMut) {
     let (tx, rx) = byte_channel(BUFFER_SIZE);
-    let mut uplinks = Uplinks::new(
-        Text::new(NODE_URI),
-        RoutingAddr::plane(0),
-        tx,
-        fake_write_op as TestOp,
-    );
+    let mut uplinks = Uplinks::new(Text::new(NODE_URI), RoutingAddr::plane(0), tx);
     let (writer, buffer) = uplinks.writer.take().unwrap();
     (uplinks, rx, writer, buffer)
 }
@@ -288,7 +287,11 @@ fn push_multiple_value_events_same_lane() {
         assert!(result.is_none());
     }
 
-    let (sender, buffer, action) = uplinks
+    let WriteTask {
+        sender,
+        buffer,
+        action,
+    } = uplinks
         .replace_and_pop(sender, buffer, &lane_names)
         .expect("Expected queued result.");
 
@@ -323,7 +326,11 @@ fn push_multiple_value_events_multiple_lanes() {
     let expected = [(LANE_NAME, BODY1), (OTHER_LANE_NAME, BODY2)];
 
     for (name, body) in expected {
-        let (send, buf, action) = uplinks
+        let WriteTask {
+            sender: send,
+            buffer: buf,
+            action,
+        } = uplinks
             .replace_and_pop(sender, buffer, &lane_names)
             .expect("Expected queued result.");
 
@@ -358,7 +365,11 @@ fn special_before_events() {
 
     assert!(result.is_none());
 
-    let (sender, buffer, action) = uplinks
+    let WriteTask {
+        sender,
+        buffer,
+        action,
+    } = uplinks
         .replace_and_pop(sender, buffer, &lane_names)
         .expect("Expected queued result.");
 
@@ -368,7 +379,11 @@ fn special_before_events() {
         WriteAction::Special(SpecialUplinkAction::Linked(1))
     ));
 
-    let (sender, buffer, action) = uplinks
+    let WriteTask {
+        sender,
+        buffer,
+        action,
+    } = uplinks
         .replace_and_pop(sender, buffer, &lane_names)
         .expect("Expected queued result.");
 
@@ -411,7 +426,11 @@ fn unlink_clears_pending() {
 
     assert!(result.is_none());
 
-    let (sender, buffer, action) = uplinks
+    let WriteTask {
+        sender,
+        buffer,
+        action,
+    } = uplinks
         .replace_and_pop(sender, buffer, &lane_names)
         .expect("Expected queued result.");
 
@@ -420,7 +439,11 @@ fn unlink_clears_pending() {
         matches!(action, WriteAction::Special(SpecialUplinkAction::Unlinked { lane_id: 0, message }) if message == "gone")
     );
 
-    let (sender, buffer, action) = uplinks
+    let WriteTask {
+        sender,
+        buffer,
+        action,
+    } = uplinks
         .replace_and_pop(sender, buffer, &lane_names)
         .expect("Expected queued result.");
 
@@ -467,7 +490,11 @@ fn map_lane_sync_consumes_buffer() {
         .expect("Action was invalid.");
     assert!(result.is_none());
 
-    let (sender, buffer, action) = uplinks
+    let WriteTask {
+        sender,
+        buffer,
+        action,
+    } = uplinks
         .replace_and_pop(sender, buffer, &lane_names)
         .expect("Expected queued result.");
 

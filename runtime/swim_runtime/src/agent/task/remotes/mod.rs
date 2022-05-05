@@ -15,17 +15,14 @@
 use std::collections::HashMap;
 
 use bytes::BytesMut;
-use futures::Future;
 use swim_model::Text;
 use swim_utilities::io::byte_channel::ByteWriter;
 use tracing::debug;
 use uuid::Uuid;
 
-use crate::{
-    compat::Notification, error::InvalidKey, pressure::BackpressureStrategy, routing::RoutingAddr,
-};
+use crate::{error::InvalidKey, routing::RoutingAddr};
 pub use sender::RemoteSender;
-pub use uplink::{SpecialUplinkAction, UplinkResponse, WriteAction};
+pub use uplink::{SpecialUplinkAction, UplinkResponse};
 
 mod registry;
 mod sender;
@@ -35,30 +32,15 @@ pub use registry::LaneRegistry;
 
 use self::uplink::Uplinks;
 
-pub type WriteResult = (RemoteSender, BytesMut, Result<(), std::io::Error>);
+use super::write_fut::WriteTask;
 
-const LANE_NOT_FOUND_BODY: &[u8] = b"@laneNotFound";
-
-#[derive(Debug)]
-pub struct RemoteWriteTracker<F> {
+#[derive(Debug, Default)]
+pub struct RemoteTracker {
     registry: LaneRegistry,
-    remotes: HashMap<Uuid, Uplinks<F>>,
-    write_op: F,
+    remotes: HashMap<Uuid, Uplinks>,
 }
 
-impl<W, F> RemoteWriteTracker<F>
-where
-    F: Fn(RemoteSender, BytesMut, WriteAction) -> W + Clone,
-    W: Future<Output = WriteResult> + Send + 'static,
-{
-    pub fn new(write_op: F) -> Self {
-        Self {
-            registry: Default::default(),
-            remotes: Default::default(),
-            write_op,
-        }
-    }
-
+impl RemoteTracker {
     pub fn remove_remote(&mut self, remote_id: Uuid) {
         self.remotes.remove(&remote_id);
     }
@@ -83,18 +65,17 @@ where
         writer: ByteWriter,
     ) {
         debug!("Registering remote with ID {}.", remote_id);
-        let RemoteWriteTracker {
-            remotes, write_op, ..
-        } = self;
-        remotes.insert(
-            remote_id,
-            Uplinks::new(node, identity, writer, write_op.clone()),
-        );
+        let RemoteTracker { remotes, .. } = self;
+        remotes.insert(remote_id, Uplinks::new(node, identity, writer));
     }
 
     #[must_use]
-    pub fn push_special(&mut self, response: SpecialUplinkAction, target: &Uuid) -> Option<W> {
-        let RemoteWriteTracker {
+    pub fn push_special(
+        &mut self,
+        response: SpecialUplinkAction,
+        target: &Uuid,
+    ) -> Option<WriteTask> {
+        let RemoteTracker {
             registry, remotes, ..
         } = self;
         remotes
@@ -108,8 +89,8 @@ where
         lane_id: u64,
         response: UplinkResponse,
         target: &Uuid,
-    ) -> Result<Option<W>, InvalidKey> {
-        let RemoteWriteTracker {
+    ) -> Result<Option<WriteTask>, InvalidKey> {
+        let RemoteTracker {
             registry, remotes, ..
         } = self;
         if let Some(uplink) = remotes.get_mut(target) {
@@ -120,8 +101,8 @@ where
     }
 
     #[must_use]
-    pub fn unlink_lane(&mut self, remote_id: Uuid, lane_id: u64) -> Option<W> {
-        let RemoteWriteTracker {
+    pub fn unlink_lane(&mut self, remote_id: Uuid, lane_id: u64) -> Option<WriteTask> {
+        let RemoteTracker {
             registry, remotes, ..
         } = self;
         remotes.get_mut(&remote_id).and_then(|uplinks| {
@@ -133,8 +114,8 @@ where
     }
 
     #[must_use]
-    pub fn replace_and_pop(&mut self, writer: RemoteSender, buffer: BytesMut) -> Option<W> {
-        let RemoteWriteTracker {
+    pub fn replace_and_pop(&mut self, writer: RemoteSender, buffer: BytesMut) -> Option<WriteTask> {
+        let RemoteTracker {
             registry, remotes, ..
         } = self;
         let id = writer.remote_id();
@@ -146,59 +127,4 @@ where
     pub fn is_empty(&self) -> bool {
         self.remotes.is_empty()
     }
-}
-
-pub async fn perform_write(
-    mut writer: RemoteSender,
-    mut buffer: BytesMut,
-    action: WriteAction,
-) -> (RemoteSender, BytesMut, Result<(), std::io::Error>) {
-    let result = perform_write_inner(&mut writer, &mut buffer, action).await;
-    (writer, buffer, result)
-}
-
-async fn perform_write_inner(
-    writer: &mut RemoteSender,
-    buffer: &mut BytesMut,
-    action: WriteAction,
-) -> Result<(), std::io::Error> {
-    match action {
-        WriteAction::Event => {
-            writer
-                .send_notification(Notification::Event(&*buffer))
-                .await?;
-        }
-        WriteAction::EventAndSynced => {
-            writer
-                .send_notification(Notification::Event(&*buffer))
-                .await?;
-            writer.send_notification(Notification::Synced).await?;
-        }
-        WriteAction::MapSynced(maybe_queue) => {
-            if let Some(mut queue) = maybe_queue {
-                while queue.has_data() {
-                    queue.prepare_write(buffer);
-                    writer
-                        .send_notification(Notification::Event(&*buffer))
-                        .await?;
-                }
-                writer.send_notification(Notification::Synced).await?;
-            }
-        }
-        WriteAction::Special(SpecialUplinkAction::Linked(_)) => {
-            writer.send_notification(Notification::Linked).await?;
-        }
-        WriteAction::Special(SpecialUplinkAction::Unlinked { message, .. }) => {
-            writer
-                .send_notification(Notification::Unlinked(Some(message.as_bytes())))
-                .await?;
-        }
-        WriteAction::Special(SpecialUplinkAction::LaneNotFound { .. }) => {
-            writer
-                .send_notification(Notification::Unlinked(Some(LANE_NOT_FOUND_BODY)))
-                .await?;
-        }
-    }
-
-    Ok(())
 }
