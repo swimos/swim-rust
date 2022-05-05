@@ -22,6 +22,9 @@ use crate::{
 
 use super::remotes::{LaneRegistry, RemoteSender};
 
+#[cfg(test)]
+mod tests;
+
 pub type WriteResult = (RemoteSender, BytesMut, Result<(), std::io::Error>);
 
 const LANE_NOT_FOUND_BODY: &[u8] = b"@laneNotFound";
