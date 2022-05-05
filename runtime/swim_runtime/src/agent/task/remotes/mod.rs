@@ -22,7 +22,7 @@ use uuid::Uuid;
 
 use crate::{error::InvalidKey, routing::RoutingAddr};
 pub use sender::RemoteSender;
-pub use uplink::{SpecialUplinkAction, UplinkResponse};
+pub use uplink::UplinkResponse;
 
 mod registry;
 mod sender;
@@ -32,7 +32,7 @@ pub use registry::LaneRegistry;
 
 use self::uplink::Uplinks;
 
-use super::write_fut::WriteTask;
+use super::write_fut::{SpecialAction, WriteTask};
 
 #[derive(Debug, Default)]
 pub struct RemoteTracker {
@@ -70,11 +70,7 @@ impl RemoteTracker {
     }
 
     #[must_use]
-    pub fn push_special(
-        &mut self,
-        response: SpecialUplinkAction,
-        target: &Uuid,
-    ) -> Option<WriteTask> {
+    pub fn push_special(&mut self, response: SpecialAction, target: &Uuid) -> Option<WriteTask> {
         let RemoteTracker {
             registry, remotes, ..
         } = self;
@@ -106,10 +102,7 @@ impl RemoteTracker {
             registry, remotes, ..
         } = self;
         remotes.get_mut(&remote_id).and_then(|uplinks| {
-            uplinks.push_special(
-                SpecialUplinkAction::unlinked(lane_id, Text::empty()),
-                registry,
-            )
+            uplinks.push_special(SpecialAction::unlinked(lane_id, Text::empty()), registry)
         })
     }
 

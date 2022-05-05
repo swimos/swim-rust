@@ -13,24 +13,50 @@
 // limitations under the License.
 
 use bytes::BytesMut;
+use swim_model::Text;
 
 use crate::{
     compat::Notification,
     pressure::{BackpressureStrategy, MapBackpressure},
 };
 
-use super::remotes::{RemoteSender, SpecialUplinkAction};
+use super::remotes::{LaneRegistry, RemoteSender};
 
 pub type WriteResult = (RemoteSender, BytesMut, Result<(), std::io::Error>);
 
 const LANE_NOT_FOUND_BODY: &[u8] = b"@laneNotFound";
+
+#[derive(Debug, Clone)]
+pub enum SpecialAction {
+    Linked(u64),
+    Unlinked { lane_id: u64, message: Text },
+    LaneNotFound { lane_name: Text },
+}
+
+impl SpecialAction {
+    pub fn unlinked(lane_id: u64, message: Text) -> Self {
+        SpecialAction::Unlinked { lane_id, message }
+    }
+
+    pub fn lane_not_found(lane_name: Text) -> Self {
+        SpecialAction::LaneNotFound { lane_name }
+    }
+
+    pub fn lane_name<'a>(&'a self, registry: &'a LaneRegistry) -> &'a str {
+        match self {
+            SpecialAction::Linked(id) => registry.name_for(*id),
+            SpecialAction::Unlinked { lane_id, .. } => registry.name_for(*lane_id),
+            SpecialAction::LaneNotFound { lane_name } => lane_name.as_str(),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum WriteAction {
     Event,
     EventAndSynced,
     MapSynced(Option<MapBackpressure>),
-    Special(SpecialUplinkAction),
+    Special(SpecialAction),
 }
 
 pub struct WriteTask {
@@ -87,15 +113,15 @@ async fn perform_write(
                 writer.send_notification(Notification::Synced).await?;
             }
         }
-        WriteAction::Special(SpecialUplinkAction::Linked(_)) => {
+        WriteAction::Special(SpecialAction::Linked(_)) => {
             writer.send_notification(Notification::Linked).await?;
         }
-        WriteAction::Special(SpecialUplinkAction::Unlinked { message, .. }) => {
+        WriteAction::Special(SpecialAction::Unlinked { message, .. }) => {
             writer
                 .send_notification(Notification::Unlinked(Some(message.as_bytes())))
                 .await?;
         }
-        WriteAction::Special(SpecialUplinkAction::LaneNotFound { .. }) => {
+        WriteAction::Special(SpecialAction::LaneNotFound { .. }) => {
             writer
                 .send_notification(Notification::Unlinked(Some(LANE_NOT_FOUND_BODY)))
                 .await?;

@@ -21,7 +21,7 @@ use swim_utilities::io::byte_channel::ByteWriter;
 use tokio_util::codec::Encoder;
 
 use crate::{
-    agent::task::write_fut::{WriteAction, WriteTask},
+    agent::task::write_fut::{SpecialAction, WriteAction, WriteTask},
     error::InvalidKey,
     pressure::{
         recon::MapOperationReconEncoder, BackpressureStrategy, MapBackpressure, ValueBackpressure,
@@ -40,32 +40,7 @@ pub struct Uplinks {
     value_uplinks: HashMap<u64, Uplink<ValueBackpressure>>,
     map_uplinks: HashMap<u64, Uplink<MapBackpressure>>,
     write_queue: VecDeque<(UplinkKind, u64)>,
-    special_queue: VecDeque<SpecialUplinkAction>,
-}
-
-#[derive(Debug, Clone)]
-pub enum SpecialUplinkAction {
-    Linked(u64),
-    Unlinked { lane_id: u64, message: Text },
-    LaneNotFound { lane_name: Text },
-}
-
-impl SpecialUplinkAction {
-    pub fn unlinked(lane_id: u64, message: Text) -> Self {
-        SpecialUplinkAction::Unlinked { lane_id, message }
-    }
-
-    pub fn lane_not_found(lane_name: Text) -> Self {
-        SpecialUplinkAction::LaneNotFound { lane_name }
-    }
-
-    pub fn lane_name<'a>(&'a self, registry: &'a LaneRegistry) -> &'a str {
-        match self {
-            SpecialUplinkAction::Linked(id) => registry.name_for(*id),
-            SpecialUplinkAction::Unlinked { lane_id, .. } => registry.name_for(*lane_id),
-            SpecialUplinkAction::LaneNotFound { lane_name } => lane_name.as_str(),
-        }
-    }
+    special_queue: VecDeque<SpecialAction>,
 }
 
 #[derive(Debug, Clone)]
@@ -90,7 +65,7 @@ impl Uplinks {
 
     pub fn push_special(
         &mut self,
-        action: SpecialUplinkAction,
+        action: SpecialAction,
         registry: &LaneRegistry,
     ) -> Option<WriteTask> {
         let Uplinks {
@@ -105,7 +80,7 @@ impl Uplinks {
             writer.update_lane(lane_name);
             Some(WriteTask::new(writer, buffer, WriteAction::Special(action)))
         } else {
-            if let SpecialUplinkAction::Unlinked { lane_id, .. } = &action {
+            if let SpecialAction::Unlinked { lane_id, .. } = &action {
                 value_uplinks.remove(lane_id);
                 map_uplinks.remove(lane_id);
             }

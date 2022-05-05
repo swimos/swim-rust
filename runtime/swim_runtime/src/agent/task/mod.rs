@@ -19,15 +19,14 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
+use crate::agent::task::write_fut::SpecialAction;
 use crate::compat::{Operation, RawRequestMessageDecoder, RequestMessage};
 use crate::error::InvalidKey;
 use crate::routing::RoutingAddr;
 
 use self::links::Links;
-use self::remotes::{
-    LaneRegistry, RemoteSender, RemoteTracker, SpecialUplinkAction, UplinkResponse,
-};
-use self::write_fut::{WriteTask, WriteResult};
+use self::remotes::{LaneRegistry, RemoteSender, RemoteTracker, UplinkResponse};
+use self::write_fut::{WriteResult, WriteTask};
 
 use super::{AgentAttachmentRequest, AgentRuntimeConfig, AgentRuntimeRequest, Io};
 use bytes::{Bytes, BytesMut};
@@ -962,7 +961,7 @@ impl WriteTaskState {
                     Some(id) if write_tracker.has_remote(origin) => {
                         links.insert(id, origin);
                         write_tracker
-                            .push_special(SpecialUplinkAction::Linked(id), &origin)
+                            .push_special(SpecialAction::Linked(id), &origin)
                             .into()
                     }
                     Some(_) => {
@@ -988,7 +987,7 @@ impl WriteTaskState {
                     links.remove(lane_id, origin);
                     let message = Text::new("Link closed.");
                     write_tracker
-                        .push_special(SpecialUplinkAction::unlinked(lane_id, message), &origin)
+                        .push_special(SpecialAction::unlinked(lane_id, message), &origin)
                         .into()
                 } else {
                     error!("No lane named '{}'.", lane);
@@ -1001,7 +1000,7 @@ impl WriteTaskState {
                     path.lane, origin
                 );
                 write_tracker
-                    .push_special(SpecialUplinkAction::lane_not_found(path.lane), &origin)
+                    .push_special(SpecialAction::lane_not_found(path.lane), &origin)
                     .into()
             }
             WriteTaskRegistration::Coord(RwCoorindationMessage::BadEnvelope {

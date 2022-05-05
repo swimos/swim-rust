@@ -30,7 +30,7 @@ use crate::{
     routing::RoutingAddr,
 };
 
-use super::{RemoteSender, SpecialUplinkAction, Uplinks, WriteAction};
+use super::{RemoteSender, SpecialAction, Uplinks, WriteAction};
 
 const NODE_URI: &str = "/node";
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
@@ -59,13 +59,13 @@ fn push_linked() {
     let (mut uplinks, _reader) = make_uplinks();
 
     let WriteTask { sender, action, .. } = uplinks
-        .push_special(SpecialUplinkAction::Linked(0), &lane_names)
+        .push_special(SpecialAction::Linked(0), &lane_names)
         .expect("Expected immediate write.");
 
     assert_eq!(&sender.lane, LANE_NAME);
     assert!(matches!(
         action,
-        WriteAction::Special(SpecialUplinkAction::Linked(0))
+        WriteAction::Special(SpecialAction::Linked(0))
     ));
 }
 
@@ -76,15 +76,12 @@ fn push_unlinked() {
     let (mut uplinks, _reader) = make_uplinks();
 
     let WriteTask { sender, action, .. } = uplinks
-        .push_special(
-            SpecialUplinkAction::unlinked(0, Text::new("Gone")),
-            &lane_names,
-        )
+        .push_special(SpecialAction::unlinked(0, Text::new("Gone")), &lane_names)
         .expect("Expected immediate write.");
 
     assert_eq!(&sender.lane, LANE_NAME);
     assert!(
-        matches!(action, WriteAction::Special(SpecialUplinkAction::Unlinked { lane_id: 0, message }) if message == "Gone")
+        matches!(action, WriteAction::Special(SpecialAction::Unlinked { lane_id: 0, message }) if message == "Gone")
     );
 }
 
@@ -95,14 +92,14 @@ fn push_lane_not_found() {
 
     let WriteTask { sender, action, .. } = uplinks
         .push_special(
-            SpecialUplinkAction::lane_not_found(Text::new("boom")),
+            SpecialAction::lane_not_found(Text::new("boom")),
             &lane_names,
         )
         .expect("Expected immediate write.");
 
     assert_eq!(&sender.lane, "boom");
     assert!(
-        matches!(action, WriteAction::Special(SpecialUplinkAction::LaneNotFound { lane_name }) if lane_name == "boom")
+        matches!(action, WriteAction::Special(SpecialAction::LaneNotFound { lane_name }) if lane_name == "boom")
     );
 }
 
@@ -113,7 +110,7 @@ fn resinstate_writer() {
     let (mut uplinks, _reader) = make_uplinks();
 
     let WriteTask { sender, buffer, .. } = uplinks
-        .push_special(SpecialUplinkAction::Linked(0), &lane_names)
+        .push_special(SpecialAction::Linked(0), &lane_names)
         .expect("Expected immediate write.");
 
     let result = uplinks.replace_and_pop(sender, buffer, &lane_names);
@@ -132,19 +129,17 @@ fn queue_special() {
         buffer,
         action,
     } = uplinks
-        .push_special(SpecialUplinkAction::Linked(0), &lane_names)
+        .push_special(SpecialAction::Linked(0), &lane_names)
         .expect("Expected immediate write.");
 
-    let second_result = uplinks.push_special(
-        SpecialUplinkAction::unlinked(1, Text::new("Gone")),
-        &lane_names,
-    );
+    let second_result =
+        uplinks.push_special(SpecialAction::unlinked(1, Text::new("Gone")), &lane_names);
     assert!(second_result.is_none());
 
     assert_eq!(&sender.lane, LANE_NAME);
     assert!(matches!(
         action,
-        WriteAction::Special(SpecialUplinkAction::Linked(0))
+        WriteAction::Special(SpecialAction::Linked(0))
     ));
 
     let WriteTask { sender, action, .. } = uplinks
@@ -153,7 +148,7 @@ fn queue_special() {
 
     assert_eq!(&sender.lane, OTHER_LANE_NAME);
     assert!(
-        matches!(action, WriteAction::Special(SpecialUplinkAction::Unlinked { lane_id: 1, message }) if message == "Gone")
+        matches!(action, WriteAction::Special(SpecialAction::Unlinked { lane_id: 1, message }) if message == "Gone")
     );
 }
 
@@ -361,7 +356,7 @@ fn special_before_events() {
         .expect("Action was invalid.");
     assert!(result.is_none());
 
-    let result = uplinks.push_special(SpecialUplinkAction::Linked(1), &lane_names);
+    let result = uplinks.push_special(SpecialAction::Linked(1), &lane_names);
 
     assert!(result.is_none());
 
@@ -376,7 +371,7 @@ fn special_before_events() {
     assert_eq!(&sender.lane, OTHER_LANE_NAME);
     assert!(matches!(
         action,
-        WriteAction::Special(SpecialUplinkAction::Linked(1))
+        WriteAction::Special(SpecialAction::Linked(1))
     ));
 
     let WriteTask {
@@ -419,10 +414,7 @@ fn unlink_clears_pending() {
         .expect("Action was invalid.");
     assert!(result.is_none());
 
-    let result = uplinks.push_special(
-        SpecialUplinkAction::unlinked(0, Text::new("gone")),
-        &lane_names,
-    );
+    let result = uplinks.push_special(SpecialAction::unlinked(0, Text::new("gone")), &lane_names);
 
     assert!(result.is_none());
 
@@ -436,7 +428,7 @@ fn unlink_clears_pending() {
 
     assert_eq!(&sender.lane, LANE_NAME);
     assert!(
-        matches!(action, WriteAction::Special(SpecialUplinkAction::Unlinked { lane_id: 0, message }) if message == "gone")
+        matches!(action, WriteAction::Special(SpecialAction::Unlinked { lane_id: 0, message }) if message == "gone")
     );
 
     let WriteTask {
