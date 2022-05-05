@@ -79,7 +79,6 @@ impl RemoteTracker {
             .and_then(|uplink| uplink.push_special(response, registry))
     }
 
-    #[must_use]
     pub fn push_write(
         &mut self,
         lane_id: u64,
