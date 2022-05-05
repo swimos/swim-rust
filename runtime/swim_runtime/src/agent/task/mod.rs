@@ -957,7 +957,7 @@ impl WriteTaskState {
             }
             WriteTaskRegistration::Coord(RwCoorindationMessage::Link { origin, lane }) => {
                 info!("Attempting to set up link from '{}' to {}.", lane, origin);
-                match write_tracker.lane_registry().id_for(&lane) {
+                match write_tracker.lane_registry().id_for(lane.as_str()) {
                     Some(id) if write_tracker.has_remote(origin) => {
                         links.insert(id, origin);
                         write_tracker
@@ -983,7 +983,7 @@ impl WriteTaskState {
                     "Attempting to close any link from '{}' to {}.",
                     lane, origin
                 );
-                if let Some(lane_id) = write_tracker.lane_registry().id_for(&lane) {
+                if let Some(lane_id) = write_tracker.lane_registry().id_for(lane.as_str()) {
                     links.remove(lane_id, origin);
                     let message = Text::new("Link closed.");
                     write_tracker

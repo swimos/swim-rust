@@ -59,11 +59,37 @@ impl LaneRegistry {
         }
     }
 
-    pub fn id_for(&self, name: &Text) -> Option<u64> {
+    pub fn id_for(&self, name: &str) -> Option<u64> {
         self.lane_names.get(name).copied()
     }
 
-    pub fn name_for(&self, id: u64) -> &str {
-        self.lane_names_rev[&id].as_str()
+    pub fn name_for(&self, id: u64) -> Option<&str> {
+        self.lane_names_rev.get(&id).map(Text::as_str)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use swim_model::Text;
+
+    use super::LaneRegistry;
+
+    #[test]
+    fn add_endpoint() {
+        let mut registry = LaneRegistry::default();
+        let id = registry.add_endpoint(Text::new("lane"));
+
+        assert_eq!(registry.id_for("lane"), Some(id));
+        assert_eq!(registry.name_for(id), Some("lane"));
+    }
+
+    #[test]
+    fn remove_endpoint() {
+        let mut registry = LaneRegistry::default();
+        let id = registry.add_endpoint(Text::new("lane"));
+        registry.remove(id);
+
+        assert!(registry.id_for("lane").is_none());
+        assert!(registry.name_for(id).is_none());
     }
 }

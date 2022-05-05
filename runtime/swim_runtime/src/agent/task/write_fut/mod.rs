@@ -47,8 +47,10 @@ impl SpecialAction {
 
     pub fn lane_name<'a>(&'a self, registry: &'a LaneRegistry) -> &'a str {
         match self {
-            SpecialAction::Linked(id) => registry.name_for(*id),
-            SpecialAction::Unlinked { lane_id, .. } => registry.name_for(*lane_id),
+            SpecialAction::Linked(id) => registry.name_for(*id).unwrap_or_default(),
+            SpecialAction::Unlinked { lane_id, .. } => {
+                registry.name_for(*lane_id).unwrap_or_default()
+            }
             SpecialAction::LaneNotFound { lane_name } => lane_name.as_str(),
         }
     }

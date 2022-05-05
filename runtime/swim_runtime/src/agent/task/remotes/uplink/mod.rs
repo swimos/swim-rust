@@ -51,6 +51,8 @@ pub enum UplinkResponse {
     Map(MapOperation<Bytes, Bytes>),
 }
 
+const UNREGISTERED_LANE: &str = "Unregistered lane ID.";
+
 impl Uplinks {
     pub fn new(node: Text, identity: RoutingAddr, writer: ByteWriter) -> Self {
         let sender = RemoteSender::new(writer, identity, node);
@@ -104,7 +106,8 @@ impl Uplinks {
         } = self;
         if let Some((mut writer, mut buffer)) = writer.take() {
             let action = write_to_buffer(event, &mut buffer)?;
-            writer.update_lane(registry.name_for(lane_id));
+            let lane_name = registry.name_for(lane_id).expect(UNREGISTERED_LANE);
+            writer.update_lane(lane_name);
             Ok(Some(WriteTask::new(writer, buffer, action)))
         } else {
             match event {
@@ -203,7 +206,9 @@ impl Uplinks {
                                 } else {
                                     WriteAction::Event
                                 };
-                                sender.update_lane(registry.name_for(lane_id));
+                                let lane_name =
+                                    registry.name_for(lane_id).expect(UNREGISTERED_LANE);
+                                sender.update_lane(lane_name);
                                 break Some(WriteTask::new(sender, buffer, action));
                             }
                         }
@@ -217,7 +222,9 @@ impl Uplinks {
                                 let synced = std::mem::replace(send_synced, false);
                                 let write = if synced {
                                     *queued = false;
-                                    sender.update_lane(registry.name_for(lane_id));
+                                    let lane_name =
+                                        registry.name_for(lane_id).expect(UNREGISTERED_LANE);
+                                    sender.update_lane(lane_name);
                                     WriteTask::new(
                                         sender,
                                         buffer,
@@ -230,7 +237,9 @@ impl Uplinks {
                                     } else {
                                         *queued = false;
                                     }
-                                    sender.update_lane(registry.name_for(lane_id));
+                                    let lane_name =
+                                        registry.name_for(lane_id).expect(UNREGISTERED_LANE);
+                                    sender.update_lane(lane_name);
                                     WriteTask::new(sender, buffer, WriteAction::Event)
                                 };
                                 break Some(write);
