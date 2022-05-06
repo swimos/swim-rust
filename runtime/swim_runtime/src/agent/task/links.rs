@@ -53,9 +53,12 @@ impl Links {
     pub fn remove_lane(&mut self, id: u64) -> HashSet<Uuid> {
         let Links { forward, backwards } = self;
         let remote_ids = forward.remove(&id).unwrap_or_default();
-        for remote_id in remote_ids.iter() {
-            if let Some(set) = backwards.get_mut(remote_id) {
-                set.remove(&id);
+        for remote_id in &remote_ids {
+            if let Entry::Occupied(mut entry) = backwards.entry(*remote_id) {
+                entry.get_mut().remove(&id);
+                if entry.get().is_empty() {
+                    entry.remove();
+                }
             }
         }
         remote_ids
@@ -64,10 +67,100 @@ impl Links {
     pub fn remove_remote(&mut self, id: Uuid) {
         let Links { forward, backwards } = self;
         let lane_ids = backwards.remove(&id).unwrap_or_default();
-        for lane_id in lane_ids.iter() {
-            if let Some(set) = forward.get_mut(lane_id) {
-                set.remove(&id);
+        for lane_id in lane_ids {
+            if let Entry::Occupied(mut entry) = forward.entry(lane_id) {
+                entry.get_mut().remove(&id);
+                if entry.get().is_empty() {
+                    entry.remove();
+                }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use uuid::Uuid;
+
+    use super::Links;
+
+    const RID1: Uuid = Uuid::from_u128(567);
+    const RID2: Uuid = Uuid::from_u128(97263);
+    const RID3: Uuid = Uuid::from_u128(111);
+
+    const LID1: u64 = 7;
+    const LID2: u64 = 38;
+    const LID3: u64 = 999;
+    const LID4: u64 = 58349209;
+
+    #[test]
+    fn insert_link() {
+        let mut links = Links::default();
+        links.insert(LID1, RID1);
+
+        assert_eq!(links.linked_from(LID1), Some(&[RID1].into()));
+    }
+
+    fn make_links() -> Links {
+        let mut links = Links::default();
+        links.insert(LID1, RID1);
+        links.insert(LID2, RID1);
+        links.insert(LID3, RID1);
+        links.insert(LID1, RID2);
+        links.insert(LID1, RID3);
+        links
+    }
+
+    #[test]
+    fn link_reporting() {
+        let links = make_links();
+
+        assert_eq!(links.linked_from(LID1), Some(&[RID1, RID2, RID3,].into()));
+
+        assert_eq!(links.linked_from(LID2), Some(&[RID1,].into()));
+
+        assert_eq!(links.linked_from(LID3), Some(&[RID1,].into()));
+
+        assert_eq!(links.linked_from(LID4), None);
+    }
+
+    #[test]
+    fn remove_link() {
+        let mut links = make_links();
+
+        links.remove(LID1, RID2);
+
+        assert_eq!(links.linked_from(LID1), Some(&[RID1, RID3,].into()));
+
+        links.remove(LID2, RID1);
+        assert_eq!(links.linked_from(LID2), None);
+    }
+
+    #[test]
+    fn remove_remote() {
+        let mut links = make_links();
+
+        links.remove_remote(RID1);
+
+        assert_eq!(links.linked_from(LID1), Some(&[RID2, RID3,].into()));
+
+        assert_eq!(links.linked_from(LID2), None);
+
+        assert_eq!(links.linked_from(LID3), None);
+    }
+
+    #[test]
+    fn remove_lane() {
+        let mut links = make_links();
+
+        let remotes = links.remove_lane(LID1);
+        assert_eq!(remotes, [RID1, RID2, RID3].into());
+
+        assert_eq!(links.linked_from(LID1), None);
+
+        assert_eq!(links.linked_from(LID2), Some(&[RID1,].into()));
+
+        assert_eq!(links.linked_from(LID3), Some(&[RID1,].into()));
     }
 }
