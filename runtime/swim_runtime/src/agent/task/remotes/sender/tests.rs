@@ -20,6 +20,7 @@ use swim_utilities::{
     io::byte_channel::{byte_channel, ByteReader},
 };
 use tokio_util::codec::FramedRead;
+use uuid::Uuid;
 
 use crate::{
     compat::{Notification, RawResponseMessageDecoder, ResponseMessage},
@@ -29,6 +30,7 @@ use crate::{
 use super::RemoteSender;
 
 const ID: RoutingAddr = RoutingAddr::plane(1);
+const REMOTE_ID: Uuid = Uuid::from_u128(8573923);
 const NODE: &str = "node_uri";
 
 type Reader = FramedRead<ByteReader, RawResponseMessageDecoder>;
@@ -36,7 +38,16 @@ type Reader = FramedRead<ByteReader, RawResponseMessageDecoder>;
 fn make_sender() -> (RemoteSender, Reader) {
     let (tx, rx) = byte_channel(non_zero_usize!(4096));
     let reader = FramedRead::new(rx, RawResponseMessageDecoder);
-    (RemoteSender::new(tx, ID, Text::new(NODE)), reader)
+    (
+        RemoteSender::new(tx, ID, REMOTE_ID, Text::new(NODE)),
+        reader,
+    )
+}
+
+#[test]
+fn get_remote_id() {
+    let (sender, _receiver) = make_sender();
+    assert_eq!(sender.remote_id(), REMOTE_ID);
 }
 
 #[tokio::test]

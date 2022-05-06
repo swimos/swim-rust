@@ -21,6 +21,7 @@ use swim_utilities::{
     algebra::non_zero_usize,
     io::byte_channel::{byte_channel, ByteReader},
 };
+use uuid::Uuid;
 
 use crate::{
     agent::task::{
@@ -34,11 +35,12 @@ use super::{RemoteSender, SpecialAction, Uplinks, WriteAction};
 
 const NODE_URI: &str = "/node";
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
+const REMOTE_ID: Uuid = Uuid::from_u128(748383);
 
 fn make_uplinks() -> (Uplinks, ByteReader) {
     let (tx, rx) = byte_channel(BUFFER_SIZE);
     (
-        Uplinks::new(Text::new(NODE_URI), RoutingAddr::plane(0), tx),
+        Uplinks::new(Text::new(NODE_URI), RoutingAddr::plane(0), REMOTE_ID, tx),
         rx,
     )
 }
@@ -260,7 +262,7 @@ fn push_bad_map_event() {
 
 fn make_uplinks_writing() -> (Uplinks, ByteReader, RemoteSender, BytesMut) {
     let (tx, rx) = byte_channel(BUFFER_SIZE);
-    let mut uplinks = Uplinks::new(Text::new(NODE_URI), RoutingAddr::plane(0), tx);
+    let mut uplinks = Uplinks::new(Text::new(NODE_URI), RoutingAddr::plane(0), REMOTE_ID, tx);
     let (writer, buffer) = uplinks.writer.take().unwrap();
     (uplinks, rx, writer, buffer)
 }

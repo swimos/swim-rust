@@ -31,22 +31,24 @@ mod tests;
 pub struct RemoteSender {
     sender: FramedWrite<ByteWriter, RawResponseMessageEncoder>,
     identity: RoutingAddr,
+    remote_id: Uuid,
     node: Text,
     pub lane: String,
 }
 
 impl RemoteSender {
-    pub fn new(writer: ByteWriter, identity: RoutingAddr, node: Text) -> Self {
+    pub fn new(writer: ByteWriter, identity: RoutingAddr, remote_id: Uuid, node: Text) -> Self {
         RemoteSender {
             sender: FramedWrite::new(writer, Default::default()),
             identity,
+            remote_id,
             node,
             lane: Default::default(),
         }
     }
 
     pub fn remote_id(&self) -> Uuid {
-        *self.identity.uuid()
+        self.remote_id
     }
 
     pub fn update_lane(&mut self, lane_name: &str) {

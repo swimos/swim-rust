@@ -23,6 +23,7 @@ use swim_utilities::{
     io::byte_channel::{byte_channel, ByteReader},
 };
 use tokio_util::codec::FramedRead;
+use uuid::Uuid;
 
 use crate::{
     agent::task::remotes::RemoteSender,
@@ -37,12 +38,13 @@ type Reader = FramedRead<ByteReader, RawResponseMessageDecoder>;
 
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 const ADDR: RoutingAddr = RoutingAddr::plane(5);
+const REMOTE_ID: Uuid = Uuid::from_u128(2847743);
 const NODE: &str = "/node";
 const LANE: &str = "lane";
 
 fn make_task(action: WriteAction, content: Option<&[u8]>) -> (WriteTask, Reader) {
     let (tx, rx) = byte_channel(BUFFER_SIZE);
-    let mut writer = RemoteSender::new(tx, ADDR, Text::new(NODE));
+    let mut writer = RemoteSender::new(tx, ADDR, REMOTE_ID, Text::new(NODE));
     writer.update_lane(LANE);
     let mut buffer = BytesMut::new();
     if let Some(data) = content {

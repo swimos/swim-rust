@@ -34,13 +34,27 @@ use self::uplink::Uplinks;
 
 use super::write_fut::{SpecialAction, WriteTask};
 
-#[derive(Debug, Default)]
+#[cfg(test)]
+mod tests;
+
+#[derive(Debug)]
 pub struct RemoteTracker {
+    node: Text,
+    identity: RoutingAddr,
     registry: LaneRegistry,
     remotes: HashMap<Uuid, Uplinks>,
 }
 
 impl RemoteTracker {
+    pub fn new(identity: RoutingAddr, node: Text) -> Self {
+        RemoteTracker {
+            node,
+            identity,
+            registry: Default::default(),
+            remotes: Default::default(),
+        }
+    }
+
     pub fn remove_remote(&mut self, remote_id: Uuid) {
         self.remotes.remove(&remote_id);
     }
@@ -57,16 +71,18 @@ impl RemoteTracker {
         &mut self.registry
     }
 
-    pub fn insert(
-        &mut self,
-        remote_id: Uuid,
-        node: Text,
-        identity: RoutingAddr,
-        writer: ByteWriter,
-    ) {
+    pub fn insert(&mut self, remote_id: Uuid, writer: ByteWriter) {
         debug!("Registering remote with ID {}.", remote_id);
-        let RemoteTracker { remotes, .. } = self;
-        remotes.insert(remote_id, Uplinks::new(node, identity, writer));
+        let RemoteTracker {
+            identity,
+            node,
+            remotes,
+            ..
+        } = self;
+        remotes.insert(
+            remote_id,
+            Uplinks::new(node.clone(), *identity, remote_id, writer),
+        );
     }
 
     #[must_use]

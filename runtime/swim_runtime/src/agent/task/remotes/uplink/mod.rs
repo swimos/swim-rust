@@ -19,6 +19,7 @@ use swim_api::{agent::UplinkKind, protocol::map::MapOperation};
 use swim_model::Text;
 use swim_utilities::io::byte_channel::ByteWriter;
 use tokio_util::codec::Encoder;
+use uuid::Uuid;
 
 use crate::{
     agent::task::write_fut::{SpecialAction, WriteAction, WriteTask},
@@ -54,8 +55,8 @@ pub enum UplinkResponse {
 const UNREGISTERED_LANE: &str = "Unregistered lane ID.";
 
 impl Uplinks {
-    pub fn new(node: Text, identity: RoutingAddr, writer: ByteWriter) -> Self {
-        let sender = RemoteSender::new(writer, identity, node);
+    pub fn new(node: Text, identity: RoutingAddr, remote_id: Uuid, writer: ByteWriter) -> Self {
+        let sender = RemoteSender::new(writer, identity, remote_id, node);
         Uplinks {
             writer: Some((sender, Default::default())),
             value_uplinks: Default::default(),

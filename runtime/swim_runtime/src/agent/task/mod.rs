@@ -899,9 +899,8 @@ where
 
 #[derive(Debug)]
 struct WriteTaskState {
-    configuration: WriteTaskConfiguration,
     links: Links,
-    write_tracker: RemoteTracker,
+    remote_tracker: RemoteTracker,
 }
 
 #[derive(Debug)]
@@ -927,23 +926,18 @@ fn discard_error<W>(error: InvalidKey) -> Option<W> {
 }
 
 impl WriteTaskState {
-    fn new(configuration: WriteTaskConfiguration) -> Self {
+    fn new(identity: RoutingAddr, node_uri: Text) -> Self {
         WriteTaskState {
-            configuration,
             links: Default::default(),
-            write_tracker: Default::default(),
+            remote_tracker: RemoteTracker::new(identity, node_uri),
         }
     }
 
     #[must_use]
     fn handle_registration(&mut self, reg: WriteTaskRegistration) -> RegistrationResult<WriteTask> {
         let WriteTaskState {
-            configuration:
-                WriteTaskConfiguration {
-                    identity, node_uri, ..
-                },
             links,
-            write_tracker,
+            remote_tracker: write_tracker,
             ..
         } = self;
         match reg {
@@ -952,7 +946,7 @@ impl WriteTaskState {
                 RegistrationResult::AddLane(lane_stream)
             }
             WriteTaskRegistration::Remote { id, writer } => {
-                write_tracker.insert(id, node_uri.clone(), *identity, writer);
+                write_tracker.insert(id, writer);
                 RegistrationResult::Nothing
             }
             WriteTaskRegistration::Coord(RwCoorindationMessage::Link { origin, lane }) => {
@@ -1021,7 +1015,7 @@ impl WriteTaskState {
     ) -> impl Iterator<Item = WriteTask> + '_ {
         let WriteTaskState {
             links,
-            write_tracker,
+            remote_tracker: write_tracker,
             ..
         } = self;
 
@@ -1052,13 +1046,13 @@ impl WriteTaskState {
     fn remove_remote(&mut self, remote_id: Uuid) {
         info!("Removing remote connection {}.", remote_id);
         self.links.remove_remote(remote_id);
-        self.write_tracker.remove_remote(remote_id);
+        self.remote_tracker.remove_remote(remote_id);
     }
 
     fn remove_lane(&mut self, lane_id: u64) -> impl Iterator<Item = WriteTask> + '_ {
         let WriteTaskState {
             links,
-            write_tracker,
+            remote_tracker: write_tracker,
             ..
         } = self;
         info!("Attempting to remove lane with id {}.", lane_id);
@@ -1071,7 +1065,10 @@ impl WriteTaskState {
     }
 
     fn replace(&mut self, writer: RemoteSender, buffer: BytesMut) -> Option<WriteTask> {
-        let WriteTaskState { write_tracker, .. } = self;
+        let WriteTaskState {
+            remote_tracker: write_tracker,
+            ..
+        } = self;
         trace!(
             "Replacing writer {} after completed write.",
             writer.remote_id()
@@ -1080,7 +1077,7 @@ impl WriteTaskState {
     }
 
     fn has_remotes(&self) -> bool {
-        !self.write_tracker.is_empty()
+        !self.remote_tracker.is_empty()
     }
 }
 
@@ -1092,7 +1089,12 @@ async fn write_task(
     stopping: trigger::Receiver,
 ) {
     let reg_stream = ReceiverStream::new(reg_rx).take_until(stopping);
-    let runtime_config = configuration.runtime_config;
+
+    let WriteTaskConfiguration {
+        identity,
+        node_uri,
+        runtime_config,
+    } = configuration;
 
     let timeout_delay = sleep(runtime_config.inactive_timeout);
 
@@ -1102,11 +1104,11 @@ async fn write_task(
         timeout_delay.as_mut(),
         reg_stream,
     );
-    let mut state = WriteTaskState::new(configuration);
+    let mut state = WriteTaskState::new(identity, node_uri);
 
     info!(endpoints = ?initial_endpoints, "Adding initial endpoints.");
     for endpoint in initial_endpoints {
-        let lane_stream = endpoint.into_lane_stream(state.write_tracker.lane_registry());
+        let lane_stream = endpoint.into_lane_stream(state.remote_tracker.lane_registry());
         streams.add_lane(lane_stream);
     }
 
