@@ -24,6 +24,8 @@ use tokio_util::codec::{Decoder, Encoder};
 pub mod agent;
 pub mod downlink;
 pub mod map;
+#[cfg(test)]
+mod tests;
 
 type DecoderResult<D> = Result<Option<<D as Decoder>::Item>, <D as Decoder>::Error>;
 
@@ -131,7 +133,7 @@ impl Decoder for WithLengthBytesCodec {
     }
 }
 
-pub enum WithLenRecognizerDecoderState<R: Recognizer> {
+enum WithLenRecognizerDecoderState<R: Recognizer> {
     ReadingHeader,
     ReadingBody {
         remaining: usize,
@@ -146,6 +148,9 @@ pub enum WithLenRecognizerDecoderState<R: Recognizer> {
     },
 }
 
+/// Length delimited wrapper around [`RecognizerDecoder`]. This decoder expects the length of the string
+/// to be consumed to by the inner decoder to be written to the buffer as an unsigned, 64bit integer.
+/// The inner reader will not be permitted to read beyond the written length.
 pub struct WithLenRecognizerDecoder<R: Recognizer> {
     inner: RecognizerDecoder<R>,
     state: WithLenRecognizerDecoderState<R>,
@@ -226,8 +231,7 @@ impl<R: Recognizer> Decoder for WithLenRecognizerDecoder<R> {
                 WithLenRecognizerDecoderState::Discarding { remaining, error } => {
                     if src.remaining() >= *remaining {
                         src.advance(*remaining);
-                        let err = error
-                            .take().unwrap_or(AsyncParseError::UnconsumedInput);
+                        let err = error.take().unwrap_or(AsyncParseError::UnconsumedInput);
                         *state = WithLenRecognizerDecoderState::ReadingHeader;
                         break Err(err);
                     } else {
