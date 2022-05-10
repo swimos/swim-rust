@@ -15,7 +15,6 @@
 use bytes::{BufMut, BytesMut};
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_model::Text;
-use swim_recon::parser::{AsyncParseError, ParseError};
 use tokio_util::codec::Decoder;
 
 use super::WithLenRecognizerDecoder;
