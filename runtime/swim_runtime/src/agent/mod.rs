@@ -92,7 +92,7 @@ impl AgentContext for AgentRuntimeContext {
     }
 }
 
-type Io = (ByteReader, ByteWriter);
+type Io = (ByteWriter, ByteReader);
 
 pub enum AgentRuntimeRequest {
     AddLane {

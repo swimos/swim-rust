@@ -15,7 +15,7 @@
 use bytes::{Buf, Bytes, BytesMut};
 use std::fmt::Write;
 use swim_form::{structural::read::recognizer::RecognizerReadable, Form};
-use swim_recon::{parser::RecognizerDecoder, printer::print_recon_compact};
+use swim_recon::printer::print_recon_compact;
 use tokio_util::codec::{Decoder, Encoder};
 use uuid::Uuid;
 
@@ -26,6 +26,7 @@ use crate::protocol::{
         ValueLaneResponseDecoder, ValueLaneResponseEncoder,
     },
     map::{MapOperation, MapOperationEncoder},
+    WithLenRecognizerDecoder,
 };
 
 use super::LaneRequest;
@@ -76,7 +77,8 @@ fn round_trip_request(request: LaneRequest<Example>) {
     let mut buffer = BytesMut::new();
     assert!(encoder.encode(with_bytes, &mut buffer).is_ok());
 
-    let mut decoder = LaneRequestDecoder::new(RecognizerDecoder::new(Example::make_recognizer()));
+    let mut decoder =
+        LaneRequestDecoder::new(WithLenRecognizerDecoder::new(Example::make_recognizer()));
     match decoder.decode(&mut buffer) {
         Ok(Some(restored)) => {
             assert_eq!(restored, request);
@@ -182,9 +184,9 @@ fn encode_sync_complete_map_lane_response() {
         MapLaneResponse::SyncComplete(Uuid::from_u128(7574));
     assert!(encoder.encode(request, &mut buffer).is_ok());
 
-    assert_eq!(buffer.remaining(), 9);
+    assert_eq!(buffer.remaining(), 17);
     assert_eq!(buffer.get_u8(), super::SYNC_COMPLETE);
-    let id = buffer.get_u64();
+    let id = buffer.get_u128();
     assert_eq!(id, 7574);
 }
 

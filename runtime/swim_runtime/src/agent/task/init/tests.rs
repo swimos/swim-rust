@@ -169,8 +169,8 @@ async fn no_lanes() {
 }
 
 async fn check_connected(first: &mut Io, second: &mut Io) {
-    let (rx1, tx1) = first;
-    let (rx2, tx2) = second;
+    let (tx1, rx1) = first;
+    let (tx2, rx2) = second;
 
     assert!(tx1.write_i32(12345).await.is_ok());
     let read_result = rx2.read_i32().await;

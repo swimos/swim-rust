@@ -319,7 +319,7 @@ where
 }
 
 /// Errors that can occur attempting to parse the header of a Recon value.
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum MessageExtractError {
     #[error("Data contains invalid UTF8: {0}")]
     BadUtf8(#[from] Utf8Error),

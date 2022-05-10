@@ -74,6 +74,9 @@ mod write_fut;
 
 pub use init::{AgentInitTask, NoLanes};
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Debug)]
 pub struct LaneEndpoint<T> {
     name: Text,
@@ -82,11 +85,11 @@ pub struct LaneEndpoint<T> {
 }
 
 impl LaneEndpoint<Io> {
-    fn split(self) -> (LaneEndpoint<ByteReader>, LaneEndpoint<ByteWriter>) {
+    fn split(self) -> (LaneEndpoint<ByteWriter>, LaneEndpoint<ByteReader>) {
         let LaneEndpoint {
             name,
             kind,
-            io: (rx, tx),
+            io: (tx, rx),
         } = self;
 
         let read = LaneEndpoint {
@@ -97,7 +100,7 @@ impl LaneEndpoint<Io> {
 
         let write = LaneEndpoint { name, kind, io: tx };
 
-        (read, write)
+        (write, read)
     }
 }
 
@@ -172,6 +175,7 @@ enum LaneSender {
     },
 }
 
+#[derive(Debug, Clone)]
 enum RwCoorindationMessage {
     UnknownLane {
         origin: Uuid,
@@ -395,7 +399,7 @@ impl AgentRuntimeTask {
             .instrument(info_span!("Agent Runtime Attachment Task", %identity, %node_uri));
         let read = read_task(
             config,
-            read_endpoints,
+            write_endpoints,
             read_rx,
             write_tx,
             read_vote,
@@ -404,7 +408,7 @@ impl AgentRuntimeTask {
         .instrument(info_span!("Agent Runtime Read Task", %identity, %node_uri));
         let write = write_task(
             WriteTaskConfiguration::new(identity, node_uri.clone(), config),
-            write_endpoints,
+            read_endpoints,
             write_rx,
             write_vote,
             stopping,
@@ -421,7 +425,7 @@ enum ReadTaskRegistration {
     Remote { reader: ByteReader },
 }
 
-enum WriteTaskRegistration {
+enum WriteTaskMessage {
     Lane(LaneEndpoint<ByteReader>),
     Remote { id: Uuid, writer: ByteWriter },
     Coord(RwCoorindationMessage),
@@ -433,7 +437,7 @@ async fn attachment_task<F>(
     runtime: mpsc::Receiver<AgentRuntimeRequest>,
     attachment: mpsc::Receiver<AgentAttachmentRequest>,
     read_tx: mpsc::Sender<ReadTaskRegistration>,
-    write_tx: mpsc::Sender<WriteTaskRegistration>,
+    write_tx: mpsc::Sender<WriteTaskMessage>,
     combined_stop: F,
 ) where
     F: Future + Unpin,
@@ -483,26 +487,26 @@ async fn attachment_task<F>(
                 });
                 match kind {
                     UplinkKind::Value => {
-                        write_permit.send(WriteTaskRegistration::Lane(LaneEndpoint {
+                        write_permit.send(WriteTaskMessage::Lane(LaneEndpoint {
                             io: out_rx,
                             name: name.clone(),
                             kind: UplinkKind::Value,
                         }));
                     }
                     UplinkKind::Map => {
-                        write_permit.send(WriteTaskRegistration::Lane(LaneEndpoint {
+                        write_permit.send(WriteTaskMessage::Lane(LaneEndpoint {
                             io: out_rx,
                             name: name.clone(),
                             kind: UplinkKind::Map,
                         }));
                     }
                 }
-                if promise.send(Ok((in_rx, out_tx))).is_err() {
+                if promise.send(Ok((out_tx, in_rx))).is_err() {
                     error!(BAD_LANE_REG);
                 }
             }
             Either::Left(_) => todo!("Opening downlinks form agents not implemented."),
-            Either::Right(AgentAttachmentRequest { id, io: (rx, tx) }) => {
+            Either::Right(AgentAttachmentRequest { id, io: (tx, rx) }) => {
                 info!(
                     "Attaching a new remote endpoint with ID {id} to the agent.",
                     id = id
@@ -522,7 +526,7 @@ async fn attachment_task<F>(
                     Ok(permit) => permit,
                 };
                 read_permit.send(ReadTaskRegistration::Remote { reader: rx });
-                write_permit.send(WriteTaskRegistration::Remote { id, writer: tx });
+                write_permit.send(WriteTaskMessage::Remote { id, writer: tx });
             }
         }
     }
@@ -547,7 +551,7 @@ async fn read_task(
     config: AgentRuntimeConfig,
     initial_endpoints: Vec<LaneEndpoint<ByteWriter>>,
     reg_rx: mpsc::Receiver<ReadTaskRegistration>,
-    write_tx: mpsc::Sender<WriteTaskRegistration>,
+    write_tx: mpsc::Sender<WriteTaskMessage>,
     stop_vote: timeout_coord::Voter,
     stopping: trigger::Receiver,
 ) {
@@ -656,7 +660,6 @@ async fn read_task(
                     if let Some(lane_tx) = lanes.get_mut(id) {
                         let RelativePath { lane, .. } = path;
                         let origin: Uuid = origin.into();
-
                         match envelope {
                             Operation::Link => {
                                 debug!(
@@ -664,9 +667,10 @@ async fn read_task(
                                     origin, lane
                                 );
                                 if write_tx
-                                    .send(WriteTaskRegistration::Coord(
-                                        RwCoorindationMessage::Link { origin, lane },
-                                    ))
+                                    .send(WriteTaskMessage::Coord(RwCoorindationMessage::Link {
+                                        origin,
+                                        lane,
+                                    }))
                                     .await
                                     .is_err()
                                 {
@@ -701,7 +705,7 @@ async fn read_task(
                                     Err(LaneSendError::Extraction(error)) => {
                                         error!(error = ?error, "Received invalid envelope from {} for lane '{}'", origin, lane);
                                         if write_tx
-                                            .send(WriteTaskRegistration::Coord(
+                                            .send(WriteTaskMessage::Coord(
                                                 RwCoorindationMessage::BadEnvelope {
                                                     origin,
                                                     lane,
@@ -716,6 +720,7 @@ async fn read_task(
                                         }
                                     }
                                     _ => {
+                                        let _ = lane_tx.flush().await;
                                         needs_flush = Some(*id);
                                     }
                                 }
@@ -726,9 +731,10 @@ async fn read_task(
                                     origin, lane
                                 );
                                 if write_tx
-                                    .send(WriteTaskRegistration::Coord(
-                                        RwCoorindationMessage::Unlink { origin, lane },
-                                    ))
+                                    .send(WriteTaskMessage::Coord(RwCoorindationMessage::Unlink {
+                                        origin,
+                                        lane,
+                                    }))
                                     .await
                                     .is_err()
                                 {
@@ -741,7 +747,7 @@ async fn read_task(
                 } else {
                     info!("Recevied envelope for non-existent lane '{}'.", path.lane);
                     let flush = flush_lane(&mut lanes, &mut needs_flush);
-                    let send_err = write_tx.send(WriteTaskRegistration::Coord(
+                    let send_err = write_tx.send(WriteTaskMessage::Coord(
                         RwCoorindationMessage::UnknownLane {
                             origin: origin.into(),
                             path,
@@ -780,7 +786,7 @@ async fn flush_lane(lanes: &mut HashMap<u64, LaneSender>, needs_flush: &mut Opti
 }
 
 enum WriteTaskEvent {
-    Registration(WriteTaskRegistration),
+    Registration(WriteTaskMessage),
     Event { id: u64, response: RawLaneResponse },
     WriteDone(WriteResult),
     LaneFailed(u64),
@@ -838,7 +844,7 @@ impl<'a, S, W> WriteTaskEvents<'a, S, W> {
 
 impl<'a, S, W> WriteTaskEvents<'a, S, W>
 where
-    S: Stream<Item = WriteTaskRegistration> + Unpin,
+    S: Stream<Item = WriteTaskMessage> + Unpin,
     W: Future<Output = WriteResult> + Send + 'static,
 {
     async fn select_next(&mut self) -> WriteTaskEvent {
@@ -934,22 +940,22 @@ impl WriteTaskState {
     }
 
     #[must_use]
-    fn handle_registration(&mut self, reg: WriteTaskRegistration) -> RegistrationResult<WriteTask> {
+    fn handle_registration(&mut self, reg: WriteTaskMessage) -> RegistrationResult<WriteTask> {
         let WriteTaskState {
             links,
             remote_tracker: write_tracker,
             ..
         } = self;
         match reg {
-            WriteTaskRegistration::Lane(endpoint) => {
+            WriteTaskMessage::Lane(endpoint) => {
                 let lane_stream = endpoint.into_lane_stream(write_tracker.lane_registry());
                 RegistrationResult::AddLane(lane_stream)
             }
-            WriteTaskRegistration::Remote { id, writer } => {
+            WriteTaskMessage::Remote { id, writer } => {
                 write_tracker.insert(id, writer);
                 RegistrationResult::Nothing
             }
-            WriteTaskRegistration::Coord(RwCoorindationMessage::Link { origin, lane }) => {
+            WriteTaskMessage::Coord(RwCoorindationMessage::Link { origin, lane }) => {
                 info!("Attempting to set up link from '{}' to {}.", lane, origin);
                 match write_tracker.lane_registry().id_for(lane.as_str()) {
                     Some(id) if write_tracker.has_remote(origin) => {
@@ -972,7 +978,7 @@ impl WriteTaskState {
                     }
                 }
             }
-            WriteTaskRegistration::Coord(RwCoorindationMessage::Unlink { origin, lane }) => {
+            WriteTaskMessage::Coord(RwCoorindationMessage::Unlink { origin, lane }) => {
                 info!(
                     "Attempting to close any link from '{}' to {}.",
                     lane, origin
@@ -988,7 +994,7 @@ impl WriteTaskState {
                     RegistrationResult::Nothing
                 }
             }
-            WriteTaskRegistration::Coord(RwCoorindationMessage::UnknownLane { origin, path }) => {
+            WriteTaskMessage::Coord(RwCoorindationMessage::UnknownLane { origin, path }) => {
                 info!(
                     "Received envelope for non-existent lane '{}' from {}.",
                     path.lane, origin
@@ -997,7 +1003,7 @@ impl WriteTaskState {
                     .push_special(SpecialAction::lane_not_found(path.lane), &origin)
                     .into()
             }
-            WriteTaskRegistration::Coord(RwCoorindationMessage::BadEnvelope {
+            WriteTaskMessage::Coord(RwCoorindationMessage::BadEnvelope {
                 origin,
                 lane,
                 error,
@@ -1084,7 +1090,7 @@ impl WriteTaskState {
 async fn write_task(
     configuration: WriteTaskConfiguration,
     initial_endpoints: Vec<LaneEndpoint<ByteReader>>,
-    reg_rx: mpsc::Receiver<WriteTaskRegistration>,
+    reg_rx: mpsc::Receiver<WriteTaskMessage>,
     stop_voter: timeout_coord::Voter,
     stopping: trigger::Receiver,
 ) {

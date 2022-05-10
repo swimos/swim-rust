@@ -80,12 +80,12 @@ impl AgentInitTask {
                     let (in_tx, in_rx) = byte_channel::byte_channel(input_buffer_size);
                     let (out_tx, out_rx) = byte_channel::byte_channel(output_buffer_size);
 
-                    let io = (in_rx, out_tx);
+                    let io = (out_tx, in_rx);
                     if promise.send(Ok(io)).is_ok() {
                         endpoints.push(LaneEndpoint {
                             name,
                             kind,
-                            io: (out_rx, in_tx),
+                            io: (in_tx, out_rx),
                         });
                     } else {
                         error!(

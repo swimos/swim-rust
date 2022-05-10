@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::fmt::Debug;
+
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use swim_form::structural::write::StructuralWritable;
 use swim_model::Text;
-use swim_recon::parser::AsyncParseError;
 use tokio_util::codec::{Decoder, Encoder};
 use uuid::Uuid;
 
@@ -136,33 +137,23 @@ where
 }
 
 #[derive(Debug)]
-enum LaneRequestDecoderState<T> {
+enum LaneRequestDecoderState {
     ReadingHeader,
-    ReadingBody {
-        remaining: usize,
-    },
-    AfterBody {
-        message: Option<T>,
-        remaining: usize,
-    },
-    Discarding {
-        error: Option<FrameIoError>,
-        remaining: usize,
-    },
+    ReadingBody,
 }
 
-impl<T> Default for LaneRequestDecoderState<T> {
+impl Default for LaneRequestDecoderState {
     fn default() -> Self {
         LaneRequestDecoderState::ReadingHeader
     }
 }
 #[derive(Debug)]
-pub struct LaneRequestDecoder<T, D> {
-    state: LaneRequestDecoderState<T>,
+pub struct LaneRequestDecoder<D> {
+    state: LaneRequestDecoderState,
     inner: D,
 }
 
-impl<T, D> LaneRequestDecoder<T, D> {
+impl<D> LaneRequestDecoder<D> {
     pub fn new(decoder: D) -> Self {
         LaneRequestDecoder {
             state: Default::default(),
@@ -171,12 +162,12 @@ impl<T, D> LaneRequestDecoder<T, D> {
     }
 }
 
-impl<T, D> Decoder for LaneRequestDecoder<T, D>
+impl<D> Decoder for LaneRequestDecoder<D>
 where
-    D: Decoder<Item = T>,
+    D: Decoder,
     D::Error: Into<FrameIoError>,
 {
-    type Item = LaneRequest<T>;
+    type Item = LaneRequest<D::Item>;
 
     type Error = FrameIoError;
 
@@ -185,83 +176,44 @@ where
         loop {
             match state {
                 LaneRequestDecoderState::ReadingHeader => {
-                    if src.remaining() < TAG_LEN + ID_LEN {
-                        src.reserve(TAG_LEN + ID_LEN);
+                    if src.remaining() < TAG_LEN {
+                        src.reserve(TAG_LEN);
                         break Ok(None);
                     }
-                    match src.get_u8() {
+                    match src.as_ref()[0] {
                         COMMAND => {
-                            let len = src.get_u64();
-                            *state = LaneRequestDecoderState::ReadingBody {
-                                remaining: len as usize,
-                            };
+                            src.advance(TAG_LEN);
+                            *state = LaneRequestDecoderState::ReadingBody;
                         }
                         SYNC => {
+                            if src.remaining() < TAG_LEN + ID_LEN {
+                                src.reserve(TAG_LEN + ID_LEN);
+                                break Ok(None);
+                            }
+                            src.advance(TAG_LEN);
                             let id = Uuid::from_u128(src.get_u128());
                             break Ok(Some(LaneRequest::Sync(id)));
                         }
                         t => {
+                            src.advance(TAG_LEN);
                             break Err(FrameIoError::BadFrame(InvalidFrame::InvalidHeader {
                                 problem: Text::from(format!("Invalid agent request tag: {}", t)),
-                            }))
+                            }));
                         }
                     }
                 }
-                LaneRequestDecoderState::ReadingBody { remaining } => {
-                    let (new_remaining, rem, decode_result) =
-                        super::consume_bounded(remaining, src, inner);
-                    match decode_result {
-                        Ok(Some(result)) => {
-                            src.unsplit(rem);
-                            *state = LaneRequestDecoderState::AfterBody {
-                                message: Some(result),
-                                remaining: *remaining,
-                            }
+                LaneRequestDecoderState::ReadingBody => {
+                    break match inner.decode(src) {
+                        Ok(Some(value)) => {
+                            *state = LaneRequestDecoderState::ReadingHeader;
+                            Ok(Some(LaneRequest::Command(value)))
                         }
-                        Ok(None) => {
-                            break Ok(None);
-                        }
+                        Ok(None) => Ok(None),
                         Err(e) => {
-                            *remaining -= new_remaining;
-                            src.unsplit(rem);
-                            src.advance(new_remaining);
-                            if *remaining == 0 {
-                                *state = LaneRequestDecoderState::ReadingHeader;
-                                break Err(e.into());
-                            } else {
-                                *state = LaneRequestDecoderState::Discarding {
-                                    error: Some(e.into()),
-                                    remaining: *remaining,
-                                }
-                            }
+                            *state = LaneRequestDecoderState::ReadingHeader;
+                            Err(e.into())
                         }
-                    }
-                }
-                LaneRequestDecoderState::AfterBody { message, remaining } => {
-                    if src.remaining() >= *remaining {
-                        src.advance(*remaining);
-                        let result = message.take();
-                        *state = LaneRequestDecoderState::ReadingHeader;
-                        break Ok(result.map(LaneRequest::Command));
-                    } else {
-                        *remaining -= src.remaining();
-                        src.clear();
-                        break Ok(None);
-                    }
-                }
-                LaneRequestDecoderState::Discarding { error, remaining } => {
-                    if src.remaining() >= *remaining {
-                        src.advance(*remaining);
-                        let err = error
-                            .take()
-                            .unwrap_or_else(|| AsyncParseError::UnconsumedInput.into());
-                        *state = LaneRequestDecoderState::ReadingHeader;
-                        break Err(err);
-                    } else {
-                        *remaining -= src.remaining();
-                        src.clear();
-                        break Ok(None);
-                    }
+                    };
                 }
             }
         }
@@ -309,7 +261,7 @@ impl Decoder for ValueLaneResponseDecoder {
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         if src.remaining() < TAG_LEN {
-            src.reserve(TAG_LEN + ID_LEN);
+            src.reserve(TAG_LEN);
             return Ok(None);
         }
         let mut input = src.as_ref();

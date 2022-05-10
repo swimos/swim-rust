@@ -165,7 +165,7 @@ pub type RawRequestMessage<'a> = RequestMessage<&'a [u8]>;
 pub type RawResponseMessage = ResponseMessage<Bytes, Bytes>;
 
 /// Tokio [`Encoder`] to encode a [`RawRequestMessage`] as a byte stream.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct RawRequestMessageEncoder;
 
 /// Tokio [`Encoder`] to encode a [`RawResponseMessage`] as a byte stream.

@@ -67,7 +67,7 @@ pub trait AgentContext {
         name: &str,
         uplink_kind: UplinkKind,
         config: Option<LaneConfig>,
-    ) -> BoxFuture<'a, Result<(ByteReader, ByteWriter), AgentRuntimeError>>;
+    ) -> BoxFuture<'a, Result<(ByteWriter, ByteReader), AgentRuntimeError>>;
 
     fn open_downlink(
         &self,
