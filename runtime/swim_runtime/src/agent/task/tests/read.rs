@@ -20,7 +20,7 @@ use std::{
 };
 
 use futures::{
-    future::{join3, select, Either},
+    future::{join, join3, select, Either},
     ready,
     stream::SelectAll,
     Future, SinkExt, Stream, StreamExt,
@@ -132,9 +132,6 @@ enum Event {
         name: Text,
         cmd: MapMessage<Text, i32>,
     },
-    FrameError {
-        name: Text,
-    },
     Coord(RwCoorindationMessage),
 }
 
@@ -182,7 +179,9 @@ impl FakeAgent {
                 Either::Left((Some((name, Ok(Either::Right(LaneRequest::Command(msg))))), _)) => {
                     Event::MapCommand { name, cmd: msg }
                 }
-                Either::Left((Some((name, Err(_))), _)) => Event::FrameError { name },
+                Either::Left((Some((name, Err(e))), _)) => {
+                    panic!("Bad frame for {}: {:?}", name, e);
+                }
                 Either::Right((Some(WriteTaskMessage::Coord(coord)), _)) => Event::Coord(coord),
                 _ => {
                     break;
@@ -222,10 +221,13 @@ const MAP_LANE: &str = "map_lane";
 
 const TEST_TIMEOUT: Duration = Duration::from_secs(10);
 
-async fn run_test_case<F, Fut>(inactive_timeout: Duration, test_case: F) -> Vec<Event>
+async fn run_test_case<F, Fut>(
+    inactive_timeout: Duration,
+    test_case: F,
+) -> (Vec<Event>, Fut::Output)
 where
     F: FnOnce(TestContext) -> Fut,
-    Fut: Future<Output = ()> + Send,
+    Fut: Future + Send,
 {
     let (stop_tx, stop_rx) = trigger::trigger();
     let config = make_config(inactive_timeout);
@@ -265,17 +267,18 @@ where
 
     let test_task = test_case(context);
 
-    let (events, _, _) = tokio::time::timeout(TEST_TIMEOUT, join3(agent.run(), read, test_task))
-        .await
-        .expect("Test timeout out");
-    events
+    let (events, _, value) =
+        tokio::time::timeout(TEST_TIMEOUT, join3(agent.run(), read, test_task))
+            .await
+            .expect("Test timeout out");
+    (events, value)
 }
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[tokio::test]
 async fn shutdown_no_remotes() {
-    let events = run_test_case(DEFAULT_TIMEOUT, |context| async move {
+    let (events, _) = run_test_case(DEFAULT_TIMEOUT, |context| async move {
         let TestContext {
             stop_sender,
             reg_tx: _reg_tx,
@@ -290,56 +293,69 @@ async fn shutdown_no_remotes() {
 }
 
 const RID: RoutingAddr = RoutingAddr::remote(0);
+const RID2: RoutingAddr = RoutingAddr::remote(1);
 const NODE: &str = "node";
 
-struct RemoteSender(FramedWrite<ByteWriter, RawRequestMessageEncoder>);
+struct RemoteSender {
+    rid: RoutingAddr,
+    inner: FramedWrite<ByteWriter, RawRequestMessageEncoder>,
+}
 
 impl RemoteSender {
     async fn link(&mut self, lane: &str) {
-        let RemoteSender(inner) = self;
+        let RemoteSender { rid, inner } = self;
         let path = RelativePath::new(NODE, lane);
-        assert!(inner.send(RequestMessage::link(RID, path)).await.is_ok());
+        assert!(inner.send(RequestMessage::link(*rid, path)).await.is_ok());
     }
 
     async fn sync(&mut self, lane: &str) {
-        let RemoteSender(inner) = self;
+        let RemoteSender { rid, inner } = self;
         let path = RelativePath::new(NODE, lane);
-        assert!(inner.send(RequestMessage::sync(RID, path)).await.is_ok());
+        assert!(inner.send(RequestMessage::sync(*rid, path)).await.is_ok());
     }
 
     async fn value_command(&mut self, lane: &str, n: i32) {
-        let RemoteSender(inner) = self;
+        let RemoteSender { rid, inner } = self;
         let path = RelativePath::new(NODE, lane);
         let body = format!("{}", n);
         assert!(inner
-            .send(RequestMessage::command(RID, path, body.as_bytes()))
+            .send(RequestMessage::command(*rid, path, body.as_bytes()))
             .await
             .is_ok());
     }
 
     async fn map_command(&mut self, lane: &str, key: &str, value: i32) {
-        let RemoteSender(inner) = self;
+        let RemoteSender { rid, inner } = self;
         let path = RelativePath::new(NODE, lane);
         let body = format!("@update(key:\"{}\") {}", key, value);
         assert!(inner
-            .send(RequestMessage::command(RID, path, body.as_bytes()))
+            .send(RequestMessage::command(*rid, path, body.as_bytes()))
             .await
             .is_ok());
     }
 }
 
-async fn attach_remote(reg_tx: &mpsc::Sender<ReadTaskRegistration>) -> RemoteSender {
+async fn attach_remote_with(
+    rid: RoutingAddr,
+    reg_tx: &mpsc::Sender<ReadTaskRegistration>,
+) -> RemoteSender {
     let (tx, rx) = byte_channel(BUFFER_SIZE);
     assert!(reg_tx
         .send(ReadTaskRegistration::Remote { reader: rx })
         .await
         .is_ok());
-    RemoteSender(FramedWrite::new(tx, Default::default()))
+    RemoteSender {
+        rid,
+        inner: FramedWrite::new(tx, Default::default()),
+    }
+}
+async fn attach_remote(reg_tx: &mpsc::Sender<ReadTaskRegistration>) -> RemoteSender {
+    attach_remote_with(RID, reg_tx).await
 }
 
 #[tokio::test]
 async fn attach_remote_and_link() {
-    let events = run_test_case(DEFAULT_TIMEOUT, |context| async move {
+    let (events, _) = run_test_case(DEFAULT_TIMEOUT, |context| async move {
         let TestContext {
             stop_sender,
             reg_tx,
@@ -365,7 +381,7 @@ async fn attach_remote_and_link() {
 
 #[tokio::test]
 async fn attach_remote_and_sync() {
-    let events = run_test_case(DEFAULT_TIMEOUT, |context| async move {
+    let (events, _) = run_test_case(DEFAULT_TIMEOUT, |context| async move {
         let TestContext {
             stop_sender,
             reg_tx,
@@ -391,7 +407,7 @@ async fn attach_remote_and_sync() {
 
 #[tokio::test]
 async fn attach_remote_and_value_command() {
-    let events = run_test_case(DEFAULT_TIMEOUT, |context| async move {
+    let (events, _) = run_test_case(DEFAULT_TIMEOUT, |context| async move {
         let TestContext {
             stop_sender,
             reg_tx,
@@ -417,7 +433,7 @@ async fn attach_remote_and_value_command() {
 
 #[tokio::test]
 async fn attach_remote_and_map_command() {
-    let events = run_test_case(DEFAULT_TIMEOUT, |context| async move {
+    let (events, _) = run_test_case(DEFAULT_TIMEOUT, |context| async move {
         let TestContext {
             stop_sender,
             reg_tx,
@@ -443,4 +459,158 @@ async fn attach_remote_and_map_command() {
     })
     .await;
     assert_eq!(events.len(), 1);
+}
+
+const VOTE_TEST_TIMEOUT: Duration = Duration::from_millis(100);
+
+#[tokio::test]
+async fn votes_to_stop() {
+    let (events, _stop_sender) = run_test_case(VOTE_TEST_TIMEOUT, |context| async move {
+        let TestContext {
+            stop_sender,
+            reg_tx,
+            vote2,
+            vote_rx,
+            event_rx: _event_rx,
+        } = context;
+        let _sender = attach_remote(&reg_tx).await;
+        //Voting on behalf of the missing write task.
+        assert!(!vote2.vote());
+        vote_rx.await;
+        stop_sender
+    })
+    .await;
+    assert!(events.is_empty());
+}
+
+#[tokio::test]
+async fn rescinds_stop_vote_on_input() {
+    let (events, _) = run_test_case(VOTE_TEST_TIMEOUT, |context| async move {
+        let TestContext {
+            stop_sender,
+            reg_tx,
+            vote2,
+            vote_rx: _vote_rx,
+            mut event_rx,
+        } = context;
+        let mut sender = attach_remote(&reg_tx).await;
+
+        tokio::time::sleep(2 * VOTE_TEST_TIMEOUT).await;
+
+        sender.value_command(VAL_LANE, 77).await;
+        let _ = event_rx.recv().await;
+        assert!(!vote2.vote());
+        stop_sender
+    })
+    .await;
+    assert_eq!(events.len(), 1);
+}
+
+#[tokio::test]
+async fn attach_two_remotes_and_link() {
+    let (events, _) = run_test_case(DEFAULT_TIMEOUT, |context| async move {
+        let TestContext {
+            stop_sender,
+            reg_tx,
+            vote2: _vote2,
+            vote_rx: _vote_rx,
+            mut event_rx,
+        } = context;
+        let mut sender1 = attach_remote_with(RID, &reg_tx).await;
+        let mut sender2 = attach_remote_with(RID2, &reg_tx).await;
+        sender1.link(VAL_LANE).await;
+        sender2.link(VAL_LANE).await;
+        let event1 = event_rx.recv().await;
+        let event2 = event_rx.recv().await;
+        let seen;
+        match event1 {
+            Some(Event::Coord(RwCoorindationMessage::Link { origin, lane })) => {
+                assert!(origin == *RID.uuid() || origin == *RID2.uuid());
+                seen = origin;
+                assert_eq!(lane, VAL_LANE);
+            }
+            ow => panic!("Unexpected event: {:?}", ow),
+        }
+        match event2 {
+            Some(Event::Coord(RwCoorindationMessage::Link { origin, lane })) => {
+                assert!(origin == *RID.uuid() || origin == *RID2.uuid());
+                assert_ne!(origin, seen);
+                assert_eq!(lane, VAL_LANE);
+            }
+            ow => panic!("Unexpected event: {:?}", ow),
+        }
+        stop_sender.trigger();
+    })
+    .await;
+    assert_eq!(events.len(), 2);
+}
+
+#[tokio::test]
+async fn send_on_two_remotes() {
+    let (events, _) = run_test_case(DEFAULT_TIMEOUT, |context| async move {
+        let TestContext {
+            stop_sender,
+            reg_tx,
+            vote2: _vote2,
+            vote_rx: _vote_rx,
+            mut event_rx,
+        } = context;
+
+        let reg_ref = &reg_tx;
+        let sub_task_1 = async move {
+            let mut sender1 = attach_remote_with(RID, reg_ref).await;
+            for i in 0..100 {
+                sender1.value_command(VAL_LANE, i).await;
+            }
+            sender1
+        };
+
+        let sub_task_2 = async move {
+            let mut sender2 = attach_remote_with(RID2, reg_ref).await;
+            for i in 0..100 {
+                sender2.map_command(MAP_LANE, "key", i).await;
+            }
+            sender2
+        };
+
+        let (_s1, _s2) = join(sub_task_1, sub_task_2).await;
+
+        let mut count = 0;
+        while event_rx.recv().await.is_some() {
+            count += 1;
+            if count == 200 {
+                break;
+            }
+        }
+
+        stop_sender.trigger();
+    })
+    .await;
+
+    assert_eq!(events.len(), 200);
+
+    let mut prev_value = None;
+    let mut prev_map = None;
+
+    for event in events {
+        match event {
+            Event::ValueCommand { name, n } => {
+                assert_eq!(name, VAL_LANE);
+                assert_eq!(prev_value.map(|m| m + 1).unwrap_or(0), n);
+                prev_value = Some(n);
+            }
+            Event::MapCommand {
+                name,
+                cmd: MapMessage::Update { key, value },
+            } => {
+                assert_eq!(name, MAP_LANE);
+                assert_eq!(key, "key");
+                assert_eq!(prev_map.map(|m| m + 1).unwrap_or(0), value);
+                prev_map = Some(value);
+            }
+            ow => panic!("Unexpected event: {:?}", ow),
+        }
+    }
+    assert_eq!(prev_value, Some(99));
+    assert_eq!(prev_map, Some(99));
 }

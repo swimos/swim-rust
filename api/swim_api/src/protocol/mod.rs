@@ -201,10 +201,10 @@ impl<R: Recognizer> Decoder for WithLenRecognizerDecoder<R> {
                             src.advance(new_remaining);
                             if *remaining == 0 {
                                 *state = WithLenRecognizerDecoderState::ReadingHeader;
-                                break Err(e.into());
+                                break Err(e);
                             } else {
                                 *state = WithLenRecognizerDecoderState::Discarding {
-                                    error: Some(e.into()),
+                                    error: Some(e),
                                     remaining: *remaining,
                                 }
                             }
@@ -227,8 +227,7 @@ impl<R: Recognizer> Decoder for WithLenRecognizerDecoder<R> {
                     if src.remaining() >= *remaining {
                         src.advance(*remaining);
                         let err = error
-                            .take()
-                            .unwrap_or_else(|| AsyncParseError::UnconsumedInput.into());
+                            .take().unwrap_or(AsyncParseError::UnconsumedInput);
                         *state = WithLenRecognizerDecoderState::ReadingHeader;
                         break Err(err);
                     } else {
