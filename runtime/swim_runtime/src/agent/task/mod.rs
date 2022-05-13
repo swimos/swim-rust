@@ -19,12 +19,14 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
+use crate::agent::task::links::TriggerUnlink;
 use crate::agent::task::write_fut::SpecialAction;
 use crate::compat::{Operation, RawRequestMessageDecoder, RequestMessage};
 use crate::error::InvalidKey;
 use crate::routing::RoutingAddr;
 
 use self::links::Links;
+use self::prune::PruneRemotes;
 use self::remotes::{LaneRegistry, RemoteSender, RemoteTracker, UplinkResponse};
 use self::write_fut::{WriteResult, WriteTask};
 
@@ -68,6 +70,7 @@ use tracing_futures::Instrument;
 
 mod init;
 mod links;
+mod prune;
 mod remotes;
 mod timeout_coord;
 mod write_fut;
@@ -790,6 +793,7 @@ enum WriteTaskEvent {
     Event { id: u64, response: RawLaneResponse },
     WriteDone(WriteResult),
     LaneFailed(u64),
+    PruneRemote(Uuid),
     Timeout,
     Stop,
 }
@@ -816,17 +820,27 @@ impl WriteTaskConfiguration {
 #[derive(Debug)]
 struct WriteTaskEvents<'a, S, W> {
     inactive_timeout: Duration,
+    remote_timeout: Duration,
     timeout_delay: Pin<&'a mut Sleep>,
+    prune_remotes: PruneRemotes<'a>,
     reg_stream: S,
     lanes: SelectAll<LaneStream>,
     pending_writes: FuturesUnordered<W>,
 }
 
 impl<'a, S, W> WriteTaskEvents<'a, S, W> {
-    fn new(inactive_timeout: Duration, timeout_delay: Pin<&'a mut Sleep>, reg_stream: S) -> Self {
+    fn new(
+        inactive_timeout: Duration,
+        remote_timeout: Duration,
+        timeout_delay: Pin<&'a mut Sleep>,
+        prune_delay: Pin<&'a mut Sleep>,
+        reg_stream: S,
+    ) -> Self {
         WriteTaskEvents {
             inactive_timeout,
+            remote_timeout,
             timeout_delay,
+            prune_remotes: PruneRemotes::new(prune_delay),
             reg_stream,
             lanes: Default::default(),
             pending_writes: Default::default(),
@@ -837,8 +851,21 @@ impl<'a, S, W> WriteTaskEvents<'a, S, W> {
         self.lanes.push(lane);
     }
 
+    fn clear_lanes(&mut self) {
+        self.lanes.clear()
+    }
+
     fn schedule_write(&mut self, write: W) {
         self.pending_writes.push(write);
+    }
+
+    fn schedule_prune(&mut self, remote_id: Uuid) {
+        let WriteTaskEvents {
+            remote_timeout,
+            prune_remotes,
+            ..
+        } = self;
+        prune_remotes.push(remote_id, *remote_timeout);
     }
 }
 
@@ -854,6 +881,8 @@ where
             reg_stream,
             lanes,
             pending_writes,
+            prune_remotes,
+            ..
         } = self;
 
         let mut delay = timeout_delay.as_mut();
@@ -861,6 +890,11 @@ where
         loop {
             tokio::select! {
                 biased;
+                maybe_remote = prune_remotes.next(), if !prune_remotes.is_empty() => {
+                    if let Some(remote_id) = maybe_remote {
+                        break WriteTaskEvent::PruneRemote(remote_id);
+                    }
+                }
                 maybe_reg = reg_stream.next() => {
                     break if let Some(reg) = maybe_reg {
                         WriteTaskEvent::Registration(reg)
@@ -901,6 +935,15 @@ where
             };
         }
     }
+
+    async fn next_write(&mut self) -> Option<WriteResult> {
+        let WriteTaskEvents { pending_writes, .. } = self;
+        if pending_writes.is_empty() {
+            None
+        } else {
+            pending_writes.next().await
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -912,14 +955,21 @@ struct WriteTaskState {
 #[derive(Debug)]
 enum RegistrationResult<W> {
     AddLane(LaneStream),
-    ScheduleWrite(W),
+    ScheduleWrite {
+        write: W,
+        schedule_prune: Option<Uuid>,
+    },
+    AddPruneTimeout(Uuid),
     Nothing,
 }
 
 impl<W> From<Option<W>> for RegistrationResult<W> {
     fn from(opt: Option<W>) -> Self {
         if let Some(write) = opt {
-            RegistrationResult::ScheduleWrite(write)
+            RegistrationResult::ScheduleWrite {
+                write,
+                schedule_prune: None,
+            }
         } else {
             RegistrationResult::Nothing
         }
@@ -943,24 +993,24 @@ impl WriteTaskState {
     fn handle_registration(&mut self, reg: WriteTaskMessage) -> RegistrationResult<WriteTask> {
         let WriteTaskState {
             links,
-            remote_tracker: write_tracker,
+            remote_tracker,
             ..
         } = self;
         match reg {
             WriteTaskMessage::Lane(endpoint) => {
-                let lane_stream = endpoint.into_lane_stream(write_tracker.lane_registry());
+                let lane_stream = endpoint.into_lane_stream(remote_tracker.lane_registry());
                 RegistrationResult::AddLane(lane_stream)
             }
             WriteTaskMessage::Remote { id, writer } => {
-                write_tracker.insert(id, writer);
-                RegistrationResult::Nothing
+                remote_tracker.insert(id, writer);
+                RegistrationResult::AddPruneTimeout(id)
             }
             WriteTaskMessage::Coord(RwCoorindationMessage::Link { origin, lane }) => {
                 info!("Attempting to set up link from '{}' to {}.", lane, origin);
-                match write_tracker.lane_registry().id_for(lane.as_str()) {
-                    Some(id) if write_tracker.has_remote(origin) => {
+                match remote_tracker.lane_registry().id_for(lane.as_str()) {
+                    Some(id) if remote_tracker.has_remote(origin) => {
                         links.insert(id, origin);
-                        write_tracker
+                        remote_tracker
                             .push_special(SpecialAction::Linked(id), &origin)
                             .into()
                     }
@@ -969,7 +1019,7 @@ impl WriteTaskState {
                         RegistrationResult::Nothing
                     }
                     _ => {
-                        if write_tracker.has_remote(origin) {
+                        if remote_tracker.has_remote(origin) {
                             error!("No lane named '{}'.", lane);
                         } else {
                             error!("No lane named '{}' or remote with ID {}.", lane, origin);
@@ -983,12 +1033,21 @@ impl WriteTaskState {
                     "Attempting to close any link from '{}' to {}.",
                     lane, origin
                 );
-                if let Some(lane_id) = write_tracker.lane_registry().id_for(lane.as_str()) {
-                    links.remove(lane_id, origin);
+                if let Some(lane_id) = remote_tracker.lane_registry().id_for(lane.as_str()) {
+                    let schedule_prune = links.remove(lane_id, origin).into_option();
                     let message = Text::new("Link closed.");
-                    write_tracker
-                        .push_special(SpecialAction::unlinked(lane_id, message), &origin)
-                        .into()
+                    let maybe_write = remote_tracker
+                        .push_special(SpecialAction::unlinked(lane_id, message), &origin);
+                    if let Some(write) = maybe_write {
+                        RegistrationResult::ScheduleWrite {
+                            write,
+                            schedule_prune,
+                        }
+                    } else if let Some(remote_id) = schedule_prune {
+                        RegistrationResult::AddPruneTimeout(remote_id)
+                    } else {
+                        RegistrationResult::Nothing
+                    }
                 } else {
                     error!("No lane named '{}'.", lane);
                     RegistrationResult::Nothing
@@ -999,7 +1058,7 @@ impl WriteTaskState {
                     "Received envelope for non-existent lane '{}' from {}.",
                     path.lane, origin
                 );
-                write_tracker
+                remote_tracker
                     .push_special(SpecialAction::lane_not_found(path.lane), &origin)
                     .into()
             }
@@ -1055,7 +1114,16 @@ impl WriteTaskState {
         self.remote_tracker.remove_remote(remote_id);
     }
 
-    fn remove_lane(&mut self, lane_id: u64) -> impl Iterator<Item = WriteTask> + '_ {
+    fn remove_remote_if_idle(&mut self, remote_id: Uuid) {
+        if self.links.linked_to(remote_id).is_none() {
+            self.remove_remote(remote_id);
+        }
+    }
+
+    fn remove_lane(
+        &mut self,
+        lane_id: u64,
+    ) -> impl Iterator<Item = (TriggerUnlink, Option<WriteTask>)> + '_ {
         let WriteTaskState {
             links,
             remote_tracker: write_tracker,
@@ -1064,26 +1132,39 @@ impl WriteTaskState {
         info!("Attempting to remove lane with id {}.", lane_id);
         write_tracker.remove_lane(lane_id);
         let linked_remotes = links.remove_lane(lane_id);
-        linked_remotes.into_iter().flat_map(move |remote_id| {
-            info!("Unlinking remotes connected to lane with id {}.", lane_id);
-            write_tracker.unlink_lane(remote_id, lane_id)
+        linked_remotes.into_iter().map(move |unlink| {
+            let TriggerUnlink { remote_id, .. } = unlink;
+            info!(
+                "Unlinking remote {} connected to lane with id {}.",
+                remote_id, lane_id
+            );
+            let task = write_tracker.unlink_lane(remote_id, lane_id);
+            (unlink, task)
         })
     }
 
     fn replace(&mut self, writer: RemoteSender, buffer: BytesMut) -> Option<WriteTask> {
-        let WriteTaskState {
-            remote_tracker: write_tracker,
-            ..
-        } = self;
+        let WriteTaskState { remote_tracker, .. } = self;
         trace!(
             "Replacing writer {} after completed write.",
             writer.remote_id()
         );
-        write_tracker.replace_and_pop(writer, buffer)
+        remote_tracker.replace_and_pop(writer, buffer)
     }
 
     fn has_remotes(&self) -> bool {
         !self.remote_tracker.is_empty()
+    }
+
+    fn unlink_all(&mut self) -> impl Iterator<Item = WriteTask> + '_ {
+        info!("Unlinking all open links for shutdown.");
+        let WriteTaskState {
+            links,
+            remote_tracker,
+        } = self;
+        links
+            .all_links()
+            .flat_map(move |(lane_id, remote_id)| remote_tracker.unlink_lane(remote_id, lane_id))
     }
 }
 
@@ -1103,11 +1184,15 @@ async fn write_task(
     } = configuration;
 
     let timeout_delay = sleep(runtime_config.inactive_timeout);
+    let remote_prune_delay = sleep(Duration::ZERO);
 
     pin_mut!(timeout_delay);
+    pin_mut!(remote_prune_delay);
     let mut streams = WriteTaskEvents::new(
         runtime_config.inactive_timeout,
+        runtime_config.prune_remote_delay,
         timeout_delay.as_mut(),
+        remote_prune_delay,
         reg_stream,
     );
     let mut state = WriteTaskState::new(identity, node_uri);
@@ -1127,10 +1212,19 @@ async fn write_task(
                 RegistrationResult::AddLane(lane) => {
                     streams.add_lane(lane);
                 }
-                RegistrationResult::ScheduleWrite(write) => {
+                RegistrationResult::ScheduleWrite {
+                    write,
+                    schedule_prune,
+                } => {
                     streams.schedule_write(write.into_future());
+                    if let Some(remote_id) = schedule_prune {
+                        streams.schedule_prune(remote_id);
+                    }
                 }
-                _ => {}
+                RegistrationResult::AddPruneTimeout(remote_id) => {
+                    streams.schedule_prune(remote_id);
+                }
+                RegistrationResult::Nothing => {}
             },
             WriteTaskEvent::Event { id, response } => {
                 if voted {
@@ -1163,9 +1257,21 @@ async fn write_task(
                     "Lane with ID {} failed. Unlinking all attached uplinks.",
                     lane_id
                 );
-                for write in state.remove_lane(lane_id) {
-                    streams.schedule_write(write.into_future());
+                for (unlink, maybe_write) in state.remove_lane(lane_id) {
+                    if let Some(write) = maybe_write {
+                        streams.schedule_write(write.into_future());
+                    }
+                    let TriggerUnlink {
+                        remote_id,
+                        schedule_prune,
+                    } = unlink;
+                    if schedule_prune {
+                        streams.schedule_prune(remote_id);
+                    }
                 }
+            }
+            WriteTaskEvent::PruneRemote(remote_id) => {
+                state.remove_remote_if_idle(remote_id);
             }
             WriteTaskEvent::Timeout => {
                 info!(
@@ -1187,6 +1293,27 @@ async fn write_task(
                 break;
             }
         }
+    }
+    let cleanup_result = timeout(runtime_config.shutdown_timeout, async move {
+        info!("Unlinking all links on shutdown.");
+        streams.clear_lanes();
+        for write in state.unlink_all() {
+            streams.schedule_write(write.into_future());
+        }
+        while let Some((writer, buffer, result)) = streams.next_write().await {
+            if result.is_ok() {
+                if let Some(write) = state.replace(writer, buffer) {
+                    streams.schedule_write(write.into_future());
+                }
+            }
+        }
+    })
+    .await;
+    if cleanup_result.is_err() {
+        error!(
+            "Unlinking lanes on shutdown did not complete within {:?}.",
+            runtime_config.shutdown_timeout
+        );
     }
 }
 

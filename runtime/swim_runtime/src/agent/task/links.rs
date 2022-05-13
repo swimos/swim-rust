@@ -22,6 +22,29 @@ pub struct Links {
     backwards: HashMap<Uuid, HashSet<u64>>,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct TriggerUnlink {
+    pub remote_id: Uuid,
+    pub schedule_prune: bool,
+}
+
+impl TriggerUnlink {
+    fn new(remote_id: Uuid, schedule_prune: bool) -> Self {
+        TriggerUnlink {
+            remote_id,
+            schedule_prune,
+        }
+    }
+
+    pub fn into_option(self) -> Option<Uuid> {
+        if self.schedule_prune {
+            Some(self.remote_id)
+        } else {
+            None
+        }
+    }
+}
+
 impl Links {
     pub fn insert(&mut self, lane_id: u64, remote_id: Uuid) {
         let Links { forward, backwards } = self;
@@ -29,7 +52,8 @@ impl Links {
         backwards.entry(remote_id).or_default().insert(lane_id);
     }
 
-    pub fn remove(&mut self, lane_id: u64, remote_id: Uuid) {
+    #[must_use]
+    pub fn remove(&mut self, lane_id: u64, remote_id: Uuid) -> TriggerUnlink {
         let Links { forward, backwards } = self;
 
         if let Entry::Occupied(mut entry) = forward.entry(lane_id) {
@@ -40,28 +64,46 @@ impl Links {
         }
         if let Entry::Occupied(mut entry) = backwards.entry(remote_id) {
             entry.get_mut().remove(&lane_id);
-            if entry.get().is_empty() {
+            let no_links = entry.get().is_empty();
+            if no_links {
                 entry.remove();
             }
+            TriggerUnlink::new(remote_id, no_links)
+        } else {
+            TriggerUnlink::new(remote_id, false)
         }
+    }
+
+    pub fn all_links(&self) -> impl Iterator<Item = (u64, Uuid)> + '_ {
+        self.forward.iter().flat_map(|(lane_id, remote_ids)| {
+            remote_ids.into_iter().map(move |rid| (*lane_id, *rid))
+        })
     }
 
     pub fn linked_from(&self, id: u64) -> Option<&HashSet<Uuid>> {
         self.forward.get(&id)
     }
 
-    pub fn remove_lane(&mut self, id: u64) -> HashSet<Uuid> {
+    pub fn linked_to(&self, id: Uuid) -> Option<&HashSet<u64>> {
+        self.backwards.get(&id)
+    }
+
+    #[must_use]
+    pub fn remove_lane(&mut self, id: u64) -> impl Iterator<Item = TriggerUnlink> + '_ {
         let Links { forward, backwards } = self;
         let remote_ids = forward.remove(&id).unwrap_or_default();
-        for remote_id in &remote_ids {
-            if let Entry::Occupied(mut entry) = backwards.entry(*remote_id) {
+        remote_ids.into_iter().map(move |remote_id| {
+            if let Entry::Occupied(mut entry) = backwards.entry(remote_id) {
                 entry.get_mut().remove(&id);
-                if entry.get().is_empty() {
+                let no_links = entry.get().is_empty();
+                if no_links {
                     entry.remove();
                 }
+                TriggerUnlink::new(remote_id, no_links)
+            } else {
+                TriggerUnlink::new(remote_id, false)
             }
-        }
-        remote_ids
+        })
     }
 
     pub fn remove_remote(&mut self, id: Uuid) {
@@ -81,7 +123,11 @@ impl Links {
 #[cfg(test)]
 mod tests {
 
+    use std::collections::HashMap;
+
     use uuid::Uuid;
+
+    use crate::agent::task::links::TriggerUnlink;
 
     use super::Links;
 
@@ -129,11 +175,21 @@ mod tests {
     fn remove_link() {
         let mut links = make_links();
 
-        links.remove(LID1, RID2);
+        let TriggerUnlink {
+            remote_id,
+            schedule_prune,
+        } = links.remove(LID1, RID2);
+        assert_eq!(remote_id, RID2);
+        assert!(schedule_prune);
 
         assert_eq!(links.linked_from(LID1), Some(&[RID1, RID3,].into()));
 
-        links.remove(LID2, RID1);
+        let TriggerUnlink {
+            remote_id,
+            schedule_prune,
+        } = links.remove(LID2, RID1);
+        assert_eq!(remote_id, RID1);
+        assert!(!schedule_prune);
         assert_eq!(links.linked_from(LID2), None);
     }
 
@@ -154,8 +210,16 @@ mod tests {
     fn remove_lane() {
         let mut links = make_links();
 
-        let remotes = links.remove_lane(LID1);
-        assert_eq!(remotes, [RID1, RID2, RID3].into());
+        let remotes = links
+            .remove_lane(LID1)
+            .map(
+                |TriggerUnlink {
+                     remote_id,
+                     schedule_prune,
+                 }| (remote_id, schedule_prune),
+            )
+            .collect::<HashMap<_, _>>();
+        assert_eq!(remotes, [(RID1, false), (RID2, true), (RID3, true)].into());
 
         assert_eq!(links.linked_from(LID1), None);
 

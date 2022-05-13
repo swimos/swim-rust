@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use std::{
-    num::NonZeroUsize,
     pin::Pin,
     task::{Context, Poll},
     time::Duration,
@@ -26,7 +25,7 @@ use futures::{
     Future, SinkExt, Stream, StreamExt,
 };
 use swim_api::{
-    agent::{LaneConfig, UplinkKind},
+    agent::UplinkKind,
     error::FrameIoError,
     protocol::{
         agent::{LaneRequest, LaneRequestDecoder},
@@ -37,7 +36,6 @@ use swim_api::{
 use swim_form::structural::read::recognizer::primitive::I32Recognizer;
 use swim_model::{path::RelativePath, Text};
 use swim_utilities::{
-    algebra::non_zero_usize,
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
     trigger,
 };
@@ -47,16 +45,15 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 use uuid::Uuid;
 
 use crate::{
-    agent::{
-        task::{
-            read_task, timeout_coord, LaneEndpoint, ReadTaskRegistration, RwCoorindationMessage,
-            WriteTaskMessage,
-        },
-        AgentRuntimeConfig,
+    agent::task::{
+        read_task, tests::BUFFER_SIZE, timeout_coord, LaneEndpoint, ReadTaskRegistration,
+        RwCoorindationMessage, WriteTaskMessage,
     },
     compat::{RawRequestMessageEncoder, RequestMessage},
     routing::RoutingAddr,
 };
+
+use super::{make_config, MAP_LANE, QUEUE_SIZE, TEST_TIMEOUT, VAL_LANE};
 
 struct FakeAgent {
     initial: Vec<LaneEndpoint<ByteReader>>,
@@ -201,25 +198,6 @@ struct TestContext {
     vote_rx: timeout_coord::Receiver,
     event_rx: mpsc::UnboundedReceiver<Event>,
 }
-
-const QUEUE_SIZE: NonZeroUsize = non_zero_usize!(8);
-const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
-
-fn make_config(inactive_timeout: Duration) -> AgentRuntimeConfig {
-    AgentRuntimeConfig {
-        default_lane_config: LaneConfig {
-            input_buffer_size: BUFFER_SIZE,
-            output_buffer_size: BUFFER_SIZE,
-        },
-        attachment_queue_size: non_zero_usize!(8),
-        inactive_timeout,
-    }
-}
-
-const VAL_LANE: &str = "value_lane";
-const MAP_LANE: &str = "map_lane";
-
-const TEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 async fn run_test_case<F, Fut>(
     inactive_timeout: Duration,

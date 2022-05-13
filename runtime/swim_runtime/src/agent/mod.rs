@@ -152,6 +152,8 @@ pub struct AgentRuntimeConfig {
     pub default_lane_config: LaneConfig,
     pub attachment_queue_size: NonZeroUsize,
     pub inactive_timeout: Duration,
+    pub prune_remote_delay: Duration,
+    pub shutdown_timeout: Duration,
 }
 
 #[derive(Debug, Error)]

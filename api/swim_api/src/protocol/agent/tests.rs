@@ -106,7 +106,7 @@ fn decode_command_lane_request() {
 fn encode_sync_value_lane_response() {
     let mut encoder = ValueLaneResponseEncoder;
     let mut buffer = BytesMut::new();
-    let request = ValueLaneResponse::sync(Uuid::from_u128(563883), Example { a: 6, b: 234 });
+    let request = ValueLaneResponse::synced(Uuid::from_u128(563883), Example { a: 6, b: 234 });
     assert!(encoder.encode(request, &mut buffer).is_ok());
 
     assert!(buffer.remaining() > 25);

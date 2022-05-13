@@ -150,6 +150,8 @@ const CONFIG: AgentRuntimeConfig = AgentRuntimeConfig {
     },
     attachment_queue_size: non_zero_usize!(8),
     inactive_timeout: Duration::from_secs(1),
+    prune_remote_delay: Duration::from_secs(1),
+    shutdown_timeout: Duration::from_secs(2),
 };
 
 async fn run_test<T: TestInit>() -> (Result<InitialEndpoints, NoLanes>, <T as TestInit>::Output) {

@@ -65,7 +65,7 @@ impl<T> ValueLaneResponse<T> {
         }
     }
 
-    pub fn sync(id: Uuid, value: T) -> Self {
+    pub fn synced(id: Uuid, value: T) -> Self {
         ValueLaneResponse {
             kind: LaneResponseKind::SyncEvent(id),
             value,
