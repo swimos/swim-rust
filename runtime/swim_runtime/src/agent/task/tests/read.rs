@@ -46,8 +46,9 @@ use uuid::Uuid;
 
 use crate::{
     agent::task::{
-        read_task, tests::{BUFFER_SIZE, DEFAULT_TIMEOUT}, timeout_coord, LaneEndpoint, ReadTaskRegistration,
-        RwCoorindationMessage, WriteTaskMessage,
+        read_task,
+        tests::{BUFFER_SIZE, DEFAULT_TIMEOUT, VOTE_TEST_TIMEOUT},
+        timeout_coord, LaneEndpoint, ReadTaskRegistration, RwCoorindationMessage, WriteTaskMessage,
     },
     compat::{RawRequestMessageEncoder, RequestMessage},
     routing::RoutingAddr,
@@ -436,8 +437,6 @@ async fn attach_remote_and_map_command() {
     .await;
     assert_eq!(events.len(), 1);
 }
-
-const VOTE_TEST_TIMEOUT: Duration = Duration::from_millis(100);
 
 #[tokio::test]
 async fn votes_to_stop() {

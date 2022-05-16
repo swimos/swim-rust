@@ -18,7 +18,10 @@ use std::{
 };
 
 use bytes::Bytes;
-use futures::{future::{join3, join}, Future, SinkExt, StreamExt};
+use futures::{
+    future::{join, join3},
+    Future, SinkExt, StreamExt,
+};
 use swim_api::protocol::map::MapOperation;
 use swim_api::{
     agent::UplinkKind,
@@ -33,7 +36,7 @@ use swim_utilities::{
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
     trigger,
 };
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, time::Instant};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_util::codec::{FramedRead, FramedWrite};
 use uuid::Uuid;
@@ -47,7 +50,10 @@ use crate::{
     routing::RoutingAddr,
 };
 
-use super::{make_config, BUFFER_SIZE, MAP_LANE, QUEUE_SIZE, TEST_TIMEOUT, VAL_LANE, DEFAULT_TIMEOUT};
+use super::{
+    make_config, BUFFER_SIZE, DEFAULT_TIMEOUT, MAP_LANE, QUEUE_SIZE, TEST_TIMEOUT, VAL_LANE,
+    VOTE_TEST_TIMEOUT,
+};
 
 enum Instruction {
     ValueEvent {
@@ -91,10 +97,10 @@ impl Instructions {
     fn map_event(&self, lane: &str, key: &str, value: i32) {
         let Instructions(inner) = self;
         assert!(inner
-            .send(Instruction::MapEvent { 
-                lane: Text::new(lane), 
-                key: Text::new(key), 
-                value, 
+            .send(Instruction::MapEvent {
+                lane: Text::new(lane),
+                key: Text::new(key),
+                value,
                 id: None,
             })
             .is_ok());
@@ -103,10 +109,10 @@ impl Instructions {
     fn map_syncing_event(&self, id: Uuid, lane: &str, key: &str, value: i32) {
         let Instructions(inner) = self;
         assert!(inner
-            .send(Instruction::MapEvent { 
-                lane: Text::new(lane), 
-                key: Text::new(key), 
-                value, 
+            .send(Instruction::MapEvent {
+                lane: Text::new(lane),
+                key: Text::new(key),
+                value,
                 id: Some(id),
             })
             .is_ok());
@@ -115,7 +121,10 @@ impl Instructions {
     fn map_synced_event(&self, id: Uuid, lane: &str) {
         let Instructions(inner) = self;
         assert!(inner
-            .send(Instruction::MapSynced { lane: Text::new(lane), id } )
+            .send(Instruction::MapSynced {
+                lane: Text::new(lane),
+                id
+            })
             .is_ok());
     }
 
@@ -327,8 +336,10 @@ where
 
     let test_task = test_case(context);
 
-    let (_, _, result) = tokio::time::timeout(TEST_TIMEOUT, join3(fake_agent.run(), write, test_task)).await
-        .expect("Test timed out.");
+    let (_, _, result) =
+        tokio::time::timeout(TEST_TIMEOUT, join3(fake_agent.run(), write, test_task))
+            .await
+            .expect("Test timed out.");
     result
 }
 
@@ -427,7 +438,10 @@ impl RemoteReceiver {
     async fn expect_map_event(&mut self, lane: &str, key: &str, value: i32) {
         self.expect_envelope(lane, |envelope| {
             if let Notification::Event(body) = envelope {
-                let op = MapOperation::Update { key: Text::new(key), value };
+                let op = MapOperation::Update {
+                    key: Text::new(key),
+                    value,
+                };
                 let expected_body = format!("{}", print_recon_compact(&op));
                 let body_str = std::str::from_utf8(body.as_ref()).expect("Corrupted body.");
                 assert_eq!(body_str, expected_body);
@@ -510,6 +524,7 @@ async fn attach_remote(
         .is_ok());
     RemoteReceiver::new(rx)
 }
+
 async fn link_remote(remote_id: Uuid, lane: &str, messages_tx: &mpsc::Sender<WriteTaskMessage>) {
     let msg = RwCoorindationMessage::Link {
         origin: remote_id,
@@ -661,22 +676,24 @@ async fn broadcast_message_when_linked_multiple_remotes() {
 
         let mut reader2 = attach_remote(RID2.into(), &messages_tx).await;
         link_remote(RID2.into(), VAL_LANE, &messages_tx).await;
-        
+
         reader1.expect_linked(VAL_LANE).await;
         reader2.expect_linked(VAL_LANE).await;
 
         instr_tx.value_event(VAL_LANE, 747);
-        
+
         join(
             reader1.expect_value_event(VAL_LANE, 747),
-            reader2.expect_value_event(VAL_LANE, 747)
-        ).await;
-        
+            reader2.expect_value_event(VAL_LANE, 747),
+        )
+        .await;
+
         stop_sender.trigger();
-        join (
+        join(
             reader1.expect_clean_shutdown(vec![VAL_LANE]),
-            reader2.expect_clean_shutdown(vec![VAL_LANE])
-        ).await;
+            reader2.expect_clean_shutdown(vec![VAL_LANE]),
+        )
+        .await;
     })
     .await;
 }
@@ -697,19 +714,20 @@ async fn value_synced_message_are_targetted() {
 
         let mut reader2 = attach_remote(RID2.into(), &messages_tx).await;
         link_remote(RID2.into(), VAL_LANE, &messages_tx).await;
-        
+
         reader1.expect_linked(VAL_LANE).await;
         reader2.expect_linked(VAL_LANE).await;
 
         instr_tx.value_synced_event(RID1.into(), VAL_LANE, 64);
-        
+
         reader1.expect_value_synced(VAL_LANE, 64).await;
-        
+
         stop_sender.trigger();
-        join (
+        join(
             reader1.expect_clean_shutdown(vec![VAL_LANE]),
-            reader2.expect_clean_shutdown(vec![VAL_LANE])
-        ).await;
+            reader2.expect_clean_shutdown(vec![VAL_LANE]),
+        )
+        .await;
     })
     .await;
 }
@@ -730,22 +748,24 @@ async fn broadcast_map_message_when_linked_multiple_remotes() {
 
         let mut reader2 = attach_remote(RID2.into(), &messages_tx).await;
         link_remote(RID2.into(), MAP_LANE, &messages_tx).await;
-        
+
         reader1.expect_linked(MAP_LANE).await;
         reader2.expect_linked(MAP_LANE).await;
 
         instr_tx.map_event(MAP_LANE, "key", 49);
-        
+
         join(
             reader1.expect_map_event(MAP_LANE, "key", 49),
-            reader2.expect_map_event(MAP_LANE, "key", 49)
-        ).await;
-        
+            reader2.expect_map_event(MAP_LANE, "key", 49),
+        )
+        .await;
+
         stop_sender.trigger();
-        join (
+        join(
             reader1.expect_clean_shutdown(vec![MAP_LANE]),
-            reader2.expect_clean_shutdown(vec![MAP_LANE])
-        ).await;
+            reader2.expect_clean_shutdown(vec![MAP_LANE]),
+        )
+        .await;
     })
     .await;
 }
@@ -765,12 +785,12 @@ async fn receive_map_messages_when_linked() {
         link_remote(RID1.into(), MAP_LANE, &messages_tx).await;
 
         reader.expect_linked(MAP_LANE).await;
-        
+
         instr_tx.map_event(MAP_LANE, "key", 42);
         reader.expect_map_event(MAP_LANE, "key", 42).await;
         instr_tx.map_event(MAP_LANE, "key2", 56);
         reader.expect_map_event(MAP_LANE, "key2", 56).await;
-        
+
         stop_sender.trigger();
         reader.expect_clean_shutdown(vec![MAP_LANE]).await;
     })
@@ -793,21 +813,51 @@ async fn map_synced_message_are_targetted() {
 
         let mut reader2 = attach_remote(RID2.into(), &messages_tx).await;
         link_remote(RID2.into(), MAP_LANE, &messages_tx).await;
-        
+
         reader1.expect_linked(MAP_LANE).await;
         reader2.expect_linked(MAP_LANE).await;
 
         instr_tx.map_syncing_event(RID2.into(), MAP_LANE, "key", 389);
         instr_tx.map_synced_event(RID2.into(), MAP_LANE);
-        
+
         reader2.expect_map_event(MAP_LANE, "key", 389).await;
         reader2.expect_map_synced(MAP_LANE).await;
-        
+
         stop_sender.trigger();
-        join (
+        join(
             reader1.expect_clean_shutdown(vec![MAP_LANE]),
-            reader2.expect_clean_shutdown(vec![MAP_LANE])
-        ).await;
+            reader2.expect_clean_shutdown(vec![MAP_LANE]),
+        )
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn write_task_votes_to_stop() {
+    run_test_case(VOTE_TEST_TIMEOUT, |context| async move {
+        let TestContext {
+            stop_sender,
+            messages_tx,
+            vote2,
+            vote_rx,
+            instr_tx: _instr_tx,
+        } = context;
+
+        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
+
+        let before = Instant::now();
+        link_remote(RID1.into(), VAL_LANE, &messages_tx).await;
+
+        reader.expect_linked(VAL_LANE).await;
+        //Voting on behalf of the missing read task.
+        assert!(!vote2.vote());
+        vote_rx.await;
+        let after = Instant::now();
+        let elapsed = after.duration_since(before);
+        assert!(elapsed >= VOTE_TEST_TIMEOUT);
+        reader.expect_clean_shutdown(vec![VAL_LANE]).await;
+        stop_sender
     })
     .await;
 }

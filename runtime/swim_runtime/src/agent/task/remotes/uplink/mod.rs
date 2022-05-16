@@ -274,9 +274,7 @@ fn write_to_buffer(
             buffer.put(body);
             WriteAction::EventAndSynced
         }
-        UplinkResponse::SyncedMap => {
-            WriteAction::MapSynced(None)
-        },
+        UplinkResponse::SyncedMap => WriteAction::MapSynced(None),
         UplinkResponse::Value(body) => {
             buffer.clear();
             buffer.reserve(body.len());

@@ -422,7 +422,10 @@ impl Decoder for MapLaneResponseDecoder {
                     let inner_result = inner.decode(src);
                     break match inner_result {
                         Ok(Some(operation)) => {
-                            let result = Ok(Some(MapLaneResponse::Event { kind: std::mem::take(kind), operation }));
+                            let result = Ok(Some(MapLaneResponse::Event {
+                                kind: std::mem::take(kind),
+                                operation,
+                            }));
                             *state = MapLaneResponseDecoderState::ReadingHeader;
                             result
                         }

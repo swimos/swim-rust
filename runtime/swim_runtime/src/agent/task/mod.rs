@@ -434,6 +434,12 @@ enum WriteTaskMessage {
     Coord(RwCoorindationMessage),
 }
 
+impl WriteTaskMessage {
+    fn generates_activity(&self) -> bool {
+        matches!(self, WriteTaskMessage::Coord(_))
+    }
+}
+
 const BAD_LANE_REG: &str = "Agent failed to receive lane registration result.";
 
 async fn attachment_task<F>(
@@ -789,7 +795,7 @@ async fn flush_lane(lanes: &mut HashMap<u64, LaneSender>, needs_flush: &mut Opti
 }
 
 enum WriteTaskEvent {
-    Registration(WriteTaskMessage),
+    Message(WriteTaskMessage),
     Event { id: u64, response: RawLaneResponse },
     WriteDone(WriteResult),
     LaneFailed(u64),
@@ -823,7 +829,7 @@ struct WriteTaskEvents<'a, S, W> {
     remote_timeout: Duration,
     timeout_delay: Pin<&'a mut Sleep>,
     prune_remotes: PruneRemotes<'a>,
-    reg_stream: S,
+    message_stream: S,
     lanes: SelectAll<LaneStream>,
     pending_writes: FuturesUnordered<W>,
 }
@@ -834,14 +840,14 @@ impl<'a, S, W> WriteTaskEvents<'a, S, W> {
         remote_timeout: Duration,
         timeout_delay: Pin<&'a mut Sleep>,
         prune_delay: Pin<&'a mut Sleep>,
-        reg_stream: S,
+        message_stream: S,
     ) -> Self {
         WriteTaskEvents {
             inactive_timeout,
             remote_timeout,
             timeout_delay,
             prune_remotes: PruneRemotes::new(prune_delay),
-            reg_stream,
+            message_stream,
             lanes: Default::default(),
             pending_writes: Default::default(),
         }
@@ -878,7 +884,7 @@ where
         let WriteTaskEvents {
             inactive_timeout,
             timeout_delay,
-            reg_stream,
+            message_stream,
             lanes,
             pending_writes,
             prune_remotes,
@@ -895,9 +901,16 @@ where
                         break WriteTaskEvent::PruneRemote(remote_id);
                     }
                 }
-                maybe_reg = reg_stream.next() => {
-                    break if let Some(reg) = maybe_reg {
-                        WriteTaskEvent::Registration(reg)
+                maybe_msg = message_stream.next() => {
+                    break if let Some(msg) = maybe_msg {
+                        if msg.generates_activity() {
+                            delay.as_mut().reset(
+                                Instant::now()
+                                    .checked_add(*inactive_timeout)
+                                    .expect("Timer overflow."),
+                            );
+                        }
+                        WriteTaskEvent::Message(msg)
                     } else {
                         trace!("Stopping as the coordination task stopped.");
                         WriteTaskEvent::Stop
@@ -925,7 +938,7 @@ where
                     }
                 }
                 _ = &mut delay => {
-                    if lanes.is_empty() {
+                    break if lanes.is_empty() {
                         trace!("Stopping as there are no active lanes.");
                         WriteTaskEvent::Stop
                     } else {
@@ -1171,11 +1184,11 @@ impl WriteTaskState {
 async fn write_task(
     configuration: WriteTaskConfiguration,
     initial_endpoints: Vec<LaneEndpoint<ByteReader>>,
-    reg_rx: mpsc::Receiver<WriteTaskMessage>,
+    message_rx: mpsc::Receiver<WriteTaskMessage>,
     stop_voter: timeout_coord::Voter,
     stopping: trigger::Receiver,
 ) {
-    let reg_stream = ReceiverStream::new(reg_rx).take_until(stopping);
+    let message_stream = ReceiverStream::new(message_rx).take_until(stopping);
 
     let WriteTaskConfiguration {
         identity,
@@ -1193,7 +1206,7 @@ async fn write_task(
         runtime_config.prune_remote_delay,
         timeout_delay.as_mut(),
         remote_prune_delay,
-        reg_stream,
+        message_stream,
     );
     let mut state = WriteTaskState::new(identity, node_uri);
 
@@ -1208,7 +1221,7 @@ async fn write_task(
     loop {
         let next = streams.select_next().await;
         match next {
-            WriteTaskEvent::Registration(reg) => match state.handle_registration(reg) {
+            WriteTaskEvent::Message(reg) => match state.handle_registration(reg) {
                 RegistrationResult::AddLane(lane) => {
                     streams.add_lane(lane);
                 }
