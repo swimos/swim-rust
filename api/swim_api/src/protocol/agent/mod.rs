@@ -384,7 +384,7 @@ impl Decoder for MapLaneResponseDecoder {
                     let mut input = src.as_ref();
                     if input.remaining() < TAG_LEN {
                         src.reserve(TAG_LEN);
-                        return Ok(None);
+                        break Ok(None);
                     }
                     match input.get_u8() {
                         EVENT => {
@@ -419,10 +419,19 @@ impl Decoder for MapLaneResponseDecoder {
                     }
                 }
                 MapLaneResponseDecoderState::ReadingBody(kind) => {
-                    break Ok(inner.decode(src)?.map(|operation| MapLaneResponse::Event {
-                        kind: std::mem::take(kind),
-                        operation,
-                    }));
+                    let inner_result = inner.decode(src);
+                    break match inner_result {
+                        Ok(Some(operation)) => {
+                            let result = Ok(Some(MapLaneResponse::Event { kind: std::mem::take(kind), operation }));
+                            *state = MapLaneResponseDecoderState::ReadingHeader;
+                            result
+                        }
+                        Ok(None) => Ok(None),
+                        Err(err) => {
+                            *state = MapLaneResponseDecoderState::ReadingHeader;
+                            Err(err)
+                        }
+                    };
                 }
             }
         }

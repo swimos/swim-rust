@@ -292,6 +292,7 @@ fn write_to_buffer(
                 _ => {}
             }
             let mut encoder = MapOperationReconEncoder;
+            buffer.clear();
             encoder
                 .encode(operation, buffer)
                 .expect("Wiritng map operations is infallible.");
