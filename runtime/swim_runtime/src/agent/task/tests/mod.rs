@@ -43,3 +43,4 @@ const VAL_LANE: &str = "value_lane";
 const MAP_LANE: &str = "map_lane";
 
 const TEST_TIMEOUT: Duration = Duration::from_secs(10);
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);

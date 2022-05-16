@@ -47,7 +47,7 @@ use crate::{
     routing::RoutingAddr,
 };
 
-use super::{make_config, BUFFER_SIZE, MAP_LANE, QUEUE_SIZE, TEST_TIMEOUT, VAL_LANE};
+use super::{make_config, BUFFER_SIZE, MAP_LANE, QUEUE_SIZE, TEST_TIMEOUT, VAL_LANE, DEFAULT_TIMEOUT};
 
 enum Instruction {
     ValueEvent {
@@ -327,13 +327,14 @@ where
 
     let test_task = test_case(context);
 
-    let (_, _, result) = join3(fake_agent.run(), write, test_task).await;
+    let (_, _, result) = tokio::time::timeout(TEST_TIMEOUT, join3(fake_agent.run(), write, test_task)).await
+        .expect("Test timed out.");
     result
 }
 
 #[tokio::test]
 async fn clean_shutdown_no_remotes() {
-    run_test_case(TEST_TIMEOUT, |context| async move {
+    run_test_case(DEFAULT_TIMEOUT, |context| async move {
         let TestContext {
             stop_sender,
             messages_tx: _messages_tx,
@@ -347,6 +348,7 @@ async fn clean_shutdown_no_remotes() {
     .await;
 }
 
+#[derive(Debug)]
 struct RemoteReceiver {
     inner: FramedRead<ByteReader, RawResponseMessageDecoder>,
 }
@@ -359,6 +361,28 @@ impl RemoteReceiver {
     }
 
     async fn expect_envelope<F>(&mut self, lane: &str, f: F)
+    where
+        F: FnOnce(Notification<Bytes, Bytes>),
+    {
+        let next = self.inner.next().await;
+
+        match next {
+            Some(Ok(ResponseMessage {
+                origin,
+                path,
+                envelope,
+            })) => {
+                assert_eq!(origin, AGENT_ID);
+                assert_eq!(path, RelativePath::new(NODE, lane));
+                f(envelope);
+            }
+            ow => {
+                panic!("Unexpected result: {:?}", ow);
+            }
+        }
+    }
+
+    async fn expect_envelope2<F>(&mut self, lane: &str, f: F)
     where
         F: FnOnce(Notification<Bytes, Bytes>),
     {
@@ -432,8 +456,7 @@ impl RemoteReceiver {
     }
 
     async fn expect_map_synced(&mut self, lane: &str) {
-        self.expect_envelope(lane, |envelope| {
-            println!("{:?}", envelope);
+        self.expect_envelope2(lane, |envelope| {
             assert!(matches!(envelope, Notification::Synced));
         })
         .await
@@ -508,7 +531,7 @@ const RID2: RoutingAddr = RoutingAddr::remote(2);
 
 #[tokio::test]
 async fn attach_remote_no_link() {
-    run_test_case(TEST_TIMEOUT, |context| async move {
+    run_test_case(DEFAULT_TIMEOUT, |context| async move {
         let TestContext {
             stop_sender,
             messages_tx,
@@ -527,7 +550,7 @@ async fn attach_remote_no_link() {
 
 #[tokio::test]
 async fn attach_and_link_remote() {
-    run_test_case(TEST_TIMEOUT, |context| async move {
+    run_test_case(DEFAULT_TIMEOUT, |context| async move {
         let TestContext {
             stop_sender,
             messages_tx,
@@ -548,7 +571,7 @@ async fn attach_and_link_remote() {
 
 #[tokio::test]
 async fn receive_message_when_linked_remote() {
-    run_test_case(TEST_TIMEOUT, |context| async move {
+    run_test_case(DEFAULT_TIMEOUT, |context| async move {
         let TestContext {
             stop_sender,
             messages_tx,
@@ -572,7 +595,7 @@ async fn receive_message_when_linked_remote() {
 
 #[tokio::test]
 async fn receive_messages_when_linked_remote() {
-    run_test_case(TEST_TIMEOUT, |context| async move {
+    run_test_case(DEFAULT_TIMEOUT, |context| async move {
         let TestContext {
             stop_sender,
             messages_tx,
@@ -598,7 +621,7 @@ async fn receive_messages_when_linked_remote() {
 
 #[tokio::test]
 async fn explicitly_unlink_remote() {
-    run_test_case(TEST_TIMEOUT, |context| async move {
+    run_test_case(DEFAULT_TIMEOUT, |context| async move {
         let TestContext {
             stop_sender,
             messages_tx,
@@ -624,7 +647,7 @@ async fn explicitly_unlink_remote() {
 
 #[tokio::test]
 async fn broadcast_message_when_linked_multiple_remotes() {
-    run_test_case(TEST_TIMEOUT, |context| async move {
+    run_test_case(DEFAULT_TIMEOUT, |context| async move {
         let TestContext {
             stop_sender,
             messages_tx,
@@ -660,7 +683,7 @@ async fn broadcast_message_when_linked_multiple_remotes() {
 
 #[tokio::test]
 async fn value_synced_message_are_targetted() {
-    run_test_case(TEST_TIMEOUT, |context| async move {
+    run_test_case(DEFAULT_TIMEOUT, |context| async move {
         let TestContext {
             stop_sender,
             messages_tx,
@@ -693,7 +716,7 @@ async fn value_synced_message_are_targetted() {
 
 #[tokio::test]
 async fn broadcast_map_message_when_linked_multiple_remotes() {
-    run_test_case(TEST_TIMEOUT, |context| async move {
+    run_test_case(DEFAULT_TIMEOUT, |context| async move {
         let TestContext {
             stop_sender,
             messages_tx,
@@ -729,7 +752,7 @@ async fn broadcast_map_message_when_linked_multiple_remotes() {
 
 #[tokio::test]
 async fn receive_map_messages_when_linked() {
-    run_test_case(TEST_TIMEOUT, |context| async move {
+    run_test_case(DEFAULT_TIMEOUT, |context| async move {
         let TestContext {
             stop_sender,
             messages_tx,
@@ -756,7 +779,7 @@ async fn receive_map_messages_when_linked() {
 
 #[tokio::test]
 async fn map_synced_message_are_targetted() {
-    run_test_case(TEST_TIMEOUT, |context| async move {
+    run_test_case(DEFAULT_TIMEOUT, |context| async move {
         let TestContext {
             stop_sender,
             messages_tx,

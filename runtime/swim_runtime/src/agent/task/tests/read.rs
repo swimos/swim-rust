@@ -46,7 +46,7 @@ use uuid::Uuid;
 
 use crate::{
     agent::task::{
-        read_task, tests::BUFFER_SIZE, timeout_coord, LaneEndpoint, ReadTaskRegistration,
+        read_task, tests::{BUFFER_SIZE, DEFAULT_TIMEOUT}, timeout_coord, LaneEndpoint, ReadTaskRegistration,
         RwCoorindationMessage, WriteTaskMessage,
     },
     compat::{RawRequestMessageEncoder, RequestMessage},
@@ -251,8 +251,6 @@ where
             .expect("Test timeout out");
     (events, value)
 }
-
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[tokio::test]
 async fn shutdown_no_remotes() {

@@ -115,8 +115,8 @@ async fn perform_write(
                         .send_notification(Notification::Event(&*buffer))
                         .await?;
                 }
-                writer.send_notification(Notification::Synced).await?;
             }
+            writer.send_notification(Notification::Synced).await?;
         }
         WriteAction::Special(SpecialAction::Linked(_)) => {
             writer.send_notification(Notification::Linked).await?;
