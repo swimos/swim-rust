@@ -75,9 +75,9 @@ impl Links {
     }
 
     pub fn all_links(&self) -> impl Iterator<Item = (u64, Uuid)> + '_ {
-        self.forward.iter().flat_map(|(lane_id, remote_ids)| {
-            remote_ids.iter().map(move |rid| (*lane_id, *rid))
-        })
+        self.forward
+            .iter()
+            .flat_map(|(lane_id, remote_ids)| remote_ids.iter().map(move |rid| (*lane_id, *rid)))
     }
 
     pub fn linked_from(&self, id: u64) -> Option<&HashSet<Uuid>> {

@@ -396,28 +396,6 @@ impl RemoteReceiver {
         }
     }
 
-    async fn expect_envelope2<F>(&mut self, lane: &str, f: F)
-    where
-        F: FnOnce(Notification<Bytes, Bytes>),
-    {
-        let next = self.inner.next().await;
-
-        match next {
-            Some(Ok(ResponseMessage {
-                origin,
-                path,
-                envelope,
-            })) => {
-                assert_eq!(origin, AGENT_ID);
-                assert_eq!(path, RelativePath::new(NODE, lane));
-                f(envelope);
-            }
-            ow => {
-                panic!("Unexpected result: {:?}", ow);
-            }
-        }
-    }
-
     async fn expect_linked(&mut self, lane: &str) {
         self.expect_envelope(lane, |envelope| {
             assert!(matches!(envelope, Notification::Linked));
@@ -473,7 +451,7 @@ impl RemoteReceiver {
     }
 
     async fn expect_map_synced(&mut self, lane: &str) {
-        self.expect_envelope2(lane, |envelope| {
+        self.expect_envelope(lane, |envelope| {
             assert!(matches!(envelope, Notification::Synced));
         })
         .await
@@ -904,6 +882,52 @@ async fn write_task_rescinds_vote_to_stop() {
         reader.expect_value_event(VAL_LANE, 747).await;
 
         assert!(!vote2.vote());
+
+        stop_sender.trigger();
+        reader.expect_clean_shutdown(vec![VAL_LANE]).await;
+    })
+    .await;
+}
+
+const NUM_RECORDS: i32 = 512;
+
+#[tokio::test]
+async fn backpressure_relief_on_value_lanes() {
+    run_test_case(DEFAULT_TIMEOUT, |context| async move {
+        let TestContext {
+            stop_sender,
+            messages_tx,
+            vote2: _vote2,
+            vote_rx: _vote_rx,
+            instr_tx,
+        } = context;
+
+        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
+        link_remote(RID1.into(), VAL_LANE, &messages_tx).await;
+        reader.expect_linked(VAL_LANE).await;
+
+        for i in 0..NUM_RECORDS {
+            instr_tx.value_event(VAL_LANE, i);
+        }
+
+        let mut prev = None;
+
+        while prev.unwrap_or_default() < NUM_RECORDS - 1 {
+            reader
+                .expect_envelope(VAL_LANE, |envelope| match envelope {
+                    Notification::Event(body) => {
+                        let body_str = std::str::from_utf8(body.as_ref()).expect("Invalid UTF8");
+                        let n = body_str.parse::<i32>().expect("Invalid integer.");
+                        assert!((0..NUM_RECORDS).contains(&n));
+                        if let Some(m) = prev {
+                            assert!(n > m);
+                        }
+                        prev = Some(n);
+                    }
+                    ow => panic!("Unexpected envelope: {:?}", ow),
+                })
+                .await;
+        }
 
         stop_sender.trigger();
         reader.expect_clean_shutdown(vec![VAL_LANE]).await;
