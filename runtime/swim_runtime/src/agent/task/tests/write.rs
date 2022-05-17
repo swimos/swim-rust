@@ -934,3 +934,122 @@ async fn backpressure_relief_on_value_lanes() {
     })
     .await;
 }
+
+const EXPECTED_PREFIX: &str = "@update(key:test) ";
+
+#[tokio::test]
+async fn backpressure_relief_on_map_lanes() {
+    run_test_case(DEFAULT_TIMEOUT, |context| async move {
+        let TestContext {
+            stop_sender,
+            messages_tx,
+            vote2: _vote2,
+            vote_rx: _vote_rx,
+            instr_tx,
+        } = context;
+
+        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
+        link_remote(RID1.into(), MAP_LANE, &messages_tx).await;
+        reader.expect_linked(MAP_LANE).await;
+
+        for i in 0..NUM_RECORDS {
+            instr_tx.map_event(MAP_LANE, "test", i);
+        }
+
+        let mut prev = None;
+
+        while prev.unwrap_or_default() < NUM_RECORDS - 1 {
+            reader
+                .expect_envelope(MAP_LANE, |envelope| match envelope {
+                    Notification::Event(body) => {
+                        let body_str = std::str::from_utf8(body.as_ref()).expect("Invalid UTF8");
+                        assert!(body_str.starts_with(EXPECTED_PREFIX));
+                        let value_str = &body_str[EXPECTED_PREFIX.len()..];
+                        let n = value_str.parse::<i32>().expect("Invalid integer.");
+                        assert!((0..NUM_RECORDS).contains(&n));
+                        if let Some(m) = prev {
+                            assert!(n > m);
+                        } else {
+                            assert_eq!(n, 0);
+                        }
+                        prev = Some(n);
+                    }
+                    ow => panic!("Unexpected envelope: {:?}", ow),
+                })
+                .await;
+        }
+
+        stop_sender.trigger();
+        reader.expect_clean_shutdown(vec![MAP_LANE]).await;
+    })
+    .await;
+}
+
+const SYNCED_AT: i32 = 450;
+
+#[tokio::test]
+async fn backpressure_relief_on_map_lanes_with_synced() {
+    run_test_case(DEFAULT_TIMEOUT, |context| async move {
+        let TestContext {
+            stop_sender,
+            messages_tx,
+            vote2: _vote2,
+            vote_rx: _vote_rx,
+            instr_tx,
+        } = context;
+
+        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
+        link_remote(RID1.into(), MAP_LANE, &messages_tx).await;
+        reader.expect_linked(MAP_LANE).await;
+
+        for i in 0..SYNCED_AT {
+            instr_tx.map_event(MAP_LANE, "test", i);
+        }
+        instr_tx.map_syncing_event(RID1.into(), MAP_LANE, "test", SYNCED_AT);
+        instr_tx.map_synced_event(RID1.into(), MAP_LANE);
+        for i in (SYNCED_AT + 1)..NUM_RECORDS {
+            instr_tx.map_event(MAP_LANE, "test", i);
+        }
+
+        let mut prev = None;
+        let mut synced = false;
+
+        while prev.unwrap_or_default() < NUM_RECORDS - 1 {
+            reader
+                .expect_envelope(MAP_LANE, |envelope| match envelope {
+                    Notification::Event(body) => {
+                        let body_str = std::str::from_utf8(body.as_ref()).expect("Invalid UTF8");
+                        assert!(body_str.starts_with(EXPECTED_PREFIX));
+                        let value_str = &body_str[EXPECTED_PREFIX.len()..];
+                        let n = value_str.parse::<i32>().expect("Invalid integer.");
+                        assert!((0..NUM_RECORDS).contains(&n));
+                        if let Some(m) = prev {
+                            assert!(n > m);
+                        } else {
+                            assert_eq!(n, 0);
+                        }
+                        prev = Some(n);
+                    }
+                    Notification::Synced => {
+                        if synced {
+                            panic!("Synced twice.");
+                        } else {
+                            if let Some(m) = prev {
+                                assert!(m >= SYNCED_AT);
+                            } else {
+                                panic!("Synced before seen any values.");
+                            }
+                            synced = true;
+                        }
+                    }
+                    ow => panic!("Unexpected envelope: {:?}", ow),
+                })
+                .await;
+        }
+        assert!(synced);
+
+        stop_sender.trigger();
+        reader.expect_clean_shutdown(vec![MAP_LANE]).await;
+    })
+    .await;
+}
