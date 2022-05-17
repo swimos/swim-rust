@@ -47,7 +47,7 @@ use uuid::Uuid;
 use crate::{
     agent::task::{
         read_task,
-        tests::{BUFFER_SIZE, DEFAULT_TIMEOUT, VOTE_TEST_TIMEOUT},
+        tests::{BUFFER_SIZE, DEFAULT_TIMEOUT, INACTIVE_TEST_TIMEOUT},
         timeout_coord, LaneEndpoint, ReadTaskRegistration, RwCoorindationMessage, WriteTaskMessage,
     },
     compat::{RawRequestMessageEncoder, RequestMessage},
@@ -440,7 +440,7 @@ async fn attach_remote_and_map_command() {
 
 #[tokio::test]
 async fn votes_to_stop() {
-    let (events, _stop_sender) = run_test_case(VOTE_TEST_TIMEOUT, |context| async move {
+    let (events, _stop_sender) = run_test_case(INACTIVE_TEST_TIMEOUT, |context| async move {
         let TestContext {
             stop_sender,
             reg_tx,
@@ -460,7 +460,7 @@ async fn votes_to_stop() {
 
 #[tokio::test]
 async fn rescinds_stop_vote_on_input() {
-    let (events, _) = run_test_case(VOTE_TEST_TIMEOUT, |context| async move {
+    let (events, _) = run_test_case(INACTIVE_TEST_TIMEOUT, |context| async move {
         let TestContext {
             stop_sender,
             reg_tx,
@@ -470,7 +470,7 @@ async fn rescinds_stop_vote_on_input() {
         } = context;
         let mut sender = attach_remote(&reg_tx).await;
 
-        tokio::time::sleep(2 * VOTE_TEST_TIMEOUT).await;
+        tokio::time::sleep(2 * INACTIVE_TEST_TIMEOUT).await;
 
         sender.value_command(VAL_LANE, 77).await;
         let _ = event_rx.recv().await;

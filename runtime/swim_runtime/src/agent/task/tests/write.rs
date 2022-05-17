@@ -51,8 +51,8 @@ use crate::{
 };
 
 use super::{
-    make_config, BUFFER_SIZE, DEFAULT_TIMEOUT, MAP_LANE, QUEUE_SIZE, TEST_TIMEOUT, VAL_LANE,
-    VOTE_TEST_TIMEOUT,
+    make_config, BUFFER_SIZE, DEFAULT_TIMEOUT, INACTIVE_TEST_TIMEOUT, MAP_LANE, QUEUE_SIZE,
+    TEST_TIMEOUT, VAL_LANE,
 };
 
 enum Instruction {
@@ -296,10 +296,13 @@ struct TestContext {
 const AGENT_ID: RoutingAddr = RoutingAddr::plane(1);
 const NODE: &str = "/node";
 
+use std::fmt::Debug;
+
 async fn run_test_case<F, Fut>(inactive_timeout: Duration, test_case: F) -> Fut::Output
 where
     F: FnOnce(TestContext) -> Fut,
     Fut: Future + Send,
+    Fut::Output: Debug,
 {
     let (stop_tx, stop_rx) = trigger::trigger();
     let config = make_config(inactive_timeout);
@@ -834,8 +837,24 @@ async fn map_synced_message_are_targetted() {
 }
 
 #[tokio::test]
+async fn write_task_stops_if_no_remotes() {
+    run_test_case(INACTIVE_TEST_TIMEOUT, |context| async move {
+        let TestContext {
+            stop_sender,
+            messages_tx: _messages_tx,
+            vote2: _vote2,
+            vote_rx: _vote_rx,
+            instr_tx: _instr_tx,
+        } = context;
+
+        stop_sender
+    })
+    .await;
+}
+
+#[tokio::test]
 async fn write_task_votes_to_stop() {
-    run_test_case(VOTE_TEST_TIMEOUT, |context| async move {
+    run_test_case(INACTIVE_TEST_TIMEOUT, |context| async move {
         let TestContext {
             stop_sender,
             messages_tx,
@@ -855,9 +874,39 @@ async fn write_task_votes_to_stop() {
         vote_rx.await;
         let after = Instant::now();
         let elapsed = after.duration_since(before);
-        assert!(elapsed >= VOTE_TEST_TIMEOUT);
+        assert!(elapsed >= INACTIVE_TEST_TIMEOUT);
         reader.expect_clean_shutdown(vec![VAL_LANE]).await;
         stop_sender
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn write_task_rescinds_vote_to_stop() {
+    run_test_case(INACTIVE_TEST_TIMEOUT, |context| async move {
+        let TestContext {
+            stop_sender,
+            messages_tx,
+            vote2,
+            vote_rx: _vote_rx,
+            instr_tx,
+        } = context;
+
+        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
+
+        link_remote(RID1.into(), VAL_LANE, &messages_tx).await;
+
+        reader.expect_linked(VAL_LANE).await;
+
+        tokio::time::sleep(2 * INACTIVE_TEST_TIMEOUT).await;
+
+        instr_tx.value_event(VAL_LANE, 747);
+        reader.expect_value_event(VAL_LANE, 747).await;
+
+        assert!(!vote2.vote());
+
+        stop_sender.trigger();
+        reader.expect_clean_shutdown(vec![VAL_LANE]).await;
     })
     .await;
 }

@@ -44,4 +44,4 @@ const MAP_LANE: &str = "map_lane";
 
 const TEST_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
-const VOTE_TEST_TIMEOUT: Duration = Duration::from_millis(100);
+const INACTIVE_TEST_TIMEOUT: Duration = Duration::from_millis(100);

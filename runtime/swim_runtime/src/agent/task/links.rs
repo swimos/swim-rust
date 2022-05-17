@@ -76,7 +76,7 @@ impl Links {
 
     pub fn all_links(&self) -> impl Iterator<Item = (u64, Uuid)> + '_ {
         self.forward.iter().flat_map(|(lane_id, remote_ids)| {
-            remote_ids.into_iter().map(move |rid| (*lane_id, *rid))
+            remote_ids.iter().map(move |rid| (*lane_id, *rid))
         })
     }
 

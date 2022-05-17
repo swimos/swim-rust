@@ -428,6 +428,7 @@ enum ReadTaskRegistration {
     Remote { reader: ByteReader },
 }
 
+#[derive(Debug)]
 enum WriteTaskMessage {
     Lane(LaneEndpoint<ByteReader>),
     Remote { id: Uuid, writer: ByteWriter },
@@ -794,6 +795,7 @@ async fn flush_lane(lanes: &mut HashMap<u64, LaneSender>, needs_flush: &mut Opti
     }
 }
 
+#[derive(Debug)]
 enum WriteTaskEvent {
     Message(WriteTaskMessage),
     Event { id: u64, response: RawLaneResponse },
@@ -824,10 +826,16 @@ impl WriteTaskConfiguration {
 }
 
 #[derive(Debug)]
-struct WriteTaskEvents<'a, S, W> {
-    inactive_timeout: Duration,
-    remote_timeout: Duration,
+struct InactiveTimeout<'a> {
+    timeout: Duration,
     timeout_delay: Pin<&'a mut Sleep>,
+    enabled: bool,
+}
+
+#[derive(Debug)]
+struct WriteTaskEvents<'a, S, W> {
+    inactive_timeout: InactiveTimeout<'a>,
+    remote_timeout: Duration,
     prune_remotes: PruneRemotes<'a>,
     message_stream: S,
     lanes: SelectAll<LaneStream>,
@@ -843,9 +851,12 @@ impl<'a, S, W> WriteTaskEvents<'a, S, W> {
         message_stream: S,
     ) -> Self {
         WriteTaskEvents {
-            inactive_timeout,
+            inactive_timeout: InactiveTimeout {
+                timeout: inactive_timeout,
+                timeout_delay,
+                enabled: true,
+            },
             remote_timeout,
-            timeout_delay,
             prune_remotes: PruneRemotes::new(prune_delay),
             message_stream,
             lanes: Default::default(),
@@ -873,6 +884,14 @@ impl<'a, S, W> WriteTaskEvents<'a, S, W> {
         } = self;
         prune_remotes.push(remote_id, *remote_timeout);
     }
+
+    fn disable_timeout(&mut self) {
+        self.inactive_timeout.enabled = false;
+    }
+
+    fn enable_timeout(&mut self) {
+        self.inactive_timeout.enabled = true;
+    }
 }
 
 impl<'a, S, W> WriteTaskEvents<'a, S, W>
@@ -883,13 +902,18 @@ where
     async fn select_next(&mut self) -> WriteTaskEvent {
         let WriteTaskEvents {
             inactive_timeout,
-            timeout_delay,
             message_stream,
             lanes,
             pending_writes,
             prune_remotes,
             ..
         } = self;
+
+        let InactiveTimeout {
+            timeout,
+            timeout_delay,
+            enabled: timeout_enabled,
+        } = inactive_timeout;
 
         let mut delay = timeout_delay.as_mut();
 
@@ -906,7 +930,7 @@ where
                         if msg.generates_activity() {
                             delay.as_mut().reset(
                                 Instant::now()
-                                    .checked_add(*inactive_timeout)
+                                    .checked_add(*timeout)
                                     .expect("Timer overflow."),
                             );
                         }
@@ -926,7 +950,7 @@ where
                         Some(Ok((id, response))) =>  {
                             delay.as_mut().reset(
                                 Instant::now()
-                                    .checked_add(*inactive_timeout)
+                                    .checked_add(*timeout)
                                     .expect("Timer overflow."),
                             );
                             break WriteTaskEvent::Event { id, response };
@@ -937,7 +961,7 @@ where
                         _ => {}
                     }
                 }
-                _ = &mut delay => {
+                _ = &mut delay, if *timeout_enabled => {
                     break if lanes.is_empty() {
                         trace!("Stopping as there are no active lanes.");
                         WriteTaskEvent::Stop
@@ -1229,6 +1253,14 @@ async fn write_task(
                     write,
                     schedule_prune,
                 } => {
+                    if voted {
+                        if stop_voter.rescind() {
+                            info!(STOP_VOTED);
+                            break;
+                        }
+                        streams.enable_timeout();
+                        voted = false;
+                    }
                     streams.schedule_write(write.into_future());
                     if let Some(remote_id) = schedule_prune {
                         streams.schedule_prune(remote_id);
@@ -1245,6 +1277,7 @@ async fn write_task(
                         info!(STOP_VOTED);
                         break;
                     }
+                    streams.enable_timeout();
                     voted = false;
                 }
                 for write in state.handle_event(id, response) {
@@ -1296,6 +1329,7 @@ async fn write_task(
                     break;
                 }
                 voted = true;
+                streams.disable_timeout();
                 if stop_voter.vote() {
                     info!(STOP_VOTED);
                     break;
