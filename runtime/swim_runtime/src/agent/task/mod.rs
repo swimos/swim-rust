@@ -87,6 +87,12 @@ pub struct LaneEndpoint<T> {
     io: T,
 }
 
+impl<T> LaneEndpoint<T> {
+    fn new(name: Text, kind: UplinkKind, io: T) -> Self {
+        LaneEndpoint { name, kind, io }
+    }
+}
+
 impl LaneEndpoint<Io> {
     fn split(self) -> (LaneEndpoint<ByteWriter>, LaneEndpoint<ByteReader>) {
         let LaneEndpoint {
@@ -95,13 +101,9 @@ impl LaneEndpoint<Io> {
             io: (tx, rx),
         } = self;
 
-        let read = LaneEndpoint {
-            name: name.clone(),
-            kind,
-            io: rx,
-        };
+        let read = LaneEndpoint::new(name.clone(), kind, rx);
 
-        let write = LaneEndpoint { name, kind, io: tx };
+        let write = LaneEndpoint::new(name, kind, tx);
 
         (write, read)
     }
@@ -135,6 +137,10 @@ pub struct InitialEndpoints {
 }
 
 impl InitialEndpoints {
+    fn new(rx: mpsc::Receiver<AgentRuntimeRequest>, endpoints: Vec<LaneEndpoint<Io>>) -> Self {
+        InitialEndpoints { rx, endpoints }
+    }
+
     pub fn make_runtime_task(
         self,
         identity: RoutingAddr,
@@ -143,14 +149,7 @@ impl InitialEndpoints {
         config: AgentRuntimeConfig,
         stopping: trigger::Receiver,
     ) -> AgentRuntimeTask {
-        AgentRuntimeTask {
-            identity,
-            node_uri,
-            init: self,
-            attachment_rx,
-            stopping,
-            config,
-        }
+        AgentRuntimeTask::new(identity, node_uri, self, attachment_rx, stopping, config)
     }
 }
 
@@ -378,6 +377,24 @@ impl Stream for MapLaneReceiver {
 }
 
 impl AgentRuntimeTask {
+    fn new(
+        identity: RoutingAddr,
+        node_uri: Text,
+        init: InitialEndpoints,
+        attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
+        stopping: trigger::Receiver,
+        config: AgentRuntimeConfig,
+    ) -> Self {
+        AgentRuntimeTask {
+            identity,
+            node_uri,
+            init,
+            attachment_rx,
+            stopping,
+            config,
+        }
+    }
+
     pub async fn run(self) {
         let AgentRuntimeTask {
             identity,
@@ -495,22 +512,9 @@ async fn attachment_task<F>(
                     name: name.clone(),
                     sender,
                 });
-                match kind {
-                    UplinkKind::Value => {
-                        write_permit.send(WriteTaskMessage::Lane(LaneEndpoint {
-                            io: out_rx,
-                            name: name.clone(),
-                            kind: UplinkKind::Value,
-                        }));
-                    }
-                    UplinkKind::Map => {
-                        write_permit.send(WriteTaskMessage::Lane(LaneEndpoint {
-                            io: out_rx,
-                            name: name.clone(),
-                            kind: UplinkKind::Map,
-                        }));
-                    }
-                }
+                write_permit.send(WriteTaskMessage::Lane(LaneEndpoint::new(
+                    name, kind, out_rx,
+                )));
                 if promise.send(Ok((out_tx, in_rx))).is_err() {
                     error!(BAD_LANE_REG);
                 }

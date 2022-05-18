@@ -102,10 +102,10 @@ impl AgentInitTask {
         if endpoints.is_empty() {
             Err(NoLanes)
         } else {
-            Ok(InitialEndpoints {
-                rx: request_stream.into_inner(),
+            Ok(InitialEndpoints::new(
+                request_stream.into_inner(),
                 endpoints,
-            })
+            ))
         }
     }
 }

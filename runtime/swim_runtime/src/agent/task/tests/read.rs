@@ -12,28 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{
-    pin::Pin,
-    task::{Context, Poll},
-    time::Duration,
-};
+use std::time::Duration;
 
 use futures::{
     future::{join, join3, select, Either},
-    ready,
     stream::SelectAll,
-    Future, SinkExt, Stream, StreamExt,
+    Future, SinkExt, StreamExt,
 };
 use swim_api::{
     agent::UplinkKind,
-    error::FrameIoError,
-    protocol::{
-        agent::{LaneRequest, LaneRequestDecoder},
-        map::{MapMessage, MapMessageDecoder, MapOperationDecoder},
-        WithLenRecognizerDecoder,
-    },
+    protocol::{agent::LaneRequest, map::MapMessage},
 };
-use swim_form::structural::read::recognizer::primitive::I32Recognizer;
 use swim_model::{path::RelativePath, Text};
 use swim_utilities::{
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
@@ -41,8 +30,7 @@ use swim_utilities::{
 };
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use tokio_util::codec::{FramedRead, FramedWrite};
-use uuid::Uuid;
+use tokio_util::codec::FramedWrite;
 
 use crate::{
     agent::task::{
@@ -54,83 +42,13 @@ use crate::{
     routing::RoutingAddr,
 };
 
-use super::{make_config, MAP_LANE, QUEUE_SIZE, TEST_TIMEOUT, VAL_LANE};
+use super::{make_config, Event, LaneReader, MAP_LANE, QUEUE_SIZE, TEST_TIMEOUT, VAL_LANE};
 
 struct FakeAgent {
     initial: Vec<LaneEndpoint<ByteReader>>,
     coord: mpsc::Receiver<WriteTaskMessage>,
     stopping: trigger::Receiver,
     event_tx: mpsc::UnboundedSender<Event>,
-}
-
-type ValueDecoder = LaneRequestDecoder<WithLenRecognizerDecoder<I32Recognizer>>;
-type MapDecoder = LaneRequestDecoder<MapMessageDecoder<MapOperationDecoder<Text, i32>>>;
-
-enum LaneReader {
-    Value {
-        name: Text,
-        read: FramedRead<ByteReader, ValueDecoder>,
-    },
-    Map {
-        name: Text,
-        read: FramedRead<ByteReader, MapDecoder>,
-    },
-}
-
-impl LaneReader {
-    fn new(endpoint: LaneEndpoint<ByteReader>) -> Self {
-        let LaneEndpoint { name, kind, io } = endpoint;
-        match kind {
-            UplinkKind::Value => LaneReader::Value {
-                name,
-                read: FramedRead::new(
-                    io,
-                    LaneRequestDecoder::new(WithLenRecognizerDecoder::new(I32Recognizer)),
-                ),
-            },
-            UplinkKind::Map => LaneReader::Map {
-                name,
-                read: FramedRead::new(io, LaneRequestDecoder::new(Default::default())),
-            },
-        }
-    }
-}
-
-impl Stream for LaneReader {
-    type Item = (
-        Text,
-        Result<Either<LaneRequest<i32>, LaneRequest<MapMessage<Text, i32>>>, FrameIoError>,
-    );
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        Poll::Ready(match self.get_mut() {
-            LaneReader::Value { name, read } => {
-                let maybe_result = ready!(read.poll_next_unpin(cx));
-                maybe_result.map(|r| (name.clone(), r.map(Either::Left).map_err(Into::into)))
-            }
-            LaneReader::Map { name, read } => {
-                let maybe_result = ready!(read.poll_next_unpin(cx));
-                maybe_result.map(|r| (name.clone(), r.map(Either::Right)))
-            }
-        })
-    }
-}
-
-#[derive(Debug, Clone)]
-enum Event {
-    Sync {
-        name: Text,
-        id: Uuid,
-    },
-    ValueCommand {
-        name: Text,
-        n: i32,
-    },
-    MapCommand {
-        name: Text,
-        cmd: MapMessage<Text, i32>,
-    },
-    Coord(RwCoorindationMessage),
 }
 
 impl FakeAgent {

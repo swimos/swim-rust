@@ -20,16 +20,10 @@ use std::{
 use bytes::Bytes;
 use futures::{
     future::{join, join3},
-    Future, SinkExt, StreamExt,
+    Future, StreamExt,
 };
+use swim_api::agent::UplinkKind;
 use swim_api::protocol::map::MapOperation;
-use swim_api::{
-    agent::UplinkKind,
-    protocol::agent::{
-        LaneResponseKind, MapLaneResponse, MapLaneResponseEncoder, ValueLaneResponse,
-        ValueLaneResponseEncoder,
-    },
-};
 use swim_model::{path::RelativePath, Text};
 use swim_recon::printer::print_recon_compact;
 use swim_utilities::{
@@ -38,7 +32,7 @@ use swim_utilities::{
 };
 use tokio::{sync::mpsc, time::Instant};
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use tokio_util::codec::{FramedRead, FramedWrite};
+use tokio_util::codec::FramedRead;
 use uuid::Uuid;
 
 use crate::{
@@ -51,158 +45,9 @@ use crate::{
 };
 
 use super::{
-    make_config, BUFFER_SIZE, DEFAULT_TIMEOUT, INACTIVE_TEST_TIMEOUT, MAP_LANE, QUEUE_SIZE,
-    TEST_TIMEOUT, VAL_LANE,
+    make_config, Instruction, Instructions, MapLaneSender, ValueLaneSender, BUFFER_SIZE,
+    DEFAULT_TIMEOUT, INACTIVE_TEST_TIMEOUT, MAP_LANE, QUEUE_SIZE, TEST_TIMEOUT, VAL_LANE,
 };
-
-enum Instruction {
-    ValueEvent {
-        lane: Text,
-        value: i32,
-    },
-    MapEvent {
-        lane: Text,
-        key: Text,
-        value: i32,
-        id: Option<Uuid>,
-    },
-    ValueSynced {
-        lane: Text,
-        value: i32,
-        id: Uuid,
-    },
-    MapSynced {
-        lane: Text,
-        id: Uuid,
-    },
-}
-
-struct Instructions(mpsc::UnboundedSender<Instruction>);
-
-impl Instructions {
-    fn new(inner: mpsc::UnboundedSender<Instruction>) -> Self {
-        Instructions(inner)
-    }
-
-    fn value_event(&self, lane: &str, value: i32) {
-        let Instructions(inner) = self;
-        assert!(inner
-            .send(Instruction::ValueEvent {
-                lane: Text::new(lane),
-                value
-            })
-            .is_ok());
-    }
-
-    fn map_event(&self, lane: &str, key: &str, value: i32) {
-        let Instructions(inner) = self;
-        assert!(inner
-            .send(Instruction::MapEvent {
-                lane: Text::new(lane),
-                key: Text::new(key),
-                value,
-                id: None,
-            })
-            .is_ok());
-    }
-
-    fn map_syncing_event(&self, id: Uuid, lane: &str, key: &str, value: i32) {
-        let Instructions(inner) = self;
-        assert!(inner
-            .send(Instruction::MapEvent {
-                lane: Text::new(lane),
-                key: Text::new(key),
-                value,
-                id: Some(id),
-            })
-            .is_ok());
-    }
-
-    fn map_synced_event(&self, id: Uuid, lane: &str) {
-        let Instructions(inner) = self;
-        assert!(inner
-            .send(Instruction::MapSynced {
-                lane: Text::new(lane),
-                id
-            })
-            .is_ok());
-    }
-
-    fn value_synced_event(&self, remote_id: Uuid, lane: &str, value: i32) {
-        let Instructions(inner) = self;
-        assert!(inner
-            .send(Instruction::ValueSynced {
-                id: remote_id,
-                lane: Text::new(lane),
-                value
-            })
-            .is_ok());
-    }
-}
-
-struct ValueLaneSender {
-    inner: FramedWrite<ByteWriter, ValueLaneResponseEncoder>,
-}
-
-impl ValueLaneSender {
-    fn new(writer: ByteWriter) -> Self {
-        ValueLaneSender {
-            inner: FramedWrite::new(writer, Default::default()),
-        }
-    }
-
-    async fn event(&mut self, n: i32) {
-        let ValueLaneSender { inner } = self;
-        assert!(inner.send(ValueLaneResponse::event(n)).await.is_ok());
-    }
-
-    async fn synced(&mut self, id: Uuid, n: i32) {
-        let ValueLaneSender { inner } = self;
-        assert!(inner.send(ValueLaneResponse::synced(id, n)).await.is_ok());
-    }
-}
-
-struct MapLaneSender {
-    inner: FramedWrite<ByteWriter, MapLaneResponseEncoder>,
-}
-
-impl MapLaneSender {
-    fn new(writer: ByteWriter) -> Self {
-        MapLaneSender {
-            inner: FramedWrite::new(writer, Default::default()),
-        }
-    }
-
-    async fn event(&mut self, key: Text, value: i32) {
-        let MapLaneSender { inner } = self;
-        assert!(inner
-            .send(MapLaneResponse::Event {
-                kind: LaneResponseKind::StandardEvent,
-                operation: MapOperation::Update { key, value }
-            })
-            .await
-            .is_ok());
-    }
-
-    async fn sync_event(&mut self, id: Uuid, key: Text, value: i32) {
-        let MapLaneSender { inner } = self;
-        assert!(inner
-            .send(MapLaneResponse::Event {
-                kind: LaneResponseKind::SyncEvent(id),
-                operation: MapOperation::Update { key, value }
-            })
-            .await
-            .is_ok());
-    }
-
-    async fn synced(&mut self, id: Uuid) {
-        let MapLaneSender { inner } = self;
-        assert!(inner
-            .send(MapLaneResponse::<Text, i32>::SyncComplete(id))
-            .await
-            .is_ok());
-    }
-}
 
 struct FakeAgent {
     initial: Vec<LaneEndpoint<ByteWriter>>,
@@ -267,7 +112,7 @@ impl FakeAgent {
                     lane, key, value, ..
                 } => {
                     if let Some(tx) = map_lanes.get_mut(&lane) {
-                        tx.event(key, value).await;
+                        tx.update_event(key, value).await;
                     }
                 }
                 Instruction::ValueSynced { lane, id, value } => {
