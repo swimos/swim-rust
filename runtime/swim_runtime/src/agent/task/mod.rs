@@ -30,7 +30,9 @@ use self::prune::PruneRemotes;
 use self::remotes::{LaneRegistry, RemoteSender, RemoteTracker, UplinkResponse};
 use self::write_fut::{WriteResult, WriteTask};
 
-use super::{AgentAttachmentRequest, AgentRuntimeConfig, AgentRuntimeRequest, Io};
+use super::{
+    AgentAttachmentRequest, AgentRuntimeConfig, AgentRuntimeRequest, DisconnectionReason, Io,
+};
 use bytes::{Bytes, BytesMut};
 use futures::ready;
 use futures::stream::FuturesUnordered;
@@ -57,7 +59,7 @@ use swim_model::Text;
 use swim_recon::parser::MessageExtractError;
 use swim_utilities::future::{immediate_or_join, StopAfterError, SwimStreamExt};
 use swim_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
-use swim_utilities::trigger;
+use swim_utilities::trigger::{self, promise};
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio::time::{sleep, timeout, Instant, Sleep};
@@ -441,14 +443,25 @@ impl AgentRuntimeTask {
 }
 
 enum ReadTaskRegistration {
-    Lane { name: Text, sender: LaneSender },
-    Remote { reader: ByteReader },
+    Lane {
+        name: Text,
+        sender: LaneSender,
+    },
+    Remote {
+        reader: ByteReader,
+        on_attached: Option<trigger::Sender>,
+    },
 }
 
 #[derive(Debug)]
 enum WriteTaskMessage {
     Lane(LaneEndpoint<ByteReader>),
-    Remote { id: Uuid, writer: ByteWriter },
+    Remote {
+        id: Uuid,
+        writer: ByteWriter,
+        completion: promise::Sender<DisconnectionReason>,
+        on_attached: Option<trigger::Sender>,
+    },
     Coord(RwCoorindationMessage),
 }
 
@@ -475,72 +488,96 @@ async fn attachment_task<F>(
     )
     .take_until(combined_stop);
 
-    while let Some(event) = stream.next().await {
-        match event {
-            Either::Left(AgentRuntimeRequest::AddLane {
-                name,
-                kind,
-                config,
-                promise,
-            }) => {
-                info!("Registering a new {} lane with name {}.", kind, name);
-                let lane_config = config.unwrap_or_default();
-                let (in_tx, in_rx) = byte_channel(lane_config.input_buffer_size);
-                let (out_tx, out_rx) = byte_channel(lane_config.output_buffer_size);
-                let sender = LaneSender::new(in_tx, kind);
-                let read_permit = match read_tx.reserve().await {
-                    Err(_) => {
-                        warn!("Read task stopped while attempting to register a new {} lane named '{}'.", kind, name);
-                        if promise.send(Err(AgentRuntimeError::Terminated)).is_err() {
-                            error!(BAD_LANE_REG);
+    let mut attachments = FuturesUnordered::new();
+
+    loop {
+        tokio::select! {
+            biased;
+            _ = attachments.next(), if !attachments.is_empty() => {},
+            maybe_event = stream.next() => {
+                if let Some(event) = maybe_event {
+                    match event {
+                        Either::Left(AgentRuntimeRequest::AddLane {
+                            name,
+                            kind,
+                            config,
+                            promise,
+                        }) => {
+                            info!("Registering a new {} lane with name {}.", kind, name);
+                            let lane_config = config.unwrap_or_default();
+                            let (in_tx, in_rx) = byte_channel(lane_config.input_buffer_size);
+                            let (out_tx, out_rx) = byte_channel(lane_config.output_buffer_size);
+                            let sender = LaneSender::new(in_tx, kind);
+                            let read_permit = match read_tx.reserve().await {
+                                Err(_) => {
+                                    warn!("Read task stopped while attempting to register a new {} lane named '{}'.", kind, name);
+                                    if promise.send(Err(AgentRuntimeError::Terminated)).is_err() {
+                                        error!(BAD_LANE_REG);
+                                    }
+                                    break;
+                                }
+                                Ok(permit) => permit,
+                            };
+                            let write_permit = match write_tx.reserve().await {
+                                Err(_) => {
+                                    warn!("Write task stopped while attempting to register a new {} lane named '{}'.", kind, name);
+                                    if promise.send(Err(AgentRuntimeError::Terminated)).is_err() {
+                                        error!(BAD_LANE_REG);
+                                    }
+                                    break;
+                                }
+                                Ok(permit) => permit,
+                            };
+                            read_permit.send(ReadTaskRegistration::Lane {
+                                name: name.clone(),
+                                sender,
+                            });
+                            write_permit.send(WriteTaskMessage::Lane(LaneEndpoint::new(
+                                name, kind, out_rx,
+                            )));
+                            if promise.send(Ok((out_tx, in_rx))).is_err() {
+                                error!(BAD_LANE_REG);
+                            }
                         }
-                        break;
-                    }
-                    Ok(permit) => permit,
-                };
-                let write_permit = match write_tx.reserve().await {
-                    Err(_) => {
-                        warn!("Write task stopped while attempting to register a new {} lane named '{}'.", kind, name);
-                        if promise.send(Err(AgentRuntimeError::Terminated)).is_err() {
-                            error!(BAD_LANE_REG);
+                        Either::Left(_) => todo!("Opening downlinks form agents not implemented."),
+                        Either::Right(AgentAttachmentRequest { id, io: (tx, rx), completion, on_attached }) => {
+                            info!(
+                                "Attaching a new remote endpoint with ID {id} to the agent.",
+                                id = id
+                            );
+                            let read_permit = match read_tx.reserve().await {
+                                Err(_) => {
+                                    warn!("Read task stopped while attempting to attach a remote endpoint.");
+                                    break;
+                                }
+                                Ok(permit) => permit,
+                            };
+                            let write_permit = match write_tx.reserve().await {
+                                Err(_) => {
+                                    warn!("Write task stopped while attempting to attach a remote endpoint.");
+                                    break;
+                                }
+                                Ok(permit) => permit,
+                            };
+                            let (read_on_attached, write_on_attached) = if let Some(on_attached) = on_attached {
+                                let (read_tx, read_rx) = trigger::trigger();
+                                let (write_tx, write_rx) = trigger::trigger();
+                                attachments.push(async move {
+                                    if matches!(join(read_rx, write_rx).await, (Ok(_), Ok(_))) {
+                                        on_attached.trigger();
+                                    }
+                                });
+                                (Some(read_tx), Some(write_tx))
+                            } else {
+                                (None, None)
+                            };
+                            read_permit.send(ReadTaskRegistration::Remote { reader: rx, on_attached: read_on_attached });
+                            write_permit.send(WriteTaskMessage::Remote { id, writer: tx, completion, on_attached: write_on_attached });
                         }
-                        break;
                     }
-                    Ok(permit) => permit,
-                };
-                read_permit.send(ReadTaskRegistration::Lane {
-                    name: name.clone(),
-                    sender,
-                });
-                write_permit.send(WriteTaskMessage::Lane(LaneEndpoint::new(
-                    name, kind, out_rx,
-                )));
-                if promise.send(Ok((out_tx, in_rx))).is_err() {
-                    error!(BAD_LANE_REG);
+                } else {
+                    break;
                 }
-            }
-            Either::Left(_) => todo!("Opening downlinks form agents not implemented."),
-            Either::Right(AgentAttachmentRequest { id, io: (tx, rx) }) => {
-                info!(
-                    "Attaching a new remote endpoint with ID {id} to the agent.",
-                    id = id
-                );
-                let read_permit = match read_tx.reserve().await {
-                    Err(_) => {
-                        warn!("Read task stopped while attempting to attach a remote endpoint.");
-                        break;
-                    }
-                    Ok(permit) => permit,
-                };
-                let write_permit = match write_tx.reserve().await {
-                    Err(_) => {
-                        warn!("Write task stopped while attempting to attach a remote endpoint.");
-                        break;
-                    }
-                    Ok(permit) => permit,
-                };
-                read_permit.send(ReadTaskRegistration::Remote { reader: rx });
-                write_permit.send(WriteTaskMessage::Remote { id, writer: tx });
             }
         }
     }
@@ -638,10 +675,16 @@ async fn read_task(
                     name_mapping.insert(name, id);
                     lanes.insert(id, sender);
                 }
-                ReadTaskRegistration::Remote { reader } => {
+                ReadTaskRegistration::Remote {
+                    reader,
+                    on_attached,
+                } => {
                     info!("Reading from new remote endpoint.");
                     let rx = remote_receiver(reader).stop_after_error();
                     remotes.push(rx);
+                    if let Some(on_attached) = on_attached {
+                        on_attached.trigger();
+                    }
                 }
             },
             ReadTaskEvent::Envelope(msg) => {
@@ -994,7 +1037,7 @@ struct WriteTaskState {
 }
 
 #[derive(Debug)]
-enum RegistrationResult<W> {
+enum TaskMessageResult<W> {
     AddLane(LaneStream),
     ScheduleWrite {
         write: W,
@@ -1004,15 +1047,15 @@ enum RegistrationResult<W> {
     Nothing,
 }
 
-impl<W> From<Option<W>> for RegistrationResult<W> {
+impl<W> From<Option<W>> for TaskMessageResult<W> {
     fn from(opt: Option<W>) -> Self {
         if let Some(write) = opt {
-            RegistrationResult::ScheduleWrite {
+            TaskMessageResult::ScheduleWrite {
                 write,
                 schedule_prune: None,
             }
         } else {
-            RegistrationResult::Nothing
+            TaskMessageResult::Nothing
         }
     }
 }
@@ -1020,6 +1063,53 @@ impl<W> From<Option<W>> for RegistrationResult<W> {
 fn discard_error<W>(error: InvalidKey) -> Option<W> {
     warn!("Discarding invalid map lane event: {}.", error);
     None
+}
+
+enum Writes<W> {
+    Zero,
+    Single(W),
+    Two(W, W),
+}
+
+impl<W> Default for Writes<W> {
+    fn default() -> Self {
+        Writes::Zero
+    }
+}
+
+impl<W> From<Option<W>> for Writes<W> {
+    fn from(opt: Option<W>) -> Self {
+        match opt {
+            Some(w) => Writes::Single(w),
+            _ => Writes::Zero,
+        }
+    }
+}
+
+impl<W> From<(Option<W>, Option<W>)> for Writes<W> {
+    fn from(pair: (Option<W>, Option<W>)) -> Self {
+        match pair {
+            (Some(w1), Some(w2)) => Writes::Two(w1, w2),
+            (Some(w), _) => Writes::Single(w),
+            (_, Some(w)) => Writes::Single(w),
+            _ => Writes::Zero,
+        }
+    }
+}
+
+impl<W> Iterator for Writes<W> {
+    type Item = W;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match std::mem::take(self) {
+            Writes::Two(w1, w2) => {
+                *self = Writes::Single(w2);
+                Some(w1)
+            }
+            Writes::Single(w) => Some(w),
+            _ => None,
+        }
+    }
 }
 
 impl WriteTaskState {
@@ -1031,7 +1121,7 @@ impl WriteTaskState {
     }
 
     #[must_use]
-    fn handle_registration(&mut self, reg: WriteTaskMessage) -> RegistrationResult<WriteTask> {
+    fn handle_task_message(&mut self, reg: WriteTaskMessage) -> TaskMessageResult<WriteTask> {
         let WriteTaskState {
             links,
             remote_tracker,
@@ -1040,11 +1130,19 @@ impl WriteTaskState {
         match reg {
             WriteTaskMessage::Lane(endpoint) => {
                 let lane_stream = endpoint.into_lane_stream(remote_tracker.lane_registry());
-                RegistrationResult::AddLane(lane_stream)
+                TaskMessageResult::AddLane(lane_stream)
             }
-            WriteTaskMessage::Remote { id, writer } => {
-                remote_tracker.insert(id, writer);
-                RegistrationResult::AddPruneTimeout(id)
+            WriteTaskMessage::Remote {
+                id,
+                writer,
+                completion,
+                on_attached,
+            } => {
+                remote_tracker.insert(id, writer, completion);
+                if let Some(on_attached) = on_attached {
+                    on_attached.trigger();
+                }
+                TaskMessageResult::AddPruneTimeout(id)
             }
             WriteTaskMessage::Coord(RwCoorindationMessage::Link { origin, lane }) => {
                 info!("Attempting to set up link from '{}' to {}.", lane, origin);
@@ -1057,7 +1155,7 @@ impl WriteTaskState {
                     }
                     Some(_) => {
                         error!("No remote with ID {}.", origin);
-                        RegistrationResult::Nothing
+                        TaskMessageResult::Nothing
                     }
                     _ => {
                         if remote_tracker.has_remote(origin) {
@@ -1065,7 +1163,7 @@ impl WriteTaskState {
                         } else {
                             error!("No lane named '{}' or remote with ID {}.", lane, origin);
                         }
-                        RegistrationResult::Nothing
+                        TaskMessageResult::Nothing
                     }
                 }
             }
@@ -1075,23 +1173,28 @@ impl WriteTaskState {
                     lane, origin
                 );
                 if let Some(lane_id) = remote_tracker.lane_registry().id_for(lane.as_str()) {
-                    let schedule_prune = links.remove(lane_id, origin).into_option();
-                    let message = Text::new("Link closed.");
-                    let maybe_write = remote_tracker
-                        .push_special(SpecialAction::unlinked(lane_id, message), &origin);
-                    if let Some(write) = maybe_write {
-                        RegistrationResult::ScheduleWrite {
-                            write,
-                            schedule_prune,
+                    if links.is_linked(origin, lane_id) {
+                        let schedule_prune = links.remove(lane_id, origin).into_option();
+                        let message = Text::new("Link closed.");
+                        let maybe_write = remote_tracker
+                            .push_special(SpecialAction::unlinked(lane_id, message), &origin);
+                        if let Some(write) = maybe_write {
+                            TaskMessageResult::ScheduleWrite {
+                                write,
+                                schedule_prune,
+                            }
+                        } else if let Some(remote_id) = schedule_prune {
+                            TaskMessageResult::AddPruneTimeout(remote_id)
+                        } else {
+                            TaskMessageResult::Nothing
                         }
-                    } else if let Some(remote_id) = schedule_prune {
-                        RegistrationResult::AddPruneTimeout(remote_id)
                     } else {
-                        RegistrationResult::Nothing
+                        info!("Lane {} is not linked to {}.", lane, origin);
+                        TaskMessageResult::Nothing
                     }
                 } else {
                     error!("No lane named '{}'.", lane);
-                    RegistrationResult::Nothing
+                    TaskMessageResult::Nothing
                 }
             }
             WriteTaskMessage::Coord(RwCoorindationMessage::UnknownLane { origin, path }) => {
@@ -1109,7 +1212,7 @@ impl WriteTaskState {
                 error,
             }) => {
                 info!(error = ?error, "Received in invalid envelope for lane '{}' from {}.", lane, origin);
-                RegistrationResult::Nothing
+                TaskMessageResult::Nothing
             }
         }
     }
@@ -1130,10 +1233,22 @@ impl WriteTaskState {
         let RawLaneResponse { target, response } = response;
         if let Some(remote_id) = target {
             trace!(response = ?response, "Routing response to {}.", remote_id);
-            let write = write_tracker
-                .push_write(id, response, &remote_id)
-                .unwrap_or_else(discard_error);
-            Either::Left(write.into_iter())
+            let write = if response.is_synced() && !links.is_linked(remote_id, id) {
+                trace!(response = ?response, "Sending implicit linked message to {}.", remote_id);
+                links.insert(id, remote_id);
+                let write1 = write_tracker.push_special(SpecialAction::Linked(id), &remote_id);
+                let write2 = write_tracker
+                    .push_write(id, response, &remote_id)
+                    .unwrap_or_else(discard_error);
+                Writes::from((write1, write2))
+            } else {
+                Writes::from(
+                    write_tracker
+                        .push_write(id, response, &remote_id)
+                        .unwrap_or_else(discard_error),
+                )
+            };
+            Either::Left(write)
         } else if let Some(targets) = links.linked_from(id) {
             trace!(response = ?response, targets = ?targets, "Broadcasting response to all linked remotes.");
             Either::Right(targets.iter().zip(std::iter::repeat(response)).flat_map(
@@ -1145,19 +1260,19 @@ impl WriteTaskState {
             ))
         } else {
             trace!(response = ?response, "Discarding response.");
-            Either::Left(None.into_iter())
+            Either::Left(Writes::Zero)
         }
     }
 
-    fn remove_remote(&mut self, remote_id: Uuid) {
+    fn remove_remote(&mut self, remote_id: Uuid, reason: DisconnectionReason) {
         info!("Removing remote connection {}.", remote_id);
         self.links.remove_remote(remote_id);
-        self.remote_tracker.remove_remote(remote_id);
+        self.remote_tracker.remove_remote(remote_id, reason);
     }
 
     fn remove_remote_if_idle(&mut self, remote_id: Uuid) {
         if self.links.linked_to(remote_id).is_none() {
-            self.remove_remote(remote_id);
+            self.remove_remote(remote_id, DisconnectionReason::RemoteTimedOut);
         }
     }
 
@@ -1207,6 +1322,11 @@ impl WriteTaskState {
             .all_links()
             .flat_map(move |(lane_id, remote_id)| remote_tracker.unlink_lane(remote_id, lane_id))
     }
+
+    fn dispose_of_remotes(self, reason: DisconnectionReason) {
+        let WriteTaskState { remote_tracker, .. } = self;
+        remote_tracker.dispose_of_remotes(reason);
+    }
 }
 
 async fn write_task(
@@ -1246,20 +1366,23 @@ async fn write_task(
 
     let mut voted = false;
 
+    let mut remote_reason = DisconnectionReason::AgentStoppedExternally;
+
     loop {
         let next = streams.select_next().await;
         match next {
-            WriteTaskEvent::Message(reg) => match state.handle_registration(reg) {
-                RegistrationResult::AddLane(lane) => {
+            WriteTaskEvent::Message(reg) => match state.handle_task_message(reg) {
+                TaskMessageResult::AddLane(lane) => {
                     streams.add_lane(lane);
                 }
-                RegistrationResult::ScheduleWrite {
+                TaskMessageResult::ScheduleWrite {
                     write,
                     schedule_prune,
                 } => {
                     if voted {
                         if stop_voter.rescind() {
                             info!(STOP_VOTED);
+                            remote_reason = DisconnectionReason::AgentTimedOut;
                             break;
                         }
                         streams.enable_timeout();
@@ -1270,15 +1393,16 @@ async fn write_task(
                         streams.schedule_prune(remote_id);
                     }
                 }
-                RegistrationResult::AddPruneTimeout(remote_id) => {
+                TaskMessageResult::AddPruneTimeout(remote_id) => {
                     streams.schedule_prune(remote_id);
                 }
-                RegistrationResult::Nothing => {}
+                TaskMessageResult::Nothing => {}
             },
             WriteTaskEvent::Event { id, response } => {
                 if voted {
                     if stop_voter.rescind() {
                         info!(STOP_VOTED);
+                        remote_reason = DisconnectionReason::AgentTimedOut;
                         break;
                     }
                     streams.enable_timeout();
@@ -1299,7 +1423,7 @@ async fn write_task(
                         "Writing to remote {} failed. Removing attached uplinks.",
                         remote_id
                     );
-                    state.remove_remote(remote_id);
+                    state.remove_remote(remote_id, DisconnectionReason::ChannelClosed);
                 }
             }
             WriteTaskEvent::LaneFailed(lane_id) => {
@@ -1336,6 +1460,7 @@ async fn write_task(
                 streams.disable_timeout();
                 if stop_voter.vote() {
                     info!(STOP_VOTED);
+                    remote_reason = DisconnectionReason::AgentTimedOut;
                     break;
                 }
             }
@@ -1358,6 +1483,7 @@ async fn write_task(
                 }
             }
         }
+        state.dispose_of_remotes(remote_reason);
     })
     .await;
     if cleanup_result.is_err() {

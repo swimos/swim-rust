@@ -12,35 +12,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{
-    collections::{HashMap, HashSet},
-    time::Duration,
-};
+use std::{collections::HashMap, time::Duration};
 
-use bytes::Bytes;
 use futures::{
     future::{join, join3},
     Future, StreamExt,
 };
 use swim_api::agent::UplinkKind;
-use swim_api::protocol::map::MapOperation;
-use swim_model::{path::RelativePath, Text};
-use swim_recon::printer::print_recon_compact;
+use swim_model::Text;
 use swim_utilities::{
-    io::byte_channel::{byte_channel, ByteReader, ByteWriter},
-    trigger,
+    io::byte_channel::{byte_channel, ByteWriter},
+    trigger::{self, promise},
 };
 use tokio::{sync::mpsc, time::Instant};
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use tokio_util::codec::FramedRead;
 use uuid::Uuid;
 
 use crate::{
-    agent::task::{
-        timeout_coord, write_task, LaneEndpoint, RwCoorindationMessage, WriteTaskConfiguration,
-        WriteTaskMessage,
+    agent::{
+        task::{
+            tests::RemoteReceiver, timeout_coord, write_task, LaneEndpoint, RwCoorindationMessage,
+            WriteTaskConfiguration, WriteTaskMessage,
+        },
+        DisconnectionReason,
     },
-    compat::{Notification, RawResponseMessageDecoder, ResponseMessage},
+    compat::Notification,
     routing::RoutingAddr,
 };
 
@@ -207,148 +203,42 @@ async fn clean_shutdown_no_remotes() {
     .await;
 }
 
-#[derive(Debug)]
-struct RemoteReceiver {
-    inner: FramedRead<ByteReader, RawResponseMessageDecoder>,
-}
-
-impl RemoteReceiver {
-    fn new(rx: ByteReader) -> Self {
-        RemoteReceiver {
-            inner: FramedRead::new(rx, Default::default()),
-        }
-    }
-
-    async fn expect_envelope<F>(&mut self, lane: &str, f: F)
-    where
-        F: FnOnce(Notification<Bytes, Bytes>),
-    {
-        let next = self.inner.next().await;
-
-        match next {
-            Some(Ok(ResponseMessage {
-                origin,
-                path,
-                envelope,
-            })) => {
-                assert_eq!(origin, AGENT_ID);
-                assert_eq!(path, RelativePath::new(NODE, lane));
-                f(envelope);
-            }
-            ow => {
-                panic!("Unexpected result: {:?}", ow);
-            }
-        }
-    }
-
-    async fn expect_linked(&mut self, lane: &str) {
-        self.expect_envelope(lane, |envelope| {
-            assert!(matches!(envelope, Notification::Linked));
-        })
-        .await
-    }
-
-    async fn expect_value_event(&mut self, lane: &str, value: i32) {
-        self.expect_envelope(lane, |envelope| {
-            if let Notification::Event(body) = envelope {
-                let expected_body = format!("{}", value);
-                let body_str = std::str::from_utf8(body.as_ref()).expect("Corrupted body.");
-                assert_eq!(body_str, expected_body);
-            } else {
-                panic!("Unexpected envelope: {:?}", envelope);
-            }
-        })
-        .await
-    }
-
-    async fn expect_map_event(&mut self, lane: &str, key: &str, value: i32) {
-        self.expect_envelope(lane, |envelope| {
-            if let Notification::Event(body) = envelope {
-                let op = MapOperation::Update {
-                    key: Text::new(key),
-                    value,
-                };
-                let expected_body = format!("{}", print_recon_compact(&op));
-                let body_str = std::str::from_utf8(body.as_ref()).expect("Corrupted body.");
-                assert_eq!(body_str, expected_body);
-            } else {
-                panic!("Unexpected envelope: {:?}", envelope);
-            }
-        })
-        .await
-    }
-
-    async fn expect_value_synced(&mut self, lane: &str, value: i32) {
-        self.expect_envelope(lane, |envelope| {
-            if let Notification::Event(body) = envelope {
-                let expected_body = format!("{}", value);
-                let body_str = std::str::from_utf8(body.as_ref()).expect("Corrupted body.");
-                assert_eq!(body_str, expected_body);
-            } else {
-                panic!("Unexpected envelope: {:?}", envelope);
-            }
-        })
-        .await;
-        self.expect_envelope(lane, |envelope| {
-            assert!(matches!(envelope, Notification::Synced));
-        })
-        .await;
-    }
-
-    async fn expect_map_synced(&mut self, lane: &str) {
-        self.expect_envelope(lane, |envelope| {
-            assert!(matches!(envelope, Notification::Synced));
-        })
-        .await
-    }
-
-    async fn expect_unlinked(&mut self, lane: &str) {
-        self.expect_envelope(lane, |envelope| {
-            assert!(matches!(envelope, Notification::Unlinked(_)));
-        })
-        .await
-    }
-
-    async fn expect_clean_shutdown(self, expected_lanes: Vec<&str>) {
-        let mut lanes: HashSet<&str> = expected_lanes.into_iter().collect();
-        let RemoteReceiver { inner } = self;
-        let results = inner.collect::<Vec<_>>().await;
-        for result in results {
-            match result {
-                Ok(ResponseMessage {
-                    origin,
-                    path,
-                    envelope: Notification::Unlinked(_),
-                }) => {
-                    assert_eq!(origin, AGENT_ID);
-                    assert_eq!(&path.node, NODE);
-                    let lane = &path.lane;
-                    assert!(lanes.remove(lane.as_str()));
-                }
-                ow => {
-                    panic!("Unexpected result: {:?}", ow);
-                }
-            }
-        }
-        if !lanes.is_empty() {
-            panic!("Some lanes were not unlinked: {:?}", lanes);
-        }
-    }
-}
-
 async fn attach_remote(
     remote_id: Uuid,
     messages_tx: &mpsc::Sender<WriteTaskMessage>,
 ) -> RemoteReceiver {
+    let (completion_tx, completion_rx) = promise::promise();
     let (tx, rx) = byte_channel(BUFFER_SIZE);
     assert!(messages_tx
         .send(WriteTaskMessage::Remote {
             id: remote_id,
-            writer: tx
+            writer: tx,
+            completion: completion_tx,
+            on_attached: None,
         })
         .await
         .is_ok());
-    RemoteReceiver::new(rx)
+    RemoteReceiver::new(AGENT_ID, NODE.to_string(), rx, completion_rx)
+}
+
+async fn attach_remote_and_wait(
+    remote_id: Uuid,
+    messages_tx: &mpsc::Sender<WriteTaskMessage>,
+) -> RemoteReceiver {
+    let (completion_tx, completion_rx) = promise::promise();
+    let (tx, rx) = byte_channel(BUFFER_SIZE);
+    let (attach_tx, attach_rx) = trigger::trigger();
+    assert!(messages_tx
+        .send(WriteTaskMessage::Remote {
+            id: remote_id,
+            writer: tx,
+            completion: completion_tx,
+            on_attached: Some(attach_tx),
+        })
+        .await
+        .is_ok());
+    assert!(attach_rx.await.is_ok());
+    RemoteReceiver::new(AGENT_ID, NODE.to_string(), rx, completion_rx)
 }
 
 async fn link_remote(remote_id: Uuid, lane: &str, messages_tx: &mpsc::Sender<WriteTaskMessage>) {
@@ -381,10 +271,10 @@ async fn attach_remote_no_link() {
             instr_tx: _instr_tx,
         } = context;
 
-        let reader = attach_remote(RID1.into(), &messages_tx).await;
+        let reader = attach_remote_and_wait(RID1.into(), &messages_tx).await;
 
         stop_sender.trigger();
-        reader.expect_clean_shutdown(vec![]).await;
+        reader.expect_clean_shutdown(vec![], None).await;
     })
     .await;
 }
@@ -405,7 +295,7 @@ async fn attach_and_link_remote() {
 
         reader.expect_linked(VAL_LANE).await;
         stop_sender.trigger();
-        reader.expect_clean_shutdown(vec![VAL_LANE]).await;
+        reader.expect_clean_shutdown(vec![VAL_LANE], None).await;
     })
     .await;
 }
@@ -429,7 +319,7 @@ async fn receive_message_when_linked_remote() {
         reader.expect_value_event(VAL_LANE, 747).await;
 
         stop_sender.trigger();
-        reader.expect_clean_shutdown(vec![VAL_LANE]).await;
+        reader.expect_clean_shutdown(vec![VAL_LANE], None).await;
     })
     .await;
 }
@@ -455,7 +345,7 @@ async fn receive_messages_when_linked_remote() {
         reader.expect_value_event(VAL_LANE, 367).await;
 
         stop_sender.trigger();
-        reader.expect_clean_shutdown(vec![VAL_LANE]).await;
+        reader.expect_clean_shutdown(vec![VAL_LANE], None).await;
     })
     .await;
 }
@@ -481,7 +371,7 @@ async fn explicitly_unlink_remote() {
 
         stop_sender.trigger();
         // The remote shouldn't be unlinked again.
-        reader.expect_clean_shutdown(vec![]).await;
+        reader.expect_clean_shutdown(vec![], None).await;
     })
     .await;
 }
@@ -516,8 +406,8 @@ async fn broadcast_message_when_linked_multiple_remotes() {
 
         stop_sender.trigger();
         join(
-            reader1.expect_clean_shutdown(vec![VAL_LANE]),
-            reader2.expect_clean_shutdown(vec![VAL_LANE]),
+            reader1.expect_clean_shutdown(vec![VAL_LANE], None),
+            reader2.expect_clean_shutdown(vec![VAL_LANE], None),
         )
         .await;
     })
@@ -550,8 +440,8 @@ async fn value_synced_message_are_targetted() {
 
         stop_sender.trigger();
         join(
-            reader1.expect_clean_shutdown(vec![VAL_LANE]),
-            reader2.expect_clean_shutdown(vec![VAL_LANE]),
+            reader1.expect_clean_shutdown(vec![VAL_LANE], None),
+            reader2.expect_clean_shutdown(vec![VAL_LANE], None),
         )
         .await;
     })
@@ -588,8 +478,8 @@ async fn broadcast_map_message_when_linked_multiple_remotes() {
 
         stop_sender.trigger();
         join(
-            reader1.expect_clean_shutdown(vec![MAP_LANE]),
-            reader2.expect_clean_shutdown(vec![MAP_LANE]),
+            reader1.expect_clean_shutdown(vec![MAP_LANE], None),
+            reader2.expect_clean_shutdown(vec![MAP_LANE], None),
         )
         .await;
     })
@@ -618,7 +508,7 @@ async fn receive_map_messages_when_linked() {
         reader.expect_map_event(MAP_LANE, "key2", 56).await;
 
         stop_sender.trigger();
-        reader.expect_clean_shutdown(vec![MAP_LANE]).await;
+        reader.expect_clean_shutdown(vec![MAP_LANE], None).await;
     })
     .await;
 }
@@ -651,8 +541,8 @@ async fn map_synced_message_are_targetted() {
 
         stop_sender.trigger();
         join(
-            reader1.expect_clean_shutdown(vec![MAP_LANE]),
-            reader2.expect_clean_shutdown(vec![MAP_LANE]),
+            reader1.expect_clean_shutdown(vec![MAP_LANE], None),
+            reader2.expect_clean_shutdown(vec![MAP_LANE], None),
         )
         .await;
     })
@@ -698,7 +588,9 @@ async fn write_task_votes_to_stop() {
         let after = Instant::now();
         let elapsed = after.duration_since(before);
         assert!(elapsed >= INACTIVE_TEST_TIMEOUT);
-        reader.expect_clean_shutdown(vec![VAL_LANE]).await;
+        reader
+            .expect_clean_shutdown(vec![VAL_LANE], Some(DisconnectionReason::AgentTimedOut))
+            .await;
         stop_sender
     })
     .await;
@@ -729,7 +621,7 @@ async fn write_task_rescinds_vote_to_stop() {
         assert!(!vote2.vote());
 
         stop_sender.trigger();
-        reader.expect_clean_shutdown(vec![VAL_LANE]).await;
+        reader.expect_clean_shutdown(vec![VAL_LANE], None).await;
     })
     .await;
 }
@@ -775,7 +667,7 @@ async fn backpressure_relief_on_value_lanes() {
         }
 
         stop_sender.trigger();
-        reader.expect_clean_shutdown(vec![VAL_LANE]).await;
+        reader.expect_clean_shutdown(vec![VAL_LANE], None).await;
     })
     .await;
 }
@@ -825,7 +717,7 @@ async fn backpressure_relief_on_map_lanes() {
         }
 
         stop_sender.trigger();
-        reader.expect_clean_shutdown(vec![MAP_LANE]).await;
+        reader.expect_clean_shutdown(vec![MAP_LANE], None).await;
     })
     .await;
 }
@@ -894,7 +786,7 @@ async fn backpressure_relief_on_map_lanes_with_synced() {
         assert!(synced);
 
         stop_sender.trigger();
-        reader.expect_clean_shutdown(vec![MAP_LANE]).await;
+        reader.expect_clean_shutdown(vec![MAP_LANE], None).await;
     })
     .await;
 }

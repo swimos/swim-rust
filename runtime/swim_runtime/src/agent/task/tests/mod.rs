@@ -13,12 +13,14 @@
 // limitations under the License.
 
 use std::{
+    collections::HashSet,
     num::NonZeroUsize,
     pin::Pin,
     task::{Context, Poll},
     time::Duration,
 };
 
+use bytes::Bytes;
 use futures::{future::Either, ready, SinkExt, Stream, StreamExt};
 use swim_api::{
     agent::{LaneConfig, UplinkKind},
@@ -33,16 +35,28 @@ use swim_api::{
     },
 };
 use swim_form::structural::read::recognizer::primitive::I32Recognizer;
-use swim_model::Text;
+use swim_model::{path::RelativePath, Text};
+use swim_recon::{
+    parser::{parse_recognize, Span},
+    printer::print_recon_compact,
+};
 use swim_utilities::{
     algebra::non_zero_usize,
     io::byte_channel::{ByteReader, ByteWriter},
+    trigger::promise,
 };
 use tokio::sync::mpsc;
 use tokio_util::codec::{FramedRead, FramedWrite};
 use uuid::Uuid;
 
-use crate::agent::AgentRuntimeConfig;
+use crate::{
+    agent::{AgentRuntimeConfig, DisconnectionReason},
+    compat::{
+        Notification, RawRequestMessageEncoder, RawResponseMessageDecoder, RequestMessage,
+        ResponseMessage,
+    },
+    routing::RoutingAddr,
+};
 
 use super::{LaneEndpoint, RwCoorindationMessage};
 
@@ -314,5 +328,234 @@ impl Stream for LaneReader {
                 maybe_result.map(|r| (name.clone(), r.map(Either::Right)))
             }
         })
+    }
+}
+
+#[derive(Debug)]
+struct RemoteReceiver {
+    expected_agent: RoutingAddr,
+    expected_node: String,
+    inner: FramedRead<ByteReader, RawResponseMessageDecoder>,
+    completion_rx: promise::Receiver<DisconnectionReason>,
+}
+
+impl RemoteReceiver {
+    fn new(
+        expected_agent: RoutingAddr,
+        expected_node: String,
+        rx: ByteReader,
+        completion_rx: promise::Receiver<DisconnectionReason>,
+    ) -> Self {
+        RemoteReceiver {
+            expected_agent,
+            expected_node,
+            inner: FramedRead::new(rx, Default::default()),
+            completion_rx,
+        }
+    }
+
+    async fn expect_envelope<F>(&mut self, lane: &str, f: F)
+    where
+        F: FnOnce(Notification<Bytes, Bytes>),
+    {
+        let next = self.inner.next().await;
+
+        match next {
+            Some(Ok(ResponseMessage {
+                origin,
+                path,
+                envelope,
+            })) => {
+                assert_eq!(origin, self.expected_agent);
+                assert_eq!(path, RelativePath::new(&self.expected_node, lane));
+                f(envelope);
+            }
+            ow => {
+                panic!("Unexpected result: {:?}", ow);
+            }
+        }
+    }
+
+    async fn expect_linked(&mut self, lane: &str) {
+        self.expect_envelope(lane, |envelope| {
+            assert!(matches!(envelope, Notification::Linked));
+        })
+        .await
+    }
+
+    async fn expect_value_event(&mut self, lane: &str, value: i32) {
+        self.expect_envelope(lane, |envelope| {
+            if let Notification::Event(body) = envelope {
+                let expected_body = format!("{}", value);
+                let body_str = std::str::from_utf8(body.as_ref()).expect("Corrupted body.");
+                assert_eq!(body_str, expected_body);
+            } else {
+                panic!("Unexpected envelope: {:?}", envelope);
+            }
+        })
+        .await
+    }
+
+    async fn expect_any_map_event<F>(&mut self, lane: &str, mut f: F)
+    where
+        F: FnMut(MapMessage<Text, i32>),
+    {
+        self.expect_envelope(lane, |envelope| {
+            if let Notification::Event(body) = envelope {
+                let body_str = std::str::from_utf8(body.as_ref()).expect("Corrupted body.");
+                let message = parse_recognize::<MapMessage<Text, i32>>(Span::new(body_str), false)
+                    .expect("Invalid map mesage.");
+                f(message)
+            } else {
+                panic!("Unexpected envelope: {:?}", envelope);
+            }
+        })
+        .await
+    }
+
+    async fn expect_map_event(&mut self, lane: &str, key: &str, value: i32) {
+        self.expect_envelope(lane, |envelope| {
+            if let Notification::Event(body) = envelope {
+                let op = MapOperation::Update {
+                    key: Text::new(key),
+                    value,
+                };
+                let expected_body = format!("{}", print_recon_compact(&op));
+                let body_str = std::str::from_utf8(body.as_ref()).expect("Corrupted body.");
+                assert_eq!(body_str, expected_body);
+            } else {
+                panic!("Unexpected envelope: {:?}", envelope);
+            }
+        })
+        .await
+    }
+
+    async fn expect_value_synced(&mut self, lane: &str, value: i32) {
+        self.expect_envelope(lane, |envelope| {
+            if let Notification::Event(body) = envelope {
+                let expected_body = format!("{}", value);
+                let body_str = std::str::from_utf8(body.as_ref()).expect("Corrupted body.");
+                assert_eq!(body_str, expected_body);
+            } else {
+                panic!("Unexpected envelope: {:?}", envelope);
+            }
+        })
+        .await;
+        self.expect_envelope(lane, |envelope| {
+            assert!(matches!(envelope, Notification::Synced));
+        })
+        .await;
+    }
+
+    async fn expect_map_synced(&mut self, lane: &str) {
+        self.expect_envelope(lane, |envelope| {
+            assert!(matches!(envelope, Notification::Synced));
+        })
+        .await
+    }
+
+    async fn expect_unlinked(&mut self, lane: &str) {
+        self.expect_envelope(lane, |envelope| {
+            assert!(matches!(envelope, Notification::Unlinked(_)));
+        })
+        .await
+    }
+
+    async fn expect_clean_shutdown(
+        self,
+        expected_lanes: Vec<&str>,
+        expected_reason: Option<DisconnectionReason>,
+    ) {
+        let mut lanes: HashSet<&str> = expected_lanes.into_iter().collect();
+        let RemoteReceiver {
+            inner,
+            expected_agent,
+            expected_node,
+            completion_rx,
+        } = self;
+        let results = inner.collect::<Vec<_>>().await;
+        for result in results {
+            match result {
+                Ok(ResponseMessage {
+                    origin,
+                    path,
+                    envelope: Notification::Unlinked(_),
+                }) => {
+                    assert_eq!(origin, expected_agent);
+                    assert_eq!(&path.node, &expected_node);
+                    let lane = &path.lane;
+                    assert!(lanes.remove(lane.as_str()));
+                }
+                ow => {
+                    panic!("Unexpected result: {:?}", ow);
+                }
+            }
+        }
+        if !lanes.is_empty() {
+            panic!("Some lanes were not unlinked: {:?}", lanes);
+        }
+        let reason = completion_rx
+            .await
+            .map(|arc| *arc)
+            .unwrap_or(DisconnectionReason::Failed);
+
+        assert_eq!(
+            reason,
+            expected_reason.unwrap_or(DisconnectionReason::AgentStoppedExternally)
+        );
+    }
+}
+
+struct RemoteSender {
+    node: String,
+    rid: RoutingAddr,
+    inner: FramedWrite<ByteWriter, RawRequestMessageEncoder>,
+}
+
+impl RemoteSender {
+    fn new(node: String, rid: RoutingAddr, writer: ByteWriter) -> Self {
+        RemoteSender {
+            node,
+            rid,
+            inner: FramedWrite::new(writer, Default::default()),
+        }
+    }
+
+    async fn link(&mut self, lane: &str) {
+        let RemoteSender { node, rid, inner } = self;
+        let path = RelativePath::new(node, lane);
+        assert!(inner.send(RequestMessage::link(*rid, path)).await.is_ok());
+    }
+
+    async fn unlink(&mut self, lane: &str) {
+        let RemoteSender { node, rid, inner } = self;
+        let path = RelativePath::new(node, lane);
+        assert!(inner.send(RequestMessage::unlink(*rid, path)).await.is_ok());
+    }
+
+    async fn sync(&mut self, lane: &str) {
+        let RemoteSender { node, rid, inner } = self;
+        let path = RelativePath::new(node, lane);
+        assert!(inner.send(RequestMessage::sync(*rid, path)).await.is_ok());
+    }
+
+    async fn value_command(&mut self, lane: &str, n: i32) {
+        let RemoteSender { node, rid, inner } = self;
+        let path = RelativePath::new(node, lane);
+        let body = format!("{}", n);
+        assert!(inner
+            .send(RequestMessage::command(*rid, path, body.as_bytes()))
+            .await
+            .is_ok());
+    }
+
+    async fn map_command(&mut self, lane: &str, key: &str, value: i32) {
+        let RemoteSender { node, rid, inner } = self;
+        let path = RelativePath::new(node, lane);
+        let body = format!("@update(key:\"{}\") {}", key, value);
+        assert!(inner
+            .send(RequestMessage::command(*rid, path, body.as_bytes()))
+            .await
+            .is_ok());
     }
 }

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::num::NonZeroUsize;
+use std::{num::NonZeroUsize, time::Duration};
 
 use bytes::{Bytes, BytesMut};
 use futures::StreamExt;
@@ -20,12 +20,16 @@ use swim_model::{path::RelativePath, Text};
 use swim_utilities::{
     algebra::non_zero_usize,
     io::byte_channel::{byte_channel, ByteReader},
+    trigger::promise,
 };
 use tokio_util::codec::FramedRead;
 use uuid::Uuid;
 
 use crate::{
-    agent::task::write_fut::{SpecialAction, WriteTask},
+    agent::{
+        task::write_fut::{SpecialAction, WriteTask},
+        DisconnectionReason,
+    },
     compat::{RawResponseMessage, RawResponseMessageDecoder},
     routing::RoutingAddr,
 };
@@ -44,26 +48,45 @@ const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 fn insert_remote() {
     let (tx, _rx) = byte_channel(BUFFER_SIZE);
     let mut remotes = RemoteTracker::new(ADDR, Text::new(NODE));
+    let (comp_tx, _comp_rx) = promise::promise();
 
     assert!(remotes.is_empty());
     assert!(!remotes.has_remote(RID1));
 
-    remotes.insert(RID1, tx);
+    remotes.insert(RID1, tx, comp_tx);
 
     assert!(!remotes.is_empty());
     assert!(remotes.has_remote(RID1));
 }
 
-fn setup() -> (RemoteTracker, ByteReader, ByteReader, u64) {
+struct TestData {
+    remotes: RemoteTracker,
+    rx1: ByteReader,
+    rx2: ByteReader,
+    comp_rx1: promise::Receiver<DisconnectionReason>,
+    comp_rx2: promise::Receiver<DisconnectionReason>,
+    lane_id: u64,
+}
+
+fn setup() -> TestData {
     let (tx1, rx1) = byte_channel(BUFFER_SIZE);
     let (tx2, rx2) = byte_channel(BUFFER_SIZE);
+    let (comp_tx1, comp_rx1) = promise::promise();
+    let (comp_tx2, comp_rx2) = promise::promise();
     let mut remotes = RemoteTracker::new(ADDR, Text::new(NODE));
     let lane_id = remotes.lane_registry().add_endpoint(Text::new(LANE));
 
-    remotes.insert(RID1, tx1);
-    remotes.insert(RID2, tx2);
+    remotes.insert(RID1, tx1, comp_tx1);
+    remotes.insert(RID2, tx2, comp_tx2);
 
-    (remotes, rx1, rx2, lane_id)
+    TestData {
+        remotes,
+        rx1,
+        rx2,
+        comp_rx1,
+        comp_rx2,
+        lane_id,
+    }
 }
 
 async fn expect_message(
@@ -84,7 +107,13 @@ async fn expect_message(
 
 #[tokio::test]
 async fn dispatch_special() {
-    let (mut remotes, mut rx1, _rx2, lane_id) = setup();
+    let TestData {
+        mut remotes,
+        mut rx1,
+        rx2: _rx2,
+        lane_id,
+        ..
+    } = setup();
     if let Some(write) = remotes.push_special(SpecialAction::Linked(lane_id), &RID1) {
         let expected = RawResponseMessage::linked(ADDR, RelativePath::new(NODE, LANE));
         expect_message(write, &mut rx1, expected).await;
@@ -97,7 +126,13 @@ const BODY: &[u8] = b"body";
 
 #[tokio::test]
 async fn dispatch_normal() {
-    let (mut remotes, mut rx1, _rx2, lane_id) = setup();
+    let TestData {
+        mut remotes,
+        mut rx1,
+        rx2: _rx2,
+        lane_id,
+        ..
+    } = setup();
     if let Ok(Some(write)) = remotes.push_write(
         lane_id,
         UplinkResponse::Value(Bytes::from_static(BODY)),
@@ -114,10 +149,15 @@ async fn dispatch_normal() {
     }
 }
 
-fn setup_with_pending(
-    queue_write: bool,
-) -> (RemoteTracker, ByteReader, ByteReader, u64, WriteTask) {
-    let (mut remotes, rx1, rx2, lane_id) = setup();
+fn setup_with_pending(queue_write: bool) -> (TestData, WriteTask) {
+    let TestData {
+        mut remotes,
+        rx1,
+        rx2,
+        lane_id,
+        comp_rx1,
+        comp_rx2,
+    } = setup();
     let write = remotes
         .push_special(SpecialAction::Linked(lane_id), &RID1)
         .unwrap();
@@ -131,12 +171,30 @@ fn setup_with_pending(
             Ok(None)
         ));
     }
-    (remotes, rx1, rx2, lane_id, write)
+    (
+        TestData {
+            remotes,
+            rx1,
+            rx2,
+            lane_id,
+            comp_rx1,
+            comp_rx2,
+        },
+        write,
+    )
 }
 
 #[tokio::test]
 async fn replace_sender() {
-    let (mut remotes, mut rx1, _rx2, _, write) = setup_with_pending(false);
+    let (
+        TestData {
+            mut remotes,
+            mut rx1,
+            rx2: _rx2,
+            ..
+        },
+        write,
+    ) = setup_with_pending(false);
 
     let expected = RawResponseMessage::linked(ADDR, RelativePath::new(NODE, LANE));
     let (writer, buffer) = expect_message(write, &mut rx1, expected).await;
@@ -146,7 +204,15 @@ async fn replace_sender() {
 
 #[tokio::test]
 async fn replace_sender_queued() {
-    let (mut remotes, mut rx1, _rx2, _, write) = setup_with_pending(true);
+    let (
+        TestData {
+            mut remotes,
+            mut rx1,
+            rx2: _rx2,
+            ..
+        },
+        write,
+    ) = setup_with_pending(true);
 
     let expected = RawResponseMessage::linked(ADDR, RelativePath::new(NODE, LANE));
     let (writer, buffer) = expect_message(write, &mut rx1, expected).await;
@@ -163,9 +229,21 @@ async fn replace_sender_queued() {
     }
 }
 
-#[test]
-fn remove_remote() {
-    let (mut remotes, _rx1, _rx2, _) = setup();
-    remotes.remove_remote(RID2);
+#[tokio::test]
+async fn remove_remote() {
+    let TestData {
+        mut remotes,
+        rx1: _rx1,
+        rx2: _rx2,
+        comp_rx1,
+        ..
+    } = setup();
+    remotes.remove_remote(RID2, DisconnectionReason::RemoteTimedOut);
     assert!(!remotes.has_remote(RID2));
+    let result = tokio::time::timeout(Duration::from_secs(1), comp_rx1)
+        .await
+        .expect("Timed out.")
+        .expect("Reason promised dropped.");
+
+    assert_eq!(*result, DisconnectionReason::RemoteTimedOut);
 }

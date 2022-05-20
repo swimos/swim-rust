@@ -88,7 +88,13 @@ impl Links {
         self.backwards.get(&id)
     }
 
-    #[must_use]
+    pub fn is_linked(&self, remote_id: Uuid, lane_id: u64) -> bool {
+        self.forward
+            .get(&lane_id)
+            .map(|remotes| remotes.contains(&remote_id))
+            .unwrap_or(false)
+    }
+
     pub fn remove_lane(&mut self, id: u64) -> impl Iterator<Item = TriggerUnlink> + '_ {
         let Links { forward, backwards } = self;
         let remote_ids = forward.remove(&id).unwrap_or_default();

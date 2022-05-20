@@ -17,28 +17,26 @@ use std::time::Duration;
 use futures::{
     future::{join, join3, select, Either},
     stream::SelectAll,
-    Future, SinkExt, StreamExt,
+    Future, StreamExt,
 };
 use swim_api::{
     agent::UplinkKind,
     protocol::{agent::LaneRequest, map::MapMessage},
 };
-use swim_model::{path::RelativePath, Text};
+use swim_model::Text;
 use swim_utilities::{
-    io::byte_channel::{byte_channel, ByteReader, ByteWriter},
+    io::byte_channel::{byte_channel, ByteReader},
     trigger,
 };
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use tokio_util::codec::FramedWrite;
 
 use crate::{
     agent::task::{
         read_task,
-        tests::{BUFFER_SIZE, DEFAULT_TIMEOUT, INACTIVE_TEST_TIMEOUT},
+        tests::{RemoteSender, BUFFER_SIZE, DEFAULT_TIMEOUT, INACTIVE_TEST_TIMEOUT},
         timeout_coord, LaneEndpoint, ReadTaskRegistration, RwCoorindationMessage, WriteTaskMessage,
     },
-    compat::{RawRequestMessageEncoder, RequestMessage},
     routing::RoutingAddr,
 };
 
@@ -191,58 +189,19 @@ const RID: RoutingAddr = RoutingAddr::remote(0);
 const RID2: RoutingAddr = RoutingAddr::remote(1);
 const NODE: &str = "node";
 
-struct RemoteSender {
-    rid: RoutingAddr,
-    inner: FramedWrite<ByteWriter, RawRequestMessageEncoder>,
-}
-
-impl RemoteSender {
-    async fn link(&mut self, lane: &str) {
-        let RemoteSender { rid, inner } = self;
-        let path = RelativePath::new(NODE, lane);
-        assert!(inner.send(RequestMessage::link(*rid, path)).await.is_ok());
-    }
-
-    async fn sync(&mut self, lane: &str) {
-        let RemoteSender { rid, inner } = self;
-        let path = RelativePath::new(NODE, lane);
-        assert!(inner.send(RequestMessage::sync(*rid, path)).await.is_ok());
-    }
-
-    async fn value_command(&mut self, lane: &str, n: i32) {
-        let RemoteSender { rid, inner } = self;
-        let path = RelativePath::new(NODE, lane);
-        let body = format!("{}", n);
-        assert!(inner
-            .send(RequestMessage::command(*rid, path, body.as_bytes()))
-            .await
-            .is_ok());
-    }
-
-    async fn map_command(&mut self, lane: &str, key: &str, value: i32) {
-        let RemoteSender { rid, inner } = self;
-        let path = RelativePath::new(NODE, lane);
-        let body = format!("@update(key:\"{}\") {}", key, value);
-        assert!(inner
-            .send(RequestMessage::command(*rid, path, body.as_bytes()))
-            .await
-            .is_ok());
-    }
-}
-
 async fn attach_remote_with(
     rid: RoutingAddr,
     reg_tx: &mpsc::Sender<ReadTaskRegistration>,
 ) -> RemoteSender {
     let (tx, rx) = byte_channel(BUFFER_SIZE);
     assert!(reg_tx
-        .send(ReadTaskRegistration::Remote { reader: rx })
+        .send(ReadTaskRegistration::Remote {
+            reader: rx,
+            on_attached: None
+        })
         .await
         .is_ok());
-    RemoteSender {
-        rid,
-        inner: FramedWrite::new(tx, Default::default()),
-    }
+    RemoteSender::new(NODE.to_string(), rid, tx)
 }
 async fn attach_remote(reg_tx: &mpsc::Sender<ReadTaskRegistration>) -> RemoteSender {
     attach_remote_with(RID, reg_tx).await

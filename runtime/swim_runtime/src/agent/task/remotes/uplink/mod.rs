@@ -17,12 +17,15 @@ use std::collections::{HashMap, VecDeque};
 use bytes::{BufMut, Bytes, BytesMut};
 use swim_api::{agent::UplinkKind, protocol::map::MapOperation};
 use swim_model::Text;
-use swim_utilities::io::byte_channel::ByteWriter;
+use swim_utilities::{io::byte_channel::ByteWriter, trigger::promise};
 use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
 use crate::{
-    agent::task::write_fut::{SpecialAction, WriteAction, WriteTask},
+    agent::{
+        task::write_fut::{SpecialAction, WriteAction, WriteTask},
+        DisconnectionReason,
+    },
     error::InvalidKey,
     pressure::{
         recon::MapOperationReconEncoder, BackpressureStrategy, MapBackpressure, ValueBackpressure,
@@ -42,6 +45,7 @@ pub struct Uplinks {
     map_uplinks: HashMap<u64, Uplink<MapBackpressure>>,
     write_queue: VecDeque<(UplinkKind, u64)>,
     special_queue: VecDeque<SpecialAction>,
+    completion: promise::Sender<DisconnectionReason>,
 }
 
 #[derive(Debug, Clone)]
@@ -52,10 +56,25 @@ pub enum UplinkResponse {
     Map(MapOperation<Bytes, Bytes>),
 }
 
+impl UplinkResponse {
+    pub fn is_synced(&self) -> bool {
+        matches!(
+            self,
+            UplinkResponse::SyncedValue(_) | UplinkResponse::SyncedMap
+        )
+    }
+}
+
 const UNREGISTERED_LANE: &str = "Unregistered lane ID.";
 
 impl Uplinks {
-    pub fn new(node: Text, identity: RoutingAddr, remote_id: Uuid, writer: ByteWriter) -> Self {
+    pub fn new(
+        node: Text,
+        identity: RoutingAddr,
+        remote_id: Uuid,
+        writer: ByteWriter,
+        completion: promise::Sender<DisconnectionReason>,
+    ) -> Self {
         let sender = RemoteSender::new(writer, identity, remote_id, node);
         Uplinks {
             writer: Some((sender, Default::default())),
@@ -63,6 +82,7 @@ impl Uplinks {
             map_uplinks: Default::default(),
             write_queue: Default::default(),
             special_queue: Default::default(),
+            completion,
         }
     }
 
@@ -179,6 +199,7 @@ impl Uplinks {
             map_uplinks,
             write_queue,
             special_queue,
+            ..
         } = self;
         debug_assert!(writer.is_none());
         if let Some(special) = special_queue.pop_front() {
@@ -253,6 +274,10 @@ impl Uplinks {
                 }
             }
         }
+    }
+
+    pub fn complete(self, reason: DisconnectionReason) {
+        let _ = self.completion.provide(reason);
     }
 }
 

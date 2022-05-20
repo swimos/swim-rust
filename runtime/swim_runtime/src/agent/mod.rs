@@ -25,13 +25,17 @@ use swim_model::Text;
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
     routing::uri::RelativeUri,
-    trigger,
+    trigger::{self, promise},
 };
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
 
-use std::{fmt::Debug, num::NonZeroUsize, time::Duration};
+use std::{
+    fmt::{Debug, Display},
+    num::NonZeroUsize,
+    time::Duration,
+};
 
 use crate::routing::RoutingAddr;
 
@@ -135,15 +139,68 @@ impl Debug for AgentRuntimeRequest {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DisconnectionReason {
+    AgentStoppedExternally,
+    RemoteTimedOut,
+    AgentTimedOut,
+    DuplicateRegistration(Uuid),
+    ChannelClosed,
+    Failed,
+}
+
+impl Display for DisconnectionReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DisconnectionReason::AgentStoppedExternally => write!(f, "Agent stopped externally."),
+            DisconnectionReason::RemoteTimedOut => {
+                write!(f, "The remote was pruned due to inactivity.")
+            }
+            DisconnectionReason::AgentTimedOut => {
+                write!(f, "Agent stopped after a period of inactivity.")
+            }
+            DisconnectionReason::DuplicateRegistration(id) => {
+                write!(f, "The remote registration for {} was replaced.", id)
+            }
+            DisconnectionReason::ChannelClosed => write!(f, "The remote stopped listening."),
+            DisconnectionReason::Failed => write!(
+                f,
+                "The agent task was dropped or the connection was never established."
+            ),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct AgentAttachmentRequest {
     pub id: Uuid,
     pub io: Io,
+    pub completion: promise::Sender<DisconnectionReason>,
+    pub on_attached: Option<trigger::Sender>,
 }
 
 impl AgentAttachmentRequest {
-    pub fn new(id: Uuid, io: Io) -> Self {
-        AgentAttachmentRequest { id, io }
+    pub fn new(id: Uuid, io: Io, completion: promise::Sender<DisconnectionReason>) -> Self {
+        AgentAttachmentRequest {
+            id,
+            io,
+            completion,
+            on_attached: None,
+        }
+    }
+
+    pub fn with_confirmation(
+        id: Uuid,
+        io: Io,
+        completion: promise::Sender<DisconnectionReason>,
+        on_attached: trigger::Sender,
+    ) -> Self {
+        AgentAttachmentRequest {
+            id,
+            io,
+            completion,
+            on_attached: Some(on_attached),
+        }
     }
 }
 

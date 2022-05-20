@@ -20,13 +20,17 @@ use swim_model::Text;
 use swim_utilities::{
     algebra::non_zero_usize,
     io::byte_channel::{byte_channel, ByteReader},
+    trigger::promise,
 };
 use uuid::Uuid;
 
 use crate::{
-    agent::task::{
-        remotes::{LaneRegistry, UplinkResponse},
-        write_fut::WriteTask,
+    agent::{
+        task::{
+            remotes::{LaneRegistry, UplinkResponse},
+            write_fut::WriteTask,
+        },
+        DisconnectionReason,
     },
     routing::RoutingAddr,
 };
@@ -37,11 +41,19 @@ const NODE_URI: &str = "/node";
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 const REMOTE_ID: Uuid = Uuid::from_u128(748383);
 
-fn make_uplinks() -> (Uplinks, ByteReader) {
+fn make_uplinks() -> (Uplinks, ByteReader, promise::Receiver<DisconnectionReason>) {
     let (tx, rx) = byte_channel(BUFFER_SIZE);
+    let (completion_tx, completion_rx) = promise::promise();
     (
-        Uplinks::new(Text::new(NODE_URI), RoutingAddr::plane(0), REMOTE_ID, tx),
+        Uplinks::new(
+            Text::new(NODE_URI),
+            RoutingAddr::plane(0),
+            REMOTE_ID,
+            tx,
+            completion_tx,
+        ),
         rx,
+        completion_rx,
     )
 }
 
@@ -58,7 +70,7 @@ fn lane_names() -> LaneRegistry {
 #[test]
 fn push_linked() {
     let lane_names = lane_names();
-    let (mut uplinks, _reader) = make_uplinks();
+    let (mut uplinks, _reader, ..) = make_uplinks();
 
     let WriteTask { sender, action, .. } = uplinks
         .push_special(SpecialAction::Linked(0), &lane_names)
@@ -75,7 +87,7 @@ fn push_linked() {
 fn push_unlinked() {
     let lane_names = lane_names();
 
-    let (mut uplinks, _reader) = make_uplinks();
+    let (mut uplinks, _reader, ..) = make_uplinks();
 
     let WriteTask { sender, action, .. } = uplinks
         .push_special(SpecialAction::unlinked(0, Text::new("Gone")), &lane_names)
@@ -90,7 +102,7 @@ fn push_unlinked() {
 #[test]
 fn push_lane_not_found() {
     let lane_names = lane_names();
-    let (mut uplinks, _reader) = make_uplinks();
+    let (mut uplinks, _reader, ..) = make_uplinks();
 
     let WriteTask { sender, action, .. } = uplinks
         .push_special(
@@ -109,7 +121,7 @@ fn push_lane_not_found() {
 fn resinstate_writer() {
     let lane_names = lane_names();
 
-    let (mut uplinks, _reader) = make_uplinks();
+    let (mut uplinks, _reader, ..) = make_uplinks();
 
     let WriteTask { sender, buffer, .. } = uplinks
         .push_special(SpecialAction::Linked(0), &lane_names)
@@ -124,7 +136,7 @@ fn resinstate_writer() {
 fn queue_special() {
     let lane_names = lane_names();
 
-    let (mut uplinks, _reader) = make_uplinks();
+    let (mut uplinks, _reader, ..) = make_uplinks();
 
     let WriteTask {
         sender,
@@ -160,7 +172,7 @@ const BODY2: &[u8] = b"@body(2)";
 #[test]
 fn push_value_event() {
     let lane_names = lane_names();
-    let (mut uplinks, _reader) = make_uplinks();
+    let (mut uplinks, _reader, ..) = make_uplinks();
 
     let content = Bytes::from_static(BODY1);
 
@@ -181,7 +193,7 @@ fn push_value_event() {
 #[test]
 fn push_value_synced() {
     let lane_names = lane_names();
-    let (mut uplinks, _reader) = make_uplinks();
+    let (mut uplinks, _reader, ..) = make_uplinks();
 
     let content = Bytes::from_static(BODY1);
 
@@ -202,7 +214,7 @@ fn push_value_synced() {
 #[test]
 fn push_map_synced() {
     let lane_names = lane_names();
-    let (mut uplinks, _reader) = make_uplinks();
+    let (mut uplinks, _reader, ..) = make_uplinks();
 
     let WriteTask { sender, action, .. } = uplinks
         .push(0, UplinkResponse::SyncedMap, &lane_names)
@@ -219,7 +231,7 @@ const KEY_STR: &[u8] = b"6";
 #[test]
 fn push_good_map_event() {
     let lane_names = lane_names();
-    let (mut uplinks, _reader) = make_uplinks();
+    let (mut uplinks, _reader, ..) = make_uplinks();
 
     let WriteTask {
         sender,
@@ -247,7 +259,7 @@ const BAD_UTF8: &[u8] = &[0xf0, 0x28, 0x8c, 0x28, 0x00, 0x00, 0x00];
 #[test]
 fn push_bad_map_event() {
     let lane_names = lane_names();
-    let (mut uplinks, _reader) = make_uplinks();
+    let (mut uplinks, _reader, ..) = make_uplinks();
 
     let result = uplinks.push(
         0,
@@ -260,17 +272,30 @@ fn push_bad_map_event() {
     assert!(result.is_err());
 }
 
-fn make_uplinks_writing() -> (Uplinks, ByteReader, RemoteSender, BytesMut) {
+fn make_uplinks_writing() -> (
+    Uplinks,
+    ByteReader,
+    promise::Receiver<DisconnectionReason>,
+    RemoteSender,
+    BytesMut,
+) {
     let (tx, rx) = byte_channel(BUFFER_SIZE);
-    let mut uplinks = Uplinks::new(Text::new(NODE_URI), RoutingAddr::plane(0), REMOTE_ID, tx);
+    let (completion_tx, completion_rx) = promise::promise();
+    let mut uplinks = Uplinks::new(
+        Text::new(NODE_URI),
+        RoutingAddr::plane(0),
+        REMOTE_ID,
+        tx,
+        completion_tx,
+    );
     let (writer, buffer) = uplinks.writer.take().unwrap();
-    (uplinks, rx, writer, buffer)
+    (uplinks, rx, completion_rx, writer, buffer)
 }
 
 #[test]
 fn push_multiple_value_events_same_lane() {
     let lane_names = lane_names();
-    let (mut uplinks, _reader, sender, buffer) = make_uplinks_writing();
+    let (mut uplinks, _reader, _, sender, buffer) = make_uplinks_writing();
 
     let events = [
         (0, UplinkResponse::Value(Bytes::from_static(BODY1))),
@@ -305,7 +330,7 @@ fn push_multiple_value_events_same_lane() {
 #[test]
 fn push_multiple_value_events_multiple_lanes() {
     let lane_names = lane_names();
-    let (mut uplinks, _reader, mut sender, mut buffer) = make_uplinks_writing();
+    let (mut uplinks, _reader, _, mut sender, mut buffer) = make_uplinks_writing();
 
     let events = [
         (0, UplinkResponse::Value(Bytes::from_static(BODY1))),
@@ -347,7 +372,7 @@ fn push_multiple_value_events_multiple_lanes() {
 #[test]
 fn special_before_events() {
     let lane_names = lane_names();
-    let (mut uplinks, _reader, sender, buffer) = make_uplinks_writing();
+    let (mut uplinks, _reader, _, sender, buffer) = make_uplinks_writing();
 
     let result = uplinks
         .push(
@@ -396,7 +421,7 @@ fn special_before_events() {
 #[test]
 fn unlink_clears_pending() {
     let lane_names = lane_names();
-    let (mut uplinks, _reader, sender, buffer) = make_uplinks_writing();
+    let (mut uplinks, _reader, _, sender, buffer) = make_uplinks_writing();
 
     let result = uplinks
         .push(
@@ -458,7 +483,7 @@ const VAL2: &[u8] = b"value2";
 #[test]
 fn map_lane_sync_consumes_buffer() {
     let lane_names = lane_names();
-    let (mut uplinks, _reader, sender, buffer) = make_uplinks_writing();
+    let (mut uplinks, _reader, _, sender, buffer) = make_uplinks_writing();
 
     let ops = [
         MapOperation::Clear,

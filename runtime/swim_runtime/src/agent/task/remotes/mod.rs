@@ -16,11 +16,11 @@ use std::collections::HashMap;
 
 use bytes::BytesMut;
 use swim_model::Text;
-use swim_utilities::io::byte_channel::ByteWriter;
+use swim_utilities::{io::byte_channel::ByteWriter, trigger::promise};
 use tracing::debug;
 use uuid::Uuid;
 
-use crate::{error::InvalidKey, routing::RoutingAddr};
+use crate::{agent::DisconnectionReason, error::InvalidKey, routing::RoutingAddr};
 pub use sender::RemoteSender;
 pub use uplink::UplinkResponse;
 
@@ -55,8 +55,10 @@ impl RemoteTracker {
         }
     }
 
-    pub fn remove_remote(&mut self, remote_id: Uuid) {
-        self.remotes.remove(&remote_id);
+    pub fn remove_remote(&mut self, remote_id: Uuid, reason: DisconnectionReason) {
+        if let Some(existing) = self.remotes.remove(&remote_id) {
+            existing.complete(reason);
+        }
     }
 
     pub fn has_remote(&self, remote_id: Uuid) -> bool {
@@ -71,7 +73,12 @@ impl RemoteTracker {
         &mut self.registry
     }
 
-    pub fn insert(&mut self, remote_id: Uuid, writer: ByteWriter) {
+    pub fn insert(
+        &mut self,
+        remote_id: Uuid,
+        writer: ByteWriter,
+        completion: promise::Sender<DisconnectionReason>,
+    ) {
         debug!("Registering remote with ID {}.", remote_id);
         let RemoteTracker {
             identity,
@@ -79,10 +86,12 @@ impl RemoteTracker {
             remotes,
             ..
         } = self;
-        remotes.insert(
+        if let Some(existing) = remotes.insert(
             remote_id,
-            Uplinks::new(node.clone(), *identity, remote_id, writer),
-        );
+            Uplinks::new(node.clone(), *identity, remote_id, writer, completion),
+        ) {
+            existing.complete(DisconnectionReason::DuplicateRegistration(remote_id));
+        }
     }
 
     #[must_use]
@@ -134,5 +143,12 @@ impl RemoteTracker {
 
     pub fn is_empty(&self) -> bool {
         self.remotes.is_empty()
+    }
+
+    pub fn dispose_of_remotes(self, reason: DisconnectionReason) {
+        let RemoteTracker { remotes, .. } = self;
+        remotes
+            .into_iter()
+            .for_each(|(_, uplinks)| uplinks.complete(reason));
     }
 }
