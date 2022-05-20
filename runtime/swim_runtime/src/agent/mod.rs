@@ -272,3 +272,38 @@ where
     agent_result?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use uuid::Uuid;
+
+    use super::DisconnectionReason;
+
+    #[test]
+    fn disconnection_reason_display() {
+        assert_eq!(
+            DisconnectionReason::AgentStoppedExternally.to_string(),
+            "Agent stopped externally."
+        );
+        assert_eq!(
+            DisconnectionReason::AgentTimedOut.to_string(),
+            "Agent stopped after a period of inactivity."
+        );
+        assert_eq!(
+            DisconnectionReason::RemoteTimedOut.to_string(),
+            "The remote was pruned due to inactivity."
+        );
+        assert_eq!(
+            DisconnectionReason::ChannelClosed.to_string(),
+            "The remote stopped listening."
+        );
+        assert_eq!(
+            DisconnectionReason::Failed.to_string(),
+            "The agent task was dropped or the connection was never established."
+        );
+        assert_eq!(
+            DisconnectionReason::DuplicateRegistration(Uuid::from_u128(84772)).to_string(),
+            "The remote registration for 00000000-0000-0000-0000-000000014b24 was replaced."
+        );
+    }
+}
