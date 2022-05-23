@@ -64,6 +64,7 @@ pub enum WriteAction {
     Special(SpecialAction),
 }
 
+#[derive(Debug)]
 pub struct WriteTask {
     pub sender: RemoteSender,
     pub buffer: BytesMut,

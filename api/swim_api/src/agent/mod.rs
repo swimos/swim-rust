@@ -29,6 +29,7 @@ use crate::{
     error::{AgentInitError, AgentRuntimeError, AgentTaskError},
 };
 
+/// Indicates the sub-protocol that a lane uses to communicate it's state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UplinkKind {
     Value,
@@ -44,9 +45,12 @@ impl Display for UplinkKind {
     }
 }
 
+/// Configuration parametres for a lane.
 #[derive(Debug, Clone, Copy)]
 pub struct LaneConfig {
+    /// Size of the input buffer in bytes.
     pub input_buffer_size: NonZeroUsize,
+    /// Size of the output buffer in bytes.
     pub output_buffer_size: NonZeroUsize,
 }
 
@@ -61,7 +65,13 @@ impl Default for LaneConfig {
     }
 }
 
+/// Trait for the context that is passed to an agent to allow it to interact with the runtime.
 pub trait AgentContext {
+    /// Add a new lane endpoint to the runtime for this agent.
+    /// #Arguments
+    /// * `name` - The name of th elane.
+    /// * `uplink_kind` - Protocol to use for runtime to use for communication with the lane.
+    /// * `config` - Configuration parameters for the lane.
     fn add_lane<'a>(
         &'a self,
         name: &str,
@@ -69,6 +79,10 @@ pub trait AgentContext {
         config: Option<LaneConfig>,
     ) -> BoxFuture<'a, Result<(ByteWriter, ByteReader), AgentRuntimeError>>;
 
+    /// Open a downlink to to a lane on another agent.
+    /// #Arguments
+    /// * `config` - The configuration for the downlink.
+    /// * `downlinks` - Downlink implementation.
     fn open_downlink(
         &self,
         config: DownlinkConfig,
@@ -81,10 +95,22 @@ pub struct AgentConfig {
     //TODO Add parameters.
 }
 
+/// Type of the task for a running agent.
 pub type AgentTask<'a> = BoxFuture<'a, Result<(), AgentTaskError>>;
+/// Type of the task to initialize an agent.
 pub type AgentInitResult<'a> = Result<AgentTask<'a>, AgentInitError>;
 
+/// Trait to define a type of agent. Instances of this will be passed to the runtime
+/// to be executed. User code should not generally need to implement this directly. It is
+/// necessary for this trait to be object safe and any changes to it should take that into
+/// account.
 pub trait Agent {
+    /// Running an agent results in future that will perform the initialization of the agent and
+    /// then yield another future that will actually run the agent.
+    /// #Arguments
+    /// * `route` - The node URI of this agent instance.
+    /// * `config` - Configuration parameters for the agent.
+    /// * `context` - Context through which the agent can interact with the runtime.
     fn run<'a>(
         &self,
         route: RelativeUri,

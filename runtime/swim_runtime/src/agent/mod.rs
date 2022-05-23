@@ -43,7 +43,11 @@ use self::task::{AgentInitTask, NoLanes};
 
 mod task;
 
-pub struct AgentRuntimeContext {
+use task::AgentRuntimeRequest;
+
+/// Implementaton of [`AgentContext`] that communictates with with anotehr task over a channel
+/// to perform the supported operations.
+struct AgentRuntimeContext {
     tx: mpsc::Sender<AgentRuntimeRequest>,
 }
 
@@ -96,56 +100,24 @@ impl AgentContext for AgentRuntimeContext {
     }
 }
 
+/// Ends of two independent channels (for exampel the input and output channels of an agent).
 type Io = (ByteWriter, ByteReader);
 
-pub enum AgentRuntimeRequest {
-    AddLane {
-        name: Text,
-        kind: UplinkKind,
-        config: Option<LaneConfig>,
-        promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
-    },
-    OpenDownlink {
-        config: DownlinkConfig,
-        downlink: Box<dyn Downlink + Send>,
-        promise: oneshot::Sender<Result<(), AgentRuntimeError>>,
-    },
-}
-
-impl Debug for AgentRuntimeRequest {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::AddLane {
-                name,
-                kind,
-                config,
-                promise,
-            } => f
-                .debug_struct("AddLane")
-                .field("name", name)
-                .field("kind", kind)
-                .field("config", config)
-                .field("promise", promise)
-                .finish(),
-            Self::OpenDownlink {
-                config, promise, ..
-            } => f
-                .debug_struct("OpenDownlink")
-                .field("config", config)
-                .field("downlink", &"[[dyn Downlink]]")
-                .field("promise", promise)
-                .finish(),
-        }
-    }
-}
-
+/// Reasons that a remote connected to an agent runtime task could be disconnected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DisconnectionReason {
+    /// The agent stopped as part of a clean shutdown.
     AgentStoppedExternally,
+    /// The remote timed out after no longer having any active links.
     RemoteTimedOut,
+    /// The agent terminated after a period of inactivity.
     AgentTimedOut,
+    /// Another remote registered with the same ID.
     DuplicateRegistration(Uuid),
+    /// The remote was dropped by the other party.
     ChannelClosed,
+    /// Either the remote was not fully registered before the agent stopped or the agent stopped by
+    /// some means other than a clean shutdown (for example, a panic).
     Failed,
 }
 
@@ -171,12 +143,19 @@ impl Display for DisconnectionReason {
     }
 }
 
+/// A request to attach a new remote connection to an agent runtime task.
 #[derive(Debug)]
 pub struct AgentAttachmentRequest {
-    pub id: Uuid,
-    pub io: Io,
-    pub completion: promise::Sender<DisconnectionReason>,
-    pub on_attached: Option<trigger::Sender>,
+    /// The unique ID of the remote endpoint.
+    id: Uuid,
+    /// Channels over which the agent runtime task should communicate with the endpoint.
+    io: Io,
+    /// A promise that will be satisified when the agent runtime task closes the remote.
+    completion: promise::Sender<DisconnectionReason>,
+    /// If provided, this will be triggered when the remote has been fully registered with
+    /// the agent runtime requeset. The completion promise will only receive a non-failed
+    /// result after this occurs.
+    on_attached: Option<trigger::Sender>,
 }
 
 impl AgentAttachmentRequest {
@@ -189,6 +168,7 @@ impl AgentAttachmentRequest {
         }
     }
 
+    /// Constructs a request with a trigger that will be called when the registration completes.
     pub fn with_confirmation(
         id: Uuid,
         io: Io,
@@ -204,21 +184,33 @@ impl AgentAttachmentRequest {
     }
 }
 
+/// Configuration parameters for the aget runtime task.
 #[derive(Debug, Clone, Copy)]
 pub struct AgentRuntimeConfig {
+    /// Default configuration parameters to use for lanes that do not specify their own.
     pub default_lane_config: LaneConfig,
+    /// Size of the queue for hanlding requests to attach remotes to the task.
     pub attachment_queue_size: NonZeroUsize,
+    /// If the task is idle for more than this length of time, the agent will stop.
     pub inactive_timeout: Duration,
+    /// If a remote, with no links, is idle for more than this length of time, it will be
+    /// deregistered.
     pub prune_remote_delay: Duration,
+    /// If the clean-shutdown mechanism for the task takes longer than this, it will be
+    /// terminated.
     pub shutdown_timeout: Duration,
 }
 
+/// Ways in which the agent runtime task can fail.
 #[derive(Debug, Error)]
 pub enum AgentExecError {
+    /// Initializing the agent failed.
     #[error("Failed to initialize agent: {0}")]
     FailedInit(#[from] AgentInitError),
+    /// Initialization completed but no lanes were registered.
     #[error("The agent did not register any lanes.")]
     NoInitialLanes,
+    /// The runtime loop of the agent failed.
     #[error("The agent task failed: {0}")]
     FailedTask(#[from] AgentTaskError),
 }
@@ -229,6 +221,16 @@ impl From<NoLanes> for AgentExecError {
     }
 }
 
+/// Run an agent.
+///
+/// #Arguments
+/// * `agent` - The agent instance.
+/// * `identity` - The routing ID that will be attached to outgoing envelopes.
+/// * `route` - The node URI that will be attached to outgoing envelopes.
+/// * `attachment_rx` - Channel for making requests to attach remotes to the agent task.
+/// * `stopping` - Instructs th agent task to stop.
+/// * `agent_config` - Configuration parameters for the user agent task.
+/// * `runtime_config` - Configuration for the runtime part of the agent task.
 pub async fn run_agent<A>(
     agent: A,
     identity: RoutingAddr,
