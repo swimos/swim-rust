@@ -23,7 +23,7 @@ use crate::{
             tests::{RemoteReceiver, RemoteSender},
             AgentRuntimeTask, InitialEndpoints, LaneEndpoint,
         },
-        AgentAttachmentRequest, AgentRuntimeRequest, Io,
+        AgentAttachmentRequest, AgentRuntimeRequest, DisconnectionReason, Io,
     },
     routing::RoutingAddr,
 };
@@ -46,8 +46,8 @@ use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use super::{
-    make_config, LaneReader, MapLaneSender, ValueLaneSender, BUFFER_SIZE, DEFAULT_TIMEOUT,
-    MAP_LANE, QUEUE_SIZE, TEST_TIMEOUT, VAL_LANE,
+    make_prune_config, LaneReader, MapLaneSender, ValueLaneSender, BUFFER_SIZE, DEFAULT_TIMEOUT,
+    INACTIVE_TEST_TIMEOUT, MAP_LANE, QUEUE_SIZE, TEST_TIMEOUT, VAL_LANE,
 };
 
 #[derive(Debug, Clone)]
@@ -256,6 +256,7 @@ impl FakeAgent {
     }
 }
 
+#[derive(Debug)]
 struct Events(mpsc::UnboundedReceiver<Event>);
 
 impl Events {
@@ -295,6 +296,7 @@ impl Events {
     }
 }
 
+#[derive(Debug)]
 struct TestContext {
     att_tx: mpsc::Sender<AgentAttachmentRequest>,
     create_tx: mpsc::UnboundedSender<CreateLane>,
@@ -310,6 +312,7 @@ const RID3: RoutingAddr = RoutingAddr::remote(222);
 
 async fn run_test_case<F, Fut>(
     inactive_timeout: Duration,
+    prune_timeout: Duration,
     intial_state: Option<AgentState>,
     test_case: F,
 ) -> (AgentState, Fut::Output)
@@ -318,7 +321,7 @@ where
     Fut: Future + Send,
     Fut::Output: Debug,
 {
-    let config = make_config(inactive_timeout);
+    let config = make_prune_config(inactive_timeout, prune_timeout);
     let (req_tx, req_rx) = mpsc::channel(QUEUE_SIZE.get());
     let (att_tx, att_rx) = mpsc::channel(QUEUE_SIZE.get());
     let (create_tx, create_rx) = mpsc::unbounded_channel();
@@ -394,16 +397,21 @@ where
 
 #[tokio::test]
 async fn immediate_shutdown() {
-    let (state, _) = run_test_case(DEFAULT_TIMEOUT, None, |context| async move {
-        let TestContext {
-            att_tx: _att_tx,
-            create_tx: _create_tx,
-            event_rx: _event_rx,
-            stop_tx,
-        } = context;
+    let (state, _) = run_test_case(
+        DEFAULT_TIMEOUT,
+        DEFAULT_TIMEOUT,
+        None,
+        |context| async move {
+            let TestContext {
+                att_tx: _att_tx,
+                create_tx: _create_tx,
+                event_rx: _event_rx,
+                stop_tx,
+            } = context;
 
-        stop_tx.trigger();
-    })
+            stop_tx.trigger();
+        },
+    )
     .await;
 
     let AgentState {
@@ -431,65 +439,80 @@ async fn attach_remote(
 
 #[tokio::test]
 async fn link_lane() {
-    run_test_case(DEFAULT_TIMEOUT, None, |context| async move {
-        let TestContext {
-            att_tx,
-            create_tx: _create_tx,
-            event_rx: _event_rx,
-            stop_tx,
-        } = context;
-        let (mut sender, mut receiver) = attach_remote(RID1, &att_tx).await;
+    run_test_case(
+        DEFAULT_TIMEOUT,
+        DEFAULT_TIMEOUT,
+        None,
+        |context| async move {
+            let TestContext {
+                att_tx,
+                create_tx: _create_tx,
+                event_rx: _event_rx,
+                stop_tx,
+            } = context;
+            let (mut sender, mut receiver) = attach_remote(RID1, &att_tx).await;
 
-        sender.link(VAL_LANE).await;
-        receiver.expect_linked(VAL_LANE).await;
+            sender.link(VAL_LANE).await;
+            receiver.expect_linked(VAL_LANE).await;
 
-        stop_tx.trigger();
+            stop_tx.trigger();
 
-        receiver.expect_clean_shutdown(vec![VAL_LANE], None).await;
-    })
+            receiver.expect_clean_shutdown(vec![VAL_LANE], None).await;
+        },
+    )
     .await;
 }
 
 #[tokio::test]
 async fn set_value() {
-    let (mut state, _) = run_test_case(DEFAULT_TIMEOUT, None, |context| async move {
-        let TestContext {
-            att_tx,
-            create_tx: _create_tx,
-            mut event_rx,
-            stop_tx,
-        } = context;
-        let (mut sender, receiver) = attach_remote(RID1, &att_tx).await;
+    let (mut state, _) = run_test_case(
+        DEFAULT_TIMEOUT,
+        DEFAULT_TIMEOUT,
+        None,
+        |context| async move {
+            let TestContext {
+                att_tx,
+                create_tx: _create_tx,
+                mut event_rx,
+                stop_tx,
+            } = context;
+            let (mut sender, receiver) = attach_remote(RID1, &att_tx).await;
 
-        sender.value_command(VAL_LANE, 7).await;
-        event_rx.await_value_command(VAL_LANE, 7).await;
+            sender.value_command(VAL_LANE, 7).await;
+            event_rx.await_value_command(VAL_LANE, 7).await;
 
-        stop_tx.trigger();
+            stop_tx.trigger();
 
-        receiver.expect_clean_shutdown(vec![], None).await;
-    })
+            receiver.expect_clean_shutdown(vec![], None).await;
+        },
+    )
     .await;
     assert_eq!(state.value_lanes.remove(VAL_LANE), Some(7));
 }
 
 #[tokio::test]
 async fn insert_value() {
-    let (mut state, _) = run_test_case(DEFAULT_TIMEOUT, None, |context| async move {
-        let TestContext {
-            att_tx,
-            create_tx: _create_tx,
-            mut event_rx,
-            stop_tx,
-        } = context;
-        let (mut sender, receiver) = attach_remote(RID1, &att_tx).await;
+    let (mut state, _) = run_test_case(
+        DEFAULT_TIMEOUT,
+        DEFAULT_TIMEOUT,
+        None,
+        |context| async move {
+            let TestContext {
+                att_tx,
+                create_tx: _create_tx,
+                mut event_rx,
+                stop_tx,
+            } = context;
+            let (mut sender, receiver) = attach_remote(RID1, &att_tx).await;
 
-        sender.map_command(MAP_LANE, "a", 1).await;
-        event_rx.await_map_command(MAP_LANE, "a", 1).await;
+            sender.map_command(MAP_LANE, "a", 1).await;
+            event_rx.await_map_command(MAP_LANE, "a", 1).await;
 
-        stop_tx.trigger();
+            stop_tx.trigger();
 
-        receiver.expect_clean_shutdown(vec![], None).await;
-    })
+            receiver.expect_clean_shutdown(vec![], None).await;
+        },
+    )
     .await;
     let mut expected = BTreeMap::new();
     expected.insert(Text::new("a"), 1);
@@ -498,49 +521,59 @@ async fn insert_value() {
 
 #[tokio::test]
 async fn unlink_when_not_linked_does_nothing() {
-    run_test_case(DEFAULT_TIMEOUT, None, |context| async move {
-        let TestContext {
-            att_tx,
-            create_tx: _create_tx,
-            mut event_rx,
-            stop_tx,
-        } = context;
-        let (mut sender, receiver) = attach_remote(RID1, &att_tx).await;
+    run_test_case(
+        DEFAULT_TIMEOUT,
+        DEFAULT_TIMEOUT,
+        None,
+        |context| async move {
+            let TestContext {
+                att_tx,
+                create_tx: _create_tx,
+                mut event_rx,
+                stop_tx,
+            } = context;
+            let (mut sender, receiver) = attach_remote(RID1, &att_tx).await;
 
-        sender.unlink(VAL_LANE).await;
+            sender.unlink(VAL_LANE).await;
 
-        //Sending a value and waiting for it to be processed ensures we are after the unlink has been processed.
-        sender.value_command(VAL_LANE, 1).await;
-        event_rx.await_value_command(VAL_LANE, 1).await;
+            //Sending a value and waiting for it to be processed ensures we are after the unlink has been processed.
+            sender.value_command(VAL_LANE, 1).await;
+            event_rx.await_value_command(VAL_LANE, 1).await;
 
-        stop_tx.trigger();
+            stop_tx.trigger();
 
-        receiver.expect_clean_shutdown(vec![], None).await;
-    })
+            receiver.expect_clean_shutdown(vec![], None).await;
+        },
+    )
     .await;
 }
 
 #[tokio::test]
 async fn unlink_linked_lane() {
-    run_test_case(DEFAULT_TIMEOUT, None, |context| async move {
-        let TestContext {
-            att_tx,
-            create_tx: _create_tx,
-            event_rx: _event_rx,
-            stop_tx,
-        } = context;
-        let (mut sender, mut receiver) = attach_remote(RID1, &att_tx).await;
+    run_test_case(
+        DEFAULT_TIMEOUT,
+        DEFAULT_TIMEOUT,
+        None,
+        |context| async move {
+            let TestContext {
+                att_tx,
+                create_tx: _create_tx,
+                event_rx: _event_rx,
+                stop_tx,
+            } = context;
+            let (mut sender, mut receiver) = attach_remote(RID1, &att_tx).await;
 
-        sender.link(VAL_LANE).await;
-        receiver.expect_linked(VAL_LANE).await;
+            sender.link(VAL_LANE).await;
+            receiver.expect_linked(VAL_LANE).await;
 
-        sender.unlink(VAL_LANE).await;
-        receiver.expect_unlinked(VAL_LANE).await;
+            sender.unlink(VAL_LANE).await;
+            receiver.expect_unlinked(VAL_LANE).await;
 
-        stop_tx.trigger();
+            stop_tx.trigger();
 
-        receiver.expect_clean_shutdown(vec![], None).await;
-    })
+            receiver.expect_clean_shutdown(vec![], None).await;
+        },
+    )
     .await;
 }
 
@@ -549,49 +582,59 @@ async fn sync_value_lane() {
     let mut init_state = AgentState::default();
     init_state.value_lanes.insert(Text::new(VAL_LANE), 67);
 
-    run_test_case(DEFAULT_TIMEOUT, Some(init_state), |context| async move {
-        let TestContext {
-            att_tx,
-            create_tx: _create_tx,
-            event_rx: _event_rx,
-            stop_tx,
-        } = context;
-        let (mut sender, mut receiver) = attach_remote(RID1, &att_tx).await;
+    run_test_case(
+        DEFAULT_TIMEOUT,
+        DEFAULT_TIMEOUT,
+        Some(init_state),
+        |context| async move {
+            let TestContext {
+                att_tx,
+                create_tx: _create_tx,
+                event_rx: _event_rx,
+                stop_tx,
+            } = context;
+            let (mut sender, mut receiver) = attach_remote(RID1, &att_tx).await;
 
-        sender.link(VAL_LANE).await;
-        sender.sync(VAL_LANE).await;
+            sender.link(VAL_LANE).await;
+            sender.sync(VAL_LANE).await;
 
-        receiver.expect_linked(VAL_LANE).await;
-        receiver.expect_value_synced(VAL_LANE, 67).await;
+            receiver.expect_linked(VAL_LANE).await;
+            receiver.expect_value_synced(VAL_LANE, 67).await;
 
-        stop_tx.trigger();
+            stop_tx.trigger();
 
-        receiver.expect_clean_shutdown(vec![VAL_LANE], None).await;
-    })
+            receiver.expect_clean_shutdown(vec![VAL_LANE], None).await;
+        },
+    )
     .await;
 }
 
 #[tokio::test]
 async fn sync_empty_map_lane() {
-    run_test_case(DEFAULT_TIMEOUT, None, |context| async move {
-        let TestContext {
-            att_tx,
-            create_tx: _create_tx,
-            event_rx: _event_rx,
-            stop_tx,
-        } = context;
-        let (mut sender, mut receiver) = attach_remote(RID1, &att_tx).await;
+    run_test_case(
+        DEFAULT_TIMEOUT,
+        DEFAULT_TIMEOUT,
+        None,
+        |context| async move {
+            let TestContext {
+                att_tx,
+                create_tx: _create_tx,
+                event_rx: _event_rx,
+                stop_tx,
+            } = context;
+            let (mut sender, mut receiver) = attach_remote(RID1, &att_tx).await;
 
-        sender.link(MAP_LANE).await;
-        sender.sync(MAP_LANE).await;
+            sender.link(MAP_LANE).await;
+            sender.sync(MAP_LANE).await;
 
-        receiver.expect_linked(MAP_LANE).await;
-        receiver.expect_map_synced(MAP_LANE).await;
+            receiver.expect_linked(MAP_LANE).await;
+            receiver.expect_map_synced(MAP_LANE).await;
 
-        stop_tx.trigger();
+            stop_tx.trigger();
 
-        receiver.expect_clean_shutdown(vec![MAP_LANE], None).await;
-    })
+            receiver.expect_clean_shutdown(vec![MAP_LANE], None).await;
+        },
+    )
     .await;
 }
 
@@ -605,38 +648,43 @@ async fn sync_nonempty_map_lane() {
         .map_lanes
         .insert(Text::new(MAP_LANE), init_map.clone());
 
-    run_test_case(DEFAULT_TIMEOUT, Some(initial_state), |context| async move {
-        let TestContext {
-            att_tx,
-            create_tx: _create_tx,
-            event_rx: _event_rx,
-            stop_tx,
-        } = context;
-        let (mut sender, mut receiver) = attach_remote(RID1, &att_tx).await;
+    run_test_case(
+        DEFAULT_TIMEOUT,
+        DEFAULT_TIMEOUT,
+        Some(initial_state),
+        |context| async move {
+            let TestContext {
+                att_tx,
+                create_tx: _create_tx,
+                event_rx: _event_rx,
+                stop_tx,
+            } = context;
+            let (mut sender, mut receiver) = attach_remote(RID1, &att_tx).await;
 
-        sender.link(MAP_LANE).await;
-        sender.sync(MAP_LANE).await;
+            sender.link(MAP_LANE).await;
+            sender.sync(MAP_LANE).await;
 
-        receiver.expect_linked(MAP_LANE).await;
-        let mut synced_map = BTreeMap::new();
-        for _ in 0..init_map.len() {
-            receiver
-                .expect_any_map_event(MAP_LANE, |message| match message {
-                    MapMessage::Update { key, value } => {
-                        assert!(!synced_map.contains_key(&key));
-                        synced_map.insert(key, value);
-                    }
-                    ow => panic!("Unexpected map message: {:?}", ow),
-                })
-                .await;
-        }
-        assert_eq!(synced_map, init_map);
-        receiver.expect_map_synced(MAP_LANE).await;
+            receiver.expect_linked(MAP_LANE).await;
+            let mut synced_map = BTreeMap::new();
+            for _ in 0..init_map.len() {
+                receiver
+                    .expect_any_map_event(MAP_LANE, |message| match message {
+                        MapMessage::Update { key, value } => {
+                            assert!(!synced_map.contains_key(&key));
+                            synced_map.insert(key, value);
+                        }
+                        ow => panic!("Unexpected map message: {:?}", ow),
+                    })
+                    .await;
+            }
+            assert_eq!(synced_map, init_map);
+            receiver.expect_map_synced(MAP_LANE).await;
 
-        stop_tx.trigger();
+            stop_tx.trigger();
 
-        receiver.expect_clean_shutdown(vec![MAP_LANE], None).await;
-    })
+            receiver.expect_clean_shutdown(vec![MAP_LANE], None).await;
+        },
+    )
     .await;
 }
 
@@ -645,148 +693,230 @@ async fn sync_lane_implicit_link() {
     let mut init_state = AgentState::default();
     init_state.value_lanes.insert(Text::new(VAL_LANE), 67);
 
-    run_test_case(DEFAULT_TIMEOUT, Some(init_state), |context| async move {
-        let TestContext {
-            att_tx,
-            create_tx: _create_tx,
-            event_rx: _event_rx,
-            stop_tx,
-        } = context;
-        let (mut sender, mut receiver) = attach_remote(RID1, &att_tx).await;
+    run_test_case(
+        DEFAULT_TIMEOUT,
+        DEFAULT_TIMEOUT,
+        Some(init_state),
+        |context| async move {
+            let TestContext {
+                att_tx,
+                create_tx: _create_tx,
+                event_rx: _event_rx,
+                stop_tx,
+            } = context;
+            let (mut sender, mut receiver) = attach_remote(RID1, &att_tx).await;
 
-        sender.sync(VAL_LANE).await;
+            sender.sync(VAL_LANE).await;
 
-        receiver.expect_linked(VAL_LANE).await;
-        receiver.expect_value_synced(VAL_LANE, 67).await;
+            receiver.expect_linked(VAL_LANE).await;
+            receiver.expect_value_synced(VAL_LANE, 67).await;
 
-        stop_tx.trigger();
+            stop_tx.trigger();
 
-        receiver.expect_clean_shutdown(vec![VAL_LANE], None).await;
-    })
+            receiver.expect_clean_shutdown(vec![VAL_LANE], None).await;
+        },
+    )
     .await;
 }
 
 #[tokio::test]
 async fn receive_messages_when_linked() {
-    run_test_case(DEFAULT_TIMEOUT, None, |context| async move {
-        let TestContext {
-            att_tx,
-            create_tx: _create_tx,
-            event_rx: _event_rx,
-            stop_tx,
-        } = context;
+    run_test_case(
+        DEFAULT_TIMEOUT,
+        DEFAULT_TIMEOUT,
+        None,
+        |context| async move {
+            let TestContext {
+                att_tx,
+                create_tx: _create_tx,
+                event_rx: _event_rx,
+                stop_tx,
+            } = context;
 
-        let v = 34;
+            let v = 34;
 
-        let (linked_tx, linked_rx) = trigger::trigger();
+            let (linked_tx, linked_rx) = trigger::trigger();
 
-        let producer = async {
-            let (mut sender, receiver) = attach_remote(RID1, &att_tx).await;
-            assert!(linked_rx.await.is_ok());
-            sender.value_command(VAL_LANE, v).await;
-            receiver
-        };
+            let producer = async {
+                let (mut sender, receiver) = attach_remote(RID1, &att_tx).await;
+                assert!(linked_rx.await.is_ok());
+                sender.value_command(VAL_LANE, v).await;
+                receiver
+            };
 
-        let consumer = async {
-            let (mut sender, mut receiver) = attach_remote(RID2, &att_tx).await;
-            sender.link(VAL_LANE).await;
-            receiver.expect_linked(VAL_LANE).await;
-            linked_tx.trigger();
-            receiver.expect_value_event(VAL_LANE, v).await;
-            receiver
-        };
+            let consumer = async {
+                let (mut sender, mut receiver) = attach_remote(RID2, &att_tx).await;
+                sender.link(VAL_LANE).await;
+                receiver.expect_linked(VAL_LANE).await;
+                linked_tx.trigger();
+                receiver.expect_value_event(VAL_LANE, v).await;
+                receiver
+            };
 
-        let (receiver1, receiver2) = join(producer, consumer).await;
+            let (receiver1, receiver2) = join(producer, consumer).await;
 
-        stop_tx.trigger();
+            stop_tx.trigger();
 
-        receiver1.expect_clean_shutdown(vec![], None).await;
-        receiver2.expect_clean_shutdown(vec![VAL_LANE], None).await;
-    })
+            receiver1.expect_clean_shutdown(vec![], None).await;
+            receiver2.expect_clean_shutdown(vec![VAL_LANE], None).await;
+        },
+    )
     .await;
 }
 
 #[tokio::test]
 async fn link_two_consumers() {
-    run_test_case(DEFAULT_TIMEOUT, None, |context| async move {
-        let TestContext {
-            att_tx,
-            create_tx: _create_tx,
-            event_rx: _event_rx,
-            stop_tx,
-        } = context;
+    run_test_case(
+        DEFAULT_TIMEOUT,
+        DEFAULT_TIMEOUT,
+        None,
+        |context| async move {
+            let TestContext {
+                att_tx,
+                create_tx: _create_tx,
+                event_rx: _event_rx,
+                stop_tx,
+            } = context;
 
-        let consumer1 = async {
-            let (mut sender, mut receiver) = attach_remote(RID1, &att_tx).await;
-            sender.link(VAL_LANE).await;
-            receiver.expect_linked(VAL_LANE).await;
-            receiver
-        };
+            let consumer1 = async {
+                let (mut sender, mut receiver) = attach_remote(RID1, &att_tx).await;
+                sender.link(VAL_LANE).await;
+                receiver.expect_linked(VAL_LANE).await;
+                receiver
+            };
 
-        let consumer2 = async {
-            let (mut sender, mut receiver) = attach_remote(RID2, &att_tx).await;
-            sender.link(VAL_LANE).await;
-            receiver.expect_linked(VAL_LANE).await;
-            receiver
-        };
+            let consumer2 = async {
+                let (mut sender, mut receiver) = attach_remote(RID2, &att_tx).await;
+                sender.link(VAL_LANE).await;
+                receiver.expect_linked(VAL_LANE).await;
+                receiver
+            };
 
-        let (receiver1, receiver2) = join(consumer1, consumer2).await;
+            let (receiver1, receiver2) = join(consumer1, consumer2).await;
 
-        stop_tx.trigger();
-        receiver1.expect_clean_shutdown(vec![VAL_LANE], None).await;
-        receiver2.expect_clean_shutdown(vec![VAL_LANE], None).await;
-    })
+            stop_tx.trigger();
+            receiver1.expect_clean_shutdown(vec![VAL_LANE], None).await;
+            receiver2.expect_clean_shutdown(vec![VAL_LANE], None).await;
+        },
+    )
     .await;
 }
 
 #[tokio::test]
 async fn receive_messages_when_liked_multiple_consumers() {
-    run_test_case(DEFAULT_TIMEOUT, None, |context| async move {
-        let TestContext {
-            att_tx,
-            create_tx: _create_tx,
-            event_rx: _event_rx,
-            stop_tx,
-        } = context;
+    run_test_case(
+        DEFAULT_TIMEOUT,
+        DEFAULT_TIMEOUT,
+        None,
+        |context| async move {
+            let TestContext {
+                att_tx,
+                create_tx: _create_tx,
+                event_rx: _event_rx,
+                stop_tx,
+            } = context;
 
-        let (linked_tx1, linked_rx1) = trigger::trigger();
-        let (linked_tx2, linked_rx2) = trigger::trigger();
+            let (linked_tx1, linked_rx1) = trigger::trigger();
+            let (linked_tx2, linked_rx2) = trigger::trigger();
 
-        let v = 7394784;
+            let v = 7394784;
 
-        let producer = async {
-            let (mut sender, receiver) = attach_remote(RID1, &att_tx).await;
-            assert!(linked_rx1.await.is_ok());
-            assert!(linked_rx2.await.is_ok());
-            sender.value_command(VAL_LANE, v).await;
-            receiver
-        };
+            let producer = async {
+                let (mut sender, receiver) = attach_remote(RID1, &att_tx).await;
+                assert!(linked_rx1.await.is_ok());
+                assert!(linked_rx2.await.is_ok());
+                sender.value_command(VAL_LANE, v).await;
+                receiver
+            };
 
-        let consumer1 = async {
-            let (mut sender, mut receiver) = attach_remote(RID2, &att_tx).await;
+            let consumer1 = async {
+                let (mut sender, mut receiver) = attach_remote(RID2, &att_tx).await;
+                sender.link(VAL_LANE).await;
+                receiver.expect_linked(VAL_LANE).await;
+                linked_tx1.trigger();
+                receiver.expect_value_event(VAL_LANE, v).await;
+                receiver
+            };
+
+            let consumer2 = async {
+                let (mut sender, mut receiver) = attach_remote(RID3, &att_tx).await;
+                sender.link(VAL_LANE).await;
+                receiver.expect_linked(VAL_LANE).await;
+                linked_tx2.trigger();
+                receiver.expect_value_event(VAL_LANE, v).await;
+                receiver
+            };
+
+            let (receiver1, receiver2, receiver3) = join3(producer, consumer1, consumer2).await;
+
+            stop_tx.trigger();
+
+            receiver1.expect_clean_shutdown(vec![], None).await;
+            receiver2.expect_clean_shutdown(vec![VAL_LANE], None).await;
+            receiver3.expect_clean_shutdown(vec![VAL_LANE], None).await;
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn agent_timeout_no_remotes() {
+    run_test_case(
+        INACTIVE_TEST_TIMEOUT,
+        DEFAULT_TIMEOUT,
+        None,
+        |context| async move { context },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn agent_timeout() {
+    run_test_case(
+        INACTIVE_TEST_TIMEOUT,
+        DEFAULT_TIMEOUT,
+        None,
+        |context| async move {
+            let TestContext {
+                att_tx,
+                create_tx: _create_tx,
+                event_rx: _event_rx,
+                stop_tx,
+            } = context;
+            let (mut sender, mut receiver) = attach_remote(RID1, &att_tx).await;
+
             sender.link(VAL_LANE).await;
             receiver.expect_linked(VAL_LANE).await;
-            linked_tx1.trigger();
-            receiver.expect_value_event(VAL_LANE, v).await;
+
             receiver
-        };
+                .expect_clean_shutdown(vec![VAL_LANE], Some(DisconnectionReason::AgentTimedOut))
+                .await;
+            stop_tx
+        },
+    )
+    .await;
+}
 
-        let consumer2 = async {
-            let (mut sender, mut receiver) = attach_remote(RID3, &att_tx).await;
-            sender.link(VAL_LANE).await;
-            receiver.expect_linked(VAL_LANE).await;
-            linked_tx2.trigger();
-            receiver.expect_value_event(VAL_LANE, v).await;
+#[tokio::test]
+async fn remote_timeout() {
+    run_test_case(
+        DEFAULT_TIMEOUT,
+        INACTIVE_TEST_TIMEOUT,
+        None,
+        |context| async move {
+            let TestContext {
+                att_tx,
+                create_tx: _create_tx,
+                event_rx: _event_rx,
+                stop_tx,
+            } = context;
+            let (_sender, receiver) = attach_remote(RID1, &att_tx).await;
+
             receiver
-        };
-
-        let (receiver1, receiver2, receiver3) = join3(producer, consumer1, consumer2).await;
-
-        stop_tx.trigger();
-
-        receiver1.expect_clean_shutdown(vec![], None).await;
-        receiver2.expect_clean_shutdown(vec![VAL_LANE], None).await;
-        receiver3.expect_clean_shutdown(vec![VAL_LANE], None).await;
-    })
+                .expect_clean_shutdown(vec![], Some(DisconnectionReason::RemoteTimedOut))
+                .await;
+            stop_tx.trigger();
+        },
+    )
     .await;
 }

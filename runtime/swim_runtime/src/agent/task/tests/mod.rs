@@ -69,6 +69,13 @@ const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
 
 fn make_config(inactive_timeout: Duration) -> AgentRuntimeConfig {
+    make_prune_config(inactive_timeout, inactive_timeout)
+}
+
+fn make_prune_config(
+    inactive_timeout: Duration,
+    prune_remote_delay: Duration,
+) -> AgentRuntimeConfig {
     AgentRuntimeConfig {
         default_lane_config: LaneConfig {
             input_buffer_size: BUFFER_SIZE,
@@ -76,7 +83,7 @@ fn make_config(inactive_timeout: Duration) -> AgentRuntimeConfig {
         },
         attachment_queue_size: non_zero_usize!(8),
         inactive_timeout,
-        prune_remote_delay: inactive_timeout,
+        prune_remote_delay,
         shutdown_timeout: SHUTDOWN_TIMEOUT,
     }
 }
