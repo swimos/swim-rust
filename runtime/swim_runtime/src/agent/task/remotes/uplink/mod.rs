@@ -284,7 +284,9 @@ impl Uplinks {
                                     WriteTask::new(
                                         sender,
                                         buffer,
-                                        WriteAction::MapSynced(Some(std::mem::take(backpressure))),
+                                        WriteAction::MapSynced(Some(Box::new(std::mem::take(
+                                            backpressure,
+                                        )))),
                                     )
                                 } else {
                                     backpressure.prepare_write(&mut buffer);

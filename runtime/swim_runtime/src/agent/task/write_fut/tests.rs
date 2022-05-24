@@ -134,7 +134,10 @@ async fn write_map_queue_with_synced() {
         })
         .is_ok());
 
-    let (task, mut reader) = make_task(WriteAction::MapSynced(Some(map_backpressure)), None);
+    let (task, mut reader) = make_task(
+        WriteAction::MapSynced(Some(Box::new(map_backpressure))),
+        None,
+    );
 
     assert!(task.into_future().await.2.is_ok());
 

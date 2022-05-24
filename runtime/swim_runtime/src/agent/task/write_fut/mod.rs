@@ -67,7 +67,7 @@ pub enum WriteAction {
     // A value lane event, to be followed by a synced message, (the body is store in the associated buffer).
     EventAndSynced,
     // A queue of map lan events, to be followed by a synced message (the contents of the buffer are irrelevant).
-    MapSynced(Option<MapBackpressure>),
+    MapSynced(Option<Box<MapBackpressure>>),
     // A special action (the body will be stored in the associated buffer, where appropriate).
     Special(SpecialAction),
 }
