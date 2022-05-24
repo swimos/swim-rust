@@ -1,5 +1,5 @@
 error: Failed to parse range. Malformatted input at index 3
-  --> $DIR/src/schema/tests/derive/validated_form/invalid_range.rs:18:14
+  --> src/schema/tests/derive/validated_form/invalid_range.rs:20:35
    |
-18 |     #[derive(ValueSchema)]
-   |              ^^^^^^^^^^^
+20 |         #[form(schema(int_range = "0...1.."))]
+   |                                   ^^^^^^^^^
