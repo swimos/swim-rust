@@ -1,5 +1,5 @@
 error: At most one field can replace the body.
-  --> $DIR/src/tests/derive/form/double_body_attr.rs:18:14
+  --> src/tests/derive/form/double_body_attr.rs:22:16
    |
-18 |     #[derive(Form)]
-   |              ^^^^
+22 |         #[form(body)]
+   |                ^^^^

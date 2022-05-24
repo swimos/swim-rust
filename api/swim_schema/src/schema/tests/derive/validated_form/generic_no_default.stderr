@@ -1,24 +1,28 @@
 error[E0277]: the trait bound `S<Invalid>: StructuralWritable` is not satisfied
-   --> $DIR/src/schema/tests/derive/validated_form/generic_no_default.rs:30:29
+   --> src/schema/tests/derive/validated_form/generic_no_default.rs:30:29
     |
 30  |     let _s = Form::as_value(&S { a: 1, f: Invalid });
-    |                             ^^^^^^^^^^^^^^^^^^^^^^^ the trait `StructuralWritable` is not implemented for `S<Invalid>`
+    |              -------------- ^^^^^^^^^^^^^^^^^^^^^^^ the trait `StructuralWritable` is not implemented for `S<Invalid>`
+    |              |
+    |              required by a bound introduced by this call
     |
-note: required by `as_value`
+note: required by a bound in `as_value`
    --> $WORKSPACE/api/swim_form/src/lib.rs
     |
-    |     fn as_value(&self) -> Value {
-    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    | pub trait Form: StructuralReadable + StructuralWritable {
+    |                                      ^^^^^^^^^^^^^^^^^^ required by this bound in `as_value`
 
 error[E0277]: the trait bound `S<Invalid>: RecognizerReadable` is not satisfied
-   --> $DIR/src/schema/tests/derive/validated_form/generic_no_default.rs:30:29
+   --> src/schema/tests/derive/validated_form/generic_no_default.rs:30:29
     |
 30  |     let _s = Form::as_value(&S { a: 1, f: Invalid });
-    |                             ^^^^^^^^^^^^^^^^^^^^^^^ the trait `RecognizerReadable` is not implemented for `S<Invalid>`
+    |              -------------- ^^^^^^^^^^^^^^^^^^^^^^^ the trait `RecognizerReadable` is not implemented for `S<Invalid>`
+    |              |
+    |              required by a bound introduced by this call
     |
     = note: required because of the requirements on the impl of `StructuralReadable` for `S<Invalid>`
-note: required by `as_value`
+note: required by a bound in `as_value`
    --> $WORKSPACE/api/swim_form/src/lib.rs
     |
-    |     fn as_value(&self) -> Value {
-    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    | pub trait Form: StructuralReadable + StructuralWritable {
+    |                 ^^^^^^^^^^^^^^^^^^ required by this bound in `as_value`
