@@ -23,11 +23,12 @@ use futures::{ready, FutureExt, Stream};
 use tokio::time::{Instant, Sleep};
 use uuid::Uuid;
 
+/// A queue of remotes to be pruned if they have no links within the timeout period.
 #[derive(Debug)]
 pub struct PruneRemotes<'a> {
-    next_id: Option<Uuid>,
-    delay: Pin<&'a mut Sleep>,
-    remote_ids: VecDeque<(Uuid, Instant)>,
+    next_id: Option<Uuid>,                 //Next ID to prune.
+    delay: Pin<&'a mut Sleep>,             //Delay future (held on the stack of the write task).
+    remote_ids: VecDeque<(Uuid, Instant)>, //Queue of future IDs to be pruned.
 }
 
 impl<'a> PruneRemotes<'a> {

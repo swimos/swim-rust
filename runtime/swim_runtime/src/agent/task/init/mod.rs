@@ -28,17 +28,25 @@ use tracing::{error, info};
 #[cfg(test)]
 mod tests;
 
+/// Task for the initialization of an agent. While this task is executing, new lanes can be
+/// registered but they will not be driven and no remote connections will exist attached to
+/// the agent.
 pub struct AgentInitTask {
     requests: mpsc::Receiver<AgentRuntimeRequest>,
     init_complete: trigger::Receiver,
     config: AgentRuntimeConfig,
 }
 
+/// Error type produced if no lanes are registered in the initialization phase.
 #[derive(Debug, Clone, Copy, Error)]
 #[error("No lanes were registered.")]
 pub struct NoLanes;
 
 impl AgentInitTask {
+    /// #Arguments
+    /// * `requests` - Channel for requests to open new lanes and downlinks.
+    /// * `init_complete` - Triggered when the initialization phase is complete.
+    /// * `config` - Configuration parameters for the agent runtime.
     pub fn new(
         requests: mpsc::Receiver<AgentRuntimeRequest>,
         init_complete: trigger::Receiver,

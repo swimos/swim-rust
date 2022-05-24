@@ -17,6 +17,8 @@ use std::collections::HashMap;
 use swim_model::Text;
 use tracing::debug;
 
+/// Assigns integer IDs to each lane of an agent. This is to avoid moving copies of the string name
+/// into futures.
 #[derive(Debug, Default)]
 pub struct LaneRegistry {
     lane_id_counter: u64,
@@ -31,6 +33,7 @@ impl LaneRegistry {
         id
     }
 
+    /// Add a new lane to the registry, getting its assigned ID.
     #[must_use]
     pub fn add_endpoint(&mut self, name: Text) -> u64 {
         let id = self.next_id();
@@ -45,6 +48,7 @@ impl LaneRegistry {
         id
     }
 
+    /// Remove a lane from the registry, by ID.
     pub fn remove(&mut self, id: u64) -> Option<Text> {
         let LaneRegistry {
             lane_names,

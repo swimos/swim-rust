@@ -33,15 +33,21 @@ use super::{
 #[cfg(test)]
 mod tests;
 
+/// Message type for communication between the agent runtime and agent implementation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LaneRequest<T> {
+    /// A command to alter the state of the lane.
     Command(T),
+    /// Request the a synchronization with the lane (responses will be tagged with the provided ID).
     Sync(Uuid),
 }
 
+/// Possible message types for communication from an agent implementation to the agent runtime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LaneResponseKind {
+    /// Notification of a change in the state of a lane.
     StandardEvent,
+    /// Response to a sync requst from the runtime.
     SyncEvent(Uuid),
 }
 
@@ -51,10 +57,11 @@ impl Default for LaneResponseKind {
     }
 }
 
+/// Value lane message type for communication between the agent implementation and agent runtime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ValueLaneResponse<T> {
-    pub kind: LaneResponseKind,
-    pub value: T,
+    pub kind: LaneResponseKind, //Kind of the message (whether it is part of a synchronization).
+    pub value: T,               //The body of the message.
 }
 
 impl<T> ValueLaneResponse<T> {
@@ -73,12 +80,15 @@ impl<T> ValueLaneResponse<T> {
     }
 }
 
+/// Map lane message type for communication between the agent implementation and agent runtime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MapLaneResponse<K, V> {
+    /// An event (either part of a syncrhonization or not).
     Event {
         kind: LaneResponseKind,
         operation: MapOperation<K, V>,
     },
+    /// Indicates that a synchronization has completed.
     SyncComplete(Uuid),
 }
 

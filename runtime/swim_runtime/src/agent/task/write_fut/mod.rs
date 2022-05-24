@@ -25,10 +25,13 @@ use super::remotes::{LaneRegistry, RemoteSender};
 #[cfg(test)]
 mod tests;
 
+/// The result type of the write future (the sender that performed the write, the associated
+/// buffer and the result of the operation).
 pub type WriteResult = (RemoteSender, BytesMut, Result<(), std::io::Error>);
 
 const LANE_NOT_FOUND_BODY: &[u8] = b"@laneNotFound";
 
+/// Special actions that take priority over general lane events.
 #[derive(Debug, Clone)]
 pub enum SpecialAction {
     Linked(u64),
@@ -56,14 +59,20 @@ impl SpecialAction {
     }
 }
 
+/// Types of writes that can be performed by a [`WriteTask`].
 #[derive(Debug)]
 pub enum WriteAction {
+    // A lane event (the body is store in the associated buffer).
     Event,
+    // A value lane event, to be followed by a synced message, (the body is store in the associated buffer).
     EventAndSynced,
+    // A queue of map lan events, to be followed by a synced message (the contents of the buffer are irrelevant).
     MapSynced(Option<MapBackpressure>),
+    // A special action (the body will be stored in the associated buffer, where appropriate).
     Special(SpecialAction),
 }
 
+/// A task that will write one more messages to a remote attached to an agent.
 #[derive(Debug)]
 pub struct WriteTask {
     pub sender: RemoteSender,
@@ -80,6 +89,7 @@ impl WriteTask {
         }
     }
 
+    /// Create a future that performs the write.
     pub async fn into_future(self) -> WriteResult {
         let WriteTask {
             mut sender,

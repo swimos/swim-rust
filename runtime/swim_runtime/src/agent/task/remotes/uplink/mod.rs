@@ -38,21 +38,33 @@ mod tests;
 
 use super::{LaneRegistry, RemoteSender};
 
+/// Keeps track of the state of uplinks from lanes to remotes. In effect, this is a specialized queue of futures
+/// representing a write to be performed on the remote. When attempting to push a new entry into the queue,
+/// if the writer is present, a write will be produced immediately. If the writer is absent, the new entry
+/// will either be enqueued (link and unlink messages for example) or will be pushed into the appropriate
+/// backpressure relief mechanism for the lane. To pop from the queue, the writer is returned. If there is
+/// more work to be done, it will be popped and returned as a new future (once again removing the writer). If
+/// no work is pending, the writer is stored within the queue and nothing is returned.
 #[derive(Debug)]
 pub struct Uplinks {
-    writer: Option<(RemoteSender, BytesMut)>,
-    value_uplinks: HashMap<u64, Uplink<ValueBackpressure>>,
-    map_uplinks: HashMap<u64, Uplink<MapBackpressure>>,
-    write_queue: VecDeque<(UplinkKind, u64)>,
-    special_queue: VecDeque<SpecialAction>,
-    completion: promise::Sender<DisconnectionReason>,
+    writer: Option<(RemoteSender, BytesMut)>, //Holds the sender and associated buffer when it has not been leant out.
+    value_uplinks: HashMap<u64, Uplink<ValueBackpressure>>, //Uplinks for value lanes.
+    map_uplinks: HashMap<u64, Uplink<MapBackpressure>>, //Uplinks for map lanes.
+    write_queue: VecDeque<(UplinkKind, u64)>, //Queue tracking which uplink should be written next.
+    special_queue: VecDeque<SpecialAction>, //Queue of special actions (primarily link/unlink messages) which take precedence over uplinks.
+    completion: promise::Sender<DisconnectionReason>, //Promise to be satisfied when the remote is closed.
 }
 
+/// The type of entries that can be pushed into the queue.
 #[derive(Debug, Clone)]
 pub enum UplinkResponse {
+    /// A synced message for value type lane.
     SyncedValue(Bytes),
+    /// A synced message for a map type lane.
     SyncedMap,
+    /// An event message for a value type lane.
     Value(Bytes),
+    /// An event message for a map type lane.
     Map(MapOperation<Bytes, Bytes>),
 }
 
@@ -68,6 +80,12 @@ impl UplinkResponse {
 const UNREGISTERED_LANE: &str = "Unregistered lane ID.";
 
 impl Uplinks {
+    /// #Arguments
+    /// * `node` - The node URI to attach to the outgoing messages.
+    /// * `identity` - The routing address of the agent to add to the outgoing messages.
+    /// * `remote_id` - The ID of the target remote.
+    /// * `writer` - Byte chanel connected to the remote.
+    /// * `completion` - A promise to be completed when the remote is closed.
     pub fn new(
         node: Text,
         identity: RoutingAddr,
@@ -86,6 +104,11 @@ impl Uplinks {
         }
     }
 
+    /// Push a special action into the queue. Special actions are not subject to backpressure relief and
+    /// are always popped before other entries.
+    /// #Arguments
+    /// * `actions` - The special action.
+    /// * `registry` - Registry mapping lane IDs to lane names.
     pub fn push_special(
         &mut self,
         action: SpecialAction,
@@ -112,6 +135,11 @@ impl Uplinks {
         }
     }
 
+    /// Push an event into the queue.
+    /// #Arguments
+    /// * `lane_id` - ID of the lane to which the event refers.
+    /// * `event` - The event.
+    /// * `registry` - Registry mapping lane IDs to lane names.
     pub fn push(
         &mut self,
         lane_id: u64,
@@ -187,6 +215,12 @@ impl Uplinks {
         }
     }
 
+    /// Return the remote sender (and its associated buffer) and pop the next write future (if there is
+    /// more work).
+    /// #Arguments
+    /// * `sender` - The sender to return.
+    /// * `buffer` - The buffer associated with the sender.
+    /// * `registry` - Registry mapping lane IDs to lane names.
     pub fn replace_and_pop(
         &mut self,
         mut sender: RemoteSender,
@@ -276,18 +310,22 @@ impl Uplinks {
         }
     }
 
+    /// Dispose of the uplinks, providing the specified reason.
     pub fn complete(self, reason: DisconnectionReason) {
         let _ = self.completion.provide(reason);
     }
 }
 
+/// The state of a single uplink within an [`Uplinks`] instance for a remote.
 #[derive(Debug, Default)]
 struct Uplink<B> {
-    queued: bool,
-    send_synced: bool,
-    backpressure: B,
+    queued: bool,      //Indicates that this uplink is currently in the queue.
+    send_synced: bool, //Indicates that a synced message needs to be emitted for this uplink.
+    backpressure: B,   //Backpressure relief queue (varying implementation based on uplink kind).
 }
 
+/// Writ the body of a response directly into a buffer (used when backpressure relief is not
+/// required).
 fn write_to_buffer(
     response: UplinkResponse,
     buffer: &mut BytesMut,

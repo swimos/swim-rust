@@ -16,16 +16,18 @@ use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 use uuid::Uuid;
 
+/// A registry of links between lanes and remotes in the agent runtime.
 #[derive(Debug, Default)]
 pub struct Links {
     forward: HashMap<u64, HashSet<Uuid>>,
     backwards: HashMap<Uuid, HashSet<u64>>,
 }
 
+/// An instruction to send an unlinked message to a remote.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct TriggerUnlink {
-    pub remote_id: Uuid,
-    pub schedule_prune: bool,
+    pub remote_id: Uuid,      // The ID of the remote.
+    pub schedule_prune: bool, // The remote no longer has any links and so is elligable to be pruned.
 }
 
 impl TriggerUnlink {
@@ -46,12 +48,14 @@ impl TriggerUnlink {
 }
 
 impl Links {
+    /// Create a new link from a lane to a remote.
     pub fn insert(&mut self, lane_id: u64, remote_id: Uuid) {
         let Links { forward, backwards } = self;
         forward.entry(lane_id).or_default().insert(remote_id);
         backwards.entry(remote_id).or_default().insert(lane_id);
     }
 
+    /// Remove a single link between a lane and remote.
     #[must_use]
     pub fn remove(&mut self, lane_id: u64, remote_id: Uuid) -> TriggerUnlink {
         let Links { forward, backwards } = self;
@@ -74,20 +78,24 @@ impl Links {
         }
     }
 
+    /// Iterate over all links in the registry.
     pub fn all_links(&self) -> impl Iterator<Item = (u64, Uuid)> + '_ {
         self.forward
             .iter()
             .flat_map(|(lane_id, remote_ids)| remote_ids.iter().map(move |rid| (*lane_id, *rid)))
     }
 
+    /// Get the remotes linked from a specific lane.
     pub fn linked_from(&self, id: u64) -> Option<&HashSet<Uuid>> {
         self.forward.get(&id)
     }
 
+    /// Get the lanes linked to a specific remote.
     pub fn linked_to(&self, id: Uuid) -> Option<&HashSet<u64>> {
         self.backwards.get(&id)
     }
 
+    /// Determine if a specific link exists.
     pub fn is_linked(&self, remote_id: Uuid, lane_id: u64) -> bool {
         self.forward
             .get(&lane_id)
@@ -95,6 +103,7 @@ impl Links {
             .unwrap_or(false)
     }
 
+    /// Remove a lane (and all associated links). This can necessitate any number of unlinked messages.
     pub fn remove_lane(&mut self, id: u64) -> impl Iterator<Item = TriggerUnlink> + '_ {
         let Links { forward, backwards } = self;
         let remote_ids = forward.remove(&id).unwrap_or_default();
@@ -112,6 +121,7 @@ impl Links {
         })
     }
 
+    /// Remove a remote and all associated links.
     pub fn remove_remote(&mut self, id: Uuid) {
         let Links { forward, backwards } = self;
         let lane_ids = backwards.remove(&id).unwrap_or_default();

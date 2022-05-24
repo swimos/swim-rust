@@ -27,6 +27,7 @@ use crate::{
 #[cfg(test)]
 mod tests;
 
+/// Sender to write outgoing frames to to remotes connected to the agent.
 #[derive(Debug)]
 pub struct RemoteSender {
     sender: FramedWrite<ByteWriter, RawResponseMessageEncoder>,
@@ -37,6 +38,11 @@ pub struct RemoteSender {
 }
 
 impl RemoteSender {
+    /// #Arguments
+    /// * `writer` - The underlying byte channel.
+    /// * `identity` - Routing address of the agent.
+    /// * `remote_id` - Routing ID of the remote.
+    /// * `node` - The node URI of the agent.
     pub fn new(writer: ByteWriter, identity: RoutingAddr, remote_id: Uuid, node: Text) -> Self {
         RemoteSender {
             sender: FramedWrite::new(writer, Default::default()),
@@ -51,12 +57,23 @@ impl RemoteSender {
         self.remote_id
     }
 
+    /// Set the name of the lane for the next message that is sent. This is done separately from
+    /// the actual write to avoid needing to move a copy of the name into the future that performs
+    /// the write.
+    ///
+    /// #Arguments
+    /// * `lane_name` - The name of the lane.
     pub fn update_lane(&mut self, lane_name: &str) {
         let RemoteSender { lane, .. } = self;
         lane.clear();
         lane.push_str(lane_name);
     }
 
+    /// Construct a [`ResponseMessage`] for the provied notifiication and send it on the
+    /// channel.
+    ///
+    /// #Arguments
+    /// * `notification` - The content of the frame.
     pub async fn send_notification(
         &mut self,
         notification: Notification<&BytesMut, &[u8]>,

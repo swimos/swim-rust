@@ -37,6 +37,7 @@ use super::write_fut::{SpecialAction, WriteTask};
 #[cfg(test)]
 mod tests;
 
+/// Tracks the set of uplinks for each remote attached to the write task of the agent runtime.
 #[derive(Debug)]
 pub struct RemoteTracker {
     node: Text,
@@ -46,6 +47,9 @@ pub struct RemoteTracker {
 }
 
 impl RemoteTracker {
+    /// #Arguments
+    /// * `identity` - The routing address of the agent to be included in outgoing messages.
+    /// * `node` - The node URI of the agent to be included in outgoing messages.
     pub fn new(identity: RoutingAddr, node: Text) -> Self {
         RemoteTracker {
             node,
@@ -55,24 +59,33 @@ impl RemoteTracker {
         }
     }
 
+    /// Remove a remote, giving the specified reason.
     pub fn remove_remote(&mut self, remote_id: Uuid, reason: DisconnectionReason) {
         if let Some(existing) = self.remotes.remove(&remote_id) {
             existing.complete(reason);
         }
     }
 
+    /// Determine if a specified remote is attached.
     pub fn has_remote(&self, remote_id: Uuid) -> bool {
         self.remotes.contains_key(&remote_id)
     }
 
+    /// Remove a lane from the registry.
     pub fn remove_lane(&mut self, id: u64) -> Option<Text> {
         self.lane_registry().remove(id)
     }
 
+    /// Get a reference to the lane registry.
     pub fn lane_registry(&mut self) -> &mut LaneRegistry {
         &mut self.registry
     }
 
+    /// Insert a new remote.
+    /// #Arguments
+    /// * `remote_id` - The routing ID of the remote.
+    /// * `writer` - The channel for the remote.
+    /// * `completion` - Promise that must be satisfied if the remote is closed.
     pub fn insert(
         &mut self,
         remote_id: Uuid,
@@ -94,6 +107,7 @@ impl RemoteTracker {
         }
     }
 
+    /// Push a special action into the queue for the specified remote.
     #[must_use]
     pub fn push_special(&mut self, response: SpecialAction, target: &Uuid) -> Option<WriteTask> {
         let RemoteTracker {
@@ -104,6 +118,7 @@ impl RemoteTracker {
             .and_then(|uplink| uplink.push_special(response, registry))
     }
 
+    /// Push an event for a lane into the queue for the specified remote.
     pub fn push_write(
         &mut self,
         lane_id: u64,
@@ -120,6 +135,7 @@ impl RemoteTracker {
         }
     }
 
+    /// Unlink a lane from the specified remote.
     #[must_use]
     pub fn unlink_lane(&mut self, remote_id: Uuid, lane_id: u64) -> Option<WriteTask> {
         let RemoteTracker {
@@ -130,6 +146,7 @@ impl RemoteTracker {
         })
     }
 
+    /// Return a sender and associated buffer, from a completed write, to the appropriate remote.
     #[must_use]
     pub fn replace_and_pop(&mut self, writer: RemoteSender, buffer: BytesMut) -> Option<WriteTask> {
         let RemoteTracker {
@@ -145,6 +162,7 @@ impl RemoteTracker {
         self.remotes.is_empty()
     }
 
+    /// Close all remote with the specified reason.
     pub fn dispose_of_remotes(self, reason: DisconnectionReason) {
         let RemoteTracker { remotes, .. } = self;
         remotes
