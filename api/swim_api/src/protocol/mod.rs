@@ -97,6 +97,8 @@ fn write_recon_kv<K: StructuralWritable, V: StructuralWritable>(
     rewound.put_u64(value_len);
 }
 
+/// Codec that will encode a type as a Recon string, writing the length (as a 64 bit unigned integer)
+/// as a header.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct WithLengthBytesCodec;
 

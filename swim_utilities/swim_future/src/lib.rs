@@ -14,7 +14,6 @@
 
 mod combinators;
 pub mod item_sink;
-pub mod latch;
 pub mod open_ended;
 pub mod request;
 pub mod retryable;

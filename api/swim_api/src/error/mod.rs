@@ -58,6 +58,7 @@ pub enum DownlinkTaskError {
     DeserializationFailed(#[from] ReadError),
 }
 
+/// Error type for operations that communicate with the agent runtime.
 #[derive(Error, Debug)]
 pub enum AgentRuntimeError {
     #[error("The agent runtime has terminated.")]
@@ -82,6 +83,7 @@ impl From<oneshot::error::RecvError> for AgentRuntimeError {
     }
 }
 
+/// Error type is returned by implementations of the agent interface trait.
 #[derive(Error, Debug)]
 pub enum AgentTaskError {
     #[error("{0}")]
@@ -90,6 +92,7 @@ pub enum AgentTaskError {
     DeserializationFailed(#[from] ReadError),
 }
 
+/// Error type that is returned by implementations of the agent interface trait during the initialization phase.
 #[derive(Error, Debug)]
 pub enum AgentInitError {
     #[error("The agent failed to start.")]
