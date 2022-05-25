@@ -1,5 +1,7 @@
 error: Union types are not supported.
-  --> $DIR/src/tests/derive/form/union.rs:18:14
+  --> src/tests/derive/form/union.rs:19:5
    |
-18 |     #[derive(Form)]
-   |              ^^^^
+19 | /     union S {
+20 | |         a: i32,
+21 | |     }
+   | |_____^

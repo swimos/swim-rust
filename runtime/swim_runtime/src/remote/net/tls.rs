@@ -166,7 +166,7 @@ impl Listener for TlsListener {
 #[derive(Clone)]
 pub struct TokioTlsNetworking {
     resolver: Arc<Resolver>,
-    identities: HashMap<Url, Identity>,
+    _identities: HashMap<Url, Identity>,
 }
 
 impl TokioTlsNetworking {
@@ -177,7 +177,7 @@ impl TokioTlsNetworking {
     {
         TokioTlsNetworking {
             resolver,
-            identities: HashMap::new(),
+            _identities: HashMap::new(),
         }
     }
 }

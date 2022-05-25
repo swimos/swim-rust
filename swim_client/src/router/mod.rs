@@ -411,8 +411,7 @@ impl<RF: RouterFactory> ClientConnectionFactory<RF> {
                 let mut router = router_factory.create_for(endpoint_addr);
                 match router.resolve_sender(addr).await {
                     Ok(route) => {
-                        let client_route =
-                            ClientRoute::new(endpoint_addr, route, receiver, on_dropped, on_drop);
+                        let client_route = ClientRoute::new(route, receiver, on_dropped, on_drop);
                         Ok(client_route)
                     }
                     Err(ResolutionError::RouterDropped) => Err(RouterError::RouterDropped),

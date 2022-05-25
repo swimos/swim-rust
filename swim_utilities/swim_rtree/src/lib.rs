@@ -249,8 +249,8 @@ where
             }
         }
 
-        if maybe_orphan_nodes.is_some() {
-            for orphan in maybe_orphan_nodes.unwrap() {
+        if let Some(orphans) = maybe_orphan_nodes {
+            for orphan in orphans {
                 match *orphan {
                     Entry::Leaf { .. } => self.internal_insert(orphan, 0),
                     Entry::Branch {
@@ -768,7 +768,7 @@ where
                         }
                     }
 
-                    let min_entry = Arc::make_mut(&mut min_entry);
+                    let min_entry = Arc::make_mut(min_entry);
 
                     if let Some((first_entry, second_entry)) =
                         min_entry.insert(item, min_rect, level)

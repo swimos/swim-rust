@@ -132,18 +132,16 @@ struct MockAgentLifecycle;
 
 #[derive(Clone)]
 struct MockRouter {
-    router_addr: RoutingAddr,
     inner: mpsc::Sender<TaggedEnvelope>,
     _drop_tx: Arc<promise::Sender<ConnectionDropped>>,
     drop_rx: promise::Receiver<ConnectionDropped>,
 }
 
 impl MockRouter {
-    fn new(router_addr: RoutingAddr, inner: mpsc::Sender<TaggedEnvelope>) -> MockRouter {
+    fn new(inner: mpsc::Sender<TaggedEnvelope>) -> MockRouter {
         let (tx, rx) = promise::promise();
 
         MockRouter {
-            router_addr,
             inner,
             _drop_tx: Arc::new(tx),
             drop_rx: rx,
@@ -213,7 +211,7 @@ async fn lane_info_sync() {
         clock.clone(),
         client,
         ReceiverStream::new(envelope_rx),
-        MockRouter::new(RoutingAddr::plane(1024), tx),
+        MockRouter::new(tx),
         MockNodeStore::mock(),
     );
 

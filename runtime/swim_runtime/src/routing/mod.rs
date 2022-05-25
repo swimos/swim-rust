@@ -217,8 +217,6 @@ enum ClientReceiver {
 /// Additional component for a router endpoint associated with a client.
 #[derive(Debug)]
 pub struct ClientEndpoint {
-    // The routing address for the target of this route.
-    tag: RoutingAddr,
     // Receiver for incoming messages for this client.
     receiver: ClientReceiver,
     // Promise that will be satisfied after the channel corresponding to the receiver is dropped.
@@ -418,7 +416,6 @@ pub struct UnroutableClient {
 
 impl ClientRoute {
     pub fn new(
-        tag: RoutingAddr,
         route: Route,
         receiver: mpsc::Receiver<TaggedEnvelope>,
         rx_on_dropped: promise::Receiver<ConnectionDropped>,
@@ -427,7 +424,6 @@ impl ClientRoute {
         ClientRoute {
             route,
             receiver: ClientEndpoint {
-                tag,
                 receiver: ClientReceiver::Mpsc(receiver),
                 rx_on_dropped,
                 handle_drop,
@@ -436,7 +432,6 @@ impl ClientRoute {
     }
 
     pub fn new_bytes(
-        tag: RoutingAddr,
         route: Route,
         receiver: ByteReader,
         rx_on_dropped: promise::Receiver<ConnectionDropped>,
@@ -445,7 +440,6 @@ impl ClientRoute {
         ClientRoute {
             route,
             receiver: ClientEndpoint {
-                tag,
                 receiver: ClientReceiver::ByteChannel(receiver),
                 rx_on_dropped,
                 handle_drop,
@@ -502,7 +496,6 @@ impl UnroutableClient {
             handle_drop,
         } = self;
         ClientRoute::new(
-            addr,
             Route::new(TaggedSender::new(addr, sender), on_drop),
             receiver,
             rx_on_dropped,
@@ -612,14 +605,14 @@ impl TaggedSender {
     }
 
     pub async fn send_item(&mut self, envelope: Envelope) -> Result<(), SendError<Envelope>> {
-        Ok(self
+        self
             .inner
             .send(TaggedEnvelope(self.tag, envelope))
             .await
             .map_err(|e| {
                 let TaggedEnvelope(_addr, env) = e.0;
                 SendError(env)
-            })?)
+            })
     }
 }
 

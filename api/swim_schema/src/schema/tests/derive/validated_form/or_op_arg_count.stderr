@@ -1,5 +1,5 @@
 error: At least two arguments must be provided to an OR operator
-  --> $DIR/src/schema/tests/derive/validated_form/or_op_arg_count.rs:18:14
+  --> src/schema/tests/derive/validated_form/or_op_arg_count.rs:20:23
    |
-18 |     #[derive(ValueSchema)]
-   |              ^^^^^^^^^^^
+20 |         #[form(schema(or(num_items = 5)))]
+   |                       ^^^^^^^^^^^^^^^^^
