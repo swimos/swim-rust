@@ -235,12 +235,12 @@ async fn remove_remote() {
         mut remotes,
         rx1: _rx1,
         rx2: _rx2,
-        comp_rx1,
+        comp_rx2,
         ..
     } = setup();
     remotes.remove_remote(RID2, DisconnectionReason::RemoteTimedOut);
     assert!(!remotes.has_remote(RID2));
-    let result = tokio::time::timeout(Duration::from_secs(1), comp_rx1)
+    let result = tokio::time::timeout(Duration::from_secs(1), comp_rx2)
         .await
         .expect("Timed out.")
         .expect("Reason promised dropped.");
