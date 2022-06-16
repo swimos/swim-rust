@@ -12,17 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use bytes::Bytes;
-use swim_model::Text;
+use self::{on_stop::OnStop, on_start::OnStart, lane_event::LaneEvent};
 
-use self::{on_stop::OnStop, on_start::OnStart, on_command::OnReceive};
-
-pub mod on_command;
+pub mod lane_event;
 pub mod on_start;
 pub mod on_stop;
 
 pub trait AgentHandlers<'a, Context>:
-    OnStart<'a, Context> + OnStop<'a, Context> + OnReceive<'a, Context>
+    OnStart<'a, Context> + OnStop<'a, Context> + LaneEvent<'a, Context>
 {
 }
 
@@ -35,56 +32,50 @@ where
 
 impl<'a, L, Context> AgentHandlers<'a, Context> for L
 where
-    L: OnStart<'a, Context> + OnStop<'a, Context> + OnReceive<'a, Context>,
+    L: OnStart<'a, Context> + OnStop<'a, Context> + LaneEvent<'a, Context>
 {}
 
-pub struct BasicAgentLifecycle<FStart, FStop, FRec> {
+pub struct BasicAgentLifecycle<FStart, FStop, LaneEv> {
     on_start: FStart,
     on_stop: FStop,
-    on_command: FRec,
+    lane_event: LaneEv,
 }
 
-impl<'a, FStart, FStop, FRec, Context> OnStart<'a, Context> for BasicAgentLifecycle<FStart, FStop, FRec>
+impl<'a, FStart, FStop, LaneEv, Context> OnStart<'a, Context> for BasicAgentLifecycle<FStart, FStop, LaneEv>
 where
     FStart: OnStart<'a, Context>,
     FStop: Send,
-    FRec: Send,
+    LaneEv: Send,
 {
     type OnStartHandler = FStart::OnStartHandler;
 
-    fn on_start(&'a mut self) -> Self::OnStartHandler {
+    fn on_start(&'a self) -> Self::OnStartHandler {
         self.on_start.on_start()
     }
 }
 
-impl<'a, FStart, FStop, FRec, Context> OnStop<'a, Context> for BasicAgentLifecycle<FStart, FStop, FRec>
+impl<'a, FStart, FStop, LaneEv, Context> OnStop<'a, Context> for BasicAgentLifecycle<FStart, FStop, LaneEv>
 where
     FStop: OnStop<'a, Context>,
     FStart: Send,
-    FRec: Send,
+    LaneEv: Send,
 {
     type OnStopHandler = FStop::OnStopHandler;
 
-    fn on_stop(&'a mut self) -> Self::OnStopHandler {
+    fn on_stop(&'a self) -> Self::OnStopHandler {
         self.on_stop.on_stop()
     }
 }
 
-impl<'a, FStart, FStop, FRec, Context> OnReceive<'a, Context> for BasicAgentLifecycle<FStart, FStop, FRec>
+impl<'a, FStart, FStop, LaneEv, Context> LaneEvent<'a, Context> for BasicAgentLifecycle<FStart, FStop, LaneEv>
 where
-    FRec: OnReceive<'a, Context>,
-    FStart: Send,
     FStop: Send,
+    FStart: Send,
+    LaneEv: LaneEvent<'a, Context>,
 {
-    type OnCommandHandler = FRec::OnCommandHandler;
+    type LaneEventHandler = LaneEv::LaneEventHandler;
 
-    fn on_command(&'a mut self, lane: Text, body: Bytes) -> Self::OnCommandHandler {
-        self.on_command.on_command(lane, body)
-    }
-
-    type OnSyncHandler = FRec::OnSyncHandler;
-
-    fn on_sync(&'a mut self, lane: Text, id: uuid::Uuid) -> Self::OnSyncHandler {
-        self.on_command.on_sync(lane, id)
+    fn lane_event(&'a self, lane_name: &str) -> Self::LaneEventHandler {
+        self.lane_event.lane_event(lane_name)
     }
 }

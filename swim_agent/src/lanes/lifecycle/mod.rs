@@ -14,7 +14,7 @@
 
 use std::marker::PhantomData;
 
-use swim_api::handlers::{NoHandler, FnMutHandler};
+use swim_api::handlers::{NoHandler, FnHandler};
 
 use self::{on_event::OnEvent, on_set::OnSet};
 
@@ -57,13 +57,13 @@ impl<Context, T, FEv, FSet> BasicValueLaneLifecycle<Context, T, FEv, FSet> {
     pub fn on_event<F>(
         self,
         f: F,
-    ) -> BasicValueLaneLifecycle<Context, T, FnMutHandler<F>, FSet>
+    ) -> BasicValueLaneLifecycle<Context, T, FnHandler<F>, FSet>
     where
-        FnMutHandler<F>: for<'a> OnEvent<'a, T, Context>,
+        FnHandler<F>: for<'a> OnEvent<'a, T, Context>,
     {
         BasicValueLaneLifecycle {
             _value_type: PhantomData,
-            on_event: FnMutHandler(f),
+            on_event: FnHandler(f),
             on_set: self.on_set,
         }
     }
@@ -71,14 +71,14 @@ impl<Context, T, FEv, FSet> BasicValueLaneLifecycle<Context, T, FEv, FSet> {
     pub fn on_set<F>(
         self,
         f: F,
-    ) -> BasicValueLaneLifecycle<Context, T, FEv, FnMutHandler<F>>
+    ) -> BasicValueLaneLifecycle<Context, T, FEv, FnHandler<F>>
     where
-        FnMutHandler<F>: for<'a> OnSet<'a, T, Context>,
+        FnHandler<F>: for<'a> OnSet<'a, T, Context>,
     {
         BasicValueLaneLifecycle {
             _value_type: PhantomData,
             on_event: self.on_event,
-            on_set: FnMutHandler(f),
+            on_set: FnHandler(f),
         }
     }
 
@@ -91,7 +91,7 @@ where
 {
     type OnEventHandler = FEv::OnEventHandler;
 
-    fn on_event(&'a mut self, value: &'a T) -> Self::OnEventHandler {
+    fn on_event(&'a self, value: &'a T) -> Self::OnEventHandler {
         self.on_event.on_event(value)
     }
 }
@@ -103,7 +103,7 @@ where
 {
     type OnSetHandler = FSet::OnSetHandler;
 
-    fn on_set(&'a mut self, existing: Option<&'a T>, new_value: &'a T) -> Self::OnSetHandler {
+    fn on_set(&'a self, existing: Option<&'a T>, new_value: &'a T) -> Self::OnSetHandler {
         self.on_set.on_set(existing, new_value)
     }
 }

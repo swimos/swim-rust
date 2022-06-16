@@ -14,6 +14,7 @@
 
 use frunk::{coproduct::CNil, Coproduct};
 use swim_recon::parser::AsyncParseError;
+use thiserror::Error;
 
 pub trait EventHandler<Context> {
 
@@ -58,9 +59,11 @@ where
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum EventHandlerError {
+    #[error("Event handler stepped after completion.")]
     SteppedAfterComplete,
+    #[error("Invalid incoming message: {0}")]
     BadCommand(AsyncParseError),
 }
 

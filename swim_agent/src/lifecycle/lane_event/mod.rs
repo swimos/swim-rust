@@ -12,16 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use bytes::Bytes;
-use swim_model::Text;
-use uuid::Uuid;
-
 use crate::event_handler::EventHandler;
 
-pub trait OnReceive<'a, Context>: Send {
-    type OnCommandHandler: EventHandler<Context, Completion = ()> + Send + 'a;
-    type OnSyncHandler: EventHandler<Context, Completion = ()> + Send + 'a;
+pub trait LaneEvent<'a, Context> {
 
-    fn on_command(&'a mut self, lane: Text, body: Bytes) -> Self::OnCommandHandler;
-    fn on_sync(&'a mut self, lane: Text, id: Uuid) -> Self::OnSyncHandler;
+    type LaneEventHandler: EventHandler<Context, Completion = ()> + Send + 'a;
+
+    fn lane_event(&'a self, lane_name: &str) -> Self::LaneEventHandler;
+
 }

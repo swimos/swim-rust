@@ -12,33 +12,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_api::handlers::{NoHandler, FnMutHandler};
+use swim_api::handlers::{NoHandler, FnHandler};
 
 use crate::event_handler::{EventHandler, UnitHandler};
 
 pub trait OnStart<'a, Context>: Send {
     type OnStartHandler: EventHandler<Context, Completion = ()> + Send + 'a;
 
-    fn on_start(&'a mut self) -> Self::OnStartHandler;
+    fn on_start(&'a self) -> Self::OnStartHandler;
 }
 
 impl<'a, Context> OnStart<'a, Context> for NoHandler {
     type OnStartHandler = UnitHandler;
 
-    fn on_start(&'a mut self) -> Self::OnStartHandler {
+    fn on_start(&'a self) -> Self::OnStartHandler {
         Default::default()
     }
 }
 
-impl<'a, Context, F, H> OnStart<'a, Context> for FnMutHandler<F>
+impl<'a, Context, F, H> OnStart<'a, Context> for FnHandler<F>
 where
-    F: FnMut() -> H + Send,
+    F: Fn() -> H + Send,
     H: EventHandler<Context, Completion = ()> + Send + 'static,
 {
     type OnStartHandler = H;
 
-    fn on_start(&'a mut self) -> Self::OnStartHandler {
-        let FnMutHandler(f) = self;
+    fn on_start(&'a self) -> Self::OnStartHandler {
+        let FnHandler(f) = self;
         f()
     }
 }

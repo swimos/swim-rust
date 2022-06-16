@@ -86,10 +86,15 @@ impl From<oneshot::error::RecvError> for AgentRuntimeError {
 /// Error type is returned by implementations of the agent interface trait.
 #[derive(Error, Debug)]
 pub enum AgentTaskError {
-    #[error("{0}")]
-    BadFrame(#[from] FrameIoError),
+    #[error("Bad frame for lane '{lane}': {error}")]
+    BadFrame {
+        lane: Text,
+        error: FrameIoError 
+    },
     #[error("Failed to deserialize frame body: {0}")]
     DeserializationFailed(#[from] ReadError),
+    #[error("Error in use code (likely an event handler): {0}")]
+    UserCodeError(Box<dyn std::error::Error>),
 }
 
 /// Error type that is returned by implementations of the agent interface trait during the initialization phase.
@@ -97,4 +102,15 @@ pub enum AgentTaskError {
 pub enum AgentInitError {
     #[error("The agent failed to start.")]
     FailedToStart,
+    #[error("Multiple lanes with the same name: {0}")]
+    DuplicateLane(Text),
+    #[error("Error in use code (likely an event handler): {0}")]
+    UserCodeError(Box<dyn std::error::Error>),
+}
+
+//TODO Make this more sophisticated.
+impl From<AgentRuntimeError> for AgentInitError {
+    fn from(_: AgentRuntimeError) -> Self {
+        AgentInitError::FailedToStart
+    }
 }

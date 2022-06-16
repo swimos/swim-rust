@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_api::handlers::{NoHandler, FnMutHandler};
+use swim_api::handlers::{NoHandler, FnHandler};
 
 use crate::event_handler::{UnitHandler, EventHandler};
 
@@ -20,26 +20,26 @@ pub trait OnEvent<'a, T, Context>: Send {
 
     type OnEventHandler: EventHandler<Context, Completion = ()> + Send + 'a;
    
-    fn on_event(&'a mut self, value: &'a T) -> Self::OnEventHandler;
+    fn on_event(&'a self, value: &'a T) -> Self::OnEventHandler;
 }
 
 impl<'a, T, Context> OnEvent<'a, T, Context> for NoHandler {
     type OnEventHandler = UnitHandler;
 
-    fn on_event(&'a mut self, _value: &'a T) -> Self::OnEventHandler {
+    fn on_event(&'a self, _value: &'a T) -> Self::OnEventHandler {
         Default::default()
     }
 }
 
-impl<'a, T, Context, F, H> OnEvent<'a, T, Context> for FnMutHandler<F>
+impl<'a, T, Context, F, H> OnEvent<'a, T, Context> for FnHandler<F>
 where
     T: 'static,
-    F: FnMut(&'a T) -> H + Send,
+    F: Fn(&'a T) -> H + Send,
     H: EventHandler<Context, Completion = ()> + Send + 'a,  {
     type OnEventHandler = H;
 
-    fn on_event(&'a mut self, value: &'a T) -> Self::OnEventHandler {
-        let FnMutHandler(f) = self;
+    fn on_event(&'a self, value: &'a T) -> Self::OnEventHandler {
+        let FnHandler(f) = self;
         f(value)
     }
 }

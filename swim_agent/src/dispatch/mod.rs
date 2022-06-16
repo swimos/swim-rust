@@ -19,12 +19,7 @@ use swim_model::Text;
 use swim_recon::parser::RecognizerDecoder;
 use uuid::Uuid;
 
-use crate::{lifecycle::on_command::OnReceive, event_handler::{ConstHandler, EventHandler}, lanes::{ValueLaneCommand, ValueLane, ValueLaneSync}};
-
-pub struct LaneDispatcher<Lanes> {
-    buffer: BytesMut,
-    lanes: Lanes,
-}
+use crate::{event_handler::{ConstHandler, EventHandler}, lanes::{ValueLaneCommand, ValueLane, ValueLaneSync}};
 
 pub trait OnCommandWithBuffer<'a, Context>: Send {
     type OnCmdBufHandler: EventHandler<Context, Completion = ()> + Send + 'a;
@@ -101,23 +96,3 @@ where
         }
     }
 }
-
-impl<'a, Context, Lanes> OnReceive<'a, Context> for LaneDispatcher<Lanes>
-where
-    Lanes: OnCommandWithBuffer<'a, Context> + OnSyncRequest<'a, Context>,
-{
-    type OnCommandHandler = Lanes::OnCmdBufHandler;
-
-    fn on_command(&'a mut self, lane: Text, body: Bytes) -> Self::OnCommandHandler {
-        let LaneDispatcher { buffer, lanes } = self;
-        lanes.on_command_with(buffer, lane, body)
-    }
-
-    type OnSyncHandler = Lanes::OnSyncReqHandler;
-
-    fn on_sync(&'a mut self, lane: Text, id: Uuid) -> Self::OnSyncHandler {
-        let LaneDispatcher { lanes, .. } = self;
-        lanes.on_sync_req(lane, id)
-    }
-}
-

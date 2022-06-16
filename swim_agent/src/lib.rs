@@ -15,4 +15,5 @@
 pub mod dispatch;
 pub mod event_handler;
 pub mod lanes;
+pub mod model;
 pub mod lifecycle;

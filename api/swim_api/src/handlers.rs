@@ -20,6 +20,10 @@ pub struct NoHandler;
 #[derive(Clone, Copy, Default, Debug)]
 pub struct FnMutHandler<F>(pub F);
 
+/// Wraps a [`Fn`] instance to use as an event handler.
+#[derive(Clone, Copy, Default, Debug)]
+pub struct FnHandler<F>(pub F);
+
 /// Wraps a [`FnMut`] instance, with an additional parameter for shared state, as an event handler.
 pub struct WithShared<H>(pub H);
 

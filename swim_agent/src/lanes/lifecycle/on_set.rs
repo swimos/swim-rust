@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_api::handlers::{NoHandler, FnMutHandler};
+use swim_api::handlers::{NoHandler, FnHandler};
 
 use crate::event_handler::{EventHandler, UnitHandler};
 
@@ -22,26 +22,26 @@ pub trait OnSet<'a, T, Context>: Send {
     /// #Arguments
     /// * `existing` - The existing value, if it is defined.
     /// * `new_value` - The replacement value.
-    fn on_set(&'a mut self, existing: Option<&'a T>, new_value: &'a T) -> Self::OnSetHandler;
+    fn on_set(&'a self, existing: Option<&'a T>, new_value: &'a T) -> Self::OnSetHandler;
 }
 
 impl<'a, T, Context> OnSet<'a, T, Context> for NoHandler {
     type OnSetHandler = UnitHandler;
 
-    fn on_set(&'a mut self, _existing: Option<&'a T>, _new_value: &'a T) -> Self::OnSetHandler {
+    fn on_set(&'a self, _existing: Option<&'a T>, _new_value: &'a T) -> Self::OnSetHandler {
         Default::default()
     }
 }
 
-impl<'a, T, Context, F, H> OnSet<'a, T, Context> for FnMutHandler<F>
+impl<'a, T, Context, F, H> OnSet<'a, T, Context> for FnHandler<F>
 where
     T: 'static,
-    F: FnMut(Option<&'a T>, &'a T) -> H + Send,
+    F: Fn(Option<&'a T>, &'a T) -> H + Send,
     H: EventHandler<Context, Completion = ()> + Send + 'a,  {
     type OnSetHandler = H;
 
-    fn on_set(&'a mut self, existing: Option<&'a T>, new_value: &'a T) -> Self::OnSetHandler {
-        let FnMutHandler(f) = self;
+    fn on_set(&'a self, existing: Option<&'a T>, new_value: &'a T) -> Self::OnSetHandler {
+        let FnHandler(f) = self;
         f(existing, new_value)
     }
 }
