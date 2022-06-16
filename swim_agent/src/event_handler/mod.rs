@@ -14,13 +14,16 @@
 
 use frunk::{coproduct::CNil, Coproduct};
 use swim_recon::parser::AsyncParseError;
+use swim_utilities::routing::uri::RelativeUri;
 use thiserror::Error;
+
+use crate::meta::AgentMetadata;
 
 pub trait EventHandler<Context> {
 
     type Completion;
 
-    fn step(&mut self, context: &Context) -> StepResult<Self::Completion>;
+    fn step(&mut self, meta: AgentMetadata, context: &Context) -> StepResult<Self::Completion>;
 
     fn and_then<F, H2>(self, f: F) -> AndThen<Self, H2, F>
     where
@@ -54,8 +57,8 @@ where
 {
     type Completion = H::Completion;
 
-    fn step(&mut self, context: &Context) -> StepResult<Self::Completion> {
-        (*self).step(context)
+    fn step(&mut self, meta: AgentMetadata, context: &Context) -> StepResult<Self::Completion> {
+        (*self).step(meta, context)
     }
 }
 
@@ -123,7 +126,7 @@ where
 {
     type Completion = R;
 
-    fn step(&mut self, _context: &Context) -> StepResult<Self::Completion> {
+    fn step(&mut self, _meta: AgentMetadata, _context: &Context) -> StepResult<Self::Completion> {
         if let Some(f) = self.0.take() {
             StepResult::done(f())
         } else {
@@ -138,7 +141,7 @@ where
 {
     type Completion = Vec<I::Item>;
 
-    fn step(&mut self, _context: &Context) -> StepResult<Self::Completion> {
+    fn step(&mut self, _meta: AgentMetadata, _context: &Context) -> StepResult<Self::Completion> {
         let SideEffects { eff, results, done } = self;
         if *done {
             StepResult::after_done()
@@ -208,10 +211,10 @@ where
 {
     type Completion = H2::Completion;
 
-    fn step(&mut self, context: &Context) -> StepResult<Self::Completion> {
+    fn step(&mut self, meta: AgentMetadata, context: &Context) -> StepResult<Self::Completion> {
         match std::mem::take(self) {
             AndThen::First { mut first, next } => {
-                match first.step(context) {
+                match first.step(meta, context) {
                     StepResult::Fail(e) => StepResult::Fail(e),
                     StepResult::Complete { modified_lane: dirty_lane, result } => {
                         match next(result) {
@@ -229,7 +232,7 @@ where
                 }
             },
             AndThen::Second(mut second) => {
-                let step_result = second.step(context);
+                let step_result = second.step(meta, context);
                 if step_result.is_cont() {
                     *self = AndThen::Second(second);
                 }
@@ -247,10 +250,10 @@ where
 {
     type Completion = H2::Completion;
 
-    fn step(&mut self, context: &Context) -> StepResult<Self::Completion> {
+    fn step(&mut self, meta: AgentMetadata, context: &Context) -> StepResult<Self::Completion> {
         match std::mem::take(self) {
             FollowedBy::First { mut first, next } => {
-                match first.step(context) {
+                match first.step(meta, context) {
                     StepResult::Fail(e) => StepResult::Fail(e),
                     StepResult::Complete { modified_lane: dirty_lane, .. } => {
                         *self = FollowedBy::Second(next);
@@ -263,7 +266,7 @@ where
                 }
             },
             FollowedBy::Second(mut second) => {
-                let step_result = second.step(context);
+                let step_result = second.step(meta, context);
                 if step_result.is_cont() {
                     *self = FollowedBy::Second(second);
                 }
@@ -292,7 +295,7 @@ impl<T: Default> Default for ConstHandler<T> {
 impl<T, Context> EventHandler<Context> for ConstHandler<T> {
     type Completion = T;
 
-    fn step(&mut self, _context: &Context) -> StepResult<Self::Completion> {
+    fn step(&mut self, _meta: AgentMetadata, _context: &Context) -> StepResult<Self::Completion> {
         if let Some(value) = self.0.take() {
             StepResult::done(value)
         } else {
@@ -304,7 +307,7 @@ impl<T, Context> EventHandler<Context> for ConstHandler<T> {
 impl<Context> EventHandler<Context> for CNil {
     type Completion = ();
 
-    fn step(&mut self, _context: &Context) -> StepResult<Self::Completion> {
+    fn step(&mut self, _meta: AgentMetadata, _context: &Context) -> StepResult<Self::Completion> {
         match *self {}
     }
 }
@@ -316,10 +319,20 @@ where
 {
     type Completion = ();
 
-    fn step(&mut self, context: &Context) -> StepResult<Self::Completion> {
+    fn step(&mut self, meta: AgentMetadata, context: &Context) -> StepResult<Self::Completion> {
         match self {
-            Coproduct::Inl(h) => h.step(context),
-            Coproduct::Inr(t) => t.step(context),
+            Coproduct::Inl(h) => h.step(meta, context),
+            Coproduct::Inr(t) => t.step(meta, context),
         }
+    }
+}
+
+pub struct GetAgentUri;
+
+impl<Context> EventHandler<Context> for GetAgentUri {
+    type Completion = RelativeUri;
+
+    fn step(&mut self, meta: AgentMetadata, _context: &Context) -> StepResult<Self::Completion> {
+        StepResult::done(meta.agent_uri().clone())
     }
 }

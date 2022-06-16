@@ -17,12 +17,13 @@ pub mod lifecycle;
 use std::{cell::{RefCell, Cell}, collections::VecDeque};
 
 use bytes::BytesMut;
-use swim_form::structural::read::{recognizer::Recognizer, ReadError};
+use swim_api::protocol::agent::{ValueLaneResponseEncoder, ValueLaneResponse};
+use swim_form::structural::{read::{recognizer::Recognizer, ReadError}, write::StructuralWritable};
 use swim_recon::parser::{RecognizerDecoder, AsyncParseError, ParseError};
-use tokio_util::codec::Decoder;
+use tokio_util::codec::{Decoder, Encoder};
 use uuid::Uuid;
 
-use crate::event_handler::{EventHandler, StepResult, EventHandlerError};
+use crate::{event_handler::{EventHandler, StepResult, EventHandlerError}, model::WriteResult, meta::AgentMetadata};
 
 #[derive(Debug)]
 pub struct ValueLane<T> {
@@ -62,6 +63,37 @@ impl<T> ValueLane<T> {
         let ValueLane { sync_queue, .. } = self;
         sync_queue.borrow_mut().push_back(id);
     }
+
+}
+
+const INFALLIBLE_SER: &str = "Serializing to recon should be infallible.";
+
+impl<T: StructuralWritable> ValueLane<T> {
+
+    pub fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult {
+        let ValueLane { content, dirty, sync_queue, .. } = self;
+        let mut encoder = ValueLaneResponseEncoder;
+        let mut sync = sync_queue.borrow_mut();
+        if let Some(id) = sync.pop_front() {
+            let value_guard = content.borrow();
+            let response = ValueLaneResponse::synced(id, &*value_guard);
+            encoder.encode(response, buffer).expect(INFALLIBLE_SER);
+            if dirty.get() || !sync.is_empty() {
+                WriteResult::LaneStillDirty
+            } else {
+                WriteResult::LaneNowClean
+            }
+        } else if dirty.get() {
+            let value_guard = content.borrow();
+            let response = ValueLaneResponse::event(&*value_guard);
+            encoder.encode(response, buffer).expect(INFALLIBLE_SER);
+            dirty.set(false);
+            WriteResult::LaneNowClean
+        } else {
+            WriteResult::NoData
+        }
+    }
+
 }
 
 pub struct ValueLaneSet<C, T> {
@@ -95,7 +127,7 @@ impl<C, T> ValueLaneSync<C, T> {
 impl<C, T> EventHandler<C> for ValueLaneSet<C, T> {
     type Completion = ();
 
-    fn step(&mut self, context: &C) -> StepResult<Self::Completion> {
+    fn step(&mut self, _meta: AgentMetadata, context: &C) -> StepResult<Self::Completion> {
         let ValueLaneSet { projection, value } = self;
         if let Some(value) = value.take() {
             let lane = projection(context);
@@ -110,7 +142,7 @@ impl<C, T> EventHandler<C> for ValueLaneSet<C, T> {
 impl<C, T> EventHandler<C> for ValueLaneSync<C, T> {
     type Completion = ();
 
-    fn step(&mut self, context: &C) -> StepResult<Self::Completion> {
+    fn step(&mut self, _meta: AgentMetadata, context: &C) -> StepResult<Self::Completion> {
         let ValueLaneSync { projection, id } = self;
         if let Some(id) = id.take() {
             let lane = projection(context);
@@ -145,12 +177,12 @@ where
 {
     type Completion = ();
 
-    fn step(&mut self, context: &C) -> StepResult<Self::Completion> {
+    fn step(&mut self, meta: AgentMetadata, context: &C) -> StepResult<Self::Completion> {
         let ValueLaneCommand { projection, buffer, decoder } = self;
         match decoder.decode_eof(buffer) {
             Ok(Some(value)) => {
                 let mut setter = ValueLaneSet::new(*projection, value);
-                setter.step(context)
+                setter.step(meta, context)
             },
             Err(e) => StepResult::Fail(EventHandlerError::BadCommand(e)),
             _ => StepResult::Fail(EventHandlerError::BadCommand(AsyncParseError::Parser(ParseError::Structure(ReadError::IncompleteRecord)))),

@@ -12,9 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod dispatch;
-pub mod event_handler;
-pub mod lanes;
-pub mod meta;
-pub mod model;
-pub mod lifecycle;
+use swim_api::agent::AgentConfig;
+use swim_utilities::routing::uri::RelativeUri;
+
+#[derive(Clone, Copy, Debug)]
+pub struct AgentMetadata<'a> {
+    path: &'a RelativeUri,
+    configuration: &'a AgentConfig,
+}
+
+impl<'a> AgentMetadata<'a> {
+
+    pub(crate) fn new(path: &'a RelativeUri,
+        configuration: &'a AgentConfig) -> Self {
+        AgentMetadata { path, configuration }
+    }
+
+    pub fn agent_uri(&self) -> &'a RelativeUri {
+        self.path
+    }
+
+    pub fn agent_configuration(&self) -> &'a AgentConfig {
+        self.configuration
+    }
+
+}

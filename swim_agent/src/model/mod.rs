@@ -24,7 +24,7 @@ use uuid::Uuid;
 use futures::FutureExt;
 use futures::SinkExt;
 
-use crate::{event_handler::{EventHandler, StepResult, EventHandlerError}, lifecycle::AgentLifecycle};
+use crate::{event_handler::{EventHandler, StepResult, EventHandlerError}, lifecycle::AgentLifecycle, meta::AgentMetadata};
 
 pub enum WriteResult {
     NoData,
@@ -163,7 +163,7 @@ where
     async fn initialize_agent<'a>(
         self,
         route: RelativeUri,
-        _config: AgentConfig,
+        config: AgentConfig,
         context: &'a dyn AgentContext,
     ) -> AgentInitResult<'a>
     where
@@ -172,6 +172,7 @@ where
         let AgentModel { lifecycle, .. } = &self;
 
         let lane_model = LaneModel::make_instance();
+        let meta = AgentMetadata::new(&route, &config);
         
         let mut value_lane_io = HashMap::new();
         let mut map_lane_io = HashMap::new();
@@ -193,18 +194,22 @@ where
         }
         
         let on_start_handler = lifecycle.on_start();
-        if let Err(e) = run_handler(&lane_model, lifecycle, on_start_handler, &lane_ids, &mut Discard) {
+        if let Err(e) = run_handler(meta, &lane_model, lifecycle, on_start_handler, &lane_ids, &mut Discard) {
             return Err(AgentInitError::UserCodeError(Box::new(e)))
         }
-        Ok(self.run_agent(lane_model, lane_ids, value_lane_io, map_lane_io).boxed())
+        Ok(self.run_agent(route, config, lane_model, lane_ids, value_lane_io, map_lane_io).boxed())
     }
 
-    async fn run_agent(self, 
+    async fn run_agent(self,
+        route: RelativeUri,
+        config: AgentConfig,
         lane_model: LaneModel,
         lane_ids: HashMap<u64, Text>,
         value_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
         map_lane_io: HashMap<Text, (ByteWriter, ByteReader)>) -> Result<(), AgentTaskError> {
         let AgentModel { lifecycle, .. } = self;
+        let meta = AgentMetadata::new(&route, &config);
+
         let mut lane_ids_rev = HashMap::new();
         for (id, name) in &lane_ids {
             lane_ids_rev.insert(name.clone(), *id);
@@ -269,13 +274,13 @@ where
                     match request {
                         LaneRequest::Command(body) => {
                             let handler = lane_model.on_value_command(name.as_str(), body);
-                            if let Err(e) = run_handler(&lane_model, &lifecycle, handler, &lane_ids, &mut dirty_lanes) {
+                            if let Err(e) = run_handler(meta, &lane_model, &lifecycle, handler, &lane_ids, &mut dirty_lanes) {
                                 break Err(AgentTaskError::UserCodeError(Box::new(e)));
                             }
                         }
                         LaneRequest::Sync(remote_id) => {
                             let handler = lane_model.on_sync(name.as_str(), remote_id);
-                            if let Err(e) = run_handler(&lane_model, &lifecycle, handler, &lane_ids, &mut dirty_lanes) {
+                            if let Err(e) = run_handler(meta, &lane_model, &lifecycle, handler, &lane_ids, &mut dirty_lanes) {
                                 break Err(AgentTaskError::UserCodeError(Box::new(e)));
                             }
                         }
@@ -286,13 +291,13 @@ where
                     match request {
                         LaneRequest::Command(body) => {
                             let handler = lane_model.on_map_command(name.as_str(), body);
-                            if let Err(e) = run_handler(&lane_model, &lifecycle, handler, &lane_ids, &mut dirty_lanes) {
+                            if let Err(e) = run_handler(meta, &lane_model, &lifecycle, handler, &lane_ids, &mut dirty_lanes) {
                                 break Err(AgentTaskError::UserCodeError(Box::new(e)));
                             }
                         }
                         LaneRequest::Sync(remote_id) => {
                             let handler = lane_model.on_sync(name.as_str(), remote_id);
-                            if let Err(e) = run_handler(&lane_model, &lifecycle, handler, &lane_ids, &mut dirty_lanes) {
+                            if let Err(e) = run_handler(meta, &lane_model, &lifecycle, handler, &lane_ids, &mut dirty_lanes) {
                                 break Err(AgentTaskError::UserCodeError(Box::new(e)));
                             }
                         }
@@ -347,6 +352,7 @@ impl IdCollector for HashSet<u64> {
 }
 
 fn run_handler<Context, Lifecycle, Handler, Collector>(
+    meta: AgentMetadata,
     context: &Context,
     lifecycle: &Lifecycle,
     mut handler: Handler,
@@ -359,12 +365,12 @@ where
     Collector: IdCollector,
 {
     loop {
-        match handler.step(context) {
+        match handler.step(meta, context) {
             StepResult::Continue { modified_lane } =>{
                 if let Some((id, lane)) = modified_lane.and_then(|id| lanes.get(&id).map(|name| (id, name))) {
                     let consequence = lifecycle.lane_event(lane.as_str());
                     collector.add_id(id);
-                    run_handler(context, lifecycle, consequence, lanes, collector)?;
+                    run_handler(meta, context, lifecycle, consequence, lanes, collector)?;
                 }
             },
             StepResult::Fail(err) => {
@@ -374,7 +380,7 @@ where
                 if let Some((id, lane)) = modified_lane.and_then(|id| lanes.get(&id).map(|name| (id, name))) {
                     let consequence = lifecycle.lane_event(lane.as_str());
                     collector.add_id(id);
-                    run_handler(context, lifecycle, consequence, lanes, collector)?;
+                    run_handler(meta, context, lifecycle, consequence, lanes, collector)?;
                     break Ok(());
                 }
             },
