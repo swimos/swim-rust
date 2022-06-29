@@ -92,7 +92,7 @@ const _: () = {
     impl MyAgentLifecycle {
         pub fn into_lifecycle(self) -> impl AgentLifecycle<MyAgent> {
             let first_lifecycle =
-                StatefulValueLaneLifecycle::<MyAgent, MyAgentLifecycle, i32>::default()
+                StatefulValueLaneLifecycle::<MyAgent, MyAgentLifecycle, _>::default()
                     .on_event(MyAgentLifecycle::first_on_event);
             let lanes_lifecycle = ValueLeaf::new("first", MyAgent::FIRST, first_lifecycle);
 
