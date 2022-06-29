@@ -14,31 +14,38 @@
 
 pub mod lifecycle;
 
-use std::{cell::{RefCell, Cell}, collections::VecDeque};
+use std::{
+    cell::{Cell, RefCell},
+    collections::VecDeque,
+};
 
 use bytes::BytesMut;
-use swim_api::protocol::agent::{ValueLaneResponseEncoder, ValueLaneResponse};
-use swim_form::structural::{read::{recognizer::Recognizer, ReadError}, write::StructuralWritable};
-use swim_recon::parser::{RecognizerDecoder, AsyncParseError, ParseError};
-use tokio_util::codec::{Decoder, Encoder};
+use swim_api::protocol::agent::{ValueLaneResponse, ValueLaneResponseEncoder};
+use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
+use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
-use crate::{event_handler::{EventHandler, StepResult, EventHandlerError}, model::WriteResult, meta::AgentMetadata};
+use crate::{
+    event_handler::{AndThen, Decode, EventHandler, EventHandlerError, HandlerTrans, StepResult},
+    meta::AgentMetadata,
+    model::WriteResult,
+};
 
 #[derive(Debug)]
 pub struct ValueLane<T> {
     id: u64,
     content: RefCell<T>,
+    previous: RefCell<Option<T>>,
     dirty: Cell<bool>,
     sync_queue: RefCell<VecDeque<Uuid>>,
 }
 
 impl<T> ValueLane<T> {
-
     pub fn new(id: u64, init: T) -> Self {
-        ValueLane { 
-            id, 
-            content: RefCell::new(init), 
+        ValueLane {
+            id,
+            content: RefCell::new(init),
+            previous: Default::default(),
             dirty: Cell::new(false),
             sync_queue: Default::default(),
         }
@@ -48,14 +55,32 @@ impl<T> ValueLane<T> {
     where
         F: FnOnce(&T) -> R,
     {
-        let ValueLane { content, ..} = self;
+        let ValueLane { content, .. } = self;
         let value = content.borrow();
         f(&*value)
     }
 
+    pub(crate) fn read_with_prev<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(Option<T>, &T) -> R,
+    {
+        let ValueLane {
+            content, previous, ..
+        } = self;
+        let prev = previous.borrow_mut().take();
+        let value = content.borrow();
+        f(prev, &*value)
+    }
+
     pub fn write(&self, value: T) {
-        let ValueLane { content, dirty, .. } = self;
-        content.replace(value);
+        let ValueLane {
+            content,
+            previous,
+            dirty,
+            ..
+        } = self;
+        let prev = content.replace(value);
+        previous.replace(Some(prev));
         dirty.replace(true);
     }
 
@@ -63,15 +88,18 @@ impl<T> ValueLane<T> {
         let ValueLane { sync_queue, .. } = self;
         sync_queue.borrow_mut().push_back(id);
     }
-
 }
 
 const INFALLIBLE_SER: &str = "Serializing to recon should be infallible.";
 
 impl<T: StructuralWritable> ValueLane<T> {
-
     pub fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult {
-        let ValueLane { content, dirty, sync_queue, .. } = self;
+        let ValueLane {
+            content,
+            dirty,
+            sync_queue,
+            ..
+        } = self;
         let mut encoder = ValueLaneResponseEncoder;
         let mut sync = sync_queue.borrow_mut();
         if let Some(id) = sync.pop_front() {
@@ -93,7 +121,16 @@ impl<T: StructuralWritable> ValueLane<T> {
             WriteResult::NoData
         }
     }
+}
 
+pub struct ValueLaneGet<C, T> {
+    projection: for<'a> fn(&'a C) -> &'a ValueLane<T>,
+}
+
+impl<C, T> ValueLaneGet<C, T> {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueLane<T>) -> Self {
+        ValueLaneGet { projection }
+    }
 }
 
 pub struct ValueLaneSet<C, T> {
@@ -106,22 +143,33 @@ pub struct ValueLaneSync<C, T> {
     id: Option<Uuid>,
 }
 
-
 impl<C, T> ValueLaneSet<C, T> {
-
-    fn new(projection: for<'a> fn(&'a C) -> &'a ValueLane<T>,
-    value: T) -> Self {
-        ValueLaneSet { projection, value: Some(value) }
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueLane<T>, value: T) -> Self {
+        ValueLaneSet {
+            projection,
+            value: Some(value),
+        }
     }
-
 }
 
 impl<C, T> ValueLaneSync<C, T> {
-
     pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueLane<T>, id: Uuid) -> Self {
-        ValueLaneSync { projection, id: Some(id) }
+        ValueLaneSync {
+            projection,
+            id: Some(id),
+        }
     }
+}
 
+impl<C, T: Clone> EventHandler<C> for ValueLaneGet<C, T> {
+    type Completion = T;
+
+    fn step(&mut self, _meta: AgentMetadata, context: &C) -> StepResult<Self::Completion> {
+        let ValueLaneGet { projection } = self;
+        let lane = projection(context);
+        let value = lane.read(T::clone);
+        StepResult::done(value)
+    }
 }
 
 impl<C, T> EventHandler<C> for ValueLaneSet<C, T> {
@@ -132,7 +180,10 @@ impl<C, T> EventHandler<C> for ValueLaneSet<C, T> {
         if let Some(value) = value.take() {
             let lane = projection(context);
             lane.write(value);
-            StepResult::Complete { modified_lane: Some(lane.id), result: () }
+            StepResult::Complete {
+                modified_lane: Some(lane.id),
+                result: (),
+            }
         } else {
             StepResult::Fail(EventHandlerError::SteppedAfterComplete)
         }
@@ -147,45 +198,41 @@ impl<C, T> EventHandler<C> for ValueLaneSync<C, T> {
         if let Some(id) = id.take() {
             let lane = projection(context);
             lane.sync(id);
-            StepResult::Complete { modified_lane: Some(lane.id), result: () }
+            StepResult::Complete {
+                modified_lane: Some(lane.id),
+                result: (),
+            }
         } else {
             StepResult::Fail(EventHandlerError::SteppedAfterComplete)
         }
     }
 }
 
-//TODO Add terminator.
-pub struct ValueLaneCommand<'a, C, T, R> {
-    projection: for<'b> fn(&'b C) -> &'b ValueLane<T>,
-    decoder: &'a mut RecognizerDecoder<R>,
-    buffer: &'a mut BytesMut,
+pub struct ProjTransform<C, T> {
+    projection: fn(&C) -> &ValueLane<T>,
 }
 
-impl<'a, C, T, R> ValueLaneCommand<'a, C, T, R> {
-
-    pub fn new(projection: for<'b> fn(&'b C) -> &'b ValueLane<T>,
-    decoder: &'a mut RecognizerDecoder<R>,
-    buffer: &'a mut BytesMut) -> Self {
-        ValueLaneCommand { projection, decoder, buffer }
+impl<C, T> ProjTransform<C, T> {
+    pub fn new(projection: fn(&C) -> &ValueLane<T>) -> Self {
+        ProjTransform { projection }
     }
-
 }
 
-impl<'a, C, T, R> EventHandler<C> for ValueLaneCommand<'a, C, T, R>
-where
-    R: Recognizer<Target = T>,
-{
-    type Completion = ();
+impl<C, T> HandlerTrans<T> for ProjTransform<C, T> {
+    type Out = ValueLaneSet<C, T>;
 
-    fn step(&mut self, meta: AgentMetadata, context: &C) -> StepResult<Self::Completion> {
-        let ValueLaneCommand { projection, buffer, decoder } = self;
-        match decoder.decode_eof(buffer) {
-            Ok(Some(value)) => {
-                let mut setter = ValueLaneSet::new(*projection, value);
-                setter.step(meta, context)
-            },
-            Err(e) => StepResult::Fail(EventHandlerError::BadCommand(e)),
-            _ => StepResult::Fail(EventHandlerError::BadCommand(AsyncParseError::Parser(ParseError::Structure(ReadError::IncompleteRecord)))),
-        }
+    fn transform(self, input: T) -> Self::Out {
+        let ProjTransform { projection } = self;
+        ValueLaneSet::new(projection, input)
     }
+}
+
+pub type DecodeAndSet<C, T> = AndThen<Decode<T>, ValueLaneSet<C, T>, ProjTransform<C, T>>;
+
+pub fn decode_and_set<C, T: RecognizerReadable>(
+    buffer: BytesMut,
+    projection: fn(&C) -> &ValueLane<T>,
+) -> DecodeAndSet<C, T> {
+    let decode: Decode<T> = Decode::new(buffer);
+    decode.and_then(ProjTransform::new(projection))
 }

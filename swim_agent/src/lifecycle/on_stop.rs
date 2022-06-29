@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_api::handlers::{NoHandler, FnHandler};
+use swim_api::handlers::{FnHandler, NoHandler};
 
 use crate::event_handler::{EventHandler, UnitHandler};
+
+use super::utility::HandlerContext;
 
 pub trait OnStop<'a, Context>: Send {
     type OnStopHandler: EventHandler<Context, Completion = ()> + Send + 'a;
@@ -22,10 +24,32 @@ pub trait OnStop<'a, Context>: Send {
     fn on_stop(&'a self) -> Self::OnStopHandler;
 }
 
+pub trait OnStopShared<'a, Context, Shared>: Send {
+    type OnStopHandler: EventHandler<Context, Completion = ()> + Send + 'a;
+
+    fn on_stop(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+    ) -> Self::OnStopHandler;
+}
+
 impl<'a, Context> OnStop<'a, Context> for NoHandler {
     type OnStopHandler = UnitHandler;
 
     fn on_stop(&'a self) -> Self::OnStopHandler {
+        Default::default()
+    }
+}
+
+impl<'a, Context, Shared> OnStopShared<'a, Context, Shared> for NoHandler {
+    type OnStopHandler = UnitHandler;
+
+    fn on_stop(
+        &'a self,
+        _shared: &'a Shared,
+        _handler_context: HandlerContext<Context>,
+    ) -> Self::OnStopHandler {
         Default::default()
     }
 }
@@ -40,5 +64,23 @@ where
     fn on_stop(&'a self) -> Self::OnStopHandler {
         let FnHandler(f) = self;
         f()
+    }
+}
+
+impl<'a, Context, F, H, Shared> OnStopShared<'a, Context, Shared> for FnHandler<F>
+where
+    Shared: 'static,
+    F: Fn(&'a Shared, HandlerContext<Context>) -> H + Send,
+    H: EventHandler<Context, Completion = ()> + Send + 'static,
+{
+    type OnStopHandler = H;
+
+    fn on_stop(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+    ) -> Self::OnStopHandler {
+        let FnHandler(f) = self;
+        f(shared, handler_context)
     }
 }

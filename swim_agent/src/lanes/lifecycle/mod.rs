@@ -14,9 +14,14 @@
 
 use std::marker::PhantomData;
 
-use swim_api::handlers::{NoHandler, FnHandler};
+use swim_api::handlers::{FnHandler, NoHandler};
 
-use self::{on_event::OnEvent, on_set::OnSet};
+use crate::lifecycle::utility::HandlerContext;
+
+use self::{
+    on_event::{OnEvent, OnEventShared},
+    on_set::{OnSet, OnSetShared},
+};
 
 pub mod on_event;
 pub mod on_set;
@@ -26,42 +31,53 @@ pub trait ValueLaneHandlers<'a, T, Context>:
 {
 }
 
+pub trait ValueLaneHandlersShared<'a, T, Context, Shared>:
+    OnEventShared<'a, T, Context, Shared> + OnSetShared<'a, T, Context, Shared>
+{
+}
+
 pub trait ValueLaneLifecycle<T, Context>: for<'a> ValueLaneHandlers<'a, T, Context> {}
 
-impl<L, T, Context> ValueLaneLifecycle<T, Context> for L
-where
-    L: for<'a> ValueLaneHandlers<'a, T, Context>,
-{}
+pub trait ValueLaneLifecycleShared<T, Context, Shared>:
+    for<'a> ValueLaneHandlersShared<'a, T, Context, Shared>
+{
+}
 
-impl<'a, L, T, Context> ValueLaneHandlers<'a, T, Context> for L
-where
-    L: OnEvent<'a, T, Context> + OnSet<'a, T, Context>,
-{}
+impl<L, T, Context, Shared> ValueLaneLifecycleShared<T, Context, Shared> for L where
+    L: for<'a> ValueLaneHandlersShared<'a, T, Context, Shared>
+{
+}
 
-pub struct BasicValueLaneLifecycle<Context, T, FEv, FSet> {
-    _value_type: PhantomData<fn(Context, T)>,
+impl<'a, L, T, Context, Shared> ValueLaneHandlersShared<'a, T, Context, Shared> for L where
+    L: OnEventShared<'a, T, Context, Shared> + OnSetShared<'a, T, Context, Shared>
+{
+}
+
+pub struct StatefulValueLaneLifecycle<Context, Shared, T, FEv = NoHandler, FSet = NoHandler> {
+    _value_type: PhantomData<fn(Context, Shared, T)>,
     on_event: FEv,
     on_set: FSet,
 }
 
-pub fn for_value_lane<Context, T>() -> BasicValueLaneLifecycle<Context, T, NoHandler, NoHandler> {
-    BasicValueLaneLifecycle { 
-        _value_type: PhantomData, 
-        on_event: NoHandler, 
-        on_set: NoHandler 
+impl<Context, Shared, T> Default for StatefulValueLaneLifecycle<Context, Shared, T> {
+    fn default() -> Self {
+        Self {
+            _value_type: Default::default(),
+            on_event: Default::default(),
+            on_set: Default::default(),
+        }
     }
 }
 
-impl<Context, T, FEv, FSet> BasicValueLaneLifecycle<Context, T, FEv, FSet> {
-
+impl<Context, Shared, T, FEv, FSet> StatefulValueLaneLifecycle<Context, Shared, T, FEv, FSet> {
     pub fn on_event<F>(
         self,
         f: F,
-    ) -> BasicValueLaneLifecycle<Context, T, FnHandler<F>, FSet>
+    ) -> StatefulValueLaneLifecycle<Context, Shared, T, FnHandler<F>, FSet>
     where
-        FnHandler<F>: for<'a> OnEvent<'a, T, Context>,
+        FnHandler<F>: for<'a> OnEventShared<'a, T, Context, Shared>,
     {
-        BasicValueLaneLifecycle {
+        StatefulValueLaneLifecycle {
             _value_type: PhantomData,
             on_event: FnHandler(f),
             on_set: self.on_set,
@@ -71,40 +87,52 @@ impl<Context, T, FEv, FSet> BasicValueLaneLifecycle<Context, T, FEv, FSet> {
     pub fn on_set<F>(
         self,
         f: F,
-    ) -> BasicValueLaneLifecycle<Context, T, FEv, FnHandler<F>>
+    ) -> StatefulValueLaneLifecycle<Context, Shared, T, FEv, FnHandler<F>>
     where
-        FnHandler<F>: for<'a> OnSet<'a, T, Context>,
+        FnHandler<F>: for<'a> OnSetShared<'a, T, Context, Shared>,
     {
-        BasicValueLaneLifecycle {
+        StatefulValueLaneLifecycle {
             _value_type: PhantomData,
             on_event: self.on_event,
             on_set: FnHandler(f),
         }
     }
-
 }
 
-impl<'a, T, FEv, FSet, Context> OnEvent<'a, T, Context> for BasicValueLaneLifecycle<Context, T, FEv, FSet>
+impl<'a, T, FEv, FSet, Context, Shared> OnEventShared<'a, T, Context, Shared>
+    for StatefulValueLaneLifecycle<Context, Shared, T, FEv, FSet>
 where
     FSet: Send,
-    FEv: OnEvent<'a, T, Context>,
+    FEv: OnEventShared<'a, T, Context, Shared>,
 {
     type OnEventHandler = FEv::OnEventHandler;
 
-    fn on_event(&'a self, value: &'a T) -> Self::OnEventHandler {
-        self.on_event.on_event(value)
+    fn on_event(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        value: &T,
+    ) -> Self::OnEventHandler {
+        self.on_event.on_event(shared, handler_context, value)
     }
 }
 
-impl<'a, T, FEv, FSet, Context> OnSet<'a, T, Context> for BasicValueLaneLifecycle<Context, T, FEv, FSet>
+impl<'a, T, FEv, FSet, Context, Shared> OnSetShared<'a, T, Context, Shared>
+    for StatefulValueLaneLifecycle<Context, Shared, T, FEv, FSet>
 where
     FEv: Send,
-    FSet: OnSet<'a, T, Context>,
+    FSet: OnSetShared<'a, T, Context, Shared>,
 {
     type OnSetHandler = FSet::OnSetHandler;
 
-    fn on_set(&'a self, existing: Option<&'a T>, new_value: &'a T) -> Self::OnSetHandler {
-        self.on_set.on_set(existing, new_value)
+    fn on_set(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        existing: Option<T>,
+        new_value: &T,
+    ) -> Self::OnSetHandler {
+        self.on_set
+            .on_set(shared, handler_context, existing, new_value)
     }
 }
-

@@ -22,10 +22,11 @@ pub struct AgentMetadata<'a> {
 }
 
 impl<'a> AgentMetadata<'a> {
-
-    pub(crate) fn new(path: &'a RelativeUri,
-        configuration: &'a AgentConfig) -> Self {
-        AgentMetadata { path, configuration }
+    pub(crate) fn new(path: &'a RelativeUri, configuration: &'a AgentConfig) -> Self {
+        AgentMetadata {
+            path,
+            configuration,
+        }
     }
 
     pub fn agent_uri(&self) -> &'a RelativeUri {
@@ -35,5 +36,4 @@ impl<'a> AgentMetadata<'a> {
     pub fn agent_configuration(&self) -> &'a AgentConfig {
         self.configuration
     }
-
 }

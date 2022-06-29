@@ -12,23 +12,51 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_api::handlers::{NoHandler, FnHandler};
+use swim_api::handlers::{FnHandler, NoHandler};
 
-use crate::event_handler::{EventHandler, UnitHandler};
+use crate::{
+    event_handler::{EventHandler, UnitHandler},
+    lifecycle::utility::HandlerContext,
+};
 
 pub trait OnSet<'a, T, Context>: Send {
-
     type OnSetHandler: EventHandler<Context, Completion = ()> + Send + 'a;
     /// #Arguments
     /// * `existing` - The existing value, if it is defined.
     /// * `new_value` - The replacement value.
-    fn on_set(&'a self, existing: Option<&'a T>, new_value: &'a T) -> Self::OnSetHandler;
+    fn on_set(&'a self, existing: Option<T>, new_value: &T) -> Self::OnSetHandler;
+}
+
+pub trait OnSetShared<'a, T, Context, Shared>: Send {
+    type OnSetHandler: EventHandler<Context, Completion = ()> + Send + 'a;
+
+    fn on_set(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        existing: Option<T>,
+        new_value: &T,
+    ) -> Self::OnSetHandler;
 }
 
 impl<'a, T, Context> OnSet<'a, T, Context> for NoHandler {
     type OnSetHandler = UnitHandler;
 
-    fn on_set(&'a self, _existing: Option<&'a T>, _new_value: &'a T) -> Self::OnSetHandler {
+    fn on_set(&'a self, _existing: Option<T>, _new_value: &T) -> Self::OnSetHandler {
+        Default::default()
+    }
+}
+
+impl<'a, T, Context, Shared> OnSetShared<'a, T, Context, Shared> for NoHandler {
+    type OnSetHandler = UnitHandler;
+
+    fn on_set(
+        &'a self,
+        _shared: &'a Shared,
+        _handler_context: HandlerContext<Context>,
+        _existing: Option<T>,
+        _new_value: &T,
+    ) -> Self::OnSetHandler {
         Default::default()
     }
 }
@@ -36,12 +64,33 @@ impl<'a, T, Context> OnSet<'a, T, Context> for NoHandler {
 impl<'a, T, Context, F, H> OnSet<'a, T, Context> for FnHandler<F>
 where
     T: 'static,
-    F: Fn(Option<&'a T>, &'a T) -> H + Send,
-    H: EventHandler<Context, Completion = ()> + Send + 'a,  {
+    F: Fn(Option<T>, &T) -> H + Send,
+    H: EventHandler<Context, Completion = ()> + Send + 'a,
+{
     type OnSetHandler = H;
 
-    fn on_set(&'a self, existing: Option<&'a T>, new_value: &'a T) -> Self::OnSetHandler {
+    fn on_set(&'a self, existing: Option<T>, new_value: &T) -> Self::OnSetHandler {
         let FnHandler(f) = self;
         f(existing, new_value)
+    }
+}
+
+impl<'a, T, Context, Shared, F, H> OnSetShared<'a, T, Context, Shared> for FnHandler<F>
+where
+    T: 'static,
+    F: Fn(&'a Shared, HandlerContext<Context>, Option<T>, &T) -> H + Send,
+    H: EventHandler<Context, Completion = ()> + Send + 'a,
+{
+    type OnSetHandler = H;
+
+    fn on_set(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        existing: Option<T>,
+        new_value: &T,
+    ) -> Self::OnSetHandler {
+        let FnHandler(f) = self;
+        f(shared, handler_context, existing, new_value)
     }
 }

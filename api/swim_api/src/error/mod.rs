@@ -87,10 +87,7 @@ impl From<oneshot::error::RecvError> for AgentRuntimeError {
 #[derive(Error, Debug)]
 pub enum AgentTaskError {
     #[error("Bad frame for lane '{lane}': {error}")]
-    BadFrame {
-        lane: Text,
-        error: FrameIoError 
-    },
+    BadFrame { lane: Text, error: FrameIoError },
     #[error("Failed to deserialize frame body: {0}")]
     DeserializationFailed(#[from] ReadError),
     #[error("Error in use code (likely an event handler): {0}")]

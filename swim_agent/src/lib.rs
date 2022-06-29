@@ -12,9 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod dispatch;
 pub mod event_handler;
 pub mod lanes;
+pub mod lifecycle;
 pub mod meta;
 pub mod model;
-pub mod lifecycle;
