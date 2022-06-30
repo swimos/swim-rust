@@ -18,7 +18,7 @@ use swim_utilities::routing::uri::RelativeUri;
 
 use crate::{
     event_handler::{EventHandler, GetAgentUri, SideEffect},
-    lanes::{ValueLane, ValueLaneGet, ValueLaneSet},
+    lanes::value::{ValueLane, ValueLaneGet, ValueLaneSet},
 };
 
 pub struct HandlerContext<Agent> {

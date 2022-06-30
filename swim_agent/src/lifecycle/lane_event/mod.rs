@@ -20,7 +20,7 @@ use swim_api::handlers::NoHandler;
 
 use crate::{
     event_handler::{EventHandler, FollowedBy, UnitHandler},
-    lanes::{
+    lanes::value::{
         lifecycle::{
             on_event::{OnEvent, OnEventShared},
             on_set::{OnSet, OnSetShared},
