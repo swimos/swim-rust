@@ -51,10 +51,11 @@ use crate::{
     meta::AgentMetadata,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WriteResult {
     NoData,
-    LaneNowClean,
-    LaneStillDirty,
+    Done,
+    DataStillAvailable,
 }
 
 pub trait AgentLaneModel: Sized {
@@ -399,11 +400,11 @@ where
                 if let Some(mut tx) = lane_writers.remove(id) {
                     let name = &lane_ids[id];
                     match lane_model.write_event(name.as_str(), &mut tx.buffer) {
-                        Some(WriteResult::LaneNowClean) => {
+                        Some(WriteResult::Done) => {
                             pending_writes.push(tx.write());
                             false
                         }
-                        Some(WriteResult::LaneStillDirty) => {
+                        Some(WriteResult::DataStillAvailable) => {
                             pending_writes.push(tx.write());
                             true
                         }

@@ -89,6 +89,7 @@ pub enum EventHandlerError {
     IncompleteCommand,
 }
 
+#[derive(Debug)]
 pub enum StepResult<C> {
     Continue {
         modified_lane: Option<u64>,

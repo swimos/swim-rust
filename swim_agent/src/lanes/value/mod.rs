@@ -14,6 +14,9 @@
 
 pub mod lifecycle;
 
+#[cfg(test)]
+mod tests;
+
 use std::{
     cell::{Cell, RefCell},
     collections::VecDeque,
@@ -107,16 +110,16 @@ impl<T: StructuralWritable> ValueLane<T> {
             let response = ValueLaneResponse::synced(id, &*value_guard);
             encoder.encode(response, buffer).expect(INFALLIBLE_SER);
             if dirty.get() || !sync.is_empty() {
-                WriteResult::LaneStillDirty
+                WriteResult::DataStillAvailable
             } else {
-                WriteResult::LaneNowClean
+                WriteResult::Done
             }
         } else if dirty.get() {
             let value_guard = content.borrow();
             let response = ValueLaneResponse::event(&*value_guard);
             encoder.encode(response, buffer).expect(INFALLIBLE_SER);
             dirty.set(false);
-            WriteResult::LaneNowClean
+            WriteResult::Done
         } else {
             WriteResult::NoData
         }
@@ -125,11 +128,15 @@ impl<T: StructuralWritable> ValueLane<T> {
 
 pub struct ValueLaneGet<C, T> {
     projection: for<'a> fn(&'a C) -> &'a ValueLane<T>,
+    done: bool,
 }
 
 impl<C, T> ValueLaneGet<C, T> {
     pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueLane<T>) -> Self {
-        ValueLaneGet { projection }
+        ValueLaneGet {
+            projection,
+            done: false,
+        }
     }
 }
 
@@ -165,10 +172,15 @@ impl<C, T: Clone> EventHandler<C> for ValueLaneGet<C, T> {
     type Completion = T;
 
     fn step(&mut self, _meta: AgentMetadata, context: &C) -> StepResult<Self::Completion> {
-        let ValueLaneGet { projection } = self;
-        let lane = projection(context);
-        let value = lane.read(T::clone);
-        StepResult::done(value)
+        let ValueLaneGet { projection, done } = self;
+        if *done {
+            StepResult::after_done()
+        } else {
+            *done = true;
+            let lane = projection(context);
+            let value = lane.read(T::clone);
+            StepResult::done(value)
+        }
     }
 }
 
