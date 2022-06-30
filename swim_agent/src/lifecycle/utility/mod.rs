@@ -56,7 +56,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     pub fn get_agent_uri(
         &self,
     ) -> impl EventHandler<Agent, Completion = RelativeUri> + Send + 'static {
-        GetAgentUri
+        GetAgentUri::default()
     }
 
     pub fn get_value<T: Clone + 'static>(

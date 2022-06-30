@@ -25,6 +25,9 @@ use tokio_util::codec::Decoder;
 
 use crate::meta::AgentMetadata;
 
+#[cfg(test)]
+mod tests;
+
 pub trait EventHandler<Context> {
     type Completion;
 
@@ -430,13 +433,22 @@ where
     }
 }
 
-pub struct GetAgentUri;
+#[derive(Default, Debug)]
+pub struct GetAgentUri {
+    done: bool,
+}
 
 impl<Context> EventHandler<Context> for GetAgentUri {
     type Completion = RelativeUri;
 
     fn step(&mut self, meta: AgentMetadata, _context: &Context) -> StepResult<Self::Completion> {
-        StepResult::done(meta.agent_uri().clone())
+        let GetAgentUri { done } = self;
+        if *done {
+            StepResult::after_done()
+        } else {
+            *done = true;
+            StepResult::done(meta.agent_uri().clone())
+        }
     }
 }
 
