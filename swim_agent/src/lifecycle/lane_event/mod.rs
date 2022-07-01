@@ -32,6 +32,9 @@ use crate::{
 
 use super::utility::HandlerContext;
 
+#[cfg(test)]
+mod tests;
+
 pub trait LaneEvent<'a, Context> {
     type LaneEventHandler: EventHandler<Context, Completion = ()> + Send + 'a;
 
@@ -77,7 +80,7 @@ impl<'a, Context, Shared> LaneEventShared<'a, Context, Shared> for NoHandler {
 }
 
 pub trait HTree {
-    fn label(&self) -> &'static str;
+    fn label(&self) -> Option<&'static str>;
 }
 
 pub struct ValueLeaf<Context, T, LC> {
@@ -114,8 +117,8 @@ where
 }
 
 impl<Context, T, LC> HTree for ValueLeaf<Context, T, LC> {
-    fn label(&self) -> &'static str {
-        self.label
+    fn label(&self) -> Option<&'static str> {
+        Some(self.label)
     }
 }
 
@@ -156,8 +159,12 @@ where
         left: L,
         right: R,
     ) -> Self {
-        assert!(left.label() < label);
-        assert!(label < right.label());
+        if let Some(left_label) = left.label() {
+            assert!(left_label < label);
+        }
+        if let Some(right_label) = right.label() {
+            assert!(label < right_label);
+        }
         ValueBranch {
             label,
             projection,
@@ -170,6 +177,12 @@ where
 
 #[derive(Debug, Default, Clone, Copy)]
 struct HLeaf;
+
+impl HTree for HLeaf {
+    fn label(&self) -> Option<&'static str> {
+        None
+    }
+}
 
 impl<'a, Context> LaneEvent<'a, Context> for HLeaf {
     type LaneEventHandler = UnitHandler;
@@ -198,8 +211,8 @@ impl<'a, Context, Shared> LaneEventShared<'a, Context, Shared> for HLeaf {
 }
 
 impl<Context, T, LC, L: HTree, R: HTree> HTree for ValueBranch<Context, T, LC, L, R> {
-    fn label(&self) -> &'static str {
-        self.label
+    fn label(&self) -> Option<&'static str> {
+        Some(self.label)
     }
 }
 

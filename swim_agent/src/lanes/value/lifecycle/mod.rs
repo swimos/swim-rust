@@ -31,12 +31,22 @@ pub trait ValueLaneHandlers<'a, T, Context>:
 {
 }
 
+impl<'a, T, Context, L> ValueLaneHandlers<'a, T, Context> for L where
+    L: OnEvent<'a, T, Context> + OnSet<'a, T, Context>
+{
+}
+
 pub trait ValueLaneHandlersShared<'a, T, Context, Shared>:
     OnEventShared<'a, T, Context, Shared> + OnSetShared<'a, T, Context, Shared>
 {
 }
 
 pub trait ValueLaneLifecycle<T, Context>: for<'a> ValueLaneHandlers<'a, T, Context> {}
+
+impl<T, Context, L> ValueLaneLifecycle<T, Context> for L where
+    L: for<'a> ValueLaneHandlers<'a, T, Context>
+{
+}
 
 pub trait ValueLaneLifecycleShared<T, Context, Shared>:
     for<'a> ValueLaneHandlersShared<'a, T, Context, Shared>
