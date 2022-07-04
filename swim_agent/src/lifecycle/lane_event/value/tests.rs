@@ -25,10 +25,11 @@ use crate::{
         lifecycle::{on_event::OnEvent, on_set::OnSet},
         ValueLane,
     },
+    lifecycle::lane_event::HLeaf,
     meta::AgentMetadata,
 };
 
-use super::{HLeaf, LaneEvent, ValueBranch, ValueLeaf};
+use super::{LaneEvent, ValueBranch, ValueLeaf};
 
 struct TestAgent {
     first: ValueLane<i32>,
