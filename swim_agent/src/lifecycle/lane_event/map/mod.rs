@@ -33,6 +33,9 @@ use crate::lifecycle::utility::HandlerContext;
 
 use super::{HTree, LaneEvent, LaneEventShared};
 
+#[cfg(test)]
+mod tests;
+
 pub struct MapLeaf<Context, K, V, LC> {
     label: &'static str,
     projection: fn(&Context) -> &MapLane<K, V>,

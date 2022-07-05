@@ -25,7 +25,7 @@ use crate::{
         lifecycle::{on_event::OnEvent, on_set::OnSet},
         ValueLane,
     },
-    lifecycle::lane_event::HLeaf,
+    lifecycle::lane_event::{tests::run_handler, HLeaf},
     meta::AgentMetadata,
 };
 
@@ -63,15 +63,6 @@ impl TestAgent {
 const FIRST_NAME: &str = "first";
 const SECOND_NAME: &str = "second";
 const THIRD_NAME: &str = "third";
-
-#[test]
-fn hleaf_lane_event() {
-    let leaf = HLeaf;
-
-    let agent = TestAgent::default();
-    assert!(leaf.lane_event(&agent, "other").is_none());
-    assert!(leaf.lane_event(&agent, FIRST_NAME).is_none());
-}
 
 #[derive(Default, Debug, Clone, Copy)]
 struct LifecycleState<T> {
@@ -178,26 +169,6 @@ fn make_uri() -> RelativeUri {
 
 fn make_meta(uri: &RelativeUri) -> AgentMetadata<'_> {
     AgentMetadata::new(uri, &CONFIG)
-}
-
-fn run_handler<H>(meta: AgentMetadata<'_>, agent: &TestAgent, mut event_handler: H)
-where
-    H: EventHandler<TestAgent, Completion = ()>,
-{
-    loop {
-        match event_handler.step(meta, agent) {
-            StepResult::Continue { modified_lane } => {
-                assert!(modified_lane.is_none());
-            }
-            StepResult::Fail(err) => {
-                panic!("Event handler failed: {}", err);
-            }
-            StepResult::Complete { modified_lane, .. } => {
-                assert!(modified_lane.is_none());
-                break;
-            }
-        }
-    }
 }
 
 #[test]

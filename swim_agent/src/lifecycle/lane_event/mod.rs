@@ -22,6 +22,8 @@ use super::utility::HandlerContext;
 
 mod command;
 mod map;
+#[cfg(test)]
+mod tests;
 mod value;
 
 pub use command::{
