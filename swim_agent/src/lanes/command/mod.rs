@@ -27,6 +27,7 @@ use crate::{
 
 pub mod lifecycle;
 
+#[derive(Debug)]
 pub struct CommandLane<T> {
     id: u64,
     prev_command: RefCell<Option<T>>,

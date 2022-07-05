@@ -17,6 +17,7 @@ use std::hash::Hash;
 
 use uuid::Uuid;
 
+#[derive(Debug)]
 pub struct SyncQueue<K> {
     id: Uuid,
     queue: VecDeque<K>,
@@ -184,6 +185,7 @@ impl Default for NextWrite {
     }
 }
 
+#[derive(Debug)]
 pub struct WriteQueues<K> {
     event_queue: EventQueue<K>,
     sync_queues: Vec<SyncQueue<K>>,
@@ -239,7 +241,7 @@ where
             next: NextWrite { sync_index, next },
         } = self;
         let selection = next.flip();
-        if selection.is_event() || sync_queues.is_empty() {
+        if (selection.is_event() && !event_queue.is_empty()) || sync_queues.is_empty() {
             if let Some(action) = event_queue.pop() {
                 update_sync_queues(sync_queues, &action);
                 Some(ToWrite::Event(action))
@@ -254,7 +256,9 @@ where
                     ToWrite::SyncEvent(id, k)
                 } else {
                     let id = sync_queues.remove(*sync_index).id;
-                    *sync_index = *sync_index % sync_queues.len();
+                    if *sync_index >= sync_queues.len() {
+                        *sync_index = 0;
+                    }
                     ToWrite::Synced(id)
                 })
             } else {

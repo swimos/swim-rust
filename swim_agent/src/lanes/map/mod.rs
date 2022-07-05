@@ -26,6 +26,9 @@ mod event;
 pub mod lifecycle;
 mod queues;
 
+#[cfg(test)]
+mod tests;
+
 use crate::{
     event_handler::{EventHandler, StepResult},
     meta::AgentMetadata,
@@ -36,6 +39,7 @@ use self::queues::{Action, ToWrite, WriteQueues};
 
 pub use event::MapLaneEvent;
 
+#[derive(Debug)]
 pub struct MapLane<K, V> {
     id: u64,
     inner: RefCell<Inner<K, V>>,
@@ -104,6 +108,7 @@ where
     }
 }
 
+#[derive(Debug)]
 struct Inner<K, V> {
     content: HashMap<K, V>,
     previous: Option<MapLaneEvent<K, V>>,
@@ -291,13 +296,13 @@ where
     }
 }
 
-pub struct MapLaneRemove<C, K, Q, V> {
+pub struct MapLaneRemove<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
-    key: Option<Q>,
+    key: Option<K>,
 }
 
-impl<C, K, Q, V> MapLaneRemove<C, K, Q, V> {
-    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>, key: Q) -> Self {
+impl<C, K, V> MapLaneRemove<C, K, V> {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>, key: K) -> Self {
         MapLaneRemove {
             projection,
             key: Some(key),
@@ -305,10 +310,9 @@ impl<C, K, Q, V> MapLaneRemove<C, K, Q, V> {
     }
 }
 
-impl<C, K, Q, V> EventHandler<C> for MapLaneRemove<C, K, Q, V>
+impl<C, K, V> EventHandler<C> for MapLaneRemove<C, K, V>
 where
     K: Clone + Eq + Hash,
-    Q: AsRef<K>,
 {
     type Completion = ();
 
@@ -316,7 +320,7 @@ where
         let MapLaneRemove { projection, key } = self;
         if let Some(key) = key.take() {
             let lane = projection(context);
-            lane.remove(key.as_ref());
+            lane.remove(&key);
             StepResult::Complete {
                 modified_lane: Some(lane.id),
                 result: (),
@@ -363,14 +367,14 @@ where
     }
 }
 
-pub struct MapLaneGet<C, K, Q, V> {
+pub struct MapLaneGet<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
-    key: Q,
+    key: K,
     done: bool,
 }
 
-impl<C, K, Q, V> MapLaneGet<C, K, Q, V> {
-    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>, key: Q) -> Self {
+impl<C, K, V> MapLaneGet<C, K, V> {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>, key: K) -> Self {
         MapLaneGet {
             projection,
             key,
@@ -379,11 +383,10 @@ impl<C, K, Q, V> MapLaneGet<C, K, Q, V> {
     }
 }
 
-impl<C, K, Q, V> EventHandler<C> for MapLaneGet<C, K, Q, V>
+impl<C, K, V> EventHandler<C> for MapLaneGet<C, K, V>
 where
     K: Clone + Eq + Hash,
     V: Clone,
-    Q: AsRef<K>,
 {
     type Completion = Option<V>;
 
@@ -398,7 +401,7 @@ where
             let lane = projection(context);
             StepResult::Complete {
                 modified_lane: Some(lane.id),
-                result: lane.get(key.as_ref(), |v| v.cloned()),
+                result: lane.get(&key, |v| v.cloned()),
             }
         } else {
             StepResult::after_done()
