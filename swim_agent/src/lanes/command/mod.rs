@@ -15,6 +15,7 @@
 use std::cell::{Cell, RefCell};
 
 use bytes::BytesMut;
+use static_assertions::assert_impl_all;
 use swim_api::protocol::agent::{ValueLaneResponse, ValueLaneResponseEncoder};
 use swim_form::structural::write::StructuralWritable;
 use tokio_util::codec::Encoder;
@@ -34,6 +35,8 @@ pub struct CommandLane<T> {
     dirty: Cell<bool>,
     //sync_queue: RefCell<VecDeque<Uuid>>, TODO Is syncing reasonable?
 }
+
+assert_impl_all!(CommandLane<()>: Send);
 
 impl<T> CommandLane<T> {
     pub fn new(id: u64) -> Self {

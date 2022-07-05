@@ -23,6 +23,7 @@ use std::{
 };
 
 use bytes::BytesMut;
+use static_assertions::assert_impl_all;
 use swim_api::protocol::agent::{ValueLaneResponse, ValueLaneResponseEncoder};
 use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use tokio_util::codec::Encoder;
@@ -42,6 +43,8 @@ pub struct ValueLane<T> {
     dirty: Cell<bool>,
     sync_queue: RefCell<VecDeque<Uuid>>,
 }
+
+assert_impl_all!(ValueLane<()>: Send);
 
 impl<T> ValueLane<T> {
     pub fn new(id: u64, init: T) -> Self {

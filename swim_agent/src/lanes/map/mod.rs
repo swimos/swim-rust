@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use bytes::BytesMut;
+use static_assertions::assert_impl_all;
 use std::{borrow::Borrow, cell::RefCell, collections::HashMap, hash::Hash};
 use swim_api::protocol::{
     agent::{LaneResponseKind, MapLaneResponse, MapLaneResponseEncoder},
@@ -44,6 +45,8 @@ pub struct MapLane<K, V> {
     id: u64,
     inner: RefCell<Inner<K, V>>,
 }
+
+assert_impl_all!(MapLane<(), ()>: Send);
 
 impl<K, V> MapLane<K, V> {
     pub fn new(id: u64, init: HashMap<K, V>) -> Self {
