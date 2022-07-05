@@ -27,6 +27,8 @@ use crate::{
 };
 
 pub mod lifecycle;
+#[cfg(test)]
+mod tests;
 
 #[derive(Debug)]
 pub struct CommandLane<T> {
