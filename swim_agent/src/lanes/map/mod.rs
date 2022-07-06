@@ -31,9 +31,9 @@ mod queues;
 mod tests;
 
 use crate::{
+    agent_model::WriteResult,
     event_handler::{EventHandler, StepResult},
     meta::AgentMetadata,
-    agent_model::WriteResult,
 };
 
 use self::queues::{Action, ToWrite, WriteQueues};

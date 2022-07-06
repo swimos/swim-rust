@@ -30,12 +30,12 @@ use tokio_util::codec::Decoder;
 use uuid::Uuid;
 
 use crate::{
+    agent_model::WriteResult,
     event_handler::{EventHandler, EventHandlerError, StepResult},
     lanes::map::{
         MapLane, MapLaneClear, MapLaneGet, MapLaneGetMap, MapLaneRemove, MapLaneSync, MapLaneUpdate,
     },
     meta::AgentMetadata,
-    agent_model::WriteResult,
 };
 
 const ID: u64 = 74;

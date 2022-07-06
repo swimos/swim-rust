@@ -30,9 +30,9 @@ use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
 use crate::{
+    agent_model::WriteResult,
     event_handler::{AndThen, Decode, EventHandler, EventHandlerError, HandlerTrans, StepResult},
     meta::AgentMetadata,
-    agent_model::WriteResult,
 };
 
 #[derive(Debug)]

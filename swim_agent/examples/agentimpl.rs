@@ -20,6 +20,7 @@ use std::{
 use bytes::{BufMut, Bytes, BytesMut};
 use frunk::{Coprod, Coproduct};
 use swim_agent::{
+    agent_model::{AgentLaneModel, WriteResult},
     event_handler::{EventHandler, UnitHandler},
     lanes::value::{
         decode_and_set, lifecycle::StatefulValueLaneLifecycle, DecodeAndSet, ValueLane,
@@ -29,7 +30,6 @@ use swim_agent::{
         lane_event::ValueLeaf, stateful::StatefulAgentLifecycle, utility::HandlerContext,
         AgentLifecycle,
     },
-    agent_model::{AgentLaneModel, WriteResult},
 };
 use swim_api::protocol::map::MapMessage;
 use swim_model::Text;

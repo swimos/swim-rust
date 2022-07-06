@@ -12,8 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod agent_model;
-pub mod event_handler;
-pub mod lanes;
-pub mod lifecycle;
-pub mod meta;
+use swim_api::protocol::map::MapMessage;
+use uuid::Uuid;
+
+mod fake_agent;
+mod fake_context;
+mod fake_lifecycle;
+
+#[derive(Debug, Clone)]
+pub enum TestEvent {
+    Value { body: i32 },
+    Map { body: MapMessage<i32, i32> },
+    Sync { id: Uuid },
+}
+
+const VAL_ID: u64 = 0;
+const MAP_ID: u64 = 1;
+
+const VAL_LANE: &str = "first";
+const MAP_LANE: &str = "second";

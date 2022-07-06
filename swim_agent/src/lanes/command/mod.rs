@@ -21,9 +21,9 @@ use swim_form::structural::write::StructuralWritable;
 use tokio_util::codec::Encoder;
 
 use crate::{
+    agent_model::WriteResult,
     event_handler::{EventHandler, StepResult},
     meta::AgentMetadata,
-    agent_model::WriteResult,
 };
 
 pub mod lifecycle;

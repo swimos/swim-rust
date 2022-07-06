@@ -12,13 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{pin::Pin, task::{Context, Poll}};
+use std::{
+    pin::Pin,
+    task::{Context, Poll},
+};
 
-use bytes::{BytesMut, Bytes};
-use futures::{future::Either, Stream, SinkExt, ready, StreamExt};
-use swim_api::{protocol::{agent::{LaneRequestDecoder, LaneRequest}, WithLengthBytesCodec, map::{MapMessageDecoder, RawMapOperationDecoder, MapMessage}}, error::FrameIoError};
+use bytes::{Bytes, BytesMut};
+use futures::{future::Either, ready, SinkExt, Stream, StreamExt};
+use swim_api::{
+    error::FrameIoError,
+    protocol::{
+        agent::{LaneRequest, LaneRequestDecoder},
+        map::{MapMessage, MapMessageDecoder, RawMapOperationDecoder},
+        WithLengthBytesCodec,
+    },
+};
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
-use tokio_util::codec::{FramedRead, BytesCodec, FramedWrite};
+use tokio_util::codec::{BytesCodec, FramedRead, FramedWrite};
 
 type ValueLaneReader = FramedRead<ByteReader, LaneRequestDecoder<WithLengthBytesCodec>>;
 type MapLaneReader =

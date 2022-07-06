@@ -27,10 +27,7 @@ use futures::{
 use swim_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult, UplinkKind},
     error::{AgentInitError, AgentTaskError, FrameIoError},
-    protocol::{
-        agent::{LaneRequest},
-        map::{MapMessage},
-    },
+    protocol::{agent::LaneRequest, map::MapMessage},
 };
 use swim_model::Text;
 use swim_utilities::{
@@ -46,6 +43,8 @@ use crate::{
 };
 
 mod io;
+#[cfg(test)]
+mod tests;
 
 use io::{LaneReader, LaneWriter};
 

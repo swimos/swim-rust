@@ -21,10 +21,10 @@ use swim_utilities::routing::uri::RelativeUri;
 use tokio_util::codec::Decoder;
 
 use crate::{
+    agent_model::WriteResult,
     event_handler::{EventHandler, EventHandlerError, StepResult},
     lanes::command::DoCommand,
     meta::AgentMetadata,
-    agent_model::WriteResult,
 };
 
 use super::CommandLane;
