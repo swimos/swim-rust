@@ -28,10 +28,27 @@ use crate::{
 
 use super::{HTree, LaneEvent, LaneEventShared};
 
+#[cfg(test)]
+mod tests;
+
 pub struct CommandLeaf<Context, T, LC> {
     label: &'static str,
     projection: fn(&Context) -> &CommandLane<T>,
     lifecycle: LC,
+}
+
+impl<Context, T, LC> CommandLeaf<Context, T, LC> {
+    pub fn new(
+        label: &'static str,
+        projection: fn(&Context) -> &CommandLane<T>,
+        lifecycle: LC,
+    ) -> Self {
+        CommandLeaf {
+            label,
+            projection,
+            lifecycle,
+        }
+    }
 }
 
 impl<Context, T, LC> HTree for CommandLeaf<Context, T, LC> {
