@@ -27,7 +27,7 @@ use crate::{
     event_handler::{EventHandler, EventHandlerError, StepResult},
     lanes::value::{ValueLaneGet, ValueLaneSync},
     meta::AgentMetadata,
-    model::WriteResult,
+    agent_model::WriteResult,
 };
 
 use super::{ValueLane, ValueLaneSet};

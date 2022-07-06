@@ -32,7 +32,7 @@ use uuid::Uuid;
 use crate::{
     event_handler::{AndThen, Decode, EventHandler, EventHandlerError, HandlerTrans, StepResult},
     meta::AgentMetadata,
-    model::WriteResult,
+    agent_model::WriteResult,
 };
 
 #[derive(Debug)]

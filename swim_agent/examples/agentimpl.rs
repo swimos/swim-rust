@@ -29,7 +29,7 @@ use swim_agent::{
         lane_event::ValueLeaf, stateful::StatefulAgentLifecycle, utility::HandlerContext,
         AgentLifecycle,
     },
-    model::{AgentLaneModel, WriteResult},
+    agent_model::{AgentLaneModel, WriteResult},
 };
 use swim_api::protocol::map::MapMessage;
 use swim_model::Text;

@@ -35,7 +35,7 @@ use crate::{
         MapLane, MapLaneClear, MapLaneGet, MapLaneGetMap, MapLaneRemove, MapLaneSync, MapLaneUpdate,
     },
     meta::AgentMetadata,
-    model::WriteResult,
+    agent_model::WriteResult,
 };
 
 const ID: u64 = 74;

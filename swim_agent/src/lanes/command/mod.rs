@@ -23,7 +23,7 @@ use tokio_util::codec::Encoder;
 use crate::{
     event_handler::{EventHandler, StepResult},
     meta::AgentMetadata,
-    model::WriteResult,
+    agent_model::WriteResult,
 };
 
 pub mod lifecycle;

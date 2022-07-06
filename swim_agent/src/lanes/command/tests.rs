@@ -24,7 +24,7 @@ use crate::{
     event_handler::{EventHandler, EventHandlerError, StepResult},
     lanes::command::DoCommand,
     meta::AgentMetadata,
-    model::WriteResult,
+    agent_model::WriteResult,
 };
 
 use super::CommandLane;

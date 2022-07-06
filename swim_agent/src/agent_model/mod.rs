@@ -15,26 +15,21 @@
 use std::{
     collections::{HashMap, HashSet},
     marker::PhantomData,
-    pin::Pin,
-    task::{Context, Poll},
 };
 
 use bytes::{Bytes, BytesMut};
 use futures::FutureExt;
-use futures::SinkExt;
 use futures::{
     future::{BoxFuture, Either},
-    ready,
     stream::{FuturesUnordered, SelectAll},
-    Stream, StreamExt,
+    StreamExt,
 };
 use swim_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult, UplinkKind},
     error::{AgentInitError, AgentTaskError, FrameIoError},
     protocol::{
-        agent::{LaneRequest, LaneRequestDecoder},
-        map::{MapMessage, MapMessageDecoder, RawMapOperationDecoder},
-        WithLengthBytesCodec,
+        agent::{LaneRequest},
+        map::{MapMessage},
     },
 };
 use swim_model::Text;
@@ -42,7 +37,6 @@ use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
     routing::uri::RelativeUri,
 };
-use tokio_util::codec::{BytesCodec, FramedRead, FramedWrite};
 use uuid::Uuid;
 
 use crate::{
@@ -50,6 +44,10 @@ use crate::{
     lifecycle::AgentLifecycle,
     meta::AgentMetadata,
 };
+
+mod io;
+
+use io::{LaneReader, LaneWriter};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WriteResult {
@@ -102,76 +100,6 @@ where
             .boxed()
     }
 }
-
-type ValueLaneReader = FramedRead<ByteReader, LaneRequestDecoder<WithLengthBytesCodec>>;
-type MapLaneReader =
-    FramedRead<ByteReader, LaneRequestDecoder<MapMessageDecoder<RawMapOperationDecoder>>>;
-
-struct LaneWriter {
-    id: u64,
-    writer: FramedWrite<ByteWriter, BytesCodec>,
-    buffer: BytesMut,
-}
-
-struct LaneReader {
-    id: u64,
-    inner: Either<ValueLaneReader, MapLaneReader>,
-}
-
-impl LaneReader {
-    fn value(id: u64, reader: ByteReader) -> Self {
-        LaneReader {
-            id,
-            inner: Either::Left(FramedRead::new(reader, Default::default())),
-        }
-    }
-
-    fn map(id: u64, reader: ByteReader) -> Self {
-        LaneReader {
-            id,
-            inner: Either::Right(FramedRead::new(reader, Default::default())),
-        }
-    }
-}
-
-impl LaneWriter {
-    fn new(id: u64, tx: ByteWriter) -> Self {
-        LaneWriter {
-            id,
-            writer: FramedWrite::new(tx, BytesCodec::default()),
-            buffer: Default::default(),
-        }
-    }
-
-    async fn write(mut self) -> (Self, Result<(), std::io::Error>) {
-        let LaneWriter { writer, buffer, .. } = &mut self;
-        let data = buffer.split().freeze();
-        let result = writer.send(data).await;
-        (self, result)
-    }
-}
-
-impl Stream for LaneReader {
-    type Item = (
-        u64,
-        Result<Either<LaneRequest<Bytes>, LaneRequest<MapMessage<Bytes, Bytes>>>, FrameIoError>,
-    );
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let LaneReader { id, inner } = self.get_mut();
-        match inner {
-            Either::Left(reader) => {
-                let result = ready!(reader.poll_next_unpin(cx));
-                Poll::Ready(result.map(|r| (*id, r.map(Either::Left))))
-            }
-            Either::Right(reader) => {
-                let result = ready!(reader.poll_next_unpin(cx));
-                Poll::Ready(result.map(|r| (*id, r.map(Either::Right))))
-            }
-        }
-    }
-}
-
 enum TaskEvent {
     WriteComplete {
         writer: LaneWriter,
@@ -322,7 +250,7 @@ where
                     if result.is_err() {
                         break Ok(()); //Failing to write indicates that the runtime has stopped so we can exit without an error.
                     }
-                    lane_writers.insert(writer.id, writer);
+                    lane_writers.insert(writer.lane_id(), writer);
                 }
                 TaskEvent::ValueRequest { id, request } => {
                     let name = &lane_ids[&id];

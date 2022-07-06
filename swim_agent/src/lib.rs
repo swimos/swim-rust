@@ -16,4 +16,4 @@ pub mod event_handler;
 pub mod lanes;
 pub mod lifecycle;
 pub mod meta;
-pub mod model;
+pub mod agent_model;
