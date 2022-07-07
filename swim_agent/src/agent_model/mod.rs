@@ -12,10 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{
-    collections::{HashMap, HashSet},
-    marker::PhantomData,
-};
+use std::collections::{HashMap, HashSet};
 
 use bytes::{Bytes, BytesMut};
 use futures::FutureExt;
@@ -60,8 +57,6 @@ pub trait AgentLaneModel: Sized {
     type MapCommandHandler: EventHandler<Self, Completion = ()> + Send + 'static;
     type OnSyncHandler: EventHandler<Self, Completion = ()> + Send + 'static;
 
-    fn make_instance() -> Self;
-
     fn value_like_lanes(&self) -> HashSet<&str>;
     fn map_like_lanes(&self) -> HashSet<&str>;
     fn lane_ids(&self) -> HashMap<u64, Text>;
@@ -79,13 +74,22 @@ pub trait AgentLaneModel: Sized {
 
 #[derive(Debug, Clone)]
 pub struct AgentModel<LaneModel, Lifecycle> {
-    _model_type: PhantomData<fn() -> LaneModel>,
+    lane_model: LaneModel,
     lifecycle: Lifecycle,
+}
+
+impl<LaneModel, Lifecycle> AgentModel<LaneModel, Lifecycle> {
+    pub fn new(lane_model: LaneModel, lifecycle: Lifecycle) -> Self {
+        AgentModel {
+            lane_model,
+            lifecycle,
+        }
+    }
 }
 
 impl<LaneModel, Lifecycle> Agent for AgentModel<LaneModel, Lifecycle>
 where
-    LaneModel: AgentLaneModel + Clone + Send + 'static,
+    LaneModel: AgentLaneModel + Clone + Send + Sync + 'static,
     Lifecycle: AgentLifecycle<LaneModel> + Clone + Send + Sync + 'static,
 {
     fn run<'a>(
@@ -133,9 +137,11 @@ where
         LaneModel: AgentLaneModel,
         Lifecycle: AgentLifecycle<LaneModel>,
     {
-        let AgentModel { lifecycle, .. } = &self;
+        let AgentModel {
+            lane_model,
+            lifecycle,
+        } = &self;
 
-        let lane_model = LaneModel::make_instance();
         let meta = AgentMetadata::new(&route, &config);
 
         let mut value_lane_io = HashMap::new();
@@ -160,7 +166,7 @@ where
         let on_start_handler = lifecycle.on_start();
         if let Err(e) = run_handler(
             meta,
-            &lane_model,
+            lane_model,
             lifecycle,
             on_start_handler,
             &lane_ids,
@@ -169,14 +175,7 @@ where
             return Err(AgentInitError::UserCodeError(Box::new(e)));
         }
         Ok(self
-            .run_agent(
-                route,
-                config,
-                lane_model,
-                lane_ids,
-                value_lane_io,
-                map_lane_io,
-            )
+            .run_agent(route, config, lane_ids, value_lane_io, map_lane_io)
             .boxed())
     }
 
@@ -184,12 +183,14 @@ where
         self,
         route: RelativeUri,
         config: AgentConfig,
-        lane_model: LaneModel,
         lane_ids: HashMap<u64, Text>,
         value_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
         map_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
     ) -> Result<(), AgentTaskError> {
-        let AgentModel { lifecycle, .. } = self;
+        let AgentModel {
+            lane_model,
+            lifecycle,
+        } = self;
         let meta = AgentMetadata::new(&route, &config);
 
         let mut lane_ids_rev = HashMap::new();
@@ -341,6 +342,19 @@ where
                     true
                 }
             });
+        }?;
+        let on_stop_handler = lifecycle.on_stop();
+        if let Err(e) = run_handler(
+            meta,
+            &lane_model,
+            &lifecycle,
+            on_stop_handler,
+            &lane_ids,
+            &mut Discard,
+        ) {
+            Err(AgentTaskError::UserCodeError(Box::new(e)))
+        } else {
+            Ok(())
         }
     }
 }
@@ -397,8 +411,8 @@ where
                         collector.add_id(id);
                         run_handler(meta, context, lifecycle, consequence, lanes, collector)?;
                     }
-                    break Ok(());
                 }
+                break Ok(());
             }
         }
     }

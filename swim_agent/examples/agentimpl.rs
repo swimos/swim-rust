@@ -36,7 +36,6 @@ use swim_model::Text;
 use uuid::Uuid;
 
 fn main() {
-    let _ = MyAgent::make_instance();
     println!("Hello, world!");
 }
 
@@ -109,6 +108,15 @@ const _: () = {
     const FIRST_ID: u64 = 0;
     const SECOND_ID: u64 = 1;
 
+    impl Default for MyAgent {
+        fn default() -> Self {
+            MyAgent {
+                first: ValueLane::new(FIRST_ID, 0),
+                second: ValueLane::new(SECOND_ID, Text::default()),
+            }
+        }
+    }
+
     //Geneated by the derive macro.
     impl AgentLaneModel for MyAgent {
         type ValCommandHandler = Coprod!(
@@ -122,13 +130,6 @@ const _: () = {
             ValueLaneSync<MyAgent, i32>,
             ValueLaneSync<MyAgent, Text>,
         );
-
-        fn make_instance() -> Self {
-            MyAgent {
-                first: ValueLane::new(FIRST_ID, 0),
-                second: ValueLane::new(SECOND_ID, Text::default()),
-            }
-        }
 
         fn value_like_lanes(&self) -> HashSet<&str> {
             let mut lanes = HashSet::new();

@@ -95,10 +95,6 @@ impl AgentLaneModel for TestAgent {
 
     type OnSyncHandler = TestHandler;
 
-    fn make_instance() -> Self {
-        Default::default()
-    }
-
     fn value_like_lanes(&self) -> HashSet<&str> {
         [VAL_LANE].into_iter().collect()
     }

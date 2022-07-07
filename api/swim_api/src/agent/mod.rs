@@ -90,7 +90,7 @@ pub trait AgentContext: Sync {
     ) -> BoxFuture<'_, Result<(), AgentRuntimeError>>;
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy)]
 pub struct AgentConfig {
     //TODO Add parameters.
 }

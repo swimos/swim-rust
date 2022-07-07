@@ -23,7 +23,7 @@ use crate::{
 
 use super::fake_agent::TestAgent;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum LifecycleEvent {
     Start,
     Lane(Text),
@@ -37,6 +37,12 @@ pub struct LifecycleHandler {
 
 pub struct TestLifecycle {
     sender: mpsc::UnboundedSender<LifecycleEvent>,
+}
+
+impl TestLifecycle {
+    pub fn new(tx: mpsc::UnboundedSender<LifecycleEvent>) -> TestLifecycle {
+        TestLifecycle { sender: tx }
+    }
 }
 
 impl TestLifecycle {

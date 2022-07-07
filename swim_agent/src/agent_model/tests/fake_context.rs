@@ -37,16 +37,13 @@ pub struct TestAgentContext {
 }
 
 impl TestAgentContext {
-    pub fn take_lane_io(&self) -> (Io, Io) {
+    pub fn take_lane_io(&self) -> (Option<Io>, Option<Io>) {
         let mut guard = self.inner.lock();
         let Inner {
             value_lane_io,
             map_lane_io,
         } = &mut *guard;
-        (
-            value_lane_io.take().expect("Value lane not registered."),
-            map_lane_io.take().expect("Map lane not registered."),
-        )
+        (value_lane_io.take(), map_lane_io.take())
     }
 }
 
