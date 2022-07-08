@@ -25,7 +25,7 @@ use crate::{
     meta::AgentMetadata,
 };
 
-use super::{Decode, EventHandler, SideEffect, StepResult};
+use super::{Decode, EventHandler, Modification, SideEffect, StepResult};
 
 const CONFIG: AgentConfig = AgentConfig {};
 const NODE_URI: &str = "/node";
@@ -323,7 +323,7 @@ impl EventHandler<DummyAgent> for FakeLaneWriter {
         let FakeLaneWriter(id) = self;
         if let Some(n) = id.take() {
             StepResult::Complete {
-                modified_lane: Some(n),
+                modified_lane: Some(Modification::of(n)),
                 result: (),
             }
         } else {
@@ -342,7 +342,10 @@ fn and_then_handler_with_lane_write() {
     assert!(matches!(
         result,
         StepResult::Continue {
-            modified_lane: Some(7)
+            modified_lane: Some(Modification {
+                lane_id: 7,
+                trigger_handler: true
+            })
         }
     ));
 
@@ -372,7 +375,10 @@ fn followed_by_handler_with_lane_write() {
     assert!(matches!(
         result,
         StepResult::Continue {
-            modified_lane: Some(7)
+            modified_lane: Some(Modification {
+                lane_id: 7,
+                trigger_handler: true
+            })
         }
     ));
 
@@ -380,7 +386,10 @@ fn followed_by_handler_with_lane_write() {
     assert!(matches!(
         result,
         StepResult::Complete {
-            modified_lane: Some(8),
+            modified_lane: Some(Modification {
+                lane_id: 8,
+                trigger_handler: true
+            }),
             ..
         }
     ));

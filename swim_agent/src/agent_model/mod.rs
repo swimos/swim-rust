@@ -391,12 +391,16 @@ where
     loop {
         match handler.step(meta, context) {
             StepResult::Continue { modified_lane } => {
-                if let Some((id, lane)) =
-                    modified_lane.and_then(|id| lanes.get(&id).map(|name| (id, name)))
-                {
-                    if let Some(consequence) = lifecycle.lane_event(context, lane.as_str()) {
-                        collector.add_id(id);
-                        run_handler(meta, context, lifecycle, consequence, lanes, collector)?;
+                if let Some((modification, lane)) = modified_lane.and_then(|modification| {
+                    lanes
+                        .get(&modification.lane_id)
+                        .map(|name| (modification, name))
+                }) {
+                    collector.add_id(modification.lane_id);
+                    if modification.trigger_handler {
+                        if let Some(consequence) = lifecycle.lane_event(context, lane.as_str()) {
+                            run_handler(meta, context, lifecycle, consequence, lanes, collector)?;
+                        }
                     }
                 }
             }
@@ -404,12 +408,16 @@ where
                 break Err(err);
             }
             StepResult::Complete { modified_lane, .. } => {
-                if let Some((id, lane)) =
-                    modified_lane.and_then(|id| lanes.get(&id).map(|name| (id, name)))
-                {
-                    if let Some(consequence) = lifecycle.lane_event(context, lane.as_str()) {
-                        collector.add_id(id);
-                        run_handler(meta, context, lifecycle, consequence, lanes, collector)?;
+                if let Some((modification, lane)) = modified_lane.and_then(|modification| {
+                    lanes
+                        .get(&modification.lane_id)
+                        .map(|name| (modification, name))
+                }) {
+                    collector.add_id(modification.lane_id);
+                    if modification.trigger_handler {
+                        if let Some(consequence) = lifecycle.lane_event(context, lane.as_str()) {
+                            run_handler(meta, context, lifecycle, consequence, lanes, collector)?;
+                        }
                     }
                 }
                 break Ok(());

@@ -22,7 +22,7 @@ use tokio_util::codec::Encoder;
 
 use crate::{
     agent_model::WriteResult,
-    event_handler::{EventHandler, StepResult},
+    event_handler::{EventHandler, Modification, StepResult},
     meta::AgentMetadata,
 };
 
@@ -118,7 +118,7 @@ impl<Context, T> EventHandler<Context> for DoCommand<Context, T> {
             let lane = projection(context);
             lane.command(cmd);
             StepResult::Complete {
-                modified_lane: Some(lane.id),
+                modified_lane: Some(Modification::of(lane.id)),
                 result: (),
             }
         } else {

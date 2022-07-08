@@ -32,11 +32,11 @@ use uuid::Uuid;
 
 use crate::{
     agent_model::{AgentLaneModel, WriteResult},
-    event_handler::{EventHandler, StepResult},
+    event_handler::{EventHandler, Modification, StepResult},
     meta::AgentMetadata,
 };
 
-use super::{TestEvent, MAP_ID, MAP_LANE, VAL_ID, VAL_LANE};
+use super::{TestEvent, MAP_ID, MAP_LANE, SYNC_VALUE, VAL_ID, VAL_LANE};
 
 #[derive(Debug)]
 pub struct TestAgent {
@@ -128,7 +128,7 @@ impl AgentLaneModel for TestAgent {
         lane: &str,
         body: MapMessage<Bytes, Bytes>,
     ) -> Option<Self::MapCommandHandler> {
-        if lane == VAL_LANE {
+        if lane == MAP_LANE {
             Some(
                 TestEvent::Map {
                     body: interpret_map_op(body),
@@ -155,7 +155,7 @@ impl AgentLaneModel for TestAgent {
                 if let Some(id) = self.sync_ids.borrow_mut().pop_front() {
                     let response = ValueLaneResponse {
                         kind: LaneResponseKind::SyncEvent(id),
-                        value: -1,
+                        value: SYNC_VALUE,
                     };
                     encoder
                         .encode(response, buffer)
@@ -211,15 +211,15 @@ impl EventHandler<TestAgent> for TestHandler {
             let modified_lane = match &event {
                 TestEvent::Value { body } => {
                     context.stage_value(*body);
-                    Some(VAL_ID)
+                    Some(Modification::of(VAL_ID))
                 }
                 TestEvent::Map { body } => {
                     context.stage_map(to_op(*body));
-                    Some(MAP_ID)
+                    Some(Modification::of(MAP_ID))
                 }
                 TestEvent::Sync { id } => {
                     context.add_sync(*id);
-                    None
+                    Some(Modification::no_trigger(VAL_ID))
                 }
             };
             context.sender.send(event).expect("Receiver dropped.");

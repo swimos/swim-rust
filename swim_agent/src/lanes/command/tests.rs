@@ -22,7 +22,7 @@ use tokio_util::codec::Decoder;
 
 use crate::{
     agent_model::WriteResult,
-    event_handler::{EventHandler, EventHandlerError, StepResult},
+    event_handler::{EventHandler, EventHandlerError, Modification, StepResult},
     lanes::command::DoCommand,
     meta::AgentMetadata,
 };
@@ -102,7 +102,10 @@ fn command_event_handler() {
     assert!(matches!(
         result,
         StepResult::Complete {
-            modified_lane: Some(LANE_ID),
+            modified_lane: Some(Modification {
+                lane_id: LANE_ID,
+                trigger_handler: true
+            }),
             result: ()
         }
     ));

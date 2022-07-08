@@ -25,7 +25,7 @@ use uuid::Uuid;
 
 use crate::{
     agent_model::WriteResult,
-    event_handler::{EventHandler, EventHandlerError, StepResult},
+    event_handler::{EventHandler, EventHandlerError, Modification, StepResult},
     lanes::value::{ValueLaneGet, ValueLaneSync},
     meta::AgentMetadata,
 };
@@ -228,7 +228,21 @@ impl TestAgent {
     const LANE: fn(&TestAgent) -> &ValueLane<i32> = |agent| &agent.lane;
 }
 
-fn check_result<T: Eq + Debug>(result: StepResult<T>, written: bool, complete: Option<T>) {
+fn check_result<T: Eq + Debug>(
+    result: StepResult<T>,
+    written: bool,
+    trigger_handler: bool,
+    complete: Option<T>,
+) {
+    let expected_mod = if written {
+        if trigger_handler {
+            Some(Modification::of(LANE_ID))
+        } else {
+            Some(Modification::no_trigger(LANE_ID))
+        }
+    } else {
+        None
+    };
     match (result, complete) {
         (
             StepResult::Complete {
@@ -237,12 +251,11 @@ fn check_result<T: Eq + Debug>(result: StepResult<T>, written: bool, complete: O
             },
             Some(expected),
         ) => {
-            let expected_mod = if written { Some(LANE_ID) } else { None };
             assert_eq!(modified_lane, expected_mod);
             assert_eq!(result, expected);
         }
         (StepResult::Continue { modified_lane }, None) => {
-            assert_eq!(modified_lane, Some(LANE_ID));
+            assert_eq!(modified_lane, expected_mod);
         }
         ow => {
             panic!("Unexpected result: {:?}", ow);
@@ -259,7 +272,7 @@ fn value_lane_set_event_handler() {
     let mut handler = ValueLaneSet::new(TestAgent::LANE, 84);
 
     let result = handler.step(meta, &agent);
-    check_result(result, true, Some(()));
+    check_result(result, true, true, Some(()));
 
     assert!(agent.lane.dirty.get());
     assert_eq!(agent.lane.read(|n| *n), 84);
@@ -280,7 +293,7 @@ fn value_lane_get_event_handler() {
     let mut handler = ValueLaneGet::new(TestAgent::LANE);
 
     let result = handler.step(meta, &agent);
-    check_result(result, false, Some(0));
+    check_result(result, false, false, Some(0));
 
     let result = handler.step(meta, &agent);
     assert!(matches!(
@@ -298,7 +311,7 @@ fn value_lane_sync_event_handler() {
     let mut handler = ValueLaneSync::new(TestAgent::LANE, SYNC_ID1);
 
     let result = handler.step(meta, &agent);
-    check_result(result, true, Some(()));
+    check_result(result, true, false, Some(()));
 
     let result = handler.step(meta, &agent);
     assert!(matches!(

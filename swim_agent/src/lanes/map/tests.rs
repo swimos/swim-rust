@@ -31,7 +31,7 @@ use uuid::Uuid;
 
 use crate::{
     agent_model::WriteResult,
-    event_handler::{EventHandler, EventHandlerError, StepResult},
+    event_handler::{EventHandler, EventHandlerError, Modification, StepResult},
     lanes::map::{
         MapLane, MapLaneClear, MapLaneGet, MapLaneGetMap, MapLaneRemove, MapLaneSync, MapLaneUpdate,
     },
@@ -498,7 +498,21 @@ impl TestAgent {
     pub const LANE: fn(&TestAgent) -> &MapLane<i32, Text> = |agent| &agent.lane;
 }
 
-fn check_result<T: Eq + Debug>(result: StepResult<T>, written: bool, complete: Option<T>) {
+fn check_result<T: Eq + Debug>(
+    result: StepResult<T>,
+    written: bool,
+    trigger_handler: bool,
+    complete: Option<T>,
+) {
+    let expected_mod = if written {
+        if trigger_handler {
+            Some(Modification::of(LANE_ID))
+        } else {
+            Some(Modification::no_trigger(LANE_ID))
+        }
+    } else {
+        None
+    };
     match (result, complete) {
         (
             StepResult::Complete {
@@ -507,12 +521,11 @@ fn check_result<T: Eq + Debug>(result: StepResult<T>, written: bool, complete: O
             },
             Some(expected),
         ) => {
-            let expected_mod = if written { Some(LANE_ID) } else { None };
             assert_eq!(modified_lane, expected_mod);
             assert_eq!(result, expected);
         }
         (StepResult::Continue { modified_lane }, None) => {
-            assert_eq!(modified_lane, Some(LANE_ID));
+            assert_eq!(modified_lane, expected_mod);
         }
         ow => {
             panic!("Unexpected result: {:?}", ow);
@@ -529,7 +542,7 @@ fn map_lane_update_event_handler() {
     let mut handler = MapLaneUpdate::new(TestAgent::LANE, K1, Text::new(V1));
 
     let result = handler.step(meta, &agent);
-    check_result(result, true, Some(()));
+    check_result(result, true, true, Some(()));
 
     agent.lane.get_map(|map| {
         assert_eq!(map.len(), 1);
@@ -552,7 +565,7 @@ fn map_lane_remove_event_handler() {
     let mut handler = MapLaneRemove::new(TestAgent::LANE, K1);
 
     let result = handler.step(meta, &agent);
-    check_result(result, true, Some(()));
+    check_result(result, true, true, Some(()));
 
     agent.lane.get_map(|map| {
         assert_eq!(map.len(), 2);
@@ -576,7 +589,7 @@ fn map_lane_clear_event_handler() {
     let mut handler = MapLaneClear::new(TestAgent::LANE);
 
     let result = handler.step(meta, &agent);
-    check_result(result, true, Some(()));
+    check_result(result, true, true, Some(()));
 
     agent.lane.get_map(|map| {
         assert!(map.is_empty());
@@ -598,12 +611,12 @@ fn map_lane_get_event_handler() {
     let mut handler = MapLaneGet::new(TestAgent::LANE, K1);
 
     let result = handler.step(meta, &agent);
-    check_result(result, true, Some(Some(Text::new(V1))));
+    check_result(result, false, false, Some(Some(Text::new(V1))));
 
     let mut handler = MapLaneGet::new(TestAgent::LANE, ABSENT);
 
     let result = handler.step(meta, &agent);
-    check_result(result, true, Some(None));
+    check_result(result, false, false, Some(None));
 
     let result = handler.step(meta, &agent);
     assert!(matches!(
@@ -623,7 +636,7 @@ fn map_lane_get_map_event_handler() {
     let expected = init();
 
     let result = handler.step(meta, &agent);
-    check_result(result, true, Some(expected));
+    check_result(result, false, false, Some(expected));
 
     let result = handler.step(meta, &agent);
     assert!(matches!(
@@ -641,7 +654,7 @@ fn map_lane_sync_event_handler() {
     let mut handler = MapLaneSync::new(TestAgent::LANE, SYNC_ID1);
 
     let result = handler.step(meta, &agent);
-    check_result(result, true, Some(()));
+    check_result(result, true, false, Some(()));
 
     let result = handler.step(meta, &agent);
     assert!(matches!(

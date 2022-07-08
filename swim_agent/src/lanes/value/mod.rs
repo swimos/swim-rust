@@ -31,7 +31,9 @@ use uuid::Uuid;
 
 use crate::{
     agent_model::WriteResult,
-    event_handler::{AndThen, Decode, EventHandler, EventHandlerError, HandlerTrans, StepResult},
+    event_handler::{
+        AndThen, Decode, EventHandler, EventHandlerError, HandlerTrans, Modification, StepResult,
+    },
     meta::AgentMetadata,
 };
 
@@ -196,7 +198,7 @@ impl<C, T> EventHandler<C> for ValueLaneSet<C, T> {
             let lane = projection(context);
             lane.write(value);
             StepResult::Complete {
-                modified_lane: Some(lane.id),
+                modified_lane: Some(Modification::of(lane.id)),
                 result: (),
             }
         } else {
@@ -214,7 +216,7 @@ impl<C, T> EventHandler<C> for ValueLaneSync<C, T> {
             let lane = projection(context);
             lane.sync(id);
             StepResult::Complete {
-                modified_lane: Some(lane.id),
+                modified_lane: Some(Modification::no_trigger(lane.id)),
                 result: (),
             }
         } else {

@@ -89,14 +89,36 @@ pub enum EventHandlerError {
     IncompleteCommand,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct Modification {
+    pub lane_id: u64,
+    pub trigger_handler: bool,
+}
+
+impl Modification {
+    pub fn of(lane_id: u64) -> Self {
+        Modification {
+            lane_id,
+            trigger_handler: true,
+        }
+    }
+
+    pub fn no_trigger(lane_id: u64) -> Self {
+        Modification {
+            lane_id,
+            trigger_handler: false,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum StepResult<C> {
     Continue {
-        modified_lane: Option<u64>,
+        modified_lane: Option<Modification>,
     },
     Fail(EventHandlerError),
     Complete {
-        modified_lane: Option<u64>,
+        modified_lane: Option<Modification>,
         result: C,
     },
 }

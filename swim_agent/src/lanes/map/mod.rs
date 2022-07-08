@@ -32,7 +32,7 @@ mod tests;
 
 use crate::{
     agent_model::WriteResult,
-    event_handler::{EventHandler, StepResult},
+    event_handler::{EventHandler, Modification, StepResult},
     meta::AgentMetadata,
 };
 
@@ -290,7 +290,7 @@ where
             let lane = projection(context);
             lane.update(key, value);
             StepResult::Complete {
-                modified_lane: Some(lane.id),
+                modified_lane: Some(Modification::of(lane.id)),
                 result: (),
             }
         } else {
@@ -325,7 +325,7 @@ where
             let lane = projection(context);
             lane.remove(&key);
             StepResult::Complete {
-                modified_lane: Some(lane.id),
+                modified_lane: Some(Modification::of(lane.id)),
                 result: (),
             }
         } else {
@@ -361,7 +361,7 @@ where
             let lane = projection(context);
             lane.clear();
             StepResult::Complete {
-                modified_lane: Some(lane.id),
+                modified_lane: Some(Modification::of(lane.id)),
                 result: (),
             }
         } else {
@@ -402,10 +402,7 @@ where
         if !*done {
             *done = true;
             let lane = projection(context);
-            StepResult::Complete {
-                modified_lane: Some(lane.id),
-                result: lane.get(&key, |v| v.cloned()),
-            }
+            StepResult::done(lane.get(&key, |v| v.cloned()))
         } else {
             StepResult::after_done()
         }
@@ -438,10 +435,7 @@ where
         if !*done {
             *done = true;
             let lane = projection(context);
-            StepResult::Complete {
-                modified_lane: Some(lane.id),
-                result: lane.get_map(Clone::clone),
-            }
+            StepResult::done(lane.get_map(Clone::clone))
         } else {
             StepResult::after_done()
         }
@@ -474,7 +468,7 @@ where
             let lane = projection(context);
             lane.sync(id);
             StepResult::Complete {
-                modified_lane: Some(lane.id),
+                modified_lane: Some(Modification::no_trigger(lane.id)),
                 result: (),
             }
         } else {
