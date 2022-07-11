@@ -21,9 +21,14 @@ use crate::{
     lifecycle::utility::HandlerContext,
 };
 
+/// Lifecycle event for the `on_update` event of a map lane.
 pub trait OnUpdate<'a, K, V, Context>: Send {
     type OnUpdateHandler: EventHandler<Context, Completion = ()> + Send + 'a;
 
+    /// #Arguments
+    /// * `map` - The current contents of the map.
+    /// * `key` - The key that was removed.
+    /// * `prev_value` - The value that was replaced (if any).
     fn on_update(
         &'a self,
         map: &HashMap<K, V>,
@@ -32,9 +37,17 @@ pub trait OnUpdate<'a, K, V, Context>: Send {
     ) -> Self::OnUpdateHandler;
 }
 
+/// Lifecycle event for the `on_update` event of a map lane where the event handler
+/// has shared state with other handlers for the same agent.
 pub trait OnUpdateShared<'a, K, V, Context, Shared>: Send {
     type OnUpdateHandler: EventHandler<Context, Completion = ()> + Send + 'a;
 
+    /// #Arguments
+    /// * `shared` - The shared state.
+    /// * `handler_context` - Utility for constructing event handlers.
+    /// * `map` - The current contents of the map.
+    /// * `key` - The key that was removed.
+    /// * `prev_value` - The value that was replaced (if any).
     fn on_update(
         &'a self,
         shared: &'a Shared,

@@ -21,15 +21,28 @@ use crate::{
     lifecycle::utility::HandlerContext,
 };
 
+/// Lifecycle event for the `on_remove` event of a map lane.
 pub trait OnRemove<'a, K, V, Context>: Send {
     type OnRemoveHandler: EventHandler<Context, Completion = ()> + Send + 'a;
 
+    /// #Arguments
+    /// * `map` - The current contents of the map.
+    /// * `key` - The key that was removed.
+    /// * `prev_value` - The value that was removed.
     fn on_remove(&'a self, map: &HashMap<K, V>, key: K, prev_value: V) -> Self::OnRemoveHandler;
 }
 
+/// Lifecycle event for the `on_remove` event of a map lane where the event handler
+/// has shared state with other handlers for the same agent.
 pub trait OnRemoveShared<'a, K, V, Context, Shared>: Send {
     type OnRemoveHandler: EventHandler<Context, Completion = ()> + Send + 'a;
 
+    /// #Arguments
+    /// * `shared` - The shared state.
+    /// * `handler_context` - Utility for constructing event handlers.
+    /// * `map` - The current contents of the map.
+    /// * `key` - The key that was removed.
+    /// * `prev_value` - The value that was removed.
     fn on_remove(
         &'a self,
         shared: &'a Shared,

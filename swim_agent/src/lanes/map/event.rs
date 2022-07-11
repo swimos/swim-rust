@@ -15,6 +15,7 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 
+/// Enumeration of the possible inputs to a map lane event handler.
 #[derive(Debug, Clone)]
 pub enum MapLaneEvent<K, V> {
     Clear(HashMap<K, V>),

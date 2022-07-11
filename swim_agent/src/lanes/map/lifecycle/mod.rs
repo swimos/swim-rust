@@ -26,6 +26,29 @@ pub mod on_clear;
 pub mod on_remove;
 pub mod on_update;
 
+/// Trait for the lifecycle of a map lane.
+///
+/// #Type Parameters
+/// * `K` - The type of the map keys.
+/// * `V` - The type of the map values.
+/// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
+pub trait MapLaneLifecycle<K, V, Context>: for<'a> MapLaneHandlers<'a, K, V, Context> {}
+
+/// Trait for the lifecycle of a map lane where the lifecycle has access to some shared state (shared
+/// with all other lifecycles in the agent).
+///
+/// #Type Parameters
+/// * `K` - The type of the map keys.
+/// * `V` - The type of the map values.
+/// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
+/// * `Shared` - The shared state to which the lifecycle has access.
+pub trait MapLaneHandlersShared<'a, K, V, Context, Shared>:
+    OnUpdateShared<'a, K, V, Context, Shared>
+    + OnRemoveShared<'a, K, V, Context, Shared>
+    + OnClearShared<'a, K, V, Context, Shared>
+{
+}
+
 pub trait MapLaneHandlers<'a, K, V, Context>:
     OnUpdate<'a, K, V, Context> + OnRemove<'a, K, V, Context> + OnClear<'a, K, V, Context>
 {
@@ -35,15 +58,6 @@ impl<'a, K, V, Context, L> MapLaneHandlers<'a, K, V, Context> for L where
     L: OnUpdate<'a, K, V, Context> + OnRemove<'a, K, V, Context> + OnClear<'a, K, V, Context>
 {
 }
-
-pub trait MapLaneHandlersShared<'a, K, V, Context, Shared>:
-    OnUpdateShared<'a, K, V, Context, Shared>
-    + OnRemoveShared<'a, K, V, Context, Shared>
-    + OnClearShared<'a, K, V, Context, Shared>
-{
-}
-
-pub trait MapLaneLifecycle<K, V, Context>: for<'a> MapLaneHandlers<'a, K, V, Context> {}
 
 impl<K, V, Context, L> MapLaneLifecycle<K, V, Context> for L where
     L: for<'a> MapLaneHandlers<'a, K, V, Context>
@@ -67,6 +81,14 @@ impl<'a, L, K, V, Context, Shared> MapLaneHandlersShared<'a, K, V, Context, Shar
 {
 }
 
+/// A lifecycle for a map lane with some shared state (shard with other lifecycles in the same agent).
+///
+/// #Type Parameters
+/// * `Context` - The contect for the event handlers (providing access to the agent lanes).
+/// * `Shared` - The shared state to which the lifecycle has access.
+/// * `FUpd` - The `on_update` event handler.
+/// * `FRem` - The `on_remove` event handler.
+/// * `FClr` - The `on_clear` event handler.
 pub struct StatefulMapLaneLifecycle<
     Context,
     Shared,

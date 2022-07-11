@@ -13,13 +13,14 @@
 // limitations under the License.
 
 use bytes::BytesMut;
+use frunk::{Coprod, Coproduct};
 use static_assertions::assert_impl_all;
 use std::{borrow::Borrow, cell::RefCell, collections::HashMap, hash::Hash};
 use swim_api::protocol::{
     agent::{LaneResponseKind, MapLaneResponse, MapLaneResponseEncoder},
-    map::MapOperation,
+    map::{MapMessage, MapOperation},
 };
-use swim_form::structural::write::StructuralWritable;
+use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
@@ -32,7 +33,7 @@ mod tests;
 
 use crate::{
     agent_model::WriteResult,
-    event_handler::{EventHandler, Modification, StepResult},
+    event_handler::{AndThen, Decode, EventHandler, HandlerTrans, Modification, StepResult},
     meta::AgentMetadata,
 };
 
@@ -40,6 +41,13 @@ use self::queues::{Action, ToWrite, WriteQueues};
 
 pub use event::MapLaneEvent;
 
+use super::ProjTransform;
+
+/// Model of a value lane. This maintain a sate consisting of a hash-map from keys to values. It generates an
+/// event whenever the map is updated (updating the value for a key, removing a key or clearing the map).
+///
+/// TODO: This could be parameterized over the type of the hash (and potentially over the kind of the map,
+/// potentially allowing a choice between hash and ordered maps).
 #[derive(Debug)]
 pub struct MapLane<K, V> {
     id: u64,
@@ -49,6 +57,9 @@ pub struct MapLane<K, V> {
 assert_impl_all!(MapLane<(), ()>: Send);
 
 impl<K, V> MapLane<K, V> {
+    /// #Arguments
+    /// * `id` - The ID of the lane. This should be unique within an agent.
+    /// * `init` - The initial contents of the map.
     pub fn new(id: u64, init: HashMap<K, V>) -> Self {
         MapLane {
             id,
@@ -61,18 +72,22 @@ impl<K, V> MapLane<K, V>
 where
     K: Clone + Eq + Hash,
 {
+    /// Update the value associated with a key.
     pub fn update(&self, key: K, value: V) {
         self.inner.borrow_mut().update(key, value)
     }
 
+    /// Remove and entry from the map.
     pub fn remove(&self, key: &K) {
         self.inner.borrow_mut().remove(key)
     }
 
+    /// Clear the map.
     pub fn clear(&self) {
         self.inner.borrow_mut().clear()
     }
 
+    /// Read a value from the map, if it exists.
     pub fn get<Q, F, R>(&self, key: &Q, f: F) -> R
     where
         K: Borrow<Q>,
@@ -82,6 +97,7 @@ where
         self.inner.borrow().get(key, f)
     }
 
+    /// Read the complete state of the map.
     pub fn get_map<F, R>(&self, f: F) -> R
     where
         F: FnOnce(&HashMap<K, V>) -> R,
@@ -89,6 +105,8 @@ where
         self.inner.borrow().get_map(f)
     }
 
+    /// Read the state of the map, consuming the previous event (used when triggering
+    /// the event handlers for the lane).
     pub(crate) fn read_with_prev<F, R>(&self, f: F) -> R
     where
         F: FnOnce(Option<MapLaneEvent<K, V>>, &HashMap<K, V>) -> R,
@@ -96,6 +114,7 @@ where
         self.inner.borrow_mut().read_with_prev(f)
     }
 
+    /// Start a sync operation from the lane to the specified remote.
     pub fn sync(&self, id: Uuid) {
         self.inner.borrow_mut().sync(id);
     }
@@ -106,6 +125,7 @@ where
     K: Clone + Eq + Hash + StructuralWritable,
     V: StructuralWritable,
 {
+    /// If the state of the lane has changed, write a response into the buffer.
     pub fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult {
         self.inner.borrow_mut().write_to_buffer(buffer)
     }
@@ -261,6 +281,7 @@ fn to_operation<K: Eq + Hash, V>(
     }
 }
 
+/// An [`EventHandler`] that will update the value of an entry in the map.
 pub struct MapLaneUpdate<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
     key_value: Option<(K, V)>,
@@ -299,6 +320,8 @@ where
     }
 }
 
+/// An [`EventHandler`] that will remove an entry from the map.
+
 pub struct MapLaneRemove<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
     key: Option<K>,
@@ -333,6 +356,8 @@ where
         }
     }
 }
+
+/// An [`EventHandler`] that will clear the map.
 
 pub struct MapLaneClear<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
@@ -370,6 +395,7 @@ where
     }
 }
 
+/// An [`EventHandler`] that will get an entry from the map.
 pub struct MapLaneGet<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
     key: K,
@@ -409,6 +435,7 @@ where
     }
 }
 
+/// An [`EventHandler`] that will read the entire state of a map lane.
 pub struct MapLaneGetMap<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
     done: bool,
@@ -442,6 +469,7 @@ where
     }
 }
 
+/// An [`EventHandler`] that will request a sync from the lane.
 pub struct MapLaneSync<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
     id: Option<Uuid>,
@@ -475,4 +503,48 @@ where
             StepResult::after_done()
         }
     }
+}
+
+type MapLaneHandler<C, K, V> = Coprod!(
+    MapLaneUpdate<C, K, V>,
+    MapLaneRemove<C, K, V>,
+    MapLaneClear<C, K, V>,
+);
+
+impl<C, K, V> HandlerTrans<MapMessage<K, V>> for ProjTransform<C, MapLane<K, V>> {
+    type Out = MapLaneHandler<C, K, V>;
+
+    fn transform(self, input: MapMessage<K, V>) -> Self::Out {
+        let ProjTransform { projection } = self;
+        match input {
+            MapMessage::Update { key, value } => {
+                Coproduct::Inl(MapLaneUpdate::new(projection, key, value))
+            }
+            MapMessage::Remove { key } => {
+                Coproduct::Inr(Coproduct::Inl(MapLaneRemove::new(projection, key)))
+            }
+            MapMessage::Clear => Coproduct::Inr(Coproduct::Inr(Coproduct::Inl(MapLaneClear::new(
+                projection,
+            )))),
+            _ => {
+                todo!("Drop and take not yet implemented.")
+            }
+        }
+    }
+}
+
+pub type DecodeAndApply<C, K, V> =
+    AndThen<Decode<MapMessage<K, V>>, MapLaneHandler<C, K, V>, ProjTransform<C, MapLane<K, V>>>;
+
+/// Create an event handler that will decode an incoming map message and apply the value into a map lane.
+pub fn decode_and_set<C, K, V>(
+    buffer: BytesMut,
+    projection: fn(&C) -> &MapLane<K, V>,
+) -> DecodeAndApply<C, K, V>
+where
+    K: Clone + Eq + Hash + RecognizerReadable,
+    V: RecognizerReadable,
+{
+    let decode: Decode<MapMessage<K, V>> = Decode::new(buffer);
+    decode.and_then(ProjTransform::new(projection))
 }

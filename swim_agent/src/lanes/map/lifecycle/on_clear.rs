@@ -21,15 +21,24 @@ use crate::{
     lifecycle::utility::HandlerContext,
 };
 
+/// Lifecycle event for the `on_clear` event of a map lane.
 pub trait OnClear<'a, K, V, Context>: Send {
     type OnClearHandler: EventHandler<Context, Completion = ()> + Send + 'a;
 
+    /// #Arguments
+    /// * `before` - The contents of the map before it was cleared.
     fn on_clear(&'a self, before: HashMap<K, V>) -> Self::OnClearHandler;
 }
 
+/// Lifecycle event for the `on_clear` event of a map lane where the event handler
+/// has shared state with other handlers for the same agent.
 pub trait OnClearShared<'a, K, V, Context, Shared>: Send {
     type OnClearHandler: EventHandler<Context, Completion = ()> + Send + 'a;
 
+    /// #Arguments
+    /// * `shared` - The shared state.
+    /// * `handler_context` - Utility for constructing event handlers.
+    /// * `before` - The contents of the map before it was cleared.
     fn on_clear(
         &'a self,
         shared: &'a Shared,
