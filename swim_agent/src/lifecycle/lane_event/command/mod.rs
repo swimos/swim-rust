@@ -30,7 +30,7 @@ use super::{HTree, LaneEvent, LaneEventShared};
 
 #[cfg(test)]
 mod tests;
-
+/// Command lane lifecycle as a leaf node of an [`HTree`].
 pub struct CommandLeaf<Context, T, LC> {
     label: &'static str,
     projection: fn(&Context) -> &CommandLane<T>,
@@ -144,6 +144,7 @@ where
     }
 }
 
+/// Command lane lifecycle as a branch node of an [`HTree`].
 pub struct CommandBranch<Context, T, LC, L, R> {
     label: &'static str,
     projection: fn(&Context) -> &CommandLane<T>,

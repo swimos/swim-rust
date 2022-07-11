@@ -18,15 +18,21 @@ use crate::event_handler::{EventHandler, UnitHandler};
 
 use super::utility::HandlerContext;
 
+/// Lifecycle event for the `on_start` event of an agent.
 pub trait OnStart<'a, Context>: Send {
     type OnStartHandler: EventHandler<Context, Completion = ()> + Send + 'a;
 
     fn on_start(&'a self) -> Self::OnStartHandler;
 }
 
+/// Lifecycle event for the `on_start` event of an agent where the event handler
+/// has shared state with other handlers for the same agent.
 pub trait OnStartShared<'a, Context, Shared>: Send {
     type OnStartHandler: EventHandler<Context, Completion = ()> + Send + 'a;
 
+    /// #Arguments
+    /// * `shared` - The shared state.
+    /// * `handler_context` - Utility for constructing event handlers.
     fn on_start(
         &'a self,
         shared: &'a Shared,

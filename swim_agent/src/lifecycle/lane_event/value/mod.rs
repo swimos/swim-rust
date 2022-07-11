@@ -36,6 +36,7 @@ use super::{HTree, LaneEvent, LaneEventShared};
 #[cfg(test)]
 mod tests;
 
+/// Value lane lifecycle as a leaf node of an [`HTree`].
 pub struct ValueLeaf<Context, T, LC> {
     label: &'static str,
     projection: fn(&Context) -> &ValueLane<T>,
@@ -75,6 +76,7 @@ impl<Context, T, LC> HTree for ValueLeaf<Context, T, LC> {
     }
 }
 
+/// Command lane lifecycle as a branch node of an [`HTree`].
 pub struct ValueBranch<Context, T, LC, L, R> {
     label: &'static str,
     projection: fn(&Context) -> &ValueLane<T>,

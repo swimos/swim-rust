@@ -21,6 +21,14 @@ use crate::lifecycle::AgentLifecycle;
 
 use super::{lane_event::LaneEvent, on_start::OnStart, on_stop::OnStop};
 
+/// An implementation of [AgentLifecycle] with no shared state.
+///
+/// #Type Parameters
+/// * `Context` - The context within which the event handlers run (provides access to the agent lanes).
+/// * `FStart` - The `on_start` event handler.
+/// * `FStop` - The `on_stop` event handler.
+/// * `LaneEv` - The event handlers for all lanes in the agent.
+#[derive(Debug)]
 pub struct BasicAgentLifecycle<Context, FStart = NoHandler, FStop = NoHandler, LaneEv = NoHandler> {
     _context: PhantomData<fn(Context)>,
     on_start: FStart,

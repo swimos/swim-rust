@@ -21,12 +21,15 @@ pub mod stateful;
 pub mod stateless;
 pub mod utility;
 
+/// Trait for agent lifecycles.
+/// #Type Parameters
+/// * `Context` - The context in which the lifecycle events run (provdies access to the lanes of the agent).
+pub trait AgentLifecycle<Context>: for<'a> AgentHandlers<'a, Context> {}
+
 pub trait AgentHandlers<'a, Context>:
     OnStart<'a, Context> + OnStop<'a, Context> + LaneEvent<'a, Context>
 {
 }
-
-pub trait AgentLifecycle<Context>: for<'a> AgentHandlers<'a, Context> {}
 
 impl<L, Context> AgentLifecycle<Context> for L where L: for<'a> AgentHandlers<'a, Context> {}
 

@@ -32,15 +32,35 @@ pub use command::{
 pub use map::{MapBranch, MapLeaf, MapLifecycleHandler, MapLifecycleHandlerShared};
 pub use value::{ValueBranch, ValueLeaf, ValueLifecycleHandler, ValueLifecycleHandlerShared};
 
+/// Trait to implement all event handlers for all of the lanes of an agent. Implementations of
+/// this trait will typically consist of a type level tree (implementations of [`HTree`]) of handlers
+/// for each lane.
 pub trait LaneEvent<'a, Context> {
     type LaneEventHandler: EventHandler<Context, Completion = ()> + Send + 'a;
 
+    /// Create the handler for a lane, if it exists. It is the responsibility of the lanes to keep track
+    /// of which what events need to be triggered. If the lane does not exist or no event is pending, no
+    /// handler will be returned.
+    /// #Arguments
+    /// * `context` - The content of the agent (allowig access to the lanes).
+    /// * `lane_name` - The name of the lane.
     fn lane_event(&'a self, context: &Context, lane_name: &str) -> Option<Self::LaneEventHandler>;
 }
 
+/// Trait to implement all event handlers for all of the lanes of an agent. Implementations of
+/// this trait will typically consist of a type level tree (implementations of [`HTree`]) of handlers
+/// for each lane. Each of the event handlers has access to a single shared state.
 pub trait LaneEventShared<'a, Context, Shared> {
     type LaneEventHandler: EventHandler<Context, Completion = ()> + Send + 'a;
 
+    /// Create the handler for a lane, if it exists. It is the responsibility of the lanes to keep track
+    /// of which what events need to be triggered. If the lane does not exist or no event is pending, no
+    /// handler will be returned.
+    /// #Arguments
+    /// * `shared` - The shared state.
+    /// * `handler_context` - Utility for constructing event handlers.
+    /// * `context` - The content of the agent (allowig access to the lanes).
+    /// * `lane_name` - The name of the lane.
     fn lane_event(
         &'a self,
         shared: &'a Shared,
@@ -76,10 +96,13 @@ impl<'a, Context, Shared> LaneEventShared<'a, Context, Shared> for NoHandler {
     }
 }
 
+/// Trait for type level, binary trees of lane event handlers.
 pub trait HTree {
+    /// The label of the tree node (or none for an empty leaf).
     fn label(&self) -> Option<&'static str>;
 }
 
+///An empty leaf node in an [`HTree`].
 #[derive(Debug, Default, Clone, Copy)]
 struct HLeaf;
 

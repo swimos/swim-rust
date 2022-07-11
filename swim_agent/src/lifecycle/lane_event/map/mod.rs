@@ -36,6 +36,7 @@ use super::{HTree, LaneEvent, LaneEventShared};
 #[cfg(test)]
 mod tests;
 
+/// Map lane lifecycle as a leaf node of an [`HTree`].
 pub struct MapLeaf<Context, K, V, LC> {
     label: &'static str,
     projection: fn(&Context) -> &MapLane<K, V>,
@@ -202,6 +203,7 @@ where
     }
 }
 
+/// Map lane lifecycle as a branch node of an [`HTree`].
 pub struct MapBranch<Context, K, V, LC, L, R> {
     label: &'static str,
     projection: fn(&Context) -> &MapLane<K, V>,

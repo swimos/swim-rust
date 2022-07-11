@@ -24,6 +24,16 @@ use super::{
     utility::HandlerContext,
 };
 
+/// An implementation of [AgentLifecycle] with a common state that is shared bewteen all of the
+/// lifecycle event handlers.
+///
+/// #Type Parameters
+/// * `Context` - The context within which the event handlers run (provides access to the agent lanes).
+/// * `State` - The state shared between the event handlers.
+/// * `FStart` - The `on_start` event handler.
+/// * `FStop` - The `on_stop` event handler.
+/// * `LaneEv` - The event handlers for all lanes in the agent.
+#[derive(Debug)]
 pub struct StatefulAgentLifecycle<
     Context,
     State,
@@ -118,6 +128,7 @@ where
 impl<Context, State, FStart, FStop, LaneEv>
     StatefulAgentLifecycle<Context, State, FStart, FStop, LaneEv>
 {
+    /// Replace the `on_start` handler with another defined using a closure.
     pub fn on_start<F>(
         self,
         f: F,
@@ -141,6 +152,7 @@ impl<Context, State, FStart, FStop, LaneEv>
         }
     }
 
+    /// Replace the `on_stop` handler with another defined using a closure.
     pub fn on_stop<F>(
         self,
         f: F,
@@ -164,6 +176,7 @@ impl<Context, State, FStart, FStop, LaneEv>
         }
     }
 
+    /// Replace the lane event handlers with another implementation.
     pub fn on_lane_event<H>(
         self,
         handler: H,
