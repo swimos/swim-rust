@@ -178,7 +178,7 @@ fn value_lane_leaf() {
 
     let agent = TestAgent::default();
 
-    agent.first.write(56);
+    agent.first.set(56);
 
     let lifecycle = FakeLifecycle::<i32>::default();
     let leaf = ValueLeaf::new(FIRST_NAME, TestAgent::FIRST, lifecycle.clone());
@@ -220,9 +220,9 @@ fn value_lane_left_branch() {
     assert!(branch.lane_event(&agent, "g").is_none()); //Between first and second lanes.
     assert!(branch.lane_event(&agent, "u").is_none()); //After second lane.
 
-    agent.first.write(56);
+    agent.first.set(56);
     let hello = Text::new("Hello");
-    agent.second.write(hello.clone());
+    agent.second.set(hello.clone());
 
     if let Some(handler) = branch.lane_event(&agent, FIRST_NAME) {
         run_handler(meta, &agent, handler);
@@ -272,9 +272,9 @@ fn value_lane_right_branch() {
     assert!(branch.lane_event(&agent, "g").is_none()); //Between first and second lanes.
     assert!(branch.lane_event(&agent, "u").is_none()); //After second lane.
 
-    agent.first.write(56);
+    agent.first.set(56);
     let hello = Text::new("Hello");
-    agent.second.write(hello.clone());
+    agent.second.set(hello.clone());
 
     if let Some(handler) = branch.lane_event(&agent, FIRST_NAME) {
         run_handler(meta, &agent, handler);
@@ -328,10 +328,10 @@ fn value_lane_two_branches() {
     assert!(branch.lane_event(&agent, "sf").is_none()); //Between second and third lanes.
     assert!(branch.lane_event(&agent, "u").is_none()); //After third lane.
 
-    agent.first.write(56);
+    agent.first.set(56);
     let hello = Text::new("Hello");
-    agent.second.write(hello.clone());
-    agent.third.write(true);
+    agent.second.set(hello.clone());
+    agent.third.set(true);
 
     if let Some(handler) = branch.lane_event(&agent, FIRST_NAME) {
         run_handler(meta, &agent, handler);

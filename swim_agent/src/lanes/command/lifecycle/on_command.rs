@@ -23,6 +23,8 @@ use crate::{
 pub trait OnCommand<'a, T, Context>: Send {
     type OnCommandHandler: EventHandler<Context, Completion = ()> + Send + 'a;
 
+    /// #Arguments
+    /// * `value` - The command value.
     fn on_command(&'a self, value: &T) -> Self::OnCommandHandler;
 }
 
@@ -31,6 +33,10 @@ pub trait OnCommand<'a, T, Context>: Send {
 pub trait OnCommandShared<'a, T, Context, Shared>: Send {
     type OnCommandHandler: EventHandler<Context, Completion = ()> + Send + 'a;
 
+    /// #Arguments
+    /// * `shared` - The shared state.
+    /// * `handler_context` - Utility for constructing event handlers.
+    /// * `value` - The command value.
     fn on_command(
         &'a self,
         shared: &'a Shared,

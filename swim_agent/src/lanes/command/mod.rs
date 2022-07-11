@@ -17,14 +17,16 @@ use std::cell::{Cell, RefCell};
 use bytes::BytesMut;
 use static_assertions::assert_impl_all;
 use swim_api::protocol::agent::{ValueLaneResponse, ValueLaneResponseEncoder};
-use swim_form::structural::write::StructuralWritable;
+use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use tokio_util::codec::Encoder;
 
 use crate::{
     agent_model::WriteResult,
-    event_handler::{EventHandler, Modification, StepResult},
+    event_handler::{AndThen, Decode, EventHandler, HandlerTrans, Modification, StepResult},
     meta::AgentMetadata,
 };
+
+use super::ProjTransform;
 
 pub mod lifecycle;
 #[cfg(test)]
@@ -139,4 +141,25 @@ impl<Context, T> EventHandler<Context> for DoCommand<Context, T> {
             StepResult::after_done()
         }
     }
+}
+
+impl<C, T> HandlerTrans<T> for ProjTransform<C, CommandLane<T>> {
+    type Out = DoCommand<C, T>;
+
+    fn transform(self, input: T) -> Self::Out {
+        let ProjTransform { projection } = self;
+        DoCommand::new(projection, input)
+    }
+}
+
+pub type DecodeAndCommand<C, T> =
+    AndThen<Decode<T>, DoCommand<C, T>, ProjTransform<C, CommandLane<T>>>;
+
+/// Create an event handler that will decode an incoming command and apply it to a command lane.
+pub fn decode_and_command<C, T: RecognizerReadable>(
+    buffer: BytesMut,
+    projection: fn(&C) -> &CommandLane<T>,
+) -> DecodeAndCommand<C, T> {
+    let decode: Decode<T> = Decode::new(buffer);
+    decode.and_then(ProjTransform::new(projection))
 }

@@ -64,7 +64,7 @@ fn read_from_value_lane_with_no_prev() {
 fn write_to_value_lane() {
     let lane = ValueLane::new(ID, 123);
 
-    lane.write(89);
+    lane.set(89);
     assert!(lane.dirty.get());
     assert_eq!(lane.read(|n| *n), 89);
     assert_eq!(lane.read_with_prev(|prev, n| (prev, *n)), (Some(123), 89));
@@ -83,7 +83,7 @@ fn write_to_buffer_not_dirty() {
 #[test]
 fn write_to_buffer_dirty() {
     let lane = ValueLane::new(ID, 123);
-    lane.write(6373);
+    lane.set(6373);
     let mut buffer = BytesMut::new();
 
     let result = lane.write_to_buffer(&mut buffer);
@@ -164,7 +164,7 @@ fn write_to_buffer_with_multiple_syncs_while_clean() {
 #[test]
 fn write_to_buffer_with_sync_while_dirty() {
     let lane: ValueLane<i32> = ValueLane::new(ID, 123);
-    lane.write(6373);
+    lane.set(6373);
     lane.sync(SYNC_ID1);
     assert!(lane.dirty.get());
 

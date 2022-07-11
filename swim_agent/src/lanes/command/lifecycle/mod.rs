@@ -21,7 +21,7 @@ use self::on_command::{OnCommand, OnCommandShared};
 pub mod on_command;
 
 /// Trait for the lifecycle of a command lane.
-/// 
+///
 /// #Type Parameters
 /// * `T` - The type of the commands.
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
@@ -29,7 +29,7 @@ pub trait CommandLaneLifecycle<T, Context>: for<'a> OnCommand<'a, T, Context> {}
 
 /// Trait for the lifecycle of a command lane where the lifecycle has access to some shared state (shared
 /// with all other lifecycles in the agent).
-/// 
+///
 /// #Type Parameters
 /// * `T` - The type of the commands.
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
@@ -64,7 +64,7 @@ impl<T, Context, Shared, L> CommandLaneLifecycleShared<T, Context, Shared> for L
 }
 
 /// A lifecycle for a command lane with some shared state (shard with other lifecycles in the same agent).
-/// 
+///
 /// #Type Parameters
 /// * `Context` - The contect for the event handlers (providing access to the agent lanes).
 /// * `Shared` - The shared state to which the lifecycle has access.
@@ -101,6 +101,7 @@ where
 }
 
 impl<Context, Shared, T, OnCmd> StatefulCommandLaneLifecycle<Context, Shared, T, OnCmd> {
+    /// Replace the `on_command` handler with another derived from a closure.
     pub fn on_command<F, H>(
         self,
         f: F,

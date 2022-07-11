@@ -37,6 +37,10 @@ use crate::{
     meta::AgentMetadata,
 };
 
+use super::ProjTransform;
+
+/// Model of a value lane. This maintains a state and triggers an event each time this state is updated.
+/// Updates may come from external commands or from an action performed by an event handler on the agent.
 #[derive(Debug)]
 pub struct ValueLane<T> {
     id: u64,
@@ -49,6 +53,9 @@ pub struct ValueLane<T> {
 assert_impl_all!(ValueLane<()>: Send);
 
 impl<T> ValueLane<T> {
+    /// #Arguments
+    /// * `id` - The ID of the lane. This should be unique in an agent.
+    /// * `init` - The initial value of the lane.
     pub fn new(id: u64, init: T) -> Self {
         ValueLane {
             id,
@@ -59,6 +66,7 @@ impl<T> ValueLane<T> {
         }
     }
 
+    /// Read the state of the lane.
     pub fn read<F, R>(&self, f: F) -> R
     where
         F: FnOnce(&T) -> R,
@@ -68,6 +76,8 @@ impl<T> ValueLane<T> {
         f(&*value)
     }
 
+    /// Read the state of the lane, consuming the previous value (used when triggering the `on_set` event
+    /// handler for the lane).
     pub(crate) fn read_with_prev<F, R>(&self, f: F) -> R
     where
         F: FnOnce(Option<T>, &T) -> R,
@@ -80,7 +90,8 @@ impl<T> ValueLane<T> {
         f(prev, &*value)
     }
 
-    pub fn write(&self, value: T) {
+    /// Update the state of the lane.
+    pub fn set(&self, value: T) {
         let ValueLane {
             content,
             previous,
@@ -101,6 +112,7 @@ impl<T> ValueLane<T> {
 const INFALLIBLE_SER: &str = "Serializing to recon should be infallible.";
 
 impl<T: StructuralWritable> ValueLane<T> {
+    /// If the state of the lane has changed, write a response into the buffer.
     pub fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult {
         let ValueLane {
             content,
@@ -131,12 +143,15 @@ impl<T: StructuralWritable> ValueLane<T> {
     }
 }
 
+/// An [`EventHandler`] that will get the value of a value lane.
 pub struct ValueLaneGet<C, T> {
     projection: for<'a> fn(&'a C) -> &'a ValueLane<T>,
     done: bool,
 }
 
 impl<C, T> ValueLaneGet<C, T> {
+    /// #Arguments
+    /// * `projection` - Projection from the agent context to the lane.
     pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueLane<T>) -> Self {
         ValueLaneGet {
             projection,
@@ -145,17 +160,22 @@ impl<C, T> ValueLaneGet<C, T> {
     }
 }
 
+/// An [`EventHandler`] that will set the value of a value lane.
 pub struct ValueLaneSet<C, T> {
     projection: for<'a> fn(&'a C) -> &'a ValueLane<T>,
     value: Option<T>,
 }
 
+/// An [`EventHandler`] that will request a sync from the lane.
 pub struct ValueLaneSync<C, T> {
     projection: for<'b> fn(&'b C) -> &'b ValueLane<T>,
     id: Option<Uuid>,
 }
 
 impl<C, T> ValueLaneSet<C, T> {
+    /// #Arguments
+    /// * `projection` - Projection from the agent context to the lane.
+    /// * `value` - The new value for the lane.
     pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueLane<T>, value: T) -> Self {
         ValueLaneSet {
             projection,
@@ -165,6 +185,9 @@ impl<C, T> ValueLaneSet<C, T> {
 }
 
 impl<C, T> ValueLaneSync<C, T> {
+    /// #Arguments
+    /// * `projection` - Projection from the agent context to the lane.
+    /// * `id` - The ID of the remote that requested the sync.
     pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueLane<T>, id: Uuid) -> Self {
         ValueLaneSync {
             projection,
@@ -196,7 +219,7 @@ impl<C, T> EventHandler<C> for ValueLaneSet<C, T> {
         let ValueLaneSet { projection, value } = self;
         if let Some(value) = value.take() {
             let lane = projection(context);
-            lane.write(value);
+            lane.set(value);
             StepResult::Complete {
                 modified_lane: Some(Modification::of(lane.id)),
                 result: (),
@@ -225,17 +248,7 @@ impl<C, T> EventHandler<C> for ValueLaneSync<C, T> {
     }
 }
 
-pub struct ProjTransform<C, T> {
-    projection: fn(&C) -> &ValueLane<T>,
-}
-
-impl<C, T> ProjTransform<C, T> {
-    pub fn new(projection: fn(&C) -> &ValueLane<T>) -> Self {
-        ProjTransform { projection }
-    }
-}
-
-impl<C, T> HandlerTrans<T> for ProjTransform<C, T> {
+impl<C, T> HandlerTrans<T> for ProjTransform<C, ValueLane<T>> {
     type Out = ValueLaneSet<C, T>;
 
     fn transform(self, input: T) -> Self::Out {
@@ -244,8 +257,10 @@ impl<C, T> HandlerTrans<T> for ProjTransform<C, T> {
     }
 }
 
-pub type DecodeAndSet<C, T> = AndThen<Decode<T>, ValueLaneSet<C, T>, ProjTransform<C, T>>;
+pub type DecodeAndSet<C, T> =
+    AndThen<Decode<T>, ValueLaneSet<C, T>, ProjTransform<C, ValueLane<T>>>;
 
+/// Create an event handler that will decode an incoming command and set the value into a value lane.
 pub fn decode_and_set<C, T: RecognizerReadable>(
     buffer: BytesMut,
     projection: fn(&C) -> &ValueLane<T>,

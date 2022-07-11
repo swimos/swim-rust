@@ -26,6 +26,25 @@ use self::{
 pub mod on_event;
 pub mod on_set;
 
+/// Trait for the lifecycle of a value lane.
+///
+/// #Type Parameters
+/// * `T` - The type of the state of the lane.
+/// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
+pub trait ValueLaneLifecycle<T, Context>: for<'a> ValueLaneHandlers<'a, T, Context> {}
+
+/// Trait for the lifecycle of a value lane where the lifecycle has access to some shared state (shared
+/// with all other lifecycles in the agent).
+///
+/// #Type Parameters
+/// * `T` - The type of the state of the lane.
+/// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
+/// * `Shared` - The shared state to which the lifecycle has access.
+pub trait ValueLaneLifecycleShared<T, Context, Shared>:
+    for<'a> ValueLaneHandlersShared<'a, T, Context, Shared>
+{
+}
+
 pub trait ValueLaneHandlers<'a, T, Context>:
     OnEvent<'a, T, Context> + OnSet<'a, T, Context>
 {
@@ -41,15 +60,8 @@ pub trait ValueLaneHandlersShared<'a, T, Context, Shared>:
 {
 }
 
-pub trait ValueLaneLifecycle<T, Context>: for<'a> ValueLaneHandlers<'a, T, Context> {}
-
 impl<T, Context, L> ValueLaneLifecycle<T, Context> for L where
     L: for<'a> ValueLaneHandlers<'a, T, Context>
-{
-}
-
-pub trait ValueLaneLifecycleShared<T, Context, Shared>:
-    for<'a> ValueLaneHandlersShared<'a, T, Context, Shared>
 {
 }
 
@@ -63,6 +75,13 @@ impl<'a, L, T, Context, Shared> ValueLaneHandlersShared<'a, T, Context, Shared> 
 {
 }
 
+/// A lifecycle for a value lane with some shared state (shard with other lifecycles in the same agent).
+///
+/// #Type Parameters
+/// * `Context` - The contect for the event handlers (providing access to the agent lanes).
+/// * `Shared` - The shared state to which the lifecycle has access.
+/// * `FEv` - The `on_event` event handler.
+/// * `FSet` - The `on_set` event handler.
 pub struct StatefulValueLaneLifecycle<Context, Shared, T, FEv = NoHandler, FSet = NoHandler> {
     _value_type: PhantomData<fn(Context, Shared, T)>,
     on_event: FEv,
@@ -80,6 +99,7 @@ impl<Context, Shared, T> Default for StatefulValueLaneLifecycle<Context, Shared,
 }
 
 impl<Context, Shared, T, FEv, FSet> StatefulValueLaneLifecycle<Context, Shared, T, FEv, FSet> {
+    /// Replace the `on_event` handler with another derived from a closure.
     pub fn on_event<F>(
         self,
         f: F,
@@ -94,6 +114,7 @@ impl<Context, Shared, T, FEv, FSet> StatefulValueLaneLifecycle<Context, Shared, 
         }
     }
 
+    /// Replace the `on_set` handler with another derived from a closure.
     pub fn on_set<F>(
         self,
         f: F,

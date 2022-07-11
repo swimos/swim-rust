@@ -15,3 +15,15 @@
 pub mod command;
 pub mod map;
 pub mod value;
+
+/// Wrapper to allow projection function pointers to be exposed as event handler transforms
+/// for different types of lanes.
+pub struct ProjTransform<C, L> {
+    projection: fn(&C) -> &L,
+}
+
+impl<C, L> ProjTransform<C, L> {
+    pub fn new(projection: fn(&C) -> &L) -> Self {
+        ProjTransform { projection }
+    }
+}

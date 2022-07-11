@@ -19,15 +19,25 @@ use crate::{
     lifecycle::utility::HandlerContext,
 };
 
+/// Event handler to be called each time the value of a value lane changes, consuming only the new value.
 pub trait OnEvent<'a, T, Context>: Send {
     type OnEventHandler: EventHandler<Context, Completion = ()> + Send + 'a;
 
+    /// #Arguments
+    /// * `value` - The new value.
     fn on_event(&'a self, value: &T) -> Self::OnEventHandler;
 }
 
+/// Event handler to be called each time the value of a value lane changes, consuming only the new value.
+/// The event handler has access to some shared state (shared with other event handlers in the same agent).
 pub trait OnEventShared<'a, T, Context, Shared>: Send {
     type OnEventHandler: EventHandler<Context, Completion = ()> + Send + 'a;
 
+    /// #Arguments
+    /// * `shared` - The shared state.
+    /// * `handler_context` - Utility for constructing event handlers.
+    /// * `existing` - The existing value, if it is defined.
+    /// * `value` - The new value.
     fn on_event(
         &'a self,
         shared: &'a Shared,
