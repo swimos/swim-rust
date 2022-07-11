@@ -39,6 +39,11 @@ fn main() {
     println!("Hello, world!");
 }
 
+/*
+ * This example provides a sketch for how the macros to define an agent will work. It will be remove (and replaced
+ * with a real example) after the macro crate is added.
+ */
+
 #[derive(Debug)]
 //#[derive(Debug, AgentLaneModel)]
 pub struct MyAgent {
