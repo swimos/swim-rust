@@ -34,12 +34,14 @@ type ValueLaneReader = FramedRead<ByteReader, LaneRequestDecoder<WithLengthBytes
 type MapLaneReader =
     FramedRead<ByteReader, LaneRequestDecoder<MapMessageDecoder<RawMapOperationDecoder>>>;
 
+/// Used internally by the agent model for writing to lanes.
 pub struct LaneWriter {
     id: u64,
     writer: FramedWrite<ByteWriter, BytesCodec>,
     pub buffer: BytesMut,
 }
 
+/// Used internally by the agent model for readig from lanes.
 pub struct LaneReader {
     id: u64,
     inner: Either<ValueLaneReader, MapLaneReader>,

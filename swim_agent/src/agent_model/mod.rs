@@ -46,33 +46,79 @@ mod tests;
 
 use io::{LaneReader, LaneWriter};
 
+/// Response from a lane after it has written bytes to its outgoing buffer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WriteResult {
+    // The lane has no data to write (the buffer is still empty).
     NoData,
+    // The lane has written data to the buffer but has not more data to write.
     Done,
+    // The lane has written data to the buffer and will have more to write on a subsequent call.
     DataStillAvailable,
 }
 
+/// At trait which describes the lanes of an agent which can be run as a task attached to an
+/// [`AgentContext`]. A type implementing this trait is sufficient to produce a functional agent
+/// although it will not provided any lifecycle events for the agent or its lanes.
 pub trait AgentLaneModel: Sized {
+
+    /// The type of handler to run when a command is received for a value lane.
     type ValCommandHandler: EventHandler<Self, Completion = ()> + Send + 'static;
+
+    /// The type of handler to run when a command is received for a map lane.
     type MapCommandHandler: EventHandler<Self, Completion = ()> + Send + 'static;
+
+    /// The type of handler to run when a request is received to sync with a lane.
     type OnSyncHandler: EventHandler<Self, Completion = ()> + Send + 'static;
 
+    /// The names of all value like lanes (value lanes, command lanes, etc) in the agent.
     fn value_like_lanes(&self) -> HashSet<&str>;
+
+    /// The names of all map like lanes in the agent.
     fn map_like_lanes(&self) -> HashSet<&str>;
+
+    /// Mapping from lane identifiers to lane names for all lanes in the agent.
     fn lane_ids(&self) -> HashMap<u64, Text>;
 
+    /// Create a handler that will update the state of the agent when a command is received
+    /// for a value lane. There will be no handler if the lane does not exist or does not
+    /// accept commands.
+    /// 
+    /// #Arguments
+    ///  * `lane` - The name of the lane.
+    /// * `body` - The content of the command.
     fn on_value_command(&self, lane: &str, body: Bytes) -> Option<Self::ValCommandHandler>;
+    
+    /// Create a handler that will update the state of the agent when a command is received
+    /// for a map lane. There will be no handler if the lane does not exist or does not
+    /// accept commands.
+    /// #Arguments
+    /// * `lane` - The name of the lane.
+    /// * `body` - The content of the command.
     fn on_map_command(
         &self,
         lane: &str,
         body: MapMessage<Bytes, Bytes>,
     ) -> Option<Self::MapCommandHandler>;
+
+    /// Create a handler that will update the state of an agent when a request is made to
+    /// sync with a lane. There will be no handler if the lane does not exist.
+    /// 
+    /// #Arguments
+    /// * `lane` - The name of the lane.
+    /// * `id` - The ID of the remote that requested the sync.
     fn on_sync(&self, lane: &str, id: Uuid) -> Option<Self::OnSyncHandler>;
 
+    /// Attempt to write pending data from a lane into the outgoing buffer. The result will
+    /// indicate if data was written and if the lane has more data to write. There will be
+    /// no result if the lane does not exist.
     fn write_event(&self, lane: &str, buffer: &mut BytesMut) -> Option<WriteResult>;
+
 }
 
+/// The complete model for an agent consisting of an implementation of [`AgentLaneModel`] to describe the lanes
+/// of the agent and an implementation of [`AgentLifecycle`] to describe the lifecycle events that will trigger,
+/// for  example, when the agent starts or stops or when the state of a lane changes.
 #[derive(Debug, Clone)]
 pub struct AgentModel<LaneModel, Lifecycle> {
     lane_model: LaneModel,
@@ -128,6 +174,13 @@ where
     LaneModel: AgentLaneModel + Send + 'static,
     Lifecycle: AgentLifecycle<LaneModel> + 'static,
 {
+    /// Initialize the agent, performing the initial setup for all of the lanes (including triggering the
+    /// `on_start` event).
+    /// 
+    /// #Arguments
+    /// * `route` - The node URI for thhe agent instance.
+    /// * `config` - Agent specific configuration parameters.
+    /// * `context` - Context through which to communicate with the runtime.
     async fn initialize_agent(
         self,
         route: RelativeUri,
@@ -152,6 +205,7 @@ where
         let map_lane_names = lane_model.map_like_lanes();
         let lane_ids = lane_model.lane_ids();
 
+        // Set up the lanes of the agent.
         for name in val_lane_names {
             let io = context.add_lane(name, UplinkKind::Value, None).await?;
             value_lane_io.insert(Text::new(name), io);
@@ -164,6 +218,7 @@ where
             map_lane_io.insert(Text::new(name), io);
         }
 
+        // Run the agent's `on_start` event handler.
         let on_start_handler = lifecycle.on_start();
         if let Err(e) = run_handler(
             meta,
@@ -180,6 +235,15 @@ where
             .boxed())
     }
 
+    /// Core event loop for the agent that routes incoming data from the runtime to the lanes and
+    /// state changes fromt he lanes to the runtime.
+    /// 
+    /// #Arguments
+    /// * `route` - The node URI of the agent instance.
+    /// * `config` - Agent specific configuration parameters.
+    /// * `lane_ids` - Mapping between lane names and lane IDs.
+    /// * `value_lane_io` - Channels to the runtime for value like lanes.
+    /// * `map_lane_io` - Channels to the runtime for map like lanes.
     async fn run_agent(
         self,
         route: RelativeUri,
@@ -203,6 +267,7 @@ where
         let mut lane_writers = HashMap::new();
         let mut pending_writes = FuturesUnordered::new();
 
+        // Set up readers and writes for each lane.
         for (name, (tx, rx)) in value_lane_io {
             let id = lane_ids_rev[&name];
             lane_readers.push(LaneReader::value(id, rx));
@@ -215,6 +280,7 @@ where
             lane_writers.insert(id, LaneWriter::new(id, tx));
         }
 
+        // This set keeps track of which lanes have data to be written (according to executed event handlers).
         let mut dirty_lanes: HashSet<u64> = HashSet::new();
 
         loop {
@@ -325,6 +391,7 @@ where
                     break Err(AgentTaskError::BadFrame { lane, error });
                 }
             }
+            // Attempt to write to the outgoing buffers for any lanes with data.
             dirty_lanes.retain(|id| {
                 if let Some(mut tx) = lane_writers.remove(id) {
                     let name = &lane_ids[id];
@@ -344,6 +411,7 @@ where
                 }
             });
         }?;
+        // Try to run the `on_stop` handler before we stop.
         let on_stop_handler = lifecycle.on_stop();
         if let Err(e) = run_handler(
             meta,
@@ -360,10 +428,14 @@ where
     }
 }
 
+/// As an event handler runs it indicates which lanes now have state updates that need
+/// to be written out via the runtime. An implementation of this trait collects these
+/// IDs to track which lanes to attempt to write data for later.
 trait IdCollector {
     fn add_id(&mut self, id: u64);
 }
 
+/// When the agent is intializing, no IO is taking place so we simply discard the IDs.
 struct Discard;
 
 impl IdCollector for Discard {
@@ -376,6 +448,30 @@ impl IdCollector for HashSet<u64> {
     }
 }
 
+/// Run an event handler within the context of the lifecycle of an agent. If the event handler causes another
+/// event to trigger, it is suspended while that other event handler is executed. When an event handler changes
+/// the state of a lane, that is recorded by the collector so that the change can be written out after the chain
+/// of handlers completes.
+/// 
+/// This function does not check for invalid identifiers/lanes. If a lane is referred to that does not exist,
+/// ther will be no error and no side effects will ocurr.
+/// 
+/// TODO: This methis recursive and has no checks to detect cycles. It would be very easy to create a set of
+/// event handles which cause this to go into an infinite loop (this is also the case in Java). We could add some 
+/// heuristics to prevent this (for example terminating with an error if the same event handler gets executed
+/// some number of times in a single chain) but this will likely add a bit of overhead.
+/// 
+/// #Arguments
+/// 
+/// * `meta` - Agent instance metadata (which can be requested by the event handler).
+/// * `context` - The context within which the event handler is running. This provides access to the lanes of the
+/// agent (typically it will be an instance of a struct where the fields are lane instances).
+/// * `lifecycle` - The agent lifecycle which provides event handlers for state changes for each lane.
+/// * `handler` - The initial event handler that starts the chain. This could be a lifecycle event or triggered
+/// by an incoming message from the runtime.
+/// * `lanes` - Mapping between lane IDs (returned by the handler to indicate that it has changed the state of
+/// a lane) an the lane names (which are used by the lifecycle to identify the lanes).
+/// * `collector` - Collects the IDs of lanes with state changes.
 fn run_handler<Context, Lifecycle, Handler, Collector>(
     meta: AgentMetadata,
     context: &Context,
