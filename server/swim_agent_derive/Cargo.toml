@@ -1,0 +1,16 @@
+[package]
+name = "swim_agent_derive"
+version = "0.1.0"
+authors = ["Swim Inc. developers info@swim.ai"]
+edition = "2021"
+
+[lib]
+name = "swim_agent_derive"
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0"
+syn = { version = "1.0", features = ["full"] }
+quote = "1.0.3"
+
+[dev-dependencies]
