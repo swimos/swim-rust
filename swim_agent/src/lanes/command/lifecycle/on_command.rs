@@ -19,12 +19,15 @@ use crate::{
     lifecycle::utility::HandlerContext,
 };
 
+/// Lifecycle event for the `on_command` event of a command lane.
 pub trait OnCommand<'a, T, Context>: Send {
     type OnCommandHandler: EventHandler<Context, Completion = ()> + Send + 'a;
 
     fn on_command(&'a self, value: &T) -> Self::OnCommandHandler;
 }
 
+/// Lifecycle event for the `on_command` event of a command lane where the event handler
+/// has shared state with other handlers for the same agent.
 pub trait OnCommandShared<'a, T, Context, Shared>: Send {
     type OnCommandHandler: EventHandler<Context, Completion = ()> + Send + 'a;
 

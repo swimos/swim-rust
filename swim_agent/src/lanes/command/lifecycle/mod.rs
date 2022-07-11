@@ -20,8 +20,26 @@ use self::on_command::{OnCommand, OnCommandShared};
 
 pub mod on_command;
 
-pub trait CommandLaneHandlers<'a, T, Context>: OnCommand<'a, T, Context> {}
+/// Trait for the lifecycle of a command lane.
+/// 
+/// #Type Parameters
+/// * `T` - The type of the commands.
+/// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 pub trait CommandLaneLifecycle<T, Context>: for<'a> OnCommand<'a, T, Context> {}
+
+/// Trait for the lifecycle of a command lane where the lifecycle has access to some shared state (shared
+/// with all other lifecycles in the agent).
+/// 
+/// #Type Parameters
+/// * `T` - The type of the commands.
+/// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
+/// * `Shared` - The shared state to which the lifecycle has access.
+pub trait CommandLaneLifecycleShared<T, Context, Shared>:
+    for<'a> OnCommandShared<'a, T, Context, Shared>
+{
+}
+
+pub trait CommandLaneHandlers<'a, T, Context>: OnCommand<'a, T, Context> {}
 
 impl<'a, T, Context, L> CommandLaneHandlers<'a, T, Context> for L where L: OnCommand<'a, T, Context> {}
 
@@ -32,10 +50,6 @@ impl<T, Context, L> CommandLaneLifecycle<T, Context> for L where
 
 pub trait CommandLaneHandlersShared<'a, T, Context, Shared>:
     OnCommandShared<'a, T, Context, Shared>
-{
-}
-pub trait CommandLaneLifecycleShared<T, Context, Shared>:
-    for<'a> OnCommandShared<'a, T, Context, Shared>
 {
 }
 
@@ -49,6 +63,12 @@ impl<T, Context, Shared, L> CommandLaneLifecycleShared<T, Context, Shared> for L
 {
 }
 
+/// A lifecycle for a command lane with some shared state (shard with other lifecycles in the same agent).
+/// 
+/// #Type Parameters
+/// * `Context` - The contect for the event handlers (providing access to the agent lanes).
+/// * `Shared` - The shared state to which the lifecycle has access.
+/// * `Cmd` - The type of the `on_command` event.
 pub struct StatefulCommandLaneLifecycle<Context, Shared, T, OnCmd = NoHandler> {
     _value_type: PhantomData<fn(Context, Shared, T)>,
     on_command: OnCmd,

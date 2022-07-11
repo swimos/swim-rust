@@ -30,6 +30,8 @@ pub mod lifecycle;
 #[cfg(test)]
 mod tests;
 
+/// Model of a command lane. An event if triggered when a command is received (either externally or
+/// internally) but the lane does not maintain any record of its state.
 #[derive(Debug)]
 pub struct CommandLane<T> {
     id: u64,
@@ -41,6 +43,7 @@ pub struct CommandLane<T> {
 assert_impl_all!(CommandLane<()>: Send);
 
 impl<T> CommandLane<T> {
+    /// Create a command lane with the specified ID (this needs to be unique within an agent).
     pub fn new(id: u64) -> Self {
         CommandLane {
             id,
@@ -49,6 +52,7 @@ impl<T> CommandLane<T> {
         }
     }
 
+    /// Exectute a command agaist the lane.
     pub fn command(&self, value: T) {
         let CommandLane {
             prev_command,
@@ -60,6 +64,7 @@ impl<T> CommandLane<T> {
         dirty.set(true);
     }
 
+    /// Consume the previous command that was executed against the lane.
     pub(crate) fn with_prev<F, R>(&self, f: F) -> R
     where
         F: FnOnce(&Option<T>) -> R,
@@ -73,6 +78,7 @@ impl<T> CommandLane<T> {
 const INFALLIBLE_SER: &str = "Serializing a command to recon should be infallible.";
 
 impl<T: StructuralWritable> CommandLane<T> {
+    /// If a command has been received since the last call, write a resppnse into the buffer.
     pub fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult {
         let CommandLane {
             prev_command,
@@ -82,22 +88,30 @@ impl<T: StructuralWritable> CommandLane<T> {
         let mut encoder = ValueLaneResponseEncoder;
         if dirty.get() {
             let value_guard = prev_command.borrow();
-            let response = ValueLaneResponse::event(&*value_guard);
-            encoder.encode(response, buffer).expect(INFALLIBLE_SER);
-            dirty.set(false);
-            WriteResult::Done
+            if let Some(value) = &*value_guard {
+                let response = ValueLaneResponse::event(value);
+                encoder.encode(response, buffer).expect(INFALLIBLE_SER);
+                dirty.set(false);
+                WriteResult::Done
+            } else {
+                WriteResult::NoData
+            }
         } else {
             WriteResult::NoData
         }
     }
 }
 
+/// An [`EventHandler`] instance that feeds a command to the command lane.
 pub struct DoCommand<Context, T> {
     projection: fn(&Context) -> &CommandLane<T>,
     command: Option<T>,
 }
 
 impl<Context, T> DoCommand<Context, T> {
+    /// #Arguments
+    /// * `projection` - Projection from the agent context to the lane.
+    /// * `command` - The command to feed.
     pub fn new(projection: fn(&Context) -> &CommandLane<T>, command: T) -> Self {
         DoCommand {
             projection,
