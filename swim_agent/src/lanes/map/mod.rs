@@ -402,7 +402,7 @@ where
         if !*done {
             *done = true;
             let lane = projection(context);
-            StepResult::done(lane.get(&key, |v| v.cloned()))
+            StepResult::done(lane.get(key, |v| v.cloned()))
         } else {
             StepResult::after_done()
         }

@@ -38,7 +38,7 @@ impl<Agent> Default for HandlerContext<Agent> {
 impl<Agent> Clone for HandlerContext<Agent> {
     fn clone(&self) -> Self {
         Self {
-            _agent_type: self._agent_type.clone(),
+            _agent_type: self._agent_type,
         }
     }
 }

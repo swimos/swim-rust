@@ -67,7 +67,7 @@ struct TestContext {
     map_lane_io: (MapLaneSender, MapLaneReceiver),
 }
 
-async fn init_agent<'a>(context: &'a TestAgentContext) -> (AgentTask<'a>, TestContext) {
+async fn init_agent(context: &TestAgentContext) -> (AgentTask<'_>, TestContext) {
     let mut lane_model = TestAgent::default();
 
     let test_event_rx = lane_model.take_receiver();

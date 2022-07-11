@@ -510,12 +510,12 @@ fn map_lane_two_branches() {
 fn fail_out_of_order_labels_right() {
     let first_lifecycle = FakeLifecycle::<i32, i32>::default();
     let second_lifecycle = FakeLifecycle::<i32, Text>::default();
-    let leaf = MapLeaf::new(FIRST_NAME, TestAgent::FIRST, first_lifecycle.clone());
+    let leaf = MapLeaf::new(FIRST_NAME, TestAgent::FIRST, first_lifecycle);
 
     MapBranch::new(
         SECOND_NAME,
         TestAgent::SECOND,
-        second_lifecycle.clone(),
+        second_lifecycle,
         HLeaf,
         leaf,
     );
@@ -526,15 +526,9 @@ fn fail_out_of_order_labels_right() {
 fn fail_out_of_order_labels_left() {
     let first_lifecycle = FakeLifecycle::<i32, i32>::default();
     let second_lifecycle = FakeLifecycle::<i32, Text>::default();
-    let leaf = MapLeaf::new(SECOND_NAME, TestAgent::SECOND, second_lifecycle.clone());
+    let leaf = MapLeaf::new(SECOND_NAME, TestAgent::SECOND, second_lifecycle);
 
-    MapBranch::new(
-        FIRST_NAME,
-        TestAgent::FIRST,
-        first_lifecycle.clone(),
-        leaf,
-        HLeaf,
-    );
+    MapBranch::new(FIRST_NAME, TestAgent::FIRST, first_lifecycle, leaf, HLeaf);
 }
 
 #[test]
@@ -543,11 +537,5 @@ fn fail_equal_labels() {
     let first_lifecycle = FakeLifecycle::<i32, i32>::default();
     let leaf = MapLeaf::new(FIRST_NAME, TestAgent::FIRST, first_lifecycle.clone());
 
-    MapBranch::new(
-        FIRST_NAME,
-        TestAgent::FIRST,
-        first_lifecycle.clone(),
-        HLeaf,
-        leaf,
-    );
+    MapBranch::new(FIRST_NAME, TestAgent::FIRST, first_lifecycle, HLeaf, leaf);
 }

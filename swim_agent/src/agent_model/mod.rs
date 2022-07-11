@@ -128,12 +128,12 @@ where
     LaneModel: AgentLaneModel + Send + 'static,
     Lifecycle: AgentLifecycle<LaneModel> + 'static,
 {
-    async fn initialize_agent<'a>(
+    async fn initialize_agent(
         self,
         route: RelativeUri,
         config: AgentConfig,
-        context: &'a dyn AgentContext,
-    ) -> AgentInitResult<'a>
+        context: &dyn AgentContext,
+    ) -> AgentInitResult<'_>
     where
         LaneModel: AgentLaneModel,
         Lifecycle: AgentLifecycle<LaneModel>,

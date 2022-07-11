@@ -248,22 +248,20 @@ where
             } else {
                 None
             }
-        } else {
-            if let Some(queue) = sync_queues.get_mut(*sync_index) {
-                Some(if let Some(k) = queue.pop() {
-                    let id = queue.id;
-                    *sync_index = (*sync_index + 1) % sync_queues.len();
-                    ToWrite::SyncEvent(id, k)
-                } else {
-                    let id = sync_queues.remove(*sync_index).id;
-                    if *sync_index >= sync_queues.len() {
-                        *sync_index = 0;
-                    }
-                    ToWrite::Synced(id)
-                })
+        } else if let Some(queue) = sync_queues.get_mut(*sync_index) {
+            Some(if let Some(k) = queue.pop() {
+                let id = queue.id;
+                *sync_index = (*sync_index + 1) % sync_queues.len();
+                ToWrite::SyncEvent(id, k)
             } else {
-                None
-            }
+                let id = sync_queues.remove(*sync_index).id;
+                if *sync_index >= sync_queues.len() {
+                    *sync_index = 0;
+                }
+                ToWrite::Synced(id)
+            })
+        } else {
+            None
         }
     }
 

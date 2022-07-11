@@ -186,7 +186,7 @@ fn command_lane_left_branch() {
         let guard = second_lifecycle.state.lock();
         let LifecycleState { on_command } = guard.clone();
 
-        assert_eq!(on_command, Some(hello.clone()));
+        assert_eq!(on_command, Some(hello));
     } else {
         panic!("Expected an event handler.");
     }
@@ -236,7 +236,7 @@ fn command_lane_right_branch() {
         let guard = second_lifecycle.state.lock();
         let LifecycleState { on_command } = guard.clone();
 
-        assert_eq!(on_command, Some(hello.clone()));
+        assert_eq!(on_command, Some(hello));
     } else {
         panic!("Expected an event handler.");
     }
@@ -290,7 +290,7 @@ fn command_lane_two_branches() {
         let guard = second_lifecycle.state.lock();
         let LifecycleState { on_command } = guard.clone();
 
-        assert_eq!(on_command, Some(hello.clone()));
+        assert_eq!(on_command, Some(hello));
     } else {
         panic!("Expected an event handler.");
     }

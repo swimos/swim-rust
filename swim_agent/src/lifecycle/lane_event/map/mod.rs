@@ -164,13 +164,7 @@ where
         } = self;
         if lane_name == *label {
             let lane = projection(context);
-            lane.read_with_prev(|prev, map| {
-                if let Some(ev) = prev {
-                    Some(map_handler(ev, lifecycle, map))
-                } else {
-                    None
-                }
-            })
+            lane.read_with_prev(|prev, map| prev.map(|ev| map_handler(ev, lifecycle, map)))
         } else {
             None
         }
@@ -200,17 +194,7 @@ where
         if lane_name == *label {
             let lane = projection(context);
             lane.read_with_prev(|prev, map| {
-                if let Some(ev) = prev {
-                    Some(map_handler_shared(
-                        shared,
-                        handler_context,
-                        ev,
-                        lifecycle,
-                        map,
-                    ))
-                } else {
-                    None
-                }
+                prev.map(|ev| map_handler_shared(shared, handler_context, ev, lifecycle, map))
             })
         } else {
             None
@@ -298,13 +282,8 @@ where
             Ordering::Less => left.lane_event(context, lane_name).map(Either::Left),
             Ordering::Equal => {
                 let lane = projection(context);
-                let handler = lane.read_with_prev(|prev, map| {
-                    if let Some(ev) = prev {
-                        Some(map_handler(ev, lifecycle, map))
-                    } else {
-                        None
-                    }
-                });
+                let handler =
+                    lane.read_with_prev(|prev, map| prev.map(|ev| map_handler(ev, lifecycle, map)));
                 handler.map(|h| Either::Right(Either::Left(h)))
             }
             Ordering::Greater => right
@@ -345,17 +324,7 @@ where
             Ordering::Equal => {
                 let lane = projection(context);
                 let handler = lane.read_with_prev(|prev, map| {
-                    if let Some(ev) = prev {
-                        Some(map_handler_shared(
-                            shared,
-                            handler_context,
-                            ev,
-                            lifecycle,
-                            map,
-                        ))
-                    } else {
-                        None
-                    }
+                    prev.map(|ev| map_handler_shared(shared, handler_context, ev, lifecycle, map))
                 });
                 handler.map(|h| Either::Right(Either::Left(h)))
             }

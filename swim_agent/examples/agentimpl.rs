@@ -95,11 +95,9 @@ const _: () = {
                     .on_event(MyAgentLifecycle::first_on_event);
             let lanes_lifecycle = ValueLeaf::new("first", MyAgent::FIRST, first_lifecycle);
 
-            let lifecycle = StatefulAgentLifecycle::<MyAgent, _>::new(self)
+            StatefulAgentLifecycle::<MyAgent, _>::new(self)
                 .on_start(MyAgentLifecycle::on_start)
-                .on_lane_event(lanes_lifecycle);
-
-            lifecycle
+                .on_lane_event(lanes_lifecycle)
         }
     }
 
