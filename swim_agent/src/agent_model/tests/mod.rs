@@ -36,6 +36,7 @@ mod fake_agent;
 mod fake_context;
 mod fake_lifecycle;
 mod lane_io;
+mod run_handler;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TestEvent {

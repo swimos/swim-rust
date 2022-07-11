@@ -33,6 +33,7 @@ use swim_utilities::{
 };
 use uuid::Uuid;
 
+use crate::lifecycle::lane_event::LaneEvent;
 use crate::{
     event_handler::{EventHandler, EventHandlerError, StepResult},
     lifecycle::AgentLifecycle,
@@ -384,7 +385,7 @@ fn run_handler<Context, Lifecycle, Handler, Collector>(
     collector: &mut Collector,
 ) -> Result<(), EventHandlerError>
 where
-    Lifecycle: AgentLifecycle<Context>,
+    Lifecycle: for<'a> LaneEvent<'a, Context>,
     Handler: EventHandler<Context, Completion = ()>,
     Collector: IdCollector,
 {
