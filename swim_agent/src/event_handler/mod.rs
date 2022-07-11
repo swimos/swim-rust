@@ -28,11 +28,31 @@ use crate::meta::AgentMetadata;
 #[cfg(test)]
 mod tests;
 
+/// Trait to desribe an action to be taken, within the context of an agent, when an event ocurrs. The
+/// execution of an event handler can be suspended (so that it can trigger the exection of other handlers).
+/// This could be expressed using generators from the standard library after this feature is stabilized.
+/// A handler instance can be used exactly once. After it has returned a result or an error all subsequent
+/// step executions must result in an error.
+///
+/// It should not generally be necessary to implement this trait in user code.
+///
+/// #Type Parameters
+/// * `Context` - The context within which the handler executes. Typically, this will be a struct type where
+/// each field is a lane of an agent.
 pub trait EventHandler<Context> {
+    /// The result of executing the handler to completion.
     type Completion;
 
+    /// Run one step of the handler. This can result in either the handler suspending execution, completing
+    /// with a result or returning an error.
+    ///
+    /// # Arguments
+    /// * `meta` - Provides access to agent instance metadata.
+    /// * `context` - The execution context of the handler (providing access to the lanes of the agent).
     fn step(&mut self, meta: AgentMetadata, context: &Context) -> StepResult<Self::Completion>;
 
+    /// Create a new handler which applies a function to the result of this handler and then executes
+    /// an additional handler returned by the function.
     fn and_then<F, H2>(self, f: F) -> AndThen<Self, H2, F>
     where
         Self: Sized,
@@ -42,6 +62,8 @@ pub trait EventHandler<Context> {
         AndThen::new(self, f)
     }
 
+    /// Create a new handler which applies a function to the result of this handler and then executes
+    /// an additional handler returned by the function or returns an error if the function fails.
     fn and_then_try<F, H2>(self, f: F) -> AndThenTry<Self, H2, F>
     where
         Self: Sized,
@@ -51,6 +73,7 @@ pub trait EventHandler<Context> {
         AndThenTry::new(self, f)
     }
 
+    /// Create a new handler that executes this handler and another in sequence.
     fn followed_by<H2>(self, after: H2) -> FollowedBy<Self, H2>
     where
         Self: Sized,
@@ -59,6 +82,7 @@ pub trait EventHandler<Context> {
         FollowedBy::new(self, after)
     }
 
+    /// Create a new handler that executes this handler and then performs a side effect.
     fn followed_by_eff<F, R>(self, eff: F) -> FollowedBy<Self, SideEffect<F>>
     where
         Self: Sized,
@@ -79,6 +103,7 @@ where
     }
 }
 
+/// Error type for fallible event handlers.
 #[derive(Debug, Error)]
 pub enum EventHandlerError {
     #[error("Event handler stepped after completion.")]
@@ -89,9 +114,13 @@ pub enum EventHandlerError {
     IncompleteCommand,
 }
 
+/// When a handler completes or suspends it can inidcate that is has modified the
+/// state of a lane.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Modification {
+    /// The ID of the lane.
     pub lane_id: u64,
+    /// If this is true, lifecycle event handlers on the lane should be executed.
     pub trigger_handler: bool,
 }
 
@@ -111,14 +140,22 @@ impl Modification {
     }
 }
 
+/// The result of running a single step of an event handler.
 #[derive(Debug)]
 pub enum StepResult<C> {
+    /// The event handler has suspended.
     Continue {
+        /// Indicates if a lane has been modified,
         modified_lane: Option<Modification>,
     },
+    /// The handler has failed and will never now produce a result.
     Fail(EventHandlerError),
+    /// The handler has completed successfully. All further attempts to step
+    /// will result in an error.
     Complete {
+        /// Indicates if a lane has been modified.
         modified_lane: Option<Modification>,
+        /// The result of the handler.
         result: C,
     },
 }
@@ -146,7 +183,10 @@ impl<C> StepResult<C> {
     }
 }
 
+/// An event handler that executes a function and immediately completes with the result.
 pub struct SideEffect<F>(Option<F>);
+
+/// An event handler that drains an iterator into a vector, suspending after each item
 pub struct SideEffects<I: Iterator> {
     eff: I,
     results: Vec<I::Item>,
@@ -204,18 +244,21 @@ where
     }
 }
 
+/// Type that is returned by the `and_then` method on the [`EventHandler`] trait.
 pub enum AndThen<H1, H2, F> {
     First { first: H1, next: F },
     Second(H2),
     Done,
 }
 
+/// Type that is returned by the `and_then_try` method on the [`EventHandler`] trait.
 pub enum AndThenTry<H1, H2, F> {
     First { first: H1, next: F },
     Second(H2),
     Done,
 }
 
+/// Type that is returned by the `followed_by` method on the [`EventHandler`] trait.
 pub enum FollowedBy<H1, H2> {
     First { first: H1, next: H2 },
     Second(H2),
@@ -261,6 +304,7 @@ impl<H1, H2> FollowedBy<H1, H2> {
     }
 }
 
+/// An alternative to [`FnOnce`] that allows for named implementations.
 pub trait HandlerTrans<In> {
     type Out;
     fn transform(self, input: In) -> Self::Out;
@@ -406,7 +450,9 @@ where
     }
 }
 
+/// An event handler that immediately returns a constant value.
 pub struct ConstHandler<T>(Option<T>);
+
 pub type UnitHandler = ConstHandler<()>;
 
 impl<T> From<T> for ConstHandler<T> {
@@ -456,6 +502,7 @@ where
     }
 }
 
+/// An event handler that will get the agent instance metadata.
 #[derive(Default, Debug)]
 pub struct GetAgentUri {
     done: bool,
@@ -475,6 +522,8 @@ impl<Context> EventHandler<Context> for GetAgentUri {
     }
 }
 
+/// An event handler that will attempt to decode a [`StructuralReadable`] type from a buffer, immediately
+/// returning the result or an error.
 pub struct Decode<T> {
     _target_type: PhantomData<fn() -> T>,
     buffer: BytesMut,

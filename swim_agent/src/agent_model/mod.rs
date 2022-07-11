@@ -61,7 +61,6 @@ pub enum WriteResult {
 /// [`AgentContext`]. A type implementing this trait is sufficient to produce a functional agent
 /// although it will not provided any lifecycle events for the agent or its lanes.
 pub trait AgentLaneModel: Sized {
-
     /// The type of handler to run when a command is received for a value lane.
     type ValCommandHandler: EventHandler<Self, Completion = ()> + Send + 'static;
 
@@ -83,12 +82,12 @@ pub trait AgentLaneModel: Sized {
     /// Create a handler that will update the state of the agent when a command is received
     /// for a value lane. There will be no handler if the lane does not exist or does not
     /// accept commands.
-    /// 
+    ///
     /// #Arguments
     ///  * `lane` - The name of the lane.
     /// * `body` - The content of the command.
     fn on_value_command(&self, lane: &str, body: Bytes) -> Option<Self::ValCommandHandler>;
-    
+
     /// Create a handler that will update the state of the agent when a command is received
     /// for a map lane. There will be no handler if the lane does not exist or does not
     /// accept commands.
@@ -103,7 +102,7 @@ pub trait AgentLaneModel: Sized {
 
     /// Create a handler that will update the state of an agent when a request is made to
     /// sync with a lane. There will be no handler if the lane does not exist.
-    /// 
+    ///
     /// #Arguments
     /// * `lane` - The name of the lane.
     /// * `id` - The ID of the remote that requested the sync.
@@ -113,7 +112,6 @@ pub trait AgentLaneModel: Sized {
     /// indicate if data was written and if the lane has more data to write. There will be
     /// no result if the lane does not exist.
     fn write_event(&self, lane: &str, buffer: &mut BytesMut) -> Option<WriteResult>;
-
 }
 
 /// The complete model for an agent consisting of an implementation of [`AgentLaneModel`] to describe the lanes
@@ -176,7 +174,7 @@ where
 {
     /// Initialize the agent, performing the initial setup for all of the lanes (including triggering the
     /// `on_start` event).
-    /// 
+    ///
     /// #Arguments
     /// * `route` - The node URI for thhe agent instance.
     /// * `config` - Agent specific configuration parameters.
@@ -237,7 +235,7 @@ where
 
     /// Core event loop for the agent that routes incoming data from the runtime to the lanes and
     /// state changes fromt he lanes to the runtime.
-    /// 
+    ///
     /// #Arguments
     /// * `route` - The node URI of the agent instance.
     /// * `config` - Agent specific configuration parameters.
@@ -452,17 +450,17 @@ impl IdCollector for HashSet<u64> {
 /// event to trigger, it is suspended while that other event handler is executed. When an event handler changes
 /// the state of a lane, that is recorded by the collector so that the change can be written out after the chain
 /// of handlers completes.
-/// 
+///
 /// This function does not check for invalid identifiers/lanes. If a lane is referred to that does not exist,
 /// ther will be no error and no side effects will ocurr.
-/// 
+///
 /// TODO: This methis recursive and has no checks to detect cycles. It would be very easy to create a set of
-/// event handles which cause this to go into an infinite loop (this is also the case in Java). We could add some 
+/// event handles which cause this to go into an infinite loop (this is also the case in Java). We could add some
 /// heuristics to prevent this (for example terminating with an error if the same event handler gets executed
 /// some number of times in a single chain) but this will likely add a bit of overhead.
-/// 
+///
 /// #Arguments
-/// 
+///
 /// * `meta` - Agent instance metadata (which can be requested by the event handler).
 /// * `context` - The context within which the event handler is running. This provides access to the lanes of the
 /// agent (typically it will be an instance of a struct where the fields are lane instances).
