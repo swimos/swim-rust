@@ -15,9 +15,12 @@
 use swim_api::agent::AgentConfig;
 use swim_utilities::routing::uri::RelativeUri;
 
+/// Metadata to describe a running agent instance.
 #[derive(Clone, Copy, Debug)]
 pub struct AgentMetadata<'a> {
+    // The URI of the instance.
     path: &'a RelativeUri,
+    // Specific configuration for the instance.
     configuration: &'a AgentConfig,
 }
 
