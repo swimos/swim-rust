@@ -241,7 +241,7 @@ fn push_good_map_event() {
         .push(
             0,
             UplinkResponse::Map(MapOperation::Remove {
-                key: Bytes::from_static(KEY_STR),
+                key: BytesMut::from(KEY_STR),
             }),
             &lane_names,
         )
@@ -264,7 +264,7 @@ fn push_bad_map_event() {
     let result = uplinks.push(
         0,
         UplinkResponse::Map(MapOperation::Remove {
-            key: Bytes::from_static(BAD_UTF8),
+            key: BytesMut::from(BAD_UTF8),
         }),
         &lane_names,
     );
@@ -488,12 +488,12 @@ fn map_lane_sync_consumes_buffer() {
     let ops = [
         MapOperation::Clear,
         MapOperation::Update {
-            key: Bytes::from_static(KEY1_STR),
-            value: Bytes::from_static(VAL1),
+            key: BytesMut::from(KEY1_STR),
+            value: BytesMut::from(VAL1),
         },
         MapOperation::Update {
-            key: Bytes::from_static(KEY2_STR),
-            value: Bytes::from_static(VAL2),
+            key: BytesMut::from(KEY2_STR),
+            value: BytesMut::from(VAL2),
         },
     ];
 

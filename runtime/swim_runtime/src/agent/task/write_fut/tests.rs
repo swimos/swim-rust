@@ -14,9 +14,9 @@
 
 use std::num::NonZeroUsize;
 
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::{BufMut, BytesMut};
 use futures::StreamExt;
-use swim_api::protocol::map::RawMapOperation;
+use swim_api::protocol::map::RawMapOperationMut;
 use swim_model::{path::RelativePath, Text};
 use swim_utilities::{
     algebra::non_zero_usize,
@@ -121,16 +121,16 @@ const KEY2_BYTES: &[u8] = KEY2.as_bytes();
 #[tokio::test]
 async fn write_map_queue_with_synced() {
     let mut map_backpressure = MapBackpressure::default();
-    assert!(map_backpressure.push(RawMapOperation::Clear).is_ok());
+    assert!(map_backpressure.push(RawMapOperationMut::Clear).is_ok());
     assert!(map_backpressure
-        .push(RawMapOperation::Update {
-            key: Bytes::from_static(KEY1_BYTES),
-            value: Bytes::from_static(BODY_BYTES)
+        .push(RawMapOperationMut::Update {
+            key: BytesMut::from(KEY1_BYTES),
+            value: BytesMut::from(BODY_BYTES)
         })
         .is_ok());
     assert!(map_backpressure
-        .push(RawMapOperation::Remove {
-            key: Bytes::from_static(KEY2_BYTES)
+        .push(RawMapOperationMut::Remove {
+            key: BytesMut::from(KEY2_BYTES)
         })
         .is_ok());
 

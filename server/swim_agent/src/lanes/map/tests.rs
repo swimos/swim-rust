@@ -15,7 +15,7 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
 
-use bytes::{Bytes, BytesMut};
+use bytes::BytesMut;
 use swim_api::{
     agent::AgentConfig,
     protocol::{
@@ -285,7 +285,7 @@ fn consume_events(lane: &MapLane<i32, Text>) -> Operations {
     Operations { events, sync }
 }
 
-fn interpret(op: MapOperation<Bytes, Bytes>) -> MapOperation<i32, Text> {
+fn interpret(op: MapOperation<BytesMut, BytesMut>) -> MapOperation<i32, Text> {
     match op {
         MapOperation::Update { key, value } => {
             let key_str = std::str::from_utf8(key.as_ref()).expect("Bad key bytes.");

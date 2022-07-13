@@ -17,7 +17,7 @@ use std::{
     fmt::Debug,
 };
 
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::BytesMut;
 use frunk::{Coprod, Coproduct};
 use swim_agent::{
     agent_model::{AgentLaneModel, WriteResult},
@@ -152,18 +152,14 @@ const _: () = {
             map
         }
 
-        fn on_value_command(&self, lane: &str, body: Bytes) -> Option<Self::ValCommandHandler> {
-            //TODO Avoid this.
-            let mut buffer = BytesMut::new();
-            buffer.reserve(body.len());
-            buffer.put(body);
+        fn on_value_command(&self, lane: &str, body: BytesMut) -> Option<Self::ValCommandHandler> {
             match lane {
                 FIRST_NAME => {
-                    let handler = decode_and_set::<MyAgent, i32>(buffer, MyAgent::FIRST);
+                    let handler = decode_and_set::<MyAgent, i32>(body, MyAgent::FIRST);
                     Some(Coproduct::Inl(handler))
                 }
                 SECOND_NAME => {
-                    let handler = decode_and_set::<MyAgent, Text>(buffer, MyAgent::SECOND);
+                    let handler = decode_and_set::<MyAgent, Text>(body, MyAgent::SECOND);
                     Some(Coproduct::Inr(Coproduct::Inl(handler)))
                 }
                 _ => None,
@@ -173,7 +169,7 @@ const _: () = {
         fn on_map_command(
             &self,
             _lane: &str,
-            _body: MapMessage<Bytes, Bytes>,
+            _body: MapMessage<BytesMut, BytesMut>,
         ) -> Option<Self::MapCommandHandler> {
             None
         }

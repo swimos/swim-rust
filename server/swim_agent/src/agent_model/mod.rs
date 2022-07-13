@@ -14,7 +14,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use bytes::{Bytes, BytesMut};
+use bytes::BytesMut;
 use futures::FutureExt;
 use futures::{
     future::{BoxFuture, Either},
@@ -86,7 +86,7 @@ pub trait AgentLaneModel: Sized {
     /// #Arguments
     ///  * `lane` - The name of the lane.
     /// * `body` - The content of the command.
-    fn on_value_command(&self, lane: &str, body: Bytes) -> Option<Self::ValCommandHandler>;
+    fn on_value_command(&self, lane: &str, body: BytesMut) -> Option<Self::ValCommandHandler>;
 
     /// Create a handler that will update the state of the agent when a command is received
     /// for a map lane. There will be no handler if the lane does not exist or does not
@@ -97,7 +97,7 @@ pub trait AgentLaneModel: Sized {
     fn on_map_command(
         &self,
         lane: &str,
-        body: MapMessage<Bytes, Bytes>,
+        body: MapMessage<BytesMut, BytesMut>,
     ) -> Option<Self::MapCommandHandler>;
 
     /// Create a handler that will update the state of an agent when a request is made to
@@ -155,11 +155,11 @@ enum TaskEvent {
     },
     ValueRequest {
         id: u64,
-        request: LaneRequest<Bytes>,
+        request: LaneRequest<BytesMut>,
     },
     MapRequest {
         id: u64,
-        request: LaneRequest<MapMessage<Bytes, Bytes>>,
+        request: LaneRequest<MapMessage<BytesMut, BytesMut>>,
     },
     RequestError {
         id: u64,

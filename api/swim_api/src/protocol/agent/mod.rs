@@ -382,7 +382,7 @@ pub struct MapLaneResponseDecoder {
 }
 
 impl Decoder for MapLaneResponseDecoder {
-    type Item = MapLaneResponse<Bytes, Bytes>;
+    type Item = MapLaneResponse<BytesMut, BytesMut>;
 
     type Error = FrameIoError;
 

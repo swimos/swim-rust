@@ -23,7 +23,7 @@ use crate::protocol::{LEN_SIZE, TAG_SIZE};
 
 use super::{
     MapMessage, MapMessageDecoder, MapMessageEncoder, MapOperation, MapOperationDecoder,
-    MapOperationEncoder, RawMapOperation, RawMapOperationDecoder, RawMapOperationEncoder, CLEAR,
+    MapOperationEncoder, RawMapOperationDecoder, RawMapOperationEncoder, RawMapOperationMut, CLEAR,
     REMOVE, UPDATE,
 };
 
@@ -41,7 +41,7 @@ fn encode_operation<K: StructuralWritable, V: StructuralWritable>(op: MapOperati
 
 fn round_trip<K: StructuralWritable, V: StructuralWritable>(
     op: MapOperation<K, V>,
-) -> RawMapOperation {
+) -> RawMapOperationMut {
     let mut buffer = BytesMut::new();
     assert!(MapOperationEncoder.encode(op, &mut buffer).is_ok());
     let result = RawMapOperationDecoder.decode(&mut buffer);
@@ -58,7 +58,7 @@ fn round_trip<K: StructuralWritable, V: StructuralWritable>(
 }
 
 fn round_trip_raw<K: RecognizerReadable, V: RecognizerReadable>(
-    op: RawMapOperation,
+    op: RawMapOperationMut,
 ) -> MapOperation<K, V> {
     let mut buffer = BytesMut::new();
     assert!(RawMapOperationEncoder.encode(op, &mut buffer).is_ok());
@@ -186,10 +186,11 @@ fn decode_clear_operation() {
 
 #[test]
 fn decode_update_operation() {
-    let raw = RawMapOperation::Update {
-        key: Bytes::from_static(KEY.as_bytes()),
-        value: Bytes::from_static(VALUE.as_bytes()),
-    };
+    let mut key = BytesMut::new();
+    let mut value = BytesMut::new();
+    key.extend_from_slice(KEY.as_bytes());
+    value.extend_from_slice(VALUE.as_bytes());
+    let raw = RawMapOperationMut::Update { key, value };
     let restored = round_trip_raw::<String, String>(raw);
     assert_eq!(
         restored,
@@ -201,8 +202,9 @@ fn decode_update_operation() {
 
     let value = Example { a: 1, b: 2 };
 
-    let expected_key = Bytes::from_static(KEY.as_bytes());
-    let expected_value = Bytes::from(format!("{}", print_recon_compact(&value)).into_bytes());
+    let mut expected_key = BytesMut::new();
+    expected_key.extend_from_slice(KEY.as_bytes());
+    let expected_value = BytesMut::from(format!("{}", print_recon_compact(&value)).as_bytes());
 
     let op = MapOperation::Update {
         key: KEY.to_string(),
@@ -221,8 +223,8 @@ fn decode_update_operation() {
 
 #[test]
 fn decode_remove_operation() {
-    let raw = RawMapOperation::Remove {
-        key: Bytes::from_static(KEY.as_bytes()),
+    let raw = RawMapOperationMut::Remove {
+        key: BytesMut::from(KEY.as_bytes()),
     };
     let restored = round_trip_raw::<String, String>(raw);
     assert_eq!(
@@ -232,7 +234,7 @@ fn decode_remove_operation() {
         }
     );
 
-    let expected_key = Bytes::from_static(KEY.as_bytes());
+    let expected_key = BytesMut::from(KEY.as_bytes());
 
     let op = MapOperation::Remove {
         key: KEY.to_string(),

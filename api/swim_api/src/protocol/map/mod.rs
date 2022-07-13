@@ -47,7 +47,8 @@ pub enum MapOperation<K, V> {
     Clear,
 }
 
-pub type RawMapOperation = MapOperation<Bytes, Bytes>;
+pub type RawMapOperation = MapOperation<Bytes, BytesMut>;
+pub type RawMapOperationMut = MapOperation<BytesMut, BytesMut>;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MapOperationEncoder;
@@ -145,7 +146,7 @@ impl<K: AsRef<[u8]>, V: AsRef<[u8]>> Encoder<MapOperation<K, V>> for RawMapOpera
 }
 
 impl Decoder for RawMapOperationDecoder {
-    type Item = RawMapOperation;
+    type Item = RawMapOperationMut;
 
     type Error = FrameIoError;
 
@@ -170,9 +171,9 @@ impl Decoder for RawMapOperationDecoder {
                     return Ok(None);
                 }
                 src.advance(TAG_SIZE + 2 * LEN_SIZE);
-                let key = src.split_to(key_len).freeze();
-                let value = src.split_to(value_len).freeze();
-                Ok(Some(RawMapOperation::Update { key, value }))
+                let key = src.split_to(key_len);
+                let value = src.split_to(value_len);
+                Ok(Some(RawMapOperationMut::Update { key, value }))
             }
             REMOVE => {
                 if src.remaining() < TAG_SIZE + LEN_SIZE {
@@ -188,12 +189,12 @@ impl Decoder for RawMapOperationDecoder {
                     return Ok(None);
                 }
                 src.advance(TAG_SIZE + LEN_SIZE);
-                let key = src.split_to(key_len).freeze();
-                Ok(Some(RawMapOperation::Remove { key }))
+                let key = src.split_to(key_len);
+                Ok(Some(RawMapOperationMut::Remove { key }))
             }
             CLEAR => {
                 src.advance(TAG_SIZE);
-                Ok(Some(RawMapOperation::Clear))
+                Ok(Some(RawMapOperationMut::Clear))
             }
             ow => Err(FrameIoError::BadFrame(InvalidFrame::InvalidHeader {
                 problem: Text::from(format!("{}{}", BAD_TAG, ow)),

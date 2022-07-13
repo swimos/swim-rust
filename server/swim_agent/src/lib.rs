@@ -17,3 +17,19 @@ pub mod event_handler;
 pub mod lanes;
 pub mod lifecycle;
 pub mod meta;
+
+pub mod model {
+    pub use swim_api::protocol::map::{MapMessage, MapOperation};
+    pub use swim_model::Text;
+}
+
+pub mod reexport {
+    pub mod coproduct {
+        pub use frunk::coproduct::CNil;
+        pub use frunk::Coproduct;
+    }
+
+    pub mod bytes {
+        pub use bytes::{Buf, BufMut, Bytes, BytesMut};
+    }
+}

@@ -16,6 +16,8 @@ pub mod command;
 pub mod map;
 pub mod value;
 
+pub use self::{command::CommandLane, map::MapLane, value::ValueLane};
+
 /// Wrapper to allow projection function pointers to be exposed as event handler transforms
 /// for different types of lanes.
 pub struct ProjTransform<C, L> {

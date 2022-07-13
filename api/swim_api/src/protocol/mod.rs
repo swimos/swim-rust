@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use bytes::{Buf, BufMut, Bytes, BytesMut};
+use bytes::{Buf, BufMut, BytesMut};
 use std::fmt::Write;
 use swim_form::structural::{read::recognizer::Recognizer, write::StructuralWritable};
 use swim_recon::{
@@ -115,7 +115,7 @@ impl<B: AsRef<[u8]>> Encoder<B> for WithLengthBytesCodec {
 }
 
 impl Decoder for WithLengthBytesCodec {
-    type Item = Bytes;
+    type Item = BytesMut;
 
     type Error = std::io::Error;
 
@@ -127,7 +127,7 @@ impl Decoder for WithLengthBytesCodec {
             let len = bytes.get_u64() as usize;
             if src.remaining() >= LEN_SIZE + len {
                 src.advance(LEN_SIZE);
-                Ok(Some(src.split_to(len).freeze()))
+                Ok(Some(src.split_to(len)))
             } else {
                 Ok(None)
             }
