@@ -21,17 +21,24 @@ use syn::{
     PathArguments, PathSegment, Type, TypePath,
 };
 
+/// Model of a struct type for the AgentLaneModel derivation macro.
 pub struct LanesModel<'a> {
     pub agent_type: &'a Ident,
     pub lanes: Vec<LaneModel<'a>>,
 }
 
 impl<'a> LanesModel<'a> {
+    
+    /// #Arguments
+    /// * `agent_type` - The name of the target of the derive macro.
+    /// * `lanes` - Description of each lane in the agent (the name of the corresponding field
+    /// and the lane kind with types).
     fn new(agent_type: &'a Ident, lanes: Vec<LaneModel<'a>>) -> Self {
         LanesModel { agent_type, lanes }
     }
 }
 
+/// The kinds of lane that can be inferred from the type of a field.
 #[derive(Clone, Copy)]
 pub enum LaneKind<'a> {
     CommandLane(&'a Type),
@@ -39,6 +46,7 @@ pub enum LaneKind<'a> {
     MapLane(&'a Type, &'a Type),
 }
 
+/// Description of a lane (its name the the kind of the lane, along with types).
 #[derive(Clone, Copy)]
 pub struct LaneModel<'a> {
     pub name: &'a Ident,
@@ -46,10 +54,15 @@ pub struct LaneModel<'a> {
 }
 
 impl<'a> LaneModel<'a> {
+    
+    /// #Arguments
+    /// * `name` - The name of the field in the struct (mapped to the name of the lane in the agent).
+    /// * `kind` - The kind of the lane, along with any types.
     fn new(name: &'a Ident, kind: LaneKind<'a>) -> LaneModel<'a> {
         LaneModel { name, kind }
     }
 
+    /// The name of the lane as a string literal.
     pub fn literal(&self) -> proc_macro2::Literal {
         let name_str = self.name.to_string();
         proc_macro2::Literal::string(name_str.as_str())
@@ -63,6 +76,8 @@ const NOT_LANE_TYPE: &str = "Field is not of a lane type.";
 const NO_TUPLES: &str = "Tuple structs are not supported.";
 const BAD_PARAMS: &str = "Lane generic parameters are invalid.";
 
+/// Extract the model of the type from the type definition, collecting any
+/// errors.
 pub fn validate_input<'a>(
     value: &'a DeriveInput,
 ) -> Validation<LanesModel<'a>, Errors<syn::Error>> {
