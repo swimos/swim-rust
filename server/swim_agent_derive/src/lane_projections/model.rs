@@ -17,17 +17,18 @@ use swim_utilities::errors::{
     validation::{Validation, ValidationItExt},
     Errors,
 };
-use syn::{Ident, Item, ItemStruct, Meta, Type};
+use syn::{Ident, Item, ItemStruct, Meta, Type, Generics};
 
 #[derive(Debug, Clone)]
 pub struct AgentFields<'a> {
     pub agent_name: &'a Ident,
+    pub generics: &'a Generics,
     pub fields: Vec<AgentField<'a>>,
 }
 
 impl<'a> AgentFields<'a> {
-    pub fn new(agent_name: &'a Ident, fields: Vec<AgentField<'a>>) -> Self {
-        AgentFields { agent_name, fields }
+    pub fn new(agent_name: &'a Ident, generics: &'a Generics, fields: Vec<AgentField<'a>>) -> Self {
+        AgentFields { agent_name, generics, fields }
     }
 }
 
@@ -98,5 +99,5 @@ fn validate_from_struct<'a>(
                     Validation::Validated(acc, Some(syn::Error::new_spanned(field, NO_TUPLES)))
                 }
             });
-    fields.map(|fields| AgentFields::new(&struct_item.ident, fields))
+    fields.map(|fields| AgentFields::new(&struct_item.ident, &struct_item.generics, fields))
 }

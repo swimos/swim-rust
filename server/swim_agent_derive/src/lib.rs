@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use lane_model_derive::DeriveAgentLaneModel;
+use lane_projections::ProjectionsImpl;
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 
@@ -41,8 +42,12 @@ pub fn projections(attr: TokenStream, item: TokenStream) -> TokenStream {
         Some(parse_macro_input!(attr as Meta))
     };
     let item = parse_macro_input!(item as Item);
-    let _ = lane_projections::validate_input(attr_params.as_ref(), &item);
-    todo!()
+    lane_projections::validate_input(attr_params.as_ref(), &item)
+        .map(ProjectionsImpl::new)
+        .map(ToTokens::into_token_stream)
+        .into_result()
+        .unwrap_or_else(errs_to_compile_errors)
+        .into()
 }
 
 fn errs_to_compile_errors(errors: Errors<syn::Error>) -> proc_macro2::TokenStream {
