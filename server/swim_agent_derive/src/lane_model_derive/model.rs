@@ -12,8 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use quote::ToTokens;
-use swim_utilities::errors::validation::{Validation, ValidationItExt};
+use swim_utilities::errors::{
+    validation::{Validation, ValidationItExt},
+    Errors,
+};
 use syn::{
     AngleBracketedGenericArguments, Data, DataStruct, DeriveInput, Field, GenericArgument, Ident,
     PathArguments, PathSegment, Type, TypePath,
@@ -54,71 +56,29 @@ impl<'a> LaneModel<'a> {
     }
 }
 
-pub struct AgentTypeError<'a> {
-    location: &'a dyn ToTokens,
-    kind: AgentTypeErrorKind<'a>,
-}
+const NOT_A_STRUCT: &str = "Type is not a struct type.";
+const NO_GENERICS: &str = "Generic agents are not yet supported.";
+const NOT_LANE_TYPE: &str = "Field is not of a lane type.";
+const NO_TUPLES: &str = "Tuple structs are not supported.";
+const BAD_PARAMS: &str = "Lane generic parameters are invalid.";
 
-pub struct LaneError<'a> {
-    location: &'a dyn ToTokens,
-    kind: LaneErrorKind,
-}
-
-impl<'a> LaneError<'a> {
-    fn new<T: ToTokens>(loc: &'a T, kind: LaneErrorKind) -> Self {
-        LaneError {
-            location: loc,
-            kind,
-        }
+pub fn validate_input<'a>(
+    value: &'a DeriveInput,
+) -> Validation<LanesModel<'a>, Errors<syn::Error>> {
+    if !value.generics.params.is_empty() {
+        return Validation::fail(syn::Error::new_spanned(&value.ident, NO_GENERICS));
     }
-}
-
-impl<'a> AgentTypeError<'a> {
-    fn new<T: ToTokens>(loc: &'a T, kind: AgentTypeErrorKind<'a>) -> Self {
-        AgentTypeError {
-            location: loc,
-            kind,
-        }
-    }
-}
-
-pub enum AgentTypeErrorKind<'a> {
-    GenericAgentsNotSupported,
-    NotAStruct,
-    InvalidFields(Vec<LaneError<'a>>),
-}
-
-pub enum LaneErrorKind {
-    BadLaneGenericParams,
-    TupleStructsNotSupported,
-    NotALaneType,
-}
-
-impl<'a> TryFrom<&'a DeriveInput> for LanesModel<'a> {
-    type Error = AgentTypeError<'a>;
-
-    fn try_from(value: &'a DeriveInput) -> Result<Self, Self::Error> {
-        if !value.generics.params.is_empty() {
-            return Err(AgentTypeError::new(
-                &value.generics,
-                AgentTypeErrorKind::GenericAgentsNotSupported,
-            ));
-        }
-        if let Data::Struct(body) = &value.data {
-            try_from_struct(&value.ident, body)
-        } else {
-            Err(AgentTypeError::new(
-                &value.ident,
-                AgentTypeErrorKind::NotAStruct,
-            ))
-        }
+    if let Data::Struct(body) = &value.data {
+        try_from_struct(&value.ident, body)
+    } else {
+        Validation::fail(syn::Error::new_spanned(&value.ident, NOT_A_STRUCT))
     }
 }
 
 fn try_from_struct<'a>(
     name: &'a Ident,
     definition: &'a DataStruct,
-) -> Result<LanesModel<'a>, AgentTypeError<'a>> {
+) -> Validation<LanesModel<'a>, Errors<syn::Error>> {
     definition
         .fields
         .iter()
@@ -134,17 +94,13 @@ fn try_from_struct<'a>(
             },
         )
         .map(|lanes| LanesModel::new(name, lanes))
-        .into_result()
-        .map_err(|errs| {
-            AgentTypeError::new(&definition.fields, AgentTypeErrorKind::InvalidFields(errs))
-        })
 }
 
 const COMMAND_LANE_NAME: &str = "CommandLane";
 const VALUE_LANE_NAME: &str = "ValueLane";
 const MAP_LANE_NAME: &str = "MapLane";
 
-fn extract_lane_model<'a>(field: &'a Field) -> Result<LaneModel<'a>, LaneError<'a>> {
+fn extract_lane_model<'a>(field: &'a Field) -> Result<LaneModel<'a>, syn::Error> {
     if let (Some(fld_name), Type::Path(TypePath { qself: None, path })) = (&field.ident, &field.ty)
     {
         if let Some(PathSegment { ident, arguments }) = path.segments.last() {
@@ -162,24 +118,21 @@ fn extract_lane_model<'a>(field: &'a Field) -> Result<LaneModel<'a>, LaneError<'
                     let (param1, param2) = two_params(arguments)?;
                     Ok(LaneModel::new(fld_name, LaneKind::MapLane(param1, param2)))
                 }
-                _ => Err(LaneError::new(&field.ty, LaneErrorKind::NotALaneType)),
+                _ => Err(syn::Error::new_spanned(&field.ty, NOT_LANE_TYPE)),
             }
         } else {
-            Err(LaneError::new(&field.ty, LaneErrorKind::NotALaneType))
+            Err(syn::Error::new_spanned(&field.ty, NOT_LANE_TYPE))
         }
     } else {
         if field.ident.is_none() {
-            Err(LaneError::new(
-                field,
-                LaneErrorKind::TupleStructsNotSupported,
-            ))
+            Err(syn::Error::new_spanned(field, NO_TUPLES))
         } else {
-            Err(LaneError::new(&field.ty, LaneErrorKind::NotALaneType))
+            Err(syn::Error::new_spanned(&field.ty, NOT_LANE_TYPE))
         }
     }
 }
 
-fn single_param<'a>(args: &'a PathArguments) -> Result<&'a Type, LaneError<'a>> {
+fn single_param<'a>(args: &'a PathArguments) -> Result<&'a Type, syn::Error> {
     if let PathArguments::AngleBracketed(AngleBracketedGenericArguments { args, .. }) = args {
         let mut selected = None;
         let mut it = args.iter();
@@ -187,16 +140,16 @@ fn single_param<'a>(args: &'a PathArguments) -> Result<&'a Type, LaneError<'a>> 
             if let (GenericArgument::Type(ty), None) = (arg, &selected) {
                 selected = Some(ty);
             } else {
-                return Err(LaneError::new(args, LaneErrorKind::BadLaneGenericParams));
+                return Err(syn::Error::new_spanned(args, BAD_PARAMS));
             }
         }
-        selected.ok_or_else(|| LaneError::new(args, LaneErrorKind::BadLaneGenericParams))
+        selected.ok_or_else(|| syn::Error::new_spanned(args, BAD_PARAMS))
     } else {
-        Err(LaneError::new(args, LaneErrorKind::BadLaneGenericParams))
+        Err(syn::Error::new_spanned(args, BAD_PARAMS))
     }
 }
 
-fn two_params<'a>(args: &'a PathArguments) -> Result<(&'a Type, &'a Type), LaneError<'a>> {
+fn two_params<'a>(args: &'a PathArguments) -> Result<(&'a Type, &'a Type), syn::Error> {
     if let PathArguments::AngleBracketed(AngleBracketedGenericArguments { args, .. }) = args {
         let mut first = None;
         let mut second = None;
@@ -210,14 +163,14 @@ fn two_params<'a>(args: &'a PathArguments) -> Result<(&'a Type, &'a Type), LaneE
                     second = Some(ty);
                 }
                 _ => {
-                    return Err(LaneError::new(args, LaneErrorKind::BadLaneGenericParams));
+                    return Err(syn::Error::new_spanned(args, BAD_PARAMS));
                 }
             }
         }
         first
             .zip(second)
-            .ok_or_else(|| LaneError::new(args, LaneErrorKind::BadLaneGenericParams))
+            .ok_or_else(|| syn::Error::new_spanned(args, BAD_PARAMS))
     } else {
-        Err(LaneError::new(args, LaneErrorKind::BadLaneGenericParams))
+        Err(syn::Error::new_spanned(args, BAD_PARAMS))
     }
 }

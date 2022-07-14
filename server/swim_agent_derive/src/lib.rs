@@ -12,14 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use lane_model_derive::DeriveAgentLaneModel;
 use proc_macro::TokenStream;
+use quote::{quote, ToTokens};
 
+use swim_utilities::errors::Errors;
 use syn::{parse_macro_input, DeriveInput};
 
 mod lane_model_derive;
 
 #[proc_macro_derive(AgentLaneModel)]
 pub fn derive_agent_lane_model(input: TokenStream) -> TokenStream {
-    let _input = parse_macro_input!(input as DeriveInput);
-    todo!()
+    let input = parse_macro_input!(input as DeriveInput);
+    lane_model_derive::validate_input(&input)
+        .map(DeriveAgentLaneModel::new)
+        .map(ToTokens::into_token_stream)
+        .into_result()
+        .unwrap_or_else(errs_to_compile_errors)
+        .into()
+}
+
+fn errs_to_compile_errors(errors: Errors<syn::Error>) -> proc_macro2::TokenStream {
+    let compile_errors = errors
+        .into_vec()
+        .into_iter()
+        .map(|e| syn::Error::to_compile_error(&e));
+    quote!(#(#compile_errors)*)
 }

@@ -12,11 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[doc(hidden)]
+#[allow(unused_imports)]
+pub use swim_agent_derive::AgentLaneModel;
+
 pub mod agent_model;
 pub mod event_handler;
 pub mod lanes;
 pub mod lifecycle;
 pub mod meta;
+
+pub use agent_model::AgentLaneModel;
 
 pub mod model {
     pub use swim_api::protocol::map::{MapMessage, MapOperation};

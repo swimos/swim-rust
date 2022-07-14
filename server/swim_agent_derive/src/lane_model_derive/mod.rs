@@ -12,17 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use self::model::{
-    LaneKind::{self, CommandLane, MapLane, ValueLane},
-    LaneModel, LanesModel,
-};
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
 use syn::{parse_quote, Ident};
 
 mod model;
 
+pub use model::{validate_input, LaneKind, LaneModel, LanesModel};
+
 pub struct DeriveAgentLaneModel<'a>(LanesModel<'a>);
+
+impl<'a> DeriveAgentLaneModel<'a> {
+    pub fn new(model: LanesModel<'a>) -> Self {
+        DeriveAgentLaneModel(model)
+    }
+}
 
 impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
@@ -232,11 +236,13 @@ impl<'a> FieldInitializer<'a> {
         }) = self;
 
         match kind {
-            CommandLane(_) => quote!(#name: ::swim_agent::lanes::CommandLane::new(#ordinal)),
-            ValueLane(_) => {
+            LaneKind::CommandLane(_) => {
+                quote!(#name: ::swim_agent::lanes::CommandLane::new(#ordinal))
+            }
+            LaneKind::ValueLane(_) => {
                 quote!(#name: ::swim_agent::lanes::ValueLane::new(#ordinal, ::core::default::Default::default()))
             }
-            MapLane(_, _) => {
+            LaneKind::MapLane(_, _) => {
                 quote!(#name: ::swim_agent::lanes::MapLane::new(#ordinal, ::core::default::Default::default()))
             }
         }
@@ -256,11 +262,15 @@ impl<'a> HandlerType<'a> {
         }) = self;
 
         match kind {
-            CommandLane(t) => {
+            LaneKind::CommandLane(t) => {
                 quote!(::swim_agent::lanes::command::DecodeAndCommand<#agent_name, #t>)
             }
-            ValueLane(t) => quote!(::swim_agent::lanes::value::DecodeAndSet<#agent_name, #t>),
-            MapLane(k, v) => quote!(::swim_agent::lanes::map::DecodeAndApply<#agent_name, #k, #v>),
+            LaneKind::ValueLane(t) => {
+                quote!(::swim_agent::lanes::value::DecodeAndSet<#agent_name, #t>)
+            }
+            LaneKind::MapLane(k, v) => {
+                quote!(::swim_agent::lanes::map::DecodeAndApply<#agent_name, #k, #v>)
+            }
         }
     }
 }
@@ -274,9 +284,13 @@ impl<'a> SyncHandlerType<'a> {
         }) = self;
 
         match kind {
-            CommandLane(_) => quote!(::swim_agent::event_handler::UnitHandler), //TODO Do this properly later.
-            ValueLane(t) => quote!(::swim_agent::lanes::value::ValueLaneSync<#agent_name, #t>),
-            MapLane(k, v) => quote!(::swim_agent::lanes::map::MapLaneSync<#agent_name, #k, #v>),
+            LaneKind::CommandLane(_) => quote!(::swim_agent::event_handler::UnitHandler), //TODO Do this properly later.
+            LaneKind::ValueLane(t) => {
+                quote!(::swim_agent::lanes::value::ValueLaneSync<#agent_name, #t>)
+            }
+            LaneKind::MapLane(k, v) => {
+                quote!(::swim_agent::lanes::map::MapLaneSync<#agent_name, #k, #v>)
+            }
         }
     }
 }
@@ -306,13 +320,13 @@ impl<'a> LaneHandlerMatch<'a> {
         let handler_base: syn::Expr = parse_quote!(handler);
         let coprod_con = coproduct_constructor(handler_base, group_ordinal);
         let lane_handler_expr = match kind {
-            CommandLane(ty) => {
+            LaneKind::CommandLane(ty) => {
                 quote!(::swim_agent::lanes::command::decode_and_command::<#agent_name, #ty>(buffer, |agent: &#agent_name| &#agent_name.#name))
             }
-            ValueLane(ty) => {
+            LaneKind::ValueLane(ty) => {
                 quote!(::swim_agent::lanes::value::decode_and_set::<#agent_name, #ty>(buffer, |agent: &#agent_name| &#agent_name.#name))
             }
-            MapLane(k, v) => {
+            LaneKind::MapLane(k, v) => {
                 quote!(::swim_agent::lanes::map::decode_and_apply::<#agent_name, #k, #v>(buffer, |agent: &#agent_name| &#agent_name.#name))
             }
         };
@@ -349,13 +363,13 @@ impl<'a> SyncHandlerMatch<'a> {
         let handler_base: syn::Expr = parse_quote!(handler);
         let coprod_con = coproduct_constructor(handler_base, ord);
         let sync_handler_expr = match kind {
-            CommandLane(_) => {
+            LaneKind::CommandLane(_) => {
                 quote!(::swim_agent::event_handler::UnitHandler::default())
             }
-            ValueLane(ty) => {
+            LaneKind::ValueLane(ty) => {
                 quote!(::swim_agent::lanes::value::ValueLaneSync::<#agent_name, #ty>::new(|agent: &#agent_name| &#agent_name.#name, #ordinal))
             }
-            MapLane(k, v) => {
+            LaneKind::MapLane(k, v) => {
                 quote!(::swim_agent::lanes::map::MapLaneSync::<#agent_name, #k, #v>::new(|agent: &#agent_name| &#agent_name.#name, #ordinal))
             }
         };
