@@ -17,7 +17,7 @@ use swim_utilities::errors::{
     validation::{Validation, ValidationItExt},
     Errors,
 };
-use syn::{Ident, Item, ItemStruct, Meta, Type, Generics};
+use syn::{Generics, Ident, Item, ItemStruct, Meta, Type};
 
 #[derive(Debug, Clone)]
 pub struct AgentFields<'a> {
@@ -28,7 +28,11 @@ pub struct AgentFields<'a> {
 
 impl<'a> AgentFields<'a> {
     pub fn new(agent_name: &'a Ident, generics: &'a Generics, fields: Vec<AgentField<'a>>) -> Self {
-        AgentFields { agent_name, generics, fields }
+        AgentFields {
+            agent_name,
+            generics,
+            fields,
+        }
     }
 }
 

@@ -35,7 +35,8 @@ impl<'a> ToTokens for ProjectionsImpl<'a> {
             ref fields,
         }) = *self;
 
-        let defs = fields.iter()
+        let defs = fields
+            .iter()
             .copied()
             .map(|field| Projection::new(agent_name, field))
             .map(Projection::into_tokens);
@@ -43,12 +44,12 @@ impl<'a> ToTokens for ProjectionsImpl<'a> {
         let (impl_gen, type_gen, where_clause) = generics.split_for_impl();
 
         tokens.append_all(quote! {
-            
+
             #[automatically_derived]
             impl #impl_gen #agent_name #type_gen #where_clause {
 
                 #(pub const #defs;)*
-            
+
             }
         });
     }

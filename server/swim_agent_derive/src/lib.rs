@@ -18,7 +18,7 @@ use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 
 use swim_utilities::errors::Errors;
-use syn::{parse_macro_input, DeriveInput, Meta, Item};
+use syn::{parse_macro_input, DeriveInput, Item, Meta};
 
 mod lane_model_derive;
 mod lane_projections;
