@@ -138,7 +138,6 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
 
             #[automatically_derived]
             impl ::swim_agent::agent_model::AgentLaneModel for #agent_type {
-
                 type ValCommandHandler = #value_handler;
 
                 type MapCommandHandler = #map_handler;
@@ -147,29 +146,25 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
 
                 fn value_like_lanes(&self) -> ::std::collections::HashSet<&str> {
                     let mut lanes = ::std::collections::HashSet::new();
-                    #(::std::collections::HashSet::insert(&mut lanes, #val_lane_names));*
+                    #(::std::collections::HashSet::insert(&mut lanes, #val_lane_names);)*
                     lanes
                 }
 
                 fn map_like_lanes(&self) -> ::std::collections::HashSet<&str> {
                     let mut lanes = ::std::collections::HashSet::new();
-                    #(::std::collections::HashSet::insert(&mut lanes, #map_lane_names));*
+                    #(::std::collections::HashSet::insert(&mut lanes, #map_lane_names);)*
                     lanes
                 }
 
                 fn lane_ids(&self) -> ::std::collections::HashMap<u64, ::swim_agent::model::Text> {
                     let mut map = ::std::collections::HashMap::new();
-                    #(#lane_ids);*
+                    #(#lane_ids;)*
                     map
                 }
 
-                fn on_value_command(&self, lane: &str, body: ::swim_agent::reexport::bytes::Bytes) -> ::core::option::Option<Self::ValCommandHandler> {
-                    //TODO Avoid this.
-                    let mut buffer = ::swim_agent::reexport::bytes::BytesMut::new();
-                    ::swim_agent::reexport::bytes::BytesMut::reserve(&mut buffer, ::swim_agent::reexport::bytes::Bytes::len(&body))
-                    ::swim_agent::reexport::bytes::BufMut::put(&mut buffer, body);
+                fn on_value_command(&self, lane: &str, body: ::swim_agent::reexport::bytes::BytesMut) -> ::core::option::Option<Self::ValCommandHandler> {
                     match lane {
-                        #(#value_match_blocks),*
+                        #(#value_match_blocks,)*
                         _ => ::core::option::Option::None,
                     }
                 }
@@ -177,25 +172,25 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
                 fn on_map_command(
                     &self,
                     lane: &str,
-                    body: ::swim_agent::model::MapMessage<::swim_agent::reexport::bytes::Bytes, ::swim_agent::reexport::bytes::Bytes>,
+                    body: ::swim_agent::model::MapMessage<::swim_agent::reexport::bytes::BytesMut, ::swim_agent::reexport::bytes::BytesMut>,
                 ) -> ::core::option::Option<Self::MapCommandHandler> {
                     match lane {
-                        #(#map_match_blocks),*
+                        #(#map_match_blocks,)*
                         _ => ::core::option::Option::None,
                     }
                 }
 
                 fn on_sync(&self, lane: &str, id: ::swim_agent::reexport::uuid::Uuid) -> Option<Self::OnSyncHandler> {
                     match lane {
-                        #(#sync_match_blocks),*
+                        #(#sync_match_blocks,)*
                         _ => ::core::option::Option::None,
                     }
                 }
 
                 fn write_event(&self, lane: &str, buffer: &mut ::swim_agent::reexport::bytes::BytesMut) -> ::core::option::Option<::swim_agent::agent_model::WriteResult> {
                     match lane {
-                        #(#write_match_blocks),*
-                        _ => None,
+                        #(#write_match_blocks,)*
+                        _ => ::core::option::Option::None,
                     }
                 }
             }
@@ -321,13 +316,13 @@ impl<'a> LaneHandlerMatch<'a> {
         let coprod_con = coproduct_constructor(handler_base, group_ordinal);
         let lane_handler_expr = match kind {
             LaneKind::CommandLane(ty) => {
-                quote!(::swim_agent::lanes::command::decode_and_command::<#agent_name, #ty>(buffer, |agent: &#agent_name| &#agent_name.#name))
+                quote!(::swim_agent::lanes::command::decode_and_command::<#agent_name, #ty>(body, |agent: &#agent_name| &agent.#name))
             }
             LaneKind::ValueLane(ty) => {
-                quote!(::swim_agent::lanes::value::decode_and_set::<#agent_name, #ty>(buffer, |agent: &#agent_name| &#agent_name.#name))
+                quote!(::swim_agent::lanes::value::decode_and_set::<#agent_name, #ty>(body, |agent: &#agent_name| &agent.#name))
             }
             LaneKind::MapLane(k, v) => {
-                quote!(::swim_agent::lanes::map::decode_and_apply::<#agent_name, #k, #v>(buffer, |agent: &#agent_name| &#agent_name.#name))
+                quote!(::swim_agent::lanes::map::decode_and_apply::<#agent_name, #k, #v>(body, |agent: &#agent_name| &agent.#name))
             }
         };
         quote! {
@@ -341,7 +336,7 @@ impl<'a> LaneHandlerMatch<'a> {
 
 fn coproduct_constructor(expr: syn::Expr, n: usize) -> syn::Expr {
     let mut acc: syn::Expr = parse_quote!(::swim_agent::reexport::coproduct::Coproduct::Inl(#expr));
-    for _ in 1..n {
+    for _ in 0..n {
         acc = parse_quote!(::swim_agent::reexport::coproduct::Coproduct::Inr(#acc))
     }
     acc
@@ -367,10 +362,10 @@ impl<'a> SyncHandlerMatch<'a> {
                 quote!(::swim_agent::event_handler::UnitHandler::default())
             }
             LaneKind::ValueLane(ty) => {
-                quote!(::swim_agent::lanes::value::ValueLaneSync::<#agent_name, #ty>::new(|agent: &#agent_name| &#agent_name.#name, #ordinal))
+                quote!(::swim_agent::lanes::value::ValueLaneSync::<#agent_name, #ty>::new(|agent: &#agent_name| &agent.#name, id))
             }
             LaneKind::MapLane(k, v) => {
-                quote!(::swim_agent::lanes::map::MapLaneSync::<#agent_name, #k, #v>::new(|agent: &#agent_name| &#agent_name.#name, #ordinal))
+                quote!(::swim_agent::lanes::map::MapLaneSync::<#agent_name, #k, #v>::new(|agent: &#agent_name| &agent.#name, id))
             }
         };
         quote! {
@@ -389,6 +384,6 @@ impl<'a> WriteToBufferMatch<'a> {
         let WriteToBufferMatch(model) = self;
         let name_lit = model.literal();
         let LaneModel { name, .. } = model;
-        quote!(#name_lit => swim_agent::lane::Lane::write_to_buffer(&self.#name, buffer))
+        quote!(#name_lit => ::core::option::Option::Some(swim_agent::lanes::Lane::write_to_buffer(&self.#name, buffer)))
     }
 }
