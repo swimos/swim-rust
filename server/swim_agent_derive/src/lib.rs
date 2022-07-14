@@ -14,9 +14,9 @@
 
 use proc_macro::TokenStream;
 
-use syn::{DeriveInput, parse_macro_input};
+use syn::{parse_macro_input, DeriveInput};
 
-mod lane_mode_derive;
+mod lane_model_derive;
 
 #[proc_macro_derive(AgentLaneModel)]
 pub fn derive_agent_lane_model(input: TokenStream) -> TokenStream {

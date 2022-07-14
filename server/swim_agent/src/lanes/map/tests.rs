@@ -32,8 +32,12 @@ use uuid::Uuid;
 use crate::{
     agent_model::WriteResult,
     event_handler::{EventHandler, EventHandlerError, Modification, StepResult},
-    lanes::map::{
-        MapLane, MapLaneClear, MapLaneGet, MapLaneGetMap, MapLaneRemove, MapLaneSync, MapLaneUpdate,
+    lanes::{
+        map::{
+            MapLane, MapLaneClear, MapLaneGet, MapLaneGetMap, MapLaneRemove, MapLaneSync,
+            MapLaneUpdate,
+        },
+        Lane,
     },
     meta::AgentMetadata,
 };

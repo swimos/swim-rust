@@ -44,7 +44,7 @@ use self::queues::{Action, ToWrite, WriteQueues};
 
 pub use event::MapLaneEvent;
 
-use super::ProjTransform;
+use super::{Lane, ProjTransform};
 
 /// Model of a value lane. This maintain a sate consisting of a hash-map from keys to values. It generates an
 /// event whenever the map is updated (updating the value for a key, removing a key or clearing the map).
@@ -123,13 +123,12 @@ where
     }
 }
 
-impl<K, V> MapLane<K, V>
+impl<K, V> Lane for MapLane<K, V>
 where
     K: Clone + Eq + Hash + StructuralWritable,
     V: StructuralWritable,
 {
-    /// If the state of the lane has changed, write a response into the buffer.
-    pub fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult {
+    fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult {
         self.inner.borrow_mut().write_to_buffer(buffer)
     }
 }

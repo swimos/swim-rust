@@ -22,9 +22,12 @@ use frunk::{Coprod, Coproduct};
 use swim_agent::{
     agent_model::{AgentLaneModel, WriteResult},
     event_handler::{EventHandler, UnitHandler},
-    lanes::value::{
-        decode_and_set, lifecycle::StatefulValueLaneLifecycle, DecodeAndSet, ValueLane,
-        ValueLaneSync,
+    lanes::{
+        value::{
+            decode_and_set, lifecycle::StatefulValueLaneLifecycle, DecodeAndSet, ValueLane,
+            ValueLaneSync,
+        },
+        Lane,
     },
     lifecycle::{
         lane_event::ValueLeaf, stateful::StatefulAgentLifecycle, utility::HandlerContext,

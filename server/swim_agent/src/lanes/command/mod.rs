@@ -26,7 +26,7 @@ use crate::{
     meta::AgentMetadata,
 };
 
-use super::ProjTransform;
+use super::{Lane, ProjTransform};
 
 pub mod lifecycle;
 #[cfg(test)]
@@ -79,9 +79,8 @@ impl<T> CommandLane<T> {
 
 const INFALLIBLE_SER: &str = "Serializing a command to recon should be infallible.";
 
-impl<T: StructuralWritable> CommandLane<T> {
-    /// If a command has been received since the last call, write a resppnse into the buffer.
-    pub fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult {
+impl<T: StructuralWritable> Lane for CommandLane<T> {
+    fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult {
         let CommandLane {
             prev_command,
             dirty,

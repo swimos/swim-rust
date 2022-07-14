@@ -32,4 +32,8 @@ pub mod reexport {
     pub mod bytes {
         pub use bytes::{Buf, BufMut, Bytes, BytesMut};
     }
+
+    pub mod uuid {
+        pub use uuid::Uuid;
+    }
 }

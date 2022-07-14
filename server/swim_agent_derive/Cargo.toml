@@ -12,5 +12,6 @@ proc-macro = true
 proc-macro2 = "1.0"
 syn = { version = "1.0", features = ["full"] }
 quote = "1.0.3"
+swim_utilities = { path = "../../swim_utilities", features = ["errors"] }
 
 [dev-dependencies]
