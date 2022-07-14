@@ -17,9 +17,10 @@ use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 
 use swim_utilities::errors::Errors;
-use syn::{parse_macro_input, DeriveInput};
+use syn::{parse_macro_input, DeriveInput, Meta, Item};
 
 mod lane_model_derive;
+mod lane_projections;
 
 #[proc_macro_derive(AgentLaneModel)]
 pub fn derive_agent_lane_model(input: TokenStream) -> TokenStream {
@@ -30,6 +31,18 @@ pub fn derive_agent_lane_model(input: TokenStream) -> TokenStream {
         .into_result()
         .unwrap_or_else(errs_to_compile_errors)
         .into()
+}
+
+#[proc_macro_attribute]
+pub fn projections(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let attr_params = if attr.is_empty() {
+        None
+    } else {
+        Some(parse_macro_input!(attr as Meta))
+    };
+    let item = parse_macro_input!(item as Item);
+    let _ = lane_projections::validate_input(attr_params.as_ref(), &item);
+    todo!()
 }
 
 fn errs_to_compile_errors(errors: Errors<syn::Error>) -> proc_macro2::TokenStream {
