@@ -216,7 +216,7 @@ impl<'a> OrdinalLaneModel<'a> {
     }
 
     fn map_like(&self) -> bool {
-        matches!(&self.model.kind, LaneKind::MapLane(_, _))
+        matches!(&self.model.kind, LaneKind::Map(_, _))
     }
 }
 
@@ -231,13 +231,13 @@ impl<'a> FieldInitializer<'a> {
         }) = self;
 
         match kind {
-            LaneKind::CommandLane(_) => {
+            LaneKind::Command(_) => {
                 quote!(#name: ::swim_agent::lanes::CommandLane::new(#ordinal))
             }
-            LaneKind::ValueLane(_) => {
+            LaneKind::Value(_) => {
                 quote!(#name: ::swim_agent::lanes::ValueLane::new(#ordinal, ::core::default::Default::default()))
             }
-            LaneKind::MapLane(_, _) => {
+            LaneKind::Map(_, _) => {
                 quote!(#name: ::swim_agent::lanes::MapLane::new(#ordinal, ::core::default::Default::default()))
             }
         }
@@ -257,13 +257,13 @@ impl<'a> HandlerType<'a> {
         }) = self;
 
         match kind {
-            LaneKind::CommandLane(t) => {
+            LaneKind::Command(t) => {
                 quote!(::swim_agent::lanes::command::DecodeAndCommand<#agent_name, #t>)
             }
-            LaneKind::ValueLane(t) => {
+            LaneKind::Value(t) => {
                 quote!(::swim_agent::lanes::value::DecodeAndSet<#agent_name, #t>)
             }
-            LaneKind::MapLane(k, v) => {
+            LaneKind::Map(k, v) => {
                 quote!(::swim_agent::lanes::map::DecodeAndApply<#agent_name, #k, #v>)
             }
         }
@@ -279,11 +279,11 @@ impl<'a> SyncHandlerType<'a> {
         }) = self;
 
         match kind {
-            LaneKind::CommandLane(_) => quote!(::swim_agent::event_handler::UnitHandler), //TODO Do this properly later.
-            LaneKind::ValueLane(t) => {
+            LaneKind::Command(_) => quote!(::swim_agent::event_handler::UnitHandler), //TODO Do this properly later.
+            LaneKind::Value(t) => {
                 quote!(::swim_agent::lanes::value::ValueLaneSync<#agent_name, #t>)
             }
-            LaneKind::MapLane(k, v) => {
+            LaneKind::Map(k, v) => {
                 quote!(::swim_agent::lanes::map::MapLaneSync<#agent_name, #k, #v>)
             }
         }
@@ -315,13 +315,13 @@ impl<'a> LaneHandlerMatch<'a> {
         let handler_base: syn::Expr = parse_quote!(handler);
         let coprod_con = coproduct_constructor(handler_base, group_ordinal);
         let lane_handler_expr = match kind {
-            LaneKind::CommandLane(ty) => {
+            LaneKind::Command(ty) => {
                 quote!(::swim_agent::lanes::command::decode_and_command::<#agent_name, #ty>(body, |agent: &#agent_name| &agent.#name))
             }
-            LaneKind::ValueLane(ty) => {
+            LaneKind::Value(ty) => {
                 quote!(::swim_agent::lanes::value::decode_and_set::<#agent_name, #ty>(body, |agent: &#agent_name| &agent.#name))
             }
-            LaneKind::MapLane(k, v) => {
+            LaneKind::Map(k, v) => {
                 quote!(::swim_agent::lanes::map::decode_and_apply::<#agent_name, #k, #v>(body, |agent: &#agent_name| &agent.#name))
             }
         };
@@ -358,13 +358,13 @@ impl<'a> SyncHandlerMatch<'a> {
         let handler_base: syn::Expr = parse_quote!(handler);
         let coprod_con = coproduct_constructor(handler_base, ord);
         let sync_handler_expr = match kind {
-            LaneKind::CommandLane(_) => {
+            LaneKind::Command(_) => {
                 quote!(::swim_agent::event_handler::UnitHandler::default())
             }
-            LaneKind::ValueLane(ty) => {
+            LaneKind::Value(ty) => {
                 quote!(::swim_agent::lanes::value::ValueLaneSync::<#agent_name, #ty>::new(|agent: &#agent_name| &agent.#name, id))
             }
-            LaneKind::MapLane(k, v) => {
+            LaneKind::Map(k, v) => {
                 quote!(::swim_agent::lanes::map::MapLaneSync::<#agent_name, #k, #v>::new(|agent: &#agent_name| &agent.#name, id))
             }
         };

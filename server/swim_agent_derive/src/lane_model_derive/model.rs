@@ -40,9 +40,9 @@ impl<'a> LanesModel<'a> {
 /// The kinds of lane that can be inferred from the type of a field.
 #[derive(Clone, Copy)]
 pub enum LaneKind<'a> {
-    CommandLane(&'a Type),
-    ValueLane(&'a Type),
-    MapLane(&'a Type, &'a Type),
+    Command(&'a Type),
+    Value(&'a Type),
+    Map(&'a Type, &'a Type),
 }
 
 /// Description of a lane (its name the the kind of the lane, along with types).
@@ -76,9 +76,7 @@ const BAD_PARAMS: &str = "Lane generic parameters are invalid.";
 
 /// Extract the model of the type from the type definition, collecting any
 /// errors.
-pub fn validate_input<'a>(
-    value: &'a DeriveInput,
-) -> Validation<LanesModel<'a>, Errors<syn::Error>> {
+pub fn validate_input(value: &DeriveInput) -> Validation<LanesModel<'_>, Errors<syn::Error>> {
     if !value.generics.params.is_empty() {
         return Validation::fail(syn::Error::new_spanned(&value.ident, NO_GENERICS));
     }
@@ -124,7 +122,7 @@ const COMMAND_LANE_NAME: &str = "CommandLane";
 const VALUE_LANE_NAME: &str = "ValueLane";
 const MAP_LANE_NAME: &str = "MapLane";
 
-fn extract_lane_model<'a>(field: &'a Field) -> Result<LaneModel<'a>, syn::Error> {
+fn extract_lane_model(field: &Field) -> Result<LaneModel<'_>, syn::Error> {
     if let (Some(fld_name), Type::Path(TypePath { qself: None, path })) = (&field.ident, &field.ty)
     {
         if let Some(PathSegment { ident, arguments }) = path.segments.last() {
@@ -132,35 +130,33 @@ fn extract_lane_model<'a>(field: &'a Field) -> Result<LaneModel<'a>, syn::Error>
             match type_name.as_str() {
                 COMMAND_LANE_NAME => {
                     let param = single_param(arguments)?;
-                    Ok(LaneModel::new(fld_name, LaneKind::CommandLane(param)))
+                    Ok(LaneModel::new(fld_name, LaneKind::Command(param)))
                 }
                 VALUE_LANE_NAME => {
                     let param = single_param(arguments)?;
-                    Ok(LaneModel::new(fld_name, LaneKind::ValueLane(param)))
+                    Ok(LaneModel::new(fld_name, LaneKind::Value(param)))
                 }
                 MAP_LANE_NAME => {
                     let (param1, param2) = two_params(arguments)?;
-                    Ok(LaneModel::new(fld_name, LaneKind::MapLane(param1, param2)))
+                    Ok(LaneModel::new(fld_name, LaneKind::Map(param1, param2)))
                 }
                 _ => Err(syn::Error::new_spanned(&field.ty, NOT_LANE_TYPE)),
             }
         } else {
             Err(syn::Error::new_spanned(&field.ty, NOT_LANE_TYPE))
         }
+    } else if field.ident.is_none() {
+        Err(syn::Error::new_spanned(field, NO_TUPLES))
     } else {
-        if field.ident.is_none() {
-            Err(syn::Error::new_spanned(field, NO_TUPLES))
-        } else {
-            Err(syn::Error::new_spanned(&field.ty, NOT_LANE_TYPE))
-        }
+        Err(syn::Error::new_spanned(&field.ty, NOT_LANE_TYPE))
     }
 }
 
-fn single_param<'a>(args: &'a PathArguments) -> Result<&'a Type, syn::Error> {
+fn single_param(args: &PathArguments) -> Result<&Type, syn::Error> {
     if let PathArguments::AngleBracketed(AngleBracketedGenericArguments { args, .. }) = args {
         let mut selected = None;
-        let mut it = args.iter();
-        while let Some(arg) = it.next() {
+        let it = args.iter();
+        for arg in it {
             if let (GenericArgument::Type(ty), None) = (arg, &selected) {
                 selected = Some(ty);
             } else {
@@ -173,12 +169,12 @@ fn single_param<'a>(args: &'a PathArguments) -> Result<&'a Type, syn::Error> {
     }
 }
 
-fn two_params<'a>(args: &'a PathArguments) -> Result<(&'a Type, &'a Type), syn::Error> {
+fn two_params(args: &PathArguments) -> Result<(&Type, &Type), syn::Error> {
     if let PathArguments::AngleBracketed(AngleBracketedGenericArguments { args, .. }) = args {
         let mut first = None;
         let mut second = None;
-        let mut it = args.iter();
-        while let Some(arg) = it.next() {
+        let it = args.iter();
+        for arg in it {
             match (arg, &first, &second) {
                 (GenericArgument::Type(ty), None, None) => {
                     first = Some(ty);

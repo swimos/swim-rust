@@ -170,7 +170,7 @@ impl<S: BuildHasher> MapOperationQueue<S> {
                     epoch_map.remove(&key);
                     MapOperation::Update {
                         key: key.into_bytes(),
-                        value: value,
+                        value,
                     }
                 }
                 MapOperation::Remove { key } => {
