@@ -56,6 +56,7 @@ impl<'a> LaneModel<'a> {
     }
 }
 
+const NO_LANES: &str = "An agent must have at least one lane.";
 const NOT_A_STRUCT: &str = "Type is not a struct type.";
 const NO_GENERICS: &str = "Generic agents are not yet supported.";
 const NOT_LANE_TYPE: &str = "Field is not of a lane type.";
@@ -93,6 +94,16 @@ fn try_from_struct<'a>(
                 Err(e) => Validation::Validated(lanes, Some(e)),
             },
         )
+        .and_then_append(|lanes| {
+            if lanes.is_empty() {
+                Validation::Validated(
+                    lanes,
+                    Some(syn::Error::new_spanned(&definition.fields, NO_LANES)),
+                )
+            } else {
+                Validation::valid(lanes)
+            }
+        })
         .map(|lanes| LanesModel::new(name, lanes))
 }
 
