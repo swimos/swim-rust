@@ -72,7 +72,7 @@ const NO_PARAMS: &str = "The projections macro does not take any arguments.";
 const ONLY_STRUCTS: &str = "The projections macro can only be applied to struct definitions.";
 const NO_TUPLES: &str = "Projections cannot be generated for tuple structs.";
 
-fn validate_attr_body<'a>(attr_body: Option<&'a Meta>) -> Validation<(), Errors<syn::Error>> {
+fn validate_attr_body(attr_body: Option<&Meta>) -> Validation<(), Errors<syn::Error>> {
     if let Some(meta) = attr_body {
         Validation::fail(syn::Error::new_spanned(meta, NO_PARAMS))
     } else {
@@ -80,7 +80,7 @@ fn validate_attr_body<'a>(attr_body: Option<&'a Meta>) -> Validation<(), Errors<
     }
 }
 
-fn validate_item<'a>(item: &'a Item) -> Validation<AgentFields<'a>, Errors<syn::Error>> {
+fn validate_item(item: &Item) -> Validation<AgentFields<'_>, Errors<syn::Error>> {
     if let Item::Struct(struct_item) = item {
         validate_from_struct(struct_item)
     } else {
@@ -88,9 +88,9 @@ fn validate_item<'a>(item: &'a Item) -> Validation<AgentFields<'a>, Errors<syn::
     }
 }
 
-fn validate_from_struct<'a>(
-    struct_item: &'a ItemStruct,
-) -> Validation<AgentFields<'a>, Errors<syn::Error>> {
+fn validate_from_struct(
+    struct_item: &ItemStruct,
+) -> Validation<AgentFields<'_>, Errors<syn::Error>> {
     let fields =
         struct_item
             .fields
