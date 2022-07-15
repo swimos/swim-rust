@@ -18,7 +18,7 @@ use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 
 use swim_utilities::errors::Errors;
-use syn::{parse_macro_input, DeriveInput, Item, Meta};
+use syn::{parse_macro_input, DeriveInput, Item};
 
 mod lane_model_derive;
 mod lane_projections;
@@ -39,7 +39,7 @@ pub fn projections(attr: TokenStream, item: TokenStream) -> TokenStream {
     let attr_params = if attr.is_empty() {
         None
     } else {
-        Some(parse_macro_input!(attr as Meta))
+        Some(parse_macro_input!(attr as proc_macro2::TokenStream))
     };
     let item = parse_macro_input!(item as Item);
     lane_projections::validate_input(attr_params.as_ref(), &item)
