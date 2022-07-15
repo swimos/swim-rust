@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use proc_macro2::Span;
+use proc_macro2::{Span, TokenStream};
 use swim_utilities::errors::{
     validation::{Validation, ValidationItExt},
     Errors,
 };
-use syn::{Generics, Ident, Item, ItemStruct, Meta, Type};
+use syn::{Generics, Ident, Item, ItemStruct, Type};
 
 /// Model of a the components of a struct type required to generate projection functions
 /// for each field.
@@ -73,7 +73,7 @@ impl<'a> AgentField<'a> {
 /// - No paramters are expected.
 /// - The input should be a struct type with named fields.
 pub fn validate_input<'a>(
-    attr_body: Option<&'a Meta>,
+    attr_body: Option<&'a TokenStream>,
     item: &'a Item,
 ) -> Validation<AgentFields<'a>, Errors<syn::Error>> {
     let name = validate_attr_body(attr_body);
@@ -85,7 +85,7 @@ const NO_PARAMS: &str = "The projections macro does not take any arguments.";
 const ONLY_STRUCTS: &str = "The projections macro can only be applied to struct definitions.";
 const NO_TUPLES: &str = "Projections cannot be generated for tuple structs.";
 
-fn validate_attr_body(attr_body: Option<&Meta>) -> Validation<(), Errors<syn::Error>> {
+fn validate_attr_body(attr_body: Option<&TokenStream>) -> Validation<(), Errors<syn::Error>> {
     if let Some(meta) = attr_body {
         Validation::fail(syn::Error::new_spanned(meta, NO_PARAMS))
     } else {
