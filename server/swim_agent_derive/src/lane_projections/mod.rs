@@ -18,6 +18,9 @@ pub use model::{validate_input, AgentField, AgentFields};
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
 
+/// Generates an impl block with constants for projection functions to each field
+/// of the struct. The name of the projection will be the name of the field made upper
+/// case.
 pub struct ProjectionsImpl<'a>(AgentFields<'a>);
 
 impl<'a> ProjectionsImpl<'a> {

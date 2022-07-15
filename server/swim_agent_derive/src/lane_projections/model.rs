@@ -19,6 +19,8 @@ use swim_utilities::errors::{
 };
 use syn::{Generics, Ident, Item, ItemStruct, Meta, Type};
 
+/// Model of a the components of a struct type required to generate projection functions
+/// for each field.
 #[derive(Debug, Clone)]
 pub struct AgentFields<'a> {
     pub agent_name: &'a Ident,
@@ -27,6 +29,10 @@ pub struct AgentFields<'a> {
 }
 
 impl<'a> AgentFields<'a> {
+    /// #Arguments
+    /// * `agent_name` - The name of the struct type.
+    /// * `generics` - The generic parameters of the struct (for application to the new impl block).
+    /// * `fields` - Required information about each field (name and type).
     pub fn new(agent_name: &'a Ident, generics: &'a Generics, fields: Vec<AgentField<'a>>) -> Self {
         AgentFields {
             agent_name,
@@ -36,6 +42,7 @@ impl<'a> AgentFields<'a> {
     }
 }
 
+/// Name and type of each field from a struct.
 #[derive(Debug, Clone, Copy)]
 pub struct AgentField<'a> {
     pub field_name: &'a Ident,
@@ -50,6 +57,8 @@ impl<'a> AgentField<'a> {
         }
     }
 
+    /// Transform the name of the field to upper case to get the name of the projection function
+    /// constant.
     pub fn projection_name(&self) -> syn::Ident {
         let AgentField { field_name, .. } = *self;
 
@@ -59,6 +68,10 @@ impl<'a> AgentField<'a> {
     }
 }
 
+/// Validate the input to the projections macro.
+///
+/// - No paramters are expected.
+/// - The input should be a struct type with named fields.
 pub fn validate_input<'a>(
     attr_body: Option<&'a Meta>,
     item: &'a Item,
