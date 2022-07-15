@@ -18,7 +18,7 @@ use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 
 use swim_utilities::errors::Errors;
-use syn::{parse_macro_input, DeriveInput, Item};
+use syn::{parse_macro_input, DeriveInput, Item, Path};
 
 mod agent_lifecycle;
 mod lane_model_derive;
@@ -54,6 +54,14 @@ pub fn projections(attr: TokenStream, item: TokenStream) -> TokenStream {
         .into_result()
         .unwrap_or_else(errs_to_compile_errors)
         .into()
+}
+
+#[proc_macro_attribute]
+pub fn lifecycle(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let path = parse_macro_input!(attr as Path);
+    let item = parse_macro_input!(item as Item);
+    let _ = agent_lifecycle::validate_input(&path, &item);
+    todo!()
 }
 
 fn errs_to_compile_errors(errors: Errors<syn::Error>) -> proc_macro2::TokenStream {
