@@ -20,6 +20,7 @@ use quote::{quote, ToTokens};
 use swim_utilities::errors::Errors;
 use syn::{parse_macro_input, DeriveInput, Item, Meta};
 
+mod agent_lifecycle;
 mod lane_model_derive;
 mod lane_projections;
 
