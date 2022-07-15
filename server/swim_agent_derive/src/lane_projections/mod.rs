@@ -40,7 +40,7 @@ impl<'a> ToTokens for ProjectionsImpl<'a> {
         let defs = fields
             .iter()
             .copied()
-            .map(|field| Projection::new(field))
+            .map(Projection::new)
             .map(Projection::into_tokens);
 
         let (impl_gen, type_gen, where_clause) = generics.split_for_impl();
