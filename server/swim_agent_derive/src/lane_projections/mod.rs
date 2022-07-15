@@ -17,7 +17,6 @@ mod model;
 pub use model::{validate_input, AgentField, AgentFields};
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
-use syn::Ident;
 
 pub struct ProjectionsImpl<'a>(AgentFields<'a>);
 
@@ -38,7 +37,7 @@ impl<'a> ToTokens for ProjectionsImpl<'a> {
         let defs = fields
             .iter()
             .copied()
-            .map(|field| Projection::new(agent_name, field))
+            .map(|field| Projection::new(field))
             .map(Projection::into_tokens);
 
         let (impl_gen, type_gen, where_clause) = generics.split_for_impl();
@@ -56,17 +55,16 @@ impl<'a> ToTokens for ProjectionsImpl<'a> {
 }
 
 struct Projection<'a> {
-    agent_name: &'a Ident,
     field: AgentField<'a>,
 }
 
 impl<'a> Projection<'a> {
-    fn new(agent_name: &'a Ident, field: AgentField<'a>) -> Self {
-        Projection { agent_name, field }
+    fn new(field: AgentField<'a>) -> Self {
+        Projection { field }
     }
 
     fn into_tokens(self) -> TokenStream {
-        let Projection { agent_name, field } = self;
+        let Projection { field } = self;
         let proj_name = field.projection_name();
 
         let AgentField {
@@ -74,6 +72,6 @@ impl<'a> Projection<'a> {
             field_type,
         } = field;
 
-        quote!(#proj_name: for<'a> fn(&'a #agent_name) -> &'a #field_type = |agent| &agent.#field_name)
+        quote!(#proj_name: for<'a> fn(&'a Self) -> &'a #field_type = |agent| &agent.#field_name)
     }
 }

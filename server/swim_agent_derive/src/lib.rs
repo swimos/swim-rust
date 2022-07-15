@@ -44,7 +44,12 @@ pub fn projections(attr: TokenStream, item: TokenStream) -> TokenStream {
     let item = parse_macro_input!(item as Item);
     lane_projections::validate_input(attr_params.as_ref(), &item)
         .map(ProjectionsImpl::new)
-        .map(ToTokens::into_token_stream)
+        .map(|proj| {
+            quote! {
+                #item
+                #proj
+            }
+        })
         .into_result()
         .unwrap_or_else(errs_to_compile_errors)
         .into()

@@ -14,7 +14,7 @@
 
 #[doc(hidden)]
 #[allow(unused_imports)]
-pub use swim_agent_derive::{AgentLaneModel, projections};
+pub use swim_agent_derive::{projections, AgentLaneModel};
 
 pub mod agent_model;
 pub mod event_handler;
