@@ -44,8 +44,8 @@ pub trait OnSetShared<'a, T, Context, Shared>: Send {
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
-        existing: Option<T>,
         new_value: &T,
+        existing: Option<T>,
     ) -> Self::OnSetHandler;
 }
 
@@ -64,8 +64,8 @@ impl<'a, T, Context, Shared> OnSetShared<'a, T, Context, Shared> for NoHandler {
         &'a self,
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
-        _existing: Option<T>,
         _new_value: &T,
+        _existing: Option<T>,
     ) -> Self::OnSetHandler {
         Default::default()
     }
@@ -88,7 +88,7 @@ where
 impl<'a, T, Context, Shared, F, H> OnSetShared<'a, T, Context, Shared> for FnHandler<F>
 where
     T: 'static,
-    F: Fn(&'a Shared, HandlerContext<Context>, Option<T>, &T) -> H + Send,
+    F: Fn(&'a Shared, HandlerContext<Context>, &T, Option<T>) -> H + Send,
     H: EventHandler<Context, Completion = ()> + Send + 'a,
 {
     type OnSetHandler = H;
@@ -97,10 +97,10 @@ where
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
-        existing: Option<T>,
         new_value: &T,
+        existing: Option<T>,
     ) -> Self::OnSetHandler {
         let FnHandler(f) = self;
-        f(shared, handler_context, existing, new_value)
+        f(shared, handler_context, new_value, existing)
     }
 }

@@ -59,8 +59,8 @@ pub fn projections(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn lifecycle(attr: TokenStream, item: TokenStream) -> TokenStream {
     let path = parse_macro_input!(attr as Path);
-    let item = parse_macro_input!(item as Item);
-    let _ = agent_lifecycle::validate_input(&path, &item);
+    let mut item = parse_macro_input!(item as Item);
+    let _ = agent_lifecycle::validate_input(&path, &mut item);
     todo!()
 }
 

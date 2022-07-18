@@ -184,7 +184,7 @@ where
             let lane = projection(context);
             let handler = lane.read_with_prev(|prev, new_value| {
                 let event_handler = lifecycle.on_event(shared, handler_context, new_value);
-                let set_handler = lifecycle.on_set(shared, handler_context, prev, new_value);
+                let set_handler = lifecycle.on_set(shared, handler_context, new_value, prev);
                 event_handler.followed_by(set_handler)
             });
             Some(handler)
@@ -285,7 +285,7 @@ where
                 let lane = projection(context);
                 let handler = lane.read_with_prev(|prev, new_value| {
                     let event_handler = lifecycle.on_event(shared, handler_context, new_value);
-                    let set_handler = lifecycle.on_set(shared, handler_context, prev, new_value);
+                    let set_handler = lifecycle.on_set(shared, handler_context, new_value, prev);
                     event_handler.followed_by(set_handler)
                 });
                 Some(Either::Right(Either::Left(handler)))

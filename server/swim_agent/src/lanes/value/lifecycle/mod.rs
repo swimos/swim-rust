@@ -160,10 +160,10 @@ where
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
-        existing: Option<T>,
         new_value: &T,
+        existing: Option<T>,
     ) -> Self::OnSetHandler {
         self.on_set
-            .on_set(shared, handler_context, existing, new_value)
+            .on_set(shared, handler_context, new_value, existing)
     }
 }
