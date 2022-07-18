@@ -21,7 +21,7 @@ use syn::{Generics, Ident, Item, ItemStruct, Type};
 
 /// Model of a the components of a struct type required to generate projection functions
 /// for each field.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AgentFields<'a> {
     pub agent_name: &'a Ident,
     pub generics: &'a Generics,
@@ -43,7 +43,7 @@ impl<'a> AgentFields<'a> {
 }
 
 /// Name and type of each field from a struct.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct AgentField<'a> {
     pub field_name: &'a Ident,
     pub field_type: &'a Type,

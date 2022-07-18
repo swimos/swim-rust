@@ -12,8 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
+use std::fmt::Debug;
 
+#[cfg(test)]
+mod tests;
+
+#[derive(Debug, PartialEq, Eq)]
 pub enum BinTree<K, T> {
     Branch {
         key: K,
@@ -59,16 +64,16 @@ impl<K, T> BinTree<K, T> {
     }
 }
 
-impl<K, T> From<BTreeMap<K, T>> for BinTree<K, T> {
+impl<K: Debug, T: Debug> From<BTreeMap<K, T>> for BinTree<K, T> {
     fn from(map: BTreeMap<K, T>) -> Self {
         from_sorted_vec(map.into_iter().collect())
     }
 }
 
-fn from_sorted_vec<K, T>(mut data: Vec<(K, T)>) -> BinTree<K, T> {
+fn from_sorted_vec<K: Debug, T: Debug>(mut data: VecDeque<(K, T)>) -> BinTree<K, T> {
     if data.len() < 3 {
-        let first = data.pop();
-        let second = data.pop();
+        let first = data.pop_front();
+        let second = data.pop_front();
         match (first, second) {
             (Some((k1, t1)), Some((k2, t2))) => BinTree::with_right(k1, t1, BinTree::new(k2, t2)),
             (Some((k, t)), _) => BinTree::new(k, t),
@@ -78,7 +83,7 @@ fn from_sorted_vec<K, T>(mut data: Vec<(K, T)>) -> BinTree<K, T> {
         let offset = data.len() / 2;
         let mut upper = data.split_off(offset);
 
-        let (k_cent, t_cent) = upper.pop().unwrap(); // The upper half must have at least one member.
+        let (k_cent, t_cent) = upper.pop_front().unwrap(); // The upper half must have at least one member.
 
         let left = from_sorted_vec(data);
         let right = from_sorted_vec(upper);

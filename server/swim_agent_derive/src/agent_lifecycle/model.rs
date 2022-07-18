@@ -214,7 +214,7 @@ fn check_sig_common(sig: &Signature) -> Result<(), syn::Error> {
         Err(NO_ASYNC)
     } else if sig.unsafety.is_some() {
         Err(NO_UNSAFE)
-    } else if sig.output == ReturnType::Default {
+    } else if matches!(sig.output, ReturnType::Default) {
         Err(MANDATORY_RETURN)
     } else if !sig
         .generics
