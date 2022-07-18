@@ -31,50 +31,12 @@ use crate::{
     },
 };
 
-use super::{HTree, LaneEvent, LaneEventShared};
+use super::{HLeaf, HTree, LaneEvent, LaneEventShared};
 
 #[cfg(test)]
 mod tests;
 
-/// Value lane lifecycle as a leaf node of an [`HTree`].
-pub struct ValueLeaf<Context, T, LC> {
-    label: &'static str,
-    projection: fn(&Context) -> &ValueLane<T>,
-    lifecycle: LC,
-}
-
-impl<Context, T, LC> ValueLeaf<Context, T, LC> {
-    pub fn new(
-        label: &'static str,
-        projection: fn(&Context) -> &ValueLane<T>,
-        lifecycle: LC,
-    ) -> Self {
-        ValueLeaf {
-            label,
-            projection,
-            lifecycle,
-        }
-    }
-}
-
-impl<Context, T, LC> Debug for ValueLeaf<Context, T, LC>
-where
-    LC: Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ValueLeaf")
-            .field("label", &self.label)
-            .field("projection", &"...")
-            .field("lifecycle", &self.lifecycle)
-            .finish()
-    }
-}
-
-impl<Context, T, LC> HTree for ValueLeaf<Context, T, LC> {
-    fn label(&self) -> Option<&'static str> {
-        Some(self.label)
-    }
-}
+pub type ValueLeaf<Context, T, LC> = ValueBranch<Context, T, LC, HLeaf, HLeaf>;
 
 /// Command lane lifecycle as a branch node of an [`HTree`].
 pub struct ValueBranch<Context, T, LC, L, R> {
@@ -99,6 +61,16 @@ where
             .field("left", &self.left)
             .field("right", &self.right)
             .finish()
+    }
+}
+
+impl<Context, T, LC> ValueLeaf<Context, T, LC> {
+    pub fn leaf(
+        label: &'static str,
+        projection: fn(&Context) -> &ValueLane<T>,
+        lifecycle: LC,
+    ) -> Self {
+        Self::new(label, projection, lifecycle, HLeaf, HLeaf)
     }
 }
 
@@ -133,64 +105,6 @@ where
 impl<Context, T, LC, L: HTree, R: HTree> HTree for ValueBranch<Context, T, LC, L, R> {
     fn label(&self) -> Option<&'static str> {
         Some(self.label)
-    }
-}
-
-impl<'a, Context, T, LC> LaneEvent<'a, Context> for ValueLeaf<Context, T, LC>
-where
-    LC: ValueLaneLifecycle<T, Context>,
-{
-    type LaneEventHandler = ValueLifecycleHandler<'a, Context, T, LC>;
-
-    fn lane_event(&'a self, context: &Context, lane_name: &str) -> Option<Self::LaneEventHandler> {
-        let ValueLeaf {
-            label,
-            projection,
-            lifecycle,
-        } = self;
-        if lane_name == *label {
-            let lane = projection(context);
-            let handler = lane.read_with_prev(|prev, new_value| {
-                let event_handler = lifecycle.on_event(new_value);
-                let set_handler = lifecycle.on_set(prev, new_value);
-                event_handler.followed_by(set_handler)
-            });
-            Some(handler)
-        } else {
-            None
-        }
-    }
-}
-
-impl<'a, Context, Shared, T, LC> LaneEventShared<'a, Context, Shared> for ValueLeaf<Context, T, LC>
-where
-    LC: ValueLaneLifecycleShared<T, Context, Shared>,
-{
-    type LaneEventHandler = ValueLifecycleHandlerShared<'a, Context, Shared, T, LC>;
-
-    fn lane_event(
-        &'a self,
-        shared: &'a Shared,
-        handler_context: HandlerContext<Context>,
-        context: &Context,
-        lane_name: &str,
-    ) -> Option<Self::LaneEventHandler> {
-        let ValueLeaf {
-            label,
-            projection,
-            lifecycle,
-        } = self;
-        if lane_name == *label {
-            let lane = projection(context);
-            let handler = lane.read_with_prev(|prev, new_value| {
-                let event_handler = lifecycle.on_event(shared, handler_context, new_value);
-                let set_handler = lifecycle.on_set(shared, handler_context, new_value, prev);
-                event_handler.followed_by(set_handler)
-            });
-            Some(handler)
-        } else {
-            None
-        }
     }
 }
 

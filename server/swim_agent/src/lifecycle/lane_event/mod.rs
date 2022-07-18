@@ -104,7 +104,7 @@ pub trait HTree {
 
 ///An empty leaf node in an [`HTree`].
 #[derive(Debug, Default, Clone, Copy)]
-struct HLeaf;
+pub struct HLeaf;
 
 impl HTree for HLeaf {
     fn label(&self) -> Option<&'static str> {

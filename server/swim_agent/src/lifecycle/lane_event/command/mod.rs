@@ -26,36 +26,12 @@ use crate::{
     lifecycle::utility::HandlerContext,
 };
 
-use super::{HTree, LaneEvent, LaneEventShared};
+use super::{HLeaf, HTree, LaneEvent, LaneEventShared};
 
 #[cfg(test)]
 mod tests;
-/// Command lane lifecycle as a leaf node of an [`HTree`].
-pub struct CommandLeaf<Context, T, LC> {
-    label: &'static str,
-    projection: fn(&Context) -> &CommandLane<T>,
-    lifecycle: LC,
-}
 
-impl<Context, T, LC> CommandLeaf<Context, T, LC> {
-    pub fn new(
-        label: &'static str,
-        projection: fn(&Context) -> &CommandLane<T>,
-        lifecycle: LC,
-    ) -> Self {
-        CommandLeaf {
-            label,
-            projection,
-            lifecycle,
-        }
-    }
-}
-
-impl<Context, T, LC> HTree for CommandLeaf<Context, T, LC> {
-    fn label(&self) -> Option<&'static str> {
-        Some(self.label)
-    }
-}
+pub type CommandLeaf<Context, T, LC> = CommandBranch<Context, T, LC, HLeaf, HLeaf>;
 
 pub type CommandLifecycleHandler<'a, Context, T, LC> =
     <LC as OnCommand<'a, T, Context>>::OnCommandHandler;
@@ -78,71 +54,6 @@ type CommandBranchHandlerShared<'a, Context, Shared, T, LC, L, R> = Either<
         <R as LaneEventShared<'a, Context, Shared>>::LaneEventHandler,
     >,
 >;
-
-impl<Context, T, LC> Debug for CommandLeaf<Context, T, LC>
-where
-    LC: Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CommandLeaf")
-            .field("label", &self.label)
-            .field("projection", &"...")
-            .field("lifecycle", &self.lifecycle)
-            .finish()
-    }
-}
-
-impl<'a, Context, T, LC> LaneEvent<'a, Context> for CommandLeaf<Context, T, LC>
-where
-    LC: CommandLaneLifecycle<T, Context>,
-{
-    type LaneEventHandler = CommandLifecycleHandler<'a, Context, T, LC>;
-
-    fn lane_event(&'a self, context: &Context, lane_name: &str) -> Option<Self::LaneEventHandler> {
-        let CommandLeaf {
-            label,
-            projection,
-            lifecycle,
-        } = self;
-        if lane_name == *label {
-            let lane = projection(context);
-            lane.with_prev(|prev| prev.as_ref().map(|value| lifecycle.on_command(value)))
-        } else {
-            None
-        }
-    }
-}
-
-impl<'a, Context, Shared, T, LC> LaneEventShared<'a, Context, Shared>
-    for CommandLeaf<Context, T, LC>
-where
-    LC: CommandLaneLifecycleShared<T, Context, Shared>,
-{
-    type LaneEventHandler = CommandLifecycleHandlerShared<'a, Context, Shared, T, LC>;
-
-    fn lane_event(
-        &'a self,
-        shared: &'a Shared,
-        handler_context: crate::lifecycle::utility::HandlerContext<Context>,
-        context: &Context,
-        lane_name: &str,
-    ) -> Option<Self::LaneEventHandler> {
-        let CommandLeaf {
-            label,
-            projection,
-            lifecycle,
-        } = self;
-        if lane_name == *label {
-            let lane = projection(context);
-            lane.with_prev(|prev| {
-                prev.as_ref()
-                    .map(|value| lifecycle.on_command(shared, handler_context, value))
-            })
-        } else {
-            None
-        }
-    }
-}
 
 /// Command lane lifecycle as a branch node of an [`HTree`].
 pub struct CommandBranch<Context, T, LC, L, R> {
@@ -167,6 +78,16 @@ where
             .field("left", &self.left)
             .field("right", &self.right)
             .finish()
+    }
+}
+
+impl<Context, T, LC> CommandLeaf<Context, T, LC> {
+    pub fn leaf(
+        label: &'static str,
+        projection: fn(&Context) -> &CommandLane<T>,
+        lifecycle: LC,
+    ) -> Self {
+        CommandBranch::new(label, projection, lifecycle, HLeaf, HLeaf)
     }
 }
 

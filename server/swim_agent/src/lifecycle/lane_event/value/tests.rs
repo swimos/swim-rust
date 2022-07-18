@@ -170,7 +170,6 @@ fn make_uri() -> RelativeUri {
 fn make_meta(uri: &RelativeUri) -> AgentMetadata<'_> {
     AgentMetadata::new(uri, &CONFIG)
 }
-
 #[test]
 fn value_lane_leaf() {
     let uri = make_uri();
@@ -181,7 +180,7 @@ fn value_lane_leaf() {
     agent.first.set(56);
 
     let lifecycle = FakeLifecycle::<i32>::default();
-    let leaf = ValueLeaf::new(FIRST_NAME, TestAgent::FIRST, lifecycle.clone());
+    let leaf = ValueLeaf::leaf(FIRST_NAME, TestAgent::FIRST, lifecycle.clone());
 
     assert!(leaf.lane_event(&agent, "other").is_none());
 
@@ -206,7 +205,7 @@ fn value_lane_left_branch() {
 
     let first_lifecycle = FakeLifecycle::<i32>::default();
     let second_lifecycle = FakeLifecycle::<Text>::default();
-    let leaf = ValueLeaf::new(FIRST_NAME, TestAgent::FIRST, first_lifecycle.clone());
+    let leaf = ValueLeaf::leaf(FIRST_NAME, TestAgent::FIRST, first_lifecycle.clone());
 
     let branch = ValueBranch::new(
         SECOND_NAME,
@@ -258,7 +257,7 @@ fn value_lane_right_branch() {
 
     let first_lifecycle = FakeLifecycle::<i32>::default();
     let second_lifecycle = FakeLifecycle::<Text>::default();
-    let leaf = ValueLeaf::new(SECOND_NAME, TestAgent::SECOND, second_lifecycle.clone());
+    let leaf = ValueLeaf::leaf(SECOND_NAME, TestAgent::SECOND, second_lifecycle.clone());
 
     let branch = ValueBranch::new(
         FIRST_NAME,
@@ -300,7 +299,6 @@ fn value_lane_right_branch() {
         panic!("Expected an event handler.");
     }
 }
-
 #[test]
 fn value_lane_two_branches() {
     let uri = make_uri();
@@ -312,8 +310,8 @@ fn value_lane_two_branches() {
     let second_lifecycle = FakeLifecycle::<Text>::default();
     let third_lifecycle = FakeLifecycle::<bool>::default();
 
-    let left = ValueLeaf::new(FIRST_NAME, TestAgent::FIRST, first_lifecycle.clone());
-    let right = ValueLeaf::new(THIRD_NAME, TestAgent::THIRD, third_lifecycle.clone());
+    let left = ValueLeaf::leaf(FIRST_NAME, TestAgent::FIRST, first_lifecycle.clone());
+    let right = ValueLeaf::leaf(THIRD_NAME, TestAgent::THIRD, third_lifecycle.clone());
 
     let branch = ValueBranch::new(
         SECOND_NAME,
@@ -375,7 +373,7 @@ fn value_lane_two_branches() {
 fn fail_out_of_order_labels_right() {
     let first_lifecycle = FakeLifecycle::<i32>::default();
     let second_lifecycle = FakeLifecycle::<Text>::default();
-    let leaf = ValueLeaf::new(FIRST_NAME, TestAgent::FIRST, first_lifecycle);
+    let leaf = ValueLeaf::leaf(FIRST_NAME, TestAgent::FIRST, first_lifecycle);
 
     ValueBranch::new(
         SECOND_NAME,
@@ -391,7 +389,7 @@ fn fail_out_of_order_labels_right() {
 fn fail_out_of_order_labels_left() {
     let first_lifecycle = FakeLifecycle::<i32>::default();
     let second_lifecycle = FakeLifecycle::<Text>::default();
-    let leaf = ValueLeaf::new(SECOND_NAME, TestAgent::SECOND, second_lifecycle);
+    let leaf = ValueLeaf::leaf(SECOND_NAME, TestAgent::SECOND, second_lifecycle);
 
     ValueBranch::new(FIRST_NAME, TestAgent::FIRST, first_lifecycle, leaf, HLeaf);
 }
@@ -400,7 +398,7 @@ fn fail_out_of_order_labels_left() {
 #[should_panic]
 fn fail_equal_labels() {
     let first_lifecycle = FakeLifecycle::<i32>::default();
-    let leaf = ValueLeaf::new(FIRST_NAME, TestAgent::FIRST, first_lifecycle.clone());
+    let leaf = ValueLeaf::leaf(FIRST_NAME, TestAgent::FIRST, first_lifecycle.clone());
 
     ValueBranch::new(FIRST_NAME, TestAgent::FIRST, first_lifecycle, HLeaf, leaf);
 }

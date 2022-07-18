@@ -31,37 +31,12 @@ use crate::lanes::map::{
 };
 use crate::lifecycle::utility::HandlerContext;
 
-use super::{HTree, LaneEvent, LaneEventShared};
+use super::{HLeaf, HTree, LaneEvent, LaneEventShared};
 
 #[cfg(test)]
 mod tests;
 
-/// Map lane lifecycle as a leaf node of an [`HTree`].
-pub struct MapLeaf<Context, K, V, LC> {
-    label: &'static str,
-    projection: fn(&Context) -> &MapLane<K, V>,
-    lifecycle: LC,
-}
-
-impl<Context, K, V, LC> HTree for MapLeaf<Context, K, V, LC> {
-    fn label(&self) -> Option<&'static str> {
-        Some(self.label)
-    }
-}
-
-impl<Context, K, V, LC> MapLeaf<Context, K, V, LC> {
-    pub fn new(
-        label: &'static str,
-        projection: fn(&Context) -> &MapLane<K, V>,
-        lifecycle: LC,
-    ) -> Self {
-        MapLeaf {
-            label,
-            projection,
-            lifecycle,
-        }
-    }
-}
+pub type MapLeaf<Context, K, V, LC> = MapBranch<Context, K, V, LC, HLeaf, HLeaf>;
 
 pub type MapLifecycleHandler<'a, Context, K, V, LC> = Coprod!(
     <LC as OnUpdate<'a, K, V, Context>>::OnUpdateHandler,
@@ -90,19 +65,6 @@ type MapBranchHandlerShared<'a, Context, Shared, K, V, LC, L, R> = Either<
         <R as LaneEventShared<'a, Context, Shared>>::LaneEventHandler,
     >,
 >;
-
-impl<Context, K, V, LC> Debug for MapLeaf<Context, K, V, LC>
-where
-    LC: Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("MapLeaf")
-            .field("label", &self.label)
-            .field("projection", &"...")
-            .field("lifecycle", &self.lifecycle)
-            .finish()
-    }
-}
 
 fn map_handler<'a, Context, K, V, LC>(
     event: MapLaneEvent<K, V>,
@@ -150,59 +112,6 @@ where
     }
 }
 
-impl<'a, Context, K, V, LC> LaneEvent<'a, Context> for MapLeaf<Context, K, V, LC>
-where
-    K: Clone + Eq + Hash,
-    LC: MapLaneLifecycle<K, V, Context>,
-{
-    type LaneEventHandler = MapLifecycleHandler<'a, Context, K, V, LC>;
-
-    fn lane_event(&'a self, context: &Context, lane_name: &str) -> Option<Self::LaneEventHandler> {
-        let MapLeaf {
-            label,
-            projection,
-            lifecycle,
-        } = self;
-        if lane_name == *label {
-            let lane = projection(context);
-            lane.read_with_prev(|prev, map| prev.map(|ev| map_handler(ev, lifecycle, map)))
-        } else {
-            None
-        }
-    }
-}
-
-impl<'a, Context, Shared, K, V, LC> LaneEventShared<'a, Context, Shared>
-    for MapLeaf<Context, K, V, LC>
-where
-    K: Clone + Eq + Hash,
-    LC: MapLaneLifecycleShared<K, V, Context, Shared>,
-{
-    type LaneEventHandler = MapLifecycleHandlerShared<'a, Context, Shared, K, V, LC>;
-
-    fn lane_event(
-        &'a self,
-        shared: &'a Shared,
-        handler_context: HandlerContext<Context>,
-        context: &Context,
-        lane_name: &str,
-    ) -> Option<Self::LaneEventHandler> {
-        let MapLeaf {
-            label,
-            projection,
-            lifecycle,
-        } = self;
-        if lane_name == *label {
-            let lane = projection(context);
-            lane.read_with_prev(|prev, map| {
-                prev.map(|ev| map_handler_shared(shared, handler_context, ev, lifecycle, map))
-            })
-        } else {
-            None
-        }
-    }
-}
-
 /// Map lane lifecycle as a branch node of an [`HTree`].
 pub struct MapBranch<Context, K, V, LC, L, R> {
     label: &'static str,
@@ -232,6 +141,16 @@ where
             .field("left", &self.left)
             .field("right", &self.right)
             .finish()
+    }
+}
+
+impl<Context, K, V, LC> MapLeaf<Context, K, V, LC> {
+    pub fn leaf(
+        label: &'static str,
+        projection: fn(&Context) -> &MapLane<K, V>,
+        lifecycle: LC,
+    ) -> Self {
+        MapBranch::new(label, projection, lifecycle, HLeaf, HLeaf)
     }
 }
 

@@ -116,7 +116,6 @@ fn make_uri() -> RelativeUri {
 fn make_meta(uri: &RelativeUri) -> AgentMetadata<'_> {
     AgentMetadata::new(uri, &CONFIG)
 }
-
 #[test]
 fn command_lane_leaf() {
     let uri = make_uri();
@@ -127,7 +126,7 @@ fn command_lane_leaf() {
     agent.first.command(56);
 
     let lifecycle = FakeLifecycle::<i32>::default();
-    let leaf = CommandLeaf::new(FIRST_NAME, TestAgent::FIRST, lifecycle.clone());
+    let leaf = CommandLeaf::leaf(FIRST_NAME, TestAgent::FIRST, lifecycle.clone());
 
     assert!(leaf.lane_event(&agent, "other").is_none());
 
@@ -141,7 +140,6 @@ fn command_lane_leaf() {
         panic!("Expected an event handler.");
     }
 }
-
 #[test]
 fn command_lane_left_branch() {
     let uri = make_uri();
@@ -151,7 +149,7 @@ fn command_lane_left_branch() {
 
     let first_lifecycle = FakeLifecycle::<i32>::default();
     let second_lifecycle = FakeLifecycle::<Text>::default();
-    let leaf = CommandLeaf::new(FIRST_NAME, TestAgent::FIRST, first_lifecycle.clone());
+    let leaf = CommandLeaf::leaf(FIRST_NAME, TestAgent::FIRST, first_lifecycle.clone());
 
     let branch = CommandBranch::new(
         SECOND_NAME,
@@ -201,7 +199,7 @@ fn command_lane_right_branch() {
 
     let first_lifecycle = FakeLifecycle::<i32>::default();
     let second_lifecycle = FakeLifecycle::<Text>::default();
-    let leaf = CommandLeaf::new(SECOND_NAME, TestAgent::SECOND, second_lifecycle.clone());
+    let leaf = CommandLeaf::leaf(SECOND_NAME, TestAgent::SECOND, second_lifecycle.clone());
 
     let branch = CommandBranch::new(
         FIRST_NAME,
@@ -252,8 +250,8 @@ fn command_lane_two_branches() {
     let first_lifecycle = FakeLifecycle::<i32>::default();
     let second_lifecycle = FakeLifecycle::<Text>::default();
     let third_lifecycle = FakeLifecycle::<bool>::default();
-    let leaf_left = CommandLeaf::new(FIRST_NAME, TestAgent::FIRST, first_lifecycle.clone());
-    let leaf_right = CommandLeaf::new(THIRD_NAME, TestAgent::THIRD, third_lifecycle.clone());
+    let leaf_left = CommandLeaf::leaf(FIRST_NAME, TestAgent::FIRST, first_lifecycle.clone());
+    let leaf_right = CommandLeaf::leaf(THIRD_NAME, TestAgent::THIRD, third_lifecycle.clone());
 
     let branch = CommandBranch::new(
         SECOND_NAME,

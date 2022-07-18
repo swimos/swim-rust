@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashSet, BTreeMap};
 
 use swim_utilities::errors::{
     validation::{Validation, ValidationItExt},
@@ -408,7 +408,7 @@ pub struct AgentLifecycleDescriptor<'a> {
     pub lifecycle_type: &'a Type,
     pub on_start: Option<&'a Ident>,
     pub on_stop: Option<&'a Ident>,
-    pub lane_lifecycles: HashMap<String, LaneLifecycle<'a>>,
+    pub lane_lifecycles: BTreeMap<String, LaneLifecycle<'a>>,
 }
 
 const DUPLICATE_ON_STOP: &str = "Duplicate on_stop event handler.";
@@ -421,7 +421,7 @@ impl<'a> AgentLifecycleDescriptor<'a> {
             lifecycle_type,
             on_start: None,
             on_stop: None,
-            lane_lifecycles: HashMap::new(),
+            lane_lifecycles: BTreeMap::new(),
         }
     }
 
