@@ -15,3 +15,4 @@
 pub use model::validate_input;
 
 mod model;
+mod tree;

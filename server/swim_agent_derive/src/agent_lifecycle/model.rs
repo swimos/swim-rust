@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::{HashSet, BTreeMap};
+use std::collections::{BTreeMap, HashSet};
 
 use swim_utilities::errors::{
     validation::{Validation, ValidationItExt},
