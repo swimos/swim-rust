@@ -51,7 +51,10 @@ fn three_items() {
     source.insert(3, "c");
     let tree = BinTree::from(source);
 
-    assert_eq!(tree, BinTree::branch(2, "b", BinTree::new(1, "a"), BinTree::new(3, "c")));
+    assert_eq!(
+        tree,
+        BinTree::branch(2, "b", BinTree::new(1, "a"), BinTree::new(3, "c"))
+    );
 }
 
 #[test]

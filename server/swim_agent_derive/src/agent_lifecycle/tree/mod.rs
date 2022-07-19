@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use std::collections::{BTreeMap, VecDeque};
-use std::fmt::Debug;
 
 #[cfg(test)]
 mod tests;
@@ -64,13 +63,13 @@ impl<K, T> BinTree<K, T> {
     }
 }
 
-impl<K: Debug, T: Debug> From<BTreeMap<K, T>> for BinTree<K, T> {
+impl<K, T> From<BTreeMap<K, T>> for BinTree<K, T> {
     fn from(map: BTreeMap<K, T>) -> Self {
         from_sorted_vec(map.into_iter().collect())
     }
 }
 
-fn from_sorted_vec<K: Debug, T: Debug>(mut data: VecDeque<(K, T)>) -> BinTree<K, T> {
+fn from_sorted_vec<K, T>(mut data: VecDeque<(K, T)>) -> BinTree<K, T> {
     if data.len() < 3 {
         let first = data.pop_front();
         let second = data.pop_front();

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use agent_lifecycle::ImplAgentLifecycle;
 use lane_model_derive::DeriveAgentLaneModel;
 use lane_projections::ProjectionsImpl;
 use proc_macro::TokenStream;
@@ -60,8 +61,21 @@ pub fn projections(attr: TokenStream, item: TokenStream) -> TokenStream {
 pub fn lifecycle(attr: TokenStream, item: TokenStream) -> TokenStream {
     let path = parse_macro_input!(attr as Path);
     let mut item = parse_macro_input!(item as Item);
-    let _ = agent_lifecycle::validate_input(&path, &mut item);
-    todo!()
+    let attrs = agent_lifecycle::strip_handler_attrs(&mut item);
+    attrs
+        .and_then(|stripped_attrs| {
+            agent_lifecycle::validate_with_attrs(&path, &item, stripped_attrs)
+        })
+        .map(ImplAgentLifecycle::new)
+        .map(|agent_lc| {
+            quote! {
+                #item
+                #agent_lc
+            }
+        })
+        .into_result()
+        .unwrap_or_else(errs_to_compile_errors)
+        .into()
 }
 
 fn errs_to_compile_errors(errors: Errors<syn::Error>) -> proc_macro2::TokenStream {

@@ -14,47 +14,78 @@
 
 use std::collections::{BTreeMap, HashSet};
 
+use proc_macro2::Span;
 use swim_utilities::errors::{
     validation::{Validation, ValidationItExt},
     Errors,
 };
 use syn::{
-    Attribute, FnArg, GenericParam, Ident, ImplItem, ImplItemMethod, Item, Lit, Meta, NestedMeta,
-    Path, ReturnType, Signature, Type, TypeReference,
+    parse_quote, Attribute, FnArg, GenericParam, Ident, ImplItem, ImplItemMethod, Item, Lit, Meta,
+    NestedMeta, Path, ReturnType, Signature, Type, TypeReference,
 };
+
+use super::tree::BinTree;
 
 const NOT_IMPL: &str = "The lifecycle annotation can only be applied to an impl block.";
 const NO_GENERICS: &str = "Generic lifecycles are not yet supported.";
 const INCONSISTENT_HANDLERS: &str = "Method marked with inconsistent handler attributes.";
 
-pub fn validate_input<'a>(
+pub fn strip_handler_attrs(
+    item: &mut Item,
+) -> Validation<Vec<Option<Vec<Attribute>>>, Errors<syn::Error>> {
+    if let Item::Impl(block) = item {
+        if !block.generics.params.is_empty() {
+            return Validation::fail(syn::Error::new_spanned(block, NO_GENERICS));
+        }
+        let attrs = block
+            .items
+            .iter_mut()
+            .map(|item| {
+                if let ImplItem::Method(method) = item {
+                    let (handler_attrs, others) =
+                        method.attrs.drain(0..).partition::<Vec<_>, _>(assess_attr);
+                    method.attrs.extend(others.into_iter());
+                    if handler_attrs.is_empty() {
+                        None
+                    } else {
+                        Some(handler_attrs)
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        Validation::valid(attrs)
+    } else {
+        Validation::fail(syn::Error::new_spanned(item, NOT_IMPL))
+    }
+}
+
+pub fn validate_with_attrs<'a>(
     agent_type: &'a Path,
-    item: &'a mut Item,
+    item: &'a Item,
+    stripped_attrs: Vec<Option<Vec<Attribute>>>,
 ) -> Validation<AgentLifecycleDescriptor<'a>, Errors<syn::Error>> {
     if let Item::Impl(block) = item {
         if !block.generics.params.is_empty() {
             return Validation::fail(syn::Error::new_spanned(block, NO_GENERICS));
         }
-        let init = AgentLifecycleDescriptor::new(agent_type, &block.self_ty);
+        let init = AgentLifecycleDescriptorBuilder::new(agent_type, &block.self_ty);
         block
             .items
-            .iter_mut()
-            .filter_map(|item| {
-                if let ImplItem::Method(method) = item {
-                    let (handler_attrs, others) =
-                        method.attrs.drain(0..).partition::<Vec<_>, _>(assess_attr);
-                    method.attrs.extend(others.into_iter());
-                    Some((handler_attrs, &*method))
-                } else {
-                    None
-                }
+            .iter()
+            .zip(stripped_attrs.into_iter())
+            .filter_map(|item_and_attrs| match item_and_attrs {
+                (ImplItem::Method(method), Some(attrs)) => Some((method, attrs)),
+                _ => None,
             })
-            .validate_fold(Validation::valid(init), false, |acc, (attrs, method)| {
+            .validate_fold(Validation::valid(init), false, |acc, (method, attrs)| {
                 validate_method(acc, attrs, method)
             })
     } else {
         Validation::fail(syn::Error::new_spanned(item, NOT_IMPL))
     }
+    .map(AgentLifecycleDescriptorBuilder::build)
 }
 
 struct Descriptor {
@@ -72,10 +103,10 @@ impl Descriptor {
 }
 
 fn validate_method<'a>(
-    acc: AgentLifecycleDescriptor<'a>,
+    acc: AgentLifecycleDescriptorBuilder<'a>,
     attrs: Vec<Attribute>,
     method: &'a ImplItemMethod,
-) -> Validation<AgentLifecycleDescriptor<'a>, Errors<syn::Error>> {
+) -> Validation<AgentLifecycleDescriptorBuilder<'a>, Errors<syn::Error>> {
     let method_desc = attrs
         .iter()
         .append_fold(Validation::valid(None), true, |acc, attr| {
@@ -115,10 +146,10 @@ fn validate_method<'a>(
 }
 
 fn validate_method_as<'a>(
-    acc: AgentLifecycleDescriptor<'a>,
+    acc: AgentLifecycleDescriptorBuilder<'a>,
     descriptor: Descriptor,
     method: &'a ImplItemMethod,
-) -> Validation<AgentLifecycleDescriptor<'a>, Errors<syn::Error>> {
+) -> Validation<AgentLifecycleDescriptorBuilder<'a>, Errors<syn::Error>> {
     let acc = Validation::valid(acc);
     let Descriptor { kind, targets } = descriptor;
     let sig = &method.sig;
@@ -408,15 +439,23 @@ pub struct AgentLifecycleDescriptor<'a> {
     pub lifecycle_type: &'a Type,
     pub on_start: Option<&'a Ident>,
     pub on_stop: Option<&'a Ident>,
+    pub lane_lifecycles: BinTree<String, LaneLifecycle<'a>>,
+}
+
+pub struct AgentLifecycleDescriptorBuilder<'a> {
+    pub agent_type: &'a Path,
+    pub lifecycle_type: &'a Type,
+    pub on_start: Option<&'a Ident>,
+    pub on_stop: Option<&'a Ident>,
     pub lane_lifecycles: BTreeMap<String, LaneLifecycle<'a>>,
 }
 
 const DUPLICATE_ON_STOP: &str = "Duplicate on_stop event handler.";
 const DUPLICATE_ON_START: &str = "Duplicate on_start event handler.";
 
-impl<'a> AgentLifecycleDescriptor<'a> {
+impl<'a> AgentLifecycleDescriptorBuilder<'a> {
     pub fn new(agent_type: &'a Path, lifecycle_type: &'a Type) -> Self {
-        AgentLifecycleDescriptor {
+        AgentLifecycleDescriptorBuilder {
             agent_type,
             lifecycle_type,
             on_start: None,
@@ -425,8 +464,25 @@ impl<'a> AgentLifecycleDescriptor<'a> {
         }
     }
 
+    pub fn build(self) -> AgentLifecycleDescriptor<'a> {
+        let AgentLifecycleDescriptorBuilder {
+            agent_type,
+            lifecycle_type,
+            on_start,
+            on_stop,
+            lane_lifecycles,
+        } = self;
+        AgentLifecycleDescriptor {
+            agent_type,
+            lifecycle_type,
+            on_start,
+            on_stop,
+            lane_lifecycles: BinTree::from(lane_lifecycles),
+        }
+    }
+
     pub fn add_on_stop(&mut self, method: &'a Ident) -> Result<(), syn::Error> {
-        let AgentLifecycleDescriptor { on_stop, .. } = self;
+        let AgentLifecycleDescriptorBuilder { on_stop, .. } = self;
         if on_stop.is_some() {
             Err(syn::Error::new_spanned(method, DUPLICATE_ON_STOP))
         } else {
@@ -436,7 +492,7 @@ impl<'a> AgentLifecycleDescriptor<'a> {
     }
 
     pub fn add_on_start(&mut self, method: &'a Ident) -> Result<(), syn::Error> {
-        let AgentLifecycleDescriptor { on_start, .. } = self;
+        let AgentLifecycleDescriptorBuilder { on_start, .. } = self;
         if on_start.is_some() {
             Err(syn::Error::new_spanned(method, DUPLICATE_ON_START))
         } else {
@@ -451,7 +507,7 @@ impl<'a> AgentLifecycleDescriptor<'a> {
         handler_type: &'a Type,
         method: &'a Ident,
     ) -> Result<(), syn::Error> {
-        let AgentLifecycleDescriptor {
+        let AgentLifecycleDescriptorBuilder {
             lane_lifecycles, ..
         } = self;
         match lane_lifecycles.get(&name) {
@@ -493,7 +549,7 @@ impl<'a> AgentLifecycleDescriptor<'a> {
         handler_type: &'a Type,
         method: &'a Ident,
     ) -> Result<(), syn::Error> {
-        let AgentLifecycleDescriptor {
+        let AgentLifecycleDescriptorBuilder {
             lane_lifecycles, ..
         } = self;
         match lane_lifecycles.get_mut(&name) {
@@ -532,7 +588,7 @@ impl<'a> AgentLifecycleDescriptor<'a> {
         handler_type: &'a Type,
         method: &'a Ident,
     ) -> Result<(), syn::Error> {
-        let AgentLifecycleDescriptor {
+        let AgentLifecycleDescriptorBuilder {
             lane_lifecycles, ..
         } = self;
         match lane_lifecycles.get_mut(&name) {
@@ -571,7 +627,7 @@ impl<'a> AgentLifecycleDescriptor<'a> {
         map_type: &'a Type,
         method: &'a Ident,
     ) -> Result<(), syn::Error> {
-        let AgentLifecycleDescriptor {
+        let AgentLifecycleDescriptorBuilder {
             lane_lifecycles, ..
         } = self;
         match lane_lifecycles.get_mut(&name) {
@@ -608,7 +664,7 @@ impl<'a> AgentLifecycleDescriptor<'a> {
         map_type: &'a Type,
         method: &'a Ident,
     ) -> Result<(), syn::Error> {
-        let AgentLifecycleDescriptor {
+        let AgentLifecycleDescriptorBuilder {
             lane_lifecycles, ..
         } = self;
         match lane_lifecycles.get_mut(&name) {
@@ -645,7 +701,7 @@ impl<'a> AgentLifecycleDescriptor<'a> {
         map_type: &'a Type,
         method: &'a Ident,
     ) -> Result<(), syn::Error> {
-        let AgentLifecycleDescriptor {
+        let AgentLifecycleDescriptorBuilder {
             lane_lifecycles, ..
         } = self;
         match lane_lifecycles.get_mut(&name) {
@@ -683,12 +739,48 @@ pub enum LaneLifecycle<'a> {
     Map(MapLifecycleDescriptor<'a>),
 }
 
+impl<'a> LaneLifecycle<'a> {
+    fn lane_name(&self) -> &str {
+        let name = match self {
+            LaneLifecycle::Value(ValueLifecycleDescriptor { name, .. }) => name,
+            LaneLifecycle::Command(CommandLifecycleDescriptor { name, .. }) => name,
+            LaneLifecycle::Map(MapLifecycleDescriptor { name, .. }) => name,
+        };
+        &*name
+    }
+
+    pub fn lane_ident(&self) -> Ident {
+        let name = self.lane_name();
+        Ident::new(name, Span::call_site())
+    }
+
+    pub fn branch_type(&self) -> Path {
+        match self {
+            LaneLifecycle::Value(ValueLifecycleDescriptor { .. }) => {
+                parse_quote! {
+                    ::swim_agent::lifecycle::lane_event::value::ValueBranch
+                }
+            }
+            LaneLifecycle::Command(CommandLifecycleDescriptor { .. }) => {
+                parse_quote! {
+                    ::swim_agent::lifecycle::lane_event::command::CommandBranch
+                }
+            }
+            LaneLifecycle::Map(MapLifecycleDescriptor { .. }) => {
+                parse_quote! {
+                    ::swim_agent::lifecycle::lane_event::map::MapBranch
+                }
+            }
+        }
+    }
+}
+
 pub struct ValueLifecycleDescriptor<'a> {
     name: String,
     primary_lane_type: &'a Type,
     alternative_lane_types: HashSet<&'a Type>,
-    on_event: Option<&'a Ident>,
-    on_set: Option<&'a Ident>,
+    pub on_event: Option<&'a Ident>,
+    pub on_set: Option<&'a Ident>,
 }
 
 impl<'a> ValueLifecycleDescriptor<'a> {
@@ -781,9 +873,9 @@ pub struct MapLifecycleDescriptor<'a> {
     name: String,
     primary_lane_type: &'a Type,
     alternative_lane_types: HashSet<&'a Type>,
-    on_update: Option<&'a Ident>,
-    on_remove: Option<&'a Ident>,
-    on_clear: Option<&'a Ident>,
+    pub on_update: Option<&'a Ident>,
+    pub on_remove: Option<&'a Ident>,
+    pub on_clear: Option<&'a Ident>,
 }
 
 impl<'a> MapLifecycleDescriptor<'a> {
