@@ -289,7 +289,7 @@ fn validate_no_type_sig(sig: &Signature) -> Validation<(), Errors<syn::Error>> {
         })
         .and_then(|iter| {
             let param_types = extract_types(iter);
-            if param_types.len() == 1 {
+            if param_types.is_empty() {
                 Validation::valid(())
             } else {
                 Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE))
@@ -313,7 +313,7 @@ fn validate_typed_sig(
         })
         .and_then(|iter| {
             let param_types = extract_types(iter);
-            if param_types.len() != expected_params + 1 {
+            if param_types.len() != expected_params {
                 Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE))
             } else {
                 let rep_type = param_types[1];
