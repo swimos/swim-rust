@@ -20,8 +20,8 @@ use swim_utilities::errors::{
     Errors,
 };
 use syn::{
-    parse_quote, Attribute, FnArg, GenericParam, Ident, ImplItem, ImplItemMethod, Item, Lit, Meta,
-    NestedMeta, Path, ReturnType, Signature, Type, TypeReference, AttributeArgs,
+    parse_quote, Attribute, AttributeArgs, FnArg, GenericParam, Ident, ImplItem, ImplItemMethod,
+    Item, Lit, Meta, NestedMeta, Path, ReturnType, Signature, Type, TypeReference,
 };
 
 use super::tree::BinTree;
@@ -36,9 +36,13 @@ const BAD_SIGNATURE: &str =
 const BAD_PARAMS: &str = "Invalid parameters to method handler annotation.";
 const NO_AGENT: &str = "The name of the agent must be provided: e.g. #[lifecycle(MyAgent)].";
 const EXTRA_PARAM: &str = "Unexpected attribute parameter.";
-const BAD_PARAM: &str = "The parameter to the lifecycle attribute should be a path to an agent type.";
+const BAD_PARAM: &str =
+    "The parameter to the lifecycle attribute should be a path to an agent type.";
 
-pub fn validate_attr_args(item: &Item, args: AttributeArgs) -> Validation<Path, Errors<syn::Error>> {
+pub fn validate_attr_args(
+    item: &Item,
+    args: AttributeArgs,
+) -> Validation<Path, Errors<syn::Error>> {
     match args.as_slice() {
         [] => Validation::fail(syn::Error::new_spanned(item, NO_AGENT)),
         [NestedMeta::Meta(Meta::Path(agent))] => Validation::valid(agent.clone()),
@@ -130,11 +134,8 @@ fn validate_method<'a>(
             match (acc, get_kind(attr)) {
                 (Some(mut desc), Some(Ok((k, target)))) => {
                     let Descriptor { kind, targets } = &mut desc;
-                    if k != *kind {
-                        Validation::Failed(Some(syn::Error::new_spanned(
-                            method,
-                            INCONSISTENT_HANDLERS,
-                        )))
+                    if let Err(e) = kind.merge(method, k) {
+                        Validation::Failed(Some(e))
                     } else {
                         if let Some(t) = target {
                             targets.insert(t);
@@ -190,6 +191,18 @@ fn validate_method_as<'a>(
                     } else {
                         Validation::valid(acc)
                     }
+                })
+            }
+            HandlerKind::StartAndStop => {
+                Validation::join(acc, validate_no_type_sig(sig)).and_then(|(mut acc, _)| {
+                    let mut errors = Errors::empty();
+                    if let Err(e) = acc.add_on_start(&sig.ident) {
+                        errors.push(e);
+                    }
+                    if let Err(e) = acc.add_on_stop(&sig.ident) {
+                        errors.push(e);
+                    }
+                    Validation::Validated(acc, errors)
                 })
             }
             HandlerKind::Command => Validation::join(acc, validate_typed_sig(sig, 1, true))
@@ -409,12 +422,33 @@ fn extract_target(attr: &Attribute) -> Result<String, syn::Error> {
 enum HandlerKind {
     Start,
     Stop,
+    StartAndStop,
     Command,
     Event,
     Set,
     Update,
     Remove,
     Clear,
+}
+
+impl HandlerKind {
+    fn merge(&mut self, sig: &ImplItemMethod, other: HandlerKind) -> Result<(), syn::Error> {
+        match (self, other) {
+            (k@HandlerKind::Start, HandlerKind::Stop)
+            | (k@HandlerKind::Stop, HandlerKind::Start) => {
+                *k = HandlerKind::StartAndStop;
+                Ok(())
+            },
+            (HandlerKind::StartAndStop, HandlerKind::Start | HandlerKind::Stop) => Ok(()),
+            (k1, k2) => {
+                if *k1 == k2 {
+                    Ok(())
+                } else {
+                    Err(syn::Error::new_spanned(sig, INCONSISTENT_HANDLERS))
+                }
+            }
+        }
+    }
 }
 
 const ON_START: &str = "on_start";
