@@ -18,8 +18,8 @@ use lane_projections::ProjectionsImpl;
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 
-use swim_utilities::errors::Errors;
-use syn::{parse_macro_input, DeriveInput, Item, Path};
+use swim_utilities::errors::{Errors, validation::Validation};
+use syn::{parse_macro_input, DeriveInput, Item, AttributeArgs};
 
 mod agent_lifecycle;
 mod lane_model_derive;
@@ -59,23 +59,22 @@ pub fn projections(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 #[proc_macro_attribute]
 pub fn lifecycle(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let path = parse_macro_input!(attr as Path);
+    let meta = parse_macro_input!(attr as AttributeArgs);
     let mut item = parse_macro_input!(item as Item);
-    let attrs = agent_lifecycle::strip_handler_attrs(&mut item);
-    attrs
-        .and_then(|stripped_attrs| {
-            agent_lifecycle::validate_with_attrs(&path, &item, stripped_attrs)
-        })
-        .map(ImplAgentLifecycle::new)
-        .map(|agent_lc| {
-            quote! {
-                #item
-                #agent_lc
-            }
-        })
-        .into_result()
-        .unwrap_or_else(errs_to_compile_errors)
-        .into()
+    let path = agent_lifecycle::validate_attr_args(&item, meta);
+    let stripped_attrs = agent_lifecycle::strip_handler_attrs(&mut item);
+    Validation::join(path, stripped_attrs).and_then(|(path, stripped_attrs)| {
+        agent_lifecycle::validate_with_attrs(path, &item, stripped_attrs)
+    }).map(ImplAgentLifecycle::new)
+    .map(|agent_lc| {
+        quote! {
+            #item
+            #agent_lc
+        }
+    })
+    .into_result()
+    .unwrap_or_else(errs_to_compile_errors)
+    .into()
 }
 
 fn errs_to_compile_errors(errors: Errors<syn::Error>) -> proc_macro2::TokenStream {

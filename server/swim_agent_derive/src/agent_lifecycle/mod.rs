@@ -27,7 +27,7 @@ use self::{
 mod model;
 mod tree;
 
-pub use model::{strip_handler_attrs, validate_with_attrs};
+pub use model::{strip_handler_attrs, validate_with_attrs, validate_attr_args};
 
 pub struct ImplAgentLifecycle<'a> {
     descriptor: AgentLifecycleDescriptor<'a>,
@@ -179,7 +179,7 @@ impl<'a> ToTokens for ImplAgentLifecycle<'a> {
         let ImplAgentLifecycle {
             descriptor:
                 AgentLifecycleDescriptor {
-                    agent_type,
+                    ref agent_type,
                     lifecycle_type,
                     on_start,
                     on_stop,
@@ -187,7 +187,7 @@ impl<'a> ToTokens for ImplAgentLifecycle<'a> {
                 },
         } = *self;
 
-        let lane_lifecycles = LifecycleTree::new(agent_type, lifecycle_type, lane_lifecycles);
+        let lane_lifecycles = LifecycleTree::new(&agent_type, lifecycle_type, lane_lifecycles);
 
         let mut lifecycle_builder: syn::Expr = parse_quote! {
             ::swim_agent::lifecycle::stateful::StatefulAgentLifecycle::<#agent_type, _>::new(self)

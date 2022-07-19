@@ -21,7 +21,7 @@ use swim_utilities::errors::{
 };
 use syn::{
     parse_quote, Attribute, FnArg, GenericParam, Ident, ImplItem, ImplItemMethod, Item, Lit, Meta,
-    NestedMeta, Path, ReturnType, Signature, Type, TypeReference,
+    NestedMeta, Path, ReturnType, Signature, Type, TypeReference, AttributeArgs,
 };
 
 use super::tree::BinTree;
@@ -29,6 +29,23 @@ use super::tree::BinTree;
 const NOT_IMPL: &str = "The lifecycle annotation can only be applied to an impl block.";
 const NO_GENERICS: &str = "Generic lifecycles are not yet supported.";
 const INCONSISTENT_HANDLERS: &str = "Method marked with inconsistent handler attributes.";
+const MANDATORY_SELF: &str = "The receiver of an event handler must be &self.";
+const REQUIRED_CONTEXT: &str = "A HandlerContext parameter is required.";
+const BAD_SIGNATURE: &str =
+    "The handler does not have the correct signature for the annotated handler kind.";
+const BAD_PARAMS: &str = "Invalid parameters to method handler annotation.";
+const NO_AGENT: &str = "The name of the agent must be provided: e.g. #[lifecycle(MyAgent)].";
+const EXTRA_PARAM: &str = "Unexpected attribute parameter.";
+const BAD_PARAM: &str = "The parameter to the lifecycle attribute should be a path to an agent type.";
+
+pub fn validate_attr_args(item: &Item, args: AttributeArgs) -> Validation<Path, Errors<syn::Error>> {
+    match args.as_slice() {
+        [] => Validation::fail(syn::Error::new_spanned(item, NO_AGENT)),
+        [NestedMeta::Meta(Meta::Path(agent))] => Validation::valid(agent.clone()),
+        [single] => Validation::fail(syn::Error::new_spanned(single, BAD_PARAM)),
+        [_, second, ..] => Validation::fail(syn::Error::new_spanned(second, EXTRA_PARAM)),
+    }
+}
 
 pub fn strip_handler_attrs(
     item: &mut Item,
@@ -62,7 +79,7 @@ pub fn strip_handler_attrs(
 }
 
 pub fn validate_with_attrs<'a>(
-    agent_type: &'a Path,
+    agent_type: Path,
     item: &'a Item,
     stripped_attrs: Vec<Option<Vec<Attribute>>>,
 ) -> Validation<AgentLifecycleDescriptor<'a>, Errors<syn::Error>> {
@@ -260,12 +277,6 @@ fn check_sig_common(sig: &Signature) -> Result<(), syn::Error> {
     .map_err(|msg| syn::Error::new_spanned(sig, msg))
 }
 
-const MANDATORY_SELF: &str = "The receiver of an event handler must be &self.";
-const REQUIRED_CONTEXT: &str = "A HandlerContext parameter is required.";
-const BAD_SIGNATURE: &str =
-    "The handler does not have the correct signature for the annotated handler kind.";
-const BAD_PARAMS: &str = "Invalid parameters to method handler annotation.";
-
 fn validate_no_type_sig(sig: &Signature) -> Validation<(), Errors<syn::Error>> {
     let iter = sig.inputs.iter();
     check_receiver(sig, iter)
@@ -441,7 +452,7 @@ fn assess_attr(attr: &Attribute) -> bool {
 }
 
 pub struct AgentLifecycleDescriptor<'a> {
-    pub agent_type: &'a Path,
+    pub agent_type: Path,
     pub lifecycle_type: &'a Type,
     pub on_start: Option<&'a Ident>,
     pub on_stop: Option<&'a Ident>,
@@ -449,7 +460,7 @@ pub struct AgentLifecycleDescriptor<'a> {
 }
 
 pub struct AgentLifecycleDescriptorBuilder<'a> {
-    pub agent_type: &'a Path,
+    pub agent_type: Path,
     pub lifecycle_type: &'a Type,
     pub on_start: Option<&'a Ident>,
     pub on_stop: Option<&'a Ident>,
@@ -460,7 +471,7 @@ const DUPLICATE_ON_STOP: &str = "Duplicate on_stop event handler.";
 const DUPLICATE_ON_START: &str = "Duplicate on_start event handler.";
 
 impl<'a> AgentLifecycleDescriptorBuilder<'a> {
-    pub fn new(agent_type: &'a Path, lifecycle_type: &'a Type) -> Self {
+    pub fn new(agent_type: Path, lifecycle_type: &'a Type) -> Self {
         AgentLifecycleDescriptorBuilder {
             agent_type,
             lifecycle_type,
