@@ -423,11 +423,17 @@ fn assess_attr(attr: &Attribute) -> bool {
         match path.segments.first() {
             Some(seg) if path.segments.len() == 1 && seg.arguments.is_empty() => {
                 let seg_str = seg.ident.to_string();
-                match seg_str.as_str() {
-                    ON_START | ON_STOP | ON_COMMAND | ON_EVENT | ON_SET | ON_UPDATE | ON_REMOVE
-                    | ON_CLEAR => true,
-                    _ => false,
-                }
+                matches!(
+                    seg_str.as_str(),
+                    ON_START
+                        | ON_STOP
+                        | ON_COMMAND
+                        | ON_EVENT
+                        | ON_SET
+                        | ON_UPDATE
+                        | ON_REMOVE
+                        | ON_CLEAR
+                )
             }
             _ => false,
         }

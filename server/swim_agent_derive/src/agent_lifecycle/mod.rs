@@ -158,7 +158,7 @@ impl<'a> ToTokens for LifecycleTree<'a> {
                 right,
             } => {
                 let field_ident = lifecycle.lane_ident();
-                let builder = LaneLifecycleBuilder::new(agent_type, lifecycle_type, &lifecycle);
+                let builder = LaneLifecycleBuilder::new(agent_type, lifecycle_type, lifecycle);
                 let builder_expr = builder.into_builder_expr();
                 let branch_type = lifecycle.branch_type();
                 let left_tree = LifecycleTree::new(agent_type, lifecycle_type, left.as_ref());
