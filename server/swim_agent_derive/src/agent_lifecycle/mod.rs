@@ -164,7 +164,7 @@ impl<'a> ToTokens for LifecycleTree<'a> {
                 let left_tree = LifecycleTree::new(agent_type, lifecycle_type, left.as_ref());
                 let right_tree = LifecycleTree::new(agent_type, lifecycle_type, right.as_ref());
                 quote! {
-                    #branch_type::new(#name, |agent: #agent_type| &agent.#field_ident, #builder_expr, #left_tree, #right_tree)
+                    #branch_type::new(#name, |agent: &#agent_type| &agent.#field_ident, #builder_expr, #left_tree, #right_tree)
                 }
             }
             BinTree::Leaf => {

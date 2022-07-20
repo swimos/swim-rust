@@ -326,19 +326,19 @@ fn validate_typed_sig(
         })
         .and_then(|iter| {
             let param_types = extract_types(iter);
-            if param_types.len() != expected_params {
-                Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE))
-            } else {
-                let rep_type = param_types[1];
-                if peel_ref {
-                    if let Type::Reference(ref_type) = rep_type {
-                        peel_ref_type(sig, ref_type)
+            match param_types.first() {
+                Some(rep_type) if param_types.len() == expected_params => {
+                    if peel_ref {
+                        if let Type::Reference(ref_type) = rep_type {
+                            peel_ref_type(sig, ref_type)
+                        } else {
+                            Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE))
+                        }
                     } else {
-                        Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE))
+                        Validation::valid(rep_type)
                     }
-                } else {
-                    Validation::valid(rep_type)
                 }
+                _ => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE))
             }
         })
 }
@@ -809,17 +809,17 @@ impl<'a> LaneLifecycle<'a> {
         match self {
             LaneLifecycle::Value(ValueLifecycleDescriptor { .. }) => {
                 parse_quote! {
-                    ::swim_agent::lifecycle::lane_event::value::ValueBranch
+                    ::swim_agent::lifecycle::lane_event::ValueBranch
                 }
             }
             LaneLifecycle::Command(CommandLifecycleDescriptor { .. }) => {
                 parse_quote! {
-                    ::swim_agent::lifecycle::lane_event::command::CommandBranch
+                    ::swim_agent::lifecycle::lane_event::CommandBranch
                 }
             }
             LaneLifecycle::Map(MapLifecycleDescriptor { .. }) => {
                 parse_quote! {
-                    ::swim_agent::lifecycle::lane_event::map::MapBranch
+                    ::swim_agent::lifecycle::lane_event::MapBranch
                 }
             }
         }
