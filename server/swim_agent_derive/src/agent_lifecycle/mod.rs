@@ -92,11 +92,10 @@ impl<'a> LaneLifecycleBuilder<'a> {
             }
             LaneLifecycle::Command(CommandLifecycleDescriptor { on_command, .. }) => {
                 parse_quote! {
-                    ::swim_agent::lanes::value::lifecycle::StatefulValueLaneLifecycle::on_event(
+                    ::swim_agent::lanes::command::lifecycle::StatefulCommandLaneLifecycle::on_command(
                         <::swim_agent::lanes::command::lifecycle::StatefulCommandLaneLifecycle::<#agent_type, #lifecycle_type, _> as ::core::default::Default>::default(),
                         #lifecycle_type::#on_command
                     )
-
                 }
             }
             LaneLifecycle::Map(MapLifecycleDescriptor {

@@ -102,7 +102,7 @@ where
 
 impl<Context, Shared, T, OnCmd> StatefulCommandLaneLifecycle<Context, Shared, T, OnCmd> {
     /// Replace the `on_command` handler with another derived from a closure.
-    pub fn on_command<F, H>(
+    pub fn on_command<F>(
         self,
         f: F,
     ) -> StatefulCommandLaneLifecycle<Context, Shared, T, FnHandler<F>>
