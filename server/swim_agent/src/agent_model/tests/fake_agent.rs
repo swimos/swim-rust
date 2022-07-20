@@ -95,15 +95,15 @@ impl AgentLaneModel for TestAgent {
 
     type OnSyncHandler = TestHandler;
 
-    fn value_like_lanes(&self) -> HashSet<&str> {
+    fn value_like_lanes() -> HashSet<&'static str> {
         [VAL_LANE].into_iter().collect()
     }
 
-    fn map_like_lanes(&self) -> HashSet<&str> {
+    fn map_like_lanes() -> HashSet<&'static str> {
         [MAP_LANE].into_iter().collect()
     }
 
-    fn lane_ids(&self) -> HashMap<u64, Text> {
+    fn lane_ids() -> HashMap<u64, Text> {
         [(0, VAL_LANE), (1, MAP_LANE)]
             .into_iter()
             .map(|(k, v)| (k, Text::new(v)))

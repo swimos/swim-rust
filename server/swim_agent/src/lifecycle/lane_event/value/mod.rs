@@ -47,6 +47,18 @@ pub struct ValueBranch<Context, T, LC, L, R> {
     right: R,
 }
 
+impl<Context, T, LC: Clone, L: Clone, R: Clone> Clone for ValueBranch<Context, T, LC, L, R> {
+    fn clone(&self) -> Self {
+        Self {
+            label: self.label,
+            projection: self.projection,
+            lifecycle: self.lifecycle.clone(),
+            left: self.left.clone(),
+            right: self.right.clone(),
+        }
+    }
+}
+
 impl<Context, T, LC, L, R> Debug for ValueBranch<Context, T, LC, L, R>
 where
     LC: Debug,

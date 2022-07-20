@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use bytes::BytesMut;
 use futures::FutureExt;
@@ -60,7 +61,7 @@ pub enum WriteResult {
 /// At trait which describes the lanes of an agent which can be run as a task attached to an
 /// [`AgentContext`]. A type implementing this trait is sufficient to produce a functional agent
 /// although it will not provided any lifecycle events for the agent or its lanes.
-pub trait AgentLaneModel: Sized {
+pub trait AgentLaneModel: Sized + Send {
     /// The type of handler to run when a command is received for a value lane.
     type ValCommandHandler: EventHandler<Self, Completion = ()> + Send + 'static;
 
@@ -71,13 +72,13 @@ pub trait AgentLaneModel: Sized {
     type OnSyncHandler: EventHandler<Self, Completion = ()> + Send + 'static;
 
     /// The names of all value like lanes (value lanes, command lanes, etc) in the agent.
-    fn value_like_lanes(&self) -> HashSet<&str>;
+    fn value_like_lanes() -> HashSet<&'static str>;
 
     /// The names of all map like lanes in the agent.
-    fn map_like_lanes(&self) -> HashSet<&str>;
+    fn map_like_lanes() -> HashSet<&'static str>;
 
     /// Mapping from lane identifiers to lane names for all lanes in the agent.
-    fn lane_ids(&self) -> HashMap<u64, Text>;
+    fn lane_ids() -> HashMap<u64, Text>;
 
     /// Create a handler that will update the state of the agent when a command is received
     /// for a value lane. There will be no handler if the lane does not exist or does not
@@ -114,19 +115,47 @@ pub trait AgentLaneModel: Sized {
     fn write_event(&self, lane: &str, buffer: &mut BytesMut) -> Option<WriteResult>;
 }
 
+pub trait LaneModelFac: Send + Sync {
+    type LaneModel: AgentLaneModel;
+
+    fn create(&self) -> Self::LaneModel;
+}
+
+impl<F, LaneModel: AgentLaneModel> LaneModelFac for F
+where
+    F: Fn() -> LaneModel + Send + Sync,
+{
+    type LaneModel = LaneModel;
+
+    fn create(&self) -> Self::LaneModel {
+        self()
+    }
+}
+
 /// The complete model for an agent consisting of an implementation of [`AgentLaneModel`] to describe the lanes
 /// of the agent and an implementation of [`AgentLifecycle`] to describe the lifecycle events that will trigger,
 /// for  example, when the agent starts or stops or when the state of a lane changes.
-#[derive(Debug, Clone)]
 pub struct AgentModel<LaneModel, Lifecycle> {
-    lane_model: LaneModel,
+    lane_model_fac: Arc<dyn LaneModelFac<LaneModel = LaneModel>>,
     lifecycle: Lifecycle,
 }
 
+impl<LaneModel, Lifecycle: Clone> Clone for AgentModel<LaneModel, Lifecycle> {
+    fn clone(&self) -> Self {
+        Self {
+            lane_model_fac: self.lane_model_fac.clone(),
+            lifecycle: self.lifecycle.clone(),
+        }
+    }
+}
+
 impl<LaneModel, Lifecycle> AgentModel<LaneModel, Lifecycle> {
-    pub fn new(lane_model: LaneModel, lifecycle: Lifecycle) -> Self {
+    pub fn new(
+        lane_model_fac: Arc<dyn LaneModelFac<LaneModel = LaneModel>>,
+        lifecycle: Lifecycle,
+    ) -> Self {
         AgentModel {
-            lane_model,
+            lane_model_fac,
             lifecycle,
         }
     }
@@ -134,7 +163,7 @@ impl<LaneModel, Lifecycle> AgentModel<LaneModel, Lifecycle> {
 
 impl<LaneModel, Lifecycle> Agent for AgentModel<LaneModel, Lifecycle>
 where
-    LaneModel: AgentLaneModel + Clone + Send + Sync + 'static,
+    LaneModel: AgentLaneModel + Clone + Send + 'static,
     Lifecycle: AgentLifecycle<LaneModel> + Clone + Send + Sync + 'static,
 {
     fn run<'a>(
@@ -190,18 +219,18 @@ where
         Lifecycle: AgentLifecycle<LaneModel>,
     {
         let AgentModel {
-            lane_model,
+            lane_model_fac,
             lifecycle,
-        } = &self;
+        } = self;
 
         let meta = AgentMetadata::new(&route, &config);
 
         let mut value_lane_io = HashMap::new();
         let mut map_lane_io = HashMap::new();
 
-        let val_lane_names = lane_model.value_like_lanes();
-        let map_lane_names = lane_model.map_like_lanes();
-        let lane_ids = lane_model.lane_ids();
+        let val_lane_names = LaneModel::value_like_lanes();
+        let map_lane_names = LaneModel::map_like_lanes();
+        let lane_ids = LaneModel::lane_ids();
 
         // Set up the lanes of the agent.
         for name in val_lane_names {
@@ -216,213 +245,221 @@ where
             map_lane_io.insert(Text::new(name), io);
         }
 
+        let lane_model = lane_model_fac.create();
         // Run the agent's `on_start` event handler.
         let on_start_handler = lifecycle.on_start();
         if let Err(e) = run_handler(
             meta,
-            lane_model,
-            lifecycle,
+            &lane_model,
+            &lifecycle,
             on_start_handler,
             &lane_ids,
             &mut Discard,
         ) {
             return Err(AgentInitError::UserCodeError(Box::new(e)));
         }
-        Ok(self
-            .run_agent(route, config, lane_ids, value_lane_io, map_lane_io)
-            .boxed())
-    }
-
-    /// Core event loop for the agent that routes incoming data from the runtime to the lanes and
-    /// state changes fromt he lanes to the runtime.
-    ///
-    /// #Arguments
-    /// * `route` - The node URI of the agent instance.
-    /// * `config` - Agent specific configuration parameters.
-    /// * `lane_ids` - Mapping between lane names and lane IDs.
-    /// * `value_lane_io` - Channels to the runtime for value like lanes.
-    /// * `map_lane_io` - Channels to the runtime for map like lanes.
-    async fn run_agent(
-        self,
-        route: RelativeUri,
-        config: AgentConfig,
-        lane_ids: HashMap<u64, Text>,
-        value_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
-        map_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
-    ) -> Result<(), AgentTaskError> {
-        let AgentModel {
+        Ok(run_agent(
             lane_model,
             lifecycle,
-        } = self;
-        let meta = AgentMetadata::new(&route, &config);
+            route,
+            config,
+            lane_ids,
+            value_lane_io,
+            map_lane_io,
+        )
+        .boxed())
+    }
+}
 
-        let mut lane_ids_rev = HashMap::new();
-        for (id, name) in &lane_ids {
-            lane_ids_rev.insert(name.clone(), *id);
-        }
+/// Core event loop for the agent that routes incoming data from the runtime to the lanes and
+/// state changes fromt he lanes to the runtime.
+///
+/// #Arguments
+/// * `route` - The node URI of the agent instance.
+/// * `config` - Agent specific configuration parameters.
+/// * `lane_ids` - Mapping between lane names and lane IDs.
+/// * `value_lane_io` - Channels to the runtime for value like lanes.
+/// * `map_lane_io` - Channels to the runtime for map like lanes.
+async fn run_agent<LaneModel, Lifecycle>(
+    lane_model: LaneModel,
+    lifecycle: Lifecycle,
+    route: RelativeUri,
+    config: AgentConfig,
+    lane_ids: HashMap<u64, Text>,
+    value_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
+    map_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
+) -> Result<(), AgentTaskError>
+where
+    LaneModel: AgentLaneModel + Send + 'static,
+    Lifecycle: AgentLifecycle<LaneModel> + 'static,
+{
+    let meta = AgentMetadata::new(&route, &config);
 
-        let mut lane_readers = SelectAll::new();
-        let mut lane_writers = HashMap::new();
-        let mut pending_writes = FuturesUnordered::new();
+    let mut lane_ids_rev = HashMap::new();
+    for (id, name) in &lane_ids {
+        lane_ids_rev.insert(name.clone(), *id);
+    }
 
-        // Set up readers and writes for each lane.
-        for (name, (tx, rx)) in value_lane_io {
-            let id = lane_ids_rev[&name];
-            lane_readers.push(LaneReader::value(id, rx));
-            lane_writers.insert(id, LaneWriter::new(id, tx));
-        }
+    let mut lane_readers = SelectAll::new();
+    let mut lane_writers = HashMap::new();
+    let mut pending_writes = FuturesUnordered::new();
 
-        for (name, (tx, rx)) in map_lane_io {
-            let id = lane_ids_rev[&name];
-            lane_readers.push(LaneReader::map(id, rx));
-            lane_writers.insert(id, LaneWriter::new(id, tx));
-        }
+    // Set up readers and writes for each lane.
+    for (name, (tx, rx)) in value_lane_io {
+        let id = lane_ids_rev[&name];
+        lane_readers.push(LaneReader::value(id, rx));
+        lane_writers.insert(id, LaneWriter::new(id, tx));
+    }
 
-        // This set keeps track of which lanes have data to be written (according to executed event handlers).
-        let mut dirty_lanes: HashSet<u64> = HashSet::new();
+    for (name, (tx, rx)) in map_lane_io {
+        let id = lane_ids_rev[&name];
+        lane_readers.push(LaneReader::map(id, rx));
+        lane_writers.insert(id, LaneWriter::new(id, tx));
+    }
 
-        loop {
-            let task_event: TaskEvent = tokio::select! {
-                biased;
-                write_done = pending_writes.next(), if !pending_writes.is_empty() => {
-                    if let Some((writer, result)) = write_done {
-                        TaskEvent::WriteComplete {
-                            writer, result
-                        }
-                    } else {
-                        continue;
-                    }
-                }
-                maybe_req = lane_readers.next() => {
-                    match maybe_req {
-                        Some((id, Ok(Either::Left(request)))) => TaskEvent::ValueRequest{
-                            id, request
-                        },
-                        Some((id, Ok(Either::Right(request)))) => TaskEvent::MapRequest{
-                            id, request
-                        },
-                        Some((id, Err(error))) => TaskEvent::RequestError {
-                            id, error
-                        },
-                        _ => {
-                            break Ok(());
-                        }
-                    }
-                }
-            };
-            match task_event {
-                TaskEvent::WriteComplete { writer, result } => {
-                    if result.is_err() {
-                        break Ok(()); //Failing to write indicates that the runtime has stopped so we can exit without an error.
-                    }
-                    lane_writers.insert(writer.lane_id(), writer);
-                }
-                TaskEvent::ValueRequest { id, request } => {
-                    let name = &lane_ids[&id];
-                    match request {
-                        LaneRequest::Command(body) => {
-                            if let Some(handler) = lane_model.on_value_command(name.as_str(), body)
-                            {
-                                if let Err(e) = run_handler(
-                                    meta,
-                                    &lane_model,
-                                    &lifecycle,
-                                    handler,
-                                    &lane_ids,
-                                    &mut dirty_lanes,
-                                ) {
-                                    break Err(AgentTaskError::UserCodeError(Box::new(e)));
-                                }
-                            }
-                        }
-                        LaneRequest::Sync(remote_id) => {
-                            if let Some(handler) = lane_model.on_sync(name.as_str(), remote_id) {
-                                if let Err(e) = run_handler(
-                                    meta,
-                                    &lane_model,
-                                    &lifecycle,
-                                    handler,
-                                    &lane_ids,
-                                    &mut dirty_lanes,
-                                ) {
-                                    break Err(AgentTaskError::UserCodeError(Box::new(e)));
-                                }
-                            }
-                        }
-                    }
-                }
-                TaskEvent::MapRequest { id, request } => {
-                    let name = &lane_ids[&id];
-                    match request {
-                        LaneRequest::Command(body) => {
-                            if let Some(handler) = lane_model.on_map_command(name.as_str(), body) {
-                                if let Err(e) = run_handler(
-                                    meta,
-                                    &lane_model,
-                                    &lifecycle,
-                                    handler,
-                                    &lane_ids,
-                                    &mut dirty_lanes,
-                                ) {
-                                    break Err(AgentTaskError::UserCodeError(Box::new(e)));
-                                }
-                            }
-                        }
-                        LaneRequest::Sync(remote_id) => {
-                            if let Some(handler) = lane_model.on_sync(name.as_str(), remote_id) {
-                                if let Err(e) = run_handler(
-                                    meta,
-                                    &lane_model,
-                                    &lifecycle,
-                                    handler,
-                                    &lane_ids,
-                                    &mut dirty_lanes,
-                                ) {
-                                    break Err(AgentTaskError::UserCodeError(Box::new(e)));
-                                }
-                            }
-                        }
-                    }
-                }
-                TaskEvent::RequestError { id, error } => {
-                    let lane = lane_ids[&id].clone();
-                    break Err(AgentTaskError::BadFrame { lane, error });
-                }
-            }
-            // Attempt to write to the outgoing buffers for any lanes with data.
-            dirty_lanes.retain(|id| {
-                if let Some(mut tx) = lane_writers.remove(id) {
-                    let name = &lane_ids[id];
-                    match lane_model.write_event(name.as_str(), &mut tx.buffer) {
-                        Some(WriteResult::Done) => {
-                            pending_writes.push(tx.write());
-                            false
-                        }
-                        Some(WriteResult::DataStillAvailable) => {
-                            pending_writes.push(tx.write());
-                            true
-                        }
-                        _ => false,
+    // This set keeps track of which lanes have data to be written (according to executed event handlers).
+    let mut dirty_lanes: HashSet<u64> = HashSet::new();
+
+    loop {
+        let task_event: TaskEvent = tokio::select! {
+            biased;
+            write_done = pending_writes.next(), if !pending_writes.is_empty() => {
+                if let Some((writer, result)) = write_done {
+                    TaskEvent::WriteComplete {
+                        writer, result
                     }
                 } else {
-                    true
+                    continue;
                 }
-            });
-        }?;
-        // Try to run the `on_stop` handler before we stop.
-        let on_stop_handler = lifecycle.on_stop();
-        if let Err(e) = run_handler(
-            meta,
-            &lane_model,
-            &lifecycle,
-            on_stop_handler,
-            &lane_ids,
-            &mut Discard,
-        ) {
-            Err(AgentTaskError::UserCodeError(Box::new(e)))
-        } else {
-            Ok(())
+            }
+            maybe_req = lane_readers.next() => {
+                match maybe_req {
+                    Some((id, Ok(Either::Left(request)))) => TaskEvent::ValueRequest{
+                        id, request
+                    },
+                    Some((id, Ok(Either::Right(request)))) => TaskEvent::MapRequest{
+                        id, request
+                    },
+                    Some((id, Err(error))) => TaskEvent::RequestError {
+                        id, error
+                    },
+                    _ => {
+                        break Ok(());
+                    }
+                }
+            }
+        };
+        match task_event {
+            TaskEvent::WriteComplete { writer, result } => {
+                if result.is_err() {
+                    break Ok(()); //Failing to write indicates that the runtime has stopped so we can exit without an error.
+                }
+                lane_writers.insert(writer.lane_id(), writer);
+            }
+            TaskEvent::ValueRequest { id, request } => {
+                let name = &lane_ids[&id];
+                match request {
+                    LaneRequest::Command(body) => {
+                        if let Some(handler) = lane_model.on_value_command(name.as_str(), body) {
+                            if let Err(e) = run_handler(
+                                meta,
+                                &lane_model,
+                                &lifecycle,
+                                handler,
+                                &lane_ids,
+                                &mut dirty_lanes,
+                            ) {
+                                break Err(AgentTaskError::UserCodeError(Box::new(e)));
+                            }
+                        }
+                    }
+                    LaneRequest::Sync(remote_id) => {
+                        if let Some(handler) = lane_model.on_sync(name.as_str(), remote_id) {
+                            if let Err(e) = run_handler(
+                                meta,
+                                &lane_model,
+                                &lifecycle,
+                                handler,
+                                &lane_ids,
+                                &mut dirty_lanes,
+                            ) {
+                                break Err(AgentTaskError::UserCodeError(Box::new(e)));
+                            }
+                        }
+                    }
+                }
+            }
+            TaskEvent::MapRequest { id, request } => {
+                let name = &lane_ids[&id];
+                match request {
+                    LaneRequest::Command(body) => {
+                        if let Some(handler) = lane_model.on_map_command(name.as_str(), body) {
+                            if let Err(e) = run_handler(
+                                meta,
+                                &lane_model,
+                                &lifecycle,
+                                handler,
+                                &lane_ids,
+                                &mut dirty_lanes,
+                            ) {
+                                break Err(AgentTaskError::UserCodeError(Box::new(e)));
+                            }
+                        }
+                    }
+                    LaneRequest::Sync(remote_id) => {
+                        if let Some(handler) = lane_model.on_sync(name.as_str(), remote_id) {
+                            if let Err(e) = run_handler(
+                                meta,
+                                &lane_model,
+                                &lifecycle,
+                                handler,
+                                &lane_ids,
+                                &mut dirty_lanes,
+                            ) {
+                                break Err(AgentTaskError::UserCodeError(Box::new(e)));
+                            }
+                        }
+                    }
+                }
+            }
+            TaskEvent::RequestError { id, error } => {
+                let lane = lane_ids[&id].clone();
+                break Err(AgentTaskError::BadFrame { lane, error });
+            }
         }
+        // Attempt to write to the outgoing buffers for any lanes with data.
+        dirty_lanes.retain(|id| {
+            if let Some(mut tx) = lane_writers.remove(id) {
+                let name = &lane_ids[id];
+                match lane_model.write_event(name.as_str(), &mut tx.buffer) {
+                    Some(WriteResult::Done) => {
+                        pending_writes.push(tx.write());
+                        false
+                    }
+                    Some(WriteResult::DataStillAvailable) => {
+                        pending_writes.push(tx.write());
+                        true
+                    }
+                    _ => false,
+                }
+            } else {
+                true
+            }
+        });
+    }?;
+    // Try to run the `on_stop` handler before we stop.
+    let on_stop_handler = lifecycle.on_stop();
+    if let Err(e) = run_handler(
+        meta,
+        &lane_model,
+        &lifecycle,
+        on_stop_handler,
+        &lane_ids,
+        &mut Discard,
+    ) {
+        Err(AgentTaskError::UserCodeError(Box::new(e)))
+    } else {
+        Ok(())
     }
 }
 

@@ -48,6 +48,20 @@ pub struct StatefulAgentLifecycle<
     lane_event: LaneEv,
 }
 
+impl<Context, State: Clone, FStart: Clone, FStop: Clone, LaneEv: Clone> Clone
+    for StatefulAgentLifecycle<Context, State, FStart, FStop, LaneEv>
+{
+    fn clone(&self) -> Self {
+        Self {
+            state: self.state.clone(),
+            handler_context: self.handler_context,
+            on_start: self.on_start.clone(),
+            on_stop: self.on_stop.clone(),
+            lane_event: self.lane_event.clone(),
+        }
+    }
+}
+
 assert_impl_all!(StatefulAgentLifecycle<(), ()>: AgentLifecycle<()>, Send);
 
 impl<Context, State> StatefulAgentLifecycle<Context, State> {

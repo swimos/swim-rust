@@ -74,6 +74,17 @@ pub struct StatefulCommandLaneLifecycle<Context, Shared, T, OnCmd = NoHandler> {
     on_command: OnCmd,
 }
 
+impl<Context, Shared, T, OnCmd: Clone> Clone
+    for StatefulCommandLaneLifecycle<Context, Shared, T, OnCmd>
+{
+    fn clone(&self) -> Self {
+        Self {
+            _value_type: PhantomData,
+            on_command: self.on_command.clone(),
+        }
+    }
+}
+
 impl<Context, Shared, T> Default for StatefulCommandLaneLifecycle<Context, Shared, T> {
     fn default() -> Self {
         Self {

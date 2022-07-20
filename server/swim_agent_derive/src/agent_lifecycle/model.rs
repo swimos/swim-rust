@@ -338,7 +338,7 @@ fn validate_typed_sig(
                         Validation::valid(rep_type)
                     }
                 }
-                _ => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE))
+                _ => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
             }
         })
 }
@@ -434,11 +434,11 @@ enum HandlerKind {
 impl HandlerKind {
     fn merge(&mut self, sig: &ImplItemMethod, other: HandlerKind) -> Result<(), syn::Error> {
         match (self, other) {
-            (k@HandlerKind::Start, HandlerKind::Stop)
-            | (k@HandlerKind::Stop, HandlerKind::Start) => {
+            (k @ HandlerKind::Start, HandlerKind::Stop)
+            | (k @ HandlerKind::Stop, HandlerKind::Start) => {
                 *k = HandlerKind::StartAndStop;
                 Ok(())
-            },
+            }
             (HandlerKind::StartAndStop, HandlerKind::Start | HandlerKind::Stop) => Ok(()),
             (k1, k2) => {
                 if *k1 == k2 {

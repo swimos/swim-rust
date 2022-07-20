@@ -104,6 +104,19 @@ pub struct StatefulMapLaneLifecycle<
     on_clear: FClr,
 }
 
+impl<Context, Shared, K, V, FUpd: Clone, FRem: Clone, FClr: Clone> Clone
+    for StatefulMapLaneLifecycle<Context, Shared, K, V, FUpd, FRem, FClr>
+{
+    fn clone(&self) -> Self {
+        Self {
+            _value_type: PhantomData,
+            on_update: self.on_update.clone(),
+            on_remove: self.on_remove.clone(),
+            on_clear: self.on_clear.clone(),
+        }
+    }
+}
+
 impl<Context, Shared, K, V> Default for StatefulMapLaneLifecycle<Context, Shared, K, V> {
     fn default() -> Self {
         Self {

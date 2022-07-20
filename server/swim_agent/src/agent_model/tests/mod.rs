@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 // Copyright 2015-2021 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +15,7 @@
 // limitations under the License.
 
 use futures::{future::join, StreamExt};
+use parking_lot::Mutex;
 use swim_api::{
     agent::{AgentConfig, AgentTask},
     protocol::map::{MapMessage, MapOperation},
@@ -30,7 +33,7 @@ use self::{
     lane_io::{MapLaneReceiver, MapLaneSender, ValueLaneReceiver, ValueLaneSender},
 };
 
-use super::AgentModel;
+use super::{AgentModel, LaneModelFac};
 
 mod fake_agent;
 mod fake_context;
@@ -67,15 +70,37 @@ struct TestContext {
     map_lane_io: (MapLaneSender, MapLaneReceiver),
 }
 
-async fn init_agent(context: &TestAgentContext) -> (AgentTask<'_>, TestContext) {
-    let mut lane_model = TestAgent::default();
+#[derive(Clone)]
+pub struct Fac {
+    rx: Arc<Mutex<Option<TestAgent>>>,
+}
 
-    let test_event_rx = lane_model.take_receiver();
+impl LaneModelFac for Fac {
+    type LaneModel = TestAgent;
+
+    fn create(&self) -> Self::LaneModel {
+        let mut guard = self.rx.lock();
+        guard.take().expect("Agent created twice.")
+    }
+}
+
+impl Fac {
+    fn new(agent: TestAgent) -> Self {
+        Fac {
+            rx: Arc::new(Mutex::new(Some(agent))),
+        }
+    }
+}
+
+async fn init_agent(context: &TestAgentContext) -> (AgentTask<'_>, TestContext) {
+    let mut agent = TestAgent::default();
+    let test_event_rx = agent.take_receiver();
+    let lane_model_fac = Fac::new(agent);
 
     let (lc_event_tx, lc_event_rx) = mpsc::unbounded_channel();
     let lifecycle = TestLifecycle::new(lc_event_tx);
 
-    let model = AgentModel::<TestAgent, TestLifecycle>::new(lane_model, lifecycle);
+    let model = AgentModel::<TestAgent, TestLifecycle>::new(Arc::new(lane_model_fac), lifecycle);
 
     let task = model
         .initialize_agent(make_uri(), CONFIG, context)

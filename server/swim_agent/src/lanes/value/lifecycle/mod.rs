@@ -88,6 +88,18 @@ pub struct StatefulValueLaneLifecycle<Context, Shared, T, FEv = NoHandler, FSet 
     on_set: FSet,
 }
 
+impl<Context, Shared, T, FEv: Clone, FSet: Clone> Clone
+    for StatefulValueLaneLifecycle<Context, Shared, T, FEv, FSet>
+{
+    fn clone(&self) -> Self {
+        Self {
+            _value_type: PhantomData,
+            on_event: self.on_event.clone(),
+            on_set: self.on_set.clone(),
+        }
+    }
+}
+
 impl<Context, Shared, T> Default for StatefulValueLaneLifecycle<Context, Shared, T> {
     fn default() -> Self {
         Self {
