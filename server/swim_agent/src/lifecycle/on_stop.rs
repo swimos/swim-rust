@@ -20,7 +20,7 @@ use super::utility::HandlerContext;
 
 /// Lifecycle event for the `on_stop` event of an agent.
 pub trait OnStop<'a, Context>: Send {
-    type OnStopHandler: EventHandler<Context, Completion = ()> + Send + 'a;
+    type OnStopHandler: EventHandler<Context, Completion = ()> + 'a;
 
     fn on_stop(&'a self) -> Self::OnStopHandler;
 }
@@ -28,7 +28,7 @@ pub trait OnStop<'a, Context>: Send {
 /// Lifecycle event for the `on_stop` event of an agent where the event handler
 /// has shared state with other handlers for the same agent.
 pub trait OnStopShared<'a, Context, Shared>: Send {
-    type OnStopHandler: EventHandler<Context, Completion = ()> + Send + 'a;
+    type OnStopHandler: EventHandler<Context, Completion = ()> + 'a;
 
     /// #Arguments
     /// * `shared` - The shared state.
@@ -63,7 +63,7 @@ impl<'a, Context, Shared> OnStopShared<'a, Context, Shared> for NoHandler {
 impl<'a, Context, F, H> OnStop<'a, Context> for FnHandler<F>
 where
     F: Fn() -> H + Send,
-    H: EventHandler<Context, Completion = ()> + Send + 'static,
+    H: EventHandler<Context, Completion = ()> + 'static,
 {
     type OnStopHandler = H;
 
@@ -77,7 +77,7 @@ impl<'a, Context, F, H, Shared> OnStopShared<'a, Context, Shared> for FnHandler<
 where
     Shared: 'static,
     F: Fn(&'a Shared, HandlerContext<Context>) -> H + Send,
-    H: EventHandler<Context, Completion = ()> + Send + 'static,
+    H: EventHandler<Context, Completion = ()> + 'static,
 {
     type OnStopHandler = H;
 

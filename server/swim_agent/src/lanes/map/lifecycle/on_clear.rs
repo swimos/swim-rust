@@ -23,7 +23,7 @@ use crate::{
 
 /// Lifecycle event for the `on_clear` event of a map lane.
 pub trait OnClear<'a, K, V, Context>: Send {
-    type OnClearHandler: EventHandler<Context, Completion = ()> + Send + 'a;
+    type OnClearHandler: EventHandler<Context, Completion = ()> + 'a;
 
     /// #Arguments
     /// * `before` - The contents of the map before it was cleared.
@@ -33,7 +33,7 @@ pub trait OnClear<'a, K, V, Context>: Send {
 /// Lifecycle event for the `on_clear` event of a map lane where the event handler
 /// has shared state with other handlers for the same agent.
 pub trait OnClearShared<'a, K, V, Context, Shared>: Send {
-    type OnClearHandler: EventHandler<Context, Completion = ()> + Send + 'a;
+    type OnClearHandler: EventHandler<Context, Completion = ()> + 'a;
 
     /// #Arguments
     /// * `shared` - The shared state.
@@ -71,7 +71,7 @@ impl<'a, K, V, Context, Shared> OnClearShared<'a, K, V, Context, Shared> for NoH
 impl<'a, K, V, Context, F, H> OnClear<'a, K, V, Context> for FnHandler<F>
 where
     F: Fn(HashMap<K, V>) -> H + Send,
-    H: EventHandler<Context, Completion = ()> + Send + 'a,
+    H: EventHandler<Context, Completion = ()> + 'a,
 {
     type OnClearHandler = H;
 
@@ -85,7 +85,7 @@ impl<'a, K, V, Context, Shared, F, H> OnClearShared<'a, K, V, Context, Shared> f
 where
     Shared: 'static,
     F: Fn(&'a Shared, HandlerContext<Context>, HashMap<K, V>) -> H + Send,
-    H: EventHandler<Context, Completion = ()> + Send + 'a,
+    H: EventHandler<Context, Completion = ()> + 'a,
 {
     type OnClearHandler = H;
 

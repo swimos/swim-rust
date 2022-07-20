@@ -23,7 +23,7 @@ use crate::{
 
 /// Lifecycle event for the `on_remove` event of a map lane.
 pub trait OnRemove<'a, K, V, Context>: Send {
-    type OnRemoveHandler: EventHandler<Context, Completion = ()> + Send + 'a;
+    type OnRemoveHandler: EventHandler<Context, Completion = ()> + 'a;
 
     /// #Arguments
     /// * `map` - The current contents of the map.
@@ -35,7 +35,7 @@ pub trait OnRemove<'a, K, V, Context>: Send {
 /// Lifecycle event for the `on_remove` event of a map lane where the event handler
 /// has shared state with other handlers for the same agent.
 pub trait OnRemoveShared<'a, K, V, Context, Shared>: Send {
-    type OnRemoveHandler: EventHandler<Context, Completion = ()> + Send + 'a;
+    type OnRemoveHandler: EventHandler<Context, Completion = ()> + 'a;
 
     /// #Arguments
     /// * `shared` - The shared state.
@@ -79,7 +79,7 @@ impl<'a, K, V, Context, Shared> OnRemoveShared<'a, K, V, Context, Shared> for No
 impl<'a, K, V, Context, F, H> OnRemove<'a, K, V, Context> for FnHandler<F>
 where
     F: Fn(&HashMap<K, V>, K, V) -> H + Send,
-    H: EventHandler<Context, Completion = ()> + Send + 'a,
+    H: EventHandler<Context, Completion = ()> + 'a,
 {
     type OnRemoveHandler = H;
 
@@ -93,7 +93,7 @@ impl<'a, K, V, Context, Shared, F, H> OnRemoveShared<'a, K, V, Context, Shared> 
 where
     Shared: 'static,
     F: Fn(&'a Shared, HandlerContext<Context>, &HashMap<K, V>, K, V) -> H + Send,
-    H: EventHandler<Context, Completion = ()> + Send + 'a,
+    H: EventHandler<Context, Completion = ()> + 'a,
 {
     type OnRemoveHandler = H;
 

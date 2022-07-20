@@ -20,7 +20,7 @@ use super::utility::HandlerContext;
 
 /// Lifecycle event for the `on_start` event of an agent.
 pub trait OnStart<'a, Context>: Send {
-    type OnStartHandler: EventHandler<Context, Completion = ()> + Send + 'a;
+    type OnStartHandler: EventHandler<Context, Completion = ()> + 'a;
 
     fn on_start(&'a self) -> Self::OnStartHandler;
 }
@@ -28,7 +28,7 @@ pub trait OnStart<'a, Context>: Send {
 /// Lifecycle event for the `on_start` event of an agent where the event handler
 /// has shared state with other handlers for the same agent.
 pub trait OnStartShared<'a, Context, Shared>: Send {
-    type OnStartHandler: EventHandler<Context, Completion = ()> + Send + 'a;
+    type OnStartHandler: EventHandler<Context, Completion = ()> + 'a;
 
     /// #Arguments
     /// * `shared` - The shared state.
@@ -63,7 +63,7 @@ impl<'a, Context, Shared> OnStartShared<'a, Context, Shared> for NoHandler {
 impl<'a, Context, F, H> OnStart<'a, Context> for FnHandler<F>
 where
     F: Fn() -> H + Send,
-    H: EventHandler<Context, Completion = ()> + Send + 'static,
+    H: EventHandler<Context, Completion = ()> + 'static,
 {
     type OnStartHandler = H;
 
@@ -77,7 +77,7 @@ impl<'a, Context, F, H, Shared> OnStartShared<'a, Context, Shared> for FnHandler
 where
     Shared: 'static,
     F: Fn(&'a Shared, HandlerContext<Context>) -> H + Send,
-    H: EventHandler<Context, Completion = ()> + Send + 'static,
+    H: EventHandler<Context, Completion = ()> + 'static,
 {
     type OnStartHandler = H;
 

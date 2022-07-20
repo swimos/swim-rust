@@ -63,9 +63,9 @@ impl<Agent> Copy for HandlerContext<Agent> {}
 
 impl<Agent: 'static> HandlerContext<Agent> {
     /// Create an event handler that executes a side effect.
-    pub fn effect<F, T>(&self, f: F) -> impl EventHandler<Agent, Completion = T> + Send
+    pub fn effect<F, T>(&self, f: F) -> impl EventHandler<Agent, Completion = T>
     where
-        F: FnOnce() -> T + Send,
+        F: FnOnce() -> T,
     {
         SideEffect::from(f)
     }

@@ -163,8 +163,8 @@ impl<LaneModel, Lifecycle> AgentModel<LaneModel, Lifecycle> {
 
 impl<LaneModel, Lifecycle> Agent for AgentModel<LaneModel, Lifecycle>
 where
-    LaneModel: AgentLaneModel + Clone + Send + 'static,
-    Lifecycle: AgentLifecycle<LaneModel> + Clone + Send + Sync + 'static,
+    LaneModel: AgentLaneModel + Send + 'static,
+    Lifecycle: AgentLifecycle<LaneModel> + Clone + Send + 'static,
 {
     fn run<'a>(
         &self,
