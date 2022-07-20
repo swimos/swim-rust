@@ -36,7 +36,7 @@ pub use value::{ValueBranch, ValueLeaf, ValueLifecycleHandler, ValueLifecycleHan
 /// this trait will typically consist of a type level tree (implementations of [`HTree`]) of handlers
 /// for each lane.
 pub trait LaneEvent<'a, Context> {
-    type LaneEventHandler: EventHandler<Context, Completion = ()> + Send + 'a;
+    type LaneEventHandler: EventHandler<Context, Completion = ()> + 'a;
 
     /// Create the handler for a lane, if it exists. It is the responsibility of the lanes to keep track
     /// of which what events need to be triggered. If the lane does not exist or no event is pending, no
