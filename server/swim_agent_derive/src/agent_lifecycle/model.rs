@@ -21,7 +21,7 @@ use swim_utilities::errors::{
 };
 use syn::{
     parse_quote, Attribute, AttributeArgs, FnArg, GenericParam, Ident, ImplItem, ImplItemMethod,
-    Item, Lit, Meta, NestedMeta, Path, ReturnType, Signature, Type, TypeReference,
+    Item, Lit, Meta, NestedMeta, Path, ReturnType, Signature, Type, TypeReference, PathSegment, PathArguments,
 };
 
 use super::tree::BinTree;
@@ -132,22 +132,18 @@ fn validate_method<'a>(
         .iter()
         .append_fold(Validation::valid(None), true, |acc, attr| {
             match (acc, get_kind(attr)) {
-                (Some(mut desc), Some(Ok((k, target)))) => {
+                (Some(mut desc), Some(Ok((k, new_targets)))) => {
                     let Descriptor { kind, targets } = &mut desc;
                     if let Err(e) = kind.merge(method, k) {
                         Validation::Failed(Some(e))
                     } else {
-                        if let Some(t) = target {
-                            targets.insert(t);
-                        }
+                        targets.extend(new_targets.into_iter());
                         Validation::valid(Some(desc))
                     }
                 }
-                (_, Some(Ok((kind, target)))) => {
+                (_, Some(Ok((kind, new_targets)))) => {
                     let mut desc = Descriptor::new(kind);
-                    if let Some(t) = target {
-                        desc.targets.insert(t);
-                    }
+                    desc.targets.extend(new_targets.into_iter());
                     Validation::valid(Some(desc))
                 }
                 (acc, Some(Err(e))) => Validation::Validated(acc, Some(e)),
@@ -378,7 +374,7 @@ fn extract_types<'a, I: Iterator<Item = &'a FnArg> + 'a>(iter: I) -> Vec<&'a Typ
     .collect::<Vec<_>>()
 }
 
-fn get_kind(attr: &Attribute) -> Option<Result<(HandlerKind, Option<String>), syn::Error>> {
+fn get_kind(attr: &Attribute) -> Option<Result<(HandlerKind, Vec<String>), syn::Error>> {
     if let Some(seg) = attr.path.segments.first() {
         let kind_str = seg.ident.to_string();
         let kind = match kind_str.as_str() {
@@ -395,26 +391,51 @@ fn get_kind(attr: &Attribute) -> Option<Result<(HandlerKind, Option<String>), sy
         kind.map(|k| match &k {
             HandlerKind::Start | HandlerKind::Stop => {
                 if attr.tokens.is_empty() {
-                    Ok((k, None))
+                    Ok((k, vec![]))
                 } else {
                     Err(syn::Error::new_spanned(attr, BAD_PARAMS))
                 }
             }
-            _ => extract_target(attr).map(move |target| (k, Some(target))),
+            _ => extract_target(attr).map(move |targets| (k, targets)),
         })
     } else {
         None
     }
 }
 
-fn extract_target(attr: &Attribute) -> Result<String, syn::Error> {
+fn extract_target(attr: &Attribute) -> Result<Vec<String>, syn::Error> {
     let meta = attr.parse_meta()?;
+    let bad_params = || syn::Error::new_spanned(attr, BAD_PARAMS);
     match meta {
-        Meta::List(lst) => match lst.nested.iter().next() {
-            Some(NestedMeta::Lit(Lit::Str(name))) if lst.nested.len() == 1 => Ok(name.value()),
-            _ => Err(syn::Error::new_spanned(attr, BAD_PARAMS)),
+        Meta::List(lst) => {
+            lst.nested.iter().fold(Ok(vec![]), |acc, nested| {
+                acc.and_then(|mut targets| {
+                    match nested {
+                        NestedMeta::Meta(Meta::Path(Path { leading_colon: None, segments})) => {
+                            match segments.first() {
+                                Some(PathSegment { ident, arguments: PathArguments::None }) if segments.len() == 1 => {
+                                    targets.push(ident.to_string());
+                                    Ok(targets)
+                                },
+                                _ => Err(bad_params()),
+                            }
+                        }
+                        NestedMeta::Lit(Lit::Str(name)) if lst.nested.len() == 1 => {
+                            targets.push(name.value());
+                            Ok(targets)
+                        },
+                        _ => Err(bad_params()),
+                    }
+                })
+            }).and_then(|targets| {
+                if targets.is_empty() {
+                    Err(bad_params())
+                } else {
+                    Ok(targets)
+                }
+            })
         },
-        _ => Err(syn::Error::new_spanned(attr, BAD_PARAMS)),
+        _ => Err(bad_params()),
     }
 }
 
