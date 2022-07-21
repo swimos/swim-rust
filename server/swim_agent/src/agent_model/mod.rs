@@ -115,13 +115,14 @@ pub trait AgentLaneModel: Sized + Send {
     fn write_event(&self, lane: &str, buffer: &mut BytesMut) -> Option<WriteResult>;
 }
 
-pub trait LaneModelFac: Send + Sync {
+/// A factory to create agent lane model instances.
+pub trait LaneModelFactory: Send + Sync {
     type LaneModel: AgentLaneModel;
 
     fn create(&self) -> Self::LaneModel;
 }
 
-impl<F, LaneModel: AgentLaneModel> LaneModelFac for F
+impl<F, LaneModel: AgentLaneModel> LaneModelFactory for F
 where
     F: Fn() -> LaneModel + Send + Sync,
 {
@@ -136,7 +137,7 @@ where
 /// of the agent and an implementation of [`AgentLifecycle`] to describe the lifecycle events that will trigger,
 /// for  example, when the agent starts or stops or when the state of a lane changes.
 pub struct AgentModel<LaneModel, Lifecycle> {
-    lane_model_fac: Arc<dyn LaneModelFac<LaneModel = LaneModel>>,
+    lane_model_fac: Arc<dyn LaneModelFactory<LaneModel = LaneModel>>,
     lifecycle: Lifecycle,
 }
 
@@ -151,7 +152,7 @@ impl<LaneModel, Lifecycle: Clone> Clone for AgentModel<LaneModel, Lifecycle> {
 
 impl<LaneModel, Lifecycle> AgentModel<LaneModel, Lifecycle> {
     pub fn new(
-        lane_model_fac: Arc<dyn LaneModelFac<LaneModel = LaneModel>>,
+        lane_model_fac: Arc<dyn LaneModelFactory<LaneModel = LaneModel>>,
         lifecycle: Lifecycle,
     ) -> Self {
         AgentModel {
@@ -266,6 +267,7 @@ where
             lane_ids,
             value_lane_io,
             map_lane_io,
+            context,
         )
         .boxed())
     }
@@ -280,6 +282,7 @@ where
 /// * `lane_ids` - Mapping between lane names and lane IDs.
 /// * `value_lane_io` - Channels to the runtime for value like lanes.
 /// * `map_lane_io` - Channels to the runtime for map like lanes.
+/// * `_context` - Context through which to communicate with the runtime.
 async fn run_agent<LaneModel, Lifecycle>(
     lane_model: LaneModel,
     lifecycle: Lifecycle,
@@ -288,6 +291,7 @@ async fn run_agent<LaneModel, Lifecycle>(
     lane_ids: HashMap<u64, Text>,
     value_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
     map_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
+    _context: &dyn AgentContext, //Will be needed when downlinks are supported.
 ) -> Result<(), AgentTaskError>
 where
     LaneModel: AgentLaneModel + Send + 'static,

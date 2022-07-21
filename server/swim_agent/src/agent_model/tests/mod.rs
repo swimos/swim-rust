@@ -33,7 +33,7 @@ use self::{
     lane_io::{MapLaneReceiver, MapLaneSender, ValueLaneReceiver, ValueLaneSender},
 };
 
-use super::{AgentModel, LaneModelFac};
+use super::{AgentModel, LaneModelFactory};
 
 mod fake_agent;
 mod fake_context;
@@ -75,7 +75,7 @@ pub struct Fac {
     rx: Arc<Mutex<Option<TestAgent>>>,
 }
 
-impl LaneModelFac for Fac {
+impl LaneModelFactory for Fac {
     type LaneModel = TestAgent;
 
     fn create(&self) -> Self::LaneModel {
