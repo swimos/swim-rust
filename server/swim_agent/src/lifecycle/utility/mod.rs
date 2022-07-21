@@ -21,7 +21,7 @@ use swim_utilities::routing::uri::RelativeUri;
 use crate::lanes::command::{CommandLane, DoCommand};
 use crate::lanes::map::MapLaneGetMap;
 use crate::{
-    event_handler::{EventHandler, GetAgentUri, SideEffect},
+    event_handler::{GetAgentUri, HandlerAction, SideEffect},
     lanes::{
         map::{MapLane, MapLaneClear, MapLaneGet, MapLaneRemove, MapLaneUpdate},
         value::{ValueLane, ValueLaneGet, ValueLaneSet},
@@ -63,7 +63,7 @@ impl<Agent> Copy for HandlerContext<Agent> {}
 
 impl<Agent: 'static> HandlerContext<Agent> {
     /// Create an event handler that executes a side effect.
-    pub fn effect<F, T>(&self, f: F) -> impl EventHandler<Agent, Completion = T>
+    pub fn effect<F, T>(&self, f: F) -> impl HandlerAction<Agent, Completion = T>
     where
         F: FnOnce() -> T,
     {
@@ -73,7 +73,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     /// Create an event handler that will fetch the metadata of the agent instance.
     pub fn get_agent_uri(
         &self,
-    ) -> impl EventHandler<Agent, Completion = RelativeUri> + Send + 'static {
+    ) -> impl HandlerAction<Agent, Completion = RelativeUri> + Send + 'static {
         GetAgentUri::default()
     }
 
@@ -84,7 +84,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     pub fn get_value<T>(
         &self,
         lane: fn(&Agent) -> &ValueLane<T>,
-    ) -> impl EventHandler<Agent, Completion = T> + Send + 'static
+    ) -> impl HandlerAction<Agent, Completion = T> + Send + 'static
     where
         T: Clone + Send + 'static,
     {
@@ -100,7 +100,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
         &self,
         lane: fn(&Agent) -> &ValueLane<T>,
         value: T,
-    ) -> impl EventHandler<Agent, Completion = ()> + Send + 'static
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
     where
         T: Send + 'static,
     {
@@ -118,7 +118,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
         lane: fn(&Agent) -> &MapLane<K, V>,
         key: K,
         value: V,
-    ) -> impl EventHandler<Agent, Completion = ()> + Send + 'static
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
     where
         K: Send + Clone + Eq + Hash + 'static,
         V: Send + 'static,
@@ -135,7 +135,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
         &self,
         lane: fn(&Agent) -> &MapLane<K, V>,
         key: K,
-    ) -> impl EventHandler<Agent, Completion = ()> + Send + 'static
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
     where
         K: Send + Clone + Eq + Hash + 'static,
         V: Send + 'static,
@@ -150,7 +150,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     pub fn clear<K, V>(
         &self,
         lane: fn(&Agent) -> &MapLane<K, V>,
-    ) -> impl EventHandler<Agent, Completion = ()> + Send + 'static
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
     where
         K: Send + Clone + Eq + Hash + 'static,
         V: Send + 'static,
@@ -167,7 +167,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
         &self,
         lane: fn(&Agent) -> &MapLane<K, V>,
         key: K,
-    ) -> impl EventHandler<Agent, Completion = Option<V>> + Send + 'static
+    ) -> impl HandlerAction<Agent, Completion = Option<V>> + Send + 'static
     where
         K: Send + Clone + Eq + Hash + 'static,
         V: Send + Clone + 'static,
@@ -183,7 +183,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     pub fn get_map<K, V>(
         &self,
         lane: fn(&Agent) -> &MapLane<K, V>,
-    ) -> impl EventHandler<Agent, Completion = HashMap<K, V>> + Send + 'static
+    ) -> impl HandlerAction<Agent, Completion = HashMap<K, V>> + Send + 'static
     where
         K: Send + Clone + Eq + Hash + 'static,
         V: Send + Clone + 'static,
@@ -200,7 +200,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
         &self,
         lane: fn(&Agent) -> &CommandLane<T>,
         value: T,
-    ) -> impl EventHandler<Agent, Completion = ()> + Send + 'static
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
     where
         T: Send + 'static,
     {

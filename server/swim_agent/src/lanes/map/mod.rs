@@ -35,7 +35,7 @@ mod tests;
 use crate::{
     agent_model::WriteResult,
     event_handler::{
-        AndThen, EventHandler, EventHandlerError, HandlerTrans, Modification, StepResult,
+        AndThen, EventHandlerError, HandlerAction, HandlerTrans, Modification, StepResult,
     },
     meta::AgentMetadata,
 };
@@ -298,7 +298,7 @@ impl<C, K, V> MapLaneUpdate<C, K, V> {
     }
 }
 
-impl<C, K, V> EventHandler<C> for MapLaneUpdate<C, K, V>
+impl<C, K, V> HandlerAction<C> for MapLaneUpdate<C, K, V>
 where
     K: Clone + Eq + Hash,
 {
@@ -338,7 +338,7 @@ impl<C, K, V> MapLaneRemove<C, K, V> {
     }
 }
 
-impl<C, K, V> EventHandler<C> for MapLaneRemove<C, K, V>
+impl<C, K, V> HandlerAction<C> for MapLaneRemove<C, K, V>
 where
     K: Clone + Eq + Hash,
 {
@@ -375,7 +375,7 @@ impl<C, K, V> MapLaneClear<C, K, V> {
     }
 }
 
-impl<C, K, V> EventHandler<C> for MapLaneClear<C, K, V>
+impl<C, K, V> HandlerAction<C> for MapLaneClear<C, K, V>
 where
     K: Clone + Eq + Hash,
 {
@@ -414,7 +414,7 @@ impl<C, K, V> MapLaneGet<C, K, V> {
     }
 }
 
-impl<C, K, V> EventHandler<C> for MapLaneGet<C, K, V>
+impl<C, K, V> HandlerAction<C> for MapLaneGet<C, K, V>
 where
     K: Clone + Eq + Hash,
     V: Clone,
@@ -452,7 +452,7 @@ impl<C, K, V> MapLaneGetMap<C, K, V> {
     }
 }
 
-impl<C, K, V> EventHandler<C> for MapLaneGetMap<C, K, V>
+impl<C, K, V> HandlerAction<C> for MapLaneGetMap<C, K, V>
 where
     K: Clone + Eq + Hash,
     V: Clone,
@@ -486,7 +486,7 @@ impl<C, K, V> MapLaneSync<C, K, V> {
     }
 }
 
-impl<C, K, V> EventHandler<C> for MapLaneSync<C, K, V>
+impl<C, K, V> HandlerAction<C> for MapLaneSync<C, K, V>
 where
     K: Clone + Eq + Hash,
 {
@@ -559,7 +559,7 @@ fn try_decode<T: RecognizerReadable>(mut buffer: BytesMut) -> Result<T, EventHan
     }
 }
 
-impl<K, V, Context> EventHandler<Context> for DecodeMapMessage<K, V>
+impl<K, V, Context> HandlerAction<Context> for DecodeMapMessage<K, V>
 where
     K: RecognizerReadable,
     V: RecognizerReadable,

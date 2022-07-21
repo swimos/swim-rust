@@ -20,7 +20,7 @@ use swim_model::Text;
 use swim_utilities::routing::uri::RelativeUri;
 
 use crate::{
-    event_handler::{EventHandler, StepResult},
+    event_handler::{HandlerAction, StepResult},
     lanes::map::{
         lifecycle::{on_clear::OnClear, on_remove::OnRemove, on_update::OnUpdate},
         MapLane, MapLaneEvent,
@@ -105,7 +105,7 @@ struct OnUpdateHandler<K, V> {
     done: bool,
 }
 
-impl<K: Clone, V: Clone> EventHandler<TestAgent> for OnUpdateHandler<K, V> {
+impl<K: Clone, V: Clone> HandlerAction<TestAgent> for OnUpdateHandler<K, V> {
     type Completion = ();
 
     fn step(&mut self, _meta: AgentMetadata, _context: &TestAgent) -> StepResult<Self::Completion> {
@@ -138,7 +138,7 @@ struct OnRemoveHandler<K, V> {
     done: bool,
 }
 
-impl<K: Clone, V: Clone> EventHandler<TestAgent> for OnRemoveHandler<K, V> {
+impl<K: Clone, V: Clone> HandlerAction<TestAgent> for OnRemoveHandler<K, V> {
     type Completion = ();
 
     fn step(&mut self, _meta: AgentMetadata, _context: &TestAgent) -> StepResult<Self::Completion> {
@@ -169,7 +169,7 @@ struct OnClearHandler<K, V> {
     done: bool,
 }
 
-impl<K: Clone, V: Clone> EventHandler<TestAgent> for OnClearHandler<K, V> {
+impl<K: Clone, V: Clone> HandlerAction<TestAgent> for OnClearHandler<K, V> {
     type Completion = ();
 
     fn step(&mut self, _meta: AgentMetadata, _context: &TestAgent) -> StepResult<Self::Completion> {

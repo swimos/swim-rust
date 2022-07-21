@@ -17,13 +17,13 @@ use std::collections::HashMap;
 use swim_api::handlers::{FnHandler, NoHandler};
 
 use crate::{
-    event_handler::{EventHandler, UnitHandler},
+    event_handler::{HandlerAction, UnitHandler},
     lifecycle::utility::HandlerContext,
 };
 
 /// Lifecycle event for the `on_update` event of a map lane.
 pub trait OnUpdate<'a, K, V, Context>: Send {
-    type OnUpdateHandler: EventHandler<Context, Completion = ()> + 'a;
+    type OnUpdateHandler: HandlerAction<Context, Completion = ()> + 'a;
 
     /// #Arguments
     /// * `map` - The current contents of the map.
@@ -40,7 +40,7 @@ pub trait OnUpdate<'a, K, V, Context>: Send {
 /// Lifecycle event for the `on_update` event of a map lane where the event handler
 /// has shared state with other handlers for the same agent.
 pub trait OnUpdateShared<'a, K, V, Context, Shared>: Send {
-    type OnUpdateHandler: EventHandler<Context, Completion = ()> + 'a;
+    type OnUpdateHandler: HandlerAction<Context, Completion = ()> + 'a;
 
     /// #Arguments
     /// * `shared` - The shared state.
@@ -89,7 +89,7 @@ impl<'a, K, V, Context, Shared> OnUpdateShared<'a, K, V, Context, Shared> for No
 impl<'a, K, V, Context, F, H> OnUpdate<'a, K, V, Context> for FnHandler<F>
 where
     F: Fn(&HashMap<K, V>, K, Option<V>) -> H + Send,
-    H: EventHandler<Context, Completion = ()> + 'a,
+    H: HandlerAction<Context, Completion = ()> + 'a,
 {
     type OnUpdateHandler = H;
 
@@ -108,7 +108,7 @@ impl<'a, K, V, Context, Shared, F, H> OnUpdateShared<'a, K, V, Context, Shared> 
 where
     Shared: 'static,
     F: Fn(&'a Shared, HandlerContext<Context>, &HashMap<K, V>, K, Option<V>) -> H + Send,
-    H: EventHandler<Context, Completion = ()> + 'a,
+    H: HandlerAction<Context, Completion = ()> + 'a,
 {
     type OnUpdateHandler = H;
 

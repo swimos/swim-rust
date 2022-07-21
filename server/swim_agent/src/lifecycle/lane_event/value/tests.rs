@@ -20,7 +20,7 @@ use swim_model::Text;
 use swim_utilities::routing::uri::RelativeUri;
 
 use crate::{
-    event_handler::{EventHandler, StepResult},
+    event_handler::{HandlerAction, StepResult},
     lanes::value::{
         lifecycle::{on_event::OnEvent, on_set::OnSet},
         ValueLane,
@@ -76,7 +76,7 @@ struct OnEventHandler<T> {
     done: bool,
 }
 
-impl<T: Clone> EventHandler<TestAgent> for OnEventHandler<T> {
+impl<T: Clone> HandlerAction<TestAgent> for OnEventHandler<T> {
     type Completion = ();
 
     fn step(&mut self, _meta: AgentMetadata, _context: &TestAgent) -> StepResult<Self::Completion> {
@@ -99,7 +99,7 @@ struct OnSetHandler<T> {
     done: bool,
 }
 
-impl<T: Clone> EventHandler<TestAgent> for OnSetHandler<T> {
+impl<T: Clone> HandlerAction<TestAgent> for OnSetHandler<T> {
     type Completion = ();
 
     fn step(&mut self, _meta: AgentMetadata, _context: &TestAgent) -> StepResult<Self::Completion> {

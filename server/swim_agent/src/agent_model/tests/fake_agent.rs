@@ -32,7 +32,7 @@ use uuid::Uuid;
 
 use crate::{
     agent_model::{AgentLaneModel, WriteResult},
-    event_handler::{EventHandler, Modification, StepResult},
+    event_handler::{HandlerAction, Modification, StepResult},
     meta::AgentMetadata,
 };
 
@@ -202,7 +202,7 @@ impl AgentLaneModel for TestAgent {
     }
 }
 
-impl EventHandler<TestAgent> for TestHandler {
+impl HandlerAction<TestAgent> for TestHandler {
     type Completion = ();
 
     fn step(&mut self, _meta: AgentMetadata, context: &TestAgent) -> StepResult<Self::Completion> {

@@ -25,7 +25,7 @@ use crate::{
     meta::AgentMetadata,
 };
 
-use super::{Decode, EventHandler, Modification, SideEffect, StepResult};
+use super::{Decode, HandlerAction, Modification, SideEffect, StepResult};
 
 const CONFIG: AgentConfig = AgentConfig {};
 const NODE_URI: &str = "/node";
@@ -170,7 +170,7 @@ fn and_then_handler() {
     let mut output = None;
     let output_ref = &mut output;
     let mut handler =
-        EventHandler::<DummyAgent>::and_then(GetAgentUri::default(), move |uri: RelativeUri| {
+        HandlerAction::<DummyAgent>::and_then(GetAgentUri::default(), move |uri: RelativeUri| {
             SideEffect::from(move || {
                 *output_ref = Some(uri.to_string());
             })
@@ -219,7 +219,7 @@ fn followed_by_handler() {
         *guard = Some(2);
     });
 
-    let mut handler = EventHandler::<DummyAgent>::followed_by(first, second);
+    let mut handler = HandlerAction::<DummyAgent>::followed_by(first, second);
 
     let result = handler.step(meta, &DUMMY);
     assert!(matches!(
@@ -312,7 +312,7 @@ impl FakeLaneWriter {
     }
 }
 
-impl EventHandler<DummyAgent> for FakeLaneWriter {
+impl HandlerAction<DummyAgent> for FakeLaneWriter {
     type Completion = ();
 
     fn step(

@@ -36,7 +36,7 @@ use uuid::Uuid;
 
 use crate::lifecycle::lane_event::LaneEvent;
 use crate::{
-    event_handler::{EventHandler, EventHandlerError, StepResult},
+    event_handler::{EventHandlerError, HandlerAction, StepResult},
     lifecycle::AgentLifecycle,
     meta::AgentMetadata,
 };
@@ -63,13 +63,13 @@ pub enum WriteResult {
 /// although it will not provided any lifecycle events for the agent or its lanes.
 pub trait AgentLaneModel: Sized + Send {
     /// The type of handler to run when a command is received for a value lane.
-    type ValCommandHandler: EventHandler<Self, Completion = ()> + Send + 'static;
+    type ValCommandHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
 
     /// The type of handler to run when a command is received for a map lane.
-    type MapCommandHandler: EventHandler<Self, Completion = ()> + Send + 'static;
+    type MapCommandHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
 
     /// The type of handler to run when a request is received to sync with a lane.
-    type OnSyncHandler: EventHandler<Self, Completion = ()> + Send + 'static;
+    type OnSyncHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
 
     /// The names of all value like lanes (value lanes, command lanes, etc) in the agent.
     fn value_like_lanes() -> HashSet<&'static str>;
@@ -521,7 +521,7 @@ fn run_handler<Context, Lifecycle, Handler, Collector>(
 ) -> Result<(), EventHandlerError>
 where
     Lifecycle: for<'a> LaneEvent<'a, Context>,
-    Handler: EventHandler<Context, Completion = ()>,
+    Handler: HandlerAction<Context, Completion = ()>,
     Collector: IdCollector,
 {
     loop {

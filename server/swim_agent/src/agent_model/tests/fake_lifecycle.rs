@@ -16,7 +16,7 @@ use swim_model::Text;
 use tokio::sync::mpsc;
 
 use crate::{
-    event_handler::{EventHandler, StepResult},
+    event_handler::{HandlerAction, StepResult},
     lifecycle::{lane_event::LaneEvent, on_start::OnStart, on_stop::OnStop},
     meta::AgentMetadata,
 };
@@ -82,7 +82,7 @@ impl<'a> LaneEvent<'a, TestAgent> for TestLifecycle {
     }
 }
 
-impl EventHandler<TestAgent> for LifecycleHandler {
+impl HandlerAction<TestAgent> for LifecycleHandler {
     type Completion = ();
 
     fn step(&mut self, _meta: AgentMetadata, _context: &TestAgent) -> StepResult<Self::Completion> {

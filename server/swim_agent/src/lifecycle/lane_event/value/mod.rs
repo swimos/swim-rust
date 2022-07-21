@@ -20,7 +20,7 @@ use futures::future::Either;
 
 use crate::lifecycle::utility::HandlerContext;
 use crate::{
-    event_handler::{EventHandler, FollowedBy},
+    event_handler::{FollowedBy, HandlerAction},
     lanes::value::{
         lifecycle::{
             on_event::{OnEvent, OnEventShared},
