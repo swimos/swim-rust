@@ -16,7 +16,7 @@ use std::fmt::Debug;
 
 use swim_api::handlers::NoHandler;
 
-use crate::event_handler::{HandlerAction, UnitHandler};
+use crate::event_handler::{EventHandler, UnitHandler};
 
 use super::utility::HandlerContext;
 
@@ -36,7 +36,7 @@ pub use value::{ValueBranch, ValueLeaf, ValueLifecycleHandler, ValueLifecycleHan
 /// this trait will typically consist of a type level tree (implementations of [`HTree`]) of handlers
 /// for each lane.
 pub trait LaneEvent<'a, Context> {
-    type LaneEventHandler: HandlerAction<Context, Completion = ()> + 'a;
+    type LaneEventHandler: EventHandler<Context> + 'a;
 
     /// Create the handler for a lane, if it exists. It is the responsibility of the lanes to keep track
     /// of which what events need to be triggered. If the lane does not exist or no event is pending, no
@@ -51,7 +51,7 @@ pub trait LaneEvent<'a, Context> {
 /// this trait will typically consist of a type level tree (implementations of [`HTree`]) of handlers
 /// for each lane. Each of the event handlers has access to a single shared state.
 pub trait LaneEventShared<'a, Context, Shared> {
-    type LaneEventHandler: HandlerAction<Context, Completion = ()> + 'a;
+    type LaneEventHandler: EventHandler<Context> + 'a;
 
     /// Create the handler for a lane, if it exists. It is the responsibility of the lanes to keep track
     /// of which what events need to be triggered. If the lane does not exist or no event is pending, no

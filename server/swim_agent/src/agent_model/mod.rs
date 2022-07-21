@@ -36,7 +36,7 @@ use uuid::Uuid;
 
 use crate::lifecycle::lane_event::LaneEvent;
 use crate::{
-    event_handler::{EventHandlerError, HandlerAction, StepResult},
+    event_handler::{EventHandler, EventHandlerError, HandlerAction, StepResult},
     lifecycle::AgentLifecycle,
     meta::AgentMetadata,
 };
@@ -521,7 +521,7 @@ fn run_handler<Context, Lifecycle, Handler, Collector>(
 ) -> Result<(), EventHandlerError>
 where
     Lifecycle: for<'a> LaneEvent<'a, Context>,
-    Handler: HandlerAction<Context, Completion = ()>,
+    Handler: EventHandler<Context>,
     Collector: IdCollector,
 {
     loop {

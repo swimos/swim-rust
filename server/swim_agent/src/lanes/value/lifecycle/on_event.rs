@@ -15,13 +15,13 @@
 use swim_api::handlers::{FnHandler, NoHandler};
 
 use crate::{
-    event_handler::{HandlerAction, UnitHandler},
+    event_handler::{EventHandler, UnitHandler},
     lifecycle::utility::HandlerContext,
 };
 
 /// Event handler to be called each time the value of a value lane changes, consuming only the new value.
 pub trait OnEvent<'a, T, Context>: Send {
-    type OnEventHandler: HandlerAction<Context, Completion = ()> + 'a;
+    type OnEventHandler: EventHandler<Context> + 'a;
 
     /// #Arguments
     /// * `value` - The new value.
@@ -31,7 +31,7 @@ pub trait OnEvent<'a, T, Context>: Send {
 /// Event handler to be called each time the value of a value lane changes, consuming only the new value.
 /// The event handler has access to some shared state (shared with other event handlers in the same agent).
 pub trait OnEventShared<'a, T, Context, Shared>: Send {
-    type OnEventHandler: HandlerAction<Context, Completion = ()> + 'a;
+    type OnEventHandler: EventHandler<Context> + 'a;
 
     /// #Arguments
     /// * `shared` - The shared state.
@@ -71,7 +71,7 @@ impl<'a, T, Context, F, H> OnEvent<'a, T, Context> for FnHandler<F>
 where
     T: 'static,
     F: Fn(&T) -> H + Send,
-    H: HandlerAction<Context, Completion = ()> + 'a,
+    H: EventHandler<Context> + 'a,
 {
     type OnEventHandler = H;
 
@@ -85,7 +85,7 @@ impl<'a, T, Context, Shared, F, H> OnEventShared<'a, T, Context, Shared> for FnH
 where
     T: 'static,
     F: Fn(&'a Shared, HandlerContext<Context>, &T) -> H + Send,
-    H: HandlerAction<Context, Completion = ()> + 'a,
+    H: EventHandler<Context> + 'a,
 {
     type OnEventHandler = H;
 

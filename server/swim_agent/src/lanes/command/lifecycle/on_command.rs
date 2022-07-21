@@ -15,13 +15,13 @@
 use swim_api::handlers::{FnHandler, NoHandler};
 
 use crate::{
-    event_handler::{HandlerAction, UnitHandler},
+    event_handler::{EventHandler, UnitHandler},
     lifecycle::utility::HandlerContext,
 };
 
 /// Lifecycle event for the `on_command` event of a command lane.
 pub trait OnCommand<'a, T, Context>: Send {
-    type OnCommandHandler: HandlerAction<Context, Completion = ()> + 'a;
+    type OnCommandHandler: EventHandler<Context> + 'a;
 
     /// #Arguments
     /// * `value` - The command value.
@@ -31,7 +31,7 @@ pub trait OnCommand<'a, T, Context>: Send {
 /// Lifecycle event for the `on_command` event of a command lane where the event handler
 /// has shared state with other handlers for the same agent.
 pub trait OnCommandShared<'a, T, Context, Shared>: Send {
-    type OnCommandHandler: HandlerAction<Context, Completion = ()> + 'a;
+    type OnCommandHandler: EventHandler<Context> + 'a;
 
     /// #Arguments
     /// * `shared` - The shared state.
@@ -69,7 +69,7 @@ impl<'a, T, Context, Shared> OnCommandShared<'a, T, Context, Shared> for NoHandl
 impl<'a, T, Context, F, H> OnCommand<'a, T, Context> for FnHandler<F>
 where
     F: Fn(&T) -> H + Send,
-    H: HandlerAction<Context, Completion = ()> + 'a,
+    H: EventHandler<Context> + 'a,
 {
     type OnCommandHandler = H;
 
@@ -82,7 +82,7 @@ where
 impl<'a, T, Context, Shared, F, H> OnCommandShared<'a, T, Context, Shared> for FnHandler<F>
 where
     F: Fn(&'a Shared, HandlerContext<Context>, &T) -> H + Send + 'a,
-    H: HandlerAction<Context, Completion = ()> + 'a,
+    H: EventHandler<Context> + 'a,
     Shared: 'static,
 {
     type OnCommandHandler = H;

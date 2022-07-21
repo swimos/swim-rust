@@ -23,7 +23,7 @@ use bytes::BytesMut;
 use frunk::{Coprod, Coproduct};
 use swim_agent::{
     agent_model::{AgentLaneModel, AgentModel, WriteResult},
-    event_handler::{HandlerAction, UnitHandler},
+    event_handler::{EventHandler, UnitHandler, HandlerAction},
     lanes::{
         value::{
             decode_and_set, lifecycle::StatefulValueLaneLifecycle, DecodeAndSet, ValueLane,
@@ -75,7 +75,7 @@ impl MyAgentLifecycle {
     pub fn on_start(
         &self, //This could be &mut self at the expense of the event handlers not being able to take the lifetime of the self ref. Possibly the macro could allow both with diffrent semantics (which could be a bit confusing).
         context: HandlerContext<MyAgent>,
-    ) -> impl HandlerAction<MyAgent, Completion = ()> {
+    ) -> impl EventHandler<MyAgent> {
         context
             .get_agent_uri()
             .and_then(move |uri| context.effect(move || println!("Starting: {}", uri)))
@@ -86,7 +86,7 @@ impl MyAgentLifecycle {
         &self,
         context: HandlerContext<MyAgent>,
         value: &i32,
-    ) -> impl HandlerAction<MyAgent, Completion = ()> + '_ {
+    ) -> impl EventHandler<MyAgent> + '_ {
         let n = *value;
         context.get_value(MyAgent::SECOND).and_then(move |text| {
             context.effect(move || {

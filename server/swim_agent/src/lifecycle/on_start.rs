@@ -14,13 +14,13 @@
 
 use swim_api::handlers::{FnHandler, NoHandler};
 
-use crate::event_handler::{HandlerAction, UnitHandler};
+use crate::event_handler::{EventHandler, UnitHandler};
 
 use super::utility::HandlerContext;
 
 /// Lifecycle event for the `on_start` event of an agent.
 pub trait OnStart<'a, Context>: Send {
-    type OnStartHandler: HandlerAction<Context, Completion = ()> + 'a;
+    type OnStartHandler: EventHandler<Context> + 'a;
 
     fn on_start(&'a self) -> Self::OnStartHandler;
 }
@@ -28,7 +28,7 @@ pub trait OnStart<'a, Context>: Send {
 /// Lifecycle event for the `on_start` event of an agent where the event handler
 /// has shared state with other handlers for the same agent.
 pub trait OnStartShared<'a, Context, Shared>: Send {
-    type OnStartHandler: HandlerAction<Context, Completion = ()> + 'a;
+    type OnStartHandler: EventHandler<Context> + 'a;
 
     /// #Arguments
     /// * `shared` - The shared state.
@@ -63,7 +63,7 @@ impl<'a, Context, Shared> OnStartShared<'a, Context, Shared> for NoHandler {
 impl<'a, Context, F, H> OnStart<'a, Context> for FnHandler<F>
 where
     F: Fn() -> H + Send,
-    H: HandlerAction<Context, Completion = ()> + 'static,
+    H: EventHandler<Context> + 'static,
 {
     type OnStartHandler = H;
 
@@ -77,7 +77,7 @@ impl<'a, Context, F, H, Shared> OnStartShared<'a, Context, Shared> for FnHandler
 where
     Shared: 'static,
     F: Fn(&'a Shared, HandlerContext<Context>) -> H + Send,
-    H: HandlerAction<Context, Completion = ()> + 'static,
+    H: EventHandler<Context> + 'static,
 {
     type OnStartHandler = H;
 
