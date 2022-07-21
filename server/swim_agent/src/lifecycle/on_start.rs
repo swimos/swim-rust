@@ -62,8 +62,8 @@ impl<'a, Context, Shared> OnStartShared<'a, Context, Shared> for NoHandler {
 
 impl<'a, Context, F, H> OnStart<'a, Context> for FnHandler<F>
 where
-    F: Fn() -> H + Send,
-    H: EventHandler<Context> + 'static,
+    F: Fn() -> H + Send + 'a,
+    H: EventHandler<Context> + 'a,
 {
     type OnStartHandler = H;
 
@@ -76,8 +76,8 @@ where
 impl<'a, Context, F, H, Shared> OnStartShared<'a, Context, Shared> for FnHandler<F>
 where
     Shared: 'static,
-    F: Fn(&'a Shared, HandlerContext<Context>) -> H + Send,
-    H: EventHandler<Context> + 'static,
+    F: Fn(&'a Shared, HandlerContext<Context>) -> H + Send + 'a,
+    H: EventHandler<Context> + 'a,
 {
     type OnStartHandler = H;
 

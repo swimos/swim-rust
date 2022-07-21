@@ -68,7 +68,7 @@ impl<'a, T, Context, Shared> OnCommandShared<'a, T, Context, Shared> for NoHandl
 
 impl<'a, T, Context, F, H> OnCommand<'a, T, Context> for FnHandler<F>
 where
-    F: Fn(&T) -> H + Send,
+    F: Fn(&T) -> H + Send + 'a,
     H: EventHandler<Context> + 'a,
 {
     type OnCommandHandler = H;
