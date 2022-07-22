@@ -189,7 +189,7 @@ where
     fn on_update(
         &'a self,
         shared: &'a Shared,
-        handler_context: crate::lifecycle::utility::HandlerContext<Context>,
+        handler_context: crate::agent_lifecycle::utility::HandlerContext<Context>,
         map: &std::collections::HashMap<K, V>,
         key: K,
         prev_value: Option<V>,
@@ -211,7 +211,7 @@ where
     fn on_remove(
         &'a self,
         shared: &'a Shared,
-        handler_context: crate::lifecycle::utility::HandlerContext<Context>,
+        handler_context: crate::agent_lifecycle::utility::HandlerContext<Context>,
         map: &std::collections::HashMap<K, V>,
         key: K,
         prev_value: V,
@@ -233,7 +233,7 @@ where
     fn on_clear(
         &'a self,
         shared: &'a Shared,
-        handler_context: crate::lifecycle::utility::HandlerContext<Context>,
+        handler_context: crate::agent_lifecycle::utility::HandlerContext<Context>,
         before: std::collections::HashMap<K, V>,
     ) -> Self::OnClearHandler {
         self.on_clear.on_clear(shared, handler_context, before)

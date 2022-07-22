@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use crate::{
+    agent_lifecycle::lane_event::{HLeaf, LaneEvent},
     event_handler::{HandlerAction, StepResult},
-    lifecycle::lane_event::{HLeaf, LaneEvent},
     meta::AgentMetadata,
 };
 

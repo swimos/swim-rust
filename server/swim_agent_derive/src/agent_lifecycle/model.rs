@@ -865,17 +865,17 @@ impl<'a> LaneLifecycle<'a> {
         match self {
             LaneLifecycle::Value(ValueLifecycleDescriptor { .. }) => {
                 parse_quote! {
-                    ::swim_agent::lifecycle::lane_event::ValueBranch
+                    ::swim_agent::agent_lifecycle::lane_event::ValueBranch
                 }
             }
             LaneLifecycle::Command(CommandLifecycleDescriptor { .. }) => {
                 parse_quote! {
-                    ::swim_agent::lifecycle::lane_event::CommandBranch
+                    ::swim_agent::agent_lifecycle::lane_event::CommandBranch
                 }
             }
             LaneLifecycle::Map(MapLifecycleDescriptor { .. }) => {
                 parse_quote! {
-                    ::swim_agent::lifecycle::lane_event::MapBranch
+                    ::swim_agent::agent_lifecycle::lane_event::MapBranch
                 }
             }
         }

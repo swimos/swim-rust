@@ -19,6 +19,7 @@ use std::{cmp::Ordering, collections::HashMap};
 use frunk::{Coprod, Coproduct};
 use futures::future::Either;
 
+use crate::agent_lifecycle::utility::HandlerContext;
 use crate::lanes::map::lifecycle::MapLaneLifecycleShared;
 use crate::lanes::map::{
     lifecycle::{
@@ -29,7 +30,6 @@ use crate::lanes::map::{
     },
     MapLane, MapLaneEvent,
 };
-use crate::lifecycle::utility::HandlerContext;
 
 use super::{HLeaf, HTree, LaneEvent, LaneEventShared};
 

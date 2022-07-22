@@ -15,8 +15,8 @@
 use swim_api::handlers::{FnHandler, NoHandler};
 
 use crate::{
+    agent_lifecycle::utility::HandlerContext,
     event_handler::{EventHandler, UnitHandler},
-    lifecycle::utility::HandlerContext,
 };
 
 /// Event handler to be called each time the value of a value lane changes, consuming only the new value.

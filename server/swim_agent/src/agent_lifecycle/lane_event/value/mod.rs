@@ -18,7 +18,7 @@ use std::cmp::Ordering;
 
 use futures::future::Either;
 
-use crate::lifecycle::utility::HandlerContext;
+use crate::agent_lifecycle::utility::HandlerContext;
 use crate::{
     event_handler::{FollowedBy, HandlerAction},
     lanes::value::{

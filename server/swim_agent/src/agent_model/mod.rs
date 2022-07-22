@@ -34,10 +34,10 @@ use swim_utilities::{
 };
 use uuid::Uuid;
 
-use crate::lifecycle::lane_event::LaneEvent;
+use crate::agent_lifecycle::lane_event::LaneEvent;
 use crate::{
+    agent_lifecycle::AgentLifecycle,
     event_handler::{EventHandler, EventHandlerError, HandlerAction, StepResult},
-    lifecycle::AgentLifecycle,
     meta::AgentMetadata,
 };
 

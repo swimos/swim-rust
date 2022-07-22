@@ -20,12 +20,12 @@ use swim_model::Text;
 use swim_utilities::routing::uri::RelativeUri;
 
 use crate::{
+    agent_lifecycle::lane_event::{tests::run_handler, HLeaf, LaneEvent, MapBranch, MapLeaf},
     event_handler::{HandlerAction, StepResult},
     lanes::map::{
         lifecycle::{on_clear::OnClear, on_remove::OnRemove, on_update::OnUpdate},
         MapLane, MapLaneEvent,
     },
-    lifecycle::lane_event::{tests::run_handler, HLeaf, LaneEvent, MapBranch, MapLeaf},
     meta::AgentMetadata,
 };
 

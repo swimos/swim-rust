@@ -23,9 +23,9 @@ use swim_model::Text;
 use swim_utilities::routing::uri::RelativeUri;
 
 use crate::{
+    agent_lifecycle::lane_event::LaneEvent,
     agent_model::run_handler,
     event_handler::{HandlerAction, Modification, StepResult},
-    lifecycle::lane_event::LaneEvent,
     meta::AgentMetadata,
 };
 

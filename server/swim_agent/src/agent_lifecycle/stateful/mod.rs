@@ -15,7 +15,7 @@
 use static_assertions::assert_impl_all;
 use swim_api::handlers::{FnHandler, NoHandler};
 
-use crate::lifecycle::AgentLifecycle;
+use crate::agent_lifecycle::AgentLifecycle;
 
 use super::{
     lane_event::{LaneEvent, LaneEventShared},

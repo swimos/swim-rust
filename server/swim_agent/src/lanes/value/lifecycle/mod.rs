@@ -16,7 +16,7 @@ use std::marker::PhantomData;
 
 use swim_api::handlers::{FnHandler, NoHandler};
 
-use crate::lifecycle::utility::HandlerContext;
+use crate::agent_lifecycle::utility::HandlerContext;
 
 use self::{
     on_event::{OnEvent, OnEventShared},

@@ -16,6 +16,7 @@ use futures::future::Either;
 use std::{cmp::Ordering, fmt::Debug};
 
 use crate::{
+    agent_lifecycle::utility::HandlerContext,
     lanes::command::{
         lifecycle::{
             on_command::{OnCommand, OnCommandShared},
@@ -23,7 +24,6 @@ use crate::{
         },
         CommandLane,
     },
-    lifecycle::utility::HandlerContext,
 };
 
 use super::{HLeaf, HTree, LaneEvent, LaneEventShared};

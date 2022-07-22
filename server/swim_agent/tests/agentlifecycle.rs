@@ -17,11 +17,11 @@ use std::{collections::HashMap, sync::Arc};
 use parking_lot::Mutex;
 use swim_agent::lifecycle;
 use swim_agent::{
-    event_handler::{EventHandler, StepResult},
-    lanes::{CommandLane, MapLane, ValueLane},
-    lifecycle::{
+    agent_lifecycle::{
         lane_event::LaneEvent, on_start::OnStart, on_stop::OnStop, utility::HandlerContext,
     },
+    event_handler::{EventHandler, StepResult},
+    lanes::{CommandLane, MapLane, ValueLane},
     meta::AgentMetadata,
     AgentLaneModel,
 };

@@ -16,10 +16,10 @@
 #[allow(unused_imports)]
 pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
 
+pub mod agent_lifecycle;
 pub mod agent_model;
 pub mod event_handler;
 pub mod lanes;
-pub mod lifecycle;
 pub mod meta;
 
 pub use agent_model::AgentLaneModel;

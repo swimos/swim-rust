@@ -15,8 +15,8 @@
 use swim_api::handlers::{FnHandler, NoHandler};
 
 use crate::{
+    agent_lifecycle::utility::HandlerContext,
     event_handler::{EventHandler, UnitHandler},
-    lifecycle::utility::HandlerContext,
 };
 
 /// Lifecycle event for the `on_command` event of a command lane.

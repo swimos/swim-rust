@@ -170,7 +170,7 @@ impl<'a> ToTokens for LifecycleTree<'a> {
                 }
             }
             BinTree::Leaf => {
-                quote!(::swim_agent::lifecycle::lane_event::HLeaf)
+                quote!(::swim_agent::agent_lifecycle::lane_event::HLeaf)
             }
         });
     }
@@ -192,27 +192,27 @@ impl<'a> ToTokens for ImplAgentLifecycle<'a> {
         let lane_lifecycles = LifecycleTree::new(agent_type, lifecycle_type, lane_lifecycles);
 
         let mut lifecycle_builder: syn::Expr = parse_quote! {
-            ::swim_agent::lifecycle::stateful::StatefulAgentLifecycle::<#agent_type, _>::new(self)
+            ::swim_agent::agent_lifecycle::stateful::StatefulAgentLifecycle::<#agent_type, _>::new(self)
         };
 
         if let Some(on_start) = on_start {
             lifecycle_builder = parse_quote! {
-                ::swim_agent::lifecycle::stateful::StatefulAgentLifecycle::on_start(#lifecycle_builder, #lifecycle_type::#on_start)
+                ::swim_agent::agent_lifecycle::stateful::StatefulAgentLifecycle::on_start(#lifecycle_builder, #lifecycle_type::#on_start)
             };
         }
 
         if let Some(on_stop) = on_stop {
             lifecycle_builder = parse_quote! {
-                ::swim_agent::lifecycle::stateful::StatefulAgentLifecycle::on_stop(#lifecycle_builder, #lifecycle_type::#on_stop)
+                ::swim_agent::agent_lifecycle::stateful::StatefulAgentLifecycle::on_stop(#lifecycle_builder, #lifecycle_type::#on_stop)
             };
         }
 
         tokens.append_all(quote! {
 
             impl #lifecycle_type {
-                pub fn into_lifecycle(self) -> impl ::swim_agent::lifecycle::AgentLifecycle<#agent_type> + ::core::clone::Clone + ::core::marker::Send + 'static {
+                pub fn into_lifecycle(self) -> impl ::swim_agent::agent_lifecycle::AgentLifecycle<#agent_type> + ::core::clone::Clone + ::core::marker::Send + 'static {
                     let lane_lifecycle = #lane_lifecycles;
-                    ::swim_agent::lifecycle::stateful::StatefulAgentLifecycle::on_lane_event(
+                    ::swim_agent::agent_lifecycle::stateful::StatefulAgentLifecycle::on_lane_event(
                         #lifecycle_builder,
                         lane_lifecycle
                     )
