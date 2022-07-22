@@ -40,6 +40,14 @@ const EXTRA_PARAM: &str = "Unexpected attribute parameter.";
 const BAD_PARAM: &str =
     "The parameter to the lifecycle attribute should be a path to an agent type.";
 
+/// Validate the body of the 'lifecycle' attribute. This is require to have the form
+/// `#[lifecycle(path::to::Agent)] where the path points to the struct type that defines
+/// the lanes of an agent. This function will return the path if the body is of the
+/// correct form.
+///
+/// #Arguments
+/// * `item` - The item to which the attribute is attached (for error reporting).
+/// * `args` - The attribute args.
 pub fn validate_attr_args(
     item: &Item,
     args: AttributeArgs,
@@ -52,6 +60,7 @@ pub fn validate_attr_args(
     }
 }
 
+/// Remove the event handler annotations from all methods in an impl block.
 pub fn strip_handler_attrs(
     item: &mut Item,
 ) -> Validation<Vec<Option<Vec<Attribute>>>, Errors<syn::Error>> {
@@ -83,6 +92,9 @@ pub fn strip_handler_attrs(
     }
 }
 
+/// Validate an impl block as an agent lifecycle, returning a descriptor of all of the
+/// lifecycle events (if they are valid). The `stripped_attrs` should be the output
+/// of [`strip_handler_attrs`].
 pub fn validate_with_attrs(
     agent_type: Path,
     item: &Item,
@@ -110,20 +122,22 @@ pub fn validate_with_attrs(
     .map(AgentLifecycleDescriptorBuilder::build)
 }
 
-struct Descriptor {
+/// Descriptor for a single method, viewed as an event handler.
+struct HandlerDescriptor {
     kind: HandlerKind,
-    targets: HashSet<String>,
+    targets: HashSet<String>, // The lanes to which the handler should be attached.
 }
 
-impl Descriptor {
+impl HandlerDescriptor {
     fn new(kind: HandlerKind) -> Self {
-        Descriptor {
+        HandlerDescriptor {
             kind,
             targets: Default::default(),
         }
     }
 }
-
+/// Valiate a single method and, if it is an event handler, attempt to add it to the
+/// lifecycle descriptor.
 fn validate_method<'a>(
     acc: AgentLifecycleDescriptorBuilder<'a>,
     attrs: Vec<Attribute>,
@@ -134,7 +148,7 @@ fn validate_method<'a>(
         .append_fold(Validation::valid(None), true, |acc, attr| {
             match (acc, get_kind(attr)) {
                 (Some(mut desc), Some(Ok((k, new_targets)))) => {
-                    let Descriptor { kind, targets } = &mut desc;
+                    let HandlerDescriptor { kind, targets } = &mut desc;
                     if let Err(e) = kind.merge(method, k) {
                         Validation::Failed(Some(e))
                     } else {
@@ -143,7 +157,7 @@ fn validate_method<'a>(
                     }
                 }
                 (_, Some(Ok((kind, new_targets)))) => {
-                    let mut desc = Descriptor::new(kind);
+                    let mut desc = HandlerDescriptor::new(kind);
                     desc.targets.extend(new_targets.into_iter());
                     Validation::valid(Some(desc))
                 }
@@ -160,13 +174,14 @@ fn validate_method<'a>(
     })
 }
 
+/// Attempt to validate a method against an already defined descriptor.
 fn validate_method_as<'a>(
     acc: AgentLifecycleDescriptorBuilder<'a>,
-    descriptor: Descriptor,
+    descriptor: HandlerDescriptor,
     method: &'a ImplItemMethod,
 ) -> Validation<AgentLifecycleDescriptorBuilder<'a>, Errors<syn::Error>> {
     let acc = Validation::valid(acc);
-    let Descriptor { kind, targets } = descriptor;
+    let HandlerDescriptor { kind, targets } = descriptor;
     let sig = &method.sig;
     if let Err(e) = check_sig_common(sig) {
         Validation::fail(e)
@@ -266,7 +281,10 @@ const NO_ASYNC: &str = "Event handlers cannot be async.";
 const NO_UNSAFE: &str = "Event handlers cannot be unsafe.";
 const MANDATORY_RETURN: &str = "Event handler methods must return an event handler.";
 const ONLY_LIFETIMES: &str = "Event handlers can only have lifetime parametrs.";
+const DUPLICATE_ON_STOP: &str = "Duplicate on_stop event handler.";
+const DUPLICATE_ON_START: &str = "Duplicate on_start event handler.";
 
+/// Check common properties that all event handler signatures should have.
 fn check_sig_common(sig: &Signature) -> Result<(), syn::Error> {
     if sig.asyncness.is_some() {
         Err(NO_ASYNC)
@@ -287,6 +305,7 @@ fn check_sig_common(sig: &Signature) -> Result<(), syn::Error> {
     .map_err(|msg| syn::Error::new_spanned(sig, msg))
 }
 
+/// Check that a method has the correct shape for the on_start or on_stop handlers.
 fn validate_no_type_sig(sig: &Signature) -> Validation<(), Errors<syn::Error>> {
     let iter = sig.inputs.iter();
     check_receiver(sig, iter)
@@ -307,6 +326,8 @@ fn validate_no_type_sig(sig: &Signature) -> Validation<(), Errors<syn::Error>> {
         })
 }
 
+/// Check a method for use as a lane lifecycle handler. Returns the type that the lane should
+/// have.
 fn validate_typed_sig(
     sig: &Signature,
     expected_params: usize,
@@ -351,6 +372,7 @@ fn peel_ref_type<'a>(
     }
 }
 
+/// Check that the receiver of the method is &self.
 fn check_receiver<'a, I: Iterator<Item = &'a FnArg> + 'a>(
     sig: &'a Signature,
     mut iter: I,
@@ -375,6 +397,7 @@ fn extract_types<'a, I: Iterator<Item = &'a FnArg> + 'a>(iter: I) -> Vec<&'a Typ
     .collect::<Vec<_>>()
 }
 
+/// Try to process an attribute to get the kind of the handler.
 fn get_kind(attr: &Attribute) -> Option<Result<(HandlerKind, Vec<String>), syn::Error>> {
     if let Some(seg) = attr.path.segments.first() {
         let kind_str = seg.ident.to_string();
@@ -397,14 +420,16 @@ fn get_kind(attr: &Attribute) -> Option<Result<(HandlerKind, Vec<String>), syn::
                     Err(syn::Error::new_spanned(attr, BAD_PARAMS))
                 }
             }
-            _ => extract_target(attr).map(move |targets| (k, targets)),
+            _ => extract_targets(attr).map(move |targets| (k, targets)),
         })
     } else {
         None
     }
 }
 
-fn extract_target(attr: &Attribute) -> Result<Vec<String>, syn::Error> {
+/// Extract the lanes to which a handler shoulld be attached. This supports a comma
+/// separated list of literal strings or identifiers.
+fn extract_targets(attr: &Attribute) -> Result<Vec<String>, syn::Error> {
     let meta = attr.parse_meta()?;
     let bad_params = || syn::Error::new_spanned(attr, BAD_PARAMS);
     match meta {
@@ -444,11 +469,12 @@ fn extract_target(attr: &Attribute) -> Result<Vec<String>, syn::Error> {
     }
 }
 
+/// The different kinds of handler that can occur in a lifecycle.
 #[derive(PartialEq, Eq)]
 enum HandlerKind {
     Start,
     Stop,
-    StartAndStop,
+    StartAndStop, // Inidicates that a single method is used for the on_start and on_stop events.
     Command,
     Event,
     Set,
@@ -486,6 +512,8 @@ const ON_UPDATE: &str = "on_update";
 const ON_REMOVE: &str = "on_remove";
 const ON_CLEAR: &str = "on_clear";
 
+/// Check if an attribute is an event handler attribute. This simple checks the name and not
+/// the contents.
 fn assess_attr(attr: &Attribute) -> bool {
     let path = &attr.path;
     if path.leading_colon.is_some() {
@@ -511,14 +539,16 @@ fn assess_attr(attr: &Attribute) -> bool {
     }
 }
 
+/// Descriptor of an agent lifecycle, extracted from an impl block.
 pub struct AgentLifecycleDescriptor<'a> {
-    pub agent_type: Path,
-    pub lifecycle_type: &'a Type,
-    pub on_start: Option<&'a Ident>,
-    pub on_stop: Option<&'a Ident>,
-    pub lane_lifecycles: BinTree<String, LaneLifecycle<'a>>,
+    pub agent_type: Path,            //The agent this is a lifecycle of.
+    pub lifecycle_type: &'a Type,    //The type of the lifecycle (taken from the impl block).
+    pub on_start: Option<&'a Ident>, //A handler attached to the on_start event.
+    pub on_stop: Option<&'a Ident>,  //A handler attached to the on_stop event.
+    pub lane_lifecycles: BinTree<String, LaneLifecycle<'a>>, //Labelled tree of lane handlers.
 }
 
+/// Builder type for constructing an [`AgentLifecycleDescriptor`].
 pub struct AgentLifecycleDescriptorBuilder<'a> {
     pub agent_type: Path,
     pub lifecycle_type: &'a Type,
@@ -526,9 +556,6 @@ pub struct AgentLifecycleDescriptorBuilder<'a> {
     pub on_stop: Option<&'a Ident>,
     pub lane_lifecycles: BTreeMap<String, LaneLifecycle<'a>>,
 }
-
-const DUPLICATE_ON_STOP: &str = "Duplicate on_stop event handler.";
-const DUPLICATE_ON_START: &str = "Duplicate on_start event handler.";
 
 impl<'a> AgentLifecycleDescriptorBuilder<'a> {
     pub fn new(agent_type: Path, lifecycle_type: &'a Type) -> Self {
@@ -810,6 +837,7 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
     }
 }
 
+/// Lifecycle attached to a single lane.
 pub enum LaneLifecycle<'a> {
     Value(ValueLifecycleDescriptor<'a>),
     Command(CommandLifecycleDescriptor<'a>),
@@ -831,6 +859,8 @@ impl<'a> LaneLifecycle<'a> {
         Ident::new(name, Span::call_site())
     }
 
+    /// The type of node to create for the heterogeneous tree of lane lifecycles in
+    /// the agent lifecycle.
     pub fn branch_type(&self) -> Path {
         match self {
             LaneLifecycle::Value(ValueLifecycleDescriptor { .. }) => {
@@ -853,9 +883,9 @@ impl<'a> LaneLifecycle<'a> {
 }
 
 pub struct ValueLifecycleDescriptor<'a> {
-    name: String,
-    primary_lane_type: &'a Type,
-    alternative_lane_types: HashSet<&'a Type>,
+    name: String,                              //The name of the lane.
+    primary_lane_type: &'a Type,               //First observed type of the lane.
+    alternative_lane_types: HashSet<&'a Type>, //Further types observed for the lane.
     pub on_event: Option<&'a Ident>,
     pub on_set: Option<&'a Ident>,
 }
@@ -931,7 +961,7 @@ impl<'a> ValueLifecycleDescriptor<'a> {
 }
 
 pub struct CommandLifecycleDescriptor<'a> {
-    pub name: String,
+    pub name: String, //The nam eo the lane.
     pub primary_lane_type: &'a Type,
     pub on_command: &'a Ident,
 }
@@ -947,9 +977,9 @@ impl<'a> CommandLifecycleDescriptor<'a> {
 }
 
 pub struct MapLifecycleDescriptor<'a> {
-    name: String,
-    primary_lane_type: &'a Type,
-    alternative_lane_types: HashSet<&'a Type>,
+    name: String,                              //The name of the lane.
+    primary_lane_type: &'a Type,               //First observed type of the lane.
+    alternative_lane_types: HashSet<&'a Type>, //Further types observed for the lane.
     pub on_update: Option<&'a Ident>,
     pub on_remove: Option<&'a Ident>,
     pub on_clear: Option<&'a Ident>,

@@ -29,6 +29,9 @@ mod tree;
 
 pub use model::{strip_handler_attrs, validate_attr_args, validate_with_attrs};
 
+/// Generates an additional impl block with a method to convert a type into an agent
+/// lifecycle, using the event handler methods extracted from an existing impl block
+/// for the type.
 pub struct ImplAgentLifecycle<'a> {
     descriptor: AgentLifecycleDescriptor<'a>,
 }
@@ -40,7 +43,7 @@ impl<'a> ImplAgentLifecycle<'a> {
 }
 
 #[derive(Clone, Copy)]
-pub struct LifecycleTree<'a> {
+struct LifecycleTree<'a> {
     agent_type: &'a Path,
     lifecycle_type: &'a Type,
     tree: &'a BinTree<String, LaneLifecycle<'a>>,

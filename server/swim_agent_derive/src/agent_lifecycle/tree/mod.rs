@@ -17,6 +17,11 @@ use std::collections::{BTreeMap, VecDeque};
 #[cfg(test)]
 mod tests;
 
+/// An binary tree of labelled values.
+///
+/// #Type parameters.
+/// * `K` - The type of the labels.
+/// * `T` - The type of the data at each branch node of the tree.
 #[derive(Debug, PartialEq, Eq)]
 pub enum BinTree<K, T> {
     Branch {
@@ -35,6 +40,7 @@ impl<K, T> Default for BinTree<K, T> {
 }
 
 impl<K, T> BinTree<K, T> {
+    /// Create a tree with a single branch node.
     pub fn new(key: K, data: T) -> Self {
         BinTree::Branch {
             key,
@@ -44,6 +50,7 @@ impl<K, T> BinTree<K, T> {
         }
     }
 
+    /// Create a tree node with a branch on the right only.
     pub fn with_right(key: K, data: T, right: Self) -> Self {
         BinTree::Branch {
             key,
@@ -53,6 +60,7 @@ impl<K, T> BinTree<K, T> {
         }
     }
 
+    /// Create a tree node with two subranches.
     pub fn branch(key: K, data: T, left: Self, right: Self) -> Self {
         BinTree::Branch {
             key,
@@ -69,6 +77,7 @@ impl<K, T> From<BTreeMap<K, T>> for BinTree<K, T> {
     }
 }
 
+/// Create a sorted tree from a sorted vector of labelled items.
 fn from_sorted_vec<K, T>(mut data: VecDeque<(K, T)>) -> BinTree<K, T> {
     if data.len() < 3 {
         let first = data.pop_front();
