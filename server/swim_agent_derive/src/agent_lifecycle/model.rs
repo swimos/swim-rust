@@ -83,11 +83,11 @@ pub fn strip_handler_attrs(
     }
 }
 
-pub fn validate_with_attrs<'a>(
+pub fn validate_with_attrs(
     agent_type: Path,
-    item: &'a Item,
+    item: &Item,
     stripped_attrs: Vec<Option<Vec<Attribute>>>,
-) -> Validation<AgentLifecycleDescriptor<'a>, Errors<syn::Error>> {
+) -> Validation<AgentLifecycleDescriptor<'_>, Errors<syn::Error>> {
     if let Item::Impl(block) = item {
         if !block.generics.params.is_empty() {
             return Validation::fail(syn::Error::new_spanned(block, NO_GENERICS));

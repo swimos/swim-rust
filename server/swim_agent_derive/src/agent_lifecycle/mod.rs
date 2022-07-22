@@ -186,7 +186,7 @@ impl<'a> ToTokens for ImplAgentLifecycle<'a> {
                 },
         } = *self;
 
-        let lane_lifecycles = LifecycleTree::new(&agent_type, lifecycle_type, lane_lifecycles);
+        let lane_lifecycles = LifecycleTree::new(agent_type, lifecycle_type, lane_lifecycles);
 
         let mut lifecycle_builder: syn::Expr = parse_quote! {
             ::swim_agent::lifecycle::stateful::StatefulAgentLifecycle::<#agent_type, _>::new(self)
