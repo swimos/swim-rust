@@ -21,7 +21,8 @@ use swim_utilities::errors::{
 };
 use syn::{
     parse_quote, Attribute, AttributeArgs, FnArg, GenericParam, Ident, ImplItem, ImplItemMethod,
-    Item, Lit, Meta, NestedMeta, Path, ReturnType, Signature, Type, TypeReference, PathSegment, PathArguments,
+    Item, Lit, Meta, NestedMeta, Path, PathArguments, PathSegment, ReturnType, Signature, Type,
+    TypeReference,
 };
 
 use super::tree::BinTree;
@@ -407,34 +408,38 @@ fn extract_target(attr: &Attribute) -> Result<Vec<String>, syn::Error> {
     let meta = attr.parse_meta()?;
     let bad_params = || syn::Error::new_spanned(attr, BAD_PARAMS);
     match meta {
-        Meta::List(lst) => {
-            lst.nested.iter().fold(Ok(vec![]), |acc, nested| {
-                acc.and_then(|mut targets| {
-                    match nested {
-                        NestedMeta::Meta(Meta::Path(Path { leading_colon: None, segments})) => {
-                            match segments.first() {
-                                Some(PathSegment { ident, arguments: PathArguments::None }) if segments.len() == 1 => {
-                                    targets.push(ident.to_string());
-                                    Ok(targets)
-                                },
-                                _ => Err(bad_params()),
-                            }
-                        }
-                        NestedMeta::Lit(Lit::Str(name)) if lst.nested.len() == 1 => {
-                            targets.push(name.value());
+        Meta::List(lst) => lst
+            .nested
+            .iter()
+            .fold(Ok(vec![]), |acc, nested| {
+                acc.and_then(|mut targets| match nested {
+                    NestedMeta::Meta(Meta::Path(Path {
+                        leading_colon: None,
+                        segments,
+                    })) => match segments.first() {
+                        Some(PathSegment {
+                            ident,
+                            arguments: PathArguments::None,
+                        }) if segments.len() == 1 => {
+                            targets.push(ident.to_string());
                             Ok(targets)
-                        },
+                        }
                         _ => Err(bad_params()),
+                    },
+                    NestedMeta::Lit(Lit::Str(name)) if lst.nested.len() == 1 => {
+                        targets.push(name.value());
+                        Ok(targets)
                     }
+                    _ => Err(bad_params()),
                 })
-            }).and_then(|targets| {
+            })
+            .and_then(|targets| {
                 if targets.is_empty() {
                     Err(bad_params())
                 } else {
                     Ok(targets)
                 }
-            })
-        },
+            }),
         _ => Err(bad_params()),
     }
 }
