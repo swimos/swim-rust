@@ -161,7 +161,7 @@ impl LaneEndpoint<Io> {
 }
 
 impl LaneEndpoint<ByteReader> {
-    /// Create a [`Stream`] that will read messages from an.
+    /// Create a [`Stream`] that will read messages from an endpoint.
     /// #Arguments
     /// * `registry` - The registry that assigns identifiiers to active lanes.
     fn into_lane_stream(self, registry: &mut LaneRegistry) -> LaneStream {
@@ -244,13 +244,13 @@ enum RwCoorindationMessage {
         lane: Text,
         error: MessageExtractError,
     },
-    /// Instruct the writet ask to create an uplink from the specified lane to the specified remote.
+    /// Instruct the write task to create an uplink from the specified lane to the specified remote.
     Link { origin: Uuid, lane: Text },
-    /// Instruct the writet ask to remove an uplink from the specified lane to the specified remote.
+    /// Instruct the write task to remove an uplink from the specified lane to the specified remote.
     Unlink { origin: Uuid, lane: Text },
 }
 
-/// Type of errors that can ocurr attempting to forward an incoming message to a lane.
+/// Type of errors that can occur attempting to forward an incoming message to a lane.
 #[derive(Debug, Error)]
 enum LaneSendError {
     /// The lane failed to receive the data.
@@ -345,7 +345,7 @@ type MapLaneReceiver = LaneReceiver<MapLaneResponseDecoder>;
 /// Unified response type from all lane types.
 #[derive(Debug)]
 struct RawLaneResponse {
-    /// A specific remote to forward to the message to (otherwise broadcast to all linked).
+    /// A specific remote to forward the message to (otherwise broadcast to all linked).
     target: Option<Uuid>,
     /// The response to send to the specified remote.
     response: UplinkResponse,
@@ -559,9 +559,9 @@ const BAD_LANE_REG: &str = "Agent failed to receive lane registration result.";
 /// #Arguments
 /// * `runtime` - Requests from the agent.
 /// * `attachment` - External requests to attach new remotes.
-/// * `read_tx` - Channel to comunicate with the read task.
+/// * `read_tx` - Channel to communicate with the read task.
 /// * `write_tx` - Channel to communicate with the write task.
-/// * `comboined_stop` - The task will stop when this future completes. This should combined the overall
+/// * `combined_stop` - The task will stop when this future completes. This should combined the overall
 /// shutdown-signal with latch that ensures this task will stop if the read/write tasks stop (to avoid
 /// deadlocks).
 async fn attachment_task<F>(
@@ -683,13 +683,13 @@ fn remote_receiver(reader: ByteReader) -> RemoteReceiver {
 const TASK_COORD_ERR: &str = "Stopping after communcating with the write task failed.";
 const STOP_VOTED: &str = "Stopping as read and write tasks have both voted to do so.";
 
-/// Events that can ocur within the read task.
+/// Events that can occur within the read task.
 enum ReadTaskEvent {
     /// Register a new lane or remote.
     Registration(ReadTaskMessages),
     /// An envelope was received from a connected remote.
     Envelope(RequestMessage<Bytes>),
-    /// The read task timedout due to inactivity.
+    /// The read task timed out due to inactivity.
     Timeout,
 }
 
@@ -961,7 +961,7 @@ enum WriteTaskEvent {
     LaneFailed(u64),
     /// A remote may have been without active links beyond the configured timeout.
     PruneRemote(Uuid),
-    /// The task timedout due to inactivity.
+    /// The task timed out due to inactivity.
     Timeout,
     /// The stop signal was received.
     Stop,
@@ -1009,12 +1009,12 @@ struct WriteTaskEvents<'a, S, W> {
 
 impl<'a, S, W> WriteTaskEvents<'a, S, W> {
     /// #Arguments
-    /// * `inactive_timeout` - The after which the task will vote to stop due to inactivity.
+    /// * `inactive_timeout` - Time after which the task will vote to stop due to inactivity.
     /// * `remote_timeout` - Time after which a task with no links and no activity should be removed.
     /// * `timeout_delay` - Timer for the agent timeout (held on the stack of the write task to avoid
     /// having it in a separate allocation).
     /// * `prune_delay` - Timer for pruning inactive remotes (held on the stack of the write task to
-    /// avoud having it in a separte allocation).
+    /// avoid having it in a separte allocation).
     /// * `message_stream` - Stream of messages from the attachment and read tasks.
     fn new(
         inactive_timeout: Duration,
@@ -1052,7 +1052,7 @@ impl<'a, S, W> WriteTaskEvents<'a, S, W> {
         self.pending_writes.push(write);
     }
 
-    /// Schedule a remoted to be pruned (after a period of inactivity).
+    /// Schedule a remote to be pruned (after a period of inactivity).
     fn schedule_prune(&mut self, remote_id: Uuid) {
         let WriteTaskEvents {
             remote_timeout,
@@ -1179,12 +1179,12 @@ struct WriteTaskState {
 enum TaskMessageResult {
     /// Register a new lane.
     AddLane(LaneStream),
-    /// Schedule a write to one or all remotes (if not ID is specified).
+    /// Schedule a write to one or all remotes (if no ID is specified).
     ScheduleWrite {
         write: WriteTask,
         schedule_prune: Option<Uuid>,
     },
-    /// Track a remote the be pruned after the configured timeout (as it no longer has any links).
+    /// Track a remote to be pruned after the configured timeout (as it no longer has any links).
     AddPruneTimeout(Uuid),
     /// No effect.
     Nothing,
@@ -1449,7 +1449,7 @@ impl WriteTaskState {
     }
 
     /// Return the remote sender and associated buffer from a completed write. This will
-    /// triger a new task if more work is queued fro that remote.
+    /// trigger a new task if more work is queued fro that remote.
     fn replace(&mut self, writer: RemoteSender, buffer: BytesMut) -> Option<WriteTask> {
         let WriteTaskState { remote_tracker, .. } = self;
         trace!(
@@ -1482,13 +1482,13 @@ impl WriteTaskState {
     }
 }
 
-/// The write task of the agent runtime. This receives messages from the agent lanes and forwrads them
+/// The write task of the agent runtime. This receives messages from the agent lanes and forwards them
 /// to linked remotes. It also receives messages from the read task to maintain the set of uplinks.
 ///
 /// #Arguments
-/// * `config` - Configuration parameters for the task.
+/// * `configuration` - Configuration parameters for the task.
 /// * `initial_endpoints` - Initial lane endpoints that were created in the agent initialization phase.
-/// * `message_rx` - Channelf for messages from the read and coordination tasks.
+/// * `message_rx` - Channel for messages from the read and coordination tasks.
 /// * `stop_voter` - Votes to stop if this task becomes inactive (unanimity with the write task is required).
 /// * `stopping` - Initiates the clean shutdown procedure.
 async fn write_task(

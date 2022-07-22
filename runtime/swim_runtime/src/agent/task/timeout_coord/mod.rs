@@ -108,8 +108,8 @@ impl Voter {
     }
 
     /// Rescid a vote for termination. Returns true if unanimity has already been reached (and
-    /// this this has had no effect). If this sender has not previously voted to stop, this does
-    /// nothing. Sequences of voute and rescind can be called any number of times in any order.
+    /// this has had no effect). If this sender has not previously voted to stop, this does
+    /// nothing. Sequences of vote and rescind can be called any number of times in any order.
     /// Once unanimity has been reached, no calls will have any effect.
     pub fn rescind(&self) -> bool {
         let Voter {

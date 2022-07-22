@@ -669,7 +669,7 @@ where
 }
 
 /// A stream that runs another stream of [`Result`]s until it produces an error and then
-/// termintes.
+/// terminates.
 #[pin_project]
 #[derive(Debug)]
 pub struct StopAfterError<Str> {

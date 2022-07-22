@@ -38,7 +38,7 @@ mod tests;
 pub enum LaneRequest<T> {
     /// A command to alter the state of the lane.
     Command(T),
-    /// Request the a synchronization with the lane (responses will be tagged with the provided ID).
+    /// Request a synchronization with the lane (responses will be tagged with the provided ID).
     Sync(Uuid),
 }
 
