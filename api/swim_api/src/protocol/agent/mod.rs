@@ -95,7 +95,7 @@ pub enum MapLaneResponse<K, V> {
 const COMMAND: u8 = 0;
 const SYNC: u8 = 1;
 const SYNC_COMPLETE: u8 = 2;
-const EVENT: u8 = 0;
+const EVENT: u8 = 3;
 
 const TAG_LEN: usize = 1;
 const BODY_LEN: usize = std::mem::size_of::<u64>();
