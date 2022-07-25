@@ -588,82 +588,21 @@ async fn attachment_task<F>(
             maybe_event = stream.next() => {
                 if let Some(event) = maybe_event {
                     match event {
-                        Either::Left(AgentRuntimeRequest::AddLane {
-                            name,
-                            kind,
-                            config,
-                            promise,
-                        }) => {
-                            info!("Registering a new {} lane with name {}.", kind, name);
-                            let lane_config = config.unwrap_or_default();
-                            let (in_tx, in_rx) = byte_channel(lane_config.input_buffer_size);
-                            let (out_tx, out_rx) = byte_channel(lane_config.output_buffer_size);
-                            let sender = LaneSender::new(in_tx, kind);
-                            let read_permit = match read_tx.reserve().await {
-                                Err(_) => {
-                                    warn!("Read task stopped while attempting to register a new {} lane named '{}'.", kind, name);
-                                    if promise.send(Err(AgentRuntimeError::Terminated)).is_err() {
-                                        error!(BAD_LANE_REG);
-                                    }
-                                    break;
-                                }
-                                Ok(permit) => permit,
-                            };
-                            let write_permit = match write_tx.reserve().await {
-                                Err(_) => {
-                                    warn!("Write task stopped while attempting to register a new {} lane named '{}'.", kind, name);
-                                    if promise.send(Err(AgentRuntimeError::Terminated)).is_err() {
-                                        error!(BAD_LANE_REG);
-                                    }
-                                    break;
-                                }
-                                Ok(permit) => permit,
-                            };
-                            read_permit.send(ReadTaskMessages::Lane {
-                                name: name.clone(),
-                                sender,
-                            });
-                            write_permit.send(WriteTaskMessage::Lane(LaneEndpoint::new(
-                                name, kind, out_rx,
-                            )));
-                            if promise.send(Ok((out_tx, in_rx))).is_err() {
-                                error!(BAD_LANE_REG);
+                        Either::Left(request) => {
+                            if !handle_runtime_request(request, &read_tx, &write_tx).await {
+                                break;
                             }
                         }
-                        Either::Left(_) => todo!("Opening downlinks form agents not implemented."),
-                        Either::Right(AgentAttachmentRequest { id, io: (tx, rx), completion, on_attached }) => {
-                            info!(
-                                "Attaching a new remote endpoint with ID {id} to the agent.",
-                                id = id
-                            );
-                            let read_permit = match read_tx.reserve().await {
-                                Err(_) => {
-                                    warn!("Read task stopped while attempting to attach a remote endpoint.");
-                                    break;
-                                }
-                                Ok(permit) => permit,
-                            };
-                            let write_permit = match write_tx.reserve().await {
-                                Err(_) => {
-                                    warn!("Write task stopped while attempting to attach a remote endpoint.");
-                                    break;
-                                }
-                                Ok(permit) => permit,
-                            };
-                            let (read_on_attached, write_on_attached) = if let Some(on_attached) = on_attached {
-                                let (read_tx, read_rx) = trigger::trigger();
-                                let (write_tx, write_rx) = trigger::trigger();
+                        Either::Right(request) => {
+                            if !handle_att_request(request, &read_tx, &write_tx, |read_rx, write_rx, on_attached| {
                                 attachments.push(async move {
                                     if matches!(join(read_rx, write_rx).await, (Ok(_), Ok(_))) {
                                         on_attached.trigger();
                                     }
-                                });
-                                (Some(read_tx), Some(write_tx))
-                            } else {
-                                (None, None)
-                            };
-                            read_permit.send(ReadTaskMessages::Remote { reader: rx, on_attached: read_on_attached });
-                            write_permit.send(WriteTaskMessage::Remote { id, writer: tx, completion, on_attached: write_on_attached });
+                                })
+                            }).await {
+                                break;
+                            }
                         }
                     }
                 } else {
@@ -672,6 +611,121 @@ async fn attachment_task<F>(
             }
         }
     }
+}
+
+#[inline]
+async fn handle_runtime_request(
+    request: AgentRuntimeRequest,
+    read_tx: &mpsc::Sender<ReadTaskMessages>,
+    write_tx: &mpsc::Sender<WriteTaskMessage>,
+) -> bool {
+    match request {
+        AgentRuntimeRequest::AddLane {
+            name,
+            kind,
+            config,
+            promise,
+        } => {
+            info!("Registering a new {} lane with name {}.", kind, name);
+            let lane_config = config.unwrap_or_default();
+            let (in_tx, in_rx) = byte_channel(lane_config.input_buffer_size);
+            let (out_tx, out_rx) = byte_channel(lane_config.output_buffer_size);
+            let sender = LaneSender::new(in_tx, kind);
+            let read_permit = match read_tx.reserve().await {
+                Err(_) => {
+                    warn!(
+                        "Read task stopped while attempting to register a new {} lane named '{}'.",
+                        kind, name
+                    );
+                    if promise.send(Err(AgentRuntimeError::Terminated)).is_err() {
+                        error!(BAD_LANE_REG);
+                    }
+                    return false;
+                }
+                Ok(permit) => permit,
+            };
+            let write_permit = match write_tx.reserve().await {
+                Err(_) => {
+                    warn!(
+                        "Write task stopped while attempting to register a new {} lane named '{}'.",
+                        kind, name
+                    );
+                    if promise.send(Err(AgentRuntimeError::Terminated)).is_err() {
+                        error!(BAD_LANE_REG);
+                    }
+                    return false;
+                }
+                Ok(permit) => permit,
+            };
+            read_permit.send(ReadTaskMessages::Lane {
+                name: name.clone(),
+                sender,
+            });
+            write_permit.send(WriteTaskMessage::Lane(LaneEndpoint::new(
+                name, kind, out_rx,
+            )));
+            if promise.send(Ok((out_tx, in_rx))).is_err() {
+                error!(BAD_LANE_REG);
+            }
+            true
+        }
+        _ => todo!("Opening downlinks form agents not implemented."),
+    }
+}
+
+#[inline]
+async fn handle_att_request<F>(
+    request: AgentAttachmentRequest,
+    read_tx: &mpsc::Sender<ReadTaskMessages>,
+    write_tx: &mpsc::Sender<WriteTaskMessage>,
+    add_att: F,
+) -> bool
+where
+    F: FnOnce(trigger::Receiver, trigger::Receiver, trigger::Sender),
+{
+    let AgentAttachmentRequest {
+        id,
+        io: (tx, rx),
+        completion,
+        on_attached,
+    } = request;
+    info!(
+        "Attaching a new remote endpoint with ID {id} to the agent.",
+        id = id
+    );
+    let read_permit = match read_tx.reserve().await {
+        Err(_) => {
+            warn!("Read task stopped while attempting to attach a remote endpoint.");
+            return false;
+        }
+        Ok(permit) => permit,
+    };
+    let write_permit = match write_tx.reserve().await {
+        Err(_) => {
+            warn!("Write task stopped while attempting to attach a remote endpoint.");
+            return false;
+        }
+        Ok(permit) => permit,
+    };
+    let (read_on_attached, write_on_attached) = if let Some(on_attached) = on_attached {
+        let (read_tx, read_rx) = trigger::trigger();
+        let (write_tx, write_rx) = trigger::trigger();
+        add_att(read_rx, write_rx, on_attached);
+        (Some(read_tx), Some(write_tx))
+    } else {
+        (None, None)
+    };
+    read_permit.send(ReadTaskMessages::Remote {
+        reader: rx,
+        on_attached: read_on_attached,
+    });
+    write_permit.send(WriteTaskMessage::Remote {
+        id,
+        writer: tx,
+        completion,
+        on_attached: write_on_attached,
+    });
+    true
 }
 
 type RemoteReceiver = FramedRead<ByteReader, RawRequestMessageDecoder>;
