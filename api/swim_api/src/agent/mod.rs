@@ -29,7 +29,7 @@ use crate::{
     error::{AgentInitError, AgentRuntimeError, AgentTaskError},
 };
 
-/// Indicates the sub-protocol that a lane uses to communicate it's state.
+/// Indicates the sub-protocol that a lane uses to communicate its state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UplinkKind {
     Value,
@@ -45,7 +45,7 @@ impl Display for UplinkKind {
     }
 }
 
-/// Configuration parametres for a lane.
+/// Configuration parameters for a lane.
 #[derive(Debug, Clone, Copy)]
 pub struct LaneConfig {
     /// Size of the input buffer in bytes.
@@ -69,8 +69,8 @@ impl Default for LaneConfig {
 pub trait AgentContext: Sync {
     /// Add a new lane endpoint to the runtime for this agent.
     /// #Arguments
-    /// * `name` - The name of th elane.
-    /// * `uplink_kind` - Protocol to use for runtime to use for communication with the lane.
+    /// * `name` - The name of the lane.
+    /// * `uplink_kind` - Protocol that the runtime uses to communicate with the lane.
     /// * `config` - Configuration parameters for the lane.
     fn add_lane<'a>(
         &'a self,
@@ -79,10 +79,10 @@ pub trait AgentContext: Sync {
         config: Option<LaneConfig>,
     ) -> BoxFuture<'a, Result<(ByteWriter, ByteReader), AgentRuntimeError>>;
 
-    /// Open a downlink to to a lane on another agent.
+    /// Open a downlink to a lane on another agent.
     /// #Arguments
     /// * `config` - The configuration for the downlink.
-    /// * `downlinks` - Downlink implementation.
+    /// * `downlink` - Downlink implementation.
     fn open_downlink(
         &self,
         config: DownlinkConfig,
