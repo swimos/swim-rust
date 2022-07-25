@@ -62,9 +62,9 @@ impl SpecialAction {
 /// Types of writes that can be performed by a [`WriteTask`].
 #[derive(Debug)]
 pub enum WriteAction {
-    // A lane event (the body is store in the associated buffer).
+    // A lane event (the body is stored in the associated buffer).
     Event,
-    // A value lane event, to be followed by a synced message, (the body is store in the associated buffer).
+    // A value lane event, to be followed by a synced message, (the body is stored in the associated buffer).
     EventAndSynced,
     // A queue of map lan events, to be followed by a synced message (the contents of the buffer are irrelevant).
     MapSynced(Option<Box<MapBackpressure>>),

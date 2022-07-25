@@ -69,7 +69,7 @@ impl RemoteSender {
         lane.push_str(lane_name);
     }
 
-    /// Construct a [`ResponseMessage`] for the provied notifiication and send it on the
+    /// Construct a [`ResponseMessage`] for the provided notification and send it on the
     /// channel.
     ///
     /// #Arguments

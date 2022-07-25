@@ -45,7 +45,7 @@ mod task;
 
 use task::AgentRuntimeRequest;
 
-/// Implementaton of [`AgentContext`] that communictates with with anotehr task over a channel
+/// Implementaton of [`AgentContext`] that communicates with with another task over a channel
 /// to perform the supported operations.
 struct AgentRuntimeContext {
     tx: mpsc::Sender<AgentRuntimeRequest>,
@@ -100,7 +100,7 @@ impl AgentContext for AgentRuntimeContext {
     }
 }
 
-/// Ends of two independent channels (for exampel the input and output channels of an agent).
+/// Ends of two independent channels (for example the input and output channels of an agent).
 type Io = (ByteWriter, ByteReader);
 
 /// Reasons that a remote connected to an agent runtime task could be disconnected.
@@ -153,7 +153,7 @@ pub struct AgentAttachmentRequest {
     /// A promise that will be satisified when the agent runtime task closes the remote.
     completion: promise::Sender<DisconnectionReason>,
     /// If provided, this will be triggered when the remote has been fully registered with
-    /// the agent runtime requeset. The completion promise will only receive a non-failed
+    /// the agent runtime request. The completion promise will only receive a non-failed
     /// result after this occurs.
     on_attached: Option<trigger::Sender>,
 }
@@ -228,7 +228,7 @@ impl From<NoLanes> for AgentExecError {
 /// * `identity` - The routing ID that will be attached to outgoing envelopes.
 /// * `route` - The node URI that will be attached to outgoing envelopes.
 /// * `attachment_rx` - Channel for making requests to attach remotes to the agent task.
-/// * `stopping` - Instructs th agent task to stop.
+/// * `stopping` - Instructs the agent task to stop.
 /// * `agent_config` - Configuration parameters for the user agent task.
 /// * `runtime_config` - Configuration for the runtime part of the agent task.
 pub async fn run_agent<A>(
