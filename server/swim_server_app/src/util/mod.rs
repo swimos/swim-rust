@@ -12,6 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod error;
-pub mod model;
-pub mod util;
+use swim_api::agent::{Agent, BoxAgent};
+
+pub trait AgentExt: Agent {
+    fn boxed(self) -> BoxAgent
+    where
+        Self: Sized + Send + 'static,
+    {
+        Box::new(self)
+    }
+}
+
+impl<A> AgentExt for A where A: Agent {}

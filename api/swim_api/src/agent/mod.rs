@@ -120,3 +120,16 @@ pub trait Agent {
 }
 
 static_assertions::assert_obj_safe!(AgentContext, Agent);
+
+pub type BoxAgent = Box<dyn Agent + Send + 'static>;
+
+impl Agent for BoxAgent {
+    fn run<'a>(
+        &self,
+        route: RelativeUri,
+        config: AgentConfig,
+        context: &'a dyn AgentContext,
+    ) -> BoxFuture<'a, AgentInitResult<'a>> {
+        (**self).run(route, config, context)
+    }
+}
