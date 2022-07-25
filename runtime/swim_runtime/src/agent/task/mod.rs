@@ -161,7 +161,7 @@ impl LaneEndpoint<Io> {
 }
 
 impl LaneEndpoint<ByteReader> {
-    /// Create a [`Stream`] that will read messages from an.
+    /// Create a [`Stream`] that will read messages from an endpoint.
     /// #Arguments
     /// * `registry` - The registry that assigns identifiiers to active lanes.
     fn into_lane_stream(self, registry: &mut LaneRegistry) -> LaneStream {
@@ -244,13 +244,13 @@ enum RwCoorindationMessage {
         lane: Text,
         error: MessageExtractError,
     },
-    /// Instruct the writet ask to create an uplink from the specified lane to the specified remote.
+    /// Instruct the write task to create an uplink from the specified lane to the specified remote.
     Link { origin: Uuid, lane: Text },
-    /// Instruct the writet ask to remove an uplink from the specified lane to the specified remote.
+    /// Instruct the write task to remove an uplink from the specified lane to the specified remote.
     Unlink { origin: Uuid, lane: Text },
 }
 
-/// Type of errors that can ocurr attempting to forward an incoming message to a lane.
+/// Type of errors that can occur attempting to forward an incoming message to a lane.
 #[derive(Debug, Error)]
 enum LaneSendError {
     /// The lane failed to receive the data.
@@ -345,7 +345,7 @@ type MapLaneReceiver = LaneReceiver<MapLaneResponseDecoder>;
 /// Unified response type from all lane types.
 #[derive(Debug)]
 struct RawLaneResponse {
-    /// A specific remote to forward to the message to (otherwise broadcast to all linked).
+    /// A specific remote to forward the message to (otherwise broadcast to all linked).
     target: Option<Uuid>,
     /// The response to send to the specified remote.
     response: UplinkResponse,
@@ -559,9 +559,9 @@ const BAD_LANE_REG: &str = "Agent failed to receive lane registration result.";
 /// #Arguments
 /// * `runtime` - Requests from the agent.
 /// * `attachment` - External requests to attach new remotes.
-/// * `read_tx` - Channel to comunicate with the read task.
+/// * `read_tx` - Channel to communicate with the read task.
 /// * `write_tx` - Channel to communicate with the write task.
-/// * `comboined_stop` - The task will stop when this future completes. This should combined the overall
+/// * `combined_stop` - The task will stop when this future completes. This should combined the overall
 /// shutdown-signal with latch that ensures this task will stop if the read/write tasks stop (to avoid
 /// deadlocks).
 async fn attachment_task<F>(
@@ -588,82 +588,21 @@ async fn attachment_task<F>(
             maybe_event = stream.next() => {
                 if let Some(event) = maybe_event {
                     match event {
-                        Either::Left(AgentRuntimeRequest::AddLane {
-                            name,
-                            kind,
-                            config,
-                            promise,
-                        }) => {
-                            info!("Registering a new {} lane with name {}.", kind, name);
-                            let lane_config = config.unwrap_or_default();
-                            let (in_tx, in_rx) = byte_channel(lane_config.input_buffer_size);
-                            let (out_tx, out_rx) = byte_channel(lane_config.output_buffer_size);
-                            let sender = LaneSender::new(in_tx, kind);
-                            let read_permit = match read_tx.reserve().await {
-                                Err(_) => {
-                                    warn!("Read task stopped while attempting to register a new {} lane named '{}'.", kind, name);
-                                    if promise.send(Err(AgentRuntimeError::Terminated)).is_err() {
-                                        error!(BAD_LANE_REG);
-                                    }
-                                    break;
-                                }
-                                Ok(permit) => permit,
-                            };
-                            let write_permit = match write_tx.reserve().await {
-                                Err(_) => {
-                                    warn!("Write task stopped while attempting to register a new {} lane named '{}'.", kind, name);
-                                    if promise.send(Err(AgentRuntimeError::Terminated)).is_err() {
-                                        error!(BAD_LANE_REG);
-                                    }
-                                    break;
-                                }
-                                Ok(permit) => permit,
-                            };
-                            read_permit.send(ReadTaskMessages::Lane {
-                                name: name.clone(),
-                                sender,
-                            });
-                            write_permit.send(WriteTaskMessage::Lane(LaneEndpoint::new(
-                                name, kind, out_rx,
-                            )));
-                            if promise.send(Ok((out_tx, in_rx))).is_err() {
-                                error!(BAD_LANE_REG);
+                        Either::Left(request) => {
+                            if !handle_runtime_request(request, &read_tx, &write_tx).await {
+                                break;
                             }
                         }
-                        Either::Left(_) => todo!("Opening downlinks form agents not implemented."),
-                        Either::Right(AgentAttachmentRequest { id, io: (tx, rx), completion, on_attached }) => {
-                            info!(
-                                "Attaching a new remote endpoint with ID {id} to the agent.",
-                                id = id
-                            );
-                            let read_permit = match read_tx.reserve().await {
-                                Err(_) => {
-                                    warn!("Read task stopped while attempting to attach a remote endpoint.");
-                                    break;
-                                }
-                                Ok(permit) => permit,
-                            };
-                            let write_permit = match write_tx.reserve().await {
-                                Err(_) => {
-                                    warn!("Write task stopped while attempting to attach a remote endpoint.");
-                                    break;
-                                }
-                                Ok(permit) => permit,
-                            };
-                            let (read_on_attached, write_on_attached) = if let Some(on_attached) = on_attached {
-                                let (read_tx, read_rx) = trigger::trigger();
-                                let (write_tx, write_rx) = trigger::trigger();
+                        Either::Right(request) => {
+                            if !handle_att_request(request, &read_tx, &write_tx, |read_rx, write_rx, on_attached| {
                                 attachments.push(async move {
                                     if matches!(join(read_rx, write_rx).await, (Ok(_), Ok(_))) {
                                         on_attached.trigger();
                                     }
-                                });
-                                (Some(read_tx), Some(write_tx))
-                            } else {
-                                (None, None)
-                            };
-                            read_permit.send(ReadTaskMessages::Remote { reader: rx, on_attached: read_on_attached });
-                            write_permit.send(WriteTaskMessage::Remote { id, writer: tx, completion, on_attached: write_on_attached });
+                                })
+                            }).await {
+                                break;
+                            }
                         }
                     }
                 } else {
@@ -672,6 +611,121 @@ async fn attachment_task<F>(
             }
         }
     }
+}
+
+#[inline]
+async fn handle_runtime_request(
+    request: AgentRuntimeRequest,
+    read_tx: &mpsc::Sender<ReadTaskMessages>,
+    write_tx: &mpsc::Sender<WriteTaskMessage>,
+) -> bool {
+    match request {
+        AgentRuntimeRequest::AddLane {
+            name,
+            kind,
+            config,
+            promise,
+        } => {
+            info!("Registering a new {} lane with name {}.", kind, name);
+            let lane_config = config.unwrap_or_default();
+            let (in_tx, in_rx) = byte_channel(lane_config.input_buffer_size);
+            let (out_tx, out_rx) = byte_channel(lane_config.output_buffer_size);
+            let sender = LaneSender::new(in_tx, kind);
+            let read_permit = match read_tx.reserve().await {
+                Err(_) => {
+                    warn!(
+                        "Read task stopped while attempting to register a new {} lane named '{}'.",
+                        kind, name
+                    );
+                    if promise.send(Err(AgentRuntimeError::Terminated)).is_err() {
+                        error!(BAD_LANE_REG);
+                    }
+                    return false;
+                }
+                Ok(permit) => permit,
+            };
+            let write_permit = match write_tx.reserve().await {
+                Err(_) => {
+                    warn!(
+                        "Write task stopped while attempting to register a new {} lane named '{}'.",
+                        kind, name
+                    );
+                    if promise.send(Err(AgentRuntimeError::Terminated)).is_err() {
+                        error!(BAD_LANE_REG);
+                    }
+                    return false;
+                }
+                Ok(permit) => permit,
+            };
+            read_permit.send(ReadTaskMessages::Lane {
+                name: name.clone(),
+                sender,
+            });
+            write_permit.send(WriteTaskMessage::Lane(LaneEndpoint::new(
+                name, kind, out_rx,
+            )));
+            if promise.send(Ok((out_tx, in_rx))).is_err() {
+                error!(BAD_LANE_REG);
+            }
+            true
+        }
+        _ => todo!("Opening downlinks form agents not implemented."),
+    }
+}
+
+#[inline]
+async fn handle_att_request<F>(
+    request: AgentAttachmentRequest,
+    read_tx: &mpsc::Sender<ReadTaskMessages>,
+    write_tx: &mpsc::Sender<WriteTaskMessage>,
+    add_att: F,
+) -> bool
+where
+    F: FnOnce(trigger::Receiver, trigger::Receiver, trigger::Sender),
+{
+    let AgentAttachmentRequest {
+        id,
+        io: (tx, rx),
+        completion,
+        on_attached,
+    } = request;
+    info!(
+        "Attaching a new remote endpoint with ID {id} to the agent.",
+        id = id
+    );
+    let read_permit = match read_tx.reserve().await {
+        Err(_) => {
+            warn!("Read task stopped while attempting to attach a remote endpoint.");
+            return false;
+        }
+        Ok(permit) => permit,
+    };
+    let write_permit = match write_tx.reserve().await {
+        Err(_) => {
+            warn!("Write task stopped while attempting to attach a remote endpoint.");
+            return false;
+        }
+        Ok(permit) => permit,
+    };
+    let (read_on_attached, write_on_attached) = if let Some(on_attached) = on_attached {
+        let (read_tx, read_rx) = trigger::trigger();
+        let (write_tx, write_rx) = trigger::trigger();
+        add_att(read_rx, write_rx, on_attached);
+        (Some(read_tx), Some(write_tx))
+    } else {
+        (None, None)
+    };
+    read_permit.send(ReadTaskMessages::Remote {
+        reader: rx,
+        on_attached: read_on_attached,
+    });
+    write_permit.send(WriteTaskMessage::Remote {
+        id,
+        writer: tx,
+        completion,
+        on_attached: write_on_attached,
+    });
+    true
 }
 
 type RemoteReceiver = FramedRead<ByteReader, RawRequestMessageDecoder>;
@@ -683,13 +737,13 @@ fn remote_receiver(reader: ByteReader) -> RemoteReceiver {
 const TASK_COORD_ERR: &str = "Stopping after communcating with the write task failed.";
 const STOP_VOTED: &str = "Stopping as read and write tasks have both voted to do so.";
 
-/// Events that can ocur within the read task.
+/// Events that can occur within the read task.
 enum ReadTaskEvent {
     /// Register a new lane or remote.
     Registration(ReadTaskMessages),
     /// An envelope was received from a connected remote.
     Envelope(RequestMessage<Bytes>),
-    /// The read task timedout due to inactivity.
+    /// The read task timed out due to inactivity.
     Timeout,
 }
 
@@ -961,7 +1015,7 @@ enum WriteTaskEvent {
     LaneFailed(u64),
     /// A remote may have been without active links beyond the configured timeout.
     PruneRemote(Uuid),
-    /// The task timedout due to inactivity.
+    /// The task timed out due to inactivity.
     Timeout,
     /// The stop signal was received.
     Stop,
@@ -1009,12 +1063,12 @@ struct WriteTaskEvents<'a, S, W> {
 
 impl<'a, S, W> WriteTaskEvents<'a, S, W> {
     /// #Arguments
-    /// * `inactive_timeout` - The after which the task will vote to stop due to inactivity.
+    /// * `inactive_timeout` - Time after which the task will vote to stop due to inactivity.
     /// * `remote_timeout` - Time after which a task with no links and no activity should be removed.
     /// * `timeout_delay` - Timer for the agent timeout (held on the stack of the write task to avoid
     /// having it in a separate allocation).
     /// * `prune_delay` - Timer for pruning inactive remotes (held on the stack of the write task to
-    /// avoud having it in a separte allocation).
+    /// avoid having it in a separte allocation).
     /// * `message_stream` - Stream of messages from the attachment and read tasks.
     fn new(
         inactive_timeout: Duration,
@@ -1052,7 +1106,7 @@ impl<'a, S, W> WriteTaskEvents<'a, S, W> {
         self.pending_writes.push(write);
     }
 
-    /// Schedule a remoted to be pruned (after a period of inactivity).
+    /// Schedule a remote to be pruned (after a period of inactivity).
     fn schedule_prune(&mut self, remote_id: Uuid) {
         let WriteTaskEvents {
             remote_timeout,
@@ -1179,12 +1233,12 @@ struct WriteTaskState {
 enum TaskMessageResult {
     /// Register a new lane.
     AddLane(LaneStream),
-    /// Schedule a write to one or all remotes (if not ID is specified).
+    /// Schedule a write to one or all remotes (if no ID is specified).
     ScheduleWrite {
         write: WriteTask,
         schedule_prune: Option<Uuid>,
     },
-    /// Track a remote the be pruned after the configured timeout (as it no longer has any links).
+    /// Track a remote to be pruned after the configured timeout (as it no longer has any links).
     AddPruneTimeout(Uuid),
     /// No effect.
     Nothing,
@@ -1449,7 +1503,7 @@ impl WriteTaskState {
     }
 
     /// Return the remote sender and associated buffer from a completed write. This will
-    /// triger a new task if more work is queued fro that remote.
+    /// trigger a new task if more work is queued fro that remote.
     fn replace(&mut self, writer: RemoteSender, buffer: BytesMut) -> Option<WriteTask> {
         let WriteTaskState { remote_tracker, .. } = self;
         trace!(
@@ -1482,13 +1536,13 @@ impl WriteTaskState {
     }
 }
 
-/// The write task of the agent runtime. This receives messages from the agent lanes and forwrads them
+/// The write task of the agent runtime. This receives messages from the agent lanes and forwards them
 /// to linked remotes. It also receives messages from the read task to maintain the set of uplinks.
 ///
 /// #Arguments
-/// * `config` - Configuration parameters for the task.
+/// * `configuration` - Configuration parameters for the task.
 /// * `initial_endpoints` - Initial lane endpoints that were created in the agent initialization phase.
-/// * `message_rx` - Channelf for messages from the read and coordination tasks.
+/// * `message_rx` - Channel for messages from the read and coordination tasks.
 /// * `stop_voter` - Votes to stop if this task becomes inactive (unanimity with the write task is required).
 /// * `stopping` - Initiates the clean shutdown procedure.
 async fn write_task(
@@ -1507,7 +1561,7 @@ async fn write_task(
     } = configuration;
 
     let timeout_delay = sleep(runtime_config.inactive_timeout);
-    let remote_prune_delay = sleep(Duration::ZERO);
+    let remote_prune_delay = sleep(Duration::default());
 
     pin_mut!(timeout_delay);
     pin_mut!(remote_prune_delay);

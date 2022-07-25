@@ -319,7 +319,7 @@ impl Display for NoAgentAtRoute {
 
 impl Error for NoAgentAtRoute {}
 
-/// Error indicated that the key for a map message contained invalid UTF8.
+/// Error indicating that the key for a map message contained invalid UTF8.
 #[derive(Debug, Error)]
 pub struct InvalidKey {
     key_bytes: Bytes,

@@ -151,7 +151,7 @@ enum WithLenRecognizerDecoderState<R: Recognizer> {
 }
 
 /// Length delimited wrapper around [`RecognizerDecoder`]. This decoder expects the length of the string
-/// to be consumed to by the inner decoder to be written to the buffer as an unsigned, 64bit integer.
+/// to be consumed by the inner decoder to be written to the buffer as an unsigned, 64bit integer.
 /// The inner reader will not be permitted to read beyond the written length.
 pub struct WithLenRecognizerDecoder<R: Recognizer> {
     inner: RecognizerDecoder<R>,
