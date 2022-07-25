@@ -1561,7 +1561,7 @@ async fn write_task(
     } = configuration;
 
     let timeout_delay = sleep(runtime_config.inactive_timeout);
-    let remote_prune_delay = sleep(Duration::ZERO);
+    let remote_prune_delay = sleep(Duration::default());
 
     pin_mut!(timeout_delay);
     pin_mut!(remote_prune_delay);
