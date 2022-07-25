@@ -21,10 +21,11 @@ use ratchet::{
 };
 use ratchet::{CloseReason, Error, ExtensionDecoder, WebSocketStream};
 use std::sync::Arc;
+use std::fmt::{Debug, Formatter, Display};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum WsMessage {
-    Text(String),
+    Text(BytesStr),
     Binary(Bytes),
     Ping,
     Pong,
@@ -33,13 +34,13 @@ pub enum WsMessage {
 
 impl From<String> for WsMessage {
     fn from(f: String) -> Self {
-        WsMessage::Text(f)
+        WsMessage::Text(BytesStr::from(f))
     }
 }
 
 impl From<&str> for WsMessage {
     fn from(f: &str) -> Self {
-        WsMessage::Text(f.to_string())
+        WsMessage::from(f.to_string())
     }
 }
 
@@ -72,7 +73,7 @@ where
         let AutoWebSocket { inner, buf } = self;
 
         match inner.read(buf).await? {
-            Message::Text => match String::from_utf8(buf.to_vec()) {
+            Message::Text => match BytesStr::try_from(buf.split().freeze()) {
                 Ok(value) => {
                     buf.clear();
                     Ok(WsMessage::Text(value))
@@ -116,7 +117,7 @@ where
         let WebSocketReceiver { inner, buf } = self;
 
         match inner.read(buf).await? {
-            Message::Text => match String::from_utf8(buf.to_vec()) {
+            Message::Text => match BytesStr::try_from(buf.split().freeze())  {
                 Ok(value) => {
                     buf.clear();
                     Ok(WsMessage::Text(value))
@@ -197,5 +198,62 @@ impl ExtensionProvider for CompressionSwitcherProvider {
             CompressionSwitcherProvider::On(ext) => ext.negotiate_server(headers),
             CompressionSwitcherProvider::Off => Ok(None),
         }
+    }
+}
+
+#[derive(Default, PartialEq, Eq, Clone)]
+pub struct BytesStr(Bytes);
+
+impl TryFrom<Bytes> for BytesStr {
+    type Error = std::str::Utf8Error;
+
+    fn try_from(value: Bytes) -> Result<Self, Self::Error> {
+        std::str::from_utf8(value.as_ref())?;
+        Ok(BytesStr(value))
+    }
+}
+
+impl AsRef<str> for BytesStr {
+    fn as_ref(&self) -> &str {
+        //A BytesStr can only be constructed through means that guarantee it is valid UTF-8.
+        unsafe { std::str::from_utf8_unchecked(self.0.as_ref()) }
+    }
+}
+
+impl Debug for BytesStr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("BytesStr").field(&self.as_ref()).finish()
+    }
+}
+
+impl Display for BytesStr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_ref())
+    }
+}
+
+impl From<String> for BytesStr {
+    fn from(string: String) -> Self {
+        BytesStr(Bytes::from(string))
+    }
+}
+
+impl BytesStr {
+
+    pub fn as_str(&self) -> &str {
+        self.as_ref()
+    }
+
+}
+
+impl PartialEq<str> for BytesStr {
+    fn eq(&self, other: &str) -> bool {
+        self.as_ref() == other
+    }
+}
+
+impl PartialEq<String> for BytesStr {
+    fn eq(&self, other: &String) -> bool {
+        self.as_ref() == other
     }
 }
