@@ -14,17 +14,14 @@
 
 use crate::bytes_str::BytesStr;
 use crate::compat::{
-    AgentMessageDecoder, ClientMessageDecoder, EnvelopeEncoder, MessageDecodeError,
-    RawRequestMessage, RawRequestMessageEncoder, BytesResponseMessage, RawResponseMessageDecoder,
-    RequestMessage, ResponseMessage, ResponseMessageEncoder, COMMAND, EVENT, HEADER_INIT_LEN, LINK,
-    LINKED, OP_MASK, OP_SHIFT, SYNC, SYNCED, UNLINK, UNLINKED, Path,
+    AgentMessageDecoder, BytesResponseMessage, ClientMessageDecoder, EnvelopeEncoder,
+    MessageDecodeError, Path, RawRequestMessage, RawRequestMessageEncoder,
+    RawResponseMessageDecoder, RequestMessage, ResponseMessage, ResponseMessageEncoder, COMMAND,
+    EVENT, HEADER_INIT_LEN, LINK, LINKED, OP_MASK, OP_SHIFT, SYNC, SYNCED, UNLINK, UNLINKED,
 };
 use bytes::{Buf, Bytes, BytesMut};
 use futures::future::join;
 use futures::{SinkExt, StreamExt};
-use swim_utilities::algebra::non_zero_usize;
-use swim_utilities::io::byte_channel;
-use uuid::Uuid;
 use std::fmt::Debug;
 use std::fmt::Write;
 use std::io::ErrorKind;
@@ -34,8 +31,11 @@ use swim_form::structural::write::StructuralWritable;
 use swim_form::Form;
 use swim_model::{Text, Value};
 use swim_recon::printer::print_recon_compact;
+use swim_utilities::algebra::non_zero_usize;
+use swim_utilities::io::byte_channel;
 use swim_warp::envelope::Envelope;
 use tokio_util::codec::{Decoder, Encoder, FramedRead, FramedWrite};
+use uuid::Uuid;
 
 fn make_addr() -> Uuid {
     let id: u32 = rand::random();
@@ -585,7 +585,7 @@ fn encode_event_frame() {
 }
 
 fn bytes_path(node: &str, lane: &str) -> Path<BytesStr> {
-    Path::new(BytesStr::from(node),BytesStr::from(lane))
+    Path::new(BytesStr::from(node), BytesStr::from(lane))
 }
 
 #[test]
@@ -624,8 +624,7 @@ fn decode_unlinked_frame() {
     let node = "my_node";
     let lane = "lane";
 
-    let frame =
-        ResponseMessage::<_, Example, Bytes>::unlinked(id, Path::new(node, lane), None);
+    let frame = ResponseMessage::<_, Example, Bytes>::unlinked(id, Path::new(node, lane), None);
     let result = round_trip_rawresponse::<_, Example>(frame);
 
     check_result_rawresponse(
@@ -1039,8 +1038,7 @@ fn decode_client_unlinked_frame() {
     let node = "my_node";
     let lane = "lane";
 
-    let frame =
-        ResponseMessage::<_, Example, Bytes>::unlinked(id, Path::new(node, lane), None);
+    let frame = ResponseMessage::<_, Example, Bytes>::unlinked(id, Path::new(node, lane), None);
     let result = round_trip_response(frame);
 
     check_result_response(

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{fmt::Formatter, borrow::Cow};
+use std::{borrow::Cow, fmt::Formatter};
 
 mod attr;
 pub use num_bigint as bigint;

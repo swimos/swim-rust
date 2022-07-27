@@ -21,18 +21,22 @@ use std::{
 use bytes::BytesMut;
 use either::Either;
 use futures::{
-    future::{join, join_all, ready},
+    future::{join, join_all, ready, select},
     pin_mut,
     stream::unfold,
-    Future, Sink, SinkExt, Stream, StreamExt,
+    Future, SinkExt, Stream, StreamExt,
 };
-use ratchet::{CloseReason, Extension, Message, SplittableExtension, WebSocket, WebSocketStream};
+use ratchet::{
+    CloseCode, CloseReason, ExtensionDecoder, ExtensionEncoder, Message, PayloadType,
+    SplittableExtension, WebSocket, WebSocketStream,
+};
 use smallvec::SmallVec;
 use swim_messages::{
     bytes_str::BytesStr,
     compat::{
-        Path, RawRequestMessageDecoder, RawRequestMessageEncoder, RawResponseMessageDecoder,
-        RawResponseMessageEncoder, RequestMessage, ResponseMessage,
+        BytesRequestMessage, BytesResponseMessage, Path, RawRequestMessageDecoder,
+        RawRequestMessageEncoder, RawResponseMessageDecoder, RawResponseMessageEncoder,
+        RequestMessage, ResponseMessage,
     },
 };
 use swim_model::Text;
@@ -44,10 +48,12 @@ use swim_utilities::{
 use swim_warp::envelope::{peel_envelope_header_str, RawEnvelope};
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
-use tokio_util::codec::{FramedRead, FramedWrite};
+use tokio_util::codec::{Encoder, FramedRead, FramedWrite};
 use uuid::Uuid;
 
 use crate::error::LaneNotFound;
+
+use self::envelopes::ReconEncoder;
 
 mod envelopes;
 
@@ -64,8 +70,8 @@ pub enum AttachClient {
 }
 
 pub struct FindNode {
-    node: Text,
-    provider: oneshot::Sender<Result<(ByteWriter, ByteReader), LaneNotFound>>,
+    pub node: Text,
+    pub provider: oneshot::Sender<Result<(ByteWriter, ByteReader), LaneNotFound>>,
 }
 
 pub struct RemoteTask<S, E> {
@@ -101,6 +107,8 @@ enum IncomingEvent<M> {
 
 enum OutgoingEvent {
     Message(OutgoingTaskMessage),
+    Request(BytesRequestMessage),
+    Response(BytesResponseMessage),
 }
 
 enum InputError {
@@ -110,69 +118,47 @@ enum InputError {
     Closed(Option<CloseReason>),
 }
 
+const STOPPING: &str = "Server is stopping.";
+const BAD_ENCODING: &str = "Invalid encoding.";
+const EXPECTED_STR: &str = "Expected string data.";
+
 impl<S, E> RemoteTask<S, E>
 where
-    S: WebSocketStream,
-    E: SplittableExtension,
+    S: WebSocketStream + Send,
+    E: SplittableExtension + Send,
 {
-    pub async fn run(self) {
+    pub fn run<'a>(self) -> impl Future<Output = ()> + Send + 'a
+    where
+        S: 'a,
+        E: 'a,
+    {
+        async move { self.run_inner().await }
+    }
+
+    async fn run_inner(self) {
         let RemoteTask {
             id,
-            mut stop_signal,
+            stop_signal,
             ws,
             attach_rx,
             find_tx,
         } = self;
 
-        let (tx, rx) = ws.split().unwrap();
+        let (mut tx, mut rx) = ws.split().unwrap();
 
+        let (kill_switch_tx, kill_switch_rx) = trigger::trigger();
         let (incoming_tx, incoming_rx) = mpsc::channel(1);
         let (outgoing_tx, outgoing_rx) = mpsc::channel(1);
 
-        let reg = registration_task(
-            attach_rx,
-            incoming_tx,
-            outgoing_tx.clone(),
-            stop_signal.clone(),
-        );
+        let combined_stop = select(stop_signal.clone(), kill_switch_rx);
 
-        let input = unfold((Some(rx), BytesMut::new()), |(rx, mut buffer)| async move {
-            if let Some(mut rx) = rx {
-                match rx.read(&mut buffer).await {
-                    Ok(Message::Binary) => {
-                        let item = Some(Err(InputError::BinaryFrame));
-                        Some((item, (None, buffer)))
-                    }
-                    Ok(Message::Text) => {
-                        let bytes = buffer.split().freeze();
-                        match BytesStr::try_from(bytes) {
-                            Ok(string) => {
-                                let item = Some(Ok(string));
-                                Some((item, (Some(rx), buffer)))
-                            }
-                            Err(e) => {
-                                let item = Some(Err(InputError::BadUtf8(e)));
-                                Some((item, (None, buffer)))
-                            }
-                        }
-                    }
-                    Ok(Message::Close(reason)) => {
-                        let item = Some(Err(InputError::Closed(reason)));
-                        Some((item, (None, buffer)))
-                    }
-                    _ => Some((None, (Some(rx), buffer))),
-                    Err(e) => {
-                        let item = Some(Err(InputError::WsError(e)));
-                        Some((item, (None, buffer)))
-                    }
-                }
-            } else {
-                None
-            }
-        })
-        .filter_map(|item| ready(item));
+        let reg = registration_task(attach_rx, incoming_tx, outgoing_tx.clone(), combined_stop);
 
-        let in_task = incoming_task(
+        let input = text_frame_stream(&mut rx);
+
+        let mut incoming = IncomingTask::default();
+
+        let in_task = incoming.run(
             id,
             stop_signal.clone(),
             input,
@@ -181,9 +167,76 @@ where
             outgoing_tx,
         );
 
-        let out_task = outgoing_task(stop_signal, tx, outgoing_rx);
-        todo!()
+        let mut outgoing = OutgoingTask::default();
+        let out_task = outgoing.run(stop_signal, &mut tx, outgoing_rx);
+
+        let (_, result) = join(reg, await_io_tasks(in_task, out_task, kill_switch_tx)).await;
+
+        let close_reason = match result {
+            Ok(_) => Some(CloseReason::new(
+                CloseCode::GoingAway,
+                Some(STOPPING.to_string()),
+            )),
+            Err(InputError::BadUtf8(_)) => Some(CloseReason::new(
+                CloseCode::Protocol,
+                Some(BAD_ENCODING.to_string()),
+            )),
+            Err(InputError::BinaryFrame) => Some(CloseReason::new(
+                CloseCode::Protocol,
+                Some(EXPECTED_STR.to_string()),
+            )),
+            _ => None, //Closed remotely or failed.
+        };
+        if let Some(reason) = close_reason {
+            if tx.close_with(reason).await.is_err() {
+                todo!("Log close error.");
+            }
+        }
     }
+}
+
+fn text_frame_stream<'a, S, E>(
+    rx: &'a mut ratchet::Receiver<S, E>,
+) -> impl Stream<Item = Result<BytesStr, InputError>> + 'a
+where
+    S: WebSocketStream,
+    E: ExtensionDecoder,
+{
+    unfold((Some(rx), BytesMut::new()), |(rx, mut buffer)| async move {
+        if let Some(rx) = rx {
+            match rx.read(&mut buffer).await {
+                Ok(Message::Binary) => {
+                    let item = Some(Err(InputError::BinaryFrame));
+                    Some((item, (None, buffer)))
+                }
+                Ok(Message::Text) => {
+                    let bytes = buffer.split().freeze();
+                    match BytesStr::try_from(bytes) {
+                        Ok(string) => {
+                            let item = Some(Ok(string));
+                            Some((item, (Some(rx), buffer)))
+                        }
+                        Err(e) => {
+                            let item = Some(Err(InputError::BadUtf8(e)));
+                            Some((item, (None, buffer)))
+                        }
+                    }
+                }
+                Ok(Message::Close(reason)) => {
+                    let item = Some(Err(InputError::Closed(reason)));
+                    Some((item, (None, buffer)))
+                }
+                Err(e) => {
+                    let item = Some(Err(InputError::WsError(e)));
+                    Some((item, (None, buffer)))
+                }
+                _ => Some((None, (Some(rx), buffer))),
+            }
+        } else {
+            None
+        }
+    })
+    .filter_map(|item| ready(item))
 }
 
 struct RegisterIncoming {
@@ -259,127 +312,200 @@ type ResponseWriters = SmallVec<[ResponseWriter; DL_SOFT_CAP]>;
 type RequestReader = FramedRead<ByteReader, RawRequestMessageDecoder>;
 type ResponseReader = FramedRead<ByteReader, RawResponseMessageDecoder>;
 
-async fn outgoing_task<S, E>(
-    mut stop_signal: trigger::Receiver,
-    mut output: ratchet::Sender<S, E>,
-    mut messages_rx: mpsc::Receiver<OutgoingTaskMessage>,
-) where
-    S: WebSocketStream,
-{
-    let mut clients = MultiReader::<RequestReader>::new();
-    let mut agents = MultiReader::<ResponseReader>::new();
+#[derive(Default)]
+struct OutgoingTask {
+    clients: MultiReader<RequestReader>,
+    agents: MultiReader<ResponseReader>,
+}
 
-    loop {
-        let event = tokio::select! {
-            _ = &mut stop_signal => break,
-            Some(message) = messages_rx.recv() => OutgoingEvent::Message(message),
-            else => break,
-        };
-        match event {
-            OutgoingEvent::Message(OutgoingTaskMessage::RegisterOutgoing { kind, receiver }) => {
-                todo!()
-            }
-            OutgoingEvent::Message(OutgoingTaskMessage::NotFound { error }) => {
-                todo!()
+impl OutgoingTask {
+    async fn run<S, E>(
+        &mut self,
+        mut stop_signal: trigger::Receiver,
+        output: &mut ratchet::Sender<S, E>,
+        mut messages_rx: mpsc::Receiver<OutgoingTaskMessage>,
+    ) where
+        S: WebSocketStream,
+        E: ExtensionEncoder,
+    {
+        let OutgoingTask { clients, agents } = self;
+        let mut buffer = BytesMut::new();
+        let mut recon_encoder = ReconEncoder::default();
+
+        loop {
+            let event = tokio::select! {
+                _ = &mut stop_signal => break,
+                Some(message) = messages_rx.recv() => OutgoingEvent::Message(message),
+                Some(result) = clients.next(), if !clients.is_empty() => {
+                    if let Ok(request) = result {
+                        OutgoingEvent::Request(request)
+                    } else {
+                        //todo!("Log stream error.");
+                        continue;
+                    }
+                },
+                Some(result) = agents.next(), if !agents.is_empty() => {
+                    if let Ok(response) = result {
+                        OutgoingEvent::Response(response)
+                    } else {
+                        //todo!("Log stream error.");
+                        continue;
+                    }
+                },
+                else => break,
+            };
+            match event {
+                OutgoingEvent::Message(OutgoingTaskMessage::RegisterOutgoing {
+                    kind,
+                    receiver,
+                }) => match kind {
+                    OutgoingKind::Client => {
+                        clients.add(RequestReader::new(receiver, Default::default()));
+                    }
+                    OutgoingKind::Server => {
+                        agents.add(ResponseReader::new(receiver, Default::default()));
+                    }
+                },
+                OutgoingEvent::Message(OutgoingTaskMessage::NotFound { error }) => {
+                    buffer.clear();
+                    recon_encoder
+                        .encode(error, &mut buffer)
+                        .expect("Encoding a frame should be infallible.");
+                    if output.write(&buffer, PayloadType::Text).await.is_err() {
+                        //TODO Log write error.
+                        break;
+                    }
+                }
+                OutgoingEvent::Request(req) => {
+                    buffer.clear();
+                    recon_encoder
+                        .encode(req, &mut buffer)
+                        .expect("Encoding a frame should be infallible.");
+                    if output.write(&buffer, PayloadType::Text).await.is_err() {
+                        //TODO Log write error.
+                        break;
+                    }
+                }
+                OutgoingEvent::Response(res) => {
+                    buffer.clear();
+                    recon_encoder
+                        .encode(res, &mut buffer)
+                        .expect("Encoding a frame should be infallible.");
+                    if output.write(&buffer, PayloadType::Text).await.is_err() {
+                        //TODO Log write error.
+                        break;
+                    }
+                }
             }
         }
     }
 }
 
-async fn incoming_task<In>(
-    id: Uuid,
-    mut stop_signal: trigger::Receiver,
-    input: In,
-    mut attach_rx: mpsc::Receiver<RegisterIncoming>,
-    find_tx: mpsc::Sender<FindNode>,
-    outgoing_tx: mpsc::Sender<OutgoingTaskMessage>,
-) where
-    In: Stream<Item = Result<BytesStr, InputError>>,
-{
-    pin_mut!(input);
+#[derive(Default)]
+struct IncomingTask {
+    client_subscriptions: HashMap<Text, HashMap<Text, ResponseWriters>>,
+    agent_routes: HashMap<Text, RequestWriter>,
+}
 
-    let mut client_subscriptions: HashMap<Text, HashMap<Text, ResponseWriters>> = HashMap::new();
-    let mut agent_routes: HashMap<Text, RequestWriter> = HashMap::new();
+impl IncomingTask {
+    async fn run<In>(
+        &mut self,
+        id: Uuid,
+        mut stop_signal: trigger::Receiver,
+        input: In,
+        mut attach_rx: mpsc::Receiver<RegisterIncoming>,
+        find_tx: mpsc::Sender<FindNode>,
+        outgoing_tx: mpsc::Sender<OutgoingTaskMessage>,
+    ) -> Result<(), InputError>
+    where
+        In: Stream<Item = Result<BytesStr, InputError>>,
+    {
+        let IncomingTask {
+            client_subscriptions,
+            agent_routes,
+        } = self;
+        pin_mut!(input);
 
-    loop {
-        let event: IncomingEvent<BytesStr> = tokio::select! {
-            biased;
-            _ = &mut stop_signal => break,
-            Some(request) = attach_rx.recv() => IncomingEvent::Register(request),
-            Some(result) = input.next() => IncomingEvent::Message(result),
-            else => break,
-        };
+        loop {
+            let event: IncomingEvent<BytesStr> = tokio::select! {
+                biased;
+                _ = &mut stop_signal => break Ok(()),
+                Some(request) = attach_rx.recv() => IncomingEvent::Register(request),
+                Some(result) = input.next() => IncomingEvent::Message(result),
+                else => break Ok(()),
+            };
 
-        match event {
-            IncomingEvent::Register(RegisterIncoming { node, lane, sender }) => {
-                client_subscriptions
-                    .entry(node)
-                    .or_default()
-                    .entry(lane)
-                    .or_default()
-                    .push(FramedWrite::new(sender, Default::default()));
-            }
-            IncomingEvent::Message(Ok(frame)) => {
-                let body = frame.as_ref();
-                if let Ok(envelope) = peel_envelope_header_str(body) {
-                    match interpret_envelope(id, envelope) {
-                        Some(Either::Left(request)) => {
-                            let node = &request.path.node;
-                            if let Some(writer) =
-                                if let Some(writer) = agent_routes.get_mut(node.as_ref()) {
-                                    Some(writer)
-                                } else {
-                                    match connect_agent_route(
-                                        Text::new(node.as_ref()),
-                                        &find_tx,
-                                        &outgoing_tx,
-                                    )
-                                    .await
-                                    {
-                                        Ok(Some(writer)) => {
-                                            let writer = agent_routes
-                                                .entry(Text::new(node.as_ref()))
-                                                .or_insert_with_key(move |_| writer);
-                                            Some(writer)
+            match event {
+                IncomingEvent::Register(RegisterIncoming { node, lane, sender }) => {
+                    client_subscriptions
+                        .entry(node)
+                        .or_default()
+                        .entry(lane)
+                        .or_default()
+                        .push(FramedWrite::new(sender, Default::default()));
+                }
+                IncomingEvent::Message(Ok(frame)) => {
+                    let body = frame.as_ref();
+                    if let Ok(envelope) = peel_envelope_header_str(body) {
+                        match interpret_envelope(id, envelope) {
+                            Some(Either::Left(request)) => {
+                                let node = &request.path.node;
+                                if let Some(writer) =
+                                    if let Some(writer) = agent_routes.get_mut(node.as_ref()) {
+                                        Some(writer)
+                                    } else {
+                                        match connect_agent_route(
+                                            Text::new(node.as_ref()),
+                                            &find_tx,
+                                            &outgoing_tx,
+                                        )
+                                        .await
+                                        {
+                                            Ok(Some(writer)) => {
+                                                let writer = agent_routes
+                                                    .entry(Text::new(node.as_ref()))
+                                                    .or_insert_with_key(move |_| writer);
+                                                Some(writer)
+                                            }
+                                            Err(_) => break Ok(()),
+                                            _ => None,
                                         }
-                                        Err(_) => break,
-                                        _ => None,
                                     }
-                                }
-                            {
-                                if writer.send(request).await.is_err() {
-                                    todo!("Log failed agent. Retry?");
+                                {
+                                    if writer.send(request).await.is_err() {
+                                        todo!("Log failed agent. Retry?");
+                                    }
                                 }
                             }
-                        }
-                        Some(Either::Right(response)) => {
-                            let Path { node, lane } = response.path.clone();
-                            if let Some(node_map) = client_subscriptions.get_mut(node.as_ref()) {
-                                if let Some(senders) = node_map.get_mut(lane.as_ref()) {
-                                    if !send_response(senders, response).await {
-                                        node_map.remove(lane.as_ref());
-                                        if node_map.is_empty() {
-                                            client_subscriptions.remove(node.as_ref());
+                            Some(Either::Right(response)) => {
+                                let Path { node, lane } = response.path.clone();
+                                if let Some(node_map) = client_subscriptions.get_mut(node.as_ref())
+                                {
+                                    if let Some(senders) = node_map.get_mut(lane.as_ref()) {
+                                        if !send_response(senders, response).await {
+                                            node_map.remove(lane.as_ref());
+                                            if node_map.is_empty() {
+                                                client_subscriptions.remove(node.as_ref());
+                                            }
                                         }
-                                    }
+                                    } else {
+                                        todo!("Log unexpected envelope.");
+                                    };
                                 } else {
                                     todo!("Log unexpected envelope.");
-                                };
-                            } else {
-                                todo!("Log unexpected envelope.");
+                                }
+                            }
+                            _ => {
+                                //TODO Auth and Deauth not implemented.
                             }
                         }
-                        _ => {
-                            //TODO Auth and Deauth not implemented.
-                        }
+                    } else {
+                        todo!("Log error.");
                     }
-                } else {
-                    todo!("Log error.");
                 }
-            }
-            IncomingEvent::Message(Err(_)) => {
-                // todo!("Log error.");
-                break;
+                IncomingEvent::Message(Err(e)) => {
+                    break Err(e);
+                }
             }
         }
     }
@@ -513,3 +639,26 @@ fn interpret_envelope(
 
 type ResponseWriter = FramedWrite<ByteWriter, RawResponseMessageEncoder>;
 type RequestWriter = FramedWrite<ByteWriter, RawRequestMessageEncoder>;
+
+async fn await_io_tasks<F1, F2>(
+    in_task: F1,
+    out_task: F2,
+    kill_switch_tx: trigger::Sender,
+) -> Result<(), InputError>
+where
+    F1: Future<Output = Result<(), InputError>>,
+    F2: Future<Output = ()>,
+{
+    use futures::future::Either as FEither;
+    pin_mut!(in_task);
+    pin_mut!(out_task);
+    let first_finished = select(in_task, out_task).await;
+    kill_switch_tx.trigger();
+    match first_finished {
+        FEither::Left((r, write_fut)) => {
+            write_fut.await;
+            r
+        }
+        FEither::Right((_, read_fut)) => read_fut.await,
+    }
+}

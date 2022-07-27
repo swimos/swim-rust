@@ -20,8 +20,8 @@ use ratchet::{
     CloseCode, ErrorKind, Extension, ExtensionProvider, Header, HeaderMap, HeaderValue, Message,
 };
 use ratchet::{CloseReason, Error, ExtensionDecoder, WebSocketStream};
+use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
-use std::fmt::{Debug, Formatter, Display};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum WsMessage {
@@ -117,7 +117,7 @@ where
         let WebSocketReceiver { inner, buf } = self;
 
         match inner.read(buf).await? {
-            Message::Text => match BytesStr::try_from(buf.split().freeze())  {
+            Message::Text => match BytesStr::try_from(buf.split().freeze()) {
                 Ok(value) => {
                     buf.clear();
                     Ok(WsMessage::Text(value))
@@ -239,11 +239,9 @@ impl From<String> for BytesStr {
 }
 
 impl BytesStr {
-
     pub fn as_str(&self) -> &str {
         self.as_ref()
     }
-
 }
 
 impl PartialEq<str> for BytesStr {

@@ -18,10 +18,7 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum LaneNotFound {
     #[error("Agent '{node}' does not exist.")]
-    NoSuchAgent { node: Text },
+    NoSuchAgent { node: Text, lane: Text },
     #[error("Agent '{node}' does no have a lane called '{lane}'.")]
-    NoSuchLane {
-        node: Text,
-        lane: Text,
-    },
+    NoSuchLane { node: Text, lane: Text },
 }

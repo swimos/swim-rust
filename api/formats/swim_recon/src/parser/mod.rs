@@ -38,7 +38,9 @@ use swim_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
 use swim_form::structural::read::ReadError;
 use swim_model::Value;
 
-pub use record::matcher::{try_extract_header, try_extract_header_str, HeaderPeeler, MessageExtractError};
+pub use record::matcher::{
+    try_extract_header, try_extract_header_str, HeaderPeeler, MessageExtractError,
+};
 
 /// Wraps a string in a structure that keeps track of the line and column
 /// as the input is parsed.

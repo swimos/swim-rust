@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt::{Formatter, Display, Debug};
+use std::fmt::{Debug, Display, Formatter};
 
 use bytes::Bytes;
 
@@ -60,11 +60,9 @@ impl From<&str> for BytesStr {
 }
 
 impl BytesStr {
-
     pub fn as_str(&self) -> &str {
         self.as_ref()
     }
-
 }
 
 impl PartialEq<str> for BytesStr {

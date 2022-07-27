@@ -59,19 +59,15 @@ pub struct Path<P> {
 }
 
 impl Path<Text> {
-
     pub fn text(node: &str, lane: &str) -> Self {
         Path::new(Text::new(node), Text::new(lane))
     }
-
 }
 
 impl<P> Path<P> {
-
     pub fn new(node: P, lane: P) -> Self {
         Path { node, lane }
     }
-
 }
 
 /// Type of messages that can be sent to an agent/from a downlink..
@@ -221,7 +217,7 @@ where
     ) -> Result<(), Self::Error> {
         let RequestMessage {
             origin: source,
-            path: Path{ node, lane },
+            path: Path { node, lane },
             envelope,
         } = item;
         let node_str = node.as_ref();
@@ -910,10 +906,12 @@ impl Decoder for RawResponseMessageDecoder {
         }
         src.advance(HEADER_INIT_LEN);
         let node_bytes = src.split_to(node_len).freeze();
-        let node = BytesStr::try_from(node_bytes).map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidData))?;
+        let node = BytesStr::try_from(node_bytes)
+            .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidData))?;
 
         let lane_bytes = src.split_to(lane_len).freeze();
-        let lane = BytesStr::try_from(lane_bytes).map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidData))?;
+        let lane = BytesStr::try_from(lane_bytes)
+            .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidData))?;
 
         let path = Path::new(node, lane);
         let tag = (body_len_and_tag & OP_MASK) >> OP_SHIFT;
@@ -963,10 +961,12 @@ impl Decoder for RawRequestMessageDecoder {
         }
         src.advance(HEADER_INIT_LEN);
         let node_bytes = src.split_to(node_len).freeze();
-        let node = BytesStr::try_from(node_bytes).map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidData))?;
+        let node = BytesStr::try_from(node_bytes)
+            .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidData))?;
 
         let lane_bytes = src.split_to(lane_len).freeze();
-        let lane = BytesStr::try_from(lane_bytes).map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidData))?;
+        let lane = BytesStr::try_from(lane_bytes)
+            .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidData))?;
 
         let path = Path::new(node, lane);
         let tag = (body_len_and_tag & OP_MASK) >> OP_SHIFT;
@@ -991,11 +991,6 @@ where
 {
     let decoder = AgentMessageDecoder::<T, _>::new(T::make_recognizer());
     FramedRead::new(reader, decoder)
-}
-
-fn fail(name: &str) -> MessageDecodeError {
-    let err = ReadError::UnexpectedAttribute(Text::new(name));
-    MessageDecodeError::Body(AsyncParseError::Parser(ParseError::Structure(err)))
 }
 
 #[derive(Debug, Clone, Copy)]

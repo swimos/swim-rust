@@ -12,12 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt::Write;
-
 use bytes::{BufMut, BytesMut};
-use swim_messages::compat::{BytesRequestMessage, Operation, Path, RequestMessage, BytesResponseMessage, ResponseMessage, Notification};
+use swim_messages::compat::{
+    BytesRequestMessage, BytesResponseMessage, Notification, Operation, Path, RequestMessage,
+    ResponseMessage,
+};
 use swim_model::{escape_if_needed, identifier::is_identifier};
 use tokio_util::codec::Encoder;
+
+use crate::error::LaneNotFound;
 
 #[derive(Debug, Default)]
 pub struct ReconEncoder;
@@ -31,6 +34,14 @@ const LINKED_HEADER: &[u8] = b"@linked(";
 const SYNCED_HEADER: &[u8] = b"@synced(";
 const UNLINKED_HEADER: &[u8] = b"@unlinked(";
 const EVENT_HEADER: &[u8] = b"@event(";
+
+const NODE_TAG: &[u8] = b"node:";
+const LANE_TAG: &[u8] = b"lane:";
+
+const NODE_NOT_FOUND_TAG: &str = "@nodeNotFound";
+const LANE_NOT_FOUND_TAG: &str = "@laneNotFound";
+
+const FIXED_LEN: usize = 12;
 
 impl Encoder<BytesRequestMessage> for ReconEncoder {
     type Error = std::io::Error;
@@ -59,7 +70,11 @@ impl Encoder<BytesRequestMessage> for ReconEncoder {
 impl Encoder<BytesResponseMessage> for ReconEncoder {
     type Error = std::io::Error;
 
-    fn encode(&mut self, item: BytesResponseMessage, dst: &mut BytesMut) -> Result<(), Self::Error> {
+    fn encode(
+        &mut self,
+        item: BytesResponseMessage,
+        dst: &mut BytesMut,
+    ) -> Result<(), Self::Error> {
         let ResponseMessage {
             path: Path { node, lane },
             envelope,
@@ -75,7 +90,7 @@ impl Encoder<BytesResponseMessage> for ReconEncoder {
                     dst.put_u8(b' ');
                     dst.put(body);
                 }
-            },
+            }
             Notification::Event(body) => {
                 write_header(EVENT_HEADER, node.as_str(), lane.as_str(), dst);
                 dst.reserve(body.len() + 1);
@@ -87,10 +102,21 @@ impl Encoder<BytesResponseMessage> for ReconEncoder {
     }
 }
 
-const NODE_TAG: &[u8] = b"node:";
-const LANE_TAG: &[u8] = b"lane:";
+impl Encoder<LaneNotFound> for ReconEncoder {
+    type Error = std::io::Error;
 
-const FIXED_LEN: usize = 12;
+    fn encode(&mut self, item: LaneNotFound, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        let (node, lane, body) = match item {
+            LaneNotFound::NoSuchAgent { node, lane } => (node, lane, NODE_NOT_FOUND_TAG),
+            LaneNotFound::NoSuchLane { node, lane } => (node, lane, LANE_NOT_FOUND_TAG),
+        };
+        write_header(UNLINKED_HEADER, node.as_str(), lane.as_str(), dst);
+        dst.reserve(body.len() + 1);
+        dst.put_u8(b' ');
+        dst.put_slice(body.as_bytes());
+        Ok(())
+    }
+}
 
 fn compute_len(header: &[u8], node: &str, lane: &str, node_ident: bool, lane_ident: bool) -> usize {
     header.len() + len_lit(node, node_ident) + len_lit(lane, lane_ident) + FIXED_LEN
@@ -115,15 +141,20 @@ fn write_lit(lit: &str, ident: bool, dst: &mut BytesMut) {
 }
 
 fn write_header(header: &[u8], node: &str, lane: &str, dst: &mut BytesMut) {
-
     let node_ident = is_identifier(node);
     let lane_ident = is_identifier(lane);
 
     let node_str = escape_if_needed(node);
     let lane_str = escape_if_needed(lane);
 
-    let header_len = compute_len(header, node_str.as_ref(), lane_str.as_ref(), node_ident, lane_ident);
-    
+    let header_len = compute_len(
+        header,
+        node_str.as_ref(),
+        lane_str.as_ref(),
+        node_ident,
+        lane_ident,
+    );
+
     dst.reserve(header_len);
     dst.put_slice(header);
     dst.put_slice(NODE_TAG);
