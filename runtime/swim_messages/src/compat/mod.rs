@@ -937,7 +937,7 @@ impl Decoder for RawResponseMessageDecoder {
 }
 
 impl Decoder for RawRequestMessageDecoder {
-    type Item = RequestMessage<Text, Bytes>;
+    type Item = RequestMessage<BytesStr, Bytes>;
     type Error = std::io::Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
@@ -962,18 +962,12 @@ impl Decoder for RawRequestMessageDecoder {
             return Ok(None);
         }
         src.advance(HEADER_INIT_LEN);
-        let node = if let Ok(lane_name) = std::str::from_utf8(&src.as_ref()[0..node_len]) {
-            Text::new(lane_name)
-        } else {
-            return Err(std::io::ErrorKind::InvalidData.into());
-        };
-        src.advance(node_len);
-        let lane = if let Ok(lane_name) = std::str::from_utf8(&src.as_ref()[0..lane_len]) {
-            Text::new(lane_name)
-        } else {
-            return Err(std::io::Error::from(std::io::ErrorKind::InvalidData));
-        };
-        src.advance(lane_len);
+        let node_bytes = src.split_to(node_len).freeze();
+        let node = BytesStr::try_from(node_bytes).map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidData))?;
+
+        let lane_bytes = src.split_to(lane_len).freeze();
+        let lane = BytesStr::try_from(lane_bytes).map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidData))?;
+
         let path = Path::new(node, lane);
         let tag = (body_len_and_tag & OP_MASK) >> OP_SHIFT;
         match tag {

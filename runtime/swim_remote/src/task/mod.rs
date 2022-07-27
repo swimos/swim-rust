@@ -39,6 +39,8 @@ use uuid::Uuid;
 
 use crate::error::LaneNotFound;
 
+mod envelopes;
+
 pub enum AttachClient {
     OneWay {
         receiver: ByteReader,
