@@ -16,7 +16,7 @@ use std::{borrow::Cow, fmt::Display, num::ParseFloatError};
 
 use super::EnvelopeKind;
 use smallvec::{smallvec, SmallVec};
-use swim_recon::parser::{parse_text, try_extract_header, HeaderPeeler, MessageExtractError, Span};
+use swim_recon::parser::{parse_text, try_extract_header, try_extract_header_str, HeaderPeeler, MessageExtractError, Span};
 use swim_utilities::format::comma_sep;
 use thiserror::Error;
 
@@ -115,6 +115,11 @@ pub enum HeaderExtractionError {
     Incomplete,
     #[error("Header had missing slots: {0}")]
     MissingSlots(Missing),
+}
+
+/// Try to interpret an array of bytes as a warp envelope, without allocating.
+pub fn peel_envelope_header_str(input: &str) -> Result<RawEnvelope<'_>, MessageExtractError> {
+    try_extract_header_str(input, EnvelopeHeaderPeeler::default())
 }
 
 /// Try to interpret an array of bytes as a warp envelope, without allocating.

@@ -19,7 +19,7 @@ use swim_model::{Attr, Text, Value};
 
 mod header;
 
-pub use header::{peel_envelope_header, HeaderExtractionError, Missing, RawEnvelope};
+pub use header::{peel_envelope_header, peel_envelope_header_str, HeaderExtractionError, Missing, RawEnvelope};
 
 const NODE_NOT_FOUND_TAG: &str = "nodeNotFound";
 const LANE_NOT_FOUND_TAG: &str = "laneNotFound";
