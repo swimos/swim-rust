@@ -15,26 +15,36 @@
 use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
+    str::Utf8Error,
 };
 
+use bytes::BytesMut;
 use either::Either;
 use futures::{
-    future::{join, join_all},
-    pin_mut, Future, Sink, SinkExt, Stream, StreamExt,
+    future::{join, join_all, ready},
+    pin_mut,
+    stream::unfold,
+    Future, Sink, SinkExt, Stream, StreamExt,
 };
+use ratchet::{CloseReason, Extension, Message, SplittableExtension, WebSocket, WebSocketStream};
 use smallvec::SmallVec;
-use swim_messages::compat::{
-    Path, RawRequestMessageEncoder, RawResponseMessageEncoder, RequestMessage, ResponseMessage,
+use swim_messages::{
+    bytes_str::BytesStr,
+    compat::{
+        Path, RawRequestMessageDecoder, RawRequestMessageEncoder, RawResponseMessageDecoder,
+        RawResponseMessageEncoder, RequestMessage, ResponseMessage,
+    },
 };
 use swim_model::Text;
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
+    multi_reader::MultiReader,
     trigger,
 };
 use swim_warp::envelope::{peel_envelope_header_str, RawEnvelope};
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
-use tokio_util::codec::FramedWrite;
+use tokio_util::codec::{FramedRead, FramedWrite};
 use uuid::Uuid;
 
 use crate::error::LaneNotFound;
@@ -58,29 +68,26 @@ pub struct FindNode {
     provider: oneshot::Sender<Result<(ByteWriter, ByteReader), LaneNotFound>>,
 }
 
-pub struct RemoteTask<In, Out> {
+pub struct RemoteTask<S, E> {
     id: Uuid,
     stop_signal: trigger::Receiver,
-    input: In,
-    output: Out,
+    ws: WebSocket<S, E>,
     attach_rx: mpsc::Receiver<AttachClient>,
     find_tx: mpsc::Sender<FindNode>,
 }
 
-impl<In, Out> RemoteTask<In, Out> {
+impl<S, E> RemoteTask<S, E> {
     pub fn new(
         id: Uuid,
         stop_signal: trigger::Receiver,
-        input: In,
-        output: Out,
+        ws: WebSocket<S, E>,
         attach_rx: mpsc::Receiver<AttachClient>,
         find_tx: mpsc::Sender<FindNode>,
     ) -> Self {
         RemoteTask {
             id,
             stop_signal,
-            input,
-            output,
+            ws,
             attach_rx,
             find_tx,
         }
@@ -89,28 +96,35 @@ impl<In, Out> RemoteTask<In, Out> {
 
 enum IncomingEvent<M> {
     Register(RegisterIncoming),
-    Message(Result<M, std::io::Error>),
+    Message(Result<M, InputError>),
 }
 
 enum OutgoingEvent {
     Message(OutgoingTaskMessage),
 }
 
-impl<In, Out, T> RemoteTask<In, Out>
+enum InputError {
+    WsError(ratchet::Error),
+    BinaryFrame,
+    BadUtf8(Utf8Error),
+    Closed(Option<CloseReason>),
+}
+
+impl<S, E> RemoteTask<S, E>
 where
-    In: Stream<Item = Result<T, std::io::Error>>,
-    T: AsRef<str>,
-    Out: Sink<String, Error = std::io::Error>,
+    S: WebSocketStream,
+    E: SplittableExtension,
 {
     pub async fn run(self) {
         let RemoteTask {
             id,
             mut stop_signal,
-            input,
-            mut output,
+            ws,
             attach_rx,
             find_tx,
         } = self;
+
+        let (tx, rx) = ws.split().unwrap();
 
         let (incoming_tx, incoming_rx) = mpsc::channel(1);
         let (outgoing_tx, outgoing_rx) = mpsc::channel(1);
@@ -121,6 +135,43 @@ where
             outgoing_tx.clone(),
             stop_signal.clone(),
         );
+
+        let input = unfold((Some(rx), BytesMut::new()), |(rx, mut buffer)| async move {
+            if let Some(mut rx) = rx {
+                match rx.read(&mut buffer).await {
+                    Ok(Message::Binary) => {
+                        let item = Some(Err(InputError::BinaryFrame));
+                        Some((item, (None, buffer)))
+                    }
+                    Ok(Message::Text) => {
+                        let bytes = buffer.split().freeze();
+                        match BytesStr::try_from(bytes) {
+                            Ok(string) => {
+                                let item = Some(Ok(string));
+                                Some((item, (Some(rx), buffer)))
+                            }
+                            Err(e) => {
+                                let item = Some(Err(InputError::BadUtf8(e)));
+                                Some((item, (None, buffer)))
+                            }
+                        }
+                    }
+                    Ok(Message::Close(reason)) => {
+                        let item = Some(Err(InputError::Closed(reason)));
+                        Some((item, (None, buffer)))
+                    }
+                    _ => Some((None, (Some(rx), buffer))),
+                    Err(e) => {
+                        let item = Some(Err(InputError::WsError(e)));
+                        Some((item, (None, buffer)))
+                    }
+                }
+            } else {
+                None
+            }
+        })
+        .filter_map(|item| ready(item));
+
         let in_task = incoming_task(
             id,
             stop_signal.clone(),
@@ -129,6 +180,8 @@ where
             find_tx,
             outgoing_tx,
         );
+
+        let out_task = outgoing_task(stop_signal, tx, outgoing_rx);
         todo!()
     }
 }
@@ -139,13 +192,19 @@ struct RegisterIncoming {
     sender: ByteWriter,
 }
 
+enum OutgoingKind {
+    Client,
+    Server,
+}
+
 enum OutgoingTaskMessage {
     RegisterOutgoing {
+        kind: OutgoingKind,
         receiver: ByteReader,
     },
     NotFound {
         error: LaneNotFound,
-    }
+    },
 }
 
 async fn registration_task<F>(
@@ -169,14 +228,20 @@ async fn registration_task<F>(
                     join(incoming_tx.reserve(), outgoing_tx.reserve()).await
                 {
                     in_res.send(RegisterIncoming { node, lane, sender });
-                    out_res.send(OutgoingTaskMessage::RegisterOutgoing { receiver });
+                    out_res.send(OutgoingTaskMessage::RegisterOutgoing {
+                        kind: OutgoingKind::Client,
+                        receiver,
+                    });
                 } else {
                     break;
                 }
             }
             AttachClient::OneWay { receiver } => {
                 if outgoing_tx
-                    .send(OutgoingTaskMessage::RegisterOutgoing { receiver })
+                    .send(OutgoingTaskMessage::RegisterOutgoing {
+                        kind: OutgoingKind::Client,
+                        receiver,
+                    })
                     .await
                     .is_err()
                 {
@@ -191,16 +256,19 @@ const DL_SOFT_CAP: usize = 1;
 
 type ResponseWriters = SmallVec<[ResponseWriter; DL_SOFT_CAP]>;
 
+type RequestReader = FramedRead<ByteReader, RawRequestMessageDecoder>;
+type ResponseReader = FramedRead<ByteReader, RawResponseMessageDecoder>;
 
-
-async fn outgoing_task<Out>(
+async fn outgoing_task<S, E>(
     mut stop_signal: trigger::Receiver,
-    mut output: Out,
+    mut output: ratchet::Sender<S, E>,
     mut messages_rx: mpsc::Receiver<OutgoingTaskMessage>,
-)
-where
-    Out: Sink<String, Error = std::io::Error>,
+) where
+    S: WebSocketStream,
 {
+    let mut clients = MultiReader::<RequestReader>::new();
+    let mut agents = MultiReader::<ResponseReader>::new();
+
     loop {
         let event = tokio::select! {
             _ = &mut stop_signal => break,
@@ -208,18 +276,17 @@ where
             else => break,
         };
         match event {
-            OutgoingEvent::Message(OutgoingTaskMessage::RegisterOutgoing { receiver }) => {
+            OutgoingEvent::Message(OutgoingTaskMessage::RegisterOutgoing { kind, receiver }) => {
                 todo!()
-            },
+            }
             OutgoingEvent::Message(OutgoingTaskMessage::NotFound { error }) => {
                 todo!()
-            },
+            }
         }
     }
-    
 }
 
-async fn incoming_task<In, T>(
+async fn incoming_task<In>(
     id: Uuid,
     mut stop_signal: trigger::Receiver,
     input: In,
@@ -227,8 +294,7 @@ async fn incoming_task<In, T>(
     find_tx: mpsc::Sender<FindNode>,
     outgoing_tx: mpsc::Sender<OutgoingTaskMessage>,
 ) where
-    In: Stream<Item = Result<T, std::io::Error>>,
-    T: AsRef<str>,
+    In: Stream<Item = Result<BytesStr, InputError>>,
 {
     pin_mut!(input);
 
@@ -236,7 +302,7 @@ async fn incoming_task<In, T>(
     let mut agent_routes: HashMap<Text, RequestWriter> = HashMap::new();
 
     loop {
-        let event: IncomingEvent<T> = tokio::select! {
+        let event: IncomingEvent<BytesStr> = tokio::select! {
             biased;
             _ = &mut stop_signal => break,
             Some(request) = attach_rx.recv() => IncomingEvent::Register(request),
@@ -259,18 +325,28 @@ async fn incoming_task<In, T>(
                     match interpret_envelope(id, envelope) {
                         Some(Either::Left(request)) => {
                             let node = &request.path.node;
-                            if let Some(writer) = if let Some(writer) = agent_routes.get_mut(node.as_ref()) {
-                                Some(writer)
-                            } else {
-                                match connect_agent_route(Text::new(node.as_ref()), &find_tx, &outgoing_tx).await {
-                                    Ok(Some(writer)) => {
-                                        let writer = agent_routes.entry(Text::new(node.as_ref())).or_insert_with_key(move |_| writer);
-                                        Some(writer)
-                                    },
-                                    Err(_) => break,
-                                    _ => None,
+                            if let Some(writer) =
+                                if let Some(writer) = agent_routes.get_mut(node.as_ref()) {
+                                    Some(writer)
+                                } else {
+                                    match connect_agent_route(
+                                        Text::new(node.as_ref()),
+                                        &find_tx,
+                                        &outgoing_tx,
+                                    )
+                                    .await
+                                    {
+                                        Ok(Some(writer)) => {
+                                            let writer = agent_routes
+                                                .entry(Text::new(node.as_ref()))
+                                                .or_insert_with_key(move |_| writer);
+                                            Some(writer)
+                                        }
+                                        Err(_) => break,
+                                        _ => None,
+                                    }
                                 }
-                            } {
+                            {
                                 if writer.send(request).await.is_err() {
                                     todo!("Log failed agent. Retry?");
                                 }
@@ -318,16 +394,19 @@ async fn connect_agent_route(
     let find = FindNode { node, provider: tx };
     find_tx.send(find).await.map_err(|_| ())?;
     match rx.await {
-        Ok(Ok((writer, reader))) => {
-            outgoing_tx.send(OutgoingTaskMessage::RegisterOutgoing { receiver: reader }).await
-                .map(move |_| Some(RequestWriter::new(writer, Default::default())))
-                .map_err(|_| ())
-        }
-        Ok(Err(error)) => {
-            outgoing_tx.send(OutgoingTaskMessage::NotFound { error }).await
-                .map(move |_| None)
-                .map_err(|_| ())
-        }
+        Ok(Ok((writer, reader))) => outgoing_tx
+            .send(OutgoingTaskMessage::RegisterOutgoing {
+                kind: OutgoingKind::Server,
+                receiver: reader,
+            })
+            .await
+            .map(move |_| Some(RequestWriter::new(writer, Default::default())))
+            .map_err(|_| ()),
+        Ok(Err(error)) => outgoing_tx
+            .send(OutgoingTaskMessage::NotFound { error })
+            .await
+            .map(move |_| None)
+            .map_err(|_| ()),
         _ => Err(()),
     }
 }

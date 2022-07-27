@@ -14,7 +14,7 @@ http = "0.2.3"
 tokio = { version = "1.1.1", features = ["sync"] }
 tokio-native-tls = "0.3"
 tokio-util = { version = "0.6.8", features = ["codec"] }
-swim_utilities = { path = "../../swim_utilities", features = ["io", "buf_channel"] }
+swim_utilities = { path = "../../swim_utilities", features = ["io", "buf_channel", "multi_reader"] }
 url = "2.1.1"
 swim_api = { path = "../../api/swim_api" }
 swim_model = {path = "../../api/swim_model"}
