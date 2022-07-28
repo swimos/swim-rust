@@ -40,6 +40,7 @@ use swim_messages::{
     },
 };
 use swim_model::Text;
+use swim_recon::parser::MessageExtractError;
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
     multi_reader::MultiReader,
@@ -50,6 +51,9 @@ use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{Encoder, FramedRead, FramedWrite};
 use uuid::Uuid;
+
+use tracing::{debug, error, info, info_span, trace, warn};
+use tracing_futures::Instrument;
 
 use crate::error::LaneNotFound;
 
@@ -115,12 +119,14 @@ enum InputError {
     WsError(ratchet::Error),
     BinaryFrame,
     BadUtf8(Utf8Error),
+    InvalidEnvelope(MessageExtractError),
     Closed(Option<CloseReason>),
 }
 
 const STOPPING: &str = "Server is stopping.";
 const BAD_ENCODING: &str = "Invalid encoding.";
 const EXPECTED_STR: &str = "Expected string data.";
+const BAD_WARP_ENV: &str = "Expected a valid Warp envelope.";
 
 impl<S, E> RemoteTask<S, E>
 where
@@ -152,23 +158,28 @@ where
 
         let combined_stop = select(stop_signal.clone(), kill_switch_rx);
 
-        let reg = registration_task(attach_rx, incoming_tx, outgoing_tx.clone(), combined_stop);
+        let reg = registration_task(attach_rx, incoming_tx, outgoing_tx.clone(), combined_stop)
+            .instrument(info_span!("Websocket coordination task."));
 
         let input = text_frame_stream(&mut rx);
 
         let mut incoming = IncomingTask::default();
 
-        let in_task = incoming.run(
-            id,
-            stop_signal.clone(),
-            input,
-            incoming_rx,
-            find_tx,
-            outgoing_tx,
-        );
+        let in_task = incoming
+            .run(
+                id,
+                stop_signal.clone(),
+                input,
+                incoming_rx,
+                find_tx,
+                outgoing_tx,
+            )
+            .instrument(info_span!("Websocket incoming task.", id = %id));
 
         let mut outgoing = OutgoingTask::default();
-        let out_task = outgoing.run(stop_signal, &mut tx, outgoing_rx);
+        let out_task = outgoing
+            .run(stop_signal, &mut tx, outgoing_rx)
+            .instrument(info_span!("Websocket outgoing task."));
 
         let (_, result) = join(reg, await_io_tasks(in_task, out_task, kill_switch_tx)).await;
 
@@ -185,11 +196,16 @@ where
                 CloseCode::Protocol,
                 Some(EXPECTED_STR.to_string()),
             )),
+            Err(InputError::InvalidEnvelope(_)) => Some(CloseReason::new(
+                CloseCode::Protocol,
+                Some(BAD_WARP_ENV.to_string()),
+            )),
             _ => None, //Closed remotely or failed.
         };
         if let Some(reason) = close_reason {
-            if tx.close_with(reason).await.is_err() {
-                todo!("Log close error.");
+            debug!(reason = ?reason, "Closing websocket connection.");
+            if let Err(error) = tx.close_with(reason).await {
+                error!(error = %error, "Failed to close websocket.");
             }
         }
     }
@@ -245,6 +261,7 @@ struct RegisterIncoming {
     sender: ByteWriter,
 }
 
+#[derive(Debug)]
 enum OutgoingKind {
     Client,
     Server,
@@ -277,6 +294,7 @@ async fn registration_task<F>(
                 sender,
                 receiver,
             } => {
+                debug!(node = %node, lane = %lane, "Attaching new client downlink.");
                 if let (Ok(in_res), Ok(out_res)) =
                     join(incoming_tx.reserve(), outgoing_tx.reserve()).await
                 {
@@ -290,6 +308,7 @@ async fn registration_task<F>(
                 }
             }
             AttachClient::OneWay { receiver } => {
+                debug!("Attaching send only client.");
                 if outgoing_tx
                     .send(OutgoingTaskMessage::RegisterOutgoing {
                         kind: OutgoingKind::Client,
@@ -337,19 +356,21 @@ impl OutgoingTask {
                 _ = &mut stop_signal => break,
                 Some(message) = messages_rx.recv() => OutgoingEvent::Message(message),
                 Some(result) = clients.next(), if !clients.is_empty() => {
-                    if let Ok(request) = result {
-                        OutgoingEvent::Request(request)
-                    } else {
-                        //todo!("Log stream error.");
-                        continue;
+                    match result {
+                        Ok(request) => OutgoingEvent::Request(request),
+                        Err(error) => {
+                            info!(error = %error, "Connection from client failed.");
+                            continue;
+                        }
                     }
                 },
                 Some(result) = agents.next(), if !agents.is_empty() => {
-                    if let Ok(response) = result {
-                        OutgoingEvent::Response(response)
-                    } else {
-                        //todo!("Log stream error.");
-                        continue;
+                    match result {
+                        Ok(response) => OutgoingEvent::Response(response),
+                        Err(error) => {
+                            info!(error = %error, "Connection from agent failed.");
+                            continue;
+                        }
                     }
                 },
                 else => break,
@@ -358,41 +379,47 @@ impl OutgoingTask {
                 OutgoingEvent::Message(OutgoingTaskMessage::RegisterOutgoing {
                     kind,
                     receiver,
-                }) => match kind {
-                    OutgoingKind::Client => {
-                        clients.add(RequestReader::new(receiver, Default::default()));
+                }) => {
+                    debug!(kind = ?kind, "Registering new outgoing chanel.");
+                    match kind {
+                        OutgoingKind::Client => {
+                            clients.add(RequestReader::new(receiver, Default::default()));
+                        }
+                        OutgoingKind::Server => {
+                            agents.add(ResponseReader::new(receiver, Default::default()));
+                        }
                     }
-                    OutgoingKind::Server => {
-                        agents.add(ResponseReader::new(receiver, Default::default()));
-                    }
-                },
+                }
                 OutgoingEvent::Message(OutgoingTaskMessage::NotFound { error }) => {
+                    debug!(lane = ?error, "Sending node/lane not found envelope.");
                     buffer.clear();
                     recon_encoder
                         .encode(error, &mut buffer)
                         .expect("Encoding a frame should be infallible.");
-                    if output.write(&buffer, PayloadType::Text).await.is_err() {
-                        //TODO Log write error.
+                    if let Err(error) = output.write(&buffer, PayloadType::Text).await {
+                        error!(error = %error, "Writing to the websocket connection failed.");
                         break;
                     }
                 }
                 OutgoingEvent::Request(req) => {
+                    trace!(envelope = ?req, "Sending request envelope.");
                     buffer.clear();
                     recon_encoder
                         .encode(req, &mut buffer)
                         .expect("Encoding a frame should be infallible.");
-                    if output.write(&buffer, PayloadType::Text).await.is_err() {
-                        //TODO Log write error.
+                    if let Err(error) = output.write(&buffer, PayloadType::Text).await {
+                        error!(error = %error, "Writing to the websocket connection failed.");
                         break;
                     }
                 }
                 OutgoingEvent::Response(res) => {
+                    trace!(envelope = ?res, "Sending response envelope.");
                     buffer.clear();
                     recon_encoder
                         .encode(res, &mut buffer)
                         .expect("Encoding a frame should be infallible.");
-                    if output.write(&buffer, PayloadType::Text).await.is_err() {
-                        //TODO Log write error.
+                    if let Err(error) = output.write(&buffer, PayloadType::Text).await {
+                        error!(error = %error, "Writing to the websocket connection failed.");
                         break;
                     }
                 }
@@ -426,6 +453,8 @@ impl IncomingTask {
         } = self;
         pin_mut!(input);
 
+        let mut key_temp: String = Default::default();
+
         loop {
             let event: IncomingEvent<BytesStr> = tokio::select! {
                 biased;
@@ -437,6 +466,7 @@ impl IncomingTask {
 
             match event {
                 IncomingEvent::Register(RegisterIncoming { node, lane, sender }) => {
+                    debug!(node = %node, lane = %lane, "Registering client.");
                     client_subscriptions
                         .entry(node)
                         .or_default()
@@ -445,17 +475,21 @@ impl IncomingTask {
                         .push(FramedWrite::new(sender, Default::default()));
                 }
                 IncomingEvent::Message(Ok(frame)) => {
+                    trace!(frame = frame.as_str(), "Handling incoming frame.");
                     let body = frame.as_ref();
-                    if let Ok(envelope) = peel_envelope_header_str(body) {
-                        match interpret_envelope(id, envelope) {
-                            Some(Either::Left(request)) => {
-                                let node = &request.path.node;
-                                if let Some(writer) =
-                                    if let Some(writer) = agent_routes.get_mut(node.as_ref()) {
+                    match peel_envelope_header_str(body) {
+                        Ok(envelope) => {
+                            match interpret_envelope(id, envelope) {
+                                Some(Either::Left(request)) => {
+                                    key_temp.clear();
+                                    key_temp.push_str(request.path.node.as_ref());
+                                    if let Some(writer) = if let Some(writer) =
+                                        agent_routes.get_mut(key_temp.as_str())
+                                    {
                                         Some(writer)
                                     } else {
                                         match connect_agent_route(
-                                            Text::new(node.as_ref()),
+                                            Text::new(key_temp.as_str()),
                                             &find_tx,
                                             &outgoing_tx,
                                         )
@@ -463,44 +497,61 @@ impl IncomingTask {
                                         {
                                             Ok(Some(writer)) => {
                                                 let writer = agent_routes
-                                                    .entry(Text::new(node.as_ref()))
+                                                    .entry(Text::new(key_temp.as_str()))
                                                     .or_insert_with_key(move |_| writer);
                                                 Some(writer)
                                             }
                                             Err(_) => break Ok(()),
                                             _ => None,
                                         }
-                                    }
-                                {
-                                    if writer.send(request).await.is_err() {
-                                        todo!("Log failed agent. Retry?");
-                                    }
-                                }
-                            }
-                            Some(Either::Right(response)) => {
-                                let Path { node, lane } = response.path.clone();
-                                if let Some(node_map) = client_subscriptions.get_mut(node.as_ref())
-                                {
-                                    if let Some(senders) = node_map.get_mut(lane.as_ref()) {
-                                        if !send_response(senders, response).await {
-                                            node_map.remove(lane.as_ref());
-                                            if node_map.is_empty() {
-                                                client_subscriptions.remove(node.as_ref());
-                                            }
+                                    } {
+                                        if let Err(error) = writer.send(request).await {
+                                            //TODO In the case that this is an existing route, we probably want
+                                            //to retry here.
+                                            agent_routes.remove(key_temp.as_str());
+                                            info!(error = %error, "Forwarding envelope to agent route failed.");
                                         }
-                                    } else {
-                                        todo!("Log unexpected envelope.");
-                                    };
-                                } else {
-                                    todo!("Log unexpected envelope.");
+                                    }
                                 }
-                            }
-                            _ => {
-                                //TODO Auth and Deauth not implemented.
+                                Some(Either::Right(response)) => {
+                                    let Path { node, lane } = response.path.clone();
+                                    if let Some(node_map) =
+                                        client_subscriptions.get_mut(node.as_ref())
+                                    {
+                                        if let Some(senders) = node_map.get_mut(lane.as_ref()) {
+                                            if !send_response(senders, response).await {
+                                                node_map.remove(lane.as_ref());
+                                                if node_map.is_empty() {
+                                                    client_subscriptions.remove(node.as_ref());
+                                                }
+                                            }
+                                        } else {
+                                            info!(
+                                                node = node.as_ref(),
+                                                lane = lane.as_ref(),
+                                                "Envelope received for downlink that does not exist."
+                                            );
+                                        };
+                                    } else {
+                                        info!(
+                                            node = node.as_ref(),
+                                            lane = lane.as_ref(),
+                                            "Envelope received for downlink that does not exist."
+                                        );
+                                    }
+                                }
+                                _ => {
+                                    warn!("Auth and Deauth no yet implemented.");
+                                }
                             }
                         }
-                    } else {
-                        todo!("Log error.");
+                        Err(error) => {
+                            error!(
+                                frame = frame.as_str(),
+                                "Received a frame that does not contain a valid Warp envelope."
+                            );
+                            break Err(InputError::InvalidEnvelope(error));
+                        }
                     }
                 }
                 IncomingEvent::Message(Err(e)) => {
@@ -516,6 +567,7 @@ async fn connect_agent_route(
     find_tx: &mpsc::Sender<FindNode>,
     outgoing_tx: &mpsc::Sender<OutgoingTaskMessage>,
 ) -> Result<Option<RequestWriter>, ()> {
+    debug!(node = %node, "Attempting to open route to agent.");
     let (tx, rx) = oneshot::channel();
     let find = FindNode { node, provider: tx };
     find_tx.send(find).await.map_err(|_| ())?;
