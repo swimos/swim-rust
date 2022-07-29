@@ -139,6 +139,7 @@ where
     S: WebSocketStream + Send,
     E: SplittableExtension + Send,
 {
+    #[allow(clippy::manual_async_fn)] //To allow the static guarnatee that this future is Send.
     pub fn run<'a>(self) -> impl Future<Output = ()> + Send + 'a
     where
         S: 'a,
@@ -218,9 +219,9 @@ where
     }
 }
 
-fn text_frame_stream<'a, S, E>(
-    rx: &'a mut ratchet::Receiver<S, E>,
-) -> impl Stream<Item = Result<BytesStr, InputError>> + 'a
+fn text_frame_stream<S, E>(
+    rx: &mut ratchet::Receiver<S, E>,
+) -> impl Stream<Item = Result<BytesStr, InputError>> + '_
 where
     S: WebSocketStream,
     E: ExtensionDecoder,
@@ -259,7 +260,7 @@ where
             None
         }
     })
-    .filter_map(|item| ready(item))
+    .filter_map(ready)
 }
 
 struct RegisterIncoming {
@@ -618,7 +619,7 @@ async fn send_response(senders: &mut ResponseWriters, message: RawResponse<'_>) 
     ))
     .await
     .into_iter()
-    .filter_map(std::convert::identity)
+    .flatten()
     .collect::<HashSet<_>>();
     if failed.is_empty() {
         true

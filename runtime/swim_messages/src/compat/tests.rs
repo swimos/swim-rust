@@ -40,7 +40,7 @@ use uuid::Uuid;
 fn make_addr() -> Uuid {
     let id: u32 = rand::random();
     let mut uuid_as_int = id as u128;
-    uuid_as_int |= (1 as u128) << 120;
+    uuid_as_int |= 1_u128 << 120;
     Uuid::from_u128(uuid_as_int)
 }
 

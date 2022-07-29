@@ -890,11 +890,7 @@ impl Decoder for RawResponseMessageDecoder {
         }
         let mut header = &src.as_ref()[0..HEADER_INIT_LEN];
         let target = header.get_u128();
-        let target = if let Ok(id) = Uuid::try_from(Uuid::from_u128(target)) {
-            id
-        } else {
-            return Err(std::io::ErrorKind::InvalidData.into());
-        };
+        let target = Uuid::from_u128(target);
         let node_len = header.get_u32() as usize;
         let lane_len = header.get_u32() as usize;
         let body_len_and_tag = header.get_u64();
@@ -945,11 +941,7 @@ impl Decoder for RawRequestMessageDecoder {
         }
         let mut header = &src.as_ref()[0..HEADER_INIT_LEN];
         let origin = header.get_u128();
-        let origin = if let Ok(id) = Uuid::try_from(Uuid::from_u128(origin)) {
-            id
-        } else {
-            return Err(std::io::ErrorKind::InvalidData.into());
-        };
+        let origin = Uuid::from_u128(origin);
         let node_len = header.get_u32() as usize;
         let lane_len = header.get_u32() as usize;
         let body_len_and_tag = header.get_u64();
