@@ -26,6 +26,7 @@ use swim_api::agent::BoxAgent;
 use swim_model::Text;
 use swim_remote::{FindNode, LaneNotFound, RemoteTask};
 use swim_runtime::agent::{run_agent, AgentAttachmentRequest, AgentExecError, DisconnectionReason};
+use swim_runtime::error::ConnectionError;
 use swim_runtime::remote::ExternalConnections;
 use swim_runtime::remote::Listener;
 use swim_runtime::routing::RoutingAddr;
@@ -36,6 +37,8 @@ use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger::{self, promise};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinError;
+use tracing::{debug, error, info, info_span, warn};
+use tracing_futures::Instrument;
 use uuid::Uuid;
 
 use crate::config::SwimServerConfig;
@@ -158,7 +161,8 @@ where
             };
 
             match event {
-                ServerEvent::NewConnection(Ok((sock, _))) => {
+                ServerEvent::NewConnection(Ok((sock, addr))) => {
+                    info!(peer = %addr, "Accepting new client connection.");
                     match websockets.accept_connection(sock).await {
                         Ok(websocket) => {
                             let id = *make_remote_id().uuid();
@@ -176,24 +180,46 @@ where
 
                             remote_tasks.push(tokio::spawn(task.run()).map(move |r| (id, r)));
                         }
-                        Err(_) => {
-                            todo!("Handle bad connection.")
+                        Err(error) => {
+                            warn!(error = %{Into::<ConnectionError>::into(error)}, "Negotiating incoming websocket connection failed.");
                         }
                     }
                 }
-                ServerEvent::NewConnection(Err(_)) => {
-                    todo!("Handle bad connection.")
+                ServerEvent::NewConnection(Err(error)) => {
+                    warn!(error = %error, "Accepting incomingn connection failed.");
                 }
-                ServerEvent::RemoteStopped(id, _) => {
+                ServerEvent::RemoteStopped(id, result) => {
                     remote_channels.remove(&id);
-                    todo!("Log panic.");
+                    if let Err(error) = result {
+                        error!(error = %error, remote_id = %id, "Remote connection task panicked.");
+                    }
                 }
-                ServerEvent::AgentStopped(name, _) => {
-                    agent_channels.remove(&name);
-                    todo!("Log error/panic.");
+                ServerEvent::AgentStopped(route, result) => {
+                    agent_channels.remove(&route);
+                    match result {
+                        Err(error) => {
+                            error!(error = %error, route = %route, "Agent task panicked.");
+                        }
+                        Ok(Err(error)) => {
+                            error!(error = %error, route = %route, "Agent task failed.")
+                        }
+                        _ => {}
+                    }
                 }
-                ServerEvent::ConnectionStopped(_reason) => {
-                    todo!("Log stopped agent connection.");
+                ServerEvent::ConnectionStopped(reason) => {
+                    let ConnectionTerminated {
+                        remote_id,
+                        agent_id,
+                        reason,
+                    } = reason;
+                    match &reason {
+                        DisconnectionReason::DuplicateRegistration(_) => {
+                            error!(remote_id = %remote_id, agent_id = %agent_id, "Multiple connections attempted between a remote and an agent.");
+                        }
+                        _ => {
+                            info!(remote_id = %remote_id, agent_id = %agent_id, reason = %reason, "A connection between and agent and a remote stopped.");
+                        }
+                    }
                 }
                 ServerEvent::FindRoute(FindNode {
                     source,
@@ -201,9 +227,14 @@ where
                     lane,
                     provider,
                 }) => {
+                    info!(source = %source, node = %node, "Attempting to connect an agent to a remote.");
                     let agent_tx = match agent_channels.entry(node) {
-                        Entry::Occupied(entry) => Ok(entry.into_mut()),
+                        Entry::Occupied(entry) => {
+                            debug!("Agent already running.");
+                            Ok(entry.into_mut())
+                        }
                         Entry::Vacant(entry) => {
+                            debug!("Attempting to start new agent instance.");
                             if let Some((route, agent)) =
                                 RelativeUri::from_str(entry.key().as_str())
                                     .ok()
@@ -239,15 +270,15 @@ where
                                 config.agent_runtime_buffer_size,
                                 config.attachment_timeout,
                                 provider,
-                            );
+                            ).instrument(info_span!("Remote to agent connection task.", remote_id = %source, agent_id = %{agent_id.uuid()}));
                             connection_tasks.push(connect_task);
                         }
                         Err(node) => {
-                            if provider
-                                .send(Err(LaneNotFound::NoSuchAgent { node, lane }))
-                                .is_err()
+                            debug!(node = %node, "Requested agent does not exist.");
+                            if let Err(Err(LaneNotFound::NoSuchAgent { node, .. })) =
+                                provider.send(Err(LaneNotFound::NoSuchAgent { node, lane }))
                             {
-                                todo!("Log error");
+                                debug!(source = %source, route = %node, "A remote stopped while a connection from it to an agent was pending.");
                             }
                         }
                     }
