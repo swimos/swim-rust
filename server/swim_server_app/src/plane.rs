@@ -19,20 +19,14 @@ use swim_utilities::routing::route_pattern::RoutePattern;
 
 use crate::{error::AmbiguousRoutes, util::AgentExt};
 
+#[derive(Default)]
 pub struct PlaneModel {
     pub(crate) routes: Vec<(RoutePattern, BoxAgent)>,
 }
 
+#[derive(Default)]
 pub struct PlaneBuilder {
     model: PlaneModel,
-}
-
-impl Default for PlaneBuilder {
-    fn default() -> Self {
-        Self {
-            model: PlaneModel { routes: vec![] },
-        }
-    }
 }
 
 impl PlaneBuilder {

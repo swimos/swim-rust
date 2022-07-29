@@ -12,8 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod config;
+mod config;
 pub mod error;
-pub mod plane;
-pub mod server;
-pub mod util;
+mod plane;
+mod server;
+mod util;
+
+pub use self::{
+    config::{RemoteConnectionsConfig, SwimServerConfig},
+    server::{Server, ServerBuilder, ServerHandle},
+    util::AgentExt,
+};
