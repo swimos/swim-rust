@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod config;
 pub mod error;
-pub mod model;
+pub mod plane;
+pub mod server;
 pub mod util;

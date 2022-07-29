@@ -167,12 +167,12 @@ where
     LaneModel: AgentLaneModel + Send + 'static,
     Lifecycle: AgentLifecycle<LaneModel> + Clone + Send + 'static,
 {
-    fn run<'a>(
+    fn run(
         &self,
         route: RelativeUri,
         config: AgentConfig,
-        context: &'a dyn AgentContext,
-    ) -> BoxFuture<'a, AgentInitResult<'a>> {
+        context: Box<dyn AgentContext + Send>,
+    ) -> BoxFuture<'static, AgentInitResult> {
         self.clone()
             .initialize_agent(route, config, context)
             .boxed()
@@ -213,8 +213,8 @@ where
         self,
         route: RelativeUri,
         config: AgentConfig,
-        context: &dyn AgentContext,
-    ) -> AgentInitResult<'_>
+        context: Box<dyn AgentContext + Send>,
+    ) -> AgentInitResult
     where
         LaneModel: AgentLaneModel,
         Lifecycle: AgentLifecycle<LaneModel>,
@@ -322,7 +322,7 @@ where
     /// * `_context` - Context through which to communicate with the runtime.
     async fn run_agent(
         self,
-        _context: &dyn AgentContext, //Will be needed when downlinks are supported.
+        _context: Box<dyn AgentContext + Send>, //Will be needed when downlinks are supported.
     ) -> Result<(), AgentTaskError> {
         let AgentTask {
             lane_model,

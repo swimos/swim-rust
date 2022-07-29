@@ -33,6 +33,7 @@ use uuid::Uuid;
 
 use std::{
     fmt::{Debug, Display},
+    future::Future,
     num::NonZeroUsize,
     time::Duration,
 };
@@ -47,6 +48,7 @@ use task::AgentRuntimeRequest;
 
 /// Implementaton of [`AgentContext`] that communicates with with another task over a channel
 /// to perform the supported operations.
+#[derive(Clone)]
 struct AgentRuntimeContext {
     tx: mpsc::Sender<AgentRuntimeRequest>,
 }
@@ -231,48 +233,50 @@ impl From<NoLanes> for AgentExecError {
 /// * `stopping` - Instructs the agent task to stop.
 /// * `agent_config` - Configuration parameters for the user agent task.
 /// * `runtime_config` - Configuration for the runtime part of the agent task.
-pub async fn run_agent<A>(
-    agent: A,
+pub fn run_agent<A>(
+    agent: &A,
     identity: RoutingAddr,
     route: RelativeUri,
     attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
     stopping: trigger::Receiver,
     agent_config: AgentConfig,
     runtime_config: AgentRuntimeConfig,
-) -> Result<(), AgentExecError>
+) -> impl Future<Output = Result<(), AgentExecError>> + Send + 'static
 where
-    A: Agent + Send + 'static,
+    A: Agent + 'static,
 {
     let node_uri = route.to_string().into();
     let (runtime_tx, runtime_rx) = mpsc::channel(runtime_config.attachment_queue_size.get());
     let (init_tx, init_rx) = trigger::trigger();
     let runtime_init_task = AgentInitTask::new(runtime_rx, init_rx, runtime_config);
-    let context = AgentRuntimeContext::new(runtime_tx);
+    let context = Box::new(AgentRuntimeContext::new(runtime_tx));
 
-    let agent_init = agent.run(route, agent_config, &context);
+    let agent_init = agent.run(route, agent_config, context);
 
-    let agent_init_task = async move {
-        let agent_task_result = agent_init.await;
-        drop(init_tx);
-        agent_task_result
-    };
+    async move {
+        let agent_init_task = async move {
+            let agent_task_result = agent_init.await;
+            drop(init_tx);
+            agent_task_result
+        };
 
-    let (initial_state_result, agent_task_result) =
-        join(runtime_init_task.run(), agent_init_task).await;
-    let initial_state = initial_state_result?;
-    let agent_task = agent_task_result?;
+        let (initial_state_result, agent_task_result) =
+            join(runtime_init_task.run(), agent_init_task).await;
+        let initial_state = initial_state_result?;
+        let agent_task = agent_task_result?;
 
-    let runtime_task = initial_state.make_runtime_task(
-        identity,
-        node_uri,
-        attachment_rx,
-        runtime_config,
-        stopping,
-    );
+        let runtime_task = initial_state.make_runtime_task(
+            identity,
+            node_uri,
+            attachment_rx,
+            runtime_config,
+            stopping,
+        );
 
-    let (_, agent_result) = join(runtime_task.run(), agent_task).await;
-    agent_result?;
-    Ok(())
+        let (_, agent_result) = join(runtime_task.run(), agent_task).await;
+        agent_result?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

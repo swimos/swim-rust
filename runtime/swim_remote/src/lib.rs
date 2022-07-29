@@ -12,5 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod error;
-pub mod task;
+mod error;
+mod task;
+
+pub use self::{
+    error::LaneNotFound,
+    task::{AttachClient, FindNode, RemoteTask},
+};

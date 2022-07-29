@@ -19,26 +19,26 @@ use swim_utilities::routing::route_pattern::RoutePattern;
 
 use crate::{error::AmbiguousRoutes, util::AgentExt};
 
-pub struct ServerModel {
+pub struct PlaneModel {
     pub(crate) routes: Vec<(RoutePattern, BoxAgent)>,
 }
 
-pub struct ServerBuilder {
-    model: ServerModel,
+pub struct PlaneBuilder {
+    model: PlaneModel,
 }
 
-impl Default for ServerBuilder {
+impl Default for PlaneBuilder {
     fn default() -> Self {
         Self {
-            model: ServerModel { routes: vec![] },
+            model: PlaneModel { routes: vec![] },
         }
     }
 }
 
-impl ServerBuilder {
-    pub fn build(self) -> Result<ServerModel, AmbiguousRoutes> {
-        let ServerBuilder {
-            model: ServerModel { routes },
+impl PlaneBuilder {
+    pub fn build(self) -> Result<PlaneModel, AmbiguousRoutes> {
+        let PlaneBuilder {
+            model: PlaneModel { routes },
         } = self;
         let template = routes.iter().map(|(r, _)| r).enumerate();
 
@@ -70,7 +70,7 @@ impl ServerBuilder {
                 .collect();
             Err(AmbiguousRoutes::new(bad))
         } else {
-            Ok(ServerModel { routes })
+            Ok(PlaneModel { routes })
         }
     }
 

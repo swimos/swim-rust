@@ -92,7 +92,7 @@ impl Fac {
     }
 }
 
-async fn init_agent(context: &TestAgentContext) -> (AgentTask<'_>, TestContext) {
+async fn init_agent(context: Box<TestAgentContext>) -> (AgentTask, TestContext) {
     let mut agent = TestAgent::default();
     let test_event_rx = agent.take_receiver();
     let lane_model_fac = Fac::new(agent);
@@ -103,7 +103,7 @@ async fn init_agent(context: &TestAgentContext) -> (AgentTask<'_>, TestContext) 
     let model = AgentModel::<TestAgent, TestLifecycle>::new(Arc::new(lane_model_fac), lifecycle);
 
     let task = model
-        .initialize_agent(make_uri(), CONFIG, context)
+        .initialize_agent(make_uri(), CONFIG, context.clone())
         .await
         .expect("Initialization failed.");
 
@@ -130,7 +130,7 @@ async fn init_agent(context: &TestAgentContext) -> (AgentTask<'_>, TestContext) 
 
 #[tokio::test]
 async fn run_agent_init_task() {
-    let context = TestAgentContext::default();
+    let context = Box::new(TestAgentContext::default());
     let (
         _,
         TestContext {
@@ -138,7 +138,7 @@ async fn run_agent_init_task() {
             lc_event_rx,
             ..
         },
-    ) = init_agent(&context).await;
+    ) = init_agent(context).await;
 
     //We expect the `on_start` event to have fired and the two lanes to have been attached.
 
@@ -152,7 +152,7 @@ async fn run_agent_init_task() {
 
 #[tokio::test]
 async fn stops_if_all_lanes_stop() {
-    let context = TestAgentContext::default();
+    let context = Box::new(TestAgentContext::default());
     let (
         task,
         TestContext {
@@ -161,7 +161,7 @@ async fn stops_if_all_lanes_stop() {
             val_lane_io,
             map_lane_io,
         },
-    ) = init_agent(&context).await;
+    ) = init_agent(context).await;
 
     let test_case = async move {
         assert_eq!(
@@ -193,7 +193,7 @@ async fn stops_if_all_lanes_stop() {
 
 #[tokio::test]
 async fn command_to_value_lane() {
-    let context = TestAgentContext::default();
+    let context = Box::new(TestAgentContext::default());
     let (
         task,
         TestContext {
@@ -202,7 +202,7 @@ async fn command_to_value_lane() {
             val_lane_io,
             map_lane_io,
         },
-    ) = init_agent(&context).await;
+    ) = init_agent(context).await;
 
     let test_case = async move {
         assert_eq!(
@@ -249,7 +249,7 @@ const SYNC_ID: Uuid = Uuid::from_u128(393883);
 
 #[tokio::test]
 async fn sync_with_lane() {
-    let context = TestAgentContext::default();
+    let context = Box::new(TestAgentContext::default());
     let (
         task,
         TestContext {
@@ -258,7 +258,7 @@ async fn sync_with_lane() {
             val_lane_io,
             map_lane_io,
         },
-    ) = init_agent(&context).await;
+    ) = init_agent(context).await;
 
     let test_case = async move {
         assert_eq!(
@@ -298,7 +298,7 @@ async fn sync_with_lane() {
 
 #[tokio::test]
 async fn command_to_map_lane() {
-    let context = TestAgentContext::default();
+    let context = Box::new(TestAgentContext::default());
     let (
         task,
         TestContext {
@@ -307,7 +307,7 @@ async fn command_to_map_lane() {
             val_lane_io,
             map_lane_io,
         },
-    ) = init_agent(&context).await;
+    ) = init_agent(context).await;
 
     let test_case = async move {
         assert_eq!(

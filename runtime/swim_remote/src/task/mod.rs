@@ -15,6 +15,7 @@
 use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
+    num::NonZeroUsize,
     str::Utf8Error,
 };
 
@@ -74,7 +75,9 @@ pub enum AttachClient {
 }
 
 pub struct FindNode {
+    pub source: Uuid,
     pub node: Text,
+    pub lane: Text,
     pub provider: oneshot::Sender<Result<(ByteWriter, ByteReader), LaneNotFound>>,
 }
 
@@ -84,6 +87,7 @@ pub struct RemoteTask<S, E> {
     ws: WebSocket<S, E>,
     attach_rx: mpsc::Receiver<AttachClient>,
     find_tx: mpsc::Sender<FindNode>,
+    registration_buffer_size: NonZeroUsize,
 }
 
 impl<S, E> RemoteTask<S, E> {
@@ -93,6 +97,7 @@ impl<S, E> RemoteTask<S, E> {
         ws: WebSocket<S, E>,
         attach_rx: mpsc::Receiver<AttachClient>,
         find_tx: mpsc::Sender<FindNode>,
+        registration_buffer_size: NonZeroUsize,
     ) -> Self {
         RemoteTask {
             id,
@@ -100,6 +105,7 @@ impl<S, E> RemoteTask<S, E> {
             ws,
             attach_rx,
             find_tx,
+            registration_buffer_size,
         }
     }
 }
@@ -148,13 +154,14 @@ where
             ws,
             attach_rx,
             find_tx,
+            registration_buffer_size,
         } = self;
 
         let (mut tx, mut rx) = ws.split().unwrap();
 
         let (kill_switch_tx, kill_switch_rx) = trigger::trigger();
-        let (incoming_tx, incoming_rx) = mpsc::channel(1);
-        let (outgoing_tx, outgoing_rx) = mpsc::channel(1);
+        let (incoming_tx, incoming_rx) = mpsc::channel(registration_buffer_size.get());
+        let (outgoing_tx, outgoing_rx) = mpsc::channel(registration_buffer_size.get());
 
         let combined_stop = select(stop_signal.clone(), kill_switch_rx);
 
@@ -489,7 +496,9 @@ impl IncomingTask {
                                         Some(writer)
                                     } else {
                                         match connect_agent_route(
+                                            id,
                                             Text::new(key_temp.as_str()),
+                                            Text::new(request.path.lane.as_ref()),
                                             &find_tx,
                                             &outgoing_tx,
                                         )
@@ -563,13 +572,20 @@ impl IncomingTask {
 }
 
 async fn connect_agent_route(
+    source: Uuid,
     node: Text,
+    lane: Text,
     find_tx: &mpsc::Sender<FindNode>,
     outgoing_tx: &mpsc::Sender<OutgoingTaskMessage>,
 ) -> Result<Option<RequestWriter>, ()> {
     debug!(node = %node, "Attempting to open route to agent.");
     let (tx, rx) = oneshot::channel();
-    let find = FindNode { node, provider: tx };
+    let find = FindNode {
+        source,
+        node,
+        lane,
+        provider: tx,
+    };
     find_tx.send(find).await.map_err(|_| ())?;
     match rx.await {
         Ok(Ok((writer, reader))) => outgoing_tx

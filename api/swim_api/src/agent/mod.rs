@@ -96,9 +96,9 @@ pub struct AgentConfig {
 }
 
 /// Type of the task for a running agent.
-pub type AgentTask<'a> = BoxFuture<'a, Result<(), AgentTaskError>>;
+pub type AgentTask = BoxFuture<'static, Result<(), AgentTaskError>>;
 /// Type of the task to initialize an agent.
-pub type AgentInitResult<'a> = Result<AgentTask<'a>, AgentInitError>;
+pub type AgentInitResult = Result<AgentTask, AgentInitError>;
 
 /// Trait to define a type of agent. Instances of this will be passed to the runtime
 /// to be executed. User code should not generally need to implement this directly. It is
@@ -111,12 +111,12 @@ pub trait Agent {
     /// * `route` - The node URI of this agent instance.
     /// * `config` - Configuration parameters for the agent.
     /// * `context` - Context through which the agent can interact with the runtime.
-    fn run<'a>(
+    fn run(
         &self,
         route: RelativeUri,
         config: AgentConfig,
-        context: &'a dyn AgentContext,
-    ) -> BoxFuture<'a, AgentInitResult<'a>>;
+        context: Box<dyn AgentContext + Send>,
+    ) -> BoxFuture<'static, AgentInitResult>;
 }
 
 static_assertions::assert_obj_safe!(AgentContext, Agent);
@@ -124,12 +124,26 @@ static_assertions::assert_obj_safe!(AgentContext, Agent);
 pub type BoxAgent = Box<dyn Agent + Send + 'static>;
 
 impl Agent for BoxAgent {
-    fn run<'a>(
+    fn run(
         &self,
         route: RelativeUri,
         config: AgentConfig,
-        context: &'a dyn AgentContext,
-    ) -> BoxFuture<'a, AgentInitResult<'a>> {
+        context: Box<dyn AgentContext + Send>,
+    ) -> BoxFuture<'static, AgentInitResult> {
         (**self).run(route, config, context)
+    }
+}
+
+impl<'a, A> Agent for &'a A
+where
+    A: Agent,
+{
+    fn run(
+        &self,
+        route: RelativeUri,
+        config: AgentConfig,
+        context: Box<dyn AgentContext + Send>,
+    ) -> BoxFuture<'static, AgentInitResult> {
+        (*self).run(route, config, context)
     }
 }
