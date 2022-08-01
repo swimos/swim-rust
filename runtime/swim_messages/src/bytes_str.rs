@@ -19,6 +19,14 @@ use bytes::Bytes;
 #[derive(Default, PartialEq, Eq, Clone)]
 pub struct BytesStr(Bytes);
 
+impl BytesStr {
+
+    pub const fn from_static_str(content: &'static str) -> BytesStr {
+        BytesStr(Bytes::from_static(content.as_bytes()))
+    }
+
+}
+
 impl TryFrom<Bytes> for BytesStr {
     type Error = std::str::Utf8Error;
 

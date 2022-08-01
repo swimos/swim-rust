@@ -22,6 +22,9 @@ use tokio_util::codec::Encoder;
 
 use crate::error::LaneNotFound;
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Debug, Default)]
 pub struct ReconEncoder;
 
@@ -58,9 +61,11 @@ impl Encoder<BytesRequestMessage> for ReconEncoder {
             Operation::Unlink => write_header(UNLINK_HEADER, node.as_str(), lane.as_str(), dst),
             Operation::Command(body) => {
                 write_header(CMD_HEADER, node.as_str(), lane.as_str(), dst);
-                dst.reserve(body.len() + 1);
-                dst.put_u8(b' ');
-                dst.put(body);
+                if !body.is_empty() {
+                    dst.reserve(body.len() + 1);
+                    dst.put_u8(b' ');
+                    dst.put(body);
+                }
             }
         }
         Ok(())
@@ -85,17 +90,22 @@ impl Encoder<BytesResponseMessage> for ReconEncoder {
             Notification::Synced => write_header(SYNCED_HEADER, node.as_str(), lane.as_str(), dst),
             Notification::Unlinked(body) => {
                 write_header(UNLINKED_HEADER, node.as_str(), lane.as_str(), dst);
-                if let Some(body) = body {
-                    dst.reserve(body.len() + 1);
-                    dst.put_u8(b' ');
-                    dst.put(body);
+                match body {
+                    Some(body) if !body.is_empty() => {
+                        dst.reserve(body.len() + 1);
+                        dst.put_u8(b' ');
+                        dst.put(body);
+                    }
+                    _ => {}
                 }
             }
             Notification::Event(body) => {
                 write_header(EVENT_HEADER, node.as_str(), lane.as_str(), dst);
-                dst.reserve(body.len() + 1);
-                dst.put_u8(b' ');
-                dst.put(body);
+                if !body.is_empty() {
+                    dst.reserve(body.len() + 1);
+                    dst.put_u8(b' ');
+                    dst.put(body);
+                }
             }
         }
         Ok(())
