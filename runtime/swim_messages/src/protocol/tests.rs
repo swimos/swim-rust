@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::bytes_str::BytesStr;
-use crate::compat::{
+use crate::protocol::{
     AgentMessageDecoder, BytesResponseMessage, ClientMessageDecoder, EnvelopeEncoder,
     MessageDecodeError, Path, RawRequestMessage, RawRequestMessageEncoder,
     RawResponseMessageDecoder, RequestMessage, ResponseMessage, ResponseMessageEncoder, COMMAND,

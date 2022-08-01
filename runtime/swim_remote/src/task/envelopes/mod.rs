@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use bytes::{BufMut, BytesMut};
-use swim_messages::compat::{
+use swim_messages::protocol::{
     BytesRequestMessage, BytesResponseMessage, Notification, Operation, Path, RequestMessage,
     ResponseMessage,
 };

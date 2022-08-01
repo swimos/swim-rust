@@ -13,4 +13,4 @@
 // limitations under the License.
 
 pub mod bytes_str;
-pub mod compat;
+pub mod protocol;

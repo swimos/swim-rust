@@ -34,7 +34,7 @@ use ratchet::{
 use smallvec::SmallVec;
 use swim_messages::{
     bytes_str::BytesStr,
-    compat::{
+    protocol::{
         BytesRequestMessage, BytesResponseMessage, Path, RawRequestMessageDecoder,
         RawRequestMessageEncoder, RawResponseMessageDecoder, RawResponseMessageEncoder,
         RequestMessage, ResponseMessage,
