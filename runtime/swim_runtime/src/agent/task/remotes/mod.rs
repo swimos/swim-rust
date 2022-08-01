@@ -20,7 +20,7 @@ use swim_utilities::{io::byte_channel::ByteWriter, trigger::promise};
 use tracing::debug;
 use uuid::Uuid;
 
-use crate::{agent::DisconnectionReason, error::InvalidKey, routing::RoutingAddr};
+use crate::{agent::DisconnectionReason, error::InvalidKey};
 pub use sender::RemoteSender;
 pub use uplink::UplinkResponse;
 
@@ -41,7 +41,7 @@ mod tests;
 #[derive(Debug)]
 pub struct RemoteTracker {
     node: Text,
-    identity: RoutingAddr,
+    identity: Uuid,
     registry: LaneRegistry,
     remotes: HashMap<Uuid, Uplinks>,
 }
@@ -50,7 +50,7 @@ impl RemoteTracker {
     /// #Arguments
     /// * `identity` - The routing address of the agent to be included in outgoing messages.
     /// * `node` - The node URI of the agent to be included in outgoing messages.
-    pub fn new(identity: RoutingAddr, node: Text) -> Self {
+    pub fn new(identity: Uuid, node: Text) -> Self {
         RemoteTracker {
             node,
             identity,

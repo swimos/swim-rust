@@ -17,7 +17,8 @@ use std::num::NonZeroUsize;
 use bytes::{BufMut, BytesMut};
 use futures::StreamExt;
 use swim_api::protocol::map::RawMapOperationMut;
-use swim_model::{path::RelativePath, Text};
+use swim_messages::{protocol::{RawResponseMessageDecoder, ResponseMessage, Notification, Path}, bytes_str::BytesStr};
+use swim_model::Text;
 use swim_utilities::{
     algebra::non_zero_usize,
     io::byte_channel::{byte_channel, ByteReader},
@@ -27,7 +28,6 @@ use uuid::Uuid;
 
 use crate::{
     agent::task::remotes::RemoteSender,
-    compat::{Notification, RawResponseMessageDecoder, ResponseMessage},
     pressure::MapBackpressure,
     routing::RoutingAddr,
 };
@@ -37,7 +37,7 @@ use super::{SpecialAction, WriteAction, WriteTask};
 type Reader = FramedRead<ByteReader, RawResponseMessageDecoder>;
 
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
-const ADDR: RoutingAddr = RoutingAddr::plane(5);
+const ADDR: Uuid = *RoutingAddr::plane(5).uuid();
 const REMOTE_ID: Uuid = Uuid::from_u128(2847743);
 const NODE: &str = "/node";
 const LANE: &str = "lane";
@@ -58,6 +58,10 @@ fn make_task(action: WriteAction, content: Option<&[u8]>) -> (WriteTask, Reader)
 const BODY: &str = "body";
 const BODY_BYTES: &[u8] = BODY.as_bytes();
 
+fn make_path() -> Path<BytesStr> {
+    Path::new(BytesStr::from(NODE), BytesStr::from(LANE))
+}
+
 #[tokio::test]
 async fn write_event() {
     let (task, mut reader) = make_task(WriteAction::Event, Some(BODY_BYTES));
@@ -72,7 +76,7 @@ async fn write_event() {
             envelope: Notification::Event(body),
         })) => {
             assert_eq!(origin, ADDR);
-            assert_eq!(path, RelativePath::new(NODE, LANE));
+            assert_eq!(path, make_path());
             assert_eq!(body.as_ref(), BODY_BYTES);
         }
         ow => panic!("Unexpected result: {:?}", ow),
@@ -93,7 +97,7 @@ async fn write_event_with_synced() {
             envelope: Notification::Event(body),
         })) => {
             assert_eq!(origin, ADDR);
-            assert_eq!(path, RelativePath::new(NODE, LANE));
+            assert_eq!(path, make_path());
             assert_eq!(body.as_ref(), BODY_BYTES);
         }
         ow => panic!("Unexpected result: {:?}", ow),
@@ -107,7 +111,7 @@ async fn write_event_with_synced() {
             envelope: Notification::Synced,
         })) => {
             assert_eq!(origin, ADDR);
-            assert_eq!(path, RelativePath::new(NODE, LANE));
+            assert_eq!(path, make_path());
         }
         ow => panic!("Unexpected result: {:?}", ow),
     }
@@ -156,7 +160,7 @@ async fn write_map_queue_with_synced() {
                 envelope: Notification::Event(body),
             })) => {
                 assert_eq!(origin, ADDR);
-                assert_eq!(path, RelativePath::new(NODE, LANE));
+                assert_eq!(path, make_path());
                 let body_str = std::str::from_utf8(body.as_ref()).unwrap();
                 assert_eq!(body_str, expected);
             }
@@ -172,7 +176,7 @@ async fn write_map_queue_with_synced() {
             envelope: Notification::Synced,
         })) => {
             assert_eq!(origin, ADDR);
-            assert_eq!(path, RelativePath::new(NODE, LANE));
+            assert_eq!(path, make_path());
         }
         ow => panic!("Unexpected result: {:?}", ow),
     }
@@ -195,7 +199,7 @@ async fn write_linked() {
             envelope: Notification::Linked,
         })) => {
             assert_eq!(origin, ADDR);
-            assert_eq!(path, RelativePath::new(NODE, LANE));
+            assert_eq!(path, make_path());
         }
         ow => panic!("Unexpected result: {:?}", ow),
     }
@@ -220,7 +224,7 @@ async fn write_unlinked() {
             envelope: Notification::Unlinked(Some(message)),
         })) => {
             assert_eq!(origin, ADDR);
-            assert_eq!(path, RelativePath::new(NODE, LANE));
+            assert_eq!(path, make_path());
             let message_str = std::str::from_utf8(message.as_ref()).unwrap();
             assert_eq!(message_str, GONE);
         }
@@ -245,7 +249,7 @@ async fn write_lane_not_found() {
             envelope: Notification::Unlinked(Some(message)),
         })) => {
             assert_eq!(origin, ADDR);
-            assert_eq!(path, RelativePath::new(NODE, LANE));
+            assert_eq!(path, make_path());
             assert_eq!(message.as_ref(), super::LANE_NOT_FOUND_BODY);
         }
         ow => panic!("Unexpected result: {:?}", ow),

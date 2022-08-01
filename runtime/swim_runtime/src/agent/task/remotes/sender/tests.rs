@@ -14,6 +14,7 @@
 
 use bytes::{BufMut, BytesMut};
 use futures::StreamExt;
+use swim_messages::protocol::{RawResponseMessageDecoder, Notification, ResponseMessage};
 use swim_model::Text;
 use swim_utilities::{
     algebra::non_zero_usize,
@@ -22,14 +23,11 @@ use swim_utilities::{
 use tokio_util::codec::FramedRead;
 use uuid::Uuid;
 
-use crate::{
-    compat::{Notification, RawResponseMessageDecoder, ResponseMessage},
-    routing::RoutingAddr,
-};
+use crate::routing::RoutingAddr;
 
 use super::RemoteSender;
 
-const ID: RoutingAddr = RoutingAddr::plane(1);
+const ID: Uuid = *RoutingAddr::plane(1).uuid();
 const REMOTE_ID: Uuid = Uuid::from_u128(8573923);
 const NODE: &str = "node_uri";
 

@@ -21,9 +21,7 @@ use std::time::Duration;
 
 use crate::agent::task::links::TriggerUnlink;
 use crate::agent::task::write_fut::SpecialAction;
-use crate::compat::{Operation, RawRequestMessageDecoder, RequestMessage};
 use crate::error::InvalidKey;
-use crate::routing::RoutingAddr;
 
 use self::links::Links;
 use self::prune::PruneRemotes;
@@ -54,6 +52,8 @@ use swim_api::{
         WithLengthBytesCodec,
     },
 };
+use swim_messages::bytes_str::BytesStr;
+use swim_messages::protocol::{RawRequestMessageDecoder, RequestMessage, Path, Operation};
 use swim_model::path::RelativePath;
 use swim_model::Text;
 use swim_recon::parser::MessageExtractError;
@@ -205,7 +205,7 @@ impl InitialEndpoints {
     /// * `stopping` - A signal for initiating a clean shutdown for the agent instance.
     pub fn make_runtime_task(
         self,
-        identity: RoutingAddr,
+        identity: Uuid,
         node_uri: Text,
         attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
         config: AgentRuntimeConfig,
@@ -222,7 +222,7 @@ impl InitialEndpoints {
 /// other two.
 #[derive(Debug)]
 pub struct AgentRuntimeTask {
-    identity: RoutingAddr,
+    identity: Uuid,
     node_uri: Text,
     init: InitialEndpoints,
     attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
@@ -456,7 +456,7 @@ impl Stream for MapLaneReceiver {
 
 impl AgentRuntimeTask {
     fn new(
-        identity: RoutingAddr,
+        identity: Uuid,
         node_uri: Text,
         init: InitialEndpoints,
         attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
@@ -742,7 +742,7 @@ enum ReadTaskEvent {
     /// Register a new lane or remote.
     Registration(ReadTaskMessages),
     /// An envelope was received from a connected remote.
-    Envelope(RequestMessage<Bytes>),
+    Envelope(RequestMessage<BytesStr, Bytes>),
     /// The read task timed out due to inactivity.
     Timeout,
 }
@@ -865,7 +865,7 @@ async fn read_task(
                     envelope,
                 } = msg;
 
-                if let Some(id) = name_mapping.get(&path.lane) {
+                if let Some(id) = name_mapping.get(path.lane.as_str()) {
                     if matches!(&needs_flush, Some(i) if i != id) {
                         trace!(
                             "Flushing lane '{name}' (id = {id})",
@@ -875,7 +875,7 @@ async fn read_task(
                         flush_lane(&mut lanes, &mut needs_flush).await;
                     }
                     if let Some(lane_tx) = lanes.get_mut(id) {
-                        let RelativePath { lane, .. } = path;
+                        let Path { lane, .. } = path;
                         let origin: Uuid = origin.into();
                         match envelope {
                             Operation::Link => {
@@ -886,7 +886,7 @@ async fn read_task(
                                 if write_tx
                                     .send(WriteTaskMessage::Coord(RwCoorindationMessage::Link {
                                         origin,
-                                        lane,
+                                        lane: Text::new(lane.as_str()),
                                     }))
                                     .await
                                     .is_err()
@@ -905,7 +905,7 @@ async fn read_task(
                                         "Failed to communicate with lane '{}'. Removing handle.",
                                         lane
                                     );
-                                    if let Some(id) = name_mapping.remove(&lane) {
+                                    if let Some(id) = name_mapping.remove(lane.as_str()) {
                                         lanes.remove(&id);
                                     }
                                 };
@@ -915,7 +915,7 @@ async fn read_task(
                                 match lane_tx.feed_frame(body).await {
                                     Err(LaneSendError::Io(_)) => {
                                         error!("Failed to communicate with lane '{}'. Removing handle.", lane);
-                                        if let Some(id) = name_mapping.remove(&lane) {
+                                        if let Some(id) = name_mapping.remove(lane.as_str()) {
                                             lanes.remove(&id);
                                         }
                                     }
@@ -925,7 +925,7 @@ async fn read_task(
                                             .send(WriteTaskMessage::Coord(
                                                 RwCoorindationMessage::BadEnvelope {
                                                     origin,
-                                                    lane,
+                                                    lane: Text::new(lane.as_str()),
                                                     error,
                                                 },
                                             ))
@@ -950,7 +950,7 @@ async fn read_task(
                                 if write_tx
                                     .send(WriteTaskMessage::Coord(RwCoorindationMessage::Unlink {
                                         origin,
-                                        lane,
+                                        lane: Text::new(lane.as_str()),
                                     }))
                                     .await
                                     .is_err()
@@ -967,7 +967,7 @@ async fn read_task(
                     let send_err = write_tx.send(WriteTaskMessage::Coord(
                         RwCoorindationMessage::UnknownLane {
                             origin: origin.into(),
-                            path,
+                            path: RelativePath::new(Text::new(path.node.as_str()), Text::new(path.lane.as_str())),
                         },
                     ));
                     let (_, result) = join(flush, send_err).await;
@@ -1026,13 +1026,13 @@ type LaneStream = StopAfterError<Either<ValueLaneReceiver, MapLaneReceiver>>;
 /// Parameters for the write task.
 #[derive(Debug)]
 struct WriteTaskConfiguration {
-    identity: RoutingAddr,
+    identity: Uuid,
     node_uri: Text,
     runtime_config: AgentRuntimeConfig,
 }
 
 impl WriteTaskConfiguration {
-    fn new(identity: RoutingAddr, node_uri: Text, runtime_config: AgentRuntimeConfig) -> Self {
+    fn new(identity: Uuid, node_uri: Text, runtime_config: AgentRuntimeConfig) -> Self {
         WriteTaskConfiguration {
             identity,
             node_uri,
@@ -1311,7 +1311,7 @@ impl<W> Iterator for Writes<W> {
 }
 
 impl WriteTaskState {
-    fn new(identity: RoutingAddr, node_uri: Text) -> Self {
+    fn new(identity: Uuid, node_uri: Text) -> Self {
         WriteTaskState {
             links: Default::default(),
             remote_tracker: RemoteTracker::new(identity, node_uri),

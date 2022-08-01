@@ -133,7 +133,7 @@ where
         let mut make_agent_id = move || {
             let count = agent_count;
             agent_count += 1;
-            RoutingAddr::plane(count)
+            *RoutingAddr::plane(count).uuid()
         };
 
         let (find_tx, mut find_rx) = mpsc::channel(config.find_route_buffer_size.get());
@@ -265,12 +265,12 @@ where
                         Ok((agent_id, agent_tx)) => {
                             let connect_task = attach_agent(
                                 source,
-                                *agent_id.uuid(),
+                                *agent_id,
                                 agent_tx.clone(),
                                 config.agent_runtime_buffer_size,
                                 config.attachment_timeout,
                                 provider,
-                            ).instrument(info_span!("Remote to agent connection task.", remote_id = %source, agent_id = %{agent_id.uuid()}));
+                            ).instrument(info_span!("Remote to agent connection task.", remote_id = %source, agent_id = %agent_id));
                             connection_tasks.push(connect_task);
                         }
                         Err(node) => {

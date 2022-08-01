@@ -35,7 +35,8 @@ use swim_api::{
     },
 };
 use swim_form::structural::read::recognizer::primitive::I32Recognizer;
-use swim_model::{path::RelativePath, Text};
+use swim_messages::{protocol::{RawResponseMessageDecoder, Notification, ResponseMessage, RawRequestMessageEncoder, RequestMessage, Path}, bytes_str::BytesStr};
+use swim_model::Text;
 use swim_recon::{
     parser::{parse_recognize, Span},
     printer::print_recon_compact,
@@ -51,11 +52,6 @@ use uuid::Uuid;
 
 use crate::{
     agent::{AgentRuntimeConfig, DisconnectionReason},
-    compat::{
-        Notification, RawRequestMessageEncoder, RawResponseMessageDecoder, RequestMessage,
-        ResponseMessage,
-    },
-    routing::RoutingAddr,
 };
 
 use super::{LaneEndpoint, RwCoorindationMessage};
@@ -340,7 +336,7 @@ impl Stream for LaneReader {
 
 #[derive(Debug)]
 struct RemoteReceiver {
-    expected_agent: RoutingAddr,
+    expected_agent: Uuid,
     expected_node: String,
     inner: FramedRead<ByteReader, RawResponseMessageDecoder>,
     completion_rx: promise::Receiver<DisconnectionReason>,
@@ -348,7 +344,7 @@ struct RemoteReceiver {
 
 impl RemoteReceiver {
     fn new(
-        expected_agent: RoutingAddr,
+        expected_agent: Uuid,
         expected_node: String,
         rx: ByteReader,
         completion_rx: promise::Receiver<DisconnectionReason>,
@@ -374,7 +370,7 @@ impl RemoteReceiver {
                 envelope,
             })) => {
                 assert_eq!(origin, self.expected_agent);
-                assert_eq!(path, RelativePath::new(&self.expected_node, lane));
+                assert_eq!(path, Path::new(BytesStr::from(self.expected_node.as_str()), BytesStr::from(lane)));
                 f(envelope);
             }
             ow => {
@@ -515,12 +511,12 @@ impl RemoteReceiver {
 
 struct RemoteSender {
     node: String,
-    rid: RoutingAddr,
+    rid: Uuid,
     inner: FramedWrite<ByteWriter, RawRequestMessageEncoder>,
 }
 
 impl RemoteSender {
-    fn new(node: String, rid: RoutingAddr, writer: ByteWriter) -> Self {
+    fn new(node: String, rid: Uuid, writer: ByteWriter) -> Self {
         RemoteSender {
             node,
             rid,
@@ -530,38 +526,43 @@ impl RemoteSender {
 
     async fn link(&mut self, lane: &str) {
         let RemoteSender { node, rid, inner } = self;
-        let path = RelativePath::new(node, lane);
-        assert!(inner.send(RequestMessage::link(*rid, path)).await.is_ok());
+        let path = Path::new(node.as_str(), lane);
+        let msg: RequestMessage<&str, &[u8]> = RequestMessage::link(*rid, path);
+        assert!(inner.send(msg).await.is_ok());
     }
 
     async fn unlink(&mut self, lane: &str) {
         let RemoteSender { node, rid, inner } = self;
-        let path = RelativePath::new(node, lane);
-        assert!(inner.send(RequestMessage::unlink(*rid, path)).await.is_ok());
+        let path = Path::new(node.as_str(), lane);
+        let msg: RequestMessage<&str, &[u8]> = RequestMessage::unlink(*rid, path);
+        assert!(inner.send(msg).await.is_ok());
     }
 
     async fn sync(&mut self, lane: &str) {
         let RemoteSender { node, rid, inner } = self;
-        let path = RelativePath::new(node, lane);
-        assert!(inner.send(RequestMessage::sync(*rid, path)).await.is_ok());
+        let path = Path::new(node.as_str(), lane);
+        let msg: RequestMessage<&str, &[u8]> = RequestMessage::sync(*rid, path);
+        assert!(inner.send(msg).await.is_ok());
     }
 
     async fn value_command(&mut self, lane: &str, n: i32) {
         let RemoteSender { node, rid, inner } = self;
-        let path = RelativePath::new(node, lane);
+        let path = Path::new(node.as_str(), lane);
         let body = format!("{}", n);
+        let msg: RequestMessage<&str, &[u8]> = RequestMessage::command(*rid, path, body.as_bytes());
         assert!(inner
-            .send(RequestMessage::command(*rid, path, body.as_bytes()))
+            .send(msg)
             .await
             .is_ok());
     }
 
     async fn map_command(&mut self, lane: &str, key: &str, value: i32) {
         let RemoteSender { node, rid, inner } = self;
-        let path = RelativePath::new(node, lane);
+        let path = Path::new(node.as_str(), lane);
         let body = format!("@update(key:\"{}\") {}", key, value);
+        let msg: RequestMessage<&str, &[u8]> = RequestMessage::command(*rid, path, body.as_bytes());
         assert!(inner
-            .send(RequestMessage::command(*rid, path, body.as_bytes()))
+            .send(msg)
             .await
             .is_ok());
     }

@@ -47,7 +47,7 @@ fn make_uplinks() -> (Uplinks, ByteReader, promise::Receiver<DisconnectionReason
     (
         Uplinks::new(
             Text::new(NODE_URI),
-            RoutingAddr::plane(0),
+            *RoutingAddr::plane(0).uuid(),
             REMOTE_ID,
             tx,
             completion_tx,
@@ -283,7 +283,7 @@ fn make_uplinks_writing() -> (
     let (completion_tx, completion_rx) = promise::promise();
     let mut uplinks = Uplinks::new(
         Text::new(NODE_URI),
-        RoutingAddr::plane(0),
+        *RoutingAddr::plane(0).uuid(),
         REMOTE_ID,
         tx,
         completion_tx,

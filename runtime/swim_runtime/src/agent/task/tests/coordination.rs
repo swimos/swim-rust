@@ -32,6 +32,7 @@ use futures::{
     stream::SelectAll,
     Future, StreamExt,
 };
+use uuid::Uuid;
 use std::fmt::Debug;
 use swim_api::{
     agent::UplinkKind,
@@ -304,11 +305,11 @@ struct TestContext {
     stop_tx: trigger::Sender,
 }
 
-const AGENT_ID: RoutingAddr = RoutingAddr::plane(1);
+const AGENT_ID: Uuid = *RoutingAddr::plane(1).uuid();
 const NODE: &str = "/node";
-const RID1: RoutingAddr = RoutingAddr::remote(5);
-const RID2: RoutingAddr = RoutingAddr::remote(89);
-const RID3: RoutingAddr = RoutingAddr::remote(222);
+const RID1: Uuid = *RoutingAddr::remote(5).uuid();
+const RID2: Uuid = *RoutingAddr::remote(89).uuid();
+const RID3: Uuid = *RoutingAddr::remote(222).uuid();
 
 async fn run_test_case<F, Fut>(
     inactive_timeout: Duration,
@@ -423,7 +424,7 @@ async fn immediate_shutdown() {
 }
 
 async fn attach_remote(
-    remote_id: RoutingAddr,
+    remote_id: Uuid,
     att_tx: &mpsc::Sender<AgentAttachmentRequest>,
 ) -> (RemoteSender, RemoteReceiver) {
     let (in_tx, in_rx) = byte_channel(BUFFER_SIZE);

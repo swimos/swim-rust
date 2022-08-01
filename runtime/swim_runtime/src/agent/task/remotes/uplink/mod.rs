@@ -30,7 +30,6 @@ use crate::{
     pressure::{
         recon::MapOperationReconEncoder, BackpressureStrategy, MapBackpressure, ValueBackpressure,
     },
-    routing::RoutingAddr,
 };
 
 #[cfg(test)]
@@ -88,7 +87,7 @@ impl Uplinks {
     /// * `completion` - A promise to be completed when the remote is closed.
     pub fn new(
         node: Text,
-        identity: RoutingAddr,
+        identity: Uuid,
         remote_id: Uuid,
         writer: ByteWriter,
         completion: promise::Sender<DisconnectionReason>,

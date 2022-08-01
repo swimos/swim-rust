@@ -16,7 +16,8 @@ use std::{num::NonZeroUsize, time::Duration};
 
 use bytes::{Bytes, BytesMut};
 use futures::StreamExt;
-use swim_model::{path::RelativePath, Text};
+use swim_messages::{protocol::{BytesResponseMessage, RawResponseMessageDecoder, Path}, bytes_str::BytesStr};
+use swim_model::Text;
 use swim_utilities::{
     algebra::non_zero_usize,
     io::byte_channel::{byte_channel, ByteReader},
@@ -30,7 +31,6 @@ use crate::{
         task::write_fut::{SpecialAction, WriteTask},
         DisconnectionReason,
     },
-    compat::{RawResponseMessage, RawResponseMessageDecoder},
     routing::RoutingAddr,
 };
 
@@ -40,9 +40,13 @@ const RID1: Uuid = Uuid::from_u128(757373);
 const RID2: Uuid = Uuid::from_u128(4639830);
 const LANE: &str = "lane";
 
-const ADDR: RoutingAddr = RoutingAddr::plane(1);
+const ADDR: Uuid = *RoutingAddr::plane(1).uuid();
 const NODE: &str = "/node";
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
+
+fn make_path() -> Path<BytesStr> {
+    Path::new(BytesStr::from(NODE), BytesStr::from(LANE))
+}
 
 #[test]
 fn insert_remote() {
@@ -92,7 +96,7 @@ fn setup() -> TestData {
 async fn expect_message(
     task: WriteTask,
     rx: &mut ByteReader,
-    expected: RawResponseMessage,
+    expected: BytesResponseMessage,
 ) -> (RemoteSender, BytesMut) {
     let mut read = FramedRead::new(rx, RawResponseMessageDecoder::default());
     let (writer, buffer, result) = task.into_future().await;
@@ -115,7 +119,7 @@ async fn dispatch_special() {
         ..
     } = setup();
     if let Some(write) = remotes.push_special(SpecialAction::Linked(lane_id), &RID1) {
-        let expected = RawResponseMessage::linked(ADDR, RelativePath::new(NODE, LANE));
+        let expected = BytesResponseMessage::linked(ADDR, make_path());
         expect_message(write, &mut rx1, expected).await;
     } else {
         panic!("Expected a write task.");
@@ -138,9 +142,9 @@ async fn dispatch_normal() {
         UplinkResponse::Value(Bytes::from_static(BODY)),
         &RID1,
     ) {
-        let expected = RawResponseMessage::event(
+        let expected = BytesResponseMessage::event(
             ADDR,
-            RelativePath::new(NODE, LANE),
+            make_path(),
             Bytes::from_static(BODY),
         );
         expect_message(write, &mut rx1, expected).await;
@@ -196,7 +200,7 @@ async fn replace_sender() {
         write,
     ) = setup_with_pending(false);
 
-    let expected = RawResponseMessage::linked(ADDR, RelativePath::new(NODE, LANE));
+    let expected = BytesResponseMessage::linked(ADDR, make_path());
     let (writer, buffer) = expect_message(write, &mut rx1, expected).await;
 
     assert!(remotes.replace_and_pop(writer, buffer).is_none());
@@ -214,13 +218,13 @@ async fn replace_sender_queued() {
         write,
     ) = setup_with_pending(true);
 
-    let expected = RawResponseMessage::linked(ADDR, RelativePath::new(NODE, LANE));
+    let expected = BytesResponseMessage::linked(ADDR, make_path());
     let (writer, buffer) = expect_message(write, &mut rx1, expected).await;
 
     if let Some(write) = remotes.replace_and_pop(writer, buffer) {
-        let expected = RawResponseMessage::event(
+        let expected = BytesResponseMessage::event(
             ADDR,
-            RelativePath::new(NODE, LANE),
+            make_path(),
             Bytes::from_static(BODY),
         );
         expect_message(write, &mut rx1, expected).await;

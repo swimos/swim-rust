@@ -38,8 +38,6 @@ use std::{
     time::Duration,
 };
 
-use crate::routing::RoutingAddr;
-
 use self::task::{AgentInitTask, NoLanes};
 
 mod task;
@@ -235,7 +233,7 @@ impl From<NoLanes> for AgentExecError {
 /// * `runtime_config` - Configuration for the runtime part of the agent task.
 pub fn run_agent<A>(
     agent: &A,
-    identity: RoutingAddr,
+    identity: Uuid,
     route: RelativeUri,
     attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
     stopping: trigger::Receiver,

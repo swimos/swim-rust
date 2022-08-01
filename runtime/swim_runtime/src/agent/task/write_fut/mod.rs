@@ -13,10 +13,10 @@
 // limitations under the License.
 
 use bytes::BytesMut;
+use swim_messages::protocol::Notification;
 use swim_model::Text;
 
 use crate::{
-    compat::Notification,
     pressure::{BackpressureStrategy, MapBackpressure},
 };
 

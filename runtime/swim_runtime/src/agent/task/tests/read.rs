@@ -30,6 +30,7 @@ use swim_utilities::{
 };
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
+use uuid::Uuid;
 
 use crate::{
     agent::task::{
@@ -185,12 +186,12 @@ async fn shutdown_no_remotes() {
     assert!(events.is_empty());
 }
 
-const RID: RoutingAddr = RoutingAddr::remote(0);
-const RID2: RoutingAddr = RoutingAddr::remote(1);
+const RID: Uuid = *RoutingAddr::remote(0).uuid();
+const RID2: Uuid = *RoutingAddr::remote(1).uuid();
 const NODE: &str = "node";
 
 async fn attach_remote_with(
-    rid: RoutingAddr,
+    rid: Uuid,
     reg_tx: &mpsc::Sender<ReadTaskMessages>,
 ) -> RemoteSender {
     let (tx, rx) = byte_channel(BUFFER_SIZE);
@@ -222,7 +223,7 @@ async fn attach_remote_and_link() {
         let event = event_rx.recv().await;
         match event {
             Some(Event::Coord(RwCoorindationMessage::Link { origin, lane })) => {
-                assert_eq!(origin, *RID.uuid());
+                assert_eq!(origin, RID);
                 assert_eq!(lane, VAL_LANE);
             }
             ow => panic!("Unexpected event: {:?}", ow),
@@ -248,7 +249,7 @@ async fn attach_remote_and_sync() {
         let event = event_rx.recv().await;
         match event {
             Some(Event::Sync { name, id }) => {
-                assert_eq!(id, *RID.uuid());
+                assert_eq!(id, RID);
                 assert_eq!(name, VAL_LANE);
             }
             ow => panic!("Unexpected event: {:?}", ow),
@@ -377,7 +378,7 @@ async fn attach_two_remotes_and_link() {
         let seen;
         match event1 {
             Some(Event::Coord(RwCoorindationMessage::Link { origin, lane })) => {
-                assert!(origin == *RID.uuid() || origin == *RID2.uuid());
+                assert!(origin == RID || origin == RID2);
                 seen = origin;
                 assert_eq!(lane, VAL_LANE);
             }
@@ -385,7 +386,7 @@ async fn attach_two_remotes_and_link() {
         }
         match event2 {
             Some(Event::Coord(RwCoorindationMessage::Link { origin, lane })) => {
-                assert!(origin == *RID.uuid() || origin == *RID2.uuid());
+                assert!(origin == RID || origin == RID2);
                 assert_ne!(origin, seen);
                 assert_eq!(lane, VAL_LANE);
             }

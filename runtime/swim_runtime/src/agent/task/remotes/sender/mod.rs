@@ -14,15 +14,12 @@
 
 use bytes::BytesMut;
 use futures::SinkExt;
-use swim_model::{path::RelativePath, Text};
+use swim_messages::protocol::{Notification, ResponseMessage, Path};
+use swim_model::Text;
 use swim_utilities::io::byte_channel::ByteWriter;
 use tokio_util::codec::FramedWrite;
 use uuid::Uuid;
-
-use crate::{
-    compat::{Notification, RawResponseMessageEncoder, ResponseMessage},
-    routing::RoutingAddr,
-};
+use swim_messages::protocol::RawResponseMessageEncoder;
 
 #[cfg(test)]
 mod tests;
@@ -31,7 +28,7 @@ mod tests;
 #[derive(Debug)]
 pub struct RemoteSender {
     sender: FramedWrite<ByteWriter, RawResponseMessageEncoder>,
-    identity: RoutingAddr,
+    identity: Uuid,
     remote_id: Uuid,
     node: Text,
     pub lane: String,
@@ -43,7 +40,7 @@ impl RemoteSender {
     /// * `identity` - Routing address of the agent.
     /// * `remote_id` - Routing ID of the remote.
     /// * `node` - The node URI of the agent.
-    pub fn new(writer: ByteWriter, identity: RoutingAddr, remote_id: Uuid, node: Text) -> Self {
+    pub fn new(writer: ByteWriter, identity: Uuid, remote_id: Uuid, node: Text) -> Self {
         RemoteSender {
             sender: FramedWrite::new(writer, Default::default()),
             identity,
@@ -86,9 +83,9 @@ impl RemoteSender {
             ..
         } = self;
 
-        let message: ResponseMessage<&BytesMut, &[u8]> = ResponseMessage {
+        let message: ResponseMessage<&str, &BytesMut, &[u8]> = ResponseMessage {
             origin: *identity,
-            path: RelativePath::new(node.as_str(), lane.as_str()),
+            path: Path::new(node.as_str(), lane.as_str()),
             envelope: notification,
         };
         sender.send(message).await?;
