@@ -16,10 +16,6 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::time::Duration;
 
-use crate::compat::{
-    AgentMessageDecoder, MessageDecodeError, Operation, RequestMessage, ResponseMessage,
-    ResponseMessageEncoder,
-};
 use crate::downlink::DownlinkRuntimeConfig;
 use crate::routing::RoutingAddr;
 
@@ -33,6 +29,7 @@ use swim_api::protocol::downlink::{
 };
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_form::Form;
+use swim_messages::protocol::{ResponseMessageEncoder, AgentMessageDecoder, ResponseMessage, RequestMessage, MessageDecodeError, Operation, Path};
 use swim_model::path::RelativePath;
 use swim_model::Text;
 use swim_utilities::io::byte_channel::{self, ByteReader, ByteWriter};
@@ -198,7 +195,7 @@ where
         attach_rx,
         (out_tx, in_rx),
         stop_rx,
-        RoutingAddr::client(1),
+        *RoutingAddr::client(1).uuid(),
         path,
         config,
     )
@@ -231,7 +228,7 @@ impl TestSender {
     async fn link(&mut self) {
         self.send(ResponseMessage::linked(
             REMOTE_ADDR,
-            RelativePath::new(REMOTE_NODE, REMOTE_LANE),
+            Path::new(REMOTE_NODE, REMOTE_LANE),
         ))
         .await;
     }
@@ -239,28 +236,28 @@ impl TestSender {
     async fn sync(&mut self) {
         self.send(ResponseMessage::synced(
             REMOTE_ADDR,
-            RelativePath::new(REMOTE_NODE, REMOTE_LANE),
+            Path::new(REMOTE_NODE, REMOTE_LANE),
         ))
         .await;
     }
 
-    async fn send(&mut self, message: ResponseMessage<Message, &[u8]>) {
+    async fn send(&mut self, message: ResponseMessage<&str, Message, &[u8]>) {
         assert!(self.0.send(message).await.is_ok());
     }
 
     async fn update(&mut self, message: Message) {
         let message = ResponseMessage::event(
             REMOTE_ADDR,
-            RelativePath::new(REMOTE_NODE, REMOTE_LANE),
+            Path::new(REMOTE_NODE, REMOTE_LANE),
             message,
         );
         self.send(message).await;
     }
 
     async fn update_text(&mut self, message: Text) {
-        let message: ResponseMessage<Text, &[u8]> = ResponseMessage::event(
+        let message: ResponseMessage<&str, Text, &[u8]> = ResponseMessage::event(
             REMOTE_ADDR,
-            RelativePath::new(REMOTE_NODE, REMOTE_LANE),
+            Path::new(REMOTE_NODE, REMOTE_LANE),
             message,
         );
         assert!(self.0.send(message).await.is_ok());
@@ -268,7 +265,7 @@ impl TestSender {
 
     async fn corrupted_frame(&mut self) {
         let inner = self.0.get_mut();
-        assert!(inner.write_u128(REMOTE_ADDR.uuid().as_u128()).await.is_ok());
+        assert!(inner.write_u128(REMOTE_ADDR.as_u128()).await.is_ok());
         assert!(inner.write_u32(REMOTE_NODE.len() as u32).await.is_ok());
         assert!(inner.write_u32(REMOTE_LANE.len() as u32).await.is_ok());
         assert!(inner.write_u64(0).await.is_ok());
@@ -288,13 +285,13 @@ impl<M: RecognizerReadable> TestReceiver<M> {
         ))
     }
 
-    async fn recv(&mut self) -> Option<Result<RequestMessage<M>, MessageDecodeError>> {
+    async fn recv(&mut self) -> Option<Result<RequestMessage<Text, M>, MessageDecodeError>> {
         self.0.next().await
     }
 }
 
 fn expect_message<M: Eq + Debug>(
-    result: Option<Result<RequestMessage<M>, MessageDecodeError>>,
+    result: Option<Result<RequestMessage<Text, M>, MessageDecodeError>>,
     message: Operation<M>,
 ) {
     match result {
@@ -875,7 +872,7 @@ where
         attach_rx,
         (out_tx, in_rx),
         stop_rx,
-        RoutingAddr::client(1),
+        *RoutingAddr::client(1).uuid(),
         path,
         config,
     )

@@ -23,6 +23,8 @@ use futures::stream::SelectAll;
 use futures::{Future, FutureExt, Sink, SinkExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use swim_api::protocol::downlink::{DownlinkNotification, DownlinkNotificationEncoder};
+use swim_messages::protocol::{RawRequestMessage, RawResponseMessageDecoder, Notification, RawRequestMessageEncoder, Operation, ResponseMessage, Path};
+use swim_model::Text;
 use swim_model::path::RelativePath;
 use swim_utilities::future::{immediate_or_join, immediate_or_start, SecondaryResult};
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
@@ -33,13 +35,9 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{Decoder, Encoder, FramedRead, FramedWrite};
 use tracing::{error, info, info_span, trace, warn};
 use tracing_futures::Instrument;
+use uuid::Uuid;
 
-use crate::compat::{
-    Notification, Operation, RawRequestMessage, RawRequestMessageEncoder, RawResponseMessage,
-    RawResponseMessageDecoder,
-};
 use crate::downlink::failure::BadFrameResponse;
-use crate::routing::RoutingAddr;
 use backpressure::DownlinkBackpressure;
 
 mod backpressure;
@@ -116,7 +114,7 @@ pub struct ValueDownlinkRuntime {
     input: ByteReader,
     output: ByteWriter,
     stopping: trigger::Receiver,
-    identity: RoutingAddr,
+    identity: Uuid,
     path: RelativePath,
     config: DownlinkRuntimeConfig,
 }
@@ -127,7 +125,7 @@ pub struct MapDownlinkRuntime<H> {
     input: ByteReader,
     output: ByteWriter,
     stopping: trigger::Receiver,
-    identity: RoutingAddr,
+    identity: Uuid,
     path: RelativePath,
     config: DownlinkRuntimeConfig,
     failure_handler: H,
@@ -167,7 +165,7 @@ impl ValueDownlinkRuntime {
         requests: mpsc::Receiver<AttachAction>,
         io: Io,
         stopping: trigger::Receiver,
-        identity: RoutingAddr,
+        identity: Uuid,
         path: RelativePath,
         config: DownlinkRuntimeConfig,
     ) -> Self {
@@ -219,7 +217,7 @@ impl ValueDownlinkRuntime {
             producer_rx,
             stopping,
             identity,
-            path.clone(),
+            Path::new(path.node.clone(), path.lane.clone()),
             config,
             ValueBackpressure::default(),
         )
@@ -248,7 +246,7 @@ impl<H> MapDownlinkRuntime<H> {
         requests: mpsc::Receiver<AttachAction>,
         io: Io,
         stopping: trigger::Receiver,
-        identity: RoutingAddr,
+        identity: Uuid,
         path: RelativePath,
         config: DownlinkRuntimeConfig,
         failure_handler: H,
@@ -306,7 +304,7 @@ impl<H: BadFrameStrategy<<MapInterpretation as DownlinkInterpretation>::Error>>
             producer_rx,
             stopping,
             identity,
-            path.clone(),
+            Path::new(path.node.clone(), path.lane.clone()),
             config,
             MapBackpressure::default(),
         )
@@ -402,7 +400,7 @@ where
 
 async fn flush_sender_req<T>(sender: &mut FramedWrite<ByteWriter, T>) -> Result<(), T::Error>
 where
-    T: Encoder<RawRequestMessage<'static>>,
+    T: Encoder<RawRequestMessage<'static, &'static str>>,
 {
     sender.flush().await
 }
@@ -511,7 +509,7 @@ where
         };
 
         match next_item {
-            Some(Either::Left(Ok(RawResponseMessage { envelope, .. }))) => match envelope {
+            Some(Either::Left(Ok(ResponseMessage { envelope, .. }))) => match envelope {
                 Notification::Linked => {
                     trace!("Entering Linked state.");
                     state = ReadTaskState::Linked;
@@ -681,12 +679,12 @@ async fn flush_all(senders: &mut Vec<DownlinkSender>) {
 #[derive(Debug)]
 struct RequestSender {
     sender: FramedWrite<ByteWriter, RawRequestMessageEncoder>,
-    identity: RoutingAddr,
-    path: RelativePath,
+    identity: Uuid,
+    path: Path<Text>,
 }
 
 impl RequestSender {
-    fn new(writer: ByteWriter, identity: RoutingAddr, path: RelativePath) -> Self {
+    fn new(writer: ByteWriter, identity: Uuid, path: Path<Text>) -> Self {
         RequestSender {
             sender: FramedWrite::new(writer, RawRequestMessageEncoder),
             identity,
@@ -776,8 +774,8 @@ async fn write_task<B: DownlinkBackpressure>(
     output: ByteWriter,
     producers: mpsc::Receiver<(ByteReader, DownlinkOptions)>,
     stopping: trigger::Receiver,
-    identity: RoutingAddr,
-    path: RelativePath,
+    identity: Uuid,
+    path: Path<Text>,
     config: DownlinkRuntimeConfig,
     mut backpressure: B,
 ) {
@@ -1121,7 +1119,7 @@ impl Future for OwningFlush {
 
 fn sender_poll_flush<Snk>(sink: &mut Snk, cx: &mut Context<'_>) -> Poll<Result<(), Snk::Error>>
 where
-    Snk: Sink<RawRequestMessage<'static>> + Unpin,
+    Snk: Sink<RawRequestMessage<'static, &'static str>> + Unpin,
 {
     sink.poll_flush_unpin(cx)
 }

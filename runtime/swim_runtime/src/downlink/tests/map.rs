@@ -16,6 +16,7 @@ use futures::{
     future::{join3, join4, select, Either},
     SinkExt, StreamExt,
 };
+use swim_messages::protocol::{ResponseMessageEncoder, AgentMessageDecoder, ResponseMessage, RequestMessage, MessageDecodeError, Operation, Path};
 use std::fmt::Debug;
 use std::future::Future;
 use swim_api::{
@@ -40,10 +41,6 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_util::codec::{FramedRead, FramedWrite};
 
 use crate::{
-    compat::{
-        AgentMessageDecoder, MessageDecodeError, Operation, RequestMessage, ResponseMessage,
-        ResponseMessageEncoder,
-    },
     downlink::{
         failure::{AlwaysAbortStrategy, BadFrameResponse, BadFrameStrategy},
         interpretation::{DownlinkInterpretation, MapInterpretation},
@@ -208,7 +205,7 @@ impl TestSender {
     async fn link(&mut self) {
         self.send(ResponseMessage::linked(
             REMOTE_ADDR,
-            RelativePath::new(REMOTE_NODE, REMOTE_LANE),
+            Path::new(REMOTE_NODE, REMOTE_LANE),
         ))
         .await;
     }
@@ -216,19 +213,19 @@ impl TestSender {
     async fn sync(&mut self) {
         self.send(ResponseMessage::synced(
             REMOTE_ADDR,
-            RelativePath::new(REMOTE_NODE, REMOTE_LANE),
+            Path::new(REMOTE_NODE, REMOTE_LANE),
         ))
         .await;
     }
 
-    async fn send(&mut self, message: ResponseMessage<MapMessage<i32, Record>, &[u8]>) {
+    async fn send(&mut self, message: ResponseMessage<&str, MapMessage<i32, Record>, &[u8]>) {
         assert!(self.0.send(message).await.is_ok());
     }
 
     async fn update(&mut self, key: i32, value: Record) {
         let message = ResponseMessage::event(
             REMOTE_ADDR,
-            RelativePath::new(REMOTE_NODE, REMOTE_LANE),
+            Path::new(REMOTE_NODE, REMOTE_LANE),
             MapMessage::Update { key, value },
         );
         self.send(message).await;
@@ -237,7 +234,7 @@ impl TestSender {
     async fn remove(&mut self, key: i32) {
         let message = ResponseMessage::event(
             REMOTE_ADDR,
-            RelativePath::new(REMOTE_NODE, REMOTE_LANE),
+            Path::new(REMOTE_NODE, REMOTE_LANE),
             MapMessage::Remove { key },
         );
         self.send(message).await;
@@ -246,7 +243,7 @@ impl TestSender {
     async fn clear(&mut self) {
         let message = ResponseMessage::event(
             REMOTE_ADDR,
-            RelativePath::new(REMOTE_NODE, REMOTE_LANE),
+            Path::new(REMOTE_NODE, REMOTE_LANE),
             MapMessage::Clear,
         );
         self.send(message).await;
@@ -255,7 +252,7 @@ impl TestSender {
     async fn take(&mut self, n: u64) {
         let message = ResponseMessage::event(
             REMOTE_ADDR,
-            RelativePath::new(REMOTE_NODE, REMOTE_LANE),
+            Path::new(REMOTE_NODE, REMOTE_LANE),
             MapMessage::Take(n),
         );
         self.send(message).await;
@@ -264,16 +261,16 @@ impl TestSender {
     async fn drop(&mut self, n: u64) {
         let message = ResponseMessage::event(
             REMOTE_ADDR,
-            RelativePath::new(REMOTE_NODE, REMOTE_LANE),
+            Path::new(REMOTE_NODE, REMOTE_LANE),
             MapMessage::Drop(n),
         );
         self.send(message).await;
     }
 
     async fn update_text(&mut self, message: Text) {
-        let message: ResponseMessage<Text, &[u8]> = ResponseMessage::event(
+        let message: ResponseMessage<&str, Text, &[u8]> = ResponseMessage::event(
             REMOTE_ADDR,
-            RelativePath::new(REMOTE_NODE, REMOTE_LANE),
+            Path::new(REMOTE_NODE, REMOTE_LANE),
             message,
         );
         assert!(self.0.send(message).await.is_ok());
@@ -281,7 +278,7 @@ impl TestSender {
 
     async fn corrupted_frame(&mut self) {
         let inner = self.0.get_mut();
-        assert!(inner.write_u128(REMOTE_ADDR.uuid().as_u128()).await.is_ok());
+        assert!(inner.write_u128(REMOTE_ADDR.as_u128()).await.is_ok());
         assert!(inner.write_u32(REMOTE_NODE.len() as u32).await.is_ok());
         assert!(inner.write_u32(REMOTE_LANE.len() as u32).await.is_ok());
         assert!(inner.write_u64(0).await.is_ok());
@@ -307,7 +304,7 @@ where
 
     async fn recv(
         &mut self,
-    ) -> Option<Result<RequestMessage<MapOperation<K, V>>, MessageDecodeError>> {
+    ) -> Option<Result<RequestMessage<Text, MapOperation<K, V>>, MessageDecodeError>> {
         self.0.next().await
     }
 }
@@ -360,7 +357,7 @@ where
         attach_rx,
         (out_tx, in_rx),
         stop_rx,
-        RoutingAddr::client(1),
+        *RoutingAddr::client(1).uuid(),
         path,
         config,
         failure_strategy,
@@ -383,7 +380,7 @@ where
 }
 
 fn expect_message<K: Eq + Debug, V: Eq + Debug>(
-    result: Option<Result<RequestMessage<MapOperation<K, V>>, MessageDecodeError>>,
+    result: Option<Result<RequestMessage<Text, MapOperation<K, V>>, MessageDecodeError>>,
     message: Operation<MapOperation<K, V>>,
 ) {
     match result {
@@ -1036,7 +1033,7 @@ where
         attach_rx,
         (out_tx, in_rx),
         stop_rx,
-        RoutingAddr::client(1),
+        *RoutingAddr::client(1).uuid(),
         path,
         config,
         AlwaysAbortStrategy,
