@@ -12,8 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use bytes::{BytesMut, Bytes};
-use swim_messages::{protocol::{RequestMessage, Path, BytesRequestMessage, BytesResponseMessage, ResponseMessage}, bytes_str::BytesStr};
+use bytes::{Bytes, BytesMut};
+use swim_messages::{
+    bytes_str::BytesStr,
+    protocol::{BytesRequestMessage, BytesResponseMessage, Path, RequestMessage, ResponseMessage},
+};
 use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
@@ -83,7 +86,8 @@ fn encode_command_empty() {
 #[test]
 fn encode_command() {
     let mut encoder = ReconEncoder;
-    let message: BytesRequestMessage = RequestMessage::command(ID, PATH, Bytes::from_static(b"body"));
+    let message: BytesRequestMessage =
+        RequestMessage::command(ID, PATH, Bytes::from_static(b"body"));
 
     let mut buffer = BytesMut::new();
 
@@ -153,7 +157,8 @@ fn encode_unlinked_empty() {
 #[test]
 fn encode_unlinked() {
     let mut encoder = ReconEncoder;
-    let message: BytesResponseMessage = ResponseMessage::unlinked(ID, PATH, Some(Bytes::from_static(b"gone")));
+    let message: BytesResponseMessage =
+        ResponseMessage::unlinked(ID, PATH, Some(Bytes::from_static(b"gone")));
 
     let mut buffer = BytesMut::new();
 
@@ -167,7 +172,8 @@ fn encode_unlinked() {
 #[test]
 fn encode_event() {
     let mut encoder = ReconEncoder;
-    let message: BytesResponseMessage = ResponseMessage::event(ID, PATH, Bytes::from_static(b"body"));
+    let message: BytesResponseMessage =
+        ResponseMessage::event(ID, PATH, Bytes::from_static(b"body"));
 
     let mut buffer = BytesMut::new();
 

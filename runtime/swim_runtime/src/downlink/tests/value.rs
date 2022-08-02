@@ -29,7 +29,10 @@ use swim_api::protocol::downlink::{
 };
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_form::Form;
-use swim_messages::protocol::{ResponseMessageEncoder, AgentMessageDecoder, ResponseMessage, RequestMessage, MessageDecodeError, Operation, Path};
+use swim_messages::protocol::{
+    AgentMessageDecoder, MessageDecodeError, Operation, Path, RequestMessage, ResponseMessage,
+    ResponseMessageEncoder,
+};
 use swim_model::path::RelativePath;
 use swim_model::Text;
 use swim_utilities::io::byte_channel::{self, ByteReader, ByteWriter};
@@ -246,20 +249,14 @@ impl TestSender {
     }
 
     async fn update(&mut self, message: Message) {
-        let message = ResponseMessage::event(
-            REMOTE_ADDR,
-            Path::new(REMOTE_NODE, REMOTE_LANE),
-            message,
-        );
+        let message =
+            ResponseMessage::event(REMOTE_ADDR, Path::new(REMOTE_NODE, REMOTE_LANE), message);
         self.send(message).await;
     }
 
     async fn update_text(&mut self, message: Text) {
-        let message: ResponseMessage<&str, Text, &[u8]> = ResponseMessage::event(
-            REMOTE_ADDR,
-            Path::new(REMOTE_NODE, REMOTE_LANE),
-            message,
-        );
+        let message: ResponseMessage<&str, Text, &[u8]> =
+            ResponseMessage::event(REMOTE_ADDR, Path::new(REMOTE_NODE, REMOTE_LANE), message);
         assert!(self.0.send(message).await.is_ok());
     }
 

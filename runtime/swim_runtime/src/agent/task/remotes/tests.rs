@@ -16,7 +16,10 @@ use std::{num::NonZeroUsize, time::Duration};
 
 use bytes::{Bytes, BytesMut};
 use futures::StreamExt;
-use swim_messages::{protocol::{BytesResponseMessage, RawResponseMessageDecoder, Path}, bytes_str::BytesStr};
+use swim_messages::{
+    bytes_str::BytesStr,
+    protocol::{BytesResponseMessage, Path, RawResponseMessageDecoder},
+};
 use swim_model::Text;
 use swim_utilities::{
     algebra::non_zero_usize,
@@ -142,11 +145,7 @@ async fn dispatch_normal() {
         UplinkResponse::Value(Bytes::from_static(BODY)),
         &RID1,
     ) {
-        let expected = BytesResponseMessage::event(
-            ADDR,
-            make_path(),
-            Bytes::from_static(BODY),
-        );
+        let expected = BytesResponseMessage::event(ADDR, make_path(), Bytes::from_static(BODY));
         expect_message(write, &mut rx1, expected).await;
     } else {
         panic!("Expected a write task.");
@@ -222,11 +221,7 @@ async fn replace_sender_queued() {
     let (writer, buffer) = expect_message(write, &mut rx1, expected).await;
 
     if let Some(write) = remotes.replace_and_pop(writer, buffer) {
-        let expected = BytesResponseMessage::event(
-            ADDR,
-            make_path(),
-            Bytes::from_static(BODY),
-        );
+        let expected = BytesResponseMessage::event(ADDR, make_path(), Bytes::from_static(BODY));
         expect_message(write, &mut rx1, expected).await;
     } else {
         panic!("Expected a write task.");

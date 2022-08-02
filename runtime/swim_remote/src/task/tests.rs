@@ -1,0 +1,499 @@
+// Copyright 2015-2021 Swim Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use std::{num::NonZeroUsize, time::Duration};
+
+use futures::{
+    future::{join, join3},
+    Future, StreamExt,
+};
+use swim_messages::{
+    bytes_str::BytesStr,
+    protocol::{
+        BytesRequestMessage, BytesResponseMessage, Notification, Operation, Path,
+        RawRequestMessageDecoder, RawResponseMessageDecoder, RequestMessage, ResponseMessage,
+    },
+};
+use swim_model::Text;
+use swim_utilities::{
+    algebra::non_zero_usize,
+    io::byte_channel::{self, ByteReader},
+    trigger,
+};
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
+use tokio_util::codec::FramedRead;
+use uuid::Uuid;
+
+use crate::{task::OutgoingKind, AttachClient, FindNode, LaneNotFound};
+
+use super::{InputError, OutgoingTaskMessage, RegisterIncoming};
+
+const ID: Uuid = Uuid::from_u128(1484);
+const CHAN_SIZE: usize = 8;
+const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
+const TEST_TIMEOUT: Duration = Duration::from_secs(5);
+const NODE: &str = "/node";
+const OTHER: &str = "/other";
+const LANE: &str = "lane";
+
+const DL_NODE: &str = "/remote";
+const DL_LANE: &str = "remote_lane";
+
+const AGENT_PATH: Path<BytesStr> = Path::from_static_strs(NODE, LANE);
+const DL_PATH: Path<BytesStr> = Path::from_static_strs(DL_NODE, DL_LANE);
+
+async fn test_registration_task<F, Fut>(test_case: F) -> Fut::Output
+where
+    F: FnOnce(
+        mpsc::Sender<AttachClient>,
+        mpsc::Receiver<RegisterIncoming>,
+        mpsc::Receiver<OutgoingTaskMessage>,
+        trigger::Sender,
+    ) -> Fut,
+    Fut: Future,
+{
+    let (att_tx, att_rx) = mpsc::channel(CHAN_SIZE);
+    let (in_tx, in_rx) = mpsc::channel(CHAN_SIZE);
+    let (out_tx, out_rx) = mpsc::channel(CHAN_SIZE);
+    let (stop_tx, stop_rx) = trigger::trigger();
+
+    let reg_task = super::registration_task(att_rx, in_tx, out_tx, stop_rx);
+    let test_task = test_case(att_tx, in_rx, out_rx, stop_tx);
+    let (_, result) = tokio::time::timeout(TEST_TIMEOUT, join(reg_task, test_task))
+        .await
+        .expect("Test timed out.");
+    result
+}
+
+#[tokio::test]
+async fn reg_task_stops_when_triggered() {
+    let _parts = test_registration_task(|att_tx, in_rx, out_rx, stop_trigger| async move {
+        stop_trigger.trigger();
+        (att_tx, in_rx, out_rx)
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn reg_task_stops_when_channel_ends() {
+    let _stop_trigger =
+        test_registration_task(|_, _, _, stop_trigger| async move { stop_trigger }).await;
+}
+
+#[tokio::test]
+async fn register_for_downlinks() {
+    test_registration_task(|att_tx, mut in_rx, mut out_rx, stop_trigger| async move {
+        let (tx1, rx1) = byte_channel::byte_channel(BUFFER_SIZE);
+        let (tx2, rx2) = byte_channel::byte_channel(BUFFER_SIZE);
+        let (done_tx, done_rx) = trigger::trigger();
+        att_tx
+            .send(AttachClient::AttachDownlink {
+                node: Text::new(NODE),
+                lane: Text::new(LANE),
+                sender: tx1,
+                receiver: rx2,
+                done: done_tx,
+            })
+            .await
+            .expect("Channel closed.");
+
+        let (in_res, out_res) = join(in_rx.recv(), out_rx.recv()).await;
+        let RegisterIncoming {
+            node,
+            lane,
+            sender,
+            done: done_in,
+        } = in_res.expect("Channel closed.");
+
+        assert_eq!(node, NODE);
+        assert_eq!(lane, LANE);
+
+        assert!(byte_channel::are_connected(&sender, &rx1));
+
+        done_in.trigger();
+
+        if let Some(OutgoingTaskMessage::RegisterOutgoing {
+            kind,
+            receiver,
+            done: done_out,
+        }) = out_res
+        {
+            assert_eq!(kind, OutgoingKind::Client);
+            assert!(byte_channel::are_connected(&tx2, &receiver));
+
+            done_out.trigger();
+
+            assert!(done_rx.await.is_ok());
+        } else {
+            panic!("Incorrect message received.");
+        }
+
+        stop_trigger.trigger();
+    })
+    .await;
+}
+
+struct IncomingTestContext {
+    stop_tx: Option<trigger::Sender>,
+    in_tx: mpsc::Sender<Result<BytesStr, InputError>>,
+    attach_tx: mpsc::Sender<RegisterIncoming>,
+    outgoing_rx: mpsc::Receiver<OutgoingTaskMessage>,
+    agent_in_rx: ByteReader,
+}
+
+impl IncomingTestContext {
+    fn stop(&mut self) {
+        if let Some(stop_trigger) = self.stop_tx.take() {
+            stop_trigger.trigger();
+        }
+    }
+}
+
+async fn test_incoming_task<F, Fut>(test_case: F) -> (Result<(), InputError>, Fut::Output)
+where
+    F: FnOnce(IncomingTestContext) -> Fut,
+    Fut: Future,
+{
+    let (stop_tx, stop_rx) = trigger::trigger();
+    let (in_tx, in_rx) = mpsc::channel(CHAN_SIZE);
+    let (attach_tx, attach_rx) = mpsc::channel(CHAN_SIZE);
+    let (find_tx, mut find_rx) = mpsc::channel(CHAN_SIZE);
+    let (outgoing_tx, outgoing_rx) = mpsc::channel(CHAN_SIZE);
+    let (agent_in_tx, agent_in_rx) = byte_channel::byte_channel(BUFFER_SIZE);
+    let (_agent_out_tx, agent_out_rx) = byte_channel::byte_channel(BUFFER_SIZE);
+
+    let context = IncomingTestContext {
+        stop_tx: Some(stop_tx),
+        in_tx,
+        attach_tx,
+        outgoing_rx,
+        agent_in_rx,
+    };
+
+    let mut incoming = super::IncomingTask::default();
+
+    let incoming_task = incoming.run(
+        ID,
+        stop_rx,
+        ReceiverStream::new(in_rx),
+        attach_rx,
+        find_tx,
+        outgoing_tx,
+    );
+
+    let mut agent = Some((agent_in_tx, agent_out_rx));
+    let resolve_task = async move {
+        while let Some(FindNode {
+            node,
+            lane,
+            provider,
+            ..
+        }) = find_rx.recv().await
+        {
+            if node == NODE {
+                if let Some(agent) = agent.take() {
+                    provider.send(Ok(agent)).expect("Task stopped.");
+                } else {
+                    panic!("Agent connection requested twice.");
+                }
+            } else {
+                provider
+                    .send(Err(LaneNotFound::NoSuchAgent { node, lane }))
+                    .expect("Task stopped.");
+            }
+        }
+    };
+
+    let test_task = test_case(context);
+
+    let (task_result, _, result) =
+        tokio::time::timeout(TEST_TIMEOUT, join3(incoming_task, resolve_task, test_task))
+            .await
+            .expect("Test timed out.");
+    (task_result, result)
+}
+
+#[tokio::test]
+async fn incoming_clean_shutdown() {
+    let (task_result, _context) = test_incoming_task(|mut context| async move {
+        context.stop();
+        context
+    })
+    .await;
+    assert!(task_result.is_ok());
+}
+
+#[tokio::test]
+async fn incoming_shutdown_end_of_input() {
+    let (task_result, _parts) = test_incoming_task(|context| async move {
+        let IncomingTestContext {
+            stop_tx,
+            in_tx,
+            attach_tx,
+            outgoing_rx,
+            ..
+        } = context;
+        drop(in_tx);
+        (stop_tx, attach_tx, outgoing_rx)
+    })
+    .await;
+    assert!(task_result.is_ok());
+}
+
+const DL_BODY: &str = "5";
+
+fn make_dl_envelope() -> BytesStr {
+    let env = format!("@event(node:\"{}\",lane:{}) {}", DL_NODE, DL_LANE, DL_BODY);
+    BytesStr::from(env)
+}
+
+struct DlReader(FramedRead<ByteReader, RawResponseMessageDecoder>);
+impl DlReader {
+    fn new(reader: ByteReader) -> Self {
+        DlReader(FramedRead::new(reader, Default::default()))
+    }
+
+    async fn recv(&mut self) -> BytesResponseMessage {
+        self.0
+            .next()
+            .await
+            .expect("Channel dropped.")
+            .expect("Read failed.")
+    }
+}
+
+struct AgentReader<'a>(FramedRead<&'a mut ByteReader, RawRequestMessageDecoder>);
+impl<'a> AgentReader<'a> {
+    fn new(reader: &'a mut ByteReader) -> Self {
+        AgentReader(FramedRead::new(reader, Default::default()))
+    }
+
+    async fn recv(&mut self) -> BytesRequestMessage {
+        self.0
+            .next()
+            .await
+            .expect("Channel dropped.")
+            .expect("Read failed.")
+    }
+}
+
+#[tokio::test]
+async fn incoming_route_downlink_env() {
+    let (task_result, _) = test_incoming_task(|mut context| async move {
+        let IncomingTestContext {
+            in_tx, attach_tx, ..
+        } = &mut context;
+
+        let (channel_tx, channel_rx) = byte_channel::byte_channel(BUFFER_SIZE);
+        let (done_tx, done_rx) = trigger::trigger();
+
+        attach_tx
+            .send(RegisterIncoming {
+                node: Text::new(DL_NODE),
+                lane: Text::new(DL_LANE),
+                sender: channel_tx,
+                done: done_tx,
+            })
+            .await
+            .expect("Channel ended.");
+
+        assert!(done_rx.await.is_ok());
+
+        in_tx
+            .send(Ok(make_dl_envelope()))
+            .await
+            .expect("Task stopped.");
+
+        let mut dl_rx = DlReader::new(channel_rx);
+
+        let ResponseMessage {
+            origin,
+            path,
+            envelope,
+        } = dl_rx.recv().await;
+
+        assert_eq!(origin, ID);
+        assert_eq!(path, DL_PATH);
+        match envelope {
+            Notification::Event(body) => {
+                let body_str = std::str::from_utf8(body.as_ref()).expect("Invalid UTF8");
+                assert_eq!(body_str, DL_BODY);
+            }
+            ow => panic!("Unexpected envelope: {:?}", ow),
+        }
+
+        context.stop();
+        context
+    })
+    .await;
+
+    assert!(task_result.is_ok());
+}
+
+fn make_agent_envelope(a: i32) -> BytesStr {
+    let env = format!("@command(node:\"{}\",lane:{}) {{a:{}}}", NODE, LANE, a);
+    BytesStr::from(env)
+}
+
+fn make_bad_agent_envelope() -> BytesStr {
+    let env = format!("@command(node:\"{}\",lane:{}) {{a:2}}", OTHER, LANE);
+    BytesStr::from(env)
+}
+
+async fn check_env(n: i32, agent_rx: &mut AgentReader<'_>) {
+    let RequestMessage {
+        origin,
+        path,
+        envelope,
+    } = agent_rx.recv().await;
+
+    assert_eq!(origin, ID);
+    assert_eq!(path, AGENT_PATH);
+
+    match envelope {
+        Operation::Command(body) => {
+            let body_str = std::str::from_utf8(body.as_ref()).expect("Invalid UTF8");
+            let expected = format!("{{a:{}}}", n);
+            assert_eq!(body_str, expected);
+        }
+        ow => panic!("Unexpected envelope: {:?}", ow),
+    }
+}
+
+#[tokio::test]
+async fn incoming_route_valid_agent_env() {
+    let (task_result, _) = test_incoming_task(|mut context| async move {
+        let IncomingTestContext {
+            in_tx,
+            outgoing_rx,
+            agent_in_rx,
+            ..
+        } = &mut context;
+
+        in_tx
+            .send(Ok(make_agent_envelope(8)))
+            .await
+            .expect("Task stopped.");
+
+        let mut agent_rx = AgentReader::new(agent_in_rx);
+
+        match outgoing_rx.recv().await {
+            Some(OutgoingTaskMessage::RegisterOutgoing {
+                kind: OutgoingKind::Server,
+                done,
+                ..
+            }) => {
+                done.trigger();
+            }
+            ow => panic!("Unexpected registration: {:?}", ow),
+        }
+
+        check_env(8, &mut agent_rx).await;
+
+        context.stop();
+        context
+    })
+    .await;
+    assert!(task_result.is_ok());
+}
+
+#[tokio::test]
+async fn incoming_route_multiple_agent_env() {
+    let (task_result, _) = test_incoming_task(|mut context| async move {
+        let IncomingTestContext {
+            in_tx,
+            outgoing_rx,
+            agent_in_rx,
+            ..
+        } = &mut context;
+
+        in_tx
+            .send(Ok(make_agent_envelope(8)))
+            .await
+            .expect("Task stopped.");
+
+        let mut agent_rx = AgentReader::new(agent_in_rx);
+
+        match outgoing_rx.recv().await {
+            Some(OutgoingTaskMessage::RegisterOutgoing {
+                kind: OutgoingKind::Server,
+                done,
+                ..
+            }) => {
+                done.trigger();
+            }
+            ow => panic!("Unexpected registration: {:?}", ow),
+        }
+
+        check_env(8, &mut agent_rx).await;
+
+        in_tx
+            .send(Ok(make_agent_envelope(24)))
+            .await
+            .expect("Task stopped.");
+
+        check_env(24, &mut agent_rx).await;
+
+        context.stop();
+        context
+    })
+    .await;
+    assert!(task_result.is_ok());
+}
+
+#[tokio::test]
+async fn incoming_route_not_found_env() {
+    let (task_result, _) = test_incoming_task(|mut context| async move {
+        let IncomingTestContext {
+            in_tx, outgoing_rx, ..
+        } = &mut context;
+
+        in_tx
+            .send(Ok(make_bad_agent_envelope()))
+            .await
+            .expect("Task stopped.");
+
+        match outgoing_rx.recv().await {
+            Some(OutgoingTaskMessage::NotFound {
+                error: LaneNotFound::NoSuchAgent { node, lane },
+            }) => {
+                assert_eq!(node, OTHER);
+                assert_eq!(lane, LANE);
+            }
+            ow => panic!("Unexpected registration: {:?}", ow),
+        }
+
+        context.stop();
+        context
+    })
+    .await;
+    assert!(task_result.is_ok());
+}
+
+#[tokio::test]
+async fn incoming_terminates_on_input_error() {
+    let (task_result, _context) = test_incoming_task(|mut context| async move {
+        let IncomingTestContext { in_tx, .. } = &mut context;
+
+        in_tx
+            .send(Err(InputError::BinaryFrame))
+            .await
+            .expect("Task stopped.");
+
+        context
+    })
+    .await;
+    assert!(matches!(task_result, Err(InputError::BinaryFrame)));
+}

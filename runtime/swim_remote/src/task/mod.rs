@@ -24,7 +24,7 @@ use either::Either;
 use futures::{
     future::{join, join_all, ready, select},
     pin_mut,
-    stream::unfold,
+    stream::{unfold, FuturesUnordered},
     Future, SinkExt, Stream, StreamExt,
 };
 use ratchet::{
@@ -61,16 +61,21 @@ use crate::error::LaneNotFound;
 use self::envelopes::ReconEncoder;
 
 mod envelopes;
+#[cfg(test)]
+mod tests;
 
+#[derive(Debug)]
 pub enum AttachClient {
     OneWay {
         receiver: ByteReader,
+        done: trigger::Sender,
     },
     AttachDownlink {
         node: Text,
         lane: Text,
         sender: ByteWriter,
         receiver: ByteReader,
+        done: trigger::Sender,
     },
 }
 
@@ -121,6 +126,7 @@ enum OutgoingEvent {
     Response(BytesResponseMessage),
 }
 
+#[derive(Debug)]
 enum InputError {
     WsError(ratchet::Error),
     BinaryFrame,
@@ -263,22 +269,26 @@ where
     .filter_map(ready)
 }
 
+#[derive(Debug)]
 struct RegisterIncoming {
     node: Text,
     lane: Text,
     sender: ByteWriter,
+    done: trigger::Sender,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 enum OutgoingKind {
     Client,
     Server,
 }
 
+#[derive(Debug)]
 enum OutgoingTaskMessage {
     RegisterOutgoing {
         kind: OutgoingKind,
         receiver: ByteReader,
+        done: trigger::Sender,
     },
     NotFound {
         error: LaneNotFound,
@@ -293,34 +303,70 @@ async fn registration_task<F>(
 ) where
     F: Future + Unpin,
 {
+    let mut trackers = FuturesUnordered::new();
     let mut requests = ReceiverStream::new(rx).take_until(combined_stop);
-    while let Some(request) = requests.next().await {
+    loop {
+        let request = tokio::select! {
+            done = trackers.next(), if !trackers.is_empty() => {
+                let done: Option<Option<trigger::Sender>> = done;
+                if let Some(Some(done)) = done {
+                    done.trigger();
+                }
+                continue;
+            }
+            maybe_request = requests.next() => {
+                if let Some(request) = maybe_request {
+                    request
+                } else {
+                    break;
+                }
+            }
+        };
         match request {
             AttachClient::AttachDownlink {
                 node,
                 lane,
                 sender,
                 receiver,
+                done,
             } => {
                 debug!(node = %node, lane = %lane, "Attaching new client downlink.");
                 if let (Ok(in_res), Ok(out_res)) =
                     join(incoming_tx.reserve(), outgoing_tx.reserve()).await
                 {
-                    in_res.send(RegisterIncoming { node, lane, sender });
+                    let (in_done_tx, in_done_rx) = trigger::trigger();
+                    let (out_done_tx, out_done_rx) = trigger::trigger();
+                    in_res.send(RegisterIncoming {
+                        node,
+                        lane,
+                        sender,
+                        done: in_done_tx,
+                    });
                     out_res.send(OutgoingTaskMessage::RegisterOutgoing {
                         kind: OutgoingKind::Client,
                         receiver,
+                        done: out_done_tx,
+                    });
+
+                    trackers.push(async move {
+                        let (res_in, res_out) = join(in_done_rx, out_done_rx).await;
+                        if res_in.is_ok() && res_out.is_ok() {
+                            Some(done)
+                        } else {
+                            None
+                        }
                     });
                 } else {
                     break;
                 }
             }
-            AttachClient::OneWay { receiver } => {
+            AttachClient::OneWay { receiver, done } => {
                 debug!("Attaching send only client.");
                 if outgoing_tx
                     .send(OutgoingTaskMessage::RegisterOutgoing {
                         kind: OutgoingKind::Client,
                         receiver,
+                        done,
                     })
                     .await
                     .is_err()
@@ -387,6 +433,7 @@ impl OutgoingTask {
                 OutgoingEvent::Message(OutgoingTaskMessage::RegisterOutgoing {
                     kind,
                     receiver,
+                    done,
                 }) => {
                     debug!(kind = ?kind, "Registering new outgoing chanel.");
                     match kind {
@@ -397,6 +444,7 @@ impl OutgoingTask {
                             agents.add(ResponseReader::new(receiver, Default::default()));
                         }
                     }
+                    done.trigger();
                 }
                 OutgoingEvent::Message(OutgoingTaskMessage::NotFound { error }) => {
                     debug!(lane = ?error, "Sending node/lane not found envelope.");
@@ -462,18 +510,33 @@ impl IncomingTask {
         pin_mut!(input);
 
         let mut key_temp: String = Default::default();
-
         loop {
             let event: IncomingEvent<BytesStr> = tokio::select! {
                 biased;
                 _ = &mut stop_signal => break Ok(()),
-                Some(request) = attach_rx.recv() => IncomingEvent::Register(request),
-                Some(result) = input.next() => IncomingEvent::Message(result),
-                else => break Ok(()),
+                maybe_request = attach_rx.recv() => {
+                    if let Some(request) = maybe_request {
+                        IncomingEvent::Register(request)
+                    } else {
+                        break Ok(());
+                    }
+                },
+                maybe_message = input.next() => {
+                    if let Some(message) = maybe_message {
+                        IncomingEvent::Message(message)
+                    } else {
+                        break Ok(());
+                    }
+                },
             };
 
             match event {
-                IncomingEvent::Register(RegisterIncoming { node, lane, sender }) => {
+                IncomingEvent::Register(RegisterIncoming {
+                    node,
+                    lane,
+                    sender,
+                    done,
+                }) => {
                     debug!(node = %node, lane = %lane, "Registering client.");
                     client_subscriptions
                         .entry(node)
@@ -481,6 +544,7 @@ impl IncomingTask {
                         .entry(lane)
                         .or_default()
                         .push(FramedWrite::new(sender, Default::default()));
+                    done.trigger();
                 }
                 IncomingEvent::Message(Ok(frame)) => {
                     trace!(frame = frame.as_str(), "Handling incoming frame.");
@@ -589,14 +653,26 @@ async fn connect_agent_route(
     };
     find_tx.send(find).await.map_err(|_| ())?;
     match rx.await {
-        Ok(Ok((writer, reader))) => outgoing_tx
-            .send(OutgoingTaskMessage::RegisterOutgoing {
-                kind: OutgoingKind::Server,
-                receiver: reader,
-            })
-            .await
-            .map(move |_| Some(RequestWriter::new(writer, Default::default())))
-            .map_err(|_| ()),
+        Ok(Ok((writer, reader))) => {
+            let (done_tx, done_rx) = trigger::trigger();
+            if outgoing_tx
+                .send(OutgoingTaskMessage::RegisterOutgoing {
+                    kind: OutgoingKind::Server,
+                    receiver: reader,
+                    done: done_tx,
+                })
+                .await
+                .is_err()
+            {
+                return Err(());
+            }
+
+            if done_rx.await.is_err() {
+                return Err(());
+            } else {
+                Ok(Some(RequestWriter::new(writer, Default::default())))
+            }
+        }
         Ok(Err(error)) => outgoing_tx
             .send(OutgoingTaskMessage::NotFound { error })
             .await

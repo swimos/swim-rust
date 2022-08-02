@@ -35,7 +35,13 @@ use swim_api::{
     },
 };
 use swim_form::structural::read::recognizer::primitive::I32Recognizer;
-use swim_messages::{protocol::{RawResponseMessageDecoder, Notification, ResponseMessage, RawRequestMessageEncoder, RequestMessage, Path}, bytes_str::BytesStr};
+use swim_messages::{
+    bytes_str::BytesStr,
+    protocol::{
+        Notification, Path, RawRequestMessageEncoder, RawResponseMessageDecoder, RequestMessage,
+        ResponseMessage,
+    },
+};
 use swim_model::Text;
 use swim_recon::{
     parser::{parse_recognize, Span},
@@ -50,9 +56,7 @@ use tokio::sync::mpsc;
 use tokio_util::codec::{FramedRead, FramedWrite};
 use uuid::Uuid;
 
-use crate::{
-    agent::{AgentRuntimeConfig, DisconnectionReason},
-};
+use crate::agent::{AgentRuntimeConfig, DisconnectionReason};
 
 use super::{LaneEndpoint, RwCoorindationMessage};
 
@@ -370,7 +374,13 @@ impl RemoteReceiver {
                 envelope,
             })) => {
                 assert_eq!(origin, self.expected_agent);
-                assert_eq!(path, Path::new(BytesStr::from(self.expected_node.as_str()), BytesStr::from(lane)));
+                assert_eq!(
+                    path,
+                    Path::new(
+                        BytesStr::from(self.expected_node.as_str()),
+                        BytesStr::from(lane)
+                    )
+                );
                 f(envelope);
             }
             ow => {
@@ -550,10 +560,7 @@ impl RemoteSender {
         let path = Path::new(node.as_str(), lane);
         let body = format!("{}", n);
         let msg: RequestMessage<&str, &[u8]> = RequestMessage::command(*rid, path, body.as_bytes());
-        assert!(inner
-            .send(msg)
-            .await
-            .is_ok());
+        assert!(inner.send(msg).await.is_ok());
     }
 
     async fn map_command(&mut self, lane: &str, key: &str, value: i32) {
@@ -561,9 +568,6 @@ impl RemoteSender {
         let path = Path::new(node.as_str(), lane);
         let body = format!("@update(key:\"{}\") {}", key, value);
         let msg: RequestMessage<&str, &[u8]> = RequestMessage::command(*rid, path, body.as_bytes());
-        assert!(inner
-            .send(msg)
-            .await
-            .is_ok());
+        assert!(inner.send(msg).await.is_ok());
     }
 }

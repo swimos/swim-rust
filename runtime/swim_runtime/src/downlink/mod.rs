@@ -23,9 +23,12 @@ use futures::stream::SelectAll;
 use futures::{Future, FutureExt, Sink, SinkExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use swim_api::protocol::downlink::{DownlinkNotification, DownlinkNotificationEncoder};
-use swim_messages::protocol::{RawRequestMessage, RawResponseMessageDecoder, Notification, RawRequestMessageEncoder, Operation, ResponseMessage, Path};
-use swim_model::Text;
+use swim_messages::protocol::{
+    Notification, Operation, Path, RawRequestMessage, RawRequestMessageEncoder,
+    RawResponseMessageDecoder, ResponseMessage,
+};
 use swim_model::path::RelativePath;
+use swim_model::Text;
 use swim_utilities::future::{immediate_or_join, immediate_or_start, SecondaryResult};
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swim_utilities::trigger;

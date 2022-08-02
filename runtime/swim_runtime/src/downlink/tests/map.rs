@@ -16,7 +16,6 @@ use futures::{
     future::{join3, join4, select, Either},
     SinkExt, StreamExt,
 };
-use swim_messages::protocol::{ResponseMessageEncoder, AgentMessageDecoder, ResponseMessage, RequestMessage, MessageDecodeError, Operation, Path};
 use std::fmt::Debug;
 use std::future::Future;
 use swim_api::{
@@ -27,6 +26,10 @@ use swim_api::{
     },
 };
 use swim_form::{structural::read::recognizer::RecognizerReadable, Form};
+use swim_messages::protocol::{
+    AgentMessageDecoder, MessageDecodeError, Operation, Path, RequestMessage, ResponseMessage,
+    ResponseMessageEncoder,
+};
 use swim_model::{path::RelativePath, Text};
 use swim_utilities::{
     io::byte_channel::{self, ByteReader, ByteWriter},
@@ -40,12 +43,10 @@ use tokio::{
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_util::codec::{FramedRead, FramedWrite};
 
-use crate::{
-    downlink::{
-        failure::{AlwaysAbortStrategy, BadFrameResponse, BadFrameStrategy},
-        interpretation::{DownlinkInterpretation, MapInterpretation},
-        AttachAction, DownlinkOptions, DownlinkRuntimeConfig, MapDownlinkRuntime,
-    },
+use crate::downlink::{
+    failure::{AlwaysAbortStrategy, BadFrameResponse, BadFrameStrategy},
+    interpretation::{DownlinkInterpretation, MapInterpretation},
+    AttachAction, DownlinkOptions, DownlinkRuntimeConfig, MapDownlinkRuntime,
 };
 
 use super::*;
@@ -268,11 +269,8 @@ impl TestSender {
     }
 
     async fn update_text(&mut self, message: Text) {
-        let message: ResponseMessage<&str, Text, &[u8]> = ResponseMessage::event(
-            REMOTE_ADDR,
-            Path::new(REMOTE_NODE, REMOTE_LANE),
-            message,
-        );
+        let message: ResponseMessage<&str, Text, &[u8]> =
+            ResponseMessage::event(REMOTE_ADDR, Path::new(REMOTE_NODE, REMOTE_LANE), message);
         assert!(self.0.send(message).await.is_ok());
     }
 

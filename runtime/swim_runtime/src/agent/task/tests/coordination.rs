@@ -32,7 +32,6 @@ use futures::{
     stream::SelectAll,
     Future, StreamExt,
 };
-use uuid::Uuid;
 use std::fmt::Debug;
 use swim_api::{
     agent::UplinkKind,
@@ -45,6 +44,7 @@ use swim_utilities::{
 };
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::UnboundedReceiverStream;
+use uuid::Uuid;
 
 use super::{
     make_prune_config, LaneReader, MapLaneSender, ValueLaneSender, BUFFER_SIZE, DEFAULT_TIMEOUT,

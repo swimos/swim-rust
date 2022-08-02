@@ -17,7 +17,10 @@ use std::num::NonZeroUsize;
 use bytes::{BufMut, BytesMut};
 use futures::StreamExt;
 use swim_api::protocol::map::RawMapOperationMut;
-use swim_messages::{protocol::{RawResponseMessageDecoder, ResponseMessage, Notification, Path}, bytes_str::BytesStr};
+use swim_messages::{
+    bytes_str::BytesStr,
+    protocol::{Notification, Path, RawResponseMessageDecoder, ResponseMessage},
+};
 use swim_model::Text;
 use swim_utilities::{
     algebra::non_zero_usize,
@@ -26,11 +29,7 @@ use swim_utilities::{
 use tokio_util::codec::FramedRead;
 use uuid::Uuid;
 
-use crate::{
-    agent::task::remotes::RemoteSender,
-    pressure::MapBackpressure,
-    routing::RoutingAddr,
-};
+use crate::{agent::task::remotes::RemoteSender, pressure::MapBackpressure, routing::RoutingAddr};
 
 use super::{SpecialAction, WriteAction, WriteTask};
 

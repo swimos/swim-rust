@@ -190,10 +190,7 @@ const RID: Uuid = *RoutingAddr::remote(0).uuid();
 const RID2: Uuid = *RoutingAddr::remote(1).uuid();
 const NODE: &str = "node";
 
-async fn attach_remote_with(
-    rid: Uuid,
-    reg_tx: &mpsc::Sender<ReadTaskMessages>,
-) -> RemoteSender {
+async fn attach_remote_with(rid: Uuid, reg_tx: &mpsc::Sender<ReadTaskMessages>) -> RemoteSender {
     let (tx, rx) = byte_channel(BUFFER_SIZE);
     assert!(reg_tx
         .send(ReadTaskMessages::Remote {

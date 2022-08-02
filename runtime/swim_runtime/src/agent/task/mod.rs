@@ -53,7 +53,7 @@ use swim_api::{
     },
 };
 use swim_messages::bytes_str::BytesStr;
-use swim_messages::protocol::{RawRequestMessageDecoder, RequestMessage, Path, Operation};
+use swim_messages::protocol::{Operation, Path, RawRequestMessageDecoder, RequestMessage};
 use swim_model::path::RelativePath;
 use swim_model::Text;
 use swim_recon::parser::MessageExtractError;
@@ -967,7 +967,10 @@ async fn read_task(
                     let send_err = write_tx.send(WriteTaskMessage::Coord(
                         RwCoorindationMessage::UnknownLane {
                             origin: origin.into(),
-                            path: RelativePath::new(Text::new(path.node.as_str()), Text::new(path.lane.as_str())),
+                            path: RelativePath::new(
+                                Text::new(path.node.as_str()),
+                                Text::new(path.lane.as_str()),
+                            ),
                         },
                     ));
                     let (_, result) = join(flush, send_err).await;

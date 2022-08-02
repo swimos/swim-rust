@@ -42,6 +42,10 @@ pub fn byte_channel(buffer_size: NonZeroUsize) -> (ByteWriter, ByteReader) {
     )
 }
 
+pub fn are_connected(tx: &ByteWriter, rx: &ByteReader) -> bool {
+    Arc::ptr_eq(&tx.inner, &rx.inner)
+}
+
 #[derive(Debug)]
 struct Conduit {
     data: BytesMut,

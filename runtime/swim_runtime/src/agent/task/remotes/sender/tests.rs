@@ -14,7 +14,7 @@
 
 use bytes::{BufMut, BytesMut};
 use futures::StreamExt;
-use swim_messages::protocol::{RawResponseMessageDecoder, Notification, ResponseMessage};
+use swim_messages::protocol::{Notification, RawResponseMessageDecoder, ResponseMessage};
 use swim_model::Text;
 use swim_utilities::{
     algebra::non_zero_usize,

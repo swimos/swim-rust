@@ -16,9 +16,7 @@ use bytes::BytesMut;
 use swim_messages::protocol::Notification;
 use swim_model::Text;
 
-use crate::{
-    pressure::{BackpressureStrategy, MapBackpressure},
-};
+use crate::pressure::{BackpressureStrategy, MapBackpressure};
 
 use super::remotes::{LaneRegistry, RemoteSender};
 

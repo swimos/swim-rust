@@ -20,11 +20,8 @@ use futures::{
 };
 use swim_api::agent::{LaneConfig, UplinkKind};
 use swim_model::Text;
-use swim_utilities::{algebra::non_zero_usize, trigger};
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    sync::{mpsc, oneshot},
-};
+use swim_utilities::{algebra::non_zero_usize, io::byte_channel, trigger};
+use tokio::sync::{mpsc, oneshot};
 
 use crate::agent::{
     task::{InitialEndpoints, LaneEndpoint},
@@ -170,17 +167,12 @@ async fn no_lanes() {
     assert!(initial.is_err());
 }
 
-async fn check_connected(first: &mut Io, second: &mut Io) {
+fn check_connected(first: &mut Io, second: &mut Io) {
     let (tx1, rx1) = first;
     let (tx2, rx2) = second;
 
-    assert!(tx1.write_i32(12345).await.is_ok());
-    let read_result = rx2.read_i32().await;
-    assert!(matches!(read_result, Ok(12345)));
-
-    assert!(tx2.write_i32(54321).await.is_ok());
-    let read_result = rx1.read_i32().await;
-    assert!(matches!(read_result, Ok(54321)));
+    assert!(byte_channel::are_connected(&tx1, &rx2));
+    assert!(byte_channel::are_connected(&tx2, &rx1));
 }
 
 #[tokio::test]
@@ -194,7 +186,7 @@ async fn single_lane() {
     let LaneEndpoint { name, kind, mut io } = endpoints.pop().unwrap();
     assert_eq!(name, "my_lane");
     assert_eq!(kind, UplinkKind::Value);
-    check_connected(&mut agent_io, &mut io).await;
+    check_connected(&mut agent_io, &mut io);
 }
 
 struct TwoLanesInit {
@@ -298,13 +290,13 @@ async fn two_lanes() {
                 assert!(!seen_value);
                 seen_value = true;
                 assert_eq!(name, "value_lane");
-                check_connected(&mut value, &mut io).await;
+                check_connected(&mut value, &mut io);
             }
             UplinkKind::Map => {
                 assert!(!seen_map);
                 seen_map = true;
                 assert_eq!(name, "map_lane");
-                check_connected(&mut map, &mut io).await;
+                check_connected(&mut map, &mut io);
             }
         }
     }

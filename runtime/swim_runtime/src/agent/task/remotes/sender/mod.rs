@@ -14,12 +14,12 @@
 
 use bytes::BytesMut;
 use futures::SinkExt;
-use swim_messages::protocol::{Notification, ResponseMessage, Path};
+use swim_messages::protocol::RawResponseMessageEncoder;
+use swim_messages::protocol::{Notification, Path, ResponseMessage};
 use swim_model::Text;
 use swim_utilities::io::byte_channel::ByteWriter;
 use tokio_util::codec::FramedWrite;
 use uuid::Uuid;
-use swim_messages::protocol::RawResponseMessageEncoder;
 
 #[cfg(test)]
 mod tests;
