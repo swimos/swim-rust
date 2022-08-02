@@ -14,9 +14,13 @@
 
 use std::{num::NonZeroUsize, time::Duration};
 
+use bytes::BytesMut;
 use futures::{
     future::{join, join3},
     Future, StreamExt,
+};
+use ratchet::{
+    CloseCode, CloseReason, Message, NegotiatedExtension, NoExt, Role, WebSocket, WebSocketConfig,
 };
 use swim_messages::{
     bytes_str::BytesStr,
@@ -31,7 +35,10 @@ use swim_utilities::{
     io::byte_channel::{self, ByteReader},
     trigger,
 };
-use tokio::sync::mpsc;
+use tokio::{
+    io::{duplex, DuplexStream},
+    sync::mpsc,
+};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::FramedRead;
 use uuid::Uuid;
@@ -496,4 +503,143 @@ async fn incoming_terminates_on_input_error() {
     })
     .await;
     assert!(matches!(task_result, Err(InputError::BinaryFrame)));
+}
+
+fn make_fake_ws() -> (
+    WebSocket<DuplexStream, NoExt>,
+    WebSocket<DuplexStream, NoExt>,
+) {
+    let (server, client) = duplex(BUFFER_SIZE.get());
+    let config = WebSocketConfig::default();
+
+    let server = WebSocket::from_upgraded(
+        config,
+        server,
+        NegotiatedExtension::from(NoExt),
+        BytesMut::new(),
+        Role::Server,
+    );
+    let client = WebSocket::from_upgraded(
+        config,
+        client,
+        NegotiatedExtension::from(NoExt),
+        BytesMut::new(),
+        Role::Client,
+    );
+    (server, client)
+}
+
+#[tokio::test]
+async fn messages_from_ws() {
+    let (server, mut client) = make_fake_ws();
+
+    let (_server_tx, mut server_rx) = server.split().expect("Split failed.");
+    let stream = super::text_frame_stream(&mut server_rx);
+
+    client.write_text("first").await.expect("Send failed.");
+    client.write_text("second").await.expect("Send failed.");
+    client.write_text("third").await.expect("Send failed.");
+
+    let frames: Vec<_> = tokio::time::timeout(
+        TEST_TIMEOUT,
+        stream
+            .take(3)
+            .map(|r| r.expect("Stream failed."))
+            .map(|body| body.to_string())
+            .collect(),
+    )
+    .await
+    .expect("Timed out.");
+
+    assert_eq!(
+        frames,
+        vec![
+            "first".to_string(),
+            "second".to_string(),
+            "third".to_string()
+        ]
+    );
+}
+
+#[tokio::test]
+async fn ws_close() {
+    let (server, mut client) = make_fake_ws();
+
+    let (_server_tx, mut server_rx) = server.split().expect("Split failed.");
+    let stream = super::text_frame_stream(&mut server_rx);
+
+    let close_reason = CloseReason::new(CloseCode::GoingAway, Some("gone".to_string()));
+    client
+        .close_with(close_reason.clone())
+        .await
+        .expect("Close failed.");
+
+    let frames: Vec<_> = tokio::time::timeout(TEST_TIMEOUT, stream.collect())
+        .await
+        .expect("Timed out.");
+
+    match frames.as_slice() {
+        [Err(InputError::Closed(Some(reason)))] => {
+            assert_eq!(reason, &close_reason);
+        }
+        ow => panic!("Unexpected frames: {:?}", ow),
+    }
+}
+
+#[tokio::test]
+async fn error_on_binary_frame() {
+    let (server, mut client) = make_fake_ws();
+
+    let (_server_tx, mut server_rx) = server.split().expect("Split failed.");
+    let stream = super::text_frame_stream(&mut server_rx);
+
+    client
+        .write_binary(&[0, 1, 2, 3])
+        .await
+        .expect("Close failed.");
+
+    let frames: Vec<_> = tokio::time::timeout(TEST_TIMEOUT, stream.collect())
+        .await
+        .expect("Timed out.");
+
+    assert!(matches!(frames.as_slice(), [Err(InputError::BinaryFrame)]));
+}
+
+#[tokio::test]
+#[ignore = "Pending fix in ratchet."]
+async fn ignore_ping_pong() {
+    let (server, mut client) = make_fake_ws();
+
+    let (_server_tx, mut server_rx) = server.split().expect("Split failed.");
+    let stream = super::text_frame_stream(&mut server_rx);
+
+    client.write_text("first").await.expect("Send failed.");
+    client.write_ping("ping!").await.expect("Send failed.");
+    client.write_text("second").await.expect("Send failed.");
+    client.write_text("third").await.expect("Send failed.");
+
+    let frames: Vec<_> = tokio::time::timeout(
+        TEST_TIMEOUT,
+        stream
+            .take(3)
+            .map(|r| r.expect("Stream failed."))
+            .map(|body| body.to_string())
+            .collect(),
+    )
+    .await
+    .expect("Timed out.");
+
+    let mut buf = BytesMut::new();
+
+    let message = client.read(&mut buf).await.expect("Read failed.");
+    assert_eq!(message, Message::Pong);
+
+    assert_eq!(
+        frames,
+        vec![
+            "first".to_string(),
+            "second".to_string(),
+            "third".to_string()
+        ]
+    );
 }
