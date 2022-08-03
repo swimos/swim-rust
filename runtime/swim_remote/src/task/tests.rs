@@ -650,7 +650,7 @@ struct OutgoingTestContext {
     stop_tx: Option<trigger::Sender>,
     outgoing_tx: mpsc::Sender<OutgoingTaskMessage>,
     client: WebSocket<DuplexStream, NoExt>,
-    server_rx: Receiver<DuplexStream, NoExtDecoder>,
+    _server_rx: Receiver<DuplexStream, NoExtDecoder>,
 }
 
 impl OutgoingTestContext {
@@ -695,7 +695,7 @@ where
         stop_tx: Some(stop_tx),
         outgoing_tx,
         client,
-        server_rx,
+        _server_rx: server_rx,
     };
 
     let outgoing_task = outgoing.run(stop_rx, &mut server_tx, outgoing_rx);

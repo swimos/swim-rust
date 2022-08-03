@@ -668,7 +668,7 @@ async fn connect_agent_route(
             }
 
             if done_rx.await.is_err() {
-                return Err(());
+                Err(())
             } else {
                 Ok(Some(RequestWriter::new(writer, Default::default())))
             }

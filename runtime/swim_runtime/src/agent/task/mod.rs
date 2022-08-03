@@ -876,7 +876,7 @@ async fn read_task(
                     }
                     if let Some(lane_tx) = lanes.get_mut(id) {
                         let Path { lane, .. } = path;
-                        let origin: Uuid = origin.into();
+                        let origin: Uuid = origin;
                         match envelope {
                             Operation::Link => {
                                 debug!(
@@ -966,7 +966,7 @@ async fn read_task(
                     let flush = flush_lane(&mut lanes, &mut needs_flush);
                     let send_err = write_tx.send(WriteTaskMessage::Coord(
                         RwCoorindationMessage::UnknownLane {
-                            origin: origin.into(),
+                            origin,
                             path: RelativePath::new(
                                 Text::new(path.node.as_str()),
                                 Text::new(path.lane.as_str()),

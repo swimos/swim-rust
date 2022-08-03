@@ -430,7 +430,7 @@ async fn attach_remote(
     let (in_tx, in_rx) = byte_channel(BUFFER_SIZE);
     let (out_tx, out_rx) = byte_channel(BUFFER_SIZE);
     let (completion_tx, completion_rx) = promise::promise();
-    let req = AgentAttachmentRequest::new(remote_id.into(), (out_tx, in_rx), completion_tx);
+    let req = AgentAttachmentRequest::new(remote_id, (out_tx, in_rx), completion_tx);
     assert!(att_tx.send(req).await.is_ok());
 
     let tx = RemoteSender::new(NODE.to_string(), remote_id, in_tx);

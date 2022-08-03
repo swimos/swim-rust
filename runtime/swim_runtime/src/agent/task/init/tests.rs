@@ -171,8 +171,8 @@ fn check_connected(first: &mut Io, second: &mut Io) {
     let (tx1, rx1) = first;
     let (tx2, rx2) = second;
 
-    assert!(byte_channel::are_connected(&tx1, &rx2));
-    assert!(byte_channel::are_connected(&tx2, &rx1));
+    assert!(byte_channel::are_connected(tx1, rx2));
+    assert!(byte_channel::are_connected(tx2, rx1));
 }
 
 #[tokio::test]
