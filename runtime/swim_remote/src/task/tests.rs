@@ -16,7 +16,7 @@ use std::{num::NonZeroUsize, time::Duration};
 
 use bytes::BytesMut;
 use futures::{
-    future::{join, join3},
+    future::{join, join3, join4},
     Future, SinkExt, StreamExt,
 };
 use ratchet::{
@@ -295,6 +295,10 @@ impl<'a> AgentReader<'a> {
             .await
             .expect("Channel dropped.")
             .expect("Read failed.")
+    }
+
+    async fn recv_opt(&mut self) -> Option<BytesRequestMessage> {
+        self.0.next().await.and_then(Result::ok)
     }
 }
 
@@ -752,6 +756,10 @@ impl AgentSender {
             .await
             .expect("Send failed.");
     }
+
+    async fn send_response(&mut self, msg: BytesResponseMessage) {
+        self.0.send(msg).await.expect("Send failed.");
+    }
 }
 
 #[tokio::test]
@@ -874,6 +882,247 @@ async fn outgoing_lane_not_found() {
 
         assert_eq!(env_str, expected);
 
+        context.stop();
+        context
+    })
+    .await;
+}
+
+struct CombinedTestContext {
+    stop_tx: Option<trigger::Sender>,
+    attach_tx: mpsc::Sender<AttachClient>,
+    client: WebSocket<DuplexStream, NoExt>,
+}
+
+impl CombinedTestContext {
+    fn stop(&mut self) {
+        if let Some(stop_trigger) = self.stop_tx.take() {
+            stop_trigger.trigger();
+        }
+    }
+}
+
+async fn test_combined_task<F, Fut>(test_case: F) -> Fut::Output
+where
+    F: FnOnce(CombinedTestContext) -> Fut,
+    Fut: Future,
+{
+    let (stop_tx, stop_rx) = trigger::trigger();
+
+    let (attach_tx, attach_rx) = mpsc::channel(CHAN_SIZE);
+    let (find_tx, mut find_rx) = mpsc::channel(CHAN_SIZE);
+    let (agent_in_tx, agent_in_rx) = byte_channel::byte_channel(BUFFER_SIZE);
+    let (agent_out_tx, agent_out_rx) = byte_channel::byte_channel(BUFFER_SIZE);
+
+    let (server, client) = duplex(BUFFER_SIZE.get());
+    let config = WebSocketConfig::default();
+
+    let server = WebSocket::from_upgraded(
+        config,
+        server,
+        NegotiatedExtension::from(NoExt),
+        BytesMut::new(),
+        Role::Server,
+    );
+    let client = WebSocket::from_upgraded(
+        config,
+        client,
+        NegotiatedExtension::from(NoExt),
+        BytesMut::new(),
+        Role::Client,
+    );
+
+    let context = CombinedTestContext {
+        stop_tx: Some(stop_tx),
+        attach_tx,
+        client,
+    };
+
+    let remote = super::RemoteTask::new(
+        ID,
+        stop_rx,
+        server,
+        attach_rx,
+        find_tx,
+        non_zero_usize!(CHAN_SIZE),
+    );
+
+    let remote_task = remote.run();
+
+    let mut agent = Some((agent_in_tx, agent_out_rx));
+    let resolve_task = async move {
+        while let Some(FindNode {
+            node,
+            lane,
+            provider,
+            ..
+        }) = find_rx.recv().await
+        {
+            if node == NODE {
+                if let Some(agent) = agent.take() {
+                    provider.send(Ok(agent)).expect("Task stopped.");
+                } else {
+                    panic!("Agent connection requested twice.");
+                }
+            } else {
+                provider
+                    .send(Err(LaneNotFound::NoSuchAgent { node, lane }))
+                    .expect("Task stopped.");
+            }
+        }
+    };
+
+    let agent_task = async move {
+        let mut agent_in = agent_in_rx;
+        let mut rx = AgentReader::new(&mut agent_in);
+        let mut tx = AgentSender::new(agent_out_tx);
+
+        while let Some(RequestMessage { path, envelope, .. }) = rx.recv_opt().await {
+            let echo = match envelope {
+                Operation::Link => Notification::Linked,
+                Operation::Sync => Notification::Synced,
+                Operation::Unlink => Notification::Unlinked(None),
+                Operation::Command(body) => Notification::Event(body),
+            };
+            let response = ResponseMessage {
+                origin: AGENT_ID,
+                path,
+                envelope: echo,
+            };
+            tx.send_response(response).await;
+        }
+    };
+
+    let test_task = test_case(context);
+
+    let (_, _, _, result) = tokio::time::timeout(
+        TEST_TIMEOUT,
+        join4(remote_task, agent_task, resolve_task, test_task),
+    )
+    .await
+    .expect("Test timed out.");
+    result
+}
+
+#[tokio::test]
+#[ignore = "Pending fix in ratchet."]
+async fn combined_clean_shutdown() {
+    test_combined_task(|mut context| async move {
+        context.stop();
+
+        let CombinedTestContext { client, .. } = &mut context;
+
+        let mut buf = BytesMut::new();
+        let result = client.read(&mut buf).await;
+        let message = result.unwrap();
+        let reason = CloseReason::new(CloseCode::GoingAway, Some(super::STOPPING.to_string()));
+        assert_eq!(message, Message::Close(Some(reason)));
+
+        context
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn combined_no_agent() {
+    test_combined_task(|mut context| async move {
+        let CombinedTestContext { client, .. } = &mut context;
+
+        let envelope = make_bad_agent_envelope();
+
+        client.write_text(envelope).await.expect("Write failed.");
+
+        let mut buf = BytesMut::new();
+        let message = client.read(&mut buf).await.expect("Channel closed.");
+        assert_eq!(message, Message::Text);
+
+        let frame_str = std::str::from_utf8(buf.as_ref()).expect("Invalid UTF8");
+        let expected = format!("@unlinked(node:\"{}\",lane:{})@nodeNotFound", OTHER, LANE);
+        assert_eq!(frame_str, expected);
+        context.stop();
+        context
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn combined_agent_io() {
+    test_combined_task(|mut context| async move {
+        let CombinedTestContext { client, .. } = &mut context;
+
+        let n = -786;
+
+        let envelope = make_agent_envelope(n);
+
+        client.write_text(envelope).await.expect("Write failed.");
+
+        let mut buf = BytesMut::new();
+        let message = client.read(&mut buf).await.expect("Channel closed.");
+        assert_eq!(message, Message::Text);
+
+        let frame_str = std::str::from_utf8(buf.as_ref()).expect("Invalid UTF8");
+        let expected = format!("@event(node:\"{}\",lane:{}) {{a:{}}}", NODE, LANE, n);
+        assert_eq!(frame_str, expected);
+        context.stop();
+        context
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn combined_downlink_io() {
+    test_combined_task(|mut context| async move {
+        let CombinedTestContext {
+            client, attach_tx, ..
+        } = &mut context;
+        let (tx1, rx1) = byte_channel::byte_channel(BUFFER_SIZE);
+        let (tx2, rx2) = byte_channel::byte_channel(BUFFER_SIZE);
+        let (done_tx, done_rx) = trigger::trigger();
+        attach_tx
+            .send(AttachClient::AttachDownlink {
+                node: Text::new(DL_NODE),
+                lane: Text::new(DL_LANE),
+                sender: tx1,
+                receiver: rx2,
+                done: done_tx,
+            })
+            .await
+            .expect("Channel closed.");
+
+        assert!(done_rx.await.is_ok());
+
+        let envelope_in = make_dl_envelope();
+
+        let mut dl_rx = DlReader::new(rx1);
+        let mut dl_tx = DlSender::new(tx2);
+
+        client.write_text(envelope_in).await.expect("Write failed.");
+
+        let ResponseMessage {
+            origin,
+            path,
+            envelope,
+        } = dl_rx.recv().await;
+
+        assert_eq!(origin, ID);
+        assert_eq!(path, DL_PATH);
+
+        match envelope {
+            Notification::Event(body) => {
+                assert_eq!(body.as_ref(), DL_BODY.as_bytes());
+            }
+            ow => panic!("Unexpected envelope: {:?}", ow),
+        }
+
+        dl_tx.send(DL_NODE, DL_LANE, "22").await;
+
+        let mut buf = BytesMut::new();
+        let message = client.read(&mut buf).await.expect("Channel closed.");
+        assert_eq!(message, Message::Text);
+
+        let frame_str = std::str::from_utf8(buf.as_ref()).expect("Invalid UTF8");
+        let expected = format!("@command(node:\"{}\",lane:{}) 22", DL_NODE, DL_LANE);
+        assert_eq!(frame_str, expected);
         context.stop();
         context
     })
