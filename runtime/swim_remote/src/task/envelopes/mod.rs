@@ -62,14 +62,23 @@ impl Encoder<BytesRequestMessage> for ReconEncoder {
             Operation::Command(body) => {
                 write_header(CMD_HEADER, node.as_str(), lane.as_str(), dst);
                 if !body.is_empty() {
-                    dst.reserve(body.len() + 1);
-                    dst.put_u8(b' ');
-                    dst.put(body);
+                    put_body(body, dst);
                 }
             }
         }
         Ok(())
     }
+}
+
+fn put_body<B: AsRef<[u8]>>(body: B, dst: &mut BytesMut) {
+    let body_bytes = body.as_ref();
+    if body_bytes.starts_with(b"@") {
+        dst.reserve(body_bytes.len());
+    } else {
+        dst.reserve(body_bytes.len() + 1);
+        dst.put_u8(b' ');
+    }
+    dst.put(body_bytes);
 }
 
 impl Encoder<BytesResponseMessage> for ReconEncoder {
@@ -92,9 +101,7 @@ impl Encoder<BytesResponseMessage> for ReconEncoder {
                 write_header(UNLINKED_HEADER, node.as_str(), lane.as_str(), dst);
                 match body {
                     Some(body) if !body.is_empty() => {
-                        dst.reserve(body.len() + 1);
-                        dst.put_u8(b' ');
-                        dst.put(body);
+                        put_body(body, dst);
                     }
                     _ => {}
                 }
@@ -102,9 +109,7 @@ impl Encoder<BytesResponseMessage> for ReconEncoder {
             Notification::Event(body) => {
                 write_header(EVENT_HEADER, node.as_str(), lane.as_str(), dst);
                 if !body.is_empty() {
-                    dst.reserve(body.len() + 1);
-                    dst.put_u8(b' ');
-                    dst.put(body);
+                    put_body(body, dst);
                 }
             }
         }
@@ -121,9 +126,9 @@ impl Encoder<LaneNotFound> for ReconEncoder {
             LaneNotFound::NoSuchLane { node, lane } => (node, lane, LANE_NOT_FOUND_TAG),
         };
         write_header(UNLINKED_HEADER, node.as_str(), lane.as_str(), dst);
-        dst.reserve(body.len() + 1);
-        dst.put_u8(b' ');
-        dst.put_slice(body.as_bytes());
+        if !body.is_empty() {
+            put_body(body, dst);
+        }
         Ok(())
     }
 }

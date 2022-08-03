@@ -17,22 +17,24 @@ use std::{num::NonZeroUsize, time::Duration};
 use bytes::BytesMut;
 use futures::{
     future::{join, join3},
-    Future, StreamExt,
+    Future, SinkExt, StreamExt,
 };
 use ratchet::{
-    CloseCode, CloseReason, Message, NegotiatedExtension, NoExt, Role, WebSocket, WebSocketConfig,
+    CloseCode, CloseReason, Message, NegotiatedExtension, NoExt, NoExtDecoder, Receiver, Role,
+    WebSocket, WebSocketConfig,
 };
 use swim_messages::{
     bytes_str::BytesStr,
     protocol::{
         BytesRequestMessage, BytesResponseMessage, Notification, Operation, Path,
-        RawRequestMessageDecoder, RawResponseMessageDecoder, RequestMessage, ResponseMessage,
+        RawRequestMessageDecoder, RawRequestMessageEncoder, RawResponseMessageDecoder,
+        RawResponseMessageEncoder, RequestMessage, ResponseMessage,
     },
 };
 use swim_model::Text;
 use swim_utilities::{
     algebra::non_zero_usize,
-    io::byte_channel::{self, ByteReader},
+    io::byte_channel::{self, byte_channel, ByteReader, ByteWriter},
     trigger,
 };
 use tokio::{
@@ -40,7 +42,7 @@ use tokio::{
     sync::mpsc,
 };
 use tokio_stream::wrappers::ReceiverStream;
-use tokio_util::codec::FramedRead;
+use tokio_util::codec::{FramedRead, FramedWrite};
 use uuid::Uuid;
 
 use crate::{task::OutgoingKind, AttachClient, FindNode, LaneNotFound};
@@ -642,4 +644,238 @@ async fn ignore_ping_pong() {
             "third".to_string()
         ]
     );
+}
+
+struct OutgoingTestContext {
+    stop_tx: Option<trigger::Sender>,
+    outgoing_tx: mpsc::Sender<OutgoingTaskMessage>,
+    client: WebSocket<DuplexStream, NoExt>,
+    server_rx: Receiver<DuplexStream, NoExtDecoder>,
+}
+
+impl OutgoingTestContext {
+    fn stop(&mut self) {
+        if let Some(stop_trigger) = self.stop_tx.take() {
+            stop_trigger.trigger();
+        }
+    }
+}
+
+async fn test_outgoing_task<F, Fut>(test_case: F) -> Fut::Output
+where
+    F: FnOnce(OutgoingTestContext) -> Fut,
+    Fut: Future,
+{
+    let (stop_tx, stop_rx) = trigger::trigger();
+
+    let (outgoing_tx, outgoing_rx) = mpsc::channel(CHAN_SIZE);
+
+    let mut outgoing = super::OutgoingTask::default();
+    let (server, client) = duplex(BUFFER_SIZE.get());
+    let config = WebSocketConfig::default();
+
+    let server = WebSocket::from_upgraded(
+        config,
+        server,
+        NegotiatedExtension::from(NoExt),
+        BytesMut::new(),
+        Role::Server,
+    );
+    let client = WebSocket::from_upgraded(
+        config,
+        client,
+        NegotiatedExtension::from(NoExt),
+        BytesMut::new(),
+        Role::Client,
+    );
+
+    let (mut server_tx, server_rx) = server.split().expect("Split failed.");
+
+    let context = OutgoingTestContext {
+        stop_tx: Some(stop_tx),
+        outgoing_tx,
+        client,
+        server_rx,
+    };
+
+    let outgoing_task = outgoing.run(stop_rx, &mut server_tx, outgoing_rx);
+
+    let test_task = test_case(context);
+
+    let (_, result) = tokio::time::timeout(TEST_TIMEOUT, join(outgoing_task, test_task))
+        .await
+        .expect("Test timed out.");
+    result
+}
+
+#[tokio::test]
+async fn outgoing_clean_shutdown() {
+    let _context = test_outgoing_task(|mut context| async move {
+        context.stop();
+        context
+    })
+    .await;
+}
+
+struct DlSender(FramedWrite<ByteWriter, RawRequestMessageEncoder>);
+
+struct AgentSender(FramedWrite<ByteWriter, RawResponseMessageEncoder>);
+
+const DL_ID: Uuid = Uuid::from_u128(99918833);
+const AGENT_ID: Uuid = Uuid::from_u128(23648498);
+
+impl DlSender {
+    fn new(writer: ByteWriter) -> Self {
+        DlSender(FramedWrite::new(writer, Default::default()))
+    }
+
+    async fn send(&mut self, node: &str, lane: &str, body: &str) {
+        self.0
+            .send(RequestMessage::command(DL_ID, Path::new(node, lane), body))
+            .await
+            .expect("Send failed.");
+    }
+}
+
+impl AgentSender {
+    fn new(writer: ByteWriter) -> Self {
+        AgentSender(FramedWrite::new(writer, Default::default()))
+    }
+
+    async fn send(&mut self, node: &str, lane: &str, body: &str) {
+        self.0
+            .send(ResponseMessage::<_, _, &[u8]>::event(
+                AGENT_ID,
+                Path::new(node, lane),
+                body,
+            ))
+            .await
+            .expect("Send failed.");
+    }
+}
+
+#[tokio::test]
+async fn outgoing_downlink_message() {
+    let _context = test_outgoing_task(|mut context| async move {
+        let OutgoingTestContext {
+            outgoing_tx,
+            client,
+            ..
+        } = &mut context;
+
+        let (dl_tx, dl_rx) = byte_channel(BUFFER_SIZE);
+        let (done_tx, done_rx) = trigger::trigger();
+
+        outgoing_tx
+            .send(OutgoingTaskMessage::RegisterOutgoing {
+                kind: OutgoingKind::Client,
+                receiver: dl_rx,
+                done: done_tx,
+            })
+            .await
+            .expect("Channel dropped");
+
+        assert!(done_rx.await.is_ok());
+        let mut dl_sender = DlSender::new(dl_tx);
+
+        let body = "content";
+
+        dl_sender.send(DL_NODE, DL_LANE, body).await;
+
+        let mut buf = BytesMut::new();
+        let message = client.read(&mut buf).await.expect("Output stopped.");
+
+        assert_eq!(message, Message::Text);
+
+        let env_str = std::str::from_utf8(buf.as_ref()).expect("Invalid UTF8.");
+
+        let expected = format!("@command(node:\"{}\",lane:{}) {}", DL_NODE, DL_LANE, body);
+
+        assert_eq!(env_str, expected);
+
+        context.stop();
+        context
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn outgoing_agent_message() {
+    let _context = test_outgoing_task(|mut context| async move {
+        let OutgoingTestContext {
+            outgoing_tx,
+            client,
+            ..
+        } = &mut context;
+
+        let (agent_tx, agent_rx) = byte_channel(BUFFER_SIZE);
+        let (done_tx, done_rx) = trigger::trigger();
+
+        outgoing_tx
+            .send(OutgoingTaskMessage::RegisterOutgoing {
+                kind: OutgoingKind::Server,
+                receiver: agent_rx,
+                done: done_tx,
+            })
+            .await
+            .expect("Channel dropped");
+
+        assert!(done_rx.await.is_ok());
+        let mut agent_sender = AgentSender::new(agent_tx);
+
+        let body = "content";
+
+        agent_sender.send(NODE, LANE, body).await;
+
+        let mut buf = BytesMut::new();
+        let message = client.read(&mut buf).await.expect("Output stopped.");
+
+        assert_eq!(message, Message::Text);
+
+        let env_str = std::str::from_utf8(buf.as_ref()).expect("Invalid UTF8.");
+
+        let expected = format!("@event(node:\"{}\",lane:{}) {}", NODE, LANE, body);
+
+        assert_eq!(env_str, expected);
+
+        context.stop();
+        context
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn outgoing_lane_not_found() {
+    let _context = test_outgoing_task(|mut context| async move {
+        let OutgoingTestContext {
+            outgoing_tx,
+            client,
+            ..
+        } = &mut context;
+
+        outgoing_tx
+            .send(OutgoingTaskMessage::NotFound {
+                error: LaneNotFound::NoSuchAgent {
+                    node: Text::new(OTHER),
+                    lane: Text::new(LANE),
+                },
+            })
+            .await
+            .expect("Channel dropped");
+
+        let mut buf = BytesMut::new();
+        let message = client.read(&mut buf).await.expect("Output stopped.");
+
+        assert_eq!(message, Message::Text);
+
+        let env_str = std::str::from_utf8(buf.as_ref()).expect("Invalid UTF8.");
+
+        let expected = format!("@unlinked(node:\"{}\",lane:{})@nodeNotFound", OTHER, LANE);
+
+        assert_eq!(env_str, expected);
+
+        context.stop();
+        context
+    })
+    .await;
 }

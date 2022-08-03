@@ -17,8 +17,11 @@ use swim_messages::{
     bytes_str::BytesStr,
     protocol::{BytesRequestMessage, BytesResponseMessage, Path, RequestMessage, ResponseMessage},
 };
+use swim_model::Text;
 use tokio_util::codec::Encoder;
 use uuid::Uuid;
+
+use crate::LaneNotFound;
 
 use super::ReconEncoder;
 
@@ -96,6 +99,21 @@ fn encode_command() {
     let envelope_str = std::str::from_utf8(buffer.as_ref()).expect("Invalid UTF8!");
 
     assert_eq!(envelope_str, "@command(node:\"/node\",lane:lane) body");
+}
+
+#[test]
+fn encode_command_with_attr() {
+    let mut encoder = ReconEncoder;
+    let message: BytesRequestMessage =
+        RequestMessage::command(ID, PATH, Bytes::from_static(b"@body"));
+
+    let mut buffer = BytesMut::new();
+
+    assert!(encoder.encode(message, &mut buffer).is_ok());
+
+    let envelope_str = std::str::from_utf8(buffer.as_ref()).expect("Invalid UTF8!");
+
+    assert_eq!(envelope_str, "@command(node:\"/node\",lane:lane)@body");
 }
 
 #[test]
@@ -182,4 +200,39 @@ fn encode_event() {
     let envelope_str = std::str::from_utf8(buffer.as_ref()).expect("Invalid UTF8!");
 
     assert_eq!(envelope_str, "@event(node:\"/node\",lane:lane) body");
+}
+
+#[test]
+fn encode_event_with_attr() {
+    let mut encoder = ReconEncoder;
+    let message: BytesResponseMessage =
+        ResponseMessage::event(ID, PATH, Bytes::from_static(b"@body"));
+
+    let mut buffer = BytesMut::new();
+
+    assert!(encoder.encode(message, &mut buffer).is_ok());
+
+    let envelope_str = std::str::from_utf8(buffer.as_ref()).expect("Invalid UTF8!");
+
+    assert_eq!(envelope_str, "@event(node:\"/node\",lane:lane)@body");
+}
+
+#[test]
+fn encode_not_found() {
+    let mut encoder = ReconEncoder;
+    let message = LaneNotFound::NoSuchAgent {
+        node: Text::new(NODE),
+        lane: Text::new(LANE),
+    };
+
+    let mut buffer = BytesMut::new();
+
+    assert!(encoder.encode(message, &mut buffer).is_ok());
+
+    let envelope_str = std::str::from_utf8(buffer.as_ref()).expect("Invalid UTF8!");
+
+    assert_eq!(
+        envelope_str,
+        "@unlinked(node:\"/node\",lane:lane)@nodeNotFound"
+    );
 }
