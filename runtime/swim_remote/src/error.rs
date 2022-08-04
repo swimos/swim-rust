@@ -22,3 +22,11 @@ pub enum LaneNotFound {
     #[error("Agent '{node}' does no have a lane called '{lane}'.")]
     NoSuchLane { node: Text, lane: Text },
 }
+
+#[derive(Debug, Error)]
+pub enum AgentResolutionError {
+    #[error(transparent)]
+    NotFound(#[from] LaneNotFound),
+    #[error("The plane is stopping.")]
+    PlaneStopping,
+}

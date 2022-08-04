@@ -56,7 +56,7 @@ use uuid::Uuid;
 use tracing::{debug, error, info, info_span, trace, warn};
 use tracing_futures::Instrument;
 
-use crate::error::LaneNotFound;
+use crate::error::AgentResolutionError;
 
 use self::envelopes::ReconEncoder;
 
@@ -83,7 +83,7 @@ pub struct FindNode {
     pub source: Uuid,
     pub node: Text,
     pub lane: Text,
-    pub provider: oneshot::Sender<Result<(ByteWriter, ByteReader), LaneNotFound>>,
+    pub provider: oneshot::Sender<Result<(ByteWriter, ByteReader), AgentResolutionError>>,
 }
 
 pub struct RemoteTask<S, E> {
@@ -291,7 +291,7 @@ enum OutgoingTaskMessage {
         done: trigger::Sender,
     },
     NotFound {
-        error: LaneNotFound,
+        error: AgentResolutionError,
     },
 }
 
@@ -446,7 +446,9 @@ impl OutgoingTask {
                     }
                     done.trigger();
                 }
-                OutgoingEvent::Message(OutgoingTaskMessage::NotFound { error }) => {
+                OutgoingEvent::Message(OutgoingTaskMessage::NotFound {
+                    error: AgentResolutionError::NotFound(error),
+                }) => {
                     debug!(lane = ?error, "Sending node/lane not found envelope.");
                     buffer.clear();
                     recon_encoder
@@ -456,6 +458,11 @@ impl OutgoingTask {
                         error!(error = %error, "Writing to the websocket connection failed.");
                         break;
                     }
+                }
+                OutgoingEvent::Message(OutgoingTaskMessage::NotFound {
+                    error: AgentResolutionError::PlaneStopping,
+                }) => {
+                    info!("Ommitting unlinked message as the plane is stopping.");
                 }
                 OutgoingEvent::Request(req) => {
                     trace!(envelope = ?req, "Sending request envelope.");

@@ -45,7 +45,9 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{FramedRead, FramedWrite};
 use uuid::Uuid;
 
-use crate::{task::OutgoingKind, AttachClient, FindNode, LaneNotFound};
+use crate::{
+    error::AgentResolutionError, task::OutgoingKind, AttachClient, FindNode, LaneNotFound,
+};
 
 use super::{InputError, OutgoingTaskMessage, RegisterIncoming};
 
@@ -219,7 +221,7 @@ where
                 }
             } else {
                 provider
-                    .send(Err(LaneNotFound::NoSuchAgent { node, lane }))
+                    .send(Err(LaneNotFound::NoSuchAgent { node, lane }.into()))
                     .expect("Task stopped.");
             }
         }
@@ -480,7 +482,7 @@ async fn incoming_route_not_found_env() {
 
         match outgoing_rx.recv().await {
             Some(OutgoingTaskMessage::NotFound {
-                error: LaneNotFound::NoSuchAgent { node, lane },
+                error: AgentResolutionError::NotFound(LaneNotFound::NoSuchAgent { node, lane }),
             }) => {
                 assert_eq!(node, OTHER);
                 assert_eq!(lane, LANE);
@@ -863,10 +865,10 @@ async fn outgoing_lane_not_found() {
 
         outgoing_tx
             .send(OutgoingTaskMessage::NotFound {
-                error: LaneNotFound::NoSuchAgent {
+                error: AgentResolutionError::NotFound(LaneNotFound::NoSuchAgent {
                     node: Text::new(OTHER),
                     lane: Text::new(LANE),
-                },
+                }),
             })
             .await
             .expect("Channel dropped");
@@ -966,7 +968,7 @@ where
                 }
             } else {
                 provider
-                    .send(Err(LaneNotFound::NoSuchAgent { node, lane }))
+                    .send(Err(LaneNotFound::NoSuchAgent { node, lane }.into()))
                     .expect("Task stopped.");
             }
         }

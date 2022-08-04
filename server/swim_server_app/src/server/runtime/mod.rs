@@ -24,7 +24,7 @@ use std::str::FromStr;
 use std::time::Duration;
 use swim_api::agent::BoxAgent;
 use swim_model::Text;
-use swim_remote::{FindNode, LaneNotFound, RemoteTask};
+use swim_remote::{AgentResolutionError, FindNode, LaneNotFound, RemoteTask};
 use swim_runtime::agent::{run_agent, AgentAttachmentRequest, AgentExecError, DisconnectionReason};
 use swim_runtime::error::ConnectionError;
 use swim_runtime::remote::ExternalConnections;
@@ -47,6 +47,9 @@ use crate::server::ServerHandle;
 
 use super::Server;
 
+#[cfg(test)]
+mod tests;
+
 pub struct SwimServer<Net, Ws> {
     plane: PlaneModel,
     addr: SocketAddr,
@@ -58,6 +61,7 @@ pub struct SwimServer<Net, Ws> {
 enum ServerEvent<Sock> {
     NewConnection(Result<Sock, std::io::Error>),
     FindRoute(FindNode),
+    FailRoute(FindNode),
     RemoteStopped(Uuid, Result<(), JoinError>),
     AgentStopped(Text, Result<Result<(), AgentExecError>, JoinError>),
     ConnectionStopped(ConnectionTerminated),
@@ -78,6 +82,13 @@ where
         let (fut, handle) = self.run_server();
         (fut.boxed(), handle)
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum TaskState {
+    Running,
+    StoppingAgents,
+    StoppingRemotes,
 }
 
 impl<Net, Ws> SwimServer<Net, Ws>
@@ -144,20 +155,75 @@ where
         let mut agent_tasks = FuturesUnordered::new();
         let mut connection_tasks = FuturesUnordered::new();
 
-        let mut accept_stream = listener.into_stream().take_until(stop_signal.clone());
+        let mut accept_stream = listener.into_stream().take_until(stop_signal);
 
         let routes = Routes::new(plane.routes);
 
-        loop {
-            let event = tokio::select! {
-                biased;
-                Some((id, result)) = remote_tasks.next(), if !remote_tasks.is_empty() => ServerEvent::RemoteStopped(id, result),
-                Some((id, result)) = agent_tasks.next(), if !agent_tasks.is_empty() => ServerEvent::AgentStopped(id, result),
-                Some(reason) = connection_tasks.next(), if !connection_tasks.is_empty() => ServerEvent::ConnectionStopped(reason),
-                Some(r) = accept_stream.next() => ServerEvent::NewConnection(r),
-                Some(find_route) = find_rx.recv() => ServerEvent::FindRoute(find_route),
+        let (agent_stop_tx, agent_stop_rx) = trigger::trigger();
+        let mut agent_stop = Some(agent_stop_tx);
+        let (remote_stop_tx, remote_stop_rx) = trigger::trigger();
+        let mut remote_stop = Some(remote_stop_tx);
 
-                else => break,
+        let mut state = TaskState::Running;
+
+        loop {
+            let event = match state {
+                TaskState::Running => {
+                    tokio::select! {
+                        biased;
+                        Some((id, result)) = remote_tasks.next(), if !remote_tasks.is_empty() => ServerEvent::RemoteStopped(id, result),
+                        Some((id, result)) = agent_tasks.next(), if !agent_tasks.is_empty() => ServerEvent::AgentStopped(id, result),
+                        Some(reason) = connection_tasks.next(), if !connection_tasks.is_empty() => ServerEvent::ConnectionStopped(reason),
+                        maybe_result = accept_stream.next() => {
+                            if let Some(result) = maybe_result {
+                                ServerEvent::NewConnection(result)
+                            } else {
+                                if let Some(stop) = agent_stop.take() {
+                                    stop.trigger();
+                                }
+                                state = TaskState::StoppingAgents;
+                                continue;
+                            }
+                        },
+                        Some(find_route) = find_rx.recv() => ServerEvent::FindRoute(find_route),
+                        else => continue,
+                    }
+                }
+                TaskState::StoppingAgents => {
+                    tokio::select! {
+                        biased;
+                        Some((id, result)) = remote_tasks.next(), if !remote_tasks.is_empty() => ServerEvent::RemoteStopped(id, result),
+                        maybe_result = agent_tasks.next() => {
+                            if let Some((id, result)) = maybe_result {
+                                ServerEvent::AgentStopped(id, result)
+                            } else {
+                                if let Some(stop) = remote_stop.take() {
+                                    stop.trigger();
+                                }
+                                state = TaskState::StoppingRemotes;
+                                continue;
+                            }
+                        },
+                        Some(reason) = connection_tasks.next(), if !connection_tasks.is_empty() => ServerEvent::ConnectionStopped(reason),
+                        Some(find_route) = find_rx.recv() => ServerEvent::FailRoute(find_route),
+                        else => continue,
+                    }
+                }
+                TaskState::StoppingRemotes => {
+                    tokio::select! {
+                        biased;
+                        maybe_result = remote_tasks.next() => {
+                            if let Some((id, result)) = maybe_result {
+                                ServerEvent::RemoteStopped(id, result)
+                            } else {
+                                break;
+                            }
+                        },
+                        Some(reason) = connection_tasks.next(), if !connection_tasks.is_empty() => ServerEvent::ConnectionStopped(reason),
+                        Some(find_route) = find_rx.recv() => ServerEvent::FailRoute(find_route),
+                        else => continue,
+                    }
+                }
             };
 
             match event {
@@ -171,7 +237,7 @@ where
                             remote_channels.insert(id, attach_tx);
                             let task = RemoteTask::new(
                                 id,
-                                stop_signal.clone(),
+                                remote_stop_rx.clone(),
                                 websocket,
                                 attach_rx,
                                 find_tx.clone(),
@@ -186,7 +252,7 @@ where
                     }
                 }
                 ServerEvent::NewConnection(Err(error)) => {
-                    warn!(error = %error, "Accepting incomingn connection failed.");
+                    warn!(error = %error, "Accepting incoming connection failed.");
                 }
                 ServerEvent::RemoteStopped(id, result) => {
                     remote_channels.remove(&id);
@@ -221,6 +287,19 @@ where
                         }
                     }
                 }
+                ServerEvent::FailRoute(FindNode {
+                    source,
+                    node,
+                    lane,
+                    provider,
+                }) => {
+                    if provider
+                        .send(Err(AgentResolutionError::PlaneStopping))
+                        .is_err()
+                    {
+                        debug!(remote_id = %source, node = %node, lane = %lane, "Remote stopped with pending agent resolution.");
+                    }
+                }
                 ServerEvent::FindRoute(FindNode {
                     source,
                     node,
@@ -249,7 +328,7 @@ where
                                     id,
                                     route,
                                     attachment_rx,
-                                    stop_signal.clone(),
+                                    agent_stop_rx.clone(),
                                     config.agent,
                                     config.agent_runtime,
                                 );
@@ -275,8 +354,10 @@ where
                         }
                         Err(node) => {
                             debug!(node = %node, "Requested agent does not exist.");
-                            if let Err(Err(LaneNotFound::NoSuchAgent { node, .. })) =
-                                provider.send(Err(LaneNotFound::NoSuchAgent { node, lane }))
+                            if let Err(Err(AgentResolutionError::NotFound(
+                                LaneNotFound::NoSuchAgent { node, .. },
+                            ))) =
+                                provider.send(Err(LaneNotFound::NoSuchAgent { node, lane }.into()))
                             {
                                 debug!(source = %source, route = %node, "A remote stopped while a connection from it to an agent was pending.");
                             }
@@ -285,6 +366,7 @@ where
                 }
             }
         }
+
         Ok(())
     }
 }
@@ -317,7 +399,7 @@ async fn attach_agent(
     tx: mpsc::Sender<AgentAttachmentRequest>,
     buffer_size: NonZeroUsize,
     connect_timeout: Duration,
-    provider: oneshot::Sender<Result<(ByteWriter, ByteReader), LaneNotFound>>,
+    provider: oneshot::Sender<Result<(ByteWriter, ByteReader), AgentResolutionError>>,
 ) -> ConnectionTerminated {
     let (in_tx, in_rx) = byte_channel(buffer_size);
     let (out_tx, out_rx) = byte_channel(buffer_size);
