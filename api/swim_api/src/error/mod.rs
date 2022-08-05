@@ -15,7 +15,9 @@
 use swim_form::structural::read::ReadError;
 use swim_model::Text;
 use swim_recon::parser::AsyncParseError;
+use swim_utilities::trigger::promise;
 use thiserror::Error;
+use tokio::sync::{mpsc, oneshot};
 
 /// Indicates that an agent or downlink failed to read a frame from a byte stream.
 #[derive(Error, Debug)]
@@ -54,4 +56,45 @@ pub enum DownlinkTaskError {
     BadFrame(#[from] FrameIoError),
     #[error("Failed to deserialize frame body: {0}")]
     DeserializationFailed(#[from] ReadError),
+}
+
+/// Error type for operations that communicate with the agent runtime.
+#[derive(Error, Debug)]
+pub enum AgentRuntimeError {
+    #[error("The agent runtime has terminated.")]
+    Terminated,
+}
+
+impl<T> From<mpsc::error::SendError<T>> for AgentRuntimeError {
+    fn from(_: mpsc::error::SendError<T>) -> Self {
+        AgentRuntimeError::Terminated
+    }
+}
+
+impl From<promise::PromiseError> for AgentRuntimeError {
+    fn from(_: promise::PromiseError) -> Self {
+        AgentRuntimeError::Terminated
+    }
+}
+
+impl From<oneshot::error::RecvError> for AgentRuntimeError {
+    fn from(_: oneshot::error::RecvError) -> Self {
+        AgentRuntimeError::Terminated
+    }
+}
+
+/// Error type is returned by implementations of the agent interface trait.
+#[derive(Error, Debug)]
+pub enum AgentTaskError {
+    #[error("{0}")]
+    BadFrame(#[from] FrameIoError),
+    #[error("Failed to deserialize frame body: {0}")]
+    DeserializationFailed(#[from] ReadError),
+}
+
+/// Error type that is returned by implementations of the agent interface trait during the initialization phase.
+#[derive(Error, Debug)]
+pub enum AgentInitError {
+    #[error("The agent failed to start.")]
+    FailedToStart,
 }

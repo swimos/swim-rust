@@ -15,14 +15,9 @@
 use std::convert::Infallible;
 
 use bytes::{BufMut, Bytes, BytesMut};
-use swim_api::protocol::map::{
-    extract_header, MapMessageEncoder, RawMapOperation, RawMapOperationEncoder,
-};
+use swim_api::protocol::map::{extract_header, MapMessageEncoder, RawMapOperationEncoder};
 use swim_recon::parser::MessageExtractError;
 use tokio_util::codec::Encoder;
-
-#[cfg(test)]
-mod tests;
 
 /// A possible transformation to apply to an incoming event body, before passing it on
 /// to the downlink implementation.
@@ -94,41 +89,6 @@ impl DownlinkInterpretation for MapInterpretation {
         encoder
             .encode(header, buffer)
             .expect("Encoding a raw message into a BytesMut is infallible.");
-        Ok(())
-    }
-}
-
-const CLEAR: &[u8] = b"@clear";
-const UPDATE: &[u8] = b"@update(key:) ";
-const REMOVE: &[u8] = b"@remove(key:)";
-const KEY_OFFSET: usize = 12;
-
-#[derive(Debug, Default)]
-pub struct MapOperationReconEncoder;
-
-impl Encoder<RawMapOperation> for MapOperationReconEncoder {
-    type Error = std::io::Error;
-
-    fn encode(&mut self, item: RawMapOperation, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        match item {
-            RawMapOperation::Update { key, value } => {
-                dst.reserve(UPDATE.len() + key.len() + value.len());
-                dst.put(&UPDATE[..KEY_OFFSET]);
-                dst.put(key);
-                dst.put(&UPDATE[KEY_OFFSET..]);
-                dst.put(value);
-            }
-            RawMapOperation::Remove { key } => {
-                dst.reserve(REMOVE.len() + key.len());
-                dst.put(&REMOVE[..KEY_OFFSET]);
-                dst.put(key);
-                dst.put(&REMOVE[KEY_OFFSET..]);
-            }
-            RawMapOperation::Clear => {
-                dst.reserve(CLEAR.len());
-                dst.put(CLEAR);
-            }
-        }
         Ok(())
     }
 }

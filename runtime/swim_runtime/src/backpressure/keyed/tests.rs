@@ -106,7 +106,8 @@ async fn simple_release() {
 fn data(range: Range<i32>) -> Vec<WarpUplinkProfile> {
     range
         .clone()
-        .into_iter().flat_map(|count| {
+        .into_iter()
+        .flat_map(|count| {
             range.clone().into_iter().map(move |lane_id| {
                 let lane = format_lane(lane_id);
                 make_event(lane, count)

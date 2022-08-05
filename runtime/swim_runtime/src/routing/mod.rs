@@ -605,8 +605,7 @@ impl TaggedSender {
     }
 
     pub async fn send_item(&mut self, envelope: Envelope) -> Result<(), SendError<Envelope>> {
-        self
-            .inner
+        self.inner
             .send(TaggedEnvelope(self.tag, envelope))
             .await
             .map_err(|e| {

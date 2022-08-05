@@ -12,14 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use bytes::{Buf, BufMut, BytesMut};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
 use std::fmt::Write;
-use swim_form::structural::write::StructuralWritable;
-use swim_recon::printer::print_recon_compact;
-use tokio_util::codec::Decoder;
+use swim_form::structural::{read::recognizer::Recognizer, write::StructuralWritable};
+use swim_recon::{
+    parser::{AsyncParseError, RecognizerDecoder},
+    printer::print_recon_compact,
+};
+use tokio_util::codec::{Decoder, Encoder};
 
+pub mod agent;
 pub mod downlink;
 pub mod map;
+#[cfg(test)]
+mod tests;
 
 type DecoderResult<D> = Result<Option<<D as Decoder>::Item>, <D as Decoder>::Error>;
 
@@ -89,4 +95,154 @@ fn write_recon_kv<K: StructuralWritable, V: StructuralWritable>(
     let mut rewound = &mut dst.as_mut()[header_offset..];
     rewound.put_u64(key_len);
     rewound.put_u64(value_len);
+}
+
+/// Codec that will encode a type as a Recon string, writing the length (as a 64 bit unigned integer)
+/// as a header.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct WithLengthBytesCodec;
+
+impl<B: AsRef<[u8]>> Encoder<B> for WithLengthBytesCodec {
+    type Error = std::io::Error;
+
+    fn encode(&mut self, item: B, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        let bytes = item.as_ref();
+        dst.reserve(LEN_SIZE + bytes.len());
+        dst.put_u64(bytes.len() as u64);
+        dst.put(bytes);
+        Ok(())
+    }
+}
+
+impl Decoder for WithLengthBytesCodec {
+    type Item = Bytes;
+
+    type Error = std::io::Error;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        if src.remaining() < LEN_SIZE {
+            Ok(None)
+        } else {
+            let mut bytes = src.as_ref();
+            let len = bytes.get_u64() as usize;
+            if src.remaining() >= LEN_SIZE + len {
+                src.advance(LEN_SIZE);
+                Ok(Some(src.split_to(len).freeze()))
+            } else {
+                Ok(None)
+            }
+        }
+    }
+}
+
+enum WithLenRecognizerDecoderState<R: Recognizer> {
+    ReadingHeader,
+    ReadingBody {
+        remaining: usize,
+    },
+    AfterBody {
+        remaining: usize,
+        value: Option<R::Target>,
+    },
+    Discarding {
+        remaining: usize,
+        error: Option<AsyncParseError>,
+    },
+}
+
+/// Length delimited wrapper around [`RecognizerDecoder`]. This decoder expects the length of the string
+/// to be consumed by the inner decoder to be written to the buffer as an unsigned, 64bit integer.
+/// The inner reader will not be permitted to read beyond the written length.
+pub struct WithLenRecognizerDecoder<R: Recognizer> {
+    inner: RecognizerDecoder<R>,
+    state: WithLenRecognizerDecoderState<R>,
+}
+
+impl<R: Recognizer> WithLenRecognizerDecoder<R> {
+    pub fn new(recognizer: R) -> Self {
+        WithLenRecognizerDecoder {
+            inner: RecognizerDecoder::new(recognizer),
+            state: WithLenRecognizerDecoderState::ReadingHeader,
+        }
+    }
+}
+
+const BODY_LEN: usize = std::mem::size_of::<u64>();
+
+impl<R: Recognizer> Decoder for WithLenRecognizerDecoder<R> {
+    type Item = R::Target;
+
+    type Error = AsyncParseError;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        let WithLenRecognizerDecoder { inner, state } = self;
+        loop {
+            match state {
+                WithLenRecognizerDecoderState::ReadingHeader => {
+                    if src.remaining() < BODY_LEN {
+                        src.reserve(BODY_LEN);
+                        break Ok(None);
+                    } else {
+                        *state = WithLenRecognizerDecoderState::ReadingBody {
+                            remaining: src.get_u64() as usize,
+                        };
+                    }
+                }
+                WithLenRecognizerDecoderState::ReadingBody { remaining } => {
+                    let (new_remaining, rem, decode_result) =
+                        consume_bounded(remaining, src, inner);
+                    match decode_result {
+                        Ok(Some(result)) => {
+                            src.unsplit(rem);
+                            *state = WithLenRecognizerDecoderState::AfterBody {
+                                value: Some(result),
+                                remaining: *remaining,
+                            }
+                        }
+                        Ok(None) => {
+                            break Ok(None);
+                        }
+                        Err(e) => {
+                            *remaining -= new_remaining;
+                            src.unsplit(rem);
+                            src.advance(new_remaining);
+                            if *remaining == 0 {
+                                *state = WithLenRecognizerDecoderState::ReadingHeader;
+                                break Err(e);
+                            } else {
+                                *state = WithLenRecognizerDecoderState::Discarding {
+                                    error: Some(e),
+                                    remaining: *remaining,
+                                }
+                            }
+                        }
+                    }
+                }
+                WithLenRecognizerDecoderState::AfterBody { remaining, value } => {
+                    if src.remaining() >= *remaining {
+                        src.advance(*remaining);
+                        let result = value.take();
+                        *state = WithLenRecognizerDecoderState::ReadingHeader;
+                        break Ok(result);
+                    } else {
+                        *remaining -= src.remaining();
+                        src.clear();
+                        break Ok(None);
+                    }
+                }
+                WithLenRecognizerDecoderState::Discarding { remaining, error } => {
+                    if src.remaining() >= *remaining {
+                        src.advance(*remaining);
+                        let err = error.take().unwrap_or(AsyncParseError::UnconsumedInput);
+                        *state = WithLenRecognizerDecoderState::ReadingHeader;
+                        break Err(err);
+                    } else {
+                        *remaining -= src.remaining();
+                        src.clear();
+                        break Ok(None);
+                    }
+                }
+            }
+        }
+    }
 }

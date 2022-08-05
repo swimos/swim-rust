@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use super::MapOperationReconEncoder;
 use bytes::{Bytes, BytesMut};
 use swim_api::protocol::map::{MapOperation, RawMapOperation};
 use tokio_util::codec::Encoder;
-
-use crate::downlink::interpretation::MapOperationReconEncoder;
 
 #[test]
 fn recon_encode_clear() {

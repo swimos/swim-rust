@@ -12,29 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{convert::Infallible, fmt::Display, str::Utf8Error};
+use std::{convert::Infallible, fmt::Display};
 
 use bytes::{BufMut, Bytes, BytesMut};
-use swim_api::protocol::{
-    downlink::{DownlinkOperation, DownlinkOperationDecoder},
-    map::{RawMapOperation, RawMapOperationDecoder},
-};
-use tokio_util::codec::{Decoder, Encoder};
+use swim_api::protocol::{downlink::DownlinkOperation, map::RawMapOperation};
+use tokio_util::codec::Encoder;
 
-use super::{interpretation::MapOperationReconEncoder, map_queue::MapOperationQueue};
+use map_queue::MapOperationQueue;
+mod key;
+mod map_queue;
+pub mod recon;
+
+use recon::MapOperationReconEncoder;
+
+use crate::error::InvalidKey;
 
 /// Backpressure strategy for the output task of a downlink. This is used to encode the
 /// difference in behaviour between different kinds of downlink (particuarly value and
 /// map downlinks.)
-pub trait DownlinkBackpressure {
+pub trait BackpressureStrategy {
     /// The type of operations expected from the downlink implementation.
     type Operation;
-    /// Decoder for operations received from the downlink implementation.
-    type Dec: Decoder<Item = Self::Operation>;
     /// Errors that could ocurr when a frame is pushed into the backpressure relief mechanism.
     type Err: Display;
-
-    fn make_decoder() -> Self::Dec;
 
     /// Called when a record has been sent on the downlink but writing is blocked.
     fn push_operation(&mut self, op: Self::Operation) -> Result<(), Self::Err>;
@@ -57,6 +57,20 @@ pub struct ValueBackpressure {
     current: BytesMut,
 }
 
+impl ValueBackpressure {
+    pub fn push_bytes(&mut self, body: Bytes) {
+        let ValueBackpressure { current } = self;
+
+        current.clear();
+        current.reserve(body.len());
+        current.put(body);
+    }
+
+    pub fn has_data(&self) -> bool {
+        !self.current.is_empty()
+    }
+}
+
 /// Backpressure implementation for map-like downlinks. Map updates are pushed into a
 /// [`MapOperationQueue`] that relieves backpressure on a per-key basis.
 #[derive(Debug, Default)]
@@ -65,28 +79,29 @@ pub struct MapBackpressure {
     encoder: MapOperationReconEncoder,
 }
 
-impl DownlinkBackpressure for ValueBackpressure {
-    type Operation = DownlinkOperation<Bytes>;
-
-    type Dec = DownlinkOperationDecoder;
-    type Err = Infallible;
-
-    fn make_decoder() -> Self::Dec {
-        Default::default()
+impl MapBackpressure {
+    pub fn push(&mut self, operation: RawMapOperation) -> Result<(), InvalidKey> {
+        self.queue.push(operation)
     }
 
-    fn push_operation(&mut self, op: Self::Operation) -> Result<(), Infallible> {
-        let ValueBackpressure { current } = self;
-        let DownlinkOperation { body } = op;
+    pub fn pop(&mut self) -> Option<RawMapOperation> {
+        self.queue.pop()
+    }
+}
 
-        current.clear();
-        current.reserve(body.len());
-        current.put(body);
+impl BackpressureStrategy for ValueBackpressure {
+    type Operation = DownlinkOperation<Bytes>;
+
+    type Err = Infallible;
+
+    fn push_operation(&mut self, op: Self::Operation) -> Result<(), Infallible> {
+        let DownlinkOperation { body } = op;
+        self.push_bytes(body);
         Ok(())
     }
 
     fn has_data(&self) -> bool {
-        !self.current.is_empty()
+        ValueBackpressure::has_data(self)
     }
 
     fn write_direct(&mut self, op: Self::Operation, buffer: &mut BytesMut) {
@@ -102,17 +117,12 @@ impl DownlinkBackpressure for ValueBackpressure {
     }
 }
 
-impl DownlinkBackpressure for MapBackpressure {
+impl BackpressureStrategy for MapBackpressure {
     type Operation = RawMapOperation;
 
-    type Dec = RawMapOperationDecoder;
-    type Err = Utf8Error;
+    type Err = InvalidKey;
 
-    fn make_decoder() -> Self::Dec {
-        Default::default()
-    }
-
-    fn push_operation(&mut self, op: Self::Operation) -> Result<(), Utf8Error> {
+    fn push_operation(&mut self, op: Self::Operation) -> Result<(), InvalidKey> {
         self.queue.push(op)
     }
 
@@ -130,11 +140,10 @@ impl DownlinkBackpressure for MapBackpressure {
     }
 
     fn prepare_write(&mut self, buffer: &mut BytesMut) {
-        let MapBackpressure { queue, encoder } = self;
         buffer.clear();
-        if let Some(head) = queue.pop() {
+        if let Some(head) = self.pop() {
             // Encoding the operation cannot fail.
-            encoder
+            self.encoder
                 .encode(head, buffer)
                 .expect("Encoding should be unfallible.");
         }

@@ -628,9 +628,7 @@ impl ServerHandle {
             }
         }
 
-        either_address
-            .as_ref()
-            .right().and_then(Option::as_ref)
+        either_address.as_ref().right().and_then(Option::as_ref)
     }
 
     /// Terminates the associated server instance.

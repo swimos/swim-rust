@@ -35,6 +35,7 @@ thiserror = "1.0"
 im = "15.0.0"
 tokio-stream = { version = "0.1.2", features = ["sync"] }
 uuid = "0.8.2"
+static_assertions = "1.1.0"
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["macros", "test-util"] }

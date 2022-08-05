@@ -45,7 +45,7 @@ impl Default for DownlinkConfig {
     }
 }
 
-/// Trait to define a consumer to a downlink. Instances of this will be passed to the runtime
+/// Trait to define a consumer of a downlink. Instances of this will be passed to the runtime
 /// to be executed. User code should not generally need to implement this directly. It is
 /// necessary for this trait to be object safe and any changes to it should take that into
 /// account.
@@ -69,6 +69,8 @@ pub trait Downlink {
         output: ByteWriter,
     ) -> BoxFuture<'static, Result<(), DownlinkTaskError>>;
 }
+
+static_assertions::assert_obj_safe!(Downlink);
 
 impl<T: Downlink> Downlink for Box<T> {
     fn kind(&self) -> DownlinkKind {
