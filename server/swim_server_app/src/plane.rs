@@ -72,3 +72,108 @@ impl PlaneBuilder {
         self.model.routes.push((pattern, agent.boxed()));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use futures::future::BoxFuture;
+    use swim_api::agent::{Agent, AgentConfig, AgentContext, AgentInitResult};
+    use swim_utilities::routing::{route_pattern::RoutePattern, uri::RelativeUri};
+
+    use crate::error::AmbiguousRoutes;
+
+    use super::PlaneModel;
+
+    struct DummyAgent;
+
+    impl Agent for DummyAgent {
+        fn run(
+            &self,
+            _route: RelativeUri,
+            _config: AgentConfig,
+            _context: Box<dyn AgentContext + Send>,
+        ) -> BoxFuture<'static, AgentInitResult> {
+            panic!("Not runnable.");
+        }
+    }
+
+    #[test]
+    fn single_route() {
+        let mut builder = super::PlaneBuilder::default();
+        let route = RoutePattern::parse_str("/node").expect("Bad route.");
+        builder.add_route(route.clone(), DummyAgent);
+
+        let PlaneModel { routes } = builder.build().expect("Building plane failed.");
+
+        match routes.as_slice() {
+            [(pattern, _)] => {
+                assert_eq!(pattern, &route);
+            }
+            _ => panic!("Wrong number of routes."),
+        }
+    }
+
+    #[test]
+    fn two_disjoint_routes() {
+        let mut builder = super::PlaneBuilder::default();
+        let route1 = RoutePattern::parse_str("/node").expect("Bad route.");
+        let route2 = RoutePattern::parse_str("/other/:id").expect("Bad route.");
+        builder.add_route(route1.clone(), DummyAgent);
+        builder.add_route(route2.clone(), DummyAgent);
+
+        let PlaneModel { routes } = builder.build().expect("Building plane failed.");
+
+        match routes.as_slice() {
+            [(pattern1, _), (pattern2, _)] => {
+                assert!(
+                    (pattern1 == &route1 && pattern2 == &route2)
+                        || (pattern1 == &route2 && pattern2 == &route1)
+                );
+            }
+            _ => panic!("Wrong number of routes."),
+        }
+    }
+
+    #[test]
+    fn two_ambiguous_routes() {
+        let mut builder = super::PlaneBuilder::default();
+        let route1 = RoutePattern::parse_str("/node").expect("Bad route.");
+        let route2 = RoutePattern::parse_str("/:id").expect("Bad route.");
+        builder.add_route(route1.clone(), DummyAgent);
+        builder.add_route(route2.clone(), DummyAgent);
+
+        let AmbiguousRoutes { routes } = builder.build().err().expect("Building plane succeeded.");
+
+        match routes.as_slice() {
+            [pattern1, pattern2] => {
+                assert!(
+                    (pattern1 == &route1 && pattern2 == &route2)
+                        || (pattern1 == &route2 && pattern2 == &route1)
+                );
+            }
+            _ => panic!("Wrong number of routes."),
+        }
+    }
+
+    #[test]
+    fn two_ambiguous_with_good_routes() {
+        let mut builder = super::PlaneBuilder::default();
+        let route1 = RoutePattern::parse_str("/first/node").expect("Bad route.");
+        let route2 = RoutePattern::parse_str("/first/:id").expect("Bad route.");
+        let route3 = RoutePattern::parse_str("/second").expect("Bad route.");
+        builder.add_route(route1.clone(), DummyAgent);
+        builder.add_route(route2.clone(), DummyAgent);
+        builder.add_route(route3.clone(), DummyAgent);
+
+        let AmbiguousRoutes { routes } = builder.build().err().expect("Building plane succeeded.");
+
+        match routes.as_slice() {
+            [pattern1, pattern2] => {
+                assert!(
+                    (pattern1 == &route1 && pattern2 == &route2)
+                        || (pattern1 == &route2 && pattern2 == &route1)
+                );
+            }
+            _ => panic!("Wrong number of routes."),
+        }
+    }
+}

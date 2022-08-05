@@ -21,7 +21,7 @@ use swim_utilities::{format::comma_sep, routing::route_pattern::RoutePattern};
 
 #[derive(Debug)]
 pub struct AmbiguousRoutes {
-    routes: Vec<RoutePattern>,
+    pub routes: Vec<RoutePattern>,
 }
 
 impl AmbiguousRoutes {
