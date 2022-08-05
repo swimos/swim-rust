@@ -20,6 +20,7 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 use crate::agent::task::links::TriggerUnlink;
+use crate::agent::task::timeout_coord::VoteResult;
 use crate::agent::task::write_fut::SpecialAction;
 use crate::compat::{Operation, RawRequestMessageDecoder, RequestMessage};
 use crate::error::InvalidKey;
@@ -850,7 +851,7 @@ async fn read_task(
             ReadTaskEvent::Envelope(msg) => {
                 if voted {
                     trace!("Attempting to rescind stop vote.");
-                    if stop_vote.rescind() {
+                    if stop_vote.rescind() == VoteResult::Unanimous {
                         info!(STOP_VOTED);
                         break;
                     } else {
@@ -982,7 +983,7 @@ async fn read_task(
                     "No envelopes received within {:?}. Voting to stop.",
                     config.inactive_timeout
                 );
-                if stop_vote.vote() {
+                if stop_vote.vote() == VoteResult::Unanimous {
                     info!(STOP_VOTED);
                     break;
                 }
@@ -1596,7 +1597,7 @@ async fn write_task(
                     schedule_prune,
                 } => {
                     if voted {
-                        if stop_voter.rescind() {
+                        if stop_voter.rescind() == VoteResult::Unanimous {
                             info!(STOP_VOTED);
                             remote_reason = DisconnectionReason::AgentTimedOut;
                             break;
@@ -1616,7 +1617,7 @@ async fn write_task(
             },
             WriteTaskEvent::Event { id, response } => {
                 if voted {
-                    if stop_voter.rescind() {
+                    if stop_voter.rescind() == VoteResult::Unanimous {
                         info!(STOP_VOTED);
                         remote_reason = DisconnectionReason::AgentTimedOut;
                         break;
@@ -1674,7 +1675,7 @@ async fn write_task(
                 }
                 voted = true;
                 streams.disable_timeout();
-                if stop_voter.vote() {
+                if stop_voter.vote() == VoteResult::Unanimous {
                     info!(STOP_VOTED);
                     remote_reason = DisconnectionReason::AgentTimedOut;
                     break;

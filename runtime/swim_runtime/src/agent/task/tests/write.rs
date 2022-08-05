@@ -31,8 +31,10 @@ use uuid::Uuid;
 use crate::{
     agent::{
         task::{
-            tests::RemoteReceiver, timeout_coord, write_task, LaneEndpoint, RwCoorindationMessage,
-            WriteTaskConfiguration, WriteTaskMessage,
+            tests::RemoteReceiver,
+            timeout_coord::{self, VoteResult},
+            write_task, LaneEndpoint, RwCoorindationMessage, WriteTaskConfiguration,
+            WriteTaskMessage,
         },
         DisconnectionReason,
     },
@@ -583,7 +585,7 @@ async fn write_task_votes_to_stop() {
 
         reader.expect_linked(VAL_LANE).await;
         //Voting on behalf of the missing read task.
-        assert!(!vote2.vote());
+        assert_eq!(vote2.vote(), VoteResult::UnanimityPending);
         vote_rx.await;
         let after = Instant::now();
         let elapsed = after.duration_since(before);
@@ -618,7 +620,7 @@ async fn write_task_rescinds_vote_to_stop() {
         instr_tx.value_event(VAL_LANE, 747);
         reader.expect_value_event(VAL_LANE, 747).await;
 
-        assert!(!vote2.vote());
+        assert_eq!(vote2.vote(), VoteResult::UnanimityPending);
 
         stop_sender.trigger();
         reader.expect_clean_shutdown(vec![VAL_LANE], None).await;

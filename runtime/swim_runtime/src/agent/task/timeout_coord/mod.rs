@@ -33,6 +33,12 @@ const FIRST: u8 = 0b01;
 const SECOND: u8 = 0b10;
 const UNANIMITY: u8 = 0b11;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VoteResult {
+    Unanimous,
+    UnanimityPending,
+}
+
 #[derive(Debug)]
 struct Inner {
     flags: AtomicU8,
@@ -87,9 +93,9 @@ pub fn timeout_coordinator() -> (Voter, Voter, Receiver) {
 }
 
 impl Voter {
-    /// Vote for the process to stop. Returns true if unanimity has been reached. This can
+    /// Vote for the process to stop. Returns whether unanimity has been reached. This can
     /// be called any number of times.
-    pub fn vote(&self) -> bool {
+    pub fn vote(&self) -> VoteResult {
         let Voter {
             flag,
             inverse,
@@ -101,25 +107,31 @@ impl Voter {
         voted.set(true);
         if before == *inverse {
             waker.wake();
-            true
+            VoteResult::Unanimous
         } else {
-            false
+            VoteResult::UnanimityPending
         }
     }
 
-    /// Rescid a vote for termination. Returns true if unanimity has already been reached (and
-    /// this has had no effect). If this sender has not previously voted to stop, this does
-    /// nothing. Sequences of vote and rescind can be called any number of times in any order.
-    /// Once unanimity has been reached, no calls will have any effect.
-    pub fn rescind(&self) -> bool {
+    /// Rescind a vote for termination. This has no effect if unanimity has already been reached or if this
+    /// sender had not previously voted. Sequences of vote and rescind operations can be called any number of
+    /// times in any order. Once unanimity has been reached, no calls will have any effect.
+    ///
+    /// Returns whether unanimity had already been reached before this operation was attempted.
+    pub fn rescind(&self) -> VoteResult {
         let Voter {
             flag, voted, inner, ..
         } = self;
         let Inner { flags, .. } = &**inner;
-        voted.get()
+        if voted.get()
             && flags
                 .compare_exchange(*flag, INIT, Ordering::Relaxed, Ordering::Relaxed)
                 .is_err()
+        {
+            VoteResult::Unanimous
+        } else {
+            VoteResult::UnanimityPending
+        }
     }
 }
 
