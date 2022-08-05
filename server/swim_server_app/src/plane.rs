@@ -41,7 +41,7 @@ impl PlaneBuilder {
         let mut ambiguous = HashSet::new();
 
         for (i, p) in left {
-            let right = template.clone().skip(i);
+            let right = template.clone().skip(i + 1);
             for (j, q) in right {
                 if RoutePattern::are_ambiguous(p, q) {
                     ambiguous.insert(i);
