@@ -80,7 +80,7 @@ impl<T> CommandLane<T> {
 const INFALLIBLE_SER: &str = "Serializing a command to recon should be infallible.";
 
 impl<T: StructuralWritable> CommandLane<T> {
-    /// If a command has been received since the last call, write a resppnse into the buffer.
+    /// If a command has been received since the last call, write a response into the buffer.
     pub fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult {
         let CommandLane {
             prev_command,
