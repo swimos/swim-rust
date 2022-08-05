@@ -141,3 +141,27 @@ async fn cannot_rescind_after_unanimity() {
     })
     .await;
 }
+
+#[tokio::test]
+async fn drop_causes_vote() {
+    with_timeout(async {
+        let (tx1, tx2, rx) = super::timeout_coordinator();
+        drop(tx1);
+        assert!(tx2.vote());
+
+        rx.await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn dropping_both_is_unanimity() {
+    with_timeout(async {
+        let (tx1, tx2, rx) = super::timeout_coordinator();
+        drop(tx1);
+        drop(tx2);
+
+        rx.await;
+    })
+    .await;
+}
