@@ -1230,6 +1230,7 @@ struct WriteTaskState {
 
 /// Possible results of handling a message from the coordination/read tasks.
 #[derive(Debug)]
+#[must_use]
 enum TaskMessageResult {
     /// Register a new lane.
     AddLane(LaneStream),
@@ -1319,7 +1320,6 @@ impl WriteTaskState {
     }
 
     /// Handle a message from the coordination or read task.
-    #[must_use]
     fn handle_task_message(&mut self, reg: WriteTaskMessage) -> TaskMessageResult {
         let WriteTaskState {
             links,
