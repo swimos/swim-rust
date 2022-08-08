@@ -18,9 +18,10 @@ use std::cmp::Ordering;
 
 use futures::future::Either;
 
+use crate::event_handler::EventHandlerExt;
 use crate::lifecycle::utility::HandlerContext;
 use crate::{
-    event_handler::{EventHandler, FollowedBy},
+    event_handler::FollowedBy,
     lanes::value::{
         lifecycle::{
             on_event::{OnEvent, OnEventShared},

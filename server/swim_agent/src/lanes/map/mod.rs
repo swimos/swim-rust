@@ -35,7 +35,8 @@ mod tests;
 use crate::{
     agent_model::WriteResult,
     event_handler::{
-        AndThen, EventHandler, EventHandlerError, HandlerTrans, Modification, StepResult,
+        AndThen, EventHandler, EventHandlerError, EventHandlerExt, HandlerTrans, Modification,
+        StepResult,
     },
     meta::AgentMetadata,
 };

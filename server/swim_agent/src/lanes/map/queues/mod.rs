@@ -39,11 +39,10 @@ where
     }
 
     pub fn remove(&mut self, key: &K) {
-        //TODO It might be more efficient to do this with a linked list (profile any change).
-        self.queue = std::mem::take(&mut self.queue)
-            .into_iter()
-            .filter(|k| k != key)
-            .collect();
+        let SyncQueue { queue, .. } = self;
+        if let Some(i) = queue.iter().position(|k| k == key) {
+            queue.remove(i);
+        }
     }
 
     pub fn clear(&mut self) {
