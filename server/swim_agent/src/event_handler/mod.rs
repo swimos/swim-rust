@@ -50,46 +50,6 @@ pub trait HandlerAction<Context> {
     /// * `meta` - Provides access to agent instance metadata.
     /// * `context` - The execution context of the handler (providing access to the lanes of the agent).
     fn step(&mut self, meta: AgentMetadata, context: &Context) -> StepResult<Self::Completion>;
-
-    /// Create a new handler which applies a function to the result of this handler and then executes
-    /// an additional handler returned by the function.
-    fn and_then<F, H2>(self, f: F) -> AndThen<Self, H2, F>
-    where
-        Self: Sized,
-        F: HandlerTrans<Self::Completion, Out = H2>,
-        H2: HandlerAction<Context>,
-    {
-        AndThen::new(self, f)
-    }
-
-    /// Create a new handler which applies a function to the result of this handler and then executes
-    /// an additional handler returned by the function or returns an error if the function fails.
-    fn and_then_try<F, H2>(self, f: F) -> AndThenTry<Self, H2, F>
-    where
-        Self: Sized,
-        F: HandlerTrans<Self::Completion, Out = Result<H2, EventHandlerError>>,
-        H2: HandlerAction<Context>,
-    {
-        AndThenTry::new(self, f)
-    }
-
-    /// Create a new handler that executes this handler and another in sequence.
-    fn followed_by<H2>(self, after: H2) -> FollowedBy<Self, H2>
-    where
-        Self: Sized,
-        H2: HandlerAction<Context>,
-    {
-        FollowedBy::new(self, after)
-    }
-
-    /// Create a new handler that executes this handler and then performs a side effect.
-    fn followed_by_eff<F, R>(self, eff: F) -> FollowedBy<Self, SideEffect<F>>
-    where
-        Self: Sized,
-        F: FnOnce() -> R,
-    {
-        FollowedBy::new(self, eff.into())
-    }
 }
 
 pub trait EventHandler<Context>: HandlerAction<Context, Completion = ()> {}
@@ -579,3 +539,48 @@ where
         }
     }
 }
+
+/// Adds combinators to the [`HandlerAction`] trait.
+pub trait HandlerActionExt<Context>: HandlerAction<Context> {
+    /// Create a new handler which applies a function to the result of this handler and then executes
+    /// an additional handler returned by the function.
+    fn and_then<F, H2>(self, f: F) -> AndThen<Self, H2, F>
+    where
+        Self: Sized,
+        F: HandlerTrans<Self::Completion, Out = H2>,
+        H2: HandlerAction<Context>,
+    {
+        AndThen::new(self, f)
+    }
+
+    /// Create a new handler which applies a function to the result of this handler and then executes
+    /// an additional handler returned by the function or returns an error if the function fails.
+    fn and_then_try<F, H2>(self, f: F) -> AndThenTry<Self, H2, F>
+    where
+        Self: Sized,
+        F: HandlerTrans<Self::Completion, Out = Result<H2, EventHandlerError>>,
+        H2: HandlerAction<Context>,
+    {
+        AndThenTry::new(self, f)
+    }
+
+    /// Create a new handler that executes this handler and another in sequence.
+    fn followed_by<H2>(self, after: H2) -> FollowedBy<Self, H2>
+    where
+        Self: Sized,
+        H2: HandlerAction<Context>,
+    {
+        FollowedBy::new(self, after)
+    }
+
+    /// Create a new handler that executes this handler and then performs a side effect.
+    fn followed_by_eff<F, R>(self, eff: F) -> FollowedBy<Self, SideEffect<F>>
+    where
+        Self: Sized,
+        F: FnOnce() -> R,
+    {
+        FollowedBy::new(self, eff.into())
+    }
+}
+
+impl<Context, H: HandlerAction<Context>> HandlerActionExt<Context> for H {}
