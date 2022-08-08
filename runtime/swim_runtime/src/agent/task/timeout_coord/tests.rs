@@ -20,6 +20,8 @@ use swim_utilities::future::SwimFutureExt;
 use tokio::sync::Notify;
 use tokio::time::timeout;
 
+use crate::agent::task::timeout_coord::VoteResult;
+
 const TIMEOUT: Duration = Duration::from_millis(100);
 
 async fn with_timeout<Fut>(test_case: Fut) -> Fut::Output
@@ -37,8 +39,8 @@ where
 async fn complete_immediately() {
     with_timeout(async {
         let (tx1, tx2, rx) = super::timeout_coordinator();
-        assert!(!tx1.vote());
-        assert!(tx2.vote());
+        assert_eq!(tx1.vote(), VoteResult::UnanimityPending);
+        assert_eq!(tx2.vote(), VoteResult::Unanimous);
 
         rx.await;
     })
@@ -55,8 +57,8 @@ async fn complete_async() {
 
     let vote_task = async move {
         notify.notified().await;
-        assert!(!tx1.vote());
-        assert!(tx2.vote());
+        assert_eq!(tx1.vote(), VoteResult::UnanimityPending);
+        assert_eq!(tx2.vote(), VoteResult::Unanimous);
     };
 
     with_timeout(join(wait_task, vote_task)).await;
@@ -72,8 +74,8 @@ async fn complete_async2() {
 
     let vote_task = async move {
         notify.notified().await;
-        assert!(!tx2.vote());
-        assert!(tx1.vote());
+        assert_eq!(tx2.vote(), VoteResult::UnanimityPending);
+        assert_eq!(tx1.vote(), VoteResult::Unanimous);
     };
 
     with_timeout(join(wait_task, vote_task)).await;
@@ -94,10 +96,10 @@ async fn complete_async_wait_between_votes() {
     };
 
     let vote_task = async move {
-        assert!(!tx1.vote());
+        assert_eq!(tx1.vote(), VoteResult::UnanimityPending);
         notify1_cpy.notify_one();
         notify2_cpy.notified().await;
-        assert!(tx2.vote());
+        assert_eq!(tx2.vote(), VoteResult::Unanimous);
     };
 
     with_timeout(join(wait_task, vote_task)).await;
@@ -118,12 +120,12 @@ async fn rescind_vote() {
     };
 
     let vote_task = async move {
-        assert!(!tx1.vote());
-        assert!(!tx1.rescind());
-        assert!(!tx2.vote());
+        assert_eq!(tx1.vote(), VoteResult::UnanimityPending);
+        assert_eq!(tx1.rescind(), VoteResult::UnanimityPending);
+        assert_eq!(tx2.vote(), VoteResult::UnanimityPending);
         notify1_cpy.notify_one();
         notify2_cpy.notified().await;
-        assert!(tx1.vote());
+        assert_eq!(tx1.vote(), VoteResult::Unanimous);
     };
 
     with_timeout(join(wait_task, vote_task)).await;
@@ -133,9 +135,33 @@ async fn rescind_vote() {
 async fn cannot_rescind_after_unanimity() {
     with_timeout(async {
         let (tx1, tx2, rx) = super::timeout_coordinator();
-        assert!(!tx1.vote());
-        assert!(tx2.vote());
-        assert!(tx1.rescind());
+        assert_eq!(tx1.vote(), VoteResult::UnanimityPending);
+        assert_eq!(tx2.vote(), VoteResult::Unanimous);
+        assert_eq!(tx1.rescind(), VoteResult::Unanimous);
+
+        rx.await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn drop_causes_vote() {
+    with_timeout(async {
+        let (tx1, tx2, rx) = super::timeout_coordinator();
+        drop(tx1);
+        assert_eq!(tx2.vote(), VoteResult::Unanimous);
+
+        rx.await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn dropping_both_is_unanimity() {
+    with_timeout(async {
+        let (tx1, tx2, rx) = super::timeout_coordinator();
+        drop(tx1);
+        drop(tx2);
 
         rx.await;
     })

@@ -3,7 +3,7 @@ use std::{cell::RefCell, sync::Arc};
 use swim_agent::{
     agent_lifecycle::utility::HandlerContext,
     agent_model::AgentModel,
-    event_handler::{EventHandler, HandlerAction},
+    event_handler::{EventHandler, HandlerActionExt},
     lanes::ValueLane,
     lifecycle, projections, AgentLaneModel,
 };

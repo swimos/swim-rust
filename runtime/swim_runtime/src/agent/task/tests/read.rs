@@ -36,7 +36,8 @@ use crate::{
     agent::task::{
         read_task,
         tests::{RemoteSender, BUFFER_SIZE, DEFAULT_TIMEOUT, INACTIVE_TEST_TIMEOUT},
-        timeout_coord, LaneEndpoint, ReadTaskMessages, RwCoorindationMessage, WriteTaskMessage,
+        timeout_coord::{self, VoteResult},
+        LaneEndpoint, ReadTaskMessages, RwCoorindationMessage, WriteTaskMessage,
     },
     routing::RoutingAddr,
 };
@@ -325,7 +326,7 @@ async fn votes_to_stop() {
         } = context;
         let _sender = attach_remote(&reg_tx).await;
         //Voting on behalf of the missing write task.
-        assert!(!vote2.vote());
+        assert_eq!(vote2.vote(), VoteResult::UnanimityPending);
         vote_rx.await;
         stop_sender
     })
@@ -349,7 +350,7 @@ async fn rescinds_stop_vote_on_input() {
 
         sender.value_command(VAL_LANE, 77).await;
         let _ = event_rx.recv().await;
-        assert!(!vote2.vote());
+        assert_eq!(vote2.vote(), VoteResult::UnanimityPending);
         stop_sender
     })
     .await;
