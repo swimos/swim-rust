@@ -110,6 +110,7 @@ where
 async fn server_clean_shutdown() {
     let (result, _) = run_server(|mut context| async move {
         context.handle.stop();
+        context
     })
     .await;
     assert!(result.is_ok());
@@ -157,6 +158,7 @@ impl TestClient {
 
     async fn expect_envelope<'a>(&'a mut self) -> RawEnvelope<'a> {
         let TestClient { ws, read_buffer } = self;
+        read_buffer.clear();
         let message = ws.read(read_buffer).await.expect("Read failed.");
         assert_eq!(message, Message::Text);
         let bytes: &'a [u8] = (*read_buffer).as_ref();
@@ -244,6 +246,7 @@ async fn message_for_nonexistent_agent() {
             .await;
 
         context.handle.stop();
+        context
     })
     .await;
     assert!(result.is_ok());
@@ -273,6 +276,39 @@ async fn command_to_agent() {
         assert_eq!(report_rx.recv().await.expect("Agent stopped."), 56);
 
         context.handle.stop();
+        context
+    })
+    .await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn link_to_agent_lane() {
+    let (result, _) = run_server(|mut context| async move {
+        let TestContext {
+            incoming_tx,
+            ..
+        } = &mut context;
+
+        let (client_sock, server_sock) = duplex(BUFFER_SIZE);
+
+        incoming_tx
+            .send((remote_addr(1), server_sock))
+            .expect("Socket closed.");
+
+        let mut client = TestClient::new(client_sock);
+
+        client
+            .link(NODE, LANE)
+            .await;
+
+        client.expect_linked(NODE, LANE).await;
+
+        context.handle.stop();
+
+        client.expect_unlinked(NODE, LANE, "").await;
+
+        context
     })
     .await;
     assert!(result.is_ok());
