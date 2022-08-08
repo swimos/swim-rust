@@ -18,11 +18,16 @@ use std::{
     time::Duration,
 };
 
+use bytes::BytesMut;
 use futures::{future::join3, Future};
+use ratchet::{Message, NegotiatedExtension, NoExt, Role, WebSocket, WebSocketConfig};
+use swim_form::structural::write::StructuralWritable;
+use swim_recon::printer::print_recon_compact;
 use swim_utilities::routing::route_pattern::RoutePattern;
 
+use swim_warp::envelope::{peel_envelope_header, RawEnvelope};
 use tokio::{
-    io::DuplexStream,
+    io::{duplex, DuplexStream},
     sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
 };
 
@@ -34,6 +39,7 @@ use self::{
 };
 
 use super::SwimServer;
+use agent::{TestMessage, LANE};
 
 mod agent;
 mod connections;
@@ -46,6 +52,10 @@ struct TestContext {
 
 const NODE: &str = "/node";
 const TEST_TIMEOUT: Duration = Duration::from_secs(5);
+const BUFFER_SIZE: usize = 4096;
+fn remote_addr(p: u8) -> SocketAddr {
+    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 0, p)), 50000)
+}
 
 async fn run_server<F, Fut>(test_case: F) -> (Result<(), std::io::Error>, Fut::Output)
 where
@@ -99,6 +109,169 @@ where
 #[tokio::test]
 async fn server_clean_shutdown() {
     let (result, _) = run_server(|mut context| async move {
+        context.handle.stop();
+    })
+    .await;
+    assert!(result.is_ok());
+}
+
+struct TestClient {
+    ws: WebSocket<DuplexStream, NoExt>,
+    read_buffer: BytesMut,
+}
+
+impl TestClient {
+    fn new(stream: DuplexStream) -> Self {
+        TestClient {
+            ws: WebSocket::from_upgraded(
+                WebSocketConfig::default(),
+                stream,
+                NegotiatedExtension::from(None),
+                BytesMut::new(),
+                Role::Client,
+            ),
+            read_buffer: BytesMut::new(),
+        }
+    }
+
+    async fn link(&mut self, node: &str, lane: &str) {
+        let envelope = format!("@link(node:\"{}\",lane:{})", node, lane);
+        self.ws.write_text(envelope).await.expect("Write failed.");
+    }
+
+    async fn sync(&mut self, node: &str, lane: &str) {
+        let envelope = format!("@sync(node:\"{}\",lane:{})", node, lane);
+        self.ws.write_text(envelope).await.expect("Write failed.");
+    }
+
+    async fn unlink(&mut self, node: &str, lane: &str) {
+        let envelope = format!("@unlink(node:\"{}\",lane:{})", node, lane);
+        self.ws.write_text(envelope).await.expect("Write failed.");
+    }
+
+    async fn command<T: StructuralWritable>(&mut self, node: &str, lane: &str, body: T) {
+        let body = format!("{}", print_recon_compact(&body));
+        let envelope = format!("@command(node:\"{}\",lane:{}) {}", node, lane, body);
+        self.ws.write_text(envelope).await.expect("Write failed.")
+    }
+
+    async fn expect_envelope<'a>(&'a mut self) -> RawEnvelope<'a> {
+        let TestClient { ws, read_buffer } = self;
+        let message = ws.read(read_buffer).await.expect("Read failed.");
+        assert_eq!(message, Message::Text);
+        let bytes: &'a [u8] = (*read_buffer).as_ref();
+        peel_envelope_header(bytes).expect("Invalid envelope")
+    }
+
+    async fn expect_linked(&mut self, node: &str, lane: &str) {
+        let envelope = self.expect_envelope().await;
+        match envelope {
+            RawEnvelope::Linked {
+                node_uri, lane_uri, ..
+            } => {
+                assert_eq!(node_uri, node);
+                assert_eq!(lane_uri, lane);
+            }
+            ow => panic!("Unexpected envelope: {:?}", ow),
+        }
+    }
+
+    async fn expect_synced(&mut self, node: &str, lane: &str) {
+        let envelope = self.expect_envelope().await;
+        match envelope {
+            RawEnvelope::Synced {
+                node_uri, lane_uri, ..
+            } => {
+                assert_eq!(node_uri, node);
+                assert_eq!(lane_uri, lane);
+            }
+            ow => panic!("Unexpected envelope: {:?}", ow),
+        }
+    }
+
+    async fn expect_unlinked(&mut self, node: &str, lane: &str, expected_body: &str) {
+        let envelope = self.expect_envelope().await;
+        match envelope {
+            RawEnvelope::Unlinked {
+                node_uri,
+                lane_uri,
+                body,
+                ..
+            } => {
+                assert_eq!(node_uri, node);
+                assert_eq!(lane_uri, lane);
+                assert_eq!(*body, expected_body);
+            }
+            ow => panic!("Unexpected envelope: {:?}", ow),
+        }
+    }
+
+    async fn expect_event(&mut self, node: &str, lane: &str, expected_body: &str) {
+        let envelope = self.expect_envelope().await;
+        match envelope {
+            RawEnvelope::Event {
+                node_uri,
+                lane_uri,
+                body,
+                ..
+            } => {
+                assert_eq!(node_uri, node);
+                assert_eq!(lane_uri, lane);
+                assert_eq!(*body, expected_body);
+            }
+            ow => panic!("Unexpected envelope: {:?}", ow),
+        }
+    }
+}
+
+#[tokio::test]
+async fn message_for_nonexistent_agent() {
+    let (result, _) = run_server(|mut context| async move {
+        let TestContext { incoming_tx, .. } = &context;
+
+        let (client_sock, server_sock) = duplex(BUFFER_SIZE);
+
+        incoming_tx
+            .send((remote_addr(1), server_sock))
+            .expect("Socket closed.");
+
+        let mut client = TestClient::new(client_sock);
+
+        client.link("/other", "lane").await;
+
+        client
+            .expect_unlinked("/other", "lane", "@nodeNotFound")
+            .await;
+
+        context.handle.stop();
+    })
+    .await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn command_to_agent() {
+    let (result, _) = run_server(|mut context| async move {
+        let TestContext {
+            incoming_tx,
+            report_rx,
+            ..
+        } = &mut context;
+
+        let (client_sock, server_sock) = duplex(BUFFER_SIZE);
+
+        incoming_tx
+            .send((remote_addr(1), server_sock))
+            .expect("Socket closed.");
+
+        let mut client = TestClient::new(client_sock);
+
+        client
+            .command(NODE, LANE, TestMessage::SetAndReport(56))
+            .await;
+
+        assert_eq!(report_rx.recv().await.expect("Agent stopped."), 56);
+
         context.handle.stop();
     })
     .await;

@@ -16,12 +16,11 @@ use futures::{future::BoxFuture, FutureExt, SinkExt, StreamExt};
 use swim_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult, UplinkKind},
     error::AgentTaskError,
-    protocol::agent::{
+    protocol::{agent::{
         LaneRequest, LaneRequestDecoder, ValueLaneResponse, ValueLaneResponseEncoder,
-    },
+    }, WithLenRecognizerDecoder},
 };
 use swim_form::{structural::read::recognizer::RecognizerReadable, Form};
-use swim_recon::parser::RecognizerDecoder;
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
     routing::uri::RelativeUri,
@@ -29,12 +28,12 @@ use swim_utilities::{
 use tokio::sync::mpsc;
 use tokio_util::codec::{FramedRead, FramedWrite};
 
-const LANE: &str = "lane";
+pub const LANE: &str = "lane";
 
-#[derive(Form)]
-pub enum Message {
+#[derive(Form, Debug)]
+pub enum TestMessage {
     SetAndReport(i32),
-    Event(i32),
+    Event,
 }
 
 #[derive(Clone)]
@@ -77,7 +76,7 @@ async fn run_agent(
     rx: ByteReader,
     reporter: mpsc::UnboundedSender<i32>,
 ) -> Result<(), AgentTaskError> {
-    let decoder = LaneRequestDecoder::new(RecognizerDecoder::new(Message::make_recognizer()));
+    let decoder = LaneRequestDecoder::new(WithLenRecognizerDecoder::new(TestMessage::make_recognizer()));
     let encoder = ValueLaneResponseEncoder::default();
 
     let mut input = FramedRead::new(rx, decoder);
@@ -89,17 +88,17 @@ async fn run_agent(
         match result {
             Ok(LaneRequest::Sync(id)) => {
                 output
-                    .send(ValueLaneResponse::synced(id, Message::Event(state)))
+                    .send(ValueLaneResponse::synced(id, state))
                     .await
                     .expect("Channel stopped.");
             }
-            Ok(LaneRequest::Command(Message::SetAndReport(n))) => {
+            Ok(LaneRequest::Command(TestMessage::SetAndReport(n))) => {
                 state = n;
                 reporter.send(n).expect("Reporter closed.");
             }
-            Ok(LaneRequest::Command(Message::Event(n))) => {
+            Ok(LaneRequest::Command(TestMessage::Event)) => {
                 output
-                    .send(ValueLaneResponse::event(Message::Event(n)))
+                    .send(ValueLaneResponse::event(state))
                     .await
                     .expect("Channel stopped.");
             }
