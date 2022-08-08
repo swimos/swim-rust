@@ -22,7 +22,9 @@ use tokio_util::codec::Encoder;
 
 use crate::{
     agent_model::WriteResult,
-    event_handler::{AndThen, Decode, EventHandler, HandlerTrans, Modification, StepResult},
+    event_handler::{
+        AndThen, Decode, EventHandler, EventHandlerExt, HandlerTrans, Modification, StepResult,
+    },
     meta::AgentMetadata,
 };
 

@@ -21,7 +21,7 @@ use swim_recon::parser::AsyncParseError;
 use swim_utilities::routing::uri::RelativeUri;
 
 use crate::{
-    event_handler::{ConstHandler, EventHandlerError, GetAgentUri, SideEffects},
+    event_handler::{ConstHandler, EventHandlerError, EventHandlerExt, GetAgentUri, SideEffects},
     meta::AgentMetadata,
 };
 
@@ -170,7 +170,7 @@ fn and_then_handler() {
     let mut output = None;
     let output_ref = &mut output;
     let mut handler =
-        EventHandler::<DummyAgent>::and_then(GetAgentUri::default(), move |uri: RelativeUri| {
+        EventHandlerExt::<DummyAgent>::and_then(GetAgentUri::default(), move |uri: RelativeUri| {
             SideEffect::from(move || {
                 *output_ref = Some(uri.to_string());
             })
@@ -219,7 +219,7 @@ fn followed_by_handler() {
         *guard = Some(2);
     });
 
-    let mut handler = EventHandler::<DummyAgent>::followed_by(first, second);
+    let mut handler = EventHandlerExt::<DummyAgent>::followed_by(first, second);
 
     let result = handler.step(meta, &DUMMY);
     assert!(matches!(

@@ -21,7 +21,7 @@ use bytes::{BufMut, Bytes, BytesMut};
 use frunk::{Coprod, Coproduct};
 use swim_agent::{
     agent_model::{AgentLaneModel, WriteResult},
-    event_handler::{EventHandler, UnitHandler},
+    event_handler::{EventHandler, EventHandlerExt, UnitHandler},
     lanes::value::{
         decode_and_set, lifecycle::StatefulValueLaneLifecycle, DecodeAndSet, ValueLane,
         ValueLaneSync,
