@@ -478,3 +478,35 @@ async fn broadcast_events() {
     .await;
     assert!(result.is_ok());
 }
+
+#[tokio::test]
+async fn explicit_unlink_from_agent_lane() {
+    let (result, _) = run_server(|mut context| async move {
+        let TestContext { incoming_tx, .. } = &mut context;
+
+        let (client_sock, server_sock) = duplex(BUFFER_SIZE);
+
+        incoming_tx
+            .send((remote_addr(1), server_sock))
+            .expect("Listener closed.");
+
+        let mut client = TestClient::new(client_sock);
+
+        client.link(NODE, LANE).await;
+        client.expect_linked(NODE, LANE).await;
+
+        client.command(NODE, LANE, TestMessage::Event).await;
+        client.expect_event(NODE, LANE, "0").await;
+
+        client.unlink(NODE, LANE).await;
+        client.expect_unlinked(NODE, LANE, "Link closed.").await;
+
+        client.command(NODE, LANE, TestMessage::Event).await;
+
+        context.handle.stop();
+
+        context
+    })
+    .await;
+    assert!(result.is_ok());
+}
