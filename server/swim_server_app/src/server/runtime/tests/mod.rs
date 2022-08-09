@@ -292,6 +292,37 @@ async fn command_to_agent() {
 }
 
 #[tokio::test]
+async fn commands_to_agent() {
+    let (result, _) = run_server(|mut context| async move {
+        let TestContext {
+            incoming_tx,
+            report_rx,
+            ..
+        } = &mut context;
+
+        let (client_sock, server_sock) = duplex(BUFFER_SIZE);
+
+        incoming_tx
+            .send((remote_addr(1), server_sock))
+            .expect("Listener closed.");
+
+        let mut client = TestClient::new(client_sock);
+
+        for i in 0..10 {
+            client
+                .command(NODE, LANE, TestMessage::SetAndReport(i))
+                .await;
+            assert_eq!(report_rx.recv().await.expect("Agent stopped."), i);
+        }
+        
+        context.handle.stop();
+        context
+    })
+    .await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
 async fn link_to_agent_lane() {
     let (result, _) = run_server(|mut context| async move {
         let TestContext { incoming_tx, .. } = &mut context;
@@ -401,20 +432,24 @@ async fn broadcast_events() {
         let mut client1 = TestClient::new(client_sock1);
         let mut client2 = TestClient::new(client_sock2);
 
+        let m = 10;
+
         let event_consumer = async move {
             client1.link(NODE, LANE).await;
 
             client1.expect_linked(NODE, LANE).await;
 
             //Events should be in order and we should eventually see the final value.
-            let prev = -1;
+            let mut prev = -1;
             loop {
                 let n = client1.get_event(NODE, LANE, |body| {
                     body.parse::<i32>().expect("Invalid body.")
                 }).await;
-                assert!(prev < n && n < 10);
-                if n == 0 {
+                assert!(prev < n && n <= m);
+                if n == m {
                     break;
+                } else {
+                    prev = n;
                 }
             }
             client1
@@ -422,7 +457,7 @@ async fn broadcast_events() {
 
         let event_generator = async move {
             client2.command(NODE, LANE, TestMessage::Event).await;
-            for i in 1..10 {
+            for i in 1..=m {
                 client2
                     .command(NODE, LANE, TestMessage::SetAndReport(i))
                     .await;
@@ -432,15 +467,12 @@ async fn broadcast_events() {
             client2
         };
 
-        let (mut client1, mut client2) = join(event_consumer, event_generator).await;
+        let (mut client1, _client2) = join(event_consumer, event_generator).await;
 
         context.handle.stop();
 
-        join(
-            client1.expect_unlinked(NODE, LANE, ""), 
-            client2.expect_unlinked(NODE, LANE, ""))
-        .await;
-
+        client1.expect_unlinked(NODE, LANE, "").await;
+       
         context
     })
     .await;
