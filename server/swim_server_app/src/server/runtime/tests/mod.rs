@@ -19,7 +19,7 @@ use std::{
 };
 
 use bytes::BytesMut;
-use futures::{future::join3, Future};
+use futures::{future::{join3, join}, Future};
 use ratchet::{Message, NegotiatedExtension, NoExt, Role, WebSocket, WebSocketConfig};
 use swim_form::structural::write::StructuralWritable;
 use swim_recon::printer::print_recon_compact;
@@ -209,6 +209,15 @@ impl TestClient {
     }
 
     async fn expect_event(&mut self, node: &str, lane: &str, expected_body: &str) {
+        self.get_event(node, lane, move |body| {
+            assert_eq!(body, expected_body);
+        }).await
+    }
+
+    async fn get_event<F, T>(&mut self, node: &str, lane: &str, f: F) -> T
+    where
+        F: FnOnce(&str) -> T,
+    {
         let envelope = self.expect_envelope().await;
         match envelope {
             RawEnvelope::Event {
@@ -219,7 +228,7 @@ impl TestClient {
             } => {
                 assert_eq!(node_uri, node);
                 assert_eq!(lane_uri, lane);
-                assert_eq!(*body, expected_body);
+                f(*body)
             }
             ow => panic!("Unexpected envelope: {:?}", ow),
         }
@@ -235,7 +244,7 @@ async fn message_for_nonexistent_agent() {
 
         incoming_tx
             .send((remote_addr(1), server_sock))
-            .expect("Socket closed.");
+            .expect("Listener closed.");
 
         let mut client = TestClient::new(client_sock);
 
@@ -265,7 +274,7 @@ async fn command_to_agent() {
 
         incoming_tx
             .send((remote_addr(1), server_sock))
-            .expect("Socket closed.");
+            .expect("Listener closed.");
 
         let mut client = TestClient::new(client_sock);
 
@@ -285,28 +294,152 @@ async fn command_to_agent() {
 #[tokio::test]
 async fn link_to_agent_lane() {
     let (result, _) = run_server(|mut context| async move {
-        let TestContext {
-            incoming_tx,
-            ..
-        } = &mut context;
+        let TestContext { incoming_tx, .. } = &mut context;
 
         let (client_sock, server_sock) = duplex(BUFFER_SIZE);
 
         incoming_tx
             .send((remote_addr(1), server_sock))
-            .expect("Socket closed.");
+            .expect("Listener closed.");
 
         let mut client = TestClient::new(client_sock);
 
-        client
-            .link(NODE, LANE)
-            .await;
+        client.link(NODE, LANE).await;
 
         client.expect_linked(NODE, LANE).await;
 
         context.handle.stop();
 
         client.expect_unlinked(NODE, LANE, "").await;
+
+        context
+    })
+    .await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn sync_with_agent_lane() {
+    let (result, _) = run_server(|mut context| async move {
+        let TestContext { incoming_tx, .. } = &mut context;
+
+        let (client_sock, server_sock) = duplex(BUFFER_SIZE);
+
+        incoming_tx
+            .send((remote_addr(1), server_sock))
+            .expect("Listener closed.");
+
+        let mut client = TestClient::new(client_sock);
+
+        client.sync(NODE, LANE).await;
+
+        client.expect_linked(NODE, LANE).await;
+        client.expect_event(NODE, LANE, "0").await;
+        client.expect_synced(NODE, LANE).await;
+
+        context.handle.stop();
+
+        client.expect_unlinked(NODE, LANE, "").await;
+
+        context
+    })
+    .await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn trigger_event() {
+    let (result, _) = run_server(|mut context| async move {
+        let TestContext { incoming_tx, .. } = &mut context;
+
+        let (client_sock, server_sock) = duplex(BUFFER_SIZE);
+
+        incoming_tx
+            .send((remote_addr(1), server_sock))
+            .expect("Listener closed.");
+
+        let mut client = TestClient::new(client_sock);
+
+        client.link(NODE, LANE).await;
+
+        client.expect_linked(NODE, LANE).await;
+
+        client.command(NODE, LANE, TestMessage::Event).await;
+
+        client.expect_event(NODE, LANE, "0").await;
+
+        context.handle.stop();
+
+        client.expect_unlinked(NODE, LANE, "").await;
+
+        context
+    })
+    .await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn broadcast_events() {
+    let (result, _) = run_server(|mut context| async move {
+        let TestContext {
+            incoming_tx,
+            report_rx,
+            ..
+        } = &mut context;
+
+        let (client_sock1, server_sock1) = duplex(BUFFER_SIZE);
+        let (client_sock2, server_sock2) = duplex(BUFFER_SIZE);
+
+        incoming_tx
+            .send((remote_addr(1), server_sock1))
+            .expect("Listener closed.");
+
+        incoming_tx
+            .send((remote_addr(2), server_sock2))
+            .expect("Listener closed.");
+
+        let mut client1 = TestClient::new(client_sock1);
+        let mut client2 = TestClient::new(client_sock2);
+
+        let event_consumer = async move {
+            client1.link(NODE, LANE).await;
+
+            client1.expect_linked(NODE, LANE).await;
+
+            //Events should be in order and we should eventually see the final value.
+            let prev = -1;
+            loop {
+                let n = client1.get_event(NODE, LANE, |body| {
+                    body.parse::<i32>().expect("Invalid body.")
+                }).await;
+                assert!(prev < n && n < 10);
+                if n == 0 {
+                    break;
+                }
+            }
+            client1
+        };
+
+        let event_generator = async move {
+            client2.command(NODE, LANE, TestMessage::Event).await;
+            for i in 1..10 {
+                client2
+                    .command(NODE, LANE, TestMessage::SetAndReport(i))
+                    .await;
+                client2.command(NODE, LANE, TestMessage::Event).await;
+                assert_eq!(report_rx.recv().await.expect("Task stopped."), i);
+            }
+            client2
+        };
+
+        let (mut client1, mut client2) = join(event_consumer, event_generator).await;
+
+        context.handle.stop();
+
+        join(
+            client1.expect_unlinked(NODE, LANE, ""), 
+            client2.expect_unlinked(NODE, LANE, ""))
+        .await;
 
         context
     })
