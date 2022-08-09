@@ -161,10 +161,15 @@ struct IncomingTestContext {
     in_tx: mpsc::Sender<Result<BytesStr, InputError>>,
     attach_tx: mpsc::Sender<RegisterIncoming>,
     outgoing_rx: mpsc::Receiver<OutgoingTaskMessage>,
-    agent_in_rx: ByteReader,
+    agent_in_rx: Option<ByteReader>,
+    agent_replace_tx: mpsc::Sender<(ByteWriter, ByteReader)>,
 }
 
 impl IncomingTestContext {
+    fn take_agent_reader(&mut self) -> ByteReader {
+        self.agent_in_rx.take().expect("Reader already taken.")
+    }
+
     fn stop(&mut self) {
         if let Some(stop_trigger) = self.stop_tx.take() {
             stop_trigger.trigger();
@@ -184,13 +189,15 @@ where
     let (outgoing_tx, outgoing_rx) = mpsc::channel(CHAN_SIZE);
     let (agent_in_tx, agent_in_rx) = byte_channel::byte_channel(BUFFER_SIZE);
     let (_agent_out_tx, agent_out_rx) = byte_channel::byte_channel(BUFFER_SIZE);
+    let (agent_replace_tx, mut agent_replace_rx) = mpsc::channel(CHAN_SIZE);
 
     let context = IncomingTestContext {
         stop_tx: Some(stop_tx),
         in_tx,
         attach_tx,
         outgoing_rx,
-        agent_in_rx,
+        agent_in_rx: Some(agent_in_rx),
+        agent_replace_tx,
     };
 
     let mut incoming = super::IncomingTask::new(ID);
@@ -216,7 +223,11 @@ where
                 if let Some(agent) = agent.take() {
                     provider.send(Ok(agent)).expect("Task stopped.");
                 } else {
-                    panic!("Agent connection requested twice.");
+                    if let Some(agent) = agent_replace_rx.recv().await {
+                        provider.send(Ok(agent)).expect("Task stopped.");
+                    } else {
+                        panic!("Agent cannot be attached.");
+                    }
                 }
             } else {
                 provider
@@ -284,9 +295,9 @@ impl DlReader {
     }
 }
 
-struct AgentReader<'a>(FramedRead<&'a mut ByteReader, RawRequestMessageDecoder>);
-impl<'a> AgentReader<'a> {
-    fn new(reader: &'a mut ByteReader) -> Self {
+struct AgentReader(FramedRead<ByteReader, RawRequestMessageDecoder>);
+impl AgentReader {
+    fn new(reader: ByteReader) -> Self {
         AgentReader(FramedRead::new(reader, Default::default()))
     }
 
@@ -366,7 +377,7 @@ fn make_bad_agent_envelope() -> BytesStr {
     BytesStr::from(env)
 }
 
-async fn check_env(n: i32, agent_rx: &mut AgentReader<'_>) {
+async fn check_env(n: i32, agent_rx: &mut AgentReader) {
     let RequestMessage {
         origin,
         path,
@@ -389,19 +400,16 @@ async fn check_env(n: i32, agent_rx: &mut AgentReader<'_>) {
 #[tokio::test]
 async fn incoming_route_valid_agent_env() {
     let (task_result, _) = test_incoming_task(|mut context| async move {
+        let mut agent_rx = AgentReader::new(context.take_agent_reader());
+
         let IncomingTestContext {
-            in_tx,
-            outgoing_rx,
-            agent_in_rx,
-            ..
+            in_tx, outgoing_rx, ..
         } = &mut context;
 
         in_tx
             .send(Ok(make_agent_envelope(8)))
             .await
             .expect("Task stopped.");
-
-        let mut agent_rx = AgentReader::new(agent_in_rx);
 
         match outgoing_rx.recv().await {
             Some(OutgoingTaskMessage::RegisterOutgoing {
@@ -424,12 +432,13 @@ async fn incoming_route_valid_agent_env() {
 }
 
 #[tokio::test]
-async fn incoming_route_multiple_agent_env() {
+async fn incoming_route_valid_agent_restart() {
     let (task_result, _) = test_incoming_task(|mut context| async move {
+        let mut agent_rx = AgentReader::new(context.take_agent_reader());
         let IncomingTestContext {
             in_tx,
             outgoing_rx,
-            agent_in_rx,
+            agent_replace_tx,
             ..
         } = &mut context;
 
@@ -438,7 +447,71 @@ async fn incoming_route_multiple_agent_env() {
             .await
             .expect("Task stopped.");
 
+        match outgoing_rx.recv().await {
+            Some(OutgoingTaskMessage::RegisterOutgoing {
+                kind: OutgoingKind::Server,
+                done,
+                ..
+            }) => {
+                done.trigger();
+            }
+            ow => panic!("Unexpected registration: {:?}", ow),
+        }
+
+        check_env(8, &mut agent_rx).await;
+        
+        //Drop the agent and replace it.
+        
+        drop(agent_rx);
+        let (agent_in_tx, agent_in_rx) = byte_channel::byte_channel(BUFFER_SIZE);
+        let (_agent_out_tx, agent_out_rx) = byte_channel::byte_channel(BUFFER_SIZE);
+        
+        agent_replace_tx
+            .send((agent_in_tx, agent_out_rx))
+            .await
+            .expect("Replacing agent failed.");
+
         let mut agent_rx = AgentReader::new(agent_in_rx);
+
+        //Send another envelope and check it is routed to the new agent.
+
+        in_tx
+            .send(Ok(make_agent_envelope(346)))
+            .await
+            .expect("Task stopped.");
+
+        match outgoing_rx.recv().await {
+            Some(OutgoingTaskMessage::RegisterOutgoing {
+                kind: OutgoingKind::Server,
+                done,
+                ..
+            }) => {
+                done.trigger();
+            }
+            ow => panic!("Unexpected registration: {:?}", ow),
+        }
+
+        check_env(346, &mut agent_rx).await;
+        context.stop();
+        context
+    })
+    .await;
+    assert!(task_result.is_ok());
+}
+
+#[tokio::test]
+async fn incoming_route_multiple_agent_env() {
+    let (task_result, _) = test_incoming_task(|mut context| async move {
+        let mut agent_rx = AgentReader::new(context.take_agent_reader());
+
+        let IncomingTestContext {
+            in_tx, outgoing_rx, ..
+        } = &mut context;
+
+        in_tx
+            .send(Ok(make_agent_envelope(8)))
+            .await
+            .expect("Task stopped.");
 
         match outgoing_rx.recv().await {
             Some(OutgoingTaskMessage::RegisterOutgoing {
@@ -974,8 +1047,7 @@ where
     };
 
     let agent_task = async move {
-        let mut agent_in = agent_in_rx;
-        let mut rx = AgentReader::new(&mut agent_in);
+        let mut rx = AgentReader::new(agent_in_rx);
         let mut tx = AgentSender::new(agent_out_tx);
 
         while let Some(RequestMessage { path, envelope, .. }) = rx.recv_opt().await {
