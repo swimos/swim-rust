@@ -492,6 +492,35 @@ async fn set_value() {
 }
 
 #[tokio::test]
+async fn set_values() {
+    let (mut state, _) = run_test_case(
+        DEFAULT_TIMEOUT,
+        DEFAULT_TIMEOUT,
+        None,
+        |context| async move {
+            let TestContext {
+                att_tx,
+                create_tx: _create_tx,
+                mut event_rx,
+                stop_tx,
+            } = context;
+            let (mut sender, receiver) = attach_remote(RID1, &att_tx).await;
+
+            for i in 7..17 {
+                sender.value_command(VAL_LANE, i).await;
+                event_rx.await_value_command(VAL_LANE, i).await;
+            }
+
+            stop_tx.trigger();
+
+            receiver.expect_clean_shutdown(vec![], None).await;
+        },
+    )
+    .await;
+    assert_eq!(state.value_lanes.remove(VAL_LANE), Some(16));
+}
+
+#[tokio::test]
 async fn insert_value() {
     let (mut state, _) = run_test_case(
         DEFAULT_TIMEOUT,
