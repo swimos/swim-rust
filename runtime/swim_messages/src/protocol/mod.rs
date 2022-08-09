@@ -212,7 +212,7 @@ const SYNCED: u64 = 0b101;
 const UNLINKED: u64 = 0b110;
 const EVENT: u64 = 0b111;
 
-impl<P, B> Encoder<RequestMessage<P, B>> for RawRequestMessageEncoder
+impl<'a, P, B> Encoder<&'a RequestMessage<P, B>> for RawRequestMessageEncoder
 where
     P: AsRef<str>,
     B: AsRef<[u8]>,
@@ -221,7 +221,7 @@ where
 
     fn encode(
         &mut self,
-        item: RequestMessage<P, B>,
+        item: &'a RequestMessage<P, B>,
         dst: &mut BytesMut,
     ) -> Result<(), Self::Error> {
         let RequestMessage {
@@ -267,6 +267,22 @@ where
             }
         }
         Ok(())
+    }
+}
+
+impl<P, B> Encoder<RequestMessage<P, B>> for RawRequestMessageEncoder
+where
+    P: AsRef<str>,
+    B: AsRef<[u8]>,
+{
+    type Error = std::io::Error;
+
+    fn encode(
+        &mut self,
+        item: RequestMessage<P, B>,
+        dst: &mut BytesMut,
+    ) -> Result<(), Self::Error> {
+        self.encode(&item, dst)
     }
 }
 

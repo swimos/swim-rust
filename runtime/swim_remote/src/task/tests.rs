@@ -193,10 +193,9 @@ where
         agent_in_rx,
     };
 
-    let mut incoming = super::IncomingTask::default();
+    let mut incoming = super::IncomingTask::new(ID);
 
     let incoming_task = incoming.run(
-        ID,
         stop_rx,
         ReceiverStream::new(in_rx),
         attach_rx,

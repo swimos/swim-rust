@@ -177,11 +177,10 @@ where
 
         let input = text_frame_stream(&mut rx);
 
-        let mut incoming = IncomingTask::default();
+        let mut incoming = IncomingTask::new(id);
 
         let in_task = incoming
             .run(
-                id,
                 stop_signal.clone(),
                 input,
                 incoming_rx,
@@ -491,16 +490,25 @@ impl OutgoingTask {
     }
 }
 
-#[derive(Default)]
 struct IncomingTask {
+    id: Uuid,
     client_subscriptions: HashMap<Text, HashMap<Text, ResponseWriters>>,
     agent_routes: HashMap<Text, RequestWriter>,
 }
 
 impl IncomingTask {
+    fn new(id: Uuid) -> Self {
+        IncomingTask {
+            id,
+            client_subscriptions: Default::default(),
+            agent_routes: Default::default(),
+        }
+    }
+}
+
+impl IncomingTask {
     async fn run<In>(
         &mut self,
-        id: Uuid,
         mut stop_signal: trigger::Receiver,
         input: In,
         mut attach_rx: mpsc::Receiver<RegisterIncoming>,
@@ -511,12 +519,12 @@ impl IncomingTask {
         In: Stream<Item = Result<BytesStr, InputError>>,
     {
         let IncomingTask {
+            id,
             client_subscriptions,
             agent_routes,
         } = self;
         pin_mut!(input);
 
-        let mut key_temp: String = Default::default();
         loop {
             let event: IncomingEvent<BytesStr> = tokio::select! {
                 biased;
@@ -557,75 +565,75 @@ impl IncomingTask {
                     trace!(frame = frame.as_str(), "Handling incoming frame.");
                     let body = frame.as_ref();
                     match peel_envelope_header_str(body) {
-                        Ok(envelope) => {
-                            match interpret_envelope(id, envelope) {
-                                Some(Either::Left(request)) => {
-                                    key_temp.clear();
-                                    key_temp.push_str(request.path.node.as_ref());
-                                    if let Some(writer) = if let Some(writer) =
-                                        agent_routes.get_mut(key_temp.as_str())
-                                    {
-                                        Some(writer)
+                        Ok(envelope) => match interpret_envelope(*id, envelope) {
+                            Some(Either::Left(request)) => {
+                                let node = request.path.node.as_ref();
+
+                                let dispatched = if let Some(writer) = agent_routes.get_mut(node) {
+                                    if let Err(error) = writer.send(&request).await {
+                                        debug!(error = %error, "Forwarding envelope to agent route failed.");
+                                        agent_routes.remove(node);
+                                        false
                                     } else {
-                                        match connect_agent_route(
-                                            id,
-                                            Text::new(key_temp.as_str()),
-                                            Text::new(request.path.lane.as_ref()),
-                                            &find_tx,
-                                            &outgoing_tx,
-                                        )
-                                        .await
-                                        {
-                                            Ok(Some(writer)) => {
-                                                let writer = agent_routes
-                                                    .entry(Text::new(key_temp.as_str()))
-                                                    .or_insert_with_key(move |_| writer);
-                                                Some(writer)
+                                        true
+                                    }
+                                } else {
+                                    false
+                                };
+                                if !dispatched {
+                                    match connect_agent_route(
+                                        *id,
+                                        Text::new(node),
+                                        Text::new(request.path.lane.as_ref()),
+                                        &find_tx,
+                                        &outgoing_tx,
+                                    )
+                                    .await
+                                    {
+                                        Ok(Some(writer)) => {
+                                            let writer = agent_routes
+                                                .entry(Text::new(node))
+                                                .or_insert_with_key(move |_| writer);
+                                            if let Err(error) = writer.send(&request).await {
+                                                error!(error = %error, "Envelope not dispatched as agent stopped immediately.");
+                                                agent_routes.remove(node);
                                             }
-                                            Err(_) => break Ok(()),
-                                            _ => None,
                                         }
-                                    } {
-                                        if let Err(error) = writer.send(request).await {
-                                            //TODO In the case that this is an existing route, we probably want
-                                            //to retry here.
-                                            agent_routes.remove(key_temp.as_str());
-                                            info!(error = %error, "Forwarding envelope to agent route failed.");
-                                        }
+                                        Err(_) => break Ok(()),
+                                        _ => {}
                                     }
                                 }
-                                Some(Either::Right(response)) => {
-                                    let Path { node, lane } = response.path.clone();
-                                    if let Some(node_map) =
-                                        client_subscriptions.get_mut(node.as_ref())
-                                    {
-                                        if let Some(senders) = node_map.get_mut(lane.as_ref()) {
-                                            if !send_response(senders, response).await {
-                                                node_map.remove(lane.as_ref());
-                                                if node_map.is_empty() {
-                                                    client_subscriptions.remove(node.as_ref());
-                                                }
+                            }
+                            Some(Either::Right(response)) => {
+                                let Path { node, lane } = response.path.clone();
+                                if let Some(node_map) = client_subscriptions.get_mut(node.as_ref())
+                                {
+                                    if let Some(senders) = node_map.get_mut(lane.as_ref()) {
+                                        if !send_response(senders, response).await {
+                                            node_map.remove(lane.as_ref());
+                                            if node_map.is_empty() {
+                                                client_subscriptions.remove(node.as_ref());
                                             }
-                                        } else {
-                                            info!(
-                                                node = node.as_ref(),
-                                                lane = lane.as_ref(),
-                                                "Envelope received for downlink that does not exist."
-                                            );
-                                        };
+                                        }
                                     } else {
                                         info!(
                                             node = node.as_ref(),
                                             lane = lane.as_ref(),
                                             "Envelope received for downlink that does not exist."
                                         );
-                                    }
-                                }
-                                _ => {
-                                    warn!("Auth and Deauth no yet implemented.");
+                                    };
+                                } else {
+                                    info!(
+                                        node = node.as_ref(),
+                                        lane = lane.as_ref(),
+                                        "Envelope received for downlink that does not exist."
+                                    );
                                 }
                             }
-                        }
+                            _ => {
+                                warn!("Auth and Deauth no yet implemented.");
+                            }
+                        },
                         Err(error) => {
                             error!(
                                 frame = frame.as_str(),

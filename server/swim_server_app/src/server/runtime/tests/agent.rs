@@ -16,9 +16,10 @@ use futures::{future::BoxFuture, FutureExt, SinkExt, StreamExt};
 use swim_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult, UplinkKind},
     error::AgentTaskError,
-    protocol::{agent::{
-        LaneRequest, LaneRequestDecoder, ValueLaneResponse, ValueLaneResponseEncoder,
-    }, WithLenRecognizerDecoder},
+    protocol::{
+        agent::{LaneRequest, LaneRequestDecoder, ValueLaneResponse, ValueLaneResponseEncoder},
+        WithLenRecognizerDecoder,
+    },
 };
 use swim_form::{structural::read::recognizer::RecognizerReadable, Form};
 use swim_utilities::{
@@ -36,19 +37,28 @@ pub enum TestMessage {
     Event,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AgentEvent {
+    Started,
+    Stopped,
+}
+
 #[derive(Clone)]
 pub struct TestAgent {
     reporter: mpsc::UnboundedSender<i32>,
+    events: mpsc::UnboundedSender<AgentEvent>,
     check_meta: fn(RelativeUri, AgentConfig),
 }
 
 impl TestAgent {
     pub fn new(
         reporter: mpsc::UnboundedSender<i32>,
+        events: mpsc::UnboundedSender<AgentEvent>,
         check_meta: fn(RelativeUri, AgentConfig),
     ) -> Self {
         TestAgent {
             reporter,
+            events,
             check_meta,
         }
     }
@@ -62,10 +72,11 @@ impl Agent for TestAgent {
         context: Box<dyn AgentContext + Send>,
     ) -> BoxFuture<'static, AgentInitResult> {
         (self.check_meta)(route, config);
+        let events = self.events.clone();
         let reporter = self.reporter.clone();
         async move {
             let (tx, rx) = context.add_lane(LANE, UplinkKind::Value, None).await?;
-            Ok(run_agent(tx, rx, reporter).boxed())
+            Ok(run_agent(tx, rx, events, reporter).boxed())
         }
         .boxed()
     }
@@ -74,9 +85,12 @@ impl Agent for TestAgent {
 async fn run_agent(
     tx: ByteWriter,
     rx: ByteReader,
+    events: mpsc::UnboundedSender<AgentEvent>,
     reporter: mpsc::UnboundedSender<i32>,
 ) -> Result<(), AgentTaskError> {
-    let decoder = LaneRequestDecoder::new(WithLenRecognizerDecoder::new(TestMessage::make_recognizer()));
+    events.send(AgentEvent::Started).expect("Channel stopped.");
+    let decoder =
+        LaneRequestDecoder::new(WithLenRecognizerDecoder::new(TestMessage::make_recognizer()));
     let encoder = ValueLaneResponseEncoder::default();
 
     let mut input = FramedRead::new(rx, decoder);
@@ -107,6 +121,6 @@ async fn run_agent(
             }
         }
     }
-
+    events.send(AgentEvent::Stopped).expect("Channel stopped.");
     Ok(())
 }

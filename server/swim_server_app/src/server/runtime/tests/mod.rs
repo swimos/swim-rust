@@ -19,7 +19,10 @@ use std::{
 };
 
 use bytes::BytesMut;
-use futures::{future::{join3, join}, Future};
+use futures::{
+    future::{join, join3},
+    Future,
+};
 use ratchet::{Message, NegotiatedExtension, NoExt, Role, WebSocket, WebSocketConfig};
 use swim_form::structural::write::StructuralWritable;
 use swim_recon::printer::print_recon_compact;
@@ -34,7 +37,7 @@ use tokio::{
 use crate::{plane::PlaneBuilder, Server, ServerHandle, SwimServerConfig};
 
 use self::{
-    agent::TestAgent,
+    agent::{AgentEvent, TestAgent},
     connections::{TestConnections, TestWs},
 };
 
@@ -46,6 +49,7 @@ mod connections;
 
 struct TestContext {
     report_rx: UnboundedReceiver<i32>,
+    event_rx: UnboundedReceiver<AgentEvent>,
     incoming_tx: UnboundedSender<(SocketAddr, DuplexStream)>,
     handle: ServerHandle,
 }
@@ -62,14 +66,26 @@ where
     F: FnOnce(TestContext) -> Fut,
     Fut: Future,
 {
+    run_server_with_config(SwimServerConfig::default(), test_case).await
+}
+
+async fn run_server_with_config<F, Fut>(
+    config: SwimServerConfig,
+    test_case: F,
+) -> (Result<(), std::io::Error>, Fut::Output)
+where
+    F: FnOnce(TestContext) -> Fut,
+    Fut: Future,
+{
     let mut plane_builder = PlaneBuilder::default();
     let pattern = RoutePattern::parse_str(NODE).expect("Invalid route.");
 
+    let (event_tx, event_rx) = mpsc::unbounded_channel();
     let (report_tx, report_rx) = mpsc::unbounded_channel();
 
     plane_builder.add_route(
         pattern,
-        TestAgent::new(report_tx, |uri, _conf| {
+        TestAgent::new(report_tx, event_tx, |uri, _conf| {
             assert_eq!(uri, "/node");
         }),
     );
@@ -84,12 +100,12 @@ where
 
     let (networking, networking_task) = TestConnections::new(resolve, remotes, incoming_rx);
     let websockets = TestWs::default();
-    let config = SwimServerConfig::default();
 
     let server = SwimServer::new(plane, addr, networking, websockets, config);
 
     let (server_task, handle) = server.run();
     let context = TestContext {
+        event_rx,
         report_rx,
         handle,
         incoming_tx,
@@ -211,7 +227,8 @@ impl TestClient {
     async fn expect_event(&mut self, node: &str, lane: &str, expected_body: &str) {
         self.get_event(node, lane, move |body| {
             assert_eq!(body, expected_body);
-        }).await
+        })
+        .await
     }
 
     async fn get_event<F, T>(&mut self, node: &str, lane: &str, f: F) -> T
@@ -314,7 +331,7 @@ async fn commands_to_agent() {
                 .await;
             assert_eq!(report_rx.recv().await.expect("Agent stopped."), i);
         }
-        
+
         context.handle.stop();
         context
     })
@@ -442,9 +459,11 @@ async fn broadcast_events() {
             //Events should be in order and we should eventually see the final value.
             let mut prev = -1;
             loop {
-                let n = client1.get_event(NODE, LANE, |body| {
-                    body.parse::<i32>().expect("Invalid body.")
-                }).await;
+                let n = client1
+                    .get_event(NODE, LANE, |body| {
+                        body.parse::<i32>().expect("Invalid body.")
+                    })
+                    .await;
                 assert!(prev < n && n <= m);
                 if n == m {
                     break;
@@ -472,7 +491,7 @@ async fn broadcast_events() {
         context.handle.stop();
 
         client1.expect_unlinked(NODE, LANE, "").await;
-       
+
         context
     })
     .await;
@@ -505,6 +524,61 @@ async fn explicit_unlink_from_agent_lane() {
 
         context.handle.stop();
 
+        context
+    })
+    .await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn agent_timeout() {
+    let mut config = SwimServerConfig::default();
+    config.agent_runtime.inactive_timeout = Duration::from_millis(250);
+    let (result, _) = run_server_with_config(config, |mut context| async move {
+        let TestContext {
+            incoming_tx,
+            event_rx,
+            report_rx,
+            ..
+        } = &mut context;
+
+        let (client_sock, server_sock) = duplex(BUFFER_SIZE);
+
+        incoming_tx
+            .send((remote_addr(1), server_sock))
+            .expect("Listener closed.");
+
+        let mut client = TestClient::new(client_sock);
+
+        // Send a message causing the agent to be started.
+        client
+            .command(NODE, LANE, TestMessage::SetAndReport(56))
+            .await;
+        assert_eq!(
+            event_rx.recv().await.expect("Agent failed."),
+            AgentEvent::Started
+        );
+
+        assert_eq!(report_rx.recv().await.expect("Agent stopped."), 56);
+
+        // Wait for the agent to timeout and stop.
+        assert_eq!(
+            event_rx.recv().await.expect("Agent failed."),
+            AgentEvent::Stopped
+        );
+
+        // Send another message causing the agent to be restarted.
+        client
+            .command(NODE, LANE, TestMessage::SetAndReport(-45))
+            .await;
+
+        assert_eq!(
+            event_rx.recv().await.expect("Agent failed."),
+            AgentEvent::Started
+        );
+        assert_eq!(report_rx.recv().await.expect("Agent stopped."), -45);
+
+        context.handle.stop();
         context
     })
     .await;
