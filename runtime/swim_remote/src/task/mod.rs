@@ -64,12 +64,15 @@ mod envelopes;
 #[cfg(test)]
 mod tests;
 
+/// Message to attach a new client to a socket.
 #[derive(Debug)]
 pub enum AttachClient {
+    /// Attach a send only client.
     OneWay {
         receiver: ByteReader,
         done: trigger::Sender,
     },
+    /// Attach a two way (downlink) client.
     AttachDownlink {
         node: Text,
         lane: Text,
@@ -79,6 +82,7 @@ pub enum AttachClient {
     },
 }
 
+/// Message type sent by the socket management task to find an agent node.
 pub struct FindNode {
     pub source: Uuid,
     pub node: Text,
@@ -86,6 +90,8 @@ pub struct FindNode {
     pub provider: oneshot::Sender<Result<(ByteWriter, ByteReader), AgentResolutionError>>,
 }
 
+/// A task that manages a socket connection. Incoming envelopes are routed to the appropriate
+/// downlink or agent. Agents will be resolved externally where required.
 pub struct RemoteTask<S, E> {
     id: Uuid,
     stop_signal: trigger::Receiver,
@@ -224,6 +230,7 @@ where
     }
 }
 
+// Converts a websocket reader into a stream of text frames.
 fn text_frame_stream<S, E>(
     rx: &mut ratchet::Receiver<S, E>,
 ) -> impl Stream<Item = Result<BytesStr, InputError>> + '_
@@ -294,6 +301,9 @@ enum OutgoingTaskMessage {
     },
 }
 
+// The registration task manages requests to attach new clients and serves as the coordinator between
+// the tasks managing the incoming and outgoing halves of the socket. When this task stops, the other
+// tasks will also.
 async fn registration_task<F>(
     rx: mpsc::Receiver<AttachClient>,
     incoming_tx: mpsc::Sender<RegisterIncoming>,
@@ -384,6 +394,7 @@ type ResponseWriters = SmallVec<[ResponseWriter; DL_SOFT_CAP]>;
 type RequestReader = FramedRead<ByteReader, RawRequestMessageDecoder>;
 type ResponseReader = FramedRead<ByteReader, RawResponseMessageDecoder>;
 
+/// The outgoing tasks writes out envelopes sent by agents and downlinks to the socket.
 #[derive(Default)]
 struct OutgoingTask {
     clients: MultiReader<RequestReader>,
@@ -490,6 +501,7 @@ impl OutgoingTask {
     }
 }
 
+// The incoming task routes incoming envelopes to agents and downlinks.
 struct IncomingTask {
     id: Uuid,
     client_subscriptions: HashMap<Text, HashMap<Text, ResponseWriters>>,
@@ -651,6 +663,7 @@ impl IncomingTask {
     }
 }
 
+// If a message arrives for an unknown agent, attempt to resolve it and open a link.
 async fn connect_agent_route(
     source: Uuid,
     node: Text,
@@ -697,17 +710,21 @@ async fn connect_agent_route(
     }
 }
 
+/// Broadcast a message to all subscribed downlinks.
 async fn send_response(senders: &mut ResponseWriters, message: RawResponse<'_>) -> bool {
-    let messages_clones = std::iter::repeat(message);
-    let failed = join_all(senders.iter_mut().zip(messages_clones).enumerate().map(
-        |(i, (sender, msg))| async move {
-            if sender.send(msg).await.is_err() {
-                Some(i)
-            } else {
-                None
-            }
-        },
-    ))
+    let message_ref = &message;
+    let failed = join_all(
+        senders
+            .iter_mut()
+            .enumerate()
+            .map(|(i, sender)| async move {
+                if sender.send(message_ref).await.is_err() {
+                    Some(i)
+                } else {
+                    None
+                }
+            }),
+    )
     .await
     .into_iter()
     .flatten()
@@ -728,6 +745,7 @@ async fn send_response(senders: &mut ResponseWriters, message: RawResponse<'_>) 
 type RawRequest<'a> = RequestMessage<Cow<'a, str>, &'a str>;
 type RawResponse<'a> = ResponseMessage<Cow<'a, str>, &'a str, &'a str>;
 
+// Determine whether an envelope is for an agent or a downlink.
 fn interpret_envelope(
     id: Uuid,
     envelope: RawEnvelope<'_>,

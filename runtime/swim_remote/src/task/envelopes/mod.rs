@@ -25,6 +25,8 @@ use crate::error::NoSuchAgent;
 #[cfg(test)]
 mod tests;
 
+/// Encoder to write internal request and response messages out as recon strings on a
+/// websocket connection.
 #[derive(Debug, Default)]
 pub struct ReconEncoder;
 

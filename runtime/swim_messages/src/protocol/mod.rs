@@ -286,7 +286,7 @@ where
     }
 }
 
-impl<P, B1, B2> Encoder<ResponseMessage<P, B1, B2>> for RawResponseMessageEncoder
+impl<'a, P, B1, B2> Encoder<&'a ResponseMessage<P, B1, B2>> for RawResponseMessageEncoder
 where
     P: AsRef<str>,
     B1: AsRef<[u8]>,
@@ -296,7 +296,7 @@ where
 
     fn encode(
         &mut self,
-        item: ResponseMessage<P, B1, B2>,
+        item: &'a ResponseMessage<P, B1, B2>,
         dst: &mut BytesMut,
     ) -> Result<(), Self::Error> {
         let ResponseMessage {
@@ -347,6 +347,23 @@ where
             }
         }
         Ok(())
+    }
+}
+
+impl<P, B1, B2> Encoder<ResponseMessage<P, B1, B2>> for RawResponseMessageEncoder
+where
+    P: AsRef<str>,
+    B1: AsRef<[u8]>,
+    B2: AsRef<[u8]>,
+{
+    type Error = std::io::Error;
+
+    fn encode(
+        &mut self,
+        item: ResponseMessage<P, B1, B2>,
+        dst: &mut BytesMut,
+    ) -> Result<(), Self::Error> {
+        self.encode(&item, dst)
     }
 }
 
