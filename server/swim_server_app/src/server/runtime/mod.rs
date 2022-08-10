@@ -24,7 +24,7 @@ use std::str::FromStr;
 use std::time::Duration;
 use swim_api::agent::BoxAgent;
 use swim_model::Text;
-use swim_remote::{AgentResolutionError, FindNode, LaneNotFound, RemoteTask};
+use swim_remote::{AgentResolutionError, FindNode, NoSuchAgent, RemoteTask};
 use swim_runtime::agent::{run_agent, AgentAttachmentRequest, AgentExecError, DisconnectionReason};
 use swim_runtime::error::ConnectionError;
 use swim_runtime::remote::ExternalConnections;
@@ -357,10 +357,10 @@ where
                         }
                         Err(node) => {
                             debug!(node = %node, "Requested agent does not exist.");
-                            if let Err(Err(AgentResolutionError::NotFound(
-                                LaneNotFound::NoSuchAgent { node, .. },
-                            ))) =
-                                provider.send(Err(LaneNotFound::NoSuchAgent { node, lane }.into()))
+                            if let Err(Err(AgentResolutionError::NotFound(NoSuchAgent {
+                                node,
+                                ..
+                            }))) = provider.send(Err(NoSuchAgent { node, lane }.into()))
                             {
                                 debug!(source = %source, route = %node, "A remote stopped while a connection from it to an agent was pending.");
                             }

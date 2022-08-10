@@ -20,7 +20,7 @@ use swim_messages::protocol::{
 use swim_model::{escape_if_needed, identifier::is_identifier};
 use tokio_util::codec::Encoder;
 
-use crate::error::LaneNotFound;
+use crate::error::NoSuchAgent;
 
 #[cfg(test)]
 mod tests;
@@ -42,7 +42,6 @@ const NODE_TAG: &[u8] = b"node:";
 const LANE_TAG: &[u8] = b"lane:";
 
 const NODE_NOT_FOUND_TAG: &str = "@nodeNotFound";
-const LANE_NOT_FOUND_TAG: &str = "@laneNotFound";
 
 const FIXED_LEN: usize = 12;
 
@@ -117,18 +116,13 @@ impl Encoder<BytesResponseMessage> for ReconEncoder {
     }
 }
 
-impl Encoder<LaneNotFound> for ReconEncoder {
+impl Encoder<NoSuchAgent> for ReconEncoder {
     type Error = std::io::Error;
 
-    fn encode(&mut self, item: LaneNotFound, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        let (node, lane, body) = match item {
-            LaneNotFound::NoSuchAgent { node, lane } => (node, lane, NODE_NOT_FOUND_TAG),
-            LaneNotFound::NoSuchLane { node, lane } => (node, lane, LANE_NOT_FOUND_TAG),
-        };
+    fn encode(&mut self, item: NoSuchAgent, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        let NoSuchAgent { node, lane } = item;
         write_header(UNLINKED_HEADER, node.as_str(), lane.as_str(), dst);
-        if !body.is_empty() {
-            put_body(body, dst);
-        }
+        put_body(NODE_NOT_FOUND_TAG, dst);
         Ok(())
     }
 }

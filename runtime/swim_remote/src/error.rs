@@ -15,18 +15,20 @@
 use swim_model::Text;
 use thiserror::Error;
 
+/// Error type produced when attempting to resolve a lane on an agent that does
+/// not exist (the lane name is kept for producing the response envelope).
 #[derive(Debug, Error)]
-pub enum LaneNotFound {
-    #[error("Agent '{node}' does not exist.")]
-    NoSuchAgent { node: Text, lane: Text },
-    #[error("Agent '{node}' does no have a lane called '{lane}'.")]
-    NoSuchLane { node: Text, lane: Text },
+#[error("Agent '{node}' does not exist.")]
+pub struct NoSuchAgent {
+    pub node: Text,
+    pub lane: Text,
 }
 
+/// Error type produced when the resolution of an agent fails.
 #[derive(Debug, Error)]
 pub enum AgentResolutionError {
     #[error(transparent)]
-    NotFound(#[from] LaneNotFound),
+    NotFound(#[from] NoSuchAgent),
     #[error("The plane is stopping.")]
     PlaneStopping,
 }

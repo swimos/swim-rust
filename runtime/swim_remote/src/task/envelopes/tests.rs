@@ -21,7 +21,7 @@ use swim_model::Text;
 use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
-use crate::LaneNotFound;
+use crate::NoSuchAgent;
 
 use super::ReconEncoder;
 
@@ -220,7 +220,7 @@ fn encode_event_with_attr() {
 #[test]
 fn encode_not_found() {
     let mut encoder = ReconEncoder;
-    let message = LaneNotFound::NoSuchAgent {
+    let message = NoSuchAgent {
         node: Text::new(NODE),
         lane: Text::new(LANE),
     };

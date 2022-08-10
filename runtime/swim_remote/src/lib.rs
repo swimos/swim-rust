@@ -16,6 +16,6 @@ mod error;
 mod task;
 
 pub use self::{
-    error::{AgentResolutionError, LaneNotFound},
+    error::{AgentResolutionError, NoSuchAgent},
     task::{AttachClient, FindNode, RemoteTask},
 };
