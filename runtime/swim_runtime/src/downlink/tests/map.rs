@@ -377,8 +377,10 @@ where
     (task_res, result)
 }
 
+type MapRequestResult<K, V> = Result<RequestMessage<Text, MapOperation<K, V>>, MessageDecodeError>;
+
 fn expect_message<K: Eq + Debug, V: Eq + Debug>(
-    result: Option<Result<RequestMessage<Text, MapOperation<K, V>>, MessageDecodeError>>,
+    result: Option<MapRequestResult<K, V>>,
     message: Operation<MapOperation<K, V>>,
 ) {
     match result {
