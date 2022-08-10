@@ -208,25 +208,34 @@ where
     }
 }
 
-/// Type that is returned by the `and_then` method on the [`EventHandler`] trait.
+/// Type that is returned by the `map` method on the [`HandlerActionExt`] trait.
+pub struct Map<H, F>(Option<(H, F)>);
+
+/// Type that is returned by the `and_then` method on the [`HandlerActionExt`] trait.
 pub enum AndThen<H1, H2, F> {
     First { first: H1, next: F },
     Second(H2),
     Done,
 }
 
-/// Type that is returned by the `and_then_try` method on the [`EventHandler`] trait.
+/// Type that is returned by the `and_then_try` method on the [`HandlerActionExt`] trait.
 pub enum AndThenTry<H1, H2, F> {
     First { first: H1, next: F },
     Second(H2),
     Done,
 }
 
-/// Type that is returned by the `followed_by` method on the [`EventHandler`] trait.
+/// Type that is returned by the `followed_by` method on the [`HandlerActionExt`] trait.
 pub enum FollowedBy<H1, H2> {
     First { first: H1, next: H2 },
     Second(H2),
     Done,
+}
+
+impl<H, F> Default for Map<H, F> {
+    fn default() -> Self {
+        Map(None)
+    }
 }
 
 impl<H1, H2, F> Default for AndThen<H1, H2, F> {
@@ -244,6 +253,12 @@ impl<H1, H2, F> Default for AndThenTry<H1, H2, F> {
 impl<H1, H2> Default for FollowedBy<H1, H2> {
     fn default() -> Self {
         FollowedBy::Done
+    }
+}
+
+impl<H, F> Map<H, F> {
+    fn new(handler: H, f: F) -> Self {
+        Map(Some((handler, f)))
     }
 }
 
@@ -282,6 +297,35 @@ where
 
     fn transform(self, input: In) -> Self::Out {
         self(input)
+    }
+}
+
+impl<Context, H, F, T> HandlerAction<Context> for Map<H, F>
+where
+    H: HandlerAction<Context>,
+    F: HandlerTrans<H::Completion, Out = T>,
+{
+    type Completion = T;
+
+    fn step(&mut self, meta: AgentMetadata, context: &Context) -> StepResult<Self::Completion> {
+        if let Some((mut action, f)) = self.0.take() {
+            match action.step(meta, context) {
+                StepResult::Continue { modified_lane } => {
+                    self.0 = Some((action, f));
+                    StepResult::Continue { modified_lane }
+                }
+                StepResult::Fail(e) => StepResult::Fail(e),
+                StepResult::Complete {
+                    modified_lane,
+                    result,
+                } => StepResult::Complete {
+                    modified_lane,
+                    result: f.transform(result),
+                },
+            }
+        } else {
+            StepResult::after_done()
+        }
     }
 }
 
@@ -542,6 +586,15 @@ where
 
 /// Adds combinators to the [`HandlerAction`] trait.
 pub trait HandlerActionExt<Context>: HandlerAction<Context> {
+    /// Create a new handler that runs this handler and then transforms the result.
+    fn map<F>(self, f: F) -> Map<Self, F>
+    where
+        Self: Sized,
+        F: HandlerTrans<Self::Completion>,
+    {
+        Map::new(self, f)
+    }
+
     /// Create a new handler which applies a function to the result of this handler and then executes
     /// an additional handler returned by the function.
     fn and_then<F, H2>(self, f: F) -> AndThen<Self, H2, F>
