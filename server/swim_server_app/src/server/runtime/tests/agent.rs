@@ -43,6 +43,8 @@ pub enum AgentEvent {
     Stopped,
 }
 
+/// A fake agent that exposes a single lane (with a value type uplink). The lane consumes
+/// commands of type [`TestMessage`] and emits events of type [`i32`].
 #[derive(Clone)]
 pub struct TestAgent {
     reporter: mpsc::UnboundedSender<i32>,
@@ -52,9 +54,9 @@ pub struct TestAgent {
 
 impl TestAgent {
     pub fn new(
-        reporter: mpsc::UnboundedSender<i32>,
-        events: mpsc::UnboundedSender<AgentEvent>,
-        check_meta: fn(RelativeUri, AgentConfig),
+        reporter: mpsc::UnboundedSender<i32>, //Reports each time the state changes.
+        events: mpsc::UnboundedSender<AgentEvent>, //Reports when the agent is started or stopped.
+        check_meta: fn(RelativeUri, AgentConfig), //Check to perform on the agent metadata on startup.
     ) -> Self {
         TestAgent {
             reporter,

@@ -459,13 +459,13 @@ async fn incoming_route_valid_agent_restart() {
         }
 
         check_env(8, &mut agent_rx).await;
-        
+
         //Drop the agent and replace it.
-        
+
         drop(agent_rx);
         let (agent_in_tx, agent_in_rx) = byte_channel::byte_channel(BUFFER_SIZE);
         let (_agent_out_tx, agent_out_rx) = byte_channel::byte_channel(BUFFER_SIZE);
-        
+
         agent_replace_tx
             .send((agent_in_tx, agent_out_rx))
             .await

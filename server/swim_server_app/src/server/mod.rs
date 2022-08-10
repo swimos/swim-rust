@@ -32,7 +32,9 @@ impl ServerHandle {
     }
 }
 
+/// Allows the server to be stopped externally.
 impl ServerHandle {
+    /// After this is called, the associated task will begin to stop.
     pub fn stop(&mut self) {
         if let Some(tx) = self.stop_trigger.take() {
             tx.trigger();
@@ -40,6 +42,12 @@ impl ServerHandle {
     }
 }
 
+/// Interface for Swim server implementations.
 pub trait Server {
+    /// Running the server produces a future and a handle. The future is the task that will
+    /// run the main event loop of the server (listening on a socket, creating new agent
+    /// instances, etc.). The handle is used to signal that the task should stop from
+    /// outside the event loop. If the handle is dropped, this will also cause the server
+    /// to stop.
     fn run(self) -> (BoxFuture<'static, Result<(), std::io::Error>>, ServerHandle);
 }

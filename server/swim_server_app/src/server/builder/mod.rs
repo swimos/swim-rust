@@ -40,6 +40,7 @@ use crate::{
 
 use super::{runtime::SwimServer, Server};
 
+/// Builder for a swim server that will listen on a socket and run a suite of agents.
 pub struct ServerBuilder {
     bind_to: SocketAddr,
     plane: PlaneBuilder,
@@ -63,30 +64,49 @@ impl Default for ServerBuilder {
 }
 
 impl ServerBuilder {
+    /// #Arguments
+    ///
+    /// * `addr` - The address to which the server will bind (default: 0.0.0.0:8080).
     pub fn set_bind_addr(mut self, addr: SocketAddr) -> Self {
         self.bind_to = addr;
         self
     }
 
+    /// Add a new route to the plane that the server will run.
+    ///
+    /// #Arguments
+    ///
+    /// * `pattern` - The route pattern against which to match incoming envelopes.
+    /// * `agent` - The agent definition.
     pub fn add_route<A: Agent + Send + 'static>(mut self, pattern: RoutePattern, agent: A) -> Self {
         self.plane.add_route(pattern, agent);
         self
     }
 
+    /// Enable TLS on the server.
     pub fn add_tls_support(mut self) -> Self {
         self.enable_tls = true;
         self
     }
 
+    /// Enable the deflate extension for websocket connections.
     pub fn add_deflate_support(self) -> Self {
         self.configure_deflate_support(Default::default())
     }
 
+    /// Enable the deflate extension for websocket connections.
+    ///  
+    /// #Arguments
+    /// * `config` - Configuration parameters for the compression.
     pub fn configure_deflate_support(mut self, config: DeflateConfig) -> Self {
         self.deflate = Some(config);
         self
     }
 
+    /// Alter the server configuration parameters.
+    ///
+    /// # Arguments
+    /// * `f` - A function that can mutate the configuration.
     pub fn update_config<F>(mut self, f: F) -> Self
     where
         F: FnOnce(&mut SwimServerConfig),
@@ -95,6 +115,8 @@ impl ServerBuilder {
         self
     }
 
+    /// Attempt to make a server instance. This will fail if the routes specified for the
+    /// agents are ambiguous.
     pub async fn build(self) -> Result<Box<dyn Server>, AmbiguousRoutes> {
         let ServerBuilder {
             bind_to,

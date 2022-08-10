@@ -43,11 +43,13 @@ enum ConnReq {
     Listener(SocketAddr, oneshot::Sender<io::Result<TestListener>>),
 }
 
+/// Fake networking that communicates over in-memory buffers.
 #[derive(Debug, Clone)]
 pub struct TestConnections {
     requests: mpsc::Sender<ConnReq>,
 }
 
+/// Fake websockets implementation that skips the handshake.
 #[derive(Default)]
 pub struct TestWs {
     config: WebSocketConfig,

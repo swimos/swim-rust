@@ -19,20 +19,31 @@ use swim_api::agent::AgentConfig;
 use swim_runtime::agent::AgentRuntimeConfig;
 use swim_utilities::algebra::non_zero_usize;
 
+/// Configuration parameters for a Swim server.
 #[derive(Debug, Clone, Copy)]
 pub struct SwimServerConfig {
+    /// Parameters for remote sockets.
     pub remote: RemoteConnectionsConfig,
+    /// Parameters to be passed to agents.
     pub agent: AgentConfig,
+    /// Parameters for the agent runtime component.
     pub agent_runtime: AgentRuntimeConfig,
+    /// Size of the MPSC channel for requesting new downlinks.
     pub client_attachment_buffer_size: NonZeroUsize,
+    /// Size of the MPSC channel for resolving agents.
     pub find_route_buffer_size: NonZeroUsize,
+    /// The buffer size for communication between remote sockets and agents.
     pub agent_runtime_buffer_size: NonZeroUsize,
+    /// Timeout on attempting to connect a remote socket to an agent.
     pub attachment_timeout: Duration,
+    /// Configuration for websocket connections.
     pub websockets: WebSocketConfig,
 }
 
+/// Configuration for remote socket management.
 #[derive(Debug, Clone, Copy)]
 pub struct RemoteConnectionsConfig {
+    /// Size of the MPSC channel used to register agents with the socket.
     pub registration_buffer_size: NonZeroUsize,
 }
 

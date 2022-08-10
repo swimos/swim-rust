@@ -50,6 +50,8 @@ use super::Server;
 #[cfg(test)]
 mod tests;
 
+/// A swim server task that listens for incoming connections on a socket and runs the
+/// agents specified in a [`PlaneModel`].
 pub struct SwimServer<Net, Ws> {
     plane: PlaneModel,
     addr: SocketAddr,
@@ -84,11 +86,12 @@ where
     }
 }
 
+/// Tracks the shutdown process for the server.
 #[derive(Clone, Copy, Debug)]
 enum TaskState {
-    Running,
-    StoppingAgents,
-    StoppingRemotes,
+    Running,         //The server has is running normally.
+    StoppingAgents,  //The server is shutting down and waiting for the agents to stop.
+    StoppingRemotes, //The server is shutting down, all agents have stopped, and the remote connections are being closed.
 }
 
 impl<Net, Ws> SwimServer<Net, Ws>
@@ -393,6 +396,8 @@ struct ConnectionTerminated {
     reason: DisconnectionReason,
 }
 
+//A task that attempts to connect a running agent instance to a remote. After the connection
+//is established this task will continue to wait until the connection is terminated.
 async fn attach_agent(
     remote_id: Uuid,
     agent_id: Uuid,

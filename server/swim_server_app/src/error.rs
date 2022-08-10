@@ -19,6 +19,7 @@ use std::{
 
 use swim_utilities::{format::comma_sep, routing::route_pattern::RoutePattern};
 
+/// Indicates that the routes specified for plane are ambiguous (overlap with each other).
 #[derive(Debug)]
 pub struct AmbiguousRoutes {
     pub routes: Vec<RoutePattern>,
@@ -41,3 +42,25 @@ impl Display for AmbiguousRoutes {
 }
 
 impl Error for AmbiguousRoutes {}
+
+#[cfg(test)]
+mod tests {
+    use swim_utilities::routing::route_pattern::RoutePattern;
+
+    use super::AmbiguousRoutes;
+
+    #[test]
+    fn ambiguous_routes_display() {
+        let pat1 = RoutePattern::parse_str("/node").expect("Invalid route.");
+        let pat2 = RoutePattern::parse_str("/:id").expect("Invalid route.");
+
+        let err = AmbiguousRoutes::new(vec![pat1, pat2]);
+
+        let err_string = err.to_string();
+
+        assert_eq!(
+            err_string,
+            "Agent route patterns are ambiguous: [/node, /:id]"
+        );
+    }
+}

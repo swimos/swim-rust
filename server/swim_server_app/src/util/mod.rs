@@ -14,7 +14,9 @@
 
 use swim_api::agent::{Agent, BoxAgent};
 
+/// Adds additional methods for manipulating [`Agent`]s.
 pub trait AgentExt: Agent {
+    /// Boxes an agent (allowing it to be instantiated by dynamic dispatch).
     fn boxed(self) -> BoxAgent
     where
         Self: Sized + Send + 'static,
