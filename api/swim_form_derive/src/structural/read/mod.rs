@@ -883,7 +883,7 @@ impl<'a> ToTokens for OnDoneFn<'a> {
                     let name = fld.resolve_name();
                     quote! {
                         if fields.#idx.is_none() {
-                            missing.push(swim_model::Text::new(#name));
+                            missing.push(::swim_form::model::Text::new(#name));
                         }
                     }
                 }
@@ -897,7 +897,7 @@ impl<'a> ToTokens for OnDoneFn<'a> {
                                 if fields.#idx.is_none() {
                                     fields.#idx = <#ty as ::swim_form::structural::read::recognizer::RecognizerReadable>::on_absent();
                                     if fields.#idx.is_none() {
-                                        missing.push(swim_model::Text::new(#name));
+                                        missing.push(::swim_form::model::Text::new(#name));
                                     }
                                 }
                             }
@@ -916,7 +916,7 @@ impl<'a> ToTokens for OnDoneFn<'a> {
                                     if header.#inner_idx.is_none() {
                                         header.#inner_idx = <#ty as ::swim_form::structural::read::recognizer::RecognizerReadable>::on_absent();
                                         if header.#inner_idx.is_none() {
-                                            missing.push(swim_model::Text::new(#name));
+                                            missing.push(::swim_form::model::Text::new(#name));
                                         }
                                     }
                                 });
@@ -933,7 +933,7 @@ impl<'a> ToTokens for OnDoneFn<'a> {
                         if fields.#idx.is_none() {
                             fields.#idx = <#ty as ::swim_form::structural::read::recognizer::RecognizerReadable>::on_absent();
                             if fields.#idx.is_none() {
-                                missing.push(swim_model::Text::new(#name));
+                                missing.push(::swim_form::model::Text::new(#name));
                             }
                         }
                     }

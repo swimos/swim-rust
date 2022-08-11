@@ -22,6 +22,7 @@ use crate::structural::read::{ReadError, StructuralReadable};
 use crate::structural::write::StructuralWritable;
 use swim_model::Value;
 
+pub use swim_model as model;
 pub mod structural;
 
 #[cfg(test)]
