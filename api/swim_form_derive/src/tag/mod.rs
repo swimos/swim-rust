@@ -60,7 +60,7 @@ impl<'a> ToTokens for DeriveTag<UnitEnum<'a>> {
 
         let str_as_var = variants.iter().map(|(var_name, rename)| {
             let lit = lit_name(*var_name, rename);
-            quote!(#lit => core::result::Result::Ok(#name::#var_name))
+            quote!(#lit => ::core::result::Result::Ok(#name::#var_name))
         });
 
         let literals = variants
@@ -72,7 +72,7 @@ impl<'a> ToTokens for DeriveTag<UnitEnum<'a>> {
 
         let as_ref_body = if num_vars == 0 {
             quote! {
-                core::panic!("No members.")
+                ::core::panic!("No members.")
             }
         } else {
             quote! {
@@ -83,16 +83,16 @@ impl<'a> ToTokens for DeriveTag<UnitEnum<'a>> {
         };
 
         tokens.append_all(quote! {
-            impl core::convert::AsRef<str> for #name {
+            impl ::core::convert::AsRef<str> for #name {
                 fn as_ref(&self) -> &str {
                     #as_ref_body
                 }
             }
 
-            impl core::str::FromStr for #name {
+            impl ::core::str::FromStr for #name {
                 type Err = swim_model::Text;
 
-                fn from_str(txt: &str) -> Result<Self, Self::Err> {
+                fn from_str(txt: &str) -> core::result::Result<Self, Self::Err> {
                     match txt {
                         #(#str_as_var,)*
                         _ => core::result::Result::Err(swim_model::Text::new(#err_lit)),
@@ -105,7 +105,7 @@ impl<'a> ToTokens for DeriveTag<UnitEnum<'a>> {
                 const VARIANT_NAMES: [&str; #num_vars] = [#(#literals),*];
 
                 #[automatically_derived]
-                impl swim_form::structural::Tag for #name {
+                impl ::swim_form::structural::Tag for #name {
 
                     const VARIANTS: &'static [&'static str] = &VARIANT_NAMES;
                 }

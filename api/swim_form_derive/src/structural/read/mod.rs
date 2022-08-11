@@ -37,7 +37,7 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedStructModel<'a>> {
         super::add_bounds(
             *generics,
             &mut new_generics,
-            parse_quote!(swim_form::structural::read::recognizer::RecognizerReadable),
+            parse_quote!(::swim_form::structural::read::recognizer::RecognizerReadable),
         );
 
         let (impl_gen, type_gen, where_clause) = new_generics.split_for_impl();
@@ -47,17 +47,17 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedStructModel<'a>> {
 
             tokens.append_all(quote! {
                 #[automatically_derived]
-                impl swim_form::structural::read::recognizer::RecognizerReadable for #name {
-                    type Rec = swim_form::structural::read::recognizer::UnitStructRecognizer<#name>;
-                    type AttrRec = swim_form::structural::read::recognizer::SimpleAttrBody<
-                        swim_form::structural::read::recognizer::UnitStructRecognizer<#name>
+                impl ::swim_form::structural::read::recognizer::RecognizerReadable for #name {
+                    type Rec = ::swim_form::structural::read::recognizer::UnitStructRecognizer<#name>;
+                    type AttrRec = ::swim_form::structural::read::recognizer::SimpleAttrBody<
+                        ::swim_form::structural::read::recognizer::UnitStructRecognizer<#name>
                     >;
                     type BodyRec = Self::Rec;
 
                     #[allow(non_snake_case)]
                     #[inline]
                     fn make_recognizer() -> Self::Rec {
-                        swim_form::structural::read::recognizer::UnitStructRecognizer::new(
+                        ::swim_form::structural::read::recognizer::UnitStructRecognizer::new(
                             #lit_name,
                             || #name
                         )
@@ -65,14 +65,14 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedStructModel<'a>> {
 
                     #[inline]
                     fn make_attr_recognizer() -> Self::AttrRec {
-                        swim_form::structural::read::recognizer::SimpleAttrBody::new(
-                            <Self as swim_form::structural::read::recognizer::RecognizerReadable>::make_recognizer()
+                        ::swim_form::structural::read::recognizer::SimpleAttrBody::new(
+                            <Self as ::swim_form::structural::read::recognizer::RecognizerReadable>::make_recognizer()
                         )
                     }
 
                     #[inline]
                     fn make_body_recognizer() -> Self::BodyRec {
-                        <Self as swim_form::structural::read::recognizer::RecognizerReadable>::make_recognizer()
+                        <Self as ::swim_form::structural::read::recognizer::RecognizerReadable>::make_recognizer()
                     }
 
                 }
@@ -125,15 +125,15 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedStructModel<'a>> {
                     #select_index
 
                     #[automatically_derived]
-                    fn #select_feed_name #impl_gen(state: &mut #builder_name #type_gen, index: u32, event: swim_form::structural::read::event::ReadEvent<'_>)
-                        -> core::option::Option<core::result::Result<(), swim_form::structural::read::error::ReadError>>
+                    fn #select_feed_name #impl_gen(state: &mut #builder_name #type_gen, index: u32, event: ::swim_form::structural::read::event::ReadEvent<'_>)
+                        -> ::core::option::Option<::core::result::Result<(), ::swim_form::structural::read::error::ReadError>>
                     #where_clause
                     {
                         #select_feed
                     }
 
                     #[automatically_derived]
-                    fn #on_done_name #impl_gen(state: &mut #builder_name #type_gen) -> core::result::Result<#target, swim_form::structural::read::error::ReadError>
+                    fn #on_done_name #impl_gen(state: &mut #builder_name #type_gen) -> ::core::result::Result<#target, ::swim_form::structural::read::error::ReadError>
                     #where_clause
                     {
                         #on_done
@@ -149,7 +149,7 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedStructModel<'a>> {
                     #header_recog_block
 
                     #[automatically_derived]
-                    impl #impl_gen swim_form::structural::read::recognizer::RecognizerReadable for #name #type_gen #where_clause {
+                    impl #impl_gen ::swim_form::structural::read::recognizer::RecognizerReadable for #name #type_gen #where_clause {
                         #read_impl
                     }
 
@@ -189,7 +189,7 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedEnumModel<'a>> {
         super::add_bounds(
             *generics,
             &mut new_generics,
-            parse_quote!(swim_form::structural::read::recognizer::RecognizerReadable),
+            parse_quote!(::swim_form::structural::read::recognizer::RecognizerReadable),
         );
 
         let (impl_gen, type_gen, where_clause) = new_generics.split_for_impl();
@@ -199,26 +199,26 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedEnumModel<'a>> {
         if variants.is_empty() {
             tokens.append_all(quote! {
                 #[automatically_derived]
-                impl #impl_gen swim_form::structural::read::recognizer::RecognizerReadable for #name #type_gen
+                impl #impl_gen ::swim_form::structural::read::recognizer::RecognizerReadable for #name #type_gen
                 #where_clause
                 {
-                    type Rec = swim_form::structural::read::recognizer::RecognizeNothing<#enum_ty>;
-                    type AttrRec = swim_form::structural::read::recognizer::RecognizeNothing<#enum_ty>;
+                    type Rec = ::swim_form::structural::read::recognizer::RecognizeNothing<#enum_ty>;
+                    type AttrRec = ::swim_form::structural::read::recognizer::RecognizeNothing<#enum_ty>;
                     type BodyRec = Self::Rec;
 
                     #[inline]
                     fn make_recognizer() -> Self::Rec {
-                        core::default::Default::default()
+                        ::core::default::Default::default()
                     }
 
                     #[inline]
                     fn make_attr_recognizer() -> Self::AttrRec {
-                        core::default::Default::default()
+                        ::core::default::Default::default()
                     }
 
                     #[inline]
                     fn make_body_recognizer() -> Self::BodyRec {
-                        <Self as swim_form::structural::read::recognizer::RecognizerReadable>::make_recognizer()
+                        <Self as ::swim_form::structural::read::recognizer::RecognizerReadable>::make_recognizer()
                     }
                 }
             });
@@ -268,15 +268,15 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedEnumModel<'a>> {
                         #select_index
 
                         #[automatically_derived]
-                        fn #select_feed_name #impl_gen(state: &mut #builder_name #type_gen, index: u32, event: swim_form::structural::read::event::ReadEvent<'_>)
-                            -> core::option::Option<core::result::Result<(), swim_form::structural::read::error::ReadError>>
+                        fn #select_feed_name #impl_gen(state: &mut #builder_name #type_gen, index: u32, event: ::swim_form::structural::read::event::ReadEvent<'_>)
+                            -> ::core::option::Option<::core::result::Result<(), ::swim_form::structural::read::error::ReadError>>
                         #where_clause
                         {
                             #select_feed
                         }
 
                         #[automatically_derived]
-                        fn #on_done_name #impl_gen(state: &mut #builder_name #type_gen) -> core::result::Result<#enum_ty, swim_form::structural::read::error::ReadError>
+                        fn #on_done_name #impl_gen(state: &mut #builder_name #type_gen) -> ::core::result::Result<#enum_ty, ::swim_form::structural::read::error::ReadError>
                         #where_clause
                         {
                             #on_done
@@ -299,7 +299,7 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedEnumModel<'a>> {
             let builder_name = builder_ident();
             let select_var = SelectVariantFn::new(model, &type_gen);
 
-            let recog_ty = quote!(swim_form::structural::read::recognizer::TaggedEnumRecognizer<#builder_name #type_gen>);
+            let recog_ty = quote!(::swim_form::structural::read::recognizer::TaggedEnumRecognizer<#builder_name #type_gen>);
 
             tokens.append_all(quote! {
                 const _: () = {
@@ -309,18 +309,18 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedEnumModel<'a>> {
 
                     #[automatically_derived]
                     #[inline]
-                    fn #select_var_name #impl_gen(name: &str) -> core::option::Option<#builder_name #type_gen>
+                    fn #select_var_name #impl_gen(name: &str) -> ::core::option::Option<#builder_name #type_gen>
                     #where_clause
                     {
                          #select_var
                     }
 
                     #[automatically_derived]
-                    impl #impl_gen swim_form::structural::read::recognizer::RecognizerReadable for #name #type_gen
+                    impl #impl_gen ::swim_form::structural::read::recognizer::RecognizerReadable for #name #type_gen
                     #where_clause
                     {
                         type Rec = #recog_ty;
-                        type AttrRec = swim_form::structural::read::recognizer::SimpleAttrBody<
+                        type AttrRec = ::swim_form::structural::read::recognizer::SimpleAttrBody<
                             #recog_ty,
                         >;
                         type BodyRec = Self::Rec;
@@ -334,14 +334,14 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedEnumModel<'a>> {
 
                         #[inline]
                         fn make_attr_recognizer() -> Self::AttrRec {
-                            swim_form::structural::read::recognizer::SimpleAttrBody::new(
-                                <Self as swim_form::structural::read::recognizer::RecognizerReadable>::make_recognizer()
+                            ::swim_form::structural::read::recognizer::SimpleAttrBody::new(
+                                <Self as ::swim_form::structural::read::recognizer::RecognizerReadable>::make_recognizer()
                             )
                         }
 
                         #[inline]
                         fn make_body_recognizer() -> Self::BodyRec {
-                            <Self as swim_form::structural::read::recognizer::RecognizerReadable>::make_recognizer()
+                            <Self as ::swim_form::structural::read::recognizer::RecognizerReadable>::make_recognizer()
                         }
                     }
                 };
@@ -375,7 +375,7 @@ impl<'a> ToTokens for RecognizerState<'a> {
             | FieldGroup::DelegateBody(fld)
             | FieldGroup::Attribute(fld) => {
                 let ty = fld.field_ty;
-                quote!(core::option::Option<#ty>)
+                quote!(::core::option::Option<#ty>)
             }
             FieldGroup::Header {
                 tag_body,
@@ -383,14 +383,14 @@ impl<'a> ToTokens for RecognizerState<'a> {
             } => match tag_body {
                 Some(fld) if header_fields.is_empty() => {
                     let ty = fld.field_ty;
-                    quote!(core::option::Option<#ty>)
+                    quote!(::core::option::Option<#ty>)
                 }
                 ow => {
                     let header_fields = HeaderFieldsState {
                         tag_body: ow,
                         header_fields,
                     };
-                    quote!(core::option::Option<#header_fields>)
+                    quote!(::core::option::Option<#header_fields>)
                 }
             },
         });
@@ -399,25 +399,25 @@ impl<'a> ToTokens for RecognizerState<'a> {
             match grp {
                 FieldGroup::Tag(fld) => {
                     let ty = fld.field_ty;
-                    quote!(swim_form::structural::read::recognizer::TagRecognizer<#ty>)
+                    quote!(::swim_form::structural::read::recognizer::TagRecognizer<#ty>)
                 }
                 FieldGroup::Attribute(fld) => {
                     let ty = fld.field_ty;
-                    quote!(<#ty as swim_form::structural::read::recognizer::RecognizerReadable>::AttrRec)
+                    quote!(<#ty as ::swim_form::structural::read::recognizer::RecognizerReadable>::AttrRec)
                 }
                 FieldGroup::Item(fld) => {
                     let ty = fld.field_ty;
-                    quote!(<#ty as swim_form::structural::read::recognizer::RecognizerReadable>::Rec)
+                    quote!(<#ty as ::swim_form::structural::read::recognizer::RecognizerReadable>::Rec)
                 }
                 FieldGroup::DelegateBody(fld) => {
                     let ty = fld.field_ty;
-                    quote!(<#ty as swim_form::structural::read::recognizer::RecognizerReadable>::BodyRec)
+                    quote!(<#ty as ::swim_form::structural::read::recognizer::RecognizerReadable>::BodyRec)
                 }
                 FieldGroup::Header { tag_body, header_fields } => {
                     match tag_body {
                         Some(fld) if header_fields.is_empty() => {
                             let ty = fld.field_ty;
-                            quote!(<#ty as swim_form::structural::read::recognizer::RecognizerReadable>::AttrRec)
+                            quote!(<#ty as ::swim_form::structural::read::recognizer::RecognizerReadable>::AttrRec)
                         }
                         ow => {
                             let header_rep = HeaderFieldsState { tag_body: ow, header_fields };
@@ -426,8 +426,8 @@ impl<'a> ToTokens for RecognizerState<'a> {
                                 tag_body: ow,
                                 header_fields,
                             };
-                            let header_recognizer = quote!(swim_form::structural::read::recognizer::HeaderRecognizer<#header_rep, #recog_state>);
-                            quote!(swim_form::structural::read::recognizer::FirstOf<#header_recognizer, #header_recognizer>)
+                            let header_recognizer = quote!(::swim_form::structural::read::recognizer::HeaderRecognizer<#header_rep, #recog_state>);
+                            quote!(::swim_form::structural::read::recognizer::FirstOf<#header_recognizer, #header_recognizer>)
                         }
                     }
                 }
@@ -436,7 +436,7 @@ impl<'a> ToTokens for RecognizerState<'a> {
         });
 
         tokens.append_all(quote! {
-            ((#(#builder_types,)*), (#(#recognizer_types,)*), core::marker::PhantomData<fn() -> #target>)
+            ((#(#builder_types,)*), (#(#recognizer_types,)*), ::core::marker::PhantomData<fn() -> #target>)
         });
     }
 }
@@ -456,7 +456,7 @@ impl<'a> ToTokens for HeaderFieldsState<'a> {
 
         let builder_types = it.clone().map(|fld| {
             let ty = fld.field_ty;
-            quote!(core::option::Option<#ty>)
+            quote!(::core::option::Option<#ty>)
         });
 
         tokens.append_all(quote! {
@@ -502,11 +502,11 @@ impl<'a> ToTokens for HeaderRecognizerState<'a> {
 
         let recognizer_types = it.map(|fld| {
             let ty = fld.field_ty;
-            quote!(<#ty as swim_form::structural::read::recognizer::RecognizerReadable>::Rec)
+            quote!(<#ty as ::swim_form::structural::read::recognizer::RecognizerReadable>::Rec)
         });
 
         tokens.append_all(quote! {
-            (#fields_state, (#(#recognizer_types,)*), core::marker::PhantomData<fn() -> #target>)
+            (#fields_state, (#(#recognizer_types,)*), ::core::marker::PhantomData<fn() -> #target>)
         });
     }
 }
@@ -605,7 +605,7 @@ impl<'a> ToTokens for SelectIndexFnLabelled<'a> {
         let name_case = if tag_name.is_some() {
             offset += 1;
             Some(quote! {
-                swim_form::structural::read::recognizer::LabelledFieldKey::Tag => core::option::Option::Some(0),
+                ::swim_form::structural::read::recognizer::LabelledFieldKey::Tag => ::core::option::Option::Some(0),
             })
         } else {
             None
@@ -613,7 +613,7 @@ impl<'a> ToTokens for SelectIndexFnLabelled<'a> {
 
         let header_case = if tag_body.is_some() || !header_fields.is_empty() {
             let case = Some(quote! {
-                swim_form::structural::read::recognizer::LabelledFieldKey::Header => core::option::Option::Some(#offset),
+                ::swim_form::structural::read::recognizer::LabelledFieldKey::Header => ::core::option::Option::Some(#offset),
             });
             offset += 1;
             case
@@ -626,7 +626,7 @@ impl<'a> ToTokens for SelectIndexFnLabelled<'a> {
             *off += 1;
             let name = fld.resolve_name();
             Some(quote! {
-                swim_form::structural::read::recognizer::LabelledFieldKey::Attr(#name) => core::option::Option::Some(#n),
+                ::swim_form::structural::read::recognizer::LabelledFieldKey::Attr(#name) => ::core::option::Option::Some(#n),
             })
         });
 
@@ -637,7 +637,7 @@ impl<'a> ToTokens for SelectIndexFnLabelled<'a> {
             *off += 1;
             let name = fld.resolve_name();
             Some(quote! {
-                swim_form::structural::read::recognizer::LabelledFieldKey::Item(#name) => core::option::Option::Some(#n),
+                ::swim_form::structural::read::recognizer::LabelledFieldKey::Item(#name) => ::core::option::Option::Some(#n),
             })
         });
 
@@ -649,13 +649,13 @@ impl<'a> ToTokens for SelectIndexFnLabelled<'a> {
 
         tokens.append_all(quote! {
             #[automatically_derived]
-            fn #fn_name(key: swim_form::structural::read::recognizer::LabelledFieldKey<'_>) -> core::option::Option<u32> {
+            fn #fn_name(key: ::swim_form::structural::read::recognizer::LabelledFieldKey<'_>) -> ::core::option::Option<u32> {
                 match key {
                     #name_case
                     #header_case
                     #(#attr_cases)*
                     #(#body_cases)*
-                    _ => core::option::Option::None,
+                    _ => ::core::option::Option::None,
                 }
             }
         })
@@ -700,7 +700,7 @@ impl<'a> ToTokens for SelectIndexFnOrdinal<'a> {
         let name_case = if tag_name.is_some() {
             offset += 1;
             Some(quote! {
-                swim_form::structural::read::recognizer::OrdinalFieldKey::Tag => core::option::Option::Some(0),
+                ::swim_form::structural::read::recognizer::OrdinalFieldKey::Tag => ::core::option::Option::Some(0),
             })
         } else {
             None
@@ -708,7 +708,7 @@ impl<'a> ToTokens for SelectIndexFnOrdinal<'a> {
 
         let header_case = if tag_body.is_some() || !header_fields.is_empty() {
             let case = Some(quote! {
-                swim_form::structural::read::recognizer::OrdinalFieldKey::Header => core::option::Option::Some(#offset),
+                ::swim_form::structural::read::recognizer::OrdinalFieldKey::Header => ::core::option::Option::Some(#offset),
             });
             offset += 1;
             case
@@ -721,7 +721,7 @@ impl<'a> ToTokens for SelectIndexFnOrdinal<'a> {
             *off += 1;
             let name = fld.resolve_name();
             Some(quote! {
-                swim_form::structural::read::recognizer::OrdinalFieldKey::Attr(#name) => core::option::Option::Some(#n),
+                ::swim_form::structural::read::recognizer::OrdinalFieldKey::Attr(#name) => ::core::option::Option::Some(#n),
             })
         });
 
@@ -735,13 +735,13 @@ impl<'a> ToTokens for SelectIndexFnOrdinal<'a> {
 
         tokens.append_all(quote! {
             #[automatically_derived]
-            fn #fn_name(key: swim_form::structural::read::recognizer::OrdinalFieldKey<'_>) -> core::option::Option<u32> {
+            fn #fn_name(key: ::swim_form::structural::read::recognizer::OrdinalFieldKey<'_>) -> ::core::option::Option<u32> {
                 match key {
                     #name_case
                     #header_case
                     #(#attr_cases)*
-                    swim_form::structural::read::recognizer::OrdinalFieldKey::FirstItem => core::option::Option::Some(#offset),
-                    _ => core::option::Option::None,
+                    ::swim_form::structural::read::recognizer::OrdinalFieldKey::FirstItem => ::core::option::Option::Some(#offset),
+                    _ => ::core::option::Option::None,
                 }
             }
         })
@@ -838,7 +838,7 @@ impl<'a> ToTokens for SelectFeedFn<'a> {
             let idx = syn::Index::from(i);
             let case_index = i as u32;
             quote! {
-                #case_index => swim_form::structural::read::recognizer::feed_field(#name, &mut fields.#idx, &mut recognizers.#idx, event),
+                #case_index => ::swim_form::structural::read::recognizer::feed_field(#name, &mut fields.#idx, &mut recognizers.#idx, event),
             }
         });
 
@@ -846,7 +846,7 @@ impl<'a> ToTokens for SelectFeedFn<'a> {
             let (fields, recognizers, _) = state;
             match index {
                 #(#cases)*
-                _ => core::option::Option::Some(core::result::Result::Err(swim_form::structural::read::error::ReadError::InconsistentState)),
+                _ => ::core::option::Option::Some(::core::result::Result::Err(::swim_form::structural::read::error::ReadError::InconsistentState)),
             }
         })
     }
@@ -895,7 +895,7 @@ impl<'a> ToTokens for OnDoneFn<'a> {
 
                             quote! {
                                 if fields.#idx.is_none() {
-                                    fields.#idx = <#ty as swim_form::structural::read::recognizer::RecognizerReadable>::on_absent();
+                                    fields.#idx = <#ty as ::swim_form::structural::read::recognizer::RecognizerReadable>::on_absent();
                                     if fields.#idx.is_none() {
                                         missing.push(swim_model::Text::new(#name));
                                     }
@@ -905,7 +905,7 @@ impl<'a> ToTokens for OnDoneFn<'a> {
                         ow => {
                             let mut acc = TokenStream::new();
                             acc.append_all(quote! {
-                                let header = core::option::Option::get_or_insert_with(&mut fields.#idx, core::default::Default::default);
+                                let header = ::core::option::Option::get_or_insert_with(&mut fields.#idx, ::core::default::Default::default);
                             });
                             ow.iter().chain(header_fields.iter()).enumerate().fold(acc, |mut out, (j, fld)| {
                                 let inner_idx = syn::Index::from(j);
@@ -914,7 +914,7 @@ impl<'a> ToTokens for OnDoneFn<'a> {
 
                                 out.append_all(quote! {
                                     if header.#inner_idx.is_none() {
-                                        header.#inner_idx = <#ty as swim_form::structural::read::recognizer::RecognizerReadable>::on_absent();
+                                        header.#inner_idx = <#ty as ::swim_form::structural::read::recognizer::RecognizerReadable>::on_absent();
                                         if header.#inner_idx.is_none() {
                                             missing.push(swim_model::Text::new(#name));
                                         }
@@ -931,7 +931,7 @@ impl<'a> ToTokens for OnDoneFn<'a> {
 
                     quote! {
                         if fields.#idx.is_none() {
-                            fields.#idx = <#ty as swim_form::structural::read::recognizer::RecognizerReadable>::on_absent();
+                            fields.#idx = <#ty as ::swim_form::structural::read::recognizer::RecognizerReadable>::on_absent();
                             if fields.#idx.is_none() {
                                 missing.push(swim_model::Text::new(#name));
                             }
@@ -948,7 +948,7 @@ impl<'a> ToTokens for OnDoneFn<'a> {
             | FieldGroup::Attribute(fld)
             | FieldGroup::Tag(fld) => {
                 let name = &fld.selector;
-                quote!(core::option::Option::Some(#name))
+                quote!(::core::option::Option::Some(#name))
             }
             FieldGroup::Header {
                 tag_body,
@@ -956,14 +956,14 @@ impl<'a> ToTokens for OnDoneFn<'a> {
             } => match tag_body {
                 Some(fld) if header_fields.is_empty() => {
                     let name = &fld.selector;
-                    quote!(core::option::Option::Some(#name))
+                    quote!(::core::option::Option::Some(#name))
                 }
                 ow => {
                     let header_fields = ow.iter().chain(header_fields.iter()).map(|fld| {
                         let name = &fld.selector;
-                        quote!(core::option::Option::Some(#name))
+                        quote!(::core::option::Option::Some(#name))
                     });
-                    quote!(core::option::Option::Some((#(#header_fields,)*)))
+                    quote!(::core::option::Option::Some((#(#header_fields,)*)))
                 }
             },
         });
@@ -1006,7 +1006,7 @@ impl<'a> ToTokens for OnDoneFn<'a> {
                     if let Some(name) = name_map.get(&i) {
                         quote!(#name)
                     } else {
-                        quote!(core::default::Default::default())
+                        quote!(::core::default::Default::default())
                     }
                 });
                 quote! {
@@ -1018,14 +1018,14 @@ impl<'a> ToTokens for OnDoneFn<'a> {
         tokens.append_all(quote! {
 
             let (fields, _, _) = state;
-            let mut missing = std::vec![];
+            let mut missing = ::std::vec![];
 
             #(#validators)*
 
             if let (#(#field_dest,)*) = (#(#field_takes,)*) {
-                core::result::Result::Ok(#make_result)
+                ::core::result::Result::Ok(#make_result)
             } else {
-                core::result::Result::Err(swim_form::structural::read::error::ReadError::MissingFields(missing))
+                ::core::result::Result::Err(::swim_form::structural::read::error::ReadError::MissingFields(missing))
             }
         })
     }
@@ -1048,8 +1048,8 @@ impl ToTokens for ResetFn {
         let field_resets = (0..*num_fields).map(|i| {
             let idx = syn::Index::from(i);
             quote! {
-                fields.#idx = core::option::Option::None;
-                swim_form::structural::read::recognizer::Recognizer::reset(&mut recognizers.#idx);
+                fields.#idx = ::core::option::Option::None;
+                ::swim_form::structural::read::recognizer::Recognizer::reset(&mut recognizers.#idx);
             }
         });
 
@@ -1074,25 +1074,25 @@ impl<'a> ToTokens for ConstructFieldRecognizers<'a> {
                 match grp {
                     FieldGroup::Tag(fld) => {
                         let ty = fld.field_ty;
-                        quote!(<swim_form::structural::read::recognizer::TagRecognizer<#ty> as core::default::Default>::default())
+                        quote!(<::swim_form::structural::read::recognizer::TagRecognizer<#ty> as ::core::default::Default>::default())
                     }
                     FieldGroup::Attribute(fld) => {
                         let ty = fld.field_ty;
-                        quote!(<#ty as swim_form::structural::read::recognizer::RecognizerReadable>::make_attr_recognizer())
+                        quote!(<#ty as ::swim_form::structural::read::recognizer::RecognizerReadable>::make_attr_recognizer())
                     }
                     FieldGroup::Item(fld) => {
                         let ty = fld.field_ty;
-                        quote!(<#ty as swim_form::structural::read::recognizer::RecognizerReadable>::make_recognizer())
+                        quote!(<#ty as ::swim_form::structural::read::recognizer::RecognizerReadable>::make_recognizer())
                     }
                     FieldGroup::DelegateBody(fld) => {
                         let ty = fld.field_ty;
-                        quote!(<#ty as swim_form::structural::read::recognizer::RecognizerReadable>::make_body_recognizer())
+                        quote!(<#ty as ::swim_form::structural::read::recognizer::RecognizerReadable>::make_body_recognizer())
                     }
                     FieldGroup::Header { tag_body, header_fields } => {
                         match tag_body {
                             Some(fld) if header_fields.is_empty() => {
                                 let ty = fld.field_ty;
-                                quote!(<#ty as swim_form::structural::read::recognizer::RecognizerReadable>::make_attr_recognizer())
+                                quote!(<#ty as ::swim_form::structural::read::recognizer::RecognizerReadable>::make_attr_recognizer())
                             }
                             ow => {
                                 let select_index_name = if let Some(i) = variant {
@@ -1106,22 +1106,22 @@ impl<'a> ToTokens for ConstructFieldRecognizers<'a> {
 
                                 let recog_inits = ow.iter().chain(header_fields.iter()).map(|fld| {
                                     let ty = fld.field_ty;
-                                    quote!(<#ty as swim_form::structural::read::recognizer::RecognizerReadable>::make_recognizer())
+                                    quote!(<#ty as ::swim_form::structural::read::recognizer::RecognizerReadable>::make_recognizer())
                                 });
 
                                 let flds_constr= quote! {
-                                    (core::default::Default::default(), (#(#recog_inits,)*), core::marker::PhantomData)
+                                    (::core::default::Default::default(), (#(#recog_inits,)*), ::core::marker::PhantomData)
                                 };
 
                                 quote! {
-                                    swim_form::structural::read::recognizer::header_recognizer(
+                                    ::swim_form::structural::read::recognizer::header_recognizer(
                                         #has_body,
                                         || #flds_constr,
                                         #num_slots,
-                                        swim_form::structural::read::recognizer::HeaderVTable::new(
+                                        ::swim_form::structural::read::recognizer::HeaderVTable::new(
                                             #select_index_name,
                                             #select_feed_name,
-                                            swim_form::structural::read::recognizer::take_fields,
+                                            ::swim_form::structural::read::recognizer::take_fields,
                                             #on_reset_name
                                         )
                                     )
@@ -1180,9 +1180,9 @@ fn compound_recognizer(
         )
     };
     let recog_ty =
-        parse_quote!(swim_form::structural::read::recognizer::#recog_ty_name<#target, #builder>);
+        parse_quote!(::swim_form::structural::read::recognizer::#recog_ty_name<#target, #builder>);
     let vtable_ty =
-        parse_quote!(swim_form::structural::read::recognizer::#v_table_name<#target, #builder>);
+        parse_quote!(::swim_form::structural::read::recognizer::#v_table_name<#target, #builder>);
     (recog_ty, vtable_ty)
 }
 
@@ -1192,10 +1192,10 @@ impl<'a> ToTokens for StructReadableImpl<'a> {
         let name = fields.inner.name;
 
         let tag = if fields.fields.header.tag_name.is_some() {
-            quote!(swim_form::structural::read::recognizer::TagSpec::Field)
+            quote!(::swim_form::structural::read::recognizer::TagSpec::Field)
         } else {
             let lit_name = fields.inner.resolve_name();
-            quote!(swim_form::structural::read::recognizer::TagSpec::Fixed(#lit_name))
+            quote!(::swim_form::structural::read::recognizer::TagSpec::Fixed(#lit_name))
         };
 
         let make_fld_recog = ConstructFieldRecognizers {
@@ -1218,7 +1218,7 @@ impl<'a> ToTokens for StructReadableImpl<'a> {
         let make_recognizer_fn_body = if fields.inner.newtype_selector().is_some() {
             quote! {
             <#recog_ty>::new(
-                    (core::default::Default::default(), #make_fld_recog, core::marker::PhantomData),
+                    (::core::default::Default::default(), #make_fld_recog, ::core::marker::PhantomData),
                     <#vtable_ty>::new(
                         #select_index,
                         #select_feed,
@@ -1231,7 +1231,7 @@ impl<'a> ToTokens for StructReadableImpl<'a> {
             quote! {
                 <#recog_ty>::new(
                     #tag,
-                    (core::default::Default::default(), #make_fld_recog, core::marker::PhantomData),
+                    (::core::default::Default::default(), #make_fld_recog, ::core::marker::PhantomData),
                     #num_fields,
                     <#vtable_ty>::new(
                         #select_index,
@@ -1245,7 +1245,7 @@ impl<'a> ToTokens for StructReadableImpl<'a> {
 
         tokens.append_all(quote! {
             type Rec = #recog_ty;
-            type AttrRec = swim_form::structural::read::recognizer::SimpleAttrBody<
+            type AttrRec = ::swim_form::structural::read::recognizer::SimpleAttrBody<
                 #recog_ty,
             >;
             type BodyRec = Self::Rec;
@@ -1258,14 +1258,14 @@ impl<'a> ToTokens for StructReadableImpl<'a> {
 
             #[inline]
             fn make_attr_recognizer() -> Self::AttrRec {
-                swim_form::structural::read::recognizer::SimpleAttrBody::new(
-                    <Self as swim_form::structural::read::recognizer::RecognizerReadable>::make_recognizer()
+                ::swim_form::structural::read::recognizer::SimpleAttrBody::new(
+                    <Self as ::swim_form::structural::read::recognizer::RecognizerReadable>::make_recognizer()
                 )
             }
 
             #[inline]
             fn make_body_recognizer() -> Self::BodyRec {
-                <Self as swim_form::structural::read::recognizer::RecognizerReadable>::make_recognizer()
+                <Self as ::swim_form::structural::read::recognizer::RecognizerReadable>::make_recognizer()
             }
         })
     }
@@ -1296,7 +1296,7 @@ impl<'a> ToTokens for SelectVariantFn<'a> {
             let lit_name = var.inner.resolve_name();
             let constructor = if var.inner.fields_model.type_kind == CompoundTypeKind::Unit {
                 let var_name = var.inner.name;
-                parse_quote!(swim_form::structural::read::recognizer::UnitStructRecognizer::variant(|| #name::#var_name))
+                parse_quote!(::swim_form::structural::read::recognizer::UnitStructRecognizer::variant(|| #name::#var_name))
             } else {
                 let builder_name = suffixed_builder_ident(i);
                 let builder_ty = parse_quote!(#builder_name #gen_params);
@@ -1311,7 +1311,7 @@ impl<'a> ToTokens for SelectVariantFn<'a> {
 
                 parse_quote! {
                     <#recognizer>::variant(
-                        (core::default::Default::default(), #make_fld_recog, core::marker::PhantomData),
+                        (::core::default::Default::default(), #make_fld_recog, ::core::marker::PhantomData),
                         #num_fields,
                         <#vtable>::new(
                             #select_index,
@@ -1325,7 +1325,7 @@ impl<'a> ToTokens for SelectVariantFn<'a> {
 
             let ccons_constructor = make_ccons(i, constructor);
             quote! {
-                #lit_name => core::option::Option::Some(#ccons_constructor)
+                #lit_name => ::core::option::Option::Some(#ccons_constructor)
             }
         });
 
@@ -1355,7 +1355,7 @@ impl<'a> ToTokens for EnumState<'a> {
             model: SegregatedEnumModel { inner, variants },
             gen_params,
         } = self;
-        let base: syn::Type = parse_quote!(swim_form::structural::generic::coproduct::CNil);
+        let base: syn::Type = parse_quote!(::swim_form::structural::generic::coproduct::CNil);
 
         let name = inner.name;
         let enum_ty = parse_quote!(#name #gen_params);
@@ -1366,14 +1366,14 @@ impl<'a> ToTokens for EnumState<'a> {
             .rev()
             .fold(base, |acc, (i, var)| {
                 let ty = if var.inner.fields_model.type_kind == CompoundTypeKind::Unit {
-                    parse_quote!(swim_form::structural::read::recognizer::UnitStructRecognizer<#enum_ty>)
+                    parse_quote!(::swim_form::structural::read::recognizer::UnitStructRecognizer<#enum_ty>)
                 } else {
                     let builder_name = suffixed_builder_ident(i);
                     let builder = parse_quote!(#builder_name #gen_params);
                     let (ty, _) = compound_recognizer(var, &enum_ty, &builder);
                     ty
                 };
-                parse_quote!(swim_form::structural::generic::coproduct::CCons<#ty, #acc>)
+                parse_quote!(::swim_form::structural::generic::coproduct::CCons<#ty, #acc>)
             });
 
         let builder_name = builder_ident();
@@ -1385,9 +1385,9 @@ impl<'a> ToTokens for EnumState<'a> {
 }
 
 fn make_ccons(n: usize, expr: syn::Expr) -> syn::Expr {
-    let mut acc = parse_quote!(swim_form::structural::generic::coproduct::CCons::Head(#expr));
+    let mut acc = parse_quote!(::swim_form::structural::generic::coproduct::CCons::Head(#expr));
     for _ in 0..n {
-        acc = parse_quote!(swim_form::structural::generic::coproduct::CCons::Tail(#acc));
+        acc = parse_quote!(::swim_form::structural::generic::coproduct::CCons::Tail(#acc));
     }
     acc
 }
@@ -1439,7 +1439,7 @@ impl<'a> ToTokens for HeaderSelectIndexFn<'a> {
         let body_case = if tag_body.is_some() {
             offset += 1;
             Some(quote! {
-                swim_form::structural::read::recognizer::HeaderFieldKey::HeaderBody => core::option::Option::Some(0),
+                ::swim_form::structural::read::recognizer::HeaderFieldKey::HeaderBody => ::core::option::Option::Some(0),
             })
         } else {
             None
@@ -1450,7 +1450,7 @@ impl<'a> ToTokens for HeaderSelectIndexFn<'a> {
             *off += 1;
             let name = fld.resolve_name();
             Some(quote! {
-                swim_form::structural::read::recognizer::HeaderFieldKey::HeaderSlot(#name) => core::option::Option::Some(#n),
+                ::swim_form::structural::read::recognizer::HeaderFieldKey::HeaderSlot(#name) => ::core::option::Option::Some(#n),
             })
         });
 
@@ -1462,11 +1462,11 @@ impl<'a> ToTokens for HeaderSelectIndexFn<'a> {
 
         tokens.append_all(quote! {
             #[automatically_derived]
-            fn #fn_name(key: swim_form::structural::read::recognizer::HeaderFieldKey<'_>) -> core::option::Option<u32> {
+            fn #fn_name(key: ::swim_form::structural::read::recognizer::HeaderFieldKey<'_>) -> ::core::option::Option<u32> {
                 match key {
                     #body_case
                     #(#header_slot_cases)*
-                    _ => core::option::Option::None,
+                    _ => ::core::option::Option::None,
                 }
             }
         })
@@ -1488,7 +1488,7 @@ impl<'a> ToTokens for HeaderFeedFn<'a> {
             let idx = syn::Index::from(i);
             let case_index = i as u32;
             quote! {
-                #case_index => swim_form::structural::read::recognizer::feed_field(#name, &mut fields.#idx, &mut recognizers.#idx, event),
+                #case_index => ::swim_form::structural::read::recognizer::feed_field(#name, &mut fields.#idx, &mut recognizers.#idx, event),
             }
         });
 
@@ -1496,7 +1496,7 @@ impl<'a> ToTokens for HeaderFeedFn<'a> {
             let (fields, recognizers, _) = state;
             match index {
                 #(#cases)*
-                _ => core::option::Option::Some(core::result::Result::Err(swim_form::structural::read::error::ReadError::InconsistentState)),
+                _ => ::core::option::Option::Some(::core::result::Result::Err(::swim_form::structural::read::error::ReadError::InconsistentState)),
             }
         })
     }
@@ -1593,8 +1593,8 @@ impl<'a> ToTokens for HeaderRecognizerFns<'a> {
             #select_index
 
             #[automatically_derived]
-            fn #select_feed_name #impl_gen(state: &mut #builder_name #type_gen, index: u32, event: swim_form::structural::read::event::ReadEvent<'_>)
-                -> core::option::Option<core::result::Result<(), swim_form::structural::read::error::ReadError>>
+            fn #select_feed_name #impl_gen(state: &mut #builder_name #type_gen, index: u32, event: ::swim_form::structural::read::event::ReadEvent<'_>)
+                -> ::core::option::Option<::core::result::Result<(), ::swim_form::structural::read::error::ReadError>>
             #where_clause
             {
                 #select_feed

@@ -12,12 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::Form;
+use swim_form::Form;
 use swim_model::{Attr, Item, Value};
-
-mod swim_form {
-    pub use crate::*;
-}
 
 #[test]
 fn test_transmute_single_variant() {

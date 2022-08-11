@@ -16,12 +16,8 @@ use std::fmt::Debug;
 use std::sync::Arc;
 use swim_model::bigint::{BigInt, BigUint};
 
-use crate::Form;
+use swim_form::Form;
 use swim_model::{Attr, Blob, Item, Value};
-
-mod swim_form {
-    pub use crate::*;
-}
 
 #[test]
 fn transmute_bigint() {

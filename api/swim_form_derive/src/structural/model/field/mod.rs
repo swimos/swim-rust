@@ -72,10 +72,10 @@ impl<'a> ToTokens for Binder<'a> {
         if *is_default {
             match field {
                 FieldSelector::Named(id) => tokens.append_all(quote! {
-                    #id: core::default::Default::default()
+                    #id: ::core::default::Default::default()
                 }),
                 FieldSelector::Ordinal(_) => tokens.append_all(quote! {
-                    core::default::Default::default()
+                    ::core::default::Default::default()
                 }),
             }
         } else {

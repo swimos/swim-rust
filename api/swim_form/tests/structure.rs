@@ -12,14 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::structural::Tag;
-use crate::Form;
+use swim_form::{structural::Tag, Form};
 use swim_model::time::Timestamp;
 use swim_model::{Attr, Item, Text, Value};
-
-mod swim_form {
-    pub use crate::*;
-}
 
 #[test]
 fn test_transmute() {

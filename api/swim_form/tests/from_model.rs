@@ -12,17 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::structural::read::event::{NumericValue, ReadEvent};
-use crate::structural::read::recognizer::Recognizer;
-use crate::structural::read::recognizer::RecognizerReadable;
-use crate::structural::read::StructuralReadable;
 use std::borrow::Cow;
+use swim_form::structural::read::event::{NumericValue, ReadEvent};
+use swim_form::structural::read::recognizer::Recognizer;
+use swim_form::structural::read::recognizer::RecognizerReadable;
+use swim_form::structural::read::StructuralReadable;
 use swim_model::bigint::{BigInt, BigUint};
 use swim_model::{Attr, Blob, Item, Text, Value};
-
-mod swim_form {
-    pub use crate::*;
-}
 
 fn run_recognizer<'a, T, I>(rep: I) -> T
 where
