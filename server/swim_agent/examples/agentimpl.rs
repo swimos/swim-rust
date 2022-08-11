@@ -1,4 +1,4 @@
-use std::{cell::RefCell, sync::Arc};
+use std::cell::RefCell;
 
 use swim_agent::{
     agent_lifecycle::utility::HandlerContext,
@@ -32,7 +32,7 @@ fn make_agent() -> impl Agent + Send {
     let agent_fac = MyAgent::default;
     let lifecycle = MyAgentLifecycle::default().into_lifecycle();
 
-    AgentModel::new(Arc::new(agent_fac), lifecycle)
+    AgentModel::new(agent_fac, lifecycle)
 }
 
 /*

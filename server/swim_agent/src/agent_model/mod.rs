@@ -151,7 +151,17 @@ impl<LaneModel, Lifecycle: Clone> Clone for AgentModel<LaneModel, Lifecycle> {
 }
 
 impl<LaneModel, Lifecycle> AgentModel<LaneModel, Lifecycle> {
-    pub fn new(
+    pub fn new<F>(lane_model_fac: F, lifecycle: Lifecycle) -> Self
+    where
+        F: LaneModelFactory<LaneModel = LaneModel> + Sized + 'static,
+    {
+        AgentModel {
+            lane_model_fac: Arc::new(lane_model_fac),
+            lifecycle,
+        }
+    }
+
+    pub fn from_arc(
         lane_model_fac: Arc<dyn LaneModelFactory<LaneModel = LaneModel>>,
         lifecycle: Lifecycle,
     ) -> Self {
