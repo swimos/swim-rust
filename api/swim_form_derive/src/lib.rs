@@ -35,10 +35,14 @@ mod modifiers;
 mod structural;
 mod tag;
 
+fn root() -> syn::Path {
+    parse_quote!(::swim_form)
+}
+
 #[proc_macro_derive(Form, attributes(form))]
 pub fn derive_form(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    build_derive_structural_form(input)
+    build_derive_structural_form(root(), input)
         .unwrap_or_else(errs_to_compile_errors)
         .into()
 }
@@ -46,7 +50,7 @@ pub fn derive_form(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(Tag, attributes(form))]
 pub fn derive_tag(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    build_derive_tag(input)
+    build_derive_tag(root(), input)
         .unwrap_or_else(errs_to_compile_errors)
         .into()
 }
@@ -54,7 +58,7 @@ pub fn derive_tag(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(StructuralWritable, attributes(form))]
 pub fn derive_structural_writable(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    build_derive_structural_writable(input)
+    build_derive_structural_writable(root(), input)
         .unwrap_or_else(errs_to_compile_errors)
         .into()
 }
@@ -62,7 +66,7 @@ pub fn derive_structural_writable(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(StructuralReadable, attributes(form))]
 pub fn derive_structural_readable(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    build_derive_structural_readable(input)
+    build_derive_structural_readable(root(), input)
         .unwrap_or_else(errs_to_compile_errors)
         .into()
 }

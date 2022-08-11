@@ -75,6 +75,7 @@ pub enum NewtypeFieldError {
 
 /// Preprocessed description of a struct type.
 pub struct StructModel<'a> {
+    pub root: &'a syn::Path,
     /// The original name of the type.
     pub name: &'a Ident,
     /// Description of the fields of the struct.
@@ -139,6 +140,7 @@ impl<'a> From<&'a StructModel<'a>> for SegregatedStructModel<'a> {
 }
 
 pub(crate) struct StructDef<'a, Flds> {
+    root: &'a syn::Path,
     name: &'a Ident,
     top: &'a dyn ToTokens,
     attributes: &'a [Attribute],
@@ -147,12 +149,14 @@ pub(crate) struct StructDef<'a, Flds> {
 
 impl<'a, Flds> StructDef<'a, Flds> {
     pub(crate) fn new(
+        root: &'a syn::Path,
         name: &'a Ident,
         top: &'a dyn ToTokens,
         attributes: &'a [Attribute],
         definition: &'a Flds,
     ) -> Self {
         StructDef {
+            root,
             name,
             top,
             attributes,
@@ -167,6 +171,7 @@ where
 {
     fn validate(input: StructDef<'a, Flds>) -> SynValidation<Self> {
         let StructDef {
+            root,
             name,
             top,
             attributes,
@@ -186,6 +191,7 @@ where
             Some(StructTransform::Newtype(_)) => match model.newtype_field() {
                 Ok(selector) => {
                     let struct_model = StructModel {
+                        root,
                         name,
                         fields_model: model,
                         transform: Some(StructTransform::Newtype(Some(selector))),
@@ -194,6 +200,7 @@ where
                 }
                 Err(NewtypeFieldError::Multiple) => {
                     let struct_model = StructModel {
+                        root,
                         name,
                         fields_model: model,
                         transform: None,
@@ -203,6 +210,7 @@ where
                 }
                 Err(NewtypeFieldError::Empty) => {
                     let struct_model = StructModel {
+                        root,
                         name,
                         fields_model: model,
                         transform: None,
@@ -213,6 +221,7 @@ where
             },
             Some(transform @ StructTransform::Rename(_)) => {
                 let struct_model = StructModel {
+                    root,
                     name,
                     fields_model: model,
                     transform: Some(transform),
@@ -226,6 +235,7 @@ where
                 }
             }
             None => Validation::valid(StructModel {
+                root,
                 name,
                 fields_model: model,
                 transform: None,

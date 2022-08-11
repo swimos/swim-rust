@@ -23,6 +23,7 @@ use swim_utilities::errors::Errors;
 
 /// Model for an enumeration where all variants have no fields.
 pub struct UnitEnum<'a> {
+    root: &'a syn::Path,
     /// The name of the enumeration.
     name: &'a syn::Ident,
     /// The name of each variant, in order.
@@ -31,10 +32,15 @@ pub struct UnitEnum<'a> {
 
 impl<'a> UnitEnum<'a> {
     pub fn new(
+        root: &'a syn::Path,
         name: &'a syn::Ident,
         variants: Vec<(&'a syn::Ident, Option<NameTransform>)>,
     ) -> Self {
-        UnitEnum { name, variants }
+        UnitEnum {
+            root,
+            name,
+            variants,
+        }
     }
 }
 
@@ -51,7 +57,12 @@ fn lit_name(var_name: &syn::Ident, rename: &Option<NameTransform>) -> syn::LitSt
 
 impl<'a> ToTokens for DeriveTag<UnitEnum<'a>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let DeriveTag(UnitEnum { name, variants }) = self;
+        let DeriveTag(UnitEnum {
+            root,
+            name,
+            variants,
+            ..
+        }) = self;
 
         let var_as_str = variants.iter().map(|(var_name, rename)| {
             let lit = lit_name(*var_name, rename);
@@ -90,12 +101,12 @@ impl<'a> ToTokens for DeriveTag<UnitEnum<'a>> {
             }
 
             impl ::core::str::FromStr for #name {
-                type Err = ::swim_form::model::Text;
+                type Err = #root::model::Text;
 
                 fn from_str(txt: &str) -> core::result::Result<Self, Self::Err> {
                     match txt {
                         #(#str_as_var,)*
-                        _ => core::result::Result::Err(::swim_form::model::Text::new(#err_lit)),
+                        _ => core::result::Result::Err(#root::model::Text::new(#err_lit)),
                     }
                 }
             }
@@ -105,7 +116,7 @@ impl<'a> ToTokens for DeriveTag<UnitEnum<'a>> {
                 const VARIANT_NAMES: [&str; #num_vars] = [#(#literals),*];
 
                 #[automatically_derived]
-                impl ::swim_form::structural::Tag for #name {
+                impl #root::structural::Tag for #name {
 
                     const VARIANTS: &'static [&'static str] = &VARIANT_NAMES;
                 }
@@ -135,7 +146,10 @@ impl<'a> Display for Variants<'a> {
 const ENUM_WITH_FIELDS_ERR: &str = "Only enumerations with no fields can be tags.";
 const NON_ENUM_TYPE_ERR: &str = "Only enumeration types can be tags.";
 
-pub fn build_derive_tag(input: syn::DeriveInput) -> Result<TokenStream, Errors<syn::Error>> {
+pub fn build_derive_tag(
+    root: syn::Path,
+    input: syn::DeriveInput,
+) -> Result<TokenStream, Errors<syn::Error>> {
     match &input.data {
         syn::Data::Enum(enum_ty) => {
             if enum_ty.variants.iter().any(|var| !var.fields.is_empty()) {
@@ -157,7 +171,7 @@ pub fn build_derive_tag(input: syn::DeriveInput) -> Result<TokenStream, Errors<s
                         rename.map(move |rename| (&v.ident, rename))
                     })
                     .map(|var_names| {
-                        DeriveTag(UnitEnum::new(&input.ident, var_names)).into_token_stream()
+                        DeriveTag(UnitEnum::new(&root, &input.ident, var_names)).into_token_stream()
                     });
                 validated.into_result()
             }
