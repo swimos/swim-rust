@@ -5,8 +5,10 @@ authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
 [features]
-default = ["form"]
+default = ["all"]
+all = ["form", "server"]
 form = ["dep:swim_form"]
+server = ["dep:swim_server_app"]
 
 [dependencies]
 swim_utilities = { path = "../swim_utilities", features = ["io", "text"] }
@@ -14,3 +16,4 @@ swim_api = { path = "../api/swim_api" }
 swim_model = { path = "../api/swim_model" }
 swim_form = { path = "../api/swim_form", optional = true }
 swim_recon = { path = "../api/formats/swim_recon", features = ["async_parser"] }
+swim_server_app = { path = "../server/swim_server_app", optional = true }

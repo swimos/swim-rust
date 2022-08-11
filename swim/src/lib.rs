@@ -25,6 +25,9 @@ pub mod api {
             AgentConfig, AgentContext, AgentInitResult, AgentTask, BoxAgent, LaneConfig,
         };
 
+        #[cfg(feature = "server")]
+        pub use swim_server_app::AgentExt;
+
         pub mod error {
             pub use swim_api::error::{AgentInitError, AgentRuntimeError, AgentTaskError};
         }
@@ -53,4 +56,9 @@ pub mod io {
         pub use swim_api::error::{FrameIoError, InvalidFrame};
         pub use swim_recon::parser::AsyncParseError;
     }
+}
+
+#[cfg(feature = "server")]
+pub mod server {
+    pub use swim_server_app::{RemoteConnectionsConfig, Server, ServerBuilder, ServerHandle};
 }
