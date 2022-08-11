@@ -44,6 +44,7 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_util::codec::{FramedRead, FramedWrite};
 
 #[derive(Debug, Form, PartialEq, Eq, Clone)]
+#[form_root(::swim_form)]
 enum Message {
     Ping,
     Fail,

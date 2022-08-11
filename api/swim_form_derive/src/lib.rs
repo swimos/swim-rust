@@ -21,7 +21,8 @@ extern crate syn;
 
 use proc_macro::TokenStream;
 
-use syn::DeriveInput;
+use syn::punctuated::Pair;
+use syn::{DeriveInput, Meta, NestedMeta};
 
 use crate::structural::{
     build_derive_structural_form, build_derive_structural_readable,
@@ -35,38 +36,42 @@ mod modifiers;
 mod structural;
 mod tag;
 
-fn root() -> syn::Path {
-    parse_quote!(::swim_form)
+fn default_root() -> syn::Path {
+    parse_quote!(::swim::form)
 }
 
-#[proc_macro_derive(Form, attributes(form))]
+#[proc_macro_derive(Form, attributes(form, form_root))]
 pub fn derive_form(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    build_derive_structural_form(root(), input)
+    let mut input = parse_macro_input!(input as DeriveInput);
+    let root = extract_replace_root(&mut input.attrs).unwrap_or_else(default_root);
+    build_derive_structural_form(root, input)
         .unwrap_or_else(errs_to_compile_errors)
         .into()
 }
 
-#[proc_macro_derive(Tag, attributes(form))]
+#[proc_macro_derive(Tag, attributes(form, form_root))]
 pub fn derive_tag(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    build_derive_tag(root(), input)
+    let mut input = parse_macro_input!(input as DeriveInput);
+    let root = extract_replace_root(&mut input.attrs).unwrap_or_else(default_root);
+    build_derive_tag(root, input)
         .unwrap_or_else(errs_to_compile_errors)
         .into()
 }
 
-#[proc_macro_derive(StructuralWritable, attributes(form))]
+#[proc_macro_derive(StructuralWritable, attributes(form, form_root))]
 pub fn derive_structural_writable(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    build_derive_structural_writable(root(), input)
+    let mut input = parse_macro_input!(input as DeriveInput);
+    let root = extract_replace_root(&mut input.attrs).unwrap_or_else(default_root);
+    build_derive_structural_writable(root, input)
         .unwrap_or_else(errs_to_compile_errors)
         .into()
 }
 
-#[proc_macro_derive(StructuralReadable, attributes(form))]
+#[proc_macro_derive(StructuralReadable, attributes(form, form_root))]
 pub fn derive_structural_readable(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    build_derive_structural_readable(root(), input)
+    let mut input = parse_macro_input!(input as DeriveInput);
+    let root = extract_replace_root(&mut input.attrs).unwrap_or_else(default_root);
+    build_derive_structural_readable(root, input)
         .unwrap_or_else(errs_to_compile_errors)
         .into()
 }
@@ -79,4 +84,28 @@ fn errs_to_compile_errors(errors: Errors<syn::Error>) -> proc_macro2::TokenStrea
         .into_iter()
         .map(|e| syn::Error::to_compile_error(&e));
     quote!(#(#compile_errors)*)
+}
+
+fn extract_replace_root(attrs: &mut Vec<syn::Attribute>) -> Option<syn::Path> {
+    if let Some((i, p)) = attrs.iter_mut().enumerate().find_map(|(i, attr)| {
+        if attr.path.is_ident("form_root") {
+            match attr.parse_meta() {
+                Ok(Meta::List(lst)) => {
+                    let mut nested = lst.nested;
+                    match nested.pop().map(Pair::into_value) {
+                        Some(NestedMeta::Meta(Meta::Path(p))) if nested.is_empty() => Some((i, p)),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            }
+        } else {
+            None
+        }
+    }) {
+        attrs.remove(i);
+        Some(p)
+    } else {
+        None
+    }
 }

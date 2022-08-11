@@ -19,6 +19,7 @@ use swim_schema::ValueSchema;
 
 /// Updates that can be applied to a map lane.
 #[derive(Debug, PartialEq, Eq, Form, ValueSchema, Clone)]
+#[form_root(::swim_form)]
 pub enum MapUpdate<K, V> {
     #[form(tag = "update")]
     Update(#[form(header, name = "key")] K, #[form(body)] Arc<V>),

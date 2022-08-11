@@ -32,6 +32,7 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 pub const LANE: &str = "lane";
 
 #[derive(Form, Debug)]
+#[form_root(::swim_form)]
 pub enum TestMessage {
     SetAndReport(i32),
     Event,

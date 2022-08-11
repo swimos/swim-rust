@@ -128,6 +128,7 @@ fn nested_round_trip() {
 }
 
 #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+#[form_root(::swim_form)]
 struct AttrWrapper {
     #[form(attr)]
     inner: Value,

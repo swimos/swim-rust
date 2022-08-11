@@ -119,6 +119,7 @@ fn decode_event_notification() {
 }
 
 #[derive(Debug, Form, PartialEq, Eq)]
+#[form_root(::swim_form)]
 enum Message {
     Ping,
     CurrentValue(Text),

@@ -1,12 +1,16 @@
 [package]
 name = "swim"
 version = "0.1.0"
+authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = ["form"]
+form = ["dep:swim_form"]
 
 [dependencies]
+swim_utilities = { path = "../swim_utilities", features = ["io", "text"] }
 swim_api = { path = "../api/swim_api" }
 swim_model = { path = "../api/swim_model" }
-swim_form = { path = "../api/swim_form" }
-swim_recon = { path = "../api/formats/swim_recon" }
+swim_form = { path = "../api/swim_form", optional = true }
+swim_recon = { path = "../api/formats/swim_recon", features = ["async_parser"] }

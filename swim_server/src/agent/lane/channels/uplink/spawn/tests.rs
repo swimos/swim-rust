@@ -61,6 +61,7 @@ use url::Url;
 const INIT: i32 = 42;
 
 #[derive(Debug, Form)]
+#[form_root(::swim_form)]
 struct Message(i32);
 
 //A minimal suite of fake uplink and router implementations which which to test the spawner.

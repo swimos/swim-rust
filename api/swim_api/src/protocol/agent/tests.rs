@@ -58,6 +58,7 @@ fn encode_command_lane_request() {
 }
 
 #[derive(Debug, Form, Clone, Copy, PartialEq, Eq)]
+#[form_root(::swim_form)]
 struct Example {
     a: i32,
     b: i32,

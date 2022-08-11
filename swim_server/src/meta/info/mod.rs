@@ -60,6 +60,7 @@ const SYNC_ERR: &str = "Failed to sync";
 ///
 /// E.g: `swim:meta:node/unit%2Ffoo/lanes/`
 #[derive(Debug, Clone, PartialEq, Form)]
+#[form_root(::swim_form)]
 pub struct LaneInfo {
     /// The URI of the lane.
     #[form(name = "laneUri")]
@@ -83,6 +84,7 @@ impl LaneInfo {
 
 /// An enumeration representing the type of a lane.
 #[derive(Tag, Debug, PartialEq, Eq, Clone, Copy)]
+#[form_root(::swim_form)]
 pub enum LaneKind {
     Action,
     Command,

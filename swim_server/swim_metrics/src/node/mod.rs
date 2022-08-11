@@ -84,6 +84,7 @@ impl MetricReporter for ModeMetricReporter {
 
 /// A node pulse detailing accumulated metrics.
 #[derive(Default, Form, Copy, Clone, PartialEq, Debug)]
+#[form_root(::swim_form)]
 pub struct NodePulse {
     /// Accumulated WARP uplink pulse.
     pub uplinks: WarpUplinkPulse,

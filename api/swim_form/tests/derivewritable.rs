@@ -205,6 +205,7 @@ fn validate<T: StructuralWritable>(
 #[test]
 fn derive_unit_struct() {
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     struct Unit;
 
     let unit = Unit;
@@ -219,6 +220,7 @@ fn derive_unit_struct() {
 #[test]
 fn derive_simple_struct() {
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     struct Simple {
         first: i32,
     }
@@ -238,6 +240,7 @@ fn derive_simple_struct() {
 #[test]
 fn derive_two_field_struct() {
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     struct TwoFields {
         first: i32,
         second: String,
@@ -264,6 +267,7 @@ fn derive_two_field_struct() {
 #[test]
 fn derive_two_field_tuple_struct() {
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     struct TwoFields(i32, String);
 
     let two_fields = TwoFields(2, "hello".to_string());
@@ -284,6 +288,7 @@ fn derive_two_field_tuple_struct() {
 #[test]
 fn derive_struct_lift_attr() {
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     struct MyStruct {
         #[form(attr)]
         in_attr: bool,
@@ -313,6 +318,7 @@ fn derive_struct_lift_attr() {
 #[test]
 fn derive_struct_lift_header_body() {
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     struct MyStruct {
         #[form(header_body)]
         in_header: bool,
@@ -342,6 +348,7 @@ fn derive_struct_lift_header_body() {
 #[test]
 fn derive_struct_lift_header_slot() {
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     struct MyStruct {
         #[form(header)]
         in_header_slot: bool,
@@ -374,6 +381,7 @@ fn derive_struct_lift_header_slot() {
 #[test]
 fn derive_struct_lift_header_slots() {
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     struct MyStruct {
         #[form(header)]
         node: String,
@@ -412,6 +420,7 @@ fn derive_struct_lift_header_slots() {
 #[test]
 fn derive_struct_lift_complex_header() {
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     struct MyStruct {
         #[form(header_body)]
         count: i32,
@@ -454,6 +463,7 @@ fn derive_struct_lift_complex_header() {
 #[test]
 fn derive_struct_rename_slot() {
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     struct MyStruct {
         #[form(name = "renamed")]
         first: i32,
@@ -481,6 +491,7 @@ fn derive_struct_rename_slot() {
 #[test]
 fn derive_struct_rename_tuple_values() {
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     struct MyStruct(#[form(name = "first")] i32, #[form(name = "second")] String);
 
     let instance = MyStruct(2, "hello".to_string());
@@ -501,6 +512,7 @@ fn derive_struct_rename_tuple_values() {
 #[test]
 fn derive_struct_rename_tag() {
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     #[form(tag = "Renamed")]
     struct MyStruct {
         first: i32,
@@ -528,6 +540,7 @@ fn derive_struct_rename_tag() {
 #[test]
 fn derive_struct_tag_from_field() {
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     struct MyStruct {
         first: i32,
         #[form(tag)]
@@ -552,12 +565,14 @@ fn derive_struct_tag_from_field() {
 #[test]
 fn derive_nested_structs() {
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     struct Inner {
         first: i32,
         second: String,
     }
 
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     struct Outer {
         inner: Inner,
     }
@@ -590,6 +605,7 @@ fn derive_nested_structs() {
 #[test]
 fn derive_struct_simple_body_replacement() {
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     struct MyStruct {
         first: i32,
         #[form(body)]
@@ -628,12 +644,14 @@ fn derive_struct_simple_body_replacement() {
 #[test]
 fn derive_struct_complex_body_replacement() {
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     struct Inner {
         first: i32,
         second: String,
     }
 
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     struct Outer {
         node: String,
         #[form(body)]
@@ -667,6 +685,7 @@ fn derive_struct_complex_body_replacement() {
 #[test]
 fn derive_unit_enum_variant() {
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     enum UnitEnum {
         Variant0,
     }
@@ -683,6 +702,7 @@ fn derive_unit_enum_variant() {
 #[test]
 fn derive_labelled_enum_variant() {
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     enum LabelledEnum {
         Variant1 { first: String, second: i64 },
     }
@@ -708,6 +728,7 @@ fn derive_labelled_enum_variant() {
 #[test]
 fn derive_tuple_enum_variant() {
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     enum TupleEnum {
         Variant2(String, i64),
     }
@@ -730,6 +751,7 @@ fn derive_tuple_enum_variant() {
 #[test]
 fn derive_mixed_enum_type() {
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     enum MixedEnum {
         Variant0,
         Variant1 { first: String, second: i64 },
@@ -779,11 +801,13 @@ fn derive_mixed_enum_type() {
 #[test]
 fn derive_delegated_enum_type() {
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     struct Inner {
         value: i32,
     }
 
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     enum MixedEnum {
         Variant1 {
             first: String,
@@ -840,6 +864,7 @@ fn derive_delegated_enum_type() {
 #[test]
 fn derive_skipped_field_struct() {
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     struct Skippy {
         present: i32,
         #[form(skip)]
@@ -864,6 +889,7 @@ fn derive_skipped_field_struct() {
 #[test]
 fn derive_skipped_field_tuple_struct() {
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     struct Skippy(i32, #[form(skip)] String);
 
     let skippy = Skippy(2, "hello".to_string());
@@ -881,6 +907,7 @@ fn derive_skipped_field_tuple_struct() {
 #[test]
 fn derive_two_field_generic_struct() {
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     struct TwoFields<S, T> {
         first: S,
         second: T,
@@ -907,6 +934,7 @@ fn derive_two_field_generic_struct() {
 #[test]
 fn derive_generic_enum() {
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     enum Mixed<S, T> {
         Variant0,
         Variant1 { value: S },
@@ -947,6 +975,7 @@ fn derive_generic_enum() {
 #[test]
 fn optional_slot() {
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     struct MyStruct {
         first: Option<i32>,
         second: String,
@@ -989,6 +1018,7 @@ fn optional_slot() {
 #[test]
 fn optional_slot_in_header() {
     #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
     struct MyStruct {
         #[form(header)]
         first: Option<i32>,

@@ -26,6 +26,7 @@ fn run_recognizer<T: StructuralReadable>(rep: &str) -> T {
 #[test]
 fn derive_unit_struct() {
     #[derive(StructuralReadable)]
+    #[form_root(::swim_form)]
     struct Unit;
 
     run_recognizer::<Unit>("@Unit");
@@ -34,6 +35,7 @@ fn derive_unit_struct() {
 #[test]
 fn derive_simple_struct() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     struct Simple {
         first: i32,
     }
@@ -45,6 +47,7 @@ fn derive_simple_struct() {
 #[test]
 fn derive_two_field_struct() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     struct TwoFields {
         first: i32,
         second: String,
@@ -72,6 +75,7 @@ fn derive_two_field_struct() {
 #[test]
 fn derive_two_field_tuple_struct() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     struct TwoFields(i32, String);
 
     let instance = run_recognizer::<TwoFields>("@TwoFields { 12, hello }");
@@ -81,6 +85,7 @@ fn derive_two_field_tuple_struct() {
 #[test]
 fn derive_struct_lift_attr() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     struct MyStruct {
         #[form(attr)]
         in_attr: bool,
@@ -103,6 +108,7 @@ fn derive_struct_lift_attr() {
 #[test]
 fn derive_struct_lift_header_body() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     struct MyStruct {
         #[form(header_body)]
         in_header: bool,
@@ -124,6 +130,7 @@ fn derive_struct_lift_header_body() {
 #[test]
 fn derive_struct_lift_header_body_complex() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     struct MyStruct {
         #[form(header_body)]
         in_header: Vec<bool>,
@@ -157,6 +164,7 @@ fn derive_struct_lift_header_body_complex() {
 #[test]
 fn derive_struct_lift_header_slot() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     struct MyStruct {
         #[form(header)]
         in_header_slot: bool,
@@ -180,6 +188,7 @@ fn derive_struct_lift_header_slot() {
 #[test]
 fn derive_struct_lift_header_slots() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     struct MyStruct {
         #[form(header)]
         node: String,
@@ -232,6 +241,7 @@ fn derive_struct_lift_header_slots() {
 #[test]
 fn derive_struct_lift_complex_header() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     struct MyStruct {
         #[form(header_body)]
         count: i32,
@@ -289,6 +299,7 @@ fn derive_struct_lift_complex_header() {
 #[test]
 fn derive_struct_rename_slot() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     struct MyStruct {
         #[form(name = "renamed")]
         first: i32,
@@ -308,6 +319,7 @@ fn derive_struct_rename_slot() {
 #[test]
 fn derive_struct_rename_tuple_values() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     struct MyStruct(#[form(name = "first")] i32, #[form(name = "second")] String);
 
     let instance = run_recognizer::<MyStruct>("@MyStruct { first: -34, second: \"name\" }");
@@ -317,6 +329,7 @@ fn derive_struct_rename_tuple_values() {
 #[test]
 fn derive_struct_rename_tag() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     #[form(tag = "Renamed")]
     struct MyStruct {
         first: i32,
@@ -334,6 +347,7 @@ fn derive_struct_rename_tag() {
 }
 
 #[derive(Tag, PartialEq, Eq, Debug)]
+#[form_root(::swim_form)]
 enum TagType {
     Tag,
     Other,
@@ -342,6 +356,7 @@ enum TagType {
 #[test]
 fn derive_struct_tag_from_field() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     struct MyStruct {
         first: i32,
         #[form(tag)]
@@ -361,12 +376,14 @@ fn derive_struct_tag_from_field() {
 #[test]
 fn derive_nested_structs() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     struct Inner {
         first: i32,
         second: String,
     }
 
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     struct Outer {
         inner: Inner,
     }
@@ -387,6 +404,7 @@ fn derive_nested_structs() {
 #[test]
 fn derive_struct_simple_body_replacement() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     struct MyStruct {
         first: i32,
         #[form(body)]
@@ -415,12 +433,14 @@ fn derive_struct_simple_body_replacement() {
 #[test]
 fn derive_struct_complex_body_replacement() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     struct Inner {
         first: i32,
         second: String,
     }
 
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     struct Outer {
         node: String,
         #[form(body)]
@@ -444,6 +464,7 @@ fn derive_struct_complex_body_replacement() {
 #[test]
 fn derive_unit_enum_variant() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     enum UnitEnum {
         Variant0,
     }
@@ -456,6 +477,7 @@ fn derive_unit_enum_variant() {
 #[test]
 fn derive_labelled_enum_variant() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     enum LabelledEnum {
         Variant1 { first: String, second: i64 },
     }
@@ -474,6 +496,7 @@ fn derive_labelled_enum_variant() {
 #[test]
 fn derive_tuple_enum_variant() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     enum TupleEnum {
         Variant2(String, i64),
     }
@@ -486,6 +509,7 @@ fn derive_tuple_enum_variant() {
 #[test]
 fn derive_mixed_enum_type() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     enum MixedEnum {
         Variant0,
         Variant1 { first: String, second: i64 },
@@ -514,6 +538,7 @@ fn derive_mixed_enum_type() {
 #[test]
 fn derive_skipped_field_struct() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     struct Skippy {
         present: i32,
         #[form(skip)]
@@ -533,6 +558,7 @@ fn derive_skipped_field_struct() {
 #[test]
 fn derive_skipped_field_tuple_struct() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     struct Skippy(#[form(skip)] i32, String);
 
     let instance = run_recognizer::<Skippy>("@Skippy { hello }");
@@ -542,6 +568,7 @@ fn derive_skipped_field_tuple_struct() {
 #[test]
 fn derive_generic_two_field_struct() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     struct TwoFields<S, T> {
         first: S,
         second: T,
@@ -571,6 +598,7 @@ fn derive_generic_two_field_struct() {
 #[test]
 fn derive_generic_enum() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     enum Mixed<S, T> {
         Variant0,
         Variant1 { value: S },
@@ -590,6 +618,7 @@ fn derive_generic_enum() {
 #[test]
 fn derive_empty_enum() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     enum Empty {}
 
     let span = Span::new("");
@@ -599,6 +628,7 @@ fn derive_empty_enum() {
 #[test]
 fn derive_generic_header() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     struct GenericHeader<S, T, U> {
         #[form(header)]
         first: S,
@@ -636,6 +666,7 @@ fn derive_generic_header() {
 fn derive_map_update() {
     // The most complex derivation in the codebase, used here as a stress test.
     #[derive(StructuralReadable, Debug, PartialEq, Eq)]
+    #[form_root(::swim_form)]
     enum MapUpdate<K, V> {
         #[form(tag = "update")]
         Update(#[form(header, name = "key")] K, #[form(body)] Arc<V>),
@@ -665,6 +696,7 @@ fn derive_map_update() {
 #[test]
 fn optional_slot() {
     #[derive(StructuralReadable, Debug, PartialEq, Eq)]
+    #[form_root(::swim_form)]
     struct MyStruct {
         first: Option<i32>,
         second: String,
@@ -701,6 +733,7 @@ fn optional_slot() {
 #[test]
 fn optional_slot_in_header() {
     #[derive(StructuralReadable, Debug, PartialEq, Eq)]
+    #[form_root(::swim_form)]
     struct MyStruct {
         #[form(header)]
         first: Option<i32>,

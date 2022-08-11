@@ -170,6 +170,7 @@ fn encode_command_frame() {
 }
 
 #[derive(Form, PartialEq, Eq, Debug, Clone, Copy)]
+#[form_root(::swim_form)]
 struct Example {
     first: i32,
     second: i32,
@@ -1092,6 +1093,7 @@ fn decode_client_event_frame() {
 }
 
 #[derive(Form, PartialEq, Eq, Debug)]
+#[form_root(::swim_form)]
 enum Example2 {
     First(Text),
     Second,

@@ -68,6 +68,7 @@ async fn read_invalid_file() {
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Form)]
+#[form_root(::swim_form)]
 struct Example {
     field: i32,
 }
@@ -123,6 +124,7 @@ async fn recognize_decode_two_parts() {
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Form)]
+#[form_root(::swim_form)]
 struct UnitExample;
 
 const UNIT_RECON: &str = "@UnitExample";
