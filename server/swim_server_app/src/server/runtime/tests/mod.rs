@@ -172,6 +172,13 @@ impl TestClient {
         self.ws.write_text(envelope).await.expect("Write failed.")
     }
 
+    async fn expect_close<'a>(&mut self) {
+        let TestClient { ws, read_buffer } = self;
+        read_buffer.clear();
+        let message = ws.read(read_buffer).await.expect("Read failed.");
+        assert!(matches!(message, Message::Close(_)));
+    }
+
     async fn expect_envelope<'a>(&'a mut self) -> RawEnvelope<'a> {
         let TestClient { ws, read_buffer } = self;
         read_buffer.clear();
@@ -272,6 +279,7 @@ async fn message_for_nonexistent_agent() {
             .await;
 
         context.handle.stop();
+        client.expect_close().await;
         context
     })
     .await;
@@ -302,6 +310,7 @@ async fn command_to_agent() {
         assert_eq!(report_rx.recv().await.expect("Agent stopped."), 56);
 
         context.handle.stop();
+        client.expect_close().await;
         context
     })
     .await;
@@ -333,6 +342,7 @@ async fn commands_to_agent() {
         }
 
         context.handle.stop();
+        client.expect_close().await;
         context
     })
     .await;
@@ -359,6 +369,7 @@ async fn link_to_agent_lane() {
         context.handle.stop();
 
         client.expect_unlinked(NODE, LANE, "").await;
+        client.expect_close().await;
 
         context
     })
@@ -388,7 +399,7 @@ async fn sync_with_agent_lane() {
         context.handle.stop();
 
         client.expect_unlinked(NODE, LANE, "").await;
-
+        client.expect_close().await;
         context
     })
     .await;
@@ -419,6 +430,7 @@ async fn trigger_event() {
         context.handle.stop();
 
         client.expect_unlinked(NODE, LANE, "").await;
+        client.expect_close().await;
 
         context
     })
@@ -486,11 +498,12 @@ async fn broadcast_events() {
             client2
         };
 
-        let (mut client1, _client2) = join(event_consumer, event_generator).await;
+        let (mut client1, mut client2) = join(event_consumer, event_generator).await;
 
         context.handle.stop();
 
         client1.expect_unlinked(NODE, LANE, "").await;
+        join(client1.expect_close(), client2.expect_close()).await;
 
         context
     })
@@ -523,7 +536,7 @@ async fn explicit_unlink_from_agent_lane() {
         client.command(NODE, LANE, TestMessage::Event).await;
 
         context.handle.stop();
-
+        client.expect_close().await;
         context
     })
     .await;
@@ -579,6 +592,7 @@ async fn agent_timeout() {
         assert_eq!(report_rx.recv().await.expect("Agent stopped."), -45);
 
         context.handle.stop();
+        client.expect_close().await;
         context
     })
     .await;
