@@ -75,7 +75,7 @@ pub fn lifecycle(attr: TokenStream, item: TokenStream) -> TokenStream {
         .and_then(|(path, stripped_attrs)| {
             agent_lifecycle::validate_with_attrs(path, &item, stripped_attrs, default_root())
         })
-        .map(|model| ImplAgentLifecycle::new(model))
+        .map(ImplAgentLifecycle::new)
         .map(|agent_lc| {
             quote! {
                 #item
