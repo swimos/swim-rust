@@ -41,9 +41,26 @@ const BAD_PARAM: &str =
     "The parameter to the lifecycle attribute should be a path to an agent type.";
 const ROOT: &str = "agent_root";
 
+/// Parameters passed to the lifecycle macro.
 pub struct LifecycleArgs {
-    agent_type: Path,
-    root_path: Option<Path>,
+    agent_type: Path,        //Path to the agent type that the lifecycle is for.
+    root_path: Option<Path>, //Root path where the swim_agent crate is mounted in the module tree.
+}
+
+impl LifecycleArgs {
+    fn new(agent_type: Path) -> Self {
+        LifecycleArgs {
+            agent_type,
+            root_path: None,
+        }
+    }
+
+    fn with_root(agent_type: Path, root_path: Path) -> Self {
+        LifecycleArgs {
+            agent_type,
+            root_path: Some(root_path),
+        }
+    }
 }
 
 /// Validate the body of the 'lifecycle' attribute. This is require to have the form
@@ -60,19 +77,15 @@ pub fn validate_attr_args(
 ) -> Validation<LifecycleArgs, Errors<syn::Error>> {
     match args.as_slice() {
         [] => Validation::fail(syn::Error::new_spanned(item, NO_AGENT)),
-        [NestedMeta::Meta(Meta::Path(agent))] => Validation::valid(LifecycleArgs {
-            agent_type: agent.clone(),
-            root_path: None,
-        }),
+        [NestedMeta::Meta(Meta::Path(agent))] => {
+            Validation::valid(LifecycleArgs::new(agent.clone()))
+        }
         [NestedMeta::Meta(Meta::Path(agent)), second @ NestedMeta::Meta(Meta::List(lst))]
             if lst.path.is_ident(ROOT) =>
         {
             match lst.nested.first() {
                 Some(NestedMeta::Meta(Meta::Path(root_path))) if lst.nested.len() == 1 => {
-                    Validation::valid(LifecycleArgs {
-                        agent_type: agent.clone(),
-                        root_path: Some(root_path.clone()),
-                    })
+                    Validation::valid(LifecycleArgs::with_root(agent.clone(), root_path.clone()))
                 }
                 _ => Validation::fail(syn::Error::new_spanned(second, EXTRA_PARAM)),
             }
