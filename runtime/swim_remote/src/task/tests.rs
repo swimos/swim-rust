@@ -648,7 +648,7 @@ async fn ws_close() {
 
     let close_reason = CloseReason::new(CloseCode::GoingAway, Some("gone".to_string()));
     client
-        .close_with(close_reason.clone())
+        .close(close_reason.clone())
         .await
         .expect("Close failed.");
 
@@ -710,7 +710,7 @@ async fn ignore_ping_pong() {
     let mut buf = BytesMut::new();
 
     let message = client.read(&mut buf).await.expect("Read failed.");
-    assert_eq!(message, Message::Pong);
+    assert!(matches!(message, Message::Pong(_)));
 
     assert_eq!(
         frames,

@@ -80,7 +80,7 @@ where
                 }
                 Err(e) => {
                     inner
-                        .close_with(CloseReason::new(
+                        .close(CloseReason::new(
                             CloseCode::Protocol,
                             Some("Invalid encoding".to_string()),
                         ))
@@ -89,8 +89,8 @@ where
                 }
             },
             Message::Binary => Ok(WsMessage::Binary(buf.split().freeze())),
-            Message::Ping => Ok(WsMessage::Ping),
-            Message::Pong => Ok(WsMessage::Pong),
+            Message::Ping(_) => Ok(WsMessage::Ping),
+            Message::Pong(_) => Ok(WsMessage::Pong),
             Message::Close(reason) => Ok(WsMessage::Close(reason)),
         }
     }
@@ -124,7 +124,7 @@ where
                 }
                 Err(e) => {
                     inner
-                        .close_with(CloseReason::new(
+                        .close(CloseReason::new(
                             CloseCode::Protocol,
                             Some("Invalid encoding".to_string()),
                         ))
@@ -133,8 +133,8 @@ where
                 }
             },
             Message::Binary => Ok(WsMessage::Binary(buf.split().freeze())),
-            Message::Ping => Ok(WsMessage::Ping),
-            Message::Pong => Ok(WsMessage::Pong),
+            Message::Ping(_) => Ok(WsMessage::Ping),
+            Message::Pong(_) => Ok(WsMessage::Pong),
             Message::Close(reason) => Ok(WsMessage::Close(reason)),
         }
     }

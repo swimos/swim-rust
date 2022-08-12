@@ -5,8 +5,8 @@ authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
 [dependencies]
-ratchet = { package = "ratchet_rs", version = "0.1.0", features = ["deflate", "split"] }
-ratchet_fixture = "0.1.0"
+ratchet = { package = "ratchet_rs", version = "0.2.0", features = ["deflate", "split"] }
+ratchet_fixture = "0.2.0"
 bytes = "1.0"
 flate2 = "1.0.22"
 futures = "0.3.4"

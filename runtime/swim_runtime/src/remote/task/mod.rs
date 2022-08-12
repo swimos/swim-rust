@@ -315,7 +315,7 @@ where
             }
             _ => None,
         } {
-            if let Err(error) = ws_tx.close_with(reason).await {
+            if let Err(error) = ws_tx.close(reason).await {
                 event!(Level::ERROR, ERROR_ON_CLOSE, ?error);
             }
         }
