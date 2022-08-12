@@ -684,7 +684,6 @@ async fn error_on_binary_frame() {
 }
 
 #[tokio::test]
-#[ignore = "Pending fix in ratchet."]
 async fn ignore_ping_pong() {
     let (server, mut client) = make_fake_ws();
 
@@ -1076,7 +1075,6 @@ where
 }
 
 #[tokio::test]
-#[ignore = "Pending fix in ratchet."]
 async fn combined_clean_shutdown() {
     test_combined_task(|mut context| async move {
         context.stop();
