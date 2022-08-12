@@ -84,6 +84,15 @@ where
         let (fut, handle) = self.run_server();
         (fut.boxed(), handle)
     }
+
+    fn run_box(
+        self: Box<Self>,
+    ) -> (
+        futures::future::BoxFuture<'static, Result<(), std::io::Error>>,
+        ServerHandle,
+    ) {
+        (*self).run()
+    }
 }
 
 /// Tracks the shutdown process for the server.

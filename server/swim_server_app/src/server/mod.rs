@@ -50,4 +50,20 @@ pub trait Server {
     /// outside the event loop. If the handle is dropped, this will also cause the server
     /// to stop.
     fn run(self) -> (BoxFuture<'static, Result<(), std::io::Error>>, ServerHandle);
+
+    /// Run the server from a box.
+    fn run_box(self: Box<Self>) -> (BoxFuture<'static, Result<(), std::io::Error>>, ServerHandle);
+}
+
+/// A boxed server implementation.
+pub struct BoxServer(pub Box<dyn Server>);
+
+impl Server for BoxServer {
+    fn run(self) -> (BoxFuture<'static, Result<(), std::io::Error>>, ServerHandle) {
+        self.0.run_box()
+    }
+
+    fn run_box(self: Box<Self>) -> (BoxFuture<'static, Result<(), std::io::Error>>, ServerHandle) {
+        self.0.run_box()
+    }
 }

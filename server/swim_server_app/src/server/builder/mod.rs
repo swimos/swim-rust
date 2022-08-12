@@ -38,7 +38,7 @@ use crate::{
     plane::{PlaneBuilder, PlaneModel},
 };
 
-use super::{runtime::SwimServer, Server};
+use super::{runtime::SwimServer, BoxServer, Server};
 
 /// Builder for a swim server that will listen on a socket and run a suite of agents.
 pub struct ServerBuilder {
@@ -117,7 +117,7 @@ impl ServerBuilder {
 
     /// Attempt to make a server instance. This will fail if the routes specified for the
     /// agents are ambiguous.
-    pub async fn build(self) -> Result<Box<dyn Server>, AmbiguousRoutes> {
+    pub async fn build(self) -> Result<BoxServer, AmbiguousRoutes> {
         let ServerBuilder {
             bind_to,
             plane,
@@ -129,16 +129,16 @@ impl ServerBuilder {
         let resolver = Arc::new(Resolver::new().await);
         if enable_tls {
             let networking = TokioPlainTextNetworking::new(resolver);
-            Ok(with_websockets(
+            Ok(BoxServer(with_websockets(
                 bind_to, routes, networking, config, deflate,
-            ))
+            )))
         } else {
             //TODO Make this support actual identities.
             let networking =
                 TokioTlsNetworking::new::<_, Box<PathBuf>>(std::iter::empty(), resolver);
-            Ok(with_websockets(
+            Ok(BoxServer(with_websockets(
                 bind_to, routes, networking, config, deflate,
-            ))
+            )))
         }
     }
 }

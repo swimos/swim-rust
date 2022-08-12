@@ -63,7 +63,9 @@ pub mod io {
 
 #[cfg(feature = "server")]
 pub mod server {
-    pub use swim_server_app::{RemoteConnectionsConfig, Server, ServerBuilder, ServerHandle};
+    pub use swim_server_app::{
+        BoxServer, RemoteConnectionsConfig, Server, ServerBuilder, ServerHandle,
+    };
 }
 
 #[cfg(feature = "agent")]
