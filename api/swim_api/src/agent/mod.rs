@@ -66,7 +66,7 @@ impl Default for LaneConfig {
 }
 
 /// Trait for the context that is passed to an agent to allow it to interact with the runtime.
-pub trait AgentContext {
+pub trait AgentContext: Sync {
     /// Add a new lane endpoint to the runtime for this agent.
     /// #Arguments
     /// * `name` - The name of the lane.
@@ -90,7 +90,7 @@ pub trait AgentContext {
     ) -> BoxFuture<'_, Result<(), AgentRuntimeError>>;
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy)]
 pub struct AgentConfig {
     //TODO Add parameters.
 }

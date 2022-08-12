@@ -157,7 +157,7 @@ impl Default for LaneRequestDecoderState {
         LaneRequestDecoderState::ReadingHeader
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct LaneRequestDecoder<D> {
     state: LaneRequestDecoderState,
     inner: D,
