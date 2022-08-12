@@ -76,6 +76,7 @@ fn get_i32_buffer(n: i32) -> BytesMut {
 #[test]
 fn single_value_lane() {
     #[derive(AgentLaneModel)]
+    #[agent_root(::swim_agent)]
     struct SingleValueLane {
         lane: ValueLane<i32>,
     }
@@ -86,6 +87,7 @@ fn single_value_lane() {
 #[test]
 fn single_map_lane() {
     #[derive(AgentLaneModel)]
+    #[agent_root(::swim_agent)]
     struct SingleMapLane {
         lane: MapLane<i32, i32>,
     }
@@ -96,6 +98,7 @@ fn single_map_lane() {
 #[test]
 fn single_command_lane() {
     #[derive(AgentLaneModel)]
+    #[agent_root(::swim_agent)]
     struct SingleCommandLane {
         lane: CommandLane<i32>,
     }
@@ -106,6 +109,7 @@ fn single_command_lane() {
 #[test]
 fn two_value_lanes() {
     #[derive(AgentLaneModel)]
+    #[agent_root(::swim_agent)]
     struct TwoValueLanes {
         first: ValueLane<i32>,
         second: ValueLane<i32>,
@@ -117,6 +121,7 @@ fn two_value_lanes() {
 #[test]
 fn two_map_lanes() {
     #[derive(AgentLaneModel)]
+    #[agent_root(::swim_agent)]
     struct TwoMapLanes {
         first: MapLane<i32, i32>,
         second: MapLane<i32, i32>,
@@ -128,6 +133,7 @@ fn two_map_lanes() {
 #[test]
 fn two_command_lanes() {
     #[derive(AgentLaneModel)]
+    #[agent_root(::swim_agent)]
     struct TwoCommandLanes {
         first: CommandLane<i32>,
         second: CommandLane<i32>,
@@ -139,6 +145,7 @@ fn two_command_lanes() {
 #[test]
 fn mixed_lanes() {
     #[derive(AgentLaneModel)]
+    #[agent_root(::swim_agent)]
     struct MixedLanes {
         first: ValueLane<i32>,
         second: MapLane<i32, i32>,
@@ -150,6 +157,7 @@ fn mixed_lanes() {
 #[test]
 fn multiple_lanes() {
     #[derive(AgentLaneModel)]
+    #[agent_root(::swim_agent)]
     struct MultipleLanes {
         first: ValueLane<i32>,
         second: MapLane<i32, i32>,

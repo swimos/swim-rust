@@ -29,7 +29,7 @@ mod lane_model_derive;
 mod lane_projections;
 
 fn default_root() -> syn::Path {
-    parse_quote!(::swim_agent)
+    parse_quote!(::swim::agent)
 }
 
 #[proc_macro_derive(AgentLaneModel, attributes(agent_root))]

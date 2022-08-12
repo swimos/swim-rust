@@ -41,6 +41,7 @@ fn make_agent() -> impl Agent + Send {
  */
 
 #[derive(Debug, AgentLaneModel)]
+#[agent_root(::swim_agent)]
 #[projections]
 pub struct MyAgent {
     first: ValueLane<i32>,
@@ -52,7 +53,7 @@ pub struct MyAgentLifecycle {
     content: RefCell<Text>,
 }
 
-#[lifecycle(MyAgent)]
+#[lifecycle(MyAgent, agent_root(::swim_agent))]
 impl MyAgentLifecycle {
     #[on_start]
     pub fn on_start(

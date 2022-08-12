@@ -30,6 +30,7 @@ use swim_model::Text;
 use swim_utilities::routing::uri::RelativeUri;
 
 #[derive(AgentLaneModel)]
+#[agent_root(::swim_agent)]
 struct TestAgent {
     value: ValueLane<i32>,
     value2: ValueLane<i32>,
@@ -120,7 +121,7 @@ fn on_start_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent)]
+    #[lifecycle(TestAgent, agent_root(::swim_agent))]
     impl TestLifecycle {
         #[on_start]
         fn my_on_start(
@@ -151,7 +152,7 @@ fn on_stop_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent)]
+    #[lifecycle(TestAgent, agent_root(::swim_agent))]
     impl TestLifecycle {
         #[on_stop]
         fn my_on_stop(
@@ -182,7 +183,7 @@ fn on_start_and_stop_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent)]
+    #[lifecycle(TestAgent, agent_root(::swim_agent))]
     impl TestLifecycle {
         #[on_start]
         #[on_stop]
@@ -219,7 +220,7 @@ fn on_command_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent)]
+    #[lifecycle(TestAgent, agent_root(::swim_agent))]
     impl TestLifecycle {
         #[on_command(command)]
         fn my_on_command(
@@ -255,7 +256,7 @@ fn on_event_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent)]
+    #[lifecycle(TestAgent, agent_root(::swim_agent))]
     impl TestLifecycle {
         #[on_event(value)]
         fn my_on_event(
@@ -291,7 +292,7 @@ fn on_set_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent)]
+    #[lifecycle(TestAgent, agent_root(::swim_agent))]
     impl TestLifecycle {
         #[on_set(value)]
         fn my_on_set(
@@ -331,7 +332,7 @@ fn on_event_and_set_handlers() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent)]
+    #[lifecycle(TestAgent, agent_root(::swim_agent))]
     impl TestLifecycle {
         #[on_event(value)]
         fn my_on_event(
@@ -386,7 +387,7 @@ fn on_event_shared_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent)]
+    #[lifecycle(TestAgent, agent_root(::swim_agent))]
     impl TestLifecycle {
         #[on_event(value, value2)]
         fn my_on_event(
@@ -448,7 +449,7 @@ fn on_clear_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent)]
+    #[lifecycle(TestAgent, agent_root(::swim_agent))]
     impl TestLifecycle {
         #[on_clear(map)]
         fn my_on_clear(
@@ -484,7 +485,7 @@ fn on_remove_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent)]
+    #[lifecycle(TestAgent, agent_root(::swim_agent))]
     impl TestLifecycle {
         #[on_remove(map)]
         fn my_on_remove(
@@ -532,7 +533,7 @@ fn on_update_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent)]
+    #[lifecycle(TestAgent, agent_root(::swim_agent))]
     impl TestLifecycle {
         #[on_update(map)]
         fn my_on_update(
@@ -580,7 +581,7 @@ fn all_handlers() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent)]
+    #[lifecycle(TestAgent, agent_root(::swim_agent))]
     impl TestLifecycle {
         #[on_start]
         fn my_on_start(
