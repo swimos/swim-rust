@@ -42,7 +42,7 @@ pub trait LaneEvent<'a, Context> {
     /// of which what events need to be triggered. If the lane does not exist or no event is pending, no
     /// handler will be returned.
     /// #Arguments
-    /// * `context` - The content of the agent (allowig access to the lanes).
+    /// * `context` - The context of the agent (allowing access to the lanes).
     /// * `lane_name` - The name of the lane.
     fn lane_event(&'a self, context: &Context, lane_name: &str) -> Option<Self::LaneEventHandler>;
 }
@@ -59,7 +59,7 @@ pub trait LaneEventShared<'a, Context, Shared> {
     /// #Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
-    /// * `context` - The content of the agent (allowig access to the lanes).
+    /// * `context` - The context of the agent (allowing access to the lanes).
     /// * `lane_name` - The name of the lane.
     fn lane_event(
         &'a self,

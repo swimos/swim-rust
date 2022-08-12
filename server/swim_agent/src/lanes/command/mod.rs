@@ -34,7 +34,7 @@ pub mod lifecycle;
 #[cfg(test)]
 mod tests;
 
-/// Model of a command lane. An event if triggered when a command is received (either externally or
+/// Model of a command lane. An event is triggered when a command is received (either externally or
 /// internally) but the lane does not maintain any record of its state.
 #[derive(Debug)]
 pub struct CommandLane<T> {

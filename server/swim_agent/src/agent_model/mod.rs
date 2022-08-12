@@ -52,13 +52,13 @@ use io::{LaneReader, LaneWriter};
 pub enum WriteResult {
     // The lane has no data to write (the buffer is still empty).
     NoData,
-    // The lane has written data to the buffer but has not more data to write.
+    // The lane has written data to the buffer but has no more data to write.
     Done,
     // The lane has written data to the buffer and will have more to write on a subsequent call.
     DataStillAvailable,
 }
 
-/// At trait which describes the lanes of an agent which can be run as a task attached to an
+/// A trait which describes the lanes of an agent which can be run as a task attached to an
 /// [`AgentContext`]. A type implementing this trait is sufficient to produce a functional agent
 /// although it will not provided any lifecycle events for the agent or its lanes.
 pub trait AgentLaneModel: Sized + Send {
