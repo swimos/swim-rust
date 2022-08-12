@@ -42,7 +42,7 @@ pub mod api {
     }
 }
 
-pub mod uri {
+pub mod route {
     pub use swim_utilities::routing::uri::{BadRelativeUri, RelativeUri};
 }
 
