@@ -12,13 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim::agent::{AgentLaneModel, lanes::{ValueLane, CommandLane}, agent_lifecycle::utility::HandlerContext, event_handler::{EventHandler, HandlerActionExt}, projections, lifecycle};
+use swim::{agent::{
+    agent_lifecycle::utility::HandlerContext,
+    event_handler::{EventHandler, HandlerActionExt},
+    lanes::{CommandLane, ValueLane},
+    lifecycle, projections, AgentLaneModel,
+}, model::Text};
 
 #[derive(AgentLaneModel)]
 #[projections]
 pub struct ExampleAgent {
     length: ValueLane<i32>,
-    update_value: CommandLane<String>,
+    update_value: CommandLane<Text>,
 }
 
 #[derive(Clone)]
@@ -26,9 +31,11 @@ pub struct ExampleLifecycle;
 
 #[lifecycle(ExampleAgent)]
 impl ExampleLifecycle {
-
     #[on_start]
-    pub fn on_start(&self, context: HandlerContext<ExampleAgent>) -> impl EventHandler<ExampleAgent> {
+    pub fn on_start(
+        &self,
+        context: HandlerContext<ExampleAgent>,
+    ) -> impl EventHandler<ExampleAgent> {
         context.get_agent_uri().and_then(move |uri| {
             context.effect(move || {
                 println!("Starting agent at: {}", uri);
@@ -37,9 +44,12 @@ impl ExampleLifecycle {
     }
 
     #[on_command(update_value)]
-    pub fn on_update(&self, context: HandlerContext<ExampleAgent>, value: &String) -> impl EventHandler<ExampleAgent> {
+    pub fn on_update(
+        &self,
+        context: HandlerContext<ExampleAgent>,
+        value: &Text,
+    ) -> impl EventHandler<ExampleAgent> {
         let n = value.len() as i32;
         context.set_value(ExampleAgent::LENGTH, n)
     }
-
 }

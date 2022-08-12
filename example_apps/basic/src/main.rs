@@ -12,7 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim::{server::ServerBuilder, route::RoutePattern, agent::agent_model::AgentModel};
+use swim::{
+    agent::agent_model::AgentModel,
+    route::RoutePattern,
+    server::{Server, ServerBuilder},
+};
 
 use crate::agent::{ExampleAgent, ExampleLifecycle};
 
@@ -20,26 +24,27 @@ mod agent;
 
 #[tokio::main]
 async fn main() {
-    let route = RoutePattern::parse_str("/example")
-        .expect("Invalid route pattern.");
-    
+    let route = RoutePattern::parse_str("/example").expect("Invalid route pattern.");
+
     let lifecycle = ExampleLifecycle;
     let agent = AgentModel::new(ExampleAgent::default, lifecycle.into_lifecycle());
 
     let server = ServerBuilder::default()
         .add_route(route, agent)
-        .build().await
+        .build()
+        .await
         .expect("Routes are ambiguous.");
 
-    let (task, mut handle) = server.run_box();
+    let (task, mut handle) = server.run();
 
     let shutdown = async move {
-        tokio::signal::ctrl_c().await.expect("Failed to register iterrupt handler.");
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Failed to register iterrupt handler.");
         handle.stop();
     };
 
     let (_, result) = tokio::join!(shutdown, task);
 
     result.expect("Listener disconnected.");
-    
 }
