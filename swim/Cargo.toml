@@ -6,9 +6,10 @@ edition = "2021"
 
 [features]
 default = ["all"]
-all = ["form", "server"]
+all = ["form", "server", "agent"]
 form = ["dep:swim_form"]
 server = ["dep:swim_server_app"]
+agent = ["dep:swim_agent", "form"]
 
 [dependencies]
 swim_utilities = { path = "../swim_utilities", features = ["io", "text"] }
@@ -17,3 +18,4 @@ swim_model = { path = "../api/swim_model" }
 swim_form = { path = "../api/swim_form", optional = true }
 swim_recon = { path = "../api/formats/swim_recon", features = ["async_parser"] }
 swim_server_app = { path = "../server/swim_server_app", optional = true }
+swim_agent = { path = "../server/swim_agent", optional = true }

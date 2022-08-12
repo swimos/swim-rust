@@ -62,3 +62,6 @@ pub mod io {
 pub mod server {
     pub use swim_server_app::{RemoteConnectionsConfig, Server, ServerBuilder, ServerHandle};
 }
+
+#[cfg(feature = "agent")]
+pub use swim_agent as agent;
