@@ -6,5 +6,4 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-swim_agent = { path = "../../server/swim_agent" }
-swim_server_app = { path = "../../server/swim_server_app" }
+swim = { path = "../../swim", features = ["server", "agent"] }
