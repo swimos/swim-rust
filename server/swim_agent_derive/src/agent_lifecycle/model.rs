@@ -39,6 +39,12 @@ const NO_AGENT: &str = "The name of the agent must be provided: e.g. #[lifecycle
 const EXTRA_PARAM: &str = "Unexpected attribute parameter.";
 const BAD_PARAM: &str =
     "The parameter to the lifecycle attribute should be a path to an agent type.";
+const ROOT: &str = "agent_root";
+
+pub struct LifecycleArgs {
+    agent_type: Path,
+    root_path: Option<Path>,
+}
 
 /// Validate the body of the 'lifecycle' attribute. This is require to have the form
 /// `#[lifecycle(path::to::Agent)] where the path points to the struct type that defines
@@ -51,10 +57,26 @@ const BAD_PARAM: &str =
 pub fn validate_attr_args(
     item: &Item,
     args: AttributeArgs,
-) -> Validation<Path, Errors<syn::Error>> {
+) -> Validation<LifecycleArgs, Errors<syn::Error>> {
     match args.as_slice() {
         [] => Validation::fail(syn::Error::new_spanned(item, NO_AGENT)),
-        [NestedMeta::Meta(Meta::Path(agent))] => Validation::valid(agent.clone()),
+        [NestedMeta::Meta(Meta::Path(agent))] => Validation::valid(LifecycleArgs {
+            agent_type: agent.clone(),
+            root_path: None,
+        }),
+        [NestedMeta::Meta(Meta::Path(agent)), second @ NestedMeta::Meta(Meta::List(lst))]
+            if lst.path.is_ident(ROOT) =>
+        {
+            match lst.nested.first() {
+                Some(NestedMeta::Meta(Meta::Path(root_path))) if lst.nested.len() == 1 => {
+                    Validation::valid(LifecycleArgs {
+                        agent_type: agent.clone(),
+                        root_path: Some(root_path.clone()),
+                    })
+                }
+                _ => Validation::fail(syn::Error::new_spanned(second, EXTRA_PARAM)),
+            }
+        }
         [single] => Validation::fail(syn::Error::new_spanned(single, BAD_PARAM)),
         [_, second, ..] => Validation::fail(syn::Error::new_spanned(second, EXTRA_PARAM)),
     }
@@ -96,15 +118,21 @@ pub fn strip_handler_attrs(
 /// lifecycle events (if they are valid). The `stripped_attrs` should be the output
 /// of [`strip_handler_attrs`].
 pub fn validate_with_attrs(
-    agent_type: Path,
+    lifecycle_args: LifecycleArgs,
     item: &Item,
     stripped_attrs: Vec<Option<Vec<Attribute>>>,
+    default_route: Path,
 ) -> Validation<AgentLifecycleDescriptor<'_>, Errors<syn::Error>> {
+    let LifecycleArgs {
+        agent_type,
+        root_path,
+    } = lifecycle_args;
+    let root = root_path.unwrap_or(default_route);
     if let Item::Impl(block) = item {
         if !block.generics.params.is_empty() {
             return Validation::fail(syn::Error::new_spanned(block, NO_GENERICS));
         }
-        let init = AgentLifecycleDescriptorBuilder::new(agent_type, &block.self_ty);
+        let init = AgentLifecycleDescriptorBuilder::new(root, agent_type, &block.self_ty);
         block
             .items
             .iter()
@@ -541,15 +569,17 @@ fn assess_attr(attr: &Attribute) -> bool {
 
 /// Descriptor of an agent lifecycle, extracted from an impl block.
 pub struct AgentLifecycleDescriptor<'a> {
-    pub agent_type: Path,            //The agent this is a lifecycle of.
-    pub lifecycle_type: &'a Type,    //The type of the lifecycle (taken from the impl block).
+    pub root: Path,                                          //The root module path.
+    pub agent_type: Path,                                    //The agent this is a lifecycle of.
+    pub lifecycle_type: &'a Type, //The type of the lifecycle (taken from the impl block).
     pub on_start: Option<&'a Ident>, //A handler attached to the on_start event.
-    pub on_stop: Option<&'a Ident>,  //A handler attached to the on_stop event.
+    pub on_stop: Option<&'a Ident>, //A handler attached to the on_stop event.
     pub lane_lifecycles: BinTree<String, LaneLifecycle<'a>>, //Labelled tree of lane handlers.
 }
 
 /// Builder type for constructing an [`AgentLifecycleDescriptor`].
 pub struct AgentLifecycleDescriptorBuilder<'a> {
+    pub root: Path,
     pub agent_type: Path,
     pub lifecycle_type: &'a Type,
     pub on_start: Option<&'a Ident>,
@@ -558,8 +588,9 @@ pub struct AgentLifecycleDescriptorBuilder<'a> {
 }
 
 impl<'a> AgentLifecycleDescriptorBuilder<'a> {
-    pub fn new(agent_type: Path, lifecycle_type: &'a Type) -> Self {
+    pub fn new(root: Path, agent_type: Path, lifecycle_type: &'a Type) -> Self {
         AgentLifecycleDescriptorBuilder {
+            root,
             agent_type,
             lifecycle_type,
             on_start: None,
@@ -570,6 +601,7 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
 
     pub fn build(self) -> AgentLifecycleDescriptor<'a> {
         let AgentLifecycleDescriptorBuilder {
+            root,
             agent_type,
             lifecycle_type,
             on_start,
@@ -577,6 +609,7 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
             lane_lifecycles,
         } = self;
         AgentLifecycleDescriptor {
+            root,
             agent_type,
             lifecycle_type,
             on_start,
@@ -861,21 +894,21 @@ impl<'a> LaneLifecycle<'a> {
 
     /// The type of node to create for the heterogeneous tree of lane lifecycles in
     /// the agent lifecycle.
-    pub fn branch_type(&self) -> Path {
+    pub fn branch_type(&self, root: &syn::Path) -> Path {
         match self {
             LaneLifecycle::Value(ValueLifecycleDescriptor { .. }) => {
                 parse_quote! {
-                    ::swim_agent::agent_lifecycle::lane_event::ValueBranch
+                    #root::agent_lifecycle::lane_event::ValueBranch
                 }
             }
             LaneLifecycle::Command(CommandLifecycleDescriptor { .. }) => {
                 parse_quote! {
-                    ::swim_agent::agent_lifecycle::lane_event::CommandBranch
+                    #root::agent_lifecycle::lane_event::CommandBranch
                 }
             }
             LaneLifecycle::Map(MapLifecycleDescriptor { .. }) => {
                 parse_quote! {
-                    ::swim_agent::agent_lifecycle::lane_event::MapBranch
+                    #root::agent_lifecycle::lane_event::MapBranch
                 }
             }
         }
