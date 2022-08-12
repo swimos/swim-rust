@@ -78,7 +78,7 @@ impl<'a, L, T, Context, Shared> ValueLaneHandlersShared<'a, T, Context, Shared> 
 /// A lifecycle for a value lane with some shared state (shard with other lifecycles in the same agent).
 ///
 /// #Type Parameters
-/// * `Context` - The contect for the event handlers (providing access to the agent lanes).
+/// * `Context` - The context for the event handlers (providing access to the agent lanes).
 /// * `Shared` - The shared state to which the lifecycle has access.
 /// * `FEv` - The `on_event` event handler.
 /// * `FSet` - The `on_set` event handler.
