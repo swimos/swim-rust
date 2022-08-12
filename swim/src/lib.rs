@@ -44,6 +44,7 @@ pub mod api {
 
 pub mod route {
     pub use swim_utilities::routing::uri::{BadRelativeUri, RelativeUri};
+    pub use swim_utilities::routing::route_pattern::{RoutePattern, ApplyError, UnapplyError, ParseError};
 }
 
 pub mod io {
