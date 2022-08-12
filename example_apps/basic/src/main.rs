@@ -15,8 +15,9 @@
 use swim::{
     agent::agent_model::AgentModel,
     route::RoutePattern,
-    server::{Server, ServerBuilder},
+    server::{Server, ServerBuilder, ServerHandle},
 };
+use tokio::select;
 
 use crate::agent::{ExampleAgent, ExampleLifecycle};
 
@@ -35,16 +36,32 @@ async fn main() {
         .await
         .expect("Routes are ambiguous.");
 
-    let (task, mut handle) = server.run();
+    let (task, handle) = server.run();
 
-    let shutdown = async move {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("Failed to register iterrupt handler.");
-        handle.stop();
-    };
+    let shutdown = manage_handle(handle);
 
     let (_, result) = tokio::join!(shutdown, task);
 
     result.expect("Listener disconnected.");
+}
+
+async fn manage_handle(mut handle: ServerHandle) {
+    let mut shutdown_hook = Box::pin(async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Failed to register interrupt handler.");
+    });
+    let print_addr = handle.bound_addr();
+
+    let maybe_addr = select! {
+        _ = &mut shutdown_hook => None,
+        maybe_addr = print_addr => maybe_addr,
+    };
+
+    if let Some(addr) = maybe_addr {
+        println!("Bound to: {}", addr);
+        shutdown_hook.await;
+    }
+
+    handle.stop();
 }
