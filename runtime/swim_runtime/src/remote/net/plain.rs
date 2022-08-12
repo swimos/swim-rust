@@ -40,12 +40,21 @@ impl TokioPlainTextNetworking {
     }
 }
 
+async fn bind_to(addr: SocketAddr) -> IoResult<(SocketAddr, TcpListener)> {
+    let listener = TcpListener::bind(addr).await?;
+    let addr = listener.local_addr()?;
+    Ok((addr, listener))
+}
+
 impl ExternalConnections for TokioPlainTextNetworking {
     type Socket = TcpStream;
     type ListenerType = TcpListener;
 
-    fn bind(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::ListenerType>> {
-        TcpListener::bind(addr).boxed()
+    fn bind(
+        &self,
+        addr: SocketAddr,
+    ) -> BoxFuture<'static, IoResult<(SocketAddr, Self::ListenerType)>> {
+        bind_to(addr).boxed()
     }
 
     fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>> {

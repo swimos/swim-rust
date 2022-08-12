@@ -91,13 +91,16 @@ impl ExternalConnections for FakeConnections {
     type Socket = DuplexStream;
     type ListenerType = FakeListener;
 
-    fn bind(&self, _addr: SocketAddr) -> BoxFuture<'static, io::Result<Self::ListenerType>> {
+    fn bind(
+        &self,
+        addr: SocketAddr,
+    ) -> BoxFuture<'static, io::Result<(SocketAddr, Self::ListenerType)>> {
         let result = self
             .inner
             .lock()
             .incoming
             .take()
-            .map(Ok)
+            .map(|listener| Ok((addr, listener)))
             .unwrap_or_else(|| Err(ErrorKind::AddrNotAvailable.into()));
         ready(result).boxed()
     }

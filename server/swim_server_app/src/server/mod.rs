@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::net::SocketAddr;
+
 use futures::future::BoxFuture;
 use swim_utilities::trigger;
 
@@ -19,21 +21,42 @@ mod builder;
 mod runtime;
 
 pub use builder::ServerBuilder;
+use tokio::sync::oneshot;
 
 pub struct ServerHandle {
     stop_trigger: Option<trigger::Sender>,
-}
-
-impl ServerHandle {
-    fn new(tx: trigger::Sender) -> Self {
-        ServerHandle {
-            stop_trigger: Some(tx),
-        }
-    }
+    addr: Option<SocketAddr>,
+    addr_rx: Option<oneshot::Receiver<SocketAddr>>,
 }
 
 /// Allows the server to be stopped externally.
 impl ServerHandle {
+    fn new(tx: trigger::Sender, addr_rx: oneshot::Receiver<SocketAddr>) -> Self {
+        ServerHandle {
+            stop_trigger: Some(tx),
+            addr: None,
+            addr_rx: Some(addr_rx),
+        }
+    }
+
+    /// Wait until the server has bound to an address and return it. If the bind fails, this
+    /// will return nothing. Primarily useful when binding to a random port.
+    pub async fn bound_addr(&mut self) -> Option<SocketAddr> {
+        let ServerHandle { addr, addr_rx, .. } = self;
+        if let Some(addr) = addr {
+            Some(*addr)
+        } else if let Some(addr_rx) = addr_rx.take() {
+            if let Ok(bound_to) = addr_rx.await {
+                *addr = Some(bound_to);
+                Some(bound_to)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
     /// After this is called, the associated task will begin to stop.
     pub fn stop(&mut self) {
         if let Some(tx) = self.stop_trigger.take() {

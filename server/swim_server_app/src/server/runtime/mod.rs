@@ -132,11 +132,16 @@ where
         ServerHandle,
     ) {
         let (tx, rx) = trigger::trigger();
-        let fut = self.run_inner(rx);
-        (fut, ServerHandle::new(tx))
+        let (addr_tx, addr_rx) = oneshot::channel();
+        let fut = self.run_inner(rx, addr_tx);
+        (fut, ServerHandle::new(tx, addr_rx))
     }
 
-    async fn run_inner(self, stop_signal: trigger::Receiver) -> Result<(), std::io::Error> {
+    async fn run_inner(
+        self,
+        stop_signal: trigger::Receiver,
+        addr_tx: oneshot::Sender<SocketAddr>,
+    ) -> Result<(), std::io::Error> {
         let SwimServer {
             plane,
             addr,
@@ -144,8 +149,8 @@ where
             websockets,
             config,
         } = self;
-        let listener = networking.bind(addr).await?;
-
+        let (bound_addr, listener) = networking.bind(addr).await?;
+        let _ = addr_tx.send(bound_addr);
         let mut rem_count = 0u32;
         let mut agent_count = 0u32;
         let mut make_remote_id = move || {

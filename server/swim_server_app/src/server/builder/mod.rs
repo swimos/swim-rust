@@ -49,7 +49,7 @@ pub struct ServerBuilder {
     config: SwimServerConfig,
 }
 
-const DEFAULT_PORT: u16 = 8080;
+const DEFAULT_PORT: u16 = 0;
 
 impl Default for ServerBuilder {
     fn default() -> Self {

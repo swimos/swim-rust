@@ -212,7 +212,7 @@ where
             stop_trigger,
         } = channels;
 
-        let listener = external.bind(bind_addr).await?;
+        let (_, listener) = external.bind(bind_addr).await?;
 
         Ok(RemoteConnectionsTask {
             external,
@@ -510,7 +510,10 @@ pub trait ExternalConnections: Clone + Send + Sync + 'static {
     type Socket: Unpin + Send + Sync + 'static;
     type ListenerType: Listener<Socket = Self::Socket> + Send + Sync;
 
-    fn bind(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::ListenerType>>;
+    fn bind(
+        &self,
+        addr: SocketAddr,
+    ) -> BoxFuture<'static, IoResult<(SocketAddr, Self::ListenerType)>>;
     fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>>;
     fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, IoResult<Vec<SchemeSocketAddr>>>;
 }
