@@ -84,7 +84,7 @@ impl<'a, L, K, V, Context, Shared> MapLaneHandlersShared<'a, K, V, Context, Shar
 /// A lifecycle for a map lane with some shared state (shard with other lifecycles in the same agent).
 ///
 /// #Type Parameters
-/// * `Context` - The contect for the event handlers (providing access to the agent lanes).
+/// * `Context` - The context for the event handlers (providing access to the agent lanes).
 /// * `Shared` - The shared state to which the lifecycle has access.
 /// * `FUpd` - The `on_update` event handler.
 /// * `FRem` - The `on_remove` event handler.

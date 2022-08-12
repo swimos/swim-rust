@@ -66,7 +66,7 @@ impl<T, Context, Shared, L> CommandLaneLifecycleShared<T, Context, Shared> for L
 /// A lifecycle for a command lane with some shared state (shard with other lifecycles in the same agent).
 ///
 /// #Type Parameters
-/// * `Context` - The contect for the event handlers (providing access to the agent lanes).
+/// * `Context` - The context for the event handlers (providing access to the agent lanes).
 /// * `Shared` - The shared state to which the lifecycle has access.
 /// * `Cmd` - The type of the `on_command` event.
 pub struct StatefulCommandLaneLifecycle<Context, Shared, T, OnCmd = NoHandler> {

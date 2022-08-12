@@ -323,7 +323,6 @@ where
 }
 
 /// An [`EventHandler`] that will remove an entry from the map.
-
 pub struct MapLaneRemove<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
     key: Option<K>,
@@ -360,7 +359,6 @@ where
 }
 
 /// An [`EventHandler`] that will clear the map.
-
 pub struct MapLaneClear<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
     done: bool,
