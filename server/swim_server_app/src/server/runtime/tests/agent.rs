@@ -123,6 +123,9 @@ async fn run_agent(
             }
         }
     }
+    drop(input);
+    drop(output);
+    drop(reporter);
     events.send(AgentEvent::Stopped).expect("Channel stopped.");
     Ok(())
 }
