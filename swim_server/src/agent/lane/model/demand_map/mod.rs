@@ -26,7 +26,7 @@ use crate::agent::lane::LaneModel;
 #[cfg(test)]
 mod tests;
 
-#[derive(Form, Debug, Clone, PartialEq)]
+#[derive(Form, Debug, Clone, PartialEq, Eq)]
 #[form_root(::swim_form)]
 pub enum DemandMapLaneEvent<Key, Value>
 where

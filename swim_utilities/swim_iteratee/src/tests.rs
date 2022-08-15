@@ -300,8 +300,8 @@ fn filter_iteratee() {
 #[test]
 fn filter_iteratee_with_flush() {
     let size = non_zero_usize!(2);
-    let mut iteratee =
-        collect_vec_with_rem::<i32>(size).filter(|v| v.get(0).map(|i| i % 2 == 0).unwrap_or(false));
+    let mut iteratee = collect_vec_with_rem::<i32>(size)
+        .filter(|v| v.first().map(|i| i % 2 == 0).unwrap_or(false));
     assert!(iteratee.feed(7).is_none());
     assert!(iteratee.feed(4).is_none());
     assert!(iteratee.feed(2).is_none());
@@ -333,7 +333,7 @@ fn maybe_map_iteratee() {
 #[test]
 fn maybe_map_with_flush() {
     let size = non_zero_usize!(2);
-    let mut iteratee = collect_vec_with_rem::<i32>(size).maybe_map(|v| match v.get(0) {
+    let mut iteratee = collect_vec_with_rem::<i32>(size).maybe_map(|v| match v.first() {
         Some(i) if i % 2 == 0 => Some(v.iter().map(|j| j.to_string()).collect()),
         _ => None,
     });

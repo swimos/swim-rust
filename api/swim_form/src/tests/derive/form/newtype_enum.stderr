@@ -1,9 +1,9 @@
 error: Cannot use `newtype` annotation with enums
- --> src/tests/derive/form/newtype_enum.rs:5:5
-  |
-5 | /     #[form(newtype)]
-6 | |     enum A {
-7 | |         B,
-8 | |         C,
-9 | |     }
-  | |_____^
+  --> src/tests/derive/form/newtype_enum.rs:6:5
+   |
+6  | /     #[form(newtype)]
+7  | |     enum A {
+8  | |         B,
+9  | |         C,
+10 | |     }
+   | |_____^

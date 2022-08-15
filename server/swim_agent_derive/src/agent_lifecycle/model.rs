@@ -892,12 +892,11 @@ pub enum LaneLifecycle<'a> {
 
 impl<'a> LaneLifecycle<'a> {
     fn lane_name(&self) -> &str {
-        let name = match self {
+        match self {
             LaneLifecycle::Value(ValueLifecycleDescriptor { name, .. }) => name,
             LaneLifecycle::Command(CommandLifecycleDescriptor { name, .. }) => name,
             LaneLifecycle::Map(MapLifecycleDescriptor { name, .. }) => name,
-        };
-        &*name
+        }
     }
 
     pub fn lane_ident(&self) -> Ident {

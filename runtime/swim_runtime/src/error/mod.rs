@@ -62,7 +62,7 @@ pub trait RecoverableError: std::error::Error + Send + Sync + Recoverable + 'sta
 impl<T> RecoverableError for T where T: std::error::Error + Send + Sync + Recoverable + 'static {}
 
 /// An error returned by the router
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RoutingError {
     /// The connection to the remote host has been lost.
     ConnectionError,

@@ -1,7 +1,7 @@
 error: Union types are not supported.
-  --> src/tests/derive/form/union.rs:19:5
+  --> src/tests/derive/form/union.rs:20:5
    |
-19 | /     union S {
-20 | |         a: i32,
-21 | |     }
+20 | /     union S {
+21 | |         a: i32,
+22 | |     }
    | |_____^

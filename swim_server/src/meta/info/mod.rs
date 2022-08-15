@@ -59,7 +59,7 @@ const SYNC_ERR: &str = "Failed to sync";
 /// `/swim:meta:node/percent-encoded-nodeuri/lanes`.
 ///
 /// E.g: `swim:meta:node/unit%2Ffoo/lanes/`
-#[derive(Debug, Clone, PartialEq, Form)]
+#[derive(Debug, Clone, PartialEq, Eq, Form)]
 #[form_root(::swim_form)]
 pub struct LaneInfo {
     /// The URI of the lane.
@@ -160,7 +160,7 @@ impl StructuralWritable for LaneKind {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct LaneKindParseErr;
 
 impl<'a> TryFrom<&'a str> for LaneKind {

@@ -51,6 +51,7 @@ extern crate swim_form_derive;
 ///
 /// #[derive(Form)]
 /// #[form(tag = "User")]
+/// # #[form_root(::swim_form)]
 /// struct Person {
 ///     name: String,
 /// }
@@ -75,6 +76,7 @@ extern crate swim_form_derive;
 /// use swim_form::Form;
 ///
 /// #[derive(Form)]
+/// # #[form_root(::swim_form)]
 /// enum Manufacturer {
 ///     BMW,
 ///     #[form(tag = "VW")]
@@ -99,6 +101,7 @@ extern crate swim_form_derive;
 /// use swim_form::Form;
 ///
 /// #[derive(Form, PartialEq, Debug)]
+/// # #[form_root(::swim_form)]
 /// struct Food {
 ///     name: String,
 ///     #[form(skip)]
@@ -127,6 +130,7 @@ extern crate swim_form_derive;
 /// use swim_form::Form;
 ///
 /// #[derive(Form, PartialEq, Debug)]
+/// # #[form_root(::swim_form)]
 /// struct Food {
 ///     name: String,
 ///     #[form(name = "quality")]
@@ -155,6 +159,7 @@ extern crate swim_form_derive;
 /// use swim_form::Form;
 ///
 /// #[derive(Form)]
+/// # #[form_root(::swim_form)]
 /// struct Structure {
 ///     item: String,
 ///     #[form(attr)]
@@ -184,6 +189,7 @@ extern crate swim_form_derive;
 /// use swim_form::Form;
 ///
 /// #[derive(Form)]
+/// # #[form_root(::swim_form)]
 /// struct Structure {
 ///     slot_a: String,
 ///     slot_b: String,
@@ -212,6 +218,7 @@ extern crate swim_form_derive;
 /// use swim_form::Form;
 ///
 /// #[derive(Form)]
+/// # #[form_root(::swim_form)]
 /// struct Structure {
 ///     header: String,
 ///     #[form(body)]
@@ -243,6 +250,7 @@ extern crate swim_form_derive;
 /// use swim_form::Form;
 ///
 /// #[derive(Form)]
+/// # #[form_root(::swim_form)]
 /// struct Structure {
 ///    item: String,
 ///    #[form(header)]
@@ -281,6 +289,7 @@ extern crate swim_form_derive;
 /// use swim_form::Form;
 ///
 /// #[derive(Form)]
+/// # #[form_root(::swim_form)]
 /// struct Structure {
 ///     item: String,
 ///     #[form(header_body)]
