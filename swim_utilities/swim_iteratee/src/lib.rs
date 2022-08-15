@@ -927,9 +927,7 @@ where
     type Item = I::Item;
 
     fn feed(&mut self, input: B) -> Option<Self::Item> {
-        (self.f)(input)
-            .map(|input| self.iteratee.feed(input))
-            .flatten()
+        (self.f)(input).and_then(|input| self.iteratee.feed(input))
     }
 
     fn flush(self) -> Option<Self::Item>
@@ -1043,14 +1041,14 @@ where
 
     fn feed(&mut self, input: In) -> Option<Self::Item> {
         let IterateeMaybeMap { iteratee, f } = self;
-        iteratee.feed(input).map(f).flatten()
+        iteratee.feed(input).and_then(f)
     }
 
     fn flush(self) -> Option<Self::Item>
     where
         Self: Sized,
     {
-        self.iteratee.flush().map(self.f).flatten()
+        self.iteratee.flush().and_then(self.f)
     }
 
     fn demand_hint(&self) -> (usize, Option<usize>) {
@@ -1091,10 +1089,7 @@ where
             scan,
             ..
         } = self;
-        iteratee
-            .feed(input)
-            .map(|out| (*scan)(state, out))
-            .flatten()
+        iteratee.feed(input).and_then(|out| (*scan)(state, out))
     }
 
     fn flush(self) -> Option<Self::Item>
@@ -1147,10 +1142,7 @@ where
             state,
             scan,
         } = self;
-        iteratee
-            .feed(input)
-            .map(|out| (*scan)(state, out))
-            .flatten()
+        iteratee.feed(input).and_then(|out| (*scan)(state, out))
     }
 
     fn demand_hint(&self) -> (usize, Option<usize>) {
@@ -1174,8 +1166,7 @@ where
         let IterateeAndThen { first, second } = self;
         first
             .feed(input)
-            .map(|intermediate| second.feed(intermediate))
-            .flatten()
+            .and_then(|intermediate| second.feed(intermediate))
     }
 
     fn flush(self) -> Option<Self::Item>
@@ -1185,8 +1176,7 @@ where
         let IterateeAndThen { first, mut second } = self;
         first
             .flush()
-            .map(|intermediate| second.feed(intermediate))
-            .flatten()
+            .and_then(|intermediate| second.feed(intermediate))
             .or_else(|| second.flush())
     }
 
@@ -1292,7 +1282,7 @@ where
         } = self;
         match maybe_current {
             Some(current) => current.flush(),
-            _ => selector.flush().map(|it| f(it).flush()).flatten(),
+            _ => selector.flush().and_then(|it| f(it).flush()),
         }
     }
 
@@ -1362,7 +1352,7 @@ where
         } = self;
         match maybe_current {
             Some(current) => current.flush(),
-            _ => selector.flush().map(|it| it.flush()).flatten(),
+            _ => selector.flush().and_then(|it| it.flush()),
         }
     }
 
@@ -1465,7 +1455,7 @@ where
         match maybe_state {
             Some(state) => {
                 if unfold(state, input) {
-                    maybe_state.take().map(extract).flatten()
+                    maybe_state.take().and_then(extract)
                 } else {
                     None
                 }
@@ -1491,7 +1481,7 @@ where
             extract,
             ..
         } = self;
-        maybe_state.take().map(extract).flatten()
+        maybe_state.take().and_then(extract)
     }
 
     fn demand_hint(&self) -> (usize, Option<usize>) {

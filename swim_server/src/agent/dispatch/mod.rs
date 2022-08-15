@@ -101,7 +101,7 @@ pub enum LaneIdentifier {
     Meta(MetaNodeAddressed),
 }
 
-#[derive(Debug, PartialEq, Error)]
+#[derive(Debug, PartialEq, Eq, Error)]
 pub enum LaneIdentifierParseErr {
     /// The provided relative path was of `swim:meta:node` but the target was invalid.
     #[error("Unknown node meta address: `{0}`")]

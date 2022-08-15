@@ -71,7 +71,7 @@ impl RouterFactory for TopLevelClientRouterFactory {
 #[derive(Debug, Clone)]
 pub struct TopLevelClientRouter {
     addr: RoutingAddr,
-    client_sender: mpsc::Sender<DownlinkRoutingRequest<AbsolutePath>>,
+    _client_sender: mpsc::Sender<DownlinkRoutingRequest<AbsolutePath>>,
     remote_sender: mpsc::Sender<RemoteRoutingRequest>,
 }
 
@@ -83,7 +83,7 @@ impl TopLevelClientRouter {
     ) -> Self {
         TopLevelClientRouter {
             addr,
-            client_sender,
+            _client_sender: client_sender,
             remote_sender,
         }
     }
@@ -281,8 +281,8 @@ where
 
     fn create_for(&self, addr: RoutingAddr) -> Self::Router {
         ClientRouter {
-            tag: addr,
-            request_sender: self.client_request_sender.clone(),
+            _tag: addr,
+            _request_sender: self.client_request_sender.clone(),
             delegate_router: self.delegate_fac.create_for(addr),
         }
     }
@@ -290,8 +290,8 @@ where
 
 #[derive(Debug, Clone)]
 pub struct ClientRouter<Path: Addressable, DelegateRouter: BidirectionalRouter> {
-    tag: RoutingAddr,
-    request_sender: mpsc::Sender<DownlinkRoutingRequest<Path>>,
+    _tag: RoutingAddr,
+    _request_sender: mpsc::Sender<DownlinkRoutingRequest<Path>>,
     delegate_router: DelegateRouter,
 }
 

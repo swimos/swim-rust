@@ -81,7 +81,7 @@ async fn simple_release() {
     let release_result = tokio::task::spawn(release_task);
     let profiles = (0..=max).into_iter().map(|p| make_event(lane.clone(), p));
 
-    for m in profiles.into_iter() {
+    for m in profiles {
         let result = tx_in.send(m).await;
         assert!(result.is_ok());
     }
@@ -107,13 +107,12 @@ fn data(range: Range<i32>) -> Vec<WarpUplinkProfile> {
     range
         .clone()
         .into_iter()
-        .map(|count| {
+        .flat_map(|count| {
             range.clone().into_iter().map(move |lane_id| {
                 let lane = format_lane(lane_id);
                 make_event(lane, count)
             })
         })
-        .flatten()
         .collect::<Vec<WarpUplinkProfile>>()
 }
 

@@ -40,7 +40,7 @@ pub(crate) const VALUE_LANE_KS: &str = "value_lanes";
 pub(crate) const MAP_LANE_KS: &str = "map_lanes";
 
 /// An enumeration over the keyspaces that exist in a store.
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum KeyspaceName {
     Lane,
     Value,
@@ -167,7 +167,7 @@ where
 }
 
 /// A lane key that is either a map lane key or a value lane key.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialOrd, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialOrd, PartialEq, Eq)]
 pub enum StoreKey {
     /// A map lane key.
     ///

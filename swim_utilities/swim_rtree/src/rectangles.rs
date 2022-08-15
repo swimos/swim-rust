@@ -150,7 +150,7 @@ where
 }
 
 /// A 2D Point with Float number coordinates.
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Point2D<T: Float> {
     x: T,
     y: T,
@@ -250,7 +250,7 @@ impl<T: Float + Debug> Point for Point2D<T> {
 }
 
 /// A 3D Point with Float number coordinates.
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Point3D<T: Float> {
     x: T,
     y: T,
