@@ -48,7 +48,6 @@ use swim_client::interface::ClientContext;
 use swim_client::router::ClientRouterFactory;
 use swim_model::path::Path;
 use swim_runtime::configuration::DownlinkConnectionsConfig;
-use swim_runtime::routing::RoutingAddr;
 use swim_store::{deserialize, serialize, KeyspaceByteEngine, StoreBuilder, StoreError};
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::io::fs::Dir;

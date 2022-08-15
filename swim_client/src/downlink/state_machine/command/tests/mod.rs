@@ -31,8 +31,7 @@ fn test_handle_value_action_valid() {
 
     let machine = CommandStateMachine::new(i32::schema());
 
-    let mut state = ();
-    let result = machine.handle_action_request(&mut state, action.clone());
+    let result = machine.handle_action_request(&mut (), action.clone());
 
     if let Ok(Response {
         event: None,
@@ -48,10 +47,9 @@ fn test_handle_value_action_valid() {
 #[test]
 fn test_handle_value_action_invalid() {
     let action = 3.into_value();
-    let mut state = ();
-
+    
     let machine = CommandStateMachine::new(StandardSchema::OfKind(ValueKind::Text));
-    let result = machine.handle_action_request(&mut state, action);
+    let result = machine.handle_action_request(&mut (), action);
 
     assert!(matches!(
         result,
