@@ -5,7 +5,7 @@ authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
 [dependencies]
-futures = "0.3.4"
+futures = "0.3.23"
 swim_utilities = { path = "../swim_utilities", features = ["io", "trigger"] }
 swim_model = { path = "../api/swim_model" }
 swim_form = { path = "../api/swim_form" }
