@@ -23,6 +23,8 @@ pub type SharedValue = Arc<Value>;
 
 pub type UpdateResult<T> = Result<T, UpdateFailure>;
 
+pub type BoxTryUpdFn = Box<dyn FnOnce(&Value) -> UpdateResult<Value> + Send>;
+
 pub enum Action {
     Set(Value, Option<DownlinkRequest<()>>),
     Get(DownlinkRequest<SharedValue>),
@@ -31,7 +33,7 @@ pub enum Action {
         Option<DownlinkRequest<SharedValue>>,
     ),
     TryUpdate(
-        Box<dyn FnOnce(&Value) -> UpdateResult<Value> + Send>,
+        BoxTryUpdFn,
         Option<DownlinkRequest<UpdateResult<SharedValue>>>,
     ),
 }

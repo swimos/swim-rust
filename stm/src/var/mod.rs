@@ -64,7 +64,7 @@ impl TVarGuarded {
 
 // Type erased contents of a transactional cell.
 #[derive(Clone)]
-pub(in crate) struct TVarInner {
+pub(crate) struct TVarInner {
     guarded: RwLock<TVarGuarded>,
 }
 

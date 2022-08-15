@@ -174,7 +174,7 @@ mod tests {
         let route3 = RoutePattern::parse_str("/second").expect("Bad route.");
         builder.add_route(route1.clone(), DummyAgent);
         builder.add_route(route2.clone(), DummyAgent);
-        builder.add_route(route3.clone(), DummyAgent);
+        builder.add_route(route3, DummyAgent);
 
         let AmbiguousRoutes { routes } = builder.build().err().expect("Building plane succeeded.");
 
