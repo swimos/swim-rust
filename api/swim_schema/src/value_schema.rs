@@ -35,6 +35,7 @@ use swim_model::Value;
 /// use swim_form::Form;
 ///
 /// #[derive(Form)]
+/// # #[form_root(::swim_form)]
 /// struct Cat {
 ///     name: String,
 /// }
@@ -61,6 +62,7 @@ use swim_model::Value;
 /// use swim_schema::schema::slot::SlotSchema;
 ///
 /// #[derive(Form)]
+/// # #[form_root(::swim_form)]
 /// struct Cat {
 ///     name: String,
 /// }
@@ -107,6 +109,7 @@ use swim_model::Value;
 /// use swim_schema::schema::slot::SlotSchema;
 ///
 /// #[derive(Form)]
+/// # #[form_root(::swim_form)]
 /// enum Food {
 ///     Kebab,
 ///     Pizza,
@@ -182,6 +185,7 @@ use swim_model::Value;
 /// use swim_schema::schema::slot::SlotSchema;
 ///
 /// #[derive(Form, ValueSchema)]
+/// # #[form_root(::swim_form)]
 /// #[form(tag = "Structure")]
 /// struct S {
 ///     a: i32,
@@ -228,6 +232,7 @@ use swim_model::Value;
 ///
 /// #[derive(Form, ValueSchema)]
 /// #[form(schema(anything))]
+/// # #[form_root(::swim_form)]
 /// struct S {
 ///     a: i32,
 ///     b: i64,
@@ -244,6 +249,7 @@ use swim_model::Value;
 ///
 /// #[derive(Form, ValueSchema)]
 /// #[form(schema(nothing))]
+/// # #[form_root(::swim_form)]
 /// struct S {
 ///     a: i32,
 ///     b: i64,
@@ -260,6 +266,7 @@ use swim_model::Value;
 /// use swim_model::Value;
 ///
 /// #[derive(Form, ValueSchema)]
+/// # #[form_root(::swim_form)]
 /// struct S {
 ///     #[form(schema(num_attrs = 5))]
 ///     value: Value
@@ -274,6 +281,7 @@ use swim_model::Value;
 /// use swim_model::Value;
 ///
 /// #[derive(Form, ValueSchema)]
+/// # #[form_root(::swim_form)]
 /// struct S {
 ///     #[form(schema(num_items = 5))]
 ///     value: Value
@@ -288,6 +296,7 @@ use swim_model::Value;
 /// use swim_model::{Value, ValueKind};
 ///
 /// #[derive(Form, ValueSchema)]
+/// # #[form_root(::swim_form)]
 /// struct S {
 ///     #[form(schema(of_kind(ValueKind::Int32)))]
 ///     value: Value
@@ -306,6 +315,7 @@ use swim_model::Value;
 /// }
 ///
 /// #[derive(Form, ValueSchema)]
+/// # #[form_root(::swim_form)]
 /// struct S {
 ///     #[form(schema(equal = "equals_i32_max"))]
 ///     value: i32
@@ -320,6 +330,7 @@ use swim_model::Value;
 /// use swim_schema::ValueSchema;
 ///
 /// #[derive(Form, ValueSchema)]
+/// # #[form_root(::swim_form)]
 /// struct S {
 ///     #[form(schema(text = "Swim"))]
 ///     string: String
@@ -333,6 +344,7 @@ use swim_model::Value;
 /// use swim_schema::ValueSchema;
 ///
 /// #[derive(Form, ValueSchema)]
+/// # #[form_root(::swim_form)]
 /// struct S {
 ///     #[form(schema(non_nan))]
 ///     f: f64
@@ -346,6 +358,7 @@ use swim_model::Value;
 /// use swim_schema::ValueSchema;
 ///
 /// #[derive(Form, ValueSchema)]
+/// # #[form_root(::swim_form)]
 /// struct S {
 ///     #[form(schema(finite))]
 ///     f: f64
@@ -369,6 +382,7 @@ use swim_model::Value;
 /// use swim_schema::ValueSchema;
 ///
 /// #[derive(Form, ValueSchema)]
+/// # #[form_root(::swim_form)]
 /// struct S {
 ///     #[form(schema(int_range = "0..=10"))]
 ///     range: i32,
@@ -385,6 +399,7 @@ use swim_model::Value;
 /// use swim_model::ValueKind;
 ///
 /// #[derive(Form, ValueSchema)]
+/// # #[form_root(::swim_form)]
 /// #[form(schema(all_items(of_kind(ValueKind::Int32))))]
 /// struct S {
 ///     a: i32,
@@ -399,6 +414,7 @@ use swim_model::Value;
 /// use swim_model::ValueKind;
 ///
 /// #[derive(Form, ValueSchema)]
+/// # #[form_root(::swim_form)]
 /// struct S {
 ///     #[form(schema(of_kind(ValueKind::Int32)))]
 ///     a: i32,
@@ -416,6 +432,7 @@ use swim_model::Value;
 /// use swim_model::ValueKind;
 ///
 /// #[derive(Form, ValueSchema)]
+/// # #[form_root(::swim_form)]
 /// struct S {
 ///     #[form(schema(and(of_kind(ValueKind::Text), text = "swim")))]
 ///     company: String
@@ -430,6 +447,7 @@ use swim_model::Value;
 /// use swim_model::{Value, ValueKind};
 ///
 /// #[derive(Form, ValueSchema)]
+/// # #[form_root(::swim_form)]
 /// struct S {
 ///     #[form(schema(or(of_kind(ValueKind::Int32), of_kind(ValueKind::Int64))))]
 ///     value: Value
@@ -443,6 +461,7 @@ use swim_model::Value;
 /// use swim_schema::ValueSchema;
 ///
 /// #[derive(Form, ValueSchema)]
+/// # #[form_root(::swim_form)]
 /// struct S {
 ///     #[form(schema(not(int_range = "0..=10")))]
 ///     range: i32,
