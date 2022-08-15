@@ -331,7 +331,7 @@ async fn store_loads() {
         clock.clone(),
         make_dl_context(),
         ReceiverStream::new(envelope_rx),
-        SingleChannelRouter::new(RoutingAddr::plane(1024)),
+        SingleChannelRouter::default(),
         store.delegate.node_store(uri.to_string()),
     );
 
@@ -380,7 +380,7 @@ async fn events() {
         clock.clone(),
         make_dl_context(),
         ReceiverStream::new(envelope_rx),
-        SingleChannelRouter::new(RoutingAddr::plane(1024)),
+        SingleChannelRouter::default(),
         store.delegate.node_store(uri.to_string()),
     );
 
