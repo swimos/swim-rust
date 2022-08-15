@@ -1,5 +1,5 @@
 error[E0599]: the method `as_value` exists for struct `S<Valid, Invalid>`, but its trait bounds were not satisfied
-  --> $DIR/generic.rs:34:15
+  --> src/tests/derive/form/generic.rs:34:15
    |
 24 |     struct S<A, B> {
    |     --------------
@@ -17,3 +17,25 @@ error[E0599]: the method `as_value` exists for struct `S<Valid, Invalid>`, but i
            which is required by `S<Valid, Invalid>: Form`
            `S<Valid, Invalid>: StructuralWritable`
            which is required by `S<Valid, Invalid>: Form`
+note: the following traits must be implemented
+  --> src/structural/read/mod.rs
+   |
+   |  / pub trait StructuralReadable: RecognizerReadable {
+   |  |     fn read_extant() -> Result<Self, ReadError> {
+   |  |         let mut rec = Self::make_recognizer();
+   |  |         rec.feed_event(ReadEvent::Extant)
+...   |
+   |  |     }
+   |  | }
+   |  |_^
+   |
+  ::: src/structural/write/mod.rs
+   |
+   | /  pub trait StructuralWritable {
+   | |      /// The number of attributes that will be written by this instance.
+   | |      fn num_attributes(&self) -> usize;
+   | |
+...  |
+   | |      }
+   | |  }
+   | |__^
