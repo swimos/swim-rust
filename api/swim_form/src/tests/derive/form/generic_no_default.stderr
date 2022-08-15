@@ -39,28 +39,6 @@ note: the following traits must be implemented
    | |      }
    | |  }
    | |__^
-note: the following traits must be implemented
-  --> src/structural/read/mod.rs
-   |
-   |  / pub trait StructuralReadable: RecognizerReadable {
-   |  |     fn read_extant() -> Result<Self, ReadError> {
-   |  |         let mut rec = Self::make_recognizer();
-   |  |         rec.feed_event(ReadEvent::Extant)
-...   |
-   |  |     }
-   |  | }
-   |  |_^
-   |
-  ::: src/structural/write/mod.rs
-   |
-   | /  pub trait StructuralWritable {
-   | |      /// The number of attributes that will be written by this instance.
-   | |      fn num_attributes(&self) -> usize;
-   | |
-...  |
-   | |      }
-   | |  }
-   | |__^
 
 error[E0277]: the trait bound `B: Default` is not satisfied
   --> src/tests/derive/form/generic_no_default.rs:24:14
