@@ -20,7 +20,7 @@ use std::cmp::Ordering;
 use swim_model::bigint::{BigInt, ToBigInt};
 use swim_model::{Attr, Value};
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Bound<T> {
     value: T,
     inclusive: bool,
@@ -44,7 +44,7 @@ impl<T> Bound<T> {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Range<T: Clone + PartialOrd> {
     min: Option<Bound<T>>,
     max: Option<Bound<T>>,

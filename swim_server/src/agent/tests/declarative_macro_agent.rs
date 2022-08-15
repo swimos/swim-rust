@@ -16,7 +16,6 @@
 #![allow(clippy::ptr_arg)]
 
 use std::fmt::Debug;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -37,7 +36,6 @@ use crate::agent::AgentContext;
 use crate::agent_lifecycle;
 use crate::plane::provider::AgentProvider;
 use crate::swim_agent;
-use swim_utilities::algebra::non_zero_usize;
 
 mod swim_server {
     pub use crate::*;
@@ -46,7 +44,6 @@ mod swim_server {
 #[derive(Debug, Clone)]
 pub struct TestAgentConfig {
     collector: Arc<Mutex<EventCollector>>,
-    command_buffer_size: NonZeroUsize,
 }
 
 #[agent_lifecycle(agent = "MacroReportingAgent", on_start = "agent_on_start")]
@@ -93,7 +90,6 @@ impl TestAgentConfig {
     pub fn new(sender: mpsc::Sender<ReportingAgentEvent>) -> Self {
         TestAgentConfig {
             collector: Arc::new(Mutex::new(EventCollector::new(sender))),
-            command_buffer_size: non_zero_usize!(5),
         }
     }
 

@@ -28,12 +28,10 @@ use crate::{
     value_lifecycle, SwimAgent,
 };
 use std::fmt::Debug;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use stm::stm::Stm;
 use stm::transaction::atomically;
-use swim_utilities::algebra::non_zero_usize;
 use tokio::sync::{mpsc, Mutex};
 
 mod swim_server {
@@ -371,14 +369,12 @@ impl DemandMapLifecycle {
 #[derive(Debug, Clone)]
 pub struct TestAgentConfig {
     collector: Arc<Mutex<EventCollector>>,
-    command_buffer_size: NonZeroUsize,
 }
 
 impl TestAgentConfig {
     pub fn new(sender: mpsc::Sender<ReportingAgentEvent>) -> Self {
         TestAgentConfig {
             collector: Arc::new(Mutex::new(EventCollector::new(sender))),
-            command_buffer_size: non_zero_usize!(5),
         }
     }
 

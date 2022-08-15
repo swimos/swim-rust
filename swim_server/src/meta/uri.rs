@@ -28,7 +28,7 @@ use crate::meta::{LANES_URI, LANE_URI, PULSE_URI, UPLINK_URI};
 use swim_utilities::routing::uri::{BadRelativeUri, PathSegmentIterator, RelativeUri};
 
 /// Errors that are produced when parsing an invalid node or lane URI.
-#[derive(Debug, PartialEq, Error)]
+#[derive(Debug, PartialEq, Eq, Error)]
 pub enum MetaParseErr {
     /// Either the provided node or lane URI failed to parse or the target does not exist.
     InvalidUri(InvalidUri),

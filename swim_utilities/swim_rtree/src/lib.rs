@@ -249,8 +249,8 @@ where
             }
         }
 
-        if maybe_orphan_nodes.is_some() {
-            for orphan in maybe_orphan_nodes.unwrap() {
+        if let Some(orphans) = maybe_orphan_nodes {
+            for orphan in orphans {
                 match *orphan {
                     Entry::Leaf { .. } => self.internal_insert(orphan, 0),
                     Entry::Branch {
@@ -660,7 +660,7 @@ fn calculate_chunk_size(node_capacity: usize, coord_count: usize, entries_count:
 }
 
 #[derive(Debug, Clone)]
-pub(in crate) struct Node<L, B>
+pub(crate) struct Node<L, B>
 where
     L: Label,
     B: BoxBounded,
@@ -768,7 +768,7 @@ where
                         }
                     }
 
-                    let min_entry = Arc::make_mut(&mut min_entry);
+                    let min_entry = Arc::make_mut(min_entry);
 
                     if let Some((first_entry, second_entry)) =
                         min_entry.insert(item, min_rect, level)
@@ -964,7 +964,7 @@ type MaybeSplit<L, B> = Option<(EntryPtr<L, B>, EntryPtr<L, B>)>;
 type SplitGroup<L, B> = (Vec<EntryPtr<L, B>>, Rect<<B as BoxBounded>::Point>);
 
 #[derive(Debug, Clone)]
-pub(in crate) enum Entry<L, B>
+pub(crate) enum Entry<L, B>
 where
     L: Label,
     B: BoxBounded,

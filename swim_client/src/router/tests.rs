@@ -124,7 +124,7 @@ fn test_routing_path_from_relative_path() {
 
 #[test]
 fn test_routing_path_from_absolute_path() {
-    let url = url::Url::parse(&"warp://127.0.0.1:9001".to_string()).unwrap();
+    let url = url::Url::parse("warp://127.0.0.1:9001").unwrap();
     let path = AbsolutePath::new(url, "/foo", "/bar");
 
     let routing_path = RoutingPath::try_from(AddressableWrapper(path)).unwrap();
@@ -141,7 +141,7 @@ fn test_routing_path_from_absolute_path() {
 
 #[test]
 fn test_routing_path_from_absolute_path_invalid() {
-    let url = url::Url::parse(&"carp://127.0.0.1:9001".to_string()).unwrap();
+    let url = url::Url::parse("carp://127.0.0.1:9001").unwrap();
     let path = AbsolutePath::new(url, "/foo", "/bar");
 
     let routing_path = RoutingPath::try_from(AddressableWrapper(path));

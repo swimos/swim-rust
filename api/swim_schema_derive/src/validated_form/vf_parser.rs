@@ -434,7 +434,7 @@ where
                 ty => {
                     context.error_spanned_by(
                         ty,
-                        format!("Unsupported type: {}", ty.to_token_stream().to_string()),
+                        format!("Unsupported type: {}", ty.to_token_stream()),
                     );
                     StandardSchema::None
                 }

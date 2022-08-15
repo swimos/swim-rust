@@ -61,13 +61,8 @@ pub trait EngineIterator {
 /// An iterator over a range of keys in a keyspace that begin with a specified prefix.
 pub trait EnginePrefixIterator {
     /// Returns a tuple containing an optional key and value for the lexicographically following
-    /// cursor. If `None` is returned, the iterator has reached the end of its range.
-    fn next(&mut self) -> Option<KvBytes>;
-
-    /// Returns `Ok(true)` if the iterator is currently valid and has not reached the end of its
-    /// range. `Ok(false)` if the iterator has not encountered any errors but has reached the end of
-    /// its range.  Or `Err` with a cause the error.
-    fn valid(&self) -> Result<bool, StoreError>;
+    /// cursor, or an error. If `None` is returned, the iterator has reached the end of its range.
+    fn next(&mut self) -> Option<Result<KvBytes, StoreError>>;
 }
 
 // todo: add iterator direction

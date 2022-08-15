@@ -1,5 +1,5 @@
 error: Swim agent cannot be created from Union.
-  --> $DIR/src/agent/tests/derive/fail/union_agent.rs:21:14
+  --> src/agent/tests/derive/fail/union_agent.rs:23:11
    |
-21 |     #[derive(SwimAgent)]
-   |              ^^^^^^^^^
+23 |     union TestAgent {
+   |           ^^^^^^^^^

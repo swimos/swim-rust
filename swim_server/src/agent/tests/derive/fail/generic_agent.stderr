@@ -1,5 +1,5 @@
 error: Swim agent cannot have generic parameters.
-  --> $DIR/src/agent/tests/derive/fail/generic_agent.rs:21:21
+  --> src/agent/tests/derive/fail/generic_agent.rs:23:16
    |
-21 |     #[derive(Debug, SwimAgent)]
-   |                     ^^^^^^^^^
+23 |     pub struct TestAgent<S> {
+   |                ^^^^^^^^^

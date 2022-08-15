@@ -51,17 +51,15 @@ use url::Url;
 
 #[derive(Clone, Debug)]
 struct TestRouter {
-    router_addr: RoutingAddr,
     sender: mpsc::Sender<TaggedEnvelope>,
     _drop_tx: Arc<promise::Sender<ConnectionDropped>>,
     drop_rx: promise::Receiver<ConnectionDropped>,
 }
 
 impl TestRouter {
-    fn new(router_addr: RoutingAddr, sender: mpsc::Sender<TaggedEnvelope>) -> Self {
+    fn new(sender: mpsc::Sender<TaggedEnvelope>) -> Self {
         let (drop_tx, drop_rx) = promise::promise();
         TestRouter {
-            router_addr,
             sender,
             _drop_tx: Arc::new(drop_tx),
             drop_rx,
@@ -162,7 +160,7 @@ async fn immediate_unlink_stateless_uplinks() {
         stub_action_observer(),
     );
 
-    let router = TestRouter::new(RoutingAddr::plane(1024), router_tx);
+    let router = TestRouter::new(router_tx);
 
     let uplinks_task = uplinks.run(ReceiverStream::new(action_rx), router, error_tx, 256);
 
@@ -213,7 +211,7 @@ async fn sync_with_stateless_uplinks() {
         stub_action_observer(),
     );
 
-    let router = TestRouter::new(RoutingAddr::plane(1024), router_tx);
+    let router = TestRouter::new(router_tx);
 
     let uplinks_task = uplinks.run(ReceiverStream::new(action_rx), router, error_tx, 256);
 
@@ -267,7 +265,7 @@ async fn sync_with_action_lane() {
         stub_action_observer(),
     );
 
-    let router = TestRouter::new(RoutingAddr::plane(1024), router_tx);
+    let router = TestRouter::new(router_tx);
 
     let uplinks_task = uplinks.run(ReceiverStream::new(action_rx), router, error_tx, 256);
 
@@ -330,7 +328,7 @@ async fn sync_after_link_on_stateless_uplinks() {
         stub_action_observer(),
     );
 
-    let router = TestRouter::new(RoutingAddr::plane(1024), router_tx);
+    let router = TestRouter::new(router_tx);
 
     let uplinks_task = uplinks.run(ReceiverStream::new(action_rx), router, error_tx, 256);
 
@@ -399,7 +397,7 @@ async fn link_to_and_receive_from_broadcast_uplinks() {
         stub_action_observer(),
     );
 
-    let router = TestRouter::new(RoutingAddr::plane(1024), router_tx);
+    let router = TestRouter::new(router_tx);
 
     let uplinks_task = uplinks.run(ReceiverStream::new(action_rx), router, error_tx, 256);
 
@@ -483,7 +481,7 @@ async fn link_to_and_receive_from_addressed_uplinks() {
         stub_action_observer(),
     );
 
-    let router = TestRouter::new(RoutingAddr::plane(1024), router_tx);
+    let router = TestRouter::new(router_tx);
 
     let uplinks_task = uplinks.run(ReceiverStream::new(action_rx), router, error_tx, 256);
 
@@ -586,7 +584,7 @@ async fn link_twice_to_stateless_uplinks() {
         stub_action_observer(),
     );
 
-    let router = TestRouter::new(RoutingAddr::plane(1024), router_tx);
+    let router = TestRouter::new(router_tx);
 
     let uplinks_task = uplinks.run(ReceiverStream::new(action_rx), router, error_tx, 256);
 
@@ -665,7 +663,7 @@ async fn no_messages_after_unlink_from_stateless_uplinks() {
         stub_action_observer(),
     );
 
-    let router = TestRouter::new(RoutingAddr::plane(1024), router_tx);
+    let router = TestRouter::new(router_tx);
 
     let uplinks_task = uplinks.run(ReceiverStream::new(action_rx), router, error_tx, 256);
 
@@ -763,7 +761,7 @@ async fn send_no_uplink_stateless_uplinks() {
     let (router_tx, mut router_rx) = mpsc::channel(5);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
-    let router = TestRouter::new(RoutingAddr::plane(1024), router_tx);
+    let router = TestRouter::new(router_tx);
 
     let uplinks = StatelessUplinks::new(
         ReceiverStream::new(producer_rx),
@@ -869,7 +867,7 @@ async fn metrics() {
         observer,
     );
 
-    let router = TestRouter::new(RoutingAddr::plane(1024), router_tx);
+    let router = TestRouter::new(router_tx);
 
     let uplinks_task = uplinks.run(ReceiverStream::new(action_rx), router, error_tx, 256);
 

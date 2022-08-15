@@ -1,5 +1,5 @@
 error: Use schema operators for chained schemas
-  --> $DIR/src/schema/tests/derive/validated_form/trailing_schema.rs:19:14
+  --> src/schema/tests/derive/validated_form/trailing_schema.rs:21:38
    |
-19 |     #[derive(ValueSchema)]
-   |              ^^^^^^^^^^^
+21 |         #[form(schema(num_items = 2, num_attrs = 3))]
+   |                                      ^^^^^^^^^^^^^

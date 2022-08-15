@@ -39,8 +39,8 @@ pub enum Path {
 impl Display for Path {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Path::Remote(abs_path) => write!(f, "{}", abs_path.to_string()),
-            Path::Local(rel_path) => write!(f, "{}", rel_path.to_string()),
+            Path::Remote(abs_path) => write!(f, "{}", abs_path),
+            Path::Local(rel_path) => write!(f, "{}", rel_path),
         }
     }
 }

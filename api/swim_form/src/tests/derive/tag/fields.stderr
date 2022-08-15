@@ -1,5 +1,8 @@
 error: Only enumerations with no fields can be tags.
-  --> $DIR/src/tests/derive/tag/fields.rs:18:14
+  --> src/tests/derive/tag/fields.rs:19:5
    |
-18 |     #[derive(Tag)]
-   |              ^^^
+19 | /     enum E {
+20 | |         A,
+21 | |         B(i32),
+22 | |     }
+   | |_____^

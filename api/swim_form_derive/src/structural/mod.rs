@@ -157,7 +157,7 @@ fn add_bounds(original: &Generics, generics: &mut Generics, bound: syn::TraitBou
         parse_quote!(#id: #bound)
     });
     let where_clause = generics.make_where_clause();
-    for bound in bounds.into_iter() {
+    for bound in bounds {
         where_clause.predicates.push(bound);
     }
 }

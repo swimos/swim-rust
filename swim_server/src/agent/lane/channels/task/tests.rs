@@ -1444,21 +1444,10 @@ impl RouteReceiver {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct MultiTestContextInner {
-    router_addr: RoutingAddr,
     senders: HashMap<RoutingAddr, Route>,
     receivers: HashMap<RoutingAddr, RouteReceiver>,
-}
-
-impl MultiTestContextInner {
-    fn new(router_addr: RoutingAddr) -> Self {
-        MultiTestContextInner {
-            router_addr,
-            senders: HashMap::new(),
-            receivers: HashMap::new(),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -1470,11 +1459,9 @@ struct MultiTestContext(
 );
 
 impl MultiTestContext {
-    fn new(router_addr: RoutingAddr, spawner: mpsc::Sender<Eff>) -> Self {
+    fn new(spawner: mpsc::Sender<Eff>) -> Self {
         MultiTestContext(
-            Arc::new(parking_lot::Mutex::new(MultiTestContextInner::new(
-                router_addr,
-            ))),
+            Arc::new(parking_lot::Mutex::new(MultiTestContextInner::default())),
             spawner,
             RelativeUri::try_from("/mock/router".to_string()).unwrap(),
             Arc::new(AtomicInstant::new(Instant::now().into_std())),
@@ -1569,7 +1556,7 @@ impl Router for MultiTestRouter {
 fn make_multi_context() -> (MultiTestContext, BoxFuture<'static, ()>) {
     let (spawn_tx, spawn_rx) = mpsc::channel(5);
 
-    let context = MultiTestContext::new(RoutingAddr::plane(1024), spawn_tx);
+    let context = MultiTestContext::new(spawn_tx);
     let spawn_task = ReceiverStream::new(spawn_rx)
         .for_each_concurrent(None, |t| t)
         .boxed();

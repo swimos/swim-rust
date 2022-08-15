@@ -538,24 +538,13 @@ impl From<SubscriptionError<Path>> for ServerError {
 /// * `websocket_config` - Configuration for WebSocket connections.
 /// * `downlink_connections_config` - Configuration parameters for the downlink connections.
 /// * `downlinks_config` - CConfiguration for the behaviour of downlinks.
+#[derive(Default)]
 pub struct SwimServerConfig {
     pub conn_config: RemoteConnectionsConfig,
     pub agent_config: AgentExecutionConfig,
     pub websocket_config: WebSocketConfig,
     pub downlink_connections_config: DownlinkConnectionsConfig,
     pub downlinks_config: ServerDownlinksConfig,
-}
-
-impl Default for SwimServerConfig {
-    fn default() -> Self {
-        SwimServerConfig {
-            conn_config: Default::default(),
-            agent_config: Default::default(),
-            websocket_config: Default::default(),
-            downlink_connections_config: Default::default(),
-            downlinks_config: Default::default(),
-        }
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -639,11 +628,7 @@ impl ServerHandle {
             }
         }
 
-        either_address
-            .as_ref()
-            .right()
-            .map(Option::as_ref)
-            .flatten()
+        either_address.as_ref().right().and_then(Option::as_ref)
     }
 
     /// Terminates the associated server instance.
