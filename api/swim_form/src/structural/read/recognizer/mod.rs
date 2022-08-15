@@ -809,6 +809,7 @@ impl<T, Flds> Recognizer for OrdinalFieldsRecognizer<T, Flds> {
         } else if *index == *num_fields {
             Some(Err(ReadError::UnexpectedItem))
         } else {
+            *state = BodyStage::Item;
             let r = select_recog(fields, *index, input)?;
             if let Err(e) = r {
                 Some(Err(e))
@@ -2473,7 +2474,7 @@ macro_rules! impl_readable_tuple {
                             match result {
                                 Ok(v) => {
                                     *$vname = Some(v);
-                                    None
+                                    Some(Ok(()))
                                 },
                                 Err(e) => {
                                     Some(Err(e))

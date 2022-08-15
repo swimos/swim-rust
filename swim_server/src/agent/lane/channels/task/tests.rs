@@ -1443,7 +1443,7 @@ impl RouteReceiver {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct MultiTestContextInner {
     senders: HashMap<RoutingAddr, (TaggedSender, promise::Receiver<ConnectionDropped>)>,
     receivers: HashMap<RoutingAddr, RouteReceiver>,

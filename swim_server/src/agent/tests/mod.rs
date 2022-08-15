@@ -86,6 +86,12 @@ pub mod stub_router {
         drop_rx: promise::Receiver<ConnectionDropped>,
     }
 
+    impl Default for SingleChannelRouter {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
     impl SingleChannelRouter {
         pub fn new() -> Self {
             let (tx, rx) = promise::promise();
@@ -803,7 +809,7 @@ pub async fn run_agent_test<Agent, Config, Lifecycle>(
         clock.clone(),
         client,
         ReceiverStream::new(envelope_rx),
-        SingleChannelRouter::new(),
+        SingleChannelRouter::default(),
         MockNodeStore::mock(),
     );
 
