@@ -171,16 +171,13 @@ impl KeyspaceByteEngine for RocksEngine {
         let mut data = Vec::new();
 
         loop {
-            match it.valid() {
-                Ok(true) => match it.next() {
-                    Some((key, value)) => {
-                        let mapped = map_fn(key.as_ref(), value.as_ref())?;
-                        data.push(mapped);
-                    }
-                    None => break,
-                },
-                Ok(false) => break,
-                Err(e) => return Err(e),
+            match it.next() {
+                Some(Ok((key, value))) => {
+                    let mapped = map_fn(key.as_ref(), value.as_ref())?;
+                    data.push(mapped);
+                }
+                Some(Err(e)) => return Err(e),
+                _ => break,
             }
         }
 

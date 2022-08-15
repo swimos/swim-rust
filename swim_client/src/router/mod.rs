@@ -49,7 +49,7 @@ pub(crate) struct TopLevelClientRouterFactory {
 }
 
 impl TopLevelClientRouterFactory {
-    pub(in crate) fn new(
+    pub(crate) fn new(
         client_sender: mpsc::Sender<DownlinkRoutingRequest<AbsolutePath>>,
         remote_sender: mpsc::Sender<RemoteRoutingRequest>,
     ) -> Self {

@@ -148,12 +148,8 @@ impl EngineIterator for NoStoreEngineIterator {
 
 pub struct NoStoreEnginePrefixIterator;
 impl EnginePrefixIterator for NoStoreEnginePrefixIterator {
-    fn next(&mut self) -> Option<KvBytes> {
+    fn next(&mut self) -> Option<Result<KvBytes, StoreError>> {
         None
-    }
-
-    fn valid(&self) -> Result<bool, StoreError> {
-        Ok(false)
     }
 }
 
