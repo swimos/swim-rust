@@ -47,7 +47,7 @@ fn test_handle_value_action_valid() {
 #[test]
 fn test_handle_value_action_invalid() {
     let action = 3.into_value();
-    
+
     let machine = CommandStateMachine::new(StandardSchema::OfKind(ValueKind::Text));
     let result = machine.handle_action_request(&mut (), action);
 
