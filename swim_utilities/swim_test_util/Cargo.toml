@@ -5,4 +5,4 @@ authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
 [dependencies]
-futures = "0.3.4"
+futures = "0.3.23"
