@@ -28,12 +28,15 @@ use super::ReconEncoder;
 const ID: Uuid = Uuid::from_u128(7474834);
 const NODE: &str = "/node";
 const LANE: &str = "lane";
-const PATH: Path<BytesStr> = Path::from_static_strs(NODE, LANE);
+
+fn path() -> Path<BytesStr> {
+    Path::from_static_strs(NODE, LANE)
+}
 
 #[test]
 fn encode_link() {
     let mut encoder = ReconEncoder;
-    let message: BytesRequestMessage = RequestMessage::link(ID, PATH);
+    let message: BytesRequestMessage = RequestMessage::link(ID, path());
 
     let mut buffer = BytesMut::new();
 
@@ -47,7 +50,7 @@ fn encode_link() {
 #[test]
 fn encode_sync() {
     let mut encoder = ReconEncoder;
-    let message: BytesRequestMessage = RequestMessage::sync(ID, PATH);
+    let message: BytesRequestMessage = RequestMessage::sync(ID, path());
 
     let mut buffer = BytesMut::new();
 
@@ -61,7 +64,7 @@ fn encode_sync() {
 #[test]
 fn encode_unlink() {
     let mut encoder = ReconEncoder;
-    let message: BytesRequestMessage = RequestMessage::unlink(ID, PATH);
+    let message: BytesRequestMessage = RequestMessage::unlink(ID, path());
 
     let mut buffer = BytesMut::new();
 
@@ -75,7 +78,7 @@ fn encode_unlink() {
 #[test]
 fn encode_command_empty() {
     let mut encoder = ReconEncoder;
-    let message: BytesRequestMessage = RequestMessage::command(ID, PATH, Bytes::new());
+    let message: BytesRequestMessage = RequestMessage::command(ID, path(), Bytes::new());
 
     let mut buffer = BytesMut::new();
 
@@ -90,7 +93,7 @@ fn encode_command_empty() {
 fn encode_command() {
     let mut encoder = ReconEncoder;
     let message: BytesRequestMessage =
-        RequestMessage::command(ID, PATH, Bytes::from_static(b"body"));
+        RequestMessage::command(ID, path(), Bytes::from_static(b"body"));
 
     let mut buffer = BytesMut::new();
 
@@ -105,7 +108,7 @@ fn encode_command() {
 fn encode_command_with_attr() {
     let mut encoder = ReconEncoder;
     let message: BytesRequestMessage =
-        RequestMessage::command(ID, PATH, Bytes::from_static(b"@body"));
+        RequestMessage::command(ID, path(), Bytes::from_static(b"@body"));
 
     let mut buffer = BytesMut::new();
 
@@ -119,7 +122,7 @@ fn encode_command_with_attr() {
 #[test]
 fn encode_linked() {
     let mut encoder = ReconEncoder;
-    let message: BytesResponseMessage = ResponseMessage::linked(ID, PATH);
+    let message: BytesResponseMessage = ResponseMessage::linked(ID, path());
 
     let mut buffer = BytesMut::new();
 
@@ -133,7 +136,7 @@ fn encode_linked() {
 #[test]
 fn encode_synced() {
     let mut encoder = ReconEncoder;
-    let message: BytesResponseMessage = ResponseMessage::synced(ID, PATH);
+    let message: BytesResponseMessage = ResponseMessage::synced(ID, path());
 
     let mut buffer = BytesMut::new();
 
@@ -147,7 +150,7 @@ fn encode_synced() {
 #[test]
 fn encode_unlinked_no_body() {
     let mut encoder = ReconEncoder;
-    let message: BytesResponseMessage = ResponseMessage::unlinked(ID, PATH, None);
+    let message: BytesResponseMessage = ResponseMessage::unlinked(ID, path(), None);
 
     let mut buffer = BytesMut::new();
 
@@ -161,7 +164,7 @@ fn encode_unlinked_no_body() {
 #[test]
 fn encode_unlinked_empty() {
     let mut encoder = ReconEncoder;
-    let message: BytesResponseMessage = ResponseMessage::unlinked(ID, PATH, Some(Bytes::new()));
+    let message: BytesResponseMessage = ResponseMessage::unlinked(ID, path(), Some(Bytes::new()));
 
     let mut buffer = BytesMut::new();
 
@@ -176,7 +179,7 @@ fn encode_unlinked_empty() {
 fn encode_unlinked() {
     let mut encoder = ReconEncoder;
     let message: BytesResponseMessage =
-        ResponseMessage::unlinked(ID, PATH, Some(Bytes::from_static(b"gone")));
+        ResponseMessage::unlinked(ID, path(), Some(Bytes::from_static(b"gone")));
 
     let mut buffer = BytesMut::new();
 
@@ -191,7 +194,7 @@ fn encode_unlinked() {
 fn encode_event() {
     let mut encoder = ReconEncoder;
     let message: BytesResponseMessage =
-        ResponseMessage::event(ID, PATH, Bytes::from_static(b"body"));
+        ResponseMessage::event(ID, path(), Bytes::from_static(b"body"));
 
     let mut buffer = BytesMut::new();
 
@@ -206,7 +209,7 @@ fn encode_event() {
 fn encode_event_with_attr() {
     let mut encoder = ReconEncoder;
     let message: BytesResponseMessage =
-        ResponseMessage::event(ID, PATH, Bytes::from_static(b"@body"));
+        ResponseMessage::event(ID, path(), Bytes::from_static(b"@body"));
 
     let mut buffer = BytesMut::new();
 
