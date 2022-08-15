@@ -16,6 +16,7 @@ use swim_form_derive::*;
 
 fn main() {
     #[derive(Form)]
+    #[form_root(::swim_form)]
     struct S {
         #[form(skip, body)]
         a: i32,

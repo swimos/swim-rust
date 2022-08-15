@@ -19,6 +19,7 @@ fn main() {
     struct B;
 
     #[derive(Form)]
+    #[form_root(::swim_form)]
     struct A {
         #[form(tag)]
         a: B,

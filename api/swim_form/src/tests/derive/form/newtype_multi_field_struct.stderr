@@ -1,11 +1,11 @@
 error: Cannot apply `newtype` attribute to a struct with multiple fields
-  --> src/tests/derive/form/newtype_multi_field_struct.rs:5:5
+  --> src/tests/derive/form/newtype_multi_field_struct.rs:6:5
    |
-5  | /     #[form(newtype)]
-6  | |     struct A{
-7  | |         a: i32,
-8  | |         b: i32,
-9  | |         #[form(skip)]
-10 | |         c: i32,
-11 | |     }
+6  | /     #[form(newtype)]
+7  | |     struct A{
+8  | |         a: i32,
+9  | |         b: i32,
+10 | |         #[form(skip)]
+11 | |         c: i32,
+12 | |     }
    | |_____^

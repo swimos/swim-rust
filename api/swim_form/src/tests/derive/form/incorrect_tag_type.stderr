@@ -1,5 +1,5 @@
 error: Expected a string literal
-  --> src/tests/derive/form/incorrect_tag_type.rs:19:18
+  --> src/tests/derive/form/incorrect_tag_type.rs:20:18
    |
-19 |     #[form(tag = 13)]
+20 |     #[form(tag = 13)]
    |                  ^^

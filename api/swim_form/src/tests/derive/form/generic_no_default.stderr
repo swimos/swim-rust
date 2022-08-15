@@ -1,7 +1,7 @@
 error[E0599]: the method `as_value` exists for struct `S<Valid, Skipped>`, but its trait bounds were not satisfied
-  --> src/tests/derive/form/generic_no_default.rs:35:15
+  --> src/tests/derive/form/generic_no_default.rs:37:15
    |
-24 |     struct S<A, B> {
+26 |     struct S<A, B> {
    |     --------------
    |     |
    |     method `as_value` not found for this
@@ -9,7 +9,7 @@ error[E0599]: the method `as_value` exists for struct `S<Valid, Skipped>`, but i
    |     doesn't satisfy `S<Valid, Skipped>: StructuralReadable`
    |     doesn't satisfy `S<Valid, Skipped>: StructuralWritable`
 ...
-35 |     let _ = s.as_value();
+37 |     let _ = s.as_value();
    |               ^^^^^^^^ method cannot be called on `S<Valid, Skipped>` due to unsatisfied trait bounds
    |
    = note: the following trait bounds were not satisfied:
@@ -41,13 +41,13 @@ note: the following traits must be implemented
    | |__^
 
 error[E0277]: the trait bound `B: Default` is not satisfied
-  --> src/tests/derive/form/generic_no_default.rs:23:14
+  --> src/tests/derive/form/generic_no_default.rs:24:14
    |
-23 |     #[derive(Form, Debug, PartialEq, Clone)]
+24 |     #[derive(Form, Debug, PartialEq, Clone)]
    |              ^^^^ the trait `Default` is not implemented for `B`
    |
    = note: this error originates in the derive macro `Form` (in Nightly builds, run with -Z macro-backtrace for more info)
-help: consider further restricting this bound
+help: consider further restricting type parameter `B`
    |
-23 |     #[derive(Form + std::default::Default, Debug, PartialEq, Clone)]
-   |                   +++++++++++++++++++++++
+24 |     #[derive(Form, B: std::default::Default, Debug, PartialEq, Clone)]
+   |                  ++++++++++++++++++++++++++
