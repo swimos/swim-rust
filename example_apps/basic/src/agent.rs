@@ -34,6 +34,7 @@ pub struct ExampleLifecycle;
 
 #[lifecycle(ExampleAgent)]
 impl ExampleLifecycle {
+    
     #[on_start]
     pub fn on_start(
         &self,
