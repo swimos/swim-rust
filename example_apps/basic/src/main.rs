@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::error::Error;
+
 use swim::{
     agent::agent_model::AgentModel,
     route::RoutePattern,
@@ -24,8 +26,8 @@ use crate::agent::{ExampleAgent, ExampleLifecycle};
 mod agent;
 
 #[tokio::main]
-async fn main() {
-    let route = RoutePattern::parse_str("/example").expect("Invalid route pattern.");
+async fn main() -> Result<(), Box<dyn Error>> {
+    let route = RoutePattern::parse_str("/example")?;
 
     let lifecycle = ExampleLifecycle;
     let agent = AgentModel::new(ExampleAgent::default, lifecycle.into_lifecycle());
@@ -33,8 +35,7 @@ async fn main() {
     let server = ServerBuilder::default()
         .add_route(route, agent)
         .build()
-        .await
-        .expect("Routes are ambiguous.");
+        .await?;
 
     let (task, handle) = server.run();
 
@@ -42,7 +43,8 @@ async fn main() {
 
     let (_, result) = tokio::join!(shutdown, task);
 
-    result.expect("Listener disconnected.");
+    result?;
+    Ok(())
 }
 
 async fn manage_handle(mut handle: ServerHandle) {
