@@ -17,6 +17,7 @@ use std::marker::PhantomData;
 use bytes::BytesMut;
 use frunk::{coproduct::CNil, Coproduct};
 use futures::future::Either;
+use static_assertions::assert_obj_safe;
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_recon::parser::{AsyncParseError, RecognizerDecoder};
 use swim_utilities::routing::uri::RelativeUri;
@@ -53,6 +54,8 @@ pub trait HandlerAction<Context> {
 }
 
 pub trait EventHandler<Context>: HandlerAction<Context, Completion = ()> {}
+
+assert_obj_safe!(EventHandler<()>);
 
 impl<Context, H> EventHandler<Context> for H where H: HandlerAction<Context, Completion = ()> {}
 
