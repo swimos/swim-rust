@@ -128,14 +128,14 @@ impl ServerBuilder {
         let routes = plane.build()?;
         let resolver = Arc::new(Resolver::new().await);
         if enable_tls {
-            let networking = TokioPlainTextNetworking::new(resolver);
+            //TODO Make this support actual identities.
+            let networking =
+                TokioTlsNetworking::new::<_, Box<PathBuf>>(std::iter::empty(), resolver);
             Ok(BoxServer(with_websockets(
                 bind_to, routes, networking, config, deflate,
             )))
         } else {
-            //TODO Make this support actual identities.
-            let networking =
-                TokioTlsNetworking::new::<_, Box<PathBuf>>(std::iter::empty(), resolver);
+            let networking = TokioPlainTextNetworking::new(resolver);
             Ok(BoxServer(with_websockets(
                 bind_to, routes, networking, config, deflate,
             )))
