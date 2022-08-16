@@ -46,6 +46,18 @@ impl ExampleLifecycle {
         })
     }
 
+    #[on_stop]
+    pub fn on_stop(
+        &self,
+        context: HandlerContext<ExampleAgent>,
+    ) -> impl EventHandler<ExampleAgent> {
+        context.get_agent_uri().and_then(move |uri| {
+            context.effect(move || {
+                println!("Stopping agent at: {}", uri);
+            })
+        })
+    }
+
     #[on_command(update_value)]
     pub fn on_update(
         &self,
@@ -53,6 +65,8 @@ impl ExampleLifecycle {
         value: &Text,
     ) -> impl EventHandler<ExampleAgent> {
         let n = value.len() as i32;
-        context.set_value(ExampleAgent::LENGTH, n)
+        context.effect(move || {
+            println!("Setting length to: {}", n);
+        }).followed_by(context.set_value(ExampleAgent::LENGTH, n))
     }
 }

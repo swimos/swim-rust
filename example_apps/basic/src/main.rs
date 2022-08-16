@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::error::Error;
+use std::{error::Error, time::Duration};
 
 use swim::{
     agent::agent_model::AgentModel,
@@ -34,6 +34,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let server = ServerBuilder::default()
         .add_route(route, agent)
+        .update_config(|config| {
+            config.agent_runtime.inactive_timeout = Duration::from_secs(5 * 60);
+        })
         .build()
         .await?;
 
