@@ -44,6 +44,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let (_, result) = tokio::join!(shutdown, task);
 
     result?;
+    println!("Server stopped successfully.");
     Ok(())
 }
 
@@ -65,5 +66,6 @@ async fn manage_handle(mut handle: ServerHandle) {
         shutdown_hook.await;
     }
 
+    println!("Stopping server.");
     handle.stop();
 }
