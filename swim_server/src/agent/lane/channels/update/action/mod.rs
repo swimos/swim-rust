@@ -109,7 +109,7 @@ where
                             Some(Either::Right(Ok((addr, msg)))) => {
                                 if let Ok(rx) = commander.command_and_await(msg).await {
                                     responses
-                                        .push(rx.map(move |r| r.map(move |resp| (addr, resp))));
+                                        .push_back(rx.map(move |r| r.map(move |resp| (addr, resp))));
                                 } else {
                                     event!(Level::ERROR, NO_COMPLETION);
                                 }
