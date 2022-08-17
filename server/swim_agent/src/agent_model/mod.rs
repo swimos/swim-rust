@@ -308,7 +308,7 @@ where
     Lifecycle: AgentLifecycle<LaneModel> + 'static,
 {
     /// Core event loop for the agent that routes incoming data from the runtime to the lanes and
-    /// state changes fromt he lanes to the runtime.
+    /// state changes from the lanes to the runtime.
     ///
     /// #Arguments
     /// * `_context` - Context through which to communicate with the runtime.
@@ -354,6 +354,28 @@ where
         let mut dirty_lanes: HashSet<u64> = HashSet::new();
 
         loop {
+            let select_event = async {
+                tokio::select! {
+                    maybe_suspended = suspended.next(), if !suspended.is_empty() => {
+                        maybe_suspended.map(|handler| TaskEvent::SuspendedComplete { handler })
+                    }
+                    maybe_req = lane_readers.next() => {
+                        maybe_req.map(|req| {
+                            match req {
+                                (id, Ok(Either::Left(request))) => TaskEvent::ValueRequest{
+                                    id, request
+                                },
+                                (id, Ok(Either::Right(request))) => TaskEvent::MapRequest{
+                                    id, request
+                                },
+                                (id, Err(error)) => TaskEvent::RequestError {
+                                    id, error
+                                },
+                            }
+                        })
+                    }
+                }
+            };
             let task_event: TaskEvent<LaneModel> = tokio::select! {
                 biased;
                 write_done = pending_writes.next(), if !pending_writes.is_empty() => {
@@ -365,27 +387,11 @@ where
                         continue;
                     }
                 }
-                maybe_suspended = suspended.next(), if !suspended.is_empty() => {
-                    if let Some(handler) = maybe_suspended {
-                        TaskEvent::SuspendedComplete { handler }
+                maybe_event = select_event => {
+                    if let Some(event) = maybe_event {
+                        event
                     } else {
-                        continue;
-                    }
-                }
-                maybe_req = lane_readers.next() => {
-                    match maybe_req {
-                        Some((id, Ok(Either::Left(request)))) => TaskEvent::ValueRequest{
-                            id, request
-                        },
-                        Some((id, Ok(Either::Right(request)))) => TaskEvent::MapRequest{
-                            id, request
-                        },
-                        Some((id, Err(error))) => TaskEvent::RequestError {
-                            id, error
-                        },
-                        _ => {
-                            break Ok(());
-                        }
+                        break Ok(());
                     }
                 }
             };
