@@ -35,7 +35,7 @@ use swim_utilities::{
 use uuid::Uuid;
 
 use crate::agent_lifecycle::lane_event::LaneEvent;
-use crate::event_handler::{Spawner, HandlerFuture, BoxEventHandler};
+use crate::event_handler::{BoxEventHandler, HandlerFuture, Spawner};
 use crate::{
     agent_lifecycle::AgentLifecycle,
     event_handler::{EventHandler, EventHandlerError, HandlerAction, StepResult},
@@ -265,7 +265,7 @@ where
         let lane_model = lane_model_fac.create();
         // Run the agent's `on_start` event handler.
         let on_start_handler = lifecycle.on_start();
-        
+
         if let Err(e) = run_handler(
             &suspended,
             meta,
@@ -623,7 +623,15 @@ where
                     collector.add_id(modification.lane_id);
                     if modification.trigger_handler {
                         if let Some(consequence) = lifecycle.lane_event(context, lane.as_str()) {
-                            run_handler(spawner, meta, context, lifecycle, consequence, lanes, collector)?;
+                            run_handler(
+                                spawner,
+                                meta,
+                                context,
+                                lifecycle,
+                                consequence,
+                                lanes,
+                                collector,
+                            )?;
                         }
                     }
                 }
@@ -640,7 +648,15 @@ where
                     collector.add_id(modification.lane_id);
                     if modification.trigger_handler {
                         if let Some(consequence) = lifecycle.lane_event(context, lane.as_str()) {
-                            run_handler(spawner, meta, context, lifecycle, consequence, lanes, collector)?;
+                            run_handler(
+                                spawner,
+                                meta,
+                                context,
+                                lifecycle,
+                                consequence,
+                                lanes,
+                                collector,
+                            )?;
                         }
                     }
                 }

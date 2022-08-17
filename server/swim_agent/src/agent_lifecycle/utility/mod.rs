@@ -209,16 +209,20 @@ impl<Agent: 'static> HandlerContext<Agent> {
         DoCommand::new(lane, value)
     }
 
+    /// Suspend a future to be executed by the agent task. The future must result in another
+    /// event handler that will be executed by the agent upon completion.
     pub fn suspend<Fut, H>(&self, future: Fut) -> impl EventHandler<Agent> + Send + 'static
     where
-        Fut: Future<Output = H> + Send +'static,
-        H: EventHandler<Agent> + 'static, {
+        Fut: Future<Output = H> + Send + 'static,
+        H: EventHandler<Agent> + 'static,
+    {
         Suspend::new(future)
     }
 
+    /// Susped a future to be executed by the agent task.
     pub fn suspend_effect<Fut>(&self, future: Fut) -> impl EventHandler<Agent> + Send + 'static
     where
-        Fut: Future<Output = ()> + Send +'static,
+        Fut: Future<Output = ()> + Send + 'static,
     {
         self.suspend(future.map(|_| UnitHandler::default()))
     }

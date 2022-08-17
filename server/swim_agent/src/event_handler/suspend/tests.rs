@@ -23,7 +23,7 @@ use swim_api::agent::AgentConfig;
 use swim_utilities::{routing::uri::RelativeUri, trigger};
 use tokio::sync::mpsc;
 
-use super::{Suspend, Spawner, HandlerFuture};
+use super::{HandlerFuture, Spawner, Suspend};
 
 const CONFIG: AgentConfig = AgentConfig {};
 const NODE_URI: &str = "/node";

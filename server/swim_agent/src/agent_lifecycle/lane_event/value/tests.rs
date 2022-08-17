@@ -21,7 +21,7 @@ use swim_utilities::routing::uri::RelativeUri;
 
 use crate::{
     agent_lifecycle::lane_event::{tests::run_handler, HLeaf},
-    event_handler::{HandlerAction, StepResult, Spawner},
+    event_handler::{HandlerAction, Spawner, StepResult},
     lanes::value::{
         lifecycle::{on_event::OnEvent, on_set::OnSet},
         ValueLane,
@@ -79,7 +79,12 @@ struct OnEventHandler<T> {
 impl<T: Clone> HandlerAction<TestAgent> for OnEventHandler<T> {
     type Completion = ();
 
-    fn step(&mut self, _suspend: &dyn Spawner<TestAgent>, _meta: AgentMetadata, _context: &TestAgent) -> StepResult<Self::Completion> {
+    fn step(
+        &mut self,
+        _suspend: &dyn Spawner<TestAgent>,
+        _meta: AgentMetadata,
+        _context: &TestAgent,
+    ) -> StepResult<Self::Completion> {
         let OnEventHandler { value, state, done } = self;
         if *done {
             StepResult::after_done()
@@ -102,7 +107,12 @@ struct OnSetHandler<T> {
 impl<T: Clone> HandlerAction<TestAgent> for OnSetHandler<T> {
     type Completion = ();
 
-    fn step(&mut self, _suspend: &dyn Spawner<TestAgent>, _meta: AgentMetadata, _context: &TestAgent) -> StepResult<Self::Completion> {
+    fn step(
+        &mut self,
+        _suspend: &dyn Spawner<TestAgent>,
+        _meta: AgentMetadata,
+        _context: &TestAgent,
+    ) -> StepResult<Self::Completion> {
         let OnSetHandler {
             state,
             done,

@@ -51,6 +51,8 @@ pub trait HandlerAction<Context> {
     /// with a result or returning an error.
     ///
     /// # Arguments
+    /// * `suspend` - Allows for futures to be suspended into the agent task. The future will result in another event handler
+    /// which will be executed by the agent task upon completion.
     /// * `meta` - Provides access to agent instance metadata.
     /// * `context` - The execution context of the handler (providing access to the lanes of the agent).
     fn step(
@@ -728,7 +730,6 @@ pub trait HandlerActionExt<Context>: HandlerAction<Context> {
     {
         FollowedBy::new(self, eff.into())
     }
-
 }
 
 impl<Context, H: HandlerAction<Context>> HandlerActionExt<Context> for H {}

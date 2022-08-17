@@ -31,7 +31,9 @@ use uuid::Uuid;
 
 use crate::{
     agent_model::WriteResult,
-    event_handler::{EventHandlerError, HandlerAction, Modification, StepResult, HandlerFuture, Spawner},
+    event_handler::{
+        EventHandlerError, HandlerAction, HandlerFuture, Modification, Spawner, StepResult,
+    },
     lanes::{
         map::{
             MapLane, MapLaneClear, MapLaneGet, MapLaneGetMap, MapLaneRemove, MapLaneSync,

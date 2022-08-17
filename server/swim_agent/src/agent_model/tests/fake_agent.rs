@@ -32,7 +32,7 @@ use uuid::Uuid;
 
 use crate::{
     agent_model::{AgentLaneModel, WriteResult},
-    event_handler::{HandlerAction, Modification, StepResult, Spawner},
+    event_handler::{HandlerAction, Modification, Spawner, StepResult},
     meta::AgentMetadata,
 };
 
@@ -205,7 +205,12 @@ impl AgentLaneModel for TestAgent {
 impl HandlerAction<TestAgent> for TestHandler {
     type Completion = ();
 
-    fn step(&mut self, _spawner: &dyn Spawner<TestAgent>, _meta: AgentMetadata, context: &TestAgent) -> StepResult<Self::Completion> {
+    fn step(
+        &mut self,
+        _spawner: &dyn Spawner<TestAgent>,
+        _meta: AgentMetadata,
+        context: &TestAgent,
+    ) -> StepResult<Self::Completion> {
         let TestHandler { event } = self;
         if let Some(event) = event.take() {
             let modified_lane = match &event {

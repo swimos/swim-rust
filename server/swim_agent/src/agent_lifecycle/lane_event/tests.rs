@@ -14,7 +14,7 @@
 
 use crate::{
     agent_lifecycle::lane_event::{HLeaf, LaneEvent},
-    event_handler::{HandlerAction, StepResult, Spawner, HandlerFuture},
+    event_handler::{HandlerAction, HandlerFuture, Spawner, StepResult},
     meta::AgentMetadata,
 };
 

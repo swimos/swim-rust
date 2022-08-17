@@ -25,7 +25,7 @@ use crate::{
     meta::AgentMetadata,
 };
 
-use super::{Decode, HandlerAction, Modification, SideEffect, StepResult, Spawner, HandlerFuture};
+use super::{Decode, HandlerAction, HandlerFuture, Modification, SideEffect, Spawner, StepResult};
 
 const CONFIG: AgentConfig = AgentConfig {};
 const NODE_URI: &str = "/node";

@@ -15,7 +15,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use parking_lot::Mutex;
-use swim_agent::event_handler::{Spawner, HandlerFuture};
+use swim_agent::event_handler::{HandlerFuture, Spawner};
 use swim_agent::lifecycle;
 use swim_agent::{
     agent_lifecycle::{

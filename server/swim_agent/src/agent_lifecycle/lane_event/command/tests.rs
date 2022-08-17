@@ -23,7 +23,7 @@ use crate::{
     agent_lifecycle::lane_event::{
         tests::run_handler, CommandBranch, CommandLeaf, HLeaf, LaneEvent,
     },
-    event_handler::{HandlerAction, StepResult, Spawner},
+    event_handler::{HandlerAction, Spawner, StepResult},
     lanes::command::{lifecycle::on_command::OnCommand, CommandLane},
     meta::AgentMetadata,
 };
@@ -72,7 +72,12 @@ struct OnCommandHandler<T> {
 impl<T: Clone> HandlerAction<TestAgent> for OnCommandHandler<T> {
     type Completion = ();
 
-    fn step(&mut self, _suspend: &dyn Spawner<TestAgent>, _meta: AgentMetadata, _context: &TestAgent) -> StepResult<Self::Completion> {
+    fn step(
+        &mut self,
+        _suspend: &dyn Spawner<TestAgent>,
+        _meta: AgentMetadata,
+        _context: &TestAgent,
+    ) -> StepResult<Self::Completion> {
         let OnCommandHandler { value, state, done } = self;
         if *done {
             StepResult::after_done()
