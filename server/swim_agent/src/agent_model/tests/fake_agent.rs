@@ -36,7 +36,7 @@ use crate::{
     meta::AgentMetadata,
 };
 
-use super::{TestEvent, MAP_ID, MAP_LANE, SYNC_VALUE, VAL_ID, VAL_LANE};
+use super::{TestEvent, CMD_ID, CMD_LANE, MAP_ID, MAP_LANE, SYNC_VALUE, VAL_ID, VAL_LANE};
 
 #[derive(Debug)]
 pub struct TestAgent {
@@ -45,6 +45,7 @@ pub struct TestAgent {
     staged_value: RefCell<Option<i32>>,
     staged_map: RefCell<Option<MapOperation<i32, i32>>>,
     sync_ids: RefCell<VecDeque<Uuid>>,
+    cmd: RefCell<Option<i32>>,
 }
 
 impl Default for TestAgent {
@@ -56,6 +57,7 @@ impl Default for TestAgent {
             staged_value: Default::default(),
             staged_map: Default::default(),
             sync_ids: Default::default(),
+            cmd: Default::default(),
         }
     }
 }
@@ -63,6 +65,11 @@ impl Default for TestAgent {
 impl TestAgent {
     pub fn take_receiver(&mut self) -> mpsc::UnboundedReceiver<TestEvent> {
         self.receiver.take().expect("Receiver taken twice.")
+    }
+
+    pub fn take_cmd(&self) -> i32 {
+        let mut guard = self.cmd.borrow_mut();
+        guard.take().expect("No command present.")
     }
 
     pub fn stage_value(&self, n: i32) {
@@ -96,7 +103,7 @@ impl AgentLaneModel for TestAgent {
     type OnSyncHandler = TestHandler;
 
     fn value_like_lanes() -> HashSet<&'static str> {
-        [VAL_LANE].into_iter().collect()
+        [VAL_LANE, CMD_LANE].into_iter().collect()
     }
 
     fn map_like_lanes() -> HashSet<&'static str> {
@@ -104,22 +111,27 @@ impl AgentLaneModel for TestAgent {
     }
 
     fn lane_ids() -> HashMap<u64, Text> {
-        [(0, VAL_LANE), (1, MAP_LANE)]
+        [(VAL_ID, VAL_LANE), (MAP_ID, MAP_LANE), (CMD_ID, CMD_LANE)]
             .into_iter()
             .map(|(k, v)| (k, Text::new(v)))
             .collect()
     }
 
     fn on_value_command(&self, lane: &str, body: BytesMut) -> Option<Self::ValCommandHandler> {
-        if lane == VAL_LANE {
-            Some(
+        match lane {
+            VAL_LANE => Some(
                 TestEvent::Value {
                     body: bytes_to_i32(body),
                 }
                 .into(),
-            )
-        } else {
-            None
+            ),
+            CMD_LANE => Some(
+                TestEvent::Cmd {
+                    body: bytes_to_i32(body),
+                }
+                .into(),
+            ),
+            _ => None,
         }
     }
 
@@ -217,6 +229,11 @@ impl HandlerAction<TestAgent> for TestHandler {
                 TestEvent::Value { body } => {
                     context.stage_value(*body);
                     Some(Modification::of(VAL_ID))
+                }
+                TestEvent::Cmd { body } => {
+                    let mut cmd = context.cmd.borrow_mut();
+                    *cmd = Some(*body);
+                    Some(Modification::of(CMD_ID))
                 }
                 TestEvent::Map { body } => {
                     context.stage_map(to_op(*body));

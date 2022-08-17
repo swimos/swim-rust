@@ -41,18 +41,21 @@ mod fake_lifecycle;
 mod lane_io;
 mod run_handler;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum TestEvent {
     Value { body: i32 },
+    Cmd { body: i32 },
     Map { body: MapMessage<i32, i32> },
     Sync { id: Uuid },
 }
 
 const VAL_ID: u64 = 0;
 const MAP_ID: u64 = 1;
+const CMD_ID: u64 = 2;
 
 const VAL_LANE: &str = "first";
 const MAP_LANE: &str = "second";
+const CMD_LANE: &str = "third";
 
 const CONFIG: AgentConfig = AgentConfig {};
 const NODE_URI: &str = "/node";
@@ -68,6 +71,7 @@ struct TestContext {
     lc_event_rx: UnboundedReceiverStream<LifecycleEvent>,
     val_lane_io: (ValueLaneSender, ValueLaneReceiver),
     map_lane_io: (MapLaneSender, MapLaneReceiver),
+    cmd_lane_io: (ValueLaneSender, ValueLaneReceiver),
 }
 
 #[derive(Clone)]
@@ -107,7 +111,7 @@ async fn init_agent(context: Box<TestAgentContext>) -> (AgentTask, TestContext) 
         .await
         .expect("Initialization failed.");
 
-    let (val_lane_io, map_lane_io) = context.take_lane_io();
+    let (val_lane_io, map_lane_io, cmd_lane_io) = context.take_lane_io();
 
     let (val_tx, val_rx) = val_lane_io.expect("Value lane not registered.");
     let val_sender = ValueLaneSender::new(val_tx);
@@ -117,6 +121,10 @@ async fn init_agent(context: Box<TestAgentContext>) -> (AgentTask, TestContext) 
 
     let map_sender = MapLaneSender::new(map_tx);
     let map_receiver = MapLaneReceiver::new(map_rx);
+
+    let (cmd_tx, cmd_rx) = cmd_lane_io.expect("Command lane not registered.");
+    let cmd_sender = ValueLaneSender::new(cmd_tx);
+    let cmd_receiver = ValueLaneReceiver::new(cmd_rx);
     (
         task,
         TestContext {
@@ -124,6 +132,7 @@ async fn init_agent(context: Box<TestAgentContext>) -> (AgentTask, TestContext) 
             lc_event_rx: UnboundedReceiverStream::new(lc_event_rx),
             val_lane_io: (val_sender, val_receiver),
             map_lane_io: (map_sender, map_receiver),
+            cmd_lane_io: (cmd_sender, cmd_receiver),
         },
     )
 }
@@ -160,6 +169,7 @@ async fn stops_if_all_lanes_stop() {
             mut lc_event_rx,
             val_lane_io,
             map_lane_io,
+            cmd_lane_io,
         },
     ) = init_agent(context).await;
 
@@ -171,15 +181,17 @@ async fn stops_if_all_lanes_stop() {
 
         let (vtx, vrx) = val_lane_io;
         let (mtx, mrx) = map_lane_io;
+        let (ctx, crx) = cmd_lane_io;
 
         //Dropping both lane senders should cause the agent to stop.
         drop(vtx);
         drop(mtx);
+        drop(ctx);
 
-        (lc_event_rx, vrx, mrx)
+        (lc_event_rx, vrx, mrx, crx)
     };
 
-    let (result, (lc_event_rx, _vrx, _mrx)) = join(task, test_case).await;
+    let (result, (lc_event_rx, _vrx, _mrx, _crx)) = join(task, test_case).await;
     assert!(result.is_ok());
 
     let events = lc_event_rx.collect::<Vec<_>>().await;
@@ -201,6 +213,7 @@ async fn command_to_value_lane() {
             mut lc_event_rx,
             val_lane_io,
             map_lane_io,
+            cmd_lane_io,
         },
     ) = init_agent(context).await;
 
@@ -214,10 +227,10 @@ async fn command_to_value_lane() {
         sender.command(56).await;
 
         // The agent should receive the command...
-        assert_eq!(
+        assert!(matches!(
             test_event_rx.next().await.expect("Expected command event."),
             TestEvent::Value { body: 56 }
-        );
+        ));
 
         //... ,trigger the `on_command` event...
         assert_eq!(
@@ -230,6 +243,7 @@ async fn command_to_value_lane() {
 
         drop(sender);
         drop(map_lane_io);
+        drop(cmd_lane_io);
         (test_event_rx, lc_event_rx)
     };
 
@@ -257,6 +271,7 @@ async fn sync_with_lane() {
             mut lc_event_rx,
             val_lane_io,
             map_lane_io,
+            cmd_lane_io,
         },
     ) = init_agent(context).await;
 
@@ -270,16 +285,17 @@ async fn sync_with_lane() {
         sender.sync(SYNC_ID).await;
 
         // The agent should receive the sync request..
-        assert_eq!(
+        assert!(matches!(
             test_event_rx.next().await.expect("Expected sync event."),
             TestEvent::Sync { id: SYNC_ID }
-        );
+        ));
 
         // ... and send out the response.
         receiver.expect_sync_event(SYNC_ID, SYNC_VALUE).await;
 
         drop(sender);
         drop(map_lane_io);
+        drop(cmd_lane_io);
         (test_event_rx, lc_event_rx)
     };
 
@@ -306,6 +322,7 @@ async fn command_to_map_lane() {
             mut lc_event_rx,
             val_lane_io,
             map_lane_io,
+            cmd_lane_io,
         },
     ) = init_agent(context).await;
 
@@ -319,7 +336,7 @@ async fn command_to_map_lane() {
         sender.command(83, 9282).await;
 
         // The agent should receive the command...
-        assert_eq!(
+        assert!(matches!(
             test_event_rx.next().await.expect("Expected command event."),
             TestEvent::Map {
                 body: MapMessage::Update {
@@ -327,7 +344,7 @@ async fn command_to_map_lane() {
                     value: 9282
                 }
             }
-        );
+        ));
 
         //... ,triger the `on_command` event...
         assert_eq!(
@@ -345,6 +362,81 @@ async fn command_to_map_lane() {
 
         drop(sender);
         drop(val_lane_io);
+        drop(cmd_lane_io);
+        (test_event_rx, lc_event_rx)
+    };
+
+    let (result, (test_event_rx, lc_event_rx)) = join(task, test_case).await;
+    assert!(result.is_ok());
+
+    let events = lc_event_rx.collect::<Vec<_>>().await;
+
+    //Check that the `on_stop` event fired.
+    assert!(matches!(events.as_slice(), [LifecycleEvent::Stop]));
+
+    let lane_events = test_event_rx.collect::<Vec<_>>().await;
+    assert!(lane_events.is_empty());
+}
+
+#[tokio::test]
+async fn suspend_future() {
+    let context = Box::new(TestAgentContext::default());
+    let (
+        task,
+        TestContext {
+            mut test_event_rx,
+            mut lc_event_rx,
+            val_lane_io,
+            map_lane_io,
+            cmd_lane_io,
+        },
+    ) = init_agent(context).await;
+
+    let test_case = async move {
+        assert_eq!(
+            lc_event_rx.next().await.expect("Expected start event."),
+            LifecycleEvent::Start
+        );
+        let (mut sender, receiver) = cmd_lane_io;
+
+        let n = 456;
+
+        sender.command(n).await;
+
+        // The agent should receive the command...
+        assert!(matches!(
+            test_event_rx.next().await.expect("Expected command event."),
+            TestEvent::Cmd { body } if body == n
+        ));
+
+        //... ,trigger the `on_command` event...
+        assert_eq!(
+            lc_event_rx.next().await.expect("Expected command event."),
+            LifecycleEvent::Lane(Text::new(CMD_LANE))
+        );
+
+        //... and then run the suspended future.
+        assert_eq!(
+            lc_event_rx
+                .next()
+                .await
+                .expect("Expected suspended future."),
+            LifecycleEvent::RanSuspended(n)
+        );
+
+        //... and then run the consequence.
+        assert_eq!(
+            lc_event_rx
+                .next()
+                .await
+                .expect("Expected suspended future consequence."),
+            LifecycleEvent::RanSuspendedConsequence
+        );
+
+        drop(sender);
+        drop(receiver);
+        drop(val_lane_io);
+        drop(map_lane_io);
         (test_event_rx, lc_event_rx)
     };
 
