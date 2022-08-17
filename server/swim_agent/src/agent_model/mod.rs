@@ -277,7 +277,7 @@ where
         ) {
             return Err(AgentInitError::UserCodeError(Box::new(e)));
         }
-        let agent_task = AgentTask::new(
+        let agent_task = AgentTask {
             lane_model,
             lifecycle,
             route,
@@ -286,7 +286,7 @@ where
             value_lane_io,
             map_lane_io,
             suspended,
-        );
+        };
         Ok(agent_task.run_agent(context).boxed())
     }
 }
@@ -307,36 +307,6 @@ where
     LaneModel: AgentLaneModel + Send + 'static,
     Lifecycle: AgentLifecycle<LaneModel> + 'static,
 {
-    /// #Arguments
-    /// * `lane_model` - Defines the agent lanes.
-    /// * `lifecycle` - User specified event handlers.
-    /// * `route` - The node URI of the agent instance.
-    /// * `config` - Agent specific configuration parameters.
-    /// * `lane_ids` - Mapping between lane names and lane IDs.
-    /// * `value_lane_io` - Channels to the runtime for value like lanes.
-    /// * `map_lane_io` - Channels to the runtime for map like lanes.
-    fn new(
-        lane_model: LaneModel,
-        lifecycle: Lifecycle,
-        route: RelativeUri,
-        config: AgentConfig,
-        lane_ids: HashMap<u64, Text>,
-        value_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
-        map_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
-        suspended: FuturesUnordered<HandlerFuture<LaneModel>>,
-    ) -> Self {
-        AgentTask {
-            lane_model,
-            lifecycle,
-            route,
-            config,
-            lane_ids,
-            value_lane_io,
-            map_lane_io,
-            suspended,
-        }
-    }
-
     /// Core event loop for the agent that routes incoming data from the runtime to the lanes and
     /// state changes fromt he lanes to the runtime.
     ///
