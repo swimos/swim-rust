@@ -23,7 +23,7 @@ use tokio_util::codec::Encoder;
 use crate::{
     agent_model::WriteResult,
     event_handler::{
-        AndThen, Decode, HandlerAction, HandlerActionExt, HandlerTrans, Modification, StepResult,
+        AndThen, Decode, HandlerAction, HandlerActionExt, HandlerTrans, Modification, StepResult, Spawner,
     },
     meta::AgentMetadata,
 };
@@ -102,7 +102,7 @@ impl<Context, T> DoCommand<Context, T> {
 impl<Context, T> HandlerAction<Context> for DoCommand<Context, T> {
     type Completion = ();
 
-    fn step(&mut self, _meta: AgentMetadata, context: &Context) -> StepResult<Self::Completion> {
+    fn step(&mut self, _suspend: &dyn Spawner<Context>, _meta: AgentMetadata, context: &Context) -> StepResult<Self::Completion> {
         let DoCommand {
             projection,
             command,

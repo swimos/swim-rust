@@ -17,7 +17,7 @@ use tokio::sync::mpsc;
 
 use crate::{
     agent_lifecycle::{lane_event::LaneEvent, on_start::OnStart, on_stop::OnStop},
-    event_handler::{HandlerAction, StepResult},
+    event_handler::{HandlerAction, StepResult, Spawner},
     meta::AgentMetadata,
 };
 
@@ -85,7 +85,7 @@ impl<'a> LaneEvent<'a, TestAgent> for TestLifecycle {
 impl HandlerAction<TestAgent> for LifecycleHandler {
     type Completion = ();
 
-    fn step(&mut self, _meta: AgentMetadata, _context: &TestAgent) -> StepResult<Self::Completion> {
+    fn step(&mut self, _spawner: &dyn Spawner<TestAgent>, _meta: AgentMetadata, _context: &TestAgent) -> StepResult<Self::Completion> {
         let LifecycleHandler { sender, event } = self;
         if let Some(event) = event.take() {
             sender.send(event).expect("Report failed.");

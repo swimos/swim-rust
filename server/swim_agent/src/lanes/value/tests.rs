@@ -25,7 +25,7 @@ use uuid::Uuid;
 
 use crate::{
     agent_model::WriteResult,
-    event_handler::{EventHandlerError, HandlerAction, Modification, StepResult},
+    event_handler::{EventHandlerError, HandlerAction, Modification, StepResult, Spawner, HandlerFuture},
     lanes::{
         value::{ValueLaneGet, ValueLaneSync},
         Lane,
@@ -36,6 +36,14 @@ use crate::{
 use super::{ValueLane, ValueLaneSet};
 
 const ID: u64 = 74;
+
+struct NoSpawn;
+
+impl<Context> Spawner<Context> for NoSpawn {
+    fn spawn_suspend(&self, _: HandlerFuture<Context>) {
+        panic!("No suspended futures expected.");
+    }
+}
 
 #[test]
 fn not_dirty_initially() {
@@ -274,13 +282,13 @@ fn value_lane_set_event_handler() {
 
     let mut handler = ValueLaneSet::new(TestAgent::LANE, 84);
 
-    let result = handler.step(meta, &agent);
+    let result = handler.step(&NoSpawn, meta, &agent);
     check_result(result, true, true, Some(()));
 
     assert!(agent.lane.dirty.get());
     assert_eq!(agent.lane.read(|n| *n), 84);
 
-    let result = handler.step(meta, &agent);
+    let result = handler.step(&NoSpawn, meta, &agent);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -295,10 +303,10 @@ fn value_lane_get_event_handler() {
 
     let mut handler = ValueLaneGet::new(TestAgent::LANE);
 
-    let result = handler.step(meta, &agent);
+    let result = handler.step(&NoSpawn, meta, &agent);
     check_result(result, false, false, Some(0));
 
-    let result = handler.step(meta, &agent);
+    let result = handler.step(&NoSpawn, meta, &agent);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -313,10 +321,10 @@ fn value_lane_sync_event_handler() {
 
     let mut handler = ValueLaneSync::new(TestAgent::LANE, SYNC_ID1);
 
-    let result = handler.step(meta, &agent);
+    let result = handler.step(&NoSpawn, meta, &agent);
     check_result(result, true, false, Some(()));
 
-    let result = handler.step(meta, &agent);
+    let result = handler.step(&NoSpawn, meta, &agent);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)

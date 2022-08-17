@@ -16,8 +16,10 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::{collections::HashMap, marker::PhantomData};
 
+use futures::{Future, FutureExt};
 use swim_utilities::routing::uri::RelativeUri;
 
+use crate::event_handler::{EventHandler, Suspend, UnitHandler};
 use crate::lanes::command::{CommandLane, DoCommand};
 use crate::lanes::map::MapLaneGetMap;
 use crate::{
@@ -205,5 +207,19 @@ impl<Agent: 'static> HandlerContext<Agent> {
         T: Send + 'static,
     {
         DoCommand::new(lane, value)
+    }
+
+    pub fn suspend<Fut, H>(&self, future: Fut) -> impl EventHandler<Agent> + Send + 'static
+    where
+        Fut: Future<Output = H> + Send +'static,
+        H: EventHandler<Agent> + 'static, {
+        Suspend::new(future)
+    }
+
+    pub fn suspend_effect<Fut>(&self, future: Fut) -> impl EventHandler<Agent> + Send + 'static
+    where
+        Fut: Future<Output = ()> + Send +'static,
+    {
+        self.suspend(future.map(|_| UnitHandler::default()))
     }
 }

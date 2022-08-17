@@ -219,7 +219,7 @@ async fn command_to_value_lane() {
             TestEvent::Value { body: 56 }
         );
 
-        //... ,triger the `on_command` event...
+        //... ,trigger the `on_command` event...
         assert_eq!(
             lc_event_rx.next().await.expect("Expected command event."),
             LifecycleEvent::Lane(Text::new(VAL_LANE))

@@ -15,6 +15,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use parking_lot::Mutex;
+use swim_agent::event_handler::{Spawner, HandlerFuture};
 use swim_agent::lifecycle;
 use swim_agent::{
     agent_lifecycle::{
@@ -28,6 +29,14 @@ use swim_agent::{
 use swim_api::agent::AgentConfig;
 use swim_model::Text;
 use swim_utilities::routing::uri::RelativeUri;
+
+struct NoSpawn;
+
+impl<Context> Spawner<Context> for NoSpawn {
+    fn spawn_suspend(&self, _: HandlerFuture<Context>) {
+        panic!("No suspended futures expected.");
+    }
+}
 
 #[derive(AgentLaneModel)]
 #[agent_root(::swim_agent)]
@@ -101,7 +110,7 @@ fn run_handler<H: EventHandler<TestAgent>>(agent: &TestAgent, mut handler: H) {
     let uri = make_uri();
     let meta = make_meta(&uri);
     loop {
-        match handler.step(meta, agent) {
+        match handler.step(&NoSpawn, meta, agent) {
             StepResult::Continue { modified_lane } => {
                 assert!(modified_lane.is_none());
             }

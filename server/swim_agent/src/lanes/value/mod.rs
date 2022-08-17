@@ -33,7 +33,7 @@ use crate::{
     agent_model::WriteResult,
     event_handler::{
         AndThen, Decode, EventHandlerError, HandlerAction, HandlerActionExt, HandlerTrans,
-        Modification, StepResult,
+        Modification, StepResult, Spawner,
     },
     meta::AgentMetadata,
 };
@@ -199,7 +199,7 @@ impl<C, T> ValueLaneSync<C, T> {
 impl<C, T: Clone> HandlerAction<C> for ValueLaneGet<C, T> {
     type Completion = T;
 
-    fn step(&mut self, _meta: AgentMetadata, context: &C) -> StepResult<Self::Completion> {
+    fn step(&mut self, _suspend: &dyn Spawner<C>, _meta: AgentMetadata, context: &C) -> StepResult<Self::Completion> {
         let ValueLaneGet { projection, done } = self;
         if *done {
             StepResult::after_done()
@@ -215,7 +215,7 @@ impl<C, T: Clone> HandlerAction<C> for ValueLaneGet<C, T> {
 impl<C, T> HandlerAction<C> for ValueLaneSet<C, T> {
     type Completion = ();
 
-    fn step(&mut self, _meta: AgentMetadata, context: &C) -> StepResult<Self::Completion> {
+    fn step(&mut self, _suspend: &dyn Spawner<C>, _meta: AgentMetadata, context: &C) -> StepResult<Self::Completion> {
         let ValueLaneSet { projection, value } = self;
         if let Some(value) = value.take() {
             let lane = projection(context);
@@ -233,7 +233,7 @@ impl<C, T> HandlerAction<C> for ValueLaneSet<C, T> {
 impl<C, T> HandlerAction<C> for ValueLaneSync<C, T> {
     type Completion = ();
 
-    fn step(&mut self, _meta: AgentMetadata, context: &C) -> StepResult<Self::Completion> {
+    fn step(&mut self, _suspend: &dyn Spawner<C>, _meta: AgentMetadata, context: &C) -> StepResult<Self::Completion> {
         let ValueLaneSync { projection, id } = self;
         if let Some(id) = id.take() {
             let lane = projection(context);

@@ -35,6 +35,7 @@ use swim_utilities::{
 use uuid::Uuid;
 
 use crate::agent_lifecycle::lane_event::LaneEvent;
+use crate::event_handler::{Spawner, HandlerFuture, BoxEventHandler};
 use crate::{
     agent_lifecycle::AgentLifecycle,
     event_handler::{EventHandler, EventHandlerError, HandlerAction, StepResult},
@@ -188,10 +189,13 @@ where
             .boxed()
     }
 }
-enum TaskEvent {
+enum TaskEvent<LaneModel> {
     WriteComplete {
         writer: LaneWriter,
         result: Result<(), std::io::Error>,
+    },
+    SuspendedComplete {
+        handler: BoxEventHandler<'static, LaneModel>,
     },
     ValueRequest {
         id: u64,
@@ -243,6 +247,8 @@ where
         let map_lane_names = LaneModel::map_like_lanes();
         let lane_ids = LaneModel::lane_ids();
 
+        let suspended = FuturesUnordered::new();
+
         // Set up the lanes of the agent.
         for name in val_lane_names {
             let io = context.add_lane(name, UplinkKind::Value, None).await?;
@@ -259,7 +265,9 @@ where
         let lane_model = lane_model_fac.create();
         // Run the agent's `on_start` event handler.
         let on_start_handler = lifecycle.on_start();
+        
         if let Err(e) = run_handler(
+            &suspended,
             meta,
             &lane_model,
             &lifecycle,
@@ -277,6 +285,7 @@ where
             lane_ids,
             value_lane_io,
             map_lane_io,
+            suspended,
         );
         Ok(agent_task.run_agent(context).boxed())
     }
@@ -290,6 +299,7 @@ struct AgentTask<LaneModel, Lifecycle> {
     lane_ids: HashMap<u64, Text>,
     value_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
     map_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
+    suspended: FuturesUnordered<HandlerFuture<LaneModel>>,
 }
 
 impl<LaneModel, Lifecycle> AgentTask<LaneModel, Lifecycle>
@@ -313,6 +323,7 @@ where
         lane_ids: HashMap<u64, Text>,
         value_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
         map_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
+        suspended: FuturesUnordered<HandlerFuture<LaneModel>>,
     ) -> Self {
         AgentTask {
             lane_model,
@@ -322,6 +333,7 @@ where
             lane_ids,
             value_lane_io,
             map_lane_io,
+            suspended,
         }
     }
 
@@ -342,6 +354,7 @@ where
             lane_ids,
             value_lane_io,
             map_lane_io,
+            mut suspended,
         } = self;
         let meta = AgentMetadata::new(&route, &config);
 
@@ -371,13 +384,20 @@ where
         let mut dirty_lanes: HashSet<u64> = HashSet::new();
 
         loop {
-            let task_event: TaskEvent = tokio::select! {
+            let task_event: TaskEvent<LaneModel> = tokio::select! {
                 biased;
                 write_done = pending_writes.next(), if !pending_writes.is_empty() => {
                     if let Some((writer, result)) = write_done {
                         TaskEvent::WriteComplete {
                             writer, result
                         }
+                    } else {
+                        continue;
+                    }
+                }
+                maybe_suspended = suspended.next(), if !suspended.is_empty() => {
+                    if let Some(handler) = maybe_suspended {
+                        TaskEvent::SuspendedComplete { handler }
                     } else {
                         continue;
                     }
@@ -406,6 +426,19 @@ where
                     }
                     lane_writers.insert(writer.lane_id(), writer);
                 }
+                TaskEvent::SuspendedComplete { handler } => {
+                    if let Err(e) = run_handler(
+                        &suspended,
+                        meta,
+                        &lane_model,
+                        &lifecycle,
+                        handler,
+                        &lane_ids,
+                        &mut dirty_lanes,
+                    ) {
+                        break Err(AgentTaskError::UserCodeError(Box::new(e)));
+                    }
+                }
                 TaskEvent::ValueRequest { id, request } => {
                     let name = &lane_ids[&id];
                     match request {
@@ -413,6 +446,7 @@ where
                             if let Some(handler) = lane_model.on_value_command(name.as_str(), body)
                             {
                                 if let Err(e) = run_handler(
+                                    &suspended,
                                     meta,
                                     &lane_model,
                                     &lifecycle,
@@ -427,6 +461,7 @@ where
                         LaneRequest::Sync(remote_id) => {
                             if let Some(handler) = lane_model.on_sync(name.as_str(), remote_id) {
                                 if let Err(e) = run_handler(
+                                    &suspended,
                                     meta,
                                     &lane_model,
                                     &lifecycle,
@@ -446,6 +481,7 @@ where
                         LaneRequest::Command(body) => {
                             if let Some(handler) = lane_model.on_map_command(name.as_str(), body) {
                                 if let Err(e) = run_handler(
+                                    &suspended,
                                     meta,
                                     &lane_model,
                                     &lifecycle,
@@ -460,6 +496,7 @@ where
                         LaneRequest::Sync(remote_id) => {
                             if let Some(handler) = lane_model.on_sync(name.as_str(), remote_id) {
                                 if let Err(e) = run_handler(
+                                    &suspended,
                                     meta,
                                     &lane_model,
                                     &lifecycle,
@@ -501,6 +538,7 @@ where
         // Try to run the `on_stop` handler before we stop.
         let on_stop_handler = lifecycle.on_stop();
         if let Err(e) = run_handler(
+            &suspended,
             meta,
             &lane_model,
             &lifecycle,
@@ -559,7 +597,8 @@ impl IdCollector for HashSet<u64> {
 /// * `lanes` - Mapping between lane IDs (returned by the handler to indicate that it has changed the state of
 /// a lane) an the lane names (which are used by the lifecycle to identify the lanes).
 /// * `collector` - Collects the IDs of lanes with state changes.
-fn run_handler<Context, Lifecycle, Handler, Collector>(
+fn run_handler<Context, Suspend, Lifecycle, Handler, Collector>(
+    spawner: &Suspend,
     meta: AgentMetadata,
     context: &Context,
     lifecycle: &Lifecycle,
@@ -568,12 +607,13 @@ fn run_handler<Context, Lifecycle, Handler, Collector>(
     collector: &mut Collector,
 ) -> Result<(), EventHandlerError>
 where
+    Suspend: Spawner<Context>,
     Lifecycle: for<'a> LaneEvent<'a, Context>,
     Handler: EventHandler<Context>,
     Collector: IdCollector,
 {
     loop {
-        match handler.step(meta, context) {
+        match handler.step(spawner, meta, context) {
             StepResult::Continue { modified_lane } => {
                 if let Some((modification, lane)) = modified_lane.and_then(|modification| {
                     lanes
@@ -583,7 +623,7 @@ where
                     collector.add_id(modification.lane_id);
                     if modification.trigger_handler {
                         if let Some(consequence) = lifecycle.lane_event(context, lane.as_str()) {
-                            run_handler(meta, context, lifecycle, consequence, lanes, collector)?;
+                            run_handler(spawner, meta, context, lifecycle, consequence, lanes, collector)?;
                         }
                     }
                 }
@@ -600,7 +640,7 @@ where
                     collector.add_id(modification.lane_id);
                     if modification.trigger_handler {
                         if let Some(consequence) = lifecycle.lane_event(context, lane.as_str()) {
-                            run_handler(meta, context, lifecycle, consequence, lanes, collector)?;
+                            run_handler(spawner, meta, context, lifecycle, consequence, lanes, collector)?;
                         }
                     }
                 }

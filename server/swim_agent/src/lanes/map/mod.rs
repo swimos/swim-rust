@@ -36,7 +36,7 @@ use crate::{
     agent_model::WriteResult,
     event_handler::{
         AndThen, EventHandlerError, HandlerAction, HandlerActionExt, HandlerTrans, Modification,
-        StepResult,
+        StepResult, Spawner,
     },
     meta::AgentMetadata,
 };
@@ -305,7 +305,7 @@ where
 {
     type Completion = ();
 
-    fn step(&mut self, _meta: AgentMetadata, context: &C) -> StepResult<Self::Completion> {
+    fn step(&mut self, _suspend: &dyn Spawner<C>, _meta: AgentMetadata, context: &C) -> StepResult<Self::Completion> {
         let MapLaneUpdate {
             projection,
             key_value,
@@ -344,7 +344,7 @@ where
 {
     type Completion = ();
 
-    fn step(&mut self, _meta: AgentMetadata, context: &C) -> StepResult<Self::Completion> {
+    fn step(&mut self, _suspend: &dyn Spawner<C>, _meta: AgentMetadata, context: &C) -> StepResult<Self::Completion> {
         let MapLaneRemove { projection, key } = self;
         if let Some(key) = key.take() {
             let lane = projection(context);
@@ -380,7 +380,7 @@ where
 {
     type Completion = ();
 
-    fn step(&mut self, _meta: AgentMetadata, context: &C) -> StepResult<Self::Completion> {
+    fn step(&mut self, _suspend: &dyn Spawner<C>, _meta: AgentMetadata, context: &C) -> StepResult<Self::Completion> {
         let MapLaneClear { projection, done } = self;
         if !*done {
             *done = true;
@@ -420,7 +420,7 @@ where
 {
     type Completion = Option<V>;
 
-    fn step(&mut self, _meta: AgentMetadata, context: &C) -> StepResult<Self::Completion> {
+    fn step(&mut self, _suspend: &dyn Spawner<C>, _meta: AgentMetadata, context: &C) -> StepResult<Self::Completion> {
         let MapLaneGet {
             projection,
             key,
@@ -458,7 +458,7 @@ where
 {
     type Completion = HashMap<K, V>;
 
-    fn step(&mut self, _meta: AgentMetadata, context: &C) -> StepResult<Self::Completion> {
+    fn step(&mut self, _suspend: &dyn Spawner<C>, _meta: AgentMetadata, context: &C) -> StepResult<Self::Completion> {
         let MapLaneGetMap { projection, done } = self;
         if !*done {
             *done = true;
@@ -491,7 +491,7 @@ where
 {
     type Completion = ();
 
-    fn step(&mut self, _meta: AgentMetadata, context: &C) -> StepResult<Self::Completion> {
+    fn step(&mut self, _suspend: &dyn Spawner<C>, _meta: AgentMetadata, context: &C) -> StepResult<Self::Completion> {
         let MapLaneSync { projection, id } = self;
         if let Some(id) = id.take() {
             let lane = projection(context);
@@ -565,7 +565,7 @@ where
 {
     type Completion = MapMessage<K, V>;
 
-    fn step(&mut self, _meta: AgentMetadata, _context: &Context) -> StepResult<Self::Completion> {
+    fn step(&mut self, _suspend: &dyn Spawner<Context>, _meta: AgentMetadata, _context: &Context) -> StepResult<Self::Completion> {
         let DecodeMapMessage { message, .. } = self;
         if let Some(message) = message.take() {
             match message {

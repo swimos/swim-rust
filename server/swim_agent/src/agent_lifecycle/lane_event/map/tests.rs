@@ -21,7 +21,7 @@ use swim_utilities::routing::uri::RelativeUri;
 
 use crate::{
     agent_lifecycle::lane_event::{tests::run_handler, HLeaf, LaneEvent, MapBranch, MapLeaf},
-    event_handler::{HandlerAction, StepResult},
+    event_handler::{HandlerAction, StepResult, Spawner},
     lanes::map::{
         lifecycle::{on_clear::OnClear, on_remove::OnRemove, on_update::OnUpdate},
         MapLane, MapLaneEvent,
@@ -108,7 +108,7 @@ struct OnUpdateHandler<K, V> {
 impl<K: Clone, V: Clone> HandlerAction<TestAgent> for OnUpdateHandler<K, V> {
     type Completion = ();
 
-    fn step(&mut self, _meta: AgentMetadata, _context: &TestAgent) -> StepResult<Self::Completion> {
+    fn step(&mut self, _suspend: &dyn Spawner<TestAgent>, _meta: AgentMetadata, _context: &TestAgent) -> StepResult<Self::Completion> {
         let OnUpdateHandler {
             map,
             key,
@@ -141,7 +141,7 @@ struct OnRemoveHandler<K, V> {
 impl<K: Clone, V: Clone> HandlerAction<TestAgent> for OnRemoveHandler<K, V> {
     type Completion = ();
 
-    fn step(&mut self, _meta: AgentMetadata, _context: &TestAgent) -> StepResult<Self::Completion> {
+    fn step(&mut self, _suspend: &dyn Spawner<TestAgent>, _meta: AgentMetadata, _context: &TestAgent) -> StepResult<Self::Completion> {
         let OnRemoveHandler {
             map,
             key,
@@ -172,7 +172,7 @@ struct OnClearHandler<K, V> {
 impl<K: Clone, V: Clone> HandlerAction<TestAgent> for OnClearHandler<K, V> {
     type Completion = ();
 
-    fn step(&mut self, _meta: AgentMetadata, _context: &TestAgent) -> StepResult<Self::Completion> {
+    fn step(&mut self, _suspend: &dyn Spawner<TestAgent>, _meta: AgentMetadata, _context: &TestAgent) -> StepResult<Self::Completion> {
         let OnClearHandler {
             previous,
             state,
