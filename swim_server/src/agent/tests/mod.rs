@@ -12,9 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(feature = "persistence")]
-mod store_agent;
-
 mod data_macro_agent;
 mod declarative_macro_agent;
 mod derive;

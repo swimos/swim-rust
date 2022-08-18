@@ -30,8 +30,7 @@ impl<Context> Spawner<Context> for NoSpawn {
 fn hleaf_lane_event() {
     let leaf = HLeaf;
 
-    let agent = ();
-    assert!(leaf.lane_event(&agent, "lane").is_none());
+    assert!(leaf.lane_event(&(), "lane").is_none());
 }
 
 pub fn run_handler<H, Agent>(meta: AgentMetadata<'_>, agent: &Agent, mut event_handler: H)
