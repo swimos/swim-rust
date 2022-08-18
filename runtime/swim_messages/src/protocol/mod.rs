@@ -71,7 +71,7 @@ impl<P> Path<P> {
 }
 
 impl Path<BytesStr> {
-    pub const fn from_static_strs(node: &'static str, lane: &'static str) -> Self {
+    pub fn from_static_strs(node: &'static str, lane: &'static str) -> Self {
         Path {
             node: BytesStr::from_static_str(node),
             lane: BytesStr::from_static_str(lane),
