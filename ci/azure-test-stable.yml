@@ -9,20 +9,20 @@ jobs:
         ${{ if parameters.cross }}:
           MacOS:
             vmImage: macOS-10.15
-          Windows:
-            vmImage: windows-2019
+          #Windows:
+          #  vmImage: windows-2019
     pool:
       vmImage: $(vmImage)
 
     steps:
-      - task: PowerShell@2
-        inputs:
-          targetType: 'inline'
-          script: |
-            Remove-Item -LiteralPath "C:\msys64\" -Force -Recurse
-            choco install llvm
-            refreshenv
-        condition: eq( variables['Agent.OS'], 'Windows_NT' )
+#      - task: PowerShell@2
+#        inputs:
+#          targetType: 'inline'
+#          script: |
+#            Remove-Item -LiteralPath "C:\msys64\" -Force -Recurse
+#            choco install llvm
+#            refreshenv
+#        condition: eq( variables['Agent.OS'], 'Windows_NT' )
       - template: azure-install-rust.yml
         parameters:
           rust_version: ${{ parameters.rust }}
