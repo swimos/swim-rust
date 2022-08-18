@@ -1,5 +1,5 @@
-trigger: ["main"]
-pr: ["main"]
+trigger: ["main", "byte-routing"]
+pr: ["main", "byte-routing"]
 
 schedules:
   - cron: "0 0 * * *"
@@ -7,7 +7,8 @@ schedules:
     branches:
       include:
         - main
-        - server-prototype
+        - byte-routing
+
 
 variables:
     RUSTFLAGS: -Dwarnings
