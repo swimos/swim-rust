@@ -12,14 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod model;
-mod task;
+mod bridge;
+mod handlers;
 
-pub use model::{
-    event_downlink, value_downlink, DefaultEventDownlinkModel, DefaultValueDownlinkModel,
-    EventDownlinkModel, ValueDownlinkModel,
-};
-pub mod lifecycle {
-    pub use crate::model::lifecycle::{ValueDownlinkLifecycle, EventDownlinkLifecycle, BasicEventDownlinkLifecycle, BasicValueDownlinkLifecycle, StatefulEventDownlinkLifecycle, StatefulValueDownlinkLifecycle};
+pub enum DownlinkMessage<T> {
+    Linked,
+    Synced,
+    Event(T),
+    Unlinked,
 }
-pub use task::DownlinkTask;
+

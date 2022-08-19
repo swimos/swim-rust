@@ -82,12 +82,18 @@ pub trait AgentContext: Sync {
     /// Open a downlink to a lane on another agent.
     /// #Arguments
     /// * `config` - The configuration for the downlink.
+    /// * `host` - The host containing the node.
+    /// * `node` - The node URI for the agent.
+    /// * `lane` - The name of the lane.
     /// * `downlink` - Downlink implementation.
-    fn open_downlink(
-        &self,
+    fn open_downlink<'a>(
+        &'a self,
+        host: Option<&str>,
+        node: RelativeUri,
+        lane: &str,
         config: DownlinkConfig,
         downlink: Box<dyn Downlink + Send>,
-    ) -> BoxFuture<'_, Result<(), AgentRuntimeError>>;
+    ) -> BoxFuture<'a, Result<(), AgentRuntimeError>>;
 }
 
 #[derive(Default, Debug, Clone, Copy)]

@@ -57,7 +57,14 @@ impl<'a, T, L> EventDownlinkHandlers<'a, T> for L where
 }
 
 /// A basic lifecycle for a value downlink where the event handlers do not share any state.
-pub struct BasicValueDownlinkLifecycle<T, FLink, FSync, FEv, FSet, FUnlink> {
+pub struct BasicValueDownlinkLifecycle<
+    T,
+    FLink = NoHandler,
+    FSync = NoHandler,
+    FEv = NoHandler,
+    FSet = NoHandler,
+    FUnlink = NoHandler,
+> {
     _value_type: PhantomData<fn(T)>,
     on_linked: FLink,
     on_synced: FSync,
@@ -66,16 +73,28 @@ pub struct BasicValueDownlinkLifecycle<T, FLink, FSync, FEv, FSet, FUnlink> {
     on_unlinked: FUnlink,
 }
 
-/// Create a default lifecycle for a value downlink (where all of the event handlers do nothing).
-pub fn for_value_downlink<T>(
-) -> BasicValueDownlinkLifecycle<T, NoHandler, NoHandler, NoHandler, NoHandler, NoHandler> {
-    BasicValueDownlinkLifecycle {
-        _value_type: PhantomData,
-        on_linked: NoHandler,
-        on_synced: NoHandler,
-        on_event: NoHandler,
-        on_set: NoHandler,
-        on_unlinked: NoHandler,
+impl<T> Default for BasicValueDownlinkLifecycle<T> {
+    fn default() -> Self {
+        Self {
+            _value_type: PhantomData,
+            on_linked: Default::default(),
+            on_event: Default::default(),
+            on_unlinked: Default::default(),
+            on_set: Default::default(),
+            on_synced: Default::default(),
+        }
+    }
+}
+
+
+impl<T> Default for BasicEventDownlinkLifecycle<T> {
+    fn default() -> Self {
+        Self {
+            _value_type: PhantomData,
+            on_linked: Default::default(),
+            on_event: Default::default(),
+            on_unlinked: Default::default(),
+        }
     }
 }
 
@@ -392,7 +411,15 @@ where
 }
 
 /// A lifecycle for a value downlink where the handlers for each event share state.
-pub struct StatefulValueDownlinkLifecycle<T, Shared, FLink, FSync, FEv, FSet, FUnlink> {
+pub struct StatefulValueDownlinkLifecycle<
+    T,
+    Shared,
+    FLink = NoHandler,
+    FSync = NoHandler,
+    FEv = NoHandler,
+    FSet = NoHandler,
+    FUnlink = NoHandler,
+> {
     _value_type: PhantomData<fn(T)>,
     shared: Shared,
     on_linked: FLink,
@@ -400,6 +427,18 @@ pub struct StatefulValueDownlinkLifecycle<T, Shared, FLink, FSync, FEv, FSet, FU
     on_event: FEv,
     on_set: FSet,
     on_unlinked: FUnlink,
+}
+
+impl<T, Shared> StatefulEventDownlinkLifecycle<T, Shared> {
+    pub fn new(shared: Shared) -> Self {
+        StatefulEventDownlinkLifecycle {
+            _value_type: PhantomData,
+            shared,
+            on_linked: Default::default(),
+            on_event: Default::default(),
+            on_unlinked: Default::default(),
+        }
+    }
 }
 
 impl<T, Shared, FLinked, FSynced, FEv, FSet, FUnlinked>
@@ -726,7 +765,7 @@ where
 }
 
 /// A basic lifecycle for an event downlink where the event handlers do not share any state.
-pub struct BasicEventDownlinkLifecycle<T, FLink, FEv, FUnlink> {
+pub struct BasicEventDownlinkLifecycle<T, FLink = NoHandler, FEv = NoHandler, FUnlink = NoHandler> {
     _value_type: PhantomData<fn(T)>,
     on_linked: FLink,
     on_event: FEv,
@@ -744,7 +783,7 @@ pub fn for_event_downlink<T>() -> BasicEventDownlinkLifecycle<T, NoHandler, NoHa
 }
 
 /// A lifecycle for an event downlink where the handlers for each event share state.
-pub struct StatefulEventDownlinkLifecycle<T, Shared, FLink, FEv, FUnlink> {
+pub struct StatefulEventDownlinkLifecycle<T, Shared, FLink = NoHandler, FEv = NoHandler, FUnlink = NoHandler> {
     _value_type: PhantomData<fn(T)>,
     shared: Shared,
     on_linked: FLink,

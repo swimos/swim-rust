@@ -42,6 +42,7 @@ use crate::{
     meta::AgentMetadata,
 };
 
+pub mod downlink;
 mod io;
 #[cfg(test)]
 mod tests;
@@ -549,6 +550,56 @@ impl IdCollector for HashSet<u64> {
     }
 }
 
+struct HandlerRunner<'a, Context, Lifecycle> {
+    meta: AgentMetadata<'a>,
+    agent: &'a Context,
+    lifecycle: &'a Lifecycle,
+    spawner: &'a dyn Spawner<Context>,
+    lanes: &'a HashMap<u64, Text>,
+    collector: &'a mut HashSet<u64>,
+}
+
+impl<'a, Context, Lifecycle> HandlerRunner<'a, Context, Lifecycle> {
+    pub fn new(meta: AgentMetadata<'a>, 
+        agent: &'a Context, 
+        lifecycle: &'a Lifecycle,
+        spawner: &'a dyn Spawner<Context>,
+        lanes: &'a HashMap<u64, Text>,
+        collector: &'a mut HashSet<u64>) -> Self {
+        HandlerRunner {
+            meta,
+            agent,
+            lifecycle,
+            spawner,
+            lanes,
+            collector,
+        }
+    }
+}
+
+impl<'a, Context, Lifecycle> HandlerRunner<'a, Context, Lifecycle>
+where
+    Lifecycle: for<'b> LaneEvent<'b, Context>,
+{
+    fn run_handler_in<Handler>(
+        &mut self,
+        handler: Handler,
+    ) -> Result<(), EventHandlerError>
+    where
+        Handler: EventHandler<Context>,
+    {
+        let HandlerRunner {
+            meta,
+            agent,
+            lifecycle,
+            spawner,
+            lanes,
+            collector,
+        } = self;
+        run_handler(*spawner, *meta, *agent, *lifecycle, handler, *lanes, *collector)
+    }
+}
+
 /// Run an event handler within the context of the lifecycle of an agent. If the event handler causes another
 /// event to trigger, it is suspended while that other event handler is executed. When an event handler changes
 /// the state of a lane, that is recorded by the collector so that the change can be written out after the chain
@@ -573,8 +624,8 @@ impl IdCollector for HashSet<u64> {
 /// * `lanes` - Mapping between lane IDs (returned by the handler to indicate that it has changed the state of
 /// a lane) an the lane names (which are used by the lifecycle to identify the lanes).
 /// * `collector` - Collects the IDs of lanes with state changes.
-fn run_handler<Context, Suspend, Lifecycle, Handler, Collector>(
-    spawner: &Suspend,
+fn run_handler<Context, Lifecycle, Handler, Collector>(
+    spawner: &dyn Spawner<Context>,
     meta: AgentMetadata,
     context: &Context,
     lifecycle: &Lifecycle,
@@ -583,7 +634,6 @@ fn run_handler<Context, Suspend, Lifecycle, Handler, Collector>(
     collector: &mut Collector,
 ) -> Result<(), EventHandlerError>
 where
-    Suspend: Spawner<Context>,
     Lifecycle: for<'a> LaneEvent<'a, Context>,
     Handler: EventHandler<Context>,
     Collector: IdCollector,

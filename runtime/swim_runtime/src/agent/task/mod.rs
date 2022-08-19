@@ -60,6 +60,7 @@ use swim_model::Text;
 use swim_recon::parser::MessageExtractError;
 use swim_utilities::future::{immediate_or_join, StopAfterError, SwimStreamExt};
 use swim_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
+use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger::{self, promise};
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
@@ -94,6 +95,9 @@ pub enum AgentRuntimeRequest {
     },
     /// Attempt to open a downlink to a lane on another agent.
     OpenDownlink {
+        host: Option<Text>,
+        node: RelativeUri,
+        lane: Text,
         config: DownlinkConfig,
         downlink: Box<dyn Downlink + Send>,
         promise: oneshot::Sender<Result<(), AgentRuntimeError>>,

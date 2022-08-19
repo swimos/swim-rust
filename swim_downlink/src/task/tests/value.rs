@@ -21,7 +21,7 @@ use swim_api::{
 use tokio::sync::mpsc;
 
 use super::run_downlink_task;
-use crate::model::lifecycle::{for_value_downlink, ValueDownlinkLifecycle};
+use crate::model::lifecycle::{ValueDownlinkLifecycle, BasicValueDownlinkLifecycle};
 use crate::{DownlinkTask, ValueDownlinkModel};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -37,7 +37,7 @@ fn make_lifecycle<T>(tx: mpsc::UnboundedSender<TestMessage<T>>) -> impl ValueDow
 where
     T: Clone + Send + Sync + 'static,
 {
-    for_value_downlink::<T>()
+    BasicValueDownlinkLifecycle::<T>::default()
         .with(tx)
         .on_linked_blocking(|tx| {
             assert!(tx.send(TestMessage::Linked).is_ok());

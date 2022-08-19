@@ -18,6 +18,7 @@ use bytes::BytesMut;
 use frunk::{coproduct::CNil, Coproduct};
 use futures::future::Either;
 use static_assertions::assert_obj_safe;
+use swim_api::{agent::AgentContext, error::AgentRuntimeError, downlink::Downlink};
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_recon::parser::{AsyncParseError, RecognizerDecoder};
 use swim_utilities::routing::uri::RelativeUri;
@@ -31,6 +32,31 @@ mod suspend;
 mod tests;
 
 pub use suspend::{HandlerFuture, Spawner, Suspend};
+
+pub struct HandlerContext<'a, Context> {
+    spawner: &'a dyn Spawner<Context>,
+    agent_context: &'a dyn AgentContext,
+}
+
+impl<'a, Context> Spawner<Context> for HandlerContext<'a, Context> {
+    fn spawn_suspend(&self, fut: HandlerFuture<Context>) {
+        self.spawner.spawn_suspend(fut)
+    }
+}
+
+impl<'a, Context> HandlerContext<'a, Context> {
+
+    pub async fn start_downlink<D>(&self, host: Option<&str>,
+        node: RelativeUri,
+        lane: &str,
+        downlink : D) -> Result<(), AgentRuntimeError>
+    where
+        D: Downlink + Send + 'static,
+    {
+        self.agent_context.open_downlink(host, node, lane, Default::default(), Box::new(downlink)).await
+    }
+
+}
 
 /// Trait to desribe an action to be taken, within the context of an agent, when an event ocurrs. The
 /// execution of an event handler can be suspended (so that it can trigger the exection of other handlers).

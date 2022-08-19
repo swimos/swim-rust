@@ -80,15 +80,23 @@ impl AgentContext for AgentRuntimeContext {
         .boxed()
     }
 
-    fn open_downlink(
-        &self,
+    fn open_downlink<'a>(
+        &'a self,
+        host: Option<&str>,
+        node: RelativeUri,
+        lane: &str,
         config: DownlinkConfig,
         downlink: Box<dyn Downlink + Send>,
-    ) -> BoxFuture<'_, Result<(), AgentRuntimeError>> {
+    ) -> BoxFuture<'a, Result<(), AgentRuntimeError>> {
+        let host = host.map(Text::new);
+        let lane = Text::new(lane);
         async move {
             let (tx, rx) = oneshot::channel();
             self.tx
                 .send(AgentRuntimeRequest::OpenDownlink {
+                    host,
+                    node,
+                    lane,
                     config,
                     downlink,
                     promise: tx,
