@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -22,6 +23,7 @@ use futures::{
     stream::{FuturesUnordered, SelectAll},
     StreamExt,
 };
+use swim_api::error::AgentRuntimeError;
 use swim_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult, UplinkKind},
     error::{AgentInitError, AgentTaskError, FrameIoError},
@@ -48,6 +50,8 @@ mod io;
 mod tests;
 
 use io::{LaneReader, LaneWriter};
+
+use self::downlink::handlers::BoxDownlinkChannel;
 
 /// Response from a lane after it has written bytes to its outgoing buffer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -212,6 +216,16 @@ enum TaskEvent<LaneModel> {
     },
 }
 
+async fn wait_on_downlink<Context>(
+    mut channel: BoxDownlinkChannel<Context>,
+) -> Option<BoxDownlinkChannel<Context>> {
+    if channel.await_ready().await {
+        Some(channel)
+    } else {
+        None
+    }
+}
+
 impl<LaneModel, Lifecycle> AgentModel<LaneModel, Lifecycle>
 where
     LaneModel: AgentLaneModel + Send + 'static,
@@ -249,6 +263,7 @@ where
         let lane_ids = LaneModel::lane_ids();
 
         let suspended = FuturesUnordered::new();
+        let downlinks = RefCell::new(vec![]);
 
         // Set up the lanes of the agent.
         for name in val_lane_names {
@@ -268,7 +283,7 @@ where
         let on_start_handler = lifecycle.on_start();
 
         if let Err(e) = run_handler(
-            ActionContext::new(&suspended, &*context),
+            ActionContext::new(&suspended, &*context, &downlinks),
             meta,
             &lane_model,
             &lifecycle,
@@ -337,6 +352,7 @@ where
         let mut lane_readers = SelectAll::new();
         let mut lane_writers = HashMap::new();
         let mut pending_writes = FuturesUnordered::new();
+        let downlinks = FuturesUnordered::new();
 
         // Set up readers and writes for each lane.
         for (name, (tx, rx)) in value_lane_io {
@@ -396,6 +412,10 @@ where
                     }
                 }
             };
+            let add_downlink = |dl| {
+                downlinks.push(wait_on_downlink(dl));
+                Ok(())
+            };
             match task_event {
                 TaskEvent::WriteComplete { writer, result } => {
                     if result.is_err() {
@@ -405,7 +425,7 @@ where
                 }
                 TaskEvent::SuspendedComplete { handler } => {
                     if let Err(e) = run_handler(
-                        ActionContext::new(&suspended, &*context),
+                        ActionContext::new(&suspended, &*context, &add_downlink),
                         meta,
                         &lane_model,
                         &lifecycle,
@@ -423,7 +443,7 @@ where
                             if let Some(handler) = lane_model.on_value_command(name.as_str(), body)
                             {
                                 if let Err(e) = run_handler(
-                                    ActionContext::new(&suspended, &*context),
+                                    ActionContext::new(&suspended, &*context, &add_downlink),
                                     meta,
                                     &lane_model,
                                     &lifecycle,
@@ -438,7 +458,7 @@ where
                         LaneRequest::Sync(remote_id) => {
                             if let Some(handler) = lane_model.on_sync(name.as_str(), remote_id) {
                                 if let Err(e) = run_handler(
-                                    ActionContext::new(&suspended, &*context),
+                                    ActionContext::new(&suspended, &*context, &add_downlink),
                                     meta,
                                     &lane_model,
                                     &lifecycle,
@@ -458,7 +478,7 @@ where
                         LaneRequest::Command(body) => {
                             if let Some(handler) = lane_model.on_map_command(name.as_str(), body) {
                                 if let Err(e) = run_handler(
-                                    ActionContext::new(&suspended, &*context),
+                                    ActionContext::new(&suspended, &*context, &add_downlink),
                                     meta,
                                     &lane_model,
                                     &lifecycle,
@@ -473,7 +493,7 @@ where
                         LaneRequest::Sync(remote_id) => {
                             if let Some(handler) = lane_model.on_sync(name.as_str(), remote_id) {
                                 if let Err(e) = run_handler(
-                                    ActionContext::new(&suspended, &*context),
+                                    ActionContext::new(&suspended, &*context, &add_downlink),
                                     meta,
                                     &lane_model,
                                     &lifecycle,
@@ -514,8 +534,9 @@ where
         }?;
         // Try to run the `on_stop` handler before we stop.
         let on_stop_handler = lifecycle.on_stop();
+        let discard = |_| Err(AgentRuntimeError::Stopping);
         if let Err(e) = run_handler(
-            ActionContext::new(&suspended, &*context),
+            ActionContext::new(&suspended, &*context, &discard),
             meta,
             &lane_model,
             &lifecycle,

@@ -61,12 +61,12 @@ struct Inner {
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 
 impl AgentContext for TestAgentContext {
-    fn add_lane<'a>(
-        &'a self,
+    fn add_lane(
+        &self,
         name: &str,
         uplink_kind: UplinkKind,
         _config: Option<LaneConfig>,
-    ) -> BoxFuture<'a, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
         match (name, uplink_kind) {
             (VAL_LANE, UplinkKind::Value) => {
                 let (tx_in, rx_in) = byte_channel(BUFFER_SIZE);
@@ -100,7 +100,7 @@ impl AgentContext for TestAgentContext {
         _lane: &str,
         _config: DownlinkConfig,
         _downlink: Box<dyn Downlink + Send>,
-    ) -> BoxFuture<'_, Result<(), AgentRuntimeError>> {
+    ) -> BoxFuture<'static, Result<(), AgentRuntimeError>> {
         panic!("Opening downlinks from agents not yet supported.")
     }
 }

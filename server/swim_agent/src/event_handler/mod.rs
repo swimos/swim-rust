@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::marker::PhantomData;
+use std::{borrow::BorrowMut, cell::RefCell, marker::PhantomData};
 
 use bytes::BytesMut;
 use frunk::{coproduct::CNil, Coproduct};
@@ -25,7 +25,7 @@ use swim_utilities::routing::uri::RelativeUri;
 use thiserror::Error;
 use tokio_util::codec::Decoder;
 
-use crate::meta::AgentMetadata;
+use crate::{agent_model::downlink::handlers::BoxDownlinkChannel, meta::AgentMetadata};
 
 mod downlink;
 mod suspend;
@@ -34,9 +34,41 @@ mod tests;
 
 pub use suspend::{HandlerFuture, Spawner, Suspend};
 
+pub trait DownlinkSpawner<Context> {
+    fn spawn_downlink(
+        &self,
+        dl_channel: BoxDownlinkChannel<Context>,
+    ) -> Result<(), AgentRuntimeError>;
+}
+
+impl<Context> DownlinkSpawner<Context> for RefCell<Vec<BoxDownlinkChannel<Context>>> {
+    fn spawn_downlink(
+        &self,
+        dl_channel: BoxDownlinkChannel<Context>,
+    ) -> Result<(), AgentRuntimeError> {
+        self.borrow_mut().push(dl_channel);
+        Ok(())
+    }
+}
+
+impl<F, Context> DownlinkSpawner<Context> for F
+where
+    F: Fn(BoxDownlinkChannel<Context>) -> Result<(), AgentRuntimeError>,
+{
+    fn spawn_downlink(
+        &self,
+        dl_channel: BoxDownlinkChannel<Context>,
+    ) -> Result<(), AgentRuntimeError> {
+        (*self)(dl_channel)
+    }
+}
+
+type SpawnDownlink<'a, Context> = &'a dyn Fn(BoxDownlinkChannel<Context>);
+
 pub struct ActionContext<'a, Context> {
     spawner: &'a dyn Spawner<Context>,
     agent_context: &'a dyn AgentContext,
+    downlink: &'a dyn DownlinkSpawner<Context>,
 }
 
 impl<'a, Context> Clone for ActionContext<'a, Context> {
@@ -44,6 +76,7 @@ impl<'a, Context> Clone for ActionContext<'a, Context> {
         Self {
             spawner: self.spawner.clone(),
             agent_context: self.agent_context.clone(),
+            downlink: self.downlink.clone(),
         }
     }
 }
@@ -57,10 +90,15 @@ impl<'a, Context> Spawner<Context> for ActionContext<'a, Context> {
 }
 
 impl<'a, Context> ActionContext<'a, Context> {
-    pub fn new(spawner: &'a dyn Spawner<Context>, agent_context: &'a dyn AgentContext) -> Self {
+    pub fn new(
+        spawner: &'a dyn Spawner<Context>,
+        agent_context: &'a dyn AgentContext,
+        downlink: &'a dyn DownlinkSpawner<Context>,
+    ) -> Self {
         ActionContext {
             spawner,
             agent_context,
+            downlink,
         }
     }
 

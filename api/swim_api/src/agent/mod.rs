@@ -72,12 +72,12 @@ pub trait AgentContext: Sync {
     /// * `name` - The name of the lane.
     /// * `uplink_kind` - Protocol that the runtime uses to communicate with the lane.
     /// * `config` - Configuration parameters for the lane.
-    fn add_lane<'a>(
-        &'a self,
+    fn add_lane(
+        &self,
         name: &str,
         uplink_kind: UplinkKind,
         config: Option<LaneConfig>,
-    ) -> BoxFuture<'a, Result<(ByteWriter, ByteReader), AgentRuntimeError>>;
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>>;
 
     /// Open a downlink to a lane on another agent.
     /// #Arguments
@@ -86,14 +86,14 @@ pub trait AgentContext: Sync {
     /// * `node` - The node URI for the agent.
     /// * `lane` - The name of the lane.
     /// * `downlink` - Downlink implementation.
-    fn open_downlink<'a>(
-        &'a self,
+    fn open_downlink(
+        &self,
         host: Option<&str>,
         node: RelativeUri,
         lane: &str,
         config: DownlinkConfig,
         downlink: Box<dyn Downlink + Send>,
-    ) -> BoxFuture<'a, Result<(), AgentRuntimeError>>;
+    ) -> BoxFuture<'static, Result<(), AgentRuntimeError>>;
 }
 
 #[derive(Default, Debug, Clone, Copy)]

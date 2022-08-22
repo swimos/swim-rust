@@ -28,10 +28,12 @@ pub trait DownlinkChannel<Context> {
     fn next_event(&mut self) -> Option<BoxEventHandler<'_, Context>>;
 }
 
+pub type BoxDownlinkChannel<Context> = Box<dyn DownlinkChannel<Context> + Send>;
+
 pub trait DownlinkChannelExt<Context>: DownlinkChannel<Context> {
-    fn boxed(self) -> Box<dyn DownlinkChannel<Context>>
+    fn boxed(self) -> BoxDownlinkChannel<Context>
     where
-        Self: Sized + 'static,
+        Self: Sized + Send + 'static,
     {
         Box::new(self)
     }

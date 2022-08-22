@@ -61,6 +61,8 @@ pub enum DownlinkTaskError {
 /// Error type for operations that communicate with the agent runtime.
 #[derive(Error, Debug)]
 pub enum AgentRuntimeError {
+    #[error("The agent runtime is stopping.")]
+    Stopping,
     #[error("The agent runtime has terminated.")]
     Terminated,
 }

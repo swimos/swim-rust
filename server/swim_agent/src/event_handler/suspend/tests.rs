@@ -17,7 +17,7 @@ use std::time::Duration;
 use crate::{
     event_handler::{ActionContext, EventHandlerError, HandlerAction, SideEffect, StepResult},
     meta::AgentMetadata,
-    test_context::DummyAgentContext,
+    test_context::{no_downlink, DummyAgentContext},
 };
 use futures::{stream::FuturesUnordered, StreamExt};
 use swim_api::agent::AgentConfig;
@@ -65,7 +65,7 @@ async fn suspend_future() {
     let mut spawner = FuturesUnordered::new();
 
     let result = suspend.step(
-        ActionContext::new(&spawner, &DummyAgentContext),
+        ActionContext::new(&spawner, &DummyAgentContext, &no_downlink),
         meta,
         &DummyAgent,
     );
@@ -85,7 +85,7 @@ async fn suspend_future() {
         assert_eq!(rx.recv().await, Some(45));
 
         let result = handler.step(
-            ActionContext::new(&spawner, &DummyAgentContext),
+            ActionContext::new(&spawner, &DummyAgentContext, &no_downlink),
             meta,
             &DummyAgent,
         );
@@ -100,7 +100,7 @@ async fn suspend_future() {
         assert!(done_rx.await.is_ok());
 
         let result = suspend.step(
-            ActionContext::new(&spawner, &DummyAgentContext),
+            ActionContext::new(&spawner, &DummyAgentContext, &no_downlink),
             meta,
             &DummyAgent,
         );

@@ -58,16 +58,23 @@ mod test_context {
         routing::uri::RelativeUri,
     };
 
-    use crate::event_handler::{ActionContext, HandlerFuture, Spawner};
+    use crate::{
+        agent_model::downlink::handlers::BoxDownlinkChannel,
+        event_handler::{ActionContext, HandlerFuture, Spawner},
+    };
 
     struct NoSpawn;
     pub struct DummyAgentContext;
+
+    pub fn no_downlink<Context>(_dl: BoxDownlinkChannel<Context>) -> Result<(), AgentRuntimeError> {
+        panic!("Launching downlinks no supported.");
+    }
 
     const NO_SPAWN: NoSpawn = NoSpawn;
     const NO_AGENT: DummyAgentContext = DummyAgentContext;
 
     pub fn dummy_context<'a, Context>() -> ActionContext<'a, Context> {
-        ActionContext::new(&NO_SPAWN, &NO_AGENT)
+        ActionContext::new(&NO_SPAWN, &NO_AGENT, &no_downlink)
     }
 
     impl<Context> Spawner<Context> for NoSpawn {
@@ -77,23 +84,23 @@ mod test_context {
     }
 
     impl AgentContext for DummyAgentContext {
-        fn add_lane<'a>(
-            &'a self,
+        fn add_lane(
+            &self,
             _name: &str,
             _uplink_kind: UplinkKind,
             _config: Option<LaneConfig>,
-        ) -> BoxFuture<'a, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
+        ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
             panic!("Dummy context used.");
         }
 
-        fn open_downlink<'a>(
-            &'a self,
+        fn open_downlink(
+            &self,
             _host: Option<&str>,
             _node: RelativeUri,
             _lane: &str,
             _config: DownlinkConfig,
             _downlink: Box<dyn Downlink + Send>,
-        ) -> BoxFuture<'a, Result<(), AgentRuntimeError>> {
+        ) -> BoxFuture<'static, Result<(), AgentRuntimeError>> {
             panic!("Dummy context used.");
         }
     }

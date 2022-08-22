@@ -58,16 +58,17 @@ impl AgentRuntimeContext {
 }
 
 impl AgentContext for AgentRuntimeContext {
-    fn add_lane<'a>(
-        &'a self,
+    fn add_lane(
+        &self,
         name: &str,
         uplink_kind: UplinkKind,
         config: Option<LaneConfig>,
-    ) -> BoxFuture<'a, Result<Io, AgentRuntimeError>> {
+    ) -> BoxFuture<'static, Result<Io, AgentRuntimeError>> {
         let name = Text::new(name);
+        let sender = self.tx.clone();
         async move {
             let (tx, rx) = oneshot::channel();
-            self.tx
+            sender
                 .send(AgentRuntimeRequest::AddLane {
                     name,
                     kind: uplink_kind,
@@ -80,19 +81,20 @@ impl AgentContext for AgentRuntimeContext {
         .boxed()
     }
 
-    fn open_downlink<'a>(
-        &'a self,
+    fn open_downlink(
+        &self,
         host: Option<&str>,
         node: RelativeUri,
         lane: &str,
         config: DownlinkConfig,
         downlink: Box<dyn Downlink + Send>,
-    ) -> BoxFuture<'a, Result<(), AgentRuntimeError>> {
+    ) -> BoxFuture<'static, Result<(), AgentRuntimeError>> {
         let host = host.map(Text::new);
         let lane = Text::new(lane);
+        let sender = self.tx.clone();
         async move {
             let (tx, rx) = oneshot::channel();
-            self.tx
+            sender
                 .send(AgentRuntimeRequest::OpenDownlink {
                     host,
                     node,

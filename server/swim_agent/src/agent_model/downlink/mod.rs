@@ -13,7 +13,7 @@
 // limitations under the License.
 
 mod bridge;
-mod handlers;
+pub mod handlers;
 
 pub enum DownlinkMessage<T> {
     Linked,
