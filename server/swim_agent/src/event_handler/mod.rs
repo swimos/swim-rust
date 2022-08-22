@@ -27,6 +27,7 @@ use tokio_util::codec::Decoder;
 
 use crate::meta::AgentMetadata;
 
+mod downlink;
 mod suspend;
 #[cfg(test)]
 mod tests;
@@ -784,3 +785,14 @@ pub trait HandlerActionExt<Context>: HandlerAction<Context> {
 }
 
 impl<Context, H: HandlerAction<Context>> HandlerActionExt<Context> for H {}
+
+pub trait EventHandlerExt<Context>: EventHandler<Context> {
+    fn boxed<'a>(self) -> BoxEventHandler<'a, Context>
+    where
+        Self: Sized + 'a,
+    {
+        Box::new(self)
+    }
+}
+
+impl<Context, H: EventHandler<Context>> EventHandlerExt<Context> for H {}

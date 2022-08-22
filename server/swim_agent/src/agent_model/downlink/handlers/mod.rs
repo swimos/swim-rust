@@ -16,114 +16,94 @@ use futures::{future::BoxFuture, FutureExt};
 use tokio::sync::mpsc;
 
 use crate::{
-    agent_lifecycle::lane_event::LaneEvent,
-    agent_model::HandlerRunner,
     downlink_lifecycle::value::ValueDownlinkLifecycle,
-    event_handler::{EventHandlerError, HandlerActionExt},
+    event_handler::{BoxEventHandler, EventHandlerExt, HandlerActionExt},
 };
 
 use super::DownlinkMessage;
+
+pub trait DownlinkChannel<Context> {
+    fn await_ready(&mut self) -> BoxFuture<'_, bool>;
+
+    fn next_event(&mut self) -> Option<BoxEventHandler<'_, Context>>;
+}
+
+pub trait DownlinkChannelExt<Context>: DownlinkChannel<Context> {
+    fn boxed(self) -> Box<dyn DownlinkChannel<Context>>
+    where
+        Self: Sized + 'static,
+    {
+        Box::new(self)
+    }
+}
+
+impl<Context, C> DownlinkChannelExt<Context> for C where C: DownlinkChannel<Context> {}
 
 pub struct ValueDownlinkEndpoint<T, LC> {
     receiver: mpsc::Receiver<DownlinkMessage<T>>,
     lifecycle: LC,
     current: Option<T>,
-}
-
-pub struct ValueDownlinkEvent<T, LC> {
-    endpoint: ValueDownlinkEndpoint<T, LC>,
-    event: DownlinkMessage<T>,
+    event: Option<DownlinkMessage<T>>,
 }
 
 impl<T, LC> ValueDownlinkEndpoint<T, LC> {
-    fn with(self, event: DownlinkMessage<T>) -> ValueDownlinkEvent<T, LC> {
-        ValueDownlinkEvent {
-            endpoint: self,
-            event,
+    pub fn new(receiver: mpsc::Receiver<DownlinkMessage<T>>, lifecycle: LC) -> Self {
+        ValueDownlinkEndpoint {
+            receiver,
+            lifecycle,
+            current: None,
+            event: None,
         }
     }
-
-    pub async fn next_event<Context>(mut self) -> Option<ValueDownlinkEvent<T, LC>>
-    where
-        LC: ValueDownlinkLifecycle<T, Context>,
-    {
-        let ValueDownlinkEndpoint { receiver, .. } = &mut self;
-        receiver.recv().await.map(move |ev| self.with(ev))
-    }
 }
 
-type NextEvent<Context, AgentLifecycle> =
-    BoxFuture<'static, Option<Box<dyn DownlinkEvent<Context, AgentLifecycle> + 'static>>>;
-
-struct ConsumptionResult<Context, AgentLifecycle> {
-    pub result: Result<(), EventHandlerError>,
-    pub next: NextEvent<Context, AgentLifecycle>,
-}
-
-trait DownlinkEvent<Context, AgentLifecycle> {
-    fn consume(
-        self,
-        handler_runner: HandlerRunner<Context, AgentLifecycle>,
-    ) -> ConsumptionResult<Context, AgentLifecycle>;
-}
-
-impl<Context, AgentLifecycle, T, LC> DownlinkEvent<Context, AgentLifecycle>
-    for ValueDownlinkEvent<T, LC>
+impl<T, LC, Context> DownlinkChannel<Context> for ValueDownlinkEndpoint<T, LC>
 where
-    Context: 'static,
-    LC: 'static,
-    T: Send + 'static,
-    AgentLifecycle: for<'b> LaneEvent<'b, Context>,
+    T: Send,
     LC: ValueDownlinkLifecycle<T, Context>,
 {
-    fn consume(
-        self,
-        mut handler_runner: HandlerRunner<Context, AgentLifecycle>,
-    ) -> ConsumptionResult<Context, AgentLifecycle> {
-        let ValueDownlinkEvent {
-            mut endpoint,
-            event,
-        } = self;
-        let ValueDownlinkEndpoint {
-            lifecycle, current, ..
-        } = &mut endpoint;
-        let result = match event {
-            DownlinkMessage::Linked => {
-                let handler = lifecycle.on_linked();
-                handler_runner.run_handler_in(handler)
+    fn await_ready(&mut self) -> BoxFuture<'_, bool> {
+        async move {
+            let ValueDownlinkEndpoint {
+                receiver, event, ..
+            } = self;
+            if let Some(message) = receiver.recv().await {
+                *event = Some(message);
+                true
+            } else {
+                false
             }
+        }
+        .boxed()
+    }
+
+    fn next_event(&mut self) -> Option<BoxEventHandler<'_, Context>> {
+        let ValueDownlinkEndpoint {
+            lifecycle,
+            current,
+            event,
+            ..
+        } = self;
+        event.take().and_then(move |message| match message {
+            DownlinkMessage::Linked => Some(lifecycle.on_linked().boxed()),
             DownlinkMessage::Synced => {
                 if let Some(value) = current {
-                    let handler = lifecycle.on_synced(value);
-                    handler_runner.run_handler_in(handler)
+                    Some(lifecycle.on_synced(value).boxed())
                 } else {
-                    todo!()
+                    None
                 }
             }
-            DownlinkMessage::Event(value) => {
+            DownlinkMessage::Event(new_value) => {
                 let prev = current.take();
-                let current_ref = &*current.insert(value);
-                let handler = lifecycle
-                    .on_event(current_ref)
-                    .followed_by(lifecycle.on_set(prev, current_ref));
-                handler_runner.run_handler_in(handler)
+                let next_value = current.insert(new_value);
+                Some(
+                    lifecycle
+                        .on_event(next_value)
+                        .followed_by(lifecycle.on_set(prev, next_value))
+                        .boxed(),
+                )
             }
-            DownlinkMessage::Unlinked => {
-                let handler = lifecycle.on_unlinked();
-                handler_runner.run_handler_in(handler)
-            }
-        };
-
-        let next = endpoint
-            .next_event()
-            .map(|maybe_ev| {
-                maybe_ev.map(|ev| {
-                    let boxed: Box<dyn DownlinkEvent<Context, AgentLifecycle> + 'static> =
-                        Box::new(ev);
-                    boxed
-                })
-            })
-            .boxed();
-        ConsumptionResult { result, next }
+            DownlinkMessage::Unlinked => Some(lifecycle.on_linked().boxed()),
+        })
     }
 }
