@@ -18,7 +18,7 @@ use swim_api::{downlink::DownlinkConfig, protocol::downlink::DownlinkNotificatio
 use tokio::sync::mpsc;
 
 use super::run_downlink_task;
-use crate::model::lifecycle::{for_event_downlink, EventDownlinkLifecycle};
+use crate::model::lifecycle::{BasicEventDownlinkLifecycle, EventDownlinkLifecycle};
 use crate::{DownlinkTask, EventDownlinkModel};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -32,7 +32,7 @@ fn make_lifecycle<T>(tx: mpsc::UnboundedSender<TestMessage<T>>) -> impl EventDow
 where
     T: Clone + Send + Sync + 'static,
 {
-    for_event_downlink::<T>()
+    BasicEventDownlinkLifecycle::<T>::default()
         .with(tx)
         .on_linked_blocking(|tx| {
             assert!(tx.send(TestMessage::Linked).is_ok());

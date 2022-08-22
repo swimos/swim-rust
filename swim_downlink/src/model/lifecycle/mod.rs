@@ -771,16 +771,6 @@ pub struct BasicEventDownlinkLifecycle<T, FLink = NoHandler, FEv = NoHandler, FU
     on_unlinked: FUnlink,
 }
 
-/// Create a default event downlink lifecycle where all of the event handlers do nothing.
-pub fn for_event_downlink<T>() -> BasicEventDownlinkLifecycle<T, NoHandler, NoHandler, NoHandler> {
-    BasicEventDownlinkLifecycle {
-        _value_type: PhantomData,
-        on_linked: NoHandler,
-        on_event: NoHandler,
-        on_unlinked: NoHandler,
-    }
-}
-
 /// A lifecycle for an event downlink where the handlers for each event share state.
 pub struct StatefulEventDownlinkLifecycle<
     T,

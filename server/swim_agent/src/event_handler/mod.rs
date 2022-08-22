@@ -12,22 +12,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{borrow::BorrowMut, cell::RefCell, marker::PhantomData};
+use std::{cell::RefCell, marker::PhantomData};
 
 use bytes::BytesMut;
 use frunk::{coproduct::CNil, Coproduct};
-use futures::future::Either;
+use futures::{future::Either, FutureExt};
 use static_assertions::assert_obj_safe;
-use swim_api::{agent::AgentContext, downlink::Downlink, error::AgentRuntimeError};
+use swim_api::{
+    agent::AgentContext,
+    downlink::{Downlink, DownlinkConfig},
+    error::AgentRuntimeError,
+};
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_recon::parser::{AsyncParseError, RecognizerDecoder};
 use swim_utilities::routing::uri::RelativeUri;
 use thiserror::Error;
 use tokio_util::codec::Decoder;
 
-use crate::{agent_model::downlink::handlers::BoxDownlinkChannel, meta::AgentMetadata};
+use crate::{
+    agent_model::downlink::{
+        handlers::{BoxDownlinkChannel, DownlinkChannel},
+        RegisterChannel,
+    },
+    meta::AgentMetadata,
+};
 
-mod downlink;
 mod suspend;
 #[cfg(test)]
 mod tests;
@@ -63,8 +72,6 @@ where
     }
 }
 
-type SpawnDownlink<'a, Context> = &'a dyn Fn(BoxDownlinkChannel<Context>);
-
 pub struct ActionContext<'a, Context> {
     spawner: &'a dyn Spawner<Context>,
     agent_context: &'a dyn AgentContext,
@@ -89,6 +96,15 @@ impl<'a, Context> Spawner<Context> for ActionContext<'a, Context> {
     }
 }
 
+impl<'a, Context> DownlinkSpawner<Context> for ActionContext<'a, Context> {
+    fn spawn_downlink(
+        &self,
+        dl_channel: BoxDownlinkChannel<Context>,
+    ) -> Result<(), AgentRuntimeError> {
+        self.downlink.spawn_downlink(dl_channel)
+    }
+}
+
 impl<'a, Context> ActionContext<'a, Context> {
     pub fn new(
         spawner: &'a dyn Spawner<Context>,
@@ -102,19 +118,34 @@ impl<'a, Context> ActionContext<'a, Context> {
         }
     }
 
-    pub async fn start_downlink<D>(
+    pub(crate) fn start_downlink<D, C, F, H>(
         &self,
         host: Option<&str>,
         node: RelativeUri,
         lane: &str,
+        config: DownlinkConfig,
         downlink: D,
-    ) -> Result<(), AgentRuntimeError>
-    where
+        channel: C,
+        on_done: F,
+    ) where
         D: Downlink + Send + 'static,
+        C: DownlinkChannel<Context> + Send + 'static,
+        F: FnOnce(Result<(), AgentRuntimeError>) -> H + Send + 'static,
+        H: EventHandler<Context> + 'static,
     {
-        self.agent_context
-            .open_downlink(host, node, lane, Default::default(), Box::new(downlink))
-            .await
+        let external =
+            self.agent_context
+                .open_downlink(host, node, lane, config, Box::new(downlink));
+        let fut = external
+            .map(move |result| {
+                if let Err(e) = result {
+                    on_done(Err(e)).boxed()
+                } else {
+                    RegisterChannel::new(channel).and_then(on_done).boxed()
+                }
+            })
+            .boxed();
+        self.spawn_suspend(fut);
     }
 }
 
@@ -198,6 +229,8 @@ pub enum EventHandlerError {
     BadCommand(AsyncParseError),
     #[error("An incoming message was incomplete.")]
     IncompleteCommand,
+    #[error("An error ocurred in the agent runtime.")]
+    RuntimeError(#[from] AgentRuntimeError),
 }
 
 /// When a handler completes or suspends it can inidcate that is has modified the
@@ -834,3 +867,31 @@ pub trait EventHandlerExt<Context>: EventHandler<Context> {
 }
 
 impl<Context, H: EventHandler<Context>> EventHandlerExt<Context> for H {}
+
+pub struct Fail<T, E>(Option<Result<T, E>>);
+
+impl<T, E> Fail<T, E> {
+    pub fn new(result: Result<T, E>) -> Self {
+        Fail(Some(result))
+    }
+}
+
+impl<T, E, Context> HandlerAction<Context> for Fail<T, E>
+where
+    EventHandlerError: From<E>,
+{
+    type Completion = T;
+
+    fn step(
+        &mut self,
+        _action_context: ActionContext<Context>,
+        _meta: AgentMetadata,
+        _context: &Context,
+    ) -> StepResult<Self::Completion> {
+        match self.0.take() {
+            Some(Err(e)) => StepResult::Fail(e.into()),
+            Some(Ok(t)) => StepResult::done(t),
+            _ => StepResult::after_done(),
+        }
+    }
+}

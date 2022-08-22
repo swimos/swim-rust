@@ -571,63 +571,6 @@ impl IdCollector for HashSet<u64> {
     }
 }
 
-struct HandlerRunner<'a, Context, Lifecycle> {
-    meta: AgentMetadata<'a>,
-    agent: &'a Context,
-    lifecycle: &'a Lifecycle,
-    action_context: ActionContext<'a, Context>,
-    lanes: &'a HashMap<u64, Text>,
-    collector: &'a mut HashSet<u64>,
-}
-
-impl<'a, Context, Lifecycle> HandlerRunner<'a, Context, Lifecycle> {
-    pub fn new(
-        meta: AgentMetadata<'a>,
-        agent: &'a Context,
-        lifecycle: &'a Lifecycle,
-        action_context: ActionContext<'a, Context>,
-        lanes: &'a HashMap<u64, Text>,
-        collector: &'a mut HashSet<u64>,
-    ) -> Self {
-        HandlerRunner {
-            meta,
-            agent,
-            lifecycle,
-            action_context,
-            lanes,
-            collector,
-        }
-    }
-}
-
-impl<'a, Context, Lifecycle> HandlerRunner<'a, Context, Lifecycle>
-where
-    Lifecycle: for<'b> LaneEvent<'b, Context>,
-{
-    fn run_handler_in<Handler>(&mut self, handler: Handler) -> Result<(), EventHandlerError>
-    where
-        Handler: EventHandler<Context>,
-    {
-        let HandlerRunner {
-            meta,
-            agent,
-            lifecycle,
-            action_context,
-            lanes,
-            collector,
-        } = self;
-        run_handler(
-            *action_context,
-            *meta,
-            *agent,
-            *lifecycle,
-            handler,
-            *lanes,
-            *collector,
-        )
-    }
-}
-
 /// Run an event handler within the context of the lifecycle of an agent. If the event handler causes another
 /// event to trigger, it is suspended while that other event handler is executed. When an event handler changes
 /// the state of a lane, that is recorded by the collector so that the change can be written out after the chain
