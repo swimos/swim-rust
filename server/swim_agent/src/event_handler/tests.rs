@@ -23,9 +23,13 @@ use swim_utilities::routing::uri::RelativeUri;
 use crate::{
     event_handler::{ConstHandler, EventHandlerError, GetAgentUri, HandlerActionExt, SideEffects},
     meta::AgentMetadata,
+    test_context::dummy_context,
 };
 
-use super::{Decode, HandlerAction, HandlerFuture, Modification, SideEffect, Spawner, StepResult};
+use super::{
+    ActionContext, Decode, HandlerAction, HandlerFuture, Modification, SideEffect, Spawner,
+    StepResult,
+};
 
 const CONFIG: AgentConfig = AgentConfig {};
 const NODE_URI: &str = "/node";
@@ -57,7 +61,7 @@ fn side_effect_handler() {
 
     let mut n = 0;
     let mut handler = SideEffect::from(|| n += 1);
-    let result = handler.step(&NoSpawn, meta, &DUMMY);
+    let result = handler.step(dummy_context(), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Complete {
@@ -66,7 +70,7 @@ fn side_effect_handler() {
         }
     ));
 
-    let result = handler.step(&NoSpawn, meta, &DUMMY);
+    let result = handler.step(dummy_context(), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -93,7 +97,7 @@ fn side_effects_handler() {
     let mut handler = SideEffects::from(it);
 
     for i in values {
-        let result = handler.step(&NoSpawn, meta, &DUMMY);
+        let result = handler.step(dummy_context(), meta, &DUMMY);
         assert!(matches!(
             result,
             StepResult::Continue {
@@ -106,7 +110,7 @@ fn side_effects_handler() {
         assert_eq!(*guard, expected);
     }
 
-    let result = handler.step(&NoSpawn, meta, &DUMMY);
+    let result = handler.step(dummy_context(), meta, &DUMMY);
     if let StepResult::Complete {
         modified_lane: None,
         result,
@@ -117,7 +121,7 @@ fn side_effects_handler() {
         panic!("Expected completion.");
     }
 
-    let result = handler.step(&NoSpawn, meta, &DUMMY);
+    let result = handler.step(dummy_context(), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -130,7 +134,7 @@ fn constant_handler() {
     let meta = make_meta(&uri);
 
     let mut handler = ConstHandler::from(5);
-    let result = handler.step(&NoSpawn, meta, &DUMMY);
+    let result = handler.step(dummy_context(), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Complete {
@@ -139,7 +143,7 @@ fn constant_handler() {
         }
     ));
 
-    let result = handler.step(&NoSpawn, meta, &DUMMY);
+    let result = handler.step(dummy_context(), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -152,7 +156,7 @@ fn get_agent_uri() {
     let meta = make_meta(&uri);
 
     let mut handler = GetAgentUri::default();
-    let result = handler.step(&NoSpawn, meta, &DUMMY);
+    let result = handler.step(dummy_context(), meta, &DUMMY);
     if let StepResult::Complete {
         modified_lane: None,
         result,
@@ -163,7 +167,7 @@ fn get_agent_uri() {
         panic!("Expected completion.");
     }
 
-    let result = handler.step(&NoSpawn, meta, &DUMMY);
+    let result = handler.step(dummy_context(), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -179,7 +183,7 @@ fn map_handler() {
             uri.to_string()
         });
 
-    let result = handler.step(&NoSpawn, meta, &DUMMY);
+    let result = handler.step(dummy_context(), meta, &DUMMY);
     match result {
         StepResult::Complete {
             modified_lane: None,
@@ -190,7 +194,7 @@ fn map_handler() {
         _ => panic!("Unexpected result"),
     }
 
-    let result = handler.step(&NoSpawn, meta, &DUMMY);
+    let result = handler.step(dummy_context(), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -213,7 +217,7 @@ fn and_then_handler() {
         },
     );
 
-    let result = handler.step(&NoSpawn, meta, &DUMMY);
+    let result = handler.step(dummy_context(), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Continue {
@@ -221,7 +225,7 @@ fn and_then_handler() {
         }
     ));
 
-    let result = handler.step(&NoSpawn, meta, &DUMMY);
+    let result = handler.step(dummy_context(), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Complete {
@@ -230,7 +234,7 @@ fn and_then_handler() {
         }
     ));
 
-    let result = handler.step(&NoSpawn, meta, &DUMMY);
+    let result = handler.step(dummy_context(), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -258,7 +262,7 @@ fn followed_by_handler() {
 
     let mut handler = HandlerActionExt::<DummyAgent>::followed_by(first, second);
 
-    let result = handler.step(&NoSpawn, meta, &DUMMY);
+    let result = handler.step(dummy_context(), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Continue {
@@ -271,7 +275,7 @@ fn followed_by_handler() {
         assert_eq!(*guard, Some(1));
     }
 
-    let result = handler.step(&NoSpawn, meta, &DUMMY);
+    let result = handler.step(dummy_context(), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Complete {
@@ -285,7 +289,7 @@ fn followed_by_handler() {
         assert_eq!(*guard, Some(2));
     }
 
-    let result = handler.step(&NoSpawn, meta, &DUMMY);
+    let result = handler.step(dummy_context(), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -302,7 +306,7 @@ fn decoding_handler_success() {
 
     let mut handler = Decode::<i32>::new(buffer);
 
-    let result = handler.step(&NoSpawn, meta, &DUMMY);
+    let result = handler.step(dummy_context(), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Complete {
@@ -311,7 +315,7 @@ fn decoding_handler_success() {
         }
     ));
 
-    let result = handler.step(&NoSpawn, meta, &DUMMY);
+    let result = handler.step(dummy_context(), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -328,13 +332,13 @@ fn decoding_handler_failure() {
 
     let mut handler = Decode::<i32>::new(buffer);
 
-    let result = handler.step(&NoSpawn, meta, &DUMMY);
+    let result = handler.step(dummy_context(), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::BadCommand(_))
     ));
 
-    let result = handler.step(&NoSpawn, meta, &DUMMY);
+    let result = handler.step(dummy_context(), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -354,7 +358,7 @@ impl HandlerAction<DummyAgent> for FakeLaneWriter {
 
     fn step(
         &mut self,
-        _suspend: &dyn Spawner<DummyAgent>,
+        _action_context: ActionContext<DummyAgent>,
         _meta: AgentMetadata,
         _context: &DummyAgent,
     ) -> StepResult<Self::Completion> {
@@ -376,7 +380,7 @@ fn and_then_handler_with_lane_write() {
     let meta = make_meta(&uri);
 
     let mut handler = FakeLaneWriter::new(7).and_then(|_| ConstHandler::from(34));
-    let result = handler.step(&NoSpawn, meta, &DUMMY);
+    let result = handler.step(dummy_context(), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Continue {
@@ -387,7 +391,7 @@ fn and_then_handler_with_lane_write() {
         }
     ));
 
-    let result = handler.step(&NoSpawn, meta, &DUMMY);
+    let result = handler.step(dummy_context(), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Complete {
@@ -396,7 +400,7 @@ fn and_then_handler_with_lane_write() {
         }
     ));
 
-    let result = handler.step(&NoSpawn, meta, &DUMMY);
+    let result = handler.step(dummy_context(), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -409,7 +413,7 @@ fn followed_by_handler_with_lane_write() {
     let meta = make_meta(&uri);
 
     let mut handler = FakeLaneWriter::new(7).followed_by(FakeLaneWriter::new(8));
-    let result = handler.step(&NoSpawn, meta, &DUMMY);
+    let result = handler.step(dummy_context(), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Continue {
@@ -420,7 +424,7 @@ fn followed_by_handler_with_lane_write() {
         }
     ));
 
-    let result = handler.step(&NoSpawn, meta, &DUMMY);
+    let result = handler.step(dummy_context(), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Complete {
@@ -432,7 +436,7 @@ fn followed_by_handler_with_lane_write() {
         }
     ));
 
-    let result = handler.step(&NoSpawn, meta, &DUMMY);
+    let result = handler.step(dummy_context(), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)

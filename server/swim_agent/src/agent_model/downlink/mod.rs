@@ -21,4 +21,3 @@ pub enum DownlinkMessage<T> {
     Event(T),
     Unlinked,
 }
-

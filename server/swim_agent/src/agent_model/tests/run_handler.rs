@@ -25,8 +25,11 @@ use swim_utilities::routing::uri::RelativeUri;
 use crate::{
     agent_lifecycle::lane_event::LaneEvent,
     agent_model::run_handler,
-    event_handler::{HandlerAction, HandlerFuture, Modification, Spawner, StepResult},
+    event_handler::{
+        ActionContext, HandlerAction, HandlerFuture, Modification, Spawner, StepResult,
+    },
     meta::AgentMetadata,
+    test_context::dummy_context,
 };
 
 struct NoSpawn;
@@ -113,7 +116,7 @@ impl HandlerAction<TestAgent> for Handler {
 
     fn step(
         &mut self,
-        _spawner: &dyn Spawner<TestAgent>,
+        _action_context: ActionContext<TestAgent>,
         _meta: AgentMetadata,
         context: &TestAgent,
     ) -> StepResult<Self::Completion> {
@@ -208,7 +211,7 @@ fn run_test_handler(agent: &TestAgent, lifecycle: TestLifecycle, start_with: Lan
 
     if let Some(handler) = lifecycle.lane_event(agent, start_with.name()) {
         let result = run_handler(
-            &NoSpawn,
+            dummy_context(),
             meta,
             agent,
             &lifecycle,

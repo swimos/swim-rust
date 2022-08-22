@@ -17,8 +17,8 @@ use std::marker::PhantomData;
 use tokio::sync::mpsc;
 
 use lifecycle::{
-    BasicEventDownlinkLifecycle,
-    BasicValueDownlinkLifecycle, EventDownlinkLifecycle, ValueDownlinkLifecycle,
+    BasicEventDownlinkLifecycle, BasicValueDownlinkLifecycle, EventDownlinkLifecycle,
+    ValueDownlinkLifecycle,
 };
 
 pub mod lifecycle;
@@ -51,13 +51,9 @@ impl<T, LC> EventDownlinkModel<T, LC> {
     }
 }
 
-pub type DefaultValueDownlinkModel<T> = ValueDownlinkModel<
-    T,
-    BasicValueDownlinkLifecycle<T>,
->;
+pub type DefaultValueDownlinkModel<T> = ValueDownlinkModel<T, BasicValueDownlinkLifecycle<T>>;
 
-pub type DefaultEventDownlinkModel<T> =
-    EventDownlinkModel<T, BasicEventDownlinkLifecycle<T>>;
+pub type DefaultEventDownlinkModel<T> = EventDownlinkModel<T, BasicEventDownlinkLifecycle<T>>;
 
 pub fn value_downlink<T>(set_value: mpsc::Receiver<T>) -> DefaultValueDownlinkModel<T> {
     ValueDownlinkModel {

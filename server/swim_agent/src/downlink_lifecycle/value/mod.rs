@@ -34,14 +34,22 @@ pub mod on_event;
 pub mod on_set;
 
 pub trait ValueDownlinkHandlers<'a, T, Context>:
-    OnLinked<'a, Context> + OnSynced<'a, T, Context> + OnEvent<'a, T, Context> + OnSet<'a, T, Context> + OnUnlinked<'a, Context>
+    OnLinked<'a, Context>
+    + OnSynced<'a, T, Context>
+    + OnEvent<'a, T, Context>
+    + OnSet<'a, T, Context>
+    + OnUnlinked<'a, Context>
 {
 }
 
-impl<'a, T, Context, LC> ValueDownlinkHandlers<'a, T, Context> for LC
-where
-    LC: OnLinked<'a, Context> + OnSynced<'a, T, Context> + OnEvent<'a, T, Context> + OnSet<'a, T, Context> + OnUnlinked<'a, Context>,
-{}
+impl<'a, T, Context, LC> ValueDownlinkHandlers<'a, T, Context> for LC where
+    LC: OnLinked<'a, Context>
+        + OnSynced<'a, T, Context>
+        + OnEvent<'a, T, Context>
+        + OnSet<'a, T, Context>
+        + OnUnlinked<'a, Context>
+{
+}
 
 pub trait ValueDownlinkLifecycle<T, Context>:
     for<'a> ValueDownlinkHandlers<'a, T, Context>

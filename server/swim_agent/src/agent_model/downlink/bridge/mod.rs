@@ -13,10 +13,7 @@
 // limitations under the License.
 
 use swim_api::downlink::Downlink;
-use swim_downlink::{
-    lifecycle::{BasicValueDownlinkLifecycle, ValueDownlinkLifecycle},
-    value_downlink, DownlinkTask,
-};
+use swim_downlink::{value_downlink, DownlinkTask};
 use swim_form::Form;
 use tokio::sync::mpsc;
 
@@ -45,13 +42,13 @@ pub fn make_downlink<T>(
 where
     T: Form + Clone + Send + Sync + 'static,
     T::Rec: Send,
- {
+{
     let model = value_downlink(set_stream).with_lifecycle(move |lc| {
-        lc .with(tx.clone())
-        .on_linked(send_linked)
-        .on_synced(send_synced)
-        .on_unlinked(send_unlinked)
-        .on_event(send_event)
+        lc.with(tx.clone())
+            .on_linked(send_linked)
+            .on_synced(send_synced)
+            .on_unlinked(send_unlinked)
+            .on_event(send_event)
     });
     DownlinkTask::new(model)
 }

@@ -21,7 +21,7 @@ use swim_api::{
 use tokio::sync::mpsc;
 
 use super::run_downlink_task;
-use crate::model::lifecycle::{ValueDownlinkLifecycle, BasicValueDownlinkLifecycle};
+use crate::model::lifecycle::{BasicValueDownlinkLifecycle, ValueDownlinkLifecycle};
 use crate::{DownlinkTask, ValueDownlinkModel};
 
 #[derive(Debug, PartialEq, Eq)]

@@ -35,7 +35,7 @@ use swim_utilities::{
 use uuid::Uuid;
 
 use crate::agent_lifecycle::lane_event::LaneEvent;
-use crate::event_handler::{BoxEventHandler, HandlerFuture, Spawner};
+use crate::event_handler::{ActionContext, BoxEventHandler, HandlerFuture};
 use crate::{
     agent_lifecycle::AgentLifecycle,
     event_handler::{EventHandler, EventHandlerError, HandlerAction, StepResult},
@@ -268,7 +268,7 @@ where
         let on_start_handler = lifecycle.on_start();
 
         if let Err(e) = run_handler(
-            &suspended,
+            ActionContext::new(&suspended, &*context),
             meta,
             &lane_model,
             &lifecycle,
@@ -315,7 +315,7 @@ where
     /// * `_context` - Context through which to communicate with the runtime.
     async fn run_agent(
         self,
-        _context: Box<dyn AgentContext + Send>, //Will be needed when downlinks are supported.
+        context: Box<dyn AgentContext + Send>, //Will be needed when downlinks are supported.
     ) -> Result<(), AgentTaskError> {
         let AgentTask {
             lane_model,
@@ -405,7 +405,7 @@ where
                 }
                 TaskEvent::SuspendedComplete { handler } => {
                     if let Err(e) = run_handler(
-                        &suspended,
+                        ActionContext::new(&suspended, &*context),
                         meta,
                         &lane_model,
                         &lifecycle,
@@ -423,7 +423,7 @@ where
                             if let Some(handler) = lane_model.on_value_command(name.as_str(), body)
                             {
                                 if let Err(e) = run_handler(
-                                    &suspended,
+                                    ActionContext::new(&suspended, &*context),
                                     meta,
                                     &lane_model,
                                     &lifecycle,
@@ -438,7 +438,7 @@ where
                         LaneRequest::Sync(remote_id) => {
                             if let Some(handler) = lane_model.on_sync(name.as_str(), remote_id) {
                                 if let Err(e) = run_handler(
-                                    &suspended,
+                                    ActionContext::new(&suspended, &*context),
                                     meta,
                                     &lane_model,
                                     &lifecycle,
@@ -458,7 +458,7 @@ where
                         LaneRequest::Command(body) => {
                             if let Some(handler) = lane_model.on_map_command(name.as_str(), body) {
                                 if let Err(e) = run_handler(
-                                    &suspended,
+                                    ActionContext::new(&suspended, &*context),
                                     meta,
                                     &lane_model,
                                     &lifecycle,
@@ -473,7 +473,7 @@ where
                         LaneRequest::Sync(remote_id) => {
                             if let Some(handler) = lane_model.on_sync(name.as_str(), remote_id) {
                                 if let Err(e) = run_handler(
-                                    &suspended,
+                                    ActionContext::new(&suspended, &*context),
                                     meta,
                                     &lane_model,
                                     &lifecycle,
@@ -515,7 +515,7 @@ where
         // Try to run the `on_stop` handler before we stop.
         let on_stop_handler = lifecycle.on_stop();
         if let Err(e) = run_handler(
-            &suspended,
+            ActionContext::new(&suspended, &*context),
             meta,
             &lane_model,
             &lifecycle,
@@ -554,23 +554,25 @@ struct HandlerRunner<'a, Context, Lifecycle> {
     meta: AgentMetadata<'a>,
     agent: &'a Context,
     lifecycle: &'a Lifecycle,
-    spawner: &'a dyn Spawner<Context>,
+    action_context: ActionContext<'a, Context>,
     lanes: &'a HashMap<u64, Text>,
     collector: &'a mut HashSet<u64>,
 }
 
 impl<'a, Context, Lifecycle> HandlerRunner<'a, Context, Lifecycle> {
-    pub fn new(meta: AgentMetadata<'a>, 
-        agent: &'a Context, 
+    pub fn new(
+        meta: AgentMetadata<'a>,
+        agent: &'a Context,
         lifecycle: &'a Lifecycle,
-        spawner: &'a dyn Spawner<Context>,
+        action_context: ActionContext<'a, Context>,
         lanes: &'a HashMap<u64, Text>,
-        collector: &'a mut HashSet<u64>) -> Self {
+        collector: &'a mut HashSet<u64>,
+    ) -> Self {
         HandlerRunner {
             meta,
             agent,
             lifecycle,
-            spawner,
+            action_context,
             lanes,
             collector,
         }
@@ -581,10 +583,7 @@ impl<'a, Context, Lifecycle> HandlerRunner<'a, Context, Lifecycle>
 where
     Lifecycle: for<'b> LaneEvent<'b, Context>,
 {
-    fn run_handler_in<Handler>(
-        &mut self,
-        handler: Handler,
-    ) -> Result<(), EventHandlerError>
+    fn run_handler_in<Handler>(&mut self, handler: Handler) -> Result<(), EventHandlerError>
     where
         Handler: EventHandler<Context>,
     {
@@ -592,11 +591,19 @@ where
             meta,
             agent,
             lifecycle,
-            spawner,
+            action_context,
             lanes,
             collector,
         } = self;
-        run_handler(*spawner, *meta, *agent, *lifecycle, handler, *lanes, *collector)
+        run_handler(
+            *action_context,
+            *meta,
+            *agent,
+            *lifecycle,
+            handler,
+            *lanes,
+            *collector,
+        )
     }
 }
 
@@ -625,7 +632,7 @@ where
 /// a lane) an the lane names (which are used by the lifecycle to identify the lanes).
 /// * `collector` - Collects the IDs of lanes with state changes.
 fn run_handler<Context, Lifecycle, Handler, Collector>(
-    spawner: &dyn Spawner<Context>,
+    action_context: ActionContext<Context>,
     meta: AgentMetadata,
     context: &Context,
     lifecycle: &Lifecycle,
@@ -639,7 +646,7 @@ where
     Collector: IdCollector,
 {
     loop {
-        match handler.step(spawner, meta, context) {
+        match handler.step(action_context, meta, context) {
             StepResult::Continue { modified_lane } => {
                 if let Some((modification, lane)) = modified_lane.and_then(|modification| {
                     lanes
@@ -650,7 +657,7 @@ where
                     if modification.trigger_handler {
                         if let Some(consequence) = lifecycle.lane_event(context, lane.as_str()) {
                             run_handler(
-                                spawner,
+                                action_context,
                                 meta,
                                 context,
                                 lifecycle,
@@ -675,7 +682,7 @@ where
                     if modification.trigger_handler {
                         if let Some(consequence) = lifecycle.lane_event(context, lane.as_str()) {
                             run_handler(
-                                spawner,
+                                action_context,
                                 meta,
                                 context,
                                 lifecycle,

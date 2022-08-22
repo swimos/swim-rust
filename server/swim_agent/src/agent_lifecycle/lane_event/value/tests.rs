@@ -21,7 +21,7 @@ use swim_utilities::routing::uri::RelativeUri;
 
 use crate::{
     agent_lifecycle::lane_event::{tests::run_handler, HLeaf},
-    event_handler::{HandlerAction, Spawner, StepResult},
+    event_handler::{ActionContext, HandlerAction, StepResult},
     lanes::value::{
         lifecycle::{on_event::OnEvent, on_set::OnSet},
         ValueLane,
@@ -81,7 +81,7 @@ impl<T: Clone> HandlerAction<TestAgent> for OnEventHandler<T> {
 
     fn step(
         &mut self,
-        _suspend: &dyn Spawner<TestAgent>,
+        _action_context: ActionContext<TestAgent>,
         _meta: AgentMetadata,
         _context: &TestAgent,
     ) -> StepResult<Self::Completion> {
@@ -109,7 +109,7 @@ impl<T: Clone> HandlerAction<TestAgent> for OnSetHandler<T> {
 
     fn step(
         &mut self,
-        _suspend: &dyn Spawner<TestAgent>,
+        _action_context: ActionContext<TestAgent>,
         _meta: AgentMetadata,
         _context: &TestAgent,
     ) -> StepResult<Self::Completion> {

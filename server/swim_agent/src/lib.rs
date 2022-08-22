@@ -44,3 +44,57 @@ pub mod reexport {
         pub use uuid::Uuid;
     }
 }
+
+#[cfg(test)]
+mod test_context {
+    use futures::future::BoxFuture;
+    use swim_api::{
+        agent::{AgentContext, LaneConfig, UplinkKind},
+        downlink::{Downlink, DownlinkConfig},
+        error::AgentRuntimeError,
+    };
+    use swim_utilities::{
+        io::byte_channel::{ByteReader, ByteWriter},
+        routing::uri::RelativeUri,
+    };
+
+    use crate::event_handler::{ActionContext, HandlerFuture, Spawner};
+
+    struct NoSpawn;
+    pub struct DummyAgentContext;
+
+    const NO_SPAWN: NoSpawn = NoSpawn;
+    const NO_AGENT: DummyAgentContext = DummyAgentContext;
+
+    pub fn dummy_context<'a, Context>() -> ActionContext<'a, Context> {
+        ActionContext::new(&NO_SPAWN, &NO_AGENT)
+    }
+
+    impl<Context> Spawner<Context> for NoSpawn {
+        fn spawn_suspend(&self, _: HandlerFuture<Context>) {
+            panic!("No suspended futures expected.");
+        }
+    }
+
+    impl AgentContext for DummyAgentContext {
+        fn add_lane<'a>(
+            &'a self,
+            _name: &str,
+            _uplink_kind: UplinkKind,
+            _config: Option<LaneConfig>,
+        ) -> BoxFuture<'a, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
+            panic!("Dummy context used.");
+        }
+
+        fn open_downlink<'a>(
+            &'a self,
+            _host: Option<&str>,
+            _node: RelativeUri,
+            _lane: &str,
+            _config: DownlinkConfig,
+            _downlink: Box<dyn Downlink + Send>,
+        ) -> BoxFuture<'a, Result<(), AgentRuntimeError>> {
+            panic!("Dummy context used.");
+        }
+    }
+}

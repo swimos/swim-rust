@@ -27,6 +27,7 @@ use crate::{
     },
     lanes::{command::DoCommand, Lane},
     meta::AgentMetadata,
+    test_context::dummy_context,
 };
 
 use super::CommandLane;
@@ -107,7 +108,7 @@ fn command_event_handler() {
 
     let mut handler = DoCommand::new(TestAgent::LANE, 546);
 
-    let result = handler.step(&NoSpawn, meta, &agent);
+    let result = handler.step(dummy_context(), meta, &agent);
 
     assert!(matches!(
         result,
@@ -122,7 +123,7 @@ fn command_event_handler() {
 
     assert_eq!(agent.lane.with_prev(Clone::clone), Some(546));
 
-    let result = handler.step(&NoSpawn, meta, &agent);
+    let result = handler.step(dummy_context(), meta, &agent);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)

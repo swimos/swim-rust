@@ -17,7 +17,7 @@ use static_assertions::assert_obj_safe;
 
 use crate::meta::AgentMetadata;
 
-use super::{BoxEventHandler, EventHandler, HandlerAction, StepResult};
+use super::{ActionContext, BoxEventHandler, EventHandler, HandlerAction, StepResult};
 
 #[cfg(test)]
 mod tests;
@@ -73,13 +73,13 @@ where
 
     fn step(
         &mut self,
-        suspend: &dyn Spawner<Context>,
+        action_context: ActionContext<Context>,
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
         let Suspend { future } = self;
         if let Some(future) = future.take() {
-            suspend.spawn_suspend(
+            action_context.spawn_suspend(
                 future
                     .map(|h| {
                         let boxed: BoxEventHandler<Context> = Box::new(h);

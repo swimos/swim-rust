@@ -15,8 +15,9 @@
 use std::time::Duration;
 
 use crate::{
-    event_handler::{EventHandlerError, HandlerAction, SideEffect, StepResult},
+    event_handler::{ActionContext, EventHandlerError, HandlerAction, SideEffect, StepResult},
     meta::AgentMetadata,
+    test_context::DummyAgentContext,
 };
 use futures::{stream::FuturesUnordered, StreamExt};
 use swim_api::agent::AgentConfig;
@@ -63,7 +64,11 @@ async fn suspend_future() {
 
     let mut spawner = FuturesUnordered::new();
 
-    let result = suspend.step(&spawner, meta, &DummyAgent);
+    let result = suspend.step(
+        ActionContext::new(&spawner, &DummyAgentContext),
+        meta,
+        &DummyAgent,
+    );
 
     assert!(matches!(
         result,
@@ -79,7 +84,11 @@ async fn suspend_future() {
 
         assert_eq!(rx.recv().await, Some(45));
 
-        let result = handler.step(&spawner, meta, &DummyAgent);
+        let result = handler.step(
+            ActionContext::new(&spawner, &DummyAgentContext),
+            meta,
+            &DummyAgent,
+        );
         assert!(matches!(
             result,
             StepResult::Complete {
@@ -90,7 +99,11 @@ async fn suspend_future() {
         assert!(spawner.is_empty());
         assert!(done_rx.await.is_ok());
 
-        let result = suspend.step(&NoSpawn, meta, &DummyAgent);
+        let result = suspend.step(
+            ActionContext::new(&spawner, &DummyAgentContext),
+            meta,
+            &DummyAgent,
+        );
         assert!(matches!(
             result,
             StepResult::Fail(EventHandlerError::SteppedAfterComplete)

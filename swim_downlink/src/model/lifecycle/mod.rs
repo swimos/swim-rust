@@ -86,7 +86,6 @@ impl<T> Default for BasicValueDownlinkLifecycle<T> {
     }
 }
 
-
 impl<T> Default for BasicEventDownlinkLifecycle<T> {
     fn default() -> Self {
         Self {
@@ -783,7 +782,13 @@ pub fn for_event_downlink<T>() -> BasicEventDownlinkLifecycle<T, NoHandler, NoHa
 }
 
 /// A lifecycle for an event downlink where the handlers for each event share state.
-pub struct StatefulEventDownlinkLifecycle<T, Shared, FLink = NoHandler, FEv = NoHandler, FUnlink = NoHandler> {
+pub struct StatefulEventDownlinkLifecycle<
+    T,
+    Shared,
+    FLink = NoHandler,
+    FEv = NoHandler,
+    FUnlink = NoHandler,
+> {
     _value_type: PhantomData<fn(T)>,
     shared: Shared,
     on_linked: FLink,

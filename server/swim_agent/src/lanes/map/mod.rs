@@ -35,8 +35,8 @@ mod tests;
 use crate::{
     agent_model::WriteResult,
     event_handler::{
-        AndThen, EventHandlerError, HandlerAction, HandlerActionExt, HandlerTrans, Modification,
-        Spawner, StepResult,
+        ActionContext, AndThen, EventHandlerError, HandlerAction, HandlerActionExt, HandlerTrans,
+        Modification, StepResult,
     },
     meta::AgentMetadata,
 };
@@ -307,7 +307,7 @@ where
 
     fn step(
         &mut self,
-        _suspend: &dyn Spawner<C>,
+        _action_context: ActionContext<C>,
         _meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {
@@ -351,7 +351,7 @@ where
 
     fn step(
         &mut self,
-        _suspend: &dyn Spawner<C>,
+        _action_context: ActionContext<C>,
         _meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {
@@ -392,7 +392,7 @@ where
 
     fn step(
         &mut self,
-        _suspend: &dyn Spawner<C>,
+        _action_context: ActionContext<C>,
         _meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {
@@ -437,7 +437,7 @@ where
 
     fn step(
         &mut self,
-        _suspend: &dyn Spawner<C>,
+        _action_context: ActionContext<C>,
         _meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {
@@ -480,7 +480,7 @@ where
 
     fn step(
         &mut self,
-        _suspend: &dyn Spawner<C>,
+        _action_context: ActionContext<C>,
         _meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {
@@ -518,7 +518,7 @@ where
 
     fn step(
         &mut self,
-        _suspend: &dyn Spawner<C>,
+        _action_context: ActionContext<C>,
         _meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {
@@ -597,7 +597,7 @@ where
 
     fn step(
         &mut self,
-        _suspend: &dyn Spawner<Context>,
+        _action_context: ActionContext<Context>,
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {

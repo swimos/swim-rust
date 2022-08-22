@@ -20,6 +20,9 @@ pub use model::{
     EventDownlinkModel, ValueDownlinkModel,
 };
 pub mod lifecycle {
-    pub use crate::model::lifecycle::{ValueDownlinkLifecycle, EventDownlinkLifecycle, BasicEventDownlinkLifecycle, BasicValueDownlinkLifecycle, StatefulEventDownlinkLifecycle, StatefulValueDownlinkLifecycle};
+    pub use crate::model::lifecycle::{
+        BasicEventDownlinkLifecycle, BasicValueDownlinkLifecycle, EventDownlinkLifecycle,
+        StatefulEventDownlinkLifecycle, StatefulValueDownlinkLifecycle, ValueDownlinkLifecycle,
+    };
 }
 pub use task::DownlinkTask;
