@@ -29,7 +29,7 @@ use crate::{
     downlink_lifecycle::value::ValueDownlinkLifecycle,
     event_handler::{
         ActionContext, DownlinkSpawner, EventHandler, EventHandlerExt, Fail, HandlerAction,
-        Spawner, StepResult,
+        Spawner, StepResult, LanePath,
     },
     meta::AgentMetadata,
 };
@@ -93,7 +93,7 @@ impl<T> ValueDownlinkHandle<T> {
         Ok(())
     }
 
-    pub fn set<'a>(&'a self, value: T) -> DownlinkSend<'a, T> {
+    pub fn set(&self, value: T) -> DownlinkSend<'_, T> {
         DownlinkSend {
             handle: self,
             value: Some(value),
@@ -178,10 +178,9 @@ where
             let endpoint = ValueDownlinkEndpoint::new(bridge_rx, lifecycle);
 
             let handle = ValueDownlinkHandle::new(set_tx);
+            let path = LanePath::new(host, node, lane);
             action_context.start_downlink(
-                host.as_ref().map(|s| s.as_str()),
-                node,
-                lane.as_ref(),
+                path,
                 *config,
                 downlink,
                 endpoint,

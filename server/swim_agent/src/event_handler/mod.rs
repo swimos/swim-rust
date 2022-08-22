@@ -81,9 +81,9 @@ pub struct ActionContext<'a, Context> {
 impl<'a, Context> Clone for ActionContext<'a, Context> {
     fn clone(&self) -> Self {
         Self {
-            spawner: self.spawner.clone(),
-            agent_context: self.agent_context.clone(),
-            downlink: self.downlink.clone(),
+            spawner: self.spawner,
+            agent_context: self.agent_context,
+            downlink: self.downlink,
         }
     }
 }
@@ -105,6 +105,23 @@ impl<'a, Context> DownlinkSpawner<Context> for ActionContext<'a, Context> {
     }
 }
 
+pub struct LanePath<S> {
+    host: Option<S>,
+    node: RelativeUri,
+    lane: S,
+}
+
+impl<S> LanePath<S> {
+
+
+    pub fn new(host: Option<S>,
+        node: RelativeUri,
+        lane: S) -> Self {
+            LanePath { host, node , lane }
+        }
+
+}
+
 impl<'a, Context> ActionContext<'a, Context> {
     pub fn new(
         spawner: &'a dyn Spawner<Context>,
@@ -118,24 +135,24 @@ impl<'a, Context> ActionContext<'a, Context> {
         }
     }
 
-    pub(crate) fn start_downlink<D, C, F, H>(
+    pub(crate) fn start_downlink<S, D, C, F, H>(
         &self,
-        host: Option<&str>,
-        node: RelativeUri,
-        lane: &str,
+        path: LanePath<S>,
         config: DownlinkConfig,
         downlink: D,
         channel: C,
         on_done: F,
     ) where
+        S: AsRef<str>,
         D: Downlink + Send + 'static,
         C: DownlinkChannel<Context> + Send + 'static,
         F: FnOnce(Result<(), AgentRuntimeError>) -> H + Send + 'static,
         H: EventHandler<Context> + 'static,
     {
+        let LanePath { host, node, lane } = path;
         let external =
             self.agent_context
-                .open_downlink(host, node, lane, config, Box::new(downlink));
+                .open_downlink(host.as_ref().map(AsRef::as_ref), node, lane.as_ref(), config, Box::new(downlink));
         let fut = external
             .map(move |result| {
                 if let Err(e) = result {
