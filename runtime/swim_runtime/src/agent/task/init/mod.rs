@@ -18,9 +18,9 @@ use swim_utilities::{io::byte_channel, trigger};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
-use crate::agent::{AgentExecError, AgentRuntimeConfig, AgentRuntimeRequest};
+use crate::agent::{AgentExecError, AgentRuntimeConfig, AgentRuntimeRequest, DownlinkRequest};
 
-use super::{DownlinkRequest, InitialEndpoints, LaneEndpoint};
+use super::{InitialEndpoints, LaneEndpoint};
 
 use tracing::{error, info};
 

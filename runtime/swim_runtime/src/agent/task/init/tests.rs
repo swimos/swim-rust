@@ -24,8 +24,8 @@ use swim_utilities::{algebra::non_zero_usize, io::byte_channel, trigger};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::agent::{
-    task::{DownlinkRequest, InitialEndpoints, LaneEndpoint},
-    AgentExecError, AgentRuntimeConfig, AgentRuntimeRequest, Io,
+    task::{InitialEndpoints, LaneEndpoint},
+    AgentExecError, AgentRuntimeConfig, AgentRuntimeRequest, Io, DownlinkRequest,
 };
 
 trait TestInit {

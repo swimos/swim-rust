@@ -15,6 +15,11 @@
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use ratchet::WebSocketStream;
+use swim_api::downlink::{Downlink, DownlinkConfig, DownlinkKind};
+use swim_api::error::AgentRuntimeError;
+use swim_model::path::RelativePath;
+use swim_runtime::downlink::failure::{AlwaysIgnoreStrategy, AlwaysAbortStrategy};
+use swim_runtime::downlink::{AttachAction, ValueDownlinkRuntime, DownlinkRuntimeConfig, MapDownlinkRuntime};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::future::Future;
@@ -24,8 +29,8 @@ use std::str::FromStr;
 use std::time::Duration;
 use swim_api::agent::BoxAgent;
 use swim_model::Text;
-use swim_remote::{AgentResolutionError, FindNode, NoSuchAgent, RemoteTask};
-use swim_runtime::agent::{run_agent, AgentAttachmentRequest, AgentExecError, DisconnectionReason};
+use swim_remote::{AgentResolutionError, FindNode, NoSuchAgent, RemoteTask, AttachClient};
+use swim_runtime::agent::{run_agent, AgentAttachmentRequest, AgentExecError, DisconnectionReason, DownlinkRequest};
 use swim_runtime::error::ConnectionError;
 use swim_runtime::remote::ExternalConnections;
 use swim_runtime::remote::Listener;
@@ -64,6 +69,8 @@ enum ServerEvent<Sock> {
     NewConnection(Result<Sock, std::io::Error>),
     FindRoute(FindNode),
     FailRoute(FindNode),
+    OpenDownlink(DownlinkRequest),
+    FailDownlink(DownlinkRequest),
     RemoteStopped(Uuid, Result<(), JoinError>),
     AgentStopped(Text, Result<Result<(), AgentExecError>, JoinError>),
     ConnectionStopped(ConnectionTerminated),
@@ -98,9 +105,10 @@ where
 /// Tracks the shutdown process for the server.
 #[derive(Clone, Copy, Debug)]
 enum TaskState {
-    Running,         //The server has is running normally.
-    StoppingAgents,  //The server is shutting down and waiting for the agents to stop.
-    StoppingRemotes, //The server is shutting down, all agents have stopped, and the remote connections are being closed.
+    Running,           //The server has is running normally.
+    StoppingDownlinks, //The server is stopping and waiting for downlinks to stop.
+    StoppingAgents,    //The server is shutting down and waiting for the agents to stop.
+    StoppingRemotes,   //The server is shutting down, all agents have stopped, and the remote connections are being closed.
 }
 
 impl<Net, Ws> SwimServer<Net, Ws>
@@ -165,12 +173,14 @@ where
         };
 
         let (find_tx, mut find_rx) = mpsc::channel(config.find_route_buffer_size.get());
-        let (open_dl_tx, _open_dl_rx) = mpsc::channel(config.open_downlink_buffer_size.get());
+        let (open_dl_tx, mut open_dl_rx) = mpsc::channel(config.open_downlink_buffer_size.get());
         let mut remote_channels = HashMap::new();
         let mut agent_channels = HashMap::new();
+        let mut downlink_channels: HashMap<PathKey, mpsc::Sender<AttachAction>> = HashMap::new();
 
         let mut remote_tasks = FuturesUnordered::new();
         let mut agent_tasks = FuturesUnordered::new();
+        //let mut downlink_tasks = FuturesUnordered::new();
         let mut connection_tasks = FuturesUnordered::new();
 
         let mut accept_stream = listener.into_stream().take_until(stop_signal);
@@ -204,9 +214,32 @@ where
                             }
                         },
                         Some(find_route) = find_rx.recv() => ServerEvent::FindRoute(find_route),
+                        Some(dl_req) = open_dl_rx.recv() => ServerEvent::OpenDownlink(dl_req),
                         else => continue,
                     }
                 }
+                TaskState::StoppingDownlinks => {
+                    tokio::select! {
+                        biased;
+                        Some((id, result)) = remote_tasks.next(), if !remote_tasks.is_empty() => ServerEvent::RemoteStopped(id, result),
+                        Some((id, result)) = agent_tasks.next(), if !agent_tasks.is_empty() => ServerEvent::AgentStopped(id, result),
+                        Some(reason) = connection_tasks.next(), if !connection_tasks.is_empty() => ServerEvent::ConnectionStopped(reason),
+                        maybe_result = accept_stream.next() => {
+                            if let Some(result) = maybe_result {
+                                ServerEvent::NewConnection(result)
+                            } else {
+                                if let Some(stop) = agent_stop.take() {
+                                    stop.trigger();
+                                }
+                                state = TaskState::StoppingAgents;
+                                continue;
+                            }
+                        },
+                        Some(find_route) = find_rx.recv() => ServerEvent::FindRoute(find_route),
+                        Some(dl_req) = open_dl_rx.recv() => ServerEvent::FailDownlink(dl_req),
+                        else => continue,
+                    }
+                },
                 TaskState::StoppingAgents => {
                     tokio::select! {
                         biased;
@@ -224,6 +257,7 @@ where
                         },
                         Some(reason) = connection_tasks.next(), if !connection_tasks.is_empty() => ServerEvent::ConnectionStopped(reason),
                         Some(find_route) = find_rx.recv() => ServerEvent::FailRoute(find_route),
+                        Some(dl_req) = open_dl_rx.recv() => ServerEvent::FailDownlink(dl_req),
                         else => continue,
                     }
                 }
@@ -239,6 +273,7 @@ where
                         },
                         Some(reason) = connection_tasks.next(), if !connection_tasks.is_empty() => ServerEvent::ConnectionStopped(reason),
                         Some(find_route) = find_rx.recv() => ServerEvent::FailRoute(find_route),
+                        Some(dl_req) = open_dl_rx.recv() => ServerEvent::FailDownlink(dl_req),
                         else => continue,
                     }
                 }
@@ -383,6 +418,20 @@ where
                         }
                     }
                 }
+                ServerEvent::FailDownlink(DownlinkRequest { promise, host, node, lane, .. }) => {
+                    if promise.send(Err(AgentRuntimeError::Stopping)).is_err() {
+                        debug!(host = ?host, node = %node, lane = %lane, "An agent stopped while waiting to open a downlink.");
+                    }
+                },
+                ServerEvent::OpenDownlink(DownlinkRequest { host, node, lane, config, downlink, promise }) => {
+                    let key = PathKey::new(host, node, lane);
+                    if let Some(attach_tx) = downlink_channels.get_mut(&key) {
+                        
+                    } else {
+
+                    }
+                    todo!()
+                }
             }
         }
 
@@ -458,5 +507,65 @@ async fn attach_agent(
         remote_id,
         agent_id,
         reason,
+    }
+}
+
+#[derive(Hash, PartialEq, Eq)]
+struct PathKey {
+    host: Option<Text>,
+    node: RelativeUri,
+    lane: Text,
+}
+
+impl PathKey {
+
+    fn new(host: Option<Text>,
+        node: RelativeUri,
+        lane: Text) -> Self {
+            PathKey { host, node, lane }
+        }
+
+}
+
+
+pub fn run_downlink_runtime(
+    identity: Uuid,
+    node: Text,
+    lane: Text,
+    remote_attach: mpsc::Sender<AttachClient>,
+    attachment_rx: mpsc::Receiver<AttachAction>,
+    stopping: trigger::Receiver,
+    config: DownlinkRuntimeConfig,
+    buffer_size: NonZeroUsize,
+    kind: DownlinkKind,
+) -> impl Future<Output = ()> + Send + 'static
+{
+    async move {
+        let (in_tx, in_rx) = byte_channel(buffer_size);
+        let (out_tx, out_rx) = byte_channel(buffer_size);
+        let (done_tx, done_rx) = trigger::trigger();
+        if remote_attach.send(AttachClient::AttachDownlink { node: node.clone(), lane: lane.clone(), sender: in_tx, receiver: out_rx, done: done_tx }).await.is_err() {
+            todo!()
+        }
+        if done_rx.await.is_err() {
+            todo!()
+        }
+        let path = RelativePath::new(node, lane);
+        let io = (out_tx, in_rx);
+        match kind {
+            DownlinkKind::Map => {
+                if config.abort_on_bad_frames {
+                    let runtime = MapDownlinkRuntime::new(attachment_rx, io, stopping, identity, path, config, AlwaysAbortStrategy);
+                    runtime.run().await;
+                } else {
+                    let runtime = MapDownlinkRuntime::new(attachment_rx, io, stopping, identity, path, config, AlwaysIgnoreStrategy);
+                    runtime.run().await;
+                }
+            }
+            _ => {
+                let runtime = ValueDownlinkRuntime::new(attachment_rx, io, stopping, identity, path, config);
+                runtime.run().await;
+            },
+        }
     }
 }

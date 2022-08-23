@@ -109,6 +109,8 @@ pub struct DownlinkRuntimeConfig {
     pub empty_timeout: Duration,
     /// Size of the queue for accepting new subscribers to a downlink.
     pub attachment_queue_size: NonZeroUsize,
+    /// Abort the downlink on receiving invalid frames.
+    pub abort_on_bad_frames: bool,
 }
 
 /// The runtime component for a value type downlink (i.e. value downlink, event downlink, etc.).

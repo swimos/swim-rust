@@ -38,11 +38,20 @@ use std::{
     time::Duration,
 };
 
-use self::task::{AgentInitTask, DownlinkRequest};
+use self::task::AgentInitTask;
 
 mod task;
 
 use task::AgentRuntimeRequest;
+
+pub struct DownlinkRequest {
+    pub host: Option<Text>,
+    pub node: RelativeUri,
+    pub lane: Text,
+    pub config: DownlinkConfig,
+    pub downlink: Box<dyn Downlink + Send>,
+    pub promise: oneshot::Sender<Result<(), AgentRuntimeError>>,
+}
 
 /// Implementaton of [`AgentContext`] that communicates with with another task over a channel
 /// to perform the supported operations.

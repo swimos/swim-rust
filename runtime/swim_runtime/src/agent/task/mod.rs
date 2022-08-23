@@ -29,7 +29,7 @@ use self::prune::PruneRemotes;
 use self::remotes::{LaneRegistry, RemoteSender, RemoteTracker, UplinkResponse};
 use self::write_fut::{WriteResult, WriteTask};
 
-use super::{AgentAttachmentRequest, AgentRuntimeConfig, DisconnectionReason, Io};
+use super::{AgentAttachmentRequest, AgentRuntimeConfig, DisconnectionReason, Io, DownlinkRequest};
 use bytes::{Bytes, BytesMut};
 use futures::ready;
 use futures::stream::FuturesUnordered;
@@ -40,7 +40,6 @@ use futures::{
 };
 use pin_utils::pin_mut;
 use swim_api::agent::LaneConfig;
-use swim_api::downlink::{Downlink, DownlinkConfig};
 use swim_api::protocol::agent::{LaneResponseKind, MapLaneResponse, ValueLaneResponse};
 use swim_api::{
     agent::UplinkKind,
@@ -60,7 +59,6 @@ use swim_model::Text;
 use swim_recon::parser::MessageExtractError;
 use swim_utilities::future::{immediate_or_join, StopAfterError, SwimStreamExt};
 use swim_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
-use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger::{self, promise};
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
@@ -83,15 +81,6 @@ pub use init::AgentInitTask;
 
 #[cfg(test)]
 mod tests;
-
-pub struct DownlinkRequest {
-    pub host: Option<Text>,
-    pub node: RelativeUri,
-    pub lane: Text,
-    pub config: DownlinkConfig,
-    pub downlink: Box<dyn Downlink + Send>,
-    pub promise: oneshot::Sender<Result<(), AgentRuntimeError>>,
-}
 
 /// Type for requests that can be sent to the agent runtime task by an agent implementation.
 pub enum AgentRuntimeRequest {

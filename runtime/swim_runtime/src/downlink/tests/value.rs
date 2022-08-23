@@ -168,6 +168,7 @@ where
         DownlinkRuntimeConfig {
             empty_timeout: EMPTY_TIMEOUT,
             attachment_queue_size: ATT_QUEUE_SIZE,
+            abort_on_bad_frames: true,
         },
         test_block,
     )
@@ -733,6 +734,7 @@ async fn shutdowm_after_timeout_with_no_subscribers() {
         DownlinkRuntimeConfig {
             empty_timeout: Duration::from_millis(100),
             attachment_queue_size: ATT_QUEUE_SIZE,
+            abort_on_bad_frames: true,
         },
         |TestContext {
              tx: _tx,
@@ -959,6 +961,7 @@ async fn sync_two_consumers() {
         DownlinkRuntimeConfig {
             empty_timeout: EMPTY_TIMEOUT,
             attachment_queue_size: ATT_QUEUE_SIZE,
+            abort_on_bad_frames: true,
         },
         |mut context| async move {
             sync_both(&mut context).await;
@@ -990,6 +993,7 @@ async fn receive_from_two_consumers() {
         DownlinkRuntimeConfig {
             empty_timeout: EMPTY_TIMEOUT,
             attachment_queue_size: ATT_QUEUE_SIZE,
+            abort_on_bad_frames: true,
         },
         |mut context| async move {
             sync_both(&mut context).await;
