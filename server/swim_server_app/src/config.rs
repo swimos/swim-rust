@@ -32,6 +32,8 @@ pub struct SwimServerConfig {
     pub client_attachment_buffer_size: NonZeroUsize,
     /// Size of the MPSC channel for resolving agents.
     pub find_route_buffer_size: NonZeroUsize,
+    /// Size of the MPSC channel for opening new downlinks.
+    pub open_downlink_buffer_size: NonZeroUsize,
     /// The buffer size for communication between remote sockets and agents.
     pub agent_runtime_buffer_size: NonZeroUsize,
     /// Timeout on attempting to connect a remote socket to an agent.
@@ -73,6 +75,7 @@ impl Default for SwimServerConfig {
             },
             client_attachment_buffer_size: DEFAULT_CHANNEL_SIZE,
             find_route_buffer_size: DEFAULT_CHANNEL_SIZE,
+            open_downlink_buffer_size: DEFAULT_CHANNEL_SIZE,
             agent_runtime_buffer_size: DEFAULT_BUFFER_SIZE,
             attachment_timeout: DEFAULT_TIMEOUT,
             websockets: Default::default(),

@@ -79,10 +79,19 @@ mod remotes;
 mod timeout_coord;
 mod write_fut;
 
-pub use init::{AgentInitTask, NoLanes};
+pub use init::AgentInitTask;
 
 #[cfg(test)]
 mod tests;
+
+pub struct DownlinkRequest {
+    pub host: Option<Text>,
+    pub node: RelativeUri,
+    pub lane: Text,
+    pub config: DownlinkConfig,
+    pub downlink: Box<dyn Downlink + Send>,
+    pub promise: oneshot::Sender<Result<(), AgentRuntimeError>>,
+}
 
 /// Type for requests that can be sent to the agent runtime task by an agent implementation.
 pub enum AgentRuntimeRequest {
@@ -94,14 +103,7 @@ pub enum AgentRuntimeRequest {
         promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
     },
     /// Attempt to open a downlink to a lane on another agent.
-    OpenDownlink {
-        host: Option<Text>,
-        node: RelativeUri,
-        lane: Text,
-        config: DownlinkConfig,
-        downlink: Box<dyn Downlink + Send>,
-        promise: oneshot::Sender<Result<(), AgentRuntimeError>>,
-    },
+    OpenDownlink(DownlinkRequest),
 }
 
 impl Debug for AgentRuntimeRequest {
@@ -119,9 +121,9 @@ impl Debug for AgentRuntimeRequest {
                 .field("config", config)
                 .field("promise", promise)
                 .finish(),
-            Self::OpenDownlink {
+            Self::OpenDownlink(DownlinkRequest {
                 config, promise, ..
-            } => f
+            }) => f
                 .debug_struct("OpenDownlink")
                 .field("config", config)
                 .field("downlink", &"[[dyn Downlink]]")

@@ -15,13 +15,12 @@
 use futures::StreamExt;
 use swim_api::agent::LaneConfig;
 use swim_utilities::{io::byte_channel, trigger};
-use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
-use crate::agent::{AgentRuntimeConfig, AgentRuntimeRequest};
+use crate::agent::{AgentExecError, AgentRuntimeConfig, AgentRuntimeRequest};
 
-use super::{InitialEndpoints, LaneEndpoint};
+use super::{DownlinkRequest, InitialEndpoints, LaneEndpoint};
 
 use tracing::{error, info};
 
@@ -33,14 +32,10 @@ mod tests;
 /// the agent.
 pub struct AgentInitTask {
     requests: mpsc::Receiver<AgentRuntimeRequest>,
+    downlink_requests: mpsc::Sender<DownlinkRequest>,
     init_complete: trigger::Receiver,
     config: AgentRuntimeConfig,
 }
-
-/// Error type produced if no lanes are registered in the initialization phase.
-#[derive(Debug, Clone, Copy, Error)]
-#[error("No lanes were registered.")]
-pub struct NoLanes;
 
 impl AgentInitTask {
     /// #Arguments
@@ -49,21 +44,24 @@ impl AgentInitTask {
     /// * `config` - Configuration parameters for the agent runtime.
     pub fn new(
         requests: mpsc::Receiver<AgentRuntimeRequest>,
+        downlink_requests: mpsc::Sender<DownlinkRequest>,
         init_complete: trigger::Receiver,
         config: AgentRuntimeConfig,
     ) -> Self {
         AgentInitTask {
             requests,
+            downlink_requests,
             init_complete,
             config,
         }
     }
 
-    pub async fn run(self) -> Result<InitialEndpoints, NoLanes> {
+    pub async fn run(self) -> Result<InitialEndpoints, AgentExecError> {
         let AgentInitTask {
             requests,
             init_complete,
             config: agent_config,
+            downlink_requests,
         } = self;
 
         let mut request_stream = ReceiverStream::new(requests);
@@ -102,13 +100,15 @@ impl AgentInitTask {
                         );
                     }
                 }
-                AgentRuntimeRequest::OpenDownlink { .. } => {
-                    todo!("Opening downlinks from agents not implemented yet.")
+                AgentRuntimeRequest::OpenDownlink(request) => {
+                    if downlink_requests.send(request).await.is_err() {
+                        return Err(AgentExecError::FailedDownlinkRequest);
+                    }
                 }
             }
         }
         if endpoints.is_empty() {
-            Err(NoLanes)
+            Err(AgentExecError::NoInitialLanes)
         } else {
             Ok(InitialEndpoints::new(
                 request_stream.into_inner(),

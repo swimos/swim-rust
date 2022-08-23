@@ -24,17 +24,16 @@ use swim_utilities::{algebra::non_zero_usize, io::byte_channel, trigger};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::agent::{
-    task::{InitialEndpoints, LaneEndpoint},
-    AgentRuntimeConfig, AgentRuntimeRequest, Io,
+    task::{DownlinkRequest, InitialEndpoints, LaneEndpoint},
+    AgentExecError, AgentRuntimeConfig, AgentRuntimeRequest, Io,
 };
-
-use super::NoLanes;
 
 trait TestInit {
     type Output;
 
     fn create(
         requests: mpsc::Sender<AgentRuntimeRequest>,
+        downlink_requests: mpsc::Receiver<DownlinkRequest>,
         init_complete: trigger::Sender,
         config: Option<LaneConfig>,
     ) -> Self;
@@ -44,13 +43,19 @@ trait TestInit {
 
 struct NoLanesInit {
     _requests: mpsc::Sender<AgentRuntimeRequest>,
+    _dl_requests: mpsc::Receiver<DownlinkRequest>,
     init_complete: trigger::Sender,
 }
 
 impl NoLanesInit {
-    fn new(requests: mpsc::Sender<AgentRuntimeRequest>, init_complete: trigger::Sender) -> Self {
+    fn new(
+        requests: mpsc::Sender<AgentRuntimeRequest>,
+        dl_requests: mpsc::Receiver<DownlinkRequest>,
+        init_complete: trigger::Sender,
+    ) -> Self {
         NoLanesInit {
             _requests: requests,
+            _dl_requests: dl_requests,
             init_complete,
         }
     }
@@ -66,10 +71,11 @@ impl TestInit for NoLanesInit {
 
     fn create(
         requests: mpsc::Sender<AgentRuntimeRequest>,
+        downlink_requests: mpsc::Receiver<DownlinkRequest>,
         init_complete: trigger::Sender,
         _config: Option<LaneConfig>,
     ) -> Self {
-        NoLanesInit::new(requests, init_complete)
+        NoLanesInit::new(requests, downlink_requests, init_complete)
     }
 
     fn run_test(self) -> BoxFuture<'static, Self::Output> {
@@ -79,6 +85,7 @@ impl TestInit for NoLanesInit {
 
 struct SingleLaneInit {
     requests: mpsc::Sender<AgentRuntimeRequest>,
+    _dl_requests: mpsc::Receiver<DownlinkRequest>,
     init_complete: trigger::Sender,
     config: Option<LaneConfig>,
 }
@@ -90,11 +97,13 @@ const NO_LANE: &str = "Initialization task failed to create the lane";
 impl SingleLaneInit {
     fn new(
         requests: mpsc::Sender<AgentRuntimeRequest>,
+        dl_requests: mpsc::Receiver<DownlinkRequest>,
         init_complete: trigger::Sender,
         config: Option<LaneConfig>,
     ) -> Self {
         SingleLaneInit {
             requests,
+            _dl_requests: dl_requests,
             init_complete,
             config,
         }
@@ -103,6 +112,7 @@ impl SingleLaneInit {
     async fn run(self) -> Io {
         let SingleLaneInit {
             requests,
+            _dl_requests,
             init_complete,
             config,
         } = self;
@@ -129,10 +139,11 @@ impl TestInit for SingleLaneInit {
 
     fn create(
         requests: mpsc::Sender<AgentRuntimeRequest>,
+        downlink_requests: mpsc::Receiver<DownlinkRequest>,
         init_complete: trigger::Sender,
         config: Option<LaneConfig>,
     ) -> Self {
-        SingleLaneInit::new(requests, init_complete, config)
+        SingleLaneInit::new(requests, downlink_requests, init_complete, config)
     }
 
     fn run_test(self) -> BoxFuture<'static, Self::Output> {
@@ -151,12 +162,18 @@ const CONFIG: AgentRuntimeConfig = AgentRuntimeConfig {
     shutdown_timeout: Duration::from_secs(2),
 };
 
-async fn run_test<T: TestInit>() -> (Result<InitialEndpoints, NoLanes>, <T as TestInit>::Output) {
+const DL_CHAN_SIZE: usize = 8;
+
+async fn run_test<T: TestInit>() -> (
+    Result<InitialEndpoints, AgentExecError>,
+    <T as TestInit>::Output,
+) {
     let (req_tx, req_rx) = mpsc::channel(8);
     let (done_tx, done_rx) = trigger::trigger();
+    let (dl_tx, dl_rx) = mpsc::channel(DL_CHAN_SIZE);
 
-    let runtime = super::AgentInitTask::new(req_rx, done_rx, CONFIG);
-    let test = T::create(req_tx, done_tx, None);
+    let runtime = super::AgentInitTask::new(req_rx, dl_tx, done_rx, CONFIG);
+    let test = T::create(req_tx, dl_rx, done_tx, None);
 
     join(runtime.run(), test.run_test()).await
 }
@@ -191,6 +208,7 @@ async fn single_lane() {
 
 struct TwoLanesInit {
     requests: mpsc::Sender<AgentRuntimeRequest>,
+    _dl_requests: mpsc::Receiver<DownlinkRequest>,
     init_complete: trigger::Sender,
     config: Option<LaneConfig>,
 }
@@ -204,11 +222,13 @@ struct TwoLanes {
 impl TwoLanesInit {
     fn new(
         requests: mpsc::Sender<AgentRuntimeRequest>,
+        dl_requests: mpsc::Receiver<DownlinkRequest>,
         init_complete: trigger::Sender,
         config: Option<LaneConfig>,
     ) -> Self {
         TwoLanesInit {
             requests,
+            _dl_requests: dl_requests,
             init_complete,
             config,
         }
@@ -217,6 +237,7 @@ impl TwoLanesInit {
     async fn run(self) -> TwoLanes {
         let TwoLanesInit {
             requests,
+            _dl_requests,
             init_complete,
             config,
         } = self;
@@ -259,10 +280,11 @@ impl TestInit for TwoLanesInit {
 
     fn create(
         requests: mpsc::Sender<AgentRuntimeRequest>,
+        dl_requests: mpsc::Receiver<DownlinkRequest>,
         init_complete: trigger::Sender,
         config: Option<LaneConfig>,
     ) -> Self {
-        TwoLanesInit::new(requests, init_complete, config)
+        TwoLanesInit::new(requests, dl_requests, init_complete, config)
     }
 
     fn run_test(self) -> BoxFuture<'static, Self::Output> {

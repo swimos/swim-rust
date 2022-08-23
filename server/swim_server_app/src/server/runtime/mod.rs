@@ -165,6 +165,7 @@ where
         };
 
         let (find_tx, mut find_rx) = mpsc::channel(config.find_route_buffer_size.get());
+        let (open_dl_tx, _open_dl_rx) = mpsc::channel(config.open_downlink_buffer_size.get());
         let mut remote_channels = HashMap::new();
         let mut agent_channels = HashMap::new();
 
@@ -345,6 +346,7 @@ where
                                     id,
                                     route,
                                     attachment_rx,
+                                    open_dl_tx.clone(),
                                     agent_stop_rx.clone(),
                                     config.agent,
                                     config.agent_runtime,

@@ -38,7 +38,7 @@ use std::{
     time::Duration,
 };
 
-use self::task::{AgentInitTask, NoLanes};
+use self::task::{AgentInitTask, DownlinkRequest};
 
 mod task;
 
@@ -95,14 +95,14 @@ impl AgentContext for AgentRuntimeContext {
         async move {
             let (tx, rx) = oneshot::channel();
             sender
-                .send(AgentRuntimeRequest::OpenDownlink {
+                .send(AgentRuntimeRequest::OpenDownlink(DownlinkRequest {
                     host,
                     node,
                     lane,
                     config,
                     downlink,
                     promise: tx,
-                })
+                }))
                 .await?;
             rx.await?
         }
@@ -223,12 +223,9 @@ pub enum AgentExecError {
     /// The runtime loop of the agent failed.
     #[error("The agent task failed: {0}")]
     FailedTask(#[from] AgentTaskError),
-}
-
-impl From<NoLanes> for AgentExecError {
-    fn from(_: NoLanes) -> Self {
-        AgentExecError::NoInitialLanes
-    }
+    /// Sending a downlink request to the runtime failed.
+    #[error("The runtime failed to handle a downlink request.")]
+    FailedDownlinkRequest,
 }
 
 /// Run an agent.
@@ -246,6 +243,7 @@ pub fn run_agent<A>(
     identity: Uuid,
     route: RelativeUri,
     attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
+    downlink_tx: mpsc::Sender<DownlinkRequest>,
     stopping: trigger::Receiver,
     agent_config: AgentConfig,
     runtime_config: AgentRuntimeConfig,
@@ -256,7 +254,7 @@ where
     let node_uri = route.to_string().into();
     let (runtime_tx, runtime_rx) = mpsc::channel(runtime_config.attachment_queue_size.get());
     let (init_tx, init_rx) = trigger::trigger();
-    let runtime_init_task = AgentInitTask::new(runtime_rx, init_rx, runtime_config);
+    let runtime_init_task = AgentInitTask::new(runtime_rx, downlink_tx, init_rx, runtime_config);
     let context = Box::new(AgentRuntimeContext::new(runtime_tx));
 
     let agent_init = agent.run(route, agent_config, context);
