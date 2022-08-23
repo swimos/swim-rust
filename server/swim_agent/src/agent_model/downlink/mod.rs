@@ -29,7 +29,7 @@ use crate::{
     downlink_lifecycle::value::ValueDownlinkLifecycle,
     event_handler::{
         ActionContext, DownlinkSpawner, EventHandler, EventHandlerExt, Fail, HandlerAction,
-        Spawner, StepResult, LanePath,
+        LanePath, Spawner, StepResult,
     },
     meta::AgentMetadata,
 };
@@ -179,13 +179,9 @@ where
 
             let handle = ValueDownlinkHandle::new(set_tx);
             let path = LanePath::new(host, node, lane);
-            action_context.start_downlink(
-                path,
-                *config,
-                downlink,
-                endpoint,
-                move |result| on_done(result.map(|_| handle)),
-            );
+            action_context.start_downlink(path, *config, downlink, endpoint, move |result| {
+                on_done(result.map(|_| handle))
+            });
             StepResult::done(())
         } else {
             StepResult::after_done()

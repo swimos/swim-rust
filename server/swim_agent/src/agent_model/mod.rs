@@ -202,6 +202,9 @@ enum TaskEvent<LaneModel> {
     SuspendedComplete {
         handler: BoxEventHandler<'static, LaneModel>,
     },
+    DownlinkReady {
+        downlink_result: Option<BoxDownlinkChannel<LaneModel>>,
+    },
     ValueRequest {
         id: u64,
         request: LaneRequest<BytesMut>,
@@ -263,7 +266,7 @@ where
         let lane_ids = LaneModel::lane_ids();
 
         let suspended = FuturesUnordered::new();
-        let downlinks = RefCell::new(vec![]);
+        let downlink_channels = RefCell::new(vec![]);
 
         // Set up the lanes of the agent.
         for name in val_lane_names {
@@ -283,7 +286,7 @@ where
         let on_start_handler = lifecycle.on_start();
 
         if let Err(e) = run_handler(
-            ActionContext::new(&suspended, &*context, &downlinks),
+            ActionContext::new(&suspended, &*context, &downlink_channels),
             meta,
             &lane_model,
             &lifecycle,
@@ -302,6 +305,7 @@ where
             value_lane_io,
             map_lane_io,
             suspended,
+            downlink_channels: downlink_channels.into_inner(),
         };
         Ok(agent_task.run_agent(context).boxed())
     }
@@ -316,6 +320,7 @@ struct AgentTask<LaneModel, Lifecycle> {
     value_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
     map_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
     suspended: FuturesUnordered<HandlerFuture<LaneModel>>,
+    downlink_channels: Vec<BoxDownlinkChannel<LaneModel>>,
 }
 
 impl<LaneModel, Lifecycle> AgentTask<LaneModel, Lifecycle>
@@ -341,6 +346,7 @@ where
             value_lane_io,
             map_lane_io,
             mut suspended,
+            downlink_channels,
         } = self;
         let meta = AgentMetadata::new(&route, &config);
 
@@ -352,7 +358,12 @@ where
         let mut lane_readers = SelectAll::new();
         let mut lane_writers = HashMap::new();
         let mut pending_writes = FuturesUnordered::new();
-        let downlinks = FuturesUnordered::new();
+        let mut downlinks = FuturesUnordered::new();
+
+        // Start waiting on downlinks from the init phase.
+        for channel in downlink_channels {
+            downlinks.push(wait_on_downlink(channel));
+        }
 
         // Set up readers and writes for each lane.
         for (name, (tx, rx)) in value_lane_io {
@@ -375,6 +386,9 @@ where
                 tokio::select! {
                     maybe_suspended = suspended.next(), if !suspended.is_empty() => {
                         maybe_suspended.map(|handler| TaskEvent::SuspendedComplete { handler })
+                    }
+                    maybe_downlink = downlinks.next(), if !downlinks.is_empty() => {
+                        maybe_downlink.map(|downlink_result| TaskEvent::DownlinkReady { downlink_result })
                     }
                     maybe_req = lane_readers.next() => {
                         maybe_req.map(|req| {
@@ -434,6 +448,24 @@ where
                         &mut dirty_lanes,
                     ) {
                         break Err(AgentTaskError::UserCodeError(Box::new(e)));
+                    }
+                }
+                TaskEvent::DownlinkReady { downlink_result } => {
+                    if let Some(mut downlink) = downlink_result {
+                        if let Some(handler) = downlink.next_event() {
+                            if let Err(e) = run_handler(
+                                ActionContext::new(&suspended, &*context, &add_downlink),
+                                meta,
+                                &lane_model,
+                                &lifecycle,
+                                handler,
+                                &lane_ids,
+                                &mut dirty_lanes,
+                            ) {
+                                break Err(AgentTaskError::UserCodeError(Box::new(e)));
+                            }
+                        }
+                        downlinks.push(wait_on_downlink(downlink));
                     }
                 }
                 TaskEvent::ValueRequest { id, request } => {

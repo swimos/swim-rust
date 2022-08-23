@@ -112,14 +112,9 @@ pub struct LanePath<S> {
 }
 
 impl<S> LanePath<S> {
-
-
-    pub fn new(host: Option<S>,
-        node: RelativeUri,
-        lane: S) -> Self {
-            LanePath { host, node , lane }
-        }
-
+    pub fn new(host: Option<S>, node: RelativeUri, lane: S) -> Self {
+        LanePath { host, node, lane }
+    }
 }
 
 impl<'a, Context> ActionContext<'a, Context> {
@@ -150,9 +145,13 @@ impl<'a, Context> ActionContext<'a, Context> {
         H: EventHandler<Context> + 'static,
     {
         let LanePath { host, node, lane } = path;
-        let external =
-            self.agent_context
-                .open_downlink(host.as_ref().map(AsRef::as_ref), node, lane.as_ref(), config, Box::new(downlink));
+        let external = self.agent_context.open_downlink(
+            host.as_ref().map(AsRef::as_ref),
+            node,
+            lane.as_ref(),
+            config,
+            Box::new(downlink),
+        );
         let fut = external
             .map(move |result| {
                 if let Err(e) = result {
