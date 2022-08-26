@@ -63,7 +63,7 @@ use self::ids::IdIssuer;
 
 use super::Server;
 
-mod downlinks;
+pub mod downlinks;
 mod ids;
 #[cfg(test)]
 mod tests;
@@ -623,8 +623,10 @@ where
                             todo!("Log error.");
                         }
                     }
-                    DownlinkEvent::DownlinkTaskStopped { .. } => {
-                        todo!("Log errors.");
+                    DownlinkEvent::DownlinkTaskStopped { result } => {
+                        if let Err(_) = result {
+                            todo!("Log errors.");
+                        }
                     }
                 },
             }
@@ -727,6 +729,21 @@ enum NewClientError {
         #[source]
         error: ConnectionError,
     },
+    #[error("The server task stopped unexpectedly.")]
+    ServerStopped,
+}
+
+impl From<NewClientError> for AgentRuntimeError {
+    fn from(err: NewClientError) -> Self {
+        match err {
+            NewClientError::InvalidUrl(_)
+            | NewClientError::BadWarpUrl(_)
+            | NewClientError::ResolutionFailed { .. } => AgentRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::Unresolvable),
+            NewClientError::OpeningSocketFailed { .. } => AgentRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::ConnectionFailed),
+            NewClientError::WsNegotationFailed { .. } => AgentRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::WebsocketNegotiationFailed),
+            NewClientError::ServerStopped => AgentRuntimeError::Stopping,
+        }
+    }
 }
 
 struct RemoteStopped;

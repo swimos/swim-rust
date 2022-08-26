@@ -65,6 +65,7 @@ pub enum DownlinkFailureReason {
     Unresolvable,
     ConnectionFailed,
     WebsocketNegotiationFailed,
+    RemoteStopped,
 }
 
 impl Display for DownlinkFailureReason {
@@ -77,12 +78,15 @@ impl Display for DownlinkFailureReason {
             DownlinkFailureReason::WebsocketNegotiationFailed => {
                 write!(f, "Could not negotiate a websocket connection.")
             }
+            DownlinkFailureReason::RemoteStopped => {
+                write!(f, "The remote client stopped while the downlink was starting.")
+            }
         }
     }
 }
 
 /// Error type for operations that communicate with the agent runtime.
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone, Copy)]
 pub enum AgentRuntimeError {
     #[error("Opening a new downlink failed: {0}")]
     DownlinkConnectionFailed(DownlinkFailureReason),

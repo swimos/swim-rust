@@ -12,113 +12,739 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod pending;
+
 use std::{
     collections::{hash_map::Entry, HashMap},
     net::SocketAddr,
 };
 
-use swim_api::downlink::DownlinkKind;
-use swim_model::{
-    address::{Address, RelativeAddress},
-    Text,
+use futures::{stream::FuturesUnordered, Future, FutureExt, StreamExt};
+pub use pending::{DlKey, PendingDownlinks};
+use swim_api::{
+    downlink::DownlinkKind,
+    error::{AgentRuntimeError, DownlinkFailureReason, DownlinkTaskError},
 };
-use swim_runtime::agent::DownlinkRequest;
+use swim_model::{address::RelativeAddress, Text};
+use swim_remote::AttachClient;
+use swim_runtime::{
+    agent::DownlinkRequest,
+    downlink::{
+        failure::{AlwaysAbortStrategy, AlwaysIgnoreStrategy, ReportStrategy},
+        AttachAction, DownlinkOptions, DownlinkRuntimeConfig, MapDownlinkRuntime,
+        ValueDownlinkRuntime,
+    },
+    remote::{table::SchemeHostPort, BadUrl, ExternalConnections, SchemeSocketAddr},
+};
+use swim_utilities::{
+    io::byte_channel::{byte_channel, ByteReader, ByteWriter},
+    trigger,
+};
+use thiserror::Error;
+use tokio::{
+    sync::{mpsc, oneshot},
+    task::JoinError,
+};
+use url::Url;
+use uuid::Uuid;
 
-pub type DlKey = (RelativeAddress<Text>, DownlinkKind);
+use super::{ids::IdIssuer, NewClientError};
 
-fn key_of(abs_key: &(Address<Text>, DownlinkKind)) -> DlKey {
-    let (Address { node, lane, .. }, kind) = abs_key;
-    (RelativeAddress::new(node.clone(), lane.clone()), *kind)
+pub struct EstalishedClient {
+    tx: mpsc::Sender<AttachClient>,
+    sock_addr: SocketAddr,
 }
 
-#[derive(Default)]
-pub struct PendingDownlinks {
-    awaiting_remote: HashMap<Text, HashMap<DlKey, Vec<DownlinkRequest>>>,
-    awaiting_dl: HashMap<SocketAddr, HashMap<DlKey, Vec<DownlinkRequest>>>,
-    local: HashMap<DlKey, Vec<DownlinkRequest>>,
+pub struct ClientRegistration {
+    sock_addrs: Vec<SocketAddr>,
+    responder: oneshot::Sender<Result<EstalishedClient, NewClientError>>,
 }
 
-impl PendingDownlinks {
-    pub fn push_remote(&mut self, remote: Text, request: DownlinkRequest) {
-        let PendingDownlinks {
-            awaiting_remote: awaiting_socket,
-            ..
-        } = self;
-        let key = key_of(&request.key);
-        awaiting_socket
-            .entry(remote)
-            .or_default()
-            .entry(key)
-            .or_default()
-            .push(request);
+impl ClientRegistration {
+    fn new(
+        sock_addrs: Vec<SocketAddr>,
+    ) -> (
+        Self,
+        oneshot::Receiver<Result<EstalishedClient, NewClientError>>,
+    ) {
+        let (tx, rx) = oneshot::channel();
+        (
+            ClientRegistration {
+                sock_addrs,
+                responder: tx,
+            },
+            rx,
+        )
     }
+}
 
-    pub fn push_relative(&mut self, remote: SocketAddr, request: DownlinkRequest) {
-        let PendingDownlinks { awaiting_dl, .. } = self;
-        let key = key_of(&request.key);
-        awaiting_dl
-            .entry(remote)
-            .or_default()
-            .entry(key)
-            .or_default()
-            .push(request);
-    }
+pub struct DownlinkConnectionTask<Net> {
+    requests: mpsc::Receiver<DownlinkRequest>,
+    stop_signal: trigger::Receiver,
+    client_routes: mpsc::Sender<ClientRegistration>,
+    config: DownlinkRuntimeConfig,
+    local: mpsc::Sender<AttachClient>,
+    networking: Net,
+}
 
-    pub fn push_local(&mut self, request: DownlinkRequest) {
-        let PendingDownlinks { local, .. } = self;
-        let key = key_of(&request.key);
-        local.entry(key).or_default().push(request);
-    }
+struct RemoteStopped;
 
-    pub fn socket_ready<'a>(
-        &'a mut self,
+enum Event {
+    Request(DownlinkRequest),
+    Resolved {
         host: Text,
-        addr: SocketAddr,
-    ) -> Option<impl Iterator<Item = &'a DlKey> + 'a> {
-        let PendingDownlinks {
-            awaiting_remote,
-            awaiting_dl,
-            ..
-        } = self;
-        if let Some(map) = awaiting_remote.remove(&host) {
-            Some(match awaiting_dl.entry(addr) {
-                Entry::Occupied(entry) => {
-                    let existing = entry.into_mut();
-                    existing.extend(map.into_iter());
-                    existing.keys()
-                }
-                Entry::Vacant(entry) => entry.insert(map).keys(),
-            })
-        } else {
-            None
+        result: Result<Vec<SchemeSocketAddr>, std::io::Error>,
+    },
+    Connected {
+        host: Text,
+        result: Result<EstalishedClient, NewClientError>,
+    },
+    RuntimeAttached {
+        remote_address: Option<SocketAddr>,
+        key: DlKey,
+        result: Result<(mpsc::Sender<AttachAction>, DownlinkRuntime), RemoteStopped>,
+    },
+    RuntimeTerminated {
+        socket_addr: Option<SocketAddr>,
+        key: DlKey,
+        result: Result<(), JoinError>,
+    },
+    Terminated {
+        result: Result<Result<(), DownlinkTaskError>, JoinError>,
+    },
+}
+
+struct ClientHandle {
+    client_tx: mpsc::Sender<AttachClient>,
+    downlinks: HashMap<DlKey, mpsc::Sender<AttachAction>>,
+}
+
+impl ClientHandle {
+    fn new(client_tx: mpsc::Sender<AttachClient>) -> Self {
+        ClientHandle {
+            client_tx,
+            downlinks: Default::default(),
         }
     }
 
-    pub fn open_client_failed(&mut self, host: &Text) -> impl Iterator<Item = DownlinkRequest> {
-        self.awaiting_remote
-            .remove(host)
-            .map(|map| map.into_iter().map(|(_, v)| v).into_iter().flatten())
-            .into_iter()
-            .flatten()
+    fn insert(&mut self, key: DlKey, tx: mpsc::Sender<AttachAction>) {
+        self.downlinks.insert(key, tx);
     }
 
-    pub fn dl_ready(&mut self, addr: Option<SocketAddr>, key: &DlKey) -> Vec<DownlinkRequest> {
-        let PendingDownlinks {
-            awaiting_dl, local, ..
+    fn get(&self, key: &DlKey) -> Option<&mpsc::Sender<AttachAction>> {
+        self.downlinks.get(key)
+    }
+
+    fn remove(&mut self, key: &DlKey) -> bool {
+        self.downlinks.remove(key);
+        self.downlinks.is_empty()
+    }
+
+
+}
+
+impl<Net> DownlinkConnectionTask<Net>
+where
+    Net: ExternalConnections,
+{
+    pub fn new(
+        requests: mpsc::Receiver<DownlinkRequest>,
+        stop_signal: trigger::Receiver,
+        client_routes: mpsc::Sender<ClientRegistration>,
+        config: DownlinkRuntimeConfig,
+        local: mpsc::Sender<AttachClient>,
+        networking: Net,
+    ) -> Self {
+        DownlinkConnectionTask {
+            requests,
+            stop_signal,
+            client_routes,
+            config,
+            local,
+            networking,
+        }
+    }
+
+    pub async fn run(self) {
+        let DownlinkConnectionTask {
+            mut requests,
+            mut stop_signal,
+            client_routes,
+            config,
+            local,
+            networking,
         } = self;
-        if let Some(addr) = addr {
-            match awaiting_dl.entry(addr) {
-                Entry::Occupied(mut entry) => {
-                    let results = entry.get_mut().remove(key).unwrap_or_default();
-                    if entry.get().is_empty() {
-                        entry.remove();
+
+        let mut downlink_channels = HashMap::new();
+
+        downlink_channels.insert(None, ClientHandle::new(local));
+
+        let mut id_issuer = IdIssuer::default();
+        let mut pending = PendingDownlinks::default();
+        let mut tasks = FuturesUnordered::new();
+
+        loop {
+            let event: Event = tokio::select! {
+                biased;
+                _ = &mut stop_signal => break,
+                Some(event) = tasks.next(), if !tasks.is_empty() => event,
+                maybe_request = requests.recv() => {
+                    if let Some(req) = maybe_request {
+                        Event::Request(req)
+                    } else {
+                        break;
                     }
-                    results
                 }
-                Entry::Vacant(_k) => vec![],
+            };
+
+            match event {
+                Event::Request(request) => {
+                    if let Some(host) = request.key.0.host.clone() {
+                        if let Ok(target) = process_host(host.as_str()) {
+                            pending.push_remote(host.clone(), request);
+                            tasks.push(
+                                networking
+                                    .lookup(target)
+                                    .map(move |result| Event::Resolved { host, result })
+                                    .boxed(),
+                            );
+                        } else {
+                            let DownlinkRequest { promise, .. } = request;
+                            if promise
+                                .send(Err(AgentRuntimeError::DownlinkConnectionFailed(
+                                    DownlinkFailureReason::Unresolvable,
+                                )))
+                                .is_err()
+                            {
+                                //TODO Log error
+                            }
+                        }
+                    } else {
+                        todo!()
+                    }
+                }
+                Event::Resolved {
+                    host,
+                    result: Ok(sock_addrs),
+                } => {
+                    if let Some((addr, inner)) =
+                        sock_addrs.iter().map(|s| s.addr).find_map(|addr| {
+                            downlink_channels
+                                .get(&Some(addr))
+                                .map(move |inner| (addr, inner))
+                        })
+                    {
+                        let waiting_map = pending.take_socket_ready(&host);
+                        for (key, requests) in waiting_map {
+                            if let Some(attach_tx) = inner.get(&key) {
+                                for request in requests {
+                                    tasks.push(run_downlink(request, attach_tx.clone()).boxed());
+                                }
+                            } else {
+                                pending.push_for_socket(addr, key.clone(), requests);
+                                let identity = id_issuer.next_downlink();
+                                tasks.push(
+                                    start_downlink_runtime(
+                                        identity,
+                                        Some(addr),
+                                        key,
+                                        inner.client_tx.clone(),
+                                        config,
+                                    )
+                                    .boxed(),
+                                );
+                            }
+                        }
+                    } else {
+                        let addr_vec = sock_addrs.into_iter().map(|s| s.addr).collect();
+                        let (registration, rx) = ClientRegistration::new(addr_vec);
+                        if client_routes.send(registration).await.is_err() {
+                            break;
+                        }
+                        tasks.push(
+                            rx.map(move |result| {
+                                let result = match result {
+                                    Ok(Ok(client)) => Ok(client),
+                                    Ok(Err(e)) => Err(e),
+                                    Err(_) => Err(NewClientError::ServerStopped),
+                                };
+                                Event::Connected { host, result }
+                            })
+                            .boxed(),
+                        );
+                    }
+                }
+                Event::Resolved {
+                    host,
+                    result: Err(_),
+                } => {
+                    for request in pending.open_client_failed(&host) {
+                        let DownlinkRequest { promise, .. } = request;
+                        if promise
+                            .send(Err(AgentRuntimeError::DownlinkConnectionFailed(
+                                DownlinkFailureReason::Unresolvable,
+                            )))
+                            .is_err()
+                        {
+                            //TODO Log error
+                        }
+                    }
+                }
+                Event::Connected {
+                    host,
+                    result: Ok(EstalishedClient { tx, sock_addr }),
+                } => {
+                    let handle = match downlink_channels.entry(Some(sock_addr)) {
+                        Entry::Occupied(entry) => {
+                            let handle = entry.into_mut();
+                            handle.client_tx = tx;
+                            handle.downlinks.clear();
+                            handle
+                        }
+                        Entry::Vacant(entry) => entry.insert(ClientHandle::new(tx)),
+                    };
+                    for key in pending.socket_ready(host, sock_addr).into_iter().flatten() {
+                        let identity = id_issuer.next_downlink();
+                        tasks.push(
+                            start_downlink_runtime(
+                                identity,
+                                Some(sock_addr),
+                                key.clone(),
+                                handle.client_tx.clone(),
+                                config,
+                            )
+                            .boxed(),
+                        );
+                    }
+                }
+                Event::Connected {
+                    host,
+                    result: Err(e),
+                } => {
+                    let err: AgentRuntimeError = e.into();
+                    for request in pending.open_client_failed(&host) {
+                        let DownlinkRequest { promise, .. } = request;
+                        if promise.send(Err(err.clone())).is_err() {
+                            //TODO Log error.
+                        }
+                    }
+                }
+                Event::RuntimeAttached {
+                    remote_address,
+                    key,
+                    result: Ok((attach_tx, runtime)),
+                } => {
+                    if let Some(handle) = downlink_channels.get_mut(&remote_address) {
+                        handle.insert(key.clone(), attach_tx.clone());
+                        let key_cpy = key.clone();
+                        tasks.push(
+                            tokio::spawn(runtime.run(stop_signal.clone(), config))
+                                .map(move |result| Event::RuntimeTerminated {
+                                    socket_addr: remote_address,
+                                    key: key_cpy,
+                                    result,
+                                })
+                                .boxed(),
+                        );
+
+                        for request in pending.dl_ready(remote_address, &key) {
+                            tasks.push(run_downlink(request, attach_tx.clone()).boxed());
+                        }
+                    } else {
+                        for DownlinkRequest { promise, ..} in pending.dl_ready(remote_address, &key) {
+                            if promise.send(Err(AgentRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::RemoteStopped))).is_err() {
+                                //TODO log error.
+                            }
+                        }
+                    }
+                }
+                Event::RuntimeAttached {
+                    remote_address,
+                    key,
+                    result: Err(_),
+                } => {
+                    for DownlinkRequest { promise, ..} in pending.dl_ready(remote_address, &key) {
+                        if promise.send(Err(AgentRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::RemoteStopped))).is_err() {
+                            //TODO log error.
+                        }
+                    }
+                }
+                Event::RuntimeTerminated {
+                    socket_addr,
+                    key,
+                    result,
+                } => {
+                    if let Entry::Occupied(mut entry) = downlink_channels.entry(socket_addr) {
+                        let handle = entry.get_mut();
+                        if handle.remove(&key) && socket_addr.is_some() {
+                            entry.remove();
+                        }
+                    }
+                    if let Err(_) = result {
+                        //TODO Log error.
+                    }
+                },
+                Event::Terminated { result } => {
+                    if let Err(_) = result {
+                        //TODO Log error.
+                    }
+                }
             }
-        } else {
-            local.remove(key).unwrap_or_default()
         }
     }
 }
+
+#[derive(Debug, Error)]
+enum BadHost {
+    #[error("Specified host was not a valid URL.")]
+    BadUrl(
+        #[from]
+        #[source]
+        url::ParseError,
+    ),
+    #[error("Host URL is not a valid Warp URL.")]
+    InvaludUrl(
+        #[from]
+        #[source]
+        BadUrl,
+    ),
+}
+
+fn process_host(host: &str) -> Result<SchemeHostPort, BadHost> {
+    let url = host.parse::<Url>()?;
+    Ok(SchemeHostPort::try_from(&url)?)
+}
+
+async fn run_downlink(request: DownlinkRequest, attach_tx: mpsc::Sender<AttachAction>) -> Event {
+    let DownlinkRequest {
+        key: (path, _),
+        config,
+        downlink,
+        promise,
+    } = request;
+    let (in_tx, in_rx) = byte_channel(config.buffer_size);
+    let (out_tx, out_rx) = byte_channel(config.buffer_size);
+    if attach_tx
+        .send(AttachAction::new(out_rx, in_tx, DownlinkOptions::empty()))
+        .await
+        .is_err()
+    {
+        Event::Terminated {
+            result: Ok(Err(DownlinkTaskError::FailedToStart)),
+        }
+    } else {
+        if promise.send(Ok(())).is_ok() {
+            let result = tokio::spawn(downlink.run_boxed(path, config, in_rx, out_tx)).await;
+            Event::Terminated { result }
+        } else {
+            //TODO todo!("Log error.");
+            Event::Terminated {
+                result: Ok(Err(DownlinkTaskError::FailedToStart)),
+            }
+        }
+    }
+}
+
+async fn start_downlink_runtime(
+    identity: Uuid,
+    remote_addr: Option<SocketAddr>,
+    key: DlKey,
+    remote_attach: mpsc::Sender<AttachClient>,
+    config: DownlinkRuntimeConfig,
+) -> Event {
+    let (rel_addr, kind) = key;
+    let (in_tx, in_rx) = byte_channel(config.buffer_size);
+    let (out_tx, out_rx) = byte_channel(config.buffer_size);
+    let (done_tx, done_rx) = trigger::trigger();
+
+    if remote_attach
+        .send(AttachClient::AttachDownlink {
+            path: rel_addr.clone(),
+            sender: in_tx,
+            receiver: out_rx,
+            done: done_tx,
+        })
+        .await
+        .is_err()
+    {
+        return Event::RuntimeAttached {
+            remote_address: remote_addr,
+            key: (rel_addr, kind),
+            result: Err(RemoteStopped),
+        };
+    }
+    if done_rx.await.is_err() {
+        return Event::RuntimeAttached {
+            remote_address: remote_addr,
+            key: (rel_addr, kind),
+            result: Err(RemoteStopped),
+        };
+    }
+    let io = (out_tx, in_rx);
+    let (attachment_tx, attachment_rx) = mpsc::channel(config.attachment_queue_size.get());
+    let runtime = DownlinkRuntime::new(identity, rel_addr.clone(), attachment_rx, kind, io);
+    Event::RuntimeAttached {
+        remote_address: remote_addr,
+        key: (rel_addr, kind),
+        result: Ok((attachment_tx, runtime)),
+    }
+}
+
+struct DownlinkRuntime {
+    identity: Uuid,
+    path: RelativeAddress<Text>,
+    attachment_rx: mpsc::Receiver<AttachAction>,
+    kind: DownlinkKind,
+    io: (ByteWriter, ByteReader),
+}
+
+impl DownlinkRuntime {
+    fn new(
+        identity: Uuid,
+        path: RelativeAddress<Text>,
+        attachment_rx: mpsc::Receiver<AttachAction>,
+        kind: DownlinkKind,
+        io: (ByteWriter, ByteReader),
+    ) -> Self {
+        DownlinkRuntime {
+            identity,
+            path,
+            attachment_rx,
+            kind,
+            io,
+        }
+    }
+
+    fn run(
+        self,
+        stopping: trigger::Receiver,
+        config: DownlinkRuntimeConfig,
+    ) -> impl Future<Output = ()> + Send + 'static {
+        let DownlinkRuntime {
+            identity,
+            path,
+            attachment_rx,
+            kind,
+            io,
+        } = self;
+        async move {
+            match kind {
+                DownlinkKind::Map => {
+                    let bad_frame_strat = if config.abort_on_bad_frames {
+                        ReportStrategy::new(AlwaysAbortStrategy).boxed()
+                    } else {
+                        ReportStrategy::new(AlwaysIgnoreStrategy).boxed()
+                    };
+                    let runtime = MapDownlinkRuntime::new(
+                        attachment_rx,
+                        io,
+                        stopping,
+                        identity,
+                        path,
+                        config,
+                        bad_frame_strat,
+                    );
+                    runtime.run().await;
+                }
+                _ => {
+                    let runtime = ValueDownlinkRuntime::new(
+                        attachment_rx,
+                        io,
+                        stopping,
+                        identity,
+                        path,
+                        config,
+                    );
+                    runtime.run().await;
+                }
+            }
+        }
+    }
+}
+
+/* async fn resolve_remote_for_dl<Net, E>(
+    host: Text,
+    request: DownlinkRequest,
+    networking: Arc<Net>,
+) -> DownlinkEvent<Net::Socket, E>
+where
+    Net: ExternalConnections,
+{
+    let result = resolve_remote(host.as_str(), networking).await;
+    DownlinkEvent::RemoteResolved {
+        request,
+        host,
+        addrs: result,
+    }
+}
+
+async fn resolve_remote<Net>(
+    host: &str,
+    networking: Arc<Net>,
+) -> Result<Vec<SocketAddr>, NewClientError>
+where
+    Net: ExternalConnections,
+{
+    match host.parse::<Url>() {
+        Err(e) => Err(NewClientError::InvalidUrl(e)),
+        Ok(url) => {
+            let target = SchemeHostPort::try_from(&url)?;
+            let addrs = match networking.lookup(target).await {
+                Ok(addrs) => addrs,
+                Err(e) => {
+                    return Err(NewClientError::ResolutionFailed { url, error: e });
+                }
+            };
+            Ok(addrs.into_iter().map(|a| a.addr).collect())
+        }
+    }
+}
+
+async fn open_client_for_dl<Net, Ws>(
+    host: Text,
+    addrs: Vec<SocketAddr>,
+    networking: Arc<Net>,
+    websockets: Arc<Ws>,
+) -> DownlinkEvent<Net::Socket, Ws::Ext>
+where
+    Net: ExternalConnections,
+    Net::Socket: WebSocketStream,
+    Ws: WsConnections<Net::Socket> + Send + Sync,
+{
+    let result = open_client(host.clone(), addrs, networking, websockets).await;
+
+    DownlinkEvent::RemoteOpened { host, result }
+}
+
+async fn open_client<Net, Ws>(
+    host: Text,
+    addrs: Vec<SocketAddr>,
+    networking: Arc<Net>,
+    websockets: Arc<Ws>,
+) -> Result<(SocketAddr, WebSocket<Net::Socket, Ws::Ext>), NewClientError>
+where
+    Net: ExternalConnections,
+    Net::Socket: WebSocketStream,
+    Ws: WsConnections<Net::Socket> + Send + Sync,
+{
+    let mut conn_failures = vec![];
+    let mut sock = None;
+    for addr in addrs {
+        match networking.try_open(addr).await {
+            Ok(socket) => {
+                sock = Some((addr, socket));
+                break;
+            }
+            Err(e) => {
+                conn_failures.push((addr, e));
+            }
+        }
+    }
+    let (addr, socket) = if let Some((addr, socket)) = sock {
+        (addr, socket)
+    } else {
+        return Err(NewClientError::OpeningSocketFailed {
+            errors: conn_failures,
+        });
+    };
+    websockets
+        .open_connection(socket, host.to_string())
+        .await
+        .map(move |ws| (addr, ws))
+        .map_err(|e| NewClientError::WsNegotationFailed { error: e.into() })
+}
+
+async fn start_downlink_runtime<S, E>(
+    identity: Uuid,
+    remote_addr: Option<SocketAddr>,
+    rel_addr: RelativeAddress<Text>,
+    kind: DownlinkKind,
+    remote_attach: mpsc::Sender<AttachClient>,
+    config: DownlinkRuntimeConfig,
+    stopping: trigger::Receiver,
+) -> DownlinkEvent<S, E> {
+    let (in_tx, in_rx) = byte_channel(config.buffer_size);
+    let (out_tx, out_rx) = byte_channel(config.buffer_size);
+    let (done_tx, done_rx) = trigger::trigger();
+
+    if remote_attach
+        .send(AttachClient::AttachDownlink {
+            path: rel_addr.clone(),
+            sender: in_tx,
+            receiver: out_rx,
+            done: done_tx,
+        })
+        .await
+        .is_err()
+    {
+        return DownlinkEvent::DownlinkRuntimeAttached {
+            remote_address: remote_addr,
+            key: (rel_addr, kind),
+            result: Err(RemoteStopped),
+        };
+    }
+    if done_rx.await.is_err() {
+        return DownlinkEvent::DownlinkRuntimeAttached {
+            remote_address: remote_addr,
+            key: (rel_addr, kind),
+            result: Err(RemoteStopped),
+        };
+    }
+    let io = (out_tx, in_rx);
+    let (attachment_tx, attachment_rx) = mpsc::channel(config.attachment_queue_size.get());
+    let task = run_downlink_runtime(
+        identity,
+        rel_addr.clone(),
+        attachment_rx,
+        stopping,
+        config,
+        kind,
+        io,
+    );
+    DownlinkEvent::DownlinkRuntimeAttached {
+        remote_address: remote_addr,
+        key: (rel_addr, kind),
+        result: Ok(DownlinkRuntime {
+            attachment_tx,
+            task: task.boxed(),
+        }),
+    }
+}
+
+pub fn run_downlink_runtime(
+    identity: Uuid,
+    path: RelativeAddress<Text>,
+    attachment_rx: mpsc::Receiver<AttachAction>,
+    stopping: trigger::Receiver,
+    config: DownlinkRuntimeConfig,
+    kind: DownlinkKind,
+    io: (ByteWriter, ByteReader),
+) -> impl Future<Output = ()> + Send + 'static {
+    async move {
+        match kind {
+            DownlinkKind::Map => {
+                let bad_frame_strat = if config.abort_on_bad_frames {
+                    ReportStrategy::new(AlwaysAbortStrategy).boxed()
+                } else {
+                    ReportStrategy::new(AlwaysIgnoreStrategy).boxed()
+                };
+                let runtime = MapDownlinkRuntime::new(
+                    attachment_rx,
+                    io,
+                    stopping,
+                    identity,
+                    path,
+                    config,
+                    bad_frame_strat,
+                );
+                runtime.run().await;
+            }
+            _ => {
+                let runtime =
+                    ValueDownlinkRuntime::new(attachment_rx, io, stopping, identity, path, config);
+                runtime.run().await;
+            }
+        }
+    }
+}
+ */
