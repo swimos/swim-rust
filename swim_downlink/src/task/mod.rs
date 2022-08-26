@@ -20,7 +20,8 @@ use swim_api::error::DownlinkTaskError;
 
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_form::Form;
-use swim_model::path::Path;
+use swim_model::address::Address;
+use swim_model::Text;
 
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 
@@ -55,7 +56,7 @@ where
 
     fn run(
         self,
-        path: Path,
+        path: Address<Text>,
         config: DownlinkConfig,
         input: ByteReader,
         output: ByteWriter,
@@ -64,6 +65,16 @@ where
         value::value_dowinlink_task(model, path, config, input, output)
             .instrument(info_span!("Downlink task.", kind = ?DownlinkKind::Value))
             .boxed()
+    }
+
+    fn run_boxed(
+        self: Box<Self>,
+        path: Address<Text>,
+        config: DownlinkConfig,
+        input: ByteReader,
+        output: ByteWriter,
+    ) -> BoxFuture<'static, Result<(), DownlinkTaskError>> {
+        (*self).run(path, config, input, output)
     }
 }
 
@@ -79,7 +90,7 @@ where
 
     fn run(
         self,
-        path: Path,
+        path: Address<Text>,
         config: DownlinkConfig,
         input: ByteReader,
         output: ByteWriter,
@@ -88,5 +99,15 @@ where
         event::event_dowinlink_task(model, path, config, input, output)
             .instrument(info_span!("Downlink task.", kind = ?DownlinkKind::Event))
             .boxed()
+    }
+
+    fn run_boxed(
+        self: Box<Self>,
+        path: Address<Text>,
+        config: DownlinkConfig,
+        input: ByteReader,
+        output: ByteWriter,
+    ) -> BoxFuture<'static, Result<(), DownlinkTaskError>> {
+        (*self).run(path, config, input, output)
     }
 }

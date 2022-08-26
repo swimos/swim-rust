@@ -33,7 +33,7 @@ use swim_messages::protocol::{
     AgentMessageDecoder, MessageDecodeError, Operation, Path, RequestMessage, ResponseMessage,
     ResponseMessageEncoder,
 };
-use swim_model::path::RelativePath;
+use swim_model::address::RelativeAddress;
 use swim_model::Text;
 use swim_utilities::io::byte_channel::{self, ByteReader, ByteWriter};
 use swim_utilities::trigger;
@@ -169,6 +169,7 @@ where
             empty_timeout: EMPTY_TIMEOUT,
             attachment_queue_size: ATT_QUEUE_SIZE,
             abort_on_bad_frames: true,
+            buffer_size: BUFFER_SIZE,
         },
         test_block,
     )
@@ -194,7 +195,7 @@ where
     let (in_tx, in_rx) = byte_channel::byte_channel(BUFFER_SIZE);
     let (out_tx, out_rx) = byte_channel::byte_channel(BUFFER_SIZE);
 
-    let path = RelativePath::new("/node", "lane");
+    let path = RelativeAddress::text("/node", "lane");
 
     let management_task = ValueDownlinkRuntime::new(
         attach_rx,
@@ -735,6 +736,7 @@ async fn shutdowm_after_timeout_with_no_subscribers() {
             empty_timeout: Duration::from_millis(100),
             attachment_queue_size: ATT_QUEUE_SIZE,
             abort_on_bad_frames: true,
+            buffer_size: BUFFER_SIZE,
         },
         |TestContext {
              tx: _tx,
@@ -866,7 +868,7 @@ where
     let (in_tx, in_rx) = byte_channel::byte_channel(BUFFER_SIZE);
     let (out_tx, out_rx) = byte_channel::byte_channel(BUFFER_SIZE);
 
-    let path = RelativePath::new("/node", "lane");
+    let path = RelativeAddress::text("/node", "lane");
 
     let management_task = ValueDownlinkRuntime::new(
         attach_rx,
@@ -962,6 +964,7 @@ async fn sync_two_consumers() {
             empty_timeout: EMPTY_TIMEOUT,
             attachment_queue_size: ATT_QUEUE_SIZE,
             abort_on_bad_frames: true,
+            buffer_size: BUFFER_SIZE,
         },
         |mut context| async move {
             sync_both(&mut context).await;
@@ -994,6 +997,7 @@ async fn receive_from_two_consumers() {
             empty_timeout: EMPTY_TIMEOUT,
             attachment_queue_size: ATT_QUEUE_SIZE,
             abort_on_bad_frames: true,
+            buffer_size: BUFFER_SIZE,
         },
         |mut context| async move {
             sync_both(&mut context).await;

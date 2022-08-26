@@ -73,7 +73,7 @@ impl AgentContext for DummyAgentContext {
     fn open_downlink(
         &self,
         _host: Option<&str>,
-        _node: RelativeUri,
+        _node: &str,
         _lane: &str,
         _config: DownlinkConfig,
         _downlink: Box<dyn Downlink + Send>,

@@ -27,7 +27,6 @@ use swim_api::{
 use swim_utilities::{
     algebra::non_zero_usize,
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
-    routing::uri::RelativeUri,
 };
 
 use super::{CMD_LANE, MAP_LANE, VAL_LANE};
@@ -96,7 +95,7 @@ impl AgentContext for TestAgentContext {
     fn open_downlink(
         &self,
         _host: Option<&str>,
-        _node: RelativeUri,
+        _node: &str,
         _lane: &str,
         _config: DownlinkConfig,
         _downlink: Box<dyn Downlink + Send>,

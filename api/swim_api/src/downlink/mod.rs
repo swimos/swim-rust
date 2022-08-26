@@ -12,14 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::num::NonZeroUsize;
+
 use futures::future::BoxFuture;
-use swim_model::path::Path;
-use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use swim_model::{address::Address, Text};
+use swim_utilities::{
+    algebra::non_zero_usize,
+    io::byte_channel::{ByteReader, ByteWriter},
+};
 
 use crate::error::DownlinkTaskError;
 
 /// Indicates the kind of the downlink.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DownlinkKind {
     /// Accepts single values and maintains an internal state.
     Value,
@@ -34,13 +39,17 @@ pub enum DownlinkKind {
 pub struct DownlinkConfig {
     pub events_when_not_synced: bool,
     pub terminate_on_unlinked: bool,
+    pub buffer_size: NonZeroUsize,
 }
+
+const DEFAULT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(1024);
 
 impl Default for DownlinkConfig {
     fn default() -> Self {
         Self {
             events_when_not_synced: false,
             terminate_on_unlinked: true,
+            buffer_size: DEFAULT_BUFFER_SIZE,
         }
     }
 }
@@ -63,7 +72,15 @@ pub trait Downlink {
     /// * `output` - Byte channel on which command will be sent to the runtime.
     fn run(
         self,
-        path: Path,
+        path: Address<Text>,
+        config: DownlinkConfig,
+        input: ByteReader,
+        output: ByteWriter,
+    ) -> BoxFuture<'static, Result<(), DownlinkTaskError>>;
+
+    fn run_boxed(
+        self: Box<Self>,
+        path: Address<Text>,
         config: DownlinkConfig,
         input: ByteReader,
         output: ByteWriter,
@@ -79,11 +96,21 @@ impl<T: Downlink> Downlink for Box<T> {
 
     fn run(
         self,
-        path: Path,
+        path: Address<Text>,
         config: DownlinkConfig,
         input: ByteReader,
         output: ByteWriter,
     ) -> BoxFuture<'static, Result<(), DownlinkTaskError>> {
         (*self).run(path, config, input, output)
+    }
+
+    fn run_boxed(
+        self: Box<Self>,
+        path: Address<Text>,
+        config: DownlinkConfig,
+        input: ByteReader,
+        output: ByteWriter,
+    ) -> BoxFuture<'static, Result<(), DownlinkTaskError>> {
+        (**self).run(path, config, input, output)
     }
 }

@@ -18,10 +18,10 @@ use futures::{
 };
 use swim_api::{
     agent::{Agent, AgentConfig, AgentContext, LaneConfig, UplinkKind},
-    downlink::{Downlink, DownlinkConfig},
+    downlink::{Downlink, DownlinkConfig, DownlinkKind},
     error::{AgentInitError, AgentRuntimeError, AgentTaskError},
 };
-use swim_model::Text;
+use swim_model::{address::Address, Text};
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
     routing::uri::RelativeUri,
@@ -45,12 +45,26 @@ mod task;
 use task::AgentRuntimeRequest;
 
 pub struct DownlinkRequest {
-    pub host: Option<Text>,
-    pub node: RelativeUri,
-    pub lane: Text,
+    pub key: (Address<Text>, DownlinkKind),
     pub config: DownlinkConfig,
     pub downlink: Box<dyn Downlink + Send>,
     pub promise: oneshot::Sender<Result<(), AgentRuntimeError>>,
+}
+
+impl DownlinkRequest {
+    pub fn new(
+        path: Address<Text>,
+        config: DownlinkConfig,
+        downlink: Box<dyn Downlink + Send>,
+        promise: oneshot::Sender<Result<(), AgentRuntimeError>>,
+    ) -> Self {
+        DownlinkRequest {
+            key: (path, downlink.kind()),
+            config,
+            downlink,
+            promise,
+        }
+    }
 }
 
 /// Implementaton of [`AgentContext`] that communicates with with another task over a channel
@@ -93,25 +107,24 @@ impl AgentContext for AgentRuntimeContext {
     fn open_downlink(
         &self,
         host: Option<&str>,
-        node: RelativeUri,
+        node: &str,
         lane: &str,
         config: DownlinkConfig,
         downlink: Box<dyn Downlink + Send>,
     ) -> BoxFuture<'static, Result<(), AgentRuntimeError>> {
         let host = host.map(Text::new);
+        let node = Text::new(node);
         let lane = Text::new(lane);
         let sender = self.tx.clone();
         async move {
             let (tx, rx) = oneshot::channel();
             sender
-                .send(AgentRuntimeRequest::OpenDownlink(DownlinkRequest {
-                    host,
-                    node,
-                    lane,
+                .send(AgentRuntimeRequest::OpenDownlink(DownlinkRequest::new(
+                    Address::new(host, node, lane),
                     config,
                     downlink,
-                    promise: tx,
-                }))
+                    tx,
+                )))
                 .await?;
             rx.await?
         }

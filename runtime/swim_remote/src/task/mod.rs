@@ -40,7 +40,7 @@ use swim_messages::{
         RequestMessage, ResponseMessage,
     },
 };
-use swim_model::Text;
+use swim_model::{address::RelativeAddress, Text};
 use swim_recon::parser::MessageExtractError;
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
@@ -74,8 +74,7 @@ pub enum AttachClient {
     },
     /// Attach a two way (downlink) client.
     AttachDownlink {
-        node: Text,
-        lane: Text,
+        path: RelativeAddress<Text>,
         sender: ByteWriter,
         receiver: ByteReader,
         done: trigger::Sender,
@@ -277,8 +276,7 @@ where
 
 #[derive(Debug)]
 struct RegisterIncoming {
-    node: Text,
-    lane: Text,
+    path: RelativeAddress<Text>,
     sender: ByteWriter,
     done: trigger::Sender,
 }
@@ -333,21 +331,19 @@ async fn registration_task<F>(
         };
         match request {
             AttachClient::AttachDownlink {
-                node,
-                lane,
+                path,
                 sender,
                 receiver,
                 done,
             } => {
-                debug!(node = %node, lane = %lane, "Attaching new client downlink.");
+                debug!(path = %path, "Attaching new client downlink.");
                 if let (Ok(in_res), Ok(out_res)) =
                     join(incoming_tx.reserve(), outgoing_tx.reserve()).await
                 {
                     let (in_done_tx, in_done_rx) = trigger::trigger();
                     let (out_done_tx, out_done_rx) = trigger::trigger();
                     in_res.send(RegisterIncoming {
-                        node,
-                        lane,
+                        path,
                         sender,
                         done: in_done_tx,
                     });
@@ -559,8 +555,7 @@ impl IncomingTask {
 
             match event {
                 IncomingEvent::Register(RegisterIncoming {
-                    node,
-                    lane,
+                    path: RelativeAddress { node, lane },
                     sender,
                     done,
                 }) => {

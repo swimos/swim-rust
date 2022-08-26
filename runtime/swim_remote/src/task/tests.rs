@@ -26,12 +26,12 @@ use ratchet::{
 use swim_messages::{
     bytes_str::BytesStr,
     protocol::{
-        BytesRequestMessage, BytesResponseMessage, Notification, Operation, Path,
-        RawRequestMessageDecoder, RawRequestMessageEncoder, RawResponseMessageDecoder,
+        path_from_static_strs, BytesRequestMessage, BytesResponseMessage, Notification, Operation,
+        Path, RawRequestMessageDecoder, RawRequestMessageEncoder, RawResponseMessageDecoder,
         RawResponseMessageEncoder, RequestMessage, ResponseMessage,
     },
 };
-use swim_model::Text;
+use swim_model::{address::RelativeAddress, Text};
 use swim_utilities::{
     algebra::non_zero_usize,
     io::byte_channel::{self, byte_channel, ByteReader, ByteWriter},
@@ -61,11 +61,11 @@ const DL_NODE: &str = "/remote";
 const DL_LANE: &str = "remote_lane";
 
 fn agent_path() -> Path<BytesStr> {
-    Path::from_static_strs(NODE, LANE)
+    path_from_static_strs(NODE, LANE)
 }
 
 fn dl_path() -> Path<BytesStr> {
-    Path::from_static_strs(DL_NODE, DL_LANE)
+    path_from_static_strs(DL_NODE, DL_LANE)
 }
 
 async fn test_registration_task<F, Fut>(test_case: F) -> Fut::Output
@@ -114,8 +114,7 @@ async fn register_for_downlinks() {
         let (done_tx, done_rx) = trigger::trigger();
         att_tx
             .send(AttachClient::AttachDownlink {
-                node: Text::new(NODE),
-                lane: Text::new(LANE),
+                path: RelativeAddress::text(NODE, LANE),
                 sender: tx1,
                 receiver: rx2,
                 done: done_tx,
@@ -125,8 +124,7 @@ async fn register_for_downlinks() {
 
         let (in_res, out_res) = join(in_rx.recv(), out_rx.recv()).await;
         let RegisterIncoming {
-            node,
-            lane,
+            path: RelativeAddress { node, lane },
             sender,
             done: done_in,
         } = in_res.expect("Channel closed.");
@@ -327,8 +325,7 @@ async fn incoming_route_downlink_env() {
 
         attach_tx
             .send(RegisterIncoming {
-                node: Text::new(DL_NODE),
-                lane: Text::new(DL_LANE),
+                path: RelativeAddress::text(DL_NODE, DL_LANE),
                 sender: channel_tx,
                 done: done_tx,
             })
@@ -1152,8 +1149,7 @@ async fn combined_downlink_io() {
         let (done_tx, done_rx) = trigger::trigger();
         attach_tx
             .send(AttachClient::AttachDownlink {
-                node: Text::new(DL_NODE),
-                lane: Text::new(DL_LANE),
+                path: RelativeAddress::text(DL_NODE, DL_LANE),
                 sender: tx1,
                 receiver: rx2,
                 done: done_tx,

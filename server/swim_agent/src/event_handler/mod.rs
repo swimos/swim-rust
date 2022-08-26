@@ -24,6 +24,7 @@ use swim_api::{
     error::AgentRuntimeError,
 };
 use swim_form::structural::read::recognizer::RecognizerReadable;
+use swim_model::address::Address;
 use swim_recon::parser::{AsyncParseError, RecognizerDecoder};
 use swim_utilities::routing::uri::RelativeUri;
 use thiserror::Error;
@@ -105,18 +106,6 @@ impl<'a, Context> DownlinkSpawner<Context> for ActionContext<'a, Context> {
     }
 }
 
-pub struct LanePath<S> {
-    host: Option<S>,
-    node: RelativeUri,
-    lane: S,
-}
-
-impl<S> LanePath<S> {
-    pub fn new(host: Option<S>, node: RelativeUri, lane: S) -> Self {
-        LanePath { host, node, lane }
-    }
-}
-
 impl<'a, Context> ActionContext<'a, Context> {
     pub fn new(
         spawner: &'a dyn Spawner<Context>,
@@ -132,7 +121,7 @@ impl<'a, Context> ActionContext<'a, Context> {
 
     pub(crate) fn start_downlink<S, D, C, F, H>(
         &self,
-        path: LanePath<S>,
+        path: Address<S>,
         config: DownlinkConfig,
         downlink: D,
         channel: C,
@@ -144,10 +133,10 @@ impl<'a, Context> ActionContext<'a, Context> {
         F: FnOnce(Result<(), AgentRuntimeError>) -> H + Send + 'static,
         H: EventHandler<Context> + 'static,
     {
-        let LanePath { host, node, lane } = path;
+        let Address { host, node, lane } = path;
         let external = self.agent_context.open_downlink(
             host.as_ref().map(AsRef::as_ref),
-            node,
+            node.as_ref(),
             lane.as_ref(),
             config,
             Box::new(downlink),

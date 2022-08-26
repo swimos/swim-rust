@@ -44,6 +44,7 @@ use std::io::Error;
 use swim_utilities::future::request::Request;
 use swim_utilities::future::task::Spawner;
 use swim_utilities::trigger::promise;
+use thiserror::Error;
 use tokio::sync::mpsc;
 use tracing::{event, Level};
 use url::Url;
@@ -415,9 +416,11 @@ fn update_state<State: RemoteTasksState>(
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Error)]
 pub enum BadUrl {
+    #[error("{0} is not a valid Warp scheme.")]
     BadScheme(String),
+    #[error("The URL did not contain a valid host.")]
     NoHost,
 }
 
@@ -476,8 +479,8 @@ type IoResult<T> = io::Result<T>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SchemeSocketAddr {
-    scheme: Scheme,
-    addr: SocketAddr,
+    pub scheme: Scheme,
+    pub addr: SocketAddr,
 }
 
 impl SchemeSocketAddr {

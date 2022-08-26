@@ -16,7 +16,7 @@ use std::{num::NonZeroUsize, time::Duration};
 
 use ratchet::WebSocketConfig;
 use swim_api::agent::AgentConfig;
-use swim_runtime::agent::AgentRuntimeConfig;
+use swim_runtime::{agent::AgentRuntimeConfig, downlink::DownlinkRuntimeConfig};
 use swim_utilities::algebra::non_zero_usize;
 
 /// Configuration parameters for a Swim server.
@@ -40,6 +40,8 @@ pub struct SwimServerConfig {
     pub attachment_timeout: Duration,
     /// Configuration for websocket connections.
     pub websockets: WebSocketConfig,
+    /// Parameters for the downlink runtime component.
+    pub downlink_runtime: DownlinkRuntimeConfig,
 }
 
 /// Configuration for remote socket management.
@@ -79,6 +81,12 @@ impl Default for SwimServerConfig {
             agent_runtime_buffer_size: DEFAULT_BUFFER_SIZE,
             attachment_timeout: DEFAULT_TIMEOUT,
             websockets: Default::default(),
+            downlink_runtime: DownlinkRuntimeConfig {
+                empty_timeout: DEFAULT_TIMEOUT,
+                attachment_queue_size: DEFAULT_CHANNEL_SIZE,
+                abort_on_bad_frames: true,
+                buffer_size: DEFAULT_BUFFER_SIZE,
+            },
         }
     }
 }

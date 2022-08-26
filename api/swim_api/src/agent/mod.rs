@@ -89,7 +89,7 @@ pub trait AgentContext: Sync {
     fn open_downlink(
         &self,
         host: Option<&str>,
-        node: RelativeUri,
+        node: &str,
         lane: &str,
         config: DownlinkConfig,
         downlink: Box<dyn Downlink + Send>,

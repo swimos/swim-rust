@@ -27,7 +27,7 @@ use swim_messages::protocol::{
     Notification, Operation, Path, RawRequestMessage, RawRequestMessageEncoder,
     RawResponseMessageDecoder, ResponseMessage,
 };
-use swim_model::path::RelativePath;
+use swim_model::address::RelativeAddress;
 use swim_model::Text;
 use swim_utilities::future::{immediate_or_join, immediate_or_start, SecondaryResult};
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
@@ -111,6 +111,8 @@ pub struct DownlinkRuntimeConfig {
     pub attachment_queue_size: NonZeroUsize,
     /// Abort the downlink on receiving invalid frames.
     pub abort_on_bad_frames: bool,
+    /// Size of the buffers to communicated with the socket.
+    pub buffer_size: NonZeroUsize,
 }
 
 /// The runtime component for a value type downlink (i.e. value downlink, event downlink, etc.).
@@ -120,7 +122,7 @@ pub struct ValueDownlinkRuntime {
     output: ByteWriter,
     stopping: trigger::Receiver,
     identity: Uuid,
-    path: RelativePath,
+    path: RelativeAddress<Text>,
     config: DownlinkRuntimeConfig,
 }
 
@@ -131,7 +133,7 @@ pub struct MapDownlinkRuntime<H> {
     output: ByteWriter,
     stopping: trigger::Receiver,
     identity: Uuid,
-    path: RelativePath,
+    path: RelativeAddress<Text>,
     config: DownlinkRuntimeConfig,
     failure_handler: H,
 }
@@ -171,7 +173,7 @@ impl ValueDownlinkRuntime {
         io: Io,
         stopping: trigger::Receiver,
         identity: Uuid,
-        path: RelativePath,
+        path: RelativeAddress<Text>,
         config: DownlinkRuntimeConfig,
     ) -> Self {
         let (output, input) = io;
@@ -252,7 +254,7 @@ impl<H> MapDownlinkRuntime<H> {
         io: Io,
         stopping: trigger::Receiver,
         identity: Uuid,
-        path: RelativePath,
+        path: RelativeAddress<Text>,
         config: DownlinkRuntimeConfig,
         failure_handler: H,
     ) -> Self {

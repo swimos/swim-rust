@@ -29,7 +29,7 @@ use self::prune::PruneRemotes;
 use self::remotes::{LaneRegistry, RemoteSender, RemoteTracker, UplinkResponse};
 use self::write_fut::{WriteResult, WriteTask};
 
-use super::{AgentAttachmentRequest, AgentRuntimeConfig, DisconnectionReason, Io, DownlinkRequest};
+use super::{AgentAttachmentRequest, AgentRuntimeConfig, DisconnectionReason, DownlinkRequest, Io};
 use bytes::{Bytes, BytesMut};
 use futures::ready;
 use futures::stream::FuturesUnordered;

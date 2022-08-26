@@ -20,8 +20,7 @@ use std::{marker::PhantomData, num::NonZeroUsize};
 use futures::FutureExt;
 use swim_api::{downlink::DownlinkConfig, error::AgentRuntimeError};
 use swim_form::Form;
-use swim_model::Text;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_model::{address::Address, Text};
 use tokio::sync::mpsc;
 
 use crate::{
@@ -29,7 +28,7 @@ use crate::{
     downlink_lifecycle::value::ValueDownlinkLifecycle,
     event_handler::{
         ActionContext, DownlinkSpawner, EventHandler, EventHandlerExt, Fail, HandlerAction,
-        LanePath, Spawner, StepResult,
+        Spawner, StepResult,
     },
     meta::AgentMetadata,
 };
@@ -45,7 +44,7 @@ pub enum DownlinkMessage<T> {
 
 struct Inner<LC, F> {
     host: Option<Text>,
-    node: RelativeUri,
+    node: Text,
     lane: Text,
     lifecycle: LC,
     on_done: F,
@@ -61,7 +60,7 @@ pub struct OpenValueDownlink<T, LC, F> {
 impl<T, LC, F> OpenValueDownlink<T, LC, F> {
     pub fn new(
         host: Option<Text>,
-        node: RelativeUri,
+        node: Text,
         lane: Text,
         lifecycle: LC,
         on_done: F,
@@ -178,7 +177,7 @@ where
             let endpoint = ValueDownlinkEndpoint::new(bridge_rx, lifecycle);
 
             let handle = ValueDownlinkHandle::new(set_tx);
-            let path = LanePath::new(host, node, lane);
+            let path = Address::new(host, node, lane);
             action_context.start_downlink(path, *config, downlink, endpoint, move |result| {
                 on_done(result.map(|_| handle))
             });

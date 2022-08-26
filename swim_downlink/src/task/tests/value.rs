@@ -12,12 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::num::NonZeroUsize;
+
 use swim_api::{
     downlink::DownlinkConfig,
     error::{DownlinkTaskError, FrameIoError, InvalidFrame},
     protocol::downlink::DownlinkNotification,
 };
 
+use swim_utilities::algebra::non_zero_usize;
 use tokio::sync::mpsc;
 
 use super::run_downlink_task;
@@ -65,6 +68,8 @@ async fn expect_event<T: Eq + std::fmt::Debug>(
     assert_eq!(event_rx.recv().await, Some(expected))
 }
 
+const DEFAULT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(1024);
+
 #[tokio::test]
 async fn link_downlink() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32>>();
@@ -75,6 +80,7 @@ async fn link_downlink() {
     let config = DownlinkConfig {
         events_when_not_synced: false,
         terminate_on_unlinked: true,
+        buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
     let result = run_downlink_task(
@@ -102,6 +108,7 @@ async fn invalid_sync_downlink() {
     let config = DownlinkConfig {
         events_when_not_synced: false,
         terminate_on_unlinked: true,
+        buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
     let result = run_downlink_task(
@@ -128,6 +135,7 @@ async fn sync_downlink() {
     let config = DownlinkConfig {
         events_when_not_synced: false,
         terminate_on_unlinked: true,
+        buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
     let result = run_downlink_task(
@@ -160,6 +168,7 @@ async fn report_events_before_sync() {
     let config = DownlinkConfig {
         events_when_not_synced: true,
         terminate_on_unlinked: true,
+        buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
     let result = run_downlink_task(
@@ -197,6 +206,7 @@ async fn report_events_after_sync() {
     let config = DownlinkConfig {
         events_when_not_synced: false,
         terminate_on_unlinked: true,
+        buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
     let result = run_downlink_task(
@@ -234,6 +244,7 @@ async fn terminate_after_unlinked() {
     let config = DownlinkConfig {
         events_when_not_synced: false,
         terminate_on_unlinked: true,
+        buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
     let result = run_downlink_task(
@@ -275,6 +286,7 @@ async fn terminate_after_corrupt_frame() {
     let config = DownlinkConfig {
         events_when_not_synced: false,
         terminate_on_unlinked: true,
+        buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
     let result = run_downlink_task(
@@ -306,6 +318,7 @@ async fn unlink_discards_value() {
     let config = DownlinkConfig {
         events_when_not_synced: false,
         terminate_on_unlinked: false,
+        buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
     let result = run_downlink_task(
@@ -343,6 +356,7 @@ async fn relink_downlink() {
     let config = DownlinkConfig {
         events_when_not_synced: false,
         terminate_on_unlinked: false,
+        buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
     let result = run_downlink_task(
@@ -386,6 +400,7 @@ async fn send_on_downlink() {
     let config = DownlinkConfig {
         events_when_not_synced: false,
         terminate_on_unlinked: true,
+        buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
     let result = run_downlink_task(

@@ -53,10 +53,7 @@ mod test_context {
         downlink::{Downlink, DownlinkConfig},
         error::AgentRuntimeError,
     };
-    use swim_utilities::{
-        io::byte_channel::{ByteReader, ByteWriter},
-        routing::uri::RelativeUri,
-    };
+    use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 
     use crate::{
         agent_model::downlink::handlers::BoxDownlinkChannel,
@@ -96,7 +93,7 @@ mod test_context {
         fn open_downlink(
             &self,
             _host: Option<&str>,
-            _node: RelativeUri,
+            _node: &str,
             _lane: &str,
             _config: DownlinkConfig,
             _downlink: Box<dyn Downlink + Send>,

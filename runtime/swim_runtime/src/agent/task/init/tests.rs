@@ -25,7 +25,7 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::agent::{
     task::{InitialEndpoints, LaneEndpoint},
-    AgentExecError, AgentRuntimeConfig, AgentRuntimeRequest, Io, DownlinkRequest,
+    AgentExecError, AgentRuntimeConfig, AgentRuntimeRequest, DownlinkRequest, Io,
 };
 
 trait TestInit {

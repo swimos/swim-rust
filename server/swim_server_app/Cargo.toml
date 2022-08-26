@@ -21,6 +21,7 @@ tracing-futures = "0.2.4"
 uuid = { version = "0.8.2" }
 thiserror = "1.0"
 rand = "0.7.3"
+url = "2.1.1"
 
 [dev-dependencies]
 swim_recon = { path = "../../api/formats/swim_recon", features = ["async_parser"] }

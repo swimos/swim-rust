@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::fmt::Display;
+
 use swim_form::structural::read::ReadError;
 use swim_model::Text;
 use swim_recon::parser::AsyncParseError;
@@ -58,9 +60,32 @@ pub enum DownlinkTaskError {
     DeserializationFailed(#[from] ReadError),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DownlinkFailureReason {
+    Unresolvable,
+    ConnectionFailed,
+    WebsocketNegotiationFailed,
+}
+
+impl Display for DownlinkFailureReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DownlinkFailureReason::Unresolvable => write!(f, "The lane was unresolvable."),
+            DownlinkFailureReason::ConnectionFailed => {
+                write!(f, "Connection to the remote host failed.")
+            }
+            DownlinkFailureReason::WebsocketNegotiationFailed => {
+                write!(f, "Could not negotiate a websocket connection.")
+            }
+        }
+    }
+}
+
 /// Error type for operations that communicate with the agent runtime.
 #[derive(Error, Debug)]
 pub enum AgentRuntimeError {
+    #[error("Opening a new downlink failed: {0}")]
+    DownlinkConnectionFailed(DownlinkFailureReason),
     #[error("The agent runtime is stopping.")]
     Stopping,
     #[error("The agent runtime has terminated.")]
