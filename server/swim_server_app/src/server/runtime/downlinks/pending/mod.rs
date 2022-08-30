@@ -74,28 +74,26 @@ impl PendingDownlinks {
         local.entry(key).or_default().push(request);
     }
 
-    pub fn take_socket_ready<'a>(
-        &'a mut self,
-        host: &Text,
-    ) -> HashMap<DlKey, Vec<DownlinkRequest>> {
+    pub fn take_socket_ready(&mut self, host: &Text) -> HashMap<DlKey, Vec<DownlinkRequest>> {
         let PendingDownlinks {
             awaiting_remote, ..
         } = self;
         awaiting_remote.remove(host).unwrap_or_default()
     }
 
-    pub fn socket_ready<'a>(
-        &'a mut self,
+    pub fn socket_ready(
+        &mut self,
         host: Text,
         addr: SocketAddr,
-    ) -> Option<impl Iterator<Item = &'a DlKey> + 'a> {
+    ) -> Option<impl Iterator<Item = &DlKey> + '_> {
         let PendingDownlinks {
             awaiting_remote,
             awaiting_dl,
             ..
         } = self;
-        if let Some(map) = awaiting_remote.remove(&host) {
-            Some(match awaiting_dl.entry(addr) {
+        awaiting_remote
+            .remove(&host)
+            .map(|map| match awaiting_dl.entry(addr) {
                 Entry::Occupied(entry) => {
                     let existing = entry.into_mut();
                     existing.extend(map.into_iter());
@@ -103,9 +101,6 @@ impl PendingDownlinks {
                 }
                 Entry::Vacant(entry) => entry.insert(map).keys(),
             })
-        } else {
-            None
-        }
     }
 
     pub fn open_client_failed(&mut self, host: &Text) -> impl Iterator<Item = DownlinkRequest> {

@@ -28,8 +28,10 @@ pub struct SwimServerConfig {
     pub agent: AgentConfig,
     /// Parameters for the agent runtime component.
     pub agent_runtime: AgentRuntimeConfig,
-    /// Size of the MPSC channel for requesting new downlinks.
+    /// Size of the MPSC channel for requesting new downlinks from a remote.
     pub client_attachment_buffer_size: NonZeroUsize,
+    /// Size of the MPSC channel for requesting new downlinks to the server.
+    pub client_request_buffer_size: NonZeroUsize,
     /// Size of the MPSC channel for resolving agents.
     pub find_route_buffer_size: NonZeroUsize,
     /// Size of the MPSC channel for opening new downlinks.
@@ -87,6 +89,7 @@ impl Default for SwimServerConfig {
                 abort_on_bad_frames: true,
                 buffer_size: DEFAULT_BUFFER_SIZE,
             },
+            client_request_buffer_size: DEFAULT_CHANNEL_SIZE,
         }
     }
 }

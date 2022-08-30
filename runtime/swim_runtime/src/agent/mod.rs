@@ -250,6 +250,16 @@ pub enum AgentExecError {
     FailedDownlinkRequest,
 }
 
+pub struct AgentRoute {
+    pub identity: Uuid,
+    pub route: RelativeUri,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct CombinedAgentConfig {
+    pub agent_config: AgentConfig,
+    pub runtime_config: AgentRuntimeConfig,
+}
 pub struct AgentRouteTask<'a, A> {
     agent: &'a A,
     identity: Uuid,
@@ -266,31 +276,27 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
     ///
     /// #Arguments
     /// * `agent` - The agent instance.
-    /// * `identity` - The routing ID that will be attached to outgoing envelopes.
-    /// * `route` - The node URI that will be attached to outgoing envelopes.
+    /// * `identity` - Routing identify of the agent instance..
     /// * `attachment_rx` - Channel for making requests to attach remotes to the agent task.
     /// * `stopping` - Instructs the agent task to stop.
-    /// * `agent_config` - Configuration parameters for the user agent task.
-    /// * `runtime_config` - Configuration for the runtime part of the agent task.
+    /// * `config` - Configuration parameters for the user agent task and agent runtime.
     pub fn new(
         agent: &'a A,
-        identity: Uuid,
-        route: RelativeUri,
+        identity: AgentRoute,
         attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
         downlink_tx: mpsc::Sender<DownlinkRequest>,
         stopping: trigger::Receiver,
-        agent_config: AgentConfig,
-        runtime_config: AgentRuntimeConfig,
+        config: CombinedAgentConfig,
     ) -> Self {
         AgentRouteTask {
             agent,
-            identity,
-            route,
+            identity: identity.identity,
+            route: identity.route,
             attachment_rx,
             downlink_tx,
             stopping,
-            agent_config,
-            runtime_config,
+            agent_config: config.agent_config,
+            runtime_config: config.runtime_config,
         }
     }
 

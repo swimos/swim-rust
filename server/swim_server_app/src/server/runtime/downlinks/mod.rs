@@ -311,7 +311,7 @@ where
                         let err: AgentRuntimeError = e.into();
                         for request in pending.open_client_failed(&host) {
                             let DownlinkRequest { promise, .. } = request;
-                            if promise.send(Err(err.clone())).is_err() {
+                            if promise.send(Err(err)).is_err() {
                                 //TODO Log error.
                             }
                         }
@@ -391,12 +391,12 @@ where
                             local_handle.remove(&key);
                         }
 
-                        if let Err(_) = result {
+                        if result.is_err() {
                             //TODO Log error.
                         }
                     }
                     Event::Terminated { result } => {
-                        if let Err(_) = result {
+                        if result.is_err() {
                             //TODO Log error.
                         }
                     }
@@ -456,15 +456,13 @@ async fn run_downlink(request: DownlinkRequest, attach_tx: mpsc::Sender<AttachAc
         Event::Terminated {
             result: Ok(Err(DownlinkTaskError::FailedToStart)),
         }
+    } else if promise.send(Ok(())).is_ok() {
+        let result = tokio::spawn(downlink.run_boxed(path, config, in_rx, out_tx)).await;
+        Event::Terminated { result }
     } else {
-        if promise.send(Ok(())).is_ok() {
-            let result = tokio::spawn(downlink.run_boxed(path, config, in_rx, out_tx)).await;
-            Event::Terminated { result }
-        } else {
-            //TODO todo!("Log error.");
-            Event::Terminated {
-                result: Ok(Err(DownlinkTaskError::FailedToStart)),
-            }
+        //TODO todo!("Log error.");
+        Event::Terminated {
+            result: Ok(Err(DownlinkTaskError::FailedToStart)),
         }
     }
 }

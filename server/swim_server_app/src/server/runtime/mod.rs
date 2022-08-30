@@ -29,7 +29,8 @@ use swim_model::address::RelativeAddress;
 use swim_model::Text;
 use swim_remote::{AgentResolutionError, AttachClient, FindNode, NoSuchAgent, RemoteTask};
 use swim_runtime::agent::{
-    AgentAttachmentRequest, AgentExecError, AgentRouteTask, DisconnectionReason, DownlinkRequest,
+    AgentAttachmentRequest, AgentExecError, AgentRoute, AgentRouteTask, CombinedAgentConfig,
+    DisconnectionReason, DownlinkRequest,
 };
 
 use swim_runtime::error::ConnectionError;
@@ -219,7 +220,6 @@ where
         let (find_tx, mut find_rx) = mpsc::channel(config.find_route_buffer_size.get());
         let (open_dl_tx, open_dl_rx) = mpsc::channel(config.open_downlink_buffer_size.get());
         let mut remote_channels = HashMap::new();
-        let mut agent_channels = HashMap::new();
 
         let mut remote_tasks = FuturesUnordered::new();
         let mut agent_tasks = FuturesUnordered::new();
@@ -229,8 +229,6 @@ where
 
         let mut accept_stream = listener.into_stream().take_until(stop_signal);
 
-        let routes = Routes::new(plane.routes);
-
         let (dl_stop_tx, dl_stop_rx) = trigger::trigger();
         let mut dl_stop = Some(dl_stop_tx);
         let (agent_stop_tx, agent_stop_rx) = trigger::trigger();
@@ -238,8 +236,18 @@ where
         let (remote_stop_tx, remote_stop_rx) = trigger::trigger();
         let mut remote_stop = Some(remote_stop_tx);
 
-        let (clients_tx, mut clients_rx) = mpsc::channel(8);
-        let (local_tx, mut local_rx) = mpsc::channel(8);
+        let mut agents = Agents::new(
+            Routes::new(plane.routes),
+            CombinedAgentConfig {
+                agent_config: config.agent,
+                runtime_config: config.agent_runtime,
+            },
+            agent_stop_rx,
+            open_dl_tx,
+        );
+
+        let (clients_tx, mut clients_rx) = mpsc::channel(config.client_request_buffer_size.get());
+        let (local_tx, mut local_rx) = mpsc::channel(config.client_request_buffer_size.get());
 
         let downlinks = DownlinkConnectionTask::new(
             open_dl_rx,
@@ -258,8 +266,8 @@ where
                     tokio::select! {
                         biased;
                         result = &mut downlinks_task => {
-                            if let Err(_) = result {
-                                //TOOD Log error.
+                            if result.is_err() {
+                                //TODO Log error.
                             }
                             //The downlink task has failed unexpectedly so go straight to stopping agents.
                             if let Some(stop) = dl_stop.take() {
@@ -297,8 +305,8 @@ where
                     tokio::select! {
                         biased;
                         result = &mut downlinks_task => {
-                            if let Err(_) = result {
-                                //TOOD Log error.
+                            if result.is_err() {
+                                //TODO Log error.
                             }
                             if let Some(stop) = agent_stop.take() {
                                 stop.trigger();
@@ -385,7 +393,7 @@ where
                     }
                 }
                 ServerEvent::AgentStopped(route, result) => {
-                    agent_channels.remove(&route);
+                    agents.agent_channels.remove(&route);
                     match result {
                         Err(error) => {
                             error!(error = %error, route = %route, "Agent task panicked.");
@@ -431,19 +439,10 @@ where
                     provider,
                 }) => {
                     info!(source = %source, node = %node, "Attempting to connect an agent to a remote.");
-                    let result = resolve_agent(
-                        node,
-                        &mut agent_channels,
-                        &routes,
-                        &mut id_issuer,
-                        &config,
-                        &open_dl_tx,
-                        &agent_stop_rx,
-                        |name, route_task| {
-                            let task = route_task.run_agent();
-                            agent_tasks.push(attach_node(name, task));
-                        },
-                    );
+                    let result = agents.resolve_agent(node, &mut id_issuer, |name, route_task| {
+                        let task = route_task.run_agent();
+                        agent_tasks.push(attach_node(name, task));
+                    });
                     match result {
                         Ok((agent_id, agent_tx)) => {
                             let connect_task = attach_agent(
@@ -513,19 +512,10 @@ where
                 }) => {
                     let RelativeAddress { node, .. } = path;
                     info!(source = %downlink_id, node = %node, "Attempting to connect a downlink to an agent.");
-                    let result = resolve_agent(
-                        node,
-                        &mut agent_channels,
-                        &routes,
-                        &mut id_issuer,
-                        &config,
-                        &open_dl_tx,
-                        &agent_stop_rx,
-                        |name, route_task| {
-                            let task = route_task.run_agent();
-                            agent_tasks.push(attach_node(name, task));
-                        },
-                    );
+                    let result = agents.resolve_agent(node, &mut id_issuer, |name, route_task| {
+                        let task = route_task.run_agent();
+                        agent_tasks.push(attach_node(name, task));
+                    });
                     match result {
                         Ok((agent_id, agent_tx)) => {
                             let task = attach_downlink(
@@ -597,49 +587,79 @@ where
     )
 }
 
-fn resolve_agent<'a, F>(
-    node: Text,
-    agent_channels: &'a mut HashMap<Text, (Uuid, mpsc::Sender<AgentAttachmentRequest>)>,
-    routes: &Routes,
-    id_issuer: &mut IdIssuer,
-    config: &SwimServerConfig,
-    open_dl_tx: &mpsc::Sender<DownlinkRequest>,
-    agent_stop_rx: &trigger::Receiver,
-    spawn_task: F,
-) -> Result<(Uuid, &'a mut mpsc::Sender<AgentAttachmentRequest>), Text>
-where
-    F: for<'b> FnOnce(Text, AgentRouteTask<'b, BoxAgent>),
-{
-    match agent_channels.entry(node) {
-        Entry::Occupied(entry) => {
-            debug!("Agent already running.");
-            let (id, tx) = entry.into_mut();
-            Ok((*id, tx))
+struct Agents {
+    agent_channels: HashMap<Text, (Uuid, mpsc::Sender<AgentAttachmentRequest>)>,
+    routes: Routes,
+    config: CombinedAgentConfig,
+    agent_stop_rx: trigger::Receiver,
+    open_dl_tx: mpsc::Sender<DownlinkRequest>,
+}
+
+impl Agents {
+    fn new(
+        routes: Routes,
+        config: CombinedAgentConfig,
+        agent_stop_rx: trigger::Receiver,
+        open_dl_tx: mpsc::Sender<DownlinkRequest>,
+    ) -> Self {
+        Agents {
+            agent_channels: Default::default(),
+            routes,
+            config,
+            agent_stop_rx,
+            open_dl_tx,
         }
-        Entry::Vacant(entry) => {
-            debug!("Attempting to start new agent instance.");
-            if let Some((route, agent)) = RelativeUri::from_str(entry.key().as_str())
-                .ok()
-                .and_then(|route| routes.find_route(&route).map(move |agent| (route, agent)))
-            {
-                let id = id_issuer.next_agent();
-                let (attachment_tx, attachment_rx) = mpsc::channel(1);
-                let route_task = AgentRouteTask::new(
-                    agent,
-                    id,
-                    route,
-                    attachment_rx,
-                    open_dl_tx.clone(),
-                    agent_stop_rx.clone(),
-                    config.agent,
-                    config.agent_runtime,
-                );
-                let name = entry.key().clone();
-                spawn_task(name, route_task);
-                let (id, tx) = entry.insert((id, attachment_tx));
+    }
+
+    fn resolve_agent<'a, F>(
+        &'a mut self,
+        node: Text,
+        id_issuer: &mut IdIssuer,
+        spawn_task: F,
+    ) -> Result<(Uuid, &'a mut mpsc::Sender<AgentAttachmentRequest>), Text>
+    where
+        F: for<'b> FnOnce(Text, AgentRouteTask<'b, BoxAgent>),
+    {
+        let Agents {
+            agent_channels,
+            routes,
+            config,
+            agent_stop_rx,
+            open_dl_tx,
+        } = self;
+        match agent_channels.entry(node) {
+            Entry::Occupied(entry) => {
+                debug!("Agent already running.");
+                let (id, tx) = entry.into_mut();
                 Ok((*id, tx))
-            } else {
-                Err(entry.into_key())
+            }
+            Entry::Vacant(entry) => {
+                debug!("Attempting to start new agent instance.");
+                if let Some((route, agent)) = RelativeUri::from_str(entry.key().as_str())
+                    .ok()
+                    .and_then(|route| routes.find_route(&route).map(move |agent| (route, agent)))
+                {
+                    let id = id_issuer.next_agent();
+                    let (attachment_tx, attachment_rx) =
+                        mpsc::channel(config.runtime_config.attachment_queue_size.get());
+                    let route_task = AgentRouteTask::new(
+                        agent,
+                        AgentRoute {
+                            identity: id,
+                            route,
+                        },
+                        attachment_rx,
+                        open_dl_tx.clone(),
+                        agent_stop_rx.clone(),
+                        *config,
+                    );
+                    let name = entry.key().clone();
+                    spawn_task(name, route_task);
+                    let (id, tx) = entry.insert((id, attachment_tx));
+                    Ok((*id, tx))
+                } else {
+                    Err(entry.into_key())
+                }
             }
         }
     }
