@@ -20,6 +20,6 @@ mod util;
 
 pub use self::{
     config::{RemoteConnectionsConfig, SwimServerConfig},
-    server::{BoxServer, Server, ServerBuilder, ServerHandle, downlinks},
+    server::{BoxServer, Server, ServerBuilder, ServerHandle},
     util::AgentExt,
 };

@@ -74,6 +74,7 @@ pub enum AttachClient {
     },
     /// Attach a two way (downlink) client.
     AttachDownlink {
+        downlink_id: Uuid,
         path: RelativeAddress<Text>,
         sender: ByteWriter,
         receiver: ByteReader,
@@ -335,6 +336,7 @@ async fn registration_task<F>(
                 sender,
                 receiver,
                 done,
+                ..
             } => {
                 debug!(path = %path, "Attaching new client downlink.");
                 if let (Ok(in_res), Ok(out_res)) =

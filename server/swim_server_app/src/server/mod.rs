@@ -22,8 +22,6 @@ mod runtime;
 
 pub use builder::ServerBuilder;
 
-pub use runtime::downlinks;
-
 use tokio::sync::oneshot;
 
 pub struct ServerHandle {

@@ -79,7 +79,10 @@ impl Display for DownlinkFailureReason {
                 write!(f, "Could not negotiate a websocket connection.")
             }
             DownlinkFailureReason::RemoteStopped => {
-                write!(f, "The remote client stopped while the downlink was starting.")
+                write!(
+                    f,
+                    "The remote client stopped while the downlink was starting."
+                )
             }
         }
     }

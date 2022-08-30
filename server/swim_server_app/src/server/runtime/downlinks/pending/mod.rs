@@ -53,11 +53,12 @@ impl PendingDownlinks {
             .push(request);
     }
 
-    pub fn for_host<'a> (&'a mut self, host: &Text) -> impl Iterator<Item = &'a DlKey> + 'a {
-        self.awaiting_remote.get(host).map(|inner| inner.keys()).into_iter().flatten()
-    }
-
-    pub fn push_for_socket(&mut self, remote: SocketAddr, key: DlKey, requests: Vec<DownlinkRequest>) {
+    pub fn push_for_socket(
+        &mut self,
+        remote: SocketAddr,
+        key: DlKey,
+        requests: Vec<DownlinkRequest>,
+    ) {
         let PendingDownlinks { awaiting_dl, .. } = self;
         awaiting_dl
             .entry(remote)
@@ -65,11 +66,6 @@ impl PendingDownlinks {
             .entry(key)
             .or_default()
             .extend(requests);
-    }
-
-    pub fn push_relative(&mut self, remote: SocketAddr, request: DownlinkRequest) {
-        let key = key_of(&request.key);
-        self.push_for_socket(remote, key, vec![request])
     }
 
     pub fn push_local(&mut self, request: DownlinkRequest) {
@@ -83,8 +79,7 @@ impl PendingDownlinks {
         host: &Text,
     ) -> HashMap<DlKey, Vec<DownlinkRequest>> {
         let PendingDownlinks {
-            awaiting_remote,
-            ..
+            awaiting_remote, ..
         } = self;
         awaiting_remote.remove(host).unwrap_or_default()
     }

@@ -25,6 +25,7 @@ mod task;
 mod tests;
 
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use crate::error::ConnectionDropped;
 use crate::error::Unresolvable;
@@ -519,4 +520,28 @@ pub trait ExternalConnections: Clone + Send + Sync + 'static {
     ) -> BoxFuture<'static, IoResult<(SocketAddr, Self::ListenerType)>>;
     fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>>;
     fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, IoResult<Vec<SchemeSocketAddr>>>;
+}
+
+impl<Conn> ExternalConnections for Arc<Conn>
+where
+    Conn: ExternalConnections,
+{
+    type Socket = Conn::Socket;
+
+    type ListenerType = Conn::ListenerType;
+
+    fn bind(
+        &self,
+        addr: SocketAddr,
+    ) -> BoxFuture<'static, IoResult<(SocketAddr, Self::ListenerType)>> {
+        (**self).bind(addr)
+    }
+
+    fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>> {
+        (**self).try_open(addr)
+    }
+
+    fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, IoResult<Vec<SchemeSocketAddr>>> {
+        (**self).lookup(host)
+    }
 }

@@ -114,6 +114,7 @@ async fn register_for_downlinks() {
         let (done_tx, done_rx) = trigger::trigger();
         att_tx
             .send(AttachClient::AttachDownlink {
+                downlink_id: DL_ID,
                 path: RelativeAddress::text(NODE, LANE),
                 sender: tx1,
                 receiver: rx2,
@@ -1149,6 +1150,7 @@ async fn combined_downlink_io() {
         let (done_tx, done_rx) = trigger::trigger();
         attach_tx
             .send(AttachClient::AttachDownlink {
+                downlink_id: DL_ID,
                 path: RelativeAddress::text(DL_NODE, DL_LANE),
                 sender: tx1,
                 receiver: rx2,
