@@ -22,13 +22,14 @@ use swim_api::{downlink::DownlinkConfig, error::AgentRuntimeError};
 use swim_form::Form;
 use swim_model::{address::Address, Text};
 use tokio::sync::mpsc;
+use tracing::error;
 
 use crate::{
     agent_model::downlink::handlers::{DownlinkChannel, DownlinkChannelExt},
     downlink_lifecycle::value::ValueDownlinkLifecycle,
     event_handler::{
-        ActionContext, DownlinkSpawner, EventHandler, EventHandlerExt, Fail, HandlerAction,
-        Spawner, StepResult,
+        ActionContext, DownlinkSpawner, EventHandlerExt, Fail, HandlerAction, Spawner, StepResult,
+        UnitHandler,
     },
     meta::AgentMetadata,
 };
@@ -42,28 +43,26 @@ pub enum DownlinkMessage<T> {
     Unlinked,
 }
 
-struct Inner<LC, F> {
+struct Inner<LC> {
     host: Option<Text>,
     node: Text,
     lane: Text,
     lifecycle: LC,
-    on_done: F,
 }
 
-pub struct OpenValueDownlink<T, LC, F> {
+pub struct OpenValueDownlink<T, LC> {
     _type: PhantomData<fn(T) -> T>,
-    inner: Option<Inner<LC, F>>,
+    inner: Option<Inner<LC>>,
     config: DownlinkConfig,
     channel_size: NonZeroUsize,
 }
 
-impl<T, LC, F> OpenValueDownlink<T, LC, F> {
+impl<T, LC> OpenValueDownlink<T, LC> {
     pub fn new(
         host: Option<Text>,
         node: Text,
         lane: Text,
         lifecycle: LC,
-        on_done: F,
         config: DownlinkConfig,
         channel_size: NonZeroUsize,
     ) -> Self {
@@ -74,7 +73,6 @@ impl<T, LC, F> OpenValueDownlink<T, LC, F> {
                 node,
                 lane,
                 lifecycle,
-                on_done,
             }),
             config,
             channel_size,
@@ -141,15 +139,13 @@ impl<T> ValueDownlinkHandle<T> {
     }
 }
 
-impl<T, LC, Context, F, H> HandlerAction<Context> for OpenValueDownlink<T, LC, F>
+impl<T, LC, Context> HandlerAction<Context> for OpenValueDownlink<T, LC>
 where
     T: Form + Clone + Send + Sync + 'static,
     LC: ValueDownlinkLifecycle<T, Context> + Send + 'static,
     T::Rec: Send,
-    F: FnOnce(Result<ValueDownlinkHandle<T>, AgentRuntimeError>) -> H + Send + 'static,
-    H: EventHandler<Context> + 'static,
 {
-    type Completion = ();
+    type Completion = ValueDownlinkHandle<T>;
 
     fn step(
         &mut self,
@@ -168,7 +164,6 @@ where
             node,
             lane,
             lifecycle,
-            on_done,
         }) = inner.take()
         {
             let (bridge_tx, bridge_rx) = mpsc::channel(channel_size.get());
@@ -179,9 +174,12 @@ where
             let handle = ValueDownlinkHandle::new(set_tx);
             let path = Address::new(host, node, lane);
             action_context.start_downlink(path, *config, downlink, endpoint, move |result| {
-                on_done(result.map(|_| handle))
+                if let Err(err) = result {
+                    error!(error = %err, "Registering downlink failed.");
+                }
+                UnitHandler::default()
             });
-            StepResult::done(())
+            StepResult::done(handle)
         } else {
             StepResult::after_done()
         }
