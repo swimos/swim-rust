@@ -14,11 +14,18 @@
 
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::num::NonZeroUsize;
 use std::{collections::HashMap, marker::PhantomData};
 
 use futures::{Future, FutureExt};
+use swim_api::downlink::DownlinkConfig;
+use swim_form::Form;
+use swim_model::Text;
+use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 
+use crate::agent_model::downlink::{OpenValueDownlink, ValueDownlinkHandle};
+use crate::downlink_lifecycle::value::ValueDownlinkLifecycle;
 use crate::event_handler::{EventHandler, Suspend, UnitHandler};
 use crate::lanes::command::{CommandLane, DoCommand};
 use crate::lanes::map::MapLaneGetMap;
@@ -62,6 +69,8 @@ impl<Agent> Clone for HandlerContext<Agent> {
 }
 
 impl<Agent> Copy for HandlerContext<Agent> {}
+
+const DL_CHAN_SIZE: NonZeroUsize = non_zero_usize!(8);
 
 impl<Agent: 'static> HandlerContext<Agent> {
     /// Create an event handler that executes a side effect.
@@ -225,5 +234,36 @@ impl<Agent: 'static> HandlerContext<Agent> {
         Fut: Future<Output = ()> + Send + 'static,
     {
         self.suspend(future.map(|_| UnitHandler::default()))
+    }
+
+    /// Open a value downlink to a lane on another agent.
+    ///
+    /// #Arguments
+    /// * `host` - The remote host at which the agent resides (a local agent if not specified).
+    /// * `node` - The node URI of the agent.
+    /// * `lane` - The lane to downlink from.
+    /// * `config` - Configuration parameters for the downlink.
+    /// * `lifecycle` - Lifecycle events for the downlink.
+    pub fn open_value_downlink<T, LC>(
+        &self,
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
+        config: DownlinkConfig,
+        lifecycle: LC,
+    ) -> impl HandlerAction<Agent, Completion = ValueDownlinkHandle<T>> + Send + 'static
+    where
+        T: Form + Clone + Send + Sync + 'static,
+        LC: ValueDownlinkLifecycle<T, Agent> + Send + 'static,
+        T::Rec: Send,
+    {
+        OpenValueDownlink::new(
+            host.map(Text::new),
+            Text::new(node),
+            Text::new(lane),
+            lifecycle,
+            config,
+            DL_CHAN_SIZE,
+        )
     }
 }
