@@ -12,32 +12,50 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_runtime::routing::RoutingAddr;
 use uuid::Uuid;
 
-#[derive(Default, Debug)]
+const REMOTE: u8 = 0;
+const PLANE: u8 = 1;
+const CLIENT: u8 = 2;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IdKind {
+    Remote,
+    Plane,
+    Client,
+}
+
+impl IdKind {
+    fn tag(&self) -> u8 {
+        match self {
+            IdKind::Remote => REMOTE,
+            IdKind::Plane => PLANE,
+            IdKind::Client => CLIENT,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct IdIssuer {
-    remote_count: u32,
-    agent_count: u32,
-    downlink_count: u32,
+    kind: IdKind,
+    count: u64,
 }
 
 impl IdIssuer {
-    pub fn next_remote(&mut self) -> Uuid {
-        let count = self.remote_count;
-        self.remote_count += 1;
-        *RoutingAddr::remote(count).uuid()
+    pub const fn new(kind: IdKind) -> Self {
+        IdIssuer { kind, count: 0 }
     }
 
-    pub fn next_agent(&mut self) -> Uuid {
-        let count = self.agent_count;
-        self.agent_count += 1;
-        *RoutingAddr::plane(count).uuid()
+    pub fn next_id(&mut self) -> Uuid {
+        let IdIssuer { kind, count } = self;
+        let c = *count;
+        *count += 1;
+        make_id(kind.tag(), c)
     }
+}
 
-    pub fn next_downlink(&mut self) -> Uuid {
-        let count = self.downlink_count;
-        self.downlink_count += 1;
-        *RoutingAddr::client(count).uuid()
-    }
+const fn make_id(tag: u8, count: u64) -> Uuid {
+    let mut uuid_as_int = count as u128;
+    uuid_as_int |= (tag as u128) << 120;
+    Uuid::from_u128(uuid_as_int)
 }

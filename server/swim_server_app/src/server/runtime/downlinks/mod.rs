@@ -45,7 +45,10 @@ use tokio::{sync::mpsc, task::JoinError};
 use url::Url;
 use uuid::Uuid;
 
-use super::{ids::IdIssuer, ClientRegistration, EstablishedClient, NewClientError};
+use super::{
+    ids::{IdIssuer, IdKind},
+    ClientRegistration, EstablishedClient, NewClientError,
+};
 
 pub struct DownlinkConnectionTask<Net> {
     requests: mpsc::Receiver<DownlinkRequest>,
@@ -148,7 +151,7 @@ where
 
             let mut local_handle = ClientHandle::new(local);
 
-            let mut id_issuer = IdIssuer::default();
+            let mut id_issuer = IdIssuer::new(IdKind::Client);
             let mut pending = PendingDownlinks::default();
 
             loop {
@@ -196,7 +199,7 @@ where
                                 tasks.push(run_downlink(request, attach_tx.clone()).boxed());
                             } else {
                                 pending.push_local(request);
-                                let identity = id_issuer.next_downlink();
+                                let identity = id_issuer.next_id();
                                 tasks.push(
                                     start_downlink_runtime(
                                         identity,
@@ -228,7 +231,7 @@ where
                                     }
                                 } else {
                                     pending.push_for_socket(addr, key.clone(), requests);
-                                    let identity = id_issuer.next_downlink();
+                                    let identity = id_issuer.next_id();
                                     tasks.push(
                                         start_downlink_runtime(
                                             identity,
@@ -291,7 +294,7 @@ where
                             Entry::Vacant(entry) => entry.insert(ClientHandle::new(tx)),
                         };
                         for key in pending.socket_ready(host, sock_addr).into_iter().flatten() {
-                            let identity = id_issuer.next_downlink();
+                            let identity = id_issuer.next_id();
                             tasks.push(
                                 start_downlink_runtime(
                                     identity,

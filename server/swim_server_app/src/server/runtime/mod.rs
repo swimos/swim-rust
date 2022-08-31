@@ -53,7 +53,7 @@ use crate::plane::PlaneModel;
 use crate::server::ServerHandle;
 
 use self::downlinks::DownlinkConnectionTask;
-use self::ids::IdIssuer;
+use self::ids::{IdIssuer, IdKind};
 
 use super::Server;
 
@@ -215,7 +215,7 @@ where
 
         let (bound_addr, listener) = networking.bind(addr).await?;
         let _ = addr_tx.send(bound_addr);
-        let mut id_issuer = IdIssuer::default();
+        let mut remote_issuer = IdIssuer::new(IdKind::Remote);
 
         let (find_tx, mut find_rx) = mpsc::channel(config.find_route_buffer_size.get());
         let (open_dl_tx, open_dl_rx) = mpsc::channel(config.open_downlink_buffer_size.get());
@@ -366,7 +366,7 @@ where
                     match websockets.accept_connection(sock).await {
                         Ok(websocket) => {
                             let sock_addr = addr.addr;
-                            let id = id_issuer.next_remote();
+                            let id = remote_issuer.next_id();
                             let (attach_tx, task) = register_remote(
                                 id,
                                 sock_addr,
@@ -439,7 +439,7 @@ where
                     provider,
                 }) => {
                     info!(source = %source, node = %node, "Attempting to connect an agent to a remote.");
-                    let result = agents.resolve_agent(node, &mut id_issuer, |name, route_task| {
+                    let result = agents.resolve_agent(node, |name, route_task| {
                         let task = route_task.run_agent();
                         agent_tasks.push(attach_node(name, task));
                     });
@@ -480,7 +480,7 @@ where
                     });
                 }
                 ServerEvent::NewClient(Ok((sock_addr, websocket)), responder) => {
-                    let id = id_issuer.next_remote();
+                    let id = remote_issuer.next_id();
                     let (attach_tx, task) = register_remote(
                         id,
                         sock_addr,
@@ -512,7 +512,7 @@ where
                 }) => {
                     let RelativeAddress { node, .. } = path;
                     info!(source = %downlink_id, node = %node, "Attempting to connect a downlink to an agent.");
-                    let result = agents.resolve_agent(node, &mut id_issuer, |name, route_task| {
+                    let result = agents.resolve_agent(node, |name, route_task| {
                         let task = route_task.run_agent();
                         agent_tasks.push(attach_node(name, task));
                     });
@@ -588,6 +588,7 @@ where
 }
 
 struct Agents {
+    plane_issuer: IdIssuer,
     agent_channels: HashMap<Text, (Uuid, mpsc::Sender<AgentAttachmentRequest>)>,
     routes: Routes,
     config: CombinedAgentConfig,
@@ -603,6 +604,7 @@ impl Agents {
         open_dl_tx: mpsc::Sender<DownlinkRequest>,
     ) -> Self {
         Agents {
+            plane_issuer: IdIssuer::new(IdKind::Plane),
             agent_channels: Default::default(),
             routes,
             config,
@@ -614,13 +616,13 @@ impl Agents {
     fn resolve_agent<'a, F>(
         &'a mut self,
         node: Text,
-        id_issuer: &mut IdIssuer,
         spawn_task: F,
     ) -> Result<(Uuid, &'a mut mpsc::Sender<AgentAttachmentRequest>), Text>
     where
         F: for<'b> FnOnce(Text, AgentRouteTask<'b, BoxAgent>),
     {
         let Agents {
+            plane_issuer,
             agent_channels,
             routes,
             config,
@@ -639,7 +641,7 @@ impl Agents {
                     .ok()
                     .and_then(|route| routes.find_route(&route).map(move |agent| (route, agent)))
                 {
-                    let id = id_issuer.next_agent();
+                    let id = plane_issuer.next_id();
                     let (attachment_tx, attachment_rx) =
                         mpsc::channel(config.runtime_config.attachment_queue_size.get());
                     let route_task = AgentRouteTask::new(
