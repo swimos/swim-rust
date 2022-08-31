@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod connector;
 mod pending;
+
+pub use connector::{DlTaskRequest, DownlinksConnector, downlink_task_connector, ServerConnector};
 
 use std::{
     collections::{hash_map::Entry, HashMap},
@@ -51,11 +54,8 @@ use super::{
 };
 
 pub struct DownlinkConnectionTask<Net> {
-    requests: mpsc::Receiver<DownlinkRequest>,
-    stop_signal: trigger::Receiver,
-    client_routes: mpsc::Sender<ClientRegistration>,
+    connector: DownlinksConnector,
     config: DownlinkRuntimeConfig,
-    local: mpsc::Sender<AttachClient>,
     networking: Net,
 }
 
@@ -118,54 +118,44 @@ where
     Net: ExternalConnections,
 {
     pub fn new(
-        requests: mpsc::Receiver<DownlinkRequest>,
-        stop_signal: trigger::Receiver,
-        client_routes: mpsc::Sender<ClientRegistration>,
+        connector: DownlinksConnector,
         config: DownlinkRuntimeConfig,
-        local: mpsc::Sender<AttachClient>,
         networking: Net,
     ) -> Self {
         DownlinkConnectionTask {
-            requests,
-            stop_signal,
-            client_routes,
+            connector,
             config,
-            local,
             networking,
         }
     }
 
     pub async fn run(self) {
         let mut tasks = FuturesUnordered::new();
-        {
+        let connector = {
             let DownlinkConnectionTask {
-                mut requests,
-                mut stop_signal,
-                client_routes,
+                mut connector,
                 config,
-                local,
                 networking,
             } = self;
 
             let mut downlink_channels: HashMap<SocketAddr, ClientHandle> = HashMap::new();
 
-            let mut local_handle = ClientHandle::new(local);
+            let mut local_handle = ClientHandle::new(connector.local_handle());
 
             let mut id_issuer = IdIssuer::new(IdKind::Client);
             let mut pending = PendingDownlinks::default();
-
+            
             loop {
                 let event: Event = tokio::select! {
                     biased;
-                    _ = &mut stop_signal => break,
-                    Some(event) = tasks.next(), if !tasks.is_empty() => event,
-                    maybe_request = requests.recv() => {
+                    maybe_request = connector.next_request() => {
                         if let Some(req) = maybe_request {
                             Event::Request(req)
                         } else {
                             break;
                         }
-                    }
+                    },
+                    Some(event) = tasks.next(), if !tasks.is_empty() => event,
                 };
 
                 match event {
@@ -248,7 +238,7 @@ where
                             let addr_vec = sock_addrs.into_iter().map(|s| s.addr).collect();
                             let (registration, rx) =
                                 ClientRegistration::new(host.clone(), addr_vec);
-                            if client_routes.send(registration).await.is_err() {
+                            if connector.register(registration).await.is_err() {
                                 break;
                             }
                             tasks.push(
@@ -333,7 +323,7 @@ where
                             handle.insert(key.clone(), attach_tx.clone());
                             let key_cpy = key.clone();
                             tasks.push(
-                                tokio::spawn(runtime.run(stop_signal.clone(), config))
+                                tokio::spawn(runtime.run(connector.stop_handle(), config))
                                     .map(move |result| Event::RuntimeTerminated {
                                         socket_addr: remote_address,
                                         key: key_cpy,
@@ -405,7 +395,8 @@ where
                     }
                 }
             }
-        }
+            connector
+        };
 
         while let Some(event) = tasks.next().await {
             match event {
@@ -418,6 +409,8 @@ where
                 _ => continue,
             }
         }
+        connector.stopped();
+        
     }
 }
 

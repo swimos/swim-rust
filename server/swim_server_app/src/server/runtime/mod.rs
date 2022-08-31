@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use futures::future::join;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use ratchet::{SplittableExtension, WebSocket, WebSocketStream};
@@ -51,8 +52,9 @@ use uuid::Uuid;
 use crate::config::SwimServerConfig;
 use crate::plane::PlaneModel;
 use crate::server::ServerHandle;
+use crate::server::runtime::downlinks::DlTaskRequest;
 
-use self::downlinks::DownlinkConnectionTask;
+use self::downlinks::{DownlinkConnectionTask, ServerConnector};
 use self::ids::{IdIssuer, IdKind};
 
 use super::Server;
@@ -123,7 +125,7 @@ impl ClientRegistration {
 
 impl<Net, Ws> Server for SwimServer<Net, Ws>
 where
-    Net: ExternalConnections,
+    Net: ExternalConnections + Clone,
     Net::Socket: WebSocketStream,
     Ws: WsConnections<Net::Socket> + Send + Sync + 'static,
 {
@@ -133,8 +135,17 @@ where
         futures::future::BoxFuture<'static, Result<(), std::io::Error>>,
         ServerHandle,
     ) {
-        let (fut, handle) = self.run_server();
-        (fut.boxed(), handle)
+        let config = &self.config;
+        let (server_conn, dl_conn) = downlinks::downlink_task_connector(
+            config.client_request_channel_size,
+            config.open_downlink_channel_size,
+        );
+        let downlinks = DownlinkConnectionTask::new(dl_conn, config.downlink_runtime, self.networking.clone());
+        let (fut, handle) = self.run_server(server_conn);
+        
+        let downlinks_task = downlinks.run();
+        let combined = join(fut, downlinks_task).map(|(r, _)| r);
+        (combined.boxed(), handle)
     }
 
     fn run_box(
@@ -187,13 +198,14 @@ where
 
     pub fn run_server(
         self,
+        server_conn: ServerConnector,
     ) -> (
         impl Future<Output = Result<(), std::io::Error>> + Send,
         ServerHandle,
     ) {
         let (tx, rx) = trigger::trigger();
         let (addr_tx, addr_rx) = oneshot::channel();
-        let fut = self.run_inner(rx, addr_tx);
+        let fut = self.run_inner(rx, addr_tx, server_conn);
         (fut, ServerHandle::new(tx, addr_rx))
     }
 
@@ -201,6 +213,7 @@ where
         self,
         stop_signal: trigger::Receiver,
         addr_tx: oneshot::Sender<SocketAddr>,
+        mut server_conn: ServerConnector,
     ) -> Result<(), std::io::Error> {
         let SwimServer {
             plane,
@@ -217,8 +230,7 @@ where
         let _ = addr_tx.send(bound_addr);
         let mut remote_issuer = IdIssuer::new(IdKind::Remote);
 
-        let (find_tx, mut find_rx) = mpsc::channel(config.find_route_buffer_size.get());
-        let (open_dl_tx, open_dl_rx) = mpsc::channel(config.open_downlink_buffer_size.get());
+        let (find_tx, mut find_rx) = mpsc::channel(config.find_route_channel_size.get());
         let mut remote_channels = HashMap::new();
 
         let mut remote_tasks = FuturesUnordered::new();
@@ -229,8 +241,6 @@ where
 
         let mut accept_stream = listener.into_stream().take_until(stop_signal);
 
-        let (dl_stop_tx, dl_stop_rx) = trigger::trigger();
-        let mut dl_stop = Some(dl_stop_tx);
         let (agent_stop_tx, agent_stop_rx) = trigger::trigger();
         let mut agent_stop = Some(agent_stop_tx);
         let (remote_stop_tx, remote_stop_rx) = trigger::trigger();
@@ -243,21 +253,9 @@ where
                 runtime_config: config.agent_runtime,
             },
             agent_stop_rx,
-            open_dl_tx,
+            server_conn.dl_requests(),
         );
 
-        let (clients_tx, mut clients_rx) = mpsc::channel(config.client_request_buffer_size.get());
-        let (local_tx, mut local_rx) = mpsc::channel(config.client_request_buffer_size.get());
-
-        let downlinks = DownlinkConnectionTask::new(
-            open_dl_rx,
-            dl_stop_rx,
-            clients_tx,
-            config.downlink_runtime,
-            local_tx,
-            networking.clone(),
-        );
-        let mut downlinks_task = tokio::spawn(downlinks.run());
         let mut state = TaskState::Running;
 
         loop {
@@ -265,20 +263,6 @@ where
                 TaskState::Running => {
                     tokio::select! {
                         biased;
-                        result = &mut downlinks_task => {
-                            if result.is_err() {
-                                //TODO Log error.
-                            }
-                            //The downlink task has failed unexpectedly so go straight to stopping agents.
-                            if let Some(stop) = dl_stop.take() {
-                                stop.trigger();
-                            }
-                            if let Some(stop) = agent_stop.take() {
-                                stop.trigger();
-                            }
-                            state = TaskState::StoppingAgents;
-                            continue;
-                        }
                         Some((addr, result)) = remote_tasks.next(), if !remote_tasks.is_empty() => ServerEvent::RemoteStopped(addr, result),
                         Some((id, result)) = agent_tasks.next(), if !agent_tasks.is_empty() => ServerEvent::AgentStopped(id, result),
                         Some(reason) = connection_tasks.next(), if !connection_tasks.is_empty() => ServerEvent::ConnectionStopped(reason),
@@ -288,32 +272,42 @@ where
                             if let Some(result) = maybe_result {
                                 ServerEvent::NewConnection(result)
                             } else {
-                                if let Some(stop) = dl_stop.take() {
-                                    stop.trigger();
-                                }
+                                server_conn.stop();
                                 state = TaskState::StoppingDownlinks;
                                 continue;
                             }
                         },
                         Some(find_route) = find_rx.recv() => ServerEvent::FindRoute(find_route),
-                        Some(req) = clients_rx.recv() => ServerEvent::RemoteClientRequest(req),
-                        Some(local) = local_rx.recv() => ServerEvent::LocalClient(local),
+                        maybe_dl_event = server_conn.next_message() => {
+                            match maybe_dl_event {
+                                Some(DlTaskRequest::Registration(reg)) => ServerEvent::RemoteClientRequest(reg),
+                                Some(DlTaskRequest::Local(local)) => ServerEvent::LocalClient(local),
+                                _ => {
+                                    //The downlink task has failed unexpectedly so go straight to stopping agents.
+                                    server_conn.stop();
+                                    if let Some(stop) = agent_stop.take() {
+                                        stop.trigger();
+                                    }
+                                    state = TaskState::StoppingAgents;
+                                    continue;
+                                }
+                            }
+                        }
                         else => continue,
                     }
                 }
                 TaskState::StoppingDownlinks => {
                     tokio::select! {
                         biased;
-                        result = &mut downlinks_task => {
-                            if result.is_err() {
-                                //TODO Log error.
+                        maybe_dl_event = server_conn.next_message() => {
+                            if maybe_dl_event.is_none() {
+                                if let Some(stop) = agent_stop.take() {
+                                    stop.trigger();
+                                }
+                                state = TaskState::StoppingAgents;
                             }
-                            if let Some(stop) = agent_stop.take() {
-                                stop.trigger();
-                            }
-                            state = TaskState::StoppingAgents;
                             continue;
-                        }
+                        },
                         Some((id, result)) = remote_tasks.next(), if !remote_tasks.is_empty() => ServerEvent::RemoteStopped(id, result),
                         Some((id, result)) = agent_tasks.next(), if !agent_tasks.is_empty() => ServerEvent::AgentStopped(id, result),
                         Some(reason) = connection_tasks.next(), if !connection_tasks.is_empty() => ServerEvent::ConnectionStopped(reason),
