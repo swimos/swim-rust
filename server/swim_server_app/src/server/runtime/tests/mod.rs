@@ -20,7 +20,7 @@ use std::{
 
 use bytes::BytesMut;
 use futures::{
-    future::{join, join3},
+    future::{join, join4},
     Future,
 };
 use ratchet::{Message, NegotiatedExtension, NoExt, Role, WebSocket, WebSocketConfig};
@@ -34,18 +34,19 @@ use tokio::{
     sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
 };
 
-use crate::{plane::PlaneBuilder, Server, ServerHandle, SwimServerConfig};
+use crate::{plane::PlaneBuilder, ServerHandle, SwimServerConfig};
 
 use self::{
     agent::{AgentEvent, TestAgent},
     connections::{TestConnections, TestWs},
 };
 
-use super::SwimServer;
+use super::{downlinks::downlink_task_connector, SwimServer};
 use agent::{TestMessage, LANE};
 
 mod agent;
 mod connections;
+mod fake_dowlinks;
 
 struct TestContext {
     report_rx: UnboundedReceiver<i32>,
@@ -103,7 +104,13 @@ where
 
     let server = SwimServer::new(plane, addr, networking, websockets, config);
 
-    let (server_task, handle) = server.run();
+    let (server_conn, dl_conn) = downlink_task_connector(
+        config.client_request_channel_size,
+        config.open_downlink_channel_size,
+    );
+    let fake_dl_task = fake_dowlinks::fake_downlink_task(dl_conn);
+    let (server_task, handle) = server.run_server(server_conn);
+
     let context = TestContext {
         event_rx,
         report_rx,
@@ -115,10 +122,12 @@ where
 
     let test_task = test_case(context);
 
-    let (_, task_result, result) =
-        tokio::time::timeout(TEST_TIMEOUT, join3(net, server_task, test_task))
-            .await
-            .expect("Test timed out.");
+    let (_, task_result, _, result) = tokio::time::timeout(
+        TEST_TIMEOUT,
+        join4(net, server_task, fake_dl_task, test_task),
+    )
+    .await
+    .expect("Test timed out.");
     (task_result, result)
 }
 

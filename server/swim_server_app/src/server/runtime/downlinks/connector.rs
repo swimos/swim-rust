@@ -35,9 +35,13 @@ pub struct ServerConnector {
 }
 
 impl ServerConnector {
-
     pub async fn next_message(&mut self) -> Option<DlTaskRequest> {
-        let ServerConnector { client_reg_rx, local_rx,  downlinks_stopped, .. } = self;
+        let ServerConnector {
+            client_reg_rx,
+            local_rx,
+            downlinks_stopped,
+            ..
+        } = self;
         if let Some(stopped) = downlinks_stopped.as_mut() {
             tokio::select! {
                 _ = stopped => {
@@ -61,7 +65,6 @@ impl ServerConnector {
             stop.trigger();
         }
     }
-
 }
 
 pub struct DownlinksConnector {
@@ -76,9 +79,13 @@ pub struct DownlinksConnector {
 pub struct Failed;
 
 impl DownlinksConnector {
-
     pub async fn next_request(&mut self) -> Option<DownlinkRequest> {
-        let DownlinksConnector { stopped, stop_downlinks, dl_req_rx, ..} = self;
+        let DownlinksConnector {
+            stopped,
+            stop_downlinks,
+            dl_req_rx,
+            ..
+        } = self;
         if !*stopped {
             tokio::select! {
                 _ = stop_downlinks => {
@@ -107,7 +114,6 @@ impl DownlinksConnector {
     pub fn stopped(self) {
         self.downlinks_stopped.trigger();
     }
-
 }
 
 pub fn downlink_task_connector(
@@ -136,6 +142,6 @@ pub fn downlink_task_connector(
         stop_downlinks: stop_downlinks_rx,
         downlinks_stopped: downlinks_stopped_tx,
     };
-    
+
     (server_end, downlinks_end)
 }

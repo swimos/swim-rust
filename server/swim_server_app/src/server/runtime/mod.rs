@@ -51,8 +51,8 @@ use uuid::Uuid;
 
 use crate::config::SwimServerConfig;
 use crate::plane::PlaneModel;
-use crate::server::ServerHandle;
 use crate::server::runtime::downlinks::DlTaskRequest;
+use crate::server::ServerHandle;
 
 use self::downlinks::{DownlinkConnectionTask, ServerConnector};
 use self::ids::{IdIssuer, IdKind};
@@ -140,9 +140,10 @@ where
             config.client_request_channel_size,
             config.open_downlink_channel_size,
         );
-        let downlinks = DownlinkConnectionTask::new(dl_conn, config.downlink_runtime, self.networking.clone());
+        let downlinks =
+            DownlinkConnectionTask::new(dl_conn, config.downlink_runtime, self.networking.clone());
         let (fut, handle) = self.run_server(server_conn);
-        
+
         let downlinks_task = downlinks.run();
         let combined = join(fut, downlinks_task).map(|(r, _)| r);
         (combined.boxed(), handle)

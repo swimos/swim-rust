@@ -15,7 +15,7 @@
 mod connector;
 mod pending;
 
-pub use connector::{DlTaskRequest, DownlinksConnector, downlink_task_connector, ServerConnector};
+pub use connector::{downlink_task_connector, DlTaskRequest, DownlinksConnector, ServerConnector};
 
 use std::{
     collections::{hash_map::Entry, HashMap},
@@ -144,7 +144,7 @@ where
 
             let mut id_issuer = IdIssuer::new(IdKind::Client);
             let mut pending = PendingDownlinks::default();
-            
+
             loop {
                 let event: Event = tokio::select! {
                     biased;
@@ -410,7 +410,6 @@ where
             }
         }
         connector.stopped();
-        
     }
 }
 
