@@ -452,7 +452,7 @@ where
                 }
                 TaskEvent::DownlinkReady { downlink_result } => {
                     if let Some(mut downlink) = downlink_result {
-                        if let Some(handler) = downlink.next_event() {
+                        if let Some(handler) = downlink.next_event(&lane_model) {
                             if let Err(e) = run_handler(
                                 ActionContext::new(&suspended, &*context, &add_downlink),
                                 meta,

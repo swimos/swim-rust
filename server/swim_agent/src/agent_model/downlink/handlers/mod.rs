@@ -25,7 +25,7 @@ use super::DownlinkMessage;
 pub trait DownlinkChannel<Context> {
     fn await_ready(&mut self) -> BoxFuture<'_, bool>;
 
-    fn next_event(&mut self) -> Option<BoxEventHandler<'_, Context>>;
+    fn next_event(&mut self, context: &Context) -> Option<BoxEventHandler<'_, Context>>;
 }
 
 pub type BoxDownlinkChannel<Context> = Box<dyn DownlinkChannel<Context> + Send>;
@@ -79,7 +79,7 @@ where
         .boxed()
     }
 
-    fn next_event(&mut self) -> Option<BoxEventHandler<'_, Context>> {
+    fn next_event(&mut self, _context: &Context) -> Option<BoxEventHandler<'_, Context>> {
         let ValueDownlinkEndpoint {
             lifecycle,
             current,

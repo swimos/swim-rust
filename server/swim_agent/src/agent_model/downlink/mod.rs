@@ -14,6 +14,7 @@
 
 mod bridge;
 pub mod handlers;
+pub mod hosted;
 
 use std::{marker::PhantomData, num::NonZeroUsize};
 
