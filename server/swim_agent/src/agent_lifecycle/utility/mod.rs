@@ -14,14 +14,11 @@
 
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::num::NonZeroUsize;
 use std::{collections::HashMap, marker::PhantomData};
 
 use futures::{Future, FutureExt};
-use swim_api::downlink::DownlinkConfig;
 use swim_form::Form;
 use swim_model::Text;
-use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;
 
 use crate::agent_model::downlink::{OpenValueDownlink, ValueDownlinkHandle};
@@ -69,8 +66,6 @@ impl<Agent> Clone for HandlerContext<Agent> {
 }
 
 impl<Agent> Copy for HandlerContext<Agent> {}
-
-const DL_CHAN_SIZE: NonZeroUsize = non_zero_usize!(8);
 
 impl<Agent: 'static> HandlerContext<Agent> {
     /// Create an event handler that executes a side effect.
@@ -249,7 +244,6 @@ impl<Agent: 'static> HandlerContext<Agent> {
         host: Option<&str>,
         node: &str,
         lane: &str,
-        config: DownlinkConfig,
         lifecycle: LC,
     ) -> impl HandlerAction<Agent, Completion = ValueDownlinkHandle<T>> + Send + 'static
     where
@@ -262,8 +256,6 @@ impl<Agent: 'static> HandlerContext<Agent> {
             Text::new(node),
             Text::new(lane),
             lifecycle,
-            config,
-            DL_CHAN_SIZE,
         )
     }
 }

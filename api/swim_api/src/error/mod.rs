@@ -19,7 +19,7 @@ use swim_model::Text;
 use swim_recon::parser::AsyncParseError;
 use swim_utilities::trigger::promise;
 use thiserror::Error;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, watch};
 
 /// Indicates that an agent or downlink failed to read a frame from a byte stream.
 #[derive(Error, Debug)]
@@ -101,6 +101,12 @@ pub enum AgentRuntimeError {
 
 impl<T> From<mpsc::error::SendError<T>> for AgentRuntimeError {
     fn from(_: mpsc::error::SendError<T>) -> Self {
+        AgentRuntimeError::Terminated
+    }
+}
+
+impl<T> From<watch::error::SendError<T>> for AgentRuntimeError {
+    fn from(_: watch::error::SendError<T>) -> Self {
         AgentRuntimeError::Terminated
     }
 }

@@ -16,25 +16,21 @@ use std::{cell::RefCell, marker::PhantomData};
 
 use bytes::BytesMut;
 use frunk::{coproduct::CNil, Coproduct};
-use futures::{future::Either, FutureExt};
+use futures::{future::Either, stream::BoxStream, FutureExt};
 use static_assertions::assert_obj_safe;
-use swim_api::{
-    agent::AgentContext,
-    downlink::{Downlink, DownlinkConfig},
-    error::AgentRuntimeError,
-};
+use swim_api::{agent::AgentContext, error::AgentRuntimeError};
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_model::address::Address;
 use swim_recon::parser::{AsyncParseError, RecognizerDecoder};
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::{
+    io::byte_channel::{ByteReader, ByteWriter},
+    routing::uri::RelativeUri,
+};
 use thiserror::Error;
 use tokio_util::codec::Decoder;
 
 use crate::{
-    agent_model::downlink::{
-        handlers::{BoxDownlinkChannel, DownlinkChannel},
-        RegisterChannel,
-    },
+    agent_model::downlink::{handlers::BoxDownlinkChannel, RegisterHostedDownlink},
     meta::AgentMetadata,
 };
 
@@ -44,32 +40,39 @@ mod tests;
 
 pub use suspend::{HandlerFuture, Spawner, Suspend};
 
+pub type WriteStream = BoxStream<'static, Result<(), std::io::Error>>;
+
 pub trait DownlinkSpawner<Context> {
     fn spawn_downlink(
         &self,
         dl_channel: BoxDownlinkChannel<Context>,
+        dl_writer: WriteStream,
     ) -> Result<(), AgentRuntimeError>;
 }
 
-impl<Context> DownlinkSpawner<Context> for RefCell<Vec<BoxDownlinkChannel<Context>>> {
+impl<Context> DownlinkSpawner<Context>
+    for RefCell<Vec<(BoxDownlinkChannel<Context>, WriteStream)>>
+{
     fn spawn_downlink(
         &self,
         dl_channel: BoxDownlinkChannel<Context>,
+        dl_writer: WriteStream,
     ) -> Result<(), AgentRuntimeError> {
-        self.borrow_mut().push(dl_channel);
+        self.borrow_mut().push((dl_channel, dl_writer));
         Ok(())
     }
 }
 
 impl<F, Context> DownlinkSpawner<Context> for F
 where
-    F: Fn(BoxDownlinkChannel<Context>) -> Result<(), AgentRuntimeError>,
+    F: Fn(BoxDownlinkChannel<Context>, WriteStream) -> Result<(), AgentRuntimeError>,
 {
     fn spawn_downlink(
         &self,
         dl_channel: BoxDownlinkChannel<Context>,
+        dl_writer: WriteStream,
     ) -> Result<(), AgentRuntimeError> {
-        (*self)(dl_channel)
+        (*self)(dl_channel, dl_writer)
     }
 }
 
@@ -101,8 +104,9 @@ impl<'a, Context> DownlinkSpawner<Context> for ActionContext<'a, Context> {
     fn spawn_downlink(
         &self,
         dl_channel: BoxDownlinkChannel<Context>,
+        dl_writer: BoxStream<'static, Result<(), std::io::Error>>,
     ) -> Result<(), AgentRuntimeError> {
-        self.downlink.spawn_downlink(dl_channel)
+        self.downlink.spawn_downlink(dl_channel, dl_writer)
     }
 }
 
@@ -119,34 +123,40 @@ impl<'a, Context> ActionContext<'a, Context> {
         }
     }
 
-    pub(crate) fn start_downlink<S, D, C, F, H>(
+    pub(crate) fn start_downlink<S, F, G, OnDone, H>(
         &self,
         path: Address<S>,
-        config: DownlinkConfig,
-        downlink: D,
-        channel: C,
-        on_done: F,
+        make_channel: F,
+        make_write_stream: G,
+        on_done: OnDone,
     ) where
+        Context: 'static,
         S: AsRef<str>,
-        D: Downlink + Send + 'static,
-        C: DownlinkChannel<Context> + Send + 'static,
-        F: FnOnce(Result<(), AgentRuntimeError>) -> H + Send + 'static,
-        H: EventHandler<Context> + 'static,
+        F: FnOnce(ByteReader) -> BoxDownlinkChannel<Context> + Send + 'static,
+        G: FnOnce(ByteWriter) -> WriteStream + Send + 'static,
+        OnDone: FnOnce(Result<(), AgentRuntimeError>) -> H + Send + 'static,
+        H: EventHandler<Context> + Send + 'static,
     {
         let Address { host, node, lane } = path;
-        let external = self.agent_context.open_downlink(
+        let external = self.agent_context.open_downlink_new(
             host.as_ref().map(AsRef::as_ref),
             node.as_ref(),
             lane.as_ref(),
-            config,
-            Box::new(downlink),
         );
         let fut = external
             .map(move |result| {
-                if let Err(e) = result {
-                    on_done(Err(e)).boxed()
-                } else {
-                    RegisterChannel::new(channel).and_then(on_done).boxed()
+                match result {
+                    Ok((writer, reader)) => {
+                        let channel = make_channel(reader);
+                        let write_stream = make_write_stream(writer);
+                        HandlerActionExt::and_then(
+                            RegisterHostedDownlink::new(channel, write_stream),
+                            on_done,
+                        )
+                        .boxed()
+                        //RegisterHostedDownlink::new(channel, write_stream).and_then(on_done).boxed()
+                    }
+                    Err(e) => on_done(Err(e)).boxed(),
                 }
             })
             .boxed();

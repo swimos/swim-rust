@@ -17,6 +17,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use bytes::BytesMut;
+use futures::stream::BoxStream;
 use futures::FutureExt;
 use futures::{
     future::{BoxFuture, Either},
@@ -37,7 +38,7 @@ use swim_utilities::{
 use uuid::Uuid;
 
 use crate::agent_lifecycle::lane_event::LaneEvent;
-use crate::event_handler::{ActionContext, BoxEventHandler, HandlerFuture};
+use crate::event_handler::{ActionContext, BoxEventHandler, HandlerFuture, WriteStream};
 use crate::{
     agent_lifecycle::AgentLifecycle,
     event_handler::{EventHandler, EventHandlerError, HandlerAction, StepResult},
@@ -203,7 +204,7 @@ enum TaskEvent<LaneModel> {
         handler: BoxEventHandler<'static, LaneModel>,
     },
     DownlinkReady {
-        downlink_result: Option<BoxDownlinkChannel<LaneModel>>,
+        downlink_event: Option<(HostedDownlink<LaneModel>, HostedDownlinkEvent)>,
     },
     ValueRequest {
         id: u64,
@@ -219,13 +220,58 @@ enum TaskEvent<LaneModel> {
     },
 }
 
-async fn wait_on_downlink<Context>(
-    mut channel: BoxDownlinkChannel<Context>,
-) -> Option<BoxDownlinkChannel<Context>> {
-    if channel.await_ready().await {
-        Some(channel)
-    } else {
-        None
+struct HostedDownlink<Context> {
+    channel: BoxDownlinkChannel<Context>,
+    write_stream: Option<BoxStream<'static, Result<(), std::io::Error>>>,
+}
+
+impl<Context> HostedDownlink<Context> {
+    fn new(
+        channel: BoxDownlinkChannel<Context>,
+        write_stream: BoxStream<'static, Result<(), std::io::Error>>,
+    ) -> Self {
+        HostedDownlink {
+            channel,
+            write_stream: Some(write_stream),
+        }
+    }
+}
+
+enum HostedDownlinkEvent {
+    WriterFailed(std::io::Error),
+    Written,
+    WriterTerminated,
+    HandlerReady,
+}
+
+impl<Context> HostedDownlink<Context> {
+    async fn wait_on_downlink(mut self) -> Option<(Self, HostedDownlinkEvent)> {
+        let HostedDownlink {
+            channel,
+            write_stream,
+        } = &mut self;
+
+        let next = if let Some(out) = write_stream.as_mut() {
+            tokio::select! {
+                handler_ready = channel.await_ready() => Either::Left(handler_ready),
+                maybe_result = out.next() => Either::Right(maybe_result),
+            }
+        } else {
+            Either::Left(channel.await_ready().await)
+        };
+
+        match next {
+            Either::Left(handler_ready) if handler_ready => {
+                Some((self, HostedDownlinkEvent::HandlerReady))
+            }
+            Either::Right(Some(Ok(_))) => Some((self, HostedDownlinkEvent::Written)),
+            Either::Right(Some(Err(e))) => Some((self, HostedDownlinkEvent::WriterFailed(e))),
+            Either::Right(_) => {
+                *write_stream = None;
+                Some((self, HostedDownlinkEvent::WriterTerminated))
+            }
+            _ => None,
+        }
     }
 }
 
@@ -320,7 +366,7 @@ struct AgentTask<LaneModel, Lifecycle> {
     value_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
     map_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
     suspended: FuturesUnordered<HandlerFuture<LaneModel>>,
-    downlink_channels: Vec<BoxDownlinkChannel<LaneModel>>,
+    downlink_channels: Vec<(BoxDownlinkChannel<LaneModel>, WriteStream)>,
 }
 
 impl<LaneModel, Lifecycle> AgentTask<LaneModel, Lifecycle>
@@ -361,8 +407,9 @@ where
         let mut downlinks = FuturesUnordered::new();
 
         // Start waiting on downlinks from the init phase.
-        for channel in downlink_channels {
-            downlinks.push(wait_on_downlink(channel));
+        for (channel, write_stream) in downlink_channels {
+            let dl = HostedDownlink::new(channel, write_stream);
+            downlinks.push(dl.wait_on_downlink());
         }
 
         // Set up readers and writes for each lane.
@@ -388,7 +435,7 @@ where
                         maybe_suspended.map(|handler| TaskEvent::SuspendedComplete { handler })
                     }
                     maybe_downlink = downlinks.next(), if !downlinks.is_empty() => {
-                        maybe_downlink.map(|downlink_result| TaskEvent::DownlinkReady { downlink_result })
+                        maybe_downlink.map(|downlink_event| TaskEvent::DownlinkReady { downlink_event })
                     }
                     maybe_req = lane_readers.next() => {
                         maybe_req.map(|req| {
@@ -426,8 +473,9 @@ where
                     }
                 }
             };
-            let add_downlink = |dl| {
-                downlinks.push(wait_on_downlink(dl));
+            let add_downlink = |channel, write_stream| {
+                let dl = HostedDownlink::new(channel, write_stream);
+                downlinks.push(dl.wait_on_downlink());
                 Ok(())
             };
             match task_event {
@@ -450,22 +498,29 @@ where
                         break Err(AgentTaskError::UserCodeError(Box::new(e)));
                     }
                 }
-                TaskEvent::DownlinkReady { downlink_result } => {
-                    if let Some(mut downlink) = downlink_result {
-                        if let Some(handler) = downlink.next_event(&lane_model) {
-                            if let Err(e) = run_handler(
-                                ActionContext::new(&suspended, &*context, &add_downlink),
-                                meta,
-                                &lane_model,
-                                &lifecycle,
-                                handler,
-                                &lane_ids,
-                                &mut dirty_lanes,
-                            ) {
-                                break Err(AgentTaskError::UserCodeError(Box::new(e)));
+                TaskEvent::DownlinkReady { downlink_event } => {
+                    if let Some((mut downlink, event)) = downlink_event {
+                        match event {
+                            HostedDownlinkEvent::WriterFailed(_) => todo!(),
+                            HostedDownlinkEvent::WriterTerminated => todo!(),
+                            HostedDownlinkEvent::HandlerReady => {
+                                if let Some(handler) = downlink.channel.next_event(&lane_model) {
+                                    if let Err(e) = run_handler(
+                                        ActionContext::new(&suspended, &*context, &add_downlink),
+                                        meta,
+                                        &lane_model,
+                                        &lifecycle,
+                                        handler,
+                                        &lane_ids,
+                                        &mut dirty_lanes,
+                                    ) {
+                                        break Err(AgentTaskError::UserCodeError(Box::new(e)));
+                                    }
+                                }
                             }
+                            _ => {}
                         }
-                        downlinks.push(wait_on_downlink(downlink));
+                        downlinks.push(downlink.wait_on_downlink());
                     }
                 }
                 TaskEvent::ValueRequest { id, request } => {
@@ -566,7 +621,7 @@ where
         }?;
         // Try to run the `on_stop` handler before we stop.
         let on_stop_handler = lifecycle.on_stop();
-        let discard = |_| Err(AgentRuntimeError::Stopping);
+        let discard = |_, _| Err(AgentRuntimeError::Stopping);
         if let Err(e) = run_handler(
             ActionContext::new(&suspended, &*context, &discard),
             meta,

@@ -84,6 +84,18 @@ pub trait AgentContext: Sync {
     /// * `config` - The configuration for the downlink.
     /// * `host` - The host containing the node.
     /// * `node` - The node URI for the agent.
+    fn open_downlink_new(
+        &self,
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>>;
+
+    /// Open a downlink to a lane on another agent.
+    /// #Arguments
+    /// * `config` - The configuration for the downlink.
+    /// * `host` - The host containing the node.
+    /// * `node` - The node URI for the agent.
     /// * `lane` - The name of the lane.
     /// * `downlink` - Downlink implementation.
     fn open_downlink(

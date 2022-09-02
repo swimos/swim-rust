@@ -156,7 +156,7 @@ where
 
 pub fn value_dl_write_stream<T>(
     writer: FramedWrite<ByteWriter, WithLengthBytesCodec>,
-    rx: watch::Receiver<T>,
+    rx: watch::Receiver<Option<T>>,
 ) -> impl Stream<Item = Result<(), std::io::Error>> + Send + 'static
 where
     T: StructuralWritable + Send + Sync + 'static,
@@ -168,15 +168,21 @@ where
         if rx.changed().await.is_err() {
             None
         } else {
-            buffer.clear();
-            {
-                //This block is required for the Send check on this async future to pass.
-                let body_ref = rx.borrow();
-                write!(&mut buffer, "{}", print_recon_compact(&*body_ref))
-                    .expect("Writing to Recon should be infallible.");
+            loop {
+                buffer.clear();
+                {
+                    //This block is required for the Send check on this async future to pass.
+                    let body_ref = rx.borrow();
+                    if let Some(value) = &*body_ref {
+                        write!(&mut buffer, "{}", print_recon_compact(value))
+                            .expect("Writing to Recon should be infallible.");
+                    } else {
+                        continue;
+                    }
+                }
+                let result = writer.send(buffer.as_ref()).await;
+                break Some((result, (writer, rx, buffer)));
             }
-            let result = writer.send(buffer.as_ref()).await;
-            Some((result, (writer, rx, buffer)))
         }
     })
 }

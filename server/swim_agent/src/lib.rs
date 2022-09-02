@@ -57,13 +57,16 @@ mod test_context {
 
     use crate::{
         agent_model::downlink::handlers::BoxDownlinkChannel,
-        event_handler::{ActionContext, HandlerFuture, Spawner},
+        event_handler::{ActionContext, HandlerFuture, Spawner, WriteStream},
     };
 
     struct NoSpawn;
     pub struct DummyAgentContext;
 
-    pub fn no_downlink<Context>(_dl: BoxDownlinkChannel<Context>) -> Result<(), AgentRuntimeError> {
+    pub fn no_downlink<Context>(
+        _dl: BoxDownlinkChannel<Context>,
+        _write_stream: WriteStream,
+    ) -> Result<(), AgentRuntimeError> {
         panic!("Launching downlinks no supported.");
     }
 
@@ -98,6 +101,15 @@ mod test_context {
             _config: DownlinkConfig,
             _downlink: Box<dyn Downlink + Send>,
         ) -> BoxFuture<'static, Result<(), AgentRuntimeError>> {
+            panic!("Dummy context used.");
+        }
+
+        fn open_downlink_new(
+            &self,
+            _host: Option<&str>,
+            _node: &str,
+            _lane: &str,
+        ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
             panic!("Dummy context used.");
         }
     }

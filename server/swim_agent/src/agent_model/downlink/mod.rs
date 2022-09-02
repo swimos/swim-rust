@@ -12,30 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod bridge;
 pub mod handlers;
 pub mod hosted;
 
-use std::{marker::PhantomData, num::NonZeroUsize};
+use std::{cell::RefCell, marker::PhantomData};
 
-use futures::FutureExt;
-use swim_api::{downlink::DownlinkConfig, error::AgentRuntimeError};
+use futures::StreamExt;
+use swim_api::error::AgentRuntimeError;
 use swim_form::Form;
 use swim_model::{address::Address, Text};
-use tokio::sync::mpsc;
+use tokio::sync::watch;
+use tokio_util::codec::FramedWrite;
 use tracing::error;
 
 use crate::{
-    agent_model::downlink::handlers::{DownlinkChannel, DownlinkChannelExt},
+    agent_model::downlink::handlers::DownlinkChannelExt,
     downlink_lifecycle::value::ValueDownlinkLifecycle,
     event_handler::{
-        ActionContext, DownlinkSpawner, EventHandlerExt, Fail, HandlerAction, Spawner, StepResult,
-        UnitHandler,
+        ActionContext, DownlinkSpawner, HandlerAction, StepResult, UnitHandler, WriteStream,
     },
     meta::AgentMetadata,
 };
 
-use self::{bridge::make_downlink, handlers::ValueDownlinkEndpoint};
+use self::{
+    handlers::BoxDownlinkChannel,
+    hosted::{value_dl_write_stream, HostedValueDownlinkChannel},
+};
 
 pub enum DownlinkMessage<T> {
     Linked,
@@ -54,19 +56,10 @@ struct Inner<LC> {
 pub struct OpenValueDownlink<T, LC> {
     _type: PhantomData<fn(T) -> T>,
     inner: Option<Inner<LC>>,
-    config: DownlinkConfig,
-    channel_size: NonZeroUsize,
 }
 
 impl<T, LC> OpenValueDownlink<T, LC> {
-    pub fn new(
-        host: Option<Text>,
-        node: Text,
-        lane: Text,
-        lifecycle: LC,
-        config: DownlinkConfig,
-        channel_size: NonZeroUsize,
-    ) -> Self {
+    pub fn new(host: Option<Text>, node: Text, lane: Text, lifecycle: LC) -> Self {
         OpenValueDownlink {
             _type: PhantomData,
             inner: Some(Inner {
@@ -75,73 +68,30 @@ impl<T, LC> OpenValueDownlink<T, LC> {
                 lane,
                 lifecycle,
             }),
-            config,
-            channel_size,
         }
     }
 }
 
 pub struct ValueDownlinkHandle<T> {
-    sender: mpsc::Sender<T>,
+    sender: watch::Sender<Option<T>>,
 }
 
 impl<T> ValueDownlinkHandle<T> {
-    pub async fn set_direct(&self, value: T) -> Result<(), AgentRuntimeError> {
-        self.sender.send(value).await?;
-        Ok(())
-    }
-
-    pub fn set(&self, value: T) -> DownlinkSend<'_, T> {
-        DownlinkSend {
-            handle: self,
-            value: Some(value),
-        }
-    }
-}
-
-pub struct DownlinkSend<'a, T> {
-    handle: &'a ValueDownlinkHandle<T>,
-    value: Option<T>,
-}
-
-impl<'a, T, Context> HandlerAction<Context> for DownlinkSend<'a, T>
-where
-    T: Send + 'static,
-{
-    type Completion = ();
-
-    fn step(
-        &mut self,
-        action_context: ActionContext<Context>,
-        _meta: AgentMetadata,
-        _context: &Context,
-    ) -> StepResult<Self::Completion> {
-        let DownlinkSend { handle, value } = self;
-        if let Some(value) = value.take() {
-            let tx = handle.sender.clone();
-            let fut = async move {
-                let result = tx
-                    .send(value)
-                    .await
-                    .map_err(|_| AgentRuntimeError::Stopping);
-                Fail::new(result).boxed()
-            };
-            action_context.spawn_suspend(fut.boxed());
-            StepResult::done(())
-        } else {
-            StepResult::after_done()
-        }
-    }
-}
-
-impl<T> ValueDownlinkHandle<T> {
-    pub fn new(sender: mpsc::Sender<T>) -> Self {
+    fn new(sender: watch::Sender<Option<T>>) -> Self {
         ValueDownlinkHandle { sender }
+    }
+}
+
+impl<T> ValueDownlinkHandle<T> {
+    pub fn set(&self, value: T) -> Result<(), AgentRuntimeError> {
+        self.sender.send(Some(value))?;
+        Ok(())
     }
 }
 
 impl<T, LC, Context> HandlerAction<Context> for OpenValueDownlink<T, LC>
 where
+    Context: 'static,
     T: Form + Clone + Send + Sync + 'static,
     LC: ValueDownlinkLifecycle<T, Context> + Send + 'static,
     T::Rec: Send,
@@ -154,12 +104,7 @@ where
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
-        let OpenValueDownlink {
-            inner,
-            config,
-            channel_size,
-            ..
-        } = self;
+        let OpenValueDownlink { inner, .. } = self;
         if let Some(Inner {
             host,
             node,
@@ -167,19 +112,24 @@ where
             lifecycle,
         }) = inner.take()
         {
-            let (bridge_tx, bridge_rx) = mpsc::channel(channel_size.get());
-            let (set_tx, set_rx) = mpsc::channel(channel_size.get());
-            let downlink = make_downlink(bridge_tx, set_rx);
-            let endpoint = ValueDownlinkEndpoint::new(bridge_rx, lifecycle);
-
-            let handle = ValueDownlinkHandle::new(set_tx);
             let path = Address::new(host, node, lane);
-            action_context.start_downlink(path, *config, downlink, endpoint, move |result| {
-                if let Err(err) = result {
-                    error!(error = %err, "Registering downlink failed.");
-                }
-                UnitHandler::default()
-            });
+            let state: RefCell<Option<T>> = Default::default();
+            let (tx, rx) = watch::channel::<Option<T>>(None);
+            action_context.start_downlink(
+                path,
+                move |reader| HostedValueDownlinkChannel::new(reader, lifecycle, state).boxed(),
+                move |writer| {
+                    let writer = FramedWrite::new(writer, Default::default());
+                    value_dl_write_stream(writer, rx).boxed()
+                },
+                |result| {
+                    if let Err(err) = result {
+                        error!(error = %err, "Registering downlink failed.");
+                    }
+                    UnitHandler::default()
+                },
+            );
+            let handle = ValueDownlinkHandle::new(tx);
             StepResult::done(handle)
         } else {
             StepResult::after_done()
@@ -187,22 +137,27 @@ where
     }
 }
 
-pub struct RegisterChannel<C> {
-    channel: Option<C>,
+struct RegInner<Context> {
+    channel: BoxDownlinkChannel<Context>,
+    write_stream: WriteStream,
 }
 
-impl<C> RegisterChannel<C> {
-    pub fn new(channel: C) -> Self {
-        RegisterChannel {
-            channel: Some(channel),
+pub struct RegisterHostedDownlink<Context> {
+    inner: Option<RegInner<Context>>,
+}
+
+impl<Context> RegisterHostedDownlink<Context> {
+    pub fn new(channel: BoxDownlinkChannel<Context>, write_stream: WriteStream) -> Self {
+        RegisterHostedDownlink {
+            inner: Some(RegInner {
+                channel,
+                write_stream,
+            }),
         }
     }
 }
 
-impl<C, Context> HandlerAction<Context> for RegisterChannel<C>
-where
-    C: DownlinkChannel<Context> + Send + 'static,
-{
+impl<Context> HandlerAction<Context> for RegisterHostedDownlink<Context> {
     type Completion = Result<(), AgentRuntimeError>;
 
     fn step(
@@ -211,9 +166,13 @@ where
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
-        let RegisterChannel { channel } = self;
-        if let Some(channel) = channel.take() {
-            StepResult::done(action_context.spawn_downlink(channel.boxed()))
+        let RegisterHostedDownlink { inner } = self;
+        if let Some(RegInner {
+            channel,
+            write_stream,
+        }) = inner.take()
+        {
+            StepResult::done(action_context.spawn_downlink(channel, write_stream))
         } else {
             StepResult::after_done()
         }

@@ -16,7 +16,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use parking_lot::Mutex;
 use swim_agent::agent_model::downlink::handlers::BoxDownlinkChannel;
-use swim_agent::event_handler::{HandlerFuture, Spawner};
+use swim_agent::event_handler::{HandlerFuture, Spawner, WriteStream};
 use swim_agent::lifecycle;
 use swim_agent::{
     agent_lifecycle::{
@@ -46,7 +46,10 @@ pub struct DummyAgentContext;
 
 const NO_SPAWN: NoSpawn = NoSpawn;
 const NO_AGENT: DummyAgentContext = DummyAgentContext;
-pub fn no_downlink<Context>(_dl: BoxDownlinkChannel<Context>) -> Result<(), AgentRuntimeError> {
+pub fn no_downlink<Context>(
+    _dl: BoxDownlinkChannel<Context>,
+    _write_stream: WriteStream,
+) -> Result<(), AgentRuntimeError> {
     panic!("Launching downlinks no supported.");
 }
 
@@ -78,6 +81,15 @@ impl AgentContext for DummyAgentContext {
         _config: DownlinkConfig,
         _downlink: Box<dyn Downlink + Send>,
     ) -> BoxFuture<'static, Result<(), AgentRuntimeError>> {
+        panic!("Dummy context used.");
+    }
+
+    fn open_downlink_new(
+        &self,
+        _host: Option<&str>,
+        _node: &str,
+        _lane: &str,
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
         panic!("Dummy context used.");
     }
 }

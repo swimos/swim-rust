@@ -102,4 +102,13 @@ impl AgentContext for TestAgentContext {
     ) -> BoxFuture<'static, Result<(), AgentRuntimeError>> {
         panic!("Opening downlinks from agents not yet supported.")
     }
+
+    fn open_downlink_new(
+        &self,
+        _host: Option<&str>,
+        _node: &str,
+        _lane: &str,
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
+        panic!("Opening downlinks from agents not yet supported.")
+    }
 }
