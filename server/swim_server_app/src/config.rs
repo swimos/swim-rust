@@ -87,7 +87,8 @@ impl Default for SwimServerConfig {
                 empty_timeout: DEFAULT_TIMEOUT,
                 attachment_queue_size: DEFAULT_CHANNEL_SIZE,
                 abort_on_bad_frames: true,
-                buffer_size: DEFAULT_BUFFER_SIZE,
+                remote_buffer_size: DEFAULT_BUFFER_SIZE,
+                downlink_buffer_size: DEFAULT_BUFFER_SIZE,
             },
             client_request_channel_size: DEFAULT_CHANNEL_SIZE,
         }

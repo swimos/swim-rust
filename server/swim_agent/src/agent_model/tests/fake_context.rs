@@ -21,7 +21,7 @@ use futures::{
 use parking_lot::Mutex;
 use swim_api::{
     agent::{AgentContext, LaneConfig, UplinkKind},
-    downlink::{Downlink, DownlinkConfig},
+    downlink::DownlinkKind,
     error::AgentRuntimeError,
 };
 use swim_utilities::{
@@ -97,17 +97,7 @@ impl AgentContext for TestAgentContext {
         _host: Option<&str>,
         _node: &str,
         _lane: &str,
-        _config: DownlinkConfig,
-        _downlink: Box<dyn Downlink + Send>,
-    ) -> BoxFuture<'static, Result<(), AgentRuntimeError>> {
-        panic!("Opening downlinks from agents not yet supported.")
-    }
-
-    fn open_downlink_new(
-        &self,
-        _host: Option<&str>,
-        _node: &str,
-        _lane: &str,
+        _kind: DownlinkKind,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
         panic!("Opening downlinks from agents not yet supported.")
     }

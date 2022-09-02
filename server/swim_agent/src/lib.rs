@@ -50,7 +50,7 @@ mod test_context {
     use futures::future::BoxFuture;
     use swim_api::{
         agent::{AgentContext, LaneConfig, UplinkKind},
-        downlink::{Downlink, DownlinkConfig},
+        downlink::DownlinkKind,
         error::AgentRuntimeError,
     };
     use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
@@ -98,17 +98,7 @@ mod test_context {
             _host: Option<&str>,
             _node: &str,
             _lane: &str,
-            _config: DownlinkConfig,
-            _downlink: Box<dyn Downlink + Send>,
-        ) -> BoxFuture<'static, Result<(), AgentRuntimeError>> {
-            panic!("Dummy context used.");
-        }
-
-        fn open_downlink_new(
-            &self,
-            _host: Option<&str>,
-            _node: &str,
-            _lane: &str,
+            _kind: DownlinkKind,
         ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
             panic!("Dummy context used.");
         }

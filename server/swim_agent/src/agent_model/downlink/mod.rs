@@ -18,7 +18,7 @@ pub mod hosted;
 use std::{cell::RefCell, marker::PhantomData};
 
 use futures::StreamExt;
-use swim_api::error::AgentRuntimeError;
+use swim_api::{downlink::DownlinkKind, error::AgentRuntimeError};
 use swim_form::Form;
 use swim_model::{address::Address, Text};
 use tokio::sync::watch;
@@ -117,6 +117,7 @@ where
             let (tx, rx) = watch::channel::<Option<T>>(None);
             action_context.start_downlink(
                 path,
+                DownlinkKind::Value,
                 move |reader| HostedValueDownlinkChannel::new(reader, lifecycle, state).boxed(),
                 move |writer| {
                     let writer = FramedWrite::new(writer, Default::default());

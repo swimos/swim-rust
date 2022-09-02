@@ -20,13 +20,14 @@ pub use connector::{downlink_task_connector, DlTaskRequest, DownlinksConnector, 
 use std::{
     collections::{hash_map::Entry, HashMap},
     net::SocketAddr,
+    num::NonZeroUsize,
 };
 
 use futures::{stream::FuturesUnordered, Future, FutureExt, StreamExt};
 pub use pending::{DlKey, PendingDownlinks};
 use swim_api::{
     downlink::DownlinkKind,
-    error::{AgentRuntimeError, DownlinkFailureReason, DownlinkTaskError},
+    error::{AgentRuntimeError, DownlinkFailureReason},
 };
 use swim_model::{address::RelativeAddress, Text};
 use swim_remote::AttachClient;
@@ -34,8 +35,7 @@ use swim_runtime::{
     agent::DownlinkRequest,
     downlink::{
         failure::{AlwaysAbortStrategy, AlwaysIgnoreStrategy, ReportStrategy},
-        AttachAction, DownlinkOptions, DownlinkRuntimeConfig, MapDownlinkRuntime,
-        ValueDownlinkRuntime,
+        AttachAction, DownlinkRuntimeConfig, Io, MapDownlinkRuntime, ValueDownlinkRuntime,
     },
     remote::{table::SchemeHostPort, BadUrl, ExternalConnections, SchemeSocketAddr},
 };
@@ -44,7 +44,10 @@ use swim_utilities::{
     trigger,
 };
 use thiserror::Error;
-use tokio::{sync::mpsc, task::JoinError};
+use tokio::{
+    sync::{mpsc, oneshot},
+    task::JoinError,
+};
 use url::Url;
 use uuid::Uuid;
 
@@ -81,8 +84,9 @@ enum Event {
         key: DlKey,
         result: Result<(), JoinError>,
     },
-    Terminated {
-        result: Result<Result<(), DownlinkTaskError>, JoinError>,
+    Attached {
+        promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
+        result: Result<Io, AgentRuntimeError>,
     },
 }
 
@@ -186,7 +190,14 @@ where
                                 RelativeAddress::new(addr.node.clone(), addr.lane.clone());
                             let key = (rel_addr, *kind);
                             if let Some(attach_tx) = local_handle.get(&key) {
-                                tasks.push(run_downlink(request, attach_tx.clone()).boxed());
+                                tasks.push(
+                                    run_downlink(
+                                        request,
+                                        attach_tx.clone(),
+                                        config.downlink_buffer_size,
+                                    )
+                                    .boxed(),
+                                );
                             } else {
                                 pending.push_local(request);
                                 let identity = id_issuer.next_id();
@@ -216,8 +227,14 @@ where
                             for (key, requests) in waiting_map {
                                 if let Some(attach_tx) = handle.get(&key) {
                                     for request in requests {
-                                        tasks
-                                            .push(run_downlink(request, attach_tx.clone()).boxed());
+                                        tasks.push(
+                                            run_downlink(
+                                                request,
+                                                attach_tx.clone(),
+                                                config.downlink_buffer_size,
+                                            )
+                                            .boxed(),
+                                        );
                                     }
                                 } else {
                                     pending.push_for_socket(addr, key.clone(), requests);
@@ -333,7 +350,14 @@ where
                             );
 
                             for request in pending.dl_ready(remote_address, &key) {
-                                tasks.push(run_downlink(request, attach_tx.clone()).boxed());
+                                tasks.push(
+                                    run_downlink(
+                                        request,
+                                        attach_tx.clone(),
+                                        config.downlink_buffer_size,
+                                    )
+                                    .boxed(),
+                                );
                             }
                         } else {
                             for DownlinkRequest { promise, .. } in
@@ -368,6 +392,11 @@ where
                             }
                         }
                     }
+                    Event::Attached { promise, result } => {
+                        if promise.send(result).is_err() {
+                            //TODO log error.
+                        }
+                    }
                     Event::RuntimeTerminated {
                         socket_addr,
                         key,
@@ -388,11 +417,6 @@ where
                             //TODO Log error.
                         }
                     }
-                    Event::Terminated { result } => {
-                        if result.is_err() {
-                            //TODO Log error.
-                        }
-                    }
                 }
             }
             connector
@@ -401,9 +425,6 @@ where
         while let Some(event) = tasks.next().await {
             match event {
                 Event::RuntimeTerminated { result: Err(_), .. } => {
-                    //TODO Log error.
-                }
-                Event::Terminated { result: Err(_), .. } => {
                     //TODO Log error.
                 }
                 _ => continue,
@@ -434,32 +455,24 @@ fn process_host(host: &str) -> Result<SchemeHostPort, BadHost> {
     Ok(SchemeHostPort::try_from(&url)?)
 }
 
-async fn run_downlink(request: DownlinkRequest, attach_tx: mpsc::Sender<AttachAction>) -> Event {
+async fn run_downlink(
+    request: DownlinkRequest,
+    attach_tx: mpsc::Sender<AttachAction>,
+    buffer_size: NonZeroUsize,
+) -> Event {
     let DownlinkRequest {
-        key: (path, _),
-        config,
-        downlink,
-        promise,
+        promise, options, ..
     } = request;
-    let (in_tx, in_rx) = byte_channel(config.buffer_size);
-    let (out_tx, out_rx) = byte_channel(config.buffer_size);
-    if attach_tx
-        .send(AttachAction::new(out_rx, in_tx, DownlinkOptions::empty()))
+    let (in_tx, in_rx) = byte_channel(buffer_size);
+    let (out_tx, out_rx) = byte_channel(buffer_size);
+    let result = attach_tx
+        .send(AttachAction::new(out_rx, in_tx, options))
         .await
-        .is_err()
-    {
-        Event::Terminated {
-            result: Ok(Err(DownlinkTaskError::FailedToStart)),
-        }
-    } else if promise.send(Ok(())).is_ok() {
-        let result = tokio::spawn(downlink.run_boxed(path, config, in_rx, out_tx)).await;
-        Event::Terminated { result }
-    } else {
-        //TODO todo!("Log error.");
-        Event::Terminated {
-            result: Ok(Err(DownlinkTaskError::FailedToStart)),
-        }
-    }
+        .map(move |_| (out_tx, in_rx))
+        .map_err(|_| {
+            AgentRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::ConnectionFailed)
+        });
+    Event::Attached { promise, result }
 }
 
 async fn start_downlink_runtime(
@@ -470,8 +483,8 @@ async fn start_downlink_runtime(
     config: DownlinkRuntimeConfig,
 ) -> Event {
     let (rel_addr, kind) = key;
-    let (in_tx, in_rx) = byte_channel(config.buffer_size);
-    let (out_tx, out_rx) = byte_channel(config.buffer_size);
+    let (in_tx, in_rx) = byte_channel(config.remote_buffer_size);
+    let (out_tx, out_rx) = byte_channel(config.remote_buffer_size);
     let (done_tx, done_rx) = trigger::trigger();
 
     let request = AttachClient::AttachDownlink {

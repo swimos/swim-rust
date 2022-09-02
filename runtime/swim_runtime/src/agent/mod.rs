@@ -18,7 +18,7 @@ use futures::{
 };
 use swim_api::{
     agent::{Agent, AgentConfig, AgentContext, LaneConfig, UplinkKind},
-    downlink::{Downlink, DownlinkConfig, DownlinkKind},
+    downlink::DownlinkKind,
     error::{AgentInitError, AgentRuntimeError, AgentTaskError},
 };
 use swim_model::{address::Address, Text};
@@ -38,30 +38,31 @@ use std::{
     time::Duration,
 };
 
+use crate::downlink::DownlinkOptions;
+
 use self::task::AgentInitTask;
 
 mod task;
 
 use task::AgentRuntimeRequest;
 
+#[derive(Debug)]
 pub struct DownlinkRequest {
     pub key: (Address<Text>, DownlinkKind),
-    pub config: DownlinkConfig,
-    pub downlink: Box<dyn Downlink + Send>,
-    pub promise: oneshot::Sender<Result<(), AgentRuntimeError>>,
+    pub options: DownlinkOptions,
+    pub promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
 }
 
 impl DownlinkRequest {
     pub fn new(
         path: Address<Text>,
-        config: DownlinkConfig,
-        downlink: Box<dyn Downlink + Send>,
-        promise: oneshot::Sender<Result<(), AgentRuntimeError>>,
+        kind: DownlinkKind,
+        options: DownlinkOptions,
+        promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
     ) -> Self {
         DownlinkRequest {
-            key: (path, downlink.kind()),
-            config,
-            downlink,
+            key: (path, kind),
+            options,
             promise,
         }
     }
@@ -109,9 +110,8 @@ impl AgentContext for AgentRuntimeContext {
         host: Option<&str>,
         node: &str,
         lane: &str,
-        config: DownlinkConfig,
-        downlink: Box<dyn Downlink + Send>,
-    ) -> BoxFuture<'static, Result<(), AgentRuntimeError>> {
+        kind: DownlinkKind,
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
         let host = host.map(Text::new);
         let node = Text::new(node);
         let lane = Text::new(lane);
@@ -121,23 +121,14 @@ impl AgentContext for AgentRuntimeContext {
             sender
                 .send(AgentRuntimeRequest::OpenDownlink(DownlinkRequest::new(
                     Address::new(host, node, lane),
-                    config,
-                    downlink,
+                    kind,
+                    DownlinkOptions::empty(),
                     tx,
                 )))
                 .await?;
             rx.await?
         }
         .boxed()
-    }
-
-    fn open_downlink_new(
-        &self,
-        _host: Option<&str>,
-        _node: &str,
-        _lane: &str,
-    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
-        todo!()
     }
 }
 

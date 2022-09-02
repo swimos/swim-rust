@@ -112,7 +112,9 @@ pub struct DownlinkRuntimeConfig {
     /// Abort the downlink on receiving invalid frames.
     pub abort_on_bad_frames: bool,
     /// Size of the buffers to communicated with the socket.
-    pub buffer_size: NonZeroUsize,
+    pub remote_buffer_size: NonZeroUsize,
+    /// Size of the buffers to communicate with the downlink implementation.
+    pub downlink_buffer_size: NonZeroUsize,
 }
 
 /// The runtime component for a value type downlink (i.e. value downlink, event downlink, etc.).

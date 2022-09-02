@@ -83,6 +83,7 @@ pub use init::AgentInitTask;
 mod tests;
 
 /// Type for requests that can be sent to the agent runtime task by an agent implementation.
+#[derive(Debug)]
 pub enum AgentRuntimeRequest {
     /// Attempt to open a new lane for the agent.
     AddLane {
@@ -93,33 +94,6 @@ pub enum AgentRuntimeRequest {
     },
     /// Attempt to open a downlink to a lane on another agent.
     OpenDownlink(DownlinkRequest),
-}
-
-impl Debug for AgentRuntimeRequest {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::AddLane {
-                name,
-                kind,
-                config,
-                promise,
-            } => f
-                .debug_struct("AddLane")
-                .field("name", name)
-                .field("kind", kind)
-                .field("config", config)
-                .field("promise", promise)
-                .finish(),
-            Self::OpenDownlink(DownlinkRequest {
-                config, promise, ..
-            }) => f
-                .debug_struct("OpenDownlink")
-                .field("config", config)
-                .field("downlink", &"[[dyn Downlink]]")
-                .field("promise", promise)
-                .finish(),
-        }
-    }
 }
 
 /// A labelled channel endpoint (or pair) for a lane.

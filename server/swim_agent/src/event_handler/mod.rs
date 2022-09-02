@@ -18,7 +18,7 @@ use bytes::BytesMut;
 use frunk::{coproduct::CNil, Coproduct};
 use futures::{future::Either, stream::BoxStream, FutureExt};
 use static_assertions::assert_obj_safe;
-use swim_api::{agent::AgentContext, error::AgentRuntimeError};
+use swim_api::{agent::AgentContext, downlink::DownlinkKind, error::AgentRuntimeError};
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_model::address::Address;
 use swim_recon::parser::{AsyncParseError, RecognizerDecoder};
@@ -126,6 +126,7 @@ impl<'a, Context> ActionContext<'a, Context> {
     pub(crate) fn start_downlink<S, F, G, OnDone, H>(
         &self,
         path: Address<S>,
+        kind: DownlinkKind,
         make_channel: F,
         make_write_stream: G,
         on_done: OnDone,
@@ -138,10 +139,11 @@ impl<'a, Context> ActionContext<'a, Context> {
         H: EventHandler<Context> + Send + 'static,
     {
         let Address { host, node, lane } = path;
-        let external = self.agent_context.open_downlink_new(
+        let external = self.agent_context.open_downlink(
             host.as_ref().map(AsRef::as_ref),
             node.as_ref(),
             lane.as_ref(),
+            kind,
         );
         let fut = external
             .map(move |result| {

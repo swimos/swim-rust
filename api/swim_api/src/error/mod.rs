@@ -66,6 +66,7 @@ pub enum DownlinkFailureReason {
     ConnectionFailed,
     WebsocketNegotiationFailed,
     RemoteStopped,
+    DownlinkStopped,
 }
 
 impl Display for DownlinkFailureReason {
@@ -83,6 +84,9 @@ impl Display for DownlinkFailureReason {
                     f,
                     "The remote client stopped while the downlink was starting."
                 )
+            }
+            DownlinkFailureReason::DownlinkStopped => {
+                write!(f, "The downlink runtime task stopped during attachment.")
             }
         }
     }
