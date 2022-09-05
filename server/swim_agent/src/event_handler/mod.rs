@@ -913,6 +913,7 @@ where
     }
 }
 
+/// [`HandlerAction`] that runs a sequence of [`EventHandler`]s.
 pub enum Sequentially<I: Iterator> {
     Init(I),
     Running(I, I::Item),

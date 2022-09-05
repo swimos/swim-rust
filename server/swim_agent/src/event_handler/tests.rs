@@ -21,7 +21,11 @@ use swim_recon::parser::AsyncParseError;
 use swim_utilities::routing::uri::RelativeUri;
 
 use crate::{
-    event_handler::{ConstHandler, EventHandlerError, GetAgentUri, HandlerActionExt, SideEffects},
+    event_handler::{
+        ConstHandler, EventHandlerError, EventHandlerExt, GetAgentUri, HandlerActionExt,
+        Sequentially, SideEffects,
+    },
+    lanes::{value::ValueLaneSet, ValueLane},
     meta::AgentMetadata,
     test_context::dummy_context,
 };
@@ -458,4 +462,65 @@ fn event_handler_error_display() {
 
     let string = format!("{}", EventHandlerError::IncompleteCommand);
     assert_eq!(string, "An incoming message was incomplete.");
+}
+
+#[test]
+fn sequentially_handler() {
+    let uri = make_uri();
+    let meta = make_meta(&uri);
+
+    let values = RefCell::new(vec![]);
+
+    struct TestAgent {
+        lane: ValueLane<i32>,
+    }
+
+    let set = ValueLaneSet::new(|agent: &TestAgent| &agent.lane, 5);
+    let effect1 = SideEffect::from(|| values.borrow_mut().push(1));
+    let effect2 = SideEffect::from(|| values.borrow_mut().push(2));
+
+    let handlers = vec![effect1.boxed(), set.boxed(), effect2.boxed()];
+
+    let mut handler = Sequentially::new(handlers);
+
+    let agent = TestAgent {
+        lane: ValueLane::new(0, 0),
+    };
+
+    let result = handler.step(dummy_context(), meta, &agent);
+    assert!(matches!(
+        result,
+        StepResult::Continue {
+            modified_lane: None
+        }
+    ));
+    assert_eq!(values.borrow().as_slice(), &[1]);
+
+    let result = handler.step(dummy_context(), meta, &agent);
+    assert!(matches!(
+        result,
+        StepResult::Continue {
+            modified_lane: Some(Modification {
+                lane_id: 0,
+                trigger_handler: true
+            })
+        }
+    ));
+    assert_eq!(values.borrow().as_slice(), &[1]);
+
+    let result = handler.step(dummy_context(), meta, &agent);
+    assert!(matches!(
+        result,
+        StepResult::Complete {
+            modified_lane: None,
+            ..
+        }
+    ));
+    assert_eq!(values.borrow().as_slice(), &[1, 2]);
+
+    let result = handler.step(dummy_context(), meta, &agent);
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
 }
