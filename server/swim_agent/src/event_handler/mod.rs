@@ -912,3 +912,77 @@ where
         }
     }
 }
+
+pub enum Sequentially<I: Iterator> {
+    Init(I),
+    Running(I, I::Item),
+    Done,
+}
+
+impl<I: Iterator> Sequentially<I> {
+    pub fn new<II: IntoIterator<IntoIter = I>>(it: II) -> Self {
+        Sequentially::Init(it.into_iter())
+    }
+}
+
+impl<I: Iterator> Default for Sequentially<I> {
+    fn default() -> Self {
+        Sequentially::Done
+    }
+}
+
+impl<I, H, Context> HandlerAction<Context> for Sequentially<I>
+where
+    I: Iterator<Item = H>,
+    H: EventHandler<Context>,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        action_context: ActionContext<Context>,
+        meta: AgentMetadata,
+        context: &Context,
+    ) -> StepResult<Self::Completion> {
+        loop {
+            match std::mem::take(self) {
+                Sequentially::Init(mut it) => {
+                    if let Some(h) = it.next() {
+                        *self = Sequentially::Running(it, h);
+                    } else {
+                        *self = Sequentially::Done;
+                        break StepResult::done(());
+                    }
+                }
+                Sequentially::Running(mut it, mut h) => {
+                    let result = h.step(action_context, meta, context);
+                    break match result {
+                        StepResult::Continue { modified_lane } => {
+                            *self = Sequentially::Running(it, h);
+                            StepResult::Continue { modified_lane }
+                        }
+                        StepResult::Fail(e) => {
+                            *self = Sequentially::Done;
+                            StepResult::Fail(e)
+                        }
+                        StepResult::Complete { modified_lane, .. } => {
+                            if let Some(h2) = it.next() {
+                                *self = Sequentially::Running(it, h2);
+                                StepResult::Continue { modified_lane }
+                            } else {
+                                *self = Sequentially::Done;
+                                StepResult::Complete {
+                                    modified_lane,
+                                    result: (),
+                                }
+                            }
+                        }
+                    };
+                }
+                Sequentially::Done => {
+                    break StepResult::after_done();
+                }
+            }
+        }
+    }
+}
