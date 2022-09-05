@@ -38,10 +38,11 @@ use crate::{
         ActionContext, AndThen, EventHandlerError, HandlerAction, HandlerActionExt, HandlerTrans,
         Modification, StepResult,
     },
+    event_queue::Action,
     meta::AgentMetadata,
 };
 
-use self::queues::{Action, ToWrite, WriteQueues};
+use self::queues::{ToWrite, WriteQueues};
 
 pub use event::MapLaneEvent;
 

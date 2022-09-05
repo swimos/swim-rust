@@ -69,32 +69,19 @@ fn write_recon_body<T: StructuralWritable>(dst: &mut BytesMut, body: &T) -> usiz
     body_offset
 }
 
-fn write_recon<T: StructuralWritable>(dst: &mut BytesMut, body: &T) {
+fn write_recon_with_len<T: StructuralWritable>(dst: &mut BytesMut, body: &T) {
     dst.reserve(LEN_SIZE);
     let body_len_offset = dst.remaining();
     dst.put_u64(0);
-    let body_offset = write_recon_body(dst, body);
-    let body_len = (dst.remaining() - body_offset) as u64;
+    let body_len = write_recon(dst, body);
     let mut rewound = &mut dst.as_mut()[body_len_offset..];
-    rewound.put_u64(body_len);
+    rewound.put_u64(body_len as u64);
 }
 
-fn write_recon_kv<K: StructuralWritable, V: StructuralWritable>(
-    dst: &mut BytesMut,
-    key: &K,
-    value: &V,
-) {
-    dst.reserve(2 * LEN_SIZE);
-    let header_offset = dst.remaining();
-    dst.put_u64(0);
-    dst.put_u64(0);
-    let key_offset = write_recon_body(dst, key);
-    let key_len = (dst.remaining() - key_offset) as u64;
-    let value_offset = write_recon_body(dst, value);
-    let value_len = (dst.remaining() - value_offset) as u64;
-    let mut rewound = &mut dst.as_mut()[header_offset..];
-    rewound.put_u64(key_len);
-    rewound.put_u64(value_len);
+fn write_recon<T: StructuralWritable>(dst: &mut BytesMut, body: &T) -> usize {
+    let body_offset = write_recon_body(dst, body);
+    let body_len = dst.remaining() - body_offset;
+    body_len
 }
 
 /// Codec that will encode a type as a Recon string, writing the length (as a 64 bit unigned integer)

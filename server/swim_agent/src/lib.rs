@@ -20,6 +20,7 @@ pub mod agent_lifecycle;
 pub mod agent_model;
 pub mod downlink_lifecycle;
 pub mod event_handler;
+mod event_queue;
 pub mod lanes;
 pub mod meta;
 

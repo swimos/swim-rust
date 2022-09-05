@@ -320,7 +320,7 @@ where
         dst: &mut bytes::BytesMut,
     ) -> Result<(), Self::Error> {
         let DownlinkOperation { body } = item;
-        super::write_recon(dst, &body);
+        super::write_recon_with_len(dst, &body);
         Ok(())
     }
 }
