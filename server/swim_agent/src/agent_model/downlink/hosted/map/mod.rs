@@ -17,20 +17,27 @@ use std::{
     collections::{BTreeSet, HashMap},
 };
 
-use futures::{future::BoxFuture, FutureExt, StreamExt};
+use futures::{
+    future::{select, BoxFuture, Either},
+    pin_mut,
+    stream::unfold,
+    FutureExt, SinkExt, Stream, StreamExt,
+};
 use std::hash::Hash;
 use swim_api::protocol::{
     downlink::{DownlinkNotification, MapNotificationDecoder},
-    map::MapMessage,
+    map::{MapMessage, MapOperation, MapOperationEncoder},
 };
-use swim_form::structural::read::recognizer::RecognizerReadable;
-use swim_utilities::io::byte_channel::ByteReader;
-use tokio_util::codec::FramedRead;
+use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
+use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use tokio::sync::mpsc;
+use tokio_util::codec::{FramedRead, FramedWrite};
 
 use crate::{
     agent_model::downlink::handlers::DownlinkChannel,
     downlink_lifecycle::map::MapDownlinkLifecycle,
     event_handler::{BoxEventHandler, EventHandlerExt, Sequentially},
+    event_queue::EventQueue,
 };
 
 #[derive(Debug)]
@@ -282,3 +289,77 @@ where
         }
     }
 }
+
+struct WriteStreamState<K, V> {
+    rx: mpsc::Receiver<MapOperation<K, V>>,
+    write: Option<FramedWrite<ByteWriter, MapOperationEncoder>>,
+    queue: EventQueue<K, V>,
+}
+
+impl<K, V> WriteStreamState<K, V> {
+    fn new(
+        writer: ByteWriter,
+        rx: mpsc::Receiver<MapOperation<K, V>>,
+    ) -> Self {
+        WriteStreamState {
+            rx,
+            write: Some(FramedWrite::new(writer, Default::default())),
+            queue: Default::default(),
+        }
+    }
+}
+
+pub fn map_dl_write_stream<K, V>(
+    writer: ByteWriter,
+    rx: mpsc::Receiver<MapOperation<K, V>>,
+) -> impl Stream<Item = Result<(), std::io::Error>> + Send + 'static
+where
+    K: Clone + Eq + Hash + StructuralWritable + Send + Sync + 'static,
+    V: StructuralWritable + Send + Sync + 'static,
+{
+    let state = WriteStreamState::<K, V>::new(writer, rx);
+
+    unfold(state, |mut state| async move {
+        let WriteStreamState {
+            rx,
+            write,
+            queue,
+        } = &mut state;
+        if let Some(writer) = write {
+            let first = if let Some(op) = queue.pop() {
+                op
+            } else {
+                if let Some(op) = rx.recv().await {
+                    op
+                } else {
+                    *write = None;
+                    return None;
+                }
+            };
+            let write_fut = writer.send(first);
+            pin_mut!(write_fut);
+            let result = loop {
+                let recv = rx.recv();
+                pin_mut!(recv);
+                match select(write_fut.as_mut(), recv).await {
+                    Either::Left((Ok(_), _)) => break Some(Ok(())),
+                    Either::Left((Err(e), _)) => {
+                        *write = None;
+                        break Some(Err(e));
+                    },
+                    Either::Right((Some(op), _)) => {
+                        queue.push(op);
+                    },
+                    _ => {
+                        *write = None;
+                        break None;
+                    }
+                }
+            };
+            result.map(move |r| (r, state))
+        } else {
+            None
+        }
+    })
+}
+

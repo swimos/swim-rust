@@ -154,13 +154,15 @@ where
 }
 
 pub fn value_dl_write_stream<T>(
-    writer: FramedWrite<ByteWriter, WithLengthBytesCodec>,
+    writer: ByteWriter,
     rx: watch::Receiver<Option<T>>,
 ) -> impl Stream<Item = Result<(), std::io::Error>> + Send + 'static
 where
     T: StructuralWritable + Send + Sync + 'static,
 {
     let buffer = BytesMut::new();
+
+    let writer = FramedWrite::new(writer, WithLengthBytesCodec::default());
 
     unfold((writer, rx, buffer), |state| async move {
         let (mut writer, mut rx, mut buffer) = state;

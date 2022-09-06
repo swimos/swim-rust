@@ -15,9 +15,10 @@
 use std::collections::VecDeque;
 use std::hash::Hash;
 
+use swim_api::protocol::map::MapOperation;
 use uuid::Uuid;
 
-use crate::event_queue::{Action, EventQueue};
+use crate::event_queue::EventQueue;
 
 /// For a sync operation on a map lane, keeps track of which keys are synced for a given remote.
 #[derive(Debug)]
@@ -102,7 +103,7 @@ impl Default for NextWrite {
 /// state of the map.
 #[derive(Debug)]
 pub struct WriteQueues<K> {
-    event_queue: EventQueue<K>,
+    event_queue: EventQueue<K, ()>,
     sync_queues: Vec<SyncQueue<K>>,
     next: NextWrite,
 }
@@ -117,6 +118,8 @@ impl<K> Default for WriteQueues<K> {
     }
 }
 
+pub type Action<K> = MapOperation<K, ()>;
+
 pub enum ToWrite<K> {
     Event(Action<K>),
     SyncEvent(Uuid, K),
@@ -129,17 +132,17 @@ where
 {
     pub fn push_update(&mut self, key: K) {
         let WriteQueues { event_queue, .. } = self;
-        event_queue.push(Action::Update(key));
+        event_queue.push(MapOperation::Update { key, value: () });
     }
 
     pub fn push_remove(&mut self, key: K) {
         let WriteQueues { event_queue, .. } = self;
-        event_queue.push(Action::Remove(key));
+        event_queue.push(MapOperation::Remove { key });
     }
 
     pub fn push_clear(&mut self) {
         let WriteQueues { event_queue, .. } = self;
-        event_queue.push(Action::Clear);
+        event_queue.push(MapOperation::Clear);
     }
 
     pub fn sync<I>(&mut self, id: Uuid, keys: I)
@@ -190,7 +193,7 @@ where
     K: Clone + Eq + Hash,
 {
     match action {
-        Action::Update(k) | Action::Remove(k) => {
+        MapOperation::Update { key: k, .. } | MapOperation::Remove { key: k } => {
             for queue in queues {
                 queue.remove(k);
             }

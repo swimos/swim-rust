@@ -15,22 +15,17 @@
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 
-#[derive(Debug)]
-pub enum Action<K> {
-    Clear,
-    Update(K),
-    Remove(K),
-}
+use swim_api::protocol::map::MapOperation;
 
 /// Keeps track of what changes to the state of the map need to be reported as events.
 #[derive(Debug)]
-pub struct EventQueue<K> {
-    events: VecDeque<Action<K>>,
+pub struct EventQueue<K, V> {
+    events: VecDeque<MapOperation<K, V>>,
     head_epoch: usize,
     epoch_map: HashMap<K, usize>,
 }
 
-impl<K> Default for EventQueue<K> {
+impl<K, V> Default for EventQueue<K, V> {
     fn default() -> Self {
         Self {
             events: Default::default(),
@@ -40,53 +35,53 @@ impl<K> Default for EventQueue<K> {
     }
 }
 
-impl<K> EventQueue<K>
+impl<K, V> EventQueue<K, V>
 where
     K: Clone + Eq + Hash,
 {
-    pub fn push(&mut self, action: Action<K>) {
+    pub fn push(&mut self, action: MapOperation<K, V>) {
         let EventQueue {
             events,
             head_epoch,
             epoch_map,
         } = self;
         match action {
-            Action::Clear => {
+            MapOperation::Clear => {
                 *head_epoch = 0;
                 events.clear();
                 epoch_map.clear();
-                events.push_back(Action::Clear);
+                events.push_back(MapOperation::Clear);
             }
-            Action::Update(k) => {
+            MapOperation::Update { key: k, value: v } => {
                 if let Some(entry) = epoch_map.get(&k).and_then(|epoch| {
                     let index = epoch.wrapping_sub(*head_epoch);
                     debug_assert!(index < events.len());
                     events.get_mut(index)
                 }) {
-                    *entry = Action::Update(k);
+                    *entry = MapOperation::Update {key: k, value: v};
                 } else {
                     let epoch = head_epoch.wrapping_add(events.len());
-                    events.push_back(Action::Update(k.clone()));
+                    events.push_back(MapOperation::Update { key: k.clone(), value: v });
                     epoch_map.insert(k, epoch);
                 }
             }
-            Action::Remove(k) => {
+            MapOperation::Remove { key: k } => {
                 if let Some(entry) = epoch_map.get(&k).and_then(|epoch| {
                     let index = epoch.wrapping_sub(*head_epoch);
                     debug_assert!(index < events.len());
                     events.get_mut(index)
                 }) {
-                    *entry = Action::Remove(k);
+                    *entry = MapOperation::Remove { key: k };
                 } else {
                     let epoch = head_epoch.wrapping_add(events.len());
-                    events.push_back(Action::Remove(k.clone()));
+                    events.push_back(MapOperation::Remove { key: k.clone() });
                     epoch_map.insert(k, epoch);
                 }
             }
         }
     }
 
-    pub fn pop(&mut self) -> Option<Action<K>> {
+    pub fn pop(&mut self) -> Option<MapOperation<K, V>> {
         let EventQueue {
             events,
             head_epoch,
@@ -94,7 +89,7 @@ where
         } = self;
         if let Some(entry) = events.pop_front() {
             *head_epoch = head_epoch.wrapping_add(1);
-            if let Action::Update(k) | Action::Remove(k) = &entry {
+            if let MapOperation::Update { key: k, ..} | MapOperation::Remove { key: k } = &entry {
                 epoch_map.remove(k);
             }
             Some(entry)

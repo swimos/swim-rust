@@ -22,7 +22,6 @@ use swim_api::{downlink::DownlinkKind, error::AgentRuntimeError};
 use swim_form::Form;
 use swim_model::{address::Address, Text};
 use tokio::sync::watch;
-use tokio_util::codec::FramedWrite;
 use tracing::error;
 
 use crate::{
@@ -120,7 +119,6 @@ where
                 DownlinkKind::Value,
                 move |reader| HostedValueDownlinkChannel::new(reader, lifecycle, state).boxed(),
                 move |writer| {
-                    let writer = FramedWrite::new(writer, Default::default());
                     value_dl_write_stream(writer, rx).boxed()
                 },
                 |result| {

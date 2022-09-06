@@ -38,11 +38,10 @@ use crate::{
         ActionContext, AndThen, EventHandlerError, HandlerAction, HandlerActionExt, HandlerTrans,
         Modification, StepResult,
     },
-    event_queue::Action,
     meta::AgentMetadata,
 };
 
-use self::queues::{ToWrite, WriteQueues};
+use self::queues::{ToWrite, WriteQueues, Action};
 
 pub use event::MapLaneEvent;
 
@@ -249,7 +248,7 @@ where
                         operation,
                     })
                 }
-                Some(ToWrite::SyncEvent(id, key)) => to_operation(content, Action::Update(key))
+                Some(ToWrite::SyncEvent(id, key)) => to_operation(content, MapOperation::Update { key, value: () })
                     .map(|operation| MapLaneResponse::Event {
                         kind: LaneResponseKind::SyncEvent(id),
                         operation,
@@ -277,11 +276,11 @@ fn to_operation<K: Eq + Hash, V>(
     action: Action<K>,
 ) -> Option<MapOperation<K, &V>> {
     match action {
-        Action::Update(k) => content
+        MapOperation::Update { key: k, ..} => content
             .get(&k)
             .map(|v| MapOperation::Update { key: k, value: v }),
-        Action::Remove(k) => Some(MapOperation::Remove { key: k }),
-        Action::Clear => Some(MapOperation::Clear),
+        MapOperation::Remove { key: k } => Some(MapOperation::Remove { key: k }),
+        MapOperation::Clear => Some(MapOperation::Clear),
     }
 }
 

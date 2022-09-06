@@ -47,7 +47,6 @@ impl<Agent> Debug for HandlerContext<Agent> {
     }
 }
 
-pub struct Action;
 
 impl<Agent> Default for HandlerContext<Agent> {
     fn default() -> Self {
