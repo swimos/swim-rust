@@ -321,13 +321,11 @@ where
         if let Some(writer) = write {
             let first = if let Some(op) = queue.pop() {
                 op
+            } else if let Some(op) = rx.recv().await {
+                op
             } else {
-                if let Some(op) = rx.recv().await {
-                    op
-                } else {
-                    *write = None;
-                    return None;
-                }
+                *write = None;
+                return None;
             };
             let write_fut = writer.send(first);
             pin_mut!(write_fut);

@@ -80,8 +80,7 @@ fn write_recon_with_len<T: StructuralWritable>(dst: &mut BytesMut, body: &T) {
 
 fn write_recon<T: StructuralWritable>(dst: &mut BytesMut, body: &T) -> usize {
     let body_offset = write_recon_body(dst, body);
-    let body_len = dst.remaining() - body_offset;
-    body_len
+    dst.remaining() - body_offset
 }
 
 /// Codec that will encode a type as a Recon string, writing the length (as a 64 bit unigned integer)

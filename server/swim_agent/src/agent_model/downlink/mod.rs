@@ -61,8 +61,10 @@ pub struct OpenValueDownlink<T, LC> {
     inner: Option<Inner<LC>>,
 }
 
+type KvInvariant<K, V> = fn(K, V) -> (K, V);
+
 pub struct OpenMapDownlink<K, V, LC> {
-    _type: PhantomData<fn(K, V) -> (K, V)>,
+    _type: PhantomData<KvInvariant<K, V>>,
     inner: Option<Inner<LC>>,
     channel_size: NonZeroUsize,
 }
