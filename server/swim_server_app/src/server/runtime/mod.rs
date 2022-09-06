@@ -490,12 +490,14 @@ where
                         .send(Ok(EstablishedClient::new(attach_tx, sock_addr)))
                         .is_err()
                     {
-                        //TODO Log error.
+                        info!("Request for client connection dropped before it was completed.");
                     }
                 }
                 ServerEvent::NewClient(Err(e), responder) => {
                     if responder.send(Err(e)).is_err() {
-                        //TODO Log error.
+                        info!(
+                            "Request for client connection dropped before it failed to complete."
+                        );
                     }
                 }
                 ServerEvent::LocalClient(AttachClient::AttachDownlink {

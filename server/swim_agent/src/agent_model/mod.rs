@@ -35,6 +35,7 @@ use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
     routing::uri::RelativeUri,
 };
+use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::agent_lifecycle::lane_event::LaneEvent;
@@ -265,7 +266,10 @@ impl<Context> HostedDownlink<Context> {
                 Some((self, HostedDownlinkEvent::HandlerReady))
             }
             Either::Right(Some(Ok(_))) => Some((self, HostedDownlinkEvent::Written)),
-            Either::Right(Some(Err(e))) => Some((self, HostedDownlinkEvent::WriterFailed(e))),
+            Either::Right(Some(Err(e))) => {
+                *write_stream = None;
+                Some((self, HostedDownlinkEvent::WriterFailed(e)))
+            }
             Either::Right(_) => {
                 *write_stream = None;
                 Some((self, HostedDownlinkEvent::WriterTerminated))
@@ -501,8 +505,12 @@ where
                 TaskEvent::DownlinkReady { downlink_event } => {
                     if let Some((mut downlink, event)) = downlink_event {
                         match event {
-                            HostedDownlinkEvent::WriterFailed(_) => todo!(),
-                            HostedDownlinkEvent::WriterTerminated => todo!(),
+                            HostedDownlinkEvent::WriterFailed(err) => {
+                                error!(error = %err, "A downlink hosted by the agent failed.");
+                            }
+                            HostedDownlinkEvent::WriterTerminated => {
+                                info!("A downlink hosted by the agent stopped writing output.");
+                            }
                             HostedDownlinkEvent::HandlerReady => {
                                 if let Some(handler) = downlink.channel.next_event(&lane_model) {
                                     if let Err(e) = run_handler(
@@ -666,7 +674,7 @@ impl IdCollector for HashSet<u64> {
 /// This function does not check for invalid identifiers/lanes. If a lane is referred to that does not exist,
 /// ther will be no error and no side effects will ocurr.
 ///
-/// TODO: This methis recursive and has no checks to detect cycles. It would be very easy to create a set of
+/// TODO: This method is recursive and has no checks to detect cycles. It would be very easy to create a set of
 /// event handles which cause this to go into an infinite loop (this is also the case in Java). We could add some
 /// heuristics to prevent this (for example terminating with an error if the same event handler gets executed
 /// some number of times in a single chain) but this will likely add a bit of overhead.

@@ -16,6 +16,7 @@ mod connector;
 mod pending;
 
 pub use connector::{downlink_task_connector, DlTaskRequest, DownlinksConnector, ServerConnector};
+use tracing::{error, info};
 
 use std::{
     collections::{hash_map::Entry, HashMap},
@@ -29,7 +30,10 @@ use swim_api::{
     downlink::DownlinkKind,
     error::{AgentRuntimeError, DownlinkFailureReason},
 };
-use swim_model::{address::RelativeAddress, Text};
+use swim_model::{
+    address::{Address, RelativeAddress},
+    Text,
+};
 use swim_remote::AttachClient;
 use swim_runtime::{
     agent::DownlinkRequest,
@@ -85,6 +89,8 @@ enum Event {
         result: Result<(), JoinError>,
     },
     Attached {
+        address: Address<Text>,
+        kind: DownlinkKind,
         promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
         result: Result<Io, AgentRuntimeError>,
     },
@@ -181,7 +187,7 @@ where
                                     )))
                                     .is_err()
                                 {
-                                    //TODO Log error
+                                    info!("Request for client connection dropped before it failed to resolve.");
                                 }
                             }
                         } else {
@@ -283,7 +289,7 @@ where
                                 )))
                                 .is_err()
                             {
-                                //TODO Log error
+                                info!("Request for client connection dropped before it failed to resolve.");
                             }
                         }
                     }
@@ -320,9 +326,13 @@ where
                     } => {
                         let err: AgentRuntimeError = e.into();
                         for request in pending.open_client_failed(&host) {
-                            let DownlinkRequest { promise, .. } = request;
+                            let DownlinkRequest {
+                                promise,
+                                key: (addr, kind),
+                                ..
+                            } = request;
                             if promise.send(Err(err)).is_err() {
-                                //TODO Log error.
+                                info!(address = %addr, kind = ?kind, "Request for a downlink dropped before it failed to complete.");
                             }
                         }
                     }
@@ -360,8 +370,11 @@ where
                                 );
                             }
                         } else {
-                            for DownlinkRequest { promise, .. } in
-                                pending.dl_ready(remote_address, &key)
+                            for DownlinkRequest {
+                                promise,
+                                key: (addr, kind),
+                                ..
+                            } in pending.dl_ready(remote_address, &key)
                             {
                                 if promise
                                     .send(Err(AgentRuntimeError::DownlinkConnectionFailed(
@@ -369,7 +382,7 @@ where
                                     )))
                                     .is_err()
                                 {
-                                    //TODO log error.
+                                    info!(address = %addr, kind = ?kind, "Request for a downlink dropped before it failed to complete.");
                                 }
                             }
                         }
@@ -379,8 +392,11 @@ where
                         key,
                         result: Err(_),
                     } => {
-                        for DownlinkRequest { promise, .. } in
-                            pending.dl_ready(remote_address, &key)
+                        for DownlinkRequest {
+                            promise,
+                            key: (addr, kind),
+                            ..
+                        } in pending.dl_ready(remote_address, &key)
                         {
                             if promise
                                 .send(Err(AgentRuntimeError::DownlinkConnectionFailed(
@@ -388,13 +404,18 @@ where
                                 )))
                                 .is_err()
                             {
-                                //TODO log error.
+                                info!(address = %addr, kind = ?kind, "The remote connection stopped before a downlink was set up.");
                             }
                         }
                     }
-                    Event::Attached { promise, result } => {
+                    Event::Attached {
+                        address,
+                        kind,
+                        promise,
+                        result,
+                    } => {
                         if promise.send(result).is_err() {
-                            //TODO log error.
+                            info!(address = %address, kind = ?kind, "A request for a downlink was dropped before it was satisfied.");
                         }
                     }
                     Event::RuntimeTerminated {
@@ -412,9 +433,9 @@ where
                         } else {
                             local_handle.remove(&key);
                         }
-
-                        if result.is_err() {
-                            //TODO Log error.
+                        let (address, kind) = key;
+                        if let Err(e) = result {
+                            error!(error = %e, socket_addr = ?socket_addr, address = %address, kind = ?kind, "A downlink runtime task panicked.");
                         }
                     }
                 }
@@ -424,8 +445,13 @@ where
 
         while let Some(event) = tasks.next().await {
             match event {
-                Event::RuntimeTerminated { result: Err(_), .. } => {
-                    //TODO Log error.
+                Event::RuntimeTerminated {
+                    socket_addr,
+                    key: (address, kind),
+                    result: Err(e),
+                    ..
+                } => {
+                    error!(error = %e, socket_addr = ?socket_addr, address = %address, kind = ?kind, "A downlink runtime task panicked.");
                 }
                 _ => continue,
             }
@@ -461,7 +487,10 @@ async fn run_downlink(
     buffer_size: NonZeroUsize,
 ) -> Event {
     let DownlinkRequest {
-        promise, options, ..
+        promise,
+        key: (address, kind),
+        options,
+        ..
     } = request;
     let (in_tx, in_rx) = byte_channel(buffer_size);
     let (out_tx, out_rx) = byte_channel(buffer_size);
@@ -472,7 +501,12 @@ async fn run_downlink(
         .map_err(|_| {
             AgentRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::ConnectionFailed)
         });
-    Event::Attached { promise, result }
+    Event::Attached {
+        address,
+        kind,
+        promise,
+        result,
+    }
 }
 
 async fn start_downlink_runtime(
