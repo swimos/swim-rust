@@ -146,20 +146,17 @@ impl<'a, Context> ActionContext<'a, Context> {
             kind,
         );
         let fut = external
-            .map(move |result| {
-                match result {
-                    Ok((writer, reader)) => {
-                        let channel = make_channel(reader);
-                        let write_stream = make_write_stream(writer);
-                        HandlerActionExt::and_then(
-                            RegisterHostedDownlink::new(channel, write_stream),
-                            on_done,
-                        )
-                        .boxed()
-                        //RegisterHostedDownlink::new(channel, write_stream).and_then(on_done).boxed()
-                    }
-                    Err(e) => on_done(Err(e)).boxed(),
+            .map(move |result| match result {
+                Ok((writer, reader)) => {
+                    let channel = make_channel(reader);
+                    let write_stream = make_write_stream(writer);
+                    HandlerActionExt::and_then(
+                        RegisterHostedDownlink::new(channel, write_stream),
+                        on_done,
+                    )
+                    .boxed()
                 }
+                Err(e) => on_done(Err(e)).boxed(),
             })
             .boxed();
         self.spawn_suspend(fut);

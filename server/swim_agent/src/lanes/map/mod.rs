@@ -41,7 +41,7 @@ use crate::{
     meta::AgentMetadata,
 };
 
-use self::queues::{ToWrite, WriteQueues, Action};
+use self::queues::{Action, ToWrite, WriteQueues};
 
 pub use event::MapLaneEvent;
 
@@ -248,11 +248,14 @@ where
                         operation,
                     })
                 }
-                Some(ToWrite::SyncEvent(id, key)) => to_operation(content, MapOperation::Update { key, value: () })
-                    .map(|operation| MapLaneResponse::Event {
-                        kind: LaneResponseKind::SyncEvent(id),
-                        operation,
-                    }),
+                Some(ToWrite::SyncEvent(id, key)) => {
+                    to_operation(content, MapOperation::Update { key, value: () }).map(
+                        |operation| MapLaneResponse::Event {
+                            kind: LaneResponseKind::SyncEvent(id),
+                            operation,
+                        },
+                    )
+                }
                 Some(ToWrite::Synced(id)) => Some(MapLaneResponse::SyncComplete(id)),
                 _ => break WriteResult::NoData,
             };
@@ -276,7 +279,7 @@ fn to_operation<K: Eq + Hash, V>(
     action: Action<K>,
 ) -> Option<MapOperation<K, &V>> {
     match action {
-        MapOperation::Update { key: k, ..} => content
+        MapOperation::Update { key: k, .. } => content
             .get(&k)
             .map(|v| MapOperation::Update { key: k, value: v }),
         MapOperation::Remove { key: k } => Some(MapOperation::Remove { key: k }),

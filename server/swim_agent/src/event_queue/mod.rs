@@ -58,10 +58,13 @@ where
                     debug_assert!(index < events.len());
                     events.get_mut(index)
                 }) {
-                    *entry = MapOperation::Update {key: k, value: v};
+                    *entry = MapOperation::Update { key: k, value: v };
                 } else {
                     let epoch = head_epoch.wrapping_add(events.len());
-                    events.push_back(MapOperation::Update { key: k.clone(), value: v });
+                    events.push_back(MapOperation::Update {
+                        key: k.clone(),
+                        value: v,
+                    });
                     epoch_map.insert(k, epoch);
                 }
             }
@@ -89,7 +92,7 @@ where
         } = self;
         if let Some(entry) = events.pop_front() {
             *head_epoch = head_epoch.wrapping_add(1);
-            if let MapOperation::Update { key: k, ..} | MapOperation::Remove { key: k } = &entry {
+            if let MapOperation::Update { key: k, .. } | MapOperation::Remove { key: k } = &entry {
                 epoch_map.remove(k);
             }
             Some(entry)

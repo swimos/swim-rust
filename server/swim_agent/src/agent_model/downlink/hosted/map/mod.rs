@@ -297,10 +297,7 @@ struct WriteStreamState<K, V> {
 }
 
 impl<K, V> WriteStreamState<K, V> {
-    fn new(
-        writer: ByteWriter,
-        rx: mpsc::Receiver<MapOperation<K, V>>,
-    ) -> Self {
+    fn new(writer: ByteWriter, rx: mpsc::Receiver<MapOperation<K, V>>) -> Self {
         WriteStreamState {
             rx,
             write: Some(FramedWrite::new(writer, Default::default())),
@@ -320,11 +317,7 @@ where
     let state = WriteStreamState::<K, V>::new(writer, rx);
 
     unfold(state, |mut state| async move {
-        let WriteStreamState {
-            rx,
-            write,
-            queue,
-        } = &mut state;
+        let WriteStreamState { rx, write, queue } = &mut state;
         if let Some(writer) = write {
             let first = if let Some(op) = queue.pop() {
                 op
@@ -346,10 +339,10 @@ where
                     Either::Left((Err(e), _)) => {
                         *write = None;
                         break Some(Err(e));
-                    },
+                    }
                     Either::Right((Some(op), _)) => {
                         queue.push(op);
-                    },
+                    }
                     _ => {
                         *write = None;
                         break None;
@@ -362,4 +355,3 @@ where
         }
     })
 }
-

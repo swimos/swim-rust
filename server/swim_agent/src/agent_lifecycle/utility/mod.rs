@@ -14,6 +14,7 @@
 
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::num::NonZeroUsize;
 use std::{collections::HashMap, marker::PhantomData};
 
 use futures::{Future, FutureExt};
@@ -21,7 +22,10 @@ use swim_form::Form;
 use swim_model::Text;
 use swim_utilities::routing::uri::RelativeUri;
 
-use crate::agent_model::downlink::{OpenValueDownlink, ValueDownlinkHandle};
+use crate::agent_model::downlink::{
+    MapDownlinkHandle, OpenMapDownlink, OpenValueDownlink, ValueDownlinkHandle,
+};
+use crate::downlink_lifecycle::map::MapDownlinkLifecycle;
 use crate::downlink_lifecycle::value::ValueDownlinkLifecycle;
 use crate::event_handler::{EventHandler, Suspend, UnitHandler};
 use crate::lanes::command::{CommandLane, DoCommand};
@@ -46,7 +50,6 @@ impl<Agent> Debug for HandlerContext<Agent> {
         f.debug_struct("HandlerContext").finish()
     }
 }
-
 
 impl<Agent> Default for HandlerContext<Agent> {
     fn default() -> Self {
@@ -246,7 +249,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
         lifecycle: LC,
     ) -> impl HandlerAction<Agent, Completion = ValueDownlinkHandle<T>> + Send + 'static
     where
-        T: Form + Clone + Send + Sync + 'static,
+        T: Form + Send + Sync + 'static,
         LC: ValueDownlinkLifecycle<T, Agent> + Send + 'static,
         T::Rec: Send,
     {
@@ -255,6 +258,39 @@ impl<Agent: 'static> HandlerContext<Agent> {
             Text::new(node),
             Text::new(lane),
             lifecycle,
+        )
+    }
+
+    /// Open a map downlink to a lane on another agent.
+    ///
+    /// #Arguments
+    /// * `host` - The remote host at which the agent resides (a local agent if not specified).
+    /// * `node` - The node URI of the agent.
+    /// * `lane` - The lane to downlink from.
+    /// * `config` - Configuration parameters for the downlink.
+    /// * `lifecycle` - Lifecycle events for the downlink.
+    /// * `channel_size` - Channel size for sending operations over the downlink.
+    pub fn open_map_downlink<K, V, LC>(
+        &self,
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
+        lifecycle: LC,
+        channel_size: NonZeroUsize,
+    ) -> impl HandlerAction<Agent, Completion = MapDownlinkHandle<K, V>> + Send + 'static
+    where
+        K: Form + Hash + Eq + Ord + Clone + Send + Sync + 'static,
+        V: Form + Send + Sync + 'static,
+        LC: MapDownlinkLifecycle<K, V, Agent> + Send + 'static,
+        K::Rec: Send,
+        V::Rec: Send,
+    {
+        OpenMapDownlink::new(
+            host.map(Text::new),
+            Text::new(node),
+            Text::new(lane),
+            lifecycle,
+            channel_size,
         )
     }
 }
