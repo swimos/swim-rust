@@ -17,21 +17,29 @@ use std::cell::RefCell;
 use bytes::BytesMut;
 use futures::{future::BoxFuture, stream::unfold, FutureExt, SinkExt, Stream, StreamExt};
 use std::fmt::Write;
-use swim_api::protocol::{
-    downlink::{DownlinkNotification, ValueNotificationDecoder},
-    WithLengthBytesCodec,
+use swim_api::{
+    error::{AgentRuntimeError, DownlinkFailureReason, FrameIoError},
+    protocol::{
+        downlink::{DownlinkNotification, ValueNotificationDecoder},
+        WithLengthBytesCodec,
+    },
 };
 use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swim_recon::printer::print_recon_compact;
-use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
-use tokio::sync::watch;
+use swim_utilities::{
+    io::byte_channel::{ByteReader, ByteWriter},
+    sync::circular_buffer,
+};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
 use crate::{
-    agent_model::downlink::handlers::DownlinkChannel,
+    agent_model::downlink::{handlers::DownlinkChannel, DlState, ValueDownlinkConfig},
     downlink_lifecycle::value::ValueDownlinkLifecycle,
     event_handler::{BoxEventHandler, EventHandlerExt, HandlerActionExt},
 };
+
+#[cfg(test)]
+mod tests;
 
 pub trait ValueDlState<T, Context> {
     fn take_current(&self, context: &Context) -> Option<T>;
@@ -83,19 +91,28 @@ where
 }
 
 pub struct HostedValueDownlinkChannel<T: RecognizerReadable, LC, State> {
-    receiver: FramedRead<ByteReader, ValueNotificationDecoder<T>>,
+    receiver: Option<FramedRead<ByteReader, ValueNotificationDecoder<T>>>,
     state: State,
     next: Option<DownlinkNotification<T>>,
     lifecycle: LC,
+    config: ValueDownlinkConfig,
+    dl_state: DlState,
 }
 
 impl<T: RecognizerReadable, LC, State> HostedValueDownlinkChannel<T, LC, State> {
-    pub fn new(receiver: ByteReader, lifecycle: LC, state: State) -> Self {
+    pub fn new(
+        receiver: ByteReader,
+        lifecycle: LC,
+        state: State,
+        config: ValueDownlinkConfig,
+    ) -> Self {
         HostedValueDownlinkChannel {
-            receiver: FramedRead::new(receiver, Default::default()),
+            receiver: Some(FramedRead::new(receiver, Default::default())),
             state,
             next: None,
             lifecycle,
+            config,
+            dl_state: DlState::Unlinked,
         }
     }
 }
@@ -107,14 +124,26 @@ where
     T::Rec: Send,
     LC: ValueDownlinkLifecycle<T, Context> + 'static,
 {
-    fn await_ready(&mut self) -> BoxFuture<'_, bool> {
+    fn await_ready(&mut self) -> BoxFuture<'_, Option<Result<(), FrameIoError>>> {
         let HostedValueDownlinkChannel { receiver, next, .. } = self;
         async move {
-            if let Some(Ok(notification)) = receiver.next().await {
-                *next = Some(notification);
-                true
+            if let Some(rx) = receiver {
+                match rx.next().await {
+                    Some(Ok(notification)) => {
+                        *next = Some(notification);
+                        Some(Ok(()))
+                    }
+                    Some(Err(e)) => {
+                        *receiver = None;
+                        Some(Err(e))
+                    }
+                    _ => {
+                        *receiver = None;
+                        None
+                    }
+                }
             } else {
-                false
+                None
             }
         }
         .boxed()
@@ -123,27 +152,48 @@ where
     fn next_event(&mut self, context: &Context) -> Option<BoxEventHandler<'_, Context>> {
         let HostedValueDownlinkChannel {
             state,
+            receiver,
             next,
             lifecycle,
+            dl_state,
+            config:
+                ValueDownlinkConfig {
+                    events_when_not_synced,
+                    terminate_on_unlinked,
+                },
             ..
         } = self;
         if let Some(notification) = next.take() {
             match notification {
-                DownlinkNotification::Linked => Some(lifecycle.on_linked().boxed()),
+                DownlinkNotification::Linked => {
+                    if *dl_state == DlState::Unlinked {
+                        *dl_state = DlState::Linked;
+                    }
+                    Some(lifecycle.on_linked().boxed())
+                }
                 DownlinkNotification::Synced => state.with(context, |maybe_value| {
+                    *dl_state = DlState::Synced;
                     maybe_value.map(|value| lifecycle.on_synced(value).boxed())
                 }),
                 DownlinkNotification::Event { body } => {
                     let prev = state.take_current(context);
-                    let handler = lifecycle
-                        .on_event(&body)
-                        .followed_by(lifecycle.on_set(prev, &body))
-                        .boxed();
+                    let handler = if *dl_state == DlState::Synced || *events_when_not_synced {
+                        let handler = lifecycle
+                            .on_event(&body)
+                            .followed_by(lifecycle.on_set(prev, &body))
+                            .boxed();
+                        Some(handler)
+                    } else {
+                        None
+                    };
                     state.replace(context, body);
-                    Some(handler)
+                    handler
                 }
                 DownlinkNotification::Unlinked => {
                     state.clear(context);
+                    if *terminate_on_unlinked {
+                        *receiver = None;
+                    }
                     Some(lifecycle.on_unlinked().boxed())
                 }
             }
@@ -153,9 +203,34 @@ where
     }
 }
 
+pub struct ValueDownlinkHandle<T> {
+    inner: circular_buffer::Sender<T>,
+}
+
+impl<T> ValueDownlinkHandle<T> {
+    pub fn new(inner: circular_buffer::Sender<T>) -> Self {
+        ValueDownlinkHandle { inner }
+    }
+}
+
+impl<T> ValueDownlinkHandle<T>
+where
+    T: Send + Sync,
+{
+    pub fn set(&mut self, value: T) -> Result<(), AgentRuntimeError> {
+        if self.inner.try_send(value).is_err() {
+            Err(AgentRuntimeError::DownlinkConnectionFailed(
+                DownlinkFailureReason::DownlinkStopped,
+            ))
+        } else {
+            Ok(())
+        }
+    }
+}
+
 pub fn value_dl_write_stream<T>(
     writer: ByteWriter,
-    rx: watch::Receiver<Option<T>>,
+    watch_rx: circular_buffer::Receiver<T>,
 ) -> impl Stream<Item = Result<(), std::io::Error>> + Send + 'static
 where
     T: StructuralWritable + Send + Sync + 'static,
@@ -164,26 +239,17 @@ where
 
     let writer = FramedWrite::new(writer, WithLengthBytesCodec::default());
 
-    unfold((writer, rx, buffer), |state| async move {
+    unfold((writer, watch_rx, buffer), |state| async move {
         let (mut writer, mut rx, mut buffer) = state;
-        if rx.changed().await.is_err() {
-            None
+
+        if let Ok(value) = rx.recv().await {
+            buffer.clear();
+            write!(&mut buffer, "{}", print_recon_compact(&value))
+                .expect("Writing to Recon should be infallible.");
+            let result = writer.send(buffer.as_ref()).await;
+            Some((result, (writer, rx, buffer)))
         } else {
-            loop {
-                buffer.clear();
-                {
-                    //This block is required for the Send check on this async future to pass.
-                    let body_ref = rx.borrow();
-                    if let Some(value) = &*body_ref {
-                        write!(&mut buffer, "{}", print_recon_compact(value))
-                            .expect("Writing to Recon should be infallible.");
-                    } else {
-                        continue;
-                    }
-                }
-                let result = writer.send(buffer.as_ref()).await;
-                break Some((result, (writer, rx, buffer)));
-            }
+            None
         }
     })
 }

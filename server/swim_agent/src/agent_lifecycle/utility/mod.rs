@@ -22,8 +22,9 @@ use swim_form::Form;
 use swim_model::Text;
 use swim_utilities::routing::uri::RelativeUri;
 
+use crate::agent_model::downlink::hosted::ValueDownlinkHandle;
 use crate::agent_model::downlink::{
-    MapDownlinkHandle, OpenMapDownlink, OpenValueDownlink, ValueDownlinkHandle,
+    MapDownlinkHandle, OpenMapDownlink, OpenValueDownlink, ValueDownlinkConfig,
 };
 use crate::downlink_lifecycle::map::MapDownlinkLifecycle;
 use crate::downlink_lifecycle::value::ValueDownlinkLifecycle;
@@ -241,12 +242,14 @@ impl<Agent: 'static> HandlerContext<Agent> {
     /// * `lane` - The lane to downlink from.
     /// * `config` - Configuration parameters for the downlink.
     /// * `lifecycle` - Lifecycle events for the downlink.
+    /// * `config` - Configuration parameters for the downlink.
     pub fn open_value_downlink<T, LC>(
         &self,
         host: Option<&str>,
         node: &str,
         lane: &str,
         lifecycle: LC,
+        config: ValueDownlinkConfig,
     ) -> impl HandlerAction<Agent, Completion = ValueDownlinkHandle<T>> + Send + 'static
     where
         T: Form + Send + Sync + 'static,
@@ -258,6 +261,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
             Text::new(node),
             Text::new(lane),
             lifecycle,
+            config,
         )
     }
 

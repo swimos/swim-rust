@@ -24,9 +24,12 @@ use futures::{
     FutureExt, SinkExt, Stream, StreamExt,
 };
 use std::hash::Hash;
-use swim_api::protocol::{
-    downlink::{DownlinkNotification, MapNotificationDecoder},
-    map::{MapMessage, MapOperation, MapOperationEncoder},
+use swim_api::{
+    error::FrameIoError,
+    protocol::{
+        downlink::{DownlinkNotification, MapNotificationDecoder},
+        map::{MapMessage, MapOperation, MapOperationEncoder},
+    },
 };
 use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
@@ -205,7 +208,7 @@ where
 }
 
 pub struct HostedMapDownlinkChannel<K: RecognizerReadable, V: RecognizerReadable, LC, State> {
-    receiver: FramedRead<ByteReader, MapNotificationDecoder<K, V>>,
+    receiver: Option<FramedRead<ByteReader, MapNotificationDecoder<K, V>>>,
     state: State,
     next: Option<DownlinkNotification<MapMessage<K, V>>>,
     lifecycle: LC,
@@ -216,7 +219,7 @@ impl<K: RecognizerReadable, V: RecognizerReadable, LC, State>
 {
     pub fn new(receiver: ByteReader, lifecycle: LC, state: State) -> Self {
         HostedMapDownlinkChannel {
-            receiver: FramedRead::new(receiver, Default::default()),
+            receiver: Some(FramedRead::new(receiver, Default::default())),
             state,
             next: None,
             lifecycle,
@@ -234,14 +237,26 @@ where
     V::Rec: Send,
     LC: MapDownlinkLifecycle<K, V, Context> + 'static,
 {
-    fn await_ready(&mut self) -> BoxFuture<'_, bool> {
+    fn await_ready(&mut self) -> BoxFuture<'_, Option<Result<(), FrameIoError>>> {
         let HostedMapDownlinkChannel { receiver, next, .. } = self;
         async move {
-            if let Some(Ok(notification)) = receiver.next().await {
-                *next = Some(notification);
-                true
+            if let Some(rx) = receiver {
+                match rx.next().await {
+                    Some(Ok(notification)) => {
+                        *next = Some(notification);
+                        Some(Ok(()))
+                    }
+                    Some(Err(e)) => {
+                        *receiver = None;
+                        Some(Err(e))
+                    }
+                    _ => {
+                        *receiver = None;
+                        None
+                    }
+                }
             } else {
-                false
+                None
             }
         }
         .boxed()

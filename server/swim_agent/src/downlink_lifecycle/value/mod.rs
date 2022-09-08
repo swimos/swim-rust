@@ -14,10 +14,7 @@
 
 use swim_api::handlers::NoHandler;
 
-use crate::{
-    agent_lifecycle::utility::HandlerContext,
-    lanes::value::lifecycle::{on_event::OnEvent, on_set::OnSet},
-};
+use crate::agent_lifecycle::utility::HandlerContext;
 
 use self::{
     on_event::{OnDownlinkEvent, OnDownlinkEventShared},
@@ -36,8 +33,8 @@ pub mod on_set;
 pub trait ValueDownlinkHandlers<'a, T, Context>:
     OnLinked<'a, Context>
     + OnSynced<'a, T, Context>
-    + OnEvent<'a, T, Context>
-    + OnSet<'a, T, Context>
+    + OnDownlinkEvent<'a, T, Context>
+    + OnDownlinkSet<'a, T, Context>
     + OnUnlinked<'a, Context>
 {
 }
@@ -45,8 +42,8 @@ pub trait ValueDownlinkHandlers<'a, T, Context>:
 impl<'a, T, Context, LC> ValueDownlinkHandlers<'a, T, Context> for LC where
     LC: OnLinked<'a, Context>
         + OnSynced<'a, T, Context>
-        + OnEvent<'a, T, Context>
-        + OnSet<'a, T, Context>
+        + OnDownlinkEvent<'a, T, Context>
+        + OnDownlinkSet<'a, T, Context>
         + OnUnlinked<'a, Context>
 {
 }

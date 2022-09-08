@@ -262,8 +262,10 @@ impl<Context> HostedDownlink<Context> {
         };
 
         match next {
-            Either::Left(handler_ready) if handler_ready => {
-                Some((self, HostedDownlinkEvent::HandlerReady))
+            Either::Left(Some(Ok(_))) => Some((self, HostedDownlinkEvent::HandlerReady)),
+            Either::Left(Some(Err(e))) => {
+                error!(error = %e, "A downlink input channel failed.");
+                None
             }
             Either::Right(Some(Ok(_))) => Some((self, HostedDownlinkEvent::Written)),
             Either::Right(Some(Err(e))) => {

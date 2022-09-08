@@ -22,7 +22,8 @@ use std::hash::Hash;
 use swim_api::{downlink::DownlinkKind, error::AgentRuntimeError, protocol::map::MapOperation};
 use swim_form::Form;
 use swim_model::{address::Address, Text};
-use tokio::sync::{mpsc, watch};
+use swim_utilities::sync::circular_buffer;
+use tokio::sync::mpsc;
 use tracing::error;
 
 use crate::{
@@ -38,7 +39,7 @@ use self::{
     handlers::BoxDownlinkChannel,
     hosted::{
         map_dl_write_stream, value_dl_write_stream, HostedMapDownlinkChannel,
-        HostedValueDownlinkChannel, MapDlState,
+        HostedValueDownlinkChannel, MapDlState, ValueDownlinkHandle,
     },
 };
 
@@ -56,9 +57,32 @@ struct Inner<LC> {
     lifecycle: LC,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ValueDownlinkConfig {
+    pub events_when_not_synced: bool,
+    pub terminate_on_unlinked: bool,
+}
+
+impl Default for ValueDownlinkConfig {
+    fn default() -> Self {
+        Self {
+            events_when_not_synced: false,
+            terminate_on_unlinked: true,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DlState {
+    Unlinked,
+    Linked,
+    Synced,
+}
+
 pub struct OpenValueDownlink<T, LC> {
     _type: PhantomData<fn(T) -> T>,
     inner: Option<Inner<LC>>,
+    config: ValueDownlinkConfig,
 }
 
 type KvInvariant<K, V> = fn(K, V) -> (K, V);
@@ -70,7 +94,13 @@ pub struct OpenMapDownlink<K, V, LC> {
 }
 
 impl<T, LC> OpenValueDownlink<T, LC> {
-    pub fn new(host: Option<Text>, node: Text, lane: Text, lifecycle: LC) -> Self {
+    pub fn new(
+        host: Option<Text>,
+        node: Text,
+        lane: Text,
+        lifecycle: LC,
+        config: ValueDownlinkConfig,
+    ) -> Self {
         OpenValueDownlink {
             _type: PhantomData,
             inner: Some(Inner {
@@ -79,6 +109,7 @@ impl<T, LC> OpenValueDownlink<T, LC> {
                 lane,
                 lifecycle,
             }),
+            config,
         }
     }
 }
@@ -101,23 +132,6 @@ impl<K, V, LC> OpenMapDownlink<K, V, LC> {
             }),
             channel_size,
         }
-    }
-}
-
-pub struct ValueDownlinkHandle<T> {
-    sender: watch::Sender<Option<T>>,
-}
-
-impl<T> ValueDownlinkHandle<T> {
-    fn new(sender: watch::Sender<Option<T>>) -> Self {
-        ValueDownlinkHandle { sender }
-    }
-}
-
-impl<T> ValueDownlinkHandle<T> {
-    pub fn set(&self, value: T) -> Result<(), AgentRuntimeError> {
-        self.sender.send(Some(value))?;
-        Ok(())
     }
 }
 
@@ -180,7 +194,7 @@ where
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
-        let OpenValueDownlink { inner, .. } = self;
+        let OpenValueDownlink { inner, config, .. } = self;
         if let Some(Inner {
             host,
             node,
@@ -190,11 +204,15 @@ where
         {
             let path = Address::new(host, node, lane);
             let state: RefCell<Option<T>> = Default::default();
-            let (tx, rx) = watch::channel::<Option<T>>(None);
+            let (tx, rx) = circular_buffer::watch_channel();
+
+            let config = *config;
             action_context.start_downlink(
                 path,
                 DownlinkKind::Value,
-                move |reader| HostedValueDownlinkChannel::new(reader, lifecycle, state).boxed(),
+                move |reader| {
+                    HostedValueDownlinkChannel::new(reader, lifecycle, state, config).boxed()
+                },
                 move |writer| value_dl_write_stream(writer, rx).boxed(),
                 |result| {
                     if let Err(err) = result {
