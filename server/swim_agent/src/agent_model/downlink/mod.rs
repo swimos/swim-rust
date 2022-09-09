@@ -43,13 +43,6 @@ use self::{
     },
 };
 
-pub enum DownlinkMessage<T> {
-    Linked,
-    Synced,
-    Event(T),
-    Unlinked,
-}
-
 struct Inner<LC> {
     host: Option<Text>,
     node: Text,
