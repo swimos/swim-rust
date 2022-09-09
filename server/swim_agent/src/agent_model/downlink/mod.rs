@@ -19,7 +19,7 @@ use std::{cell::RefCell, marker::PhantomData, num::NonZeroUsize};
 
 use futures::StreamExt;
 use std::hash::Hash;
-use swim_api::{downlink::DownlinkKind, error::AgentRuntimeError, protocol::map::MapOperation};
+use swim_api::{downlink::DownlinkKind, protocol::map::MapOperation};
 use swim_form::Form;
 use swim_model::{address::Address, Text};
 use swim_utilities::{algebra::non_zero_usize, sync::circular_buffer};
@@ -30,13 +30,12 @@ use crate::{
     agent_model::downlink::handlers::DownlinkChannelExt,
     downlink_lifecycle::{map::MapDownlinkLifecycle, value::ValueDownlinkLifecycle},
     event_handler::{
-        ActionContext, DownlinkSpawner, HandlerAction, StepResult, UnitHandler, WriteStream,
+        ActionContext, HandlerAction, StepResult, UnitHandler,
     },
     meta::AgentMetadata,
 };
 
 use self::{
-    handlers::BoxDownlinkChannel,
     hosted::{
         map_dl_write_stream, value_dl_write_stream, HostedMapDownlinkChannel,
         HostedValueDownlinkChannel, MapDlState, MapDownlinkHandle, ValueDownlinkHandle,
@@ -50,9 +49,13 @@ struct Inner<LC> {
     lifecycle: LC,
 }
 
+/// Configuration parameters for hosted value downlinks.
 #[derive(Debug, Clone, Copy)]
 pub struct ValueDownlinkConfig {
+    /// If this is set, lifecycle events will becalled for events before the downlink is synchronized with the remote lane.
+    /// (default: false).
     pub events_when_not_synced: bool,
+    /// If this is set, the downlink will stop if it enters the unlinked state (default: true).
     pub terminate_on_unlinked: bool,
 }
 
@@ -65,10 +68,15 @@ impl Default for ValueDownlinkConfig {
     }
 }
 
+/// Configuration parameters for hosted value downlinks.
 #[derive(Debug, Clone, Copy)]
 pub struct MapDownlinkConfig {
+    /// If this is set, lifecycle events will becalled for events before the downlink is synchronized with the remote lane.
+    /// (default: false).
     pub events_when_not_synced: bool,
+    /// If this is set, the downlink will stop if it enters the unlinked state (default: true).
     pub terminate_on_unlinked: bool,
+    /// Size of the channel used for sending operations to the remote lane.
     pub channel_size: NonZeroUsize,
 }
 
@@ -91,6 +99,8 @@ enum DlState {
     Synced,
 }
 
+/// [`HandlerAction`] that attempts to open a value downlink to a remote lane and results in
+/// a handle to the downlink.
 pub struct OpenValueDownlink<T, LC> {
     _type: PhantomData<fn(T) -> T>,
     inner: Option<Inner<LC>>,
@@ -99,6 +109,8 @@ pub struct OpenValueDownlink<T, LC> {
 
 type KvInvariant<K, V> = fn(K, V) -> (K, V);
 
+/// [`HandlerAction`] that attempts to open a map downlink to a remote lane and results in
+/// a handle to the downlink.
 pub struct OpenMapDownlink<K, V, LC> {
     _type: PhantomData<KvInvariant<K, V>>,
     inner: Option<Inner<LC>>,
@@ -193,48 +205,6 @@ where
             );
             let handle = ValueDownlinkHandle::new(path, tx);
             StepResult::done(handle)
-        } else {
-            StepResult::after_done()
-        }
-    }
-}
-
-struct RegInner<Context> {
-    channel: BoxDownlinkChannel<Context>,
-    write_stream: WriteStream,
-}
-
-pub struct RegisterHostedDownlink<Context> {
-    inner: Option<RegInner<Context>>,
-}
-
-impl<Context> RegisterHostedDownlink<Context> {
-    pub fn new(channel: BoxDownlinkChannel<Context>, write_stream: WriteStream) -> Self {
-        RegisterHostedDownlink {
-            inner: Some(RegInner {
-                channel,
-                write_stream,
-            }),
-        }
-    }
-}
-
-impl<Context> HandlerAction<Context> for RegisterHostedDownlink<Context> {
-    type Completion = Result<(), AgentRuntimeError>;
-
-    fn step(
-        &mut self,
-        action_context: ActionContext<Context>,
-        _meta: AgentMetadata,
-        _context: &Context,
-    ) -> StepResult<Self::Completion> {
-        let RegisterHostedDownlink { inner } = self;
-        if let Some(RegInner {
-            channel,
-            write_stream,
-        }) = inner.take()
-        {
-            StepResult::done(action_context.spawn_downlink(channel, write_stream))
         } else {
             StepResult::after_done()
         }

@@ -30,15 +30,18 @@ use thiserror::Error;
 use tokio_util::codec::Decoder;
 
 use crate::{
-    agent_model::downlink::{handlers::BoxDownlinkChannel, RegisterHostedDownlink},
+    agent_model::downlink::{handlers::BoxDownlinkChannel},
     meta::AgentMetadata,
 };
 
+mod register_downlink;
 mod suspend;
 #[cfg(test)]
 mod tests;
 
 pub use suspend::{HandlerFuture, Spawner, Suspend};
+
+use self::register_downlink::RegisterHostedDownlink;
 
 pub type WriteStream = BoxStream<'static, Result<(), std::io::Error>>;
 
@@ -984,3 +987,4 @@ where
         }
     }
 }
+
