@@ -15,31 +15,28 @@
 pub mod handlers;
 pub mod hosted;
 
-use std::{cell::RefCell, marker::PhantomData, num::NonZeroUsize};
+use std::{cell::RefCell, marker::PhantomData};
 
 use futures::StreamExt;
 use std::hash::Hash;
 use swim_api::{downlink::DownlinkKind, protocol::map::MapOperation};
 use swim_form::Form;
 use swim_model::{address::Address, Text};
-use swim_utilities::{algebra::non_zero_usize, sync::circular_buffer};
+use swim_utilities::sync::circular_buffer;
 use tokio::sync::mpsc;
 use tracing::error;
 
 use crate::{
     agent_model::downlink::handlers::DownlinkChannelExt,
+    config::{MapDownlinkConfig, ValueDownlinkConfig},
     downlink_lifecycle::{map::MapDownlinkLifecycle, value::ValueDownlinkLifecycle},
-    event_handler::{
-        ActionContext, HandlerAction, StepResult, UnitHandler,
-    },
+    event_handler::{ActionContext, HandlerAction, StepResult, UnitHandler},
     meta::AgentMetadata,
 };
 
-use self::{
-    hosted::{
-        map_dl_write_stream, value_dl_write_stream, HostedMapDownlinkChannel,
-        HostedValueDownlinkChannel, MapDlState, MapDownlinkHandle, ValueDownlinkHandle,
-    },
+use self::hosted::{
+    map_dl_write_stream, value_dl_write_stream, HostedMapDownlinkChannel,
+    HostedValueDownlinkChannel, MapDlState, MapDownlinkHandle, ValueDownlinkHandle,
 };
 
 struct Inner<LC> {
@@ -47,56 +44,6 @@ struct Inner<LC> {
     node: Text,
     lane: Text,
     lifecycle: LC,
-}
-
-/// Configuration parameters for hosted value downlinks.
-#[derive(Debug, Clone, Copy)]
-pub struct ValueDownlinkConfig {
-    /// If this is set, lifecycle events will becalled for events before the downlink is synchronized with the remote lane.
-    /// (default: false).
-    pub events_when_not_synced: bool,
-    /// If this is set, the downlink will stop if it enters the unlinked state (default: true).
-    pub terminate_on_unlinked: bool,
-}
-
-impl Default for ValueDownlinkConfig {
-    fn default() -> Self {
-        Self {
-            events_when_not_synced: false,
-            terminate_on_unlinked: true,
-        }
-    }
-}
-
-/// Configuration parameters for hosted value downlinks.
-#[derive(Debug, Clone, Copy)]
-pub struct MapDownlinkConfig {
-    /// If this is set, lifecycle events will becalled for events before the downlink is synchronized with the remote lane.
-    /// (default: false).
-    pub events_when_not_synced: bool,
-    /// If this is set, the downlink will stop if it enters the unlinked state (default: true).
-    pub terminate_on_unlinked: bool,
-    /// Size of the channel used for sending operations to the remote lane.
-    pub channel_size: NonZeroUsize,
-}
-
-const DEFAULT_CHAN_SIZE: NonZeroUsize = non_zero_usize!(8);
-
-impl Default for MapDownlinkConfig {
-    fn default() -> Self {
-        Self {
-            events_when_not_synced: false,
-            terminate_on_unlinked: true,
-            channel_size: DEFAULT_CHAN_SIZE,
-        }
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum DlState {
-    Unlinked,
-    Linked,
-    Synced,
 }
 
 /// [`HandlerAction`] that attempts to open a value downlink to a remote lane and results in

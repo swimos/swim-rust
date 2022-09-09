@@ -18,6 +18,13 @@ mod value;
 pub use map::{map_dl_write_stream, HostedMapDownlinkChannel, MapDlState, MapDownlinkHandle};
 pub use value::{value_dl_write_stream, HostedValueDownlinkChannel, ValueDownlinkHandle};
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DlState {
+    Unlinked,
+    Linked,
+    Synced,
+}
+
 #[cfg(test)]
 mod test_support {
     use futures::future::BoxFuture;

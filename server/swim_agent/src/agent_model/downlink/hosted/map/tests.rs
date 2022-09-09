@@ -30,7 +30,8 @@ use tokio::{io::AsyncWriteExt, sync::mpsc};
 use tokio_util::codec::{Encoder, FramedRead, FramedWrite};
 
 use crate::{
-    agent_model::downlink::{hosted::map_dl_write_stream, MapDownlinkConfig, MapDownlinkHandle},
+    agent_model::downlink::{hosted::map_dl_write_stream, MapDownlinkHandle},
+    config::MapDownlinkConfig,
     downlink_lifecycle::{
         map::{
             on_clear::OnDownlinkClear, on_remove::OnDownlinkRemove, on_update::OnDownlinkUpdate,

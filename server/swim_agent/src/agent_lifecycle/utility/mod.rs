@@ -22,9 +22,8 @@ use swim_model::Text;
 use swim_utilities::routing::uri::RelativeUri;
 
 use crate::agent_model::downlink::hosted::{MapDownlinkHandle, ValueDownlinkHandle};
-use crate::agent_model::downlink::{
-    MapDownlinkConfig, OpenMapDownlink, OpenValueDownlink, ValueDownlinkConfig,
-};
+use crate::agent_model::downlink::{OpenMapDownlink, OpenValueDownlink};
+use crate::config::{MapDownlinkConfig, ValueDownlinkConfig};
 use crate::downlink_lifecycle::map::MapDownlinkLifecycle;
 use crate::downlink_lifecycle::value::ValueDownlinkLifecycle;
 use crate::event_handler::{EventHandler, Suspend, UnitHandler};

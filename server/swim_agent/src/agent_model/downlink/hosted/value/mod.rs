@@ -35,10 +35,13 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::{debug, error, info, trace};
 
 use crate::{
-    agent_model::downlink::{handlers::DownlinkChannel, DlState, ValueDownlinkConfig},
+    agent_model::downlink::handlers::DownlinkChannel,
+    config::ValueDownlinkConfig,
     downlink_lifecycle::value::ValueDownlinkLifecycle,
     event_handler::{BoxEventHandler, EventHandlerExt, HandlerActionExt},
 };
+
+use super::DlState;
 
 #[cfg(test)]
 mod tests;

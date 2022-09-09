@@ -29,10 +29,7 @@ use swim_utilities::{
 use thiserror::Error;
 use tokio_util::codec::Decoder;
 
-use crate::{
-    agent_model::downlink::{handlers::BoxDownlinkChannel},
-    meta::AgentMetadata,
-};
+use crate::{agent_model::downlink::handlers::BoxDownlinkChannel, meta::AgentMetadata};
 
 mod register_downlink;
 mod suspend;
@@ -987,4 +984,3 @@ where
         }
     }
 }
-

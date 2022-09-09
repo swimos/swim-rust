@@ -16,7 +16,7 @@ use swim_api::error::AgentRuntimeError;
 
 use crate::{agent_model::downlink::handlers::BoxDownlinkChannel, meta::AgentMetadata};
 
-use super::{WriteStream, HandlerAction, ActionContext, StepResult, DownlinkSpawner};
+use super::{ActionContext, DownlinkSpawner, HandlerAction, StepResult, WriteStream};
 
 struct RegInner<Context> {
     channel: BoxDownlinkChannel<Context>,

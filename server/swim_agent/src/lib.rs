@@ -18,11 +18,14 @@ pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
 
 pub mod agent_lifecycle;
 pub mod agent_model;
+pub mod config;
 pub mod downlink_lifecycle;
 pub mod event_handler;
 mod event_queue;
 pub mod lanes;
 pub mod meta;
+#[cfg(test)]
+mod test_context;
 
 pub use agent_model::AgentLaneModel;
 
@@ -43,65 +46,5 @@ pub mod reexport {
 
     pub mod uuid {
         pub use uuid::Uuid;
-    }
-}
-
-#[cfg(test)]
-mod test_context {
-    use futures::future::BoxFuture;
-    use swim_api::{
-        agent::{AgentContext, LaneConfig, UplinkKind},
-        downlink::DownlinkKind,
-        error::AgentRuntimeError,
-    };
-    use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
-
-    use crate::{
-        agent_model::downlink::handlers::BoxDownlinkChannel,
-        event_handler::{ActionContext, HandlerFuture, Spawner, WriteStream},
-    };
-
-    struct NoSpawn;
-    pub struct DummyAgentContext;
-
-    pub fn no_downlink<Context>(
-        _dl: BoxDownlinkChannel<Context>,
-        _write_stream: WriteStream,
-    ) -> Result<(), AgentRuntimeError> {
-        panic!("Launching downlinks no supported.");
-    }
-
-    const NO_SPAWN: NoSpawn = NoSpawn;
-    const NO_AGENT: DummyAgentContext = DummyAgentContext;
-
-    pub fn dummy_context<'a, Context>() -> ActionContext<'a, Context> {
-        ActionContext::new(&NO_SPAWN, &NO_AGENT, &no_downlink)
-    }
-
-    impl<Context> Spawner<Context> for NoSpawn {
-        fn spawn_suspend(&self, _: HandlerFuture<Context>) {
-            panic!("No suspended futures expected.");
-        }
-    }
-
-    impl AgentContext for DummyAgentContext {
-        fn add_lane(
-            &self,
-            _name: &str,
-            _uplink_kind: UplinkKind,
-            _config: Option<LaneConfig>,
-        ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
-            panic!("Dummy context used.");
-        }
-
-        fn open_downlink(
-            &self,
-            _host: Option<&str>,
-            _node: &str,
-            _lane: &str,
-            _kind: DownlinkKind,
-        ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
-            panic!("Dummy context used.");
-        }
     }
 }
