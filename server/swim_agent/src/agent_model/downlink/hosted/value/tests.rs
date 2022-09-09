@@ -14,25 +14,15 @@
 
 use std::{cell::RefCell, num::NonZeroUsize, sync::Arc};
 
-use futures::{
-    future::{join3, BoxFuture},
-    pin_mut, SinkExt, StreamExt,
-};
+use futures::{future::join3, pin_mut, SinkExt, StreamExt};
 use parking_lot::Mutex;
-use swim_api::{
-    agent::{AgentConfig, AgentContext, LaneConfig, UplinkKind},
-    downlink::DownlinkKind,
-    error::AgentRuntimeError,
-    protocol::downlink::{
-        DownlinkNotification, DownlinkNotificationEncoder, DownlinkOperation,
-        DownlinkOperationDecoder,
-    },
+use swim_api::protocol::downlink::{
+    DownlinkNotification, DownlinkNotificationEncoder, DownlinkOperation, DownlinkOperationDecoder,
 };
 use swim_recon::printer::print_recon_compact;
 use swim_utilities::{
     algebra::non_zero_usize,
-    io::byte_channel::{self, ByteReader, ByteWriter},
-    routing::uri::RelativeUri,
+    io::byte_channel::{self, ByteWriter},
     sync::circular_buffer,
 };
 use tokio::{io::AsyncWriteExt, task::yield_now};
@@ -41,7 +31,7 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 use super::{HostedValueDownlinkChannel, ValueDownlinkConfig};
 use crate::{
     agent_model::downlink::{
-        handlers::{BoxDownlinkChannel, DownlinkChannel},
+        handlers::DownlinkChannel,
         hosted::{value_dl_write_stream, ValueDownlinkHandle},
     },
     downlink_lifecycle::{
@@ -50,11 +40,7 @@ use crate::{
         on_unlinked::OnUnlinked,
         value::{on_event::OnDownlinkEvent, on_set::OnDownlinkSet},
     },
-    event_handler::{
-        ActionContext, BoxEventHandler, DownlinkSpawner, EventHandlerExt, HandlerFuture,
-        SideEffect, Spawner, StepResult, WriteStream,
-    },
-    meta::AgentMetadata,
+    event_handler::{BoxEventHandler, EventHandlerExt, SideEffect},
 };
 
 struct FakeAgent;
@@ -217,6 +203,8 @@ fn to_bytes(not: DownlinkNotification<i32>) -> DownlinkNotification<Vec<u8>> {
     }
 }
 
+use super::super::test_support::run_handler;
+
 async fn run_with_expectations(
     context: &mut TestContext,
     agent: &FakeAgent,
@@ -240,80 +228,6 @@ async fn run_with_expectations(
             assert_eq!(take_events(events), expected);
         } else {
             assert!(next.is_none());
-        }
-    }
-}
-
-struct NoSpawn;
-
-impl Spawner<FakeAgent> for NoSpawn {
-    fn spawn_suspend(&self, _fut: HandlerFuture<FakeAgent>) {
-        panic!("Unexpected spawn.");
-    }
-}
-
-impl DownlinkSpawner<FakeAgent> for NoSpawn {
-    fn spawn_downlink(
-        &self,
-        _dl_channel: BoxDownlinkChannel<FakeAgent>,
-        _dl_writer: WriteStream,
-    ) -> Result<(), AgentRuntimeError> {
-        panic!("Unexpected downlink.");
-    }
-}
-
-struct NoAgentRuntime;
-
-impl AgentContext for NoAgentRuntime {
-    fn add_lane(
-        &self,
-        _name: &str,
-        _uplink_kind: UplinkKind,
-        _config: Option<LaneConfig>,
-    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
-        panic!("Unexpected runtime interaction.");
-    }
-
-    fn open_downlink(
-        &self,
-        _host: Option<&str>,
-        _node: &str,
-        _lane: &str,
-        _kind: DownlinkKind,
-    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
-        panic!("Unexpected runtime interaction.");
-    }
-}
-
-const NODE_URI: &str = "/node";
-const CONFIG: AgentConfig = AgentConfig {};
-
-fn make_uri() -> RelativeUri {
-    RelativeUri::try_from(NODE_URI).expect("Bad URI.")
-}
-
-fn make_meta(uri: &RelativeUri) -> AgentMetadata<'_> {
-    AgentMetadata::new(uri, &CONFIG)
-}
-
-fn run_handler<'a>(mut handler: BoxEventHandler<'a, FakeAgent>, agent: &FakeAgent) {
-    let uri = make_uri();
-    let meta = make_meta(&uri);
-    let no_spawn = NoSpawn;
-    let no_runtime = NoAgentRuntime;
-    let context = ActionContext::new(&no_spawn, &no_runtime, &no_spawn);
-    loop {
-        match handler.step(context, meta, agent) {
-            StepResult::Continue { modified_lane } => {
-                assert!(modified_lane.is_none());
-            }
-            StepResult::Fail(err) => {
-                panic!("Handler failed: {}", err);
-            }
-            StepResult::Complete { modified_lane, .. } => {
-                assert!(modified_lane.is_none());
-                break;
-            }
         }
     }
 }

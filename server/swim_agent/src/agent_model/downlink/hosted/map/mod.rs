@@ -37,11 +37,14 @@ use tokio::sync::mpsc;
 use tokio_util::codec::{FramedRead, FramedWrite};
 
 use crate::{
-    agent_model::downlink::handlers::DownlinkChannel,
+    agent_model::downlink::{handlers::DownlinkChannel, DlState, MapDownlinkConfig},
     downlink_lifecycle::map::MapDownlinkLifecycle,
     event_handler::{BoxEventHandler, EventHandlerExt, Sequentially},
     event_queue::EventQueue,
 };
+
+#[cfg(test)]
+mod tests;
 
 #[derive(Debug)]
 pub struct MapDlState<K, V> {
@@ -70,8 +73,8 @@ pub trait MapDlStateOps<K, V, Context> {
         context: &Context,
         key: K,
         value: V,
-        lifecycle: &'a LC,
-    ) -> BoxEventHandler<'a, Context>
+        lifecycle: Option<&'a LC>,
+    ) -> Option<BoxEventHandler<'a, Context>>
     where
         K: Eq + Hash + Clone + Ord,
         LC: MapDownlinkLifecycle<K, V, Context>,
@@ -85,7 +88,7 @@ pub trait MapDlStateOps<K, V, Context> {
                 _ => {}
             }
             let new_value = &map[&key];
-            lifecycle.on_update(key, &*map, old, new_value).boxed()
+            lifecycle.map(|lifecycle| lifecycle.on_update(key, &*map, old, new_value).boxed())
         })
     }
 
@@ -93,18 +96,18 @@ pub trait MapDlStateOps<K, V, Context> {
         &self,
         context: &Context,
         key: K,
-        lifecycle: &'a LC,
+        lifecycle: Option<&'a LC>,
     ) -> Option<BoxEventHandler<'a, Context>>
     where
         K: Eq + Hash + Ord,
         LC: MapDownlinkLifecycle<K, V, Context>,
     {
         self.with(context, move |MapDlState { map, order }| {
-            map.remove(&key).map(move |old| {
+            map.remove(&key).and_then(move |old| {
                 if let Some(ord) = order {
                     ord.remove(&key);
                 }
-                lifecycle.on_remove(key, &*map, old).boxed()
+                lifecycle.map(|lifecycle| lifecycle.on_remove(key, &*map, old).boxed())
             })
         })
     }
@@ -113,7 +116,7 @@ pub trait MapDlStateOps<K, V, Context> {
         &self,
         context: &Context,
         n: usize,
-        lifecycle: &'a LC,
+        lifecycle: Option<&'a LC>,
     ) -> Option<BoxEventHandler<'a, Context>>
     where
         K: Eq + Hash + Ord + Clone,
@@ -123,22 +126,32 @@ pub trait MapDlStateOps<K, V, Context> {
             if n >= map.len() {
                 *order = None;
                 let old = std::mem::take(map);
-                Some(lifecycle.on_clear(old).boxed())
+                lifecycle.map(move |lifecycle| lifecycle.on_clear(old).boxed())
             } else {
                 let ord = order.get_or_insert_with(|| map.keys().cloned().collect());
-                let expected = n.min(map.len());
-                let mut removed = Vec::with_capacity(expected);
+
                 let to_remove: Vec<_> = ord.iter().take(n).cloned().collect();
-                for k in to_remove {
-                    ord.remove(&k);
-                    if let Some(v) = map.remove(&k) {
-                        removed.push(lifecycle.on_remove(k, map, v));
+                if let Some(lifecycle) = lifecycle {
+                    let expected = n.min(map.len());
+                    let mut removed = Vec::with_capacity(expected);
+
+                    for k in to_remove {
+                        ord.remove(&k);
+                        if let Some(v) = map.remove(&k) {
+                            removed.push(lifecycle.on_remove(k, map, v));
+                        }
                     }
-                }
-                if removed.is_empty() {
-                    None
+                    if removed.is_empty() {
+                        None
+                    } else {
+                        Some(Sequentially::new(removed).boxed())
+                    }
                 } else {
-                    Some(Sequentially::new(removed).boxed())
+                    for k in to_remove {
+                        ord.remove(&k);
+                        map.remove(&k);
+                    }
+                    None
                 }
             }
         })
@@ -148,7 +161,7 @@ pub trait MapDlStateOps<K, V, Context> {
         &self,
         context: &Context,
         n: usize,
-        lifecycle: &'a LC,
+        lifecycle: Option<&'a LC>,
     ) -> Option<BoxEventHandler<'a, Context>>
     where
         K: Eq + Hash + Ord + Clone,
@@ -159,18 +172,27 @@ pub trait MapDlStateOps<K, V, Context> {
             if to_drop > 0 {
                 let ord = order.get_or_insert_with(|| map.keys().cloned().collect());
 
-                let mut removed = Vec::with_capacity(to_drop);
                 let to_remove: Vec<_> = ord.iter().rev().take(to_drop).cloned().collect();
-                for k in to_remove {
-                    ord.remove(&k);
-                    if let Some(v) = map.remove(&k) {
-                        removed.push(lifecycle.on_remove(k, map, v));
+                if let Some(lifecycle) = lifecycle {
+                    let mut removed = Vec::with_capacity(to_drop);
+
+                    for k in to_remove.into_iter().rev() {
+                        ord.remove(&k);
+                        if let Some(v) = map.remove(&k) {
+                            removed.push(lifecycle.on_remove(k, map, v));
+                        }
                     }
-                }
-                if removed.is_empty() {
-                    None
+                    if removed.is_empty() {
+                        None
+                    } else {
+                        Some(Sequentially::new(removed).boxed())
+                    }
                 } else {
-                    Some(Sequentially::new(removed).boxed())
+                    for k in to_remove {
+                        ord.remove(&k);
+                        map.remove(&k);
+                    }
+                    None
                 }
             } else {
                 None
@@ -212,17 +234,26 @@ pub struct HostedMapDownlinkChannel<K: RecognizerReadable, V: RecognizerReadable
     state: State,
     next: Option<DownlinkNotification<MapMessage<K, V>>>,
     lifecycle: LC,
+    config: MapDownlinkConfig,
+    dl_state: DlState,
 }
 
 impl<K: RecognizerReadable, V: RecognizerReadable, LC, State>
     HostedMapDownlinkChannel<K, V, LC, State>
 {
-    pub fn new(receiver: ByteReader, lifecycle: LC, state: State) -> Self {
+    pub fn new(
+        receiver: ByteReader,
+        lifecycle: LC,
+        state: State,
+        config: MapDownlinkConfig,
+    ) -> Self {
         HostedMapDownlinkChannel {
             receiver: Some(FramedRead::new(receiver, Default::default())),
             state,
             next: None,
             lifecycle,
+            config,
+            dl_state: DlState::Unlinked,
         }
     }
 }
@@ -264,40 +295,69 @@ where
 
     fn next_event(&mut self, context: &Context) -> Option<BoxEventHandler<'_, Context>> {
         let HostedMapDownlinkChannel {
+            receiver,
             state,
             next,
             lifecycle,
+            dl_state,
+            config:
+                MapDownlinkConfig {
+                    events_when_not_synced,
+                    terminate_on_unlinked,
+                    ..
+                },
             ..
         } = self;
         if let Some(notification) = next.take() {
             match notification {
-                DownlinkNotification::Linked => Some(lifecycle.on_linked().boxed()),
+                DownlinkNotification::Linked => {
+                    if *dl_state == DlState::Unlinked {
+                        *dl_state = DlState::Linked;
+                    }
+                    Some(lifecycle.on_linked().boxed())
+                }
                 DownlinkNotification::Synced => {
+                    *dl_state = DlState::Synced;
                     Some(state.with(context, |map| lifecycle.on_synced(&map.map).boxed()))
                 }
-                DownlinkNotification::Event { body } => match body {
-                    MapMessage::Update { key, value } => {
-                        Some(state.update(context, key, value, lifecycle))
+                DownlinkNotification::Event { body } => {
+                    let maybe_lifecycle = if *dl_state == DlState::Synced || *events_when_not_synced
+                    {
+                        Some(&*lifecycle)
+                    } else {
+                        None
+                    };
+
+                    match body {
+                        MapMessage::Update { key, value } => {
+                            state.update(context, key, value, maybe_lifecycle)
+                        }
+                        MapMessage::Remove { key } => state.remove(context, key, maybe_lifecycle),
+                        MapMessage::Clear => {
+                            let old_map = state.clear(context);
+                            maybe_lifecycle.map(|lifecycle| lifecycle.on_clear(old_map).boxed())
+                        }
+                        MapMessage::Take(n) => state.take(
+                            context,
+                            n.try_into()
+                                .expect("number to take does not fit into usize"),
+                            maybe_lifecycle,
+                        ),
+                        MapMessage::Drop(n) => state.drop(
+                            context,
+                            n.try_into()
+                                .expect("number to drop does not fit into usize"),
+                            maybe_lifecycle,
+                        ),
                     }
-                    MapMessage::Remove { key } => state.remove(context, key, lifecycle),
-                    MapMessage::Clear => {
-                        let old_map = state.clear(context);
-                        Some(lifecycle.on_clear(old_map).boxed())
+                }
+                DownlinkNotification::Unlinked => {
+                    *dl_state = DlState::Unlinked;
+                    if *terminate_on_unlinked {
+                        *receiver = None;
                     }
-                    MapMessage::Take(n) => state.take(
-                        context,
-                        n.try_into()
-                            .expect("number to take does not fit into usize"),
-                        lifecycle,
-                    ),
-                    MapMessage::Drop(n) => state.drop(
-                        context,
-                        n.try_into()
-                            .expect("number to drop does not fit into usize"),
-                        lifecycle,
-                    ),
-                },
-                DownlinkNotification::Unlinked => Some(lifecycle.on_unlinked().boxed()),
+                    Some(lifecycle.on_unlinked().boxed())
+                }
             }
         } else {
             None

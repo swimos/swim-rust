@@ -14,7 +14,6 @@
 
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::num::NonZeroUsize;
 use std::{collections::HashMap, marker::PhantomData};
 
 use futures::{Future, FutureExt};
@@ -24,7 +23,7 @@ use swim_utilities::routing::uri::RelativeUri;
 
 use crate::agent_model::downlink::hosted::ValueDownlinkHandle;
 use crate::agent_model::downlink::{
-    MapDownlinkHandle, OpenMapDownlink, OpenValueDownlink, ValueDownlinkConfig,
+    MapDownlinkConfig, MapDownlinkHandle, OpenMapDownlink, OpenValueDownlink, ValueDownlinkConfig,
 };
 use crate::downlink_lifecycle::map::MapDownlinkLifecycle;
 use crate::downlink_lifecycle::value::ValueDownlinkLifecycle;
@@ -280,7 +279,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
         node: &str,
         lane: &str,
         lifecycle: LC,
-        channel_size: NonZeroUsize,
+        config: MapDownlinkConfig,
     ) -> impl HandlerAction<Agent, Completion = MapDownlinkHandle<K, V>> + Send + 'static
     where
         K: Form + Hash + Eq + Ord + Clone + Send + Sync + 'static,
@@ -294,7 +293,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
             Text::new(node),
             Text::new(lane),
             lifecycle,
-            channel_size,
+            config,
         )
     }
 }

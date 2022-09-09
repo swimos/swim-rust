@@ -22,7 +22,7 @@ use std::hash::Hash;
 use swim_api::{downlink::DownlinkKind, error::AgentRuntimeError, protocol::map::MapOperation};
 use swim_form::Form;
 use swim_model::{address::Address, Text};
-use swim_utilities::sync::circular_buffer;
+use swim_utilities::{algebra::non_zero_usize, sync::circular_buffer};
 use tokio::sync::mpsc;
 use tracing::error;
 
@@ -72,6 +72,25 @@ impl Default for ValueDownlinkConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct MapDownlinkConfig {
+    pub events_when_not_synced: bool,
+    pub terminate_on_unlinked: bool,
+    pub channel_size: NonZeroUsize,
+}
+
+const DEFAULT_CHAN_SIZE: NonZeroUsize = non_zero_usize!(8);
+
+impl Default for MapDownlinkConfig {
+    fn default() -> Self {
+        Self {
+            events_when_not_synced: false,
+            terminate_on_unlinked: true,
+            channel_size: DEFAULT_CHAN_SIZE,
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DlState {
     Unlinked,
@@ -90,7 +109,7 @@ type KvInvariant<K, V> = fn(K, V) -> (K, V);
 pub struct OpenMapDownlink<K, V, LC> {
     _type: PhantomData<KvInvariant<K, V>>,
     inner: Option<Inner<LC>>,
-    channel_size: NonZeroUsize,
+    config: MapDownlinkConfig,
 }
 
 impl<T, LC> OpenValueDownlink<T, LC> {
@@ -120,7 +139,7 @@ impl<K, V, LC> OpenMapDownlink<K, V, LC> {
         node: Text,
         lane: Text,
         lifecycle: LC,
-        channel_size: NonZeroUsize,
+        config: MapDownlinkConfig,
     ) -> Self {
         OpenMapDownlink {
             _type: PhantomData,
@@ -130,7 +149,7 @@ impl<K, V, LC> OpenMapDownlink<K, V, LC> {
                 lane,
                 lifecycle,
             }),
-            channel_size,
+            config,
         }
     }
 }
@@ -288,11 +307,7 @@ where
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
-        let OpenMapDownlink {
-            inner,
-            channel_size,
-            ..
-        } = self;
+        let OpenMapDownlink { inner, config, .. } = self;
         if let Some(Inner {
             host,
             node,
@@ -302,11 +317,14 @@ where
         {
             let path = Address::new(host, node, lane);
             let state: RefCell<MapDlState<K, V>> = Default::default();
-            let (tx, rx) = mpsc::channel::<MapOperation<K, V>>(channel_size.get());
+            let (tx, rx) = mpsc::channel::<MapOperation<K, V>>(config.channel_size.get());
+            let config = *config;
             action_context.start_downlink(
                 path,
                 DownlinkKind::Map,
-                move |reader| HostedMapDownlinkChannel::new(reader, lifecycle, state).boxed(),
+                move |reader| {
+                    HostedMapDownlinkChannel::new(reader, lifecycle, state, config).boxed()
+                },
                 move |writer| map_dl_write_stream(writer, rx).boxed(),
                 |result| {
                     if let Err(err) = result {
