@@ -15,22 +15,22 @@
 use std::{cell::RefCell, collections::HashMap, num::NonZeroUsize, sync::Arc};
 
 use bytes::BytesMut;
-use futures::SinkExt;
+use futures::{future::join3, pin_mut, SinkExt, StreamExt};
 use parking_lot::Mutex;
 use swim_api::protocol::{
     downlink::{DownlinkNotification, DownlinkNotificationEncoder},
-    map::{MapMessage, MapMessageEncoder, MapOperationEncoder},
+    map::{MapMessage, MapMessageEncoder, MapOperation, MapOperationDecoder, MapOperationEncoder},
 };
 use swim_model::Text;
 use swim_utilities::{
     algebra::non_zero_usize,
     io::byte_channel::{self, ByteWriter},
 };
-use tokio::io::AsyncWriteExt;
-use tokio_util::codec::{Encoder, FramedWrite};
+use tokio::{io::AsyncWriteExt, sync::mpsc};
+use tokio_util::codec::{Encoder, FramedRead, FramedWrite};
 
 use crate::{
-    agent_model::downlink::MapDownlinkConfig,
+    agent_model::downlink::{hosted::map_dl_write_stream, MapDownlinkConfig, MapDownlinkHandle},
     downlink_lifecycle::{
         map::{
             on_clear::OnDownlinkClear, on_remove::OnDownlinkRemove, on_update::OnDownlinkUpdate,
@@ -598,4 +598,75 @@ async fn emit_drop_all_handlers() {
         ],
     )
     .await;
+}
+
+const CHANNEL_SIZE: usize = 8;
+
+#[tokio::test]
+async fn map_downlink_writer() {
+    let (op_tx, op_rx) = mpsc::channel::<MapOperation<i32, Text>>(CHANNEL_SIZE);
+    let (tx, rx) = byte_channel::byte_channel(BUFFER_SIZE);
+    let stream = map_dl_write_stream(tx, op_rx);
+    pin_mut!(stream);
+
+    let receiver = FramedRead::new(rx, MapOperationDecoder::<i32, Text>::default());
+
+    let driver = async move {
+        while let Some(result) = stream.next().await {
+            assert!(result.is_ok());
+        }
+    };
+
+    let read = async move { receiver.collect::<Vec<_>>().await };
+
+    let write = async move {
+        let handle = MapDownlinkHandle::new(op_tx);
+        for i in 'a'..='j' {
+            for j in 0..3 {
+                assert!(handle.update(j, Text::from(i.to_string())).await.is_ok());
+            }
+        }
+        assert!(handle.remove(2).await.is_ok());
+    };
+
+    let (_, received, r) = join3(driver, read, tokio::spawn(write)).await;
+    assert!(r.is_ok());
+
+    let mut key0 = None;
+    let mut key1 = None;
+    let mut key2 = None;
+    let mut key2_removed = false;
+
+    for result in received {
+        match result {
+            Ok(MapOperation::Update { key, value }) => match key {
+                0 => {
+                    if let Some(v) = &key0 {
+                        assert!(v < &value);
+                    }
+                    key0 = Some(value);
+                }
+                1 => {
+                    if let Some(v) = &key1 {
+                        assert!(v < &value);
+                    }
+                    key1 = Some(value);
+                }
+                2 if !key2_removed => {
+                    if let Some(v) = &key2 {
+                        assert!(v < &value);
+                    }
+                    key2 = Some(value);
+                }
+                ow => panic!("Unexpected key: {}", ow),
+            },
+            Ok(MapOperation::Remove { key: 2 }) => {
+                key2_removed = true;
+            }
+            ow => panic!("Unexpected result: {:?}", ow),
+        }
+    }
+    assert!(key2_removed);
+    assert_eq!(key0, Some(Text::new("j")));
+    assert_eq!(key1, Some(Text::new("j")));
 }
