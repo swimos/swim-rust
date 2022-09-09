@@ -17,7 +17,7 @@ pub mod hosted;
 
 use std::{cell::RefCell, marker::PhantomData, num::NonZeroUsize};
 
-use futures::{Future, StreamExt};
+use futures::StreamExt;
 use std::hash::Hash;
 use swim_api::{downlink::DownlinkKind, error::AgentRuntimeError, protocol::map::MapOperation};
 use swim_form::Form;
@@ -39,7 +39,7 @@ use self::{
     handlers::BoxDownlinkChannel,
     hosted::{
         map_dl_write_stream, value_dl_write_stream, HostedMapDownlinkChannel,
-        HostedValueDownlinkChannel, MapDlState, ValueDownlinkHandle,
+        HostedValueDownlinkChannel, MapDlState, MapDownlinkHandle, ValueDownlinkHandle,
     },
 };
 
@@ -154,50 +154,6 @@ impl<K, V, LC> OpenMapDownlink<K, V, LC> {
     }
 }
 
-pub struct MapDownlinkHandle<K, V> {
-    sender: mpsc::Sender<MapOperation<K, V>>,
-}
-
-impl<K, V> MapDownlinkHandle<K, V> {
-    fn new(sender: mpsc::Sender<MapOperation<K, V>>) -> Self {
-        MapDownlinkHandle { sender }
-    }
-}
-
-impl<K, V> MapDownlinkHandle<K, V>
-where
-    K: Send + 'static,
-    V: Send + 'static,
-{
-    pub fn update(
-        &self,
-        key: K,
-        value: V,
-    ) -> impl Future<Output = Result<(), AgentRuntimeError>> + 'static {
-        let tx = self.sender.clone();
-        async move {
-            tx.send(MapOperation::Update { key, value }).await?;
-            Ok(())
-        }
-    }
-
-    pub fn remove(&self, key: K) -> impl Future<Output = Result<(), AgentRuntimeError>> + 'static {
-        let tx = self.sender.clone();
-        async move {
-            tx.send(MapOperation::Remove { key }).await?;
-            Ok(())
-        }
-    }
-
-    pub fn clear(&self) -> impl Future<Output = Result<(), AgentRuntimeError>> + 'static {
-        let tx = self.sender.clone();
-        async move {
-            tx.send(MapOperation::Clear).await?;
-            Ok(())
-        }
-    }
-}
-
 impl<T, LC, Context> HandlerAction<Context> for OpenValueDownlink<T, LC>
 where
     Context: 'static,
@@ -226,11 +182,13 @@ where
             let (tx, rx) = circular_buffer::watch_channel();
 
             let config = *config;
+            let path_cpy = path.clone();
             action_context.start_downlink(
-                path,
+                path.clone(),
                 DownlinkKind::Value,
                 move |reader| {
-                    HostedValueDownlinkChannel::new(reader, lifecycle, state, config).boxed()
+                    HostedValueDownlinkChannel::new(path_cpy, reader, lifecycle, state, config)
+                        .boxed()
                 },
                 move |writer| value_dl_write_stream(writer, rx).boxed(),
                 |result| {
@@ -240,7 +198,7 @@ where
                     UnitHandler::default()
                 },
             );
-            let handle = ValueDownlinkHandle::new(tx);
+            let handle = ValueDownlinkHandle::new(path, tx);
             StepResult::done(handle)
         } else {
             StepResult::after_done()
@@ -319,11 +277,13 @@ where
             let state: RefCell<MapDlState<K, V>> = Default::default();
             let (tx, rx) = mpsc::channel::<MapOperation<K, V>>(config.channel_size.get());
             let config = *config;
+            let path_cpy = path.clone();
             action_context.start_downlink(
                 path,
                 DownlinkKind::Map,
                 move |reader| {
-                    HostedMapDownlinkChannel::new(reader, lifecycle, state, config).boxed()
+                    HostedMapDownlinkChannel::new(path_cpy, reader, lifecycle, state, config)
+                        .boxed()
                 },
                 move |writer| map_dl_write_stream(writer, rx).boxed(),
                 |result| {

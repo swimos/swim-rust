@@ -21,7 +21,7 @@ use swim_api::protocol::{
     downlink::{DownlinkNotification, DownlinkNotificationEncoder},
     map::{MapMessage, MapMessageEncoder, MapOperation, MapOperationDecoder, MapOperationEncoder},
 };
-use swim_model::Text;
+use swim_model::{address::Address, Text};
 use swim_utilities::{
     algebra::non_zero_usize,
     io::byte_channel::{self, ByteWriter},
@@ -244,7 +244,9 @@ fn make_hosted_input(config: MapDownlinkConfig) -> TestContext {
 
     let (tx, rx) = byte_channel::byte_channel(BUFFER_SIZE);
 
-    let chan = HostedMapDownlinkChannel::new(rx, lc, State::default(), config);
+    let address = Address::new(None, Text::new("/node"), Text::new("lane"));
+
+    let chan = HostedMapDownlinkChannel::new(address, rx, lc, State::default(), config);
     TestContext {
         channel: chan,
         events,

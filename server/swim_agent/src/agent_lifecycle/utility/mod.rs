@@ -21,9 +21,9 @@ use swim_form::Form;
 use swim_model::Text;
 use swim_utilities::routing::uri::RelativeUri;
 
-use crate::agent_model::downlink::hosted::ValueDownlinkHandle;
+use crate::agent_model::downlink::hosted::{MapDownlinkHandle, ValueDownlinkHandle};
 use crate::agent_model::downlink::{
-    MapDownlinkConfig, MapDownlinkHandle, OpenMapDownlink, OpenValueDownlink, ValueDownlinkConfig,
+    MapDownlinkConfig, OpenMapDownlink, OpenValueDownlink, ValueDownlinkConfig,
 };
 use crate::downlink_lifecycle::map::MapDownlinkLifecycle;
 use crate::downlink_lifecycle::value::ValueDownlinkLifecycle;

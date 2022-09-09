@@ -25,12 +25,14 @@ use swim_api::{
     },
 };
 use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
+use swim_model::{address::Address, Text};
 use swim_recon::printer::print_recon_compact;
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
     sync::circular_buffer,
 };
 use tokio_util::codec::{FramedRead, FramedWrite};
+use tracing::{debug, error, info, trace};
 
 use crate::{
     agent_model::downlink::{handlers::DownlinkChannel, DlState, ValueDownlinkConfig},
@@ -41,11 +43,15 @@ use crate::{
 #[cfg(test)]
 mod tests;
 
-pub trait ValueDlState<T, Context> {
+/// Operations that need to be supported by the state store of a value downlink. The intention
+/// of this trait is to abstract over a self contained store a store contained within the field
+/// of an agent. In both cases, the store itself will a [`RefCell`] containing an optional value.
+trait ValueDlState<T, Context> {
     fn take_current(&self, context: &Context) -> Option<T>;
 
     fn replace(&self, context: &Context, value: T);
 
+    // Perform an operation in a context with access to the state.
     fn with<R, Op: FnOnce(Option<&T>) -> R>(&self, context: &Context, op: Op) -> R;
 
     fn clear(&self, context: &Context);
@@ -90,7 +96,10 @@ where
     }
 }
 
+/// An implementation of [`DownlinkChannel`] to allow a value downlink to be driven by an agent
+/// task.
 pub struct HostedValueDownlinkChannel<T: RecognizerReadable, LC, State> {
+    address: Address<Text>,
     receiver: Option<FramedRead<ByteReader, ValueNotificationDecoder<T>>>,
     state: State,
     next: Option<DownlinkNotification<T>>,
@@ -101,12 +110,14 @@ pub struct HostedValueDownlinkChannel<T: RecognizerReadable, LC, State> {
 
 impl<T: RecognizerReadable, LC, State> HostedValueDownlinkChannel<T, LC, State> {
     pub fn new(
+        address: Address<Text>,
         receiver: ByteReader,
         lifecycle: LC,
         state: State,
         config: ValueDownlinkConfig,
     ) -> Self {
         HostedValueDownlinkChannel {
+            address,
             receiver: Some(FramedRead::new(receiver, Default::default())),
             state,
             next: None,
@@ -125,7 +136,12 @@ where
     LC: ValueDownlinkLifecycle<T, Context> + 'static,
 {
     fn await_ready(&mut self) -> BoxFuture<'_, Option<Result<(), FrameIoError>>> {
-        let HostedValueDownlinkChannel { receiver, next, .. } = self;
+        let HostedValueDownlinkChannel {
+            address,
+            receiver,
+            next,
+            ..
+        } = self;
         async move {
             if let Some(rx) = receiver {
                 match rx.next().await {
@@ -134,10 +150,12 @@ where
                         Some(Ok(()))
                     }
                     Some(Err(e)) => {
+                        error!(address = %address, "Downlink input channel failed.");
                         *receiver = None;
                         Some(Err(e))
                     }
                     _ => {
+                        info!(address = %address, "Downlink terminated normally.");
                         *receiver = None;
                         None
                     }
@@ -151,6 +169,7 @@ where
 
     fn next_event(&mut self, context: &Context) -> Option<BoxEventHandler<'_, Context>> {
         let HostedValueDownlinkChannel {
+            address,
             state,
             receiver,
             next,
@@ -166,16 +185,19 @@ where
         if let Some(notification) = next.take() {
             match notification {
                 DownlinkNotification::Linked => {
+                    debug!(address = %address, "Downlink linked.");
                     if *dl_state == DlState::Unlinked {
                         *dl_state = DlState::Linked;
                     }
                     Some(lifecycle.on_linked().boxed())
                 }
                 DownlinkNotification::Synced => state.with(context, |maybe_value| {
+                    debug!(address = %address, "Downlink synced.");
                     *dl_state = DlState::Synced;
                     maybe_value.map(|value| lifecycle.on_synced(value).boxed())
                 }),
                 DownlinkNotification::Event { body } => {
+                    trace!(address = %address, "Event received for downlink.");
                     let prev = state.take_current(context);
                     let handler = if *dl_state == DlState::Synced || *events_when_not_synced {
                         let handler = lifecycle
@@ -190,6 +212,7 @@ where
                     handler
                 }
                 DownlinkNotification::Unlinked => {
+                    debug!(address = %address, "Downlink unlinked.");
                     state.clear(context);
                     if *terminate_on_unlinked {
                         *receiver = None;
@@ -203,13 +226,15 @@ where
     }
 }
 
+/// A handle which can be used to set the value of a lane through a value downlink.
 pub struct ValueDownlinkHandle<T> {
+    address: Address<Text>,
     inner: circular_buffer::Sender<T>,
 }
 
 impl<T> ValueDownlinkHandle<T> {
-    pub fn new(inner: circular_buffer::Sender<T>) -> Self {
-        ValueDownlinkHandle { inner }
+    pub fn new(address: Address<Text>, inner: circular_buffer::Sender<T>) -> Self {
+        ValueDownlinkHandle { address, inner }
     }
 }
 
@@ -218,7 +243,9 @@ where
     T: Send + Sync,
 {
     pub fn set(&mut self, value: T) -> Result<(), AgentRuntimeError> {
+        trace!(address = %self.address, "Attempting to set a value into a downlink.");
         if self.inner.try_send(value).is_err() {
+            info!(address = %self.address, "Downlink writer failed.");
             Err(AgentRuntimeError::DownlinkConnectionFailed(
                 DownlinkFailureReason::DownlinkStopped,
             ))
@@ -228,6 +255,7 @@ where
     }
 }
 
+/// Task to write the values sent by a [`ValueDownlinkHandle`] to an outgoing channel.
 pub fn value_dl_write_stream<T>(
     writer: ByteWriter,
     watch_rx: circular_buffer::Receiver<T>,
@@ -246,6 +274,7 @@ where
             buffer.clear();
             write!(&mut buffer, "{}", print_recon_compact(&value))
                 .expect("Writing to Recon should be infallible.");
+            trace!(content = ?buffer.as_ref(), "Writing a value to a value downlink.");
             let result = writer.send(buffer.as_ref()).await;
             Some((result, (writer, rx, buffer)))
         } else {

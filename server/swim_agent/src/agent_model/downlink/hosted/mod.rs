@@ -15,10 +15,8 @@
 mod map;
 mod value;
 
-pub use map::{map_dl_write_stream, HostedMapDownlinkChannel, MapDlState};
-pub use value::{
-    value_dl_write_stream, HostedValueDownlinkChannel, ValueDlState, ValueDownlinkHandle,
-};
+pub use map::{map_dl_write_stream, HostedMapDownlinkChannel, MapDlState, MapDownlinkHandle};
+pub use value::{value_dl_write_stream, HostedValueDownlinkChannel, ValueDownlinkHandle};
 
 #[cfg(test)]
 mod test_support {

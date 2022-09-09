@@ -19,6 +19,7 @@ use parking_lot::Mutex;
 use swim_api::protocol::downlink::{
     DownlinkNotification, DownlinkNotificationEncoder, DownlinkOperation, DownlinkOperationDecoder,
 };
+use swim_model::{address::Address, Text};
 use swim_recon::printer::print_recon_compact;
 use swim_utilities::{
     algebra::non_zero_usize,
@@ -141,7 +142,9 @@ fn make_hosted_input(config: ValueDownlinkConfig) -> TestContext {
 
     let (tx, rx) = byte_channel::byte_channel(BUFFER_SIZE);
 
-    let chan = HostedValueDownlinkChannel::new(rx, lc, State::default(), config);
+    let address = Address::new(None, Text::new("/node"), Text::new("lane"));
+
+    let chan = HostedValueDownlinkChannel::new(address, rx, lc, State::default(), config);
     TestContext {
         channel: chan,
         events: inner,
@@ -407,7 +410,8 @@ async fn value_downlink_writer() {
     };
 
     let write = async move {
-        let mut handle = ValueDownlinkHandle::new(set_tx);
+        let address = Address::new(None, Text::new("/node"), Text::new("lane"));
+        let mut handle = ValueDownlinkHandle::new(address, set_tx);
         for i in 0..=10 {
             assert!(handle.set(i).is_ok());
             if i % 2 == 0 {
