@@ -600,6 +600,48 @@ async fn emit_drop_all_handlers() {
     .await;
 }
 
+#[tokio::test]
+async fn revive_unlinked_downlink() {
+    let mut config = MapDownlinkConfig::default();
+    config.terminate_on_unlinked = false;
+
+    let mut context = make_hosted_input(config);
+
+    let agent = FakeAgent;
+
+    run_with_expectations(
+        &mut context,
+        &agent,
+        vec![
+            (DownlinkNotification::Linked, Some(vec![Event::Linked])),
+            (upd(1, "a"), None),
+            (
+                DownlinkNotification::Synced,
+                Some(vec![Event::synced([(1, "a")])]),
+            ),
+            (DownlinkNotification::Unlinked, Some(vec![Event::Unlinked])),
+            (DownlinkNotification::Linked, Some(vec![Event::Linked])),
+            (upd(2, "b"), None),
+            (
+                DownlinkNotification::Synced,
+                Some(vec![Event::synced([(2, "b")])]),
+            ),
+        ],
+    )
+    .await;
+
+    let TestContext {
+        mut channel,
+        sender,
+        ..
+    } = context;
+
+    drop(sender);
+    assert!(channel.await_ready().await.is_none());
+
+    assert!(channel.next_event(&agent).is_none());
+}
+
 const CHANNEL_SIZE: usize = 8;
 
 #[tokio::test]

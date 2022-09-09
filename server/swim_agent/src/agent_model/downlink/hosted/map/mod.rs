@@ -356,6 +356,7 @@ where
                     if *terminate_on_unlinked {
                         *receiver = None;
                     }
+                    state.clear(context);
                     Some(lifecycle.on_unlinked().boxed())
                 }
             }
