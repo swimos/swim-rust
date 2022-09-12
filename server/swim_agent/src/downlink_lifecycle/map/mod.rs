@@ -124,8 +124,8 @@ impl<Context, State, K, V> StatefulMapDownlinkLifecycle<Context, State, K, V> {
     }
 }
 
-impl<Context, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> Clone
-    for StatefulMapDownlinkLifecycle<Context, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
+impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> Clone
+    for StatefulMapDownlinkLifecycle<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
 where
     State: Clone,
     FLinked: Clone,
