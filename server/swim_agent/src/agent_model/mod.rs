@@ -238,6 +238,7 @@ impl<Context> HostedDownlink<Context> {
     }
 }
 
+#[derive(Debug)]
 enum HostedDownlinkEvent {
     WriterFailed(std::io::Error),
     Written,

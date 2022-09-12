@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{io::ErrorKind, sync::Arc};
 
 // Copyright 2015-2021 Swim Inc.
 //
@@ -14,10 +14,14 @@ use std::sync::Arc;
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::{future::join, StreamExt};
+use futures::{
+    future::{join, BoxFuture},
+    FutureExt, StreamExt,
+};
 use parking_lot::Mutex;
 use swim_api::{
     agent::{AgentConfig, AgentTask},
+    error::FrameIoError,
     protocol::map::{MapMessage, MapOperation},
 };
 use swim_model::Text;
@@ -26,6 +30,11 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use uuid::Uuid;
 
+use crate::{
+    agent_model::HostedDownlinkEvent,
+    event_handler::{BoxEventHandler, EventHandlerExt, UnitHandler, WriteStream},
+};
+
 use self::{
     fake_agent::TestAgent,
     fake_context::TestAgentContext,
@@ -33,7 +42,10 @@ use self::{
     lane_io::{MapLaneReceiver, MapLaneSender, ValueLaneReceiver, ValueLaneSender},
 };
 
-use super::{AgentModel, LaneModelFactory};
+use super::{
+    downlink::handlers::{DownlinkChannel, DownlinkChannelExt},
+    AgentModel, HostedDownlink, LaneModelFactory,
+};
 
 mod fake_agent;
 mod fake_context;
@@ -450,4 +462,150 @@ async fn suspend_future() {
 
     let lane_events = test_event_rx.collect::<Vec<_>>().await;
     assert!(lane_events.is_empty());
+}
+
+struct TestDownlinkChannel {
+    rx: mpsc::UnboundedReceiver<Result<(), FrameIoError>>,
+    ready: bool,
+}
+
+struct TestDlAgent;
+
+impl DownlinkChannel<TestDlAgent> for TestDownlinkChannel {
+    fn await_ready(&mut self) -> BoxFuture<'_, Option<Result<(), FrameIoError>>> {
+        async move {
+            let result = self.rx.recv().await;
+            self.ready = true;
+            result
+        }
+        .boxed()
+    }
+
+    fn next_event(&mut self, _context: &TestDlAgent) -> Option<BoxEventHandler<'_, TestDlAgent>> {
+        if self.ready {
+            self.ready = false;
+            Some(UnitHandler::default().boxed())
+        } else {
+            None
+        }
+    }
+}
+
+fn make_dl_out(rx: mpsc::UnboundedReceiver<Result<(), std::io::Error>>) -> WriteStream {
+    UnboundedReceiverStream::new(rx).boxed()
+}
+
+fn make_test_hosted_downlink(
+    in_rx: mpsc::UnboundedReceiver<Result<(), FrameIoError>>,
+    out_rx: mpsc::UnboundedReceiver<Result<(), std::io::Error>>,
+) -> HostedDownlink<TestDlAgent> {
+    let channel = TestDownlinkChannel {
+        rx: in_rx,
+        ready: false,
+    };
+
+    HostedDownlink::new(channel.boxed(), make_dl_out(out_rx))
+}
+
+#[tokio::test]
+async fn hosted_downlink_incoming() {
+    let agent = TestDlAgent;
+
+    let (in_tx, in_rx) = mpsc::unbounded_channel();
+    let (_out_tx, out_rx) = mpsc::unbounded_channel();
+    let hosted = make_test_hosted_downlink(in_rx, out_rx);
+
+    assert!(in_tx.send(Ok(())).is_ok());
+    let (mut hosted, event) = hosted
+        .wait_on_downlink()
+        .await
+        .expect("Closed prematurely.");
+    assert!(matches!(event, HostedDownlinkEvent::HandlerReady));
+    assert!(hosted.channel.next_event(&agent).is_some());
+}
+
+#[tokio::test]
+async fn hosted_downlink_outgoing() {
+    let agent = TestDlAgent;
+
+    let (_in_tx, in_rx) = mpsc::unbounded_channel();
+    let (out_tx, out_rx) = mpsc::unbounded_channel();
+    let hosted = make_test_hosted_downlink(in_rx, out_rx);
+
+    assert!(out_tx.send(Ok(())).is_ok());
+    let (mut hosted, event) = hosted
+        .wait_on_downlink()
+        .await
+        .expect("Closed prematurely.");
+    assert!(matches!(event, HostedDownlinkEvent::Written));
+    assert!(hosted.channel.next_event(&agent).is_none());
+}
+
+#[tokio::test]
+async fn hosted_downlink_write_terminated() {
+    let agent = TestDlAgent;
+
+    let (in_tx, in_rx) = mpsc::unbounded_channel();
+    let (out_tx, out_rx) = mpsc::unbounded_channel();
+    let hosted = make_test_hosted_downlink(in_rx, out_rx);
+
+    drop(out_tx);
+    let (mut hosted, event) = hosted
+        .wait_on_downlink()
+        .await
+        .expect("Closed prematurely.");
+    assert!(matches!(event, HostedDownlinkEvent::WriterTerminated));
+    assert!(hosted.channel.next_event(&agent).is_none());
+
+    assert!(in_tx.send(Ok(())).is_ok());
+    let (mut hosted, event) = hosted
+        .wait_on_downlink()
+        .await
+        .expect("Closed prematurely.");
+    assert!(matches!(event, HostedDownlinkEvent::HandlerReady));
+    assert!(hosted.channel.next_event(&agent).is_some());
+}
+
+#[tokio::test]
+async fn hosted_downlink_write_failed() {
+    let agent = TestDlAgent;
+
+    let (in_tx, in_rx) = mpsc::unbounded_channel();
+    let (out_tx, out_rx) = mpsc::unbounded_channel();
+    let hosted = make_test_hosted_downlink(in_rx, out_rx);
+
+    let err = std::io::Error::from(ErrorKind::BrokenPipe);
+
+    assert!(out_tx.send(Err(err)).is_ok());
+    let (mut hosted, event) = hosted
+        .wait_on_downlink()
+        .await
+        .expect("Closed prematurely.");
+    match event {
+        HostedDownlinkEvent::WriterFailed(err) => {
+            assert_eq!(err.kind(), ErrorKind::BrokenPipe);
+        }
+        ow => {
+            panic!("Unexpected event: {:?}", ow);
+        }
+    }
+    assert!(hosted.channel.next_event(&agent).is_none());
+
+    assert!(in_tx.send(Ok(())).is_ok());
+    let (mut hosted, event) = hosted
+        .wait_on_downlink()
+        .await
+        .expect("Closed prematurely.");
+    assert!(matches!(event, HostedDownlinkEvent::HandlerReady));
+    assert!(hosted.channel.next_event(&agent).is_some());
+}
+
+#[tokio::test]
+async fn hosted_downlink_incoming_terminated() {
+    let (in_tx, in_rx) = mpsc::unbounded_channel();
+    let (_out_tx, out_rx) = mpsc::unbounded_channel();
+    let hosted = make_test_hosted_downlink(in_rx, out_rx);
+
+    drop(in_tx);
+    assert!(hosted.wait_on_downlink().await.is_none());
 }
