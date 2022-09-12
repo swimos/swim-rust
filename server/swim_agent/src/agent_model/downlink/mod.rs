@@ -14,6 +14,8 @@
 
 pub mod handlers;
 pub mod hosted;
+#[cfg(test)]
+mod tests;
 
 use std::{cell::RefCell, marker::PhantomData};
 

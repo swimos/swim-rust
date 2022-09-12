@@ -12,9 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_api::handlers::NoHandler;
+use std::marker::PhantomData;
 
-use crate::agent_lifecycle::utility::HandlerContext;
+use swim_api::handlers::{FnHandler, NoHandler};
+
+use crate::{
+    agent_lifecycle::utility::HandlerContext,
+    lanes::value::lifecycle::{on_event::OnEventShared, on_set::OnSetShared},
+};
 
 use self::{
     on_event::{OnDownlinkEvent, OnDownlinkEventShared},
@@ -62,12 +67,14 @@ impl<LC, T, Context> ValueDownlinkLifecycle<T, Context> for LC where
 pub struct StatefulValueDownlinkLifecycle<
     Context,
     State,
+    T,
     FLinked = NoHandler,
     FSynced = NoHandler,
     FUnlinked = NoHandler,
     FEv = NoHandler,
     FSet = NoHandler,
 > {
+    _type: PhantomData<fn(T)>,
     state: State,
     handler_context: HandlerContext<Context>,
     on_linked: FLinked,
@@ -77,9 +84,10 @@ pub struct StatefulValueDownlinkLifecycle<
     on_set: FSet,
 }
 
-impl<Context, State> StatefulValueDownlinkLifecycle<Context, State> {
+impl<Context, State, T> StatefulValueDownlinkLifecycle<Context, State, T> {
     pub fn new(state: State) -> Self {
         StatefulValueDownlinkLifecycle {
+            _type: PhantomData,
             state,
             handler_context: Default::default(),
             on_linked: Default::default(),
@@ -91,8 +99,8 @@ impl<Context, State> StatefulValueDownlinkLifecycle<Context, State> {
     }
 }
 
-impl<Context, State, FLinked, FSynced, FUnlinked, FEv, FSet> Clone
-    for StatefulValueDownlinkLifecycle<Context, State, FLinked, FSynced, FUnlinked, FEv, FSet>
+impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet> Clone
+    for StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
 where
     State: Clone,
     FLinked: Clone,
@@ -103,6 +111,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
+            _type: PhantomData,
             state: self.state.clone(),
             handler_context: HandlerContext::default(),
             on_linked: self.on_linked.clone(),
@@ -114,8 +123,8 @@ where
     }
 }
 
-impl<'a, Context, State, FLinked, FSynced, FUnlinked, FEv, FSet> OnLinked<'a, Context>
-    for StatefulValueDownlinkLifecycle<Context, State, FLinked, FSynced, FUnlinked, FEv, FSet>
+impl<'a, Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet> OnLinked<'a, Context>
+    for StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
 where
     State: Send,
     FLinked: OnLinkedShared<'a, Context, State>,
@@ -137,8 +146,8 @@ where
     }
 }
 
-impl<'a, T, Context, State, FLinked, FSynced, FUnlinked, FEv, FSet> OnSynced<'a, T, Context>
-    for StatefulValueDownlinkLifecycle<Context, State, FLinked, FSynced, FUnlinked, FEv, FSet>
+impl<'a, Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet> OnSynced<'a, T, Context>
+    for StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
 where
     State: Send,
     FLinked: Send,
@@ -160,8 +169,8 @@ where
     }
 }
 
-impl<'a, Context, State, FLinked, FSynced, FUnlinked, FEv, FSet> OnUnlinked<'a, Context>
-    for StatefulValueDownlinkLifecycle<Context, State, FLinked, FSynced, FUnlinked, FEv, FSet>
+impl<'a, Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet> OnUnlinked<'a, Context>
+    for StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
 where
     State: Send,
     FLinked: Send,
@@ -183,8 +192,8 @@ where
     }
 }
 
-impl<'a, T, Context, State, FLinked, FSynced, FUnlinked, FEv, FSet> OnDownlinkEvent<'a, T, Context>
-    for StatefulValueDownlinkLifecycle<Context, State, FLinked, FSynced, FUnlinked, FEv, FSet>
+impl<'a, Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet> OnDownlinkEvent<'a, T, Context>
+    for StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
 where
     State: Send,
     FLinked: Send,
@@ -206,8 +215,8 @@ where
     }
 }
 
-impl<'a, T, Context, State, FLinked, FSynced, FUnlinked, FEv, FSet> OnDownlinkSet<'a, T, Context>
-    for StatefulValueDownlinkLifecycle<Context, State, FLinked, FSynced, FUnlinked, FEv, FSet>
+impl<'a, Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet> OnDownlinkSet<'a, T, Context>
+    for StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
 where
     State: Send,
     FLinked: Send,
@@ -226,5 +235,140 @@ where
             ..
         } = self;
         on_set.on_set(state, *handler_context, previous, new_value)
+    }
+}
+
+impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
+    StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
+{
+    pub fn on_linked<F>(
+        self,
+        f: F,
+    ) -> StatefulValueDownlinkLifecycle<
+        Context,
+        State,
+        T,
+        FnHandler<F>,
+        FSynced,
+        FUnlinked,
+        FEv,
+        FSet,
+    >
+    where
+        FnHandler<F>: for<'a> OnLinkedShared<'a, Context, State>,
+    {
+        StatefulValueDownlinkLifecycle {
+            _type: PhantomData,
+            state: self.state,
+            handler_context: self.handler_context,
+            on_linked: FnHandler(f),
+            on_synced: self.on_synced,
+            on_unlinked: self.on_unlinked,
+            on_event: self.on_event,
+            on_set: self.on_set,
+        }
+    }
+
+    pub fn on_synced<F>(
+        self,
+        f: F,
+    ) -> StatefulValueDownlinkLifecycle<
+        Context,
+        State,
+        T,
+        FLinked,
+        FnHandler<F>,
+        FUnlinked,
+        FEv,
+        FSet,
+    >
+    where
+        FnHandler<F>: for<'a> OnSyncedShared<'a, T, Context, State>,
+    {
+        StatefulValueDownlinkLifecycle {
+            _type: PhantomData,
+            state: self.state,
+            handler_context: self.handler_context,
+            on_linked: self.on_linked,
+            on_synced: FnHandler(f),
+            on_unlinked: self.on_unlinked,
+            on_event: self.on_event,
+            on_set: self.on_set,
+        }
+    }
+
+    pub fn on_unlinked<F>(
+        self,
+        f: F,
+    ) -> StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FnHandler<F>, FEv, FSet>
+    where
+        FnHandler<F>: for<'a> OnUnlinkedShared<'a, Context, State>,
+    {
+        StatefulValueDownlinkLifecycle {
+            _type: PhantomData,
+            state: self.state,
+            handler_context: self.handler_context,
+            on_linked: self.on_linked,
+            on_synced: self.on_synced,
+            on_unlinked: FnHandler(f),
+            on_event: self.on_event,
+            on_set: self.on_set,
+        }
+    }
+
+    pub fn on_event<F>(
+        self,
+        f: F,
+    ) -> StatefulValueDownlinkLifecycle<
+        Context,
+        State,
+        T,
+        FLinked,
+        FSynced,
+        FUnlinked,
+        FnHandler<F>,
+        FSet,
+    >
+    where
+        FnHandler<F>: for<'a> OnEventShared<'a, T, Context, State>,
+    {
+        StatefulValueDownlinkLifecycle {
+            _type: PhantomData,
+            state: self.state,
+            handler_context: self.handler_context,
+            on_linked: self.on_linked,
+            on_synced: self.on_synced,
+            on_unlinked: self.on_unlinked,
+            on_event: FnHandler(f),
+            on_set: self.on_set,
+        }
+    }
+
+    pub fn on_set<F>(
+        self,
+        f: F,
+    ) -> StatefulValueDownlinkLifecycle<
+        Context,
+        State,
+        T,
+        FLinked,
+        FSynced,
+        FUnlinked,
+        FEv,
+        FnHandler<F>,
+    >
+    where
+        FnHandler<F>: for<'a> OnSetShared<'a, T, Context, State>,
+    {
+        StatefulValueDownlinkLifecycle {
+            _type: PhantomData,
+            state: self.state,
+            handler_context: self.handler_context,
+            on_linked: self.on_linked,
+            on_synced: self.on_synced,
+            on_unlinked: self.on_unlinked,
+            on_event: self.on_event,
+            on_set: FnHandler(f),
+        }
     }
 }
