@@ -510,9 +510,11 @@ where
                         match event {
                             HostedDownlinkEvent::WriterFailed(err) => {
                                 error!(error = %err, "A downlink hosted by the agent failed.");
+                                downlinks.push(downlink.wait_on_downlink());
                             }
                             HostedDownlinkEvent::WriterTerminated => {
                                 info!("A downlink hosted by the agent stopped writing output.");
+                                downlinks.push(downlink.wait_on_downlink());
                             }
                             HostedDownlinkEvent::HandlerReady => {
                                 if let Some(handler) = downlink.channel.next_event(&lane_model) {
@@ -528,10 +530,10 @@ where
                                         break Err(AgentTaskError::UserCodeError(Box::new(e)));
                                     }
                                 }
+                                downlinks.push(downlink.wait_on_downlink());
                             }
                             _ => {}
                         }
-                        downlinks.push(downlink.wait_on_downlink());
                     }
                 }
                 TaskEvent::ValueRequest { id, request } => {
