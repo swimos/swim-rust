@@ -53,6 +53,11 @@ impl<'a, T, Context, LC> ValueDownlinkHandlers<'a, T, Context> for LC where
 {
 }
 
+/// Trait for the lifecycle of a value downlink.
+///
+/// #Type Parameters
+/// * `T` - The type of the state of the lane.
+/// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 pub trait ValueDownlinkLifecycle<T, Context>:
     for<'a> ValueDownlinkHandlers<'a, T, Context>
 {
@@ -63,6 +68,18 @@ impl<LC, T, Context> ValueDownlinkLifecycle<T, Context> for LC where
 {
 }
 
+/// A lifecycle for a value downlink where the individual event handlers can shared state.
+///
+/// #Type Parameters
+/// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
+/// * `State` - The type of the shared state.
+/// * `T` - The type of the downlink.
+/// * `FLinked` - The type of the 'on_linked' handler.
+/// * `FSynced` - The type of the 'on_synced' handler.
+/// * `FUnlinked` - The type of the 'on_unlinked' handler.
+/// * `FEv` - The type of the 'on_event' handler.
+/// * `FSet` - The type of the 'on_set' handler.
+///
 #[derive(Debug)]
 pub struct StatefulValueDownlinkLifecycle<
     Context,
@@ -241,6 +258,7 @@ where
 impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
     StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
 {
+    /// Replace the 'on_linked' handler with another derived from a closure.
     pub fn on_linked<F>(
         self,
         f: F,
@@ -269,6 +287,7 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         }
     }
 
+    /// Replace the 'on_synced' handler with another derived from a closure.
     pub fn on_synced<F>(
         self,
         f: F,
@@ -297,6 +316,7 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         }
     }
 
+    /// Replace the 'on_unlinked' handler with another derived from a closure.
     pub fn on_unlinked<F>(
         self,
         f: F,
@@ -316,6 +336,7 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         }
     }
 
+    /// Replace the 'on_event' handler with another derived from a closure.
     pub fn on_event<F>(
         self,
         f: F,
@@ -344,6 +365,7 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         }
     }
 
+    /// Replace the 'on_set' handler with another derived from a closure.
     pub fn on_set<F>(
         self,
         f: F,

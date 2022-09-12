@@ -54,6 +54,12 @@ impl<'a, K, V, Context, LC> MapDownlinkHandlers<'a, K, V, Context> for LC where
 {
 }
 
+/// Trait for the lifecycle of a map downlink.
+///
+/// #Type Parameters
+/// * `K` - The type of the keys of the downlink.
+/// * `V` - The type of the values of the downlink.
+/// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 pub trait MapDownlinkLifecycle<K, V, Context>:
     for<'a> MapDownlinkHandlers<'a, K, V, Context>
 {
@@ -64,6 +70,20 @@ impl<LC, K, V, Context> MapDownlinkLifecycle<K, V, Context> for LC where
 {
 }
 
+/// A lifecycle for a map downlink where the individual event handlers can shared state.
+///
+/// #Type Parameters
+/// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
+/// * `State` - The type of the shared state.
+/// * `K` - The type of the keys of the downlink.
+/// * `V` - The type of the values of the downlink.
+/// * `FLinked` - The type of the 'on_linked' handler.
+/// * `FSynced` - The type of the 'on_synced' handler.
+/// * `FUnlinked` - The type of the 'on_unlinked' handler.
+/// * `FUpd` - The type of the 'on_update' handler.
+/// * `FRem` - The type of the 'on_remove' handler.
+/// * `FClr` - The type of the 'on_clear' handler.
+///
 #[derive(Debug)]
 pub struct StatefulMapDownlinkLifecycle<
     Context,
@@ -365,6 +385,7 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FClr,
     >
 {
+    /// Replace the 'on_linked' handler with another derived from a closure.
     pub fn on_linked<F>(
         self,
         f: F,
@@ -396,6 +417,7 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         }
     }
 
+    /// Replace the 'on_synced' handler with another derived from a closure.
     pub fn on_synced<F>(
         self,
         f: F,
@@ -427,6 +449,7 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         }
     }
 
+    /// Replace the 'on_unlinked' handler with another derived from a closure.
     pub fn on_unlinked<F>(
         self,
         f: F,
@@ -458,6 +481,7 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         }
     }
 
+    /// Replace the 'on_update' handler with another derived from a closure.
     pub fn on_update<F>(
         self,
         f: F,
@@ -489,6 +513,7 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         }
     }
 
+    /// Replace the 'on_remove' handler with another derived from a closure.
     pub fn on_remove<F>(
         self,
         f: F,
@@ -520,6 +545,7 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         }
     }
 
+    /// Replace the 'on_clear' handler with another derived from a closure.
     pub fn on_clear<F>(
         self,
         f: F,
