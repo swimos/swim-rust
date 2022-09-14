@@ -32,6 +32,7 @@ use ratchet::{
     SplittableExtension, WebSocket, WebSocketStream,
 };
 use smallvec::SmallVec;
+use swim_api::error::DownlinkFailureReason;
 use swim_messages::{
     bytes_str::BytesStr,
     protocol::{
@@ -78,7 +79,7 @@ pub enum AttachClient {
         path: RelativeAddress<Text>,
         sender: ByteWriter,
         receiver: ByteReader,
-        done: trigger::Sender,
+        done: oneshot::Sender<Result<(), DownlinkFailureReason>>,
     },
 }
 
@@ -316,9 +317,11 @@ async fn registration_task<F>(
     loop {
         let request = tokio::select! {
             done = trackers.next(), if !trackers.is_empty() => {
-                let done: Option<Option<trigger::Sender>> = done;
+                let done: Option<Option<oneshot::Sender<Result<(), DownlinkFailureReason>>>> = done;
                 if let Some(Some(done)) = done {
-                    done.trigger();
+                    if done.send(Ok(())).is_err() {
+                        info!("Downlink request dropped before it was satisfied.");
+                    };
                 }
                 continue;
             }

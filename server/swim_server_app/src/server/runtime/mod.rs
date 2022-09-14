@@ -470,12 +470,24 @@ where
                     sock_addrs,
                     responder,
                 }) => {
-                    let net = networking.clone();
-                    let ws = websockets.clone();
-                    client_tasks.push(async move {
-                        let result = open_client(host, sock_addrs, net, ws).await;
-                        ServerEvent::NewClient(result, responder)
-                    });
+                    if let Some((sock_addr, attach_tx)) = sock_addrs
+                        .iter()
+                        .find_map(|addr| remote_channels.get(addr).map(|tx| (*addr, tx.clone())))
+                    {
+                        if responder
+                            .send(Ok(EstablishedClient::new(attach_tx, sock_addr)))
+                            .is_err()
+                        {
+                            info!("Request for client connection dropped before it was completed.");
+                        }
+                    } else {
+                        let net = networking.clone();
+                        let ws = websockets.clone();
+                        client_tasks.push(async move {
+                            let result = open_client(host, sock_addrs, net, ws).await;
+                            ServerEvent::NewClient(result, responder)
+                        });
+                    }
                 }
                 ServerEvent::NewClient(Ok((sock_addr, websocket)), responder) => {
                     let id = remote_issuer.next_id();
@@ -529,8 +541,10 @@ where
                             dl_connection_tasks.push(task);
                         }
                         Err(node) => {
-                            debug!(node = %node, "Requested agent does not exist.");
-                            drop(done);
+                            warn!(node = %node, "Requested agent does not exist.");
+                            if done.send(Err(DownlinkFailureReason::Unresolvable)).is_err() {
+                                info!(node = %node, "Downlink request dropped before it was satisfied.");
+                            }
                         }
                     }
                 }
@@ -744,7 +758,7 @@ async fn attach_downlink(
     tx: mpsc::Sender<AgentAttachmentRequest>,
     io: (ByteWriter, ByteReader),
     connect_timeout: Duration,
-    done: trigger::Sender,
+    done: oneshot::Sender<Result<(), DownlinkFailureReason>>,
 ) -> ConnectionTerminated {
     let (disconnect_tx, disconnect_rx) = promise::promise();
     let (connected_tx, connected_rx) = trigger::trigger();
@@ -756,8 +770,10 @@ async fn attach_downlink(
     .await
     {
         Ok(_) => {
-            done.trigger();
-            if let Ok(reason) = disconnect_rx.await {
+            if done.send(Ok(())).is_err() {
+                info!("Downlink request dropped before satisfied.");
+                DisconnectionReason::Failed
+            } else if let Ok(reason) = disconnect_rx.await {
                 *reason
             } else {
                 DisconnectionReason::Failed

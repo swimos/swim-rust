@@ -39,7 +39,7 @@ use swim_utilities::{
 };
 use tokio::{
     io::{duplex, DuplexStream},
-    sync::mpsc,
+    sync::{mpsc, oneshot},
 };
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{FramedRead, FramedWrite};
@@ -111,7 +111,7 @@ async fn register_for_downlinks() {
     test_registration_task(|att_tx, mut in_rx, mut out_rx, stop_trigger| async move {
         let (tx1, rx1) = byte_channel::byte_channel(BUFFER_SIZE);
         let (tx2, rx2) = byte_channel::byte_channel(BUFFER_SIZE);
-        let (done_tx, done_rx) = trigger::trigger();
+        let (done_tx, done_rx) = oneshot::channel();
         att_tx
             .send(AttachClient::AttachDownlink {
                 downlink_id: DL_ID,
@@ -148,7 +148,7 @@ async fn register_for_downlinks() {
 
             done_out.trigger();
 
-            assert!(done_rx.await.is_ok());
+            assert!(matches!(done_rx.await, Ok(Ok(_))));
         } else {
             panic!("Incorrect message received.");
         }
@@ -1147,7 +1147,7 @@ async fn combined_downlink_io() {
         } = &mut context;
         let (tx1, rx1) = byte_channel::byte_channel(BUFFER_SIZE);
         let (tx2, rx2) = byte_channel::byte_channel(BUFFER_SIZE);
-        let (done_tx, done_rx) = trigger::trigger();
+        let (done_tx, done_rx) = oneshot::channel();
         attach_tx
             .send(AttachClient::AttachDownlink {
                 downlink_id: DL_ID,
@@ -1159,7 +1159,7 @@ async fn combined_downlink_io() {
             .await
             .expect("Channel closed.");
 
-        assert!(done_rx.await.is_ok());
+        assert!(matches!(done_rx.await, Ok(Ok(_))));
 
         let envelope_in = make_dl_envelope();
 

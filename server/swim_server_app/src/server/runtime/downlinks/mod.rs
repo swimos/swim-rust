@@ -68,8 +68,6 @@ pub struct DownlinkConnectionTask<Dns> {
     dns: Dns,
 }
 
-struct RemoteStopped;
-
 enum Event {
     Request(DownlinkRequest),
     Resolved {
@@ -83,7 +81,7 @@ enum Event {
     RuntimeAttached {
         remote_address: Option<SocketAddr>,
         key: DlKey,
-        result: Result<(mpsc::Sender<AttachAction>, DownlinkRuntime), RemoteStopped>,
+        result: Result<(mpsc::Sender<AttachAction>, DownlinkRuntime), DownlinkFailureReason>,
     },
     RuntimeTerminated {
         socket_addr: Option<SocketAddr>,
@@ -516,7 +514,7 @@ async fn start_downlink_runtime(
     let (rel_addr, kind) = key;
     let (in_tx, in_rx) = byte_channel(config.remote_buffer_size);
     let (out_tx, out_rx) = byte_channel(config.remote_buffer_size);
-    let (done_tx, done_rx) = trigger::trigger();
+    let (done_tx, done_rx) = oneshot::channel();
 
     let request = AttachClient::AttachDownlink {
         downlink_id: identity,
@@ -529,14 +527,19 @@ async fn start_downlink_runtime(
         return Event::RuntimeAttached {
             remote_address: remote_addr,
             key: (rel_addr, kind),
-            result: Err(RemoteStopped),
+            result: Err(DownlinkFailureReason::RemoteStopped),
         };
     }
-    if done_rx.await.is_err() {
+    let err = match done_rx.await {
+        Ok(Err(e)) => Some(e),
+        Err(_) => Some(DownlinkFailureReason::RemoteStopped),
+        _ => None,
+    };
+    if let Some(err) = err {
         return Event::RuntimeAttached {
             remote_address: remote_addr,
             key: (rel_addr, kind),
-            result: Err(RemoteStopped),
+            result: Err(err),
         };
     }
     let io = (out_tx, in_rx);

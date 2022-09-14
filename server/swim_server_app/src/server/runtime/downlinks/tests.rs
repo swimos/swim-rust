@@ -29,7 +29,7 @@ use futures::{
 use parking_lot::Mutex;
 use swim_api::{
     downlink::DownlinkKind,
-    error::AgentRuntimeError,
+    error::{AgentRuntimeError, DownlinkFailureReason},
     protocol::downlink::{
         DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
     },
@@ -83,6 +83,7 @@ fn scheme_addr(scheme: Scheme, port: u16) -> SchemeSocketAddr {
 
 const HOST: &str = "example.swim";
 const URL: &str = "warp://example.swim:40000";
+const BAD_URL: &str = "warp://other.swim:40000";
 const PORT: u16 = 40000;
 
 impl DnsResolver for FakeDns {
@@ -248,17 +249,20 @@ impl FakeServerTask {
                     } => {
                         let mut guard = endpoints.lock();
                         assert!(!guard.contains_key(&downlink_id));
-                        assert_eq!(path.node, LOCAL_NODE);
-                        assert_eq!(path.lane, LANE);
-                        guard.insert(
-                            downlink_id,
-                            Endpoint {
-                                local: true,
-                                address: path,
-                                io: (sender, receiver),
-                            },
-                        );
-                        done.trigger();
+                        let result = if path.node == LOCAL_NODE && path.lane == LANE {
+                            guard.insert(
+                                downlink_id,
+                                Endpoint {
+                                    local: true,
+                                    address: path,
+                                    io: (sender, receiver),
+                                },
+                            );
+                            Ok(())
+                        } else {
+                            Err(DownlinkFailureReason::Unresolvable)
+                        };
+                        assert!(done.send(result).is_ok());
                     }
                 },
                 Some(Either::Right(req)) => match req {
@@ -282,7 +286,7 @@ impl FakeServerTask {
                                 io: (sender, receiver),
                             },
                         );
-                        done.trigger();
+                        assert!(done.send(Ok(())).is_ok());
                     }
                 },
                 _ => {
@@ -306,6 +310,7 @@ async fn clean_shutdown() {
 
 const REM_NODE: &str = "/remote";
 const LOCAL_NODE: &str = "/local";
+const BAD_NODE: &str = "/bad";
 const LANE: &str = "lane";
 
 fn request_remote(
@@ -313,6 +318,32 @@ fn request_remote(
     promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
 ) -> DownlinkRequest {
     let address = Address::text(Some(URL), REM_NODE, LANE);
+    //Empty options so that downlinks don't try to sync (to reduce noise in the tests).
+    DownlinkRequest::new(address, kind, DownlinkOptions::empty(), promise)
+}
+
+fn request_bad_remote(
+    kind: DownlinkKind,
+    promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
+) -> DownlinkRequest {
+    let address = Address::text(Some(BAD_URL), REM_NODE, LANE);
+    DownlinkRequest::new(address, kind, DownlinkOptions::empty(), promise)
+}
+
+fn request_local(
+    kind: DownlinkKind,
+    promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
+) -> DownlinkRequest {
+    let address = Address::text(None, LOCAL_NODE, LANE);
+    //Empty options so that downlinks don't try to sync (to reduce noise in the tests).
+    DownlinkRequest::new(address, kind, DownlinkOptions::empty(), promise)
+}
+
+fn request_bad_local(
+    kind: DownlinkKind,
+    promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
+) -> DownlinkRequest {
+    let address = Address::text(None, BAD_NODE, LANE);
     //Empty options so that downlinks don't try to sync (to reduce noise in the tests).
     DownlinkRequest::new(address, kind, DownlinkOptions::empty(), promise)
 }
@@ -439,4 +470,105 @@ async fn verify_link_value_dl(id: Uuid, downlink: Io, socket: Io, node: &str) ->
     }
 
     (dl_tx, dl_rx)
+}
+
+#[tokio::test]
+async fn open_local_downlink() {
+    run_downlinks_test(CONFIG, |context| async move {
+        let TestContext { connector } = context;
+
+        let requests = connector.dl_requests();
+        let (stop_server, server_task) = FakeServerTask::new(PORT, connector);
+
+        let endpoints = server_task.endpoints();
+
+        let (connected_tx, connected_rx) = oneshot::channel();
+        let request = request_local(DownlinkKind::Value, connected_tx);
+
+        let test = async move {
+            assert!(requests.send(request).await.is_ok());
+
+            let mut io = connected_rx
+                .await
+                .expect("Stopped prematurely.")
+                .expect("Connection failed.");
+
+            let (dl_id, local_io) = endpoints.take_endpoint(true, LOCAL_NODE);
+
+            io = verify_link_value_dl(dl_id, io, local_io, LOCAL_NODE).await;
+
+            assert!(stop_server.trigger());
+
+            expect_unlinked_value(io).await;
+        };
+
+        join(server_task.run(), test).await
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn open_unresolvable_remote_downlink() {
+    run_downlinks_test(CONFIG, |context| async move {
+        let TestContext { connector } = context;
+
+        let requests = connector.dl_requests();
+        let (stop_server, server_task) = FakeServerTask::new(PORT, connector);
+
+        let (connected_tx, connected_rx) = oneshot::channel();
+        let request = request_bad_remote(DownlinkKind::Value, connected_tx);
+
+        let test = async move {
+            assert!(requests.send(request).await.is_ok());
+
+            let error = connected_rx
+                .await
+                .expect("Stopped prematurely.")
+                .err()
+                .expect("Resolution should fail.");
+
+            assert!(matches!(
+                error,
+                AgentRuntimeError::DownlinkConnectionFailed(_)
+            ));
+
+            assert!(stop_server.trigger());
+        };
+
+        join(server_task.run(), test).await
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn open_unresolvable_local_downlink() {
+    run_downlinks_test(CONFIG, |context| async move {
+        let TestContext { connector } = context;
+
+        let requests = connector.dl_requests();
+        let (stop_server, server_task) = FakeServerTask::new(PORT, connector);
+
+        let (connected_tx, connected_rx) = oneshot::channel();
+        let request = request_bad_local(DownlinkKind::Value, connected_tx);
+
+        let test = async move {
+            assert!(requests.send(request).await.is_ok());
+
+            let error = connected_rx
+                .await
+                .expect("Stopped prematurely.")
+                .err()
+                .expect("Resolution should fail.");
+
+            assert!(matches!(
+                error,
+                AgentRuntimeError::DownlinkConnectionFailed(_)
+            ));
+
+            assert!(stop_server.trigger());
+        };
+
+        join(server_task.run(), test).await
+    })
+    .await;
 }
