@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::error::ConnectionError;
+use crate::remote::net::dns::{DnsFut, DnsResolver};
 use crate::remote::table::SchemeHostPort;
 use crate::remote::{ExternalConnections, Listener, Scheme, SchemeSocketAddr};
 use crate::ws::{WsConnections, WsOpenFuture};
@@ -55,6 +56,22 @@ pub struct FakeConnections {
     inner: Arc<Mutex<FakeConnectionsInner>>,
     // The count of open requests that will return error before it starts handling them normally.
     open_error_count: Arc<AtomicIsize>,
+}
+
+impl DnsResolver for FakeConnections {
+    type ResolveFuture = DnsFut;
+
+    fn resolve(&self, host_and_port: SchemeHostPort) -> Self::ResolveFuture {
+        let result = self
+            .inner
+            .lock()
+            .dns
+            .get(&host_and_port.to_string())
+            .map(Clone::clone)
+            .map(Ok)
+            .unwrap_or_else(|| Err(ErrorKind::NotFound.into()));
+        ready(result).boxed()
+    }
 }
 
 impl FakeConnections {
@@ -124,15 +141,11 @@ impl ExternalConnections for FakeConnections {
         &self,
         host_and_port: SchemeHostPort,
     ) -> BoxFuture<'static, io::Result<Vec<SchemeSocketAddr>>> {
-        let result = self
-            .inner
-            .lock()
-            .dns
-            .get(&host_and_port.to_string())
-            .map(Clone::clone)
-            .map(Ok)
-            .unwrap_or_else(|| Err(ErrorKind::NotFound.into()));
-        ready(result).boxed()
+        self.resolve(host_and_port)
+    }
+
+    fn dns_resolver(&self) -> crate::remote::net::dns::BoxDnsResolver {
+        Box::new(self.clone())
     }
 }
 

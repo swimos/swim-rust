@@ -56,6 +56,8 @@ use swim_model::Text;
 use swim_tracing::request::{RequestExt, TryRequestExt};
 use swim_utilities::routing::uri::RelativeUri;
 
+use self::net::dns::BoxDnsResolver;
+
 #[cfg(test)]
 pub mod test_fixture;
 
@@ -519,6 +521,8 @@ pub trait ExternalConnections: Clone + Send + Sync + 'static {
         addr: SocketAddr,
     ) -> BoxFuture<'static, IoResult<(SocketAddr, Self::ListenerType)>>;
     fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>>;
+
+    fn dns_resolver(&self) -> BoxDnsResolver;
     fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, IoResult<Vec<SchemeSocketAddr>>>;
 }
 
@@ -543,5 +547,9 @@ where
 
     fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, IoResult<Vec<SchemeSocketAddr>>> {
         (**self).lookup(host)
+    }
+
+    fn dns_resolver(&self) -> BoxDnsResolver {
+        (**self).dns_resolver()
     }
 }

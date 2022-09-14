@@ -22,6 +22,7 @@ use futures::future::ready;
 use futures::{future::BoxFuture, stream::Fuse, FutureExt, Stream, StreamExt};
 use ratchet::{NegotiatedExtension, NoExt, Role, WebSocket, WebSocketConfig};
 use swim_runtime::error::ConnectionError;
+use swim_runtime::remote::net::dns::{DnsFut, DnsResolver};
 use swim_runtime::remote::Scheme;
 use swim_runtime::remote::{
     table::SchemeHostPort, ExternalConnections, Listener, SchemeSocketAddr,
@@ -114,6 +115,23 @@ impl Debug for TestListener {
     }
 }
 
+impl DnsResolver for TestConnections {
+    type ResolveFuture = DnsFut;
+
+    fn resolve(&self, host: SchemeHostPort) -> Self::ResolveFuture {
+        let sender = self.requests.clone();
+        async move {
+            let (tx, rx) = oneshot::channel();
+            sender
+                .send(ConnReq::Resolve(host, tx))
+                .await
+                .expect("Channel closed.");
+            rx.await.expect("Connections task stopped.")
+        }
+        .boxed()
+    }
+}
+
 impl ExternalConnections for TestConnections {
     type Socket = DuplexStream;
 
@@ -154,16 +172,11 @@ impl ExternalConnections for TestConnections {
         &self,
         host: SchemeHostPort,
     ) -> BoxFuture<'static, io::Result<Vec<SchemeSocketAddr>>> {
-        let sender = self.requests.clone();
-        async move {
-            let (tx, rx) = oneshot::channel();
-            sender
-                .send(ConnReq::Resolve(host, tx))
-                .await
-                .expect("Channel closed.");
-            rx.await.expect("Connections task stopped.")
-        }
-        .boxed()
+        self.resolve(host)
+    }
+
+    fn dns_resolver(&self) -> swim_runtime::remote::net::dns::BoxDnsResolver {
+        Box::new(self.clone())
     }
 }
 

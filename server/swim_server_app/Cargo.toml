@@ -28,3 +28,5 @@ swim_recon = { path = "../../api/formats/swim_recon", features = ["async_parser"
 tokio = { version = "1.1.1", features = ["rt", "macros"]}
 swim_form = {path = "../../api/swim_form" }
 swim_warp = { path = "../../swim_warp" }
+parking_lot = "0.11.0"
+swim_messages = { path = "../../runtime/swim_messages" }

@@ -140,8 +140,11 @@ where
             config.client_request_channel_size,
             config.open_downlink_channel_size,
         );
-        let downlinks =
-            DownlinkConnectionTask::new(dl_conn, config.downlink_runtime, self.networking.clone());
+        let downlinks = DownlinkConnectionTask::new(
+            dl_conn,
+            config.downlink_runtime,
+            self.networking.dns_resolver(),
+        );
         let (fut, handle) = self.run_server(server_conn);
 
         let downlinks_task = downlinks.run();

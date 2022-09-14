@@ -14,6 +14,8 @@
 
 mod connector;
 mod pending;
+#[cfg(test)]
+mod tests;
 
 pub use connector::{downlink_task_connector, DlTaskRequest, DownlinksConnector, ServerConnector};
 use tracing::{error, info};
@@ -41,7 +43,7 @@ use swim_runtime::{
         failure::{AlwaysAbortStrategy, AlwaysIgnoreStrategy, ReportStrategy},
         AttachAction, DownlinkRuntimeConfig, Io, MapDownlinkRuntime, ValueDownlinkRuntime,
     },
-    remote::{table::SchemeHostPort, BadUrl, ExternalConnections, SchemeSocketAddr},
+    remote::{net::dns::DnsResolver, table::SchemeHostPort, BadUrl, SchemeSocketAddr},
 };
 use swim_utilities::{
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
@@ -60,10 +62,10 @@ use super::{
     ClientRegistration, EstablishedClient, NewClientError,
 };
 
-pub struct DownlinkConnectionTask<Net> {
+pub struct DownlinkConnectionTask<Dns> {
     connector: DownlinksConnector,
     config: DownlinkRuntimeConfig,
-    networking: Net,
+    dns: Dns,
 }
 
 struct RemoteStopped;
@@ -123,19 +125,15 @@ impl ClientHandle {
     }
 }
 
-impl<Net> DownlinkConnectionTask<Net>
+impl<Dns> DownlinkConnectionTask<Dns>
 where
-    Net: ExternalConnections,
+    Dns: DnsResolver,
 {
-    pub fn new(
-        connector: DownlinksConnector,
-        config: DownlinkRuntimeConfig,
-        networking: Net,
-    ) -> Self {
+    pub fn new(connector: DownlinksConnector, config: DownlinkRuntimeConfig, dns: Dns) -> Self {
         DownlinkConnectionTask {
             connector,
             config,
-            networking,
+            dns,
         }
     }
 
@@ -145,7 +143,7 @@ where
             let DownlinkConnectionTask {
                 mut connector,
                 config,
-                networking,
+                dns,
             } = self;
 
             let mut downlink_channels: HashMap<SocketAddr, ClientHandle> = HashMap::new();
@@ -174,8 +172,7 @@ where
                             if let Ok(target) = process_host(host.as_str()) {
                                 pending.push_remote(host.clone(), request);
                                 tasks.push(
-                                    networking
-                                        .lookup(target)
+                                    dns.resolve(target)
                                         .map(move |result| Event::Resolved { host, result })
                                         .boxed(),
                                 );
@@ -623,190 +620,3 @@ impl DownlinkRuntime {
         }
     }
 }
-
-/* async fn resolve_remote_for_dl<Net, E>(
-    host: Text,
-    request: DownlinkRequest,
-    networking: Arc<Net>,
-) -> DownlinkEvent<Net::Socket, E>
-where
-    Net: ExternalConnections,
-{
-    let result = resolve_remote(host.as_str(), networking).await;
-    DownlinkEvent::RemoteResolved {
-        request,
-        host,
-        addrs: result,
-    }
-}
-
-async fn resolve_remote<Net>(
-    host: &str,
-    networking: Arc<Net>,
-) -> Result<Vec<SocketAddr>, NewClientError>
-where
-    Net: ExternalConnections,
-{
-    match host.parse::<Url>() {
-        Err(e) => Err(NewClientError::InvalidUrl(e)),
-        Ok(url) => {
-            let target = SchemeHostPort::try_from(&url)?;
-            let addrs = match networking.lookup(target).await {
-                Ok(addrs) => addrs,
-                Err(e) => {
-                    return Err(NewClientError::ResolutionFailed { url, error: e });
-                }
-            };
-            Ok(addrs.into_iter().map(|a| a.addr).collect())
-        }
-    }
-}
-
-async fn open_client_for_dl<Net, Ws>(
-    host: Text,
-    addrs: Vec<SocketAddr>,
-    networking: Arc<Net>,
-    websockets: Arc<Ws>,
-) -> DownlinkEvent<Net::Socket, Ws::Ext>
-where
-    Net: ExternalConnections,
-    Net::Socket: WebSocketStream,
-    Ws: WsConnections<Net::Socket> + Send + Sync,
-{
-    let result = open_client(host.clone(), addrs, networking, websockets).await;
-
-    DownlinkEvent::RemoteOpened { host, result }
-}
-
-async fn open_client<Net, Ws>(
-    host: Text,
-    addrs: Vec<SocketAddr>,
-    networking: Arc<Net>,
-    websockets: Arc<Ws>,
-) -> Result<(SocketAddr, WebSocket<Net::Socket, Ws::Ext>), NewClientError>
-where
-    Net: ExternalConnections,
-    Net::Socket: WebSocketStream,
-    Ws: WsConnections<Net::Socket> + Send + Sync,
-{
-    let mut conn_failures = vec![];
-    let mut sock = None;
-    for addr in addrs {
-        match networking.try_open(addr).await {
-            Ok(socket) => {
-                sock = Some((addr, socket));
-                break;
-            }
-            Err(e) => {
-                conn_failures.push((addr, e));
-            }
-        }
-    }
-    let (addr, socket) = if let Some((addr, socket)) = sock {
-        (addr, socket)
-    } else {
-        return Err(NewClientError::OpeningSocketFailed {
-            errors: conn_failures,
-        });
-    };
-    websockets
-        .open_connection(socket, host.to_string())
-        .await
-        .map(move |ws| (addr, ws))
-        .map_err(|e| NewClientError::WsNegotationFailed { error: e.into() })
-}
-
-async fn start_downlink_runtime<S, E>(
-    identity: Uuid,
-    remote_addr: Option<SocketAddr>,
-    rel_addr: RelativeAddress<Text>,
-    kind: DownlinkKind,
-    remote_attach: mpsc::Sender<AttachClient>,
-    config: DownlinkRuntimeConfig,
-    stopping: trigger::Receiver,
-) -> DownlinkEvent<S, E> {
-    let (in_tx, in_rx) = byte_channel(config.buffer_size);
-    let (out_tx, out_rx) = byte_channel(config.buffer_size);
-    let (done_tx, done_rx) = trigger::trigger();
-
-    if remote_attach
-        .send(AttachClient::AttachDownlink {
-            path: rel_addr.clone(),
-            sender: in_tx,
-            receiver: out_rx,
-            done: done_tx,
-        })
-        .await
-        .is_err()
-    {
-        return DownlinkEvent::DownlinkRuntimeAttached {
-            remote_address: remote_addr,
-            key: (rel_addr, kind),
-            result: Err(RemoteStopped),
-        };
-    }
-    if done_rx.await.is_err() {
-        return DownlinkEvent::DownlinkRuntimeAttached {
-            remote_address: remote_addr,
-            key: (rel_addr, kind),
-            result: Err(RemoteStopped),
-        };
-    }
-    let io = (out_tx, in_rx);
-    let (attachment_tx, attachment_rx) = mpsc::channel(config.attachment_queue_size.get());
-    let task = run_downlink_runtime(
-        identity,
-        rel_addr.clone(),
-        attachment_rx,
-        stopping,
-        config,
-        kind,
-        io,
-    );
-    DownlinkEvent::DownlinkRuntimeAttached {
-        remote_address: remote_addr,
-        key: (rel_addr, kind),
-        result: Ok(DownlinkRuntime {
-            attachment_tx,
-            task: task.boxed(),
-        }),
-    }
-}
-
-pub fn run_downlink_runtime(
-    identity: Uuid,
-    path: RelativeAddress<Text>,
-    attachment_rx: mpsc::Receiver<AttachAction>,
-    stopping: trigger::Receiver,
-    config: DownlinkRuntimeConfig,
-    kind: DownlinkKind,
-    io: (ByteWriter, ByteReader),
-) -> impl Future<Output = ()> + Send + 'static {
-    async move {
-        match kind {
-            DownlinkKind::Map => {
-                let bad_frame_strat = if config.abort_on_bad_frames {
-                    ReportStrategy::new(AlwaysAbortStrategy).boxed()
-                } else {
-                    ReportStrategy::new(AlwaysIgnoreStrategy).boxed()
-                };
-                let runtime = MapDownlinkRuntime::new(
-                    attachment_rx,
-                    io,
-                    stopping,
-                    identity,
-                    path,
-                    config,
-                    bad_frame_strat,
-                );
-                runtime.run().await;
-            }
-            _ => {
-                let runtime =
-                    ValueDownlinkRuntime::new(attachment_rx, io, stopping, identity, path, config);
-                runtime.run().await;
-            }
-        }
-    }
-}
- */
