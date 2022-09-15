@@ -20,28 +20,45 @@ use std::{
 
 use bytes::BytesMut;
 use futures::{
-    future::{join, join4},
+    future::{join, join3},
     Future,
 };
 use ratchet::{Message, NegotiatedExtension, NoExt, Role, WebSocket, WebSocketConfig};
+use swim_api::error::DownlinkFailureReason;
 use swim_form::structural::write::StructuralWritable;
+use swim_model::address::RelativeAddress;
 use swim_recon::printer::print_recon_compact;
-use swim_utilities::routing::route_pattern::RoutePattern;
+use swim_remote::AttachClient;
+use swim_runtime::remote::{table::SchemeHostPort, Scheme};
+use swim_utilities::{
+    algebra::non_zero_usize, io::byte_channel::byte_channel, routing::route_pattern::RoutePattern,
+};
 
 use swim_warp::envelope::{peel_envelope_header, RawEnvelope};
 use tokio::{
     io::{duplex, DuplexStream},
-    sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
+    sync::{
+        mpsc::{self, UnboundedReceiver, UnboundedSender},
+        oneshot,
+    },
 };
+use uuid::Uuid;
 
-use crate::{plane::PlaneBuilder, ServerHandle, SwimServerConfig};
+use crate::{
+    plane::PlaneBuilder,
+    server::runtime::{ClientRegistration, NewClientError},
+    ServerHandle, SwimServerConfig,
+};
 
 use self::{
     agent::{AgentEvent, TestAgent},
     connections::{TestConnections, TestWs},
 };
 
-use super::{downlinks::downlink_task_connector, SwimServer};
+use super::{
+    downlinks::{downlink_task_connector, DownlinksConnector},
+    SwimServer,
+};
 use agent::{TestMessage, LANE};
 
 mod agent;
@@ -53,6 +70,11 @@ struct TestContext {
     event_rx: UnboundedReceiver<AgentEvent>,
     incoming_tx: UnboundedSender<(SocketAddr, DuplexStream)>,
     handle: ServerHandle,
+}
+
+struct DlTestContext {
+    test_context: TestContext,
+    downlink_connector: DownlinksConnector,
 }
 
 const NODE: &str = "/node";
@@ -70,12 +92,13 @@ where
     run_server_with_config(SwimServerConfig::default(), test_case).await
 }
 
-async fn run_server_with_config<F, Fut>(
+async fn run_server_with_config_and_dl<F, Fut>(
     config: SwimServerConfig,
+    remotes: HashMap<SocketAddr, DuplexStream>,
     test_case: F,
 ) -> (Result<(), std::io::Error>, Fut::Output)
 where
-    F: FnOnce(TestContext) -> Fut,
+    F: FnOnce(DlTestContext) -> Fut,
     Fut: Future,
 {
     let mut plane_builder = PlaneBuilder::default();
@@ -94,12 +117,9 @@ where
     let plane = plane_builder.build().expect("Invalid plane definition.");
     let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 8080);
 
-    let resolve = HashMap::new();
-    let remotes = HashMap::new();
-
     let (incoming_tx, incoming_rx) = mpsc::unbounded_channel();
 
-    let (networking, networking_task) = TestConnections::new(resolve, remotes, incoming_rx);
+    let (networking, networking_task) = TestConnections::new(HashMap::new(), remotes, incoming_rx);
     let websockets = TestWs::default();
 
     let server = SwimServer::new(plane, addr, networking, websockets, config);
@@ -108,27 +128,49 @@ where
         config.client_request_channel_size,
         config.open_downlink_channel_size,
     );
-    let fake_dl_task = fake_dowlinks::fake_downlink_task(dl_conn);
+
     let (server_task, handle) = server.run_server(server_conn);
 
-    let context = TestContext {
-        event_rx,
-        report_rx,
-        handle,
-        incoming_tx,
+    let context = DlTestContext {
+        test_context: TestContext {
+            event_rx,
+            report_rx,
+            handle,
+            incoming_tx,
+        },
+        downlink_connector: dl_conn,
     };
 
     let net = networking_task.run();
 
     let test_task = test_case(context);
 
-    let (_, task_result, _, result) = tokio::time::timeout(
-        TEST_TIMEOUT,
-        join4(net, server_task, fake_dl_task, test_task),
-    )
-    .await
-    .expect("Test timed out.");
+    let (_, task_result, result) =
+        tokio::time::timeout(TEST_TIMEOUT, join3(net, server_task, test_task))
+            .await
+            .expect("Test timed out.");
     (task_result, result)
+}
+
+async fn run_server_with_config<F, Fut>(
+    config: SwimServerConfig,
+    test_case: F,
+) -> (Result<(), std::io::Error>, Fut::Output)
+where
+    F: FnOnce(TestContext) -> Fut,
+    Fut: Future,
+{
+    run_server_with_config_and_dl(config, HashMap::default(), |context| async move {
+        let DlTestContext {
+            test_context,
+            downlink_connector,
+        } = context;
+        let fake_dl_task = fake_dowlinks::fake_downlink_task(downlink_connector);
+        let test_task = test_case(test_context);
+        let (_, result) = join(fake_dl_task, test_task).await;
+        result
+    })
+    .await
 }
 
 #[tokio::test]
@@ -605,5 +647,180 @@ async fn agent_timeout() {
         context
     })
     .await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn downlink_task_shutdown() {
+    let (result, _) = run_server_with_config_and_dl(
+        SwimServerConfig::default(),
+        HashMap::default(),
+        |context| async move {
+            let DlTestContext {
+                mut test_context,
+                downlink_connector,
+            } = context;
+
+            test_context.handle.stop();
+            assert!(downlink_connector.stop_handle().await.is_ok());
+            downlink_connector.stopped();
+            test_context
+        },
+    )
+    .await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn open_new_client() {
+    let host = SchemeHostPort::new(Scheme::Ws, "remote".to_string(), 40000);
+    let host_str = host.to_string();
+    let sock_addr: SocketAddr = "192.168.0.1:40000".parse().unwrap();
+    let mut remotes = HashMap::new();
+    let (_remote, client) = duplex(BUFFER_SIZE);
+    remotes.insert(sock_addr, client);
+
+    let (result, _) =
+        run_server_with_config_and_dl(SwimServerConfig::default(), remotes, |context| async move {
+            let DlTestContext {
+                mut test_context,
+                downlink_connector,
+            } = context;
+
+            let (request, rx) = ClientRegistration::new(host_str.into(), vec![sock_addr]);
+
+            assert!(downlink_connector.register(request).await.is_ok());
+            let client = rx
+                .await
+                .expect("Client request dropped.")
+                .expect("Client request failed.");
+
+            assert_eq!(client.sock_addr, sock_addr);
+
+            test_context.handle.stop();
+            assert!(downlink_connector.stop_handle().await.is_ok());
+            downlink_connector.stopped();
+            test_context
+        })
+        .await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn fail_to_open_client() {
+    let host = SchemeHostPort::new(Scheme::Ws, "remote".to_string(), 40000);
+    let host_str = host.to_string();
+    let sock_addr: SocketAddr = "192.168.0.1:40000".parse().unwrap();
+    let remotes = HashMap::new();
+
+    let (result, _) =
+        run_server_with_config_and_dl(SwimServerConfig::default(), remotes, |context| async move {
+            let DlTestContext {
+                mut test_context,
+                downlink_connector,
+            } = context;
+
+            let (request, rx) = ClientRegistration::new(host_str.into(), vec![sock_addr]);
+
+            assert!(downlink_connector.register(request).await.is_ok());
+            let error = rx
+                .await
+                .expect("Client request dropped.")
+                .err()
+                .expect("Client request succeeded.");
+            assert!(matches!(error, NewClientError::OpeningSocketFailed { .. }));
+            test_context.handle.stop();
+            assert!(downlink_connector.stop_handle().await.is_ok());
+            downlink_connector.stopped();
+            test_context
+        })
+        .await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn downlink_to_local() {
+    let remotes = HashMap::new();
+
+    let (result, _) =
+        run_server_with_config_and_dl(SwimServerConfig::default(), remotes, |context| async move {
+            let DlTestContext {
+                mut test_context,
+                downlink_connector,
+            } = context;
+
+            let (tx_in, _rx_in) = byte_channel(non_zero_usize!(BUFFER_SIZE));
+            let (_tx_out, rx_out) = byte_channel(non_zero_usize!(BUFFER_SIZE));
+            let (done_tx, done_rx) = oneshot::channel();
+            assert!(downlink_connector
+                .local_handle()
+                .send(AttachClient::AttachDownlink {
+                    downlink_id: Uuid::from_u128(747383),
+                    path: RelativeAddress::text(NODE, LANE),
+                    sender: tx_in,
+                    receiver: rx_out,
+                    done: done_tx
+                })
+                .await
+                .is_ok());
+
+            let event = test_context
+                .event_rx
+                .recv()
+                .await
+                .expect("Expected agent to start.");
+            assert_eq!(event, AgentEvent::Started);
+            done_rx
+                .await
+                .expect("Request not satisfied.")
+                .expect("Local downlink failed.");
+            test_context.handle.stop();
+            assert!(downlink_connector.stop_handle().await.is_ok());
+            downlink_connector.stopped();
+            test_context
+        })
+        .await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn downlink_to_local_nonexistent() {
+    let remotes = HashMap::new();
+
+    let (result, _) =
+        run_server_with_config_and_dl(SwimServerConfig::default(), remotes, |context| async move {
+            let DlTestContext {
+                mut test_context,
+                downlink_connector,
+            } = context;
+
+            let (tx_in, _rx_in) = byte_channel(non_zero_usize!(BUFFER_SIZE));
+            let (_tx_out, rx_out) = byte_channel(non_zero_usize!(BUFFER_SIZE));
+            let (done_tx, done_rx) = oneshot::channel();
+            assert!(downlink_connector
+                .local_handle()
+                .send(AttachClient::AttachDownlink {
+                    downlink_id: Uuid::from_u128(747383),
+                    path: RelativeAddress::text("/other", LANE),
+                    sender: tx_in,
+                    receiver: rx_out,
+                    done: done_tx
+                })
+                .await
+                .is_ok());
+
+            let error = done_rx
+                .await
+                .expect("Request not satisfied.")
+                .err()
+                .expect("Local downlink succeeded.");
+
+            assert!(matches!(error, DownlinkFailureReason::Unresolvable));
+            test_context.handle.stop();
+            assert!(downlink_connector.stop_handle().await.is_ok());
+            downlink_connector.stopped();
+            test_context
+        })
+        .await;
     assert!(result.is_ok());
 }

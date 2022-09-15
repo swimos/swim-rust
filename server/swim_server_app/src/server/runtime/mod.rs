@@ -92,8 +92,11 @@ enum ServerEvent<Sock, Ext> {
     LocalClient(AttachClient),
 }
 
+/// Response type, sent by the server, after receiving a [`ClientRegistration`].
 pub struct EstablishedClient {
+    /// Allows the client to attach the task managing the socket.
     tx: mpsc::Sender<AttachClient>,
+    /// The address that was used to connect to the remote.
     sock_addr: SocketAddr,
 }
 
@@ -103,9 +106,14 @@ impl EstablishedClient {
     }
 }
 
+/// Request to attach a client to a remote server. A new socket should be opened if not
+/// connections exists.
 pub struct ClientRegistration {
+    /// Original host URL that was resolved.
     host: Text,
+    /// Addresses to try to connect to the remote.
     sock_addrs: Vec<SocketAddr>,
+    /// Reply channel for the server task.
     responder: ClientPromiseTx,
 }
 
