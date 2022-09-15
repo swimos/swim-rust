@@ -62,71 +62,24 @@ use super::{
     ClientRegistration, EstablishedClient, NewClientError,
 };
 
+/// A task that manages downlink runtime tasks for the server. This taks has the following
+/// responsibilities:
+/// * Accept requests for new downlink connections.
+/// * Perform a DNS lookup for remote downlinks.
+/// * Attach new clients to existing running downlink runtime tasks where appropriate.
+/// * Register a new socket with the main server task for new remotes.
+/// * Spawn new downlink runtime tasks and keep track of their results.
 pub struct DownlinkConnectionTask<Dns> {
     connector: DownlinksConnector,
     config: DownlinkRuntimeConfig,
     dns: Dns,
 }
 
-enum Event {
-    Request(DownlinkRequest),
-    Resolved {
-        host: Text,
-        result: Result<Vec<SchemeSocketAddr>, std::io::Error>,
-    },
-    Connected {
-        host: Text,
-        result: Result<EstablishedClient, NewClientError>,
-    },
-    RuntimeAttached {
-        remote_address: Option<SocketAddr>,
-        key: DlKey,
-        result: Result<(mpsc::Sender<AttachAction>, DownlinkRuntime), DownlinkFailureReason>,
-    },
-    RuntimeTerminated {
-        socket_addr: Option<SocketAddr>,
-        key: DlKey,
-        result: Result<(), JoinError>,
-    },
-    Attached {
-        address: Address<Text>,
-        kind: DownlinkKind,
-        promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
-        result: Result<Io, AgentRuntimeError>,
-    },
-}
-
-struct ClientHandle {
-    client_tx: mpsc::Sender<AttachClient>,
-    downlinks: HashMap<DlKey, mpsc::Sender<AttachAction>>,
-}
-
-impl ClientHandle {
-    fn new(client_tx: mpsc::Sender<AttachClient>) -> Self {
-        ClientHandle {
-            client_tx,
-            downlinks: Default::default(),
-        }
-    }
-
-    fn insert(&mut self, key: DlKey, tx: mpsc::Sender<AttachAction>) {
-        self.downlinks.insert(key, tx);
-    }
-
-    fn get(&self, key: &DlKey) -> Option<&mpsc::Sender<AttachAction>> {
-        self.downlinks.get(key)
-    }
-
-    fn remove(&mut self, key: &DlKey) -> bool {
-        self.downlinks.remove(key);
-        self.downlinks.is_empty()
-    }
-}
-
-impl<Dns> DownlinkConnectionTask<Dns>
-where
-    Dns: DnsResolver,
-{
+impl<Dns> DownlinkConnectionTask<Dns> {
+    /// #Arguments
+    /// * `connector` - Communication channels between this task and the main server task.
+    /// * `config` - Configuration for downlink runtime tasks.
+    /// * `dns` - DNS resolver implementation.
     pub fn new(connector: DownlinksConnector, config: DownlinkRuntimeConfig, dns: Dns) -> Self {
         DownlinkConnectionTask {
             connector,
@@ -134,7 +87,12 @@ where
             dns,
         }
     }
+}
 
+impl<Dns> DownlinkConnectionTask<Dns>
+where
+    Dns: DnsResolver,
+{
     pub async fn run(self) {
         let mut tasks = FuturesUnordered::new();
         let connector = {
@@ -192,7 +150,7 @@ where
                             let key = (rel_addr, *kind);
                             if let Some(attach_tx) = local_handle.get(&key) {
                                 tasks.push(
-                                    run_downlink(
+                                    attach_to_runtime(
                                         request,
                                         attach_tx.clone(),
                                         config.downlink_buffer_size,
@@ -229,7 +187,7 @@ where
                                 if let Some(attach_tx) = handle.get(&key) {
                                     for request in requests {
                                         tasks.push(
-                                            run_downlink(
+                                            attach_to_runtime(
                                                 request,
                                                 attach_tx.clone(),
                                                 config.downlink_buffer_size,
@@ -266,7 +224,7 @@ where
                                         Ok(Err(e)) => Err(e),
                                         Err(_) => Err(NewClientError::ServerStopped),
                                     };
-                                    Event::Connected { host, result }
+                                    Event::NewClientResult { host, result }
                                 })
                                 .boxed(),
                             );
@@ -288,7 +246,7 @@ where
                             }
                         }
                     }
-                    Event::Connected {
+                    Event::NewClientResult {
                         host,
                         result: Ok(EstablishedClient { tx, sock_addr }),
                     } => {
@@ -315,7 +273,7 @@ where
                             );
                         }
                     }
-                    Event::Connected {
+                    Event::NewClientResult {
                         host,
                         result: Err(e),
                     } => {
@@ -331,7 +289,7 @@ where
                             }
                         }
                     }
-                    Event::RuntimeAttached {
+                    Event::RuntimeAttachmentResult {
                         remote_address,
                         key,
                         result: Ok((attach_tx, runtime)),
@@ -356,7 +314,7 @@ where
 
                             for request in pending.dl_ready(remote_address, &key) {
                                 tasks.push(
-                                    run_downlink(
+                                    attach_to_runtime(
                                         request,
                                         attach_tx.clone(),
                                         config.downlink_buffer_size,
@@ -382,7 +340,7 @@ where
                             }
                         }
                     }
-                    Event::RuntimeAttached {
+                    Event::RuntimeAttachmentResult {
                         remote_address,
                         key,
                         result: Err(_),
@@ -455,6 +413,67 @@ where
     }
 }
 
+enum Event {
+    // A request has been received for a new downlink.
+    Request(DownlinkRequest),
+    // A DNS resolution has completed.
+    Resolved {
+        host: Text,
+        result: Result<Vec<SchemeSocketAddr>, std::io::Error>,
+    },
+    // A request to the main server task to open a new socket has completed.
+    NewClientResult {
+        host: Text,
+        result: Result<EstablishedClient, NewClientError>,
+    },
+    // A request to attach to a downlink runtime task has completed.
+    RuntimeAttachmentResult {
+        remote_address: Option<SocketAddr>,
+        key: DlKey,
+        result: Result<(mpsc::Sender<AttachAction>, DownlinkRuntime), DownlinkFailureReason>,
+    },
+    // A downlink runtime task has stopped.
+    RuntimeTerminated {
+        socket_addr: Option<SocketAddr>,
+        key: DlKey,
+        result: Result<(), JoinError>,
+    },
+    // An attachment to a downlink runtime task has completed.
+    Attached {
+        address: Address<Text>,
+        kind: DownlinkKind,
+        promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
+        result: Result<Io, AgentRuntimeError>,
+    },
+}
+
+struct ClientHandle {
+    client_tx: mpsc::Sender<AttachClient>,
+    downlinks: HashMap<DlKey, mpsc::Sender<AttachAction>>,
+}
+
+impl ClientHandle {
+    fn new(client_tx: mpsc::Sender<AttachClient>) -> Self {
+        ClientHandle {
+            client_tx,
+            downlinks: Default::default(),
+        }
+    }
+
+    fn insert(&mut self, key: DlKey, tx: mpsc::Sender<AttachAction>) {
+        self.downlinks.insert(key, tx);
+    }
+
+    fn get(&self, key: &DlKey) -> Option<&mpsc::Sender<AttachAction>> {
+        self.downlinks.get(key)
+    }
+
+    fn remove(&mut self, key: &DlKey) -> bool {
+        self.downlinks.remove(key);
+        self.downlinks.is_empty()
+    }
+}
+
 #[derive(Debug, Error)]
 enum BadHost {
     #[error("Specified host was not a valid URL.")]
@@ -476,7 +495,7 @@ fn process_host(host: &str) -> Result<SchemeHostPort, BadHost> {
     Ok(SchemeHostPort::try_from(&url)?)
 }
 
-async fn run_downlink(
+async fn attach_to_runtime(
     request: DownlinkRequest,
     attach_tx: mpsc::Sender<AttachAction>,
     buffer_size: NonZeroUsize,
@@ -524,7 +543,7 @@ async fn start_downlink_runtime(
         done: done_tx,
     };
     if remote_attach.send(request).await.is_err() {
-        return Event::RuntimeAttached {
+        return Event::RuntimeAttachmentResult {
             remote_address: remote_addr,
             key: (rel_addr, kind),
             result: Err(DownlinkFailureReason::RemoteStopped),
@@ -536,7 +555,7 @@ async fn start_downlink_runtime(
         _ => None,
     };
     if let Some(err) = err {
-        return Event::RuntimeAttached {
+        return Event::RuntimeAttachmentResult {
             remote_address: remote_addr,
             key: (rel_addr, kind),
             result: Err(err),
@@ -545,13 +564,14 @@ async fn start_downlink_runtime(
     let io = (out_tx, in_rx);
     let (attachment_tx, attachment_rx) = mpsc::channel(config.attachment_queue_size.get());
     let runtime = DownlinkRuntime::new(identity, rel_addr.clone(), attachment_rx, kind, io);
-    Event::RuntimeAttached {
+    Event::RuntimeAttachmentResult {
         remote_address: remote_addr,
         key: (rel_addr, kind),
         result: Ok((attachment_tx, runtime)),
     }
 }
 
+/// A wrapper task that can start multiple types of downlink runtime.
 struct DownlinkRuntime {
     identity: Uuid,
     path: RelativeAddress<Text>,
