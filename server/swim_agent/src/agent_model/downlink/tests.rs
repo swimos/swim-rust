@@ -21,7 +21,7 @@ use swim_api::{
     downlink::DownlinkKind,
     error::AgentRuntimeError,
 };
-use swim_model::Text;
+use swim_model::{address::Address, Text};
 use swim_utilities::{
     algebra::non_zero_usize,
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
@@ -186,9 +186,7 @@ async fn open_value_downlink() {
     let lifecycle = StatefulValueDownlinkLifecycle::<TestAgent, _, i32>::new(());
 
     let handler = OpenValueDownlink::<i32, _>::new(
-        Some(Text::new(HOST)),
-        Text::new(NODE),
-        Text::new(LANE),
+        Address::text(Some(HOST), NODE, LANE),
         lifecycle,
         ValueDownlinkConfig::default(),
     );
@@ -212,9 +210,7 @@ async fn open_map_downlink() {
     let lifecycle = StatefulMapDownlinkLifecycle::<TestAgent, _, i32, Text>::new(());
 
     let handler = OpenMapDownlink::<i32, Text, _>::new(
-        Some(Text::new(HOST)),
-        Text::new(NODE),
-        Text::new(LANE),
+        Address::text(Some(HOST), NODE, LANE),
         lifecycle,
         MapDownlinkConfig::default(),
     );

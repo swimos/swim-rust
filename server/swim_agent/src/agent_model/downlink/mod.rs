@@ -42,9 +42,7 @@ use self::hosted::{
 };
 
 struct Inner<LC> {
-    host: Option<Text>,
-    node: Text,
-    lane: Text,
+    address: Address<Text>,
     lifecycle: LC,
 }
 
@@ -67,42 +65,20 @@ pub struct OpenMapDownlink<K, V, LC> {
 }
 
 impl<T, LC> OpenValueDownlink<T, LC> {
-    pub fn new(
-        host: Option<Text>,
-        node: Text,
-        lane: Text,
-        lifecycle: LC,
-        config: ValueDownlinkConfig,
-    ) -> Self {
+    pub fn new(address: Address<Text>, lifecycle: LC, config: ValueDownlinkConfig) -> Self {
         OpenValueDownlink {
             _type: PhantomData,
-            inner: Some(Inner {
-                host,
-                node,
-                lane,
-                lifecycle,
-            }),
+            inner: Some(Inner { address, lifecycle }),
             config,
         }
     }
 }
 
 impl<K, V, LC> OpenMapDownlink<K, V, LC> {
-    pub fn new(
-        host: Option<Text>,
-        node: Text,
-        lane: Text,
-        lifecycle: LC,
-        config: MapDownlinkConfig,
-    ) -> Self {
+    pub fn new(address: Address<Text>, lifecycle: LC, config: MapDownlinkConfig) -> Self {
         OpenMapDownlink {
             _type: PhantomData,
-            inner: Some(Inner {
-                host,
-                node,
-                lane,
-                lifecycle,
-            }),
+            inner: Some(Inner { address, lifecycle }),
             config,
         }
     }
@@ -125,13 +101,10 @@ where
     ) -> StepResult<Self::Completion> {
         let OpenValueDownlink { inner, config, .. } = self;
         if let Some(Inner {
-            host,
-            node,
-            lane,
+            address: path,
             lifecycle,
         }) = inner.take()
         {
-            let path = Address::new(host, node, lane);
             let state: RefCell<Option<T>> = Default::default();
             let (tx, rx) = circular_buffer::watch_channel();
 
@@ -179,13 +152,10 @@ where
     ) -> StepResult<Self::Completion> {
         let OpenMapDownlink { inner, config, .. } = self;
         if let Some(Inner {
-            host,
-            node,
-            lane,
+            address: path,
             lifecycle,
         }) = inner.take()
         {
-            let path = Address::new(host, node, lane);
             let state: RefCell<MapDlState<K, V>> = Default::default();
             let (tx, rx) = mpsc::channel::<MapOperation<K, V>>(config.channel_size.get());
             let config = *config;

@@ -19,6 +19,8 @@ use crate::{
     event_handler::{EventHandler, UnitHandler},
 };
 
+use super::{LiftShared, WithHandlerContext};
+
 /// Lifecycle event for the `on_linked` event of a downlink, from an agent.
 pub trait OnLinked<'a, Context>: Send {
     type OnLinkedHandler: EventHandler<Context> + 'a;
@@ -89,5 +91,37 @@ where
     ) -> Self::OnLinkedHandler {
         let FnHandler(f) = self;
         f(shared, handler_context)
+    }
+}
+
+impl<'a, Context, F, H> OnLinked<'a, Context> for WithHandlerContext<Context, F>
+where
+    F: Fn(HandlerContext<Context>) -> H + Send,
+    H: EventHandler<Context> + 'a,
+{
+    type OnLinkedHandler = H;
+
+    fn on_linked(&'a self) -> Self::OnLinkedHandler {
+        let WithHandlerContext {
+            inner,
+            handler_context,
+        } = self;
+        inner(*handler_context)
+    }
+}
+
+impl<'a, Context, Shared, F> OnLinkedShared<'a, Context, Shared> for LiftShared<F, Shared>
+where
+    F: OnLinked<'a, Context> + Send,
+{
+    type OnLinkedHandler = F::OnLinkedHandler;
+
+    fn on_linked(
+        &'a self,
+        _shared: &'a Shared,
+        _handler_context: HandlerContext<Context>,
+    ) -> Self::OnLinkedHandler {
+        let LiftShared { inner, .. } = self;
+        inner.on_linked()
     }
 }

@@ -21,6 +21,8 @@ use crate::{
     event_handler::{EventHandler, UnitHandler},
 };
 
+use super::{LiftShared, WithHandlerContext};
+
 /// Lifecycle event for the `on_synced` event of a downlink, from an agent.
 pub trait OnSynced<'a, T, Context>: Send {
     type OnSyncedHandler: EventHandler<Context> + 'a;
@@ -131,5 +133,38 @@ where
         value: &T,
     ) -> Self::OnSyncedHandler {
         (self.as_ref())(shared, handler_context, value.borrow())
+    }
+}
+
+impl<'a, Context, T, F, H> OnSynced<'a, T, Context> for WithHandlerContext<Context, F>
+where
+    F: Fn(HandlerContext<Context>, &T) -> H + Send,
+    H: EventHandler<Context> + 'a,
+{
+    type OnSyncedHandler = H;
+
+    fn on_synced(&'a self, value: &T) -> Self::OnSyncedHandler {
+        let WithHandlerContext {
+            inner,
+            handler_context,
+        } = self;
+        inner(*handler_context, value)
+    }
+}
+
+impl<'a, T, Context, Shared, F> OnSyncedShared<'a, T, Context, Shared> for LiftShared<F, Shared>
+where
+    F: OnSynced<'a, T, Context> + Send,
+{
+    type OnSyncedHandler = F::OnSyncedHandler;
+
+    fn on_synced(
+        &'a self,
+        _shared: &'a Shared,
+        _handler_context: HandlerContext<Context>,
+        value: &T,
+    ) -> Self::OnSyncedHandler {
+        let LiftShared { inner, .. } = self;
+        inner.on_synced(value)
     }
 }

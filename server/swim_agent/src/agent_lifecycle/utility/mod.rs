@@ -18,7 +18,7 @@ use std::{collections::HashMap, marker::PhantomData};
 
 use futures::{Future, FutureExt};
 use swim_form::Form;
-use swim_model::Text;
+use swim_model::address::Address;
 use swim_utilities::routing::uri::RelativeUri;
 
 use crate::agent_model::downlink::hosted::{MapDownlinkHandle, ValueDownlinkHandle};
@@ -36,6 +36,12 @@ use crate::{
         value::{ValueLane, ValueLaneGet, ValueLaneSet},
     },
 };
+
+pub use self::downlink_builder::value::{
+    StatefulValueDownlinkBuilder, StatelessValueDownlinkBuilder,
+};
+
+mod downlink_builder;
 
 /// A utility class to aid in the creation of event handlers for an agent. This has no data
 /// and is used to provide easy access to the agent type parameter to avoid the need for
@@ -254,13 +260,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
         LC: ValueDownlinkLifecycle<T, Agent> + Send + 'static,
         T::Rec: Send,
     {
-        OpenValueDownlink::new(
-            host.map(Text::new),
-            Text::new(node),
-            Text::new(lane),
-            lifecycle,
-            config,
-        )
+        OpenValueDownlink::new(Address::text(host, node, lane), lifecycle, config)
     }
 
     /// Open a map downlink to a lane on another agent.
@@ -287,12 +287,18 @@ impl<Agent: 'static> HandlerContext<Agent> {
         K::Rec: Send,
         V::Rec: Send,
     {
-        OpenMapDownlink::new(
-            host.map(Text::new),
-            Text::new(node),
-            Text::new(lane),
-            lifecycle,
-            config,
-        )
+        OpenMapDownlink::new(Address::text(host, node, lane), lifecycle, config)
+    }
+
+    pub fn value_downlink_builder<T>(
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
+        config: ValueDownlinkConfig,
+    ) -> StatelessValueDownlinkBuilder<Agent, T>
+    where
+        T: Form + Send + Sync + 'static,
+    {
+        StatelessValueDownlinkBuilder::new(Address::text(host, node, lane), config)
     }
 }

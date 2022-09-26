@@ -12,8 +12,40 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::marker::PhantomData;
+
+use crate::agent_lifecycle::utility::HandlerContext;
+
 pub mod map;
 pub mod on_linked;
 pub mod on_synced;
 pub mod on_unlinked;
 pub mod value;
+
+pub struct WithHandlerContext<Context, F> {
+    inner: F,
+    handler_context: HandlerContext<Context>,
+}
+
+impl<Context, F> WithHandlerContext<Context, F> {
+    pub fn new(inner: F) -> Self {
+        WithHandlerContext {
+            inner,
+            handler_context: Default::default(),
+        }
+    }
+}
+
+pub struct LiftShared<F, Shared> {
+    _shared: PhantomData<fn(&Shared)>,
+    inner: F,
+}
+
+impl<F, Shared> LiftShared<F, Shared> {
+    pub fn new(inner: F) -> Self {
+        LiftShared {
+            _shared: PhantomData,
+            inner,
+        }
+    }
+}

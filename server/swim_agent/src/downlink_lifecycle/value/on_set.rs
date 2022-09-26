@@ -18,6 +18,7 @@ use swim_api::handlers::{BorrowHandler, FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
+    downlink_lifecycle::{LiftShared, WithHandlerContext},
     event_handler::{EventHandler, UnitHandler},
 };
 
@@ -138,5 +139,40 @@ where
         new_value: &T,
     ) -> Self::OnSetHandler {
         (self.as_ref())(shared, handler_context, previous, new_value.borrow())
+    }
+}
+
+impl<'a, Context, T, F, H> OnDownlinkSet<'a, T, Context> for WithHandlerContext<Context, F>
+where
+    F: Fn(HandlerContext<Context>, Option<T>, &T) -> H + Send,
+    H: EventHandler<Context> + 'a,
+{
+    type OnSetHandler = H;
+
+    fn on_set(&'a self, previous: Option<T>, new_value: &T) -> Self::OnSetHandler {
+        let WithHandlerContext {
+            inner,
+            handler_context,
+        } = self;
+        inner(*handler_context, previous, new_value)
+    }
+}
+
+impl<'a, T, Context, Shared, F> OnDownlinkSetShared<'a, T, Context, Shared>
+    for LiftShared<F, Shared>
+where
+    F: OnDownlinkSet<'a, T, Context> + Send,
+{
+    type OnSetHandler = F::OnSetHandler;
+
+    fn on_set(
+        &'a self,
+        _shared: &'a Shared,
+        _handler_context: HandlerContext<Context>,
+        previous: Option<T>,
+        new_value: &T,
+    ) -> Self::OnSetHandler {
+        let LiftShared { inner, .. } = self;
+        inner.on_set(previous, new_value)
     }
 }
