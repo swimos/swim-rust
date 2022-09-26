@@ -18,7 +18,7 @@ use swim_api::handlers::{BorrowHandler, FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
-    event_handler::{EventHandler, UnitHandler},
+    event_handler::{EventHandler, UnitHandler}, downlink_lifecycle::{WithHandlerContext, LiftShared},
 };
 
 /// Lifecycle event for the `on_update` event of a downlink, from an agent.
@@ -131,6 +131,30 @@ where
     }
 }
 
+impl<'a, Context, K, V, F, H> OnDownlinkUpdate<'a, K, V, Context> for WithHandlerContext<Context, F>
+where
+    F: Fn(HandlerContext<Context>, K, &HashMap<K, V>, Option<V>, &V) -> H + Send,
+    H: EventHandler<Context> + 'a,
+{
+
+    type OnUpdateHandler = H;
+
+    fn on_update(
+        &'a self,
+        key: K,
+        map: &HashMap<K, V>,
+        previous: Option<V>,
+        new_value: &V,
+    ) -> Self::OnUpdateHandler {
+        let WithHandlerContext {
+            inner,
+            handler_context,
+        } = self;
+        inner(*handler_context, key, map, previous, new_value)
+    }
+
+}
+
 impl<'a, K, V, Context, Shared, F, H> OnDownlinkUpdateShared<'a, K, V, Context, Shared>
     for FnHandler<F>
 where
@@ -182,5 +206,26 @@ where
             previous,
             new_value.borrow(),
         )
+    }
+}
+
+impl<'a, K, V, Context, Shared, F> OnDownlinkUpdateShared<'a, K, V, Context, Shared>
+    for LiftShared<F, Shared>
+where
+    F: OnDownlinkUpdate<'a, K, V, Context> + Send,
+{
+    type OnUpdateHandler = F::OnUpdateHandler;
+
+    fn on_update(
+        &'a self,
+        _shared: &'a Shared,
+        _handler_context: HandlerContext<Context>,
+        key: K,
+        map: &HashMap<K, V>,
+        previous: Option<V>,
+        new_value: &V,
+    ) -> Self::OnUpdateHandler {
+        let LiftShared { inner, .. } = self;
+        inner.on_update(key, map, previous, new_value)
     }
 }

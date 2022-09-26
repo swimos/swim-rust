@@ -40,6 +40,9 @@ use crate::{
 pub use self::downlink_builder::value::{
     StatefulValueDownlinkBuilder, StatelessValueDownlinkBuilder,
 };
+pub use self::downlink_builder::map::{
+    StatefulMapDownlinkBuilder, StatelessMapDownlinkBuilder,
+};
 
 mod downlink_builder;
 
@@ -298,7 +301,23 @@ impl<Agent: 'static> HandlerContext<Agent> {
     ) -> StatelessValueDownlinkBuilder<Agent, T>
     where
         T: Form + Send + Sync + 'static,
+        T::Rec: Send,
     {
         StatelessValueDownlinkBuilder::new(Address::text(host, node, lane), config)
+    }
+
+    pub fn map_downlink_builder<K, V>(
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
+        config: MapDownlinkConfig,
+    ) -> StatelessMapDownlinkBuilder<Agent, K, V>
+    where
+        K: Form + Hash + Eq + Ord + Clone + Send + Sync + 'static,
+        K::Rec: Send,
+        V: Form + Send + Sync + 'static,
+        V::Rec: Send,
+    {
+        StatelessMapDownlinkBuilder::new(Address::text(host, node, lane), config)
     }
 }

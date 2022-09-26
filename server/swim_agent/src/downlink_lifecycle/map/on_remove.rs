@@ -18,7 +18,7 @@ use swim_api::handlers::{FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
-    event_handler::{EventHandler, UnitHandler},
+    event_handler::{EventHandler, UnitHandler}, downlink_lifecycle::{WithHandlerContext, LiftShared},
 };
 
 /// Lifecycle event for the `on_remove` event of a downlink, from an agent.
@@ -108,5 +108,41 @@ where
     ) -> Self::OnRemoveHandler {
         let FnHandler(f) = self;
         f(shared, handler_context, key, map, removed)
+    }
+}
+
+impl<'a, Context, K, V, F, H> OnDownlinkRemove<'a, K, V, Context> for WithHandlerContext<Context, F>
+where
+    F: Fn(HandlerContext<Context>, K, &HashMap<K, V>, V) -> H + Send,
+    H: EventHandler<Context> + 'a,
+{
+    type OnRemoveHandler = H;
+
+    fn on_remove(&'a self, key: K, map: &HashMap<K, V>, removed: V) -> Self::OnRemoveHandler {
+        let WithHandlerContext {
+            inner,
+            handler_context,
+        } = self;
+        inner(*handler_context, key, map, removed)
+    }
+}
+
+impl<'a, K, V, Context, Shared, F> OnDownlinkRemoveShared<'a, K, V, Context, Shared>
+    for LiftShared<F, Shared>
+where
+    F: OnDownlinkRemove<'a, K, V, Context> + Send,
+{
+    type OnRemoveHandler = F::OnRemoveHandler;
+
+    fn on_remove(
+        &'a self,
+        _shared: &'a Shared,
+        _handler_context: HandlerContext<Context>,
+        key: K,
+        map: &HashMap<K, V>,
+        removed: V,
+    ) -> Self::OnRemoveHandler {
+        let LiftShared { inner, .. } = self;
+        inner.on_remove(key, map, removed)
     }
 }

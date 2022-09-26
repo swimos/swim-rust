@@ -415,8 +415,7 @@ pub struct StatelessValueDownlinkLifecycle<
     FEv = NoHandler,
     FSet = NoHandler,
 > {
-    _type: PhantomData<fn(T)>,
-    handler_context: HandlerContext<Context>,
+    _type: PhantomData<fn(&Context, T)>,
     on_linked: FLinked,
     on_synced: FSynced,
     on_unlinked: FUnlinked,
@@ -428,7 +427,6 @@ impl<Context, T> Default for StatelessValueDownlinkLifecycle<Context, T> {
     fn default() -> Self {
         Self {
             _type: Default::default(),
-            handler_context: Default::default(),
             on_linked: Default::default(),
             on_synced: Default::default(),
             on_unlinked: Default::default(),
@@ -450,7 +448,6 @@ where
     fn clone(&self) -> Self {
         Self {
             _type: PhantomData,
-            handler_context: self.handler_context.clone(),
             on_linked: self.on_linked.clone(),
             on_synced: self.on_synced.clone(),
             on_unlinked: self.on_unlinked.clone(),
@@ -565,7 +562,6 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
     {
         StatelessValueDownlinkLifecycle {
             _type: PhantomData,
-            handler_context: Default::default(),
             on_linked: WithHandlerContext::new(f),
             on_synced: self.on_synced,
             on_unlinked: self.on_unlinked,
@@ -591,7 +587,6 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
     {
         StatelessValueDownlinkLifecycle {
             _type: PhantomData,
-            handler_context: Default::default(),
             on_linked: self.on_linked,
             on_synced: WithHandlerContext::new(f),
             on_unlinked: self.on_unlinked,
@@ -617,7 +612,6 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
     {
         StatelessValueDownlinkLifecycle {
             _type: PhantomData,
-            handler_context: Default::default(),
             on_linked: self.on_linked,
             on_synced: self.on_synced,
             on_unlinked: WithHandlerContext::new(f),
@@ -643,7 +637,6 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
     {
         StatelessValueDownlinkLifecycle {
             _type: PhantomData,
-            handler_context: Default::default(),
             on_linked: self.on_linked,
             on_synced: self.on_synced,
             on_unlinked: self.on_unlinked,
@@ -669,7 +662,6 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
     {
         StatelessValueDownlinkLifecycle {
             _type: PhantomData,
-            handler_context: Default::default(),
             on_linked: self.on_linked,
             on_synced: self.on_synced,
             on_unlinked: self.on_unlinked,

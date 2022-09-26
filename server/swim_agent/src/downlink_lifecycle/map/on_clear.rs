@@ -18,7 +18,7 @@ use swim_api::handlers::{FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
-    event_handler::{EventHandler, UnitHandler},
+    event_handler::{EventHandler, UnitHandler}, downlink_lifecycle::{WithHandlerContext, LiftShared},
 };
 
 /// Lifecycle event for the `on_clear` event of a downlink, from an agent.
@@ -98,5 +98,39 @@ where
     ) -> Self::OnClearHandler {
         let FnHandler(f) = self;
         f(shared, handler_context, map)
+    }
+}
+
+impl<'a, Context, K, V, F, H> OnDownlinkClear<'a, K, V, Context> for WithHandlerContext<Context, F>
+where
+    F: Fn(HandlerContext<Context>, HashMap<K, V>) -> H + Send,
+    H: EventHandler<Context> + 'a,
+{
+    type OnClearHandler = H;
+
+    fn on_clear(&'a self, map: HashMap<K, V>) -> Self::OnClearHandler {
+        let WithHandlerContext {
+            inner,
+            handler_context,
+        } = self;
+        inner(*handler_context, map)
+    }
+}
+
+impl<'a, K, V, Context, Shared, F> OnDownlinkClearShared<'a, K, V, Context, Shared>
+    for LiftShared<F, Shared>
+where
+    F: OnDownlinkClear<'a, K, V, Context> + Send,
+{
+    type OnClearHandler = F::OnClearHandler;
+
+    fn on_clear(
+        &'a self,
+        _shared: &'a Shared,
+        _handler_context: HandlerContext<Context>,
+        map: HashMap<K, V>,
+    ) -> Self::OnClearHandler {
+        let LiftShared { inner, .. } = self;
+        inner.on_clear(map)
     }
 }
