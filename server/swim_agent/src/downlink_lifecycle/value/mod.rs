@@ -541,6 +541,18 @@ where
     }
 }
 
+pub type LiftedValueLifecycle<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet> =
+    StatefulValueDownlinkLifecycle<
+        Context,
+        State,
+        T,
+        LiftShared<FLinked, State>,
+        LiftShared<FSynced, State>,
+        LiftShared<FUnlinked, State>,
+        LiftShared<FEv, State>,
+        LiftShared<FSet, State>,
+    >;
+
 impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
     StatelessValueDownlinkLifecycle<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
 {
@@ -678,16 +690,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
     pub fn with_state<State>(
         self,
         state: State,
-    ) -> StatefulValueDownlinkLifecycle<
-        Context,
-        State,
-        T,
-        LiftShared<FLinked, State>,
-        LiftShared<FSynced, State>,
-        LiftShared<FUnlinked, State>,
-        LiftShared<FEv, State>,
-        LiftShared<FSet, State>,
-    > {
+    ) -> LiftedValueLifecycle<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet> {
         let StatelessValueDownlinkLifecycle {
             on_linked,
             on_synced,

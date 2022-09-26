@@ -96,6 +96,20 @@ pub struct StatefulMapDownlinkBuilder<
     >,
 }
 
+pub type LiftedMapBuilder<Context, K, V, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> =
+    StatefulMapDownlinkBuilder<
+        Context,
+        K,
+        V,
+        State,
+        LiftShared<FLinked, State>,
+        LiftShared<FSynced, State>,
+        LiftShared<FUnlinked, State>,
+        LiftShared<FUpd, State>,
+        LiftShared<FRem, State>,
+        LiftShared<FClr, State>,
+    >;
+
 impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
     StatelessMapDownlinkBuilder<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
 {
@@ -286,18 +300,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
     pub fn with_state<State>(
         self,
         state: State,
-    ) -> StatefulMapDownlinkBuilder<
-        Context,
-        K,
-        V,
-        State,
-        LiftShared<FLinked, State>,
-        LiftShared<FSynced, State>,
-        LiftShared<FUnlinked, State>,
-        LiftShared<FUpd, State>,
-        LiftShared<FRem, State>,
-        LiftShared<FClr, State>,
-    > {
+    ) -> LiftedMapBuilder<Context, K, V, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> {
         let StatelessMapDownlinkBuilder {
             address,
             config,

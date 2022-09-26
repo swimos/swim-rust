@@ -87,6 +87,18 @@ impl<Context, T, State> StatefulValueDownlinkBuilder<Context, T, State> {
     }
 }
 
+pub type LiftedValueBuilder<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet> =
+    StatefulValueDownlinkBuilder<
+        Context,
+        T,
+        State,
+        LiftShared<FLinked, State>,
+        LiftShared<FSynced, State>,
+        LiftShared<FUnlinked, State>,
+        LiftShared<FEv, State>,
+        LiftShared<FSet, State>,
+    >;
+
 impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
     StatelessValueDownlinkBuilder<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
 {
@@ -237,16 +249,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
     pub fn with_state<State>(
         self,
         state: State,
-    ) -> StatefulValueDownlinkBuilder<
-        Context,
-        T,
-        State,
-        LiftShared<FLinked, State>,
-        LiftShared<FSynced, State>,
-        LiftShared<FUnlinked, State>,
-        LiftShared<FEv, State>,
-        LiftShared<FSet, State>,
-    > {
+    ) -> LiftedValueBuilder<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet> {
         let StatelessValueDownlinkBuilder {
             address,
             config,

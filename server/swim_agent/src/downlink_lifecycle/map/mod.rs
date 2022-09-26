@@ -351,6 +351,20 @@ where
     }
 }
 
+pub type LiftedMapLifecycle<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> =
+    StatefulMapDownlinkLifecycle<
+        Context,
+        State,
+        K,
+        V,
+        LiftShared<FLinked, State>,
+        LiftShared<FSynced, State>,
+        LiftShared<FUnlinked, State>,
+        LiftShared<FUpd, State>,
+        LiftShared<FRem, State>,
+        LiftShared<FClr, State>,
+    >;
+
 impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
     StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
 {
@@ -532,18 +546,8 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
     pub fn with_state<State>(
         self,
         state: State,
-    ) -> StatefulMapDownlinkLifecycle<
-        Context,
-        State,
-        K,
-        V,
-        LiftShared<FLinked, State>,
-        LiftShared<FSynced, State>,
-        LiftShared<FUnlinked, State>,
-        LiftShared<FUpd, State>,
-        LiftShared<FRem, State>,
-        LiftShared<FClr, State>,
-    > {
+    ) -> LiftedMapLifecycle<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
+    {
         let StatelessMapDownlinkLifecycle {
             on_linked,
             on_synced,
