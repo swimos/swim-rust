@@ -22,6 +22,8 @@ pub mod on_synced;
 pub mod on_unlinked;
 pub mod value;
 
+/// Wraps a closure that takes a [`HandlerContext`] as its first argument and binds that
+/// argument.
 pub struct WithHandlerContext<Context, F> {
     inner: F,
     handler_context: HandlerContext<Context>,
@@ -36,6 +38,7 @@ impl<Context, F> WithHandlerContext<Context, F> {
     }
 }
 
+/// Lifts a stateless event handler to on that may share a state with other handlers.
 pub struct LiftShared<F, Shared> {
     _shared: PhantomData<fn(&Shared)>,
     inner: F,

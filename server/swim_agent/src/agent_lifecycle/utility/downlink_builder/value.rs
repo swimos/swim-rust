@@ -33,6 +33,8 @@ use crate::{
     event_handler::HandlerAction,
 };
 
+/// A builder for constructing a value downlink. Each lifecycle event handler is independent and, by
+/// default, they all do nothing.
 pub struct StatelessValueDownlinkBuilder<
     Context,
     T,
@@ -47,6 +49,8 @@ pub struct StatelessValueDownlinkBuilder<
     inner: StatelessValueDownlinkLifecycle<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>,
 }
 
+/// A builder for constructing a value downlink. The lifecycle event handlers share state and, by default,
+/// they all do nothing.
 pub struct StatefulValueDownlinkBuilder<
     Context,
     T,
@@ -86,6 +90,7 @@ impl<Context, T, State> StatefulValueDownlinkBuilder<Context, T, State> {
 impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
     StatelessValueDownlinkBuilder<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
 {
+    /// Specify a new event handler to be executed when the downlink enters the linked state.
     pub fn on_linked<F>(
         self,
         f: F,
@@ -113,6 +118,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         }
     }
 
+    /// Specify a new event handler to be executed when the downlink enters the synced state.
     pub fn on_synced<F>(
         self,
         f: F,
@@ -140,6 +146,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         }
     }
 
+    /// Specify a new event handler to be executed when the downlink enters the unlinked state.
     pub fn on_unlinked<F>(
         self,
         f: F,
@@ -167,6 +174,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         }
     }
 
+    /// Specify a new event handler to be executed when an event is received for the downlink.
     pub fn on_event<F>(
         self,
         f: F,
@@ -194,6 +202,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         }
     }
 
+    /// Specify a new event handler to be executed when the value of the downlink changes.
     pub fn on_set<F>(
         self,
         f: F,
@@ -221,6 +230,10 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         }
     }
 
+    /// Add a state that can be shared between the event handlers for the downlink.
+    ///
+    /// #Arguments
+    /// * `state` - The value of the state.
     pub fn with_state<State>(
         self,
         state: State,
@@ -259,6 +272,8 @@ where
     FEv: for<'a> OnDownlinkEvent<'a, T, Context> + 'static,
     FSet: for<'a> OnDownlinkSet<'a, T, Context> + 'static,
 {
+    /// Complete the downlink and create a [`HandlerAction`] that will open the downlink when it is
+    /// executed.
     pub fn done(
         self,
     ) -> impl HandlerAction<Context, Completion = ValueDownlinkHandle<T>> + Send + 'static {
@@ -274,6 +289,7 @@ where
 impl<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet>
     StatefulValueDownlinkBuilder<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet>
 {
+    /// Specify a new event handler to be executed when the downlink enters the linked state.
     pub fn on_linked<F>(
         self,
         f: F,
@@ -293,6 +309,7 @@ impl<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet>
         }
     }
 
+    /// Specify a new event handler to be executed when the downlink enters the synced state.
     pub fn on_synced<F>(
         self,
         f: F,
@@ -312,6 +329,7 @@ impl<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet>
         }
     }
 
+    /// Specify a new event handler to be executed when the downlink enters the unlinked state.
     pub fn on_unlinked<F>(
         self,
         f: F,
@@ -331,6 +349,7 @@ impl<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet>
         }
     }
 
+    /// Specify a new event handler to be executed when an event is received for the downlink.
     pub fn on_event<F>(
         self,
         f: F,
@@ -359,6 +378,7 @@ impl<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet>
         }
     }
 
+    /// Specify a new event handler to be executed when the value of the downlink changes.
     pub fn on_set<F>(
         self,
         f: F,
@@ -401,6 +421,8 @@ where
     FEv: for<'a> OnDownlinkEventShared<'a, T, Context, State> + 'static,
     FSet: for<'a> OnDownlinkSetShared<'a, T, Context, State> + 'static,
 {
+    /// Complete the downlink and create a [`HandlerAction`] that will open the downlink when it is
+    /// executed.
     pub fn done(
         self,
     ) -> impl HandlerAction<Context, Completion = ValueDownlinkHandle<T>> + Send + 'static {

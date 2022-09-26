@@ -404,7 +404,6 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
 /// * `FUnlinked` - The type of the 'on_unlinked' handler.
 /// * `FEv` - The type of the 'on_event' handler.
 /// * `FSet` - The type of the 'on_set' handler.
-///
 #[derive(Debug)]
 pub struct StatelessValueDownlinkLifecycle<
     Context,
@@ -545,6 +544,7 @@ where
 impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
     StatelessValueDownlinkLifecycle<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
 {
+    /// Replace the 'on_linked' handler with another derived from a closure.
     pub fn on_linked<F>(
         self,
         f: F,
@@ -570,6 +570,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         }
     }
 
+    /// Replace the 'on_synced' handler with another derived from a closure.
     pub fn on_synced<F>(
         self,
         f: F,
@@ -595,6 +596,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         }
     }
 
+    /// Replace the 'on_unlinked' handler with another derived from a closure.
     pub fn on_unlinked<F>(
         self,
         f: F,
@@ -620,6 +622,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         }
     }
 
+    /// Replace the 'on_event' handler with another derived from a closure.
     pub fn on_event<F>(
         self,
         f: F,
@@ -645,6 +648,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         }
     }
 
+    /// Replace the 'on_set' handler with another derived from a closure.
     pub fn on_set<F>(
         self,
         f: F,
@@ -670,6 +674,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         }
     }
 
+    /// Add a state that is shared between the handlers of the lifeycle.
     pub fn with_state<State>(
         self,
         state: State,

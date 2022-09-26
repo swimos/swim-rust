@@ -37,11 +37,9 @@ use crate::{
     },
 };
 
+pub use self::downlink_builder::map::{StatefulMapDownlinkBuilder, StatelessMapDownlinkBuilder};
 pub use self::downlink_builder::value::{
     StatefulValueDownlinkBuilder, StatelessValueDownlinkBuilder,
-};
-pub use self::downlink_builder::map::{
-    StatefulMapDownlinkBuilder, StatelessMapDownlinkBuilder,
 };
 
 mod downlink_builder;
@@ -247,7 +245,6 @@ impl<Agent: 'static> HandlerContext<Agent> {
     /// * `host` - The remote host at which the agent resides (a local agent if not specified).
     /// * `node` - The node URI of the agent.
     /// * `lane` - The lane to downlink from.
-    /// * `config` - Configuration parameters for the downlink.
     /// * `lifecycle` - Lifecycle events for the downlink.
     /// * `config` - Configuration parameters for the downlink.
     pub fn open_value_downlink<T, LC>(
@@ -274,7 +271,6 @@ impl<Agent: 'static> HandlerContext<Agent> {
     /// * `lane` - The lane to downlink from.
     /// * `config` - Configuration parameters for the downlink.
     /// * `lifecycle` - Lifecycle events for the downlink.
-    /// * `channel_size` - Channel size for sending operations over the downlink.
     pub fn open_map_downlink<K, V, LC>(
         &self,
         host: Option<&str>,
@@ -293,6 +289,12 @@ impl<Agent: 'static> HandlerContext<Agent> {
         OpenMapDownlink::new(Address::text(host, node, lane), lifecycle, config)
     }
 
+    /// Create a builder to construct a request to open a value downlink.
+    /// #Arguments
+    /// * `host` - The remote host at which the agent resides (a local agent if not specified).
+    /// * `node` - The node URI of the agent.
+    /// * `lane` - The lane to downlink from.
+    /// * `config` - Configuration parameters for the downlink.
     pub fn value_downlink_builder<T>(
         host: Option<&str>,
         node: &str,
@@ -306,6 +308,12 @@ impl<Agent: 'static> HandlerContext<Agent> {
         StatelessValueDownlinkBuilder::new(Address::text(host, node, lane), config)
     }
 
+    /// Create a builder to construct a request to open a map downlink.
+    /// #Arguments
+    /// * `host` - The remote host at which the agent resides (a local agent if not specified).
+    /// * `node` - The node URI of the agent.
+    /// * `lane` - The lane to downlink from.
+    /// * `config` - Configuration parameters for the downlink.
     pub fn map_downlink_builder<K, V>(
         host: Option<&str>,
         node: &str,

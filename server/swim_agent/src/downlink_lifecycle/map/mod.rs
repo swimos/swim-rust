@@ -27,7 +27,8 @@ use self::{
 use super::{
     on_linked::{OnLinked, OnLinkedShared},
     on_synced::{OnSynced, OnSyncedShared},
-    on_unlinked::{OnUnlinked, OnUnlinkedShared}, WithHandlerContext, LiftShared,
+    on_unlinked::{OnUnlinked, OnUnlinkedShared},
+    LiftShared, WithHandlerContext,
 };
 
 pub mod on_clear;
@@ -210,17 +211,7 @@ where
 }
 
 impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> Clone
-    for StatelessMapDownlinkLifecycle<
-        Context,
-        K,
-        V,
-        FLinked,
-        FSynced,
-        FUnlinked,
-        FUpd,
-        FRem,
-        FClr,
-    >
+    for StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
 where
     FLinked: Clone,
     FSynced: Clone,
@@ -260,7 +251,8 @@ where
     }
 }
 
-impl<'a, Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> OnSynced<'a, HashMap<K, V>, Context>
+impl<'a, Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
+    OnSynced<'a, HashMap<K, V>, Context>
     for StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
 where
     FLinked: Send,
@@ -296,7 +288,8 @@ where
     }
 }
 
-impl<'a, Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> OnDownlinkUpdate<'a, K, V, Context>
+impl<'a, Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
+    OnDownlinkUpdate<'a, K, V, Context>
     for StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
 where
     FLinked: Send,
@@ -320,7 +313,8 @@ where
     }
 }
 
-impl<'a, Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> OnDownlinkRemove<'a, K, V, Context>
+impl<'a, Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
+    OnDownlinkRemove<'a, K, V, Context>
     for StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
 where
     FLinked: Send,
@@ -338,7 +332,8 @@ where
     }
 }
 
-impl<'a, Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> OnDownlinkClear<'a, K, V, Context>
+impl<'a, Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
+    OnDownlinkClear<'a, K, V, Context>
     for StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
 where
     FLinked: Send,
@@ -359,7 +354,7 @@ where
 impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
     StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
 {
-
+    /// Replace the 'on_linked' handler with another derived from a closure.
     pub fn on_linked<F>(
         self,
         f: F,
@@ -388,6 +383,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         }
     }
 
+    /// Replace the 'on_synced' handler with another derived from a closure.
     pub fn on_synced<F>(
         self,
         f: F,
@@ -395,8 +391,8 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         Context,
         K,
         V,
-       FLinked,
-       WithHandlerContext<Context, F>,
+        FLinked,
+        WithHandlerContext<Context, F>,
         FUnlinked,
         FUpd,
         FRem,
@@ -416,6 +412,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         }
     }
 
+    /// Replace the 'on_unlinked' handler with another derived from a closure.
     pub fn on_unlinked<F>(
         self,
         f: F,
@@ -444,6 +441,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         }
     }
 
+    /// Replace the 'on_update' handler with another derived from a closure.
     pub fn on_update<F>(
         self,
         f: F,
@@ -472,6 +470,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         }
     }
 
+    /// Replace the 'on_remove' handler with another derived from a closure.
     pub fn on_remove<F>(
         self,
         f: F,
@@ -500,6 +499,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         }
     }
 
+    /// Replace the 'on_clear' handler with another derived from a closure.
     pub fn on_clear<F>(
         self,
         f: F,
@@ -511,8 +511,8 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FSynced,
         FUnlinked,
         FUpd,
-       FRem,
-       WithHandlerContext<Context, F>,
+        FRem,
+        WithHandlerContext<Context, F>,
     >
     where
         WithHandlerContext<Context, F>: for<'a> OnDownlinkClear<'a, K, V, Context>,
@@ -528,6 +528,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         }
     }
 
+    /// Add a state that is shared between all of the event handlers in the lifecycle.
     pub fn with_state<State>(
         self,
         state: State,
@@ -564,7 +565,6 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
             on_clear: LiftShared::new(on_clear),
         }
     }
-
 }
 
 impl<'a, Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> OnLinked<'a, Context>

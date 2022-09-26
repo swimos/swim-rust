@@ -14,16 +14,31 @@
 
 use std::collections::HashMap;
 
-use swim_api::handlers::{NoHandler, FnHandler};
+use std::hash::Hash;
+use swim_api::handlers::{FnHandler, NoHandler};
 use swim_form::Form;
 use swim_model::{address::Address, Text};
-use std::hash::Hash;
 
 use crate::{
+    agent_model::downlink::{hosted::MapDownlinkHandle, OpenMapDownlink},
     config::MapDownlinkConfig,
-    downlink_lifecycle::{map::{StatefulMapDownlinkLifecycle, StatelessMapDownlinkLifecycle, on_update::{OnDownlinkUpdate, OnDownlinkUpdateShared}, on_clear::{OnDownlinkClear, OnDownlinkClearShared}, on_remove::{OnDownlinkRemove, OnDownlinkRemoveShared}}, WithHandlerContext, on_linked::{OnLinked, OnLinkedShared}, on_synced::{OnSynced, OnSyncedShared}, on_unlinked::{OnUnlinked, OnUnlinkedShared}, LiftShared}, agent_model::downlink::{OpenMapDownlink, hosted::MapDownlinkHandle}, event_handler::HandlerAction,
+    downlink_lifecycle::{
+        map::{
+            on_clear::{OnDownlinkClear, OnDownlinkClearShared},
+            on_remove::{OnDownlinkRemove, OnDownlinkRemoveShared},
+            on_update::{OnDownlinkUpdate, OnDownlinkUpdateShared},
+            StatefulMapDownlinkLifecycle, StatelessMapDownlinkLifecycle,
+        },
+        on_linked::{OnLinked, OnLinkedShared},
+        on_synced::{OnSynced, OnSyncedShared},
+        on_unlinked::{OnUnlinked, OnUnlinkedShared},
+        LiftShared, WithHandlerContext,
+    },
+    event_handler::HandlerAction,
 };
 
+/// A builder for constructing a map downlink. Each lifecycle event handler is independent and, by
+/// default, they all do nothing.
 pub struct StatelessMapDownlinkBuilder<
     Context,
     K,
@@ -51,6 +66,8 @@ impl<Context, K, V> StatelessMapDownlinkBuilder<Context, K, V> {
     }
 }
 
+/// A builder for constructing a map downlink. The lifecycle event handlers share state and, by default,
+/// they all do nothing.
 pub struct StatefulMapDownlinkBuilder<
     Context,
     K,
@@ -65,13 +82,24 @@ pub struct StatefulMapDownlinkBuilder<
 > {
     address: Address<Text>,
     config: MapDownlinkConfig,
-    inner:
-        StatefulMapDownlinkLifecycle<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>,
+    inner: StatefulMapDownlinkLifecycle<
+        Context,
+        State,
+        K,
+        V,
+        FLinked,
+        FSynced,
+        FUnlinked,
+        FUpd,
+        FRem,
+        FClr,
+    >,
 }
 
 impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
     StatelessMapDownlinkBuilder<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
 {
+    /// Specify a new event handler to be executed when the downlink enters the linked state.
     pub fn on_linked<F>(
         self,
         f: F,
@@ -101,6 +129,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         }
     }
 
+    /// Specify a new event handler to be executed when the downlink enters the synced state.
     pub fn on_synced<F>(
         self,
         f: F,
@@ -130,6 +159,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         }
     }
 
+    /// Specify a new event handler to be executed when the downlink enters the unlinked state.
     pub fn on_unlinked<F>(
         self,
         f: F,
@@ -159,6 +189,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         }
     }
 
+    /// Specify a new event handler to be executed when an entry in the map is updated.
     pub fn on_update<F>(
         self,
         f: F,
@@ -188,6 +219,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         }
     }
 
+    /// Specify a new event handler to be executed when an entry in the map is removed.
     pub fn on_remove<F>(
         self,
         f: F,
@@ -217,6 +249,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         }
     }
 
+    /// Specify a new event handler to be executed when the map is cleared.
     pub fn on_clear<F>(
         self,
         f: F,
@@ -246,6 +279,10 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         }
     }
 
+    /// Add a state that can be shared between the event handlers for the downlink.
+    ///
+    /// #Arguments
+    /// * `state` - The value of the state.
     pub fn with_state<State>(
         self,
         state: State,
@@ -289,6 +326,8 @@ where
     FRem: for<'a> OnDownlinkRemove<'a, K, V, Context> + 'static,
     FClr: for<'a> OnDownlinkClear<'a, K, V, Context> + 'static,
 {
+    /// Complete the downlink and create a [`HandlerAction`] that will open the downlink when it is
+    /// executed.
     pub fn done(
         self,
     ) -> impl HandlerAction<Context, Completion = MapDownlinkHandle<K, V>> + Send + 'static {
@@ -301,10 +340,10 @@ where
     }
 }
 
-
 impl<Context, K, V, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
     StatefulMapDownlinkBuilder<Context, K, V, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
 {
+    /// Specify a new event handler to be executed when the downlink enters the linked state.
     pub fn on_linked<F>(
         self,
         f: F,
@@ -321,7 +360,7 @@ impl<Context, K, V, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FClr,
     >
     where
-       FnHandler<F>: for<'a> OnLinkedShared<'a, Context, State>,
+        FnHandler<F>: for<'a> OnLinkedShared<'a, Context, State>,
     {
         let StatefulMapDownlinkBuilder {
             address,
@@ -335,6 +374,7 @@ impl<Context, K, V, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         }
     }
 
+    /// Specify a new event handler to be executed when the downlink enters the synced state.
     pub fn on_synced<F>(
         self,
         f: F,
@@ -365,6 +405,7 @@ impl<Context, K, V, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         }
     }
 
+    /// Specify a new event handler to be executed when the downlink enters the unlinked state.
     pub fn on_unlinked<F>(
         self,
         f: F,
@@ -395,6 +436,7 @@ impl<Context, K, V, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         }
     }
 
+    /// Specify a new event handler to be executed when an entry in the map is updated.
     pub fn on_update<F>(
         self,
         f: F,
@@ -425,6 +467,7 @@ impl<Context, K, V, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         }
     }
 
+    /// Specify a new event handler to be executed when an entry in the map is removed.
     pub fn on_remove<F>(
         self,
         f: F,
@@ -455,6 +498,7 @@ impl<Context, K, V, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         }
     }
 
+    /// Specify a new event handler to be executed when the map is cleared.
     pub fn on_clear<F>(
         self,
         f: F,
@@ -502,6 +546,8 @@ where
     FRem: for<'a> OnDownlinkRemoveShared<'a, K, V, Context, State> + 'static,
     FClr: for<'a> OnDownlinkClearShared<'a, K, V, Context, State> + 'static,
 {
+    /// Complete the downlink and create a [`HandlerAction`] that will open the downlink when it is
+    /// executed.
     pub fn done(
         self,
     ) -> impl HandlerAction<Context, Completion = MapDownlinkHandle<K, V>> + Send + 'static {
