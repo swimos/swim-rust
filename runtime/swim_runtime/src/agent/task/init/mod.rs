@@ -81,6 +81,7 @@ impl AgentInitTask {
                     let LaneConfig {
                         input_buffer_size,
                         output_buffer_size,
+                        ..
                     } = config.unwrap_or(agent_config.default_lane_config);
 
                     let (in_tx, in_rx) = byte_channel::byte_channel(input_buffer_size);

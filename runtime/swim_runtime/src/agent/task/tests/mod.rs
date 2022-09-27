@@ -80,6 +80,7 @@ fn make_prune_config(
         default_lane_config: LaneConfig {
             input_buffer_size: BUFFER_SIZE,
             output_buffer_size: BUFFER_SIZE,
+            transient: true,
         },
         attachment_queue_size: non_zero_usize!(8),
         inactive_timeout,

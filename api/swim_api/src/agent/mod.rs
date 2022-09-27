@@ -55,6 +55,8 @@ pub struct LaneConfig {
     pub input_buffer_size: NonZeroUsize,
     /// Size of the output buffer in bytes.
     pub output_buffer_size: NonZeroUsize,
+    /// A transient lane does not have associated persitent storage.
+    pub transient: bool,
 }
 
 const DEFAULT_BUFFER: NonZeroUsize = non_zero_usize!(4096);
@@ -64,6 +66,7 @@ impl Default for LaneConfig {
         Self {
             input_buffer_size: DEFAULT_BUFFER,
             output_buffer_size: DEFAULT_BUFFER,
+            transient: false,
         }
     }
 }

@@ -155,6 +155,7 @@ const CONFIG: AgentRuntimeConfig = AgentRuntimeConfig {
     default_lane_config: LaneConfig {
         input_buffer_size: non_zero_usize!(4096),
         output_buffer_size: non_zero_usize!(4096),
+        transient: true,
     },
     attachment_queue_size: non_zero_usize!(8),
     inactive_timeout: Duration::from_secs(1),
