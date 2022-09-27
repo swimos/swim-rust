@@ -30,7 +30,7 @@ use futures::{stream::FuturesUnordered, Future, FutureExt, StreamExt};
 pub use pending::{DlKey, PendingDownlinks};
 use swim_api::{
     downlink::DownlinkKind,
-    error::{AgentRuntimeError, DownlinkFailureReason},
+    error::{DownlinkFailureReason, DownlinkRuntimeError},
 };
 use swim_model::{
     address::{Address, RelativeAddress},
@@ -135,7 +135,7 @@ where
                             } else {
                                 let DownlinkRequest { promise, .. } = request;
                                 if promise
-                                    .send(Err(AgentRuntimeError::DownlinkConnectionFailed(
+                                    .send(Err(DownlinkRuntimeError::DownlinkConnectionFailed(
                                         DownlinkFailureReason::Unresolvable,
                                     )))
                                     .is_err()
@@ -237,7 +237,7 @@ where
                         for request in pending.open_client_failed(&host) {
                             let DownlinkRequest { promise, .. } = request;
                             if promise
-                                .send(Err(AgentRuntimeError::DownlinkConnectionFailed(
+                                .send(Err(DownlinkRuntimeError::DownlinkConnectionFailed(
                                     DownlinkFailureReason::Unresolvable,
                                 )))
                                 .is_err()
@@ -277,7 +277,7 @@ where
                         host,
                         result: Err(e),
                     } => {
-                        let err: AgentRuntimeError = e.into();
+                        let err: DownlinkRuntimeError = e.into();
                         for request in pending.open_client_failed(&host) {
                             let DownlinkRequest {
                                 promise,
@@ -330,7 +330,7 @@ where
                             } in pending.dl_ready(remote_address, &key)
                             {
                                 if promise
-                                    .send(Err(AgentRuntimeError::DownlinkConnectionFailed(
+                                    .send(Err(DownlinkRuntimeError::DownlinkConnectionFailed(
                                         DownlinkFailureReason::RemoteStopped,
                                     )))
                                     .is_err()
@@ -352,7 +352,7 @@ where
                         } in pending.dl_ready(remote_address, &key)
                         {
                             if promise
-                                .send(Err(AgentRuntimeError::DownlinkConnectionFailed(
+                                .send(Err(DownlinkRuntimeError::DownlinkConnectionFailed(
                                     DownlinkFailureReason::RemoteStopped,
                                 )))
                                 .is_err()
@@ -442,8 +442,8 @@ enum Event {
     Attached {
         address: Address<Text>,
         kind: DownlinkKind,
-        promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
-        result: Result<Io, AgentRuntimeError>,
+        promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
+        result: Result<Io, DownlinkRuntimeError>,
     },
 }
 
@@ -513,7 +513,7 @@ async fn attach_to_runtime(
         .await
         .map(move |_| (out_tx, in_rx))
         .map_err(|_| {
-            AgentRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::ConnectionFailed)
+            DownlinkRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::ConnectionFailed)
         });
     Event::Attached {
         address,

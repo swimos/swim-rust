@@ -21,6 +21,8 @@ use swim_utilities::trigger::promise;
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot, watch};
 
+use crate::store::StoreKind;
+
 /// Indicates that an agent or downlink failed to read a frame from a byte stream.
 #[derive(Error, Debug)]
 pub enum FrameIoError {
@@ -95,12 +97,33 @@ impl Display for DownlinkFailureReason {
 /// Error type for operations that communicate with the agent runtime.
 #[derive(Error, Debug, Clone, Copy)]
 pub enum AgentRuntimeError {
-    #[error("Opening a new downlink failed: {0}")]
-    DownlinkConnectionFailed(DownlinkFailureReason),
     #[error("The agent runtime is stopping.")]
     Stopping,
     #[error("The agent runtime has terminated.")]
     Terminated,
+}
+
+#[derive(Error, Debug, Clone, Copy)]
+pub enum DownlinkRuntimeError {
+    #[error(transparent)]
+    RuntimeError(#[from] AgentRuntimeError),
+    #[error("Opening a new downlink failed: {0}")]
+    DownlinkConnectionFailed(DownlinkFailureReason),
+}
+
+#[derive(Error, Debug, Clone, Copy)]
+pub enum OpenStoreError {
+    #[error(transparent)]
+    RuntimeError(#[from] AgentRuntimeError),
+    #[error("The runtime does not support stores.")]
+    StoresNotSupported,
+    #[error(
+        "A store of kind {requested} was requested but the prexisting store is of kind {actual}."
+    )]
+    IncorrectStoreKind {
+        requested: StoreKind,
+        actual: StoreKind,
+    },
 }
 
 impl<T> From<mpsc::error::SendError<T>> for AgentRuntimeError {
@@ -124,6 +147,30 @@ impl From<promise::PromiseError> for AgentRuntimeError {
 impl From<oneshot::error::RecvError> for AgentRuntimeError {
     fn from(_: oneshot::error::RecvError) -> Self {
         AgentRuntimeError::Terminated
+    }
+}
+
+impl<T> From<mpsc::error::SendError<T>> for DownlinkRuntimeError {
+    fn from(_: mpsc::error::SendError<T>) -> Self {
+        DownlinkRuntimeError::RuntimeError(AgentRuntimeError::Terminated)
+    }
+}
+
+impl<T> From<watch::error::SendError<T>> for DownlinkRuntimeError {
+    fn from(_: watch::error::SendError<T>) -> Self {
+        DownlinkRuntimeError::RuntimeError(AgentRuntimeError::Terminated)
+    }
+}
+
+impl From<promise::PromiseError> for DownlinkRuntimeError {
+    fn from(_: promise::PromiseError) -> Self {
+        DownlinkRuntimeError::RuntimeError(AgentRuntimeError::Terminated)
+    }
+}
+
+impl From<oneshot::error::RecvError> for DownlinkRuntimeError {
+    fn from(_: oneshot::error::RecvError) -> Self {
+        DownlinkRuntimeError::RuntimeError(AgentRuntimeError::Terminated)
     }
 }
 

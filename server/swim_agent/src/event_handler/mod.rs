@@ -18,7 +18,11 @@ use bytes::BytesMut;
 use frunk::{coproduct::CNil, Coproduct};
 use futures::{future::Either, stream::BoxStream, FutureExt};
 use static_assertions::assert_obj_safe;
-use swim_api::{agent::AgentContext, downlink::DownlinkKind, error::AgentRuntimeError};
+use swim_api::{
+    agent::AgentContext,
+    downlink::DownlinkKind,
+    error::{AgentRuntimeError, DownlinkRuntimeError},
+};
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_model::address::Address;
 use swim_recon::parser::{AsyncParseError, RecognizerDecoder};
@@ -47,7 +51,7 @@ pub trait DownlinkSpawner<Context> {
         &self,
         dl_channel: BoxDownlinkChannel<Context>,
         dl_writer: WriteStream,
-    ) -> Result<(), AgentRuntimeError>;
+    ) -> Result<(), DownlinkRuntimeError>;
 }
 
 impl<Context> DownlinkSpawner<Context>
@@ -57,7 +61,7 @@ impl<Context> DownlinkSpawner<Context>
         &self,
         dl_channel: BoxDownlinkChannel<Context>,
         dl_writer: WriteStream,
-    ) -> Result<(), AgentRuntimeError> {
+    ) -> Result<(), DownlinkRuntimeError> {
         self.borrow_mut().push((dl_channel, dl_writer));
         Ok(())
     }
@@ -65,13 +69,13 @@ impl<Context> DownlinkSpawner<Context>
 
 impl<F, Context> DownlinkSpawner<Context> for F
 where
-    F: Fn(BoxDownlinkChannel<Context>, WriteStream) -> Result<(), AgentRuntimeError>,
+    F: Fn(BoxDownlinkChannel<Context>, WriteStream) -> Result<(), DownlinkRuntimeError>,
 {
     fn spawn_downlink(
         &self,
         dl_channel: BoxDownlinkChannel<Context>,
         dl_writer: WriteStream,
-    ) -> Result<(), AgentRuntimeError> {
+    ) -> Result<(), DownlinkRuntimeError> {
         (*self)(dl_channel, dl_writer)
     }
 }
@@ -105,7 +109,7 @@ impl<'a, Context> DownlinkSpawner<Context> for ActionContext<'a, Context> {
         &self,
         dl_channel: BoxDownlinkChannel<Context>,
         dl_writer: BoxStream<'static, Result<(), std::io::Error>>,
-    ) -> Result<(), AgentRuntimeError> {
+    ) -> Result<(), DownlinkRuntimeError> {
         self.downlink.spawn_downlink(dl_channel, dl_writer)
     }
 }
@@ -135,7 +139,7 @@ impl<'a, Context> ActionContext<'a, Context> {
         S: AsRef<str>,
         F: FnOnce(ByteReader) -> BoxDownlinkChannel<Context> + Send + 'static,
         G: FnOnce(ByteWriter) -> WriteStream + Send + 'static,
-        OnDone: FnOnce(Result<(), AgentRuntimeError>) -> H + Send + 'static,
+        OnDone: FnOnce(Result<(), DownlinkRuntimeError>) -> H + Send + 'static,
         H: EventHandler<Context> + Send + 'static,
     {
         let Address { host, node, lane } = path;

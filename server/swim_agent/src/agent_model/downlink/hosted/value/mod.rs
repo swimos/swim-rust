@@ -18,7 +18,7 @@ use bytes::BytesMut;
 use futures::{future::BoxFuture, stream::unfold, FutureExt, SinkExt, Stream, StreamExt};
 use std::fmt::Write;
 use swim_api::{
-    error::{AgentRuntimeError, DownlinkFailureReason, FrameIoError},
+    error::{DownlinkFailureReason, DownlinkRuntimeError, FrameIoError},
     protocol::{
         downlink::{DownlinkNotification, ValueNotificationDecoder},
         WithLengthBytesCodec,
@@ -245,11 +245,11 @@ impl<T> ValueDownlinkHandle<T>
 where
     T: Send + Sync,
 {
-    pub fn set(&mut self, value: T) -> Result<(), AgentRuntimeError> {
+    pub fn set(&mut self, value: T) -> Result<(), DownlinkRuntimeError> {
         trace!(address = %self.address, "Attempting to set a value into a downlink.");
         if self.inner.try_send(value).is_err() {
             info!(address = %self.address, "Downlink writer failed.");
-            Err(AgentRuntimeError::DownlinkConnectionFailed(
+            Err(DownlinkRuntimeError::DownlinkConnectionFailed(
                 DownlinkFailureReason::DownlinkStopped,
             ))
         } else {

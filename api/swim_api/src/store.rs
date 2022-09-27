@@ -12,9 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod agent;
-pub mod downlink;
-pub mod error;
-pub mod handlers;
-pub mod protocol;
-pub mod store;
+use std::fmt::{Display, Formatter};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StoreKind {
+    Value,
+    Map,
+}
+
+impl Display for StoreKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StoreKind::Value => write!(f, "Value"),
+            StoreKind::Map => write!(f, "Map"),
+        }
+    }
+}

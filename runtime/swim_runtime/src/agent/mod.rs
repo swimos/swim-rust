@@ -19,7 +19,10 @@ use futures::{
 use swim_api::{
     agent::{Agent, AgentConfig, AgentContext, LaneConfig, UplinkKind},
     downlink::DownlinkKind,
-    error::{AgentInitError, AgentRuntimeError, AgentTaskError},
+    error::{
+        AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
+    },
+    store::StoreKind,
 };
 use swim_model::{address::Address, Text};
 use swim_utilities::{
@@ -50,7 +53,7 @@ use task::AgentRuntimeRequest;
 pub struct DownlinkRequest {
     pub key: (Address<Text>, DownlinkKind),
     pub options: DownlinkOptions,
-    pub promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
+    pub promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
 }
 
 impl DownlinkRequest {
@@ -58,7 +61,7 @@ impl DownlinkRequest {
         path: Address<Text>,
         kind: DownlinkKind,
         options: DownlinkOptions,
-        promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
+        promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
     ) -> Self {
         DownlinkRequest {
             key: (path, kind),
@@ -111,7 +114,7 @@ impl AgentContext for AgentRuntimeContext {
         node: &str,
         lane: &str,
         kind: DownlinkKind,
-    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>> {
         let host = host.map(Text::new);
         let node = Text::new(node);
         let lane = Text::new(lane);
@@ -129,6 +132,14 @@ impl AgentContext for AgentRuntimeContext {
             rx.await?
         }
         .boxed()
+    }
+
+    fn open_store(
+        &self,
+        _name: &str,
+        _kind: StoreKind,
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>> {
+        todo!()
     }
 }
 

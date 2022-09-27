@@ -26,7 +26,10 @@ use swim_utilities::{
 
 use crate::{
     downlink::DownlinkKind,
-    error::{AgentInitError, AgentRuntimeError, AgentTaskError},
+    error::{
+        AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
+    },
+    store::StoreKind,
 };
 
 /// Indicates the sub-protocol that a lane uses to communicate its state.
@@ -91,7 +94,13 @@ pub trait AgentContext: Sync {
         node: &str,
         lane: &str,
         kind: DownlinkKind,
-    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>>;
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>>;
+
+    fn open_store(
+        &self,
+        name: &str,
+        kind: StoreKind,
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>>;
 }
 
 #[derive(Default, Debug, Clone, Copy)]

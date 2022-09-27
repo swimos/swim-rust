@@ -14,12 +14,17 @@
 
 use std::{num::NonZeroUsize, sync::Arc};
 
-use futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt, StreamExt};
+use futures::{
+    future::{ready, BoxFuture},
+    stream::FuturesUnordered,
+    FutureExt, StreamExt,
+};
 use parking_lot::Mutex;
 use swim_api::{
     agent::{AgentConfig, AgentContext, LaneConfig, UplinkKind},
     downlink::DownlinkKind,
-    error::AgentRuntimeError,
+    error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
+    store::StoreKind,
 };
 use swim_model::{address::Address, Text};
 use swim_utilities::{
@@ -84,7 +89,7 @@ impl DownlinkSpawner<TestAgent> for TestSpawner {
         &self,
         dl_channel: BoxDownlinkChannel<TestAgent>,
         dl_writer: WriteStream,
-    ) -> Result<(), AgentRuntimeError> {
+    ) -> Result<(), DownlinkRuntimeError> {
         let mut guard = self.inner.lock();
         assert!(guard.downlink.is_none());
         guard.downlink = Some((dl_channel, dl_writer));
@@ -112,13 +117,21 @@ impl AgentContext for TestContext {
         node: &str,
         lane: &str,
         kind: DownlinkKind,
-    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>> {
         assert_eq!(host, Some(HOST));
         assert_eq!(node, NODE);
         assert_eq!(lane, LANE);
         assert_eq!(kind, self.expected_kind);
         let io = self.inner.lock().io.take().expect("IO taken twice.");
-        async move { Ok(io) }.boxed()
+        ready(Ok(io)).boxed()
+    }
+
+    fn open_store(
+        &self,
+        _name: &str,
+        _kind: StoreKind,
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>> {
+        ready(Err(OpenStoreError::StoresNotSupported)).boxed()
     }
 }
 

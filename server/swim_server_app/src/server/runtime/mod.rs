@@ -25,7 +25,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_api::agent::BoxAgent;
-use swim_api::error::{AgentRuntimeError, DownlinkFailureReason};
+use swim_api::error::{AgentRuntimeError, DownlinkFailureReason, DownlinkRuntimeError};
 use swim_model::address::RelativeAddress;
 use swim_model::Text;
 use swim_remote::{AgentResolutionError, AttachClient, FindNode, NoSuchAgent, RemoteTask};
@@ -816,21 +816,25 @@ enum NewClientError {
     ServerStopped,
 }
 
-impl From<NewClientError> for AgentRuntimeError {
+impl From<NewClientError> for DownlinkRuntimeError {
     fn from(err: NewClientError) -> Self {
         match err {
             NewClientError::InvalidUrl(_) | NewClientError::BadWarpUrl(_) => {
-                AgentRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::Unresolvable)
+                DownlinkRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::Unresolvable)
             }
             NewClientError::OpeningSocketFailed { .. } => {
-                AgentRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::ConnectionFailed)
+                DownlinkRuntimeError::DownlinkConnectionFailed(
+                    DownlinkFailureReason::ConnectionFailed,
+                )
             }
             NewClientError::WsNegotationFailed { .. } => {
-                AgentRuntimeError::DownlinkConnectionFailed(
+                DownlinkRuntimeError::DownlinkConnectionFailed(
                     DownlinkFailureReason::WebsocketNegotiationFailed,
                 )
             }
-            NewClientError::ServerStopped => AgentRuntimeError::Stopping,
+            NewClientError::ServerStopped => {
+                DownlinkRuntimeError::RuntimeError(AgentRuntimeError::Stopping)
+            }
         }
     }
 }

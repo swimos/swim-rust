@@ -31,7 +31,8 @@ mod test_support {
     use swim_api::{
         agent::{AgentConfig, AgentContext, LaneConfig, UplinkKind},
         downlink::DownlinkKind,
-        error::AgentRuntimeError,
+        error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
+        store::StoreKind,
     };
     use swim_utilities::{
         io::byte_channel::{ByteReader, ByteWriter},
@@ -60,7 +61,7 @@ mod test_support {
             &self,
             _dl_channel: BoxDownlinkChannel<FakeAgent>,
             _dl_writer: WriteStream,
-        ) -> Result<(), AgentRuntimeError> {
+        ) -> Result<(), DownlinkRuntimeError> {
             panic!("Unexpected downlink.");
         }
     }
@@ -83,7 +84,15 @@ mod test_support {
             _node: &str,
             _lane: &str,
             _kind: DownlinkKind,
-        ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
+        ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>> {
+            panic!("Unexpected runtime interaction.");
+        }
+
+        fn open_store(
+            &self,
+            _name: &str,
+            _kind: StoreKind,
+        ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>> {
             panic!("Unexpected runtime interaction.");
         }
     }

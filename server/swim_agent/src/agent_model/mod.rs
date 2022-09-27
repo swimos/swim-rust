@@ -24,7 +24,7 @@ use futures::{
     stream::{FuturesUnordered, SelectAll},
     StreamExt,
 };
-use swim_api::error::AgentRuntimeError;
+use swim_api::error::{AgentRuntimeError, DownlinkRuntimeError};
 use swim_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult, UplinkKind},
     error::{AgentInitError, AgentTaskError, FrameIoError},
@@ -634,7 +634,11 @@ where
         }?;
         // Try to run the `on_stop` handler before we stop.
         let on_stop_handler = lifecycle.on_stop();
-        let discard = |_, _| Err(AgentRuntimeError::Stopping);
+        let discard = |_, _| {
+            Err(DownlinkRuntimeError::RuntimeError(
+                AgentRuntimeError::Stopping,
+            ))
+        };
         if let Err(e) = run_handler(
             ActionContext::new(&suspended, &*context, &discard),
             meta,

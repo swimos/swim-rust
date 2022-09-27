@@ -29,7 +29,7 @@ use futures::{
 use parking_lot::Mutex;
 use swim_api::{
     downlink::DownlinkKind,
-    error::{AgentRuntimeError, DownlinkFailureReason},
+    error::{DownlinkFailureReason, DownlinkRuntimeError},
     protocol::downlink::{
         DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
     },
@@ -315,7 +315,7 @@ const LANE: &str = "lane";
 
 fn request_remote(
     kind: DownlinkKind,
-    promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
+    promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
 ) -> DownlinkRequest {
     let address = Address::text(Some(URL), REM_NODE, LANE);
     //Empty options so that downlinks don't try to sync (to reduce noise in the tests).
@@ -324,7 +324,7 @@ fn request_remote(
 
 fn request_bad_remote(
     kind: DownlinkKind,
-    promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
+    promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
 ) -> DownlinkRequest {
     let address = Address::text(Some(BAD_URL), REM_NODE, LANE);
     DownlinkRequest::new(address, kind, DownlinkOptions::empty(), promise)
@@ -332,7 +332,7 @@ fn request_bad_remote(
 
 fn request_local(
     kind: DownlinkKind,
-    promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
+    promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
 ) -> DownlinkRequest {
     let address = Address::text(None, LOCAL_NODE, LANE);
     //Empty options so that downlinks don't try to sync (to reduce noise in the tests).
@@ -341,7 +341,7 @@ fn request_local(
 
 fn request_bad_local(
     kind: DownlinkKind,
-    promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
+    promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
 ) -> DownlinkRequest {
     let address = Address::text(None, BAD_NODE, LANE);
     //Empty options so that downlinks don't try to sync (to reduce noise in the tests).
@@ -529,7 +529,7 @@ async fn open_unresolvable_remote_downlink() {
 
             assert!(matches!(
                 error,
-                AgentRuntimeError::DownlinkConnectionFailed(_)
+                DownlinkRuntimeError::DownlinkConnectionFailed(_)
             ));
 
             assert!(stop_server.trigger());
@@ -562,7 +562,7 @@ async fn open_unresolvable_local_downlink() {
 
             assert!(matches!(
                 error,
-                AgentRuntimeError::DownlinkConnectionFailed(_)
+                DownlinkRuntimeError::DownlinkConnectionFailed(_)
             ));
 
             assert!(stop_server.trigger());
