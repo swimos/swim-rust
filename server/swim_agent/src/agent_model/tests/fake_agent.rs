@@ -19,10 +19,7 @@ use std::{
 
 use bytes::BytesMut;
 use swim_api::protocol::{
-    agent::{
-        LaneResponseKind, MapLaneResponse, MapLaneResponseEncoder, ValueLaneResponse,
-        ValueLaneResponseEncoder,
-    },
+    agent::{LaneResponse, MapLaneResponse, MapLaneResponseEncoder, ValueLaneResponseEncoder},
     map::{MapMessage, MapOperation},
 };
 use swim_model::Text;
@@ -163,14 +160,15 @@ impl AgentLaneModel for TestAgent {
     fn write_event(&self, lane: &str, buffer: &mut bytes::BytesMut) -> Option<WriteResult> {
         match lane {
             VAL_LANE => {
-                let mut encoder = ValueLaneResponseEncoder;
+                let mut encoder = ValueLaneResponseEncoder::default();
                 if let Some(id) = self.sync_ids.borrow_mut().pop_front() {
-                    let response = ValueLaneResponse {
-                        kind: LaneResponseKind::SyncEvent(id),
-                        value: SYNC_VALUE,
-                    };
+                    let sync_message = LaneResponse::sync_event(id, SYNC_VALUE);
+                    let synced_message = LaneResponse::<i32>::Synced(id);
                     encoder
-                        .encode(response, buffer)
+                        .encode(sync_message, buffer)
+                        .expect("Serialization failed.");
+                    encoder
+                        .encode(synced_message, buffer)
                         .expect("Serialization failed.");
                     if self.staged_value.borrow().is_some() {
                         Some(WriteResult::DataStillAvailable)
@@ -180,10 +178,7 @@ impl AgentLaneModel for TestAgent {
                 } else {
                     let mut guard = self.staged_value.borrow_mut();
                     if let Some(body) = guard.take() {
-                        let response = ValueLaneResponse {
-                            kind: LaneResponseKind::StandardEvent,
-                            value: body,
-                        };
+                        let response = LaneResponse::event(body);
                         encoder
                             .encode(response, buffer)
                             .expect("Serialization failed.");
@@ -197,10 +192,7 @@ impl AgentLaneModel for TestAgent {
                 let mut guard = self.staged_map.borrow_mut();
                 if let Some(body) = guard.take() {
                     let mut encoder = MapLaneResponseEncoder::default();
-                    let response = MapLaneResponse::Event {
-                        kind: LaneResponseKind::StandardEvent,
-                        operation: body,
-                    };
+                    let response = MapLaneResponse::event(body);
                     encoder
                         .encode(response, buffer)
                         .expect("Serialization failed.");

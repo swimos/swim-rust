@@ -17,7 +17,7 @@ use std::fmt::Debug;
 use bytes::BytesMut;
 use swim_api::{
     agent::AgentConfig,
-    protocol::agent::{LaneResponseKind, ValueLaneResponse, ValueLaneResponseDecoder},
+    protocol::agent::{LaneResponse, ValueLaneResponseDecoder},
 };
 use swim_utilities::routing::uri::RelativeUri;
 use tokio_util::codec::Decoder;
@@ -104,15 +104,17 @@ fn write_to_buffer_dirty() {
     assert_eq!(result, WriteResult::Done);
     assert!(!lane.dirty.get());
 
-    let mut decoder = ValueLaneResponseDecoder;
+    let mut decoder = ValueLaneResponseDecoder::default();
     let content = decoder
         .decode(&mut buffer)
         .expect("Invalid frame.")
         .expect("Incomplete frame.");
 
-    let ValueLaneResponse { kind, value } = content;
-    assert_eq!(kind, LaneResponseKind::StandardEvent);
-    assert_eq!(value.as_ref(), b"6373");
+    if let LaneResponse::StandardEvent(value) = content {
+        assert_eq!(value.as_ref(), b"6373");
+    } else {
+        panic!("Unexpected response.");
+    }
 }
 
 const SYNC_ID1: Uuid = Uuid::from_u128(63737383);
@@ -129,15 +131,24 @@ fn write_to_buffer_with_sync_while_clean() {
     let result = lane.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::Done);
 
-    let mut decoder = ValueLaneResponseDecoder;
-    let content = decoder
+    let mut decoder = ValueLaneResponseDecoder::default();
+    let first = decoder
+        .decode(&mut buffer)
+        .expect("Invalid frame.")
+        .expect("Incomplete frame.");
+    let second = decoder
         .decode(&mut buffer)
         .expect("Invalid frame.")
         .expect("Incomplete frame.");
 
-    let ValueLaneResponse { kind, value } = content;
-    assert_eq!(kind, LaneResponseKind::SyncEvent(SYNC_ID1));
-    assert_eq!(value.as_ref(), b"123");
+    match (first, second) {
+        (LaneResponse::SyncEvent(id, value), LaneResponse::Synced(id2)) => {
+            assert_eq!(id, SYNC_ID1);
+            assert_eq!(id2, SYNC_ID1);
+            assert_eq!(value.as_ref(), b"123");
+        }
+        _ => panic!("Unexpected responses."),
+    }
 }
 
 #[test]
@@ -152,27 +163,50 @@ fn write_to_buffer_with_multiple_syncs_while_clean() {
     let result = lane.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::DataStillAvailable);
 
-    let mut decoder = ValueLaneResponseDecoder;
-    let content1 = decoder
-        .decode(&mut buffer)
-        .expect("Invalid frame.")
-        .expect("Incomplete frame.");
+    let mut decoder = ValueLaneResponseDecoder::default();
 
-    let ValueLaneResponse { kind, value } = content1;
-    assert_eq!(kind, LaneResponseKind::SyncEvent(SYNC_ID1));
-    assert_eq!(value.as_ref(), b"123");
+    let frames = std::iter::repeat_with(|| {
+        decoder
+            .decode(&mut buffer)
+            .expect("Invalid frame.")
+            .expect("Incomplete frame.")
+    })
+    .take(2)
+    .collect::<Vec<_>>();
+
+    match frames.as_slice() {
+        [LaneResponse::SyncEvent(id1, body), LaneResponse::Synced(id2)] => {
+            assert_eq!(id1, &SYNC_ID1);
+            assert_eq!(id2, &SYNC_ID1);
+            assert_eq!(body.as_ref(), b"123");
+        }
+        _ => {
+            panic!("Unexpected responses.");
+        }
+    }
 
     let result = lane.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::Done);
 
-    let content2 = decoder
-        .decode(&mut buffer)
-        .expect("Invalid frame.")
-        .expect("Incomplete frame.");
+    let frames = std::iter::repeat_with(|| {
+        decoder
+            .decode(&mut buffer)
+            .expect("Invalid frame.")
+            .expect("Incomplete frame.")
+    })
+    .take(2)
+    .collect::<Vec<_>>();
 
-    let ValueLaneResponse { kind, value } = content2;
-    assert_eq!(kind, LaneResponseKind::SyncEvent(SYNC_ID2));
-    assert_eq!(value.as_ref(), b"123");
+    match frames.as_slice() {
+        [LaneResponse::SyncEvent(id1, body), LaneResponse::Synced(id2)] => {
+            assert_eq!(id1, &SYNC_ID2);
+            assert_eq!(id2, &SYNC_ID2);
+            assert_eq!(body.as_ref(), b"123");
+        }
+        _ => {
+            panic!("Unexpected responses.");
+        }
+    }
 }
 
 #[test]
@@ -187,30 +221,43 @@ fn write_to_buffer_with_sync_while_dirty() {
     let result = lane.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::DataStillAvailable);
 
-    let mut decoder = ValueLaneResponseDecoder;
-    let content1 = decoder
-        .decode(&mut buffer)
-        .expect("Invalid frame.")
-        .expect("Incomplete frame.");
+    let mut decoder = ValueLaneResponseDecoder::default();
+    let frames = std::iter::repeat_with(|| {
+        decoder
+            .decode(&mut buffer)
+            .expect("Invalid frame.")
+            .expect("Incomplete frame.")
+    })
+    .take(2)
+    .collect::<Vec<_>>();
 
     assert!(lane.dirty.get());
 
-    let ValueLaneResponse { kind, value } = content1;
-    assert_eq!(kind, LaneResponseKind::SyncEvent(SYNC_ID1));
-    assert_eq!(value.as_ref(), b"6373");
+    match frames.as_slice() {
+        [LaneResponse::SyncEvent(id1, value), LaneResponse::Synced(id2)] => {
+            assert_eq!(id1, &SYNC_ID1);
+            assert_eq!(id2, &SYNC_ID1);
+            assert_eq!(value.as_ref(), b"6373");
+        }
+        _ => {
+            panic!("Unexpected response.");
+        }
+    }
 
     let result = lane.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::Done);
 
-    let content2 = decoder
+    let frame = decoder
         .decode(&mut buffer)
         .expect("Invalid frame.")
         .expect("Incomplete frame.");
 
     assert!(!lane.dirty.get());
-    let ValueLaneResponse { kind, value } = content2;
-    assert_eq!(kind, LaneResponseKind::StandardEvent);
-    assert_eq!(value.as_ref(), b"6373");
+    if let LaneResponse::StandardEvent(value) = frame {
+        assert_eq!(value.as_ref(), b"6373");
+    } else {
+        panic!("Unexpected response.");
+    }
 }
 
 const CONFIG: AgentConfig = AgentConfig {};
@@ -338,13 +385,25 @@ fn value_lane_sync_event_handler() {
     let result = agent.lane.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::Done);
 
-    let mut decoder = ValueLaneResponseDecoder;
-    let content = decoder
-        .decode(&mut buffer)
-        .expect("Invalid frame.")
-        .expect("Incomplete frame.");
+    let mut decoder = ValueLaneResponseDecoder::default();
 
-    let ValueLaneResponse { kind, value } = content;
-    assert_eq!(kind, LaneResponseKind::SyncEvent(SYNC_ID1));
-    assert_eq!(value.as_ref(), b"0");
+    let frames = std::iter::repeat_with(|| {
+        decoder
+            .decode(&mut buffer)
+            .expect("Invalid frame.")
+            .expect("Incomplete frame.")
+    })
+    .take(2)
+    .collect::<Vec<_>>();
+
+    match frames.as_slice() {
+        [LaneResponse::SyncEvent(id1, body), LaneResponse::Synced(id2)] => {
+            assert_eq!(id1, &SYNC_ID1);
+            assert_eq!(id2, &SYNC_ID1);
+            assert_eq!(body.as_ref(), b"0");
+        }
+        _ => {
+            panic!("Unexpected response.");
+        }
+    }
 }

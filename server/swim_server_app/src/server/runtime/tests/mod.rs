@@ -812,8 +812,7 @@ async fn downlink_to_local_nonexistent() {
             let error = done_rx
                 .await
                 .expect("Request not satisfied.")
-                .err()
-                .expect("Local downlink succeeded.");
+                .expect_err("Local downlink succeeded.");
 
             assert!(matches!(error, DownlinkFailureReason::Unresolvable));
             test_context.handle.stop();

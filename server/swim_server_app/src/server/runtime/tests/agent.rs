@@ -17,7 +17,7 @@ use swim_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult, UplinkKind},
     error::AgentTaskError,
     protocol::{
-        agent::{LaneRequest, LaneRequestDecoder, ValueLaneResponse, ValueLaneResponseEncoder},
+        agent::{LaneRequest, LaneRequestDecoder, LaneResponse, ValueLaneResponseEncoder},
         WithLenRecognizerDecoder,
     },
 };
@@ -105,7 +105,11 @@ async fn run_agent(
         match result {
             Ok(LaneRequest::Sync(id)) => {
                 output
-                    .send(ValueLaneResponse::synced(id, state))
+                    .send(LaneResponse::sync_event(id, state))
+                    .await
+                    .expect("Channel stopped.");
+                output
+                    .send(LaneResponse::<i32>::synced(id))
                     .await
                     .expect("Channel stopped.");
             }
@@ -115,10 +119,11 @@ async fn run_agent(
             }
             Ok(LaneRequest::Command(TestMessage::Event)) => {
                 output
-                    .send(ValueLaneResponse::event(state))
+                    .send(LaneResponse::event(state))
                     .await
                     .expect("Channel stopped.");
             }
+            Ok(LaneRequest::InitComplete) => {}
             Err(e) => {
                 panic!("Bad frame: {}", e);
             }

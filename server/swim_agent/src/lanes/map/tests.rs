@@ -19,7 +19,7 @@ use bytes::BytesMut;
 use swim_api::{
     agent::AgentConfig,
     protocol::{
-        agent::{LaneResponseKind, MapLaneResponse, MapLaneResponseDecoder},
+        agent::{MapLaneResponse, MapLaneResponseDecoder},
         map::MapOperation,
     },
 };
@@ -167,18 +167,15 @@ fn write_to_buffer_one_update() {
         .expect("Incomplete frame.");
 
     match content {
-        MapLaneResponse::Event { kind, operation } => {
-            assert!(matches!(kind, LaneResponseKind::StandardEvent));
-            match operation {
-                MapOperation::Update { key, value } => {
-                    assert_eq!(key.as_ref(), b"78");
-                    assert_eq!(value.as_ref(), b"altered");
-                }
-                ow => {
-                    panic!("Unexpected operation: {:?}", ow);
-                }
+        MapLaneResponse::StandardEvent(operation) => match operation {
+            MapOperation::Update { key, value } => {
+                assert_eq!(key.as_ref(), b"78");
+                assert_eq!(value.as_ref(), b"altered");
             }
-        }
+            ow => {
+                panic!("Unexpected operation: {:?}", ow);
+            }
+        },
         _ => panic!("Unexpected synced."),
     }
 }
@@ -201,17 +198,14 @@ fn write_to_buffer_one_remove() {
         .expect("Incomplete frame.");
 
     match content {
-        MapLaneResponse::Event { kind, operation } => {
-            assert!(matches!(kind, LaneResponseKind::StandardEvent));
-            match operation {
-                MapOperation::Remove { key } => {
-                    assert_eq!(key.as_ref(), b"78");
-                }
-                ow => {
-                    panic!("Unexpected operation: {:?}", ow);
-                }
+        MapLaneResponse::StandardEvent(operation) => match operation {
+            MapOperation::Remove { key } => {
+                assert_eq!(key.as_ref(), b"78");
             }
-        }
+            ow => {
+                panic!("Unexpected operation: {:?}", ow);
+            }
+        },
         _ => panic!("Unexpected synced."),
     }
 }
@@ -234,8 +228,7 @@ fn write_to_buffer_clear() {
         .expect("Incomplete frame.");
 
     match content {
-        MapLaneResponse::Event { kind, operation } => {
-            assert!(matches!(kind, LaneResponseKind::StandardEvent));
+        MapLaneResponse::StandardEvent(operation) => {
             assert!(matches!(operation, MapOperation::Clear));
         }
         _ => panic!("Unexpected synced."),
@@ -269,26 +262,21 @@ fn consume_events(lane: &MapLane<i32, Text>) -> Operations {
             .expect("Incomplete frame.");
 
         match content {
-            MapLaneResponse::Event {
-                kind: LaneResponseKind::StandardEvent,
-                operation,
-            } => {
+            MapLaneResponse::StandardEvent(operation) => {
                 events.push(interpret(operation));
             }
-            MapLaneResponse::Event {
-                kind: LaneResponseKind::SyncEvent(id),
-                operation,
-            } => {
+            MapLaneResponse::SyncEvent(id, operation) => {
                 sync_pending
                     .entry(id)
                     .or_insert_with(Vec::new)
                     .push(interpret(operation));
             }
-            MapLaneResponse::SyncComplete(id) => {
+            MapLaneResponse::Synced(id) => {
                 assert!(!sync.contains_key(&id));
                 let ops = sync_pending.remove(&id).unwrap_or_default();
                 sync.insert(id, ops);
             }
+            MapLaneResponse::Initialized => {}
         }
 
         if matches!(result, WriteResult::Done) {

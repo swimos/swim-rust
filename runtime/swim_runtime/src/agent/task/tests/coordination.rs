@@ -161,6 +161,9 @@ impl FakeAgent {
                             Ok(Either::Left(message)) => {
                                 if let Some((value, sender)) = value_lanes.get_mut(name.as_str()) {
                                     match message {
+                                        LaneRequest::InitComplete => {
+                                            panic!("Unexpected InitComplete");
+                                        }
                                         LaneRequest::Command(v) => {
                                             assert!(event_tx.send(Event::ValueCommand { name: name.clone(), n: v }).is_ok());
                                             *value = v;
@@ -175,6 +178,9 @@ impl FakeAgent {
                             Ok(Either::Right(message)) => {
                                 if let Some((map, sender)) = map_lanes.get_mut(name.as_str()) {
                                     match message {
+                                        LaneRequest::InitComplete => {
+                                            panic!("Unexpected InitComplete.");
+                                        }
                                         LaneRequest::Command(msg) => {
                                             assert!(event_tx.send(Event::MapCommand { name: name.clone(), cmd: msg.clone() }).is_ok());
                                             match msg {

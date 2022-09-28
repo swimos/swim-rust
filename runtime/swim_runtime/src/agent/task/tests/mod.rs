@@ -27,8 +27,8 @@ use swim_api::{
     error::FrameIoError,
     protocol::{
         agent::{
-            LaneRequest, LaneRequestDecoder, LaneResponseKind, MapLaneResponse,
-            MapLaneResponseEncoder, ValueLaneResponse, ValueLaneResponseEncoder,
+            LaneRequest, LaneRequestDecoder, LaneResponse, MapLaneResponse, MapLaneResponseEncoder,
+            ValueLaneResponseEncoder,
         },
         map::{MapMessage, MapMessageDecoder, MapOperation, MapOperationDecoder},
         WithLenRecognizerDecoder,
@@ -211,12 +211,13 @@ impl ValueLaneSender {
 
     async fn event(&mut self, n: i32) {
         let ValueLaneSender { inner } = self;
-        assert!(inner.send(ValueLaneResponse::event(n)).await.is_ok());
+        assert!(inner.send(LaneResponse::event(n)).await.is_ok());
     }
 
     async fn synced(&mut self, id: Uuid, n: i32) {
         let ValueLaneSender { inner } = self;
-        assert!(inner.send(ValueLaneResponse::synced(id, n)).await.is_ok());
+        assert!(inner.send(LaneResponse::sync_event(id, n)).await.is_ok());
+        assert!(inner.send(LaneResponse::<i32>::Synced(id)).await.is_ok());
     }
 }
 
@@ -234,10 +235,7 @@ impl MapLaneSender {
     async fn update_event(&mut self, key: Text, value: i32) {
         let MapLaneSender { inner } = self;
         assert!(inner
-            .send(MapLaneResponse::Event {
-                kind: LaneResponseKind::StandardEvent,
-                operation: MapOperation::Update { key, value }
-            })
+            .send(MapLaneResponse::event(MapOperation::Update { key, value }))
             .await
             .is_ok());
     }
@@ -245,34 +243,22 @@ impl MapLaneSender {
     async fn remove_event(&mut self, key: Text) {
         let MapLaneSender { inner } = self;
         let operation: MapOperation<Text, i32> = MapOperation::Remove { key };
-        assert!(inner
-            .send(MapLaneResponse::Event {
-                kind: LaneResponseKind::StandardEvent,
-                operation,
-            })
-            .await
-            .is_ok());
+        assert!(inner.send(MapLaneResponse::event(operation)).await.is_ok());
     }
 
     async fn clear_event(&mut self) {
         let MapLaneSender { inner } = self;
         let operation: MapOperation<Text, i32> = MapOperation::Clear;
-        assert!(inner
-            .send(MapLaneResponse::Event {
-                kind: LaneResponseKind::StandardEvent,
-                operation
-            })
-            .await
-            .is_ok());
+        assert!(inner.send(MapLaneResponse::event(operation)).await.is_ok());
     }
 
     async fn sync_event(&mut self, id: Uuid, key: Text, value: i32) {
         let MapLaneSender { inner } = self;
         assert!(inner
-            .send(MapLaneResponse::Event {
-                kind: LaneResponseKind::SyncEvent(id),
-                operation: MapOperation::Update { key, value }
-            })
+            .send(MapLaneResponse::sync_event(
+                id,
+                MapOperation::Update { key, value }
+            ))
             .await
             .is_ok());
     }
@@ -280,7 +266,7 @@ impl MapLaneSender {
     async fn synced(&mut self, id: Uuid) {
         let MapLaneSender { inner } = self;
         assert!(inner
-            .send(MapLaneResponse::<Text, i32>::SyncComplete(id))
+            .send(MapLaneResponse::<Text, i32>::synced(id))
             .await
             .is_ok());
     }

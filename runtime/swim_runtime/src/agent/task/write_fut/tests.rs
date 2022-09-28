@@ -84,7 +84,7 @@ async fn write_event() {
 
 #[tokio::test]
 async fn write_event_with_synced() {
-    let (task, mut reader) = make_task(WriteAction::EventAndSynced, Some(BODY_BYTES));
+    let (task, mut reader) = make_task(WriteAction::ValueSynced(true), Some(BODY_BYTES));
 
     assert!(task.into_future().await.2.is_ok());
 

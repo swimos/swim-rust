@@ -228,7 +228,7 @@ impl FakeServerTask {
                     responder,
                 }))) => {
                     assert_eq!(host, URL);
-                    let result = if sock_addrs.iter().find(|a| *a == &addr).is_some() {
+                    let result = if sock_addrs.iter().any(|a| a == &addr) {
                         Ok(EstablishedClient {
                             tx: attach_tx.clone(),
                             sock_addr: addr,
@@ -524,8 +524,7 @@ async fn open_unresolvable_remote_downlink() {
             let error = connected_rx
                 .await
                 .expect("Stopped prematurely.")
-                .err()
-                .expect("Resolution should fail.");
+                .expect_err("Resolution should fail.");
 
             assert!(matches!(
                 error,
@@ -557,8 +556,7 @@ async fn open_unresolvable_local_downlink() {
             let error = connected_rx
                 .await
                 .expect("Stopped prematurely.")
-                .err()
-                .expect("Resolution should fail.");
+                .expect_err("Resolution should fail.");
 
             assert!(matches!(
                 error,

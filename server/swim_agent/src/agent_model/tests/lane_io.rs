@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use bytes::{Bytes, BytesMut};
+use bytes::BytesMut;
 use futures::{SinkExt, StreamExt};
 use std::fmt::Write;
 use swim_api::protocol::{
     agent::{
-        LaneRequest, LaneRequestEncoder, LaneResponseKind, MapLaneResponse, MapLaneResponseDecoder,
-        ValueLaneResponse, ValueLaneResponseDecoder,
+        LaneRequest, LaneRequestEncoder, LaneResponse, MapLaneResponse, MapLaneResponseDecoder,
+        ValueLaneResponseDecoder,
     },
     map::{MapMessage, MapMessageEncoder, MapOperation, MapOperationEncoder},
     WithLengthBytesCodec,
@@ -71,7 +71,7 @@ impl ValueLaneReceiver {
         }
     }
 
-    pub async fn get_response(&mut self) -> ValueLaneResponse<Bytes> {
+    pub async fn get_response(&mut self) -> LaneResponse<BytesMut> {
         let ValueLaneReceiver { inner } = self;
         inner
             .next()
@@ -82,20 +82,30 @@ impl ValueLaneReceiver {
 
     pub async fn expect_event(&mut self, expected: i32) {
         let response = self.get_response().await;
-        let ValueLaneResponse { kind, value } = response;
-
-        assert!(matches!(kind, LaneResponseKind::StandardEvent));
-        let n: i32 = read_int(value);
-        assert_eq!(n, expected);
+        if let LaneResponse::StandardEvent(value) = response {
+            let n: i32 = read_int(value);
+            assert_eq!(n, expected);
+        } else {
+            panic!("Unexpected response.");
+        }
     }
 
     pub async fn expect_sync_event(&mut self, id: Uuid, expected: i32) {
-        let response = self.get_response().await;
-        let ValueLaneResponse { kind, value } = response;
+        let first = self.get_response().await;
+        let second = self.get_response().await;
 
-        assert!(matches!(kind, LaneResponseKind::SyncEvent(sync_id) if sync_id == id));
-        let n: i32 = read_int(value);
-        assert_eq!(n, expected);
+        if let LaneResponse::SyncEvent(sync_id, value) = first {
+            assert_eq!(sync_id, id);
+            let n: i32 = read_int(value);
+            assert_eq!(n, expected);
+        } else {
+            panic!("Unexpected response.");
+        }
+        if let LaneResponse::Synced(sync_id) = second {
+            assert_eq!(sync_id, id);
+        } else {
+            panic!("Unexpected response.");
+        }
     }
 }
 
@@ -152,10 +162,7 @@ impl MapLaneReceiver {
         let response = self.get_response().await;
 
         match response {
-            MapLaneResponse::Event {
-                kind: LaneResponseKind::StandardEvent,
-                operation,
-            } => {
+            MapLaneResponse::StandardEvent(operation) => {
                 assert_eq!(read_op(operation), expected)
             }
             ow => panic!("Unexpected response: {:?}", ow),

@@ -15,7 +15,10 @@
 use std::num::NonZeroUsize;
 
 use bytes::{Bytes, BytesMut};
-use swim_api::protocol::map::{MapOperation, RawMapOperation};
+use swim_api::{
+    agent::UplinkKind,
+    protocol::map::{MapOperation, RawMapOperation},
+};
 use swim_model::Text;
 use swim_utilities::{
     algebra::non_zero_usize,
@@ -195,20 +198,13 @@ fn push_value_synced() {
     let lane_names = lane_names();
     let (mut uplinks, _reader, ..) = make_uplinks();
 
-    let content = Bytes::from_static(BODY1);
-
-    let WriteTask {
-        sender,
-        buffer,
-        action,
-    } = uplinks
-        .push(0, UplinkResponse::SyncedValue(content), &lane_names)
+    let WriteTask { sender, action, .. } = uplinks
+        .push(0, UplinkResponse::Synced(UplinkKind::Value), &lane_names)
         .expect("Action was invalid.")
         .expect("Expected immediate write.");
 
     assert_eq!(&sender.lane, LANE_NAME);
-    assert!(matches!(action, WriteAction::EventAndSynced));
-    assert_eq!(buffer.as_ref(), BODY1);
+    assert!(matches!(action, WriteAction::ValueSynced(false)));
 }
 
 #[test]
@@ -217,7 +213,7 @@ fn push_map_synced() {
     let (mut uplinks, _reader, ..) = make_uplinks();
 
     let WriteTask { sender, action, .. } = uplinks
-        .push(0, UplinkResponse::SyncedMap, &lane_names)
+        .push(0, UplinkResponse::Synced(UplinkKind::Map), &lane_names)
         .expect("Action was invalid.")
         .expect("Expected immediate write.");
 
@@ -320,6 +316,42 @@ fn push_multiple_value_events_same_lane() {
     // Due to backpressure relief we expect to only see the second value.
     assert_eq!(&sender.lane, LANE_NAME);
     assert!(matches!(action, WriteAction::Event));
+    assert_eq!(buffer.as_ref(), BODY2);
+
+    assert!(uplinks
+        .replace_and_pop(sender, buffer, &lane_names)
+        .is_none());
+}
+
+#[test]
+fn delayed_synced_message() {
+    let lane_names = lane_names();
+    let (mut uplinks, _reader, _, sender, buffer) = make_uplinks_writing();
+
+    let events = [
+        (0, UplinkResponse::Value(Bytes::from_static(BODY1))),
+        (0, UplinkResponse::Synced(UplinkKind::Value)),
+        (0, UplinkResponse::Value(Bytes::from_static(BODY2))),
+    ];
+
+    for (id, event) in events {
+        let result = uplinks
+            .push(id, event, &lane_names)
+            .expect("Action was invalid.");
+        assert!(result.is_none());
+    }
+
+    let WriteTask {
+        sender,
+        buffer,
+        action,
+    } = uplinks
+        .replace_and_pop(sender, buffer, &lane_names)
+        .expect("Expected queued result.");
+
+    // Due to backpressure relief we expect to only see the second value, accompanied by a synced message.
+    assert_eq!(&sender.lane, LANE_NAME);
+    assert!(matches!(action, WriteAction::ValueSynced(true)));
     assert_eq!(buffer.as_ref(), BODY2);
 
     assert!(uplinks
@@ -505,7 +537,7 @@ fn map_lane_sync_consumes_buffer() {
     }
 
     let result = uplinks
-        .push(0, UplinkResponse::SyncedMap, &lane_names)
+        .push(0, UplinkResponse::Synced(UplinkKind::Map), &lane_names)
         .expect("Action was invalid.");
     assert!(result.is_none());
 

@@ -40,7 +40,7 @@ use futures::{
 };
 use pin_utils::pin_mut;
 use swim_api::agent::LaneConfig;
-use swim_api::protocol::agent::{LaneResponseKind, MapLaneResponse, ValueLaneResponse};
+use swim_api::protocol::agent::{LaneResponse, MapLaneResponse};
 use swim_api::{
     agent::UplinkKind,
     error::AgentRuntimeError,
@@ -344,35 +344,36 @@ impl RawLaneResponse {
     }
 }
 
-impl From<ValueLaneResponse<Bytes>> for RawLaneResponse {
-    fn from(resp: ValueLaneResponse<Bytes>) -> Self {
-        let ValueLaneResponse { kind, value } = resp;
-        match kind {
-            LaneResponseKind::StandardEvent => {
-                RawLaneResponse::broadcast(UplinkResponse::Value(value))
-            }
-            LaneResponseKind::SyncEvent(id) => {
-                RawLaneResponse::targetted(id, UplinkResponse::SyncedValue(value))
-            }
-        }
+fn value_raw_response(resp: LaneResponse<BytesMut>) -> Option<RawLaneResponse> {
+    match resp {
+        LaneResponse::StandardEvent(body) => Some(RawLaneResponse::broadcast(
+            UplinkResponse::Value(body.freeze()),
+        )),
+        LaneResponse::Initialized => None,
+        LaneResponse::SyncEvent(id, body) => Some(RawLaneResponse::targetted(
+            id,
+            UplinkResponse::Value(body.freeze()),
+        )),
+        LaneResponse::Synced(id) => Some(RawLaneResponse::targetted(
+            id,
+            UplinkResponse::Synced(UplinkKind::Value),
+        )),
     }
 }
 
-impl From<MapLaneResponse<BytesMut, BytesMut>> for RawLaneResponse {
-    fn from(resp: MapLaneResponse<BytesMut, BytesMut>) -> Self {
-        match resp {
-            MapLaneResponse::Event { kind, operation } => match kind {
-                LaneResponseKind::StandardEvent => {
-                    RawLaneResponse::broadcast(UplinkResponse::Map(operation))
-                }
-                LaneResponseKind::SyncEvent(id) => {
-                    RawLaneResponse::targetted(id, UplinkResponse::Map(operation))
-                }
-            },
-            MapLaneResponse::SyncComplete(id) => {
-                RawLaneResponse::targetted(id, UplinkResponse::SyncedMap)
-            }
+fn map_raw_response(resp: MapLaneResponse<BytesMut, BytesMut>) -> Option<RawLaneResponse> {
+    match resp {
+        LaneResponse::StandardEvent(body) => {
+            Some(RawLaneResponse::broadcast(UplinkResponse::Map(body)))
         }
+        LaneResponse::Initialized => None,
+        LaneResponse::SyncEvent(id, body) => {
+            Some(RawLaneResponse::targetted(id, UplinkResponse::Map(body)))
+        }
+        LaneResponse::Synced(id) => Some(RawLaneResponse::targetted(
+            id,
+            UplinkResponse::Synced(UplinkKind::Map),
+        )),
     }
 }
 
@@ -403,11 +404,21 @@ impl Stream for ValueLaneReceiver {
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
-        let maybe_result = ready!(this.receiver.poll_next_unpin(cx));
         let id = this.lane_id;
-        Poll::Ready(
-            maybe_result.map(|result| result.map(|r| (id, r.into())).map_err(|_| Failed(id))),
-        )
+        let next = loop {
+            let maybe_result = ready!(this.receiver.poll_next_unpin(cx));
+
+            match maybe_result {
+                Some(Ok(r)) => {
+                    if let Some(raw) = value_raw_response(r) {
+                        break Some(Ok((id, raw)));
+                    }
+                }
+                Some(Err(_)) => break Some(Err(Failed(id))),
+                _ => break None,
+            };
+        };
+        Poll::Ready(next)
     }
 }
 
@@ -416,11 +427,21 @@ impl Stream for MapLaneReceiver {
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
-        let maybe_result = ready!(this.receiver.poll_next_unpin(cx));
+
         let id = this.lane_id;
-        Poll::Ready(
-            maybe_result.map(|result| result.map(|r| (id, r.into())).map_err(|_| Failed(id))),
-        )
+        let next = loop {
+            let maybe_result = ready!(this.receiver.poll_next_unpin(cx));
+            match maybe_result {
+                Some(Ok(r)) => {
+                    if let Some(raw) = map_raw_response(r) {
+                        break Some(Ok((id, raw)));
+                    }
+                }
+                Some(Err(_)) => break Some(Err(Failed(id))),
+                _ => break None,
+            };
+        };
+        Poll::Ready(next)
     }
 }
 

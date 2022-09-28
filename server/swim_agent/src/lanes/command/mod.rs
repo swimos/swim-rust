@@ -16,7 +16,7 @@ use std::cell::{Cell, RefCell};
 
 use bytes::BytesMut;
 use static_assertions::assert_impl_all;
-use swim_api::protocol::agent::{ValueLaneResponse, ValueLaneResponseEncoder};
+use swim_api::protocol::agent::{LaneResponse, ValueLaneResponseEncoder};
 use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use tokio_util::codec::Encoder;
 
@@ -154,11 +154,11 @@ impl<T: StructuralWritable> Lane for CommandLane<T> {
             dirty,
             ..
         } = self;
-        let mut encoder = ValueLaneResponseEncoder;
+        let mut encoder = ValueLaneResponseEncoder::default();
         if dirty.get() {
             let value_guard = prev_command.borrow();
             if let Some(value) = &*value_guard {
-                let response = ValueLaneResponse::event(value);
+                let response = LaneResponse::event(value);
                 encoder.encode(response, buffer).expect(INFALLIBLE_SER);
                 dirty.set(false);
                 WriteResult::Done

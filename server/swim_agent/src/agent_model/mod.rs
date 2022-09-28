@@ -570,6 +570,7 @@ where
                                 }
                             }
                         }
+                        LaneRequest::InitComplete => {}
                     }
                 }
                 TaskEvent::MapRequest { id, request } => {
@@ -605,6 +606,7 @@ where
                                 }
                             }
                         }
+                        LaneRequest::InitComplete => {}
                     }
                 }
                 TaskEvent::RequestError { id, error } => {

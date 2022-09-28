@@ -17,7 +17,7 @@ use frunk::{Coprod, Coproduct};
 use static_assertions::assert_impl_all;
 use std::{borrow::Borrow, cell::RefCell, collections::HashMap, hash::Hash, marker::PhantomData};
 use swim_api::protocol::{
-    agent::{LaneResponseKind, MapLaneResponse, MapLaneResponseEncoder},
+    agent::{MapLaneResponse, MapLaneResponseEncoder},
     map::{MapMessage, MapOperation},
 };
 use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
@@ -243,20 +243,13 @@ where
         loop {
             let maybe_response = match write_queues.pop() {
                 Some(ToWrite::Event(event)) => {
-                    to_operation(content, event).map(|operation| MapLaneResponse::Event {
-                        kind: LaneResponseKind::StandardEvent,
-                        operation,
-                    })
+                    to_operation(content, event).map(MapLaneResponse::event)
                 }
                 Some(ToWrite::SyncEvent(id, key)) => {
-                    to_operation(content, MapOperation::Update { key, value: () }).map(
-                        |operation| MapLaneResponse::Event {
-                            kind: LaneResponseKind::SyncEvent(id),
-                            operation,
-                        },
-                    )
+                    to_operation(content, MapOperation::Update { key, value: () })
+                        .map(|operation| MapLaneResponse::sync_event(id, operation))
                 }
-                Some(ToWrite::Synced(id)) => Some(MapLaneResponse::SyncComplete(id)),
+                Some(ToWrite::Synced(id)) => Some(MapLaneResponse::synced(id)),
                 _ => break WriteResult::NoData,
             };
             if let Some(response) = maybe_response {

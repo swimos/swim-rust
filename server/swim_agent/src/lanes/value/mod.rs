@@ -24,7 +24,7 @@ use std::{
 
 use bytes::BytesMut;
 use static_assertions::assert_impl_all;
-use swim_api::protocol::agent::{ValueLaneResponse, ValueLaneResponseEncoder};
+use swim_api::protocol::agent::{LaneResponse, ValueLaneResponseEncoder};
 use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use tokio_util::codec::Encoder;
 use uuid::Uuid;
@@ -120,12 +120,18 @@ impl<T: StructuralWritable> Lane for ValueLane<T> {
             sync_queue,
             ..
         } = self;
-        let mut encoder = ValueLaneResponseEncoder;
+        let mut encoder = ValueLaneResponseEncoder::default();
         let mut sync = sync_queue.borrow_mut();
         if let Some(id) = sync.pop_front() {
             let value_guard = content.borrow();
-            let response = ValueLaneResponse::synced(id, &*value_guard);
-            encoder.encode(response, buffer).expect(INFALLIBLE_SER);
+            let value_response = LaneResponse::sync_event(id, &*value_guard);
+            let synced_response = LaneResponse::<&T>::synced(id);
+            encoder
+                .encode(value_response, buffer)
+                .expect(INFALLIBLE_SER);
+            encoder
+                .encode(synced_response, buffer)
+                .expect(INFALLIBLE_SER);
             if dirty.get() || !sync.is_empty() {
                 WriteResult::DataStillAvailable
             } else {
@@ -133,7 +139,7 @@ impl<T: StructuralWritable> Lane for ValueLane<T> {
             }
         } else if dirty.get() {
             let value_guard = content.borrow();
-            let response = ValueLaneResponse::event(&*value_guard);
+            let response = LaneResponse::event(&*value_guard);
             encoder.encode(response, buffer).expect(INFALLIBLE_SER);
             dirty.set(false);
             WriteResult::Done
