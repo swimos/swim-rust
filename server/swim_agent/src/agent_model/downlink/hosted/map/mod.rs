@@ -185,7 +185,7 @@ trait MapDlStateOps<K, V, Context> {
             if to_drop > 0 {
                 let ord = order.get_or_insert_with(|| map.keys().cloned().collect());
 
-                //Deconmpose the drop into a sequence of removals.
+                //Decompose the drop into a sequence of removals.
                 let to_remove: Vec<_> = ord.iter().rev().take(to_drop).cloned().collect();
                 if let Some(lifecycle) = lifecycle {
                     let mut removed = Vec::with_capacity(to_drop);

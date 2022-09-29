@@ -15,9 +15,11 @@
 use std::cell::{Cell, RefCell};
 
 use bytes::BytesMut;
+use futures::{Stream, StreamExt};
 use static_assertions::assert_impl_all;
 use swim_api::protocol::agent::{LaneResponse, ValueLaneResponseEncoder};
 use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
+use swim_recon::parser::AsyncParseError;
 use tokio_util::codec::Encoder;
 
 use crate::{
@@ -168,5 +170,20 @@ impl<T: StructuralWritable> Lane for CommandLane<T> {
         } else {
             WriteResult::NoData
         }
+    }
+}
+
+pub async fn init_command_lane<In>(mut input: In) -> Result<(), AsyncParseError>
+where
+    In: Stream<Item = BytesMut> + Unpin,
+{
+    let mut body = BytesMut::new();
+    while let Some(bytes) = input.next().await {
+        body = bytes;
+    }
+    if !body.is_empty() {
+        Err(AsyncParseError::UnconsumedInput)
+    } else {
+        Ok(())
     }
 }

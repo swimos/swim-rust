@@ -14,14 +14,24 @@
 
 use bytes::BytesMut;
 use frunk::{Coprod, Coproduct};
+use futures::{Stream, StreamExt};
 use static_assertions::assert_impl_all;
-use std::{borrow::Borrow, cell::RefCell, collections::HashMap, hash::Hash, marker::PhantomData};
+use std::{
+    borrow::Borrow,
+    cell::RefCell,
+    collections::{BTreeMap, HashMap},
+    hash::Hash,
+    marker::PhantomData,
+};
 use swim_api::protocol::{
     agent::{MapLaneResponse, MapLaneResponseEncoder},
     map::{MapMessage, MapOperation},
 };
-use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
-use swim_recon::parser::RecognizerDecoder;
+use swim_form::structural::{
+    read::{recognizer::RecognizerReadable, ReadError},
+    write::StructuralWritable,
+};
+use swim_recon::parser::{AsyncParseError, ParseError, RecognizerDecoder};
 use tokio_util::codec::{Decoder, Encoder};
 use uuid::Uuid;
 
@@ -76,6 +86,10 @@ impl<K, V> MapLane<K, V>
 where
     K: Clone + Eq + Hash,
 {
+    pub(crate) fn init(&self, map: HashMap<K, V>) {
+        self.inner.borrow_mut().content = map;
+    }
+
     /// Update the value associated with a key.
     pub fn update(&self, key: K, value: V) {
         self.inner.borrow_mut().update(key, value)
@@ -636,4 +650,73 @@ where
 {
     let decode: DecodeMapMessage<K, V> = DecodeMapMessage::new(message);
     decode.and_then(ProjTransform::new(projection))
+}
+
+fn init_decode<D>(decoder: &mut D, bytes: &mut BytesMut) -> Result<D::Item, AsyncParseError>
+where
+    D: Decoder<Error = AsyncParseError>,
+{
+    if let Some(value) = decoder.decode_eof(bytes)? {
+        Ok(value)
+    } else {
+        Err(AsyncParseError::Parser(ParseError::Structure(
+            ReadError::IncompleteRecord,
+        )))
+    }
+}
+
+pub async fn init_map_lane<K, V, In>(
+    lane: &MapLane<K, V>,
+    mut input: In,
+) -> Result<(), AsyncParseError>
+where
+    K: RecognizerReadable + Hash + Eq + Ord + Clone,
+    V: RecognizerReadable,
+    In: Stream<Item = MapMessage<BytesMut, BytesMut>> + Unpin,
+{
+    let mut key_decoder = RecognizerDecoder::new(K::make_recognizer());
+    let mut value_decoder = RecognizerDecoder::new(V::make_recognizer());
+    let mut map = BTreeMap::new();
+    while let Some(message) = input.next().await {
+        match message {
+            MapMessage::Update { mut key, mut value } => {
+                let key = init_decode(&mut key_decoder, &mut key)?;
+                let value = init_decode(&mut value_decoder, &mut value)?;
+                map.insert(key, value);
+            }
+            MapMessage::Remove { mut key } => {
+                let key = init_decode(&mut key_decoder, &mut key)?;
+                map.remove(&key);
+            }
+            MapMessage::Clear => {
+                map.clear();
+            }
+            MapMessage::Take(n) => {
+                let to_take = usize::try_from(n).expect("Number to take too large.");
+                let to_remove = map.len().saturating_sub(to_take);
+                if to_remove > 0 {
+                    for k in map
+                        .keys()
+                        .rev()
+                        .take(to_remove)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                    {
+                        map.remove(&k);
+                    }
+                }
+            }
+            MapMessage::Drop(n) => {
+                let to_remove = usize::try_from(n).expect("Number to drop too large.");
+                if to_remove > 0 {
+                    for k in map.keys().take(to_remove).cloned().collect::<Vec<_>>() {
+                        map.remove(&k);
+                    }
+                }
+            }
+        }
+    }
+    let map_init = map.into_iter().collect::<HashMap<_, _>>();
+    lane.init(map_init);
+    Ok(())
 }

@@ -23,10 +23,15 @@ use std::{
 };
 
 use bytes::BytesMut;
+use futures::{Stream, StreamExt};
 use static_assertions::assert_impl_all;
 use swim_api::protocol::agent::{LaneResponse, ValueLaneResponseEncoder};
-use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
-use tokio_util::codec::Encoder;
+use swim_form::structural::{
+    read::{recognizer::RecognizerReadable, ReadError},
+    write::StructuralWritable,
+};
+use swim_recon::parser::{AsyncParseError, ParseError, RecognizerDecoder};
+use tokio_util::codec::{Decoder, Encoder};
 use uuid::Uuid;
 
 use crate::{
@@ -102,6 +107,11 @@ impl<T> ValueLane<T> {
         let prev = content.replace(value);
         previous.replace(Some(prev));
         dirty.replace(true);
+    }
+
+    pub(crate) fn init(&self, value: T) {
+        let ValueLane { content, .. } = self;
+        content.replace(value);
     }
 
     pub fn sync(&self, id: Uuid) {
@@ -288,4 +298,27 @@ pub fn decode_and_set<C, T: RecognizerReadable>(
 ) -> DecodeAndSet<C, T> {
     let decode: Decode<T> = Decode::new(buffer);
     decode.and_then(ProjTransform::new(projection))
+}
+
+pub async fn init_value_lane<T, In>(
+    lane: &ValueLane<T>,
+    mut input: In,
+) -> Result<(), AsyncParseError>
+where
+    T: RecognizerReadable,
+    In: Stream<Item = BytesMut> + Unpin,
+{
+    let mut body = BytesMut::new();
+    while let Some(bytes) = input.next().await {
+        body = bytes;
+    }
+    let mut decoder = RecognizerDecoder::new(T::make_recognizer());
+    if let Some(value) = decoder.decode_eof(&mut body)? {
+        lane.init(value);
+        Ok(())
+    } else {
+        Err(AsyncParseError::Parser(ParseError::Structure(
+            ReadError::IncompleteRecord,
+        )))
+    }
 }
