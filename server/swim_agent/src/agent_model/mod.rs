@@ -25,6 +25,8 @@ use futures::{
     StreamExt,
 };
 use swim_api::error::{AgentRuntimeError, DownlinkRuntimeError};
+use swim_api::protocol::map::{MapMessageDecoder, RawMapOperationDecoder};
+use swim_api::protocol::WithLengthBytesCodec;
 use swim_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult, UplinkKind},
     error::{AgentInitError, AgentTaskError, FrameIoError},
@@ -47,6 +49,7 @@ use crate::{
 };
 
 pub mod downlink;
+mod init;
 mod io;
 #[cfg(test)]
 mod tests;
@@ -54,6 +57,7 @@ mod tests;
 use io::{LaneReader, LaneWriter};
 
 use self::downlink::handlers::BoxDownlinkChannel;
+use self::init::{run_lane_initializer, InitializedLane, LaneInitializer, NoInit};
 
 /// Response from a lane after it has written bytes to its outgoing buffer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,6 +69,8 @@ pub enum WriteResult {
     // The lane has written data to the buffer and will have more to write on a subsequent call.
     DataStillAvailable,
 }
+
+pub type InitFn<Agent> = Box<dyn FnOnce(&Agent) + Send + 'static>;
 
 /// A trait which describes the lanes of an agent which can be run as a task attached to an
 /// [`AgentContext`]. A type implementing this trait is sufficient to produce a functional agent
@@ -96,6 +102,28 @@ pub trait AgentLaneModel: Sized + Send {
     ///  * `lane` - The name of the lane.
     /// * `body` - The content of the command.
     fn on_value_command(&self, lane: &str, body: BytesMut) -> Option<Self::ValCommandHandler>;
+
+    fn init_value_like_lane<'a>(
+        &self,
+        _lane: &str,
+    ) -> Box<dyn LaneInitializer<Self, BytesMut> + Send + 'static>
+    where
+        Self: 'static,
+    {
+        //TODO Temporary placeholder.
+        Box::new(NoInit)
+    }
+
+    fn init_map_like_lane<'a>(
+        &self,
+        _lane: &str,
+    ) -> Box<dyn LaneInitializer<Self, MapMessage<BytesMut, BytesMut>> + Send + 'static>
+    where
+        Self: 'static,
+    {
+        //TODO Temporary placeholder.
+        Box::new(NoInit)
+    }
 
     /// Create a handler that will update the state of the agent when a command is received
     /// for a map lane. There will be no handler if the lane does not exist or does not
@@ -321,20 +349,55 @@ where
         let suspended = FuturesUnordered::new();
         let downlink_channels = RefCell::new(vec![]);
 
-        // Set up the lanes of the agent.
-        for name in val_lane_names {
-            let io = context.add_lane(name, UplinkKind::Value, None).await?;
-            value_lane_io.insert(Text::new(name), io);
-        }
-        for name in map_lane_names {
-            if value_lane_io.contains_key(name) {
-                return Err(AgentInitError::DuplicateLane(Text::new(name)));
+        let lane_model = lane_model_fac.create();
+
+        {
+            let mut lane_init_tasks = FuturesUnordered::new();
+
+            // Set up the lanes of the agent.
+            for name in val_lane_names {
+                let io = context.add_lane(name, UplinkKind::Value, None).await?;
+                let init = lane_model.init_value_like_lane(name);
+                let init_task = run_lane_initializer(
+                    name,
+                    UplinkKind::Value,
+                    io,
+                    WithLengthBytesCodec::default(),
+                    init,
+                );
+                lane_init_tasks.push(init_task.boxed());
             }
-            let io = context.add_lane(name, UplinkKind::Map, None).await?;
-            map_lane_io.insert(Text::new(name), io);
+            for name in map_lane_names {
+                if value_lane_io.contains_key(name) {
+                    return Err(AgentInitError::DuplicateLane(Text::new(name)));
+                }
+                let io = context.add_lane(name, UplinkKind::Map, None).await?;
+                let init = lane_model.init_map_like_lane(name);
+                let init_task = run_lane_initializer(
+                    name,
+                    UplinkKind::Map,
+                    io,
+                    MapMessageDecoder::new(RawMapOperationDecoder::default()),
+                    init,
+                );
+                lane_init_tasks.push(init_task.boxed());
+            }
+
+            while let Some(result) = lane_init_tasks.next().await {
+                let InitializedLane {
+                    name,
+                    kind,
+                    init_fn,
+                    io,
+                } = result.map_err(AgentInitError::LaneInitializationFailure)?;
+                init_fn(&lane_model);
+                match kind {
+                    UplinkKind::Value => value_lane_io.insert(Text::new(name), io),
+                    UplinkKind::Map => map_lane_io.insert(Text::new(name), io),
+                };
+            }
         }
 
-        let lane_model = lane_model_fac.create();
         // Run the agent's `on_start` event handler.
         let on_start_handler = lifecycle.on_start();
 

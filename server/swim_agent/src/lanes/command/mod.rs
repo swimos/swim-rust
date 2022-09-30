@@ -17,7 +17,10 @@ use std::cell::{Cell, RefCell};
 use bytes::BytesMut;
 use futures::{Stream, StreamExt};
 use static_assertions::assert_impl_all;
-use swim_api::protocol::agent::{LaneResponse, ValueLaneResponseEncoder};
+use swim_api::{
+    error::FrameIoError,
+    protocol::agent::{LaneResponse, ValueLaneResponseEncoder},
+};
 use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swim_recon::parser::AsyncParseError;
 use tokio_util::codec::Encoder;
@@ -173,17 +176,19 @@ impl<T: StructuralWritable> Lane for CommandLane<T> {
     }
 }
 
-pub async fn init_command_lane<In>(mut input: In) -> Result<(), AsyncParseError>
+pub async fn init_command_lane<T, In>(
+    mut input: In,
+) -> Result<impl FnOnce(&CommandLane<T>), FrameIoError>
 where
-    In: Stream<Item = BytesMut> + Unpin,
+    In: Stream<Item = Result<BytesMut, FrameIoError>> + Unpin,
 {
     let mut body = BytesMut::new();
     while let Some(bytes) = input.next().await {
-        body = bytes;
+        body = bytes?;
     }
     if !body.is_empty() {
-        Err(AsyncParseError::UnconsumedInput)
+        Err(AsyncParseError::UnconsumedInput.into())
     } else {
-        Ok(())
+        Ok(|_: &CommandLane<T>| {})
     }
 }

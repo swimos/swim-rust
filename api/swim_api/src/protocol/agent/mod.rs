@@ -224,6 +224,12 @@ pub struct LaneResponseEncoder<Inner> {
     inner: Inner,
 }
 
+impl<Inner> LaneResponseEncoder<Inner> {
+    pub fn new(inner: Inner) -> Self {
+        LaneResponseEncoder { inner }
+    }
+}
+
 impl<T, Inner> Encoder<LaneResponse<T>> for LaneResponseEncoder<Inner>
 where
     Inner: Encoder<T>,

@@ -30,6 +30,8 @@ pub enum FrameIoError {
     Io(#[from] std::io::Error),
     #[error("{0}")]
     BadFrame(#[from] InvalidFrame),
+    #[error("The stream terminated when a frame was expected.")]
+    InvalidTermination,
 }
 
 impl From<AsyncParseError> for FrameIoError {
@@ -194,6 +196,8 @@ pub enum AgentInitError {
     DuplicateLane(Text),
     #[error("Error in use code (likely an event handler): {0}")]
     UserCodeError(Box<dyn std::error::Error + Send>),
+    #[error("Initializing the state of an anget lane failed: {0}")]
+    LaneInitializationFailure(FrameIoError),
 }
 
 //TODO Make this more sophisticated.

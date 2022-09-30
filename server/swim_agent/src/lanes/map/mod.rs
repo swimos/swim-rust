@@ -23,9 +23,12 @@ use std::{
     hash::Hash,
     marker::PhantomData,
 };
-use swim_api::protocol::{
-    agent::{MapLaneResponse, MapLaneResponseEncoder},
-    map::{MapMessage, MapOperation},
+use swim_api::{
+    error::FrameIoError,
+    protocol::{
+        agent::{MapLaneResponse, MapLaneResponseEncoder},
+        map::{MapMessage, MapOperation},
+    },
 };
 use swim_form::structural::{
     read::{recognizer::RecognizerReadable, ReadError},
@@ -666,19 +669,18 @@ where
 }
 
 pub async fn init_map_lane<K, V, In>(
-    lane: &MapLane<K, V>,
     mut input: In,
-) -> Result<(), AsyncParseError>
+) -> Result<impl FnOnce(&MapLane<K, V>), FrameIoError>
 where
     K: RecognizerReadable + Hash + Eq + Ord + Clone,
     V: RecognizerReadable,
-    In: Stream<Item = MapMessage<BytesMut, BytesMut>> + Unpin,
+    In: Stream<Item = Result<MapMessage<BytesMut, BytesMut>, FrameIoError>> + Unpin,
 {
     let mut key_decoder = RecognizerDecoder::new(K::make_recognizer());
     let mut value_decoder = RecognizerDecoder::new(V::make_recognizer());
     let mut map = BTreeMap::new();
     while let Some(message) = input.next().await {
-        match message {
+        match message? {
             MapMessage::Update { mut key, mut value } => {
                 let key = init_decode(&mut key_decoder, &mut key)?;
                 let value = init_decode(&mut value_decoder, &mut value)?;
@@ -717,6 +719,5 @@ where
         }
     }
     let map_init = map.into_iter().collect::<HashMap<_, _>>();
-    lane.init(map_init);
-    Ok(())
+    Ok(move |lane: &MapLane<K, V>| lane.init(map_init))
 }

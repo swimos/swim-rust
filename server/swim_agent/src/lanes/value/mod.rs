@@ -25,7 +25,10 @@ use std::{
 use bytes::BytesMut;
 use futures::{Stream, StreamExt};
 use static_assertions::assert_impl_all;
-use swim_api::protocol::agent::{LaneResponse, ValueLaneResponseEncoder};
+use swim_api::{
+    error::FrameIoError,
+    protocol::agent::{LaneResponse, ValueLaneResponseEncoder},
+};
 use swim_form::structural::{
     read::{recognizer::RecognizerReadable, ReadError},
     write::StructuralWritable,
@@ -301,24 +304,20 @@ pub fn decode_and_set<C, T: RecognizerReadable>(
 }
 
 pub async fn init_value_lane<T, In>(
-    lane: &ValueLane<T>,
     mut input: In,
-) -> Result<(), AsyncParseError>
+) -> Result<impl FnOnce(&ValueLane<T>), FrameIoError>
 where
     T: RecognizerReadable,
-    In: Stream<Item = BytesMut> + Unpin,
+    In: Stream<Item = Result<BytesMut, FrameIoError>> + Unpin,
 {
     let mut body = BytesMut::new();
-    while let Some(bytes) = input.next().await {
-        body = bytes;
+    while let Some(result) = input.next().await {
+        body = result?;
     }
     let mut decoder = RecognizerDecoder::new(T::make_recognizer());
     if let Some(value) = decoder.decode_eof(&mut body)? {
-        lane.init(value);
-        Ok(())
+        Ok(move |lane: &ValueLane<T>| lane.init(value))
     } else {
-        Err(AsyncParseError::Parser(ParseError::Structure(
-            ReadError::IncompleteRecord,
-        )))
+        Err(AsyncParseError::Parser(ParseError::Structure(ReadError::IncompleteRecord)).into())
     }
 }
