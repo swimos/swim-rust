@@ -57,7 +57,8 @@ mod tests;
 use io::{LaneReader, LaneWriter};
 
 use self::downlink::handlers::BoxDownlinkChannel;
-use self::init::{run_lane_initializer, InitializedLane, LaneInitializer, NoInit};
+use self::init::{run_lane_initializer, InitializedLane, LaneInitializer};
+pub use init::{CommandLaneInitializer, MapLaneInitializer, ValueLaneInitializer};
 
 /// Response from a lane after it has written bytes to its outgoing buffer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -103,26 +104,26 @@ pub trait AgentLaneModel: Sized + Send {
     /// * `body` - The content of the command.
     fn on_value_command(&self, lane: &str, body: BytesMut) -> Option<Self::ValCommandHandler>;
 
-    fn init_value_like_lane<'a>(
+    fn init_value_like_lane(
         &self,
         _lane: &str,
-    ) -> Box<dyn LaneInitializer<Self, BytesMut> + Send + 'static>
+    ) -> Option<Box<dyn LaneInitializer<Self, BytesMut> + Send + 'static>>
     where
         Self: 'static,
     {
         //TODO Temporary placeholder.
-        Box::new(NoInit)
+        None
     }
 
-    fn init_map_like_lane<'a>(
+    fn init_map_like_lane(
         &self,
         _lane: &str,
-    ) -> Box<dyn LaneInitializer<Self, MapMessage<BytesMut, BytesMut>> + Send + 'static>
+    ) -> Option<Box<dyn LaneInitializer<Self, MapMessage<BytesMut, BytesMut>> + Send + 'static>>
     where
         Self: 'static,
     {
         //TODO Temporary placeholder.
-        Box::new(NoInit)
+        None
     }
 
     /// Create a handler that will update the state of the agent when a command is received
@@ -357,30 +358,36 @@ where
             // Set up the lanes of the agent.
             for name in val_lane_names {
                 let io = context.add_lane(name, UplinkKind::Value, None).await?;
-                let init = lane_model.init_value_like_lane(name);
-                let init_task = run_lane_initializer(
-                    name,
-                    UplinkKind::Value,
-                    io,
-                    WithLengthBytesCodec::default(),
-                    init,
-                );
-                lane_init_tasks.push(init_task.boxed());
+                if let Some(init) = lane_model.init_value_like_lane(name) {
+                    let init_task = run_lane_initializer(
+                        name,
+                        UplinkKind::Value,
+                        io,
+                        WithLengthBytesCodec::default(),
+                        init,
+                    );
+                    lane_init_tasks.push(init_task.boxed());
+                } else {
+                    value_lane_io.insert(Text::new(name), io);
+                }
             }
             for name in map_lane_names {
                 if value_lane_io.contains_key(name) {
                     return Err(AgentInitError::DuplicateLane(Text::new(name)));
                 }
                 let io = context.add_lane(name, UplinkKind::Map, None).await?;
-                let init = lane_model.init_map_like_lane(name);
-                let init_task = run_lane_initializer(
-                    name,
-                    UplinkKind::Map,
-                    io,
-                    MapMessageDecoder::new(RawMapOperationDecoder::default()),
-                    init,
-                );
-                lane_init_tasks.push(init_task.boxed());
+                if let Some(init) = lane_model.init_map_like_lane(name) {
+                    let init_task = run_lane_initializer(
+                        name,
+                        UplinkKind::Map,
+                        io,
+                        MapMessageDecoder::new(RawMapOperationDecoder::default()),
+                        init,
+                    );
+                    lane_init_tasks.push(init_task.boxed());
+                } else {
+                    map_lane_io.insert(Text::new(name), io);
+                }
             }
 
             while let Some(result) = lane_init_tasks.next().await {

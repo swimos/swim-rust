@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::future::ready;
+use std::collections::{BTreeMap, HashMap};
+use std::hash::Hash;
+use std::marker::PhantomData;
 
 use bytes::BytesMut;
 use futures::{
@@ -25,13 +27,17 @@ use swim_api::{
     error::{FrameIoError, InvalidFrame},
     protocol::{
         agent::{LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder},
+        map::MapMessage,
         WithLengthBytesCodec,
     },
 };
+use swim_form::structural::read::{recognizer::RecognizerReadable, ReadError};
 use swim_model::Text;
-use swim_recon::parser::AsyncParseError;
+use swim_recon::parser::{AsyncParseError, ParseError, RecognizerDecoder};
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use tokio_util::codec::{Decoder, FramedRead, FramedWrite};
+
+use crate::lanes::{CommandLane, MapLane, ValueLane};
 
 const UNEXPECTED_SYNC: &str = "Sync messages are not permitted during initialization.";
 
@@ -67,23 +73,10 @@ where
 pub type InitFn<Agent> = Box<dyn FnOnce(&Agent) + Send + 'static>;
 
 pub trait LaneInitializer<Agent, Msg> {
-    fn initialize<'a>(
+    fn initialize(
         self: Box<Self>,
-        stream: BoxStream<'a, Result<Msg, FrameIoError>>,
-    ) -> BoxFuture<'a, Result<InitFn<Agent>, AsyncParseError>>;
-}
-
-pub struct NoInit;
-
-impl<Agent: 'static, Msg> LaneInitializer<Agent, Msg> for NoInit {
-    fn initialize<'a>(
-        self: Box<Self>,
-        _stream: BoxStream<'a, Result<Msg, FrameIoError>>,
-    ) -> BoxFuture<'a, Result<InitFn<Agent>, AsyncParseError>> {
-        //TODO Temporary placeholder until macro is updated.
-        let f: InitFn<Agent> = Box::new(|_| {});
-        ready(Ok(f)).boxed()
-    }
+        stream: BoxStream<'_, Result<Msg, FrameIoError>>,
+    ) -> BoxFuture<'_, Result<InitFn<Agent>, FrameIoError>>;
 }
 
 pub struct InitializedLane<'a, Agent> {
@@ -123,7 +116,7 @@ where
     let (mut tx, mut rx) = io;
     let stream = init_stream(&mut rx, decoder);
     match init.initialize(stream.boxed()).await {
-        Err(e) => Err(e.into()),
+        Err(e) => Err(e),
         Ok(init_fn) => {
             let mut writer = FramedWrite::new(
                 &mut tx,
@@ -135,5 +128,172 @@ where
                 .map_err(FrameIoError::Io)
                 .map(move |_| InitializedLane::new(name, kind, init_fn, (tx, rx)))
         }
+    }
+}
+
+pub struct ValueLaneInitializer<Agent, T> {
+    projection: fn(&Agent) -> &ValueLane<T>,
+}
+
+impl<Agent, T> ValueLaneInitializer<Agent, T> {
+    pub fn new(projection: fn(&Agent) -> &ValueLane<T>) -> Self {
+        ValueLaneInitializer { projection }
+    }
+}
+
+pub struct CommandLaneInitializer<Agent, T> {
+    _projection: PhantomData<fn(&Agent) -> &CommandLane<T>>,
+}
+
+impl<Agent, T> Default for CommandLaneInitializer<Agent, T> {
+    fn default() -> Self {
+        Self {
+            _projection: Default::default(),
+        }
+    }
+}
+
+pub struct MapLaneInitializer<Agent, K, V> {
+    projection: fn(&Agent) -> &MapLane<K, V>,
+}
+
+impl<Agent, K, V> MapLaneInitializer<Agent, K, V> {
+    pub fn new(projection: fn(&Agent) -> &MapLane<K, V>) -> Self {
+        MapLaneInitializer { projection }
+    }
+}
+
+impl<Agent, T> LaneInitializer<Agent, BytesMut> for ValueLaneInitializer<Agent, T>
+where
+    Agent: 'static,
+    T: RecognizerReadable + Send + 'static,
+{
+    fn initialize(
+        self: Box<Self>,
+        mut stream: BoxStream<'_, Result<BytesMut, FrameIoError>>,
+    ) -> BoxFuture<'_, Result<InitFn<Agent>, FrameIoError>> {
+        let ValueLaneInitializer { projection } = *self;
+        async move {
+            let mut body = BytesMut::new();
+            while let Some(result) = stream.next().await {
+                body = result?;
+            }
+            let mut decoder = RecognizerDecoder::new(T::make_recognizer());
+            if let Some(value) = decoder.decode_eof(&mut body)? {
+                let f = move |agent: &Agent| projection(agent).init(value);
+                let f_init: InitFn<Agent> = Box::new(f);
+                Ok(f_init)
+            } else {
+                Err(
+                    AsyncParseError::Parser(ParseError::Structure(ReadError::IncompleteRecord))
+                        .into(),
+                )
+            }
+        }
+        .boxed()
+    }
+}
+
+impl<Agent, K, V> LaneInitializer<Agent, MapMessage<BytesMut, BytesMut>>
+    for MapLaneInitializer<Agent, K, V>
+where
+    Agent: 'static,
+    K: RecognizerReadable + Hash + Eq + Ord + Clone + Send + 'static,
+    K::Rec: Send,
+    V: RecognizerReadable + Send + 'static,
+    V::Rec: Send,
+{
+    fn initialize(
+        self: Box<Self>,
+        mut stream: BoxStream<'_, Result<MapMessage<BytesMut, BytesMut>, FrameIoError>>,
+    ) -> BoxFuture<'_, Result<InitFn<Agent>, FrameIoError>> {
+        let MapLaneInitializer { projection } = *self;
+        async move {
+            let mut key_decoder = RecognizerDecoder::new(K::make_recognizer());
+            let mut value_decoder = RecognizerDecoder::new(V::make_recognizer());
+            let mut map = BTreeMap::new();
+            while let Some(message) = stream.next().await {
+                match message? {
+                    MapMessage::Update { mut key, mut value } => {
+                        let key = init_decode(&mut key_decoder, &mut key)?;
+                        let value = init_decode(&mut value_decoder, &mut value)?;
+                        map.insert(key, value);
+                    }
+                    MapMessage::Remove { mut key } => {
+                        let key = init_decode(&mut key_decoder, &mut key)?;
+                        map.remove(&key);
+                    }
+                    MapMessage::Clear => {
+                        map.clear();
+                    }
+                    MapMessage::Take(n) => {
+                        let to_take = usize::try_from(n).expect("Number to take too large.");
+                        let to_remove = map.len().saturating_sub(to_take);
+                        if to_remove > 0 {
+                            for k in map
+                                .keys()
+                                .rev()
+                                .take(to_remove)
+                                .cloned()
+                                .collect::<Vec<_>>()
+                            {
+                                map.remove(&k);
+                            }
+                        }
+                    }
+                    MapMessage::Drop(n) => {
+                        let to_remove = usize::try_from(n).expect("Number to drop too large.");
+                        if to_remove > 0 {
+                            for k in map.keys().take(to_remove).cloned().collect::<Vec<_>>() {
+                                map.remove(&k);
+                            }
+                        }
+                    }
+                }
+            }
+            let map_init = map.into_iter().collect::<HashMap<_, _>>();
+            let f = move |agent: &Agent| projection(agent).init(map_init);
+            let f_init: InitFn<Agent> = Box::new(f);
+            Ok(f_init)
+        }
+        .boxed()
+    }
+}
+
+fn init_decode<D>(decoder: &mut D, bytes: &mut BytesMut) -> Result<D::Item, AsyncParseError>
+where
+    D: Decoder<Error = AsyncParseError>,
+{
+    if let Some(value) = decoder.decode_eof(bytes)? {
+        Ok(value)
+    } else {
+        Err(AsyncParseError::Parser(ParseError::Structure(
+            ReadError::IncompleteRecord,
+        )))
+    }
+}
+
+impl<Agent, T> LaneInitializer<Agent, BytesMut> for CommandLaneInitializer<Agent, T>
+where
+    Agent: 'static,
+    T: RecognizerReadable + Send + 'static,
+{
+    fn initialize(
+        self: Box<Self>,
+        mut stream: BoxStream<'_, Result<BytesMut, FrameIoError>>,
+    ) -> BoxFuture<'_, Result<InitFn<Agent>, FrameIoError>> {
+        async move {
+            let mut body = BytesMut::new();
+            while let Some(bytes) = stream.next().await {
+                body = bytes?;
+            }
+            if !body.is_empty() {
+                Err(AsyncParseError::UnconsumedInput.into())
+            } else {
+                let init_fn: InitFn<Agent> = Box::new(|_: &Agent| {});
+                Ok(init_fn)
+            }
+        }
+        .boxed()
     }
 }

@@ -108,8 +108,8 @@ mod test_support {
         AgentMetadata::new(uri, &CONFIG)
     }
 
-    pub fn run_handler<'a, FakeAgent>(
-        mut handler: BoxEventHandler<'a, FakeAgent>,
+    pub fn run_handler<FakeAgent>(
+        mut handler: BoxEventHandler<'_, FakeAgent>,
         agent: &FakeAgent,
     ) {
         let uri = make_uri();
