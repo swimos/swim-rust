@@ -108,10 +108,7 @@ mod test_support {
         AgentMetadata::new(uri, &CONFIG)
     }
 
-    pub fn run_handler<FakeAgent>(
-        mut handler: BoxEventHandler<'_, FakeAgent>,
-        agent: &FakeAgent,
-    ) {
+    pub fn run_handler<FakeAgent>(mut handler: BoxEventHandler<'_, FakeAgent>, agent: &FakeAgent) {
         let uri = make_uri();
         let meta = make_meta(&uri);
         let no_spawn = NoSpawn;

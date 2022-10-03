@@ -14,6 +14,8 @@
 
 use std::fmt::{Display, Formatter};
 
+use bytes::BytesMut;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StoreKind {
     Value,
@@ -27,4 +29,35 @@ impl Display for StoreKind {
             StoreKind::Map => write!(f, "Map"),
         }
     }
+}
+
+pub struct PersistenceError;
+
+pub trait ReadMapIterator {
+    fn next<F>(&mut self, f: F) -> Result<(), PersistenceError>
+    where
+        F: FnOnce(Option<(&[u8], &[u8])>);
+}
+
+pub trait MapPersistence<'a> {
+    type MapIt: ReadMapIterator + 'a;
+
+    fn read_map(&'a self, name: &str) -> Result<Self::MapIt, PersistenceError>;
+}
+
+pub trait NodePersistence: for<'a> MapPersistence<'a> {
+    fn get_value(&self, name: &str, buffer: &mut BytesMut) -> Result<(), PersistenceError>;
+
+    fn put_value(&self, name: &str, value: &[u8]) -> Result<(), PersistenceError>;
+
+    fn update_map(&self, name: &str, key: &[u8], value: &[u8]) -> Result<(), PersistenceError>;
+    fn remove_map(&self, name: &str, key: &[u8], value: &[u8]) -> Result<(), PersistenceError>;
+
+    fn clear(&self, name: &str) -> Result<(), PersistenceError>;
+}
+
+pub trait PlanePersistence {
+    type Node: NodePersistence;
+
+    fn node_store(&self, node_uri: &str) -> Result<Self::Node, PersistenceError>;
 }

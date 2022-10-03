@@ -434,7 +434,10 @@ async fn emit_event_handlers() {
 
 #[tokio::test]
 async fn emit_events_before_synced() {
-    let config = MapDownlinkConfig { events_when_not_synced: true, ..Default::default() };
+    let config = MapDownlinkConfig {
+        events_when_not_synced: true,
+        ..Default::default()
+    };
     let mut context = make_hosted_input(config);
 
     let agent = FakeAgent;
@@ -604,7 +607,10 @@ async fn emit_drop_all_handlers() {
 
 #[tokio::test]
 async fn revive_unlinked_downlink() {
-    let config = MapDownlinkConfig { events_when_not_synced: true, ..Default::default() };
+    let config = MapDownlinkConfig {
+        events_when_not_synced: true,
+        ..Default::default()
+    };
 
     let mut context = make_hosted_input(config);
 

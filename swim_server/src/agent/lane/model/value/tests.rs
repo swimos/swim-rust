@@ -15,13 +15,13 @@
 use super::*;
 use crate::agent::lane::tests::ExactlyOnce;
 use futures::future::join;
-use server_store::agent::lane::error::StoreErrorHandler;
-use server_store::plane::mock::MockPlaneStore;
-use server_store::{StoreEngine, StoreKey};
 use std::sync::Mutex;
 use std::time::Duration;
 use stm::transaction::atomically;
 use stm::var::observer::ObserverSubscriber;
+use swim_persistence::agent::lane::error::StoreErrorHandler;
+use swim_persistence::plane::mock::MockPlaneStore;
+use swim_persistence::{StoreEngine, StoreKey};
 use swim_store::{serialize, EngineInfo, StoreError};
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::sync::topic::TryRecvError;

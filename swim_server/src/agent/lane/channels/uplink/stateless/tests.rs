@@ -29,9 +29,6 @@ use crate::agent::lane::channels::uplink::stateless::StatelessUplinks;
 use crate::agent::lane::channels::uplink::{AddressedUplinkMessage, UplinkAction, UplinkKind};
 use crate::agent::lane::channels::TaggedAction;
 use crate::agent::lane::model::supply::SupplyLane;
-use server_store::agent::mock::MockNodeStore;
-use server_store::agent::SwimNodeStore;
-use server_store::plane::mock::MockPlaneStore;
 use std::ops::Add;
 use swim_metrics::config::MetricAggregatorConfig;
 use swim_metrics::uplink::{
@@ -39,6 +36,9 @@ use swim_metrics::uplink::{
     WarpUplinkProfile,
 };
 use swim_metrics::{MetaPulseLanes, NodeMetricAggregator};
+use swim_persistence::agent::mock::MockNodeStore;
+use swim_persistence::agent::SwimNodeStore;
+use swim_persistence::plane::mock::MockPlaneStore;
 use swim_runtime::error::ResolutionError;
 use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::time::AtomicInstant;

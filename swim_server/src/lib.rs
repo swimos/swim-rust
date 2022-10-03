@@ -45,7 +45,7 @@ pub use swim_utilities::routing::uri;
 
 #[doc(hidden)]
 pub mod store {
-    pub use server_store::agent::lane::value::ValueLaneStoreIo;
-    pub use server_store::agent::lane::{LaneNoStore, StoreIo};
-    pub use server_store::agent::NodeStore;
+    pub use swim_persistence::agent::lane::value::ValueLaneStoreIo;
+    pub use swim_persistence::agent::lane::{LaneNoStore, StoreIo};
+    pub use swim_persistence::agent::NodeStore;
 }

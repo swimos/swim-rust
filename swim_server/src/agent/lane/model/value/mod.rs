@@ -25,9 +25,9 @@ mod tests;
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use server_store::agent::lane::value::{ValueDataModel, ValueLaneStoreIo};
-use server_store::agent::lane::StoreIo;
-use server_store::agent::NodeStore;
+use swim_persistence::agent::lane::value::{ValueDataModel, ValueLaneStoreIo};
+use swim_persistence::agent::lane::StoreIo;
+use swim_persistence::agent::NodeStore;
 
 /// A lane containing a single value.
 #[derive(Debug)]
