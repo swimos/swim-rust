@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use store_common::{
     ByteEngine, EngineInfo, EngineIterOpts, EngineIterator, EnginePrefixIterator,
     EngineRefIterator, IteratorKey, Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces,
-    KvBytes, PrefixRangeByteEngine, RangeConsumer, Store, StoreBuilder, StoreError,
+    KvBytes, PrefixRangeByteEngine, RangeConsumer, KeyValue, Store, StoreBuilder, StoreError,
 };
 
 /// A delegate store database that does nothing.
@@ -51,7 +51,7 @@ impl KeyspaceResolver for NoStore {
 pub struct NoRange;
 
 impl RangeConsumer for NoRange {
-    fn consume_next<'a>(&'a mut self) -> Result<Option<(&'a [u8], &'a [u8])>, StoreError> {
+    fn consume_next(&mut self) -> Result<Option<KeyValue<'_>>, StoreError> {
         Ok(None)
     }
 }

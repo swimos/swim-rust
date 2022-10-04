@@ -15,7 +15,7 @@
 use crate::RocksEngine;
 use rocksdb::{DBIteratorWithThreadMode, DBRawIterator, DBWithThreadMode, SingleThreaded};
 use store_common::{
-    EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey, KvBytes,
+    EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey, KvBytes, KeyValue,
 };
 use store_common::{RangeConsumer, StoreError};
 
@@ -73,7 +73,7 @@ impl<'d> RocksRawPrefixIterator<'d> {
 }
 
 impl<'d> RangeConsumer for RocksRawPrefixIterator<'d> {
-    fn consume_next<'a>(&'a mut self) -> Result<Option<(&'a [u8], &'a [u8])>, StoreError> {
+    fn consume_next(&mut self) -> Result<Option<KeyValue<'_>>, StoreError> {
         let RocksRawPrefixIterator { iter, first } = self;
         if *first {
             *first = false;
@@ -82,12 +82,10 @@ impl<'d> RangeConsumer for RocksRawPrefixIterator<'d> {
         }
         if let Some(kv) = iter.item() {
             Ok(Some(kv))
+        } else if let Err(e) = iter.status() {
+            Err(StoreError::Delegate(Box::new(e)))
         } else {
-            if let Err(e) = iter.status() {
-                Err(StoreError::Delegate(Box::new(e)))
-            } else {
-                Ok(None)
-            }
+            Ok(None)
         }
     }
 }

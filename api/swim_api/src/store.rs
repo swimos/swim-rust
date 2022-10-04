@@ -51,8 +51,10 @@ pub trait NodePersistenceBase {
     fn clear(&self, id: Self::LaneId) -> Result<(), StoreError>;
 }
 
+pub type KeyValue<'a> = (&'a [u8], &'a [u8]);
+
 pub trait RangeConsumer {
-    fn consume_next<'a>(&'a mut self) -> Result<Option<(&'a [u8], &'a [u8])>, StoreError>;
+    fn consume_next(&mut self) -> Result<Option<KeyValue<'_>>, StoreError>;
 }
 
 pub trait MapPersistence<'a>: NodePersistenceBase {
