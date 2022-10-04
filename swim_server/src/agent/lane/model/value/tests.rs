@@ -20,8 +20,10 @@ use std::time::Duration;
 use stm::transaction::atomically;
 use stm::var::observer::ObserverSubscriber;
 use swim_persistence::agent::lane::error::StoreErrorHandler;
+use swim_persistence::agent::PrefixNodeStore;
 use swim_persistence::plane::mock::MockPlaneStore;
 use swim_persistence::{StoreEngine, StoreKey};
+use swim_store::nostore::NoRange;
 use swim_store::{serialize, EngineInfo, StoreError};
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::sync::topic::TryRecvError;
@@ -128,6 +130,14 @@ async fn value_lane_subscribe() {
 #[derive(Clone, Debug)]
 struct TrackingValueStore {
     value: Arc<Mutex<Option<Vec<u8>>>>,
+}
+
+impl<'a> PrefixNodeStore<'a> for TrackingValueStore {
+    type RangeCon = NoRange;
+
+    fn ranged_snapshot_consumer(&'a self, _prefix: StoreKey) -> Result<Self::RangeCon, StoreError> {
+        Ok(NoRange)
+    }
 }
 
 impl NodeStore for TrackingValueStore {

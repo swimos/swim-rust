@@ -17,7 +17,18 @@ use crate::agent::SwimNodeStore;
 use crate::plane::PlaneStore;
 use crate::server::{StoreEngine, StoreKey};
 use swim_model::Text;
+use swim_store::nostore::NoRange;
 use swim_store::{EngineInfo, Keyspace, KeyspaceResolver, StoreError};
+
+use super::PrefixPlaneStore;
+
+impl<'a> PrefixPlaneStore<'a> for MockPlaneStore {
+    type RangeCon = NoRange;
+
+    fn ranged_snapshot_consumer(&'a self, _prefix: StoreKey) -> Result<Self::RangeCon, StoreError> {
+        Ok(NoRange)
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct MockPlaneStore;

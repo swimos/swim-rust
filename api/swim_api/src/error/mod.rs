@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt::Display;
+use std::{fmt::Display, io};
 
 use swim_form::structural::read::ReadError;
 use swim_model::Text;
@@ -204,5 +204,67 @@ pub enum AgentInitError {
 impl From<AgentRuntimeError> for AgentInitError {
     fn from(_: AgentRuntimeError) -> Self {
         AgentInitError::FailedToStart
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum StoreError {
+    /// The provided key was not found in the store.
+    #[error("The specified key was not found")]
+    KeyNotFound,
+    /// The delegate byte engine failed to initialised.
+    #[error("The delegate store engine failed to initialise: {0}")]
+    InitialisationFailure(String),
+    /// An IO error produced by the delegate byte engine.
+    #[error("IO error: {0}")]
+    Io(io::Error),
+    /// An error produced when attempting to encode a value.
+    #[error("Encoding error: {0}")]
+    Encoding(String),
+    /// An error produced when attempting to decode a value.
+    #[error("Decoding error: {0}")]
+    Decoding(String),
+    /// A raw error produced by the delegate byte engine.
+    #[error("Delegate store error: {0}")]
+    Delegate(Box<dyn std::error::Error + Send + Sync>),
+    /// A raw error produced by the delegate byte engine that isnt send or sync
+    #[error("Delegate store error: {0}")]
+    DelegateMessage(String),
+    /// An operation was attempted on the byte engine when it was closing.
+    #[error("An operation was attempted on the delegate store engine when it was closing")]
+    Closing,
+    /// The requested keyspace was not found.
+    #[error("The requested keyspace was not found")]
+    KeyspaceNotFound,
+}
+
+impl StoreError {
+    pub fn downcast_ref<E: std::error::Error + 'static>(&self) -> Option<&E> {
+        match self {
+            StoreError::Delegate(d) => {
+                if let Some(downcasted) = d.downcast_ref() {
+                    return Some(downcasted);
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+}
+
+impl PartialEq for StoreError {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (StoreError::KeyNotFound, StoreError::KeyNotFound) => true,
+            (StoreError::InitialisationFailure(l), StoreError::InitialisationFailure(r)) => l.eq(r),
+            (StoreError::Io(l), StoreError::Io(r)) => l.kind().eq(&r.kind()),
+            (StoreError::Encoding(l), StoreError::Encoding(r)) => l.eq(r),
+            (StoreError::Decoding(l), StoreError::Decoding(r)) => l.eq(r),
+            (StoreError::Delegate(l), StoreError::Delegate(r)) => l.to_string().eq(&r.to_string()),
+            (StoreError::DelegateMessage(l), StoreError::DelegateMessage(r)) => l.eq(r),
+            (StoreError::Closing, StoreError::Closing) => true,
+            (StoreError::KeyspaceNotFound, StoreError::KeyspaceNotFound) => true,
+            _ => false,
+        }
     }
 }

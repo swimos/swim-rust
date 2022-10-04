@@ -30,10 +30,10 @@ use swim_model::{Attr, Item, Value};
 use swim_persistence::agent::lane::error::StoreErrorHandler;
 use swim_persistence::agent::lane::map::{MapDataModel, MapLaneStoreIo};
 use swim_persistence::agent::lane::StoreIo;
-use swim_persistence::agent::NodeStore;
+use swim_persistence::agent::{NodeStore, PrefixNodeStore};
 use swim_persistence::plane::mock::MockPlaneStore;
 use swim_persistence::{StoreEngine, StoreKey};
-use swim_store::{serialize, EngineInfo, StoreError};
+use swim_store::{serialize, EngineInfo, RangeConsumer, StoreError};
 use swim_utilities::algebra::non_zero_usize;
 
 fn buffer_size() -> NonZeroUsize {
@@ -524,6 +524,41 @@ fn make_store_key(lane_id: u64, key: String) -> StoreKey {
     StoreKey::Map {
         lane_id,
         key: Some(serialize(&key).expect("Failed to serialize store key")),
+    }
+}
+
+struct It {
+    index: usize,
+    entries: Vec<(Vec<u8>, Vec<u8>)>,
+}
+
+impl RangeConsumer for It {
+    fn consume_next<'a>(&'a mut self) -> Result<Option<(&'a [u8], &'a [u8])>, StoreError> {
+        let It { index, entries } = self;
+        let n = *index;
+        *index += 1;
+        Ok(entries.get(n).map(|(k, v)| (k.as_ref(), v.as_ref())))
+    }
+}
+
+impl<'a> PrefixNodeStore<'a> for TrackingMapStore {
+    type RangeCon = It;
+
+    fn ranged_snapshot_consumer(&'a self, prefix: StoreKey) -> Result<Self::RangeCon, StoreError> {
+        let prefix = serialize(&prefix)?;
+        let guard = self.values.lock().unwrap();
+        let entries = guard
+            .deref()
+            .iter()
+            .filter_map(|(k, v)| {
+                if k.starts_with(&prefix) {
+                    Some((k.clone(), v.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        Ok(It { entries, index: 0 })
     }
 }
 

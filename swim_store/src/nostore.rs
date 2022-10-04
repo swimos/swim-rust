@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use store_common::{
     ByteEngine, EngineInfo, EngineIterOpts, EngineIterator, EnginePrefixIterator,
     EngineRefIterator, IteratorKey, Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces,
-    KvBytes, Store, StoreBuilder, StoreError,
+    KvBytes, PrefixRangeByteEngine, RangeConsumer, Store, StoreBuilder, StoreError,
 };
 
 /// A delegate store database that does nothing.
@@ -45,6 +45,29 @@ impl KeyspaceResolver for NoStore {
 
     fn resolve_keyspace<K: Keyspace>(&self, _space: &K) -> Option<&Self::ResolvedKeyspace> {
         None
+    }
+}
+
+pub struct NoRange;
+
+impl RangeConsumer for NoRange {
+    fn consume_next<'a>(&'a mut self) -> Result<Option<(&'a [u8], &'a [u8])>, StoreError> {
+        Ok(None)
+    }
+}
+
+impl<'a> PrefixRangeByteEngine<'a> for NoStore {
+    type RangeCon = NoRange;
+
+    fn get_prefix_range_consumer<S>(
+        &'a self,
+        _keyspace: S,
+        _prefix: &[u8],
+    ) -> Result<Self::RangeCon, StoreError>
+    where
+        S: Keyspace,
+    {
+        Ok(NoRange)
     }
 }
 

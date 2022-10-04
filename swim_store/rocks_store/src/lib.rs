@@ -17,15 +17,16 @@ mod tests;
 
 mod iterator;
 
-pub use crate::iterator::{RocksIterator, RocksPrefixIterator};
+pub use crate::iterator::RocksPrefixIterator;
 
-use rocksdb::{ColumnFamily, ColumnFamilyDescriptor};
+use iterator::RocksRawPrefixIterator;
+use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, ReadOptions};
 use rocksdb::{Options, DB};
 use std::path::Path;
 use std::sync::Arc;
 use store_common::{
     serialize, EngineInfo, EnginePrefixIterator, EngineRefIterator, Keyspace, KeyspaceByteEngine,
-    KeyspaceResolver, Keyspaces, Store, StoreBuilder, StoreError,
+    KeyspaceResolver, Keyspaces, PrefixRangeByteEngine, Store, StoreBuilder, StoreError,
 };
 
 /// A Rocks database engine.
@@ -111,6 +112,29 @@ where
     match delegate.cf_handle(keyspace.name()) {
         Some(cf) => f(delegate, cf).map_err(|e| StoreError::Delegate(Box::new(e))),
         None => Err(StoreError::KeyspaceNotFound),
+    }
+}
+
+impl<'a> PrefixRangeByteEngine<'a> for RocksEngine {
+    type RangeCon = RocksRawPrefixIterator<'a>;
+
+    fn get_prefix_range_consumer<S>(
+        &'a self,
+        keyspace: S,
+        prefix: &[u8],
+    ) -> Result<Self::RangeCon, StoreError>
+    where
+        S: Keyspace,
+    {
+        let resolved = self
+            .resolve_keyspace(&keyspace)
+            .ok_or(StoreError::KeyspaceNotFound)?;
+
+        let mut read_opts = ReadOptions::default();
+        read_opts.set_prefix_same_as_start(true);
+        let mut iter = self.delegate.raw_iterator_cf_opt(resolved, read_opts);
+        iter.seek(prefix);
+        Ok(RocksRawPrefixIterator::new(iter))
     }
 }
 

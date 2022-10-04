@@ -13,17 +13,52 @@
 // limitations under the License.
 
 use crate::agent::lane::model::map::MapDataModel;
-use crate::agent::NodeStore;
+use crate::agent::{NodeStore, PrefixNodeStore};
 use crate::plane::mock::MockPlaneStore;
 use crate::server::{StoreEngine, StoreKey};
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
-use swim_store::{serialize, EngineInfo, StoreError};
+use swim_store::{serialize, EngineInfo, RangeConsumer, StoreError};
 
 #[derive(Debug, Clone)]
 struct TrackingMapStore {
     values: Arc<Mutex<HashMap<Vec<u8>, Vec<u8>>>>,
+}
+
+struct It {
+    index: usize,
+    entries: Vec<(Vec<u8>, Vec<u8>)>,
+}
+
+impl RangeConsumer for It {
+    fn consume_next<'a>(&'a mut self) -> Result<Option<(&'a [u8], &'a [u8])>, StoreError> {
+        let It { index, entries } = self;
+        let n = *index;
+        *index += 1;
+        Ok(entries.get(n).map(|(k, v)| (k.as_ref(), v.as_ref())))
+    }
+}
+
+impl<'a> PrefixNodeStore<'a> for TrackingMapStore {
+    type RangeCon = It;
+
+    fn ranged_snapshot_consumer(&'a self, prefix: StoreKey) -> Result<Self::RangeCon, StoreError> {
+        let prefix = serialize(&prefix)?;
+        let guard = self.values.lock().unwrap();
+        let entries = guard
+            .deref()
+            .iter()
+            .filter_map(|(k, v)| {
+                if k.starts_with(&prefix) {
+                    Some((k.clone(), v.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        Ok(It { entries, index: 0 })
+    }
 }
 
 impl NodeStore for TrackingMapStore {

@@ -17,7 +17,10 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use crate::server::keystore::STEP;
-use swim_store::{deserialize, serialize, Keyspace, KeyspaceByteEngine, StoreError};
+use swim_store::{
+    deserialize, nostore::NoRange, serialize, Keyspace, KeyspaceByteEngine, PrefixRangeByteEngine,
+    StoreError,
+};
 
 type Keyspaces = HashMap<String, HashMap<Vec<u8>, Vec<u8>>>;
 
@@ -35,6 +38,21 @@ impl MockStore {
         MockStore {
             values: Mutex::new(keyspaces),
         }
+    }
+}
+
+impl<'a> PrefixRangeByteEngine<'a> for MockStore {
+    type RangeCon = NoRange;
+
+    fn get_prefix_range_consumer<S>(
+        &'a self,
+        _keyspace: S,
+        _prefix: &[u8],
+    ) -> Result<Self::RangeCon, StoreError>
+    where
+        S: Keyspace,
+    {
+        todo!()
     }
 }
 

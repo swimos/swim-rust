@@ -18,12 +18,24 @@ pub mod mock;
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
+use bytes::BytesMut;
+use swim_api::store::{MapPersistence, NodePersistenceBase};
 use swim_model::Text;
 
-use crate::plane::PlaneStore;
+use crate::plane::{PlaneStore, PrefixPlaneStore};
 use crate::server::{StoreEngine, StoreKey};
 
-use swim_store::{EngineInfo, StoreError};
+use swim_store::{EngineInfo, RangeConsumer, StoreError};
+
+pub trait PrefixNodeStore<'a> {
+    type RangeCon: RangeConsumer + 'a;
+
+    /// Executes a ranged snapshot read prefixed by a lane key.
+    ///
+    /// #Arguments
+    /// * `prefix` - Common prefix for the records to read.
+    fn ranged_snapshot_consumer(&'a self, prefix: StoreKey) -> Result<Self::RangeCon, StoreError>;
+}
 
 /// A trait for defining store engines which open stores for nodes.
 ///
@@ -36,7 +48,9 @@ use swim_store::{EngineInfo, StoreError};
 /// the store; providing that the top-level server store is also persistent.
 ///
 /// Transient data models will live in memory for the duration that a handle to the model exists.
-pub trait NodeStore: StoreEngine + Send + Sync + Clone + Debug + 'static {
+pub trait NodeStore:
+    for<'a> PrefixNodeStore<'a> + StoreEngine + Send + Sync + Clone + Debug + 'static
+{
     type Delegate: PlaneStore;
 
     /// Returns information about the delegate store
@@ -109,6 +123,14 @@ impl<D: PlaneStore> StoreEngine for SwimNodeStore<D> {
     }
 }
 
+impl<'a, D: PrefixPlaneStore<'a>> PrefixNodeStore<'a> for SwimNodeStore<D> {
+    type RangeCon = D::RangeCon;
+
+    fn ranged_snapshot_consumer(&'a self, prefix: StoreKey) -> Result<Self::RangeCon, StoreError> {
+        self.delegate.ranged_snapshot_consumer(prefix)
+    }
+}
+
 impl<D: PlaneStore> NodeStore for SwimNodeStore<D> {
     type Delegate = D;
 
@@ -130,5 +152,79 @@ impl<D: PlaneStore> NodeStore for SwimNodeStore<D> {
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
     {
         self.delegate.get_prefix_range(prefix, map_fn)
+    }
+}
+
+pub struct StoreWrapper<S>(S);
+
+impl<'a, S> MapPersistence<'a> for StoreWrapper<S>
+where
+    S: NodeStore,
+{
+    type MapCon = <S as PrefixNodeStore<'a>>::RangeCon;
+
+    fn read_map(&'a self, lane_id: Self::LaneId) -> Result<Self::MapCon, StoreError> {
+        let StoreWrapper(store) = self;
+        let key = StoreKey::Map { lane_id, key: None };
+        store.ranged_snapshot_consumer(key)
+    }
+}
+
+impl<S> NodePersistenceBase for StoreWrapper<S>
+where
+    S: NodeStore,
+{
+    type LaneId = u64;
+
+    fn id_for(&self, name: &str) -> Result<Self::LaneId, StoreError> {
+        let StoreWrapper(store) = self;
+        store.lane_id_of(name)
+    }
+
+    fn get_value(
+        &self,
+        lane_id: Self::LaneId,
+        buffer: &mut BytesMut,
+    ) -> Result<Option<usize>, StoreError> {
+        let StoreWrapper(store) = self;
+        if let Some(bytes) = store.get(StoreKey::Value { lane_id })? {
+            let n = bytes.len();
+            buffer.extend_from_slice(bytes.as_ref());
+            Ok(Some(n))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn put_value(&self, lane_id: Self::LaneId, value: &[u8]) -> Result<(), StoreError> {
+        let StoreWrapper(store) = self;
+        store.put(StoreKey::Value { lane_id }, value)
+    }
+
+    fn update_map(
+        &self,
+        lane_id: Self::LaneId,
+        key: &[u8],
+        value: &[u8],
+    ) -> Result<(), StoreError> {
+        let StoreWrapper(store) = self;
+        let key = StoreKey::Map {
+            lane_id,
+            key: Some(key.to_owned()),
+        };
+        store.put(key, value)
+    }
+
+    fn remove_map(&self, lane_id: Self::LaneId, key: &[u8]) -> Result<(), StoreError> {
+        let StoreWrapper(store) = self;
+        let key = StoreKey::Map {
+            lane_id,
+            key: Some(key.to_owned()),
+        };
+        store.delete(key)
+    }
+
+    fn clear(&self, _id: Self::LaneId) -> Result<(), StoreError> {
+        todo!("Add way to do a range deletion.")
     }
 }

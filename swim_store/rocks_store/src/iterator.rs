@@ -14,10 +14,10 @@
 
 use crate::RocksEngine;
 use rocksdb::{DBIteratorWithThreadMode, DBRawIterator, DBWithThreadMode, SingleThreaded};
-use store_common::StoreError;
 use store_common::{
     EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey, KvBytes,
 };
+use store_common::{RangeConsumer, StoreError};
 
 impl<'a: 'b, 'b> EngineRefIterator<'a, 'b> for RocksEngine {
     type EngineIterator = RocksIterator<'b>;
@@ -59,6 +59,37 @@ impl<'d> EnginePrefixIterator for RocksPrefixIterator<'d> {
 
 pub struct RocksIterator<'d> {
     iter: DBRawIterator<'d>,
+}
+
+pub struct RocksRawPrefixIterator<'d> {
+    first: bool,
+    iter: DBRawIterator<'d>,
+}
+
+impl<'d> RocksRawPrefixIterator<'d> {
+    pub fn new(iter: DBRawIterator<'d>) -> Self {
+        RocksRawPrefixIterator { first: true, iter }
+    }
+}
+
+impl<'d> RangeConsumer for RocksRawPrefixIterator<'d> {
+    fn consume_next<'a>(&'a mut self) -> Result<Option<(&'a [u8], &'a [u8])>, StoreError> {
+        let RocksRawPrefixIterator { iter, first } = self;
+        if *first {
+            *first = false;
+        } else {
+            iter.next();
+        }
+        if let Some(kv) = iter.item() {
+            Ok(Some(kv))
+        } else {
+            if let Err(e) = iter.status() {
+                Err(StoreError::Delegate(Box::new(e)))
+            } else {
+                Ok(None)
+            }
+        }
+    }
 }
 
 impl<'d> EngineIterator for RocksIterator<'d> {

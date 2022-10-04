@@ -14,9 +14,11 @@ serde = { version = "1.0.124", features = ["derive"] }
 swim_utilities = { path = "../../swim_utilities", features = ["io", "trigger"] }
 swim_model = { path = "../../api/swim_model" }
 swim_form = { path = "../../api/swim_form" }
+swim_api = { path = "../../api/swim_api" }
 tokio = { version = "1.1.1", features = ["sync"] }
 futures = "0.3.23"
 futures-util = "0.3.4"
+bytes = "1.0"
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["rt-multi-thread", "macros", "test-util"] }

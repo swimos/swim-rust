@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use swim_model::Text;
-use swim_store::{serialize, EngineInfo, Store, StoreError};
+use swim_store::{serialize, EngineInfo, PrefixRangeByteEngine, RangeConsumer, Store, StoreError};
 
 use crate::agent::{NodeStore, SwimNodeStore};
 use crate::server::keystore::KeyStore;
@@ -44,10 +44,19 @@ where
         .join(plane_name.as_ref())
 }
 
+pub trait PrefixPlaneStore<'a> {
+    type RangeCon: RangeConsumer + 'a;
+
+    /// Executes a ranged snapshot read prefixed by a lane key.
+    ///
+    /// #Arguments
+    /// * `prefix` - Common prefix for the records to read.
+    fn ranged_snapshot_consumer(&'a self, prefix: StoreKey) -> Result<Self::RangeCon, StoreError>;
+}
+
 /// A trait for defining plane stores which will create node stores.
-pub trait PlaneStore
-where
-    Self: StoreEngine + Sized + Debug + Send + Sync + Clone + 'static,
+pub trait PlaneStore:
+    for<'a> PrefixPlaneStore<'a> + StoreEngine + Sized + Debug + Send + Sync + Clone + 'static
 {
     /// The type of node stores which are created.
     type NodeStore: NodeStore;
@@ -112,6 +121,23 @@ where
     match key {
         s @ StoreKey::Map { .. } => f(KeyspaceName::Map, serialize(&s)?),
         s @ StoreKey::Value { .. } => f(KeyspaceName::Value, serialize(&s)?),
+    }
+}
+
+impl<'a, D> PrefixPlaneStore<'a> for SwimPlaneStore<D>
+where
+    D: Store,
+{
+    type RangeCon = <D as PrefixRangeByteEngine<'a>>::RangeCon;
+
+    fn ranged_snapshot_consumer(&'a self, prefix: StoreKey) -> Result<Self::RangeCon, StoreError> {
+        let namespace = match &prefix {
+            StoreKey::Map { .. } => KeyspaceName::Map,
+            StoreKey::Value { .. } => KeyspaceName::Value,
+        };
+
+        self.delegate
+            .get_prefix_range_consumer(namespace, serialize(&prefix)?.as_slice())
     }
 }
 

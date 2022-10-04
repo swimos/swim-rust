@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::error::StoreError;
 use std::fmt::{Display, Formatter};
 
 use bytes::BytesMut;
@@ -31,33 +32,41 @@ impl Display for StoreKind {
     }
 }
 
-pub struct PersistenceError;
+pub trait NodePersistenceBase {
+    type LaneId: Copy + Send + Sync + 'static;
 
-pub trait ReadMapIterator {
-    fn next<F>(&mut self, f: F) -> Result<(), PersistenceError>
-    where
-        F: FnOnce(Option<(&[u8], &[u8])>);
+    fn id_for(&self, name: &str) -> Result<Self::LaneId, StoreError>;
+
+    fn get_value(
+        &self,
+        id: Self::LaneId,
+        buffer: &mut BytesMut,
+    ) -> Result<Option<usize>, StoreError>;
+
+    fn put_value(&self, id: Self::LaneId, value: &[u8]) -> Result<(), StoreError>;
+
+    fn update_map(&self, id: Self::LaneId, key: &[u8], value: &[u8]) -> Result<(), StoreError>;
+    fn remove_map(&self, id: Self::LaneId, key: &[u8]) -> Result<(), StoreError>;
+
+    fn clear(&self, id: Self::LaneId) -> Result<(), StoreError>;
 }
 
-pub trait MapPersistence<'a> {
-    type MapIt: ReadMapIterator + 'a;
-
-    fn read_map(&'a self, name: &str) -> Result<Self::MapIt, PersistenceError>;
+pub trait RangeConsumer {
+    fn consume_next<'a>(&'a mut self) -> Result<Option<(&'a [u8], &'a [u8])>, StoreError>;
 }
 
-pub trait NodePersistence: for<'a> MapPersistence<'a> {
-    fn get_value(&self, name: &str, buffer: &mut BytesMut) -> Result<(), PersistenceError>;
+pub trait MapPersistence<'a>: NodePersistenceBase {
+    type MapCon: RangeConsumer + 'a;
 
-    fn put_value(&self, name: &str, value: &[u8]) -> Result<(), PersistenceError>;
-
-    fn update_map(&self, name: &str, key: &[u8], value: &[u8]) -> Result<(), PersistenceError>;
-    fn remove_map(&self, name: &str, key: &[u8], value: &[u8]) -> Result<(), PersistenceError>;
-
-    fn clear(&self, name: &str) -> Result<(), PersistenceError>;
+    fn read_map(&'a self, id: Self::LaneId) -> Result<Self::MapCon, StoreError>;
 }
+
+pub trait NodePersistence: NodePersistenceBase + for<'a> MapPersistence<'a> {}
+
+impl<P> NodePersistence for P where P: NodePersistenceBase + for<'a> MapPersistence<'a> {}
 
 pub trait PlanePersistence {
     type Node: NodePersistence;
 
-    fn node_store(&self, node_uri: &str) -> Result<Self::Node, PersistenceError>;
+    fn node_store(&mut self, node_uri: &str) -> Result<Self::Node, StoreError>;
 }
