@@ -13,10 +13,7 @@
 // limitations under the License.
 
 use bytes::BytesMut;
-use futures::{
-    future::{ready, BoxFuture},
-    FutureExt, SinkExt,
-};
+use futures::{future::BoxFuture, FutureExt, SinkExt};
 use swim_api::{
     error::StoreError,
     protocol::{
@@ -34,26 +31,90 @@ use tokio_util::codec::FramedWrite;
 pub enum StoreInitError {
     #[error("An error occurred reading the state from the store.")]
     Store(#[from] StoreError),
-    #[error("An error occurred sendig the state to the agent implementation.")]
+    #[error("An error occurred sending the state to the agent implementation.")]
     Channel(#[from] std::io::Error),
+    #[error("The lane did not acknowledge initialization.")]
+    NoAckFromLane,
+    #[error("Attempting to initialize a lane timed out.")]
+    LaneInitiailizationTimeout,
 }
+
+type InitFut<'a> = BoxFuture<'a, Result<(), StoreInitError>>;
+
+pub trait Initializer<'a> {
+    fn initialize<'b>(self: Box<Self>, writer: &'b mut ByteWriter) -> InitFut<'b>
+    where
+        'a: 'b;
+}
+
+struct ValueInit<'a, S, Id> {
+    store: &'a S,
+    lane_id: Id,
+}
+
+impl<'a, S> Initializer<'a> for ValueInit<'a, S, S::LaneId>
+where
+    S: NodePersistence + Send + Sync + 'static,
+{
+    fn initialize<'b>(self: Box<Self>, channel: &'b mut ByteWriter) -> InitFut<'b>
+    where
+        'a: 'b,
+    {
+        async move {
+            let ValueInit { store, lane_id } = *self;
+            let mut writer = FramedWrite::new(channel, ValueLaneEncoder::default());
+            let mut buffer = BytesMut::new();
+            if store.get_value(lane_id, &mut buffer)?.is_some() {
+                writer.send(LaneRequest::Command(buffer)).await?;
+            }
+            writer.send(LaneRequest::<&[u8]>::InitComplete).await?;
+            Ok(())
+        }
+        .boxed()
+    }
+}
+
+struct MapInit<'a, S, Id> {
+    store: &'a S,
+    lane_id: Id,
+}
+
+impl<'a, S> Initializer<'a> for MapInit<'a, S, S::LaneId>
+where
+    S: NodePersistence + Send + Sync + 'static,
+{
+    fn initialize<'b>(self: Box<Self>, channel: &'b mut ByteWriter) -> InitFut<'b>
+    where
+        'a: 'b,
+    {
+        async move {
+            let MapInit { store, lane_id } = *self;
+            let mut writer = FramedWrite::new(channel, MapLaneEncoder::default());
+            let mut it = store.read_map(lane_id)?;
+            while let Some((key, value)) = it.consume_next()? {
+                writer
+                    .send(LaneRequest::Command(MapMessage::Update { key, value }))
+                    .await?;
+            }
+            writer
+                .send(LaneRequest::<MapMessage<&[u8], &[u8]>>::InitComplete)
+                .await?;
+            Ok(())
+        }
+        .boxed()
+    }
+}
+
+type BoxInitializer<'a> = Box<dyn Initializer<'a> + Send + 'a>;
 
 pub trait AgentPersistence {
     type LaneId: Copy;
 
     fn lane_id(&self, name: &str) -> Result<Self::LaneId, StoreError>;
 
-    fn init_value_lane<'a>(
-        &'a self,
-        _lane_id: Self::LaneId,
-        _channel: &'a mut ByteWriter,
-    ) -> BoxFuture<'a, Result<(), StoreInitError>>;
+    fn init_value_lane(&self, _lane_id: Self::LaneId) -> Option<BoxInitializer<'_>>;
 
-    fn init_map_lane<'a>(
-        &'a self,
-        _lane_id: Self::LaneId,
-        _channel: &'a mut ByteWriter,
-    ) -> BoxFuture<'a, Result<(), StoreInitError>>;
+    fn init_map_lane(&self, _lane_id: Self::LaneId) -> Option<BoxInitializer<'_>>;
 
     fn put_value(&self, lane_id: Self::LaneId, bytes: &[u8]) -> Result<(), StoreError>;
 
@@ -64,7 +125,7 @@ pub trait AgentPersistence {
     ) -> Result<(), StoreError>;
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct StoreDisabled;
 
 impl AgentPersistence for StoreDisabled {
@@ -74,20 +135,12 @@ impl AgentPersistence for StoreDisabled {
         Ok(())
     }
 
-    fn init_value_lane<'a>(
-        &'a self,
-        _lane_id: Self::LaneId,
-        _channel: &'a mut ByteWriter,
-    ) -> BoxFuture<'a, Result<(), StoreInitError>> {
-        ready(Ok(())).boxed()
+    fn init_value_lane(&self, _lane_id: Self::LaneId) -> Option<BoxInitializer<'_>> {
+        None
     }
 
-    fn init_map_lane<'a>(
-        &'a self,
-        _lane_id: Self::LaneId,
-        _channel: &'a mut ByteWriter,
-    ) -> BoxFuture<'a, Result<(), StoreInitError>> {
-        ready(Ok(())).boxed()
+    fn init_map_lane(&self, _lane_id: Self::LaneId) -> Option<BoxInitializer<'_>> {
+        None
     }
 
     fn put_value(&self, _lane_id: Self::LaneId, _bytes: &[u8]) -> Result<(), StoreError> {
@@ -139,43 +192,15 @@ where
         }
     }
 
-    fn init_value_lane<'a>(
-        &'a self,
-        lane_id: Self::LaneId,
-        channel: &'a mut ByteWriter,
-    ) -> BoxFuture<'a, Result<(), StoreInitError>> {
-        async move {
-            let StorePersistence(store) = self;
-            let mut writer = FramedWrite::new(channel, ValueLaneEncoder::default());
-            let mut buffer = BytesMut::new();
-            if store.get_value(lane_id, &mut buffer)?.is_some() {
-                writer.send(LaneRequest::Command(buffer)).await?;
-            }
-            writer.send(LaneRequest::<&[u8]>::InitComplete).await?;
-            Ok(())
-        }
-        .boxed()
+    fn init_value_lane(&self, lane_id: Self::LaneId) -> Option<BoxInitializer<'_>> {
+        let StorePersistence(store) = self;
+        let init = ValueInit { store, lane_id };
+        Some(Box::new(init))
     }
 
-    fn init_map_lane<'a>(
-        &'a self,
-        lane_id: Self::LaneId,
-        channel: &'a mut ByteWriter,
-    ) -> BoxFuture<'a, Result<(), StoreInitError>> {
-        async move {
-            let StorePersistence(store) = self;
-            let mut writer = FramedWrite::new(channel, MapLaneEncoder::default());
-            let mut it = store.read_map(lane_id)?;
-            while let Some((key, value)) = it.consume_next()? {
-                writer
-                    .send(LaneRequest::Command(MapMessage::Update { key, value }))
-                    .await?;
-            }
-            writer
-                .send(LaneRequest::<MapMessage<&[u8], &[u8]>>::InitComplete)
-                .await?;
-            Ok(())
-        }
-        .boxed()
+    fn init_map_lane(&self, lane_id: Self::LaneId) -> Option<BoxInitializer<'_>> {
+        let StorePersistence(store) = self;
+        let init = MapInit { store, lane_id };
+        Some(Box::new(init))
     }
 }

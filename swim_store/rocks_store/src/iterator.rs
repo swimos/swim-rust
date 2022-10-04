@@ -15,7 +15,8 @@
 use crate::RocksEngine;
 use rocksdb::{DBIteratorWithThreadMode, DBRawIterator, DBWithThreadMode, SingleThreaded};
 use store_common::{
-    EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey, KvBytes, KeyValue,
+    EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey, KeyValue,
+    KvBytes,
 };
 use store_common::{RangeConsumer, StoreError};
 

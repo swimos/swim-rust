@@ -47,7 +47,7 @@ pub trait Store:
     fn engine_info(&self) -> EngineInfo;
 }
 
-pub use swim_api::store::{RangeConsumer, KeyValue};
+pub use swim_api::store::{KeyValue, RangeConsumer};
 
 /// Information regarding a delegate store engine that is useful for displaying along with debug
 /// information or an error report.

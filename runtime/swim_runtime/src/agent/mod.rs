@@ -21,6 +21,7 @@ use swim_api::{
     downlink::DownlinkKind,
     error::{
         AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
+        StoreError,
     },
     store::StoreKind,
 };
@@ -43,7 +44,7 @@ use std::{
 
 use crate::downlink::DownlinkOptions;
 
-use self::task::AgentInitTask;
+use self::{store::StoreInitError, task::AgentInitTask};
 
 mod store;
 mod task;
@@ -260,6 +261,14 @@ pub enum AgentExecError {
     /// Sending a downlink request to the runtime failed.
     #[error("The runtime failed to handle a downlink request.")]
     FailedDownlinkRequest,
+    #[error("Restoring the state of the lane `{lane_name}` failed: {error}")]
+    FailedRestoration {
+        lane_name: Text,
+        #[source]
+        error: StoreInitError,
+    },
+    #[error("Persisting a change to the state of a lan failed: {0}")]
+    PersistenceFailure(#[from] StoreError),
 }
 
 pub struct AgentRoute {

@@ -17,8 +17,8 @@ use std::path::{Path, PathBuf};
 
 use store_common::{
     ByteEngine, EngineInfo, EngineIterOpts, EngineIterator, EnginePrefixIterator,
-    EngineRefIterator, IteratorKey, Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces,
-    KvBytes, PrefixRangeByteEngine, RangeConsumer, KeyValue, Store, StoreBuilder, StoreError,
+    EngineRefIterator, IteratorKey, KeyValue, Keyspace, KeyspaceByteEngine, KeyspaceResolver,
+    Keyspaces, KvBytes, PrefixRangeByteEngine, RangeConsumer, Store, StoreBuilder, StoreError,
 };
 
 /// A delegate store database that does nothing.
