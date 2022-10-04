@@ -56,7 +56,7 @@ pub trait RangeConsumer {
 }
 
 pub trait MapPersistence<'a>: NodePersistenceBase {
-    type MapCon: RangeConsumer + 'a;
+    type MapCon: RangeConsumer + Send + 'a;
 
     fn read_map(&'a self, id: Self::LaneId) -> Result<Self::MapCon, StoreError>;
 }

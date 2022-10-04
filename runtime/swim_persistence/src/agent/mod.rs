@@ -28,7 +28,7 @@ use crate::server::{StoreEngine, StoreKey};
 use swim_store::{EngineInfo, RangeConsumer, StoreError};
 
 pub trait PrefixNodeStore<'a> {
-    type RangeCon: RangeConsumer + 'a;
+    type RangeCon: RangeConsumer + Send + 'a;
 
     /// Executes a ranged snapshot read prefixed by a lane key.
     ///

@@ -54,7 +54,7 @@ impl<O> Keyspaces<O> {
 }
 
 pub trait PrefixRangeByteEngine<'a> {
-    type RangeCon: RangeConsumer + 'a;
+    type RangeCon: RangeConsumer + Send + 'a;
 
     /// Read a range of records from a specific keyspace, with a shared prefix.
     /// #Arguments

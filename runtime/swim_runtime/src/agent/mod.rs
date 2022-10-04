@@ -45,6 +45,7 @@ use crate::downlink::DownlinkOptions;
 
 use self::task::AgentInitTask;
 
+mod store;
 mod task;
 
 use task::AgentRuntimeRequest;

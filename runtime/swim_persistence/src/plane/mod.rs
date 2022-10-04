@@ -45,7 +45,7 @@ where
 }
 
 pub trait PrefixPlaneStore<'a> {
-    type RangeCon: RangeConsumer + 'a;
+    type RangeCon: RangeConsumer + Send + 'a;
 
     /// Executes a ranged snapshot read prefixed by a lane key.
     ///
