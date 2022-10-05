@@ -361,7 +361,8 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
                 stopping,
             );
 
-            let (_, agent_result) = join(runtime_task.run(), agent_task).await;
+            let (runtime_result, agent_result) = join(runtime_task.run(), agent_task).await;
+            runtime_result?;
             agent_result?;
             Ok(())
         }

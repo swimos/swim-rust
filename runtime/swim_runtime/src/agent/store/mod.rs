@@ -108,7 +108,7 @@ where
 type BoxInitializer<'a> = Box<dyn Initializer<'a> + Send + 'a>;
 
 pub trait AgentPersistence {
-    type LaneId: Copy;
+    type LaneId: Copy + Unpin + Send + Sync + Eq + 'static;
 
     fn lane_id(&self, name: &str) -> Result<Self::LaneId, StoreError>;
 
@@ -121,7 +121,7 @@ pub trait AgentPersistence {
     fn put_map<B: AsRef<[u8]>>(
         &self,
         lane_id: Self::LaneId,
-        op: MapOperation<B, B>,
+        op: &MapOperation<B, B>,
     ) -> Result<(), StoreError>;
 }
 
@@ -150,7 +150,7 @@ impl AgentPersistence for StoreDisabled {
     fn put_map<B: AsRef<[u8]>>(
         &self,
         _lane_id: Self::LaneId,
-        _op: MapOperation<B, B>,
+        _op: &MapOperation<B, B>,
     ) -> Result<(), StoreError> {
         Ok(())
     }
@@ -180,7 +180,7 @@ where
     fn put_map<B: AsRef<[u8]>>(
         &self,
         lane_id: Self::LaneId,
-        op: MapOperation<B, B>,
+        op: &MapOperation<B, B>,
     ) -> Result<(), StoreError> {
         let StorePersistence(store) = self;
         match op {

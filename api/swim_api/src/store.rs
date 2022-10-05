@@ -33,7 +33,7 @@ impl Display for StoreKind {
 }
 
 pub trait NodePersistenceBase {
-    type LaneId: Copy + Send + Sync + 'static;
+    type LaneId: Copy + Unpin + Send + Sync + Eq + 'static;
 
     fn id_for(&self, name: &str) -> Result<Self::LaneId, StoreError>;
 

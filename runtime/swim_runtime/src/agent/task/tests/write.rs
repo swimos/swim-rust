@@ -37,7 +37,7 @@ use crate::{
             write_task, LaneEndpoint, RwCoorindationMessage, WriteTaskConfiguration,
             WriteTaskMessage,
         },
-        DisconnectionReason,
+        DisconnectionReason, store::StoreDisabled,
     },
     routing::RoutingAddr,
 };
@@ -170,7 +170,7 @@ where
 
     let fake_agent = FakeAgent::new(endpoints_tx, stop_rx.clone(), instr_rx);
     let write_config = WriteTaskConfiguration::new(AGENT_ID, Text::new(NODE), config);
-    let write = write_task(write_config, endpoints_rx, messages_rx, vote1, stop_rx);
+    let write = write_task(write_config, endpoints_rx, messages_rx, vote1, stop_rx, StoreDisabled);
 
     let context = TestContext {
         stop_sender: stop_tx,
