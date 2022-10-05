@@ -121,6 +121,7 @@ pub trait KeyspaceByteEngine: for<'a> PrefixRangeByteEngine<'a> + Send + Sync + 
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
         S: Keyspace;
+
 }
 
 /// A trait for converting an abstract keyspace name to a reference to a handle of one in a delegate

@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use swim_model::Text;
-use swim_store::{serialize, EngineInfo, PrefixRangeByteEngine, RangeConsumer, Store, StoreError};
+use swim_store::{EngineInfo, PrefixRangeByteEngine, RangeConsumer, Store, StoreError};
 
 use crate::agent::{NodeStore, SwimNodeStore};
 use crate::server::keystore::KeyStore;
@@ -119,8 +119,8 @@ where
     F: Fn(KeyspaceName, Vec<u8>) -> Result<O, StoreError>,
 {
     match key {
-        s @ StoreKey::Map { .. } => f(KeyspaceName::Map, serialize(&s)?),
-        s @ StoreKey::Value { .. } => f(KeyspaceName::Value, serialize(&s)?),
+        s @ StoreKey::Map { .. } => f(KeyspaceName::Map, s.serialize_as_bytes()),
+        s @ StoreKey::Value { .. } => f(KeyspaceName::Value, s.serialize_as_bytes()),
     }
 }
 
@@ -137,7 +137,7 @@ where
         };
 
         self.delegate
-            .get_prefix_range_consumer(namespace, serialize(&prefix)?.as_slice())
+            .get_prefix_range_consumer(namespace, prefix.serialize_as_bytes().as_slice())
     }
 }
 
@@ -168,7 +168,7 @@ where
         };
 
         self.delegate
-            .get_prefix_range(namespace, serialize(&prefix)?.as_slice(), map_fn)
+            .get_prefix_range(namespace, prefix.serialize_as_bytes().as_slice(), map_fn)
     }
 
     fn engine_info(&self) -> EngineInfo {

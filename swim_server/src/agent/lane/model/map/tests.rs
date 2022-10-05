@@ -545,7 +545,7 @@ impl<'a> PrefixNodeStore<'a> for TrackingMapStore {
     type RangeCon = It;
 
     fn ranged_snapshot_consumer(&'a self, prefix: StoreKey) -> Result<Self::RangeCon, StoreError> {
-        let prefix = serialize(&prefix)?;
+        let prefix = prefix.serialize_as_bytes();
         let guard = self.values.lock().unwrap();
         let entries = guard
             .deref()
@@ -589,7 +589,7 @@ impl NodeStore for TrackingMapStore {
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
     {
-        let prefix = serialize(&prefix)?;
+        let prefix = prefix.serialize_as_bytes();
         let guard = self.values.lock().unwrap();
         let mut entries = guard.deref().clone().into_iter();
         let mapped = entries.try_fold(Vec::new(), |mut entries, (k, v)| {
@@ -619,7 +619,7 @@ impl StoreEngine for TrackingMapStore {
         match key {
             k @ StoreKey::Map { .. } => {
                 let mut guard = self.values.lock().unwrap();
-                guard.insert(serialize(&k)?, value.to_vec());
+                guard.insert(k.serialize_as_bytes(), value.to_vec());
                 Ok(())
             }
             StoreKey::Value { .. } => {
@@ -632,7 +632,7 @@ impl StoreEngine for TrackingMapStore {
         match key {
             k @ StoreKey::Map { .. } => {
                 let guard = self.values.lock().unwrap();
-                Ok(guard.get(serialize(&k)?.as_slice()).cloned())
+                Ok(guard.get(k.serialize_as_bytes().as_slice()).cloned())
             }
             StoreKey::Value { .. } => {
                 panic!("Expected a map key")
@@ -644,7 +644,7 @@ impl StoreEngine for TrackingMapStore {
         match key {
             k @ StoreKey::Map { .. } => {
                 let mut guard = self.values.lock().unwrap();
-                guard.remove(serialize(&k)?.as_slice());
+                guard.remove(k.serialize_as_bytes().as_slice());
                 Ok(())
             }
             StoreKey::Value { .. } => {
@@ -675,7 +675,7 @@ async fn io_load_some() {
         .into_iter()
         .fold(HashMap::new(), |mut map, (k, v)| {
             let store_key = make_store_key(0, k);
-            map.insert(serialize(&store_key).unwrap(), serialize(&v).unwrap());
+            map.insert(store_key.serialize_as_bytes(), serialize(&v).unwrap());
             map
         });
 
@@ -683,7 +683,7 @@ async fn io_load_some() {
         .into_iter()
         .fold(HashMap::new(), |mut map, (k, v)| {
             let store_key = make_store_key(1, k);
-            map.insert(serialize(&store_key).unwrap(), serialize(&v).unwrap());
+            map.insert(store_key.serialize_as_bytes(), serialize(&v).unwrap());
             map
         });
 
@@ -721,7 +721,7 @@ async fn io_crud() {
         .into_iter()
         .fold(HashMap::new(), |mut map, (k, v)| {
             let store_key = make_store_key(0, k);
-            map.insert(serialize(&store_key).unwrap(), serialize(&v).unwrap());
+            map.insert(store_key.serialize_as_bytes(), serialize(&v).unwrap());
             map
         });
 
