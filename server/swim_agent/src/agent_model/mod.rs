@@ -357,7 +357,9 @@ where
             let lane_config = config.default_lane_config.unwrap_or_default();
             // Set up the lanes of the agent.
             for name in val_lane_names {
-                let io = context.add_lane(name, UplinkKind::Value, lane_config).await?;
+                let io = context
+                    .add_lane(name, UplinkKind::Value, lane_config)
+                    .await?;
                 if lane_config.transient {
                     value_lane_io.insert(Text::new(name), io);
                 } else if let Some(init) = lane_model.init_value_like_lane(name) {

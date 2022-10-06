@@ -105,7 +105,7 @@ where
     }
 }
 
-type BoxInitializer<'a> = Box<dyn Initializer<'a> + Send + 'a>;
+pub type BoxInitializer<'a> = Box<dyn Initializer<'a> + Send + 'a>;
 
 pub trait AgentPersistence {
     type LaneId: Copy + Unpin + Send + Sync + Eq + 'static;

@@ -67,6 +67,7 @@ mod write;
 const QUEUE_SIZE: NonZeroUsize = non_zero_usize!(8);
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
+const INIT_TIMEOUT: Duration = Duration::from_secs(1);
 
 fn make_config(inactive_timeout: Duration) -> AgentRuntimeConfig {
     make_prune_config(inactive_timeout, inactive_timeout)
@@ -81,6 +82,7 @@ fn make_prune_config(
         inactive_timeout,
         prune_remote_delay,
         shutdown_timeout: SHUTDOWN_TIMEOUT,
+        lane_init_timeout: INIT_TIMEOUT,
     }
 }
 

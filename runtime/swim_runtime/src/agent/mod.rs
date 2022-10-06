@@ -242,6 +242,8 @@ pub struct AgentRuntimeConfig {
     /// If the clean-shutdown mechanism for the task takes longer than this, it will be
     /// terminated.
     pub shutdown_timeout: Duration,
+    /// If initializing a lane from the store takes longer than this, the agent will fail.
+    pub lane_init_timeout: Duration,
 }
 
 /// Ways in which the agent runtime task can fail.
@@ -333,8 +335,12 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         let node_uri = route.to_string().into();
         let (runtime_tx, runtime_rx) = mpsc::channel(runtime_config.attachment_queue_size.get());
         let (init_tx, init_rx) = trigger::trigger();
-        let runtime_init_task =
-            AgentInitTask::new(runtime_rx, downlink_tx, init_rx);
+        let runtime_init_task = AgentInitTask::new(
+            runtime_rx,
+            downlink_tx,
+            init_rx,
+            runtime_config.lane_init_timeout,
+        );
         let context = Box::new(AgentRuntimeContext::new(runtime_tx));
 
         let agent_init = agent.run(route, agent_config, context);

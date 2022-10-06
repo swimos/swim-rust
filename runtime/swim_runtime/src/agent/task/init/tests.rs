@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::time::Duration;
+
 use futures::{
     future::{join, BoxFuture},
     FutureExt,
@@ -150,6 +152,7 @@ impl TestInit for SingleLaneInit {
 }
 
 const DL_CHAN_SIZE: usize = 8;
+const INIT_TIMEOUT: Duration = Duration::from_secs(5);
 
 async fn run_test<T: TestInit>() -> (
     Result<InitialEndpoints, AgentExecError>,
@@ -159,7 +162,7 @@ async fn run_test<T: TestInit>() -> (
     let (done_tx, done_rx) = trigger::trigger();
     let (dl_tx, dl_rx) = mpsc::channel(DL_CHAN_SIZE);
 
-    let runtime = super::AgentInitTask::new(req_rx, dl_tx, done_rx);
+    let runtime = super::AgentInitTask::new(req_rx, dl_tx, done_rx, INIT_TIMEOUT);
     let test = T::create(req_tx, dl_rx, done_tx, LaneConfig::default());
 
     join(runtime.run(), test.run_test()).await
