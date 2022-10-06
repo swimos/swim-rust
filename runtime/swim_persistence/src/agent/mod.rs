@@ -232,7 +232,8 @@ where
         store.delete(key)
     }
 
-    fn clear(&self, _id: Self::LaneId) -> Result<(), StoreError> {
-        todo!("Add way to do a range deletion.")
+    fn clear(&self, id: Self::LaneId) -> Result<(), StoreError> {
+        let StoreWrapper(store) = self;
+        store.delete_map(id)
     }
 }
