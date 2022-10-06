@@ -205,20 +205,20 @@ impl StoreKey {
     {
         match self {
             StoreKey::Map { lane_id, key } => {
-                writer.write(&[1])?;
-                writer.write(lane_id.encode_fixed_light())?;
+                writer.write_all(&[1])?;
+                writer.write_all(lane_id.encode_fixed_light())?;
                 if let Some(key) = key {
-                    writer.write(&[1])?;
+                    writer.write_all(&[1])?;
                     let len = u64::try_from(key.len()).expect("Legnth does not fit into u64");
-                    writer.write(len.encode_fixed_light())?;
-                    writer.write(&key)?;
+                    writer.write_all(len.encode_fixed_light())?;
+                    writer.write_all(key)?;
                 } else {
-                    writer.write(&[0])?;
+                    writer.write_all(&[0])?;
                 }
             }
             StoreKey::Value { lane_id } => {
-                writer.write(&[0])?;
-                writer.write(lane_id.encode_fixed_light())?;
+                writer.write_all(&[0])?;
+                writer.write_all(lane_id.encode_fixed_light())?;
             }
         }
         Ok(())
@@ -246,9 +246,9 @@ impl StoreKey {
     where
         W: Write,
     {
-        writer.write(&[1])?;
-        writer.write(lane_id.encode_fixed_light())?;
-        writer.write(&[2])?;
+        writer.write_all(&[1])?;
+        writer.write_all(lane_id.encode_fixed_light())?;
+        writer.write_all(&[2])?;
         Ok(())
     }
 
@@ -274,11 +274,9 @@ impl StoreKey {
                     Ok(rem)
                 }
             }
-            _ => {
-                return Err(StoreError::Decoding(
-                    "Bytes do not contain a map key.".to_string(),
-                ))
-            }
+            _ => Err(StoreError::Decoding(
+                "Bytes do not contain a map key.".to_string(),
+            )),
         }
     }
 }
