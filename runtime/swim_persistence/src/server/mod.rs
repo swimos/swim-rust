@@ -15,6 +15,8 @@
 pub mod keystore;
 #[cfg(test)]
 pub mod mock;
+#[cfg(test)]
+mod tests;
 
 #[cfg(feature = "rocks")]
 pub mod rocks;
@@ -191,6 +193,13 @@ const ID_LEN: usize = 8;
 const SIZE_LEN: usize = 8;
 const TAG_LEN: usize = 1;
 
+const VAL_TAG: u8 = 0;
+const MAP_TAG: u8 = 1;
+
+const LBOUND: u8 = 0;
+const KEY: u8 = 1;
+const UBOUND: u8 = 2;
+
 impl StoreKey {
     pub fn keyspace_name(&self) -> KeyspaceName {
         match self {
@@ -205,19 +214,19 @@ impl StoreKey {
     {
         match self {
             StoreKey::Map { lane_id, key } => {
-                writer.write_all(&[1])?;
+                writer.write_all(&[MAP_TAG])?;
                 writer.write_all(lane_id.encode_fixed_light())?;
                 if let Some(key) = key {
-                    writer.write_all(&[1])?;
+                    writer.write_all(&[KEY])?;
                     let len = u64::try_from(key.len()).expect("Legnth does not fit into u64");
                     writer.write_all(len.encode_fixed_light())?;
                     writer.write_all(key)?;
                 } else {
-                    writer.write_all(&[0])?;
+                    writer.write_all(&[LBOUND])?;
                 }
             }
             StoreKey::Value { lane_id } => {
-                writer.write_all(&[0])?;
+                writer.write_all(&[VAL_TAG])?;
                 writer.write_all(lane_id.encode_fixed_light())?;
             }
         }
@@ -246,9 +255,9 @@ impl StoreKey {
     where
         W: Write,
     {
-        writer.write_all(&[1])?;
+        writer.write_all(&[MAP_TAG])?;
         writer.write_all(lane_id.encode_fixed_light())?;
-        writer.write_all(&[2])?;
+        writer.write_all(&[UBOUND])?;
         Ok(())
     }
 
