@@ -211,4 +211,12 @@ impl KeyspaceByteEngine for RocksEngine {
             Ok(Some(data))
         }
     }
+
+    fn delete_key_range<S>(&self, keyspace: S, start: &[u8], ubound: &[u8]) -> Result<(), StoreError>
+        where
+            S: Keyspace {
+        exec_keyspace(&self.delegate, keyspace, move |delegate, keyspace| {
+            delegate.delete_range_cf(keyspace, start, ubound)
+        })
+    }
 }

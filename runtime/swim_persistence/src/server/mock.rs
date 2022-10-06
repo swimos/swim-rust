@@ -52,7 +52,7 @@ impl<'a> PrefixRangeByteEngine<'a> for MockStore {
     where
         S: Keyspace,
     {
-        todo!()
+        Ok(NoRange)
     }
 }
 
@@ -122,14 +122,45 @@ impl KeyspaceByteEngine for MockStore {
 
     fn get_prefix_range<F, K, V, S>(
         &self,
-        _keyspace: S,
-        _prefix: &[u8],
-        _map_fn: F,
+        keyspace: S,
+        prefix: &[u8],
+        map_fn: F,
     ) -> Result<Option<Vec<(K, V)>>, StoreError>
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
         S: Keyspace,
     {
-        todo!()
+        let mut guard = self.values.lock().unwrap();
+        let keyspace = guard
+            .get_mut(keyspace.name())
+            .ok_or(StoreError::KeyspaceNotFound)?;
+        keyspace
+            .iter()
+            .filter(|(k, _)| k.starts_with(prefix))
+            .try_fold(None, |acc, (k, v)| {
+                let mut acc_vec: Vec<(K, V)> = acc.unwrap_or_default();
+                acc_vec.push(map_fn(&k, &v)?);
+                Ok(Some(acc_vec))
+            })
+    }
+
+    fn delete_key_range<S>(
+        &self,
+        keyspace: S,
+        start: &[u8],
+        ubound: &[u8],
+    ) -> Result<(), StoreError>
+    where
+        S: Keyspace,
+    {
+        let mut guard = self.values.lock().unwrap();
+        let keyspace = guard
+            .get_mut(keyspace.name())
+            .ok_or(StoreError::KeyspaceNotFound)?;
+        *keyspace = std::mem::take(keyspace)
+            .into_iter()
+            .filter(|(key, _)| !((start <= key.as_slice()) && (key.as_slice() < ubound)))
+            .collect();
+        Ok(())
     }
 }

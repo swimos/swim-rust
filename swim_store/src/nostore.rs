@@ -114,6 +114,12 @@ impl KeyspaceByteEngine for NoStore {
     {
         Ok(None)
     }
+
+    fn delete_key_range<S>(&self, _keyspace: S, _start: &[u8], _ubound: &[u8]) -> Result<(), StoreError>
+        where
+            S: Keyspace {
+        Ok(())
+    }
 }
 
 #[derive(Default, Clone)]
