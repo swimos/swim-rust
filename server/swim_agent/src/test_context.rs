@@ -54,7 +54,7 @@ impl AgentContext for DummyAgentContext {
         &self,
         _name: &str,
         _uplink_kind: UplinkKind,
-        _config: Option<LaneConfig>,
+        _config: LaneConfig,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
         panic!("Dummy context used.");
     }

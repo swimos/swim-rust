@@ -26,7 +26,7 @@ use tokio::sync::mpsc;
 
 use super::{HandlerFuture, Spawner, Suspend};
 
-const CONFIG: AgentConfig = AgentConfig {};
+const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
 
 fn make_uri() -> RelativeUri {

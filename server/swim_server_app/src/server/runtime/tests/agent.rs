@@ -78,7 +78,7 @@ impl Agent for TestAgent {
         let events = self.events.clone();
         let reporter = self.reporter.clone();
         async move {
-            let (tx, rx) = context.add_lane(LANE, UplinkKind::Value, None).await?;
+            let (tx, rx) = context.add_lane(LANE, UplinkKind::Value, Default::default()).await?;
             Ok(run_agent(tx, rx, events, reporter).boxed())
         }
         .boxed()

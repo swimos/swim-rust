@@ -24,7 +24,7 @@ use tokio_util::codec::FramedRead;
 
 use crate::agent::{
     store::{AgentPersistence, StoreDisabled, StoreInitError},
-    AgentExecError, AgentRuntimeConfig, AgentRuntimeRequest, DownlinkRequest,
+    AgentExecError, AgentRuntimeRequest, DownlinkRequest,
 };
 use swim_api::protocol::agent::{LaneResponse, ValueLaneResponseDecoder};
 
@@ -42,7 +42,6 @@ pub struct AgentInitTask<Store = StoreDisabled> {
     requests: mpsc::Receiver<AgentRuntimeRequest>,
     downlink_requests: mpsc::Sender<DownlinkRequest>,
     init_complete: trigger::Receiver,
-    config: AgentRuntimeConfig,
     store: Store,
 }
 
@@ -50,18 +49,15 @@ impl AgentInitTask {
     /// #Arguments
     /// * `requests` - Channel for requests to open new lanes and downlinks.
     /// * `init_complete` - Triggered when the initialization phase is complete.
-    /// * `config` - Configuration parameters for the agent runtime.
     pub fn new(
         requests: mpsc::Receiver<AgentRuntimeRequest>,
         downlink_requests: mpsc::Sender<DownlinkRequest>,
         init_complete: trigger::Receiver,
-        config: AgentRuntimeConfig,
     ) -> Self {
         AgentInitTask {
             requests,
             downlink_requests,
             init_complete,
-            config,
             store: StoreDisabled::default(),
         }
     }
@@ -72,9 +68,9 @@ impl<Store: AgentPersistence + Clone + Send + Sync> AgentInitTask<Store> {
         let AgentInitTask {
             requests,
             init_complete,
-            config: agent_config,
             downlink_requests,
             store,
+            ..
         } = self;
 
         let mut request_stream = ReceiverStream::new(requests);
@@ -111,7 +107,7 @@ impl<Store: AgentPersistence + Clone + Send + Sync> AgentInitTask<Store> {
                             input_buffer_size,
                             output_buffer_size,
                             transient,
-                        } = config.unwrap_or(agent_config.default_lane_config);
+                        } = config;
 
                         let (mut in_tx, in_rx) = byte_channel::byte_channel(input_buffer_size);
                         let (out_tx, mut out_rx) = byte_channel::byte_channel(output_buffer_size);

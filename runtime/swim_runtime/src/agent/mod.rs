@@ -91,7 +91,7 @@ impl AgentContext for AgentRuntimeContext {
         &self,
         name: &str,
         uplink_kind: UplinkKind,
-        config: Option<LaneConfig>,
+        config: LaneConfig,
     ) -> BoxFuture<'static, Result<Io, AgentRuntimeError>> {
         let name = Text::new(name);
         let sender = self.tx.clone();
@@ -232,8 +232,6 @@ impl AgentAttachmentRequest {
 /// Configuration parameters for the aget runtime task.
 #[derive(Debug, Clone, Copy)]
 pub struct AgentRuntimeConfig {
-    /// Default configuration parameters to use for lanes that do not specify their own.
-    pub default_lane_config: LaneConfig,
     /// Size of the queue for hanlding requests to attach remotes to the task.
     pub attachment_queue_size: NonZeroUsize,
     /// If the task is idle for more than this length of time, the agent will stop.
@@ -336,7 +334,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         let (runtime_tx, runtime_rx) = mpsc::channel(runtime_config.attachment_queue_size.get());
         let (init_tx, init_rx) = trigger::trigger();
         let runtime_init_task =
-            AgentInitTask::new(runtime_rx, downlink_tx, init_rx, runtime_config);
+            AgentInitTask::new(runtime_rx, downlink_tx, init_rx);
         let context = Box::new(AgentRuntimeContext::new(runtime_tx));
 
         let agent_init = agent.run(route, agent_config, context);

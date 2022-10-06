@@ -238,7 +238,7 @@ impl FakeAgent {
                     if let Some(CreateLane { name, kind }) = maybe_create {
                         let (tx, rx) = oneshot::channel();
                         assert!(request_tx.send(AgentRuntimeRequest::AddLane {
-                             name: name.clone(), kind, config: None, promise: tx,
+                             name: name.clone(), kind, config: Default::default(), promise: tx,
                             }).await.is_ok());
                         let (io_tx, io_rx) = rx.await
                             .expect("Failed to receive response.")

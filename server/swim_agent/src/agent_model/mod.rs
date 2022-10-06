@@ -354,11 +354,13 @@ where
 
         {
             let mut lane_init_tasks = FuturesUnordered::new();
-
+            let lane_config = config.default_lane_config.unwrap_or_default();
             // Set up the lanes of the agent.
             for name in val_lane_names {
-                let io = context.add_lane(name, UplinkKind::Value, None).await?;
-                if let Some(init) = lane_model.init_value_like_lane(name) {
+                let io = context.add_lane(name, UplinkKind::Value, lane_config).await?;
+                if lane_config.transient {
+                    value_lane_io.insert(Text::new(name), io);
+                } else if let Some(init) = lane_model.init_value_like_lane(name) {
                     let init_task = run_lane_initializer(
                         name,
                         UplinkKind::Value,
@@ -375,8 +377,10 @@ where
                 if value_lane_io.contains_key(name) {
                     return Err(AgentInitError::DuplicateLane(Text::new(name)));
                 }
-                let io = context.add_lane(name, UplinkKind::Map, None).await?;
-                if let Some(init) = lane_model.init_map_like_lane(name) {
+                let io = context.add_lane(name, UplinkKind::Map, lane_config).await?;
+                if lane_config.transient {
+                    map_lane_io.insert(Text::new(name), io);
+                } else if let Some(init) = lane_model.init_map_like_lane(name) {
                     let init_task = run_lane_initializer(
                         name,
                         UplinkKind::Map,

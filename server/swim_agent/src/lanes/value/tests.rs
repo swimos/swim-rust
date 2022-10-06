@@ -260,7 +260,7 @@ fn write_to_buffer_with_sync_while_dirty() {
     }
 }
 
-const CONFIG: AgentConfig = AgentConfig {};
+const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
 
 fn make_uri() -> RelativeUri {

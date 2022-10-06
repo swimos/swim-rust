@@ -23,7 +23,7 @@ use std::{
 use bytes::Bytes;
 use futures::{future::Either, ready, SinkExt, Stream, StreamExt};
 use swim_api::{
-    agent::{LaneConfig, UplinkKind},
+    agent::UplinkKind,
     error::FrameIoError,
     protocol::{
         agent::{
@@ -77,11 +77,6 @@ fn make_prune_config(
     prune_remote_delay: Duration,
 ) -> AgentRuntimeConfig {
     AgentRuntimeConfig {
-        default_lane_config: LaneConfig {
-            input_buffer_size: BUFFER_SIZE,
-            output_buffer_size: BUFFER_SIZE,
-            transient: true,
-        },
         attachment_queue_size: non_zero_usize!(8),
         inactive_timeout,
         prune_remote_delay,

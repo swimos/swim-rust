@@ -91,7 +91,7 @@ pub enum AgentRuntimeRequest {
     AddLane {
         name: Text,
         kind: UplinkKind,
-        config: Option<LaneConfig>,
+        config: LaneConfig,
         promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
     },
     /// Attempt to open a downlink to a lane on another agent.
@@ -644,9 +644,8 @@ async fn handle_runtime_request(
             promise,
         } => {
             info!("Registering a new {} lane with name {}.", kind, name);
-            let lane_config = config.unwrap_or_default();
-            let (in_tx, in_rx) = byte_channel(lane_config.input_buffer_size);
-            let (out_tx, out_rx) = byte_channel(lane_config.output_buffer_size);
+            let (in_tx, in_rx) = byte_channel(config.input_buffer_size);
+            let (out_tx, out_rx) = byte_channel(config.output_buffer_size);
             let sender = LaneSender::new(in_tx, kind);
             let read_permit = match read_tx.reserve().await {
                 Err(_) => {

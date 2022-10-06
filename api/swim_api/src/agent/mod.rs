@@ -82,7 +82,7 @@ pub trait AgentContext: Sync {
         &self,
         name: &str,
         uplink_kind: UplinkKind,
-        config: Option<LaneConfig>,
+        config: LaneConfig,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>>;
 
     /// Open a downlink to a lane on another agent.
@@ -106,9 +106,26 @@ pub trait AgentContext: Sync {
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>>;
 }
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct AgentConfig {
-    //TODO Add parameters.
+    pub default_lane_config: Option<LaneConfig>,
+}
+
+impl AgentConfig {
+    //TODO: Remove this once const impls are stable.
+    pub const DEFAULT: AgentConfig = AgentConfig {
+        default_lane_config: Some(LaneConfig {
+            input_buffer_size: DEFAULT_BUFFER,
+            output_buffer_size: DEFAULT_BUFFER,
+            transient: true,
+        }),
+    };
+}
+
+impl Default for AgentConfig {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
 }
 
 /// Type of the task for a running agent.

@@ -65,7 +65,7 @@ impl AgentContext for TestAgentContext {
         &self,
         name: &str,
         uplink_kind: UplinkKind,
-        _config: Option<LaneConfig>,
+        _config: LaneConfig,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
         match (name, uplink_kind) {
             (VAL_LANE, UplinkKind::Value) => {

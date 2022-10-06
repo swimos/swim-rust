@@ -71,7 +71,6 @@ impl Default for SwimServerConfig {
             remote: Default::default(),
             agent: Default::default(),
             agent_runtime: AgentRuntimeConfig {
-                default_lane_config: Default::default(),
                 attachment_queue_size: DEFAULT_CHANNEL_SIZE,
                 inactive_timeout: DEFAULT_TIMEOUT,
                 prune_remote_delay: DEFAULT_TIMEOUT,

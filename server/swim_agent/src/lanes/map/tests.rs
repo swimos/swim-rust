@@ -459,7 +459,7 @@ fn sync_lane_state_and_event() {
     assert_eq!(sync_map, expected_sync);
 }
 
-const CONFIG: AgentConfig = AgentConfig {};
+const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
 
 fn make_uri() -> RelativeUri {

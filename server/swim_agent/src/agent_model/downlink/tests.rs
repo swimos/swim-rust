@@ -106,7 +106,7 @@ impl AgentContext for TestContext {
         &self,
         _name: &str,
         _uplink_kind: UplinkKind,
-        _config: Option<LaneConfig>,
+        _config: LaneConfig,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
         panic!("Unexpected request to open a lane.")
     }
@@ -137,7 +137,7 @@ impl AgentContext for TestContext {
 
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 
-const CONFIG: AgentConfig = AgentConfig {};
+const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
 
 fn make_uri() -> RelativeUri {
