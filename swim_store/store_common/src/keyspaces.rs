@@ -122,12 +122,15 @@ pub trait KeyspaceByteEngine: for<'a> PrefixRangeByteEngine<'a> + Send + Sync + 
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
         S: Keyspace;
 
-    
     /// Remove all entries from a keyspace with keys in the specified range [start, ubound).
-    fn delete_key_range<S>(&self, keyspace: S, start: &[u8], ubound: &[u8]) -> Result<(), StoreError>
-        where
-            S: Keyspace;
-
+    fn delete_key_range<S>(
+        &self,
+        keyspace: S,
+        start: &[u8],
+        ubound: &[u8],
+    ) -> Result<(), StoreError>
+    where
+        S: Keyspace;
 }
 
 /// A trait for converting an abstract keyspace name to a reference to a handle of one in a delegate

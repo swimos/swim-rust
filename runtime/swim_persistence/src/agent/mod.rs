@@ -70,6 +70,9 @@ pub trait NodeStore:
     ) -> Result<Option<Vec<(K, V)>>, StoreError>
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>;
+
+    /// Delete all values for a map lane.
+    fn delete_map(&self, lane_id: u64) -> Result<(), StoreError>;
 }
 
 /// A node store which is used to open value and map lane data models.
@@ -152,6 +155,10 @@ impl<D: PlaneStore> NodeStore for SwimNodeStore<D> {
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
     {
         self.delegate.get_prefix_range(prefix, map_fn)
+    }
+
+    fn delete_map(&self, lane_id: u64) -> Result<(), StoreError> {
+        self.delegate.delete_map(lane_id)
     }
 }
 

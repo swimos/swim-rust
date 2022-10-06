@@ -58,6 +58,10 @@ impl NodeStore for TrackingValueStore {
     {
         panic!("Unexpected snapshot request")
     }
+
+    fn delete_map(&self, _lane_id: u64) -> Result<(), StoreError> {
+        panic!("Unexpected map deletion request")
+    }
 }
 
 impl StoreEngine for TrackingValueStore {

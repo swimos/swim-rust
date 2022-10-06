@@ -612,6 +612,18 @@ impl NodeStore for TrackingMapStore {
             Ok(Some(mapped))
         }
     }
+
+    fn delete_map(&self, lane_id: u64) -> Result<(), StoreError> {
+        let start = StoreKey::Map { lane_id, key: None }.serialize_as_bytes();
+        let ubound = StoreKey::map_ubound_bytes(lane_id);
+        let mut guard = self.values.lock().unwrap();
+        let map = &mut *guard;
+        *map = std::mem::take(map)
+            .into_iter()
+            .filter(|(k, _)| !(&start..&ubound).contains(&k))
+            .collect();
+        Ok(())
+    }
 }
 
 impl StoreEngine for TrackingMapStore {

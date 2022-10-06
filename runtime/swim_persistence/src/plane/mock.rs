@@ -66,6 +66,10 @@ impl PlaneStore for MockPlaneStore {
     {
         Ok(0)
     }
+
+    fn delete_map(&self, _lane_id: u64) -> Result<(), StoreError> {
+        Ok(())
+    }
 }
 
 impl KeyspaceResolver for MockPlaneStore {

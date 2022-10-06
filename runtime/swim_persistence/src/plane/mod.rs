@@ -79,6 +79,9 @@ pub trait PlaneStore:
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>;
 
+    /// Delete all values for a map lane.
+    fn delete_map(&self, lane_id: u64) -> Result<(), StoreError>;
+
     /// Returns information about the delegate store
     fn engine_info(&self) -> EngineInfo;
 
@@ -180,6 +183,13 @@ where
         I: Into<String>,
     {
         self.keystore.id_for(lane.into())
+    }
+
+    fn delete_map(&self, lane_id: u64) -> Result<(), StoreError> {
+        let start = StoreKey::Map { lane_id, key: None }.serialize_as_bytes();
+        let ubound = StoreKey::map_ubound_bytes(lane_id);
+        self.delegate
+            .delete_key_range(KeyspaceName::Map, &start, &ubound)
     }
 }
 

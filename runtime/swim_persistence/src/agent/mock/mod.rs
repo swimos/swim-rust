@@ -64,6 +64,10 @@ impl NodeStore for MockNodeStore {
     {
         Ok(None)
     }
+
+    fn delete_map(&self, _lane_id: u64) -> Result<(), StoreError> {
+        Ok(())
+    }
 }
 
 impl StoreEngine for MockNodeStore {
