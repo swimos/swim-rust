@@ -27,6 +27,9 @@ use swim_utilities::io::byte_channel::ByteWriter;
 use thiserror::Error;
 use tokio_util::codec::FramedWrite;
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Debug, Error)]
 pub enum StoreInitError {
     #[error("An error occurred reading the state from the store.")]
