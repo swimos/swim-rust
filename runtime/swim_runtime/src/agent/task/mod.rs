@@ -1802,7 +1802,7 @@ where
         RawLaneResponse {
             target: None,
             response: UplinkResponse::Map(operation),
-        } => store.put_map(store_id, operation),
+        } => store.apply_map(store_id, operation),
         _ => Ok(()),
     }
 }

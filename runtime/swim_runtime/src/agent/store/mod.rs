@@ -121,7 +121,7 @@ pub trait AgentPersistence {
 
     fn put_value(&self, lane_id: Self::LaneId, bytes: &[u8]) -> Result<(), StoreError>;
 
-    fn put_map<B: AsRef<[u8]>>(
+    fn apply_map<B: AsRef<[u8]>>(
         &self,
         lane_id: Self::LaneId,
         op: &MapOperation<B, B>,
@@ -150,7 +150,7 @@ impl AgentPersistence for StoreDisabled {
         Ok(())
     }
 
-    fn put_map<B: AsRef<[u8]>>(
+    fn apply_map<B: AsRef<[u8]>>(
         &self,
         _lane_id: Self::LaneId,
         _op: &MapOperation<B, B>,
@@ -180,7 +180,7 @@ where
         store.put_value(lane_id, bytes)
     }
 
-    fn put_map<B: AsRef<[u8]>>(
+    fn apply_map<B: AsRef<[u8]>>(
         &self,
         lane_id: Self::LaneId,
         op: &MapOperation<B, B>,

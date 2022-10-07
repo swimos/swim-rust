@@ -21,7 +21,7 @@ use std::{
 use bytes::{BufMut, BytesMut};
 use futures::{future::join, StreamExt};
 use parking_lot::Mutex;
-use swim_api::protocol::map::{MapMessageDecoder, RawMapOperationDecoder};
+use swim_api::protocol::map::{MapMessageDecoder, MapOperation, RawMapOperationDecoder};
 use swim_api::{
     error::StoreError,
     protocol::{
@@ -34,8 +34,9 @@ use swim_api::{
 use swim_utilities::{algebra::non_zero_usize, io::byte_channel::byte_channel};
 use tokio_util::codec::FramedRead;
 
-use super::Initializer;
+use crate::agent::store::{AgentPersistence, StorePersistence};
 
+#[derive(Clone)]
 struct FakeStore {
     inner: Arc<Mutex<Inner>>,
 }
@@ -177,10 +178,10 @@ async fn value_initializer() {
     let data = vec![1, 2, 3, 4, 5];
     let store = FakeStore::new(data.clone(), Default::default());
 
-    let init = Box::new(super::ValueInit {
-        store: &store,
-        lane_id: Id::Value,
-    });
+    let persistence = StorePersistence(store.clone());
+    let init = persistence
+        .init_value_lane(Id::Value)
+        .expect("Expected initializer.");
 
     let (mut tx, mut rx) = byte_channel(BUFFER_SIZE);
 
@@ -211,10 +212,10 @@ async fn value_initializer() {
 async fn map_initializer_empty() {
     let store = FakeStore::new(vec![], Default::default());
 
-    let init = Box::new(super::MapInit {
-        store: &store,
-        lane_id: Id::Map,
-    });
+    let persistence = StorePersistence(store.clone());
+    let init = persistence
+        .init_map_lane(Id::Map)
+        .expect("Expected initializer.");
 
     let (mut tx, mut rx) = byte_channel(BUFFER_SIZE);
 
@@ -242,10 +243,10 @@ async fn map_initializer_with_entries() {
     map.insert(vec![2], vec![4, 5, 6]);
     let store = FakeStore::new(vec![], map.clone());
 
-    let init = Box::new(super::MapInit {
-        store: &store,
-        lane_id: Id::Map,
-    });
+    let persistence = StorePersistence(store.clone());
+    let init = persistence
+        .init_map_lane(Id::Map)
+        .expect("Expected initializer.");
 
     let (mut tx, mut rx) = byte_channel(BUFFER_SIZE);
 
@@ -271,4 +272,72 @@ async fn map_initializer_with_entries() {
 
     let (result, _) = join(init_task, recv_task).await;
     assert!(result.is_ok());
+}
+
+#[test]
+fn put_value() {
+    let data = vec![1, 2, 3, 4, 5];
+    let store = FakeStore::new(data, Default::default());
+
+    let persistence = StorePersistence(store.clone());
+
+    let replace = &[8, 9, 10];
+    assert!(persistence.put_value(Id::Value, replace).is_ok());
+
+    assert_eq!(&store.inner.lock().value, replace);
+}
+
+#[test]
+fn insert_map() {
+    let store = FakeStore::new(vec![], Default::default());
+
+    let persistence = StorePersistence(store.clone());
+
+    let key = &[6];
+    let value = &[1, 4, 6];
+    assert!(persistence
+        .apply_map::<&[u8]>(Id::Map, &MapOperation::Update { key, value })
+        .is_ok());
+
+    let map = &store.inner.lock().map;
+    let mut expected = HashMap::new();
+    expected.insert(key.to_vec(), value.to_vec());
+    assert_eq!(map, &expected);
+}
+
+#[test]
+fn remove_map() {
+    let mut map = HashMap::new();
+    map.insert(vec![1], vec![1, 2, 3]);
+    map.insert(vec![2], vec![4, 5, 6]);
+    let store = FakeStore::new(vec![], map.clone());
+
+    let persistence = StorePersistence(store.clone());
+
+    let key = &[1];
+    assert!(persistence
+        .apply_map::<&[u8]>(Id::Map, &MapOperation::Remove { key })
+        .is_ok());
+
+    let map = &store.inner.lock().map;
+    let mut expected = HashMap::new();
+    expected.insert(vec![2], vec![4, 5, 6]);
+    assert_eq!(map, &expected);
+}
+
+#[test]
+fn clear_map() {
+    let mut map = HashMap::new();
+    map.insert(vec![1], vec![1, 2, 3]);
+    map.insert(vec![2], vec![4, 5, 6]);
+    let store = FakeStore::new(vec![], map.clone());
+
+    let persistence = StorePersistence(store.clone());
+
+    assert!(persistence
+        .apply_map::<&[u8]>(Id::Map, &MapOperation::Clear)
+        .is_ok());
+
+    let map = &store.inner.lock().map;
+    assert!(map.is_empty());
 }
