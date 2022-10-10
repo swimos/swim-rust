@@ -14,7 +14,7 @@
 
 use std::{convert::identity, time::Duration};
 
-use futures::{future::Either, stream::FuturesUnordered, FutureExt, StreamExt};
+use futures::{future::Either, stream::FuturesUnordered, StreamExt};
 use swim_api::agent::{LaneConfig, UplinkKind};
 use swim_model::Text;
 use swim_utilities::{
@@ -102,71 +102,72 @@ impl<Store: AgentPersistence + Clone + Send + Sync> AgentInitTask<Store> {
                 Either::Left(endpoint_result) => {
                     endpoints.push(endpoint_result?);
                 }
-                Either::Right(request) => {
-                    match request {
-                        AgentRuntimeRequest::AddLane {
-                            name,
-                            kind,
-                            config,
-                            promise,
-                        } => {
-                            info!("Registering a new {} lane with name '{}'.", kind, name);
-                            let LaneConfig {
-                                input_buffer_size,
-                                output_buffer_size,
-                                transient,
-                            } = config;
+                Either::Right(request) => match request {
+                    AgentRuntimeRequest::AddLane {
+                        name,
+                        kind,
+                        config,
+                        promise,
+                    } => {
+                        info!("Registering a new {} lane with name '{}'.", kind, name);
+                        let LaneConfig {
+                            input_buffer_size,
+                            output_buffer_size,
+                            transient,
+                        } = config;
 
-                            let (in_tx, in_rx) = byte_channel::byte_channel(input_buffer_size);
-                            let (out_tx, out_rx) = byte_channel::byte_channel(output_buffer_size);
+                        let (in_tx, in_rx) = byte_channel::byte_channel(input_buffer_size);
+                        let (out_tx, out_rx) = byte_channel::byte_channel(output_buffer_size);
 
-                            let io = (out_tx, in_rx);
-                            if promise.send(Ok(io)).is_ok() {
-                                if transient {
+                        let io = (out_tx, in_rx);
+                        if promise.send(Ok(io)).is_ok() {
+                            if transient {
+                                endpoints.push(LaneEndpoint {
+                                    name,
+                                    kind,
+                                    io: (in_tx, out_rx),
+                                });
+                            } else {
+                                let lane_id = store.lane_id(name.as_str()).map_err(|error| {
+                                    AgentExecError::FailedRestoration {
+                                        lane_name: name.clone(),
+                                        error: StoreInitError::Store(error),
+                                    }
+                                })?;
+                                if let Some(initializer) = match kind {
+                                    UplinkKind::Value => store.init_value_lane(lane_id),
+                                    UplinkKind::Map => store.init_map_lane(lane_id),
+                                } {
+                                    let init_task = lane_initialization(
+                                        name.clone(),
+                                        kind,
+                                        lane_init_timeout,
+                                        in_tx,
+                                        out_rx,
+                                        initializer,
+                                    );
+                                    initializers.push(init_task);
+                                } else {
                                     endpoints.push(LaneEndpoint {
                                         name,
                                         kind,
                                         io: (in_tx, out_rx),
                                     });
-                                } else {
-                                    let lane_id =
-                                        store.lane_id(name.as_str()).map_err(|error| {
-                                            AgentExecError::FailedRestoration {
-                                                lane_name: name.clone(),
-                                                error: StoreInitError::Store(error),
-                                            }
-                                        })?;
-                                    if let Some(initializer) = match kind {
-                                        UplinkKind::Value => store.init_value_lane(lane_id),
-                                        UplinkKind::Map => store.init_map_lane(lane_id),
-                                    } {
-                                        let init_task = tokio::time::timeout(lane_init_timeout, lane_initialization(name.clone(), kind, in_tx, out_rx, initializer))
-                                        .map(move |result| {
-                                            result.map_err(move |_| AgentExecError::FailedRestoration { lane_name: name, error: StoreInitError::LaneInitiailizationTimeout }).and_then(identity)
-                                        });
-                                        initializers.push(init_task);
-                                    } else {
-                                        endpoints.push(LaneEndpoint {
-                                            name,
-                                            kind,
-                                            io: (in_tx, out_rx),
-                                        });
-                                    }
                                 }
-                            } else {
-                                error!(
-                                    "Agent failed to receive lane registration for {} lane named '{}'.",
-                                    kind, name
-                                );
                             }
-                        }
-                        AgentRuntimeRequest::OpenDownlink(request) => {
-                            if downlink_requests.send(request).await.is_err() {
-                                return Err(AgentExecError::FailedDownlinkRequest);
-                            }
+                        } else {
+                            error!(
+                                "Agent failed to receive lane registration for {} lane named '{}'.",
+                                kind, name
+                            );
                         }
                     }
-                }
+                    AgentRuntimeRequest::OpenDownlink(request) => {
+                        if downlink_requests.send(request).await.is_err() {
+                            return Err(AgentExecError::FailedDownlinkRequest);
+                        }
+                    }
+                },
             }
         }
         if !initializers.is_empty() {
@@ -196,29 +197,34 @@ async fn wait_for_initialized(reader: &mut ByteReader) -> Result<(), StoreInitEr
 async fn lane_initialization(
     name: Text,
     kind: UplinkKind,
+    timeout: Duration,
     mut in_tx: ByteWriter,
     mut out_rx: ByteReader,
     initializer: BoxInitializer<'_>,
 ) -> Result<LaneEndpoint<Io>, AgentExecError> {
-    let init = initializer.initialize(&mut in_tx);
-    let result = init.await;
+    let lane_name = name.clone();
+    let result = tokio::time::timeout(timeout, async move {
+        let init = initializer.initialize(&mut in_tx);
+        let result = init.await;
 
-    if let Err(error) = result {
-        Err(AgentExecError::FailedRestoration {
+        if let Err(error) = result {
+            Err(AgentExecError::FailedRestoration { lane_name, error })
+        } else if let Err(error) = wait_for_initialized(&mut out_rx).await {
+            Err(AgentExecError::FailedRestoration { lane_name, error })
+        } else {
+            let endpoint = LaneEndpoint {
+                name: lane_name,
+                kind,
+                io: (in_tx, out_rx),
+            };
+            Ok(endpoint)
+        }
+    })
+    .await;
+    result
+        .map_err(move |_| AgentExecError::FailedRestoration {
             lane_name: name,
-            error,
+            error: StoreInitError::LaneInitiailizationTimeout,
         })
-    } else if let Err(error) = wait_for_initialized(&mut out_rx).await {
-        Err(AgentExecError::FailedRestoration {
-            lane_name: name,
-            error,
-        })
-    } else {
-        let endpoint = LaneEndpoint {
-            name,
-            kind,
-            io: (in_tx, out_rx),
-        };
-        Ok(endpoint)
-    }
+        .and_then(identity)
 }

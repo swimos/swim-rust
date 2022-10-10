@@ -42,7 +42,7 @@ pub enum StoreInitError {
     LaneInitiailizationTimeout,
 }
 
-type InitFut<'a> = BoxFuture<'a, Result<(), StoreInitError>>;
+pub type InitFut<'a> = BoxFuture<'a, Result<(), StoreInitError>>;
 
 pub trait Initializer<'a> {
     fn initialize<'b>(self: Box<Self>, writer: &'b mut ByteWriter) -> InitFut<'b>

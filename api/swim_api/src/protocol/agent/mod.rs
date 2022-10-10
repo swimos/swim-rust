@@ -87,6 +87,12 @@ pub struct LaneRequestEncoder<Inner> {
     inner: Inner,
 }
 
+impl<Inner> LaneRequestEncoder<Inner> {
+    pub fn new(inner: Inner) -> Self {
+        LaneRequestEncoder { inner }
+    }
+}
+
 impl LaneRequestEncoder<WithLengthBytesCodec> {
     pub fn value() -> Self {
         LaneRequestEncoder {

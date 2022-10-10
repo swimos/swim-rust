@@ -12,18 +12,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::time::Duration;
+use std::{num::NonZeroUsize, time::Duration};
 
 use futures::{
     future::{join, BoxFuture},
-    FutureExt,
+    FutureExt, SinkExt, StreamExt,
 };
-use swim_api::agent::{LaneConfig, UplinkKind};
+use swim_api::{
+    agent::{LaneConfig, UplinkKind},
+    error::StoreError,
+    protocol::{
+        agent::{
+            LaneRequest, LaneRequestDecoder, LaneRequestEncoder, LaneResponse, LaneResponseEncoder,
+        },
+        WithLengthBytesCodec,
+    },
+};
 use swim_model::Text;
-use swim_utilities::{io::byte_channel, trigger};
+use swim_utilities::{
+    algebra::non_zero_usize,
+    io::byte_channel::{self, byte_channel, ByteWriter},
+    trigger,
+};
 use tokio::sync::{mpsc, oneshot};
+use tokio_util::codec::{FramedRead, FramedWrite};
 
 use crate::agent::{
+    store::{InitFut, Initializer, StoreInitError},
     task::{InitialEndpoints, LaneEndpoint},
     AgentExecError, AgentRuntimeRequest, DownlinkRequest, Io,
 };
@@ -312,4 +327,200 @@ async fn two_lanes() {
             }
         }
     }
+}
+
+#[derive(Default)]
+struct DummtInit {
+    error: Option<StoreInitError>,
+}
+
+impl<'a> Initializer<'a> for DummtInit {
+    fn initialize<'b>(self: Box<Self>, writer: &'b mut ByteWriter) -> InitFut<'b>
+    where
+        'a: 'b,
+    {
+        async move {
+            if let Some(err) = self.error {
+                Err(err)
+            } else {
+                let mut framed = FramedWrite::new(
+                    writer,
+                    LaneRequestEncoder::new(WithLengthBytesCodec::default()),
+                );
+                framed.send(LaneRequest::<&[u8]>::InitComplete).await?;
+                Ok(())
+            }
+        }
+        .boxed()
+    }
+}
+
+const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
+const TEST_TIMEOUT: Duration = Duration::from_secs(5);
+const LANE_INIT_TIMEOUT: Duration = Duration::from_secs(1);
+
+#[tokio::test]
+async fn run_initializer_success() {
+    tokio::time::timeout(TEST_TIMEOUT, async {
+        let (tx_in, rx_in) = byte_channel(BUFFER_SIZE);
+        let (tx_out, rx_out) = byte_channel(BUFFER_SIZE);
+        let init_task = super::lane_initialization(
+            Text::new("lane"),
+            UplinkKind::Value,
+            LANE_INIT_TIMEOUT,
+            tx_in,
+            rx_out,
+            Box::new(DummtInit::default()),
+        );
+
+        let test_task = async {
+            let mut framed_read = FramedRead::new(
+                rx_in,
+                LaneRequestDecoder::new(WithLengthBytesCodec::default()),
+            );
+            let mut framed_write = FramedWrite::new(
+                tx_out,
+                LaneResponseEncoder::new(WithLengthBytesCodec::default()),
+            );
+
+            assert!(matches!(
+                framed_read.next().await,
+                Some(Ok(LaneRequest::InitComplete))
+            ));
+            assert!(framed_write
+                .send(LaneResponse::<&[u8]>::Initialized)
+                .await
+                .is_ok());
+        };
+
+        let (result, _) = join(init_task, test_task).await;
+        let LaneEndpoint { name, kind, .. } = result.expect("Init failed.");
+        assert_eq!(name, "lane");
+        assert_eq!(kind, UplinkKind::Value);
+    })
+    .await
+    .expect("Test timed out.")
+}
+
+#[tokio::test]
+async fn run_initializer_failed_init() {
+    tokio::time::timeout(TEST_TIMEOUT, async {
+        let (tx_in, _rx_in) = byte_channel(BUFFER_SIZE);
+        let (_tx_out, rx_out) = byte_channel(BUFFER_SIZE);
+        let init = DummtInit {
+            error: Some(StoreInitError::Store(StoreError::KeyspaceNotFound)),
+        };
+        let init_task = super::lane_initialization(
+            Text::new("lane"),
+            UplinkKind::Value,
+            LANE_INIT_TIMEOUT,
+            tx_in,
+            rx_out,
+            Box::new(init),
+        );
+
+        let result = init_task.await;
+        match result {
+            Err(AgentExecError::FailedRestoration {
+                lane_name,
+                error: StoreInitError::Store(StoreError::KeyspaceNotFound),
+            }) => {
+                assert_eq!(lane_name, "lane");
+            }
+            ow => panic!("Unexpected result: {:?}", ow),
+        }
+    })
+    .await
+    .expect("Test timed out.");
+}
+
+#[tokio::test]
+async fn run_initializer_bad_response() {
+    tokio::time::timeout(TEST_TIMEOUT, async {
+        let (tx_in, rx_in) = byte_channel(BUFFER_SIZE);
+        let (tx_out, rx_out) = byte_channel(BUFFER_SIZE);
+        let init_task = super::lane_initialization(
+            Text::new("lane"),
+            UplinkKind::Value,
+            LANE_INIT_TIMEOUT,
+            tx_in,
+            rx_out,
+            Box::new(DummtInit::default()),
+        );
+
+        let test_task = async {
+            let mut framed_read = FramedRead::new(
+                rx_in,
+                LaneRequestDecoder::new(WithLengthBytesCodec::default()),
+            );
+            let mut framed_write = FramedWrite::new(
+                tx_out,
+                LaneResponseEncoder::new(WithLengthBytesCodec::default()),
+            );
+
+            assert!(matches!(
+                framed_read.next().await,
+                Some(Ok(LaneRequest::InitComplete))
+            ));
+            assert!(framed_write
+                .send(LaneResponse::StandardEvent(&[0]))
+                .await
+                .is_ok());
+        };
+
+        let (result, _) = join(init_task, test_task).await;
+        match result {
+            Err(AgentExecError::FailedRestoration {
+                lane_name,
+                error: StoreInitError::NoAckFromLane,
+            }) => {
+                assert_eq!(lane_name, "lane");
+            }
+            ow => panic!("Unexpected result: {:?}", ow),
+        }
+    })
+    .await
+    .expect("Test timed out.")
+}
+
+#[tokio::test]
+async fn run_initializer_timeout() {
+    tokio::time::timeout(TEST_TIMEOUT, async {
+        let (tx_in, rx_in) = byte_channel(BUFFER_SIZE);
+        let (tx_out, rx_out) = byte_channel(BUFFER_SIZE);
+        let init_task = super::lane_initialization(
+            Text::new("lane"),
+            UplinkKind::Value,
+            Duration::from_millis(100),
+            tx_in,
+            rx_out,
+            Box::new(DummtInit::default()),
+        );
+
+        let test_task = async {
+            let mut framed_read = FramedRead::new(
+                rx_in,
+                LaneRequestDecoder::new(WithLengthBytesCodec::default()),
+            );
+
+            assert!(matches!(
+                framed_read.next().await,
+                Some(Ok(LaneRequest::InitComplete))
+            ));
+            tx_out
+        };
+
+        let (result, _tx_out) = join(init_task, test_task).await;
+        match result {
+            Err(AgentExecError::FailedRestoration {
+                lane_name,
+                error: StoreInitError::LaneInitiailizationTimeout,
+            }) => {
+                assert_eq!(lane_name, "lane");
+            }
+            ow => panic!("Unexpected result: {:?}", ow),
+        }
+    })
+    .await
+    .expect("Test timed out.")
 }
