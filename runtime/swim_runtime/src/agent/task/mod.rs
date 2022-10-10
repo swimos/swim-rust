@@ -82,6 +82,8 @@ mod write_fut;
 pub use init::AgentInitTask;
 
 #[cfg(test)]
+mod fake_store;
+#[cfg(test)]
 mod tests;
 
 /// Type for requests that can be sent to the agent runtime task by an agent implementation.

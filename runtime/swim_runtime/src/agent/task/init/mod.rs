@@ -60,12 +60,38 @@ impl AgentInitTask {
         init_complete: trigger::Receiver,
         lane_init_timeout: Duration,
     ) -> Self {
+        Self::with_store(
+            requests,
+            downlink_requests,
+            init_complete,
+            lane_init_timeout,
+            StoreDisabled::default(),
+        )
+    }
+}
+
+impl<Store> AgentInitTask<Store>
+where
+    Store: AgentPersistence + Clone + Send + Sync,
+{
+    /// #Arguments
+    /// * `requests` - Channel for requests to open new lanes and downlinks.
+    /// * `init_complete` - Triggered when the initialization phase is complete.
+    /// * `lane_init_timeout` - Timeout for initializing lanes from the store.
+    /// * `store` - Store for lane persistence.
+    pub fn with_store(
+        requests: mpsc::Receiver<AgentRuntimeRequest>,
+        downlink_requests: mpsc::Sender<DownlinkRequest>,
+        init_complete: trigger::Receiver,
+        lane_init_timeout: Duration,
+        store: Store,
+    ) -> Self {
         AgentInitTask {
             requests,
             downlink_requests,
             init_complete,
             lane_init_timeout,
-            store: StoreDisabled::default(),
+            store,
         }
     }
 }
