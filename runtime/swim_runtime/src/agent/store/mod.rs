@@ -15,6 +15,7 @@
 use bytes::BytesMut;
 use futures::{future::BoxFuture, FutureExt, SinkExt};
 use swim_api::{
+    agent::UplinkKind,
     error::StoreError,
     protocol::{
         agent::{LaneRequest, LaneRequestEncoder},
@@ -205,5 +206,45 @@ where
         let StorePersistence(store) = self;
         let init = MapInit { store, lane_id };
         Some(Box::new(init))
+    }
+}
+
+struct NoValueInit;
+struct NoMapInit;
+
+pub fn no_store_init<'a>(kind: UplinkKind) -> BoxInitializer<'a> {
+    match kind {
+        UplinkKind::Value => Box::new(NoValueInit),
+        UplinkKind::Map => Box::new(NoMapInit),
+    }
+}
+
+impl<'a> Initializer<'a> for NoValueInit {
+    fn initialize<'b>(self: Box<Self>, channel: &'b mut ByteWriter) -> InitFut<'b>
+    where
+        'a: 'b,
+    {
+        async move {
+            let mut writer = FramedWrite::new(channel, ValueLaneEncoder::default());
+            writer.send(LaneRequest::<&[u8]>::InitComplete).await?;
+            Ok(())
+        }
+        .boxed()
+    }
+}
+
+impl<'a> Initializer<'a> for NoMapInit {
+    fn initialize<'b>(self: Box<Self>, channel: &'b mut ByteWriter) -> InitFut<'b>
+    where
+        'a: 'b,
+    {
+        async move {
+            let mut writer = FramedWrite::new(channel, MapLaneEncoder::default());
+            writer
+                .send(LaneRequest::<MapMessage<&[u8], &[u8]>>::InitComplete)
+                .await?;
+            Ok(())
+        }
+        .boxed()
     }
 }

@@ -26,7 +26,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::FramedRead;
 
 use crate::agent::{
-    store::{AgentPersistence, BoxInitializer, StoreDisabled, StoreInitError},
+    store::{no_store_init, AgentPersistence, BoxInitializer, StoreDisabled, StoreInitError},
     AgentExecError, AgentRuntimeRequest, DownlinkRequest, Io,
 };
 use swim_api::protocol::agent::{LaneResponse, ValueLaneResponseDecoder};
@@ -160,26 +160,25 @@ impl<Store: AgentPersistence + Clone + Send + Sync> AgentInitTask<Store> {
                                         error: StoreInitError::Store(error),
                                     }
                                 })?;
-                                if let Some(initializer) = match kind {
-                                    UplinkKind::Value => store.init_value_lane(lane_id),
-                                    UplinkKind::Map => store.init_map_lane(lane_id),
-                                } {
-                                    let init_task = lane_initialization(
-                                        name.clone(),
-                                        kind,
-                                        lane_init_timeout,
-                                        in_tx,
-                                        out_rx,
-                                        initializer,
-                                    );
-                                    initializers.push(init_task);
-                                } else {
-                                    endpoints.push(LaneEndpoint {
-                                        name,
-                                        kind,
-                                        io: (in_tx, out_rx),
-                                    });
-                                }
+
+                                let initializer = match kind {
+                                    UplinkKind::Value => store
+                                        .init_value_lane(lane_id)
+                                        .unwrap_or_else(|| no_store_init(UplinkKind::Value)),
+                                    UplinkKind::Map => store
+                                        .init_map_lane(lane_id)
+                                        .unwrap_or_else(|| no_store_init(UplinkKind::Map)),
+                                };
+
+                                let init_task = lane_initialization(
+                                    name.clone(),
+                                    kind,
+                                    lane_init_timeout,
+                                    in_tx,
+                                    out_rx,
+                                    initializer,
+                                );
+                                initializers.push(init_task);
                             }
                         } else {
                             error!(
