@@ -344,12 +344,18 @@ where
                     }
                 }
                 LaneResponseDecoderState::Std => {
-                    return Ok(inner.decode(src)?.map(LaneResponse::StandardEvent));
+                    let result = inner.decode(src);
+                    if !matches!(result, Ok(None)) {
+                        *state = LaneResponseDecoderState::Header;
+                    }
+                    return Ok(result?.map(LaneResponse::StandardEvent));
                 }
                 LaneResponseDecoderState::Sync(id) => {
-                    return Ok(inner
-                        .decode(src)?
-                        .map(move |item| LaneResponse::SyncEvent(id, item)));
+                    let result = inner.decode(src);
+                    if !matches!(result, Ok(None)) {
+                        *state = LaneResponseDecoderState::Header;
+                    }
+                    return Ok(result?.map(move |item| LaneResponse::SyncEvent(id, item)));
                 }
             }
         }

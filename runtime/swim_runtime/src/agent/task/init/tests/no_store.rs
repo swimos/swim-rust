@@ -201,7 +201,9 @@ async fn single_lane() {
         let InitialEndpoints { mut endpoints, .. } = initial;
 
         assert_eq!(endpoints.len(), 1);
-        let LaneEndpoint { name, kind, mut io } = endpoints.pop().unwrap();
+        let LaneEndpoint {
+            name, kind, mut io, ..
+        } = endpoints.pop().unwrap();
         assert_eq!(name, "my_lane");
         assert_eq!(kind, UplinkKind::Value);
         check_connected(&mut agent_io, &mut io);
@@ -317,7 +319,10 @@ async fn two_lanes() {
 
         let TwoLanes { mut value, mut map } = agent_lanes;
 
-        for LaneEndpoint { name, kind, mut io } in endpoints {
+        for LaneEndpoint {
+            name, kind, mut io, ..
+        } in endpoints
+        {
             match kind {
                 UplinkKind::Value => {
                     assert!(!seen_value);

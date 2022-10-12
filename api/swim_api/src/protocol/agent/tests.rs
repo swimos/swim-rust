@@ -95,6 +95,7 @@ fn round_trip_request(request: LaneRequest<Example>) {
             panic!("Decoding failed: {}", e);
         }
     }
+    assert!(buffer.is_empty());
 }
 
 #[test]
@@ -194,6 +195,7 @@ fn round_trip_value_response(response: LaneResponse<Example>) {
             panic!("Decoding failed: {}", e);
         }
     }
+    assert!(buffer.is_empty());
 }
 
 #[test]
@@ -320,6 +322,7 @@ fn round_trip_map_response(response: MapLaneResponse<i32, Example>) {
             panic!("Decoding failed: {}", e);
         }
     }
+    assert!(buffer.is_empty());
 }
 
 #[test]
@@ -344,4 +347,41 @@ fn decode_syncevent_map_lane_response() {
             value: Example { a: 7, b: 77 },
         },
     ));
+}
+
+#[test]
+fn decoder_sequential_value_responses() {
+    let response1 = LaneResponse::event(5);
+    let response2 = LaneResponse::event(56);
+    let with_bytes1 = to_bytes(&response1);
+    let with_bytes2 = to_bytes(&response2);
+    let mut encoder = ValueLaneResponseEncoder::default();
+    let mut buffer = BytesMut::new();
+    assert!(encoder.encode(response1, &mut buffer).is_ok());
+    assert!(encoder.encode(response2, &mut buffer).is_ok());
+
+    let mut decoder = ValueLaneResponseDecoder::default();
+    match decoder.decode(&mut buffer) {
+        Ok(Some(restored)) => {
+            assert_eq!(restored, with_bytes1);
+        }
+        Ok(_) => {
+            panic!("Decoding incomplete.");
+        }
+        Err(e) => {
+            panic!("Decoding failed: {}", e);
+        }
+    }
+    match decoder.decode(&mut buffer) {
+        Ok(Some(restored)) => {
+            assert_eq!(restored, with_bytes2);
+        }
+        Ok(_) => {
+            panic!("Decoding incomplete.");
+        }
+        Err(e) => {
+            panic!("Decoding failed: {}", e);
+        }
+    }
+    assert!(buffer.is_empty());
 }

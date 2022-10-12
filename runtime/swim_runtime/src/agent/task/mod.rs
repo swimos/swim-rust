@@ -107,13 +107,20 @@ struct LaneEndpoint<T> {
     name: Text,
     /// The subprotocol used by the lane.
     kind: UplinkKind,
+    /// Whether the lane state should be persisted.
+    transient: bool,
     /// The channel endpoint/s.
     io: T,
 }
 
 impl<T> LaneEndpoint<T> {
-    fn new(name: Text, kind: UplinkKind, io: T) -> Self {
-        LaneEndpoint { name, kind, io }
+    fn new(name: Text, kind: UplinkKind, transient: bool, io: T) -> Self {
+        LaneEndpoint {
+            name,
+            kind,
+            transient,
+            io,
+        }
     }
 }
 
@@ -123,12 +130,13 @@ impl LaneEndpoint<Io> {
         let LaneEndpoint {
             name,
             kind,
+            transient,
             io: (tx, rx),
         } = self;
 
-        let read = LaneEndpoint::new(name.clone(), kind, rx);
+        let read = LaneEndpoint::new(name.clone(), kind, transient, rx);
 
-        let write = LaneEndpoint::new(name, kind, tx);
+        let write = LaneEndpoint::new(name, kind, transient, tx);
 
         (write, read)
     }
@@ -138,17 +146,27 @@ impl LaneEndpoint<ByteReader> {
     /// Create a [`Stream`] that will read messages from an endpoint.
     /// #Arguments
     /// * `registry` - The registry that assigns identifiiers to active lanes.
-    fn into_lane_stream<I>(self, store_id: I, registry: &mut LaneRegistry) -> LaneStream<I>
+    fn into_lane_stream<Store>(
+        self,
+        store: &Store,
+        registry: &mut LaneRegistry,
+    ) -> Result<LaneStream<Store::LaneId>, StoreError>
     where
-        I: Unpin + Copy,
+        Store: AgentPersistence,
     {
         let LaneEndpoint {
             name,
             kind,
+            transient,
             io: reader,
         } = self;
+        let store_id = if transient {
+            None
+        } else {
+            Some(store.lane_id(name.as_str())?)
+        };
         let id = registry.add_endpoint(name);
-        match kind {
+        Ok(match kind {
             UplinkKind::Value => {
                 let receiver = LaneReceiver::value(id, store_id, reader);
                 Either::Left(receiver).stop_after_error()
@@ -157,7 +175,7 @@ impl LaneEndpoint<ByteReader> {
                 let receiver = LaneReceiver::map(id, store_id, reader);
                 Either::Right(receiver).stop_after_error()
             }
-        }
+        })
     }
 }
 
@@ -314,7 +332,7 @@ where
 #[derive(Debug)]
 struct LaneReceiver<D, I> {
     lane_id: u64,
-    store_id: I,
+    store_id: Option<I>,
     receiver: FramedRead<ByteReader, D>,
 }
 
@@ -387,7 +405,7 @@ fn map_raw_response(resp: MapLaneResponse<BytesMut, BytesMut>) -> Option<RawLane
 }
 
 impl<I> LaneReceiver<ValueLaneResponseDecoder, I> {
-    fn value(lane_id: u64, store_id: I, reader: ByteReader) -> Self {
+    fn value(lane_id: u64, store_id: Option<I>, reader: ByteReader) -> Self {
         LaneReceiver {
             lane_id,
             store_id,
@@ -397,7 +415,7 @@ impl<I> LaneReceiver<ValueLaneResponseDecoder, I> {
 }
 
 impl<I> LaneReceiver<MapLaneResponseDecoder, I> {
-    fn map(lane_id: u64, store_id: I, reader: ByteReader) -> Self {
+    fn map(lane_id: u64, store_id: Option<I>, reader: ByteReader) -> Self {
         LaneReceiver {
             lane_id,
             store_id,
@@ -414,7 +432,7 @@ impl<I> Stream for ValueLaneReceiver<I>
 where
     I: Copy + Unpin,
 {
-    type Item = Result<(u64, I, RawLaneResponse), Failed>;
+    type Item = Result<(u64, Option<I>, RawLaneResponse), Failed>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
@@ -441,7 +459,7 @@ impl<I> Stream for MapLaneReceiver<I>
 where
     I: Copy + Unpin,
 {
-    type Item = Result<(u64, I, RawLaneResponse), Failed>;
+    type Item = Result<(u64, Option<I>, RawLaneResponse), Failed>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
@@ -680,7 +698,10 @@ async fn handle_runtime_request(
                 sender,
             });
             write_permit.send(WriteTaskMessage::Lane(LaneEndpoint::new(
-                name, kind, out_rx,
+                name,
+                kind,
+                config.transient,
+                out_rx,
             )));
             if promise.send(Ok((out_tx, in_rx))).is_err() {
                 error!(BAD_LANE_REG);
@@ -801,7 +822,7 @@ async fn read_task(
     let mut needs_flush = None;
     let mut voted = false;
 
-    for LaneEndpoint { name, kind, io } in initial_endpoints.into_iter() {
+    for LaneEndpoint { name, kind, io, .. } in initial_endpoints.into_iter() {
         let i = next_id();
         name_mapping.insert(name, i);
         lanes.insert(i, LaneSender::new(io, kind));
@@ -1031,7 +1052,7 @@ enum WriteTaskEvent<I> {
     /// An message received from one of the attached lanes.
     Event {
         id: u64,
-        store_id: I,
+        store_id: Option<I>,
         response: RawLaneResponse,
     },
     /// A write (to one of the attached remotes) completed.
@@ -1365,14 +1386,12 @@ impl WriteTaskState {
             ..
         } = self;
         match reg {
-            WriteTaskMessage::Lane(endpoint) => match store.lane_id(endpoint.name.as_str()) {
-                Ok(store_id) => {
-                    let lane_stream =
-                        endpoint.into_lane_stream(store_id, remote_tracker.lane_registry());
-                    TaskMessageResult::AddLane(lane_stream)
+            WriteTaskMessage::Lane(endpoint) => {
+                match endpoint.into_lane_stream(store, remote_tracker.lane_registry()) {
+                    Ok(lane_stream) => TaskMessageResult::AddLane(lane_stream),
+                    Err(error) => TaskMessageResult::StoreFailure(error),
                 }
-                Err(error) => TaskMessageResult::StoreFailure(error),
-            },
+            }
             WriteTaskMessage::Remote {
                 id,
                 writer,
@@ -1531,7 +1550,6 @@ impl WriteTaskState {
             ..
         } = self;
         info!("Attempting to remove lane with id {}.", lane_id);
-        write_tracker.remove_lane(lane_id);
         let linked_remotes = links.remove_lane(lane_id);
         linked_remotes.into_iter().map(move |unlink| {
             let TriggerUnlink { remote_id, .. } = unlink;
@@ -1622,8 +1640,8 @@ where
 
     info!(endpoints = ?initial_endpoints, "Adding initial endpoints.");
     for endpoint in initial_endpoints {
-        let store_id = store.lane_id(endpoint.name.as_str())?;
-        let lane_stream = endpoint.into_lane_stream(store_id, state.remote_tracker.lane_registry());
+        let lane_stream =
+            endpoint.into_lane_stream(&store, state.remote_tracker.lane_registry())?;
         streams.add_lane(lane_stream);
     }
 
@@ -1678,7 +1696,9 @@ where
                     streams.enable_timeout();
                     voted = false;
                 }
-                persist_response(&store, store_id, &response)?;
+                if let Some(store_id) = store_id {
+                    persist_response(&store, store_id, &response)?;
+                }
                 for write in state.handle_event(id, response) {
                     streams.schedule_write(write.into_future());
                 }

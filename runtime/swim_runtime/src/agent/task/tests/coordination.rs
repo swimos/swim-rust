@@ -135,6 +135,7 @@ impl FakeAgent {
                 name,
                 kind,
                 io: (io_tx, io_rx),
+                ..
             } = endpoint;
             match kind {
                 UplinkKind::Value => {
@@ -149,6 +150,7 @@ impl FakeAgent {
             lanes.push(LaneReader::new(LaneEndpoint {
                 name,
                 kind,
+                transient: false,
                 io: io_rx,
             }));
         }
@@ -252,7 +254,7 @@ impl FakeAgent {
                                 map_lanes.insert(name.clone(), (m, MapLaneSender::new(io_tx)));
                             }
                         }
-                        lanes.push(LaneReader::new(LaneEndpoint { name, kind, io: io_rx }));
+                        lanes.push(LaneReader::new(LaneEndpoint { name, kind, transient: false, io: io_rx }));
                     } else {
                         break;
                     }
@@ -345,22 +347,26 @@ where
     runtime_endpoints.push(LaneEndpoint::new(
         Text::new(VAL_LANE),
         UplinkKind::Value,
+        false,
         (tx_in_val, rx_out_val),
     ));
     runtime_endpoints.push(LaneEndpoint::new(
         Text::new(MAP_LANE),
         UplinkKind::Map,
+        false,
         (tx_in_map, rx_out_map),
     ));
 
     agent_endpoints.push(LaneEndpoint::new(
         Text::new(VAL_LANE),
         UplinkKind::Value,
+        false,
         (tx_out_val, rx_in_val),
     ));
     agent_endpoints.push(LaneEndpoint::new(
         Text::new(MAP_LANE),
         UplinkKind::Map,
+        false,
         (tx_out_map, rx_in_map),
     ));
 

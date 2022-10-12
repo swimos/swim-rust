@@ -171,7 +171,9 @@ async fn init_single_value_lane_from_store() {
     let InitialEndpoints { mut endpoints, .. } = initial;
 
     assert_eq!(endpoints.len(), 1);
-    let LaneEndpoint { name, kind, mut io } = endpoints.pop().unwrap();
+    let LaneEndpoint {
+        name, kind, mut io, ..
+    } = endpoints.pop().unwrap();
     assert_eq!(name, "value");
     assert_eq!(kind, UplinkKind::Value);
     check_connected(&mut agent_io, &mut io);
@@ -195,7 +197,9 @@ async fn init_single_trasient_value_lane_with_store() {
     let InitialEndpoints { mut endpoints, .. } = initial;
 
     assert_eq!(endpoints.len(), 1);
-    let LaneEndpoint { name, kind, mut io } = endpoints.pop().unwrap();
+    let LaneEndpoint {
+        name, kind, mut io, ..
+    } = endpoints.pop().unwrap();
     assert_eq!(name, "value");
     assert_eq!(kind, UplinkKind::Value);
     check_connected(&mut agent_io, &mut io);
@@ -320,7 +324,9 @@ async fn init_single_map_lane_from_store() {
     let InitialEndpoints { mut endpoints, .. } = initial;
 
     assert_eq!(endpoints.len(), 1);
-    let LaneEndpoint { name, kind, mut io } = endpoints.pop().unwrap();
+    let LaneEndpoint {
+        name, kind, mut io, ..
+    } = endpoints.pop().unwrap();
     assert_eq!(name, "map");
     assert_eq!(kind, UplinkKind::Map);
     check_connected(&mut agent_io, &mut io);
@@ -349,7 +355,9 @@ async fn init_single_transient_map_lane_with_store() {
     let InitialEndpoints { mut endpoints, .. } = initial;
 
     assert_eq!(endpoints.len(), 1);
-    let LaneEndpoint { name, kind, mut io } = endpoints.pop().unwrap();
+    let LaneEndpoint {
+        name, kind, mut io, ..
+    } = endpoints.pop().unwrap();
     assert_eq!(name, "map");
     assert_eq!(kind, UplinkKind::Map);
     check_connected(&mut agent_io, &mut io);

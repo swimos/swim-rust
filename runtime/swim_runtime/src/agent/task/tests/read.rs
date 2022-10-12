@@ -133,11 +133,13 @@ where
         LaneEndpoint {
             name: Text::new(VAL_LANE),
             kind: UplinkKind::Value,
+            transient: false,
             io: byte_channel(BUFFER_SIZE),
         },
         LaneEndpoint {
             name: Text::new(MAP_LANE),
             kind: UplinkKind::Map,
+            transient: false,
             io: byte_channel(BUFFER_SIZE),
         },
     ];

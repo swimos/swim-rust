@@ -151,6 +151,7 @@ impl<Store: AgentPersistence + Clone + Send + Sync> AgentInitTask<Store> {
                                 endpoints.push(LaneEndpoint {
                                     name,
                                     kind,
+                                    transient,
                                     io: (in_tx, out_rx),
                                 });
                             } else {
@@ -239,6 +240,7 @@ async fn lane_initialization(
         } else {
             let endpoint = LaneEndpoint {
                 name: lane_name,
+                transient: false,
                 kind,
                 io: (in_tx, out_rx),
             };

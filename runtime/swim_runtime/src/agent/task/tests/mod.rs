@@ -285,7 +285,7 @@ enum LaneReader {
 
 impl LaneReader {
     fn new(endpoint: LaneEndpoint<ByteReader>) -> Self {
-        let LaneEndpoint { name, kind, io } = endpoint;
+        let LaneEndpoint { name, kind, io, .. } = endpoint;
         match kind {
             UplinkKind::Value => LaneReader::Value {
                 name,
