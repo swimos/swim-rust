@@ -29,26 +29,12 @@ use swim_utilities::{
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
-use super::{check_connected, run_test, TestInit, BUFFER_SIZE, INIT_STOPPED, NO_LANE, NO_RESPONSE};
+use super::{check_connected, run_test, TestInit, CONFIGS, INIT_STOPPED, NO_LANE, NO_RESPONSE};
 use crate::agent::{
     store::StoreDisabled,
     task::{AgentRuntimeRequest, InitialEndpoints, LaneEndpoint},
-    DownlinkRequest, Io,
+    AgentExecError, DownlinkRequest, Io,
 };
-
-const TRANSIENT: LaneConfig = LaneConfig {
-    input_buffer_size: BUFFER_SIZE,
-    output_buffer_size: BUFFER_SIZE,
-    transient: true,
-};
-
-const PERSISTENT: LaneConfig = LaneConfig {
-    input_buffer_size: BUFFER_SIZE,
-    output_buffer_size: BUFFER_SIZE,
-    transient: false,
-};
-
-const CONFIGS: &[LaneConfig] = &[TRANSIENT, PERSISTENT];
 
 struct NoLanesInit;
 
@@ -201,8 +187,8 @@ impl TestInit for SingleLaneInit {
 
 #[tokio::test]
 async fn no_lanes() {
-    let (initial, _) = run_test(NoLanesInit, StoreDisabled::default()).await;
-    assert!(initial.is_err());
+    let (result, _) = run_test(NoLanesInit, StoreDisabled::default()).await;
+    assert!(matches!(result, Err(AgentExecError::NoInitialLanes)));
 }
 
 #[tokio::test]

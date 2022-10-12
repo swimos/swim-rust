@@ -19,7 +19,7 @@ use futures::{
     FutureExt, SinkExt, StreamExt,
 };
 use swim_api::{
-    agent::UplinkKind,
+    agent::{LaneConfig, UplinkKind},
     error::StoreError,
     protocol::{
         agent::{
@@ -44,6 +44,7 @@ use crate::agent::{
 };
 
 mod no_store;
+mod with_store;
 
 trait TestInit {
     type Output;
@@ -62,6 +63,20 @@ const NO_LANE: &str = "Initialization task failed to create the lane";
 
 const DL_CHAN_SIZE: usize = 8;
 const INIT_TIMEOUT: Duration = Duration::from_secs(5);
+
+const TRANSIENT: LaneConfig = LaneConfig {
+    input_buffer_size: BUFFER_SIZE,
+    output_buffer_size: BUFFER_SIZE,
+    transient: true,
+};
+
+const PERSISTENT: LaneConfig = LaneConfig {
+    input_buffer_size: BUFFER_SIZE,
+    output_buffer_size: BUFFER_SIZE,
+    transient: false,
+};
+
+const CONFIGS: &[LaneConfig] = &[TRANSIENT, PERSISTENT];
 
 async fn run_test<T: TestInit, Store>(
     init: T,

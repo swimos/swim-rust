@@ -160,6 +160,7 @@ impl AgentPersistence for StoreDisabled {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct StorePersistence<S>(pub S);
 
 type ValueLaneEncoder = LaneRequestEncoder<WithLengthBytesCodec>;

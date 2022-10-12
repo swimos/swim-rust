@@ -23,9 +23,11 @@ use swim_api::{
     error::StoreError,
     store::{KeyValue, MapPersistence, NodePersistenceBase, RangeConsumer},
 };
+use swim_form::structural::write::StructuralWritable;
 use swim_model::Text;
+use swim_recon::printer::print_recon_compact;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct FakeMapLaneStore {
     data: HashMap<Vec<u8>, Vec<u8>>,
     staged_error: Option<StoreError>,
@@ -41,15 +43,15 @@ struct FakeStoreInner {
     valid: HashSet<Text>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct FakeStore {
     inner: Arc<Mutex<FakeStoreInner>>,
 }
 
 impl FakeStore {
-    pub fn new<'a, I: Iterator<Item = &'a str>>(valid: I) -> Self {
+    pub fn new<'a, I: IntoIterator<Item = &'a str>>(valid: I) -> Self {
         let inner = FakeStoreInner {
-            valid: valid.map(Text::new).collect(),
+            valid: valid.into_iter().map(Text::new).collect(),
             ..Default::default()
         };
         FakeStore {
@@ -57,21 +59,21 @@ impl FakeStore {
         }
     }
 
-    pub fn invalidate(&self, name: &str) {
+    pub fn put_map<K: StructuralWritable, V: StructuralWritable>(
+        &self,
+        id: u64,
+        map: HashMap<K, V>,
+        error: Option<StoreError>,
+    ) {
         let mut guard = self.inner.lock();
-        let FakeStoreInner {
-            values,
-            maps,
-            ids_forward,
-            ids_back,
-            valid,
-            ..
-        } = &mut *guard;
-        valid.remove(name);
-        if let Some(id) = ids_forward.remove(name) {
-            ids_back.remove(&id);
-            values.remove(&id);
-            maps.remove(&id);
+        let FakeStoreInner { maps, ids_back, .. } = &mut *guard;
+        assert!(ids_back.contains_key(&id));
+        let target = maps.entry(id).or_insert_with(Default::default);
+        target.staged_error = error;
+        for (k, v) in map {
+            let key = format!("{}", print_recon_compact(&k)).into_bytes();
+            let value = format!("{}", print_recon_compact(&v)).into_bytes();
+            target.data.insert(key, value);
         }
     }
 }
