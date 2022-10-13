@@ -107,7 +107,7 @@ impl LogLevel {
     }
 }
 
-#[derive(PartialOrd, PartialEq, Debug, Clone)]
+#[derive(PartialOrd, PartialEq, Eq, Debug, Clone)]
 pub struct InvalidUri(pub String);
 
 /// Try to parse a `LogLevel` from a URI str.
