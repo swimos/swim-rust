@@ -14,7 +14,6 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::hash::Hash;
-use std::marker::PhantomData;
 
 use bytes::BytesMut;
 use futures::{
@@ -37,7 +36,10 @@ use swim_recon::parser::{AsyncParseError, ParseError, RecognizerDecoder};
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use tokio_util::codec::{Decoder, FramedRead, FramedWrite};
 
-use crate::lanes::{CommandLane, MapLane, ValueLane};
+use crate::lanes::{MapLane, ValueLane};
+
+#[cfg(test)]
+mod tests;
 
 const UNEXPECTED_SYNC: &str = "Sync messages are not permitted during initialization.";
 
@@ -138,18 +140,6 @@ pub struct ValueLaneInitializer<Agent, T> {
 impl<Agent, T> ValueLaneInitializer<Agent, T> {
     pub fn new(projection: fn(&Agent) -> &ValueLane<T>) -> Self {
         ValueLaneInitializer { projection }
-    }
-}
-
-pub struct CommandLaneInitializer<Agent, T> {
-    _projection: PhantomData<fn(&Agent) -> &CommandLane<T>>,
-}
-
-impl<Agent, T> Default for CommandLaneInitializer<Agent, T> {
-    fn default() -> Self {
-        Self {
-            _projection: Default::default(),
-        }
     }
 }
 
@@ -270,30 +260,5 @@ where
         Err(AsyncParseError::Parser(ParseError::Structure(
             ReadError::IncompleteRecord,
         )))
-    }
-}
-
-impl<Agent, T> LaneInitializer<Agent, BytesMut> for CommandLaneInitializer<Agent, T>
-where
-    Agent: 'static,
-    T: RecognizerReadable + Send + 'static,
-{
-    fn initialize(
-        self: Box<Self>,
-        mut stream: BoxStream<'_, Result<BytesMut, FrameIoError>>,
-    ) -> BoxFuture<'_, Result<InitFn<Agent>, FrameIoError>> {
-        async move {
-            let mut body = BytesMut::new();
-            while let Some(bytes) = stream.next().await {
-                body = bytes?;
-            }
-            if !body.is_empty() {
-                Err(AsyncParseError::UnconsumedInput.into())
-            } else {
-                let init_fn: InitFn<Agent> = Box::new(|_: &Agent| {});
-                Ok(init_fn)
-            }
-        }
-        .boxed()
     }
 }

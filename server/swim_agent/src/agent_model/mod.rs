@@ -58,7 +58,7 @@ use io::{LaneReader, LaneWriter};
 
 use self::downlink::handlers::BoxDownlinkChannel;
 use self::init::{run_lane_initializer, InitializedLane, LaneInitializer};
-pub use init::{CommandLaneInitializer, MapLaneInitializer, ValueLaneInitializer};
+pub use init::{MapLaneInitializer, ValueLaneInitializer};
 
 /// Response from a lane after it has written bytes to its outgoing buffer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

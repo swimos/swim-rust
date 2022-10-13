@@ -289,6 +289,15 @@ pub struct LaneResponseDecoder<Inner> {
     inner: Inner,
 }
 
+impl<Inner> LaneResponseDecoder<Inner> {
+    pub fn new(inner: Inner) -> Self {
+        LaneResponseDecoder {
+            state: Default::default(),
+            inner,
+        }
+    }
+}
+
 impl<Inner> Decoder for LaneResponseDecoder<Inner>
 where
     Inner: Decoder,
