@@ -819,9 +819,9 @@ async fn backpressure_relief_on_map_lanes_with_synced() {
     .await;
 }
 
-/* #[tokio::test]
+#[tokio::test]
 async fn value_lane_events_persisted() {
-    let store = FakeStore::new(vec![VAL_LANE]);
+    let store = FakeStore::new(vec![VAL_LANE, MAP_LANE]);
     let persistence = StorePersistence(store.clone());
 
     run_test_case_with_store(DEFAULT_TIMEOUT, persistence, |context| async move {
@@ -849,4 +849,46 @@ async fn value_lane_events_persisted() {
     let mut buffer = BytesMut::new();
     store.get_value(id, &mut buffer).expect("Key not found.");
     assert_eq!(buffer.as_ref(), b"747");
-} */
+}
+
+#[tokio::test]
+async fn map_lane_events_persisted() {
+    let store = FakeStore::new(vec![VAL_LANE, MAP_LANE]);
+    let persistence = StorePersistence(store.clone());
+
+    run_test_case_with_store(DEFAULT_TIMEOUT, persistence, |context| async move {
+        let TestContext {
+            stop_sender,
+            messages_tx,
+            vote2: _vote2,
+            vote_rx: _vote_rx,
+            instr_tx,
+        } = context;
+
+        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
+        link_remote(RID1.into(), MAP_LANE, &messages_tx).await;
+        reader.expect_linked(MAP_LANE).await;
+
+        instr_tx.map_event(MAP_LANE, "a", 1);
+        reader.expect_map_event(MAP_LANE, "a", 1).await;
+        instr_tx.map_event(MAP_LANE, "b", 2);
+        reader.expect_map_event(MAP_LANE, "b", 2).await;
+        instr_tx.map_event(MAP_LANE, "c", 3);
+        reader.expect_map_event(MAP_LANE, "c", 3).await;
+
+        stop_sender.trigger();
+        reader.expect_clean_shutdown(vec![MAP_LANE], None).await;
+    })
+    .await;
+
+    let id = store.id_for(MAP_LANE).expect("Lane not valid.");
+    let store_map = store
+        .get_map(id)
+        .expect("Bad ID")
+        .expect("No map in store.");
+    let mut expected = HashMap::new();
+    expected.insert(b"a".to_vec(), b"1".to_vec());
+    expected.insert(b"b".to_vec(), b"2".to_vec());
+    expected.insert(b"c".to_vec(), b"3".to_vec());
+    assert_eq!(store_map, expected);
+}

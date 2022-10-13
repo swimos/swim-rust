@@ -76,6 +76,16 @@ impl FakeStore {
             target.data.insert(key, value);
         }
     }
+
+    pub fn get_map(&self, id: u64) -> Result<Option<HashMap<Vec<u8>, Vec<u8>>>, StoreError> {
+        let mut guard = self.inner.lock();
+        let FakeStoreInner { maps, ids_back, .. } = &mut *guard;
+        if !ids_back.contains_key(&id) {
+            return Err(StoreError::KeyNotFound);
+        } else {
+            Ok(maps.get(&id).map(|map_store| map_store.data.clone()))
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -194,11 +204,10 @@ impl NodePersistenceBase for FakeStore {
         let FakeStoreInner { maps, ids_back, .. } = &mut *guard;
         if !ids_back.contains_key(&id) {
             Err(StoreError::KeyNotFound)
-        } else if let Some(FakeMapLaneStore { data, .. }) = maps.get_mut(&id) {
+        } else {
+            let FakeMapLaneStore { data, .. } = maps.entry(id).or_insert_with(Default::default);
             data.insert(key.to_vec(), value.to_vec());
             Ok(())
-        } else {
-            Err(StoreError::KeyNotFound)
         }
     }
 
@@ -207,11 +216,10 @@ impl NodePersistenceBase for FakeStore {
         let FakeStoreInner { maps, ids_back, .. } = &mut *guard;
         if !ids_back.contains_key(&id) {
             Err(StoreError::KeyNotFound)
-        } else if let Some(FakeMapLaneStore { data, .. }) = maps.get_mut(&id) {
+        } else {
+            let FakeMapLaneStore { data, .. } = maps.entry(id).or_insert_with(Default::default);
             data.remove(key);
             Ok(())
-        } else {
-            Err(StoreError::KeyNotFound)
         }
     }
 
@@ -220,11 +228,10 @@ impl NodePersistenceBase for FakeStore {
         let FakeStoreInner { maps, ids_back, .. } = &mut *guard;
         if !ids_back.contains_key(&id) {
             Err(StoreError::KeyNotFound)
-        } else if let Some(FakeMapLaneStore { data, .. }) = maps.get_mut(&id) {
+        } else {
+            let FakeMapLaneStore { data, .. } = maps.entry(id).or_insert_with(Default::default);
             data.clear();
             Ok(())
-        } else {
-            Err(StoreError::KeyNotFound)
         }
     }
 }
