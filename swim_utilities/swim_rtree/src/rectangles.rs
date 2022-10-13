@@ -31,8 +31,8 @@ pub struct Rect<P>
 where
     P: Point,
 {
-    pub(in crate) low: P,
-    pub(in crate) high: P,
+    pub(crate) low: P,
+    pub(crate) high: P,
 }
 
 impl<P> Rect<P>
@@ -99,7 +99,7 @@ where
     P: Point,
 {
     /// Calculates a minimum bounding box that contains both items.
-    pub(in crate) fn combine_boxes<B: BoxBounded<Point = <Self as BoxBounded>::Point>>(
+    pub(crate) fn combine_boxes<B: BoxBounded<Point = <Self as BoxBounded>::Point>>(
         &self,
         other: &B,
     ) -> Rect<P> {
@@ -112,7 +112,7 @@ where
     }
 
     /// Checks if a bounding box is completely covering another bounding box.
-    pub(in crate) fn is_covering<B: BoxBounded<Point = <Self as BoxBounded>::Point>>(
+    pub(crate) fn is_covering<B: BoxBounded<Point = <Self as BoxBounded>::Point>>(
         &self,
         other: &B,
     ) -> bool {
@@ -121,7 +121,7 @@ where
     }
 
     /// Checks if two bounding boxes are intersecting.
-    pub(in crate) fn is_intersecting<B: BoxBounded<Point = <Self as BoxBounded>::Point>>(
+    pub(crate) fn is_intersecting<B: BoxBounded<Point = <Self as BoxBounded>::Point>>(
         &self,
         other: &B,
     ) -> bool {
