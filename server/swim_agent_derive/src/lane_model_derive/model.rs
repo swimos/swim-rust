@@ -54,8 +54,7 @@ impl<'a> LaneKind<'a> {
 }
 
 bitflags! {
-    /// Flags that a downlink consumer can set to instruct the downlink runtime how it wishes
-    /// to be driven.
+
     pub struct LaneFlags: u8 {
         /// The state of the lane should not be persistend.
         const TRANSIENT = 0b01;

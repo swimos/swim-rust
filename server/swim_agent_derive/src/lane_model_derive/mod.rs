@@ -99,8 +99,17 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
         };
 
         let val_lane_names = value_type_models.iter().map(|model| model.model.literal());
+        let val_lane_specs = value_type_models
+            .iter()
+            .map(|model| LaneSpecInsert(model.model))
+            .map(|insert| insert.into_tokens(root));
 
         let map_lane_names = map_type_models.iter().map(|model| model.model.literal());
+
+        let map_lane_specs = map_type_models
+            .iter()
+            .map(|model| LaneSpecInsert(model.model))
+            .map(|insert| insert.into_tokens(root));
 
         let lane_ids = lane_models
             .iter()
@@ -170,9 +179,21 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
                     lanes
                 }
 
+                fn value_like_lane_specs() -> ::std::collections::HashMap<&'static str, #root::agent_model::LaneSpec> {
+                    let mut lanes = ::std::collections::HashMap::new();
+                    #(#val_lane_specs;)*
+                    lanes
+                }
+
                 fn map_like_lanes() -> ::std::collections::HashSet<&'static str> {
                     let mut lanes = ::std::collections::HashSet::new();
                     #(::std::collections::HashSet::insert(&mut lanes, #map_lane_names);)*
+                    lanes
+                }
+
+                fn map_like_lane_specs() -> ::std::collections::HashMap<&'static str, #root::agent_model::LaneSpec> {
+                    let mut lanes = ::std::collections::HashMap::new();
+                    #(#map_lane_specs;)*
                     lanes
                 }
 
@@ -470,5 +491,20 @@ impl<'a> MapLaneInitMatch<'a> {
         let name_lit = model.literal();
         let LaneModel { name, .. } = model;
         quote!(#name_lit => ::core::option::Option::Some(::std::boxed::Box::new(#root::agent_model::MapLaneInitializer::new(|agent: &#agent_name| &agent.#name))))
+    }
+}
+
+struct LaneSpecInsert<'a>(LaneModel<'a>);
+
+impl<'a> LaneSpecInsert<'a> {
+    fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
+        let LaneSpecInsert(model) = self;
+        let lane_name = model.literal();
+        let flags = if model.is_stateful() {
+            quote!(#root::agent_model::LaneFlags::empty())
+        } else {
+            quote!(#root::agent_model::LaneFlags::TRANSIENT)
+        };
+        quote!(::std::collections::HashMap::insert(&mut lanes, #lane_name, #root::agent_model::LaneSpec::new(#flags)))
     }
 }

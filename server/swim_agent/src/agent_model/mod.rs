@@ -15,6 +15,7 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::hash::Hash;
 
 use bytes::BytesMut;
 use futures::stream::BoxStream;
@@ -24,6 +25,7 @@ use futures::{
     stream::{FuturesUnordered, SelectAll},
     StreamExt,
 };
+use swim_api::agent::LaneConfig;
 use swim_api::error::{AgentRuntimeError, DownlinkRuntimeError};
 use swim_api::protocol::map::{MapMessageDecoder, RawMapOperationDecoder};
 use swim_api::protocol::WithLengthBytesCodec;
@@ -56,6 +58,8 @@ mod tests;
 
 use io::{LaneReader, LaneWriter};
 
+use bitflags::bitflags;
+
 use self::downlink::handlers::BoxDownlinkChannel;
 use self::init::{run_lane_initializer, InitializedLane};
 pub use init::{LaneInitializer, MapLaneInitializer, ValueLaneInitializer};
@@ -73,6 +77,28 @@ pub enum WriteResult {
 
 pub type InitFn<Agent> = Box<dyn FnOnce(&Agent) + Send + 'static>;
 
+bitflags! {
+    
+    #[derive(Default)]
+    pub struct LaneFlags: u8 {
+        /// The state of the lane should not be persistend.
+        const TRANSIENT = 0b01;
+    }
+
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct LaneSpec {
+    pub flags: LaneFlags,
+}
+
+impl LaneSpec {
+
+    pub fn new(flags: LaneFlags) -> Self {
+        LaneSpec { flags }
+    }
+}
+
 /// A trait which describes the lanes of an agent which can be run as a task attached to an
 /// [`AgentContext`]. A type implementing this trait is sufficient to produce a functional agent
 /// although it will not provided any lifecycle events for the agent or its lanes.
@@ -89,8 +115,18 @@ pub trait AgentLaneModel: Sized + Send {
     /// The names of all value like lanes (value lanes, command lanes, etc) in the agent.
     fn value_like_lanes() -> HashSet<&'static str>;
 
+    fn value_like_lane_specs() -> HashMap<&'static str, LaneSpec> {
+        let names = Self::value_like_lanes();
+        names.into_iter().map(|name| (name, LaneSpec::default())).collect()
+    }
+
     /// The names of all map like lanes in the agent.
     fn map_like_lanes() -> HashSet<&'static str>;
+
+    fn map_like_lane_specs() -> HashMap<&'static str, LaneSpec> {
+        let names = Self::map_like_lanes();
+        names.into_iter().map(|name| (name, LaneSpec::default())).collect()
+    }
 
     /// Mapping from lane identifiers to lane names for all lanes in the agent.
     fn lane_ids() -> HashMap<u64, Text>;
@@ -343,8 +379,8 @@ where
         let mut value_lane_io = HashMap::new();
         let mut map_lane_io = HashMap::new();
 
-        let val_lane_names = LaneModel::value_like_lanes();
-        let map_lane_names = LaneModel::map_like_lanes();
+        let val_lane_specs = LaneModel::value_like_lane_specs();
+        let map_lane_specs = LaneModel::map_like_lane_specs();
         let lane_ids = LaneModel::lane_ids();
 
         let suspended = FuturesUnordered::new();
@@ -354,13 +390,17 @@ where
 
         {
             let mut lane_init_tasks = FuturesUnordered::new();
-            let lane_config = config.default_lane_config.unwrap_or_default();
+            let default_lane_config = config.default_lane_config.unwrap_or_default();
             // Set up the lanes of the agent.
-            for name in val_lane_names {
+            for (name, spec) in val_lane_specs {
+                let mut lane_conf = default_lane_config;
+                if spec.flags.contains(LaneFlags::TRANSIENT) {
+                    lane_conf.transient = true;
+                }
                 let io = context
-                    .add_lane(name, UplinkKind::Value, lane_config)
+                    .add_lane(name, UplinkKind::Value, lane_conf)
                     .await?;
-                if lane_config.transient {
+                if lane_conf.transient {
                     value_lane_io.insert(Text::new(name), io);
                 } else if let Some(init) = lane_model.init_value_like_lane(name) {
                     let init_task = run_lane_initializer(
@@ -375,12 +415,16 @@ where
                     value_lane_io.insert(Text::new(name), io);
                 }
             }
-            for name in map_lane_names {
+            for (name, spec) in map_lane_specs {
                 if value_lane_io.contains_key(name) {
                     return Err(AgentInitError::DuplicateLane(Text::new(name)));
                 }
-                let io = context.add_lane(name, UplinkKind::Map, lane_config).await?;
-                if lane_config.transient {
+                let mut lane_conf = default_lane_config;
+                if spec.flags.contains(LaneFlags::TRANSIENT) {
+                    lane_conf.transient = true;
+                }
+                let io = context.add_lane(name, UplinkKind::Map, lane_conf).await?;
+                if lane_conf.transient {
                     map_lane_io.insert(Text::new(name), io);
                 } else if let Some(init) = lane_model.init_map_like_lane(name) {
                     let init_task = run_lane_initializer(
