@@ -217,17 +217,17 @@ where
     }
 }
 
-fn mpsc_send_op<'a, T: Send + 'static>(
-    tx: &'a mut mpsc::Sender<T>,
+fn mpsc_send_op<T: Send + 'static>(
+    tx: &mut mpsc::Sender<T>,
     t: T,
-) -> impl Future<Output = Result<(), mpsc::error::SendError<T>>> + Send + 'a {
+) -> impl Future<Output = Result<(), mpsc::error::SendError<T>>> + Send + '_ {
     tx.send(t)
 }
 
-fn broadcast_send_op<'a, T: Send + 'static>(
-    tx: &'a mut broadcast::Sender<T>,
+fn broadcast_send_op<T: Send + 'static>(
+    tx: &mut broadcast::Sender<T>,
     t: T,
-) -> impl Future<Output = Result<(), broadcast::error::SendError<T>>> + Send + 'a {
+) -> impl Future<Output = Result<(), broadcast::error::SendError<T>>> + Send + '_ {
     ready(tx.send(t).map(|_| ()))
 }
 

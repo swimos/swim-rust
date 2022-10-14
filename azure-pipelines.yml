@@ -3,7 +3,7 @@ pr: ["main"]
 
 variables:
   RUSTFLAGS: -Dwarnings
-  RUST_VERSION: 1.60.0
+  RUST_VERSION: 1.63.0
 
 stages:
   - stage: Lint

@@ -263,7 +263,6 @@ async fn sync_with_lane() {
 
     let events = lc_event_rx.collect::<Vec<_>>().await;
 
-    println!("{:?}", events);
     //Check that the `on_stop` event fired.
     assert!(matches!(events.as_slice(), [LifecycleEvent::Stop]));
 

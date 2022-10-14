@@ -48,7 +48,7 @@ impl SyncStateMachine<UntypedMapModification<Value>, MapAction> for MapStateMach
     }
 
     fn on_sync(&self, state: &Self::State) -> Self::Report {
-        ViewWithEvent::initial(&*state)
+        ViewWithEvent::initial(state)
     }
 
     fn handle_message_unsynced(
