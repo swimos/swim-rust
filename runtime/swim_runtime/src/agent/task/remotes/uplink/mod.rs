@@ -65,7 +65,7 @@ pub enum UplinkResponse {
     /// An event message for a value type lane.
     Value(Bytes),
     /// An event message for a map type lane.
-    Map(MapOperation<Bytes, Bytes>),
+    Map(MapOperation<BytesMut, BytesMut>),
 }
 
 impl UplinkResponse {
@@ -351,7 +351,7 @@ fn write_to_buffer(
             match &operation {
                 MapOperation::Update { key, .. } | MapOperation::Remove { key } => {
                     if let Err(e) = std::str::from_utf8(key.as_ref()) {
-                        return Err(InvalidKey::new(key.clone(), e));
+                        return Err(InvalidKey::new(key.clone().freeze(), e));
                     }
                 }
                 _ => {}

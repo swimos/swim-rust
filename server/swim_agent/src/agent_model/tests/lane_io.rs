@@ -99,7 +99,7 @@ impl ValueLaneReceiver {
     }
 }
 
-fn read_int(bytes: Bytes) -> i32 {
+fn read_int(bytes: impl AsRef<[u8]>) -> i32 {
     std::str::from_utf8(bytes.as_ref())
         .expect("Invalid UTF8.")
         .parse()
@@ -139,7 +139,7 @@ impl MapLaneReceiver {
         }
     }
 
-    pub async fn get_response(&mut self) -> MapLaneResponse<Bytes, Bytes> {
+    pub async fn get_response(&mut self) -> MapLaneResponse<BytesMut, BytesMut> {
         let MapLaneReceiver { inner } = self;
         inner
             .next()
@@ -163,7 +163,7 @@ impl MapLaneReceiver {
     }
 }
 
-fn read_op(operation: MapOperation<Bytes, Bytes>) -> MapOperation<i32, i32> {
+fn read_op(operation: MapOperation<BytesMut, BytesMut>) -> MapOperation<i32, i32> {
     match operation {
         MapOperation::Update { key, value } => MapOperation::Update {
             key: read_int(key),

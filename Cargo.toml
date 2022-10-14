@@ -13,7 +13,7 @@ members = [
     "swim_utilities",
     "swim_utilities/swim_*",
     "swim_downlink",
-    "swim_agent",
+    "server/swim_*"
 ]
 
 exclude = [

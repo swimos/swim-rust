@@ -14,12 +14,12 @@
 
 use super::MapOperationReconEncoder;
 use bytes::{Bytes, BytesMut};
-use swim_api::protocol::map::{MapOperation, RawMapOperation};
+use swim_api::protocol::map::{MapOperation, RawMapOperation, RawMapOperationMut};
 use tokio_util::codec::Encoder;
 
 #[test]
 fn recon_encode_clear() {
-    let op: RawMapOperation = MapOperation::Clear;
+    let op: RawMapOperationMut = MapOperation::Clear;
     let mut encoder = MapOperationReconEncoder;
     let mut buffer = BytesMut::new();
 
@@ -43,7 +43,7 @@ fn recon_encode_remove() {
 #[test]
 fn recon_encode_update() {
     let key = Bytes::from_static(b"5");
-    let value = Bytes::from_static(b"data");
+    let value = BytesMut::from(b"data".as_slice());
     let op: RawMapOperation = MapOperation::Update { key, value };
     let mut encoder = MapOperationReconEncoder;
     let mut buffer = BytesMut::new();

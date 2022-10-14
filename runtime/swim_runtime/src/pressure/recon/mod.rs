@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use bytes::{BufMut, BytesMut};
-use swim_api::protocol::map::RawMapOperation;
+use bytes::{Buf, BufMut, BytesMut};
+use swim_api::protocol::map::MapOperation;
 use tokio_util::codec::Encoder;
 
 #[cfg(test)]
@@ -27,25 +27,25 @@ const KEY_OFFSET: usize = 12;
 #[derive(Debug, Default)]
 pub struct MapOperationReconEncoder;
 
-impl Encoder<RawMapOperation> for MapOperationReconEncoder {
+impl<K: Buf, V: Buf> Encoder<MapOperation<K, V>> for MapOperationReconEncoder {
     type Error = std::io::Error;
 
-    fn encode(&mut self, item: RawMapOperation, dst: &mut BytesMut) -> Result<(), Self::Error> {
+    fn encode(&mut self, item: MapOperation<K, V>, dst: &mut BytesMut) -> Result<(), Self::Error> {
         match item {
-            RawMapOperation::Update { key, value } => {
-                dst.reserve(UPDATE.len() + key.len() + value.len());
+            MapOperation::Update { key, value } => {
+                dst.reserve(UPDATE.len() + key.remaining() + value.remaining());
                 dst.put(&UPDATE[..KEY_OFFSET]);
                 dst.put(key);
                 dst.put(&UPDATE[KEY_OFFSET..]);
                 dst.put(value);
             }
-            RawMapOperation::Remove { key } => {
-                dst.reserve(REMOVE.len() + key.len());
+            MapOperation::Remove { key } => {
+                dst.reserve(REMOVE.len() + key.remaining());
                 dst.put(&REMOVE[..KEY_OFFSET]);
                 dst.put(key);
                 dst.put(&REMOVE[KEY_OFFSET..]);
             }
-            RawMapOperation::Clear => {
+            MapOperation::Clear => {
                 dst.reserve(CLEAR.len());
                 dst.put(CLEAR);
             }

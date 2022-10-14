@@ -389,8 +389,8 @@ impl From<ValueLaneResponse<Bytes>> for RawLaneResponse {
     }
 }
 
-impl From<MapLaneResponse<Bytes, Bytes>> for RawLaneResponse {
-    fn from(resp: MapLaneResponse<Bytes, Bytes>) -> Self {
+impl From<MapLaneResponse<BytesMut, BytesMut>> for RawLaneResponse {
+    fn from(resp: MapLaneResponse<BytesMut, BytesMut>) -> Self {
         match resp {
             MapLaneResponse::Event { kind, operation } => match kind {
                 LaneResponseKind::StandardEvent => {

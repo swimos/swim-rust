@@ -245,21 +245,22 @@ fn encode_event_map_lane_response() {
     assert_eq!(buffer.freeze(), exp_op);
 }
 
-fn to_bytes(op: &MapOperation<i32, Example>) -> MapOperation<Bytes, Bytes> {
+fn to_bytes(op: &MapOperation<i32, Example>) -> MapOperation<BytesMut, BytesMut> {
     match op {
         MapOperation::Update { key, value } => {
             let key_str = format!("{}", print_recon_compact(key));
             let value_str = format!("{}", print_recon_compact(value));
-            MapOperation::Update {
-                key: Bytes::copy_from_slice(key_str.as_bytes()),
-                value: Bytes::copy_from_slice(value_str.as_bytes()),
-            }
+            let mut key = BytesMut::new();
+            let mut value = BytesMut::new();
+            key.extend_from_slice(key_str.as_bytes());
+            value.extend_from_slice(value_str.as_bytes());
+            MapOperation::Update { key, value }
         }
         MapOperation::Remove { key } => {
             let key_str = format!("{}", print_recon_compact(key));
-            MapOperation::Remove {
-                key: Bytes::copy_from_slice(key_str.as_bytes()),
-            }
+            let mut key = BytesMut::new();
+            key.extend_from_slice(key_str.as_bytes());
+            MapOperation::Remove { key }
         }
         MapOperation::Clear => MapOperation::Clear,
     }

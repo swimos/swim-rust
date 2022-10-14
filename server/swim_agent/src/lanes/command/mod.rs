@@ -28,7 +28,7 @@ use crate::{
     meta::AgentMetadata,
 };
 
-use super::ProjTransform;
+use super::{Lane, ProjTransform};
 
 pub mod lifecycle;
 #[cfg(test)]
@@ -80,31 +80,6 @@ impl<T> CommandLane<T> {
 }
 
 const INFALLIBLE_SER: &str = "Serializing a command to recon should be infallible.";
-
-impl<T: StructuralWritable> CommandLane<T> {
-    /// If a command has been received since the last call, write a response into the buffer.
-    pub fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult {
-        let CommandLane {
-            prev_command,
-            dirty,
-            ..
-        } = self;
-        let mut encoder = ValueLaneResponseEncoder;
-        if dirty.get() {
-            let value_guard = prev_command.borrow();
-            if let Some(value) = &*value_guard {
-                let response = ValueLaneResponse::event(value);
-                encoder.encode(response, buffer).expect(INFALLIBLE_SER);
-                dirty.set(false);
-                WriteResult::Done
-            } else {
-                WriteResult::NoData
-            }
-        } else {
-            WriteResult::NoData
-        }
-    }
-}
 
 /// An [`EventHandler`] instance that feeds a command to the command lane.
 pub struct DoCommand<Context, T> {
@@ -164,4 +139,28 @@ pub fn decode_and_command<C, T: RecognizerReadable>(
 ) -> DecodeAndCommand<C, T> {
     let decode: Decode<T> = Decode::new(buffer);
     decode.and_then(ProjTransform::new(projection))
+}
+
+impl<T: StructuralWritable> Lane for CommandLane<T> {
+    fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult {
+        let CommandLane {
+            prev_command,
+            dirty,
+            ..
+        } = self;
+        let mut encoder = ValueLaneResponseEncoder;
+        if dirty.get() {
+            let value_guard = prev_command.borrow();
+            if let Some(value) = &*value_guard {
+                let response = ValueLaneResponse::event(value);
+                encoder.encode(response, buffer).expect(INFALLIBLE_SER);
+                dirty.set(false);
+                WriteResult::Done
+            } else {
+                WriteResult::NoData
+            }
+        } else {
+            WriteResult::NoData
+        }
+    }
 }

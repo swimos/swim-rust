@@ -17,8 +17,8 @@ use std::{
     hash::BuildHasher,
 };
 
-use bytes::{BufMut, Bytes, BytesMut};
-use swim_api::protocol::map::{MapOperation, RawMapOperation};
+use bytes::{BufMut, BytesMut};
+use swim_api::protocol::map::{MapOperation, RawMapOperation, RawMapOperationMut};
 
 use crate::error::InvalidKey;
 
@@ -70,7 +70,7 @@ impl Default for MapOperationQueue<RandomState> {
     }
 }
 
-fn make_copy(target: &mut BytesMut, bytes: &Bytes) -> BytesMut {
+fn make_copy(target: &mut BytesMut, bytes: impl AsRef<[u8]>) -> BytesMut {
     let mut content = bytes.as_ref();
     target.put(&mut content);
     target.split()
@@ -88,7 +88,7 @@ impl<S: BuildHasher> MapOperationQueue<S> {
     ///
     /// # Arguments
     /// * `operation` - The operation push into the queue (any key must be valid UTF-8).
-    pub fn push(&mut self, operation: RawMapOperation) -> Result<(), InvalidKey> {
+    pub fn push(&mut self, operation: RawMapOperationMut) -> Result<(), InvalidKey> {
         let MapOperationQueue {
             buffer,
             head_epoch,
@@ -96,9 +96,9 @@ impl<S: BuildHasher> MapOperationQueue<S> {
             epoch_map,
         } = self;
         match operation {
-            RawMapOperation::Update { key, value } => {
+            RawMapOperationMut::Update { key, value } => {
                 let recon_key = ReconKey::try_from(make_copy(buffer, &key).freeze())
-                    .map_err(|e| InvalidKey::new(key, e))?;
+                    .map_err(|e| InvalidKey::new(key.freeze(), e))?;
                 let slot = epoch_map.get(&recon_key).and_then(|epoch| {
                     let index = epoch.wrapping_sub(*head_epoch);
                     debug_assert!(index < queue.len());
@@ -127,9 +127,10 @@ impl<S: BuildHasher> MapOperationQueue<S> {
                     });
                 }
             }
-            RawMapOperation::Remove { key } => {
-                let recon_key =
-                    ReconKey::try_from(key.clone()).map_err(|e| InvalidKey::new(key, e))?;
+            RawMapOperationMut::Remove { key } => {
+                let frozen_key = key.freeze();
+                let recon_key = ReconKey::try_from(frozen_key.clone())
+                    .map_err(|e| InvalidKey::new(frozen_key, e))?;
                 let slot = epoch_map.get(&recon_key).and_then(|epoch| {
                     let index = epoch.wrapping_sub(*head_epoch);
                     debug_assert!(index < queue.len());
@@ -144,7 +145,7 @@ impl<S: BuildHasher> MapOperationQueue<S> {
                     queue.push_back(QueueEntry::Remove { key });
                 }
             }
-            RawMapOperation::Clear => {
+            RawMapOperationMut::Clear => {
                 *head_epoch = 0;
                 queue.clear();
                 epoch_map.clear();
@@ -169,7 +170,7 @@ impl<S: BuildHasher> MapOperationQueue<S> {
                     epoch_map.remove(&key);
                     MapOperation::Update {
                         key: key.into_bytes(),
-                        value: value.freeze(),
+                        value,
                     }
                 }
                 MapOperation::Remove { key } => {

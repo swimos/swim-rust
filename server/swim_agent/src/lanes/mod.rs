@@ -16,6 +16,12 @@ pub mod command;
 pub mod map;
 pub mod value;
 
+use bytes::BytesMut;
+
+use crate::agent_model::WriteResult;
+
+pub use self::{command::CommandLane, map::MapLane, value::ValueLane};
+
 /// Wrapper to allow projection function pointers to be exposed as event handler transforms
 /// for different types of lanes.
 pub struct ProjTransform<C, L> {
@@ -26,4 +32,10 @@ impl<C, L> ProjTransform<C, L> {
     pub fn new(projection: fn(&C) -> &L) -> Self {
         ProjTransform { projection }
     }
+}
+
+/// Common functionality shared by all lane types.
+pub trait Lane {
+    /// If the state of the lane has changed, write an event into the buffer.
+    fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult;
 }

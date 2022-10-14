@@ -84,19 +84,19 @@ fn unescape(literal: &str) -> Result<Text, Text> {
                     None
                 }
                 EscapeState::UnicodeEscape0 if c == 'u' => None,
-                EscapeState::UnicodeEscape0 if c.is_digit(16) => {
+                EscapeState::UnicodeEscape0 if c.is_ascii_hexdigit() => {
                     *state = EscapeState::UnicodeEscape1(c.to_digit(16).unwrap());
                     None
                 }
-                EscapeState::UnicodeEscape1(d1) if c.is_digit(16) => {
+                EscapeState::UnicodeEscape1(d1) if c.is_ascii_hexdigit() => {
                     *state = EscapeState::UnicodeEscape2(*d1, c.to_digit(16).unwrap());
                     None
                 }
-                EscapeState::UnicodeEscape2(d1, d2) if c.is_digit(16) => {
+                EscapeState::UnicodeEscape2(d1, d2) if c.is_ascii_hexdigit() => {
                     *state = EscapeState::UnicodeEscape3(*d1, *d2, c.to_digit(16).unwrap());
                     None
                 }
-                EscapeState::UnicodeEscape3(d1, d2, d3) if c.is_digit(16) => {
+                EscapeState::UnicodeEscape3(d1, d2, d3) if c.is_ascii_hexdigit() => {
                     let uc: char = char::try_from(
                         (*d1 << 12) | (*d2 << 8) | (*d3 << 4) | c.to_digit(16).unwrap(),
                     )

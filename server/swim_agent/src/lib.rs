@@ -12,8 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[doc(hidden)]
+#[allow(unused_imports)]
+pub use swim_agent_derive::AgentLaneModel;
+
 pub mod agent_model;
 pub mod event_handler;
 pub mod lanes;
 pub mod lifecycle;
 pub mod meta;
+
+pub use agent_model::AgentLaneModel;
+
+pub mod model {
+    pub use swim_api::protocol::map::{MapMessage, MapOperation};
+    pub use swim_model::Text;
+}
+
+pub mod reexport {
+    pub mod coproduct {
+        pub use frunk::coproduct::CNil;
+        pub use frunk::Coproduct;
+    }
+
+    pub mod bytes {
+        pub use bytes::{Buf, BufMut, Bytes, BytesMut};
+    }
+
+    pub mod uuid {
+        pub use uuid::Uuid;
+    }
+}

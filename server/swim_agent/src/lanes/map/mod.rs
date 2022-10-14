@@ -15,13 +15,14 @@
 use bytes::BytesMut;
 use frunk::{Coprod, Coproduct};
 use static_assertions::assert_impl_all;
-use std::{borrow::Borrow, cell::RefCell, collections::HashMap, hash::Hash};
+use std::{borrow::Borrow, cell::RefCell, collections::HashMap, hash::Hash, marker::PhantomData};
 use swim_api::protocol::{
     agent::{LaneResponseKind, MapLaneResponse, MapLaneResponseEncoder},
     map::{MapMessage, MapOperation},
 };
 use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
-use tokio_util::codec::Encoder;
+use swim_recon::parser::RecognizerDecoder;
+use tokio_util::codec::{Decoder, Encoder};
 use uuid::Uuid;
 
 mod event;
@@ -34,7 +35,8 @@ mod tests;
 use crate::{
     agent_model::WriteResult,
     event_handler::{
-        AndThen, Decode, EventHandler, EventHandlerExt, HandlerTrans, Modification, StepResult,
+        AndThen, EventHandler, EventHandlerError, EventHandlerExt, HandlerTrans, Modification,
+        StepResult,
     },
     meta::AgentMetadata,
 };
@@ -43,7 +45,7 @@ use self::queues::{Action, ToWrite, WriteQueues};
 
 pub use event::MapLaneEvent;
 
-use super::ProjTransform;
+use super::{Lane, ProjTransform};
 
 /// Model of a value lane. This maintain a sate consisting of a hash-map from keys to values. It generates an
 /// event whenever the map is updated (updating the value for a key, removing a key or clearing the map).
@@ -122,13 +124,12 @@ where
     }
 }
 
-impl<K, V> MapLane<K, V>
+impl<K, V> Lane for MapLane<K, V>
 where
     K: Clone + Eq + Hash + StructuralWritable,
     V: StructuralWritable,
 {
-    /// If the state of the lane has changed, write a response into the buffer.
-    pub fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult {
+    fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult {
         self.inner.borrow_mut().write_to_buffer(buffer)
     }
 }
@@ -533,18 +534,75 @@ impl<C, K, V> HandlerTrans<MapMessage<K, V>> for ProjTransform<C, MapLane<K, V>>
     }
 }
 
+pub struct DecodeMapMessage<K, V> {
+    _target_type: PhantomData<fn() -> MapMessage<K, V>>,
+    message: Option<MapMessage<BytesMut, BytesMut>>,
+}
+
+impl<K, V> DecodeMapMessage<K, V> {
+    pub fn new(message: MapMessage<BytesMut, BytesMut>) -> Self {
+        DecodeMapMessage {
+            _target_type: Default::default(),
+            message: Some(message),
+        }
+    }
+}
+
+//TODO: The decoders should be shifted elsewhere so they don't need constantly recreating.
+fn try_decode<T: RecognizerReadable>(mut buffer: BytesMut) -> Result<T, EventHandlerError> {
+    let mut decoder = RecognizerDecoder::new(T::make_recognizer());
+    match decoder.decode_eof(&mut buffer) {
+        Ok(Some(value)) => Ok(value),
+        Ok(_) => Err(EventHandlerError::IncompleteCommand),
+        Err(e) => Err(EventHandlerError::BadCommand(e)),
+    }
+}
+
+impl<K, V, Context> EventHandler<Context> for DecodeMapMessage<K, V>
+where
+    K: RecognizerReadable,
+    V: RecognizerReadable,
+{
+    type Completion = MapMessage<K, V>;
+
+    fn step(&mut self, _meta: AgentMetadata, _context: &Context) -> StepResult<Self::Completion> {
+        let DecodeMapMessage { message, .. } = self;
+        if let Some(message) = message.take() {
+            match message {
+                MapMessage::Update { key, value } => {
+                    match try_decode::<K>(key).and_then(|k| {
+                        try_decode::<V>(value).map(|v| (MapMessage::Update { key: k, value: v }))
+                    }) {
+                        Ok(msg) => StepResult::done(msg),
+                        Err(e) => StepResult::Fail(e),
+                    }
+                }
+                MapMessage::Remove { key } => match try_decode::<K>(key) {
+                    Ok(k) => StepResult::done(MapMessage::Remove { key: k }),
+                    Err(e) => StepResult::Fail(e),
+                },
+                MapMessage::Clear => StepResult::done(MapMessage::Clear),
+                MapMessage::Take(n) => StepResult::done(MapMessage::Take(n)),
+                MapMessage::Drop(n) => StepResult::done(MapMessage::Drop(n)),
+            }
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
 pub type DecodeAndApply<C, K, V> =
-    AndThen<Decode<MapMessage<K, V>>, MapLaneHandler<C, K, V>, ProjTransform<C, MapLane<K, V>>>;
+    AndThen<DecodeMapMessage<K, V>, MapLaneHandler<C, K, V>, ProjTransform<C, MapLane<K, V>>>;
 
 /// Create an event handler that will decode an incoming map message and apply the value into a map lane.
-pub fn decode_and_set<C, K, V>(
-    buffer: BytesMut,
+pub fn decode_and_apply<C, K, V>(
+    message: MapMessage<BytesMut, BytesMut>,
     projection: fn(&C) -> &MapLane<K, V>,
 ) -> DecodeAndApply<C, K, V>
 where
     K: Clone + Eq + Hash + RecognizerReadable,
     V: RecognizerReadable,
 {
-    let decode: Decode<MapMessage<K, V>> = Decode::new(buffer);
+    let decode: DecodeMapMessage<K, V> = DecodeMapMessage::new(message);
     decode.and_then(ProjTransform::new(projection))
 }

@@ -17,7 +17,7 @@ use std::{
     collections::{HashMap, HashSet, VecDeque},
 };
 
-use bytes::Bytes;
+use bytes::BytesMut;
 use swim_api::protocol::{
     agent::{
         LaneResponseKind, MapLaneResponse, MapLaneResponseEncoder, ValueLaneResponse,
@@ -110,7 +110,7 @@ impl AgentLaneModel for TestAgent {
             .collect()
     }
 
-    fn on_value_command(&self, lane: &str, body: Bytes) -> Option<Self::ValCommandHandler> {
+    fn on_value_command(&self, lane: &str, body: BytesMut) -> Option<Self::ValCommandHandler> {
         if lane == VAL_LANE {
             Some(
                 TestEvent::Value {
@@ -126,7 +126,7 @@ impl AgentLaneModel for TestAgent {
     fn on_map_command(
         &self,
         lane: &str,
-        body: MapMessage<Bytes, Bytes>,
+        body: MapMessage<BytesMut, BytesMut>,
     ) -> Option<Self::MapCommandHandler> {
         if lane == MAP_LANE {
             Some(
@@ -233,14 +233,14 @@ impl EventHandler<TestAgent> for TestHandler {
     }
 }
 
-fn bytes_to_i32(bytes: Bytes) -> i32 {
+fn bytes_to_i32(bytes: impl AsRef<[u8]>) -> i32 {
     std::str::from_utf8(bytes.as_ref())
         .expect("Bad UTF8.")
         .parse()
         .expect("Invalid integer.")
 }
 
-fn interpret_map_op(op: MapMessage<Bytes, Bytes>) -> MapMessage<i32, i32> {
+fn interpret_map_op(op: MapMessage<BytesMut, BytesMut>) -> MapMessage<i32, i32> {
     match op {
         MapMessage::Update { key, value } => MapMessage::Update {
             key: bytes_to_i32(key),

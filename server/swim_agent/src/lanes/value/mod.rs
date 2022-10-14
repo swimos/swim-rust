@@ -38,7 +38,7 @@ use crate::{
     meta::AgentMetadata,
 };
 
-use super::ProjTransform;
+use super::{Lane, ProjTransform};
 
 /// Model of a value lane. This maintains a state and triggers an event each time this state is updated.
 /// Updates may come from external commands or from an action performed by an event handler on the agent.
@@ -112,9 +112,8 @@ impl<T> ValueLane<T> {
 
 const INFALLIBLE_SER: &str = "Serializing to recon should be infallible.";
 
-impl<T: StructuralWritable> ValueLane<T> {
-    /// If the state of the lane has changed, write a response into the buffer.
-    pub fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult {
+impl<T: StructuralWritable> Lane for ValueLane<T> {
+    fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult {
         let ValueLane {
             content,
             dirty,

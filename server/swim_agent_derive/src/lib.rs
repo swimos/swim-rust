@@ -1,0 +1,33 @@
+// Copyright 2015-2021 Swim Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use lane_model_derive::DeriveAgentLaneModel;
+use macro_utilities::to_compile_errors;
+use proc_macro::TokenStream;
+use quote::ToTokens;
+
+use syn::{parse_macro_input, DeriveInput};
+
+mod lane_model_derive;
+
+#[proc_macro_derive(AgentLaneModel)]
+pub fn derive_agent_lane_model(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    lane_model_derive::validate_input(&input)
+        .map(DeriveAgentLaneModel::new)
+        .map(ToTokens::into_token_stream)
+        .into_result()
+        .unwrap_or_else(|errs| to_compile_errors(errs.into_vec()))
+        .into()
+}

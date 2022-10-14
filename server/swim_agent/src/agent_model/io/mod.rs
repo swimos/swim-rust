@@ -17,7 +17,7 @@ use std::{
     task::{Context, Poll},
 };
 
-use bytes::{Bytes, BytesMut};
+use bytes::BytesMut;
 use futures::{future::Either, ready, SinkExt, Stream, StreamExt};
 use swim_api::{
     error::FrameIoError,
@@ -87,7 +87,10 @@ impl LaneWriter {
 impl Stream for LaneReader {
     type Item = (
         u64,
-        Result<Either<LaneRequest<Bytes>, LaneRequest<MapMessage<Bytes, Bytes>>>, FrameIoError>,
+        Result<
+            Either<LaneRequest<BytesMut>, LaneRequest<MapMessage<BytesMut, BytesMut>>>,
+            FrameIoError,
+        >,
     );
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {

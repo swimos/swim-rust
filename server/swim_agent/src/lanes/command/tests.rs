@@ -23,7 +23,7 @@ use tokio_util::codec::Decoder;
 use crate::{
     agent_model::WriteResult,
     event_handler::{EventHandler, EventHandlerError, Modification, StepResult},
-    lanes::command::DoCommand,
+    lanes::{command::DoCommand, Lane},
     meta::AgentMetadata,
 };
 

@@ -15,7 +15,10 @@
 use std::{convert::Infallible, fmt::Display};
 
 use bytes::{BufMut, Bytes, BytesMut};
-use swim_api::protocol::{downlink::DownlinkOperation, map::RawMapOperation};
+use swim_api::protocol::{
+    downlink::DownlinkOperation,
+    map::{RawMapOperation, RawMapOperationMut},
+};
 use tokio_util::codec::Encoder;
 
 use map_queue::MapOperationQueue;
@@ -80,7 +83,7 @@ pub struct MapBackpressure {
 }
 
 impl MapBackpressure {
-    pub fn push(&mut self, operation: RawMapOperation) -> Result<(), InvalidKey> {
+    pub fn push(&mut self, operation: RawMapOperationMut) -> Result<(), InvalidKey> {
         self.queue.push(operation)
     }
 
@@ -118,7 +121,7 @@ impl BackpressureStrategy for ValueBackpressure {
 }
 
 impl BackpressureStrategy for MapBackpressure {
-    type Operation = RawMapOperation;
+    type Operation = RawMapOperationMut;
 
     type Err = InvalidKey;
 
