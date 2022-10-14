@@ -14,8 +14,8 @@
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 use std::hash::Hash;
+use std::sync::Arc;
 
 use bytes::BytesMut;
 use futures::stream::BoxStream;
@@ -25,7 +25,6 @@ use futures::{
     stream::{FuturesUnordered, SelectAll},
     StreamExt,
 };
-use swim_api::agent::LaneConfig;
 use swim_api::error::{AgentRuntimeError, DownlinkRuntimeError};
 use swim_api::protocol::map::{MapMessageDecoder, RawMapOperationDecoder};
 use swim_api::protocol::WithLengthBytesCodec;
@@ -78,7 +77,7 @@ pub enum WriteResult {
 pub type InitFn<Agent> = Box<dyn FnOnce(&Agent) + Send + 'static>;
 
 bitflags! {
-    
+
     #[derive(Default)]
     pub struct LaneFlags: u8 {
         /// The state of the lane should not be persistend.
@@ -93,7 +92,6 @@ pub struct LaneSpec {
 }
 
 impl LaneSpec {
-
     pub fn new(flags: LaneFlags) -> Self {
         LaneSpec { flags }
     }
@@ -112,21 +110,11 @@ pub trait AgentLaneModel: Sized + Send {
     /// The type of handler to run when a request is received to sync with a lane.
     type OnSyncHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
 
-    /// The names of all value like lanes (value lanes, command lanes, etc) in the agent.
-    fn value_like_lanes() -> HashSet<&'static str>;
+    /// The names and falgs of all value like lanes (value lanes, command lanes, etc) in the agent.
+    fn value_like_lane_specs() -> HashMap<&'static str, LaneSpec>;
 
-    fn value_like_lane_specs() -> HashMap<&'static str, LaneSpec> {
-        let names = Self::value_like_lanes();
-        names.into_iter().map(|name| (name, LaneSpec::default())).collect()
-    }
-
-    /// The names of all map like lanes in the agent.
-    fn map_like_lanes() -> HashSet<&'static str>;
-
-    fn map_like_lane_specs() -> HashMap<&'static str, LaneSpec> {
-        let names = Self::map_like_lanes();
-        names.into_iter().map(|name| (name, LaneSpec::default())).collect()
-    }
+    /// The names and flags of all map like lanes in the agent.
+    fn map_like_lane_specs() -> HashMap<&'static str, LaneSpec>;
 
     /// Mapping from lane identifiers to lane names for all lanes in the agent.
     fn lane_ids() -> HashMap<u64, Text>;
@@ -397,9 +385,7 @@ where
                 if spec.flags.contains(LaneFlags::TRANSIENT) {
                     lane_conf.transient = true;
                 }
-                let io = context
-                    .add_lane(name, UplinkKind::Value, lane_conf)
-                    .await?;
+                let io = context.add_lane(name, UplinkKind::Value, lane_conf).await?;
                 if lane_conf.transient {
                     value_lane_io.insert(Text::new(name), io);
                 } else if let Some(init) = lane_model.init_value_like_lane(name) {

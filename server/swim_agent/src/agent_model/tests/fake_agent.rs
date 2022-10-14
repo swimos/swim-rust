@@ -14,7 +14,7 @@
 
 use std::{
     cell::RefCell,
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, VecDeque},
 };
 
 use bytes::BytesMut;
@@ -28,7 +28,7 @@ use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
 use crate::{
-    agent_model::{AgentLaneModel, WriteResult},
+    agent_model::{AgentLaneModel, LaneFlags, LaneSpec, WriteResult},
     event_handler::{ActionContext, HandlerAction, Modification, StepResult},
     meta::AgentMetadata,
 };
@@ -99,12 +99,17 @@ impl AgentLaneModel for TestAgent {
 
     type OnSyncHandler = TestHandler;
 
-    fn value_like_lanes() -> HashSet<&'static str> {
-        [VAL_LANE, CMD_LANE].into_iter().collect()
+    fn value_like_lane_specs() -> HashMap<&'static str, crate::agent_model::LaneSpec> {
+        let mut lanes = HashMap::new();
+        lanes.insert(VAL_LANE, LaneSpec::new(LaneFlags::TRANSIENT));
+        lanes.insert(CMD_LANE, LaneSpec::new(LaneFlags::TRANSIENT));
+        lanes
     }
 
-    fn map_like_lanes() -> HashSet<&'static str> {
-        [MAP_LANE].into_iter().collect()
+    fn map_like_lane_specs() -> HashMap<&'static str, crate::agent_model::LaneSpec> {
+        let mut lanes = HashMap::new();
+        lanes.insert(MAP_LANE, LaneSpec::new(LaneFlags::TRANSIENT));
+        lanes
     }
 
     fn lane_ids() -> HashMap<u64, Text> {

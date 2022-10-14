@@ -98,13 +98,10 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
             no_handler
         };
 
-        let val_lane_names = value_type_models.iter().map(|model| model.model.literal());
         let val_lane_specs = value_type_models
             .iter()
             .map(|model| LaneSpecInsert(model.model))
             .map(|insert| insert.into_tokens(root));
-
-        let map_lane_names = map_type_models.iter().map(|model| model.model.literal());
 
         let map_lane_specs = map_type_models
             .iter()
@@ -173,21 +170,9 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
 
                 type OnSyncHandler = #sync_handler;
 
-                fn value_like_lanes() -> ::std::collections::HashSet<&'static str> {
-                    let mut lanes = ::std::collections::HashSet::new();
-                    #(::std::collections::HashSet::insert(&mut lanes, #val_lane_names);)*
-                    lanes
-                }
-
                 fn value_like_lane_specs() -> ::std::collections::HashMap<&'static str, #root::agent_model::LaneSpec> {
                     let mut lanes = ::std::collections::HashMap::new();
                     #(#val_lane_specs;)*
-                    lanes
-                }
-
-                fn map_like_lanes() -> ::std::collections::HashSet<&'static str> {
-                    let mut lanes = ::std::collections::HashSet::new();
-                    #(::std::collections::HashSet::insert(&mut lanes, #map_lane_names);)*
                     lanes
                 }
 

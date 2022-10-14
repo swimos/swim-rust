@@ -33,8 +33,13 @@ where
     let val_set = val_lanes.into_iter().collect::<HashSet<_>>();
     let map_set = map_lanes.into_iter().collect::<HashSet<_>>();
 
-    assert_eq!(A::value_like_lanes(), val_set);
-    assert_eq!(A::map_like_lanes(), map_set);
+    let val_keys: HashSet<_> = A::value_like_lane_specs().keys().copied().collect();
+    let map_keys: HashSet<_> = A::value_like_lane_specs().keys().copied().collect();
+
+    assert_eq!(val_keys, val_set);
+    assert_eq!(map_keys, map_set);
+
+    //TODO Check trasience.
 
     let id_map = A::lane_ids();
     let expected_len = val_set.len() + map_set.len();
