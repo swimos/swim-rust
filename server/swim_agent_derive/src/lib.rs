@@ -32,7 +32,7 @@ fn default_root() -> syn::Path {
     parse_quote!(::swim::agent)
 }
 
-#[proc_macro_derive(AgentLaneModel, attributes(agent_root))]
+#[proc_macro_derive(AgentLaneModel, attributes(agent_root, transient))]
 pub fn derive_agent_lane_model(input: TokenStream) -> TokenStream {
     let mut input = parse_macro_input!(input as DeriveInput);
     let root = extract_replace_root(&mut input.attrs).unwrap_or_else(default_root);
