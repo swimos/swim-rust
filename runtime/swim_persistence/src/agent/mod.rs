@@ -19,7 +19,7 @@ use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
 use bytes::BytesMut;
-use swim_api::store::{MapPersistence, NodePersistenceBase};
+use swim_api::store::{MapPersistence, NodePersistenceBase, PlanePersistence};
 use swim_model::Text;
 
 use crate::plane::{PlaneStore, PrefixPlaneStore};
@@ -175,6 +175,18 @@ where
         let StoreWrapper(store) = self;
         let key = StoreKey::Map { lane_id, key: None };
         store.ranged_snapshot_consumer(key)
+    }
+}
+
+impl<S> PlanePersistence for StoreWrapper<S>
+where
+    S: PlaneStore,
+{
+    type Node = StoreWrapper<S::NodeStore>;
+
+    fn node_store(&mut self, node_uri: &str) -> Result<Self::Node, StoreError> {
+        let StoreWrapper(inner) = self;
+        Ok(StoreWrapper(inner.node_store(node_uri)))
     }
 }
 
