@@ -1,15 +1,3 @@
-use std::cell::RefCell;
-
-use swim_agent::{
-    agent_lifecycle::utility::HandlerContext,
-    agent_model::AgentModel,
-    event_handler::{EventHandler, HandlerActionExt},
-    lanes::ValueLane,
-    lifecycle, projections, AgentLaneModel,
-};
-use swim_api::agent::Agent;
-use swim_model::Text;
-
 // Copyright 2015-2021 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,6 +11,19 @@ use swim_model::Text;
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
+use std::cell::RefCell;
+
+use swim_agent::{
+    agent_lifecycle::utility::HandlerContext,
+    agent_model::AgentModel,
+    event_handler::{EventHandler, HandlerActionExt},
+    lanes::ValueLane,
+    lifecycle, projections, AgentLaneModel,
+};
+use swim_api::agent::Agent;
+use swim_model::Text;
+
 fn main() {
     let _ = make_agent();
     println!("Hello, world!");

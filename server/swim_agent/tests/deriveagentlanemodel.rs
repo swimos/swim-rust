@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use bytes::BytesMut;
 use std::fmt::Write;
+use swim_agent::agent_model::{LaneFlags, LaneSpec};
 use swim_agent::lanes::{CommandLane, MapLane, ValueLane};
 use swim_agent::model::MapMessage;
 use swim_agent::AgentLaneModel;
@@ -24,25 +25,46 @@ use uuid::Uuid;
 
 const SYNC_ID: Uuid = Uuid::from_u128(85883);
 
-fn check_agent<A>(val_lanes: Vec<&'static str>, map_lanes: Vec<&'static str>)
+fn transient(name: &'static str) -> (&'static str, bool) {
+    (name, true)
+}
+
+fn persistent(name: &'static str) -> (&'static str, bool) {
+    (name, false)
+}
+
+fn check_agent<A>(val_lanes: Vec<(&'static str, bool)>, map_lanes: Vec<(&'static str, bool)>)
 where
     A: AgentLaneModel + Default,
 {
     let agent = A::default();
 
-    let val_set = val_lanes.into_iter().collect::<HashSet<_>>();
-    let map_set = map_lanes.into_iter().collect::<HashSet<_>>();
+    let mut val_expected = HashMap::new();
+    let mut map_expected = HashMap::new();
 
-    let val_keys: HashSet<_> = A::value_like_lane_specs().keys().copied().collect();
-    let map_keys: HashSet<_> = A::value_like_lane_specs().keys().copied().collect();
+    for (name, is_transient) in val_lanes {
+        let spec = if is_transient {
+            LaneSpec::new(LaneFlags::TRANSIENT)
+        } else {
+            LaneSpec::new(LaneFlags::empty())
+        };
+        val_expected.insert(name, spec);
+    }
 
-    assert_eq!(val_keys, val_set);
-    assert_eq!(map_keys, map_set);
+    for (name, is_transient) in map_lanes {
+        let spec = if is_transient {
+            LaneSpec::new(LaneFlags::TRANSIENT)
+        } else {
+            LaneSpec::new(LaneFlags::empty())
+        };
+        map_expected.insert(name, spec);
+    }
 
-    //TODO Check trasience.
+    assert_eq!(A::value_like_lane_specs(), val_expected);
+    assert_eq!(A::map_like_lane_specs(), map_expected);
 
     let id_map = A::lane_ids();
-    let expected_len = val_set.len() + map_set.len();
+    let expected_len = val_expected.len() + map_expected.len();
     assert_eq!(id_map.len(), expected_len);
 
     let mut keys = HashSet::new();
@@ -55,18 +77,18 @@ where
 
     let expected_keys = (0..expected_len).map(|n| n as u64).collect::<HashSet<_>>();
     let mut expected_names = HashSet::new();
-    expected_names.extend(val_set.iter().map(|s| Text::new(*s)));
-    expected_names.extend(map_set.iter().map(|s| Text::new(*s)));
+    expected_names.extend(val_expected.keys().map(|s| Text::new(*s)));
+    expected_names.extend(map_expected.keys().map(|s| Text::new(*s)));
 
     assert_eq!(keys, expected_keys);
     assert_eq!(names, expected_names);
 
-    for name in val_set {
+    for name in val_expected.keys() {
         assert!(agent.on_value_command(name, get_i32_buffer(4)).is_some());
         assert!(agent.on_sync(name, SYNC_ID).is_some());
     }
 
-    for name in map_set {
+    for name in map_expected.keys() {
         assert!(agent.on_map_command(name, MapMessage::Clear).is_some());
         assert!(agent.on_sync(name, SYNC_ID).is_some());
     }
@@ -86,7 +108,7 @@ fn single_value_lane() {
         lane: ValueLane<i32>,
     }
 
-    check_agent::<SingleValueLane>(vec!["lane"], vec![]);
+    check_agent::<SingleValueLane>(vec![persistent("lane")], vec![]);
 }
 
 #[test]
@@ -97,7 +119,7 @@ fn single_map_lane() {
         lane: MapLane<i32, i32>,
     }
 
-    check_agent::<SingleMapLane>(vec![], vec!["lane"]);
+    check_agent::<SingleMapLane>(vec![], vec![persistent("lane")]);
 }
 
 #[test]
@@ -108,7 +130,7 @@ fn single_command_lane() {
         lane: CommandLane<i32>,
     }
 
-    check_agent::<SingleCommandLane>(vec!["lane"], vec![]);
+    check_agent::<SingleCommandLane>(vec![transient("lane")], vec![]);
 }
 
 #[test]
@@ -120,7 +142,7 @@ fn two_value_lanes() {
         second: ValueLane<i32>,
     }
 
-    check_agent::<TwoValueLanes>(vec!["first", "second"], vec![]);
+    check_agent::<TwoValueLanes>(vec![persistent("first"), persistent("second")], vec![]);
 }
 
 #[test]
@@ -132,7 +154,7 @@ fn two_map_lanes() {
         second: MapLane<i32, i32>,
     }
 
-    check_agent::<TwoMapLanes>(vec![], vec!["first", "second"]);
+    check_agent::<TwoMapLanes>(vec![], vec![persistent("first"), persistent("second")]);
 }
 
 #[test]
@@ -144,7 +166,7 @@ fn two_command_lanes() {
         second: CommandLane<i32>,
     }
 
-    check_agent::<TwoCommandLanes>(vec!["first", "second"], vec![]);
+    check_agent::<TwoCommandLanes>(vec![transient("first"), transient("second")], vec![]);
 }
 
 #[test]
@@ -156,7 +178,7 @@ fn mixed_lanes() {
         second: MapLane<i32, i32>,
     }
 
-    check_agent::<MixedLanes>(vec!["first"], vec!["second"]);
+    check_agent::<MixedLanes>(vec![persistent("first")], vec![persistent("second")]);
 }
 
 #[test]
@@ -171,5 +193,47 @@ fn multiple_lanes() {
         fifth: CommandLane<i32>,
     }
 
-    check_agent::<MultipleLanes>(vec!["first", "third", "fifth"], vec!["second", "fourth"]);
+    check_agent::<MultipleLanes>(
+        vec![persistent("first"), persistent("third"), transient("fifth")],
+        vec![persistent("second"), persistent("fourth")],
+    );
+}
+
+#[test]
+fn value_laned_tagged_transient() {
+    #[derive(AgentLaneModel)]
+    #[agent_root(::swim_agent)]
+    struct TwoValueLanes {
+        #[transient]
+        first: ValueLane<i32>,
+        second: ValueLane<i32>,
+    }
+
+    check_agent::<TwoValueLanes>(vec![transient("first"), persistent("second")], vec![]);
+}
+
+#[test]
+fn map_lane_tagged_transient() {
+    #[derive(AgentLaneModel)]
+    #[agent_root(::swim_agent)]
+    struct TwoMapLanes {
+        first: MapLane<i32, i32>,
+        #[transient]
+        second: MapLane<i32, i32>,
+    }
+
+    check_agent::<TwoMapLanes>(vec![], vec![persistent("first"), transient("second")]);
+}
+
+#[test]
+fn command_lane_tagged_transient() {
+    #[derive(AgentLaneModel)]
+    #[agent_root(::swim_agent)]
+    struct TwoCommandLanes {
+        #[transient]
+        first: CommandLane<i32>,
+        second: CommandLane<i32>,
+    }
+
+    check_agent::<TwoCommandLanes>(vec![transient("first"), transient("second")], vec![]);
 }

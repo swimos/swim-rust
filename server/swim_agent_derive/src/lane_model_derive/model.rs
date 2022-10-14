@@ -96,7 +96,7 @@ const NO_GENERICS: &str = "Generic agents are not yet supported.";
 const NOT_LANE_TYPE: &str = "Field is not of a lane type.";
 const NO_TUPLES: &str = "Tuple structs are not supported.";
 const BAD_PARAMS: &str = "Lane generic parameters are invalid.";
-const INVALID_FIELD_ATTR: &str = "Valid field attributes are ['#transient'].";
+const INVALID_FIELD_ATTR: &str = "Invalid field attribute. Valid attributes are: '[#transient]'.";
 const TRANSIENT_ATTR_NAME: &str = "transient";
 
 /// Extract the model of the type from the type definition, collecting any
