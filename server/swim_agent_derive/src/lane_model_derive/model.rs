@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use bitflags::bitflags;
+use std::hash::Hash;
 use swim_utilities::errors::{
     validation::{Validation, ValidationItExt},
     Errors,
@@ -45,25 +47,47 @@ pub enum LaneKind<'a> {
     Map(&'a Type, &'a Type),
 }
 
+impl<'a> LaneKind<'a> {
+    pub fn is_stateful(&self) -> bool {
+        matches!(self, LaneKind::Value(_) | LaneKind::Map(_, _))
+    }
+}
+
+bitflags! {
+    /// Flags that a downlink consumer can set to instruct the downlink runtime how it wishes
+    /// to be driven.
+    pub struct LaneFlags: u8 {
+        /// The state of the lane should not be persistend.
+        const TRANSIENT = 0b01;
+    }
+}
+
 /// Description of a lane (its name the the kind of the lane, along with types).
 #[derive(Clone, Copy)]
 pub struct LaneModel<'a> {
     pub name: &'a Ident,
     pub kind: LaneKind<'a>,
+    pub flags: LaneFlags,
 }
 
 impl<'a> LaneModel<'a> {
     /// #Arguments
     /// * `name` - The name of the field in the struct (mapped to the name of the lane in the agent).
     /// * `kind` - The kind of the lane, along with any types.
-    fn new(name: &'a Ident, kind: LaneKind<'a>) -> LaneModel<'a> {
-        LaneModel { name, kind }
+    /// * `flags` - Modifiers applied to the lane.
+    fn new(name: &'a Ident, kind: LaneKind<'a>, flags: LaneFlags) -> LaneModel<'a> {
+        LaneModel { name, kind, flags }
     }
 
     /// The name of the lane as a string literal.
     pub fn literal(&self) -> proc_macro2::Literal {
         let name_str = self.name.to_string();
         proc_macro2::Literal::string(name_str.as_str())
+    }
+
+    /// Determine if the lane needs to persist its state.
+    pub fn is_stateful(&self) -> bool {
+        self.kind.is_stateful() && !self.flags.contains(LaneFlags::TRANSIENT)
     }
 }
 
@@ -130,15 +154,27 @@ fn extract_lane_model(field: &Field) -> Result<LaneModel<'_>, syn::Error> {
             match type_name.as_str() {
                 COMMAND_LANE_NAME => {
                     let param = single_param(arguments)?;
-                    Ok(LaneModel::new(fld_name, LaneKind::Command(param)))
+                    Ok(LaneModel::new(
+                        fld_name,
+                        LaneKind::Command(param),
+                        LaneFlags::empty(),
+                    ))
                 }
                 VALUE_LANE_NAME => {
                     let param = single_param(arguments)?;
-                    Ok(LaneModel::new(fld_name, LaneKind::Value(param)))
+                    Ok(LaneModel::new(
+                        fld_name,
+                        LaneKind::Value(param),
+                        LaneFlags::empty(),
+                    ))
                 }
                 MAP_LANE_NAME => {
                     let (param1, param2) = two_params(arguments)?;
-                    Ok(LaneModel::new(fld_name, LaneKind::Map(param1, param2)))
+                    Ok(LaneModel::new(
+                        fld_name,
+                        LaneKind::Map(param1, param2),
+                        LaneFlags::empty(),
+                    ))
                 }
                 _ => Err(syn::Error::new_spanned(&field.ty, NOT_LANE_TYPE)),
             }

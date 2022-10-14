@@ -57,8 +57,8 @@ mod tests;
 use io::{LaneReader, LaneWriter};
 
 use self::downlink::handlers::BoxDownlinkChannel;
-use self::init::{run_lane_initializer, InitializedLane, LaneInitializer};
-pub use init::{MapLaneInitializer, ValueLaneInitializer};
+use self::init::{run_lane_initializer, InitializedLane};
+pub use init::{LaneInitializer, MapLaneInitializer, ValueLaneInitializer};
 
 /// Response from a lane after it has written bytes to its outgoing buffer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,31 +100,31 @@ pub trait AgentLaneModel: Sized + Send {
     /// accept commands.
     ///
     /// #Arguments
-    ///  * `lane` - The name of the lane.
+    /// * `lane` - The name of the lane.
     /// * `body` - The content of the command.
     fn on_value_command(&self, lane: &str, body: BytesMut) -> Option<Self::ValCommandHandler>;
 
+    /// Create an initializer that will consume the state of a value-like lane, as reported by the runtime.
+    ///
+    /// #Arguments
+    /// * `lane` - The name of the lane.
     fn init_value_like_lane(
         &self,
-        _lane: &str,
+        lane: &str,
     ) -> Option<Box<dyn LaneInitializer<Self, BytesMut> + Send + 'static>>
     where
-        Self: 'static,
-    {
-        //TODO Temporary placeholder.
-        None
-    }
+        Self: 'static;
 
+    /// Create an initializer that will consume the state of a map-like lane, as reported by the runtime.
+    ///
+    /// #Arguments
+    /// * `lane` - The name of the lane.
     fn init_map_like_lane(
         &self,
-        _lane: &str,
+        lane: &str,
     ) -> Option<Box<dyn LaneInitializer<Self, MapMessage<BytesMut, BytesMut>> + Send + 'static>>
     where
-        Self: 'static,
-    {
-        //TODO Temporary placeholder.
-        None
-    }
+        Self: 'static;
 
     /// Create a handler that will update the state of the agent when a command is received
     /// for a map lane. There will be no handler if the lane does not exist or does not

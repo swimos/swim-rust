@@ -204,6 +204,32 @@ impl AgentLaneModel for TestAgent {
             _ => None,
         }
     }
+
+    fn init_value_like_lane(
+        &self,
+        _lane: &str,
+    ) -> Option<Box<dyn crate::agent_model::LaneInitializer<Self, BytesMut> + Send + 'static>>
+    where
+        Self: 'static,
+    {
+        None
+    }
+
+    fn init_map_like_lane(
+        &self,
+        _lane: &str,
+    ) -> Option<
+        Box<
+            dyn crate::agent_model::LaneInitializer<Self, MapMessage<BytesMut, BytesMut>>
+                + Send
+                + 'static,
+        >,
+    >
+    where
+        Self: 'static,
+    {
+        None
+    }
 }
 
 impl HandlerAction<TestAgent> for TestHandler {
