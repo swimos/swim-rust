@@ -17,9 +17,8 @@ mod tests;
 
 mod iterator;
 
-pub use crate::iterator::RocksPrefixIterator;
+pub use crate::iterator::{RocksIterator, RocksPrefixIterator, RocksRawPrefixIterator};
 
-use iterator::RocksRawPrefixIterator;
 use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, ReadOptions};
 use rocksdb::{Options, DB};
 use std::path::Path;

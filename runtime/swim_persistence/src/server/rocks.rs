@@ -18,10 +18,10 @@ use crate::server::{LANE_KS, MAP_LANE_KS, VALUE_LANE_KS};
 use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, Options, SliceTransform, DB};
 use std::mem::size_of;
 use std::path::Path;
-use swim_store::rocks::{RocksEngine, RocksIterator, RocksPrefixIterator};
+use swim_store::rocks::{RocksEngine, RocksIterator, RocksPrefixIterator, RocksRawPrefixIterator};
 use swim_store::{
     EngineInfo, EngineIterOpts, EngineRefIterator, Keyspace, KeyspaceByteEngine, KeyspaceDef,
-    KeyspaceResolver, Keyspaces, Store, StoreBuilder, StoreError,
+    KeyspaceResolver, Keyspaces, PrefixRangeByteEngine, Store, StoreBuilder, StoreError,
 };
 
 const PREFIX_BLOOM_RATIO: f64 = 0.2;
@@ -38,6 +38,21 @@ impl Store for RocksDatabase {
 
     fn engine_info(&self) -> EngineInfo {
         self.db.engine_info()
+    }
+}
+
+impl<'a> PrefixRangeByteEngine<'a> for RocksDatabase {
+    type RangeCon = RocksRawPrefixIterator<'a>;
+
+    fn get_prefix_range_consumer<S>(
+        &'a self,
+        keyspace: S,
+        prefix: &[u8],
+    ) -> Result<Self::RangeCon, StoreError>
+    where
+        S: Keyspace,
+    {
+        self.db.get_prefix_range_consumer(keyspace, prefix)
     }
 }
 
@@ -83,6 +98,18 @@ impl KeyspaceByteEngine for RocksDatabase {
         S: Keyspace,
     {
         self.db.get_prefix_range(keyspace, prefix, map_fn)
+    }
+
+    fn delete_key_range<S>(
+        &self,
+        keyspace: S,
+        start: &[u8],
+        ubound: &[u8],
+    ) -> Result<(), StoreError>
+    where
+        S: Keyspace,
+    {
+        self.db.delete_key_range(keyspace, start, ubound)
     }
 }
 
