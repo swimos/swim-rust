@@ -20,6 +20,7 @@ use swim_api::{
         map::{MapMessageDecoder, RawMapOperation, RawMapOperationDecoder, RawMapOperationEncoder},
         WithLengthBytesCodec,
     },
+    store::StoreDisabled,
 };
 use swim_model::Text;
 use swim_utilities::{
@@ -31,7 +32,6 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 
 use super::{check_connected, run_test, TestInit, CONFIGS, INIT_STOPPED, NO_LANE, NO_RESPONSE};
 use crate::agent::{
-    store::StoreDisabled,
     task::{AgentRuntimeRequest, InitialEndpoints, LaneEndpoint},
     AgentExecError, DownlinkRequest, Io,
 };

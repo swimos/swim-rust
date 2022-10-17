@@ -29,7 +29,7 @@ use self::prune::PruneRemotes;
 use self::remotes::{LaneRegistry, RemoteSender, RemoteTracker, UplinkResponse};
 use self::write_fut::{WriteResult, WriteTask};
 
-use super::store::{AgentPersistence, StoreDisabled};
+use super::store::AgentPersistence;
 use super::{AgentAttachmentRequest, AgentRuntimeConfig, DisconnectionReason, DownlinkRequest, Io};
 use bytes::{Bytes, BytesMut};
 use futures::ready;
@@ -43,6 +43,7 @@ use pin_utils::pin_mut;
 use swim_api::agent::LaneConfig;
 use swim_api::error::StoreError;
 use swim_api::protocol::agent::{LaneResponse, MapLaneResponse};
+use swim_api::store::StoreDisabled;
 use swim_api::{
     agent::UplinkKind,
     error::AgentRuntimeError,
@@ -207,6 +208,37 @@ impl InitialEndpoints {
         stopping: trigger::Receiver,
     ) -> AgentRuntimeTask {
         AgentRuntimeTask::new(identity, node_uri, self, attachment_rx, stopping, config)
+    }
+
+    /// Create the agent runtime task based on these intial lane endpoints.
+    /// #Arguments
+    /// * `identity` The routing ID of this agent instance for outgoing envelopes.
+    /// * `node_uri` - The node URI of this agent instance for outgoing envelopes.
+    /// * `attachment_rx` - Channel to accept requests to attach remote connections to the agent.
+    /// * `config` - Configuration parameters for the agent runtime.
+    /// * `stopping` - A signal for initiating a clean shutdown for the agent instance.
+    /// * `store` - Persistence store for the agent.
+    pub fn make_runtime_task_with_store<Store>(
+        self,
+        identity: Uuid,
+        node_uri: Text,
+        attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
+        config: AgentRuntimeConfig,
+        stopping: trigger::Receiver,
+        store: Store,
+    ) -> AgentRuntimeTask<Store>
+    where
+        Store: AgentPersistence + Clone + Send + Sync + 'static,
+    {
+        AgentRuntimeTask::with_store(
+            identity,
+            node_uri,
+            self,
+            attachment_rx,
+            stopping,
+            config,
+            store,
+        )
     }
 }
 
@@ -499,6 +531,31 @@ impl AgentRuntimeTask {
             stopping,
             config,
             store: StoreDisabled::default(),
+        }
+    }
+}
+
+impl<Store> AgentRuntimeTask<Store>
+where
+    Store: AgentPersistence + Clone + Send + Sync + 'static,
+{
+    fn with_store(
+        identity: Uuid,
+        node_uri: Text,
+        init: InitialEndpoints,
+        attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
+        stopping: trigger::Receiver,
+        config: AgentRuntimeConfig,
+        store: Store,
+    ) -> Self {
+        AgentRuntimeTask {
+            identity,
+            node_uri,
+            init,
+            attachment_rx,
+            stopping,
+            config,
+            store,
         }
     }
 }

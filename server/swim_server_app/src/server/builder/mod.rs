@@ -51,19 +51,17 @@ pub struct ServerBuilder {
 
 const DEFAULT_PORT: u16 = 0;
 
-impl Default for ServerBuilder {
-    fn default() -> Self {
+impl ServerBuilder {
+    pub fn with_plane_name(name: &str) -> Self {
         Self {
             bind_to: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), DEFAULT_PORT)),
-            plane: Default::default(),
+            plane: PlaneBuilder::with_name(name),
             enable_tls: false,
             deflate: Default::default(),
             config: Default::default(),
         }
     }
-}
 
-impl ServerBuilder {
     /// #Arguments
     ///
     /// * `addr` - The address to which the server will bind (default: 0.0.0.0:8080).

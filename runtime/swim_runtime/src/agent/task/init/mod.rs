@@ -15,7 +15,10 @@
 use std::{convert::identity, time::Duration};
 
 use futures::{future::Either, stream::FuturesUnordered, StreamExt};
-use swim_api::agent::{LaneConfig, UplinkKind};
+use swim_api::{
+    agent::{LaneConfig, UplinkKind},
+    store::StoreDisabled,
+};
 use swim_model::Text;
 use swim_utilities::{
     io::byte_channel::{self, ByteReader, ByteWriter},
@@ -26,7 +29,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::FramedRead;
 
 use crate::agent::{
-    store::{no_store_init, AgentPersistence, BoxInitializer, StoreDisabled, StoreInitError},
+    store::{no_store_init, AgentPersistence, BoxInitializer, StoreInitError},
     AgentExecError, AgentRuntimeRequest, DownlinkRequest, Io,
 };
 use swim_api::protocol::agent::{LaneResponse, ValueLaneResponseDecoder};

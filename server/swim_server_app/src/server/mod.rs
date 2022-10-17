@@ -18,9 +18,12 @@ use futures::future::BoxFuture;
 use swim_utilities::trigger;
 
 mod builder;
+mod error;
 mod runtime;
+mod store;
 
 pub use builder::ServerBuilder;
+pub use error::ServerError;
 
 use tokio::sync::oneshot;
 
@@ -73,21 +76,21 @@ pub trait Server {
     /// instances, etc.). The handle is used to signal that the task should stop from
     /// outside the event loop. If the handle is dropped, this will also cause the server
     /// to stop.
-    fn run(self) -> (BoxFuture<'static, Result<(), std::io::Error>>, ServerHandle);
+    fn run(self) -> (BoxFuture<'static, Result<(), ServerError>>, ServerHandle);
 
     /// Run the server from a box.
-    fn run_box(self: Box<Self>) -> (BoxFuture<'static, Result<(), std::io::Error>>, ServerHandle);
+    fn run_box(self: Box<Self>) -> (BoxFuture<'static, Result<(), ServerError>>, ServerHandle);
 }
 
 /// A boxed server implementation.
 pub struct BoxServer(pub Box<dyn Server>);
 
 impl Server for BoxServer {
-    fn run(self) -> (BoxFuture<'static, Result<(), std::io::Error>>, ServerHandle) {
+    fn run(self) -> (BoxFuture<'static, Result<(), ServerError>>, ServerHandle) {
         self.0.run_box()
     }
 
-    fn run_box(self: Box<Self>) -> (BoxFuture<'static, Result<(), std::io::Error>>, ServerHandle) {
+    fn run_box(self: Box<Self>) -> (BoxFuture<'static, Result<(), ServerError>>, ServerHandle) {
         self.0.run_box()
     }
 }

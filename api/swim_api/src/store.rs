@@ -68,7 +68,64 @@ pub trait NodePersistence: NodePersistenceBase + for<'a> MapPersistence<'a> {}
 impl<P> NodePersistence for P where P: NodePersistenceBase + for<'a> MapPersistence<'a> {}
 
 pub trait PlanePersistence {
-    type Node: NodePersistence;
+    type Node: NodePersistence + Clone + Send + Sync + 'static;
 
     fn node_store(&mut self, node_uri: &str) -> Result<Self::Node, StoreError>;
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct StoreDisabled;
+
+impl RangeConsumer for StoreDisabled {
+    fn consume_next(&mut self) -> Result<Option<KeyValue<'_>>, StoreError> {
+        Ok(None)
+    }
+}
+
+impl<'a> MapPersistence<'a> for StoreDisabled {
+    type MapCon = StoreDisabled;
+
+    fn read_map(&'a self, _id: Self::LaneId) -> Result<Self::MapCon, StoreError> {
+        Ok(StoreDisabled)
+    }
+}
+
+impl NodePersistenceBase for StoreDisabled {
+    type LaneId = ();
+
+    fn id_for(&self, _name: &str) -> Result<Self::LaneId, StoreError> {
+        Ok(())
+    }
+
+    fn get_value(
+        &self,
+        _id: Self::LaneId,
+        _buffer: &mut BytesMut,
+    ) -> Result<Option<usize>, StoreError> {
+        Ok(None)
+    }
+
+    fn put_value(&self, _id: Self::LaneId, _value: &[u8]) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    fn update_map(&self, _id: Self::LaneId, _key: &[u8], _value: &[u8]) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    fn remove_map(&self, _id: Self::LaneId, _key: &[u8]) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    fn clear(&self, _id: Self::LaneId) -> Result<(), StoreError> {
+        Ok(())
+    }
+}
+
+impl PlanePersistence for StoreDisabled {
+    type Node = StoreDisabled;
+
+    fn node_store(&mut self, _node_uri: &str) -> Result<Self::Node, StoreError> {
+        Ok(StoreDisabled)
+    }
 }

@@ -22,7 +22,7 @@ use swim_api::{
         map::{MapMessage, MapMessageEncoder, MapOperation, RawMapOperationEncoder},
         WithLengthBytesCodec,
     },
-    store::{NodePersistence, NodePersistenceBase, RangeConsumer},
+    store::{NodePersistence, NodePersistenceBase, RangeConsumer, StoreDisabled},
 };
 use swim_utilities::io::byte_channel::ByteWriter;
 use thiserror::Error;
@@ -128,9 +128,6 @@ pub trait AgentPersistence {
         op: &MapOperation<B, B>,
     ) -> Result<(), StoreError>;
 }
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct StoreDisabled;
 
 impl AgentPersistence for StoreDisabled {
     type LaneId = ();

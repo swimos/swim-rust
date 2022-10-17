@@ -23,7 +23,7 @@ use swim_api::{
         AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
         StoreError,
     },
-    store::StoreKind,
+    store::{NodePersistence, StoreKind},
 };
 use swim_model::{address::Address, Text};
 use swim_utilities::{
@@ -44,7 +44,10 @@ use std::{
 
 use crate::downlink::DownlinkOptions;
 
-use self::{store::StoreInitError, task::AgentInitTask};
+use self::{
+    store::{StoreInitError, StorePersistence},
+    task::AgentInitTask,
+};
 
 mod store;
 mod task;
@@ -363,6 +366,65 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
                 attachment_rx,
                 runtime_config,
                 stopping,
+            );
+
+            let (runtime_result, agent_result) = join(runtime_task.run(), agent_task).await;
+            runtime_result?;
+            agent_result?;
+            Ok(())
+        }
+    }
+
+    pub fn run_agent_with_store<Store>(
+        self,
+        store: Store,
+    ) -> impl Future<Output = Result<(), AgentExecError>> + Send + 'static
+    where
+        Store: NodePersistence + Clone + Send + Sync + 'static,
+    {
+        let AgentRouteTask {
+            agent,
+            identity,
+            route,
+            attachment_rx,
+            downlink_tx,
+            stopping,
+            agent_config,
+            runtime_config,
+        } = self;
+        let node_uri = route.to_string().into();
+        let (runtime_tx, runtime_rx) = mpsc::channel(runtime_config.attachment_queue_size.get());
+        let (init_tx, init_rx) = trigger::trigger();
+        let runtime_init_task = AgentInitTask::with_store(
+            runtime_rx,
+            downlink_tx,
+            init_rx,
+            runtime_config.lane_init_timeout,
+            StorePersistence(store.clone()),
+        );
+        let context = Box::new(AgentRuntimeContext::new(runtime_tx));
+
+        let agent_init = agent.run(route, agent_config, context);
+
+        async move {
+            let agent_init_task = async move {
+                let agent_task_result = agent_init.await;
+                drop(init_tx);
+                agent_task_result
+            };
+
+            let (initial_state_result, agent_task_result) =
+                join(runtime_init_task.run(), agent_init_task).await;
+            let initial_state = initial_state_result?;
+            let agent_task = agent_task_result?;
+
+            let runtime_task = initial_state.make_runtime_task_with_store(
+                identity,
+                node_uri,
+                attachment_rx,
+                runtime_config,
+                stopping,
+                StorePersistence(store),
             );
 
             let (runtime_result, agent_result) = join(runtime_task.run(), agent_task).await;

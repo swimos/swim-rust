@@ -19,7 +19,10 @@ use futures::{
     future::{join, join3},
     Future, StreamExt,
 };
-use swim_api::{agent::UplinkKind, store::NodePersistenceBase};
+use swim_api::{
+    agent::UplinkKind,
+    store::{NodePersistenceBase, StoreDisabled},
+};
 use swim_messages::protocol::Notification;
 use swim_model::Text;
 use swim_utilities::{
@@ -32,7 +35,7 @@ use uuid::Uuid;
 
 use crate::{
     agent::{
-        store::{AgentPersistence, StoreDisabled, StorePersistence},
+        store::{AgentPersistence, StorePersistence},
         task::{
             fake_store::FakeStore,
             tests::RemoteReceiver,
