@@ -24,7 +24,7 @@ use futures::{
     Future,
 };
 use ratchet::{Message, NegotiatedExtension, NoExt, Role, WebSocket, WebSocketConfig};
-use swim_api::error::DownlinkFailureReason;
+use swim_api::{error::DownlinkFailureReason, store::StoreDisabled};
 use swim_form::structural::write::StructuralWritable;
 use swim_model::address::RelativeAddress;
 use swim_recon::printer::print_recon_compact;
@@ -125,7 +125,7 @@ where
     let (networking, networking_task) = TestConnections::new(HashMap::new(), remotes, incoming_rx);
     let websockets = TestWs::default();
 
-    let server = SwimServer::new(plane, addr, networking, websockets, config);
+    let server = SwimServer::new(plane, addr, networking, websockets, config, StoreDisabled);
 
     let (server_conn, dl_conn) = downlink_task_connector(
         config.client_request_channel_size,

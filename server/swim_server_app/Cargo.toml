@@ -6,7 +6,7 @@ edition = "2021"
 
 [features]
 default = ["persistence"]
-persistence = ["swim_persistence", "swim_persistence/rocks", "rocksdb", "swim_store", "swim_store/rocks"]
+persistence = ["swim_persistence", "swim_persistence/rocks", "rocksdb"]
 
 [dependencies]
 futures = "0.3.4"
@@ -28,7 +28,6 @@ rand = "0.7.3"
 url = "2.1.1"
 swim_persistence = { path = "../../runtime/swim_persistence", optional = true }
 rocksdb = { version = "0.19.0", optional = true }
-swim_store = { path = "../../swim_store", optional = true }
 
 [dev-dependencies]
 swim_recon = { path = "../../api/formats/swim_recon", features = ["async_parser"] }

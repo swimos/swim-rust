@@ -71,7 +71,7 @@ pub trait SwimStore {
     ///
     /// # Errors
     /// Errors if the delegate database could not be created.
-    fn plane_store<I>(&mut self, plane_name: I) -> Result<Self::PlaneStore, StoreError>
+    fn plane_store<I>(&self, plane_name: I) -> Result<Self::PlaneStore, StoreError>
     where
         I: ToString;
 }
@@ -155,7 +155,7 @@ where
 {
     type PlaneStore = SwimPlaneStore<D::Store>;
 
-    fn plane_store<I: ToString>(&mut self, plane_name: I) -> Result<Self::PlaneStore, StoreError> {
+    fn plane_store<I: ToString>(&self, plane_name: I) -> Result<Self::PlaneStore, StoreError> {
         let ServerStore {
             builder,
             keyspaces,

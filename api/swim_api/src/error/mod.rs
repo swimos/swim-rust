@@ -217,7 +217,7 @@ pub enum StoreError {
     InitialisationFailure(String),
     /// An IO error produced by the delegate byte engine.
     #[error("IO error: {0}")]
-    Io(io::Error),
+    Io(#[from] io::Error),
     /// An error produced when attempting to encode a value.
     #[error("Encoding error: {0}")]
     Encoding(String),

@@ -163,7 +163,7 @@ impl<D: PlaneStore> NodeStore for SwimNodeStore<D> {
 }
 
 #[derive(Debug, Clone)]
-pub struct StoreWrapper<S>(S);
+pub struct StoreWrapper<S>(pub S);
 
 impl<'a, S> MapPersistence<'a> for StoreWrapper<S>
 where

@@ -18,14 +18,14 @@ use futures::future::BoxFuture;
 use swim_utilities::trigger;
 
 mod builder;
-mod error;
 mod runtime;
 mod store;
 
 pub use builder::ServerBuilder;
-pub use error::ServerError;
 
 use tokio::sync::oneshot;
+
+use crate::error::ServerError;
 
 pub struct ServerHandle {
     stop_trigger: Option<trigger::Sender>,

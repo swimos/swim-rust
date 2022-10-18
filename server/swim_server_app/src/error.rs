@@ -15,7 +15,11 @@
 use std::{
     error::Error,
     fmt::{Display, Formatter},
+    io,
 };
+
+use swim_api::error::StoreError;
+use thiserror::Error;
 
 use swim_utilities::{format::comma_sep, routing::route_pattern::RoutePattern};
 
@@ -42,6 +46,22 @@ impl Display for AmbiguousRoutes {
 }
 
 impl Error for AmbiguousRoutes {}
+
+#[derive(Debug, Error)]
+pub enum ServerError {
+    #[error("The server network connection failed.")]
+    Networking(#[from] io::Error),
+    #[error("Opening the store for a plane failed.")]
+    Persistence(#[from] StoreError),
+}
+
+#[derive(Debug, Error)]
+pub enum ServerBuilderError {
+    #[error("The specified agent routes are invalid: {0}")]
+    BadRoutes(#[from] AmbiguousRoutes),
+    #[error("Opening the store failed: {0}")]
+    Persistence(#[from] StoreError),
+}
 
 #[cfg(test)]
 mod tests {

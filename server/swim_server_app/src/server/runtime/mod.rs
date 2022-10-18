@@ -27,7 +27,6 @@ use std::time::Duration;
 use swim_api::agent::BoxAgent;
 use swim_api::error::{AgentRuntimeError, DownlinkFailureReason, DownlinkRuntimeError};
 use swim_api::store::PlanePersistence;
-use swim_api::store::StoreDisabled;
 use swim_model::address::RelativeAddress;
 use swim_model::Text;
 use swim_remote::{AgentResolutionError, AttachClient, FindNode, NoSuchAgent, RemoteTask};
@@ -69,7 +68,7 @@ mod tests;
 
 /// A swim server task that listens for incoming connections on a socket and runs the
 /// agents specified in a [`PlaneModel`].
-pub struct SwimServer<Net, Ws, Store = StoreDisabled> {
+pub struct SwimServer<Net, Ws, Store> {
     plane: PlaneModel,
     addr: SocketAddr,
     networking: Net,
@@ -135,11 +134,12 @@ impl ClientRegistration {
     }
 }
 
-impl<Net, Ws> Server for SwimServer<Net, Ws>
+impl<Net, Ws, Store> Server for SwimServer<Net, Ws, Store>
 where
     Net: ExternalConnections + Clone,
     Net::Socket: WebSocketStream,
     Ws: WsConnections<Net::Socket> + Send + Sync + 'static,
+    Store: ServerPersistence + Send + Sync + 'static,
 {
     fn run(
         self,
@@ -190,11 +190,12 @@ enum TaskState {
     StoppingRemotes, //The server is shutting down, all agents have stopped, and the remote connections are being closed.
 }
 
-impl<Net, Ws> SwimServer<Net, Ws>
+impl<Net, Ws, Store> SwimServer<Net, Ws, Store>
 where
     Net: ExternalConnections,
     Net::Socket: WebSocketStream,
     Ws: WsConnections<Net::Socket> + Send + Sync,
+    Store: ServerPersistence + Send + Sync + 'static,
 {
     pub fn new(
         plane: PlaneModel,
@@ -202,6 +203,7 @@ where
         networking: Net,
         websockets: Ws,
         config: SwimServerConfig,
+        store: Store,
     ) -> Self {
         SwimServer {
             plane,
@@ -209,7 +211,7 @@ where
             networking,
             websockets,
             config,
-            store: Default::default(),
+            store,
         }
     }
 }

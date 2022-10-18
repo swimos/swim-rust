@@ -23,3 +23,6 @@ pub use self::{
     server::{BoxServer, Server, ServerBuilder, ServerHandle},
     util::AgentExt,
 };
+
+#[cfg(feature = "persistence")]
+pub use swim_persistence::rocks::RocksOpts;
