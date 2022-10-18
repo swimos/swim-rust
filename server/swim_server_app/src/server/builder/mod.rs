@@ -13,9 +13,8 @@
 // limitations under the License.
 
 use std::{
-    ffi::OsStr,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::Arc,
 };
 
@@ -24,7 +23,6 @@ use ratchet::{
     NoExtProvider, ProtocolRegistry, WebSocketStream,
 };
 use swim_api::{agent::Agent, error::StoreError, store::StoreDisabled};
-use swim_persistence::rocks::{default_db_opts, RocksOpts};
 use swim_runtime::{
     remote::{
         net::{dns::Resolver, plain::TokioPlainTextNetworking, tls::TokioTlsNetworking},
@@ -40,11 +38,7 @@ use crate::{
     plane::{PlaneBuilder, PlaneModel},
 };
 
-use super::{
-    runtime::SwimServer,
-    store::{rocks::create_rocks_store, ServerPersistence},
-    BoxServer, Server,
-};
+use super::{runtime::SwimServer, store::ServerPersistence, BoxServer, Server};
 
 /// Builder for a swim server that will listen on a socket and run a suite of agents.
 pub struct ServerBuilder {
@@ -53,7 +47,6 @@ pub struct ServerBuilder {
     enable_tls: bool,
     deflate: Option<DeflateConfig>,
     config: SwimServerConfig,
-    #[cfg(feature = "persistence")]
     store_options: StoreConfig,
 }
 
@@ -192,7 +185,7 @@ where
     match store_config {
         #[cfg(feature = "persistence")]
         StoreConfig::RockStore { path, options } => {
-            let store = create_rocks_store(path, options)?;
+            let store = super::store::rocks::create_rocks_store(path, options)?;
             Ok(with_websockets(
                 bind_to, routes, networking, config, deflate, store,
             ))
@@ -244,45 +237,48 @@ where
 }
 
 #[cfg(feature = "persistence")]
-impl ServerBuilder {
-    pub fn enable_rocks_store(mut self) -> Self {
-        self.store_options = StoreConfig::RockStore {
-            path: None,
-            options: default_db_opts(),
-        };
-        self
-    }
-
-    pub fn set_store_path<P: AsRef<OsStr>>(mut self, base_path: P) -> Self {
-        let db_path = PathBuf::from(Path::new(&base_path));
-        match &mut self.store_options {
-            StoreConfig::RockStore { path, .. } => {
-                *path = Some(db_path);
-            }
-            _ => {
-                self.store_options = StoreConfig::RockStore {
-                    path: Some(db_path),
-                    options: default_db_opts(),
-                };
-            }
+const _: () = {
+    use swim_persistence::rocks::default_db_opts;
+    impl ServerBuilder {
+        pub fn enable_rocks_store(mut self) -> Self {
+            self.store_options = StoreConfig::RockStore {
+                path: None,
+                options: default_db_opts(),
+            };
+            self
         }
-        self
-    }
 
-    pub fn modify_rocks_opts<F: FnOnce(&mut RocksOpts)>(mut self, f: F) -> Self {
-        match &mut self.store_options {
-            StoreConfig::RockStore { options, .. } => {
-                f(options);
+        pub fn set_store_path<P: AsRef<std::ffi::OsStr>>(mut self, base_path: P) -> Self {
+            let db_path = PathBuf::from(std::path::Path::new(&base_path));
+            match &mut self.store_options {
+                StoreConfig::RockStore { path, .. } => {
+                    *path = Some(db_path);
+                }
+                _ => {
+                    self.store_options = StoreConfig::RockStore {
+                        path: Some(db_path),
+                        options: default_db_opts(),
+                    };
+                }
             }
-            _ => {
-                let mut options = default_db_opts();
-                f(&mut options);
-                self.store_options = StoreConfig::RockStore {
-                    path: None,
-                    options,
-                };
-            }
+            self
         }
-        self
+
+        pub fn modify_rocks_opts<F: FnOnce(&mut crate::RocksOpts)>(mut self, f: F) -> Self {
+            match &mut self.store_options {
+                StoreConfig::RockStore { options, .. } => {
+                    f(options);
+                }
+                _ => {
+                    let mut options = default_db_opts();
+                    f(&mut options);
+                    self.store_options = StoreConfig::RockStore {
+                        path: None,
+                        options,
+                    };
+                }
+            }
+            self
+        }
     }
-}
+};
