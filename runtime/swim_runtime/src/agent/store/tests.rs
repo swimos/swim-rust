@@ -145,7 +145,7 @@ impl NodePersistenceBase for FakeStore {
         }
     }
 
-    fn clear(&self, id: Self::LaneId) -> Result<(), StoreError> {
+    fn clear_map(&self, id: Self::LaneId) -> Result<(), StoreError> {
         if id == Id::Map {
             self.inner.lock().map.clear();
             Ok(())

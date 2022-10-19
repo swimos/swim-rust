@@ -85,7 +85,7 @@ impl AgentContext for DummyAgentContext {
         panic!("Dummy context used.");
     }
 
-    fn open_store(
+    fn add_store(
         &self,
         _name: &str,
         _kind: StoreKind,

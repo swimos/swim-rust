@@ -244,7 +244,7 @@ where
         store.delete(key)
     }
 
-    fn clear(&self, id: Self::LaneId) -> Result<(), StoreError> {
+    fn clear_map(&self, id: Self::LaneId) -> Result<(), StoreError> {
         let StoreWrapper(store) = self;
         store.delete_map(id)
     }

@@ -223,7 +223,7 @@ impl NodePersistenceBase for FakeStore {
         }
     }
 
-    fn clear(&self, id: Self::LaneId) -> Result<(), StoreError> {
+    fn clear_map(&self, id: Self::LaneId) -> Result<(), StoreError> {
         let mut guard = self.inner.lock();
         let FakeStoreInner { maps, ids_back, .. } = &mut *guard;
         if !ids_back.contains_key(&id) {

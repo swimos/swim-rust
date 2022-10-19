@@ -99,7 +99,11 @@ pub trait AgentContext: Sync {
         kind: DownlinkKind,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>>;
 
-    fn open_store(
+    /// Add a new named store that will persist a (possibly compound) value in the agent state.
+    /// #Arguments
+    /// * `name` - The name of the store.
+    /// * `kind` - The kind of the store.
+    fn add_store(
         &self,
         name: &str,
         kind: StoreKind,

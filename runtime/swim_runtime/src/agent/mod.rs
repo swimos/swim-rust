@@ -139,7 +139,7 @@ impl AgentContext for AgentRuntimeContext {
         .boxed()
     }
 
-    fn open_store(
+    fn add_store(
         &self,
         _name: &str,
         _kind: StoreKind,

@@ -88,7 +88,7 @@ mod test_support {
             panic!("Unexpected runtime interaction.");
         }
 
-        fn open_store(
+        fn add_store(
             &self,
             _name: &str,
             _kind: StoreKind,

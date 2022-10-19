@@ -103,7 +103,7 @@ impl AgentContext for TestAgentContext {
         panic!("Opening downlinks from agents not yet supported.")
     }
 
-    fn open_store(
+    fn add_store(
         &self,
         _name: &str,
         _kind: StoreKind,

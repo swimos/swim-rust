@@ -190,7 +190,7 @@ where
                 store.update_map(lane_id, key.as_ref(), value.as_ref())
             }
             MapOperation::Remove { key } => store.remove_map(lane_id, key.as_ref()),
-            MapOperation::Clear => store.clear(lane_id),
+            MapOperation::Clear => store.clear_map(lane_id),
         }
     }
 
