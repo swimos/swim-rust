@@ -31,6 +31,7 @@ use tokio_util::codec::FramedWrite;
 #[cfg(test)]
 mod tests;
 
+/// Possible error conditions when the runtime attempts to initialize the state of a lane in an agent.
 #[derive(Debug, Error)]
 pub enum StoreInitError {
     #[error("An error occurred reading the state from the store.")]
@@ -45,12 +46,17 @@ pub enum StoreInitError {
 
 pub type InitFut<'a> = BoxFuture<'a, Result<(), StoreInitError>>;
 
+/// An initializer will attempt to transmit the state of the lane to the lane implementation
+/// over a channel. Typically, the value will be read from a store implementation.
 pub trait Initializer<'a> {
+
+    /// Attempt to initalize the state of the lane.
     fn initialize<'b>(self: Box<Self>, writer: &'b mut ByteWriter) -> InitFut<'b>
     where
         'a: 'b;
 }
 
+/// [`Initializer`] that attempts to initialize a value lane from a [`NodePersistence`] store.
 struct ValueInit<'a, S, Id> {
     store: &'a S,
     lane_id: Id,
@@ -78,6 +84,7 @@ where
     }
 }
 
+/// [`Initializer`] that attempts to initialize a map lane from a [`NodePersistence`] store.
 struct MapInit<'a, S, Id> {
     store: &'a S,
     lane_id: Id,
@@ -111,17 +118,27 @@ where
 
 pub type BoxInitializer<'a> = Box<dyn Initializer<'a> + Send + 'a>;
 
+/// Operations required by an agent to interact with a store of the state of its lanes.
 pub trait AgentPersistence {
+
+    /// Type of IDs assigned to the names of the lanes of the agent.
     type LaneId: Copy + Unpin + Send + Sync + Eq + 'static;
 
+    /// Attempt to get the ID associated with a lane name.
     fn lane_id(&self, name: &str) -> Result<Self::LaneId, StoreError>;
 
+    /// If a state for a value lane exists in the store, create an initializer that
+    /// will communicate that state to the lane.
     fn init_value_lane(&self, _lane_id: Self::LaneId) -> Option<BoxInitializer<'_>>;
 
+    /// If a state for a map lane exists in the store, create an initializer that
+    /// will communicate that state to the lane.
     fn init_map_lane(&self, _lane_id: Self::LaneId) -> Option<BoxInitializer<'_>>;
 
+    /// Put a value from a value lane into the store.
     fn put_value(&self, lane_id: Self::LaneId, bytes: &[u8]) -> Result<(), StoreError>;
 
+    /// Apply an operation from a map lane into the store.
     fn apply_map<B: AsRef<[u8]>>(
         &self,
         lane_id: Self::LaneId,
@@ -157,6 +174,8 @@ impl AgentPersistence for StoreDisabled {
     }
 }
 
+/// Binding to use an implementation of [`NodePersistence`] as an implementation of
+/// [`AgentPersistence`].
 #[derive(Debug, Clone)]
 pub struct StorePersistence<S>(pub S);
 
@@ -210,6 +229,7 @@ where
 struct NoValueInit;
 struct NoMapInit;
 
+/// Dummy initializer for when there is no store.
 pub fn no_store_init<'a>(kind: UplinkKind) -> BoxInitializer<'a> {
     match kind {
         UplinkKind::Value => Box::new(NoValueInit),
