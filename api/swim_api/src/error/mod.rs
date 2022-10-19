@@ -212,6 +212,9 @@ pub enum StoreError {
     /// The provided key was not found in the store.
     #[error("The specified key was not found")]
     KeyNotFound,
+    /// A key returned by the store did not have the correct format.
+    #[error("The store returned an invalid key")]
+    InvalidKey,
     /// The delegate byte engine failed to initialised.
     #[error("The delegate store engine failed to initialise: {0}")]
     InitialisationFailure(String),

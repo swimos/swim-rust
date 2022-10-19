@@ -254,7 +254,7 @@ where
         let networking = Arc::new(networking);
         let websockets = Arc::new(websockets);
 
-        let mut plane_store = store.open_plane(plane.name.as_str())?;
+        let plane_store = store.open_plane(plane.name.as_str())?;
 
         let (bound_addr, listener) = networking.bind(addr).await?;
         let _ = addr_tx.send(bound_addr);

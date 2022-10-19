@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use swim_model::Text;
-use swim_store::{EngineInfo, PrefixRangeByteEngine, RangeConsumer, Store, StoreError};
+use swim_store::{EngineInfo, KeyValue, PrefixRangeByteEngine, RangeConsumer, Store, StoreError};
 
 use crate::agent::{NodeStore, SwimNodeStore};
 use crate::server::keystore::KeyStore;
@@ -127,11 +127,30 @@ where
     }
 }
 
+pub struct PrefixStrippedRangeConsumer<C> {
+    inner: C,
+}
+
+impl<C: RangeConsumer> RangeConsumer for PrefixStrippedRangeConsumer<C> {
+    fn consume_next(&mut self) -> Result<Option<KeyValue<'_>>, StoreError> {
+        let maybe_entry = self.inner.consume_next()?;
+        if let Some((k, v)) = maybe_entry {
+            if k.len() < StoreKey::MAP_KEY_PREFIX_SIZE {
+                Err(StoreError::InvalidKey)
+            } else {
+                Ok(Some((&k[StoreKey::MAP_KEY_PREFIX_SIZE..], v)))
+            }
+        } else {
+            Ok(None)
+        }
+    }
+}
+
 impl<'a, D> PrefixPlaneStore<'a> for SwimPlaneStore<D>
 where
     D: Store,
 {
-    type RangeCon = <D as PrefixRangeByteEngine<'a>>::RangeCon;
+    type RangeCon = PrefixStrippedRangeConsumer<<D as PrefixRangeByteEngine<'a>>::RangeCon>;
 
     fn ranged_snapshot_consumer(&'a self, prefix: StoreKey) -> Result<Self::RangeCon, StoreError> {
         let namespace = match &prefix {
@@ -141,6 +160,7 @@ where
 
         self.delegate
             .get_prefix_range_consumer(namespace, prefix.serialize_as_bytes().as_slice())
+            .map(|consumer| PrefixStrippedRangeConsumer { inner: consumer })
     }
 }
 

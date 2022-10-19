@@ -184,7 +184,7 @@ where
 {
     type Node = StoreWrapper<S::NodeStore>;
 
-    fn node_store(&mut self, node_uri: &str) -> Result<Self::Node, StoreError> {
+    fn node_store(&self, node_uri: &str) -> Result<Self::Node, StoreError> {
         let StoreWrapper(inner) = self;
         Ok(StoreWrapper(inner.node_store(node_uri)))
     }
@@ -247,5 +247,10 @@ where
     fn clear(&self, id: Self::LaneId) -> Result<(), StoreError> {
         let StoreWrapper(store) = self;
         store.delete_map(id)
+    }
+
+    fn delete_value(&self, lane_id: Self::LaneId) -> Result<(), StoreError> {
+        let StoreWrapper(store) = self;
+        store.delete(StoreKey::Value { lane_id })
     }
 }

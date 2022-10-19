@@ -234,4 +234,17 @@ impl NodePersistenceBase for FakeStore {
             Ok(())
         }
     }
+
+    fn delete_value(&self, id: Self::LaneId) -> Result<(), StoreError> {
+        let mut guard = self.inner.lock();
+        let FakeStoreInner {
+            values, ids_back, ..
+        } = &mut *guard;
+        if !ids_back.contains_key(&id) {
+            Err(StoreError::KeyNotFound)
+        } else {
+            values.remove(&id);
+            Ok(())
+        }
+    }
 }

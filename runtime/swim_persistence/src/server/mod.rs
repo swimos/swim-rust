@@ -201,6 +201,8 @@ const KEY: u8 = 1;
 const UBOUND: u8 = 2;
 
 impl StoreKey {
+    pub const MAP_KEY_PREFIX_SIZE: usize = ID_LEN + 2 * TAG_LEN + SIZE_LEN;
+
     pub fn keyspace_name(&self) -> KeyspaceName {
         match self {
             StoreKey::Map { .. } => KeyspaceName::Map,

@@ -42,7 +42,7 @@ struct FakeStore {
 }
 
 impl FakeStore {
-    fn new(value: Vec<u8>, map: HashMap<Vec<u8>, Vec<u8>>) -> Self {
+    fn new(value: Option<Vec<u8>>, map: HashMap<Vec<u8>, Vec<u8>>) -> Self {
         FakeStore {
             inner: Arc::new(Mutex::new(Inner { value, map })),
         }
@@ -50,7 +50,7 @@ impl FakeStore {
 }
 
 struct Inner {
-    value: Vec<u8>,
+    value: Option<Vec<u8>>,
     map: HashMap<Vec<u8>, Vec<u8>>,
 }
 
@@ -98,10 +98,14 @@ impl NodePersistenceBase for FakeStore {
     ) -> Result<Option<usize>, StoreError> {
         if id == Id::Value {
             let guard = self.inner.lock();
-            let v = &guard.value;
-            buffer.reserve(v.len());
-            buffer.put(v.as_ref());
-            Ok(Some(v.len()))
+            let maybe_v = &guard.value;
+            if let Some(v) = maybe_v {
+                buffer.reserve(v.len());
+                buffer.put(v.as_ref());
+                Ok(Some(v.len()))
+            } else {
+                Ok(None)
+            }
         } else {
             Err(StoreError::DelegateMessage("Wrong key kind.".to_owned()))
         }
@@ -110,7 +114,8 @@ impl NodePersistenceBase for FakeStore {
     fn put_value(&self, id: Self::LaneId, value: &[u8]) -> Result<(), StoreError> {
         if id == Id::Value {
             let mut guard = self.inner.lock();
-            let v = &mut guard.value;
+            let maybe_v = &mut guard.value;
+            let v = maybe_v.get_or_insert_with(Default::default);
             v.clear();
             v.extend_from_slice(value);
             Ok(())
@@ -148,6 +153,17 @@ impl NodePersistenceBase for FakeStore {
             Err(StoreError::DelegateMessage("Wrong key kind.".to_owned()))
         }
     }
+
+    fn delete_value(&self, id: Self::LaneId) -> Result<(), StoreError> {
+        if id == Id::Value {
+            let mut guard = self.inner.lock();
+            let v = &mut guard.value;
+            *v = None;
+            Ok(())
+        } else {
+            Err(StoreError::DelegateMessage("Wrong key kind.".to_owned()))
+        }
+    }
 }
 
 impl<'a> MapPersistence<'a> for FakeStore {
@@ -176,7 +192,7 @@ const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 #[tokio::test]
 async fn value_initializer() {
     let data = vec![1, 2, 3, 4, 5];
-    let store = FakeStore::new(data.clone(), Default::default());
+    let store = FakeStore::new(Some(data.clone()), Default::default());
 
     let persistence = StorePersistence(store.clone());
     let init = persistence
@@ -210,7 +226,7 @@ async fn value_initializer() {
 
 #[tokio::test]
 async fn map_initializer_empty() {
-    let store = FakeStore::new(vec![], Default::default());
+    let store = FakeStore::new(None, Default::default());
 
     let persistence = StorePersistence(store.clone());
     let init = persistence
@@ -241,7 +257,7 @@ async fn map_initializer_with_entries() {
     let mut map = HashMap::new();
     map.insert(vec![1], vec![1, 2, 3]);
     map.insert(vec![2], vec![4, 5, 6]);
-    let store = FakeStore::new(vec![], map.clone());
+    let store = FakeStore::new(None, map.clone());
 
     let persistence = StorePersistence(store.clone());
     let init = persistence
@@ -277,19 +293,19 @@ async fn map_initializer_with_entries() {
 #[test]
 fn put_value() {
     let data = vec![1, 2, 3, 4, 5];
-    let store = FakeStore::new(data, Default::default());
+    let store = FakeStore::new(Some(data), Default::default());
 
     let persistence = StorePersistence(store.clone());
 
     let replace = &[8, 9, 10];
     assert!(persistence.put_value(Id::Value, replace).is_ok());
 
-    assert_eq!(&store.inner.lock().value, replace);
+    assert_eq!(&store.inner.lock().value, &Some(replace.to_vec()));
 }
 
 #[test]
 fn insert_map() {
-    let store = FakeStore::new(vec![], Default::default());
+    let store = FakeStore::new(None, Default::default());
 
     let persistence = StorePersistence(store.clone());
 
@@ -310,7 +326,7 @@ fn remove_map() {
     let mut map = HashMap::new();
     map.insert(vec![1], vec![1, 2, 3]);
     map.insert(vec![2], vec![4, 5, 6]);
-    let store = FakeStore::new(vec![], map.clone());
+    let store = FakeStore::new(None, map.clone());
 
     let persistence = StorePersistence(store.clone());
 
@@ -330,7 +346,7 @@ fn clear_map() {
     let mut map = HashMap::new();
     map.insert(vec![1], vec![1, 2, 3]);
     map.insert(vec![2], vec![4, 5, 6]);
-    let store = FakeStore::new(vec![], map.clone());
+    let store = FakeStore::new(None, map.clone());
 
     let persistence = StorePersistence(store.clone());
 

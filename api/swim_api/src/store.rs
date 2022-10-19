@@ -44,6 +44,7 @@ pub trait NodePersistenceBase {
     ) -> Result<Option<usize>, StoreError>;
 
     fn put_value(&self, id: Self::LaneId, value: &[u8]) -> Result<(), StoreError>;
+    fn delete_value(&self, id: Self::LaneId) -> Result<(), StoreError>;
 
     fn update_map(&self, id: Self::LaneId, key: &[u8], value: &[u8]) -> Result<(), StoreError>;
     fn remove_map(&self, id: Self::LaneId, key: &[u8]) -> Result<(), StoreError>;
@@ -70,7 +71,7 @@ impl<P> NodePersistence for P where P: NodePersistenceBase + for<'a> MapPersiste
 pub trait PlanePersistence {
     type Node: NodePersistence + Clone + Send + Sync + 'static;
 
-    fn node_store(&mut self, node_uri: &str) -> Result<Self::Node, StoreError>;
+    fn node_store(&self, node_uri: &str) -> Result<Self::Node, StoreError>;
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -120,12 +121,16 @@ impl NodePersistenceBase for StoreDisabled {
     fn clear(&self, _id: Self::LaneId) -> Result<(), StoreError> {
         Ok(())
     }
+
+    fn delete_value(&self, _id: Self::LaneId) -> Result<(), StoreError> {
+        Ok(())
+    }
 }
 
 impl PlanePersistence for StoreDisabled {
     type Node = StoreDisabled;
 
-    fn node_store(&mut self, _node_uri: &str) -> Result<Self::Node, StoreError> {
+    fn node_store(&self, _node_uri: &str) -> Result<Self::Node, StoreError> {
         Ok(StoreDisabled)
     }
 }
