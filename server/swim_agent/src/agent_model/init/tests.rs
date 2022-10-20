@@ -115,6 +115,63 @@ async fn init_value_lane() {
 }
 
 #[tokio::test]
+async fn init_value_lane_no_data() {
+    let init = ValueLaneInitializer::new(VALUE_LANE);
+    let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
+    let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
+    let decoder = WithLengthBytesCodec::default();
+    let init_task = run_lane_initializer(
+        "value_lane",
+        UplinkKind::Value,
+        (out_tx, in_rx),
+        decoder,
+        Box::new(init),
+    );
+
+    let runtime_task = async move {
+        let mut writer = FramedWrite::new(
+            &mut in_tx,
+            LaneRequestEncoder::new(WithLenReconEncoder::default()),
+        );
+        let mut reader = FramedRead::new(
+            &mut out_rx,
+            LaneResponseDecoder::new(WithLengthBytesCodec::default()),
+        );
+
+        writer
+            .send(LaneRequest::<i32>::InitComplete)
+            .await
+            .expect("Completing init failed.");
+
+        match reader.next().await {
+            Some(Ok(LaneResponse::Initialized)) => {}
+            ow => panic!("Unexpected response: {:?}", ow),
+        }
+        (in_tx, out_rx)
+    };
+
+    let (result, _io) = tokio::time::timeout(TEST_TIMEOUT, join(init_task, runtime_task))
+        .await
+        .expect("Test timed out.");
+
+    let InitializedLane {
+        name,
+        kind,
+        init_fn,
+        io: _io,
+    } = result.expect("Initialization failed.");
+
+    assert_eq!(name, "value_lane");
+    assert_eq!(kind, UplinkKind::Value);
+
+    let agent = TestAgent::default();
+
+    init_fn(&agent);
+
+    assert_eq!(agent.value_lane.read(|n| *n), 0);
+}
+
+#[tokio::test]
 async fn init_map_lane() {
     let init = MapLaneInitializer::new(MAP_LANE);
     let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
@@ -195,4 +252,62 @@ async fn init_map_lane() {
     expected.insert(Text::new("b"), 2);
     expected.insert(Text::new("c"), 3);
     assert_eq!(lane_map, expected);
+}
+
+#[tokio::test]
+async fn init_map_lane_no_data() {
+    let init = MapLaneInitializer::new(MAP_LANE);
+    let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
+    let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
+    let decoder = MapMessageDecoder::new(RawMapOperationDecoder::default());
+    let init_task = run_lane_initializer(
+        "map_lane",
+        UplinkKind::Map,
+        (out_tx, in_rx),
+        decoder,
+        Box::new(init),
+    );
+
+    let runtime_task = async move {
+        let mut writer = FramedWrite::new(
+            &mut in_tx,
+            LaneRequestEncoder::new(MapMessageEncoder::new(MapOperationEncoder::default())),
+        );
+        let mut reader = FramedRead::new(
+            &mut out_rx,
+            LaneResponseDecoder::new(RawMapOperationDecoder::default()),
+        );
+
+        writer
+            .send(LaneRequest::<MapMessage<Text, i32>>::InitComplete)
+            .await
+            .expect("Completing init failed.");
+
+        match reader.next().await {
+            Some(Ok(LaneResponse::Initialized)) => {}
+            ow => panic!("Unexpected response: {:?}", ow),
+        }
+        (in_tx, out_rx)
+    };
+
+    let (result, _io) = tokio::time::timeout(TEST_TIMEOUT, join(init_task, runtime_task))
+        .await
+        .expect("Test timed out.");
+
+    let InitializedLane {
+        name,
+        kind,
+        init_fn,
+        io: _io,
+    } = result.expect("Initialization failed.");
+
+    assert_eq!(name, "map_lane");
+    assert_eq!(kind, UplinkKind::Map);
+
+    let agent = TestAgent::default();
+
+    init_fn(&agent);
+
+    let lane_map = agent.map_lane.get_map(Clone::clone);
+    assert!(lane_map.is_empty());
 }

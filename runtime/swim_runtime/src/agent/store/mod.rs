@@ -49,7 +49,6 @@ pub type InitFut<'a> = BoxFuture<'a, Result<(), StoreInitError>>;
 /// An initializer will attempt to transmit the state of the lane to the lane implementation
 /// over a channel. Typically, the value will be read from a store implementation.
 pub trait Initializer<'a> {
-
     /// Attempt to initalize the state of the lane.
     fn initialize<'b>(self: Box<Self>, writer: &'b mut ByteWriter) -> InitFut<'b>
     where
@@ -120,7 +119,6 @@ pub type BoxInitializer<'a> = Box<dyn Initializer<'a> + Send + 'a>;
 
 /// Operations required by an agent to interact with a store of the state of its lanes.
 pub trait AgentPersistence {
-
     /// Type of IDs assigned to the names of the lanes of the agent.
     type LaneId: Copy + Unpin + Send + Sync + Eq + 'static;
 

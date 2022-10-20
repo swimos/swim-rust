@@ -43,6 +43,9 @@ mod tests;
 
 const UNEXPECTED_SYNC: &str = "Sync messages are not permitted during initialization.";
 
+/// A stream that will consume command messages from the channel for a lane until an `InitComplete`
+/// message is received. It is invalid to receive a `Sync` message while the lane is initializing
+/// so this will result in the stream failing with an error.
 fn init_stream<'a, D>(
     reader: &'a mut ByteReader,
     decoder: D,
@@ -72,8 +75,11 @@ where
     })
 }
 
+/// A function that will initialize the state of one of the lanes of the agent.
 pub type InitFn<Agent> = Box<dyn FnOnce(&Agent) + Send + 'static>;
 
+/// A lane initializer consumers a stream of commands from the runtime and creates a function
+/// that will initialize a lane on the instance of the agent.
 pub trait LaneInitializer<Agent, Msg> {
     fn initialize(
         self: Box<Self>,
@@ -81,10 +87,15 @@ pub trait LaneInitializer<Agent, Msg> {
     ) -> BoxFuture<'_, Result<InitFn<Agent>, FrameIoError>>;
 }
 
+/// The result of running the initialization process for a new lane.
 pub struct InitializedLane<'a, Agent> {
+    // The name of the lane.
     pub name: &'a str,
+    // The uplink kind for communication with the runtime.
     pub kind: UplinkKind,
+    // Function to initialize the state of the lane in the agent.
     pub init_fn: InitFn<Agent>,
+    // Channels for communication with the runtime.
     pub io: (ByteWriter, ByteReader),
 }
 
@@ -104,6 +115,15 @@ impl<'a, Agent> InitializedLane<'a, Agent> {
     }
 }
 
+/// Run the initialization process for a lane.
+///
+/// #Arguments
+/// * `name` - The name of the lane.
+/// * `kind` - The uplink kind (determines the protocol for communication with the runtime).
+/// * `io` - Channels for commmunication with the runtime.
+/// * `decoder` - Decoder to interpret the command messages from the runtime, during the
+/// initialization process.
+/// * `init` - Initializer to consume the incoming command and assemble the initial state of the lane.
 pub async fn run_lane_initializer<'a, Agent, D>(
     name: &'a str,
     kind: UplinkKind,
@@ -133,6 +153,7 @@ where
     }
 }
 
+/// [`LaneInitializer`] to construct the state of a value lane.
 pub struct ValueLaneInitializer<Agent, T> {
     projection: fn(&Agent) -> &ValueLane<T>,
 }
@@ -143,6 +164,7 @@ impl<Agent, T> ValueLaneInitializer<Agent, T> {
     }
 }
 
+/// [`LaneInitializer`] to construct the state of a map lane.
 pub struct MapLaneInitializer<Agent, K, V> {
     projection: fn(&Agent) -> &MapLane<K, V>,
 }
@@ -164,20 +186,26 @@ where
     ) -> BoxFuture<'_, Result<InitFn<Agent>, FrameIoError>> {
         let ValueLaneInitializer { projection } = *self;
         async move {
-            let mut body = BytesMut::new();
+            let mut body = None;
             while let Some(result) = stream.next().await {
-                body = result?;
+                body = Some(result?);
             }
-            let mut decoder = RecognizerDecoder::new(T::make_recognizer());
-            if let Some(value) = decoder.decode_eof(&mut body)? {
-                let f = move |agent: &Agent| projection(agent).init(value);
+            if let Some(mut body) = body {
+                let mut decoder = RecognizerDecoder::new(T::make_recognizer());
+                if let Some(value) = decoder.decode_eof(&mut body)? {
+                    let f = move |agent: &Agent| projection(agent).init(value);
+                    let f_init: InitFn<Agent> = Box::new(f);
+                    Ok(f_init)
+                } else {
+                    Err(
+                        AsyncParseError::Parser(ParseError::Structure(ReadError::IncompleteRecord))
+                            .into(),
+                    )
+                }
+            } else {
+                let f = move |_: &Agent| {};
                 let f_init: InitFn<Agent> = Box::new(f);
                 Ok(f_init)
-            } else {
-                Err(
-                    AsyncParseError::Parser(ParseError::Structure(ReadError::IncompleteRecord))
-                        .into(),
-                )
             }
         }
         .boxed()
