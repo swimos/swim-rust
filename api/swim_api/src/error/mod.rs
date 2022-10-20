@@ -105,6 +105,7 @@ pub enum AgentRuntimeError {
     Terminated,
 }
 
+/// Error type for the operation of spawning a new downlink on the runtime.
 #[derive(Error, Debug, Clone, Copy)]
 pub enum DownlinkRuntimeError {
     #[error(transparent)]
@@ -113,6 +114,7 @@ pub enum DownlinkRuntimeError {
     DownlinkConnectionFailed(DownlinkFailureReason),
 }
 
+/// Error type for requests so the runtime for creating/opening a state for an agent.
 #[derive(Error, Debug, Clone, Copy)]
 pub enum OpenStoreError {
     #[error(transparent)]
