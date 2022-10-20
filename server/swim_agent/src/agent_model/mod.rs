@@ -437,6 +437,7 @@ where
                 match kind {
                     UplinkKind::Value => value_lane_io.insert(Text::new(name), io),
                     UplinkKind::Map => map_lane_io.insert(Text::new(name), io),
+                    UplinkKind::Supply => todo!("Supply lanes not yet implemented."),
                 };
             }
         }

@@ -146,6 +146,9 @@ impl FakeAgent {
                     let init = initial_state.map_lanes.remove(&name).unwrap_or_default();
                     map_lanes.insert(name.clone(), (init, MapLaneSender::new(io_tx)));
                 }
+                UplinkKind::Supply => {
+                    panic!("Unexpected supply uplink.");
+                }
             }
             lanes.push(LaneReader::new(LaneEndpoint {
                 name,
@@ -252,6 +255,9 @@ impl FakeAgent {
                             UplinkKind::Map => {
                                 let m: BTreeMap<Text, i32> = BTreeMap::new();
                                 map_lanes.insert(name.clone(), (m, MapLaneSender::new(io_tx)));
+                            }
+                            UplinkKind::Supply => {
+                                panic!("Unexpected supply uplink.");
                             }
                         }
                         lanes.push(LaneReader::new(LaneEndpoint { name, kind, transient: false, io: io_rx }));

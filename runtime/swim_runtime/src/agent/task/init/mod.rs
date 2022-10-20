@@ -29,7 +29,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::FramedRead;
 
 use crate::agent::{
-    store::{no_store_init, AgentPersistence, BoxInitializer, StoreInitError},
+    store::{no_map_init, no_value_init, AgentPersistence, BoxInitializer, StoreInitError},
     AgentExecError, AgentRuntimeRequest, DownlinkRequest, Io,
 };
 use swim_api::protocol::agent::{LaneResponse, ValueLaneResponseDecoder};
@@ -149,31 +149,36 @@ impl<Store: AgentPersistence + Clone + Send + Sync> AgentInitTask<Store> {
                         let (out_tx, out_rx) = byte_channel::byte_channel(output_buffer_size);
 
                         let io = (out_tx, in_rx);
+
                         if promise.send(Ok(io)).is_ok() {
-                            if transient {
-                                endpoints.push(LaneEndpoint {
-                                    name,
-                                    kind,
-                                    transient,
-                                    io: (in_tx, out_rx),
-                                });
-                            } else {
-                                let lane_id = store.lane_id(name.as_str()).map_err(|error| {
+                            let get_lane_id = || {
+                                store.lane_id(name.as_str()).map_err(|error| {
                                     AgentExecError::FailedRestoration {
                                         lane_name: name.clone(),
                                         error: StoreInitError::Store(error),
                                     }
-                                })?;
-
-                                let initializer = match kind {
-                                    UplinkKind::Value => store
-                                        .init_value_lane(lane_id)
-                                        .unwrap_or_else(|| no_store_init(UplinkKind::Value)),
-                                    UplinkKind::Map => store
-                                        .init_map_lane(lane_id)
-                                        .unwrap_or_else(|| no_store_init(UplinkKind::Map)),
-                                };
-
+                                })
+                            };
+                            let maybe_initializer = match kind {
+                                UplinkKind::Value if !transient => {
+                                    let lane_id = get_lane_id()?;
+                                    Some(
+                                        store
+                                            .init_value_lane(lane_id)
+                                            .unwrap_or_else(|| no_value_init()),
+                                    )
+                                }
+                                UplinkKind::Map if !transient => {
+                                    let lane_id = get_lane_id()?;
+                                    Some(
+                                        store
+                                            .init_value_lane(lane_id)
+                                            .unwrap_or_else(|| no_map_init()),
+                                    )
+                                }
+                                _ => None,
+                            };
+                            if let Some(initializer) = maybe_initializer {
                                 let init_task = lane_initialization(
                                     name.clone(),
                                     kind,
@@ -183,6 +188,13 @@ impl<Store: AgentPersistence + Clone + Send + Sync> AgentInitTask<Store> {
                                     initializer,
                                 );
                                 initializers.push(init_task);
+                            } else {
+                                endpoints.push(LaneEndpoint {
+                                    name,
+                                    kind,
+                                    transient,
+                                    io: (in_tx, out_rx),
+                                });
                             }
                         } else {
                             error!(

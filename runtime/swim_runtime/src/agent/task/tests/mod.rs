@@ -287,7 +287,7 @@ impl LaneReader {
     fn new(endpoint: LaneEndpoint<ByteReader>) -> Self {
         let LaneEndpoint { name, kind, io, .. } = endpoint;
         match kind {
-            UplinkKind::Value => LaneReader::Value {
+            UplinkKind::Value | UplinkKind::Supply => LaneReader::Value {
                 name,
                 read: FramedRead::new(
                     io,

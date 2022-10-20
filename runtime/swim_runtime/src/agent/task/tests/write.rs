@@ -90,6 +90,9 @@ impl FakeAgent {
                 UplinkKind::Map => {
                     map_lanes.insert(name, MapLaneSender::new(io));
                 }
+                _ => {
+                    panic!("Unexpected supply uplink.");
+                }
             }
         }
 

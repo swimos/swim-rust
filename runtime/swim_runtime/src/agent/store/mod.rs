@@ -15,7 +15,6 @@
 use bytes::BytesMut;
 use futures::{future::BoxFuture, FutureExt, SinkExt};
 use swim_api::{
-    agent::UplinkKind,
     error::StoreError,
     protocol::{
         agent::{LaneRequest, LaneRequestEncoder},
@@ -227,12 +226,14 @@ where
 struct NoValueInit;
 struct NoMapInit;
 
-/// Dummy initializer for when there is no store.
-pub fn no_store_init<'a>(kind: UplinkKind) -> BoxInitializer<'a> {
-    match kind {
-        UplinkKind::Value => Box::new(NoValueInit),
-        UplinkKind::Map => Box::new(NoMapInit),
-    }
+/// Dummy initializer for when there is no store for a value.
+pub fn no_value_init<'a>() -> BoxInitializer<'a> {
+    Box::new(NoValueInit)
+}
+
+/// Dummy initializer for when there is no store for a map.
+pub fn no_map_init<'a>() -> BoxInitializer<'a> {
+    Box::new(NoMapInit)
 }
 
 impl<'a> Initializer<'a> for NoValueInit {

@@ -169,11 +169,15 @@ impl LaneEndpoint<ByteReader> {
         let id = registry.add_endpoint(name);
         Ok(match kind {
             UplinkKind::Value => {
-                let receiver = LaneReceiver::value(id, store_id, reader);
+                let receiver = ValueLikeLaneReceiver::value(id, store_id, reader);
+                Either::Left(receiver).stop_after_error()
+            }
+            UplinkKind::Supply => {
+                let receiver = ValueLikeLaneReceiver::supply(id, store_id, reader);
                 Either::Left(receiver).stop_after_error()
             }
             UplinkKind::Map => {
-                let receiver = LaneReceiver::map(id, store_id, reader);
+                let receiver = MapLaneReceiver::new(id, store_id, reader);
                 Either::Right(receiver).stop_after_error()
             }
         })
@@ -303,7 +307,7 @@ enum LaneSender {
 impl LaneSender {
     fn new(tx: ByteWriter, kind: UplinkKind) -> Self {
         match kind {
-            UplinkKind::Value => LaneSender::Value {
+            UplinkKind::Value | UplinkKind::Supply => LaneSender::Value {
                 sender: FramedWrite::new(tx, LaneRequestEncoder::value()),
             },
             UplinkKind::Map => LaneSender::Map {
@@ -360,16 +364,28 @@ where
     sender.flush().await
 }
 
-/// Recives a stream of messages sent by a lane.
-#[derive(Debug)]
-struct LaneReceiver<D, I> {
-    lane_id: u64,
-    store_id: Option<I>,
-    receiver: FramedRead<ByteReader, D>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ValueOrSupply {
+    Value,
+    Supply,
 }
 
-type ValueLaneReceiver<I> = LaneReceiver<ValueLaneResponseDecoder, I>;
-type MapLaneReceiver<I> = LaneReceiver<MapLaneResponseDecoder, I>;
+/// Recives a stream of messages sent by a lane.
+#[derive(Debug)]
+struct ValueLikeLaneReceiver<I> {
+    lane_id: u64,
+    store_id: Option<I>,
+    kind: ValueOrSupply,
+    receiver: FramedRead<ByteReader, ValueLaneResponseDecoder>,
+}
+
+/// Recives a stream of messages sent by a lane.
+#[derive(Debug)]
+struct MapLaneReceiver<I> {
+    lane_id: u64,
+    store_id: Option<I>,
+    receiver: FramedRead<ByteReader, MapLaneResponseDecoder>,
+}
 
 /// Unified response type from all lane types.
 #[derive(Debug)]
@@ -403,11 +419,15 @@ impl RawLaneResponse {
     }
 }
 
-fn value_raw_response(resp: LaneResponse<BytesMut>) -> Option<RawLaneResponse> {
+fn value_or_supply_raw_response(
+    resp: LaneResponse<BytesMut>,
+    kind: ValueOrSupply,
+) -> Option<RawLaneResponse> {
     match resp {
-        LaneResponse::StandardEvent(body) => Some(RawLaneResponse::broadcast(
-            UplinkResponse::Value(body.freeze()),
-        )),
+        LaneResponse::StandardEvent(body) => Some(RawLaneResponse::broadcast(match kind {
+            ValueOrSupply::Value => UplinkResponse::Value(body.freeze()),
+            ValueOrSupply::Supply => UplinkResponse::Supply(body.freeze()),
+        })),
         LaneResponse::Initialized => None,
         LaneResponse::SyncEvent(id, body) => Some(RawLaneResponse::targetted(
             id,
@@ -436,19 +456,29 @@ fn map_raw_response(resp: MapLaneResponse<BytesMut, BytesMut>) -> Option<RawLane
     }
 }
 
-impl<I> LaneReceiver<ValueLaneResponseDecoder, I> {
+impl<I> ValueLikeLaneReceiver<I> {
     fn value(lane_id: u64, store_id: Option<I>, reader: ByteReader) -> Self {
-        LaneReceiver {
+        ValueLikeLaneReceiver {
             lane_id,
             store_id,
+            kind: ValueOrSupply::Value,
+            receiver: FramedRead::new(reader, Default::default()),
+        }
+    }
+
+    fn supply(lane_id: u64, store_id: Option<I>, reader: ByteReader) -> Self {
+        ValueLikeLaneReceiver {
+            lane_id,
+            store_id,
+            kind: ValueOrSupply::Supply,
             receiver: FramedRead::new(reader, Default::default()),
         }
     }
 }
 
-impl<I> LaneReceiver<MapLaneResponseDecoder, I> {
-    fn map(lane_id: u64, store_id: Option<I>, reader: ByteReader) -> Self {
-        LaneReceiver {
+impl<I> MapLaneReceiver<I> {
+    fn new(lane_id: u64, store_id: Option<I>, reader: ByteReader) -> Self {
+        MapLaneReceiver {
             lane_id,
             store_id,
             receiver: FramedRead::new(reader, Default::default()),
@@ -460,7 +490,7 @@ impl<I> LaneReceiver<MapLaneResponseDecoder, I> {
 #[derive(Debug)]
 struct Failed(u64);
 
-impl<I> Stream for ValueLaneReceiver<I>
+impl<I> Stream for ValueLikeLaneReceiver<I>
 where
     I: Copy + Unpin,
 {
@@ -475,7 +505,7 @@ where
 
             match maybe_result {
                 Some(Ok(r)) => {
-                    if let Some(raw) = value_raw_response(r) {
+                    if let Some(raw) = value_or_supply_raw_response(r, this.kind) {
                         break Some(Ok((id, store_id, raw)));
                     }
                 }
@@ -1124,7 +1154,7 @@ enum WriteTaskEvent<I> {
     Stop,
 }
 
-type LaneStream<I> = StopAfterError<Either<ValueLaneReceiver<I>, MapLaneReceiver<I>>>;
+type LaneStream<I> = StopAfterError<Either<ValueLikeLaneReceiver<I>, MapLaneReceiver<I>>>;
 
 /// Parameters for the write task.
 #[derive(Debug)]

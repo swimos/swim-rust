@@ -61,6 +61,8 @@ pub enum UplinkResponse {
     Synced(UplinkKind),
     /// An event message for a value type lane.
     Value(Bytes),
+    /// An event message for a supply value type lane.
+    Supply(Bytes),
     /// An event message for a map type lane.
     Map(MapOperation<BytesMut, BytesMut>),
 }
@@ -166,6 +168,9 @@ impl Uplinks {
                         *queued = true;
                     }
                 }
+                UplinkResponse::Supply(_body) => {
+                    todo!("Supply uplinks not implemented.");
+                }
                 UplinkResponse::Map(operation) => {
                     let Uplink {
                         queued,
@@ -178,7 +183,7 @@ impl Uplinks {
                         *queued = true;
                     }
                 }
-                UplinkResponse::Synced(UplinkKind::Value) => {
+                UplinkResponse::Synced(UplinkKind::Value | UplinkKind::Supply) => {
                     let Uplink {
                         queued,
                         send_synced,
@@ -260,6 +265,9 @@ impl Uplinks {
                                 break Some(WriteTask::new(sender, buffer, action));
                             }
                         }
+                        UplinkKind::Supply => {
+                            todo!("Supply uplinks not implemented.");
+                        }
                         UplinkKind::Map => {
                             if let Some(Uplink {
                                 queued,
@@ -325,9 +333,11 @@ fn write_to_buffer(
     buffer: &mut BytesMut,
 ) -> Result<WriteAction, InvalidKey> {
     let action = match response {
-        UplinkResponse::Synced(UplinkKind::Value) => WriteAction::ValueSynced(false),
+        UplinkResponse::Synced(UplinkKind::Value | UplinkKind::Supply) => {
+            WriteAction::ValueSynced(false)
+        }
         UplinkResponse::Synced(UplinkKind::Map) => WriteAction::MapSynced(None),
-        UplinkResponse::Value(body) => {
+        UplinkResponse::Value(body) | UplinkResponse::Supply(body) => {
             buffer.clear();
             buffer.reserve(body.len());
             buffer.put(body);

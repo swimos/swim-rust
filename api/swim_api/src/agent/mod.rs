@@ -37,6 +37,7 @@ use crate::{
 pub enum UplinkKind {
     Value,
     Map,
+    Supply,
 }
 
 impl Display for UplinkKind {
@@ -44,6 +45,7 @@ impl Display for UplinkKind {
         match self {
             UplinkKind::Value => f.write_str("Value"),
             UplinkKind::Map => f.write_str("Map"),
+            UplinkKind::Supply => f.write_str("Supply"),
         }
     }
 }
