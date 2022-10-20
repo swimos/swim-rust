@@ -144,7 +144,7 @@ impl AgentContext for AgentRuntimeContext {
         _name: &str,
         _kind: StoreKind,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>> {
-        todo!()
+        todo!("Non-lane stores not yet implemented.")
     }
 }
 
