@@ -162,6 +162,9 @@ impl<D: PlaneStore> NodeStore for SwimNodeStore<D> {
     }
 }
 
+/// Wrapper type to expose the stores defined in the swim_persistence crate as the interface
+/// specified in swim_api.
+/// TODO: This should be unnecessary after the prototype server is removed.
 #[derive(Debug, Clone)]
 pub struct StoreWrapper<S>(pub S);
 
