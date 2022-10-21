@@ -30,6 +30,9 @@ use recon::MapOperationReconEncoder;
 
 use crate::error::InvalidKey;
 
+#[cfg(test)]
+mod tests;
+
 /// Backpressure strategy for the output task of a downlink. This is used to encode the
 /// difference in behaviour between different kinds of downlink (particuarly value and
 /// map downlinks.)
