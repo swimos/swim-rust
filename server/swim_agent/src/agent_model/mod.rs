@@ -364,7 +364,7 @@ where
 
         let meta = AgentMetadata::new(&route, &config);
 
-        let mut value_lane_io = HashMap::new();
+        let mut value_like_lane_io = HashMap::new();
         let mut map_lane_io = HashMap::new();
 
         let val_lane_specs = LaneModel::value_like_lane_specs();
@@ -387,7 +387,7 @@ where
                 }
                 let io = context.add_lane(name, UplinkKind::Value, lane_conf).await?;
                 if lane_conf.transient {
-                    value_lane_io.insert(Text::new(name), io);
+                    value_like_lane_io.insert(Text::new(name), io);
                 } else if let Some(init) = lane_model.init_value_like_lane(name) {
                     let init_task = run_lane_initializer(
                         name,
@@ -398,11 +398,11 @@ where
                     );
                     lane_init_tasks.push(init_task.boxed());
                 } else {
-                    value_lane_io.insert(Text::new(name), io);
+                    value_like_lane_io.insert(Text::new(name), io);
                 }
             }
             for (name, spec) in map_lane_specs {
-                if value_lane_io.contains_key(name) {
+                if value_like_lane_io.contains_key(name) {
                     return Err(AgentInitError::DuplicateLane(Text::new(name)));
                 }
                 let mut lane_conf = default_lane_config;
@@ -435,9 +435,10 @@ where
                 } = result.map_err(AgentInitError::LaneInitializationFailure)?;
                 init_fn(&lane_model);
                 match kind {
-                    UplinkKind::Value => value_lane_io.insert(Text::new(name), io),
+                    UplinkKind::Value | UplinkKind::Supply => {
+                        value_like_lane_io.insert(Text::new(name), io)
+                    }
                     UplinkKind::Map => map_lane_io.insert(Text::new(name), io),
-                    UplinkKind::Supply => todo!("Supply lanes not yet implemented."),
                 };
             }
         }
@@ -462,7 +463,7 @@ where
             route,
             config,
             lane_ids,
-            value_lane_io,
+            value_like_lane_io,
             map_lane_io,
             suspended,
             downlink_channels: downlink_channels.into_inner(),
@@ -477,7 +478,7 @@ struct AgentTask<LaneModel, Lifecycle> {
     route: RelativeUri,
     config: AgentConfig,
     lane_ids: HashMap<u64, Text>,
-    value_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
+    value_like_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
     map_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
     suspended: FuturesUnordered<HandlerFuture<LaneModel>>,
     downlink_channels: Vec<(BoxDownlinkChannel<LaneModel>, WriteStream)>,
@@ -503,7 +504,7 @@ where
             route,
             config,
             lane_ids,
-            value_lane_io,
+            value_like_lane_io,
             map_lane_io,
             mut suspended,
             downlink_channels,
@@ -527,7 +528,7 @@ where
         }
 
         // Set up readers and writes for each lane.
-        for (name, (tx, rx)) in value_lane_io {
+        for (name, (tx, rx)) in value_like_lane_io {
             let id = lane_ids_rev[&name];
             lane_readers.push(LaneReader::value(id, rx));
             lane_writers.insert(id, LaneWriter::new(id, tx));
