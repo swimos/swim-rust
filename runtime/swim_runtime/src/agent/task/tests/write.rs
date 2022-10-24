@@ -49,8 +49,9 @@ use crate::{
 };
 
 use super::{
-    make_config, Instruction, Instructions, MapLaneSender, ValueLaneSender, BUFFER_SIZE,
-    DEFAULT_TIMEOUT, INACTIVE_TEST_TIMEOUT, MAP_LANE, QUEUE_SIZE, TEST_TIMEOUT, VAL_LANE,
+    make_config, Instruction, Instructions, MapLaneSender, ValueLikeLaneSender, BUFFER_SIZE,
+    DEFAULT_TIMEOUT, INACTIVE_TEST_TIMEOUT, MAP_LANE, QUEUE_SIZE, SUPPLY_LANE, TEST_TIMEOUT,
+    VAL_LANE,
 };
 
 struct FakeAgent {
@@ -80,18 +81,19 @@ impl FakeAgent {
         } = self;
 
         let mut value_lanes = HashMap::new();
+        let mut supply_lanes = HashMap::new();
         let mut map_lanes = HashMap::new();
         for endpoint in initial {
             let LaneEndpoint { name, kind, io, .. } = endpoint;
             match kind {
                 UplinkKind::Value => {
-                    value_lanes.insert(name, ValueLaneSender::new(io));
+                    value_lanes.insert(name, ValueLikeLaneSender::new(io));
                 }
                 UplinkKind::Map => {
                     map_lanes.insert(name, MapLaneSender::new(io));
                 }
-                _ => {
-                    panic!("Unexpected supply uplink.");
+                UplinkKind::Supply => {
+                    supply_lanes.insert(name, ValueLikeLaneSender::new(io));
                 }
             }
         }
@@ -102,6 +104,11 @@ impl FakeAgent {
             match instruction {
                 Instruction::ValueEvent { lane, value } => {
                     if let Some(tx) = value_lanes.get_mut(&lane) {
+                        tx.event(value).await;
+                    }
+                }
+                Instruction::SupplyEvent { lane, value } => {
+                    if let Some(tx) = supply_lanes.get_mut(&lane) {
                         tx.event(value).await;
                     }
                 }
@@ -125,6 +132,11 @@ impl FakeAgent {
                 Instruction::ValueSynced { lane, id, value } => {
                     if let Some(tx) = value_lanes.get_mut(&lane) {
                         tx.synced(id, value).await;
+                    }
+                }
+                Instruction::SupplySynced { lane, id } => {
+                    if let Some(tx) = supply_lanes.get_mut(&lane) {
+                        tx.synced_only(id).await;
                     }
                 }
                 Instruction::MapSynced { lane, id } => {
@@ -178,6 +190,12 @@ where
             name: Text::new(VAL_LANE),
             kind: UplinkKind::Value,
             transient: false,
+            io: byte_channel(BUFFER_SIZE),
+        },
+        LaneEndpoint {
+            name: Text::new(SUPPLY_LANE),
+            kind: UplinkKind::Supply,
+            transient: true,
             io: byte_channel(BUFFER_SIZE),
         },
         LaneEndpoint {
@@ -335,7 +353,7 @@ async fn attach_and_link_remote() {
 }
 
 #[tokio::test]
-async fn receive_message_when_linked_remote() {
+async fn receive_value_message_when_linked_remote() {
     run_test_case(DEFAULT_TIMEOUT, |context| async move {
         let TestContext {
             stop_sender,
@@ -350,7 +368,7 @@ async fn receive_message_when_linked_remote() {
         reader.expect_linked(VAL_LANE).await;
 
         instr_tx.value_event(VAL_LANE, 747);
-        reader.expect_value_event(VAL_LANE, 747).await;
+        reader.expect_value_like_event(VAL_LANE, 747).await;
 
         stop_sender.trigger();
         reader.expect_clean_shutdown(vec![VAL_LANE], None).await;
@@ -359,7 +377,31 @@ async fn receive_message_when_linked_remote() {
 }
 
 #[tokio::test]
-async fn receive_messages_when_linked_remote() {
+async fn receive_supply_message_when_linked_remote() {
+    run_test_case(DEFAULT_TIMEOUT, |context| async move {
+        let TestContext {
+            stop_sender,
+            messages_tx,
+            vote2: _vote2,
+            vote_rx: _vote_rx,
+            instr_tx,
+        } = context;
+
+        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
+        link_remote(RID1.into(), SUPPLY_LANE, &messages_tx).await;
+        reader.expect_linked(SUPPLY_LANE).await;
+
+        instr_tx.supply_event(SUPPLY_LANE, 747);
+        reader.expect_value_like_event(SUPPLY_LANE, 747).await;
+
+        stop_sender.trigger();
+        reader.expect_clean_shutdown(vec![SUPPLY_LANE], None).await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn receive_value_messages_when_linked_remote() {
     run_test_case(DEFAULT_TIMEOUT, |context| async move {
         let TestContext {
             stop_sender,
@@ -374,12 +416,38 @@ async fn receive_messages_when_linked_remote() {
         reader.expect_linked(VAL_LANE).await;
 
         instr_tx.value_event(VAL_LANE, 747);
-        reader.expect_value_event(VAL_LANE, 747).await;
+        reader.expect_value_like_event(VAL_LANE, 747).await;
         instr_tx.value_event(VAL_LANE, 367);
-        reader.expect_value_event(VAL_LANE, 367).await;
+        reader.expect_value_like_event(VAL_LANE, 367).await;
 
         stop_sender.trigger();
         reader.expect_clean_shutdown(vec![VAL_LANE], None).await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn receive_supply_messages_when_linked_remote() {
+    run_test_case(DEFAULT_TIMEOUT, |context| async move {
+        let TestContext {
+            stop_sender,
+            messages_tx,
+            vote2: _vote2,
+            vote_rx: _vote_rx,
+            instr_tx,
+        } = context;
+
+        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
+        link_remote(RID1.into(), SUPPLY_LANE, &messages_tx).await;
+        reader.expect_linked(SUPPLY_LANE).await;
+
+        instr_tx.supply_event(SUPPLY_LANE, 8483);
+        reader.expect_value_like_event(SUPPLY_LANE, 8483).await;
+        instr_tx.supply_event(SUPPLY_LANE, -826743);
+        reader.expect_value_like_event(SUPPLY_LANE, -826743).await;
+
+        stop_sender.trigger();
+        reader.expect_clean_shutdown(vec![SUPPLY_LANE], None).await;
     })
     .await;
 }
@@ -411,7 +479,7 @@ async fn explicitly_unlink_remote() {
 }
 
 #[tokio::test]
-async fn broadcast_message_when_linked_multiple_remotes() {
+async fn broadcast_value_message_when_linked_multiple_remotes() {
     run_test_case(DEFAULT_TIMEOUT, |context| async move {
         let TestContext {
             stop_sender,
@@ -433,8 +501,8 @@ async fn broadcast_message_when_linked_multiple_remotes() {
         instr_tx.value_event(VAL_LANE, 747);
 
         join(
-            reader1.expect_value_event(VAL_LANE, 747),
-            reader2.expect_value_event(VAL_LANE, 747),
+            reader1.expect_value_like_event(VAL_LANE, 747),
+            reader2.expect_value_like_event(VAL_LANE, 747),
         )
         .await;
 
@@ -442,6 +510,44 @@ async fn broadcast_message_when_linked_multiple_remotes() {
         join(
             reader1.expect_clean_shutdown(vec![VAL_LANE], None),
             reader2.expect_clean_shutdown(vec![VAL_LANE], None),
+        )
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn broadcast_supply_message_when_linked_multiple_remotes() {
+    run_test_case(DEFAULT_TIMEOUT, |context| async move {
+        let TestContext {
+            stop_sender,
+            messages_tx,
+            vote2: _vote2,
+            vote_rx: _vote_rx,
+            instr_tx,
+        } = context;
+
+        let mut reader1 = attach_remote(RID1.into(), &messages_tx).await;
+        link_remote(RID1.into(), SUPPLY_LANE, &messages_tx).await;
+
+        let mut reader2 = attach_remote(RID2.into(), &messages_tx).await;
+        link_remote(RID2.into(), SUPPLY_LANE, &messages_tx).await;
+
+        reader1.expect_linked(SUPPLY_LANE).await;
+        reader2.expect_linked(SUPPLY_LANE).await;
+
+        instr_tx.supply_event(SUPPLY_LANE, 948383);
+
+        join(
+            reader1.expect_value_like_event(SUPPLY_LANE, 948383),
+            reader2.expect_value_like_event(SUPPLY_LANE, 948383),
+        )
+        .await;
+
+        stop_sender.trigger();
+        join(
+            reader1.expect_clean_shutdown(vec![SUPPLY_LANE], None),
+            reader2.expect_clean_shutdown(vec![SUPPLY_LANE], None),
         )
         .await;
     })
@@ -476,6 +582,40 @@ async fn value_synced_message_are_targetted() {
         join(
             reader1.expect_clean_shutdown(vec![VAL_LANE], None),
             reader2.expect_clean_shutdown(vec![VAL_LANE], None),
+        )
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn supply_synced_message_are_targetted() {
+    run_test_case(DEFAULT_TIMEOUT, |context| async move {
+        let TestContext {
+            stop_sender,
+            messages_tx,
+            vote2: _vote2,
+            vote_rx: _vote_rx,
+            instr_tx,
+        } = context;
+
+        let mut reader1 = attach_remote(RID1.into(), &messages_tx).await;
+        link_remote(RID1.into(), SUPPLY_LANE, &messages_tx).await;
+
+        let mut reader2 = attach_remote(RID2.into(), &messages_tx).await;
+        link_remote(RID2.into(), SUPPLY_LANE, &messages_tx).await;
+
+        reader1.expect_linked(SUPPLY_LANE).await;
+        reader2.expect_linked(SUPPLY_LANE).await;
+
+        instr_tx.supply_synced_event(RID1.into(), SUPPLY_LANE);
+
+        reader1.expect_supply_synced(SUPPLY_LANE).await;
+
+        stop_sender.trigger();
+        join(
+            reader1.expect_clean_shutdown(vec![SUPPLY_LANE], None),
+            reader2.expect_clean_shutdown(vec![SUPPLY_LANE], None),
         )
         .await;
     })
@@ -650,7 +790,7 @@ async fn write_task_rescinds_vote_to_stop() {
         tokio::time::sleep(2 * INACTIVE_TEST_TIMEOUT).await;
 
         instr_tx.value_event(VAL_LANE, 747);
-        reader.expect_value_event(VAL_LANE, 747).await;
+        reader.expect_value_like_event(VAL_LANE, 747).await;
 
         assert_eq!(vote2.vote(), VoteResult::UnanimityPending);
 
@@ -844,7 +984,7 @@ async fn value_lane_events_persisted() {
         reader.expect_linked(VAL_LANE).await;
 
         instr_tx.value_event(VAL_LANE, 747);
-        reader.expect_value_event(VAL_LANE, 747).await;
+        reader.expect_value_like_event(VAL_LANE, 747).await;
 
         stop_sender.trigger();
         reader.expect_clean_shutdown(vec![VAL_LANE], None).await;
@@ -897,4 +1037,33 @@ async fn map_lane_events_persisted() {
     expected.insert(b"b".to_vec(), b"2".to_vec());
     expected.insert(b"c".to_vec(), b"3".to_vec());
     assert_eq!(store_map, expected);
+}
+
+#[tokio::test]
+async fn supply_uplink_does_not_drop_messages() {
+    run_test_case(DEFAULT_TIMEOUT, |context| async move {
+        let TestContext {
+            stop_sender,
+            messages_tx,
+            vote2: _vote2,
+            vote_rx: _vote_rx,
+            instr_tx,
+        } = context;
+
+        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
+        link_remote(RID1.into(), SUPPLY_LANE, &messages_tx).await;
+        reader.expect_linked(SUPPLY_LANE).await;
+
+        for i in 0..1024 {
+            instr_tx.supply_event(SUPPLY_LANE, i);
+        }
+
+        for i in 0..1024 {
+            reader.expect_value_like_event(SUPPLY_LANE, i).await;
+        }
+
+        stop_sender.trigger();
+        reader.expect_clean_shutdown(vec![SUPPLY_LANE], None).await;
+    })
+    .await;
 }

@@ -87,6 +87,7 @@ fn make_prune_config(
 }
 
 const VAL_LANE: &str = "value_lane";
+const SUPPLY_LANE: &str = "supply_lane";
 const MAP_LANE: &str = "map_lane";
 
 const TEST_TIMEOUT: Duration = Duration::from_secs(10);
@@ -115,6 +116,10 @@ enum Instruction {
         lane: Text,
         value: i32,
     },
+    SupplyEvent {
+        lane: Text,
+        value: i32,
+    },
     MapEvent {
         lane: Text,
         key: Text,
@@ -124,6 +129,10 @@ enum Instruction {
     ValueSynced {
         lane: Text,
         value: i32,
+        id: Uuid,
+    },
+    SupplySynced {
+        lane: Text,
         id: Uuid,
     },
     MapSynced {
@@ -143,6 +152,16 @@ impl Instructions {
         let Instructions(inner) = self;
         assert!(inner
             .send(Instruction::ValueEvent {
+                lane: Text::new(lane),
+                value
+            })
+            .is_ok());
+    }
+
+    fn supply_event(&self, lane: &str, value: i32) {
+        let Instructions(inner) = self;
+        assert!(inner
+            .send(Instruction::SupplyEvent {
                 lane: Text::new(lane),
                 value
             })
@@ -193,27 +212,42 @@ impl Instructions {
             })
             .is_ok());
     }
+
+    fn supply_synced_event(&self, remote_id: Uuid, lane: &str) {
+        let Instructions(inner) = self;
+        assert!(inner
+            .send(Instruction::SupplySynced {
+                id: remote_id,
+                lane: Text::new(lane),
+            })
+            .is_ok());
+    }
 }
 
-struct ValueLaneSender {
+struct ValueLikeLaneSender {
     inner: FramedWrite<ByteWriter, ValueLaneResponseEncoder>,
 }
 
-impl ValueLaneSender {
+impl ValueLikeLaneSender {
     fn new(writer: ByteWriter) -> Self {
-        ValueLaneSender {
+        ValueLikeLaneSender {
             inner: FramedWrite::new(writer, Default::default()),
         }
     }
 
     async fn event(&mut self, n: i32) {
-        let ValueLaneSender { inner } = self;
+        let ValueLikeLaneSender { inner } = self;
         assert!(inner.send(LaneResponse::event(n)).await.is_ok());
     }
 
     async fn synced(&mut self, id: Uuid, n: i32) {
-        let ValueLaneSender { inner } = self;
+        let ValueLikeLaneSender { inner } = self;
         assert!(inner.send(LaneResponse::sync_event(id, n)).await.is_ok());
+        assert!(inner.send(LaneResponse::<i32>::Synced(id)).await.is_ok());
+    }
+
+    async fn synced_only(&mut self, id: Uuid) {
+        let ValueLikeLaneSender { inner } = self;
         assert!(inner.send(LaneResponse::<i32>::Synced(id)).await.is_ok());
     }
 }
@@ -380,7 +414,7 @@ impl RemoteReceiver {
         .await
     }
 
-    async fn expect_value_event(&mut self, lane: &str, value: i32) {
+    async fn expect_value_like_event(&mut self, lane: &str, value: i32) {
         self.expect_envelope(lane, |envelope| {
             if let Notification::Event(body) = envelope {
                 let expected_body = format!("{}", value);
@@ -438,6 +472,13 @@ impl RemoteReceiver {
             }
         })
         .await;
+        self.expect_envelope(lane, |envelope| {
+            assert!(matches!(envelope, Notification::Synced));
+        })
+        .await;
+    }
+
+    async fn expect_supply_synced(&mut self, lane: &str) {
         self.expect_envelope(lane, |envelope| {
             assert!(matches!(envelope, Notification::Synced));
         })

@@ -300,18 +300,28 @@ impl Uplinks {
                                 backpressure,
                             }) = supply_uplinks.get_mut(&lane_id)
                             {
-                                *queued = false;
                                 let synced = std::mem::replace(send_synced, false);
+
+                                let had_data = backpressure.has_data();
                                 backpressure.prepare_write(&mut buffer);
-                                let action = if synced {
-                                    WriteAction::ValueSynced(true)
+                                if backpressure.has_data() {
+                                    write_queue.push_back((UplinkKind::Supply, lane_id));
                                 } else {
-                                    WriteAction::Event
+                                    *queued = false;
+                                }
+                                let maybe_action = if synced {
+                                    Some(WriteAction::ValueSynced(had_data))
+                                } else if had_data {
+                                    Some(WriteAction::Event)
+                                } else {
+                                    None
                                 };
-                                let lane_name =
-                                    registry.name_for(lane_id).expect(UNREGISTERED_LANE);
-                                sender.update_lane(lane_name);
-                                break Some(WriteTask::new(sender, buffer, action));
+                                if let Some(action) = maybe_action {
+                                    let lane_name =
+                                        registry.name_for(lane_id).expect(UNREGISTERED_LANE);
+                                    sender.update_lane(lane_name);
+                                    break Some(WriteTask::new(sender, buffer, action));
+                                }
                             }
                         }
                         UplinkKind::Map => {

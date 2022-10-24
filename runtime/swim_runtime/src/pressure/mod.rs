@@ -142,7 +142,7 @@ impl BackpressureStrategy for ValueBackpressure {
 
     fn prepare_write(&mut self, buffer: &mut BytesMut) {
         std::mem::swap(&mut self.current, buffer);
-        self.current.clear()
+        self.current.clear();
     }
 }
 

@@ -47,8 +47,8 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use uuid::Uuid;
 
 use super::{
-    make_prune_config, LaneReader, MapLaneSender, ValueLaneSender, BUFFER_SIZE, DEFAULT_TIMEOUT,
-    INACTIVE_TEST_TIMEOUT, MAP_LANE, QUEUE_SIZE, TEST_TIMEOUT, VAL_LANE,
+    make_prune_config, LaneReader, MapLaneSender, ValueLikeLaneSender, BUFFER_SIZE,
+    DEFAULT_TIMEOUT, INACTIVE_TEST_TIMEOUT, MAP_LANE, QUEUE_SIZE, TEST_TIMEOUT, VAL_LANE,
 };
 
 #[derive(Debug, Clone)]
@@ -76,7 +76,7 @@ struct AgentState {
 
 impl AgentState {
     fn new(
-        val: HashMap<Text, (i32, ValueLaneSender)>,
+        val: HashMap<Text, (i32, ValueLikeLaneSender)>,
         map: HashMap<Text, (BTreeMap<Text, i32>, MapLaneSender)>,
     ) -> Self {
         let value_lanes = val.into_iter().map(|(k, (n, _))| (k, n)).collect();
@@ -140,7 +140,7 @@ impl FakeAgent {
             match kind {
                 UplinkKind::Value => {
                     let init = initial_state.value_lanes.remove(&name).unwrap_or_default();
-                    value_lanes.insert(name.clone(), (init, ValueLaneSender::new(io_tx)));
+                    value_lanes.insert(name.clone(), (init, ValueLikeLaneSender::new(io_tx)));
                 }
                 UplinkKind::Map => {
                     let init = initial_state.map_lanes.remove(&name).unwrap_or_default();
@@ -250,7 +250,7 @@ impl FakeAgent {
                             .expect("Failed to add new lane.");
                         match kind {
                             UplinkKind::Value => {
-                                value_lanes.insert(name.clone(), (0, ValueLaneSender::new(io_tx)));
+                                value_lanes.insert(name.clone(), (0, ValueLikeLaneSender::new(io_tx)));
                             }
                             UplinkKind::Map => {
                                 let m: BTreeMap<Text, i32> = BTreeMap::new();
@@ -797,7 +797,7 @@ async fn receive_messages_when_linked() {
                 sender.link(VAL_LANE).await;
                 receiver.expect_linked(VAL_LANE).await;
                 linked_tx.trigger();
-                receiver.expect_value_event(VAL_LANE, v).await;
+                receiver.expect_value_like_event(VAL_LANE, v).await;
                 receiver
             };
 
@@ -882,7 +882,7 @@ async fn receive_messages_when_liked_multiple_consumers() {
                 sender.link(VAL_LANE).await;
                 receiver.expect_linked(VAL_LANE).await;
                 linked_tx1.trigger();
-                receiver.expect_value_event(VAL_LANE, v).await;
+                receiver.expect_value_like_event(VAL_LANE, v).await;
                 receiver
             };
 
@@ -891,7 +891,7 @@ async fn receive_messages_when_liked_multiple_consumers() {
                 sender.link(VAL_LANE).await;
                 receiver.expect_linked(VAL_LANE).await;
                 linked_tx2.trigger();
-                receiver.expect_value_event(VAL_LANE, v).await;
+                receiver.expect_value_like_event(VAL_LANE, v).await;
                 receiver
             };
 
