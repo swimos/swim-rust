@@ -21,9 +21,10 @@ use futures::{
 };
 use parking_lot::Mutex;
 use swim_api::{
-    agent::{AgentConfig, AgentContext, LaneConfig, UplinkKind},
+    agent::{AgentConfig, AgentContext, LaneConfig},
     downlink::DownlinkKind,
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
+    meta::lane::LaneKind,
     store::StoreKind,
 };
 use swim_model::{address::Address, Text};
@@ -105,7 +106,7 @@ impl AgentContext for TestContext {
     fn add_lane(
         &self,
         _name: &str,
-        _uplink_kind: UplinkKind,
+        _lane_kind: LaneKind,
         _config: LaneConfig,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
         panic!("Unexpected request to open a lane.")

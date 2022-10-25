@@ -14,9 +14,10 @@
 
 use futures::future::BoxFuture;
 use swim_api::{
-    agent::{AgentContext, LaneConfig, UplinkKind},
+    agent::{AgentContext, LaneConfig},
     downlink::DownlinkKind,
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
+    meta::lane::LaneKind,
     store::StoreKind,
 };
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
@@ -53,7 +54,7 @@ impl AgentContext for DummyAgentContext {
     fn add_lane(
         &self,
         _name: &str,
-        _uplink_kind: UplinkKind,
+        _lane_kind: LaneKind,
         _config: LaneConfig,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
         panic!("Dummy context used.");

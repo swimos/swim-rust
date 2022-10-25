@@ -14,8 +14,9 @@
 
 use futures::{future::BoxFuture, FutureExt, SinkExt, StreamExt};
 use swim_api::{
-    agent::{Agent, AgentConfig, AgentContext, AgentInitResult, UplinkKind},
+    agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
     error::AgentTaskError,
+    meta::lane::LaneKind,
     protocol::{
         agent::{LaneRequest, LaneRequestDecoder, LaneResponse, ValueLaneResponseEncoder},
         WithLenRecognizerDecoder,
@@ -79,7 +80,7 @@ impl Agent for TestAgent {
         let reporter = self.reporter.clone();
         async move {
             let (tx, rx) = context
-                .add_lane(LANE, UplinkKind::Value, Default::default())
+                .add_lane(LANE, LaneKind::Value, Default::default())
                 .await?;
             Ok(run_agent(tx, rx, events, reporter).boxed())
         }

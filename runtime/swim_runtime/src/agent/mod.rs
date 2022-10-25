@@ -17,12 +17,13 @@ use futures::{
     FutureExt,
 };
 use swim_api::{
-    agent::{Agent, AgentConfig, AgentContext, LaneConfig, UplinkKind},
+    agent::{Agent, AgentConfig, AgentContext, LaneConfig},
     downlink::DownlinkKind,
     error::{
         AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
         StoreError,
     },
+    meta::lane::LaneKind,
     store::{NodePersistence, StoreKind},
 };
 use swim_model::{address::Address, Text};
@@ -93,7 +94,7 @@ impl AgentContext for AgentRuntimeContext {
     fn add_lane(
         &self,
         name: &str,
-        uplink_kind: UplinkKind,
+        lane_kind: LaneKind,
         config: LaneConfig,
     ) -> BoxFuture<'static, Result<Io, AgentRuntimeError>> {
         let name = Text::new(name);
@@ -103,7 +104,7 @@ impl AgentContext for AgentRuntimeContext {
             sender
                 .send(AgentRuntimeRequest::AddLane {
                     name,
-                    kind: uplink_kind,
+                    kind: lane_kind.uplink_kind(),
                     config,
                     promise: tx,
                 })

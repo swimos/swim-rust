@@ -26,6 +26,8 @@ use swim_form::structural::Tag;
 use swim_form::Form;
 use swim_model::{Text, ValueKind};
 
+use crate::agent::UplinkKind;
+
 /// An enumeration representing the type of a lane.
 #[derive(Tag, Debug, PartialEq, Eq, Clone, Copy)]
 #[form_root(::swim_form)]
@@ -40,6 +42,17 @@ pub enum LaneKind {
     Supply,
     Spatial,
     Value,
+}
+
+impl LaneKind {
+    pub fn uplink_kind(&self) -> UplinkKind {
+        match self {
+            LaneKind::Map | LaneKind::DemandMap | LaneKind::JoinMap => UplinkKind::Map,
+            LaneKind::Supply => UplinkKind::Supply,
+            LaneKind::Spatial => todo!("Spatial uplinks not supported."),
+            _ => UplinkKind::Value,
+        }
+    }
 }
 
 /// Lane information metadata that can be retrieved when syncing to

@@ -29,9 +29,10 @@ enum DlState {
 mod test_support {
     use futures::future::BoxFuture;
     use swim_api::{
-        agent::{AgentConfig, AgentContext, LaneConfig, UplinkKind},
+        agent::{AgentConfig, AgentContext, LaneConfig},
         downlink::DownlinkKind,
         error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
+        meta::lane::LaneKind,
         store::StoreKind,
     };
     use swim_utilities::{
@@ -72,7 +73,7 @@ mod test_support {
         fn add_lane(
             &self,
             _name: &str,
-            _uplink_kind: UplinkKind,
+            _lane_kind: LaneKind,
             _config: LaneConfig,
         ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
             panic!("Unexpected runtime interaction.");

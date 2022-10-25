@@ -29,6 +29,7 @@ use crate::{
     error::{
         AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
     },
+    meta::lane::LaneKind,
     store::StoreKind,
 };
 
@@ -78,12 +79,13 @@ pub trait AgentContext: Sync {
     /// Add a new lane endpoint to the runtime for this agent.
     /// #Arguments
     /// * `name` - The name of the lane.
-    /// * `uplink_kind` - Protocol that the runtime uses to communicate with the lane.
+    /// * `land_kind` - Kind of the lane, determining the protocol that the runtime uses
+    /// to communicate with the lane.
     /// * `config` - Configuration parameters for the lane.
     fn add_lane(
         &self,
         name: &str,
-        uplink_kind: UplinkKind,
+        lane_kind: LaneKind,
         config: LaneConfig,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>>;
 
