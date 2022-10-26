@@ -194,6 +194,7 @@ impl<Store: AgentPersistence + Clone + Send + Sync> AgentInitTask<Store> {
                                     kind,
                                     transient,
                                     io: (in_tx, out_rx),
+                                    reporter: None,
                                 });
                             }
                         } else {
@@ -258,6 +259,7 @@ async fn lane_initialization(
                 transient: false,
                 kind,
                 io: (in_tx, out_rx),
+                reporter: None,
             };
             Ok(endpoint)
         }

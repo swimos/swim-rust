@@ -70,18 +70,8 @@ impl UplinkReporter {
         saturating_incr(&self.counters.command_count)
     }
 
-    pub fn incr_uplinks(&self) {
-        self.counters
-            .link_count
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
-            .expect("Uplink count overflow!"); // The number of uplinks should never become this large.
-    }
-
-    pub fn decr_uplinks(&self) {
-        self.counters
-            .link_count
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_sub(1))
-            .expect("Uplink count underflow!"); // The number of uplinks cannot be less than 0.
+    pub fn set_uplinks(&self, n: u64) {
+        self.counters.link_count.store(n, Ordering::Relaxed);
     }
 
     pub fn reader(&self) -> UplinkReportReader {

@@ -191,18 +191,21 @@ where
             kind: UplinkKind::Value,
             transient: false,
             io: byte_channel(BUFFER_SIZE),
+            reporter: None,
         },
         LaneEndpoint {
             name: Text::new(SUPPLY_LANE),
             kind: UplinkKind::Supply,
             transient: true,
             io: byte_channel(BUFFER_SIZE),
+            reporter: None,
         },
         LaneEndpoint {
             name: Text::new(MAP_LANE),
             kind: UplinkKind::Map,
             transient: false,
             io: byte_channel(BUFFER_SIZE),
+            reporter: None,
         },
     ];
 

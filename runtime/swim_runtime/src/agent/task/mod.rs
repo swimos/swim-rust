@@ -29,6 +29,7 @@ use self::prune::PruneRemotes;
 use self::remotes::{LaneRegistry, RemoteSender, RemoteTracker, UplinkResponse};
 use self::write_fut::{WriteResult, WriteTask};
 
+use super::reporting::UplinkReporter;
 use super::store::AgentPersistence;
 use super::{AgentAttachmentRequest, AgentRuntimeConfig, DisconnectionReason, DownlinkRequest, Io};
 use bytes::{Bytes, BytesMut};
@@ -112,15 +113,24 @@ struct LaneEndpoint<T> {
     transient: bool,
     /// The channel endpoint/s.
     io: T,
+    /// Metadata reporter for the lane.
+    reporter: Option<UplinkReporter>,
 }
 
 impl<T> LaneEndpoint<T> {
-    fn new(name: Text, kind: UplinkKind, transient: bool, io: T) -> Self {
+    fn new(
+        name: Text,
+        kind: UplinkKind,
+        transient: bool,
+        io: T,
+        reporter: Option<UplinkReporter>,
+    ) -> Self {
         LaneEndpoint {
             name,
             kind,
             transient,
             io,
+            reporter,
         }
     }
 }
@@ -133,11 +143,12 @@ impl LaneEndpoint<Io> {
             kind,
             transient,
             io: (tx, rx),
+            reporter,
         } = self;
 
-        let read = LaneEndpoint::new(name.clone(), kind, transient, rx);
+        let read = LaneEndpoint::new(name.clone(), kind, transient, rx, reporter.clone());
 
-        let write = LaneEndpoint::new(name, kind, transient, tx);
+        let write = LaneEndpoint::new(name, kind, transient, tx, reporter);
 
         (write, read)
     }
@@ -160,6 +171,7 @@ impl LaneEndpoint<ByteReader> {
             kind,
             transient,
             io: reader,
+            ..
         } = self;
         let store_id = if transient {
             None
@@ -211,7 +223,13 @@ impl InitialEndpoints {
         config: AgentRuntimeConfig,
         stopping: trigger::Receiver,
     ) -> AgentRuntimeTask {
-        AgentRuntimeTask::new(identity, node_uri, self, attachment_rx, stopping, config)
+        AgentRuntimeTask::new(
+            NodeDescriptor::new(identity, node_uri, None),
+            self,
+            attachment_rx,
+            stopping,
+            config,
+        )
     }
 
     /// Create the agent runtime task based on these intial lane endpoints.
@@ -235,14 +253,30 @@ impl InitialEndpoints {
         Store: AgentPersistence + Clone + Send + Sync + 'static,
     {
         AgentRuntimeTask::with_store(
-            identity,
-            node_uri,
+            NodeDescriptor::new(identity, node_uri, None),
             self,
             attachment_rx,
             stopping,
             config,
             store,
         )
+    }
+}
+
+#[derive(Debug)]
+struct NodeDescriptor {
+    identity: Uuid,
+    node_uri: Text,
+    reporter: Option<UplinkReporter>,
+}
+
+impl NodeDescriptor {
+    fn new(identity: Uuid, node_uri: Text, reporter: Option<UplinkReporter>) -> Self {
+        NodeDescriptor {
+            identity,
+            node_uri,
+            reporter,
+        }
     }
 }
 
@@ -253,8 +287,7 @@ impl InitialEndpoints {
 /// other two.
 #[derive(Debug)]
 pub struct AgentRuntimeTask<Store = StoreDisabled> {
-    identity: Uuid,
-    node_uri: Text,
+    node: NodeDescriptor,
     init: InitialEndpoints,
     attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
     stopping: trigger::Receiver,
@@ -546,16 +579,14 @@ where
 
 impl AgentRuntimeTask {
     fn new(
-        identity: Uuid,
-        node_uri: Text,
+        node: NodeDescriptor,
         init: InitialEndpoints,
         attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
         stopping: trigger::Receiver,
         config: AgentRuntimeConfig,
     ) -> Self {
         AgentRuntimeTask {
-            identity,
-            node_uri,
+            node,
             init,
             attachment_rx,
             stopping,
@@ -570,8 +601,7 @@ where
     Store: AgentPersistence + Clone + Send + Sync + 'static,
 {
     fn with_store(
-        identity: Uuid,
-        node_uri: Text,
+        node: NodeDescriptor,
         init: InitialEndpoints,
         attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
         stopping: trigger::Receiver,
@@ -579,8 +609,7 @@ where
         store: Store,
     ) -> Self {
         AgentRuntimeTask {
-            identity,
-            node_uri,
+            node,
             init,
             attachment_rx,
             stopping,
@@ -596,8 +625,9 @@ where
 {
     pub async fn run(self) -> Result<(), StoreError> {
         let AgentRuntimeTask {
-            identity,
-            node_uri,
+            node: NodeDescriptor {
+                identity, node_uri, ..
+            },
             init: InitialEndpoints { rx, endpoints },
             attachment_rx,
             stopping,
@@ -789,6 +819,7 @@ async fn handle_runtime_request(
                 kind,
                 config.transient,
                 out_rx,
+                None,
             )));
             if promise.send(Ok((out_tx, in_rx))).is_err() {
                 error!(BAD_LANE_REG);
@@ -1453,7 +1484,7 @@ impl<W> Iterator for Writes<W> {
 impl WriteTaskState {
     fn new(identity: Uuid, node_uri: Text) -> Self {
         WriteTaskState {
-            links: Default::default(),
+            links: Links::new(None),
             remote_tracker: RemoteTracker::new(identity, node_uri),
         }
     }
@@ -1672,7 +1703,7 @@ impl WriteTaskState {
             remote_tracker,
         } = self;
         links
-            .all_links()
+            .remove_all_links()
             .flat_map(move |(lane_id, remote_id)| remote_tracker.unlink_lane(remote_id, lane_id))
     }
 

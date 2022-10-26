@@ -21,7 +21,7 @@ use crate::{
     agent::{
         task::{
             tests::{RemoteReceiver, RemoteSender},
-            AgentRuntimeTask, InitialEndpoints, LaneEndpoint,
+            AgentRuntimeTask, InitialEndpoints, LaneEndpoint, NodeDescriptor,
         },
         AgentAttachmentRequest, AgentRuntimeRequest, DisconnectionReason, Io,
     },
@@ -155,6 +155,7 @@ impl FakeAgent {
                 kind,
                 transient: false,
                 io: io_rx,
+                reporter: None,
             }));
         }
         let mut create_stream = UnboundedReceiverStream::new(create_rx).take_until(stopping);
@@ -260,7 +261,7 @@ impl FakeAgent {
                                 panic!("Unexpected supply uplink.");
                             }
                         }
-                        lanes.push(LaneReader::new(LaneEndpoint { name, kind, transient: false, io: io_rx }));
+                        lanes.push(LaneReader::new(LaneEndpoint { name, kind, transient: false, io: io_rx, reporter: None }));
                     } else {
                         break;
                     }
@@ -355,12 +356,14 @@ where
         UplinkKind::Value,
         false,
         (tx_in_val, rx_out_val),
+        None,
     ));
     runtime_endpoints.push(LaneEndpoint::new(
         Text::new(MAP_LANE),
         UplinkKind::Map,
         false,
         (tx_in_map, rx_out_map),
+        None,
     ));
 
     agent_endpoints.push(LaneEndpoint::new(
@@ -368,19 +371,20 @@ where
         UplinkKind::Value,
         false,
         (tx_out_val, rx_in_val),
+        None,
     ));
     agent_endpoints.push(LaneEndpoint::new(
         Text::new(MAP_LANE),
         UplinkKind::Map,
         false,
         (tx_out_map, rx_in_map),
+        None,
     ));
 
     let init = InitialEndpoints::new(req_rx, runtime_endpoints);
 
     let agent_task = AgentRuntimeTask::new(
-        AGENT_ID,
-        Text::new(NODE),
+        NodeDescriptor::new(AGENT_ID, Text::new(NODE), None),
         init,
         att_rx,
         stop_rx.clone(),

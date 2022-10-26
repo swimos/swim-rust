@@ -113,61 +113,18 @@ fn increment_commands_multiple() {
 }
 
 #[test]
-fn increment_uplinks() {
+fn set_uplinks() {
     let reporter = UplinkReporter::default();
     let reader = reporter.reader();
 
-    reporter.incr_uplinks();
+    reporter.set_uplinks(4);
 
     let snapshot = reader.snapshot();
 
     assert_eq!(
         snapshot,
         Some(UplinkSnapshot {
-            link_count: 1,
-            event_count: 0,
-            command_count: 0
-        })
-    );
-}
-
-#[test]
-fn increment_uplinks_multiple() {
-    let reporter = UplinkReporter::default();
-    let reader = reporter.reader();
-
-    reporter.incr_uplinks();
-    reporter.incr_uplinks();
-    reporter.incr_uplinks();
-
-    let snapshot = reader.snapshot();
-
-    assert_eq!(
-        snapshot,
-        Some(UplinkSnapshot {
-            link_count: 3,
-            event_count: 0,
-            command_count: 0
-        })
-    );
-}
-
-#[test]
-fn deccrement_uplinks() {
-    let reporter = UplinkReporter::default();
-    let reader = reporter.reader();
-
-    reporter.incr_uplinks();
-    reporter.incr_uplinks();
-    reporter.incr_uplinks();
-    reporter.decr_uplinks();
-
-    let snapshot = reader.snapshot();
-
-    assert_eq!(
-        snapshot,
-        Some(UplinkSnapshot {
-            link_count: 2,
+            link_count: 4,
             event_count: 0,
             command_count: 0
         })
@@ -182,9 +139,7 @@ fn snapshot_resets_command_event_counts() {
     reporter.count_event();
     reporter.count_event();
     reporter.count_command();
-    reporter.incr_uplinks();
-    reporter.incr_uplinks();
-    reporter.incr_uplinks();
+    reporter.set_uplinks(3);
 
     let snapshot = reader.snapshot();
     assert_eq!(

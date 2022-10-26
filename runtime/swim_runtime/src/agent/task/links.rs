@@ -16,11 +16,74 @@ use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 use uuid::Uuid;
 
+use crate::agent::reporting::UplinkReporter;
+
+#[derive(Default, Debug)]
+struct LaneLinks {
+    remotes: HashSet<Uuid>,
+    reporter: Option<UplinkReporter>,
+}
+
+enum Delta {
+    Zero,
+    Incr,
+    Decr(u64),
+}
+
+impl Delta {
+    fn apply(self, n: &mut u64) {
+        match self {
+            Delta::Zero => {}
+            Delta::Incr => *n = n.saturating_add(1),
+            Delta::Decr(d) => *n = n.saturating_sub(d),
+        }
+    }
+}
+
+impl LaneLinks {
+    fn new(reporter: UplinkReporter) -> Self {
+        LaneLinks {
+            reporter: Some(reporter),
+            ..Default::default()
+        }
+    }
+
+    fn insert(&mut self, remote_id: Uuid) -> Delta {
+        if self.remotes.insert(remote_id) {
+            Delta::Incr
+        } else {
+            Delta::Zero
+        }
+    }
+
+    fn remove(&mut self, remote_id: &Uuid) -> Delta {
+        if self.remotes.remove(remote_id) {
+            Delta::Decr(1)
+        } else {
+            Delta::Zero
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.remotes.is_empty()
+    }
+
+    fn take_remotes(&mut self) -> (Delta, impl Iterator<Item = Uuid> + 'static) {
+        let delta =
+            Delta::Decr(u64::try_from(self.remotes.len()).expect("Lenth did not fit into a u64."));
+        (delta, std::mem::take(&mut self.remotes).into_iter())
+    }
+
+    fn contains(&self, id: &Uuid) -> bool {
+        self.remotes.contains(id)
+    }
+}
 /// A registry of links between lanes and remotes in the agent runtime.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Links {
-    forward: HashMap<u64, HashSet<Uuid>>,
+    forward: HashMap<u64, LaneLinks>,
     backwards: HashMap<Uuid, HashSet<u64>>,
+    aggregate_reporter: Option<(u64, UplinkReporter)>,
 }
 
 /// An instruction to send an unlinked message to a remote.
@@ -47,23 +110,65 @@ impl TriggerUnlink {
     }
 }
 
+pub struct Reporters {
+    aggregate_reporter: UplinkReporter,
+    lane_reporters: HashMap<u64, UplinkReporter>,
+}
+
 impl Links {
+    pub fn new(reporters: Option<Reporters>) -> Self {
+        if let Some(Reporters {
+            aggregate_reporter,
+            lane_reporters,
+        }) = reporters
+        {
+            let forward = lane_reporters
+                .into_iter()
+                .map(|(k, v)| (k, LaneLinks::new(v)))
+                .collect();
+            Links {
+                forward,
+                backwards: Default::default(),
+                aggregate_reporter: Some((0, aggregate_reporter)),
+            }
+        } else {
+            Links {
+                forward: Default::default(),
+                backwards: Default::default(),
+                aggregate_reporter: Default::default(),
+            }
+        }
+    }
+
     /// Create a new link from a lane to a remote.
     pub fn insert(&mut self, lane_id: u64, remote_id: Uuid) {
-        let Links { forward, backwards } = self;
-        forward.entry(lane_id).or_default().insert(remote_id);
+        let Links {
+            forward,
+            backwards,
+            aggregate_reporter,
+        } = self;
+        let delta = forward.entry(lane_id).or_default().insert(remote_id);
+        if let Some((n, reporter)) = aggregate_reporter {
+            delta.apply(n);
+            reporter.set_uplinks(*n);
+        }
         backwards.entry(remote_id).or_default().insert(lane_id);
     }
 
     /// Remove a single link between a lane and remote.
     #[must_use]
     pub fn remove(&mut self, lane_id: u64, remote_id: Uuid) -> TriggerUnlink {
-        let Links { forward, backwards } = self;
+        let Links {
+            forward,
+            backwards,
+            aggregate_reporter,
+        } = self;
 
         if let Entry::Occupied(mut entry) = forward.entry(lane_id) {
-            entry.get_mut().remove(&remote_id);
-            if entry.get().is_empty() {
-                entry.remove();
+            let delta = entry.get_mut().remove(&remote_id);
+            if let Some((n, reporter)) = aggregate_reporter {
+                delta.apply(n);
+                reporter.set_uplinks(*n);
             }
         }
         if let Entry::Occupied(mut entry) = backwards.entry(remote_id) {
@@ -79,15 +184,26 @@ impl Links {
     }
 
     /// Iterate over all links in the registry.
-    pub fn all_links(&self) -> impl Iterator<Item = (u64, Uuid)> + '_ {
-        self.forward
-            .iter()
-            .flat_map(|(lane_id, remote_ids)| remote_ids.iter().map(move |rid| (*lane_id, *rid)))
+    pub fn remove_all_links(&mut self) -> impl Iterator<Item = (u64, Uuid)> + '_ {
+        let Links {
+            forward,
+            backwards,
+            aggregate_reporter,
+        } = self;
+        backwards.clear();
+        if let Some((n, reporter)) = aggregate_reporter {
+            *n = 0;
+            reporter.set_uplinks(0);
+        }
+        forward.iter_mut().flat_map(|(lane_id, remote_ids)| {
+            let (_, it) = remote_ids.take_remotes();
+            it.map(move |rid| (*lane_id, rid))
+        })
     }
 
     /// Get the remotes linked from a specific lane.
     pub fn linked_from(&self, id: u64) -> Option<&HashSet<Uuid>> {
-        self.forward.get(&id)
+        self.forward.get(&id).map(|links| &links.remotes)
     }
 
     /// Get the lanes linked to a specific remote.
@@ -105,31 +221,62 @@ impl Links {
 
     /// Remove a lane (and all associated links). This can necessitate any number of unlinked messages.
     pub fn remove_lane(&mut self, id: u64) -> impl Iterator<Item = TriggerUnlink> + '_ {
-        let Links { forward, backwards } = self;
-        let remote_ids = forward.remove(&id).unwrap_or_default();
-        remote_ids.into_iter().map(move |remote_id| {
-            if let Entry::Occupied(mut entry) = backwards.entry(remote_id) {
-                entry.get_mut().remove(&id);
-                let no_links = entry.get().is_empty();
-                if no_links {
-                    entry.remove();
-                }
-                TriggerUnlink::new(remote_id, no_links)
-            } else {
-                TriggerUnlink::new(remote_id, false)
+        let Links {
+            forward,
+            backwards,
+            aggregate_reporter,
+        } = self;
+        if let Some(links) = forward.get_mut(&id) {
+            let (delta, remote_ids) = links.take_remotes();
+            if let Some((n, reporter)) = aggregate_reporter {
+                delta.apply(n);
+                reporter.set_uplinks(*n);
             }
-        })
+            Some(remote_ids.map(move |remote_id| {
+                if let Entry::Occupied(mut entry) = backwards.entry(remote_id) {
+                    entry.get_mut().remove(&id);
+                    let no_links = entry.get().is_empty();
+                    if no_links {
+                        entry.remove();
+                    }
+                    TriggerUnlink::new(remote_id, no_links)
+                } else {
+                    TriggerUnlink::new(remote_id, false)
+                }
+            }))
+        } else {
+            None
+        }
+        .into_iter()
+        .flatten()
     }
 
     /// Remove a remote and all associated links.
     pub fn remove_remote(&mut self, id: Uuid) {
-        let Links { forward, backwards } = self;
+        let Links {
+            forward,
+            backwards,
+            aggregate_reporter,
+        } = self;
         let lane_ids = backwards.remove(&id).unwrap_or_default();
-        for lane_id in lane_ids {
-            if let Entry::Occupied(mut entry) = forward.entry(lane_id) {
-                entry.get_mut().remove(&id);
-                if entry.get().is_empty() {
-                    entry.remove();
+        if let Some((n, reporter)) = aggregate_reporter {
+            for lane_id in lane_ids {
+                if let Entry::Occupied(mut entry) = forward.entry(lane_id) {
+                    let delta = entry.get_mut().remove(&id);
+                    delta.apply(n);
+                    if entry.get().is_empty() {
+                        entry.remove();
+                    }
+                }
+            }
+            reporter.set_uplinks(*n);
+        } else {
+            for lane_id in lane_ids {
+                if let Entry::Occupied(mut entry) = forward.entry(lane_id) {
+                    entry.get_mut().remove(&id);
+                    if entry.get().is_empty() {
+                        entry.remove();
+                    }
                 }
             }
         }
@@ -158,14 +305,14 @@ mod tests {
 
     #[test]
     fn insert_link() {
-        let mut links = Links::default();
+        let mut links = Links::new(None);
         links.insert(LID1, RID1);
 
         assert_eq!(links.linked_from(LID1), Some(&[RID1].into()));
     }
 
     fn make_links() -> Links {
-        let mut links = Links::default();
+        let mut links = Links::new(None);
         links.insert(LID1, RID1);
         links.insert(LID2, RID1);
         links.insert(LID3, RID1);
