@@ -36,7 +36,7 @@ fn increment_events() {
     let reporter = UplinkReporter::default();
     let reader = reporter.reader();
 
-    reporter.count_event();
+    reporter.count_events(1);
 
     let snapshot = reader.snapshot();
 
@@ -55,9 +55,7 @@ fn increment_events_multiple() {
     let reporter = UplinkReporter::default();
     let reader = reporter.reader();
 
-    reporter.count_event();
-    reporter.count_event();
-    reporter.count_event();
+    reporter.count_events(3);
 
     let snapshot = reader.snapshot();
 
@@ -136,8 +134,7 @@ fn snapshot_resets_command_event_counts() {
     let reporter = UplinkReporter::default();
     let reader = reporter.reader();
 
-    reporter.count_event();
-    reporter.count_event();
+    reporter.count_events(2);
     reporter.count_command();
     reporter.set_uplinks(3);
 

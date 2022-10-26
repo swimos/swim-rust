@@ -44,9 +44,9 @@ pub struct UplinkReportReader {
     counters: Weak<UplinkCounters>,
 }
 
-fn saturating_incr(n: &AtomicU64) {
+fn saturating_add(n: &AtomicU64, m: u64) {
     let _ = n.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
-        Some(n.saturating_add(1))
+        Some(n.saturating_add(m))
     });
 }
 
@@ -62,12 +62,12 @@ fn snapshot_value(n: &AtomicU64) -> u64 {
 }
 
 impl UplinkReporter {
-    pub fn count_event(&self) {
-        saturating_incr(&self.counters.event_count)
+    pub fn count_events(&self, n: u64) {
+        saturating_add(&self.counters.event_count, n)
     }
 
     pub fn count_command(&self) {
-        saturating_incr(&self.counters.command_count)
+        saturating_add(&self.counters.command_count, 1)
     }
 
     pub fn set_uplinks(&self, n: u64) {

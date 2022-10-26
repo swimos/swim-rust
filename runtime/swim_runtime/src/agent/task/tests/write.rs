@@ -222,6 +222,7 @@ where
         messages_rx,
         vote1,
         stop_rx,
+        None,
         store,
     );
 

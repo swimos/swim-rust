@@ -156,7 +156,7 @@ where
 
     let (vote1, vote2, vote_rx) = timeout_coord::timeout_coordinator();
 
-    let read = read_task(config, endpoints_tx, reg_rx, coord_tx, vote1, stop_rx);
+    let read = read_task(config, endpoints_tx, reg_rx, coord_tx, vote1, stop_rx, None);
 
     let context = TestContext {
         stop_sender: stop_tx,

@@ -41,13 +41,6 @@ impl Delta {
 }
 
 impl LaneLinks {
-    fn new(reporter: UplinkReporter) -> Self {
-        LaneLinks {
-            reporter: Some(reporter),
-            ..Default::default()
-        }
-    }
-
     fn insert(&mut self, remote_id: Uuid) -> Delta {
         if self.remotes.insert(remote_id) {
             Delta::Incr
@@ -76,6 +69,21 @@ impl LaneLinks {
 
     fn contains(&self, id: &Uuid) -> bool {
         self.remotes.contains(id)
+    }
+
+    fn count_single(&self) {
+        if let Some(reporter) = &self.reporter {
+            reporter.count_events(1);
+        }
+    }
+
+    fn count_broadcast(&self) -> u64 {
+        let LaneLinks { remotes, reporter } = self;
+        let n = u64::try_from(remotes.len()).expect("Length did not fit into a u64.");
+        if let Some(reporter) = reporter {
+            reporter.count_events(n);
+        }
+        n
     }
 }
 /// A registry of links between lanes and remotes in the agent runtime.
@@ -110,34 +118,20 @@ impl TriggerUnlink {
     }
 }
 
-pub struct Reporters {
-    aggregate_reporter: UplinkReporter,
-    lane_reporters: HashMap<u64, UplinkReporter>,
-}
-
 impl Links {
-    pub fn new(reporters: Option<Reporters>) -> Self {
-        if let Some(Reporters {
-            aggregate_reporter,
-            lane_reporters,
-        }) = reporters
-        {
-            let forward = lane_reporters
-                .into_iter()
-                .map(|(k, v)| (k, LaneLinks::new(v)))
-                .collect();
-            Links {
-                forward,
-                backwards: Default::default(),
-                aggregate_reporter: Some((0, aggregate_reporter)),
-            }
-        } else {
-            Links {
-                forward: Default::default(),
-                backwards: Default::default(),
-                aggregate_reporter: Default::default(),
-            }
+    pub fn new(aggregate_reporter: Option<UplinkReporter>) -> Self {
+        Links {
+            forward: Default::default(),
+            backwards: Default::default(),
+            aggregate_reporter: aggregate_reporter.map(|r| (0, r)),
         }
+    }
+
+    pub fn register_reporter(&mut self, lane_id: u64, reporter: UplinkReporter) {
+        self.forward
+            .entry(lane_id)
+            .or_insert_with(Default::default)
+            .reporter = Some(reporter);
     }
 
     /// Create a new link from a lane to a remote.
@@ -204,6 +198,32 @@ impl Links {
     /// Get the remotes linked from a specific lane.
     pub fn linked_from(&self, id: u64) -> Option<&HashSet<Uuid>> {
         self.forward.get(&id).map(|links| &links.remotes)
+    }
+
+    /// Report a single event to the reporter for a lane (if present).
+    pub fn count_single(&self, id: u64) {
+        let Links {
+            forward,
+            aggregate_reporter,
+            ..
+        } = self;
+        if let (Some((_, agg_reporter)), Some(links)) = (aggregate_reporter, forward.get(&id)) {
+            links.count_single();
+            agg_reporter.count_events(1);
+        }
+    }
+
+    /// Report an event, for each link, to the reporter for a lane (if present).
+    pub fn count_broadcast(&self, id: u64) {
+        let Links {
+            forward,
+            aggregate_reporter,
+            ..
+        } = self;
+        if let (Some((_, agg_reporter)), Some(links)) = (aggregate_reporter, forward.get(&id)) {
+            let n = links.count_broadcast();
+            agg_reporter.count_events(n);
+        }
     }
 
     /// Get the lanes linked to a specific remote.
