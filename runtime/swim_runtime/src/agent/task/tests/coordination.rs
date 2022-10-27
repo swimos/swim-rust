@@ -381,10 +381,10 @@ where
         None,
     ));
 
-    let init = InitialEndpoints::new(req_rx, runtime_endpoints);
+    let init = InitialEndpoints::new(None, req_rx, runtime_endpoints);
 
     let agent_task = AgentRuntimeTask::new(
-        NodeDescriptor::new(AGENT_ID, Text::new(NODE), None),
+        NodeDescriptor::new(AGENT_ID, Text::new(NODE)),
         init,
         att_rx,
         stop_rx.clone(),

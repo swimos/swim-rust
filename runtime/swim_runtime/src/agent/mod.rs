@@ -46,6 +46,7 @@ use std::{
 use crate::downlink::DownlinkOptions;
 
 use self::{
+    reporting::{UplinkReportReader, UplinkReporter},
     store::{StoreInitError, StorePersistence},
     task::AgentInitTask,
 };
@@ -208,6 +209,66 @@ pub struct AgentAttachmentRequest {
     on_attached: Option<trigger::Sender>,
 }
 
+pub struct UplinkReporterRegistration {
+    agent_id: Uuid,
+    lane_name: Text,
+    reader: UplinkReportReader,
+}
+
+impl UplinkReporterRegistration {
+    pub fn new(agent_id: Uuid, lane_name: Text, reader: UplinkReportReader) -> Self {
+        UplinkReporterRegistration {
+            agent_id,
+            lane_name,
+            reader,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct NodeReporter {
+    agent_id: Uuid,
+    aggregate_reporter: UplinkReporter,
+    lane_registrations: mpsc::Sender<UplinkReporterRegistration>,
+}
+
+impl NodeReporter {
+    async fn register(&self, name: Text) -> Option<UplinkReporter> {
+        let NodeReporter {
+            agent_id,
+            lane_registrations,
+            ..
+        } = self;
+        let reporter = UplinkReporter::default();
+        let reader = reporter.reader();
+        let registration = UplinkReporterRegistration::new(*agent_id, name.clone(), reader);
+        if lane_registrations.send(registration).await.is_err() {
+            //TODO Log error.
+            None
+        } else {
+            Some(reporter)
+        }
+    }
+
+    fn aggregate(&self) -> UplinkReporter {
+        self.aggregate_reporter.clone()
+    }
+}
+
+impl NodeReporter {
+    pub fn new(
+        agent_id: Uuid,
+        aggregate_reporter: UplinkReporter,
+        lane_registrations: mpsc::Sender<UplinkReporterRegistration>,
+    ) -> Self {
+        NodeReporter {
+            agent_id,
+            aggregate_reporter,
+            lane_registrations,
+        }
+    }
+}
+
 impl AgentAttachmentRequest {
     pub fn new(id: Uuid, io: Io, completion: promise::Sender<DisconnectionReason>) -> Self {
         AgentAttachmentRequest {
@@ -295,6 +356,7 @@ pub struct AgentRouteTask<'a, A> {
     stopping: trigger::Receiver,
     agent_config: AgentConfig,
     runtime_config: AgentRuntimeConfig,
+    reporting: Option<NodeReporter>,
 }
 
 impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
@@ -306,6 +368,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
     /// * `attachment_rx` - Channel for making requests to attach remotes to the agent task.
     /// * `stopping` - Instructs the agent task to stop.
     /// * `config` - Configuration parameters for the user agent task and agent runtime.
+    /// * `reporting` - Uplink metrics reporters.
     pub fn new(
         agent: &'a A,
         identity: AgentRoute,
@@ -313,6 +376,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         downlink_tx: mpsc::Sender<DownlinkRequest>,
         stopping: trigger::Receiver,
         config: CombinedAgentConfig,
+        reporting: Option<NodeReporter>,
     ) -> Self {
         AgentRouteTask {
             agent,
@@ -323,6 +387,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             stopping,
             agent_config: config.agent_config,
             runtime_config: config.runtime_config,
+            reporting,
         }
     }
 
@@ -336,6 +401,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             stopping,
             agent_config,
             runtime_config,
+            reporting,
         } = self;
         let node_uri = route.to_string().into();
         let (runtime_tx, runtime_rx) = mpsc::channel(runtime_config.attachment_queue_size.get());
@@ -345,6 +411,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             downlink_tx,
             init_rx,
             runtime_config.lane_init_timeout,
+            reporting,
         );
         let context = Box::new(AgentRuntimeContext::new(runtime_tx));
 
@@ -393,6 +460,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             stopping,
             agent_config,
             runtime_config,
+            reporting,
         } = self;
         let node_uri = route.to_string().into();
         let (runtime_tx, runtime_rx) = mpsc::channel(runtime_config.attachment_queue_size.get());
@@ -402,6 +470,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             downlink_tx,
             init_rx,
             runtime_config.lane_init_timeout,
+            reporting,
             StorePersistence(store.clone()),
         );
         let context = Box::new(AgentRuntimeContext::new(runtime_tx));

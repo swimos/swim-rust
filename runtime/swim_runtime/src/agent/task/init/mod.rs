@@ -30,7 +30,7 @@ use tokio_util::codec::FramedRead;
 
 use crate::agent::{
     store::{no_map_init, no_value_init, AgentPersistence, BoxInitializer, StoreInitError},
-    AgentExecError, AgentRuntimeRequest, DownlinkRequest, Io,
+    AgentExecError, AgentRuntimeRequest, DownlinkRequest, Io, NodeReporter,
 };
 use swim_api::protocol::agent::{LaneResponse, ValueLaneResponseDecoder};
 
@@ -49,6 +49,7 @@ pub struct AgentInitTask<Store = StoreDisabled> {
     downlink_requests: mpsc::Sender<DownlinkRequest>,
     init_complete: trigger::Receiver,
     lane_init_timeout: Duration,
+    reporting: Option<NodeReporter>,
     store: Store,
 }
 
@@ -57,17 +58,20 @@ impl AgentInitTask {
     /// * `requests` - Channel for requests to open new lanes and downlinks.
     /// * `init_complete` - Triggered when the initialization phase is complete.
     /// * `lane_init_timeout` - Timeout for initializing lanes from the store.
+    /// * `reporting` - Reporter for node/lane introspection support.
     pub fn new(
         requests: mpsc::Receiver<AgentRuntimeRequest>,
         downlink_requests: mpsc::Sender<DownlinkRequest>,
         init_complete: trigger::Receiver,
         lane_init_timeout: Duration,
+        reporting: Option<NodeReporter>,
     ) -> Self {
         Self::with_store(
             requests,
             downlink_requests,
             init_complete,
             lane_init_timeout,
+            reporting,
             StoreDisabled::default(),
         )
     }
@@ -81,12 +85,14 @@ where
     /// * `requests` - Channel for requests to open new lanes and downlinks.
     /// * `init_complete` - Triggered when the initialization phase is complete.
     /// * `lane_init_timeout` - Timeout for initializing lanes from the store.
+    /// * `reporting` - Reporter for node/lane introspection support.
     /// * `store` - Store for lane persistence.
     pub fn with_store(
         requests: mpsc::Receiver<AgentRuntimeRequest>,
         downlink_requests: mpsc::Sender<DownlinkRequest>,
         init_complete: trigger::Receiver,
         lane_init_timeout: Duration,
+        reporting: Option<NodeReporter>,
         store: Store,
     ) -> Self {
         AgentInitTask {
@@ -94,6 +100,7 @@ where
             downlink_requests,
             init_complete,
             lane_init_timeout,
+            reporting,
             store,
         }
     }
@@ -107,6 +114,7 @@ impl<Store: AgentPersistence + Clone + Send + Sync> AgentInitTask<Store> {
             downlink_requests,
             store,
             lane_init_timeout,
+            reporting,
         } = self;
 
         let mut request_stream = ReceiverStream::new(requests);
@@ -183,18 +191,24 @@ impl<Store: AgentPersistence + Clone + Send + Sync> AgentInitTask<Store> {
                                     name.clone(),
                                     kind,
                                     lane_init_timeout,
+                                    reporting.as_ref(),
                                     in_tx,
                                     out_rx,
                                     initializer,
                                 );
                                 initializers.push(init_task);
                             } else {
+                                let reporter = if let Some(node_reporter) = &reporting {
+                                    node_reporter.register(name.clone()).await
+                                } else {
+                                    None
+                                };
                                 endpoints.push(LaneEndpoint {
                                     name,
                                     kind,
                                     transient,
                                     io: (in_tx, out_rx),
-                                    reporter: None,
+                                    reporter,
                                 });
                             }
                         } else {
@@ -217,10 +231,12 @@ impl<Store: AgentPersistence + Clone + Send + Sync> AgentInitTask<Store> {
                 endpoints.push(endpoint_result?);
             }
         }
+        drop(initializers);
         if endpoints.is_empty() {
             Err(AgentExecError::NoInitialLanes)
         } else {
             Ok(InitialEndpoints::new(
+                reporting,
                 request_stream.into_inner(),
                 endpoints,
             ))
@@ -240,6 +256,7 @@ async fn lane_initialization(
     name: Text,
     kind: UplinkKind,
     timeout: Duration,
+    reporting: Option<&NodeReporter>,
     mut in_tx: ByteWriter,
     mut out_rx: ByteReader,
     initializer: BoxInitializer<'_>,
@@ -254,12 +271,17 @@ async fn lane_initialization(
         } else if let Err(error) = wait_for_initialized(&mut out_rx).await {
             Err(AgentExecError::FailedRestoration { lane_name, error })
         } else {
+            let reporter = if let Some(node_reporter) = &reporting {
+                node_reporter.register(lane_name.clone()).await
+            } else {
+                None
+            };
             let endpoint = LaneEndpoint {
                 name: lane_name,
                 transient: false,
                 kind,
                 io: (in_tx, out_rx),
-                reporter: None,
+                reporter,
             };
             Ok(endpoint)
         }

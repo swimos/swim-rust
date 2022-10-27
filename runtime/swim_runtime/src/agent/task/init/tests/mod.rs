@@ -92,7 +92,8 @@ where
     let (done_tx, done_rx) = trigger::trigger();
     let (dl_tx, dl_rx) = mpsc::channel(DL_CHAN_SIZE);
 
-    let runtime = super::AgentInitTask::with_store(req_rx, dl_tx, done_rx, INIT_TIMEOUT, store);
+    let runtime =
+        super::AgentInitTask::with_store(req_rx, dl_tx, done_rx, INIT_TIMEOUT, None, store);
     let test = init.run_test(req_tx, dl_rx, done_tx);
 
     join(runtime.run(), test).await
@@ -145,6 +146,7 @@ async fn run_initializer_success() {
             Text::new("lane"),
             UplinkKind::Value,
             LANE_INIT_TIMEOUT,
+            None,
             tx_in,
             rx_out,
             Box::new(DummtInit::default()),
@@ -191,6 +193,7 @@ async fn run_initializer_failed_init() {
             Text::new("lane"),
             UplinkKind::Value,
             LANE_INIT_TIMEOUT,
+            None,
             tx_in,
             rx_out,
             Box::new(init),
@@ -220,6 +223,7 @@ async fn run_initializer_bad_response() {
             Text::new("lane"),
             UplinkKind::Value,
             LANE_INIT_TIMEOUT,
+            None,
             tx_in,
             rx_out,
             Box::new(DummtInit::default()),
@@ -269,6 +273,7 @@ async fn run_initializer_timeout() {
             Text::new("lane"),
             UplinkKind::Value,
             Duration::from_millis(100),
+            None,
             tx_in,
             rx_out,
             Box::new(DummtInit::default()),

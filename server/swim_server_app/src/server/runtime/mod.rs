@@ -697,6 +697,7 @@ impl Agents {
                         open_dl_tx.clone(),
                         agent_stop_rx.clone(),
                         *config,
+                        None, //TODO Add metrics reporting here.
                     );
                     let name = entry.key().clone();
                     spawn_task(name, route_task);

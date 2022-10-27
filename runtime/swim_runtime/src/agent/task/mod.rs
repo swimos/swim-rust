@@ -33,7 +33,10 @@ use self::write_fut::{WriteResult, WriteTask};
 
 use super::reporting::UplinkReporter;
 use super::store::AgentPersistence;
-use super::{AgentAttachmentRequest, AgentRuntimeConfig, DisconnectionReason, DownlinkRequest, Io};
+use super::{
+    AgentAttachmentRequest, AgentRuntimeConfig, DisconnectionReason, DownlinkRequest, Io,
+    NodeReporter,
+};
 use bytes::{Bytes, BytesMut};
 use futures::ready;
 use futures::stream::FuturesUnordered;
@@ -195,13 +198,22 @@ impl LaneEndpoint<ByteReader> {
 /// Result of the agent initialization task (detailing the lanes that were created during initialization).
 #[derive(Debug)]
 pub struct InitialEndpoints {
+    reporting: Option<NodeReporter>,
     rx: mpsc::Receiver<AgentRuntimeRequest>,
     endpoints: Vec<LaneEndpoint<Io>>,
 }
 
 impl InitialEndpoints {
-    fn new(rx: mpsc::Receiver<AgentRuntimeRequest>, endpoints: Vec<LaneEndpoint<Io>>) -> Self {
-        InitialEndpoints { rx, endpoints }
+    fn new(
+        reporting: Option<NodeReporter>,
+        rx: mpsc::Receiver<AgentRuntimeRequest>,
+        endpoints: Vec<LaneEndpoint<Io>>,
+    ) -> Self {
+        InitialEndpoints {
+            reporting,
+            rx,
+            endpoints,
+        }
     }
 
     /// Create the agent runtime task based on these intial lane endpoints.
@@ -220,7 +232,7 @@ impl InitialEndpoints {
         stopping: trigger::Receiver,
     ) -> AgentRuntimeTask {
         AgentRuntimeTask::new(
-            NodeDescriptor::new(identity, node_uri, None),
+            NodeDescriptor::new(identity, node_uri),
             self,
             attachment_rx,
             stopping,
@@ -249,7 +261,7 @@ impl InitialEndpoints {
         Store: AgentPersistence + Clone + Send + Sync + 'static,
     {
         AgentRuntimeTask::with_store(
-            NodeDescriptor::new(identity, node_uri, None),
+            NodeDescriptor::new(identity, node_uri),
             self,
             attachment_rx,
             stopping,
@@ -263,16 +275,11 @@ impl InitialEndpoints {
 struct NodeDescriptor {
     identity: Uuid,
     node_uri: Text,
-    reporter: Option<UplinkReporter>,
 }
 
 impl NodeDescriptor {
-    fn new(identity: Uuid, node_uri: Text, reporter: Option<UplinkReporter>) -> Self {
-        NodeDescriptor {
-            identity,
-            node_uri,
-            reporter,
-        }
+    fn new(identity: Uuid, node_uri: Text) -> Self {
+        NodeDescriptor { identity, node_uri }
     }
 }
 
@@ -536,13 +543,13 @@ where
 {
     pub async fn run(self) -> Result<(), StoreError> {
         let AgentRuntimeTask {
-            node:
-                NodeDescriptor {
-                    identity,
-                    node_uri,
-                    reporter,
+            node: NodeDescriptor { identity, node_uri },
+            init:
+                InitialEndpoints {
+                    reporting,
+                    rx,
+                    endpoints,
                 },
-            init: InitialEndpoints { rx, endpoints },
             attachment_rx,
             stopping,
             config,
@@ -559,8 +566,15 @@ where
         let (kill_switch_tx, kill_switch_rx) = trigger::trigger();
 
         let combined_stop = fselect(fselect(stopping.clone(), kill_switch_rx), vote_waiter);
-        let att = attachment_task(rx, attachment_rx, read_tx, write_tx.clone(), combined_stop)
-            .instrument(info_span!("Agent Runtime Attachment Task", %identity, %node_uri));
+        let att = attachment_task(
+            rx,
+            attachment_rx,
+            reporting.clone(),
+            read_tx,
+            write_tx.clone(),
+            combined_stop,
+        )
+        .instrument(info_span!("Agent Runtime Attachment Task", %identity, %node_uri));
         let read = read_task(
             config,
             write_endpoints,
@@ -568,7 +582,7 @@ where
             write_tx,
             read_vote,
             stopping.clone(),
-            reporter.clone(),
+            reporting.as_ref().map(NodeReporter::aggregate),
         )
         .instrument(info_span!("Agent Runtime Read Task", %identity, %node_uri));
         let write = write_task(
@@ -577,7 +591,7 @@ where
             write_rx,
             write_vote,
             stopping,
-            reporter,
+            reporting.as_ref().map(NodeReporter::aggregate),
             store,
         )
         .instrument(info_span!("Agent Runtime Write Task", %identity, %node_uri));
@@ -629,6 +643,7 @@ const BAD_LANE_REG: &str = "Agent failed to receive lane registration result.";
 /// #Arguments
 /// * `runtime` - Requests from the agent.
 /// * `attachment` - External requests to attach new remotes.
+/// * `reporting` - Uplink metadata reporter.
 /// * `read_tx` - Channel to communicate with the read task.
 /// * `write_tx` - Channel to communicate with the write task.
 /// * `combined_stop` - The task will stop when this future completes. This should combined the overall
@@ -637,6 +652,7 @@ const BAD_LANE_REG: &str = "Agent failed to receive lane registration result.";
 async fn attachment_task<F>(
     runtime: mpsc::Receiver<AgentRuntimeRequest>,
     attachment: mpsc::Receiver<AgentAttachmentRequest>,
+    reporting: Option<NodeReporter>,
     read_tx: mpsc::Sender<ReadTaskMessages>,
     write_tx: mpsc::Sender<WriteTaskMessage>,
     combined_stop: F,
@@ -659,7 +675,7 @@ async fn attachment_task<F>(
                 if let Some(event) = maybe_event {
                     match event {
                         Either::Left(request) => {
-                            if !handle_runtime_request(request, &read_tx, &write_tx).await {
+                            if !handle_runtime_request(request, &read_tx, &write_tx, reporting.as_ref()).await {
                                 break;
                             }
                         }
@@ -688,6 +704,7 @@ async fn handle_runtime_request(
     request: AgentRuntimeRequest,
     read_tx: &mpsc::Sender<ReadTaskMessages>,
     write_tx: &mpsc::Sender<WriteTaskMessage>,
+    reporting: Option<&NodeReporter>,
 ) -> bool {
     match request {
         AgentRuntimeRequest::AddLane {
@@ -699,7 +716,14 @@ async fn handle_runtime_request(
             info!("Registering a new {} lane with name {}.", kind, name);
             let (in_tx, in_rx) = byte_channel(config.input_buffer_size);
             let (out_tx, out_rx) = byte_channel(config.output_buffer_size);
-            let sender = LaneSender::new(in_tx, kind, None);
+
+            let reporter = if let Some(reporting) = reporting {
+                reporting.register(name.clone()).await
+            } else {
+                None
+            };
+
+            let sender = LaneSender::new(in_tx, kind, reporter.clone());
             let read_permit = match read_tx.reserve().await {
                 Err(_) => {
                     warn!(
@@ -730,13 +754,8 @@ async fn handle_runtime_request(
                 name: name.clone(),
                 sender,
             });
-            write_permit.send(WriteTaskMessage::Lane(LaneEndpoint::new(
-                name,
-                kind,
-                config.transient,
-                out_rx,
-                None,
-            )));
+            let endpoint = LaneEndpoint::new(name, kind, config.transient, out_rx, reporter);
+            write_permit.send(WriteTaskMessage::Lane(endpoint));
             if promise.send(Ok((out_tx, in_rx))).is_err() {
                 error!(BAD_LANE_REG);
             }
