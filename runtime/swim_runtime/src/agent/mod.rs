@@ -56,6 +56,7 @@ mod store;
 mod task;
 
 use task::AgentRuntimeRequest;
+use tracing::error;
 
 #[derive(Debug)]
 pub struct DownlinkRequest {
@@ -106,7 +107,7 @@ impl AgentContext for AgentRuntimeContext {
             sender
                 .send(AgentRuntimeRequest::AddLane {
                     name,
-                    kind: lane_kind.uplink_kind(),
+                    kind: lane_kind,
                     config,
                     promise: tx,
                 })
@@ -209,63 +210,80 @@ pub struct AgentAttachmentRequest {
     on_attached: Option<trigger::Sender>,
 }
 
+/// A request from an agent to register a new lane for metadata reporting.
 pub struct UplinkReporterRegistration {
-    agent_id: Uuid,
-    lane_name: Text,
-    reader: UplinkReportReader,
+    pub agent_id: Uuid,
+    pub lane_name: Text,
+    pub kind: LaneKind,
+    pub reader: UplinkReportReader,
 }
 
 impl UplinkReporterRegistration {
-    pub fn new(agent_id: Uuid, lane_name: Text, reader: UplinkReportReader) -> Self {
+    pub fn new(
+        agent_id: Uuid,
+        lane_name: Text,
+        kind: LaneKind,
+        reader: UplinkReportReader,
+    ) -> Self {
         UplinkReporterRegistration {
             agent_id,
             lane_name,
+            kind,
             reader,
         }
     }
 }
 
+/// Context to be passed into an agent runtime to allow it to report the traffic over the uplinks
+/// of its lanes.
 #[derive(Debug, Clone)]
-pub struct NodeReporter {
+pub struct NodeReporting {
     agent_id: Uuid,
     aggregate_reporter: UplinkReporter,
     lane_registrations: mpsc::Sender<UplinkReporterRegistration>,
 }
 
-impl NodeReporter {
-    async fn register(&self, name: Text) -> Option<UplinkReporter> {
-        let NodeReporter {
+impl NodeReporting {
+    /// #Arguments
+    /// * `agent_id` - The unique ID of the agent that will hold this context.
+    /// * `aggregate_reporter` - Used to report the aggregated values for all lanes.
+    /// * `lane_registrations` - Used by the agent to register a new lane for reporting.
+    pub fn new(
+        agent_id: Uuid,
+        aggregate_reporter: UplinkReporter,
+        lane_registrations: mpsc::Sender<UplinkReporterRegistration>,
+    ) -> Self {
+        NodeReporting {
+            agent_id,
+            aggregate_reporter,
+            lane_registrations,
+        }
+    }
+
+    /// Register a new lane for reporting.
+    async fn register(&self, name: Text, kind: LaneKind) -> Option<UplinkReporter> {
+        let NodeReporting {
             agent_id,
             lane_registrations,
             ..
         } = self;
         let reporter = UplinkReporter::default();
         let reader = reporter.reader();
-        let registration = UplinkReporterRegistration::new(*agent_id, name.clone(), reader);
+        let registration = UplinkReporterRegistration::new(*agent_id, name.clone(), kind, reader);
         if lane_registrations.send(registration).await.is_err() {
-            //TODO Log error.
+            error!(
+                "Failed to reistery lane {} for agent {} for reporting.",
+                name, agent_id
+            );
             None
         } else {
             Some(reporter)
         }
     }
 
+    /// Get an aggregate reporter for all lanes of the agent.
     fn aggregate(&self) -> UplinkReporter {
         self.aggregate_reporter.clone()
-    }
-}
-
-impl NodeReporter {
-    pub fn new(
-        agent_id: Uuid,
-        aggregate_reporter: UplinkReporter,
-        lane_registrations: mpsc::Sender<UplinkReporterRegistration>,
-    ) -> Self {
-        NodeReporter {
-            agent_id,
-            aggregate_reporter,
-            lane_registrations,
-        }
     }
 }
 
@@ -356,7 +374,7 @@ pub struct AgentRouteTask<'a, A> {
     stopping: trigger::Receiver,
     agent_config: AgentConfig,
     runtime_config: AgentRuntimeConfig,
-    reporting: Option<NodeReporter>,
+    reporting: Option<NodeReporting>,
 }
 
 impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
@@ -376,7 +394,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         downlink_tx: mpsc::Sender<DownlinkRequest>,
         stopping: trigger::Receiver,
         config: CombinedAgentConfig,
-        reporting: Option<NodeReporter>,
+        reporting: Option<NodeReporting>,
     ) -> Self {
         AgentRouteTask {
             agent,

@@ -35,6 +35,7 @@ use futures::{
 use std::fmt::Debug;
 use swim_api::{
     agent::UplinkKind,
+    meta::lane::LaneKind,
     protocol::{agent::LaneRequest, map::MapMessage},
 };
 use swim_model::Text;
@@ -65,7 +66,7 @@ enum Event {
 
 struct CreateLane {
     name: Text,
-    kind: UplinkKind,
+    kind: LaneKind,
 }
 
 #[derive(Default)]
@@ -249,7 +250,8 @@ impl FakeAgent {
                         let (io_tx, io_rx) = rx.await
                             .expect("Failed to receive response.")
                             .expect("Failed to add new lane.");
-                        match kind {
+                        let uplink_kind = kind.uplink_kind();
+                        match uplink_kind {
                             UplinkKind::Value => {
                                 value_lanes.insert(name.clone(), (0, ValueLikeLaneSender::new(io_tx)));
                             }
@@ -261,7 +263,7 @@ impl FakeAgent {
                                 panic!("Unexpected supply uplink.");
                             }
                         }
-                        lanes.push(LaneReader::new(LaneEndpoint { name, kind, transient: false, io: io_rx, reporter: None }));
+                        lanes.push(LaneReader::new(LaneEndpoint { name, kind: uplink_kind, transient: false, io: io_rx, reporter: None }));
                     } else {
                         break;
                     }

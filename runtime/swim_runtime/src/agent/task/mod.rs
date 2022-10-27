@@ -35,7 +35,7 @@ use super::reporting::UplinkReporter;
 use super::store::AgentPersistence;
 use super::{
     AgentAttachmentRequest, AgentRuntimeConfig, DisconnectionReason, DownlinkRequest, Io,
-    NodeReporter,
+    NodeReporting,
 };
 use bytes::{Bytes, BytesMut};
 use futures::ready;
@@ -48,6 +48,7 @@ use futures::{
 use pin_utils::pin_mut;
 use swim_api::agent::LaneConfig;
 use swim_api::error::StoreError;
+use swim_api::meta::lane::LaneKind;
 use swim_api::protocol::agent::{LaneResponse, MapLaneResponse};
 use swim_api::store::StoreDisabled;
 use swim_api::{
@@ -93,7 +94,7 @@ pub enum AgentRuntimeRequest {
     /// Attempt to open a new lane for the agent.
     AddLane {
         name: Text,
-        kind: UplinkKind,
+        kind: LaneKind,
         config: LaneConfig,
         promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
     },
@@ -198,14 +199,14 @@ impl LaneEndpoint<ByteReader> {
 /// Result of the agent initialization task (detailing the lanes that were created during initialization).
 #[derive(Debug)]
 pub struct InitialEndpoints {
-    reporting: Option<NodeReporter>,
+    reporting: Option<NodeReporting>,
     rx: mpsc::Receiver<AgentRuntimeRequest>,
     endpoints: Vec<LaneEndpoint<Io>>,
 }
 
 impl InitialEndpoints {
     fn new(
-        reporting: Option<NodeReporter>,
+        reporting: Option<NodeReporting>,
         rx: mpsc::Receiver<AgentRuntimeRequest>,
         endpoints: Vec<LaneEndpoint<Io>>,
     ) -> Self {
@@ -582,7 +583,7 @@ where
             write_tx,
             read_vote,
             stopping.clone(),
-            reporting.as_ref().map(NodeReporter::aggregate),
+            reporting.as_ref().map(NodeReporting::aggregate),
         )
         .instrument(info_span!("Agent Runtime Read Task", %identity, %node_uri));
         let write = write_task(
@@ -591,7 +592,7 @@ where
             write_rx,
             write_vote,
             stopping,
-            reporting.as_ref().map(NodeReporter::aggregate),
+            reporting.as_ref().map(NodeReporting::aggregate),
             store,
         )
         .instrument(info_span!("Agent Runtime Write Task", %identity, %node_uri));
@@ -652,7 +653,7 @@ const BAD_LANE_REG: &str = "Agent failed to receive lane registration result.";
 async fn attachment_task<F>(
     runtime: mpsc::Receiver<AgentRuntimeRequest>,
     attachment: mpsc::Receiver<AgentAttachmentRequest>,
-    reporting: Option<NodeReporter>,
+    reporting: Option<NodeReporting>,
     read_tx: mpsc::Sender<ReadTaskMessages>,
     write_tx: mpsc::Sender<WriteTaskMessage>,
     combined_stop: F,
@@ -704,7 +705,7 @@ async fn handle_runtime_request(
     request: AgentRuntimeRequest,
     read_tx: &mpsc::Sender<ReadTaskMessages>,
     write_tx: &mpsc::Sender<WriteTaskMessage>,
-    reporting: Option<&NodeReporter>,
+    reporting: Option<&NodeReporting>,
 ) -> bool {
     match request {
         AgentRuntimeRequest::AddLane {
@@ -714,16 +715,17 @@ async fn handle_runtime_request(
             promise,
         } => {
             info!("Registering a new {} lane with name {}.", kind, name);
+            let uplink_kind = kind.uplink_kind();
             let (in_tx, in_rx) = byte_channel(config.input_buffer_size);
             let (out_tx, out_rx) = byte_channel(config.output_buffer_size);
 
             let reporter = if let Some(reporting) = reporting {
-                reporting.register(name.clone()).await
+                reporting.register(name.clone(), kind).await
             } else {
                 None
             };
 
-            let sender = LaneSender::new(in_tx, kind, reporter.clone());
+            let sender = LaneSender::new(in_tx, uplink_kind, reporter.clone());
             let read_permit = match read_tx.reserve().await {
                 Err(_) => {
                     warn!(
@@ -754,7 +756,7 @@ async fn handle_runtime_request(
                 name: name.clone(),
                 sender,
             });
-            let endpoint = LaneEndpoint::new(name, kind, config.transient, out_rx, reporter);
+            let endpoint = LaneEndpoint::new(name, uplink_kind, config.transient, out_rx, reporter);
             write_permit.send(WriteTaskMessage::Lane(endpoint));
             if promise.send(Ok((out_tx, in_rx))).is_err() {
                 error!(BAD_LANE_REG);

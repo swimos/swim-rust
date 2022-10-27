@@ -15,6 +15,7 @@
 use futures::{future::BoxFuture, FutureExt, SinkExt, StreamExt};
 use swim_api::{
     agent::{LaneConfig, UplinkKind},
+    meta::lane::LaneKind,
     protocol::{
         agent::{LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder},
         map::{MapMessageDecoder, RawMapOperation, RawMapOperationDecoder, RawMapOperationEncoder},
@@ -152,7 +153,7 @@ impl SingleLaneInitTask {
         requests
             .send(AgentRuntimeRequest::AddLane {
                 name: Text::new("my_lane"),
-                kind: UplinkKind::Value,
+                kind: LaneKind::Value,
                 config,
                 promise: lane_tx,
             })
@@ -254,7 +255,7 @@ impl TwoLanesInitTask {
         requests
             .send(AgentRuntimeRequest::AddLane {
                 name: Text::new("value_lane"),
-                kind: UplinkKind::Value,
+                kind: LaneKind::Value,
                 config,
                 promise: lane_tx1,
             })
@@ -264,7 +265,7 @@ impl TwoLanesInitTask {
         requests
             .send(AgentRuntimeRequest::AddLane {
                 name: Text::new("map_lane"),
-                kind: UplinkKind::Map,
+                kind: LaneKind::Map,
                 config,
                 promise: lane_tx2,
             })

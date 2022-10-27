@@ -21,6 +21,7 @@ use futures::{
 use swim_api::{
     agent::{LaneConfig, UplinkKind},
     error::StoreError,
+    meta::lane::LaneKind,
     protocol::{
         agent::{
             LaneRequest, LaneRequestDecoder, LaneRequestEncoder, LaneResponse, LaneResponseEncoder,
@@ -144,7 +145,7 @@ async fn run_initializer_success() {
         let (tx_out, rx_out) = byte_channel(BUFFER_SIZE);
         let init_task = super::lane_initialization(
             Text::new("lane"),
-            UplinkKind::Value,
+            LaneKind::Value,
             LANE_INIT_TIMEOUT,
             None,
             tx_in,
@@ -191,7 +192,7 @@ async fn run_initializer_failed_init() {
         };
         let init_task = super::lane_initialization(
             Text::new("lane"),
-            UplinkKind::Value,
+            LaneKind::Value,
             LANE_INIT_TIMEOUT,
             None,
             tx_in,
@@ -221,7 +222,7 @@ async fn run_initializer_bad_response() {
         let (tx_out, rx_out) = byte_channel(BUFFER_SIZE);
         let init_task = super::lane_initialization(
             Text::new("lane"),
-            UplinkKind::Value,
+            LaneKind::Value,
             LANE_INIT_TIMEOUT,
             None,
             tx_in,
@@ -271,7 +272,7 @@ async fn run_initializer_timeout() {
         let (tx_out, rx_out) = byte_channel(BUFFER_SIZE);
         let init_task = super::lane_initialization(
             Text::new("lane"),
-            UplinkKind::Value,
+            LaneKind::Value,
             Duration::from_millis(100),
             None,
             tx_in,
