@@ -51,7 +51,7 @@ use self::{
     task::AgentInitTask,
 };
 
-mod reporting;
+pub mod reporting;
 mod store;
 mod task;
 

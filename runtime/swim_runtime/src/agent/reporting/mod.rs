@@ -82,6 +82,10 @@ impl UplinkReporter {
 }
 
 impl UplinkReportReader {
+    pub fn is_active(&self) -> bool {
+        self.counters.upgrade().is_some()
+    }
+
     pub fn snapshot(&self) -> Option<UplinkSnapshot> {
         self.counters.upgrade().map(|counters| {
             let link_count = counters.link_count.load(Ordering::Relaxed);
