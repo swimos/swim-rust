@@ -15,8 +15,7 @@
 #[cfg(test)]
 mod tests;
 
-use http::uri::InvalidUri;
-use http::Uri;
+use url::{Url, ParseError};
 use std::borrow::Borrow;
 use std::convert::TryFrom;
 use std::error::Error;
@@ -24,11 +23,17 @@ use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 
 /// A restricted URI type that can only represent relative URIs.
-#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
-pub struct RelativeUri(Uri);
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RelativeUri(Url);
+
+impl Default for RelativeUri {
+    fn default() -> Self {
+       RelativeUri(Url::parse("./").unwrap())
+    }
+}
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct UriIsAbsolute(pub Uri);
+pub struct UriIsAbsolute(pub Url);
 
 impl Display for UriIsAbsolute {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -39,16 +44,25 @@ impl Display for UriIsAbsolute {
 impl Error for UriIsAbsolute {}
 
 impl RelativeUri {
-    pub fn new(uri: Uri) -> Result<RelativeUri, UriIsAbsolute> {
-        if uri.scheme().is_some() || uri.authority().is_some() {
+    pub fn new(uri: Url) -> Result<RelativeUri, UriIsAbsolute> {
+        if uri.has_authority() {
             Err(UriIsAbsolute(uri))
         } else {
             Ok(RelativeUri(uri))
         }
     }
 
-    pub fn as_uri(&self) -> &Uri {
+    pub fn as_url(&self) -> &Url {
         &self.0
+    }
+
+    pub fn scheme(&self) -> Option<&str> {
+        let scheme = self.0.scheme();
+        if scheme.is_empty() {
+            None
+        } else {
+            Some(scheme)
+        }
     }
 
     pub fn path(&self) -> &str {
@@ -94,7 +108,7 @@ impl Display for RelativeUri {
 
 #[derive(Debug)]
 pub enum BadRelativeUri {
-    Invalid(InvalidUri),
+    Invalid(ParseError),
     Absolute(UriIsAbsolute),
 }
 
@@ -138,52 +152,52 @@ impl TryFrom<String> for RelativeUri {
     type Error = BadRelativeUri;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        Uri::try_from(value)
+        value.parse::<Url>()
             .map_err(BadRelativeUri::Invalid)
             .and_then(|uri| RelativeUri::new(uri).map_err(BadRelativeUri::Absolute))
     }
 }
 
-impl TryFrom<Uri> for RelativeUri {
+impl TryFrom<Url> for RelativeUri {
     type Error = UriIsAbsolute;
 
-    fn try_from(value: Uri) -> Result<Self, Self::Error> {
+    fn try_from(value: Url) -> Result<Self, Self::Error> {
         RelativeUri::new(value)
     }
 }
 
 impl PartialEq<str> for RelativeUri {
     fn eq(&self, other: &str) -> bool {
-        self.0 == other
+        self.0.as_str() == other
     }
 }
 
 impl<'a> PartialEq<&'a str> for RelativeUri {
     fn eq(&self, other: &&'a str) -> bool {
-        self.0 == *other
+        self.0.as_str() == *other
     }
 }
 
 impl PartialEq<String> for RelativeUri {
     fn eq(&self, other: &String) -> bool {
-        self.0 == other.as_str()
+        self.0.as_str() == other.as_str()
     }
 }
 
-impl PartialEq<Uri> for RelativeUri {
-    fn eq(&self, other: &Uri) -> bool {
+impl PartialEq<Url> for RelativeUri {
+    fn eq(&self, other: &Url) -> bool {
         self.0 == *other
     }
 }
 
-impl From<RelativeUri> for Uri {
+impl From<RelativeUri> for Url {
     fn from(uri: RelativeUri) -> Self {
         uri.0
     }
 }
 
-impl Borrow<Uri> for RelativeUri {
-    fn borrow(&self) -> &Uri {
+impl Borrow<Url> for RelativeUri {
+    fn borrow(&self) -> &Url {
         &self.0
     }
 }

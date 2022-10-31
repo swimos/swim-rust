@@ -252,7 +252,7 @@ impl RoutePattern {
         &self,
         uri: &RelativeUri,
     ) -> Result<HashMap<String, String>, UnapplyError> {
-        self.unapply_uri(uri.as_uri())
+        self.unapply_url(uri.as_url())
     }
 
     /// Match a [`Url`] route against the route pattern, extracting the values of each named

@@ -20,9 +20,9 @@ use crate::plane::router::PlaneRouter;
 use crate::plane::{AgentInternals, AgentRoute, EnvChannel, RouteAndParameters};
 use futures::future::BoxFuture;
 use futures::{FutureExt, StreamExt};
-use http::Uri;
 use parking_lot::Mutex;
 use pin_utils::pin_mut;
+use url::Url;
 use std::any::Any;
 use std::sync::Arc;
 use std::time::Duration;
@@ -186,7 +186,7 @@ impl<Clk: Clock, Delegate>
         let expected_target = expected_id.clone();
         assert_eq!(id, expected_target);
         let agent = Arc::new(ReceiveAgent(id.clone()));
-        let expected_route: Uri = format!("/{}/{}", RECEIVER_PREFIX, id).parse().unwrap();
+        let expected_route: Url = format!("/{}/{}", RECEIVER_PREFIX, id).parse().unwrap();
         assert_eq!(route, expected_route);
         assert_eq!(execution_config, make_config());
         let task = async move {

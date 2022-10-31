@@ -27,14 +27,14 @@ use swim_runtime::agent::reporting::UplinkReportReader;
 
 #[derive(Debug, Clone)]
 pub struct LaneView {
-    kind: LaneKind,
-    report_reader: UplinkReportReader,
+    pub kind: LaneKind,
+    pub report_reader: UplinkReportReader,
 }
 
 #[derive(Debug)]
 pub struct AgentSnapshot {
-    lanes: HashMap<Text, LaneView>,
-    aggregate_reporter: UplinkReportReader,
+    pub lanes: HashMap<Text, LaneView>,
+    pub aggregate_reporter: UplinkReportReader,
 }
 
 #[derive(Debug)]
@@ -49,23 +49,19 @@ pub struct AgentIntrospectionUpdater {
     inner: Arc<Inner>,
 }
 
-pub fn agent_introspection(
-    aggregate_reporter: UplinkReportReader,
-) -> (AgentIntrospectionUpdater, AgentIntrospectionHandle) {
-    let inner = Arc::new(Inner {
-        aggregate_reporter,
-        lanes: Default::default(),
-        epoch: AtomicU64::new(0),
-    });
-    (
+impl AgentIntrospectionUpdater {
+
+    pub fn new(aggregate_reporter: UplinkReportReader) -> Self {
+        let inner = Arc::new(Inner {
+            aggregate_reporter,
+            lanes: Default::default(),
+            epoch: AtomicU64::new(0),
+        });
         AgentIntrospectionUpdater {
-            inner: inner.clone(),
-        },
-        AgentIntrospectionHandle {
-            current_epoch: 0,
             inner,
-        },
-    )
+        }
+    }
+
 }
 
 impl AgentIntrospectionUpdater {
@@ -80,6 +76,13 @@ impl AgentIntrospectionUpdater {
             },
         );
         epoch.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn make_handle(&self) -> AgentIntrospectionHandle {
+        AgentIntrospectionHandle {
+            current_epoch: 0,
+            inner: self.inner.clone(),
+        }
     }
 }
 

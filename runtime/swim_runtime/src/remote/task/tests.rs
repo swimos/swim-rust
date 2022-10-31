@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use futures::future::{join, ready, BoxFuture};
 use futures::FutureExt;
-use http::Uri;
+use url::Url;
 use parking_lot::Mutex;
 use swim_async_runtime::time::timeout;
 use swim_form::Form;
@@ -53,7 +53,7 @@ const NO_RETRY: RetryStrategy = RetryStrategy::none();
 
 #[test]
 fn dispatch_error_display() {
-    let bad_uri: Uri = "swim://localhost/hello".parse().unwrap();
+    let bad_uri: Url = "swim://localhost/hello".parse().unwrap();
     let string =
         DispatchError::BadNodeUri(BadRelativeUri::Absolute(UriIsAbsolute(bad_uri))).to_string();
     assert_eq!(

@@ -14,19 +14,19 @@
 
 use crate::meta::log::LogLevel;
 use crate::meta::uri::{parse, MetaParseErr};
+use url::Url;
 use crate::meta::{get_route, LaneAddressedKind, MetaNodeAddressed};
-use std::convert::TryFrom;
 use std::str::FromStr;
 use swim_utilities::routing::uri::RelativeUri;
 
 #[test]
 fn test_parse_paths() {
     let meta_types = vec!["edge", "mesh", "part", "host", "node"];
-    let expected = RelativeUri::new(http::Uri::try_from("/unit/foo/").unwrap()).unwrap();
+    let expected = RelativeUri::new(Url::parse("/unit/foo/").unwrap()).unwrap();
 
     for meta in meta_types {
         let input = format!("/swim:meta:{}/unit%2Ffoo/lane/bar/uplink", meta);
-        let path = RelativeUri::new(http::Uri::try_from(input).unwrap()).unwrap();
+        let path = RelativeUri::new(Url::parse(input.as_str()).unwrap()).unwrap();
 
         assert_eq!(get_route(path), expected)
     }

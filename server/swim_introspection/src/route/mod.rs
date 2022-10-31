@@ -12,8 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod error;
-pub mod meta_agent;
-pub mod model;
-pub mod route;
-pub mod task;
+use swim_utilities::routing::route_pattern::RoutePattern;
+
+const NODE_PULSE: &str = "swim:meta:node/:node_uri/pulse";
+
+pub fn node_pulse_pattern() -> RoutePattern {
+    RoutePattern::parse_str(NODE_PULSE).expect("Node pulse pattern should be valid.")
+}
+
+#[cfg(test)]
+mod tests {
+
+    use url::Url;
+
+    #[test]
+    fn parse_meta_uri() {
+        let result = "swim:meta:node/unit%2Ffoo/pulse".parse::<Url>();
+        println!("{:?}", result);
+    }
+
+}
