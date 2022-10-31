@@ -14,7 +14,7 @@
 
 use futures::future::BoxFuture;
 use swim_api::agent::{Agent, AgentConfig, AgentContext, AgentInitResult};
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 
 use crate::{model::AgentIntrospectionHandle, task::IntrospectionResolver};
 
@@ -23,17 +23,15 @@ pub struct NodeMetaAgent {
 }
 
 impl NodeMetaAgent {
-
     pub fn new(resolver: IntrospectionResolver) -> NodeMetaAgent {
         NodeMetaAgent { resolver }
     }
-
 }
 
 impl Agent for NodeMetaAgent {
     fn run(
         &self,
-        route: RelativeUri,
+        route: RouteUri,
         config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> BoxFuture<'static, AgentInitResult> {

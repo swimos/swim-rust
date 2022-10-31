@@ -21,7 +21,7 @@ use crate::{
 };
 use futures::{stream::FuturesUnordered, StreamExt};
 use swim_api::agent::AgentConfig;
-use swim_utilities::{routing::uri::RelativeUri, trigger};
+use swim_utilities::{routing::route_uri::RouteUri, trigger};
 use tokio::sync::mpsc;
 
 use super::{HandlerFuture, Spawner, Suspend};
@@ -29,11 +29,11 @@ use super::{HandlerFuture, Spawner, Suspend};
 const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
 
-fn make_uri() -> RelativeUri {
-    RelativeUri::try_from(NODE_URI).expect("Bad URI.")
+fn make_uri() -> RouteUri {
+    RouteUri::try_from(NODE_URI).expect("Bad URI.")
 }
 
-fn make_meta(uri: &RelativeUri) -> AgentMetadata<'_> {
+fn make_meta(uri: &RouteUri) -> AgentMetadata<'_> {
     AgentMetadata::new(uri, &CONFIG)
 }
 

@@ -21,14 +21,4 @@ pub fn node_pulse_pattern() -> RoutePattern {
 }
 
 #[cfg(test)]
-mod tests {
-
-    use url::Url;
-
-    #[test]
-    fn parse_meta_uri() {
-        let result = "swim:meta:node/unit%2Ffoo/pulse".parse::<Url>();
-        println!("{:?}", result);
-    }
-
-}
+mod tests {}

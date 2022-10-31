@@ -18,7 +18,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use swim_runtime::error::NoAgentAtRoute;
 use swim_utilities::routing::route_pattern::RoutePattern;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 
 /// The context that is available in [`crate::plane::lifecycle::PlaneLifecycle`] event handlers.
 pub trait PlaneContext: Send + Sync {
@@ -29,12 +29,12 @@ pub trait PlaneContext: Send + Sync {
     /// This will cause the agent to start if has not already.
     fn get_agent_ref(
         &mut self,
-        route: RelativeUri,
+        route: RouteUri,
     ) -> BoxFuture<'_, Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>>;
 
     /// Get the patterns for all of the possible routes in this plane.
     fn routes(&self) -> &Vec<RoutePattern>;
 
     /// Get an instantaneous snapshot of the routes currently active on this plane.
-    fn active_routes(&mut self) -> BoxFuture<HashSet<RelativeUri>>;
+    fn active_routes(&mut self) -> BoxFuture<HashSet<RouteUri>>;
 }

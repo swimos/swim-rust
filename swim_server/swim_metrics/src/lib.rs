@@ -27,7 +27,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::ops::Add;
 use swim_model::path::RelativePath;
 use swim_utilities::future::item_sink::TrySend;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use swim_utilities::trigger;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::{SendError as TokioSendError, TrySendError};
@@ -176,7 +176,7 @@ impl NodeMetricAggregator {
     /// * `lanes`- A collection of lanes that the metrics will be sent to for: uplink, lane and node
     /// pulses.
     pub fn new(
-        node_uri: RelativeUri,
+        node_uri: RouteUri,
         stop_rx: trigger::Receiver,
         config: MetricAggregatorConfig,
         lanes: MetaPulseLanes,

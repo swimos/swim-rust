@@ -25,7 +25,7 @@ use swim_api::{
     protocol::map::{MapMessage, MapOperation},
 };
 use swim_model::Text;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use uuid::Uuid;
@@ -74,8 +74,8 @@ const NODE_URI: &str = "/node";
 
 const SYNC_VALUE: i32 = -1;
 
-fn make_uri() -> RelativeUri {
-    RelativeUri::try_from(NODE_URI).expect("Bad URI.")
+fn make_uri() -> RouteUri {
+    RouteUri::try_from(NODE_URI).expect("Bad URI.")
 }
 
 struct TestContext {

@@ -51,7 +51,7 @@ use swim_utilities::future::item_sink::{for_mpsc_sender, ItemSender};
 use swim_utilities::future::request::Request;
 use swim_utilities::future::retryable::RetryStrategy;
 use swim_utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture};
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use swim_utilities::sync::circular_buffer;
 use swim_utilities::trigger::promise::{self, PromiseError};
 use swim_warp::envelope::Envelope;
@@ -544,7 +544,7 @@ where
         let host = path.host();
         let node_uri = path.node();
         let lane = path.lane();
-        match RelativeUri::try_from(node_uri.as_str()) {
+        match RouteUri::try_from(node_uri.as_str()) {
             Err(_) => Err(SubscriptionError::BadUri(node_uri)),
             Ok(node_uri) => {
                 open_downlink(
@@ -563,7 +563,7 @@ where
     pub async fn sink_for(&mut self, path: Path) -> RequestResult<Route, Path> {
         let host = path.host();
         let node_uri = path.node();
-        match RelativeUri::try_from(node_uri.as_str()) {
+        match RouteUri::try_from(node_uri.as_str()) {
             Err(_) => Err(SubscriptionError::BadUri(node_uri)),
             Ok(node_uri) => Ok(self.connections.get_sender(host, node_uri).await?),
         }
@@ -1102,7 +1102,7 @@ fn map_router_events(event: RouterEvent) -> Result<Message<Value>, RoutingError>
 async fn open_downlink<Path, RF>(
     connections: &mut ClientConnectionFactory<RF>,
     host: Option<Url>,
-    node_uri: RelativeUri,
+    node_uri: RouteUri,
     lane: Text,
     mut retry_strategy: RetryStrategy,
     stop_trigger: CloseReceiver,

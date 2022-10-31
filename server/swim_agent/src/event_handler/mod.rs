@@ -28,7 +28,7 @@ use swim_model::address::Address;
 use swim_recon::parser::{AsyncParseError, RecognizerDecoder};
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
-    routing::uri::RelativeUri,
+    routing::route_uri::RouteUri,
 };
 use thiserror::Error;
 use tokio_util::codec::Decoder;
@@ -739,7 +739,7 @@ pub struct GetAgentUri {
 }
 
 impl<Context> HandlerAction<Context> for GetAgentUri {
-    type Completion = RelativeUri;
+    type Completion = RouteUri;
 
     fn step(
         &mut self,

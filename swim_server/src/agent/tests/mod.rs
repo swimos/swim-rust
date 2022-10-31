@@ -56,7 +56,7 @@ use swim_model::path::Path;
 use swim_persistence::agent::mock::MockNodeStore;
 use swim_runtime::configuration::DownlinkConnectionsConfig;
 use swim_utilities::algebra::non_zero_usize;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use swim_utilities::sync::circular_buffer;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
@@ -71,7 +71,7 @@ pub mod stub_router {
     use std::sync::Arc;
     use swim_runtime::error::{ConnectionDropped, ResolutionError, RouterError};
     use swim_runtime::routing::{Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender};
-    use swim_utilities::routing::uri::RelativeUri;
+    use swim_utilities::routing::route_uri::RouteUri;
     use swim_utilities::trigger::promise;
     use tokio::sync::mpsc;
     use url::Url;
@@ -118,7 +118,7 @@ pub mod stub_router {
         fn lookup(
             &mut self,
             _host: Option<Url>,
-            _route: RelativeUri,
+            _route: RouteUri,
         ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
             panic!("Unexpected resolution attempt.")
         }
@@ -253,7 +253,7 @@ impl<'a> CommandLaneLifecycle<'a, String, TestAgent<CommandLane<String>>>
 
 struct TestContext<Lane> {
     lane: Arc<TestAgent<Lane>>,
-    uri: RelativeUri,
+    uri: RouteUri,
     closed: trigger::Receiver,
 }
 
@@ -288,7 +288,7 @@ where
         self.lane.as_ref()
     }
 
-    fn node_uri(&self) -> &RelativeUri {
+    fn node_uri(&self) -> &RouteUri {
         &self.uri
     }
 

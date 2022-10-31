@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::uri::RelativeUri;
 use http::Uri;
 use percent_encoding::percent_decode_str;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use url::Url;
+
+use crate::route_uri::RouteUri;
 
 #[cfg(test)]
 mod tests;
@@ -246,25 +246,24 @@ impl RoutePattern {
         }
     }
 
-    /// Match a [`RelativeUri`] route against the route pattern, extracting the values of each named
+    /// Match a [`RouteUri`] route against the route pattern, extracting the values of each named
     /// parameter.
-    pub fn unapply_relative_uri(
+    pub fn unapply_route_uri(
         &self,
-        uri: &RelativeUri,
+        uri: &RouteUri,
     ) -> Result<HashMap<String, String>, UnapplyError> {
-        self.unapply_url(uri.as_url())
-    }
-
-    /// Match a [`Url`] route against the route pattern, extracting the values of each named
-    /// parameter.
-    pub fn unapply_url(&self, url: &Url) -> Result<HashMap<String, String>, UnapplyError> {
-        if let Some(part_map) = url.path_segments().and_then(|parts| {
-            let decoded = parts.map(|s| percent_decode_str(s).map(|b| b as char));
-            self.unapply_parts(decoded)
-        }) {
+        if let Some(part_map) = self.unapply_parts(
+            uri.path()
+                .split('/')
+                .skip(1)
+                .map(|s| percent_decode_str(s).map(|b| b as char)),
+        ) {
             Ok(part_map)
         } else {
-            Err(UnapplyError::new(self.pattern.as_str(), url.as_str()))
+            Err(UnapplyError::new(
+                self.pattern.as_str(),
+                uri.to_string().as_str(),
+            ))
         }
     }
 

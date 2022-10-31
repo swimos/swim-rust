@@ -25,7 +25,7 @@ use swim_api::{
 use swim_form::{structural::read::recognizer::RecognizerReadable, Form};
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
-    routing::uri::RelativeUri,
+    routing::route_uri::RouteUri,
 };
 use tokio::sync::mpsc;
 use tokio_util::codec::{FramedRead, FramedWrite};
@@ -51,14 +51,14 @@ pub enum AgentEvent {
 pub struct TestAgent {
     reporter: mpsc::UnboundedSender<i32>,
     events: mpsc::UnboundedSender<AgentEvent>,
-    check_meta: fn(RelativeUri, AgentConfig),
+    check_meta: fn(RouteUri, AgentConfig),
 }
 
 impl TestAgent {
     pub fn new(
         reporter: mpsc::UnboundedSender<i32>, //Reports each time the state changes.
         events: mpsc::UnboundedSender<AgentEvent>, //Reports when the agent is started or stopped.
-        check_meta: fn(RelativeUri, AgentConfig), //Check to perform on the agent metadata on startup.
+        check_meta: fn(RouteUri, AgentConfig), //Check to perform on the agent metadata on startup.
     ) -> Self {
         TestAgent {
             reporter,
@@ -71,7 +71,7 @@ impl TestAgent {
 impl Agent for TestAgent {
     fn run(
         &self,
-        route: RelativeUri,
+        route: RouteUri,
         config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> BoxFuture<'static, AgentInitResult> {

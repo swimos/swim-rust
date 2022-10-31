@@ -18,7 +18,7 @@ use crate::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use swim_utilities::future::request::Request;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 
@@ -84,7 +84,7 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
     fn lookup(
         &mut self,
         host: Option<Url>,
-        route: RelativeUri,
+        route: RouteUri,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         async move {
             let RemoteRouter {
@@ -152,7 +152,7 @@ impl<F: RouterFactory> RouterFactory for RemoteRouterFactory<F> {
     fn lookup(
         &mut self,
         host: Option<Url>,
-        route: RelativeUri,
+        route: RouteUri,
     ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
         async move {
             let RemoteRouterFactory {

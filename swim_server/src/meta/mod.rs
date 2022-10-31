@@ -42,7 +42,7 @@ use swim_model::path::RelativePath;
 use swim_model::Text;
 
 use swim_utilities::future::item_sink::TrySend;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use swim_utilities::trigger;
 use tokio::sync::mpsc::error::TrySendError;
 use tracing::{span, Level};
@@ -71,12 +71,12 @@ pub type IdentifiedAgentIo<Context> = HashMap<LaneIdentifier, Box<dyn LaneIo<Con
 
 /// Attempts to decode a meta-encoded node URI. Returns a decoded node URI if `uri` matches or
 /// returns `uri`.
-pub fn get_route(uri: RelativeUri) -> RelativeUri {
+pub fn get_route(uri: RouteUri) -> RouteUri {
     let captures = META_PATTERN.captures(uri.path());
     match captures {
         Some(captures) => match captures.name(NODE_CAPTURE_GROUP) {
             Some(node) => match percent_decode_str(node.as_str()).decode_utf8() {
-                Ok(decoded) => RelativeUri::from_str(decoded.as_ref()).unwrap_or(uri),
+                Ok(decoded) => RouteUri::from_str(decoded.as_ref()).unwrap_or(uri),
                 Err(_) => uri,
             },
             None => uri,
@@ -198,14 +198,14 @@ impl MetaNodeAddressed {
     /// Attempts to parse `path` into a metadata route.
     pub fn try_from_relative(path: &RelativePath) -> Result<MetaNodeAddressed, MetaParseErr> {
         let RelativePath { node, lane } = path;
-        let node_uri = RelativeUri::from_str(node.as_str())?;
+        let node_uri = RouteUri::from_str(node.as_str())?;
 
         parse(node_uri, lane.as_str())
     }
 }
 
 pub fn open_meta_lanes<Config, Agent, Context>(
-    node_uri: RelativeUri,
+    node_uri: RouteUri,
     exec_conf: &AgentExecutionConfig,
     lanes_summary: HashMap<String, LaneInfo>,
     stop_rx: trigger::Receiver,
@@ -332,7 +332,7 @@ pub(crate) fn meta_context_sink() -> MetaContext {
     };
 
     let (metric_aggregator, _) = NodeMetricAggregator::new(
-        RelativeUri::default(),
+        RouteUri::default(),
         rx,
         MetricAggregatorConfig::default(),
         pulse_lanes,
@@ -343,7 +343,7 @@ pub(crate) fn meta_context_sink() -> MetaContext {
             mpsc::channel(1).0,
             mpsc::channel(1).0,
         )),
-        node_logger: make_node_logger(RelativeUri::default()),
+        node_logger: make_node_logger(RouteUri::default()),
         metric_aggregator,
     }
 }

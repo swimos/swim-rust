@@ -19,7 +19,7 @@ use std::{collections::HashMap, marker::PhantomData};
 use futures::{Future, FutureExt};
 use swim_form::Form;
 use swim_model::address::Address;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 
 use crate::agent_model::downlink::hosted::{MapDownlinkHandle, ValueDownlinkHandle};
 use crate::agent_model::downlink::{OpenMapDownlink, OpenValueDownlink};
@@ -87,7 +87,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     /// Create an event handler that will fetch the metadata of the agent instance.
     pub fn get_agent_uri(
         &self,
-    ) -> impl HandlerAction<Agent, Completion = RelativeUri> + Send + 'static {
+    ) -> impl HandlerAction<Agent, Completion = RouteUri> + Send + 'static {
         GetAgentUri::default()
     }
 

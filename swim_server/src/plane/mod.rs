@@ -40,7 +40,7 @@ use swim_runtime::routing::{CloseReceiver, RouterFactory, RoutingAddr, TaggedEnv
 use swim_utilities::future::request::Request;
 use swim_utilities::future::task::Spawner;
 use swim_utilities::routing::route_pattern::RoutePattern;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use swim_utilities::trigger::promise;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
@@ -182,7 +182,7 @@ where
 #[derive(Debug, Default)]
 pub struct PlaneActiveRoutes {
     local_endpoints: HashMap<RoutingAddr, LocalEndpoint>,
-    local_routes: HashMap<RelativeUri, RoutingAddr>,
+    local_routes: HashMap<RouteUri, RoutingAddr>,
 }
 
 impl PlaneActiveRoutes {
@@ -190,7 +190,7 @@ impl PlaneActiveRoutes {
         self.local_endpoints.get(addr)
     }
 
-    fn get_endpoint_for_route(&self, route: &RelativeUri) -> Option<&LocalEndpoint> {
+    fn get_endpoint_for_route(&self, route: &RouteUri) -> Option<&LocalEndpoint> {
         let PlaneActiveRoutes {
             local_endpoints,
             local_routes,
@@ -201,7 +201,7 @@ impl PlaneActiveRoutes {
             .and_then(|addr| local_endpoints.get(addr))
     }
 
-    fn add_endpoint(&mut self, addr: RoutingAddr, route: RelativeUri, endpoint: LocalEndpoint) {
+    fn add_endpoint(&mut self, addr: RoutingAddr, route: RouteUri, endpoint: LocalEndpoint) {
         let PlaneActiveRoutes {
             local_endpoints,
             local_routes,
@@ -211,15 +211,15 @@ impl PlaneActiveRoutes {
         local_endpoints.insert(addr, endpoint);
     }
 
-    fn routes(&self) -> impl Iterator<Item = &RelativeUri> {
+    fn routes(&self) -> impl Iterator<Item = &RouteUri> {
         self.local_routes.keys()
     }
 
-    fn addr_for_route(&self, route: &RelativeUri) -> Option<RoutingAddr> {
+    fn addr_for_route(&self, route: &RouteUri) -> Option<RoutingAddr> {
         self.local_routes.get(route).copied()
     }
 
-    fn remove_endpoint(&mut self, route: &RelativeUri) -> Option<LocalEndpoint> {
+    fn remove_endpoint(&mut self, route: &RouteUri) -> Option<LocalEndpoint> {
         let PlaneActiveRoutes {
             local_endpoints,
             local_routes,
@@ -247,7 +247,7 @@ impl ContextImpl {
 impl PlaneContext for ContextImpl {
     fn get_agent_ref(
         &mut self,
-        route: RelativeUri,
+        route: RouteUri,
     ) -> BoxFuture<'_, Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>> {
         let (tx, rx) = oneshot::channel();
         async move {
@@ -274,7 +274,7 @@ impl PlaneContext for ContextImpl {
         &self.routes
     }
 
-    fn active_routes(&mut self) -> BoxFuture<HashSet<RelativeUri>> {
+    fn active_routes(&mut self) -> BoxFuture<HashSet<RouteUri>> {
         let (tx, rx) = oneshot::channel();
         async move {
             if self
@@ -351,7 +351,7 @@ where
     /// Attempts to open an agent at a specified route.
     fn try_open_route<S>(
         &mut self,
-        route: RelativeUri,
+        route: RouteUri,
         spawner: &S,
     ) -> Result<(Arc<dyn Any + Send + Sync>, RoutingAddr), NoAgentAtRoute>
     where
@@ -599,12 +599,12 @@ type PlaneAgentRoute<Clk, Delegate, Store> =
 type Params = HashMap<String, String>;
 
 pub struct RouteAndParameters {
-    pub route: RelativeUri,
+    pub route: RouteUri,
     pub parameters: HashMap<String, String>,
 }
 
 impl RouteAndParameters {
-    pub fn new(route: RelativeUri, parameters: HashMap<String, String>) -> RouteAndParameters {
+    pub fn new(route: RouteUri, parameters: HashMap<String, String>) -> RouteAndParameters {
         RouteAndParameters { route, parameters }
     }
 }
@@ -612,7 +612,7 @@ impl RouteAndParameters {
 /// Find the appropriate specification for a route along with any parameters derived from the
 /// route pattern.
 fn route_for<'a, Clk, Delegate, Store>(
-    route: &RelativeUri,
+    route: &RouteUri,
     routes: &'a [RouteSpec<Clk, EnvChannel, PlaneRouter<Delegate>, Store>],
 ) -> Result<(&'a PlaneAgentRoute<Clk, Delegate, Store>, Params), NoAgentAtRoute> {
     //TODO This could be a lot more efficient though it would probably only matter for planes with a large number of routes.
@@ -623,7 +623,7 @@ fn route_for<'a, Clk, Delegate, Store>(
                  pattern,
                  agent_route,
              }| {
-                if let Ok(params) = pattern.unapply_relative_uri(route) {
+                if let Ok(params) = pattern.unapply_route_uri(route) {
                     Some((agent_route, params))
                 } else {
                     None

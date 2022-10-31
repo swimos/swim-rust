@@ -35,7 +35,7 @@ use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_model::Value;
 use swim_utilities::future::item_sink::{ItemSink, SendError};
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use swim_utilities::trigger::promise;
 use swim_warp::envelope::{Envelope, RequestEnvelope, ResponseEnvelope};
 use tokio::sync::mpsc;
@@ -569,7 +569,7 @@ pub trait Router: Send + Sync {
     fn lookup(
         &mut self,
         host: Option<Url>,
-        route: RelativeUri,
+        route: RouteUri,
     ) -> BoxFuture<Result<RoutingAddr, RouterError>>;
 }
 
@@ -584,7 +584,7 @@ pub trait RouterFactory: Send + Sync {
     fn lookup(
         &mut self,
         host: Option<Url>,
-        route: RelativeUri,
+        route: RouteUri,
     ) -> BoxFuture<Result<RoutingAddr, RouterError>>;
 }
 
@@ -651,7 +651,7 @@ impl Router for NoRoutes {
     fn lookup(
         &mut self,
         host: Option<Url>,
-        route: RelativeUri,
+        route: RouteUri,
     ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
         async move {
             if let Some(url) = host {
@@ -676,7 +676,7 @@ impl RouterFactory for NoRoutes {
     fn lookup(
         &mut self,
         host: Option<Url>,
-        route: RelativeUri,
+        route: RouteUri,
     ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
         Router::lookup(self, host, route)
     }

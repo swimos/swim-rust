@@ -98,7 +98,7 @@ impl PlaneBuilder {
 mod tests {
     use futures::future::BoxFuture;
     use swim_api::agent::{Agent, AgentConfig, AgentContext, AgentInitResult};
-    use swim_utilities::routing::{route_pattern::RoutePattern, uri::RelativeUri};
+    use swim_utilities::routing::{route_pattern::RoutePattern, route_uri::RouteUri};
 
     use crate::error::AmbiguousRoutes;
 
@@ -109,7 +109,7 @@ mod tests {
     impl Agent for DummyAgent {
         fn run(
             &self,
-            _route: RelativeUri,
+            _route: RouteUri,
             _config: AgentConfig,
             _context: Box<dyn AgentContext + Send>,
         ) -> BoxFuture<'static, AgentInitResult> {

@@ -22,7 +22,6 @@ use futures::future::BoxFuture;
 use futures::{FutureExt, StreamExt};
 use parking_lot::Mutex;
 use pin_utils::pin_mut;
-use url::Url;
 use std::any::Any;
 use std::sync::Arc;
 use std::time::Duration;
@@ -31,7 +30,7 @@ use swim_persistence::agent::SwimNodeStore;
 use swim_persistence::plane::mock::MockPlaneStore;
 use swim_runtime::routing::{Router, TaggedEnvelope};
 use swim_utilities::algebra::non_zero_usize;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use swim_utilities::trigger;
 use swim_warp::envelope::Envelope;
 
@@ -125,13 +124,12 @@ impl<Clk: Clock, Delegate: Router + 'static>
         let id = parameters[PARAM_NAME].clone();
         let target = self.0.clone();
         let agent = Arc::new(SendAgent(id.clone()));
-        let expected_route: RelativeUri = format!("/{}/{}", SENDER_PREFIX, id).parse().unwrap();
+        let expected_route: RouteUri = format!("/{}/{}", SENDER_PREFIX, id).parse().unwrap();
         assert_eq!(route, expected_route);
         assert_eq!(execution_config, make_config());
 
         let task = async move {
-            let target_node: RelativeUri =
-                format!("/{}/{}", RECEIVER_PREFIX, target).parse().unwrap();
+            let target_node: RouteUri = format!("/{}/{}", RECEIVER_PREFIX, target).parse().unwrap();
             let addr = router.lookup(None, target_node.clone()).await.unwrap();
             let mut tx = router.resolve_sender(addr).await.unwrap();
             assert!(tx
@@ -186,8 +184,8 @@ impl<Clk: Clock, Delegate>
         let expected_target = expected_id.clone();
         assert_eq!(id, expected_target);
         let agent = Arc::new(ReceiveAgent(id.clone()));
-        let expected_route: Url = format!("/{}/{}", RECEIVER_PREFIX, id).parse().unwrap();
-        assert_eq!(route, expected_route);
+        let expected_route = format!("/{}/{}", RECEIVER_PREFIX, id);
+        assert_eq!(route, expected_route.as_str());
         assert_eq!(execution_config, make_config());
         let task = async move {
             pin_mut!(incoming_envelopes);

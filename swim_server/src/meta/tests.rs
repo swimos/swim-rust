@@ -14,19 +14,18 @@
 
 use crate::meta::log::LogLevel;
 use crate::meta::uri::{parse, MetaParseErr};
-use url::Url;
 use crate::meta::{get_route, LaneAddressedKind, MetaNodeAddressed};
 use std::str::FromStr;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 
 #[test]
 fn test_parse_paths() {
     let meta_types = vec!["edge", "mesh", "part", "host", "node"];
-    let expected = RelativeUri::new(Url::parse("/unit/foo/").unwrap()).unwrap();
+    let expected = "/unit/foo/".parse::<RouteUri>().unwrap();
 
     for meta in meta_types {
         let input = format!("/swim:meta:{}/unit%2Ffoo/lane/bar/uplink", meta);
-        let path = RelativeUri::new(Url::parse(input.as_str()).unwrap()).unwrap();
+        let path = input.as_str().parse::<RouteUri>().unwrap();
 
         assert_eq!(get_route(path), expected)
     }
@@ -35,7 +34,7 @@ fn test_parse_paths() {
 }
 
 fn parse_meta(node: &str, lane: &str) -> Result<MetaNodeAddressed, MetaParseErr> {
-    let node = RelativeUri::from_str(node).expect("Failed to parse node URI");
+    let node = RouteUri::from_str(node).expect("Failed to parse node URI");
     parse(node, lane)
 }
 

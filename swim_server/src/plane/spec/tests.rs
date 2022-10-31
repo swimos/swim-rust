@@ -30,7 +30,7 @@ use swim_persistence::plane::mock::MockPlaneStore;
 use swim_runtime::error::{ResolutionError, RouterError};
 use swim_runtime::routing::{Route, Router, RoutingAddr, TaggedEnvelope};
 use swim_utilities::routing::route_pattern::RoutePattern;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 
@@ -78,7 +78,7 @@ impl Router for DummyDelegate {
     fn lookup(
         &mut self,
         _host: Option<Url>,
-        _route: RelativeUri,
+        _route: RouteUri,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         panic!("Called unexpectedly.");
     }

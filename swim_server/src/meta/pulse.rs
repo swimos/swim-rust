@@ -28,7 +28,7 @@ use swim_metrics::lane::LanePulse;
 use swim_metrics::node::NodePulse;
 use swim_metrics::uplink::WarpUplinkPulse;
 use swim_model::path::RelativePath;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 
 pub type PulseLaneOpenResult<Agent, Context> = (
     PulseLanes,
@@ -68,7 +68,7 @@ where
 
 /// Opens uplink and lane supply lanes for all `agent_lanes`.
 pub fn open_pulse_lanes<Config, Agent, Context>(
-    node_uri: RelativeUri,
+    node_uri: RouteUri,
     agent_lanes: &[&String],
     buffer_size: NonZeroUsize,
 ) -> PulseLaneOpenResult<Agent, Context>

@@ -22,7 +22,7 @@ use std::future::Future;
 use std::time::Duration;
 use swim_client::interface::ClientContext;
 use swim_model::path::Path;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use swim_utilities::trigger::Receiver;
 
 struct TestAgent;
@@ -47,7 +47,7 @@ impl AgentContext<TestAgent> for TestContext {
         panic!("Default lifecycles should do nothing.")
     }
 
-    fn node_uri(&self) -> &RelativeUri {
+    fn node_uri(&self) -> &RouteUri {
         panic!("Default lifecycles should do nothing.")
     }
 

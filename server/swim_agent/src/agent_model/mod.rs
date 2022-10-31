@@ -35,10 +35,8 @@ use swim_api::{
     protocol::{agent::LaneRequest, map::MapMessage},
 };
 use swim_model::Text;
-use swim_utilities::{
-    io::byte_channel::{ByteReader, ByteWriter},
-    routing::uri::RelativeUri,
-};
+use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use swim_utilities::routing::route_uri::RouteUri;
 use tracing::{error, info};
 use uuid::Uuid;
 
@@ -241,7 +239,7 @@ where
 {
     fn run(
         &self,
-        route: RelativeUri,
+        route: RouteUri,
         config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> BoxFuture<'static, AgentInitResult> {
@@ -350,7 +348,7 @@ where
     /// * `context` - Context through which to communicate with the runtime.
     async fn initialize_agent(
         self,
-        route: RelativeUri,
+        route: RouteUri,
         config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> AgentInitResult
@@ -476,7 +474,7 @@ where
 struct AgentTask<LaneModel, Lifecycle> {
     lane_model: LaneModel,
     lifecycle: Lifecycle,
-    route: RelativeUri,
+    route: RouteUri,
     config: AgentConfig,
     lane_ids: HashMap<u64, Text>,
     value_like_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,

@@ -50,18 +50,14 @@ pub struct AgentIntrospectionUpdater {
 }
 
 impl AgentIntrospectionUpdater {
-
     pub fn new(aggregate_reporter: UplinkReportReader) -> Self {
         let inner = Arc::new(Inner {
             aggregate_reporter,
             lanes: Default::default(),
             epoch: AtomicU64::new(0),
         });
-        AgentIntrospectionUpdater {
-            inner,
-        }
+        AgentIntrospectionUpdater { inner }
     }
-
 }
 
 impl AgentIntrospectionUpdater {

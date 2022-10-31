@@ -38,7 +38,7 @@ use swim_persistence::plane::mock::MockPlaneStore;
 use swim_runtime::compat::{Operation, RequestMessage};
 use swim_runtime::error::{ConnectionDropped, ResolutionError, RouterError};
 use swim_runtime::routing::{Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender};
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
@@ -129,7 +129,7 @@ impl Router for MockRouter {
     fn lookup(
         &mut self,
         _host: Option<Url>,
-        _route: RelativeUri,
+        _route: RouteUri,
     ) -> BoxFuture<'static, Result<RoutingAddr, RouterError>> {
         panic!("Unexpected resolution attempt.")
     }
@@ -139,7 +139,7 @@ impl Router for MockRouter {
 pub struct MockExecutionContext {
     router: Arc<Mutex<MockRouterInner>>,
     spawner: mpsc::Sender<Eff>,
-    uri: RelativeUri,
+    uri: RouteUri,
     uplinks_idle_since: Arc<AtomicInstant>,
 }
 
@@ -155,7 +155,7 @@ impl AgentExecutionContext for MockExecutionContext {
         self.spawner.clone()
     }
 
-    fn uri(&self) -> &RelativeUri {
+    fn uri(&self) -> &RouteUri {
         &self.uri
     }
 
@@ -165,7 +165,7 @@ impl AgentExecutionContext for MockExecutionContext {
 
     fn metrics(&self) -> NodeMetricAggregator {
         NodeMetricAggregator::new(
-            RelativeUri::try_from("/test").unwrap(),
+            RouteUri::try_from("/test").unwrap(),
             trigger::trigger().1,
             MetricAggregatorConfig::default(),
             MetaPulseLanes {
@@ -188,7 +188,7 @@ impl MockExecutionContext {
             router: Arc::new(Mutex::new(MockRouterInner::new(router_addr, buffer_size))),
             spawner,
             uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
-            uri: RelativeUri::try_from("/mock/router".to_string()).unwrap(),
+            uri: RouteUri::try_from("/mock/router".to_string()).unwrap(),
         }
     }
 

@@ -34,6 +34,7 @@ use swim_runtime::agent::{
     AgentAttachmentRequest, AgentExecError, AgentRoute, AgentRouteTask, CombinedAgentConfig,
     DisconnectionReason, DownlinkRequest,
 };
+use swim_utilities::routing::route_uri::RouteUri;
 
 use swim_runtime::error::ConnectionError;
 use swim_runtime::remote::{BadUrl, ExternalConnections};
@@ -41,7 +42,6 @@ use swim_runtime::remote::{Listener, SchemeSocketAddr};
 use swim_runtime::ws::WsConnections;
 use swim_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
 use swim_utilities::routing::route_pattern::RoutePattern;
-use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger::{self, promise};
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
@@ -680,7 +680,7 @@ impl Agents {
             }
             Entry::Vacant(entry) => {
                 debug!("Attempting to start new agent instance.");
-                if let Some((route, agent)) = RelativeUri::from_str(entry.key().as_str())
+                if let Some((route, agent)) = RouteUri::from_str(entry.key().as_str())
                     .ok()
                     .and_then(|route| routes.find_route(&route).map(move |agent| (route, agent)))
                 {
@@ -718,11 +718,11 @@ impl Routes {
         Routes(routes)
     }
 
-    fn find_route<'a>(&'a self, node: &RelativeUri) -> Option<&'a BoxAgent> {
+    fn find_route<'a>(&'a self, node: &RouteUri) -> Option<&'a BoxAgent> {
         let Routes(routes) = self;
         routes
             .iter()
-            .find(|(route, _)| route.unapply_relative_uri(node).is_ok())
+            .find(|(route, _)| route.unapply_route_uri(node).is_ok())
             .map(|(_, agent)| agent)
     }
 }

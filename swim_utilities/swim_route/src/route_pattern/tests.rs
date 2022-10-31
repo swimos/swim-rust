@@ -13,9 +13,8 @@
 // limitations under the License.
 
 use crate::route_pattern::{ApplyError, ParseError, RoutePattern, Segment, UnapplyError};
-use crate::uri::RelativeUri;
+use crate::route_uri::RouteUri;
 use std::collections::HashMap;
-use url::Url;
 
 #[test]
 fn parse_error_display() {
@@ -371,21 +370,10 @@ fn route_pattern_ambiguity() {
 }
 
 #[test]
-fn unapply_url() {
+fn unapply_route_uri() {
     let pattern = RoutePattern::parse_str("/path/:id").unwrap();
-    let url = Url::parse("swim://localhost/path/hello%20world%21").unwrap();
-    let result = pattern.unapply_url(&url);
-    assert!(result.is_ok());
-    let params = result.unwrap();
-    assert_eq!(params.len(), 1);
-    assert_eq!(params.get("id"), Some(&"hello world!".to_string()));
-}
-
-#[test]
-fn unapply_relative_uri() {
-    let pattern = RoutePattern::parse_str("/path/:id").unwrap();
-    let uri: RelativeUri = "/path/hello%20world%21".parse().unwrap();
-    let result = pattern.unapply_relative_uri(&uri);
+    let uri: RouteUri = "/path/hello%20world%21".parse().unwrap();
+    let result = pattern.unapply_route_uri(&uri);
     assert!(result.is_ok());
     let params = result.unwrap();
     assert_eq!(params.len(), 1);

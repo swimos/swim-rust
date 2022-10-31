@@ -17,7 +17,6 @@ use std::sync::Arc;
 
 use futures::future::{join, ready, BoxFuture};
 use futures::FutureExt;
-use url::Url;
 use parking_lot::Mutex;
 use swim_async_runtime::time::timeout;
 use swim_form::Form;
@@ -25,7 +24,7 @@ use swim_model::path::RelativePath;
 use swim_recon::printer::print_recon_compact;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::retryable::{Quantity, RetryStrategy};
-use swim_utilities::routing::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};
+use swim_utilities::routing::route_uri::{InvalidRouteUri, RouteUri};
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
 use swim_warp::envelope::Envelope;
@@ -53,12 +52,12 @@ const NO_RETRY: RetryStrategy = RetryStrategy::none();
 
 #[test]
 fn dispatch_error_display() {
-    let bad_uri: Url = "swim://localhost/hello".parse().unwrap();
     let string =
-        DispatchError::BadNodeUri(BadRelativeUri::Absolute(UriIsAbsolute(bad_uri))).to_string();
+        DispatchError::BadNodeUri(InvalidRouteUri::new("swim://localhost/hello".to_string()))
+            .to_string();
     assert_eq!(
         string,
-        "Invalid relative URI: ''swim://localhost/hello' is an absolute URI.'"
+        "Invalid route URI: ''swim://localhost/hello' is not a valid route URI.'"
     );
 
     let string = DispatchError::Unresolvable(ResolutionError::router_dropped()).to_string();
@@ -172,7 +171,7 @@ async fn try_dispatch_closed_sender() {
     .await;
 
     if let Err(err) = result {
-        let expected_uri: RelativeUri = "/node".parse().unwrap();
+        let expected_uri: RouteUri = "/node".parse().unwrap();
         assert!(
             matches!(err, DispatchError::RoutingProblem(RouterError::NoAgentAtRoute(uri)) if uri == expected_uri)
         );
@@ -239,7 +238,7 @@ async fn try_dispatch_fail_on_no_route() {
     .await;
 
     if let Err(err) = result {
-        let expected_uri: RelativeUri = "/node".parse().unwrap();
+        let expected_uri: RouteUri = "/node".parse().unwrap();
         assert!(
             matches!(err, DispatchError::RoutingProblem(RouterError::NoAgentAtRoute(uri)) if uri == expected_uri)
         );
@@ -321,7 +320,7 @@ async fn dispatch_immediate_failure() {
     assert!(delays.lock().is_empty());
 
     if let Err(err) = result {
-        let expected_uri: RelativeUri = "/node".parse().unwrap();
+        let expected_uri: RouteUri = "/node".parse().unwrap();
         assert!(
             matches!(err, DispatchError::RoutingProblem(RouterError::NoAgentAtRoute(uri)) if uri == expected_uri)
         );

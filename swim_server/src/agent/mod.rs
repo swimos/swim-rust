@@ -88,7 +88,7 @@ use swim_persistence::agent::NodeStore;
 use swim_runtime::compat::RequestMessage;
 use swim_runtime::routing::Router;
 use swim_utilities::future::SwimStreamExt;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use swim_utilities::sync::circular_buffer;
 use swim_utilities::sync::topic;
 use swim_utilities::trigger;
@@ -146,7 +146,7 @@ pub struct AgentTaskResult<Err: Debug> {
 
 #[derive(Debug)]
 pub struct AgentResult {
-    pub route: RelativeUri,
+    pub route: RouteUri,
     pub dispatcher_task: AgentTaskResult<DispatcherErrors>,
     pub store_task: AgentTaskResult<NodeStoreErrors>,
 }
@@ -173,7 +173,7 @@ impl AgentResult {
     }
 
     fn from(
-        route: RelativeUri,
+        route: RouteUri,
         dispatcher_result: DispatchTaskResult,
         store_result: StoreTaskResult,
     ) -> Self {
@@ -192,7 +192,7 @@ impl AgentResult {
 pub struct AgentParameters<Config> {
     agent_config: Config,
     execution_config: AgentExecutionConfig,
-    uri: RelativeUri,
+    uri: RouteUri,
     parameters: HashMap<String, String>,
 }
 
@@ -200,7 +200,7 @@ impl<Config> AgentParameters<Config> {
     pub fn new(
         agent_config: Config,
         execution_config: AgentExecutionConfig,
-        uri: RelativeUri,
+        uri: RouteUri,
         parameters: HashMap<String, String>,
     ) -> Self {
         AgentParameters {
@@ -502,7 +502,7 @@ pub trait AgentContext<Agent> {
     fn agent(&self) -> &Agent;
 
     /// Get the node URI of the agent instance.
-    fn node_uri(&self) -> &RelativeUri;
+    fn node_uri(&self) -> &RouteUri;
 
     /// Get a future that will complete when the agent is stopping.
     fn agent_stop_event(&self) -> trigger::Receiver;

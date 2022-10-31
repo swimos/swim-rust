@@ -25,7 +25,7 @@ use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
 use std::str;
 use std::str::FromStr;
-use swim_utilities::routing::uri::{BadRelativeUri, RelativeUri};
+use swim_utilities::routing::route_uri::{InvalidRouteUri, RouteUri};
 
 const SMALL_SIZE: usize = 3 * std::mem::size_of::<usize>();
 
@@ -563,13 +563,13 @@ impl TryFrom<Text> for Uri {
     }
 }
 
-impl TryFrom<Text> for RelativeUri {
-    type Error = BadRelativeUri;
+impl TryFrom<Text> for RouteUri {
+    type Error = InvalidRouteUri;
 
     fn try_from(value: Text) -> Result<Self, Self::Error> {
         match value {
-            Text(TextInner::Large(string)) => RelativeUri::try_from(string),
-            Text(TextInner::Small(len, bytes)) => RelativeUri::try_from(small_str(len, &bytes)),
+            Text(TextInner::Large(string)) => RouteUri::try_from(string),
+            Text(TextInner::Small(len, bytes)) => RouteUri::try_from(small_str(len, &bytes)),
         }
     }
 }

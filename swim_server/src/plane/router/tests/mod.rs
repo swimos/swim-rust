@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
+use crate::route_uri::RouteUri;
 use crate::routing::{PlaneRoutingRequest, TopLevelServerRouter, TopLevelServerRouterFactory};
-use crate::uri::RelativeUri;
 use futures::future::join;
 use swim_runtime::error::{ConnectionError, ResolutionErrorKind, RouterError, Unresolvable};
 use swim_runtime::remote::RawOutRoute;
@@ -126,7 +126,7 @@ async fn plane_router_resolve() {
         let result1 = router.lookup(None, "/node".parse().unwrap()).await;
         assert!(matches!(result1, Ok(a) if a == addr));
 
-        let uri: RelativeUri = "/node".parse().unwrap();
+        let uri: RouteUri = "/node".parse().unwrap();
 
         let result2 = router.lookup(Some(host.clone()), uri.clone()).await;
 

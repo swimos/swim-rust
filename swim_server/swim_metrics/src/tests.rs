@@ -30,7 +30,7 @@ use std::str::FromStr;
 use std::time::Duration;
 use swim_model::path::RelativePath;
 use swim_utilities::algebra::non_zero_usize;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use swim_utilities::trigger;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
@@ -293,7 +293,7 @@ where
 
 #[tokio::test(flavor = "multi_thread")]
 async fn full_pipeline() {
-    let node_uri = RelativeUri::from_str("/node").unwrap();
+    let node_uri = RouteUri::from_str("/node").unwrap();
     let (stop_tx, stop_rx) = trigger::trigger();
     let sample_rate = Duration::from_millis(100);
     let event_count = 10;
@@ -393,7 +393,7 @@ async fn full_pipeline() {
 
 #[tokio::test]
 async fn full_pipeline_multiple_observers() {
-    let node_uri = RelativeUri::from_str("/node").unwrap();
+    let node_uri = RouteUri::from_str("/node").unwrap();
     let (stop_tx, stop_rx) = trigger::trigger();
     let sample_rate = Duration::from_millis(100);
     let event_count1 = 10;

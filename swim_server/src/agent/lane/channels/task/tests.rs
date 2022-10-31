@@ -63,7 +63,7 @@ use swim_runtime::routing::{Route, Router, RoutingAddr, TaggedEnvelope, TaggedSe
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::item_sink::ItemSink;
 use swim_utilities::future::item_sink::SendError;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use swim_utilities::sync::circular_buffer;
 use swim_utilities::sync::topic;
 use swim_utilities::time::AtomicInstant;
@@ -379,7 +379,7 @@ struct TestContext {
     trigger: Arc<Mutex<Option<trigger::Sender>>>,
     _drop_tx: Arc<promise::Sender<ConnectionDropped>>,
     drop_rx: promise::Receiver<ConnectionDropped>,
-    uri: RelativeUri,
+    uri: RouteUri,
     aggregator: NodeMetricAggregator,
     uplinks_idle_since: Arc<AtomicInstant>,
 }
@@ -434,7 +434,7 @@ impl Router for TestRouter {
     fn lookup(
         &mut self,
         _host: Option<Url>,
-        _route: RelativeUri,
+        _route: RouteUri,
     ) -> BoxFuture<'static, Result<RoutingAddr, RouterError>> {
         panic!("Unexpected resolution attempt.")
     }
@@ -458,7 +458,7 @@ impl AgentExecutionContext for TestContext {
         self.scheduler.clone()
     }
 
-    fn uri(&self) -> &RelativeUri {
+    fn uri(&self) -> &RouteUri {
         &self.uri
     }
 
@@ -621,7 +621,7 @@ fn make_aggregator(
     };
 
     let RelativePath { node, lane } = path;
-    let uri = RelativeUri::try_from(format!("/{}/{}", node, lane)).unwrap();
+    let uri = RouteUri::try_from(format!("/{}/{}", node, lane)).unwrap();
 
     let config = MetricAggregatorConfig {
         sample_rate: Duration::from_secs(u64::MAX),
@@ -666,7 +666,7 @@ fn make_context() -> (
         trigger: Arc::new(Mutex::new(Some(stop_tx))),
         _drop_tx: Arc::new(drop_tx),
         drop_rx,
-        uri: RelativeUri::try_from("/mock/router".to_string()).unwrap(),
+        uri: RouteUri::try_from("/mock/router".to_string()).unwrap(),
         aggregator,
         uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now().into_std())),
     };
@@ -1462,7 +1462,7 @@ impl MultiTestContextInner {
 struct MultiTestContext(
     Arc<parking_lot::Mutex<MultiTestContextInner>>,
     mpsc::Sender<Eff>,
-    RelativeUri,
+    RouteUri,
     Arc<AtomicInstant>,
 );
 
@@ -1471,7 +1471,7 @@ impl MultiTestContext {
         MultiTestContext(
             Arc::new(parking_lot::Mutex::new(MultiTestContextInner::new())),
             spawner,
-            RelativeUri::try_from("/mock/router".to_string()).unwrap(),
+            RouteUri::try_from("/mock/router".to_string()).unwrap(),
             Arc::new(AtomicInstant::new(Instant::now().into_std())),
         )
     }
@@ -1507,13 +1507,13 @@ impl AgentExecutionContext for MultiTestContext {
         self.1.clone()
     }
 
-    fn uri(&self) -> &RelativeUri {
+    fn uri(&self) -> &RouteUri {
         &self.2
     }
 
     fn metrics(&self) -> NodeMetricAggregator {
         NodeMetricAggregator::new(
-            RelativeUri::try_from("/test").unwrap(),
+            RouteUri::try_from("/test").unwrap(),
             trigger::trigger().1,
             MetricAggregatorConfig::default(),
             MetaPulseLanes {
@@ -1555,7 +1555,7 @@ impl Router for MultiTestRouter {
     fn lookup(
         &mut self,
         _host: Option<Url>,
-        _route: RelativeUri,
+        _route: RouteUri,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         panic!("Unexpected resolution attempt.")
     }

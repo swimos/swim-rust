@@ -16,9 +16,7 @@ use swim_model::Text;
 use tokio::sync::{mpsc, oneshot};
 
 pub enum NodeIntrospectionError {
-    NoSuchAgent {
-        node_uri: Text,
-    },
+    NoSuchAgent { node_uri: Text },
     IntrospectionStopped,
 }
 
@@ -35,13 +33,8 @@ impl From<oneshot::error::RecvError> for NodeIntrospectionError {
 }
 
 pub enum LaneIntrospectionError {
-    NoSuchAgent {
-        node_uri: Text,
-    },
-    NoSuchLane {
-        node_uri: Text,
-        lane_name: Text,
-    },
+    NoSuchAgent { node_uri: Text },
+    NoSuchLane { node_uri: Text, lane_name: Text },
     IntrospectionStopped,
 }
 

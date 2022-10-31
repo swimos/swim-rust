@@ -43,7 +43,7 @@ use swim_client::router::ClientConnectionFactory;
 use swim_persistence::agent::mock::MockNodeStore;
 use swim_runtime::configuration::DownlinkConnectionsConfig;
 use swim_utilities::algebra::non_zero_usize;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use swim_utilities::trigger::promise;
 use tokio::sync::{mpsc, Mutex};
 use tokio_stream::wrappers::ReceiverStream;
@@ -517,7 +517,7 @@ async fn agent_loop() {
 
     let config = DataAgentConfig::new(tx);
 
-    let uri = RelativeUri::try_from("/test").unwrap();
+    let uri = RouteUri::try_from("/test").unwrap();
     let buffer_size = non_zero_usize!(10);
     let clock = TestClock::default();
 

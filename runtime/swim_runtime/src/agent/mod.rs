@@ -29,7 +29,7 @@ use swim_api::{
 use swim_model::{address::Address, Text};
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
-    routing::uri::RelativeUri,
+    routing::route_uri::RouteUri,
     trigger::{self, promise},
 };
 use thiserror::Error;
@@ -357,7 +357,7 @@ pub enum AgentExecError {
 
 pub struct AgentRoute {
     pub identity: Uuid,
-    pub route: RelativeUri,
+    pub route: RouteUri,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -368,7 +368,7 @@ pub struct CombinedAgentConfig {
 pub struct AgentRouteTask<'a, A> {
     agent: &'a A,
     identity: Uuid,
-    route: RelativeUri,
+    route: RouteUri,
     attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
     downlink_tx: mpsc::Sender<DownlinkRequest>,
     stopping: trigger::Receiver,

@@ -26,7 +26,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use swim_model::path::RelativePath;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use swim_utilities::trigger;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
@@ -40,7 +40,7 @@ struct UplinkMetricObserver {
 impl UplinkMetricObserver {
     fn new(
         sample_rate: Duration,
-        node_uri: RelativeUri,
+        node_uri: RouteUri,
         metric_tx: mpsc::Sender<TaggedWarpUplinkProfile>,
     ) -> UplinkMetricObserver {
         UplinkMetricObserver {
@@ -187,11 +187,8 @@ async fn with_observer() {
 
     let task = tokio::spawn(join3(uplink_task, lane_rcv_task, supply_rcv_task));
 
-    let observer = UplinkMetricObserver::new(
-        sample_rate,
-        RelativeUri::from_str("/node").unwrap(),
-        uplink_tx,
-    );
+    let observer =
+        UplinkMetricObserver::new(sample_rate, RouteUri::from_str("/node").unwrap(), uplink_tx);
 
     let observer = observer.uplink_observer("lane".to_string());
 

@@ -49,7 +49,7 @@ use swim_model::Value;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::item_sink;
 use swim_utilities::future::SwimStreamExt;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger;
 use swim_warp::map::MapUpdate;
@@ -486,7 +486,7 @@ struct UplinkMetricObserver {
 impl UplinkMetricObserver {
     fn new(
         sample_rate: Duration,
-        node_uri: RelativeUri,
+        node_uri: RouteUri,
         metric_tx: mpsc::Sender<TaggedWarpUplinkProfile>,
     ) -> UplinkMetricObserver {
         UplinkMetricObserver {
@@ -566,7 +566,7 @@ async fn meta_backpressure() {
 
     let observer = UplinkMetricObserver::new(
         config.sample_rate,
-        RelativeUri::from_str("/node").unwrap(),
+        RouteUri::from_str("/node").unwrap(),
         uplink_tx,
     );
 

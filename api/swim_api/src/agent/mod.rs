@@ -21,7 +21,7 @@ use futures::future::BoxFuture;
 use swim_utilities::{
     algebra::non_zero_usize,
     io::byte_channel::{ByteReader, ByteWriter},
-    routing::uri::RelativeUri,
+    routing::route_uri::RouteUri,
 };
 
 use crate::{
@@ -154,7 +154,7 @@ pub trait Agent {
     /// * `context` - Context through which the agent can interact with the runtime.
     fn run(
         &self,
-        route: RelativeUri,
+        route: RouteUri,
         config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> BoxFuture<'static, AgentInitResult>;
@@ -167,7 +167,7 @@ pub type BoxAgent = Box<dyn Agent + Send + 'static>;
 impl Agent for BoxAgent {
     fn run(
         &self,
-        route: RelativeUri,
+        route: RouteUri,
         config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> BoxFuture<'static, AgentInitResult> {
@@ -181,7 +181,7 @@ where
 {
     fn run(
         &self,
-        route: RelativeUri,
+        route: RouteUri,
         config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> BoxFuture<'static, AgentInitResult> {
