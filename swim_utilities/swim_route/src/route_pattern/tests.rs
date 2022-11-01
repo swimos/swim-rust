@@ -73,11 +73,8 @@ fn pattern_segment_string() {
 fn bad_route_patterns() {
     assert!(RoutePattern::parse_str("").is_err());
     assert!(RoutePattern::parse_str("/").is_err());
-    assert!(RoutePattern::parse_str("name").is_err());
-    assert!(RoutePattern::parse_str(":name").is_err());
     assert!(RoutePattern::parse_str("//").is_err());
     assert!(RoutePattern::parse_str("/first//second").is_err());
-    assert!(RoutePattern::parse_str("name/").is_err());
     assert!(RoutePattern::parse_str("first/:/second").is_err());
     assert!(RoutePattern::parse_str("/::").is_err());
 }
@@ -89,10 +86,20 @@ fn simple_static_route_pattern() {
     assert!(route_pattern.is_ok());
 
     let route_pattern = route_pattern.unwrap();
+
+    assert!(route_pattern.scheme_str().is_none());
+    assert!(route_pattern.has_absolute_path());
+
     let mut params = route_pattern.parameters();
     assert!(params.next().is_none());
 
     if let Ok(params) = route_pattern.unapply_str("/path") {
+        assert!(params.is_empty());
+    } else {
+        panic!("Unapply failed.");
+    }
+
+    if let Ok(params) = route_pattern.unapply_str("swim:/path") {
         assert!(params.is_empty());
     } else {
         panic!("Unapply failed.");
@@ -117,6 +124,10 @@ fn simple_parameter_route_pattern() {
     assert!(route_pattern.is_ok());
 
     let route_pattern = route_pattern.unwrap();
+
+    assert!(route_pattern.scheme_str().is_none());
+    assert!(route_pattern.has_absolute_path());
+
     let params = route_pattern.parameters().collect::<Vec<_>>();
     assert_eq!(params, vec!["id"]);
 
@@ -130,6 +141,13 @@ fn simple_parameter_route_pattern() {
     if let Ok(params) = route_pattern.unapply_str("/other") {
         assert_eq!(params.len(), 1);
         assert_eq!(params.get("id"), Some(&"other".to_string()));
+    } else {
+        panic!("Unapply failed.");
+    }
+
+    if let Ok(params) = route_pattern.unapply_str("swim:/path") {
+        assert_eq!(params.len(), 1);
+        assert_eq!(params.get("id"), Some(&"path".to_string()));
     } else {
         panic!("Unapply failed.");
     }
@@ -154,6 +172,10 @@ fn mixed_route_pattern_second() {
     assert!(route_pattern.is_ok());
 
     let route_pattern = route_pattern.unwrap();
+
+    assert!(route_pattern.scheme_str().is_none());
+    assert!(route_pattern.has_absolute_path());
+
     let params = route_pattern.parameters().collect::<Vec<_>>();
     assert_eq!(params, vec!["id"]);
 
@@ -167,6 +189,13 @@ fn mixed_route_pattern_second() {
     if let Ok(params) = route_pattern.unapply_str("/path/other") {
         assert_eq!(params.len(), 1);
         assert_eq!(params.get("id"), Some(&"other".to_string()));
+    } else {
+        panic!("Unapply failed.");
+    }
+
+    if let Ok(params) = route_pattern.unapply_str("swim:/path/hello") {
+        assert_eq!(params.len(), 1);
+        assert_eq!(params.get("id"), Some(&"hello".to_string()));
     } else {
         panic!("Unapply failed.");
     }
@@ -197,6 +226,10 @@ fn mixed_route_pattern_first() {
     assert!(route_pattern.is_ok());
 
     let route_pattern = route_pattern.unwrap();
+
+    assert!(route_pattern.scheme_str().is_none());
+    assert!(route_pattern.has_absolute_path());
+
     let params = route_pattern.parameters().collect::<Vec<_>>();
     assert_eq!(params, vec!["id"]);
 
@@ -210,6 +243,13 @@ fn mixed_route_pattern_first() {
     if let Ok(params) = route_pattern.unapply_str("/other/path") {
         assert_eq!(params.len(), 1);
         assert_eq!(params.get("id"), Some(&"other".to_string()));
+    } else {
+        panic!("Unapply failed.");
+    }
+
+    if let Ok(params) = route_pattern.unapply_str("swim:/hello/path") {
+        assert_eq!(params.len(), 1);
+        assert_eq!(params.get("id"), Some(&"hello".to_string()));
     } else {
         panic!("Unapply failed.");
     }
@@ -239,6 +279,10 @@ fn route_pattern_two_params() {
     assert!(route_pattern.is_ok());
 
     let route_pattern = route_pattern.unwrap();
+
+    assert!(route_pattern.scheme_str().is_none());
+    assert!(route_pattern.has_absolute_path());
+
     let params = route_pattern.parameters().collect::<Vec<_>>();
     assert_eq!(params, vec!["id", "sub"]);
 
@@ -254,6 +298,14 @@ fn route_pattern_two_params() {
         assert_eq!(params.len(), 2);
         assert_eq!(params.get("id"), Some(&"hello".to_string()));
         assert_eq!(params.get("sub"), Some(&"path".to_string()));
+    } else {
+        panic!("Unapply failed.");
+    }
+
+    if let Ok(params) = route_pattern.unapply_str("swim:/path/hello") {
+        assert_eq!(params.len(), 2);
+        assert_eq!(params.get("id"), Some(&"path".to_string()));
+        assert_eq!(params.get("sub"), Some(&"hello".to_string()));
     } else {
         panic!("Unapply failed.");
     }
@@ -300,10 +352,22 @@ fn route_pattern_two_params_split() {
     assert!(route_pattern.is_ok());
 
     let route_pattern = route_pattern.unwrap();
+
+    assert!(route_pattern.scheme_str().is_none());
+    assert!(route_pattern.has_absolute_path());
+
     let params = route_pattern.parameters().collect::<Vec<_>>();
     assert_eq!(params, vec!["id", "sub"]);
 
     if let Ok(params) = route_pattern.unapply_str("/hello/path/world") {
+        assert_eq!(params.len(), 2);
+        assert_eq!(params.get("id"), Some(&"hello".to_string()));
+        assert_eq!(params.get("sub"), Some(&"world".to_string()));
+    } else {
+        panic!("Unapply failed.");
+    }
+
+    if let Ok(params) = route_pattern.unapply_str("swim:/hello/path/world") {
         assert_eq!(params.len(), 2);
         assert_eq!(params.get("id"), Some(&"hello".to_string()));
         assert_eq!(params.get("sub"), Some(&"world".to_string()));
@@ -378,4 +442,99 @@ fn unapply_route_uri() {
     let params = result.unwrap();
     assert_eq!(params.len(), 1);
     assert_eq!(params.get("id"), Some(&"hello world!".to_string()));
+}
+
+#[test]
+fn pattern_with_scheme() {
+    let pattern = "swim:/path/:id";
+    let route_pattern = RoutePattern::parse_str(pattern);
+    assert!(route_pattern.is_ok());
+
+    let route_pattern = route_pattern.unwrap();
+
+    assert_eq!(route_pattern.scheme_str(), Some("swim"));
+    assert!(route_pattern.has_absolute_path());
+
+    let params = route_pattern.parameters().collect::<Vec<_>>();
+    assert_eq!(params, vec!["id"]);
+
+    if let Ok(params) = route_pattern.unapply_str("swim:/path/hello") {
+        assert_eq!(params.len(), 1);
+        assert_eq!(params.get("id"), Some(&"hello".to_string()));
+    } else {
+        panic!("Unapply failed.");
+    }
+
+    if let Ok(params) = route_pattern.unapply_str("swim:/path/other") {
+        assert_eq!(params.len(), 1);
+        assert_eq!(params.get("id"), Some(&"other".to_string()));
+    } else {
+        panic!("Unapply failed.");
+    }
+
+    assert!(route_pattern.unapply_str("http:/path/hello").is_err());
+    assert!(route_pattern.unapply_str("/path/hello/additional").is_err());
+    assert!(route_pattern.unapply_str("/path/").is_err());
+    assert!(route_pattern.unapply_str("/path").is_err());
+    assert!(route_pattern.unapply_str("other").is_err());
+
+    let empty = HashMap::new();
+    let mut with_param = HashMap::new();
+    with_param.insert("id".to_string(), "hello".to_string());
+
+    assert_eq!(
+        route_pattern.apply(&empty),
+        Err(ApplyError::new("swim:/path/:id", vec!["id".to_string()]))
+    );
+    assert_eq!(
+        route_pattern.apply(&with_param),
+        Ok("swim:/path/hello".to_string())
+    );
+}
+
+#[test]
+fn relative_pattern_with_scheme() {
+    let pattern = "swim:meta:node/:node/pulse";
+    let route_pattern = RoutePattern::parse_str(pattern);
+    assert!(route_pattern.is_ok());
+
+    let route_pattern = route_pattern.unwrap();
+
+    assert_eq!(route_pattern.scheme_str(), Some("swim"));
+    assert!(!route_pattern.has_absolute_path());
+
+    let params = route_pattern.parameters().collect::<Vec<_>>();
+    assert_eq!(params, vec!["node"]);
+
+    if let Ok(params) = route_pattern.unapply_str("swim:meta:node/unit%2Ffoo/pulse") {
+        assert_eq!(params.len(), 1);
+        assert_eq!(params.get("node"), Some(&"unit/foo".to_string()));
+    } else {
+        panic!("Unapply failed.");
+    }
+
+    assert!(route_pattern
+        .unapply_str("http:meta:node/unit%2Ffoo/pulse")
+        .is_err());
+    assert!(route_pattern
+        .unapply_str("swim:/meta:node/unit%2Ffoo/pulse")
+        .is_err());
+    assert!(route_pattern.unapply_str("/unit%2Ffoo/pulse").is_err());
+    assert!(route_pattern.unapply_str("unit%2Ffoo/pulse").is_err());
+
+    let empty = HashMap::new();
+    let mut with_param = HashMap::new();
+    with_param.insert("node".to_string(), "unit/foo".to_string());
+
+    assert_eq!(
+        route_pattern.apply(&empty),
+        Err(ApplyError::new(
+            "swim:meta:node/:node/pulse",
+            vec!["node".to_string()]
+        ))
+    );
+    assert_eq!(
+        route_pattern.apply(&with_param),
+        Ok("swim:meta:node/unit%2Ffoo/pulse".to_string())
+    );
 }

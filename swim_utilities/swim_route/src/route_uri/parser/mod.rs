@@ -28,7 +28,7 @@ fn schema_char(c: char) -> bool {
 
 fn scheme(input: Span<'_>) -> IResult<Span<'_>, Span<'_>> {
     recognize(tuple((
-        satisfy(|c| c.is_ascii_alphanumeric()),
+        satisfy(|c| c.is_ascii_alphabetic()),
         many0_count(satisfy(schema_char)),
     )))(input)
 }

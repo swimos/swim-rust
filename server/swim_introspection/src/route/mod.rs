@@ -21,4 +21,21 @@ pub fn node_pulse_pattern() -> RoutePattern {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use swim_utilities::routing::route_uri::RouteUri;
+
+    use super::node_pulse_pattern;
+
+    #[test]
+    fn recognize_node_pulse() {
+        let uri = "swim:meta:node/unit%2Ffoo/pulse"
+            .parse::<RouteUri>()
+            .unwrap();
+        let pattern = node_pulse_pattern();
+        let params = pattern.unapply_route_uri(&uri);
+        assert!(params.is_ok());
+        let map = params.unwrap();
+        assert_eq!(map.len(), 1);
+        assert_eq!(map.get("node_uri"), Some(&"unit/foo".to_string()));
+    }
+}

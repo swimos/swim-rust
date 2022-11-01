@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use http::Uri;
-use percent_encoding::percent_decode_str;
+use percent_encoding::{percent_decode_str, utf8_percent_encode, NON_ALPHANUMERIC};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Display, Formatter, Write};
 
 use crate::route_uri::RouteUri;
 
@@ -28,6 +27,8 @@ mod tests;
 #[derive(Clone, Debug)]
 pub struct RoutePattern {
     pattern: String,
+    scheme: Option<usize>,
+    absolute: bool,
     segments: Vec<Segment>,
 }
 
@@ -132,14 +133,14 @@ impl RoutePattern {
         let cap = max.unwrap_or(min);
         let mut pat = String::with_capacity(cap);
         let mut state = ParseState::Start;
+        let mut scheme = None;
+        let mut absolute = false;
         let mut segments = vec![];
         let mut offset: usize = 0;
 
         for c in it {
             pat.push(c);
-            if let Some(segment) = state.transition(c, offset) {
-                segments.push(segment);
-            }
+            state.transition(c, offset, &mut scheme, &mut absolute, &mut segments);
             state.check()?;
             offset += c.len_utf8();
         }
@@ -163,6 +164,8 @@ impl RoutePattern {
 
         Ok(RoutePattern {
             pattern: pat,
+            scheme,
+            absolute,
             segments,
         })
     }
@@ -174,7 +177,9 @@ impl RoutePattern {
 
     /// Get the parameter names present in a pattern.
     pub fn parameters(&self) -> impl Iterator<Item = &str> + '_ {
-        let RoutePattern { pattern, segments } = self;
+        let RoutePattern {
+            pattern, segments, ..
+        } = self;
         segments
             .iter()
             .filter(|s| s.parameter)
@@ -182,12 +187,14 @@ impl RoutePattern {
     }
 
     /// Match a route against the route pattern, extracting the values of each named parameter.
-    pub fn unapply_parts<'a, I>(&self, mut parts: I) -> Option<HashMap<String, String>>
+    fn unapply_parts<'a, I>(&self, mut parts: I) -> Option<HashMap<String, String>>
     where
         I: Iterator,
         I::Item: Iterator<Item = char> + 'a,
     {
-        let RoutePattern { pattern, segments } = self;
+        let RoutePattern {
+            pattern, segments, ..
+        } = self;
         let mut segments = segments.iter();
         let mut param_map = HashMap::new();
         loop {
@@ -221,28 +228,10 @@ impl RoutePattern {
     /// Match a string route against the route pattern, extracting the values of each named
     /// parameter.
     pub fn unapply_str(&self, route: &str) -> Result<HashMap<String, String>, UnapplyError> {
-        if let Some(part_map) = self.unapply_parts(route.split('/').skip(1).map(|s| s.chars())) {
-            Ok(part_map)
+        if let Ok(route_uri) = route.parse::<RouteUri>() {
+            self.unapply_route_uri(&route_uri)
         } else {
             Err(UnapplyError::new(self.pattern.as_str(), route))
-        }
-    }
-
-    /// Match a [`Uri`] route against the route pattern, extracting the values of each named
-    /// parameter.
-    pub fn unapply_uri(&self, uri: &Uri) -> Result<HashMap<String, String>, UnapplyError> {
-        if let Some(part_map) = self.unapply_parts(
-            uri.path()
-                .split('/')
-                .skip(1)
-                .map(|s| percent_decode_str(s).map(|b| b as char)),
-        ) {
-            Ok(part_map)
-        } else {
-            Err(UnapplyError::new(
-                self.pattern.as_str(),
-                uri.to_string().as_str(),
-            ))
         }
     }
 
@@ -252,33 +241,66 @@ impl RoutePattern {
         &self,
         uri: &RouteUri,
     ) -> Result<HashMap<String, String>, UnapplyError> {
-        if let Some(part_map) = self.unapply_parts(
-            uri.path()
-                .split('/')
-                .skip(1)
-                .map(|s| percent_decode_str(s).map(|b| b as char)),
-        ) {
-            Ok(part_map)
-        } else {
+        let make_err = || {
             Err(UnapplyError::new(
                 self.pattern.as_str(),
                 uri.to_string().as_str(),
             ))
+        };
+        match (self.scheme_str(), uri.scheme()) {
+            (Some(s1), Some(s2)) if s1 != s2 => {
+                return make_err();
+            }
+            _ => {}
         }
+        let mut segments = uri.path().split('/');
+        if self.absolute && !matches!(segments.next(), Some("")) {
+            return make_err();
+        }
+        if let Some(part_map) =
+            self.unapply_parts(segments.map(|s| percent_decode_str(s).map(|b| b as char)))
+        {
+            Ok(part_map)
+        } else {
+            make_err()
+        }
+    }
+
+    pub fn scheme_str(&self) -> Option<&str> {
+        self.scheme
+            .map(|scheme_offset| &self.pattern[0..scheme_offset])
+    }
+
+    pub fn has_absolute_path(&self) -> bool {
+        self.absolute
     }
 
     /// Attempt to craete a route from a route pattern by providing the values for each parameter.
     pub fn apply(&self, params: &HashMap<String, String>) -> Result<String, ApplyError> {
-        let RoutePattern { pattern, segments } = self;
+        let RoutePattern {
+            pattern,
+            segments,
+            absolute,
+            ..
+        } = self;
         let mut route = String::new();
         let mut missing = None;
+        if let Some(scheme_str) = self.scheme_str() {
+            route.push_str(scheme_str);
+            route.push(':');
+        }
+        let mut first = true;
         for segment in segments {
-            route.push('/');
+            if !first || *absolute {
+                route.push('/');
+            }
+            first = false;
             let segment_str = segment.segment_str(pattern.as_str());
             if segment.parameter {
                 match params.get(segment_str) {
                     Some(param_value) if !param_value.is_empty() => {
-                        route.push_str(param_value.as_str());
+                        let encoded = utf8_percent_encode(param_value, NON_ALPHANUMERIC);
+                        write!(&mut route, "{}", encoded).expect("Formatting should not fail.");
                     }
                     _ => {
                         missing
@@ -305,10 +327,12 @@ impl RoutePattern {
             let RoutePattern {
                 pattern: pat_left,
                 segments: segs_left,
+                ..
             } = left;
             let RoutePattern {
                 pattern: pat_right,
                 segments: segs_right,
+                ..
             } = right;
 
             for (left, right) in segs_left.iter().zip(segs_right.iter()) {
@@ -340,25 +364,78 @@ impl Eq for RoutePattern {}
 
 enum ParseState {
     Start,
+    SchemeOrLiteral(usize),
     SegmentStart,
+    AfterScheme,
     Literal(usize),
     Parameter(usize),
     Failed(usize),
 }
 
 impl ParseState {
-    fn transition(&mut self, c: char, offset: usize) -> Option<Segment> {
-        let mut segment = None;
+    fn transition(
+        &mut self,
+        c: char,
+        offset: usize,
+        scheme: &mut Option<usize>,
+        absolute: &mut bool,
+        segments: &mut Vec<Segment>,
+    ) {
         let new_state = match (&*self, c) {
-            (ParseState::Start, '/') => ParseState::SegmentStart,
+            (ParseState::Start, '/') => {
+                *absolute = true;
+                ParseState::SegmentStart
+            }
+            (ParseState::Start, ':') => {
+                *absolute = false;
+                ParseState::Parameter(offset)
+            }
+            (ParseState::Start, c) => {
+                if c.is_ascii_alphabetic() {
+                    ParseState::SchemeOrLiteral(offset)
+                } else {
+                    *absolute = false;
+                    ParseState::Literal(offset)
+                }
+            }
             (ParseState::SegmentStart, ':') => ParseState::Parameter(offset),
             (ParseState::SegmentStart, '/') => ParseState::Failed(offset),
             (ParseState::SegmentStart, _) => ParseState::Literal(offset),
-            (ParseState::Literal(_), ':') => ParseState::Failed(offset),
+            (ParseState::SchemeOrLiteral(_), ':') => {
+                *scheme = Some(offset);
+                ParseState::AfterScheme
+            }
+            (ParseState::SchemeOrLiteral(start), '/') => {
+                *absolute = false;
+                let length = offset - *start;
+                if length > 0 {
+                    segments.push(Segment {
+                        start: *start,
+                        end: offset,
+                        parameter: false,
+                    });
+                    ParseState::SegmentStart
+                } else {
+                    ParseState::Failed(offset)
+                }
+            }
+            (ParseState::SchemeOrLiteral(o), _) => ParseState::SchemeOrLiteral(*o),
+            (ParseState::AfterScheme, '/') => {
+                *absolute = true;
+                ParseState::SegmentStart
+            }
+            (ParseState::AfterScheme, ':') => {
+                *absolute = false;
+                ParseState::Parameter(offset)
+            }
+            (ParseState::AfterScheme, _) => {
+                *absolute = false;
+                ParseState::Literal(offset)
+            }
             (ParseState::Literal(start), '/') => {
                 let length = offset - *start;
                 if length > 0 {
-                    segment = Some(Segment {
+                    segments.push(Segment {
                         start: *start,
                         end: offset,
                         parameter: false,
@@ -372,7 +449,7 @@ impl ParseState {
             (ParseState::Parameter(start), '/') => {
                 let length = offset - *start - 1;
                 if length > 0 {
-                    segment = Some(Segment {
+                    segments.push(Segment {
                         start: *start + 1,
                         end: offset,
                         parameter: true,
@@ -387,7 +464,6 @@ impl ParseState {
             _ => ParseState::Failed(offset),
         };
         *self = new_state;
-        segment
     }
 
     fn check(&self) -> Result<(), ParseError> {
@@ -401,7 +477,7 @@ impl ParseState {
     fn end(self, offset: usize) -> Result<Option<Segment>, ParseError> {
         match self {
             ParseState::Start | ParseState::SegmentStart => Err(ParseError(offset)),
-            ParseState::Literal(start) => {
+            ParseState::Literal(start) | ParseState::SchemeOrLiteral(start) => {
                 let length = offset - start;
                 if length > 0 {
                     Ok(Some(Segment {
