@@ -14,28 +14,48 @@
 
 use swim_utilities::routing::route_pattern::RoutePattern;
 
-const NODE_PULSE: &str = "swim:meta:node/:node_uri/pulse";
+pub const NODE_PARAM: &str = "node_uri";
+pub const LANE_PARAM: &str = "lane_name";
 
-pub fn node_pulse_pattern() -> RoutePattern {
-    RoutePattern::parse_str(NODE_PULSE).expect("Node pulse pattern should be valid.")
+const NODE_PATTERN: &str = "swim:meta:node/:node_uri";
+const LANE_PATTERN: &str = "swim:meta:node/:node_uri/lane/:lane_name";
+
+pub fn node_pattern() -> RoutePattern {
+    RoutePattern::parse_str(NODE_PATTERN).expect("Node pattern should be valid.")
+}
+
+pub fn lane_pattern() -> RoutePattern {
+    RoutePattern::parse_str(LANE_PATTERN).expect("Lane pattern should be valid.")
 }
 
 #[cfg(test)]
 mod tests {
     use swim_utilities::routing::route_uri::RouteUri;
 
-    use super::node_pulse_pattern;
+    use super::{lane_pattern, node_pattern, LANE_PARAM, NODE_PARAM};
 
     #[test]
-    fn recognize_node_pulse() {
-        let uri = "swim:meta:node/unit%2Ffoo/pulse"
-            .parse::<RouteUri>()
-            .unwrap();
-        let pattern = node_pulse_pattern();
+    fn recognize_node() {
+        let uri = "swim:meta:node/unit%2Ffoo".parse::<RouteUri>().unwrap();
+        let pattern = node_pattern();
         let params = pattern.unapply_route_uri(&uri);
         assert!(params.is_ok());
         let map = params.unwrap();
         assert_eq!(map.len(), 1);
-        assert_eq!(map.get("node_uri"), Some(&"unit/foo".to_string()));
+        assert_eq!(map.get(NODE_PARAM), Some(&"unit/foo".to_string()));
+    }
+
+    #[test]
+    fn recognize_lane() {
+        let uri = "swim:meta:node/unit%2Ffoo/lane/pulse"
+            .parse::<RouteUri>()
+            .unwrap();
+        let pattern = lane_pattern();
+        let params = pattern.unapply_route_uri(&uri);
+        assert!(params.is_ok());
+        let map = params.unwrap();
+        assert_eq!(map.len(), 2);
+        assert_eq!(map.get(NODE_PARAM), Some(&"unit/foo".to_string()));
+        assert_eq!(map.get(LANE_PARAM), Some(&"pulse".to_string()));
     }
 }
