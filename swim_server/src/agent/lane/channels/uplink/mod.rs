@@ -307,7 +307,7 @@ where
     SM: UplinkStateMachine<Updates::Item> + 'static,
     Actions: FusedStream<Item = UplinkAction> + Unpin,
 {
-    let smr = &*state_machine;
+    let smr = state_machine;
 
     let state: UplinkPhase<'a, Actions, Updates, SM::Msg> =
         UplinkPhase::Running(UplinkState::Opened, actions, updates);

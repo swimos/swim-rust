@@ -22,7 +22,7 @@ pub struct RatchetNetworking<E> {
     pub subprotocols: ProtocolRegistry,
 }
 
-impl<'c, Socket, E> WsConnections<Socket> for RatchetNetworking<E>
+impl<Socket, E> WsConnections<Socket> for RatchetNetworking<E>
 where
     Socket: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
     E: ExtensionProvider + Send + Sync,

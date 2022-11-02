@@ -18,7 +18,8 @@ use lane_projections::ProjectionsImpl;
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 
-use swim_utilities::errors::{validation::Validation, Errors};
+use macro_utilities::to_compile_errors;
+use swim_utilities::errors::validation::Validation;
 use syn::{parse_macro_input, AttributeArgs, DeriveInput, Item};
 
 mod agent_lifecycle;
@@ -32,7 +33,7 @@ pub fn derive_agent_lane_model(input: TokenStream) -> TokenStream {
         .map(DeriveAgentLaneModel::new)
         .map(ToTokens::into_token_stream)
         .into_result()
-        .unwrap_or_else(errs_to_compile_errors)
+        .unwrap_or_else(|errs| to_compile_errors(errs.into_vec()))
         .into()
 }
 
@@ -53,7 +54,7 @@ pub fn projections(attr: TokenStream, item: TokenStream) -> TokenStream {
             }
         })
         .into_result()
-        .unwrap_or_else(errs_to_compile_errors)
+        .unwrap_or_else(|errs| to_compile_errors(errs.into_vec()))
         .into()
 }
 
@@ -75,14 +76,6 @@ pub fn lifecycle(attr: TokenStream, item: TokenStream) -> TokenStream {
             }
         })
         .into_result()
-        .unwrap_or_else(errs_to_compile_errors)
+        .unwrap_or_else(|errs| to_compile_errors(errs.into_vec()))
         .into()
-}
-
-fn errs_to_compile_errors(errors: Errors<syn::Error>) -> proc_macro2::TokenStream {
-    let compile_errors = errors
-        .into_vec()
-        .into_iter()
-        .map(|e| syn::Error::to_compile_error(&e));
-    quote!(#(#compile_errors)*)
 }

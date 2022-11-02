@@ -115,7 +115,7 @@ pub trait Store:
 
 /// Information regarding a delegate store engine that is useful for displaying along with debug
 /// information or an error report.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct EngineInfo {
     /// The path that the store engine is operating from.
     pub path: String,

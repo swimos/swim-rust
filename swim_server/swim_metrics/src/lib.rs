@@ -76,7 +76,7 @@ impl Display for MetricStage {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct AggregatorError {
     /// The type of aggregator that errored.
     pub aggregator: MetricStage,

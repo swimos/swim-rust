@@ -15,7 +15,7 @@
 use std::iter;
 use std::str::FromStr;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Range<T> {
     pub lower: T,
     pub upper: T,
@@ -37,7 +37,7 @@ enum RangeParseState {
     End(usize),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct RangeParseErr(pub String, pub usize);
 
 impl RangeParseErr {

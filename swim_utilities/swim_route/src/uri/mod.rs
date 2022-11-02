@@ -134,7 +134,7 @@ impl<'a> TryFrom<&'a str> for RelativeUri {
     }
 }
 
-impl<'a> TryFrom<String> for RelativeUri {
+impl TryFrom<String> for RelativeUri {
     type Error = BadRelativeUri;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {

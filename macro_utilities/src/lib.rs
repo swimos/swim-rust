@@ -86,7 +86,7 @@ impl<'a> PartialEq<Symbol> for &'a str {
     }
 }
 
-impl<'a> PartialEq<Symbol> for String {
+impl PartialEq<Symbol> for String {
     fn eq(&self, other: &Symbol) -> bool {
         self == other.0
     }
@@ -127,7 +127,7 @@ impl From<&syn::Data> for StructureKind {
     }
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum CompoundTypeKind {
     Labelled,
     Tuple,

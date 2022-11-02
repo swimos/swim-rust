@@ -196,7 +196,7 @@ impl<T: Form + 'static> EventDownlinkReceiver<T> {
     /// Observe the next event from the downlink.
     pub async fn recv(&mut self) -> Option<T> {
         let value = self.inner.recv().await;
-        value.map(|g| Form::try_from_value(&*g.get_inner_ref()).expect("Inconsistent Form"))
+        value.map(|g| Form::try_from_value(g.get_inner_ref()).expect("Inconsistent Form"))
     }
 
     /// Convert this receiver in a [`Stream`] of events.
