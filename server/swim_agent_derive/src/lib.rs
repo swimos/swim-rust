@@ -13,13 +13,16 @@
 // limitations under the License.
 
 use lane_model_derive::DeriveAgentLaneModel;
-use macro_utilities::to_compile_errors;
+use lane_projections::ProjectionsImpl;
 use proc_macro::TokenStream;
-use quote::ToTokens;
+use quote::{quote, ToTokens};
 
-use syn::{parse_macro_input, DeriveInput};
+use macro_utilities::to_compile_errors;
+
+use syn::{parse_macro_input, DeriveInput, Item};
 
 mod lane_model_derive;
+mod lane_projections;
 
 #[proc_macro_derive(AgentLaneModel)]
 pub fn derive_agent_lane_model(input: TokenStream) -> TokenStream {
@@ -27,6 +30,27 @@ pub fn derive_agent_lane_model(input: TokenStream) -> TokenStream {
     lane_model_derive::validate_input(&input)
         .map(DeriveAgentLaneModel::new)
         .map(ToTokens::into_token_stream)
+        .into_result()
+        .unwrap_or_else(|errs| to_compile_errors(errs.into_vec()))
+        .into()
+}
+
+#[proc_macro_attribute]
+pub fn projections(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let attr_params = if attr.is_empty() {
+        None
+    } else {
+        Some(parse_macro_input!(attr as proc_macro2::TokenStream))
+    };
+    let item = parse_macro_input!(item as Item);
+    lane_projections::validate_input(attr_params.as_ref(), &item)
+        .map(ProjectionsImpl::new)
+        .map(|proj| {
+            quote! {
+                #item
+                #proj
+            }
+        })
         .into_result()
         .unwrap_or_else(|errs| to_compile_errors(errs.into_vec()))
         .into()
