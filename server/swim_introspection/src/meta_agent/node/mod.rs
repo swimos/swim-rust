@@ -16,6 +16,7 @@ use std::time::Duration;
 
 use crate::{
     config::IntrospectionConfig,
+    meta_agent::run_pulse_lane,
     route::{node_pattern, NODE_PARAM},
 };
 use futures::{
@@ -32,23 +33,22 @@ use swim_api::{
     protocol::{
         agent::{LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder},
         map::{MapOperation, MapOperationEncoder},
-        WithLenReconEncoder, WithLengthBytesCodec,
+        WithLengthBytesCodec,
     },
 };
 use swim_model::Text;
-use swim_runtime::agent::reporting::UplinkReportReader;
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
     routing::route_uri::RouteUri,
     trigger,
 };
-use tokio::{select, time::Instant};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
 use crate::{model::AgentIntrospectionHandle, task::IntrospectionResolver};
 use futures::future::select;
 
-const PULSE_LANE: &str = "pulse";
+use super::PULSE_LANE;
+
 const LANES_LANE: &str = "lanes";
 
 pub struct NodeMetaAgent {
@@ -119,7 +119,13 @@ async fn run_task(
 ) -> Result<(), AgentTaskError> {
     let report_reader = handle.aggregate_reader();
     let (shutdown_tx, shutdown_rx) = trigger::trigger();
-    let pulse_lane = run_pulse_lane(shutdown_rx.clone(), pulse_interval, report_reader, pulse_io);
+    let pulse_lane = run_pulse_lane(
+        shutdown_rx.clone(),
+        pulse_interval,
+        report_reader,
+        pulse_io,
+        |uplinks| NodePulse { uplinks },
+    );
     let lanes_lane = run_lanes_descriptor_lane(shutdown_rx, handle, lanes_io);
 
     pin_mut!(pulse_lane);
@@ -141,65 +147,6 @@ async fn run_task(
                 lane: Text::new(LANES_LANE),
                 error,
             })
-        }
-    }
-}
-
-async fn run_pulse_lane(
-    shutdown_rx: trigger::Receiver,
-    pulse_interval: Duration,
-    report_reader: UplinkReportReader,
-    pulse_io: Io,
-) -> Result<(), FrameIoError> {
-    let (tx, rx) = pulse_io;
-
-    let mut input = FramedRead::new(rx, LaneRequestDecoder::new(WithLengthBytesCodec::default()))
-        .take_until(shutdown_rx);
-    let mut output = FramedWrite::new(tx, LaneResponseEncoder::new(WithLenReconEncoder::default()));
-
-    let sleep = tokio::time::sleep(pulse_interval);
-    pin_mut!(sleep);
-
-    let mut previous = Instant::now();
-    if report_reader.snapshot().is_none() {
-        return Ok(());
-    }
-
-    loop {
-        let result = select! {
-            biased;
-            maybe_request = input.next() => {
-                if maybe_request.is_some() {
-                    maybe_request
-                } else {
-                    break Ok(());
-                }
-            }
-            _ = sleep.as_mut() => None,
-        };
-
-        match result.transpose()? {
-            Some(LaneRequest::Sync(id)) => {
-                let synced: LaneResponse<NodePulse> = LaneResponse::Synced(id);
-                output.send(synced).await?;
-            }
-            None => {
-                let new_timeout = Instant::now()
-                    .checked_add(pulse_interval)
-                    .expect("Timer overflow.");
-                sleep.as_mut().reset(new_timeout);
-                if let Some(report) = report_reader.snapshot() {
-                    let now = Instant::now();
-                    let diff = now.duration_since(previous);
-                    previous = now;
-                    let pulse = report.make_pulse(diff);
-                    let node_pulse = NodePulse { uplinks: pulse };
-                    output.send(LaneResponse::StandardEvent(node_pulse)).await?;
-                } else {
-                    break Ok(());
-                }
-            }
-            _ => {}
         }
     }
 }
