@@ -64,10 +64,10 @@ impl LaneKind {
 pub struct LaneInfo {
     /// The URI of the lane.
     #[form(name = "laneUri")]
-    lane_uri: Text,
+    pub lane_uri: Text,
     /// The type of the lane.
     #[form(name = "laneType")]
-    lane_type: LaneKind,
+    pub lane_type: LaneKind,
 }
 
 impl LaneInfo {

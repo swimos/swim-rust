@@ -13,6 +13,7 @@ tokio = { version = "1.1.1", features = ["rt"] }
 tokio-util = { version = "0.6.8", features = ["codec"] }
 swim_model = {path = "../../api/swim_model" }
 swim_api = { path = "../../api/swim_api" }
+swim_form = { path = "../../api/swim_form" }
 tokio-stream = "0.1.2"
 tracing = "0.1.16"
 tracing-futures = "0.2.4"

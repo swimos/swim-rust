@@ -30,6 +30,14 @@ pub struct WarpUplinkPulse {
     pub command_count: u64,
 }
 
+/// A node pulse detailing accumulated metrics.
+#[derive(Default, Form, Copy, Clone, PartialEq, Eq, Debug)]
+#[form_root(::swim_form)]
+pub struct NodePulse {
+    /// Accumulated WARP uplink pulse.
+    pub uplinks: WarpUplinkPulse,
+}
+
 #[derive(Default, Form, Clone, PartialEq, Eq, Debug)]
 #[form_root(::swim_form)]
 pub struct LanePulse {

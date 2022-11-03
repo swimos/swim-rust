@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod config;
-pub mod error;
-pub mod meta_agent;
-pub mod model;
-pub mod route;
-pub mod task;
+use std::time::Duration;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IntrospectionConfig {
+    pub node_pulse_interval: Duration,
+    pub lane_pulse_interval: Duration,
+}

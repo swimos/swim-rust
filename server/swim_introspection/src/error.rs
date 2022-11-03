@@ -13,10 +13,14 @@
 // limitations under the License.
 
 use swim_model::Text;
+use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 
+#[derive(Debug, Error, PartialEq, Eq, Clone)]
 pub enum NodeIntrospectionError {
+    #[error("No running agent at {node_uri}.")]
     NoSuchAgent { node_uri: Text },
+    #[error("The plane instrospection task has stopped.")]
     IntrospectionStopped,
 }
 
@@ -32,9 +36,13 @@ impl From<oneshot::error::RecvError> for NodeIntrospectionError {
     }
 }
 
+#[derive(Debug, Error, PartialEq, Eq, Clone)]
 pub enum LaneIntrospectionError {
+    #[error("No running agent at {node_uri}.")]
     NoSuchAgent { node_uri: Text },
+    #[error("No lane named {lane_name} running at {node_uri}.")]
     NoSuchLane { node_uri: Text, lane_name: Text },
+    #[error("The plane instrospection task has stopped.")]
     IntrospectionStopped,
 }
 

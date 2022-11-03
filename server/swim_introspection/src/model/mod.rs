@@ -21,7 +21,7 @@ use std::{
 };
 
 use parking_lot::Mutex;
-use swim_api::meta::lane::LaneKind;
+use swim_api::meta::lane::{LaneInfo, LaneKind};
 use swim_model::Text;
 use swim_runtime::agent::reporting::UplinkReportReader;
 
@@ -35,6 +35,14 @@ pub struct LaneView {
 pub struct AgentSnapshot {
     pub lanes: HashMap<Text, LaneView>,
     pub aggregate_reporter: UplinkReportReader,
+}
+
+impl AgentSnapshot {
+    pub fn lane_info(&self) -> impl Iterator<Item = LaneInfo> + '_ {
+        self.lanes
+            .iter()
+            .map(|(name, view)| LaneInfo::new(name.clone(), view.kind))
+    }
 }
 
 #[derive(Debug)]
@@ -123,6 +131,10 @@ impl AgentIntrospectionHandle {
             ..
         } = &**inner;
         !aggregate_reporter.is_active() || epoch.load(Ordering::Relaxed) != *current_epoch
+    }
+
+    pub fn aggregate_reader(&self) -> UplinkReportReader {
+        self.inner.aggregate_reporter.clone()
     }
 }
 

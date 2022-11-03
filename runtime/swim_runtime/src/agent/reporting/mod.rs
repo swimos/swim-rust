@@ -12,10 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::sync::{
-    atomic::{AtomicU64, Ordering},
-    Arc, Weak,
+use std::{
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Weak,
+    },
+    time::Duration,
 };
+
+use swim_api::meta::uplink::WarpUplinkPulse;
 
 #[cfg(test)]
 mod tests;
@@ -32,6 +37,41 @@ pub struct UplinkSnapshot {
     pub link_count: u64,
     pub event_count: u64,
     pub command_count: u64,
+}
+
+impl UplinkSnapshot {
+    pub fn make_pulse(&self, diff: Duration) -> WarpUplinkPulse {
+        let UplinkSnapshot {
+            link_count,
+            event_count,
+            command_count,
+        } = *self;
+        let micros = diff.as_micros();
+
+        if micros > 0 {
+            let event_rate =
+                u64::try_from(((event_count as u128).saturating_mul(1000000)) / micros)
+                    .unwrap_or(u64::MAX);
+            let command_rate =
+                u64::try_from(((command_count as u128).saturating_mul(1000000)) / micros)
+                    .unwrap_or(u64::MAX);
+            WarpUplinkPulse {
+                link_count,
+                event_rate,
+                event_count,
+                command_rate,
+                command_count,
+            }
+        } else {
+            WarpUplinkPulse {
+                link_count,
+                event_rate: 0,
+                event_count,
+                command_rate: 0,
+                command_count,
+            }
+        }
+    }
 }
 
 #[derive(Default, Debug, Clone)]
