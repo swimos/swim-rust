@@ -16,6 +16,10 @@ use swim_model::Text;
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 
+#[derive(Debug, Error, PartialEq, Eq, Clone, Copy)]
+#[error("The plane instrospection task has stopped.")]
+pub struct IntrospectionStopped;
+
 #[derive(Debug, Error, PartialEq, Eq, Clone)]
 pub enum NodeIntrospectionError {
     #[error("No running agent at {node_uri}.")]

@@ -14,8 +14,19 @@
 
 use std::time::Duration;
 
+const DEFAULT_PULSE_INTERVAL: Duration = Duration::from_secs(5);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IntrospectionConfig {
     pub node_pulse_interval: Duration,
     pub lane_pulse_interval: Duration,
+}
+
+impl Default for IntrospectionConfig {
+    fn default() -> Self {
+        Self {
+            node_pulse_interval: DEFAULT_PULSE_INTERVAL,
+            lane_pulse_interval: DEFAULT_PULSE_INTERVAL,
+        }
+    }
 }

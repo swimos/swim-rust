@@ -15,6 +15,7 @@
 use std::collections::HashSet;
 
 use swim_api::agent::{Agent, BoxAgent};
+use swim_introspection::route::{lane_pattern, node_pattern};
 use swim_model::Text;
 use swim_utilities::routing::route_pattern::RoutePattern;
 
@@ -25,6 +26,38 @@ use crate::{error::AmbiguousRoutes, util::AgentExt};
 pub struct PlaneModel {
     pub(crate) name: Text,
     pub(crate) routes: Vec<(RoutePattern, BoxAgent)>,
+}
+
+impl PlaneModel {
+    pub fn check_meta_collisions(&self) -> Result<(), AmbiguousRoutes> {
+        let node = node_pattern();
+        let lane = lane_pattern();
+        let mut meta = vec![];
+        let mut routes = vec![];
+        let mut node_collision = false;
+        let mut lane_collision = false;
+        for (pattern, _) in &self.routes {
+            let with_node = RoutePattern::are_ambiguous(&node, pattern);
+            let with_lane = RoutePattern::are_ambiguous(&lane, pattern);
+            node_collision = node_collision || with_node;
+            lane_collision = lane_collision || with_lane;
+            if with_node || with_lane {
+                routes.push(pattern.clone());
+            }
+        }
+        if node_collision {
+            meta.push(node);
+        }
+        if lane_collision {
+            meta.push(lane);
+        }
+
+        if routes.is_empty() {
+            Ok(())
+        } else {
+            Err(AmbiguousRoutes::collision(meta, routes))
+        }
+    }
 }
 
 /// A builder that will construct a [`PlaneModel`]. The consistency of the routes that are supplied
@@ -164,7 +197,10 @@ mod tests {
         builder.add_route(route1.clone(), DummyAgent);
         builder.add_route(route2.clone(), DummyAgent);
 
-        let AmbiguousRoutes { routes } = builder.build().err().expect("Building plane succeeded.");
+        let routes = match builder.build() {
+            Err(AmbiguousRoutes::Overlapping { routes }) => routes,
+            _ => panic!("Building plane succeeded."),
+        };
 
         match routes.as_slice() {
             [pattern1, pattern2] => {
@@ -187,8 +223,10 @@ mod tests {
         builder.add_route(route2.clone(), DummyAgent);
         builder.add_route(route3, DummyAgent);
 
-        let AmbiguousRoutes { routes } = builder.build().err().expect("Building plane succeeded.");
-
+        let routes = match builder.build() {
+            Err(AmbiguousRoutes::Overlapping { routes }) => routes,
+            _ => panic!("Building plane succeeded."),
+        };
         match routes.as_slice() {
             [pattern1, pattern2] => {
                 assert!(

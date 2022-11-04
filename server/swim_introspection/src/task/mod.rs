@@ -14,17 +14,21 @@
 
 use std::collections::HashMap;
 
+use futures::stream::select;
 use futures::StreamExt;
 use swim_api::meta::lane::LaneKind;
 use swim_model::Text;
-use swim_runtime::agent::{reporting::UplinkReportReader, UplinkReporterRegistration};
-use swim_utilities::trigger;
+use swim_runtime::agent::{
+    reporting::{UplinkReportReader, UplinkReporter},
+    NodeReporting, UplinkReporterRegistration,
+};
+use swim_utilities::{routing::route_uri::RouteUri, trigger};
 use tokio::sync::{mpsc, oneshot};
-use tokio_stream::wrappers::ReceiverStream;
+use tokio_stream::wrappers::{ReceiverStream, UnboundedReceiverStream};
 use uuid::Uuid;
 
 use crate::{
-    error::{LaneIntrospectionError, NodeIntrospectionError},
+    error::{IntrospectionStopped, LaneIntrospectionError, NodeIntrospectionError},
     model::{AgentIntrospectionHandle, AgentIntrospectionUpdater, LaneView},
 };
 
@@ -73,9 +77,13 @@ impl From<UplinkReporterRegistration> for IntrospectionMessage {
 
 pub async fn introspection_task(
     stopping: trigger::Receiver,
-    messages: mpsc::Receiver<IntrospectionMessage>,
+    messages: mpsc::UnboundedReceiver<IntrospectionMessage>,
+    registrations: mpsc::Receiver<UplinkReporterRegistration>,
 ) {
-    let mut stream = ReceiverStream::new(messages).take_until(stopping);
+    let msg_stream = UnboundedReceiverStream::new(messages);
+    let reg_stream = ReceiverStream::new(registrations).map(IntrospectionMessage::from);
+
+    let mut stream = select(msg_stream, reg_stream).take_until(stopping);
 
     let mut name_map: HashMap<Uuid, Text> = HashMap::new();
     let mut agents: HashMap<Text, AgentIntrospectionUpdater> = HashMap::new();
@@ -151,12 +159,43 @@ pub async fn introspection_task(
 
 #[derive(Debug, Clone)]
 pub struct IntrospectionResolver {
-    queries: mpsc::Sender<IntrospectionMessage>,
+    queries: mpsc::UnboundedSender<IntrospectionMessage>,
+    registrations: mpsc::Sender<UplinkReporterRegistration>,
 }
 
 impl IntrospectionResolver {
-    pub fn new(queries: mpsc::Sender<IntrospectionMessage>) -> Self {
-        IntrospectionResolver { queries }
+    pub fn new(
+        queries: mpsc::UnboundedSender<IntrospectionMessage>,
+        registrations: mpsc::Sender<UplinkReporterRegistration>,
+    ) -> Self {
+        IntrospectionResolver {
+            queries,
+            registrations,
+        }
+    }
+
+    pub fn register_agent(
+        &self,
+        agent_id: Uuid,
+        node_uri: RouteUri,
+    ) -> Result<NodeReporting, IntrospectionStopped> {
+        let node_uri = Text::new(node_uri.as_str());
+        let IntrospectionResolver {
+            queries,
+            registrations,
+        } = self;
+        let reporter = UplinkReporter::default();
+        let message = IntrospectionMessage::AddAgent {
+            agent_id,
+            node_uri,
+            aggregate_reader: reporter.reader(),
+        };
+        if queries.send(message).is_ok() {
+            let reporting = NodeReporting::new(agent_id, reporter, registrations.clone());
+            Ok(reporting)
+        } else {
+            Err(IntrospectionStopped)
+        }
     }
 
     pub async fn resolve_agent(
@@ -164,12 +203,10 @@ impl IntrospectionResolver {
         node_uri: Text,
     ) -> Result<AgentIntrospectionHandle, NodeIntrospectionError> {
         let (tx, rx) = oneshot::channel();
-        self.queries
-            .send(IntrospectionMessage::IntrospectAgent {
-                node_uri: node_uri.clone(),
-                responder: tx,
-            })
-            .await?;
+        self.queries.send(IntrospectionMessage::IntrospectAgent {
+            node_uri: node_uri.clone(),
+            responder: tx,
+        })?;
         rx.await?
             .ok_or(NodeIntrospectionError::NoSuchAgent { node_uri })
     }
@@ -180,13 +217,11 @@ impl IntrospectionResolver {
         lane_name: Text,
     ) -> Result<LaneView, LaneIntrospectionError> {
         let (tx, rx) = oneshot::channel();
-        self.queries
-            .send(IntrospectionMessage::IntrospectLane {
-                node_uri: node_uri.clone(),
-                lane_name: lane_name.clone(),
-                responder: tx,
-            })
-            .await?;
+        self.queries.send(IntrospectionMessage::IntrospectLane {
+            node_uri: node_uri.clone(),
+            lane_name: lane_name.clone(),
+            responder: tx,
+        })?;
         rx.await?
     }
 }
