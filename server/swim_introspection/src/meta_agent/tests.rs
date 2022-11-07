@@ -14,7 +14,7 @@
 
 use std::{num::NonZeroUsize, time::Duration};
 
-use futures::{future::join, Future, SinkExt, StreamExt};
+use futures::{future::join, pin_mut, Future, SinkExt, StreamExt};
 use swim_api::{
     meta::uplink::WarpUplinkPulse,
     protocol::{
@@ -30,12 +30,12 @@ use swim_utilities::{
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
     trigger,
 };
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, time::Instant};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{FramedRead, FramedWrite};
 use uuid::Uuid;
 
-use super::run_pulse_lane_inner;
+use super::{run_pulse_lane_inner, sleep_stream};
 
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 
@@ -256,4 +256,27 @@ async fn receive_multiple_pulses() {
         shutdown_tx.trigger();
     })
     .await;
+}
+
+const PERIOD: Duration = Duration::from_secs(1);
+
+#[tokio::test(start_paused = true)]
+async fn drive_sleep_stream() {
+    let sleep = tokio::time::sleep(PERIOD);
+    pin_mut!(sleep);
+    let stream = sleep_stream(PERIOD, sleep);
+    pin_mut!(stream);
+
+    let t0 = Instant::now();
+
+    stream.next().await;
+
+    let t1 = Instant::now();
+
+    stream.next().await;
+
+    let t2 = Instant::now();
+
+    assert_eq!(t1.duration_since(t0), PERIOD);
+    assert_eq!(t2.duration_since(t1), PERIOD);
 }
