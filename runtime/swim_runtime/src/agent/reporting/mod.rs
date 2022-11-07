@@ -65,9 +65,9 @@ impl UplinkSnapshot {
         } else {
             WarpUplinkPulse {
                 link_count,
-                event_rate: 0,
+                event_rate: u64::MAX,
                 event_count,
-                command_rate: 0,
+                command_rate: u64::MAX,
                 command_count,
             }
         }

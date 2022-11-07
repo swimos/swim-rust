@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::time::Duration;
+
+use swim_api::meta::uplink::WarpUplinkPulse;
+
 use super::{UplinkReporter, UplinkSnapshot};
 
 #[test]
@@ -154,4 +158,120 @@ fn snapshot_resets_command_event_counts() {
             command_count: 0
         })
     );
+}
+
+#[test]
+fn simple_pulse() {
+    let snapshot = UplinkSnapshot {
+        link_count: 7,
+        event_count: 12,
+        command_count: 6483293,
+    };
+
+    let WarpUplinkPulse {
+        link_count,
+        event_rate,
+        event_count,
+        command_rate,
+        command_count,
+    } = snapshot.make_pulse(Duration::from_secs(1));
+
+    assert_eq!(link_count, 7);
+    assert_eq!(event_count, 12);
+    assert_eq!(event_rate, 12);
+    assert_eq!(command_count, 6483293);
+    assert_eq!(command_rate, 6483293);
+}
+
+#[test]
+fn long_pulse() {
+    let snapshot = UplinkSnapshot {
+        link_count: 7,
+        event_count: 120,
+        command_count: 6483297,
+    };
+
+    let WarpUplinkPulse {
+        link_count,
+        event_rate,
+        event_count,
+        command_rate,
+        command_count,
+    } = snapshot.make_pulse(Duration::from_secs(10));
+
+    assert_eq!(link_count, 7);
+    assert_eq!(event_count, 120);
+    assert_eq!(event_rate, 12);
+    assert_eq!(command_count, 6483297);
+    assert_eq!(command_rate, 648329);
+}
+
+#[test]
+fn saturating_pulse() {
+    let n = u64::MAX / 10;
+    let snapshot = UplinkSnapshot {
+        link_count: 7,
+        event_count: n,
+        command_count: n,
+    };
+
+    let WarpUplinkPulse {
+        link_count,
+        event_rate,
+        event_count,
+        command_rate,
+        command_count,
+    } = snapshot.make_pulse(Duration::from_micros(2));
+
+    assert_eq!(link_count, 7);
+    assert_eq!(event_count, n);
+    assert_eq!(event_rate, u64::MAX);
+    assert_eq!(command_count, n);
+    assert_eq!(command_rate, u64::MAX);
+}
+
+#[test]
+fn zero_duration_saturates_rates() {
+    let snapshot = UplinkSnapshot {
+        link_count: 1,
+        event_count: 12,
+        command_count: 67,
+    };
+
+    let WarpUplinkPulse {
+        link_count,
+        event_rate,
+        event_count,
+        command_rate,
+        command_count,
+    } = snapshot.make_pulse(Duration::ZERO);
+
+    assert_eq!(link_count, 1);
+    assert_eq!(event_count, 12);
+    assert_eq!(event_rate, u64::MAX);
+    assert_eq!(command_count, 67);
+    assert_eq!(command_rate, u64::MAX);
+}
+
+#[test]
+fn sub_microsecond_duration_saturates_rates() {
+    let snapshot = UplinkSnapshot {
+        link_count: 1,
+        event_count: 12,
+        command_count: 67,
+    };
+
+    let WarpUplinkPulse {
+        link_count,
+        event_rate,
+        event_count,
+        command_rate,
+        command_count,
+    } = snapshot.make_pulse(Duration::from_nanos(123));
+
+    assert_eq!(link_count, 1);
+    assert_eq!(event_count, 12);
+    assert_eq!(event_rate, u64::MAX);
+    assert_eq!(command_count, 67);
+    assert_eq!(command_rate, u64::MAX);
 }
