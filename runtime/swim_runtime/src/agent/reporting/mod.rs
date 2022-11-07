@@ -106,8 +106,8 @@ impl UplinkReporter {
         saturating_add(&self.counters.event_count, n)
     }
 
-    pub fn count_command(&self) {
-        saturating_add(&self.counters.command_count, 1)
+    pub fn count_commands(&self, n: u64) {
+        saturating_add(&self.counters.command_count, n)
     }
 
     pub fn set_uplinks(&self, n: u64) {

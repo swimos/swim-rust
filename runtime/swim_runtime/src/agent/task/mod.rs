@@ -1009,7 +1009,7 @@ async fn read_task(
                             Operation::Command(body) => {
                                 trace!(body = ?body, "Dispatching command envelope from {} to lane '{}'.", origin, lane);
                                 if let Some(reporter) = &aggregate_reporter {
-                                    reporter.count_command();
+                                    reporter.count_commands(1);
                                 }
                                 match lane_tx.feed_frame(body).await {
                                     Err(LaneSendError::Io(_)) => {

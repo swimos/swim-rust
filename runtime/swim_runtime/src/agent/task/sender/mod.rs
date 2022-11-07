@@ -89,7 +89,7 @@ impl LaneSender {
     pub async fn feed_frame(&mut self, data: Bytes) -> Result<(), LaneSendError> {
         let LaneSender { writer, reporter } = self;
         if let Some(reporter) = reporter {
-            reporter.count_command();
+            reporter.count_commands(1);
         }
         match writer {
             LaneSenderWriter::Value { sender } => {

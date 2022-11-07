@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::time::Duration;
+use std::{pin::Pin, time::Duration};
 
-use futures::{pin_mut, SinkExt, StreamExt};
+use futures::{pin_mut, stream::unfold, SinkExt, Stream, StreamExt};
 use swim_api::{
     error::FrameIoError,
     meta::uplink::WarpUplinkPulse,
@@ -29,15 +29,30 @@ use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
     trigger,
 };
-use tokio::time::Instant;
+use tokio::time::{Instant, Sleep};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
 pub mod lane;
 pub mod node;
+#[cfg(test)]
+mod tests;
 
 const PULSE_LANE: &str = "pulse";
 
 type Io = (ByteWriter, ByteReader);
+
+fn sleep_stream(pulse_interval: Duration, sleep: Pin<&mut Sleep>) -> impl Stream<Item = ()> + '_ {
+    unfold(sleep, move |mut sleep| {
+        let new_timeout = Instant::now()
+            .checked_add(pulse_interval)
+            .expect("Timer overflow.");
+        sleep.as_mut().reset(new_timeout);
+        async move {
+            sleep.as_mut().await;
+            Some(((), sleep))
+        }
+    })
+}
 
 async fn run_pulse_lane<PulseType, F>(
     shutdown_rx: trigger::Receiver,
@@ -50,19 +65,44 @@ where
     PulseType: StructuralWritable,
     F: Fn(WarpUplinkPulse) -> PulseType,
 {
+    let sleep = tokio::time::sleep(pulse_interval);
+    pin_mut!(sleep);
+    let sleep_str = sleep_stream(pulse_interval, sleep);
+
+    run_pulse_lane_inner(
+        shutdown_rx,
+        sleep_str,
+        report_reader,
+        pulse_io,
+        move |_, pulse| wrap(pulse),
+    )
+    .await
+}
+
+async fn run_pulse_lane_inner<PulseType, F, S>(
+    shutdown_rx: trigger::Receiver,
+    pulses: S,
+    report_reader: UplinkReportReader,
+    pulse_io: Io,
+    wrap: F,
+) -> Result<(), FrameIoError>
+where
+    PulseType: StructuralWritable,
+    F: Fn(Duration, WarpUplinkPulse) -> PulseType,
+    S: Stream<Item = ()>,
+{
     let (tx, rx) = pulse_io;
 
     let mut input = FramedRead::new(rx, LaneRequestDecoder::new(WithLengthBytesCodec::default()))
         .take_until(shutdown_rx);
     let mut output = FramedWrite::new(tx, LaneResponseEncoder::new(WithLenReconEncoder::default()));
 
-    let sleep = tokio::time::sleep(pulse_interval);
-    pin_mut!(sleep);
-
     let mut previous = Instant::now();
     if report_reader.snapshot().is_none() {
         return Ok(());
     }
+
+    pin_mut!(pulses);
 
     loop {
         let result = tokio::select! {
@@ -74,7 +114,7 @@ where
                     break Ok(());
                 }
             }
-            _ = sleep.as_mut() => None,
+            _ = pulses.next() => None,
         };
 
         match result.transpose()? {
@@ -83,16 +123,12 @@ where
                 output.send(synced).await?;
             }
             None => {
-                let new_timeout = Instant::now()
-                    .checked_add(pulse_interval)
-                    .expect("Timer overflow.");
-                sleep.as_mut().reset(new_timeout);
                 if let Some(report) = report_reader.snapshot() {
                     let now = Instant::now();
                     let diff = now.duration_since(previous);
                     previous = now;
                     let uplink_pulse = report.make_pulse(diff);
-                    let pulse = wrap(uplink_pulse);
+                    let pulse = wrap(diff, uplink_pulse);
                     output.send(LaneResponse::StandardEvent(pulse)).await?;
                 } else {
                     break Ok(());
