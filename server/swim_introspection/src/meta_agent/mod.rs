@@ -36,6 +36,8 @@ pub mod lane;
 pub mod node;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod test_harness;
 
 const PULSE_LANE: &str = "pulse";
 

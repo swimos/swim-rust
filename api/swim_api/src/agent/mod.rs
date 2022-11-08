@@ -52,7 +52,7 @@ impl Display for UplinkKind {
 }
 
 /// Configuration parameters for a lane.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LaneConfig {
     /// Size of the input buffer in bytes.
     pub input_buffer_size: NonZeroUsize,
