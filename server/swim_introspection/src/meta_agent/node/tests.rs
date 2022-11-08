@@ -157,3 +157,68 @@ async fn sync_lane_descriptors() {
         .collect();
     assert_eq!(result_map, expected);
 }
+
+#[tokio::test]
+async fn resync_lane_descriptors() {
+    let entries1 = [
+        ("first", LaneKind::Value, UplinkReporter::default()),
+        ("second", LaneKind::Map, UplinkReporter::default()),
+    ];
+
+    let entries2 = &[("third", LaneKind::Command, UplinkReporter::default())];
+
+    let (result_map1, result_map2) = lane_descriptor_test(|context| {
+        let TestContext { updater, .. } = &context;
+
+        for (name, kind, reporter) in &entries1 {
+            updater.add_lane(Text::new(*name), *kind, reporter.reader());
+        }
+        async move {
+            let TestContext {
+                shutdown_tx,
+                updater,
+                mut sender,
+                mut receiver,
+                agg_reporter: _agg_reporter,
+            } = context;
+
+            sender.sync().await;
+
+            let mut result_map1 = HashMap::new();
+
+            while let Some((name, info)) = receiver.expect_sync_message().await {
+                result_map1.insert(name, info);
+            }
+
+            for (name, kind, reporter) in entries2 {
+                updater.add_lane(Text::new(*name), *kind, reporter.reader());
+            }
+
+            sender.sync().await;
+
+            let mut result_map2 = HashMap::new();
+
+            while let Some((name, info)) = receiver.expect_sync_message().await {
+                result_map2.insert(name, info);
+            }
+
+            shutdown_tx.trigger();
+            (result_map1, result_map2)
+        }
+    })
+    .await;
+
+    let mut expected: HashMap<_, _> = entries1
+        .iter()
+        .map(|(name, kind, _)| (Text::new(*name), LaneInfo::new(Text::new(*name), *kind)))
+        .collect();
+    assert_eq!(result_map1, expected);
+
+    expected.extend(
+        entries2
+            .iter()
+            .map(|(name, kind, _)| (Text::new(*name), LaneInfo::new(Text::new(*name), *kind))),
+    );
+
+    assert_eq!(result_map2, expected);
+}
