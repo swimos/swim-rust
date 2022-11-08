@@ -25,6 +25,9 @@ use swim_api::meta::lane::{LaneInfo, LaneKind};
 use swim_model::Text;
 use swim_runtime::agent::reporting::UplinkReportReader;
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Debug, Clone)]
 pub struct LaneView {
     pub kind: LaneKind,

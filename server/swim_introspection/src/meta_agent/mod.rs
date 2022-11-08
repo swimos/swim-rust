@@ -114,7 +114,13 @@ where
                     break Ok(());
                 }
             }
-            _ = pulses.next() => None,
+            maybe_pulse = pulses.next() => {
+                if maybe_pulse.is_some() {
+                    None
+                } else {
+                    break Ok(());
+                }
+            },
         };
 
         match result.transpose()? {

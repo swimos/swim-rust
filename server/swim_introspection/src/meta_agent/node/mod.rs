@@ -49,6 +49,9 @@ use futures::future::select;
 
 use super::PULSE_LANE;
 
+#[cfg(test)]
+mod tests;
+
 const LANES_LANE: &str = "lanes";
 
 pub struct NodeMetaAgent {

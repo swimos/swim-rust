@@ -79,7 +79,7 @@ pub struct UplinkReporter {
     counters: Arc<UplinkCounters>,
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct UplinkReportReader {
     counters: Weak<UplinkCounters>,
 }

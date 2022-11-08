@@ -71,7 +71,7 @@ where
         shutdown_tx,
         reporter,
         pulse_tx,
-        sender: LaneSender::new(in_tx),
+        sender: LaneSender::new(SYNC_ID, in_tx),
         receiver: LaneReceiver::new(out_rx),
     };
     let test_task = test_case(context);
@@ -81,21 +81,23 @@ where
     output
 }
 
-struct LaneSender {
+pub struct LaneSender {
+    sync_id: Uuid,
     writer: FramedWrite<ByteWriter, LaneRequestEncoder<WithLengthBytesCodec>>,
 }
 
 const SYNC_ID: Uuid = Uuid::from_u128(747473);
 
 impl LaneSender {
-    fn new(writer: ByteWriter) -> Self {
+    pub fn new(sync_id: Uuid, writer: ByteWriter) -> Self {
         LaneSender {
+            sync_id,
             writer: FramedWrite::new(writer, Default::default()),
         }
     }
 
-    async fn sync(&mut self) {
-        let req: LaneRequest<&[u8]> = LaneRequest::Sync(SYNC_ID);
+    pub async fn sync(&mut self) {
+        let req: LaneRequest<&[u8]> = LaneRequest::Sync(self.sync_id);
         assert!(self.writer.send(req).await.is_ok());
     }
 }
