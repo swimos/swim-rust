@@ -35,9 +35,9 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 pub mod lane;
 pub mod node;
 #[cfg(test)]
-mod tests;
-#[cfg(test)]
 mod test_harness;
+#[cfg(test)]
+mod tests;
 
 const PULSE_LANE: &str = "pulse";
 

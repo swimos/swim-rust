@@ -36,6 +36,9 @@ use crate::{
 
 use super::{run_pulse_lane, PULSE_LANE};
 
+#[cfg(test)]
+mod tests;
+
 pub struct LaneMetaAgent {
     config: IntrospectionConfig,
     resolver: IntrospectionResolver,

@@ -34,6 +34,15 @@ pub struct LaneView {
     pub report_reader: UplinkReportReader,
 }
 
+impl LaneView {
+    pub fn new(kind: LaneKind, report_reader: UplinkReportReader) -> Self {
+        LaneView {
+            kind,
+            report_reader,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct AgentSnapshot {
     pub lanes: HashMap<Text, LaneView>,

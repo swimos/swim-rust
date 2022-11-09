@@ -12,32 +12,61 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{sync::Arc, collections::HashMap, num::NonZeroUsize};
+use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
 
-use futures::{future::{BoxFuture, join}, FutureExt, Future};
+use futures::{
+    future::{join, BoxFuture},
+    Future, FutureExt,
+};
 use parking_lot::Mutex;
-use swim_api::{agent::{AgentContext, LaneConfig, Agent, AgentConfig}, error::{OpenStoreError, DownlinkRuntimeError, AgentRuntimeError}, downlink::DownlinkKind, meta::lane::LaneKind, store::StoreKind};
-use swim_utilities::{io::byte_channel::{ByteWriter, ByteReader, byte_channel}, algebra::non_zero_usize, routing::route_uri::RouteUri, trigger};
+use swim_api::{
+    agent::{Agent, AgentConfig, AgentContext, LaneConfig},
+    downlink::DownlinkKind,
+    error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
+    meta::lane::LaneKind,
+    store::StoreKind,
+};
+use swim_runtime::agent::UplinkReporterRegistration;
+use swim_utilities::{
+    algebra::non_zero_usize,
+    io::byte_channel::{byte_channel, ByteReader, ByteWriter},
+    routing::route_uri::RouteUri,
+    trigger,
+};
+use tokio::sync::mpsc;
 
-pub async fn introspection_agent_test<A, F, Fut>(
+use crate::task::{IntrospectionMessage, IntrospectionResolver};
+
+pub async fn introspection_agent_test<Fac, A, F, Fut>(
     lane_config: LaneConfig,
     lanes: Vec<(String, LaneKind)>,
     route: RouteUri,
-    agent: A,
-    test_case: F) -> Fut::Output
+    agent_fac: Fac,
+    test_case: F,
+) -> Fut::Output
 where
     A: Agent + Send + 'static,
+    Fac: FnOnce(IntrospectionResolver) -> A,
     F: FnOnce(TestContext) -> Fut,
     Fut: Future,
 {
     let (init_tx, init_rx) = trigger::trigger();
-    let (fake_context, test_context) = init(lane_config, lanes, init_rx);
+
+    let (queries_tx, queries_rx) = mpsc::unbounded_channel();
+    let (reg_tx, reg_rx) = mpsc::channel(8);
+    let resolver = IntrospectionResolver::new(queries_tx, reg_tx);
+
+    let (fake_context, test_context) = init(lane_config, lanes, init_rx, queries_rx, reg_rx);
     let context: Box<dyn AgentContext + Send + 'static> = Box::new(fake_context);
 
     let mut config = AgentConfig::default();
     config.default_lane_config = Some(lane_config);
     let agent_task = async move {
-        let run_agent = agent.run(route, config, context).await.expect("Init failed.");
+        let agent = agent_fac(resolver);
+        let run_agent = agent
+            .run(route, config, context)
+            .await
+            .expect("Init failed.");
         init_tx.trigger();
         run_agent.await.expect("Running agent failed.");
     };
@@ -55,6 +84,8 @@ struct FakeRuntimeLane {
 pub struct TestContext {
     pub lanes: HashMap<String, (ByteWriter, ByteReader)>,
     pub init_done: trigger::Receiver,
+    pub queries_rx: mpsc::UnboundedReceiver<IntrospectionMessage>,
+    pub _reg_rx: mpsc::Receiver<UplinkReporterRegistration>,
 }
 
 struct ContextInner {
@@ -63,9 +94,13 @@ struct ContextInner {
 
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 
-pub fn init(lane_config: LaneConfig, 
+pub fn init(
+    lane_config: LaneConfig,
     lanes: Vec<(String, LaneKind)>,
-    init_done: trigger::Receiver) -> (FakeContext, TestContext) {
+    init_done: trigger::Receiver,
+    queries_rx: mpsc::UnboundedReceiver<IntrospectionMessage>,
+    reg_rx: mpsc::Receiver<UplinkReporterRegistration>,
+) -> (FakeContext, TestContext) {
     let mut expected = HashMap::new();
     let mut runtime_endpoints = HashMap::new();
     for (name, kind) in lanes {
@@ -80,17 +115,21 @@ pub fn init(lane_config: LaneConfig,
         runtime_endpoints.insert(name, (in_tx, out_rx));
     }
     let fake_context = FakeContext {
-        inner: Arc::new(Mutex::new(ContextInner { expected_lanes: expected })),
+        inner: Arc::new(Mutex::new(ContextInner {
+            expected_lanes: expected,
+        })),
     };
     let test_context = TestContext {
         lanes: runtime_endpoints,
         init_done,
+        queries_rx,
+        _reg_rx: reg_rx,
     };
     (fake_context, test_context)
 }
 
 pub struct FakeContext {
-    inner: Arc<Mutex<ContextInner>>
+    inner: Arc<Mutex<ContextInner>>,
 }
 
 impl AgentContext for FakeContext {
@@ -104,12 +143,17 @@ impl AgentContext for FakeContext {
         let key = name.to_string();
         async move {
             let mut lock = inner.lock();
-            let ContextInner { expected_lanes } = &mut*lock;
-            let FakeRuntimeLane { kind, expected_config, io } = expected_lanes.get_mut(&key).expect("Unknown lane.");
+            let ContextInner { expected_lanes } = &mut *lock;
+            let FakeRuntimeLane {
+                kind,
+                expected_config,
+                io,
+            } = expected_lanes.get_mut(&key).expect("Unknown lane.");
             assert_eq!(lane_kind, *kind);
             assert_eq!(config, *expected_config);
             Ok(io.take().expect("Lane registered twice."))
-        }.boxed()
+        }
+        .boxed()
     }
 
     fn open_downlink(
