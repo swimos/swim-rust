@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use swim_form::Form;
 use swim_model::{Attr, Item, Value};
 
 fn print_value(v: &Value) -> String {
@@ -268,6 +269,11 @@ fn complete_records() {
     let rec = Value::Record(vec![first.clone()], single_value);
     assert_eq!(print_value(&rec), "@first 1");
 
+    let single_slot = vec![Item::slot("name", 1)];
+
+    let rec = Value::Record(vec![first.clone()], single_slot);
+    assert_eq!(print_value(&rec), "@first { name: 1 }");
+
     let rec = Value::Record(vec![first, second], items);
     assert_eq!(print_value(&rec), "@first @second(1) { 1, name: 2, true }");
 }
@@ -286,6 +292,11 @@ fn complete_records_compact() {
 
     let rec = Value::Record(vec![first.clone()], single_value);
     assert_eq!(print_value_compact(&rec), "@first 1");
+
+    let single_slot = vec![Item::slot("name", 1)];
+
+    let rec = Value::Record(vec![first.clone()], single_slot);
+    assert_eq!(print_value_compact(&rec), "@first{name:1}");
 
     let rec = Value::Record(vec![first, second], items);
     assert_eq!(print_value_compact(&rec), "@first@second(1){1,name:2,true}");
@@ -308,6 +319,11 @@ fn complete_records_pretty() {
 
     let rec = Value::Record(vec![first.clone()], single_value);
     assert_eq!(print_value_pretty(&rec), "@first 1");
+
+    let single_slot = vec![Item::slot("name", 1)];
+
+    let rec = Value::Record(vec![first.clone()], single_slot);
+    assert_eq!(print_value_pretty(&rec), "@first {\n    name: 1\n}");
 
     let rec = Value::Record(vec![first, second], items);
     assert_eq!(
@@ -443,4 +459,10 @@ fn complex_attributes_pretty() {
         print_value_pretty(&rec),
         "@tag(1, @first @second(1) {\n    1,\n    name: 2,\n    true\n}, slot: 2, 3)"
     );
+}
+
+#[derive(Form)]
+#[form_root(::swim_form)]
+struct SingleField {
+    name: i32,
 }

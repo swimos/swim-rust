@@ -17,7 +17,7 @@ mod tests;
 
 use base64::display::Base64Display;
 use std::borrow::Cow;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use swim_form::structural::write::{
     BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
     StructuralWriter,
@@ -55,9 +55,22 @@ pub struct StructurePrinter<'a, 'b, S> {
     fmt: &'a mut Formatter<'b>,
     has_attr: bool,
     brace_written: bool,
-    single_item: bool,
+    num_items: usize,
     first: bool,
     delegated: bool,
+}
+
+impl<'a, 'b, S: Debug> Debug for StructurePrinter<'a, 'b, S> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StructurePrinter")
+            .field("strategy", &self.strategy)
+            .field("has_attr", &self.has_attr)
+            .field("brace_written", &self.brace_written)
+            .field("num_tems", &self.num_items)
+            .field("first", &self.first)
+            .field("delegated", &self.delegated)
+            .finish()
+    }
 }
 
 impl<'a, 'b, S> StructurePrinter<'a, 'b, S> {
@@ -66,7 +79,7 @@ impl<'a, 'b, S> StructurePrinter<'a, 'b, S> {
             fmt,
             has_attr: false,
             brace_written: false,
-            single_item: false,
+            num_items: 0,
             first: true,
             delegated: false,
             strategy,
@@ -299,27 +312,27 @@ where
         _kind: RecordBodyKind,
         num_items: usize,
     ) -> Result<Self::Body, Self::Error> {
+        self.num_items = num_items;
         let StructurePrinter {
             fmt,
             has_attr,
+            num_items,
             brace_written,
-            single_item,
             strategy,
             ..
         } = &mut self;
         if *has_attr {
-            if num_items > 1 {
+            if *num_items > 1 {
                 strategy.attr_padding().fmt(fmt)?;
                 fmt.write_str("{")?;
-                strategy.start_block(num_items).fmt(fmt)?;
+                strategy.start_block(*num_items).fmt(fmt)?;
                 *brace_written = true;
             }
         } else {
             fmt.write_str("{")?;
-            strategy.start_block(num_items).fmt(fmt)?;
+            strategy.start_block(*num_items).fmt(fmt)?;
             *brace_written = true;
         }
-        *single_item = num_items == 1;
         Ok(self)
     }
 }
@@ -335,20 +348,22 @@ where
         let StructurePrinter {
             fmt,
             brace_written,
-            single_item,
+            num_items,
             first,
             has_attr,
             strategy,
             ..
         } = &mut self;
         if *has_attr && !*brace_written {
-            if *single_item {
+            if *num_items == 1 {
                 fmt.write_str(" ")?;
             } else {
                 strategy.attr_padding().fmt(fmt)?;
                 fmt.write_str("{")?;
+                strategy.start_block(*num_items).fmt(fmt)?;
                 *brace_written = true;
             }
+            *first = false;
         } else if *first {
             *first = false;
         } else {
@@ -368,11 +383,19 @@ where
         let StructurePrinter {
             fmt,
             brace_written,
+            num_items,
             first,
+            has_attr,
             strategy,
             ..
         } = &mut self;
-        if *first {
+        if *has_attr && !*brace_written {
+            strategy.attr_padding().fmt(fmt)?;
+            fmt.write_str("{")?;
+            strategy.start_block(*num_items).fmt(fmt)?;
+            *brace_written = true;
+            *first = false;
+        } else if *first {
             *first = false;
         } else {
             fmt.write_str(",")?;
@@ -853,7 +876,7 @@ impl<'a> Display for Padding<'a> {
     }
 }
 
-pub trait PrintStrategy {
+pub trait PrintStrategy: Debug {
     fn attr_padding(&self) -> Padding;
 
     fn attr_body_padding(&self) -> Padding;
@@ -867,7 +890,7 @@ pub trait PrintStrategy {
     fn slot_padding(&self) -> Padding;
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct StandardPrint;
 
 impl PrintStrategy for StandardPrint {
@@ -900,7 +923,7 @@ impl PrintStrategy for StandardPrint {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct CompactPrint;
 
 impl PrintStrategy for CompactPrint {
@@ -929,7 +952,7 @@ impl PrintStrategy for CompactPrint {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct PrettyPrint {
     indent_level: usize,
 }
