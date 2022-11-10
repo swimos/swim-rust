@@ -15,7 +15,7 @@
 use crate::{
     config::IntrospectionConfig,
     meta_agent::{
-        test_harness::{introspection_agent_test, TestContext},
+        test_harness::{introspection_agent_test, IntrospectionTestContext},
         PULSE_LANE,
     },
     model::LaneView,
@@ -56,7 +56,7 @@ async fn run_lane_meta_agent() {
         route,
         |resolver| LaneMetaAgent::new(IntrospectionConfig::default(), resolver),
         |context| async move {
-            let TestContext {
+            let IntrospectionTestContext {
                 mut lanes,
                 init_done,
                 mut queries_rx,
