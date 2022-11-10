@@ -24,47 +24,27 @@ struct LaneLinks {
     reporter: Option<UplinkReporter>,
 }
 
-enum Delta {
-    Zero,
-    Incr,
-    Decr(u64),
-}
-
-impl Delta {
-    fn apply(self, n: &mut u64) {
-        match self {
-            Delta::Zero => {}
-            Delta::Incr => *n = n.saturating_add(1),
-            Delta::Decr(d) => *n = n.saturating_sub(d),
-        }
-    }
-}
+const SIZE_TOO_LARGE: &str = "Size too large.";
 
 impl LaneLinks {
-    fn insert(&mut self, remote_id: Uuid) -> Delta {
-        if self.remotes.insert(remote_id) {
-            Delta::Incr
-        } else {
-            Delta::Zero
-        }
+    fn insert(&mut self, remote_id: Uuid) -> u64 {
+        self.remotes.insert(remote_id);
+        u64::try_from(self.remotes.len()).expect(SIZE_TOO_LARGE)
     }
 
-    fn remove(&mut self, remote_id: &Uuid) -> Delta {
-        if self.remotes.remove(remote_id) {
-            Delta::Decr(1)
-        } else {
-            Delta::Zero
-        }
+    fn remove(&mut self, remote_id: &Uuid) -> u64 {
+        self.remotes.remove(remote_id);
+        u64::try_from(self.remotes.len()).expect(SIZE_TOO_LARGE)
     }
 
     fn is_empty(&self) -> bool {
         self.remotes.is_empty()
     }
 
-    fn take_remotes(&mut self) -> (Delta, impl Iterator<Item = Uuid> + 'static) {
-        let delta =
-            Delta::Decr(u64::try_from(self.remotes.len()).expect("Lenth did not fit into a u64."));
-        (delta, std::mem::take(&mut self.remotes).into_iter())
+    fn take_remotes(&mut self) -> (u64, impl Iterator<Item = Uuid> + 'static) {
+        let remotes = std::mem::take(&mut self.remotes);
+        let len = u64::try_from(remotes.len()).expect(SIZE_TOO_LARGE);
+        (len, remotes.into_iter())
     }
 
     fn contains(&self, id: &Uuid) -> bool {
@@ -79,7 +59,7 @@ impl LaneLinks {
 
     fn count_broadcast(&self) -> u64 {
         let LaneLinks { remotes, reporter } = self;
-        let n = u64::try_from(remotes.len()).expect("Length did not fit into a u64.");
+        let n = u64::try_from(remotes.len()).expect(SIZE_TOO_LARGE);
         if let Some(reporter) = reporter {
             reporter.count_events(n);
         }
@@ -91,7 +71,7 @@ impl LaneLinks {
 pub struct Links {
     forward: HashMap<u64, LaneLinks>,
     backwards: HashMap<Uuid, HashSet<u64>>,
-    aggregate_reporter: Option<(u64, UplinkReporter)>,
+    aggregate_reporter: Option<UplinkReporter>,
 }
 
 /// An instruction to send an unlinked message to a remote.
@@ -123,7 +103,7 @@ impl Links {
         Links {
             forward: Default::default(),
             backwards: Default::default(),
-            aggregate_reporter: aggregate_reporter.map(|r| (0, r)),
+            aggregate_reporter,
         }
     }
 
@@ -141,10 +121,9 @@ impl Links {
             backwards,
             aggregate_reporter,
         } = self;
-        let delta = forward.entry(lane_id).or_default().insert(remote_id);
-        if let Some((n, reporter)) = aggregate_reporter {
-            delta.apply(n);
-            reporter.set_uplinks(*n);
+        let n = forward.entry(lane_id).or_default().insert(remote_id);
+        if let Some(reporter) = aggregate_reporter {
+            reporter.set_uplinks(n);
         }
         backwards.entry(remote_id).or_default().insert(lane_id);
     }
@@ -159,10 +138,9 @@ impl Links {
         } = self;
 
         if let Entry::Occupied(mut entry) = forward.entry(lane_id) {
-            let delta = entry.get_mut().remove(&remote_id);
-            if let Some((n, reporter)) = aggregate_reporter {
-                delta.apply(n);
-                reporter.set_uplinks(*n);
+            let n = entry.get_mut().remove(&remote_id);
+            if let Some(reporter) = aggregate_reporter {
+                reporter.set_uplinks(n);
             }
         }
         if let Entry::Occupied(mut entry) = backwards.entry(remote_id) {
@@ -185,8 +163,7 @@ impl Links {
             aggregate_reporter,
         } = self;
         backwards.clear();
-        if let Some((n, reporter)) = aggregate_reporter {
-            *n = 0;
+        if let Some(reporter) = aggregate_reporter {
             reporter.set_uplinks(0);
         }
         forward.iter_mut().flat_map(|(lane_id, remote_ids)| {
@@ -207,7 +184,7 @@ impl Links {
             aggregate_reporter,
             ..
         } = self;
-        if let (Some((_, agg_reporter)), Some(links)) = (aggregate_reporter, forward.get(&id)) {
+        if let (Some(agg_reporter), Some(links)) = (aggregate_reporter, forward.get(&id)) {
             links.count_single();
             agg_reporter.count_events(1);
         }
@@ -220,7 +197,7 @@ impl Links {
             aggregate_reporter,
             ..
         } = self;
-        if let (Some((_, agg_reporter)), Some(links)) = (aggregate_reporter, forward.get(&id)) {
+        if let (Some(agg_reporter), Some(links)) = (aggregate_reporter, forward.get(&id)) {
             let n = links.count_broadcast();
             agg_reporter.count_events(n);
         }
@@ -247,10 +224,9 @@ impl Links {
             aggregate_reporter,
         } = self;
         if let Some(links) = forward.get_mut(&id) {
-            let (delta, remote_ids) = links.take_remotes();
-            if let Some((n, reporter)) = aggregate_reporter {
-                delta.apply(n);
-                reporter.set_uplinks(*n);
+            let (n, remote_ids) = links.take_remotes();
+            if let Some(reporter) = aggregate_reporter {
+                reporter.set_uplinks(n);
             }
             Some(remote_ids.map(move |remote_id| {
                 if let Entry::Occupied(mut entry) = backwards.entry(remote_id) {
@@ -279,17 +255,19 @@ impl Links {
             aggregate_reporter,
         } = self;
         let lane_ids = backwards.remove(&id).unwrap_or_default();
-        if let Some((n, reporter)) = aggregate_reporter {
+        if let Some(reporter) = aggregate_reporter {
+            let mut new_count = None;
             for lane_id in lane_ids {
                 if let Entry::Occupied(mut entry) = forward.entry(lane_id) {
-                    let delta = entry.get_mut().remove(&id);
-                    delta.apply(n);
+                    new_count = Some(entry.get_mut().remove(&id));
                     if entry.get().is_empty() {
                         entry.remove();
                     }
                 }
             }
-            reporter.set_uplinks(*n);
+            if let Some(n) = new_count {
+                reporter.set_uplinks(n);
+            }
         } else {
             for lane_id in lane_ids {
                 if let Entry::Occupied(mut entry) = forward.entry(lane_id) {
