@@ -27,24 +27,39 @@ struct LaneLinks {
 const SIZE_TOO_LARGE: &str = "Size too large.";
 
 impl LaneLinks {
-    fn insert(&mut self, remote_id: Uuid) -> u64 {
-        self.remotes.insert(remote_id);
-        u64::try_from(self.remotes.len()).expect(SIZE_TOO_LARGE)
+    fn insert(&mut self, remote_id: Uuid, count: &mut u64) {
+        let LaneLinks { remotes, reporter } = self;
+        if remotes.insert(remote_id) {
+            if let Some(reporter) = reporter {
+                reporter.set_uplinks(u64::try_from(remotes.len()).expect(SIZE_TOO_LARGE));
+            }
+            *count = count.checked_add(1).expect(SIZE_TOO_LARGE);
+        }
     }
 
-    fn remove(&mut self, remote_id: &Uuid) -> u64 {
-        self.remotes.remove(remote_id);
-        u64::try_from(self.remotes.len()).expect(SIZE_TOO_LARGE)
+    fn remove(&mut self, remote_id: &Uuid, count: &mut u64) {
+        let LaneLinks { remotes, reporter } = self;
+        if remotes.remove(remote_id) {
+            if let Some(reporter) = reporter {
+                reporter.set_uplinks(u64::try_from(remotes.len()).expect(SIZE_TOO_LARGE));
+            }
+            *count = count.saturating_sub(1);
+        }
     }
 
     fn is_empty(&self) -> bool {
         self.remotes.is_empty()
     }
 
-    fn take_remotes(&mut self) -> (u64, impl Iterator<Item = Uuid> + 'static) {
-        let remotes = std::mem::take(&mut self.remotes);
-        let len = u64::try_from(remotes.len()).expect(SIZE_TOO_LARGE);
-        (len, remotes.into_iter())
+    fn take_remotes(&mut self, count: &mut u64) -> impl Iterator<Item = Uuid> + 'static {
+        let LaneLinks { remotes, reporter } = self;
+        let removed = std::mem::take(remotes);
+        let len = u64::try_from(removed.len()).expect(SIZE_TOO_LARGE);
+        *count = count.saturating_sub(len);
+        if let Some(reporter) = reporter {
+            reporter.set_uplinks(0);
+        }
+        removed.into_iter()
     }
 
     fn contains(&self, id: &Uuid) -> bool {
@@ -71,6 +86,7 @@ impl LaneLinks {
 pub struct Links {
     forward: HashMap<u64, LaneLinks>,
     backwards: HashMap<Uuid, HashSet<u64>>,
+    total_count: u64,
     aggregate_reporter: Option<UplinkReporter>,
 }
 
@@ -103,6 +119,7 @@ impl Links {
         Links {
             forward: Default::default(),
             backwards: Default::default(),
+            total_count: 0,
             aggregate_reporter,
         }
     }
@@ -119,11 +136,15 @@ impl Links {
         let Links {
             forward,
             backwards,
+            total_count,
             aggregate_reporter,
         } = self;
-        let n = forward.entry(lane_id).or_default().insert(remote_id);
+        forward
+            .entry(lane_id)
+            .or_default()
+            .insert(remote_id, total_count);
         if let Some(reporter) = aggregate_reporter {
-            reporter.set_uplinks(n);
+            reporter.set_uplinks(*total_count);
         }
         backwards.entry(remote_id).or_default().insert(lane_id);
     }
@@ -135,12 +156,13 @@ impl Links {
             forward,
             backwards,
             aggregate_reporter,
+            total_count,
         } = self;
 
         if let Entry::Occupied(mut entry) = forward.entry(lane_id) {
-            let n = entry.get_mut().remove(&remote_id);
+            entry.get_mut().remove(&remote_id, total_count);
             if let Some(reporter) = aggregate_reporter {
-                reporter.set_uplinks(n);
+                reporter.set_uplinks(*total_count);
             }
         }
         if let Entry::Occupied(mut entry) = backwards.entry(remote_id) {
@@ -161,13 +183,14 @@ impl Links {
             forward,
             backwards,
             aggregate_reporter,
+            total_count,
         } = self;
         backwards.clear();
         if let Some(reporter) = aggregate_reporter {
             reporter.set_uplinks(0);
         }
         forward.iter_mut().flat_map(|(lane_id, remote_ids)| {
-            let (_, it) = remote_ids.take_remotes();
+            let it = remote_ids.take_remotes(total_count);
             it.map(move |rid| (*lane_id, rid))
         })
     }
@@ -222,11 +245,12 @@ impl Links {
             forward,
             backwards,
             aggregate_reporter,
+            total_count,
         } = self;
-        if let Some(links) = forward.get_mut(&id) {
-            let (n, remote_ids) = links.take_remotes();
+        if let Some(mut links) = forward.remove(&id) {
+            let remote_ids = links.take_remotes(total_count);
             if let Some(reporter) = aggregate_reporter {
-                reporter.set_uplinks(n);
+                reporter.set_uplinks(*total_count);
             }
             Some(remote_ids.map(move |remote_id| {
                 if let Entry::Occupied(mut entry) = backwards.entry(remote_id) {
@@ -253,30 +277,19 @@ impl Links {
             forward,
             backwards,
             aggregate_reporter,
+            total_count,
         } = self;
         let lane_ids = backwards.remove(&id).unwrap_or_default();
+        for lane_id in lane_ids {
+            if let Entry::Occupied(mut entry) = forward.entry(lane_id) {
+                entry.get_mut().remove(&id, total_count);
+                if entry.get().is_empty() {
+                    entry.remove();
+                }
+            }
+        }
         if let Some(reporter) = aggregate_reporter {
-            let mut new_count = None;
-            for lane_id in lane_ids {
-                if let Entry::Occupied(mut entry) = forward.entry(lane_id) {
-                    new_count = Some(entry.get_mut().remove(&id));
-                    if entry.get().is_empty() {
-                        entry.remove();
-                    }
-                }
-            }
-            if let Some(n) = new_count {
-                reporter.set_uplinks(n);
-            }
-        } else {
-            for lane_id in lane_ids {
-                if let Entry::Occupied(mut entry) = forward.entry(lane_id) {
-                    entry.get_mut().remove(&id);
-                    if entry.get().is_empty() {
-                        entry.remove();
-                    }
-                }
-            }
+            reporter.set_uplinks(*total_count);
         }
     }
 }
@@ -288,7 +301,7 @@ mod tests {
 
     use uuid::Uuid;
 
-    use crate::agent::task::links::TriggerUnlink;
+    use crate::agent::{reporting::UplinkReporter, task::links::TriggerUnlink};
 
     use super::Links;
 
@@ -387,5 +400,146 @@ mod tests {
         assert_eq!(links.linked_from(LID2), Some(&[RID1,].into()));
 
         assert_eq!(links.linked_from(LID3), Some(&[RID1,].into()));
+    }
+
+    #[test]
+    fn link_count_reporting() {
+        let mut links = Links::new(None);
+
+        let reporter = UplinkReporter::default();
+        let reader = reporter.reader();
+        links.register_reporter(LID1, reporter);
+
+        links.insert(LID1, RID1);
+
+        let snapshot = reader.snapshot().expect("Reporting dropped.");
+        assert_eq!(snapshot.link_count, 1);
+
+        links.insert(LID1, RID2);
+        links.insert(LID1, RID3);
+
+        let snapshot = reader.snapshot().expect("Reporting dropped.");
+        assert_eq!(snapshot.link_count, 3);
+
+        let _ = links.remove(LID1, RID3);
+
+        let snapshot = reader.snapshot().expect("Reporting dropped.");
+        assert_eq!(snapshot.link_count, 2);
+
+        links.remove_remote(RID2);
+
+        let snapshot = reader.snapshot().expect("Reporting dropped.");
+        assert_eq!(snapshot.link_count, 1);
+    }
+
+    #[test]
+    fn aggregate_link_count_reporting() {
+        let agg_reporter = UplinkReporter::default();
+        let agg_reader = agg_reporter.reader();
+        let mut links = Links::new(Some(agg_reporter));
+
+        links.insert(LID1, RID1);
+
+        let snapshot = agg_reader.snapshot().expect("Reporting dropped.");
+        assert_eq!(snapshot.link_count, 1);
+
+        links.insert(LID1, RID2);
+        links.insert(LID1, RID3);
+
+        let snapshot = agg_reader.snapshot().expect("Reporting dropped.");
+        assert_eq!(snapshot.link_count, 3);
+
+        links.insert(LID2, RID1);
+
+        let snapshot = agg_reader.snapshot().expect("Reporting dropped.");
+        assert_eq!(snapshot.link_count, 4);
+
+        let _ = links.remove(LID1, RID2);
+
+        let snapshot = agg_reader.snapshot().expect("Reporting dropped.");
+        assert_eq!(snapshot.link_count, 3);
+
+        links.remove_remote(RID1);
+
+        let snapshot = agg_reader.snapshot().expect("Reporting dropped.");
+        assert_eq!(snapshot.link_count, 1);
+    }
+
+    #[test]
+    fn removing_lane_drops_reporter() {
+        let agg_reporter = UplinkReporter::default();
+        let agg_reader = agg_reporter.reader();
+        let mut links = Links::new(Some(agg_reporter));
+
+        let reporter1 = UplinkReporter::default();
+        let reader1 = reporter1.reader();
+        links.register_reporter(LID1, reporter1);
+
+        let reporter2 = UplinkReporter::default();
+        let reader2 = reporter2.reader();
+        links.register_reporter(LID2, reporter2);
+
+        links.insert(LID1, RID1);
+        links.insert(LID1, RID2);
+        links.insert(LID2, RID1);
+
+        let agg_snapshot = agg_reader.snapshot().expect("Reporting dropped.");
+        assert_eq!(agg_snapshot.link_count, 3);
+        let snapshot1 = reader1.snapshot().expect("Reporting dropped.");
+        assert_eq!(snapshot1.link_count, 2);
+        let snapshot2 = reader2.snapshot().expect("Reporting dropped.");
+        assert_eq!(snapshot2.link_count, 1);
+
+        let _ = links.remove_lane(LID1);
+
+        let agg_snapshot = agg_reader.snapshot().expect("Reporting dropped.");
+        assert_eq!(agg_snapshot.link_count, 1);
+        assert!(reader1.snapshot().is_none());
+        let snapshot2 = reader2.snapshot().expect("Reporting dropped.");
+        assert_eq!(snapshot2.link_count, 1);
+    }
+
+    #[test]
+    fn count_single_event() {
+        let agg_reporter = UplinkReporter::default();
+        let agg_reader = agg_reporter.reader();
+        let mut links = Links::new(Some(agg_reporter));
+
+        let reporter1 = UplinkReporter::default();
+        let reader1 = reporter1.reader();
+        links.register_reporter(LID1, reporter1);
+
+        links.insert(LID1, RID1);
+        links.insert(LID1, RID2);
+
+        links.count_single(LID1);
+
+        let snapshot = agg_reader.snapshot().expect("Reporting dropped.");
+        assert_eq!(snapshot.event_count, 1);
+
+        let snapshot = reader1.snapshot().expect("Reporting dropped.");
+        assert_eq!(snapshot.event_count, 1);
+    }
+
+    #[test]
+    fn count_broadcast_event() {
+        let agg_reporter = UplinkReporter::default();
+        let agg_reader = agg_reporter.reader();
+        let mut links = Links::new(Some(agg_reporter));
+
+        let reporter1 = UplinkReporter::default();
+        let reader1 = reporter1.reader();
+        links.register_reporter(LID1, reporter1);
+
+        links.insert(LID1, RID1);
+        links.insert(LID1, RID2);
+
+        links.count_broadcast(LID1);
+
+        let snapshot = agg_reader.snapshot().expect("Reporting dropped.");
+        assert_eq!(snapshot.event_count, 2);
+
+        let snapshot = reader1.snapshot().expect("Reporting dropped.");
+        assert_eq!(snapshot.event_count, 2);
     }
 }
