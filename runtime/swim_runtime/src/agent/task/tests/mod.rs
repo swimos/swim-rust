@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     num::NonZeroUsize,
     pin::Pin,
     task::{Context, Poll},
@@ -56,7 +56,10 @@ use tokio::sync::mpsc;
 use tokio_util::codec::{FramedRead, FramedWrite};
 use uuid::Uuid;
 
-use crate::agent::{AgentRuntimeConfig, DisconnectionReason};
+use crate::agent::{
+    reporting::{UplinkReportReader, UplinkSnapshot},
+    AgentRuntimeConfig, DisconnectionReason,
+};
 
 use super::{LaneEndpoint, RwCoorindationMessage};
 
@@ -594,5 +597,29 @@ impl RemoteSender {
         let body = format!("@update(key:\"{}\") {}", key, value);
         let msg: RequestMessage<&str, &[u8]> = RequestMessage::command(*rid, path, body.as_bytes());
         assert!(inner.send(msg).await.is_ok());
+    }
+}
+
+struct ReportReaders {
+    aggregate: UplinkReportReader,
+    lanes: HashMap<&'static str, UplinkReportReader>,
+}
+
+struct Snapshots {
+    aggregate: UplinkSnapshot,
+    lanes: HashMap<&'static str, UplinkSnapshot>,
+}
+
+impl ReportReaders {
+    fn snapshot(&self) -> Option<Snapshots> {
+        let ReportReaders { aggregate, lanes } = self;
+        let mut lane_snapshots = HashMap::new();
+        for (name, reader) in lanes.iter() {
+            lane_snapshots.insert(*name, reader.snapshot()?);
+        }
+        Some(Snapshots {
+            aggregate: aggregate.snapshot()?,
+            lanes: lane_snapshots,
+        })
     }
 }

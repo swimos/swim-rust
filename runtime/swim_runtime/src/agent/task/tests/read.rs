@@ -34,7 +34,7 @@ use uuid::Uuid;
 
 use crate::{
     agent::{
-        reporting::{UplinkReportReader, UplinkReporter, UplinkSnapshot},
+        reporting::{UplinkReporter, UplinkSnapshot},
         task::{
             read_task,
             tests::{RemoteSender, BUFFER_SIZE, DEFAULT_TIMEOUT, INACTIVE_TEST_TIMEOUT},
@@ -45,7 +45,10 @@ use crate::{
     routing::RoutingAddr,
 };
 
-use super::{make_config, Event, LaneReader, MAP_LANE, QUEUE_SIZE, TEST_TIMEOUT, VAL_LANE};
+use super::{
+    make_config, Event, LaneReader, ReportReaders, Snapshots, MAP_LANE, QUEUE_SIZE, TEST_TIMEOUT,
+    VAL_LANE,
+};
 
 struct FakeAgent {
     initial: Vec<LaneEndpoint<ByteReader>>,
@@ -113,33 +116,6 @@ impl FakeAgent {
     }
 }
 
-struct ReportReaders {
-    aggregate: UplinkReportReader,
-    value: UplinkReportReader,
-    map: UplinkReportReader,
-}
-
-struct Snapshots {
-    aggregate: UplinkSnapshot,
-    value: UplinkSnapshot,
-    map: UplinkSnapshot,
-}
-
-impl ReportReaders {
-    fn snapshot(&self) -> Option<Snapshots> {
-        let ReportReaders {
-            aggregate,
-            value,
-            map,
-        } = self;
-        Some(Snapshots {
-            aggregate: aggregate.snapshot()?,
-            value: value.snapshot()?,
-            map: map.snapshot()?,
-        })
-    }
-}
-
 struct TestContext {
     stop_sender: trigger::Sender,
     reg_tx: mpsc::Sender<ReadTaskMessages>,
@@ -167,8 +143,9 @@ where
         let map_rep = UplinkReporter::default();
         let reporting = ReportReaders {
             aggregate: agg_rep.reader(),
-            value: val_rep.reader(),
-            map: map_rep.reader(),
+            lanes: [(VAL_LANE, val_rep.reader()), (MAP_LANE, map_rep.reader())]
+                .into_iter()
+                .collect(),
         };
         (Some(agg_rep), Some(val_rep), Some(map_rep), Some(reporting))
     } else {
@@ -573,11 +550,7 @@ async fn reports_command_counts() {
             ow => panic!("Unexpected event: {:?}", ow),
         }
 
-        let Snapshots {
-            aggregate,
-            value,
-            map,
-        } = readers
+        let Snapshots { aggregate, lanes } = readers
             .as_ref()
             .and_then(ReportReaders::snapshot)
             .expect("Report readers not initialized or dropped.");
@@ -591,7 +564,7 @@ async fn reports_command_counts() {
             }
         );
         assert_eq!(
-            value,
+            lanes[VAL_LANE],
             UplinkSnapshot {
                 link_count: 0,
                 event_count: 0,
@@ -599,7 +572,7 @@ async fn reports_command_counts() {
             }
         );
         assert_eq!(
-            map,
+            lanes[MAP_LANE],
             UplinkSnapshot {
                 link_count: 0,
                 event_count: 0,

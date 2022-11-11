@@ -35,6 +35,7 @@ use uuid::Uuid;
 
 use crate::{
     agent::{
+        reporting::{UplinkReporter, UplinkSnapshot},
         store::{AgentPersistence, StorePersistence},
         task::{
             fake_store::FakeStore,
@@ -49,9 +50,9 @@ use crate::{
 };
 
 use super::{
-    make_config, Instruction, Instructions, MapLaneSender, ValueLikeLaneSender, BUFFER_SIZE,
-    DEFAULT_TIMEOUT, INACTIVE_TEST_TIMEOUT, MAP_LANE, QUEUE_SIZE, SUPPLY_LANE, TEST_TIMEOUT,
-    VAL_LANE,
+    make_config, Instruction, Instructions, MapLaneSender, ReportReaders, Snapshots,
+    ValueLikeLaneSender, BUFFER_SIZE, DEFAULT_TIMEOUT, INACTIVE_TEST_TIMEOUT, MAP_LANE, QUEUE_SIZE,
+    SUPPLY_LANE, TEST_TIMEOUT, VAL_LANE,
 };
 
 struct FakeAgent {
@@ -155,6 +156,7 @@ struct TestContext {
     vote2: timeout_coord::Voter,
     vote_rx: timeout_coord::Receiver,
     instr_tx: Instructions,
+    reporters: Option<ReportReaders>,
 }
 
 const AGENT_ID: Uuid = *RoutingAddr::plane(1).uuid();
@@ -168,11 +170,24 @@ where
     Fut: Future + Send,
     Fut::Output: Debug,
 {
-    run_test_case_with_store(inactive_timeout, StoreDisabled, test_case).await
+    run_test_case_with_store(inactive_timeout, false, StoreDisabled, test_case).await
+}
+
+async fn run_test_case_with_reporting<F, Fut>(
+    inactive_timeout: Duration,
+    test_case: F,
+) -> Fut::Output
+where
+    F: FnOnce(TestContext) -> Fut,
+    Fut: Future + Send,
+    Fut::Output: Debug,
+{
+    run_test_case_with_store(inactive_timeout, true, StoreDisabled, test_case).await
 }
 
 async fn run_test_case_with_store<F, Fut, Store>(
     inactive_timeout: Duration,
+    with_reporting: bool,
     store: Store,
     test_case: F,
 ) -> Fut::Output
@@ -185,27 +200,53 @@ where
     let (stop_tx, stop_rx) = trigger::trigger();
     let config = make_config(inactive_timeout);
 
+    let (agg_rep, val_rep, map_rep, sup_rep, reporting) = if with_reporting {
+        let agg_rep = UplinkReporter::default();
+        let val_rep = UplinkReporter::default();
+        let map_rep = UplinkReporter::default();
+        let sup_rep = UplinkReporter::default();
+        let reporting = ReportReaders {
+            aggregate: agg_rep.reader(),
+            lanes: [
+                (VAL_LANE, val_rep.reader()),
+                (MAP_LANE, map_rep.reader()),
+                (SUPPLY_LANE, sup_rep.reader()),
+            ]
+            .into_iter()
+            .collect(),
+        };
+        (
+            Some(agg_rep),
+            Some(val_rep),
+            Some(map_rep),
+            Some(sup_rep),
+            Some(reporting),
+        )
+    } else {
+        (None, None, None, None, None)
+    };
+
     let endpoints = vec![
         LaneEndpoint {
             name: Text::new(VAL_LANE),
             kind: UplinkKind::Value,
             transient: false,
             io: byte_channel(BUFFER_SIZE),
-            reporter: None,
+            reporter: val_rep,
         },
         LaneEndpoint {
             name: Text::new(SUPPLY_LANE),
             kind: UplinkKind::Supply,
             transient: true,
             io: byte_channel(BUFFER_SIZE),
-            reporter: None,
+            reporter: sup_rep,
         },
         LaneEndpoint {
             name: Text::new(MAP_LANE),
             kind: UplinkKind::Map,
             transient: false,
             io: byte_channel(BUFFER_SIZE),
-            reporter: None,
+            reporter: map_rep,
         },
     ];
 
@@ -222,7 +263,7 @@ where
         messages_rx,
         vote1,
         stop_rx,
-        None,
+        agg_rep,
         store,
     );
 
@@ -232,6 +273,7 @@ where
         vote2,
         vote_rx,
         instr_tx: Instructions::new(instr_tx),
+        reporters: reporting,
     };
 
     let test_task = test_case(context);
@@ -252,6 +294,7 @@ async fn clean_shutdown_no_remotes() {
             vote2: _vote2,
             vote_rx: _vote_rx,
             instr_tx: _instr_tx,
+            ..
         } = context;
 
         stop_sender.trigger();
@@ -325,6 +368,7 @@ async fn attach_remote_no_link() {
             vote2: _vote2,
             vote_rx: _vote_rx,
             instr_tx: _instr_tx,
+            ..
         } = context;
 
         let reader = attach_remote_and_wait(RID1.into(), &messages_tx).await;
@@ -344,6 +388,7 @@ async fn attach_and_link_remote() {
             vote2: _vote2,
             vote_rx: _vote_rx,
             instr_tx: _instr_tx,
+            ..
         } = context;
 
         let mut reader = attach_remote(RID1.into(), &messages_tx).await;
@@ -365,6 +410,7 @@ async fn receive_value_message_when_linked_remote() {
             vote2: _vote2,
             vote_rx: _vote_rx,
             instr_tx,
+            ..
         } = context;
 
         let mut reader = attach_remote(RID1.into(), &messages_tx).await;
@@ -389,6 +435,7 @@ async fn receive_supply_message_when_linked_remote() {
             vote2: _vote2,
             vote_rx: _vote_rx,
             instr_tx,
+            ..
         } = context;
 
         let mut reader = attach_remote(RID1.into(), &messages_tx).await;
@@ -413,6 +460,7 @@ async fn receive_value_messages_when_linked_remote() {
             vote2: _vote2,
             vote_rx: _vote_rx,
             instr_tx,
+            ..
         } = context;
 
         let mut reader = attach_remote(RID1.into(), &messages_tx).await;
@@ -439,6 +487,7 @@ async fn receive_supply_messages_when_linked_remote() {
             vote2: _vote2,
             vote_rx: _vote_rx,
             instr_tx,
+            ..
         } = context;
 
         let mut reader = attach_remote(RID1.into(), &messages_tx).await;
@@ -465,6 +514,7 @@ async fn explicitly_unlink_remote() {
             vote2: _vote2,
             vote_rx: _vote_rx,
             instr_tx: _instr_tx,
+            ..
         } = context;
 
         let mut reader = attach_remote(RID1.into(), &messages_tx).await;
@@ -491,6 +541,7 @@ async fn broadcast_value_message_when_linked_multiple_remotes() {
             vote2: _vote2,
             vote_rx: _vote_rx,
             instr_tx,
+            ..
         } = context;
 
         let mut reader1 = attach_remote(RID1.into(), &messages_tx).await;
@@ -529,6 +580,7 @@ async fn broadcast_supply_message_when_linked_multiple_remotes() {
             vote2: _vote2,
             vote_rx: _vote_rx,
             instr_tx,
+            ..
         } = context;
 
         let mut reader1 = attach_remote(RID1.into(), &messages_tx).await;
@@ -567,6 +619,7 @@ async fn value_synced_message_are_targetted() {
             vote2: _vote2,
             vote_rx: _vote_rx,
             instr_tx,
+            ..
         } = context;
 
         let mut reader1 = attach_remote(RID1.into(), &messages_tx).await;
@@ -601,6 +654,7 @@ async fn supply_synced_message_are_targetted() {
             vote2: _vote2,
             vote_rx: _vote_rx,
             instr_tx,
+            ..
         } = context;
 
         let mut reader1 = attach_remote(RID1.into(), &messages_tx).await;
@@ -635,6 +689,7 @@ async fn broadcast_map_message_when_linked_multiple_remotes() {
             vote2: _vote2,
             vote_rx: _vote_rx,
             instr_tx,
+            ..
         } = context;
 
         let mut reader1 = attach_remote(RID1.into(), &messages_tx).await;
@@ -673,6 +728,7 @@ async fn receive_map_messages_when_linked() {
             vote2: _vote2,
             vote_rx: _vote_rx,
             instr_tx,
+            ..
         } = context;
 
         let mut reader = attach_remote(RID1.into(), &messages_tx).await;
@@ -700,6 +756,7 @@ async fn map_synced_message_are_targetted() {
             vote2: _vote2,
             vote_rx: _vote_rx,
             instr_tx,
+            ..
         } = context;
 
         let mut reader1 = attach_remote(RID1.into(), &messages_tx).await;
@@ -736,6 +793,7 @@ async fn write_task_stops_if_no_remotes() {
             vote2: _vote2,
             vote_rx: _vote_rx,
             instr_tx: _instr_tx,
+            ..
         } = context;
 
         stop_sender
@@ -752,6 +810,7 @@ async fn write_task_votes_to_stop() {
             vote2,
             vote_rx,
             instr_tx: _instr_tx,
+            ..
         } = context;
 
         let mut reader = attach_remote(RID1.into(), &messages_tx).await;
@@ -783,6 +842,7 @@ async fn write_task_rescinds_vote_to_stop() {
             vote2,
             vote_rx: _vote_rx,
             instr_tx,
+            ..
         } = context;
 
         let mut reader = attach_remote(RID1.into(), &messages_tx).await;
@@ -815,6 +875,7 @@ async fn backpressure_relief_on_value_lanes() {
             vote2: _vote2,
             vote_rx: _vote_rx,
             instr_tx,
+            ..
         } = context;
 
         let mut reader = attach_remote(RID1.into(), &messages_tx).await;
@@ -861,6 +922,7 @@ async fn backpressure_relief_on_map_lanes() {
             vote2: _vote2,
             vote_rx: _vote_rx,
             instr_tx,
+            ..
         } = context;
 
         let mut reader = attach_remote(RID1.into(), &messages_tx).await;
@@ -911,6 +973,7 @@ async fn backpressure_relief_on_map_lanes_with_synced() {
             vote2: _vote2,
             vote_rx: _vote_rx,
             instr_tx,
+            ..
         } = context;
 
         let mut reader = attach_remote(RID1.into(), &messages_tx).await;
@@ -974,13 +1037,14 @@ async fn value_lane_events_persisted() {
     let store = FakeStore::new(vec![VAL_LANE, MAP_LANE]);
     let persistence = StorePersistence(store.clone());
 
-    run_test_case_with_store(DEFAULT_TIMEOUT, persistence, |context| async move {
+    run_test_case_with_store(DEFAULT_TIMEOUT, false, persistence, |context| async move {
         let TestContext {
             stop_sender,
             messages_tx,
             vote2: _vote2,
             vote_rx: _vote_rx,
             instr_tx,
+            ..
         } = context;
 
         let mut reader = attach_remote(RID1.into(), &messages_tx).await;
@@ -1006,13 +1070,14 @@ async fn map_lane_events_persisted() {
     let store = FakeStore::new(vec![VAL_LANE, MAP_LANE]);
     let persistence = StorePersistence(store.clone());
 
-    run_test_case_with_store(DEFAULT_TIMEOUT, persistence, |context| async move {
+    run_test_case_with_store(DEFAULT_TIMEOUT, false, persistence, |context| async move {
         let TestContext {
             stop_sender,
             messages_tx,
             vote2: _vote2,
             vote_rx: _vote_rx,
             instr_tx,
+            ..
         } = context;
 
         let mut reader = attach_remote(RID1.into(), &messages_tx).await;
@@ -1052,6 +1117,7 @@ async fn supply_uplink_does_not_drop_messages() {
             vote2: _vote2,
             vote_rx: _vote_rx,
             instr_tx,
+            ..
         } = context;
 
         let mut reader = attach_remote(RID1.into(), &messages_tx).await;
@@ -1068,6 +1134,175 @@ async fn supply_uplink_does_not_drop_messages() {
 
         stop_sender.trigger();
         reader.expect_clean_shutdown(vec![SUPPLY_LANE], None).await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn count_links() {
+    run_test_case_with_reporting(DEFAULT_TIMEOUT, |context| async move {
+        let TestContext {
+            stop_sender,
+            messages_tx,
+            vote2: _vote2,
+            vote_rx: _vote_rx,
+            instr_tx: _instr_tx,
+            reporters,
+        } = context;
+
+        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
+        link_remote(RID1.into(), VAL_LANE, &messages_tx).await;
+
+        reader.expect_linked(VAL_LANE).await;
+
+        let Snapshots { aggregate, lanes } = reporters
+            .as_ref()
+            .and_then(ReportReaders::snapshot)
+            .expect("Reporting not initialized or dropped.");
+
+        assert_eq!(
+            aggregate,
+            UplinkSnapshot {
+                link_count: 1,
+                event_count: 0,
+                command_count: 0
+            }
+        );
+        assert_eq!(
+            lanes[VAL_LANE],
+            UplinkSnapshot {
+                link_count: 1,
+                event_count: 0,
+                command_count: 0
+            }
+        );
+        assert_eq!(
+            lanes[SUPPLY_LANE],
+            UplinkSnapshot {
+                link_count: 0,
+                event_count: 0,
+                command_count: 0
+            }
+        );
+        assert_eq!(
+            lanes[MAP_LANE],
+            UplinkSnapshot {
+                link_count: 0,
+                event_count: 0,
+                command_count: 0
+            }
+        );
+
+        unlink_remote(RID1.into(), VAL_LANE, &messages_tx).await;
+
+        reader.expect_unlinked(VAL_LANE).await;
+
+        let Snapshots { aggregate, lanes } = reporters
+            .as_ref()
+            .and_then(ReportReaders::snapshot)
+            .expect("Reporting not initialized or dropped.");
+
+        assert_eq!(
+            aggregate,
+            UplinkSnapshot {
+                link_count: 0,
+                event_count: 0,
+                command_count: 0
+            }
+        );
+        assert_eq!(
+            lanes[VAL_LANE],
+            UplinkSnapshot {
+                link_count: 0,
+                event_count: 0,
+                command_count: 0
+            }
+        );
+        assert_eq!(
+            lanes[SUPPLY_LANE],
+            UplinkSnapshot {
+                link_count: 0,
+                event_count: 0,
+                command_count: 0
+            }
+        );
+        assert_eq!(
+            lanes[MAP_LANE],
+            UplinkSnapshot {
+                link_count: 0,
+                event_count: 0,
+                command_count: 0
+            }
+        );
+
+        stop_sender.trigger();
+        reader.expect_clean_shutdown(vec![], None).await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn count_events() {
+    run_test_case_with_reporting(DEFAULT_TIMEOUT, |context| async move {
+        let TestContext {
+            stop_sender,
+            messages_tx,
+            vote2: _vote2,
+            vote_rx: _vote_rx,
+            instr_tx,
+            reporters,
+        } = context;
+
+        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
+        link_remote(RID1.into(), VAL_LANE, &messages_tx).await;
+        reader.expect_linked(VAL_LANE).await;
+
+        instr_tx.value_event(VAL_LANE, 747);
+        reader.expect_value_like_event(VAL_LANE, 747).await;
+
+        instr_tx.value_event(VAL_LANE, 3748);
+        reader.expect_value_like_event(VAL_LANE, 3748).await;
+
+        let Snapshots { aggregate, lanes } = reporters
+            .as_ref()
+            .and_then(ReportReaders::snapshot)
+            .expect("Reporting not initialized or dropped.");
+
+        assert_eq!(
+            aggregate,
+            UplinkSnapshot {
+                link_count: 1,
+                event_count: 2,
+                command_count: 0
+            }
+        );
+        assert_eq!(
+            lanes[VAL_LANE],
+            UplinkSnapshot {
+                link_count: 1,
+                event_count: 2,
+                command_count: 0
+            }
+        );
+        assert_eq!(
+            lanes[SUPPLY_LANE],
+            UplinkSnapshot {
+                link_count: 0,
+                event_count: 0,
+                command_count: 0
+            }
+        );
+        assert_eq!(
+            lanes[MAP_LANE],
+            UplinkSnapshot {
+                link_count: 0,
+                event_count: 0,
+                command_count: 0
+            }
+        );
+
+        stop_sender.trigger();
+        reader.expect_clean_shutdown(vec![VAL_LANE], None).await;
     })
     .await;
 }
