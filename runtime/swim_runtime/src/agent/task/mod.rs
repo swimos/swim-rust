@@ -879,10 +879,10 @@ async fn read_task(
     let mut needs_flush = None;
     let mut voted = false;
 
-    for LaneEndpoint { name, kind, io, .. } in initial_endpoints.into_iter() {
+    for LaneEndpoint { name, kind, io, reporter, .. } in initial_endpoints.into_iter() {
         let i = next_id();
         name_mapping.insert(name, i);
-        lanes.insert(i, LaneSender::new(io, kind, None));
+        lanes.insert(i, LaneSender::new(io, kind, reporter));
     }
 
     loop {
