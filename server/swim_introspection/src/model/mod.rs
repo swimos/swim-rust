@@ -28,6 +28,8 @@ use swim_runtime::agent::reporting::UplinkReportReader;
 #[cfg(test)]
 mod tests;
 
+/// View of a lane for the introspection meta-agents. Reports the kind of the lane and
+/// allows snapshots of the uplink statistics to be generated.
 #[derive(Debug, Clone)]
 pub struct LaneView {
     pub kind: LaneKind,
@@ -43,13 +45,17 @@ impl LaneView {
     }
 }
 
+/// Snapshot of the state of an agent for the node meta-agent.
 #[derive(Debug)]
 pub struct AgentSnapshot {
+    /// Views for each lane of the agent.
     pub lanes: HashMap<Text, LaneView>,
+    /// Reader to obtain aggregate uplink statistics for the node.
     pub aggregate_reporter: UplinkReportReader,
 }
 
 impl AgentSnapshot {
+    /// Iterate over all lanes in an agent snapshot.
     pub fn lane_info(&self) -> impl Iterator<Item = LaneInfo> + '_ {
         self.lanes
             .iter()
@@ -64,6 +70,7 @@ struct Inner {
     epoch: AtomicU64,
 }
 
+/// Used to keep track of the lanes associated with an agent.
 #[derive(Debug)]
 pub struct AgentIntrospectionUpdater {
     inner: Arc<Inner>,
@@ -81,6 +88,12 @@ impl AgentIntrospectionUpdater {
 }
 
 impl AgentIntrospectionUpdater {
+    /// Add a new lane for the agent.
+    ///
+    /// #Arguments
+    /// * `name` - The name of the lane.
+    /// * `kind` - The kind of the lane.
+    /// * `report_reader` - Reader for uplink statistics snapshots for the lane.
     pub fn add_lane(&self, name: Text, kind: LaneKind, report_reader: UplinkReportReader) {
         let Inner { lanes, epoch, .. } = &*self.inner;
         let mut guard = lanes.lock();
@@ -94,6 +107,7 @@ impl AgentIntrospectionUpdater {
         epoch.fetch_add(1, Ordering::Relaxed);
     }
 
+    /// Create an introspection handle for a meta-agent.
     pub fn make_handle(&self) -> AgentIntrospectionHandle {
         AgentIntrospectionHandle {
             current_epoch: 0,
@@ -102,6 +116,7 @@ impl AgentIntrospectionUpdater {
     }
 }
 
+/// A handle used by a meta-agent to observe the state of its associated agent.
 #[derive(Debug, Clone)]
 pub struct AgentIntrospectionHandle {
     current_epoch: u64,
@@ -109,6 +124,8 @@ pub struct AgentIntrospectionHandle {
 }
 
 impl AgentIntrospectionHandle {
+    /// Attempt to create a new snapshot of the state of the agent. If the agent has stopped
+    /// this will return nothing.
     pub fn new_snapshot(&mut self) -> Option<AgentSnapshot> {
         let AgentIntrospectionHandle {
             inner,
@@ -132,6 +149,8 @@ impl AgentIntrospectionHandle {
         }
     }
 
+    /// Determine if the lanes of the agent have changed (tracked by the epoch counter). If this is the
+    /// case, a new snapshot is required.
     pub fn changed(&self) -> bool {
         let AgentIntrospectionHandle {
             inner,
@@ -145,11 +164,13 @@ impl AgentIntrospectionHandle {
         !aggregate_reporter.is_active() || epoch.load(Ordering::Relaxed) != *current_epoch
     }
 
+    /// Create a reader for the aggreate uplink statistics.
     pub fn aggregate_reader(&self) -> UplinkReportReader {
         self.inner.aggregate_reporter.clone()
     }
 }
 
+// Clear any lanes that have stopped running when producing a new snapshot.
 fn clear_closed(lanes: &mut HashMap<Text, LaneView>) -> HashMap<Text, LaneView> {
     lanes.retain(|_, v| v.report_reader.is_active());
     lanes.clone()

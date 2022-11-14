@@ -16,10 +16,13 @@ use swim_model::Text;
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 
+/// Error type for the intropsection resolver to inidcate that the introspection sytem has stopped
+/// when attempting to register an agent.
 #[derive(Debug, Error, PartialEq, Eq, Clone, Copy)]
 #[error("The plane instrospection task has stopped.")]
 pub struct IntrospectionStopped;
 
+/// Error type for the introspection resolver for when a node cannot be introspeced.
 #[derive(Debug, Error, PartialEq, Eq, Clone)]
 pub enum NodeIntrospectionError {
     #[error("No running agent at {node_uri}.")]
@@ -40,6 +43,7 @@ impl From<oneshot::error::RecvError> for NodeIntrospectionError {
     }
 }
 
+/// Error type for the introspection resolver for when a lane cannot be introspeced.
 #[derive(Debug, Error, PartialEq, Eq, Clone)]
 pub enum LaneIntrospectionError {
     #[error("No running agent at {node_uri}.")]

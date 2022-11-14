@@ -21,4 +21,4 @@ mod task;
 
 pub use config::IntrospectionConfig;
 pub use meta_agent::{lane::LaneMetaAgent, node::NodeMetaAgent};
-pub use task::{introspection_task, IntrospectionResolver};
+pub use task::{init_introspection, IntrospectionResolver};

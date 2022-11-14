@@ -14,16 +14,20 @@
 
 use swim_utilities::routing::route_pattern::RoutePattern;
 
+/// The name of the route paramter containing the encoded node URI.
 pub const NODE_PARAM: &str = "node_uri";
+/// The name of the route parameter containing the encoded lane name.
 pub const LANE_PARAM: &str = "lane_name";
 
 const NODE_PATTERN: &str = "swim:meta:node/:node_uri";
 const LANE_PATTERN: &str = "swim:meta:node/:node_uri/lane/:lane_name";
 
+/// Create a route pattern for the node meta-agents.
 pub fn node_pattern() -> RoutePattern {
     RoutePattern::parse_str(NODE_PATTERN).expect("Node pattern should be valid.")
 }
 
+/// Create a route pattern for the lane meta-agents.
 pub fn lane_pattern() -> RoutePattern {
     RoutePattern::parse_str(LANE_PATTERN).expect("Lane pattern should be valid.")
 }

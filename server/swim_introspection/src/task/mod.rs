@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, num::NonZeroUsize};
 
-use futures::stream::select;
 use futures::StreamExt;
+use futures::{stream::select, Future};
 use swim_api::meta::lane::LaneKind;
 use swim_model::Text;
 use swim_runtime::agent::{
@@ -25,6 +25,7 @@ use swim_runtime::agent::{
 use swim_utilities::{routing::route_uri::RouteUri, trigger};
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::{ReceiverStream, UnboundedReceiverStream};
+use tracing::info;
 use uuid::Uuid;
 
 use crate::{
@@ -32,25 +33,31 @@ use crate::{
     model::{AgentIntrospectionHandle, AgentIntrospectionUpdater, LaneView},
 };
 
+/// Requests that can be made by to the introspection task.
 pub enum IntrospectionMessage {
+    // Register a new agent instance.
     AddAgent {
         agent_id: Uuid,
         node_uri: Text,
         aggregate_reader: UplinkReportReader,
     },
+    // Register a lane for an already existing agent instance.
     AddLane {
         agent_id: Uuid,
         lane_name: Text,
         kind: LaneKind,
         reader: UplinkReportReader,
     },
+    // Indicate that an agent has stopped and can be removed.
     AgentClosed {
         agent_id: Uuid,
     },
+    // Try get an introspection handle for a running agent instance.
     IntrospectAgent {
         node_uri: Text,
         responder: oneshot::Sender<Option<AgentIntrospectionHandle>>,
     },
+    // Try to get an introspection view for a lane on a running agent instance.
     IntrospectLane {
         node_uri: Text,
         lane_name: Text,
@@ -73,6 +80,29 @@ impl From<UplinkReporterRegistration> for IntrospectionMessage {
             reader,
         }
     }
+}
+
+/// Create an additional task to run within a Swim server that maintains a registry of [`AgentIntrospectionUpdater`]s
+/// for all running agents. When a new introspection meta-agent starts it will make a request to this registry
+/// to obtain an introspecton handle for an agent or lane.
+///
+/// Returns the task and a resolver used to interact with it externally.
+///
+/// #Arguments
+/// * `stopping` - Signal that the server is stopping.
+/// * `channel_size` - Size of the channel use to register new lanes.
+pub fn init_introspection(
+    stopping: trigger::Receiver,
+    channel_size: NonZeroUsize,
+) -> (
+    IntrospectionResolver,
+    impl Future<Output = ()> + Send + 'static,
+) {
+    let (msg_tx, msg_rx) = mpsc::unbounded_channel();
+    let (reg_tx, reg_rx) = mpsc::channel(channel_size.get());
+    let task = introspection_task(stopping, msg_rx, reg_rx);
+    let resolver = IntrospectionResolver::new(msg_tx, reg_tx);
+    (resolver, task)
 }
 
 pub async fn introspection_task(
@@ -122,7 +152,7 @@ pub async fn introspection_task(
                     .get(&node_uri)
                     .map(AgentIntrospectionUpdater::make_handle);
                 if responder.send(handle).is_err() {
-                    //TOOD Log error.
+                    info!(node_uri = %node_uri, "A request for node introspection was dropped before it was fulfilled.");
                 }
             }
             IntrospectionMessage::IntrospectLane {
@@ -130,6 +160,8 @@ pub async fn introspection_task(
                 lane_name,
                 responder,
             } => {
+                let node_uri_cpy = node_uri.clone();
+                let lane_name_cpy = lane_name.clone();
                 let result = if let Some(mut handle) = agents
                     .get(&node_uri)
                     .map(AgentIntrospectionUpdater::make_handle)
@@ -150,13 +182,14 @@ pub async fn introspection_task(
                     Err(LaneIntrospectionError::NoSuchAgent { node_uri })
                 };
                 if responder.send(result).is_err() {
-                    //TOOD Log error.
+                    info!(node_uri = %node_uri_cpy, lane_name = %lane_name_cpy, "A request for lane introspection was dropped before it was fulfilled.");
                 }
             }
         }
     }
 }
 
+/// Provides convenience methods for interaction with the introspection task.
 #[derive(Debug, Clone)]
 pub struct IntrospectionResolver {
     queries: mpsc::UnboundedSender<IntrospectionMessage>,
@@ -164,7 +197,7 @@ pub struct IntrospectionResolver {
 }
 
 impl IntrospectionResolver {
-    pub fn new(
+    pub(crate) fn new(
         queries: mpsc::UnboundedSender<IntrospectionMessage>,
         registrations: mpsc::Sender<UplinkReporterRegistration>,
     ) -> Self {
@@ -174,6 +207,11 @@ impl IntrospectionResolver {
         }
     }
 
+    /// Register a new agent instance for introspection.
+    ///
+    /// #Arguments
+    /// * `agent_id` - The unique ID of the agent.
+    /// * `route_uri` - The node URI of the agent.
     pub fn register_agent(
         &self,
         agent_id: Uuid,
@@ -198,6 +236,26 @@ impl IntrospectionResolver {
         }
     }
 
+    /// Remove a stopped agent from the intorspectio registry.
+    ///
+    /// #Arguments
+    /// * `agent_id` - The unique ID of the agent.
+    pub fn close_agent(&self, agent_id: Uuid) -> Result<(), IntrospectionStopped> {
+        let IntrospectionResolver { queries, .. } = self;
+        if queries
+            .send(IntrospectionMessage::AgentClosed { agent_id })
+            .is_err()
+        {
+            Err(IntrospectionStopped)
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Attempt to resolve an introspection handle for a running agent instance.
+    ///
+    /// #Arguments
+    /// * `node_uri` - The node URI of the agent.
     pub async fn resolve_agent(
         &self,
         node_uri: Text,
@@ -211,6 +269,12 @@ impl IntrospectionResolver {
             .ok_or(NodeIntrospectionError::NoSuchAgent { node_uri })
     }
 
+    /// Attempt to resolve an introspection view of a lane of a running agent instance.
+    ///
+    /// #Arguments
+    ///
+    /// * `node_uri` - The node URI of the host agent.
+    /// * `lane_name` - The name of the lane.
     pub async fn resolve_lane(
         &self,
         node_uri: Text,

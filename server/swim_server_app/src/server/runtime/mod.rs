@@ -27,8 +27,9 @@ use std::time::Duration;
 use swim_api::agent::{Agent, BoxAgent};
 use swim_api::error::{AgentRuntimeError, DownlinkFailureReason, DownlinkRuntimeError};
 use swim_api::store::PlanePersistence;
+use swim_introspection::error::IntrospectionStopped;
 use swim_introspection::route::{lane_pattern, node_pattern};
-use swim_introspection::{introspection_task, IntrospectionResolver};
+use swim_introspection::{init_introspection, IntrospectionResolver};
 use swim_introspection::{IntrospectionConfig, LaneMetaAgent, NodeMetaAgent};
 use swim_model::address::RelativeAddress;
 use swim_model::Text;
@@ -430,7 +431,9 @@ where
                     }
                 }
                 ServerEvent::AgentStopped(route, result) => {
-                    agents.agent_channels.remove(&route);
+                    if agents.remove_agent(route.as_str()).is_err() {
+                        warn!("Attempted to deregister an agent from metadata reporting but the reporting system had stopped.");
+                    }
                     match result {
                         Err(error) => {
                             error!(error = %error, route = %route, "Agent task panicked.");
@@ -751,6 +754,21 @@ impl Agents {
             }
         }
     }
+
+    fn remove_agent(&mut self, route: &str) -> Result<(), IntrospectionStopped> {
+        let Agents {
+            agent_channels,
+            introspection_resolver,
+            ..
+        } = self;
+
+        if let Some((id, _)) = agent_channels.remove(route) {
+            if let Some(resolver) = introspection_resolver {
+                resolver.close_agent(id)?;
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Default)]
@@ -976,10 +994,7 @@ fn start_introspection(
     stopping: trigger::Receiver,
     routes: &mut Routes,
 ) -> IntrospectionResolver {
-    let (msg_tx, msg_rx) = mpsc::unbounded_channel();
-    let (reg_tx, reg_rx) = mpsc::channel(1);
-    let task = introspection_task(stopping, msg_rx, reg_rx);
-    let resolver = IntrospectionResolver::new(msg_tx, reg_tx);
+    let (resolver, task) = init_introspection(stopping, config.registration_channel_size);
     let node_meta = NodeMetaAgent::new(config, resolver.clone());
     let lane_meta = LaneMetaAgent::new(config, resolver.clone());
     routes.append(node_pattern(), node_meta);

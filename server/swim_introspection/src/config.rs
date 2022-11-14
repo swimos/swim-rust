@@ -12,14 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::time::Duration;
+use std::{num::NonZeroUsize, time::Duration};
+
+use swim_utilities::algebra::non_zero_usize;
 
 const DEFAULT_PULSE_INTERVAL: Duration = Duration::from_secs(5);
+const DEFAULT_REG_CHANNEL_SIZE: NonZeroUsize = non_zero_usize!(8);
 
+/// Configuration for the introspection meta agents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IntrospectionConfig {
+    /// Frequencey at which the node meta agents will generate an uplink pulse.
     pub node_pulse_interval: Duration,
+    /// Frequencey at which the lane meta agents will generate an uplink pulse.
     pub lane_pulse_interval: Duration,
+    /// Size of the buffer for registering new lanes with the introspection system.
+    pub registration_channel_size: NonZeroUsize,
 }
 
 impl Default for IntrospectionConfig {
@@ -27,6 +35,7 @@ impl Default for IntrospectionConfig {
         Self {
             node_pulse_interval: DEFAULT_PULSE_INTERVAL,
             lane_pulse_interval: DEFAULT_PULSE_INTERVAL,
+            registration_channel_size: DEFAULT_REG_CHANNEL_SIZE,
         }
     }
 }
