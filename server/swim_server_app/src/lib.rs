@@ -25,7 +25,7 @@ pub use self::{
 };
 
 pub mod introspection {
-    pub use swim_introspection::config::IntrospectionConfig;
+    pub use swim_introspection::IntrospectionConfig;
 }
 
 #[cfg(feature = "persistence")]

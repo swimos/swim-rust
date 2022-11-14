@@ -12,9 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod config;
+mod config;
 pub mod error;
-pub mod meta_agent;
-pub mod model;
+mod meta_agent;
+mod model;
 pub mod route;
-pub mod task;
+mod task;
+
+pub use config::IntrospectionConfig;
+pub use meta_agent::{lane::LaneMetaAgent, node::NodeMetaAgent};
+pub use task::{introspection_task, IntrospectionResolver};
