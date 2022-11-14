@@ -54,6 +54,11 @@ mod tests;
 
 const LANES_LANE: &str = "lanes";
 
+/// A meta agent providing information on the lanes of an agent and aggregate statistics on
+/// the uplinks for all of its lanes. The meta agent extracts the target node URI from its own
+/// node URI and then attempts to resolve the introspection handl during it's initialization
+/// phase. If the node cannot be resolved, the meta-agent will fail to start with an appropriate
+/// error.
 pub struct NodeMetaAgent {
     config: IntrospectionConfig,
     resolver: IntrospectionResolver,
@@ -154,6 +159,13 @@ async fn run_task(
     }
 }
 
+/// A lane that will return information on all of the lanes of an agent, as a map, when a Sync
+/// request is sent to the lane.
+///
+/// #Arguments
+/// * `shutdown_rx` - Shutdown signal for when the agent is stopping.
+/// * `handle` - Introspection handle used to refresh the view of the lanes.
+/// * lanes_io` - The input and output channels for the lane.
 async fn run_lanes_descriptor_lane(
     shutdown_rx: trigger::Receiver,
     mut handle: AgentIntrospectionHandle,

@@ -43,19 +43,14 @@ const PULSE_LANE: &str = "pulse";
 
 type Io = (ByteWriter, ByteReader);
 
-fn sleep_stream(pulse_interval: Duration, sleep: Pin<&mut Sleep>) -> impl Stream<Item = ()> + '_ {
-    unfold(sleep, move |mut sleep| {
-        let new_timeout = Instant::now()
-            .checked_add(pulse_interval)
-            .expect("Timer overflow.");
-        sleep.as_mut().reset(new_timeout);
-        async move {
-            sleep.as_mut().await;
-            Some(((), sleep))
-        }
-    })
-}
-
+/// Run a lane that emits events on a fixed schedule, computed from an [`UplinkReportReader`].
+///
+/// #Arguments
+/// * `shutdown_rx` - Shutdown signal for when the agent is stopping.
+/// * `pulse_interval` - Interval on which to emit events.
+/// * `reporter_reader` - Reader to produce uplink statistics snapshots for the events.
+/// * `pulse_io` - The input and output channels for the lane.
+/// * `wrap` - Function used to wrap the snapshots as the appropriate type for the lane.
 async fn run_pulse_lane<PulseType, F>(
     shutdown_rx: trigger::Receiver,
     pulse_interval: Duration,
@@ -79,6 +74,19 @@ where
         move |_, pulse| wrap(pulse),
     )
     .await
+}
+
+fn sleep_stream(pulse_interval: Duration, sleep: Pin<&mut Sleep>) -> impl Stream<Item = ()> + '_ {
+    unfold(sleep, move |mut sleep| {
+        let new_timeout = Instant::now()
+            .checked_add(pulse_interval)
+            .expect("Timer overflow.");
+        sleep.as_mut().reset(new_timeout);
+        async move {
+            sleep.as_mut().await;
+            Some(((), sleep))
+        }
+    })
 }
 
 async fn run_pulse_lane_inner<PulseType, F, S>(

@@ -39,6 +39,10 @@ use super::{run_pulse_lane, PULSE_LANE};
 #[cfg(test)]
 mod tests;
 
+/// A meta agent providing statistics on the uplinks for a single lane. The meta agent extracts
+/// the target node URI and lane from its own node URI and then attempts to resolve the
+/// introspection view during it's initialization phase. If the lane cannot be resolved, the
+/// meta-agent will fail to start with an appropriate error.
 pub struct LaneMetaAgent {
     config: IntrospectionConfig,
     resolver: IntrospectionResolver,
