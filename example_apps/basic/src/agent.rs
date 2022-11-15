@@ -22,11 +22,15 @@ use swim::{
     model::Text,
 };
 
+use crate::downlink::make_downlink;
+
 #[derive(AgentLaneModel)]
 #[projections]
 pub struct ExampleAgent {
     length: ValueLane<i32>,
+    from_remote: ValueLane<i32>,
     update_value: CommandLane<Text>,
+    open_downlink: CommandLane<Text>,
 }
 
 #[derive(Clone)]
@@ -34,7 +38,6 @@ pub struct ExampleLifecycle;
 
 #[lifecycle(ExampleAgent)]
 impl ExampleLifecycle {
-    
     #[on_start]
     pub fn on_start(
         &self,
@@ -66,8 +69,19 @@ impl ExampleLifecycle {
         value: &Text,
     ) -> impl EventHandler<ExampleAgent> {
         let n = value.len() as i32;
-        context.effect(move || {
-            println!("Setting length to: {}", n);
-        }).followed_by(context.set_value(ExampleAgent::LENGTH, n))
+        context
+            .effect(move || {
+                println!("Setting length to: {}", n);
+            })
+            .followed_by(context.set_value(ExampleAgent::LENGTH, n))
+    }
+
+    #[on_command(open_downlink)]
+    pub fn on_open_downlink(
+        &self,
+        context: HandlerContext<ExampleAgent>,
+        value: &Text,
+    ) -> impl EventHandler<ExampleAgent> {
+        make_downlink(context, value.as_str()).discard()
     }
 }

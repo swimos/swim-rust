@@ -24,6 +24,7 @@ use tokio::select;
 use crate::agent::{ExampleAgent, ExampleLifecycle};
 
 mod agent;
+mod downlink;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
