@@ -17,7 +17,7 @@ use swim_form::Form;
 use swim_model::{address::Address, Text};
 
 use crate::{
-    agent_model::downlink::{hosted::ValueDownlinkHandle, OpenValueDownlink},
+    agent_model::downlink::{hosted::ValueDownlinkHandle, OpenValueDownlinkAction},
     config::ValueDownlinkConfig,
     downlink_lifecycle::{
         on_linked::{OnLinked, OnLinkedShared},
@@ -285,7 +285,7 @@ where
             config,
             inner,
         } = self;
-        OpenValueDownlink::new(address, inner, config)
+        OpenValueDownlinkAction::new(address, inner, config)
     }
 }
 
@@ -434,6 +434,6 @@ where
             config,
             inner,
         } = self;
-        OpenValueDownlink::new(address, inner, config)
+        OpenValueDownlinkAction::new(address, inner, config)
     }
 }
