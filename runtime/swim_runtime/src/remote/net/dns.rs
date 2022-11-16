@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::remote::table::SchemeHostPort;
+use crate::remote::SchemeHostPort;
 use crate::remote::SchemeSocketAddr;
 use futures::future::BoxFuture;
 use futures::Future;

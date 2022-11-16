@@ -46,7 +46,6 @@ use crate::{
         },
         DisconnectionReason,
     },
-    routing::RoutingAddr,
 };
 
 use super::{
@@ -159,7 +158,7 @@ struct TestContext {
     reporters: Option<ReportReaders>,
 }
 
-const AGENT_ID: Uuid = *RoutingAddr::plane(1).uuid();
+const AGENT_ID: Uuid = Uuid::from_u128(1);
 const NODE: &str = "/node";
 
 use std::fmt::Debug;
@@ -356,8 +355,8 @@ async fn unlink_remote(remote_id: Uuid, lane: &str, messages_tx: &mpsc::Sender<W
     assert!(messages_tx.send(WriteTaskMessage::Coord(msg)).await.is_ok());
 }
 
-const RID1: RoutingAddr = RoutingAddr::remote(1);
-const RID2: RoutingAddr = RoutingAddr::remote(2);
+const RID1: Uuid = Uuid::from_u128(1);
+const RID2: Uuid = Uuid::from_u128(2);
 
 #[tokio::test]
 async fn attach_remote_no_link() {

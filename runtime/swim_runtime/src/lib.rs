@@ -13,16 +13,9 @@
 // limitations under the License.
 
 pub mod agent;
-pub mod backpressure;
-/*
-*TODO A temporary compatibility layer to allow the router to be changed for #397 without changing
-* how agents run. Will enventually be removed.
- */
-pub mod compat;
 pub mod configuration;
 pub mod downlink;
 pub mod error;
 pub mod pressure;
 pub mod remote;
-pub mod routing;
 pub mod ws;

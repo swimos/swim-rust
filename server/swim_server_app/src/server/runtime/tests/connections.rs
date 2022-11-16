@@ -23,10 +23,8 @@ use futures::{future::BoxFuture, stream::Fuse, FutureExt, Stream, StreamExt};
 use ratchet::{NegotiatedExtension, NoExt, Role, WebSocket, WebSocketConfig};
 use swim_runtime::error::ConnectionError;
 use swim_runtime::remote::net::dns::{DnsFut, DnsResolver};
-use swim_runtime::remote::Scheme;
-use swim_runtime::remote::{
-    table::SchemeHostPort, ExternalConnections, Listener, SchemeSocketAddr,
-};
+use swim_runtime::remote::{ExternalConnections, Listener, SchemeSocketAddr};
+use swim_runtime::remote::{Scheme, SchemeHostPort};
 use swim_runtime::ws::{WsConnections, WsOpenFuture};
 use tokio::{
     io::{self, DuplexStream},

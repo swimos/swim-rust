@@ -23,11 +23,9 @@ use swim_utilities::{
 use tokio_util::codec::FramedRead;
 use uuid::Uuid;
 
-use crate::routing::RoutingAddr;
-
 use super::RemoteSender;
 
-const ID: Uuid = *RoutingAddr::plane(1).uuid();
+const ID: Uuid = Uuid::from_u128(1);
 const REMOTE_ID: Uuid = Uuid::from_u128(8573923);
 const NODE: &str = "node_uri";
 

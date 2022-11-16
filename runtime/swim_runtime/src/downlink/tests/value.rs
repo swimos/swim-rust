@@ -17,7 +17,6 @@ use std::future::Future;
 use std::time::Duration;
 
 use crate::downlink::DownlinkRuntimeConfig;
-use crate::routing::RoutingAddr;
 
 use super::super::{AttachAction, DownlinkOptions, ValueDownlinkRuntime};
 use super::*;
@@ -202,7 +201,7 @@ where
         attach_rx,
         (out_tx, in_rx),
         stop_rx,
-        *RoutingAddr::client(1).uuid(),
+        Uuid::from_u128(1),
         path,
         config,
     )
@@ -876,7 +875,7 @@ where
         attach_rx,
         (out_tx, in_rx),
         stop_rx,
-        *RoutingAddr::client(1).uuid(),
+        Uuid::from_u128(1),
         path,
         config,
     )

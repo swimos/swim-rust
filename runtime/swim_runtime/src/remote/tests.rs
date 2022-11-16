@@ -13,13 +13,8 @@
 // limitations under the License.
 
 use crate::error::{ConnectionError, IoError};
-use crate::remote::pending::PendingRequest;
-use crate::remote::state::{DeferredResult, Event, RemoteTasksState};
-use crate::remote::table::{RoutingTable, SchemeHostPort};
-use crate::remote::task::AttachClientRouted;
 use crate::remote::{
-    ConnectionDropped, RawOutRoute, RemoteRoutingRequest, Scheme, SchemeSocketAddr,
-    SchemeSocketAddrIt, Unresolvable,
+    ConnectionDropped,Scheme, SchemeSocketAddr, Unresolvable,
 };
 use crate::routing::{RoutingAddr, TaggedEnvelope};
 use futures::FutureExt;

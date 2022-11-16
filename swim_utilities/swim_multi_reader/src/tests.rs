@@ -14,6 +14,7 @@
 
 use crate::MultiReader;
 use byte_channel::byte_channel;
+use bytes::Bytes;
 use futures_util::future::join;
 use futures_util::Stream;
 use futures_util::{SinkExt, StreamExt};
@@ -22,14 +23,13 @@ use std::pin::Pin;
 use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 use swim_form::structural::read::recognizer::RecognizerReadable;
-use swim_model::path::RelativePath;
-use swim_model::Value;
-use swim_runtime::compat::{
-    AgentMessageDecoder, Operation, RawRequestMessageEncoder, RequestMessage,
+use swim_messages::protocol::{
+    AgentMessageDecoder, Operation, Path, RawRequestMessageEncoder, RequestMessage,
 };
-use swim_runtime::routing::RoutingAddr;
+use swim_model::{Text, Value};
 use tokio::time::timeout;
 use tokio_util::codec::{FramedRead, FramedWrite};
+use uuid::Uuid;
 
 #[tokio::test]
 async fn test_single_message_single_stream() {
@@ -45,11 +45,15 @@ async fn test_single_message_single_stream() {
     let write = async move {
         let mut first_framed = FramedWrite::new(first_writer, RawRequestMessageEncoder);
 
+        let envelope: Operation<Bytes> = Operation::Link;
         first_framed
             .send(RequestMessage {
-                origin: RoutingAddr::remote(1),
-                path: RelativePath::new("node_1", "lane_1"),
-                envelope: Operation::Link,
+                origin: Uuid::from_u128(1),
+                path: Path::new(
+                    Text::new("node_1").to_string(),
+                    Text::new("lane_1").to_string(),
+                ),
+                envelope,
             })
             .await
             .unwrap();
@@ -62,8 +66,8 @@ async fn test_single_message_single_stream() {
         assert_eq!(
             message,
             RequestMessage {
-                origin: RoutingAddr::remote(1),
-                path: RelativePath::new("node_1", "lane_1"),
+                origin: Uuid::from_u128(1),
+                path: Path::new(Text::new("node_1"), Text::new("lane_1")),
                 envelope: Operation::Link,
             }
         );
@@ -94,29 +98,32 @@ async fn test_multiple_messages_single_stream() {
     let write = async move {
         let mut first_framed = FramedWrite::new(first_writer, RawRequestMessageEncoder);
 
+        let envelope: Operation<Bytes> = Operation::Link;
         first_framed
             .send(RequestMessage {
-                origin: RoutingAddr::remote(1),
-                path: RelativePath::new("node_1", "lane_1"),
-                envelope: Operation::Link,
+                origin: Uuid::from_u128(1),
+                path: Path::new(Text::new("node_1"), Text::new("lane_1")),
+                envelope,
             })
             .await
             .unwrap();
 
+        let envelope: Operation<Bytes> = Operation::Link;
         first_framed
             .send(RequestMessage {
-                origin: RoutingAddr::remote(2),
-                path: RelativePath::new("node_2", "lane_2"),
-                envelope: Operation::Link,
+                origin: Uuid::from_u128(2),
+                path: Path::new(Text::new("node_2"), Text::new("lane_2")),
+                envelope,
             })
             .await
             .unwrap();
 
+        let envelope: Operation<Bytes> = Operation::Link;
         first_framed
             .send(RequestMessage {
-                origin: RoutingAddr::remote(3),
-                path: RelativePath::new("node_3", "lane_3"),
-                envelope: Operation::Link,
+                origin: Uuid::from_u128(3),
+                path: Path::new(Text::new("node_3"), Text::new("lane_3")),
+                envelope,
             })
             .await
             .unwrap();
@@ -129,8 +136,8 @@ async fn test_multiple_messages_single_stream() {
         assert_eq!(
             message,
             RequestMessage {
-                origin: RoutingAddr::remote(1),
-                path: RelativePath::new("node_1", "lane_1"),
+                origin: Uuid::from_u128(1),
+                path: Path::new(Text::new("node_1"), Text::new("lane_1")),
                 envelope: Operation::Link,
             }
         );
@@ -138,8 +145,8 @@ async fn test_multiple_messages_single_stream() {
         assert_eq!(
             message,
             RequestMessage {
-                origin: RoutingAddr::remote(2),
-                path: RelativePath::new("node_2", "lane_2"),
+                origin: Uuid::from_u128(2),
+                path: Path::new(Text::new("node_2"), Text::new("lane_2")),
                 envelope: Operation::Link,
             }
         );
@@ -147,8 +154,8 @@ async fn test_multiple_messages_single_stream() {
         assert_eq!(
             message,
             RequestMessage {
-                origin: RoutingAddr::remote(3),
-                path: RelativePath::new("node_3", "lane_3"),
+                origin: Uuid::from_u128(3),
+                path: Path::new(Text::new("node_3"), Text::new("lane_3")),
                 envelope: Operation::Link,
             }
         );
@@ -185,20 +192,23 @@ async fn test_single_message_multiple_streams() {
         let mut first_framed = FramedWrite::new(first_writer, RawRequestMessageEncoder);
         let mut second_framed = FramedWrite::new(second_writer, RawRequestMessageEncoder);
 
+        let envelope: Operation<Bytes> = Operation::Sync;
         first_framed
             .send(RequestMessage {
-                origin: RoutingAddr::remote(1),
-                path: RelativePath::new("node_1", "lane_1"),
-                envelope: Operation::Sync,
+                origin: Uuid::from_u128(1),
+                path: Path::new(Text::new("node_1"), Text::new("lane_1")),
+                envelope,
             })
             .await
             .unwrap();
 
+        let envelope: Operation<Bytes> = Operation::Sync;
+
         second_framed
             .send(RequestMessage {
-                origin: RoutingAddr::remote(2),
-                path: RelativePath::new("node_2", "lane_2"),
-                envelope: Operation::Sync,
+                origin: Uuid::from_u128(2),
+                path: Path::new(Text::new("node_2"), Text::new("lane_2")),
+                envelope,
             })
             .await
             .unwrap();
@@ -212,8 +222,8 @@ async fn test_single_message_multiple_streams() {
         assert_eq!(
             message,
             RequestMessage {
-                origin: RoutingAddr::remote(1),
-                path: RelativePath::new("node_1", "lane_1"),
+                origin: Uuid::from_u128(1),
+                path: Path::new(Text::new("node_1"), Text::new("lane_1")),
                 envelope: Operation::Sync,
             }
         );
@@ -221,8 +231,8 @@ async fn test_single_message_multiple_streams() {
         assert_eq!(
             message,
             RequestMessage {
-                origin: RoutingAddr::remote(2),
-                path: RelativePath::new("node_2", "lane_2"),
+                origin: Uuid::from_u128(2),
+                path: Path::new(Text::new("node_2"), Text::new("lane_2")),
                 envelope: Operation::Sync,
             }
         );
@@ -265,38 +275,43 @@ async fn test_multiple_messages_multiple_streams() {
         let mut second_framed = FramedWrite::new(second_writer, RawRequestMessageEncoder);
         let third_framed = FramedWrite::new(third_writer, RawRequestMessageEncoder);
 
+        let envelope: Operation<Bytes> = Operation::Link;
         first_framed
             .send(RequestMessage {
-                origin: RoutingAddr::remote(1),
-                path: RelativePath::new("node_1", "lane_1"),
-                envelope: Operation::Link,
+                origin: Uuid::from_u128(1),
+                path: Path::new(Text::new("node_1"), Text::new("lane_1")),
+                envelope,
             })
             .await
             .unwrap();
+
+        let envelope: Operation<Bytes> = Operation::Link;
 
         second_framed
             .send(RequestMessage {
-                origin: RoutingAddr::remote(2),
-                path: RelativePath::new("node_2", "lane_2"),
-                envelope: Operation::Link,
+                origin: Uuid::from_u128(2),
+                path: Path::new(Text::new("node_2"), Text::new("lane_2")),
+                envelope,
             })
             .await
             .unwrap();
 
+        let envelope: Operation<Bytes> = Operation::Link;
         first_framed
             .send(RequestMessage {
-                origin: RoutingAddr::remote(3),
-                path: RelativePath::new("node_3", "lane_3"),
-                envelope: Operation::Link,
+                origin: Uuid::from_u128(3),
+                path: Path::new(Text::new("node_3"), Text::new("lane_3")),
+                envelope,
             })
             .await
             .unwrap();
 
+        let envelope: Operation<Bytes> = Operation::Link;
         second_framed
             .send(RequestMessage {
-                origin: RoutingAddr::remote(4),
-                path: RelativePath::new("node_4", "lane_4"),
-                envelope: Operation::Link,
+                origin: Uuid::from_u128(4),
+                path: Path::text("node_4", "lane_4"),
+                envelope,
             })
             .await
             .unwrap();
@@ -311,8 +326,8 @@ async fn test_multiple_messages_multiple_streams() {
         assert_eq!(
             message,
             RequestMessage {
-                origin: RoutingAddr::remote(1),
-                path: RelativePath::new("node_1", "lane_1"),
+                origin: Uuid::from_u128(1),
+                path: Path::new(Text::new("node_1"), Text::new("lane_1")),
                 envelope: Operation::Link,
             }
         );
@@ -320,8 +335,8 @@ async fn test_multiple_messages_multiple_streams() {
         assert_eq!(
             message,
             RequestMessage {
-                origin: RoutingAddr::remote(2),
-                path: RelativePath::new("node_2", "lane_2"),
+                origin: Uuid::from_u128(2),
+                path: Path::new(Text::new("node_2"), Text::new("lane_2")),
                 envelope: Operation::Link,
             }
         );
@@ -329,18 +344,19 @@ async fn test_multiple_messages_multiple_streams() {
         assert_eq!(
             message,
             RequestMessage {
-                origin: RoutingAddr::remote(3),
-                path: RelativePath::new("node_3", "lane_3"),
+                origin: Uuid::from_u128(3),
+                path: Path::new(Text::new("node_3"), Text::new("lane_3")),
                 envelope: Operation::Link,
             }
         );
         let message = multi_reader.next().await.unwrap().unwrap();
+        let envelope: Operation<Value> = Operation::Link;
         assert_eq!(
             message,
             RequestMessage {
-                origin: RoutingAddr::remote(4),
-                path: RelativePath::new("node_4", "lane_4"),
-                envelope: Operation::Link,
+                origin: Uuid::from_u128(4),
+                path: Path::text("node_4", "lane_4"),
+                envelope,
             }
         );
         let message = multi_reader.next().await;
@@ -377,40 +393,44 @@ async fn test_replace_stream() {
         let mut second_framed = FramedWrite::new(second_writer, RawRequestMessageEncoder);
         let mut third_framed = FramedWrite::new(third_writer, RawRequestMessageEncoder);
 
+        let envelope: Operation<Bytes> = Operation::Link;
         first_framed
             .send(RequestMessage {
-                origin: RoutingAddr::remote(1),
-                path: RelativePath::new("node_1", "lane_1"),
-                envelope: Operation::Link,
+                origin: Uuid::from_u128(1),
+                path: Path::new(Text::new("node_1"), Text::new("lane_1")),
+                envelope,
             })
             .await
             .unwrap();
 
+        let envelope: Operation<Bytes> = Operation::Link;
         second_framed
             .send(RequestMessage {
-                origin: RoutingAddr::remote(2),
-                path: RelativePath::new("node_2", "lane_2"),
-                envelope: Operation::Link,
+                origin: Uuid::from_u128(2),
+                path: Path::new(Text::new("node_2"), Text::new("lane_2")),
+                envelope,
             })
             .await
             .unwrap();
 
         drop(first_framed);
 
+        let envelope: Operation<Bytes> = Operation::Link;
         third_framed
             .send(RequestMessage {
-                origin: RoutingAddr::remote(3),
-                path: RelativePath::new("node_3", "lane_3"),
-                envelope: Operation::Link,
+                origin: Uuid::from_u128(3),
+                path: Path::new(Text::new("node_3"), Text::new("lane_3")),
+                envelope,
             })
             .await
             .unwrap();
 
+        let envelope: Operation<Bytes> = Operation::Link;
         second_framed
             .send(RequestMessage {
-                origin: RoutingAddr::remote(4),
-                path: RelativePath::new("node_4", "lane_4"),
-                envelope: Operation::Link,
+                origin: Uuid::from_u128(4),
+                path: Path::text("node_4", "lane_4"),
+                envelope,
             })
             .await
             .unwrap();
@@ -424,8 +444,8 @@ async fn test_replace_stream() {
         assert_eq!(
             message,
             RequestMessage {
-                origin: RoutingAddr::remote(1),
-                path: RelativePath::new("node_1", "lane_1"),
+                origin: Uuid::from_u128(1),
+                path: Path::new(Text::new("node_1"), Text::new("lane_1")),
                 envelope: Operation::Link,
             }
         );
@@ -433,8 +453,8 @@ async fn test_replace_stream() {
         assert_eq!(
             message,
             RequestMessage {
-                origin: RoutingAddr::remote(2),
-                path: RelativePath::new("node_2", "lane_2"),
+                origin: Uuid::from_u128(2),
+                path: Path::new(Text::new("node_2"), Text::new("lane_2")),
                 envelope: Operation::Link,
             }
         );
@@ -448,8 +468,8 @@ async fn test_replace_stream() {
         assert_eq!(
             message,
             RequestMessage {
-                origin: RoutingAddr::remote(3),
-                path: RelativePath::new("node_3", "lane_3"),
+                origin: Uuid::from_u128(3),
+                path: Path::new(Text::new("node_3"), Text::new("lane_3")),
                 envelope: Operation::Link,
             }
         );
@@ -457,8 +477,8 @@ async fn test_replace_stream() {
         assert_eq!(
             message,
             RequestMessage {
-                origin: RoutingAddr::remote(4),
-                path: RelativePath::new("node_4", "lane_4"),
+                origin: Uuid::from_u128(4),
+                path: Path::text("node_4", "lane_4"),
                 envelope: Operation::Link,
             }
         );
@@ -491,11 +511,12 @@ async fn test_512_streams() {
 
     let write = async move {
         for (idx, writer) in writers.iter_mut().enumerate() {
+            let envelope: Operation<Bytes> = Operation::Link;
             writer
                 .send(RequestMessage {
-                    origin: RoutingAddr::remote(idx as u32),
-                    path: RelativePath::new(format!("node_{}", idx), format!("lane_{}", idx)),
-                    envelope: Operation::Link,
+                    origin: Uuid::from_u128(idx as u128),
+                    path: Path::new(format!("node_{}", idx), format!("lane_{}", idx)),
+                    envelope,
                 })
                 .await
                 .unwrap();
@@ -508,8 +529,11 @@ async fn test_512_streams() {
             assert_eq!(
                 message,
                 RequestMessage {
-                    origin: RoutingAddr::remote(idx),
-                    path: RelativePath::new(format!("node_{}", idx), format!("lane_{}", idx)),
+                    origin: Uuid::from_u128(idx),
+                    path: Path::new(
+                        format!("node_{}", idx).into(),
+                        format!("lane_{}", idx).into()
+                    ),
                     envelope: Operation::Link,
                 }
             );

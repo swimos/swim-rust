@@ -47,8 +47,7 @@ use swim_runtime::{
     downlink::{DownlinkOptions, DownlinkRuntimeConfig, Io},
     remote::{
         net::dns::{DnsFut, DnsResolver},
-        table::SchemeHostPort,
-        Scheme, SchemeSocketAddr,
+        Scheme, SchemeHostPort, SchemeSocketAddr,
     },
 };
 use swim_utilities::{

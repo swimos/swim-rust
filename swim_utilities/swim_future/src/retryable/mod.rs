@@ -88,7 +88,9 @@ where
                     Some(s) => {
                         if future.reset() {
                             match s {
-                                Some(dur) => RetryState::Sleeping(Box::pin(tokio::time::sleep(dur))),
+                                Some(dur) => {
+                                    RetryState::Sleeping(Box::pin(tokio::time::sleep(dur)))
+                                }
                                 None => RetryState::Polling,
                             }
                         } else if let Some(e) = e.take() {

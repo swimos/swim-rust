@@ -37,7 +37,7 @@ use tracing::{event, Level};
 use crate::remote::net::dns::{DnsResolver, Resolver};
 use crate::remote::net::plain::TokioPlainTextNetworking;
 use crate::remote::net::{ExternalConnections, IoResult, Listener};
-use crate::remote::table::SchemeHostPort;
+use crate::remote::SchemeHostPort;
 use crate::remote::{Scheme, SchemeSocketAddr};
 use im::HashMap;
 use pin_project::pin_project;
