@@ -20,7 +20,6 @@ use futures::future::pending;
 use futures::future::BoxFuture;
 use futures::Future;
 use std::collections::HashMap;
-use swim_async_runtime::time::timeout::timeout;
 use swim_model::time::Timestamp;
 use swim_store::StoreError;
 use swim_utilities::trigger;
@@ -188,7 +187,7 @@ async fn triggers() {
     let future = tokio::spawn(store_task.run(tasks, 0));
     assert!(trigger_tx.trigger());
 
-    let result = timeout(Duration::from_secs(5), future).await;
+    let result = tokio::time::timeout(Duration::from_secs(5), future).await;
     match result {
         Ok(Ok(Ok(report))) => {
             assert!(!report.failed());
@@ -223,7 +222,7 @@ async fn multiple_ios() {
     sleep(Duration::from_secs(5)).await;
     assert!(trigger_tx.trigger());
 
-    let result = timeout(Duration::from_secs(5), future).await;
+    let result = tokio::time::timeout(Duration::from_secs(5), future).await;
     match result {
         Ok(Ok(Err(report))) => {
             assert!(report.failed());

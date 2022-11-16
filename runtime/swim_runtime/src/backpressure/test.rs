@@ -17,7 +17,6 @@ use futures::StreamExt;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_async_runtime::time::timeout::timeout;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::item_sink::for_mpsc_sender;
 use swim_utilities::sync::circular_buffer;
@@ -50,7 +49,7 @@ async fn single_pass_through() {
 
     assert!(buf_tx.try_send(Flushable::Value(6)).is_ok());
 
-    let value = timeout(TIMEOUT, receiver).await.unwrap().unwrap();
+    let value = tokio::time::timeout(TIMEOUT, receiver).await.unwrap().unwrap();
     assert_eq!(value, 6);
 
     drop(buf_tx);
@@ -75,7 +74,7 @@ async fn send_multiple() {
     }
     drop(buf_tx);
 
-    let result = timeout(TIMEOUT, receiver).await;
+    let result = tokio::time::timeout(TIMEOUT, receiver).await;
     assert!(matches!(result, Ok(Ok(_))));
     let received = result.unwrap().unwrap();
     assert!(received.len() <= 10);
@@ -127,7 +126,7 @@ async fn send_multiple_chunks() {
 
     drop(buf_tx);
 
-    let result = timeout(TIMEOUT, receiver).await;
+    let result = tokio::time::timeout(TIMEOUT, receiver).await;
     assert!(matches!(result, Ok(Ok(_))));
     let received = result.unwrap().unwrap();
     assert!(received.len() <= 20);

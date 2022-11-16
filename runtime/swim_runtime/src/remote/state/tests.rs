@@ -30,7 +30,6 @@ use ratchet_fixture::duplex::websocket_for;
 use std::collections::HashMap;
 use std::io;
 use std::time::Duration;
-use swim_async_runtime::time::timeout::timeout;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::open_ended::OpenEndedFutures;
 use swim_utilities::future::request::Request;
@@ -111,7 +110,7 @@ async fn connections_state_stop_when_idle() {
     assert_eq!(connections.state, State::ClosingConnections);
 
     assert!(matches!(
-        timeout(Duration::from_secs(5), connections.select_next()).await,
+        tokio::time::timeout(Duration::from_secs(5), connections.select_next()).await,
         Ok(None)
     ));
 }
@@ -171,10 +170,10 @@ async fn connections_state_spawn_task() {
     let task_addr = res_addr.unwrap();
     assert!(table.resolve(task_addr).is_some());
 
-    let result = timeout(Duration::from_secs(5), req_rx).await;
+    let result = tokio::time::timeout(Duration::from_secs(5), req_rx).await;
     assert!(matches!(result, Ok(Ok(Ok(a))) if a == task_addr));
 
-    let next = timeout(Duration::from_secs(5), connections.select_next()).await;
+    let next = tokio::time::timeout(Duration::from_secs(5), connections.select_next()).await;
 
     assert!(matches!(next, Ok(Some(Event::ConnectionClosed(a, _))) if a == task_addr));
 }
@@ -198,7 +197,7 @@ async fn connections_state_defer_handshake() {
 
     assert_eq!(connections.deferred.len(), 1);
 
-    let next = timeout(Duration::from_secs(5), connections.select_next()).await;
+    let next = tokio::time::timeout(Duration::from_secs(5), connections.select_next()).await;
 
     match next {
         Ok(Some(Event::Deferred(DeferredResult::ServerHandshake { result, sock_addr }))) => {
@@ -234,7 +233,7 @@ async fn connections_state_defer_connect_good() {
 
     assert_eq!(connections.deferred.len(), 1);
 
-    let next = timeout(Duration::from_secs(5), connections.select_next()).await;
+    let next = tokio::time::timeout(Duration::from_secs(5), connections.select_next()).await;
 
     match next {
         Ok(Some(Event::Deferred(DeferredResult::ClientHandshake { result, host }))) => {
@@ -269,7 +268,7 @@ async fn connections_state_defer_connect_failed() {
 
     assert_eq!(connections.deferred.len(), 1);
 
-    let next = timeout(Duration::from_secs(5), connections.select_next()).await;
+    let next = tokio::time::timeout(Duration::from_secs(5), connections.select_next()).await;
 
     match next {
         Ok(Some(Event::Deferred(DeferredResult::FailedConnection {
@@ -318,7 +317,7 @@ async fn connections_state_defer_dns_good() {
 
     assert_eq!(connections.deferred.len(), 1);
 
-    let next = timeout(Duration::from_secs(5), connections.select_next()).await;
+    let next = tokio::time::timeout(Duration::from_secs(5), connections.select_next()).await;
 
     match next {
         Ok(Some(Event::Deferred(DeferredResult::Dns {
@@ -339,7 +338,7 @@ async fn connections_state_defer_dns_good() {
         .pending
         .send_ok(&target, RoutingAddr::remote(42));
 
-    let result = timeout(Duration::from_secs(5), req_rx).await;
+    let result = tokio::time::timeout(Duration::from_secs(5), req_rx).await;
     assert!(matches!(result, Ok(Ok(Ok(a))) if a == RoutingAddr::remote(42)));
 }
 
@@ -366,7 +365,7 @@ async fn connections_state_defer_dns_failed() {
 
     assert_eq!(connections.deferred.len(), 1);
 
-    let next = timeout(Duration::from_secs(5), connections.select_next()).await;
+    let next = tokio::time::timeout(Duration::from_secs(5), connections.select_next()).await;
 
     match next {
         Ok(Some(Event::Deferred(DeferredResult::Dns {
@@ -387,7 +386,7 @@ async fn connections_state_defer_dns_failed() {
         .pending
         .send_ok(&target, RoutingAddr::remote(42));
 
-    let result = timeout(Duration::from_secs(5), req_rx).await;
+    let result = tokio::time::timeout(Duration::from_secs(5), req_rx).await;
     assert!(matches!(result, Ok(Ok(Ok(a))) if a == RoutingAddr::remote(42)));
 }
 
@@ -415,7 +414,7 @@ async fn connections_failure_triggers_pending() {
         ConnectionError::Io(IoError::new(ErrorKind::ConnectionReset, None)),
     );
 
-    let result = timeout(Duration::from_secs(5), req_rx).await;
+    let result = tokio::time::timeout(Duration::from_secs(5), req_rx).await;
     let _err = ConnectionError::Io(IoError::new(ErrorKind::ConnectionReset, None));
     assert!(matches!(result, Ok(Ok(Err(_err)))));
 }
@@ -457,7 +456,7 @@ async fn connections_check_in_table_clears_pending() {
 
     assert!(connections.check_socket_addr(host2, sa).is_ok());
 
-    let result = timeout(Duration::from_secs(5), req_rx).await;
+    let result = tokio::time::timeout(Duration::from_secs(5), req_rx).await;
 
     assert!(matches!(
         result,
@@ -494,12 +493,12 @@ async fn connections_state_shutdown_process() {
     let (result_tx, _result_rx) = mpsc::channel(8);
     stop_trigger.provide(result_tx).unwrap();
 
-    let first = timeout(Duration::from_secs(5), connections.select_next()).await;
+    let first = tokio::time::timeout(Duration::from_secs(5), connections.select_next()).await;
     assert!(matches!(first, Ok(Some(_))));
 
-    let second = timeout(Duration::from_secs(5), connections.select_next()).await;
+    let second = tokio::time::timeout(Duration::from_secs(5), connections.select_next()).await;
     assert!(matches!(second, Ok(Some(_))));
 
-    let term = timeout(Duration::from_secs(5), connections.select_next()).await;
+    let term = tokio::time::timeout(Duration::from_secs(5), connections.select_next()).await;
     assert!(matches!(term, Ok(None)));
 }

@@ -27,7 +27,7 @@ pub mod factory;
 pub mod request;
 pub mod strategy;
 use pin_project::pin_project;
-use swim_async_runtime::time::delay::{delay_for, Delay};
+use tokio::time::Sleep;
 
 /// A future that can be reset back to its initial state and retried once again.
 pub trait ResettableFuture: Future {
@@ -42,7 +42,7 @@ pub trait ResettableFuture: Future {
 enum RetryState<Err> {
     Polling,
     Retrying(Option<Err>),
-    Sleeping(Pin<Box<Delay>>),
+    Sleeping(Pin<Box<Sleep>>),
 }
 
 /// A future that can be retried with a [`RetryStrategy`].
@@ -88,7 +88,7 @@ where
                     Some(s) => {
                         if future.reset() {
                             match s {
-                                Some(dur) => RetryState::Sleeping(Box::pin(delay_for(dur))),
+                                Some(dur) => RetryState::Sleeping(Box::pin(tokio::time::sleep(dur))),
                                 None => RetryState::Polling,
                             }
                         } else if let Some(e) = e.take() {

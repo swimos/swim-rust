@@ -18,7 +18,6 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
 use std::num::NonZeroUsize;
 use std::ops::Range;
-use swim_async_runtime::time::timeout::timeout;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::item_sink::for_mpsc_sender;
 use tokio::sync::mpsc;
@@ -96,7 +95,7 @@ async fn simple_release() {
         assert_eq!(rx_out.recv().now_or_never(), None);
     });
 
-    let _output = timeout(TIMEOUT, receiver).await.unwrap();
+    let _output = tokio::time::timeout(TIMEOUT, receiver).await.unwrap();
 
     drop(tx_in);
 
@@ -166,7 +165,7 @@ async fn multiple_keys() {
 
     drop(tx_in);
 
-    timeout(TIMEOUT, receiver).await.unwrap().unwrap();
+    tokio::time::timeout(TIMEOUT, receiver).await.unwrap().unwrap();
 
     assert!(matches!(release_result.await, Ok(Ok(_))));
 }
@@ -221,7 +220,7 @@ async fn overflow() {
             })
     });
 
-    timeout(TIMEOUT, receiver).await.unwrap().unwrap();
+    tokio::time::timeout(TIMEOUT, receiver).await.unwrap().unwrap();
 
     assert!(matches!(release_result.await, Ok(Ok(_))));
 }

@@ -18,7 +18,6 @@ use std::sync::Arc;
 use futures::future::{join, ready, BoxFuture};
 use futures::FutureExt;
 use parking_lot::Mutex;
-use swim_async_runtime::time::timeout;
 use swim_form::Form;
 use swim_model::path::RelativePath;
 use swim_recon::printer::print_recon_compact;
@@ -503,7 +502,7 @@ async fn task_send_message() {
         }
     };
 
-    let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
+    let result = tokio::time::timeout(Duration::from_secs(5), join(task, test_case)).await;
     assert!(matches!(result, Ok((ConnectionDropped::Closed, _))));
 }
 
@@ -535,7 +534,7 @@ async fn task_send_message_failure() {
         assert!(envelope_tx.send(tagged).await.is_ok());
     };
 
-    let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
+    let result = tokio::time::timeout(Duration::from_secs(5), join(task, test_case)).await;
     let _err = ConnectionError::Io(IoError::new(ErrorKind::ConnectionReset, None));
     assert!(matches!(result, Ok((ConnectionDropped::Failed(_err), _))));
 }
@@ -569,7 +568,7 @@ async fn task_receive_message_with_route() {
         stop_trigger.trigger();
     };
 
-    let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
+    let result = tokio::time::timeout(Duration::from_secs(5), join(task, test_case)).await;
     assert!(matches!(result, Ok((ConnectionDropped::Closed, _))));
 }
 
@@ -603,7 +602,7 @@ async fn task_receive_link_message_missing_node() {
         stop_trigger.trigger();
     };
 
-    let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
+    let result = tokio::time::timeout(Duration::from_secs(5), join(task, test_case)).await;
     assert!(matches!(result, Ok((ConnectionDropped::Closed, _))));
 }
 
@@ -635,7 +634,7 @@ async fn task_receive_sync_message_missing_node() {
         assert_eq!(message, expected);
     };
 
-    let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
+    let result = tokio::time::timeout(Duration::from_secs(5), join(task, test_case)).await;
     assert!(result.is_ok());
 }
 
@@ -666,7 +665,7 @@ async fn task_receive_message_no_route() {
         stop_trigger.trigger();
     };
 
-    let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
+    let result = tokio::time::timeout(Duration::from_secs(5), join(task, test_case)).await;
     assert!(matches!(result, Ok((ConnectionDropped::Closed, _))));
 }
 
@@ -693,7 +692,7 @@ async fn task_receive_error() {
             .is_ok());
     };
 
-    let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
+    let result = tokio::time::timeout(Duration::from_secs(5), join(task, test_case)).await;
     let _err = ConnectionError::Io(IoError::new(ErrorKind::ConnectionReset, None));
     assert!(matches!(result, Ok((ConnectionDropped::Failed(_err), _))));
 }
@@ -713,7 +712,7 @@ async fn task_stopped_remotely() {
         drop(websocket_peer);
     };
 
-    let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
+    let result = tokio::time::timeout(Duration::from_secs(5), join(task, test_case)).await;
     let _err = ConnectionError::Closed(CloseError::new(CloseErrorKind::ClosedRemotely, None));
     assert!(matches!(result, Ok((ConnectionDropped::Failed(_err), _))));
 }
@@ -766,7 +765,7 @@ async fn task_receive_bad_message() {
         assert!(websocket_peer.write_text("Boom!").await.is_ok());
     };
 
-    let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
+    let result = tokio::time::timeout(Duration::from_secs(5), join(task, test_case)).await;
     let _err = ConnectionError::Protocol(ProtocolError::warp(None));
     assert!(matches!(result, Ok((ConnectionDropped::Failed(_err), _))));
 }
