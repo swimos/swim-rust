@@ -144,19 +144,19 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
 
                 type OnSyncHandler = #sync_handler;
 
-                fn value_like_lanes(&self) -> ::std::collections::HashSet<&str> {
+                fn value_like_lanes() -> ::std::collections::HashSet<&'static str> {
                     let mut lanes = ::std::collections::HashSet::new();
                     #(::std::collections::HashSet::insert(&mut lanes, #val_lane_names);)*
                     lanes
                 }
 
-                fn map_like_lanes(&self) -> ::std::collections::HashSet<&str> {
+                fn map_like_lanes() -> ::std::collections::HashSet<&'static str> {
                     let mut lanes = ::std::collections::HashSet::new();
                     #(::std::collections::HashSet::insert(&mut lanes, #map_lane_names);)*
                     lanes
                 }
 
-                fn lane_ids(&self) -> ::std::collections::HashMap<u64, ::swim_agent::model::Text> {
+                fn lane_ids() -> ::std::collections::HashMap<u64, ::swim_agent::model::Text> {
                     let mut map = ::std::collections::HashMap::new();
                     #(#lane_ids;)*
                     map

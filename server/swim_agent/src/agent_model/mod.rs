@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use bytes::BytesMut;
 use futures::FutureExt;
@@ -33,10 +34,10 @@ use swim_utilities::{
 };
 use uuid::Uuid;
 
-use crate::lifecycle::lane_event::LaneEvent;
+use crate::agent_lifecycle::lane_event::LaneEvent;
 use crate::{
-    event_handler::{EventHandler, EventHandlerError, StepResult},
-    lifecycle::AgentLifecycle,
+    agent_lifecycle::AgentLifecycle,
+    event_handler::{EventHandler, EventHandlerError, HandlerAction, StepResult},
     meta::AgentMetadata,
 };
 
@@ -60,24 +61,24 @@ pub enum WriteResult {
 /// A trait which describes the lanes of an agent which can be run as a task attached to an
 /// [`AgentContext`]. A type implementing this trait is sufficient to produce a functional agent
 /// although it will not provided any lifecycle events for the agent or its lanes.
-pub trait AgentLaneModel: Sized {
+pub trait AgentLaneModel: Sized + Send {
     /// The type of handler to run when a command is received for a value lane.
-    type ValCommandHandler: EventHandler<Self, Completion = ()> + Send + 'static;
+    type ValCommandHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
 
     /// The type of handler to run when a command is received for a map lane.
-    type MapCommandHandler: EventHandler<Self, Completion = ()> + Send + 'static;
+    type MapCommandHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
 
     /// The type of handler to run when a request is received to sync with a lane.
-    type OnSyncHandler: EventHandler<Self, Completion = ()> + Send + 'static;
+    type OnSyncHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
 
     /// The names of all value like lanes (value lanes, command lanes, etc) in the agent.
-    fn value_like_lanes(&self) -> HashSet<&str>;
+    fn value_like_lanes() -> HashSet<&'static str>;
 
     /// The names of all map like lanes in the agent.
-    fn map_like_lanes(&self) -> HashSet<&str>;
+    fn map_like_lanes() -> HashSet<&'static str>;
 
     /// Mapping from lane identifiers to lane names for all lanes in the agent.
-    fn lane_ids(&self) -> HashMap<u64, Text>;
+    fn lane_ids() -> HashMap<u64, Text>;
 
     /// Create a handler that will update the state of the agent when a command is received
     /// for a value lane. There will be no handler if the lane does not exist or does not
@@ -114,19 +115,48 @@ pub trait AgentLaneModel: Sized {
     fn write_event(&self, lane: &str, buffer: &mut BytesMut) -> Option<WriteResult>;
 }
 
+/// A factory to create agent lane model instances.
+pub trait LaneModelFactory: Send + Sync {
+    type LaneModel: AgentLaneModel;
+
+    fn create(&self) -> Self::LaneModel;
+}
+
+impl<F, LaneModel: AgentLaneModel> LaneModelFactory for F
+where
+    F: Fn() -> LaneModel + Send + Sync,
+{
+    type LaneModel = LaneModel;
+
+    fn create(&self) -> Self::LaneModel {
+        self()
+    }
+}
+
 /// The complete model for an agent consisting of an implementation of [`AgentLaneModel`] to describe the lanes
 /// of the agent and an implementation of [`AgentLifecycle`] to describe the lifecycle events that will trigger,
 /// for  example, when the agent starts or stops or when the state of a lane changes.
-#[derive(Debug, Clone)]
 pub struct AgentModel<LaneModel, Lifecycle> {
-    lane_model: LaneModel,
+    lane_model_fac: Arc<dyn LaneModelFactory<LaneModel = LaneModel>>,
     lifecycle: Lifecycle,
 }
 
+impl<LaneModel, Lifecycle: Clone> Clone for AgentModel<LaneModel, Lifecycle> {
+    fn clone(&self) -> Self {
+        Self {
+            lane_model_fac: self.lane_model_fac.clone(),
+            lifecycle: self.lifecycle.clone(),
+        }
+    }
+}
+
 impl<LaneModel, Lifecycle> AgentModel<LaneModel, Lifecycle> {
-    pub fn new(lane_model: LaneModel, lifecycle: Lifecycle) -> Self {
+    pub fn new(
+        lane_model_fac: Arc<dyn LaneModelFactory<LaneModel = LaneModel>>,
+        lifecycle: Lifecycle,
+    ) -> Self {
         AgentModel {
-            lane_model,
+            lane_model_fac,
             lifecycle,
         }
     }
@@ -134,8 +164,8 @@ impl<LaneModel, Lifecycle> AgentModel<LaneModel, Lifecycle> {
 
 impl<LaneModel, Lifecycle> Agent for AgentModel<LaneModel, Lifecycle>
 where
-    LaneModel: AgentLaneModel + Clone + Send + Sync + 'static,
-    Lifecycle: AgentLifecycle<LaneModel> + Clone + Send + Sync + 'static,
+    LaneModel: AgentLaneModel + Send + 'static,
+    Lifecycle: AgentLifecycle<LaneModel> + Clone + Send + 'static,
 {
     fn run<'a>(
         &self,
@@ -190,18 +220,18 @@ where
         Lifecycle: AgentLifecycle<LaneModel>,
     {
         let AgentModel {
-            lane_model,
+            lane_model_fac,
             lifecycle,
-        } = &self;
+        } = self;
 
         let meta = AgentMetadata::new(&route, &config);
 
         let mut value_lane_io = HashMap::new();
         let mut map_lane_io = HashMap::new();
 
-        let val_lane_names = lane_model.value_like_lanes();
-        let map_lane_names = lane_model.map_like_lanes();
-        let lane_ids = lane_model.lane_ids();
+        let val_lane_names = LaneModel::value_like_lanes();
+        let map_lane_names = LaneModel::map_like_lanes();
+        let lane_ids = LaneModel::lane_ids();
 
         // Set up the lanes of the agent.
         for name in val_lane_names {
@@ -216,43 +246,92 @@ where
             map_lane_io.insert(Text::new(name), io);
         }
 
+        let lane_model = lane_model_fac.create();
         // Run the agent's `on_start` event handler.
         let on_start_handler = lifecycle.on_start();
         if let Err(e) = run_handler(
             meta,
-            lane_model,
-            lifecycle,
+            &lane_model,
+            &lifecycle,
             on_start_handler,
             &lane_ids,
             &mut Discard,
         ) {
             return Err(AgentInitError::UserCodeError(Box::new(e)));
         }
-        Ok(self
-            .run_agent(route, config, lane_ids, value_lane_io, map_lane_io)
-            .boxed())
+        let agent_task = AgentTask::new(
+            lane_model,
+            lifecycle,
+            route,
+            config,
+            lane_ids,
+            value_lane_io,
+            map_lane_io,
+        );
+        Ok(agent_task.run_agent(context).boxed())
+    }
+}
+
+struct AgentTask<LaneModel, Lifecycle> {
+    lane_model: LaneModel,
+    lifecycle: Lifecycle,
+    route: RelativeUri,
+    config: AgentConfig,
+    lane_ids: HashMap<u64, Text>,
+    value_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
+    map_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
+}
+
+impl<LaneModel, Lifecycle> AgentTask<LaneModel, Lifecycle>
+where
+    LaneModel: AgentLaneModel + Send + 'static,
+    Lifecycle: AgentLifecycle<LaneModel> + 'static,
+{
+    /// #Arguments
+    /// * `lane_model` - Defines the agent lanes.
+    /// * `lifecycle` - User specified event handlers.
+    /// * `route` - The node URI of the agent instance.
+    /// * `config` - Agent specific configuration parameters.
+    /// * `lane_ids` - Mapping between lane names and lane IDs.
+    /// * `value_lane_io` - Channels to the runtime for value like lanes.
+    /// * `map_lane_io` - Channels to the runtime for map like lanes.
+    fn new(
+        lane_model: LaneModel,
+        lifecycle: Lifecycle,
+        route: RelativeUri,
+        config: AgentConfig,
+        lane_ids: HashMap<u64, Text>,
+        value_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
+        map_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
+    ) -> Self {
+        AgentTask {
+            lane_model,
+            lifecycle,
+            route,
+            config,
+            lane_ids,
+            value_lane_io,
+            map_lane_io,
+        }
     }
 
     /// Core event loop for the agent that routes incoming data from the runtime to the lanes and
     /// state changes fromt he lanes to the runtime.
     ///
     /// #Arguments
-    /// * `route` - The node URI of the agent instance.
-    /// * `config` - Agent specific configuration parameters.
-    /// * `lane_ids` - Mapping between lane names and lane IDs.
-    /// * `value_lane_io` - Channels to the runtime for value like lanes.
-    /// * `map_lane_io` - Channels to the runtime for map like lanes.
+    /// * `_context` - Context through which to communicate with the runtime.
     async fn run_agent(
         self,
-        route: RelativeUri,
-        config: AgentConfig,
-        lane_ids: HashMap<u64, Text>,
-        value_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
-        map_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
+        _context: &dyn AgentContext, //Will be needed when downlinks are supported.
     ) -> Result<(), AgentTaskError> {
-        let AgentModel {
+        let AgentTask {
             lane_model,
             lifecycle,
+            route,
+            config,
+            lane_ids,
+            value_lane_io,
+            map_lane_io,
         } = self;
         let meta = AgentMetadata::new(&route, &config);
 
@@ -480,7 +559,7 @@ fn run_handler<Context, Lifecycle, Handler, Collector>(
 ) -> Result<(), EventHandlerError>
 where
     Lifecycle: for<'a> LaneEvent<'a, Context>,
-    Handler: EventHandler<Context, Completion = ()>,
+    Handler: EventHandler<Context>,
     Collector: IdCollector,
 {
     loop {

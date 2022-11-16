@@ -16,7 +16,7 @@ use std::marker::PhantomData;
 
 use swim_api::handlers::{FnHandler, NoHandler};
 
-use crate::lifecycle::utility::HandlerContext;
+use crate::agent_lifecycle::utility::HandlerContext;
 
 use self::{
     on_event::{OnEvent, OnEventShared},
@@ -86,6 +86,18 @@ pub struct StatefulValueLaneLifecycle<Context, Shared, T, FEv = NoHandler, FSet 
     _value_type: PhantomData<fn(Context, Shared, T)>,
     on_event: FEv,
     on_set: FSet,
+}
+
+impl<Context, Shared, T, FEv: Clone, FSet: Clone> Clone
+    for StatefulValueLaneLifecycle<Context, Shared, T, FEv, FSet>
+{
+    fn clone(&self) -> Self {
+        Self {
+            _value_type: PhantomData,
+            on_event: self.on_event.clone(),
+            on_set: self.on_set.clone(),
+        }
+    }
 }
 
 impl<Context, Shared, T> Default for StatefulValueLaneLifecycle<Context, Shared, T> {
@@ -160,10 +172,10 @@ where
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
-        existing: Option<T>,
         new_value: &T,
+        existing: Option<T>,
     ) -> Self::OnSetHandler {
         self.on_set
-            .on_set(shared, handler_context, existing, new_value)
+            .on_set(shared, handler_context, new_value, existing)
     }
 }

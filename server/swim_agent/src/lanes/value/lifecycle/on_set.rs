@@ -15,14 +15,14 @@
 use swim_api::handlers::{FnHandler, NoHandler};
 
 use crate::{
+    agent_lifecycle::utility::HandlerContext,
     event_handler::{EventHandler, UnitHandler},
-    lifecycle::utility::HandlerContext,
 };
 
 /// Event handler to be called each time the value of a value lane changes, consuming the new value
 /// and the previous value that was replaced.
 pub trait OnSet<'a, T, Context>: Send {
-    type OnSetHandler: EventHandler<Context, Completion = ()> + Send + 'a;
+    type OnSetHandler: EventHandler<Context> + 'a;
     /// #Arguments
     /// * `existing` - The existing value, if it is defined.
     /// * `new_value` - The replacement value.
@@ -33,7 +33,7 @@ pub trait OnSet<'a, T, Context>: Send {
 /// and the previous value that was replaced. The event handler has access to some shared state (shared
 /// with other event handlers in the same agent).
 pub trait OnSetShared<'a, T, Context, Shared>: Send {
-    type OnSetHandler: EventHandler<Context, Completion = ()> + Send + 'a;
+    type OnSetHandler: EventHandler<Context> + 'a;
 
     /// #Arguments
     /// * `shared` - The shared state.
@@ -44,8 +44,8 @@ pub trait OnSetShared<'a, T, Context, Shared>: Send {
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
-        existing: Option<T>,
         new_value: &T,
+        existing: Option<T>,
     ) -> Self::OnSetHandler;
 }
 
@@ -64,8 +64,8 @@ impl<'a, T, Context, Shared> OnSetShared<'a, T, Context, Shared> for NoHandler {
         &'a self,
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
-        _existing: Option<T>,
         _new_value: &T,
+        _existing: Option<T>,
     ) -> Self::OnSetHandler {
         Default::default()
     }
@@ -75,7 +75,7 @@ impl<'a, T, Context, F, H> OnSet<'a, T, Context> for FnHandler<F>
 where
     T: 'static,
     F: Fn(Option<T>, &T) -> H + Send,
-    H: EventHandler<Context, Completion = ()> + Send + 'a,
+    H: EventHandler<Context> + 'a,
 {
     type OnSetHandler = H;
 
@@ -88,8 +88,8 @@ where
 impl<'a, T, Context, Shared, F, H> OnSetShared<'a, T, Context, Shared> for FnHandler<F>
 where
     T: 'static,
-    F: Fn(&'a Shared, HandlerContext<Context>, Option<T>, &T) -> H + Send,
-    H: EventHandler<Context, Completion = ()> + Send + 'a,
+    F: Fn(&'a Shared, HandlerContext<Context>, &T, Option<T>) -> H + Send,
+    H: EventHandler<Context> + 'a,
 {
     type OnSetHandler = H;
 
@@ -97,10 +97,10 @@ where
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
-        existing: Option<T>,
         new_value: &T,
+        existing: Option<T>,
     ) -> Self::OnSetHandler {
         let FnHandler(f) = self;
-        f(shared, handler_context, existing, new_value)
+        f(shared, handler_context, new_value, existing)
     }
 }

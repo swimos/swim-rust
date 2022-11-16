@@ -32,7 +32,7 @@ use uuid::Uuid;
 
 use crate::{
     agent_model::{AgentLaneModel, WriteResult},
-    event_handler::{EventHandler, Modification, StepResult},
+    event_handler::{HandlerAction, Modification, StepResult},
     meta::AgentMetadata,
 };
 
@@ -95,15 +95,15 @@ impl AgentLaneModel for TestAgent {
 
     type OnSyncHandler = TestHandler;
 
-    fn value_like_lanes(&self) -> HashSet<&str> {
+    fn value_like_lanes() -> HashSet<&'static str> {
         [VAL_LANE].into_iter().collect()
     }
 
-    fn map_like_lanes(&self) -> HashSet<&str> {
+    fn map_like_lanes() -> HashSet<&'static str> {
         [MAP_LANE].into_iter().collect()
     }
 
-    fn lane_ids(&self) -> HashMap<u64, Text> {
+    fn lane_ids() -> HashMap<u64, Text> {
         [(0, VAL_LANE), (1, MAP_LANE)]
             .into_iter()
             .map(|(k, v)| (k, Text::new(v)))
@@ -202,7 +202,7 @@ impl AgentLaneModel for TestAgent {
     }
 }
 
-impl EventHandler<TestAgent> for TestHandler {
+impl HandlerAction<TestAgent> for TestHandler {
     type Completion = ();
 
     fn step(&mut self, _meta: AgentMetadata, context: &TestAgent) -> StepResult<Self::Completion> {

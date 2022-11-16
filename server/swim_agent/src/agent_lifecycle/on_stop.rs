@@ -18,74 +18,74 @@ use crate::event_handler::{EventHandler, UnitHandler};
 
 use super::utility::HandlerContext;
 
-/// Lifecycle event for the `on_start` event of an agent.
-pub trait OnStart<'a, Context>: Send {
-    type OnStartHandler: EventHandler<Context, Completion = ()> + Send + 'a;
+/// Lifecycle event for the `on_stop` event of an agent.
+pub trait OnStop<'a, Context>: Send {
+    type OnStopHandler: EventHandler<Context> + 'a;
 
-    fn on_start(&'a self) -> Self::OnStartHandler;
+    fn on_stop(&'a self) -> Self::OnStopHandler;
 }
 
-/// Lifecycle event for the `on_start` event of an agent where the event handler
+/// Lifecycle event for the `on_stop` event of an agent where the event handler
 /// has shared state with other handlers for the same agent.
-pub trait OnStartShared<'a, Context, Shared>: Send {
-    type OnStartHandler: EventHandler<Context, Completion = ()> + Send + 'a;
+pub trait OnStopShared<'a, Context, Shared>: Send {
+    type OnStopHandler: EventHandler<Context> + 'a;
 
     /// #Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
-    fn on_start(
+    fn on_stop(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
-    ) -> Self::OnStartHandler;
+    ) -> Self::OnStopHandler;
 }
 
-impl<'a, Context> OnStart<'a, Context> for NoHandler {
-    type OnStartHandler = UnitHandler;
+impl<'a, Context> OnStop<'a, Context> for NoHandler {
+    type OnStopHandler = UnitHandler;
 
-    fn on_start(&'a self) -> Self::OnStartHandler {
+    fn on_stop(&'a self) -> Self::OnStopHandler {
         Default::default()
     }
 }
 
-impl<'a, Context, Shared> OnStartShared<'a, Context, Shared> for NoHandler {
-    type OnStartHandler = UnitHandler;
+impl<'a, Context, Shared> OnStopShared<'a, Context, Shared> for NoHandler {
+    type OnStopHandler = UnitHandler;
 
-    fn on_start(
+    fn on_stop(
         &'a self,
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
-    ) -> Self::OnStartHandler {
+    ) -> Self::OnStopHandler {
         Default::default()
     }
 }
 
-impl<'a, Context, F, H> OnStart<'a, Context> for FnHandler<F>
+impl<'a, Context, F, H> OnStop<'a, Context> for FnHandler<F>
 where
-    F: Fn() -> H + Send,
-    H: EventHandler<Context, Completion = ()> + Send + 'static,
+    F: Fn() -> H + Send + 'a,
+    H: EventHandler<Context> + 'a,
 {
-    type OnStartHandler = H;
+    type OnStopHandler = H;
 
-    fn on_start(&'a self) -> Self::OnStartHandler {
+    fn on_stop(&'a self) -> Self::OnStopHandler {
         let FnHandler(f) = self;
         f()
     }
 }
 
-impl<'a, Context, F, H, Shared> OnStartShared<'a, Context, Shared> for FnHandler<F>
+impl<'a, Context, F, H, Shared> OnStopShared<'a, Context, Shared> for FnHandler<F>
 where
     Shared: 'static,
-    F: Fn(&'a Shared, HandlerContext<Context>) -> H + Send,
-    H: EventHandler<Context, Completion = ()> + Send + 'static,
+    F: Fn(&'a Shared, HandlerContext<Context>) -> H + Send + 'a,
+    H: EventHandler<Context> + 'a,
 {
-    type OnStartHandler = H;
+    type OnStopHandler = H;
 
-    fn on_start(
+    fn on_stop(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
-    ) -> Self::OnStartHandler {
+    ) -> Self::OnStopHandler {
         let FnHandler(f) = self;
         f(shared, handler_context)
     }

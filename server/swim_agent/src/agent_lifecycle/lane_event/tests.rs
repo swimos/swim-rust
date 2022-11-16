@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use crate::{
-    event_handler::{EventHandler, StepResult},
-    lifecycle::lane_event::{HLeaf, LaneEvent},
+    agent_lifecycle::lane_event::{HLeaf, LaneEvent},
+    event_handler::{HandlerAction, StepResult},
     meta::AgentMetadata,
 };
 
@@ -28,7 +28,7 @@ fn hleaf_lane_event() {
 
 pub fn run_handler<H, Agent>(meta: AgentMetadata<'_>, agent: &Agent, mut event_handler: H)
 where
-    H: EventHandler<Agent, Completion = ()>,
+    H: HandlerAction<Agent, Completion = ()>,
 {
     loop {
         match event_handler.step(meta, agent) {

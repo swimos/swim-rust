@@ -23,9 +23,9 @@ use swim_model::Text;
 use swim_utilities::routing::uri::RelativeUri;
 
 use crate::{
+    agent_lifecycle::lane_event::LaneEvent,
     agent_model::run_handler,
-    event_handler::{EventHandler, Modification, StepResult},
-    lifecycle::lane_event::LaneEvent,
+    event_handler::{HandlerAction, Modification, StepResult},
     meta::AgentMetadata,
 };
 
@@ -100,7 +100,7 @@ struct Handler {
     inner: HandlerInner,
 }
 
-impl EventHandler<TestAgent> for Handler {
+impl HandlerAction<TestAgent> for Handler {
     type Completion = ();
 
     fn step(&mut self, _meta: AgentMetadata, context: &TestAgent) -> StepResult<Self::Completion> {

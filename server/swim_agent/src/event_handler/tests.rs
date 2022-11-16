@@ -21,11 +21,11 @@ use swim_recon::parser::AsyncParseError;
 use swim_utilities::routing::uri::RelativeUri;
 
 use crate::{
-    event_handler::{ConstHandler, EventHandlerError, EventHandlerExt, GetAgentUri, SideEffects},
+    event_handler::{ConstHandler, EventHandlerError, GetAgentUri, HandlerActionExt, SideEffects},
     meta::AgentMetadata,
 };
 
-use super::{Decode, EventHandler, Modification, SideEffect, StepResult};
+use super::{Decode, HandlerAction, Modification, SideEffect, StepResult};
 
 const CONFIG: AgentConfig = AgentConfig {};
 const NODE_URI: &str = "/node";
@@ -169,12 +169,14 @@ fn and_then_handler() {
 
     let mut output = None;
     let output_ref = &mut output;
-    let mut handler =
-        EventHandlerExt::<DummyAgent>::and_then(GetAgentUri::default(), move |uri: RelativeUri| {
+    let mut handler = HandlerActionExt::<DummyAgent>::and_then(
+        GetAgentUri::default(),
+        move |uri: RelativeUri| {
             SideEffect::from(move || {
                 *output_ref = Some(uri.to_string());
             })
-        });
+        },
+    );
 
     let result = handler.step(meta, &DUMMY);
     assert!(matches!(
@@ -219,7 +221,7 @@ fn followed_by_handler() {
         *guard = Some(2);
     });
 
-    let mut handler = EventHandlerExt::<DummyAgent>::followed_by(first, second);
+    let mut handler = HandlerActionExt::<DummyAgent>::followed_by(first, second);
 
     let result = handler.step(meta, &DUMMY);
     assert!(matches!(
@@ -312,7 +314,7 @@ impl FakeLaneWriter {
     }
 }
 
-impl EventHandler<DummyAgent> for FakeLaneWriter {
+impl HandlerAction<DummyAgent> for FakeLaneWriter {
     type Completion = ();
 
     fn step(

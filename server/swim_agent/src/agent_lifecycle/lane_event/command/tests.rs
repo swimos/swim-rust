@@ -20,9 +20,11 @@ use swim_model::Text;
 use swim_utilities::routing::uri::RelativeUri;
 
 use crate::{
-    event_handler::{EventHandler, StepResult},
+    agent_lifecycle::lane_event::{
+        tests::run_handler, CommandBranch, CommandLeaf, HLeaf, LaneEvent,
+    },
+    event_handler::{HandlerAction, StepResult},
     lanes::command::{lifecycle::on_command::OnCommand, CommandLane},
-    lifecycle::lane_event::{tests::run_handler, CommandBranch, CommandLeaf, HLeaf, LaneEvent},
     meta::AgentMetadata,
 };
 
@@ -67,7 +69,7 @@ struct OnCommandHandler<T> {
     done: bool,
 }
 
-impl<T: Clone> EventHandler<TestAgent> for OnCommandHandler<T> {
+impl<T: Clone> HandlerAction<TestAgent> for OnCommandHandler<T> {
     type Completion = ();
 
     fn step(&mut self, _meta: AgentMetadata, _context: &TestAgent) -> StepResult<Self::Completion> {
@@ -116,7 +118,6 @@ fn make_uri() -> RelativeUri {
 fn make_meta(uri: &RelativeUri) -> AgentMetadata<'_> {
     AgentMetadata::new(uri, &CONFIG)
 }
-
 #[test]
 fn command_lane_leaf() {
     let uri = make_uri();
@@ -127,7 +128,7 @@ fn command_lane_leaf() {
     agent.first.command(56);
 
     let lifecycle = FakeLifecycle::<i32>::default();
-    let leaf = CommandLeaf::new(FIRST_NAME, TestAgent::FIRST, lifecycle.clone());
+    let leaf = CommandLeaf::leaf(FIRST_NAME, TestAgent::FIRST, lifecycle.clone());
 
     assert!(leaf.lane_event(&agent, "other").is_none());
 
@@ -141,7 +142,6 @@ fn command_lane_leaf() {
         panic!("Expected an event handler.");
     }
 }
-
 #[test]
 fn command_lane_left_branch() {
     let uri = make_uri();
@@ -151,7 +151,7 @@ fn command_lane_left_branch() {
 
     let first_lifecycle = FakeLifecycle::<i32>::default();
     let second_lifecycle = FakeLifecycle::<Text>::default();
-    let leaf = CommandLeaf::new(FIRST_NAME, TestAgent::FIRST, first_lifecycle.clone());
+    let leaf = CommandLeaf::leaf(FIRST_NAME, TestAgent::FIRST, first_lifecycle.clone());
 
     let branch = CommandBranch::new(
         SECOND_NAME,
@@ -201,7 +201,7 @@ fn command_lane_right_branch() {
 
     let first_lifecycle = FakeLifecycle::<i32>::default();
     let second_lifecycle = FakeLifecycle::<Text>::default();
-    let leaf = CommandLeaf::new(SECOND_NAME, TestAgent::SECOND, second_lifecycle.clone());
+    let leaf = CommandLeaf::leaf(SECOND_NAME, TestAgent::SECOND, second_lifecycle.clone());
 
     let branch = CommandBranch::new(
         FIRST_NAME,
@@ -252,8 +252,8 @@ fn command_lane_two_branches() {
     let first_lifecycle = FakeLifecycle::<i32>::default();
     let second_lifecycle = FakeLifecycle::<Text>::default();
     let third_lifecycle = FakeLifecycle::<bool>::default();
-    let leaf_left = CommandLeaf::new(FIRST_NAME, TestAgent::FIRST, first_lifecycle.clone());
-    let leaf_right = CommandLeaf::new(THIRD_NAME, TestAgent::THIRD, third_lifecycle.clone());
+    let leaf_left = CommandLeaf::leaf(FIRST_NAME, TestAgent::FIRST, first_lifecycle.clone());
+    let leaf_right = CommandLeaf::leaf(THIRD_NAME, TestAgent::THIRD, third_lifecycle.clone());
 
     let branch = CommandBranch::new(
         SECOND_NAME,

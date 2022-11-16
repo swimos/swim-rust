@@ -39,7 +39,7 @@ mod tests;
 /// #Type Parameters
 /// * `Context` - The context within which the handler executes. Typically, this will be a struct type where
 /// each field is a lane of an agent.
-pub trait EventHandler<Context> {
+pub trait HandlerAction<Context> {
     /// The result of executing the handler to completion.
     type Completion;
 
@@ -52,9 +52,13 @@ pub trait EventHandler<Context> {
     fn step(&mut self, meta: AgentMetadata, context: &Context) -> StepResult<Self::Completion>;
 }
 
-impl<'a, H, Context> EventHandler<Context> for &'a mut H
+pub trait EventHandler<Context>: HandlerAction<Context, Completion = ()> {}
+
+impl<Context, H> EventHandler<Context> for H where H: HandlerAction<Context, Completion = ()> {}
+
+impl<'a, H, Context> HandlerAction<Context> for &'a mut H
 where
-    H: EventHandler<Context>,
+    H: HandlerAction<Context>,
 {
     type Completion = H::Completion;
 
@@ -169,7 +173,7 @@ impl<T: IntoIterator> From<T> for SideEffects<T::IntoIter> {
     }
 }
 
-impl<Context, F, R> EventHandler<Context> for SideEffect<F>
+impl<Context, F, R> HandlerAction<Context> for SideEffect<F>
 where
     F: FnOnce() -> R,
 {
@@ -184,7 +188,7 @@ where
     }
 }
 
-impl<Context, I> EventHandler<Context> for SideEffects<I>
+impl<Context, I> HandlerAction<Context> for SideEffects<I>
 where
     I: Iterator,
 {
@@ -281,10 +285,10 @@ where
     }
 }
 
-impl<Context, H1, H2, F> EventHandler<Context> for AndThen<H1, H2, F>
+impl<Context, H1, H2, F> HandlerAction<Context> for AndThen<H1, H2, F>
 where
-    H1: EventHandler<Context>,
-    H2: EventHandler<Context>,
+    H1: HandlerAction<Context>,
+    H2: HandlerAction<Context>,
     F: HandlerTrans<H1::Completion, Out = H2>,
 {
     type Completion = H2::Completion;
@@ -324,10 +328,10 @@ where
     }
 }
 
-impl<Context, H1, H2, F> EventHandler<Context> for AndThenTry<H1, H2, F>
+impl<Context, H1, H2, F> HandlerAction<Context> for AndThenTry<H1, H2, F>
 where
-    H1: EventHandler<Context>,
-    H2: EventHandler<Context>,
+    H1: HandlerAction<Context>,
+    H2: HandlerAction<Context>,
     F: HandlerTrans<H1::Completion, Out = Result<H2, EventHandlerError>>,
 {
     type Completion = H2::Completion;
@@ -369,10 +373,10 @@ where
     }
 }
 
-impl<Context, H1, H2> EventHandler<Context> for FollowedBy<H1, H2>
+impl<Context, H1, H2> HandlerAction<Context> for FollowedBy<H1, H2>
 where
-    H1: EventHandler<Context>,
-    H2: EventHandler<Context>,
+    H1: HandlerAction<Context>,
+    H2: HandlerAction<Context>,
 {
     type Completion = H2::Completion;
 
@@ -427,7 +431,7 @@ impl<T: Default> Default for ConstHandler<T> {
     }
 }
 
-impl<T, Context> EventHandler<Context> for ConstHandler<T> {
+impl<T, Context> HandlerAction<Context> for ConstHandler<T> {
     type Completion = T;
 
     fn step(&mut self, _meta: AgentMetadata, _context: &Context) -> StepResult<Self::Completion> {
@@ -439,7 +443,7 @@ impl<T, Context> EventHandler<Context> for ConstHandler<T> {
     }
 }
 
-impl<Context> EventHandler<Context> for CNil {
+impl<Context> HandlerAction<Context> for CNil {
     type Completion = ();
 
     fn step(&mut self, _meta: AgentMetadata, _context: &Context) -> StepResult<Self::Completion> {
@@ -447,10 +451,10 @@ impl<Context> EventHandler<Context> for CNil {
     }
 }
 
-impl<H, T, Context> EventHandler<Context> for Coproduct<H, T>
+impl<H, T, Context> HandlerAction<Context> for Coproduct<H, T>
 where
-    H: EventHandler<Context, Completion = ()>,
-    T: EventHandler<Context, Completion = ()>,
+    H: HandlerAction<Context, Completion = ()>,
+    T: HandlerAction<Context, Completion = ()>,
 {
     type Completion = ();
 
@@ -468,7 +472,7 @@ pub struct GetAgentUri {
     done: bool,
 }
 
-impl<Context> EventHandler<Context> for GetAgentUri {
+impl<Context> HandlerAction<Context> for GetAgentUri {
     type Completion = RelativeUri;
 
     fn step(&mut self, meta: AgentMetadata, _context: &Context) -> StepResult<Self::Completion> {
@@ -500,7 +504,7 @@ impl<T> Decode<T> {
     }
 }
 
-impl<Context, T: RecognizerReadable> EventHandler<Context> for Decode<T> {
+impl<Context, T: RecognizerReadable> HandlerAction<Context> for Decode<T> {
     type Completion = T;
 
     fn step(&mut self, _meta: AgentMetadata, _context: &Context) -> StepResult<Self::Completion> {
@@ -521,10 +525,10 @@ impl<Context, T: RecognizerReadable> EventHandler<Context> for Decode<T> {
     }
 }
 
-impl<Context, H1, H2> EventHandler<Context> for Either<H1, H2>
+impl<Context, H1, H2> HandlerAction<Context> for Either<H1, H2>
 where
-    H1: EventHandler<Context>,
-    H2: EventHandler<Context, Completion = H1::Completion>,
+    H1: HandlerAction<Context>,
+    H2: HandlerAction<Context, Completion = H1::Completion>,
 {
     type Completion = H1::Completion;
 
@@ -536,15 +540,15 @@ where
     }
 }
 
-/// Adds combinators to the [`EventHander`] trait.
-pub trait EventHandlerExt<Context>: EventHandler<Context> {
+/// Adds combinators to the [`HandlerAction`] trait.
+pub trait HandlerActionExt<Context>: HandlerAction<Context> {
     /// Create a new handler which applies a function to the result of this handler and then executes
     /// an additional handler returned by the function.
     fn and_then<F, H2>(self, f: F) -> AndThen<Self, H2, F>
     where
         Self: Sized,
         F: HandlerTrans<Self::Completion, Out = H2>,
-        H2: EventHandler<Context>,
+        H2: HandlerAction<Context>,
     {
         AndThen::new(self, f)
     }
@@ -555,7 +559,7 @@ pub trait EventHandlerExt<Context>: EventHandler<Context> {
     where
         Self: Sized,
         F: HandlerTrans<Self::Completion, Out = Result<H2, EventHandlerError>>,
-        H2: EventHandler<Context>,
+        H2: HandlerAction<Context>,
     {
         AndThenTry::new(self, f)
     }
@@ -564,7 +568,7 @@ pub trait EventHandlerExt<Context>: EventHandler<Context> {
     fn followed_by<H2>(self, after: H2) -> FollowedBy<Self, H2>
     where
         Self: Sized,
-        H2: EventHandler<Context>,
+        H2: HandlerAction<Context>,
     {
         FollowedBy::new(self, after)
     }
@@ -579,4 +583,4 @@ pub trait EventHandlerExt<Context>: EventHandler<Context> {
     }
 }
 
-impl<Context, H: EventHandler<Context>> EventHandlerExt<Context> for H {}
+impl<Context, H: HandlerAction<Context>> HandlerActionExt<Context> for H {}

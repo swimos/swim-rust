@@ -74,6 +74,17 @@ pub struct StatefulCommandLaneLifecycle<Context, Shared, T, OnCmd = NoHandler> {
     on_command: OnCmd,
 }
 
+impl<Context, Shared, T, OnCmd: Clone> Clone
+    for StatefulCommandLaneLifecycle<Context, Shared, T, OnCmd>
+{
+    fn clone(&self) -> Self {
+        Self {
+            _value_type: PhantomData,
+            on_command: self.on_command.clone(),
+        }
+    }
+}
+
 impl<Context, Shared, T> Default for StatefulCommandLaneLifecycle<Context, Shared, T> {
     fn default() -> Self {
         Self {
@@ -93,7 +104,7 @@ where
     fn on_command(
         &'a self,
         shared: &'a Shared,
-        handler_context: crate::lifecycle::utility::HandlerContext<Context>,
+        handler_context: crate::agent_lifecycle::utility::HandlerContext<Context>,
         value: &T,
     ) -> Self::OnCommandHandler {
         self.on_command.on_command(shared, handler_context, value)
@@ -102,7 +113,7 @@ where
 
 impl<Context, Shared, T, OnCmd> StatefulCommandLaneLifecycle<Context, Shared, T, OnCmd> {
     /// Replace the `on_command` handler with another derived from a closure.
-    pub fn on_command<F, H>(
+    pub fn on_command<F>(
         self,
         f: F,
     ) -> StatefulCommandLaneLifecycle<Context, Shared, T, FnHandler<F>>

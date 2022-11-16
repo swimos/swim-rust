@@ -33,10 +33,10 @@ where
     let val_set = val_lanes.into_iter().collect::<HashSet<_>>();
     let map_set = map_lanes.into_iter().collect::<HashSet<_>>();
 
-    assert_eq!(agent.value_like_lanes(), val_set);
-    assert_eq!(agent.map_like_lanes(), map_set);
+    assert_eq!(A::value_like_lanes(), val_set);
+    assert_eq!(A::map_like_lanes(), map_set);
 
-    let id_map = agent.lane_ids();
+    let id_map = A::lane_ids();
     let expected_len = val_set.len() + map_set.len();
     assert_eq!(id_map.len(), expected_len);
 
