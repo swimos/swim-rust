@@ -67,7 +67,7 @@ pub(crate) struct TopLevelServerRouterFactory {
 }
 
 impl TopLevelServerRouterFactory {
-    pub(in crate) fn new(
+    pub(crate) fn new(
         plane_sender: mpsc::Sender<PlaneRoutingRequest>,
         client_sender: mpsc::Sender<ClientEndpointRequest>,
         remote_sender: mpsc::Sender<RemoteRoutingRequest>,

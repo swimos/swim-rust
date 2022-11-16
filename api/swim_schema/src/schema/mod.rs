@@ -80,7 +80,7 @@ fn combine_orderings(this: Ordering, that: Ordering) -> Option<Ordering> {
 }
 
 /// Specification for a field of a record.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FieldSpec<S> {
     /// The schema to apply to the field.
     schema: S,

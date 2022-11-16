@@ -660,7 +660,7 @@ fn calculate_chunk_size(node_capacity: usize, coord_count: usize, entries_count:
 }
 
 #[derive(Debug, Clone)]
-pub(in crate) struct Node<L, B>
+pub(crate) struct Node<L, B>
 where
     L: Label,
     B: BoxBounded,
@@ -964,7 +964,7 @@ type MaybeSplit<L, B> = Option<(EntryPtr<L, B>, EntryPtr<L, B>)>;
 type SplitGroup<L, B> = (Vec<EntryPtr<L, B>>, Rect<<B as BoxBounded>::Point>);
 
 #[derive(Debug, Clone)]
-pub(in crate) enum Entry<L, B>
+pub(crate) enum Entry<L, B>
 where
     L: Label,
     B: BoxBounded,

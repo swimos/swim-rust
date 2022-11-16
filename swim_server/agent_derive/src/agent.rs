@@ -88,7 +88,7 @@ impl LifecycleAttrs {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum LaneType {
     Command,
     Action,

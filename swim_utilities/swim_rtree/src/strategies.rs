@@ -36,7 +36,7 @@ pub enum SplitStrategy {
 // by choosing the pair that would waste the most area if both were put in the same group,
 // i.e. the area of a rectangle covering both entries, minus the areas of the entries
 // themselves, would be greatest.
-pub(in crate) fn quadratic_pick_seeds<L, B>(entries: &[EntryPtr<L, B>]) -> (usize, usize)
+pub(crate) fn quadratic_pick_seeds<L, B>(entries: &[EntryPtr<L, B>]) -> (usize, usize)
 where
     L: Label,
     B: BoxBounded,
@@ -72,7 +72,7 @@ where
 // The entries are assigned to groups one at a time. At each step the area expansion
 // required to add each remaining entry to each group is calculated, and the entry
 // assigned is the one showing the greatest difference between the two groups.
-pub(in crate) fn pick_next_quadratic<L, B>(
+pub(crate) fn pick_next_quadratic<L, B>(
     entries: &[EntryPtr<L, B>],
     first_mbb: &Rect<B::Point>,
     second_mbb: &Rect<B::Point>,
@@ -150,7 +150,7 @@ type PointType<B> = <<B as BoxBounded>::Point as Point>::Type;
 // entry with the lowest high side and records the separation. The separations are normalised
 // by dividing by the width of the entire set along the corresponding dimension. It then
 // chooses the pair with the greatest normalised separation along any dimension.
-pub(in crate) fn linear_pick_seeds<L, B>(entries: &[EntryPtr<L, B>]) -> (usize, usize)
+pub(crate) fn linear_pick_seeds<L, B>(entries: &[EntryPtr<L, B>]) -> (usize, usize)
 where
     L: Label,
     B: BoxBounded,
@@ -245,7 +245,7 @@ where
 }
 
 // The entries are assigned to the first available group.
-pub(in crate) fn pick_next_linear<L, B>(
+pub(crate) fn pick_next_linear<L, B>(
     entries: &[EntryPtr<L, B>],
     mbb: &Rect<B::Point>,
 ) -> (usize, Rect<B::Point>, Group)
@@ -318,7 +318,7 @@ where
     }
 }
 
-pub(in crate) enum Group {
+pub(crate) enum Group {
     First,
     Second,
 }
