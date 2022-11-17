@@ -18,7 +18,7 @@ use std::fmt::{Display, Formatter};
 use swim_utilities::errors::Recoverable;
 
 use crate::error::FmtResult;
-use crate::error::{format_cause, ConnectionError};
+use crate::error::format_cause;
 
 type NativeTlsError = tokio_native_tls::native_tls::Error;
 
@@ -88,12 +88,6 @@ impl From<NativeTlsError> for TlsError {
 impl From<std::io::Error> for TlsError {
     fn from(e: std::io::Error) -> Self {
         TlsError::new(TlsErrorKind::Io, Some(e.to_string()))
-    }
-}
-
-impl From<TlsError> for ConnectionError {
-    fn from(e: TlsError) -> Self {
-        ConnectionError::Tls(e)
     }
 }
 
