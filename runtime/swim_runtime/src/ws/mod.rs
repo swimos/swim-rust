@@ -32,7 +32,6 @@ use crate::error::ConnectionError;
 
 pub mod ext;
 mod swim_ratchet;
-pub mod utils;
 
 mod switcher;
 

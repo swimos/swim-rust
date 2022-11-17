@@ -29,9 +29,6 @@ use swim_utilities::errors::Recoverable;
 use thiserror::Error as ThisError;
 pub use tls::*;
 
-pub use self::http::*;
-
-mod http;
 mod io;
 mod protocol;
 mod routing;
@@ -50,8 +47,6 @@ impl<T> RecoverableError for T where T: std::error::Error + Send + Sync + Recove
 /// An error denoting that a connection error has occurred.
 #[derive(Debug, Clone)]
 pub enum ConnectionError {
-    /// A HTTP detailing either a malformatted request/response or a peer error.
-    Http(HttpError),
     /// A TLS error that may be produced when reading a certificate or through a connection.
     Tls(TlsError),
     /// A connection protocol error.
@@ -69,7 +64,6 @@ pub enum ConnectionError {
 impl PartialEq for ConnectionError {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (ConnectionError::Http(l), ConnectionError::Http(r)) => l.eq(r),
             #[cfg(feature = "tls")]
             (ConnectionError::Tls(l), ConnectionError::Tls(r)) => l.eq(r),
             (ConnectionError::Protocol(l), ConnectionError::Protocol(r)) => l.eq(r),
@@ -102,7 +96,6 @@ impl From<ratchet::Error> for ConnectionError {
 impl Recoverable for ConnectionError {
     fn is_fatal(&self) -> bool {
         match self {
-            ConnectionError::Http(e) => e.is_fatal(),
             ConnectionError::Tls(e) => e.is_fatal(),
             ConnectionError::Protocol(e) => e.is_fatal(),
             ConnectionError::Io(e) => matches!(
@@ -121,7 +114,6 @@ impl Error for ConnectionError {}
 impl Display for ConnectionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
-            ConnectionError::Http(e) => write!(f, "{}", e),
             ConnectionError::Tls(e) => write!(f, "{}", e),
             ConnectionError::Protocol(e) => write!(f, "{}", e),
             ConnectionError::Io(e) => write!(f, "{}", e),
