@@ -14,61 +14,15 @@
 
 use crate::{NotifyOnBlocked, StopAfterError};
 
-use super::TransformMut;
 use futures::executor::block_on;
-use futures::future::{join, ready, select, Either, Ready};
-use futures::stream::{self, iter, Iter};
+use futures::future::{join, select, Either};
+use futures::stream::{self, iter};
 use futures::StreamExt;
-use std::iter::{repeat, Repeat, Take};
 use std::sync::Arc;
 use std::time::Duration;
 use swim_trigger::trigger;
 use tokio::sync::Notify;
 use tokio::time::timeout;
-
-struct Plus(i32);
-
-impl TransformMut<i32> for Plus {
-    type Out = i32;
-
-    fn transform(&mut self, input: i32) -> Self::Out {
-        input + self.0
-    }
-}
-
-struct PlusReady(i32);
-
-impl TransformMut<i32> for PlusReady {
-    type Out = Ready<i32>;
-
-    fn transform(&mut self, input: i32) -> Self::Out {
-        ready(input + self.0)
-    }
-}
-
-struct RepeatStream(usize);
-
-impl TransformMut<i32> for RepeatStream {
-    type Out = Iter<Take<Repeat<i32>>>;
-
-    fn transform(&mut self, input: i32) -> Self::Out {
-        iter(repeat(input).take(self.0))
-    }
-}
-
-struct PlusIfNonNeg(i32);
-
-impl TransformMut<i32> for PlusIfNonNeg {
-    type Out = Result<i32, ()>;
-
-    fn transform(&mut self, input: i32) -> Self::Out {
-        if input >= 0 {
-            Ok(input + self.0)
-        } else {
-            Err(())
-        }
-    }
-}
 
 #[test]
 fn stop_after_error() {

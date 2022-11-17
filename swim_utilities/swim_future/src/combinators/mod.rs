@@ -26,54 +26,6 @@ use tokio::sync::Notify;
 pub use immediate_or::{
     immediate_or_join, immediate_or_start, ImmediateOrJoin, ImmediateOrStart, SecondaryResult,
 };
-/// A trait that is essentially equivalent to [`FnOnce`] with a single variable. However, it is
-/// possible to implement this directly for a named type.
-pub trait TransformOnce<In> {
-    type Out;
-
-    /// Trans from the input, potentially using the contents of this transformer.
-    fn transform(self, input: In) -> Self::Out;
-}
-
-/// A trait that is essentially equivalent to [`Fn`] with a single variable. However, it is
-/// possible to implement this directly for a named type.
-pub trait Transform<In> {
-    type Out;
-
-    /// Transform the input.
-    fn transform(&self, input: In) -> Self::Out;
-}
-
-/// A trait that is essentially equivalent to [`FnMut`] with a single variable. However, it is
-/// possible to implement this directly for a named type.
-pub trait TransformMut<In> {
-    type Out;
-
-    /// Transform the input.
-    fn transform(&mut self, input: In) -> Self::Out;
-}
-
-impl<In, F> TransformMut<In> for F
-where
-    F: Transform<In>,
-{
-    type Out = F::Out;
-
-    fn transform(&mut self, input: In) -> Self::Out {
-        Transform::transform(self, input)
-    }
-}
-
-impl<In, F> TransformOnce<In> for F
-where
-    F: TransformMut<In>,
-{
-    type Out = F::Out;
-
-    fn transform(mut self, input: In) -> Self::Out {
-        TransformMut::transform(&mut self, input)
-    }
-}
 
 /// A stream that runs another stream of [`Result`]s until it produces an error and then
 /// terminates.
