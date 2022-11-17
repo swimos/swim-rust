@@ -13,7 +13,6 @@
 // limitations under the License.
 
 mod combinators;
-pub mod request;
 pub mod retryable;
 
 pub use combinators::{
