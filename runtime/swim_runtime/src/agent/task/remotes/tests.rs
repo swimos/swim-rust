@@ -22,7 +22,7 @@ use swim_messages::{
 };
 use swim_model::Text;
 use swim_utilities::{
-    algebra::non_zero_usize,
+    non_zero_usize,
     io::byte_channel::{byte_channel, ByteReader},
     trigger::promise,
 };

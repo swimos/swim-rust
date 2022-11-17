@@ -22,8 +22,16 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use swim_algebra::non_zero_usize;
 use tokio::sync::Barrier;
+
+macro_rules! non_zero_usize {
+    (0) => {
+        compile_error!("Must be non-zero")
+    };
+    ($n:expr) => {
+        unsafe { std::num::NonZeroUsize::new_unchecked($n) }
+    };
+}
 
 #[test]
 fn one_item_queue() {

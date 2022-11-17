@@ -17,8 +17,8 @@ use crate::retryable::{ResettableFuture, RetryableFuture};
 use futures::task::{Context, Poll};
 use futures::Future;
 use pin_project::pin_project;
+use std::num::NonZeroUsize;
 use std::pin::Pin;
-use swim_algebra::non_zero_usize;
 use tokio::sync::mpsc;
 
 #[pin_project]
@@ -100,7 +100,7 @@ async fn test() {
     let sender = MpscSender::new(tx, p, send);
 
     let retry: Result<i32, SendErr> =
-        RetryableFuture::new(sender, RetryStrategy::immediate(non_zero_usize!(2))).await;
+        RetryableFuture::new(sender, RetryStrategy::immediate(NonZeroUsize::new(2).unwrap())).await;
     assert_eq!(retry.unwrap(), p);
 
     let result = rx.recv().await;

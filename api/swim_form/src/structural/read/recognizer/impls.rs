@@ -31,12 +31,12 @@ use std::num::NonZeroUsize;
 use std::time::Duration;
 use swim_model::path::AbsolutePath;
 use swim_model::{Text, ValueKind};
-use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::retryable::strategy::{
     DEFAULT_EXPONENTIAL_MAX_BACKOFF, DEFAULT_EXPONENTIAL_MAX_INTERVAL, DEFAULT_IMMEDIATE_RETRIES,
     DEFAULT_INTERVAL_DELAY, DEFAULT_INTERVAL_RETRIES,
 };
 use swim_utilities::future::retryable::{Quantity, RetryStrategy};
+use swim_utilities::non_zero_usize;
 use url::Url;
 
 enum RetryStrategyStage {

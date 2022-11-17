@@ -17,7 +17,7 @@ use std::{num::NonZeroUsize, time::Duration};
 use ratchet::WebSocketConfig;
 use swim_api::agent::AgentConfig;
 use swim_runtime::{agent::AgentRuntimeConfig, downlink::DownlinkRuntimeConfig};
-use swim_utilities::algebra::non_zero_usize;
+use swim_utilities::non_zero_usize;
 
 /// Configuration parameters for a Swim server.
 #[derive(Debug, Clone, Copy)]

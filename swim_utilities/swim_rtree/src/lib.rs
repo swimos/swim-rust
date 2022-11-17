@@ -72,7 +72,7 @@ where
     /// # Example:
     /// ```
     /// use swim_rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
-    /// use swim_algebra::non_zero_usize;
+    /// use swim_non_zero_usize;
     ///
     /// let mut rtree = RTree::new(non_zero_usize!(5), non_zero_usize!(10), SplitStrategy::Linear).unwrap();
     ///
@@ -99,7 +99,7 @@ where
     /// # Example:
     /// ```
     /// use swim_rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
-    /// use swim_algebra::non_zero_usize;
+    /// use swim_non_zero_usize;
     ///
     /// let mut rtree = RTree::new(non_zero_usize!(2), non_zero_usize!(5), SplitStrategy::Linear).unwrap();
     ///
@@ -118,7 +118,7 @@ where
     /// # Example:
     /// ```
     /// use swim_rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
-    /// use swim_algebra::non_zero_usize;
+    /// use swim_non_zero_usize;
     ///
     /// let mut rtree = RTree::new(non_zero_usize!(2), non_zero_usize!(5), SplitStrategy::Linear).unwrap();
     ///
@@ -138,7 +138,7 @@ where
     /// # Example:
     /// ```
     /// use swim_rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
-    /// use swim_algebra::non_zero_usize;
+    /// use swim_non_zero_usize;
     ///
     /// let mut rtree = RTree::new(non_zero_usize!(2), non_zero_usize!(5), SplitStrategy::Linear).unwrap();
     ///
@@ -167,7 +167,7 @@ where
     /// # Example:
     /// ```
     /// use swim_rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
-    /// use swim_algebra::non_zero_usize;
+    /// use swim_non_zero_usize;
     ///
     /// let mut rtree = RTree::new(non_zero_usize!(2), non_zero_usize!(5), SplitStrategy::Linear).unwrap();
     ///
@@ -204,7 +204,7 @@ where
     /// # Example:
     /// ```
     /// use swim_rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
-    /// use swim_algebra::non_zero_usize;
+    /// use swim_non_zero_usize;
     ///
     /// let mut rtree = RTree::new(non_zero_usize!(2), non_zero_usize!(5), SplitStrategy::Linear).unwrap();
     ///
@@ -287,7 +287,7 @@ where
     /// # Example:
     /// ```
     /// use swim_rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
-    /// use swim_algebra::non_zero_usize;
+    /// use swim_non_zero_usize;
     ///
     /// let items = vec![
     ///         ("First".to_string(), rect!((0.0, 0.0), (10.0, 10.0))),
@@ -364,7 +364,7 @@ where
     ///
     /// ```
     /// use swim_rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
-    /// use swim_algebra::non_zero_usize;
+    /// use swim_non_zero_usize;
     ///
     /// let mut rtree = RTree::new(non_zero_usize!(2), non_zero_usize!(5), SplitStrategy::Linear).unwrap();
     ///
@@ -567,7 +567,7 @@ impl<L: Label> From<DuplicateLabelError<L>> for RTreeError<L> {
 ///
 /// ```
 /// use swim_rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
-/// use swim_algebra::non_zero_usize;
+/// use swim_non_zero_usize;
 ///
 /// let mut rtree = RTree::new(non_zero_usize!(2), non_zero_usize!(5), SplitStrategy::Linear).unwrap();
 /// rtree.insert("First".to_string(), rect!((0.0, 0.0), (1.0, 1.0))).unwrap();

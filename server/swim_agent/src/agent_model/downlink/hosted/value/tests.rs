@@ -22,7 +22,7 @@ use swim_api::protocol::downlink::{
 use swim_model::{address::Address, Text};
 use swim_recon::printer::print_recon_compact;
 use swim_utilities::{
-    algebra::non_zero_usize,
+    non_zero_usize,
     io::byte_channel::{self, ByteWriter},
     sync::circular_buffer,
 };

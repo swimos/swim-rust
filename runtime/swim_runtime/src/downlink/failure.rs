@@ -208,7 +208,7 @@ impl<E: std::error::Error> BadFrameStrategy<E> for CountStrategy<E> {
 mod tests {
 
     use super::*;
-    use swim_utilities::algebra::non_zero_usize;
+    use swim_utilities::non_zero_usize;
     use thiserror::Error;
 
     #[derive(Debug, Error, PartialEq, Eq)]

@@ -31,7 +31,7 @@ use swim_recon::printer::print_recon_compact;
 use swim_remote::AttachClient;
 use swim_runtime::net::{Scheme, SchemeHostPort};
 use swim_utilities::{
-    algebra::non_zero_usize, io::byte_channel::byte_channel, routing::route_pattern::RoutePattern,
+    non_zero_usize, io::byte_channel::byte_channel, routing::route_pattern::RoutePattern,
 };
 
 use swim_warp::envelope::{peel_envelope_header, RawEnvelope};

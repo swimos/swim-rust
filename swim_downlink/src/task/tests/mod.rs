@@ -30,7 +30,7 @@ use swim_model::address::Address;
 use swim_recon::parser::{parse_recognize, Span};
 use swim_recon::printer::print_recon_compact;
 use swim_utilities::{
-    algebra::non_zero_usize,
+    non_zero_usize,
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
 };
 

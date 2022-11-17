@@ -33,9 +33,8 @@ use swim_messages::{
 };
 use swim_model::{address::RelativeAddress, Text};
 use swim_utilities::{
-    algebra::non_zero_usize,
     io::byte_channel::{self, byte_channel, ByteReader, ByteWriter},
-    trigger,
+    trigger, non_zero_usize,
 };
 use tokio::{
     io::{duplex, DuplexStream},

@@ -51,7 +51,7 @@ use swim_runtime::{
     },
 };
 use swim_utilities::{
-    algebra::non_zero_usize,
+    non_zero_usize,
     io::byte_channel::{ByteReader, ByteWriter},
     trigger,
 };

@@ -17,7 +17,10 @@
 pub mod never;
 
 #[cfg(feature = "algebra")]
-pub use swim_algebra as algebra;
+pub mod algebra {
+    pub use swim_algebra::*;
+}
+
 
 #[cfg(feature = "errors")]
 pub use swim_errors as errors;
@@ -62,3 +65,15 @@ pub mod sync {
 
 #[cfg(feature = "test-util")]
 pub use swim_test_util as test_util;
+
+pub mod num {
+    #[macro_export]
+    macro_rules! non_zero_usize {
+        (0) => {
+            compile_error!("Must be non-zero")
+        };
+        ($n:expr) => {
+            unsafe { std::num::NonZeroUsize::new_unchecked($n) }
+        };
+    }
+}

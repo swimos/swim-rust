@@ -48,7 +48,7 @@ use swim_recon::{
     printer::print_recon_compact,
 };
 use swim_utilities::{
-    algebra::non_zero_usize,
+    non_zero_usize,
     io::byte_channel::{ByteReader, ByteWriter},
     trigger::promise,
 };

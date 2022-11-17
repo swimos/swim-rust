@@ -27,7 +27,7 @@ use swim_api::{
     },
 };
 use swim_model::Text;
-use swim_utilities::{algebra::non_zero_usize, io::byte_channel::byte_channel};
+use swim_utilities::{non_zero_usize, io::byte_channel::byte_channel};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
 use crate::lanes::{MapLane, ValueLane};

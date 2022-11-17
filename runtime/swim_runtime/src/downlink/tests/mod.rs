@@ -14,7 +14,7 @@
 
 use std::{num::NonZeroUsize, time::Duration};
 
-use swim_utilities::algebra::non_zero_usize;
+use swim_utilities::non_zero_usize;
 use uuid::Uuid;
 
 mod map;

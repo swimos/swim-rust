@@ -212,8 +212,7 @@ impl Iterator for RetryStrategy {
 #[cfg(test)]
 mod tests {
     use crate::retryable::strategy::{Quantity, RetryStrategy};
-    use std::time::Duration;
-    use swim_algebra::non_zero_usize;
+    use std::{time::Duration, num::NonZeroUsize};
 
     #[tokio::test]
     async fn test_exponential() {
@@ -239,7 +238,7 @@ mod tests {
     #[tokio::test]
     async fn test_immediate() {
         let retries = 5;
-        let strategy = RetryStrategy::immediate(non_zero_usize!(retries));
+        let strategy = RetryStrategy::immediate(NonZeroUsize::new(retries).unwrap());
         let mut it = strategy;
         let count = it.count();
 
@@ -258,7 +257,7 @@ mod tests {
         let expected_duration = Duration::from_secs(1);
         let strategy = RetryStrategy::interval(
             expected_duration,
-            Quantity::Finite(non_zero_usize!(retries)),
+            Quantity::Finite(NonZeroUsize::new(retries).unwrap()),
         );
         let mut it = strategy;
         let count = it.count();

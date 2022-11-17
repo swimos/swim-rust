@@ -26,7 +26,7 @@ use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_form::Form;
 use swim_runtime::agent::reporting::{UplinkReporter, UplinkSnapshot};
 use swim_utilities::{
-    algebra::non_zero_usize,
+    non_zero_usize,
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
     trigger,
 };

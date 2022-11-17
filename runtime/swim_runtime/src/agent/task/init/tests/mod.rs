@@ -32,7 +32,7 @@ use swim_api::{
 };
 use swim_model::Text;
 use swim_utilities::{
-    algebra::non_zero_usize,
+    non_zero_usize,
     io::byte_channel::{self, byte_channel, ByteWriter},
     trigger,
 };

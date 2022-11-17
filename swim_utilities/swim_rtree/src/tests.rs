@@ -20,7 +20,15 @@ use crate::{
 use std::fs;
 use std::ops::Sub;
 use std::sync::{Arc, Mutex};
-use swim_algebra::non_zero_usize;
+
+macro_rules! non_zero_usize {
+    (0) => {
+        compile_error!("Must be non-zero")
+    };
+    ($n:expr) => {
+        unsafe { std::num::NonZeroUsize::new_unchecked($n) }
+    };
+}
 
 fn test_tree<B: BoxBounded, L: Label>(mut tree: RTree<L, B>, entries: Vec<(L, B)>, path: String) {
     assert_eq!(
