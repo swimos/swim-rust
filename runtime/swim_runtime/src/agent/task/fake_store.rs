@@ -81,7 +81,7 @@ impl FakeStore {
         let mut guard = self.inner.lock();
         let FakeStoreInner { maps, ids_back, .. } = &mut *guard;
         if !ids_back.contains_key(&id) {
-            return Err(StoreError::KeyNotFound);
+            Err(StoreError::KeyNotFound)
         } else {
             Ok(maps.get(&id).map(|map_store| map_store.data.clone()))
         }

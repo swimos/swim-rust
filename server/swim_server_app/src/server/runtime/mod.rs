@@ -984,7 +984,7 @@ where
         .open_connection(socket, host.to_string())
         .await
         .map(move |ws| (addr, ws))
-        .map_err(|e| NewClientError::WsNegotationFailed { error: e.into() })
+        .map_err(|e| NewClientError::WsNegotationFailed { error: e })
 }
 
 fn start_introspection(

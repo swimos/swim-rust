@@ -108,7 +108,7 @@ pub fn init(
         let (out_tx, out_rx) = byte_channel(BUFFER_SIZE);
         let fake_lane = FakeRuntimeLane {
             kind,
-            expected_config: lane_config.clone(),
+            expected_config: lane_config,
             io: Some((out_tx, in_rx)),
         };
         expected.insert(name.clone(), fake_lane);

@@ -20,7 +20,7 @@ futures-util = "0.3.4"
 http = "0.2.3"
 pin-project = "1.0.5"
 pin-utils = "0.1.0"
-tokio = { version = "1.1.1", features = ["sync", "rt"] }
+tokio = { version = "1.1.1", features = ["sync", "rt", "macros"] }
 tokio-native-tls = { version = "0.3", optional = true }
 tokio-util = { version = "0.6.8", features = ["codec"] }
 swim_utilities = { path = "../../swim_utilities", features = ["sync", "errors", "future", "io"] }
@@ -41,7 +41,7 @@ uuid = "0.8.2"
 static_assertions = "1.1.0"
 
 [dev-dependencies]
-tokio = { version = "1.1.1", features = ["macros", "test-util"] }
+tokio = { version = "1.1.1", features = ["test-util"] }
 parking_lot = "0.11.0"
 tokio-stream = "0.1.2"
 uuid = { version = "0.8.2", features = ["v4"] }

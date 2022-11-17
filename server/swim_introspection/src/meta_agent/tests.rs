@@ -63,7 +63,7 @@ where
         ReceiverStream::new(pulse_rx),
         reader,
         (out_tx, in_rx),
-        |diff, pulse| PulseWithDuration::new(diff, pulse),
+        PulseWithDuration::new,
     );
 
     let context = TestContext {

@@ -367,7 +367,7 @@ async fn attach_remote_no_link() {
             ..
         } = context;
 
-        let reader = attach_remote_and_wait(RID1.into(), &messages_tx).await;
+        let reader = attach_remote_and_wait(RID1, &messages_tx).await;
 
         stop_sender.trigger();
         reader.expect_clean_shutdown(vec![], None).await;
@@ -387,8 +387,8 @@ async fn attach_and_link_remote() {
             ..
         } = context;
 
-        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
-        link_remote(RID1.into(), VAL_LANE, &messages_tx).await;
+        let mut reader = attach_remote(RID1, &messages_tx).await;
+        link_remote(RID1, VAL_LANE, &messages_tx).await;
 
         reader.expect_linked(VAL_LANE).await;
         stop_sender.trigger();
@@ -409,8 +409,8 @@ async fn receive_value_message_when_linked_remote() {
             ..
         } = context;
 
-        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
-        link_remote(RID1.into(), VAL_LANE, &messages_tx).await;
+        let mut reader = attach_remote(RID1, &messages_tx).await;
+        link_remote(RID1, VAL_LANE, &messages_tx).await;
         reader.expect_linked(VAL_LANE).await;
 
         instr_tx.value_event(VAL_LANE, 747);
@@ -434,8 +434,8 @@ async fn receive_supply_message_when_linked_remote() {
             ..
         } = context;
 
-        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
-        link_remote(RID1.into(), SUPPLY_LANE, &messages_tx).await;
+        let mut reader = attach_remote(RID1, &messages_tx).await;
+        link_remote(RID1, SUPPLY_LANE, &messages_tx).await;
         reader.expect_linked(SUPPLY_LANE).await;
 
         instr_tx.supply_event(SUPPLY_LANE, 747);
@@ -459,8 +459,8 @@ async fn receive_value_messages_when_linked_remote() {
             ..
         } = context;
 
-        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
-        link_remote(RID1.into(), VAL_LANE, &messages_tx).await;
+        let mut reader = attach_remote(RID1, &messages_tx).await;
+        link_remote(RID1, VAL_LANE, &messages_tx).await;
         reader.expect_linked(VAL_LANE).await;
 
         instr_tx.value_event(VAL_LANE, 747);
@@ -486,8 +486,8 @@ async fn receive_supply_messages_when_linked_remote() {
             ..
         } = context;
 
-        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
-        link_remote(RID1.into(), SUPPLY_LANE, &messages_tx).await;
+        let mut reader = attach_remote(RID1, &messages_tx).await;
+        link_remote(RID1, SUPPLY_LANE, &messages_tx).await;
         reader.expect_linked(SUPPLY_LANE).await;
 
         instr_tx.supply_event(SUPPLY_LANE, 8483);
@@ -513,12 +513,12 @@ async fn explicitly_unlink_remote() {
             ..
         } = context;
 
-        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
+        let mut reader = attach_remote(RID1, &messages_tx).await;
 
-        link_remote(RID1.into(), VAL_LANE, &messages_tx).await;
+        link_remote(RID1, VAL_LANE, &messages_tx).await;
         reader.expect_linked(VAL_LANE).await;
 
-        unlink_remote(RID1.into(), VAL_LANE, &messages_tx).await;
+        unlink_remote(RID1, VAL_LANE, &messages_tx).await;
         reader.expect_unlinked(VAL_LANE).await;
 
         stop_sender.trigger();
@@ -540,11 +540,11 @@ async fn broadcast_value_message_when_linked_multiple_remotes() {
             ..
         } = context;
 
-        let mut reader1 = attach_remote(RID1.into(), &messages_tx).await;
-        link_remote(RID1.into(), VAL_LANE, &messages_tx).await;
+        let mut reader1 = attach_remote(RID1, &messages_tx).await;
+        link_remote(RID1, VAL_LANE, &messages_tx).await;
 
-        let mut reader2 = attach_remote(RID2.into(), &messages_tx).await;
-        link_remote(RID2.into(), VAL_LANE, &messages_tx).await;
+        let mut reader2 = attach_remote(RID2, &messages_tx).await;
+        link_remote(RID2, VAL_LANE, &messages_tx).await;
 
         reader1.expect_linked(VAL_LANE).await;
         reader2.expect_linked(VAL_LANE).await;
@@ -579,11 +579,11 @@ async fn broadcast_supply_message_when_linked_multiple_remotes() {
             ..
         } = context;
 
-        let mut reader1 = attach_remote(RID1.into(), &messages_tx).await;
-        link_remote(RID1.into(), SUPPLY_LANE, &messages_tx).await;
+        let mut reader1 = attach_remote(RID1, &messages_tx).await;
+        link_remote(RID1, SUPPLY_LANE, &messages_tx).await;
 
-        let mut reader2 = attach_remote(RID2.into(), &messages_tx).await;
-        link_remote(RID2.into(), SUPPLY_LANE, &messages_tx).await;
+        let mut reader2 = attach_remote(RID2, &messages_tx).await;
+        link_remote(RID2, SUPPLY_LANE, &messages_tx).await;
 
         reader1.expect_linked(SUPPLY_LANE).await;
         reader2.expect_linked(SUPPLY_LANE).await;
@@ -618,16 +618,16 @@ async fn value_synced_message_are_targetted() {
             ..
         } = context;
 
-        let mut reader1 = attach_remote(RID1.into(), &messages_tx).await;
-        link_remote(RID1.into(), VAL_LANE, &messages_tx).await;
+        let mut reader1 = attach_remote(RID1, &messages_tx).await;
+        link_remote(RID1, VAL_LANE, &messages_tx).await;
 
-        let mut reader2 = attach_remote(RID2.into(), &messages_tx).await;
-        link_remote(RID2.into(), VAL_LANE, &messages_tx).await;
+        let mut reader2 = attach_remote(RID2, &messages_tx).await;
+        link_remote(RID2, VAL_LANE, &messages_tx).await;
 
         reader1.expect_linked(VAL_LANE).await;
         reader2.expect_linked(VAL_LANE).await;
 
-        instr_tx.value_synced_event(RID1.into(), VAL_LANE, 64);
+        instr_tx.value_synced_event(RID1, VAL_LANE, 64);
 
         reader1.expect_value_synced(VAL_LANE, 64).await;
 
@@ -653,16 +653,16 @@ async fn supply_synced_message_are_targetted() {
             ..
         } = context;
 
-        let mut reader1 = attach_remote(RID1.into(), &messages_tx).await;
-        link_remote(RID1.into(), SUPPLY_LANE, &messages_tx).await;
+        let mut reader1 = attach_remote(RID1, &messages_tx).await;
+        link_remote(RID1, SUPPLY_LANE, &messages_tx).await;
 
-        let mut reader2 = attach_remote(RID2.into(), &messages_tx).await;
-        link_remote(RID2.into(), SUPPLY_LANE, &messages_tx).await;
+        let mut reader2 = attach_remote(RID2, &messages_tx).await;
+        link_remote(RID2, SUPPLY_LANE, &messages_tx).await;
 
         reader1.expect_linked(SUPPLY_LANE).await;
         reader2.expect_linked(SUPPLY_LANE).await;
 
-        instr_tx.supply_synced_event(RID1.into(), SUPPLY_LANE);
+        instr_tx.supply_synced_event(RID1, SUPPLY_LANE);
 
         reader1.expect_supply_synced(SUPPLY_LANE).await;
 
@@ -688,11 +688,11 @@ async fn broadcast_map_message_when_linked_multiple_remotes() {
             ..
         } = context;
 
-        let mut reader1 = attach_remote(RID1.into(), &messages_tx).await;
-        link_remote(RID1.into(), MAP_LANE, &messages_tx).await;
+        let mut reader1 = attach_remote(RID1, &messages_tx).await;
+        link_remote(RID1, MAP_LANE, &messages_tx).await;
 
-        let mut reader2 = attach_remote(RID2.into(), &messages_tx).await;
-        link_remote(RID2.into(), MAP_LANE, &messages_tx).await;
+        let mut reader2 = attach_remote(RID2, &messages_tx).await;
+        link_remote(RID2, MAP_LANE, &messages_tx).await;
 
         reader1.expect_linked(MAP_LANE).await;
         reader2.expect_linked(MAP_LANE).await;
@@ -727,8 +727,8 @@ async fn receive_map_messages_when_linked() {
             ..
         } = context;
 
-        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
-        link_remote(RID1.into(), MAP_LANE, &messages_tx).await;
+        let mut reader = attach_remote(RID1, &messages_tx).await;
+        link_remote(RID1, MAP_LANE, &messages_tx).await;
 
         reader.expect_linked(MAP_LANE).await;
 
@@ -755,17 +755,17 @@ async fn map_synced_message_are_targetted() {
             ..
         } = context;
 
-        let mut reader1 = attach_remote(RID1.into(), &messages_tx).await;
-        link_remote(RID1.into(), MAP_LANE, &messages_tx).await;
+        let mut reader1 = attach_remote(RID1, &messages_tx).await;
+        link_remote(RID1, MAP_LANE, &messages_tx).await;
 
-        let mut reader2 = attach_remote(RID2.into(), &messages_tx).await;
-        link_remote(RID2.into(), MAP_LANE, &messages_tx).await;
+        let mut reader2 = attach_remote(RID2, &messages_tx).await;
+        link_remote(RID2, MAP_LANE, &messages_tx).await;
 
         reader1.expect_linked(MAP_LANE).await;
         reader2.expect_linked(MAP_LANE).await;
 
-        instr_tx.map_syncing_event(RID2.into(), MAP_LANE, "key", 389);
-        instr_tx.map_synced_event(RID2.into(), MAP_LANE);
+        instr_tx.map_syncing_event(RID2, MAP_LANE, "key", 389);
+        instr_tx.map_synced_event(RID2, MAP_LANE);
 
         reader2.expect_map_event(MAP_LANE, "key", 389).await;
         reader2.expect_map_synced(MAP_LANE).await;
@@ -809,10 +809,10 @@ async fn write_task_votes_to_stop() {
             ..
         } = context;
 
-        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
+        let mut reader = attach_remote(RID1, &messages_tx).await;
 
         let before = Instant::now();
-        link_remote(RID1.into(), VAL_LANE, &messages_tx).await;
+        link_remote(RID1, VAL_LANE, &messages_tx).await;
 
         reader.expect_linked(VAL_LANE).await;
         //Voting on behalf of the missing read task.
@@ -841,9 +841,9 @@ async fn write_task_rescinds_vote_to_stop() {
             ..
         } = context;
 
-        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
+        let mut reader = attach_remote(RID1, &messages_tx).await;
 
-        link_remote(RID1.into(), VAL_LANE, &messages_tx).await;
+        link_remote(RID1, VAL_LANE, &messages_tx).await;
 
         reader.expect_linked(VAL_LANE).await;
 
@@ -874,8 +874,8 @@ async fn backpressure_relief_on_value_lanes() {
             ..
         } = context;
 
-        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
-        link_remote(RID1.into(), VAL_LANE, &messages_tx).await;
+        let mut reader = attach_remote(RID1, &messages_tx).await;
+        link_remote(RID1, VAL_LANE, &messages_tx).await;
         reader.expect_linked(VAL_LANE).await;
 
         for i in 0..NUM_RECORDS {
@@ -921,8 +921,8 @@ async fn backpressure_relief_on_map_lanes() {
             ..
         } = context;
 
-        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
-        link_remote(RID1.into(), MAP_LANE, &messages_tx).await;
+        let mut reader = attach_remote(RID1, &messages_tx).await;
+        link_remote(RID1, MAP_LANE, &messages_tx).await;
         reader.expect_linked(MAP_LANE).await;
 
         for i in 0..NUM_RECORDS {
@@ -972,15 +972,15 @@ async fn backpressure_relief_on_map_lanes_with_synced() {
             ..
         } = context;
 
-        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
-        link_remote(RID1.into(), MAP_LANE, &messages_tx).await;
+        let mut reader = attach_remote(RID1, &messages_tx).await;
+        link_remote(RID1, MAP_LANE, &messages_tx).await;
         reader.expect_linked(MAP_LANE).await;
 
         for i in 0..SYNCED_AT {
             instr_tx.map_event(MAP_LANE, "test", i);
         }
-        instr_tx.map_syncing_event(RID1.into(), MAP_LANE, "test", SYNCED_AT);
-        instr_tx.map_synced_event(RID1.into(), MAP_LANE);
+        instr_tx.map_syncing_event(RID1, MAP_LANE, "test", SYNCED_AT);
+        instr_tx.map_synced_event(RID1, MAP_LANE);
         for i in (SYNCED_AT + 1)..NUM_RECORDS {
             instr_tx.map_event(MAP_LANE, "test", i);
         }
@@ -1043,8 +1043,8 @@ async fn value_lane_events_persisted() {
             ..
         } = context;
 
-        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
-        link_remote(RID1.into(), VAL_LANE, &messages_tx).await;
+        let mut reader = attach_remote(RID1, &messages_tx).await;
+        link_remote(RID1, VAL_LANE, &messages_tx).await;
         reader.expect_linked(VAL_LANE).await;
 
         instr_tx.value_event(VAL_LANE, 747);
@@ -1076,8 +1076,8 @@ async fn map_lane_events_persisted() {
             ..
         } = context;
 
-        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
-        link_remote(RID1.into(), MAP_LANE, &messages_tx).await;
+        let mut reader = attach_remote(RID1, &messages_tx).await;
+        link_remote(RID1, MAP_LANE, &messages_tx).await;
         reader.expect_linked(MAP_LANE).await;
 
         instr_tx.map_event(MAP_LANE, "a", 1);
@@ -1116,8 +1116,8 @@ async fn supply_uplink_does_not_drop_messages() {
             ..
         } = context;
 
-        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
-        link_remote(RID1.into(), SUPPLY_LANE, &messages_tx).await;
+        let mut reader = attach_remote(RID1, &messages_tx).await;
+        link_remote(RID1, SUPPLY_LANE, &messages_tx).await;
         reader.expect_linked(SUPPLY_LANE).await;
 
         for i in 0..1024 {
@@ -1146,8 +1146,8 @@ async fn count_links() {
             reporters,
         } = context;
 
-        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
-        link_remote(RID1.into(), VAL_LANE, &messages_tx).await;
+        let mut reader = attach_remote(RID1, &messages_tx).await;
+        link_remote(RID1, VAL_LANE, &messages_tx).await;
 
         reader.expect_linked(VAL_LANE).await;
 
@@ -1189,7 +1189,7 @@ async fn count_links() {
             }
         );
 
-        unlink_remote(RID1.into(), VAL_LANE, &messages_tx).await;
+        unlink_remote(RID1, VAL_LANE, &messages_tx).await;
 
         reader.expect_unlinked(VAL_LANE).await;
 
@@ -1249,8 +1249,8 @@ async fn count_events() {
             reporters,
         } = context;
 
-        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
-        link_remote(RID1.into(), VAL_LANE, &messages_tx).await;
+        let mut reader = attach_remote(RID1, &messages_tx).await;
+        link_remote(RID1, VAL_LANE, &messages_tx).await;
         reader.expect_linked(VAL_LANE).await;
 
         instr_tx.value_event(VAL_LANE, 747);

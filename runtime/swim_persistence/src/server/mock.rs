@@ -139,7 +139,7 @@ impl KeyspaceByteEngine for MockStore {
             .filter(|(k, _)| k.starts_with(prefix))
             .try_fold(None, |acc, (k, v)| {
                 let mut acc_vec: Vec<(K, V)> = acc.unwrap_or_default();
-                acc_vec.push(map_fn(&k, &v)?);
+                acc_vec.push(map_fn(k, v)?);
                 Ok(Some(acc_vec))
             })
     }
