@@ -26,11 +26,8 @@ pub use swim_errors as errors;
 #[cfg(feature = "future")]
 pub use swim_future as future;
 
-#[cfg(any(feature = "lrucache", feature = "rtree"))]
+#[cfg(feature = "rtree")]
 pub mod collections {
-    #[cfg(feature = "lrucache")]
-    pub use swim_lrucache as lrucache;
-    #[cfg(feature = "rtree")]
     pub use swim_rtree as rtree;
 }
 

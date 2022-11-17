@@ -6,16 +6,15 @@ edition = "2021"
 
 [features]
 default = []
-all = ["future", "errors", "sync", "collections", "time", "text", "lrucache", "rtree", "buf_channel", "algebra", "multi_reader"]
+all = ["future", "errors", "sync", "collections", "time", "text", "rtree", "buf_channel", "algebra", "multi_reader"]
 algebra = ["swim_algebra"]
 buf_channel = ["byte_channel"]
 multi_reader = ["swim_multi_reader"]
 circular_buffer = ["swim_sync", "swim_sync/circular_buffer"]
-collections = ["lrucache", "rtree"]
+collections = ["rtree"]
 errors = ["swim_errors"]
 future = ["swim_future"]
 io = ["buf_channel", "swim_io"]
-lrucache = ["swim_lrucache"]
 rtree = ["swim_rtree"]
 rwlock = ["swim_sync", "swim_sync/rwlock"]
 sync = ["circular_buffer", "future", "rwlock", "trigger", "topic"]
@@ -34,7 +33,6 @@ swim_format = { path = "./swim_format", optional = true }
 swim_trigger = { path = "./swim_trigger", optional = true }
 swim_future = { path = "./swim_future", optional = true }
 swim_io = { path = "./swim_io", optional = true }
-swim_lrucache = { path = "./swim_lrucache", optional = true }
 swim_route = { path = "./swim_route", optional = true }
 swim_rtree = { path = "./swim_rtree", optional = true }
 swim_sync = { path = "./swim_sync", optional = true, default-features = false }
