@@ -27,7 +27,7 @@ use crate::{
         DisconnectionReason,
     },
     error::InvalidKey,
-    pressure::{
+    backpressure::{
         recon::MapOperationReconEncoder, BackpressureStrategy, MapBackpressure, SupplyBackpressure,
         ValueBackpressure,
     },

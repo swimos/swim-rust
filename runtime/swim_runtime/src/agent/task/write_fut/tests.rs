@@ -29,7 +29,7 @@ use swim_utilities::{
 use tokio_util::codec::FramedRead;
 use uuid::Uuid;
 
-use crate::{agent::task::remotes::RemoteSender, pressure::MapBackpressure};
+use crate::{agent::task::remotes::RemoteSender, backpressure::MapBackpressure};
 
 use super::{SpecialAction, WriteAction, WriteTask};
 

@@ -1088,7 +1088,7 @@ use std::task::{Context, Poll};
 
 use self::failure::{BadFrameStrategy, InfallibleStrategy};
 use self::interpretation::{value_interpretation, DownlinkInterpretation, MapInterpretation};
-use crate::pressure::{MapBackpressure, ValueBackpressure};
+use crate::backpressure::{MapBackpressure, ValueBackpressure};
 
 /// A future that flushes a sender and then returns it. This is necessary as we need
 /// an [`Unpin`] future so an equivlanent async block would not work.

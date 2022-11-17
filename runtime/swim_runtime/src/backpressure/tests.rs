@@ -15,7 +15,7 @@
 use bytes::{Bytes, BytesMut};
 use swim_api::protocol::downlink::DownlinkOperation;
 
-use crate::pressure::{BackpressureStrategy, SupplyBackpressure};
+use crate::backpressure::{BackpressureStrategy, SupplyBackpressure};
 
 use super::ValueBackpressure;
 

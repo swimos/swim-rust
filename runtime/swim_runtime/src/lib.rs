@@ -16,5 +16,5 @@ pub mod agent;
 pub mod downlink;
 pub mod error;
 pub mod net;
-pub mod pressure;
+pub mod backpressure;
 pub mod ws;
