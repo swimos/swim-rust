@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use bytes::Bytes;
-use futures::channel::mpsc::SendError as FutSendError;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::io::ErrorKind;
@@ -23,7 +22,6 @@ use std::time::Duration;
 use swim_utilities::routing::route_uri::RouteUri;
 use thiserror::Error;
 
-pub use capacity::*;
 pub use closed::*;
 pub use encoding::*;
 pub use io::*;
@@ -35,7 +33,6 @@ pub use tls::*;
 
 pub use self::http::*;
 
-mod capacity;
 mod closed;
 mod encoding;
 mod http;
@@ -61,8 +58,6 @@ pub enum ConnectionError {
     Http(HttpError),
     /// A TLS error that may be produced when reading a certificate or through a connection.
     Tls(TlsError),
-    /// An error detailing that there has been a read/write buffer overflow.
-    Capacity(CapacityError),
     /// A connection protocol error.
     Protocol(ProtocolError),
     /// An error produced when closing a connection or a normal close code.
@@ -85,7 +80,6 @@ impl PartialEq for ConnectionError {
             (ConnectionError::Http(l), ConnectionError::Http(r)) => l.eq(r),
             #[cfg(feature = "tls")]
             (ConnectionError::Tls(l), ConnectionError::Tls(r)) => l.eq(r),
-            (ConnectionError::Capacity(l), ConnectionError::Capacity(r)) => l.eq(r),
             (ConnectionError::Protocol(l), ConnectionError::Protocol(r)) => l.eq(r),
             (ConnectionError::Closed(l), ConnectionError::Closed(r)) => l.eq(r),
             (ConnectionError::Io(l), ConnectionError::Io(r)) => l.eq(r),
@@ -120,7 +114,6 @@ impl Recoverable for ConnectionError {
         match self {
             ConnectionError::Http(e) => e.is_fatal(),
             ConnectionError::Tls(e) => e.is_fatal(),
-            ConnectionError::Capacity(e) => e.is_fatal(),
             ConnectionError::Protocol(e) => e.is_fatal(),
             ConnectionError::Closed(e) => e.is_fatal(),
             ConnectionError::Io(e) => matches!(
@@ -142,7 +135,6 @@ impl Display for ConnectionError {
         match self {
             ConnectionError::Http(e) => write!(f, "{}", e),
             ConnectionError::Tls(e) => write!(f, "{}", e),
-            ConnectionError::Capacity(e) => write!(f, "{}", e),
             ConnectionError::Protocol(e) => write!(f, "{}", e),
             ConnectionError::Closed(e) => write!(f, "{}", e),
             ConnectionError::Io(e) => write!(f, "{}", e),
@@ -156,19 +148,6 @@ impl Display for ConnectionError {
             ConnectionError::Transport(e) => {
                 write!(f, "{}", e)
             }
-        }
-    }
-}
-
-impl From<FutSendError> for ConnectionError {
-    fn from(e: FutSendError) -> Self {
-        if e.is_disconnected() {
-            ConnectionError::Closed(CloseError::new(CloseErrorKind::Unexpected, None))
-        } else if e.is_full() {
-            ConnectionError::Capacity(CapacityError::new(CapacityErrorKind::WriteFull, None))
-        } else {
-            // There are only two variants and no kind function to pattern match on
-            unreachable!()
         }
     }
 }
