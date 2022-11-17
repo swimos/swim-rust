@@ -22,7 +22,6 @@ use std::time::Duration;
 use swim_utilities::routing::route_uri::RouteUri;
 use thiserror::Error;
 
-pub use encoding::*;
 pub use io::*;
 pub use protocol::*;
 pub use routing::*;
@@ -32,7 +31,6 @@ pub use tls::*;
 
 pub use self::http::*;
 
-mod encoding;
 mod http;
 mod io;
 mod protocol;
@@ -60,8 +58,6 @@ pub enum ConnectionError {
     Protocol(ProtocolError),
     /// An IO error produced during a read/write operation.
     Io(IoError),
-    /// An unsupported encoding error or an illegal type error.
-    Encoding(EncodingError),
     /// An error produced when attempting to resolve a peer.
     Resolution(String),
     /// A pending write did not complete within the specified duration.
@@ -78,7 +74,6 @@ impl PartialEq for ConnectionError {
             (ConnectionError::Tls(l), ConnectionError::Tls(r)) => l.eq(r),
             (ConnectionError::Protocol(l), ConnectionError::Protocol(r)) => l.eq(r),
             (ConnectionError::Io(l), ConnectionError::Io(r)) => l.eq(r),
-            (ConnectionError::Encoding(l), ConnectionError::Encoding(r)) => l.eq(r),
             (ConnectionError::Resolution(l), ConnectionError::Resolution(r)) => l.eq(r),
             (ConnectionError::WriteTimeout(l), ConnectionError::WriteTimeout(r)) => l.eq(r),
             (ConnectionError::Transport(l), ConnectionError::Transport(r)) => {
@@ -114,7 +109,6 @@ impl Recoverable for ConnectionError {
                 e.kind(),
                 ErrorKind::Interrupted | ErrorKind::TimedOut | ErrorKind::ConnectionReset
             ),
-            ConnectionError::Encoding(e) => e.is_fatal(),
             ConnectionError::Resolution(_) => false,
             ConnectionError::WriteTimeout(_) => false,
             ConnectionError::Transport(e) => e.is_fatal(),
@@ -131,7 +125,6 @@ impl Display for ConnectionError {
             ConnectionError::Tls(e) => write!(f, "{}", e),
             ConnectionError::Protocol(e) => write!(f, "{}", e),
             ConnectionError::Io(e) => write!(f, "{}", e),
-            ConnectionError::Encoding(e) => write!(f, "{}", e),
             ConnectionError::Resolution(e) => write!(f, "Address {} could not be resolved.", e),
             ConnectionError::WriteTimeout(dur) => write!(
                 f,
