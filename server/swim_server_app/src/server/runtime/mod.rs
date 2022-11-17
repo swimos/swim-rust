@@ -41,8 +41,7 @@ use swim_runtime::agent::{
 use swim_utilities::routing::route_uri::RouteUri;
 
 use swim_runtime::error::ConnectionError;
-use swim_runtime::remote::{BadUrl, ExternalConnections};
-use swim_runtime::remote::{Listener, SchemeSocketAddr};
+use swim_runtime::net::{BadUrl, ExternalConnections, Listener, SchemeSocketAddr};
 use swim_runtime::ws::WsConnections;
 use swim_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
 use swim_utilities::routing::route_pattern::RoutePattern;

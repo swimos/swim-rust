@@ -29,11 +29,9 @@ use swim_utilities::{
 use tokio_util::codec::FramedRead;
 use uuid::Uuid;
 
-use crate::{
-    agent::{
-        task::write_fut::{SpecialAction, WriteTask},
-        DisconnectionReason,
-    },
+use crate::agent::{
+    task::write_fut::{SpecialAction, WriteTask},
+    DisconnectionReason,
 };
 
 use super::{RemoteSender, RemoteTracker, UplinkResponse};

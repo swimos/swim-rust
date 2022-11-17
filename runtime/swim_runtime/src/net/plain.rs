@@ -15,9 +15,9 @@
 use std::net::SocketAddr;
 use std::pin::Pin;
 
-use crate::remote::net::dns::{DnsResolver, Resolver};
-use crate::remote::net::{ExternalConnections, IoResult, Listener};
-use crate::remote::{Scheme, SchemeHostPort, SchemeSocketAddr};
+use crate::net::dns::{DnsResolver, Resolver};
+use crate::net::{ExternalConnections, IoResult, Listener};
+use crate::net::{Scheme, SchemeHostPort, SchemeSocketAddr};
 use futures::future::BoxFuture;
 use futures::stream::Fuse;
 use futures::task::{Context, Poll};

@@ -22,9 +22,8 @@ use futures::future::ready;
 use futures::{future::BoxFuture, stream::Fuse, FutureExt, Stream, StreamExt};
 use ratchet::{NegotiatedExtension, NoExt, Role, WebSocket, WebSocketConfig};
 use swim_runtime::error::ConnectionError;
-use swim_runtime::remote::net::dns::{DnsFut, DnsResolver};
-use swim_runtime::remote::{ExternalConnections, Listener, SchemeSocketAddr};
-use swim_runtime::remote::{Scheme, SchemeHostPort};
+use swim_runtime::net::dns::{DnsFut, DnsResolver};
+use swim_runtime::net::{ExternalConnections, Listener, Scheme, SchemeHostPort, SchemeSocketAddr};
 use swim_runtime::ws::{WsConnections, WsOpenFuture};
 use tokio::{
     io::{self, DuplexStream},
@@ -173,7 +172,7 @@ impl ExternalConnections for TestConnections {
         self.resolve(host)
     }
 
-    fn dns_resolver(&self) -> swim_runtime::remote::net::dns::BoxDnsResolver {
+    fn dns_resolver(&self) -> swim_runtime::net::dns::BoxDnsResolver {
         Box::new(self.clone())
     }
 }

@@ -45,8 +45,8 @@ use swim_remote::AttachClient;
 use swim_runtime::{
     agent::DownlinkRequest,
     downlink::{DownlinkOptions, DownlinkRuntimeConfig, Io},
-    remote::{
-        net::dns::{DnsFut, DnsResolver},
+    net::{
+        dns::{DnsFut, DnsResolver},
         Scheme, SchemeHostPort, SchemeSocketAddr,
     },
 };

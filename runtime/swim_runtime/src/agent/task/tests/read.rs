@@ -32,15 +32,13 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
 
-use crate::{
-    agent::{
-        reporting::{UplinkReporter, UplinkSnapshot},
-        task::{
-            read_task,
-            tests::{RemoteSender, BUFFER_SIZE, DEFAULT_TIMEOUT, INACTIVE_TEST_TIMEOUT},
-            timeout_coord::{self, VoteResult},
-            LaneEndpoint, ReadTaskMessages, RwCoorindationMessage, WriteTaskMessage,
-        },
+use crate::agent::{
+    reporting::{UplinkReporter, UplinkSnapshot},
+    task::{
+        read_task,
+        tests::{RemoteSender, BUFFER_SIZE, DEFAULT_TIMEOUT, INACTIVE_TEST_TIMEOUT},
+        timeout_coord::{self, VoteResult},
+        LaneEndpoint, ReadTaskMessages, RwCoorindationMessage, WriteTaskMessage,
     },
 };
 

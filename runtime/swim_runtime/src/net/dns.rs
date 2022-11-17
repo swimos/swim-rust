@@ -12,14 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::remote::SchemeHostPort;
-use crate::remote::SchemeSocketAddr;
 use futures::future::BoxFuture;
 use futures::Future;
 use futures::FutureExt;
 use std::io;
 use std::sync::Arc;
 use tokio::net::lookup_host;
+
+use super::SchemeHostPort;
+use super::SchemeSocketAddr;
 
 /// A trait for defining DNS resolvers.
 pub trait DnsResolver {

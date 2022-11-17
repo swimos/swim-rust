@@ -34,11 +34,10 @@ use tokio_native_tls::{TlsAcceptor, TlsConnector};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, Level};
 
-use crate::remote::net::dns::{DnsResolver, Resolver};
-use crate::remote::net::plain::TokioPlainTextNetworking;
-use crate::remote::net::{ExternalConnections, IoResult, Listener};
-use crate::remote::SchemeHostPort;
-use crate::remote::{Scheme, SchemeSocketAddr};
+use crate::net::dns::{DnsResolver, Resolver};
+use crate::net::plain::TokioPlainTextNetworking;
+use crate::net::{ExternalConnections, IoResult, Listener};
+use crate::net::{Scheme, SchemeHostPort, SchemeSocketAddr};
 use im::HashMap;
 use pin_project::pin_project;
 use std::path::PathBuf;

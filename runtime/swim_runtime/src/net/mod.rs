@@ -12,9 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod config;
-pub mod net;
-
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -28,7 +25,11 @@ use thiserror::Error;
 
 use url::Url;
 
-use self::net::dns::BoxDnsResolver;
+use self::dns::BoxDnsResolver;
+
+pub mod dns;
+pub mod plain;
+pub mod tls;
 
 #[derive(Debug, PartialEq, Eq, Error)]
 pub enum BadUrl {

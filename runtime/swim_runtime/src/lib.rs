@@ -16,6 +16,6 @@ pub mod agent;
 pub mod configuration;
 pub mod downlink;
 pub mod error;
+pub mod net;
 pub mod pressure;
-pub mod remote;
 pub mod ws;

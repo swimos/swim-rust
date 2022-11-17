@@ -33,19 +33,16 @@ use tokio::{sync::mpsc, time::Instant};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use uuid::Uuid;
 
-use crate::{
-    agent::{
-        reporting::{UplinkReporter, UplinkSnapshot},
-        store::{AgentPersistence, StorePersistence},
-        task::{
-            fake_store::FakeStore,
-            tests::RemoteReceiver,
-            timeout_coord::{self, VoteResult},
-            write_task, LaneEndpoint, RwCoorindationMessage, WriteTaskConfiguration,
-            WriteTaskMessage,
-        },
-        DisconnectionReason,
+use crate::agent::{
+    reporting::{UplinkReporter, UplinkSnapshot},
+    store::{AgentPersistence, StorePersistence},
+    task::{
+        fake_store::FakeStore,
+        tests::RemoteReceiver,
+        timeout_coord::{self, VoteResult},
+        write_task, LaneEndpoint, RwCoorindationMessage, WriteTaskConfiguration, WriteTaskMessage,
     },
+    DisconnectionReason,
 };
 
 use super::{

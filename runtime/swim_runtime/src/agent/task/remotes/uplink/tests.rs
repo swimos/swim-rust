@@ -27,14 +27,12 @@ use swim_utilities::{
 };
 use uuid::Uuid;
 
-use crate::{
-    agent::{
-        task::{
-            remotes::{LaneRegistry, UplinkResponse},
-            write_fut::WriteTask,
-        },
-        DisconnectionReason,
+use crate::agent::{
+    task::{
+        remotes::{LaneRegistry, UplinkResponse},
+        write_fut::WriteTask,
     },
+    DisconnectionReason,
 };
 
 use super::{RemoteSender, SpecialAction, Uplinks, WriteAction};

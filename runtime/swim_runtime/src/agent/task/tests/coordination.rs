@@ -17,14 +17,12 @@ use std::{
     time::Duration,
 };
 
-use crate::{
-    agent::{
-        task::{
-            tests::{RemoteReceiver, RemoteSender},
-            AgentRuntimeTask, InitialEndpoints, LaneEndpoint, NodeDescriptor,
-        },
-        AgentAttachmentRequest, AgentRuntimeRequest, DisconnectionReason, Io,
+use crate::agent::{
+    task::{
+        tests::{RemoteReceiver, RemoteSender},
+        AgentRuntimeTask, InitialEndpoints, LaneEndpoint, NodeDescriptor,
     },
+    AgentAttachmentRequest, AgentRuntimeRequest, DisconnectionReason, Io,
 };
 use futures::{
     future::{join, join3, Either},
