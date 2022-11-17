@@ -12,12 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{
-    error::RatchetError,
-    ws::{WsConnections, WsOpenFuture},
-};
+use crate::ws::{WsConnections, WsOpenFuture};
 use ratchet::{ExtensionProvider, ProtocolRegistry, SplittableExtension};
 use tokio::io::{AsyncRead, AsyncWrite};
+
+use super::RatchetError;
 
 pub struct RatchetNetworking<E> {
     pub config: ratchet::WebSocketConfig,

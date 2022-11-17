@@ -38,11 +38,10 @@ use swim_runtime::agent::{
     AgentAttachmentRequest, AgentExecError, AgentRoute, AgentRouteTask, CombinedAgentConfig,
     DisconnectionReason, DownlinkRequest,
 };
-use swim_runtime::error::RatchetError;
 use swim_utilities::routing::route_uri::RouteUri;
 
 use swim_runtime::net::{BadUrl, ExternalConnections, Listener, SchemeSocketAddr};
-use swim_runtime::ws::WsConnections;
+use swim_runtime::ws::{RatchetError, WsConnections};
 use swim_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
 use swim_utilities::routing::route_pattern::RoutePattern;
 use swim_utilities::trigger::{self, promise};

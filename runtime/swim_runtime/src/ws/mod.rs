@@ -15,14 +15,14 @@
 use std::fmt::{Debug, Formatter};
 
 use futures::future::BoxFuture;
+use swim_utilities::errors::Recoverable;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 
 use ratchet::{SplittableExtension, WebSocket};
 pub use swim_ratchet::*;
 pub use switcher::StreamSwitcher;
-
-use crate::error::RatchetError;
+use thiserror::Error;
 
 #[cfg(feature = "tls")]
 use {
@@ -36,6 +36,15 @@ mod swim_ratchet;
 mod switcher;
 
 pub mod tls;
+
+#[derive(Debug, Error)]
+#[error("{0}")]
+pub struct RatchetError(#[from] ratchet::Error);
+impl Recoverable for RatchetError {
+    fn is_fatal(&self) -> bool {
+        true
+    }
+}
 
 #[cfg(feature = "tls")]
 pub type WebSocketDef<E> = WebSocket<StreamSwitcher<TcpStream, TlsStream<TcpStream>>, E>;

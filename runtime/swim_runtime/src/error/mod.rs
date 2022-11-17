@@ -17,20 +17,9 @@ use std::fmt::{Display, Formatter};
 use std::str::Utf8Error;
 use thiserror::Error;
 
-use swim_utilities::errors::Recoverable;
-use thiserror::Error as ThisError;
 pub use tls::*;
 
 mod tls;
-
-#[derive(Debug, ThisError)]
-#[error("{0}")]
-pub struct RatchetError(#[from] ratchet::Error);
-impl Recoverable for RatchetError {
-    fn is_fatal(&self) -> bool {
-        true
-    }
-}
 
 /// Error indicating that the key for a map message contained invalid UTF8.
 #[derive(Debug, Error)]

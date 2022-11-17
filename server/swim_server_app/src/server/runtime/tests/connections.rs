@@ -21,10 +21,9 @@ use bytes::BytesMut;
 use futures::future::ready;
 use futures::{future::BoxFuture, stream::Fuse, FutureExt, Stream, StreamExt};
 use ratchet::{NegotiatedExtension, NoExt, Role, WebSocket, WebSocketConfig};
-use swim_runtime::error::RatchetError;
 use swim_runtime::net::dns::{DnsFut, DnsResolver};
 use swim_runtime::net::{ExternalConnections, Listener, Scheme, SchemeHostPort, SchemeSocketAddr};
-use swim_runtime::ws::{WsConnections, WsOpenFuture};
+use swim_runtime::ws::{RatchetError, WsConnections, WsOpenFuture};
 use tokio::{
     io::{self, DuplexStream},
     sync::{mpsc, oneshot},
