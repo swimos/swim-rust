@@ -15,21 +15,18 @@
 use bytes::Bytes;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use std::io::ErrorKind;
 use std::str::Utf8Error;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_utilities::routing::route_uri::RouteUri;
 use thiserror::Error;
 
-pub use io::*;
 pub use protocol::*;
 pub use routing::*;
 use swim_utilities::errors::Recoverable;
 use thiserror::Error as ThisError;
 pub use tls::*;
 
-mod io;
 mod protocol;
 mod routing;
 mod tls;
@@ -51,8 +48,6 @@ pub enum ConnectionError {
     Tls(TlsError),
     /// A connection protocol error.
     Protocol(ProtocolError),
-    /// An IO error produced during a read/write operation.
-    Io(IoError),
     /// An error produced when attempting to resolve a peer.
     Resolution(String),
     /// A pending write did not complete within the specified duration.
@@ -67,7 +62,6 @@ impl PartialEq for ConnectionError {
             #[cfg(feature = "tls")]
             (ConnectionError::Tls(l), ConnectionError::Tls(r)) => l.eq(r),
             (ConnectionError::Protocol(l), ConnectionError::Protocol(r)) => l.eq(r),
-            (ConnectionError::Io(l), ConnectionError::Io(r)) => l.eq(r),
             (ConnectionError::Resolution(l), ConnectionError::Resolution(r)) => l.eq(r),
             (ConnectionError::WriteTimeout(l), ConnectionError::WriteTimeout(r)) => l.eq(r),
             (ConnectionError::Transport(l), ConnectionError::Transport(r)) => {
@@ -98,10 +92,6 @@ impl Recoverable for ConnectionError {
         match self {
             ConnectionError::Tls(e) => e.is_fatal(),
             ConnectionError::Protocol(e) => e.is_fatal(),
-            ConnectionError::Io(e) => matches!(
-                e.kind(),
-                ErrorKind::Interrupted | ErrorKind::TimedOut | ErrorKind::ConnectionReset
-            ),
             ConnectionError::Resolution(_) => false,
             ConnectionError::WriteTimeout(_) => false,
             ConnectionError::Transport(e) => e.is_fatal(),
@@ -116,7 +106,6 @@ impl Display for ConnectionError {
         match self {
             ConnectionError::Tls(e) => write!(f, "{}", e),
             ConnectionError::Protocol(e) => write!(f, "{}", e),
-            ConnectionError::Io(e) => write!(f, "{}", e),
             ConnectionError::Resolution(e) => write!(f, "Address {} could not be resolved.", e),
             ConnectionError::WriteTimeout(dur) => write!(
                 f,

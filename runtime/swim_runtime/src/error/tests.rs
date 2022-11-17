@@ -13,9 +13,8 @@
 // limitations under the License.
 
 use crate::error::{
-    ConnectionError, IoError, ProtocolError, ProtocolErrorKind,
+    ConnectionError, ProtocolError, ProtocolErrorKind,
 };
-use std::io::ErrorKind;
 use std::time::Duration;
 
 #[test]
@@ -37,9 +36,6 @@ fn connection_error_display() {
     let string = ConnectionError::Protocol(ProtocolError::new(ProtocolErrorKind::WebSocket, None))
         .to_string();
     assert_eq!(string, "WebSocket protocol violation.");
-
-    let string = ConnectionError::Io(IoError::new(ErrorKind::ConnectionRefused, None)).to_string();
-    assert_eq!(string, "IO error: ConnectionRefused.");
 
     let string = ConnectionError::WriteTimeout(Duration::from_secs(5)).to_string();
     assert_eq!(
