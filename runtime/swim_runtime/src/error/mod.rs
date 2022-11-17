@@ -22,13 +22,11 @@ use swim_utilities::routing::route_uri::RouteUri;
 use thiserror::Error;
 
 pub use protocol::*;
-pub use routing::*;
 use swim_utilities::errors::Recoverable;
 use thiserror::Error as ThisError;
 pub use tls::*;
 
 mod protocol;
-mod routing;
 mod tls;
 
 #[cfg(test)]
