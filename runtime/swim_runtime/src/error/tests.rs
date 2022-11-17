@@ -20,12 +20,6 @@ use std::time::Duration;
 #[test]
 fn connection_error_display() {
     
-    let string = ConnectionError::Resolution("xyz://localtoast:9001/".to_string()).to_string();
-    assert_eq!(
-        string,
-        "Address xyz://localtoast:9001/ could not be resolved."
-    );
-
     let string = ConnectionError::WriteTimeout(Duration::from_secs(5)).to_string();
     assert_eq!(
         string,

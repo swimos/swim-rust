@@ -40,8 +40,6 @@ impl<T> RecoverableError for T where T: std::error::Error + Send + Sync + Recove
 /// An error denoting that a connection error has occurred.
 #[derive(Debug, Clone)]
 pub enum ConnectionError {
-    /// An error produced when attempting to resolve a peer.
-    Resolution(String),
     /// A pending write did not complete within the specified duration.
     WriteTimeout(Duration),
     /// An error was produced at the transport layer.
@@ -51,7 +49,6 @@ pub enum ConnectionError {
 impl PartialEq for ConnectionError {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (ConnectionError::Resolution(l), ConnectionError::Resolution(r)) => l.eq(r),
             (ConnectionError::WriteTimeout(l), ConnectionError::WriteTimeout(r)) => l.eq(r),
             (ConnectionError::Transport(l), ConnectionError::Transport(r)) => {
                 l.to_string().eq(&r.to_string())
@@ -79,7 +76,6 @@ impl From<ratchet::Error> for ConnectionError {
 impl Recoverable for ConnectionError {
     fn is_fatal(&self) -> bool {
         match self {
-            ConnectionError::Resolution(_) => false,
             ConnectionError::WriteTimeout(_) => false,
             ConnectionError::Transport(e) => e.is_fatal(),
         }
@@ -91,7 +87,6 @@ impl Error for ConnectionError {}
 impl Display for ConnectionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
-            ConnectionError::Resolution(e) => write!(f, "Address {} could not be resolved.", e),
             ConnectionError::WriteTimeout(dur) => write!(
                 f,
                 "Writing to the connection failed to complete within {:?}.",
