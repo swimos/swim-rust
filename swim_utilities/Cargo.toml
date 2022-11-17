@@ -10,18 +10,15 @@ all = ["future", "errors", "sync", "collections", "time", "text", "rtree", "buf_
 algebra = ["swim_algebra"]
 buf_channel = ["byte_channel"]
 multi_reader = ["swim_multi_reader"]
-circular_buffer = ["swim_sync", "swim_sync/circular_buffer"]
 collections = ["rtree"]
 errors = ["swim_errors"]
 future = ["swim_future"]
 io = ["buf_channel", "swim_io"]
 rtree = ["swim_rtree"]
-rwlock = ["swim_sync", "swim_sync/rwlock"]
-sync = ["circular_buffer", "future", "rwlock", "trigger", "topic"]
+sync = ["future", "trigger", "swim_sync"]
 text = ["swim_route", "swim_format"]
 test-util = ["swim_test_util"]
 time = ["swim_time"]
-topic = ["swim_sync", "swim_sync/topic"]
 trigger = ["swim_trigger"]
 
 [dependencies]
@@ -35,6 +32,6 @@ swim_future = { path = "./swim_future", optional = true }
 swim_io = { path = "./swim_io", optional = true }
 swim_route = { path = "./swim_route", optional = true }
 swim_rtree = { path = "./swim_rtree", optional = true }
-swim_sync = { path = "./swim_sync", optional = true, default-features = false }
+swim_sync = { path = "./swim_sync", optional = true }
 swim_time = { path = "./swim_time", optional = true }
 swim_test_util = { path = "./swim_test_util", optional = true }
