@@ -579,6 +579,7 @@ async fn agent_timeout() {
         assert_eq!(report_rx.recv().await.expect("Agent stopped."), -45);
 
         context.handle.stop();
+        client.expect_close().await;
         context
     })
     .await;
