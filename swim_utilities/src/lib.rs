@@ -15,7 +15,6 @@
 #![allow(clippy::match_wild_err_arm)]
 
 pub mod never;
-pub mod ptr;
 
 #[cfg(feature = "algebra")]
 pub use swim_algebra as algebra;
