@@ -21,12 +21,10 @@ use std::time::Duration;
 use swim_utilities::routing::route_uri::RouteUri;
 use thiserror::Error;
 
-pub use protocol::*;
 use swim_utilities::errors::Recoverable;
 use thiserror::Error as ThisError;
 pub use tls::*;
 
-mod protocol;
 mod tls;
 
 #[cfg(test)]
@@ -44,8 +42,6 @@ impl<T> RecoverableError for T where T: std::error::Error + Send + Sync + Recove
 pub enum ConnectionError {
     /// A TLS error that may be produced when reading a certificate or through a connection.
     Tls(TlsError),
-    /// A connection protocol error.
-    Protocol(ProtocolError),
     /// An error produced when attempting to resolve a peer.
     Resolution(String),
     /// A pending write did not complete within the specified duration.
@@ -59,7 +55,6 @@ impl PartialEq for ConnectionError {
         match (self, other) {
             #[cfg(feature = "tls")]
             (ConnectionError::Tls(l), ConnectionError::Tls(r)) => l.eq(r),
-            (ConnectionError::Protocol(l), ConnectionError::Protocol(r)) => l.eq(r),
             (ConnectionError::Resolution(l), ConnectionError::Resolution(r)) => l.eq(r),
             (ConnectionError::WriteTimeout(l), ConnectionError::WriteTimeout(r)) => l.eq(r),
             (ConnectionError::Transport(l), ConnectionError::Transport(r)) => {
@@ -89,7 +84,6 @@ impl Recoverable for ConnectionError {
     fn is_fatal(&self) -> bool {
         match self {
             ConnectionError::Tls(e) => e.is_fatal(),
-            ConnectionError::Protocol(e) => e.is_fatal(),
             ConnectionError::Resolution(_) => false,
             ConnectionError::WriteTimeout(_) => false,
             ConnectionError::Transport(e) => e.is_fatal(),
@@ -103,7 +97,6 @@ impl Display for ConnectionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             ConnectionError::Tls(e) => write!(f, "{}", e),
-            ConnectionError::Protocol(e) => write!(f, "{}", e),
             ConnectionError::Resolution(e) => write!(f, "Address {} could not be resolved.", e),
             ConnectionError::WriteTimeout(dur) => write!(
                 f,

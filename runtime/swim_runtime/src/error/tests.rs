@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::error::{
-    ConnectionError, ProtocolError, ProtocolErrorKind,
+    ConnectionError,
 };
 use std::time::Duration;
 
@@ -25,17 +25,6 @@ fn connection_error_display() {
         string,
         "Address xyz://localtoast:9001/ could not be resolved."
     );
-
-    let string = ConnectionError::Protocol(ProtocolError::new(
-        ProtocolErrorKind::Warp,
-        Some("Bad".into()),
-    ))
-    .to_string();
-    assert_eq!(string, "WARP violation. Bad");
-
-    let string = ConnectionError::Protocol(ProtocolError::new(ProtocolErrorKind::WebSocket, None))
-        .to_string();
-    assert_eq!(string, "WebSocket protocol violation.");
 
     let string = ConnectionError::WriteTimeout(Duration::from_secs(5)).to_string();
     assert_eq!(
