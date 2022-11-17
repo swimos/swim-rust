@@ -26,9 +26,6 @@ pub use swim_errors as errors;
 #[cfg(feature = "future")]
 pub use swim_future as future;
 
-#[cfg(feature = "iteratee")]
-pub use swim_iteratee as iteratee;
-
 #[cfg(any(feature = "lrucache", feature = "rtree"))]
 pub mod collections {
     #[cfg(feature = "lrucache")]

@@ -36,7 +36,6 @@ use std::sync::Arc;
 use swim_model::bigint::{BigInt, BigUint};
 use swim_model::time::Timestamp;
 use swim_model::{Blob, Text, Value, ValueKind};
-use swim_utilities::iteratee::Iteratee;
 use swim_utilities::routing::route_uri::RouteUri;
 use url::Url;
 
@@ -126,36 +125,8 @@ pub trait Recognizer {
     /// Reset the state machine so that it can be used again.
     fn reset(&mut self);
 
-    /// Wrap this state machine as an [`Iteratee`].
-    fn as_iteratee(&mut self) -> RecognizerIteratee<'_, Self>
-    where
-        Self: Sized,
-    {
-        RecognizerIteratee(self)
-    }
 }
 
-pub struct RecognizerIteratee<'b, R>(&'b mut R);
-
-impl<'a, 'b, R> Iteratee<ReadEvent<'a>> for RecognizerIteratee<'b, R>
-where
-    R: Recognizer,
-{
-    type Item = Result<R::Target, ReadError>;
-
-    fn feed(&mut self, input: ReadEvent<'a>) -> Option<Self::Item> {
-        let RecognizerIteratee(inner) = self;
-        inner.feed_event(input)
-    }
-
-    fn flush(self) -> Option<Self::Item>
-    where
-        Self: Sized,
-    {
-        let RecognizerIteratee(inner) = self;
-        inner.try_flush()
-    }
-}
 macro_rules! simple_readable {
     ($target:ty, $recog:ident) => {
         impl RecognizerReadable for $target {
