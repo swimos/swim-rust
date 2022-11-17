@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::{SwimStreamExt, SwimTryFutureExt, TransformMut};
+use super::{SwimStreamExt, TransformMut};
 use futures::executor::block_on;
 use futures::future::{join, ready, select, Either, Ready};
 use futures::stream::{self, iter, FusedStream, Iter};
@@ -25,20 +25,6 @@ use swim_trigger::trigger;
 use tokio::sync::{mpsc, Notify};
 use tokio::time::timeout;
 use tokio_stream::wrappers::ReceiverStream;
-
-#[test]
-fn ok_into_ok_case() {
-    let fut: Ready<Result<i32, String>> = ready(Ok(4));
-    let r: Result<i64, String> = block_on(fut.ok_into());
-    assert_eq!(r, Ok(4i64));
-}
-
-#[test]
-fn ok_into_err_case() {
-    let fut: Ready<Result<i32, String>> = ready(Err("hello".to_string()));
-    let r: Result<i64, String> = block_on(fut.ok_into());
-    assert_eq!(r, Err("hello".to_string()));
-}
 
 struct Plus(i32);
 

@@ -19,9 +19,8 @@ mod tests;
 use futures::never::Never;
 use futures::stream::FusedStream;
 use futures::task::{Context, Poll};
-use futures::{ready, Future, Sink, Stream, TryFuture, TryStream};
+use futures::{ready, Future, Sink, Stream, TryStream};
 use pin_project::pin_project;
-use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::Notify;
@@ -29,45 +28,11 @@ use tokio::sync::Notify;
 pub use immediate_or::{
     immediate_or_join, immediate_or_start, ImmediateOrJoin, ImmediateOrStart, SecondaryResult,
 };
-/// A future that transforms another future, that produces a [`Result`], using [`Into`].
-#[pin_project]
-#[derive(Debug)]
-pub struct OkInto<F, T> {
-    #[pin]
-    future: F,
-    _target: PhantomData<T>,
-}
 
 /// Transforms a stream of `T` into a stream of [`Result<T, Never>`].
 #[pin_project]
 #[derive(Debug)]
 pub struct NeverErrorStream<Str>(#[pin] Str);
-
-
-impl<F, T> OkInto<F, T>
-where
-    F: TryFuture,
-    F::Ok: Into<T>,
-{
-    pub fn new(future: F) -> Self {
-        OkInto {
-            future,
-            _target: PhantomData,
-        }
-    }
-}
-
-impl<F, T1, T2, E> Future for OkInto<F, T2>
-where
-    F: Future<Output = Result<T1, E>>,
-    T1: Into<T2>,
-{
-    type Output = Result<T2, E>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        self.project().future.poll(cx).map(|r| r.map(Into::into))
-    }
-}
 
 impl<T, Str> Stream for NeverErrorStream<Str>
 where
@@ -129,31 +94,6 @@ where
         TransformMut::transform(&mut self, input)
     }
 }
-
-pub trait SwimTryFutureExt: TryFuture {
-    /// Transform the [`Ok`] case of a fallible future using [`Into`].
-    ///
-    ///  # Examples
-    /// ```
-    /// use futures::executor::block_on;
-    /// use futures::future::ready;
-    /// use swim_future::*;
-    ///
-    /// let n: Result<i64, String> = block_on(ready(Ok(7)).output_into());
-    /// assert_eq!(n, Ok(7));
-    ///
-    /// ```
-    ///
-    fn ok_into<T>(self) -> OkInto<Self, T>
-    where
-        Self: Sized,
-        Self::Ok: Into<T>,
-    {
-        OkInto::new(self)
-    }
-}
-
-impl<F: TryFuture> SwimTryFutureExt for F {}
 
 /// A stream that transforms another stream using a [`Transform`].
 #[pin_project]

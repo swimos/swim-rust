@@ -22,6 +22,6 @@ pub mod task;
 pub use combinators::{
     immediate_or_join, immediate_or_start, FlatmapStream, ImmediateOrJoin, ImmediateOrStart,
     NeverErrorStream, NotifyOnBlocked, SecondaryResult, StopAfterError,
-    SwimStreamExt, SwimTryFutureExt, Transform, TransformMut, TransformOnce,
+    SwimStreamExt, Transform, TransformMut, TransformOnce,
     TransformedSink, TransformedStream, TransformedStreamFut,
 };
