@@ -17,9 +17,6 @@ use std::fmt::{Display, Formatter};
 
 use swim_utilities::errors::Recoverable;
 
-use crate::error::format_cause;
-use crate::error::FmtResult;
-
 type NativeTlsError = tokio_native_tls::native_tls::Error;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -51,9 +48,12 @@ pub enum TlsErrorKind {
 impl Error for TlsError {}
 
 impl Display for TlsError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let TlsError { kind, cause } = self;
-        let cause = format_cause(cause);
+        let cause = match cause {
+            Some(c) => format!(" {}", c),
+            None => String::new(),
+        };
 
         match kind {
             TlsErrorKind::Io => {

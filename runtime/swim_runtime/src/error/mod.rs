@@ -13,10 +13,8 @@
 // limitations under the License.
 
 use bytes::Bytes;
-use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::str::Utf8Error;
-use swim_utilities::routing::route_uri::RouteUri;
 use thiserror::Error;
 
 use swim_utilities::errors::Recoverable;
@@ -24,11 +22,6 @@ use thiserror::Error as ThisError;
 pub use tls::*;
 
 mod tls;
-
-pub type FmtResult = std::fmt::Result;
-
-pub trait RecoverableError: std::error::Error + Send + Sync + Recoverable + 'static {}
-impl<T> RecoverableError for T where T: std::error::Error + Send + Sync + Recoverable + 'static {}
 
 #[derive(Debug, ThisError)]
 #[error("{0}")]
@@ -38,26 +31,6 @@ impl Recoverable for RatchetError {
         true
     }
 }
-
-pub(crate) fn format_cause(cause: &Option<String>) -> String {
-    match cause {
-        Some(c) => format!(" {}", c),
-        None => String::new(),
-    }
-}
-
-/// Error indicating that request to route to a plane-local agent failed.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NoAgentAtRoute(pub RouteUri);
-
-impl Display for NoAgentAtRoute {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let NoAgentAtRoute(route) = self;
-        write!(f, "No agent at route: '{}'", route)
-    }
-}
-
-impl Error for NoAgentAtRoute {}
 
 /// Error indicating that the key for a map message contained invalid UTF8.
 #[derive(Debug, Error)]
