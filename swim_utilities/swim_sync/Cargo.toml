@@ -14,6 +14,5 @@ swim_algebra = { path = "../swim_algebra"}
 [dev-dependencies]
 futures = "0.3.23"
 tokio = { version = "1.1.1", features = ["rt", "macros"] }
-swim_test_util = { path = "../swim_test_util" }
 swim_trigger = { path = "../swim_trigger"}
 
