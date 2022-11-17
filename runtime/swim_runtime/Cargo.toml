@@ -28,7 +28,6 @@ url = "2.1.1"
 swim_api = { path = "../../api/swim_api" }
 swim_model = { path = "../../api/swim_model" }
 swim_form = { path = "../../api/swim_form" }
-swim_warp = { path = "../../swim_warp" }
 swim_tracing = { path = "../../swim_utilities/swim_tracing" }
 swim_recon = { path = "../../api/formats/swim_recon", features = ["async_parser"] }
 swim_messages = { path = "../swim_messages" }

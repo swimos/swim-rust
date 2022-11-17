@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::warp::{Envelope, RequestKind};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use futures::Stream;
 use std::convert::TryFrom;
@@ -24,7 +25,6 @@ use swim_model::address::RelativeAddress;
 use swim_model::{Text, Value};
 use swim_recon::parser::{AsyncParseError, ParseError, RecognizerDecoder};
 use swim_recon::printer::print_recon_compact;
-use swim_warp::envelope::{Envelope, RequestKind};
 use thiserror::Error;
 use tokio::io::AsyncRead;
 use tokio_util::codec::{Decoder, Encoder, FramedRead};

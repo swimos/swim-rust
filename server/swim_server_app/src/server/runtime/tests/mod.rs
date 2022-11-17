@@ -34,7 +34,7 @@ use swim_utilities::{
     io::byte_channel::byte_channel, non_zero_usize, routing::route_pattern::RoutePattern,
 };
 
-use swim_warp::envelope::{peel_envelope_header, RawEnvelope};
+use swim_messages::warp::{peel_envelope_header, RawEnvelope};
 use tokio::{
     io::{duplex, DuplexStream},
     sync::{

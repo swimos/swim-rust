@@ -17,7 +17,6 @@ tokio-util = { version = "0.6.8", features = ["codec"] }
 swim_utilities = { path = "../../swim_utilities", features = ["io", "buf_channel", "multi_reader"] }
 swim_api = { path = "../../api/swim_api" }
 swim_model = {path = "../../api/swim_model"}
-swim_warp = { path = "../../swim_warp" }
 swim_recon = { path = "../../api/formats/swim_recon", features = ["async_parser"] }
 swim_messages = { path = "../swim_messages" }
 tracing = "0.1.16"

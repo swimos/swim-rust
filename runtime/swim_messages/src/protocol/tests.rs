@@ -19,6 +19,7 @@ use crate::protocol::{
     RawResponseMessageDecoder, RequestMessage, ResponseMessage, ResponseMessageEncoder, COMMAND,
     EVENT, HEADER_INIT_LEN, LINK, LINKED, OP_MASK, OP_SHIFT, SYNC, SYNCED, UNLINK, UNLINKED,
 };
+use crate::warp::Envelope;
 use bytes::{Buf, Bytes, BytesMut};
 use futures::future::join;
 use futures::{SinkExt, StreamExt};
@@ -33,7 +34,6 @@ use swim_model::{Text, Value};
 use swim_recon::printer::print_recon_compact;
 use swim_utilities::io::byte_channel;
 use swim_utilities::non_zero_usize;
-use swim_warp::envelope::Envelope;
 use tokio_util::codec::{Decoder, Encoder, FramedRead, FramedWrite};
 use uuid::Uuid;
 

@@ -33,6 +33,7 @@ use ratchet::{
 };
 use smallvec::SmallVec;
 use swim_api::error::DownlinkFailureReason;
+use swim_messages::warp::{peel_envelope_header_str, RawEnvelope};
 use swim_messages::{
     bytes_str::BytesStr,
     protocol::{
@@ -48,7 +49,6 @@ use swim_utilities::{
     multi_reader::MultiReader,
     trigger,
 };
-use swim_warp::envelope::{peel_envelope_header_str, RawEnvelope};
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{Encoder, FramedRead, FramedWrite};

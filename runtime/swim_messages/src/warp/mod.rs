@@ -986,7 +986,7 @@ impl ResponseEnvelope {
 mod tests {
 
     use super::Envelope;
-    use crate::map::MapUpdate;
+    use swim_api::protocol::map::MapMessage;
     use swim_model::Value;
     use swim_recon::printer::print_recon_compact;
 
@@ -1059,7 +1059,7 @@ mod tests {
 
     #[test]
     fn command_envelope_to_recon() {
-        let body: MapUpdate<Value, Value> = MapUpdate::Clear;
+        let body: MapMessage<Value, Value> = MapMessage::Clear;
         let env = Envelope::command()
             .node_uri("node")
             .lane_uri("lane")
