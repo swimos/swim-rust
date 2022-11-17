@@ -26,7 +26,7 @@ use thiserror::Error;
 
 #[cfg(feature = "tls")]
 use {
-    crate::error::TlsError, crate::ws::tls::build_x509_certificate, std::path::Path,
+    crate::error::tls::TlsError, crate::ws::tls::build_x509_certificate, std::path::Path,
     tokio_native_tls::native_tls::Certificate, tokio_native_tls::TlsStream,
 };
 
@@ -35,6 +35,7 @@ mod swim_ratchet;
 
 mod switcher;
 
+#[cfg(feature = "tls")]
 pub mod tls;
 
 #[derive(Debug, Error)]

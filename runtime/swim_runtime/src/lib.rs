@@ -13,8 +13,8 @@
 // limitations under the License.
 
 pub mod agent;
+pub mod backpressure;
 pub mod downlink;
 pub mod error;
 pub mod net;
-pub mod backpressure;
 pub mod ws;

@@ -17,9 +17,8 @@ use std::fmt::{Display, Formatter};
 use std::str::Utf8Error;
 use thiserror::Error;
 
-pub use tls::*;
-
-mod tls;
+#[cfg(feature = "tls")]
+pub mod tls;
 
 /// Error indicating that the key for a map message contained invalid UTF8.
 #[derive(Debug, Error)]

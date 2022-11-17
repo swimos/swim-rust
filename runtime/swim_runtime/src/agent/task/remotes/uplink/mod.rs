@@ -26,11 +26,11 @@ use crate::{
         task::write_fut::{SpecialAction, WriteAction, WriteTask},
         DisconnectionReason,
     },
-    error::InvalidKey,
     backpressure::{
         recon::MapOperationReconEncoder, BackpressureStrategy, MapBackpressure, SupplyBackpressure,
         ValueBackpressure,
     },
+    error::InvalidKey,
 };
 
 #[cfg(test)]
