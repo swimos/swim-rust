@@ -13,7 +13,6 @@
 // limitations under the License.
 
 pub mod agent;
-pub mod configuration;
 pub mod downlink;
 pub mod error;
 pub mod net;
