@@ -17,7 +17,7 @@ mod immediate_or;
 mod tests;
 
 use futures::task::{Context, Poll};
-use futures::{ready, Future, Sink, Stream, TryStream};
+use futures::{ready, Future, Stream, TryStream};
 use pin_project::pin_project;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -108,60 +108,6 @@ impl<Str: TryStream> Stream for StopAfterError<Str> {
             }
             Poll::Ready(result)
         }
-    }
-}
-#[pin_project]
-#[derive(Debug)]
-pub struct TransformedSink<S, Trans> {
-    #[pin]
-    inner: S,
-    transformer: Trans,
-}
-
-impl<S, Trans> TransformedSink<S, Trans> {
-    pub fn new(sink: S, transformer: Trans) -> TransformedSink<S, Trans> {
-        TransformedSink {
-            inner: sink,
-            transformer,
-        }
-    }
-}
-
-impl<S, Trans, Item> Sink<Item> for TransformedSink<S, Trans>
-where
-    Trans: TransformMut<Item>,
-    S: Sink<Trans::Out>,
-{
-    type Error = S::Error;
-
-    fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.project().inner.poll_ready(cx)
-    }
-
-    fn start_send(self: Pin<&mut Self>, item: Item) -> Result<(), Self::Error> {
-        let this = self.project();
-        let transformed = this.transformer.transform(item);
-
-        this.inner.start_send(transformed)
-    }
-
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.project().inner.poll_flush(cx)
-    }
-
-    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.project().inner.poll_close(cx)
-    }
-}
-
-pub trait SwimSinkExt<Item>: Sink<Item> {
-    /// Applys a transformation to each element that is sent to the sink.
-    fn transform<Trans, I>(self, transformer: Trans) -> TransformedSink<Self, Trans>
-    where
-        Self: Sized,
-        Trans: TransformMut<I>,
-    {
-        TransformedSink::new(self, transformer)
     }
 }
 

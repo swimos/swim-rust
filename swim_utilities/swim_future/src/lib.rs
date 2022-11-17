@@ -20,8 +20,6 @@ pub mod retryable;
 pub mod task;
 
 pub use combinators::{
-    immediate_or_join, immediate_or_start, ImmediateOrJoin, ImmediateOrStart,
-    NotifyOnBlocked, SecondaryResult, StopAfterError,
-    Transform, TransformMut, TransformOnce,
-    TransformedSink,
+    immediate_or_join, immediate_or_start, ImmediateOrJoin, ImmediateOrStart, NotifyOnBlocked,
+    SecondaryResult, StopAfterError, Transform, TransformMut, TransformOnce,
 };

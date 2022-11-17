@@ -27,8 +27,8 @@ use swim_api::{
     store::StoreKind,
 };
 use swim_utilities::{
-    non_zero_usize,
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
+    non_zero_usize,
 };
 
 use super::{CMD_LANE, MAP_LANE, VAL_LANE};

@@ -21,7 +21,6 @@ pub mod algebra {
     pub use swim_algebra::*;
 }
 
-
 #[cfg(feature = "errors")]
 pub use swim_errors as errors;
 

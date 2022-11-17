@@ -51,9 +51,8 @@ use swim_runtime::{
     },
 };
 use swim_utilities::{
-    non_zero_usize,
     io::byte_channel::{ByteReader, ByteWriter},
-    trigger,
+    non_zero_usize, trigger,
 };
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::codec::{FramedRead, FramedWrite};

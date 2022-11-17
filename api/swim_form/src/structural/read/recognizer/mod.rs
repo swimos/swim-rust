@@ -124,7 +124,6 @@ pub trait Recognizer {
 
     /// Reset the state machine so that it can be used again.
     fn reset(&mut self);
-
 }
 
 macro_rules! simple_readable {

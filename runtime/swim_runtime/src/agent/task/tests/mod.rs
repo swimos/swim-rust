@@ -48,8 +48,8 @@ use swim_recon::{
     printer::print_recon_compact,
 };
 use swim_utilities::{
-    non_zero_usize,
     io::byte_channel::{ByteReader, ByteWriter},
+    non_zero_usize,
     trigger::promise,
 };
 use tokio::sync::mpsc;

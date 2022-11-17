@@ -21,8 +21,8 @@ use swim_api::{
 };
 use swim_model::Text;
 use swim_utilities::{
-    non_zero_usize,
     io::byte_channel::{byte_channel, ByteReader},
+    non_zero_usize,
     trigger::promise,
 };
 use uuid::Uuid;

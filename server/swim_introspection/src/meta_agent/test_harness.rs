@@ -28,8 +28,8 @@ use swim_api::{
 };
 use swim_runtime::agent::UplinkReporterRegistration;
 use swim_utilities::{
-    non_zero_usize,
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
+    non_zero_usize,
     routing::route_uri::RouteUri,
     trigger,
 };

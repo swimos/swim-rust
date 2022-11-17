@@ -212,7 +212,7 @@ impl Iterator for RetryStrategy {
 #[cfg(test)]
 mod tests {
     use crate::retryable::strategy::{Quantity, RetryStrategy};
-    use std::{time::Duration, num::NonZeroUsize};
+    use std::{num::NonZeroUsize, time::Duration};
 
     #[tokio::test]
     async fn test_exponential() {

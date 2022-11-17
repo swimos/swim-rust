@@ -23,8 +23,8 @@ use swim_messages::{
 };
 use swim_model::Text;
 use swim_utilities::{
-    non_zero_usize,
     io::byte_channel::{byte_channel, ByteReader},
+    non_zero_usize,
 };
 use tokio_util::codec::FramedRead;
 use uuid::Uuid;

@@ -22,7 +22,6 @@ use crate::protocol::{
 use bytes::{Buf, Bytes, BytesMut};
 use futures::future::join;
 use futures::{SinkExt, StreamExt};
-use swim_utilities::non_zero_usize;
 use std::fmt::Debug;
 use std::fmt::Write;
 use std::io::ErrorKind;
@@ -33,6 +32,7 @@ use swim_form::Form;
 use swim_model::{Text, Value};
 use swim_recon::printer::print_recon_compact;
 use swim_utilities::io::byte_channel;
+use swim_utilities::non_zero_usize;
 use swim_warp::envelope::Envelope;
 use tokio_util::codec::{Decoder, Encoder, FramedRead, FramedWrite};
 use uuid::Uuid;

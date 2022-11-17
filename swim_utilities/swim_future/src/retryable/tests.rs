@@ -99,8 +99,11 @@ async fn test() {
     let (tx, mut rx) = mpsc::channel(1);
     let sender = MpscSender::new(tx, p, send);
 
-    let retry: Result<i32, SendErr> =
-        RetryableFuture::new(sender, RetryStrategy::immediate(NonZeroUsize::new(2).unwrap())).await;
+    let retry: Result<i32, SendErr> = RetryableFuture::new(
+        sender,
+        RetryStrategy::immediate(NonZeroUsize::new(2).unwrap()),
+    )
+    .await;
     assert_eq!(retry.unwrap(), p);
 
     let result = rx.recv().await;

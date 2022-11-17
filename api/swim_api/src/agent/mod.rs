@@ -20,7 +20,8 @@ use std::{
 use futures::future::BoxFuture;
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
-    routing::route_uri::RouteUri, non_zero_usize,
+    non_zero_usize,
+    routing::route_uri::RouteUri,
 };
 
 use crate::{

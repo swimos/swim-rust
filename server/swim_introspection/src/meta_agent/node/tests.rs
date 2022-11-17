@@ -31,9 +31,8 @@ use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_model::Text;
 use swim_runtime::agent::reporting::UplinkReporter;
 use swim_utilities::{
-    non_zero_usize,
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
-    trigger,
+    non_zero_usize, trigger,
 };
 use tokio::sync::mpsc;
 use tokio_util::codec::FramedRead;
