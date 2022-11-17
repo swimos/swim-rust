@@ -22,7 +22,6 @@ use std::time::Duration;
 use swim_utilities::routing::route_uri::RouteUri;
 use thiserror::Error;
 
-pub use closed::*;
 pub use encoding::*;
 pub use io::*;
 pub use protocol::*;
@@ -33,7 +32,6 @@ pub use tls::*;
 
 pub use self::http::*;
 
-mod closed;
 mod encoding;
 mod http;
 mod io;
@@ -60,8 +58,6 @@ pub enum ConnectionError {
     Tls(TlsError),
     /// A connection protocol error.
     Protocol(ProtocolError),
-    /// An error produced when closing a connection or a normal close code.
-    Closed(CloseError),
     /// An IO error produced during a read/write operation.
     Io(IoError),
     /// An unsupported encoding error or an illegal type error.
@@ -81,7 +77,6 @@ impl PartialEq for ConnectionError {
             #[cfg(feature = "tls")]
             (ConnectionError::Tls(l), ConnectionError::Tls(r)) => l.eq(r),
             (ConnectionError::Protocol(l), ConnectionError::Protocol(r)) => l.eq(r),
-            (ConnectionError::Closed(l), ConnectionError::Closed(r)) => l.eq(r),
             (ConnectionError::Io(l), ConnectionError::Io(r)) => l.eq(r),
             (ConnectionError::Encoding(l), ConnectionError::Encoding(r)) => l.eq(r),
             (ConnectionError::Resolution(l), ConnectionError::Resolution(r)) => l.eq(r),
@@ -115,7 +110,6 @@ impl Recoverable for ConnectionError {
             ConnectionError::Http(e) => e.is_fatal(),
             ConnectionError::Tls(e) => e.is_fatal(),
             ConnectionError::Protocol(e) => e.is_fatal(),
-            ConnectionError::Closed(e) => e.is_fatal(),
             ConnectionError::Io(e) => matches!(
                 e.kind(),
                 ErrorKind::Interrupted | ErrorKind::TimedOut | ErrorKind::ConnectionReset
@@ -136,7 +130,6 @@ impl Display for ConnectionError {
             ConnectionError::Http(e) => write!(f, "{}", e),
             ConnectionError::Tls(e) => write!(f, "{}", e),
             ConnectionError::Protocol(e) => write!(f, "{}", e),
-            ConnectionError::Closed(e) => write!(f, "{}", e),
             ConnectionError::Io(e) => write!(f, "{}", e),
             ConnectionError::Encoding(e) => write!(f, "{}", e),
             ConnectionError::Resolution(e) => write!(f, "Address {} could not be resolved.", e),
@@ -149,12 +142,6 @@ impl Display for ConnectionError {
                 write!(f, "{}", e)
             }
         }
-    }
-}
-
-impl From<ConnectionDropped> for ConnectionError {
-    fn from(_: ConnectionDropped) -> Self {
-        ConnectionError::Closed(CloseError::closed())
     }
 }
 

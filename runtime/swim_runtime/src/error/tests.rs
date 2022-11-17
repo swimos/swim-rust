@@ -13,17 +13,14 @@
 // limitations under the License.
 
 use crate::error::{
-    CloseError, CloseErrorKind, ConnectionError, IoError, ProtocolError, ProtocolErrorKind,
+    ConnectionError, IoError, ProtocolError, ProtocolErrorKind,
 };
 use std::io::ErrorKind;
 use std::time::Duration;
 
 #[test]
 fn connection_error_display() {
-    let string =
-        ConnectionError::Closed(CloseError::new(CloseErrorKind::ClosedRemotely, None)).to_string();
-    assert_eq!(string, "The connection was closed remotely.");
-
+    
     let string = ConnectionError::Resolution("xyz://localtoast:9001/".to_string()).to_string();
     assert_eq!(
         string,
@@ -43,9 +40,6 @@ fn connection_error_display() {
 
     let string = ConnectionError::Io(IoError::new(ErrorKind::ConnectionRefused, None)).to_string();
     assert_eq!(string, "IO error: ConnectionRefused.");
-
-    let string = ConnectionError::Closed(CloseError::new(CloseErrorKind::Normal, None)).to_string();
-    assert_eq!(string, "The connection has been closed.");
 
     let string = ConnectionError::WriteTimeout(Duration::from_secs(5)).to_string();
     assert_eq!(
