@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::{SwimFutureExt, SwimStreamExt, SwimTryFutureExt, TransformMut};
+use super::{SwimStreamExt, SwimTryFutureExt, TransformMut};
 use futures::executor::block_on;
-use futures::future::{self, join, ready, select, Either, Ready};
+use futures::future::{join, ready, select, Either, Ready};
 use futures::stream::{self, iter, FusedStream, Iter};
 use futures::StreamExt;
 use pin_utils::pin_mut;
@@ -25,13 +25,6 @@ use swim_trigger::trigger;
 use tokio::sync::{mpsc, Notify};
 use tokio::time::timeout;
 use tokio_stream::wrappers::ReceiverStream;
-
-#[test]
-fn future_into() {
-    let fut = ready(4);
-    let n: i64 = block_on(fut.output_into());
-    assert_eq!(n, 4);
-}
 
 #[test]
 fn ok_into_ok_case() {
@@ -75,22 +68,6 @@ impl TransformMut<i32> for RepeatStream {
     fn transform(&mut self, input: i32) -> Self::Out {
         iter(repeat(input).take(self.0))
     }
-}
-
-#[test]
-fn transform_future() {
-    let fut = ready(2);
-    let plus = Plus(3);
-    let n = block_on(fut.transform(plus));
-    assert_eq!(n, 5);
-}
-
-#[test]
-fn chain_future() {
-    let fut = ready(2);
-    let plus = PlusReady(3);
-    let n = block_on(fut.chain(plus));
-    assert_eq!(n, 5);
 }
 
 #[test]
@@ -178,14 +155,6 @@ fn stop_after_error() {
 }
 
 #[tokio::test]
-#[allow(clippy::unit_cmp)]
-async fn unit_future() {
-    let fut = async { 5 };
-
-    assert_eq!(fut.unit().await, ());
-}
-
-#[tokio::test]
 async fn owning_scan() {
     let inputs = iter(vec![1, 2, 3, 4]);
 
@@ -230,26 +199,6 @@ async fn owning_scan_done() {
     }
 
     assert!(scan_stream.is_terminated());
-}
-
-#[tokio::test]
-async fn future_notify_on_blocked() {
-    let (tx, rx) = trigger();
-    let notify = Arc::new(Notify::new());
-    let notify_cpy = notify.clone();
-
-    let blocker = async move {
-        let result = select(future::pending::<()>().notify_on_blocked(notify_cpy), rx).await;
-        assert!(matches!(result, Either::Right((Ok(_), _))));
-    };
-
-    let unblocker = async move {
-        notify.notified().await;
-        tx.trigger();
-    };
-
-    let result = timeout(Duration::from_secs(5), join(blocker, unblocker)).await;
-    assert!(result.is_ok());
 }
 
 #[tokio::test]

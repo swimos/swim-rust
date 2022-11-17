@@ -29,16 +29,6 @@ use tokio::sync::Notify;
 pub use immediate_or::{
     immediate_or_join, immediate_or_start, ImmediateOrJoin, ImmediateOrStart, SecondaryResult,
 };
-
-/// A future that transforms another future using [`Into`].
-#[pin_project]
-#[derive(Debug)]
-pub struct FutureInto<F, T> {
-    #[pin]
-    future: F,
-    _target: PhantomData<T>,
-}
-
 /// A future that transforms another future, that produces a [`Result`], using [`Into`].
 #[pin_project]
 #[derive(Debug)]
@@ -48,45 +38,11 @@ pub struct OkInto<F, T> {
     _target: PhantomData<T>,
 }
 
-/// A future that transforms another future using a [`Transform`].
-#[pin_project]
-#[derive(Debug)]
-pub struct TransformedFuture<Fut, Trans> {
-    #[pin]
-    future: Fut,
-    transform: Option<Trans>,
-}
-
-/// A future that transforms another future using a [`Transform`] that results in a second future.
-#[pin_project(project = ChainedFutureProj)]
-#[derive(Debug)]
-pub enum ChainedFuture<Fut1, Fut2, Trans> {
-    First(#[pin] Fut1, Option<Trans>),
-    Second(#[pin] Fut2),
-}
-
 /// Transforms a stream of `T` into a stream of [`Result<T, Never>`].
 #[pin_project]
 #[derive(Debug)]
 pub struct NeverErrorStream<Str>(#[pin] Str);
 
-/// A future that discards the result of another future.
-#[pin_project]
-#[derive(Debug)]
-pub struct Unit<F>(#[pin] F);
-
-impl<F, T> FutureInto<F, T>
-where
-    F: Future,
-    F::Output: Into<T>,
-{
-    pub fn new(future: F) -> Self {
-        FutureInto {
-            future,
-            _target: PhantomData,
-        }
-    }
-}
 
 impl<F, T> OkInto<F, T>
 where
@@ -101,52 +57,6 @@ where
     }
 }
 
-impl<Fut, Trans> TransformedFuture<Fut, Trans>
-where
-    Fut: Future,
-    Trans: TransformOnce<Fut::Output>,
-{
-    pub fn new(future: Fut, transform: Trans) -> Self {
-        TransformedFuture {
-            future,
-            transform: Some(transform),
-        }
-    }
-}
-
-impl<Fut1, Trans> ChainedFuture<Fut1, Trans::Out, Trans>
-where
-    Fut1: Future,
-    Trans: TransformOnce<Fut1::Output>,
-    Trans::Out: Future,
-{
-    pub fn new(future: Fut1, transform: Trans) -> Self {
-        ChainedFuture::First(future, Some(transform))
-    }
-}
-
-impl<F, T> Future for FutureInto<F, T>
-where
-    F: Future,
-    F::Output: Into<T>,
-{
-    type Output = T;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        self.project().future.poll(cx).map(Into::into)
-    }
-}
-
-impl<F, T> From<F> for FutureInto<F, T>
-where
-    F: Future,
-    F::Output: Into<T>,
-{
-    fn from(future: F) -> Self {
-        FutureInto::new(future)
-    }
-}
-
 impl<F, T1, T2, E> Future for OkInto<F, T2>
 where
     F: Future<Output = Result<T1, E>>,
@@ -156,51 +66,6 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         self.project().future.poll(cx).map(|r| r.map(Into::into))
-    }
-}
-
-impl<Fut, Trans> Future for TransformedFuture<Fut, Trans>
-where
-    Fut: Future,
-    Trans: TransformOnce<Fut::Output>,
-{
-    type Output = Trans::Out;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let projected = self.project();
-        let fut = projected.future;
-        let maybe_trans = projected.transform;
-        fut.poll(cx).map(|input| match maybe_trans.take() {
-            Some(trans) => trans.transform(input),
-            _ => panic!("Transformed future used more than once."),
-        })
-    }
-}
-
-impl<Fut1, Trans> Future for ChainedFuture<Fut1, Trans::Out, Trans>
-where
-    Fut1: Future,
-    Trans: TransformOnce<Fut1::Output>,
-    Trans::Out: Future,
-{
-    type Output = <<Trans as TransformOnce<Fut1::Output>>::Out as Future>::Output;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        loop {
-            match self.as_mut().project() {
-                ChainedFutureProj::First(fut, trans) => {
-                    let res = ready!(fut.poll(cx));
-                    let fut2 = trans
-                        .take()
-                        .expect("Future inconsistent state.")
-                        .transform(res);
-                    self.set(ChainedFuture::Second(fut2));
-                }
-                ChainedFutureProj::Second(fut) => {
-                    return fut.poll(cx);
-                }
-            }
-        }
     }
 }
 
@@ -264,110 +129,6 @@ where
         TransformMut::transform(&mut self, input)
     }
 }
-
-pub trait SwimFutureExt: Future {
-    /// Transform the output of a future using [`Into`].
-    ///
-    ///  # Examples
-    /// ```
-    /// use futures::executor::block_on;
-    /// use futures::future::ready;
-    /// use swim_future::*;
-    ///
-    /// let n: i64 = block_on(ready(7).output_into());
-    /// assert_eq!(n, 7);
-    ///
-    /// ```
-    ///
-    fn output_into<T>(self) -> FutureInto<Self, T>
-    where
-        Self: Sized,
-        Self::Output: Into<T>,
-    {
-        FutureInto::new(self)
-    }
-
-    /// Apply a transformation to the output of a future.
-    ///
-    ///  # Examples
-    /// ```
-    /// use futures::executor::block_on;
-    /// use futures::future::ready;
-    /// use swim_future::*;
-    /// use std::ops::Add;
-    /// use swim_future::SwimFutureExt;
-    /// struct Plus(i32);
-    ///
-    /// impl TransformOnce<i32> for Plus {
-    ///     type Out = i32;
-    ///
-    ///     fn transform(self, input: i32) -> Self::Out {
-    ///         input + self.0
-    ///     }
-    /// }
-    ///
-    /// let n: i32 = block_on(ready(2).transform(Plus(3)));
-    /// assert_eq!(n, 5);
-    ///
-    /// ```
-    fn transform<Trans>(self, transform: Trans) -> TransformedFuture<Self, Trans>
-    where
-        Self: Sized,
-        Trans: TransformOnce<Self::Output>,
-    {
-        TransformedFuture::new(self, transform)
-    }
-
-    /// Apply a transformation, resulting in another future, to the output of a future.
-    ///
-    ///  # Examples
-    /// ```
-    /// use futures::executor::block_on;
-    /// use futures::future::{ready, Ready};
-    /// use swim_future::*;
-    /// use std::ops::Add;
-    /// use swim_future::SwimFutureExt;
-    /// struct Plus(i32);
-    ///
-    /// impl TransformOnce<i32> for Plus {
-    ///     type Out = Ready<i32>;
-    ///
-    ///     fn transform(self, input: i32) -> Self::Out {
-    ///         ready(input + self.0)
-    ///     }
-    /// }
-    ///
-    /// let n: i32 = block_on(ready(2).chain(Plus(3)));
-    /// assert_eq!(n, 5);
-    ///
-    /// ```
-    fn chain<Trans>(self, transform: Trans) -> ChainedFuture<Self, Trans::Out, Trans>
-    where
-        Self: Sized,
-        Trans: TransformOnce<Self::Output>,
-        Trans::Out: Future,
-    {
-        ChainedFuture::First(self, Some(transform))
-    }
-
-    /// Discard the result of this future.
-    fn unit(self) -> Unit<Self>
-    where
-        Self: Sized,
-    {
-        Unit(self)
-    }
-
-    /// Wrap this in a future that will provide a notification each time it is blocked.
-    fn notify_on_blocked(self, notify: Arc<Notify>) -> NotifyOnBlocked<Self>
-    where
-        Self: Sized,
-    {
-        NotifyOnBlocked::new(self, notify)
-    }
-}
-
-impl<F: Future> SwimFutureExt for F {}
 
 pub trait SwimTryFutureExt: TryFuture {
     /// Transform the [`Ok`] case of a fallible future using [`Into`].
@@ -972,15 +733,6 @@ impl<S, Trans> TransformedSink<S, Trans> {
             inner: sink,
             transformer,
         }
-    }
-}
-
-impl<F: Future> Future for Unit<F> {
-    type Output = ();
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let projected = self.project();
-        projected.0.poll(cx).map(|_| ())
     }
 }
 
