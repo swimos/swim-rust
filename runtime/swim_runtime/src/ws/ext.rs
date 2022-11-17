@@ -12,8 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::ws::{WsConnections, WsOpenFuture};
-use ratchet::{Error, ExtensionProvider, ProtocolRegistry, SplittableExtension};
+use crate::{
+    error::RatchetError,
+    ws::{WsConnections, WsOpenFuture},
+};
+use ratchet::{ExtensionProvider, ProtocolRegistry, SplittableExtension};
 use tokio::io::{AsyncRead, AsyncWrite};
 
 pub struct RatchetNetworking<E> {
@@ -29,13 +32,12 @@ where
     E::Extension: SplittableExtension + Send + Sync + 'static,
 {
     type Ext = E::Extension;
-    type Error = Error;
 
     fn open_connection(
         &self,
         socket: Socket,
         addr: String,
-    ) -> WsOpenFuture<Socket, Self::Ext, Self::Error> {
+    ) -> WsOpenFuture<Socket, Self::Ext, RatchetError> {
         let RatchetNetworking {
             config,
             provider,
@@ -54,7 +56,7 @@ where
         })
     }
 
-    fn accept_connection(&self, socket: Socket) -> WsOpenFuture<Socket, Self::Ext, Self::Error> {
+    fn accept_connection(&self, socket: Socket) -> WsOpenFuture<Socket, Self::Ext, RatchetError> {
         let RatchetNetworking {
             config,
             provider,

@@ -38,9 +38,9 @@ use swim_runtime::agent::{
     AgentAttachmentRequest, AgentExecError, AgentRoute, AgentRouteTask, CombinedAgentConfig,
     DisconnectionReason, DownlinkRequest,
 };
+use swim_runtime::error::RatchetError;
 use swim_utilities::routing::route_uri::RouteUri;
 
-use swim_runtime::error::ConnectionError;
 use swim_runtime::net::{BadUrl, ExternalConnections, Listener, SchemeSocketAddr};
 use swim_runtime::ws::WsConnections;
 use swim_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
@@ -416,7 +416,7 @@ where
                             remote_tasks.push(task);
                         }
                         Err(error) => {
-                            warn!(error = %{Into::<ConnectionError>::into(error)}, "Negotiating incoming websocket connection failed.");
+                            warn!(error = %error, "Negotiating incoming websocket connection failed.");
                         }
                     }
                 }
@@ -921,7 +921,7 @@ enum NewClientError {
     WsNegotationFailed {
         #[from]
         #[source]
-        error: ConnectionError,
+        error: RatchetError,
     },
     #[error("The server task stopped unexpectedly.")]
     ServerStopped,

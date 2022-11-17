@@ -16,8 +16,6 @@ use bytes::Bytes;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::str::Utf8Error;
-use std::sync::Arc;
-use std::time::Duration;
 use swim_utilities::routing::route_uri::RouteUri;
 use thiserror::Error;
 
@@ -27,75 +25,17 @@ pub use tls::*;
 
 mod tls;
 
-#[cfg(test)]
-mod tests;
-
 pub type FmtResult = std::fmt::Result;
-
-type BoxRecoverableError = Box<dyn RecoverableError>;
 
 pub trait RecoverableError: std::error::Error + Send + Sync + Recoverable + 'static {}
 impl<T> RecoverableError for T where T: std::error::Error + Send + Sync + Recoverable + 'static {}
 
-/// An error denoting that a connection error has occurred.
-#[derive(Debug, Clone)]
-pub enum ConnectionError {
-    /// A pending write did not complete within the specified duration.
-    WriteTimeout(Duration),
-    /// An error was produced at the transport layer.
-    Transport(Arc<BoxRecoverableError>),
-}
-
-impl PartialEq for ConnectionError {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (ConnectionError::WriteTimeout(l), ConnectionError::WriteTimeout(r)) => l.eq(r),
-            (ConnectionError::Transport(l), ConnectionError::Transport(r)) => {
-                l.to_string().eq(&r.to_string())
-            }
-            _ => false,
-        }
-    }
-}
-
 #[derive(Debug, ThisError)]
 #[error("{0}")]
-struct RatchetError(ratchet::Error);
+pub struct RatchetError(#[from] ratchet::Error);
 impl Recoverable for RatchetError {
     fn is_fatal(&self) -> bool {
         true
-    }
-}
-
-impl From<ratchet::Error> for ConnectionError {
-    fn from(e: ratchet::Error) -> Self {
-        ConnectionError::Transport(Arc::new(Box::new(RatchetError(e))))
-    }
-}
-
-impl Recoverable for ConnectionError {
-    fn is_fatal(&self) -> bool {
-        match self {
-            ConnectionError::WriteTimeout(_) => false,
-            ConnectionError::Transport(e) => e.is_fatal(),
-        }
-    }
-}
-
-impl Error for ConnectionError {}
-
-impl Display for ConnectionError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        match self {
-            ConnectionError::WriteTimeout(dur) => write!(
-                f,
-                "Writing to the connection failed to complete within {:?}.",
-                dur
-            ),
-            ConnectionError::Transport(e) => {
-                write!(f, "{}", e)
-            }
-        }
     }
 }
 

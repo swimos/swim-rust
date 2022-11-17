@@ -21,7 +21,7 @@ use bytes::BytesMut;
 use futures::future::ready;
 use futures::{future::BoxFuture, stream::Fuse, FutureExt, Stream, StreamExt};
 use ratchet::{NegotiatedExtension, NoExt, Role, WebSocket, WebSocketConfig};
-use swim_runtime::error::ConnectionError;
+use swim_runtime::error::RatchetError;
 use swim_runtime::net::dns::{DnsFut, DnsResolver};
 use swim_runtime::net::{ExternalConnections, Listener, Scheme, SchemeHostPort, SchemeSocketAddr};
 use swim_runtime::ws::{WsConnections, WsOpenFuture};
@@ -56,13 +56,11 @@ pub struct TestWs {
 impl WsConnections<DuplexStream> for TestWs {
     type Ext = NoExt;
 
-    type Error = ConnectionError;
-
     fn open_connection(
         &self,
         socket: DuplexStream,
         _addr: String,
-    ) -> WsOpenFuture<DuplexStream, Self::Ext, Self::Error> {
+    ) -> WsOpenFuture<DuplexStream, Self::Ext, RatchetError> {
         ready(Ok(WebSocket::from_upgraded(
             self.config,
             socket,
@@ -76,7 +74,7 @@ impl WsConnections<DuplexStream> for TestWs {
     fn accept_connection(
         &self,
         socket: DuplexStream,
-    ) -> WsOpenFuture<DuplexStream, Self::Ext, Self::Error> {
+    ) -> WsOpenFuture<DuplexStream, Self::Ext, RatchetError> {
         ready(Ok(WebSocket::from_upgraded(
             self.config,
             socket,
