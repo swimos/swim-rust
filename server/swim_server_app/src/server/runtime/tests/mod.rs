@@ -593,71 +593,73 @@ where
 
 #[tokio::test]
 async fn agent_timeout() {
-    let mut config = SwimServerConfig::default();
-    config.agent_runtime.inactive_timeout = Duration::from_millis(250);
-    let stage = Arc::new(AtomicU64::new(0));
-    let (result, _) =
-        run_server_with_config_debug(stage.clone(), config, |mut context| async move {
-            let TestContext {
-                incoming_tx,
-                event_rx,
-                report_rx,
-                ..
-            } = &mut context;
+    for _ in 0..10000 {
+        let mut config = SwimServerConfig::default();
+        config.agent_runtime.inactive_timeout = Duration::from_millis(250);
+        let stage = Arc::new(AtomicU64::new(0));
+        let (result, _) =
+            run_server_with_config_debug(stage.clone(), config, |mut context| async move {
+                let TestContext {
+                    incoming_tx,
+                    event_rx,
+                    report_rx,
+                    ..
+                } = &mut context;
 
-            let (client_sock, server_sock) = duplex(BUFFER_SIZE);
+                let (client_sock, server_sock) = duplex(BUFFER_SIZE);
 
-            incoming_tx
-                .send((remote_addr(1), server_sock))
-                .expect("Listener closed.");
+                incoming_tx
+                    .send((remote_addr(1), server_sock))
+                    .expect("Listener closed.");
 
-            let mut client = TestClient::new(client_sock);
+                let mut client = TestClient::new(client_sock);
 
-            // Send a message causing the agent to be started.
-            client
-                .command(NODE, LANE, TestMessage::SetAndReport(56))
-                .await;
+                // Send a message causing the agent to be started.
+                client
+                    .command(NODE, LANE, TestMessage::SetAndReport(56))
+                    .await;
 
-            stage.store(1, Ordering::Relaxed);
-            assert_eq!(
-                event_rx.recv().await.expect("Agent failed."),
-                AgentEvent::Started
-            );
+                stage.store(1, Ordering::Relaxed);
+                assert_eq!(
+                    event_rx.recv().await.expect("Agent failed."),
+                    AgentEvent::Started
+                );
 
-            stage.store(2, Ordering::Relaxed);
+                stage.store(2, Ordering::Relaxed);
 
-            assert_eq!(report_rx.recv().await.expect("Agent stopped."), 56);
+                assert_eq!(report_rx.recv().await.expect("Agent stopped."), 56);
 
-            stage.store(3, Ordering::Relaxed);
+                stage.store(3, Ordering::Relaxed);
 
-            // Wait for the agent to timeout and stop.
-            assert_eq!(
-                event_rx.recv().await.expect("Agent failed."),
-                AgentEvent::Stopped
-            );
+                // Wait for the agent to timeout and stop.
+                assert_eq!(
+                    event_rx.recv().await.expect("Agent failed."),
+                    AgentEvent::Stopped
+                );
 
-            stage.store(4, Ordering::Relaxed);
+                stage.store(4, Ordering::Relaxed);
 
-            // Send another message causing the agent to be restarted.
-            client
-                .command(NODE, LANE, TestMessage::SetAndReport(-45))
-                .await;
+                // Send another message causing the agent to be restarted.
+                client
+                    .command(NODE, LANE, TestMessage::SetAndReport(-45))
+                    .await;
 
-            stage.store(5, Ordering::Relaxed);
+                stage.store(5, Ordering::Relaxed);
 
-            assert_eq!(
-                event_rx.recv().await.expect("Agent failed."),
-                AgentEvent::Started
-            );
+                assert_eq!(
+                    event_rx.recv().await.expect("Agent failed."),
+                    AgentEvent::Started
+                );
 
-            stage.store(6, Ordering::Relaxed);
+                stage.store(6, Ordering::Relaxed);
 
-            assert_eq!(report_rx.recv().await.expect("Agent stopped."), -45);
+                assert_eq!(report_rx.recv().await.expect("Agent stopped."), -45);
 
-            stage.store(7, Ordering::Relaxed);
-            context.handle.stop();
-            context
-        })
-        .await;
-    assert!(result.is_ok());
+                stage.store(7, Ordering::Relaxed);
+                context.handle.stop();
+                context
+            })
+            .await;
+        assert!(result.is_ok());
+    }
 }
