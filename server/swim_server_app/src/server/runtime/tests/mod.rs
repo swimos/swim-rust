@@ -172,6 +172,13 @@ impl TestClient {
         self.ws.write_text(envelope).await.expect("Write failed.")
     }
 
+    async fn expect_close<'a>(&mut self) {
+        let TestClient { ws, read_buffer } = self;
+        read_buffer.clear();
+        let message = ws.read(read_buffer).await.expect("Read failed.");
+        assert!(matches!(message, Message::Close(_)));
+    }
+
     async fn expect_envelope<'a>(&'a mut self) -> RawEnvelope<'a> {
         let TestClient { ws, read_buffer } = self;
         read_buffer.clear();
