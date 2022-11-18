@@ -24,6 +24,6 @@ rand = "0.7.3"
 
 [dev-dependencies]
 swim_recon = { path = "../../api/formats/swim_recon", features = ["async_parser"] }
-tokio = { version = "1.1.1", features = ["rt", "macros"]}
+tokio = { version = "1.1.1", features = ["rt", "macros", "test-util"]}
 swim_form = {path = "../../api/swim_form" }
 swim_warp = { path = "../../swim_warp" }
