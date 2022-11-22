@@ -13,8 +13,8 @@ macro_utilities = { path = "../../macro_utilities" }
 proc-macro2 = "1.0"
 syn = { version = "1.0" }
 quote = "1.0.3"
-num-bigint = "0.3"
+num-bigint = "0.4"
 
 [dev-dependencies]
-rand = "0.7"
-num-bigint = { version = "0.3", features = ["rand"] }
+rand = { workspace = true }
+num-bigint = { version = "0.4", features = ["rand"] }

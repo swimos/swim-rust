@@ -17,7 +17,7 @@ smallvec = "1.7.0"
 tokio = { workspace = true, features = ["rt-multi-thread", "test-util", "macros"] }
 futures = { workspace = true, features = ["io-compat", "compat"] }
 criterion = { version = "0.3", features = ["async_tokio"] }
-rand = "0.8.4"
+rand = { workspace = true }
 swim_api = { path = "../../api/swim_api" }
 swim_runtime = { path = "../../runtime/swim_runtime" }
 swim_messages = {path = "../../runtime/swim_messages" }

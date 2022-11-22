@@ -46,4 +46,4 @@ parking_lot = { workspace = true }
 tokio-stream = { workspace = true }
 uuid = { version = "0.8.2", features = ["v4"] }
 swim_utilities = { path = "../../swim_utilities", features = ["buf_channel"] }
-rand = "0.7.3"
+rand = { workspace = true }
