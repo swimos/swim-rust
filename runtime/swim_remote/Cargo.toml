@@ -25,7 +25,7 @@ thiserror = "1.0"
 tokio-stream = { workspace = true, features = ["sync"] }
 uuid = "0.8.2"
 static_assertions = "1.1.0"
-either = "1.5.3"
+either = { workspace = true }
 smallvec ="1.7.0"
 
 [dev-dependencies]

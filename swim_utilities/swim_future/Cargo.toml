@@ -5,7 +5,7 @@ authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
 [dependencies]
-either = "1.5.3"
+either = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
 tokio-util = { workspace = true, features = ["codec"] }

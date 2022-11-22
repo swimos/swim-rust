@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 chrono = "0.4"
-either = "1.5.3"
+either = { workspace = true }
 num-bigint = { version = "0.3", features = ["serde"] }
 base64 = "0.13.0"
 http = "0.2.3"
