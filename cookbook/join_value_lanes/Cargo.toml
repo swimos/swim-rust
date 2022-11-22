@@ -5,7 +5,7 @@ authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
 [dependencies]
-tokio = "1.1.1"
+tokio = { workspace = true }
 futures = "0.3.4"
 futures-util = "0.3.4"
 rand = "0.7.3"

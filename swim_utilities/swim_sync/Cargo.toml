@@ -13,5 +13,5 @@ swim_num = { path = "../swim_num"}
 
 [dev-dependencies]
 futures = "0.3.23"
-tokio = { version = "1.1.1", features = ["rt", "macros"] }
+tokio = { workspace = true, features = ["rt", "macros"] }
 swim_trigger = { path = "../swim_trigger"}

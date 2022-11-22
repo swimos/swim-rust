@@ -15,12 +15,12 @@ swim_utilities = { path = "../../swim_utilities", features = ["io", "trigger", "
 swim_runtime = { path = "../../runtime/swim_runtime", features = ["tls"] }
 swim_introspection = { path = "../swim_introspection" }
 swim_remote = { path = "../../runtime/swim_remote" }
-bytes = "1.0"
-tokio = { version = "1.1.1", features = ["rt"] }
-tokio-util = { version = "0.6.8", features = ["codec"] }
+bytes = { workspace = true }
+tokio = { workspace = true, features = ["rt"] }
+tokio-util = { workspace = true, features = ["codec"] }
 swim_model = {path = "../../api/swim_model" }
 swim_api = { path = "../../api/swim_api" }
-tokio-stream = "0.1.2"
+tokio-stream = { workspace = true }
 tracing = "0.1.16"
 tracing-futures = "0.2.4"
 uuid = { version = "0.8.2" }
@@ -32,7 +32,7 @@ rocksdb = { version = "0.19.0", optional = true }
 
 [dev-dependencies]
 swim_recon = { path = "../../api/formats/swim_recon", features = ["async_parser"] }
-tokio = { version = "1.1.1", features = ["rt", "macros"]}
+tokio = { workspace = true, features = ["rt", "macros"]}
 swim_form = {path = "../../api/swim_form" }
 parking_lot = "0.11.0"
 swim_messages = { path = "../../runtime/swim_messages" }

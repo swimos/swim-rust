@@ -4,17 +4,17 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bytes = "1.0"
+bytes = { workspace = true }
 byte_channel= { path = "../byte_channel" }
 parking_lot = "0.11.0"
 waker-fn = "1.1.0"
 slab = "0.4.4"
-tokio-util = { version = "0.6.8", features = ["codec"] }
+tokio-util = { workspace = true, features = ["codec"] }
 futures-util = "0.3.4"
 smallvec = "1.7.0"
 
 [dev-dependencies]
-tokio = { version = "1.1.1", features = ["rt-multi-thread", "test-util", "macros"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "test-util", "macros"] }
 futures = { version = "0.3.23", features = ["io-compat", "compat"] }
 criterion = { version = "0.3", features = ["async_tokio"] }
 rand = "0.8.4"

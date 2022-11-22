@@ -8,14 +8,14 @@ default = ["coop"]
 coop = []
 
 [dependencies]
-bytes = "1.0"
-tokio = { version = "1.1.1", features = ["io-util"] }
+bytes = { workspace = true }
+tokio = { workspace = true, features = ["io-util"] }
 parking_lot = "0.11.0"
 futures = "0.3.23"
 pin-project = "1.0.12"
 
 [dev-dependencies]
-tokio = { version = "1.1.1", features = ["rt-multi-thread", "test-util", "macros"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "test-util", "macros"] }
 futures = "0.3.23"
 futures-util = "0.3.4"
 criterion = { version = "0.3", features = ["async_tokio"] }

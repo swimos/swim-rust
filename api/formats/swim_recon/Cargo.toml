@@ -18,11 +18,11 @@ nom_locate = "4.0"
 num-traits = "0.2.12"
 ryu = "1.0"
 futures = { version =  "0.3.4", optional = true }
-tokio = { version = "1.1.1", features = ["io-util"], optional = true }
-tokio-util = { version = "0.6.8", optional = true, features = ["codec"] }
-bytes = { version = "^1.0.0", optional = true }
+tokio = { workspace = true, features = ["io-util"], optional = true }
+tokio-util = { workspace = true, optional = true, features = ["codec"] }
+bytes = { workspace = true, optional = true }
 smallvec ="1.7.0"
 thiserror = "1.0"
 
 [dev-dependencies]
-tokio = { version = "1.1.1", features = ["io-util", "macros", "rt", "fs"] }
+tokio = { workspace = true, features = ["io-util", "macros", "rt", "fs"] }
