@@ -9,7 +9,7 @@ default = []
 async_parser = ["futures", "tokio", "tokio-util", "bytes"]
 
 [dependencies]
-base64 = "0.13.0"
+base64 = { workspace = true }
 either = { workspace = true }
 swim_form = { path = "../../swim_form" }
 swim_model = { path = "../../swim_model" }

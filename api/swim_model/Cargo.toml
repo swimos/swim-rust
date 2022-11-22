@@ -8,7 +8,7 @@ edition = "2021"
 chrono = "0.4"
 either = { workspace = true }
 num-bigint = { version = "0.3", features = ["serde"] }
-base64 = "0.13.0"
+base64 = { workspace = true }
 http = { workspace = true }
 swim_utilities = { path = "../../swim_utilities", features = ["text"] }
 num-traits = "0.2.12"
