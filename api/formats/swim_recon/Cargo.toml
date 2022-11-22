@@ -13,8 +13,8 @@ base64 = "0.13.0"
 either = { workspace = true }
 swim_form = { path = "../../swim_form" }
 swim_model = { path = "../../swim_model" }
-nom = "7.0"
-nom_locate = "4.0"
+nom = { workspace = true }
+nom_locate = { workspace = true }
 num-traits = "0.2.12"
 ryu = "1.0"
 futures = { workspace = true, optional = true }
