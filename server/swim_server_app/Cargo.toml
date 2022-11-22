@@ -34,5 +34,5 @@ rocksdb = { version = "0.19.0", optional = true }
 swim_recon = { path = "../../api/formats/swim_recon", features = ["async_parser"] }
 tokio = { workspace = true, features = ["rt", "macros"]}
 swim_form = {path = "../../api/swim_form" }
-parking_lot = "0.11.0"
+parking_lot = { workspace = true }
 swim_messages = { path = "../../runtime/swim_messages" }

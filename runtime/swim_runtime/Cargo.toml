@@ -42,7 +42,7 @@ static_assertions = "1.1.0"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
-parking_lot = "0.11.0"
+parking_lot = { workspace = true }
 tokio-stream = { workspace = true }
 uuid = { version = "0.8.2", features = ["v4"] }
 swim_utilities = { path = "../../swim_utilities", features = ["buf_channel"] }
