@@ -9,8 +9,8 @@ tokio = { workspace = true }
 futures = { workspace = true }
 futures-util = { workspace = true }
 rand = { workspace = true }
-tracing = "0.1.16"
-tracing-futures = "0.2.4"
+tracing = { workspace = true }
+tracing-futures = { workspace = true }
 swim_client = { path = "../../swim_client" }
 swim_model = { path = "../../api/swim_model" }
 swim_form = { path = "../../api/swim_form" }
