@@ -5,7 +5,7 @@ authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
 [dependencies]
-num = "0.3.0"
+num = "0.4"
 
 [dev-dependencies]
 swim_num = { path = "../swim_num"}
