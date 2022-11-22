@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 futures = { workspace = true }
-slab = "0.4.2"
+slab = { workspace = true }
 parking_lot = { workspace = true }
 
 [dev-dependencies]

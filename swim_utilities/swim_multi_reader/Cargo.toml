@@ -8,7 +8,7 @@ bytes = { workspace = true }
 byte_channel= { path = "../byte_channel" }
 parking_lot = { workspace = true }
 waker-fn = "1.1.0"
-slab = "0.4.4"
+slab = { workspace = true }
 tokio-util = { workspace = true, features = ["codec"] }
 futures-util ={ workspace = true }
 smallvec = "1.7.0"
