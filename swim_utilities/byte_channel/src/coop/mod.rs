@@ -72,42 +72,42 @@ fn set_budget(n: usize) {
 }
 
 #[pin_project]
-pub struct WithBudget<F> {
+pub struct RunWithBudget<F> {
     budget: NonZeroUsize,
     #[pin]
     fut: F,
 }
 
-impl<F> WithBudget<F> {
+impl<F> RunWithBudget<F> {
     pub fn new(fut: F) -> Self {
-        WithBudget {
+        RunWithBudget {
             budget: DEFAULT_START_BUDGET,
             fut,
         }
     }
 
     pub fn with_budget(budget: NonZeroUsize, fut: F) -> Self {
-        WithBudget { budget, fut }
+        RunWithBudget { budget, fut }
     }
 }
 
 pub trait BudgetedFuture: Sized + Future {
-    fn budgeted(self) -> WithBudget<Self> {
-        WithBudget::new(self)
+    fn budgeted(self) -> RunWithBudget<Self> {
+        RunWithBudget::new(self)
     }
 
-    fn with_budget(self, budget: NonZeroUsize) -> WithBudget<Self> {
-        WithBudget::with_budget(budget, self)
+    fn with_budget(self, budget: NonZeroUsize) -> RunWithBudget<Self> {
+        RunWithBudget::with_budget(budget, self)
     }
 
-    fn with_budget_or_default(self, budget: Option<NonZeroUsize>) -> WithBudget<Self> {
-        WithBudget::with_budget(budget.unwrap_or(DEFAULT_START_BUDGET), self)
+    fn with_budget_or_default(self, budget: Option<NonZeroUsize>) -> RunWithBudget<Self> {
+        RunWithBudget::with_budget(budget.unwrap_or(DEFAULT_START_BUDGET), self)
     }
 }
 
 impl<F: Future> BudgetedFuture for F {}
 
-impl<F: Default> Default for WithBudget<F> {
+impl<F: Default> Default for RunWithBudget<F> {
     fn default() -> Self {
         Self {
             budget: DEFAULT_START_BUDGET,
@@ -116,7 +116,7 @@ impl<F: Default> Default for WithBudget<F> {
     }
 }
 
-impl<F: Future> Future for WithBudget<F> {
+impl<F: Future> Future for RunWithBudget<F> {
     type Output = F::Output;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {

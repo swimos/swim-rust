@@ -26,7 +26,7 @@ use std::{
 use swim_num::non_zero_usize;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-use crate::{byte_channel, WithBudget};
+use crate::{byte_channel, RunWithBudget};
 
 struct TestWaker(AtomicBool);
 
@@ -162,7 +162,7 @@ const BUDGET: NonZeroUsize = non_zero_usize!(13);
 async fn with_budget_sets_budget() {
     super::set_budget(1);
 
-    let fut = WithBudget::with_budget(BUDGET, async {
+    let fut = RunWithBudget::with_budget(BUDGET, async {
         assert_eq!(super::TASK_BUDGET.with(Cell::get), Some(BUDGET.get()));
     });
 
