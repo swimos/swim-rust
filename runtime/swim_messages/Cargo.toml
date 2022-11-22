@@ -14,7 +14,7 @@ swim_form = { path = "../../api/swim_form" }
 swim_recon = { path = "../../api/formats/swim_recon", features = ["async_parser"] }
 swim_utilities = { path = "../../swim_utilities", features = ["algebra"] }
 thiserror = "1.0"
-uuid = "0.8.2"
+uuid = { workspace = true }
 smallvec = { workspace = true }
 
 [dev-dependencies]

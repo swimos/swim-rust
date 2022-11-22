@@ -23,7 +23,7 @@ swim_api = { path = "../../api/swim_api" }
 tokio-stream = { workspace = true }
 tracing = "0.1.16"
 tracing-futures = "0.2.4"
-uuid = { version = "0.8.2" }
+uuid = { workspace = true }
 thiserror = "1.0"
 rand = { workspace = true }
 url = "2.1.1"

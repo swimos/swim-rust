@@ -23,7 +23,7 @@ tracing = "0.1.16"
 tracing-futures = "0.2.4"
 thiserror = "1.0"
 tokio-stream = { workspace = true, features = ["sync"] }
-uuid = "0.8.2"
+uuid = { workspace = true }
 static_assertions = "1.1.0"
 either = { workspace = true }
 smallvec = { workspace = true }

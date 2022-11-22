@@ -15,4 +15,4 @@ bytes = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true, features = ["codec"] }
 static_assertions = "1.1.0"
-uuid = "0.8.2"
+uuid = { workspace = true }

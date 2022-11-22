@@ -35,13 +35,13 @@ tracing-futures = "0.2.4"
 thiserror = "1.0"
 im = "15.0.0"
 tokio-stream = { workspace = true, features = ["sync"] }
-uuid = "0.8.2"
+uuid = { workspace = true }
 static_assertions = "1.1.0"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
 parking_lot = { workspace = true }
 tokio-stream = { workspace = true }
-uuid = { version = "0.8.2", features = ["v4"] }
+uuid = { workspace = true, features = ["v4"] }
 swim_utilities = { path = "../../swim_utilities", features = ["buf_channel"] }
 rand = { workspace = true }

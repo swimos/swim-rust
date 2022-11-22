@@ -23,7 +23,7 @@ swim_runtime = { path = "../../runtime/swim_runtime" }
 swim_messages = {path = "../../runtime/swim_messages" }
 swim_model = { path = "../../api/swim_model" }
 swim_form = { path = "../../api/swim_form" }
-uuid = "0.8.2"
+uuid = { workspace = true }
 
 [[bench]]
 name = "multi_reader_throughput"
