@@ -18,7 +18,7 @@ flate2 = "1.0.22"
 futures = { workspace = true }
 futures-util = { workspace = true }
 http = "0.2.3"
-pin-project = "1.0.12"
+pin-project = { workspace = true }
 pin-utils = "0.1.0"
 tokio = { workspace = true, features = ["sync", "rt", "macros"] }
 tokio-native-tls = { workspace = true, optional = true }

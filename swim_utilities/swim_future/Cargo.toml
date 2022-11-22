@@ -9,7 +9,7 @@ either = "1.5.3"
 futures = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
 tokio-util = { workspace = true, features = ["codec"] }
-pin-project = "1.0.12"
+pin-project = { workspace = true }
 swim_trigger = { path = "../swim_trigger" }
 rand = "0.7.3"
 swim_num = { path = "../swim_num"}
