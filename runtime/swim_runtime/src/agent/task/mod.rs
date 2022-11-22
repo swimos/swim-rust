@@ -38,14 +38,13 @@ use super::{
     NodeReporting,
 };
 use bytes::{Bytes, BytesMut};
-use futures::ready;
+use futures::{ready, pin_mut};
 use futures::stream::FuturesUnordered;
 use futures::{
     future::{join, select as fselect, Either},
     stream::{select as sselect, SelectAll},
     Stream, StreamExt,
 };
-use pin_utils::pin_mut;
 use swim_api::agent::LaneConfig;
 use swim_api::error::StoreError;
 use swim_api::meta::lane::LaneKind;

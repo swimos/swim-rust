@@ -8,7 +8,6 @@ edition = "2021"
 futures = { workspace = true }
 slab = "0.4.2"
 parking_lot = { workspace = true }
-pin-utils = "0.1.0"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

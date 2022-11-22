@@ -17,5 +17,4 @@ swim_num = { path = "../swim_num"}
 [dev-dependencies]
 tokio = { workspace = true, features = ["sync", "rt", "macros"] }
 tokio-stream = { workspace = true }
-pin-utils = "0.1.0"
 parking_lot = { workspace = true }

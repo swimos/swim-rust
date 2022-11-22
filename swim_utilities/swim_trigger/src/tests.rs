@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use crate::TriggerError;
+use futures::pin_mut;
 use futures::task::{waker_ref, ArcWake};
-use pin_utils::pin_mut;
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
