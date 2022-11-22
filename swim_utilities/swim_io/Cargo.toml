@@ -7,4 +7,4 @@ edition = "2021"
 
 [dependencies]
 tokio = { workspace = true, features = ["io-util"] }
-tempdir = "0.3.7"
+tempdir = { workspace = true }

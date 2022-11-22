@@ -8,4 +8,4 @@ store_common = { path = "../store_common" }
 rocksdb = "0.19.0"
 
 [dev-dependencies]
-tempdir = "0.3.7"
+tempdir = { workspace = true }
