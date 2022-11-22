@@ -13,11 +13,12 @@
 // limitations under the License.
 
 #[cfg(feature = "coop")]
-pub mod coop;
+mod coop;
 #[cfg(test)]
 mod tests;
 
 use bytes::{Buf, BytesMut};
+pub use coop::{BudgetedFuture, WithBudget};
 use futures::ready;
 use parking_lot::Mutex;
 use std::io::{Error, ErrorKind, Result as IoResult};

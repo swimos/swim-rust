@@ -15,11 +15,12 @@
 use rand::Rng;
 use std::num::NonZeroUsize;
 use std::time::Duration;
+use swim_num::non_zero_usize;
 
 pub const DEFAULT_EXPONENTIAL_MAX_INTERVAL: Duration = Duration::from_secs(16);
 pub const DEFAULT_EXPONENTIAL_MAX_BACKOFF: Duration = Duration::from_secs(300);
-pub const DEFAULT_IMMEDIATE_RETRIES: usize = 16;
-pub const DEFAULT_INTERVAL_RETRIES: usize = 8;
+pub const DEFAULT_IMMEDIATE_RETRIES: NonZeroUsize = non_zero_usize!(16);
+pub const DEFAULT_INTERVAL_RETRIES: NonZeroUsize = non_zero_usize!(8);
 pub const DEFAULT_INTERVAL_DELAY: u64 = 10;
 
 /// The retry strategy that a ['RetryableRequest`] uses to determine when to perform the next
@@ -119,7 +120,7 @@ impl RetryStrategy {
 
     pub fn default_immediate() -> RetryStrategy {
         RetryStrategy::Immediate(IntervalStrategy {
-            retry: Quantity::Finite(DEFAULT_IMMEDIATE_RETRIES),
+            retry: Quantity::Finite(DEFAULT_IMMEDIATE_RETRIES.get()),
             delay: None,
         })
     }
@@ -143,7 +144,7 @@ impl RetryStrategy {
 
     pub fn default_interval() -> RetryStrategy {
         RetryStrategy::Immediate(IntervalStrategy {
-            retry: Quantity::Finite(DEFAULT_INTERVAL_RETRIES),
+            retry: Quantity::Finite(DEFAULT_INTERVAL_RETRIES.get()),
             delay: Some(Duration::from_secs(DEFAULT_INTERVAL_DELAY)),
         })
     }

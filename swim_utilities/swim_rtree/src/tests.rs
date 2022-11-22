@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use swim_num::non_zero_usize;
+
 use crate::rectangles::{Point2D, Point3D};
 use crate::{
     BoxBounded, ChildrenSizeError, DuplicateLabelError, Label, RTree, RTreeError, Rect,
@@ -20,15 +22,6 @@ use crate::{
 use std::fs;
 use std::ops::Sub;
 use std::sync::{Arc, Mutex};
-
-macro_rules! non_zero_usize {
-    (0) => {
-        compile_error!("Must be non-zero")
-    };
-    ($n:expr) => {
-        unsafe { std::num::NonZeroUsize::new_unchecked($n) }
-    };
-}
 
 fn test_tree<B: BoxBounded, L: Label>(mut tree: RTree<L, B>, entries: Vec<(L, B)>, path: String) {
     assert_eq!(

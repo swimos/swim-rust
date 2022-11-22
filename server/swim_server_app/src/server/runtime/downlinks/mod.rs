@@ -46,7 +46,7 @@ use swim_runtime::{
     net::{dns::DnsResolver, BadUrl, SchemeHostPort, SchemeSocketAddr},
 };
 use swim_utilities::{
-    io::byte_channel::{byte_channel, ByteReader, ByteWriter},
+    io::byte_channel::{byte_channel, ByteReader, ByteWriter, BudgetedFuture},
     trigger,
 };
 use thiserror::Error;
@@ -71,18 +71,23 @@ use super::{
 /// * Spawn new downlink runtime tasks and keep track of their results.
 pub struct DownlinkConnectionTask<Dns> {
     connector: DownlinksConnector,
+    coop_budget: Option<NonZeroUsize>,
     config: DownlinkRuntimeConfig,
     dns: Dns,
 }
 
 impl<Dns> DownlinkConnectionTask<Dns> {
     /// #Arguments
+    /// * `coop_budget` - Co-op budget for byte channel futures.
     /// * `connector` - Communication channels between this task and the main server task.
     /// * `config` - Configuration for downlink runtime tasks.
     /// * `dns` - DNS resolver implementation.
-    pub fn new(connector: DownlinksConnector, config: DownlinkRuntimeConfig, dns: Dns) -> Self {
+    pub fn new(connector: DownlinksConnector, 
+        coop_budget: Option<NonZeroUsize>,
+        config: DownlinkRuntimeConfig, dns: Dns) -> Self {
         DownlinkConnectionTask {
             connector,
+            coop_budget,
             config,
             dns,
         }
@@ -98,6 +103,7 @@ where
         let connector = {
             let DownlinkConnectionTask {
                 mut connector,
+                coop_budget,
                 config,
                 dns,
             } = self;
@@ -303,7 +309,7 @@ where
                             handle.insert(key.clone(), attach_tx.clone());
                             let key_cpy = key.clone();
                             tasks.push(
-                                tokio::spawn(runtime.run(connector.stop_handle(), config))
+                                tokio::spawn(runtime.run(connector.stop_handle(), config).with_budget_or_default(coop_budget))
                                     .map(move |result| Event::RuntimeTerminated {
                                         socket_addr: remote_address,
                                         key: key_cpy,
