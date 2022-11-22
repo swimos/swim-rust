@@ -11,7 +11,7 @@ num-bigint = { version = "0.3", features = ["serde"] }
 base64 = { workspace = true }
 http = { workspace = true }
 swim_utilities = { path = "../../swim_utilities", features = ["text"] }
-num-traits = "0.2.12"
+num-traits = { workspace = true }
 url = "2.1.1"
 serde = { version = "1.0.124", features = ["derive"] }
 

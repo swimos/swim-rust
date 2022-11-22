@@ -15,7 +15,7 @@ swim_form = { path = "../../swim_form" }
 swim_model = { path = "../../swim_model" }
 nom = { workspace = true }
 nom_locate = { workspace = true }
-num-traits = "0.2.12"
+num-traits = { workspace = true }
 ryu = "1.0"
 futures = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["io-util"], optional = true }
