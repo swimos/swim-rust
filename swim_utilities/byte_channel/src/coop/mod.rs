@@ -22,6 +22,9 @@ use std::{
 use futures::Future;
 use pin_project::pin_project;
 
+#[cfg(test)]
+mod tests;
+
 const DEFAULT_START_BUDGET: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(64) };
 
 thread_local! {
