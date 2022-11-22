@@ -18,7 +18,7 @@ pin-project = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "test-util", "macros"] }
 futures = { workspace = true }
 futures-util = { workspace = true }
-criterion = { version = "0.3", features = ["async_tokio"] }
+criterion = { workspace = true, features = ["async_tokio"] }
 rand = { workspace = true }
 swim_num = { path = "../swim_num" }
 
