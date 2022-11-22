@@ -32,7 +32,7 @@ swim_recon = { path = "../../api/formats/swim_recon", features = ["async_parser"
 swim_messages = { path = "../swim_messages" }
 tracing = { workspace = true }
 tracing-futures = { workspace = true }
-thiserror = "1.0"
+thiserror = { workspace = true }
 im = "15.0.0"
 tokio-stream = { workspace = true, features = ["sync"] }
 uuid = { workspace = true }

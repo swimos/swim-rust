@@ -18,7 +18,7 @@ tokio-stream = { workspace = true }
 tracing = { workspace = true }
 tracing-futures = { workspace = true }
 uuid = { workspace = true }
-thiserror = "1.0"
+thiserror = { workspace = true }
 parking_lot = { workspace = true }
 
 [dev-dependencies]

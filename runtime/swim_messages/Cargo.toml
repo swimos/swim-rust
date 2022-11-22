@@ -13,7 +13,7 @@ swim_model = {path = "../../api/swim_model"}
 swim_form = { path = "../../api/swim_form" }
 swim_recon = { path = "../../api/formats/swim_recon", features = ["async_parser"] }
 swim_utilities = { path = "../../swim_utilities", features = ["algebra"] }
-thiserror = "1.0"
+thiserror = { workspace = true }
 uuid = { workspace = true }
 smallvec = { workspace = true }
 

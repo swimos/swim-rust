@@ -24,7 +24,7 @@ tokio-stream = { workspace = true }
 tracing = { workspace = true }
 tracing-futures = { workspace = true }
 uuid = { workspace = true }
-thiserror = "1.0"
+thiserror = { workspace = true }
 rand = { workspace = true }
 url = "2.1.1"
 swim_persistence = { path = "../../runtime/swim_persistence", optional = true }

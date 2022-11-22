@@ -8,4 +8,4 @@ bincode = "1.3.2"
 swim_api = { path = "../../api/swim_api" }
 serde = { version = "1.0.124", features = ["derive"] }
 tempdir = { workspace = true }
-thiserror = "1.0"
+thiserror = { workspace = true }

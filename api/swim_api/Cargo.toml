@@ -10,7 +10,7 @@ swim_utilities = { path = "../../swim_utilities", features = ["io", "trigger"] }
 swim_model = { path = "../swim_model" }
 swim_form = { path = "../swim_form" }
 swim_recon = { path = "../../api/formats/swim_recon", features = ["async_parser"] }
-thiserror = "1.0"
+thiserror = { workspace = true }
 bytes = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true, features = ["codec"] }
