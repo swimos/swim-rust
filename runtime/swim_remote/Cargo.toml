@@ -10,7 +10,7 @@ ratchet_fixture = "0.2.0"
 bytes = { workspace = true }
 flate2 = "1.0.22"
 futures = { workspace = true }
-http = "0.2.3"
+http = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
 tokio-native-tls = { workspace = true }
 tokio-util = { workspace = true, features = ["codec"] }

@@ -9,7 +9,7 @@ chrono = "0.4"
 either = { workspace = true }
 num-bigint = { version = "0.3", features = ["serde"] }
 base64 = "0.13.0"
-http = "0.2.3"
+http = { workspace = true }
 swim_utilities = { path = "../../swim_utilities", features = ["text"] }
 num-traits = "0.2.12"
 url = "2.1.1"
