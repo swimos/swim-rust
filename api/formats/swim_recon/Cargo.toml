@@ -17,7 +17,7 @@ nom = "7.0"
 nom_locate = "4.0"
 num-traits = "0.2.12"
 ryu = "1.0"
-futures = { version =  "0.3.4", optional = true }
+futures = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["io-util"], optional = true }
 tokio-util = { workspace = true, optional = true, features = ["codec"] }
 bytes = { workspace = true, optional = true }

@@ -9,7 +9,7 @@ ratchet = { package = "ratchet_rs", version = "0.2.0", features = ["deflate", "s
 ratchet_fixture = "0.2.0"
 bytes = { workspace = true }
 flate2 = "1.0.22"
-futures = "0.3.4"
+futures = { workspace = true }
 http = "0.2.3"
 tokio = { workspace = true, features = ["sync"] }
 tokio-native-tls = { workspace = true }

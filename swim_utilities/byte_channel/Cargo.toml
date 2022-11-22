@@ -11,13 +11,13 @@ coop = []
 bytes = { workspace = true }
 tokio = { workspace = true, features = ["io-util"] }
 parking_lot = "0.11.0"
-futures = "0.3.23"
+futures = { workspace = true }
 pin-project = "1.0.12"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "test-util", "macros"] }
-futures = "0.3.23"
-futures-util = "0.3.4"
+futures = { workspace = true }
+futures-util = { workspace = true }
 criterion = { version = "0.3", features = ["async_tokio"] }
 rand = "0.7"
 swim_num = { path = "../swim_num" }

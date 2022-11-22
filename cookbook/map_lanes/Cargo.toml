@@ -6,8 +6,8 @@ edition = "2021"
 
 [dependencies]
 tokio = { workspace = true }
-futures = "0.3.4"
-futures-util = "0.3.4"
+futures = { workspace = true }
+futures-util = { workspace = true }
 rand = "0.7.3"
 tracing = "0.1.16"
 tracing-futures = "0.2.4"

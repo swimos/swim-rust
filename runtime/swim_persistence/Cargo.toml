@@ -16,8 +16,8 @@ swim_model = { path = "../../api/swim_model" }
 swim_form = { path = "../../api/swim_form" }
 swim_api = { path = "../../api/swim_api" }
 tokio = { workspace = true, features = ["sync"] }
-futures = "0.3.23"
-futures-util = "0.3.4"
+futures = { workspace = true }
+futures-util = { workspace = true }
 bytes = { workspace = true }
 integer-encoding = "3.0.4"
 

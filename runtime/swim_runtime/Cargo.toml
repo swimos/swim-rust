@@ -15,8 +15,8 @@ ratchet_fixture = "0.2.0"
 bytes = { workspace = true }
 either = "1.5.3"
 flate2 = "1.0.22"
-futures = "0.3.4"
-futures-util = "0.3.4"
+futures = { workspace = true }
+futures-util = { workspace = true }
 http = "0.2.3"
 pin-project = "1.0.12"
 pin-utils = "0.1.0"
