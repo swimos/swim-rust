@@ -71,7 +71,9 @@ fn set_budget(n: usize) {
     })
 }
 
+/// Wraps a futures and ensures that the byte channel budget is reset each time it is polled.
 #[pin_project]
+#[derive(Debug, Clone, Copy)]
 pub struct RunWithBudget<F> {
     budget: NonZeroUsize,
     #[pin]
@@ -79,6 +81,7 @@ pub struct RunWithBudget<F> {
 }
 
 impl<F> RunWithBudget<F> {
+    /// Create a new wrapper with the default budget.
     pub fn new(fut: F) -> Self {
         RunWithBudget {
             budget: DEFAULT_START_BUDGET,
@@ -86,20 +89,24 @@ impl<F> RunWithBudget<F> {
         }
     }
 
+    /// Create a new wrapper that sets the budget to the specified value each time it is polled.
     pub fn with_budget(budget: NonZeroUsize, fut: F) -> Self {
         RunWithBudget { budget, fut }
     }
 }
 
 pub trait BudgetedFuture: Sized + Future {
+    /// Run this future with the default byte channel budget.
     fn budgeted(self) -> RunWithBudget<Self> {
         RunWithBudget::new(self)
     }
 
+    /// Run this future with the specified byte channel budget.
     fn with_budget(self, budget: NonZeroUsize) -> RunWithBudget<Self> {
         RunWithBudget::with_budget(budget, self)
     }
 
+    /// Run this future wit a specified byte channel budget or the default if not is specified.
     fn with_budget_or_default(self, budget: Option<NonZeroUsize>) -> RunWithBudget<Self> {
         RunWithBudget::with_budget(budget.unwrap_or(DEFAULT_START_BUDGET), self)
     }
