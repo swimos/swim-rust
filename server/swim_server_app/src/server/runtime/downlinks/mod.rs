@@ -46,7 +46,7 @@ use swim_runtime::{
     net::{dns::DnsResolver, BadUrl, SchemeHostPort, SchemeSocketAddr},
 };
 use swim_utilities::{
-    io::byte_channel::{byte_channel, ByteReader, ByteWriter, BudgetedFuture},
+    io::byte_channel::{byte_channel, ByteReader, ByteWriter, BudgetedFutureExt},
     trigger,
 };
 use thiserror::Error;

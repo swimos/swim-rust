@@ -95,7 +95,8 @@ impl<F> RunWithBudget<F> {
     }
 }
 
-pub trait BudgetedFuture: Sized + Future {
+/// Extension trait to allow futures to be run with a byte channel budget.
+pub trait BudgetedFutureExt: Sized + Future {
     /// Run this future with the default byte channel budget.
     fn budgeted(self) -> RunWithBudget<Self> {
         RunWithBudget::new(self)
@@ -112,7 +113,7 @@ pub trait BudgetedFuture: Sized + Future {
     }
 }
 
-impl<F: Future> BudgetedFuture for F {}
+impl<F: Future> BudgetedFutureExt for F {}
 
 impl<F: Default> Default for RunWithBudget<F> {
     fn default() -> Self {

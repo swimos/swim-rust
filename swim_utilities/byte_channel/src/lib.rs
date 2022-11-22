@@ -18,7 +18,7 @@ mod coop;
 mod tests;
 
 use bytes::{Buf, BytesMut};
-pub use coop::{BudgetedFuture, RunWithBudget};
+pub use coop::{BudgetedFutureExt, RunWithBudget};
 use futures::ready;
 use parking_lot::Mutex;
 use std::io::{Error, ErrorKind, Result as IoResult};
