@@ -26,7 +26,7 @@ tokio-stream = { workspace = true, features = ["sync"] }
 uuid = "0.8.2"
 static_assertions = "1.1.0"
 either = { workspace = true }
-smallvec ="1.7.0"
+smallvec = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }

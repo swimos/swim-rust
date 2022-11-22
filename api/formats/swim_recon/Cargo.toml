@@ -21,7 +21,7 @@ futures = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["io-util"], optional = true }
 tokio-util = { workspace = true, optional = true, features = ["codec"] }
 bytes = { workspace = true, optional = true }
-smallvec ="1.7.0"
+smallvec = { workspace = true }
 thiserror = "1.0"
 
 [dev-dependencies]

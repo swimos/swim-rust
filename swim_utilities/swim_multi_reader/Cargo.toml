@@ -11,7 +11,7 @@ waker-fn = "1.1.0"
 slab = { workspace = true }
 tokio-util = { workspace = true, features = ["codec"] }
 futures-util ={ workspace = true }
-smallvec = "1.7.0"
+smallvec = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "test-util", "macros"] }
