@@ -22,7 +22,7 @@ tracing-futures = { workspace = true }
 frunk = "0.4"
 uuid = { workspace = true }
 thiserror = { workspace = true }
-static_assertions = "1.1.0"
+static_assertions = { workspace = true }
 bitflags = "1.3.2"
 
 [dev-dependencies]

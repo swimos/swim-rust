@@ -36,7 +36,7 @@ thiserror = { workspace = true }
 im = "15.0.0"
 tokio-stream = { workspace = true, features = ["sync"] }
 uuid = { workspace = true }
-static_assertions = "1.1.0"
+static_assertions = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

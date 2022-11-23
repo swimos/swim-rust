@@ -24,7 +24,7 @@ tracing-futures = { workspace = true }
 thiserror = { workspace = true }
 tokio-stream = { workspace = true, features = ["sync"] }
 uuid = { workspace = true }
-static_assertions = "1.1.0"
+static_assertions = { workspace = true }
 either = { workspace = true }
 smallvec = { workspace = true }
 
