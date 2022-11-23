@@ -10,9 +10,9 @@ proc-macro = true
 
 [dependencies]
 macro_utilities = { path = "../../macro_utilities" }
-proc-macro2 = "1.0"
-syn = { version = "1.0" }
-quote = "1.0.3"
+proc-macro2 = { workspace = true }
+syn = { workspace = true }
+quote = { workspace = true }
 num-bigint = "0.4"
 
 [dev-dependencies]
