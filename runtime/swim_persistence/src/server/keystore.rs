@@ -15,7 +15,7 @@
 use crate::server::KeyspaceName;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use swim_store::{deserialize, deserialize_key, serialize, KeyspaceByteEngine, StoreError};
+use swim_store::{deserialize_u64, KeyspaceByteEngine, StoreError, serialize_u64, MAX_ID_SIZE};
 use tokio::sync::oneshot;
 
 pub type KeyRequest = (String, oneshot::Sender<u64>);
@@ -53,7 +53,7 @@ impl<D> Clone for KeyStore<D> {
 impl<D: KeyspaceByteEngine> KeyStore<D> {
     pub fn initialise_with(delegate: Arc<D>) -> KeyStore<D> {
         let count = match delegate.get_keyspace(KeyspaceName::Lane, COUNTER_BYTES) {
-            Ok(Some(counter)) => deserialize::<u64>(counter.as_slice()).expect(INIT_FAILURE),
+            Ok(Some(counter)) => deserialize_u64(counter.as_slice()).expect(INIT_FAILURE),
             Ok(None) => INITIAL,
             Err(e) => {
                 panic!("{}: `{:?}`", INIT_FAILURE, e)
@@ -71,14 +71,16 @@ impl<D: KeyspaceByteEngine> KeyStore<D> {
         let prefixed = format_key(lane_id);
 
         match delegate.get_keyspace(KeyspaceName::Lane, prefixed.as_bytes())? {
-            Some(bytes) => deserialize_key(bytes),
+            Some(bytes) => deserialize_u64(bytes),
             None => {
                 let id = count.fetch_add(STEP, Ordering::Acquire) + 1;
                 delegate.merge_keyspace(KeyspaceName::Lane, COUNTER_BYTES, STEP)?;
+                let mut buf = [0u8; MAX_ID_SIZE];
+                let serialized_id = serialize_u64(id, &mut buf);
                 delegate.put_keyspace(
                     KeyspaceName::Lane,
                     prefixed.as_bytes(),
-                    serialize(&id)?.as_slice(),
+                    serialized_id,
                 )?;
 
                 Ok(id)
@@ -95,7 +97,7 @@ pub fn format_key<I: ToString>(uri: I) -> String {
 pub mod rocks {
     use crate::server::keystore::INITIAL;
     use rocksdb::MergeOperands;
-    use swim_store::{deserialize_key, serialize};
+    use swim_store::{deserialize_u64, serialize_u64_vec};
 
     #[cfg(feature = "rocks")]
     const DESERIALIZATION_FAILURE: &str = "Failed to deserialize key";
@@ -110,15 +112,16 @@ pub mod rocks {
         operands: &MergeOperands,
     ) -> Option<Vec<u8>> {
         let mut value = match existing_value {
-            Some(bytes) => deserialize_key(bytes).expect(DESERIALIZATION_FAILURE),
+            Some(bytes) => deserialize_u64(bytes).expect(DESERIALIZATION_FAILURE),
             None => INITIAL,
         };
 
         for op in operands.iter() {
-            let deserialized = deserialize_key(op).expect(DESERIALIZATION_FAILURE);
+            let deserialized = deserialize_u64(op).expect(DESERIALIZATION_FAILURE);
             value += deserialized;
         }
-        Some(serialize(&value).expect(SERIALIZATION_FAILURE))
+        
+        Some(serialize_u64_vec(value))
     }
 }
 
@@ -130,7 +133,7 @@ mod tests {
     use crate::server::mock::MockStore;
     use crate::server::KeyspaceName;
     use std::sync::Arc;
-    use swim_store::{deserialize, deserialize_key, Keyspace, KeyspaceByteEngine};
+    use swim_store::{deserialize_u64, Keyspace, KeyspaceByteEngine};
 
     fn keyspaces() -> Vec<String> {
         vec![
@@ -155,7 +158,7 @@ mod tests {
             .unwrap()
             .expect(INCONSISTENT_KEYSPACE);
 
-        assert_eq!(deserialize_key(opt).unwrap(), 1);
+        assert_eq!(deserialize_u64(opt).unwrap(), 1);
         assert_counters(&delegate, lane_uri, 1, 1);
     }
 
@@ -188,14 +191,15 @@ mod tests {
             .unwrap()
             .expect("Missing key");
         assert_eq!(
-            deserialize::<u64>(lane_id.as_slice()).unwrap(),
+            deserialize_u64(lane_id.as_slice()).unwrap(),
             lane_count_at
         );
-
+        
         let counter = store
             .get_keyspace(KeyspaceName::Lane, COUNTER_KEY.as_bytes())
             .unwrap()
             .expect("Missing counter");
-        assert_eq!(deserialize::<u64>(counter.as_slice()).unwrap(), counter_at);
+        assert_eq!(deserialize_u64(counter.as_slice()).unwrap(), counter_at);
     }
+
 }

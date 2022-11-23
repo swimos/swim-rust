@@ -9,3 +9,4 @@ rocksdb = { workspace = true }
 
 [dev-dependencies]
 tempdir = { workspace = true }
+integer-encoding = { workspace = true }

@@ -24,8 +24,8 @@ use rocksdb::{Options, DB};
 use std::path::Path;
 use std::sync::Arc;
 use store_common::{
-    serialize, EngineInfo, EnginePrefixIterator, EngineRefIterator, Keyspace, KeyspaceByteEngine,
-    KeyspaceResolver, Keyspaces, PrefixRangeByteEngine, Store, StoreBuilder, StoreError,
+    EngineInfo, EnginePrefixIterator, EngineRefIterator, Keyspace, KeyspaceByteEngine,
+    KeyspaceResolver, Keyspaces, PrefixRangeByteEngine, Store, StoreBuilder, StoreError, MAX_ID_SIZE, serialize_u64,
 };
 
 /// A Rocks database engine.
@@ -171,9 +171,10 @@ impl KeyspaceByteEngine for RocksEngine {
         key: &[u8],
         value: u64,
     ) -> Result<(), StoreError> {
-        let value = serialize(&value)?;
+        let mut buf = [0u8; MAX_ID_SIZE];
+        let value = serialize_u64(value, &mut buf);
         exec_keyspace(&self.delegate, keyspace, move |delegate, keyspace| {
-            delegate.merge_cf(keyspace, key, value.as_slice())
+            delegate.merge_cf(keyspace, key, value)
         })
     }
 

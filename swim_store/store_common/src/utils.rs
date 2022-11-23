@@ -13,24 +13,23 @@
 // limitations under the License.
 
 use crate::StoreError;
-use serde::{Deserialize, Serialize};
+use integer_encoding::VarInt;
 
-pub fn serialize_then<S, F, O, E>(engine: &E, obj: &S, f: F) -> Result<O, StoreError>
-where
-    S: Serialize,
-    F: Fn(&E, Vec<u8>) -> Result<O, StoreError>,
-{
-    f(engine, serialize(obj)?).map_err(Into::into)
+pub const MAX_ID_SIZE: usize = 10;
+
+pub fn serialize_u64(n: u64, target: &mut [u8]) -> &[u8] {
+    let len = n.encode_var(target);
+    &target[..len]
 }
 
-pub fn serialize<S: Serialize>(obj: &S) -> Result<Vec<u8>, StoreError> {
-    bincode::serialize(obj).map_err(|e| StoreError::Encoding(e.to_string()))
+pub fn serialize_u64_vec(n: u64) -> Vec<u8> {
+    n.encode_var_vec()
 }
 
-pub fn deserialize<'de, D: Deserialize<'de>>(obj: &'de [u8]) -> Result<D, StoreError> {
-    bincode::deserialize(obj).map_err(|e| StoreError::Decoding(e.to_string()))
-}
-
-pub fn deserialize_key<B: AsRef<[u8]>>(bytes: B) -> Result<u64, StoreError> {
-    bincode::deserialize::<u64>(bytes.as_ref()).map_err(|e| StoreError::Decoding(e.to_string()))
+pub fn deserialize_u64<B: AsRef<[u8]>>(bytes: B) -> Result<u64, StoreError> {
+    let slice = bytes.as_ref();
+    match u64::decode_var(slice) {
+        Some((n, num_bytes)) if num_bytes == slice.len() => Ok(n),
+        _ => Err(StoreError::InvalidKey),
+    }
 }
