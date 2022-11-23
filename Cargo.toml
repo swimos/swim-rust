@@ -57,3 +57,4 @@ num-bigint = "0.4"
 ratchet =  { package = "ratchet_rs", version = "0.2.0" }
 ratchet_fixture = "0.2.0"
 flate2 = "1.0.22"
+bitflags = "1.3"
