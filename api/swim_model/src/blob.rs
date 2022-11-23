@@ -15,7 +15,6 @@
 use base64::write::EncoderWriter;
 use base64::{DecodeError, URL_SAFE};
 use core::fmt;
-use serde::{Deserialize, Serialize};
 use std::borrow::{Borrow, BorrowMut};
 use std::fmt::{Display, Formatter};
 use std::hash::Hash;
@@ -24,7 +23,7 @@ use std::io::Write;
 
 /// A Binary Large OBject (BLOB) structure for encoding and decoding base-64 data. A URL-safe
 /// encoding (UTF-7) is used.
-#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Blob {
     data: Vec<u8>,
 }
