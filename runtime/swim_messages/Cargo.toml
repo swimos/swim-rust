@@ -19,7 +19,7 @@ smallvec = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }
-uuid = { version = "0.8.2", features = ["v4"] }
+uuid = { workspace = true, features = ["v4"] }
 swim_utilities = { path = "../../swim_utilities", features = ["buf_channel"] }
 rand = { workspace = true }
 swim_api = { path = "../../api/swim_api" }
