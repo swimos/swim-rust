@@ -11,7 +11,6 @@ swim_model = { path = "../swim_model" }
 chrono = "0.4"
 either = { workspace = true }
 num-traits = { workspace = true }
-url = "2.1.1"
 
 [dev-dependencies]
 trybuild = "1.0.48"

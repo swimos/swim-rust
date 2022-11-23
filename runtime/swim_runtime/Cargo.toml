@@ -23,7 +23,7 @@ tokio = { workspace = true, features = ["sync", "rt", "macros"] }
 tokio-native-tls = { workspace = true, optional = true }
 tokio-util = { workspace = true, features = ["codec"] }
 swim_utilities = { path = "../../swim_utilities", features = ["sync", "errors", "future", "io"] }
-url = "2.1.1"
+url = { workspace = true }
 swim_api = { path = "../../api/swim_api" }
 swim_model = { path = "../../api/swim_model" }
 swim_form = { path = "../../api/swim_form" }
