@@ -33,3 +33,30 @@ pub fn deserialize_u64<B: AsRef<[u8]>>(bytes: B) -> Result<u64, StoreError> {
         _ => Err(StoreError::InvalidKey),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{MAX_ID_SIZE, serialize_u64, deserialize_u64};
+
+    fn round_trip(n: u64) {
+        let mut buf = [0u8; MAX_ID_SIZE];
+        let slice = serialize_u64(n, &mut buf);
+        let restored = deserialize_u64(slice).unwrap();
+        assert_eq!(n, restored);
+    }
+
+    #[test]
+    fn serialization_round_trips() {
+        round_trip(0);
+        round_trip(1);
+        round_trip(10);
+        round_trip(u8::MAX as u64);
+        round_trip(u8::MAX as u64 - 1);
+        round_trip(u16::MAX as u64);
+        round_trip(u16::MAX as u64 - 1);
+        round_trip(u32::MAX as u64);
+        round_trip(u32::MAX as u64 - 1);
+        round_trip(u64::MAX);
+        round_trip(u64::MAX - 1);
+    }
+}
