@@ -27,13 +27,13 @@ pub mod utility;
 pub trait AgentLifecycle<Context>: for<'a> AgentHandlers<'a, Context> {}
 
 pub trait AgentHandlers<'a, Context>:
-    OnStart<'a, Context> + OnStop<'a, Context> + LaneEvent<'a, Context>
+    OnStart<Context> + OnStop<'a, Context> + LaneEvent<'a, Context>
 {
 }
 
 impl<L, Context> AgentLifecycle<Context> for L where L: for<'a> AgentHandlers<'a, Context> {}
 
 impl<'a, L, Context> AgentHandlers<'a, Context> for L where
-    L: OnStart<'a, Context> + OnStop<'a, Context> + LaneEvent<'a, Context>
+    L: OnStart<Context> + OnStop<'a, Context> + LaneEvent<'a, Context>
 {
 }

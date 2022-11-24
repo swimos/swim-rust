@@ -37,10 +37,13 @@ use crate::{agent_model::downlink::handlers::BoxDownlinkChannel, meta::AgentMeta
 
 mod register_downlink;
 mod suspend;
+mod handler_fn;
 #[cfg(test)]
 mod tests;
 
 pub use suspend::{HandlerFuture, Spawner, Suspend};
+
+pub use handler_fn::HandlerFn0;
 
 use self::register_downlink::RegisterHostedDownlink;
 

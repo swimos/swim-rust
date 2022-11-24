@@ -59,10 +59,10 @@ impl TestLifecycle {
     }
 }
 
-impl<'a> OnStart<'a, TestAgent> for TestLifecycle {
-    type OnStartHandler = LifecycleHandler;
+impl OnStart<TestAgent> for TestLifecycle {
+    type OnStartHandler<'a> = LifecycleHandler where Self: 'a;
 
-    fn on_start(&'a self) -> Self::OnStartHandler {
+    fn on_start<'a>(&'a self) -> Self::OnStartHandler<'a> {
         self.make_handler(LifecycleEvent::Start)
     }
 }

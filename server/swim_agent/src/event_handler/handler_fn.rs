@@ -1,0 +1,38 @@
+// Copyright 2015-2021 Swim Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use crate::agent_lifecycle::utility::HandlerContext;
+
+use super::EventHandler;
+
+pub trait HandlerFn0<'a, Context, Shared> {
+
+    type Handler: EventHandler<Context> + 'a;
+
+    fn make_handler(&'a self, shared: &'a Shared, handler_context: HandlerContext<Context>) -> Self::Handler;
+
+}
+
+impl<'a, Context, Shared, F, H> HandlerFn0<'a, Context, Shared> for F
+where
+    H: EventHandler<Context> + 'a,
+    F: Fn(&'a Shared, HandlerContext<Context>) -> H + 'a,
+    Shared: 'a,
+{
+    type Handler = H;
+
+    fn make_handler(&'a self, shared: &'a Shared, handler_context: HandlerContext<Context>) -> Self::Handler {
+        self(shared, handler_context)
+    }
+}

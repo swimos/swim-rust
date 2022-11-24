@@ -49,16 +49,16 @@ impl<Context> Default for BasicAgentLifecycle<Context> {
 
 assert_impl_all!(BasicAgentLifecycle<()>: AgentLifecycle<()>, Send);
 
-impl<'a, FStart, FStop, LaneEv, Context> OnStart<'a, Context>
+impl<FStart, FStop, LaneEv, Context> OnStart<Context>
     for BasicAgentLifecycle<Context, FStart, FStop, LaneEv>
 where
-    FStart: OnStart<'a, Context>,
+    FStart: OnStart<Context>,
     FStop: Send,
     LaneEv: Send,
 {
-    type OnStartHandler = FStart::OnStartHandler;
+    type OnStartHandler<'a> = FStart::OnStartHandler<'a> where Self: 'a;
 
-    fn on_start(&'a self) -> Self::OnStartHandler {
+    fn on_start<'a>(&'a self) -> Self::OnStartHandler<'a> {
         self.on_start.on_start()
     }
 }
@@ -94,7 +94,7 @@ where
 impl<Context, FStart, FStop, LaneEv> BasicAgentLifecycle<Context, FStart, FStop, LaneEv> {
     pub fn on_start<F>(self, f: F) -> BasicAgentLifecycle<Context, FnHandler<F>, FStop, LaneEv>
     where
-        FnHandler<F>: for<'a> OnStart<'a, Context>,
+        FnHandler<F>: OnStart<Context>,
     {
         let BasicAgentLifecycle {
             on_stop,

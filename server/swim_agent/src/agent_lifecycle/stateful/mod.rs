@@ -76,17 +76,17 @@ impl<Context, State> StatefulAgentLifecycle<Context, State> {
     }
 }
 
-impl<'a, FStart, FStop, LaneEv, Context, State> OnStart<'a, Context>
+impl<FStart, FStop, LaneEv, Context, State> OnStart<Context>
     for StatefulAgentLifecycle<Context, State, FStart, FStop, LaneEv>
 where
     State: Send,
-    FStart: OnStartShared<'a, Context, State>,
+    FStart: OnStartShared<Context, State>,
     FStop: Send,
     LaneEv: Send,
 {
-    type OnStartHandler = FStart::OnStartHandler;
+    type OnStartHandler<'a> = FStart::OnStartHandler<'a> where Self: 'a;
 
-    fn on_start(&'a self) -> Self::OnStartHandler {
+    fn on_start<'a>(&'a self) -> Self::OnStartHandler<'a> {
         let StatefulAgentLifecycle {
             state,
             handler_context,
@@ -148,7 +148,7 @@ impl<Context, State, FStart, FStop, LaneEv>
         f: F,
     ) -> StatefulAgentLifecycle<Context, State, FnHandler<F>, FStop, LaneEv>
     where
-        FnHandler<F>: for<'a> OnStartShared<'a, Context, State>,
+        FnHandler<F>: OnStartShared<Context, State>,
     {
         let StatefulAgentLifecycle {
             handler_context,
