@@ -154,10 +154,12 @@ impl<T> FakeLifecycle<T> {
     }
 }
 
-impl<'a, T: Clone + Send + 'static> OnEvent<'a, T, TestAgent> for FakeLifecycle<T> {
-    type OnEventHandler = OnEventHandler<T>;
+impl<T: Clone + Send + 'static> OnEvent<T, TestAgent> for FakeLifecycle<T> {
+    type OnEventHandler<'a> = OnEventHandler<T>
+    where
+        Self: 'a;
 
-    fn on_event(&'a self, value: &T) -> Self::OnEventHandler {
+    fn on_event<'a>(&'a self, value: &T) -> Self::OnEventHandler<'a> {
         self.on_event_handler(value.clone())
     }
 }

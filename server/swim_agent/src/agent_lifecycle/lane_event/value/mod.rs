@@ -121,12 +121,12 @@ impl<Context, T, LC, L: HTree, R: HTree> HTree for ValueBranch<Context, T, LC, L
 }
 
 pub type ValueLifecycleHandler<'a, Context, T, LC> = FollowedBy<
-    <LC as OnEvent<'a, T, Context>>::OnEventHandler,
+    <LC as OnEvent<T, Context>>::OnEventHandler<'a>,
     <LC as OnSet<'a, T, Context>>::OnSetHandler,
 >;
 
 pub type ValueLifecycleHandlerShared<'a, Context, Shared, T, LC> = FollowedBy<
-    <LC as OnEventShared<'a, T, Context, Shared>>::OnEventHandler,
+    <LC as OnEventShared<T, Context, Shared>>::OnEventHandler<'a>,
     <LC as OnSetShared<'a, T, Context, Shared>>::OnSetHandler,
 >;
 
@@ -148,7 +148,7 @@ type ValueBranchHandlerShared<'a, Context, Shared, T, LC, L, R> = Either<
 
 impl<'a, Context, T, LC, L, R> LaneEvent<'a, Context> for ValueBranch<Context, T, LC, L, R>
 where
-    LC: ValueLaneLifecycle<T, Context>,
+    LC: ValueLaneLifecycle<T, Context> + 'a,
     L: HTree + LaneEvent<'a, Context>,
     R: HTree + LaneEvent<'a, Context>,
 {
@@ -183,7 +183,8 @@ where
 impl<'a, Context, Shared, T, LC, L, R> LaneEventShared<'a, Context, Shared>
     for ValueBranch<Context, T, LC, L, R>
 where
-    LC: ValueLaneLifecycleShared<T, Context, Shared>,
+    Shared: 'a,
+    LC: ValueLaneLifecycleShared<T, Context, Shared> + 'a,
     L: HTree + LaneEventShared<'a, Context, Shared>,
     R: HTree + LaneEventShared<'a, Context, Shared>,
 {

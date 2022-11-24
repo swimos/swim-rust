@@ -46,17 +46,17 @@ pub trait ValueLaneLifecycleShared<T, Context, Shared>:
 }
 
 pub trait ValueLaneHandlers<'a, T, Context>:
-    OnEvent<'a, T, Context> + OnSet<'a, T, Context>
+    OnEvent<T, Context> + OnSet<'a, T, Context>
 {
 }
 
 impl<'a, T, Context, L> ValueLaneHandlers<'a, T, Context> for L where
-    L: OnEvent<'a, T, Context> + OnSet<'a, T, Context>
+    L: OnEvent<T, Context> + OnSet<'a, T, Context>
 {
 }
 
 pub trait ValueLaneHandlersShared<'a, T, Context, Shared>:
-    OnEventShared<'a, T, Context, Shared> + OnSetShared<'a, T, Context, Shared>
+    OnEventShared<T, Context, Shared> + OnSetShared<'a, T, Context, Shared>
 {
 }
 
@@ -71,7 +71,7 @@ impl<L, T, Context, Shared> ValueLaneLifecycleShared<T, Context, Shared> for L w
 }
 
 impl<'a, L, T, Context, Shared> ValueLaneHandlersShared<'a, T, Context, Shared> for L where
-    L: OnEventShared<'a, T, Context, Shared> + OnSetShared<'a, T, Context, Shared>
+    L: OnEventShared<T, Context, Shared> + OnSetShared<'a, T, Context, Shared>
 {
 }
 
@@ -117,7 +117,7 @@ impl<Context, Shared, T, FEv, FSet> StatefulValueLaneLifecycle<Context, Shared, 
         f: F,
     ) -> StatefulValueLaneLifecycle<Context, Shared, T, FnHandler<F>, FSet>
     where
-        FnHandler<F>: for<'a> OnEventShared<'a, T, Context, Shared>,
+        FnHandler<F>: OnEventShared<T, Context, Shared>,
     {
         StatefulValueLaneLifecycle {
             _value_type: PhantomData,
@@ -142,20 +142,23 @@ impl<Context, Shared, T, FEv, FSet> StatefulValueLaneLifecycle<Context, Shared, 
     }
 }
 
-impl<'a, T, FEv, FSet, Context, Shared> OnEventShared<'a, T, Context, Shared>
+impl<T, FEv, FSet, Context, Shared> OnEventShared<T, Context, Shared>
     for StatefulValueLaneLifecycle<Context, Shared, T, FEv, FSet>
 where
     FSet: Send,
-    FEv: OnEventShared<'a, T, Context, Shared>,
+    FEv: OnEventShared<T, Context, Shared>,
 {
-    type OnEventHandler = FEv::OnEventHandler;
+    type OnEventHandler<'a> = FEv::OnEventHandler<'a>
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_event(
+    fn on_event<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         value: &T,
-    ) -> Self::OnEventHandler {
+    ) -> Self::OnEventHandler<'a> {
         self.on_event.on_event(shared, handler_context, value)
     }
 }
