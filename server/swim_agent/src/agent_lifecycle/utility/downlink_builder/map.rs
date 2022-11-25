@@ -189,7 +189,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FClr,
     >
     where
-        WithHandlerContext<Context, F>: for<'a> OnUnlinked<'a, Context>,
+        WithHandlerContext<Context, F>: OnUnlinked<Context>,
     {
         let StatelessMapDownlinkBuilder {
             address,
@@ -324,7 +324,7 @@ where
     V::Rec: Send,
     FLinked: OnLinked<Context> + 'static,
     FSynced: OnSynced<HashMap<K, V>, Context> + 'static,
-    FUnlinked: for<'a> OnUnlinked<'a, Context> + 'static,
+    FUnlinked: OnUnlinked<Context> + 'static,
     FUpd: for<'a> OnDownlinkUpdate<'a, K, V, Context> + 'static,
     FRem: for<'a> OnDownlinkRemove<'a, K, V, Context> + 'static,
     FClr: for<'a> OnDownlinkClear<'a, K, V, Context> + 'static,
@@ -425,7 +425,7 @@ impl<Context, K, V, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FClr,
     >
     where
-        FnHandler<F>: for<'a> OnUnlinkedShared<'a, Context, State>,
+        FnHandler<F>: OnUnlinkedShared<Context, State>,
     {
         let StatefulMapDownlinkBuilder {
             address,
@@ -544,7 +544,7 @@ where
     State: Send + 'static,
     FLinked: OnLinkedShared<Context, State> + 'static,
     FSynced: OnSyncedShared<HashMap<K, V>, Context, State> + 'static,
-    FUnlinked: for<'a> OnUnlinkedShared<'a, Context, State> + 'static,
+    FUnlinked: OnUnlinkedShared<Context, State> + 'static,
     FUpd: for<'a> OnDownlinkUpdateShared<'a, K, V, Context, State> + 'static,
     FRem: for<'a> OnDownlinkRemoveShared<'a, K, V, Context, State> + 'static,
     FClr: for<'a> OnDownlinkClearShared<'a, K, V, Context, State> + 'static,

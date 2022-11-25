@@ -74,10 +74,12 @@ impl OnLinked<FakeAgent> for FakeLifecycle {
     }
 }
 
-impl<'a> OnUnlinked<'a, FakeAgent> for FakeLifecycle {
-    type OnUnlinkedHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnUnlinked<FakeAgent> for FakeLifecycle {
+    type OnUnlinkedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_unlinked(&'a self) -> Self::OnUnlinkedHandler {
+    fn on_unlinked<'a>(&'a self) -> Self::OnUnlinkedHandler<'a> {
         let state = self.inner.clone();
         SideEffect::from(move || {
             state.lock().push(Event::Unlinked);
