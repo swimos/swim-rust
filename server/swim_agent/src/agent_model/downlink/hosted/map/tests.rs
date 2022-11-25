@@ -181,10 +181,12 @@ impl<'a> OnDownlinkRemove<'a, i32, Text, FakeAgent> for FakeLifecycle {
     }
 }
 
-impl<'a> OnDownlinkClear<'a, i32, Text, FakeAgent> for FakeLifecycle {
-    type OnClearHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnDownlinkClear<i32, Text, FakeAgent> for FakeLifecycle {
+    type OnClearHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_clear(&'a self, map: HashMap<i32, Text>) -> Self::OnClearHandler {
+    fn on_clear<'a>(&'a self, map: HashMap<i32, Text>) -> Self::OnClearHandler<'a> {
         SideEffect::from(move || {
             self.events.lock().push(Event::Cleared(map));
         })
