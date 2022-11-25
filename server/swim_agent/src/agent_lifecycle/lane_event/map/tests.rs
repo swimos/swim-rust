@@ -276,14 +276,16 @@ where
     }
 }
 
-impl<'a, K, V> OnClear<'a, K, V, TestAgent> for FakeLifecycle<K, V>
+impl<K, V> OnClear<K, V, TestAgent> for FakeLifecycle<K, V>
 where
     K: Clone + Send + 'static,
     V: Clone + Send + 'static,
 {
-    type OnClearHandler = OnClearHandler<K, V>;
+    type OnClearHandler<'a> = OnClearHandler<K, V>
+    where
+        Self: 'a;
 
-    fn on_clear(&'a self, before: HashMap<K, V>) -> Self::OnClearHandler {
+    fn on_clear<'a>(&'a self, before: HashMap<K, V>) -> Self::OnClearHandler<'a> {
         self.on_clear_handler(before)
     }
 }

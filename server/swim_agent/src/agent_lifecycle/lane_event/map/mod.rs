@@ -41,13 +41,13 @@ pub type MapLeaf<Context, K, V, LC> = MapBranch<Context, K, V, LC, HLeaf, HLeaf>
 pub type MapLifecycleHandler<'a, Context, K, V, LC> = Coprod!(
     <LC as OnUpdate<'a, K, V, Context>>::OnUpdateHandler,
     <LC as OnRemove<'a, K, V, Context>>::OnRemoveHandler,
-    <LC as OnClear<'a, K, V, Context>>::OnClearHandler,
+    <LC as OnClear<K, V, Context>>::OnClearHandler<'a>,
 );
 
 pub type MapLifecycleHandlerShared<'a, Context, Shared, K, V, LC> = Coprod!(
     <LC as OnUpdateShared<'a, K, V, Context, Shared>>::OnUpdateHandler,
     <LC as OnRemoveShared<'a, K, V, Context, Shared>>::OnRemoveHandler,
-    <LC as OnClearShared<'a, K, V, Context, Shared>>::OnClearHandler,
+    <LC as OnClearShared<K, V, Context, Shared>>::OnClearHandler<'a>,
 );
 
 type MapBranchHandler<'a, Context, K, V, LC, L, R> = Either<
@@ -197,7 +197,7 @@ where
 impl<'a, Context, K, V, LC, L, R> LaneEvent<'a, Context> for MapBranch<Context, K, V, LC, L, R>
 where
     K: Clone + Eq + Hash,
-    LC: MapLaneLifecycle<K, V, Context>,
+    LC: MapLaneLifecycle<K, V, Context> + 'a,
     L: HTree + LaneEvent<'a, Context>,
     R: HTree + LaneEvent<'a, Context>,
 {
@@ -229,8 +229,9 @@ where
 impl<'a, Context, Shared, K, V, LC, L, R> LaneEventShared<'a, Context, Shared>
     for MapBranch<Context, K, V, LC, L, R>
 where
+    Shared: 'a,
     K: Clone + Eq + Hash,
-    LC: MapLaneLifecycleShared<K, V, Context, Shared>,
+    LC: MapLaneLifecycleShared<K, V, Context, Shared> + 'a,
     L: HTree + LaneEventShared<'a, Context, Shared>,
     R: HTree + LaneEventShared<'a, Context, Shared>,
 {

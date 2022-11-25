@@ -43,7 +43,7 @@ mod tests;
 
 pub use suspend::{HandlerFuture, Spawner, Suspend};
 
-pub use handler_fn::{HandlerFn0, EventFn, UpdateFn};
+pub use handler_fn::{HandlerFn0, EventFn, UpdateFn, TakeFn};
 
 use self::register_downlink::RegisterHostedDownlink;
 
