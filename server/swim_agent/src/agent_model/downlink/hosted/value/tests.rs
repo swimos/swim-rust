@@ -118,10 +118,12 @@ impl OnDownlinkEvent<i32, FakeAgent> for FakeLifecycle {
     }
 }
 
-impl<'a> OnDownlinkSet<'a, i32, FakeAgent> for FakeLifecycle {
-    type OnSetHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnDownlinkSet<i32, FakeAgent> for FakeLifecycle {
+    type OnSetHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_set(&'a self, previous: Option<i32>, new_value: &i32) -> Self::OnSetHandler {
+    fn on_set<'a>(&'a self, previous: Option<i32>, new_value: &i32) -> Self::OnSetHandler<'a> {
         let state = self.inner.clone();
         let n = *new_value;
         SideEffect::from(move || {

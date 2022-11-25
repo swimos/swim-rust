@@ -228,7 +228,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         WithHandlerContext<Context, F>,
     >
     where
-        WithHandlerContext<Context, F>: for<'a> OnDownlinkSet<'a, T, Context>,
+        WithHandlerContext<Context, F>: OnDownlinkSet<T, Context>,
     {
         let StatelessValueDownlinkBuilder {
             address,
@@ -273,7 +273,7 @@ where
     FSynced: OnSynced<T, Context> + 'static,
     FUnlinked: OnUnlinked<Context> + 'static,
     FEv: OnDownlinkEvent<T, Context> + 'static,
-    FSet: for<'a> OnDownlinkSet<'a, T, Context> + 'static,
+    FSet: OnDownlinkSet<T, Context> + 'static,
 {
     /// Complete the downlink and create a [`HandlerAction`] that will open the downlink when it is
     /// executed.
@@ -396,7 +396,7 @@ impl<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet>
         FnHandler<F>,
     >
     where
-        FnHandler<F>: for<'a> OnDownlinkSetShared<'a, T, Context, State>,
+        FnHandler<F>: OnDownlinkSetShared<T, Context, State>,
     {
         let StatefulValueDownlinkBuilder {
             address,
@@ -422,7 +422,7 @@ where
     FSynced: OnSyncedShared<T, Context, State> + 'static,
     FUnlinked: OnUnlinkedShared<Context, State> + 'static,
     FEv: OnDownlinkEventShared<T, Context, State> + 'static,
-    FSet: for<'a> OnDownlinkSetShared<'a, T, Context, State> + 'static,
+    FSet: OnDownlinkSetShared<T, Context, State> + 'static,
 {
     /// Complete the downlink and create a [`HandlerAction`] that will open the downlink when it is
     /// executed.
