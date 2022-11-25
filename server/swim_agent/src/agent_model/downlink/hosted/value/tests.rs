@@ -86,10 +86,12 @@ impl<'a> OnUnlinked<'a, FakeAgent> for FakeLifecycle {
     }
 }
 
-impl<'a> OnSynced<'a, i32, FakeAgent> for FakeLifecycle {
-    type OnSyncedHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnSynced<i32, FakeAgent> for FakeLifecycle {
+    type OnSyncedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_synced(&'a self, value: &i32) -> Self::OnSyncedHandler {
+    fn on_synced<'a>(&'a self, value: &i32) -> Self::OnSyncedHandler<'a> {
         let state = self.inner.clone();
         let n = *value;
         SideEffect::from(move || {

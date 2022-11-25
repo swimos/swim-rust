@@ -45,7 +45,7 @@ where
     }
 }
 
-pub trait EventFn<'a, Context, Shared, T> {
+pub trait EventFn<'a, Context, Shared, T: ?Sized> {
     type Handler: EventHandler<Context> + 'a;
 
     fn make_handler(

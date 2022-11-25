@@ -18,132 +18,150 @@ use swim_api::handlers::{BorrowHandler, FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
-    event_handler::{EventHandler, UnitHandler},
+    event_handler::{EventHandler, UnitHandler, EventFn},
 };
 
 use super::{LiftShared, WithHandlerContext};
 
 /// Lifecycle event for the `on_synced` event of a downlink, from an agent.
-pub trait OnSynced<'a, T, Context>: Send {
-    type OnSyncedHandler: EventHandler<Context> + 'a;
+pub trait OnSynced<T, Context>: Send {
+    type OnSyncedHandler<'a>: EventHandler<Context> + 'a
+    where
+        Self: 'a;
 
     /// #Arguments
     /// * `value` - The synced value.
-    fn on_synced(&'a self, value: &T) -> Self::OnSyncedHandler;
+    fn on_synced<'a>(&'a self, value: &T) -> Self::OnSyncedHandler<'a>;
 }
 
 /// Lifecycle event for the `on_synced` event of a downlink, from an agent,where the event
 /// handler has shared state with other handlers for the same downlink.
-pub trait OnSyncedShared<'a, T, Context, Shared>: Send {
-    type OnSyncedHandler: EventHandler<Context> + 'a;
+pub trait OnSyncedShared<T, Context, Shared>: Send {
+    type OnSyncedHandler<'a>: EventHandler<Context> + 'a
+    where
+        Self: 'a,
+        Shared: 'a;
 
     /// #Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `value` - The synced value.
-    fn on_synced(
+    fn on_synced<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         value: &T,
-    ) -> Self::OnSyncedHandler;
+    ) -> Self::OnSyncedHandler<'a>;
 }
 
-impl<'a, T, Context> OnSynced<'a, T, Context> for NoHandler {
-    type OnSyncedHandler = UnitHandler;
+impl<T, Context> OnSynced<T, Context> for NoHandler {
+    type OnSyncedHandler<'a> = UnitHandler
+    where
+        Self: 'a;
 
-    fn on_synced(&'a self, _value: &T) -> Self::OnSyncedHandler {
+    fn on_synced<'a>(&'a self, _value: &T) -> Self::OnSyncedHandler<'a> {
         UnitHandler::default()
     }
 }
 
-impl<'a, T, Context, Shared> OnSyncedShared<'a, T, Context, Shared> for NoHandler {
-    type OnSyncedHandler = UnitHandler;
+impl<T, Context, Shared> OnSyncedShared<T, Context, Shared> for NoHandler {
+    type OnSyncedHandler<'a> = UnitHandler
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_synced(
+    fn on_synced<'a>(
         &'a self,
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
         _value: &T,
-    ) -> Self::OnSyncedHandler {
+    ) -> Self::OnSyncedHandler<'a> {
         UnitHandler::default()
     }
 }
 
-impl<'a, T, Context, F, H> OnSynced<'a, T, Context> for FnHandler<F>
+impl<T, Context, F, H> OnSynced<T, Context> for FnHandler<F>
 where
-    F: Fn(&T) -> H + Send + 'a,
-    H: EventHandler<Context> + 'a,
+    F: Fn(&T) -> H + Send,
+    H: EventHandler<Context> + 'static,
 {
-    type OnSyncedHandler = H;
+    type OnSyncedHandler<'a> = H
+    where
+        Self: 'a;
 
-    fn on_synced(&'a self, value: &T) -> Self::OnSyncedHandler {
+    fn on_synced<'a>(&'a self, value: &T) -> Self::OnSyncedHandler<'a> {
         let FnHandler(f) = self;
         f(value)
     }
 }
 
-impl<'a, B, T, Context, F, H> OnSynced<'a, T, Context> for BorrowHandler<F, B>
+impl<B, T, Context, F, H> OnSynced<T, Context> for BorrowHandler<F, B>
 where
     B: ?Sized,
     T: Borrow<B>,
-    F: Fn(&B) -> H + Send + 'a,
-    H: EventHandler<Context> + 'a,
+    F: Fn(&B) -> H + Send,
+    H: EventHandler<Context> + 'static,
 {
-    type OnSyncedHandler = H;
+    type OnSyncedHandler<'a> = H
+    where
+        Self: 'a;
 
-    fn on_synced(&'a self, value: &T) -> Self::OnSyncedHandler {
+    fn on_synced<'a>(&'a self, value: &T) -> Self::OnSyncedHandler<'a> {
         (self.as_ref())(value.borrow())
     }
 }
 
-impl<'a, T, Context, Shared, F, H> OnSyncedShared<'a, T, Context, Shared> for FnHandler<F>
+impl<T, Context, Shared, F> OnSyncedShared<T, Context, Shared> for FnHandler<F>
 where
-    F: Fn(&'a Shared, HandlerContext<Context>, &T) -> H + Send + 'a,
-    Shared: 'a,
-    H: EventHandler<Context> + 'a,
+    F: for<'a> EventFn<'a, Context, Shared, T> + Send,
 {
-    type OnSyncedHandler = H;
+    type OnSyncedHandler<'a> = <F as EventFn<'a, Context, Shared, T>>::Handler
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_synced(
+    fn on_synced<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         value: &T,
-    ) -> Self::OnSyncedHandler {
+    ) -> Self::OnSyncedHandler<'a> {
         let FnHandler(f) = self;
-        f(shared, handler_context, value)
+        f.make_handler(shared, handler_context, value)
     }
 }
 
-impl<'a, B, T, Context, Shared, F, H> OnSyncedShared<'a, T, Context, Shared> for BorrowHandler<F, B>
+impl<B, T, Context, Shared, F> OnSyncedShared<T, Context, Shared> for BorrowHandler<F, B>
 where
     B: ?Sized,
     T: Borrow<B>,
-    F: Fn(&'a Shared, HandlerContext<Context>, &B) -> H + Send + 'a,
-    Shared: 'a,
-    H: EventHandler<Context> + 'a,
+    F: for<'a> EventFn<'a, Context, Shared, B> + Send,
 {
-    type OnSyncedHandler = H;
+    type OnSyncedHandler<'a> = <F as EventFn<'a, Context, Shared, B>>::Handler
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_synced(
+    fn on_synced<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         value: &T,
-    ) -> Self::OnSyncedHandler {
-        (self.as_ref())(shared, handler_context, value.borrow())
+    ) -> Self::OnSyncedHandler<'a> {
+        (self.as_ref()).make_handler(shared, handler_context, value.borrow())
     }
 }
 
-impl<'a, Context, T, F, H> OnSynced<'a, T, Context> for WithHandlerContext<Context, F>
+impl<Context, T, F, H> OnSynced<T, Context> for WithHandlerContext<Context, F>
 where
     F: Fn(HandlerContext<Context>, &T) -> H + Send,
-    H: EventHandler<Context> + 'a,
+    H: EventHandler<Context> + 'static,
 {
-    type OnSyncedHandler = H;
+    type OnSyncedHandler<'a> = H
+    where
+        Self: 'a;
 
-    fn on_synced(&'a self, value: &T) -> Self::OnSyncedHandler {
+    fn on_synced<'a>(&'a self, value: &T) -> Self::OnSyncedHandler<'a> {
         let WithHandlerContext {
             inner,
             handler_context,
@@ -152,18 +170,21 @@ where
     }
 }
 
-impl<'a, T, Context, Shared, F> OnSyncedShared<'a, T, Context, Shared> for LiftShared<F, Shared>
+impl<T, Context, Shared, F> OnSyncedShared<T, Context, Shared> for LiftShared<F, Shared>
 where
-    F: OnSynced<'a, T, Context> + Send,
+    F: OnSynced<T, Context> + Send,
 {
-    type OnSyncedHandler = F::OnSyncedHandler;
+    type OnSyncedHandler<'a> = F::OnSyncedHandler<'a>
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_synced(
+    fn on_synced<'a>(
         &'a self,
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
         value: &T,
-    ) -> Self::OnSyncedHandler {
+    ) -> Self::OnSyncedHandler<'a> {
         let LiftShared { inner, .. } = self;
         inner.on_synced(value)
     }

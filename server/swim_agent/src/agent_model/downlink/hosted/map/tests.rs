@@ -127,10 +127,12 @@ impl<'a> OnUnlinked<'a, FakeAgent> for FakeLifecycle {
     }
 }
 
-impl<'a> OnSynced<'a, HashMap<i32, Text>, FakeAgent> for FakeLifecycle {
-    type OnSyncedHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnSynced<HashMap<i32, Text>, FakeAgent> for FakeLifecycle {
+    type OnSyncedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_synced(&'a self, value: &HashMap<i32, Text>) -> Self::OnSyncedHandler {
+    fn on_synced<'a>(&'a self, value: &HashMap<i32, Text>) -> Self::OnSyncedHandler<'a> {
         let map = value.clone();
         SideEffect::from(move || {
             self.events.lock().push(Event::Synced(map));
