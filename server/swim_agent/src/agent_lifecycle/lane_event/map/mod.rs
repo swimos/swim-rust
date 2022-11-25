@@ -40,13 +40,13 @@ pub type MapLeaf<Context, K, V, LC> = MapBranch<Context, K, V, LC, HLeaf, HLeaf>
 
 pub type MapLifecycleHandler<'a, Context, K, V, LC> = Coprod!(
     <LC as OnUpdate<'a, K, V, Context>>::OnUpdateHandler,
-    <LC as OnRemove<'a, K, V, Context>>::OnRemoveHandler,
+    <LC as OnRemove<K, V, Context>>::OnRemoveHandler<'a>,
     <LC as OnClear<K, V, Context>>::OnClearHandler<'a>,
 );
 
 pub type MapLifecycleHandlerShared<'a, Context, Shared, K, V, LC> = Coprod!(
     <LC as OnUpdateShared<'a, K, V, Context, Shared>>::OnUpdateHandler,
-    <LC as OnRemoveShared<'a, K, V, Context, Shared>>::OnRemoveHandler,
+    <LC as OnRemoveShared<K, V, Context, Shared>>::OnRemoveHandler<'a>,
     <LC as OnClearShared<K, V, Context, Shared>>::OnClearHandler<'a>,
 );
 

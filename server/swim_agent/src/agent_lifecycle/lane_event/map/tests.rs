@@ -264,14 +264,16 @@ where
     }
 }
 
-impl<'a, K, V> OnRemove<'a, K, V, TestAgent> for FakeLifecycle<K, V>
+impl<K, V> OnRemove<K, V, TestAgent> for FakeLifecycle<K, V>
 where
     K: Clone + Send + 'static,
     V: Clone + Send + 'static,
 {
-    type OnRemoveHandler = OnRemoveHandler<K, V>;
+    type OnRemoveHandler<'a> = OnRemoveHandler<K, V>
+    where
+        Self: 'a;
 
-    fn on_remove(&'a self, map: &HashMap<K, V>, key: K, prev_value: V) -> Self::OnRemoveHandler {
+    fn on_remove<'a>(&'a self, map: &HashMap<K, V>, key: K, prev_value: V) -> Self::OnRemoveHandler<'a> {
         self.on_remove_handler(map.clone(), key, prev_value)
     }
 }
