@@ -34,7 +34,7 @@ pub mod on_event;
 pub mod on_set;
 
 pub trait ValueDownlinkHandlers<'a, T, Context>:
-    OnLinked<'a, Context>
+    OnLinked<Context>
     + OnSynced<'a, T, Context>
     + OnDownlinkEvent<'a, T, Context>
     + OnDownlinkSet<'a, T, Context>
@@ -43,7 +43,7 @@ pub trait ValueDownlinkHandlers<'a, T, Context>:
 }
 
 impl<'a, T, Context, LC> ValueDownlinkHandlers<'a, T, Context> for LC where
-    LC: OnLinked<'a, Context>
+    LC: OnLinked<Context>
         + OnSynced<'a, T, Context>
         + OnDownlinkEvent<'a, T, Context>
         + OnDownlinkSet<'a, T, Context>
@@ -138,19 +138,21 @@ where
     }
 }
 
-impl<'a, Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet> OnLinked<'a, Context>
+impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet> OnLinked<Context>
     for StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
 where
     State: Send,
-    FLinked: OnLinkedShared<'a, Context, State>,
+    FLinked: OnLinkedShared<Context, State>,
     FSynced: Send,
     FUnlinked: Send,
     FEv: Send,
     FSet: Send,
 {
-    type OnLinkedHandler = FLinked::OnLinkedHandler;
+    type OnLinkedHandler<'a> = FLinked::OnLinkedHandler<'a>
+    where
+        Self: 'a;
 
-    fn on_linked(&'a self) -> Self::OnLinkedHandler {
+    fn on_linked<'a>(&'a self) -> Self::OnLinkedHandler<'a> {
         let StatefulValueDownlinkLifecycle {
             on_linked,
             state,
@@ -271,7 +273,7 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         FSet,
     >
     where
-        FnHandler<F>: for<'a> OnLinkedShared<'a, Context, State>,
+        FnHandler<F>: OnLinkedShared<Context, State>,
     {
         StatefulValueDownlinkLifecycle {
             _type: PhantomData,
@@ -456,18 +458,20 @@ where
     }
 }
 
-impl<'a, Context, T, FLinked, FSynced, FUnlinked, FEv, FSet> OnLinked<'a, Context>
+impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet> OnLinked<Context>
     for StatelessValueDownlinkLifecycle<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
 where
-    FLinked: OnLinked<'a, Context>,
+    FLinked: OnLinked<Context>,
     FSynced: Send,
     FUnlinked: Send,
     FEv: Send,
     FSet: Send,
 {
-    type OnLinkedHandler = FLinked::OnLinkedHandler;
+    type OnLinkedHandler<'a> = FLinked::OnLinkedHandler<'a>
+    where
+        Self: 'a;
 
-    fn on_linked(&'a self) -> Self::OnLinkedHandler {
+    fn on_linked<'a>(&'a self) -> Self::OnLinkedHandler<'a> {
         let StatelessValueDownlinkLifecycle { on_linked, .. } = self;
         on_linked.on_linked()
     }
@@ -570,7 +574,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         FSet,
     >
     where
-        WithHandlerContext<Context, F>: for<'a> OnLinked<'a, Context>,
+        WithHandlerContext<Context, F>: OnLinked<Context>,
     {
         StatelessValueDownlinkLifecycle {
             _type: PhantomData,

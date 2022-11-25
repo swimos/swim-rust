@@ -103,10 +103,12 @@ struct FakeLifecycle {
     events: Events,
 }
 
-impl<'a> OnLinked<'a, FakeAgent> for FakeLifecycle {
-    type OnLinkedHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnLinked<FakeAgent> for FakeLifecycle {
+    type OnLinkedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_linked(&'a self) -> Self::OnLinkedHandler {
+    fn on_linked<'a>(&'a self) -> Self::OnLinkedHandler<'a> {
         SideEffect::from(move || {
             self.events.lock().push(Event::Linked);
         })

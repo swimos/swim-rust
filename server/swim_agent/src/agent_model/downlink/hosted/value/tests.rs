@@ -60,10 +60,12 @@ struct FakeLifecycle {
     inner: Arc<Mutex<Vec<Event>>>,
 }
 
-impl<'a> OnLinked<'a, FakeAgent> for FakeLifecycle {
-    type OnLinkedHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnLinked<FakeAgent> for FakeLifecycle {
+    type OnLinkedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_linked(&'a self) -> Self::OnLinkedHandler {
+    fn on_linked<'a>(&'a self) -> Self::OnLinkedHandler<'a> {
         let state = self.inner.clone();
         SideEffect::from(move || {
             state.lock().push(Event::Linked);
