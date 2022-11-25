@@ -34,10 +34,10 @@ mod tests;
 pub type CommandLeaf<Context, T, LC> = CommandBranch<Context, T, LC, HLeaf, HLeaf>;
 
 pub type CommandLifecycleHandler<'a, Context, T, LC> =
-    <LC as OnCommand<'a, T, Context>>::OnCommandHandler;
+    <LC as OnCommand<T, Context>>::OnCommandHandler<'a>;
 
 pub type CommandLifecycleHandlerShared<'a, Context, Shared, T, LC> =
-    <LC as OnCommandShared<'a, T, Context, Shared>>::OnCommandHandler;
+    <LC as OnCommandShared<T, Context, Shared>>::OnCommandHandler<'a>;
 
 type CommandBranchHandler<'a, Context, T, LC, L, R> = Either<
     <L as LaneEvent<'a, Context>>::LaneEventHandler,
@@ -139,7 +139,7 @@ impl<Context, T, LC, L: HTree, R: HTree> HTree for CommandBranch<Context, T, LC,
 
 impl<'a, Context, T, LC, L, R> LaneEvent<'a, Context> for CommandBranch<Context, T, LC, L, R>
 where
-    LC: CommandLaneLifecycle<T, Context>,
+    LC: CommandLaneLifecycle<T, Context> + 'a,
     L: HTree + LaneEvent<'a, Context>,
     R: HTree + LaneEvent<'a, Context>,
 {
@@ -170,7 +170,8 @@ where
 impl<'a, Context, Shared, T, LC, L, R> LaneEventShared<'a, Context, Shared>
     for CommandBranch<Context, T, LC, L, R>
 where
-    LC: CommandLaneLifecycleShared<T, Context, Shared>,
+    Shared: 'a,
+    LC: CommandLaneLifecycleShared<T, Context, Shared> + 'a,
     L: HTree + LaneEventShared<'a, Context, Shared>,
     R: HTree + LaneEventShared<'a, Context, Shared>,
 {
