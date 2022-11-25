@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{marker::PhantomData, collections::HashMap};
+use std::{collections::HashMap, marker::PhantomData};
 
 use swim_api::handlers::{FnHandler, NoHandler};
 
@@ -34,50 +34,25 @@ pub mod on_update;
 /// * `K` - The type of the map keys.
 /// * `V` - The type of the map values.
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
-pub trait MapLaneLifecycle<K, V, Context>: for<'a> MapLaneHandlers<'a, K, V, Context> {}
+pub trait MapLaneLifecycle<K, V, Context>:
+    OnUpdate<K, V, Context> + OnRemove<K, V, Context> + OnClear<K, V, Context>
+{
+}
 
-/// Trait for the lifecycle of a map lane where the lifecycle has access to some shared state (shared
-/// with all other lifecycles in the agent).
-///
-/// #Type Parameters
-/// * `K` - The type of the map keys.
-/// * `V` - The type of the map values.
-/// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
-/// * `Shared` - The shared state to which the lifecycle has access.
-pub trait MapLaneHandlersShared<'a, K, V, Context, Shared>:
-    OnUpdateShared<'a, K, V, Context, Shared>
+impl<K, V, Context, L> MapLaneLifecycle<K, V, Context> for L where
+    L: OnUpdate<K, V, Context> + OnRemove<K, V, Context> + OnClear<K, V, Context>
+{
+}
+
+pub trait MapLaneLifecycleShared<K, V, Context, Shared>:
+    OnUpdateShared<K, V, Context, Shared>
     + OnRemoveShared<K, V, Context, Shared>
     + OnClearShared<K, V, Context, Shared>
 {
 }
 
-pub trait MapLaneHandlers<'a, K, V, Context>:
-    OnUpdate<'a, K, V, Context> + OnRemove<K, V, Context> + OnClear<K, V, Context>
-{
-}
-
-impl<'a, K, V, Context, L> MapLaneHandlers<'a, K, V, Context> for L where
-    L: OnUpdate<'a, K, V, Context> + OnRemove<K, V, Context> + OnClear<K, V, Context>
-{
-}
-
-impl<K, V, Context, L> MapLaneLifecycle<K, V, Context> for L where
-    L: for<'a> MapLaneHandlers<'a, K, V, Context>
-{
-}
-
-pub trait MapLaneLifecycleShared<K, V, Context, Shared>:
-    for<'a> MapLaneHandlersShared<'a, K, V, Context, Shared>
-{
-}
-
 impl<L, K, V, Context, Shared> MapLaneLifecycleShared<K, V, Context, Shared> for L where
-    L: for<'a> MapLaneHandlersShared<'a, K, V, Context, Shared>
-{
-}
-
-impl<'a, L, K, V, Context, Shared> MapLaneHandlersShared<'a, K, V, Context, Shared> for L where
-    L: OnUpdateShared<'a, K, V, Context, Shared>
+    L: OnUpdateShared<K, V, Context, Shared>
         + OnRemoveShared<K, V, Context, Shared>
         + OnClearShared<K, V, Context, Shared>
 {
@@ -138,7 +113,7 @@ impl<Context, Shared, K, V, FUpd, FRem, FClr>
         f: F,
     ) -> StatefulMapLaneLifecycle<Context, Shared, K, V, FnHandler<F>, FRem, FClr>
     where
-        FnHandler<F>: for<'a> OnUpdateShared<'a, K, V, Context, Shared>,
+        FnHandler<F>: for<'a> OnUpdateShared<K, V, Context, Shared>,
     {
         StatefulMapLaneLifecycle {
             _value_type: PhantomData,
@@ -179,23 +154,26 @@ impl<Context, Shared, K, V, FUpd, FRem, FClr>
     }
 }
 
-impl<'a, K, V, Context, Shared, FUpd, FRem, FClr> OnUpdateShared<'a, K, V, Context, Shared>
+impl<K, V, Context, Shared, FUpd, FRem, FClr> OnUpdateShared<K, V, Context, Shared>
     for StatefulMapLaneLifecycle<Context, Shared, K, V, FUpd, FRem, FClr>
 where
-    FUpd: OnUpdateShared<'a, K, V, Context, Shared>,
+    FUpd: OnUpdateShared<K, V, Context, Shared>,
     FRem: Send,
     FClr: Send,
 {
-    type OnUpdateHandler = FUpd::OnUpdateHandler;
+    type OnUpdateHandler<'a> = FUpd::OnUpdateHandler<'a>
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_update(
+    fn on_update<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         map: &HashMap<K, V>,
         key: K,
         prev_value: Option<V>,
-    ) -> Self::OnUpdateHandler {
+    ) -> Self::OnUpdateHandler<'a> {
         self.on_update
             .on_update(shared, handler_context, map, key, prev_value)
     }

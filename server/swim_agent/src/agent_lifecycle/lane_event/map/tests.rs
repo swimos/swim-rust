@@ -247,19 +247,21 @@ impl<K, V> FakeLifecycle<K, V> {
     }
 }
 
-impl<'a, K, V> OnUpdate<'a, K, V, TestAgent> for FakeLifecycle<K, V>
+impl<K, V> OnUpdate<K, V, TestAgent> for FakeLifecycle<K, V>
 where
     K: Clone + Send + 'static,
     V: Clone + Send + 'static,
 {
-    type OnUpdateHandler = OnUpdateHandler<K, V>;
+    type OnUpdateHandler<'a> = OnUpdateHandler<K, V>
+    where
+        Self: 'a;
 
-    fn on_update(
+    fn on_update<'a>(
         &'a self,
         map: &HashMap<K, V>,
         key: K,
         prev_value: Option<V>,
-    ) -> Self::OnUpdateHandler {
+    ) -> Self::OnUpdateHandler<'a> {
         self.on_update_handler(map.clone(), key, prev_value)
     }
 }
