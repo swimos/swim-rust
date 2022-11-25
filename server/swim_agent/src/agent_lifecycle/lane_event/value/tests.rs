@@ -164,10 +164,12 @@ impl<T: Clone + Send + 'static> OnEvent<T, TestAgent> for FakeLifecycle<T> {
     }
 }
 
-impl<'a, T: Clone + Send + 'static> OnSet<'a, T, TestAgent> for FakeLifecycle<T> {
-    type OnSetHandler = OnSetHandler<T>;
+impl<T: Clone + Send + 'static> OnSet<T, TestAgent> for FakeLifecycle<T> {
+    type OnSetHandler<'a> = OnSetHandler<T>
+    where
+        Self: 'a;
 
-    fn on_set(&'a self, existing: Option<T>, new_value: &T) -> Self::OnSetHandler {
+    fn on_set<'a>(&'a self, existing: Option<T>, new_value: &T) -> Self::OnSetHandler<'a> {
         self.on_set_handler(existing, new_value.clone())
     }
 }

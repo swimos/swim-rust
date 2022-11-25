@@ -37,7 +37,7 @@ where
     }
 }
 
-pub trait HandlerFn1<'a, Context, Shared, T> {
+pub trait EventFn<'a, Context, Shared, T> {
 
     type Handler: EventHandler<Context> + 'a;
 
@@ -45,7 +45,7 @@ pub trait HandlerFn1<'a, Context, Shared, T> {
 
 }
 
-impl<'a, Context, Shared, T, F, H> HandlerFn1<'a, Context, Shared, T> for F
+impl<'a, Context, Shared, T, F, H> EventFn<'a, Context, Shared, T> for F
 where
     H: EventHandler<Context> + 'a,
     F: Fn(&'a Shared, HandlerContext<Context>, &T) -> H + 'a,
@@ -55,5 +55,26 @@ where
 
     fn make_handler(&'a self, shared: &'a Shared, handler_context: HandlerContext<Context>, value: &T) -> Self::Handler {
         self(shared, handler_context, value)
+    }
+}
+
+pub trait UpdateFn<'a, Context, Shared, T> {
+
+    type Handler: EventHandler<Context> + 'a;
+
+    fn make_handler(&'a self, shared: &'a Shared, handler_context: HandlerContext<Context>, value: &T, old: Option<T>) -> Self::Handler;
+
+}
+
+impl<'a, Context, Shared, T, F, H> UpdateFn<'a, Context, Shared, T> for F
+where
+    H: EventHandler<Context> + 'a,
+    F: Fn(&'a Shared, HandlerContext<Context>, &T, Option<T>) -> H + 'a,
+    Shared: 'a,
+{
+    type Handler = H;
+
+    fn make_handler(&'a self, shared: &'a Shared, handler_context: HandlerContext<Context>, value: &T, old: Option<T>) -> Self::Handler {
+        self(shared, handler_context, value, old)
     }
 }

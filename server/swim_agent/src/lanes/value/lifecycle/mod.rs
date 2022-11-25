@@ -31,7 +31,7 @@ pub mod on_set;
 /// #Type Parameters
 /// * `T` - The type of the state of the lane.
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
-pub trait ValueLaneLifecycle<T, Context>: for<'a> ValueLaneHandlers<'a, T, Context> {}
+pub trait ValueLaneLifecycle<T, Context>:  OnEvent<T, Context> + OnSet<T, Context> {}
 
 /// Trait for the lifecycle of a value lane where the lifecycle has access to some shared state (shared
 /// with all other lifecycles in the agent).
@@ -41,37 +41,17 @@ pub trait ValueLaneLifecycle<T, Context>: for<'a> ValueLaneHandlers<'a, T, Conte
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `Shared` - The shared state to which the lifecycle has access.
 pub trait ValueLaneLifecycleShared<T, Context, Shared>:
-    for<'a> ValueLaneHandlersShared<'a, T, Context, Shared>
+    OnEventShared<T, Context, Shared> + OnSetShared<T, Context, Shared>
 {
 }
 
-pub trait ValueLaneHandlers<'a, T, Context>:
-    OnEvent<T, Context> + OnSet<'a, T, Context>
-{
-}
-
-impl<'a, T, Context, L> ValueLaneHandlers<'a, T, Context> for L where
-    L: OnEvent<T, Context> + OnSet<'a, T, Context>
-{
-}
-
-pub trait ValueLaneHandlersShared<'a, T, Context, Shared>:
-    OnEventShared<T, Context, Shared> + OnSetShared<'a, T, Context, Shared>
-{
-}
-
-impl<T, Context, L> ValueLaneLifecycle<T, Context> for L where
-    L: for<'a> ValueLaneHandlers<'a, T, Context>
+impl<'a, T, Context, L> ValueLaneLifecycle<T, Context> for L where
+    L: OnEvent<T, Context> + OnSet<T, Context>
 {
 }
 
 impl<L, T, Context, Shared> ValueLaneLifecycleShared<T, Context, Shared> for L where
-    L: for<'a> ValueLaneHandlersShared<'a, T, Context, Shared>
-{
-}
-
-impl<'a, L, T, Context, Shared> ValueLaneHandlersShared<'a, T, Context, Shared> for L where
-    L: OnEventShared<T, Context, Shared> + OnSetShared<'a, T, Context, Shared>
+    L: OnEventShared<T, Context, Shared> + OnSetShared<T, Context, Shared>
 {
 }
 
@@ -132,7 +112,7 @@ impl<Context, Shared, T, FEv, FSet> StatefulValueLaneLifecycle<Context, Shared, 
         f: F,
     ) -> StatefulValueLaneLifecycle<Context, Shared, T, FEv, FnHandler<F>>
     where
-        FnHandler<F>: for<'a> OnSetShared<'a, T, Context, Shared>,
+        FnHandler<F>: OnSetShared<T, Context, Shared>,
     {
         StatefulValueLaneLifecycle {
             _value_type: PhantomData,
@@ -163,21 +143,24 @@ where
     }
 }
 
-impl<'a, T, FEv, FSet, Context, Shared> OnSetShared<'a, T, Context, Shared>
+impl<T, FEv, FSet, Context, Shared> OnSetShared<T, Context, Shared>
     for StatefulValueLaneLifecycle<Context, Shared, T, FEv, FSet>
 where
     FEv: Send,
-    FSet: OnSetShared<'a, T, Context, Shared>,
+    FSet: OnSetShared<T, Context, Shared>,
 {
-    type OnSetHandler = FSet::OnSetHandler;
+    type OnSetHandler<'a> = FSet::OnSetHandler<'a>
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_set(
+    fn on_set<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         new_value: &T,
         existing: Option<T>,
-    ) -> Self::OnSetHandler {
+    ) -> Self::OnSetHandler<'a> {
         self.on_set
             .on_set(shared, handler_context, new_value, existing)
     }

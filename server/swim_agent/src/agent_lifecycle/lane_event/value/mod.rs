@@ -122,12 +122,12 @@ impl<Context, T, LC, L: HTree, R: HTree> HTree for ValueBranch<Context, T, LC, L
 
 pub type ValueLifecycleHandler<'a, Context, T, LC> = FollowedBy<
     <LC as OnEvent<T, Context>>::OnEventHandler<'a>,
-    <LC as OnSet<'a, T, Context>>::OnSetHandler,
+    <LC as OnSet<T, Context>>::OnSetHandler<'a>,
 >;
 
 pub type ValueLifecycleHandlerShared<'a, Context, Shared, T, LC> = FollowedBy<
     <LC as OnEventShared<T, Context, Shared>>::OnEventHandler<'a>,
-    <LC as OnSetShared<'a, T, Context, Shared>>::OnSetHandler,
+    <LC as OnSetShared<T, Context, Shared>>::OnSetHandler<'a>,
 >;
 
 type ValueBranchHandler<'a, Context, T, LC, L, R> = Either<

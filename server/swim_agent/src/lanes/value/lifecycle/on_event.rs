@@ -16,7 +16,7 @@ use swim_api::handlers::{FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
-    event_handler::{EventHandler, UnitHandler, HandlerFn1},
+    event_handler::{EventHandler, UnitHandler, EventFn},
 };
 
 /// Event handler to be called each time the value of a value lane changes, consuming only the new value.
@@ -96,9 +96,9 @@ where
 impl<T, Context, Shared, F> OnEventShared<T, Context, Shared> for FnHandler<F>
 where
     T: 'static,
-    F: for<'a> HandlerFn1<'a, Context, Shared, T> + Send,
+    F: for<'a> EventFn<'a, Context, Shared, T> + Send,
 {
-    type OnEventHandler<'a> = <F as HandlerFn1<'a, Context, Shared, T>>::Handler
+    type OnEventHandler<'a> = <F as EventFn<'a, Context, Shared, T>>::Handler
     where
         Self: 'a,
         Shared: 'a;
