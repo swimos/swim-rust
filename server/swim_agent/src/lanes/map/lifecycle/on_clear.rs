@@ -95,7 +95,6 @@ where
 
 impl<K, V, Context, Shared, F> OnClearShared<K, V, Context, Shared> for FnHandler<F>
 where
-    Shared: 'static,
     F: for<'a> TakeFn<'a, Context, Shared, HashMap<K, V>> + Send,
 {
     type OnClearHandler<'a> = <F as TakeFn<'a, Context, Shared, HashMap<K, V>>>::Handler

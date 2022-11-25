@@ -118,12 +118,12 @@ where
 
 impl<K, V, Context, Shared, F> OnUpdateShared<K, V, Context, Shared> for FnHandler<F>
 where
-    Shared: 'static,
     F: for<'a> MapUpdateFn<'a, Context, Shared, K, V> + Send,
 {
     type OnUpdateHandler<'a> = <F as MapUpdateFn<'a, Context, Shared, K, V>>::Handler
     where
-        Self: 'a;
+        Self: 'a,
+        Shared: 'a;
 
     fn on_update<'a>(
         &'a self,

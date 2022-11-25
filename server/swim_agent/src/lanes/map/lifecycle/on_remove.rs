@@ -103,7 +103,6 @@ where
 
 impl<K, V, Context, Shared, F> OnRemoveShared<K, V, Context, Shared> for FnHandler<F>
 where
-    Shared: 'static,
     F: for<'a> MapRemoveFn<'a, Context, Shared, K, V> + Send,
 {
     type OnRemoveHandler<'a> = <F as MapRemoveFn<'a, Context, Shared, K, V>>::Handler

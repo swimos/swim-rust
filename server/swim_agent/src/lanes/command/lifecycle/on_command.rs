@@ -94,7 +94,6 @@ where
 impl<T, Context, Shared, F> OnCommandShared<T, Context, Shared> for FnHandler<F>
 where
     F: for<'a> EventFn<'a, Context, Shared, T> + Send,
-    Shared: 'static,
 {
     type OnCommandHandler<'a> = <F as EventFn<'a, Context, Shared, T>>::Handler
     where
