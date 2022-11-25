@@ -35,8 +35,10 @@ pub use value::{ValueBranch, ValueLeaf, ValueLifecycleHandler, ValueLifecycleHan
 /// Trait to implement all event handlers for all of the lanes of an agent. Implementations of
 /// this trait will typically consist of a type level tree (implementations of [`HTree`]) of handlers
 /// for each lane.
-pub trait LaneEvent<'a, Context> {
-    type LaneEventHandler: EventHandler<Context> + 'a;
+pub trait LaneEvent<Context> {
+    type LaneEventHandler<'a>: EventHandler<Context> + 'a
+    where
+        Self: 'a;
 
     /// Create the handler for a lane, if it exists. It is the responsibility of the lanes to keep track
     /// of which what events need to be triggered. If the lane does not exist or no event is pending, no
@@ -44,14 +46,17 @@ pub trait LaneEvent<'a, Context> {
     /// #Arguments
     /// * `context` - The context of the agent (allowing access to the lanes).
     /// * `lane_name` - The name of the lane.
-    fn lane_event(&'a self, context: &Context, lane_name: &str) -> Option<Self::LaneEventHandler>;
+    fn lane_event<'a>(&'a self, context: &Context, lane_name: &str) -> Option<Self::LaneEventHandler<'a>>;
 }
 
 /// Trait to implement all event handlers for all of the lanes of an agent. Implementations of
 /// this trait will typically consist of a type level tree (implementations of [`HTree`]) of handlers
 /// for each lane. Each of the event handlers has access to a single shared state.
-pub trait LaneEventShared<'a, Context, Shared> {
-    type LaneEventHandler: EventHandler<Context> + 'a;
+pub trait LaneEventShared<Context, Shared> {
+    type LaneEventHandler<'a>: EventHandler<Context> + 'a
+    where
+        Self: 'a,
+        Shared: 'a;
 
     /// Create the handler for a lane, if it exists. It is the responsibility of the lanes to keep track
     /// of which what events need to be triggered. If the lane does not exist or no event is pending, no
@@ -61,37 +66,42 @@ pub trait LaneEventShared<'a, Context, Shared> {
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `context` - The context of the agent (allowing access to the lanes).
     /// * `lane_name` - The name of the lane.
-    fn lane_event(
+    fn lane_event<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         context: &Context,
         lane_name: &str,
-    ) -> Option<Self::LaneEventHandler>;
+    ) -> Option<Self::LaneEventHandler<'a>>;
 }
 
-impl<'a, Context> LaneEvent<'a, Context> for NoHandler {
-    type LaneEventHandler = UnitHandler;
+impl<Context> LaneEvent<Context> for NoHandler {
+    type LaneEventHandler<'a> = UnitHandler
+    where
+        Self: 'a;
 
-    fn lane_event(
+    fn lane_event<'a>(
         &'a self,
         _context: &Context,
         _lane_name: &str,
-    ) -> Option<Self::LaneEventHandler> {
+    ) -> Option<Self::LaneEventHandler<'a>> {
         None
     }
 }
 
-impl<'a, Context, Shared> LaneEventShared<'a, Context, Shared> for NoHandler {
-    type LaneEventHandler = UnitHandler;
+impl<Context, Shared> LaneEventShared<Context, Shared> for NoHandler {
+    type LaneEventHandler<'a> = UnitHandler
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn lane_event(
+    fn lane_event<'a>(
         &'a self,
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
         _context: &Context,
         _lane_name: &str,
-    ) -> Option<Self::LaneEventHandler> {
+    ) -> Option<Self::LaneEventHandler<'a>> {
         None
     }
 }
@@ -112,28 +122,33 @@ impl HTree for HLeaf {
     }
 }
 
-impl<'a, Context> LaneEvent<'a, Context> for HLeaf {
-    type LaneEventHandler = UnitHandler;
+impl<Context> LaneEvent<Context> for HLeaf {
+    type LaneEventHandler<'a> = UnitHandler
+    where
+        Self: 'a;
 
-    fn lane_event(
+    fn lane_event<'a>(
         &'a self,
         _context: &Context,
         _lane_name: &str,
-    ) -> Option<Self::LaneEventHandler> {
+    ) -> Option<Self::LaneEventHandler<'a>> {
         None
     }
 }
 
-impl<'a, Context, Shared> LaneEventShared<'a, Context, Shared> for HLeaf {
-    type LaneEventHandler = UnitHandler;
+impl<Context, Shared> LaneEventShared<Context, Shared> for HLeaf {
+    type LaneEventHandler<'a> = UnitHandler
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn lane_event(
+    fn lane_event<'a>(
         &'a self,
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
         _context: &Context,
         _lane_name: &str,
-    ) -> Option<Self::LaneEventHandler> {
+    ) -> Option<Self::LaneEventHandler<'a>> {
         None
     }
 }

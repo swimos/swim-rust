@@ -40,18 +40,18 @@ pub type CommandLifecycleHandlerShared<'a, Context, Shared, T, LC> =
     <LC as OnCommandShared<T, Context, Shared>>::OnCommandHandler<'a>;
 
 type CommandBranchHandler<'a, Context, T, LC, L, R> = Either<
-    <L as LaneEvent<'a, Context>>::LaneEventHandler,
+    <L as LaneEvent<Context>>::LaneEventHandler<'a>,
     Either<
         CommandLifecycleHandler<'a, Context, T, LC>,
-        <R as LaneEvent<'a, Context>>::LaneEventHandler,
+        <R as LaneEvent<Context>>::LaneEventHandler<'a>,
     >,
 >;
 
 type CommandBranchHandlerShared<'a, Context, Shared, T, LC, L, R> = Either<
-    <L as LaneEventShared<'a, Context, Shared>>::LaneEventHandler,
+    <L as LaneEventShared<Context, Shared>>::LaneEventHandler<'a>,
     Either<
         CommandLifecycleHandlerShared<'a, Context, Shared, T, LC>,
-        <R as LaneEventShared<'a, Context, Shared>>::LaneEventHandler,
+        <R as LaneEventShared<Context, Shared>>::LaneEventHandler<'a>,
     >,
 >;
 
@@ -137,15 +137,17 @@ impl<Context, T, LC, L: HTree, R: HTree> HTree for CommandBranch<Context, T, LC,
     }
 }
 
-impl<'a, Context, T, LC, L, R> LaneEvent<'a, Context> for CommandBranch<Context, T, LC, L, R>
+impl<Context, T, LC, L, R> LaneEvent<Context> for CommandBranch<Context, T, LC, L, R>
 where
-    LC: CommandLaneLifecycle<T, Context> + 'a,
-    L: HTree + LaneEvent<'a, Context>,
-    R: HTree + LaneEvent<'a, Context>,
+    LC: CommandLaneLifecycle<T, Context>,
+    L: HTree + LaneEvent<Context>,
+    R: HTree + LaneEvent<Context>,
 {
-    type LaneEventHandler = CommandBranchHandler<'a, Context, T, LC, L, R>;
+    type LaneEventHandler<'a> = CommandBranchHandler<'a, Context, T, LC, L, R>
+    where
+        Self: 'a;
 
-    fn lane_event(&'a self, context: &Context, lane_name: &str) -> Option<Self::LaneEventHandler> {
+    fn lane_event<'a>(&'a self, context: &Context, lane_name: &str) -> Option<Self::LaneEventHandler<'a>> {
         let CommandBranch {
             label,
             projection,
@@ -167,23 +169,25 @@ where
     }
 }
 
-impl<'a, Context, Shared, T, LC, L, R> LaneEventShared<'a, Context, Shared>
+impl<Context, Shared, T, LC, L, R> LaneEventShared<Context, Shared>
     for CommandBranch<Context, T, LC, L, R>
 where
-    Shared: 'a,
-    LC: CommandLaneLifecycleShared<T, Context, Shared> + 'a,
-    L: HTree + LaneEventShared<'a, Context, Shared>,
-    R: HTree + LaneEventShared<'a, Context, Shared>,
+    LC: CommandLaneLifecycleShared<T, Context, Shared>,
+    L: HTree + LaneEventShared<Context, Shared>,
+    R: HTree + LaneEventShared<Context, Shared>,
 {
-    type LaneEventHandler = CommandBranchHandlerShared<'a, Context, Shared, T, LC, L, R>;
+    type LaneEventHandler<'a> = CommandBranchHandlerShared<'a, Context, Shared, T, LC, L, R>
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn lane_event(
+    fn lane_event<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         context: &Context,
         lane_name: &str,
-    ) -> Option<Self::LaneEventHandler> {
+    ) -> Option<Self::LaneEventHandler<'a>> {
         let CommandBranch {
             label,
             projection,

@@ -75,14 +75,16 @@ impl<'a> OnStop<'a, TestAgent> for TestLifecycle {
     }
 }
 
-impl<'a> LaneEvent<'a, TestAgent> for TestLifecycle {
-    type LaneEventHandler = LifecycleHandler;
+impl LaneEvent<TestAgent> for TestLifecycle {
+    type LaneEventHandler<'a> = LifecycleHandler
+    where
+        Self: 'a;
 
-    fn lane_event(
+    fn lane_event<'a>(
         &'a self,
         _context: &TestAgent,
         lane_name: &str,
-    ) -> Option<Self::LaneEventHandler> {
+    ) -> Option<Self::LaneEventHandler<'a>> {
         Some(self.make_handler(LifecycleEvent::Lane(Text::new(lane_name))))
     }
 }
