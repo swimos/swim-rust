@@ -24,16 +24,6 @@ pub mod utility;
 /// Trait for agent lifecycles.
 /// #Type Parameters
 /// * `Context` - The context in which the lifecycle events run (provdies access to the lanes of the agent).
-pub trait AgentLifecycle<Context>: for<'a> AgentHandlers<'a, Context> {}
+pub trait AgentLifecycle<Context>: OnStart<Context> + OnStop<Context> + LaneEvent<Context> {}
 
-pub trait AgentHandlers<'a, Context>:
-    OnStart<Context> + OnStop<'a, Context> + LaneEvent<Context>
-{
-}
-
-impl<L, Context> AgentLifecycle<Context> for L where L: for<'a> AgentHandlers<'a, Context> {}
-
-impl<'a, L, Context> AgentHandlers<'a, Context> for L where
-    L: OnStart<Context> + OnStop<'a, Context> + LaneEvent<Context>
-{
-}
+impl<L, Context> AgentLifecycle<Context> for L where L: OnStart<Context> + OnStop<Context> + LaneEvent<Context> {}
