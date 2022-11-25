@@ -105,6 +105,37 @@ where
     }
 }
 
+pub trait UpdateBorrowFn<'a, Context, Shared, T, B: ?Sized> {
+    type Handler: EventHandler<Context> + 'a;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        value: &B,
+        old: Option<T>,
+    ) -> Self::Handler;
+}
+
+impl<'a, Context, Shared, T, B: ?Sized, F, H> UpdateBorrowFn<'a, Context, Shared, T, B> for F
+where
+    H: EventHandler<Context> + 'a,
+    F: Fn(&'a Shared, HandlerContext<Context>, &B, Option<T>) -> H + 'a,
+    Shared: 'a,
+{
+    type Handler = H;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        value: &B,
+        old: Option<T>,
+    ) -> Self::Handler {
+        self(shared, handler_context, value, old)
+    }
+}
+
 pub trait TakeFn<'a, Context, Shared, T> {
     type Handler: EventHandler<Context> + 'a;
 
