@@ -14,6 +14,26 @@
 
 use futures::Future;
 
+pub trait SharedHandlerFn0<'a, Shared> {
+
+    type Fut: Future<Output = ()> + Send + 'a;
+
+    fn apply(&'a mut self, shared: &'a mut Shared) -> Self::Fut;
+}
+
+impl<'a, Shared, F, Fut> SharedHandlerFn0<'a, Shared> for F
+where
+    Shared: 'a,
+    F: FnMut(&'a mut Shared) -> Fut,
+    Fut: Future<Output = ()> + Send + 'a,
+{
+    type Fut = Fut;
+
+    fn apply(&'a mut self, shared: &'a mut Shared) -> Self::Fut {
+        self(shared)
+    }
+}
+
 pub trait EventFn<'a, T> {
 
     type Fut: Future<Output = ()> + Send + 'a;
