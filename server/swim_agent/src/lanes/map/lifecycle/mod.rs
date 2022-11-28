@@ -173,9 +173,10 @@ where
         map: &HashMap<K, V>,
         key: K,
         prev_value: Option<V>,
+        new_value: &V,
     ) -> Self::OnUpdateHandler<'a> {
         self.on_update
-            .on_update(shared, handler_context, map, key, prev_value)
+            .on_update(shared, handler_context, map, key, prev_value, new_value)
     }
 }
 

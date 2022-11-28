@@ -72,10 +72,14 @@ fn map_handler<'a, Context, K, V, LC>(
     map: &HashMap<K, V>,
 ) -> MapLifecycleHandler<'a, Context, K, V, LC>
 where
+    K: Hash + Eq,
     LC: MapLaneLifecycle<K, V, Context>,
 {
     match event {
-        MapLaneEvent::Update(k, v) => Coproduct::Inl(lifecycle.on_update(map, k, v)),
+        MapLaneEvent::Update(k, old) => {
+            let new = &map[&k];
+            Coproduct::Inl(lifecycle.on_update(map, k, old, new))
+        },
         MapLaneEvent::Remove(k, v) => {
             Coproduct::Inr(Coproduct::Inl(lifecycle.on_remove(map, k, v)))
         }
@@ -93,11 +97,13 @@ fn map_handler_shared<'a, Context, Shared, K, V, LC>(
     map: &HashMap<K, V>,
 ) -> MapLifecycleHandlerShared<'a, Context, Shared, K, V, LC>
 where
+    K: Hash + Eq,
     LC: MapLaneLifecycleShared<K, V, Context, Shared>,
 {
     match event {
-        MapLaneEvent::Update(k, v) => {
-            Coproduct::Inl(lifecycle.on_update(shared, handler_context, map, k, v))
+        MapLaneEvent::Update(k, old) => {
+            let new = &map[&k];
+            Coproduct::Inl(lifecycle.on_update(shared, handler_context, map, k, old, new))
         }
         MapLaneEvent::Remove(k, v) => Coproduct::Inr(Coproduct::Inl(lifecycle.on_remove(
             shared,

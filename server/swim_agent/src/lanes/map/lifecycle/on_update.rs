@@ -31,11 +31,13 @@ pub trait OnUpdate<K, V, Context>: Send {
     /// * `map` - The current contents of the map.
     /// * `key` - The key that was removed.
     /// * `prev_value` - The value that was replaced (if any).
+    /// * `new_value` - The updated value.
     fn on_update<'a>(
         &'a self,
         map: &HashMap<K, V>,
         key: K,
         prev_value: Option<V>,
+        new_value: &V,
     ) -> Self::OnUpdateHandler<'a>;
 }
 
@@ -53,6 +55,7 @@ pub trait OnUpdateShared<K, V, Context, Shared>: Send {
     /// * `map` - The current contents of the map.
     /// * `key` - The key that was removed.
     /// * `prev_value` - The value that was replaced (if any).
+    /// * `new_value` - The updated value.
     fn on_update<'a>(
         &'a self,
         shared: &'a Shared,
@@ -60,6 +63,7 @@ pub trait OnUpdateShared<K, V, Context, Shared>: Send {
         map: &HashMap<K, V>,
         key: K,
         prev_value: Option<V>,
+        new_value: &V,
     ) -> Self::OnUpdateHandler<'a>;
 }
 
@@ -73,6 +77,7 @@ impl<K, V, Context> OnUpdate<K, V, Context> for NoHandler {
         _map: &HashMap<K, V>,
         _key: K,
         _prev_value: Option<V>,
+        _new_value: &V,
     ) -> Self::OnUpdateHandler<'a> {
         UnitHandler::default()
     }
@@ -91,6 +96,7 @@ impl<K, V, Context, Shared> OnUpdateShared<K, V, Context, Shared> for NoHandler 
         _map: &HashMap<K, V>,
         _key: K,
         _prev_value: Option<V>,
+        _new_value: &V,
     ) -> Self::OnUpdateHandler<'a> {
         UnitHandler::default()
     }
@@ -98,7 +104,7 @@ impl<K, V, Context, Shared> OnUpdateShared<K, V, Context, Shared> for NoHandler 
 
 impl<K, V, Context, F, H> OnUpdate<K, V, Context> for FnHandler<F>
 where
-    F: Fn(&HashMap<K, V>, K, Option<V>) -> H + Send,
+    F: Fn(&HashMap<K, V>, K, Option<V>, &V) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
     type OnUpdateHandler<'a> = H
@@ -110,9 +116,10 @@ where
         map: &HashMap<K, V>,
         key: K,
         prev_value: Option<V>,
+        new_value: &V,
     ) -> Self::OnUpdateHandler<'a> {
         let FnHandler(f) = self;
-        f(map, key, prev_value)
+        f(map, key, prev_value, new_value)
     }
 }
 
@@ -132,8 +139,9 @@ where
         map: &HashMap<K, V>,
         key: K,
         prev_value: Option<V>,
+        new_value: &V,
     ) -> Self::OnUpdateHandler<'a> {
         let FnHandler(f) = self;
-        f.make_handler(shared, handler_context, map, key, prev_value)
+        f.make_handler(shared, handler_context, map, key, prev_value, new_value)
     }
 }

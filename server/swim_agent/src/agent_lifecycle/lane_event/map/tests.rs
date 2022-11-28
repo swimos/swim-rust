@@ -120,6 +120,7 @@ impl<K: Clone, V: Clone> HandlerAction<TestAgent> for OnUpdateHandler<K, V> {
             previous,
             state,
             done,
+            ..
         } = self;
         if *done {
             StepResult::after_done()
@@ -261,6 +262,7 @@ where
         map: &HashMap<K, V>,
         key: K,
         prev_value: Option<V>,
+        _new_value: &V,
     ) -> Self::OnUpdateHandler<'a> {
         self.on_update_handler(map.clone(), key, prev_value)
     }

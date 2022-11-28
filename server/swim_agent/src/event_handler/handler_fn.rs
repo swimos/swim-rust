@@ -209,13 +209,14 @@ pub trait MapUpdateFn<'a, Context, Shared, K, V> {
         map: &HashMap<K, V>,
         key: K,
         prev_value: Option<V>,
+        new_value: &V,
     ) -> Self::Handler;
 }
 
 impl<'a, Context, Shared, K, V, F, H> MapUpdateFn<'a, Context, Shared, K, V> for F
 where
     H: EventHandler<Context> + 'a,
-    F: Fn(&'a Shared, HandlerContext<Context>, &HashMap<K, V>, K, Option<V>) -> H + 'a,
+    F: Fn(&'a Shared, HandlerContext<Context>, &HashMap<K, V>, K, Option<V>, &V) -> H + 'a,
     Shared: 'a,
 {
     type Handler = H;
@@ -227,8 +228,9 @@ where
         map: &HashMap<K, V>,
         key: K,
         prev_value: Option<V>,
+        new_value: &V,
     ) -> Self::Handler {
-        self(shared, handler_context, map, key, prev_value)
+        self(shared, handler_context, map, key, prev_value, new_value)
     }
 }
 

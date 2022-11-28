@@ -187,10 +187,10 @@ where
         key: K,
         map: &HashMap<K, V>,
         previous: Option<V>,
-        _new_value: &V,
+        new_value: &V,
     ) -> Self::OnUpdateHandler<'a> {
         let FnHandler(f) = self;
-        f.make_handler(shared, handler_context, map, key, previous)
+        f.make_handler(shared, handler_context, map, key, previous, new_value)
     }
 }
 
