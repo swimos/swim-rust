@@ -15,7 +15,7 @@
 #![cfg(feature = "rocks")]
 
 use bytes::BytesMut;
-use swim_api::store::{MapPersistence, NodePersistenceBase, PlanePersistence};
+use swim_api::store::PlanePersistence;
 use swim_persistence::{
     agent::StoreWrapper,
     rocks::{default_db_opts, default_keyspaces},

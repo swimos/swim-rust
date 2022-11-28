@@ -19,7 +19,7 @@ use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
 use bytes::BytesMut;
-use swim_api::store::{MapPersistence, NodePersistenceBase, PlanePersistence};
+use swim_api::store::{PlanePersistence, NodePersistence};
 use swim_model::Text;
 
 use crate::plane::{PlaneStore, PrefixPlaneStore};
@@ -168,19 +168,6 @@ impl<D: PlaneStore> NodeStore for SwimNodeStore<D> {
 #[derive(Debug, Clone)]
 pub struct StoreWrapper<S>(pub S);
 
-impl<'a, S> MapPersistence<'a> for StoreWrapper<S>
-where
-    S: NodeStore,
-{
-    type MapCon = <S as PrefixNodeStore<'a>>::RangeCon;
-
-    fn read_map(&'a self, lane_id: Self::LaneId) -> Result<Self::MapCon, StoreError> {
-        let StoreWrapper(store) = self;
-        let key = StoreKey::Map { lane_id, key: None };
-        store.ranged_snapshot_consumer(key)
-    }
-}
-
 impl<S> PlanePersistence for StoreWrapper<S>
 where
     S: PlaneStore,
@@ -193,7 +180,7 @@ where
     }
 }
 
-impl<S> NodePersistenceBase for StoreWrapper<S>
+impl<S> NodePersistence for StoreWrapper<S>
 where
     S: NodeStore,
 {
@@ -255,5 +242,15 @@ where
     fn delete_value(&self, lane_id: Self::LaneId) -> Result<(), StoreError> {
         let StoreWrapper(store) = self;
         store.delete(StoreKey::Value { lane_id })
+    }
+
+    type MapCon<'a> = <S as PrefixNodeStore<'a>>::RangeCon
+    where
+        Self: 'a;
+
+    fn read_map<'a>(&'a self, lane_id: Self::LaneId) -> Result<Self::MapCon<'a>, StoreError> {
+        let StoreWrapper(store) = self;
+        let key = StoreKey::Map { lane_id, key: None };
+        store.ranged_snapshot_consumer(key)
     }
 }

@@ -21,7 +21,7 @@ use std::{
 use bytes::{BufMut, BytesMut};
 use futures::{future::join, StreamExt};
 use parking_lot::Mutex;
-use swim_api::protocol::map::{MapMessageDecoder, MapOperation, RawMapOperationDecoder};
+use swim_api::{protocol::map::{MapMessageDecoder, MapOperation, RawMapOperationDecoder}, store::NodePersistence};
 use swim_api::{
     error::StoreError,
     protocol::{
@@ -29,7 +29,7 @@ use swim_api::{
         map::MapMessage,
         WithLengthBytesCodec,
     },
-    store::{KeyValue, MapPersistence, NodePersistenceBase, RangeConsumer},
+    store::{KeyValue, RangeConsumer},
 };
 use swim_utilities::{io::byte_channel::byte_channel, non_zero_usize};
 use tokio_util::codec::FramedRead;
@@ -80,7 +80,7 @@ enum Id {
     Map,
 }
 
-impl NodePersistenceBase for FakeStore {
+impl NodePersistence for FakeStore {
     type LaneId = Id;
 
     fn id_for(&self, name: &str) -> Result<Self::LaneId, StoreError> {
@@ -164,12 +164,12 @@ impl NodePersistenceBase for FakeStore {
             Err(StoreError::DelegateMessage("Wrong key kind.".to_owned()))
         }
     }
-}
 
-impl<'a> MapPersistence<'a> for FakeStore {
-    type MapCon = FakeConsumer;
+    type MapCon<'a> = FakeConsumer
+    where
+        Self: 'a;
 
-    fn read_map(&'a self, id: Self::LaneId) -> Result<Self::MapCon, StoreError> {
+    fn read_map<'a>(&'a self, id: Self::LaneId) -> Result<Self::MapCon<'a>, StoreError> {
         if id == Id::Map {
             Ok(FakeConsumer {
                 entries: self
