@@ -18,7 +18,7 @@ use std::sync::Mutex;
 
 use crate::server::keystore::STEP;
 use swim_store::{
-    nostore::NoRange, Keyspace, KeyspaceByteEngine, PrefixRangeByteEngine,
+    nostore::NoRange, Keyspace, KeyspaceByteEngine,
     StoreError, serialize_u64_vec, deserialize_u64,
 };
 
@@ -41,22 +41,23 @@ impl MockStore {
     }
 }
 
-impl<'a> PrefixRangeByteEngine<'a> for MockStore {
-    type RangeCon = NoRange;
+impl KeyspaceByteEngine for MockStore {
 
-    fn get_prefix_range_consumer<S>(
+    type RangeCon<'a> = NoRange
+    where
+        Self: 'a;
+
+    fn get_prefix_range_consumer<'a, S>(
         &'a self,
         _keyspace: S,
         _prefix: &[u8],
-    ) -> Result<Self::RangeCon, StoreError>
+    ) -> Result<Self::RangeCon<'a>, StoreError>
     where
         S: Keyspace,
     {
         Ok(NoRange)
     }
-}
 
-impl KeyspaceByteEngine for MockStore {
     fn put_keyspace<K: Keyspace>(
         &self,
         keyspace: K,

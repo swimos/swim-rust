@@ -21,7 +21,7 @@ use std::path::Path;
 use swim_store::rocks::{RocksEngine, RocksIterator, RocksPrefixIterator, RocksRawPrefixIterator};
 use swim_store::{
     EngineInfo, EngineIterOpts, EngineRefIterator, Keyspace, KeyspaceByteEngine, KeyspaceDef,
-    KeyspaceResolver, Keyspaces, PrefixRangeByteEngine, Store, StoreBuilder, StoreError,
+    KeyspaceResolver, Keyspaces, Store, StoreBuilder, StoreError,
 };
 
 const PREFIX_BLOOM_RATIO: f64 = 0.2;
@@ -41,22 +41,23 @@ impl Store for RocksDatabase {
     }
 }
 
-impl<'a> PrefixRangeByteEngine<'a> for RocksDatabase {
-    type RangeCon = RocksRawPrefixIterator<'a>;
+impl KeyspaceByteEngine for RocksDatabase {
 
-    fn get_prefix_range_consumer<S>(
+    type RangeCon<'a> = RocksRawPrefixIterator<'a>
+    where
+        Self: 'a;
+
+    fn get_prefix_range_consumer<'a, S>(
         &'a self,
         keyspace: S,
         prefix: &[u8],
-    ) -> Result<Self::RangeCon, StoreError>
+    ) -> Result<Self::RangeCon<'a>, StoreError>
     where
         S: Keyspace,
     {
         self.db.get_prefix_range_consumer(keyspace, prefix)
     }
-}
 
-impl KeyspaceByteEngine for RocksDatabase {
     fn put_keyspace<K: Keyspace>(
         &self,
         keyspace: K,
