@@ -164,15 +164,17 @@ impl<'a> OnDownlinkUpdate<'a, i32, Text, FakeAgent> for FakeLifecycle {
     }
 }
 
-impl<'a> OnDownlinkRemove<'a, i32, Text, FakeAgent> for FakeLifecycle {
-    type OnRemoveHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnDownlinkRemove<i32, Text, FakeAgent> for FakeLifecycle {
+    type OnRemoveHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_remove(
+    fn on_remove<'a>(
         &'a self,
         key: i32,
         map: &HashMap<i32, Text>,
         removed: Text,
-    ) -> Self::OnRemoveHandler {
+    ) -> Self::OnRemoveHandler<'a> {
         let map = map.clone();
         SideEffect::from(move || {
             self.events.lock().push(Event::Removed(key, removed, map));
