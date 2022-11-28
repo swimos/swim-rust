@@ -31,12 +31,12 @@ mod on_unlinked;
 
 /// The set of handlers that a value downlink lifecycle supports.
 pub trait ValueDownlinkHandlers<'a, T>:
-    OnLinked + OnSynced<'a, T> + OnEvent<T> + OnSet<'a, T> + OnUnlinked<'a>
+    OnLinked + OnSynced<'a, T> + OnEvent<T> + OnSet<'a, T> + OnUnlinked
 {
 }
 
 /// The set of handlers that an event downlink lifecycle supports.
-pub trait EventDownlinkHandlers<'a, T>: OnLinked + OnEvent<T> + OnUnlinked<'a> {}
+pub trait EventDownlinkHandlers<'a, T>: OnLinked + OnEvent<T> + OnUnlinked {}
 
 /// Description of a lifecycle for a value downlink.
 pub trait ValueDownlinkLifecycle<T>: for<'a> ValueDownlinkHandlers<'a, T> {}
@@ -49,12 +49,12 @@ impl<T, L> ValueDownlinkLifecycle<T> for L where L: for<'a> ValueDownlinkHandler
 impl<T, L> EventDownlinkLifecycle<T> for L where L: for<'a> EventDownlinkHandlers<'a, T> {}
 
 impl<'a, T, L> ValueDownlinkHandlers<'a, T> for L where
-    L: OnLinked + OnSynced<'a, T> + OnEvent<T> + OnSet<'a, T> + OnUnlinked<'a>
+    L: OnLinked + OnSynced<'a, T> + OnEvent<T> + OnSet<'a, T> + OnUnlinked
 {
 }
 
 impl<'a, T, L> EventDownlinkHandlers<'a, T> for L where
-    L: OnLinked + OnEvent<T> + OnUnlinked<'a>
+    L: OnLinked + OnEvent<T> + OnUnlinked
 {
 }
 
@@ -278,7 +278,7 @@ where
         f: F,
     ) -> BasicValueDownlinkLifecycle<T, FLinked, FSynced, FEv, FSet, FnMutHandler<F>>
     where
-        FnMutHandler<F>: for<'a> OnUnlinked<'a>,
+        FnMutHandler<F>: OnUnlinked,
     {
         BasicValueDownlinkLifecycle {
             _value_type: PhantomData,
@@ -398,7 +398,7 @@ where
     }
 }
 
-impl<'a, T, FLinked, FSynced, FEv, FSet, FUnlinked> OnUnlinked<'a>
+impl<T, FLinked, FSynced, FEv, FSet, FUnlinked> OnUnlinked
     for BasicValueDownlinkLifecycle<T, FLinked, FSynced, FEv, FSet, FUnlinked>
 where
     T: Send + Sync + 'static,
@@ -406,11 +406,13 @@ where
     FSynced: Send,
     FEv: Send,
     FSet: Send,
-    FUnlinked: OnUnlinked<'a>,
+    FUnlinked: OnUnlinked,
 {
-    type OnUnlinkedFut = FUnlinked::OnUnlinkedFut;
+    type OnUnlinkedFut<'a> = FUnlinked::OnUnlinkedFut<'a>
+    where
+        Self: 'a;
 
-    fn on_unlinked(&'a mut self) -> Self::OnUnlinkedFut {
+    fn on_unlinked<'a>(&'a mut self) -> Self::OnUnlinkedFut<'a> {
         self.on_unlinked.on_unlinked()
     }
 }
@@ -630,7 +632,7 @@ where
         f: F,
     ) -> StatefulValueDownlinkLifecycle<T, Shared, FLinked, FSynced, FEv, FSet, FnMutHandler<F>>
     where
-        FnMutHandler<F>: for<'a> OnUnlinkedShared<'a, Shared>,
+        FnMutHandler<F>: OnUnlinkedShared<Shared>,
     {
         StatefulValueDownlinkLifecycle {
             _value_type: PhantomData,
@@ -752,7 +754,7 @@ where
     }
 }
 
-impl<'a, T, Shared, FLinked, FSynced, FEv, FSet, FUnlinked> OnUnlinked<'a>
+impl<T, Shared, FLinked, FSynced, FEv, FSet, FUnlinked> OnUnlinked
     for StatefulValueDownlinkLifecycle<T, Shared, FLinked, FSynced, FEv, FSet, FUnlinked>
 where
     T: Send + Sync + 'static,
@@ -761,11 +763,13 @@ where
     FSynced: Send,
     FEv: Send,
     FSet: Send,
-    FUnlinked: OnUnlinkedShared<'a, Shared>,
+    FUnlinked: OnUnlinkedShared<Shared>,
 {
-    type OnUnlinkedFut = FUnlinked::OnUnlinkedFut;
+    type OnUnlinkedFut<'a> = FUnlinked::OnUnlinkedFut<'a>
+    where
+        Self: 'a;
 
-    fn on_unlinked(&'a mut self) -> Self::OnUnlinkedFut {
+    fn on_unlinked<'a>(&'a mut self) -> Self::OnUnlinkedFut<'a> {
         let StatefulValueDownlinkLifecycle {
             shared,
             on_unlinked,
@@ -874,7 +878,7 @@ where
         f: F,
     ) -> BasicEventDownlinkLifecycle<T, FLinked, FEv, FnMutHandler<F>>
     where
-        FnMutHandler<F>: for<'a> OnUnlinked<'a>,
+        FnMutHandler<F>: OnUnlinked,
     {
         BasicEventDownlinkLifecycle {
             _value_type: PhantomData,
@@ -950,17 +954,19 @@ where
     }
 }
 
-impl<'a, T, FLinked, FEv, FUnlinked> OnUnlinked<'a>
+impl<T, FLinked, FEv, FUnlinked> OnUnlinked
     for BasicEventDownlinkLifecycle<T, FLinked, FEv, FUnlinked>
 where
     T: Send + Sync + 'static,
     FLinked: Send,
     FEv: Send,
-    FUnlinked: OnUnlinked<'a>,
+    FUnlinked: OnUnlinked,
 {
-    type OnUnlinkedFut = FUnlinked::OnUnlinkedFut;
+    type OnUnlinkedFut<'a> = FUnlinked::OnUnlinkedFut<'a>
+    where
+        Self: 'a;
 
-    fn on_unlinked(&'a mut self) -> Self::OnUnlinkedFut {
+    fn on_unlinked<'a>(&'a mut self) -> Self::OnUnlinkedFut<'a> {
         self.on_unlinked.on_unlinked()
     }
 }
@@ -1046,7 +1052,7 @@ where
         f: F,
     ) -> StatefulEventDownlinkLifecycle<T, Shared, FLinked, FEv, FnMutHandler<F>>
     where
-        FnMutHandler<F>: for<'a> OnUnlinkedShared<'a, Shared>,
+        FnMutHandler<F>: OnUnlinkedShared<Shared>,
     {
         StatefulEventDownlinkLifecycle {
             _value_type: PhantomData,
@@ -1118,18 +1124,20 @@ where
     }
 }
 
-impl<'a, T, Shared, FLinked, FEv, FUnlinked> OnUnlinked<'a>
+impl<T, Shared, FLinked, FEv, FUnlinked> OnUnlinked
     for StatefulEventDownlinkLifecycle<T, Shared, FLinked, FEv, FUnlinked>
 where
     T: Send + Sync + 'static,
     Shared: Send + Sync + 'static,
     FLinked: Send,
     FEv: Send,
-    FUnlinked: OnUnlinkedShared<'a, Shared>,
+    FUnlinked: OnUnlinkedShared<Shared>,
 {
-    type OnUnlinkedFut = FUnlinked::OnUnlinkedFut;
+    type OnUnlinkedFut<'a> = FUnlinked::OnUnlinkedFut<'a>
+    where
+        Self: 'a;
 
-    fn on_unlinked(&'a mut self) -> Self::OnUnlinkedFut {
+    fn on_unlinked<'a>(&'a mut self) -> Self::OnUnlinkedFut<'a> {
         let StatefulEventDownlinkLifecycle {
             shared,
             on_unlinked,
