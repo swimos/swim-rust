@@ -143,16 +143,18 @@ impl OnSynced<HashMap<i32, Text>, FakeAgent> for FakeLifecycle {
     }
 }
 
-impl<'a> OnDownlinkUpdate<'a, i32, Text, FakeAgent> for FakeLifecycle {
-    type OnUpdateHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnDownlinkUpdate<i32, Text, FakeAgent> for FakeLifecycle {
+    type OnUpdateHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_update(
+    fn on_update<'a>(
         &'a self,
         key: i32,
         map: &HashMap<i32, Text>,
         previous: Option<Text>,
         new_value: &Text,
-    ) -> Self::OnUpdateHandler {
+    ) -> Self::OnUpdateHandler<'a> {
         let map = map.clone();
         let new_value = new_value.clone();
         SideEffect::from(move || {

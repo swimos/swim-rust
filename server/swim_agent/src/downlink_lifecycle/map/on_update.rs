@@ -19,31 +19,36 @@ use swim_api::handlers::{BorrowHandler, FnHandler, NoHandler};
 use crate::{
     agent_lifecycle::utility::HandlerContext,
     downlink_lifecycle::{LiftShared, WithHandlerContext},
-    event_handler::{EventHandler, UnitHandler},
+    event_handler::{EventHandler, UnitHandler, MapUpdateFn, MapUpdateBorrowFn},
 };
 
 /// Lifecycle event for the `on_update` event of a downlink, from an agent.
-pub trait OnDownlinkUpdate<'a, K, V, Context>: Send {
-    type OnUpdateHandler: EventHandler<Context> + 'a;
+pub trait OnDownlinkUpdate<K, V, Context>: Send {
+    type OnUpdateHandler<'a>: EventHandler<Context> + 'a
+    where
+        Self: 'a;
 
     /// #Arguments
     /// * `key` - The key that has been updated.
     /// * `map` - The current state of the map.
     /// * `previous` - The previous value, if any.
     /// * `new_value` - The new value of the entry.
-    fn on_update(
+    fn on_update<'a>(
         &'a self,
         key: K,
         map: &HashMap<K, V>,
         previous: Option<V>,
         new_value: &V,
-    ) -> Self::OnUpdateHandler;
+    ) -> Self::OnUpdateHandler<'a>;
 }
 
 /// Lifecycle event for the `on_update` event of a downlink, from an agent, where the event
 /// handler has shared state with other handlers for the same downlink.
-pub trait OnDownlinkUpdateShared<'a, K, V, Context, Shared>: Send {
-    type OnUpdateHandler: EventHandler<Context> + 'a;
+pub trait OnDownlinkUpdateShared<K, V, Context, Shared>: Send {
+    type OnUpdateHandler<'a>: EventHandler<Context> + 'a
+    where
+        Self: 'a,
+        Shared: 'a;
 
     /// #Arguments
     /// * `shared` - The shared state.
@@ -52,7 +57,7 @@ pub trait OnDownlinkUpdateShared<'a, K, V, Context, Shared>: Send {
     /// * `map` - The current state of the map.
     /// * `previous` - The previous value, if any.
     /// * `new_value` - The new value of the entry.
-    fn on_update(
+    fn on_update<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
@@ -60,27 +65,32 @@ pub trait OnDownlinkUpdateShared<'a, K, V, Context, Shared>: Send {
         map: &HashMap<K, V>,
         previous: Option<V>,
         new_value: &V,
-    ) -> Self::OnUpdateHandler;
+    ) -> Self::OnUpdateHandler<'a>;
 }
 
-impl<'a, K, V, Context> OnDownlinkUpdate<'a, K, V, Context> for NoHandler {
-    type OnUpdateHandler = UnitHandler;
+impl<K, V, Context> OnDownlinkUpdate<K, V, Context> for NoHandler {
+    type OnUpdateHandler<'a> = UnitHandler
+    where
+        Self: 'a;
 
-    fn on_update(
+    fn on_update<'a>(
         &'a self,
         _key: K,
         _map: &HashMap<K, V>,
         _previous: Option<V>,
         _new_value: &V,
-    ) -> Self::OnUpdateHandler {
+    ) -> Self::OnUpdateHandler<'a> {
         UnitHandler::default()
     }
 }
 
-impl<'a, K, V, Context, Shared> OnDownlinkUpdateShared<'a, K, V, Context, Shared> for NoHandler {
-    type OnUpdateHandler = UnitHandler;
+impl<K, V, Context, Shared> OnDownlinkUpdateShared<K, V, Context, Shared> for NoHandler {
+    type OnUpdateHandler<'a> = UnitHandler
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_update(
+    fn on_update<'a>(
         &'a self,
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
@@ -88,64 +98,70 @@ impl<'a, K, V, Context, Shared> OnDownlinkUpdateShared<'a, K, V, Context, Shared
         _map: &HashMap<K, V>,
         _previous: Option<V>,
         _new_value: &V,
-    ) -> Self::OnUpdateHandler {
+    ) -> Self::OnUpdateHandler<'a> {
         UnitHandler::default()
     }
 }
 
-impl<'a, K, V, Context, F, H> OnDownlinkUpdate<'a, K, V, Context> for FnHandler<F>
+impl<K, V, Context, F, H> OnDownlinkUpdate<K, V, Context> for FnHandler<F>
 where
-    F: Fn(K, &HashMap<K, V>, Option<V>, &V) -> H + Send + 'a,
-    H: EventHandler<Context> + 'a,
+    F: Fn(K, &HashMap<K, V>, Option<V>, &V) -> H + Send,
+    H: EventHandler<Context> + 'static,
 {
-    type OnUpdateHandler = H;
+    type OnUpdateHandler<'a> = H
+    where
+        Self: 'a;
 
-    fn on_update(
+    fn on_update<'a>(
         &'a self,
         key: K,
         map: &HashMap<K, V>,
         previous: Option<V>,
         new_value: &V,
-    ) -> Self::OnUpdateHandler {
+    ) -> Self::OnUpdateHandler<'a> {
         let FnHandler(f) = self;
         f(key, map, previous, new_value)
     }
 }
 
-impl<'a, B, K, V, Context, F, H> OnDownlinkUpdate<'a, K, V, Context> for BorrowHandler<F, B>
+impl<B, K, V, Context, F, H> OnDownlinkUpdate<K, V, Context> for BorrowHandler<F, B>
 where
     B: ?Sized,
     V: Borrow<B>,
-    F: Fn(K, &HashMap<K, V>, Option<V>, &B) -> H + Send + 'a,
-    H: EventHandler<Context> + 'a,
+    F: Fn(K, &HashMap<K, V>, Option<V>, &B) -> H + Send + 'static,
+    H: EventHandler<Context> + 'static,
 {
-    type OnUpdateHandler = H;
+    type OnUpdateHandler<'a> = H
+    where
+        Self: 'a;
 
-    fn on_update(
+    fn on_update<'a>(
         &'a self,
         key: K,
         map: &HashMap<K, V>,
         previous: Option<V>,
         new_value: &V,
-    ) -> Self::OnUpdateHandler {
+    ) -> Self::OnUpdateHandler<'a> {
         (self.as_ref())(key, map, previous, new_value.borrow())
     }
 }
 
-impl<'a, Context, K, V, F, H> OnDownlinkUpdate<'a, K, V, Context> for WithHandlerContext<Context, F>
+impl<Context, K, V, F, H> OnDownlinkUpdate<K, V, Context> for WithHandlerContext<Context, F>
 where
     F: Fn(HandlerContext<Context>, K, &HashMap<K, V>, Option<V>, &V) -> H + Send,
-    H: EventHandler<Context> + 'a,
+    H: EventHandler<Context> + 'static,
 {
-    type OnUpdateHandler = H;
+    type OnUpdateHandler<'a> = H
+    where
+        Self: 'a;
 
-    fn on_update(
+    fn on_update<'a>(
         &'a self,
         key: K,
         map: &HashMap<K, V>,
         previous: Option<V>,
         new_value: &V,
-    ) -> Self::OnUpdateHandler {
+    ) -> Self::OnUpdateHandler<'a> {
         let WithHandlerContext {
             inner,
             handler_context,
@@ -154,41 +170,43 @@ where
     }
 }
 
-impl<'a, K, V, Context, Shared, F, H> OnDownlinkUpdateShared<'a, K, V, Context, Shared>
+impl<K, V, Context, Shared, F> OnDownlinkUpdateShared<K, V, Context, Shared>
     for FnHandler<F>
 where
-    F: Fn(&'a Shared, HandlerContext<Context>, K, &HashMap<K, V>, Option<V>, &V) -> H + Send + 'a,
-    Shared: 'a,
-    H: EventHandler<Context> + 'a,
+    F: for<'a> MapUpdateFn<'a, Context, Shared, K, V> + Send,
 {
-    type OnUpdateHandler = H;
+    type OnUpdateHandler<'a> = <F as MapUpdateFn<'a, Context, Shared, K, V>>::Handler
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_update(
+    fn on_update<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         key: K,
         map: &HashMap<K, V>,
         previous: Option<V>,
-        new_value: &V,
-    ) -> Self::OnUpdateHandler {
+        _new_value: &V,
+    ) -> Self::OnUpdateHandler<'a> {
         let FnHandler(f) = self;
-        f(shared, handler_context, key, map, previous, new_value)
+        f.make_handler(shared, handler_context, map, key, previous)
     }
 }
 
-impl<'a, B, K, V, Context, Shared, F, H> OnDownlinkUpdateShared<'a, K, V, Context, Shared>
+impl<B, K, V, Context, Shared, F> OnDownlinkUpdateShared<K, V, Context, Shared>
     for BorrowHandler<F, B>
 where
     B: ?Sized,
     V: Borrow<B>,
-    F: Fn(&'a Shared, HandlerContext<Context>, K, &HashMap<K, V>, Option<V>, &B) -> H + Send + 'a,
-    Shared: 'a,
-    H: EventHandler<Context> + 'a,
+    F: for<'a> MapUpdateBorrowFn<'a, Context, Shared, K, V, B> + Send,
 {
-    type OnUpdateHandler = H;
+    type OnUpdateHandler<'a> = <F as MapUpdateBorrowFn<'a, Context, Shared, K, V, B>>::Handler
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_update(
+    fn on_update<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
@@ -196,26 +214,29 @@ where
         map: &HashMap<K, V>,
         previous: Option<V>,
         new_value: &V,
-    ) -> Self::OnUpdateHandler {
-        (self.as_ref())(
+    ) -> Self::OnUpdateHandler<'a> {
+        (self.as_ref()).make_handler(
             shared,
             handler_context,
-            key,
             map,
+            key,
             previous,
             new_value.borrow(),
         )
     }
 }
 
-impl<'a, K, V, Context, Shared, F> OnDownlinkUpdateShared<'a, K, V, Context, Shared>
+impl<K, V, Context, Shared, F> OnDownlinkUpdateShared<K, V, Context, Shared>
     for LiftShared<F, Shared>
 where
-    F: OnDownlinkUpdate<'a, K, V, Context> + Send,
+    F: OnDownlinkUpdate<K, V, Context> + Send,
 {
-    type OnUpdateHandler = F::OnUpdateHandler;
+    type OnUpdateHandler<'a> = F::OnUpdateHandler<'a>
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_update(
+    fn on_update<'a>(
         &'a self,
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
@@ -223,7 +244,7 @@ where
         map: &HashMap<K, V>,
         previous: Option<V>,
         new_value: &V,
-    ) -> Self::OnUpdateHandler {
+    ) -> Self::OnUpdateHandler<'a> {
         let LiftShared { inner, .. } = self;
         inner.on_update(key, map, previous, new_value)
     }

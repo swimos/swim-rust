@@ -231,3 +231,38 @@ where
         self(shared, handler_context, map, key, prev_value)
     }
 }
+
+pub trait MapUpdateBorrowFn<'a, Context, Shared, K, V, B: ?Sized> {
+    type Handler: EventHandler<Context> + 'a;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        map: &HashMap<K, V>,
+        key: K,
+        prev_value: Option<V>,
+        new_value: &B,
+    ) -> Self::Handler;
+}
+
+impl<'a, Context, Shared, K, V, B: ?Sized, F, H> MapUpdateBorrowFn<'a, Context, Shared, K, V, B> for F
+where
+    H: EventHandler<Context> + 'a,
+    F: Fn(&'a Shared, HandlerContext<Context>, &HashMap<K, V>, K, Option<V>, &B) -> H + 'a,
+    Shared: 'a,
+{
+    type Handler = H;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        map: &HashMap<K, V>,
+        key: K,
+        prev_value: Option<V>,
+        new_value: &B,
+    ) -> Self::Handler {
+        self(shared, handler_context, map, key, prev_value, new_value)
+    }
+}

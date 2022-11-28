@@ -35,26 +35,6 @@ pub mod on_clear;
 pub mod on_remove;
 pub mod on_update;
 
-pub trait MapDownlinkHandlers<'a, K, V, Context>:
-    OnLinked<Context>
-    + OnSynced<HashMap<K, V>, Context>
-    + OnDownlinkUpdate<'a, K, V, Context>
-    + OnDownlinkRemove<K, V, Context>
-    + OnDownlinkClear<K, V, Context>
-    + OnUnlinked<Context>
-{
-}
-
-impl<'a, K, V, Context, LC> MapDownlinkHandlers<'a, K, V, Context> for LC where
-    LC: OnLinked<Context>
-        + OnSynced<HashMap<K, V>, Context>
-        + OnDownlinkUpdate<'a, K, V, Context>
-        + OnDownlinkRemove<K, V, Context>
-        + OnDownlinkClear<K, V, Context>
-        + OnUnlinked<Context>
-{
-}
-
 /// Trait for the lifecycle of a map downlink.
 ///
 /// #Type Parameters
@@ -62,12 +42,22 @@ impl<'a, K, V, Context, LC> MapDownlinkHandlers<'a, K, V, Context> for LC where
 /// * `V` - The type of the values of the downlink.
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 pub trait MapDownlinkLifecycle<K, V, Context>:
-    for<'a> MapDownlinkHandlers<'a, K, V, Context>
+OnLinked<Context>
++ OnSynced<HashMap<K, V>, Context>
++ OnDownlinkUpdate<K, V, Context>
++ OnDownlinkRemove<K, V, Context>
++ OnDownlinkClear<K, V, Context>
++ OnUnlinked<Context>
 {
 }
 
 impl<LC, K, V, Context> MapDownlinkLifecycle<K, V, Context> for LC where
-    LC: for<'a> MapDownlinkHandlers<'a, K, V, Context>
+    LC: OnLinked<Context>
+    + OnSynced<HashMap<K, V>, Context>
+    + OnDownlinkUpdate<K, V, Context>
+    + OnDownlinkRemove<K, V, Context>
+    + OnDownlinkClear<K, V, Context>
+    + OnUnlinked<Context>
 {
 }
 
@@ -294,26 +284,28 @@ where
     }
 }
 
-impl<'a, Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
-    OnDownlinkUpdate<'a, K, V, Context>
+impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
+    OnDownlinkUpdate<K, V, Context>
     for StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
 where
     FLinked: Send,
     FSynced: Send,
     FUnlinked: Send,
-    FUpd: OnDownlinkUpdate<'a, K, V, Context>,
+    FUpd: OnDownlinkUpdate<K, V, Context>,
     FRem: Send,
     FClr: Send,
 {
-    type OnUpdateHandler = FUpd::OnUpdateHandler;
+    type OnUpdateHandler<'a> = FUpd::OnUpdateHandler<'a>
+    where
+        Self: 'a;
 
-    fn on_update(
+    fn on_update<'a>(
         &'a self,
         key: K,
         map: &HashMap<K, V>,
         previous: Option<V>,
         new_value: &V,
-    ) -> Self::OnUpdateHandler {
+    ) -> Self::OnUpdateHandler<'a> {
         let StatelessMapDownlinkLifecycle { on_update, .. } = self;
         on_update.on_update(key, map, previous, new_value)
     }
@@ -481,7 +473,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FClr,
     >
     where
-        WithHandlerContext<Context, F>: for<'a> OnDownlinkUpdate<'a, K, V, Context>,
+        WithHandlerContext<Context, F>: OnDownlinkUpdate<K, V, Context>,
     {
         StatelessMapDownlinkLifecycle {
             _type: PhantomData,
@@ -694,8 +686,8 @@ where
     }
 }
 
-impl<'a, Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
-    OnDownlinkUpdate<'a, K, V, Context>
+impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
+    OnDownlinkUpdate<K, V, Context>
     for StatefulMapDownlinkLifecycle<
         Context,
         State,
@@ -713,19 +705,21 @@ where
     FLinked: Send,
     FSynced: Send,
     FUnlinked: Send,
-    FUpd: OnDownlinkUpdateShared<'a, K, V, Context, State>,
+    FUpd: OnDownlinkUpdateShared<K, V, Context, State>,
     FRem: Send,
     FClr: Send,
 {
-    type OnUpdateHandler = FUpd::OnUpdateHandler;
+    type OnUpdateHandler<'a> = FUpd::OnUpdateHandler<'a>
+    where
+        Self: 'a;
 
-    fn on_update(
+    fn on_update<'a>(
         &'a self,
         key: K,
         map: &HashMap<K, V>,
         previous: Option<V>,
         new_value: &V,
-    ) -> Self::OnUpdateHandler {
+    ) -> Self::OnUpdateHandler<'a> {
         let StatefulMapDownlinkLifecycle {
             on_update,
             state,
@@ -939,7 +933,7 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FClr,
     >
     where
-        FnHandler<F>: for<'a> OnDownlinkUpdateShared<'a, K, V, Context, State>,
+        FnHandler<F>: OnDownlinkUpdateShared<K, V, Context, State>,
     {
         StatefulMapDownlinkLifecycle {
             _type: PhantomData,
