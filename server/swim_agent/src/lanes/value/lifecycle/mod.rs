@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::marker::PhantomData;
+use std::{borrow::Borrow, marker::PhantomData};
 
-use swim_api::handlers::{FnHandler, NoHandler};
+use swim_api::handlers::{BorrowHandler, NoHandler};
 
 use crate::agent_lifecycle::utility::HandlerContext;
 
@@ -92,32 +92,34 @@ impl<Context, Shared, T> Default for StatefulValueLaneLifecycle<Context, Shared,
 
 impl<Context, Shared, T, FEv, FSet> StatefulValueLaneLifecycle<Context, Shared, T, FEv, FSet> {
     /// Replace the `on_event` handler with another derived from a closure.
-    pub fn on_event<F>(
+    pub fn on_event<F, B>(
         self,
         f: F,
-    ) -> StatefulValueLaneLifecycle<Context, Shared, T, FnHandler<F>, FSet>
+    ) -> StatefulValueLaneLifecycle<Context, Shared, T, BorrowHandler<F, B>, FSet>
     where
-        FnHandler<F>: OnEventShared<T, Context, Shared>,
+        T: Borrow<B>,
+        BorrowHandler<F, B>: OnEventShared<T, Context, Shared>,
     {
         StatefulValueLaneLifecycle {
             _value_type: PhantomData,
-            on_event: FnHandler(f),
+            on_event: BorrowHandler::new(f),
             on_set: self.on_set,
         }
     }
 
     /// Replace the `on_set` handler with another derived from a closure.
-    pub fn on_set<F>(
+    pub fn on_set<F, B>(
         self,
         f: F,
-    ) -> StatefulValueLaneLifecycle<Context, Shared, T, FEv, FnHandler<F>>
+    ) -> StatefulValueLaneLifecycle<Context, Shared, T, FEv, BorrowHandler<F, B>>
     where
-        FnHandler<F>: OnSetShared<T, Context, Shared>,
+        T: Borrow<B>,
+        BorrowHandler<F, B>: OnSetShared<T, Context, Shared>,
     {
         StatefulValueLaneLifecycle {
             _value_type: PhantomData,
             on_event: self.on_event,
-            on_set: FnHandler(f),
+            on_set: BorrowHandler::new(f),
         }
     }
 }

@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_api::handlers::{FnHandler, NoHandler};
+use std::borrow::Borrow;
+
+use swim_api::handlers::{BorrowHandler, FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
-    event_handler::{EventHandler, UnitHandler, UpdateFn},
+    event_handler::{EventHandler, UnitHandler, UpdateBorrowFn, UpdateFn},
 };
 
 /// Event handler to be called each time the value of a value lane changes, consuming the new value
@@ -116,5 +118,43 @@ where
     ) -> Self::OnSetHandler<'a> {
         let FnHandler(f) = self;
         f.make_handler(shared, handler_context, new_value, existing)
+    }
+}
+
+impl<B, T, Context, F, H> OnSet<T, Context> for BorrowHandler<F, B>
+where
+    B: ?Sized,
+    T: Borrow<B>,
+    F: Fn(Option<T>, &B) -> H + Send,
+    H: EventHandler<Context> + 'static,
+{
+    type OnSetHandler<'a> = H
+    where
+        Self: 'a;
+
+    fn on_set<'a>(&'a self, existing: Option<T>, new_value: &T) -> Self::OnSetHandler<'a> {
+        (self.as_ref())(existing, new_value.borrow())
+    }
+}
+
+impl<B, T, Context, Shared, F> OnSetShared<T, Context, Shared> for BorrowHandler<F, B>
+where
+    B: ?Sized,
+    T: Borrow<B>,
+    F: for<'a> UpdateBorrowFn<'a, Context, Shared, T, B> + Send,
+{
+    type OnSetHandler<'a> = <F as UpdateBorrowFn<'a, Context, Shared, T, B>>::Handler
+    where
+        Self: 'a,
+        Shared: 'a;
+
+    fn on_set<'a>(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        new_value: &T,
+        existing: Option<T>,
+    ) -> Self::OnSetHandler<'a> {
+        (self.as_ref()).make_handler(shared, handler_context, new_value.borrow(), existing)
     }
 }

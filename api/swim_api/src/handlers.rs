@@ -26,6 +26,7 @@ pub struct FnMutHandler<F>(pub F);
 #[derive(Clone, Copy, Default, Debug)]
 pub struct FnHandler<F>(pub F);
 
+#[derive(Clone, Copy, Default, Debug)]
 pub struct BorrowHandler<F, B: ?Sized>(F, PhantomData<fn(B)>);
 
 impl<F, B: ?Sized> BorrowHandler<F, B> {
