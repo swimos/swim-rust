@@ -741,7 +741,7 @@ impl Hash for Value {
             }
             Value::BooleanValue(p) => {
                 state.write_u8(BOOLEAN_HASH);
-                state.write_u8(if *p { 1 } else { 0 })
+                state.write_u8(u8::from(*p))
             }
             Value::Text(s) => {
                 state.write_u8(TEXT_HASH);

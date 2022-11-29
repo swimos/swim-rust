@@ -49,10 +49,7 @@ pub trait NodeStore: StoreEngine + Send + Sync + Clone + Debug + 'static {
     ///
     /// #Arguments
     /// * `prefix` - Common prefix for the records to read.
-    fn ranged_snapshot_consumer<'a>(
-        &'a self,
-        prefix: StoreKey,
-    ) -> Result<Self::RangeCon<'a>, StoreError>;
+    fn ranged_snapshot_consumer(&self, prefix: StoreKey) -> Result<Self::RangeCon<'_>, StoreError>;
 
     /// Returns information about the delegate store
     fn engine_info(&self) -> EngineInfo;
@@ -134,10 +131,7 @@ impl<D: PlaneStore> NodeStore for SwimNodeStore<D> {
     where
         Self: 'a;
 
-    fn ranged_snapshot_consumer<'a>(
-        &'a self,
-        prefix: StoreKey,
-    ) -> Result<Self::RangeCon<'a>, StoreError> {
+    fn ranged_snapshot_consumer(&self, prefix: StoreKey) -> Result<Self::RangeCon<'_>, StoreError> {
         self.delegate.ranged_snapshot_consumer(prefix)
     }
 
@@ -252,7 +246,7 @@ where
     where
         Self: 'a;
 
-    fn read_map<'a>(&'a self, lane_id: Self::LaneId) -> Result<Self::MapCon<'a>, StoreError> {
+    fn read_map(&self, lane_id: Self::LaneId) -> Result<Self::MapCon<'_>, StoreError> {
         let StoreWrapper(store) = self;
         let key = StoreKey::Map { lane_id, key: None };
         store.ranged_snapshot_consumer(key)

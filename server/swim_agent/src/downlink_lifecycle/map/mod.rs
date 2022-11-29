@@ -237,7 +237,7 @@ where
     where
         Self: 'a;
 
-    fn on_linked<'a>(&'a self) -> Self::OnLinkedHandler<'a> {
+    fn on_linked(&self) -> Self::OnLinkedHandler<'_> {
         let StatelessMapDownlinkLifecycle { on_linked, .. } = self;
         on_linked.on_linked()
     }
@@ -277,7 +277,7 @@ where
     where
         Self: 'a;
 
-    fn on_unlinked<'a>(&'a self) -> Self::OnUnlinkedHandler<'a> {
+    fn on_unlinked(&self) -> Self::OnUnlinkedHandler<'_> {
         let StatelessMapDownlinkLifecycle { on_unlinked, .. } = self;
         on_unlinked.on_unlinked()
     }
@@ -348,7 +348,7 @@ where
     where
         Self: 'a;
 
-    fn on_clear<'a>(&'a self, map: HashMap<K, V>) -> Self::OnClearHandler<'a> {
+    fn on_clear(&self, map: HashMap<K, V>) -> Self::OnClearHandler<'_> {
         let StatelessMapDownlinkLifecycle { on_clear, .. } = self;
         on_clear.on_clear(map)
     }
@@ -600,7 +600,7 @@ where
     where
         Self: 'a;
 
-    fn on_linked<'a>(&'a self) -> Self::OnLinkedHandler<'a> {
+    fn on_linked(&self) -> Self::OnLinkedHandler<'_> {
         let StatefulMapDownlinkLifecycle {
             on_linked,
             state,
@@ -675,7 +675,7 @@ where
     where
         Self: 'a;
 
-    fn on_unlinked<'a>(&'a self) -> Self::OnUnlinkedHandler<'a> {
+    fn on_unlinked(&self) -> Self::OnUnlinkedHandler<'_> {
         let StatefulMapDownlinkLifecycle {
             on_unlinked,
             state,
@@ -800,7 +800,7 @@ where
     where
         Self: 'a;
 
-    fn on_clear<'a>(&'a self, map: HashMap<K, V>) -> Self::OnClearHandler<'a> {
+    fn on_clear(&self, map: HashMap<K, V>) -> Self::OnClearHandler<'_> {
         let StatefulMapDownlinkLifecycle {
             on_clear,
             state,

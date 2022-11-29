@@ -65,18 +65,18 @@ impl<'a> ToTokens for DeriveTag<UnitEnum<'a>> {
         }) = self;
 
         let var_as_str = variants.iter().map(|(var_name, rename)| {
-            let lit = lit_name(*var_name, rename);
+            let lit = lit_name(var_name, rename);
             quote!(#name::#var_name => #lit)
         });
 
         let str_as_var = variants.iter().map(|(var_name, rename)| {
-            let lit = lit_name(*var_name, rename);
+            let lit = lit_name(var_name, rename);
             quote!(#lit => ::core::result::Result::Ok(#name::#var_name))
         });
 
         let literals = variants
             .iter()
-            .map(|(var_name, rename)| lit_name(*var_name, rename));
+            .map(|(var_name, rename)| lit_name(var_name, rename));
 
         let err_lit = format!("Possible values are: {}.", Variants(variants.as_slice()));
         let num_vars = variants.len();

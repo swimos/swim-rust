@@ -2315,7 +2315,7 @@ impl<T> Recognizer for UnitStructRecognizer<T> {
                     }
                 } else {
                     Some(Err(
-                        input.kind_error(ExpectedEvent::Attribute(Some(Text::new(*tag))))
+                        input.kind_error(ExpectedEvent::Attribute(Some(Text::new(tag))))
                     ))
                 }
             }

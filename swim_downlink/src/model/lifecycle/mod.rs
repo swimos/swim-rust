@@ -326,7 +326,7 @@ where
     where
         Self: 'a;
 
-    fn on_linked<'a>(&'a mut self) -> Self::OnLinkedFut<'a> {
+    fn on_linked(&mut self) -> Self::OnLinkedFut<'_> {
         self.on_linked.on_linked()
     }
 }
@@ -404,7 +404,7 @@ where
     where
         Self: 'a;
 
-    fn on_unlinked<'a>(&'a mut self) -> Self::OnUnlinkedFut<'a> {
+    fn on_unlinked(&mut self) -> Self::OnUnlinkedFut<'_> {
         self.on_unlinked.on_unlinked()
     }
 }
@@ -674,7 +674,7 @@ where
         Self: 'a,
         Shared: 'a;
 
-    fn on_linked<'a>(&'a mut self) -> Self::OnLinkedFut<'a> {
+    fn on_linked(&mut self) -> Self::OnLinkedFut<'_> {
         let StatefulValueDownlinkLifecycle {
             shared, on_linked, ..
         } = self;
@@ -767,7 +767,7 @@ where
     where
         Self: 'a;
 
-    fn on_unlinked<'a>(&'a mut self) -> Self::OnUnlinkedFut<'a> {
+    fn on_unlinked(&mut self) -> Self::OnUnlinkedFut<'_> {
         let StatefulValueDownlinkLifecycle {
             shared,
             on_unlinked,
@@ -930,7 +930,7 @@ where
     where
         Self: 'a;
 
-    fn on_linked<'a>(&'a mut self) -> Self::OnLinkedFut<'a> {
+    fn on_linked(&mut self) -> Self::OnLinkedFut<'_> {
         self.on_linked.on_linked()
     }
 }
@@ -964,7 +964,7 @@ where
     where
         Self: 'a;
 
-    fn on_unlinked<'a>(&'a mut self) -> Self::OnUnlinkedFut<'a> {
+    fn on_unlinked(&mut self) -> Self::OnUnlinkedFut<'_> {
         self.on_unlinked.on_unlinked()
     }
 }
@@ -1093,7 +1093,7 @@ where
     where
         Self: 'a;
 
-    fn on_linked<'a>(&'a mut self) -> Self::OnLinkedFut<'a> {
+    fn on_linked(&mut self) -> Self::OnLinkedFut<'_> {
         let StatefulEventDownlinkLifecycle {
             shared, on_linked, ..
         } = self;
@@ -1135,7 +1135,7 @@ where
     where
         Self: 'a;
 
-    fn on_unlinked<'a>(&'a mut self) -> Self::OnUnlinkedFut<'a> {
+    fn on_unlinked(&mut self) -> Self::OnUnlinkedFut<'_> {
         let StatefulEventDownlinkLifecycle {
             shared,
             on_unlinked,

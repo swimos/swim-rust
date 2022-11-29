@@ -86,7 +86,7 @@ where
 {
     type OnStartHandler<'a> = FStart::OnStartHandler<'a> where Self: 'a;
 
-    fn on_start<'a>(&'a self) -> Self::OnStartHandler<'a> {
+    fn on_start(&self) -> Self::OnStartHandler<'_> {
         let StatefulAgentLifecycle {
             state,
             handler_context,
@@ -109,7 +109,7 @@ where
     where
         Self: 'a;
 
-    fn on_stop<'a>(&'a self) -> Self::OnStopHandler<'a> {
+    fn on_stop(&self) -> Self::OnStopHandler<'_> {
         let StatefulAgentLifecycle {
             state,
             handler_context,

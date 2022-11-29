@@ -45,7 +45,7 @@ pub trait ValueLaneLifecycleShared<T, Context, Shared>:
 {
 }
 
-impl<'a, T, Context, L> ValueLaneLifecycle<T, Context> for L where
+impl<T, Context, L> ValueLaneLifecycle<T, Context> for L where
     L: OnEvent<T, Context> + OnSet<T, Context>
 {
 }

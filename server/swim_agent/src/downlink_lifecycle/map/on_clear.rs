@@ -30,7 +30,7 @@ pub trait OnDownlinkClear<K, V, Context>: Send {
 
     /// #Arguments
     /// * `map` - The old state of the map.
-    fn on_clear<'a>(&'a self, map: HashMap<K, V>) -> Self::OnClearHandler<'a>;
+    fn on_clear(&self, map: HashMap<K, V>) -> Self::OnClearHandler<'_>;
 }
 
 /// Lifecycle event for the `on_clear` event of a downlink, from an agent, where the event
@@ -58,7 +58,7 @@ impl<K, V, Context> OnDownlinkClear<K, V, Context> for NoHandler {
     where
         Self: 'a;
 
-    fn on_clear<'a>(&'a self, _map: HashMap<K, V>) -> Self::OnClearHandler<'a> {
+    fn on_clear(&self, _map: HashMap<K, V>) -> Self::OnClearHandler<'_> {
         UnitHandler::default()
     }
 }
@@ -88,7 +88,7 @@ where
     where
         Self: 'a;
 
-    fn on_clear<'a>(&'a self, map: HashMap<K, V>) -> Self::OnClearHandler<'a> {
+    fn on_clear(&self, map: HashMap<K, V>) -> Self::OnClearHandler<'_> {
         let FnHandler(f) = self;
         f(map)
     }
@@ -123,7 +123,7 @@ where
     where
         Self: 'a;
 
-    fn on_clear<'a>(&'a self, map: HashMap<K, V>) -> Self::OnClearHandler<'a> {
+    fn on_clear(&self, map: HashMap<K, V>) -> Self::OnClearHandler<'_> {
         let WithHandlerContext {
             inner,
             handler_context,

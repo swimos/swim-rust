@@ -24,7 +24,7 @@ pub trait OnLinked: Send {
     where
         Self: 'a;
 
-    fn on_linked<'a>(&'a mut self) -> Self::OnLinkedFut<'a>;
+    fn on_linked(&mut self) -> Self::OnLinkedFut<'_>;
 }
 
 /// Trait for event handlers, that share state with other handlers, called when a downlink
@@ -43,7 +43,7 @@ impl OnLinked for NoHandler {
     where
         Self: 'a;
 
-    fn on_linked<'a>(&'a mut self) -> Self::OnLinkedFut<'a> {
+    fn on_linked(&mut self) -> Self::OnLinkedFut<'_> {
         ready(())
     }
 }
@@ -57,7 +57,7 @@ where
     where
         Self: 'a;
 
-    fn on_linked<'a>(&'a mut self) -> Self::OnLinkedFut<'a> {
+    fn on_linked(&mut self) -> Self::OnLinkedFut<'_> {
         let FnMutHandler(f) = self;
         f()
     }
@@ -111,7 +111,7 @@ where
     where
         Self: 'a;
 
-    fn on_linked<'a>(&'a mut self) -> Self::OnLinkedFut<'a> {
+    fn on_linked(&mut self) -> Self::OnLinkedFut<'_> {
         let BlockingHandler(f) = self;
         f();
         ready(())

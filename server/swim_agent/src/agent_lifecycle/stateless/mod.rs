@@ -58,7 +58,7 @@ where
 {
     type OnStartHandler<'a> = FStart::OnStartHandler<'a> where Self: 'a;
 
-    fn on_start<'a>(&'a self) -> Self::OnStartHandler<'a> {
+    fn on_start(&self) -> Self::OnStartHandler<'_> {
         self.on_start.on_start()
     }
 }
@@ -74,7 +74,7 @@ where
     where
         Self: 'a;
 
-    fn on_stop<'a>(&'a self) -> Self::OnStopHandler<'a> {
+    fn on_stop(&self) -> Self::OnStopHandler<'_> {
         self.on_stop.on_stop()
     }
 }

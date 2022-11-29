@@ -29,7 +29,7 @@ pub trait OnClear<K, V, Context>: Send {
 
     /// #Arguments
     /// * `before` - The contents of the map before it was cleared.
-    fn on_clear<'a>(&'a self, before: HashMap<K, V>) -> Self::OnClearHandler<'a>;
+    fn on_clear(&self, before: HashMap<K, V>) -> Self::OnClearHandler<'_>;
 }
 
 /// Lifecycle event for the `on_clear` event of a map lane where the event handler
@@ -57,7 +57,7 @@ impl<K, V, Context> OnClear<K, V, Context> for NoHandler {
     where
         Self: 'a;
 
-    fn on_clear<'a>(&'a self, _before: HashMap<K, V>) -> Self::OnClearHandler<'a> {
+    fn on_clear(&self, _before: HashMap<K, V>) -> Self::OnClearHandler<'_> {
         UnitHandler::default()
     }
 }
@@ -87,7 +87,7 @@ where
     where
         Self: 'a;
 
-    fn on_clear<'a>(&'a self, before: HashMap<K, V>) -> Self::OnClearHandler<'a> {
+    fn on_clear(&self, before: HashMap<K, V>) -> Self::OnClearHandler<'_> {
         let FnHandler(f) = self;
         f(before)
     }

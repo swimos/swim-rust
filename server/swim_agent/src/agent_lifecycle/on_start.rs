@@ -24,7 +24,7 @@ pub trait OnStart<Context>: Send {
     where
         Self: 'a;
 
-    fn on_start<'a>(&'a self) -> Self::OnStartHandler<'a>;
+    fn on_start(&self) -> Self::OnStartHandler<'_>;
 }
 
 /// Lifecycle event for the `on_start` event of an agent where the event handler
@@ -48,7 +48,7 @@ pub trait OnStartShared<Context, Shared>: Send {
 impl<Context> OnStart<Context> for NoHandler {
     type OnStartHandler<'a> = UnitHandler where Self: 'a;
 
-    fn on_start<'a>(&'a self) -> Self::OnStartHandler<'a> {
+    fn on_start(&self) -> Self::OnStartHandler<'_> {
         Default::default()
     }
 }
@@ -58,11 +58,11 @@ where
     F: Fn() -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    type OnStartHandler<'a> = H 
+    type OnStartHandler<'a> = H
     where
         Self: 'a;
 
-    fn on_start<'a>(&'a self) -> Self::OnStartHandler<'a> {
+    fn on_start(&self) -> Self::OnStartHandler<'_> {
         let FnHandler(f) = self;
         f()
     }

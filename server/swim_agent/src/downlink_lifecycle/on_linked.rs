@@ -27,7 +27,7 @@ pub trait OnLinked<Context>: Send {
     where
         Self: 'a;
 
-    fn on_linked<'a>(&'a self) -> Self::OnLinkedHandler<'a>;
+    fn on_linked(&self) -> Self::OnLinkedHandler<'_>;
 }
 
 /// Lifecycle event for the `on_linked` event of a downlink, from an agent,where the event
@@ -53,7 +53,7 @@ impl<Context> OnLinked<Context> for NoHandler {
     where
         Self: 'a;
 
-    fn on_linked<'a>(&'a self) -> Self::OnLinkedHandler<'a> {
+    fn on_linked(&self) -> Self::OnLinkedHandler<'_> {
         UnitHandler::default()
     }
 }
@@ -82,7 +82,7 @@ where
     where
         Self: 'a;
 
-    fn on_linked<'a>(&'a self) -> Self::OnLinkedHandler<'a> {
+    fn on_linked(&self) -> Self::OnLinkedHandler<'_> {
         let FnHandler(f) = self;
         f()
     }
@@ -116,7 +116,7 @@ where
     where
         Self: 'a;
 
-    fn on_linked<'a>(&'a self) -> Self::OnLinkedHandler<'a> {
+    fn on_linked(&self) -> Self::OnLinkedHandler<'_> {
         let WithHandlerContext {
             inner,
             handler_context,

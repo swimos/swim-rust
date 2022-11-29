@@ -142,7 +142,7 @@ where
     where
         Self: 'a;
 
-    fn on_linked<'a>(&'a self) -> Self::OnLinkedHandler<'a> {
+    fn on_linked(&self) -> Self::OnLinkedHandler<'_> {
         let StatefulValueDownlinkLifecycle {
             on_linked,
             state,
@@ -192,7 +192,7 @@ where
     where
         Self: 'a;
 
-    fn on_unlinked<'a>(&'a self) -> Self::OnUnlinkedHandler<'a> {
+    fn on_unlinked(&self) -> Self::OnUnlinkedHandler<'_> {
         let StatefulValueDownlinkLifecycle {
             on_unlinked,
             state,
@@ -469,7 +469,7 @@ where
     where
         Self: 'a;
 
-    fn on_linked<'a>(&'a self) -> Self::OnLinkedHandler<'a> {
+    fn on_linked(&self) -> Self::OnLinkedHandler<'_> {
         let StatelessValueDownlinkLifecycle { on_linked, .. } = self;
         on_linked.on_linked()
     }
@@ -507,7 +507,7 @@ where
     where
         Self: 'a;
 
-    fn on_unlinked<'a>(&'a self) -> Self::OnUnlinkedHandler<'a> {
+    fn on_unlinked(&self) -> Self::OnUnlinkedHandler<'_> {
         let StatelessValueDownlinkLifecycle { on_unlinked, .. } = self;
         on_unlinked.on_unlinked()
     }

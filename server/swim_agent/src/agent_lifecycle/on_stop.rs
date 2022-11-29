@@ -24,7 +24,7 @@ pub trait OnStop<Context>: Send {
     where
         Self: 'a;
 
-    fn on_stop<'a>(&'a self) -> Self::OnStopHandler<'a>;
+    fn on_stop(&self) -> Self::OnStopHandler<'_>;
 }
 
 /// Lifecycle event for the `on_stop` event of an agent where the event handler
@@ -50,7 +50,7 @@ impl<Context> OnStop<Context> for NoHandler {
     where
         Self: 'a;
 
-    fn on_stop<'a>(&'a self) -> Self::OnStopHandler<'a> {
+    fn on_stop(&self) -> Self::OnStopHandler<'_> {
         Default::default()
     }
 }
@@ -79,7 +79,7 @@ where
     where
         Self: 'a;
 
-    fn on_stop<'a>(&'a self) -> Self::OnStopHandler<'a> {
+    fn on_stop(&self) -> Self::OnStopHandler<'_> {
         let FnHandler(f) = self;
         f()
     }

@@ -76,7 +76,7 @@ impl ArcWake for TestWaker {
 fn trigger_after_pending() {
     let arc_waker = TestWaker::new();
     let waker = waker_ref(&arc_waker);
-    let mut context = Context::from_waker(&*waker);
+    let mut context = Context::from_waker(&waker);
     let (tx, rx) = super::trigger();
     pin_mut!(rx);
 
@@ -99,7 +99,7 @@ fn trigger_after_pending() {
 fn drop_after_pending() {
     let arc_waker = TestWaker::new();
     let waker = waker_ref(&arc_waker);
-    let mut context = Context::from_waker(&*waker);
+    let mut context = Context::from_waker(&waker);
     let (tx, rx) = super::trigger();
     pin_mut!(rx);
 

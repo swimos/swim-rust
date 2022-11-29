@@ -286,7 +286,7 @@ where
             *has_attr = true;
         }
         write!(fmt, "@{}", name.as_ref())?;
-        let attr_printer = AttributePrinter::new(*fmt, *strategy);
+        let attr_printer = AttributePrinter::new(fmt, *strategy);
         value.write_with(attr_printer)?;
         Ok(self)
     }
@@ -370,7 +370,7 @@ where
             fmt.write_str(",")?;
             strategy.item_padding(*brace_written).fmt(fmt)?;
         }
-        let printer = StructurePrinter::new(*fmt, *strategy);
+        let printer = StructurePrinter::new(fmt, *strategy);
         value.write_with(printer)?;
         Ok(self)
     }
@@ -401,12 +401,12 @@ where
             fmt.write_str(",")?;
             strategy.item_padding(*brace_written).fmt(fmt)?;
         }
-        let key_printer = StructurePrinter::new(*fmt, *strategy);
+        let key_printer = StructurePrinter::new(fmt, *strategy);
         key.write_with(key_printer)?;
         fmt.write_str(":")?;
         strategy.slot_padding().fmt(fmt)?;
 
-        let val_printer = StructurePrinter::new(*fmt, *strategy);
+        let val_printer = StructurePrinter::new(fmt, *strategy);
         value.write_with(val_printer)?;
         Ok(self)
     }
@@ -689,7 +689,7 @@ where
             *has_attr = true;
         }
         write!(fmt, "@{}", name.as_ref())?;
-        let attr_printer = AttributePrinter::new(*fmt, *strategy);
+        let attr_printer = AttributePrinter::new(fmt, *strategy);
         value.write_with(attr_printer)?;
         Ok(self)
     }
@@ -774,7 +774,7 @@ where
             fmt.write_str(",")?;
             strategy.item_padding(*brace_written).fmt(fmt)?;
         }
-        let printer = StructurePrinter::new(*fmt, *strategy);
+        let printer = StructurePrinter::new(fmt, *strategy);
         value.write_with(printer)?;
         Ok(self)
     }
@@ -797,12 +797,12 @@ where
             fmt.write_str(",")?;
             strategy.item_padding(*brace_written).fmt(fmt)?;
         }
-        let key_printer = StructurePrinter::new(*fmt, *strategy);
+        let key_printer = StructurePrinter::new(fmt, *strategy);
         key.write_with(key_printer)?;
         fmt.write_str(":")?;
         strategy.slot_padding().fmt(fmt)?;
 
-        let val_printer = StructurePrinter::new(*fmt, *strategy);
+        let val_printer = StructurePrinter::new(fmt, *strategy);
         value.write_with(val_printer)?;
         Ok(self)
     }
@@ -859,15 +859,15 @@ const NEW_LINE: &str = "\n";
 impl<'a> Display for Padding<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Padding::Simple(padding) => f.write_str(*padding)?,
+            Padding::Simple(padding) => f.write_str(padding)?,
             Padding::Complex {
                 prefix,
                 block,
                 repeats,
             } => {
-                f.write_str(*prefix)?;
+                f.write_str(prefix)?;
                 for _ in 0..*repeats {
-                    f.write_str(*block)?;
+                    f.write_str(block)?;
                 }
             }
         }

@@ -76,7 +76,7 @@ pub trait NodePersistence {
     fn clear_map(&self, id: Self::LaneId) -> Result<(), StoreError>;
 
     /// Produce a [`RangeConsumer`] that will enumerate the entries for a map in the store.
-    fn read_map<'a>(&'a self, id: Self::LaneId) -> Result<Self::MapCon<'a>, StoreError>;
+    fn read_map(&self, id: Self::LaneId) -> Result<Self::MapCon<'_>, StoreError>;
 }
 
 /// View of a entry from a map in a store.
@@ -146,7 +146,7 @@ impl NodePersistence for StoreDisabled {
     where
         Self: 'a;
 
-    fn read_map<'a>(&'a self, _id: Self::LaneId) -> Result<Self::MapCon<'a>, StoreError> {
+    fn read_map(&self, _id: Self::LaneId) -> Result<Self::MapCon<'_>, StoreError> {
         Ok(StoreDisabled)
     }
 }

@@ -57,10 +57,7 @@ pub trait PlaneStore: StoreEngine + Sized + Debug + Send + Sync + Clone + 'stati
     ///
     /// #Arguments
     /// * `prefix` - Common prefix for the records to read.
-    fn ranged_snapshot_consumer<'a>(
-        &'a self,
-        prefix: StoreKey,
-    ) -> Result<Self::RangeCon<'a>, StoreError>;
+    fn ranged_snapshot_consumer(&self, prefix: StoreKey) -> Result<Self::RangeCon<'_>, StoreError>;
 
     /// Create a node store for `node_uri`.
     fn node_store<I>(&self, node_uri: I) -> Self::NodeStore
@@ -157,10 +154,7 @@ where
     where
         Self: 'a;
 
-    fn ranged_snapshot_consumer<'a>(
-        &'a self,
-        prefix: StoreKey,
-    ) -> Result<Self::RangeCon<'a>, StoreError> {
+    fn ranged_snapshot_consumer(&self, prefix: StoreKey) -> Result<Self::RangeCon<'_>, StoreError> {
         let namespace = match &prefix {
             StoreKey::Map { .. } => KeyspaceName::Map,
             StoreKey::Value { .. } => KeyspaceName::Value,
