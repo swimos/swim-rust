@@ -76,3 +76,46 @@ where
         self(shared, value)
     }
 }
+
+pub trait SetFn<'a, T> {
+
+    type Fut: Future<Output = ()> + Send + 'a;
+
+    fn apply(&'a mut self, previous: Option<&'a T>, value: &'a T) -> Self::Fut;
+
+}
+
+impl<'a, T, F, Fut> SetFn<'a, T> for F
+where
+    T: 'static,
+    F: FnMut(Option<&'a T>, &'a T) -> Fut,
+    Fut: Future<Output = ()> + Send + 'a,
+{
+    type Fut = Fut;
+
+    fn apply(&'a mut self, previous: Option<&'a T>, value: &'a T) -> Self::Fut {
+        self(previous, value)
+    }
+}
+
+pub trait SharedSetFn<'a, Shared, T> {
+
+    type Fut: Future<Output = ()> + Send + 'a;
+
+    fn apply(&'a mut self, shared: &'a Shared, previous: Option<&'a T>, value: &'a T) -> Self::Fut;
+
+}
+
+impl<'a, Shared, T, F, Fut> SharedSetFn<'a, Shared, T> for F
+where
+    T: 'a,
+    Shared: 'a,
+    F: FnMut(&'a Shared, Option<&'a T>, &'a T) -> Fut,
+    Fut: Future<Output = ()> + Send + 'a,
+{
+    type Fut = Fut;
+
+    fn apply(&'a mut self, shared: &'a Shared, previous: Option<&'a T>, value: &'a T) -> Self::Fut {
+        self(shared, previous, value)
+    }
+}

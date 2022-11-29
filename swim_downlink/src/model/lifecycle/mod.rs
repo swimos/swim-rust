@@ -20,7 +20,7 @@ pub use on_set::{OnSet, OnSetShared};
 pub use on_synced::{OnSynced, OnSyncedShared};
 pub use on_unlinked::{OnUnlinked, OnUnlinkedShared};
 use swim_api::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
-pub use handler_fn::{EventFn, SharedEventFn, SharedHandlerFn0};
+pub use handler_fn::*;
 
 mod handler_fn;
 mod on_event;
@@ -29,35 +29,15 @@ mod on_set;
 mod on_synced;
 mod on_unlinked;
 
-/// The set of handlers that a value downlink lifecycle supports.
-pub trait ValueDownlinkHandlers<'a, T>:
-    OnLinked + OnSynced<T> + OnEvent<T> + OnSet<'a, T> + OnUnlinked
-{
-}
-
-/// The set of handlers that an event downlink lifecycle supports.
-pub trait EventDownlinkHandlers<'a, T>: OnLinked + OnEvent<T> + OnUnlinked {}
-
 /// Description of a lifecycle for a value downlink.
-pub trait ValueDownlinkLifecycle<T>: for<'a> ValueDownlinkHandlers<'a, T> {}
+pub trait ValueDownlinkLifecycle<T>: OnLinked + OnSynced<T> + OnEvent<T> + OnSet<T> + OnUnlinked {}
 
 /// Description of a lifecycle for an event downlink.
-pub trait EventDownlinkLifecycle<T>: for<'a> EventDownlinkHandlers<'a, T> {}
+pub trait EventDownlinkLifecycle<T>: OnLinked + OnEvent<T> + OnUnlinked {}
 
-impl<T, L> ValueDownlinkLifecycle<T> for L where L: for<'a> ValueDownlinkHandlers<'a, T> {}
+impl<T, L> ValueDownlinkLifecycle<T> for L where L: OnLinked + OnSynced<T> + OnEvent<T> + OnSet<T> + OnUnlinked {}
 
-impl<T, L> EventDownlinkLifecycle<T> for L where L: for<'a> EventDownlinkHandlers<'a, T> {}
-
-impl<'a, T, L> ValueDownlinkHandlers<'a, T> for L where
-    L: OnLinked + OnSynced<T> + OnEvent<T> + OnSet<'a, T> + OnUnlinked
-{
-}
-
-impl<'a, T, L> EventDownlinkHandlers<'a, T> for L where
-    L: OnLinked + OnEvent<T> + OnUnlinked
-{
-}
-
+impl<T, L> EventDownlinkLifecycle<T> for L where L: OnLinked + OnEvent<T> + OnUnlinked {}
 /// A basic lifecycle for a value downlink where the event handlers do not share any state.
 pub struct BasicValueDownlinkLifecycle<
     T,
@@ -241,7 +221,7 @@ where
         f: F,
     ) -> BasicValueDownlinkLifecycle<T, FLinked, FSynced, FEv, FnMutHandler<F>, FUnlinked>
     where
-        FnMutHandler<F>: for<'a> OnSet<'a, T>,
+        FnMutHandler<F>: OnSet<T>,
     {
         BasicValueDownlinkLifecycle {
             _value_type: PhantomData,
@@ -384,19 +364,22 @@ where
     }
 }
 
-impl<'a, T, FLinked, FSynced, FEv, FSet, FUnlinked> OnSet<'a, T>
+impl<T, FLinked, FSynced, FEv, FSet, FUnlinked> OnSet<T>
     for BasicValueDownlinkLifecycle<T, FLinked, FSynced, FEv, FSet, FUnlinked>
 where
-    T: Send + Sync + 'static,
+    T: Send + Sync,
     FLinked: Send,
     FSynced: Send,
     FEv: Send,
-    FSet: OnSet<'a, T>,
+    FSet: OnSet<T>,
     FUnlinked: Send,
 {
-    type OnSetFut = FSet::OnSetFut;
+    type OnSetFut<'a> = FSet::OnSetFut<'a>
+    where
+        Self: 'a,
+        T: 'a;
 
-    fn on_set(&'a mut self, existing: Option<&'a T>, new_value: &'a T) -> Self::OnSetFut {
+    fn on_set<'a>(&'a mut self, existing: Option<&'a T>, new_value: &'a T) -> Self::OnSetFut<'a> {
         self.on_set.on_set(existing, new_value)
     }
 }
@@ -588,7 +571,7 @@ where
         f: F,
     ) -> StatefulValueDownlinkLifecycle<T, Shared, FLinked, FSynced, FEv, FnMutHandler<F>, FUnlinked>
     where
-        FnMutHandler<F>: for<'a> OnSetShared<'a, T, Shared>,
+        FnMutHandler<F>: OnSetShared<T, Shared>,
     {
         StatefulValueDownlinkLifecycle {
             _value_type: PhantomData,
@@ -741,7 +724,7 @@ where
     }
 }
 
-impl<'a, T, Shared, FLinked, FSynced, FEv, FSet, FUnlinked> OnSet<'a, T>
+impl<T, Shared, FLinked, FSynced, FEv, FSet, FUnlinked> OnSet<T>
     for StatefulValueDownlinkLifecycle<T, Shared, FLinked, FSynced, FEv, FSet, FUnlinked>
 where
     T: Send + Sync + 'static,
@@ -749,12 +732,15 @@ where
     FLinked: Send,
     FSynced: Send,
     FEv: Send,
-    FSet: OnSetShared<'a, T, Shared>,
+    FSet: OnSetShared<T, Shared>,
     FUnlinked: Send,
 {
-    type OnSetFut = FSet::OnSetFut;
+    type OnSetFut<'a> = FSet::OnSetFut<'a>
+    where
+        Self: 'a,
+        T: 'a;
 
-    fn on_set(&'a mut self, existing: Option<&'a T>, new_value: &'a T) -> Self::OnSetFut {
+    fn on_set<'a>(&'a mut self, existing: Option<&'a T>, new_value: &'a T) -> Self::OnSetFut<'a> {
         let StatefulValueDownlinkLifecycle { shared, on_set, .. } = self;
         on_set.on_set(shared, existing, new_value)
     }
