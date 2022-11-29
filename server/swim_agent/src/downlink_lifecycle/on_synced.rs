@@ -18,7 +18,7 @@ use swim_api::handlers::{BorrowHandler, FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
-    event_handler::{EventHandler, UnitHandler, EventFn},
+    event_handler::{EventFn, EventHandler, UnitHandler},
 };
 
 use super::{LiftShared, WithHandlerContext};

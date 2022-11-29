@@ -14,14 +14,16 @@
 
 use swim_api::handlers::{FnHandler, NoHandler};
 
-use crate::event_handler::{EventHandler, UnitHandler, HandlerFn0};
+use crate::event_handler::{EventHandler, HandlerFn0, UnitHandler};
 
 use super::utility::HandlerContext;
 
 /// Lifecycle event for the `on_start` event of an agent.
 pub trait OnStart<Context>: Send {
-    type OnStartHandler<'a>: EventHandler<Context> + 'a where Self: 'a;
-    
+    type OnStartHandler<'a>: EventHandler<Context> + 'a
+    where
+        Self: 'a;
+
     fn on_start<'a>(&'a self) -> Self::OnStartHandler<'a>;
 }
 
@@ -32,7 +34,7 @@ pub trait OnStartShared<Context, Shared>: Send {
     where
         Self: 'a,
         Shared: 'a;
-    
+
     /// #Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
@@ -45,7 +47,7 @@ pub trait OnStartShared<Context, Shared>: Send {
 
 impl<Context> OnStart<Context> for NoHandler {
     type OnStartHandler<'a> = UnitHandler where Self: 'a;
-    
+
     fn on_start<'a>(&'a self) -> Self::OnStartHandler<'a> {
         Default::default()
     }
@@ -53,12 +55,13 @@ impl<Context> OnStart<Context> for NoHandler {
 
 impl<Context, F, H> OnStart<Context> for FnHandler<F>
 where
-F: Fn() -> H + Send,
-H: EventHandler<Context> + 'static,
+    F: Fn() -> H + Send,
+    H: EventHandler<Context> + 'static,
 {
-    type OnStartHandler<'a> = H where 
-    Self: 'a;
-    
+    type OnStartHandler<'a> = H 
+    where
+        Self: 'a;
+
     fn on_start<'a>(&'a self) -> Self::OnStartHandler<'a> {
         let FnHandler(f) = self;
         f()

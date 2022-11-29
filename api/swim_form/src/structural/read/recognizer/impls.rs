@@ -22,9 +22,9 @@ use crate::structural::read::recognizer::{
 };
 use crate::structural::read::ReadError;
 use crate::structural::tags::{
-    DELAY_TAG, DURATION_TAG, INFINITE_TAG, MAX_BACKOFF_TAG,
-    MAX_INTERVAL_TAG, NANOS_TAG, RETRIES_TAG, RETRY_EXPONENTIAL_TAG, RETRY_IMMEDIATE_TAG,
-    RETRY_INTERVAL_TAG, RETRY_NONE_TAG, SECS_TAG,
+    DELAY_TAG, DURATION_TAG, INFINITE_TAG, MAX_BACKOFF_TAG, MAX_INTERVAL_TAG, NANOS_TAG,
+    RETRIES_TAG, RETRY_EXPONENTIAL_TAG, RETRY_IMMEDIATE_TAG, RETRY_INTERVAL_TAG, RETRY_NONE_TAG,
+    SECS_TAG,
 };
 use std::borrow::Borrow;
 use std::num::NonZeroUsize;
@@ -209,11 +209,9 @@ impl Recognizer for RetryStrategyRecognizer {
                         }
                         ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
                     },
-                    ReadEvent::EndRecord => {
-                        Some(Ok(RetryStrategy::immediate(retries.unwrap_or_else(|| {
-                            DEFAULT_IMMEDIATE_RETRIES
-                        }))))
-                    }
+                    ReadEvent::EndRecord => Some(Ok(RetryStrategy::immediate(
+                        retries.unwrap_or_else(|| DEFAULT_IMMEDIATE_RETRIES),
+                    ))),
                     ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                         ExpectedEvent::ValueEvent(ValueKind::Text),
                         ExpectedEvent::EndOfRecord,
@@ -242,9 +240,7 @@ impl Recognizer for RetryStrategyRecognizer {
                     },
                     ReadEvent::EndRecord => Some(Ok(RetryStrategy::interval(
                         delay.unwrap_or_else(|| Duration::from_secs(DEFAULT_INTERVAL_DELAY)),
-                        retries.unwrap_or_else(|| {
-                            Quantity::Finite(DEFAULT_INTERVAL_RETRIES)
-                        }),
+                        retries.unwrap_or_else(|| Quantity::Finite(DEFAULT_INTERVAL_RETRIES)),
                     ))),
                     ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                         ExpectedEvent::ValueEvent(ValueKind::Text),

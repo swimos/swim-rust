@@ -26,7 +26,8 @@ use swim_api::{
             RawMapOperationEncoder,
         },
         WithLenRecognizerDecoder, WithLengthBytesCodec,
-    }, store::NodePersistence,
+    },
+    store::NodePersistence,
 };
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_model::Text;

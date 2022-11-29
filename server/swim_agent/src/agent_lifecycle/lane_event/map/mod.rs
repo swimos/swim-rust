@@ -79,7 +79,7 @@ where
         MapLaneEvent::Update(k, old) => {
             let new = &map[&k];
             Coproduct::Inl(lifecycle.on_update(map, k, old, new))
-        },
+        }
         MapLaneEvent::Remove(k, v) => {
             Coproduct::Inr(Coproduct::Inl(lifecycle.on_remove(map, k, v)))
         }
@@ -203,7 +203,7 @@ where
 impl<Context, K, V, LC, L, R> LaneEvent<Context> for MapBranch<Context, K, V, LC, L, R>
 where
     K: Clone + Eq + Hash,
-    LC: MapLaneLifecycle<K, V, Context> ,
+    LC: MapLaneLifecycle<K, V, Context>,
     L: HTree + LaneEvent<Context>,
     R: HTree + LaneEvent<Context>,
 {
@@ -211,7 +211,11 @@ where
     where
         Self: 'a;
 
-    fn lane_event<'a>(&'a self, context: &Context, lane_name: &str) -> Option<Self::LaneEventHandler<'a>> {
+    fn lane_event<'a>(
+        &'a self,
+        context: &Context,
+        lane_name: &str,
+    ) -> Option<Self::LaneEventHandler<'a>> {
         let MapBranch {
             label,
             projection,

@@ -19,7 +19,7 @@ use swim_api::handlers::{BorrowHandler, FnHandler, NoHandler};
 use crate::{
     agent_lifecycle::utility::HandlerContext,
     downlink_lifecycle::{LiftShared, WithHandlerContext},
-    event_handler::{EventHandler, UnitHandler, MapUpdateFn, MapUpdateBorrowFn},
+    event_handler::{EventHandler, MapUpdateBorrowFn, MapUpdateFn, UnitHandler},
 };
 
 /// Lifecycle event for the `on_update` event of a downlink, from an agent.
@@ -170,8 +170,7 @@ where
     }
 }
 
-impl<K, V, Context, Shared, F> OnDownlinkUpdateShared<K, V, Context, Shared>
-    for FnHandler<F>
+impl<K, V, Context, Shared, F> OnDownlinkUpdateShared<K, V, Context, Shared> for FnHandler<F>
 where
     F: for<'a> MapUpdateFn<'a, Context, Shared, K, V> + Send,
 {

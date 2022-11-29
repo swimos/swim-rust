@@ -18,11 +18,11 @@ use swim_api::handlers::{FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
-    event_handler::{EventHandler, UnitHandler, TakeFn},
+    event_handler::{EventHandler, TakeFn, UnitHandler},
 };
 
 /// Lifecycle event for the `on_clear` event of a map lane.
-pub trait OnClear< K, V, Context>: Send {
+pub trait OnClear<K, V, Context>: Send {
     type OnClearHandler<'a>: EventHandler<Context> + 'a
     where
         Self: 'a;
@@ -111,5 +111,4 @@ where
         let FnHandler(f) = self;
         f.make_handler(shared, handler_context, before)
     }
-
 }

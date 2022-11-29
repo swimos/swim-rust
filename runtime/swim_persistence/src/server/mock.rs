@@ -18,8 +18,7 @@ use std::sync::Mutex;
 
 use crate::server::keystore::STEP;
 use swim_store::{
-    nostore::NoRange, Keyspace, KeyspaceByteEngine,
-    StoreError, serialize_u64_vec, deserialize_u64,
+    deserialize_u64, nostore::NoRange, serialize_u64_vec, Keyspace, KeyspaceByteEngine, StoreError,
 };
 
 type Keyspaces = HashMap<String, HashMap<Vec<u8>, Vec<u8>>>;
@@ -42,7 +41,6 @@ impl MockStore {
 }
 
 impl KeyspaceByteEngine for MockStore {
-
     type RangeCon<'a> = NoRange
     where
         Self: 'a;

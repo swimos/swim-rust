@@ -26,4 +26,7 @@ pub mod utility;
 /// * `Context` - The context in which the lifecycle events run (provdies access to the lanes of the agent).
 pub trait AgentLifecycle<Context>: OnStart<Context> + OnStop<Context> + LaneEvent<Context> {}
 
-impl<L, Context> AgentLifecycle<Context> for L where L: OnStart<Context> + OnStop<Context> + LaneEvent<Context> {}
+impl<L, Context> AgentLifecycle<Context> for L where
+    L: OnStart<Context> + OnStop<Context> + LaneEvent<Context>
+{
+}

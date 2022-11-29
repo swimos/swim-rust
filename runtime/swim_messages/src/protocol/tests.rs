@@ -14,10 +14,10 @@
 
 use crate::bytes_str::BytesStr;
 use crate::protocol::{
-    AgentMessageDecoder, BytesResponseMessage, ClientMessageDecoder,
-    MessageDecodeError, Path, RawRequestMessage, RawRequestMessageEncoder,
-    RawResponseMessageDecoder, RequestMessage, ResponseMessage, ResponseMessageEncoder, COMMAND,
-    EVENT, HEADER_INIT_LEN, LINK, LINKED, OP_MASK, OP_SHIFT, SYNC, SYNCED, UNLINK, UNLINKED,
+    AgentMessageDecoder, BytesResponseMessage, ClientMessageDecoder, MessageDecodeError, Path,
+    RawRequestMessage, RawRequestMessageEncoder, RawResponseMessageDecoder, RequestMessage,
+    ResponseMessage, ResponseMessageEncoder, COMMAND, EVENT, HEADER_INIT_LEN, LINK, LINKED,
+    OP_MASK, OP_SHIFT, SYNC, SYNCED, UNLINK, UNLINKED,
 };
 use bytes::{Buf, Bytes, BytesMut};
 use futures::future::join;

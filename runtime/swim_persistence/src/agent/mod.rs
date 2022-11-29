@@ -19,7 +19,7 @@ use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
 use bytes::BytesMut;
-use swim_api::store::{PlanePersistence, NodePersistence};
+use swim_api::store::{NodePersistence, PlanePersistence};
 use swim_model::Text;
 
 use crate::plane::PlaneStore;
@@ -38,8 +38,7 @@ use swim_store::{EngineInfo, RangeConsumer, StoreError};
 /// the store; providing that the top-level server store is also persistent.
 ///
 /// Transient data models will live in memory for the duration that a handle to the model exists.
-pub trait NodeStore: StoreEngine + Send + Sync + Clone + Debug + 'static
-{
+pub trait NodeStore: StoreEngine + Send + Sync + Clone + Debug + 'static {
     type Delegate: PlaneStore;
 
     type RangeCon<'a>: RangeConsumer + Send + 'a
@@ -50,7 +49,10 @@ pub trait NodeStore: StoreEngine + Send + Sync + Clone + Debug + 'static
     ///
     /// #Arguments
     /// * `prefix` - Common prefix for the records to read.
-    fn ranged_snapshot_consumer<'a>(&'a self, prefix: StoreKey) -> Result<Self::RangeCon<'a>, StoreError>;
+    fn ranged_snapshot_consumer<'a>(
+        &'a self,
+        prefix: StoreKey,
+    ) -> Result<Self::RangeCon<'a>, StoreError>;
 
     /// Returns information about the delegate store
     fn engine_info(&self) -> EngineInfo;
@@ -132,7 +134,10 @@ impl<D: PlaneStore> NodeStore for SwimNodeStore<D> {
     where
         Self: 'a;
 
-    fn ranged_snapshot_consumer<'a>(&'a self, prefix: StoreKey) -> Result<Self::RangeCon<'a>, StoreError> {
+    fn ranged_snapshot_consumer<'a>(
+        &'a self,
+        prefix: StoreKey,
+    ) -> Result<Self::RangeCon<'a>, StoreError> {
         self.delegate.ranged_snapshot_consumer(prefix)
     }
 

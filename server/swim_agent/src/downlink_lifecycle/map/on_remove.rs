@@ -19,7 +19,7 @@ use swim_api::handlers::{FnHandler, NoHandler};
 use crate::{
     agent_lifecycle::utility::HandlerContext,
     downlink_lifecycle::{LiftShared, WithHandlerContext},
-    event_handler::{EventHandler, UnitHandler, MapRemoveFn},
+    event_handler::{EventHandler, MapRemoveFn, UnitHandler},
 };
 
 /// Lifecycle event for the `on_remove` event of a downlink, from an agent.
@@ -32,7 +32,12 @@ pub trait OnDownlinkRemove<K, V, Context>: Send {
     /// * `key` - The key that has been removed.
     /// * `map` - The current state of the map.
     /// * `removed` - The removed value.
-    fn on_remove<'a>(&'a self, key: K, map: &HashMap<K, V>, removed: V) -> Self::OnRemoveHandler<'a>;
+    fn on_remove<'a>(
+        &'a self,
+        key: K,
+        map: &HashMap<K, V>,
+        removed: V,
+    ) -> Self::OnRemoveHandler<'a>;
 }
 
 /// Lifecycle event for the `on_remove` event of a downlink, from an agent, where the event
@@ -64,7 +69,12 @@ impl<K, V, Context> OnDownlinkRemove<K, V, Context> for NoHandler {
     where
         Self: 'a;
 
-    fn on_remove<'a>(&'a self, _key: K, _map: &HashMap<K, V>, _removed: V) -> Self::OnRemoveHandler<'a> {
+    fn on_remove<'a>(
+        &'a self,
+        _key: K,
+        _map: &HashMap<K, V>,
+        _removed: V,
+    ) -> Self::OnRemoveHandler<'a> {
         UnitHandler::default()
     }
 }
@@ -96,14 +106,18 @@ where
     where
         Self: 'a;
 
-    fn on_remove<'a>(&'a self, key: K, map: &HashMap<K, V>, removed: V) -> Self::OnRemoveHandler<'a> {
+    fn on_remove<'a>(
+        &'a self,
+        key: K,
+        map: &HashMap<K, V>,
+        removed: V,
+    ) -> Self::OnRemoveHandler<'a> {
         let FnHandler(f) = self;
         f(key, map, removed)
     }
 }
 
-impl<K, V, Context, Shared, F> OnDownlinkRemoveShared<K, V, Context, Shared>
-    for FnHandler<F>
+impl<K, V, Context, Shared, F> OnDownlinkRemoveShared<K, V, Context, Shared> for FnHandler<F>
 where
     F: for<'a> MapRemoveFn<'a, Context, Shared, K, V> + Send,
 {
@@ -134,7 +148,12 @@ where
     where
         Self: 'a;
 
-    fn on_remove<'a>(&'a self, key: K, map: &HashMap<K, V>, removed: V) -> Self::OnRemoveHandler<'a> {
+    fn on_remove<'a>(
+        &'a self,
+        key: K,
+        map: &HashMap<K, V>,
+        removed: V,
+    ) -> Self::OnRemoveHandler<'a> {
         let WithHandlerContext {
             inner,
             handler_context,

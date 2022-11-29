@@ -73,7 +73,11 @@ impl<T, Shared> OnSyncedShared<T, Shared> for NoHandler {
         T: 'a,
         Shared: 'a;
 
-    fn on_synced<'a>(&'a mut self, _shared: &'a mut Shared, _value: &'a T) -> Self::OnSyncedFut<'a> {
+    fn on_synced<'a>(
+        &'a mut self,
+        _shared: &'a mut Shared,
+        _value: &'a T,
+    ) -> Self::OnSyncedFut<'a> {
         ready(())
     }
 }

@@ -21,7 +21,6 @@ use std::{
 use bytes::{BufMut, BytesMut};
 use futures::{future::join, StreamExt};
 use parking_lot::Mutex;
-use swim_api::{protocol::map::{MapMessageDecoder, MapOperation, RawMapOperationDecoder}, store::NodePersistence};
 use swim_api::{
     error::StoreError,
     protocol::{
@@ -30,6 +29,10 @@ use swim_api::{
         WithLengthBytesCodec,
     },
     store::{KeyValue, RangeConsumer},
+};
+use swim_api::{
+    protocol::map::{MapMessageDecoder, MapOperation, RawMapOperationDecoder},
+    store::NodePersistence,
 };
 use swim_utilities::{io::byte_channel::byte_channel, non_zero_usize};
 use tokio_util::codec::FramedRead;

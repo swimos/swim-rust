@@ -21,7 +21,7 @@ use futures::{
 };
 use swim_api::{
     agent::UplinkKind,
-    store::{StoreDisabled, NodePersistence},
+    store::{NodePersistence, StoreDisabled},
 };
 use swim_messages::protocol::Notification;
 use swim_model::Text;

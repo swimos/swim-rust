@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use swim_model::Text;
-use swim_store::{EngineInfo, KeyValue, RangeConsumer, Store, StoreError, KeyspaceByteEngine};
+use swim_store::{EngineInfo, KeyValue, KeyspaceByteEngine, RangeConsumer, Store, StoreError};
 
 use crate::agent::{NodeStore, SwimNodeStore};
 use crate::server::keystore::KeyStore;
@@ -45,8 +45,7 @@ where
 }
 
 /// A trait for defining plane stores which will create node stores.
-pub trait PlaneStore: StoreEngine + Sized + Debug + Send + Sync + Clone + 'static
-{
+pub trait PlaneStore: StoreEngine + Sized + Debug + Send + Sync + Clone + 'static {
     /// The type of node stores which are created.
     type NodeStore: NodeStore;
 
@@ -58,7 +57,10 @@ pub trait PlaneStore: StoreEngine + Sized + Debug + Send + Sync + Clone + 'stati
     ///
     /// #Arguments
     /// * `prefix` - Common prefix for the records to read.
-    fn ranged_snapshot_consumer<'a>(&'a self, prefix: StoreKey) -> Result<Self::RangeCon<'a>, StoreError>;
+    fn ranged_snapshot_consumer<'a>(
+        &'a self,
+        prefix: StoreKey,
+    ) -> Result<Self::RangeCon<'a>, StoreError>;
 
     /// Create a node store for `node_uri`.
     fn node_store<I>(&self, node_uri: I) -> Self::NodeStore
@@ -155,7 +157,10 @@ where
     where
         Self: 'a;
 
-    fn ranged_snapshot_consumer<'a>(&'a self, prefix: StoreKey) -> Result<Self::RangeCon<'a>, StoreError> {
+    fn ranged_snapshot_consumer<'a>(
+        &'a self,
+        prefix: StoreKey,
+    ) -> Result<Self::RangeCon<'a>, StoreError> {
         let namespace = match &prefix {
             StoreKey::Map { .. } => KeyspaceName::Map,
             StoreKey::Value { .. } => KeyspaceName::Value,

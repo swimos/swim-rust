@@ -15,7 +15,6 @@
 use futures::Future;
 
 pub trait SharedHandlerFn0<'a, Shared> {
-
     type Fut: Future<Output = ()> + Send + 'a;
 
     fn apply(&'a mut self, shared: &'a mut Shared) -> Self::Fut;
@@ -35,11 +34,9 @@ where
 }
 
 pub trait EventFn<'a, T> {
-
     type Fut: Future<Output = ()> + Send + 'a;
 
     fn apply(&'a mut self, value: &'a T) -> Self::Fut;
-
 }
 
 impl<'a, T, F, Fut> EventFn<'a, T> for F
@@ -56,11 +53,9 @@ where
 }
 
 pub trait SharedEventFn<'a, Shared, T> {
-
     type Fut: Future<Output = ()> + Send + 'a;
 
     fn apply(&'a mut self, shared: &'a mut Shared, value: &'a T) -> Self::Fut;
-
 }
 
 impl<'a, Shared, T, F, Fut> SharedEventFn<'a, Shared, T> for F
@@ -78,11 +73,9 @@ where
 }
 
 pub trait SetFn<'a, T> {
-
     type Fut: Future<Output = ()> + Send + 'a;
 
     fn apply(&'a mut self, previous: Option<&'a T>, value: &'a T) -> Self::Fut;
-
 }
 
 impl<'a, T, F, Fut> SetFn<'a, T> for F
@@ -99,11 +92,9 @@ where
 }
 
 pub trait SharedSetFn<'a, Shared, T> {
-
     type Fut: Future<Output = ()> + Send + 'a;
 
     fn apply(&'a mut self, shared: &'a Shared, previous: Option<&'a T>, value: &'a T) -> Self::Fut;
-
 }
 
 impl<'a, Shared, T, F, Fut> SharedSetFn<'a, Shared, T> for F

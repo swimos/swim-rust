@@ -24,8 +24,8 @@ use rocksdb::{Options, DB};
 use std::path::Path;
 use std::sync::Arc;
 use store_common::{
-    EngineInfo, EnginePrefixIterator, EngineRefIterator, Keyspace, KeyspaceByteEngine,
-    KeyspaceResolver, Keyspaces, Store, StoreBuilder, StoreError, MAX_ID_SIZE, serialize_u64,
+    serialize_u64, EngineInfo, EnginePrefixIterator, EngineRefIterator, Keyspace,
+    KeyspaceByteEngine, KeyspaceResolver, Keyspaces, Store, StoreBuilder, StoreError, MAX_ID_SIZE,
 };
 
 /// A Rocks database engine.
@@ -115,7 +115,6 @@ where
 }
 
 impl KeyspaceByteEngine for RocksEngine {
-
     type RangeCon<'a> = RocksRawPrefixIterator<'a>
     where
         Self: 'a;

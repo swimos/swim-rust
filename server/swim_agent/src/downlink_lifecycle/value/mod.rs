@@ -39,20 +39,20 @@ pub mod on_set;
 /// * `T` - The type of the state of the lane.
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 pub trait ValueDownlinkLifecycle<T, Context>:
-OnLinked<Context>
-+ OnSynced<T, Context>
-+ OnDownlinkEvent<T, Context>
-+ OnDownlinkSet<T, Context>
-+ OnUnlinked<Context>
+    OnLinked<Context>
+    + OnSynced<T, Context>
+    + OnDownlinkEvent<T, Context>
+    + OnDownlinkSet<T, Context>
+    + OnUnlinked<Context>
 {
 }
 
 impl<LC, T, Context> ValueDownlinkLifecycle<T, Context> for LC where
     LC: OnLinked<Context>
-    + OnSynced<T, Context>
-    + OnDownlinkEvent<T, Context>
-    + OnDownlinkSet<T, Context>
-    + OnUnlinked<Context>
+        + OnSynced<T, Context>
+        + OnDownlinkEvent<T, Context>
+        + OnDownlinkSet<T, Context>
+        + OnUnlinked<Context>
 {
 }
 

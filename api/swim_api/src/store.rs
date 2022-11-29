@@ -38,7 +38,6 @@ impl Display for StoreKind {
 /// Defines that operations that must be provided for a store implementation that allows
 /// a Swim agent to persist its state.
 pub trait NodePersistence {
-
     type MapCon<'a>: RangeConsumer + Send + 'a
     where
         Self: 'a;
@@ -78,7 +77,6 @@ pub trait NodePersistence {
 
     /// Produce a [`RangeConsumer`] that will enumerate the entries for a map in the store.
     fn read_map<'a>(&'a self, id: Self::LaneId) -> Result<Self::MapCon<'a>, StoreError>;
-
 }
 
 /// View of a entry from a map in a store.
@@ -151,7 +149,6 @@ impl NodePersistence for StoreDisabled {
     fn read_map<'a>(&'a self, _id: Self::LaneId) -> Result<Self::MapCon<'a>, StoreError> {
         Ok(StoreDisabled)
     }
-    
 }
 
 impl PlanePersistence for StoreDisabled {

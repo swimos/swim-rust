@@ -156,7 +156,11 @@ where
     where
         Self: 'a;
 
-    fn lane_event<'a>(&'a self, context: &Context, lane_name: &str) -> Option<Self::LaneEventHandler<'a>> {
+    fn lane_event<'a>(
+        &'a self,
+        context: &Context,
+        lane_name: &str,
+    ) -> Option<Self::LaneEventHandler<'a>> {
         let ValueBranch {
             label,
             projection,

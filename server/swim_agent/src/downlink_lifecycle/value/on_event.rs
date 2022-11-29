@@ -19,7 +19,7 @@ use swim_api::handlers::{BorrowHandler, FnHandler, NoHandler};
 use crate::{
     agent_lifecycle::utility::HandlerContext,
     downlink_lifecycle::{LiftShared, WithHandlerContext},
-    event_handler::{EventHandler, UnitHandler, EventFn},
+    event_handler::{EventFn, EventHandler, UnitHandler},
 };
 
 /// Lifecycle event for the `on_event` event of a downlink, from an agent.
@@ -129,8 +129,7 @@ where
     }
 }
 
-impl<B, T, Context, Shared, F> OnDownlinkEventShared<T, Context, Shared>
-    for BorrowHandler<F, B>
+impl<B, T, Context, Shared, F> OnDownlinkEventShared<T, Context, Shared> for BorrowHandler<F, B>
 where
     B: ?Sized,
     T: Borrow<B>,
@@ -169,8 +168,7 @@ where
     }
 }
 
-impl<T, Context, Shared, F> OnDownlinkEventShared<T, Context, Shared>
-    for LiftShared<F, Shared>
+impl<T, Context, Shared, F> OnDownlinkEventShared<T, Context, Shared> for LiftShared<F, Shared>
 where
     F: OnDownlinkEvent<T, Context> + Send,
 {

@@ -277,7 +277,12 @@ where
     where
         Self: 'a;
 
-    fn on_remove<'a>(&'a self, map: &HashMap<K, V>, key: K, prev_value: V) -> Self::OnRemoveHandler<'a> {
+    fn on_remove<'a>(
+        &'a self,
+        map: &HashMap<K, V>,
+        key: K,
+        prev_value: V,
+    ) -> Self::OnRemoveHandler<'a> {
         self.on_remove_handler(map.clone(), key, prev_value)
     }
 }

@@ -35,15 +35,18 @@ use tokio_util::codec::Decoder;
 
 use crate::{agent_model::downlink::handlers::BoxDownlinkChannel, meta::AgentMetadata};
 
+mod handler_fn;
 mod register_downlink;
 mod suspend;
-mod handler_fn;
 #[cfg(test)]
 mod tests;
 
 pub use suspend::{HandlerFuture, Spawner, Suspend};
 
-pub use handler_fn::{HandlerFn0, EventFn, UpdateFn, UpdateBorrowFn, TakeFn, MapRemoveFn, MapUpdateFn, MapUpdateBorrowFn};
+pub use handler_fn::{
+    EventFn, HandlerFn0, MapRemoveFn, MapUpdateBorrowFn, MapUpdateFn, TakeFn, UpdateBorrowFn,
+    UpdateFn,
+};
 
 use self::register_downlink::RegisterHostedDownlink;
 

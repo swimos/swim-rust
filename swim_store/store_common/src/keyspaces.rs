@@ -55,7 +55,6 @@ impl<O> Keyspaces<O> {
 
 /// A trait for abstracting over database engines and partitioning data by a logical keyspace.
 pub trait KeyspaceByteEngine: Send + Sync + 'static {
-
     type RangeCon<'a>: RangeConsumer + Send + 'a
     where
         Self: 'a;

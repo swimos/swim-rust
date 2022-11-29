@@ -42,22 +42,22 @@ pub mod on_update;
 /// * `V` - The type of the values of the downlink.
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 pub trait MapDownlinkLifecycle<K, V, Context>:
-OnLinked<Context>
-+ OnSynced<HashMap<K, V>, Context>
-+ OnDownlinkUpdate<K, V, Context>
-+ OnDownlinkRemove<K, V, Context>
-+ OnDownlinkClear<K, V, Context>
-+ OnUnlinked<Context>
-{
-}
-
-impl<LC, K, V, Context> MapDownlinkLifecycle<K, V, Context> for LC where
-    LC: OnLinked<Context>
+    OnLinked<Context>
     + OnSynced<HashMap<K, V>, Context>
     + OnDownlinkUpdate<K, V, Context>
     + OnDownlinkRemove<K, V, Context>
     + OnDownlinkClear<K, V, Context>
     + OnUnlinked<Context>
+{
+}
+
+impl<LC, K, V, Context> MapDownlinkLifecycle<K, V, Context> for LC where
+    LC: OnLinked<Context>
+        + OnSynced<HashMap<K, V>, Context>
+        + OnDownlinkUpdate<K, V, Context>
+        + OnDownlinkRemove<K, V, Context>
+        + OnDownlinkClear<K, V, Context>
+        + OnUnlinked<Context>
 {
 }
 
@@ -243,8 +243,7 @@ where
     }
 }
 
-impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
-    OnSynced<HashMap<K, V>, Context>
+impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> OnSynced<HashMap<K, V>, Context>
     for StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
 where
     FLinked: Send,
@@ -284,8 +283,7 @@ where
     }
 }
 
-impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
-    OnDownlinkUpdate<K, V, Context>
+impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> OnDownlinkUpdate<K, V, Context>
     for StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
 where
     FLinked: Send,
@@ -311,8 +309,7 @@ where
     }
 }
 
-impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
-    OnDownlinkRemove<K, V, Context>
+impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> OnDownlinkRemove<K, V, Context>
     for StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
 where
     FLinked: Send,
@@ -326,14 +323,18 @@ where
     where
         Self: 'a;
 
-    fn on_remove<'a>(&'a self, key: K, map: &HashMap<K, V>, removed: V) -> Self::OnRemoveHandler<'a> {
+    fn on_remove<'a>(
+        &'a self,
+        key: K,
+        map: &HashMap<K, V>,
+        removed: V,
+    ) -> Self::OnRemoveHandler<'a> {
         let StatelessMapDownlinkLifecycle { on_remove, .. } = self;
         on_remove.on_remove(key, map, removed)
     }
 }
 
-impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
-    OnDownlinkClear<K, V, Context>
+impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> OnDownlinkClear<K, V, Context>
     for StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
 where
     FLinked: Send,
@@ -648,8 +649,7 @@ where
     }
 }
 
-impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
-    OnUnlinked<Context>
+impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> OnUnlinked<Context>
     for StatefulMapDownlinkLifecycle<
         Context,
         State,
@@ -757,7 +757,12 @@ where
     where
         Self: 'a;
 
-    fn on_remove<'a>(&'a self, key: K, map: &HashMap<K, V>, removed: V) -> Self::OnRemoveHandler<'a> {
+    fn on_remove<'a>(
+        &'a self,
+        key: K,
+        map: &HashMap<K, V>,
+        removed: V,
+    ) -> Self::OnRemoveHandler<'a> {
         let StatefulMapDownlinkLifecycle {
             on_remove,
             state,

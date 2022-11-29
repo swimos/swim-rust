@@ -38,13 +38,13 @@ use super::{
     NodeReporting,
 };
 use bytes::{Bytes, BytesMut};
-use futures::{ready, pin_mut};
 use futures::stream::FuturesUnordered;
 use futures::{
     future::{join, select as fselect, Either},
     stream::{select as sselect, SelectAll},
     Stream, StreamExt,
 };
+use futures::{pin_mut, ready};
 use swim_api::agent::LaneConfig;
 use swim_api::error::StoreError;
 use swim_api::meta::lane::LaneKind;
@@ -1071,10 +1071,7 @@ async fn read_task(
                     let send_err = write_tx.send(WriteTaskMessage::Coord(
                         RwCoorindationMessage::UnknownLane {
                             origin,
-                            path: Path::text(
-                                path.node.as_str(),
-                                path.lane.as_str(),
-                            ),
+                            path: Path::text(path.node.as_str(), path.lane.as_str()),
                         },
                     ));
                     let (_, result) = join(flush, send_err).await;

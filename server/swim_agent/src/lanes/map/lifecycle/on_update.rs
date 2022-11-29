@@ -18,7 +18,7 @@ use swim_api::handlers::{FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
-    event_handler::{EventHandler, UnitHandler, MapUpdateFn},
+    event_handler::{EventHandler, MapUpdateFn, UnitHandler},
 };
 
 /// Lifecycle event for the `on_update` event of a map lane.

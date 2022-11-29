@@ -57,7 +57,6 @@ impl RangeConsumer for NoRange {
 }
 
 impl KeyspaceByteEngine for NoStore {
-
     type RangeCon<'a> = NoRange
     where
         Self: 'a;

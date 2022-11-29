@@ -18,7 +18,7 @@ use swim_api::handlers::{FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
-    event_handler::{EventHandler, UnitHandler, MapRemoveFn},
+    event_handler::{EventHandler, MapRemoveFn, UnitHandler},
 };
 
 /// Lifecycle event for the `on_remove` event of a map lane.
@@ -31,7 +31,12 @@ pub trait OnRemove<K, V, Context>: Send {
     /// * `map` - The current contents of the map.
     /// * `key` - The key that was removed.
     /// * `prev_value` - The value that was removed.
-    fn on_remove<'a>(&'a self, map: &HashMap<K, V>, key: K, prev_value: V) -> Self::OnRemoveHandler<'a>;
+    fn on_remove<'a>(
+        &'a self,
+        map: &HashMap<K, V>,
+        key: K,
+        prev_value: V,
+    ) -> Self::OnRemoveHandler<'a>;
 }
 
 /// Lifecycle event for the `on_remove` event of a map lane where the event handler
@@ -63,7 +68,12 @@ impl<K, V, Context> OnRemove<K, V, Context> for NoHandler {
     where
         Self: 'a;
 
-    fn on_remove<'a>(&'a self, _map: &HashMap<K, V>, _key: K, _prev_value: V) -> Self::OnRemoveHandler<'a> {
+    fn on_remove<'a>(
+        &'a self,
+        _map: &HashMap<K, V>,
+        _key: K,
+        _prev_value: V,
+    ) -> Self::OnRemoveHandler<'a> {
         UnitHandler::default()
     }
 }
@@ -95,7 +105,12 @@ where
     where
         Self: 'a;
 
-    fn on_remove<'a>(&'a self, map: &HashMap<K, V>, key: K, prev_value: V) -> Self::OnRemoveHandler<'a> {
+    fn on_remove<'a>(
+        &'a self,
+        map: &HashMap<K, V>,
+        key: K,
+        prev_value: V,
+    ) -> Self::OnRemoveHandler<'a> {
         let FnHandler(f) = self;
         f(map, key, prev_value)
     }

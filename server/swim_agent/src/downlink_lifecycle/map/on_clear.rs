@@ -19,7 +19,7 @@ use swim_api::handlers::{FnHandler, NoHandler};
 use crate::{
     agent_lifecycle::utility::HandlerContext,
     downlink_lifecycle::{LiftShared, WithHandlerContext},
-    event_handler::{EventHandler, UnitHandler, TakeFn},
+    event_handler::{EventHandler, TakeFn, UnitHandler},
 };
 
 /// Lifecycle event for the `on_clear` event of a downlink, from an agent.
@@ -94,8 +94,7 @@ where
     }
 }
 
-impl<K, V, Context, Shared, F> OnDownlinkClearShared<K, V, Context, Shared>
-    for FnHandler<F>
+impl<K, V, Context, Shared, F> OnDownlinkClearShared<K, V, Context, Shared> for FnHandler<F>
 where
     F: for<'a> TakeFn<'a, Context, Shared, HashMap<K, V>> + Send,
 {

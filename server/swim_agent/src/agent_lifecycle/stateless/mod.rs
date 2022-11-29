@@ -90,7 +90,11 @@ where
     where
         Self: 'a;
 
-    fn lane_event<'a>(&'a self, context: &Context, lane_name: &str) -> Option<Self::LaneEventHandler<'a>> {
+    fn lane_event<'a>(
+        &'a self,
+        context: &Context,
+        lane_name: &str,
+    ) -> Option<Self::LaneEventHandler<'a>> {
         self.lane_event.lane_event(context, lane_name)
     }
 }
@@ -132,7 +136,7 @@ impl<Context, FStart, FStop, LaneEv> BasicAgentLifecycle<Context, FStart, FStop,
 
     pub fn on_lane_event<H>(self, handler: H) -> BasicAgentLifecycle<Context, FStart, FStop, H>
     where
-        H:  LaneEvent<Context>,
+        H: LaneEvent<Context>,
     {
         let BasicAgentLifecycle {
             on_start, on_stop, ..

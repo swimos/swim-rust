@@ -42,7 +42,6 @@ impl Store for RocksDatabase {
 }
 
 impl KeyspaceByteEngine for RocksDatabase {
-
     type RangeCon<'a> = RocksRawPrefixIterator<'a>
     where
         Self: 'a;

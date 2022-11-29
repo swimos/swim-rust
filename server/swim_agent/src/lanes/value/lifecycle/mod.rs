@@ -31,7 +31,7 @@ pub mod on_set;
 /// #Type Parameters
 /// * `T` - The type of the state of the lane.
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
-pub trait ValueLaneLifecycle<T, Context>:  OnEvent<T, Context> + OnSet<T, Context> {}
+pub trait ValueLaneLifecycle<T, Context>: OnEvent<T, Context> + OnSet<T, Context> {}
 
 /// Trait for the lifecycle of a value lane where the lifecycle has access to some shared state (shared
 /// with all other lifecycles in the agent).

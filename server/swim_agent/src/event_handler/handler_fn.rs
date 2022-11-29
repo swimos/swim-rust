@@ -198,7 +198,6 @@ where
     }
 }
 
-
 pub trait MapUpdateFn<'a, Context, Shared, K, V> {
     type Handler: EventHandler<Context> + 'a;
 
@@ -248,7 +247,8 @@ pub trait MapUpdateBorrowFn<'a, Context, Shared, K, V, B: ?Sized> {
     ) -> Self::Handler;
 }
 
-impl<'a, Context, Shared, K, V, B: ?Sized, F, H> MapUpdateBorrowFn<'a, Context, Shared, K, V, B> for F
+impl<'a, Context, Shared, K, V, B: ?Sized, F, H> MapUpdateBorrowFn<'a, Context, Shared, K, V, B>
+    for F
 where
     H: EventHandler<Context> + 'a,
     F: Fn(&'a Shared, HandlerContext<Context>, &HashMap<K, V>, K, Option<V>, &B) -> H + 'a,

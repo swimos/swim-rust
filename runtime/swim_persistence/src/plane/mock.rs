@@ -29,7 +29,10 @@ impl PlaneStore for MockPlaneStore {
     where
         Self: 'a;
 
-    fn ranged_snapshot_consumer<'a>(&'a self, _prefix: StoreKey) -> Result<Self::RangeCon<'a>, StoreError> {
+    fn ranged_snapshot_consumer<'a>(
+        &'a self,
+        _prefix: StoreKey,
+    ) -> Result<Self::RangeCon<'a>, StoreError> {
         Ok(NoRange)
     }
 

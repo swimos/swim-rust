@@ -46,7 +46,11 @@ pub trait LaneEvent<Context> {
     /// #Arguments
     /// * `context` - The context of the agent (allowing access to the lanes).
     /// * `lane_name` - The name of the lane.
-    fn lane_event<'a>(&'a self, context: &Context, lane_name: &str) -> Option<Self::LaneEventHandler<'a>>;
+    fn lane_event<'a>(
+        &'a self,
+        context: &Context,
+        lane_name: &str,
+    ) -> Option<Self::LaneEventHandler<'a>>;
 }
 
 /// Trait to implement all event handlers for all of the lanes of an agent. Implementations of

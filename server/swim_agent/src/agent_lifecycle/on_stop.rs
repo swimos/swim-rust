@@ -14,7 +14,7 @@
 
 use swim_api::handlers::{FnHandler, NoHandler};
 
-use crate::event_handler::{EventHandler, UnitHandler, HandlerFn0};
+use crate::event_handler::{EventHandler, HandlerFn0, UnitHandler};
 
 use super::utility::HandlerContext;
 

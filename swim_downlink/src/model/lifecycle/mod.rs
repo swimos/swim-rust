@@ -14,13 +14,13 @@
 
 use std::marker::PhantomData;
 
+pub use handler_fn::*;
 pub use on_event::{OnEvent, OnEventShared};
 pub use on_linked::{OnLinked, OnLinkedShared};
 pub use on_set::{OnSet, OnSetShared};
 pub use on_synced::{OnSynced, OnSyncedShared};
 pub use on_unlinked::{OnUnlinked, OnUnlinkedShared};
 use swim_api::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
-pub use handler_fn::*;
 
 mod handler_fn;
 mod on_event;
@@ -30,12 +30,18 @@ mod on_synced;
 mod on_unlinked;
 
 /// Description of a lifecycle for a value downlink.
-pub trait ValueDownlinkLifecycle<T>: OnLinked + OnSynced<T> + OnEvent<T> + OnSet<T> + OnUnlinked {}
+pub trait ValueDownlinkLifecycle<T>:
+    OnLinked + OnSynced<T> + OnEvent<T> + OnSet<T> + OnUnlinked
+{
+}
 
 /// Description of a lifecycle for an event downlink.
 pub trait EventDownlinkLifecycle<T>: OnLinked + OnEvent<T> + OnUnlinked {}
 
-impl<T, L> ValueDownlinkLifecycle<T> for L where L: OnLinked + OnSynced<T> + OnEvent<T> + OnSet<T> + OnUnlinked {}
+impl<T, L> ValueDownlinkLifecycle<T> for L where
+    L: OnLinked + OnSynced<T> + OnEvent<T> + OnSet<T> + OnUnlinked
+{
+}
 
 impl<T, L> EventDownlinkLifecycle<T> for L where L: OnLinked + OnEvent<T> + OnUnlinked {}
 /// A basic lifecycle for a value downlink where the event handlers do not share any state.

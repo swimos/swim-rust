@@ -39,13 +39,10 @@ pub trait CommandLaneLifecycleShared<T, Context, Shared>:
 {
 }
 
-impl<T, Context, L> CommandLaneLifecycle<T, Context> for L where
-    L: OnCommand<T, Context>
-{
-}
+impl<T, Context, L> CommandLaneLifecycle<T, Context> for L where L: OnCommand<T, Context> {}
 
 impl<T, Context, Shared, L> CommandLaneLifecycleShared<T, Context, Shared> for L where
-    L:  OnCommandShared<T, Context, Shared>
+    L: OnCommandShared<T, Context, Shared>
 {
 }
 
