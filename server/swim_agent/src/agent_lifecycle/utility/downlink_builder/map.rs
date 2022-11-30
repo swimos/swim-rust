@@ -110,6 +110,33 @@ pub type LiftedMapBuilder<Context, K, V, State, FLinked, FSynced, FUnlinked, FUp
         LiftShared<FClr, State>,
     >;
 
+type StatelessWithContextAndBorrow<Context, K, V, Linked, Synced, Unlinked, Rem, Clr, F, B> =
+    StatelessMapDownlinkBuilder<
+        Context,
+        K,
+        V,
+        Linked,
+        Synced,
+        Unlinked,
+        WithHandlerContextBorrow<Context, F, B>,
+        Rem,
+        Clr,
+    >;
+
+type StatefulWithBorrow<Context, K, V, State, Linked, Synced, Unlinked, Rem, Clr, F, B> =
+    StatefulMapDownlinkBuilder<
+        Context,
+        K,
+        V,
+        State,
+        Linked,
+        Synced,
+        Unlinked,
+        BorrowHandler<F, B>,
+        Rem,
+        Clr,
+    >;
+
 impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
     StatelessMapDownlinkBuilder<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
 {
@@ -207,17 +234,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
     pub fn on_update<F, B>(
         self,
         f: F,
-    ) -> StatelessMapDownlinkBuilder<
-        Context,
-        K,
-        V,
-        FLinked,
-        FSynced,
-        FUnlinked,
-        WithHandlerContextBorrow<Context, F, B>,
-        FRem,
-        FClr,
-    >
+    ) -> StatelessWithContextAndBorrow<Context, K, V, FLinked, FSynced, FUnlinked, FRem, FClr, F, B>
     where
         B: ?Sized,
         V: Borrow<B>,
@@ -445,18 +462,7 @@ impl<Context, K, V, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
     pub fn on_update<F, B>(
         self,
         f: F,
-    ) -> StatefulMapDownlinkBuilder<
-        Context,
-        K,
-        V,
-        State,
-        FLinked,
-        FSynced,
-        FUnlinked,
-        BorrowHandler<F, B>,
-        FRem,
-        FClr,
-    >
+    ) -> StatefulWithBorrow<Context, K, V, State, FLinked, FSynced, FUnlinked, FRem, FClr, F, B>
     where
         B: ?Sized,
         V: Borrow<B>,

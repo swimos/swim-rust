@@ -30,7 +30,7 @@ pub struct BorrowHandler<F, B: ?Sized>(F, PhantomData<fn(B)>);
 
 impl<F: Clone, B: ?Sized> Clone for BorrowHandler<F, B> {
     fn clone(&self) -> Self {
-        Self(self.0.clone(), self.1.clone())
+        Self(self.0.clone(), self.1)
     }
 }
 
