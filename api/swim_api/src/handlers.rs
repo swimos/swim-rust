@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::marker::PhantomData;
+use std::{fmt::Debug, marker::PhantomData};
 
 /// An event hanlder that does nothing.
 #[derive(Clone, Copy, Default, Debug)]
@@ -26,8 +26,27 @@ pub struct FnMutHandler<F>(pub F);
 #[derive(Clone, Copy, Default, Debug)]
 pub struct FnHandler<F>(pub F);
 
-#[derive(Clone, Copy, Default, Debug)]
 pub struct BorrowHandler<F, B: ?Sized>(F, PhantomData<fn(B)>);
+
+impl<F: Clone, B: ?Sized> Clone for BorrowHandler<F, B> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone(), self.1.clone())
+    }
+}
+
+impl<F: Copy, B: ?Sized> Copy for BorrowHandler<F, B> {}
+
+impl<F: Default, B: ?Sized> Default for BorrowHandler<F, B> {
+    fn default() -> Self {
+        Self(Default::default(), Default::default())
+    }
+}
+
+impl<F: Debug, B: ?Sized> Debug for BorrowHandler<F, B> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("BorrowHandler").field(&self.0).finish()
+    }
+}
 
 impl<F, B: ?Sized> BorrowHandler<F, B> {
     pub fn new(f: F) -> Self {

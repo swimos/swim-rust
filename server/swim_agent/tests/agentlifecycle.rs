@@ -163,7 +163,7 @@ fn make_meta(uri: &RouteUri) -> AgentMetadata<'_> {
     AgentMetadata::new(uri, &CONFIG)
 }
 
-fn run_handler<H: EventHandler<TestAgent>>(agent: &TestAgent, mut handler: H) {
+fn run_handler<Agent, H: EventHandler<Agent>>(agent: &Agent, mut handler: H) {
     let uri = make_uri();
     let meta = make_meta(&uri);
     loop {
@@ -770,5 +770,197 @@ fn all_handlers() {
             Event::Value(ValueEvent::Event(TEST_VALUE)),
             Event::Value(ValueEvent::Set(TEST_VALUE, Some(0))),
         ]
+    );
+}
+
+#[derive(AgentLaneModel)]
+#[agent_root(::swim_agent)]
+struct BorrowAgent {
+    array: ValueLane<Vec<i32>>,
+    string: CommandLane<String>,
+    map: MapLane<i32, String>,
+}
+
+#[derive(PartialEq, Eq, Debug)]
+enum BorrowEvent {
+    StrCommand(String),
+    VecEvent(Vec<i32>),
+    VecSet(Option<Vec<i32>>, Vec<i32>),
+    MapUpdate(HashMap<i32, String>, i32, Option<String>, String),
+}
+#[derive(Default, Clone)]
+struct BorrowLcInner {
+    data: Arc<Mutex<Vec<BorrowEvent>>>,
+}
+
+impl BorrowLcInner {
+    fn push(&self, event: BorrowEvent) {
+        self.data.lock().push(event)
+    }
+
+    fn take(&self) -> Vec<BorrowEvent> {
+        let mut guard = self.data.lock();
+        std::mem::take(&mut *guard)
+    }
+}
+
+#[test]
+fn on_command_borrow_handler() {
+    #[derive(Default, Clone)]
+    struct TestLifecycle(BorrowLcInner);
+
+    #[lifecycle(BorrowAgent, agent_root(::swim_agent))]
+    impl TestLifecycle {
+        #[on_command(string)]
+        fn my_on_command(
+            &self,
+            context: HandlerContext<BorrowAgent>,
+            value: &str,
+        ) -> impl EventHandler<BorrowAgent> + '_ {
+            let s = value.to_string();
+            context.effect(move || {
+                self.0.push(BorrowEvent::StrCommand(s));
+            })
+        }
+    }
+
+    let agent = BorrowAgent::default();
+    let template = TestLifecycle::default();
+
+    let lifecycle = template.clone().into_lifecycle();
+
+    agent.string.command("text".to_string());
+    let handler = lifecycle
+        .lane_event(&agent, "string")
+        .expect("Expected handler for lane.");
+    run_handler(&agent, handler);
+
+    let events = template.0.take();
+
+    assert_eq!(events, vec![BorrowEvent::StrCommand("text".to_string())]);
+}
+
+#[test]
+fn on_event_borrow_handler() {
+    #[derive(Default, Clone)]
+    struct TestLifecycle(BorrowLcInner);
+
+    #[lifecycle(BorrowAgent, agent_root(::swim_agent))]
+    impl TestLifecycle {
+        #[on_event(array)]
+        fn my_on_event(
+            &self,
+            context: HandlerContext<BorrowAgent>,
+            value: &[i32],
+        ) -> impl EventHandler<BorrowAgent> + '_ {
+            let v = value.to_vec();
+            context.effect(move || {
+                self.0.push(BorrowEvent::VecEvent(v));
+            })
+        }
+    }
+
+    let agent = BorrowAgent::default();
+    let template = TestLifecycle::default();
+
+    let lifecycle = template.clone().into_lifecycle();
+
+    agent.array.set(vec![1, 2, 3]);
+    let handler = lifecycle
+        .lane_event(&agent, "array")
+        .expect("Expected handler for lane.");
+    run_handler(&agent, handler);
+
+    let events = template.0.take();
+
+    assert_eq!(events, vec![BorrowEvent::VecEvent(vec![1, 2, 3])]);
+}
+
+#[test]
+fn on_set_borrow_handler() {
+    #[derive(Default, Clone)]
+    struct TestLifecycle(BorrowLcInner);
+
+    #[lifecycle(BorrowAgent, agent_root(::swim_agent))]
+    impl TestLifecycle {
+        #[on_set(array)]
+        fn my_on_set(
+            &self,
+            context: HandlerContext<BorrowAgent>,
+            value: &[i32],
+            prev: Option<Vec<i32>>,
+        ) -> impl EventHandler<BorrowAgent> + '_ {
+            let v = value.to_vec();
+            context.effect(move || {
+                self.0.push(BorrowEvent::VecSet(prev, v));
+            })
+        }
+    }
+
+    let agent = BorrowAgent::default();
+    let template = TestLifecycle::default();
+
+    let lifecycle = template.clone().into_lifecycle();
+
+    agent.array.set(vec![1, 2, 3]);
+    let handler = lifecycle
+        .lane_event(&agent, "array")
+        .expect("Expected handler for lane.");
+    run_handler(&agent, handler);
+
+    let events = template.0.take();
+
+    assert_eq!(
+        events,
+        vec![BorrowEvent::VecSet(Some(vec![]), vec![1, 2, 3])]
+    );
+}
+
+#[test]
+fn on_update_borrow_handler() {
+    #[derive(Default, Clone)]
+    struct TestLifecycle(BorrowLcInner);
+
+    #[lifecycle(BorrowAgent, agent_root(::swim_agent))]
+    impl TestLifecycle {
+        #[on_update(map)]
+        fn my_on_update(
+            &self,
+            context: HandlerContext<BorrowAgent>,
+            map: &HashMap<i32, String>,
+            key: i32,
+            prev: Option<String>,
+            new_value: &str,
+        ) -> impl EventHandler<BorrowAgent> + '_ {
+            let map_state = map.clone();
+            let v = new_value.to_string();
+            context.effect(move || {
+                self.0.push(BorrowEvent::MapUpdate(map_state, key, prev, v));
+            })
+        }
+    }
+
+    let agent = BorrowAgent::default();
+    let template = TestLifecycle::default();
+
+    let lifecycle = template.clone().into_lifecycle();
+
+    agent.map.update(1, "hello".to_string());
+    let handler = lifecycle
+        .lane_event(&agent, "map")
+        .expect("Expected handler for lane.");
+    run_handler(&agent, handler);
+
+    let events = template.0.take();
+
+    let expected_map: HashMap<i32, String> = [(1, "hello".to_string())].into_iter().collect();
+    assert_eq!(
+        events,
+        vec![BorrowEvent::MapUpdate(
+            expected_map,
+            1,
+            None,
+            "hello".to_string()
+        )]
     );
 }

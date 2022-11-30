@@ -58,6 +58,7 @@ pub trait EventFn<'a, Context, Shared, T: ?Sized> {
 
 impl<'a, Context, Shared, T, F, H> EventFn<'a, Context, Shared, T> for F
 where
+    T: ?Sized,
     H: EventHandler<Context> + 'a,
     F: Fn(&'a Shared, HandlerContext<Context>, &T) -> H + 'a,
     Shared: 'a,
@@ -117,8 +118,9 @@ pub trait UpdateBorrowFn<'a, Context, Shared, T, B: ?Sized> {
     ) -> Self::Handler;
 }
 
-impl<'a, Context, Shared, T, B: ?Sized, F, H> UpdateBorrowFn<'a, Context, Shared, T, B> for F
+impl<'a, Context, Shared, T, B, F, H> UpdateBorrowFn<'a, Context, Shared, T, B> for F
 where
+    B: ?Sized,
     H: EventHandler<Context> + 'a,
     F: Fn(&'a Shared, HandlerContext<Context>, &B, Option<T>) -> H + 'a,
     Shared: 'a,
@@ -247,9 +249,9 @@ pub trait MapUpdateBorrowFn<'a, Context, Shared, K, V, B: ?Sized> {
     ) -> Self::Handler;
 }
 
-impl<'a, Context, Shared, K, V, B: ?Sized, F, H> MapUpdateBorrowFn<'a, Context, Shared, K, V, B>
-    for F
+impl<'a, Context, Shared, K, V, B, F, H> MapUpdateBorrowFn<'a, Context, Shared, K, V, B> for F
 where
+    B: ?Sized,
     H: EventHandler<Context> + 'a,
     F: Fn(&'a Shared, HandlerContext<Context>, &HashMap<K, V>, K, Option<V>, &B) -> H + 'a,
     Shared: 'a,
