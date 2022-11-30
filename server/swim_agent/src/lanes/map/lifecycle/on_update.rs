@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
+use std::{borrow::Borrow, collections::HashMap};
 
-use swim_api::handlers::{FnHandler, NoHandler};
+use swim_api::handlers::{BorrowHandler, FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
-    event_handler::{EventHandler, MapUpdateFn, UnitHandler},
+    event_handler::{EventHandler, MapUpdateBorrowFn, MapUpdateFn, UnitHandler},
 };
 
 /// Lifecycle event for the `on_update` event of a map lane.
@@ -143,5 +143,60 @@ where
     ) -> Self::OnUpdateHandler<'a> {
         let FnHandler(f) = self;
         f.make_handler(shared, handler_context, map, key, prev_value, new_value)
+    }
+}
+
+impl<K, V, B, Context, F, H> OnUpdate<K, V, Context> for BorrowHandler<F, B>
+where
+    B: ?Sized,
+    V: Borrow<B>,
+    F: Fn(&HashMap<K, V>, K, Option<V>, &B) -> H + Send,
+    H: EventHandler<Context> + 'static,
+{
+    type OnUpdateHandler<'a> = H
+    where
+        Self: 'a;
+
+    fn on_update<'a>(
+        &'a self,
+        map: &HashMap<K, V>,
+        key: K,
+        prev_value: Option<V>,
+        new_value: &V,
+    ) -> Self::OnUpdateHandler<'a> {
+        let f_ref = self.as_ref();
+        f_ref(map, key, prev_value, new_value.borrow())
+    }
+}
+
+impl<K, V, B, Context, Shared, F> OnUpdateShared<K, V, Context, Shared> for BorrowHandler<F, B>
+where
+    B: ?Sized,
+    V: Borrow<B>,
+    F: for<'a> MapUpdateBorrowFn<'a, Context, Shared, K, V, B> + Send,
+{
+    type OnUpdateHandler<'a> = <F as MapUpdateBorrowFn<'a, Context, Shared, K, V, B>>::Handler
+    where
+        Self: 'a,
+        Shared: 'a;
+
+    fn on_update<'a>(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        map: &HashMap<K, V>,
+        key: K,
+        prev_value: Option<V>,
+        new_value: &V,
+    ) -> Self::OnUpdateHandler<'a> {
+        let f_ref = self.as_ref();
+        f_ref.make_handler(
+            shared,
+            handler_context,
+            map,
+            key,
+            prev_value,
+            new_value.borrow(),
+        )
     }
 }

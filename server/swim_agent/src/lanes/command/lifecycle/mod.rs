@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{marker::PhantomData, borrow::Borrow};
+use std::{borrow::Borrow, marker::PhantomData};
 
-use swim_api::handlers::{NoHandler, BorrowHandler};
+use swim_api::handlers::{BorrowHandler, NoHandler};
 
 use self::on_command::{OnCommand, OnCommandShared};
 
@@ -104,6 +104,7 @@ impl<Context, Shared, T, OnCmd> StatefulCommandLaneLifecycle<Context, Shared, T,
         f: F,
     ) -> StatefulCommandLaneLifecycle<Context, Shared, T, BorrowHandler<F, B>>
     where
+        B: ?Sized,
         T: Borrow<B>,
         BorrowHandler<F, B>: OnCommandShared<T, Context, Shared>,
     {

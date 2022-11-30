@@ -14,7 +14,7 @@
 
 use std::borrow::Borrow;
 
-use swim_api::handlers::{FnHandler, NoHandler, BorrowHandler};
+use swim_api::handlers::{BorrowHandler, FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
@@ -149,4 +149,3 @@ where
         (self.as_ref()).make_handler(shared, handler_context, value.borrow())
     }
 }
-

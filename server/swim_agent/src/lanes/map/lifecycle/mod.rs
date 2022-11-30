@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashMap, marker::PhantomData};
+use std::{borrow::Borrow, collections::HashMap, marker::PhantomData};
 
-use swim_api::handlers::{FnHandler, NoHandler};
+use swim_api::handlers::{BorrowHandler, FnHandler, NoHandler};
 
 use crate::agent_lifecycle::utility::HandlerContext;
 
@@ -108,16 +108,18 @@ impl<Context, Shared, K, V> Default for StatefulMapLaneLifecycle<Context, Shared
 impl<Context, Shared, K, V, FUpd, FRem, FClr>
     StatefulMapLaneLifecycle<Context, Shared, K, V, FUpd, FRem, FClr>
 {
-    pub fn on_update<F>(
+    pub fn on_update<F, B>(
         self,
         f: F,
-    ) -> StatefulMapLaneLifecycle<Context, Shared, K, V, FnHandler<F>, FRem, FClr>
+    ) -> StatefulMapLaneLifecycle<Context, Shared, K, V, BorrowHandler<F, B>, FRem, FClr>
     where
-        FnHandler<F>: for<'a> OnUpdateShared<K, V, Context, Shared>,
+        B: ?Sized,
+        V: Borrow<B>,
+        BorrowHandler<F, B>: for<'a> OnUpdateShared<K, V, Context, Shared>,
     {
         StatefulMapLaneLifecycle {
             _value_type: PhantomData,
-            on_update: FnHandler(f),
+            on_update: BorrowHandler::new(f),
             on_remove: self.on_remove,
             on_clear: self.on_clear,
         }

@@ -97,6 +97,7 @@ impl<Context, Shared, T, FEv, FSet> StatefulValueLaneLifecycle<Context, Shared, 
         f: F,
     ) -> StatefulValueLaneLifecycle<Context, Shared, T, BorrowHandler<F, B>, FSet>
     where
+        B: ?Sized,
         T: Borrow<B>,
         BorrowHandler<F, B>: OnEventShared<T, Context, Shared>,
     {
@@ -113,6 +114,7 @@ impl<Context, Shared, T, FEv, FSet> StatefulValueLaneLifecycle<Context, Shared, 
         f: F,
     ) -> StatefulValueLaneLifecycle<Context, Shared, T, FEv, BorrowHandler<F, B>>
     where
+        B: ?Sized,
         T: Borrow<B>,
         BorrowHandler<F, B>: OnSetShared<T, Context, Shared>,
     {
