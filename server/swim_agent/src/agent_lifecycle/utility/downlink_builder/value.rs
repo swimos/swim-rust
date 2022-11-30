@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_api::handlers::{FnHandler, NoHandler};
+use std::borrow::Borrow;
+
+use swim_api::handlers::{FnHandler, NoHandler, BorrowHandler};
 use swim_form::Form;
 use swim_model::{address::Address, Text};
 
@@ -28,7 +30,7 @@ use crate::{
             on_set::{OnDownlinkSet, OnDownlinkSetShared},
             StatefulValueDownlinkLifecycle, StatelessValueDownlinkLifecycle,
         },
-        LiftShared, WithHandlerContext,
+        LiftShared, WithHandlerContext, WithHandlerContextBorrow,
     },
     event_handler::HandlerAction,
 };
@@ -131,20 +133,22 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
     }
 
     /// Specify a new event handler to be executed when the downlink enters the synced state.
-    pub fn on_synced<F>(
+    pub fn on_synced<F, B>(
         self,
         f: F,
     ) -> StatelessValueDownlinkBuilder<
         Context,
         T,
         FLinked,
-        WithHandlerContext<Context, F>,
+        WithHandlerContextBorrow<Context, F, B>,
         FUnlinked,
         FEv,
         FSet,
     >
     where
-        WithHandlerContext<Context, F>: OnSynced<T, Context>,
+        B: ?Sized,
+        T: Borrow<B>,
+        WithHandlerContextBorrow<Context, F, B>: OnSynced<T, Context>,
     {
         let StatelessValueDownlinkBuilder {
             address,
@@ -313,12 +317,14 @@ impl<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet>
     }
 
     /// Specify a new event handler to be executed when the downlink enters the synced state.
-    pub fn on_synced<F>(
+    pub fn on_synced<F, B>(
         self,
         f: F,
-    ) -> StatefulValueDownlinkBuilder<Context, T, State, FLinked, FnHandler<F>, FUnlinked, FEv, FSet>
+    ) -> StatefulValueDownlinkBuilder<Context, T, State, FLinked, BorrowHandler<F, B>, FUnlinked, FEv, FSet>
     where
-        FnHandler<F>: OnSyncedShared<T, Context, State>,
+        B: ?Sized,
+        T: Borrow<B>,
+        BorrowHandler<F, B>: OnSyncedShared<T, Context, State>,
     {
         let StatefulValueDownlinkBuilder {
             address,

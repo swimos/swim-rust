@@ -38,7 +38,25 @@ impl<Context, F> WithHandlerContext<Context, F> {
     }
 }
 
-/// Lifts a stateless event handler to on that may share a state with other handlers.
+/// Wraps a closure that takes a [`HandlerContext`] as its first argument and binds that
+/// argument.
+pub struct WithHandlerContextBorrow<Context, F, B: ?Sized> {
+    inner: F,
+    handler_context: HandlerContext<Context>,
+    _ref_type: PhantomData<fn(B)>,
+}
+
+impl<Context, F, B: ?Sized> WithHandlerContextBorrow<Context, F, B> {
+    pub fn new(inner: F) -> Self {
+        WithHandlerContextBorrow {
+            inner,
+            handler_context: Default::default(),
+            _ref_type: Default::default(),
+        }
+    }
+}
+
+/// Lifts a stateless event handler to one that may share a state with other handlers.
 pub struct LiftShared<F, Shared> {
     _shared: PhantomData<fn(&Shared)>,
     inner: F,
