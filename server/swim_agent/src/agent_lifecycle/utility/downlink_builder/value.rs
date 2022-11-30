@@ -14,7 +14,7 @@
 
 use std::borrow::Borrow;
 
-use swim_api::handlers::{FnHandler, NoHandler, BorrowHandler};
+use swim_api::handlers::{BorrowHandler, FnHandler, NoHandler};
 use swim_form::Form;
 use swim_model::{address::Address, Text};
 
@@ -191,7 +191,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
     }
 
     /// Specify a new event handler to be executed when an event is received for the downlink.
-    pub fn on_event<F>(
+    pub fn on_event<F, B>(
         self,
         f: F,
     ) -> StatelessValueDownlinkBuilder<
@@ -200,11 +200,13 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         FLinked,
         FSynced,
         FUnlinked,
-        WithHandlerContext<Context, F>,
+        WithHandlerContextBorrow<Context, F, B>,
         FSet,
     >
     where
-        WithHandlerContext<Context, F>: OnDownlinkEvent<T, Context>,
+        B: ?Sized,
+        T: Borrow<B>,
+        WithHandlerContextBorrow<Context, F, B>: OnDownlinkEvent<T, Context>,
     {
         let StatelessValueDownlinkBuilder {
             address,
@@ -320,7 +322,16 @@ impl<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet>
     pub fn on_synced<F, B>(
         self,
         f: F,
-    ) -> StatefulValueDownlinkBuilder<Context, T, State, FLinked, BorrowHandler<F, B>, FUnlinked, FEv, FSet>
+    ) -> StatefulValueDownlinkBuilder<
+        Context,
+        T,
+        State,
+        FLinked,
+        BorrowHandler<F, B>,
+        FUnlinked,
+        FEv,
+        FSet,
+    >
     where
         B: ?Sized,
         T: Borrow<B>,
@@ -359,7 +370,7 @@ impl<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet>
     }
 
     /// Specify a new event handler to be executed when an event is received for the downlink.
-    pub fn on_event<F>(
+    pub fn on_event<F, B>(
         self,
         f: F,
     ) -> StatefulValueDownlinkBuilder<
@@ -369,11 +380,13 @@ impl<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet>
         FLinked,
         FSynced,
         FUnlinked,
-        FnHandler<F>,
+        BorrowHandler<F, B>,
         FSet,
     >
     where
-        FnHandler<F>: OnDownlinkEventShared<T, Context, State>,
+        B: ?Sized,
+        T: Borrow<B>,
+        BorrowHandler<F, B>: OnDownlinkEventShared<T, Context, State>,
     {
         let StatefulValueDownlinkBuilder {
             address,
