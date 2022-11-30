@@ -221,7 +221,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
     }
 
     /// Specify a new event handler to be executed when the value of the downlink changes.
-    pub fn on_set<F>(
+    pub fn on_set<F, B>(
         self,
         f: F,
     ) -> StatelessValueDownlinkBuilder<
@@ -231,10 +231,12 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         FSynced,
         FUnlinked,
         FEv,
-        WithHandlerContext<Context, F>,
+        WithHandlerContextBorrow<Context, F, B>,
     >
     where
-        WithHandlerContext<Context, F>: OnDownlinkSet<T, Context>,
+        B: ?Sized,
+        T: Borrow<B>,
+        WithHandlerContextBorrow<Context, F, B>: OnDownlinkSet<T, Context>,
     {
         let StatelessValueDownlinkBuilder {
             address,
@@ -401,7 +403,7 @@ impl<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet>
     }
 
     /// Specify a new event handler to be executed when the value of the downlink changes.
-    pub fn on_set<F>(
+    pub fn on_set<F, B>(
         self,
         f: F,
     ) -> StatefulValueDownlinkBuilder<
@@ -412,10 +414,12 @@ impl<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet>
         FSynced,
         FUnlinked,
         FEv,
-        FnHandler<F>,
+        BorrowHandler<F, B>,
     >
     where
-        FnHandler<F>: OnDownlinkSetShared<T, Context, State>,
+        B: ?Sized,
+        T: Borrow<B>,
+        BorrowHandler<F, B>: OnDownlinkSetShared<T, Context, State>,
     {
         let StatefulValueDownlinkBuilder {
             address,

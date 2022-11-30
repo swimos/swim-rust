@@ -368,7 +368,7 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
     }
 
     /// Replace the 'on_set' handler with another derived from a closure.
-    pub fn on_set<F>(
+    pub fn on_set<F, B>(
         self,
         f: F,
     ) -> StatefulValueDownlinkLifecycle<
@@ -379,10 +379,12 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         FSynced,
         FUnlinked,
         FEv,
-        FnHandler<F>,
+        BorrowHandler<F, B>,
     >
     where
-        FnHandler<F>: OnDownlinkSetShared<T, Context, State>,
+        B: ?Sized,
+        T: Borrow<B>,
+        BorrowHandler<F, B>: OnDownlinkSetShared<T, Context, State>,
     {
         StatefulValueDownlinkLifecycle {
             _type: PhantomData,
@@ -392,7 +394,7 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
             on_synced: self.on_synced,
             on_unlinked: self.on_unlinked,
             on_event: self.on_event,
-            on_set: FnHandler(f),
+            on_set: BorrowHandler::new(f),
         }
     }
 }
@@ -679,7 +681,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
     }
 
     /// Replace the 'on_set' handler with another derived from a closure.
-    pub fn on_set<F>(
+    pub fn on_set<F, B>(
         self,
         f: F,
     ) -> StatelessValueDownlinkLifecycle<
@@ -689,10 +691,12 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         FSynced,
         FUnlinked,
         FEv,
-        WithHandlerContext<Context, F>,
+        WithHandlerContextBorrow<Context, F, B>,
     >
     where
-        WithHandlerContext<Context, F>: OnDownlinkSet<T, Context>,
+        B: ?Sized,
+        T: Borrow<B>,
+        WithHandlerContextBorrow<Context, F, B>: OnDownlinkSet<T, Context>,
     {
         StatelessValueDownlinkLifecycle {
             _type: PhantomData,
@@ -700,7 +704,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
             on_synced: self.on_synced,
             on_unlinked: self.on_unlinked,
             on_event: self.on_event,
-            on_set: WithHandlerContext::new(f),
+            on_set: WithHandlerContextBorrow::new(f),
         }
     }
 
