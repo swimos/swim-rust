@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
+use std::{borrow::Borrow, collections::HashMap};
 
 use std::hash::Hash;
-use swim_api::handlers::{FnHandler, NoHandler};
+use swim_api::handlers::{BorrowHandler, FnHandler, NoHandler};
 use swim_form::Form;
 use swim_model::{address::Address, Text};
 
@@ -32,7 +32,7 @@ use crate::{
         on_linked::{OnLinked, OnLinkedShared},
         on_synced::{OnSynced, OnSyncedShared},
         on_unlinked::{OnUnlinked, OnUnlinkedShared},
-        LiftShared, WithHandlerContext,
+        LiftShared, WithHandlerContext, WithHandlerContextBorrow,
     },
     event_handler::HandlerAction,
 };
@@ -204,7 +204,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
     }
 
     /// Specify a new event handler to be executed when an entry in the map is updated.
-    pub fn on_update<F>(
+    pub fn on_update<F, B>(
         self,
         f: F,
     ) -> StatelessMapDownlinkBuilder<
@@ -214,12 +214,14 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FLinked,
         FSynced,
         FUnlinked,
-        WithHandlerContext<Context, F>,
+        WithHandlerContextBorrow<Context, F, B>,
         FRem,
         FClr,
     >
     where
-        WithHandlerContext<Context, F>: OnDownlinkUpdate<K, V, Context>,
+        B: ?Sized,
+        V: Borrow<B>,
+        WithHandlerContextBorrow<Context, F, B>: OnDownlinkUpdate<K, V, Context>,
     {
         let StatelessMapDownlinkBuilder {
             address,
@@ -440,7 +442,7 @@ impl<Context, K, V, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
     }
 
     /// Specify a new event handler to be executed when an entry in the map is updated.
-    pub fn on_update<F>(
+    pub fn on_update<F, B>(
         self,
         f: F,
     ) -> StatefulMapDownlinkBuilder<
@@ -451,12 +453,14 @@ impl<Context, K, V, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FLinked,
         FSynced,
         FUnlinked,
-        FnHandler<F>,
+        BorrowHandler<F, B>,
         FRem,
         FClr,
     >
     where
-        FnHandler<F>: OnDownlinkUpdateShared<K, V, Context, State>,
+        B: ?Sized,
+        V: Borrow<B>,
+        BorrowHandler<F, B>: OnDownlinkUpdateShared<K, V, Context, State>,
     {
         let StatefulMapDownlinkBuilder {
             address,
