@@ -14,7 +14,7 @@ pub trait AgentLaneModel: Sized + Send {
 }
 ```
 
-The details of the methods of the trait are unimportant, for now, as implementations will typically be produced using a derive macro (which will be covered later). Note, however, that any implementation must be `Send`. This restriction is as the agent will be owned by an async task, within the runtime, which could potentitally be moved between threads. This implies that the types of data held by all lanes of the agent must also be `Send`.
+The details of the methods of the trait are unimportant, for now, as implementations will typically be produced using a derive macro (which will be covered later). Note, however, that any implementation must be `Send`. This restriction is as the agent will be owned by an async task, within the runtime, which could potentially be moved between threads. This implies that the types of data held by all lanes of the agent must also be `Send`.
 
 Writing agent types
 -------------------
@@ -53,6 +53,7 @@ The `Form` trait
 The `swim::form::Form` trait tells the Swim framework how to serialize and deserialize a type. It is defined for a wide range of standard types including.
 
 * Integers: `i32, i64, u32, u64, usize`.
+* The unit type.
 * Booleans.
 * Strings (`String` and `Box<str>`).
 * `f64`.
@@ -61,7 +62,7 @@ The `swim::form::Form` trait tells the Swim framework how to serialize and deser
 * `HashMap<K, V>` where `K: Form: Form + Hash + Eq` and `V: Form`.
 * `BTreeMap<K, V>` where `K: Form + Ord + Eq` and `V: Form`.
 
-There is also a derive macro that can be used to implement `Form` for your own struct and enum types (where all of the types of the fields impelent `Form`). For example:
+There is also a derive macro that can be used to implement `Form` for your own struct and enum types (where all of the types of the fields implement `Form`). For example:
 
 ```rust
 use swim::form::Form;
@@ -79,7 +80,7 @@ Persistence of lane state
 -------------------------
 If the server defines a persistent store, by default the state of every lane in an agent will be saved. This means that if the agent is stopped and then later restarted, the state of the lanes will be restored.
 
-However, in some cases it maybe be desirable to disable this. Flushing the state of the lane to disk has adds a significant overhead. Additionaly, some data maybe become stale and irrelevant if the agent is stopped for any lenght of time. To acheive this using the derive macro, a tag can be added to the lane that should be be persisted.
+However, in some cases it maybe be desirable to disable this. Flushing the state of the lane to disk has adds a significant overhead. Additionally, some data maybe become stale and irrelevant if the agent is stopped for any length of time. To achieve this using the derive macro, a tag can be added to the lane that should be be persisted.
 
 ```rust
 #[derive(AgentLaneModel)]
@@ -90,7 +91,7 @@ struct ExampleAgent {
 }
 ```
 
-In the above example, `value_lane` will not be persisted wheras `map_lane` will. For lanes that have no state (such as `CommandLane`s, this annotations will have no effect).
+In the above example, `value_lane` will not be persisted whereas `map_lane` will. For lanes that have no state (such as `CommandLane`s, this annotations will have no effect).
 
 Private stores
 --------------

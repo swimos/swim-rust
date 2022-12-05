@@ -173,8 +173,8 @@ impl<'a, Context> ActionContext<'a, Context> {
     }
 }
 
-/// Trait to desribe an action to be taken, within the context of an agent, when an event ocurrs. The
-/// execution of an event handler can be suspended (so that it can trigger the exection of other handlers).
+/// Trait to describe an action to be taken, within the context of an agent, when an event occurs. The
+/// execution of an event handler can be suspended (so that it can trigger the execution of other handlers).
 /// This could be expressed using generators from the standard library after this feature is stabilized.
 /// A handler instance can be used exactly once. After it has returned a result or an error all subsequent
 /// step executions must result in an error.
@@ -253,11 +253,11 @@ pub enum EventHandlerError {
     BadCommand(AsyncParseError),
     #[error("An incoming message was incomplete.")]
     IncompleteCommand,
-    #[error("An error ocurred in the agent runtime.")]
+    #[error("An error occurred in the agent runtime.")]
     RuntimeError(#[from] AgentRuntimeError),
 }
 
-/// When a handler completes or suspends it can inidcate that is has modified the
+/// When a handler completes or suspends it can indicate that is has modified the
 /// state of a lane.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Modification {
