@@ -14,10 +14,10 @@ Contents
 
 1. [Defining Agents](define.md)
     * The `AgentLaneModel` trait.
+    * Writing agent types.
     * The `Form` trait.
-    * Defining lane types.
     * Peristence of lane state.
-    * Agent variables.
+    * Private stores.
 2. [Event Handlers](event_handler.md)
     * The `HandlerAction` and `EventHandler` traits.
     * How event handlers are executed.
@@ -39,3 +39,7 @@ Contents
     * Opening a downlink.
     * Downlink lifecycles.
     * How downlinks run.
+5. [Agents from Scratch](advanced_agents.md)
+    * TODO
+6. [Advanced Use of Form Derivation](advanced_forms.md)
+    * TODO
