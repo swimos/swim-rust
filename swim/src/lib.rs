@@ -40,6 +40,10 @@ pub mod api {
             pub use swim_api::error::DownlinkTaskError;
         }
     }
+
+    pub mod handlers {
+        pub use swim_api::handlers::NoHandler;
+    }
 }
 
 pub mod route {

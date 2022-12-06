@@ -22,7 +22,7 @@ use swim_model::address::Address;
 use swim_utilities::routing::route_uri::RouteUri;
 
 use crate::agent_model::downlink::hosted::{MapDownlinkHandle, ValueDownlinkHandle};
-use crate::agent_model::downlink::{OpenMapDownlink, OpenValueDownlink};
+use crate::agent_model::downlink::{OpenMapDownlinkAction, OpenValueDownlinkAction};
 use crate::config::{MapDownlinkConfig, ValueDownlinkConfig};
 use crate::downlink_lifecycle::map::MapDownlinkLifecycle;
 use crate::downlink_lifecycle::value::ValueDownlinkLifecycle;
@@ -260,7 +260,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
         LC: ValueDownlinkLifecycle<T, Agent> + Send + 'static,
         T::Rec: Send,
     {
-        OpenValueDownlink::new(Address::text(host, node, lane), lifecycle, config)
+        OpenValueDownlinkAction::new(Address::text(host, node, lane), lifecycle, config)
     }
 
     /// Open a map downlink to a lane on another agent.
@@ -286,7 +286,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
         K::Rec: Send,
         V::Rec: Send,
     {
-        OpenMapDownlink::new(Address::text(host, node, lane), lifecycle, config)
+        OpenMapDownlinkAction::new(Address::text(host, node, lane), lifecycle, config)
     }
 
     /// Create a builder to construct a request to open a value downlink.
@@ -296,6 +296,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     /// * `lane` - The lane to downlink from.
     /// * `config` - Configuration parameters for the downlink.
     pub fn value_downlink_builder<T>(
+        &self,
         host: Option<&str>,
         node: &str,
         lane: &str,
@@ -315,6 +316,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     /// * `lane` - The lane to downlink from.
     /// * `config` - Configuration parameters for the downlink.
     pub fn map_downlink_builder<K, V>(
+        &self,
         host: Option<&str>,
         node: &str,
         lane: &str,
