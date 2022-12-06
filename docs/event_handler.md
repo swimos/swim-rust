@@ -51,6 +51,8 @@ Every type that implements `HandlerAction` with `Completion = ()` also implement
 
 It is not necessary to consider the methods of the `HandlerAction` trait as it is not intended that you will need to implement it directly. Instead, event handlers can be built up by composing simple predefined actions, using a suite of handler combinators.
 
+The canonical `EventHandler` that will do nothing is the `UnitHandler` which will immediately complete.
+
 How event handlers are executed.
 --------------------------------
 

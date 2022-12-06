@@ -31,9 +31,8 @@ Contents
     * `CommandLane` events.
     * `ValueLane` events.
     * `MapLane` events.
-    * Borrowing state from lifecycles.
+    * Borrowing from lifecycles.
     * Interior mutability in lifecycles.
-    * Sharing handler functions.
 4. [Downlinks](downlink.md)
     * Opening a downlink.
     * Downlink lifecycles.
