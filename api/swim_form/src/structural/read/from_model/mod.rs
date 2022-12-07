@@ -12,9 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(test)]
-mod tests;
-
 use crate::structural::read::event::{NumericValue, ReadEvent};
 use crate::structural::read::recognizer::Recognizer;
 use crate::structural::read::ReadError;

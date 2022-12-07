@@ -20,17 +20,25 @@ use quote::{quote, ToTokens};
 
 use macro_utilities::to_compile_errors;
 use swim_utilities::errors::validation::Validation;
-use syn::{parse_macro_input, AttributeArgs, DeriveInput, Item};
+use syn::{
+    parse_macro_input, parse_quote, punctuated::Pair, AttributeArgs, DeriveInput, Item, Meta,
+    NestedMeta,
+};
 
 mod agent_lifecycle;
 mod lane_model_derive;
 mod lane_projections;
 
-#[proc_macro_derive(AgentLaneModel)]
+fn default_root() -> syn::Path {
+    parse_quote!(::swim::agent)
+}
+
+#[proc_macro_derive(AgentLaneModel, attributes(agent_root))]
 pub fn derive_agent_lane_model(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
+    let mut input = parse_macro_input!(input as DeriveInput);
+    let root = extract_replace_root(&mut input.attrs).unwrap_or_else(default_root);
     lane_model_derive::validate_input(&input)
-        .map(DeriveAgentLaneModel::new)
+        .map(|model| DeriveAgentLaneModel::new(&root, model))
         .map(ToTokens::into_token_stream)
         .into_result()
         .unwrap_or_else(|errs| to_compile_errors(errs.into_vec()))
@@ -66,7 +74,7 @@ pub fn lifecycle(attr: TokenStream, item: TokenStream) -> TokenStream {
     let stripped_attrs = agent_lifecycle::strip_handler_attrs(&mut item);
     Validation::join(path, stripped_attrs)
         .and_then(|(path, stripped_attrs)| {
-            agent_lifecycle::validate_with_attrs(path, &item, stripped_attrs)
+            agent_lifecycle::validate_with_attrs(path, &item, stripped_attrs, default_root())
         })
         .map(ImplAgentLifecycle::new)
         .map(|agent_lc| {
@@ -78,4 +86,28 @@ pub fn lifecycle(attr: TokenStream, item: TokenStream) -> TokenStream {
         .into_result()
         .unwrap_or_else(|errs| to_compile_errors(errs.into_vec()))
         .into()
+}
+
+fn extract_replace_root(attrs: &mut Vec<syn::Attribute>) -> Option<syn::Path> {
+    if let Some((i, p)) = attrs.iter_mut().enumerate().find_map(|(i, attr)| {
+        if attr.path.is_ident("agent_root") {
+            match attr.parse_meta() {
+                Ok(Meta::List(lst)) => {
+                    let mut nested = lst.nested;
+                    match nested.pop().map(Pair::into_value) {
+                        Some(NestedMeta::Meta(Meta::Path(p))) if nested.is_empty() => Some((i, p)),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            }
+        } else {
+            None
+        }
+    }) {
+        attrs.remove(i);
+        Some(p)
+    } else {
+        None
+    }
 }

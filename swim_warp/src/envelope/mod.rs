@@ -28,6 +28,7 @@ const LANE_NOT_FOUND_TAG: &str = "laneNotFound";
 
 /// Model for Warp protocol envelopes.
 #[derive(Clone, Debug, PartialEq, Form)]
+#[form_root(::swim_form)]
 pub enum Envelope {
     #[form(tag = "auth")]
     Auth {

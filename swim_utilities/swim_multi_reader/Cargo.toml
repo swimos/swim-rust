@@ -15,7 +15,7 @@ smallvec = "1.7.0"
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["rt-multi-thread", "test-util", "macros"] }
-futures = { version = "0.3.4", features = ["io-compat", "compat"] }
+futures = { version = "0.3.23", features = ["io-compat", "compat"] }
 criterion = { version = "0.3", features = ["async_tokio"] }
 rand = "0.8.4"
 swim_runtime = { path = "../../runtime/swim_runtime" }

@@ -119,7 +119,10 @@ impl ExternalConnections for TestConnections {
 
     type ListenerType = TestListener;
 
-    fn bind(&self, addr: SocketAddr) -> BoxFuture<'static, io::Result<Self::ListenerType>> {
+    fn bind(
+        &self,
+        addr: SocketAddr,
+    ) -> BoxFuture<'static, io::Result<(SocketAddr, Self::ListenerType)>> {
         let sender = self.requests.clone();
         async move {
             let (tx, rx) = oneshot::channel();
@@ -127,7 +130,9 @@ impl ExternalConnections for TestConnections {
                 .send(ConnReq::Listener(addr, tx))
                 .await
                 .expect("Channel closed.");
-            rx.await.expect("Connections task stopped.")
+            rx.await
+                .expect("Connections task stopped.")
+                .map(|listener| (addr, listener))
         }
         .boxed()
     }

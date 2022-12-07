@@ -25,6 +25,7 @@ use syn::{Attribute, DataEnum, Ident};
 
 /// Preprocessed description of an enum type.
 pub struct EnumModel<'a> {
+    pub root: &'a syn::Path,
     /// The original name of the enum.
     pub name: &'a Ident,
     /// Preprocessed descriptions of each variant.
@@ -52,6 +53,7 @@ impl<'a> From<&'a EnumModel<'a>> for SegregatedEnumModel<'a> {
 }
 
 pub(crate) struct EnumDef<'a> {
+    root: &'a syn::Path,
     name: &'a Ident,
     top: &'a dyn ToTokens,
     attributes: &'a [Attribute],
@@ -60,12 +62,14 @@ pub(crate) struct EnumDef<'a> {
 
 impl<'a> EnumDef<'a> {
     pub fn new(
+        root: &'a syn::Path,
         name: &'a Ident,
         top: &'a dyn ToTokens,
         attributes: &'a [Attribute],
         definition: &'a DataEnum,
     ) -> Self {
         EnumDef {
+            root,
             name,
             top,
             attributes,
@@ -87,6 +91,7 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
             top,
             attributes,
             definition,
+            root,
         } = input;
         let num_var = definition.variants.len();
         let init = Validation::valid(Vec::with_capacity(num_var));
@@ -96,7 +101,7 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
                 .iter()
                 .validate_fold(init, false, |mut var_models, variant| {
                     let struct_def =
-                        StructDef::new(&variant.ident, variant, &variant.attrs, variant);
+                        StructDef::new(root, &variant.ident, variant, &variant.attrs, variant);
                     let model = StructModel::validate(struct_def).and_then(|model| {
                         if model.fields_model.has_tag_field() {
                             let err = syn::Error::new_spanned(variant, VARIANT_WITH_TAG);
@@ -150,7 +155,11 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
                 },
             );
             names.and_then(move |_| {
-                let enum_model = EnumModel { name, variants };
+                let enum_model = EnumModel {
+                    root,
+                    name,
+                    variants,
+                };
                 match transform {
                     Some(StructTransform::Newtype(_)) => {
                         let err = syn::Error::new_spanned(top, NEWTYPE_SPECIFIED_FOR_ENUM);

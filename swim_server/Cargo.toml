@@ -25,7 +25,7 @@ swim_warp = { path = "../swim_warp" }
 swim_utilities = { path = "../swim_utilities", features = ["errors", "sync", "time", "text", "io", "algebra"] }
 stm = { path = "../stm" }
 either = "1.5.3"
-futures = "0.3.4"
+futures = "0.3.23"
 futures-util = "0.3.4"
 http = "0.2.3"
 im = "15.0.0"

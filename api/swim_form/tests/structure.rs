@@ -12,18 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::structural::Tag;
-use crate::Form;
+use swim_form::{structural::Tag, Form};
 use swim_model::time::Timestamp;
 use swim_model::{Attr, Item, Text, Value};
-
-mod swim_form {
-    pub use crate::*;
-}
 
 #[test]
 fn test_transmute() {
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     struct S {
         a: i32,
         b: i64,
@@ -46,6 +42,7 @@ fn test_transmute() {
 #[test]
 fn test_transmute_generic() {
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     struct S<F> {
         f: F,
     }
@@ -64,6 +61,7 @@ fn test_transmute_generic() {
 #[test]
 fn test_transmute_newtype() {
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     struct S(i32);
 
     let s = S(1);
@@ -80,6 +78,7 @@ fn test_transmute_newtype() {
 #[test]
 fn test_transmute_tuple() {
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     struct S(i32, i64);
 
     let s = S(1, 2);
@@ -99,6 +98,7 @@ fn test_transmute_tuple() {
 #[test]
 fn test_transmute_unit() {
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     struct S;
 
     let s = S;
@@ -114,6 +114,7 @@ fn test_transmute_unit() {
 fn test_skip_field() {
     {
         #[derive(Form, Debug, PartialEq, Clone)]
+        #[form_root(::swim_form)]
         struct S {
             a: i32,
             #[form(skip)]
@@ -132,6 +133,7 @@ fn test_skip_field() {
     }
     {
         #[derive(Form, Debug, PartialEq, Clone)]
+        #[form_root(::swim_form)]
         struct S(#[form(skip)] i32);
 
         let s = S(1);
@@ -143,6 +145,7 @@ fn test_skip_field() {
     }
     {
         #[derive(Form, Debug, PartialEq, Clone)]
+        #[form_root(::swim_form)]
         struct S(#[form(skip)] i32, i64);
 
         let s = S(1, 2);
@@ -160,6 +163,7 @@ fn test_skip_field() {
 #[test]
 fn test_tag() {
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     #[form(tag = "Structure")]
     struct S {
         a: i32,
@@ -183,6 +187,7 @@ fn test_tag() {
 #[test]
 fn test_rename() {
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     #[form(tag = "Structure")]
     struct S {
         #[form(name = "field_a")]
@@ -207,6 +212,7 @@ fn test_rename() {
 #[test]
 fn body_replaces() {
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     struct BodyReplace {
         n: i32,
         #[form(body)]
@@ -249,6 +255,7 @@ fn body_replaces() {
 #[test]
 fn complex_header() {
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     struct ComplexHeader {
         #[form(header_body)]
         n: i32,
@@ -285,6 +292,7 @@ fn complex_header() {
 #[test]
 fn example1() {
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     struct Example1 {
         a: i32,
         b: String,
@@ -311,12 +319,14 @@ fn example1() {
 #[test]
 fn nested() {
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     struct Outer {
         inner: Inner,
         opt: Option<i32>,
     }
 
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     #[form(tag = "custom")]
     struct Inner {
         a: i32,
@@ -357,6 +367,7 @@ fn nested() {
 #[test]
 fn header() {
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     struct Example {
         a: String,
         #[form(header)]
@@ -403,6 +414,7 @@ fn header() {
 #[test]
 fn annotated() {
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     #[form(tag = "example")]
     struct ExampleAnnotated {
         #[form(header)]
@@ -442,6 +454,7 @@ fn annotated() {
 #[test]
 fn header_body_replace() {
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     struct HeaderBodyReplace {
         #[form(header_body)]
         n: i64,
@@ -466,6 +479,7 @@ fn header_body_replace() {
 #[test]
 fn test_enum_tag() {
     #[derive(Tag, Clone, Copy, Debug, PartialEq, Eq)]
+    #[form_root(::swim_form)]
     enum Level {
         #[form(tag = "trace")]
         Trace,
@@ -474,6 +488,7 @@ fn test_enum_tag() {
     }
 
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     struct LogEntry<F: Form> {
         #[form(tag)]
         level: Level,
@@ -505,9 +520,11 @@ fn test_enum_tag() {
 #[test]
 fn generic_duplicated_bound() {
     #[derive(Form)]
+    #[form_root(::swim_form)]
     struct Valid;
 
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     struct S<A: Form> {
         a: A,
     }
@@ -520,9 +537,11 @@ fn generic_duplicated_bound() {
 #[test]
 fn generic_duplicated_bound_2() {
     #[derive(Form)]
+    #[form_root(::swim_form)]
     struct Valid;
 
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     struct S<A>
     where
         A: Form,
@@ -539,6 +558,7 @@ fn generic_duplicated_bound_2() {
 fn test_newtype() {
     {
         #[derive(Form, Debug, PartialEq, Clone)]
+        #[form_root(::swim_form)]
         #[form(newtype)]
         struct First(i32);
 
@@ -552,6 +572,7 @@ fn test_newtype() {
 
     {
         #[derive(Form, Debug, PartialEq, Clone)]
+        #[form_root(::swim_form)]
         #[form(newtype)]
         struct Second(i32, #[form(skip)] String);
 
@@ -568,6 +589,7 @@ fn test_newtype() {
 
     {
         #[derive(Form, Debug, PartialEq, Clone)]
+        #[form_root(::swim_form)]
         #[form(newtype)]
         struct Third(#[form(skip)] Option<i32>, #[form(skip)] String, u32);
 
@@ -587,6 +609,7 @@ fn test_newtype() {
 
     {
         #[derive(Form, Debug, PartialEq, Clone)]
+        #[form_root(::swim_form)]
         #[form(newtype)]
         struct Fourth {
             a: String,
@@ -614,6 +637,7 @@ fn test_newtype() {
 
     {
         #[derive(Form, Debug, PartialEq, Clone)]
+        #[form_root(::swim_form)]
         #[form(newtype)]
         struct Fifth {
             a: String,
@@ -651,6 +675,7 @@ fn test_newtype() {
 
     {
         #[derive(Form, Debug, PartialEq, Clone)]
+        #[form_root(::swim_form)]
         #[form(newtype)]
         struct Sixth {
             #[form(skip)]

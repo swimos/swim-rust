@@ -100,7 +100,7 @@ async fn init_agent(context: Box<TestAgentContext>) -> (AgentTask, TestContext) 
     let (lc_event_tx, lc_event_rx) = mpsc::unbounded_channel();
     let lifecycle = TestLifecycle::new(lc_event_tx);
 
-    let model = AgentModel::<TestAgent, TestLifecycle>::new(Arc::new(lane_model_fac), lifecycle);
+    let model = AgentModel::<TestAgent, TestLifecycle>::new(lane_model_fac, lifecycle);
 
     let task = model
         .initialize_agent(make_uri(), CONFIG, context.clone())

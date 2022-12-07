@@ -60,6 +60,7 @@ const LOG_FAIL: &str = "Failed to send log message";
 
 /// A corresponding level associated with a `LogEntry`.
 #[derive(Tag, Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Hash)]
+#[form_root(::swim_form)]
 pub enum LogLevel {
     /// Fine-grained informational events.
     Trace,
@@ -127,6 +128,7 @@ impl TryFrom<&str> for LogLevel {
 
 /// A log entry that may be supplied to a log lane.
 #[derive(Clone, Debug, Form)]
+#[form_root(::swim_form)]
 pub struct LogEntry {
     /// Timestamp of when this entry was created.
     time: Timestamp,

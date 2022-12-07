@@ -21,6 +21,7 @@ const EMPTY: [&str; 0] = [];
 #[test]
 fn derive_enum_tag_empty() {
     #[derive(Tag, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     enum TagEnum {}
 
     assert_eq!(TagEnum::VARIANTS, &EMPTY);
@@ -29,6 +30,7 @@ fn derive_enum_tag_empty() {
 #[test]
 fn derive_enum_tag_one_option() {
     #[derive(Tag, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     enum TagEnum {
         First,
     }
@@ -48,6 +50,7 @@ fn derive_enum_tag_one_option() {
 #[test]
 fn derive_enum_tag_two_options() {
     #[derive(Tag, PartialEq, Eq, Debug)]
+    #[form_root(::swim_form)]
     enum TagEnum {
         First,
         Second,

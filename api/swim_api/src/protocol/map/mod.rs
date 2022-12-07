@@ -31,6 +31,7 @@ pub use parser::extract_header;
 /// An operation that can be applied to a map lane. This type is used by map uplinks and downlinks
 /// to describe alterations to the lane.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Form)]
+#[form_root(::swim_form)]
 pub enum MapOperation<K, V> {
     #[form(tag = "update")]
     Update {
@@ -412,6 +413,7 @@ impl<K: StructuralWritable, V: StructuralWritable> Encoder<MapOperation<K, V>>
 /// (remove teh first `n` items). We never use these internally but must support them for communicating
 /// with other implementations.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Form)]
+#[form_root(::swim_form)]
 pub enum MapMessage<K, V> {
     #[form(tag = "update")]
     Update {

@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "swim",
     "api/swim_*",
     "api/formats/swim_*",
     "macro_utilities",

@@ -1,5 +1,5 @@
 error: At most one field can replace the tag attribute body.
-  --> src/tests/derive/form/double_header_body_attr.rs:22:16
+  --> src/tests/derive/form/double_header_body_attr.rs:23:16
    |
-22 |         #[form(header_body)]
+23 |         #[form(header_body)]
    |                ^^^^^^^^^^^

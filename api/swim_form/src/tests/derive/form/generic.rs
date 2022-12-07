@@ -16,11 +16,13 @@ use swim_form::Form;
 
 fn main() {
     #[derive(Form)]
+    #[form_root(::swim_form)]
     struct Valid;
 
     struct Invalid;
 
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     struct S<A, B> {
         a: A,
         b: B,

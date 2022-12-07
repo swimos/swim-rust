@@ -16,6 +16,7 @@ use swim_form_derive::*;
 
 fn main() {
     #[derive(Form)]
+    #[form_root(::swim_form)]
     union S {
         a: i32,
     }

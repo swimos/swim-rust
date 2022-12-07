@@ -77,6 +77,7 @@ fn round_trip_raw<K: RecognizerReadable, V: RecognizerReadable>(
 }
 
 #[derive(Debug, Form, Clone, Copy, PartialEq, Eq)]
+#[form_root(::swim_form)]
 struct Example {
     a: i32,
     b: i32,

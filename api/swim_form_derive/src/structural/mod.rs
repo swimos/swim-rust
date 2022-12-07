@@ -27,14 +27,17 @@ pub mod model;
 pub mod read;
 pub mod write;
 
-pub fn build_derive_structural_form(input: DeriveInput) -> Result<TokenStream, Errors<syn::Error>> {
+pub fn build_derive_structural_form(
+    root: syn::Path,
+    input: DeriveInput,
+) -> Result<TokenStream, Errors<syn::Error>> {
     match &input.data {
         Data::Struct(ds) => {
-            let def = StructDef::new(&input.ident, &input, &input.attrs, ds);
+            let def = StructDef::new(&root, &input.ident, &input, &input.attrs, ds);
             struct_derive_structural_form(def, &input.generics)
         }
         Data::Enum(de) => {
-            let def = EnumDef::new(&input.ident, &input, &input.attrs, de);
+            let def = EnumDef::new(&root, &input.ident, &input, &input.attrs, de);
             enum_derive_structural_form(def, &input.generics)
         }
         _ => Err(Errors::of(syn::Error::new_spanned(
@@ -45,15 +48,16 @@ pub fn build_derive_structural_form(input: DeriveInput) -> Result<TokenStream, E
 }
 
 pub fn build_derive_structural_writable(
+    root: syn::Path,
     input: DeriveInput,
 ) -> Result<TokenStream, Errors<syn::Error>> {
     match &input.data {
         Data::Struct(ds) => {
-            let def = StructDef::new(&input.ident, &input, &input.attrs, ds);
+            let def = StructDef::new(&root, &input.ident, &input, &input.attrs, ds);
             struct_derive_structural_writable(def, &input.generics)
         }
         Data::Enum(de) => {
-            let def = EnumDef::new(&input.ident, &input, &input.attrs, de);
+            let def = EnumDef::new(&root, &input.ident, &input, &input.attrs, de);
             enum_derive_structural_writable(def, &input.generics)
         }
         _ => Err(Errors::of(syn::Error::new_spanned(
@@ -112,15 +116,16 @@ fn enum_derive_structural_writable<'a>(
 }
 
 pub fn build_derive_structural_readable(
+    root: syn::Path,
     input: DeriveInput,
 ) -> Result<TokenStream, Errors<syn::Error>> {
     match &input.data {
         Data::Struct(ds) => {
-            let def = StructDef::new(&input.ident, &input, &input.attrs, ds);
+            let def = StructDef::new(&root, &input.ident, &input, &input.attrs, ds);
             struct_derive_structural_readable(def, &input.generics)
         }
         Data::Enum(de) => {
-            let def = EnumDef::new(&input.ident, &input, &input.attrs, de);
+            let def = EnumDef::new(&root, &input.ident, &input, &input.attrs, de);
             enum_derive_structural_readable(def, &input.generics)
         }
         _ => Err(Errors::of(syn::Error::new_spanned(

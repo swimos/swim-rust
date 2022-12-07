@@ -16,16 +16,13 @@ use std::fmt::Debug;
 use std::sync::Arc;
 use swim_model::bigint::{BigInt, BigUint};
 
-use crate::Form;
+use swim_form::Form;
 use swim_model::{Attr, Blob, Item, Value};
-
-mod swim_form {
-    pub use crate::*;
-}
 
 #[test]
 fn transmute_bigint() {
     #[derive(Form)]
+    #[form_root(::swim_form)]
     struct S {
         a: BigInt,
         b: BigUint,
@@ -51,6 +48,7 @@ fn transmute_bigint() {
 #[test]
 fn blob() {
     #[derive(Form)]
+    #[form_root(::swim_form)]
     struct S {
         b: Blob,
     }
@@ -187,6 +185,7 @@ mod field_collections {
             #[test]
             fn $name() {
                 #[derive(Form)]
+                #[form_root(::swim_form)]
                 struct Test {
                     member: $typ,
                 }
@@ -208,6 +207,7 @@ mod field_collections {
 #[test]
 fn test_map_modification() {
     #[derive(Clone, PartialEq, Form, Debug)]
+    #[form_root(::swim_form)]
     enum FormMapUpdate<K, V> {
         Update(#[form(header, name = "key")] K, #[form(body)] Arc<V>),
     }

@@ -52,6 +52,7 @@ use crate::downlink::{
 use super::*;
 
 #[derive(Debug, PartialEq, Eq, Form, Clone, Copy)]
+#[form_root(::swim_form)]
 struct Record {
     a: i32,
     b: i32,

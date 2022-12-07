@@ -12,16 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::Form;
+use swim_form::Form;
 use swim_model::{Attr, Item, Value};
-
-mod swim_form {
-    pub use crate::*;
-}
 
 #[test]
 fn test_transmute_single_variant() {
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     enum SingleEnum {
         A { a: i32, b: i64 },
     }
@@ -43,6 +40,7 @@ fn test_transmute_single_variant() {
 #[test]
 fn test_generic() {
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     enum S<F> {
         A { f: F },
     }
@@ -62,6 +60,7 @@ fn test_generic() {
 fn test_skip() {
     {
         #[derive(Form, Debug, PartialEq, Clone)]
+        #[form_root(::swim_form)]
         enum S {
             A(#[form(skip)] i32),
         }
@@ -75,6 +74,7 @@ fn test_skip() {
     }
     {
         #[derive(Form, Debug, PartialEq, Clone)]
+        #[form_root(::swim_form)]
         enum S {
             A(#[form(skip)] i32, i64),
         }
@@ -91,6 +91,7 @@ fn test_skip() {
     }
     {
         #[derive(Form, Clone, Debug, PartialEq)]
+        #[form_root(::swim_form)]
         enum S {
             A {
                 #[form(skip)]
@@ -113,6 +114,7 @@ fn test_skip() {
 #[test]
 fn test_transmute_multiple_variants() {
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     #[allow(dead_code)]
     enum S {
         A { a: i32, b: i64 },
@@ -139,6 +141,7 @@ fn test_transmute_multiple_variants() {
 #[test]
 fn test_unit() {
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     enum S {
         A,
     }
@@ -154,6 +157,7 @@ fn test_unit() {
 #[test]
 fn test_tag() {
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     enum S {
         #[form(tag = "MyTagA")]
         A,
@@ -207,6 +211,7 @@ fn test_tag() {
 #[test]
 fn test_tuple() {
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     enum S {
         A(i32, i64),
     }
@@ -228,6 +233,7 @@ fn test_tuple() {
 #[test]
 fn test_rename() {
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     enum S {
         B {
             #[form(name = "B::a")]
@@ -254,6 +260,7 @@ fn test_rename() {
 #[test]
 fn body_replaces() {
     #[derive(Debug, PartialEq, Clone, Form)]
+    #[form_root(::swim_form)]
     enum EnumBodyReplace {
         A(#[form(name = "a")] i32, #[form(body)] Value),
     }
@@ -287,6 +294,7 @@ fn body_replaces() {
 #[test]
 fn body_replaces2() {
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     enum BodyReplace2 {
         A {
             a: i32,
@@ -325,6 +333,7 @@ fn body_replaces2() {
 #[test]
 fn complex_header() {
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     enum ComplexHeader {
         A {
             #[form(header_body)]
@@ -362,11 +371,13 @@ fn complex_header() {
 #[test]
 fn nested() {
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     enum Outer {
         A { inner: Inner, opt: Option<i32> },
     }
 
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     enum Inner {
         #[form(tag = "custom")]
         B { a: i32, b: String },
@@ -405,6 +416,7 @@ fn nested() {
 #[test]
 fn header() {
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     enum Example {
         A {
             a: String,
@@ -449,6 +461,7 @@ fn header() {
 #[test]
 fn annotated() {
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     enum ExampleAnnotated {
         #[form(tag = "example")]
         A {
@@ -498,6 +511,7 @@ fn annotated() {
 #[test]
 fn header_body_replace() {
     #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
     enum HeaderBodyReplace {
         A {
             #[form(header_body)]

@@ -866,6 +866,7 @@ where
 }
 
 #[derive(Debug, Form)]
+#[form_root(::swim_form)]
 struct Dropping;
 
 /// A strategy for handling `OutgoingHeader::Command` messages.

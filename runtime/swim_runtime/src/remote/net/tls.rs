@@ -126,13 +126,26 @@ impl ExternalConnections for TokioNetworking {
     type Socket = Either<TcpStream, TlsStream>;
     type ListenerType = MaybeTlsListener;
 
-    fn bind(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::ListenerType>> {
+    fn bind(
+        &self,
+        addr: SocketAddr,
+    ) -> BoxFuture<'static, IoResult<(SocketAddr, Self::ListenerType)>> {
         let this = self.clone();
 
         if addr.port() == HTTPS_PORT {
-            Box::pin(async move { this.tls.bind(addr).await.map(MaybeTlsListener::Tls) })
+            Box::pin(async move {
+                this.tls
+                    .bind(addr)
+                    .await
+                    .map(|(addr, listener)| (addr, MaybeTlsListener::Tls(listener)))
+            })
         } else {
-            Box::pin(async move { this.plain.bind(addr).await.map(MaybeTlsListener::PlainText) })
+            Box::pin(async move {
+                this.plain
+                    .bind(addr)
+                    .await
+                    .map(|(addr, listener)| (addr, MaybeTlsListener::PlainText(listener)))
+            })
         }
     }
 
@@ -186,10 +199,14 @@ impl ExternalConnections for TokioTlsNetworking {
     type Socket = TlsStream;
     type ListenerType = TlsListener;
 
-    fn bind(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::ListenerType>> {
+    fn bind(
+        &self,
+        addr: SocketAddr,
+    ) -> BoxFuture<'static, IoResult<(SocketAddr, Self::ListenerType)>> {
         Box::pin(async move {
             let listener = TcpListener::bind(addr).await?;
-            Ok(TlsListener::new(listener))
+            let addr = listener.local_addr()?;
+            Ok((addr, TlsListener::new(listener)))
         })
     }
 

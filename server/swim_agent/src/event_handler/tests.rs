@@ -163,6 +163,33 @@ fn get_agent_uri() {
 }
 
 #[test]
+fn map_handler() {
+    let uri = make_uri();
+    let meta = make_meta(&uri);
+    let mut handler =
+        HandlerActionExt::<DummyAgent>::map(GetAgentUri::default(), move |uri: RelativeUri| {
+            uri.to_string()
+        });
+
+    let result = handler.step(meta, &DUMMY);
+    match result {
+        StepResult::Complete {
+            modified_lane: None,
+            result,
+        } => {
+            assert_eq!(result, "/node");
+        }
+        _ => panic!("Unexpected result"),
+    }
+
+    let result = handler.step(meta, &DUMMY);
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+}
+
+#[test]
 fn and_then_handler() {
     let uri = make_uri();
     let meta = make_meta(&uri);
