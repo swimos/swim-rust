@@ -648,7 +648,7 @@ async fn ws_close() {
 
     let close_reason = CloseReason::new(CloseCode::GoingAway, Some("gone".to_string()));
     client
-        .close_with(close_reason.clone())
+        .close(close_reason.clone())
         .await
         .expect("Close failed.");
 
@@ -684,7 +684,6 @@ async fn error_on_binary_frame() {
 }
 
 #[tokio::test]
-#[ignore = "Pending fix in ratchet."]
 async fn ignore_ping_pong() {
     let (server, mut client) = make_fake_ws();
 
@@ -710,7 +709,7 @@ async fn ignore_ping_pong() {
     let mut buf = BytesMut::new();
 
     let message = client.read(&mut buf).await.expect("Read failed.");
-    assert_eq!(message, Message::Pong);
+    assert!(matches!(message, Message::Pong(_)));
 
     assert_eq!(
         frames,
@@ -1076,7 +1075,6 @@ where
 }
 
 #[tokio::test]
-#[ignore = "Pending fix in ratchet."]
 async fn combined_clean_shutdown() {
     test_combined_task(|mut context| async move {
         context.stop();

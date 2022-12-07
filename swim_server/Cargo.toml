@@ -17,7 +17,7 @@ tracing = { version = "0.1.13", features = ["max_level_debug"] }
 tracing = "0.1.16"
 
 [dependencies]
-ratchet = { package = "ratchet_rs", version = "0.1.0", features = ["deflate", "split"] }
+ratchet = { package = "ratchet_rs", version = "0.2.0", features = ["deflate", "split"] }
 swim_store = { path = "../swim_store" }
 swim_client = { path = "../swim_client" }
 swim_metrics = { path = "swim_metrics" }
@@ -60,7 +60,7 @@ rocksdb = { version = "0.16.0", optional = true }
 tempdir = "0.3.7"
 
 [dev-dependencies]
-ratchet_fixture = "0.1.0"
+ratchet_fixture = "0.2.0"
 tokio = { version = "1.1.1", features = ["rt-multi-thread", "macros", "test-util"] }
 tracing = "0.1.16"
 tokio-test = "0.4.0"

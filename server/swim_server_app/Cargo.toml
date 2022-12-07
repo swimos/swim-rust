@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 futures = "0.3.4"
-ratchet = { package = "ratchet_rs", version = "0.1.0", features = ["deflate", "split"] }
+ratchet = { package = "ratchet_rs", version = "0.2.0", features = ["deflate", "split"] }
 swim_utilities = { path = "../../swim_utilities", features = ["io", "trigger", "text"] }
 swim_runtime = { path = "../../runtime/swim_runtime" }
 swim_remote = { path = "../../runtime/swim_remote" }

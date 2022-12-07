@@ -223,7 +223,7 @@ where
         };
         if let Some(reason) = close_reason {
             debug!(reason = ?reason, "Closing websocket connection.");
-            if let Err(error) = tx.close_with(reason).await {
+            if let Err(error) = tx.close(reason).await {
                 error!(error = %error, "Failed to close websocket.");
             }
         }
