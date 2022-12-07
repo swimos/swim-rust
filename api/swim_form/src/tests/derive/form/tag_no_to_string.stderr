@@ -16,19 +16,19 @@ error[E0277]: the trait bound `B: AsRef<str>` is not satisfied
    = note: this error originates in the derive macro `Form` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `B: swim_form::structural::Tag` is not satisfied
-    --> src/tests/derive/form/tag_no_to_string.rs:21:14
-     |
-21   |     #[derive(Form)]
-     |              ^^^^ the trait `swim_form::structural::Tag` is not implemented for `B`
-     |
-     = help: the trait `Recognizer` is implemented for `TagRecognizer<T>`
-     = note: required because of the requirements on the impl of `Recognizer` for `TagRecognizer<B>`
+  --> src/tests/derive/form/tag_no_to_string.rs:21:14
+   |
+21 |     #[derive(Form)]
+   |              ^^^^ the trait `swim_form::structural::Tag` is not implemented for `B`
+   |
+   = help: the trait `Recognizer` is implemented for `TagRecognizer<T>`
+   = note: required for `TagRecognizer<B>` to implement `Recognizer`
 note: required by a bound in `feed_field`
-    --> src/structural/read/recognizer/mod.rs
-     |
-     |     R: Recognizer,
-     |        ^^^^^^^^^^ required by this bound in `feed_field`
-     = note: this error originates in the derive macro `Form` (in Nightly builds, run with -Z macro-backtrace for more info)
+  --> src/structural/read/recognizer/mod.rs
+   |
+   |     R: Recognizer,
+   |        ^^^^^^^^^^ required by this bound in `feed_field`
+   = note: this error originates in the derive macro `Form` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `B: swim_form::structural::Tag` is not satisfied
   --> src/tests/derive/form/tag_no_to_string.rs:21:14
@@ -37,7 +37,7 @@ error[E0277]: the trait bound `B: swim_form::structural::Tag` is not satisfied
    |              ^^^^ the trait `swim_form::structural::Tag` is not implemented for `B`
    |
    = help: the trait `Recognizer` is implemented for `TagRecognizer<T>`
-   = note: required because of the requirements on the impl of `Recognizer` for `TagRecognizer<B>`
+   = note: required for `TagRecognizer<B>` to implement `Recognizer`
    = note: this error originates in the derive macro `Form` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `B: swim_form::structural::Tag` is not satisfied
@@ -47,5 +47,5 @@ error[E0277]: the trait bound `B: swim_form::structural::Tag` is not satisfied
    |              ^^^^ the trait `swim_form::structural::Tag` is not implemented for `B`
    |
    = help: the trait `Default` is implemented for `TagRecognizer<T>`
-   = note: required because of the requirements on the impl of `Default` for `TagRecognizer<B>`
+   = note: required for `TagRecognizer<B>` to implement `Default`
    = note: this error originates in the derive macro `Form` (in Nightly builds, run with -Z macro-backtrace for more info)
