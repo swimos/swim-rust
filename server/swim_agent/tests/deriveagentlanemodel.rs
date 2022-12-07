@@ -168,3 +168,41 @@ fn multiple_lanes() {
 
     check_agent::<MultipleLanes>(vec!["first", "third", "fifth"], vec!["second", "fourth"]);
 }
+
+mod isolated {
+
+    use super::check_agent;
+
+    #[test]
+    fn multiple_lanes_qualified() {
+        #[derive(swim_agent::AgentLaneModel)]
+        #[agent_root(::swim_agent)]
+        struct MultipleLanes {
+            first: swim_agent::lanes::ValueLane<i32>,
+            second: swim_agent::lanes::MapLane<i32, i32>,
+            third: swim_agent::lanes::ValueLane<i32>,
+            fourth: swim_agent::lanes::MapLane<i32, i32>,
+            fifth: swim_agent::lanes::CommandLane<i32>,
+        }
+
+        check_agent::<MultipleLanes>(vec!["first", "third", "fifth"], vec!["second", "fourth"]);
+    }
+}
+
+#[test]
+fn two_types_single_scope() {
+    #[derive(AgentLaneModel)]
+    #[agent_root(::swim_agent)]
+    struct First {
+        lane: ValueLane<i32>,
+    }
+
+    #[derive(AgentLaneModel)]
+    #[agent_root(::swim_agent)]
+    struct Second {
+        lane: ValueLane<Text>,
+    }
+
+    check_agent::<First>(vec!["lane"], vec![]);
+    check_agent::<Second>(vec!["lane"], vec![]);
+}
