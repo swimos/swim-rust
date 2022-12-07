@@ -108,8 +108,9 @@ where
                             }
                             Some(Either::Right(Ok((addr, msg)))) => {
                                 if let Ok(rx) = commander.command_and_await(msg).await {
-                                    responses
-                                        .push_back(rx.map(move |r| r.map(move |resp| (addr, resp))));
+                                    responses.push_back(
+                                        rx.map(move |r| r.map(move |resp| (addr, resp))),
+                                    );
                                 } else {
                                     event!(Level::ERROR, NO_COMPLETION);
                                 }
