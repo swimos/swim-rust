@@ -24,7 +24,7 @@ jobs:
 
       # Run clippy
       - script: |
-          cargo clippy --all-features --workspace --all-targets --profile 'ci' -- -D warnings
+          cargo clippy --all-features --workspace --all-targets --profile "ci" -- -D warnings
         displayName: Run Clippy
 
       # Run rustfmt
@@ -35,5 +35,5 @@ jobs:
       # Run doc
       - script: |
           RUSTDOCFLAGS="--cfg docsrs -Dwarnings" 
-          cargo doc --lib --no-deps --all-features --workspace --profile 'ci'
+          cargo doc --lib --no-deps --all-features --workspace --profile "ci"
         displayName: Run doc
